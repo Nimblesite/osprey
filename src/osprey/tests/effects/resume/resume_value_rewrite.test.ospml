@@ -122,6 +122,22 @@ weightedReads () =
     weighted = ((a * 1000) ) + ((b * 100) ) + ((c * 10) ) 
     (weighted + d) 
 
+(** One constant-script region: its answer and the reads its arm counted. *)
+type ScriptRun =
+    answer : int
+    calls : int
+
+(** Runs `weightedReads` under a Script region resuming `value` at every read. *)
+scriptedRun value =
+    mut calls = 0
+    result =
+        handle Script
+            read _slot =>
+                calls := calls + 1
+                resume value
+        weightedReads ()
+    ScriptRun(answer = result, calls = calls)
+
 (** [EFFECTS-RESUME] "`resume(value)` supplies the current operation result and
     runs the rest of the handled computation." Each perform site must observe
     the value its own arm supplied — not the argument it sent, not a neighbour's
@@ -150,21 +166,8 @@ resumeSubstitutesSuppliedValueCase () =
                 answer
         weightedReads ()
 
-    mut steadyReads = 0
-    steady =
-        handle Script
-            read _slot =>
-                steadyReads := steadyReads + 1 
-                resume 1
-        weightedReads ()
-
-    mut zeroReads = 0
-    zeroed =
-        handle Script
-            read _slot =>
-                zeroReads := zeroReads + 1 
-                resume 0
-        weightedReads ()
+    steady = scriptedRun 1
+    zeroed = scriptedRun 0
 
     (* 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
         The rejected values are the answers a broken delivery would produce: 10 is
@@ -204,12 +207,12 @@ resumeSubstitutesSuppliedValueCase () =
         and under an all-zero script answers 0 — the body is fixed, the supplies
         are what move. Neither later region disturbs the first region's state. *)
     checkAll "the same body answers differently under a different script" [
-        structuralEquals [steady, steadyReads, ((steady - picked) ), zeroed, zeroReads] [1111, 4, 444, 0, 4],
-        steady != picked, picked != 1111,
-        steady == (((1000 + 100) ) + ((10 + 1) ) ),
-        zeroed != picked,
+        structuralEquals [steady.answer, steady.calls, ((steady.answer - picked) ), zeroed.answer, zeroed.calls] [1111, 4, 444, 0, 4],
+        steady.answer != picked, picked != 1111,
+        steady.answer == (((1000 + 100) ) + ((10 + 1) ) ),
+        zeroed.answer != picked,
         structuralEquals [asked, gave] ["1|2|3|4|", "0|7|-4|7|"],
-        reads == steadyReads
+        reads == steady.calls
     ]
 
 (* Register value substitution at the perform site. *)
@@ -561,6 +564,10 @@ resumeBoolAndUnitPayloadsCase () =
 (* Register boolean and Unit resume payloads. *)
 test "resume carries boolean and Unit payloads" (exactly resumeBoolAndUnitPayloadsCase)
 
+(** Asserts `text` opens with `pre`, ends with `suf`, holds every `mids`, bans `banned`. *)
+framed text pre suf mids banned =
+    structuralEquals [startsWith text pre, endsWith text suf, containsAll text mids, !(contains text banned)] [true, true, true, true]
+
 (** Slot is a record supplied whole through one resumed operation. *)
 type Slot =
     label : string
@@ -681,9 +688,7 @@ resumeManagedPayloadsCase () =
     checkAll "a whole record crosses one operation intact" [
         slotText == "left:3:true/:0:false",
         structuralEquals [length slotText, slotCalls, doubledWeight, weightCalls] [20, 2, 42, 1],
-        startsWith slotText "left:3:true", endsWith slotText ":0:false",
-        containsAll slotText ["/:0:", "true", "false"],
-        !(contains slotText "//"),
+        framed slotText "left:3:true" ":0:false" ["/:0:", "true", "false"] "//",
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
     ]
@@ -734,78 +739,76 @@ spanBody () =
     tailValue = depth3 "tail"
     ((first + inner) ) + tailValue 
 
+(** One Depth region's answer, arm count, seed and entry/exit transcripts. *)
+type DepthTrace =
+    answer : int
+    calls : int
+    seed : int
+    tags : string
+    settled : string
+    answers : string
+
+(** Runs `body` under a Depth arm that bumps a seed per tag and resumes with it. *)
+depthTrace (bump, body) =
+    mut calls = 0
+    mut seed = 0
+    mut tags = ""
+    mut settled = ""
+    mut answers = ""
+    result =
+        handle Depth
+            supply tag =>
+                calls := (calls + 1)
+                seed := (seed + 1)
+                tags := "${tags}${tag}|"
+                answer = resume (bump seed)
+                settled := "${settled}${tag}|"
+                answers := "${answers}${toString answer}|"
+                answer
+        body ()
+    DepthTrace(answer = result, calls = calls, seed = seed, tags = tags, settled = settled, answers = answers)
+
 (** [EFFECTS-RESUME] Handlers "are deep: the same handler remains installed
     while the continuation runs", and [EFFECTS-STATIC-DISCHARGE] propagates the
     requirement "through named calls", so a perform four frames below the
     `handle` reaches the same arm — and so does the next one, performed after
     the first continuation resumed. Supplying 3 then 4 gives (3+4)*2 + 5 = 19. *)
 resumeFromNestedHelpersCase () =
-    mut depthCalls = 0
-    mut depthSeed = 0
-    mut depthTags = ""
-    mut depthSettled = ""
-    mut depthAnswers = ""
-    deepResult =
-        handle Depth
-            supply tag =>
-                depthCalls := depthCalls + 1 
-                depthSeed := (depthSeed + 1) 
-                depthTags := "${depthTags}${tag}|"
-                answer = resume ((depthSeed + 2) )
-                depthSettled := "${depthSettled}${tag}|"
-                depthAnswers := "${depthAnswers}${toString answer}|"
-                answer
-        depth0 ()
-
-    mut spanCalls = 0
-    mut spanSeed = 0
-    mut spanTags = ""
-    mut spanSettled = ""
-    mut spanSeen = ""
-    spanResult =
-        handle Depth
-            supply tag =>
-                spanCalls := spanCalls + 1 
-                spanSeed := (spanSeed + 1) 
-                spanTags := "${spanTags}${tag}|"
-                answer = resume spanSeed
-                spanSettled := "${spanSettled}${tag}|"
-                spanSeen := "${spanSeen}${toString answer}|"
-                answer
-        spanBody ()
+    deep = depthTrace (\s => (s + 2), \() => depth0 ())
+    span = depthTrace (\s => s, \() => spanBody ())
 
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)
     checkAll "a perform four frames deep reaches the region's arm" [
-        structuralEquals [deepResult, depthCalls, depthSeed, ((3 + 4) ), ((7 * 2) )] [19, 2, 2, 7, 14],
-        structuralEquals [depthTags, depthSettled, depthAnswers] ["deep.a|deep.b|", "deep.b|deep.a|", "19|19|"],
-        depthTags != depthSettled,
-        deepResult == ((14 + 5) ),
-        deepResult != 7, deepResult != 14, deepResult != 24,
-        deepResult > 14, deepResult < 24
+        structuralEquals [deep.answer, deep.calls, deep.seed, ((3 + 4) ), ((7 * 2) )] [19, 2, 2, 7, 14],
+        structuralEquals [deep.tags, deep.settled, deep.answers] ["deep.a|deep.b|", "deep.b|deep.a|", "19|19|"],
+        deep.tags != deep.settled,
+        deep.answer == ((14 + 5) ),
+        deep.answer != 7, deep.answer != 14, deep.answer != 24,
+        deep.answer > 14, deep.answer < 24
     ]
 
     (* The same handler serves a perform before the nested chain, two inside it,
         and one after it returned: 1 + ((2+3)*2) + 4 = 15. *)
     checkAll "the deep handler stays installed across the continuation" [
-        structuralEquals [spanResult, spanCalls, length spanTags] [15, 4, 31],
-        structuralEquals [length spanSettled, (((2 + 3) ) * 2 )] [31, 10],
-        structuralEquals [spanTags, spanSettled] ["shallow|nested.a|nested.b|tail|", "tail|nested.b|nested.a|shallow|"],
-        startsWith spanTags "shallow|", endsWith spanTags "tail|",
-        startsWith spanSettled "tail|", endsWith spanSettled "shallow|",
-        spanTags != spanSettled,
-        spanResult == ((11 + 4) ),
-        spanResult != 10, spanResult != 5
+        structuralEquals [span.answer, span.calls, length span.tags] [15, 4, 31],
+        structuralEquals [length span.settled, (((2 + 3) ) * 2 )] [31, 10],
+        structuralEquals [span.tags, span.settled] ["shallow|nested.a|nested.b|tail|", "tail|nested.b|nested.a|shallow|"],
+        startsWith span.tags "shallow|", endsWith span.tags "tail|",
+        startsWith span.settled "tail|", endsWith span.settled "shallow|",
+        span.tags != span.settled,
+        span.answer == ((11 + 4) ),
+        span.answer != 10, span.answer != 5
     ]
 
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
     checkAll "both deep regions keep their own transcripts" [
-        containsAll spanTags ["nested.a|nested.b|", "|tail|"],
-        !(contains spanSettled "shallow|tail"),
-        spanSeen == "15|15|15|15|",
-        structuralEquals [length spanSeen, spanCalls, spanSeed, depthCalls, depthSeed, deepResult] [12, 4, 4, 2, 2, 19],
-        deepResult != spanResult, depthTags != spanTags
+        containsAll span.tags ["nested.a|nested.b|", "|tail|"],
+        !(contains span.settled "shallow|tail"),
+        span.answers == "15|15|15|15|",
+        structuralEquals [length span.answers, span.calls, span.seed, deep.calls, deep.seed, deep.answer] [12, 4, 4, 2, 2, 19],
+        deep.answer != span.answer, deep.tags != span.tags
     ]
 
 (* Register a perform reached through four frames of helpers. *)
@@ -864,9 +867,7 @@ manyPerformsOneRegionCase () =
     checkAll "each index receives its own scripted value" [
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
         structuralEquals [length tickGave, drained, (((10 + 111) ) + 40 )] [31, 161, 161],
-        startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
-        containsAll tickGave ["|100|", "|-1|", "|12|12|"],
-        !(contains tickGave "|13|"),
+        framed tickGave "0|7|-4|" "|25|" ["|100|", "|-1|", "|12|12|"] "|13|",
         drained != 10, drained != 40, drained != 111
     ]
 

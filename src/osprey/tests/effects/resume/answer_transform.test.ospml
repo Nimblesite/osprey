@@ -111,6 +111,24 @@ returnClauseCase () =
         (checkedDouble 4611686018427387904 valueWork ?: -1) == -1
     ]
 
+(** Render the single element of one list layer, or "other" for another shape. *)
+unwrapText (render, values) = match values
+    [first] => render first
+    _ => "other"
+
+(** The text inside a Result payload, or that error's own message. *)
+resultText (render, answer) = match answer
+    Success value => render value
+    Error message => message
+
+(** Assert one erased layer's resumed payload reaches every handler arm. *)
+erasedLayerChecks (message, rendered, plain, promoted, wrapped, error) = checkAll "erased resume payloads stay boxed text in every arm" [
+    structuralEquals [rendered, plain] ["boxed", "boxed"],
+    promoted == "boxed",
+    wrapped == "boxed",
+    error == message
+]
+
 type ResumeBox =
     held : string
 effect ErasedBoxAsk
@@ -118,15 +136,15 @@ effect ErasedBoxAsk
 effect ErasedBoxResultAsk
     control value : Unit => Result<List<any>, string>
 
+(** A flat layer's payload: one box holding text. *)
 resumeBoxValues () = [ResumeBox(held = "boxed")]
+(** The boxed text a flat layer answers with. *)
 resumeBoxText : List<any> -> string
 resumeBoxText values = match values
     [{ held, .. }] => toString held
     _ => "other"
 resumeBoxWork () = resumeBoxText (perform ErasedBoxAsk.value ())
-resumeResultBoxWork () = match perform ErasedBoxResultAsk.value ()
-    Success value => resumeBoxText value
-    Error message => message
+resumeResultBoxWork () = resultText (resumeBoxText, perform ErasedBoxResultAsk.value ())
 
 plainBoxResume = handler ErasedBoxAsk
     value => resume (resumeBoxValues ())
@@ -142,14 +160,12 @@ effect NestedBoxAsk
 effect NestedBoxResultAsk
     control value : Unit => Result<List<List<any>>, string>
 
+(** A layer nested one list deeper than the flat box. *)
 nestedResumeValues () = [resumeBoxValues ()]
-nestedResumeText values = match values
-    [items] => resumeBoxText items
-    _ => "other"
-nestedResumeWork () = nestedResumeText (perform NestedBoxAsk.value ())
-nestedResultResumeWork () = match perform NestedBoxResultAsk.value ()
-    Success value => nestedResumeText value
-    Error message => message
+(** The flat renderer, run one list layer deeper. *)
+nestedResumeText values = unwrapText (resumeBoxText, values)
+nestedResumeWork () = unwrapText (resumeBoxText, perform NestedBoxAsk.value ())
+nestedResultResumeWork () = resultText (nestedResumeText, perform NestedBoxResultAsk.value ())
 
 plainNestedResume = handler NestedBoxAsk
     value => resume (nestedResumeValues ())
@@ -160,12 +176,11 @@ wrappedNestedResume = handler NestedBoxResultAsk
 errorNestedResume = handler NestedBoxResultAsk
     value => resume (Error(message = join ["nested", "error"] " "))
 
-nestedResumeChecks () = checkAll "nested lists preserve erased resume payloads" [
-    structuralEquals [nestedResumeText (nestedResumeValues ()), plainNestedResume nestedResumeWork] ["boxed", "boxed"],
-    promotedNestedResume nestedResultResumeWork == "boxed",
-    wrappedNestedResume nestedResultResumeWork == "boxed",
-    errorNestedResume nestedResultResumeWork == "nested error"
-]
+(** The flat layer's resumed payloads, in every handler arm. *)
+boxLayerChecks () = erasedLayerChecks ("resume error", resumeBoxText (resumeBoxValues ()), plainBoxResume resumeBoxWork, promotedBoxResume resumeResultBoxWork, wrappedBoxResume resumeResultBoxWork, errorBoxResume resumeResultBoxWork)
+
+(** The nested layer's resumed payloads, in every handler arm. *)
+nestedResumeChecks () = erasedLayerChecks ("nested error", nestedResumeText (nestedResumeValues ()), plainNestedResume nestedResumeWork, promotedNestedResume nestedResultResumeWork, wrappedNestedResume nestedResultResumeWork, errorNestedResume nestedResultResumeWork)
 
 (** A resumed branch answer is already transformed; an abandoned one never is. *)
 controlAnswerCase () =
@@ -174,11 +189,9 @@ controlAnswerCase () =
     checkAll "a control arm's answer bypasses the return clause" [
         structuralEquals [around controlWork, stop controlWork, bracket twoAsks] ["done=42!", "stopped", "[[done=44]]"],
         structuralEquals [opened controlWork, closed controlWork, closed twoAsks] ["open 6", "closed", "closed"],
-        structuralEquals [opened twoAsks, resumeBoxText (resumeBoxValues ())] ["open 55", "boxed"],
-        structuralEquals [plainBoxResume resumeBoxWork, promotedBoxResume resumeResultBoxWork] ["boxed", "boxed"],
-        wrappedBoxResume resumeResultBoxWork == "boxed",
-        errorBoxResume resumeResultBoxWork == "resume error"
+        structuralEquals [opened twoAsks, resumeBoxText (resumeBoxValues ())] ["open 55", "boxed"]
     ]
+    boxLayerChecks ()
     nestedResumeChecks ()
 
 (** Repeated applications share a factory's cells; separate factories do not. *)

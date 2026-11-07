@@ -127,20 +127,39 @@ fn returnClauseCase() = checkAll("a return clause converts normal completion", [
     (checkedDouble(4611686018427387904)(valueWork) ?: -1) == -1
 ])
 
+/// Render the single element of one list layer, or "other" for another shape.
+fn unwrapText(render, values) = match values {
+    [first] => render(first)
+    _ => "other"
+}
+
+/// The text inside a Result payload, or that error's own message.
+fn resultText(render, answer) = match answer {
+    Success { value } => render(value)
+    Error { message } => message
+}
+
+/// Assert one erased layer's resumed payload reaches every handler arm.
+fn erasedLayerChecks(message, rendered, plain, promoted, wrapped, error) = checkAll("erased resume payloads stay boxed text in every arm", [
+    structuralEquals([rendered, plain], ["boxed", "boxed"]),
+    promoted == "boxed",
+    wrapped == "boxed",
+    error == message
+])
+
 type ResumeBox = { held: string }
 effect ErasedBoxAsk { control value: fn() -> List<any> }
 effect ErasedBoxResultAsk { control value: fn() -> Result<List<any>, string> }
 
+/// A flat layer's payload: one box holding text.
 fn resumeBoxValues() = [ResumeBox { held: "boxed" }]
+/// The boxed text a flat layer answers with.
 fn resumeBoxText(values: List<any>) = match values {
     [{ held, .. }] => toString(held)
     _ => "other"
 }
 fn resumeBoxWork() = resumeBoxText(perform ErasedBoxAsk.value())
-fn resumeResultBoxWork() = match perform ErasedBoxResultAsk.value() {
-    Success { value } => resumeBoxText(value)
-    Error { message } => message
-}
+fn resumeResultBoxWork() = resultText(resumeBoxText, perform ErasedBoxResultAsk.value())
 
 let plainBoxResume = handler ErasedBoxAsk { value => resume(resumeBoxValues()) }
 let promotedBoxResume = handler ErasedBoxResultAsk { value => resume(resumeBoxValues()) }
@@ -150,28 +169,23 @@ let errorBoxResume = handler ErasedBoxResultAsk { value => resume(Error { messag
 effect NestedBoxAsk { control value: fn() -> List<List<any>> }
 effect NestedBoxResultAsk { control value: fn() -> Result<List<List<any>>, string> }
 
+/// A layer nested one list deeper than the flat box.
 fn nestedResumeValues() = [resumeBoxValues()]
-fn nestedResumeText(values) = match values {
-    [items] => resumeBoxText(items)
-    _ => "other"
-}
-fn nestedResumeWork() = nestedResumeText(perform NestedBoxAsk.value())
-fn nestedResultResumeWork() = match perform NestedBoxResultAsk.value() {
-    Success { value } => nestedResumeText(value)
-    Error { message } => message
-}
+/// The flat renderer, run one list layer deeper.
+fn nestedResumeText(values) = unwrapText(resumeBoxText, values)
+fn nestedResumeWork() = unwrapText(resumeBoxText, perform NestedBoxAsk.value())
+fn nestedResultResumeWork() = resultText(nestedResumeText, perform NestedBoxResultAsk.value())
 
 let plainNestedResume = handler NestedBoxAsk { value => resume(nestedResumeValues()) }
 let promotedNestedResume = handler NestedBoxResultAsk { value => resume(nestedResumeValues()) }
 let wrappedNestedResume = handler NestedBoxResultAsk { value => resume(Success { value: nestedResumeValues() }) }
 let errorNestedResume = handler NestedBoxResultAsk { value => resume(Error { message: join(["nested", "error"], " ") }) }
 
-fn nestedResumeChecks() = checkAll("nested lists preserve erased resume payloads", [
-    structuralEquals([nestedResumeText(nestedResumeValues()), plainNestedResume(nestedResumeWork)], ["boxed", "boxed"]),
-    promotedNestedResume(nestedResultResumeWork) == "boxed",
-    wrappedNestedResume(nestedResultResumeWork) == "boxed",
-    errorNestedResume(nestedResultResumeWork) == "nested error"
-])
+/// The flat layer's resumed payloads, in every handler arm.
+fn boxLayerChecks() = erasedLayerChecks("resume error", resumeBoxText(resumeBoxValues()), plainBoxResume(resumeBoxWork), promotedBoxResume(resumeResultBoxWork), wrappedBoxResume(resumeResultBoxWork), errorBoxResume(resumeResultBoxWork))
+
+/// The nested layer's resumed payloads, in every handler arm.
+fn nestedResumeChecks() = erasedLayerChecks("nested error", nestedResumeText(nestedResumeValues()), plainNestedResume(nestedResumeWork), promotedNestedResume(nestedResultResumeWork), wrappedNestedResume(nestedResultResumeWork), errorNestedResume(nestedResultResumeWork))
 
 /// A resumed branch answer is already transformed; an abandoned one never is.
 fn controlAnswerCase() = {
@@ -181,11 +195,9 @@ fn controlAnswerCase() = {
         structuralEquals([around(controlWork), stop(controlWork)], ["done=42!", "stopped"]),
         structuralEquals([bracket(twoAsks), opened(controlWork)], ["[[done=44]]", "open 6"]),
         structuralEquals([closed(controlWork), closed(twoAsks)], ["closed", "closed"]),
-        structuralEquals([opened(twoAsks), resumeBoxText(resumeBoxValues())], ["open 55", "boxed"]),
-        structuralEquals([plainBoxResume(resumeBoxWork), promotedBoxResume(resumeResultBoxWork)], ["boxed", "boxed"]),
-        wrappedBoxResume(resumeResultBoxWork) == "boxed",
-        errorBoxResume(resumeResultBoxWork) == "resume error"
+        structuralEquals([opened(twoAsks), resumeBoxText(resumeBoxValues())], ["open 55", "boxed"])
     ])
+    boxLayerChecks()
     nestedResumeChecks()
 }
 

@@ -45,6 +45,55 @@ fn report(xs) !Logger = perform Logger.log("collected " + toString(listLength(xs
 
 fn show(x) = print("  " + toString(x))
 
+/// Print one classified outcome through its matched union payload.
+fn showOutcome(o) = match o {
+    Done   { score } => print("outcome done " + toString(score))
+    Failed { code }  => print("outcome failed " + toString(code))
+}
+
+/// Spawn one weighted job in its own fiber and await the squared score.
+fn runWeighted(p) = await(spawn runJob(priWeight(p)))
+
+/// Two-digit field `n` (0 = least significant) of a base-100 packing.
+fn field2(v, n) = match n {
+    0 => v % 100
+    1 => (intDiv(v, 100)) % 100
+    2 => (intDiv(v, 10000)) % 100
+    _ => intDiv(v, 1000000)
+}
+
+/// Assert `v` equals `whole` with its two most significant fields `f3` and `f2`.
+fn packedHi(v, whole, f3, f2) = structuralEquals([v, field2(v, 3), field2(v, 2)], [whole, f3, f2])
+
+/// Assert `v` equals `whole` with its two least significant fields `f0` and `f1`.
+fn packedLo(v, whole, f0, f1) = structuralEquals([v, field2(v, 0), field2(v, 1)], [whole, f0, f1])
+
+/// Pack four two-digit fields into one positional base-100 integer.
+fn pack4(a, b, c, d) = a * 1000000 + b * 10000 + c * 100 + d
+
+/// Assert fields `i` and `j` of `v` are `a` and `b`.
+fn fields2(v, i, a, j, b) = structuralEquals([field2(v, i), field2(v, j)], [a, b])
+
+/// Assert `v` differs from every value in `banned`.
+fn avoids(v, banned) = !listContains(banned, v)
+
+/// Assert `s` opens with `pre` and closes with `post`.
+fn bookends(s, pre, post) = structuralEquals([startsWith(s, pre), endsWith(s, post)], [true, true])
+
+/// Assert `s` opens with neither `pre` nor closes with `post`.
+fn notBookends(s, pre, post) = structuralEquals([startsWith(s, pre), endsWith(s, post)], [false, false])
+
+/// Assert one handler transcript: exact text and length, bookends, middle stages, banned and present neighbors.
+fn transcriptHolds(name, s, text, len, pre, post, middles, banned, near, wrongPre, wrongPost) = checkAll(name, [
+    s == text,
+    length(s) == len,
+    bookends(s, pre, post),
+    containsAll(s, middles),
+    structuralEquals([containsNone(s, banned), contains(s, near)], [true, true]),
+    notBookends(s, wrongPre, wrongPost),
+    s != ""
+])
+
 print("=== mixup: fibers + effects + records ===")
 
 fn mixupDemo() = {
@@ -52,30 +101,17 @@ fn mixupDemo() = {
         log msg => print("[LOG] " + msg)
     }
     /// priorities -> effectful fibers
-    let fHigh = spawn runJob(priWeight(High))
-    let sHigh = await(fHigh)
-
-    let fMed  = spawn runJob(priWeight(Med))
-    let sMed  = await(fMed)
-
-    let fLow  = spawn runJob(priWeight(Low))
-    let sLow  = await(fLow)
+    let sHigh = runWeighted(High)
+    let sMed  = runWeighted(Med)
+    let sLow  = runWeighted(Low)
 
     /// record from a fiber result, fields read back
     let top = Job { id: 1, score: sHigh }
     print("job " + toString(top.id) + " score " + toString(top.score))
 
-    /// classify a fiber result into a union, then pattern-match it inline
-    let oTop = classify(sHigh)
-    match oTop {
-        Done   { score } => print("outcome done " + toString(score))
-        Failed { code }  => print("outcome failed " + toString(code))
-    }
-    let oZero = classify(0)
-    match oZero {
-        Done   { score } => print("outcome done " + toString(score))
-        Failed { code }  => print("outcome failed " + toString(code))
-    }
+    /// classify fiber results into a union, then match the payloads
+    showOutcome(classify(sHigh))
+    showOutcome(classify(0))
 
     /// results into a persistent list, walked with functional builtins
     let scores = listAppend(listAppend(listAppend(List(), sHigh), sMed), sLow)
@@ -125,12 +161,15 @@ fn pairSum(a, b) ![Gift, Arith] = {
     await(f1) + await(f2) 
 }
 
-let raceSum = exactArithmetic(fn() => {
+/// Runs the two-fiber resuming interaction under the tenfold handler.
+fn pairedScoreForTest() = {
     handle Gift {
         get tag => resume((tag * 10) )
     }
     pairSum(1, 2)
-})
+}
+
+let raceSum = exactArithmetic(fn() => pairedScoreForTest())
 print("race-free sum " + toString(raceSum))
 print("=== done ===")
 
@@ -140,14 +179,6 @@ fn highScoreForTest() = {
         log _msg => 0
     }
     await(spawn runJob(priWeight(High)))
-}
-
-/// Repeats the two-fiber resuming interaction for assertion use.
-fn pairedScoreForTest() = {
-    handle Gift {
-        get tag => resume((tag * 10) )
-    }
-    pairSum(1, 2)
 }
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
@@ -286,9 +317,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll("one body run answers every await", [
         structuralEquals([replayed, zeroRun, negRun, stepped, twice, performs, total], [21, 14, 2, 61117, 35, 8, 17]),
-        replayed == (7 * 3 ),
-        performs != 10,
-        lastAmount == (0 - 1 ),
+        structuralEquals([replayed == (7 * 3 ), performs != 10, lastAmount == (0 - 1 )], [true, true, true]),
         replayed != zeroRun,
         negRun < zeroRun,
         stepped > twice,
@@ -299,8 +328,8 @@ fn awaitReplaysOneEffectfulRunCase() = {
     // behind a correct final one. Amounts in order: 7, 0, -5, 4, 5, 6, 1, -1.
     checkAll("the shared cell walks through every intermediate total", [
         structuralEquals([(0 + 7 ), (7 + 0 ), (7 - 5 ), (2 + 4 ), (6 + 5 ), (11 + 6 )], [7, 7, 2, 6, 11, 17]),
-        structuralEquals([(17 + 1 ), (18 - 1 ), (intDiv(stepped, 10000) )], [18, 17, 6]),
-        structuralEquals([((intDiv(stepped, 100) ) % 100 ), (stepped % 100 ), total], [11, 17, 17]),
+        structuralEquals([(17 + 1 ), (18 - 1 ), field2(stepped, 2)], [18, 17, 6]),
+        structuralEquals([field2(stepped, 1), field2(stepped, 0), total], [11, 17, 17]),
         negRun == (7 - 5 ),
         twice == (18 + 17 )
     ])
@@ -309,8 +338,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
     // one a dropped minus sign on -1 would produce, and 34 the one a single lost
     // update inside `tallyTwice` would produce.
     checkAll("a lost or mis-signed update cannot pass", [
-        replayed != 7,
-        replayed != 14,
+        avoids(replayed, [7, 14]),
         zeroRun != 0,
         negRun != 7,
         negRun != 12,
@@ -319,9 +347,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
         performs != 0,
         performs != 5,
         total != 27,
-        total != 19,
-        lastAmount != 6,
-        lastAmount < 0,
+        structuralEquals([total != 19, lastAmount != 6, lastAmount < 0], [true, true, true]),
         total > lastAmount
     ])
 }
@@ -389,10 +415,10 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     // is what a swap between the first two performers would print, 40302040 what
     // the fourth performer's answer landing on the first would print.
     checkAll("each performer keeps its own answer", [
-        structuralEquals([weighted, (weighted % 100 ), ((intDiv(weighted, 100) ) % 100 )], [40302010, 10, 20]),
-        structuralEquals([((intDiv(weighted, 10000) ) % 100 ), (intDiv(weighted, 1000000) )], [30, 40]),
-        structuralEquals([duplicated, (duplicated % 100 ), ((intDiv(duplicated, 100) ) % 100 )], [20202020, 20, 20]),
-        structuralEquals([((intDiv(duplicated, 10000) ) % 100 ), (intDiv(duplicated, 1000000) )], [20, 20]),
+        packedLo(weighted, 40302010, 10, 20),
+        fields2(weighted, 2, 30, 3, 40),
+        structuralEquals([duplicated, field2(duplicated, 0), field2(duplicated, 1)], [20202020, 20, 20]),
+        fields2(duplicated, 2, 20, 3, 20),
         weighted != duplicated,
         weighted != 40301020,
         weighted != 40302040,
@@ -405,13 +431,9 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     checkAll("turn counters total exactly across fibers", [
         structuralEquals([turns, tagSum, tagProduct], [8, 18, 384]),
         structuralEquals([edgeTurns, edgeSum, (turns + edgeTurns )], [9, 25, 17]),
-        turns == (4 + 4 ),
-        tagSum == (10 + 8 ),
-        tagProduct == (24 * 16 ),
-        turns != 4,
+        structuralEquals([turns == (4 + 4 ), tagSum == (10 + 8 ), tagProduct == (24 * 16 ), turns != 4], [true, true, true, true]),
         turns > 0,
-        edgeSum == (4 + 7 + 14 ),
-        tagSum != tagProduct,
+        structuralEquals([edgeSum == (4 + 7 + 14 ), tagSum != tagProduct], [true, true]),
         tagProduct > tagSum
     ])
 
@@ -420,8 +442,7 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     checkAll("zero and negative operands cross the mailbox unchanged", [
         structuralEquals([signed, (signed + 1000 ), (intDiv((signed + 1000 ), 10000) )], [499000, 500000, 50]),
         structuralEquals([pairEdge, edgeTurns, (edgeSum + tagSum )], [70, 9, 43]),
-        signed != 500000,
-        signed != 501000,
+        avoids(signed, [500000, 501000]),
         signed < 500000,
         signed > 0,
         pairEdge != 0,
@@ -437,11 +458,8 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
         deepFan == (70 + 70 ),
         deepFan == (pairEdge * 2 ),
         deepFan > pairEdge,
-        deepFan != 70,
-        deepFan != 0,
-        deepFan != 130,
-        edgeTurns == (6 + 3 ),
-        edgeSum == (11 + 14 ),
+        avoids(deepFan, [70, 0, 130]),
+        structuralEquals([edgeTurns == (6 + 3 ), edgeSum == (11 + 14 )], [true, true]),
         edgeSum != edgeTurns,
         edgeSum > edgeTurns
     ])
@@ -483,7 +501,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         let f1 = await(spawn tallyJob(4))
         let m2 = tallyJob(5)
         let f2 = await(spawn tallyJob(6))
-        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 
+        pack4(m1, f1, m2, f2) 
     })
 
     /// A SECOND region over the same captured binding: promotion is to one heap
@@ -519,37 +537,24 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
     checkAll("one promoted cell serves main-fiber and fiber performs", [
-        structuralEquals([mixed, (intDiv(mixed, 1000000) ), ((intDiv(mixed, 10000) ) % 100 )], [3071218, 3, 7]),
-        structuralEquals([((intDiv(mixed, 100) ) % 100 ), (mixed % 100 ), carried, cell, hops], [12, 18, 22, 22, 6]),
+        packedHi(mixed, 3071218, 3, 7),
+        structuralEquals([field2(mixed, 1), field2(mixed, 0), carried, cell, hops], [12, 18, 22, 22, 6]),
         cell == (3 + 4 + 5 + 6 + 4 ),
         carried == cell,
-        mixed != 0,
-        cell != 18,
-        hops != 4,
+        structuralEquals([mixed != 0, cell != 18, hops != 4], [true, true, true]),
         cell > 0
     ])
 
     // "4:11|" is the hop a main-fiber perform reading a stale cell would write,
     // "6:14|" the one a fiber perform reading a stale cell would write.
-    checkAll("the transcript records every hop in body order", [
-        trail == "3:3|4:7|5:12|6:18|4:22|",
-        length(trail) == 23,
-        structuralEquals([startsWith(trail, "3:3|"), endsWith(trail, "4:22|")], [true, true]),
-        containsAll(trail, ["4:7|", "5:12|", "6:18|"]),
-        structuralEquals([containsNone(trail, ["3:4|", "4:11|", "6:14|"]), contains(trail, "|4:22|")], [true, true]),
-        structuralEquals([startsWith(trail, "4:7|"), endsWith(trail, "6:18|")], [false, false]),
-        trail != ""
-    ])
+    transcriptHolds("the transcript records every hop in body order", trail, "3:3|4:7|5:12|6:18|4:22|", 23, "3:3|", "4:22|", ["4:7|", "5:12|", "6:18|"], ["3:4|", "4:11|", "6:14|"], "|4:22|", "4:7|", "6:18|")
 
     // 305020 is what crossing the second and third performers' answers prints.
     checkAll("a resuming region totals across four concurrent fibers", [
-        structuralEquals([raced, (raced % 100 ), ((intDiv(raced, 100) ) % 100 )], [503020, 20, 30]),
-        structuralEquals([((intDiv(raced, 10000) ) % 100 ), (intDiv(raced, 1000000) ), turns], [50, 0, 4]),
+        packedLo(raced, 503020, 20, 30),
+        structuralEquals([field2(raced, 2), field2(raced, 3), turns], [50, 0, 4]),
         structuralEquals([answered, (turns + hops )], [10, 10]),
-        answered == (2 + 3 + 5 + 0 ),
-        turns != 3,
-        raced != 0,
-        raced != 305020,
+        structuralEquals([answered == (2 + 3 + 5 + 0 ), turns != 3, raced != 0, raced != 305020], [true, true, true, true]),
         answered != turns,
         raced > answered
     ])
@@ -602,7 +607,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         let r2 = recv(ch)
         let r3 = recv(ch)
         let r4 = recv(ch)
-        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 
+        pack4(r1, r2, r3, r4) 
     }
 
     /// Two fibers, no shared memory: every digit the consumer answers arrived
@@ -633,25 +638,24 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
 
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll("a channel hands values over oldest first", [
-        structuralEquals([drained, (intDiv(drained, 1000000) )], [11223344, 11]),
-        structuralEquals([((intDiv(drained, 10000) ) % 100 ), ((intDiv(drained, 100) ) % 100 )], [22, 33]),
-        structuralEquals([(drained % 100 ), sent, length(trail)], [44, 110, 12]),
+        structuralEquals([drained, field2(drained, 3)], [11223344, 11]),
+        fields2(drained, 2, 22, 1, 33),
+        structuralEquals([field2(drained, 0), sent, length(trail)], [44, 110, 12]),
         drained != 44332211,
         drained != 0,
         sent == (11 + 22 + 33 + 44 ),
         trail == "11,22,33,44,",
-        structuralEquals([startsWith(trail, "11,"), endsWith(trail, "44,")], [true, true]),
+        bookends(trail, "11,", "44,"),
         !contains(trail, "44,11,")
     ])
 
     // 975 is what a reversed drain would print; 1 + 2 - 3 balances to zero.
     checkAll("two fibers exchange only through the buffer", [
-        structuralEquals([consumed, (intDiv(consumed, 100) ), ((intDiv(consumed, 10) ) % 10 )], [579, 5, 7]),
+        structuralEquals([consumed, field2(consumed, 1), ((intDiv(consumed, 10) ) % 10 )], [579, 5, 7]),
         structuralEquals([(consumed % 10 ), p1, p2, (p1 + p2 + p3 )], [9, 1, 2, 0]),
         consumed != 975,
         consumed != 0,
-        consumed == (500 + 70 + 9 ),
-        drained != consumed,
+        structuralEquals([consumed == (500 + 70 + 9 ), drained != consumed], [true, true]),
         consumed > 0,
         p3 == (0 - 3 ),
         p1 != p2
@@ -661,8 +665,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
     // divisibility by 11.
     checkAll("the effect fired inside the producer reached the region outside it", [
         structuralEquals([sent, length(trail), (intDiv(sent, 11) ), (sent % 11 )], [110, 12, 10, 0]),
-        sent != 0,
-        sent != 11,
+        avoids(sent, [0, 11]),
         trail != "",
         containsAll(trail, ["22,", "33,"]),
         containsNone(trail, ["55,", ",0,"]),
@@ -768,7 +771,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     checkAll("each fiber's own tag threads to its own arm", [
         paired == "outer0=0+outer-2=-200",
         containsAll(paired, ["outer0=0", "outer-2=-200", "=-200"]),
-        structuralEquals([startsWith(paired, "outer0=0+"), endsWith(paired, "-200")], [true, true]),
+        bookends(paired, "outer0=0+", "-200"),
         containsNone(paired, ["outer-2=200", "outer2=", "=0+outer-2=200"]),
         structuralEquals([length(paired), innerHits, stampHits], [21, 4, 6]),
         paired != inner,
@@ -780,13 +783,12 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     checkAll("the enclosing region is restored after the inner one ends", [
         restored == "outer4=400/outer4=8",
         structuralEquals([contains(restored, "/"), endsWith(restored, "400")], [true, false]),
-        structuralEquals([endsWith(restored, "=8"), startsWith(restored, "outer4=400")], [true, true]),
+        bookends(restored, "outer4=400", "=8"),
         structuralEquals([length(restored), outerHits, innerHits], [19, 2, 4]),
         (outerHits * 2 ) == innerHits,
         restored != paired,
         restored != inner,
-        !contains(restored, "outer4=80"),
-        contains(restored, "0/o"),
+        structuralEquals([!contains(restored, "outer4=80"), contains(restored, "0/o")], [true, true]),
         stampHits > innerHits
     ])
 }
@@ -826,7 +828,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         let b = await(spawn tallyJob(a + 1 ))
         let c = await(spawn tallyJob(b + 1 ))
         let d = await(spawn tallyJob(c + 1 ))
-        a * 1000000 + b * 10000 + c * 100 + d 
+        pack4(a, b, c, d) 
     })
 
     /// A yield BETWEEN two performs in one fiber body: the parked value is handed
@@ -870,8 +872,8 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
     }
 
     checkAll("a data-dependent pipeline fixes a total order", [
-        structuralEquals([piped, (intDiv(piped, 1000000) ), ((intDiv(piped, 10000) ) % 100 )], [1030715, 1, 3]),
-        structuralEquals([((intDiv(piped, 100) ) % 100 ), (piped % 100 ), (1 * 2 + 1 ), (3 * 2 + 1 )], [7, 15, 3, 7]),
+        packedHi(piped, 1030715, 1, 3),
+        structuralEquals([field2(piped, 1), field2(piped, 0), (1 * 2 + 1 ), (3 * 2 + 1 )], [7, 15, 3, 7]),
         structuralEquals([(7 * 2 + 1 ), steps, running, yielded, probe], [15, 7, 5, 40, 51]),
         piped != 0,
         piped != 1030716
@@ -879,25 +881,13 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 
     // "s4=14;" is the stage a single lost increment would write, "s8=" a stage
     // that ran once too often.
-    checkAll("the handler transcript records every stage exactly once", [
-        script == "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;",
-        length(script) == 38,
-        structuralEquals([startsWith(script, "s1=1;"), endsWith(script, "s7=5;")], [true, true]),
-        containsAll(script, ["s4=15;", "s5=20;", "s6=40;"]),
-        structuralEquals([containsNone(script, ["s8=", "s1=2;", "s4=14;"]), contains(script, ";s2=3;")], [true, true]),
-        structuralEquals([endsWith(script, "s6=40;"), startsWith(script, "s2=")], [false, false]),
-        script != ""
-    ])
+    transcriptHolds("the handler transcript records every stage exactly once", script, "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;", 38, "s1=1;", "s7=5;", ["s4=15;", "s5=20;", "s6=40;"], ["s8=", "s1=2;", "s4=14;"], ";s2=3;", "s2=", "s6=40;")
 
     checkAll("yield hands its own value back and the fiber still completes", [
         structuralEquals([yielded, probe, (probe % 10 ), (intDiv(probe, 10) )], [40, 51, 1, 5]),
         structuralEquals([running, steps, (running + 35 )], [5, 7, 40]),
         yielded == (20 + 20 ),
-        yielded != 20,
-        running == (40 - 35 ),
-        steps != 6,
-        probe != 50,
-        probe != 1,
+        structuralEquals([yielded != 20, running == (40 - 35 ), steps != 6, probe != 50, probe != 1], [true, true, true, true, true]),
         probe > yielded
     ])
 
@@ -907,8 +897,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         forwardTotal == reverseTotal,
         forwardTotal == (2 + 4 + 6 ),
         fwd == (2 + 6 + 12 ),
-        rev == (6 + 10 + 12 ),
-        rev > fwd,
+        structuralEquals([rev == (6 + 10 + 12 ), rev > fwd], [true, true]),
         forwardTotal != fwd,
         reverseTotal != rev
     ])
