@@ -66,6 +66,23 @@ fn outcomeShape(outcomes: List<Outcome>) = match outcomes {
     [head, ...tail] => "many:${describe(head)}+${listLength(tail)}"
 }
 
+/// `-1` written as a subtraction, the value a missed int lookup falls back to.
+let absentInt = ((0 - 1) )
+
+/// Describes the element at `index`, or the fallback when the index is past the end.
+fn describeAt(items, index, fallback) = describe(listGet(items, index) ?: fallback)
+
+/// Describes the value under `key`, or the fallback when the key is absent.
+fn describeUnder(items, key, fallback) = describe(valueOr(items, key, fallback))
+
+/// Every index of `indices` read out of the bucket at `key` matches `expected`.
+fn bucketReadsTo(items, key, indices, fallback, expected) =
+structuralEquals(mapList(indices, fn(index) => listValueAt(items, key, index, fallback)), expected)
+
+/// Reads `index` out of the bucket at `key` in the map stored at `position`.
+fn nestedBucketAt(items, position, key, index, fallback) =
+listValueAt(listGet(items, position) ?: { "fallback": [fallback] }, key, index, fallback)
+
 fn auditOutcomes(outcomes: List<Outcome>) = {
     mut trace = ""
     handle OutcomeAudit {
@@ -120,27 +137,21 @@ fn userDefinedUnionCase() = {
     let withoutFailure = mapRemove(updated, "failure")
     let merged = mapMerge(byName, { "primary": cached, "offline": Err { message: "offline" } })
     let fallback = Err { message: "fallback" }
+    let chosenBuckets = chooseOutcome(loaded, [[1], [2, 3]], [[9]])
 
     checkAll("union tags and payloads survive direct construction", [
             structuralEquals([describe(loaded), describe(missing)], ["ok: loaded", "err: missing"]),
             structuralEquals([describe(cached), describe(Err { message: "offline" })], ["ok: cached", "err: offline"]),
-            structuralEquals([label(Active), label(Inactive)], ["active", "inactive"]),
+            structuralEquals(mapList([Active, Inactive], label), ["active", "inactive"]),
             label(Active) != label(Inactive)
     ])
 
     checkAll("union lists preserve order patterns Results and persistence", [
             structuralEquals([listLength(outcomes), listLength(grown), listLength(prefixed)], [2, 3, 4]),
             structuralEquals([listLength(reversed), listLength(outcomes)], [4, 2]),
-            describe(listGet(outcomes, 0) ?: fallback) == "ok: loaded",
-            describe(listGet(outcomes, 1) ?: fallback) == "err: missing",
-            describe(listGet(grown, 2) ?: fallback) == "ok: cached",
-            describe(listGet(prefixed, 0) ?: fallback) == "err: offline",
-            describe(listGet(reversed, 0) ?: fallback) == "ok: cached",
-            describe(listGet(reversed, 3) ?: fallback) == "err: offline",
-            describe(listGet(outcomes, 9) ?: fallback) == "err: fallback",
+            structuralEquals([describeAt(outcomes, 0, fallback), describeAt(outcomes, 1, fallback), describeAt(reversed, 0, fallback), describeAt(reversed, 3, fallback), describeAt(grown, 2, fallback), describeAt(prefixed, 0, fallback), describeAt(outcomes, 9, fallback)], ["ok: loaded", "err: missing", "ok: cached", "err: offline", "ok: cached", "err: offline", "err: fallback"]),
             structuralEquals([outcomeShape([]), outcomeShape([loaded])], ["empty", "one:ok: loaded"]),
-            outcomeShape(outcomes) == "two:ok: loaded/err: missing",
-            outcomeShape(grown) == "many:ok: loaded+2",
+            structuralEquals(mapList([outcomes, grown], fn(items) => outcomeShape(items)), ["two:ok: loaded/err: missing", "many:ok: loaded+2"]),
             auditOutcomes(outcomes) == "ok: loaded|err: missing|",
             auditOutcomes(grown) == "ok: loaded|err: missing|ok: cached|"
     ])
@@ -148,15 +159,11 @@ fn userDefinedUnionCase() = {
     checkAll("union maps preserve replacement removal lookup and generic choices", [
             structuralEquals([mapLength(byName), mapLength(updated), mapLength(withoutFailure)], [2, 3, 2]),
             structuralEquals([mapLength(merged), listLength(mapKeys(merged))], [3, 3]),
-            structuralEquals([listLength(mapValues(merged)), chooseOutcome(loaded, 41, 99)], [3, 41]),
-            listLength(chooseOutcome(loaded, [[1], [2, 3]], [[9]])) == 2,
-            listLength(listGet(chooseOutcome(loaded, [[1], [2, 3]], [[9]]), 1) ?: [99]) == 2,
-            describe(mapGet(byName, "primary") ?: fallback) == "ok: loaded",
-            describe(mapGet(byName, "failure") ?: fallback) == "err: missing",
-            describe(mapGet(updated, "cached") ?: fallback) == "ok: cached",
-            describe(mapGet(withoutFailure, "failure") ?: fallback) == "err: fallback",
-            describe(mapGet(merged, "primary") ?: fallback) == "ok: cached",
-            describe(mapGet(merged, "offline") ?: fallback) == "err: offline",
+            listLength(mapValues(merged)) == 3,
+            chooseOutcome(loaded, 41, 99) == 41,
+            listLength(chosenBuckets) == 2,
+            listLength(listGet(chosenBuckets, 1) ?: [99]) == 2,
+            structuralEquals([describeUnder(byName, "primary", fallback), describeUnder(byName, "failure", fallback), describeUnder(updated, "cached", fallback), describeUnder(withoutFailure, "failure", fallback), describeUnder(merged, "primary", fallback), describeUnder(merged, "offline", fallback)], ["ok: loaded", "err: missing", "ok: cached", "err: fallback", "ok: cached", "err: offline"]),
             chooseOutcome(missing, "accepted", "rejected") == "rejected",
             structuralEquals([mapContains(byName, "primary"), mapContains(updated, "cached")], [true, true]),
             !mapContains(withoutFailure, "failure"),
@@ -191,18 +198,16 @@ fn builtMapIndexCase() = {
     }
 
     checkAll("built scalar maps preserve lookup replacement and persistence", [
-            structuralEquals([(built["a"] ?: ((0 - 1) )), (built["b"] ?: ((0 - 1) ))], [9, 16]),
-            structuralEquals([valueOr(built, "a", ((0 - 1) )), mapLength(built), mapLength(replaced)], [9, 2, 2]),
+            structuralEquals([(built["a"] ?: absentInt), (built["b"] ?: absentInt)], [9, 16]),
+            structuralEquals([valueOr(built, "a", absentInt), mapLength(built), mapLength(replaced)], [9, 2, 2]),
             structuralEquals([valueOr(replaced, "a", 0), valueOr(built, "a", 0), mapLength(removed)], [25, 9, 1]),
             structuralEquals([mapLength(merged), valueOr(merged, "a", 0), valueOr(merged, "b", 0)], [3, 9, 36]),
             structuralEquals([valueOr(merged, "c", 0), auditIntKeys(built, ["a", "b"])], [49, 916]),
             auditIntKeys(merged, ["a", "b", "c"]) == 93649,
-            valueOr(built, "missing", ((0 - 1) )) == ((0 - 1) ),
-            structuralEquals(mapList(["a", "b"], fn(k) => mapContains(built, k)), [true, true]),
-            !mapContains(built, "missing"),
-            absent,
-            mapContains(removed, "a"),
-            !mapContains(removed, "b")
+            valueOr(built, "missing", absentInt) == absentInt,
+            structuralEquals(mapList(["a", "b"], fn(key) => mapContains(built, key)), [true, true]),
+            structuralEquals([mapContains(built, "missing"), mapContains(removed, "a"), mapContains(removed, "b")], [false, true, false]),
+            absent
     ])
 
     checkAll("generic lookup instantiations stay isolated across leaf types", [
@@ -212,25 +217,21 @@ fn builtMapIndexCase() = {
             valueOr(words, "third", "missing") == "missing",
             auditStringKeys(words, ["first", "second"]) == "ant/bee/",
             auditStringKeys(wordGrowth, ["third", "first"]) == "cat/ant/",
-            structuralEquals([mapLength(words), mapLength(wordGrowth)], [2, 3]),
-            structuralEquals([listLength(mapKeys(wordGrowth)), listLength(mapValues(wordGrowth))], [3, 3])
+            structuralEquals([mapLength(words), mapLength(wordGrowth), listLength(mapKeys(wordGrowth)), listLength(mapValues(wordGrowth))], [2, 3, 3, 3])
     ])
 
     checkAll("maps of lists retain their nested element descriptors", [
-            structuralEquals([mapLength(buckets), mapLength(bucketGrowth)], [2, 3]),
+            structuralEquals([mapLength(buckets), mapLength(bucketGrowth), listLength(nestedMaps)], [2, 3, 2]),
             listLength(valueOr(buckets, "odd", [99])) == 3,
             listLength(valueOr(bucketGrowth, "prime", [99])) == 4,
-            structuralEquals([listValueAt(buckets, "odd", 0, 99), listValueAt(buckets, "odd", 2, 99)], [1, 5]),
-            structuralEquals([listValueAt(buckets, "even", 0, 99), listValueAt(buckets, "even", 2, 99)], [2, 6]),
+            bucketReadsTo(buckets, "odd", [0, 2], 99, [1, 5]),
+            bucketReadsTo(buckets, "even", [0, 2], 99, [2, 6]),
             listValueAt(bucketGrowth, "prime", 3, 99) == 7,
-            structuralEquals([listValueAt(buckets, "missing", 0, 99), listValueAt(buckets, "odd", 9, 99)], [99, 99]),
-            listLength(nestedMaps) == 2,
-            listValueAt(listGet(nestedMaps, 0) ?: { "fallback": [99] }, "odd", 2, 99) == 5,
-            listValueAt(listGet(nestedMaps, 1) ?: { "fallback": [99] }, "prime", 3, 99) == 7,
-            listValueAt(stringBuckets, "short", 0, "missing") == "a",
-            listValueAt(stringBuckets, "short", 1, "missing") == "bb",
-            listValueAt(stringBuckets, "long", 0, "missing") == "three",
-            listValueAt(stringBuckets, "long", 1, "missing") == "seven"
+            bucketReadsTo(buckets, "missing", [0], 99, [99]),
+            bucketReadsTo(buckets, "odd", [9], 99, [99]),
+            structuralEquals([nestedBucketAt(nestedMaps, 0, "odd", 2, 99), nestedBucketAt(nestedMaps, 1, "prime", 3, 99)], [5, 7]),
+            bucketReadsTo(stringBuckets, "short", [0, 1], "missing", ["a", "bb"]),
+            bucketReadsTo(stringBuckets, "long", [0, 1], "missing", ["three", "seven"])
     ])
 }
 test("built maps support indexed lookup", exactly(builtMapIndexCase))
