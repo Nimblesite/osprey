@@ -17,7 +17,13 @@ module.exports = defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // [WEBSITE-ASSET-VERSIONS] iPhone Safari is a separate engine: tests tagged
+  // @safari also run there, so a Safari-only layout failure turns the suite red.
+  globalSetup: require.resolve("./tests/install-webkit.cjs"),
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "iphone-safari", grep: /@safari/, use: { ...devices["iPhone 13"] } },
+  ],
   webServer: {
     command: `npm run build && node tests/serve.cjs ${PORT}`,
     url: `http://localhost:${PORT}`,
