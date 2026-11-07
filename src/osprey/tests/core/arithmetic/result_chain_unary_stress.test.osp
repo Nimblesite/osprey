@@ -7,8 +7,23 @@ fn negateValue(n) = -n
 /// The maximum value, reached through the runtime call.
 fn maxValue() = runtimeValue(9223372036854775807)
 
+/// A sweep index left-padded to two digits.
+fn twoDigits(n) = if n < 10 { "0${toString(n)}" } else { toString(n) }
+
 /// The three-digit case suffix each sweep index carries, for indices 1..15.
-fn caseSuffix(n) = if n < 10 { "00${toString(n)}" } else { "0${toString(n)}" }
+fn caseSuffix(n) = "0${twoDigits(n)}"
+
+/// A checked row for one plain negation, which never faults.
+fn negated(x, want) = verify(fn() => -(x), want, "")
+
+/// A checked row for one doubled negation, which never faults.
+fn doubleNegated(x, want) = verify(fn() => -(-(x)), want, "")
+
+/// A checked row for the magnitude of a plain literal, which never faults.
+fn magnitude(x, want) = verify(fn() => abs(x), want, "")
+
+/// A checked row for the magnitude of a negated literal, which never faults.
+fn magnitudeOfNegated(x, want) = verify(fn() => abs(-(x)), want, "")
 
 /// The ordered two-fault paths, one helper per repeated fault pair.
 fn overflowThenDivision(delta) = verify(fn() => (maxValue() + delta) + (delta / 0), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
@@ -72,46 +87,46 @@ fn policySweep() = {
     })
 }
 
-test("unary negation 001", fn() => verify(fn() => -(1), -1, ""))
-test("double unary negation 001", fn() => verify(fn() => -(-(1)), 1, ""))
-test("unary negation 002", fn() => verify(fn() => -(2), -2, ""))
-test("double unary negation 002", fn() => verify(fn() => -(-(2)), 2, ""))
-test("unary negation 003", fn() => verify(fn() => -(3), -3, ""))
-test("double unary negation 003", fn() => verify(fn() => -(-(3)), 3, ""))
-test("unary negation 004", fn() => verify(fn() => -(4), -4, ""))
-test("double unary negation 004", fn() => verify(fn() => -(-(4)), 4, ""))
-test("unary negation 005", fn() => verify(fn() => -(5), -5, ""))
-test("double unary negation 005", fn() => verify(fn() => -(-(5)), 5, ""))
-test("unary negation 006", fn() => verify(fn() => -(6), -6, ""))
-test("double unary negation 006", fn() => verify(fn() => -(-(6)), 6, ""))
-test("unary negation 007", fn() => verify(fn() => -(7), -7, ""))
-test("double unary negation 007", fn() => verify(fn() => -(-(7)), 7, ""))
-test("unary negation 008", fn() => verify(fn() => -(8), -8, ""))
-test("double unary negation 008", fn() => verify(fn() => -(-(8)), 8, ""))
-test("unary negation 009", fn() => verify(fn() => -(9), -9, ""))
-test("double unary negation 009", fn() => verify(fn() => -(-(9)), 9, ""))
-test("unary negation 010", fn() => verify(fn() => -(10), -10, ""))
-test("double unary negation 010", fn() => verify(fn() => -(-(10)), 10, ""))
-test("absolute positive 001", fn() => verify(fn() => abs(1), 1, ""))
-test("absolute negative 001", fn() => verify(fn() => abs(-(1)), 1, ""))
-test("absolute positive 002", fn() => verify(fn() => abs(2), 2, ""))
-test("absolute negative 002", fn() => verify(fn() => abs(-(2)), 2, ""))
-test("absolute positive 003", fn() => verify(fn() => abs(3), 3, ""))
-test("absolute negative 003", fn() => verify(fn() => abs(-(3)), 3, ""))
-test("absolute positive 004", fn() => verify(fn() => abs(4), 4, ""))
-test("absolute negative 004", fn() => verify(fn() => abs(-(4)), 4, ""))
-test("absolute positive 005", fn() => verify(fn() => abs(5), 5, ""))
-test("absolute negative 005", fn() => verify(fn() => abs(-(5)), 5, ""))
-test("absolute positive 006", fn() => verify(fn() => abs(6), 6, ""))
-test("absolute negative 006", fn() => verify(fn() => abs(-(6)), 6, ""))
-test("absolute positive 007", fn() => verify(fn() => abs(7), 7, ""))
-test("absolute negative 007", fn() => verify(fn() => abs(-(7)), 7, ""))
-test("absolute positive 008", fn() => verify(fn() => abs(8), 8, ""))
-test("absolute negative 008", fn() => verify(fn() => abs(-(8)), 8, ""))
-test("absolute positive 009", fn() => verify(fn() => abs(9), 9, ""))
-test("absolute negative 009", fn() => verify(fn() => abs(-(9)), 9, ""))
-test("absolute positive 010", fn() => verify(fn() => abs(10), 10, ""))
-test("absolute negative 010", fn() => verify(fn() => abs(-(10)), 10, ""))
+test("unary negation 001", fn() => negated(1, -1))
+test("double unary negation 001", fn() => doubleNegated(1, 1))
+test("unary negation 002", fn() => negated(2, -2))
+test("double unary negation 002", fn() => doubleNegated(2, 2))
+test("unary negation 003", fn() => negated(3, -3))
+test("double unary negation 003", fn() => doubleNegated(3, 3))
+test("unary negation 004", fn() => negated(4, -4))
+test("double unary negation 004", fn() => doubleNegated(4, 4))
+test("unary negation 005", fn() => negated(5, -5))
+test("double unary negation 005", fn() => doubleNegated(5, 5))
+test("unary negation 006", fn() => negated(6, -6))
+test("double unary negation 006", fn() => doubleNegated(6, 6))
+test("unary negation 007", fn() => negated(7, -7))
+test("double unary negation 007", fn() => doubleNegated(7, 7))
+test("unary negation 008", fn() => negated(8, -8))
+test("double unary negation 008", fn() => doubleNegated(8, 8))
+test("unary negation 009", fn() => negated(9, -9))
+test("double unary negation 009", fn() => doubleNegated(9, 9))
+test("unary negation 010", fn() => negated(10, -10))
+test("double unary negation 010", fn() => doubleNegated(10, 10))
+test("absolute positive 001", fn() => magnitude(1, 1))
+test("absolute negative 001", fn() => magnitudeOfNegated(1, 1))
+test("absolute positive 002", fn() => magnitude(2, 2))
+test("absolute negative 002", fn() => magnitudeOfNegated(2, 2))
+test("absolute positive 003", fn() => magnitude(3, 3))
+test("absolute negative 003", fn() => magnitudeOfNegated(3, 3))
+test("absolute positive 004", fn() => magnitude(4, 4))
+test("absolute negative 004", fn() => magnitudeOfNegated(4, 4))
+test("absolute positive 005", fn() => magnitude(5, 5))
+test("absolute negative 005", fn() => magnitudeOfNegated(5, 5))
+test("absolute positive 006", fn() => magnitude(6, 6))
+test("absolute negative 006", fn() => magnitudeOfNegated(6, 6))
+test("absolute positive 007", fn() => magnitude(7, 7))
+test("absolute negative 007", fn() => magnitudeOfNegated(7, 7))
+test("absolute positive 008", fn() => magnitude(8, 8))
+test("absolute negative 008", fn() => magnitudeOfNegated(8, 8))
+test("absolute positive 009", fn() => magnitude(9, 9))
+test("absolute negative 009", fn() => magnitudeOfNegated(9, 9))
+test("absolute positive 010", fn() => magnitude(10, 10))
+test("absolute negative 010", fn() => magnitudeOfNegated(10, 10))
 test("mixed integer value chain 001", fn() => verify(fn() => (((((11 + 3) * 4) - 1) % 6) + 8), 9, ""))
 test("mixed integer value chain 002", fn() => verify(fn() => (((((12 + 4) * 5) - 2) % 7) + 9), 10, ""))
 test("mixed integer value chain 003", fn() => verify(fn() => (((((13 + 5) * 6) - 3) % 8) + 10), 11, ""))
