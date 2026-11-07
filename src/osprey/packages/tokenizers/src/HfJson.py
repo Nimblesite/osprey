@@ -17,9 +17,6 @@ from tokenizers.Tokenizer import QwenTokenizer
 
 __all__ = ["load_qwen_tokenizer"]
 
-QWEN_PATTERN_MARK = "the-split-pattern"
-"""Stands in the fact table for the split pattern itself, which is long."""
-
 def load_qwen_tokenizer(text) -> Result[QwenTokenizer, str]:
     """The tokenizer a `tokenizer.json` document declares."""
     match jsonDecode(text):
@@ -46,35 +43,54 @@ def check_pipeline(doc) -> Result[bool, str]:
 def pipeline_facts(doc) -> list[list[str]]:
     """Each declared pipeline fact as [what, required, declared], as JSON text."""
     pre = field(doc, "pre_tokenizer")
-    split_pt = unwrap_or(jsonIndex(field(pre, "pretokenizers"), 0), JsonNull())
-    byte_pt = unwrap_or(jsonIndex(field(pre, "pretokenizers"), 1), JsonNull())
-    model = field(doc, "model")
-    decoder = field(doc, "decoder")
-    post = field(doc, "post_processor")
-    return [
-        declared("normalizer.type", q("NFC"), field(field(doc, "normalizer"), "type")),
-        declared("pre_tokenizer.type", q("Sequence"), field(pre, "type")),
-        declared("pre_tokenizer.pretokenizers[0].type", q("Split"), field(split_pt, "type")),
-        declared("pre_tokenizer.pretokenizers[0].behavior", q("Isolated"), field(split_pt, "behavior")),
-        declared("pre_tokenizer.pretokenizers[0].invert", "false", field(split_pt, "invert")),
+    split_pt = pt_at(pre, 0)
+    head = [
+        member_fact("normalizer", field(doc, "normalizer"), "type", q("NFC")),
+        member_fact("pre_tokenizer", pre, "type", q("Sequence")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "type", q("Split")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "behavior", q("Isolated")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "invert", "false"),
         declared("pre_tokenizer.pretokenizers[0].pattern.Regex", q(QWEN_PATTERN), field(field(split_pt, "pattern"), "Regex")),
-        declared("pre_tokenizer.pretokenizers[1].type", q("ByteLevel"), field(byte_pt, "type")),
-        declared("pre_tokenizer.pretokenizers[1].add_prefix_space", "false", field(byte_pt, "add_prefix_space")),
-        declared("pre_tokenizer.pretokenizers[1].use_regex", "false", field(byte_pt, "use_regex")),
-        declared("decoder.type", q("ByteLevel"), field(decoder, "type")),
-        declared("decoder.add_prefix_space", "false", field(decoder, "add_prefix_space")),
-        declared("decoder.use_regex", "false", field(decoder, "use_regex")),
-        declared("post_processor.type", q("ByteLevel"), field(post, "type")),
-        declared("post_processor.add_prefix_space", "false", field(post, "add_prefix_space")),
-        declared("post_processor.trim_offsets", "false", field(post, "trim_offsets")),
-        declared("model.type", q("BPE"), field(model, "type")),
-        declared("model.ignore_merges", "false", field(model, "ignore_merges")),
-        declared("model.byte_fallback", "false", field(model, "byte_fallback")),
-        declared("model.fuse_unk", "false", field(model, "fuse_unk")),
-        declared("model.unk_token", "null", field(model, "unk_token")),
-        declared("model.continuing_subword_prefix", q(""), field(model, "continuing_subword_prefix")),
-        declared("model.end_of_word_suffix", q(""), field(model, "end_of_word_suffix")),
     ]
+    return concat_facts([
+        head,
+        bytelevel_facts("pre_tokenizer.pretokenizers[1]", pt_at(pre, 1), "use_regex"),
+        bytelevel_facts("decoder", field(doc, "decoder"), "use_regex"),
+        bytelevel_facts("post_processor", field(doc, "post_processor"), "trim_offsets"),
+        model_facts(field(doc, "model")),
+    ])
+
+def pt_at(pre, i):
+    """Pre-tokenizer i of the declared sequence, or JsonNull when absent."""
+    return unwrap_or(jsonIndex(field(pre, "pretokenizers"), i), JsonNull())
+
+def member_fact(path, obj, name, want):
+    """One fact: obj's member `name` must be the JSON text `want`."""
+    return declared(path + "." + name, want, field(obj, name))
+
+def stage_facts(path, obj, wants):
+    """The facts of one pipeline stage: each [member, required JSON text]."""
+    return mapList(wants, lambda row: member_fact(path, obj, at_str(row, 0), at_str(row, 1)))
+
+def bytelevel_facts(path, obj, last):
+    """What every ByteLevel stage declares: its type, no prefix space, and `last` off."""
+    return stage_facts(path, obj, [["type", q("ByteLevel")], ["add_prefix_space", "false"], [last, "false"]])
+
+def model_facts(model):
+    """What the BPE model declares: its type and every option this port pins."""
+    return stage_facts("model", model, [
+        ["type", q("BPE")],
+        ["ignore_merges", "false"],
+        ["byte_fallback", "false"],
+        ["fuse_unk", "false"],
+        ["unk_token", "null"],
+        ["continuing_subword_prefix", q("")],
+        ["end_of_word_suffix", q("")],
+    ])
+
+def concat_facts(groups):
+    """Fact groups joined into one table, in order."""
+    return fold(range(len(groups)), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(groups, i), [])))
 
 def declared(path, want, value):
     """One pipeline fact: what it is, what this port requires, and what the
