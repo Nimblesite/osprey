@@ -124,6 +124,55 @@ def real_turn_is_cancelled_when_its_client_hangs_up(port):
     assert reply.eval_count == 8 and reply.prompt_eval_count > 5, (reply.eval_count, reply.prompt_eval_count)
 
 
+@pydantic_case
+def real_openai_obeys_root_token_budgets(port):
+    """Real weights: OpenAI caps must not silently become Ollama's default 256."""
+    import httpx
+    evidence = []
+    destination = ROOT / "target/llms/qwen-server/pydantic-token-budgets.json"
+    for field, budget in [("max_tokens", 1), ("max_tokens", 3), ("max_tokens", 257), ("max_completion_tokens", 2)]:
+        payload = {"model": MODEL, "messages": [{"role": "user", "content": "Write every integer from 1 to 1000, one per line. Do not skip numbers or use ellipses."}],
+                   "temperature": 0.0, field: budget}
+        response = httpx.post(base(port) + "/v1/chat/completions", json=payload, timeout=180, trust_env=False)
+        evidence.append({"request": payload, "status": response.status_code, "body": response.text})
+        destination.write_text(json.dumps(evidence, indent=2) + "\n")
+        assert response.status_code == 200, evidence
+        reply = response.json()
+        assert reply["model"] == MODEL and reply["usage"]["prompt_tokens"] > 0, reply
+        assert reply["usage"]["completion_tokens"] == budget, evidence
+        assert reply["choices"][0]["finish_reason"] == "length", evidence
+
+
+@pydantic_case
+def real_openai_rejects_invalid_root_budgets(port):
+    """The real server rejects invalid caps and identifies the offending field."""
+    import httpx
+    evidence = []
+    destination = ROOT / "target/llms/qwen-server/pydantic-invalid-budgets.json"
+    for field in ["max_tokens", "max_completion_tokens"]:
+        for value in [0, -1, 1.5, "3", True]:
+            payload = {"model": MODEL, "messages": [{"role": "user", "content": "Count to one hundred."}], field: value}
+            response = httpx.post(base(port) + "/v1/chat/completions", json=payload, timeout=180, trust_env=False)
+            evidence.append({"request": payload, "status": response.status_code, "body": response.text})
+            destination.write_text(json.dumps(evidence, indent=2) + "\n")
+            assert response.status_code == 400 and field in response.text, evidence
+
+
+@pydantic_case
+def real_openai_rejects_invalid_temperature(port):
+    """The real OpenAI endpoint validates root sampling temperature, not only options."""
+    import httpx
+    evidence = []
+    destination = ROOT / "target/llms/qwen-server/pydantic-invalid-temperature.json"
+    for value in ["0", -0.1, 2.1, True]:
+        payload = {"model": MODEL, "messages": [{"role": "user", "content": "Reply with exactly: pong"}],
+                   "max_tokens": 1, "temperature": value}
+        response = httpx.post(base(port) + "/v1/chat/completions", json=payload, timeout=180, trust_env=False)
+        evidence.append({"request": payload, "status": response.status_code, "body": response.text})
+        destination.write_text(json.dumps(evidence, indent=2) + "\n")
+        assert response.status_code == 400 and "temperature" in response.text, evidence
+
+
 # Explicit local-only Pydantic AI lane. Not registered as real_case or case.
 # Implements [LLM-AGENT-EVAL]: executable checks and a separate model judgement.
 
