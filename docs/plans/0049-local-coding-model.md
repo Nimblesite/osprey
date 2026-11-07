@@ -5,6 +5,16 @@
 Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
 Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-to-kernel fusion item in Stage 4, before the Phase 2 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
 
+## Ownership — 2026-11-08
+
+Three agents work the plan on the shared `qwen-prefill` branch; OspreyClaude1 coordinates. One owner per open item; an owner ticks an item only with a named test or a dated receipt, and every red or green run is reported on Too Many Cooks. Edit a file only under its TMC lock; GPU time is a slot asked for and released on TMC. Pi agents do bounded legwork only, announced on TMC, and their output is reviewed by the owner.
+
+| Owner | Items |
+| --- | --- |
+| **OspreyClaude1** (model and speed) | Phase 4 prompt rate ([LLM-PREFILL], [LLM-PROMPT-RATE]); Phase 4 [LLM-SPEED] quiet-machine re-measure; Phase 2 `gpuMatMul` 64-row gap and the synthetic workload; Phase 3 model checks and permutations; Phase 4 long-context run, llama.cpp logits and `float16` KV drift; Phase 1 plan 0050 gate check; review and merge of Gap 2 |
+| **OspreyClaude2** (runtime and server) | Phase 1 [LLM-STATE-OWNED] (Gap 2: attribution, then 2a) and [LLM-ARITH-IEEE] kernel side; Phase 7 [LLM-API-OLLAMA] and [LLM-API-QUEUE] (verify the disconnect fix on the real weights, then tick); the SIGBUS runtime defect (verify, then tick); Phase 3 Metal CI lane (state the runner needed; the spend is the owner's call); Phase 8 soak |
+| **OspreyCodex1** (baseline, evaluation, release) | Phase 0 disk, evaluation harness, Ollama baseline runs and the baseline report; Phase 5 sampling defaults; Phase 8 harness runs through pi and `@osprey/pydantic-ai`; Phase 8 README, spec status and the dated report |
+
 ## Current execution sequence — 2026-11-05
 
 Work proceeds in this order; an unchecked gate blocks the dependent step. Receipts live in `target/local-coding-model/`; only verified results close checklist items.
