@@ -111,5 +111,5 @@ def one_prompt_cases(model, cache):
 
 
 def no_prompt_case(model, cache):
-    """The empty prompt is refused with the prefill error."""
-    return [refusal("model_prefill_empty", Qwen3_5Model.prefill(model, cache, []), "prefill: no tokens")]
+    """[FAILURE-EXPLICIT] Empty prompts and nonpositive chunk sizes return errors."""
+    return [refusal("model_prefill_empty", Qwen3_5Model.prefill(model, cache, []), "prefill: no tokens"), refusal("model_prefill_zero_chunk", Qwen3_5Model.prefill_by(model, cache, input_tokens(0), 0), "prefill: chunk must be positive"), refusal("model_prefill_negative_chunk", Qwen3_5Model.prefill_by(model, cache, input_tokens(0), -1), "prefill: chunk must be positive")]

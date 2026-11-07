@@ -274,9 +274,12 @@ def prefill(model, cache, tokens) -> Result[Next, str]:
 def prefill_by(model, cache, tokens, chunk) -> Result[Next, str]:
     """`prefill` stacking `chunk` tokens per pass: each pass reads every weight once
     for all its rows, and only a mixer's cache update steps a position at a time."""
-    with strictly:
-        with wrapping:
-            return prefilled(model, cache, tokens, chunk)
+    if chunk <= 0:
+        return Error(message="prefill: chunk must be positive")
+    else:
+        with strictly:
+            with wrapping:
+                return prefilled(model, cache, tokens, chunk)
 
 
 def prefilled(model, cache, tokens, chunk):
