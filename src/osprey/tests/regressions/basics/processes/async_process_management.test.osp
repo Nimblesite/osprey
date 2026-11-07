@@ -4,9 +4,6 @@
 
 print("=== Async Process Management Demo ===")
 
-/// A spawned handle paired with the exit code its wait reported.
-type WaitedHandle = { processID: int, exitCode: int }
-
 /// Define the callback function that C runtime will call
 fn processEventHandler(processID, eventType, data) = {
     match eventType {
@@ -17,20 +14,15 @@ fn processEventHandler(processID, eventType, data) = {
     }
 }
 
-/// Waits for `value`, prints `message`, then releases the handle, in that order.
-fn awaitAndCleanup(value, message) = {
-    let _exitCode = awaitProcess(value)
-    print(message)
-    cleanupProcess(value)
-}
-
 // Test 1: Basic async process spawning with callback-based output
 print("--- Test 1: Basic Process Spawning ---")
 let result1 = spawnProcess("echo Hello from async process!", processEventHandler)
 match result1 {
     Success { value } => {
         print("✓ Process spawned successfully")
-        awaitAndCleanup(value, "✓ Process completed successfully")
+        let _exitCode = awaitProcess(value)
+        print("✓ Process completed successfully")
+        cleanupProcess(value)
         print("✓ Process resources cleaned up")
     }
     Error => print("✗ Process spawn failed")
@@ -42,7 +34,9 @@ let result2 = spawnProcess("echo Process 2 output", processEventHandler)
 match result2 {
     Success { value } => {
         print("Process 2 spawned successfully")
-        awaitAndCleanup(value, "Process 2 finished")
+        let _exitCode2 = awaitProcess(value)
+        print("Process 2 finished")
+        cleanupProcess(value)
     }
     Error => print("Process 2 failed")
 }
@@ -51,7 +45,11 @@ match result2 {
 print("--- Test 3: Error Handling ---")
 let result3 = spawnProcess("exit 1", processEventHandler)  // Command that returns exit code 1
 match result3 {
-    Success { value } => awaitAndCleanup(value, "Error process returned non-zero exit code")
+    Success { value } => {
+        let _exitCode3 = awaitProcess(value)
+        print("Error process returned non-zero exit code")
+        cleanupProcess(value)
+    }
     Error => print("✗ Process spawn unexpectedly failed")
 }
 
@@ -70,41 +68,43 @@ match result4 {
 print("=== Async Process Management Demo Complete ===")
 print("Note: Process output appears via C runtime callbacks during execution")
 
-/// Spawns `command`, waits for it, releases it, and reports the exit code to `accept`.
-fn probeExit(command, accept) = match spawnProcess(command, processEventHandler) {
-    Success { value } => {
-        let exitCode = awaitProcess(value)
-        cleanupProcess(value)
-        accept(exitCode)
-    }
-    Error => false
-}
-
 /// Starts fresh processes so the test asserts real wait and cleanup behavior.
-fn asyncProcessLifecycleCase() = checkAll("process wait and cleanup state", [
-    probeExit("exit 0", fn(code) => code == 0),
-    probeExit("exit 1", fn(code) => code != 0)
-])
-test("async processes report successful and failing exits", asyncProcessLifecycleCase)
-
-/// Spawns a fresh `exit 0` handle and awaits it, pairing the handle with its exit code.
-fn freshHandle() = {
-    let processID = spawnProcess("exit 0", processEventHandler) ?: -1
-    let exitCode = awaitProcess(processID)
-    WaitedHandle { processID: processID, exitCode: exitCode }
+fn asyncProcessLifecycleCase() = {
+    let successProbe = spawnProcess("exit 0", processEventHandler)
+    let successExit = match successProbe {
+        Success { value } => {
+            let exitCode = awaitProcess(value)
+            cleanupProcess(value)
+            exitCode == 0
+        }
+        Error => false
+    }
+    let failureProbe = spawnProcess("exit 1", processEventHandler)
+    let failureExit = match failureProbe {
+        Success { value } => {
+            let exitCode = awaitProcess(value)
+            cleanupProcess(value)
+            exitCode != 0
+        }
+        Error => false
+    }
+    checkAll("process wait and cleanup state", [successExit, failureExit])
 }
+test("async processes report successful and failing exits", asyncProcessLifecycleCase)
 
 /// Handle numbers only increase, and a released handle answers -1 exactly as
 /// one that was never issued does. [BUILTIN-PROCESS-FAILURE]
 fn processHandleCase() = {
-    let first = freshHandle()
-    let second = freshHandle()
-    cleanupProcess(first.processID)
-    cleanupProcess(second.processID)
+    let first = spawnProcess("exit 0", processEventHandler) ?: -1
+    let firstExit = awaitProcess(first)
+    let second = spawnProcess("exit 0", processEventHandler) ?: -1
+    let secondExit = awaitProcess(second)
+    cleanupProcess(first)
+    cleanupProcess(second)
     checkAll("process handles are fresh and released exactly once", [
-        first.processID > 0, second.processID > first.processID,
-        structuralEquals([first.exitCode, second.exitCode], [0, 0]),
-        awaitProcess(first.processID) == -1, awaitProcess(second.processID) == -1,
+        first > 0, second > first,
+        structuralEquals([firstExit, secondExit], [0, 0]),
+        awaitProcess(first) == -1, awaitProcess(second) == -1,
         awaitProcess(999999) == -1, awaitProcess(-1) == -1, awaitProcess(0) == -1
     ])
 }
