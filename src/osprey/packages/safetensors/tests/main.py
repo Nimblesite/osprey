@@ -265,7 +265,7 @@ def json_array_checks(value):
     """The parsed array's five items: two bools, null, an exponent float, a string."""
     fallback = empty_json_value()
     items = value.items
-    return [Check.equal("json.array_count", len(items), 5), Check.equal("json.true", unwrap_or(listGet(items, 0), fallback).b, True), Check.equal("json.false", unwrap_or(listGet(items, 1), fallback).b, False), Check.equal("json.null", unwrap_or(listGet(items, 2), fallback).kind, "null"), Check.equal("json.exponent", unwrap_or(listGet(items, 3), fallback).f, 125.0), Check.equal("json.escaped_unicode", unwrap_or(listGet(items, 4), fallback).s, "中\n\t\b\f\r/\\\"")]
+    return [Check.equal("json.array_count", len(items), 5), Check.equal("json.true", unwrap_or(listGet(items, 0), fallback).b, True), Check.equal("json.false", unwrap_or(listGet(items, 1), fallback).b, False), Check.equal("json.null", unwrap_or(listGet(items, 2), fallback).kind, JsonParser.jnull().kind), Check.equal("json.exponent", unwrap_or(listGet(items, 3), fallback).f, 125.0), Check.equal("json.escaped_unicode", unwrap_or(listGet(items, 4), fallback).s, "中\n\t\b\f\r/\\\"")]
 
 
 def json_value_cases():
