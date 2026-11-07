@@ -99,18 +99,29 @@ module Fixture {
         Error => refused("", "", statement)
     }
 
+    /// The statement one grant decision signs for this package and subject.
+    fn grantStatementFor(world, id, membership, permission, expiresAt) = match Governance::packageOf(world, id) {
+        Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, membership, permission, expiresAt)
+        Error => ""
+    }
+
+    /// One grant decision attempted through the real transition.
+    fn grantAttempt(world, id, grantId, membership, permission, expiresAt, now) =
+        GovernanceTransitions::grantPermission(world, id, grantId,
+            adminProof(world, id, grantStatementFor(world, id, membership, permission, expiresAt)),
+            membership, permission, expiresAt, now)
+
     /// Record one grant through the real transition; on failure keep `world`.
-    export fn grantOn(world, id, grantId, membership, permission, expiresAt, now) = {
-        let statement = match Governance::packageOf(world, id) {
-            Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, membership, permission, expiresAt)
-            Error => ""
-        }
-        match GovernanceTransitions::grantPermission(world, id, grantId,
-            adminProof(world, id, statement), membership, permission, expiresAt, now) {
+    export fn grantOn(world, id, grantId, membership, permission, expiresAt, now) =
+        match grantAttempt(world, id, grantId, membership, permission, expiresAt, now) {
             Success { value } => value
             Error => world
         }
-    }
+
+    /// The reason code of one grant decision, or "" when it was recorded:
+    /// the failure a refusal test asserts on.
+    export fn grantCode(world, id, grantId, membership, permission, expiresAt, now) =
+        code(grantAttempt(world, id, grantId, membership, permission, expiresAt, now))
 
     /// Apply `step(world)` when it succeeds, else keep `world`.
     export fn orKeep(world, step) = match step(world) {

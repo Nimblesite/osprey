@@ -19,9 +19,11 @@ module MembershipTests {
 
     fn organizationEnrollment() = {
         let world = Fixture::world()
+        let heron = enrolledWorld()
         checkAll("enrollment records the organization and its first custodian atomically", [
             Fixture::code(enrollOk(world, "o-heron", "heron", "p-alice", "m-alice2")) == "",
-            Fixture::code(enrollOk(world, "o-heron2", "heron", "p-bob", "m-bob2")) == "governance.organization.duplicate-handle",
+            length(heron.organizations) == 3,
+            Fixture::code(enrollOk(heron, "o-heron2", "heron", "p-bob", "m-bob2")) == "governance.organization.duplicate-handle",
             Fixture::code(enrollOk(world, "o-heron3", "Heron", "p-alice", "m-alice3")) == "name.scope.chars",
             Fixture::code(enrollOk(world, "o-heron4", "heron", "p-bot", "m-bot2")) == "governance.principal.workflow",
             Fixture::code(enrollOk(world, "o-heron5", "heron", "p-nobody", "m-x")) == "governance.principal.missing",
@@ -85,7 +87,11 @@ module MembershipTests {
             Fixture::code(revoke(world, "m-carol", Fixture::verified("p-dave", "m-dave", revocationStatement("o-finch", "m-carol")))) == "governance.custodian.required",
             Fixture::code(revoke(world, "m-carol", Fixture::verified("p-alice", "m-alice", "other-statement"))) == "governance.proof.statement-mismatch",
             Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
-            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-wren", "m-alice")))) == "governance.membership.other-org",
+            // [PACKAGE-OWNERSHIP-MODEL] "Organization governance belongs to accepted
+            // members marked `custodian`": a custodian of another organization
+            // holds no signing authority here, so the refusal is the custodian
+            // guard's, never a target-org report.
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-dave", "m-dave", revocationStatement("o-wren", "m-alice")))) == "governance.custodian.required",
             Fixture::code(revoke(world, "m-nobody", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-nobody")))) == "governance.membership.missing"
         ])
     }
@@ -100,7 +106,10 @@ module MembershipTests {
         checkAll("the last custodian and administering members are protected", [
             Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
             Fixture::code(revoke(erinGone, "m-alice", Fixture::refused("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
-            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-erin")))) == "governance.org.last-custodian",
+            // [PACKAGE-OWNERSHIP-MODEL] "No organization can lose its last
+            // accepted custodian": the only remaining custodian signing her own
+            // revocation still hits that guard, after her proof is accepted.
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-alice")))) == "governance.org.last-custodian",
             Fixture::code(revoke(world, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.membership.administers-package",
             Fixture::code(revoke(world, "m-dave", Fixture::verified("p-dave", "m-dave", revocationStatement("o-wren", "m-dave")))) == "governance.org.last-custodian",
             Fixture::code(revoke(world, "m-carol", Fixture::verified("p-carol", "m-carol", revocationStatement("o-finch", "m-carol")))) == "governance.custodian.required"
