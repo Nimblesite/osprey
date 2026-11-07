@@ -1,41 +1,43 @@
-//! Regression tests for module defects found on 2026-08-22.
-//!
-//! The original failures are fixed. Preserve every assertion: namespace scope,
-//! entrypoint selection and exported constructors remain mandatory contracts.
-//! See `src/osprey/tests/modules/README.md` for current coverage.
+//! Regression tests for module defects found on 2026-08-22. Every assertion stays:
+//! namespace scope, entrypoint selection and exported constructors remain mandatory
+//! contracts. See `src/osprey/tests/modules/README.md` for current coverage.
 
 mod support;
 
 use osprey_ast::Stmt;
-use osprey_project::{assemble, SourceFile};
+use osprey_project::{assemble, AssembledProject, SourceFile};
 use osprey_syntax::Flavor;
 use std::path::PathBuf;
 use support::{config, contains, error_messages};
 
-#[test]
-fn imported_record_calls_use_declaration_identity_instead_of_capitalization(
-) -> Result<(), Vec<osprey_project::ProjectError>> {
-    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport type Token = Ready\nexport fn Upper(work) = work()\nexport fn Empty() = 42 }\n");
-    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    token = V.Ready()\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}:{V.Empty()}\")\n");
-    let project = assemble(&config("main.py"), &[main, library])?;
-    let errors = osprey_types::check_program(&project.program);
-    assert!(errors.is_empty(), "{errors:?}");
-    Ok(())
+/// The diagnostic that a cell read outside its `state module` is rejected.
+const INSIDE: &str = "only accessible inside";
+
+/// The diagnostic that a record needs named fields instead of positional ones.
+const NAMED: &str = "record construction requires named fields";
+
+/// Every message `osprey_types` reports for `program`.
+fn type_messages(program: &osprey_ast::Program) -> Vec<String> {
+    osprey_types::check_program(program)
+        .into_iter()
+        .map(|error| error.message)
+        .collect()
 }
 
-#[test]
-fn dotted_module_members_and_record_fields_share_lexical_resolution(
-) -> Result<(), Vec<osprey_project::ProjectError>> {
-    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box = { amount: int }\nexport fn make(n) = Box { amount: n }\nexport let defaults = Box { amount: 3 } }\n");
-    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import defaults\nimport ledger as Ledger\ndef amount(V):\n    return V.amount\ndef main():\n    print(f\"{amount(V.make(41))}:{Ledger.Values.make(42).amount}:{defaults.amount}\")\n");
-    let project = assemble(&config("main.py"), &[main, library])?;
-    let errors = osprey_types::check_program(&project.program);
-    assert!(errors.is_empty(), "{errors:?}");
-    Ok(())
+/// Assemble `sources` with `entry` selected, proving the program typechecks clean.
+fn checked_sources(
+    entry: &str,
+    sources: &[SourceFile],
+    context: &str,
+) -> Result<AssembledProject, Vec<osprey_project::ProjectError>> {
+    let assembled = assemble(&config(entry), sources)?;
+    let messages = type_messages(&assembled.program);
+    assert!(messages.is_empty(), "{context}: {messages:?}");
+    Ok(assembled)
 }
 
 /// Parse and assemble one written source as a single-file project.
-fn project(flavor: Flavor, text: &str) -> Result<osprey_project::AssembledProject, Vec<String>> {
+fn project(flavor: Flavor, text: &str) -> Result<AssembledProject, Vec<String>> {
     let name = support::main_name(flavor);
     let source = support::parsed(name, flavor, text);
     assemble(&config(name), &[source]).map_err(|errors| {
@@ -46,33 +48,56 @@ fn project(flavor: Flavor, text: &str) -> Result<osprey_project::AssembledProjec
     })
 }
 
+/// Assemble one written source and prove the program typechecks with no errors.
+fn checked_project(flavor: Flavor, text: &str) -> Result<AssembledProject, String> {
+    let assembled = project(flavor, text).map_err(|errors| errors.join("\n"))?;
+    let messages = type_messages(&assembled.program);
+    assert!(messages.is_empty(), "{flavor:?}: {messages:?}");
+    Ok(assembled)
+}
+
 /// Source-level names the assembler kept for the flattened program.
-fn source_names(project: &osprey_project::AssembledProject) -> Vec<String> {
-    let mut names: Vec<String> = project.source_name_by_mangled.values().cloned().collect();
+fn source_names(assembled: &AssembledProject) -> Vec<String> {
+    let mut names: Vec<String> = assembled.source_name_by_mangled.values().cloned().collect();
     names.sort();
     names
 }
 
-/// Statements the flattened program will actually execute.
-fn executable_count(project: &osprey_project::AssembledProject) -> usize {
-    project
-        .program
-        .statements
-        .iter()
-        .filter(|statement| matches!(statement, Stmt::Expr { .. }))
-        .count()
+/// Assert `names` lists `name` exactly when `present`, reporting `message` otherwise.
+fn assert_name(names: &[String], name: &str, present: bool, message: &str) {
+    let listed = names.iter().any(|kept| kept == name);
+    assert!(listed == present, "{message}: {names:?}");
 }
 
-/// Two file-scoped namespace headers in one ML source. [MODULES-FILE-SCOPED-NAMESPACE]
-/// says each applies to the declarations that follow it, so `two::B::v` must
-/// exist and both `print` statements must run.
-///
-/// Original defect: the ML lowering nests the second header inside the first namespace's
-/// body instead of closing it, and `osprey_project::contribution` only walks
-/// TOP-LEVEL `Stmt::Namespace`. The nested contribution is filed as an ordinary
-/// declaration, so `two::B::v` never registers and every statement written
-/// after the second header is dropped. The program still exits ZERO printing
-/// nothing at all — a silent failure, not a diagnostic.
+/// Parse `body` as a Default-flavour `main.osp` hung off the `namespace app;` header.
+fn namespaced_main(body: &str) -> SourceFile {
+    let text = format!("namespace app;\n{body}\n");
+    support::parsed("main.osp", Flavor::Default, &text)
+}
+
+/// Assemble `sources` and prove the diagnostics mention `expected`.
+fn assert_reports(sources: &[SourceFile], expected: &str, context: &str) {
+    let messages = error_messages(&config("main.osp"), sources);
+    assert!(contains(&messages, expected), "{context}: {messages:?}");
+}
+
+#[test]
+fn python_imports_resolve_by_declaration_identity_and_lexical_scope(
+) -> Result<(), Vec<osprey_project::ProjectError>> {
+    for (library, main) in [
+        ("namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport type Token = Ready\nexport fn Upper(work) = work()\nexport fn Empty() = 42 }\n", "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    token = V.Ready()\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}:{V.Empty()}\")\n"),
+        ("namespace ledger;\nmodule Values { export type Box = { amount: int }\nexport fn make(n) = Box { amount: n }\nexport let defaults = Box { amount: 3 } }\n", "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import defaults\nimport ledger as Ledger\ndef amount(V):\n    return V.amount\ndef main():\n    print(f\"{amount(V.make(41))}:{Ledger.Values.make(42).amount}:{defaults.amount}\")\n"),
+    ] {
+        let main = support::parsed("main.py", Flavor::Python, main);
+        let library = support::parsed("values.osp", Flavor::Default, library);
+        let _ = checked_sources("main.py", &[main, library], "python")?;
+    }
+    Ok(())
+}
+
+/// [MODULES-FILE-SCOPED-NAMESPACE]: each header applies to what follows it, so the second
+/// namespace keeps `two::B::v` and both statements run. Original defect: ML nested the
+/// second header, dropping the declaration and every later statement while exiting ZERO.
 #[test]
 fn ml_second_file_scoped_namespace_keeps_its_declarations_and_statements() {
     let source = concat!(
@@ -85,28 +110,21 @@ fn ml_second_file_scoped_namespace_keeps_its_declarations_and_statements() {
     );
     let assembled = project(Flavor::Ml, source).expect("two file-scoped namespaces must assemble");
     let names = source_names(&assembled);
-    assert!(
-        names.iter().any(|name| name == "one::A::v"),
-        "first namespace lost its declaration: {names:?}"
-    );
-    assert!(
-        names.iter().any(|name| name == "two::B::v"),
-        "second file-scoped namespace did not take effect: {names:?}"
-    );
+    assert_name(&names, "one::A::v", true, "first declaration");
+    assert_name(&names, "two::B::v", true, "second header");
+    let statements = assembled.program.statements.iter();
+    let executed = statements
+        .filter(|s| matches!(s, Stmt::Expr { .. }))
+        .count();
     assert_eq!(
-        executable_count(&assembled),
-        2,
+        executed, 2,
         "statements after the second namespace header were silently dropped"
     );
 }
 
 /// The Default spelling of the same program. [MODULES-FILE-SCOPED-NAMESPACE]
 ///
-/// Original defect: the second `namespace two;` header is ignored outright, so `module B`
-/// is filed under `one`. Nothing is reported; the declaration simply answers to
-/// `one::B::v`, a name the source never wrote. A program that asks for
-/// `two::B::v` is then told the path is unknown, blaming the call site for the
-/// assembler's misfiling.
+/// Original defect: `namespace two;` was ignored, so `module B` answered to `one::B::v`.
 #[test]
 fn default_second_file_scoped_namespace_rescopes_the_declarations_after_it() {
     let source = concat!(
@@ -118,25 +136,15 @@ fn default_second_file_scoped_namespace_rescopes_the_declarations_after_it() {
     let assembled =
         project(Flavor::Default, source).expect("two file-scoped namespaces must assemble");
     let names = source_names(&assembled);
-    assert!(
-        names.iter().any(|name| name == "two::B::v"),
-        "second file-scoped namespace did not rescope `B`: {names:?}"
-    );
-    assert!(
-        !names.iter().any(|name| name == "one::B::v"),
-        "`B` was misfiled into the first namespace: {names:?}"
-    );
+    assert_name(&names, "two::B::v", true, "second header");
+    assert_name(&names, "one::B::v", false, "`B` misfiled");
 }
 
-/// [MODULES-ENTRYPOINT]: "a `main` and a top-level executable statement cannot
-/// share it: candidates 2 and 3 would both select that source and only one of
-/// them could run". `src/osprey/examples/failscompilation/main_beside_top_level_statement.ospo`
-/// pins the rejection for a plain program.
-///
-/// Original defect: a source carrying a namespace routes through project assembly, where
-/// the check is missing. Both entries are then kept and BOTH run — the statement
-/// first, then `main` — which is the exact "only one of them could run"
-/// situation the rule exists to prevent.
+/// [MODULES-ENTRYPOINT]: "a `main` and a top-level executable statement cannot share it:
+/// candidates 2 and 3 would both select that source and only one of them could run".
+/// `src/osprey/examples/failscompilation/main_beside_top_level_statement.ospo` pins the
+/// rejection for a plain program; a namespaced source routes through project assembly,
+/// where the check was missing, so both entries ran.
 #[test]
 fn namespaced_main_beside_a_top_level_statement_is_rejected() {
     let source = concat!(
@@ -145,23 +153,13 @@ fn namespaced_main_beside_a_top_level_statement_is_rejected() {
         "print \"statement ran\"\n",
     );
     let errors = project(Flavor::Ml, source).err().unwrap_or_default();
-    assert!(
-        errors
-            .iter()
-            .any(|message| message.contains("cannot sit beside `main`")),
-        "entry conflict went unreported: {errors:?}"
-    );
+    let unrecorded = contains(&errors, "cannot sit beside `main`");
+    assert!(unrecorded, "entry conflict went unreported: {errors:?}");
 }
 
-/// [MODULES-EXPORTS] makes a module's `export`ed items its public surface, and
-/// [MODULES-OPAQUE-TYPES] singles out OPAQUE union constructors as the private
-/// ones — which only means anything if a plain exported union's constructors
-/// are public.
-///
-/// Original defect: a union declared inside a module has no reachable constructors at
-/// all. Neither the bare name nor the qualified path resolves, so an exported
-/// type can only be built by also exporting a factory function for every
-/// variant. The type is exported; the only way to make a value of it is not.
+/// [MODULES-EXPORTS] makes `export`ed items the public surface and
+/// [MODULES-OPAQUE-TYPES] reserves privacy for OPAQUE constructors, so a plain exported
+/// union's constructors must be reachable. Original defect: they all were unreachable.
 #[test]
 fn constructors_of_an_exported_module_union_are_reachable() {
     let source = concat!(
@@ -174,14 +172,8 @@ fn constructors_of_an_exported_module_union_are_reachable() {
         "print \"${Geo::area (Geo::Circle(radius = 3))}\"\n",
     );
     let assembled = project(Flavor::Ml, source).expect("module union must assemble");
-    let errors: Vec<String> = osprey_types::check_program(&assembled.program)
-        .into_iter()
-        .map(|error| error.message)
-        .collect();
-    assert!(
-        errors.is_empty(),
-        "an exported union's constructors are unreachable: {errors:?}"
-    );
+    let messages = type_messages(&assembled.program);
+    assert!(messages.is_empty(), "union ctors unreachable: {messages:?}");
 }
 
 // [TYPE-ANNOTATION-REDUNDANT], [MODULES-SIGNATURE]: aliases retain the
@@ -192,24 +184,15 @@ fn alias_expansion_preserves_contract_annotations() -> Result<(), String> {
         (Flavor::Default, "signature Api { type Number = int\n fn next(value: Number) -> Number }\nmodule M : Api { type Number = int\n fn next(value) = wrapAdd(value, 1) }\n"),
         (Flavor::Ml, "signature Api\n    type Number = int\n    next : Number -> Number\nmodule M : Api\n    type Number = int\n    next value = wrapAdd value 1\n"),
     ] {
-        let assembled = project(flavor, source).map_err(|errors| errors.join("\n"))?;
-        let errors = osprey_types::check_program(&assembled.program);
-        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        let assembled = checked_project(flavor, source)?;
         let warnings = osprey_types::redundant_annotations(&assembled.program);
         assert!(warnings.is_empty(), "{flavor:?}: {warnings:?}");
     }
-    Ok(())
-}
-
-#[test]
-fn alias_expansion_preserves_separate_written_annotation_sites() -> Result<(), String> {
     for (flavor, source, expected_lines) in [
         (Flavor::Default, "type Items<T> = List<T>\ntype Numbers = Items<int>\nfn first() -> Numbers = [1]\nfn second() -> Numbers = [2]\n", [3, 4]),
         (Flavor::Ml, "type Items T = (List T)\ntype Numbers = (Items int)\nfirst : Unit -> Numbers\nfirst () = [1]\nsecond : Unit -> Numbers\nsecond () = [2]\n", [3, 5]),
     ] {
-        let assembled = project(flavor, source).map_err(|errors| errors.join("\n"))?;
-        let errors = osprey_types::check_program(&assembled.program);
-        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        let assembled = checked_project(flavor, source)?;
         let sites = osprey_types::redundant_annotation_sites(&assembled.program);
         let lines: Vec<_> = sites.iter().filter_map(|site| site.annotation_position.or(site.warning.position).map(|p| p.line)).collect();
         assert_eq!(lines, expected_lines, "{flavor:?}: {sites:?}");
@@ -224,12 +207,16 @@ fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
     std::fs::create_dir_all(&project)?;
     std::fs::create_dir_all(root.join("src"))?;
     std::fs::create_dir_all(root.join("lib"))?;
-    std::fs::write(
-        root.join("src/main.py"),
-        "# osprey: flavor=python\ndef main():\n    return print(\"parent entry\")\n",
-    )?;
-    std::fs::write(root.join("lib/main.py"), "# osprey: flavor=python\n# osprey: namespace=app\n# osprey: module=Values\n__all__ = [\"answer\"]\ndef answer():\n    return 7\n")?;
-    std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"../../src\", \"../../lib\"]\npython_sources = [\"../../src/main.py\", \"../../lib/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n")?;
+    for (path, text) in [
+        (
+            "src/main.py",
+            "# osprey: flavor=python\ndef main():\n    return print(\"parent entry\")\n",
+        ),
+        ("lib/main.py", "# osprey: flavor=python\n# osprey: namespace=app\n# osprey: module=Values\n__all__ = [\"answer\"]\ndef answer():\n    return 7\n"),
+        (".osprey/build/osprey.toml", "[project]\nsource_roots = [\"../../src\", \"../../lib\"]\npython_sources = [\"../../src/main.py\", \"../../lib/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n"),
+    ] {
+        std::fs::write(root.join(path), text)?;
+    }
     Ok((root, project))
 }
 
@@ -276,44 +263,6 @@ const STATE_READ_EXPRESSIONS: [&str; 26] = [
     "count { value: 0 }",
 ];
 
-#[test]
-fn nested_expression_shapes_cannot_hide_state_reads() {
-    for expression in STATE_READ_EXPRESSIONS {
-        let source = state_source(expression);
-        let messages = error_messages(&config("state.osp"), &[source]);
-        assert!(
-            contains(&messages, "only accessible inside"),
-            "{expression}: {messages:?}"
-        );
-    }
-}
-
-#[test]
-fn nested_expression_shapes_allow_a_shadowing_local_binding() {
-    for expression in STATE_READ_EXPRESSIONS {
-        let source = state_source(&format!("{{ let count = 0\n {expression} }}"));
-        let result = assemble(&config("state.osp"), &[source]);
-        assert!(result.is_ok(), "{expression}: {result:?}");
-    }
-}
-
-#[test]
-fn immutable_module_values_cannot_capture_owned_cells() {
-    let original = state_source("0");
-    let source = support::parsed(
-        "state.osp",
-        Flavor::Default,
-        &original
-            .source
-            .replace("fn inspect() = 0", "let snapshot = count"),
-    );
-    let messages = error_messages(&config("state.osp"), &[source]);
-    assert!(
-        contains(&messages, "only accessible inside"),
-        "{messages:?}"
-    );
-}
-
 const SHADOWED_STATE_EXPRESSIONS: [&str; 6] = [
     "{ let count = 7\n count }",
     "(fn(count) => count)(7)",
@@ -324,24 +273,49 @@ const SHADOWED_STATE_EXPRESSIONS: [&str; 6] = [
 ];
 
 #[test]
-fn local_bindings_shadow_cells_without_authorizing_later_reads() {
-    for expression in SHADOWED_STATE_EXPRESSIONS {
-        let source = state_source(expression);
-        let result = assemble(&config("state.osp"), &[source]);
-        assert!(result.is_ok(), "{expression}: {result:?}");
-        let escaped = state_source(&format!("{{ let local = {expression}\n count }}"));
-        let messages = error_messages(&config("state.osp"), &[escaped]);
-        assert!(
-            contains(&messages, "only accessible inside"),
-            "{expression}: {messages:?}"
-        );
+fn nested_expression_shapes_cannot_hide_state_reads() {
+    for expression in STATE_READ_EXPRESSIONS {
+        assert_state_read_rejected(expression);
     }
+    for expression in SHADOWED_STATE_EXPRESSIONS {
+        assert_state_assembles(expression);
+        assert_state_read_rejected(&format!("{{ let local = {expression}\n count }}"));
+    }
+}
+
+#[test]
+fn nested_expression_shapes_allow_a_shadowing_local_binding() {
+    for expression in STATE_READ_EXPRESSIONS {
+        assert_state_assembles(&format!("{{ let count = 0\n {expression} }}"));
+    }
+}
+
+#[test]
+fn immutable_module_values_cannot_capture_owned_cells() {
+    let original = state_source("0");
+    let (from, to) = ("fn inspect() = 0", "let snapshot = count");
+    let source = original.source.replace(from, to);
+    let parsed = support::parsed("state.osp", Flavor::Default, &source);
+    let messages = error_messages(&config("state.osp"), &[parsed]);
+    assert!(contains(&messages, INSIDE), "{messages:?}");
 }
 
 fn state_source(expression: &str) -> SourceFile {
     support::parsed("state.osp", Flavor::Default, &format!(
         "namespace app;\ntype Choice = Pick(int) | Other\nstate module Counter {{\n mut count = 0\n export effect CounterFx {{ next: fn() -> int }}\n fn inspect() = {expression}\n export fn run(body) = {{\n handle CounterFx {{ next => count }}\n body()\n }}\n}}\n"
     ))
+}
+
+/// Assemble the `state.osp` fixture and prove it builds with `expression` as its body.
+fn assert_state_assembles(expression: &str) {
+    let result = assemble(&config("state.osp"), &[state_source(expression)]);
+    assert!(result.is_ok(), "{expression}: {result:?}");
+}
+
+/// Assemble the `state.osp` fixture and prove `expression`'s cell read is rejected.
+fn assert_state_read_rejected(expression: &str) {
+    let messages = error_messages(&config("state.osp"), &[state_source(expression)]);
+    assert!(contains(&messages, INSIDE), "{expression}: {messages:?}");
 }
 
 const SIGNATURE_REJECTIONS: &[(&str, &str)] = &[
@@ -361,16 +335,21 @@ const SIGNATURE_REJECTIONS: &[(&str, &str)] = &[
     ("signature S { fn f() -> int ![|e] }\nmodule M : S { fn f() -> int ![] = 0 }", "effect row does not match"),
 ];
 
+const MODULE_BOUNDARY_REJECTIONS: &[(&str, &str)] = &[
+    ("fn main(value) = value", "project entry function `main` cannot have parameters"),
+    ("module A { export extern fn shared(x: int) -> int }\nmodule B { export extern fn shared(x: int) -> int }\nfn main() = 0", "external symbol `shared` is declared by multiple modules"),
+    ("module M { export fn value() = 0 }\nlet held = M\nfn main() = 0", "is not a value"),
+    ("let session = input()\nfn read() = session\nfn main() = 0", "cannot be captured by a project declaration"),
+    ("let NotType = 0\nfn bad(value: NotType) = value\nfn main() = 0", "does not name a type"),
+    ("let NotEffect = 0\nfn bad() ![NotEffect] = 0\nfn main() = 0", "does not name an effect"),
+];
+
 #[test]
-fn signature_shapes_reject_explicitly_incompatible_declarations() {
-    for (body, expected) in SIGNATURE_REJECTIONS {
-        let source = support::parsed(
-            "main.osp",
-            Flavor::Default,
-            &format!("namespace app;\n{body}\n"),
-        );
-        let messages = error_messages(&config("main.osp"), &[source]);
-        assert!(contains(&messages, expected), "{body}: {messages:?}");
+fn incompatible_signatures_and_module_boundaries_are_rejected() {
+    let cases = [SIGNATURE_REJECTIONS, MODULE_BOUNDARY_REJECTIONS];
+    for tuple in cases.into_iter().flatten() {
+        let (body, expected) = tuple;
+        assert_reports(&[namespaced_main(body)], expected, body);
     }
 }
 
@@ -385,39 +364,13 @@ const SIGNATURE_ACCEPTED: &[&str] = &[
 ];
 
 #[test]
-fn signature_compatible_controls_assemble_and_typecheck() {
+fn signature_compatible_controls_assemble_and_typecheck(
+) -> Result<(), Vec<osprey_project::ProjectError>> {
     for body in SIGNATURE_ACCEPTED {
-        let source = support::parsed(
-            "main.osp",
-            Flavor::Default,
-            &format!("namespace app;\n{body}\nfn main() = 0\n"),
-        );
-        let project = assemble(&config("main.osp"), &[source]).expect(body);
-        let errors = osprey_types::check_program(&project.program);
-        assert!(errors.is_empty(), "{body}: {errors:?}");
+        let sources = [namespaced_main(&format!("{body}\nfn main() = 0"))];
+        let _ = checked_sources("main.osp", &sources, body)?;
     }
-}
-
-const MODULE_BOUNDARY_REJECTIONS: &[(&str, &str)] = &[
-    ("fn main(value) = value", "project entry function `main` cannot have parameters"),
-    ("module A { export extern fn shared(x: int) -> int }\nmodule B { export extern fn shared(x: int) -> int }\nfn main() = 0", "external symbol `shared` is declared by multiple modules"),
-    ("module M { export fn value() = 0 }\nlet held = M\nfn main() = 0", "is not a value"),
-    ("let session = input()\nfn read() = session\nfn main() = 0", "cannot be captured by a project declaration"),
-    ("let NotType = 0\nfn bad(value: NotType) = value\nfn main() = 0", "does not name a type"),
-    ("let NotEffect = 0\nfn bad() ![NotEffect] = 0\nfn main() = 0", "does not name an effect"),
-];
-
-#[test]
-fn module_boundaries_preserve_entry_and_symbol_kinds() {
-    for (body, expected) in MODULE_BOUNDARY_REJECTIONS {
-        let source = support::parsed(
-            "main.osp",
-            Flavor::Default,
-            &format!("namespace app;\n{body}\n"),
-        );
-        let messages = error_messages(&config("main.osp"), &[source]);
-        assert!(contains(&messages, expected), "{body}: {messages:?}");
-    }
+    Ok(())
 }
 
 fn imported_record_sources(call: &str) -> [SourceFile; 2] {
@@ -436,22 +389,23 @@ fn imported_record_sources(call: &str) -> [SourceFile; 2] {
 }
 
 #[test]
-fn imported_record_constructors_reject_positional_fields() {
+fn imported_record_constructors_require_named_fields(
+) -> Result<(), Vec<osprey_project::ProjectError>> {
     for call in ["Point(7)", "Point<int>(7)"] {
-        let messages = error_messages(&config("main.osp"), &imported_record_sources(call));
-        assert!(
-            contains(&messages, "record construction requires named fields"),
-            "{call}: {messages:?}"
-        );
+        assert_reports(&imported_record_sources(call), NAMED, call);
     }
+    for call in ["Point(value: 7)", "Point<int>(value: 7)"] {
+        let sources = imported_record_sources(call);
+        let _ = checked_sources("main.osp", &sources, call)?;
+    }
+    Ok(())
 }
 
-/// A union variant declared `Node T T` in one file and applied `Node a b` in
-/// another folds to the same construction its own file would have parsed
-/// ([TYPE-UNION-POSITIONAL]): the applying file's parser never saw the
-/// declaration, so the resolver folds it after linking.
+/// A union variant declared `Node T T` in one file and applied `Node a b` in another
+/// folds to the construction its own file would have parsed ([TYPE-UNION-POSITIONAL]).
 #[test]
-fn imported_positional_variants_fold_to_constructions() {
+fn imported_positional_variants_fold_to_constructions(
+) -> Result<(), Vec<osprey_project::ProjectError>> {
     let main =
         "namespace xf\n\nimport xf::Ts\n\nmain () = print (Ts::label (Node (Leaf 1) (Leaf 2)))\n";
     let library = "namespace xf\n\ntype T = Leaf int | Node T T\n\nmodule Ts\n    export label t = match t\n        Leaf n => toString n\n        Node l r => \"(${label l} ${label r})\"\n";
@@ -459,18 +413,8 @@ fn imported_positional_variants_fold_to_constructions() {
         support::parsed("main.ospml", Flavor::Ml, main),
         support::parsed("a.ospml", Flavor::Ml, library),
     ];
-    let project = assemble(&config("main.ospml"), &sources).expect("assembles");
-    let errors = osprey_types::check_program(&project.program);
-    assert!(errors.is_empty(), "{errors:?}");
+    let project = checked_sources("main.ospml", &sources, "positional")?;
     let folded = format!("{:?}", project.program.statements);
     assert!(folded.contains("TypeConstructor"), "{folded}");
-}
-
-#[test]
-fn imported_record_constructors_accept_named_fields_and_type_arguments() {
-    for call in ["Point(value: 7)", "Point<int>(value: 7)"] {
-        let project = assemble(&config("main.osp"), &imported_record_sources(call)).expect(call);
-        let errors = osprey_types::check_program(&project.program);
-        assert!(errors.is_empty(), "{call}: {errors:?}");
-    }
+    Ok(())
 }
