@@ -293,6 +293,34 @@ def chat_with_tools_renders_the_template_system_block(port):
 
 
 @case
+def chat_merges_leading_instructions_without_tools(port):
+    module = reference()
+    messages = [
+        {"role": "system", "content": "  Be terse.  "}, {"role": "developer", "content": "Use one sentence."},
+        {"role": "system", "content": "  "}, {"role": "user", "content": "Say hello."},
+    ]
+    expected = len(module.Model().tokenize(module.rendered_chat(messages)))
+    reply = httpx.post(base(port) + "/api/chat", json={"model": MODEL, "messages": messages, "options": {"num_ctx": 1}}, timeout=30.0)
+    assert reply.status_code == 400 and f"prompt is {expected} tokens, over num_ctx 1;" in reply.json()["error"], reply.text
+
+
+@case
+def chat_rejects_instructions_after_a_user_turn(port):
+    for role in ("system", "developer"):
+        messages = [{"role": "user", "content": READ_PROMPT}, {"role": role, "content": "Too late."}]
+        for tools in ([], [READ_FILE]):
+            try:
+                reference().rendered_chat(messages, tools)
+            except ValueError as error:
+                expected = str(error)
+            else:
+                raise AssertionError("template accepted a late instruction")
+            reply = httpx.post(base(port) + "/api/chat", json={"model": MODEL, "messages": messages, "tools": tools, "options": {"num_ctx": 1}}, timeout=30.0)
+            assert reply.status_code == 400, (role, tools, reply.status_code, reply.text)
+            assert expected in reply.json()["error"], reply.text
+
+
+@case
 def chat_tool_result_turn_continues_the_conversation(port):
     module = reference()
     tools = [READ_FILE, RUN_TESTS]
