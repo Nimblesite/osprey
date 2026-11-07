@@ -164,9 +164,12 @@ pub(super) fn dispatch_request(
         crate::arc::own(cg, &v);
         return Ok(v);
     }
+    // The answer keeps the operation's declared Osprey type, so a receiver-
+    // directed builtin (`length`, `isEmpty`) dispatches on a `List`/`Map`
+    // handle instead of reading it as a string [BUILTIN-COLLECTION-LENGTH].
     let out = match sig.ret_result_inner {
         Some(inner) => Value::result(r, inner),
-        None => Value::new(r, sig.ret),
+        None => Value::new(r, sig.ret).with_owner(crate::types::owner_name(&cg.prog, ret)),
     };
     // The handler fn's epilogue transferred +1 [GC-ARC-PERCEUS].
     crate::arc::own(cg, &out);

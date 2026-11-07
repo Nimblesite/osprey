@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 /// Storage names the persistence the notebook logic needs and nothing more.
 /// No implementation appears here: `save`, `load` and `exists` are answered
@@ -29,6 +11,8 @@ effect Storage {
     load: fn(string) -> string
     /// Report whether `key` currently holds anything.
     exists: fn(string) -> bool
+    /// Every key the store holds, as a list the caller sizes with `length`.
+    keys: fn() -> List<string>
 }
 
 /// Counts the newline-terminated entries in a notebook body.
@@ -51,12 +35,22 @@ fn countNotes(book) !Storage = match perform Storage.exists(book) {
     false => 0
 }
 
+/// Answers how many keys the store holds: `length` of an operation's list.
+fn bookCount() !Storage = length(perform Storage.keys())
+
+/// Answers whether the store holds no key: `isEmpty` of an operation's list.
+fn noBooks() !Storage = isEmpty(perform Storage.keys())
+
 /// Copies `book` into `archive` and answers the bytes the copy reported.
 /// A book that does not exist is not copied and answers 0 bytes.
 fn archiveNotes(book, archive) !Storage = match perform Storage.exists(book) {
     true => perform Storage.save(archive, perform Storage.load(book))
     false => 0
 }
+
+/// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
+let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"
+let diskArchive = "${diskBook}.archive.txt"
 
 /// The production implementation, passed in as a handler: every operation
 /// reaches the real file system through the file builtins.
@@ -68,6 +62,7 @@ fn withDiskStorage(action) = {
             Success { value } => !isEmpty(value)
             Error => false
         }
+        keys => [diskBook, diskArchive]
     }
     action()
 }
@@ -103,6 +98,7 @@ fn withMockStorage(action) = {
             mockLog = "${mockLog}exists(${key});"
             mapContains(mockFiles, key)
         }
+        keys => mapKeys(mockFiles)
     }
     action()
 }
@@ -114,13 +110,10 @@ fn withReadOnlyStorage(action) = {
         save _key _contents => 0
         load _key => "locked entry\n"
         exists _key => true
+        keys => []
     }
     action()
 }
-
-/// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
-let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"
-let diskArchive = "${diskBook}.archive.txt"
 
 /// This case runs the logic against the real file system and verifies the
 /// bytes with `readFile` from outside the handler.
@@ -135,6 +128,8 @@ fn diskStorageCase() = {
     let onDisk = readFile(diskBook) ?: ""
     let archivedOnDisk = readFile(diskArchive) ?: ""
     let missing = withDiskStorage(|| => countNotes("osprey_storage_injection_absent.txt"))
+    let diskBooks = withDiskStorage(|| => bookCount())
+    let diskEmpty = withDiskStorage(|| => noBooks())
 
     // The logic's answers come back through the injected disk implementation.
     checkAll("disk implementation answers", [
@@ -144,7 +139,9 @@ fn diskStorageCase() = {
         second == 2,
         counted == 2,
         archived == byteLength(onDisk),
-        missing == 0
+        missing == 0,
+        diskBooks == 2,
+        !diskEmpty
     ])
 
     // The file system really was written: these bytes are read back directly.
@@ -172,6 +169,8 @@ fn mockStorageCase() = {
     let missing = withMockStorage(|| => countNotes("never-written.txt"))
     let fixture = withMockStorage(|| => countNotes("fixture.txt"))
     let stored = mapGet(mockFiles, "notes.txt") ?: ""
+    let mockBooks = withMockStorage(|| => bookCount())
+    let mockEmpty = withMockStorage(|| => noBooks())
 
     // Every answer matches the disk run above: same logic, same results.
     checkAll("mock answers match the disk implementation", [
@@ -182,7 +181,10 @@ fn mockStorageCase() = {
         missing == 0,
         fixture == 1,
         stored == "buy milk\ncall dentist\n",
-        (mapGet(mockFiles, "archive.txt") ?: "") == stored
+        (mapGet(mockFiles, "archive.txt") ?: "") == stored,
+        mockBooks == 3,
+        mockBooks == mapLength(mockFiles),
+        !mockEmpty
     ])
 
     // Verification a real file system cannot offer: which calls were made.
@@ -222,6 +224,8 @@ fn readOnlyStorageCase() = {
     let appended = withReadOnlyStorage(|| => appendNote("notes.txt", "buy milk"))
     let counted = withReadOnlyStorage(|| => countNotes("notes.txt"))
     let archived = withReadOnlyStorage(|| => archiveNotes("notes.txt", "archive.txt"))
+    let lockedBooks = withReadOnlyStorage(|| => bookCount())
+    let lockedEmpty = withReadOnlyStorage(|| => noBooks())
 
     // A refused write still answers the operation's declared type, so the
     // logic keeps running and reports what the policy actually stored.
@@ -229,7 +233,9 @@ fn readOnlyStorageCase() = {
         appended == 2,
         counted == 1,
         archived == 0,
-        entryCount("locked entry\n") == 1
+        entryCount("locked entry\n") == 1,
+        lockedBooks == 0,
+        lockedEmpty
     ])
 
     // Swapping the handler swapped the implementation and nothing else: the
