@@ -108,7 +108,18 @@ def generate(model, request):
 
 
 def completed_turn(model, request, turn_of, tools):
-    """The complete or streamed reply for a turn `turn_of` renders."""
+    """The complete or streamed reply for a turn `turn_of` renders; a request with nothing to
+    answer only loads the model, as Ollama's `done_reason: "load"` reply says."""
+    return loaded(request, turn_of) if request.loading else answered(model, request, turn_of, tools)
+
+
+def loaded(request, turn_of):
+    """The reply to a load request: an empty turn that ended because the model is loaded."""
+    return turn_of(request, Completions.loaded())
+
+
+def answered(model, request, turn_of, tools):
+    """The turn the model completes for the request's prompt."""
     match Completions.complete(model, request.prompt, request.sampling, tools):
         case Success(value=turn):
             return turn_of(request, turn)

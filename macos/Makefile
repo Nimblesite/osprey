@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen qwen-quick signal-flow synth storage probe workbench-render-review
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage probe workbench-render-review
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -46,18 +46,23 @@ painting: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
 
-## qwen: Rebuild the compiler and the runtime, then serve Qwen3.8-27B from the real weights on Metal at
+## qwen-server: Rebuild the compiler and the runtime, then serve Qwen3.8-27B from the real weights on Metal at
 ##       http://127.0.0.1:11435 (QWEN_PORT), answering the Ollama and OpenAI routes; Ctrl-C stops it. The
 ##       GGUF is pulled first if it is missing (QWEN_QUANT, UD-Q4_K_XL by default). Unload Ollama's
 ##       resident model first (ollama stop <model>): on 36 GB the two do not fit together. [LLM-SERVING]
-qwen: _runtime
+qwen-server: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-serve
 
-## qwen-quick: The same server without rebuilding anything but the server: assumes target/release/osprey
-##             and the runtime are already fresh.
-qwen-quick:
+## qwen-server-quick: The same server without rebuilding anything but the server: assumes
+##                    target/release/osprey and the runtime are already fresh.
+qwen-server-quick:
 	$(MAKE) -C $(ROOT) _qwen-serve
+
+## qwen-client: Chat with the running qwen-server (start it first, in another terminal) through the
+##              ollama command: type a message, /bye to leave. Needs the ollama CLI (brew install ollama).
+qwen-client:
+	$(MAKE) -C $(ROOT) _qwen-client
 
 ## signal-flow: Open the signal-flow editor, a UI machine with the four canvas
 ##              skins of src/osprey/packages/signal_flow. [UI-MACHINE-FLOW]

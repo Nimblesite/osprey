@@ -20,7 +20,9 @@ __all__ = ["dispatch"]
 def dispatch(method, url, body, model):
     """The reply for one request under the installed `model`; the 404 for a path neither protocol serves."""
     path = Wire.path_of(url)
-    if startsWith(path, "/api/"):
+    if path == "/":
+        return heartbeat(method)
+    elif startsWith(path, "/api/"):
         return ollama(method, path, body, model)
     elif startsWith(path, "/v1/"):
         return openai(method, path, body, model)
@@ -54,6 +56,11 @@ def ollama(method, path, body, model):
         return posted(method, body, lambda request: Ollama.generate(model, request), Q.generate_request)
     else:
         return absent(path)
+
+
+def heartbeat(method):
+    """`/`: the liveness probe the `ollama` command sends (as HEAD) before every command."""
+    return Wire.text_reply(200, "Ollama is running") if method == "GET" or method == "HEAD" else Wire.failed(405, "method not allowed; GET")
 
 
 def read_only(method, reply):

@@ -21,7 +21,7 @@ from qwen_server import Inference
 from qwen_server import Lists
 from qwen import ToolParser
 
-__all__ = ["TEXT", "THINKING", "complete", "pieces_text"]
+__all__ = ["TEXT", "THINKING", "complete", "loaded", "pieces_text"]
 
 TEXT = "text"
 """`Piece.kind` of the free text a turn speaks, sent as `content`."""
@@ -56,6 +56,11 @@ class Draft[M]:
     text_length: int
     think_length: int
     done: bool
+
+
+def loaded():
+    """The empty turn of a request that only loads the model ([LLM-API-OLLAMA])."""
+    return Turn(pieces=[], calls=[], prompt_tokens=0, eval_tokens=0, reason="load")
 
 
 def complete(model, prompt, sampling, tools):

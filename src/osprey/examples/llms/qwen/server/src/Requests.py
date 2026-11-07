@@ -71,6 +71,7 @@ class Chat:
     model: str
     prompt: str
     tools: Json
+    loading: bool
     stream: bool
     sampling: Sampling
 
@@ -79,15 +80,18 @@ class Generate:
     """A completion request: its prompt as served, and how to run it."""
     model: str
     prompt: str
+    loading: bool
     stream: bool
     sampling: Sampling
 
 
 def show_request(body):
-    """The model name from an `/api/show` body ([LLM-API-OLLAMA])."""
+    """The model name from an `/api/show` body, under `model` or the older `name` the `ollama`
+    command still sends ([LLM-API-OLLAMA])."""
     match Wire.decode(body):
         case Success(value=document):
-            return required(Wire.text(document, "model"))
+            model = Wire.text(document, "model")
+            return required(model if model != "" else Wire.text(document, "name"))
         case Error(message=message):
             return Error(message=message)
 
@@ -165,6 +169,7 @@ def chat_request_named(name, document):
                 model=name,
                 prompt=prompt,
                 tools=tools,
+                loading=len(Wire.items(Wire.field(document, "messages"))) == 0,
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))
@@ -190,6 +195,7 @@ def named_generate(model, document):
             return Success(value=Generate(
                 model=name,
                 prompt=prompt if Wire.flag(document, "raw") else Prompts.render_single(prompt, system),
+                loading=prompt == "",
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))

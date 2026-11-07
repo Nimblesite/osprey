@@ -188,17 +188,22 @@ _app-suite: _runtime
 ##              complete, or the run proves nothing about the device.
 ## _qwen-lanes: The Qwen server suite's LANES (gc, arc: the fixture table; real: the pulled GGUF) through
 ##              the real ollama and openai clients in QWEN_PYTHON's environment.
+## _qwen-client: The ollama command's interactive chat against the server at QWEN_PORT.
 QWEN_DIR := src/osprey/examples/llms/qwen
 QWEN_OUT := target/llms/qwen-model
 QWEN_SERVER := target/llms/qwen-server/server-arc
 QWEN_PORT ?= 11435
+QWEN_MODEL := qwen3.8:27b
 QWEN_PYTHON ?= $(HOME)/.cache/osprey-llm/oracle-venv/bin/python
 QWEN_RUN = $(QWEN_OUT)/$(or $(QWEN_GPU),host)-$(MEMORY)
-.PHONY: _qwen-serve _qwen-suite _qwen-lanes
+.PHONY: _qwen-serve _qwen-suite _qwen-lanes _qwen-client
 _qwen-serve:
 	mkdir -p $(dir $(QWEN_SERVER))
 	./$(BIN) $(QWEN_DIR)/server --compile --memory=arc -o $(QWEN_SERVER)
 	GGUF=$$(sh $(QWEN_DIR)/pull.sh) && printf '%s\n%s\n' "$(QWEN_PORT)" "$$GGUF" | OSPREY_GPU=metal $(QWEN_SERVER)
+
+_qwen-client:
+	OLLAMA_HOST=127.0.0.1:$(QWEN_PORT) ollama run $(QWEN_MODEL)
 
 _qwen-suite:
 	mkdir -p $(QWEN_OUT)
