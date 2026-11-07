@@ -42,7 +42,7 @@ test: build _build_c_runtime_tests
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
-	$(MAKE) _check_projects
+	$(MAKE) _check_programs
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
 	$(MAKE) target/osprey-pkg

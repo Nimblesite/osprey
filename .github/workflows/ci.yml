@@ -414,8 +414,8 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Every Osprey project compiles
-        run: make _check_projects
+      - name: Every Osprey program compiles
+        run: make _check_programs
       - name: Package coverage collection
         run: make _test_packages
       - name: Upload package coverage

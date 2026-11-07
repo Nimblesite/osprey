@@ -523,19 +523,15 @@ _deslop:
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages
-# [PACKAGE-WORKSPACE] Every Osprey project in the repository compiles on its
-# own, as a consumer and the editor see it: each tracked osprey.toml under
-# src/osprey (packages, their tests and hunt drivers, examples) is lowered to
-# LLVM IR. The registry's sample packages, the e2e consumer and the manifest
-# fixtures are left out: they are data that resolves only through a registry.
-.PHONY: _check_projects
-_check_projects:
-	git ls-files 'src/osprey/**/osprey.toml' 'src/osprey/*/osprey.toml' \
-		| grep -vE '/sample-registry/|/e2e/consumer/|/fixtures/manifests/' \
-		| { failed=0; while read -r manifest; do \
-			$(BIN) $$(dirname $$manifest) --llvm --quiet --no-warnings >/dev/null \
-				|| { echo "project does not compile: $$manifest" >&2; failed=1; }; \
-		done; exit $$failed; }
+# [CI-PROGRAMS-COMPILE] [PACKAGE-WORKSPACE] Every tracked Osprey program
+# compiles: each osprey.toml project as a consumer and the editor see it, and
+# every other .osp, .ospml or Python-flavour .py on its own, 16 at a time.
+# failscompilation/ programs never count (the book's goldens check their
+# errors). The Osprey script lists each failure with the compiler's message and
+# ends on "N programs, F failed"; any F above 0 fails the build.
+.PHONY: _check_programs
+_check_programs:
+	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
 # reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
