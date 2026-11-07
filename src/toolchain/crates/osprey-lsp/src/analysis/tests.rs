@@ -1,4 +1,22 @@
 use super::*;
+
+/// Parse `src` and assert a clean parse, returning the AST.
+fn parse_ok(src: &str) -> Program {
+    let parsed = osprey_syntax::parse_program(src);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    parsed.program
+}
+
+/// Parse `src`, requiring a clean parse AND a clean type-check (`why` says what that proves), and return its outline JSON.
+fn probe_json(src: &str, why: &str) -> String {
+    let parsed = parse_ok(src);
+    assert!(
+        osprey_types::check_program(&parsed).is_empty(),
+        "the probe must type-check, or it pins nothing: {why}"
+    );
+    symbols_json(&parsed)
+}
+
 /// Assert the symbol named `name` carries a doc comment mentioning `needle`
 /// — the find-then-unwrap chain these cases otherwise repeat per symbol.
 fn assert_doc(syms: &[SymbolInfo], name: &str, needle: &str) {
@@ -20,19 +38,11 @@ fn module_and_namespace_hovers_carry_both_doc_scopes() {
     // declaration form and [LSP-HOVER-DOCS] requires hovers to render.
     // The inner `//!` belongs there too: it is what a maintainer reading
     // the body wrote about that same scope ([DOC-SIGIL-INNER]).
-    let parsed = osprey_syntax::parse_program(
-        "/// What callers need to know.\n\
-             namespace billing {\n\
-               //! What a maintainer needs to know.\n\
-               /// The module from outside.\n\
-               module Tax {\n\
-                 //! The module from inside.\n\
-                 export let rate = 10\n\
-               }\n\
-             }\n",
-    );
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let syms = collect_all_symbols(&parsed.program);
+    let syms = collect_all_symbols(&parse_ok(
+        "/// What callers need to know.\nnamespace billing {\n\
+             //! What a maintainer needs to know.\n/// The module from outside.\n\
+             module Tax {\n//! The module from inside.\nexport let rate = 10\n}\n}\n",
+    ));
     assert_doc(&syms, "billing", "What callers need to know.");
     assert_doc(&syms, "billing", "What a maintainer needs to know.");
     assert_doc(&syms, "billing::Tax", "The module from outside.");
@@ -41,7 +51,7 @@ fn module_and_namespace_hovers_carry_both_doc_scopes() {
 
 #[test]
 fn outline_covers_every_declaration_form() {
-    let parsed = osprey_syntax::parse_program(
+    let json = symbols_json(&parse_ok(
         "type Shade = Light | Dark\n\
              effect Log { info: fn(string) -> Unit }\n\
              extern fn puts(s: string) -> int\n\
@@ -51,10 +61,8 @@ fn outline_covers_every_declaration_form() {
              effect Feed<out T> { next: fn() -> T }\n\
              fn pick<T, out U>(a: T, b: U) -> T = a\n\
              fn main() -> Unit = print(multiply(a: limit, b: 2))\n",
-    );
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let json = symbols_json(&parsed.program);
-    for frag in [
+    ));
+    const OUTLINE: [&str; 13] = [
         "\"name\":\"Shade\",\"kind\":\"type\",\"type\":\"type\",\"line\":1,\"column\":1",
         "\"name\":\"Log\",\"kind\":\"type\",\"type\":\"effect\",\"line\":2",
         "\"name\":\"puts\",\"kind\":\"function\"",
@@ -70,9 +78,8 @@ fn outline_covers_every_declaration_form() {
         "\"signature\":\"effect Feed<out T>\"",
         "\"signature\":\"fn pick<T, out U>(a: T, b: U) -> T\"",
         "\"name\":\"main\",\"kind\":\"function\",\"type\":\"fn main() -> Unit\",\"line\":9",
-    ] {
-        assert!(json.contains(frag), "missing {frag} in {json}");
-    }
+    ];
+    crate::testkit::contents(&json, &OUTLINE, &[]);
 }
 
 #[test]
@@ -100,36 +107,20 @@ print(describeAny(42) + "!")
     // identical behaviour, identical inferred type, and it reports
     // correctly today — so any difference below is the annotation's
     // presence alone, not the program.
-    let annotated = r#"fn describeAny(v: any) -> string = match v {
-    { held, .. } => "held=${held}"
-    _            => "other"
-}
-print(describeAny(42) + "!")
-"#;
+    let annotated = inferred.replacen(") = match", ") -> string = match", 1);
 
-    let parsed = osprey_syntax::parse_program(inferred);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    assert!(
-        osprey_types::check_program(&parsed.program).is_empty(),
-        "the probe must type-check, or it pins nothing: `+ \"!\"` is what \
-             proves the return type is string rather than a guess"
+    const STRING_RETURN: &str = "\"returnType\":\"string\"";
+    const STRING_SIG: &str = "\"signature\":\"fn describeAny(v: any) -> string\"";
+
+    let json = probe_json(
+        inferred,
+        "`+ \"!\"` is what proves the return type is string rather than a guess",
     );
-    let json = symbols_json(&parsed.program);
 
     // The control reports the truth, so the type is derivable from a
     // program the checker already accepted.
-    let control = osprey_syntax::parse_program(annotated);
-    assert!(control.errors.is_empty(), "{:?}", control.errors);
-    let control_json = symbols_json(&control.program);
-    for frag in [
-        "\"returnType\":\"string\"",
-        "\"signature\":\"fn describeAny(v: any) -> string\"",
-    ] {
-        assert!(
-            control_json.contains(frag),
-            "control (annotated) must report {frag}; got {control_json}"
-        );
-    }
+    let control_json = symbols_json(&parse_ok(&annotated));
+    crate::testkit::contents(&control_json, &[STRING_RETURN, STRING_SIG], &[]);
 
     // Hover renders the same declaration from the same AST and gets it
     // right, so the outline is not missing information — it is discarding
@@ -146,17 +137,14 @@ print(describeAny(42) + "!")
 
     // The bug, asserted three ways so a partial fix cannot pass.
     crate::testkit::contents(&json, &[], &["\"returnType\":\"Unit\"", "-> Unit"]);
-    for frag in [
-        "\"returnType\":\"string\"",
-        "\"signature\":\"fn describeAny(v: any) -> string\"",
-        "\"type\":\"fn describeAny(v: any) -> string\"",
-    ] {
-        assert!(
-            json.contains(frag),
-            "an inferred return type must reach the outline as the type the \
-                 checker inferred: missing {frag} in {json}"
-        );
-    }
+    crate::testkit::shows(
+        &json,
+        &[
+            STRING_RETURN,
+            STRING_SIG,
+            "\"type\":\"fn describeAny(v: any) -> string\"",
+        ],
+    );
 
     // Dropping an inferable annotation is REQUIRED by CLAUDE.md, so the two
     // spellings must be indistinguishable to tooling.
@@ -175,13 +163,7 @@ fn a_type_the_author_named_underscore_is_a_real_type_not_a_hole() {
     // structural — is this a type VARIABLE — and must be asked of the type,
     // never of its spelling.
     let src = "type _ = { x: int }\nfn make() = _ { x: 1 }\nlet m = make()\n";
-    let parsed = osprey_syntax::parse_program(src);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    assert!(
-        osprey_types::check_program(&parsed.program).is_empty(),
-        "the probe must type-check, or it pins nothing"
-    );
-    let json = symbols_json(&parsed.program);
+    let json = probe_json(src, "the declared `_` name is the fact under test");
     assert!(
         json.contains("\"signature\":\"fn make() -> _ { x: int }\""),
         "a declared type named `_` is proven and must be reported, name and \
@@ -207,11 +189,8 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
     // checker refutes that itself: annotating `-> Unit` fails with
     // "cannot unify Unit with Result<t5, t6>". A tool must not assert what
     // the compiler rejects. `Result<int, _>` says exactly what is proven.
-    let src = "fn bothArms(f) = if f { Success { value: 1 } } \
-                   else { Error { message: \"e\" } }\n";
-    let parsed = osprey_syntax::parse_program(src);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let json = symbols_json(&parsed.program);
+    let src = "fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: \"e\" } }\n";
+    let json = symbols_json(&parse_ok(src));
     crate::testkit::contents(&json, &["\"returnType\":\"Result<int, _>\""], &["Unit"]);
     assert!(
         !json.contains(">\"t") && !json.contains(", t6"),
@@ -222,9 +201,7 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
 /// The rendered hover markdown for `name` in `src`, via the real symbol
 /// path (`collect_all_symbols` → `doc`).
 fn doc_for(src: &str, name: &str) -> Option<String> {
-    let parsed = osprey_syntax::parse_program(src);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    collect_all_symbols(&parsed.program)
+    collect_all_symbols(&parse_ok(src))
         .into_iter()
         .find(|s| s.name == name)
         .and_then(|s| s.doc)
@@ -233,12 +210,9 @@ fn doc_for(src: &str, name: &str) -> Option<String> {
 #[test]
 fn doc_comments_reach_hover_for_every_declaration_kind() {
     // Default flavor: fn, type, effect each carry their /// doc into hover.
-    let src = "/// Doubles the input.\n\
-                   fn double(x) = x * 2\n\
-                   /// A performance tier.\n\
-                   type Tier = Epic | Solid\n\
-                   /// Emits a line.\n\
-                   effect Console { emit: fn(string) -> Unit }\n";
+    let src = "/// Doubles the input.\nfn double(x) = x * 2\n\
+                   /// A performance tier.\ntype Tier = Epic | Solid\n\
+                   /// Emits a line.\neffect Console { emit: fn(string) -> Unit }\n";
     assert!(doc_for(src, "double").is_some_and(|d| d.contains("Doubles the input.")));
     assert!(doc_for(src, "Tier").is_some_and(|d| d.contains("A performance tier.")));
     assert!(doc_for(src, "Console").is_some_and(|d| d.contains("Emits a line.")));
