@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** RecoveryError models expected failures whose handlers supply ordinary values. *)
 effect RecoveryError
     (** Supply the integer for the absent field `name`. *)
@@ -585,15 +599,19 @@ everyResultTypeCase () =
     checkAll "one region answers every operation of one effect" [
         rendered == "12|fallback|true|spare|false|30|9",
         length rendered == 33,
-        structuralEquals [startsWith rendered "12|", endsWith rendered "|9"] [true, true],
-        structuralEquals [contains rendered "|spare|", contains rendered "|true|"] [true, true],
+        startsWith rendered "12|",
+        endsWith rendered "|9",
+        contains rendered "|spare|",
+        contains rendered "|true|",
         !(contains rendered "2.5"),
         !(contains rendered "|13|"),
         marks == 1,
         trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
         length trail == 69,
-        structuralEquals [startsWith trail "i:count|", endsWith trail "m:rendered|"] [true, true],
-        structuralEquals [contains trail "|s:spare|", contains trail "b:allowed|t:name|"] [true, true],
+        startsWith trail "i:count|",
+        endsWith trail "m:rendered|",
+        contains trail "|s:spare|",
+        contains trail "b:allowed|t:name|",
         !(contains trail "|i:count|")
     ]
 
@@ -690,14 +708,16 @@ partialOverrideLatticeCase () =
     checkAll "one handler answers every operation of one effect" [
         flat == "gold:105/gold:105",
         length flat == 17,
-        structuralEquals [startsWith flat "gold:105", endsWith flat "gold:105"] [true, true],
+        startsWith flat "gold:105",
+        endsWith flat "gold:105",
         contains flat "105/gold",
         flat != "gold:105",
         flatCalls == 6,
         flatCalls == (2 * 3 ),
         flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
         length flatTrail == 44,
-        structuralEquals [startsWith flatTrail "base:a|", endsWith flatTrail "tier:b|"] [true, true],
+        startsWith flatTrail "base:a|",
+        endsWith flatTrail "tier:b|",
         contains flatTrail "tier:a|base:b|",
         !(contains flatTrail "base:c")
     ]
@@ -706,10 +726,13 @@ partialOverrideLatticeCase () =
     // outer arms, so the inner quote is 200+5 while both outer quotes are 100+5.
     checkAll "an inner arm overrides one operation and the outer arms remain" [
         overridden == "gold:105|gold:205|gold:105",
-        structuralEquals [length overridden, outerBaseCalls, innerBaseCalls] [26, 2, 1],
+        length overridden == 26,
+        outerBaseCalls == 2,
+        innerBaseCalls == 1,
         outerBaseCalls > innerBaseCalls,
         (outerBaseCalls + innerBaseCalls ) == 3,
-        structuralEquals [contains overridden "gold:205", startsWith overridden "gold:105|"] [true, true],
+        contains overridden "gold:205",
+        startsWith overridden "gold:105|",
         endsWith overridden "|gold:105",
         !(contains overridden "gold:305"),
         !(startsWith overridden "gold:205"),
@@ -725,7 +748,9 @@ partialOverrideLatticeCase () =
         reordered == "silver:13",
         split == reordered,
         length split == 9,
-        structuralEquals [startsWith split "silver:", endsWith split ":13", contains split "r:1"] [true, true, true],
+        startsWith split "silver:",
+        endsWith split ":13",
+        contains split "r:1",
         !(contains split "gold"),
         split != flat,
         (10 + 3 ) == 13,
@@ -747,7 +772,8 @@ partialOverrideLatticeCase () =
         deepest != split,
         restored == "7|outer/70|7",
         length restored == 12,
-        structuralEquals [startsWith restored "7|", endsWith restored "|7"] [true, true],
+        startsWith restored "7|",
+        endsWith restored "|7",
         contains restored "outer/70",
         !(contains restored "70|outer"),
         !(contains restored "|70|")
@@ -810,14 +836,19 @@ higherOrderRecoveryCase () =
         total != 91,
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         length trail == 29,
-        structuralEquals [startsWith trail "14|", endsWith trail "60|", contains trail "6|6|6|"] [true, true, true],
+        startsWith trail "14|",
+        endsWith trail "60|",
+        contains trail "6|6|6|",
         !(contains trail "|7|")
     ]
 
     // An empty list performs nothing, a singleton performs once, duplicates
     // perform once per occurrence, and the nested traversal adds three more.
     checkAll "empty, singleton, duplicate and nested inputs each contribute once" [
-        structuralEquals [listLength none, listLength one, listLength dup, listLength mixed] [0, 1, 3, 5],
+        listLength none == 0,
+        listLength one == 1,
+        listLength dup == 3,
+        listLength mixed == 5,
         listLength nested == 2,
         isEmpty none,
         !(isEmpty one),
@@ -858,7 +889,9 @@ higherOrderRecoveryCase () =
         (negatives + 15 ) == 0,
         (0 - negatives ) == 15,
         (1 + 2 + 3 + 4 + 5 ) == 15,
-        structuralEquals [total, steps, scaled] [182, 12, 12],
+        total == 182,
+        steps == 12,
+        scaled == 12,
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         negatives != total,
         negated != finished
@@ -918,7 +951,9 @@ recursiveAccumulationCase () =
         lastDepth == 1,
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
         length trail == 32,
-        structuralEquals [startsWith trail "8:1|", endsWith trail "1:8|", contains trail "|4:5|"] [true, true, true],
+        startsWith trail "8:1|",
+        endsWith trail "1:8|",
+        contains trail "|4:5|",
         !(contains trail "9:"),
         !(contains trail "0:"),
         (visits * 10 ) == 80,
@@ -929,7 +964,10 @@ recursiveAccumulationCase () =
     // Depth zero performs nothing at all, so an installed arm stays untouched;
     // depth one performs exactly once and answers 1 * 3.
     checkAll "zero and one level recursions" [
-        structuralEquals [zeroTotal, zeroVisits, oneTotal, oneVisits] [0, 0, 3, 1],
+        zeroTotal == 0,
+        zeroVisits == 0,
+        oneTotal == 3,
+        oneVisits == 1,
         zeroVisits < oneVisits,
         zeroTotal != oneTotal,
         zeroTotal < oneTotal,
@@ -963,7 +1001,12 @@ recursiveAccumulationCase () =
     // run's own answer is still readable after the later regions have closed.
     checkAll "every level of every run entered its own handler" [
         (visits + zeroVisits + oneVisits + deepVisits ) == 42,
-        structuralEquals [visits, deepVisits, total, deepTotal, doubled, oneTotal] [8, 33, 360, 561, 1122, 3],
+        visits == 8,
+        deepVisits == 33,
+        total == 360,
+        deepTotal == 561,
+        doubled == 1122,
+        oneTotal == 3,
         zeroTotal == 0,
         (total + oneTotal + zeroTotal ) == 363,
         (deepTotal + doubled ) == 1683
@@ -1038,10 +1081,14 @@ multiEffectRegionCase () =
     checkAll "four effects cooperate inside one nested region stack" [
         rendered == "priority:6:4:25",
         length rendered == 15,
-        structuralEquals [startsWith rendered "priority:", endsWith rendered ":25"] [true, true],
+        startsWith rendered "priority:",
+        endsWith rendered ":25",
         contains rendered ":6:4:",
         !(contains rendered ":25:"),
-        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
         (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
         policies > shortages,
@@ -1053,8 +1100,10 @@ multiEffectRegionCase () =
     checkAll "the four channels interleave in the body's order" [
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         length trail == 70,
-        structuralEquals [startsWith trail "R(qty)|", endsWith trail "A(scored 25)|"] [true, true],
-        structuralEquals [contains trail "|S(6,4)|", contains trail "|L(order)|P(order)|"] [true, true],
+        startsWith trail "R(qty)|",
+        endsWith trail "A(scored 25)|",
+        contains trail "|S(6,4)|",
+        contains trail "|L(order)|P(order)|",
         !(contains trail "P(order)|L(order)"),
         !(contains trail "A(qty)"),
         contains trail "A(filled 6)",
@@ -1072,7 +1121,8 @@ multiEffectRegionCase () =
         reordered == "priority:6:4:25",
         auditTrail == "filled 6|allowed 4|scored 25|",
         length auditTrail == 29,
-        structuralEquals [startsWith auditTrail "filled 6|", endsWith auditTrail "scored 25|"] [true, true],
+        startsWith auditTrail "filled 6|",
+        endsWith auditTrail "scored 25|",
         contains auditTrail "|allowed 4|",
         !(contains auditTrail "qty"),
         notes == 3,
@@ -1087,12 +1137,16 @@ multiEffectRegionCase () =
         generous == "basic:2:6:0",
         length generous == 11,
         generous != rendered,
-        structuralEquals [startsWith generous "basic:", endsWith generous ":0"] [true, true],
+        startsWith generous "basic:",
+        endsWith generous ":0",
         contains generous ":2:6:",
         !(contains generous "priority"),
         generousAudits == 3,
         generousAudits == notes,
-        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
         auditTrail == "filled 6|allowed 4|scored 25|"
     ]
 
@@ -1164,10 +1218,14 @@ boundaryValueRecoveryCase () =
         fills != 1,
         seen == "a1|a2|b3|",
         length seen == 9,
-        structuralEquals [startsWith seen "a1|", endsWith seen "b3|", contains seen "|a2|"] [true, true, true],
+        startsWith seen "a1|",
+        endsWith seen "b3|",
+        contains seen "|a2|",
         !(contains seen "b1|"),
         !(contains seen "a3|"),
-        structuralEquals [startsWith joined "/x/", endsWith joined "  ", contains joined "spaced"] [true, true, true]
+        startsWith joined "/x/",
+        endsWith joined "  ",
+        contains joined "spaced"
     ]
 
     // Empty, one-character and digit-bearing replacements keep their exact
@@ -1182,7 +1240,9 @@ boundaryValueRecoveryCase () =
         single != blank,
         digits == "007",
         length digits == 3,
-        structuralEquals [startsWith digits "0", endsWith digits "7", contains digits "07"] [true, true, true],
+        startsWith digits "0",
+        endsWith digits "7",
+        contains digits "07",
         !(contains digits "70"),
         digits != "7"
     ]
@@ -1199,12 +1259,14 @@ boundaryValueRecoveryCase () =
         toUpperCase mixedCase != toLowerCase mixedCase,
         punctuated == "a-b_c.d,e",
         length punctuated == 9,
-        structuralEquals [startsWith punctuated "a-", contains punctuated "_c."] [true, true],
+        startsWith punctuated "a-",
+        contains punctuated "_c.",
         endsWith punctuated ",e",
         !(startsWith punctuated "-"),
         !(endsWith punctuated "e,"),
         repeated == "abab abab",
-        structuralEquals [startsWith repeated "abab", endsWith repeated "abab"] [true, true],
+        startsWith repeated "abab",
+        endsWith repeated "abab",
         contains repeated "b a",
         !(contains repeated "abc"),
         length repeated == 9

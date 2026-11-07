@@ -146,8 +146,7 @@ module FetchTests {
         let root = installRoot(newest)
         let a = attempt(catalogRoutes(localBase, rs), ["@finch/ledger"])
         checkAll("newest release by epoch then ordinal, exact report and writes", [
-            a.report.status == 0,
-            length(a.report.lines) == 3,
+            structuralEquals([a.report.status, length(a.report.lines)], [0, 3]),
             Fixture::line(a.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(newest)}",
             Fixture::line(a.report, 1) == "into: ${root}",
             Fixture::line(a.report, 2) == "files: 2",
@@ -164,10 +163,9 @@ module FetchTests {
         let inEpoch = attempt(routes, ["@finch/ledger@e1"])
         let byDigest = attempt(routes, [digestOf(Fixture::at(rs, 2))])
         checkAll("epoch and digest targets select the right release", [
-            inEpoch.report.status == 0,
+            structuralEquals([inEpoch.report.status, byDigest.report.status], [0, 0]),
             Fixture::line(inEpoch.report, 0) == "fetched: @finch/ledger@e1.r2#${digestOf(Fixture::at(rs, 1))}",
             Fixture::line(inEpoch.report, 2) == "files: 2",
-            byDigest.report.status == 0,
             Fixture::line(byDigest.report, 0) == "fetched: @finch/ledger@e2.r1#${digestOf(Fixture::at(rs, 2))}",
             Fixture::line(byDigest.report, 1) == "into: ${installRoot(Fixture::at(rs, 2))}"
         ])
@@ -240,8 +238,7 @@ module FetchTests {
         let a = attempt(routes, [digestOf(r21)])
         checkAll("a tampered bundle is bundle.digest-mismatch and writes nothing", [
             failedOne(a, "bundle.digest-mismatch"),
-            a.writes == "",
-            a.ensures == ""
+            structuralEquals([a.writes, a.ensures], ["", ""])
         ])
     }
 
@@ -266,10 +263,8 @@ module FetchTests {
         let readOnly = attemptWith(denyTree, routes, ["@finch/ledger"])
         checkAll("file and directory failures are fetch.write with the OS reason", [
             failedOne(denied, "fetch.write: no space left on device"),
-            denied.writes == "",
-            failedOne(readOnly, "fetch.write: read-only file system"),
-            readOnly.writes == "",
-            readOnly.ensures == ""
+            structuralEquals([denied.writes, readOnly.writes, readOnly.ensures], ["", "", ""]),
+            failedOne(readOnly, "fetch.write: read-only file system")
         ])
     }
 
@@ -290,9 +285,8 @@ module FetchTests {
         let d = dispatched(catalogRoutes(localBase, rs), ["@finch/ledger"])
         let bare = dispatched(catalogRoutes(localBase, rs), [])
         checkAll("dispatch routes fetch and passes the remaining words", [
-            d.report.status == 0,
+            structuralEquals([d.report.status, bare.report.status], [0, 1]),
             Fixture::line(d.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(Fixture::at(rs, 3))}",
-            bare.report.status == 1,
             Fixture::line(bare.report, 0) == "install.no-lock fixture: fetch never reads"
         ])
     }

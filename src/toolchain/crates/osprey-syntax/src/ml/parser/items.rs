@@ -1,6 +1,6 @@
 //! ML items parsing.
 use super::{
-    keyword_spelling, MlItem, MlModuleKind, MlTypeParam, Parser, Stage, TokKind,
+    keyword_spelling, MlItem, MlModuleKind, MlTypeParam, Parser, Position, Stage, TokKind,
     STATIC_STAGE_KEYWORD,
 };
 
@@ -169,6 +169,7 @@ impl Parser<'_> {
             TokKind::Colon => self.signature(),
             TokKind::ColonEq => self.assignment(),
             _ if self.at_generic_signature() => self.signature(),
+            _ if self.at_unsigned_generic_binding() => self.unsigned_generic_binding(),
             _ if self.is_binding_head() => self.binding(),
             _ => Some(self.expr_item()),
         }
@@ -180,8 +181,33 @@ impl Parser<'_> {
     /// comparison by requiring the whole binder-plus-colon shape before
     /// committing. Implements [FLAVOR-ML-GENERICS].
     pub(in crate::ml) fn at_generic_signature(&self) -> bool {
+        self.past_binder()
+            .is_some_and(|j| matches!(self.peek_at(j), TokKind::Colon))
+    }
+
+    /// Whether the current item is `name<T> params = body` — a binder on a
+    /// binding with no signature, which [FLAVOR-ML-GENERICS] forbids.
+    fn at_unsigned_generic_binding(&self) -> bool {
+        self.past_binder()
+            .is_some_and(|j| !matches!(self.peek_at(j), TokKind::Colon))
+            && self.line_binds_at_top_level()
+    }
+
+    /// Report a binder written on a binding without a signature, then parse
+    /// the binding as if the binder were absent so later lines still check.
+    fn unsigned_generic_binding(&mut self) -> Option<MlItem> {
+        self.error("a binding cannot declare type parameters without a signature: declare them on `name<T> : type` above it");
+        let pos = self.pos();
+        let name = self.ident()?;
+        let _ = self.signature_type_params();
+        Some(self.binding_after_name(name, pos))
+    }
+
+    /// Offset just past the `>` of a `name<T, U>` binder (parameter names with
+    /// optional `out`/`in` markers), or `None` when the item has no binder.
+    fn past_binder(&self) -> Option<usize> {
         if !matches!(self.peek_at(1), TokKind::Op(op) if op == "<") {
-            return false;
+            return None;
         }
         let mut j = 2;
         loop {
@@ -193,15 +219,13 @@ impl Parser<'_> {
                 j += 1;
             }
             if !matches!(self.peek_at(j), TokKind::Ident(_)) {
-                return false;
+                return None;
             }
             j += 1;
             match self.peek_at(j) {
                 TokKind::Comma => j += 1,
-                TokKind::Op(op) if op == ">" => {
-                    return matches!(self.peek_at(j + 1), TokKind::Colon)
-                }
-                _ => return false,
+                TokKind::Op(op) if op == ">" => return Some(j + 1),
+                _ => return None,
             }
         }
     }
@@ -274,17 +298,22 @@ impl Parser<'_> {
     pub(in crate::ml) fn binding(&mut self) -> Option<MlItem> {
         let pos = self.pos();
         let name = self.ident()?;
+        Some(self.binding_after_name(name, pos))
+    }
+
+    /// The `param* = body` rest of a binding whose name is already consumed.
+    fn binding_after_name(&mut self, name: String, pos: Position) -> MlItem {
         let (params, uncurried) = self.head_params();
         let _ = self.expect_eq();
         let body = self.body_after_eq();
-        Some(MlItem::Binding {
+        MlItem::Binding {
             mutable: false,
             name,
             params,
             uncurried,
             body,
             pos,
-        })
+        }
     }
 
     pub(in crate::ml) fn expr_item(&mut self) -> MlItem {

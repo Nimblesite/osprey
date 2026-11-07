@@ -22,7 +22,10 @@ arithmeticCase () =
 classifyCase () =
     // Check exact clauses, the wildcard, and a string consumer.
     checkAll "classification foundations" [
-        structuralEquals [classify 0, classify 1, classify 9, classify (sub 4 3)] ["zero", "one", "many", "one"],
+        classify 0 == "zero",
+        classify 1 == "one",
+        classify 9 == "many",
+        classify (sub 4 3) == "one",
         startsWith (classify 20) "m",
         classify 99 != classify 0
     ]
@@ -39,6 +42,21 @@ stringsAndListsCase () =
         !(endsWith "osprey language" "compiler"),
         listLength [10, 20, 30] == 3
     ]
+
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 
 test "arithmetic checks share derived values" (\() => exactArithmetic (arithmeticCase))
 test "classification checks include computed inputs" (\() => exactArithmetic (classifyCase))

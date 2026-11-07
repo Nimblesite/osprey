@@ -74,12 +74,9 @@ module JsonTests {
     ])
 
     fn problems() = checkAll("structural problems carry exact byte offsets", [
-        problem("") == "json.unexpected-end@0",
-        problem("   ") == "json.unexpected-end@3",
-        problem("[1,") == "json.unexpected-end@3",
-        problem("{\"a\"") == "json.unexpected-end@4",
-        problem("\"abc") == "json.unexpected-end@4",
-        problem("\"ab\\uD8") == "json.unexpected-end@7",
+        structuralEquals([problem(""), problem("   ")], ["json.unexpected-end@0", "json.unexpected-end@3"]),
+        structuralEquals([problem("[1,"), problem("{\"a\"")], ["json.unexpected-end@3", "json.unexpected-end@4"]),
+        structuralEquals([problem("\"abc"), problem("\"ab\\uD8")], ["json.unexpected-end@4", "json.unexpected-end@7"]),
         structuralEquals([problem("tru"), problem("-")], ["json.unexpected-end@3", "json.unexpected-end@1"]),
         structuralEquals([problem("x"), problem("{1:2}")], ["json.unexpected-token@0", "json.unexpected-token@1"]),
         problem("[1 2]") == "json.unexpected-token@3",

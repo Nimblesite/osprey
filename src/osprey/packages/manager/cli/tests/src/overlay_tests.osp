@@ -138,8 +138,7 @@ module OverlayTests {
         let derived = RegistryFixture::writtenTo(a, derivedPath())
         checkAll("a bare build compiles the checkout from the development lock", [
             RegistryFixture::accepted(a),
-            contains(derived, "\"../../${localPath}/src\""),
-            contains(derived, "\"../../${installedTwoPath()}/src\""),
+            containsAll(derived, ["\"../../${localPath}/src\"", "\"../../${installedTwoPath()}/src\""]),
             length(RegistryFixture::ranOf(a)) == 1,
             (listGet(RegistryFixture::ranOf(a), 0) ?: "") == "'osprey' build '${project}/.osprey/build' -o '${project}/.osprey/build/app'"
         ])
@@ -164,10 +163,9 @@ module OverlayTests {
         checkAll("use.not-a-dependency, lock.local-manifest and overlay.path", [
             RegistryFixture::reported(notDependency, 1, "use.not-a-dependency @demo/three"),
             RegistryFixture::writtenTo(notDependency, overlayPath) == "",
-            RegistryFixture::statusOf(badLocal) == 1,
+            structuralEquals([RegistryFixture::statusOf(badLocal), RegistryFixture::statusOf(malformed)], [1, 1]),
             startsWith(RegistryFixture::lineOf(badLocal, 0), "lock.local-manifest @demo/one "),
             RegistryFixture::writtenTo(badLocal, localLockPath) == "",
-            RegistryFixture::statusOf(malformed) == 1,
             startsWith(RegistryFixture::lineOf(malformed, 0), "overlay.path")
         ])
     }

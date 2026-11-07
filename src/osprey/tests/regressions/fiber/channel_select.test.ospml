@@ -121,10 +121,10 @@ operandsEvaluateOnceInOrder () =
         timeout (note log 2 5) => 0
     checkAll "operands" [picked == 100, recv log == 1, recv log == 2, recv log == 3, recv channel == 10]
 
-test "ready arms run in source order" (\() => exactArithmetic (tieBreaksInSourceOrder))
-test "send arms respect capacity" (\() => exactArithmetic (sendArmsRespectCapacity))
-test "receive bindings have the element type" (\() => exactArithmetic (bindingsHaveTheElementType))
-test "managed sends keep their ownership" (\() => exactArithmetic (managedSendsKeepTheirOwnership))
-test "timeouts decide only when nothing is ready" (\() => exactArithmetic (timeoutsDecideOnlyWhenNothingIsReady))
-test "a fiber wakes a blocked select" (\() => exactArithmetic (aFiberWakesABlockedSelect))
-test "operands evaluate once in order" (\() => exactArithmetic (operandsEvaluateOnceInOrder))
+test "ready arms run in source order" (exactly tieBreaksInSourceOrder)
+test "send arms respect capacity" (exactly sendArmsRespectCapacity)
+test "receive bindings have the element type" (exactly bindingsHaveTheElementType)
+test "managed sends keep their ownership" (exactly managedSendsKeepTheirOwnership)
+test "timeouts decide only when nothing is ready" (exactly timeoutsDecideOnlyWhenNothingIsReady)
+test "a fiber wakes a blocked select" (exactly aFiberWakesABlockedSelect)
+test "operands evaluate once in order" (exactly operandsEvaluateOnceInOrder)

@@ -33,12 +33,6 @@ fn roundTrip(cp) = {
     }
 }
 
-/// Round-trips every scalar in `scalars`, in order.
-fn roundTrips(scalars) = foldList(scalars, 0, fn(_acc, cp) => roundTrip(cp))
-
-/// Rejects every invalid scalar in `scalars`, in order.
-fn rejectInvalids(scalars) = foldList(scalars, 0, fn(_acc, cp) => rejectInvalid(cp))
-
 /// An invalid scalar must be rejected by encode with an Error message.
 fn rejectInvalid(cp) = {
     match fromCodePoint(cp) {
@@ -48,39 +42,50 @@ fn rejectInvalid(cp) = {
     0
 }
 
+/// Runs `check` on every scalar in `scalars`, in order.
+fn checkEach(scalars, check) = foldList(scalars, 0, fn(_acc, cp) => check(cp))
+
+/// Prints a cursor Result value under `label`, or `fallback` when it errors.
+fn printValue(label, fallback, result) = {
+    match result {
+        Success { value } => print("${label}${value}\n")
+        Error => print(fallback)
+    }
+    0
+}
+
 // 1-byte (0x01..0x7F): low 0x01, 'A', boundary 0x7F. (NUL 0x00 is the
 // C-string terminator, so it is not representable as a standalone char.)
 print("=== 1-byte: 0x01..0x7F ===\n")
-let _a0 = roundTrips([1, 65, 127])
+let _a0 = checkEach([1, 65, 127], roundTrip)
 
 // 2-byte (0x80..0x7FF): boundary 0x80, 'é', boundary 0x7FF.
 print("=== 2-byte: 0x80..0x7FF ===\n")
-let _b0 = roundTrips([128, 233, 2047])
+let _b0 = checkEach([128, 233, 2047], roundTrip)
 
 // 3-byte (0x800..0xFFFF): boundary 0x800, '世', boundary 0xFFFF.
 print("=== 3-byte: 0x800..0xFFFF ===\n")
-let _c0 = roundTrips([2048, 19990, 65535])
+let _c0 = checkEach([2048, 19990, 65535], roundTrip)
 
 // 4-byte (0x10000..0x10FFFF): boundary 0x10000, '😀', max scalar 0x10FFFF.
 print("=== 4-byte: 0x10000..0x10FFFF ===\n")
-let _d0 = roundTrips([65536, 128512, 1114111])
+let _d0 = checkEach([65536, 128512, 1114111], roundTrip)
 
 // Invalid scalars: surrogate range 0xD800..0xDFFF, past-max 0x110000, neg.
 print("=== invalid scalars are rejected ===\n")
-let _s0 = rejectInvalids([55296, 57343, 1114112, (0 - 1) ])
+let _s0 = checkEach([55296, 57343, 1114112, (0 - 1) ], rejectInvalid)
 
 // Direct codePointWidth band classification, one assertion per width band.
 print("=== codePointWidth band boundaries ===\n")
-match codePointWidth(127)     { Success { value } => print("width(0x7F)=${value}\n")     Error => print("w err\n") }
-match codePointWidth(2047)    { Success { value } => print("width(0x7FF)=${value}\n")    Error => print("w err\n") }
-match codePointWidth(65535)   { Success { value } => print("width(0xFFFF)=${value}\n")   Error => print("w err\n") }
-match codePointWidth(1114111) { Success { value } => print("width(0x10FFFF)=${value}\n") Error => print("w err\n") }
+let _w0 = printValue("width(0x7F)=", "w err\n", codePointWidth(127))
+let _w1 = printValue("width(0x7FF)=", "w err\n", codePointWidth(2047))
+let _w2 = printValue("width(0xFFFF)=", "w err\n", codePointWidth(65535))
+let _w3 = printValue("width(0x10FFFF)=", "w err\n", codePointWidth(1114111))
 
 // byteAt indexes RAW BYTES (not codepoints): byte 1 of "é" (0xC3 0xA9) is
 // the continuation byte 0xA9 = 169, proving byte-level access past offset 0.
 print("=== byteAt raw-byte semantics ===\n")
-match byteAt("é", 0) { Success { value } => print("byteAt(é,0)=${value}\n") Error => print("b err\n") }
-match byteAt("é", 1) { Success { value } => print("byteAt(é,1)=${value}\n") Error => print("b err\n") }
+let _e0 = foldList([0, 1], 0, fn(_acc, index) => printValue("byteAt(é,${index})=", "b err\n", byteAt("é", index)))
 
 print("=== codepoint roundtrip complete ===\n")
 
@@ -93,34 +98,26 @@ fn scalarRoundTrips(cp) = match fromCodePoint(cp) {
     Error => false
 }
 
-/// Checks one width band without defaulting an unexpected Error.
-fn widthIs(cp, expected) = match codePointWidth(cp) {
+/// A cursor Result must carry exactly `expected`, never an Error.
+fn valueIs(result, expected) = match result {
     Success { value } => value == expected
     Error => false
 }
 
 /// Invalid scalars must return a non-empty diagnostic.
-fn scalarIsRejected(cp) = match fromCodePoint(cp) {
+fn isRejected(result) = match result {
     Success => false
     Error { message } => length(message) > 0
 }
 
-/// Raw-byte access must expose the exact encoded byte.
-fn byteIs(s, index, expected) = match byteAt(s, index) {
-    Success { value } => value == expected
-    Error => false
-}
-
 /// Verifies all UTF-8 widths, invalid scalar handling, and raw byte access.
 fn codepointRoundTripCase() = checkAll("Unicode cursor round trips", [
-    scalarRoundTrips(1), scalarRoundTrips(233),
-    scalarRoundTrips(19990), scalarRoundTrips(128512),
-    widthIs(127, 1), widthIs(2047, 2),
-    widthIs(65535, 3), widthIs(1114111, 4),
-    scalarIsRejected(55296), scalarIsRejected(57343),
-    scalarIsRejected(1114112),
-    byteIs("é", 0, 195), byteIs("é", 1, 169),
-    roundTrip(65) == 0, roundTrip(55296) == 0,
-    rejectInvalid(55296) == 0
+    scalarRoundTrips(1), scalarRoundTrips(233), scalarRoundTrips(19990), scalarRoundTrips(128512),
+    valueIs(codePointWidth(127), 1), valueIs(codePointWidth(2047), 2),
+    valueIs(codePointWidth(65535), 3), valueIs(codePointWidth(1114111), 4),
+    isRejected(fromCodePoint(55296)), isRejected(fromCodePoint(57343)),
+    isRejected(fromCodePoint(1114112)),
+    valueIs(byteAt("é", 0), 195), valueIs(byteAt("é", 1), 169),
+    structuralEquals([roundTrip(65), roundTrip(55296), rejectInvalid(55296)], [0, 0, 0])
 ])
 test("Unicode scalars survive encode and decode", codepointRoundTripCase)

@@ -1,3 +1,16 @@
+/// [FAILURE-EXPLICIT] A failed allocation, combinator or reduction stops the case before its consumer.
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => check("GPU operation", "success", toString(message))
+}
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
+/// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
+fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 // Game-engine workloads on the GPU surface: Q10 fixed-point vector algebra over parallel component buffers, semi-implicit Euler integration, broadphase collision
 // predicates, bounding volumes built by folds, packed-colour blending, gpuIota-driven gathers (de-interleave, transpose, edge-clamped stencils), and per-frame pipelines
 // that combine six buffers at once ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER] — docs/specs/runtime/0034-GPUComputation.md). The
@@ -429,6 +442,24 @@ fn raggedCaseUploaded(input0, input1, input2, input3) = {
                                 gpuSatisfies(gpuFold(swapped, 0, sumInts), fn(total) => total == 333),
                                 gpuLength(doubled) == 5, gpuLength(shortest) == 1
                         ]))))))
+}
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
 }
 test("q10 fixed-point scalars and scale kernels truncate toward zero", fn() => exactArithmetic(fixedPointCase))
 test("vector algebra combines four component buffers", fn() => exactArithmetic(vectorCase))

@@ -98,6 +98,14 @@ fn registry(root: &Path) -> Registry {
     Registry::from_disciplines(vec![bounded(root)]).expect("one discipline")
 }
 
+/// A manifest dependency named `name` on `path` (`None` = registry only).
+fn dependency(name: &str, path: Option<&str>) -> Dependency {
+    Dependency {
+        name: name.into(),
+        path: path.map(PathBuf::from),
+    }
+}
+
 fn accepted(signature: &str, erased: &str) -> String {
     serde_json::json!({
         "version": VERSION,
@@ -141,10 +149,8 @@ fn selection_is_marker_then_project_then_hm() {
 fn markerless_project_never_touches_the_registry_or_a_runner() {
     // Implements [TYPES-DISCIPLINE-NO-HARM] rule 4.
     let mut config = temp_project("noharm");
-    config.dependencies.push(Dependency {
-        name: "@missing/pkg".into(),
-        path: Some("nowhere".into()),
-    });
+    let deps = &mut config.dependencies;
+    deps.push(dependency("@missing/pkg", Some("nowhere")));
     let runner = scripted(Err("must not run"));
     let sources = vec![source("namespace plain\n\nx = 1\n")];
     let out = apply(&config, sources, &runner).expect("untouched");
@@ -158,9 +164,7 @@ fn unknown_discipline_is_one_error_on_the_marker_line() {
     let config = temp_project("unknown");
     let runner = scripted(Err("must not run"));
     let errors = apply(&config, vec![source(MARKED)], &runner).expect_err("unknown name");
-    assert_eq!(errors.len(), 1);
-    let message = &errors[0].message;
-    assert!(message.starts_with(ERROR_PREFIX), "{message}");
+    let message = one_error(&errors);
     assert!(message.contains("`bounded`"));
     assert_eq!(errors[0].line, Some(1));
     assert_eq!(runner.calls.get(), 0);
@@ -183,19 +187,26 @@ fn registry_reads_discipline_tables_from_path_dependencies() {
     let mut config = temp_project("registry");
     let pkg = config.directory.join("bounded");
     write_file(&config.directory, "bounded/osprey.toml", REGISTRY_MANIFEST);
-    config.dependencies.push(Dependency {
-        name: "@osprey/bounded".into(),
-        path: Some("bounded".into()),
-    });
-    config.dependencies.push(Dependency {
-        name: "@osprey/testing".into(),
-        path: None,
-    });
+    let deps = [
+        ("@osprey/bounded", Some("bounded")),
+        ("@osprey/testing", None),
+    ];
+    for (name, path) in deps {
+        config.dependencies.push(dependency(name, path));
+    }
     let registry = Registry::discover(&config).expect("registry");
     let found = registry.get("bounded").expect("registered");
     assert_eq!(found.checker, pkg.join("checker.ospml"));
     assert_eq!(found.timeout, Duration::from_secs(7));
     assert!(registry.get("testing").is_none());
+}
+
+/// The one discipline error of `errors`, asserting it carries the error prefix.
+fn one_error(errors: &[ProjectError]) -> &str {
+    assert_eq!(errors.len(), 1);
+    let message = &errors[0].message;
+    assert!(message.starts_with(ERROR_PREFIX), "{message}");
+    message
 }
 
 fn apply_one(name: &str, answer: Result<&str, &str>) -> Result<Vec<SourceFile>, Vec<ProjectError>> {
@@ -242,35 +253,26 @@ fn rejection_carries_the_checker_diagnostics_prefixed_by_its_name() {
 fn every_checker_fault_is_a_discipline_error() {
     // Implements [TYPES-DISCIPLINE-VERIFICATION]: crash, timeout, malformed
     // response, unsupported version, unparsable erased module, missing signature.
+    let crash: Result<&str, &str> = Err("exited with an error with no response: boom");
+    let timeout: Result<&str, &str> = Err("exceeded its time limit of 1 seconds");
+    let malformed: Result<&str, &str> = Ok("{not json");
     let wrong_version = accepted(SIGNATURE, ERASED).replace("\"version\":2", "\"version\":3");
     let unparsable = accepted(SIGNATURE, "module Nat\n    export zero = = 0\n");
     let unsigned = accepted("", ERASED);
     let no_erased = r#"{"version":2,"result":"accepted","signature":"","diagnostics":[]}"#;
-    let cases: Vec<(&str, Result<&str, &str>, &str)> = vec![
-        (
-            "crash",
-            Err("exited with an error with no response: boom"),
-            "boom",
-        ),
-        (
-            "timeout",
-            Err("exceeded its time limit of 1 seconds"),
-            "time limit",
-        ),
-        ("malformed", Ok("{not json"), "malformed JSON"),
+    let missing = "wrote no signature for module `Nat`";
+    let cases: [(&str, Result<&str, &str>, &str); 7] = [
+        ("crash", crash, "boom"),
+        ("timeout", timeout, "time limit"),
+        ("malformed", malformed, "malformed JSON"),
         ("version", Ok(&wrong_version), "protocol version 3"),
         ("unparsable", Ok(&unparsable), "cannot parse"),
-        (
-            "unsigned",
-            Ok(&unsigned),
-            "wrote no signature for module `Nat`",
-        ),
+        ("unsigned", Ok(&unsigned), missing),
         ("noerased", Ok(no_erased), "no erased module"),
     ];
     for (name, answer, expected) in cases {
         let errors = apply_one(name, answer).expect_err(name);
-        let message = &errors[0].message;
-        assert!(message.starts_with(ERROR_PREFIX), "{name}: {message}");
+        let message = one_error(&errors);
         assert!(message.contains(expected), "{name}: {message}");
     }
 }
@@ -283,21 +285,30 @@ fn request_carries_module_flavor_and_marker_and_protocol_version() {
     let parsed: serde_json::Value = serde_json::from_str(&line).expect("round trip");
     assert_eq!(parsed["version"], VERSION);
     assert_eq!(parsed["module"]["flavor"], "ml");
-    assert!(parsed["module"]["source"]
-        .as_str()
-        .is_some_and(|s| s.starts_with("// osprey: types=bounded")));
+    let text = parsed["module"]["source"].as_str();
+    assert!(text.is_some_and(|s| s.starts_with("// osprey: types=bounded")));
     assert_eq!(parsed["imports"].as_array().map(Vec::len), Some(0));
 }
 
 #[test]
-fn unchanged_request_is_answered_from_the_cache() {
-    let (config, runner, registry) = seam("cache", SIGNATURE, ERASED);
-    for _ in 0..2 {
-        let _erased =
-            apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
+fn a_cached_result_is_keyed_by_the_request_and_the_checker_binary() {
+    // Implements [TYPES-DISCIPLINE-PROTOCOL]: "results are cached by the hash
+    // of the request and the checker binary".
+    let cases = [
+        ("cache", false, 1, ""),
+        ("cache-binary", true, 2, "a new binary is a cache miss"),
+    ];
+    for (name, rebuilt, calls, why) in cases {
+        let (config, runner, registry) = seam(name, SIGNATURE, ERASED);
+        let files = vec![source(MARKED)];
+        for _ in 0..2 {
+            let _erased = apply_with(&config, files.clone(), &runner, &registry).expect("accepted");
+            runner.binary.set(runner.binary.get() + u64::from(rebuilt));
+        }
+        assert_eq!(runner.calls.get(), calls, "{why}");
+        assert!(Response::parse("{\"version\":2,\"result\":\"maybe\"}").is_err());
+        let _ = std::fs::remove_dir_all(&config.directory);
     }
-    assert_eq!(runner.calls.get(), 1);
-    assert!(Response::parse("{\"version\":2,\"result\":\"maybe\"}").is_err());
 }
 
 pub(crate) fn source_at(path: &str, text: &str) -> SourceFile {
@@ -389,10 +400,8 @@ fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
     ];
     let checked = apply_with(&config, sources, &runner, &registry).expect("accepted");
     assert_eq!(checked.len(), 2);
-    assert_eq!(
-        requests_of(&runner)[0]["imports"].as_array().map(Vec::len),
-        Some(0)
-    );
+    let imports = requests_of(&runner)[0]["imports"].as_array().map(Vec::len);
+    assert_eq!(imports, Some(0));
 }
 
 /// Fixture texts shared by the checker-package and checker-project builders
@@ -411,8 +420,8 @@ const RANGE_ONE: &str = "namespace bounded\n\nmodule Range\n    export zero = 1\
 
 /// Overwrite the checker input `relative` with `text` and return the build
 /// digest the change produces.
-fn digest_after_rewrite(discipline: &Discipline, root: &Path, relative: &str, text: &str) -> u64 {
-    std::fs::write(root.join(relative), text).expect("rewrite input");
+fn digest_after_rewrite(discipline: &Discipline, relative: &str, text: &str) -> u64 {
+    std::fs::write(discipline.root.join(relative), text).expect("rewrite input");
     inputs::build_digest(discipline).expect("digest")
 }
 
@@ -443,45 +452,22 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
     let built = build_dir.join(format!("bounded-{digest:016x}-{compiler_digest:016x}"));
     std::fs::create_dir_all(&build_dir).expect("build dir");
     std::fs::write(&built, b"built").expect("prebuilt binary");
-    let runner = ProcessRunner::new(compiler, build_dir);
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let found = runner
-        .executable(&discipline, deadline)
-        .expect("reused binary");
-    assert_eq!(
-        found, built,
-        "a built binary is found again under the name its inputs hash to"
-    );
-    let after = digest_after_rewrite(&discipline, &root, "src/Range.ospml", RANGE_ONE);
-    assert_ne!(
-        after, digest,
-        "a change to an imported module is a change to an input"
-    );
+    let found = ProcessRunner::new(compiler, build_dir).executable(&discipline, deadline);
+    let why = "a built binary is found again under the name its inputs hash to";
+    assert_eq!(found.expect("reused binary"), built, "{why}");
+    let after = digest_after_rewrite(&discipline, "src/Range.ospml", RANGE_ONE);
+    let why = "a change to an imported module is a change to an input";
+    assert_ne!(after, digest, "{why}");
     let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn a_rebuilt_checker_binary_misses_the_result_cache() {
-    // Implements [TYPES-DISCIPLINE-PROTOCOL]: "results are cached by the hash
-    // of the request and the checker binary".
-    let (config, runner, registry) = seam("cache-binary", SIGNATURE, ERASED);
-    for _ in 0..2 {
-        let _erased =
-            apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
-        runner.binary.set(runner.binary.get() + 1);
-    }
-    assert_eq!(runner.calls.get(), 2, "a new binary is a cache miss");
-    let _ = std::fs::remove_dir_all(&config.directory);
 }
 
 #[test]
 fn an_unreadable_checker_entry_is_an_error_and_not_a_cache_miss() {
     let config = temp_project("cache-unreadable");
-    let discipline = bounded(&config.directory);
-    let runner = ProcessRunner::new(
-        config.directory.join("no-compiler"),
-        config.directory.join("build"),
-    );
+    let dir = &config.directory;
+    let discipline = bounded(dir);
+    let runner = ProcessRunner::new(dir.join("no-compiler"), dir.join("build"));
     let request = Request::new(&source(MARKED), &config, Vec::new());
     let error = cache::run_cached(&config, &discipline, &runner, &request)
         .expect_err("an unreadable checker is a discipline error");
@@ -504,15 +490,12 @@ fn an_inferred_signature_names_every_exported_item_it_leaves_out() {
         source_at("src/Thm.ospml", USES_SHAPES),
     ];
     let _ = apply_with(&config, sources, &runner, &registry);
-    let requests = requests_of(&runner);
-    let import = &requests[0]["imports"][0];
+    let import = &requests_of(&runner)[0]["imports"][0];
     assert_eq!(import["signature"], SHAPES_SIGNATURE);
-    assert_eq!(
-        import["omitted"],
-        serde_json::json!(["type Shape", "value limit"]),
-        "a checker is told the signature is partial"
-    );
-    assert_eq!(requests[0]["version"], 2);
+    let omitted = serde_json::json!(["type Shape", "value limit"]);
+    let why = "a checker is told the signature is partial";
+    assert_eq!(import["omitted"], omitted, "{why}");
+    assert_eq!(requests_of(&runner)[0]["version"], 2);
 }
 
 #[test]
@@ -523,18 +506,11 @@ fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
         source_at("src/Thm.ospml", THM_MARKED),
     ];
     let errors = apply_with(&config, sources, &runner, &registry).expect_err("rejected");
-    assert_eq!(
-        runner.calls.get(),
-        0,
-        "no checker runs after an import failed: {errors:?}"
-    );
-    assert!(
-        errors[0]
-            .message
-            .contains("could not be inferred for an importing checker"),
-        "{}",
-        errors[0].message
-    );
+    let why = format!("no checker runs after an import failed: {errors:?}");
+    assert_eq!(runner.calls.get(), 0, "{why}");
+    let message = one_error(&errors);
+    let needle = "could not be inferred for an importing checker";
+    assert!(message.contains(needle), "{message}");
 }
 
 /// A checker declared as a project directory: its own manifest names the
@@ -542,9 +518,9 @@ fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
 fn checker_project(name: &str) -> PathBuf {
     let root = temp_project(name).directory;
     write_file(&root, "osprey.toml", PROJECT_MANIFEST);
-    write_file(&root, "checker/osprey.toml", CHECKER_MANIFEST);
     write_file(&root, "checker/src/main.ospml", RANGE_MAIN);
     write_file(&root, "checker/src/range.ospml", RANGE_ZERO);
+    write_file(&root, "checker/osprey.toml", CHECKER_MANIFEST);
     root
 }
 
@@ -565,18 +541,13 @@ fn a_checker_project_directory_is_digested_over_its_manifest_and_every_module() 
     let root = checker_project("checker-dir");
     let discipline = checker_discipline(&root);
     let digest = inputs::build_digest(&discipline).expect("digest");
-    let changed = digest_after_rewrite(&discipline, &root, "checker/src/range.ospml", RANGE_ONE);
-    assert_ne!(
-        changed, digest,
-        "a module of the checker project is an input"
-    );
-    let after = digest_after_rewrite(
-        &discipline,
-        &root,
-        "checker/osprey.toml",
-        CHECKER_MANIFEST_STRICT,
-    );
-    assert_ne!(after, changed, "the checker project's manifest is an input");
+    let module = digest_after_rewrite(&discipline, "checker/src/range.ospml", RANGE_ONE);
+    let why = "a module of the checker project is an input";
+    assert_ne!(module, digest, "{why}");
+    let strict = CHECKER_MANIFEST_STRICT;
+    let after = digest_after_rewrite(&discipline, "checker/osprey.toml", strict);
+    let why = "the checker project's manifest is an input";
+    assert_ne!(after, module, "{why}");
     let _ = std::fs::remove_dir_all(&root);
 }
 

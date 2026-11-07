@@ -95,16 +95,11 @@ fieldAccessCase () =
     incremented = counter(count = counter.count)
     moved = point(x = 100, y = 200)
     checkAll "record field behavior" [
-        point.x == 15, point.y == 25,
-        user.id == 42, user.active, !inactive.active,
-        (calculateArea rect) == 50,
-        (rect.width + rect.height ) == 15,
-        (point.x + point.y ) == 40,
-        userStatus user == "Active User",
-        userStatus inactive == "Inactive User",
-        counter.count == 0, incremented.count == 0,
-        moved.x == 100, moved.y == 200,
-        point.x == 15, point.y == 25
+        structuralEquals [point.x, point.y, user.id, (calculateArea rect)] [15, 25, 42, 50],
+        structuralEquals [(rect.width + rect.height ), (point.x + point.y ), counter.count] [15, 40, 0],
+        structuralEquals [incremented.count, moved.x, moved.y, point.x, point.y] [0, 100, 200, 15, 25],
+        user.active, !inactive.active,
+        structuralEquals [userStatus user, userStatus inactive] ["Active User", "Inactive User"]
     ]
 
-test "field access feeds expressions without mutating records" (\() => exactArithmetic (fieldAccessCase))
+test "field access feeds expressions without mutating records" (exactly fieldAccessCase)

@@ -16,6 +16,9 @@ branch flag = match flag
     true => counterLabel ()
     false => cursorLabel ()
 
+(** The joined dependency row of `deps` reads the same as `reference`'s. *)
+tracksDeps (deps, reference) = join deps ";" == join reference ";"
+
 (** Run `work` with the static `Count` signal pinned to `n`. *)
 underCount (n, work) =
     handle static Signal<Count>
@@ -36,6 +39,16 @@ initial n at =
 refreshAll old changed n at =
     underSignals (n, at, \() =>
         { counter = signalRefresh old.counter changed counterLabel, cursor = signalRefresh old.cursor changed cursorLabel, status = signalRefresh old.status changed status, footer = signalRefresh old.footer changed footer })
+
+(** Snapshot `now` while the count signal reads two. *)
+snapshotOf now = underCount (2, \() => signalSnapshot now)
+
+(** Rebuild `old` under count four once the count signal changes. *)
+refreshedFrom (old, later) = underCount (4, \() => signalRefresh old (signalDependencies count) later)
+
+(** Both snapshots of one count rebuild hold the revisions one refresh gives. *)
+rebuiltOnce (first, next) = first.revision == 1 && next.revision == 2
+
 selectiveRebuild () =
     first = initial 1 2
     changedCount = refreshAll first (signalDependencies count) 7 9
@@ -43,23 +56,23 @@ selectiveRebuild () =
     batch = refreshAll changedCursor (signalDependencies status) 3 6
     idle = refreshAll batch [] 99 99
     checkAll "selective reactive views" [
-        first.status.value == "count=1/cursor=2",
-        changedCount.counter.value == "count=7", changedCount.cursor.value == "cursor=2",
-        changedCount.status.value == "count=7/cursor=9", changedCount.footer.revision == 1,
-        changedCount.counter.revision == 2, changedCount.cursor.revision == 1,
-        changedCursor.counter.value == "count=7", changedCursor.cursor.value == "cursor=4",
-        changedCursor.status.value == "count=8/cursor=4",
-        batch.counter.value == "count=3", batch.cursor.value == "cursor=6", batch.status.revision == 4,
-        idle.status.value == batch.status.value, idle.status.revision == 4,
-        idle.footer.value == "ready", idle.footer.revision == 1,
+        structuralEquals [first.status.value, changedCount.counter.value] ["count=1/cursor=2", "count=7"],
+        structuralEquals [changedCount.cursor.value, changedCount.status.value] ["cursor=2", "count=7/cursor=9"],
+        structuralEquals [changedCursor.counter.value, changedCursor.cursor.value] ["count=7", "cursor=4"],
+        structuralEquals [changedCursor.status.value, batch.counter.value] ["count=8/cursor=4", "count=3"],
+        structuralEquals [batch.cursor.value, idle.footer.value] ["cursor=6", "ready"],
+        structuralEquals [changedCount.footer.revision, changedCount.counter.revision] [1, 2],
+        structuralEquals [changedCount.cursor.revision, batch.status.revision] [1, 4],
+        structuralEquals [idle.status.revision, idle.footer.revision] [4, 1],
+        idle.status.value == batch.status.value,
     ]
 
 conservativeBranches () =
     first = underSignals (1, 2, \() => signalSnapshot (\() => branch true))
     changed = underSignals (5, 9, \() => signalRefresh first (signalDependencies cursor) (\() => branch true))
     checkAll "may-read includes an inactive branch" [
-        length first.dependencies == 2, first.value == "count=1",
-        changed.value == "count=5", changed.revision == 2,
+        structuralEquals [length first.dependencies, changed.revision] [2, 2],
+        structuralEquals [first.value, changed.value] ["count=1", "count=5"],
     ]
 
 callbackReplacementAndUnknown () =
@@ -70,8 +83,9 @@ callbackReplacementAndUnknown () =
         signalRefresh first [] cursorLabel
     unknown = underCount (3, \() => relay (\() => signalSnapshot counterLabel))
     checkAll "callback replacement updates dependencies" [
-        replacement.value == "cursor=8", replacement.revision == 2,
-        join replacement.dependencies ";" == join (signalDependencies cursorLabel) ";", unknown.value == "count=3",
+        structuralEquals [replacement.value, unknown.value] ["cursor=8", "count=3"],
+        replacement.revision == 2,
+        tracksDeps (replacement.dependencies, signalDependencies cursorLabel),
     ]
 
 rowsStayOpen callback = signalSnapshot callback
@@ -80,16 +94,17 @@ unresolvedCallbacksRebuild () =
     first = rowsStayOpen (\() => "first")
     next = unknownRefresh first (\() => "next")
     checkAll "unknown dependencies invalidate conservatively" [
-        join first.dependencies ";" == "<unknown>", first.value == "first",
-        next.value == "next", next.revision == 2,
+        structuralEquals [join first.dependencies ";", first.value, next.value] ["<unknown>", "first", "next"],
+        next.revision == 2,
     ]
 
+keptValues () = [counterLabel (), "kept"]
 managedValues () =
-    first = underCount (2, \() => signalSnapshot (\() => [counterLabel (), "kept"]))
-    next = underCount (4, \() => signalRefresh first (signalDependencies count) (\() => [counterLabel (), "kept"]))
+    first = snapshotOf keptValues
+    next = refreshedFrom (first, keptValues)
     checkAll "snapshots own managed values independently" [
-        join first.value "," == "count=2,kept", join next.value "," == "count=4,kept",
-        first.revision == 1, next.revision == 2,
+        structuralEquals [join first.value ",", join next.value ","] ["count=2,kept", "count=4,kept"],
+        rebuiltOnce (first, next),
     ]
 
 effect Audit
@@ -109,31 +124,35 @@ evaluationAndNoOp () =
     idle = underCount (9, \() => signalRefresh first [] (factory ()))
     metadata = signalDependencies (factory ())
     checkAll "arguments run once and clean caches skip their callback" [
-        trail == "factory;build;factory;factory;", first.value == "count=2", idle.value == "count=2",
-        idle.revision == 1, join metadata ";" == join (signalDependencies count) ";"
+        structuralEquals [trail, first.value, idle.value] ["factory;build;factory;factory;", "count=2", "count=2"],
+        idle.revision == 1, tracksDeps (metadata, signalDependencies count)
     ]
 
 unresolvedChangesRebuild () =
     first = signalSnapshot (\() => "first")
     next = signalRefresh first ["<unknown>"] (\() => "next")
     checkAll "unknown changes invalidate conservatively" [
-        first.value == "first", next.value == "next", next.revision == 2
+        structuralEquals [first.value, next.value] ["first", "next"],
+        next.revision == 2
     ]
 
-maybeLabel allowed = match allowed
-    true => Success(value = counterLabel ())
-    false => Error(message = "denied")
+(** The count label answered as a success. *)
+allowedLabel () = Success(value = counterLabel ())
+
+(** The denial a refused signal read answers. *)
+deniedLabel () = Error(message = "denied")
+
+(** The payload `result` carries, whichever variant it holds. *)
+answerOf result = match result
+    Success value => value
+    Error message => message
+
 cachedResultsKeepBothVariants () =
-    first = underCount (2, \() => signalSnapshot (\() => maybeLabel true))
-    next = underCount (4, \() => signalRefresh first (signalDependencies count) (\() => maybeLabel false))
-    firstAnswer = match first.value
-        Success value => value
-        Error message => message
-    nextAnswer = match next.value
-        Success value => value
-        Error message => message
+    first = snapshotOf allowedLabel
+    next = refreshedFrom (first, deniedLabel)
     checkAll "cached results preserve success and error payloads" [
-        firstAnswer == "count=2", nextAnswer == "denied", first.revision == 1, next.revision == 2
+        structuralEquals [answerOf first.value, answerOf next.value] ["count=2", "denied"],
+        rebuiltOnce (first, next)
     ]
 
 test "reactive views rebuild selectively through helpers" selectiveRebuild
@@ -149,9 +168,9 @@ capturedLabel () =
     saved = counterLabel ()
     \() => saved
 callableSnapshotsKeepTheirCapturedValues () =
-    first = underCount (2, \() => signalSnapshot capturedLabel)
+    first = snapshotOf capturedLabel
     idle = underCount (9, \() => signalRefresh first [] capturedLabel)
-    next = underCount (4, \() => signalRefresh idle (signalDependencies count) capturedLabel)
+    next = refreshedFrom (idle, capturedLabel)
     checkAll "callable snapshots own their captured values" [first.value () == "count=2", idle.value () == "count=2", next.value () == "count=4", first.revision == 1, idle.revision == 1, next.revision == 2]
 
 test "cached callables retain their captured values across rebuilds" callableSnapshotsKeepTheirCapturedValues
@@ -166,26 +185,34 @@ type Region =
 describeSnapshot next = "${next.value}@${next.revision}"
 named (key, next) = Region(region = key, dependencies = next.dependencies, revision = next.revision, json = next.value)
 blankSnapshot () = { dependencies = ["<unknown>"], revision = 0, value = "" }
+
+(** The blank snapshot refreshed once under the current count signal. *)
+refreshedBlank () = signalRefresh (blankSnapshot ()) [] counterLabel
+
+(** The refreshed blank snapshot described while the count signal reads `n`. *)
+describedBlank n = underCount (n, \() => describeSnapshot (refreshedBlank ()))
+
 pickRow (cached, flag) =
     row = match flag
         true => { revision = 1, value = "fresh" }
         false => cached
     describeSnapshot row
 refreshArgumentsKeepTheirLayout () =
-    first = underCount (2, \() => signalSnapshot counterLabel)
-    direct = underCount (3, \() => describeSnapshot (signalRefresh (blankSnapshot ()) [] counterLabel))
-    built = underCount (3, \() => named ("list", signalRefresh (blankSnapshot ()) [] counterLabel))
+    first = snapshotOf counterLabel
+    direct = describedBlank 3
+    built = underCount (3, \() => named ("list", refreshedBlank ()))
     kept = underCount (9, \() => named ("kept", signalRefresh first [] counterLabel))
-    bound = underCount (4, \() => describeSnapshot (signalRefresh (blankSnapshot ()) [] counterLabel))
+    bound = describedBlank 4
     snapshot = underCount (5, \() => describeSnapshot (signalSnapshot counterLabel))
     print "refresh arguments: ${direct} ${built.region}=${built.json}@${built.revision} ${kept.region}=${kept.json}@${kept.revision} ${bound} ${snapshot} ${describeSnapshot first}"
     checkAll "refreshed snapshots keep their record layout as call arguments" [
-        direct == "count=3@1", built.region == "list", built.json == "count=3", built.revision == 1,
-        join built.dependencies ";" == join (signalDependencies counterLabel) ";",
-        kept.region == "kept", kept.json == "count=2", kept.revision == 1,
-        join kept.dependencies ";" == join first.dependencies ";",
-        bound == "count=4@1", snapshot == "count=5@1", describeSnapshot first == "count=2@1",
-        pickRow ({ revision = 9, value = "cached" }, false) == "cached@9", pickRow ({ revision = 9, value = "cached" }, true) == "fresh@1",
+        structuralEquals [direct, built.region, built.json, kept.region] ["count=3@1", "list", "count=3", "kept"],
+        structuralEquals [kept.json, bound, snapshot] ["count=2", "count=4@1", "count=5@1"],
+        describeSnapshot first == "count=2@1",
+        structuralEquals [pickRow ({ revision = 9, value = "cached" }, false), pickRow ({ revision = 9, value = "cached" }, true)] ["cached@9", "fresh@1"],
+        structuralEquals [built.revision, kept.revision] [1, 1],
+        tracksDeps (built.dependencies, signalDependencies counterLabel),
+        tracksDeps (kept.dependencies, first.dependencies),
     ]
 
 test "refreshed snapshots keep their layout as call arguments" refreshArgumentsKeepTheirLayout

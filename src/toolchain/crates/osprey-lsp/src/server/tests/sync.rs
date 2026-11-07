@@ -205,13 +205,7 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
         json!({"changes":[{"uri":python_uri,"type":3}]}),
     )
     .await;
-    let reports = settled(&mut h, 504).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == python_uri && p["diagnostics"] == json!([])),
-        "deleted finding clears"
-    );
+    settles_cleared(&mut h, 504, &python_uri, "deleted finding clears").await;
     scope_disable_and_remove(&mut h, &warning_uri, &a_uri, &b_uri).await;
     h.shutdown_and_exit().await;
     std::fs::remove_dir_all(root)?;
@@ -224,13 +218,7 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
         json!({"settings":{"osprey":{"diagnostics":{"enabled":false}}}}),
     )
     .await;
-    let reports = settled(h, 505).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == warning_uri && p["diagnostics"] == json!([])),
-        "disable clears findings"
-    );
+    settles_cleared(h, 505, warning_uri, "disable clears findings").await;
     h.notify(
         "workspace/didChangeConfiguration",
         json!({"settings":{"osprey":{"diagnostics":{"scope":"repository"}}}}),
@@ -249,13 +237,7 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
         json!({"event":{"removed":[{"uri":a_uri}],"added":[{"uri":b_uri}]}}),
     )
     .await;
-    let reports = settled(h, 507).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == warning_uri && p["diagnostics"] == json!([])),
-        "removed workspace clears"
-    );
+    settles_cleared(h, 507, warning_uri, "removed workspace clears").await;
 }
 
 #[tokio::test]

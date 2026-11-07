@@ -97,56 +97,34 @@ fn record_field_call_does_not_require_unused_ufcs_package() -> Result<(), String
 }
 
 #[test]
-fn imported_module_remains_required_without_member_reads() -> Result<(), String> {
-    let sources = [
-        parsed(
-            "src/main.osp",
-            Flavor::Default,
-            "namespace app;\nimport shared::Values as V\nfn main() = 42\n",
-        ),
-        parsed(
-            "vendor/@one/shared/value.osp",
-            Flavor::Default,
-            "namespace shared;\nmodule Values { export let answer = 42 }\n",
-        ),
-    ];
-    let project =
-        assemble(&config("src/main.osp"), &sources).map_err(|errors| format!("{errors:?}"))?;
-    assert!(
-        project
-            .source_dependencies
-            .iter()
-            .any(|edge| edge.symbol == "shared::Values" && edge.target == sources[1].path),
-        "An import must still resolve even when no member is read: {:?}",
-        project.source_dependencies
-    );
-    Ok(())
-}
-
-#[test]
-fn imported_namespace_remains_required_without_member_reads() -> Result<(), String> {
-    let sources = [
-        parsed(
-            "src/main.osp",
-            Flavor::Default,
-            "namespace app;\nimport shared as V\nfn main() = 42\n",
-        ),
-        parsed(
-            "vendor/@one/shared/value.osp",
-            Flavor::Default,
-            "namespace shared;\nmodule Values { export let answer = 42 }\n",
-        ),
-    ];
-    let project =
-        assemble(&config("src/main.osp"), &sources).map_err(|errors| format!("{errors:?}"))?;
-    assert!(
-        project
-            .source_dependencies
-            .iter()
-            .any(|edge| edge.target == sources[1].path),
-        "A namespace import must resolve after pruning: {:?}",
-        project.source_dependencies
-    );
+fn imports_remain_required_without_member_reads() -> Result<(), String> {
+    // A module import and a whole-namespace import must both still resolve to
+    // the vendored source after pruning, even when no member is read.
+    for (import, symbol) in [("shared::Values", Some("shared::Values")), ("shared", None)] {
+        let sources = [
+            parsed(
+                "src/main.osp",
+                Flavor::Default,
+                &format!("namespace app;\nimport {import} as V\nfn main() = 42\n"),
+            ),
+            parsed(
+                "vendor/@one/shared/value.osp",
+                Flavor::Default,
+                "namespace shared;\nmodule Values { export let answer = 42 }\n",
+            ),
+        ];
+        let project =
+            assemble(&config("src/main.osp"), &sources).map_err(|errors| format!("{errors:?}"))?;
+        assert!(
+            project
+                .source_dependencies
+                .iter()
+                .any(|edge| edge.target == sources[1].path
+                    && symbol.is_none_or(|symbol| edge.symbol == symbol)),
+            "{import} must still resolve without member reads: {:?}",
+            project.source_dependencies
+        );
+    }
     Ok(())
 }
 

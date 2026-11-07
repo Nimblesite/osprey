@@ -20,10 +20,8 @@ print (toString (length (all (Node(kids = [Leaf(item = 1), Leaf(item = 2)])))))
 genericSelfRecursionFoldCase () =
     leaves = all (Node(kids = [Leaf(item = 1), Leaf(item = 2), Leaf(item = 3)]))
     checkAll "generic self-recursion through a fold lambda" [
-        length leaves == 3,
-        (listGet leaves 0 ?: 0) == 1,
-        (listGet leaves 1 ?: 0) == 2,
-        (listGet leaves 2 ?: 0) == 3
+        structuralEquals [length leaves, (listGet leaves 0 ?: 0)] [3, 1],
+        structuralEquals [(listGet leaves 1 ?: 0), (listGet leaves 2 ?: 0)] [2, 3]
     ]
 
 test "generic self-recursion through a fold lambda flattens a tree" genericSelfRecursionFoldCase

@@ -37,8 +37,8 @@ sharedFieldCase () =
     tabs = [Tab<string>(name = "t", child = Leaf<string>(label = "tab"))]
     rows = [Row<string>(child = Leaf<string>(label = "row"), key = "k")]
     checkAll "two generic records sharing a field name read their own slots" [
-        structuralEquals [tabChildAt (tabs, 0), rowChildAt (rows, 0), tabChildAt (tabs, 1)] ["tab", "row", ""],
-        rowChildAt (rows, 1) == ""
+        structuralEquals [tabChildAt (tabs, 0), rowChildAt (rows, 0)] ["tab", "row"],
+        structuralEquals [tabChildAt (tabs, 1), rowChildAt (rows, 1)] ["", ""]
     ]
 
 test "shared field name across generic records" sharedFieldCase

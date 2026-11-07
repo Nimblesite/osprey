@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Type equality coverage: GenericType.Equals, FunctionType.Equals,
 // UnionType.Equals. Same-shape generics unify; different-shape generics
 // don't. Functions with identical signatures unify when passed through
@@ -269,9 +288,12 @@ fn typeEqualityCase() = {
         pair.second == "eight",
         triple.first == 9,
         triple.second == "nine",
-        structuralEquals([triple.third, applyInt(f: addOne, x: 9), applyInt(f: timesTwo, x: 9)], [10, 10, 18]),
+        triple.third == 10,
+        applyInt(f: addOne, x: 9) == 10,
+        applyInt(f: timesTwo, x: 9) == 18,
         applyInt(f: minusOne, x: 9) == 8,
-        structuralEquals([applyStr(f: excl, s: "hi"), applyStr(f: ques, s: "hi")], ["hi!", "hi?"]),
+        applyStr(f: excl, s: "hi") == "hi!",
+        applyStr(f: ques, s: "hi") == "hi?",
         applyToStr(f: intToString, x: 42) == "42",
         applyTwo(f: twoArgAdd, a: 5, b: 7) == 12,
         applyThree(f: threeArgAdd, a: 1, b: 2, c: 3) == 6,
@@ -286,7 +308,8 @@ fn typeEqualityCase() = {
         describe(mkGate()) == "guarded",
         identityOf<int>(5) == 5,
         identityOf<string>("os") == "os",
-        structuralEquals([length(identityOf<List<int>>([1, 2])), length(emptyOf<int>())], [2, 0]),
+        length(identityOf<List<int>>([1, 2])) == 2,
+        length(emptyOf<int>()) == 0,
         pickOf<int, string>(7, "seven") == 7,
         identityOf<bool>(true),
         !identityOf<bool>(false),
@@ -297,20 +320,27 @@ fn typeEqualityCase() = {
         identityOf<Container<string>>(Container { value: "c" }).value == "c",
         isEmpty(emptyOf<string>()),
         pickOf<string, int>("first", 2) == "first",
-        structuralEquals([pickOf<int, int>(3, 4), alsoOf<int>(21, timesTwo)], [3, 42]),
+        pickOf<int, int>(3, 4) == 3,
+        alsoOf<int>(21, timesTwo) == 42,
         identityOf<(int) -> int>(timesTwo)(21) == 42,
-        structuralEquals([applyInt(f: identityOf<(int) -> int>(addOne), x: 9), [4, 5].headOr<int>(0)], [10, 4]),
+        applyInt(f: identityOf<(int) -> int>(addOne), x: 9) == 10,
+        [4, 5].headOr<int>(0) == 4,
         headOr<int>([], 9) == 9,
         headOr<string>(["a"], "z") == "a",
         repeatOf<int>(7, 3) == 7,
         repeatOf<string>("os", 2) == "os",
         (identityOf<Result<int, string>>(20 * 5) ?: 0) == 100,
-        structuralEquals([identityOf<int>(identityOf<int>(6)), srcInt().produce, srcInt().make(9)], [6, 4, 9]),
+        identityOf<int>(identityOf<int>(6)) == 6,
+        srcInt().produce == 4,
+        srcInt().make(9) == 9,
         length(srcInt().items) == 2,
         (srcInt().items.listGet(1) ?: 0) == 2,
         sinkInt().admit(1),
-        structuralEquals([sinkInt().hof(|_n| => 3), bothInt().slot, bothInt().consume(1)], [7, 5, 6]),
-        structuralEquals([keepSource(srcInt()), keepSink(sinkInt())], [4, 7])
+        sinkInt().hof(|_n| => 3) == 7,
+        bothInt().slot == 5,
+        bothInt().consume(1) == 6,
+        keepSource(srcInt()) == 4,
+        keepSink(sinkInt()) == 7
     ])
 }
 

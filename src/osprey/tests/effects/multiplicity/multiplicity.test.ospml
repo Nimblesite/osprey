@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Resumption multiplicity — how many times an effect's request may be answered
     ([MULTI-AXIS], docs/specs/language/0017-AlgebraicEffects.md). The ML twin of
     `multiplicity.test.osp`, sharing its golden.
@@ -41,10 +55,13 @@ placeOrder amount =
     perform Email.deliver "receipt for ${toString settled}"
     "settled ${toString settled}"
 
-(** Install the audit transcript and one-receipt-per-delivery regions around
-    `work`, returning its answer with the handler-owned transcript and count. *)
-withReceipts work =
+(** [MULTI-FALSIFY] 1 — a `once` arm that retries internally still answers its
+    request exactly once, so the body's `Email.deliver` runs exactly once. The
+    two `resume` sites sit on different `match` branches, which is the shape
+    [MULTI-HANDLE-ONCE] must keep legal: at most one per control path. *)
+retrySendsOneReceiptCase () =
     mut transcript = ""
+    mut attempts = 0
     mut receipts = 0
     outcome =
         handle Audit
@@ -53,16 +70,6 @@ withReceipts work =
             deliver body =>
                 receipts := receipts + 1 
                 perform Audit.line "email: ${body}"
-        work ()
-    { outcome = outcome, transcript = transcript, receipts = receipts }
-
-(** [MULTI-FALSIFY] 1 — a `once` arm that retries internally still answers its
-    request exactly once, so the body's `Email.deliver` runs exactly once. The
-    two `resume` sites sit on different `match` branches, which is the shape
-    [MULTI-HANDLE-ONCE] must keep legal: at most one per control path. *)
-retrySendsOneReceiptCase () =
-    mut attempts = 0
-    run = withReceipts (\() =>
         handle Charge
             charge amount =>
                 attempts := attempts + 1 
@@ -74,30 +81,38 @@ retrySendsOneReceiptCase () =
                         match settle (amount, attempts)
                             Success value => resume value
                             Error message => "declined: ${message}"
-        placeOrder 120)
+        placeOrder 120
     checkAll "retry answers once and mails once" [
-        run.outcome == "settled 120",
+        outcome == "settled 120",
         attempts == 2,
-        run.receipts == 1,
-        run.transcript == "declined: gateway timeout; retrying\nemail: receipt for 120\n",
-        !contains run.transcript "email: receipt for 120\nemail: receipt for 120\n"
+        receipts == 1,
+        transcript == "declined: gateway timeout; retrying\nemail: receipt for 120\n",
+        !contains transcript "email: receipt for 120\nemail: receipt for 120\n"
     ]
 
 (** Declining to resume is the safe direction `once` permits: `once` is affine,
     not linear, so zero resumptions is always legal. *)
 declineSendsNoReceiptCase () =
-    run = withReceipts (\() =>
+    mut transcript = ""
+    mut receipts = 0
+    outcome =
+        handle Audit
+            line message => transcript := "${transcript}${message}\n"
+        handle Email
+            deliver body =>
+                receipts := receipts + 1 
+                perform Audit.line "email: ${body}"
         handle Charge
             charge amount => match settle (amount, 1)
                 Success value => resume value
                 Error message =>
                     perform Audit.line "abandoned ${toString amount}: ${message}"
                     "declined: ${message}"
-        placeOrder 75)
+        placeOrder 75
     checkAll "abandoning the continuation mails nothing" [
-        run.outcome == "declined: gateway timeout",
-        run.receipts == 0,
-        run.transcript == "abandoned 75: gateway timeout\n"
+        outcome == "declined: gateway timeout",
+        receipts == 0,
+        transcript == "abandoned 75: gateway timeout\n"
     ]
 
 (** ONE unannotated definition applied under two different effects — the
@@ -144,6 +159,7 @@ contextualKeywordCase () =
     checkAll "modifier words stay ordinary identifiers" [
         total == 15, abort == 115
     ]
+
 
 test "a once arm retrying internally sends exactly one receipt" (\() => exactArithmetic (retrySendsOneReceiptCase))
 test "a once arm that declines to resume sends no receipt" (\() => exactArithmetic (declineSendsNoReceiptCase))

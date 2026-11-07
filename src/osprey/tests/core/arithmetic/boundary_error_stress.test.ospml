@@ -32,6 +32,9 @@ verify (work, expected, wantedFaults) =
     expect (work ()) expected
     expect faults wantedFaults
 
+(** A test body that checks `work` through `verify` and the faults it must raise. *)
+checking (work, expected, wantedFaults) = \() => verify (work, expected, wantedFaults)
+
 (** A delta and the two boundary results that move with it. *)
 type DeltaCase =
     delta : int
@@ -66,46 +69,48 @@ caseSuffix n = match n < 10
 deltaSweep () =
     _ = forEachList (deltaCases ()) (\row =>
         suffix = caseSuffix row.delta
-        test "maximum minus delta ${suffix}" (\() => verify ((\() => maxMinus row.delta), row.minus, ""))
-        test "maximum restored after subtraction ${suffix}" (\() => verify ((\() => maxRestored row.delta), maxValue (), ""))
-        test "maximum intermediate then overflow ${suffix}" (\() => verify ((\() => maxThenOverflow row.delta), -9223372036854775808, maxOverflowFault))
-        test "minimum plus delta ${suffix}" (\() => verify ((\() => minPlus row.delta), row.plus, "")))
+        test "maximum minus delta ${suffix}" (checking ((\() => maxMinus row.delta), row.minus, ""))
+        test "maximum restored after subtraction ${suffix}" (checking ((\() => maxRestored row.delta), maxValue (), ""))
+        test "maximum intermediate then overflow ${suffix}" (checking ((\() => maxThenOverflow row.delta), -9223372036854775808, maxOverflowFault))
+        test "minimum plus delta ${suffix}" (checking ((\() => minPlus row.delta), row.plus, "")))
+
+(** Emits the division- and remainder-by-zero tests for one zero divisor. *)
+zeroDivisorRows (suffix, divided, remainder) =
+    test "division by zero ${suffix}" divided
+    test "remainder by zero ${suffix}" remainder
 
 (** Integer numerators 37..185 divided and remainded by a zero literal. *)
 intZeroDivisorSweep () =
     _ = forEachList (toList (range 1 6)) (\k =>
         numerator = satMul k 37
-        test "division by zero ${caseSuffix k}" (\() => verify ((\() => numerator / 0), -0.5, "zero(/,${toString numerator}.0);"))
-        test "remainder by zero ${caseSuffix k}" (\() => verify ((\() => numerator % 0), 0, "remainder(${toString numerator});")))
+        zeroDivisorRows (caseSuffix k, checking ((\() => numerator / 0), -0.5, "zero(/,${toString numerator}.0);"), checking ((\() => numerator % 0), 0, "remainder(${toString numerator});")))
 
 (** Float divisors 6.5..10.5 divided and remainded by a zero literal. *)
 floatZeroDivisorSweep () =
     divisors = [6.5, 7.5, 8.5, 9.5, 10.5]
     _ = forEachList (toList (range 0 5)) (\k =>
         divisor = listGet divisors k ?: 0.0
-        suffix = caseSuffix (satAdd k 6)
-        test "division by zero ${suffix}" (\() => verify ((\() => divisor / 0.0), -0.5, "zero(/,${toString divisor});"))
-        test "remainder by zero ${suffix}" (\() => verify ((\() => divisor % 0.0), -0.5, "zero(%,${toString divisor});")))
+        zeroDivisorRows (caseSuffix (satAdd k 6), checking ((\() => divisor / 0.0), -0.5, "zero(/,${toString divisor});"), checking ((\() => divisor % 0.0), -0.5, "zero(%,${toString divisor});")))
 
 (** checked* renders through `toString`, so its exact Result text is asserted. *)
-assertRendered (label, work, expected) = test label (\() => verify ((\() => toString (work ())), expected, ""))
+assertRendered (label, work, expected) = test label (checking ((\() => toString (work ())), expected, ""))
 
 deltaSweep ()
 intZeroDivisorSweep ()
 floatZeroDivisorSweep ()
 
-test "maximum plus one overflows" (\() => verify ((\() => maxValue () + 1), -9223372036854775808, maxOverflowFault))
-test "maximum times two overflows" (\() => verify ((\() => maxValue () * 2), -2, "overflow(*,9223372036854775807,2,-2);"))
-test "square above signed root overflows" (\() => verify ((\() => (runtimeValue 3037000500) * (runtimeValue 3037000500)), -9223372036709301616, "overflow(*,3037000500,3037000500,-9223372036709301616);"))
-test "minimum minus one overflows" (\() => verify ((\() => minValue () - 1), 9223372036854775807, "overflow(-,-9223372036854775808,1,9223372036854775807);"))
-test "minimum times negative one overflows" (\() => verify ((\() => minValue () * -(1)), -9223372036854775808, "overflow(*,-9223372036854775808,-1,-9223372036854775808);"))
-test "negating minimum overflows" (\() => verify ((\() => -(minValue ())), -9223372036854775808, "overflow(neg,-9223372036854775808,0,-9223372036854775808);"))
-test "absolute minimum overflows" (\() => verify ((\() => (abs (minValue ()))), -9223372036854775808, "overflow(abs,-9223372036854775808,0,-9223372036854775808);"))
-test "minimum remainder negative one is representable" (\() => verify ((\() => minValue () % -(1)), 0, ""))
-test "minimum remainder one is zero" (\() => verify ((\() => minValue () % 1), 0, ""))
-test "minimum float division by negative one is finite" (\() => verify ((\() => minValue () / -(1)), 9223372036854775808.0, ""))
-test "integer division minimum by negative one overflows" (\() => verify ((\() => (intDiv (minValue ()) ((0 - 1)))), -9223372036854775808, "overflow(intDiv,-9223372036854775808,-1,-9223372036854775808);"))
-test "integer division minimum by one succeeds" (\() => verify ((\() => (intDiv (minValue ()) (1))), -9223372036854775808, ""))
+test "maximum plus one overflows" (checking ((\() => maxValue () + 1), -9223372036854775808, maxOverflowFault))
+test "maximum times two overflows" (checking ((\() => maxValue () * 2), -2, "overflow(*,9223372036854775807,2,-2);"))
+test "square above signed root overflows" (checking ((\() => (runtimeValue 3037000500) * (runtimeValue 3037000500)), -9223372036709301616, "overflow(*,3037000500,3037000500,-9223372036709301616);"))
+test "minimum minus one overflows" (checking ((\() => minValue () - 1), 9223372036854775807, "overflow(-,-9223372036854775808,1,9223372036854775807);"))
+test "minimum times negative one overflows" (checking ((\() => minValue () * -(1)), -9223372036854775808, "overflow(*,-9223372036854775808,-1,-9223372036854775808);"))
+test "negating minimum overflows" (checking ((\() => -(minValue ())), -9223372036854775808, "overflow(neg,-9223372036854775808,0,-9223372036854775808);"))
+test "absolute minimum overflows" (checking ((\() => (abs (minValue ()))), -9223372036854775808, "overflow(abs,-9223372036854775808,0,-9223372036854775808);"))
+test "minimum remainder negative one is representable" (checking ((\() => minValue () % -(1)), 0, ""))
+test "minimum remainder one is zero" (checking ((\() => minValue () % 1), 0, ""))
+test "minimum float division by negative one is finite" (checking ((\() => minValue () / -(1)), 9223372036854775808.0, ""))
+test "integer division minimum by negative one overflows" (checking ((\() => (intDiv (minValue ()) ((0 - 1)))), -9223372036854775808, "overflow(intDiv,-9223372036854775808,-1,-9223372036854775808);"))
+test "integer division minimum by one succeeds" (checking ((\() => (intDiv (minValue ()) (1))), -9223372036854775808, ""))
 
 assertRendered ("checkedAdd success", (\() => checkedAdd 2 3), "Success(5)")
 assertRendered ("checkedSub negative success", (\() => checkedSub 2 3), "Success(-1)")

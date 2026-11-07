@@ -241,9 +241,11 @@ fn recursiveUnionCase() = {
         label(recursiveTree) == "node",
         rootVal(recursiveTree) == 4,
         leftLabel(recursiveTree) == "node",
-        structuralEquals([leftRightVal(recursiveTree), rightRootVal(recursiveTree)], [3, 6]),
+        leftRightVal(recursiveTree) == 3,
+        rightRootVal(recursiveTree) == 6,
         rightRightVal(recursiveTree) == 7,
-        structuralEquals([descExpr(recursiveExpression), descStmt(unwrapBlk(recursiveExpression))], ["blk", "ret"]),
+        descExpr(recursiveExpression) == "blk",
+        descStmt(unwrapBlk(recursiveExpression)) == "ret",
         descExpr(unwrappedExpression) == "add",
         unwrapAddLen(unwrappedExpression) == 2
     ])

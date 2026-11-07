@@ -96,4 +96,4 @@ repoTableCase () =
         startsWith (cyan "*") "\e[36m"
     ]
 
-test "repository JSON renders after an HTTP response round trip" (\() => exactArithmetic (repoTableCase))
+test "repository JSON renders after an HTTP response round trip" (exactly repoTableCase)

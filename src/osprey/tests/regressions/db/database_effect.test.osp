@@ -53,26 +53,31 @@ effect Database {
 }
 
 /// --- real SQLite handler implementations (top-level, no captures) ---
-fn openReal(path) = {
+/// Runs `call` against a fresh out-parameter cell, yielding its status code and pointer.
+fn withCell(call) = {
     let cell = osprey_ffi_cell()
-    let rc = sqlite3_open(filename: path, ppDb: cell)
-    let db = osprey_ffi_deref(cell: cell)
+    let rc = call(cell)
+    let value = osprey_ffi_deref(cell: cell)
     let _freed = osprey_ffi_free(cell: cell)
-    match rc {
-        0 => Success { value: db }
+    { rc: rc, value: value }
+}
+
+fn openReal(path) = {
+    let opened = withCell(fn(cell) => sqlite3_open(filename: path, ppDb: cell))
+    match opened.rc {
+        0 => Success { value: opened.value }
         _ => Error { message: "open failed" }
     }
 }
 
-fn execReal(db, sql) =
-    sqlite3_exec(db: db, sql: sql, cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
+fn execReal(db, sql) = {
+    let nullptr = osprey_ffi_null()
+    sqlite3_exec(db: db, sql: sql, cb: nullptr, arg: nullptr, errmsg: nullptr)
+}
 
 fn prepareReal(db, sql) = {
-    let cell = osprey_ffi_cell()
-    let _rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) , ppStmt: cell, tail: osprey_ffi_null())
-    let stmt = osprey_ffi_deref(cell: cell)
-    let _freed = osprey_ffi_free(cell: cell)
-    stmt
+    let prepared = withCell(fn(cell) => sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) , ppStmt: cell, tail: osprey_ffi_null()))
+    prepared.value
 }
 
 /// --- application logic: effect-typed, knows nothing about SQLite or FFI ---
@@ -84,6 +89,9 @@ fn seedUser(db, uid, uname) !Database = {
     let _fin = perform Database.finalize(stmt)
     rc
 }
+
+/// Seeds the two demo users, yielding the line that reports their status codes.
+fn seedDemoUsers(db) !Database = "inserted ${seedUser(db: db, uid: 1, uname: "Ada")} ${seedUser(db: db, uid: 2, uname: "Linus")}"
 
 fn showUser(stmt) !Database = {
     let rc = perform Database.step(stmt)
@@ -97,9 +105,7 @@ fn runApp(db) !Database = {
         0 => print("create ok")
         _ => print("create err")
     }
-    let i1 = seedUser(db: db, uid: 1, uname: "Ada")
-    let i2 = seedUser(db: db, uid: 2, uname: "Linus")
-    print("inserted ${i1} ${i2}")
+    print(seedDemoUsers(db))
     let q = perform Database.prepare(db, "SELECT id, name FROM users ORDER BY id")
     let _r1 = showUser(q)
     let _r2 = showUser(q)
@@ -128,10 +134,19 @@ fn withDatabase(work) = {
     work()
 }
 
-fn databaseDemo() = withDatabase(fn() => match perform Database.open(":memory:") {
-    Success { value } => runApp(db: value)
-    Error { message } => print("open ${message}")
+/// Runs `work` against a fresh in-memory database inside the real handler.
+fn withMemoryDatabase(work) = withDatabase(fn() => match perform Database.open(":memory:") {
+    Success { value } => work(value)
+    Error { message } => Error { message: message }
 })
+
+/// Reports an open failure, otherwise yields whatever the run produced.
+fn reportOpened(result) = match result {
+    Success { value } => value
+    Error { message } => print("open ${message}")
+}
+
+fn databaseDemo() = reportOpened(withMemoryDatabase(runApp))
 databaseDemo()
 
 /// Captures every externally visible result of one handled database interaction.
@@ -170,10 +185,7 @@ fn observeDatabase(db) !Database = {
 }
 
 /// Installs the real handler and preserves an open failure in the Result channel.
-fn runDatabaseProbe() = withDatabase(fn() => match perform Database.open(":memory:") {
-    Success { value } => Success { value: observeDatabase(value) }
-    Error { message } => Error { message: message }
-})
+fn runDatabaseProbe() = withMemoryDatabase(observeDatabase)
 
 /// Reports whether the real handler produced an observation instead of an error.
 fn databaseOpened(result) = match result {
@@ -188,9 +200,9 @@ fn databaseEffectCase() = {
         Success { value } => checkAll("Database effect round trip", [
             databaseOpened(result),
             structuralEquals([value.createStatus, value.insertStatus, value.rowStatus], [0, 101, 100]),
-            value.selectedId == 7,
-            value.selectedName == "Grace",
-            structuralEquals([value.doneStatus, value.finalizeStatus, value.closeStatus], [101, 0, 0])
+            structuralEquals([value.selectedId, value.doneStatus], [7, 101]),
+            structuralEquals([value.finalizeStatus, value.closeStatus], [0, 0]),
+            value.selectedName == "Grace"
         ])
         Error { message } => checkAll("Database effect open result", [
             databaseOpened(result),

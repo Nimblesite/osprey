@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of functional_showcase.osp. Layout blocks, whitespace
 // application (`range 1 6`), and `\x => …` lambdas lower to the SAME canonical
 // AST as the Default braces/parens/`fn(x) =>` form — byte-identical IR
@@ -112,7 +126,9 @@ iteratorPipelineCase () =
         listLength kept == 2,
         (listGet kept 0 ?: 0) == 6,
         (listGet kept 1 ?: 0) == 8,
-        structuralEquals [listLength (range 3 3 |> toList), listLength (source |> toList), listLength names] [0, 4, 3],
+        listLength (range 3 3 |> toList) == 0,
+        listLength (source |> toList) == 4,
+        listLength names == 3,
         (listGet names 2 ?: "none") == "n2",
         (listGet halves 1 ?: 9.5) == 1.0
     ]
@@ -137,7 +153,9 @@ lambdaOverloadCase () =
     curriedJoin = \a => \b => a + b
     sum = \(a, b) => a + b 
     checkAll "a let-bound lambda picks its overload from its use" [
-        structuralEquals [join ("os", "prey"), join ("", "x"), curriedJoin "os" "prey"] ["osprey", "x", "osprey"],
+        join ("os", "prey") == "osprey",
+        join ("", "x") == "x",
+        curriedJoin "os" "prey" == "osprey",
         curriedJoin "a" "" == "a",
         sum (20, 22) == 42,
         length (join ("ab", "cde")) == 5
@@ -154,7 +172,9 @@ closureHandlerCase () =
         forEachList keys (\k => perform Tally.note k)
         seen
     checkAll "a handler inside a closure keeps its captured state" [
-        structuralEquals [digits [1, 2, 3], digits [7], digits [9, 0]] [123, 7, 90]
+        digits [1, 2, 3] == 123,
+        digits [7] == 7,
+        digits [9, 0] == 90
     ]
 
 (** A function VALUE that returns a tagged collection. A named function recovers
@@ -239,13 +259,18 @@ genericReturnedLambdaCase () =
         identityValue "os" == "os",
         identityValue 2.5 == 2.5,
         identityValue true,
-        structuralEquals [alwaysText 0, alwaysText "any", alwaysText 1.5] ["kept", "kept", "kept"],
-        structuralEquals [alwaysNumber "z", alwaysNumber false, sharedIdentity 5] [42, 42, 5],
+        alwaysText 0 == "kept",
+        alwaysText "any" == "kept",
+        alwaysText 1.5 == "kept",
+        alwaysNumber "z" == 42,
+        alwaysNumber false == 42,
+        sharedIdentity 5 == 5,
         sharedIdentity "across a function boundary" == "across a function boundary",
         sharedIdentity 1.25 == 1.25,
         seedAgrees == 1,
         runs == 1
     ]
+
 
 (** A still-generic lambda has no closure cell, so it is applied inline at each
     call site. Its environment is nonetheless fixed where it was DEFINED. A
@@ -298,16 +323,27 @@ genericLambdaEnvironmentCase () =
             total := total + value
     perform Tally.note 5
     checkAll "a generic lambda keeps the environment it was defined in" [
-        structuralEquals [fold staged "" (\(acc, s) => acc + s), afterStage] ["0:kept-51:kept-5", "kept-6"],
-        structuralEquals [shadowedStage, tagged 1, tagged "s"] ["shadow0:kept-71:kept-7", "1:kept-7", "s:kept-7"],
-        structuralEquals [fromFactory 1, fromFactory "s", later] ["kept-8", "kept-8", "kept-9"],
-        structuralEquals [shadowed, runThunk (\() => tagged 2)] ["1:kept-7/shadow", "2:kept-7"],
+        fold staged "" (\(acc, s) => acc + s) == "0:kept-51:kept-5",
+        afterStage == "kept-6",
+        shadowedStage == "shadow0:kept-71:kept-7",
+        tagged 1 == "1:kept-7",
+        tagged "s" == "s:kept-7",
+        fromFactory 1 == "kept-8",
+        fromFactory "s" == "kept-8",
+        later == "kept-9",
+        shadowed == "1:kept-7/shadow",
+        runThunk (\() => tagged 2) == "2:kept-7",
         runThunk (\() => runThunk (\() => tagged "deep")) == "deep:kept-7",
-        structuralEquals [runThunk (\() => fromFactory 3), runThunk (\() => viaLambda 4)] ["kept-8", "4:kept-7"],
+        runThunk (\() => fromFactory 3) == "kept-8",
+        runThunk (\() => viaLambda 4) == "4:kept-7",
         viaAlias 3 == 3,
-        structuralEquals [viaAlias "a", viaShout 4, viaShout "b"] ["a", "4!", "b!"],
+        viaAlias "a" == "a",
+        viaShout 4 == "4!",
+        viaShout "b" == "b!",
         rebound,
-        structuralEquals [inArm, report "t", runThunk (\() => report true)] ["arm:kept-7", "t=5", "true=5"]
+        inArm == "arm:kept-7",
+        report "t" == "t=5",
+        runThunk (\() => report true) == "true=5"
     ]
 
 test "scalar pipes preserve helper composition" (\() => exactArithmetic (scalarPipelineCase))

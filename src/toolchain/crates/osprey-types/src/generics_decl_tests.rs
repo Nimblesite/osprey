@@ -252,7 +252,7 @@ spec_cases! {
     ml_function_binders_live_on_the_signature: accepts(Ml, "pick<T> : (T, T) -> T\npick (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n");
 
     /// "A binding without a signature cannot declare function type parameters."
-    ml_a_binding_cannot_declare_type_parameters_without_a_signature: rejected_somehow(Ml, "pick<T> (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n");
+    ml_a_binding_cannot_declare_type_parameters_without_a_signature: parse_rejects_with(Ml, "pick<T> (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n", "a binding cannot declare type parameters without a signature");
 
     /// The ML twin of the one-binder-relates-two-parameters rule.
     ml_one_binder_relates_two_parameters: rejects_with(Ml, "pick<T> : (T, T) -> T\npick (first, second) = first\nkept = pick (10, \"twenty\")\nprint \"${kept}\"\n", "cannot unify");

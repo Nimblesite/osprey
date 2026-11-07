@@ -120,12 +120,10 @@ async fn state_boundaries_are_visible_in_both_flavors() -> Result<(), Box<dyn st
             .await
             .params
             .ok_or("missing diagnostics")?;
-        assert_at(&report, "/diagnostics/0/code", "state-boundary");
-        assert_at(&report, "/diagnostics/0/severity", 2);
-        assert_at(&report, "/diagnostics/0/range/start/line", 1);
-        assert_at(
+        assert_first_warning(
             &report,
-            "/diagnostics/0/message",
+            "state-boundary",
+            1,
             "state boundary `vault::Store`: 0 private cells; exported effects: none",
         );
         h.shutdown_and_exit().await;
@@ -146,12 +144,10 @@ async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::erro
         .await
         .params
         .ok_or("missing diagnostics")?;
-    assert_at(&report, "/diagnostics/0/code", "namespace-folder-drift");
-    assert_at(&report, "/diagnostics/0/severity", 2);
-    assert_at(&report, "/diagnostics/0/range/start/line", 0);
-    assert_at(
+    assert_first_warning(
         &report,
-        "/diagnostics/0/message",
+        "namespace-folder-drift",
+        0,
         "namespace `app` spans 2 folders; source paths do not change its identity",
     );
     h.shutdown_and_exit().await;
@@ -456,25 +452,13 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"changes":[{"uri":uri("two"),"type":2}]}),
     )
     .await;
-    let reports = settled(&mut h, 403).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("two") && p["diagnostics"] == json!([])),
-        "refresh unopened repair: {reports:?}"
-    );
+    settles_cleared(&mut h, 403, &uri("two"), "refresh unopened repair").await;
     h.notify(
         "workspace/didChangeConfiguration",
         json!({"settings":{"osprey":{"diagnostics":{"scope":"openFiles"}}}}),
     )
     .await;
-    let reports = settled(&mut h, 404).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
-        "clear closed files: {reports:?}"
-    );
+    settles_cleared(&mut h, 404, &uri("one"), "clear closed files").await;
     let report = h.open_at(&uri("one"), "fn broken() { missing }\n").await;
     assert_at(
         &report.params.ok_or("open report")?,
@@ -486,14 +470,16 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"textDocument":{"uri":uri("one")}}),
     )
     .await;
-    let reports = settled(&mut h, 405).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
-        "close clears: {reports:?}"
-    );
+    settles_cleared(&mut h, 405, &uri("one"), "close clears").await;
     h.shutdown_and_exit().await;
     std::fs::remove_dir_all(root)?;
     Ok(())
+}
+
+/// The report's first diagnostic is a `code` warning on `line` saying `message`.
+fn assert_first_warning(report: &Value, code: &str, line: u32, message: &str) {
+    assert_at(report, "/diagnostics/0/code", code);
+    assert_at(report, "/diagnostics/0/severity", 2);
+    assert_at(report, "/diagnostics/0/range/start/line", line);
+    assert_at(report, "/diagnostics/0/message", message);
 }

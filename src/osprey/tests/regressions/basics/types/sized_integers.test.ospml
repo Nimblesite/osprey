@@ -48,31 +48,34 @@ bump n = n + 1
 identity x = x
 twice (f, x) = f (f x)
 
+(** Print four values as one space-separated row. *)
+shown4 (a, b, c, d) = print "${a} ${b} ${c} ${d}"
+
 arithmetic () =
-    print "${i8High + 1} ${i8Low - 1} ${i8High * 2} ${-i8Low}"
-    print "${i16High + 1} ${i16Low - 1} ${i16High * 2} ${-i16Low}"
-    print "${i32High + 1} ${i32Low - 1} ${i32High * 2} ${-i32Low}"
-    print "${u8High + 1} ${u8Zero - 1} ${u8High * 2} ${-u8High}"
+    shown4 (i8High + 1, i8Low - 1, i8High * 2, -i8Low)
+    shown4 (i16High + 1, i16Low - 1, i16High * 2, -i16Low)
+    shown4 (i32High + 1, i32Low - 1, i32High * 2, -i32Low)
+    shown4 (u8High + 1, u8Zero - 1, u8High * 2, -u8High)
     print "${u16High + 1} ${u16High * 2}"
     print "${u32High + 1} ${u32High * 2}"
     print "${abs i8Low} ${abs i16High} ${abs u8High}"
-    print "${u8High % 7} ${i8Low % 7} ${i8Low % -1} ${u32High % 10}"
-    print "${u8High % u8Zero} ${intDiv i8Low (-1)} ${intDiv u8High 2} ${intDiv u8High u8Zero}"
+    shown4 (u8High % 7, i8Low % 7, i8Low % -1, u32High % 10)
+    shown4 (u8High % u8Zero, intDiv i8Low (-1), intDiv u8High 2, intDiv u8High u8Zero)
     print "${u8High / 2} ${i8Low / 2}"
     print "${bump 32767} ${bump 41}"
 
 totalHelpers () =
-    print "${wrapAdd u8High 1} ${wrapSub u8Zero 1} ${wrapMul u8High 2} ${wrapAdd i8High 1}"
+    shown4 (wrapAdd u8High 1, wrapSub u8Zero 1, wrapMul u8High 2, wrapAdd i8High 1)
     print "${satAdd u8High 1} ${satSub u8Zero 1} ${satMul u8High 2}"
-    print "${satAdd i8High 1} ${satSub i8Low 1} ${satMul i8Low (-1)} ${satAdd u32High 1}"
+    shown4 (satAdd i8High 1, satSub i8Low 1, satMul i8Low (-1), satAdd u32High 1)
     print "${bitAnd u8High 15} ${bitOr u8Zero 3} ${bitXor u8High 15} ${bitNot u8Zero} ${bitNot i8High}"
-    print "${shiftLeft u8High 1} ${shiftRight u8High 1} ${shiftRight i8Low 1} ${shiftRightLogical i8Low 1}"
-    print "${shiftLeft u8High 8} ${shiftRight u8High 8} ${shiftRight i8Low 8} ${shiftLeft i16High 15}"
-    print "${checkedAdd u8High 1} ${checkedAdd u8Zero 1} ${checkedSub u8Zero 1} ${checkedMul i8High 2}"
+    shown4 (shiftLeft u8High 1, shiftRight u8High 1, shiftRight i8Low 1, shiftRightLogical i8Low 1)
+    shown4 (shiftLeft u8High 8, shiftRight u8High 8, shiftRight i8Low 8, shiftLeft i16High 15)
+    shown4 (checkedAdd u8High 1, checkedAdd u8Zero 1, checkedSub u8Zero 1, checkedMul i8High 2)
 
 comparisons () =
-    print "${u8High > 100} ${u32High > 2147483648} ${i8Low < 0} ${i32Low < i32High}"
-    print "${u8High == 255} ${u8High != 255} ${u32High >= 4294967295} ${u8Zero <= 0}"
+    shown4 (u8High > 100, u32High > 2147483648, i8Low < 0, i32Low < i32High)
+    shown4 (u8High == 255, u8High != 255, u32High >= 4294967295, u8Zero <= 0)
     label = match u8High
         255 => "top"
         0 => "bottom"
@@ -83,35 +86,34 @@ comparisons () =
     print "${label} ${signed}"
 
 conversions () =
-    print "${toInt u8High} ${toInt i8Low} ${toInt u32High} ${toInt i32Low}"
-    print "${toInt16 i8Low} ${toInt32 u16High} ${toUint16 u8High} ${toUint32 u16High}"
+    shown4 (toInt u8High, toInt i8Low, toInt u32High, toInt i32Low)
+    shown4 (toInt16 i8Low, toInt32 u16High, toUint16 u8High, toUint32 u16High)
     print "${toUint8 300} ${toInt8 u8High} ${toUint8 i8Low} ${toUint32 (-1)} ${toInt32 u32High}"
     print "${toInt8 100} ${toUint8 255} ${toFloat u8High} ${toFloat i8Low} ${toFloat u32High}"
     print "${toInt (bitNot u8Zero) + 1}"
 
+(** Unwrap a `Result` and adjust its value, or answer with `fallback`. *)
+unboxed (result, fallback, adjust) = match result
+    Success value => adjust value
+    _ => fallback
+
 journeys () =
     small : List<uint8>
     small = [1, 200, u8High]
-    first = match small[1]
-        Success value => value + 100
-        _ => u8Zero
+    first = unboxed (small[1], u8Zero, \value => value + 100)
     negatives = [i8Low, -1, i8High]
-    last = match negatives[0]
-        Success value => value - 1
-        _ => i8High
+    last = unboxed (negatives[0], i8High, \value => value - 1)
     print "${first} ${last} ${length small}"
     total = foldList small u8Zero (\(sum, x) => sum + x)
     print "${total}"
     kept = Holder(held = u8High)
     print "${kept.held + 1}"
     packet = Packet(tag = 250, delta = -32768, count = 4294967295, seq = 7)
-    print "${packet.tag + 10} ${packet.delta - 1} ${packet.count + 1} ${packet.seq * 2}"
+    shown4 (packet.tag + 10, packet.delta - 1, packet.count + 1, packet.seq * 2)
     print "${identity u8High + 1} ${identity i8Low - 1}"
     print "${twice ((\x => x + 200), u8Zero)}"
     scores = Map () |> mapSet "low" u8Zero |> mapSet "high" u8High
-    high = match scores["high"]
-        Success value => value + 1
-        _ => u8Zero
+    high = unboxed (scores["high"], u8Zero, \value => value + 1)
     print "${high}"
     chosen : uint8
     chosen = match length small > 1
@@ -123,9 +125,7 @@ journeys () =
     print "${chosen} ${joined + 1}"
     parsed : Result<uint8, string>
     parsed = Success(value = 200)
-    unpacked = match parsed
-        Success value => value + 100
-        _ => u8Zero
+    unpacked = unboxed (parsed, u8Zero, \value => value + 100)
     print "${unpacked}"
     erased : any
     erased = u8High
@@ -138,17 +138,16 @@ comparisons ()
 wrapping conversions
 wrapping journeys
 
+(** Report one intercepted `Arith` failure, then answer with `fallback`. *)
+intercepted (label, detail, fallback) =
+    print "${label} ${detail}"
+    fallback
+
 strict work =
     handle Arith
-        overflow op lhs rhs wrapped =>
-            print "overflow ${op} ${lhs} ${rhs} ${wrapped}"
-            99
-        divideByZero op lhs =>
-            print "zero ${op} ${lhs}"
-            0.0
-        remainderByZero lhs =>
-            print "remainder ${lhs}"
-            77
+        overflow op lhs rhs wrapped => intercepted ("overflow", "${op} ${lhs} ${rhs} ${wrapped}", 99)
+        divideByZero op lhs => intercepted ("zero", "${op} ${lhs}", 0.0)
+        remainderByZero lhs => intercepted ("remainder", "${lhs}", 77)
     work ()
 
 counting () =
@@ -163,13 +162,16 @@ counting () =
 
 wrapping counting
 
-print "${strict (\() => u8High + 1)}"
-print "${strict (\() => i8Low - 1)}"
-print "${strict (\() => -u8High)}"
-print "${strict (\() => abs i8Low)}"
-print "${strict (\() => intDiv i16Low (-1))}"
-print "${strict (\() => u8High % u8Zero)}"
-print "${strict (\() => toUint8 i8Low)}"
-print "${strict (\() => toUint32 i32Low)}"
-print "${strict (\() => toInt8 u8High)}"
-print "${strict (\() => u32High * 2)}"
+(** Print what `strict` answers for one intercepted computation. *)
+strictShown work = print "${strict work}"
+
+strictShown (\() => u8High + 1)
+strictShown (\() => i8Low - 1)
+strictShown (\() => -u8High)
+strictShown (\() => abs i8Low)
+strictShown (\() => intDiv i16Low (-1))
+strictShown (\() => u8High % u8Zero)
+strictShown (\() => toUint8 i8Low)
+strictShown (\() => toUint32 i32Low)
+strictShown (\() => toInt8 u8High)
+strictShown (\() => u32High * 2)

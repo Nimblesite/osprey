@@ -18,9 +18,12 @@
 fn zero() = 48
 fn nine() = 57
 
+/// Is the scalar an ASCII digit byte?
+fn isDigitByte(value) = value >= zero() && value <= nine()
+
 /// Is the byte at index i an ASCII digit? End-of-input (Error) is "no".
 fn isDigitAt(s, i) = match byteAt(s, i) {
-    Success { value } => value >= zero() && value <= nine()
+    Success { value } => isDigitByte(value)
     Error => false
 }
 
@@ -28,7 +31,7 @@ fn isDigitAt(s, i) = match byteAt(s, i) {
 /// each step multiplies by ten and adds (byte - '0'). Stops at the first
 /// non-digit byte OR at end-of-input, returning the accumulated integer.
 fn scanInt(s, i, acc) = match byteAt(s, i) {
-    Success { value } => match value >= zero() && value <= nine() {
+    Success { value } => match isDigitByte(value) {
         true  => scanInt(s, (i + 1) , (acc * 10 + value - zero()) )
         false => acc
     }
@@ -62,13 +65,14 @@ fn scanAll(s, i, acc) = match nextDigit(s, i) >= byteLength(s) {
                      listAppend(acc, scanInt(s, nextDigit(s, i), 0)))
 }
 
+/// Print one `label=value` line for a thunk-computed integer.
+fn report(label, compute) = print("${label}=${exactArithmetic(compute)}\n")
+
 /// ---- single token: "12345abc" stops at 'a' ----
 let mixed = "12345abc"
-print("byteLen=${byteLength(mixed)}\n")
-exactArithmetic(fn() => print("scan=${scanInt(mixed, 0, 0)}\n")        // 12345
-)
-exactArithmetic(fn() => print("end=${scanEnd(mixed, 0)}\n")            // 5 (index of 'a')
-)
+report("byteLen", fn() => byteLength(mixed))
+report("scan", fn() => scanInt(mixed, 0, 0))             // 12345
+report("end", fn() => scanEnd(mixed, 0))                 // 5 (index of 'a')
 exactArithmetic(fn() => match byteAt(mixed, scanEnd(mixed, 0)) {        // proves we stopped at 'a'
     Success { value }   => print("stopByte=${value}\n")   // 97 == 'a'
     Error => print("stopByte FAILED\n")
@@ -76,22 +80,16 @@ exactArithmetic(fn() => match byteAt(mixed, scanEnd(mixed, 0)) {        // prove
 )
 
 /// ---- digits-only token runs to end-of-input via the Error branch ----
-let pure = exactArithmetic(fn() => scanInt("777", 0, 0))
-print("pure=${pure}\n")
-let pureEnd = exactArithmetic(fn() => scanEnd("777", 0))
-print("pureEnd=${pureEnd}\n")
+report("pure", fn() => scanInt("777", 0, 0))
+report("pureEnd", fn() => scanEnd("777", 0))
 
 /// ---- leading non-digits: scan returns 0, nextDigit finds the run ----
-let leadScan = exactArithmetic(fn() => scanInt("ab42", 0, 0))
-print("leadScan=${leadScan}\n")
-let leadNext = exactArithmetic(fn() => nextDigit("ab42", 0))
-print("leadNext=${leadNext}\n")
-let leadVal = exactArithmetic(fn() => scanInt("ab42", nextDigit("ab42", 0), 0))
-print("leadVal=${leadVal}\n")
+report("leadScan", fn() => scanInt("ab42", 0, 0))
+report("leadNext", fn() => nextDigit("ab42", 0))
+report("leadVal", fn() => scanInt("ab42", nextDigit("ab42", 0), 0))
 
 /// ---- empty input: nothing to scan ----
-let emptyScan = exactArithmetic(fn() => scanInt("", 0, 0))
-print("emptyScan=${emptyScan}\n")
+report("emptyScan", fn() => scanInt("", 0, 0))
 
 /// ---- multi-token lexer over a delimited string ----
 let stream = "12,345-6789 0!42"
@@ -101,10 +99,13 @@ forEachList(tokens, print)                     // 12 345 6789 0 42
 
 print("=== Scan Complete ===\n")
 
-/// Checks a token value at an exact position without hiding index failures.
-fn tokenIs(tokens: List<int>, index: int, expected: int) = match listGet(tokens, index) {
-    Success { value } => value == expected
-    Error => false
+/// Do the scanned tokens hold `expected` at every index, in order?
+fn tokensAre(tokens, expected, i) = match listGet(expected, i) {
+    Success { want } => match listGet(tokens, i) {
+        Success { value } => value == want && tokensAre(tokens, expected, (i + 1))
+        Error => false
+    }
+    Error => listLength(tokens) == i
 }
 
 /// Verifies token boundaries, empty input, and a complete multi-token scan.
@@ -114,10 +115,8 @@ fn tokenScanCase() = {
         structuralEquals([scanInt("12345abc", 0, 0), scanEnd("12345abc", 0), scanInt("777", 0, 0)], [12345, 5, 777]),
         structuralEquals([scanEnd("777", 0), scanInt("ab42", 0, 0), nextDigit("ab42", 0)], [3, 0, 2]),
         structuralEquals([scanInt("ab42", 2, 0), scanInt("", 0, 0), listLength(scanned)], [42, 0, 5]),
-        tokenIs(scanned, 0, 12), tokenIs(scanned, 1, 345),
-        tokenIs(scanned, 2, 6789), tokenIs(scanned, 3, 0),
-        tokenIs(scanned, 4, 42)
+        tokensAre(scanned, [12, 345, 6789, 0, 42], 0)
     ])
 }
 
-test("token scanner finds every integer and boundary", fn() => exactArithmetic(tokenScanCase))
+test("token scanner finds every integer and boundary", exactly(tokenScanCase))

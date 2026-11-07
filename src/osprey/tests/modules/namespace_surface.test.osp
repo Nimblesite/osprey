@@ -51,6 +51,6 @@ fn quotedLabelCase() = checkAll("quoted namespace label", [
 
 exactArithmetic(fn() => print("${geometry::square(4)} ${geometry::cube(3)} ${text::square("ab")} ${Metric::centimetres(2)}"))
 
-test("namespace paths resolve every contribution", fn() => exactArithmetic(geometryPathsCase))
-test("namespaces keep same-named declarations apart", fn() => exactArithmetic(sameNameDifferentNamespaceCase))
-test("quoted namespace labels are opaque", fn() => exactArithmetic(quotedLabelCase))
+test("namespace paths resolve every contribution", exactly(geometryPathsCase))
+test("namespaces keep same-named declarations apart", exactly(sameNameDifferentNamespaceCase))
+test("quoted namespace labels are opaque", exactly(quotedLabelCase))

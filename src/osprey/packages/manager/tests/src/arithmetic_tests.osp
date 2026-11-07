@@ -22,9 +22,8 @@ module ArithmeticTests {
         structuralEquals([Arithmetic::roundDiv(7, 2), Arithmetic::roundDiv(5, 2)], [4, 3]),
         structuralEquals([Arithmetic::roundDiv(4, 3), Arithmetic::roundDiv(0, 3)], [1, 0]),
         structuralEquals([Arithmetic::roundDiv(10000 * 1, 3), Arithmetic::roundDiv(10000 * 2, 3)], [3333, 6667]),
+        structuralEquals([Arithmetic::signedRoundDiv(7, 2), Arithmetic::signedRoundDiv(0, 9)], [4, 0]),
         Arithmetic::signedRoundDiv(-7, 2) == -4,
-        Arithmetic::signedRoundDiv(7, 2) == 4,
-        Arithmetic::signedRoundDiv(0, 9) == 0,
         faults(fn() => Arithmetic::roundDiv(-1, 2)) == -1,
         faults(fn() => Arithmetic::roundDiv(1, 0)) == -1
     ])
@@ -51,12 +50,11 @@ module ArithmeticTests {
         Arithmetic::percentileIndex(100, 5) == 4,
         (Arithmetic::percentile(50, [30, 10, 20]) ?: -1) == 20,
         (Arithmetic::percentile(90, [5, 4, 3, 2, 1, 6, 7, 8, 9, 10]) ?: -1) == 9,
-        (Arithmetic::percentile(50, []) ?: -1) == -1,
         structuralEquals([Arithmetic::ceilDays(0), Arithmetic::ceilDays(1), Arithmetic::ceilDays(86400000)], [0, 1, 1]),
-        Arithmetic::ceilDays(86400001) == 2,
+        structuralEquals([Arithmetic::ceilDays(86400001), Arithmetic::fullScale()], [2, 10000]),
+        (Arithmetic::percentile(50, []) ?: -1) == -1,
         structuralEquals([Arithmetic::display(0), Arithmetic::display(5)], ["0.00", "0.05"]),
-        structuralEquals([Arithmetic::display(1234), Arithmetic::display(10000)], ["12.34", "100.00"]),
-        Arithmetic::fullScale() == 10000
+        structuralEquals([Arithmetic::display(1234), Arithmetic::display(10000)], ["12.34", "100.00"])
     ])
 
     fn advisory(severity, reach, ms) = Objective::Advisory { severityWeight: severity, reachabilityFactor: reach, overdueMilliseconds: ms }

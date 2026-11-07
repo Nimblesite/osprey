@@ -35,10 +35,8 @@ forwardSame decode = sameName ("b", decode)
 forwardDeep decode = twoDeep ("c", decode)
 
 forwardedByAnyName () = checkAll "the forwarded callable is the one passed" [
-    (forwardRenamed load).text == "a",
-    (forwardSame load).text == "b",
-    (forwardDeep load).text == "c",
-    run ("d", shown, load) == "shown:d",
+    structuralEquals [(forwardRenamed load).text, (forwardSame load).text] ["a", "b"],
+    structuralEquals [(forwardDeep load).text, run ("d", shown, load)] ["c", "shown:d"],
 ]
 
 forwardedIntoStagedRender () =

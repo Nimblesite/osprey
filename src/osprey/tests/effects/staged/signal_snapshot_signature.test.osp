@@ -34,9 +34,9 @@ fn oneHelperServesEveryValueType() = {
     let size = lengths("osprey", blank(0))
     print("${label.value} ${size.value}")
     checkAll("the annotated helpers keep each slice's type", [
-        label.value == "count=4", label.revision == 1,
-        size.value == 6, size.revision == 1,
-        length(label.dependencies) == 1, length(size.dependencies) == 1
+        label.value == "count=4",
+        structuralEquals([label.revision, size.value, size.revision], [1, 6, 1]),
+        structuralEquals([length(label.dependencies), length(size.dependencies)], [1, 1])
     ])
 }
 
@@ -58,8 +58,8 @@ fn theHelperTracksWhatTheDirectFormTracks() = {
     checkAll("a refresh through the helper reads the callback's own signals", [
         join(built.dependencies, ",") == join(direct.dependencies, ","),
         join(built.dependencies, ",") == join(signalDependencies(countLabel), ","),
-        unrelated.revision == 1, unrelated.value == "count=1",
-        related.revision == 2, related.value == "count=3"
+        structuralEquals([unrelated.revision, related.revision], [1, 2]),
+        structuralEquals([unrelated.value, related.value], ["count=1", "count=3"])
     ])
 }
 

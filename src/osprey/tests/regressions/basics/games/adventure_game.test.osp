@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // 🎮 Epic Text Adventure Game Engine (Fixed)
 // Showcasing Osprey's pattern matching, safe arithmetic, and storytelling capabilities
 
@@ -216,18 +235,31 @@ fn adventureGameCase() = {
     let questBalance = (rewardBalance + getRoomTreasure(4)) 
 
     checkAll("adventure branch tables", [
-        structuralEquals([calculatePlayerLevel(0), calculatePlayerLevel(1), calculatePlayerLevel(2)], [1, 2, 3]),
-        structuralEquals([calculatePlayerLevel(3), calculatePlayerLevel(9)], [4, 5]),
-        structuralEquals([getPlayerTitle(1), getPlayerTitle(2)], ["Novice Adventurer", "Brave Explorer"]),
-        structuralEquals([getPlayerTitle(3), getPlayerTitle(4)], ["Seasoned Warrior", "Legendary Hero"]),
+        calculatePlayerLevel(0) == 1,
+        calculatePlayerLevel(1) == 2,
+        calculatePlayerLevel(2) == 3,
+        calculatePlayerLevel(3) == 4,
+        calculatePlayerLevel(9) == 5,
+        getPlayerTitle(1) == "Novice Adventurer",
+        getPlayerTitle(2) == "Brave Explorer",
+        getPlayerTitle(3) == "Seasoned Warrior",
+        getPlayerTitle(4) == "Legendary Hero",
         getPlayerTitle(5) == "Master of the Realm",
-        structuralEquals([calculateWeaponDamage(1), calculateWeaponDamage(2), calculateWeaponDamage(3)], [25, 40, 60]),
-        structuralEquals([calculateWeaponDamage(9), calculateBarehandDamage(1)], [15, 10]),
-        structuralEquals([calculateBarehandDamage(2), calculateBarehandDamage(3)], [15, 20]),
+        calculateWeaponDamage(1) == 25,
+        calculateWeaponDamage(2) == 40,
+        calculateWeaponDamage(3) == 60,
+        calculateWeaponDamage(9) == 15,
+        calculateBarehandDamage(1) == 10,
+        calculateBarehandDamage(2) == 15,
+        calculateBarehandDamage(3) == 20,
         calculateBarehandDamage(9) == 5,
-        structuralEquals([getEnemyName(1), getEnemyName(2)], ["Sneaky Goblin", "Fierce Orc"]),
-        structuralEquals([getEnemyName(3), getEnemyName(9)], ["Ancient Dragon", "Mysterious Shadow"]),
-        structuralEquals([getEnemyHealth(1), getEnemyHealth(2), getEnemyHealth(3)], [30, 60, 120]),
+        getEnemyName(1) == "Sneaky Goblin",
+        getEnemyName(2) == "Fierce Orc",
+        getEnemyName(3) == "Ancient Dragon",
+        getEnemyName(9) == "Mysterious Shadow",
+        getEnemyHealth(1) == 30,
+        getEnemyHealth(2) == 60,
+        getEnemyHealth(3) == 120,
         getEnemyHealth(9) == 25
     ])
     checkAll("adventure room and quest state", [
@@ -237,12 +269,24 @@ fn adventureGameCase() = {
         exploreRoom(4) == "the Treasure Chamber sparkling with gold",
         exploreRoom(5) == "the Throne Room where shadows dance",
         exploreRoom(9) == "a mysterious room filled with swirling mist",
-        structuralEquals([getRoomTreasure(1), getRoomTreasure(2), getRoomTreasure(3)], [10, 25, 0]),
-        structuralEquals([getRoomTreasure(4), getRoomTreasure(5), getRoomTreasure(9)], [100, 50, 5]),
-        structuralEquals([hasRoomWeapon(3), hasRoomWeapon(2), hasRoomKey(2), hasRoomKey(3)], [1, 0, 1, 0]),
-        structuralEquals([afterRoomOne, afterRoomTwo, damage], [60, 85, 60]),
+        getRoomTreasure(1) == 10,
+        getRoomTreasure(2) == 25,
+        getRoomTreasure(3) == 0,
+        getRoomTreasure(4) == 100,
+        getRoomTreasure(5) == 50,
+        getRoomTreasure(9) == 5,
+        hasRoomWeapon(3) == 1,
+        hasRoomWeapon(2) == 0,
+        hasRoomKey(2) == 1,
+        hasRoomKey(3) == 0,
+        afterRoomOne == 60,
+        afterRoomTwo == 85,
+        damage == 60,
         (getEnemyHealth(3) / damage ) == 2.0,
-        structuralEquals([healthAfterOne, healthAfterTwo, defeated, calculatePlayerLevel(defeated)], [60, 0, 1, 2]),
+        healthAfterOne == 60,
+        healthAfterTwo == 0,
+        defeated == 1,
+        calculatePlayerLevel(defeated) == 2,
         getPlayerTitle(calculatePlayerLevel(defeated)) == "Brave Explorer",
         rewardBalance == 285,
         questBalance == 385

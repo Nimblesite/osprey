@@ -93,7 +93,7 @@ fn resumeAbortEarlyExitCase() = {
 
 // Register the explicit-resume early-exit regression.
 
-test("returning without resume aborts the suspended continuation", fn() => exactArithmetic(resumeAbortEarlyExitCase))
+test("returning without resume aborts the suspended continuation", exactly(resumeAbortEarlyExitCase))
 
 /// This case verifies an arm's mode is its own, not its siblings'.
 fn resumeSiblingArmIndependenceCase() = {
@@ -134,11 +134,11 @@ fn resumeSiblingArmIndependenceCase() = {
 
     // A sibling's `resume` must not turn these arms into early exits.
     checkAll("sibling-arm internal state", [
-        structuralEquals([result, tallyCalls, supplyCalls, lastSupplied, resumedAnswer], [510, 1, 2, 300, 510]),
-        resumedAnswer == result,
-        (tallyCalls + supplyCalls ) == 3
+        structuralEquals([result, tallyCalls, supplyCalls], [510, 1, 2]),
+        structuralEquals([lastSupplied, resumedAnswer, (tallyCalls + supplyCalls )], [300, 510, 3]),
+        resumedAnswer == result
     ])
 }
 
 // Register the sibling-arm independence regression for issue #177.
-test("a non-resuming arm is unaffected by a sibling arm's resume", fn() => exactArithmetic(resumeSiblingArmIndependenceCase))
+test("a non-resuming arm is unaffected by a sibling arm's resume", exactly(resumeSiblingArmIndependenceCase))

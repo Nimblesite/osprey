@@ -67,15 +67,8 @@ print "HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} unit
 // Verify skip, cap, and happy-path recovery policies independently.
 
 test "recovery policies substitute values without stopping traversal" (\() => exactArithmetic ((\() => checkAll "recovery policy results" [
-    skipCount == 2,
-    skipFinal == 1,
-    (skipFilled ) == 19,
+    structuralEquals [skipCount, skipFinal, (skipFilled ), capCount, capFinal] [2, 1, 19, 4, 0],
+    structuralEquals [(capFilled ), happyCount, happyFinal, (happyFilled )] [20, 0, 6, 14],
     contains skipReason "skipped 30",
-    capCount == 4,
-    capFinal == 0,
-    (capFilled ) == 20,
-    contains capReason "capped 30 to 14",
-    happyCount == 0,
-    happyFinal == 6,
-    (happyFilled ) == 14
+    contains capReason "capped 30 to 14"
 ])))

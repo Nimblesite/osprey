@@ -1,3 +1,16 @@
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
+/// [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer.
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => check("GPU operation", "success", toString(message))
+}
+/// [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid.
+fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 // Rasterisation on the GPU surface: a fragment-shader-shaped renderer, and the addressing algebra every rasteriser is built out of. Every scene is one pure kernel
 // dispatched over `gpuIota(width * height)` — the flat pixel grid — and layers composite with a single elementwise pass ([GPU-IOTA], [GPU-MAP], [GPU-ZIPWITH], [GPU-
 // FILTER], [GPU-FOLD], [GPU-SCAN], [GPU-GET], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md). Shading is fixed-point integer arithmetic — the workload a
@@ -425,6 +438,24 @@ fn compositeWith(indices0, indices16, indices1536) =
                         lengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
                 ]))))
 exactArithmetic(fn() => withBuffer(toGpu([1, 4, 7, 9]), fn(texels) => withIndices(1536, fn(indices1536) => withIndices(64, fn(indices64) => withIndices(16, fn(indices16) => gallery(indices1536, indices64, indices16, texels))))))
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
 test("one kernel dispatch covers the whole pixel grid", fn() => exactArithmetic(dispatchCase))
 test("brightness levels map onto the palette", fn() => exactArithmetic(paletteCase))
 test("flat indices decompose into raster coordinates", fn() => exactArithmetic(decomposeCase))

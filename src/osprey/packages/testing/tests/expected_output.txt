@@ -1,4 +1,4 @@
-suite stopped: integer overflow: 9223372036854775807 + 1
+suite stopped: remainder by zero: 7 % 0
 ok near(1.000001, 1.0)
 ok near(1.001, 1.0)
 ok near(0.0, 1e-09)

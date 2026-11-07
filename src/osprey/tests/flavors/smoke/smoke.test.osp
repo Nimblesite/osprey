@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Portable cross-contract oracle for [TYPE-GENERICS-FN], [TYPE-LIST],
 // [TYPE-MAP], [TYPE-MAP-LOOKUP], [PATTERN-RESULT-DEFAULT],
 // [BUILTIN-STRING-UFCS], [BUILTIN-STRING-LENGTH],
@@ -44,16 +63,23 @@ fn helloSmokeCase() = {
 
     checkAll("generic list lookups preserve unrelated element types", [
             listLength(words) == 5,
-            structuralEquals([atOr(words, 0, "missing"), atOr(words, 3, "missing")], ["Hello", "ML"]),
-            structuralEquals([atOr(words, 4, "missing"), atOr(words, 9, "missing")], ["flavor", "missing"]),
-            structuralEquals([listLength(numbers), atOr(numbers, 0, 99), atOr(numbers, 1, 99)], [4, 2, 3]),
-            structuralEquals([atOr(numbers, 3, 99), atOr(numbers, 9, 99), chooseByList(words, 41, 99)], [8, 99, 41]),
+            atOr(words, 0, "missing") == "Hello",
+            atOr(words, 3, "missing") == "ML",
+            atOr(words, 4, "missing") == "flavor",
+            atOr(words, 9, "missing") == "missing",
+            listLength(numbers) == 4,
+            atOr(numbers, 0, 99) == 2,
+            atOr(numbers, 1, 99) == 3,
+            atOr(numbers, 3, 99) == 8,
+            atOr(numbers, 9, 99) == 99,
+            chooseByList(words, 41, 99) == 41,
             chooseByList(numbers, "present", "empty") == "present",
             chooseByList(List(), true, false) == false
     ])
 
     checkAll("nested generic lists keep their inner descriptors", [
-            structuralEquals([listLength(nestedWords), listLength(atOr(nestedWords, 0, ["missing"]))], [2, 5]),
+            listLength(nestedWords) == 2,
+            listLength(atOr(nestedWords, 0, ["missing"])) == 5,
             listLength(atOr(nestedWords, 1, ["missing"])) == 3,
             nestedAt(nestedWords, 0, 0, "missing") == "Hello",
             nestedAt(nestedWords, 0, 3, "missing") == "ML",

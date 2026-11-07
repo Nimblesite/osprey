@@ -36,8 +36,7 @@ module MembershipTests {
     }
 
     fn firstCustodianRecorded() = checkAll("creation records the organization and its first accepted custodian together", [
-        length(enrolledWorld().organizations) == 3,
-        length(enrolledWorld().memberships) == 8,
+        structuralEquals([length(enrolledWorld().organizations), length(enrolledWorld().memberships)], [3, 8]),
         Governance::isCustodian(match Governance::membershipOf(enrolledWorld(), "m-alice2") {
             Success { value } => value
             Error => Governance::Membership { id: "", org: "", principal: "", role: Governance::Member, status: Governance::Revoked, authorityEpoch: 0 }

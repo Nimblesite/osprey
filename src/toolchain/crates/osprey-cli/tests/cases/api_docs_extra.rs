@@ -4,7 +4,47 @@
 //! docs, and malformed option handling. Implements [DOC-EXPORT].
 
 use super::api_docs::export_ok;
-use super::{finish, osprey, read_text, temp_dir};
+use super::{finish, osprey, read_text, temp_dir, Out};
+use std::path::Path;
+
+/// Fails unless `page` carries every fragment verbatim.
+fn assert_page_has(page: &str, fragments: &[&str]) {
+    for fragment in fragments {
+        assert!(page.contains(fragment), "missing {fragment}: {page}");
+    }
+}
+
+/// Exports `source` and asserts its `slug` page carries every fragment.
+fn assert_exported_page(name: &str, extension: &str, source: &str, slug: &str, fragments: &[&str]) {
+    let output = export_ok(source, extension, name);
+    assert_page_has(
+        &read_text(&output.join(format!("api/{slug}.md"))),
+        fragments,
+    );
+}
+
+/// Maps a `--docs-format` value to the page extension it writes.
+fn page_extension(format: &str) -> &str {
+    if format == "html" {
+        "html"
+    } else {
+        "md"
+    }
+}
+
+/// Runs `--docs` over `file` into `output`, optionally pinning the page format.
+fn export_docs(file: &Path, output: &Path, format: Option<&str>) -> Out {
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--source"])
+        .arg(file)
+        .arg("--docs-dir")
+        .arg(output);
+    if let Some(format) = format {
+        let _ = command.args(["--docs-format", format]);
+    }
+    finish(&mut command)
+}
 
 /// [LSP-EFFECT-REQUIREMENTS] Published APIs retain transitive operation facts.
 #[test]
@@ -15,13 +55,17 @@ fn extra_docs_publish_inferred_effect_requirements_in_both_flavors() {
     ] {
         let output = export_ok(source, extension, &format!("effect_requirements_{extension}"));
         for name in ["leaf", "relay"] {
-            let page = read_text(&output.join(format!("api/{name}.md")));
-            assert!(page.contains("Requires on full application: `Read.get`."), "{page}");
+            assert_page_has(
+                &read_text(&output.join(format!("api/{name}.md"))),
+                &["Requires on full application: `Read.get`."],
+            );
         }
         let safe = read_text(&output.join("api/safe.md"));
         assert!(!safe.contains("Requires on full application:"), "{safe}");
-        let unknown = read_text(&output.join("api/invoke.md"));
-        assert!(unknown.contains("Callback effects remain unresolved."), "{unknown}");
+        assert_page_has(
+            &read_text(&output.join("api/invoke.md")),
+            &["Callback effects remain unresolved."],
+        );
     }
 }
 
@@ -38,7 +82,10 @@ fn extra_docs_export_public_nested_module_chains_to_the_leaf() {
     ] {
         assert!(output.join("api").join(slug).is_file(), "missing {slug}");
     }
-    assert!(read_text(&output.join("api/outer-middle-inner-probe.md")).contains("int"));
+    assert_page_has(
+        &read_text(&output.join("api/outer-middle-inner-probe.md")),
+        &["int"],
+    );
 }
 
 /// Negative control: a private ancestor hides its whole subtree, even when the
@@ -59,15 +106,11 @@ fn extra_docs_state_module_exports_public_members_with_inferred_int() {
         "state module Counter {\nexport fn hold(value) = wrapAdd(value, 1)\nfn internal() = 0\n}\n";
     let output = export_ok(source, "osp", "extra_docs_state_module");
     let page = read_text(&output.join("api/counter-hold.md"));
-    assert!(
-        page.contains("::Counter::hold(value: int) -> int"),
-        "{page}"
-    );
+    assert_page_has(&page, &["::Counter::hold(value: int) -> int"]);
     assert!(!output.join("api/counter-internal.md").exists());
     // [MODULES-STATE-INVENTORY] lists ownership, never private implementation.
     let inventory = read_text(&output.join("api/project/state-boundaries.md"));
-    assert!(inventory.contains("Counter"), "{inventory}");
-    assert!(inventory.contains("0 private cells"), "{inventory}");
+    assert_page_has(&inventory, &["Counter", "0 private cells"]);
     assert!(!inventory.contains("internal"), "{inventory}");
 }
 
@@ -93,25 +136,15 @@ fn assert_state_inventory(
     let file = root.join(format!("source.{extension}"));
     let output = root.join("docs");
     std::fs::write(&file, source)?;
-    let result = finish(
-        osprey()
-            .args(["--docs", "--source"])
-            .arg(&file)
-            .arg("--docs-dir")
-            .arg(&output)
-            .args(["--docs-format", format]),
-    );
+    let result = export_docs(&file, &output, Some(format));
     result.expect_stderr(0, &["2 warnings (state-boundary)"], &[]);
     assert_inventory_pages(&output, format)?;
     regenerate_without_state(&file, &output, extension, format)?;
     Ok(())
 }
 
-fn assert_inventory_pages(
-    output: &std::path::Path,
-    format: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let extension = if format == "html" { "html" } else { "md" };
+fn assert_inventory_pages(output: &Path, format: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let extension = page_extension(format);
     let page =
         std::fs::read_to_string(output.join(format!("api/project/state-boundaries.{extension}")))?;
     assert!(
@@ -139,8 +172,8 @@ fn assert_inventory_pages(
 }
 
 fn regenerate_without_state(
-    file: &std::path::Path,
-    output: &std::path::Path,
+    file: &Path,
+    output: &Path,
     extension: &str,
     format: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -150,16 +183,9 @@ fn regenerate_without_state(
         "identity x = x\n"
     };
     std::fs::write(file, source)?;
-    let result = finish(
-        osprey()
-            .args(["--docs", "--source"])
-            .arg(file)
-            .arg("--docs-dir")
-            .arg(output)
-            .args(["--docs-format", format]),
-    );
+    let result = export_docs(file, output, Some(format));
     assert_eq!(result.code, Some(0), "{}", result.stderr);
-    let extension = if format == "html" { "html" } else { "md" };
+    let extension = page_extension(format);
     assert!(!output
         .join(format!("api/project/state-boundaries.{extension}"))
         .exists());
@@ -167,32 +193,43 @@ fn regenerate_without_state(
     Ok(())
 }
 
+/// Declared externs, aliases, generic binders and ML module docs reach their
+/// page verbatim, comments included.
 #[test]
-fn extra_docs_extern_declarations_carry_their_ffi_signature() {
-    let source = "/// C sin.\nextern fn sin(value: float) -> float\n";
-    let output = export_ok(source, "osp", "extra_docs_extern");
-    let page = read_text(&output.join("api/sin.md"));
-    assert!(page.contains("float"), "{page}");
-    assert!(page.contains("C sin."), "{page}");
-}
-
-#[test]
-fn extra_docs_type_aliases_export_with_their_target() {
-    let source = "/// User id.\ntype UserId = int\n";
-    let output = export_ok(source, "osp", "extra_docs_alias");
-    let page = read_text(&output.join("api/userid.md"));
-    assert!(page.contains("int"), "{page}");
-    assert!(page.contains("User id."), "{page}");
-}
-
-/// The generic binder and its parameter/return types must all survive export —
-/// not merely any `T` substring.
-#[test]
-fn extra_docs_generic_signature_is_exact() {
-    let source = "fn wrap<T>(value: T) -> T = value\n";
-    let output = export_ok(source, "osp", "extra_docs_generic_binder");
-    let page = read_text(&output.join("api/wrap.md"));
-    assert!(page.contains("fn wrap<T>(value: T) -> T"), "{page}");
+fn extra_docs_export_signatures_aliases_and_module_docs_verbatim() {
+    let cases: &[(&str, &str, &str, &str, &[&str])] = &[
+        (
+            "extra_docs_extern",
+            "osp",
+            "/// C sin.\nextern fn sin(value: float) -> float\n",
+            "sin",
+            &["float", "C sin."],
+        ),
+        (
+            "extra_docs_alias",
+            "osp",
+            "/// User id.\ntype UserId = int\n",
+            "userid",
+            &["int", "User id."],
+        ),
+        (
+            "extra_docs_generic_binder",
+            "osp",
+            "fn wrap<T>(value: T) -> T = value\n",
+            "wrap",
+            &["fn wrap<T>(value: T) -> T"],
+        ),
+        (
+            "extra_docs_ml_module",
+            "ospml",
+            "module Numbers\n    (** Members. *)\n    export twice n = n * 2\n",
+            "numbers-twice",
+            &["Members."],
+        ),
+    ];
+    for &(name, extension, source, slug, fragments) in cases {
+        assert_exported_page(name, extension, source, slug, fragments);
+    }
 }
 
 /// The exported effect page must state the `static` stage explicitly, not just
@@ -201,46 +238,27 @@ fn extra_docs_generic_signature_is_exact() {
 fn extra_docs_static_effect_page_states_the_static_stage() {
     let source = "/// Compile-time state.\nstatic effect Frozen {\npeek : fn() -> int\n}\n";
     let output = export_ok(source, "osp", "extra_docs_static_effect");
-    let page = read_text(&output.join("api/frozen.md"));
-    assert!(page.contains("static effect Frozen"), "{page}");
+    assert_page_has(
+        &read_text(&output.join("api/frozen.md")),
+        &["static effect Frozen"],
+    );
     assert!(output.join("api/frozen-peek.md").is_file());
 }
 
+/// Missing `--docs-dir` takes the usage branch; `--source` pointing at a bare
+/// directory is a rejected project, not a silent success.
 #[test]
-fn extra_docs_ml_flavor_module_documentation_exports() {
-    let source = "module Numbers\n    (** Members. *)\n    export twice n = n * 2\n";
-    let output = export_ok(source, "ospml", "extra_docs_ml_module");
-    let page = read_text(&output.join("api/numbers-twice.md"));
-    assert!(page.contains("Members."), "{page}");
-}
-
-#[test]
-fn extra_docs_missing_docs_dir_flag_takes_the_usage_branch() {
-    let root = temp_dir("extra_docs_no_dir");
+fn extra_docs_reject_incomplete_or_invalid_export_invocations() {
+    let root = temp_dir("extra_docs_rejected_invocations");
     let source = root.join("s.osp");
     std::fs::write(&source, "fn ok() = 1\n").expect("source");
     let mut command = osprey();
     let _ = command.arg("--docs").arg("--source").arg(&source);
     let result = finish(&mut command);
     assert_eq!(result.code, Some(2), "{}", result.stderr);
-}
-
-#[test]
-fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
-    // `--source` pointing at a directory exports the project tree; a bare empty
-    // directory is a rejected project, not a silent success.
-    let root = temp_dir("extra_docs_dir_source");
     let dir = root.join("proj");
     std::fs::create_dir_all(&dir).expect("proj dir");
-    let output = root.join("out");
-    let result = finish(
-        osprey()
-            .arg("--docs")
-            .arg("--source")
-            .arg(&dir)
-            .arg("--docs-dir")
-            .arg(&output),
-    );
+    let result = export_docs(&dir, &root.join("out"), None);
     assert_eq!(result.code, Some(1), "{}", result.stderr);
 }
 
@@ -249,18 +267,20 @@ fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
 fn extra_docs_top_level_bindings_are_public() {
     let source = "fn helper() = 1\nlet exposed = helper()\n";
     let output = export_ok(source, "osp", "extra_docs_public_toplevel");
-    assert!(output.join("api/helper.md").is_file());
-    assert!(output.join("api/exposed.md").is_file());
+    for slug in ["helper", "exposed"] {
+        assert!(
+            output.join(format!("api/{slug}.md")).is_file(),
+            "missing {slug}"
+        );
+    }
 }
 
 /// An ML source whose declarations carry no comment at all. The page still has
-/// to state what the declaration itself states, or a reader learns nothing from
-/// opening it.
+/// to state what the declaration itself states, or a reader learns nothing.
 ///
 /// The parameter names are the load-bearing assertion: ML lowers a clause head
 /// into a chain of one-parameter lambdas, so a page built from the declaration
-/// node alone names `id` and stops — telling a reader a three-argument function
-/// takes one argument.
+/// node alone names `id` and stops.
 #[test]
 fn extra_docs_undocumented_declarations_state_their_own_facts() {
     let source = "effect Store\n    read : int => string\n\n\
@@ -268,22 +288,19 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
         fetch id prefix suffix = \"${prefix}${perform Store.read id}${suffix}\"\n";
     let output = export_ok(source, "ospml", "extra_docs_derived_facts");
     let page = read_text(&output.join("api/fetch.md"));
-    assert!(
-        page.contains("fetch : int -> (string -> (string -> string)) ! Store\n```"),
-        "the effect row belongs on the signature: {page}"
+    assert_page_has(
+        &page,
+        &[
+            "fetch : int -> (string -> (string -> string)) ! Store\n```",
+            "## Returns\n\n`string`",
+            "## Effects",
+            "- [Store]",
+            "*Defined in `source.ospml`, line 5.*",
+        ],
     );
     for parameter in ["- `id` — `int`", "- `prefix` — `string`", "- `suffix`"] {
         assert!(page.contains(parameter), "missing {parameter}: {page}");
     }
-    assert!(page.contains("## Returns\n\n`string`"), "{page}");
-    assert!(
-        page.contains("## Effects") && page.contains("- [Store]"),
-        "{page}"
-    );
-    assert!(
-        page.contains("*Defined in `source.ospml`, line 5.*"),
-        "{page}"
-    );
 }
 
 /// A Default signature line already names every parameter, so a derived list
@@ -295,11 +312,10 @@ fn extra_docs_default_pages_state_effects_without_restating_parameters() {
         fn fetch(id) ![Store] = perform Store.read(id)\n";
     let output = export_ok(source, "osp", "extra_docs_default_facts");
     let page = read_text(&output.join("api/fetch.md"));
-    assert!(
-        page.contains("fn fetch(id: int) -> string ![Store]\n```"),
-        "the effect row is missing: {page}"
+    assert_page_has(
+        &page,
+        &["fn fetch(id: int) -> string ![Store]\n```", "## Effects"],
     );
-    assert!(page.contains("## Effects"), "{page}");
     assert!(
         !page.contains("## Parameters"),
         "a Default signature already names its parameters: {page}"
@@ -321,11 +337,7 @@ fn extra_docs_distinguish_an_explicit_empty_effect_row_from_an_omitted_row() {
         let output = export_ok(source, flavor, &format!("extra_docs_empty_row_{flavor}"));
         let clean = read_text(&output.join("api/clean.md"));
         let inferred = read_text(&output.join("api/inferred.md"));
-        assert!(clean.contains("![]"), "{flavor}: {clean}");
-        assert!(
-            clean.contains("Declared pure (`![]`)."),
-            "{flavor}: {clean}"
-        );
+        assert_page_has(&clean, &["![]", "Declared pure (`![]`)."]);
         assert!(!inferred.contains("![]"), "{flavor}: {inferred}");
     }
 }
@@ -344,10 +356,9 @@ fn extra_docs_show_an_open_effect_remainder() {
     ] {
         let output = export_ok(source, flavor, &format!("extra_docs_open_row_{flavor}"));
         let invoke = read_text(&output.join("api/invoke.md"));
-        assert!(invoke.contains("Log | e"), "{flavor}: {invoke}");
-        assert!(
-            invoke.contains("Additional effects come from the open remainder `e`."),
-            "{flavor}: {invoke}"
+        assert_page_has(
+            &invoke,
+            &["Log | e", "Additional effects come from the open remainder `e`."],
         );
     }
 }

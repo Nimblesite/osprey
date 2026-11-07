@@ -13,14 +13,14 @@ mod residue;
 #[path = "common/staging.rs"]
 mod staging;
 
+use std::collections::BTreeMap;
+
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use residue::HANDLER_RUNTIME_SYMBOLS;
 use staging::{assert_rejected, compile_for_target, compile_staged, diagnostics};
 
-fn dependency_report(
-    source: &str,
-    flavor: Flavor,
-) -> std::collections::BTreeMap<String, Vec<String>> {
+/// The dependency report for `source`, asserting the fixture's contracts hold.
+fn dependency_report(source: &str, flavor: Flavor) -> BTreeMap<String, Vec<String>> {
     let parsed = parse_program_with_flavor(source, flavor);
     assert!(
         parsed.errors.is_empty(),
@@ -33,6 +33,40 @@ fn dependency_report(
         "invalid signal contracts: {dependencies:?}"
     );
     dependencies.unwrap_or_default()
+}
+
+/// Asserts `ir` mentions no handler-runtime symbol, `label` naming the case.
+fn assert_no_runtime_residue(ir: &str, label: &str) {
+    for symbol in HANDLER_RUNTIME_SYMBOLS {
+        assert!(
+            !ir.contains(symbol),
+            "{label}: `{symbol}` must not survive discharge"
+        );
+    }
+}
+
+/// Asserts the frontend accepts `source` in `flavor`, `label` naming the rule.
+fn assert_accepted(source: &str, flavor: Flavor, label: &str) {
+    let errors = diagnostics(source, flavor);
+    assert!(errors.is_empty(), "{label}: {errors}");
+}
+
+/// Asserts the default flavor rejects `source` with a diagnostic naming `expected`.
+fn assert_names(source: &str, expected: &str) {
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(errors.contains(expected), "expected `{expected}`: {errors}");
+}
+
+/// Emits IR for `source` in `flavor`, `label` naming the case on failure.
+fn compile_in_flavor(source: &str, flavor: Flavor, label: &str) -> String {
+    if flavor == Flavor::Default {
+        return compile_staged(source);
+    }
+    let parsed = parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{label}: {:?}", parsed.errors);
+    let ir = osprey_codegen::compile_program(&parsed.program);
+    assert!(ir.is_ok(), "{label}: static codegen: {ir:?}");
+    ir.unwrap_or_default()
 }
 
 const STATIC_SOURCE: &str = r#"
@@ -62,53 +96,30 @@ fn main() = {
 "#;
 
 #[test]
-fn a_static_handler_leaves_no_runtime_residue() {
-    let ir = compile_staged(STATIC_SOURCE);
-    for symbol in HANDLER_RUNTIME_SYMBOLS {
-        assert!(
-            !ir.contains(symbol),
-            "static discharge must leave no `{symbol}` in the emitted IR"
-        );
-    }
-    assert!(
-        !ir.contains("Alloc"),
-        "the discharged effect must not appear in the emitted IR"
-    );
-}
-
-#[test]
-fn an_open_row_helper_discharged_statically_leaves_no_effect_dispatch() {
-    for (source, flavor) in [
-        (
-            "effect Read { value: fn() -> int }\nfn relay(callback) -> int !e = callback()\nfn work() !Read = perform Read.value()\nlet answer = {\n    handle static Read { value => 41 }\n    relay(work)\n}\nprint(answer)\n",
-            Flavor::Default,
-        ),
-        (
-            "effect Read\n    value : Unit => int\nrelay : (Unit -> int) -> int !e\nrelay callback = callback ()\nwork : Unit -> int !Read\nwork () = perform Read.value ()\nanswer =\n    handle static Read\n        value => 41\n    relay work\nprint answer\n",
-            Flavor::Ml,
-        ),
+fn a_discharged_effect_leaves_no_dispatch_or_runtime_residue() {
+    for (label, source, flavor, effect) in [
+        ("static handler", STATIC_SOURCE, Flavor::Default, "Alloc"),
+        ("open-row helper", "effect Read { value: fn() -> int }\nfn relay(callback) -> int !e = callback()\nfn work() !Read = perform Read.value()\nlet answer = {\n    handle static Read { value => 41 }\n    relay(work)\n}\nprint(answer)\n", Flavor::Default, "Read"),
+        ("ML open-row helper", "effect Read\n    value : Unit => int\nrelay : (Unit -> int) -> int !e\nrelay callback = callback ()\nwork : Unit -> int !Read\nwork () = perform Read.value ()\nanswer =\n    handle static Read\n        value => 41\n    relay work\nprint answer\n", Flavor::Ml, "Read"),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let ir = osprey_codegen::compile_program(&parsed.program).expect("static codegen");
-        for symbol in HANDLER_RUNTIME_SYMBOLS {
-            assert!(
-                !ir.contains(symbol),
-                "{flavor:?}: statically discharged open-row helper left `{symbol}` in IR"
-            );
-        }
-        assert!(!ir.contains("Read"), "{flavor:?}: {ir}");
+        let ir = compile_in_flavor(source, flavor, label);
+        assert_no_runtime_residue(&ir, label);
+        assert!(
+            !ir.contains(effect),
+            "{label}: `{effect}` must not appear in the emitted IR"
+        );
     }
 }
 
 #[test]
 fn the_dynamic_twin_still_uses_the_handler_runtime() {
     let ir = compile_staged(DYNAMIC_SOURCE);
+    // Without this control, a compiler that stopped emitting handlers entirely
+    // would still pass the residue assertions above.
     for symbol in HANDLER_RUNTIME_SYMBOLS {
         assert!(
             ir.contains(symbol),
-            "a dynamic handler must still reach `{symbol}` — otherwise the \
-             residue assertion above proves nothing"
+            "a dynamic handler must still reach `{symbol}`"
         );
     }
 }
@@ -268,10 +279,10 @@ fn main() = {
     let source = program
         .replace("@inside@", handler)
         .replace("@outside@", "");
-    let errors = diagnostics(&source, Flavor::Default);
-    assert!(
-        errors.is_empty(),
-        "a kernel whose only requests are static must be accepted: {errors}"
+    assert_accepted(
+        &source,
+        Flavor::Default,
+        "only static requests are legal in a kernel",
     );
     // The region must ENCLOSE the kernel: a static handler installed after
     // the offload answers nothing the device code asked for, so the request
@@ -279,11 +290,8 @@ fn main() = {
     let outside = program
         .replace("@inside@", "")
         .replace("@outside@", handler);
-    let errors = diagnostics(&outside, Flavor::Default);
-    assert!(
-        errors.contains("kernel body is not stage-legal; it requires dynamic effects: Tile.size"),
-        "a kernel outside the static region keeps its residual request: {errors}"
-    );
+    let residual = "kernel body is not stage-legal; it requires dynamic effects: Tile.size";
+    assert_names(&outside, residual);
 }
 
 #[test]
@@ -302,10 +310,10 @@ fn main() = {
     print("${frame}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.is_empty(),
-        "a `kernel` region supplying its dialect handlers must be accepted: {errors}"
+    assert_accepted(
+        source,
+        Flavor::Default,
+        "a kernel region supplies its dialect handlers",
     );
 }
 
@@ -370,10 +378,10 @@ fn the_ml_surface_carries_the_stage_axis_too() {
     // spelling. Both lower to the same staged AST and pass through source
     // validation before discharge ([STAGE-LOWER-ORDER-PHASE]).
     let source = "static effect Tile\n    size : Unit => int\n\nscaled n = satMul n (perform Tile.size ())\n\nanswer =\n    handle static Tile\n        size => 8\n    scaled 2\n";
-    let errors = diagnostics(source, Flavor::Ml);
-    assert!(
-        errors.is_empty(),
-        "the ML surface must declare and discharge a static effect: {errors}"
+    assert_accepted(
+        source,
+        Flavor::Ml,
+        "ML declares and discharges a static effect",
     );
 }
 
@@ -382,31 +390,11 @@ fn the_ml_surface_carries_the_stage_axis_too() {
 #[test]
 fn static_contracts_are_checked_before_erasure_in_both_flavors() {
     let cases = [
-        (
-            "static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    length(perform Read.value())\n}\nprint(answer)",
-            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    length (perform Read.value ())\nprint answer\n",
-            "cannot unify int with string",
-        ),
-        (
-            "static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    42\n}\nprint(answer)",
-            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    42\nprint answer\n",
-            "cannot unify int with string",
-        ),
-        (
-            "static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value input => length(input)\n    }\n    perform Echo.value(\"bad\")\n}\nprint(answer)",
-            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value input => length input\n    perform Echo.value \"bad\"\nprint answer\n",
-            "cannot unify",
-        ),
-        (
-            "static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value => 7\n    }\n    42\n}\nprint(answer)",
-            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value => 7\n    42\nprint answer\n",
-            "expects 1 parameter(s), got 0",
-        ),
-        (
-            "static effect Echo<T> { value: fn() -> T }\nlet answer = {\n    handle static Echo<int> {\n        value => \"bad\"\n    }\n    length(perform Echo<int>.value())\n}\nprint(answer)",
-            "static effect Echo T\n    value : Unit => T\n\nanswer =\n    handle static Echo<int>\n        value => \"bad\"\n    length (perform Echo<int>.value ())\nprint answer\n",
-            "cannot unify int with string",
-        ),
+        ("static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    length(perform Read.value())\n}\nprint(answer)", "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    length (perform Read.value ())\nprint answer\n", "cannot unify int with string"),
+        ("static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    42\n}\nprint(answer)", "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    42\nprint answer\n", "cannot unify int with string"),
+        ("static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value input => length(input)\n    }\n    perform Echo.value(\"bad\")\n}\nprint(answer)", "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value input => length input\n    perform Echo.value \"bad\"\nprint answer\n", "cannot unify"),
+        ("static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value => 7\n    }\n    42\n}\nprint(answer)", "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value => 7\n    42\nprint answer\n", "expects 1 parameter(s), got 0"),
+        ("static effect Echo<T> { value: fn() -> T }\nlet answer = {\n    handle static Echo<int> {\n        value => \"bad\"\n    }\n    length(perform Echo<int>.value())\n}\nprint(answer)", "static effect Echo T\n    value : Unit => T\n\nanswer =\n    handle static Echo<int>\n        value => \"bad\"\n    length (perform Echo<int>.value ())\nprint answer\n", "cannot unify int with string"),
     ];
     for (default, ml, expected) in cases {
         for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
@@ -420,57 +408,21 @@ fn static_contracts_are_checked_before_erasure_in_both_flavors() {
 }
 
 #[test]
-fn staging_does_not_authorize_source_mutation_outside_handler_arms() {
-    let source = "static effect Read { value: fn() -> int }\nfn main() = {\nmut count = 0\ncount = 1\nlet answer = {\n    handle static Read {\n        value => count\n    }\n    perform Read.value()\n}\nprint(answer)\n}";
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("state mutation is only allowed inside an effect handler arm"),
-        "{errors}"
-    );
-}
-
-#[test]
-fn a_static_region_missing_an_operation_names_the_operation_it_left_out() {
+fn a_static_region_is_rejected_with_a_diagnostic_naming_its_cause() {
+    // Staging does not authorize source mutation outside handler arms.
     // [STAGE-STATIC-TOTAL] A static handler must answer every operation, and
     // structural validation says so before the rewrite runs: it names the
     // uncovered operation rather than leaving the request to surface later as
-    // an unhandled effect ([STAGE-LOWER-ORDER-PHASE]).
-    let source = r#"
-static effect Tensor {
-    stride: fn() -> int
-    rank: fn() -> int
-}
-fn main() = {
-    handle static Tensor {
-        stride => 3
+    // an unhandled effect ([STAGE-LOWER-ORDER-PHASE]). The diagnostic spells
+    // the region the way the source does, so a reader is not told about
+    // `handle` when they wrote `handle static`.
+    for (source, expected) in [
+        ("static effect Read { value: fn() -> int }\nfn main() = {\nmut count = 0\ncount = 1\nlet answer = {\n    handle static Read {\n        value => count\n    }\n    perform Read.value()\n}\nprint(answer)\n}", "state mutation is only allowed inside an effect handler arm"),
+        ("\nstatic effect Tensor {\n    stride: fn() -> int\n    rank: fn() -> int\n}\nfn main() = {\n    handle static Tensor {\n        stride => 3\n    }\n    print(\"${perform Tensor.stride()}\")\n}\n", "static handler for `Tensor` does not cover operation `Tensor.rank`"),
+        ("\nfn main() = {\n    handle static Missing {\n        get => 1\n    }\n    print(\"unreachable\")\n}\n", "handle static names unknown effect `Missing`"),
+    ] {
+        assert_names(source, expected);
     }
-    print("${perform Tensor.stride()}")
-}
-"#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("static handler for `Tensor` does not cover operation `Tensor.rank`"),
-        "a partial static handler must name the uncovered operation: {errors}"
-    );
-}
-
-#[test]
-fn a_static_region_over_an_undeclared_effect_is_named_by_its_own_keyword() {
-    // The diagnostic spells the region the way the source does, so a reader
-    // is not told about `handle` when they wrote `handle static`.
-    let source = r#"
-fn main() = {
-    handle static Missing {
-        get => 1
-    }
-    print("unreachable")
-}
-"#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("handle static names unknown effect `Missing`"),
-        "an unknown static effect must be reported against `handle static`: {errors}"
-    );
 }
 
 #[test]
@@ -478,21 +430,9 @@ fn a_static_arith_region_is_refused_without_calling_arith_unknown() {
     // `Arith` is compiler-declared ([ARITH-EFFECT-OPS]), so "unknown effect"
     // would be false; it simply has no static interpretation yet.
     for (source, flavor, region) in [
-        (
-            "fn main() = {\n    handle static Arith { overflow _ _ _ wrapped => wrapped }\n    print(\"unreachable\")\n}\n",
-            Flavor::Default,
-            "handle static",
-        ),
-        (
-            "main () =\n    handle static Arith\n        overflow _ _ _ wrapped => wrapped\n    print \"unreachable\"\n",
-            Flavor::Ml,
-            "handle static",
-        ),
-        (
-            "fn main() = {\n    let frame = kernel\n        Arith overflow _ _ _ wrapped => wrapped\n    in 2\n    print(\"${frame}\")\n}\n",
-            Flavor::Default,
-            "kernel",
-        ),
+        ("fn main() = {\n    handle static Arith { overflow _ _ _ wrapped => wrapped }\n    print(\"unreachable\")\n}\n", Flavor::Default, "handle static"),
+        ("main () =\n    handle static Arith\n        overflow _ _ _ wrapped => wrapped\n    print \"unreachable\"\n", Flavor::Ml, "handle static"),
+        ("fn main() = {\n    let frame = kernel\n        Arith overflow _ _ _ wrapped => wrapped\n    in 2\n    print(\"${frame}\")\n}\n", Flavor::Default, "kernel"),
     ] {
         let errors = diagnostics(source, flavor);
         let refusal = format!(

@@ -63,19 +63,19 @@ class PRFResult:
     f1: float
 
 
+def inf():
+    """IEEE infinity as `exp(1000.0)`, the flavor's only way to spell it."""
+    return exp(1000.0)
+
+
 def nan():
-    """IEEE NaN as `inf - inf`, the flavor's only way to spell it."""
-    return exp(1000.0) - exp(1000.0)
+    """IEEE NaN as `inf - inf`."""
+    return inf() - inf()
 
 
 def count_of(xs, v):
     """Number of elements of an int list equal to `v`."""
     return foldList(xs, 0, lambda acc, x: acc + 1 if x == v else acc)
-
-
-def count_both(yt, yp, v):
-    """Positions where both `yt` and `yp` equal `v`."""
-    return count_pair(yt, yp, v, v)
 
 
 def count_pair(yt, yp, a, b):
@@ -106,7 +106,7 @@ def tp_ratio(tp, denominator, i, zd):
 
 def class_stats(yt, yp, labels, zd):
     """Per-label tp, predicted and true counts, then precision/recall/f1."""
-    tp = map_indexed(labels, lambda i: count_both(yt, yp, unwrap_or(listGet(labels, i), 0)))
+    tp = map_indexed(labels, lambda i: count_pair(yt, yp, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, i), 0)))
     pred = map_indexed(labels, lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0)))
     true = map_indexed(labels, lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0)))
     precision = map_indexed(labels, lambda i: tp_ratio(tp, pred, i, zd))
@@ -120,9 +120,12 @@ def prf_scores(yt, yp, average, zd):
     labels = [1] if average == "binary" else unique_ints(listConcat(yt, yp))
     s = class_stats(yt, yp, labels, zd)
     if average == "micro":
-        p = divide_z(toFloat(sum_int(s.tp)), toFloat(sum_int(s.pred)), zd)
-        r = divide_z(toFloat(sum_int(s.tp)), toFloat(sum_int(s.true)), zd)
-        f = divide_z(2.0 * toFloat(sum_int(s.tp)), toFloat(sum_int(s.true)) + toFloat(sum_int(s.pred)), zd)
+        tp = toFloat(sum_int(s.tp))
+        pr = toFloat(sum_int(s.pred))
+        tr = toFloat(sum_int(s.true))
+        p = divide_z(tp, pr, zd)
+        r = divide_z(tp, tr, zd)
+        f = divide_z(2.0 * tp, tr + pr, zd)
         return PRFResult(precision=p, recall=r, f1=f)
     elif average == "weighted":
         return PRFResult(precision=weighted_mean(s.precision, s.true), recall=weighted_mean(s.recall, s.true), f1=weighted_mean(s.f1, s.true))
@@ -234,7 +237,7 @@ def roc_curve(y_true, y_score):
     tps0 = listConcat([0.0], tps)
     fpr = rate_curve(fps0)
     tpr = rate_curve(tps0)
-    return RocCurve(fpr=fpr, tpr=tpr, thresholds=listConcat([exp(1000.0)], thresholds))
+    return RocCurve(fpr=fpr, tpr=tpr, thresholds=listConcat([inf()], thresholds))
 
 
 def rate_curve(xs):
@@ -250,7 +253,12 @@ def auc_trapezoid(xs, ys):
 def roc_auc_score(y_true, y_score):
     """`sklearn.metrics.roc_auc_score` for binary labels: NaN when one class is
     absent, else the trapezoidal AUC of the ROC curve."""
-    return nan() if len(unique_ints(y_true)) != 2 else auc_trapezoid(roc_curve(y_true, y_score).fpr, roc_curve(y_true, y_score).tpr)
+    return nan() if len(unique_ints(y_true)) != 2 else curve_auc(roc_curve(y_true, y_score))
+
+
+def curve_auc(curve):
+    """The trapezoidal area under a ROC curve."""
+    return auc_trapezoid(curve.fpr, curve.tpr)
 
 
 def precision_recall_curve(y_true, y_score):
@@ -264,8 +272,8 @@ def precision_recall_curve(y_true, y_score):
 
 def precision_at(p, i):
     """`tps/(tps+fps)` at point `i`, zero when no predictions."""
-    ps = unwrap_or(listGet(p.tps, i), 0.0) + unwrap_or(listGet(p.fps, i), 0.0)
-    return 0.0 if ps == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / ps
+    tp = unwrap_or(listGet(p.tps, i), 0.0)
+    return divide_z(tp, tp + unwrap_or(listGet(p.fps, i), 0.0), 0)
 
 
 def average_precision_score(y_true, y_score):
@@ -294,10 +302,20 @@ def log_loss(y_true, y_proba):
     return mean_float(losses)
 
 
+def diff_at(yt, yp, i):
+    """`yt[i] - yp[i]`, the residual shared by the error metrics."""
+    return unwrap_or(listGet(yt, i), 0.0) - unwrap_or(listGet(yp, i), 0.0)
+
+
+def sq_dev(xs, m, i):
+    """`(xs[i] - m)^2`, the square shared by the squared-error metrics."""
+    d = unwrap_or(listGet(xs, i), 0.0) - m
+    return d * d
+
+
 def sq_diff(yt, yp, i):
     """`(yt[i] - yp[i])^2`."""
-    d = unwrap_or(listGet(yt, i), 0.0) - unwrap_or(listGet(yp, i), 0.0)
-    return d * d
+    return sq_dev(yt, unwrap_or(listGet(yp, i), 0.0), i)
 
 
 def mean_squared_error(y_true, y_pred):
@@ -307,7 +325,7 @@ def mean_squared_error(y_true, y_pred):
 
 def mean_absolute_error(y_true, y_pred):
     """`sklearn.metrics.mean_absolute_error`."""
-    return mean_float(map_indexed(y_true, lambda i: abs(unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0))))
+    return mean_float(map_indexed(y_true, lambda i: abs(diff_at(y_true, y_pred, i))))
 
 
 def assemble(num, den):
@@ -325,7 +343,7 @@ def sse(yt, yp):
 def sse_around_mean(yt):
     """Sum of squared deviations from the mean."""
     m = mean_float(yt)
-    return fold(range(len(yt)), 0.0, lambda acc, i: acc + (unwrap_or(listGet(yt, i), 0.0) - m) * (unwrap_or(listGet(yt, i), 0.0) - m))
+    return fold(range(len(yt)), 0.0, lambda acc, i: acc + sq_dev(yt, m, i))
 
 
 def r2_score(y_true, y_pred):
@@ -337,7 +355,7 @@ def r2_score(y_true, y_pred):
 def explained_variance_score(y_true, y_pred):
     """`sklearn.metrics.explained_variance_score`: 1 minus the ratio of the
     unexplained to the total variance."""
-    diffs = map_indexed(y_true, lambda i: unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0))
+    diffs = map_indexed(y_true, lambda i: diff_at(y_true, y_pred, i))
     dm = mean_float(diffs)
     num = mean_sq_dev(diffs, dm)
     ym = mean_float(y_true)
@@ -347,12 +365,12 @@ def explained_variance_score(y_true, y_pred):
 
 def mean_sq_dev(xs, m):
     """The mean of the squared deviations of `xs` from `m`."""
-    return mean_float(map_indexed(xs, lambda i: (unwrap_or(listGet(xs, i), 0.0) - m) * (unwrap_or(listGet(xs, i), 0.0) - m)))
+    return mean_float(map_indexed(xs, lambda i: sq_dev(xs, m, i)))
 
 
 def row_sum(C, i):
     """Sum of one row of an int matrix."""
-    return foldList(unwrap_or(listGet(C, i), []), 0, lambda acc, x: acc + x)
+    return sum_int(unwrap_or(listGet(C, i), []))
 
 
 def col_sum(C, j):

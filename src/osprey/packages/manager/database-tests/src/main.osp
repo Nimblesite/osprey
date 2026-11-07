@@ -25,7 +25,7 @@ fn binding() = {
     let bound = Database::binding([text])
     checkAll("database values use extended-protocol hex parameters", [
             structuralEquals([startsWith(bound, "\\bind '"), contains(bound, text)], [true, false]),
-            structuralEquals([contains(bound, "touch"), contains(bound, "SELECT")], [false, false]),
+            structuralEquals(mapList(["touch", "SELECT"], fn(k) => contains(bound, k)), [false, false]),
             endsWith(bound, "' \\g\n")
     ])
 }
@@ -34,10 +34,8 @@ fn transaction() = match Database::script(context(), "SELECT $1::text", ["value"
     Error { message } => check("transaction constructs", "ok", message)
     Success { value } => checkAll("database context is transaction-local and bounded", [
             startsWith(value, "BEGIN ISOLATION LEVEL SERIALIZABLE;\n"),
-            contains(value, "SET LOCAL statement_timeout = '5s'"),
-            contains(value, "set_config('registry.principal_id'"),
-            contains(value, "set_config('registry.session_id'"),
-            contains(value, ", true)"),
+            containsAll(value, ["SET LOCAL statement_timeout = '5s'", "set_config('registry.principal_id'"]),
+            containsAll(value, ["set_config('registry.session_id'", ", true)"]),
             endsWith(value, "COMMIT;\n")
     ])
 }

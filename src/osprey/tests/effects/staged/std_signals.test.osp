@@ -32,8 +32,8 @@ fn keyedRegionsRebuildOnlyTheChangedSlice() = {
     let sameSlice = signalChanges(firstStore().route, firstStore().route, encodeRoute, signalDependencies(routeLabel))
     print("first: ${revisions(first)} second: ${revisions(second)}")
     checkAll("a keyed region keeps its revision until its slice changes", [
-        signalRevisionOf(first, "route") == 1, signalRevisionOf(first, "panel") == 1,
-        signalRevisionOf(second, "route") == 2, signalRevisionOf(second, "panel") == 1,
+        structuralEquals([signalRevisionOf(first, "route"), signalRevisionOf(first, "panel")], [1, 1]),
+        structuralEquals([signalRevisionOf(second, "route"), signalRevisionOf(second, "panel")], [2, 1]),
         listLength(sameSlice) == 0
     ])
 }
@@ -44,17 +44,16 @@ fn aForcedKeyRebuildsWhileOthersRetain() = {
     let forced = render(firstStore(), signalForced(first, "route"), [])
     print("idle: ${revisions(idle)} forced: ${revisions(forced)}")
     checkAll("forcing one key rebuilds only that region", [
-        signalRevisionOf(idle, "route") == 1, signalRevisionOf(idle, "panel") == 1,
-        signalRevisionOf(forced, "route") == 2, signalRevisionOf(forced, "panel") == 1
+        structuralEquals([signalRevisionOf(idle, "route"), signalRevisionOf(idle, "panel")], [1, 1]),
+        structuralEquals([signalRevisionOf(forced, "route"), signalRevisionOf(forced, "panel")], [2, 1])
     ])
 }
 
 fn anUnseenKeyHasAnUnknownDependencySet() = {
     let blank = signalRetained([], "route", "seed")
     checkAll("an unseen key rebuilds and never reuses the placeholder", [
-        join(blank.dependencies, ",") == "<unknown>",
-        blank.revision == 0,
-        blank.value == "seed"
+        structuralEquals([join(blank.dependencies, ","), blank.value], ["<unknown>", "seed"]),
+        blank.revision == 0
     ])
 }
 
@@ -69,10 +68,8 @@ fn framesSurviveTheJsonRoundTrip() = {
     checkAll("frames round trip through json while foreign shapes skip", [
         signalRevisionOf(restored, "route") == signalRevisionOf(rendered, "route"),
         signalRevisionOf(restored, "panel") == signalRevisionOf(rendered, "panel"),
-        signalFrameKey(one) == "one",
-        join(signalFrameDependencies(one), ",") == "a.one",
-        signalFrameRevision(one) == 3,
-        listLength(foreign) == 0
+        structuralEquals([signalFrameKey(one), join(signalFrameDependencies(one), ",")], ["one", "a.one"]),
+        structuralEquals([signalFrameRevision(one), listLength(foreign)], [3, 0])
     ])
 }
 

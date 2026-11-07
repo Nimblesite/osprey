@@ -25,6 +25,10 @@ fn exactArithmetic(work) = {
     work()
 }
 
+/// The test body that runs `work` under [`exactArithmetic`], so a test case
+/// registers as `test("name", exactly(work))`.
+fn exactly(work) = fn() => exactArithmetic(work)
+
 /// Whether `text` contains every one of `parts`; true for no parts.
 fn containsAll(text, parts) = foldList(parts, true, fn(found, part) => found && contains(text, part))
 

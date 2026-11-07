@@ -1,3 +1,15 @@
+(** [FAILURE-EXPLICIT] A failed allocation, combinator or reduction stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU operation", "success", toString message)
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** Match allocation errors at the case boundary; no continuation or fallback buffer. *)
+withIndices (n, work) = withBuffer (gpuIota n, work)
 // AI/ML workloads on the GPU surface and the closure captures they are made
 // of: dot products, SAXPY, weighted sums, mean and variance, normalisation,
 // activations, a softmax-shaped pipeline, dense layers, matrix-vector products
@@ -43,11 +55,6 @@ meanOf (xs, predicate) = sumOf(xs, \total => predicate(degenerate(0.0, \() => to
     the shape varianceOf reuses twice — fold a mean, then capture it inside the
     kernel measuring squared deviation from it. *)
 dotOf (xs, ys, predicate) = gpuSatisfies(gpuZipWith (xs, ys, mulF), \products => sumOf(products, predicate))
-(** The shapes every statistic below is asserted at: a reduction of one buffer, of a zipped pair, of a mean, and of a buffer a kernel produced. *)
-foldIs (xs, want) = sumOf(xs, \total => total == want)
-dotIs (xs, ys, want) = dotOf(xs, ys, \total => total == want)
-meanIs (xs, want) = meanOf(xs, \mean => mean == want)
-mappedFoldIs (mapped, want) = gpuSatisfies(mapped, \buffer => foldIs(buffer, want))
 varianceOf (xs, predicate) = meanOf(xs, \mean => gpuSatisfies(gpuMap (xs, \v => (v - mean) * (v - mean)), \deviations => meanOf(deviations, predicate)))
 (** saxpy is the classic a*x + y with a = 2.0. *)
 saxpy (x, y) = toFloat32 2.0 * x + y
@@ -100,10 +107,10 @@ dotCaseUploaded (input0, input1, input2, input3, input4, input5, input6, input7,
     xs = input0
     ys = input1
     checkAll "dot product" [
-        dotIs (xs, ys, toFloat32 32.0), dotIs (ys, xs, toFloat32 32.0), dotIs (xs, xs, toFloat32 14.0),
-        dotIs (input2, input3, toFloat32 0.0), dotIs (xs, input4, toFloat32 0.0), dotIs (input5, input6, toFloat32 0.0),
-        dotIs (input7, input8, toFloat32 0.0 - toFloat32 11.0), dotIs (xs, input9, toFloat32 6.0),
-        dotIs (input10, input11, toFloat32 0.25), dotIs (input12, ys, toFloat32 4.0),
+        dotOf(xs, ys, \total => total == toFloat32 32.0), dotOf(ys, xs, \total => total == toFloat32 32.0), dotOf(xs, xs, \total => total == toFloat32 14.0),
+        dotOf(input2, input3, \total => total == toFloat32 0.0), dotOf(xs, input4, \total => total == toFloat32 0.0), dotOf(input5, input6, \total => total == toFloat32 0.0),
+        dotOf(input7, input8, \total => total == toFloat32 0.0 - toFloat32 11.0), dotOf(xs, input9, \total => total == toFloat32 6.0),
+        dotOf(input10, input11, \total => total == toFloat32 0.25), dotOf(input12, ys, \total => total == toFloat32 4.0),
         gpuSatisfies(gpuZipWith (xs, ys, mulF), \products => gpuLength products == 3), gpuSatisfies(gpuZipWith (xs, input13, mulF), \products => gpuLength products == 1)
     ]
 (** Pin BLAS saxpy, then the same shape with the scale factor captured —
@@ -113,13 +120,13 @@ saxpyCaseUploaded (input0, input1, input2, input3, input4, input5) =
     alpha = toFloat32 0.5
     xs = input0
     withBuffer(gpuZipWith (xs, input1, saxpy), \out => withBuffer(gpuZipWith (xs, input2, \(x, y) => alpha * x + y), \axpy => checkAll "saxpy" [
-        foldIs (out, toFloat32 72.0), at (out, 0) == toFloat32 12.0, at (out, 2) == toFloat32 36.0, gpuLength out == 3,
-        foldIs (axpy, toFloat32 6.0), at (axpy, 0) == toFloat32 1.5, at (axpy, 2) == toFloat32 2.5,
-        mappedFoldIs(gpuZipWith (xs, xs, \(x, y) => toFloat32 0.0 * x + y), toFloat32 6.0),
-        mappedFoldIs(gpuZipWith (xs, xs, \(x, y) => toFloat32 1.0 * x + y), toFloat32 12.0),
-        mappedFoldIs(gpuZipWith (xs, input3, saxpy), toFloat32 36.0),
+        sumOf(out, \total => total == toFloat32 72.0), (gpuGet (out, 0) ?: toFloat32 0.0) == toFloat32 12.0, (gpuGet (out, 2) ?: toFloat32 0.0) == toFloat32 36.0, gpuLength out == 3,
+        sumOf(axpy, \total => total == toFloat32 6.0), (gpuGet (axpy, 0) ?: toFloat32 0.0) == toFloat32 1.5, (gpuGet (axpy, 2) ?: toFloat32 0.0) == toFloat32 2.5,
+        gpuSatisfies(gpuZipWith (xs, xs, \(x, y) => toFloat32 0.0 * x + y), \zeros => sumOf(zeros, \total => total == toFloat32 6.0)),
+        gpuSatisfies(gpuZipWith (xs, xs, \(x, y) => toFloat32 1.0 * x + y), \twice => sumOf(twice, \total => total == toFloat32 12.0)),
+        gpuSatisfies(gpuZipWith (xs, input3, saxpy), \ragged => sumOf(ragged, \total => total == toFloat32 36.0)),
         gpuSatisfies(gpuZipWith (input4, xs, saxpy), \empty => gpuLength empty == 0),
-        mappedFoldIs(gpuZipWith (xs, input5, \(x, y) => alpha * x + y), toFloat32 3.0)
+        gpuSatisfies(gpuZipWith (xs, input5, \(x, y) => alpha * x + y), \projected => sumOf(projected, \total => total == toFloat32 3.0))
     ]))
 (** The first acceptance shape: one host scalar closed over by a kernel, spent
     by map, filter, fold and scan, empty buffer included. *)
@@ -128,15 +135,15 @@ captureScalarCaseUploaded (input0, input1) =
     k = toFloat32 3.0
     xs = input0
     withBuffer(gpuMap (xs, \x => k * x), \scaled => withBuffer(gpuMap (xs, \x => k * x + k), \twice => checkAll "captured scalar" [
-        foldIs (scaled, toFloat32 18.0), at (scaled, 1) == toFloat32 6.0, gpuLength scaled == 3,
-        foldIs (twice, toFloat32 27.0), at (twice, 2) == toFloat32 12.0,
-        mappedFoldIs(gpuMap (scaled, \y => k * y), toFloat32 54.0),
-        mappedFoldIs(gpuMap (xs, \x => k + x), toFloat32 15.0),
+        sumOf(scaled, \total => total == toFloat32 18.0), (gpuGet (scaled, 1) ?: toFloat32 0.0) == toFloat32 6.0, gpuLength scaled == 3,
+        sumOf(twice, \total => total == toFloat32 27.0), (gpuGet (twice, 2) ?: toFloat32 0.0) == toFloat32 12.0,
+        gpuSatisfies(gpuMap (scaled, \y => k * y), \rescaled => sumOf(rescaled, \total => total == toFloat32 54.0)),
+        gpuSatisfies(gpuMap (xs, \x => k + x), \bumped => sumOf(bumped, \total => total == toFloat32 15.0)),
         gpuSatisfies(gpuFilter (xs, \x => x > k), \above => gpuLength above == 0),
         gpuSatisfies(gpuFilter (xs, \x => k > x), \below => gpuLength below == 2),
         gpuSatisfies(gpuMap (input1, \x => k * x), \empty => gpuLength empty == 0),
         gpuSatisfies(gpuFold (xs, toFloat32 0.0, \(a, x) => a + k * x), \total => total == toFloat32 18.0),
-        gpuSatisfies(gpuScan (xs, toFloat32 0.0, \(a, x) => a + k * x), \prefix => at (prefix, 2) == toFloat32 18.0)
+        gpuSatisfies(gpuScan (xs, toFloat32 0.0, \(a, x) => a + k * x), \prefix => (gpuGet (prefix, 2) ?: toFloat32 0.0) == toFloat32 18.0)
     ]))
 (** Put several distinct captures inside one kernel, in different orders and
     arities, so no single-capture shortcut can pass this. *)
@@ -147,13 +154,13 @@ captureManyCaseUploaded (input0) =
     c = toFloat32 0.5
     xs = input0
     withBuffer(gpuMap (xs, \x => (a * x + b) * c), \affine => checkAll "several captures" [
-        at (affine, 0) == toFloat32 3.5, at (affine, 1) == toFloat32 4.5,
-        at (affine, 2) == toFloat32 5.5, foldIs (affine, toFloat32 13.5), gpuLength affine == 3,
-        mappedFoldIs(gpuMap (xs, \x => c * x + b - a), toFloat32 12.0),
-        mappedFoldIs(gpuMap (xs, \x => a * x + b * c), toFloat32 19.5),
-        mappedFoldIs(gpuMap (xs, \x => a * c * x), toFloat32 6.0),
-        mappedFoldIs(gpuMap (xs, \x => b - a * x - c), toFloat32 1.5),
-        mappedFoldIs(gpuZipWith (xs, xs, \(x, y) => a * x + c * y), toFloat32 15.0),
+        (gpuGet (affine, 0) ?: toFloat32 0.0) == toFloat32 3.5, (gpuGet (affine, 1) ?: toFloat32 0.0) == toFloat32 4.5,
+        (gpuGet (affine, 2) ?: toFloat32 0.0) == toFloat32 5.5, sumOf(affine, \total => total == toFloat32 13.5), gpuLength affine == 3,
+        gpuSatisfies(gpuMap (xs, \x => c * x + b - a), \shifted => sumOf(shifted, \total => total == toFloat32 12.0)),
+        gpuSatisfies(gpuMap (xs, \x => a * x + b * c), \mixed => sumOf(mixed, \total => total == toFloat32 19.5)),
+        gpuSatisfies(gpuMap (xs, \x => a * c * x), \oneScale => sumOf(oneScale, \total => total == toFloat32 6.0)),
+        gpuSatisfies(gpuMap (xs, \x => b - a * x - c), \inverted => sumOf(inverted, \total => total == toFloat32 1.5)),
+        gpuSatisfies(gpuZipWith (xs, xs, \(x, y) => a * x + c * y), \zipped => sumOf(zipped, \total => total == toFloat32 15.0)),
         gpuSatisfies(gpuFold (xs, b, \(acc, x) => acc + c * x), \total => total == toFloat32 8.0)
     ])
 (** Spend one capture across every combinator and then again in a chained pass,
@@ -164,14 +171,14 @@ captureSharedWithUploaded (indices4, input0) =
     t = toFloat32 2.0
     xs = input0
     withBuffer(gpuScan (xs, toFloat32 0.0, \(acc, x) => acc + t * x), \scanned => withBuffer(gpuFilter (xs, \x => x > t), \kept => checkAll "shared capture" [
-        mappedFoldIs(gpuMap (xs, \x => t * x), toFloat32 20.0),
-        gpuLength kept == 2, foldIs (kept, toFloat32 7.0), at (kept, 0) == toFloat32 3.0,
+        gpuSatisfies(gpuMap (xs, \x => t * x), \scaled => sumOf(scaled, \total => total == toFloat32 20.0)),
+        gpuLength kept == 2, sumOf(kept, \total => total == toFloat32 7.0), (gpuGet (kept, 0) ?: toFloat32 0.0) == toFloat32 3.0,
         gpuSatisfies(gpuFold (xs, toFloat32 0.0, \(acc, x) => acc + t * x), \total => total == toFloat32 20.0),
-        at (scanned, 0) == toFloat32 2.0, at (scanned, 3) == toFloat32 20.0, gpuLength scanned == 4,
-        mappedFoldIs(gpuZipWith (xs, xs, \(x, y) => t * x * y), toFloat32 60.0),
-        mappedFoldIs(gpuMap (indices4, \i => t * toFloat32 i), toFloat32 12.0),
+        (gpuGet (scanned, 0) ?: toFloat32 0.0) == toFloat32 2.0, (gpuGet (scanned, 3) ?: toFloat32 0.0) == toFloat32 20.0, gpuLength scanned == 4,
+        gpuSatisfies(gpuZipWith (xs, xs, \(x, y) => t * x * y), \products => sumOf(products, \total => total == toFloat32 60.0)),
+        gpuSatisfies(gpuMap (indices4, \i => t * toFloat32 i), \scaledIndices => sumOf(scaledIndices, \total => total == toFloat32 12.0)),
         gpuSatisfies(gpuFilter (xs, \x => t > x), \small => gpuLength small == 1),
-        gpuSatisfies(gpuMap (xs, \x => t * x), \scaled => mappedFoldIs(gpuFilter (scaled, \y => y > t), toFloat32 18.0))
+        gpuSatisfies(gpuMap (xs, \x => t * x), \scaled => gpuSatisfies(gpuFilter (scaled, \y => y > t), \keptScaled => sumOf(keptScaled, \total => total == toFloat32 18.0)))
     ]))
 (** The shape [GPU-KERNEL-FORM] spells out: the capture is itself a fold over
     another buffer — a sum, a maximum and a minimum off `ws`. *)
@@ -179,19 +186,25 @@ captureFoldedCase () = withBuffer(toGpu ([toFloat32 1.0, toFloat32 3.0, toFloat3
 captureFoldedCaseUploaded (input0, input1, input2) =
     ws = input0
     xs = input1
-    withBuffer (gpuFold (ws, toFloat32 0.0, addF), \total => withBuffer (gpuFold (ws, gpuGet (ws, 0) ?: toFloat32 0.0, maxF), \peak => checkAll "capture folded from another buffer" [
-                total == toFloat32 16.0, peak == toFloat32 8.0,
-                gpuSatisfies(gpuMap (xs, \x => (x / total) ), \share => sumOf(share, \normalised => normalised == toFloat32 0.375)),
-                gpuSatisfies(gpuMap (xs, \x => (x / total) ), \share => at (share, 0) == toFloat32 0.125),
-                mappedFoldIs(gpuMap (xs, \x => x - peak), toFloat32 0.0 - toFloat32 10.0),
-                mappedFoldIs(gpuMap (xs, \x => peak * x), toFloat32 48.0),
-                gpuSatisfies(gpuFold (ws, toFloat32 0.0, minF), \low => low == toFloat32 0.0),
-                gpuSatisfies(gpuFold (ws, gpuGet (ws, 0) ?: toFloat32 0.0, minF), \low => low == toFloat32 1.0),
-                gpuSatisfies(gpuMap (ws, \w => (w / total) ), \share => sumOf(share, \unity => unity == toFloat32 1.0)),
-                gpuSatisfies(gpuFilter (ws, \w => w * toFloat32 4.0 >= total), \heavy => gpuLength heavy == 2),
-                gpuSatisfies(gpuZipWith (xs, xs, mulF), \products => gpuSatisfies(gpuMap (products, \p => (p / total) ), \share => sumOf(share, \part => part == toFloat32 1.25))),
-                gpuSatisfies(gpuFold (input2, total, addF), \empty => empty == toFloat32 16.0)
-            ]))
+    match gpuFold (ws, toFloat32 0.0, addF)
+        Success total =>
+            match gpuFold (ws, gpuGet (ws, 0) ?: toFloat32 0.0, maxF)
+                Success peak =>
+                    checkAll "capture folded from another buffer" [
+                        total == toFloat32 16.0, peak == toFloat32 8.0,
+                        gpuSatisfies(gpuMap (xs, \x => (x / total) ), \share => sumOf(share, \normalised => normalised == toFloat32 0.375)),
+                        gpuSatisfies(gpuMap (xs, \x => (x / total) ), \share => (gpuGet (share, 0) ?: toFloat32 0.0) == toFloat32 0.125),
+                        gpuSatisfies(gpuMap (xs, \x => x - peak), \centred => sumOf(centred, \total => total == toFloat32 0.0 - toFloat32 10.0)),
+                        gpuSatisfies(gpuMap (xs, \x => peak * x), \amplified => sumOf(amplified, \total => total == toFloat32 48.0)),
+                        gpuSatisfies(gpuFold (ws, toFloat32 0.0, minF), \low => low == toFloat32 0.0),
+                        gpuSatisfies(gpuFold (ws, gpuGet (ws, 0) ?: toFloat32 0.0, minF), \low => low == toFloat32 1.0),
+                        gpuSatisfies(gpuMap (ws, \w => (w / total) ), \share => sumOf(share, \unity => unity == toFloat32 1.0)),
+                        gpuSatisfies(gpuFilter (ws, \w => w * toFloat32 4.0 >= total), \heavy => gpuLength heavy == 2),
+                        gpuSatisfies(gpuZipWith (xs, xs, mulF), \products => gpuSatisfies(gpuMap (products, \p => (p / total) ), \share => sumOf(share, \part => part == toFloat32 1.25))),
+                        gpuSatisfies(gpuFold (input2, total, addF), \empty => empty == toFloat32 16.0)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Push on the form a capture arrives in: a buffer captured for gather
     (out-of-range reads padding to zero), a capture read from a nested lambda,
     one reached only through a match branch, and a shadowing parameter. *)
@@ -204,14 +217,14 @@ captureShapeWithUploaded (indices5, indices3, input0) =
         true => k
         false => x
     withBuffer(gpuMap (indices5, \i => gpuGet (w, i) ?: toFloat32 0.0), \gathered => checkAll "capture forms" [
-        foldIs (gathered, toFloat32 60.0), (gpuGet (gathered, 3) ?: toFloat32 9.9) == toFloat32 0.0,
+        sumOf(gathered, \total => total == toFloat32 60.0), (gpuGet (gathered, 3) ?: toFloat32 9.9) == toFloat32 0.0,
         (gpuGet (gathered, 4) ?: toFloat32 9.9) == toFloat32 0.0, gpuLength gathered == 5,
-        mappedFoldIs(gpuMap (w, branch), toFloat32 16.0),
-        mappedFoldIs(gpuMap (indices3, \i => k * at (w, i)), toFloat32 180.0),
-        gpuSatisfies(gpuMap (indices3, \i => k * at (w, i)), \nested => at (nested, 2) == toFloat32 90.0),
-        mappedFoldIs(gpuMap (w, \x => (\z => k * z) x), toFloat32 180.0),
-        mappedFoldIs(gpuMap (w, \k => toFloat32 2.0 * k), toFloat32 120.0),
-        gpuSatisfies(gpuMap (indices3, toFloat32), \asFloats => mappedFoldIs(gpuZipWith (w, asFloats, \(x, i) => x - k * i), toFloat32 51.0)),
+        gpuSatisfies(gpuMap (w, branch), \branched => sumOf(branched, \total => total == toFloat32 16.0)),
+        gpuSatisfies(gpuMap (indices3, \i => k * (gpuGet (w, i) ?: toFloat32 0.0)), \nested => sumOf(nested, \total => total == toFloat32 180.0)),
+        gpuSatisfies(gpuMap (indices3, \i => k * (gpuGet (w, i) ?: toFloat32 0.0)), \nested => (gpuGet (nested, 2) ?: toFloat32 0.0) == toFloat32 90.0),
+        gpuSatisfies(gpuMap (w, \x => (\z => k * z) x), \inner => sumOf(inner, \total => total == toFloat32 180.0)),
+        gpuSatisfies(gpuMap (w, \k => toFloat32 2.0 * k), \shadowed => sumOf(shadowed, \total => total == toFloat32 120.0)),
+        gpuSatisfies(gpuMap (indices3, toFloat32), \asFloats => gpuSatisfies(gpuZipWith (w, asFloats, \(x, i) => x - k * i), \differenced => sumOf(differenced, \total => total == toFloat32 51.0))),
         gpuSatisfies(gpuFold (w, toFloat32 0.0, \(a, x) => a + (\z => toFloat32 0.5 * z) x), \total => total == toFloat32 30.0),
         gpuSatisfies(gpuFilter (w, \x => (\z => z > k) x), \large => gpuLength large == 3)
     ])
@@ -225,17 +238,17 @@ captureDegenerateWithUploaded (emptyIndices, input0, input1, input2, input3, inp
     one = toFloat32 1.0
     xs = input0
     withBuffer(degenerate(0.0 - 1.0, \() => gpuMap (xs, \x => x / zero)), \divided => checkAll "degenerate captures" [
-        foldIs (divided, toFloat32 0.0 - toFloat32 3.0), at (divided, 0) == toFloat32 0.0 - toFloat32 1.0,
-        mappedFoldIs(gpuMap (xs, \x => zero * x), toFloat32 0.0),
-        mappedFoldIs(gpuMap (xs, \x => one * x), toFloat32 6.0),
-        mappedFoldIs(gpuMap (xs, \x => zero + x), toFloat32 6.0),
-        mappedFoldIs(gpuMap (xs, \_x => one), toFloat32 3.0),
+        sumOf(divided, \total => total == toFloat32 0.0 - toFloat32 3.0), (gpuGet (divided, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 1.0,
+        gpuSatisfies(gpuMap (xs, \x => zero * x), \zeroed => sumOf(zeroed, \total => total == toFloat32 0.0)),
+        gpuSatisfies(gpuMap (xs, \x => one * x), \identity => sumOf(identity, \total => total == toFloat32 6.0)),
+        gpuSatisfies(gpuMap (xs, \x => zero + x), \summed => sumOf(summed, \total => total == toFloat32 6.0)),
+        gpuSatisfies(gpuMap (xs, \_x => one), \ones => sumOf(ones, \total => total == toFloat32 3.0)),
         gpuSatisfies(gpuFilter (input1, \x => x > zero), \kept => gpuLength kept == 0),
         gpuSatisfies(gpuFold (input2, one, \(a, x) => a + zero * x), \total => total == toFloat32 1.0),
-        mappedFoldIs(gpuMap (input3, \x => one * x), toFloat32 5.0),
+        gpuSatisfies(gpuMap (input3, \x => one * x), \scaled => sumOf(scaled, \total => total == toFloat32 5.0)),
         gpuSatisfies(gpuZipWith (xs, input4, \(x, y) => zero * x + y), \empty => gpuLength empty == 0),
         gpuSatisfies(gpuZipWith (input5, xs, \(x, y) => one * x + y), \shortest => gpuLength shortest == 1),
-        mappedFoldIs(gpuMap (emptyIndices, \i => one * toFloat32 i), toFloat32 0.0)
+        gpuSatisfies(gpuMap (emptyIndices, \i => one * toFloat32 i), \empty => sumOf(empty, \total => total == toFloat32 0.0))
     ])
 (** Pin weighted sum and weighted mean: the weight total is folded once,
     captured by the normalising kernel, and both routes must agree. *)
@@ -247,17 +260,17 @@ weightedSumCaseUploaded (input0, input1, input2, input3, input4, input5) =
         Success wtot => match gpuMap(ws, \w => (w / wtot) )
             Success normw => checkAll("weighted sums", [
                 wtot == toFloat32(8.0),
-                dotIs (vals, ws, toFloat32(21.0)),
+                dotOf(vals, ws, \total => total == toFloat32(21.0)),
                 dotOf(vals, ws, \total => ((total / wtot) ) == toFloat32(2.625)),
-                foldIs (normw, toFloat32(1.0)),
+                sumOf(normw, \total => total == toFloat32(1.0)),
                 (gpuGet(normw, 2) ?: toFloat32(0.0)) == toFloat32(0.5),
                 (gpuGet(normw, 0) ?: toFloat32(0.0)) == toFloat32(0.125),
-                dotIs (vals, normw, toFloat32(2.625)),
-                dotIs (input2, input3, toFloat32(5.0)),
-                dotIs (vals, input4, toFloat32(0.0)),
+                dotOf(vals, normw, \total => total == toFloat32(2.625)),
+                dotOf(input2, input3, \total => total == toFloat32(5.0)),
+                dotOf(vals, input4, \total => total == toFloat32(0.0)),
                 dotOf(vals, input5, \total => sumOf(vals, \plain => total == plain)),
-                mappedFoldIs(gpuZipWith(vals, ws, \(v, w) => wtot * v * w), toFloat32(168.0)),
-                mappedFoldIs(gpuMap(vals, \v => (v / wtot) ), toFloat32(1.25))
+                gpuSatisfies(gpuZipWith(vals, ws, \(v, w) => wtot * v * w), \weighted => sumOf(weighted, \total => total == toFloat32(168.0))),
+                gpuSatisfies(gpuMap(vals, \v => (v / wtot) ), \share => sumOf(share, \total => total == toFloat32(1.25)))
             ])
             Error message => check("GPU operation", "success", toString(message))
         Error message => check("GPU operation", "success", toString(message))
@@ -273,7 +286,7 @@ meanWithUploaded (indices9, input0, input1, input2, input3) =
             match gpuMap(xs, \v => v - mean)
                 Success centered => checkAll("mean centering", [
                     mean == toFloat32(3.0),
-                    foldIs (centered, toFloat32(0.0)),
+                    sumOf(centered, \total => total == toFloat32(0.0)),
                     (gpuGet(centered, 0) ?: toFloat32(9.9)) == toFloat32(0.0) - toFloat32(2.0),
                     (gpuGet(centered, 3) ?: toFloat32(0.0)) == toFloat32(3.0),
                     gpuLength(centered) == 4,
@@ -281,8 +294,8 @@ meanWithUploaded (indices9, input0, input1, input2, input3) =
                     meanOf(input1, \empty => empty == toFloat32(0.0)),
                     meanOf(input2, \single => single == toFloat32(5.0)),
                     meanOf(input3, \column => column == toFloat32(5.0)),
-                    gpuSatisfies(gpuMap(xs, \v => mean + v), \shifted => meanIs (shifted, toFloat32(6.0))),
-                    gpuSatisfies(gpuMap(indices9, toFloat32), \asFloats => meanIs (asFloats, toFloat32(4.0))),
+                    gpuSatisfies(gpuMap(xs, \v => mean + v), \shifted => meanOf(shifted, \total => total == toFloat32(6.0))),
+                    gpuSatisfies(gpuMap(indices9, toFloat32), \asFloats => meanOf(asFloats, \total => total == toFloat32(4.0))),
                     gpuSatisfies(gpuFilter(xs, \v => v > mean), \above => gpuLength(above) == 1)
                 ])
                 Error message => check("GPU operation", "success", toString(message))
@@ -302,7 +315,7 @@ varianceCaseUploaded (input0, input1, input2, input3) =
                     mean == toFloat32(5.0),
                     varianceOf(xs, \spread => spread == toFloat32(4.0)),
                     sd * sd == toFloat32(4.0),
-                    foldIs (z, toFloat32(0.0)),
+                    sumOf(z, \total => total == toFloat32(0.0)),
                     (gpuGet(z, 0) ?: toFloat32(9.9)) == toFloat32(0.0) - toFloat32(1.5),
                     (gpuGet(z, 4) ?: toFloat32(9.9)) == toFloat32(0.0),
                     (gpuGet(z, 7) ?: toFloat32(0.0)) == toFloat32(2.0),
@@ -310,7 +323,7 @@ varianceCaseUploaded (input0, input1, input2, input3) =
                     varianceOf(z, \unit => unit == toFloat32(1.0)),
                     varianceOf(input1, \constant => constant == toFloat32(0.0)),
                     varianceOf(input2, \empty => empty == toFloat32(0.0)),
-                    degenerate(0.0, \() => mappedFoldIs(gpuMap(input3, \v => (v - toFloat32(3.0)) / toFloat32(0.0)), toFloat32(0.0)))
+                    degenerate(0.0, \() => gpuSatisfies(gpuMap(input3, \v => (v - toFloat32(3.0)) / toFloat32(0.0)), \flat => sumOf(flat, \total => total == toFloat32(0.0))))
                 ])
                 Error message => check("GPU operation", "success", toString(message))
         Error message => check("GPU operation", "success", toString(message))
@@ -319,16 +332,25 @@ varianceCaseUploaded (input0, input1, input2, input3) =
 normalizeCase () = withBuffer(toGpu ([toFloat32 1.0, toFloat32 3.0, toFloat32 5.0, toFloat32 9.0]), \input0 => withBuffer(toGpu ([toFloat32 4.0, toFloat32 4.0]), \input1 => normalizeCaseUploaded(input0, input1)))
 normalizeCaseUploaded (input0, input1) =
     xs = input0
-    withBuffer (gpuFold (xs, gpuGet (xs, 0) ?: toFloat32 0.0, minF), \lo => withBuffer (gpuFold (xs, gpuGet (xs, 0) ?: toFloat32 0.0, maxF), \hi => withBuffer (gpuMap (xs, \v => ((v - lo) / (hi - lo)) ), \scaled => checkAll "normalisation" [
-                    lo == toFloat32 1.0, hi == toFloat32 9.0, (gpuGet (scaled, 0) ?: toFloat32 9.9) == toFloat32 0.0,
-                    at (scaled, 1) == toFloat32 0.25, at (scaled, 2) == toFloat32 0.5,
-                    at (scaled, 3) == toFloat32 1.0, foldIs (scaled, toFloat32 1.75),
-                    meanIs (scaled, toFloat32 0.4375),
-                    mappedFoldIs(gpuMap (xs, \v => ((hi - v) / (hi - lo)) ), toFloat32 2.25),
-                    gpuSatisfies(gpuFold (xs, hi, minF), \lowest => lowest == toFloat32 1.0),
-                    gpuSatisfies(gpuFilter (xs, \v => v > lo), \above => gpuLength above == 3),
-                    degenerate(0.5, \() => mappedFoldIs(gpuMap (input1, \v => (v - toFloat32 4.0) / toFloat32 0.0), toFloat32 1.0))
-                ])))
+    match gpuFold (xs, gpuGet (xs, 0) ?: toFloat32 0.0, minF)
+        Success lo =>
+            match gpuFold (xs, gpuGet (xs, 0) ?: toFloat32 0.0, maxF)
+                Success hi =>
+                    match gpuMap (xs, \v => ((v - lo) / (hi - lo)) )
+                        Success scaled =>
+                            checkAll "normalisation" [
+                                lo == toFloat32 1.0, hi == toFloat32 9.0, (gpuGet (scaled, 0) ?: toFloat32 9.9) == toFloat32 0.0,
+                                (gpuGet (scaled, 1) ?: toFloat32 0.0) == toFloat32 0.25, (gpuGet (scaled, 2) ?: toFloat32 0.0) == toFloat32 0.5,
+                                (gpuGet (scaled, 3) ?: toFloat32 0.0) == toFloat32 1.0, sumOf(scaled, \total => total == toFloat32 1.75),
+                                meanOf(scaled, \mean => mean == toFloat32 0.4375),
+                                gpuSatisfies(gpuMap (xs, \v => ((hi - v) / (hi - lo)) ), \inverted => sumOf(inverted, \total => total == toFloat32 2.25)),
+                                gpuSatisfies(gpuFold (xs, hi, minF), \lowest => lowest == toFloat32 1.0),
+                                gpuSatisfies(gpuFilter (xs, \v => v > lo), \above => gpuLength above == 3),
+                                degenerate(0.5, \() => gpuSatisfies(gpuMap (input1, \v => (v - toFloat32 4.0) / toFloat32 0.0), \flat => sumOf(flat, \total => total == toFloat32 1.0)))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Pin clamping, active-unit counting, and a leaky variant whose slope is
     captured — spelled as a match and as arithmetic, which must agree. *)
 reluCase () = withBuffer(toGpu ([toFloat32 0.0 - toFloat32 1.5, toFloat32 2.5, toFloat32 0.0 - toFloat32 0.5, toFloat32 1.0]), \input0 => withBuffer(toGpu ([toFloat32 0.0 - toFloat32 1.0, toFloat32 0.0 - toFloat32 2.0]), \input1 => withBuffer(toGpu ([toFloat32 1.0, toFloat32 2.0]), \input2 => reluCaseUploaded(input0, input1, input2))))
@@ -340,15 +362,15 @@ reluCaseUploaded (input0, input1, input2) =
         true => x
         false => slope * x
     withBuffer(gpuMap (acts, relu), \clamped => withBuffer(gpuMap (acts, leaky), \leaked => checkAll "activations" [
-        foldIs (clamped, toFloat32 3.5), (gpuGet (clamped, 0) ?: toFloat32 9.9) == toFloat32 0.0,
-        gpuSatisfies(gpuFilter (acts, isActive), \active => gpuLength active == 2), foldIs (leaked, toFloat32 2.5),
-        at (leaked, 0) == toFloat32 0.0 - toFloat32 0.75, at (leaked, 1) == toFloat32 2.5,
-        at (leaked, 2) == toFloat32 0.0 - toFloat32 0.25,
-        mappedFoldIs(gpuMap (acts, \x => relu x - slope * relu (toFloat32 0.0 - x)), toFloat32 2.5),
-        mappedFoldIs(gpuMap (acts, \x => cap - relu (cap - relu x)), toFloat32 3.0),
-        mappedFoldIs(gpuMap (input1, relu), toFloat32 0.0),
-        mappedFoldIs(gpuMap (input2, relu), toFloat32 3.0),
-        mappedFoldIs(gpuMap (acts, \x => slope * relu x), toFloat32 1.75),
+        sumOf(clamped, \total => total == toFloat32 3.5), (gpuGet (clamped, 0) ?: toFloat32 9.9) == toFloat32 0.0,
+        gpuSatisfies(gpuFilter (acts, isActive), \active => gpuLength active == 2), sumOf(leaked, \total => total == toFloat32 2.5),
+        (gpuGet (leaked, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 0.75, (gpuGet (leaked, 1) ?: toFloat32 0.0) == toFloat32 2.5,
+        (gpuGet (leaked, 2) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 0.25,
+        gpuSatisfies(gpuMap (acts, \x => relu x - slope * relu (toFloat32 0.0 - x)), \blended => sumOf(blended, \total => total == toFloat32 2.5)),
+        gpuSatisfies(gpuMap (acts, \x => cap - relu (cap - relu x)), \ceiling => sumOf(ceiling, \total => total == toFloat32 3.0)),
+        gpuSatisfies(gpuMap (input1, relu), \negative => sumOf(negative, \total => total == toFloat32 0.0)),
+        gpuSatisfies(gpuMap (input2, relu), \positive => sumOf(positive, \total => total == toFloat32 3.0)),
+        gpuSatisfies(gpuMap (acts, \x => slope * relu x), \damped => sumOf(damped, \total => total == toFloat32 1.75)),
         gpuSatisfies(gpuMap (acts, \x => relu (toFloat32 0.0 - x)), \reflected => gpuSatisfies(fromGpu reflected, \values => structuralEquals(values, [toFloat32 1.5, toFloat32 0.0, toFloat32 0.5, toFloat32 0.0])))
     ]))
 (** Pin the pipeline by its properties, not its digits: a distribution,
@@ -379,15 +401,15 @@ matVecWithUploaded (rows0, rows1, rows2, rows3, input0, input1, input2, input3, 
     v = input1
     eye = input2
     matVecEach(m, v, 3, rows2, \out => checkAll "matrix-vector" [
-        gpuLength out == 2, at (out, 0) == toFloat32 9.0, at (out, 1) == toFloat32 21.0,
-        foldIs (out, toFloat32 30.0),
-        matVecOf(eye, input3, 3, rows3, \identity => foldIs (identity, toFloat32 24.0)),
-        matVecOf(eye, input4, 3, rows3, \identity => at (identity, 1) == toFloat32 8.0),
-        matVecOf(input5, input6, 2, rows2, \zeros => foldIs (zeros, toFloat32 0.0)),
-        matVecOf(input7, input8, 1, rows1, \single => at (single, 0) == toFloat32 15.0),
+        gpuLength out == 2, (gpuGet (out, 0) ?: toFloat32 0.0) == toFloat32 9.0, (gpuGet (out, 1) ?: toFloat32 0.0) == toFloat32 21.0,
+        sumOf(out, \total => total == toFloat32 30.0),
+        matVecOf(eye, input3, 3, rows3, \identity => sumOf(identity, \total => total == toFloat32 24.0)),
+        matVecOf(eye, input4, 3, rows3, \identity => (gpuGet (identity, 1) ?: toFloat32 0.0) == toFloat32 8.0),
+        matVecOf(input5, input6, 2, rows2, \zeros => sumOf(zeros, \total => total == toFloat32 0.0)),
+        matVecOf(input7, input8, 1, rows1, \single => (gpuGet (single, 0) ?: toFloat32 0.0) == toFloat32 15.0),
         matVecOf(m, v, 3, rows3, \padded => (gpuGet (padded, 2) ?: toFloat32 9.9) == toFloat32 0.0),
-        matVecOf(m, v, 3, rows0, \noRows => gpuLength noRows == 0), matVecOf(m, v, 0, rows2, \noColumns => foldIs (noColumns, toFloat32 0.0)),
-        gpuSatisfies(gpuZipWith (input9, v, mulF), \products => sumOf(products, \hand => matVecOf(m, v, 3, rows2, \first => at (first, 0) == hand)))
+        matVecOf(m, v, 3, rows0, \noRows => gpuLength noRows == 0), matVecOf(m, v, 0, rows2, \noColumns => sumOf(noColumns, \total => total == toFloat32 0.0)),
+        gpuSatisfies(gpuZipWith (input9, v, mulF), \products => sumOf(products, \hand => matVecOf(m, v, 3, rows2, \first => (gpuGet (first, 0) ?: toFloat32 0.0) == hand)))
     ])
 (** Run a two-layer forward pass; the first layer's negative unit must be
     silenced by relu before the second layer sees it. *)
@@ -397,13 +419,13 @@ layerWithUploaded (rows0, rows1, rows2, input0, input1, input2, input3, input4, 
     w1 = input0
     x = input1
     denseEach(w1, x, 3, rows2, input2, \h => denseEach(input3, h, 2, rows1, input4, \out => checkAll "dense layers" [
-        gpuLength h == 2, (gpuGet (h, 0) ?: toFloat32 9.9) == toFloat32 0.0, at (h, 1) == toFloat32 4.0,
-        foldIs (h, toFloat32 4.0), gpuSatisfies(gpuFilter (h, isActive), \active => gpuLength active == 1),
-        gpuLength out == 1, at (out, 0) == toFloat32 1.5,
-        matVecOf(w1, x, 3, rows2, \rows => at (rows, 0) == toFloat32 0.0 - toFloat32 4.0),
-        matVecOf(w1, x, 3, rows2, \rows => at (rows, 1) == toFloat32 6.0),
-        denseOf(w1, x, 3, rows2, input5, \zeros => foldIs (zeros, toFloat32 6.0)),
-        denseOf(w1, input6, 3, rows2, input7, \shifted => foldIs (shifted, toFloat32 3.0)),
+        gpuLength h == 2, (gpuGet (h, 0) ?: toFloat32 9.9) == toFloat32 0.0, (gpuGet (h, 1) ?: toFloat32 0.0) == toFloat32 4.0,
+        sumOf(h, \total => total == toFloat32 4.0), gpuSatisfies(gpuFilter (h, isActive), \active => gpuLength active == 1),
+        gpuLength out == 1, (gpuGet (out, 0) ?: toFloat32 0.0) == toFloat32 1.5,
+        matVecOf(w1, x, 3, rows2, \rows => (gpuGet (rows, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 4.0),
+        matVecOf(w1, x, 3, rows2, \rows => (gpuGet (rows, 1) ?: toFloat32 0.0) == toFloat32 6.0),
+        denseOf(w1, x, 3, rows2, input5, \zeros => sumOf(zeros, \total => total == toFloat32 6.0)),
+        denseOf(w1, input6, 3, rows2, input7, \shifted => sumOf(shifted, \total => total == toFloat32 3.0)),
         denseOf(w1, x, 3, rows0, input8, \noRows => gpuLength noRows == 0)
     ]))
 (** Descend from both sides of the true weight and pin the loss surface: the
@@ -419,6 +441,19 @@ trainCaseUploaded (input0, input1) =
         mseOf(toFloat32 2.0, xs, ys, \loss => loss == toFloat32 0.0), mseOf(toFloat32 3.0, xs, ys, \above => mseOf(toFloat32 1.0, xs, ys, \below => above == below)),
         mseOf(toFloat32 0.0, xs, ys, \unfit => mseOf(w, xs, ys, \fitted => unfit > fitted))
     ]))
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
 test ("dot product fuses zip and fold", \() => exactArithmetic (dotCase))
 test ("saxpy runs elementwise over buffer pairs", \() => exactArithmetic (saxpyCase))
 test ("a kernel closes over one host scalar", \() => exactArithmetic (captureScalarCase))

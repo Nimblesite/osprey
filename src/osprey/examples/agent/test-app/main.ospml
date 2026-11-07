@@ -18,7 +18,10 @@ import agent::McpClient
 import pydantic_ai::Mcp
 import agentapptests::Drive
 
-context now = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project", "/keys/env"])
+// A host context at `now`, launching with `arguments`.
+contextAt (now, arguments) = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = arguments)
+
+context now = contextAt (now, ["/work/project", "/keys/env"])
 
 toolReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\"}\"}},{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\",\\\"content\\\":\\\"x\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
 
@@ -29,6 +32,9 @@ codeReply = "{\"id\":\"rc\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\
 blankReply = "{\"id\":\"rb\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}"
 
 busyReply = "{\"error\":\"busy\"}"
+
+// A model reply whose whole content is one call of `tool` under `callId`, with no arguments.
+callsTool (callId, tool) = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"${callId}\",\"type\":\"function\",\"function\":{\"name\":\"${tool}\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
 
 // The step after the model's reply in `store` asked the demo server for a tool and its input went out.
 mcpAsked (store, reply, bytes) = mcpWrote ((answered (store, reply)).stepStore, bytes)
@@ -128,7 +134,7 @@ settledBy (store, ticket, outcome, of) = Drive::deliverWhere (store, ui::Complet
 shows (store, view, text) = contains (Drive::showing (store, view)) text
 
 // A relaunch of the app in the same folder at time `now`.
-relaunch now = (App::initial (ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
+relaunch now = (App::initial (contextAt (now, ["/work/project"]))).stepStore
 
 // The store at a bare launch, before any file read is answered.
 launchedStore () = (App::initial (context 100)).stepStore
@@ -202,6 +208,12 @@ lacksAll (text, parts) = forEachList (parts, \part => expectLacks (text, part))
 // Expect `store`'s active conversation to be at `stage`.
 expectChatStage (store, stage) = expect ((Model::active store).chatStage, stage)
 
+// Expect `step` to have asked for nothing at all.
+sendsNothing step = expect (Drive::kinds step, "")
+
+// Expect `store`'s session document to restore to exactly itself.
+expectRoundTrips store = expect (Doc::write (App::save (App::restore (App::save store))), Doc::write (App::save store))
+
 // The second conversation of `store`, or its active one.
 secondChat store = listGet store.chats 1 ?: Model::active store
 
@@ -213,6 +225,9 @@ readBack (store, name, text) = (settledWith (store, name, readOutcome true, text
 
 // The store after a relaunch at `now` read `name`'s document back as `text`.
 relaunchedWith (now, name, text) = readBack (relaunch now, name, text)
+
+// The store after `step`'s chats document was written and a relaunch at `now` read it back.
+relaunchedChats (now, step) = relaunchedWith (now, "chats", written step)
 
 // Expect `step`'s requests to be `kinds`, and the request at `index` to have `key` set to `value`, handing it back.
 checkedAsked (step, index, key, value, kinds) =
@@ -263,6 +278,11 @@ typedAdded (store, entry, value) = typedThenActed (store, entry, value, agentapp
 
 // Expect `step`'s add form to show `problem`.
 expectFormProblem (step, problem) = expectHas (step.stepStore.mcp.stateForm.formProblem, problem)
+
+// The add form refused `step` in words with `problem`, asking for nothing.
+refusedForm (step, problem) =
+    sendsNothing step
+    expectFormProblem (step, problem)
 
 // Expect `step`'s add form to have forgotten what it was given.
 expectFormCleared step =
@@ -326,7 +346,7 @@ testing ("launch asks for the conversations, providers and the key file, and sta
 testing ("typing keeps the draft and sends nothing", \() =>
     step = typingAtLaunch "half a thou"
     expect (step.stepStore.draft.draftText, "half a thou")
-    expect (Drive::kinds step, ""))
+    sendsNothing step)
 
 testing ("Return sends the words to the model with the key, and clears the composer", \() =>
     step = typingAtLaunch "Fix the bug\n"
@@ -344,14 +364,14 @@ testing ("Return sends the words to the model with the key, and clears the compo
 testing ("without a key nothing is sent and the words are kept", \() =>
     launched = launchedStore ()
     step = Drive::typing (launched, "Fix it\n")
-    expect (Drive::kinds step, "")
+    sendsNothing step
     expect (step.stepStore.draft.draftText, "Fix it")
     expectChatStage (step.stepStore, "idle"))
 
 testing ("words alone or a busy conversation send nothing", \() =>
-    expect (Drive::kinds (typingAtLaunch "   \n"), "")
+    sendsNothing (typingAtLaunch "   \n")
     busy = (typedAtLaunch "One\n")
-    expect (Drive::kinds (Drive::typing (busy, "Two\n")), ""))
+    sendsNothing (Drive::typing (busy, "Two\n")))
 
 testing ("a whole turn: model, each tool in order, model again, then saved without the key", \() =>
     opened = (typedAtLaunch "Fix the bug\n")
@@ -389,7 +409,7 @@ testing ("Stop cancels what runs and answers each owed call, so the next turn is
     chat = Model::active stopped.stepStore
     expect (length (Model::pendingCalls chat), 0)
     late = settledWith (stopped.stepStore, ticket, ok 0, "late")
-    expect (Drive::kinds late, "")
+    sendsNothing late
     expect (Drive::kinds (Drive::typing (stopped.stepStore, "Again\n")), "http"))
 
 testing ("a refused request or a lost connection shows why, and Try again resends", \() =>
@@ -453,7 +473,7 @@ testing ("the composer pick changes only that chat, and effort is kept or cleare
 testing ("the settings pane opens in place of the conversation and closes", \() =>
     opened = (acted (Drive::started (), agentapp::OpenSettings)).stepStore
     expect (opened.settings.settingsOpen, true)
-    expect (Drive::kinds (acted (opened, agentapp::OpenSettings)), "")
+    sendsNothing (acted (opened, agentapp::OpenSettings))
     shown = Drive::showing (opened, View::settings)
     showsAll (shown, ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
     closed = (acted (opened, agentapp::CloseSettings)).stepStore
@@ -526,8 +546,9 @@ testing ("a pasted image reaches the model as image data, a typed path never lea
     expectSays (body, "What is in", "[image:")
     // The next request of the turn sends the same picture again, and the saved conversation holds only its name.
     next = answered (sent.stepStore, textReply)
-    expectLacks ((Doc::write (App::save next.stepStore)), "QUJD")
-    expectHas ((Doc::write (App::save next.stepStore)), name)
+    savedDoc = Doc::write (App::save next.stepStore)
+    expectLacks (savedDoc, "QUJD")
+    expectHas (savedDoc, name)
     again = Drive::typing (next.stepStore, "And now?\n")
     expect (Drive::kinds again, "run")
     lost = Drive::answering (again.stepStore, ok 0, "\n")
@@ -566,7 +587,7 @@ testing ("a key saved during a conversation write still reaches providers.json, 
     next = saveSettled (queued.stepStore, ticket, "providers.json")
     nextTicket = askedField (next, 0, "ticket")
     chatsAgain = persistingChats next.stepStore
-    expect (Drive::kinds chatsAgain, "")
+    sendsNothing chatsAgain
     twice = persistingChats chatsAgain.stepStore
     last = saveSettled (twice.stepStore, nextTicket, "chats.json")
     lastTicket = askedField (last, 0, "ticket")
@@ -616,8 +637,7 @@ testing ("no key says what is wrong in words, never as a lone lock", \() =>
     expectSays (keyedView View::composer, "\"iconOnly\":true", "No API key for"))
 
 testing ("a launch with no key file argument finds the key file kept in the app's own store", \() =>
-    bare = ui::Context(now = 100, offset = 0, platform = "macos", home = "/home/ada", arguments = [])
-    first = App::initial bare
+    first = App::initial (contextAt (100, []))
     expect (Drive::kinds first, "store-read,store-read,store-read,store-read,store-read,run")
     expect (Drive::keyOf ((settledWith (first.stepStore, "env", ok 0, "DEEPSEEKKEY=sk-kept\n")).stepStore, "deepseek"), "sk-kept"))
 
@@ -663,13 +683,12 @@ testing ("changing folder keeps the active history, saves it and leaves every ot
     expect (other.chatId, secondId)
     expect (other.chatFolder, "/work/project")
     expect (Drive::kinds moved, "run")
-    resaved = completed (moved.stepStore, "save:0", Success(value = JsonObject []))
+    resaved = completed (moved.stepStore, "save:0", okJson [])
     expectWrote (resaved, "store-write", "/work/other")
     movedComposer = Drive::showing (moved.stepStore, View::composer)
     expectHas (movedComposer, chip ("other", true))
     expectLacks (movedComposer, "\"label\":\"project\"")
-    expectFolderKept (moved, Success(value = JsonObject [Doc::str ("path", "")]))
-    expectFolderKept (moved, Error(message = "denied"))
+    forEachList ([okJson [Doc::str ("path", "")], Error(message = "denied")], \outcome => expectFolderKept (moved, outcome))
     inherited = (acted (moved.stepStore, agentapp::NewChat)).stepStore
     expect ((Model::active inherited).chatFolder, "/work/other"))
 
@@ -692,8 +711,7 @@ testing ("the folder chip follows busy state, the old sidebar action is gone and
 
 testing ("a restart restores conversations with distinct identities and fresh tickets", \() =>
     first = answered (typedAtLaunch "One\n", textReply)
-    file = written first
-    restored = relaunchedWith (200, "chats", file)
+    restored = relaunchedChats (200, first)
     ids = mapList (restored.chats, \chat => chat.chatId)
     expect (length ids, 2)
     expectFalse ((listGet ids 0 ?: "") == (listGet ids 1 ?: ""))
@@ -703,8 +721,7 @@ testing ("a restart restores conversations with distinct identities and fresh ti
 
 testing ("a turn cut off by quitting answers what it owed, so the restored conversation can go on", \() =>
     calling = turnDone ("Go\n", toolReply)
-    file = written (Model::persisting (calling, "chats.json"))
-    restored = relaunchedWith (200, "chats", file)
+    restored = relaunchedChats (200, persistingChats calling)
     old = secondChat restored
     expect (length (Model::pendingCalls old), 0)
     expect (old.chatStage, "idle")
@@ -736,17 +753,17 @@ testing ("saves run one at a time and the newest state is written last", \() =>
     first = answered (typedAtLaunch "One\n", textReply)
     ticket = askedIn (first, 0, "ticket", "store-write")
     second = persistingChats first.stepStore
-    expect (Drive::kinds second, "")
+    sendsNothing second
     changed = second.stepStore
     chat = Model::active changed
     renamed = Model::putChat (changed, chat(chatTitle = "Newest"))
     ended = completed (renamed, ticket, ok 0)
     expectWrote (ended, "store-write", "Newest")
-    expect (Drive::kinds (completed (ended.stepStore, ticket, ok 0)), ""))
+    sendsNothing (completed (ended.stepStore, ticket, ok 0)))
 
 testing ("the session document restores the store it saved", \() =>
     calling = turnDone ("Go\n", toolReply)
-    expect (Doc::write (App::save (App::restore (App::save calling))), Doc::write (App::save calling)))
+    expectRoundTrips calling)
 
 replyLine (id, result) = "${Doc::write (JsonObject [Doc::str ("jsonrpc", "2.0"), JsonMember "id" id, JsonMember "result" result])}\n"
 
@@ -772,7 +789,6 @@ projectDoc = "{\"mcpServers\":{\"local\":{\"command\":\"node\",\"args\":[\"local
 // The demo server in a step's store, or a blank one when absent.
 demoOf step = McpModel::named (step.stepStore.mcp, "demo") ?: McpModel::blankServer ""
 
-// Launch with the MCP documents answered, so the demo server is connecting.
 // The standard MCP documents this suite loads, with a secret that must never leave mcp.json.
 mcpDoc () = "{\"mcpServers\":{\"demo\":{\"command\":\"python3\",\"args\":[\"server.py\"],\"env\":{\"MCP_TEST_WORD\":\"zephyr-secret\",\"TOKEN\":\"mcp-env-secret\"}}}}"
 
@@ -791,6 +807,7 @@ connectedTyping words = Drive::typing (mcpConnected (), words)
 // The store after `store` read `name`'s document, `found` whether its file was there.
 mcpSettled (store, name, found) = (settledBy (store, name, readOutcome found, mcpSlice)).stepStore
 
+// Launch with the MCP documents answered, so the demo server is connecting.
 mcpLaunched () =
     opened = App::initial (context 100)
     keyed = (settledBy (opened.stepStore, "env", ok 0, mcpSlice)).stepStore
@@ -878,8 +895,7 @@ mcpConnected () =
 
 testing ("a prefixed tool call goes through its server, the answer reaches the next request and isError stays tool text", \() =>
     opened = connectedTyping "What is the word?\n"
-    askingReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_secret_word\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
-    asking = answered (opened.stepStore, askingReply)
+    asking = answered (opened.stepStore, callsTool ("c1", "demo_secret_word"))
     // The call is written to the server, not run as a process.
     expect (Drive::kinds asking, "process-write")
     expectHas ((askedField (asking, 0, "input")), "\"name\":\"secret_word\"")
@@ -893,7 +909,7 @@ testing ("a prefixed tool call goes through its server, the answer reaches the n
     expectSent (serverSaid, "process-read,http", 1, "body", "zephyr-secret")
     expect (length (Model::active serverSaid.stepStore).chatResults, 0)
     // An isError reply is the tool's text, and the turn carries on.
-    afterFailWrite = mcpAsked (serverSaid.stepStore, "{\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"demo_fails\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"total_tokens\":11}}", 70)
+    afterFailWrite = mcpAsked (serverSaid.stepStore, callsTool ("c2", "demo_fails"), 70)
     failedRead = mcpRead (afterFailWrite.stepStore, callReply (5, "this tool always fails", true))
     expectHas ((askedField (failedRead, 1, "body")), "this tool always fails")
     done = answered (failedRead.stepStore, textReply)
@@ -903,7 +919,7 @@ testing ("a prefixed tool call goes through its server, the answer reaches the n
 
 testing ("a dead server fails its call in words, Reconnect restarts it, and a slow server times out its own call", \() =>
     opened = connectedTyping "Go\n"
-    afterWrite = mcpAsked (opened.stepStore, "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_die\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":2,\"total_tokens\":10}}", 60)
+    afterWrite = mcpAsked (opened.stepStore, callsTool ("c1", "demo_die"), 60)
     died = completed (afterWrite.stepStore, "mcpread:demo", okDone (readDone ("", true)))
     expectPhase (died, "failed")
     expectHas ((demoOf died).serverProblem, "exited")
@@ -914,7 +930,7 @@ testing ("a dead server fails its call in words, Reconnect restarts it, and a sl
     expectPhase (reconnected, "connecting")
     // A slow server fails that one call past its deadline, says so to the model, and stays connected.
     slowOpened = connectedTyping "Go slow\n"
-    slowAsking = answered (slowOpened.stepStore, "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_slow\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}")
+    slowAsking = answered (slowOpened.stepStore, callsTool ("c1", "demo_slow"))
     slowWritten = mcpWrote (slowAsking.stepStore, 60)
     stillWaiting = mcpRead (slowWritten.stepStore, "")
     expectChatStage (stillWaiting.stepStore, "tools")
@@ -945,8 +961,7 @@ testing ("remove stops the process, rewrites mcp.json and takes the tools out of
 testing ("the add form validates in words, paste is atomic, broken files report words and secrets stay in mcp.json", \() =>
     started = mcpLaunched ()
     named = typedInto (started.stepStore, agentapp::McpName, "demo")
-    onTab = acted (named.stepStore, agentapp::ShowSettingsTab(tabKey = "mcp"))
-    expectTrue (shows (onTab.stepStore, View::settings, "Add server"))
+    expectMcpTab (named.stepStore, "Add server")
     named2 = typedInto (named.stepStore, agentapp::McpName, "weather")
     commanded = typedInto (named2.stepStore, agentapp::McpCommand, "python3")
     added = typedAdded ((typedInto (commanded.stepStore, agentapp::McpArguments, "server.py")).stepStore, agentapp::McpEnvironment, "KEY=mcp-env-secret")
@@ -956,8 +971,7 @@ testing ("the add form validates in words, paste is atomic, broken files report 
     expectFalse (shows (added.stepStore, View::settings, "mcp-env-secret"))
     // A name that clashes is refused in words and nothing is asked.
     clash = typedAdded ((typedInto (added.stepStore, agentapp::McpName, "demo")).stepStore, agentapp::McpCommand, "python3")
-    expect (Drive::kinds clash, "")
-    expectFormProblem (clash, "already exists")
+    refusedForm (clash, "already exists")
     emptyName = typedAdded (clash.stepStore, agentapp::McpName, "")
     expectFormProblem (emptyName, "Enter a server name.")
     picked = chose ((typedInto (emptyName.stepStore, agentapp::McpName, "far")).stepStore, agentapp::PickMcpType, "url")
@@ -968,8 +982,7 @@ testing ("the add form validates in words, paste is atomic, broken files report 
     pasted = typedThenActed (settledAdd.stepStore, agentapp::McpPaste, "{\"mcpServers\":{\"one\":{\"command\":\"node\",\"args\":[\"one.js\"]}}}", agentapp::PasteMcpServers)
     expect (Drive::kinds pasted, "process-start,store-write")
     brokenPaste = typedThenActed (pasted.stepStore, agentapp::McpPaste, "{\"mcpServers\":{\"ok\":{\"command\":\"node\"},\"bad\":{}}}", agentapp::PasteMcpServers)
-    expect (Drive::kinds brokenPaste, "")
-    expectFormProblem (brokenPaste, "must have either")
+    refusedForm (brokenPaste, "must have either")
     // A broken file and an unsupported entry are words, never a crash.
     brokenFile = settledWith (brokenPaste.stepStore, "mcp-global", readOutcome true, "{broken")
     expectHas ((join brokenFile.stepStore.mcp.stateProblems "\n"), "not valid JSON")
@@ -979,9 +992,7 @@ testing ("the add form validates in words, paste is atomic, broken files report 
     sent = Drive::typing (unsupported.stepStore, "Done\n")
     answered = answered (sent.stepStore, textReply)
     final = answered.stepStore
-    expectLacks ((Doc::write (Model::saveDoc (final, "chats.json"))), "mcp-env-secret")
-    expectLacks ((Doc::write (McpModel::switchesJson final.mcp)), "mcp-env-secret")
-    expectLacks ((Doc::write (App::save final)), "zephyr-secret")
-    expectLacks ((Doc::write (Model::saveDoc (final, "mcp.json"))), "zephyr-secret")
+    forEachList ([Doc::write (Model::saveDoc (final, "chats.json")), Doc::write (McpModel::switchesJson final.mcp)], \doc => expectLacks (doc, "mcp-env-secret"))
+    forEachList ([Doc::write (App::save final), Doc::write (Model::saveDoc (final, "mcp.json"))], \doc => expectLacks (doc, "zephyr-secret"))
     expectHas ((Doc::write (Model::saveDoc ((mcpLaunched ()).stepStore, "mcp.json"))), "zephyr-secret")
-    expect (Doc::write (App::save (App::restore (App::save final))), Doc::write (App::save final)))
+    expectRoundTrips final)

@@ -319,26 +319,26 @@ verifiedFetch () =
     expectShows (failed, "root", ["Digest mismatch"])
     expect (evidenceValue (failed, "root", "Installed"), "")
 
-test ("missing workspace graph never reports zero installed in the package footer", \() => exactArithmetic missingFooter)
+test ("missing workspace graph never reports zero installed in the package footer", exactly missingFooter)
 
-test ("installed counts only present entries while missing lock entries warn", \() => exactArithmetic installedCounts)
+test ("installed counts only present entries while missing lock entries warn", exactly installedCounts)
 
-test ("empty findings read as unverified caution and never as an audit", \() => exactArithmetic emptyFindings)
+test ("empty findings read as unverified caution and never as an audit", exactly emptyFindings)
 
-test ("missing direct dependencies can be inspected and removed without hiding findings", \() => exactArithmetic missingDirect)
+test ("missing direct dependencies can be inspected and removed without hiding findings", exactly missingDirect)
 
-test ("recorded findings are visible danger warnings that block adding", \() => exactArithmetic recordedFindings)
+test ("recorded findings are visible danger warnings that block adding", exactly recordedFindings)
 
-test ("a local unverified add needs explicit confirmation and pending work blocks it", \() => exactArithmetic unverifiedAdd)
+test ("a local unverified add needs explicit confirmation and pending work blocks it", exactly unverifiedAdd)
 
-test ("confirming a local add issues one change request and stale completions are ignored", \() => exactArithmetic confirmedAdd)
+test ("confirming a local add issues one change request and stale completions are ignored", exactly confirmedAdd)
 
-test ("hosted unverified installs are blocked with a visible warning", \() => exactArithmetic hostedAdd)
+test ("hosted unverified installs are blocked with a visible warning", exactly hostedAdd)
 
-test ("removing a direct dependency warns and names the project before confirming", \() => exactArithmetic removeDirect)
+test ("removing a direct dependency warns and names the project before confirming", exactly removeDirect)
 
-test ("installed and workspace security findings stay visible", \() => exactArithmetic securityFindings)
+test ("installed and workspace security findings stay visible", exactly securityFindings)
 
-test ("unavailable package data hides counts and keeps the selected project", \() => exactArithmetic unavailableData)
+test ("unavailable package data hides counts and keeps the selected project", exactly unavailableData)
 
-test ("add waits for verified fetch before refreshing installed packages", \() => exactArithmetic verifiedFetch)
+test ("add waits for verified fetch before refreshing installed packages", exactly verifiedFetch)

@@ -42,12 +42,12 @@ class NDArray[B]:
 def scalar(value):
     """A rank-0 array holding one element, which broadcasting spreads to any
     operand: `add(a, scalar(2.0))`."""
-    return NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: value))))
+    return full([], value)
 
 def empty():
     """A zero-element rank-1 array, the validated-access fallback every
     `unwrap_or` over a list of arrays needs; never actually read."""
-    return NDArray(shape=[0], data=Storage.built(perform(Storage.Buffer.build(0, lambda i: 0.0))))
+    return full([0], 0.0)
 
 # Creation ----------------------------------------------------------------
 
@@ -64,13 +64,20 @@ def uniform_rows(rows, count, width):
     """Whether each of `count` rows holds exactly `width` elements."""
     return fold(range(count), True, lambda ok, i: ok and len(unwrap_or(listGet(rows, i), [])) == width)
 
+def uniform_blocks(blocks, d0, d1, d2):
+    """Whether each of `d0` blocks holds `d1` rows of exactly `d2` elements."""
+    return fold(range(d0), True, lambda ok, i: ok and uniform_rows(unwrap_or(listGet(blocks, i), []), d1, d2))
+
+def concat_each(rows, count):
+    """The flat list of the first `count` lists in `rows`, concatenated."""
+    return fold(range(count), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(rows, i), [])))
+
 def array2(rows):
     """A rank-2 array from a list of equal-length rows."""
     n = len(rows)
     m = len(unwrap_or(listGet(rows, 0), []))
     g = Errors.require(uniform_rows(rows, n, m), Errors.inhomogeneous(1, [n]))
-    flat = fold(range(n), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(rows, i), [])))
-    return array(flat, [n, m])
+    return array(concat_each(rows, n), [n, m])
 
 def array3(blocks):
     """A rank-3 array from a list of equal-shaped rank-2 blocks."""
@@ -79,9 +86,9 @@ def array3(blocks):
     d1 = len(first)
     d2 = len(unwrap_or(listGet(first, 0), []))
     g = Errors.require(uniform_rows(blocks, d0, d1), Errors.inhomogeneous(1, [d0]))
-    g2 = Errors.require(fold(range(d0), True, lambda ok, i: ok and fold(range(d1), True, lambda ok2, r: ok2 and len(unwrap_or(listGet(unwrap_or(listGet(blocks, i), []), r), [])) == d2)), Errors.inhomogeneous(2, [d0, d1]))
-    flat = fold(range(d0), [], lambda acc, i: listConcat(acc, fold(range(d1), [], lambda acc2, r: listConcat(acc2, unwrap_or(listGet(unwrap_or(listGet(blocks, i), []), r), [])))))
-    return array(flat, [d0, d1, d2])
+    g2 = Errors.require(uniform_blocks(blocks, d0, d1, d2), Errors.inhomogeneous(2, [d0, d1]))
+    flats = mapList(blocks, lambda b: concat_each(b, d1))
+    return array(concat_each(flats, d0), [d0, d1, d2])
 
 def full(shape, value):
     """An array of `shape` with every element `value`."""
@@ -128,8 +135,7 @@ def linspace(start, stop, num):
 
 def eye(n):
     """The `n` by `n` identity matrix."""
-    g = Errors.require(n >= 0, Errors.negative_dimensions())
-    return NDArray(shape=[n, n], data=Storage.built(perform(Storage.Buffer.build(n * n, lambda i: 1.0 if i // n == i % n else 0.0))))
+    return eye_m(n, n)
 
 def eye_m(n, m):
     """The `n` by `m` matrix with ones on the main diagonal."""
@@ -749,15 +755,10 @@ def std_axis(a, axis, keepdims, ddof):
     """np.std along `axis` with `ddof` degrees of freedom."""
     return sqrt(var_axis(a, axis, keepdims, ddof))
 
-def better_max(x, y):
-    """Whether `x` should replace `y` as argmax: NaN counts as largest, and
-    ties keep the earlier index."""
-    return x != y and (x != x or x > y)
-
-def better_min(x, y):
-    """Whether `x` should replace `y` as argmin: NaN counts as smallest, and
-    ties keep the earlier index."""
-    return x != y and (x != x or x < y)
+def better_of(x, y, want_max):
+    """Whether `x` beats `y` as the extremum: NaN is extreme and ties keep
+    the earlier index."""
+    return x != y and (x != x or (x > y if want_max else x < y))
 
 def argmax(a):
     """np.argmax over all elements: the flat index of the first maximum."""
@@ -770,10 +771,6 @@ def argmin(a):
 def arg_reduce(a, want_max):
     """The flat index of the first extremum over every element."""
     return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_of(Storage.at(a.data, i), Storage.at(a.data, best), want_max) else best)
-
-def better_of(x, y, want_max):
-    """Whether `x` beats `y` as the extremum: NaN is extreme, ties keep `y`."""
-    return better_max(x, y) if want_max else better_min(x, y)
 
 def argmax_axis(a, axis):
     """np.argmax along `axis`: the per-position index, as a flat int list over

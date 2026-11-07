@@ -157,13 +157,7 @@ fn api_docs_merge_project_namespaces_and_keep_both_file_docs() {
     .expect("default source");
     std::fs::write(root.join("words.ospml"), "//! Library docs.\nnamespace common\n    module Words\n        export value () = \"word\"\n").expect("ML source");
     let output = root.join("docs");
-    let result = finish(
-        osprey()
-            .arg("--docs")
-            .arg(&root)
-            .arg("--docs-dir")
-            .arg(&output),
-    );
+    let result = export_docs(&root, &output);
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(output.join("api/common.md").is_file());
     assert!(read_text(&output.join("api/common-numbers-value.md")).contains("int"));
@@ -187,13 +181,7 @@ fn api_docs_export_library_projects_without_an_application_entry() {
     )
     .expect("words");
     let output = root.join("docs");
-    let result = finish(
-        osprey()
-            .arg("--docs")
-            .arg(&root)
-            .arg("--docs-dir")
-            .arg(&output),
-    );
+    let result = export_docs(&root, &output);
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(output.join("api/numbers-value.md").is_file());
     assert!(output.join("api/words-value.md").is_file());
@@ -357,13 +345,7 @@ fn api_docs_export_every_module_corpus_source_in_both_flavors() {
             continue;
         }
         let output = root.join(path.file_name().expect("filename"));
-        let result = finish(
-            osprey()
-                .arg("--docs")
-                .arg(&path)
-                .arg("--docs-dir")
-                .arg(&output),
-        );
+        let result = export_docs(&path, &output);
         assert_eq!(
             result.code,
             Some(0),
@@ -416,15 +398,7 @@ fn api_docs_cleanup_preserves_unrelated_markdown() {
     let root = temp_dir("docs_cleanup_owned");
     let source = root.join("library.osp");
     let output = root.join("docs");
-    let run = || {
-        finish(
-            osprey()
-                .arg("--docs")
-                .arg(&source)
-                .arg("--docs-dir")
-                .arg(&output),
-        )
-    };
+    let run = || export_docs(&source, &output);
     std::fs::write(&source, "fn oldApi() = 1\n").expect("initial source");
     assert_eq!(run().code, Some(0));
     std::fs::write(output.join("api/handwritten.md"), "keep this").expect("manual page");
@@ -454,4 +428,15 @@ fn api_docs_reject_output_symlinks_without_touching_their_targets() {
         std::fs::read_dir(outside).expect("outside listing").count(),
         1
     );
+}
+
+/// Run `osprey --docs root --docs-dir output`.
+fn export_docs(root: &std::path::Path, output: &std::path::Path) -> super::Out {
+    finish(
+        osprey()
+            .arg("--docs")
+            .arg(root)
+            .arg("--docs-dir")
+            .arg(output),
+    )
 }

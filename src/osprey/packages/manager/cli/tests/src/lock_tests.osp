@@ -136,8 +136,7 @@ module LockTests {
         let b = lockOver(RegistryFixture::reads(manifestText("app") + "\n[dependencies]\n\"@demo/io\" = { epoch = 1, min_release = 1 }\n", served), served)
         checkAll("an ungranted io/files surface is resolution.capability and writes nothing", [
             RegistryFixture::reported(b, 1, "resolution.capability"),
-            RegistryFixture::lineOf(b, 1) == "@demo/io",
-            lockOf(b) == "",
+            structuralEquals([RegistryFixture::lineOf(b, 1), lockOf(b)], ["@demo/io", ""]),
             RegistryFixture::statusOf(a) == 1
         ])
     }

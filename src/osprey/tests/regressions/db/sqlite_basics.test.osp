@@ -44,14 +44,19 @@ fn prepare(db, sql) = {
     stmt
 }
 
+/// Step the statement once, release it, and report both statuses as `rc` and `fin`.
+fn runStatement(stmt) = {
+    let rc = sqlite3_step(stmt: stmt)
+    let fin = sqlite3_finalize(stmt: stmt)
+    { rc: rc, fin: fin }
+}
+
 /// Insert one user with BOUND parameters — no string interpolation of values.
 fn insertUser(db, uid, uname) = {
     let stmt = prepare(db: db, sql: "INSERT INTO users(id, name) VALUES (?, ?)")
     let _b1 = sqlite3_bind_int(stmt: stmt, idx: 1, val: uid)
     let _b2 = sqlite3_bind_text(stmt: stmt, idx: 2, val: uname, nByte: (0 - 1) , destructor: osprey_ffi_transient())
-    let rc = sqlite3_step(stmt: stmt)
-    let _fin = sqlite3_finalize(stmt: stmt)
-    rc
+    runStatement(stmt: stmt).rc
 }
 
 /// Read the next row and print it as a typed (int, text) pair.
@@ -61,13 +66,23 @@ fn printRow(stmt) = {
     rc
 }
 
-let dbCell = osprey_ffi_cell()
-let openrc = sqlite3_open(filename: ":memory:", ppDb: dbCell)
-let db = osprey_ffi_deref(cell: dbCell)
-print("open ${okText(rc: openrc)}")
+/// Create the users table over the FFI and hand back the exec status.
+fn createUsers(db) = sqlite3_exec(db: db, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
 
-let ddl = sqlite3_exec(db: db, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
-print("create ${okText(rc: ddl)}")
+/// Open an in-memory database on `cell`, create the users table, and report both
+/// statuses alongside the live connection.
+fn openUsers(cell) = {
+    let openrc = sqlite3_open(filename: ":memory:", ppDb: cell)
+    let db = osprey_ffi_deref(cell: cell)
+    let ddlrc = createUsers(db: db)
+    { openrc: openrc, ddlrc: ddlrc, db: db }
+}
+
+let dbCell = osprey_ffi_cell()
+let opened = openUsers(cell: dbCell)
+let db = opened.db
+print("open ${okText(rc: opened.openrc)}")
+print("create ${okText(rc: opened.ddlrc)}")
 
 let i1 = insertUser(db: db, uid: 1, uname: "Ada")
 let i2 = insertUser(db: db, uid: 2, uname: "Linus")
@@ -85,33 +100,29 @@ print("closed ${okText(rc: closed)}")
 /// Verifies generic FFI pointer cells, bound parameters, and typed row access.
 fn sqliteRoundTripCase() = {
     let testCell = osprey_ffi_cell()
-    let testOpen = sqlite3_open(filename: ":memory:", ppDb: testCell)
-    let testDb = osprey_ffi_deref(cell: testCell)
-    let testDdl = sqlite3_exec(db: testDb, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
+    let setup = openUsers(cell: testCell)
+    let testDb = setup.db
     let testInsert = insertUser(db: testDb, uid: 7, uname: "Grace")
     let testQuery = prepare(db: testDb, sql: "SELECT id, name FROM users WHERE id = 7")
     let testRow = sqlite3_step(stmt: testQuery)
     let selectedId = sqlite3_column_int(stmt: testQuery, col: 0)
     let selectedName = "${sqlite3_column_text(stmt: testQuery, col: 1)}"
-    let testDone = sqlite3_step(stmt: testQuery)
-    let testFinalized = sqlite3_finalize(stmt: testQuery)
+    let finished = runStatement(stmt: testQuery)
     let testClosed = sqlite3_close(db: testDb)
     let testFreed = osprey_ffi_free(cell: testCell)
     // Opening, schema creation, and status rendering agree on SQLITE_OK.
     checkAll("SQLite setup status", [
-        testOpen == 0,
-        okText(testOpen) == "ok",
-        testDdl == 0
+        structuralEquals([setup.openrc, setup.ddlrc], [0, 0]),
+        okText(setup.openrc) == "ok"
     ])
     // Bound parameters produce SQLITE_DONE and the expected typed row.
     checkAll("SQLite bound row", [
-        structuralEquals([testInsert, testRow, selectedId], [101, 100, 7]),
-        selectedName == "Grace",
-        testDone == 101
+        structuralEquals([testInsert, testRow, selectedId, finished.rc], [101, 100, 7, 101]),
+        selectedName == "Grace"
     ])
     // Statements, connections, and generic pointer cells all release cleanly.
     checkAll("SQLite cleanup status", [
-        structuralEquals([testFinalized, testClosed, testFreed], [0, 0, 0])
+        structuralEquals([finished.fin, testClosed, testFreed], [0, 0, 0])
     ])
 }
 test("SQLite FFI binds and reads a typed row", sqliteRoundTripCase)

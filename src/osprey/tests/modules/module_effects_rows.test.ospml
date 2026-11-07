@@ -79,6 +79,6 @@ transcript () = "${feeding (7, Source::pair)} ${feeding (3, \() => Stage::run (\
 exactArithmetic (\() =>
     print (transcript ()))
 
-test ("effects cross module boundaries to caller handlers", \() => exactArithmetic (crossBoundaryCase))
-test ("effect rows survive higher-order module calls", \() => exactArithmetic (higherOrderCase))
-test ("effects from separate modules nest independently", \() => exactArithmetic (nestedHandlerCase))
+test ("effects cross module boundaries to caller handlers", exactly crossBoundaryCase)
+test ("effect rows survive higher-order module calls", exactly higherOrderCase)
+test ("effects from separate modules nest independently", exactly nestedHandlerCase)

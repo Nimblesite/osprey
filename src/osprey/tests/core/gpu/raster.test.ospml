@@ -1,3 +1,15 @@
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU operation", "success", toString message)
+(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
+withIndices (n, work) = withBuffer (gpuIota n, work)
 // Rasterisation on the GPU surface: a fragment-shader-shaped renderer, and
 // the addressing algebra every rasteriser is built out of. Every scene is one
 // pure kernel dispatched over `gpuIota (width * height)` — the flat pixel grid
@@ -415,6 +427,19 @@ compositeWith (indices0, indices16, indices1536) =
         lengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
     ]))))
 exactArithmetic (\() => withBuffer (toGpu ([1, 4, 7, 9]), \texels => withIndices (1536, \indices1536 => withIndices (64, \indices64 => withIndices (16, \indices16 => gallery (indices1536, indices64, indices16, texels))))))
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
 test ("one kernel dispatch covers the whole pixel grid", \() => exactArithmetic (dispatchCase))
 test ("brightness levels map onto the palette", \() => exactArithmetic (paletteCase))
 test ("flat indices decompose into raster coordinates", \() => exactArithmetic (decomposeCase))

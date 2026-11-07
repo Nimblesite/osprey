@@ -147,28 +147,24 @@ module Sealed
 
 (** Constructors reached through exported factories keep their payloads. *)
 unionPayloadCase () = checkAll ("module union payloads survive the boundary", [
-    structuralEquals [Geo::area (Geo::circle 3), Geo::area (Geo::square 4), Geo::area (Geo::circle 0)] [9, 16, 0],
-    Geo::name (Geo::circle 3) == "circle",
-    Geo::name (Geo::square 4) == "square",
-    Geo::area (Geo::square (Geo::area (Geo::square 2))) == 16
+    structuralEquals [Geo::area (Geo::circle 3), Geo::area (Geo::square 4)] [9, 16],
+    structuralEquals [Geo::area (Geo::circle 0), Geo::area (Geo::square (Geo::area (Geo::square 2)))] [0, 16],
+    structuralEquals [Geo::name (Geo::circle 3), Geo::name (Geo::square 4)] ["circle", "square"]
 ])
 
 (** A record declared in a module crosses the boundary with its fields intact. *)
 recordFieldCase () = checkAll ("module record fields cross the boundary", [
-    (Geo::extent (Geo::circle 3)).width == 6,
-    (Geo::extent (Geo::circle 3)).height == 6,
-    (Geo::extent (Geo::square 5)).width == 5,
-    Geo::perimeterOf (Geo::extent (Geo::square 5)) == 20,
+    structuralEquals [(Geo::extent (Geo::circle 3)).width, (Geo::extent (Geo::circle 3)).height] [6, 6],
+    structuralEquals [(Geo::extent (Geo::square 5)).width, Geo::perimeterOf (Geo::extent (Geo::square 5))] [5, 20],
     Geo::perimeterOf (Geo::extent (Geo::circle 1)) == 8
 ])
 
 (** One generic module function serves several unrelated instantiations. *)
 genericModuleCase () = checkAll ("generic module functions specialise per site", [
-    Boxes::held (Boxes::wrap 7) == 7,
+    structuralEquals [Boxes::held (Boxes::wrap 7), Boxes::held (Boxes::rewrap (Boxes::wrap 2))] [7, 2],
+    Boxes::held (Boxes::wrap (Geo::area (Geo::square 3))) == 9,
     Boxes::held (Boxes::wrap "seven") == "seven",
-    Boxes::held (Boxes::wrap true) == true,
-    Boxes::held (Boxes::rewrap (Boxes::wrap 2)) == 2,
-    Boxes::held (Boxes::wrap (Geo::area (Geo::square 3))) == 9
+    Boxes::held (Boxes::wrap true) == true
 ])
 
 (** An opaque record is built, read and rebuilt only by its own module. *)
@@ -185,25 +181,22 @@ opaqueAliasCase () =
     second = Tokens::next first
     held = [first, second]
     checkAll ("opaque aliases are reached through their module", [
-        Tokens::raw first == 40,
-        Tokens::raw second == 41,
+        structuralEquals [Tokens::raw first, Tokens::raw second] [40, 41],
+        structuralEquals [listLength held, Tokens::raw (listGet held 1 ?: first)] [2, 41],
+        structuralEquals [Sealed::size (Sealed::bag (4, 5)), Sealed::orElse (Sealed::tried 3, 9)] [2, 3],
+        structuralEquals [Sealed::orElse (Sealed::failed "no", 9), Sealed::run (Sealed::stepBy 5, 10)] [9, 15],
         Tokens::same (first, first),
         !Tokens::same (first, second),
         Tokens::text (Tokens::label second) == "t41",
-        Tokens::same (Boxes::held (Boxes::wrap second), second),
-        listLength held == 2,
-        Tokens::raw (listGet held 1 ?: first) == 41,
-        Sealed::size (Sealed::bag (4, 5)) == 2,
         Sealed::describe (Sealed::moved (Sealed::open ("host", 80), 81)) == "host:81",
-        structuralEquals [Sealed::orElse (Sealed::tried 3, 9), Sealed::orElse (Sealed::failed "no", 9)] [3, 9],
-        Sealed::run (Sealed::stepBy 5, 10) == 15
+        Tokens::same (Boxes::held (Boxes::wrap second), second)
     ])
 
 exactArithmetic (\() =>
     print "${Geo::area (Geo::circle 3)} ${Geo::name (Geo::square 4)} ${Geo::perimeterOf (Geo::extent (Geo::square 5))} ${Boxes::held (Boxes::wrap "seven")}")
 
-test ("module unions keep their payloads", \() => exactArithmetic (unionPayloadCase))
-test ("module records keep their fields", \() => exactArithmetic (recordFieldCase))
-test ("module generics specialise per call site", \() => exactArithmetic (genericModuleCase))
-test ("module opaque records stay abstract", \() => exactArithmetic (opaqueCase))
-test ("module opaque aliases stay abstract", \() => exactArithmetic (opaqueAliasCase))
+test ("module unions keep their payloads", exactly unionPayloadCase)
+test ("module records keep their fields", exactly recordFieldCase)
+test ("module generics specialise per call site", exactly genericModuleCase)
+test ("module opaque records stay abstract", exactly opaqueCase)
+test ("module opaque aliases stay abstract", exactly opaqueAliasCase)

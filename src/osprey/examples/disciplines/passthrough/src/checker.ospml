@@ -38,6 +38,12 @@ knownTypes = ["int", "float", "string", "bool", "Unit", "List", "Map", "Result",
 identifierChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 notFlat = "is not a flat `(parameters) -> result` type"
 
+(** One `rejected` protocol JSON line carrying the single diagnostic `code`, `line`, `column` and `message`; an absent position is spelled `null`. *)
+rejectedLine (code, line, column, message) = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"" + code + "\",\"severity\":\"error\",\"line\":" + line + ",\"column\":" + column + ",\"message\":\"" + message + "\"}]}"
+
+(** One `rejected` protocol JSON line from the checker's own unpositioned `internal` diagnostic. *)
+internalLine message = rejectedLine ("internal", "null", "null", message)
+
 (** The last element of `parts`; used for a bare file name and a module title. *)
 lastPart parts = foldList (parts, "", \(_, part) => part)
 
@@ -99,22 +105,23 @@ module Replies
 
     export rejected diagnostics = encoded (rejectedJson diagnostics)
     (** A rejection of the checker's own doing. *)
-    export internal message = rejected ([Diagnostic(code = codeInternal, line = -1, column = -1, message = message)])
+    export internal message = refusing (codeInternal, message)
 
-    encoded json = jsonEncode json ?: fallback
-    acceptedJson (text, erased) = JsonObject [
+    (** A `rejected` reply carrying the one unpositioned diagnostic `code`/`message`. *)
+    export refusing (code, message) = rejected ([Diagnostic(code = code, line = -1, column = -1, message = message)])
+
+    encoded json = jsonEncode json ?: fallback ()
+    acceptedJson (text, erased) = envelope ("accepted", text, erasedJson erased, [])
+
+    rejectedJson diagnostics = envelope ("rejected", "", JsonNull, mapList (diagnostics, diagnosticJson))
+
+    (** The protocol envelope both replies share, with every member the result shape leaves open filled in. *)
+    envelope (result, text, erased, diagnostics) = JsonObject [
         JsonMember("version", JsonInt protocolVersion),
-        JsonMember("result", JsonString "accepted"),
+        JsonMember("result", JsonString result),
         JsonMember("signature", JsonString text),
-        JsonMember("erased", erasedJson erased),
-        JsonMember("diagnostics", JsonArray [])]
-
-    rejectedJson diagnostics = JsonObject [
-        JsonMember("version", JsonInt protocolVersion),
-        JsonMember("result", JsonString "rejected"),
-        JsonMember("signature", JsonString ""),
-        JsonMember("erased", JsonNull),
-        JsonMember("diagnostics", JsonArray (mapList (diagnostics, diagnosticJson)))]
+        JsonMember("erased", erased),
+        JsonMember("diagnostics", JsonArray diagnostics)]
 
     erasedJson erased = JsonObject [
         JsonMember("flavor", JsonString erased.flavor),
@@ -131,7 +138,8 @@ module Replies
         true => JsonNull
         false => JsonInt at
 
-    fallback = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"line\":null,\"column\":null,\"message\":\"the checker could not encode its response\"}]}"
+    (** The line `encoded` answers with when the encoder itself fails. *)
+    fallback () = internalLine "the checker could not encode its response"
 
 (** Turning the compiler's stderr into diagnostics, with the positions it wrote. *)
 module Checks
@@ -143,19 +151,23 @@ module Checks
         true => positioned (drop (line, length path + 1))
         false => whole line
 
-    positioned rest = match indexOf (rest, ":")
+    (** `next` with the integer or offset `found` carries, or the whole `rest` as one unpositioned diagnostic when it holds none. *)
+    counted (rest, found, next) = match found
         Error _ => whole rest
-        Success first => numbered (rest, first)
+        Success at => next at
+
+    positioned rest = counted (rest, indexOf (rest, ":"), \first => numbered (rest, first))
+
     numbered (rest, first) =
         column = drop (rest, first + 1)
-        match indexOf (column, ":")
-            Error _ => whole rest
-            Success second => measured (rest, column, first, second)
-    measured (rest, column, first, second) = match parseInt (substring (rest, 0, first) ?: "")
+        counted (rest, indexOf (column, ":"), \second => measured (rest, column, first, second))
+
+    measured (rest, column, first, second) = counted (rest, parseInt (substring (rest, 0, first) ?: ""), atLine rest column second)
+
+    (** The positioned diagnostic at `at`, once `column`'s integer is read too. *)
+    atLine rest column second at = match parseInt (substring (column, 0, second) ?: "")
         Error _ => whole rest
-        Success at => match parseInt (substring (column, 0, second) ?: "")
-            Error _ => whole rest
-            Success where => Diagnostic(code = codeCheck, line = at, column = where, message = trim (drop (column, second + 1)))
+        Success where => Diagnostic(code = codeCheck, line = at, column = where, message = trim (drop (column, second + 1)))
 
     whole message = Diagnostic(code = codeCheck, line = -1, column = -1, message = trim message)
 
@@ -259,12 +271,15 @@ module Signatures
         [] => ""
         [first, ...rest] => " (p" + toString at + " : " + first + ")" + parameters (rest, at + 1)
 
+    (** The one character at `at` of `text`, or nothing past the end. *)
+    charAt (text, at) = substring (text, at, at + 1) ?: ""
+
     (** The parameters of a list type, split at commas outside brackets. *)
     splitArguments params = parts (params, 0, 0, 0, [])
 
     parts (text, at, depth, start, found) = match at >= length text
         true => listReverse (listAppend (found, trim (substring (text, start, length text) ?: "")))
-        false => stepped (text, at, depth, start, found, substring (text, at, at + 1) ?: "")
+        false => stepped (text, at, depth, start, found, charAt (text, at))
 
     stepped (text, at, depth, start, found, char) = match contains ("([{<", char)
         true => parts (text, at + 1, depth + 1, start, found)
@@ -279,7 +294,7 @@ module Signatures
     (** Every identifier one type spelling contains. *)
     identifiers (ty, at, current, found) = match at >= length ty
         true => ended (current, found)
-        false => scanning (ty, at, current, found, substring (ty, at, at + 1) ?: "")
+        false => scanning (ty, at, current, found, charAt (ty, at))
 
     scanning (ty, at, current, found, char) = match contains identifierChars char
         true => identifiers (ty, at + 1, current + char, found)
@@ -354,7 +369,7 @@ module Checker
         _ => []
 
     inspect request = match Signatures::stubs request.imports
-        Unstubbable why => Replies::rejected ([Diagnostic(code = codeImports, line = -1, column = -1, message = why)])
+        Unstubbable why => Replies::refusing (codeImports, why)
         Ready stubs => written (request, stubs)
 
     written (request, stubs) =
@@ -372,11 +387,13 @@ module Checker
             true => signed (request, directory, name, target, erased)
             false => rejectedBy (target, erased, ran.err)
 
-    checkCommand (request, target) =
-        Tool::quoted request.compiler + " " + Tool::quoted target + " --check --no-warnings"
+    (** The quoted compiler invocation on the scratch copy, with `flags` appended. *)
+    compiling (request, target, flags) = Tool::quoted request.compiler + " " + Tool::quoted target + " " + flags
+
+    checkCommand (request, target) = compiling (request, target, "--check --no-warnings")
 
     rejectedBy (target, erased, stderr) = match Checks::diagnostics (target, stderr)
-        [] => Replies::rejected ([Diagnostic(code = codeCheck, line = -1, column = -1, message = "the compiler rejected the module without a diagnostic")])
+        [] => Replies::refusing (codeCheck, "the compiler rejected the module without a diagnostic")
         found => Replies::rejected (mapList (found, \one => marked (one, lineCount erased)))
 
     (** A diagnostic past the module's last line can only be about the stub the
@@ -392,8 +409,7 @@ module Checker
     lineCount text = listLength (split (text, "\n") ?: [text])
 
     signed (request, directory, name, target, erased) =
-        command = Tool::quoted request.compiler + " " + Tool::quoted target + " --signature"
-        ran = Tool::capture (directory, name + ".signature", command)
+        ran = Tool::capture (directory, name + ".signature", compiling (request, target, "--signature"))
         match ran.code == 0
             true => exported (request, erased, kept (ran.out, Signatures::titles request.imports))
             false => Replies::internal ("the compiler checked the module but refused its signature: " + trim ran.err)
@@ -409,13 +425,14 @@ module Checker
 
     ending (lines, titles, kept) = match lines
         [] => join (listReverse kept, "\n")
-        [first, ...rest] => match startsWith first signaturePrefix
-            true => boundary (first, rest, titles, kept)
+        [first, ...rest] => match stubBlock (first, titles)
+            true => join (listReverse kept, "\n")
             false => ending (rest, titles, listPrepend (kept, first))
 
-    boundary (line, rest, titles, kept) = match listContains (titles, trim (drop (line, length signaturePrefix)))
-        true => join (listReverse kept, "\n")
-        false => ending (rest, titles, listPrepend (kept, line))
+    (** Whether `line` opens one of the imported stubs' signature blocks, where the module's own text ends. *)
+    stubBlock (line, titles) = match startsWith line signaturePrefix
+        true => listContains (titles, trim (drop (line, length signaturePrefix)))
+        false => false
 
 (** Every case this package asserts about itself: the marker rewrite, the
     stderr parser and the exact response encoding the seam parses. *)
@@ -428,31 +445,45 @@ module Tests
         test ("a stubbable import becomes an extern; an empty one stays resolvable", \() => stubs ())
         test ("an import an extern cannot express is refused with the reason", \() => refusals ())
 
+    (** Asserts the marker line `from` is rewritten to `to` with the module text after it untouched. *)
+    rewrittenMarker (from, to, rest) = expect (Marker::rewrite (from + rest), to + "\n" + rest)
+
     markers () =
-        expect (Marker::rewrite "// osprey: types=passthrough\nnamespace Count\n", "// osprey: types=hm\nnamespace Count\n")
-        expect (Marker::rewrite "# osprey: types=passthrough\nx = 1\n", "# osprey: types=hm\nx = 1\n")
-        expect (Marker::rewrite "//osprey: types=passthrough\n", "// osprey: types=hm\n")
+        rewrittenMarker ("// osprey: types=passthrough\n", hmMarker, "namespace Count\n")
+        rewrittenMarker ("# osprey: types=passthrough\n", hmMarkerPython, "x = 1\n")
+        rewrittenMarker ("//osprey: types=passthrough\n", hmMarker, "")
         expect (Marker::rewrite unmarked, unmarked)
+
+    (** Asserts `stderr`'s first diagnostic against the scratch path reads as `expected`. *)
+    firstDiagnostic (stderr, expected) = expect (described (first (Checks::diagnostics (scratch, stderr))), expected)
+
     diagnostics () =
-        expect (described (first (Checks::diagnostics (scratch, scratchLine))), "check 5 25 type mismatch: cannot unify string with int")
-        expect (described (first (Checks::diagnostics (scratch, "error: the module is ill-formed\n"))), "check -1 -1 error: the module is ill-formed")
+        firstDiagnostic (scratchLine, "check 5 25 type mismatch: cannot unify string with int")
+        firstDiagnostic ("error: the module is ill-formed\n", "check -1 -1 error: the module is ill-formed")
         expect (listLength (Checks::diagnostics (scratch, "\n  \n")), 0)
     acceptedReply () = expect (Replies::accepted (sampleSignature, Erased(flavor = "ml", source = "namespace a\n")), acceptedExpected)
 
     rejectedReplies () =
-        expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected)
-        expect (Replies::internal "boom", internalExpected)
+        expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected ())
+        expect (Replies::internal "boom", internalExpected ())
 
     stubs () =
-        expect (describedStubs ([Imported(name = "a::Numbers", text = "signature Numbers\n    twice : (int) -> int\n", omitted = [])]), "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n")
+        expect (describedStubs ([Imported(name = "a::Numbers", text = numbersSignature "twice : (int) -> int", omitted = [])]), "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n")
         expect (describedStubs ([Imported(name = "a::Empty", text = "signature Empty\n", omitted = [])]), "namespace a\nmodule Empty\n" + emptyStub)
 
     refusals () =
-        expect (refusal ("signature Numbers\n    same<t0> : (t0) -> t0\n", []), "import `Numbers` item `same<t0> : (t0) -> t0` is polymorphic, which an `extern` declaration cannot spell")
-        expect (refusal ("signature Numbers\n    make : (string) -> { age: int }\n", []), "import `Numbers` item `make : (string) -> { age: int }` uses a record type, which an `extern` declaration cannot express")
-        expect (refusal ("signature Numbers\n    make : (string) -> int\n", ["type Person"]), "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own")
+        refusedItem ("same<t0> : (t0) -> t0", "is polymorphic, which an `extern` declaration cannot spell")
+        refusedItem ("make : (string) -> { age: int }", "uses a record type, which an `extern` declaration cannot express")
+        expect (refusal ("make : (string) -> int", ["type Person"]), "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own")
 
-    refusal (text, omitted) = describedStubs ([Imported(name = "a::Numbers", text = text, omitted = omitted)])
+    (** Asserts the one-item `Numbers` signature `item` is refused with `why`. *)
+    refusedItem (item, why) = expect (refusal (item, []), "import `Numbers` item `" + item + "` " + why)
+
+    (** The stub answer for an import of `a::Numbers` whose signature holds `items` and omits `omitted`. *)
+    refusal (items, omitted) = describedStubs ([Imported(name = "a::Numbers", text = numbersSignature items, omitted = omitted)])
+
+    (** The signature text of an imported `Numbers` module holding `items`. *)
+    numbersSignature items = "signature Numbers\n    " + items + "\n"
 
     describedStubs imports = match Signatures::stubs imports
         Unstubbable why => why
@@ -469,8 +500,9 @@ module Tests
     scratchLine = "/tmp/x.ospml:5:25: type mismatch: cannot unify string with int\n"
     sampleSignature = "signature M\n    twice : (int) -> int\n"
     acceptedExpected = "{\"version\":2,\"result\":\"accepted\",\"signature\":\"signature M\\n    twice : (int) -> int\\n\",\"erased\":{\"flavor\":\"ml\",\"source\":\"namespace a\\n\"},\"diagnostics\":[]}"
-    rejectedExpected = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"check\",\"severity\":\"error\",\"line\":5,\"column\":25,\"message\":\"bad\"}]}"
-    internalExpected = "{\"version\":2,\"result\":\"rejected\",\"signature\":\"\",\"erased\":null,\"diagnostics\":[{\"code\":\"internal\",\"severity\":\"error\",\"line\":null,\"column\":null,\"message\":\"boom\"}]}"
+    (** The exact protocol JSON lines the replies under test must spell, built by the same `rejectedLine` the checker answers with. *)
+    rejectedExpected () = rejectedLine ("check", "5", "25", "bad")
+    internalExpected () = internalLine "boom"
 
 (** The one thing this program needs from libc, and the reason: the testing
     builtins named by the suite attach a TAP plan and summary to the end of

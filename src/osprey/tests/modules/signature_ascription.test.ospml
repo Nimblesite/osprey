@@ -94,9 +94,7 @@ readAs stamp =
 
 (** A signature effect is declared by the module and handled by the caller. *)
 signatureEffectCase () = checkAll ("signature effect stays performable", [
-    structuralEquals [readAs 7, readAs 0, readAs 41] [7, 0, 41],
-    ((readAs 41 + 1) ) == 42,
-    readAs (readAs 3) == 3
+    structuralEquals [readAs 7, readAs 0, readAs 41, ((readAs 41 + 1) ), readAs (readAs 3)] [7, 0, 41, 42, 3]
 ])
 
 (** Nested ascription and the plain-export surface both stay addressable. *)
@@ -108,6 +106,6 @@ nestedAndExtraCase () = checkAll ("nested ascription and extra exports", [
 exactArithmetic (\() =>
     print "${Counters::size (Counters::bump (Counters::empty ()))} ${Trees::doubled ()} ${Extended::seeded ()}")
 
-test ("abstract signature types stay abstract", \() => exactArithmetic (abstractTypeCase))
-test ("signature effects remain performable", \() => exactArithmetic (signatureEffectCase))
-test ("nested ascription and extra exports conform", \() => exactArithmetic (nestedAndExtraCase))
+test ("abstract signature types stay abstract", exactly abstractTypeCase)
+test ("signature effects remain performable", exactly signatureEffectCase)
+test ("nested ascription and extra exports conform", exactly nestedAndExtraCase)

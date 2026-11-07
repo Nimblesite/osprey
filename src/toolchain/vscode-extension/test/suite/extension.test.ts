@@ -168,8 +168,7 @@ let manifestWasStaged = false;
 // is re-derived here. [DEBUGGER-REUSE]
 
 suite("Osprey Shipwright Activation Coverage", () => {
-  let priorCompilerPath: string | undefined;
-  let setCompilerPath = false;
+  let pinned: PinnedOspreySettings | undefined;
 
   suiteSetup(async () => {
     // Point server.compilerPath at the real osprey binary BEFORE the extension
@@ -178,28 +177,13 @@ suite("Osprey Shipwright Activation Coverage", () => {
     // client option handlers and the start outcome.
     const ospreyPath = resolveBuiltOsprey();
     if (ospreyPath) {
-      const config = vscode.workspace.getConfiguration("osprey");
-      priorCompilerPath = config.get<string>("server.compilerPath");
-      await config.update(
-        "server.compilerPath",
-        ospreyPath,
-        vscode.ConfigurationTarget.Global,
-      );
-      setCompilerPath = true;
+      pinned = await pinOspreySettings({ "server.compilerPath": ospreyPath });
     }
   });
 
   suiteTeardown(async () => {
     // Restore the compiler path so later suites see defaults.
-    if (setCompilerPath) {
-      await vscode.workspace
-        .getConfiguration("osprey")
-        .update(
-          "server.compilerPath",
-          priorCompilerPath ?? "",
-          vscode.ConfigurationTarget.Global,
-        );
-    }
+    await pinned?.restore();
     // Remove only the manifest we staged so we never delete a real one.
     if (manifestWasStaged && fs.existsSync(stagedManifestPath)) {
       fs.rmSync(stagedManifestPath, { force: true });
@@ -560,8 +544,7 @@ fn broken syntax here {
 // assertion runs.
 suite("Osprey Language Features Tests", () => {
   let tempDir: string;
-  let priorCompilerPath: string | undefined;
-  let pinnedCompiler = false;
+  let pinned: PinnedOspreySettings | undefined;
   const extension = () => vscode.extensions.getExtension(extensionId);
 
   // pollFor retries an async provider call until `ok` accepts its result or the
@@ -734,14 +717,7 @@ suite("Osprey Language Features Tests", () => {
       ospreyPath,
       "a freshly-built osprey binary (target/release or PATH) is required for feature tests",
     );
-    const config = vscode.workspace.getConfiguration("osprey");
-    priorCompilerPath = config.get<string>("server.compilerPath");
-    await config.update(
-      "server.compilerPath",
-      ospreyPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    pinnedCompiler = true;
+    pinned = await pinOspreySettings({ "server.compilerPath": ospreyPath });
 
     const ext = extension();
     assert.ok(ext, "extension discoverable");
@@ -767,15 +743,7 @@ suite("Osprey Language Features Tests", () => {
   });
 
   suiteTeardown(async () => {
-    if (pinnedCompiler) {
-      await vscode.workspace
-        .getConfiguration("osprey")
-        .update(
-          "server.compilerPath",
-          priorCompilerPath ?? "",
-          vscode.ConfigurationTarget.Global,
-        );
-    }
+    await pinned?.restore();
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     removeDir(tempDir);
   });

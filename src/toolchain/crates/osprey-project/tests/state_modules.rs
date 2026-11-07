@@ -99,12 +99,7 @@ fn lambda_and_spawn_cannot_create_handler_factories() {
 #[test]
 fn differently_qualified_same_tail_effect_does_not_authorize_state() {
     // Implements [MODULES-STATE-MODULE].
-    let state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("Other::CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let state = counter_handled_by("Other::CounterFx");
     rejects(
         "state.osp",
         vec![state],
@@ -156,12 +151,7 @@ fn state_initializer_must_be_pure_and_dependency_free() {
 #[test]
 fn wildcard_import_from_state_module_is_always_rejected() {
     // Implements [MODULES-IMPORT], [MODULES-STATE-MODULE].
-    let state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let state = counter_handled_by("CounterFx");
     let entry = ast(
         "main.osp",
         vec![
@@ -177,12 +167,7 @@ fn wildcard_import_from_state_module_is_always_rejected() {
         "{messages:?}"
     );
 
-    let namespace_state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let namespace_state = counter_handled_by("CounterFx");
     let namespace_entry = ast(
         "main.osp",
         vec![
@@ -249,12 +234,7 @@ fn namespace_cannot_have_two_state_owners() {
 #[test]
 fn private_effect_is_not_a_valid_state_surface() {
     // Implements [MODULES-STATE-MODULE].
-    let mut state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let mut state = counter_handled_by("CounterFx");
     if let Stmt::Module { body, .. } = &mut state {
         if let Some(effect) = body
             .iter_mut()
@@ -302,12 +282,7 @@ fn module_mutation_boundaries_preserve_ordinary_local_mut() {
     };
     rejects("plain.osp", vec![plain], &["plain modules cannot declare"]);
 
-    let mut exported = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let mut exported = counter_handled_by("CounterFx");
     if let Stmt::Module { body, .. } = &mut exported {
         if let Some(cell) = body.first_mut() {
             cell.visibility = Visibility::Exported;
@@ -344,4 +319,15 @@ fn empty_state(name: &str) -> Stmt {
         position: None,
         inner_doc: None,
     }
+}
+
+/// The `Counter` state module whose installer handles `effect` by reading its
+/// own `count` cell.
+fn counter_handled_by(effect: &str) -> Stmt {
+    state_module(
+        "Counter",
+        Expr::Integer(0),
+        Vec::new(),
+        handler(effect, Expr::Identifier("count".to_string())),
+    )
 }

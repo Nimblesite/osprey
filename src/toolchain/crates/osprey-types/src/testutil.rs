@@ -94,19 +94,6 @@ pub(crate) fn rejects(flavor: Flavor, src: impl AsRef<str>) {
     );
 }
 
-/// Assert `src` is rejected SOMEHOW — by the parser or by the checker. Only the
-/// sites whose rejection is a known diagnostic gap may use this: the ML
-/// frontend mis-parses a type application in a pipe target, and a ML value
-/// binding whose pattern is a type application, so neither reports the rule its
-/// test names. Every other site pins its own wording with [`rejects_with`] or
-/// [`parse_rejects_with`].
-pub(crate) fn rejected_somehow(flavor: Flavor, src: impl AsRef<str>) {
-    let src = src.as_ref();
-    let parsed = parse_program_with_flavor(src, flavor);
-    let rejected = !parsed.errors.is_empty() || !check_program(&parsed.program).is_empty();
-    assert!(rejected, "{flavor}: expected a rejection, got none\n{src}");
-}
-
 /// The call-site arity contract's exact wording, mirroring
 /// [GENERICS-CTOR-ARITY]'s ``constructor `Box` takes 1 type argument(s), got 2``.
 pub(crate) fn fn_arity_message(name: &str, declared: usize, written: usize) -> String {

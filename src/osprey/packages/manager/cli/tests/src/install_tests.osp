@@ -154,8 +154,7 @@ module InstallTests {
         let broken = webRoute(localBase, sourcePath(first), 404, "")
         let a = runInstall([lockRead(os)], [], [broken, sourceWeb(second)], [])
         checkAll("one failed fetch keeps the run going and ends status 1", [
-            a.report.status == 1,
-            length(a.report.lines) == 2,
+            structuralEquals([a.report.status, length(a.report.lines)], [1, 2]),
             Fixture::line(a.report, 0) == "fetch.not-found",
             startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
             a.fetched == "${sourcePath(first)}|${sourcePath(second)}|"
@@ -167,9 +166,8 @@ module InstallTests {
         let missing = runInstall([], [], [], [])
         let invalid = runInstall([Fixture::readRoute("osprey.lock", "not json")], [], [], [])
         checkAll("a missing or invalid lock is install.no-lock", [
-            missing.report.status == 1,
+            structuralEquals([missing.report.status, invalid.report.status], [1, 1]),
             startsWith(Fixture::line(missing.report, 0), "install.no-lock "),
-            invalid.report.status == 1,
             Fixture::line(invalid.report, 0) == "install.no-lock lock.shape"
         ])
     }

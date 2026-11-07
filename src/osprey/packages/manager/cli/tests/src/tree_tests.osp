@@ -86,13 +86,9 @@ module TreeTests {
         let badFlag = runCommand(reads(), ["tree", "--bogus"])
         let noLock = runCommand([Fixture::readRoute("osprey.toml", manifestText)], ["tree"])
         checkAll("why.not-locked, why.usage, tree.usage and tree.no-lock", [
-                missing.status == 1,
+                structuralEquals([missing.status, badWord.status, badFlag.status, noLock.status], [1, 2, 2, 1]),
                 Fixture::line(missing, 0) == "why.not-locked @demo/none",
-                badWord.status == 2,
-                Fixture::line(badWord, 0) == "why.usage",
-                badFlag.status == 2,
-                Fixture::line(badFlag, 0) == "tree.usage",
-                noLock.status == 1,
+                structuralEquals([Fixture::line(badWord, 0), Fixture::line(badFlag, 0)], ["why.usage", "tree.usage"]),
                 startsWith(Fixture::line(noLock, 0), "tree.no-lock ")
         ])
     }

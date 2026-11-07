@@ -122,8 +122,7 @@ module TransactionTests {
         checkAll("a failed relock never changes the manifest", [
             RegistryFixture::reported(a, 1, "resolution.missing-package"),
             structuralEquals([said(a, 1, "@demo/two"), wroteNothing(a)], [true, true]),
-            manifestOf(a) == "",
-            lockOf(a) == ""
+            structuralEquals([manifestOf(a), lockOf(a)], ["", ""])
         ])
     }
 

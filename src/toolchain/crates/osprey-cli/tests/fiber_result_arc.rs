@@ -123,58 +123,38 @@ fn run_arc(source: &str) -> io::Result<Output> {
     wait_bounded(&mut child, out, err)
 }
 
-#[test]
-fn awaited_overflow_error_transfer_is_released_under_arc() -> io::Result<()> {
-    let source = r"
-fn checked(value) = checkedAdd(value, 1)
-
-let observed = await(spawn checked(9223372036854775807))
-print(toString(observed))
-";
-
-    assert_arc_clean(
-        source,
-        Some("Error(integer overflow)\n"),
-        "no object may outlive the program",
-    )
-}
-
-#[test]
-fn repeated_awaits_each_receive_a_live_result_under_arc() -> io::Result<()> {
-    let source = r"
-fn checked(value) = checkedAdd(value, 1)
-
-let task = spawn checked(41)
-let first = await(task)
-print(toString(first))
-let second = await(task)
-print(toString(second))
-";
-
-    assert_arc_clean(
-        source,
-        Some("Success(42)\nSuccess(42)\n"),
-        "no object may outlive the program",
-    )
-}
+/// Awaited fiber results under ARC, as `(source, stdout)`: an overflow error
+/// transferred out of the fiber, and a Result and a string each awaited twice,
+/// where both awaits must receive a live value.
+const AWAITED: [(&str, &str); 3] = [
+    (
+        "fn checked(value) = checkedAdd(value, 1)\n\
+         let observed = await(spawn checked(9223372036854775807))\n\
+         print(toString(observed))\n",
+        "Error(integer overflow)\n",
+    ),
+    (
+        "fn checked(value) = checkedAdd(value, 1)\n\
+         let task = spawn checked(41)\n\
+         let first = await(task)\nprint(toString(first))\n\
+         let second = await(task)\nprint(toString(second))\n",
+        "Success(42)\nSuccess(42)\n",
+    ),
+    (
+        "fn greet(value: int) -> string = \"hello ${value}\"\n\
+         let task = spawn greet(7)\n\
+         let first = await(task)\nprint(first)\n\
+         let second = await(task)\nprint(second)\n",
+        "hello 7\nhello 7\n",
+    ),
+];
 
 #[test]
-fn repeated_awaits_each_receive_a_live_string_under_arc() -> io::Result<()> {
-    let source = r#"
-fn greet(value: int) -> string = "hello ${value}"
-
-let task = spawn greet(7)
-let first = await(task)
-print(first)
-let second = await(task)
-print(second)
-"#;
-
-    assert_arc_clean(
-        source,
-        Some("hello 7\nhello 7\n"),
-        "no object may outlive the program",
-    )
+fn awaited_results_are_live_and_released_under_arc() -> io::Result<()> {
+    for (source, stdout) in AWAITED {
+        assert_arc_clean(source, Some(stdout), "no object may outlive the program")?;
+    }
+    Ok(())
 }
 
 #[test]

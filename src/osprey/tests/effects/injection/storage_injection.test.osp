@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Storage names the persistence the notebook logic needs and nothing more.
 /// No implementation appears here: `save`, `load` and `exists` are answered
 /// by whoever installs the handler, so the logic compiles once and runs unchanged
@@ -99,21 +118,12 @@ fn withReadOnlyStorage(action) = {
     action()
 }
 
-/// Report whether `file` is gone with `needle` in the failure message.
-fn fileAbsent(file, needle) = match readFile(file) {
-    Success => false
-    Error { message } => contains(message, needle)
-}
-
 /// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
 let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"
 let diskArchive = "${diskBook}.archive.txt"
 
 /// This case runs the logic against the real file system and verifies the
 /// bytes with `readFile` from outside the handler.
-/// The answers both storage implementations must give for the same logic.
-fn sharedAnswers(first, second, counted) = first == 1 && second == 2 && counted == 2
-
 fn diskStorageCase() = {
     /// Truncate both paths so a rerun starts from the same file system state.
     let clearedBook = writeFile(diskBook, "") ?: (0 - 1 )
@@ -128,9 +138,13 @@ fn diskStorageCase() = {
 
     // The logic's answers come back through the injected disk implementation.
     checkAll("disk implementation answers", [
-        sharedAnswers(first, second, counted),
-        clearedBook == 0, clearedArchive == 0,
-        archived == byteLength(onDisk), missing == 0
+        clearedBook == 0,
+        clearedArchive == 0,
+        first == 1,
+        second == 2,
+        counted == 2,
+        archived == byteLength(onDisk),
+        missing == 0
     ])
 
     // The file system really was written: these bytes are read back directly.
@@ -161,8 +175,11 @@ fn mockStorageCase() = {
 
     // Every answer matches the disk run above: same logic, same results.
     checkAll("mock answers match the disk implementation", [
-        sharedAnswers(first, second, counted),
-        archived == 22, missing == 0,
+        first == 1,
+        second == 2,
+        counted == 2,
+        archived == 22,
+        missing == 0,
         fixture == 1,
         stored == "buy milk\ncall dentist\n",
         (mapGet(mockFiles, "archive.txt") ?: "") == stored
@@ -170,7 +187,10 @@ fn mockStorageCase() = {
 
     // Verification a real file system cannot offer: which calls were made.
     checkAll("mock recorded every call", [
-        structuralEquals([mockSaves, mockLoads, mockExistsCalls, mapLength(mockFiles)], [3, 5, 4, 3]),
+        mockSaves == 3,
+        mockLoads == 5,
+        mockExistsCalls == 4,
+        mapLength(mockFiles) == 3,
         !mapContains(mockFiles, "never-written.txt"),
         mockLog == "load(notes.txt);save(notes.txt,9);load(notes.txt);save(notes.txt,22);exists(notes.txt);load(notes.txt);exists(notes.txt);load(notes.txt);save(archive.txt,22);exists(never-written.txt);exists(fixture.txt);load(fixture.txt);",
         startsWith(mockLog, "load(notes.txt);save(notes.txt,9);"),
@@ -179,8 +199,14 @@ fn mockStorageCase() = {
     ])
 
     /// The double touched no file system: nothing named by the test exists.
-    let notesAbsent = fileAbsent("notes.txt", "No such file or directory")
-    let archiveAbsent = fileAbsent("archive.txt", "readFile")
+    let notesAbsent = match readFile("notes.txt") {
+        Success => false
+        Error { message } => contains(message, "No such file or directory")
+    }
+    let archiveAbsent = match readFile("archive.txt") {
+        Success => false
+        Error { message } => contains(message, "readFile")
+    }
     checkAll("mock touched no file system", [
         notesAbsent,
         archiveAbsent
@@ -200,7 +226,10 @@ fn readOnlyStorageCase() = {
     // A refused write still answers the operation's declared type, so the
     // logic keeps running and reports what the policy actually stored.
     checkAll("read-only policy answers", [
-        structuralEquals([appended, counted, archived, entryCount("locked entry\n")], [2, 1, 0, 1])
+        appended == 2,
+        counted == 1,
+        archived == 0,
+        entryCount("locked entry\n") == 1
     ])
 
     // Swapping the handler swapped the implementation and nothing else: the

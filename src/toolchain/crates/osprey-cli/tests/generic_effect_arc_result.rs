@@ -2,13 +2,35 @@
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 
 #[path = "common/effect_execution.rs"]
 mod effect_execution;
 
 #[path = "common/workbench_fixture.rs"]
 mod workbench_fixture;
+
+/// A launcher invocation rooted at the repository checkout.
+fn launcher() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command.current_dir(repo_root());
+    command
+}
+
+/// Asserts `output` succeeded and printed exactly `expected`.
+fn assert_stdout(output: &Output, expected: &str, context: &str) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{context}: {stderr}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout, expected, "{context} stdout");
+}
+
+/// Asserts `output` exited with no live owners left, when `memory` is ARC.
+fn assert_clean_arc(memory: &str, output: &Output) {
+    if memory == "arc" {
+        effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
+    }
+}
 
 #[test]
 fn workbench_retains_record_identity_through_shared_proof_helpers() -> io::Result<()> {
@@ -21,18 +43,13 @@ fn workbench_apple_host_includes_shared_proof_dependencies() -> io::Result<()> {
 }
 
 fn compile_workbench(project: &str, target: &str) -> io::Result<()> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .current_dir(root)
+    let output = launcher()
         .arg(project)
         .args(["--llvm", "--quiet", "--no-warnings"])
         .arg(format!("--target={target}"))
         .output()?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
     assert!(String::from_utf8_lossy(&output.stdout).contains("define"));
     Ok(())
 }
@@ -66,16 +83,6 @@ perform Config.number() }
 fn main() = print(recording(exercise))
 "#;
 
-#[test]
-fn static_handler_finalizers_run_after_return_transformations() {
-    effect_execution::assert_flavored_output(
-        "static_finalizers",
-        "osp",
-        STATIC_FINALIZERS,
-        "8|100|5|BRFCRFDF\n",
-    );
-}
-
 const ABANDONED_OWNERS: &str = r#"
 effect Stop { control halt: fn(string) -> int }
 type Payload = { items: List<string> }
@@ -99,16 +106,6 @@ let stopping = handler Stop {
 let answer = stopping(fn() => abandoned(outer))
 print("${answer}:${join(outer, ",")}")
 "#;
-
-#[test]
-fn abandoning_control_releases_body_owners_and_preserves_outer_captures() {
-    effect_execution::assert_flavored_output(
-        "abandoned_owners",
-        "osp",
-        ABANDONED_OWNERS,
-        "finalized:a!,b!\n22:a!,b!\n",
-    );
-}
 
 const MIXED_MATCH_OWNERS: &str = r#"
 type Node = Node { text: string }
@@ -144,19 +141,7 @@ fn exercise() = {
 print("${exercise()}|${repeatedLifetime(7)}")
 "#;
 
-#[test]
-fn mixed_match_owners_preserve_borrows_aliases_and_loop_accumulators() {
-    effect_execution::assert_flavored_output(
-        "mixed_match_owners",
-        "osp",
-        MIXED_MATCH_OWNERS,
-        "outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|base:7|replacement:7|6\n",
-    );
-}
-
-#[test]
-fn abandoned_generic_constructors_release_previously_evaluated_fields() {
-    let source = r#"
+const ABANDONED_CONSTRUCTOR: &str = r#"
 effect Stop { control halt: fn(int) -> int }
 type Hold<T> = Holding { a: T, z: int }
 fn make() = Holding { a: "owned:${42}", z: perform Stop.halt(7) }
@@ -164,7 +149,26 @@ let stopping = handler Stop { halt value => value }
 let answer = stopping(fn() => match make() { Holding { a, z } => satAdd(length(a), z) })
 print(answer)
 "#;
-    effect_execution::assert_flavored_output("abandoned_constructor", "osp", source, "7\n");
+
+/// Every generic-value ownership case keeps its exact output under GC and ARC.
+#[test]
+fn generic_ownership_cases_keep_their_values_under_gc_and_arc() {
+    for (name, source, expected) in [
+        ("static_finalizers", STATIC_FINALIZERS, "8|100|5|BRFCRFDF\n"),
+        (
+            "abandoned_owners",
+            ABANDONED_OWNERS,
+            "finalized:a!,b!\n22:a!,b!\n",
+        ),
+        (
+            "mixed_match_owners",
+            MIXED_MATCH_OWNERS,
+            "outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|fresh:42|outer:7|base:7|replacement:7|6\n",
+        ),
+        ("abandoned_constructor", ABANDONED_CONSTRUCTOR, "7\n"),
+    ] {
+        effect_execution::assert_flavored_output(name, "osp", source, expected);
+    }
 }
 
 /// [GC-ARC-PERCEUS] A `Result` carrying a manifest record whose `Maybe`
@@ -178,6 +182,8 @@ name = "port-identities"
 source_roots = ["src"]
 entry = "src/main.osp"
 "#;
+
+const PORT_IDENTITIES_EXPECTED: &str = "@osprey/flash-attn\n@osprey/rouge-score\n";
 
 const PORT_IDENTITY_SOURCES: [(&str, &str); 5] = [
     (
@@ -295,96 +301,63 @@ impl Drop for TempProject {
     }
 }
 
-fn write_port_identity_project(root: &Path) -> io::Result<()> {
-    std::fs::create_dir_all(root.join("src"))?;
-    std::fs::write(root.join("osprey.toml"), PORT_IDENTITY_PROJECT)?;
+/// A throwaway project directory named for `name` and this process.
+fn temp_project(name: &str) -> TempProject {
+    TempProject(std::env::temp_dir().join(format!("osprey_{name}_{}", std::process::id())))
+}
+
+fn port_identity_project() -> io::Result<TempProject> {
+    let root = temp_project("port_identities");
+    std::fs::create_dir_all(root.0.join("src"))?;
+    std::fs::write(root.0.join("osprey.toml"), PORT_IDENTITY_PROJECT)?;
     for (name, source) in PORT_IDENTITY_SOURCES {
-        std::fs::write(root.join("src").join(name), source)?;
+        std::fs::write(root.0.join("src").join(name), source)?;
     }
-    Ok(())
-}
-
-/// One run of `root` with the shared launcher flags. `extra` carries only the
-/// flags a caller genuinely needs, so every existing caller keeps its exact
-/// behaviour, warnings included.
-fn run_project(root: &Path, memory: &str, extra: &[&str]) -> io::Result<std::process::Output> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
-    let _ = command
-        .current_dir(repo_root())
-        .arg(root)
-        .args(["--run", "--quiet", &format!("--memory={memory}")])
-        .args(extra);
-    effect_execution::runtime_environment(&mut command, memory);
-    command.output()
-}
-
-fn run_port_identities(root: &Path, memory: &str) -> io::Result<std::process::Output> {
-    run_project(root, memory, &[])
+    Ok(root)
 }
 
 /// The staged fixture compiles the whole workbench root set; warnings are not
 /// what it asserts and the redundant-annotation oracle dominates that build.
 fn compile_goal_fixture(root: &Path, memory: &str) -> io::Result<PathBuf> {
     let binary = root.join(format!("fixture-{memory}{}", std::env::consts::EXE_SUFFIX));
-    let output = goal_compile_command(root, &binary, memory).output()?;
-    assert!(
-        output.status.success(),
-        "{memory} compile: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(binary)
-}
-
-fn goal_compile_command(root: &Path, binary: &Path, memory: &str) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let mut command = launcher();
     let _ = command
-        .current_dir(repo_root())
         .arg(root)
         .args(["--compile", "--quiet", "--no-warnings"])
         .arg(format!("--memory={memory}"))
         .arg("-o")
-        .arg(binary);
-    command
+        .arg(&binary);
+    let output = command.output()?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{memory} compile: {stderr}");
+    Ok(binary)
 }
 
-fn run_goal_fault(root: &Path, binary: &Path, memory: &str) -> io::Result<std::process::Output> {
+fn run_goal_fault(root: &Path, binary: &Path, memory: &str) -> io::Result<Output> {
     let mut command = Command::new(binary);
     let _ = command.current_dir(root);
     effect_execution::runtime_environment(&mut command, memory);
     let output = command.output()?;
-    if memory == "arc" {
-        effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
-    }
+    assert_clean_arc(memory, &output);
     Ok(output)
-}
-
-fn assert_port_identities(root: &Path, memory: &str, expected: &str) -> io::Result<()> {
-    let output = run_port_identities(root, memory)?;
-    assert!(
-        output.status.success(),
-        "{memory} run failed: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        expected,
-        "{memory} released a Maybe publication payload before Names::display read it"
-    );
-    if memory == "arc" {
-        effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
-    }
-    Ok(())
 }
 
 #[test]
 fn dynamically_read_port_manifests_keep_their_publication_keys_under_arc() -> io::Result<()> {
-    let root = TempProject(
-        std::env::temp_dir().join(format!("osprey_port_identities_{}", std::process::id())),
-    );
-    write_port_identity_project(&root.0)?;
-    let expected = "@osprey/flash-attn\n@osprey/rouge-score\n";
-    assert_port_identities(&root.0, "gc", expected)?;
-    assert_port_identities(&root.0, "arc", expected)
+    let root = port_identity_project()?;
+    for memory in ["gc", "arc"] {
+        let mut command = launcher();
+        let _ = command
+            .arg(&root.0)
+            .args(["--run", "--quiet", &format!("--memory={memory}")]);
+        effect_execution::runtime_environment(&mut command, memory);
+        let output = command.output()?;
+        let context =
+            format!("{memory} released a Maybe publication payload before Names::display read it");
+        assert_stdout(&output, PORT_IDENTITIES_EXPECTED, &context);
+        assert_clean_arc(memory, &output);
+    }
+    Ok(())
 }
 
 fn repo_root() -> PathBuf {
@@ -410,8 +383,7 @@ let observed = {
 print(toString(observed))
 ";
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .current_dir(repo_root())
+    let mut child = launcher()
         .args(["/dev/stdin", "--run", "--quiet", "--memory=arc"])
         .env("OSPREY_ARC_DEBUG", "1")
         .stdin(Stdio::piped())
@@ -425,18 +397,9 @@ print(toString(observed))
         .write_all(source.as_bytes())?;
     let output = child.wait_with_output()?;
 
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "Success(42)\n");
-    effect_execution::assert_arc_clean(&String::from_utf8_lossy(&output.stderr));
+    assert_stdout(&output, "Success(42)\n", "arc stdin generic effect result");
+    assert_clean_arc("arc", &output);
     Ok(())
-}
-
-fn phase(label: &str) {
-    eprintln!("phase {label} at {:?}", std::time::SystemTime::now());
 }
 
 /// [WORKBENCH-GOALS] A goal formula the reader refuses is a broken fixture,
@@ -445,36 +408,23 @@ fn phase(label: &str) {
 /// under GC and ARC, and no exit path is skipped on either OS family.
 #[test]
 fn a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom() -> io::Result<()> {
-    let root =
-        TempProject(std::env::temp_dir().join(format!("osprey_goal_fault_{}", std::process::id())));
+    let root = temp_project("goal_fault");
     workbench_fixture::stage(&root.0, &repo_root())?;
+    let formula = root.0.join("formula.txt");
     for memory in ["gc", "arc"] {
-        check_goal_backend(&root.0, memory)?;
+        let started = std::time::SystemTime::now();
+        eprintln!("phase {memory} compile once at {started:?}");
+        let binary = compile_goal_fixture(&root.0, memory)?;
+        let run = |text: &str| -> io::Result<Output> {
+            std::fs::write(&formula, text)?;
+            run_goal_fault(&root.0, &binary, memory)
+        };
+        workbench_fixture::assert_faulted(&run("p ∧")?, memory);
+        let valid = run(workbench_fixture::VALID_FORMULA)?;
+        let context = format!("{memory} changed the goal pipeline's stdout");
+        assert_stdout(&valid, workbench_fixture::VALID_STDOUT, &context);
+        std::fs::remove_file(&formula)?;
+        workbench_fixture::assert_missing(&run_goal_fault(&root.0, &binary, memory)?, memory);
     }
     Ok(())
-}
-
-fn check_goal_backend(root: &Path, memory: &str) -> io::Result<()> {
-    phase(&format!("{memory} compile once"));
-    let binary = compile_goal_fixture(root, memory)?;
-    std::fs::write(root.join("formula.txt"), "p ∧")?;
-    workbench_fixture::assert_faulted(&run_goal_fault(root, &binary, memory)?, memory);
-    std::fs::write(root.join("formula.txt"), workbench_fixture::VALID_FORMULA)?;
-    assert_valid_goal(&run_goal_fault(root, &binary, memory)?, memory);
-    std::fs::remove_file(root.join("formula.txt"))?;
-    workbench_fixture::assert_missing(&run_goal_fault(root, &binary, memory)?, memory);
-    Ok(())
-}
-
-fn assert_valid_goal(output: &std::process::Output, memory: &str) {
-    assert!(
-        output.status.success(),
-        "{memory}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        workbench_fixture::VALID_STDOUT,
-        "{memory} changed the goal pipeline's stdout"
-    );
 }

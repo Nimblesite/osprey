@@ -28,6 +28,15 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
     }
 }
 
+/// The entry file name a single-source project of `flavor` is written as.
+pub(crate) fn main_name(flavor: Flavor) -> &'static str {
+    match flavor {
+        Flavor::Ml => "main.ospml",
+        Flavor::Default => "main.osp",
+        Flavor::Python => "main.py",
+    }
+}
+
 pub(crate) fn parsed(path: &str, flavor: Flavor, text: &str) -> SourceFile {
     let parsed = parse_program_with_flavor(text, flavor);
     assert!(
@@ -66,6 +75,19 @@ pub(crate) fn error_messages(config: &ProjectConfig, sources: &[SourceFile]) -> 
 
 pub(crate) fn contains(messages: &[String], expected: &str) -> bool {
     messages.iter().any(|message| message.contains(expected))
+}
+
+/// Assemble the `(path, flavor, text)` sources with `entry` selected and prove
+/// the diagnostics mention every one of `needles`.
+pub(crate) fn rejects_sources(entry: &str, sources: &[(&str, Flavor, &str)], needles: &[&str]) {
+    let files: Vec<SourceFile> = sources
+        .iter()
+        .map(|(path, flavor, text)| parsed(path, *flavor, text))
+        .collect();
+    let messages = error_messages(&config(entry), &files);
+    for needle in needles {
+        assert!(contains(&messages, needle), "{needle}: {messages:?}");
+    }
 }
 
 /// Assemble `statements` as the single module `file` and prove the diagnostics

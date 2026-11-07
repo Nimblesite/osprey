@@ -80,12 +80,10 @@ def helper_cases():
     ]
 
 
-def stopped_suite_case():
-    """A suite whose port overflows stops and reports why, instead of the fault
-    escaping the harness; the golden's first row is that report."""
-    return Check.run(lambda: [Check.equal("stopped.overflow", plus(9223372036854775807, 1), 0)])
-
-
 def main():
-    stopped_suite_case()
-    return Check.run(lambda: listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))
+    Check.run(lambda: [Check.equal("run.fault", remainder(7, 0), 0)])
+    match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            return print(f"suite stopped: {message}")

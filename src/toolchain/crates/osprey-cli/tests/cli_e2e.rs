@@ -217,7 +217,7 @@ fn run_args_with_stdin(args: &[&str], input: &str) -> Out {
 /// This pins the crash; the fix belongs to `osp_string_join`'s lowering.
 #[test]
 fn join_accepts_every_string_list_representation() {
-    let path = temp_osp(
+    let out = run_source(
         "join_runtime_lists",
         "fn main() = {\n\
              let appended = listAppend(listAppend(List(), \"a\"), \"b\")\n\
@@ -225,13 +225,18 @@ fn join_accepts_every_string_list_representation() {
              let bound = words(\"x y\")\n\
              print(\"${join(appended, \"-\")} ${join(collected, \"-\")} ${join(bound, \"-\")}\")\n\
          }\n",
+        &["--run", "--quiet"],
     );
-    let out = run_file(&path, &["--run", "--quiet"]);
     assert_eq!(out.code, Some(0), "stderr: {}", out.stderr);
     assert_eq!(out.stdout, "a-b c0-c1 x-y\n");
 }
 
 /// Run against a source `path` plus extra flags — the common compiling shape.
+/// Write `body` to the temp program `name` and run `osprey` on it with `extra`.
+fn run_source(name: &str, body: &str, extra: &[&str]) -> Out {
+    run_file(&temp_osp(name, body), extra)
+}
+
 fn run_file(path: &Path, extra: &[&str]) -> Out {
     let mut cmd = osprey();
     let _ = cmd.arg(path).args(extra);
@@ -378,7 +383,9 @@ fn version_plain_and_json() {
     assert_eq!(json.code, Some(0));
     assert_eq!(
         json.stdout,
-        format!("{{\"manifestVersion\":1,\"name\":\"osprey\",\"version\":\"0.0.0-dev\",\"kind\":\"cli\",\"product\":\"osprey\",\"commit\":\"{commit}\"}}\n")
+        format!(
+            "{{\"manifestVersion\":1,\"name\":\"osprey\",\"version\":\"0.0.0-dev\",\"kind\":\"cli\",\"product\":\"osprey\",\"commit\":\"{commit}\"}}\n"
+        )
     );
 }
 
@@ -412,11 +419,11 @@ fn deps_refuses_a_file_that_did_not_parse() {
     // view that genuinely reads nothing. A wrongly empty dirty set is a
     // subtree that never rebuilds, which is the one bug [STAGE-SIGNALS-DIRTY]
     // exists to remove, so `--deps` must refuse rather than under-report.
-    let broken = temp_osp(
+    let out = run_source(
         "deps_unparsed",
         "static effect Signal<T> { read: fn( -> T }\n",
+        &["--deps"],
     );
-    let out = run_file(&broken, &["--deps"]);
     assert_eq!(
         out.code,
         Some(1),
@@ -435,11 +442,11 @@ fn deps_refuses_a_file_that_did_not_parse() {
         out.stdout
     );
 
-    let unresolved = temp_osp(
+    let invalid = run_source(
         "deps_unknown_effect",
         "static effect Signal { read: fn() -> int }\nfn value() = perform Missing.read()\n",
+        &["--deps"],
     );
-    let invalid = run_file(&unresolved, &["--deps"]);
     invalid.expect_stderr(1, &["unknown effect `Missing`"], &[]);
     assert!(
         invalid.stdout.trim().is_empty(),
@@ -448,18 +455,18 @@ fn deps_refuses_a_file_that_did_not_parse() {
     );
 
     // The positive control: the same shape, parsing, still reports and exits 0.
-    let good = temp_osp(
+    let ok = run_source(
         "deps_parsed",
         "type Count = { value: int }\nstatic effect Signal<T> { read: fn() -> T }\n         fn counterLabel() = \"count: ${(perform Signal<Count>.read()).value}\"\n",
+        &["--deps"],
     );
-    let ok = run_file(&good, &["--deps"]);
     ok.expect_stdout(0, &["counterLabel: Signal<Count>.read"], &[]);
 
-    let polymorphic = temp_osp(
+    let open = run_source(
         "deps_open_callback",
         "static effect Signal { read: fn() -> int }\nfn invoke(callback) = callback()\nfn reading() = perform Signal.read()\nfn widget() = invoke(reading)\n",
+        &["--deps"],
     );
-    let open = run_file(&polymorphic, &["--deps"]);
     open.expect_stdout(0, &["invoke: <unknown>", "widget: Signal.read"], &[]);
 }
 
@@ -471,8 +478,7 @@ mod signature_contracts;
 
 #[test]
 fn unknown_flag_exits_two_with_usage() {
-    let prog = temp_osp("flag", HELLO);
-    let o = run_file(&prog, &["--bogus"]);
+    let o = run_source("flag", HELLO, &["--bogus"]);
     o.expect_stderr(2, &["unknown flag --bogus"], &[]);
 }
 
@@ -492,33 +498,32 @@ fn check_missing_file_exits_two() {
 
 #[test]
 fn check_parse_error_is_reported() {
-    let prog = temp_osp("parse", "fn = = =\n");
-    let o = run_file(&prog, &["--check"]);
+    let o = run_source("parse", "fn = = =\n", &["--check"]);
     assert_ne!(o.code, Some(0));
     assert_ne!(o.stderr, "");
 }
 
 #[test]
 fn flavor_marker_conflict_exits_two() {
-    let prog = temp_osp("flavor_conflict", "// osprey: flavor=ml\nprint 1\n");
-    let o = run_file(&prog, &["--check"]);
+    let o = run_source(
+        "flavor_conflict",
+        "// osprey: flavor=ml\nprint 1\n",
+        &["--check"],
+    );
     o.expect_stderr(2, &["flavor marker"], &[]);
 }
 
 #[test]
 fn check_type_error_is_reported() {
-    let prog = temp_osp("typed", "let y = 1 + \"oops\" - true\n");
-    let o = run_file(&prog, &["--check"]);
+    let o = run_source("typed", "let y = 1 + \"oops\" - true\n", &["--check"]);
     o.expect_rejected(&[]);
 }
 
 #[test]
 fn llvm_emits_ir_and_rejects_ill_typed() {
-    let ok = temp_osp("llok", HELLO);
-    let good = run_file(&ok, &["--llvm"]);
+    let good = run_source("llok", HELLO, &["--llvm"]);
     good.expect_stdout(0, &["define"], &[]);
-    let bad = temp_osp("llbad", "let y = 1 + true\n");
-    let rejected = run_file(&bad, &["--llvm"]);
+    let rejected = run_source("llbad", "let y = 1 + true\n", &["--llvm"]);
     assert_ne!(rejected.code, Some(0));
 }
 
@@ -534,16 +539,14 @@ fn ast_and_symbols_modes() {
 
 #[test]
 fn run_compiles_links_and_executes() {
-    let prog = temp_osp("run", HELLO);
-    let o = run_file(&prog, &["--run"]);
+    let o = run_source("run", HELLO, &["--run"]);
     o.expect_stdout(0, &["v=hi"], &[]);
 }
 
 #[test]
 fn explicit_resume_runs_the_performer_continuation() {
     // [EFFECTS-RESUME]
-    let prog = temp_osp("resume_effect", RESUME_EFFECT);
-    let o = run_file(&prog, &["--run"]);
+    let o = run_source("resume_effect", RESUME_EFFECT, &["--run"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert_eq!(
         o.stdout,
@@ -635,8 +638,11 @@ fn compile_writes_executable_to_cwd() {
 #[test]
 fn sandbox_blocks_filesystem_capability() {
     // [SECURITY-CAPABILITY-GATES]
-    let prog = temp_osp("fs", "let c = readFile(\"x.txt\")\n");
-    let o = run_file(&prog, &["--llvm", "--no-fs"]);
+    let o = run_source(
+        "fs",
+        "let c = readFile(\"x.txt\")\n",
+        &["--llvm", "--no-fs"],
+    );
     o.expect_rejected(&["security: `readFile` is disabled by --no-fs"]);
 }
 
@@ -668,11 +674,11 @@ fn network_gates_run_before_type_checking() {
 #[test]
 fn no_ffi_rejects_foreign_declarations() {
     // [SECURITY-FFI-GATE]
-    let prog = temp_osp(
+    let o = run_source(
         "blocked_ffi",
         "extern fn foreignCall(value: int) -> int\nlet value = foreignCall(1)\n",
+        &["--check", "--no-ffi"],
     );
-    let o = run_file(&prog, &["--check", "--no-ffi"]);
     o.expect_rejected(&["security: extern function `foreignCall` is disabled by --no-ffi"]);
 }
 
@@ -680,35 +686,32 @@ fn no_ffi_rejects_foreign_declarations() {
 fn websocket_language_surface_links_to_runtime() {
     // [BUILTIN-WEBSOCKET] This crosses the language/codegen/archive boundary;
     // an accidental camel-case external symbol fails at link time.
-    let prog = temp_osp(
+    let o = run_source(
         "websocket_runtime",
         "let server = websocketCreateServer(19093, \"127.0.0.1\", \"/chat\")\n\
          print(server > 0)\n",
+        &["--run"],
     );
-    let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert_eq!(o.stdout, "true\n");
 }
 
 #[test]
 fn quiet_suppresses_the_ok_line() {
-    let prog = temp_osp("quiet", HELLO);
-    let o = run_file(&prog, &["--check", "--quiet"]);
+    let o = run_source("quiet", HELLO, &["--check", "--quiet"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
 }
 
 #[test]
 fn llvm_reports_a_codegen_error() {
-    let prog = temp_osp("cgllvm", CODEGEN_REJECTED);
-    let o = run_file(&prog, &["--llvm"]);
+    let o = run_source("cgllvm", CODEGEN_REJECTED, &["--llvm"]);
     o.expect_rejected(&["codegen"]);
 }
 
 #[test]
 fn run_reports_a_codegen_error() {
-    let prog = temp_osp("cgrun", CODEGEN_REJECTED);
-    let o = run_file(&prog, &["--run"]);
+    let o = run_source("cgrun", CODEGEN_REJECTED, &["--run"]);
     o.expect_rejected(&["codegen"]);
 }
 
@@ -719,8 +722,7 @@ fn a_generic_closure_value_is_rejected_by_the_type_gate() {
     // to this program. Pinning the checker's message here means a future move of
     // the gate fails a test that names the gate, instead of silently draining
     // the codegen arms of coverage.
-    let prog = temp_osp("genval", GENERIC_AS_VALUE);
-    let o = run_file(&prog, &["--llvm"]);
+    let o = run_source("genval", GENERIC_AS_VALUE, &["--llvm"]);
     o.expect_rejected(&["a closure value with a still-generic type cannot be interpolated"]);
 }
 
@@ -847,16 +849,14 @@ fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
 // exits by outcome.
 #[test]
 fn test_builtins_emit_tap_and_exit_status() {
-    let pass = temp_osp("tap_pass", PASSING_TESTS);
-    let o = run_file(&pass, &["--run"]);
+    let o = run_source("tap_pass", PASSING_TESTS, &["--run"]);
     o.expect_stdout(
         0,
         &["ok 1 - adds", "1..2", "# tests=2 passed=2 failed=0"],
         &[],
     );
 
-    let fail = temp_osp("tap_fail", FAILING_TESTS);
-    let o = run_file(&fail, &["--run"]);
+    let o = run_source("tap_fail", FAILING_TESTS, &["--run"]);
     o.expect_stdout(
         1,
         &[
@@ -886,19 +886,18 @@ fn test_filter_env_selects_one_case() {
 // skips dynamic names; a testless file lists as [].
 #[test]
 fn list_tests_reports_literal_cases_as_json() {
-    let prog = temp_osp(
+    let o = run_source(
         "list_tests",
         "let name = \"dyn\"\ntest(\"first\", fn() => expect(1, 1))\ntest(name, fn() => expect(1, 1))\n",
+        &["--list-tests"],
     );
-    let o = run_file(&prog, &["--list-tests"]);
     assert_eq!(o.code, Some(0), "{}", o.stderr);
     assert_eq!(
         o.stdout.trim(),
         "[{\"name\":\"first\",\"line\":2,\"column\":1}]"
     );
 
-    let none = temp_osp("list_none", HELLO);
-    let o = run_file(&none, &["--list-tests"]);
+    let o = run_source("list_none", HELLO, &["--list-tests"]);
     assert_eq!(o.stdout.trim(), "[]");
 }
 
@@ -907,7 +906,7 @@ fn list_tests_reports_literal_cases_as_json() {
 // markdown); an undocumented case emits neither key.
 #[test]
 fn list_tests_carries_case_documentation() {
-    let prog = temp_osp(
+    let o = run_source(
         "list_tests_docs",
         "fn add(a, b) = a + b\n\
          /// Addition is commutative.\n\
@@ -919,8 +918,8 @@ fn list_tests_carries_case_documentation() {
          /// 0.3\n\
          test(\"commutes\", fn() => expect(add(1, 2), add(2, 1)))\n\
          test(\"bare\", fn() => expect(1, 1))\n",
+        &["--list-tests"],
     );
-    let o = run_file(&prog, &["--list-tests"]);
     assert_eq!(o.code, Some(0), "{}", o.stderr);
     let out = o.stdout.trim();
     assert!(
@@ -1106,12 +1105,12 @@ fn a_verdict_may_give_one_state_a_reason_and_another_none() {
 /// rejected by name, not by a binder error from a pattern nobody wrote.
 #[test]
 fn a_verdict_state_test_cannot_report_is_rejected_by_name() {
-    let prog = temp_osp(
+    let o = run_source(
         "verdict_extra_state",
         "type Verdict = Pass | Fail(string) | Skip(string) | Todo(string)\n\
          test(\"case\", fn() => Pass)\n",
+        &["--run"],
     );
-    let o = run_file(&prog, &["--run"]);
     o.expect_rejected(&["Todo", "Verdict"]);
 }
 
@@ -1388,11 +1387,11 @@ fn nested_tests_fail_loudly_and_zero_case_runs_keep_the_plan() {
 // returns a plain `int` under [ARITH-EFFECT], so it has no Error to render.
 #[test]
 fn error_result_assertions_render_the_error() {
-    let prog = temp_osp(
+    let o = run_source(
         "tap_err_result",
         "test(\"overflow\", fn() => expect(checkedAdd(9223372036854775807, 1), 2))\n",
+        &["--run"],
     );
-    let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(1), "{}", o.stdout);
     assert!(
         o.stdout
@@ -1408,7 +1407,7 @@ fn error_result_assertions_render_the_error() {
 /// no parameter position. [TYPE-GENERICS-APPLY]
 #[test]
 fn a_written_type_argument_pins_an_instantiation_end_to_end() {
-    let prog = temp_osp(
+    let o = run_source(
         "turbofish_run",
         "fn identity<T>(x: T) -> T = x\n\
          fn emptyOf<T>() -> List<T> = []\n\
@@ -1419,8 +1418,8 @@ fn a_written_type_argument_pins_an_instantiation_end_to_end() {
          let empty = length(emptyOf<int>())\n\
          let kept = pickOf<int, string>(7, \"seven\")\n\
          print(\"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\")\n",
+        &["--run"],
     );
-    let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
 }
@@ -1453,12 +1452,12 @@ fn the_ml_written_type_argument_prints_the_same_bytes() {
 /// anything is emitted, naming both counts. [TYPE-GENERICS-APPLY]
 #[test]
 fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
-    let prog = temp_osp(
+    let o = run_source(
         "turbofish_arity",
         "fn identity<T>(x: T) -> T = x\n\
          print(\"${identity<int, string>(5)}\")\n",
+        &["--check"],
     );
-    let o = run_file(&prog, &["--check"]);
     o.expect_rejected(&["function `identity` takes 1 type argument(s), got 2"]);
 }
 
@@ -1466,12 +1465,12 @@ fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
 /// silently ignored annotation. [TYPE-GENERICS-APPLY]
 #[test]
 fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
-    let prog = temp_osp(
+    let o = run_source(
         "turbofish_contradiction",
         "fn identity<T>(x: T) -> T = x\n\
          print(\"${identity<int>(\\\"text\\\")}\")\n",
+        &["--check"],
     );
-    let o = run_file(&prog, &["--check"]);
     o.expect_rejected(&["cannot unify int with string"]);
 }
 
@@ -1631,7 +1630,10 @@ fn the_source_graph_names_each_sources_namespaces_and_modules() {
             "src/main.ospml",
             "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n\nprint \"${Outer::Inner::one}\"\n",
         ),
-        ("src/more.osp", "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n"),
+        (
+            "src/more.osp",
+            "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n",
+        ),
     ] {
         std::fs::write(dir.join(file), text).expect("write project file");
     }
@@ -1766,8 +1768,11 @@ fn quiet_silences_progress_and_keeps_warnings() {
 #[test]
 fn no_warnings_skips_the_warning_pass() {
     // The explicit opt-out drops advice: nothing on stderr, nothing computed.
-    let prog = temp_osp("no_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
-    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    let o = run_source(
+        "no_warn",
+        "let n: int = 42\nprint(\"v=${n}\")\n",
+        &["--check", "--quiet", "--no-warnings"],
+    );
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
     assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
     assert!(o.stderr.trim().is_empty(), "{}", o.stderr);
@@ -1777,8 +1782,11 @@ fn no_warnings_skips_the_warning_pass() {
 fn no_warnings_never_hides_type_errors() {
     // Errors are never advice: the opt-out drops warnings, not the reason a
     // build failed.
-    let prog = temp_osp("no_warn_error", "fn broken(unused) = missing\n");
-    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    let o = run_source(
+        "no_warn_error",
+        "fn broken(unused) = missing\n",
+        &["--check", "--quiet", "--no-warnings"],
+    );
     o.expect_rejected(&["missing"]);
 }
 

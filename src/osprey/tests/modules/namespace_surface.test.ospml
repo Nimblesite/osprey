@@ -29,8 +29,8 @@ import "geometry/metric"::Metric as Metric
 
 (** Every path spelling that must resolve to the geometry contributions. *)
 geometryPathsCase () = checkAll ("geometry namespace paths", [
-    structuralEquals [geometry::square 4, geometry::cube 3, geometry::unitSquare (), geometry::square 0] [16, 27, 4, 0],
-    structuralEquals [geometry::cube 1, geometry::square (geometry::square 2)] [1, 16]
+    structuralEquals [geometry::square 4, geometry::cube 3, geometry::unitSquare ()] [16, 27, 4],
+    structuralEquals [geometry::square 0, geometry::cube 1, geometry::square (geometry::square 2)] [0, 1, 16]
 ])
 
 (** Two namespaces holding the same simple name stay distinct [MODULES-ABI]. *)
@@ -48,6 +48,6 @@ quotedLabelCase () = checkAll ("quoted namespace label", [
 exactArithmetic (\() =>
     print "${geometry::square 4} ${geometry::cube 3} ${text::square "ab"} ${Metric::centimetres 2}")
 
-test ("namespace paths resolve every contribution", \() => exactArithmetic (geometryPathsCase))
-test ("namespaces keep same-named declarations apart", \() => exactArithmetic (sameNameDifferentNamespaceCase))
-test ("quoted namespace labels are opaque", \() => exactArithmetic (quotedLabelCase))
+test ("namespace paths resolve every contribution", exactly geometryPathsCase)
+test ("namespaces keep same-named declarations apart", exactly sameNameDifferentNamespaceCase)
+test ("quoted namespace labels are opaque", exactly quotedLabelCase)
