@@ -12,18 +12,6 @@ divideResult (a, b) =
         false => Success(value = value)
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 // ML-flavor twin of string_edge_cases.osp. Layout `match` arms, whitespace
 // application (`startsWith ""`), pipe chains, and a layout-block `main` body

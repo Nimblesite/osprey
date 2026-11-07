@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 // HINDLEY-MILNER TYPE INFERENCE TEST  
 // Tests what HM inference CAN do in the current implementation
@@ -164,7 +146,6 @@ print("Generic type equality test - gen2.data = ${val2}")
 print("Generic type equality test - gen3.data = ${val3}")
 print("Generic type equality test - gen4.first = ${val4}")
 print("Generic type equality test - gen5.first = ${val5}")
-
 
 // Test method call inference
 print("")

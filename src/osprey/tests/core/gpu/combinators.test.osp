@@ -238,24 +238,6 @@ fn getChecks(ints, floats, reversed) = checkAll("get", [
 fn deviceCase() = checkAll("device", [
         gpuDevice() == "host", length(gpuDevice()) == 4, gpuDevice() != "cuda:0"
 ])
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 test("every combinator over an empty buffer stays empty", fn() => exactArithmetic(emptyShapeCase))
 test("gpuFold over an empty buffer is the initial value", fn() => exactArithmetic(emptyFoldCase))
 test("every combinator handles a one-element buffer", fn() => exactArithmetic(singletonCase))
