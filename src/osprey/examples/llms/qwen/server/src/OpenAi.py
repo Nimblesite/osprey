@@ -43,12 +43,12 @@ def turn(model, request):
     """The reply for a decoded request, once the served model is known."""
     match Completions.complete(model, request.prompt, request.sampling, request.tools):
         case Success(value=finished):
-            return Wire.reply(200, Wire.SSE, stream(events(request, finished))) if request.stream else Wire.ok(completion(request, finished))
+            return Wire.reply(200, Wire.SSE, stream(events(finished))) if request.stream else Wire.ok(completion(finished))
         case Error(message=message):
             return failed(400, message)
 
 
-def completion(request, turn):
+def completion(turn):
     """The whole chat completion: one choice carrying the turn's text and calls."""
     return JsonObject(listConcat(envelope(), [
         Wire.member("choices", JsonArray([choice(turn)])),
@@ -84,7 +84,7 @@ def usage(turn):
     ])
 
 
-def events(request, turn):
+def events(turn):
     """The SSE documents of one streamed turn, ending with the choice's finish reason."""
     pieces = mapList(turn.pieces, lambda piece: chunk([Wire.member("delta", delta_of(piece))], ""))
     calls = [] if len(turn.calls) == 0 else [chunk([Wire.member("delta", JsonObject([Wire.member("tool_calls", JsonArray(mapList(turn.calls, delta_call))) ]))], "")]

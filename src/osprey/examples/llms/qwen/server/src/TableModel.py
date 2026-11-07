@@ -72,6 +72,7 @@ README.md
 </tool_call>
 ~
 """
+"""The transcript the fixture counts four-token contexts over, in the served chat framing."""
 
 
 class Model:

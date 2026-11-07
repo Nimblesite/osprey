@@ -47,7 +47,7 @@ class Mixed:
     slot: Cache.DeltaSlot
 
 
-def history(qkv, old, config, shapes) -> GpuBuffer[float32]:
+def history(qkv, old, config, shapes):
     """`conv_states` rolled one step with `qkv` as every channel's newest input."""
     kernel = config.linear_conv_kernel_dim
     mul = shapes.conv_kernel.mul
@@ -56,12 +56,12 @@ def history(qkv, old, config, shapes) -> GpuBuffer[float32]:
     return must(gpuMap(shapes.conv_history, lambda i: at(qkv, quot(i, mul, shift)) if rem(i, mul, shift, kernel) == last else at(old, wrapAdd(i, 1))))
 
 
-def tap(w, hist, c, kernel) -> float32:
+def tap(w, hist, c, kernel):
     """Channel `c`'s depthwise convolution over its `kernel` newest inputs."""
     return fold(range(0, kernel), toFloat32(0.0), lambda a, j: a + at(w, wrapAdd(wrapMul(c, kernel), j)) * at(hist, wrapAdd(wrapMul(c, kernel), j)))
 
 
-def convolved(w, hist, config, shapes) -> GpuBuffer[float32]:
+def convolved(w, hist, config, shapes):
     """`silu(conv1d(history))` for every channel."""
     kernel = config.linear_conv_kernel_dim
     tapped = must(gpuMap(shapes.conv, lambda c: tap(w, hist, c, kernel)))
@@ -69,7 +69,7 @@ def convolved(w, hist, config, shapes) -> GpuBuffer[float32]:
     return must(gpuMap(shapes.conv, lambda c: at(tapped, c) * at(gate, c)))
 
 
-def unit_scales(mixed, first, config, shapes) -> GpuBuffer[float32]:
+def unit_scales(mixed, first, config, shapes):
     """`l2norm`'s `rsqrt(sum(x²) + 1e-6)` for every key head from `first`."""
     width = config.linear_key_head_dim
     eps = toFloat32(0.000001)
@@ -81,11 +81,11 @@ def key_head(t, tiled, km, ks, k_heads, rm, rs):
     return rem(t, km, ks, k_heads) if tiled == 1 else quot(t, rm, rs)
 
 
-def spread_cell(mixed, scales, first, i, kh, d, width, factor: float32) -> float32:
+def spread_cell(mixed, scales, first, kh, d, width, factor):
     return at(mixed, wrapAdd(first, wrapAdd(wrapMul(kh, width), d))) * at(scales, kh) * factor
 
 
-def spread(mixed, first, factor: float32, tiled, config, shapes) -> GpuBuffer[float32]:
+def spread(mixed, first, factor, tiled, config, shapes):
     """Unit-length key-head rows from `first`, one per value head, times `factor`."""
     width = config.linear_key_head_dim
     k_heads = config.linear_num_key_heads
@@ -96,17 +96,17 @@ def spread(mixed, first, factor: float32, tiled, config, shapes) -> GpuBuffer[fl
     ks = shapes.linear_k_heads_div.shift
     rm = shapes.linear_ratio.mul
     rs = shapes.linear_ratio.shift
-    return must(gpuMap(shapes.value, lambda i: spread_cell(mixed, scales, first, i, key_head(quot(i, dm, ds), tiled, km, ks, k_heads, rm, rs), rem(i, dm, ds, width), width, factor)))
+    return must(gpuMap(shapes.value, lambda i: spread_cell(mixed, scales, first, key_head(quot(i, dm, ds), tiled, km, ks, k_heads, rm, rs), rem(i, dm, ds, width), width, factor)))
 
 
-def decay_of(a, layer, shapes) -> GpuBuffer[float32]:
+def decay_of(a, layer, shapes):
     """`exp(-exp(A_log) * softplus(a + dt_bias))` per value head."""
     a_neg = layer.a_neg
     dt = layer.dt_bias
     return must(gpuMap(shapes.linear_v_heads, lambda h: exp(at(a_neg, h) * softplus(at(a, h) + at(dt, h)))))
 
 
-def recurred(mixed, old, b, a, layer, tiled, config, shapes) -> GpuBuffer[float32]:
+def recurred(mixed, old, b, a, layer, tiled, config, shapes):
     """The state after `torch_recurrent_gated_delta_rule` on this token, outputs appended."""
     key_dim = C.key_dim(config)
     scale = toFloat32(1.0 / sqrt(toFloat(config.linear_key_head_dim)))

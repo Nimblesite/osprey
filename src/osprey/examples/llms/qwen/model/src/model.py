@@ -106,7 +106,7 @@ def embed(model, token) -> GpuBuffer[float32]:
             return mapped_row(path, offset + token * row_bytes, row_bytes, type, basis, hidden)
 
 
-def mapped_row(path, start, row_bytes, type, basis, hidden) -> GpuBuffer[float32]:
+def mapped_row(path, start, row_bytes, type, basis, hidden):
     match gpuMapFile(path, start, row_bytes):
         case Success(value=row):
             return must(gpuMatMulQuant(basis, row, type, hidden, hidden, 1))
@@ -152,7 +152,7 @@ def layered(model, walk, layer, slot, index) -> Result[Walk, str]:
             return Success(value=Walk(hidden=out, cache=Cache.grown(walk.cache, step.slot), stages=listAppend(walk.stages, out)))
 
 
-def with_slot(model, walk, layer, cache, index) -> Result[Walk, str]:
+def with_slot(model, walk, layer, cache, index):
     match Cache.slot_at(cache, index):
         case Success(value=slot):
             return layered(model, walk, layer, slot, index)
@@ -160,7 +160,7 @@ def with_slot(model, walk, layer, cache, index) -> Result[Walk, str]:
             return Error(message=f"layer {index}: no cache slot: {toString(message)}")
 
 
-def advance(model, cache, acc, index) -> Result[Walk, str]:
+def advance(model, cache, acc, index):
     match acc:
         case Error(message=message):
             return Error(message=message)
@@ -188,7 +188,7 @@ def logits(model, x) -> GpuBuffer[float32]:
     return linear(x, model.head, 1, model.config.hidden_size, model.config.vocab_size)
 
 
-def chunk_best(values, c, chunk) -> float32:
+def chunk_best(values, c, chunk):
     """The first index of chunk `c`'s largest value, as a `float32` (exact below 2^24)."""
     first = wrapMul(c, chunk)
     peak = fold(range(0, chunk), at(values, first), lambda a, i: a if a > at(values, wrapAdd(first, i)) else at(values, wrapAdd(first, i)))
@@ -215,7 +215,7 @@ def step(model, cache, row) -> Result[Walk, str]:
             return forward(model, cache, row)
 
 
-def decoded(model, cache, token) -> Result[Next, str]:
+def decoded(model, cache, token):
     row = embed(model, token)
     match forward(model, cache, row):
         case Success(value=walk):

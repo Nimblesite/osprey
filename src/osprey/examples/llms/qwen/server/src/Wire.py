@@ -19,7 +19,9 @@ __all__ = [
 
 JSON = "application/json"
 NDJSON = "application/x-ndjson"
+"""The media type of Ollama's streamed replies."""
 SSE = "text/event-stream"
+"""The media type of OpenAI's streamed replies."""
 
 
 def member(name, value):

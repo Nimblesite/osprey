@@ -17,6 +17,7 @@ from qwen_server import Wire
 __all__ = ["render", "render_single", "turn", "OPEN"]
 
 OPEN = "<|im_start|>"
+"""The frame every served message opens with."""
 CLOSE = "<|im_end|>"
 ASSISTANT = f"{OPEN}assistant\n"
 

@@ -28,19 +28,33 @@ __all__ = [
 ]
 
 MODEL = "qwen3.8:27b"
+"""The name both protocols serve, and require of requests as their `model`."""
 FAMILY = "qwen3_5"
+"""The family and `general.architecture` `/api/show` reports, prefixing its `model_info` keys."""
 QUANTIZATION = "UD-Q4_K_XL"
+"""The quantization of the served weights, as Ollama and the GGUF name it."""
 CONTEXT = 65536
+"""The served context length in tokens, and the default `num_ctx`."""
 BLOCKS = 64
+"""The transformer block count `/api/show` reports."""
 EMBEDDING = 5120
+"""The embedding width `/api/show` reports."""
 PARAMETERS = 27781427952
+"""The declared parameter count `/api/show` reports."""
 WEIGHTS_BYTES = 18897914266
+"""The size in bytes `/api/ps` reports for the weights and their VRAM residency."""
 WEIGHT_FILE = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+"""The GGUF file the served weights come from."""
 REVISION = "4ca720788d1e01f1bff70c033e0d0028fd02e502"
+"""The Hugging Face revision the weights were taken at."""
 INSTANT = "2026-11-05T00:00:00Z"
+"""The one timestamp every protocol field carries, Osprey having no clock."""
 EPOCH = 1762300800
+"""`INSTANT` as a Unix epoch second, OpenAI's `created`."""
 VERSION = "0.1.0"
+"""The server version `/api/version` reports."""
 TEMPERATURE = 0.0
+"""The served default sampling temperature."""
 NUM_PREDICT = 256
 
 

@@ -60,7 +60,7 @@ def fresh(config, shapes) -> Cache:
     return Cache(slots=toList(map(range(config.num_hidden_layers), lambda i: fresh_slot(config, i, conv, state, none))))
 
 
-def fresh_slot(config, index, conv, state, none) -> Slot:
+def fresh_slot(config, index, conv, state, none):
     if C.is_full(config, index):
         return Attention(held=AttentionSlot(keys=none, values=none, positions=0))
     else:

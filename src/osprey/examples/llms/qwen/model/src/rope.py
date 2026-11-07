@@ -30,7 +30,7 @@ def inv_freq(config, j):
     return 1.0 / pow(config.rope_theta, toFloat(2 * (j % (dim // 2))) / toFloat(dim))
 
 
-def angles(position, config, of) -> GpuBuffer[float32]:
+def angles(position, config, of):
     return constant(toList(map(range(C.rotary_dim(config)), lambda j: toFloat32(of(toFloat(position) * inv_freq(config, j))))))
 
 
@@ -39,12 +39,12 @@ def tables(position, config) -> Tables:
     return Tables(cos=angles(position, config, lambda a: cos(a)), sin=angles(position, config, lambda a: sin(a)))
 
 
-def turned(x, i, d, half) -> float32:
+def turned(x, i, d, half):
     """`rotate_half` at cell `i` of a head, `d` into the head."""
     return toFloat32(0.0) - at(x, wrapAdd(i, half)) if d < half else at(x, wrapSub(i, half))
 
 
-def cell(x, c, s, i, d, dim, half) -> float32:
+def cell(x, c, s, i, d, dim, half):
     return at(x, i) if d >= dim else at(x, i) * at(c, d) + turned(x, i, d, half) * at(s, d)
 
 

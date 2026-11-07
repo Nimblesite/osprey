@@ -24,7 +24,9 @@ from qwen import ToolParser
 __all__ = ["TEXT", "THINKING", "complete", "pieces_text"]
 
 TEXT = "text"
+"""`Piece.kind` of the free text a turn speaks, sent as `content`."""
 THINKING = "thinking"
+"""`Piece.kind` of the model's reasoning, sent as `reasoning_content`."""
 
 
 class Piece:
