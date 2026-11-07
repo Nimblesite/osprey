@@ -16,10 +16,13 @@
 zero () = 48
 nine () = 57
 
+(** Is the scalar an ASCII digit byte? *)
+isDigitByte value = value >= zero () && value <= nine ()
+
 (** Is the byte at index i an ASCII digit? End-of-input (Error) is "no". *)
 isDigitAt (s, i) =
     match byteAt s i
-        Success value => value >= zero () && value <= nine ()
+        Success value => isDigitByte value
         Error _message => false
 
 (** Accumulate the digit run starting at i. acc carries the value built so far;
@@ -28,7 +31,7 @@ isDigitAt (s, i) =
 scanInt (s, i, acc) =
     match byteAt s i
         Success value =>
-            match value >= zero () && value <= nine ()
+            match isDigitByte value
                 true => scanInt (s, ((i + 1) ), ((acc * 10 + value - zero ()) ))
                 false => acc
         Error _message => acc
@@ -59,45 +62,31 @@ scanAll (s, i, acc) =
         true => acc
         false => scanAll (s, (scanEnd (s, (nextDigit (s, i)))), (listAppend acc (scanInt (s, (nextDigit (s, i)), 0))))
 
+(** Print one `label=value` line for a thunk-computed integer. *)
+report (label, compute) =
+    print "${label}=${exactArithmetic compute}\n"
+
 (** ---- single token: "12345abc" stops at 'a' ---- *)
 mixed = "12345abc"
-print "byteLen=${byteLength mixed}\n"
-exactArithmetic (\() =>
-    print "scan=${scanInt (mixed, 0, 0)}\n")
-exactArithmetic (\() =>
-    print "end=${scanEnd (mixed, 0)}\n")
+report ("byteLen", (\() => byteLength mixed))
+report ("scan", (\() => scanInt (mixed, 0, 0)))
+report ("end", (\() => scanEnd (mixed, 0)))
 exactArithmetic (\() =>
     match byteAt mixed (scanEnd (mixed, 0))
         Success value => print "stopByte=${value}\n"
         Error _message => print "stopByte FAILED\n")
 
-(** ---- digits-only token runs to end-of-input via the Error branch ----
-    ML's interpolation lexer can't carry a nested string literal inside a
-    `${…}` span, so each call whose argument is a string literal is hoisted
-    into a binding first; the temp collapses in codegen to the same IR the
-    Default flavor emits for the inline `${scanInt("777", 0, 0)}` form. *)
-pure = exactArithmetic (\() =>
-    scanInt ("777", 0, 0))
-print "pure=${pure}\n"
-pureEnd = exactArithmetic (\() =>
-    scanEnd ("777", 0))
-print "pureEnd=${pureEnd}\n"
+(** ---- digits-only token runs to end-of-input via the Error branch ---- *)
+report ("pure", (\() => scanInt ("777", 0, 0)))
+report ("pureEnd", (\() => scanEnd ("777", 0)))
 
 (** ---- leading non-digits: scan returns 0, nextDigit finds the run ---- *)
-leadScan = exactArithmetic (\() =>
-    scanInt ("ab42", 0, 0))
-print "leadScan=${leadScan}\n"
-leadNext = exactArithmetic (\() =>
-    nextDigit ("ab42", 0))
-print "leadNext=${leadNext}\n"
-leadVal = exactArithmetic (\() =>
-    scanInt ("ab42", (nextDigit ("ab42", 0)), 0))
-print "leadVal=${leadVal}\n"
+report ("leadScan", (\() => scanInt ("ab42", 0, 0)))
+report ("leadNext", (\() => nextDigit ("ab42", 0)))
+report ("leadVal", (\() => scanInt ("ab42", (nextDigit ("ab42", 0)), 0)))
 
 (** ---- empty input: nothing to scan ---- *)
-emptyScan = exactArithmetic (\() =>
-    scanInt ("", 0, 0))
-print "emptyScan=${emptyScan}\n"
+report ("emptyScan", (\() => scanInt ("", 0, 0)))
 
 (** ---- multi-token lexer over a delimited string ---- *)
 stream = "12,345-6789 0!42"
@@ -108,12 +97,14 @@ forEachList tokens print
 
 print "=== Scan Complete ===\n"
 
-(** Check a token value at an exact position without hiding index failures. *)
-tokenIs : (List int, int, int) -> bool
-tokenIs (tokens, index, expected) =
-    match listGet tokens index
-        Success value => value == expected
-        Error _message => false
+(** Do the scanned tokens hold `expected` at every index, in order? *)
+tokensAre (tokens, expected, i) =
+    match listGet expected i
+        Success want =>
+            match listGet tokens i
+                Success value => value == want && tokensAre (tokens, expected, (i + 1))
+                Error _message => false
+        Error _message => listLength tokens == i
 
 (** Verify token boundaries, empty input, and a complete multi-token scan. *)
 tokenScanCase () =
@@ -122,9 +113,7 @@ tokenScanCase () =
         structuralEquals [scanInt ("12345abc", 0, 0), scanEnd ("12345abc", 0), scanInt ("777", 0, 0)] [12345, 5, 777],
         structuralEquals [scanEnd ("777", 0), scanInt ("ab42", 0, 0), nextDigit ("ab42", 0)] [3, 0, 2],
         structuralEquals [scanInt ("ab42", 2, 0), scanInt ("", 0, 0), listLength scanned] [42, 0, 5],
-        tokenIs (scanned, 0, 12), tokenIs (scanned, 1, 345),
-        tokenIs (scanned, 2, 6789), tokenIs (scanned, 3, 0),
-        tokenIs (scanned, 4, 42)
+        tokensAre (scanned, [12, 345, 6789, 0, 42], 0)
     ]
 
 test "token scanner finds every integer and boundary" (exactly tokenScanCase)

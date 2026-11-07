@@ -7,16 +7,17 @@ fn tourClassify(n) = match n {
     _ => "many"
 }
 
+/// Assert the three literal-tour labels under one check label.
+fn tourLines(label) = checkAll(label, [
+        structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
+])
+
 /// This case documents the three formerly printed match-tour branches.
 fn matchTourCase() = {
     // Preserve each complete one-word output line independently.
-    checkAll("match tour legacy rendered lines", [
-            structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
-    ])
+    tourLines("match tour legacy rendered lines")
     // Repeat the dynamic branch results as explicit constituent assertions.
-    checkAll("match tour legacy constituent values", [
-            structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
-    ])
+    tourLines("match tour legacy constituent values")
     // Extend wildcard coverage across adjacent, negative, and large integers.
     checkAll("match tour wildcard edge cases", [
             structuralEquals([tourClassify(2), tourClassify((0 - 1) ), tourClassify(100)], ["many", "many", "many"]),
@@ -36,6 +37,12 @@ fn matchEven(n) = match (n % 2 ) == 0 {
     false => "odd"
 }
 
+/// Assert grade and parity labels for two grading and two parity inputs.
+fn checkGradeParity(label, passIn, failIn, evenIn, oddIn) = checkAll(label, [
+        structuralEquals([matchGrade(passIn), matchGrade(failIn)], ["pass", "fail"]),
+        structuralEquals([matchEven(evenIn), matchEven(oddIn)], ["even", "odd"])
+])
+
 /// This case documents boolean scrutinees for grading and parity.
 fn matchBooleanCase() = {
     // Preserve the complete combined boolean-match output line.
@@ -44,15 +51,9 @@ fn matchBooleanCase() = {
             "g80=pass g20=fail e4=even e7=odd"
     ])
     // Split all four matched labels into independent assertions.
-    checkAll("boolean match legacy constituent values", [
-            structuralEquals([matchGrade(80), matchGrade(20)], ["pass", "fail"]),
-            structuralEquals([matchEven(4), matchEven(7)], ["even", "odd"])
-    ])
+    checkGradeParity("boolean match legacy constituent values", 80, 20, 4, 7)
     // Exercise the grade threshold and parity boundary values.
-    checkAll("boolean match boundaries", [
-            structuralEquals([matchGrade(50), matchGrade(49)], ["pass", "fail"]),
-            structuralEquals([matchEven(0), matchEven(9)], ["even", "odd"])
-    ])
+    checkGradeParity("boolean match boundaries", 50, 49, 0, 9)
 }
 
 /// Label zero, one, and two explicitly before the integer wildcard.
@@ -63,6 +64,9 @@ fn matchLabel(n) = match n {
     _ => "many"
 }
 
+/// Assert that two integer inputs produce the expected labels.
+fn labelPair(a, b, expected) = structuralEquals([matchLabel(a), matchLabel(b)], expected)
+
 /// This case documents literal and wildcard matching over integers.
 fn matchIntegerCase() = {
     // Preserve the complete combined integer-match output line.
@@ -72,8 +76,8 @@ fn matchIntegerCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-            structuralEquals([matchLabel(0), matchLabel(1)], ["none", "single"]),
-            structuralEquals([matchLabel(2), matchLabel(7)], ["pair", "many"])
+            labelPair(0, 1, ["none", "single"]),
+            labelPair(2, 7, ["pair", "many"])
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
@@ -219,13 +223,16 @@ fn callablePatternCase() = {
 
 test("callable pattern bindings retain their own signatures", callablePatternCase)
 
+/// Apply a callable Result payload to the value two, or return the error length.
+fn applyPayload(wrapped) = match wrapped {
+    Success { value } => value(2)
+    Error { message } => length(message)
+}
+
 fn callablePayloadCase() = {
     let value = fn(n) => wrapAdd(n, 100)
     let wrapped = Success { value: fn(n) => wrapAdd(n, 1) }
-    let selected = match wrapped {
-        Success { value } => value(2)
-        Error { message } => length(message)
-    }
+    let selected = applyPayload(wrapped)
     let callbacks = [fn(n) => wrapAdd(n, 2)]
     let listed = match callbacks { [] => 0 [value, ...rest] => wrapAdd(value(2), listLength(rest)) }
     let bound = match value { call => call(2) }
@@ -237,10 +244,7 @@ fn callablePayloadCase() = {
 test("callable payload patterns preserve function values", callablePayloadCase)
 
 fn directCallablePatternCase() = {
-    let result = match Success { value: fn(n) => wrapAdd(n, 1) } {
-        Success { value } => value(2)
-        Error { message } => length(message)
-    }
+    let result = applyPayload(Success { value: fn(n) => wrapAdd(n, 1) })
     let listed = match [fn(n) => wrapAdd(n, 2)] { [] => 0 [value] => value(2) }
     let called = match (fn(n) => wrapAdd(n, 3)) { call => call(2) }
     checkAll("direct scrutinees keep their callable payloads", [result == 3, listed == 4, called == 5])

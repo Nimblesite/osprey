@@ -5,16 +5,17 @@ tourClassify 0 = "zero"
 tourClassify 1 = "one"
 tourClassify _ = "many"
 
+(** Assert the three literal-tour labels under one check label. *)
+tourLines label = checkAll label [
+    structuralEquals [tourClassify 0, tourClassify 1, tourClassify 9] ["zero", "one", "many"]
+]
+
 (** Verify every literal and wildcard branch. *)
 matchTourCase () =
     // Preserve each rendered branch result.
-    checkAll "match tour legacy rendered lines" [
-        structuralEquals [tourClassify 0, tourClassify 1, tourClassify 9] ["zero", "one", "many"]
-    ]
+    tourLines "match tour legacy rendered lines"
     // Check each dynamic result independently.
-    checkAll "match tour legacy constituent values" [
-        structuralEquals [tourClassify 0, tourClassify 1, tourClassify 9] ["zero", "one", "many"]
-    ]
+    tourLines "match tour legacy constituent values"
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "match tour wildcard edge cases" [
         structuralEquals [tourClassify 2, tourClassify ((0 - 1) ), tourClassify 100] ["many", "many", "many"],
@@ -33,6 +34,12 @@ matchEven n =
         true => "even"
         false => "odd"
 
+(** Assert grade and parity labels for two grading and two parity inputs. *)
+checkGradeParity label passIn failIn evenIn oddIn = checkAll label [
+    structuralEquals [matchGrade passIn, matchGrade failIn] ["pass", "fail"],
+    structuralEquals [matchEven evenIn, matchEven oddIn] ["even", "odd"]
+]
+
 (** Verify boolean scrutinees for grading and parity. *)
 matchBooleanCase () =
     // Preserve the complete rendered result.
@@ -41,19 +48,19 @@ matchBooleanCase () =
             "g80=pass g20=fail e4=even e7=odd"
     ]
     // Check each label independently.
-    checkAll "boolean match legacy constituent values" [
-        structuralEquals [matchGrade 80, matchGrade 20, matchEven 4, matchEven 7] ["pass", "fail", "even", "odd"]
-    ]
+    checkGradeParity "boolean match legacy constituent values" 80 20 4 7
     // Exercise threshold and parity boundaries.
-    checkAll "boolean match boundaries" [
-        structuralEquals [matchGrade 50, matchGrade 49, matchEven 0, matchEven 9] ["pass", "fail", "even", "odd"]
-    ]
+    checkGradeParity "boolean match boundaries" 50 49 0 9
 
 (** Label integer literals through adjacent pattern clauses. *)
 matchLabel 0 = "none"
 matchLabel 1 = "single"
 matchLabel 2 = "pair"
 matchLabel _ = "many"
+
+(** Assert that two integer inputs produce the expected labels. *)
+labelPair a b expected =
+    structuralEquals [matchLabel a, matchLabel b] expected
 
 (** Verify literal and wildcard integer matching. *)
 matchIntegerCase () =
@@ -64,7 +71,8 @@ matchIntegerCase () =
     ]
     // Check each label independently.
     checkAll "integer match legacy constituent values" [
-        structuralEquals [matchLabel 0, matchLabel 1, matchLabel 2, matchLabel 7] ["none", "single", "pair", "many"]
+        labelPair 0 1 ["none", "single"],
+        labelPair 2 7 ["pair", "many"]
     ]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
@@ -202,12 +210,16 @@ callablePatternCase () =
 
 test ("callable pattern bindings retain their own signatures", callablePatternCase)
 
+(** Apply a callable Result payload to the value two, or return the error length. *)
+applyPayload wrapped =
+    match wrapped
+        Success value => value 2
+        Error message => length message
+
 callablePayloadCase () =
     value = \n => wrapAdd (n, 100)
     wrapped = Success(value = \n => wrapAdd (n, 1))
-    selected = match wrapped
-        Success value => value 2
-        Error message => length message
+    selected = applyPayload wrapped
     callbacks = [(\n => wrapAdd (n, 2))]
     listed = match callbacks
         [] => 0
@@ -221,9 +233,7 @@ callablePayloadCase () =
 test ("callable payload patterns preserve function values", callablePayloadCase)
 
 directCallablePatternCase () =
-    result = match Success(value = \n => wrapAdd (n, 1))
-        Success value => value 2
-        Error message => length message
+    result = applyPayload (Success(value = \n => wrapAdd (n, 1)))
     listed = match [(\n => wrapAdd (n, 2))]
         [] => 0
         [value] => value 2
