@@ -80,6 +80,7 @@ def helper_cases():
 
 
 def main():
+    Check.run(lambda: [Check.equal("run.fault", remainder(7, 0), 0)])
     match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
         case Success(value=value):
             return value
