@@ -49,6 +49,9 @@ module SurfaceTests {
         surfaceOf("fn readFile(p) = 1\n", ["io/files"]),
         surfaceOf("httpFetchLater(1)\nwebsocketOpen(2)\n", ["io/network"]),
         surfaceOf("spawnProcess(\"ls\")\nwriteFile(\"a\", \"b\")\nreadFile(\"a\")\n", ["io/files", "io/process"]),
+        surfaceOf("let entries = listDir(\".\")\n", ["io/files"]),
+        surfaceOf("kindOf(\"a\")\n", ["io/files"]),
+        surfaceOf("makeDir(\"d\")\n", ["io/files"]),
         surfaceOf("x / y // readFile\nz\n", []),
         surfaceOf("", [])
     ])
