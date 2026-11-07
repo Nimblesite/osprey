@@ -4,48 +4,49 @@ effect Logger
     (** Record a diagnostic `message` kept out of normal output. *)
     debug : string => Unit
 
-innerOp () =
-    perform Logger.log "inner exec"
-    perform Logger.debug "debug inner"
-    42
+(** A Logger handler value that prints each record behind `logTag`/`debugTag`. *)
+taggedLogger (logTag, debugTag) = handler Logger
+    log msg => print (logTag + msg)
+    debug msg => print (debugTag + msg)
 
-outerOp () =
-    perform Logger.log "outer exec"
-    perform Logger.debug "debug outer"
-    21
+(** Perform the log and diagnostic ops, then answer `value`. *)
+loggedOp (message, diagnostic, value) =
+    perform Logger.log message
+    perform Logger.debug diagnostic
+    value
+
+innerOp () = loggedOp ("inner exec", "debug inner", 42)
+
+outerOp () = loggedOp ("outer exec", "debug outer", 21)
+
+(** Log `value` behind `label`, then answer it unchanged. *)
+loggedValue (label, value) =
+    perform Logger.log (label + toString value)
+    value
 
 testNested () =
     perform Logger.log "before inner handler"
 
     _innerResult =
-        handle Logger
-            log msg   => print ("[INNER-LOG] " + msg)
-            debug msg => print ("[INNER-DEBUG] " + msg)
-        r = innerOp ()
-        perform Logger.log ("inner result: " + toString r)
-        r
+        taggedLogger ("[INNER-LOG] ", "[INNER-DEBUG] ") (\() =>
+            loggedValue ("inner result: ", innerOp ()))
 
     perform Logger.log "after inner handler — back to outer"
-    outerResult = outerOp ()
-    perform Logger.log ("outer result: " + toString outerResult)
+    outerResult = loggedValue ("outer result: ", outerOp ())
 
 scopingDemo () =
-    handle Logger
-        log msg   => print ("[OUTER-LOG] " + msg)
-        debug msg => print ("[OUTER-DEBUG] " + msg)
-    print "=== handler scoping ==="
-    r = nestedCall ()
-    print ("forward chain result: " + toString r)
+    taggedLogger ("[OUTER-LOG] ", "[OUTER-DEBUG] ") (\() =>
+        print "=== handler scoping ==="
+        r = nestedCall ()
+        print ("forward chain result: " + toString r)
 
-    testNested ()
-    print "=== done ==="
+        testNested ()
+        print "=== done ===")
 scopingDemo ()
 
 performComplex () =
     perform Logger.log "complex starting"
-    v = 21 * 2
-    perform Logger.log ("complex intermediate: " + toString v)
-    v
+    loggedValue ("complex intermediate: ", 21 * 2)
 
 deepNestedOp () =
     perform Logger.log "deep op exec"
@@ -68,13 +69,20 @@ askBoth n =
     a = perform Ask.ask n
     perform Tell.tell a
 
+(** Answer one more than the value it receives, as an `Ask` handler value. *)
+plusOneHandler () = handler Ask
+    ask v => resume ((v + 1) )
+
+(** Hand every answer to a nested `Tell` region that doubles it. *)
+tellDoubled n =
+    handle Tell
+        tell v => resume ((v * 2) )
+    askBoth n
+
 nested =
     exactArithmetic (\() =>
-        handle Ask
-            ask v => resume ((v + 1) )
-        handle Tell
-            tell v => resume ((v * 2) )
-        askBoth 4)
+        plusOne = plusOneHandler ()
+        plusOne (\() => tellDoubled 4))
 
 askOnce n = perform Ask.ask n
 
@@ -82,9 +90,8 @@ shadowed =
     exactArithmetic (\() =>
         handle Ask
             ask v => resume ((v + 100) )
-        handle Ask
-            ask v => resume ((v + 1) )
-        askOnce 1)
+        plusOne = plusOneHandler ()
+        plusOne (\() => askOnce 1))
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="
 
