@@ -9,28 +9,21 @@ effect CallSupply<T> {
 fn intGroups() = Map().mapSet("low", [1, 2]).mapSet("high", [30, 40, 50])
 fn stringGroups() = Map().mapSet("short", ["a", "bb"]).mapSet("long", ["three", "seven"])
 
-fn requestIntGroups() -> Map<string, List<int>> = perform CallSupply.groups()
-fn requestStringGroups() -> Map<string, List<string>> = perform CallSupply.groups()
-
 fn suppliedInts() = {
     handle CallSupply {
         groups => intGroups()
     }
-    requestIntGroups()
+    perform CallSupply.groups()
 }
 fn suppliedStrings() = {
     handle CallSupply {
         groups => stringGroups()
     }
-    requestStringGroups()
+    perform CallSupply.groups()
 }
 
-fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
+fn groupAt<T>(groups: Map<string, List<T>>, key, index, fallbackList, fallback) =
 (groups.mapGet(key) ?: fallbackList).listGet(index) ?: fallback
-
-/// The cases' shared fallbacks, one accessor per element type.
-fn intGroup(groups, key, index) = groupAt(groups, key, index, [91], 99)
-fn textGroup(groups, key, index) = groupAt(groups, key, index, ["row"], "item")
 
 /// One group probe: which key and index, and the exact int it must hold.
 type IntProbe = { key: string, index: int, value: int }
@@ -38,41 +31,35 @@ type IntProbe = { key: string, index: int, value: int }
 /// One group probe: which key and index, and the exact text it must hold.
 type TextProbe = { key: string, index: int, value: string }
 
-/// Asserts the receiver-first size views of the map `groups` answer `expected`.
-fn checkMapSized(label, groups, expected) = checkAll(label, [
-    groups.mapLength() == mapLength(groups),
-    groups.mapLength() == expected,
-    groups.length() == expected,
-    !groups.isEmpty()
+/// Asserts every probe reads its exact value out of the map `groups`, or the fallback.
+fn checkProbes(label, groups, probes, fallbackList, fallback) = {
+    let _ = forEachList(probes, fn(probe) => check(label, probe.value, groupAt(groups, probe.key, probe.index, fallbackList, fallback)))
+}
+
+/// Asserts the free `length` and `isEmpty` views of `xs` answer `expected`.
+fn checkUnarySized(label, xs, expected) = checkAll(label, [
+    length(xs) == expected,
+    !isEmpty(xs)
 ])
+
+/// Asserts the receiver-first size views of the map `groups` answer `expected`.
+fn checkMapSized(label, groups, expected) = {
+    let _ = checkAll(label, [
+        groups.mapLength() == mapLength(groups),
+        groups.mapLength() == expected
+    ])
+    checkUnarySized(label, groups, expected)
+}
 
 /// Asserts the receiver-first size views of the list `xs` answer `expected`.
-fn checkListSized(label, xs, expected) = checkAll(label, [
-    xs.listLength() == expected,
-    xs.length() == expected,
-    !xs.isEmpty()
-])
-
-/// Asserts every probe reads its exact int out of the map `groups`.
-fn checkIntGroups(label, groups, probes) = {
-    let _ = forEachList(probes, fn(probe) => check(label, probe.value, intGroup(groups, probe.key, probe.index)))
+fn checkListSized(label, xs, expected) = {
+    let _ = check(label, expected, xs.listLength())
+    checkUnarySized(label, xs, expected)
 }
 
-/// Asserts every probe reads its exact text out of the map `groups`.
-fn checkTextGroups(label, groups, probes) = {
-    let _ = forEachList(probes, fn(probe) => check(label, probe.value, textGroup(groups, probe.key, probe.index)))
-}
-
-/// Asserts `groups` holds every key of `present` and none of `absent`.
-fn checkKeys(label, groups, present, absent) = {
-    let _ = forEachList(present, fn(key) => check(label, true, groups.mapContains(key)))
-    let _ = forEachList(absent, fn(key) => check(label, false, groups.mapContains(key)))
-}
-
-/// Asserts `xs` holds every item of `present` and none of `absent`.
-fn checkContains(label, xs, present, absent) = {
-    let _ = forEachList(present, fn(item) => check(label, true, xs.listContains(item)))
-    let _ = forEachList(absent, fn(item) => check(label, false, xs.listContains(item)))
+/// Asserts `holds` answers true for each item of `present` and false for each of `absent`.
+fn checkMembership(label, present, absent, holds) = {
+    let _ = forEachList(present.listConcat(absent), fn(item) => check(label, present.listContains(item), holds(item)))
 }
 
 /// The length of the nested list at `index` of `xs`, or none when it is absent.
@@ -100,27 +87,27 @@ fn receiverFirstCollectionCase() = {
     checkListSized("long group size", long, 2)
     checkListSized("reversed values size", intValues, 2)
     checkListSized("reversed keys size", stringKeys, 2)
-    checkIntGroups("original int group probes", ints, [
+    checkProbes("original int group probes", ints, [
         IntProbe { key: "low", index: 0, value: 1 },
         IntProbe { key: "low", index: 1, value: 2 }
-    ])
-    checkIntGroups("grown int group probes", grownInts, [
+    ], [91], 99)
+    checkProbes("grown int group probes", grownInts, [
         IntProbe { key: "high", index: 2, value: 50 },
         IntProbe { key: "extra", index: 0, value: 6 },
         IntProbe { key: "extra", index: 1, value: 7 }
-    ])
-    checkTextGroups("original string group probes", strings, [
+    ], [91], 99)
+    checkProbes("original string group probes", strings, [
         TextProbe { key: "short", index: 0, value: "a" },
         TextProbe { key: "short", index: 1, value: "bb" },
         TextProbe { key: "long", index: 0, value: "three" }
-    ])
-    checkTextGroups("grown string group probes", grownStrings, [
+    ], ["row"], "item")
+    checkProbes("grown string group probes", grownStrings, [
         TextProbe { key: "long", index: 0, value: "eight" },
         TextProbe { key: "long", index: 1, value: "nine" }
-    ])
-    checkKeys("grown int keys", grownInts, ["high", "extra"], ["low"])
-    checkKeys("original int keys", ints, ["low"], ["extra"])
-    checkContains("reversed key membership", stringKeys, ["short", "long"], ["missing"])
+    ], ["row"], "item")
+    checkMembership("grown int keys", ["high", "extra"], ["low"], fn(key) => grownInts.mapContains(key))
+    checkMembership("original int keys", ["low"], ["extra"], fn(key) => ints.mapContains(key))
+    checkMembership("reversed key membership", ["short", "long"], ["missing"], fn(key) => stringKeys.listContains(key))
 
     checkAll("receiver-first entries and nested leaves", [
             structuralEquals([(high.listGet(0) ?: 99), (high.listGet(1) ?: 99)], [30, 40]),

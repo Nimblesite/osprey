@@ -10,28 +10,18 @@ effect CallSupply T
 intGroups () = Map () |> mapSet "low" [1, 2] |> mapSet "high" [30, 40, 50]
 stringGroups () = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"]
 
-requestIntGroups : Unit -> Map string (List int)
-requestIntGroups () = perform CallSupply.groups ()
-requestStringGroups : Unit -> Map string (List string)
-requestStringGroups () = perform CallSupply.groups ()
-
 suppliedInts () =
     handle CallSupply
         groups => intGroups ()
-    requestIntGroups ()
+    perform CallSupply.groups ()
 
 suppliedStrings () =
     handle CallSupply
         groups => stringGroups ()
-    requestStringGroups ()
+    perform CallSupply.groups ()
 
-groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =
     (groups |> mapGet key ?: fallbackList) |> listGet index ?: fallback
-
-(** The cases' shared fallbacks, one accessor per element type. *)
-intGroup (groups, key, index) = groupAt (groups, key, index, [91], 99)
-textGroup (groups, key, index) = groupAt (groups, key, index, ["row"], "item")
 
 (** One group probe: which key and index, and the exact int it must hold. *)
 type IntProbe =
@@ -45,40 +35,30 @@ type TextProbe =
     index : int
     value : string
 
-(** Asserts the pipe-side size views of the map `groups` answer `expected`. *)
+(** Asserts every probe reads its exact value out of the map `groups`, or the fallback. *)
+checkProbes (label, groups, probes, fallbackList, fallback) =
+    forEachList probes (\probe => check label probe.value (groupAt (groups, probe.key, probe.index, fallbackList, fallback)))
+
+(** Asserts the free `length` and `isEmpty` views of `xs` answer `expected`. *)
+checkUnarySized (label, xs, expected) =
+    checkAll label [
+        length (xs) == expected,
+        !((isEmpty xs))
+    ]
+
+(** Asserts the receiver-first size views of the map `groups` answer `expected`. *)
 checkMapSized (label, groups, expected) =
-    checkAll label [
-        (groups |> mapLength) == mapLength groups,
-        (groups |> mapLength) == expected,
-        (groups |> length) == expected,
-        !((groups |> isEmpty))
-    ]
+    check label (mapLength groups) (groups |> mapLength)
+    checkUnarySized (label, groups, expected)
 
-(** Asserts the pipe-side size views of the list `xs` answer `expected`. *)
+(** Asserts the receiver-first size views of the list `xs` answer `expected`. *)
 checkListSized (label, xs, expected) =
-    checkAll label [
-        (xs |> listLength) == expected,
-        (xs |> length) == expected,
-        !((xs |> isEmpty))
-    ]
+    check label expected (xs |> listLength)
+    checkUnarySized (label, xs, expected)
 
-(** Asserts every probe reads its exact int out of the map `groups`. *)
-checkIntGroups (label, groups, probes) =
-    forEachList probes (\probe => check label probe.value (intGroup (groups, probe.key, probe.index)))
-
-(** Asserts every probe reads its exact text out of the map `groups`. *)
-checkTextGroups (label, groups, probes) =
-    forEachList probes (\probe => check label probe.value (textGroup (groups, probe.key, probe.index)))
-
-(** Asserts `groups` holds every key of `present` and none of `absent`. *)
-checkKeys (label, groups, present, absent) =
-    forEachList present (\key => check label true (groups |> mapContains key))
-    forEachList absent (\key => check label false (groups |> mapContains key))
-
-(** Asserts `xs` holds every item of `present` and none of `absent`. *)
-checkContains (label, xs, present, absent) =
-    forEachList present (\item => check label true (xs |> listContains item))
-    forEachList absent (\item => check label false (xs |> listContains item))
+(** Asserts `holds` answers true for each item of `present` and false for each of `absent`. *)
+checkMembership (label, present, absent, holds) =
+    forEachList (present |> listConcat absent) (\item => check label (present |> listContains item) (holds item))
 
 (** The length of the nested list at `index` of `xs`, or none when it is absent. *)
 nestedLength (xs, index) = (listGet xs index ?: [99]) |> listLength
@@ -105,27 +85,27 @@ receiverFirstCollectionCase () =
     checkListSized ("long group size", long, 2)
     checkListSized ("reversed values size", intValues, 2)
     checkListSized ("reversed keys size", stringKeys, 2)
-    checkIntGroups ("original int group probes", ints, [
+    checkProbes ("original int group probes", ints, [
         IntProbe(key = "low", index = 0, value = 1),
         IntProbe(key = "low", index = 1, value = 2)
-    ])
-    checkIntGroups ("grown int group probes", grownInts, [
+    ], [91], 99)
+    checkProbes ("grown int group probes", grownInts, [
         IntProbe(key = "high", index = 2, value = 50),
         IntProbe(key = "extra", index = 0, value = 6),
         IntProbe(key = "extra", index = 1, value = 7)
-    ])
-    checkTextGroups ("original string group probes", strings, [
+    ], [91], 99)
+    checkProbes ("original string group probes", strings, [
         TextProbe(key = "short", index = 0, value = "a"),
         TextProbe(key = "short", index = 1, value = "bb"),
         TextProbe(key = "long", index = 0, value = "three")
-    ])
-    checkTextGroups ("grown string group probes", grownStrings, [
+    ], ["row"], "item")
+    checkProbes ("grown string group probes", grownStrings, [
         TextProbe(key = "long", index = 0, value = "eight"),
         TextProbe(key = "long", index = 1, value = "nine")
-    ])
-    checkKeys ("grown int keys", grownInts, ["high", "extra"], ["low"])
-    checkKeys ("original int keys", ints, ["low"], ["extra"])
-    checkContains ("reversed key membership", stringKeys, ["short", "long"], ["missing"])
+    ], ["row"], "item")
+    checkMembership ("grown int keys", ["high", "extra"], ["low"], \key => grownInts |> mapContains key)
+    checkMembership ("original int keys", ["low"], ["extra"], \key => ints |> mapContains key)
+    checkMembership ("reversed key membership", ["short", "long"], ["missing"], \key => stringKeys |> listContains key)
 
     checkAll "receiver-first entries and nested leaves" [
         structuralEquals [(high |> listGet 0 ?: 99), (high |> listGet 1 ?: 99)] [30, 40],
