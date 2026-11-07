@@ -1,49 +1,41 @@
 use super::*;
+use crate::testutil::bad;
+
+/// Parses `source` and infers it, returning the published `ProgramTypes`.
+fn infer(source: &str) -> crate::info::ProgramTypes {
+    infer_program(&parse_program(source).program)
+}
 
 #[test]
 fn testing_builtins_typecheck_and_reject_bad_arity() {
     // [TESTING-BUILTINS] all assertion schemes accept the documented shapes.
-    let errs = check(
-        "test(\"adds\", fn() => expect(1 + 1, 2))\n\
-         test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n\
-         test(\"predicates\", fn() => {\n\
-           expectTrue(2 < 3)\n\
-           expectFalse(3 < 2)\n\
-           checkTrue(\"ordered\", 4 <= 4)\n\
-           checkFalse(\"different\", 4 == 5)\n\
-           expectAll([true, 2 < 3, 4 == 4])\n\
-           checkAll(\"batch\", [true, 5 != 6])\n\
-         })\n",
-    );
-    assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
-    let errs = check("expect(1)\n");
-    assert!(errs.iter().any(|e| e.message.contains("arity")));
-    let errs = check("expectTrue(1)\n");
-    assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
-    let errs = check("checkFalse(true)\n");
-    assert!(errs.iter().any(|e| e.message.contains("arity")));
-    let errs = check("expectAll([true, 1])\n");
-    assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
-    let errs = check("checkAll(\"batch\", [true])\n");
-    assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
-    let errs = check("test(42, fn() => expect(1, 1))\n");
-    assert!(
-        !errs.is_empty(),
-        "a non-string test name must not typecheck"
-    );
+    ok("test(\"adds\", fn() => expect(1 + 1, 2))\n\
+        test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n\
+        test(\"predicates\", fn() => {\n\
+          expectTrue(2 < 3)\n\
+          expectFalse(3 < 2)\n\
+          checkTrue(\"ordered\", 4 <= 4)\n\
+          checkFalse(\"different\", 4 == 5)\n\
+          expectAll([true, 2 < 3, 4 == 4])\n\
+          checkAll(\"batch\", [true, 5 != 6])\n\
+        })\n");
+    bad_with("expect(1)\n", "arity");
+    bad_with("expectTrue(1)\n", "type mismatch");
+    bad_with("checkFalse(true)\n", "arity");
+    bad_with("expectAll([true, 1])\n", "type mismatch");
+    ok("checkAll(\"batch\", [true])\n");
+    // A non-string test name must not typecheck.
+    let _ = bad("test(42, fn() => expect(1, 1))\n");
 }
 
 #[test]
 fn testing_builtins_are_shadowable_but_others_stay_reserved() {
     // [TESTING-SHADOWING] a user test/expect/check replaces the built-in;
     // every other built-in still rejects redefinition.
-    let errs = check(
-        "fn check(t: int) -> int = wrapAdd(t, 1)\n\
-         fn expect(a: int) -> int = a\n\
-         fn test(x: int) -> int = x\n\
-         let r = check(expect(test(1)))\n",
-    );
-    assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
+    ok("fn check(t: int) -> int = wrapAdd(t, 1)\n\
+        fn expect(a: int) -> int = a\n\
+        fn test(x: int) -> int = x\n\
+        let r = check(expect(test(1)))\n");
     bad_with("fn range(t: int) -> int = t\n", "cannot redefine built-in");
 }
 
@@ -62,13 +54,7 @@ fn receiver_directed_size_builtins_reject_unsupported_types() {
         "type R = { value: int }\nlet n = length(R { value: 1 })\n",
         "let n = isEmpty(fn(x) => x)\n",
     ] {
-        let errs = check(source);
-        assert!(
-            errs.iter().any(|e| e
-                .message
-                .contains("supports only string, List<T>, or Map<string, V>")),
-            "expected receiver rejection for {source:?}, got {errs:?}"
-        );
+        bad_with(source, "supports only string, List<T>, or Map<string, V>");
     }
 }
 
@@ -96,12 +82,7 @@ fn string_conversion_builtins_reject_runtime_handles() {
         "extern fn bad() -> Result<List<int>, Error>\nlet s = toString(bad())\n",
         "type R = { value: int }\nextern fn bad() -> Result<int, R>\nlet s = print(bad())\n",
     ] {
-        let errs = check(source);
-        assert!(
-            errs.iter()
-                .any(|e| e.message.contains("cannot convert value")),
-            "expected string-conversion rejection for {source:?}, got {errs:?}"
-        );
+        bad_with(source, "cannot convert value");
     }
 }
 
@@ -111,20 +92,16 @@ fn runtime_callbacks_use_their_exact_function_types() {
         let process = spawnProcess(\"echo ok\", event)\n\
         fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: body }\n\
         let listening = httpListen(1, request)\n");
-    let process_errs = check(
+    bad_with(
         "fn wrong(pid: int) -> Unit = print(pid)\n\
          let process = spawnProcess(\"echo no\", wrong)\n",
+        "function arity mismatch",
     );
-    assert!(process_errs
-        .iter()
-        .any(|e| e.message.contains("function arity mismatch")));
-    let http_errs = check(
+    bad_with(
         "fn wrong(method: string, path: string, headers: string, body: string) = body\n\
          let listening = httpListen(1, wrong)\n",
+        "type mismatch",
     );
-    assert!(http_errs
-        .iter()
-        .any(|e| e.message.contains("type mismatch")));
 }
 
 #[test]
@@ -151,35 +128,38 @@ fn declared_typaram_functions_generalize_regardless_of_binding_direction() {
 }
 
 #[test]
-fn resume_inside_an_arm_lambda_is_a_type_error() {
-    // A lambda body runs when called, not where it is written, so the
-    // arm's continuation is not live inside it ([EFFECTS-RESUME]).
-    let errs = check(
-        "effect E { control op: fn() -> int }\n\
-         fn go() -> int !E = perform E.op()\n\
-         let r = {\n\
-             handle E {\n\
-                 op => {\n\
-                     let f = |x| => resume(x)\n\
-                     f(9)\n\
-                 }\n\
-             }\n\
-             go()\n\
-         }\n",
-    );
-    assert!(
-        errs.iter()
-            .any(|e| e.message.contains("not at top level or in a lambda body")),
-        "expected the lambda-resume rejection, got: {errs:?}"
-    );
-}
-
-#[test]
-fn assignment_to_undeclared_name_is_an_error() {
-    let errs = check("fn main() -> Unit = {\n  neverDeclared = 100\n}\n");
-    assert!(errs.iter().any(|e| e
-        .message
-        .contains("assignment to undeclared `neverDeclared`")));
+fn checker_rejects_each_rule_violation_with_its_pinned_wording() {
+    // Each snippet breaks one rule; the loop pins the exact diagnostic the
+    // checker must report for it.
+    for (source, needle) in [
+        // A lambda body runs when called, not where it is written, so the
+        // arm's continuation is not live inside it ([EFFECTS-RESUME]).
+        (
+            "effect E { control op: fn() -> int }\n\
+          fn go() -> int !E = perform E.op()\n\
+          let r = {\n\
+              handle E {\n\
+                  op => {\n\
+                      let f = |x| => resume(x)\n\
+                      f(9)\n\
+                  }\n\
+              }\n\
+              go()\n\
+          }\n",
+            "not at top level or in a lambda body",
+        ),
+        (
+            "fn main() -> Unit = {\n  neverDeclared = 100\n}\n",
+            "assignment to undeclared `neverDeclared`",
+        ),
+        (
+            "fn validate(value) = true\n\
+          type Item = { value: int } where validate\n",
+            "validated record `where` is not supported",
+        ),
+    ] {
+        bad_with(source, needle);
+    }
 }
 
 #[test]
@@ -194,25 +174,13 @@ fn extern_declarations_register_signatures() {
 }
 
 #[test]
-fn unimplemented_validated_record_syntax_is_rejected() {
-    let errs = check(
-        "fn validate(value) = true\n\
-         type Item = { value: int } where validate\n",
-    );
-    assert!(errs.iter().any(|e| e
-        .message
-        .contains("validated record `where` is not supported")));
-}
-
-#[test]
 fn infer_program_publishes_functions_and_unions() {
-    let parsed = parse_program(
+    let info = infer(
         "type Color = Red | Green\n\
          fn dbl(x: int) -> int = x * 2\n\
          let g = fn(n) => n + 1\n\
          let n = dbl(21)\n",
     );
-    let info = infer_program(&parsed.program);
     // Resolved function signatures and union tags are published.
     assert!(info.functions.contains_key("dbl"));
     assert_eq!(
@@ -265,8 +233,7 @@ fn conflicting_effect_site_keys_are_dropped() {
 fn single_variant_same_name_type_is_a_record() {
     // `type Foo = Foo` is the single-variant record form (`is_record`); using
     // the bare name is a record value, and `infer_program` publishes it.
-    let parsed = parse_program("type Foo = Foo\nlet x = Foo\n");
-    let info = infer_program(&parsed.program);
+    let info = infer("type Foo = Foo\nlet x = Foo\n");
     let foo = info.ctors.get("Foo").expect("Foo ctor published");
     assert!(foo.owner_is_record);
 }
