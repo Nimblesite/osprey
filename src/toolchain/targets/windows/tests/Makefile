@@ -3,7 +3,7 @@
 # with its screenshot goldens in <app>/goldens/windows/<display scale percent>. One target runs one
 # app. Run from PowerShell with GNU make on the PATH. Tests with no host at all, the same on every
 # platform: tests.
-ROOT ?= ../..
+ROOT ?= ../../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 APPS := casting flock painting probe signal-flow storage
 

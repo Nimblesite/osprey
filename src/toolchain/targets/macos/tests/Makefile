@@ -1,7 +1,7 @@
 # Each macOS app's tests on its real host [UI-MACHINE-SELF-TEST]. One target runs one app: <app> in a
 # real window, <app>-headless with the same script and no window to see. Records go to target/.
 # Tests with no host at all, the same on every platform: tests.
-ROOT ?= ../..
+ROOT ?= ../../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

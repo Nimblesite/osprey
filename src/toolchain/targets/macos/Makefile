@@ -1,8 +1,8 @@
 # The desktop apps on macOS, each in the GPUI host. Recipes run from the repo root through scripts/make/forward.mk;
 # `make help` at the root lists these too. Windows: windows.
-# Each app's tests: macos/tests, and with no host at all, tests.
+# Each app's tests: src/toolchain/targets/macos/tests, and with no host at all, src/toolchain/targets/tests.
 # The Flock and painting measurements: src/toolchain/benchmarks.
-ROOT ?= ..
+ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

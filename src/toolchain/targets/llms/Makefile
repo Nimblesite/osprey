@@ -1,7 +1,7 @@
 # The language models: run them, train them, fetch their weights. A model's app on a platform lives with
-# that platform (the Qwen server on Metal: macos, macos/tests); its tests with no host at all: tests.
+# that platform (the Qwen server on Metal: macos, src/toolchain/targets/macos/tests); its tests with no host at all: src/toolchain/targets/tests.
 # Recipes run from the repo root through scripts/make/forward.mk; `make help` at the root lists these too.
-ROOT ?= ..
+ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

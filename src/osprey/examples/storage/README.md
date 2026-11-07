@@ -7,7 +7,7 @@ Osprey Storage shows what takes the space in a folder: the volume it sits on, th
 From the repository root:
 
 ```sh
-make -C windows storage           # Windows: packaged and sandboxed on the WinUI host
+make -C src/toolchain/targets/windows storage           # Windows: packaged and sandboxed on the WinUI host
 src/osprey/examples/storage/run.sh --host=winui   # Windows: builds storage.dll and opens it in the WinUI host, unpackaged
 src/osprey/examples/storage/run.sh                # the GPUI host
 src/osprey/examples/storage/run.sh --test         # the suite: no disk, no window, every operating system

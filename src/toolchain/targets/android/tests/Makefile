@@ -1,6 +1,6 @@
 # Each Android app's tests on the selected emulator or device. One target runs one app. Recipes run
-# from the repo root through scripts/make/forward.mk. Tests with no host at all: tests.
-ROOT ?= ../..
+# from the repo root through scripts/make/forward.mk. Tests with no host at all: src/toolchain/targets/tests.
+ROOT ?= ../../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else
@@ -23,7 +23,7 @@ casting-headless: casting
 
 ## casting-update: Run native casting journeys and rewrite screenshot goldens for visual review.
 casting-update:
-	OSPREY_UPDATE_GOLDENS=1 $(MAKE) -f android/tests/Makefile casting
+	OSPREY_UPDATE_GOLDENS=1 $(MAKE) -f src/toolchain/targets/android/tests/Makefile casting
 
 ## inbox: The Android goldens, tools and smoke run for the inbox app.
 # The goldens need the runtime archives the build makes, so they are ordered by a recipe line rather

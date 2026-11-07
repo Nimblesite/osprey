@@ -1,6 +1,6 @@
 # The iPhone apps. Recipes run from the repo root through scripts/make/forward.mk; `make help` at the
-# root lists these too. Each app's tests: ios/tests, and with no host at all, tests.
-ROOT ?= ..
+# root lists these too. Each app's tests: src/toolchain/targets/ios/tests, and with no host at all, src/toolchain/targets/tests.
+ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

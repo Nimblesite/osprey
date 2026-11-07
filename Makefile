@@ -62,7 +62,7 @@ test: build _build_c_runtime_tests
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions
 # twice buys nothing and doubles the slowest stage in the build. The `osprey
-# test` subcommand itself stays covered by `make -C tests bank` and the CLI e2e suite.
+# test` subcommand itself stays covered by `make -C src/toolchain/targets/tests bank` and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_proof_kernel
@@ -108,11 +108,11 @@ clean:
 ## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: lint test build
 	$(MAKE) -C src/toolchain hawk
-	$(MAKE) -C tests bank
-	$(MAKE) -C web/tests bank
+	$(MAKE) -C src/toolchain/targets/tests bank
+	$(MAKE) -C src/toolchain/targets/web/tests bank
 	$(MAKE) -C src/toolchain/website docs-html-test
-	$(MAKE) -C tests inbox
-	$(MAKE) -C tests bank-mobile
+	$(MAKE) -C src/toolchain/targets/tests inbox
+	$(MAKE) -C src/toolchain/targets/tests bank-mobile
 
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 

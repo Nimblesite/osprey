@@ -336,7 +336,7 @@ Python flavor is what Osprey's language-model work is written in. The goal is a 
 GPT-2 came first and is still a working example: the [Python-flavor GPT-2](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python) loads published Hugging Face weights, and its output matches the Default-flavor generator byte for byte on host lists, Metal and OpenCL. From the repository root, after building Osprey:
 
 ```bash
-make -C llms gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
+make -C src/toolchain/targets/llms gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
 ```
 
 - [Python flavor specification](/spec/0041-pythonflavorsyntax/): the full contract.

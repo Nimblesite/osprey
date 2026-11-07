@@ -7,15 +7,15 @@ A native player that casts a local MP3 to a Chromecast or Google TV. Its whole i
 ## Run
 
 ```sh
-make -C macos casting          # builds what it needs and opens the player in the GPUI host
-make -C windows casting        # Windows: the same player in its sandbox, on the WinUI host
+make -C src/toolchain/targets/macos casting          # builds what it needs and opens the player in the GPUI host
+make -C src/toolchain/targets/windows casting        # Windows: the same player in its sandbox, on the WinUI host
 ```
 
 On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and media-server runtime and OpenSSL, into the GPUI host, then runs it from `build/Casting.app` so the Dock shows its name and icon. `bundle.sh` also makes that bundle the default MP3 application. On Windows, `src/toolchain/hosts/winui/app.ps1` builds the app as a DLL with the same runtime and OpenSSL linked in, and packages it with `windows/cast-browse.c`, a DnsServiceBrowse helper that prints the lines `dns-sd` would. The host runs `dns-sd`, or the helper `--browse` names, to find TVs and opens the file picker, so the window never waits on the network. Each frame polls the TV for at most a millisecond.
 
 ## Mobile
 
-The iPhone and Android apps are this same GPUI host: `src/toolchain/hosts/gpui` draws the player on both, through `gpui_ios` and through its own Android backend in `src/toolchain/hosts/gpui/android`. Native code answers only what the platform alone can do. On iOS that is discovery, the document picker and TLS (`ios/`). On Android it is discovery and the document picker (`android/src/main/java`), with TLS and media serving from the same C runtime as desktop. `make -C android casting-build` builds the APK.
+The iPhone and Android apps are this same GPUI host: `src/toolchain/hosts/gpui` draws the player on both, through `gpui_ios` and through its own Android backend in `src/toolchain/hosts/gpui/android`. Native code answers only what the platform alone can do. On iOS that is discovery, the document picker and TLS (`src/toolchain/targets/ios/`). On Android it is discovery and the document picker (`android/src/main/java`), with TLS and media serving from the same C runtime as desktop. `make -C src/toolchain/targets/android casting-build` builds the APK.
 
 ## How it fits together
 
@@ -30,7 +30,7 @@ The iPhone and Android apps are this same GPUI host: `src/toolchain/hosts/gpui` 
 
 ```sh
 ./target/release/osprey src/osprey/examples/casting/test --run
-make -C windows/tests casting  # Windows: also drives the player in a real window, against the screenshots in goldens/windows
+make -C src/toolchain/targets/windows/tests casting  # Windows: also drives the player in a real window, against the screenshots in goldens/windows
 ```
 
 The reusable label-driven harness lives in [@osprey/uitest](../../packages/uitest/README.md). The tests drive the framework's real resident `start`/`dispatch` boundary with host-shaped events. They press the controls the rendered view issued, by label. An in-memory Cast device answers the port's `Wire` effect: it parses every frame the sender writes and replies as a Default Media Receiver does. The journeys cover discovery, opening a file, play, pause, resume, seek, volume, speed, stop, replay, the track finishing, skins, no TVs found and an unreachable TV.

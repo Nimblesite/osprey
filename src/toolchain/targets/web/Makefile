@@ -1,6 +1,6 @@
 # The web apps: Osprey compiled to WebAssembly and served to the browser. Recipes run from the repo root
-# through scripts/make/forward.mk; `make help` at the root lists these too. Their tests: web/tests.
-ROOT ?= ..
+# through scripts/make/forward.mk; `make help` at the root lists these too. Their tests: src/toolchain/targets/web/tests.
+ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

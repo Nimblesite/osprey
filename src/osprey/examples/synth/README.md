@@ -15,7 +15,7 @@ Click a key on the keyboard under the graph to play: it renders one second of th
 ## Run
 
 ```sh
-make -C macos synth             # or: bash src/osprey/examples/synth/run.sh
+make -C src/toolchain/targets/macos synth             # or: bash src/osprey/examples/synth/run.sh
 ```
 
 ## Test

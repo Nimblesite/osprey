@@ -49,7 +49,7 @@ endif
 COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= src/toolchain macos macos/tests windows windows/tests ios ios/tests android android/tests web web/tests llms tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
+MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/toolchain/targets/ios src/toolchain/targets/ios/tests src/toolchain/targets/android src/toolchain/targets/android/tests src/toolchain/targets/web src/toolchain/targets/web/tests src/toolchain/targets/llms src/toolchain/targets/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches src/toolchain/compiler/bin at --run time).

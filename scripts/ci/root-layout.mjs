@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // [REPO-ROOT-LAYOUT] The repository root holds only the entries listed here, and
-// never a log or a stray file. Code belongs under src/; logs belong under target/. The app folders
-// (one per platform, plus tests/ for host-free suites and llms/ for the models) hold only Makefiles.
+// never a log or a stray file. Code belongs under src/; logs belong under target/. App targets
+// live under src/toolchain/targets/, never in the root.
 import { spawnSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -12,7 +12,6 @@ export const ALLOWED_TRACKED = new Set([
   '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
   '.vscode', '.windsurf', 'AGENTS.md', 'CONTRIBUTING.md',
   'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'docs', 'scripts', 'src',
-  'android', 'ios', 'llms', 'macos', 'tests', 'web', 'windows',
   ])
 
 /** Local, ignored files that tools keep in the root by design. */

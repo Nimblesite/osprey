@@ -99,7 +99,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C ios/tests examples inbox', 'make -C macos/tests examples', 'make -C ios/tests bank',
+  for (const command of ['make -C src/toolchain/targets/ios/tests examples inbox', 'make -C src/toolchain/targets/macos/tests examples', 'make -C src/toolchain/targets/ios/tests bank',
     'bash src/osprey/workbench/hosts/apple/run.sh --build', 'swift test --package-path src/osprey/workbench/hosts/apple']) {
     assert.ok(apple.includes(command), command)
   }

@@ -1,6 +1,6 @@
 # Each app's headless tests: no host, no window and no network, so they run the same on every
-# platform. One target runs one app. Tests on a real host: macos/tests, windows/tests, ios/tests, android/tests and web/tests.
-ROOT ?= ..
+# platform. One target runs one app. Tests on a real host: src/toolchain/targets/macos/tests, src/toolchain/targets/windows/tests, src/toolchain/targets/ios/tests, src/toolchain/targets/android/tests and src/toolchain/targets/web/tests.
+ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else
@@ -63,7 +63,7 @@ python-app-ports: build
 
 ## qwen: The Qwen model suite on the host under GC and ARC, each equal to the golden byte for byte, and
 ##       the server's fixture-table lanes through the real ollama and openai clients
-##       (~/.cache/osprey-llm/oracle-venv). The Metal run: macos/tests qwen-headless.
+##       (~/.cache/osprey-llm/oracle-venv). The Metal run: src/toolchain/targets/macos/tests qwen-headless.
 qwen: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) _qwen-suite MEMORY=gc

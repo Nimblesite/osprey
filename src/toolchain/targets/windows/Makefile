@@ -1,8 +1,8 @@
 # The desktop apps on Windows, each its own MSIX package in an AppContainer on the WinUI host
 # [WINUI-HOST-SANDBOX], as apps.json beside this file describes them. Run from PowerShell with GNU make
 # on the PATH; src/toolchain/hosts/winui/app.ps1 builds and registers each. macOS: macos.
-# Each app's tests: windows/tests, and with no host at all, tests.
-ROOT ?= ..
+# Each app's tests: src/toolchain/targets/windows/tests, and with no host at all, src/toolchain/targets/tests.
+ROOT ?= ../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
 .PHONY: storage flock graphics painting signal-flow probe casting

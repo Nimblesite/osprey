@@ -20,7 +20,7 @@ This film navigates an existing calculator conversation in the real macOS app. I
 From a repository checkout, after installing the build prerequisites:
 
 ```sh
-make -C macos agent PROJECT=/path/to/your/project
+make -C src/toolchain/targets/macos agent PROJECT=/path/to/your/project
 ```
 
 [Explore Osprey Native →](/docs/osprey-native/) · [Agent source and setup](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/agent)

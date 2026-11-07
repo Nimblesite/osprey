@@ -308,13 +308,13 @@ From the repository root:
 
 ``` bash
 # Compile the Osprey client, bundle React/host/CSS, and embed the Wasm bytes.
-make -C web bank-build
+make -C src/toolchain/targets/web bank-build
 
 # Rebuild the browser bundle, run the native Osprey server, and open the app.
-make -C web bank
+make -C src/toolchain/targets/web bank
 ```
 
-The application is served at `http://127.0.0.1:18790`. The generated `src/osprey/examples/projects/modules/src/web/bundle.ospml` contains the minified CSS and JavaScript, including base64-encoded Wasm. It is generated source: change the client, host, or styles and rerun `make -C web bank-build` rather than editing it.
+The application is served at `http://127.0.0.1:18790`. The generated `src/osprey/examples/projects/modules/src/web/bundle.ospml` contains the minified CSS and JavaScript, including base64-encoded Wasm. It is generated source: change the client, host, or styles and rerun `make -C src/toolchain/targets/web bank-build` rather than editing it.
 
 The example's web build performs four jobs:
 
@@ -410,7 +410,7 @@ npm test
 
 # Compile the real Osprey client/server and drive it in Chromium
 cd ../../../../../..
-make -C web/tests bank
+make -C src/toolchain/targets/web/tests bank
 
 # Compiler Wasm ABI/linker tests
 cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli wasm::tests
