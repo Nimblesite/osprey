@@ -35,7 +35,17 @@
     {"invoke": "Show inspector"},
     {"wait": "Hide inspector"},
     {"wait": "Files changed"},
-    {"shot": "qwen-ready"}
+    {"shot": "qwen-ready"},
+    {"invoke": "Settings"},
+    {"wait": "Osprey Qwen"},
+    {"wait": "http://127.0.0.1:11435/v1"},
+    {"wait": "No API key required"},
+    {"gone": "Save Osprey Qwen key"},
+    {"wait": "Default model"},
+    {"shot": "qwen-ready-settings"},
+    {"invoke": "Close"},
+    {"gone": "Default model"},
+    {"wait": "Send"}
   ],
   "qwenAfter": [
     {"wait": "median"},

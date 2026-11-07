@@ -31,9 +31,10 @@ def ui_evidence(records):
     root = pathlib.Path(records)
     live, replay = (root / "live.log").read_text(), (root / "replay.log").read_text()
     assert "self-test passed:" in live and "self-test passed:" in replay, "UI framework failed"
-    assert sum(line.startswith("ok ") for line in live.splitlines()) >= 60, "incomplete UI script"
+    assert sum(line.startswith("ok ") for line in live.splitlines()) >= 75, "incomplete UI script"
+    assert sum(line.startswith("ok ") for line in replay.splitlines()) >= 31, "incomplete replay script"
     shots = sorted((root / "coding").glob("*.png"))
-    assert len(shots) >= 10 and len(list((root / "replay").glob("*.png"))) >= 5, "missing screenshots"
+    assert len(shots) >= 12 and len(list((root / "replay").glob("*.png"))) >= 5, "missing screenshots"
     return {"task": "Fix add and mean without removing tests, then implement median with new tests. "
                     "Median must support odd/even/single/float inputs without mutating the input.",
             "code": (root / "work/calc-project/calc/__init__.py").read_text(),
