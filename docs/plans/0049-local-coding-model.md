@@ -152,7 +152,7 @@ The routes below exist in `src/osprey/examples/llms/qwen/server` (a2c54386e, 115
 Gate: real `ollama run`, an OpenAI SDK client and `@osprey/pydantic-ai` each complete a tool-using conversation.
 
 ## Phase 8 — Evaluation and release
-- [ ] Run the Phase 0 suite through **pi** and the `@osprey/pydantic-ai` coding agent, against both Osprey and the baseline.
+- [ ] Run the Phase 0 suite through **pi** and the `@osprey/pydantic-ai` coding agent, against both Osprey and the baseline. Client readiness, 2026-11-08: the installed pi agent completed an actual tool loop against a local HTTP fixture, executing `read_file`, replaying its tool result with the matching call ID on the second request and returning the marker. Receipt: `target/logs/plan0049/pi-smoke/` (`result.log`, `requests.json`, `tool-calls.jsonl`). This covers client transport and tool execution only; the real-weight conversations and full corpus runs remain open. The baseline completeness guard now requires exactly 200 tool goals alongside its existing coding/rate/RSS requirements; the regression failed for four incorrect counts before the fix, and all six evaluation harness tests then passed (`target/logs/plan0049/baseline-completeness-{red,green}.log`).
 - [ ] Multi-hour soak: no leak, stable RSS, clean ARC exit.
 - [ ] README, spec status, and a dated report with every measurement.
 
