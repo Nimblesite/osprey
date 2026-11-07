@@ -13,7 +13,7 @@ Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-
 | --- | --- |
 | **OspreyClaude1** (model and speed) | Phase 4 prompt rate ([LLM-PREFILL], [LLM-PROMPT-RATE]); Phase 4 [LLM-SPEED] quiet-machine re-measure; Phase 2 `gpuMatMul` 64-row gap and the synthetic workload; Phase 3 model checks and permutations; Phase 4 long-context run, llama.cpp logits and `float16` KV drift; Phase 1 plan 0050 gate check; review and merge of Gap 2 |
 | **OspreyClaude2** (runtime and server) | Phase 1 [LLM-STATE-OWNED] (Gap 2: attribution, then 2a) and [LLM-ARITH-IEEE] kernel side; Phase 7 [LLM-API-OLLAMA] and [LLM-API-QUEUE] (verify the disconnect fix on the real weights, then tick); the SIGBUS runtime defect (verify, then tick); Phase 3 Metal CI lane (state the runner needed; the spend is the owner's call); Phase 8 soak |
-| **OspreyCodex1** (baseline, evaluation, release) | Phase 0 disk, evaluation harness, Ollama baseline runs and the baseline report; Phase 5 sampling defaults; Phase 8 harness runs through pi and `@osprey/pydantic-ai`; Phase 8 README, spec status and the dated report |
+| **OspreyCodex1** (baseline, evaluation, release) | Phase 0 disk, evaluation harness, Ollama baseline runs and the baseline report; Phase 5 sampling defaults; Phase 6 gate evidence for all 200 tool cases and selection accuracy against Ollama; Phase 7 template comparisons and tool-conversation evidence through Ollama, OpenAI SDK and `@osprey/pydantic-ai`; Phase 8 harness runs through pi and `@osprey/pydantic-ai`; Phase 8 README, spec status and the dated report |
 
 ## Current execution sequence — 2026-11-05
 
