@@ -57,15 +57,21 @@ impl Parser<'_> {
         matches!(self.peek(), TokKind::Op(op) if op == "<")
     }
 
+    /// One type, then each further `, t` this list admits.
+    fn comma_separated_types(&mut self) -> Vec<MlType> {
+        let mut types = vec![self.ty()];
+        while self.eat(&TokKind::Comma) {
+            types.push(self.ty());
+        }
+        types
+    }
+
     /// `Head< t (, t)* >` — angle-bracketed generic arguments, lowered to the
     /// same [`MlType::App`] as the whitespace `Head t…` form so both render to
     /// `Head<…>` ([FLAVOR-ML-FN]). Reuses [`Self::ty`] for each argument.
     pub(in crate::ml) fn ty_generic_args(&mut self, head: String) -> MlType {
         self.advance(); // `<`
-        let mut args = vec![self.ty()];
-        while self.eat(&TokKind::Comma) {
-            args.push(self.ty());
-        }
+        let args = self.comma_separated_types();
         if matches!(self.peek(), TokKind::Op(op) if op == ">") {
             self.advance(); // `>`
         } else {
@@ -77,10 +83,7 @@ impl Parser<'_> {
     /// `( t )` grouping or `( t, t, … )` a tupled argument.
     pub(in crate::ml) fn ty_paren(&mut self) -> MlType {
         self.advance(); // `(`
-        let mut parts = vec![self.ty()];
-        while self.eat(&TokKind::Comma) {
-            parts.push(self.ty());
-        }
+        let parts = self.comma_separated_types();
         let _ = self.eat(&TokKind::RParen);
         if parts.len() == 1 {
             parts

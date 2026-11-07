@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 // ML function twin covering currying, higher-order calls, and recursion.
 
@@ -173,12 +161,11 @@ recursionCase () =
         recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 
-
-test "closures retain independent captured state" (\() => exactArithmetic (closuresCase))
-test "partial application retains every curried golden" (\() => exactArithmetic (curryPartialCase))
-test "higher-order functions retain every application golden" (\() => exactArithmetic (higherOrderCase))
-test "nested calls retain evaluation structure" (\() => exactArithmetic (nestedCallsCase))
-test "recursion retains base and recursive branches" (\() => exactArithmetic (recursionCase))
+test "closures retain independent captured state" (exactly closuresCase)
+test "partial application retains every curried golden" (exactly curryPartialCase)
+test "higher-order functions retain every application golden" (exactly higherOrderCase)
+test "nested calls retain evaluation structure" (exactly nestedCallsCase)
+test "recursion retains base and recursive branches" (exactly recursionCase)
 
 (** Identity as a GENERIC definition — no single concrete ABI, so it exists
     only as a body its call sites specialise ([TYPE-GENERICS-FN]). *)
@@ -254,4 +241,4 @@ genericValueCase () =
         applyTwo (curriedSum, 20, 22) == 42
     ]
 
-test "file-scope generic function values resolve by name" (\() => exactArithmetic (genericValueCase))
+test "file-scope generic function values resolve by name" (exactly genericValueCase)

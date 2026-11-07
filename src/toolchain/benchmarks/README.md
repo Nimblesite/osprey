@@ -10,7 +10,27 @@ folder** under `cases/<name>/` so you can read and compare every line:
 ```
 src/toolchain/benchmarks/cases/<name>/
   <name>.osp   <name>.rs   <name>.c   <name>.codon   <name>.ml   <name>.hs   expected.txt   bench.json
+  osprey.toml          # only Osprey cases that share the module below
 ```
+
+The list and text cases share one seed reader and hash per language in
+`shared/`: Rust `include!`s `seed.rs`, Dart imports `seed.dart`, `run.sh`
+compiles `Seed.cs` beside each C# case, and Osprey imports the module in
+`shared/bench.osp`. Each case still builds as one compiler invocation, and the
+timed loops stay in the case files.
+
+The Osprey policy is shared the one way the language allows — a project
+([MODULES-MODEL]). `shared/bench.osp` holds the `Arith` policy
+(`Bench::guarded`, which prints `unexpected integer overflow` / `unexpected zero
+divisor` exactly as every case did inline) and the byte-identical helpers
+(`add`, `sub`, `mul`, `modp`, `hashAt`, `addM`, `mulM`, `seedOf`, `buildList`,
+`weigh`, `word`), with `r1` and `randSeed` module-private because only
+`hashAt`/`seedOf` use them. A case that uses them carries an
+`osprey.toml` beside it naming `[".", "../../shared"]` as its source roots, so
+`run.sh` compiles the case DIRECTORY instead of the single file; the manifest's
+`name` is the case name, so the artifact lands where it always did. A case that
+needs its own recovery value (`binarytrees`, `exprtree`) keeps its handler and
+needs no manifest.
 
 ```bash
 make -C src/toolchain/benchmarks bench                       # build everything, run the whole suite

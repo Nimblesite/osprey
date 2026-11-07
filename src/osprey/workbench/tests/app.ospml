@@ -104,6 +104,9 @@ module Drive
 
     export activate (envelope, issued, region, label) = post (envelope, labelled (envelope, issued, region, label, "null"))
 
+    (** An activation whose control was drawn by the envelope itself, which is every host event. *)
+    export press (envelope, region, label) = activate (envelope, envelope, region, label)
+
     memberKey member = match member
         JsonMember key _ => key
 
@@ -114,23 +117,29 @@ module Drive
     (** Retain real slice writes exactly as a host does, without reconstructing board data. *)
     export hostSlices envelopes = foldList (envelopes, JsonObject [], \(held, envelope) => foldList (Doc::items (Doc::field (envelope, "slices")), held, writtenInto))
 
+    (** The named field of every item of the `collection` field, in order. *)
+    collected (envelope, collection, field) = join (mapList (Doc::items (Doc::field (envelope, collection)), \item => Doc::text (item, field)), ",")
+
     (** The keys of the regions an envelope re-sent, in order. *)
-    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key")), ",")
+    export keys envelope = collected (envelope, "patches", "key")
 
     (** The host retains every region's revision even when the latest envelope has no patch for it. *)
     export revision (envelope, key) = signalRevisionOf (signalFramesFromJson (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))) key
 
     (** The tickets of the requests in `envelope`. *)
-    export tickets envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "ticket")), ",")
+    export tickets envelope = collected (envelope, "requests", "ticket")
 
     (** The keys of the slices `envelope` wrote. *)
-    export written envelope = join (mapList (Doc::items (Doc::field (envelope, "slices")), \item => Doc::text (item, "key")), ",")
+    export written envelope = collected (envelope, "slices", "key")
 
     (** The store the session of `envelope` carries. *)
     export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
 
     (** A control event: `value` as JSON text, on control `ordinal` of `region` as drawn at `revision`. *)
     export control (region, revision, ordinal, value) = "{\"kind\":\"ui\",\"region\":\"" + region + "\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":" + value + ",\"now\":5}"
+
+    (** A control event on `region` as `envelope` drew it, without restating its revision. *)
+    export controlOf (envelope, region, ordinal, value) = post (envelope, control (region, revision (envelope, region), ordinal, value))
 
     (** A tap on control `ordinal` of region `region` as `envelope` drew it. *)
     export tap (envelope, region, ordinal) = control (region, revision (envelope, region), ordinal, "null")
@@ -144,8 +153,11 @@ module Drive
     (** `text` as a JSON string. *)
     export quoted text = jsonQuote text ?: "\"\""
 
+    (** A completion of `ticket` with `result` as JSON text, delivered to `envelope`. *)
+    export completed (envelope, ticket, result) = post (envelope, done (ticket, result))
+
     (** A session with the catalogue and every lesson loaded. *)
-    export loaded () = post (post (started (), done ("lessons:catalogue", "{}")), done ("lessons:texts", "{}"))
+    export loaded () = completed (completed (started (), "lessons:catalogue", "{}"), "lessons:texts", "{}")
 
 
     (** The actual rendered region tree and its issued control ordinals. *)
@@ -175,6 +187,16 @@ module Drive
 
     (** A frame found by its authored name, not by its position. *)
     export findNamed (name, node) = matchingNode ("frameName", name, node)
+
+    (** A node the envelope drew inside one region, found by name, label or kind. *)
+    export namedIn (name, envelope, key) = findNamed (name, node (envelope, key))
+
+    export labelledIn (label, envelope, key) = findLabel (label, node (envelope, key))
+
+    export kindedIn (kind, envelope, key) = findNode (kind, node (envelope, key))
+
+    (** A completion of `ticket` with `result` that also delivers the host slices it read. *)
+    export completedHeld (envelope, ticket, result, slices) = postHeld (envelope, done (ticket, result), slices)
 
     export expectControlFrame (node, label, size, radius) =
         style = Doc::field (matchingNode ("controlLabel", label, node), "style")

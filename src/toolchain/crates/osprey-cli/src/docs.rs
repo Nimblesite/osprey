@@ -31,10 +31,7 @@ use std::process::ExitCode;
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let options = match Options::parse(args) {
         Ok(options) => options,
-        Err(error) => {
-            eprintln!("osprey --docs: {error}");
-            return ExitCode::from(2);
-        }
+        Err(error) => return crate::usage_error(&format!("osprey --docs: {error}")),
     };
     match export(&options) {
         Ok(count) => {
@@ -118,6 +115,16 @@ fn generate(docs_dir: &Path, pages: &[Page]) -> std::io::Result<usize> {
     Ok(names.len())
 }
 
+/// `slug` made unique in `used` by suffixing `-2`, `-3`, … until it lands.
+fn unique_slug(used: &mut HashSet<String>, mut slug: String, base: &str) -> String {
+    let mut k = 2;
+    while !used.insert(slug.clone()) {
+        slug = format!("{base}-{k}");
+        k += 1;
+    }
+    slug
+}
+
 /// Assign each built-in a unique, filesystem-safe page stem. Names normally
 /// lowercase to their stem; a capitalized type constructor that would clash with
 /// a same-spelled function (`Map` vs `map`) is suffixed `-type`, and any further
@@ -133,17 +140,12 @@ fn slug_map(names: &[String]) -> HashMap<String, String> {
     for n in names {
         let lower = n.to_lowercase();
         let unique = counts.get(&lower).copied().unwrap_or(0) == 1;
-        let mut slug = if unique || *n == lower {
+        let slug = if unique || *n == lower {
             lower.clone()
         } else {
             format!("{lower}-type")
         };
-        let mut k = 2;
-        while !used.insert(slug.clone()) {
-            slug = format!("{lower}-{k}");
-            k += 1;
-        }
-        let _ = out.insert(n.clone(), slug);
+        let _ = out.insert(n.clone(), unique_slug(&mut used, slug, &lower));
     }
     out
 }
@@ -230,13 +232,7 @@ fn user_slug_map(entries: &[DocEntry]) -> HashMap<String, String> {
         .collect::<std::collections::BTreeSet<_>>()
     {
         let base = safe_slug(name);
-        let mut slug = base.clone();
-        let mut k = 2;
-        while !used.insert(slug.clone()) {
-            slug = format!("{base}-{k}");
-            k += 1;
-        }
-        let _ = slugs.insert(name.clone(), slug);
+        let _ = slugs.insert(name.clone(), unique_slug(&mut used, base.clone(), &base));
     }
     slugs
 }

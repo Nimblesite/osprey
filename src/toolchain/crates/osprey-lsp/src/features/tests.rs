@@ -11,18 +11,12 @@ fn nested_bindings_end_at_their_lexical_scope() {
     let src = "fn outer(x) = {\n    let inner = {\n        let x = 2\n        x\n    }\n    x\n}\n";
     let uri = "file:///nested.osp";
     assert_scoped_definitions(src, uri, &[((3, "x"), (2, "x =")), ((5, "x"), (0, "x)"))]);
-    let found: Vec<_> = references(src, uri, 0, col_of(src, 0, "x)"), U16, true)
-        .into_iter()
-        .map(|location| location.span)
-        .collect();
+    let found = reference_spans(src, uri, 0, "x)", true);
     assert_eq!(
         found,
         vec![word_span(src, (0, "x)")), word_span(src, (5, "x"))]
     );
-    let inner: Vec<_> = references(src, uri, 3, col_of(src, 3, "x"), U16, true)
-        .into_iter()
-        .map(|location| location.span)
-        .collect();
+    let inner = reference_spans(src, uri, 3, "x", true);
     assert_eq!(
         inner,
         vec![word_span(src, (2, "x =")), word_span(src, (3, "x"))]
@@ -44,12 +38,9 @@ fn layout_bindings_end_at_their_lexical_scope() {
         ),
     ] {
         assert_scoped_definitions(src, uri, &[((3, "x"), (2, "x =")), ((last, "x"), (0, "x"))]);
-        let found = references(src, uri, 0, col_of(src, 0, "x"), U16, true);
+        let found = reference_spans(src, uri, 0, "x", true);
         assert_eq!(
-            found
-                .into_iter()
-                .map(|location| location.span)
-                .collect::<Vec<_>>(),
+            found,
             vec![word_span(src, (0, "x")), word_span(src, (last, "x"))]
         );
     }
@@ -63,8 +54,7 @@ fn lambda_and_handler_parameters_do_not_capture_later_outer_references() {
     ] {
         let outer = usize::from(src.starts_with("effect"));
         assert_scoped_definitions(src, "file:///nested.osp", &[((outer + 2, "x"), (outer, "x)"))]);
-        assert_eq!(references(src, "file:///nested.osp", u32::try_from(outer).expect("line fits"),
-            col_of(src, outer, "x)"), U16, true).len(), 2);
+        assert_eq!(reference_spans(src, "file:///nested.osp", outer, "x)", true).len(), 2);
     }
 }
 
@@ -79,15 +69,7 @@ fn ml_lambda_parameters_end_at_the_closing_parenthesis() {
     let src = "outer x =\n    inner = (\\x => x)\n    x\n";
     assert_scoped_definitions(src, "file:///nested.ospml", &[((2, "x"), (0, "x"))]);
     assert_eq!(
-        references(
-            src,
-            "file:///nested.ospml",
-            0,
-            col_of(src, 0, "x"),
-            U16,
-            true
-        )
-        .len(),
+        reference_spans(src, "file:///nested.ospml", 0, "x", true).len(),
         2
     );
 }
@@ -101,9 +83,8 @@ const SRC: &str = "fn add(a: int, b: int) -> int = wrapAdd(a, b)\nlet total = ad
 
 #[test]
 fn definition_points_at_the_declaration() {
-    let defs = definition(SRC, "file:///a.osp", 1, 12, U16);
-    let first = defs.first().expect("definition");
-    assert_eq!(first.span.0, 0, "{defs:?}");
+    let first = first_definition(SRC, "file:///a.osp", 1, 12);
+    assert_eq!(first.span.0, 0, "{first:?}");
 }
 
 #[test]
@@ -115,15 +96,12 @@ fn definition_of_a_builtin_anchors_on_the_identifier() {
     // [LSP-DEFINITION-BUILTIN].
     let src = "let batch = listAppend(List(), 6)\n";
     let col = col_of(src, 0, "listAppend");
-    let defs = definition(src, "file:///a.osp", 0, col, U16);
-    let first = defs
-        .first()
-        .expect("built-in resolves to its own identifier");
-    assert_eq!(first.span.0, 0, "on the same line: {defs:?}");
+    let first = first_definition(src, "file:///a.osp", 0, col);
+    assert_eq!(first.span.0, 0, "on the same line: {first:?}");
     assert_eq!(
         first.span.1,
         col - 1,
-        "anchored at the identifier: {defs:?}"
+        "anchored at the identifier: {first:?}"
     );
 }
 
@@ -136,19 +114,30 @@ fn references_can_exclude_the_declaration() {
 }
 
 #[test]
-fn signature_help_tracks_the_active_parameter() {
-    // Line 1 is `let total = add(1, 2)`; char 19 is over the second argument.
-    let sig = signature_help(SRC, "file:///a.osp", 1, 19, U16).expect("sig");
+fn signature_help_tracks_the_active_parameter_through_strings_and_comments() {
+    // Line 1 of `SRC` is `let total = add(1, 2)`; char 19 is over the second
+    // argument, and the call exposes both parameters.
+    let sig = sig_at(SRC, "file:///a.osp", 1, 19);
     assert_eq!(sig.active_parameter, 1, "{sig:?}");
     assert_eq!(sig.parameters.len(), 2);
-}
-
-#[test]
-fn signature_help_ignores_commas_inside_strings() {
-    // The commas inside the string literal must not advance the active param.
-    let src = "fn f(a: int, b: int) -> int = a\nlet x = f(\"a, b, c\", 2)\n";
-    let sig = signature_help(src, "file:///a.osp", 1, 21, U16).expect("sig");
-    assert_eq!(sig.active_parameter, 1, "{sig:?}");
+    // Commas inside string literals — and the escaped quote and `//` comment
+    // that must not corrupt the comma/call tracking — leave the active
+    // parameter where the still-open call puts it.
+    for (src, column, active) in [
+        (
+            "fn f(a: int, b: int) -> int = a\nlet x = f(\"a, b, c\", 2)\n",
+            21,
+            1,
+        ),
+        (
+            "fn f(a: int, b: int) -> int = a\nlet x = f(\"a\\\"b\" // c, d\n",
+            23,
+            0,
+        ),
+    ] {
+        let sig = sig_at(src, "file:///a.osp", 1, column);
+        assert_eq!(sig.active_parameter, active, "{sig:?}");
+    }
 }
 
 #[test]
@@ -166,17 +155,17 @@ fn qualified_hover_definition_and_references_resolve_one_module_member() {
     let hover = hover(src, "file:///modules.osp", 6, column, U16).expect("hover");
     crate::testkit::shows(&hover, &["fn rate() -> int"]);
 
-    let definitions = definition(src, "file:///modules.osp", 6, column, U16);
+    let definitions = definitions_at(src, "file:///modules.osp", (6, "sales::Tax::rate"));
     assert_eq!(definitions.len(), 1, "{definitions:?}");
     assert_eq!(
-        definitions.first().map(|location| location.span.0),
+        definitions.first().map(|span| span.0),
         Some(1),
         "sales declaration line"
     );
 
-    let references = references(src, "file:///modules.osp", 6, column, U16, true);
-    assert_eq!(references.len(), 2, "use plus declaration: {references:?}");
-    assert!(!references.iter().any(|location| location.span.0 == 4));
+    let found = reference_spans(src, "file:///modules.osp", 6, "sales::Tax::rate", true);
+    assert_eq!(found.len(), 2, "use plus declaration: {found:?}");
+    assert!(!found.iter().any(|span| span.0 == 4));
 }
 
 /// A word by `(line, needle)`: the identifier that starts the needle's first
@@ -212,6 +201,39 @@ fn assert_scoped_definitions(src: &str, uri: &str, cases: &[(Word<'_>, Word<'_>)
         let found = definitions_at(src, uri, cursor);
         assert_eq!(found, vec![word_span(src, binding)], "{cursor:?} in {uri}");
     }
+}
+
+/// The spans `references` reports from the cursor over `needle` on 0-based `line`.
+fn reference_spans(
+    src: &str,
+    uri: &str,
+    line: usize,
+    needle: &str,
+    include_declaration: bool,
+) -> Vec<(u32, u32, u32, u32)> {
+    let row = u32::try_from(line).expect("line fits");
+    references(
+        src,
+        uri,
+        row,
+        col_of(src, line, needle),
+        U16,
+        include_declaration,
+    )
+    .into_iter()
+    .map(|location| location.span)
+    .collect()
+}
+
+/// The signature help at `(line, column)`, failing the test when there is none.
+fn sig_at(src: &str, uri: &str, line: u32, column: u32) -> SignatureInfo {
+    signature_help(src, uri, line, column, U16).expect("sig")
+}
+
+/// The first definition at the cursor, failing the test when none resolves.
+fn first_definition(src: &str, uri: &str, line: u32, column: u32) -> Location {
+    let defs = definition(src, uri, line, column, U16);
+    defs.first().expect("definition").clone()
 }
 
 const SCOPED_DEFAULT: &str = "effect Log { write: fn(string) -> Unit }\n\
@@ -260,11 +282,7 @@ fn definition_resolves_parameters_locals_and_arm_parameters_in_scope() {
 #[test]
 fn references_to_a_parameter_stay_inside_its_function() {
     let uri = "file:///scoped.osp";
-    let cursor = col_of(SCOPED_DEFAULT, 2, "work()");
-    let mut with: Vec<_> = references(SCOPED_DEFAULT, uri, 2, cursor, U16, true)
-        .into_iter()
-        .map(|location| location.span)
-        .collect();
+    let mut with = reference_spans(SCOPED_DEFAULT, uri, 2, "work()", true);
     with.sort_unstable();
     let expected: Vec<_> = [(1, "work)"), (2, "work()"), (6, "work()")]
         .into_iter()
@@ -272,7 +290,7 @@ fn references_to_a_parameter_stay_inside_its_function() {
         .collect();
     assert_eq!(with, expected);
     assert_eq!(
-        references(SCOPED_DEFAULT, uri, 2, cursor, U16, false).len(),
+        reference_spans(SCOPED_DEFAULT, uri, 2, "work()", false).len(),
         2
     );
 }
@@ -299,7 +317,7 @@ fn signature_help_labels_a_parameter_with_the_type_the_checker_proved() {
     // `id` is generic — nothing constrains `x`, so there is genuinely no
     // type to show and the label stays the bare name.
     let src = "fn id(x) = x\nlet y = id(7)\n";
-    let sig = signature_help(src, "file:///a.osp", 1, 11, U16).expect("sig");
+    let sig = sig_at(src, "file:///a.osp", 1, 11);
     assert_eq!(sig.parameters, vec!["x".to_owned()]);
     assert_eq!(sig.active_parameter, 0);
 
@@ -309,39 +327,38 @@ fn signature_help_labels_a_parameter_with_the_type_the_checker_proved() {
     // CLAUDE.md requires deleting silently downgraded the help to `n`.
     // Implements [LSP-HOVER-INFERRED-SIGNATURE].
     let proved = "fn twice(n) = n * 2\nlet y = twice(7)\n";
-    let sig = signature_help(proved, "file:///b.osp", 1, 14, U16).expect("sig");
+    let sig = sig_at(proved, "file:///b.osp", 1, 14);
     assert_eq!(sig.parameters, vec!["n: int".to_owned()]);
     // The annotated spelling is the control: tooling must not be able to
     // tell the two apart.
     let annotated = "fn twice(n: int) = n * 2\nlet y = twice(7)\n";
-    let control = signature_help(annotated, "file:///c.osp", 1, 14, U16).expect("sig");
+    let control = sig_at(annotated, "file:///c.osp", 1, 14);
     assert_eq!(sig.parameters, control.parameters);
     assert_eq!(sig.label, control.label);
 }
 
 #[test]
-fn signature_help_unwinds_a_closed_inner_call() {
+fn signature_help_opens_on_the_callee_and_unwinds_closed_inner_calls() {
     // The inner `add(1, 2)` call is closed before the cursor, so the active
-    // call is the still-open outer `print(...)`. This exercises the `)` arm
-    // that pops the call/comma stacks.
-    let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet r = add(add(1, 2), 3)\n";
-    let sig = signature_help(src, "file:///a.osp", 1, 24, U16).expect("sig");
-    assert_eq!(sig.label, "fn add(a: int, b: int) -> int");
-    // After the inner call closed, the cursor is over the outer second arg.
-    assert_eq!(sig.active_parameter, 1, "{sig:?}");
-}
-
-#[test]
-fn signature_help_triggers_on_the_function_name_not_only_inside_the_parens() {
-    // Editors ask the moment the callee is typed. Answering only between
-    // the parentheses shows the signature just after it stopped helping.
-    let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add\n";
-    let sig = signature_help(src, "file:///a.osp", 1, 13, U16).expect("sig on the name");
-    assert_eq!(sig.label, "fn add(a: int, b: int) -> int");
-    assert_eq!(sig.active_parameter, 0, "{sig:?}");
+    // call is the still-open outer one — the `)` arm pops the call/comma
+    // stacks. Editors also ask the moment the callee is typed: answering only
+    // between the parentheses stops helping right after the name.
+    let trigger = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add\n";
+    for (src, column, active) in [
+        (
+            "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet r = add(add(1, 2), 3)\n",
+            24,
+            1,
+        ),
+        (trigger, 13, 0),
+    ] {
+        let sig = sig_at(src, "file:///a.osp", 1, column);
+        assert_eq!(sig.label, "fn add(a: int, b: int) -> int");
+        assert_eq!(sig.active_parameter, active, "{sig:?}");
+    }
     // A word that names no function still yields nothing — `total` is a
     // binding, and offering it a parameter list would be a lie.
-    assert!(signature_help(src, "file:///a.osp", 1, 5, U16).is_none());
+    assert!(signature_help(trigger, "file:///a.osp", 1, 5, U16).is_none());
 }
 
 #[cfg(unix)]
@@ -361,8 +378,7 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
     let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");
     crate::testkit::shows(&hovered, &["sqlite"]);
 
-    let definitions = definition(&text, &uri, line, column, U16);
-    let first = definitions.first().expect("cross-file definition");
+    let first = first_definition(&text, &uri, line, column);
     assert!(first.uri.ends_with("store/ledger.ospml"), "{first:?}");
 
     // References reach into the declaring file as well as this one.
@@ -397,15 +413,6 @@ fn position_of(text: &str, needle: &str) -> (u32, u32) {
             ))
         })
         .unwrap_or_else(|| panic!("`{needle}` is not in the document"))
-}
-
-#[test]
-fn signature_help_skips_commas_in_strings_and_line_comments() {
-    // The escaped quote and the `//` comment must not corrupt the comma/call
-    // tracking, so the active parameter stays at the first argument.
-    let src = "fn f(a: int, b: int) -> int = a\nlet x = f(\"a\\\"b\" // c, d\n";
-    let sig = signature_help(src, "file:///a.osp", 1, 23, U16).expect("sig");
-    assert_eq!(sig.active_parameter, 0, "{sig:?}");
 }
 
 const VARIANTS_ML: &str = "(** A semantic icon. *)\n\
@@ -458,57 +465,47 @@ fn assert_variant_navigates(src: &str, uri: &str, word: &str, declared: &str, sh
 // nothing, because a union's variants were never symbols.
 #[test]
 fn union_variants_hover_and_define_from_every_site_in_both_flavors() {
-    for (src, uri, declared) in [
+    // The `Platform` declaration needle follows each flavor's layout.
+    for (src, uri, platform, other_platform) in [
         (
             VARIANTS_ML,
             "file:///variants.ospml",
-            "        platformName",
+            "    Macos",
+            "    OtherPlatform",
         ),
-        (VARIANTS_DEFAULT, "file:///variants.osp", "type Platform"),
+        (
+            VARIANTS_DEFAULT,
+            "file:///variants.osp",
+            "type Platform",
+            "type Platform",
+        ),
     ] {
-        let symbols = "type Symbol";
-        assert_variant_navigates(
-            src,
-            uri,
-            "NoSymbol",
-            symbols,
-            &["NoSymbol", "Symbol", "A semantic icon"],
-        );
-        assert_variant_navigates(
-            src,
-            uri,
-            "Clock",
-            symbols,
-            &["Clock", "Symbol", "A semantic icon"],
-        );
-        assert_variant_navigates(
-            src,
-            uri,
-            "Macos",
-            if declared == "type Platform" {
-                declared
-            } else {
-                "    Macos"
-            },
-            &["Macos", "Platform", "A host's system"],
-        );
-        let other = if declared == "type Platform" {
-            declared
-        } else {
-            "    OtherPlatform"
-        };
-        assert_variant_navigates(
-            src,
-            uri,
-            "OtherPlatform",
-            other,
-            &[
+        let variants: [(&str, &str, &[&str]); 4] = [
+            (
+                "NoSymbol",
+                "type Symbol",
+                &["NoSymbol", "Symbol", "A semantic icon"],
+            ),
+            (
+                "Clock",
+                "type Symbol",
+                &["Clock", "Symbol", "A semantic icon"],
+            ),
+            ("Macos", platform, &["Macos", "Platform", "A host's system"]),
+            (
                 "OtherPlatform",
-                "platformName",
-                "Platform",
-                "A host's system",
-            ],
-        );
+                other_platform,
+                &[
+                    "OtherPlatform",
+                    "platformName",
+                    "Platform",
+                    "A host's system",
+                ],
+            ),
+        ];
+        for (word, declared, shown) in variants {
+            assert_variant_navigates(src, uri, word, declared, shown);
+        }
     }
 }
 
@@ -520,10 +517,9 @@ fn union_variants_hover_and_define_across_the_project() -> std::io::Result<()> {
     let using = "label symbol = match symbol\n    Clock => \"clock\"\n    _ => \"other\"\n";
     let declared_in = fixture.write("symbol", declaring)?;
     let uri = fixture.write("main", using)?;
-    let found = definition(using, &uri, 1, 5, U16);
-    let first = found.first().expect("definition across the project");
-    assert_eq!(first.uri, declared_in, "{found:?}");
-    assert_eq!(first.span, word_span(declaring, (1, "Clock")), "{found:?}");
+    let first = first_definition(using, &uri, 1, 5);
+    assert_eq!(first.uri, declared_in, "{first:?}");
+    assert_eq!(first.span, word_span(declaring, (1, "Clock")), "{first:?}");
     let shown = hover(using, &uri, 1, 5, U16).expect("hover across the project");
     crate::testkit::shows(&shown, &["Clock", "Symbol", "A semantic icon"]);
     Ok(())

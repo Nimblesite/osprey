@@ -88,27 +88,28 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
 #[cfg(unix)]
 #[test]
 fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
-    // The editor regression: a self-contained test suite living in `test/`
-    // (outside `source_roots = ["src"]`) defines `module Money` and calls
-    // `Money::positive`. `osprey <file> --check` and `osprey test` accept it
-    // via single-source assembly; the LSP must not spray
-    // `unknown identifier `Money::positive`` by checking the raw AST.
+    // The bank's suites are their own project rooted at `test/`, importing
+    // the real `bank::Accounts` from `../src/domain`: the LSP must assemble
+    // that graph, not check the raw AST and spray unknown identifiers. The
+    // inferred implementations carry no redundant annotations, every export
+    // is documented, and the `_` handler parameters leave nothing unused.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
     let path = root.join("src/osprey/examples/projects/modules/test/accounts.test.ospml");
     let source = std::fs::read_to_string(&path).expect("read module test suite");
-    let uri = format!("file://{}", path.display());
-    let diagnostics = compute(&source, &uri, U16);
-    // The inferred implementations carry no redundant annotations; contract
-    // aliases must not reintroduce phantom warnings, and the `_` handler
-    // parameters leave nothing unused.
+    let diagnostics = compute(&source, &format!("file://{}", path.display()), U16);
     assert_warnings(&diagnostics, &[]);
+    // The editor regression: a self-contained suite with no manifest above it
+    // defines `module Money` and calls `Money::positive`. `osprey <file>
+    // --check` and `osprey test` accept it via single-source assembly; the
+    // LSP must not spray `unknown identifier `Money::positive``.
+    let uri = "file:///osprey-standalone-suite/money.test.ospml";
     // This edited buffer retains one intentional redundant signature, on a
     // private helper, so warning identity and source mapping stay exact. The
     // exported member's signature is API and is never reported
     // ([TYPE-ANNOTATION-REDUNDANT]).
     let source = "namespace test\n\n(** Amounts. *)\nmodule Money\n    (** Whether `cents` is above zero. *)\n    export positive : int -> bool\n    positive cents = above cents\n    above : int -> bool\n    above cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
     assert_redundant_annotations(
-        &compute(source, &uri, U16),
+        &compute(source, uri, U16),
         &[(
             "redundant type signature on `test::Money::above`: inference derives `(int) -> bool` without it",
             (7, 4, 7, 23),
@@ -118,7 +119,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
         .replace("    export positive : int -> bool\n", "")
         .replace("    positive cents =", "    export positive cents =")
         .replace("    above : int -> bool\n", "");
-    assert_warnings(&compute(&inferred, &uri, U16), &[]);
+    assert_warnings(&compute(&inferred, uri, U16), &[]);
 }
 
 #[cfg(unix)]

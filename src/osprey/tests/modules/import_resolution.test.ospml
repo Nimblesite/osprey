@@ -1,23 +1,10 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** ML surface for [MODULES-IMPORT] and [MODULES-RESOLUTION]: whole-module,
     aliased, member and aliased-member imports, and the rule that a nearer local
     or module declaration always wins over an imported binding. *)
 
 namespace catalog
-
 
     module Units
         export each = 1
@@ -78,6 +65,6 @@ resolutionOrderCase () = checkAll ("resolution prefers the nearest binding", [
 exactArithmetic (\() =>
     print "${pack 2} ${bigCrate 1} ${Metric::grams 2} ${U::each} ${cents 3}")
 
-test ("member imports bind selected exports", \() => exactArithmetic (memberImportCase))
-test ("whole-module imports bind a module name", \() => exactArithmetic (wholeModuleImportCase))
-test ("nearer declarations outrank imported ones", \() => exactArithmetic (resolutionOrderCase))
+test ("member imports bind selected exports", exactly memberImportCase)
+test ("whole-module imports bind a module name", exactly wholeModuleImportCase)
+test ("nearer declarations outrank imported ones", exactly resolutionOrderCase)

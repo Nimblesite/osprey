@@ -31,7 +31,7 @@ A lesson is two files. `lessons/<slug>.lean` is an ordinary Lean file holding ev
 | `src/osprey/workbench/lessons/catalogue.json` | the ordered list of lesson slugs and the stage names |
 | `src/osprey/workbench/lessons/<slug>.lean` | the lesson's declarations |
 | `src/osprey/workbench/lessons/<slug>.json` | the extension |
-| `src/osprey/workbench/lessons/media/<slug>/` | images, videos, posters and captions |
+| `src/osprey/workbench/lessons/media/<slug>/` | images; films, posters and captions are copied from the Videos repository with `make media` and committed ([MEDIA-VIDEOS-REPO]) |
 
 At start the application reads `catalogue.json` with `ReadTexts` into host-held slice `lessons:catalogue`, then every lesson's two files into `lessons:texts`; each read stores `{ files: [{ path, text, error }] }`. A lesson that fails to read is listed with its fault and cannot be opened. Hosts contain no lesson judgement or proof logic. Media paths are relative to `src/osprey/workbench/lessons/`, must start with `media/<slug>/`, and may not contain `..`, a backslash or a leading `/`.
 

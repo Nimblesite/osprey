@@ -40,6 +40,34 @@ function hostFinding(
   };
 }
 
+/// Resolve with a host whose xcrun probe throws `message`.
+function resolveWithFailingXcrun(
+  platform: NodeJS.Platform,
+  found: string,
+  message: string,
+): string | undefined {
+  return resolveLldbDapExecutable(
+    {},
+    hostFinding(platform, "", [found], {
+      execFileSync: () => {
+        throw new Error(message);
+      },
+    }),
+  );
+}
+
+/// Resolve with a host whose xcrun probe answers `answer`.
+function resolveWithXcrun(
+  platform: NodeJS.Platform,
+  found: string,
+  answer: string,
+): string | undefined {
+  return resolveLldbDapExecutable(
+    {},
+    hostFinding(platform, "", [found], { execFileSync: () => answer }),
+  );
+}
+
 suite("Osprey lldb-dap Resolution Unit Tests", () => {
   test("internal console is the default and requires no adapter probe", async () => {
     const forbiddenProbe = async () => {
@@ -94,7 +122,10 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
       "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/lldb-dap",
       "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
     ]) {
-      for (const console of ["integratedTerminal", "externalTerminal"] as const) {
+      for (const console of [
+        "integratedTerminal",
+        "externalTerminal",
+      ] as const) {
         await assert.rejects(
           resolveDebugConsole({ console }, adapter, forbiddenProbe),
           /cannot run under Xcode's lldb-dap.*brew install lldb/,
@@ -274,66 +305,69 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
       "/opt/homebrew/opt/lldb/bin/lldb-dap",
       "/usr/local/opt/lldb/bin/lldb-dap",
     ]) {
-      const host = hostFinding("darwin", "", [found], {
-        execFileSync: () => {
-          throw new Error("xcrun must not run when Homebrew answers");
-        },
-      });
-      assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+      assert.strictEqual(
+        resolveWithFailingXcrun(
+          "darwin",
+          found,
+          "xcrun must not run when Homebrew answers",
+        ),
+        found,
+      );
     }
   });
 
   test("darwin searches the versioned llvm kegs newest first", () => {
     const kegs = "/opt/homebrew/opt";
     const found = `${kegs}/llvm@21/bin/lldb-dap`;
-    const host = hostFinding("darwin", "", [found, `${kegs}/llvm@19/bin/lldb-dap`], {
-      readDir: (directory) =>
-        directory === kegs ? ["llvm@19", "llvm@21", "llvm@x", "lldb-tools"] : [],
-      execFileSync: () => "/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap\n",
-    });
+    const host = hostFinding(
+      "darwin",
+      "",
+      [found, `${kegs}/llvm@19/bin/lldb-dap`],
+      {
+        readDir: (directory) =>
+          directory === kegs
+            ? ["llvm@19", "llvm@21", "llvm@x", "lldb-tools"]
+            : [],
+        execFileSync: () =>
+          "/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap\n",
+      },
+    );
     assert.strictEqual(resolveLldbDapExecutable({}, host), found);
   });
 
   test("xcrun answers on darwin when it names a real file", () => {
-    const host = hostFinding("darwin", "", ["/xcode/lldb-dap"], {
-      execFileSync: () => "  /xcode/lldb-dap\n",
-    });
-    assert.strictEqual(resolveLldbDapExecutable({}, host), "/xcode/lldb-dap");
+    assert.strictEqual(
+      resolveWithXcrun("darwin", "/xcode/lldb-dap", "  /xcode/lldb-dap\n"),
+      "/xcode/lldb-dap",
+    );
   });
 
   test("an xcrun answer naming nothing on disk is discarded", () => {
-    const host = hostFinding("darwin", "", ["/usr/bin/lldb-dap"], {
-      execFileSync: () => "/gone/lldb-dap\n",
-    });
-    assert.strictEqual(resolveLldbDapExecutable({}, host), "/usr/bin/lldb-dap");
+    assert.strictEqual(
+      resolveWithXcrun("darwin", "/usr/bin/lldb-dap", "/gone/lldb-dap\n"),
+      "/usr/bin/lldb-dap",
+    );
   });
 
   test("an xcrun that fails falls through to the install paths", () => {
     const found = "/opt/homebrew/opt/llvm/bin/lldb-dap";
-    const host = hostFinding("darwin", "", [found], {
-      execFileSync: () => {
-        throw new Error("xcrun: not found");
-      },
-    });
-    assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+    assert.strictEqual(
+      resolveWithFailingXcrun("darwin", found, "xcrun: not found"),
+      found,
+    );
   });
 
   test("an empty xcrun answer falls through to the install paths", () => {
     const found = "/usr/bin/lldb-vscode";
-    const host = hostFinding("darwin", "", [found], {
-      execFileSync: () => "\n",
-    });
-    assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+    assert.strictEqual(resolveWithXcrun("darwin", found, "\n"), found);
   });
 
   test("xcrun is never consulted off darwin", () => {
     const found = "/usr/bin/lldb-dap";
-    const host = hostFinding("linux", "", [found], {
-      execFileSync: () => {
-        throw new Error("xcrun is a darwin tool");
-      },
-    });
-    assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+    assert.strictEqual(
+      resolveWithFailingXcrun("linux", found, "xcrun is a darwin tool"),
+      found,
+    );
   });
 
   test("windows uses the .exe names and the LLVM install paths", () => {

@@ -9,6 +9,8 @@ Special tokens get offset (0, 0); sequence A tokens get type id 0 and sequence
 B tokens type id 1, with the final [SEP] also 1.
 """
 
+from tokenizers.Unicode import map_indexed
+
 __all__ = [
     "Offset", "Encoding", "empty_encoding", "concat_two", "bert_template",
 ]
@@ -35,7 +37,7 @@ def empty_encoding():
 
 def set_type_ids(enc, tid):
     """A copy of enc whose every token has type id `tid`."""
-    return Encoding(ids=enc.ids, tokens=enc.tokens, offsets=enc.offsets, type_ids=toList(map(range(len(enc.ids)), lambda _: tid)))
+    return Encoding(ids=enc.ids, tokens=enc.tokens, offsets=enc.offsets, type_ids=map_indexed(enc.ids, lambda _: tid))
 
 
 def special_encoding(id, token, tid):

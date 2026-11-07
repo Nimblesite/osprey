@@ -28,7 +28,7 @@ fn harness(report: &str, status: i32, documented: bool, target: &str) -> (Out, s
         .env("BIN", binary).env("TARGET", target).env("MEMORY", "default").env("RESULTDIR", &root)
         .env("SMOKE", repo_root().join("scripts/wasm/wasm-smoke.mjs"))
         .env("DOCTEST_REPORT", report).env("DOCTEST_STATUS", status.to_string());
-    (finish(command), root)
+    (finish(&mut command), root)
 }
 
 #[test]

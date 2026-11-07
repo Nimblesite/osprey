@@ -149,10 +149,19 @@ pub(super) fn apply_lambda(
 /// lambda is specialised by its ARGUMENTS at each call site instead, exactly as
 /// a generic function is ([`crate::genfn`], [TYPE-GENERICS-FN]).
 pub(crate) fn inline_sig(cg: &Codegen, position: Option<Position>) -> Option<FnSig> {
+    concrete_lambda_type(cg, position).and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
+}
+
+/// The CONCRETELY-typed result recorded for the lambda at `position`, or `None`
+/// while it is still generic — no single cell ABI exists for one, so it stays an
+/// inline body its call sites specialise ([TYPE-GENERICS-FN]).
+pub(crate) fn concrete_lambda_type(
+    cg: &Codegen,
+    position: Option<Position>,
+) -> Option<&osprey_types::Type> {
     cg.prog
         .lambda_type(cg.source_function.as_deref(), position)
         .filter(|t| crate::types::fn_value_concrete(t))
-        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
 }
 
 /// [`apply_lambda`] over already-evaluated argument values — shared with the

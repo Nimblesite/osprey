@@ -1,6 +1,5 @@
 // Text statistics over a tiny vocab — exercises length/char-search per word.
-const long MINSTD = 16807;
-const long MODULUS = 2147483647;
+using static Seed;
 
 string[] vocab = { "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog" };
 long seed = ReadSeed();
@@ -15,16 +14,6 @@ for (long i = 0; i < 200000; i++)
 }
 
 System.Console.WriteLine(acc);
-
-static long R1(long x)
-{
-    return (x * MINSTD) % MODULUS;
-}
-
-static long HashAt(long s, long i)
-{
-    return R1(R1(s + i));
-}
 
 static bool Contains(string w, char c)
 {

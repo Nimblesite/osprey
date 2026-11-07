@@ -74,6 +74,7 @@ jobs:
       website: ${{ steps.filter.outputs.website }}
       book: ${{ steps.filter.outputs.book }}
       benchmarks: ${{ steps.filter.outputs.benchmarks }}
+      programs: ${{ steps.filter.outputs.programs }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/detect-ci-scope
@@ -108,7 +109,7 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.programs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -304,7 +305,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Deslop duplication gate
-        run: deslop . --config .config/deslop.toml --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
+        run: deslop . --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver runs
@@ -315,6 +316,28 @@ jobs:
         run: make -C src/toolchain hawk-install
       - name: Dead-code gate (hawk)
         run: make -C src/toolchain hawk
+
+  # [CI-PROGRAMS-COMPILE] Static check on stage 1's compiler: every tracked
+  # Osprey program lowers to LLVM IR, or CI fails.
+  check-programs:
+    name: "Check: every Osprey program compiles"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.programs == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Every Osprey program compiles
+        run: make _check_programs
 
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the
@@ -414,8 +437,6 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Every package checks on its own
-        run: make _check_packages
       - name: Package coverage collection
         run: make _test_packages
       - name: Upload package coverage
@@ -1085,10 +1106,10 @@ jobs:
           target: google_apis
           arch: x86_64
           script: |
-            make -C src/toolchain/targets android-test
+            make -C src/toolchain/targets/android/tests inbox
             mkdir -p src/osprey/examples/projects/modules/mobile/android/build
             adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
-            make -C src/toolchain/targets bank-android-test
+            make -C src/toolchain/targets/android/tests bank
             src/osprey/examples/projects/modules/mobile/android/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd src/osprey/examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
@@ -1175,13 +1196,16 @@ jobs:
         include:
           - part: iOS
             minutes: 22
-            run: make -C src/toolchain/targets ios-test mobile-ios-test
+            run: make -C src/toolchain/targets/ios/tests examples inbox
           - part: macOS
             minutes: 15
-            run: make -C src/toolchain/targets macos-test
+            run: make -C src/toolchain/targets/macos/tests examples
+          - part: Qwen pull
+            minutes: 5
+            run: make -C src/toolchain/targets/tests qwen-pull-headless
           - part: Talon Bank
             minutes: 22
-            run: make -C src/toolchain/targets bank-ios-test
+            run: make -C src/toolchain/targets/ios/tests bank
           - part: Workbench
             minutes: 15
             run: |
@@ -1370,6 +1394,7 @@ jobs:
       - changes
       - build
       - analyse
+      - check-programs
       - test-rust
       - test-packages
       - test-registry-gc

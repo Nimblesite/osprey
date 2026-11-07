@@ -115,14 +115,7 @@ fn unwind(expression: Expr) -> Vec<Expr> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn call(name: &str, arguments: Vec<Expr>) -> Expr {
-        Expr::Call {
-            function: Box::new(Expr::Identifier(name.to_owned())),
-            arguments,
-            named_arguments: Vec::new(),
-        }
-    }
+    use crate::lower_static::call;
 
     fn slots(expression: &Expr) -> Option<(&str, Vec<&str>)> {
         match expression {

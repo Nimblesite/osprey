@@ -52,11 +52,11 @@ module Propositions
         Var name => NVar name
         Top => NConst "True"
         Bot => NConst "False"
-        Not inner => apply (NConst "Not", [of inner])
-        And left right => apply (NConst "And", [of left, of right])
-        Or left right => apply (NConst "Or", [of left, of right])
+        Not inner => neg (of inner)
+        And left right => conj (of left, of right)
+        Or left right => disj (of left, of right)
         Imp left right => arrow (of left, of right)
-        Iff left right => apply (NConst "Iff", [of left, of right])
+        Iff left right => iff (of left, of right)
         Forall names inner => props (names, of inner)
 
     (** `∀ (names : Prop), body`. *)
@@ -67,6 +67,14 @@ module Propositions
 
     v name = NVar name
 
+    conj (left, right) = apply (NConst "And", [left, right])
+
+    disj (left, right) = apply (NConst "Or", [left, right])
+
+    neg inner = apply (NConst "Not", [inner])
+
+    iff (left, right) = apply (NConst "Iff", [left, right])
+
     to3 (a, b, c) = arrow (a, arrow (b, c))
 
     definitions () = [
@@ -75,7 +83,7 @@ module Propositions
         Constant(title = "Not", statement = arrow (NProp, NProp), value = lambdas (["p"], arrow (v "p", NConst "False")), unfolds = true),
         Constant(title = "And", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], props (["r"], arrow (to3 (v "p", v "q", v "r"), v "r"))), unfolds = true),
         Constant(title = "Or", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], props (["r"], to3 (arrow (v "p", v "r"), arrow (v "q", v "r"), v "r"))), unfolds = true),
-        Constant(title = "Iff", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], apply (NConst "And", [arrow (v "p", v "q"), arrow (v "q", v "p")])), unfolds = true),
+        Constant(title = "Iff", statement = to3 (NProp, NProp, NProp), value = lambdas (["p", "q"], conj (arrow (v "p", v "q"), arrow (v "q", v "p"))), unfolds = true),
     ]
 
     pq () = ["p", "q"]
@@ -83,13 +91,13 @@ module Propositions
     pqr () = ["p", "q", "r"]
 
     theorems () = [
-        Constant(title = "and_intro", statement = props (pq (), to3 (v "p", v "q", apply (NConst "And", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (v "p") (NLam "b" (v "q") (NLam "r" NProp (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "k", [v "a", v "b"])))))), unfolds = false),
-        Constant(title = "and_cases", statement = props (pqr (), to3 (apply (NConst "And", [v "p", v "q"]), to3 (v "p", v "q", v "r"), v "r")), value = lambdas (pqr (), NLam "h" (apply (NConst "And", [v "p", v "q"])) (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "h", [v "r", v "k"])))), unfolds = false),
-        Constant(title = "or_inl", statement = props (pq (), arrow (v "p", apply (NConst "Or", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (v "p") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "f") (v "a")))))), unfolds = false),
-        Constant(title = "or_inr", statement = props (pq (), arrow (v "q", apply (NConst "Or", [v "p", v "q"]))), value = lambdas (pq (), NLam "b" (v "q") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "g") (v "b")))))), unfolds = false),
-        Constant(title = "or_cases", statement = props (pqr (), to3 (apply (NConst "Or", [v "p", v "q"]), arrow (v "p", v "r"), arrow (arrow (v "q", v "r"), v "r"))), value = lambdas (pqr (), NLam "h" (apply (NConst "Or", [v "p", v "q"])) (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (apply (v "h", [v "r", v "f", v "g"]))))), unfolds = false),
-        Constant(title = "iff_intro", statement = props (pq (), to3 (arrow (v "p", v "q"), arrow (v "q", v "p"), apply (NConst "Iff", [v "p", v "q"]))), value = lambdas (pq (), NLam "a" (arrow (v "p", v "q")) (NLam "b" (arrow (v "q", v "p")) (apply (NConst "and_intro", [arrow (v "p", v "q"), arrow (v "q", v "p"), v "a", v "b"])))), unfolds = false),
-        Constant(title = "absurd", statement = props (["p", "r"], to3 (v "p", apply (NConst "Not", [v "p"]), v "r")), value = lambdas (["p", "r"], NLam "a" (v "p") (NLam "n" (apply (NConst "Not", [v "p"])) (apply (v "n", [v "a", v "r"])))), unfolds = false),
+        Constant(title = "and_intro", statement = props (pq (), to3 (v "p", v "q", conj (v "p", v "q"))), value = lambdas (pq (), NLam "a" (v "p") (NLam "b" (v "q") (NLam "r" NProp (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "k", [v "a", v "b"])))))), unfolds = false),
+        Constant(title = "and_cases", statement = props (pqr (), to3 (conj (v "p", v "q"), to3 (v "p", v "q", v "r"), v "r")), value = lambdas (pqr (), NLam "h" (conj (v "p", v "q")) (NLam "k" (to3 (v "p", v "q", v "r")) (apply (v "h", [v "r", v "k"])))), unfolds = false),
+        Constant(title = "or_inl", statement = props (pq (), arrow (v "p", disj (v "p", v "q"))), value = lambdas (pq (), NLam "a" (v "p") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "f") (v "a")))))), unfolds = false),
+        Constant(title = "or_inr", statement = props (pq (), arrow (v "q", disj (v "p", v "q"))), value = lambdas (pq (), NLam "b" (v "q") (NLam "r" NProp (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (NApp (v "g") (v "b")))))), unfolds = false),
+        Constant(title = "or_cases", statement = props (pqr (), to3 (disj (v "p", v "q"), arrow (v "p", v "r"), arrow (arrow (v "q", v "r"), v "r"))), value = lambdas (pqr (), NLam "h" (disj (v "p", v "q")) (NLam "f" (arrow (v "p", v "r")) (NLam "g" (arrow (v "q", v "r")) (apply (v "h", [v "r", v "f", v "g"]))))), unfolds = false),
+        Constant(title = "iff_intro", statement = props (pq (), to3 (arrow (v "p", v "q"), arrow (v "q", v "p"), iff (v "p", v "q"))), value = lambdas (pq (), NLam "a" (arrow (v "p", v "q")) (NLam "b" (arrow (v "q", v "p")) (apply (NConst "and_intro", [arrow (v "p", v "q"), arrow (v "q", v "p"), v "a", v "b"])))), unfolds = false),
+        Constant(title = "absurd", statement = props (["p", "r"], to3 (v "p", neg (v "p"), v "r")), value = lambdas (["p", "r"], NLam "a" (v "p") (NLam "n" (neg (v "p")) (apply (v "n", [v "a", v "r"])))), unfolds = false),
     ]
 
     (** Every prelude constant in the order the kernel admits them: the connectives, then their rules. *)
@@ -104,11 +112,14 @@ module Preludes
     admit (env, constant) =
         statement = Closing::close (constant.statement, [])
         match Infer::sort (env, [], statement)
-            Error message => Refused ("`" + constant.title + "`: " + message)
+            Error message => refused (constant, message)
             Success _ => checked (env, constant, statement)
 
+    // A constant the kernel would not take, naming the constant and the kernel's reason.
+    refused (constant, message) = Refused ("`" + constant.title + "`: " + message)
+
     checked (env, constant, statement) = match Infer::check (env, [], Closing::close (constant.value, []), statement)
-        Error message => Refused ("`" + constant.title + "`: " + message)
+        Error message => refused (constant, message)
         Success _ => added (Environment::add (env, proof::Decl(name = constant.title, params = [], ty = statement, body = body constant)))
 
     added result = match result

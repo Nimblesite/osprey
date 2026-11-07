@@ -1,13 +1,13 @@
 //! Project flattening and logical-name resolution.
 //! Implements [MODULES-ABI], [MODULES-ENTRYPOINT], and [MODULES-INIT].
 
-use crate::assemble::source_error;
+use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::imports::ImportScope;
 use crate::model::{DeclKind, ProjectGraph, SymbolKey};
 use crate::purity::is_pure;
 use crate::{state, ProjectError, SourceMetadata};
-use osprey_ast::{Expr, ModuleItem, ModuleKind, Position, Program, Stmt, TypeExpr};
+use osprey_ast::{Expr, ModuleItem, ModuleKind, Program, Stmt, TypeExpr};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) struct Resolution {
@@ -119,6 +119,12 @@ pub(crate) fn flatten(
         }
     }
     resolver.finish()
+}
+
+impl Diagnostics for Resolver<'_> {
+    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
+        (self.sources, &mut self.errors)
+    }
 }
 
 impl Resolver<'_> {
@@ -435,16 +441,6 @@ impl Resolver<'_> {
         };
         let _ = self.source_names.insert(name.clone(), key.source_name());
         name
-    }
-
-    pub(crate) fn error(
-        &mut self,
-        source: usize,
-        position: Option<Position>,
-        message: impl Into<String>,
-    ) {
-        self.errors
-            .push(source_error(self.sources, source, position, message));
     }
 }
 

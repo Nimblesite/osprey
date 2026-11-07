@@ -28,8 +28,8 @@ _test_proof_kernel_wasm:
 	./$(BIN) src/osprey/examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
 	node scripts/wasm/wasm-smoke.mjs target/proof/kernel.wasm src/osprey/examples/proof/kernel/expectedoutput
 	./$(BIN) src/osprey/examples/proof/kernel/tests --target=wasm32 --compile -o target/proof/kernel-tests.wasm >/dev/null 2>&1
-	node scripts/wasm/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
-	grep -q "failed=0" target/proof/kernel-tests.wasm.stdout.txt
+	node scripts/wasm/wasm-smoke.mjs target/proof/kernel-tests.wasm > target/proof/kernel-tests.wasm.txt
+	grep -q "failed=0" target/proof/kernel-tests.wasm.txt
 
 # _test_disciplines_passthrough: the `passthrough` reference discipline of spec
 # 0050 ([TYPES-DISCIPLINE-REFERENCE]), run by `_test_disciplines` below. Its

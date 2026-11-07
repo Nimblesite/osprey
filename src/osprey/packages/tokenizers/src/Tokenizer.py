@@ -13,7 +13,7 @@ the original string.
 from tiktoken import Bpe
 from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Models import BpeModel, Token, bpe_tokenize, char_starts, id_to_token, unigram_tokenize, wordlevel_tokenize, wordpiece_tokenize
-from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_of, norm_text, start_at
+from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_each, norm_of, norm_text, start_at
 from tokenizers.PreTokenizers import META_CP, bert_pretokenize, bytelevel_text, metaspace_pretokenize, qwen_pretokenize, whitespace_pretokenize
 from tokenizers.Processors import Encoding, Offset, bert_template, concat_two, empty_encoding
 from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, text_cp_starts, text_cps
@@ -346,13 +346,18 @@ def segment_end(segments, i, nchars):
     return unwrap_or(listGet(segments, i + 1), Segment(added=-1, chars=nchars)).chars
 
 
-def append_added(enc, token, start, stop):
+def with_token(enc, token_id, content, start, stop) -> Encoding:
+    """`enc` with one token appended over the char range [start, stop)."""
     return Encoding(
-        ids=listAppend(enc.ids, token.id),
-        tokens=listAppend(enc.tokens, token.content),
+        ids=listAppend(enc.ids, token_id),
+        tokens=listAppend(enc.tokens, content),
         offsets=listAppend(enc.offsets, Offset(start=start, end=stop)),
         type_ids=listAppend(enc.type_ids, 0),
     )
+
+
+def append_added(enc, token, start, stop):
+    return with_token(enc, token.id, token.content, start, stop)
 
 
 def slice_list(xs, start, stop):
@@ -370,7 +375,7 @@ def text_encoding(tok, seg, stop, acc, cps, starts, byte_char):
 def norm_shifted(text, base):
     """A Norm over text whose byte ranges are offset by base."""
     n = norm_of(text)
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
+    return norm_each(n, lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
 
 
 def pieces_encoding(m, pieces, acc, byte_char, nchars) -> Encodings:
@@ -399,12 +404,7 @@ def append_piece_token(enc, piece, token, byte_char, nchars) -> Encoding:
     reports."""
     start = char_of(byte_char, nchars, start_at(piece, token.start))
     stop = char_of(byte_char, nchars, start_at(piece, token.end - 1)) + 1
-    return Encoding(
-        ids=listAppend(enc.ids, token.id),
-        tokens=listAppend(enc.tokens, token.value),
-        offsets=listAppend(enc.offsets, Offset(start=start, end=stop)),
-        type_ids=listAppend(enc.type_ids, 0),
-    )
+    return with_token(enc, token.id, token.value, start, stop)
 
 
 def qwen_decode(tok, ids, skip_special) -> Result[str, str]:

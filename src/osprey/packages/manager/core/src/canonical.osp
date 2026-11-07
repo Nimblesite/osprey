@@ -1,5 +1,6 @@
 namespace registry;
 import registry::Bytes
+import registry::Checked
 import registry::Json
 import registry::Order
 
@@ -115,8 +116,5 @@ module Canonical {
 
     /// Parse strict JSON, then serialize canonically; a parse problem maps to
     /// its described form. Implements [PACKAGE-TYPE-INVARIANTS].
-    export fn canonicalize(text) = match Json::parse(text) {
-        Success { value } => serialize(value)
-        Error { message } => Error { message: Json::describe(message) }
-    }
+    export fn canonicalize(text) = Checked::andThen(Checked::mapError(Json::parse(text), Json::describe), serialize)
 }

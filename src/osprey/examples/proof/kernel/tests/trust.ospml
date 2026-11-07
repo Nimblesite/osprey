@@ -9,22 +9,7 @@ import proof::Trust
 import proof::Fixtures
 import proof::Naturals
 import proof
-    Zero
-    Succ
-    Sort
-    Const
-    App
-    Lam
-    Pi
-    BVar
-    Let
-    Proj
-    NatLit
-    Decl
-    Axiom
-    Definition
-    Theorem
-    Opaque
+    Zero Succ Sort Const App Lam Pi BVar Let Proj NatLit Decl Axiom Definition Theorem Opaque
 
 (** Assumptions are reported per root ([PROOF-KERNEL-AXIOMS]): an axiom counts
     only when that declaration reaches it. Every positive case starts from an
@@ -40,68 +25,48 @@ module TrustTests
         metadata ()
         traversal ()
         batch ()
-        test ("a deep checked dependency chain keeps graph depth off the WASM stack", \() =>
-            expect (shown (deepEnv (), "root"), "ok: Ax"))
+        test ("a deep checked dependency chain keeps graph depth off the WASM stack", \() => expect (shown (deepEnv (), "root"), "ok: Ax"))
 
     export adversarial () =
-        test ("an assumption named none cannot forge the empty ledger", \() =>
-            expect (shown (namedAssumption "none", "root"), "ok: \"none\""))
-        test ("one comma-bearing assumption cannot forge two ledger entries", \() =>
-            expect (shown (namedAssumption "Ax, Other", "root"), "ok: \"Ax, Other\""))
-        test ("ledger quotes are escaped and ordinary receipt controls stay unchanged", \() =>
-            expect (shown (namedAssumption "\"quoted\"", "root"), "ok: \"\\\"quoted\\\"\"")
-            expect (listed [], "none")
-            expect (listed ["Ax", "Other"], "Ax, Other"))
+        test ("an assumption named none cannot forge the empty ledger", \() => expect (shown (namedAssumption "none", "root"), "ok: \"none\""))
+        test ("one comma-bearing assumption cannot forge two ledger entries", \() => expect (shown (namedAssumption "Ax, Other", "root"), "ok: \"Ax, Other\""))
+        test ("ledger quotes are escaped and ordinary receipt controls stay unchanged", \() => expectAll [shown (namedAssumption "\"quoted\"", "root") == "ok: \"\\\"quoted\\\"\"", listed [] == "none", listed ["Ax", "Other"] == "Ax, Other"])
 
     namedAssumption name = theorem (axiomAt (Environment::empty (), name), "root", arrow name, identity name)
 
+    (** `shown (env, name)` of each `(name, expected)` pair, in order. *)
+    shownEach (env, cases) = forEachList (cases, \pair => expect (shown (env, listGet pair 0 ?: ""), listGet pair 1 ?: ""))
+
+    (** The all-root ledger of every `env` in `envs` agrees with the oracle. *)
+    allAgree (envs) = forEachList (envs, \env => expect (agrees env, "ok"))
+
+    (** The all-root ledger agrees with the oracle and each `(name, expected)` pair holds. *)
+    batchEach (env, cases) =
+        expect (agrees env, "ok")
+        forEachList (cases, \pair => expect (batchAt (env, listGet pair 0 ?: ""), listGet pair 1 ?: ""))
+
     reporting () =
-        test ("an unused axiom in the checked file is not a dependency of the theorem", \() =>
-            expect (shown (idImpEnv (), "id_imp"), "ok: none")
-            expect (shown (idImpEnv (), "unusedAssumption"), "ok: unusedAssumption"))
+        test ("an unused axiom in the checked file is not a dependency of the theorem", \() => shownEach (idImpEnv (), [["id_imp", "ok: none"], ["unusedAssumption", "ok: unusedAssumption"]]))
 
-        test ("an axiom the proof genuinely uses is reported", \() =>
-            expect (shown (usesAxiomEnv (), "usesAx"), "ok: Ax"))
+        test ("an axiom the proof genuinely uses is reported", \() => expect (shown (usesAxiomEnv (), "usesAx"), "ok: Ax"))
 
-        test ("two roots in one file report their own axioms", \() =>
-            expect (shown (twoRootsEnv (), "rootA"), "ok: Ax, AxProof")
-            expect (shown (twoRootsEnv (), "rootB"), "ok: Other, OtherProof")
-            expect (shown (twoRootsEnv (), "AxProof"), "ok: Ax, AxProof"))
+        test ("two roots in one file report their own axioms", \() => shownEach (twoRootsEnv (), [["rootA", "ok: Ax, AxProof"], ["rootB", "ok: Other, OtherProof"], ["AxProof", "ok: Ax, AxProof"]]))
 
     closure () =
-        test ("a dependency reached through a definition and an opaque is reported", \() =>
-            expect (shown (transitiveEnv (), "viaDef"), "ok: Ax")
-            expect (shown (transitiveEnv (), "viaOpaque"), "ok: Ax"))
+        test ("a dependency reached through a definition and an opaque is reported", \() => shownEach (transitiveEnv (), [["viaDef", "ok: Ax"], ["viaOpaque", "ok: Ax"]]))
 
-        test ("an axiom only in a declaration's type is reported", \() =>
-            expect (shown (hiddenTypeEnv (), "hidden"), "ok: Ax")
-            expect (shown (hiddenTypeEnv (), "Constant"), "ok: none"))
+        test ("an axiom only in a declaration's type is reported", \() => shownEach (hiddenTypeEnv (), [["hidden", "ok: Ax"], ["Constant", "ok: none"]]))
 
-        test ("a dependency the environment cannot resolve is an explicit error", \() =>
-            expect (shown (unresolvedEnv (), "broken"), "error: unknown dependency `missing`")
-            expect (shown (unresolvedEnv (), "picks"), "error: unknown dependency `Absent`")
-            expect (shown (unresolvedEnv (), "two"), "error: unknown dependency `Nat`"))
+        test ("a dependency the environment cannot resolve is an explicit error", \() => shownEach (unresolvedEnv (), [["broken", "error: unknown dependency `missing`"], ["picks", "error: unknown dependency `Absent`"], ["two", "error: unknown dependency `Nat`"]]))
 
-        test ("cyclic dependencies terminate, with and without an axiom", \() =>
-            expect (shown (cyclicEnv (), "selfLoop"), "ok: none")
-            expect (shown (cyclicEnv (), "loopA"), "ok: none")
-            expect (shown (cyclicEnv (), "loopy"), "ok: cycAxiom"))
+        test ("cyclic dependencies terminate, with and without an axiom", \() => shownEach (cyclicEnv (), [["selfLoop", "ok: none"], ["loopA", "ok: none"], ["loopy", "ok: cycAxiom"]]))
 
     metadata () =
-        test ("constructor and recursor metadata retain assumptions in a field type", \() =>
-            expect (shown (holderEnv (), "Holder"), "ok: Ax")
-            expect (shown (holderEnv (), "Holder.mk"), "ok: Ax")
-            expect (shown (holderEnv (), "Holder.rec"), "ok: Ax"))
+        test ("constructor and recursor metadata retain assumptions in a field type", \() => shownEach (holderEnv (), [["Holder", "ok: Ax"], ["Holder.mk", "ok: Ax"], ["Holder.rec", "ok: Ax"]]))
 
-        test ("a checked inductive block carries no axioms of its own", \() =>
-            expect (shown (andEnv (), "And"), "ok: none")
-            expect (shown (andEnv (), "And.intro"), "ok: none")
-            expect (shown (andEnv (), "And.rec"), "ok: none")
-            expect (shown (andEnv (), "and_swap"), "ok: none"))
+        test ("a checked inductive block carries no axioms of its own", \() => shownEach (andEnv (), [["And", "ok: none"], ["And.intro", "ok: none"], ["And.rec", "ok: none"], ["and_swap", "ok: none"]]))
 
-        test ("a recorded arithmetic proof reaches projections and literals without axioms", \() =>
-            expect (shown (natEnv (), "Nat.add_comm"), "ok: none")
-            expect (shown (natEnv (), "OfNat.ofNat"), "ok: none"))
+        test ("a recorded arithmetic proof reaches projections and literals without axioms", \() => shownEach (natEnv (), [["Nat.add_comm", "ok: none"], ["OfNat.ofNat", "ok: none"]]))
 
     batch () =
         batchRepresentatives ()
@@ -110,64 +75,32 @@ module TrustTests
         batchMetadata ()
 
     batchRepresentatives () =
-        test ("the all-root query agrees with the single-root oracle throughout representative inventories", \() =>
-            expect (agrees (idImpEnv ()), "ok")
-            expect (agrees (usesAxiomEnv ()), "ok")
-            expect (agrees (twoRootsEnv ()), "ok")
-            expect (agrees (transitiveEnv ()), "ok")
-            expect (agrees (hiddenTypeEnv ()), "ok")
-            expect (agrees (holderEnv ()), "ok")
-            expect (agrees (cyclicEnv ()), "ok"))
+        test ("the all-root query agrees with the single-root oracle throughout representative inventories", \() => allAgree [idImpEnv (), usesAxiomEnv (), twoRootsEnv (), transitiveEnv (), hiddenTypeEnv (), holderEnv (), cyclicEnv ()])
 
     batchBoundaries () =
         test ("empty and axiom-free inventories have an entry for every declaration and no invented assumptions", \() =>
             expect (batchCount (Environment::empty ()), "ok: 0")
-            expect (agrees (Environment::empty ()), "ok")
-            expect (agrees (andEnv ()), "ok")
+            allAgree [Environment::empty (), andEnv ()]
             expect (batchAt (andEnv (), "and_swap"), "ok: none"))
 
-        test ("the all-root query does not leak an unused axiom into another root", \() =>
-            expect (batchAt (idImpEnv (), "id_imp"), "ok: none")
-            expect (batchAt (idImpEnv (), "unusedAssumption"), "ok: unusedAssumption"))
+        test ("the all-root query does not leak an unused axiom into another root", \() => batchEach (idImpEnv (), [["id_imp", "ok: none"], ["unusedAssumption", "ok: unusedAssumption"]]))
 
     batchCycles () =
-        test ("two cyclic groups each converge on their own complete axiom union", \() =>
-            expect (agrees (cyclicGroupsEnv ()), "ok")
-            expect (batchAt (cyclicGroupsEnv (), "cycleA1"), "ok: AxA")
-            expect (batchAt (cyclicGroupsEnv (), "cycleA2"), "ok: AxA")
-            expect (batchAt (cyclicGroupsEnv (), "cycleB1"), "ok: AxB")
-            expect (batchAt (cyclicGroupsEnv (), "cycleB2"), "ok: AxB"))
+        test ("two cyclic groups each converge on their own complete axiom union", \() => batchEach (cyclicGroupsEnv (), [["cycleA1", "ok: AxA"], ["cycleA2", "ok: AxA"], ["cycleB1", "ok: AxB"], ["cycleB2", "ok: AxB"]]))
 
-        test ("both members of one cycle retain distinct axioms introduced on either side", \() =>
-            expect (agrees (dualCycleEnv ()), "ok")
-            expect (batchAt (dualCycleEnv (), "cycleA1"), "ok: AxA, AxB")
-            expect (batchAt (dualCycleEnv (), "cycleA2"), "ok: AxA, AxB"))
+        test ("both members of one cycle retain distinct axioms introduced on either side", \() => batchEach (dualCycleEnv (), [["cycleA1", "ok: AxA, AxB"], ["cycleA2", "ok: AxA, AxB"]]))
 
-        test ("the all-root query rejects every unresolved reference explicitly", \() =>
-            expect (batchError (unresolvedEnv ()), "unknown dependency `missing`"))
+        test ("the all-root query rejects every unresolved reference explicitly", \() => expect (batchError (unresolvedEnv ()), "unknown dependency `missing`"))
 
     batchMetadata () =
         test ("self-recursors, projections, literals and quotients follow the oracle's references", \() =>
-            expect (agrees (natEnv ()), "ok")
-            expect (agrees (quotientEnv ()), "ok")
+            allAgree [natEnv (), quotientEnv ()]
             expect (batchAt (quotientEnv (), "QuotientCases.sound"), "ok: Quot.sound"))
 
-        test ("the all-root query keeps deep dependency traversal iterative", \() =>
-            expect (agrees (deepEnv ()), "ok")
-            expect (batchAt (deepEnv (), "root"), "ok: Ax"))
+        test ("the all-root query keeps deep dependency traversal iterative", \() => batchEach (deepEnv (), [["root", "ok: Ax"]]))
 
     traversal () =
-        test ("constants reports every term variant's symbols in traversal order", \() =>
-            expect (listed (Terms::constants (Sort Zero)), "none")
-            expect (listed (Terms::constants (BVar 0)), "none")
-            expect (listed (Terms::constants (Const "c" [Zero])), "c")
-            expect (listed (Terms::constants (App (Const "f" []) (Const "a" []))), "f, a")
-            expect (listed (Terms::constants (Lam "x" (Const "d" []) (Const "b" []))), "d, b")
-            expect (listed (Terms::constants (Pi "x" (Const "d" []) (Const "b" []))), "d, b")
-            expect (listed (Terms::constants (Let "x" (Const "t" []) (Const "v" []) (Const "u" []))), "t, v, u")
-            expect (listed (Terms::constants (Proj "Family" 0 (Const "target" []))), "Family, target")
-            expect (listed (Terms::constants (NatLit (literal "2"))), "Nat, Nat.zero, Nat.succ")
-            expect (listed (Terms::constants (App (Const "c" []) (Const "c" []))), "c, c"))
+        test ("constants reports every term variant's symbols in traversal order", \() => expectAll [listed (Terms::constants (Sort Zero)) == "none", listed (Terms::constants (BVar 0)) == "none", listed (Terms::constants (Const "c" [Zero])) == "c", listed (Terms::constants (App (Const "f" []) (Const "a" []))) == "f, a", listed (Terms::constants (Lam "x" (Const "d" []) (Const "b" []))) == "d, b", listed (Terms::constants (Pi "x" (Const "d" []) (Const "b" []))) == "d, b", listed (Terms::constants (Let "x" (Const "t" []) (Const "v" []) (Const "u" []))) == "t, v, u", listed (Terms::constants (Proj "Family" 0 (Const "target" []))) == "Family, target", listed (Terms::constants (NatLit (literal "2"))) == "Nat, Nat.zero, Nat.succ", listed (Terms::constants (App (Const "c" []) (Const "c" []))) == "c, c"])
 
     (** The recorded `id_imp` export plus one axiom the theorem never touches:
         the shape whose old report was `axioms: unusedAssumption`. *)
@@ -183,15 +116,20 @@ module TrustTests
 
     axiomRoot () = rootA (axiomProof (axiomAt (Environment::empty (), "Ax")))
 
-    axiomProof (env) = assumedAt (env, "AxProof", Const "Ax" [])
+    axiomProof (env) = assuming (env, "Ax")
 
-    rootA (env) = theorem (env, "rootA", Const "Ax" [], Const "AxProof" [])
+    rootA (env) = rooted (env, "rootA", "Ax")
 
     otherRoot (env) = rootB (otherProof (axiomAt (env, "Other")))
 
-    otherProof (env) = assumedAt (env, "OtherProof", Const "Other" [])
+    otherProof (env) = assuming (env, "Other")
 
-    rootB (env) = theorem (env, "rootB", Const "Other" [], Const "OtherProof" [])
+    rootB (env) = rooted (env, "rootB", "Other")
+    (** `familyProof : family` declared as an assumption. *)
+    assuming (env, family) = assumedAt (env, "${family}Proof", Const family [])
+    (** A theorem named `name` whose statement is `family` and whose proof is
+        `familyProof`. *)
+    rooted (env, name, family) = theorem (env, name, Const family [], Const "${family}Proof" [])
 
     transitiveEnv () = opaqueBridge (definitionBridge (axiomAt (Environment::empty (), "Ax")))
 
@@ -242,13 +180,18 @@ module TrustTests
 
     twoCycleAxioms () = axiomAt (axiomAt (Environment::empty (), "AxA"), "AxB")
 
-    cycleA1 (env) = attached (env, "cycleA1", Definition (App (Const "cycleA2" []) (Const "AxA" [])))
+    cycleA1 (env) = cycleStart (env, "cycleA1", "cycleA2", "AxA")
 
-    cycleA2 (env) = attached (env, "cycleA2", Definition (Const "cycleA1" []))
+    cycleA2 (env) = cycleLink (env, "cycleA2", "cycleA1")
 
-    cycleB1 (env) = attached (env, "cycleB1", Definition (App (Const "cycleB2" []) (Const "AxB" [])))
+    cycleB1 (env) = cycleStart (env, "cycleB1", "cycleB2", "AxB")
 
-    cycleB2 (env) = attached (env, "cycleB2", Definition (Const "cycleB1" []))
+    cycleB2 (env) = cycleLink (env, "cycleB2", "cycleB1")
+    (** One member of a two-cycle, resting on the axiom `axiom` through its
+        reference to `next`. *)
+    cycleStart (env, name, next, axiom) = attached (env, name, Definition (App (Const next []) (Const axiom [])))
+    (** One member of a two-cycle that references `next` and nothing else. *)
+    cycleLink (env, name, next) = attached (env, name, Definition (Const next []))
 
     cyclicEnv () = axiomLoop (pairLoop (selfLoop (Environment::empty ())))
 
@@ -256,7 +199,7 @@ module TrustTests
 
     pairLoop (env) = loopB (attached (env, "loopA", Definition (Const "loopB" [])))
 
-    loopB (env) = attached (env, "loopB", Definition (Const "loopA" []))
+    loopB (env) = cycleLink (env, "loopB", "loopA")
 
     axiomLoop (env) = loopy (attached (env, "cycAxiom", Axiom))
 
@@ -296,23 +239,13 @@ module TrustTests
 
     attached (env, name, body) = verified ("`${name}` is added", Environment::add (env, Decl(name = name, params = [], ty = Sort Zero, body = body)))
 
-    verified (label, outcome) = match outcome
-        Success env => env
-        Error message =>
-            check label "success" message
-            Environment::empty ()
+    verified (label, outcome) = Support::verified (label, "success", Environment::empty (), outcome)
 
     arrow (name) = Pi "h" (Const name []) (Const name [])
 
     identity (name) = Lam "h" (Const name []) (BVar 0)
 
-    literal (text) = match Naturals::parse text
-        Success value => value
-        Error message => failed (message)
-
-    failed (message) =
-        check "the literal reads" "success" message
-        Naturals::zero ()
+    literal (text) = Support::verified ("the literal reads", "success", Naturals::zero (), Naturals::parse text)
 
     agrees (env) = match Trust::allAxioms env
         Error message => "error: ${message}"

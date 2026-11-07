@@ -120,12 +120,10 @@ async fn state_boundaries_are_visible_in_both_flavors() -> Result<(), Box<dyn st
             .await
             .params
             .ok_or("missing diagnostics")?;
-        assert_at(&report, "/diagnostics/0/code", "state-boundary");
-        assert_at(&report, "/diagnostics/0/severity", 2);
-        assert_at(&report, "/diagnostics/0/range/start/line", 1);
-        assert_at(
+        assert_first_warning(
             &report,
-            "/diagnostics/0/message",
+            "state-boundary",
+            1,
             "state boundary `vault::Store`: 0 private cells; exported effects: none",
         );
         h.shutdown_and_exit().await;
@@ -146,29 +144,42 @@ async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::erro
         .await
         .params
         .ok_or("missing diagnostics")?;
-    assert_at(&report, "/diagnostics/0/code", "namespace-folder-drift");
-    assert_at(&report, "/diagnostics/0/severity", 2);
-    assert_at(&report, "/diagnostics/0/range/start/line", 0);
-    assert_at(
+    assert_first_warning(
         &report,
-        "/diagnostics/0/message",
+        "namespace-folder-drift",
+        0,
         "namespace `app` spans 2 folders; source paths do not change its identity",
     );
     h.shutdown_and_exit().await;
     Ok(())
 }
 
-#[tokio::test]
-async fn sibling_syntax_errors_preserve_existing_type_errors() {
-    let root = std::env::temp_dir().join(format!("osprey sibling error {}", std::process::id()));
+/// A two-module project on disk — `src/main.ospml` holding `main` and its
+/// sibling `src/helper.ospml` holding `helper` — plus both URIs.
+fn sibling_project(
+    tag: &str,
+    name: &str,
+    main: &str,
+    helper: &str,
+) -> (std::path::PathBuf, String, String) {
+    let root = std::env::temp_dir().join(format!("osprey {tag} {}", std::process::id()));
     std::fs::create_dir_all(root.join("src")).expect("fixture directory");
-    std::fs::write(root.join("osprey.toml"), "[project]\nname = \"errors\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
-    let main = "print missingName\n";
-    let helper = "suffix text = text + \"!\"\n";
+    let manifest = format!(
+        "[project]\nname = \"{name}\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n"
+    );
+    std::fs::write(root.join("osprey.toml"), manifest).expect("manifest");
     std::fs::write(root.join("src/main.ospml"), main).expect("entry");
     std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
     let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
     let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+    (root, uri, sibling)
+}
+
+#[tokio::test]
+async fn sibling_syntax_errors_preserve_existing_type_errors() {
+    let main = "print missingName\n";
+    let helper = "suffix text = text + \"!\"\n";
+    let (root, uri, sibling) = sibling_project("sibling error", "errors", main, helper);
     let mut h = Harness::start();
     let initial = h
         .open_at(&uri, main)
@@ -189,15 +200,9 @@ async fn sibling_syntax_errors_preserve_existing_type_errors() {
 
 #[tokio::test]
 async fn sibling_open_change_and_close_refresh_signature_warnings() {
-    let root = std::env::temp_dir().join(format!("osprey live diagnostics {}", std::process::id()));
-    std::fs::create_dir_all(root.join("src")).expect("fixture directory");
-    std::fs::write(root.join("osprey.toml"), "[project]\nname = \"warnings\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
     let main = "decorate : string -> string\ndecorate text = suffix text\nprint (decorate \"x\")\n";
     let helper = "suffix text = text + \"!\"\n";
-    std::fs::write(root.join("src/main.ospml"), main).expect("entry");
-    std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
-    let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
-    let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+    let (root, uri, sibling) = sibling_project("live diagnostics", "warnings", main, helper);
     let mut h = Harness::start();
     let initial = h
         .open_at(&uri, main)
@@ -254,7 +259,7 @@ async fn manifest_changes_refresh_unchanged_buffer_diagnostics() {
     let file = root.join("src/main.ospml");
     std::fs::write(&file, source).expect("entry");
     let uri = lspkit_server::uri::path_to_uri(&file).expect("URI");
-    let mut h = Harness::start();
+    let mut h = Harness::start_with_progress().await;
     let initial = h
         .open_at(&uri, source)
         .await
@@ -270,22 +275,9 @@ async fn manifest_changes_refresh_unchanged_buffer_diagnostics() {
         json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":source}]}),
     )
     .await;
-    // A request is a barrier even if the diagnostics bus coalesces an unchanged
-    // (stale) report. Do not wait forever for a notification in that case.
-    h.send(&Message::request(
-        RequestId::Number(901),
-        "initialize",
-        json!({}),
-    ))
-    .await;
-    let mut reports = Vec::new();
-    loop {
-        let message = h.read_message().await;
-        if message.id == Some(RequestId::Number(901)) {
-            break;
-        }
-        reports.push(message.params.expect("diagnostics notification"));
-    }
+    // Diagnostics are published beside requests: wait until every queued file
+    // is published. The bus may coalesce an unchanged (stale) report.
+    let reports = settled(&mut h, 901).await;
     assert!(
         reports
             .iter()
@@ -352,14 +344,61 @@ async fn references_from_a_shared_source_root_reach_every_project_that_includes_
     Ok(())
 }
 
-/// Unopened files must be checked on startup, then removed when out of scope.
-/// Implements [LSP-DIAGNOSTICS-SCOPE].
+/// The repository's glob keeps failscompilation/ quiet, open or not; replacing the exclude
+/// globs reports it and clears whatever the new globs match.
+/// Implements [LSP-DIAGNOSTICS-EXCLUDE].
+async fn excluded_until_overridden(
+    h: &mut Harness,
+    reports: &[Value],
+    uri: &impl Fn(&str) -> String,
+) {
+    assert!(
+        !reports.iter().any(|p| p["uri"] == uri("failscompilation")),
+        "failscompilation excluded by its glob: {reports:?}"
+    );
+    let rejected = json!({"textDocument":{"uri":uri("failscompilation"),"languageId":"osprey","version":1,"text":"fn broken() { missing }\n"}});
+    h.notify("textDocument/didOpen", rejected).await;
+    let reports = settled(h, 406).await;
+    assert!(
+        !reports.iter().any(|p| p["uri"] == uri("failscompilation")),
+        "an open excluded file stays quiet: {reports:?}"
+    );
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"exclude":["oth?r/*.osp", "/**/tw*/bad.osp"]}}}}),
+    )
+    .await;
+    let reports = settled(h, 407).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == uri("failscompilation")
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "replacing the glob reports failscompilation: {reports:?}"
+    );
+    for folder in ["other", "two"] {
+        assert!(
+            reports
+                .iter()
+                .any(|p| p["uri"] == uri(folder) && p["diagnostics"] == json!([])),
+            "{folder} cleared by its glob: {reports:?}"
+        );
+    }
+    assert!(
+        !reports
+            .iter()
+            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
+        "one stays reported: {reports:?}"
+    );
+}
+
+/// Unopened files must be checked on startup, then removed when out of scope;
+/// failscompilation/ stays quiet, open or not, until the exclude globs change.
+/// Implements [LSP-DIAGNOSTICS-SCOPE], [LSP-DIAGNOSTICS-EXCLUDE].
 #[tokio::test]
 async fn repository_diagnostics_default_and_live_scope_roots(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::temp_dir().join(format!("osprey scopes {}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    for folder in ["one", "two", "other", "target"] {
+    for folder in ["one", "two", "other", "target", "failscompilation"] {
         std::fs::create_dir_all(root.join(folder))?;
         std::fs::write(
             root.join(folder).join("bad.osp"),
@@ -373,11 +412,11 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         .request(
             400,
             "initialize",
-            json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]}),
+            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}], "initializationOptions": {"diagnostics": {"exclude": ["**/failscompilation/**"]}}})),
         )
         .await;
     h.notify("initialized", json!({})).await;
-    let reports = scope_reports(&mut h, 401).await;
+    let reports = settled(&mut h, 401).await;
     for folder in ["one", "two", "other"] {
         assert!(
             reports.iter().any(|p| p["uri"] == uri(folder)
@@ -389,17 +428,23 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         !reports.iter().any(|p| p["uri"] == uri("target")),
         "build outputs excluded"
     );
+    excluded_until_overridden(&mut h, &reports, &uri).await;
     h.notify(
         "workspace/didChangeConfiguration",
-        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"]}}}}),
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"], "exclude":["**/failscompilation/**"]}}}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 402).await;
+    let reports = settled(&mut h, 402).await;
     assert!(
         reports
             .iter()
-            .any(|p| p["uri"] == uri("other") && p["diagnostics"] == json!([])),
-        "clear excluded diagnostics: {reports:?}"
+            .any(|p| p["uri"] == uri("failscompilation") && p["diagnostics"] == json!([])),
+        "the glob returns and clears the open file: {reports:?}"
+    );
+    assert!(
+        reports.iter().any(|p| p["uri"] == uri("two")
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "two is back in scope: {reports:?}"
     );
     std::fs::write(root.join("two/bad.osp"), "fn broken() { 1 }\n")?;
     h.notify(
@@ -407,25 +452,13 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"changes":[{"uri":uri("two"),"type":2}]}),
     )
     .await;
-    let reports = scope_reports(&mut h, 403).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("two") && p["diagnostics"] == json!([])),
-        "refresh unopened repair: {reports:?}"
-    );
+    settles_cleared(&mut h, 403, &uri("two"), "refresh unopened repair").await;
     h.notify(
         "workspace/didChangeConfiguration",
         json!({"settings":{"osprey":{"diagnostics":{"scope":"openFiles"}}}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 404).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
-        "clear closed files: {reports:?}"
-    );
+    settles_cleared(&mut h, 404, &uri("one"), "clear closed files").await;
     let report = h.open_at(&uri("one"), "fn broken() { missing }\n").await;
     assert_at(
         &report.params.ok_or("open report")?,
@@ -437,14 +470,16 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"textDocument":{"uri":uri("one")}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 405).await;
-    assert!(
-        reports
-            .iter()
-            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
-        "close clears: {reports:?}"
-    );
+    settles_cleared(&mut h, 405, &uri("one"), "close clears").await;
     h.shutdown_and_exit().await;
     std::fs::remove_dir_all(root)?;
     Ok(())
+}
+
+/// The report's first diagnostic is a `code` warning on `line` saying `message`.
+fn assert_first_warning(report: &Value, code: &str, line: u32, message: &str) {
+    assert_at(report, "/diagnostics/0/code", code);
+    assert_at(report, "/diagnostics/0/severity", 2);
+    assert_at(report, "/diagnostics/0/range/start/line", line);
+    assert_at(report, "/diagnostics/0/message", message);
 }

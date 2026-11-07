@@ -288,27 +288,27 @@ with tempfile.TemporaryDirectory(prefix="osprey-return-arc-") as directory:
             self.assertNotEqual(result.returncode, 0, result.stdout)
             self.assertIn(message.lower(), result.stderr.lower())
 
-    def test_python_target_rejects_native_fiber_callbacks(self):
-        source = self.root / "fiber.osp"
-        for program in ['let task = spawn(1)\nprint("${await(task)}")\n',
-                        'let queue = Channel(1)\n', 'let later = sleep\nlater(1)\n']:
+    def assert_python_target_rejects(self, filename, programs, message):
+        """Each program must fail the Python back end before anything is built."""
+        source = self.root / filename
+        for program in programs:
             source.write_text(program)
             result = subprocess.run([os.environ["OSPREY"], str(source), "--target=python", "--check"],
                                     capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("fiber concurrency", result.stderr)
+            self.assertIn(message, result.stderr)
+
+    def test_python_target_rejects_native_fiber_callbacks(self):
+        self.assert_python_target_rejects("fiber.osp", ['let task = spawn(1)\nprint("${await(task)}")\n',
+                                                        'let queue = Channel(1)\n', 'let later = sleep\nlater(1)\n'],
+                                          "fiber concurrency")
 
     def test_reserved_bridge_symbols_and_unavailable_host_imports_fail_early(self):
-        source = self.root / "reserved.osp"
-        for program in ['fn python_install(value: int) = value\n',
-                        'fn osprey_python_abi(value: int) = value\n',
-                        'fn osprey_python_abi(values: List<int>) = listLength(values)\n',
-                        'extern fn host(value: int) -> int\n']:
-            source.write_text(program)
-            result = subprocess.run([os.environ["OSPREY"], str(source), "--target=python", "--check"],
-                                    capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("Python", result.stderr)
+        self.assert_python_target_rejects("reserved.osp", ['fn python_install(value: int) = value\n',
+                                                           'fn osprey_python_abi(value: int) = value\n',
+                                                           'fn osprey_python_abi(values: List<int>) = listLength(values)\n',
+                                                           'extern fn host(value: int) -> int\n'],
+                                          "Python")
 
 
 if __name__ == "__main__":

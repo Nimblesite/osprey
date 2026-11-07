@@ -17,8 +17,8 @@ module VectorTests {
 
     fn shaCases() = {
         let fx = Fixtures::load("vectors/sha256.json")
-        Fixtures::report("sha256 FIPS 180-4 vectors", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) =>
-            Sha256::ofString(Fixtures::text(Fixtures::field(c, "text"))) == Fixtures::text(Fixtures::field(c, "sha256")))
+        Fixtures::report("sha256 FIPS 180-4 vectors", Fixtures::itemsOf(fx, "cases"), fn(c) =>
+            Sha256::ofString(Fixtures::textOf(c, "text")) == Fixtures::textOf(c, "sha256"))
     }
 
     fn parseOk(t) = match Digests::parse(t) {
@@ -26,61 +26,59 @@ module VectorTests {
         Error => false
     }
 
-    fn parseCode(c) = match Digests::parse(Fixtures::text(Fixtures::field(c, "text"))) {
-        Error { message } => message == Fixtures::text(Fixtures::field(c, "code"))
+    fn parseCode(c) = match Digests::parse(Fixtures::textOf(c, "text")) {
+        Error { message } => message == Fixtures::textOf(c, "code")
         Success => false
     }
 
     fn agilityCases() = {
         let fx = Fixtures::load("vectors/digest-agility.json")
-        Fixtures::report("digest agility accepted", Fixtures::texts(Fixtures::field(fx, "valid")), parseOk)
-        Fixtures::report("digest agility rejected", Fixtures::items(Fixtures::field(fx, "invalid")), parseCode)
+        Fixtures::report("digest agility accepted", Fixtures::textsOf(fx, "valid"), parseOk)
+        Fixtures::report("digest agility rejected", Fixtures::itemsOf(fx, "invalid"), parseCode)
     }
 
-    fn canonOk(c) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(c, "input"))) {
-        Success { value } => value == Fixtures::text(Fixtures::field(c, "canonical"))
+    /// The successful `result`'s value equals the case's text at `key`.
+    fn equalsText(result, c, key) = match result {
+        Success { value } => value == Fixtures::textOf(c, key)
         Error => false
     }
 
-    fn canonRejected(c) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(c, "input"))) {
-        Error { message } => startsWith(message, Fixtures::text(Fixtures::field(c, "code")))
+    fn canonOk(c) = equalsText(Canonical::canonicalize(Fixtures::textOf(c, "input")), c, "canonical")
+
+    fn canonRejected(c) = match Canonical::canonicalize(Fixtures::textOf(c, "input")) {
+        Error { message } => startsWith(message, Fixtures::textOf(c, "code"))
         Success => false
     }
 
     fn canonCases() = {
         let fx = Fixtures::load("vectors/rfc8785.json")
-        Fixtures::report("rfc8785 canonical form", Fixtures::items(Fixtures::field(fx, "cases")), canonOk)
-        Fixtures::report("rfc8785 rejected inputs", Fixtures::items(Fixtures::field(fx, "rejected")), canonRejected)
+        Fixtures::report("rfc8785 canonical form", Fixtures::itemsOf(fx, "cases"), canonOk)
+        Fixtures::report("rfc8785 rejected inputs", Fixtures::itemsOf(fx, "rejected"), canonRejected)
     }
 
-    fn paeOk(c) = Bytes::hex(Dsse::pae(Fixtures::text(Fixtures::field(c, "type")), Bytes::fromHex(Fixtures::text(Fixtures::field(c, "payloadHex"))))) == Fixtures::text(Fixtures::field(c, "paeHex"))
+    fn paeOk(c) = Bytes::hex(Dsse::pae(Fixtures::textOf(c, "type"), Bytes::fromHex(Fixtures::textOf(c, "payloadHex")))) == Fixtures::textOf(c, "paeHex")
 
-    fn intentPae(intent) = Bytes::hex(Dsse::pae(Fixtures::text(Fixtures::field(intent, "payloadType")), Bytes::ofString(Fixtures::text(Fixtures::field(intent, "payloadCanonical"))))) == Fixtures::text(Fixtures::field(intent, "paeHex"))
+    fn intentPae(intent) = Bytes::hex(Dsse::pae(Fixtures::textOf(intent, "payloadType"), Bytes::ofString(Fixtures::textOf(intent, "payloadCanonical")))) == Fixtures::textOf(intent, "paeHex")
 
-    fn intentCanonical(intent) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(intent, "payloadInput"))) {
-        Success { value } => value == Fixtures::text(Fixtures::field(intent, "payloadCanonical"))
-        Error => false
-    }
+    fn intentCanonical(intent) = equalsText(Canonical::canonicalize(Fixtures::textOf(intent, "payloadInput")), intent, "payloadCanonical")
 
-    fn intentChallenge(intent) = Dsse::webAuthnChallenge(Bytes::fromHex(Fixtures::text(Fixtures::field(intent, "paeHex")))) == Fixtures::text(Fixtures::field(intent, "challenge"))
+    fn intentChallenge(intent) = Dsse::webAuthnChallenge(Bytes::fromHex(Fixtures::textOf(intent, "paeHex"))) == Fixtures::textOf(intent, "challenge")
 
-    fn intentEnvelope(intent) = Dsse::envelopeDigest(Bytes::ofString(Fixtures::text(Fixtures::field(intent, "envelopeCanonical")))) == Fixtures::text(Fixtures::field(intent, "envelopeDigest"))
+    fn intentEnvelope(intent) = Dsse::envelopeDigest(Bytes::ofString(Fixtures::textOf(intent, "envelopeCanonical"))) == Fixtures::textOf(intent, "envelopeDigest")
 
     fn dsseCases() = {
         let fx = Fixtures::load("vectors/dsse.json")
         let intent = Fixtures::field(fx, "releaseIntent")
-        Fixtures::report("dsse PAE bytes", Fixtures::items(Fixtures::field(fx, "pae")), paeOk)
+        Fixtures::report("dsse PAE bytes", Fixtures::itemsOf(fx, "pae"), paeOk)
         checkAll("dsse release intent detached forms", [
-            intentPae(intent),
-            intentCanonical(intent),
-            intentChallenge(intent),
+            structuralEquals([intentPae(intent), intentCanonical(intent), intentChallenge(intent)], [true, true, true]),
             intentEnvelope(intent)
         ])
     }
 
-    fn merkleLeaves() = mapList(Fixtures::texts(Fixtures::field(Fixtures::load("vectors/merkle.json"), "leaves")), Bytes::fromHex)
+    fn merkleLeaves() = mapList(Fixtures::loadTexts("vectors/merkle.json", "leaves"), Bytes::fromHex)
 
-    fn merkleRoots() = Fixtures::texts(Fixtures::field(Fixtures::load("vectors/merkle.json"), "roots"))
+    fn merkleRoots() = Fixtures::loadTexts("vectors/merkle.json", "roots")
 
     fn rootAt(size) = listGet(merkleRoots(), size) ?: ""
 
@@ -88,13 +86,13 @@ module VectorTests {
 
     fn rootMatches(i) = Bytes::hex(Merkle::root(firstLeaves(merkleLeaves(), i))) == rootAt(i)
 
-    fn hexProof(c) = mapList(Fixtures::texts(Fixtures::field(c, "proof")), Bytes::fromHex)
+    fn hexProof(c) = mapList(Fixtures::textsOf(c, "proof"), Bytes::fromHex)
 
     fn hexes(hashes) = join(mapList(hashes, Bytes::hex), ",")
 
     fn inclusionOk(c) = {
-        let index = Fixtures::number(Fixtures::field(c, "index"))
-        let size = Fixtures::number(Fixtures::field(c, "size"))
+        let index = Fixtures::numberOf(c, "index")
+        let size = Fixtures::numberOf(c, "size")
         let proof = hexProof(c)
         let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
         match Merkle::verifyInclusion(index, size, leaf, proof, Bytes::fromHex(rootAt(size))) {
@@ -104,8 +102,8 @@ module VectorTests {
     }
 
     fn consistencyOk(c) = {
-        let first = Fixtures::number(Fixtures::field(c, "first"))
-        let second = Fixtures::number(Fixtures::field(c, "second"))
+        let first = Fixtures::numberOf(c, "first")
+        let second = Fixtures::numberOf(c, "second")
         let proof = hexProof(c)
         let verified = Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
         match verified {
@@ -120,24 +118,24 @@ module VectorTests {
     }
 
     fn inclusionRejected(c) = {
-        let index = Fixtures::number(Fixtures::field(c, "index"))
-        let size = Fixtures::number(Fixtures::field(c, "size"))
+        let index = Fixtures::numberOf(c, "index")
+        let size = Fixtures::numberOf(c, "size")
         let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
         !Merkle::verifyInclusion(index, size, leaf, hexProof(c), Bytes::fromHex(negativeRoot(c, size)))
     }
 
     fn consistencyRejected(c) = {
-        let first = Fixtures::number(Fixtures::field(c, "first"))
-        let second = Fixtures::number(Fixtures::field(c, "second"))
+        let first = Fixtures::numberOf(c, "first")
+        let second = Fixtures::numberOf(c, "second")
         let proof = hexProof(c)
-        match Fixtures::text(Fixtures::field(c, "label")) == "swapped roots" {
+        match Fixtures::textOf(c, "label") == "swapped roots" {
             true => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(second)), Bytes::fromHex(rootAt(first)), proof)
             false => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
         }
     }
 
-    fn merkleCases(kind, run) = Fixtures::report("merkle ${kind}", foldList(Fixtures::items(Fixtures::field(Fixtures::load("vectors/merkle.json"), "negative")), [],
-        fn(acc, c) => if Fixtures::text(Fixtures::field(c, "kind")) == kind { listAppend(acc, c) } else { acc }), run)
+    fn merkleCases(kind, run) = Fixtures::report("merkle ${kind}", foldList(Fixtures::loadItems("vectors/merkle.json", "negative"), [],
+        fn(acc, c) => if Fixtures::textOf(c, "kind") == kind { listAppend(acc, c) } else { acc }), run)
 
     /// Every primary-specification vector group, in one run.
     export fn run() = {
@@ -147,8 +145,8 @@ module VectorTests {
         test("vector: rfc8785", canonCases)
         test("vector: dsse", dsseCases)
         test("vector: merkle roots", fn() => Fixtures::report("merkle roots 0..8", range(0, 9) |> toList, rootMatches))
-        test("vector: merkle inclusion", fn() => Fixtures::report("merkle inclusion proofs", Fixtures::items(Fixtures::field(fx, "inclusion")), inclusionOk))
-        test("vector: merkle consistency", fn() => Fixtures::report("merkle consistency proofs", Fixtures::items(Fixtures::field(fx, "consistency")), consistencyOk))
+        test("vector: merkle inclusion", fn() => Fixtures::report("merkle inclusion proofs", Fixtures::itemsOf(fx, "inclusion"), inclusionOk))
+        test("vector: merkle consistency", fn() => Fixtures::report("merkle consistency proofs", Fixtures::itemsOf(fx, "consistency"), consistencyOk))
         test("vector: merkle rejection", fn() => {
             merkleCases("inclusion", inclusionRejected)
             merkleCases("consistency", consistencyRejected)

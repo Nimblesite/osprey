@@ -23,6 +23,19 @@ pub(super) fn declare(e: &mut TypeEnv) {
     randomness(e);
 }
 
+/// Declare one conversion builtin per target width `keep` admits, each open
+/// over the sources `scheme` allows.
+fn insert_conversions(
+    e: &mut TypeEnv,
+    keep: fn(Numeric) -> bool,
+    scheme: fn(&str, usize, Type) -> crate::ty::Scheme,
+) {
+    for target in Numeric::ALL.into_iter().filter(|n| keep(*n)) {
+        let name = conversion_name(target);
+        e.insert(&name, scheme(&name, 1, Type::prim(target.name())));
+    }
+}
+
 fn numbers(e: &mut TypeEnv) {
     e.insert("abs", crate::arithmetic::absolute_scheme());
     // Open over the integer types [TYPE-NUMERIC-ARITH-WIDTH], one overload per
@@ -47,22 +60,10 @@ fn numbers(e: &mut TypeEnv) {
     e.insert("bitNot", open_integer_scheme("bitNot", 1, Type::Var(0)));
     // Conversions named for their target, over any integer source
     // [BUILTIN-CONVERT-INT]; out of range performs `Arith.overflow`.
-    for target in Numeric::ALL.into_iter().filter(|n| n.is_integer()) {
-        let name = conversion_name(target);
-        e.insert(
-            &name,
-            open_integer_scheme(&name, 1, Type::prim(target.name())),
-        );
-    }
+    insert_conversions(e, Numeric::is_integer, open_integer_scheme);
     // Every numeric source converts to the target's float width. Total, so no
     // Result [BUILTIN-CONVERT-FLOAT] [GPU-CONVERT].
-    for target in Numeric::ALL.into_iter().filter(|n| n.is_float()) {
-        let name = conversion_name(target);
-        e.insert(
-            &name,
-            open_numeric_scheme(&name, 1, Type::prim(target.name())),
-        );
-    }
+    insert_conversions(e, Numeric::is_float, open_numeric_scheme);
     // The unary float functions every numeric kernel is written from. Total
     // over each float width (a domain error yields NaN, an overflow infinity),
     // returning that width; pure, so a kernel may call or name them [BUILTIN-MATH],

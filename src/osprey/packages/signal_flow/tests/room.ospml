@@ -43,23 +43,14 @@ grown () =
     knobNumber ("spareWidth", 400.0)
     knobNumber ("spareHeight", 300.0)
     placedBy (at, 400.0)
-    near (listGet (pieceAt "inspector") 1 ?: 0.0, 1773.0)
-    near (listGet (pieceAt "tools") 1 ?: 0.0, 1708.0)
-    near (listGet (pieceAt "legend") 2 ?: 0.0, 1108.5)
-    near (listGet (pieceAt "header") 1 ?: 0.0, 540.0)
+    forEachList ([{ at = "inspector", axis = 1, want = 1773.0 }, { at = "tools", axis = 1, want = 1708.0 }, { at = "legend", axis = 2, want = 1108.5 }, { at = "header", axis = 1, want = 540.0 }], \c => near (listGet (pieceAt c.at) c.axis ?: 0.0, c.want))
     knobText ("selected", "process")
 
 // The moved inspector answers where it now is, and so does the undo it reveals in the header.
 grownControls () =
-    tap "Inspector bypass: Bypass Filter"
-    flag ("processOn", false)
-    tap "Inspector bypass: Enable Filter"
-    flag ("processOn", true)
+    switched ("Inspector bypass: Bypass Filter", "Inspector bypass: Enable Filter", "process")
     near (leftOf "Undo", 1508.0)
-    tap "Undo"
-    flag ("processOn", false)
-    tap "Inspector bypass: Enable Filter"
-    flag ("processOn", true)
+    switched ("Undo", "Inspector bypass: Enable Filter", "process")
     tapAt ("Filter Cutoff", 0.25)
     knobNumber ("process", 0.25)
     pointer (1600.0, 900.0, true)

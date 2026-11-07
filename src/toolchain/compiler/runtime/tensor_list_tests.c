@@ -6,6 +6,9 @@
 // and nothing named gpu_*.
 #include <assert.h>
 #include <signal.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "collection_runtime.h"
 #include "float_spelling.h"

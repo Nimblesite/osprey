@@ -6,7 +6,7 @@ import type { Browser, Frame } from "playwright-core";
 import * as http from "http";
 import * as sinon from "sinon";
 import { commands, ConfigurationTarget, ExtensionContext, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
-import { BUILD_MS, activateWithServer, connectEditorBrowser, editorWebviewFrame, waitFor, EXTENSION_ID } from "./profiler-kit";
+import { BUILD_MS, EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
 import { compileSdkHost, installRegistry, servedPackage, sdkHostRequests, sdkRequest } from "./package-harness";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
 import { record, type NativeRequest } from "../../client/src/osprey-ui/protocol";
@@ -207,7 +207,7 @@ async function cancelUnverifiedAdd(frame: Frame, folder: Uri): Promise<void> {
   await frame.locator(".osp-context-body").click({ button: "right" });
   await frame.getByRole("menu").getByRole("button", { name: "Add to project", exact: true }).click();
   await frame.getByRole("alert").filter({ hasText: "Audit status unverified" }).waitFor();
-  await frame.getByRole("button", { name: "Cancel", exact: true }).click();
+  await press(frame, "Cancel");
   await frame.getByRole("alert").waitFor({ state: "detached", timeout: 4000 });
   assert.strictEqual(await frame.getByRole("alert").count(), 0, "Cancel closes the confirmation");
   assert.strictEqual(fs.readFileSync(manifest, "utf8"), before, "Cancel preserves the real manifest");
@@ -229,10 +229,10 @@ suite("package workspace browser interaction", () => {
 async function installFromBrowser(frame: Frame): Promise<void> {
   await frame.getByRole("tab", { name: "Browse registry" }).click();
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
-  await frame.getByRole("button", { name: "Add to project", exact: true }).click();
-  await frame.getByRole("button", { name: "Confirm add @demo/greeting", exact: true }).click();
+  await press(frame, "Add to project");
+  await press(frame, "Confirm add @demo/greeting");
   await frame.getByText("2 installed · 1 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
-  await frame.getByRole("tab", { name: "Installed", exact: true }).click();
+  await press(frame, "Installed", "tab");
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
   await frame.getByText("Dependencies", { exact: true }).waitFor();
 }
@@ -254,7 +254,7 @@ async function inspectDependencyGraph(frame: Frame): Promise<void> {
 async function tamperInstalledSource(frame: Frame, folder: Uri, pkg: ReturnType<typeof servedPackage>): Promise<void> {
   const source = path.join(folder.fsPath, ".osprey/packages", pkg.key, pkg.digest.slice(7), "src/main.osp");
   fs.writeFileSync(source, "fn value() = 0\n");
-  await frame.getByRole("button", { name: "Refresh", exact: true }).click();
+  await press(frame, "Refresh");
   await frame.getByText("verify.digest", { exact: true }).first().waitFor({ timeout: 4000 });
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).isEnabled(), false,
     "a package with integrity findings cannot be added");
@@ -263,7 +263,7 @@ async function tamperInstalledSource(frame: Frame, folder: Uri, pkg: ReturnType<
 async function removeFromBrowser(frame: Frame, folder: Uri): Promise<void> {
   await frame.locator(".osp-context-body").click({ button: "right" });
   await frame.getByRole("menu").getByRole("button", { name: "Remove dependency", exact: true }).click();
-  await frame.getByRole("button", { name: "Confirm remove @demo/greeting", exact: true }).click();
+  await press(frame, "Confirm remove @demo/greeting");
   await frame.getByText("0 installed · 0 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
   assert.ok(!fs.readFileSync(path.join(folder.fsPath, "osprey.toml"), "utf8").includes("@demo/greeting"));
 }
@@ -289,13 +289,13 @@ suite("package workspace browser installation", () => {
 async function verifyRegistryRecovery(frame: Frame, setStatus: (status: number) => void): Promise<void> {
   await searchCatalog(frame);
   setStatus(503);
-  await frame.getByRole("button", { name: "Refresh", exact: true }).click();
+  await press(frame, "Refresh");
   await frame.getByText("Package data unavailable", { exact: true }).waitFor();
   await frame.getByText("Registry returned HTTP 503", { exact: true }).waitFor();
   assert.strictEqual(await frame.getByRole("option").count(), 0, "failure hides package rows");
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).count(), 0);
   setStatus(200);
-  await frame.getByRole("button", { name: "Refresh", exact: true }).click();
+  await press(frame, "Refresh");
   await frame.getByRole("option").filter({ hasText: "@demo/greeting-recovered" }).waitFor();
   assert.strictEqual(await frame.getByText("Package data unavailable", { exact: true }).count(), 0);
 }
@@ -320,8 +320,8 @@ async function verifyDirtyAdd(frame: Frame, folder: Uri): Promise<void> {
   await searchCatalog(frame);
   const manifest = fs.readFileSync(path.join(folder.fsPath, "osprey.toml"), "utf8");
   await withDirtyManifest(folder, async () => {
-    await frame.getByRole("button", { name: "Add to project", exact: true }).click();
-    await frame.getByRole("button", { name: "Confirm add @demo/greeting", exact: true }).click();
+    await press(frame, "Add to project");
+    await press(frame, "Confirm add @demo/greeting");
     await frame.getByText("Save or revert unsaved osprey.toml and osprey.lock changes before running package commands", { exact: true }).waitFor();
     assert.strictEqual(fs.readFileSync(path.join(folder.fsPath, "osprey.toml"), "utf8"), manifest);
     assert.strictEqual(fs.existsSync(path.join(folder.fsPath, "osprey.lock")), false);
@@ -345,7 +345,7 @@ async function verifyOrgScopedRows(frame: Frame): Promise<void> {
 async function verifyUnscopedRefusal(frame: Frame, invalidate: () => void): Promise<void> {
   await searchCatalog(frame);
   invalidate();
-  await frame.getByRole("button", { name: "Refresh", exact: true }).click();
+  await press(frame, "Refresh");
   await frame.getByText("HelperFunctions is not a canonical package key", { exact: true }).waitFor();
   assert.strictEqual(await frame.getByRole("option").count(), 0, "unscoped identities are never install choices");
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).count(), 0);

@@ -10,7 +10,7 @@ from gguf import Chain, Constants, Reader, Tensors, Values
 from gguf_expected import Expected
 from testing import Check
 
-from gguf_tests.Support import fixtures, loaded, swapped, str_list_equal, ats, ati, atl, cell_case, error_case, tensor_name, tensor_sizes, tensor_start
+from gguf_tests.Support import fixtures, loaded, swapped, str_list_equal, ats, ati, atl, cell_case, equal_case, error_case
 
 __all__ = ["cases"]
 
@@ -97,7 +97,7 @@ def string_case(tag, fixture, off, want):
 
 def kind_case(tag, fixture, i, want):
     """An entry's declared value type, read straight from its type word."""
-    return cell_text(tag, Values.kind_at(fixture.data, ati(fixture.type_offsets, i), swapped(fixture)), want)
+    return equal_case(tag, Values.kind_at(fixture.data, ati(fixture.type_offsets, i), swapped(fixture)), want)
 
 
 def value_case(tag, fixture, i, kind, ints, floats, bools, strings):
@@ -105,15 +105,6 @@ def value_case(tag, fixture, i, kind, ints, floats, bools, strings):
     match Values.value_at(fixture.data, ati(fixture.value_offsets, i), kind, swapped(fixture)):
         case Success(value=sized):
             return cell_case(tag, Reader.Field(offset=ati(fixture.value_offsets, i), name=tag, value=sized.value), kind, ints, floats, bools, strings)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
-
-
-def cell_text(tag, result, want):
-    """A string Result compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.equal(tag, got, want)
         case Error(message=problem):
             return Check.failed(tag, problem)
 
@@ -182,8 +173,8 @@ def header_only_cases(fixture):
                 Check.equal(fixture.name + ".header_only.data_offset", file.data_offset, start),
                 str_list_equal(fixture.name + ".header_only.names", Reader.tensor_names(file), fixture.tensors),
                 str_list_equal(fixture.name + ".header_only.keys", Reader.field_names(file), fixture.fields),
-                Check.ints_equal(fixture.name + ".header_only.sizes", mapList(file.tensors, tensor_sizes), fixture.sizes),
-                Check.ints_equal(fixture.name + ".header_only.starts", mapList(file.tensors, tensor_start), fixture.tensor_offsets),
+                Check.ints_equal(fixture.name + ".header_only.sizes", mapList(file.tensors, lambda info: info.n_bytes), fixture.sizes),
+                Check.ints_equal(fixture.name + ".header_only.starts", mapList(file.tensors, lambda info: info.data_offset), fixture.tensor_offsets),
             ]
         case Error(message=problem):
             return [Check.failed(fixture.name + ".header_only", problem)]
@@ -220,9 +211,9 @@ def section_case():
             return [
                 Check.equal("tensors.of.alignment", placed.alignment, ati(Expected.BASE_HEADER, 3)),
                 Check.equal("tensors.of.data_offset", placed.data_offset, ati(Expected.BASE_HEADER, 4)),
-                str_list_equal("tensors.of.names", mapList(placed.tensors, tensor_name), Expected.BASE_TENSORS),
-                Check.ints_equal("tensors.of.sizes", mapList(placed.tensors, tensor_sizes), Expected.BASE_TENSOR_SIZES),
-                Check.ints_equal("tensors.of.offsets", mapList(placed.tensors, tensor_start), Expected.BASE_TENSOR_OFFSETS),
+                str_list_equal("tensors.of.names", mapList(placed.tensors, lambda info: info.name), Expected.BASE_TENSORS),
+                Check.ints_equal("tensors.of.sizes", mapList(placed.tensors, lambda info: info.n_bytes), Expected.BASE_TENSOR_SIZES),
+                Check.ints_equal("tensors.of.offsets", mapList(placed.tensors, lambda info: info.data_offset), Expected.BASE_TENSOR_OFFSETS),
             ]
         case Error(message=problem):
             return [Check.failed("tensors.of", problem)]

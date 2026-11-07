@@ -16,16 +16,32 @@ use osprey_types::{HandlerSite, PerformSite, Type};
 
 /// The instantiation inference resolved for the `perform` at `position`.
 pub(crate) fn site_perform_op(cg: &Codegen, position: Option<Position>) -> Result<PerformSite> {
-    position
-        .and_then(|p| cg.prog.performs.get(&(p.line, p.column)).cloned())
-        .ok_or_else(|| CodegenError::invalid("perform is missing its checked operation signature"))
+    site_ops(
+        &cg.prog.performs,
+        position,
+        "perform is missing its checked operation signature",
+    )
 }
 
 /// The instantiation inference resolved for the `handle` at `position`.
 pub(crate) fn site_handler_ops(cg: &Codegen, position: Option<Position>) -> Result<HandlerSite> {
+    site_ops(
+        &cg.prog.handler_ops,
+        position,
+        "handler is missing its checked operation signatures",
+    )
+}
+
+/// The signatures inference recorded for the site at `position`, or the error a
+/// site the checker never saw must report.
+fn site_ops<T: Clone>(
+    table: &std::collections::HashMap<(u32, u32), T>,
+    position: Option<Position>,
+    missing: &str,
+) -> Result<T> {
     position
-        .and_then(|p| cg.prog.handler_ops.get(&(p.line, p.column)).cloned())
-        .ok_or_else(|| CodegenError::invalid("handler is missing its checked operation signatures"))
+        .and_then(|p| table.get(&(p.line, p.column)).cloned())
+        .ok_or_else(|| CodegenError::invalid(missing))
 }
 
 /// The runtime handler-stack key for an effect instantiation: a generic

@@ -21,6 +21,15 @@ ok tables.UPPER
 ok program.concat
 ok program.shift
 ok program.append_match
+ok charset.cat_code
+ok charset.cat_code_none
+ok flags.is_alpha
+ok flags.is_alpha_digit
+ok program.pair_value
+ok program.pair_next
+ok program.pair_next_fallback
+ok program.read_name
+ok program.read_name_next
 ok program.ins_class
 ok program.range_piece
 ok program.cat_piece
@@ -7135,4 +7144,4 @@ ok error \x4
 ok error a{3,2}
 ok error [\400]
 ok error [\777]
-6126 passed, 0 failed
+6135 passed, 0 failed

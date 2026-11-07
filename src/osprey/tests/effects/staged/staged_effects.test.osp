@@ -1,28 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 /// Staged effects: an effect declared `static` is answered by the compiler and
 /// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
 /// docs/specs/language/0017-AlgebraicEffects.md). This suite pins the four consequences —
@@ -125,8 +100,7 @@ fn sharedAcrossStagesCase() = {
         twice(logged, 0)
     }
     checkAll("one function serves both stages", [
-        early == 128,
-        late == 2,
+        structuralEquals([early, late], [128, 2]),
         transcript == "step 0 -> 1;step 1 -> 2;"
     ])
 }
@@ -146,10 +120,10 @@ fn stagedKernelCase() = {
     }
     match uploaded { Success { scaled } =>
         checkAll("a static effect is legal inside a GPU kernel", [
-            gpuSatisfies(gpuFold(scaled, 0, fn(a, v) => (a + v) ), fn(total) => total == 30),
+            gpuEquals(gpuFold(scaled, 0, fn(a, v) => (a + v) ), 30),
             gpuLength(scaled) == 4
         ])
-      Error { message } => check("GPU operation", "success", toString(message)) }
+      Error { message } => gpuFailed(message) }
 }
 
 /// `kernel` is a handler region, not a magic block: ONE region supplies the
@@ -183,9 +157,8 @@ fn signalIdentityCase() = {
     ])
 }
 
-
-test("static handlers are discharged before the program runs", fn() => exactArithmetic(staticDischargeCase))
-test("one function serves the static and dynamic stages", fn() => exactArithmetic(sharedAcrossStagesCase))
-test("a GPU kernel may perform a static effect", fn() => exactArithmetic(stagedKernelCase))
-test("a kernel region supplies its own device dialects", fn() => exactArithmetic(kernelRegionCase))
-test("two signal instantiations are two dependencies", fn() => exactArithmetic(signalIdentityCase))
+test("static handlers are discharged before the program runs", exactly(staticDischargeCase))
+test("one function serves the static and dynamic stages", exactly(sharedAcrossStagesCase))
+test("a GPU kernel may perform a static effect", exactly(stagedKernelCase))
+test("a kernel region supplies its own device dialects", exactly(kernelRegionCase))
+test("two signal instantiations are two dependencies", exactly(signalIdentityCase))

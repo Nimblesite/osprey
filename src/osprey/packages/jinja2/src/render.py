@@ -211,11 +211,7 @@ def for_loop(node, elems, i, env, acc) -> Result[Out, str]:
         if node.cond != "":
             return for_loop_cond(node, elems, i, env, acc, loop_env)
         else:
-            match render_nodes(node.body, loop_env):
-                case Success(value=value):
-                    return for_loop(node, elems, i + 1, pop_frame(value.env), acc + value.text)
-                case Error(message=message):
-                    return Error(message=message)
+            return for_loop_body(node, elems, i, env, acc, loop_env)
 
 
 def for_loop_cond(node, elems, i, env, acc, loop_env) -> Result[Out, str]:

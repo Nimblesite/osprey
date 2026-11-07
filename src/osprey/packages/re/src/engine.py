@@ -216,21 +216,32 @@ def compare_span(cps, n, pos, start, left):
         return False
 
 
+def fail_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex):
+    """A negated assertion: fail on a match, continue past it on no match."""
+    match sub:
+        case Success():
+            return backtrack(prog, cps, n, acc_op, endpos, frames)
+        case Error():
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
+
+
+def pass_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, keep):
+    """A positive assertion: continue past it on a match, else backtrack.
+    `keep` propagates the sub-pattern's captures (lookahead), dropped otherwise."""
+    match sub:
+        case Success(value=value):
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, value.saves if keep == 1 else saves, frames, value.lastindex if keep == 1 else lastindex)
+        case Error():
+            return backtrack(prog, cps, n, acc_op, endpos, frames)
+
+
 def lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex):
     """A `(?=...)` / `(?!...)` assertion (captures propagate)."""
     sub = step(prog, cps, n, "acc", -1, ins.a, pos, saves, [], lastindex)
     if ins.b == 1:
-        match sub:
-            case Success():
-                return backtrack(prog, cps, n, acc_op, endpos, frames)
-            case Error():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
+        return fail_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex)
     else:
-        match sub:
-            case Success(value=value):
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, value.saves, frames, value.lastindex)
-            case Error():
-                return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return pass_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, 1)
 
 
 def lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex):
@@ -249,14 +260,6 @@ def lookbehind_run(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, ne
     """Run the lookbehind sub-pattern against the fixed-width prefix."""
     sub = step(prog, cps, n, "acc", pos, ins.a, pos - ins.b, saves, [], lastindex)
     if negate == 1:
-        match sub:
-            case Success():
-                return backtrack(prog, cps, n, acc_op, endpos, frames)
-            case Error():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
+        return fail_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex)
     else:
-        match sub:
-            case Success():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
-            case Error():
-                return backtrack(prog, cps, n, acc_op, endpos, frames)
+        return pass_assertion(sub, prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex, 0)

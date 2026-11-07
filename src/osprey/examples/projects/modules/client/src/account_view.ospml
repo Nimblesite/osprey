@@ -17,8 +17,8 @@ module AccountView
         active = match id == selected
             true => " selected"
             false => ""
-        top = UI::node "span" (UI::prop "className" "account-card-top") (UI::text "account-mark ${accent}" "T" + "," + UI::text "account-more" "•••")
-        UI::node "button" (UI::prop "id" "account-${id}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "account-card ${accent}${active}") (top + "," + UI::text "account-owner" owner + "," + UI::leaf "strong" (UI::prop "className" "account-balance") balance + "," + UI::leaf "small" "" "Talon account · #${id}")
+        top = UI::node "span" (UI::cls "account-card-top") (UI::text "account-mark ${accent}" "T" + "," + UI::text "account-more" "•••")
+        UI::node "button" (UI::prop "id" "account-${id}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::cls "account-card ${accent}${active}") (top + "," + UI::text "account-owner" owner + "," + UI::leaf "strong" (UI::cls "account-balance") balance + "," + UI::leaf "small" "" "Talon account · #${id}")
 
     cardsFrom doc index limit selected = match index >= limit
         true => ""
@@ -32,8 +32,4 @@ module AccountView
                         true => card doc index selected
                         false => card doc index selected + "," + rest
 
-    export cards source limit selected =
-        doc = jsonParse source ?: 0
-        rendered = cardsFrom doc 0 limit selected
-        freed = jsonFree doc ?: 0
-        rendered
+    export cards source limit selected = BankData::withDoc source (\doc => cardsFrom doc 0 limit selected)

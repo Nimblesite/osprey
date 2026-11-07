@@ -15,7 +15,7 @@ use osprey_ast::{Expr, MatchArm, Pattern, Stmt};
 const RESULT_OK: &str = "Success";
 const RESULT_ERR: &str = "Error";
 
-fn is_result_ctor(name: &str) -> bool {
+pub(crate) fn is_result_ctor(name: &str) -> bool {
     name == RESULT_OK || name == RESULT_ERR
 }
 

@@ -13,6 +13,8 @@ README). Implements [PORT-SCOPE]'s Result-instead-of-exception rule.
 """
 from typing import Callable
 
+from numpy import Layout
+
 __all__ = [
     "ValueError", "raising", "fail", "require", "checked", "checked_float",
     "checked_int", "checked_bool", "checked_values", "checked_ints", "shape_text",
@@ -99,18 +101,23 @@ def product_lengths(side, has, needs):
     return f"gpuMatMul: {side} operand: has {has} elements, the stated shape needs {needs}"
 
 
+def shape_repr(shape, sep):
+    """A parenthesised shape with `sep` between its dimensions and a trailing
+    comma when it has exactly one."""
+    inner = join(mapList(shape, lambda d: toString(d)), sep)
+    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+
+
 def shape_text(shape):
     """numpy's compact shape text: "(2,3)", "(4,)" for one dimension, "()" for
     none — the form the broadcast and reshape messages print."""
-    inner = join(mapList(shape, lambda d: toString(d)), ",")
-    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+    return shape_repr(shape, ",")
 
 
 def tuple_text(shape):
     """Python's tuple repr of a shape: "(2, 3)", "(4,)", "()" — the form
     np.broadcast_shapes' message prints."""
-    inner = join(mapList(shape, lambda d: toString(d)), ", ")
-    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+    return shape_repr(shape, ", ")
 
 
 def broadcast_failed(a, b):
@@ -129,12 +136,17 @@ def reshape_failed(size, shape):
     return f"cannot reshape array of size {size} into shape {shape_text(shape)}"
 
 
+def dim_text(d):
+    """One requested reshape dimension: negative ones print as `newaxis`, else the number."""
+    return "newaxis" if d < 0 else toString(d)
+
+
 def reshape_unknown_text(size, requested, unknown):
     """numpy's reshape error text when the unknown dimension cannot resolve:
     a leading unknown disappears from the text, any other prints as
     `newaxis`, and a lone dimension prints without a trailing comma."""
     dims = requested if unknown != 0 else drop_first(requested)
-    inner = join(toList(map(range(len(dims)), lambda d: "newaxis" if unwrap_or(listGet(dims, d), 0) < 0 else toString(unwrap_or(listGet(dims, d), 0)))), ",")
+    inner = join(Layout.map_indexed(dims, lambda d: dim_text(unwrap_or(listGet(dims, d), 0))), ",")
     return f"cannot reshape array of size {size} into shape ({inner})"
 
 
@@ -150,14 +162,19 @@ def broadcast_to_failed(original, requested):
     return "operands could not be broadcast together with remapped shapes [original->remapped]: " + shape_text(remapped) + "  and requested shape " + shape_text(requested)
 
 
+def arrays_have(i, has_i, j, has_j):
+    """numpy's shared mismatch clause: what the arrays at index `i` and `j` each have."""
+    return f"the array at index {i} has {has_i} and the array at index {j} has {has_j}"
+
+
 def concat_dims_failed(i, nd_i, j, nd_j):
     """np.concatenate's ndim mismatch error text."""
-    return f"all the input arrays must have same number of dimensions, but the array at index {i} has {nd_i} dimension(s) and the array at index {j} has {nd_j} dimension(s)"
+    return "all the input arrays must have same number of dimensions, but " + arrays_have(i, f"{nd_i} dimension(s)", j, f"{nd_j} dimension(s)")
 
 
 def concat_size_failed(d, i, s_i, j, s_j):
     """np.concatenate's non-axis size mismatch error text."""
-    return f"all the input array dimensions except for the concatenation axis must match exactly, but along dimension {d}, the array at index {i} has size {s_i} and the array at index {j} has size {s_j}"
+    return f"all the input array dimensions except for the concatenation axis must match exactly, but along dimension {d}, " + arrays_have(i, f"size {s_i}", j, f"size {s_j}")
 
 
 def squeeze_failed():

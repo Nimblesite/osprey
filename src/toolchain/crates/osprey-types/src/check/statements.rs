@@ -6,21 +6,27 @@ impl Checker {
         self.errors.push(e.with_pos(pos));
     }
 
+    /// Record the failure of a unification performed at the expression being
+    /// inferred.
+    fn record_unify(&mut self, outcome: Result<(), TypeError>) {
+        if let Err(e) = outcome {
+            self.record_err(e, self.expr_position);
+        }
+    }
+
     /// Unify and record any failure, located at the expression being
     /// inferred. Shared by the expr/pattern modules.
     pub(crate) fn push_unify(&mut self, a: &Type, b: &Type) {
-        if let Err(e) = unify(&mut self.ctx, a, b) {
-            self.errors.push(e.with_pos(self.expr_position));
-        }
+        let outcome = unify(&mut self.ctx, a, b);
+        self.record_unify(outcome);
     }
 
     /// Directional assignment-site unification, recording failures with the
     /// position of the expression being inferred. This may wrap a bare value
     /// in Success but never erase a Result error channel.
     pub(crate) fn push_assign(&mut self, expected: &Type, actual: &Type) {
-        if let Err(e) = unify_assignable(&mut self.ctx, expected, actual) {
-            self.errors.push(e.with_pos(self.expr_position));
-        }
+        let outcome = unify_assignable(&mut self.ctx, expected, actual);
+        self.record_unify(outcome);
     }
 
     /// Check a statement appearing inside a block expression, threading new

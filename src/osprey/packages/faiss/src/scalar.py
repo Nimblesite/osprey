@@ -16,6 +16,7 @@ not landed, so it is not ported yet (see README).
 """
 
 from faiss.Flat import search_rows
+from faiss.Metrics import map_indexed
 
 __all__ = ["ScalarQuantizer", "QT_8bit", "QT_4bit", "QT_8bit_uniform", "train", "compute_codes", "decode", "IndexScalarQuantizer", "sq_add", "sq_search"]
 
@@ -110,17 +111,22 @@ def max_f(a, b):
     return a if a > b else b
 
 
-def compute_codes(sq, x):
-    """faiss's `sq.compute_codes(x)`: the exact byte codes, one list per row."""
+def per_qtype(sq, rows, exact, four_bit, uniform):
+    """Applies the code function this quantiser's `qtype` selects to every row."""
     match sq.qtype:
         case 0:
-            return mapList(x, lambda row: codes_8bit(sq, row))
+            return mapList(rows, lambda row: exact(sq, row))
         case 1:
-            return mapList(x, lambda row: codes_4bit(sq, row))
+            return mapList(rows, lambda row: four_bit(sq, row))
         case 2:
-            return mapList(x, lambda row: codes_uniform(sq, row))
+            return mapList(rows, lambda row: uniform(sq, row))
         case _:
             return []
+
+
+def compute_codes(sq, x):
+    """faiss's `sq.compute_codes(x)`: the exact byte codes, one list per row."""
+    return per_qtype(sq, x, codes_8bit, codes_4bit, codes_uniform)
 
 
 def vmin_at(sq, j):
@@ -131,9 +137,14 @@ def vdiff_at(sq, j):
     return unwrap_or(listGet(sq.trained, sq.d + j), 0.0)
 
 
+def code_row(sq, row, hi):
+    """One code per dimension, each in `hi` levels."""
+    return toList(map(range(sq.d), lambda j: code_of(vmin_at(sq, j), vdiff_at(sq, j), unwrap_or(listGet(row, j), 0.0), hi)))
+
+
 def codes_8bit(sq, row):
     """One byte per value for QT_8bit."""
-    return toList(map(range(sq.d), lambda j: code_of(vmin_at(sq, j), vdiff_at(sq, j), unwrap_or(listGet(row, j), 0.0), 255)))
+    return code_row(sq, row, 255)
 
 
 def codes_uniform(sq, row):
@@ -143,7 +154,7 @@ def codes_uniform(sq, row):
 
 def codes_4bit(sq, row):
     """Two 4-bit codes per byte for QT_4bit: even dim low, odd dim high."""
-    nibbles = toList(map(range(sq.d), lambda j: code_of(vmin_at(sq, j), vdiff_at(sq, j), unwrap_or(listGet(row, j), 0.0), 15)))
+    nibbles = code_row(sq, row, 15)
     return toList(map(range(intDiv(sq.d + 1, 2)), lambda t: nibble_of(nibbles, 2 * t) + 16 * nibble_of(nibbles, 2 * t + 1)))
 
 
@@ -178,15 +189,7 @@ def floor_in(v, hi):
 
 def decode(sq, codes):
     """faiss's `sq.decode(codes)`: reconstruct each code at the cell centre."""
-    match sq.qtype:
-        case 0:
-            return mapList(codes, lambda row: decode_8bit(sq, row))
-        case 1:
-            return mapList(codes, lambda row: decode_4bit(sq, row))
-        case 2:
-            return mapList(codes, lambda row: decode_uniform(sq, row))
-        case _:
-            return []
+    return per_qtype(sq, codes, decode_8bit, decode_4bit, decode_uniform)
 
 
 def decode_8bit(sq, row):
@@ -223,7 +226,7 @@ def sq_search(index, xq, k):
     """faiss's `IndexScalarQuantizer.search`: reconstruct every code, measure
     the metric to each query and heap-select. Reconstruction is float32, so
     distances compare at rtol 1e-6 (labels stay exact on well-separated data)."""
-    rows = toList(map(range(len(index.codes)), lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), []))))
+    rows = map_indexed(index.codes, lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), [])))
     return search_rows(index.metric, rows, xq, k)
 
 
@@ -237,6 +240,4 @@ def decode_one(sq, code):
             return decode_uniform(sq, code)
         case _:
             return []
-
-
 

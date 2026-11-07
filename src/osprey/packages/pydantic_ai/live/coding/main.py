@@ -96,10 +96,6 @@ def judge(model, task, summary, verification):
     return Support.ask_judge(model, prompt)
 
 
-def tool_names(messages):
-    return foldList(M.responses(messages), [], lambda acc, r: listConcat(acc, mapList(M.tool_calls(r), M.tool_name_of)))
-
-
 def run_task(model, name, setup, task, verify, extra):
     """Sets up a fresh project, lets the agent work, and checks the outcome independently."""
     folder = ROOT + "/" + name
@@ -111,7 +107,7 @@ def run_task(model, name, setup, task, verify, extra):
             after = shell(folder, verify)
             custom = shell(folder, extra)
             diff = shell(folder, "git status --short && git diff --stat")
-            names = tool_names(result.messages)
+            names = Support.tool_names(result.messages)
             print(f"agent said: {result.output}")
             print(f"tools ({len(names)}): {join(names, ", ")}")
             print(f"requests {result.usage.requests}, tokens {result.usage.input_tokens} in / {result.usage.output_tokens} out")
@@ -160,13 +156,5 @@ def suite():
             run_task(model, "multifile", REFACTOR_SETUP, REFACTOR_TASK, REFACTOR_VERIFY, REFACTOR_EXTRA if passed(made) else "false"))
 
 
-def report_suite():
-    return Check.report(suite())
-
-
 def main():
-    match Check.strictly(lambda: report_suite()):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(suite)

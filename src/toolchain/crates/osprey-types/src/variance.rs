@@ -226,6 +226,28 @@ mod tests {
         validate_type_decl(ctx, owner, params, &[variant(fields)])
     }
 
+    /// A context and the one `T` parameter every declaration below names.
+    fn one_param(variance: Variance) -> (InferCtx, [TypeParam; 1]) {
+        (InferCtx::new(), [tp("T", variance)])
+    }
+
+    /// `owner`'s declared `fields`, proven to hold every parameter legally.
+    fn accepts(ctx: &InferCtx, owner: &str, params: &[TypeParam], declared: &[(&str, &str)]) {
+        let errors = fields(ctx, owner, params, declared);
+        assert!(errors.is_empty(), "unexpected: {errors:?}");
+    }
+
+    /// `owner`'s declared `fields`, proven to report `needle`.
+    fn rejects(
+        ctx: &InferCtx,
+        owner: &str,
+        params: &[TypeParam],
+        declared: &[(&str, &str)],
+        needle: &str,
+    ) {
+        rejected(&fields(ctx, owner, params, declared), needle);
+    }
+
     fn rejected(errors: &[TypeError], needle: &str) {
         assert!(
             errors.iter().any(|error| error.message.contains(needle)),
@@ -235,62 +257,67 @@ mod tests {
 
     #[test]
     fn covariant_param_is_legal_in_field_and_return_positions() {
-        let ctx = InferCtx::new();
-        let params = [tp("T", Variance::Covariant)];
-        let ok = fields(
+        let (ctx, params) = one_param(Variance::Covariant);
+        accepts(
             &ctx,
             "Source",
             &params,
             &[("produce", "T"), ("gen", "(int) -> T")],
         );
-        assert!(ok.is_empty(), "unexpected: {ok:?}");
     }
 
     #[test]
     fn covariant_param_in_fn_parameter_position_is_rejected() {
-        let ctx = InferCtx::new();
-        let params = [tp("T", Variance::Covariant)];
-        let errs = fields(&ctx, "Bad", &params, &[("f", "(T) -> int")]);
-        rejected(&errs, "input position");
+        let (ctx, params) = one_param(Variance::Covariant);
+        rejects(
+            &ctx,
+            "Bad",
+            &params,
+            &[("f", "(T) -> int")],
+            "input position",
+        );
     }
 
     #[test]
     fn contravariant_param_positions_flip() {
-        let ctx = InferCtx::new();
-        let params = [tp("T", Variance::Contravariant)];
+        let (ctx, params) = one_param(Variance::Contravariant);
         // Legal: T as a function parameter (input).
-        let ok = fields(&ctx, "Sink", &params, &[("accept", "(T) -> Unit")]);
-        assert!(ok.is_empty(), "unexpected: {ok:?}");
+        accepts(&ctx, "Sink", &params, &[("accept", "(T) -> Unit")]);
         // Illegal: T as a plain field (output).
-        let errs = fields(&ctx, "Bad", &params, &[("held", "T")]);
-        rejected(&errs, "output position");
+        rejects(&ctx, "Bad", &params, &[("held", "T")], "output position");
         // Double flip: T in the parameter of a parameter-function is output again.
-        let errs = fields(&ctx, "Bad2", &params, &[("g", "((T) -> int) -> int")]);
-        rejected(&errs, "output position");
+        rejects(
+            &ctx,
+            "Bad2",
+            &params,
+            &[("g", "((T) -> int) -> int")],
+            "output position",
+        );
     }
 
     #[test]
     fn nested_constructor_variance_composes() {
-        let mut ctx = InferCtx::new();
+        let (mut ctx, co) = one_param(Variance::Covariant);
         ctx.set_variance("List", vec![Variance::Covariant]);
-        let co = [tp("T", Variance::Covariant)];
         // T inside a covariant List keeps its polarity: legal.
-        let ok = fields(&ctx, "Ok", &co, &[("items", "List<T>")]);
-        assert!(ok.is_empty(), "unexpected: {ok:?}");
+        accepts(&ctx, "Ok", &co, &[("items", "List<T>")]);
         // An unregistered constructor's args are invariant positions: illegal
         // for an `out` param.
-        let errs = fields(&ctx, "Bad", &co, &[("cell", "Cell<T>")]);
-        rejected(&errs, "invariant position");
+        rejects(
+            &ctx,
+            "Bad",
+            &co,
+            &[("cell", "Cell<T>")],
+            "invariant position",
+        );
         // A contravariant constructor argument flips the polarity, so an `out T`
         // inside a `Sink` lands in input position after all.
         ctx.set_variance("Sink", vec![Variance::Contravariant]);
-        let errs = fields(&ctx, "Bad2", &co, &[("s", "Sink<T>")]);
-        rejected(&errs, "input position");
+        rejects(&ctx, "Bad2", &co, &[("s", "Sink<T>")], "input position");
         // An invariant parameter carries no constraint, so every position suits
         // it — including the one that rejected `out T` above.
         let inv = [tp("T", Variance::Invariant)];
-        let ok = fields(&ctx, "Cell", &inv, &[("s", "Sink<T>")]);
-        assert!(ok.is_empty(), "unexpected: {ok:?}");
+        accepts(&ctx, "Cell", &inv, &[("s", "Sink<T>")]);
     }
 
     #[test]

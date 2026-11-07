@@ -480,7 +480,8 @@ test("the homepage presents Osprey Native in one panel with the showcase film an
   const phones = native.locator(".mobile-gallery img");
   await expect(phones).toHaveCount(2);
   const video = native.locator("#showcase-video");
-  for (const [width, overlap] of [[1440, true], [390, false]]) {
+  const captures = native.locator(".mobile-gallery .mobile-capture");
+  for (const width of [1920, 1440, 1280, 1100, 1001, 1000, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await video.scrollIntoViewIfNeeded();
     const v = await video.boundingBox();
@@ -493,7 +494,12 @@ test("the homepage presents Osprey Native in one panel with the showcase film an
       expect(p.x > v.x + v.width / 2 + 60 || p.y > v.y + v.height, `play button clear at ${width}px`).toBe(true);
       expect(p.y + p.height < v.y + v.height - 56 || p.y > v.y + v.height || p.x > v.x + v.width, `controls clear at ${width}px`).toBe(true);
     }
-    expect(overlapping > 0, `a phone overlaps the film at ${width}px`).toBe(overlap);
+    // The phones and their captions sit beside or below the film, never on top of it.
+    for (const capture of await captures.all()) {
+      const c = await capture.boundingBox();
+      expect(c.x >= v.x + v.width || c.y >= v.y + v.height, `phone card clear of the film at ${width}px`).toBe(true);
+    }
+    expect(overlapping, `no phone overlaps the film at ${width}px`).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `no sideways scroll at ${width}px`).toBe(true);
   }
   await native.getByRole("link", { name: "Explore Osprey Native" }).click();

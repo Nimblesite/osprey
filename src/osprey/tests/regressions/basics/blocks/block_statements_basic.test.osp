@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 // Cross-contract oracle for [BLOCK-SCOPE], [PATTERN-RESULT-DEFAULT],
 // [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [ARITH-CHECKED], and
@@ -202,7 +184,7 @@ fn blockStatementsCase() = {
     ])
 }
 
-test("blocks preserve values and lexical scope", fn() => exactArithmetic(blockStatementsCase))
+test("blocks preserve values and lexical scope", exactly(blockStatementsCase))
 
 /// [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings.
 effect BlockRead { value: fn() -> int }

@@ -5,13 +5,7 @@ import proof::Infer
 import proof::Export
 import proof::Environment
 import proof
-    Binder
-    Pi
-    Theorem
-    Definition
-    Axiom
-    Single
-    Group
+    Binder Pi Theorem Definition Axiom Single Group
 
 (** Structural views of an export, so a rejection is asserted on its kind and
     on the terms it is about, never on how those terms print: Lean's hygienic

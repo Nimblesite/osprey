@@ -14,8 +14,13 @@ __all__ = [
     "ELLIPSIS", "Axis", "Composite", "ParsedExpression", "AxisNameCheck",
     "parse", "check_axis_name_return_reason", "check_axis_name",
     "flat_axes_order", "has_composed_axes", "axis_repr", "format_axes",
-    "named", "axis_in_idents",
+    "named", "axis_in_idents", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 ELLIPSIS = "…"
 
@@ -78,7 +83,7 @@ def axis_repr(ax):
 def format_axes(axes):
     """`{'a', 'b'}`: a set of axes, sorted by `axis_repr`, as an error names it."""
     sorted_axes = listSortBy(axes, lambda a, b: 1 if axis_repr(a) > axis_repr(b) else (-1 if axis_repr(a) < axis_repr(b) else 0))
-    return "{" + join(toList(map(range(len(sorted_axes)), lambda i: axis_repr(unwrap_or(listGet(sorted_axes, i), named(""))))), ", ") + "}"
+    return "{" + join(map_indexed(sorted_axes, lambda i: axis_repr(unwrap_or(listGet(sorted_axes, i), named("")))), ", ") + "}"
 
 
 def cp_digit(cp):

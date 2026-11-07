@@ -1,5 +1,6 @@
 //! Signature annotation application before shared type checking.
 
+use crate::collect_support::Diagnostics;
 use crate::resolve::{Context, Locals, Resolver};
 use osprey_ast::{Expr, SignatureItem, Stmt};
 

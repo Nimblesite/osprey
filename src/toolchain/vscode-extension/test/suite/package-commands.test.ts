@@ -13,7 +13,7 @@ import {
 import * as sinon from "sinon";
 import { commands, Uri, window, workspace } from "vscode";
 import { activateWithServer, connectEditorBrowser } from "./profiler-kit";
-import { fakeDeps, okAdd } from "./package-harness";
+import { fakeDeps, okAdd, recordQuickPicks } from "./package-harness";
 
 const root = path.resolve("/work/app");
 const spaced = path.resolve("/work/my app");
@@ -24,7 +24,21 @@ const listing = JSON.stringify({
     { key: "@demo/util", releases: [{ digest: "dd", epoch: 3, ordinal: 1 }] },
   ],
 });
-const manifest = '[dependencies]\n"@other/util" = { epoch = 1, min_release = 5 }\n"@demo/pyadd" = { epoch = 1, min_release = 2 }';
+const manifest =
+  '[dependencies]\n"@other/util" = { epoch = 1, min_release = 5 }\n"@demo/pyadd" = { epoch = 1, min_release = 2 }';
+
+/** Assert that a message the commands showed mentions `needle`. */
+function assertMessage(
+  deps: { ui: { messages: string[] } },
+  needle: string | RegExp,
+): void {
+  const mentions = deps.ui.messages.some((message) =>
+    typeof needle === "string"
+      ? message.includes(needle)
+      : needle.test(message),
+  );
+  assert.ok(mentions, deps.ui.messages.join("|"));
+}
 
 suite("package add command", () => {
   test("an org-qualified pick runs the frontend with --project . from the project root", async () => {
@@ -32,27 +46,31 @@ suite("package add command", () => {
     await makeAddHandler(deps)();
     assert.strictEqual(deps.frontend.calls.length, 1);
     assert.deepStrictEqual(deps.frontend.calls[0], {
-      command: "--json add @demo/pyadd --registry http://127.0.0.1:8787 --project .",
+      command:
+        "--json add @demo/pyadd --registry http://127.0.0.1:8787 --project .",
       cwd: root,
     });
-    assert.ok(deps.ui.messages.some((m) => m.includes("added @demo/pyadd e1.r2")), deps.ui.messages.join("|"));
+    assertMessage(deps, "added @demo/pyadd e1.r2");
   });
 
   test("a project root with spaces reaches the CLI as --project . and nothing else", async () => {
-    const deps = fakeDeps({ projects: [spaced], listing, frontend: [okAdd("@demo/pyadd")] });
+    const deps = fakeDeps({
+      projects: [spaced],
+      listing,
+      frontend: [okAdd("@demo/pyadd")],
+    });
     await makeAddHandler(deps)();
     assert.strictEqual(deps.frontend.calls[0].cwd, spaced);
-    assert.ok(!deps.frontend.calls[0].command.includes(spaced), "the spaced path must never enter the stdin command");
+    assert.ok(
+      !deps.frontend.calls[0].command.includes(spaced),
+      "the spaced path must never enter the stdin command",
+    );
     assert.ok(deps.frontend.calls[0].command.endsWith("--project ."));
   });
 
   test("every pick item warns that security evidence is unavailable", async () => {
     const deps = fakeDeps({ listing });
-    const seen: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      seen.push(...items.map((i) => i.detail));
-      return undefined;
-    };
+    const seen = recordQuickPicks(deps, "detail");
     await makeAddHandler(deps)();
     assert.strictEqual(seen.length, 3);
     for (const detail of seen) {
@@ -62,18 +80,24 @@ suite("package add command", () => {
 
   test("duplicate leaf names under distinct orgs are both offered", async () => {
     const deps = fakeDeps({ listing });
-    const keys: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      keys.push(...items.map((i) => i.label));
-      return undefined;
-    };
+    const keys = recordQuickPicks(deps, "label");
     await makeAddHandler(deps)();
-    assert.deepStrictEqual(keys.filter((k) => k.endsWith("/util")).sort(), ["@demo/util", "@other/util"]);
+    assert.deepStrictEqual(keys.filter((k) => k.endsWith("/util")).sort(), [
+      "@demo/util",
+      "@other/util",
+    ]);
   });
 
   test("a security confirm step precedes the mutation and can decline it", async () => {
     const deps = fakeDeps({ listing, frontend: [okAdd("@demo/pyadd")] });
-    deps.ui.picks = [{ label: "@demo/pyadd", key: "@demo/pyadd", detail: "No security audit evidence is available for this release — treat it as unverified." }];
+    deps.ui.picks = [
+      {
+        label: "@demo/pyadd",
+        key: "@demo/pyadd",
+        detail:
+          "No security audit evidence is available for this release — treat it as unverified.",
+      },
+    ];
     deps.ui.messages.length = 0;
     let confirmed = true;
     deps.ui.showWarningMessage = async (message: string) => {
@@ -81,11 +105,18 @@ suite("package add command", () => {
       return confirmed ? { title: "Add Anyway" } : undefined;
     };
     await makeAddHandler(deps)();
-    assert.ok(deps.ui.messages.some((m) => m.toLowerCase().includes("unverified")), deps.ui.messages.join("|"));
+    assert.ok(
+      deps.ui.messages.some((m) => m.toLowerCase().includes("unverified")),
+      deps.ui.messages.join("|"),
+    );
     confirmed = false;
     deps.frontend.calls.length = 0;
     await makeAddHandler(deps)();
-    assert.strictEqual(deps.frontend.calls.length, 0, "declining the warning must not mutate anything");
+    assert.strictEqual(
+      deps.frontend.calls.length,
+      0,
+      "declining the warning must not mutate anything",
+    );
   });
 
   test("dismissing the QuickPick or a cancelled token is silence, not an error", async () => {
@@ -106,53 +137,69 @@ suite("package add command", () => {
     const deps = fakeDeps({ listing: "not json" });
     await makeAddHandler(deps)();
     assert.strictEqual(deps.frontend.calls.length, 0);
-    assert.ok(deps.ui.messages.some((m) => m.includes("registry listing")), deps.ui.messages.join("|"));
+    assertMessage(deps, "registry listing");
   });
 
   test("a semantically failed report is an error and says the reason code", async () => {
-    const deps = fakeDeps({ listing, frontend: [{ status: 1, lines: ["add.exists @demo/pyadd"] }] });
+    const deps = fakeDeps({
+      listing,
+      frontend: [{ status: 1, lines: ["add.exists @demo/pyadd"] }],
+    });
     deps.ui.picks = [{ label: "@demo/pyadd", key: "@demo/pyadd" }];
     await makeAddHandler(deps)();
-    assert.ok(deps.ui.messages.some((m) => m.includes("add.exists")), deps.ui.messages.join("|"));
-    assert.ok(deps.ui.messages.every((m) => !m.startsWith("Added ")), deps.ui.messages.join("|"));
+    assertMessage(deps, "add.exists");
+    assert.ok(
+      deps.ui.messages.every((m) => !m.startsWith("Added ")),
+      deps.ui.messages.join("|"),
+    );
   });
 
   test("dirty manifest or lock files block the mutation before the CLI runs", async () => {
-    for (const dirty of [[path.join(root, "osprey.toml")], [path.join(root, "osprey.lock")]]) {
-      const deps = fakeDeps({ listing, dirty, frontend: [okAdd("@demo/pyadd")] });
+    for (const dirty of [
+      [path.join(root, "osprey.toml")],
+      [path.join(root, "osprey.lock")],
+    ]) {
+      const deps = fakeDeps({
+        listing,
+        dirty,
+        frontend: [okAdd("@demo/pyadd")],
+      });
       deps.ui.picks = [{ label: "@demo/pyadd", key: "@demo/pyadd" }];
       await makeAddHandler(deps)();
       assert.strictEqual(deps.frontend.calls.length, 0);
-      assert.ok(deps.ui.messages.some((m) => /unsaved/i.test(m)), deps.ui.messages.join("|"));
+      assertMessage(deps, /unsaved/i);
     }
   });
 
   test("no workspace folder is a useful error", async () => {
     const deps = fakeDeps({ projects: [] });
     await makeAddHandler(deps)();
-    assert.ok(deps.ui.messages.some((m) => m.includes("workspace")), deps.ui.messages.join("|"));
+    assertMessage(deps, "workspace");
   });
 });
 
 suite("package remove command", () => {
   test("removes a direct dependency through the frontend", async () => {
-    const deps = fakeDeps({ manifest, frontend: [{ status: 0, lines: ["removed @other/util"] }] });
+    const deps = fakeDeps({
+      manifest,
+      frontend: [{ status: 0, lines: ["removed @other/util"] }],
+    });
     deps.ui.picks = [{ label: "@other/util" }];
     await makeRemoveHandler(deps)();
-    assert.strictEqual(deps.frontend.calls[0].command, "--json tree --direct --project .");
+    assert.strictEqual(
+      deps.frontend.calls[0].command,
+      "--json tree --direct --project .",
+    );
     assert.deepStrictEqual(deps.frontend.calls[1], {
-      command: "--json remove @other/util --registry http://127.0.0.1:8787 --project .",
+      command:
+        "--json remove @other/util --registry http://127.0.0.1:8787 --project .",
       cwd: root,
     });
   });
 
   test("only the client's parsed direct dependencies are offered", async () => {
     const deps = fakeDeps({ manifest });
-    const keys: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      keys.push(...items.map((i) => i.label));
-      return undefined;
-    };
+    const keys = recordQuickPicks(deps, "label");
     await makeRemoveHandler(deps)();
     assert.deepStrictEqual(keys.sort(), ["@demo/pyadd", "@other/util"]);
   });
@@ -160,18 +207,24 @@ suite("package remove command", () => {
   test("a missing manifest is an error, not an empty list", async () => {
     const deps = fakeDeps({ manifest: undefined });
     await makeRemoveHandler(deps)();
-    assert.ok(deps.ui.messages.some((m) => m.includes("osprey.toml")), deps.ui.messages.join("|"));
+    assertMessage(deps, "osprey.toml");
   });
 
   test("a failed remove keeps its reason code and never claims success", async () => {
-    const deps = fakeDeps({ manifest, frontend: [{ status: 1, lines: ["remove.missing @other/util"] }] });
+    const deps = fakeDeps({
+      manifest,
+      frontend: [{ status: 1, lines: ["remove.missing @other/util"] }],
+    });
     deps.ui.picks = [{ label: "@other/util" }];
     await makeRemoveHandler(deps)();
-    assert.ok(deps.ui.messages.some((m) => m.includes("remove.missing")), deps.ui.messages.join("|"));
+    assertMessage(deps, "remove.missing");
   });
 
   test("dirty files and cancellation block the mutation too", async () => {
-    const dirty = fakeDeps({ manifest, dirty: [path.join(root, "osprey.lock")] });
+    const dirty = fakeDeps({
+      manifest,
+      dirty: [path.join(root, "osprey.lock")],
+    });
     dirty.ui.picks = [{ label: "@other/util" }];
     await makeRemoveHandler(dirty)();
     assert.strictEqual(dirty.frontend.calls.length, 0);
@@ -187,34 +240,55 @@ suite("package remove command", () => {
 suite("package command refusal paths", () => {
   test("a failed mutation without details reports that the reason is missing", async () => {
     const deps = fakeDeps({ listing, frontend: [{ status: 1, lines: [] }] });
-    deps.ui.picks = [{ label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" }];
+    deps.ui.picks = [
+      { label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" },
+    ];
     await makeAddHandler(deps)();
-    assert.deepStrictEqual(deps.ui.messages, ["Add @demo/pyadd? Unverified", "Add @demo/pyadd failed: no reason given"]);
+    assert.deepStrictEqual(deps.ui.messages, [
+      "Add @demo/pyadd? Unverified",
+      "Add @demo/pyadd failed: no reason given",
+    ]);
   });
 
   test("a multi-root selection mutates only the chosen project", async () => {
-    const deps = fakeDeps({ projects: [root, spaced], listing, frontend: [okAdd("@demo/pyadd")] });
-    deps.ui.picks = [{ label: "my app", root: spaced }, { label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" }];
+    const deps = fakeDeps({
+      projects: [root, spaced],
+      listing,
+      frontend: [okAdd("@demo/pyadd")],
+    });
+    deps.ui.picks = [
+      { label: "my app", root: spaced },
+      { label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" },
+    ];
     const pick = deps.ui.showQuickPick;
     let choices = 0;
     deps.ui.showQuickPick = async (items) => {
-      if (choices++ === 0) assert.deepStrictEqual(items, [
-        { label: path.basename(root), root }, { label: path.basename(spaced), root: spaced },
-      ]);
+      if (choices++ === 0)
+        assert.deepStrictEqual(items, [
+          { label: path.basename(root), root },
+          { label: path.basename(spaced), root: spaced },
+        ]);
       return pick(items);
     };
     await makeAddHandler(deps)();
     assert.strictEqual(choices, 2);
-    assert.deepStrictEqual(deps.frontend.calls, [{
-      command: "--json add @demo/pyadd --registry http://127.0.0.1:8787 --project .", cwd: spaced,
-    }]);
+    assert.deepStrictEqual(deps.frontend.calls, [
+      {
+        command:
+          "--json add @demo/pyadd --registry http://127.0.0.1:8787 --project .",
+        cwd: spaced,
+      },
+    ]);
   });
 
   test("dismissing the project chooser never reads a registry or mutates", async () => {
     const deps = fakeDeps({ projects: [root, spaced], listing });
     deps.ui.picks = [undefined];
     let fetched = false;
-    deps.fetchListing = async () => { fetched = true; return listing; };
+    deps.fetchListing = async () => {
+      fetched = true;
+      return listing;
+    };
     await makeAddHandler(deps)();
     assert.strictEqual(fetched, false);
     assert.deepStrictEqual(deps.frontend.calls, []);
@@ -223,9 +297,13 @@ suite("package command refusal paths", () => {
 
   test("a registry transport failure is displayed and never launches the client", async () => {
     const deps = fakeDeps({ listing });
-    deps.fetchListing = async () => { throw new Error("connection refused"); };
+    deps.fetchListing = async () => {
+      throw new Error("connection refused");
+    };
     await makeAddHandler(deps)();
-    assert.deepStrictEqual(deps.ui.messages, ["Could not read the registry listing: connection refused"]);
+    assert.deepStrictEqual(deps.ui.messages, [
+      "Could not read the registry listing: connection refused",
+    ]);
     assert.deepStrictEqual(deps.frontend.calls, []);
   });
 
@@ -236,7 +314,10 @@ suite("package command refusal paths", () => {
     ] as const) {
       const deps = fakeDeps({ manifest });
       const calls: string[] = [];
-      deps.frontend.run = async (command) => { calls.push(command); return { status, lines: [...lines] }; };
+      deps.frontend.run = async (command) => {
+        calls.push(command);
+        return { status, lines: [...lines] };
+      };
       await makeRemoveHandler(deps)();
       assert.deepStrictEqual(deps.ui.messages, [expected]);
       assert.deepStrictEqual(calls, ["--json tree --direct --project ."]);
@@ -252,8 +333,13 @@ suite("package command refusal paths", () => {
       return undefined;
     };
     await makeRemoveHandler(deps)();
-    assert.deepStrictEqual(deps.frontend.calls.map((call) => call.command), ["--json tree --direct --project ."]);
-    assert.deepStrictEqual(deps.ui.messages, ["Remove @other/util from osprey.toml and relock?"]);
+    assert.deepStrictEqual(
+      deps.frontend.calls.map((call) => call.command),
+      ["--json tree --direct --project ."],
+    );
+    assert.deepStrictEqual(deps.ui.messages, [
+      "Remove @other/util from osprey.toml and relock?",
+    ]);
   });
 });
 
@@ -302,41 +388,68 @@ suite("command registration", () => {
     const browser = await connectEditorBrowser();
     try {
       const pages = browser.contexts().flatMap((context) => context.pages());
-      assert.ok(pages.some((page) => page.url().includes("/workbench/workbench.html")), "connected to the running editor");
-    } finally { await browser.close(); }
+      assert.ok(
+        pages.some((page) => page.url().includes("/workbench/workbench.html")),
+        "connected to the running editor",
+      );
+    } finally {
+      await browser.close();
+    }
   });
 
   test("real package aliases dispatch to workspace validation", async () => {
     await activateWithServer();
-    assert.strictEqual(workspace.workspaceFolders?.length ?? 0, 0, "isolated host has no open folder");
+    assert.strictEqual(
+      workspace.workspaceFolders?.length ?? 0,
+      0,
+      "isolated host has no open folder",
+    );
     const dispatch = sinon.spy(commands, "executeCommand");
     const errors = sinon.spy(window, "showErrorMessage");
     const uri = Uri.file("/package-alias-e2e/osprey.toml");
     for (const alias of ["osprey.packages.add", "osprey.packages.remove"]) {
       const before = errors.callCount;
       await commands.executeCommand(alias, uri);
-      assert.ok(dispatch.calledWithExactly("osprey.packages.open", uri), `${alias} forwards its URI`);
-      assert.strictEqual(errors.callCount, before + 1, `${alias} reaches real workspace validation`);
-      assert.strictEqual(errors.lastCall.args[0], "Open a workspace folder before managing Osprey packages.");
+      assert.ok(
+        dispatch.calledWithExactly("osprey.packages.open", uri),
+        `${alias} forwards its URI`,
+      );
+      assert.strictEqual(
+        errors.callCount,
+        before + 1,
+        `${alias} reaches real workspace validation`,
+      );
+      assert.strictEqual(
+        errors.lastCall.args[0],
+        "Open a workspace folder before managing Osprey packages.",
+      );
       dispatch.resetHistory();
     }
     await commands.executeCommand("notifications.clearAll");
   });
-
 
   test("registerPackageCommands registers both commands on the real command palette", async () => {
     await activateWithServer();
     const callbacks = new Map<string, (uri?: Uri) => Thenable<unknown>>();
     const forwarded: [string, Uri | undefined][] = [];
     const subscriptions: { dispose(): unknown }[] = [];
-    registerPackageCommands({ subscriptions }, {
-      registerCommand: (id, callback) => {
-        assert.ok(!callbacks.has(id), "each alias is registered once");
-        callbacks.set(id, callback);
-        return { dispose: () => { callbacks.delete(id); } };
+    registerPackageCommands(
+      { subscriptions },
+      {
+        registerCommand: (id, callback) => {
+          assert.ok(!callbacks.has(id), "each alias is registered once");
+          callbacks.set(id, callback);
+          return {
+            dispose: () => {
+              callbacks.delete(id);
+            },
+          };
+        },
+        executeCommand: async (id, uri) => {
+          forwarded.push([id, uri]);
+        },
       },
-      executeCommand: async (id, uri) => { forwarded.push([id, uri]); },
-    });
+    );
     try {
       assert.strictEqual(subscriptions.length, 2);
       const registered = await commands.getCommands(true);
@@ -349,8 +462,13 @@ suite("command registration", () => {
         assert.ok(callback, `${id} callback exists`);
         await callback(uri);
       }
-      assert.deepStrictEqual(forwarded, [["osprey.packages.open", uri], ["osprey.packages.open", uri]]);
-    } finally { subscriptions.forEach((s) => s.dispose()); }
+      assert.deepStrictEqual(forwarded, [
+        ["osprey.packages.open", uri],
+        ["osprey.packages.open", uri],
+      ]);
+    } finally {
+      subscriptions.forEach((s) => s.dispose());
+    }
     assert.strictEqual(callbacks.size, 0, "disposal removes both aliases");
   });
 });
@@ -359,8 +477,11 @@ suite("package queued editor safety", () => {
   test("a manifest dirtied while an operation waits blocks the queued write", async () => {
     const deps = fakeDeps({ listing });
     let dirty = false;
-    deps.dirtyFiles = () => dirty ? [path.join(root, "osprey.toml")] : [];
-    const serialize = async <T>(_root: string, task: () => Promise<T>) => { dirty = true; return task(); };
+    deps.dirtyFiles = () => (dirty ? [path.join(root, "osprey.toml")] : []);
+    const serialize = async <T>(_root: string, task: () => Promise<T>) => {
+      dirty = true;
+      return task();
+    };
     await makeAddHandler(deps, serialize)();
     assert.strictEqual(deps.frontend.calls.length, 0);
     assert.ok(deps.ui.messages.some((message) => /Unsaved/.test(message)));
@@ -373,6 +494,8 @@ suite("package hosted trust boundary", () => {
     deps.registry = () => "https://packages.example";
     await makeAddHandler(deps)();
     assert.strictEqual(deps.frontend.calls.length, 0);
-    assert.ok(deps.ui.messages.some((message) => /security eligibility/.test(message)));
+    assert.ok(
+      deps.ui.messages.some((message) => /security eligibility/.test(message)),
+    );
   });
 });

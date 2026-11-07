@@ -12,37 +12,41 @@ import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
 
 const cases = [
-  ['book chapter and runnable example', ['docs/book/manuscript/04.md', 'docs/book/examples/chapter-04/main.osp'], false, true, false],
-  ['benchmark tooling and data', ['src/toolchain/benchmarks/run.sh', 'src/toolchain/benchmarks/results/results.json'], false, false, true],
-  ['specification prose', ['docs/specs/language/0007-PatternMatching.md'], false, false, false],
-  ['repository prose', ['README.md', 'CLAUDE.md'], false, false, false],
-  ['compiler source', ['src/toolchain/crates/osprey-codegen/src/lib.rs'], true, false, false],
-  ['runtime source', ['src/toolchain/compiler/runtime/random_runtime.c'], true, false, false],
-  ['build orchestration', ['Makefile'], true, false, false],
-  ['included build rules', ['scripts/make/runtime.mk'], true, false, false],
-  ['changed CI classifier', ['scripts/ci/ci-scope.mjs'], true, false, false],
-  ['changed CI workflow', ['.github/workflows/ci.yml'], true, false, false],
-  ['unknown future component', ['new-compiler/main.py'], true, false, false],
-  ['embedded compiler documentation', ['src/toolchain/crates/osprey-cli/assets/help.md'], true, false, false],
-  ['ported package documentation the package suite checks', ['src/osprey/packages/testing/README.md'], true, false, false],
-  ['Python-flavor package regression', ['src/osprey/packages/faiss/tests/main.py'], true, false, false],
-  ['symbolic execution regression', ['scripts/hunt/test-hunt-default-budget.py'], true, false, false],
-  ['GPU regression in both flavors', ['src/osprey/tests/core/gpu/scalar_contracts.test.osp', 'src/osprey/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
-  ['proof kernel sources are compiler code', ['src/osprey/examples/proof/kernel/main.ospml', 'src/osprey/examples/proof/kernel/expectedoutput'], true, false, false],
-  ['proof speed benchmark harness and cases', ['src/toolchain/benchmarks/proof/run.sh', 'src/toolchain/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true],
+  ['book chapter and runnable example', ['docs/book/manuscript/04.md', 'docs/book/examples/chapter-04/main.osp'], false, true, false, true],
+  ['benchmark tooling and data', ['src/toolchain/benchmarks/run.sh', 'src/toolchain/benchmarks/results/results.json'], false, false, true, false],
+  ['specification prose', ['docs/specs/language/0007-PatternMatching.md'], false, false, false, false],
+  ['repository prose', ['README.md', 'CLAUDE.md'], false, false, false, false],
+  ['compiler source', ['src/toolchain/crates/osprey-codegen/src/lib.rs'], true, false, false, false],
+  ['runtime source', ['src/toolchain/compiler/runtime/random_runtime.c'], true, false, false, false],
+  ['build orchestration', ['Makefile'], true, false, false, false],
+  ['included build rules', ['scripts/make/runtime.mk'], true, false, false, false],
+  ['changed CI classifier', ['scripts/ci/ci-scope.mjs'], true, false, false, false],
+  ['changed CI workflow', ['.github/workflows/ci.yml'], true, false, false, false],
+  ['unknown future component', ['new-compiler/main.py'], true, false, false, true],
+  ['embedded compiler documentation', ['src/toolchain/crates/osprey-cli/assets/help.md'], true, false, false, false],
+  ['ported package documentation the package suite checks', ['src/osprey/packages/testing/README.md'], true, false, false, false],
+  ['Python-flavor package regression', ['src/osprey/packages/faiss/tests/main.py'], true, false, false, true],
+  ['symbolic execution regression', ['scripts/hunt/test-hunt-default-budget.py'], true, false, false, true],
+  ['GPU regression in both flavors', ['src/osprey/tests/core/gpu/scalar_contracts.test.osp', 'src/osprey/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false, true],
+  ['proof kernel sources are compiler code', ['src/osprey/examples/proof/kernel/main.ospml', 'src/osprey/examples/proof/kernel/expectedoutput'], true, false, false, true],
+  ['proof speed benchmark harness and cases', ['src/toolchain/benchmarks/proof/run.sh', 'src/toolchain/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true, false],
+  ['benchmark case program only', ['src/toolchain/benchmarks/cases/primes/primes.osp'], false, false, true, true],
+  ['book example program only', ['docs/book/examples/chapter-04/main.osp'], false, true, false, true],
+  ['book prose only', ['docs/book/manuscript/04.md'], false, true, false, false],
+  ['benchmark harness script only', ['src/toolchain/benchmarks/run.sh'], false, false, true, false],
 ]
-for (const [label, files, code, book, benchmarks] of cases) {
-  test(label, () => assert.deepEqual(classify(files), { code, website: false, book, benchmarks }))
+for (const [label, files, code, book, benchmarks, programs] of cases) {
+  test(label, () => assert.deepEqual(classify(files), { code, website: false, book, benchmarks, programs }))
 }
 
 test('website content skips compiler checks but the embedded grammar never does', () => {
-  assert.deepEqual(classify(['src/toolchain/website/src/benchmarks.md']), { code: false, website: true, book: false, benchmarks: false })
+  assert.deepEqual(classify(['src/toolchain/website/src/benchmarks.md']), { code: false, website: true, book: false, benchmarks: false, programs: false })
   assert.equal(classify(['src/toolchain/website/src/js/osprey-grammar.mjs']).code, true)
 })
 
 test('mixed content and compiler changes retain every applicable check', () => {
   assert.deepEqual(classify(['docs/book/book.json', 'src/toolchain/benchmarks/run.sh', 'src/toolchain/compiler/runtime/memory.c']),
-    { code: true, website: false, book: true, benchmarks: true })
+    { code: true, website: false, book: true, benchmarks: true, programs: false })
 })
 
 test('all workflows use the shared classifier and content checks remain required', () => {
@@ -53,6 +57,19 @@ test('all workflows use the shared classifier and content checks remain required
   assert.match(linux, /python3 src\/toolchain\/benchmarks\/test_merge_results.py --tooling-only/)
   assert.match(linux, /make -C docs\/book check-examples/)
   assert.match(linux, /make -C docs\/book check\n/)
+})
+
+// [CI-PROGRAMS-COMPILE] A PR changing only Osprey programs (book examples,
+// benchmark cases) is not a code change, yet the compile-everything gate must
+// still compile it: both gating jobs read the programs output.
+test('build and check-programs gate on the programs output too', () => {
+  const linux = readFileSync('.github/workflows/ci.yml', 'utf8')
+  for (const name of ['build', 'check-programs']) {
+    const conditional = job(name, '.github/workflows/ci.yml').match(/^    if: (.+)$/m)[1]
+    assert.match(conditional, /needs\.changes\.outputs\.programs/, name)
+    assert.match(conditional, /needs\.changes\.outputs\.code == 'true'/, name)
+  }
+  assert.match(linux, /^      programs: \$\{\{ steps\.filter\.outputs\.programs \}\}$/m)
 })
 
 test('extension tests receive and reuse the build job\'s complete bundle', () => {
@@ -99,7 +116,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C src/toolchain/targets ios-test mobile-ios-test', 'make -C src/toolchain/targets macos-test', 'make -C src/toolchain/targets bank-ios-test',
+  for (const command of ['make -C src/toolchain/targets/ios/tests examples inbox', 'make -C src/toolchain/targets/macos/tests examples', 'make -C src/toolchain/targets/ios/tests bank',
     'bash src/osprey/workbench/hosts/apple/run.sh --build', 'swift test --package-path src/osprey/workbench/hosts/apple']) {
     assert.ok(apple.includes(command), command)
   }
@@ -167,7 +184,7 @@ test('malformed detection input fails the gate instead of skipping required jobs
     assert.notEqual(run('docs/book/book.json').status, 0)
     const paths = Array.from({ length: 8000 }, (_, index) => `docs/book/manuscript/chapter ${index}.md`)
     assert.equal(run(`${paths.join('\0')}\0`).status, 0)
-    assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\n$/)
+    assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\nprograms=false\n$/)
   } finally { rmSync(temporary, { recursive: true }) }
 })
 
@@ -516,4 +533,11 @@ test('branch protection distinguishes staging automation from main CI without ex
   assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - dependabot-upgrades\r\n'), false)
   assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches: [dependabot-upgrades]\r\n'), false)
   assert.equal(targetsMainPullRequests('on:\r\n  pull_request:\r\n    branches:\r\n      - main\r\n'), true)
+})
+
+test('the detect-ci-scope action exposes every scope key classify returns', () => {
+  const action = readFileSync('.github/actions/detect-ci-scope/action.yml', 'utf8')
+  for (const key of Object.keys(classify(['x']))) {
+    assert.match(action, new RegExp(`^  ${key}:\\n[^\\n]*\\n    value: \\$\\{\\{ steps\\.scope\\.outputs\\.${key} \\}\\}$`, 'm'))
+  }
 })

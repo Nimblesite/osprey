@@ -4,6 +4,36 @@
 runtimeValue n = n
 negateValue n = -n
 
+(** The maximum value, reached through the runtime call. *)
+maxValue () = runtimeValue 9223372036854775807
+
+(** A sweep index left-padded to two digits. *)
+twoDigits n = match n < 10
+    true => "0${toString n}"
+    false => toString n
+
+(** The three-digit case suffix each sweep index carries, for indices 1..15. *)
+caseSuffix n = "0${twoDigits n}"
+
+(** A checked row for one plain negation, which never faults. *)
+negated (x, want) = verify ((\() => -(x)), want, "")
+
+(** A checked row for one doubled negation, which never faults. *)
+doubleNegated (x, want) = verify ((\() => -(-(x))), want, "")
+
+(** A checked row for the magnitude of a plain literal, which never faults. *)
+magnitude (x, want) = verify ((\() => (abs (x))), want, "")
+
+(** A checked row for the magnitude of a negated literal, which never faults. *)
+magnitudeOfNegated (x, want) = verify ((\() => (abs (-(x)))), want, "")
+
+(** The ordered two-fault paths, one helper per repeated fault pair. *)
+overflowThenDivision delta = verify ((\() => ((maxValue () + delta) + (delta / 0))), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
+remainderThenOverflow delta = verify ((\() => ((delta % 0) * (maxValue () + delta))), 0, "remainder(${delta});overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});")
+multiplyThenRemainder () = verify ((\() => ((maxValue () * 2) % 0)), 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);")
+divisionThenMultiply delta = verify ((\() => ((delta / 0) + (maxValue () * 2))), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
+lateOverflowThenRemainder delta = verify ((\() => ((((maxValue () - delta) + delta) + 1) * (delta % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
+
 verify (work, expected, wantedFaults) =
     mut faults = ""
     handle Arith
@@ -26,46 +56,68 @@ choose (work, replacement) =
             replacement
     work ()
 
-test "unary negation 001" (\() => verify ((\() => -(1)), -1, ""))
-test "double unary negation 001" (\() => verify ((\() => -(-(1))), 1, ""))
-test "unary negation 002" (\() => verify ((\() => -(2)), -2, ""))
-test "double unary negation 002" (\() => verify ((\() => -(-(2))), 2, ""))
-test "unary negation 003" (\() => verify ((\() => -(3)), -3, ""))
-test "double unary negation 003" (\() => verify ((\() => -(-(3))), 3, ""))
-test "unary negation 004" (\() => verify ((\() => -(4)), -4, ""))
-test "double unary negation 004" (\() => verify ((\() => -(-(4))), 4, ""))
-test "unary negation 005" (\() => verify ((\() => -(5)), -5, ""))
-test "double unary negation 005" (\() => verify ((\() => -(-(5))), 5, ""))
-test "unary negation 006" (\() => verify ((\() => -(6)), -6, ""))
-test "double unary negation 006" (\() => verify ((\() => -(-(6))), 6, ""))
-test "unary negation 007" (\() => verify ((\() => -(7)), -7, ""))
-test "double unary negation 007" (\() => verify ((\() => -(-(7))), 7, ""))
-test "unary negation 008" (\() => verify ((\() => -(8)), -8, ""))
-test "double unary negation 008" (\() => verify ((\() => -(-(8))), 8, ""))
-test "unary negation 009" (\() => verify ((\() => -(9)), -9, ""))
-test "double unary negation 009" (\() => verify ((\() => -(-(9))), 9, ""))
-test "unary negation 010" (\() => verify ((\() => -(10)), -10, ""))
-test "double unary negation 010" (\() => verify ((\() => -(-(10))), 10, ""))
-test "absolute positive 001" (\() => verify ((\() => (abs (1))), 1, ""))
-test "absolute negative 001" (\() => verify ((\() => (abs (-(1)))), 1, ""))
-test "absolute positive 002" (\() => verify ((\() => (abs (2))), 2, ""))
-test "absolute negative 002" (\() => verify ((\() => (abs (-(2)))), 2, ""))
-test "absolute positive 003" (\() => verify ((\() => (abs (3))), 3, ""))
-test "absolute negative 003" (\() => verify ((\() => (abs (-(3)))), 3, ""))
-test "absolute positive 004" (\() => verify ((\() => (abs (4))), 4, ""))
-test "absolute negative 004" (\() => verify ((\() => (abs (-(4)))), 4, ""))
-test "absolute positive 005" (\() => verify ((\() => (abs (5))), 5, ""))
-test "absolute negative 005" (\() => verify ((\() => (abs (-(5)))), 5, ""))
-test "absolute positive 006" (\() => verify ((\() => (abs (6))), 6, ""))
-test "absolute negative 006" (\() => verify ((\() => (abs (-(6)))), 6, ""))
-test "absolute positive 007" (\() => verify ((\() => (abs (7))), 7, ""))
-test "absolute negative 007" (\() => verify ((\() => (abs (-(7)))), 7, ""))
-test "absolute positive 008" (\() => verify ((\() => (abs (8))), 8, ""))
-test "absolute negative 008" (\() => verify ((\() => (abs (-(8)))), 8, ""))
-test "absolute positive 009" (\() => verify ((\() => (abs (9))), 9, ""))
-test "absolute negative 009" (\() => verify ((\() => (abs (-(9)))), 9, ""))
-test "absolute positive 010" (\() => verify ((\() => (abs (10))), 10, ""))
-test "absolute negative 010" (\() => verify ((\() => (abs (-(10)))), 10, ""))
+(** Deltas 001..004 of the ordered two-fault pairs, in original case order. *)
+twoFaultSweep () =
+    _ = forEachList (toList (range 1 5)) (\delta =>
+        suffix = caseSuffix delta
+        test "overflow precedes division error ${suffix}" (\() => overflowThenDivision delta)
+        test "remainder error precedes overflow ${suffix}" (\() => remainderThenOverflow delta)
+        test "multiply overflow precedes remainder error ${suffix}" (\() => multiplyThenRemainder ())
+        test "division error precedes multiply overflow ${suffix}" (\() => divisionThenMultiply delta)
+        test "late maximum overflow dispatches before right fault ${suffix}" (\() => lateOverflowThenRemainder delta))
+
+(** Indices 001..010 of the nested-policy pairs, healthy case first in each. *)
+policySweep () =
+    _ = forEachList (toList (range 1 11)) (\k =>
+        suffix = caseSuffix k
+        leftOperand = satMul k 4
+        rightOperand = satAdd k 2
+        sum = satAdd leftOperand rightOperand
+        replacement = satAdd k 900
+        test "healthy arithmetic bypasses nested policy ${suffix}" (\() => verify ((\() => choose ((\() => leftOperand + rightOperand), sum)), sum, ""))
+        test "nested overflow policy ${suffix}" (\() => verify ((\() => choose ((\() => maxValue () + k), replacement)), replacement, "overflow(+,9223372036854775807,${k},${wrapAdd(9223372036854775807, k)});")))
+
+test "unary negation 001" (\() => negated (1, -1))
+test "double unary negation 001" (\() => doubleNegated (1, 1))
+test "unary negation 002" (\() => negated (2, -2))
+test "double unary negation 002" (\() => doubleNegated (2, 2))
+test "unary negation 003" (\() => negated (3, -3))
+test "double unary negation 003" (\() => doubleNegated (3, 3))
+test "unary negation 004" (\() => negated (4, -4))
+test "double unary negation 004" (\() => doubleNegated (4, 4))
+test "unary negation 005" (\() => negated (5, -5))
+test "double unary negation 005" (\() => doubleNegated (5, 5))
+test "unary negation 006" (\() => negated (6, -6))
+test "double unary negation 006" (\() => doubleNegated (6, 6))
+test "unary negation 007" (\() => negated (7, -7))
+test "double unary negation 007" (\() => doubleNegated (7, 7))
+test "unary negation 008" (\() => negated (8, -8))
+test "double unary negation 008" (\() => doubleNegated (8, 8))
+test "unary negation 009" (\() => negated (9, -9))
+test "double unary negation 009" (\() => doubleNegated (9, 9))
+test "unary negation 010" (\() => negated (10, -10))
+test "double unary negation 010" (\() => doubleNegated (10, 10))
+test "absolute positive 001" (\() => magnitude (1, 1))
+test "absolute negative 001" (\() => magnitudeOfNegated (1, 1))
+test "absolute positive 002" (\() => magnitude (2, 2))
+test "absolute negative 002" (\() => magnitudeOfNegated (2, 2))
+test "absolute positive 003" (\() => magnitude (3, 3))
+test "absolute negative 003" (\() => magnitudeOfNegated (3, 3))
+test "absolute positive 004" (\() => magnitude (4, 4))
+test "absolute negative 004" (\() => magnitudeOfNegated (4, 4))
+test "absolute positive 005" (\() => magnitude (5, 5))
+test "absolute negative 005" (\() => magnitudeOfNegated (5, 5))
+test "absolute positive 006" (\() => magnitude (6, 6))
+test "absolute negative 006" (\() => magnitudeOfNegated (6, 6))
+test "absolute positive 007" (\() => magnitude (7, 7))
+test "absolute negative 007" (\() => magnitudeOfNegated (7, 7))
+test "absolute positive 008" (\() => magnitude (8, 8))
+test "absolute negative 008" (\() => magnitudeOfNegated (8, 8))
+test "absolute positive 009" (\() => magnitude (9, 9))
+test "absolute negative 009" (\() => magnitudeOfNegated (9, 9))
+test "absolute positive 010" (\() => magnitude (10, 10))
+test "absolute negative 010" (\() => magnitudeOfNegated (10, 10))
+
 test "mixed integer value chain 001" (\() => verify ((\() => (((((11 + 3) * 4) - 1) % 6) + 8)), 9, ""))
 test "mixed integer value chain 002" (\() => verify ((\() => (((((12 + 4) * 5) - 2) % 7) + 9)), 10, ""))
 test "mixed integer value chain 003" (\() => verify ((\() => (((((13 + 5) * 6) - 3) % 8) + 10)), 11, ""))
@@ -86,46 +138,10 @@ test "mixed float value chain 007" (\() => verify ((\() => ((72 / 8) + 11.0)), 2
 test "mixed float value chain 008" (\() => verify ((\() => ((90 / 9) + 12.0)), 22.0, ""))
 test "mixed float value chain 009" (\() => verify ((\() => ((110 / 10) + 13.0)), 24.0, ""))
 test "mixed float value chain 010" (\() => verify ((\() => ((132 / 11) + 14.0)), 26.0, ""))
-test "overflow precedes division error 001" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) + 1) + (1 / 0))), -9223372036854775808.0, "overflow(+,9223372036854775807,1,-9223372036854775808);zero(/,1.0);"))
-test "remainder error precedes overflow 001" (\() => verify ((\() => ((1 % 0) * ((runtimeValue (9223372036854775807)) + 1))), 0, "remainder(1);overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test "multiply overflow precedes remainder error 001" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) * 2) % 0)), 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);"))
-test "division error precedes multiply overflow 001" (\() => verify ((\() => ((1 / 0) + ((runtimeValue (9223372036854775807)) * 2))), -2.5, "zero(/,1.0);overflow(*,9223372036854775807,2,-2);"))
-test "late maximum overflow dispatches before right fault 001" (\() => verify ((\() => (((((runtimeValue (9223372036854775807)) - 1) + 1) + 1) * (1 % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(1);"))
-test "overflow precedes division error 002" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) + 2) + (2 / 0))), -9223372036854775808.0, "overflow(+,9223372036854775807,2,-9223372036854775807);zero(/,2.0);"))
-test "remainder error precedes overflow 002" (\() => verify ((\() => ((2 % 0) * ((runtimeValue (9223372036854775807)) + 2))), 0, "remainder(2);overflow(+,9223372036854775807,2,-9223372036854775807);"))
-test "multiply overflow precedes remainder error 002" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) * 2) % 0)), 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);"))
-test "division error precedes multiply overflow 002" (\() => verify ((\() => ((2 / 0) + ((runtimeValue (9223372036854775807)) * 2))), -2.5, "zero(/,2.0);overflow(*,9223372036854775807,2,-2);"))
-test "late maximum overflow dispatches before right fault 002" (\() => verify ((\() => (((((runtimeValue (9223372036854775807)) - 2) + 2) + 1) * (2 % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(2);"))
-test "overflow precedes division error 003" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) + 3) + (3 / 0))), -9223372036854775808.0, "overflow(+,9223372036854775807,3,-9223372036854775806);zero(/,3.0);"))
-test "remainder error precedes overflow 003" (\() => verify ((\() => ((3 % 0) * ((runtimeValue (9223372036854775807)) + 3))), 0, "remainder(3);overflow(+,9223372036854775807,3,-9223372036854775806);"))
-test "multiply overflow precedes remainder error 003" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) * 2) % 0)), 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);"))
-test "division error precedes multiply overflow 003" (\() => verify ((\() => ((3 / 0) + ((runtimeValue (9223372036854775807)) * 2))), -2.5, "zero(/,3.0);overflow(*,9223372036854775807,2,-2);"))
-test "late maximum overflow dispatches before right fault 003" (\() => verify ((\() => (((((runtimeValue (9223372036854775807)) - 3) + 3) + 1) * (3 % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(3);"))
-test "overflow precedes division error 004" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) + 4) + (4 / 0))), -9223372036854775808.0, "overflow(+,9223372036854775807,4,-9223372036854775805);zero(/,4.0);"))
-test "remainder error precedes overflow 004" (\() => verify ((\() => ((4 % 0) * ((runtimeValue (9223372036854775807)) + 4))), 0, "remainder(4);overflow(+,9223372036854775807,4,-9223372036854775805);"))
-test "multiply overflow precedes remainder error 004" (\() => verify ((\() => (((runtimeValue (9223372036854775807)) * 2) % 0)), 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);"))
-test "division error precedes multiply overflow 004" (\() => verify ((\() => ((4 / 0) + ((runtimeValue (9223372036854775807)) * 2))), -2.5, "zero(/,4.0);overflow(*,9223372036854775807,2,-2);"))
-test "late maximum overflow dispatches before right fault 004" (\() => verify ((\() => (((((runtimeValue (9223372036854775807)) - 4) + 4) + 1) * (4 % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(4);"))
-test "healthy arithmetic bypasses nested policy 001" (\() => verify ((\() => choose (\() => (4 + 3), 7)), 7, ""))
-test "nested overflow policy 001" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 1), 901)), 901, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test "healthy arithmetic bypasses nested policy 002" (\() => verify ((\() => choose (\() => (8 + 4), 12)), 12, ""))
-test "nested overflow policy 002" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 2), 902)), 902, "overflow(+,9223372036854775807,2,-9223372036854775807);"))
-test "healthy arithmetic bypasses nested policy 003" (\() => verify ((\() => choose (\() => (12 + 5), 17)), 17, ""))
-test "nested overflow policy 003" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 3), 903)), 903, "overflow(+,9223372036854775807,3,-9223372036854775806);"))
-test "healthy arithmetic bypasses nested policy 004" (\() => verify ((\() => choose (\() => (16 + 6), 22)), 22, ""))
-test "nested overflow policy 004" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 4), 904)), 904, "overflow(+,9223372036854775807,4,-9223372036854775805);"))
-test "healthy arithmetic bypasses nested policy 005" (\() => verify ((\() => choose (\() => (20 + 7), 27)), 27, ""))
-test "nested overflow policy 005" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 5), 905)), 905, "overflow(+,9223372036854775807,5,-9223372036854775804);"))
-test "healthy arithmetic bypasses nested policy 006" (\() => verify ((\() => choose (\() => (24 + 8), 32)), 32, ""))
-test "nested overflow policy 006" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 6), 906)), 906, "overflow(+,9223372036854775807,6,-9223372036854775803);"))
-test "healthy arithmetic bypasses nested policy 007" (\() => verify ((\() => choose (\() => (28 + 9), 37)), 37, ""))
-test "nested overflow policy 007" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 7), 907)), 907, "overflow(+,9223372036854775807,7,-9223372036854775802);"))
-test "healthy arithmetic bypasses nested policy 008" (\() => verify ((\() => choose (\() => (32 + 10), 42)), 42, ""))
-test "nested overflow policy 008" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 8), 908)), 908, "overflow(+,9223372036854775807,8,-9223372036854775801);"))
-test "healthy arithmetic bypasses nested policy 009" (\() => verify ((\() => choose (\() => (36 + 11), 47)), 47, ""))
-test "nested overflow policy 009" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 9), 909)), 909, "overflow(+,9223372036854775807,9,-9223372036854775800);"))
-test "healthy arithmetic bypasses nested policy 010" (\() => verify ((\() => choose (\() => (40 + 12), 52)), 52, ""))
-test "nested overflow policy 010" (\() => verify ((\() => choose (\() => ((runtimeValue (9223372036854775807)) + 10), 910)), 910, "overflow(+,9223372036854775807,10,-9223372036854775799);"))
+
+twoFaultSweep ()
+policySweep ()
+
 test "policy observes arithmetic value and faults 001" (\() => verify ((\() => (10 + 3)), 13, ""))
 test "policy observes arithmetic value and faults 002" (\() => verify ((\() => (20 + 4)), 24, ""))
 test "policy observes arithmetic value and faults 003" (\() => verify ((\() => (30 + 5)), 35, ""))
@@ -138,3 +154,4 @@ test "policy observes arithmetic value and faults 009" (\() => verify ((\() => (
 test "policy observes arithmetic value and faults 010" (\() => verify ((\() => (10 / 0)), -0.5, "zero(/,10.0);"))
 test "literal negation is a plain int" (\() => verify ((\() => -(7)), -7, ""))
 test "runtime negation is a plain int" (\() => verify ((\() => (negateValue (7))), -7, ""))
+

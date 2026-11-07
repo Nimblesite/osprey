@@ -4,6 +4,18 @@ use super::{
     EffectScope, HashMap, Position, Type, TypeError, TypeParam, TypeVariant,
 };
 
+/// Record one supplied effect argument, in written order, and bind it to the
+/// declaration's parameter.
+fn bind_effect_argument(
+    resolved: Type,
+    parameter: &str,
+    args: &mut Vec<Type>,
+    bindings: &mut HashMap<String, Type>,
+) {
+    args.push(resolved.clone());
+    let _ = bindings.insert(parameter.to_owned(), resolved);
+}
+
 impl Checker {
     /// Registers constructor fields before body inference, including fields
     /// that refer to their own or another declared union [TYPE-UNION-REC].
@@ -108,9 +120,7 @@ impl Checker {
                 .get(index)
                 .cloned()
                 .unwrap_or_else(|| self.ctx.fresh());
-            let v = self.resolve_effect_argument(v);
-            args.push(v.clone());
-            let _ = pmap.insert(p.clone(), v);
+            bind_effect_argument(self.resolve_effect_argument(v), p, &mut args, &mut pmap);
         }
         Some((args, Self::instantiate_ops(&info, &pmap)))
     }
@@ -178,9 +188,7 @@ impl Checker {
                 Some(te) => self.written_type_argument(te, fn_typarams, position),
                 None => self.ctx.fresh(),
             };
-            let t = self.resolve_effect_argument(t);
-            args.push(t.clone());
-            let _ = pmap.insert(p.clone(), t);
+            bind_effect_argument(self.resolve_effect_argument(t), p, &mut args, &mut pmap);
         }
         Some(EffectScope {
             name: row.name.clone(),

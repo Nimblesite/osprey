@@ -115,14 +115,12 @@ module Simulation
 
     boundedSize count = Pick::either (count < 1, 1000, Pick::either (count > 20000, 20000, count))
 
-    squared (x, y) = x * x + y * y
-
-    magnitude (x, y) = sqrt (squared (x, y))
+    magnitude (x, y) = sqrt (Steering::squared (x, y))
 
     bounded (x, y, high) =
         handle Arith
             divideByZero _ dividend => dividend
-        match squared (x, y) > high * high
+        match Steering::squared (x, y) > high * high
             true => Vector(vectorX = x * high / magnitude (x, y), vectorY = y * high / magnitude (x, y))
             false => Vector(vectorX = x, vectorY = y)
 
@@ -130,7 +128,7 @@ module Simulation
     speed (x, y) =
         handle Arith
             divideByZero _ dividend => dividend
-        match squared (x, y) == 0.0
+        match Steering::squared (x, y) == 0.0
             true => Vector(vectorX = 0.5, vectorY = 0.0)
             false =>
                 pace = magnitude (x, y)
@@ -146,14 +144,17 @@ module Simulation
 
     cellIndex (cx, cy) = satAdd (satMul (satAdd cy 1) 23) (satAdd cx 1)
 
+    // A position with no bird there reads as still at the origin.
+    still () = Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+
     // Each bird's code is its cell index times 32768 plus its own index, so one integer sort groups the flock by cell.
     code (birds, i) =
-        b = listGet birds i ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+        b = listGet birds i ?: still ()
         satAdd (satMul (cellIndex (cell b.birdX, cell b.birdY)) 32768) i
 
     cellOf value = intDiv value 32768
 
-    birdOf (birds, value) = listGet birds (satSub value (satMul (cellOf value) 32768)) ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+    birdOf (birds, value) = listGet birds (satSub value (satMul (cellOf value) 32768)) ?: still ()
 
     // Where each cell's run begins in the sorted flock: every cell up to this bird's starts at its position.
     opened (starts, position, value) = range (length starts, satAdd (cellOf value) 1) |> fold starts (\(out, _) => listAppend out position)
@@ -178,7 +179,7 @@ module Simulation
     wrapY value = clamp (value, 0.0, 200.0)
 
     closer (hawk, found, b) =
-        distance = squared (hawk.hawkX - b.birdX, hawk.hawkY - b.birdY)
+        distance = Steering::squared (hawk.hawkX - b.birdX, hawk.hawkY - b.birdY)
         match distance < found.nearestDistance
             true => Nearest(nearestBird = b, nearestDistance = distance)
             false => found
@@ -189,7 +190,7 @@ module Simulation
         delta = bounded (found.nearestBird.birdX - hawk.hawkX, found.nearestBird.birdY - hawk.hawkY, 0.9)
         Hawk(hawkX = hawk.hawkX + delta.vectorX * elapsed * 60.0, hawkY = hawk.hawkY + delta.vectorY * elapsed * 60.0)
 
-    nearHawk (b, hawk) = squared (b.birdX - hawk.hawkX, b.birdY - hawk.hawkY) <= 4.0
+    nearHawk (b, hawk) = Steering::squared (b.birdX - hawk.hawkX, b.birdY - hawk.hawkY) <= 4.0
 
     taken (b, hawks) = length (filterList (hawks, \hawk => nearHawk (b, hawk))) > 0
 
@@ -347,13 +348,16 @@ module Simulation
 
     heldJson held = JsonObject [Doc::bit ("left", held.heldLeft), Doc::bit ("right", held.heldRight), Doc::bit ("up", held.heldUp), Doc::bit ("down", held.heldDown)]
 
+    // The player's input and target as JSON members; both encoders carry them so a restored frame resumes exactly.
+    intentJson world = [JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive)]
+
     // Change detection must not encode five thousand birds twice per frame: every frame moves the
     // flock, so the clock fields alone say the world changed, and the scalars cover input and rounds.
     (** The world's scalar fields and counts, cheap to encode, differing whenever the world differs. *)
-    export worldStamp world = JsonObject [Doc::num ("frames", world.frameCount), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), Doc::num ("birds", length world.birds), Doc::num ("hawks", length world.hawks), Doc::num ("fps", world.fps), JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY), JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive)]
+    export worldStamp world = JsonObject (listConcat [Doc::num ("frames", world.frameCount), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), Doc::num ("birds", length world.birds), Doc::num ("hawks", length world.hawks), Doc::num ("fps", world.fps), JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)] (intentJson world))
 
     (** The world slice as compact, completely restorable JSON. *)
-    export worldJson world = JsonObject [JsonMember "birds" (JsonArray (mapList (world.birds, birdJson))), JsonMember "hawks" (JsonArray (mapList (world.hawks, hawkJson))), JsonMember "player" (JsonObject [JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)]), JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("frames", world.frameCount), Doc::num ("fps", world.fps)]
+    export worldJson world = JsonObject (listConcat (listConcat [JsonMember "birds" (JsonArray (mapList (world.birds, birdJson))), JsonMember "hawks" (JsonArray (mapList (world.hawks, hawkJson))), JsonMember "player" (JsonObject [JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)])] (intentJson world)) [Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("frames", world.frameCount), Doc::num ("fps", world.fps)])
 
     (** The settings slice as JSON for change detection and persistence. *)
     export settingsJson settings = JsonObject [Doc::num ("flockSize", settings.flockSize), Doc::bit ("sound", settings.soundOn), Doc::bit ("paused", settings.paused)]

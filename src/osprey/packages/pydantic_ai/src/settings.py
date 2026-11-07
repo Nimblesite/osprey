@@ -10,6 +10,8 @@ CPython; here it is a JSON-valued map with the same keys (`max_tokens`,
 CPython's `None`.
 """
 
+from pydantic_ai import JsonUtil as J
+
 __all__ = ["ModelSettings", "model_settings", "merge_model_settings", "setting_int", "setting_float", "setting_text", "has_setting"]
 
 type ModelSettings = dict[str, Json]
@@ -32,23 +34,21 @@ def has_setting(settings, key) -> bool:
     return mapContains(settings, key)
 
 
+def setting(settings, key):
+    """The value under `key`, JSON null when absent (CPython's `None`)."""
+    return unwrap_or(mapGet(settings, key), JsonNull())
+
+
 def setting_int(settings, key, fallback) -> int:
     """The integer setting under `key`, `fallback` when absent or not an integer."""
-    return unwrap_or(jsonInt(unwrap_or(mapGet(settings, key), JsonNull())), fallback)
+    return unwrap_or(jsonInt(setting(settings, key)), fallback)
 
 
 def setting_float(settings, key, fallback) -> float:
     """The number setting under `key`, `fallback` when absent or not a number."""
-    value = unwrap_or(mapGet(settings, key), JsonNull())
-    match value:
-        case JsonInt(i):
-            return toFloat(i)
-        case JsonFloat(f):
-            return f
-        case _:
-            return fallback
+    return J.number(setting(settings, key), fallback)
 
 
 def setting_text(settings, key, fallback) -> str:
     """The string setting under `key`, `fallback` when absent or not a string."""
-    return unwrap_or(jsonText(unwrap_or(mapGet(settings, key), JsonNull())), fallback)
+    return unwrap_or(jsonText(setting(settings, key)), fallback)

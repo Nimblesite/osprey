@@ -5,6 +5,28 @@ use super::{
 };
 
 impl Analyzer<'_> {
+    /// The row a method call's own subexpressions contribute: its receiver,
+    /// its positional arguments and its named arguments.
+    fn method_children(
+        &self,
+        parts: &crate::methods::Parts<'_>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
+        let mut out = self.expression(parts.target, scope, env);
+        out.union(self.expressions(parts.arguments, scope, env));
+        out.union(self.named_expressions(parts.named, scope, env));
+        out
+    }
+
+    /// The method spelled as a free function call, its receiver first.
+    fn method_as_function<'a>(parts: &crate::methods::Parts<'a>) -> (Expr, ExprArgs<'a>) {
+        (
+            Expr::Identifier(parts.method.to_owned()),
+            Self::receiver_first(parts.target, parts.arguments),
+        )
+    }
+
     pub(super) fn method_call(
         &self,
         expression: &Expr,
@@ -15,9 +37,7 @@ impl Analyzer<'_> {
         let site = std::ptr::from_ref(expression).addr();
         let mut out = match self.instances.methods.get(&site) {
             Some(crate::methods::Target::Field(field)) => {
-                let mut out = self.expression(parts.target, scope, env);
-                out.union(self.expressions(parts.arguments, scope, env));
-                out.union(self.named_expressions(parts.named, scope, env));
+                let mut out = self.method_children(parts, scope, env);
                 let projected = self
                     .value(parts.target, scope, env)
                     .and_then(|value| project_field(value, field));
@@ -35,9 +55,7 @@ impl Analyzer<'_> {
                 out
             }
             Some(crate::methods::Target::Deferred(field)) => {
-                let mut out = self.expression(parts.target, scope, env);
-                out.union(self.expressions(parts.arguments, scope, env));
-                out.union(self.named_expressions(parts.named, scope, env));
+                let mut out = self.method_children(parts, scope, env);
                 let callee = self
                     .deferred_method(parts, field, scope, env)
                     .and_then(|value| value.callable);
@@ -48,13 +66,10 @@ impl Analyzer<'_> {
                 }
                 out
             }
-            Some(crate::methods::Target::Function) | None => self.call(
-                &Expr::Identifier(parts.method.to_owned()),
-                Self::receiver_first(parts.target, parts.arguments),
-                parts.named,
-                scope,
-                env,
-            ),
+            Some(crate::methods::Target::Function) | None => {
+                let (function, arguments) = Self::method_as_function(parts);
+                self.call(&function, arguments, parts.named, scope, env)
+            }
         };
         if let Some(bindings) = self.instances.instantiations.get(&site) {
             specialize_summary(&mut out, bindings);
@@ -69,8 +84,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        let function = Expr::Identifier(parts.method.to_owned());
-        let arguments = Self::receiver_first(parts.target, parts.arguments);
+        let (function, arguments) = Self::method_as_function(parts);
         let fallback = method_thunk(
             self.call_effects(&function, arguments, parts.named, scope, env),
             self.call_value(&function, arguments, parts.named, scope, env),
@@ -166,13 +180,8 @@ impl Analyzer<'_> {
                 .deferred_method(parts, field, scope, env)
                 .and_then(|value| self.project_returned(value)),
             Some(crate::methods::Target::Function) | None => {
-                return self.call_value(
-                    &Expr::Identifier(parts.method.to_owned()),
-                    Self::receiver_first(parts.target, parts.arguments),
-                    parts.named,
-                    scope,
-                    env,
-                )
+                let (function, arguments) = Self::method_as_function(parts);
+                return self.call_value(&function, arguments, parts.named, scope, env);
             }
         };
         returned.map(|value| Self::resolve_handled_value(value, &env.handler_returns))

@@ -64,14 +64,6 @@ package-coverage-record:
 fastapi-e2e:
 	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/e2e.cpython
 
-
-## fastapi-benchmark: Compare routing and IDP body binding against pinned CPython
-##                    FastAPI. GC/ARC, fresh connections, five trials;
-##                    results in target/fastapi/benchmark/results.json. Informational.
-.PHONY: fastapi-benchmark
-fastapi-benchmark:
-	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/benchmark.cpython
-
 .PHONY: registry-test registry-serve registry-serve-sample registry-blockers
 
 ## registry-test: Run the Osprey package-system suites.

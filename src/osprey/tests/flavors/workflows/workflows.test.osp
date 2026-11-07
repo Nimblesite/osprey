@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // High-density interaction suite moved from curry_tour, mixed, and
 // results_state_hof. It deliberately keeps cross-feature behavior together.
 
@@ -61,26 +42,15 @@ fn curryTourCase() = {
     ])
     // Split all eleven dynamic values from the five legacy lines.
     checkAll("curry tour legacy constituent values", [
-            base == 42,
-            tourInc(base) == 43,
-            tourSquare(9) == 81,
-            scaled(7) == 21,
-            tourAdd(5)(6) == 11,
-            tourName(0) == "zero",
-            tourName(1) == "one",
-            tourName(9) == "9",
-            tourParity(7) == "odd",
-            tourParity(8) == "even",
-            (10 |> tourInc |> tourSquare) == 121
+            structuralEquals([base, tourInc(base), tourSquare(9)], [42, 43, 81]),
+            structuralEquals([scaled(7), tourAdd(5)(6), (10 |> tourInc |> tourSquare)], [21, 11, 121]),
+            structuralEquals([tourName(0), tourName(1), tourName(9)], ["zero", "one", "9"]),
+            structuralEquals([tourParity(7), tourParity(8)], ["odd", "even"])
     ])
     // Extend zero, wildcard, closure, parity, and intermediate-pipe coverage.
     checkAll("curry tour cross-feature edges", [
-            tourInc(0) == 1,
-            tourSquare(0) == 0,
-            tourMakeScaler(0)(9) == 0,
-            tourName(2) == "2",
-            tourParity(0) == "even",
-            (10 |> tourInc) == 11
+            structuralEquals([tourInc(0), tourSquare(0), tourMakeScaler(0)(9), (10 |> tourInc)], [1, 0, 0, 11]),
+            structuralEquals([tourName(2), tourParity(0)], ["2", "even"])
     ])
 }
 
@@ -108,18 +78,13 @@ fn mixedFeaturesCase() = {
     ])
     // Split all four dynamic values from the combined line.
     checkAll("mixed features legacy constituent values", [
-            triple(base) == 21,
-            piped == 9,
-            mixedSign(base) == "pos",
-            triple(mixedStep(base)) == 24
+            structuralEquals([triple(base), piped, triple(mixedStep(base))], [21, 9, 24]),
+            mixedSign(base) == "pos"
     ])
     // Extend sign boundaries, closure factors, and intermediate pipeline state.
     checkAll("mixed features interaction edges", [
-            mixedSign(0) == "pos",
-            mixedSign((0 - 1) ) == "neg",
-            mixedScale(0)(99) == 0,
-            (base |> mixedStep) == 8,
-            mixedScale(2)(5) == 10
+            structuralEquals([mixedSign(0), mixedSign((0 - 1) )], ["pos", "neg"]),
+            structuralEquals([mixedScale(0)(99), (base |> mixedStep), mixedScale(2)(5)], [0, 8, 10])
     ])
 }
 
@@ -152,26 +117,21 @@ fn resultsStateHigherOrderCase() = {
     ])
     // Split the five dynamic values from those legacy lines.
     checkAll("Result and higher-order legacy constituent values", [
-            total == 2,
-            resultSafeMod(20)(7) == 6,
-            resultTwice(resultBump)(5) == 25,
-            addTen(32) == 42,
-            resultAdder(7)(8) == 15
+            structuralEquals([total, resultSafeMod(20)(7), resultTwice(resultBump)(5)], [2, 6, 25]),
+            structuralEquals([addTen(32), resultAdder(7)(8)], [42, 15])
     ])
     // Exercise the error branch, zero remainder, repeated calls, and captures.
     checkAll("Result and higher-order branch edges", [
             resultSafeMod(5)(0) == ((0 - 1) ),
-            resultSafeMod(20)(5) == 0,
-            resultTwice(resultBump)(0) == 20,
-            resultAdder(0)(9) == 9,
-            resultAdder((0 - 5) )(5) == 0
+            structuralEquals([resultSafeMod(20)(5), resultTwice(resultBump)(0)], [0, 20]),
+            structuralEquals([resultAdder(0)(9), resultAdder((0 - 5) )(5)], [9, 0])
     ])
 }
 
 // Register the broad curry-tour interaction scenario.
 
-test("curry tour retains all closure match and pipe outputs", fn() => exactArithmetic(curryTourCase))
+test("curry tour retains all closure match and pipe outputs", exactly(curryTourCase))
 // Register the concise mixed-feature interaction scenario.
-test("mixed workflow composes closure match pipe and interpolation", fn() => exactArithmetic(mixedFeaturesCase))
+test("mixed workflow composes closure match pipe and interpolation", exactly(mixedFeaturesCase))
 // Register the Result and higher-order interaction scenario.
-test("Result workflow covers success error HOF and partial application", fn() => exactArithmetic(resultsStateHigherOrderCase))
+test("Result workflow covers success error HOF and partial application", exactly(resultsStateHigherOrderCase))

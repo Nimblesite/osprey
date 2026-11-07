@@ -29,6 +29,14 @@ walked () = Probes::post (launch (), Probes::done ("walk:1", JsonNull), homeWalk
 
 chosenFolder (path, cancelled) = JsonObject [Doc::str ("path", path), Doc::bit ("cancelled", cancelled)]
 
+// The walk's completion, and what an envelope's words, requests, keys and diagnostics say.
+walkDone = Probes::done ("walk:1", JsonNull)
+wordsIn (envelope, key, words) = expect (contains (Probes::text (envelope, key)) words, true)
+askedNothing envelope = expect (Probes::asked envelope, "")
+keyless envelope = expect (Probes::keys envelope, "")
+noProblems envelope = expect (Probes::problems envelope, "")
+pressIn (envelope, label) = Probes::post (envelope, Probes::tap ("folder", 1, Probes::labelled (envelope, "folder", label)), "")
+
 (** Starts and drives Osprey Storage through the framework's serialized runtime, with the host's measured slice as a fixture. *)
 module Probes
     context (platform, folder, arguments) = Doc::write (JsonObject [Doc::num ("now", 1), Doc::num ("offset", 0), Doc::str ("platform", platform), Doc::str ("home", folder), JsonMember "arguments" (Doc::strings arguments)])
@@ -147,16 +155,16 @@ test ("launch opens home and asks the host to measure it", \() =>
     expect (Doc::text (request, "slice"), "measured")
     expect (Doc::number (request, "limit"), 20000)
     expect (Doc::number (request, "timeout"), 120000)
-    expect (Probes::problems first, ""))
+    noProblems first)
 
 test ("a folder named at launch opens first, and home stays in the sidebar", \() =>
     first = Probes::launchedWith ("windows", home, ["D:\\Media"])
     expect (Probes::measuring first, "D:\\Media")
-    expect (contains (Probes::text (first, "places")) "\"text\":\"Home\"", true)
-    expect (contains (Probes::text (first, "folder")) "\"title\":\"Media\"", true))
+    wordsIn (first, "places", "\"text\":\"Home\"")
+    wordsIn (first, "folder", "\"title\":\"Media\""))
 
 test ("the listing shows progress until the walk completes", \() =>
-    expect (contains (Probes::text (launch (), "listing")) "\"kind\":\"progress\"", true))
+    wordsIn (launch (), "listing", "\"kind\":\"progress\""))
 
 test ("a finished walk redraws only the listing, largest first, with unreadable folders last", \() =>
     after = walked ()
@@ -165,54 +173,54 @@ test ("a finished walk redraws only the listing, largest first, with unreadable 
     expect (Probes::rowSymbol (after, "listing", "Private"), "lock")
     expect (Probes::rowSymbol (after, "listing", "Videos"), "folder")
     expect (Probes::rowSymbol (after, "listing", "notes.txt"), "document")
-    expect (Probes::problems after, ""))
+    noProblems after)
 
 test ("switching hidden items off leaves them out of the ranking", \() =>
     first = launch ()
-    after = Probes::post (first, Probes::done ("walk:1", JsonNull), homeWalk ())
+    after = Probes::post (first, walkDone, homeWalk ())
     hidden = Probes::post (after, Probes::flip ("folder", Probes::revision (first, "folder"), Probes::labelled (first, "folder", "Hidden items"), false), homeWalk ())
     expect (Probes::keys hidden, "folder,listing")
     expect (Probes::rowNames (hidden, "listing"), "Videos,Code,notes.txt,OneDrive,Private")
-    expect (contains (Probes::text (hidden, "listing")) "Hidden items are left out.", true))
+    wordsIn (hidden, "listing", "Hidden items are left out."))
 
 test ("a link is marked as a link and its target is not counted", \() =>
     after = walked ()
     expect (Probes::rowSymbol (after, "listing", "OneDrive"), "external")
-    expect (contains (Probes::text (after, "listing")) "its target is not counted", true))
+    wordsIn (after, "listing", "its target is not counted"))
 
 test ("folders the walk could not read are counted in a note", \() =>
-    expect (contains (Probes::text (walked (), "listing")) "2 folders here could not be read and are not counted. They belong to Windows or to another user.", true))
+    wordsIn (walked (), "listing", "2 folders here could not be read and are not counted. They belong to Windows or to another user."))
 
 test ("a rescan cancels the running walk, and the old walk's completion changes nothing", \() =>
     first = launch ()
     rescanned = Probes::post (first, Probes::tap ("folder", Probes::revision (first, "folder"), Probes::labelled (first, "folder", "Rescan")), "")
-    stale = Probes::post (rescanned, Probes::done ("walk:1", JsonNull), homeWalk ())
+    stale = Probes::post (rescanned, walkDone, homeWalk ())
     expect (Probes::asked rescanned, "cancel cancel:1;measure-folders walk:2")
-    expect (Probes::keys stale, "")
+    keyless stale
     expect (Doc::text (Doc::field (Probes::stored stale, "walk"), "stage"), "measuring"))
 
 test ("Up from a folder measures the folder that encloses it", \() =>
     first = launch ()
-    expect (Probes::measuring (Probes::post (first, Probes::tap ("folder", 1, Probes::labelled (first, "folder", "Up")), "")), "C:\\Users"))
+    expect (Probes::measuring (pressIn (first, "Up")), "C:\\Users"))
 
 test ("Up at the top of a drive is disabled and asks for nothing", \() =>
     first = Probes::started ("windows", "C:\\")
-    up = Probes::post (first, Probes::tap ("folder", 1, Probes::labelled (first, "folder", "Up")), "")
-    expect (contains (Probes::text (first, "folder")) "\"label\":\"Up\",\"symbol\":\"chevron\",\"role\":\"plain\",\"enabled\":false", true)
-    expect (Probes::asked up, ""))
+    up = pressIn (first, "Up")
+    wordsIn (first, "folder", "\"label\":\"Up\",\"symbol\":\"chevron\",\"role\":\"plain\",\"enabled\":false")
+    askedNothing up)
 
 test ("a chosen folder joins the places and is measured", \() =>
     first = launch ()
-    asked = Probes::post (first, Probes::tap ("folder", 1, Probes::labelled (first, "folder", "Choose Folder…")), "")
+    asked = pressIn (first, "Choose Folder…")
     chosen = Probes::post (asked, Probes::done ("choose", chosenFolder ("D:\\Media", false)), "")
     expect (Probes::asked asked, "choose-folder choose")
     expect (Probes::measuring chosen, "D:\\Media")
-    expect (contains (Probes::text (chosen, "places")) "\"key\":\"D:\\\\Media\"", true))
+    wordsIn (chosen, "places", "\"key\":\"D:\\\\Media\""))
 
 test ("a cancelled choice changes nothing", \() =>
     cancelled = Probes::post (launch (), Probes::done ("choose", chosenFolder ("", true)), "")
-    expect (Probes::asked cancelled, "")
-    expect (Probes::keys cancelled, ""))
+    askedNothing cancelled
+    keyless cancelled)
 
 test ("a folder row opens that folder and a file row does not", \() =>
     after = walked ()
@@ -220,22 +228,22 @@ test ("a folder row opens that folder and a file row does not", \() =>
     opened = Probes::post (after, Probes::choose ("listing", Probes::revision (after, "listing"), rows, home + "\\Videos"), homeWalk ())
     filed = Probes::post (after, Probes::choose ("listing", Probes::revision (after, "listing"), rows, home + "\\notes.txt"), homeWalk ())
     expect (Probes::measuring opened, home + "\\Videos")
-    expect (Probes::asked filed, "")
-    expect (Probes::problems filed, ""))
+    askedNothing filed
+    noProblems filed)
 
 test ("a failed walk says why", \() =>
-    expect (contains (Probes::text (Probes::post (launch (), Probes::failed ("walk:1", "Access is denied."), ""), "listing")) "Access is denied.", true))
+    wordsIn (Probes::post (launch (), Probes::failed ("walk:1", "Access is denied."), ""), "listing", "Access is denied."))
 
 test ("a folder that disappeared says it is gone", \() =>
-    gone = Probes::post (launch (), Probes::done ("walk:1", JsonNull), slice [folderDoc (home, true, "", 0, [])])
-    expect (contains (Probes::text (gone, "listing")) "This folder is gone", true))
+    gone = Probes::post (launch (), walkDone, slice [folderDoc (home, true, "", 0, [])])
+    wordsIn (gone, "listing", "This folder is gone"))
 
 test ("words and units follow the platform", \() =>
-    mac = Probes::post (Probes::started ("macos", "/Users/ada"), Probes::done ("walk:1", JsonNull), slice [folderDoc ("/Users/ada", false, "", 0, [entry ("/Users/ada", "/", "Movies", 1500000, 1500000, "folder")])])
-    expect (contains (Probes::text (walked (), "listing")) "Show in File Explorer", true)
-    expect (contains (Probes::text (walked (), "listing")) "27.9 GB", true)
-    expect (contains (Probes::text (mac, "listing")) "Show in Finder", true)
-    expect (contains (Probes::text (mac, "listing")) "1.5 MB", true))
+    mac = Probes::post (Probes::started ("macos", "/Users/ada"), walkDone, slice [folderDoc ("/Users/ada", false, "", 0, [entry ("/Users/ada", "/", "Movies", 1500000, 1500000, "folder")])])
+    wordsIn (walked (), "listing", "Show in File Explorer")
+    wordsIn (walked (), "listing", "27.9 GB")
+    wordsIn (mac, "listing", "Show in Finder")
+    wordsIn (mac, "listing", "1.5 MB"))
 
 test ("Windows paths climb to the top of their drive or share", \() =>
     expect (Disk::parent ("windows", "C:\\Users\\ada"), "C:\\Users")

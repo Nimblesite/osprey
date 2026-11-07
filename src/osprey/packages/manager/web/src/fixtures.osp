@@ -115,4 +115,44 @@ module WebFixtures {
     /// A publication whose status reasons are hostile strings.
     export fn hostilePublication() = publication("atlas", "util", "prin-'-(1)",
         Model::Rejected { reasons: ["</article><script>alert(1)</script>"] })
+
+    /// The screen must be shown and every condition `verify` states of its HTML
+    /// must hold — folded into one assertion, because a computed condition list
+    /// is rejected at code generation. A hidden screen fails `name` with the reason.
+    export fn shows(name, view, verify) = match view {
+        Model::Shown { html } => check(name, true, verify(html))
+        Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
+    }
+
+    /// The screen must be shown and answer `expected`.
+    export fn showsExpecting(name, view, expected) = match view {
+        Model::Shown { html } => check(name, expected, html)
+        Model::Hidden { reason } => check(name, "shown screen", "hidden: ${reason}")
+    }
+
+    /// The screen must be hidden and every condition `verify` states of its
+    /// reason must hold, folded the same way as `shows`.
+    export fn hides(name, view, verify) = match view {
+        Model::Hidden { reason } => check(name, true, verify(reason))
+        Model::Shown { html } => check(name, "hidden screen", "shown")
+    }
+
+    /// The screen must be hidden and answer `expected`.
+    export fn hidesExpecting(name, view, expected) = match view {
+        Model::Hidden { reason } => check(name, expected, reason)
+        Model::Shown { html } => check(name, "hidden screen", "shown")
+    }
+
+    /// True when the screen is shown and `holds` accepts its HTML.
+    export fn showing(view, holds) = match view {
+        Model::Shown { html } => holds(html)
+        _ => false
+    }
+
+    /// True when the screen is hidden for exactly `code`.
+    export fn hiddenFor(view, code) = match view {
+        Model::Hidden { reason } => reason == code
+        _ => false
+    }
 }
+

@@ -39,6 +39,15 @@ pictures status bytes = storage::Photos(status = status, items = 9000, bytes = b
 
 names ranking = join (range (0, ranking.kept) |> fold [] (\(output, index) => listAppend output (Disk::name "" (listGet ranking.top index ?: entry "" 0 0 false false).path))) ","
 
+(** One claim about a rendered screen: what it asserts and the words it must find ([IOS-TARGET-MACOS]). *)
+type Claim =
+    claimLabel : string
+    claimWords : string
+
+claims (text, rows) = forEachList (rows, \row => checkTrue row.claimLabel (contains text row.claimWords))
+
+refutes (text, rows) = forEachList (rows, \row => checkFalse row.claimLabel (contains text row.claimWords))
+
 walkOf commands = Json::getOr commands "[0].kind" "" + " " + Json::getOr commands "[0].path" "" + " graft=" + Json::getOr commands "[0].graft" ""
 
 screen model =
@@ -148,73 +157,115 @@ linkCase () =
 
 screenCase () =
     shown = screen (browser home true "ready")
-    checkTrue "folder totals identify measured bytes" (contains shown "699.0 GB measured · 5 items")
     disk = browser "/" true "ready"
-    checkTrue "disk title uses the same used space as its gauge" (contains (screen (disk(root = "/"))) "700.0 GB used")
-    checkTrue "the open folder names the screen" (contains shown "\"kind\":\"navigation\",\"id\":\"/Users/ada\",\"text\":\"Home\"")
-    checkTrue "purgeable space counts as available, as in Settings" (contains shown "700.0 GB of 1.0 TB used")
-    checkTrue "and is named" (contains shown "300.0 GB available, 50.0 GB of it purgeable")
-    checkTrue "hidden folder ranked" (contains shown "\"text\":\".cache\"")
-    checkTrue "hidden entries dimmed" (contains shown "\"style\":\"hidden\"")
-    checkTrue "unreadable folders explained" (contains shown "2 folders here could not be read")
-    checkTrue "and says Full Disk Access counts the rest" (contains shown "need Full Disk Access")
-    checkTrue "offers Full Disk Access" (contains shown "\"text\":\"Allow Full Disk Access…\",\"event\":{\"type\":\"settings\"")
-    plain = browser home true "ready"
-    checkFalse "until it is granted" (contains (screen (plain(full = true))) "Allow Full Disk Access")
     containers = screen (browser "/Users/ada/Library/Containers" true "ready")
-    checkTrue "other apps' data listed apart" (contains containers "Other apps' data")
-    checkTrue "and chosen to measure" (contains containers "\"event\":{\"type\":\"grant\",\"value\":\"${mail}\"}")
-    checkTrue "an app's data opens in Finder too" (contains containers "\"event\":{\"type\":\"reveal\",\"value\":\"${mail}\"}")
-    checkTrue "folders open" (contains shown "\"event\":{\"type\":\"open\",\"value\":\"/Users/ada/Code\"}")
-    finder = "\"menu\":[{\"kind\":\"button\",\"symbol\":\"folder\",\"text\":\"Open in Finder\",\"event\":{\"type\":\"reveal\",\"value\":\"/Users/ada/Code\"}}]"
-    checkTrue "a folder's context menu opens it in Finder" (contains shown finder)
-    checkFalse "a file has no Finder item" (contains shown "\"value\":\"/Users/ada/notes.txt\"")
     phone = phoneScreen (pictures "ready" 40000000000)
-    checkFalse "an iPhone has no Finder" (contains phone "Open in Finder")
-    checkTrue "toggle reflects the setting" (contains shown "\"text\":\"Hidden Files\",\"value\":\"true\"")
-    checkFalse "no way up from the root" (contains shown "Enclosing Folder")
     sighted = screen (browser home false "ready")
-    checkFalse "hidden folder gone" (contains sighted "\"text\":\".cache\"")
-    checkTrue "visible size only" (contains sighted "\"text\":\"Code\",\"symbol\":\"folder.fill\",\"tint\":\"blue\",\"accent\":\"purple\",\"style\":\"\",\"detail\":\"20.0 GB\"")
     deeper = screen (browser "/Users/ada/Code" false "ready")
-    checkTrue "everything inside is hidden" (contains deeper "Everything here is hidden")
-    checkTrue "path bar starts at Home" (contains deeper "\"kind\":\"pathbar\",\"children\":[{\"kind\":\"button\",\"symbol\":\"house.fill\",\"text\":\"Home\"")
-    checkTrue "a folder below Home goes by its name" (contains deeper "\"kind\":\"navigation\",\"id\":\"/Users/ada/Code\",\"text\":\"Code\"")
-    checkTrue "way up" (contains deeper "Enclosing Folder")
+    plain = browser home true "ready"
     walking = screen (Browse::dispatch (Browse::start home "macos" false).model "{\"type\":\"progress\",\"path\":\"/\",\"items\":1200,\"bytes\":5000}").model
-    checkTrue "progress" (contains walking "Measuring Macintosh HD…")
-    checkTrue "counts so far" (contains walking "1,200 items · 5.0 KB so far")
-    checkTrue "and says macOS asks once for Documents" (contains walking "macOS asks once before the app reads Desktop, Documents")
-    checkTrue "failure" (contains (screen (browser home true "failed")) "Cannot measure Home")
-    checkTrue "unmeasured folder" (contains (screen (browser "/Users/ada/Downloads" true "ready")) "Not measured yet")
+    claims (shown, [
+        Claim(claimLabel = "folder totals identify measured bytes", claimWords = "699.0 GB measured · 5 items"),
+        Claim(claimLabel = "the open folder names the screen", claimWords = "\"kind\":\"navigation\",\"id\":\"/Users/ada\",\"text\":\"Home\""),
+        Claim(claimLabel = "purgeable space counts as available, as in Settings", claimWords = "700.0 GB of 1.0 TB used"),
+        Claim(claimLabel = "and is named", claimWords = "300.0 GB available, 50.0 GB of it purgeable"),
+        Claim(claimLabel = "hidden folder ranked", claimWords = "\"text\":\".cache\""),
+        Claim(claimLabel = "hidden entries dimmed", claimWords = "\"style\":\"hidden\""),
+        Claim(claimLabel = "unreadable folders explained", claimWords = "2 folders here could not be read"),
+        Claim(claimLabel = "and says Full Disk Access counts the rest", claimWords = "need Full Disk Access"),
+        Claim(claimLabel = "offers Full Disk Access", claimWords = "\"text\":\"Allow Full Disk Access…\",\"event\":{\"type\":\"settings\""),
+        Claim(claimLabel = "folders open", claimWords = "\"event\":{\"type\":\"open\",\"value\":\"/Users/ada/Code\"}"),
+        Claim(claimLabel = "a folder's context menu opens it in Finder", claimWords = "\"menu\":[{\"kind\":\"button\",\"symbol\":\"folder\",\"text\":\"Open in Finder\",\"event\":{\"type\":\"reveal\",\"value\":\"/Users/ada/Code\"}}]"),
+        Claim(claimLabel = "toggle reflects the setting", claimWords = "\"text\":\"Hidden Files\",\"value\":\"true\"")
+    ])
+    claims (screen (disk(root = "/")), [
+        Claim(claimLabel = "disk title uses the same used space as its gauge", claimWords = "700.0 GB used")
+    ])
+    claims (containers, [
+        Claim(claimLabel = "other apps' data listed apart", claimWords = "Other apps' data"),
+        Claim(claimLabel = "and chosen to measure", claimWords = "\"event\":{\"type\":\"grant\",\"value\":\"${mail}\"}"),
+        Claim(claimLabel = "an app's data opens in Finder too", claimWords = "\"event\":{\"type\":\"reveal\",\"value\":\"${mail}\"}")
+    ])
+    claims (sighted, [
+        Claim(claimLabel = "visible size only", claimWords = "\"text\":\"Code\",\"symbol\":\"folder.fill\",\"tint\":\"blue\",\"accent\":\"purple\",\"style\":\"\",\"detail\":\"20.0 GB\"")
+    ])
+    claims (deeper, [
+        Claim(claimLabel = "everything inside is hidden", claimWords = "Everything here is hidden"),
+        Claim(claimLabel = "path bar starts at Home", claimWords = "\"kind\":\"pathbar\",\"children\":[{\"kind\":\"button\",\"symbol\":\"house.fill\",\"text\":\"Home\""),
+        Claim(claimLabel = "a folder below Home goes by its name", claimWords = "\"kind\":\"navigation\",\"id\":\"/Users/ada/Code\",\"text\":\"Code\""),
+        Claim(claimLabel = "way up", claimWords = "Enclosing Folder")
+    ])
+    claims (walking, [
+        Claim(claimLabel = "progress", claimWords = "Measuring Macintosh HD…"),
+        Claim(claimLabel = "counts so far", claimWords = "1,200 items · 5.0 KB so far"),
+        Claim(claimLabel = "and says macOS asks once for Documents", claimWords = "macOS asks once before the app reads Desktop, Documents")
+    ])
+    claims (screen (browser home true "failed"), [
+        Claim(claimLabel = "failure", claimWords = "Cannot measure Home")
+    ])
+    claims (screen (browser "/Users/ada/Downloads" true "ready"), [
+        Claim(claimLabel = "unmeasured folder", claimWords = "Not measured yet")
+    ])
+    refutes (screen (plain(full = true)), [
+        Claim(claimLabel = "until it is granted", claimWords = "Allow Full Disk Access")
+    ])
+    refutes (shown, [
+        Claim(claimLabel = "a file has no Finder item", claimWords = "\"value\":\"/Users/ada/notes.txt\""),
+        Claim(claimLabel = "no way up from the root", claimWords = "Enclosing Folder")
+    ])
+    refutes (sighted, [
+        Claim(claimLabel = "hidden folder gone", claimWords = "\"text\":\".cache\"")
+    ])
+    refutes (phone, [
+        Claim(claimLabel = "an iPhone has no Finder", claimWords = "Open in Finder")
+    ])
 
 phoneCase () =
     shown = phoneScreen (pictures "ready" 40000000000)
-    checkTrue "the app's own folder is the phone's storage" (contains shown "\"kind\":\"navigation\",\"id\":\"/var/app\",\"text\":\"Storage\"")
-    checkTrue "what uses the device" (contains shown "On this Macintosh HD")
-    checkTrue "photos measured" (contains shown "\"text\":\"Photos & Videos\",\"symbol\":\"photo.on.rectangle.angled\",\"tint\":\"orange\",\"accent\":\"orange\",\"detail\":\"40.0 GB\"")
-    checkTrue "this app" (contains shown "\"text\":\"Osprey Storage\",\"symbol\":\"app.fill\",\"tint\":\"indigo\",\"accent\":\"indigo\",\"detail\":\"5.0 GB\"")
-    checkTrue "the rest, which iOS keeps from apps" (contains shown "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"655.0 GB\"")
-    checkTrue "and says where to split it by app" (contains shown "Settings › General › iPhone Storage")
-    checkTrue "a folder in Files can be measured" (contains shown "Measure a Folder in Files…")
-    checkFalse "no bar of a folder that holds little" (contains shown "measured here")
-    checkFalse "nor the app's own files" (contains shown "Largest items")
-    checkTrue "the library by kind, with counts" (contains shown "\"text\":\"Videos · 400\",\"symbol\":\"video.fill\",\"tint\":\"purple\",\"accent\":\"purple\",\"detail\":\"30.0 GB\",\"caption\":\"75%\"")
-    checkTrue "screenshots apart" (contains shown "\"text\":\"Screenshots · 600\"")
-    checkFalse "a kind with nothing is left out" (contains shown "Live Photos")
-    checkTrue "what only iCloud holds" (contains shown "\"text\":\"Only in iCloud\",\"symbol\":\"icloud.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"60.0 GB\"")
-    checkTrue "and why it takes no space here" (contains shown "9,000 items, hidden ones included")
     crowded = phoneScreen (pictures "ready" 900000000000)
-    checkTrue "the rest never goes below nothing" (contains crowded "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"0 B\",\"caption\":\"0%\"")
-    checkFalse "no Full Disk Access on iPhone" (contains shown "Full Disk Access")
-    checkTrue "unreadable folders explained for iOS" (contains (phoneAt "/var/app/Library" (pictures "ready" 0)) "iOS keeps them from the app.")
-    checkFalse "and the device story stays at the top" (contains (phoneAt "/var/app/Library" (pictures "ready" 0)) "Other apps & iOS")
     denied = phoneScreen (pictures "denied" 0)
-    checkTrue "denied photos lead to Settings" (contains denied "\"detail\":\"Allow in Settings\",\"caption\":\"\",\"value\":\"0\",\"event\":{\"type\":\"settings\"")
-    checkTrue "and count toward the rest" (contains denied "\"detail\":\"695.0 GB\"")
-    checkFalse "with no breakdown" (contains denied "Only in iCloud")
-    checkTrue "unasked photos can be allowed" (contains (phoneScreen (pictures "unasked" 0)) "\"event\":{\"type\":\"allow\"")
-    checkTrue "a partial library says so" (contains (phoneScreen (pictures "limited" 40000000000)) "only some photos")
+    small = phoneAt "/var/app/Library" (pictures "ready" 0)
+    claims (shown, [
+        Claim(claimLabel = "the app's own folder is the phone's storage", claimWords = "\"kind\":\"navigation\",\"id\":\"/var/app\",\"text\":\"Storage\""),
+        Claim(claimLabel = "what uses the device", claimWords = "On this Macintosh HD"),
+        Claim(claimLabel = "photos measured", claimWords = "\"text\":\"Photos & Videos\",\"symbol\":\"photo.on.rectangle.angled\",\"tint\":\"orange\",\"accent\":\"orange\",\"detail\":\"40.0 GB\""),
+        Claim(claimLabel = "this app", claimWords = "\"text\":\"Osprey Storage\",\"symbol\":\"app.fill\",\"tint\":\"indigo\",\"accent\":\"indigo\",\"detail\":\"5.0 GB\""),
+        Claim(claimLabel = "the rest, which iOS keeps from apps", claimWords = "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"655.0 GB\""),
+        Claim(claimLabel = "and says where to split it by app", claimWords = "Settings › General › iPhone Storage"),
+        Claim(claimLabel = "a folder in Files can be measured", claimWords = "Measure a Folder in Files…"),
+        Claim(claimLabel = "the library by kind, with counts", claimWords = "\"text\":\"Videos · 400\",\"symbol\":\"video.fill\",\"tint\":\"purple\",\"accent\":\"purple\",\"detail\":\"30.0 GB\",\"caption\":\"75%\""),
+        Claim(claimLabel = "screenshots apart", claimWords = "\"text\":\"Screenshots · 600\""),
+        Claim(claimLabel = "what only iCloud holds", claimWords = "\"text\":\"Only in iCloud\",\"symbol\":\"icloud.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"60.0 GB\""),
+        Claim(claimLabel = "and why it takes no space here", claimWords = "9,000 items, hidden ones included")
+    ])
+    claims (crowded, [
+        Claim(claimLabel = "the rest never goes below nothing", claimWords = "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"0 B\",\"caption\":\"0%\"")
+    ])
+    claims (denied, [
+        Claim(claimLabel = "denied photos lead to Settings", claimWords = "\"detail\":\"Allow in Settings\",\"caption\":\"\",\"value\":\"0\",\"event\":{\"type\":\"settings\""),
+        Claim(claimLabel = "and count toward the rest", claimWords = "\"detail\":\"695.0 GB\"")
+    ])
+    claims (small, [
+        Claim(claimLabel = "unreadable folders explained for iOS", claimWords = "iOS keeps them from the app.")
+    ])
+    claims (phoneScreen (pictures "unasked" 0), [
+        Claim(claimLabel = "unasked photos can be allowed", claimWords = "\"event\":{\"type\":\"allow\"")
+    ])
+    claims (phoneScreen (pictures "limited" 40000000000), [
+        Claim(claimLabel = "a partial library says so", claimWords = "only some photos")
+    ])
+    refutes (shown, [
+        Claim(claimLabel = "no bar of a folder that holds little", claimWords = "measured here"),
+        Claim(claimLabel = "nor the app's own files", claimWords = "Largest items"),
+        Claim(claimLabel = "a kind with nothing is left out", claimWords = "Live Photos"),
+        Claim(claimLabel = "no Full Disk Access on iPhone", claimWords = "Full Disk Access")
+    ])
+    refutes (small, [
+        Claim(claimLabel = "and the device story stays at the top", claimWords = "Other apps & iOS")
+    ])
+    refutes (denied, [
+        Claim(claimLabel = "with no breakdown", claimWords = "Only in iCloud")
+    ])
 
 test "sizes, counts and shares read as Finder writes them" formatCase
 test "ranking keeps the largest entries under the hidden-files setting" rankCase

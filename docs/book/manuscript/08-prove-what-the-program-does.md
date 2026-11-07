@@ -245,10 +245,10 @@ The comparison requires an integer. `parseInt` returns a `Result`, because text 
 From `docs/book`, check `examples/chapter-08/failscompilation/unhandled-result.osp` with `../../target/release/osprey` and `--check`. The verified diagnostic is:
 
 ```text
-examples/chapter-08/failscompilation/unhandled-result.osp: type mismatch: cannot unify int with Result<int, Error>
+examples/chapter-08/failscompilation/unhandled-result.osp: type mismatch: cannot unify int with Result<int, Error>; decode the `Result` with `match` or `?:` before using it as `int`
 ```
 
-The message gives a file and the incompatible types; it does not provide a line number for this example. The diagnostic spells the built-in parser's error type `Error`. The essential disagreement is between a plain integer and a result that still needs handling.
+The message gives a file and the incompatible types; it does not provide a line number for this example. The diagnostic spells the built-in parser's error type `Error`. The essential disagreement is between a plain integer and a result that still needs handling. The message ends by naming the fix: decode the `Result` with `match` or `?:` first.
 
 ### Compiler-feedback exercise
 

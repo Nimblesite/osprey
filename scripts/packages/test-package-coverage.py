@@ -25,12 +25,16 @@ class PackageThresholdTests(CoverageTestCase):
             baseline = gates["memory_arc"]["threshold"] if header.stem.startswith("memory_arc_") else gates["system_runtime"].get("threshold", 90)
             self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
 
-    def test_threshold_configuration_has_no_measurements(self):
+    def test_threshold_configuration_has_no_measurements_and_only_raised_explicit_thresholds(self):
         config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         self.assertNotIn("package_measurements", config)
         for group in config["projects"].values():
-            for entry in group.values():
+            for name, entry in group.items():
                 self.assertTrue(set(entry).isdisjoint({"covered", "total", "percentage"}))
+                if "threshold" in entry and not entry.get("unfinished"):
+                    self.assertGreater(entry["threshold"], 90, name)
+        marked = [name for group in config["projects"].values() for name, entry in group.items() if "unfinished" in entry]
+        self.assertEqual(marked, ["transformers"], "[#352] only the user-approved project drops the floor")
 
     def test_oracle_literals_roundtrip_every_control_character_and_unicode(self):
         runner = runpy.run_path(str(ROOT / "src/osprey/packages/testing/oracle/oracle.cpython"))
@@ -58,13 +62,6 @@ class PackageThresholdTests(CoverageTestCase):
             with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": invalid}), self.assertRaises(SystemExit):
                 checker["worker_count"](names, cpus=4)
 
-    def test_only_thresholds_above_the_minimum_are_explicit(self):
-        config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
-        for group in config["projects"].values():
-            for name, entry in group.items():
-                if "threshold" in entry and not entry.get("unfinished"):
-                    self.assertGreater(entry["threshold"], 90, name)
-
 
 class CheckerTests(CoverageTestCase):
     def test_omitted_threshold_enforces_90_and_preserves_failing_measurements(self):
@@ -82,12 +79,16 @@ class CheckerTests(CoverageTestCase):
                 self.assertEqual(fixture.measurements()["packages"]["demo"]["covered"], covered)
                 self.assertNotIn("threshold", fixture.config()["projects"]["packages"]["demo"])
 
-    def test_unfinished_project_reports_below_the_90_floor_only_when_marked(self):
-        for unfinished, threshold, code in ((True, None, 0), (True, 5, 0), (True, 50, 1), (False, None, 1), (False, 5, 2)):
-            fixture, gate = self.simple_fixture(lines=10), {"language": "osprey", "unfinished": unfinished} | ({} if threshold is None else {"threshold": threshold})
-            write_json(fixture.root / "coverage-thresholds.json", {"projects": {"packages": {"demo": gate}}})
-            fixture.write_report("demo", own_report("demo", 1, 10))
-            self.assert_exit(fixture.check(), code, f"{unfinished=} {threshold=}: ")
+    def test_unfinished_drops_the_floor_only_for_its_user_approved_allowlist(self):
+        # [#352] Any other package, spelling or value is a config error (2), never a free pass.
+        refused = [(n, True, None, 2) for n in ("demo", "torch", "Transformers", "transformers2")] + [("transformers", f, None, 2) for f in (1, "true", None, [True])]
+        for name, flag, threshold, code in [("transformers", True, None, 0), ("transformers", True, 5, 0), ("transformers", True, 50, 1), ("transformers", False, None, 1), ("transformers", False, 5, 2), *refused]:
+            fixture, gate = self.simple_fixture(name, lines=10), {"language": "osprey", "unfinished": flag} | ({} if threshold is None else {"threshold": threshold})
+            write_json(fixture.root / "coverage-thresholds.json", {"projects": {"packages": {name: gate}}})
+            fixture.write_report(name, own_report(name, 1, 10))
+            result = fixture.check()
+            self.assert_exit(result, code, f"{name=} {flag=} {threshold=}: ")
+            self.assertEqual(f"{name}: unfinished may only be true, and only for transformers" in result.stdout + result.stderr, code == 2 and flag is not False, f"{name=} {flag=} {result.stdout}")
 
     def test_higher_package_threshold_still_rejects_90_percent(self):
         fixture = self.threshold_fixture(95, 100)
@@ -422,16 +423,20 @@ class CheckerTests(CoverageTestCase):
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
 
+    def barrier_fixture(self, names, members):
+        """Every package measures 9/10 and waits for each of `members` to overlap."""
+        fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
+        fixture.write_spec({name: {
+            "report": own_report(name, 9, 10),
+            "barrier": members if name in members else [],
+        } for name in names})
+        return fixture
+
     def test_configured_pool_bounds_actual_collection_overlap(self):
         names = ["demo", *(f"peer{i}" for i in range(18))]
         for count, expected_exit in ((5, 1), (4, 0)):
             with self.subTest(required_overlap=count):
-                fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
-                barrier = names[:count]
-                fixture.write_spec({name: {
-                    "report": own_report(name, 9, 10),
-                    "barrier": barrier if name in barrier else [],
-                } for name in names})
+                fixture = self.barrier_fixture(names, names[:count])
                 with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "4"}):
                     result = fixture.collect()
                 self.assert_exit(result, expected_exit)
@@ -445,11 +450,7 @@ class CheckerTests(CoverageTestCase):
         # are the first worker_count of them; every later suite still runs.
         checker = runpy.run_path(str(ROOT / "scripts/packages/package_coverage.py"))
         overlapping = names[: checker["worker_count"](names)]
-        fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
-        fixture.write_spec({
-            name: {"report": own_report(name, 9, 10), "barrier": overlapping if name in overlapping else []}
-            for name in names
-        })
+        fixture = self.barrier_fixture(names, overlapping)
         result = fixture.collect()
         self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "demo.json").is_file())

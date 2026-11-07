@@ -1,0 +1,5 @@
+[project]
+name = "primes"
+source_roots = [".", "../../shared"]
+default_namespace = "primes"
+entry = "primes.osp"

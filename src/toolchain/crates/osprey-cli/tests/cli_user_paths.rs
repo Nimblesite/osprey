@@ -223,3 +223,65 @@ fn hunt_answers_before_it_looks_for_its_engine() {
     assert_refused(osprey().arg("hunt").arg(&missing), 2, "cannot read");
     assert_refused(osprey().arg("hunt"), 2, "a source file is required");
 }
+
+// `--run` needs a WASI host: Node's, the one the wasm corpus runs under, is on
+// every CI runner, wasmtime is not [WASM-TARGET].
+fn node_wasi_host(scratch: &Scratch) -> PathBuf {
+    let smoke =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../scripts/wasm/wasm-smoke.mjs");
+    let host = scratch.write(
+        "wasi-host",
+        &format!("#!/bin/sh\nexec node '{}' \"$@\"\n", smoke.display()),
+    );
+    let executable = std::os::unix::fs::PermissionsExt::from_mode(0o755);
+    let made = std::fs::set_permissions(&host, executable);
+    assert!(made.is_ok(), "{made:?}");
+    host
+}
+
+// Every wasm32 build lowers through a scratch `.wasm.ll` and `.wasm.o`, and
+// `--run` through a scratch `.wasm`: none of them may outlive the command, or
+// each corpus run leaves thousands of files in the temp directory.
+#[test]
+fn wasm32_builds_leave_no_scratch_files_behind() {
+    let scratch = Scratch::new("wasm_scratch");
+    let temp = scratch.0.join("tmp");
+    assert!(std::fs::create_dir_all(&temp).is_ok(), "{}", temp.display());
+    let source = scratch.write("hello.osp", "print(\"hi\")\n");
+    let out = scratch.0.join("hello.wasm");
+    let host = node_wasi_host(&scratch);
+    let run = finished(
+        osprey()
+            .arg(&source)
+            .arg("--target=wasm32")
+            .arg("--run")
+            .env("OSPREY_WASM_RUN", &host)
+            .env("TMPDIR", &temp),
+    );
+    assert_eq!((run.0, run.1.as_str()), (Some(0), "hi\n"), "{}", run.2);
+    let compile = finished(
+        osprey()
+            .arg(&source)
+            .arg("--target=wasm32")
+            .arg("--compile")
+            .arg("-o")
+            .arg(&out)
+            .env("TMPDIR", &temp),
+    );
+    assert_eq!(compile.0, Some(0), "{}", compile.2);
+    assert!(out.is_file(), "{}", out.display());
+    let left: Vec<String> = std::fs::read_dir(&temp)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    assert_eq!(
+        left,
+        Vec::<String>::new(),
+        "scratch files left in {}",
+        temp.display()
+    );
+}

@@ -195,6 +195,56 @@ static void t_reclaims_unrooted(void) {
   CHECK(osp_gc_live_objects() < 1000);    // 400k unrooted blocks did not survive
 }
 
+// [MEM-BACKENDS] osp_mem_immortal pins: a runtime singleton (the empty list)
+// whose only reference is a global must survive every collection even where the
+// collector cannot scan the data segment (Windows had no data-segment scan, so
+// it freed the singleton and every later empty list read reused memory). The
+// pointers here are hidden from every scan by XOR, so nothing but the pin can
+// keep them; the pinned block's child is reached through the pin as a root.
+#define HIDE_MASK ((uintptr_t)0x5A5A5A5A5A5A5A5Aull)
+typedef struct {
+  uintptr_t pin, child, unpinned;
+} HiddenRefs;
+
+// Allocate in a frame of its own and hand back only masked words, so no live
+// frame holds a real pointer once it returns.
+__attribute__((noinline)) static void make_hidden(volatile HiddenRefs *out) {
+  char *child = osp_alloc_tagged(6, OSP_MEM_STRING);
+  void **pinned = osp_alloc(sizeof(void *) * 2);
+  char *unpinned = osp_alloc_tagged(4, OSP_MEM_STRING);
+  CHECK(child != NULL && pinned != NULL && unpinned != NULL);
+  memcpy(child, "child", 6);
+  pinned[0] = child;
+  pinned[1] = NULL;
+  osp_mem_immortal(pinned);
+  osp_mem_immortal(NULL); // a NULL pin is a harmless no-op
+  out->pin = (uintptr_t)pinned ^ HIDE_MASK;
+  out->child = (uintptr_t)child ^ HIDE_MASK;
+  out->unpinned = (uintptr_t)unpinned ^ HIDE_MASK;
+}
+
+// Overwrite the dead frames below the caller so stale pointer copies are gone.
+__attribute__((noinline)) static void scrub_stack(void) {
+  volatile unsigned char pad[1 << 16];
+  for (size_t i = 0; i < sizeof pad; i++) {
+    pad[i] = 0;
+  }
+}
+
+static void t_immortal_pins_without_roots(void) {
+  volatile HiddenRefs refs;
+  make_hidden(&refs);
+  scrub_stack();
+  (void)alloc_churn(100000, 48);
+  scrub_stack();
+  osp_collect();
+  osp_collect();
+  char *kept = (char *)(refs.child ^ HIDE_MASK);
+  CHECK(osp_mem_string_length(kept) == 5 && strcmp(kept, "child") == 0);
+  CHECK(((void **)(refs.pin ^ HIDE_MASK))[0] == kept);
+  CHECK(osp_mem_string_length((char *)(refs.unpinned ^ HIDE_MASK)) == -1); // unpinned is reclaimed
+}
+
 // A stack-rooted block survives arbitrary collection pressure byte-for-byte.
 static void t_root_keeps_alive(void) {
   unsigned char *keep = osp_alloc(48);
@@ -475,6 +525,7 @@ int main(int argc, char **argv) {
   t_realloc();
   t_free_noop();
   t_reclaims_unrooted();
+  t_immortal_pins_without_roots();
   t_root_keeps_alive();
   t_interior_pointer();
   t_many_rooted_survive();

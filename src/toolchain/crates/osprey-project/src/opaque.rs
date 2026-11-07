@@ -3,6 +3,7 @@
 //! alias reaches the checker as a nominal type whose representation only that
 //! module may see.
 
+use crate::collect_support::Diagnostics;
 use crate::model::SymbolKey;
 use crate::resolve::{Context, Resolver};
 use osprey_ast::Stmt;

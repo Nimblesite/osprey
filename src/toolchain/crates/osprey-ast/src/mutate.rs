@@ -8,7 +8,7 @@
 //! is the mutable half of the same shape: it hands each direct child to a
 //! callback and lets the caller decide whether to recurse.
 
-use crate::{Expr, InterpolatedPart, Stmt};
+use crate::{Expr, InterpolatedPart, NamedArgument, Stmt};
 
 /// Apply `visit` to every direct child expression of `expression`.
 ///
@@ -65,12 +65,7 @@ pub fn children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
             ..
         } => {
             visit(target);
-            for argument in &mut *arguments {
-                visit(argument);
-            }
-            for argument in &mut *named_arguments {
-                visit(&mut argument.value);
-            }
+            visit_arguments(arguments, named_arguments, visit);
         }
         Expr::FieldAccess { target, .. } => visit(target),
         Expr::Index { target, index } => {
@@ -84,6 +79,21 @@ pub fn children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
             }
         }
         other => effect_children_mut(other, visit),
+    }
+}
+
+/// Visit every positional and named argument of a call-like form, in source
+/// order.
+fn visit_arguments(
+    arguments: &mut [Expr],
+    named_arguments: &mut [NamedArgument],
+    visit: &mut impl FnMut(&mut Expr),
+) {
+    for argument in arguments {
+        visit(argument);
+    }
+    for argument in named_arguments {
+        visit(&mut argument.value);
     }
 }
 
@@ -127,12 +137,7 @@ fn effect_children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr))
             named_arguments,
             ..
         } => {
-            for argument in &mut *arguments {
-                visit(argument);
-            }
-            for argument in &mut *named_arguments {
-                visit(&mut argument.value);
-            }
+            visit_arguments(arguments, named_arguments, visit);
         }
         Expr::Handler {
             arms,

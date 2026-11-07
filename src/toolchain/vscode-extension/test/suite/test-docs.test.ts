@@ -15,11 +15,14 @@ import {
   documentedTestIds,
   executeRunRequest,
   refreshTestFile,
-  registerOspreyTestExplorer,
   testDocFor,
   type TestRunSink,
 } from "../../client/src/test-explorer";
-import { leafTestId } from "../../client/src/test-explorer-parse";
+import {
+  leafTestId,
+  PLAIN_RUN,
+  type RunMode,
+} from "../../client/src/test-explorer-parse";
 import { testDocMarkdown } from "../../client/src/test-explorer-docs";
 import {
   NO_TEST_MESSAGE,
@@ -37,11 +40,17 @@ import {
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import { activateWithServer, waitFor } from "./profiler-kit";
 import {
+  controllerFactory,
+  disposeRegistered,
   DOC_FAIL_FIXTURE,
   DOC_FIXTURE,
+  freshToken,
+  makeFixtureDir,
   ML_DOC_FIXTURE,
   PROFILE_FIXTURE,
   RecordingSink,
+  requireCompiler,
+  type FixtureDir,
 } from "./test-explorer-harness";
 
 /** A RecordingSink that also captures the profile directories reported. */
@@ -54,34 +63,33 @@ class ProfileRecordingSink extends RecordingSink {
 
 suite("Osprey test documentation and profiling", () => {
   const compiler = resolveBuiltOsprey();
-  let fixtureDir: string;
+  let fixtures: FixtureDir;
   let docUri: vscode.Uri;
   let docFailUri: vscode.Uri;
   let mlDocUri: vscode.Uri;
   let profileUri: vscode.Uri;
   const disposables: vscode.Disposable[] = [];
-  let controllerSequence = 0;
+  const newController = controllerFactory(
+    disposables,
+    "ospreyTests-docs",
+    () => compiler ?? "osprey",
+  );
 
-  function newController(): vscode.TestController {
-    controllerSequence += 1;
-    const context = {
-      subscriptions: disposables,
-    } as unknown as vscode.ExtensionContext;
-    return registerOspreyTestExplorer(
-      context,
+  /** Run `items` through `sink` with the suite's compiler, in `mode`. */
+  async function runItems(
+    controller: vscode.TestController,
+    items: vscode.TestItem[],
+    sink: TestRunSink,
+    mode: RunMode = PLAIN_RUN,
+  ): Promise<void> {
+    await executeRunRequest(
+      controller,
+      new vscode.TestRunRequest(items),
+      sink,
+      freshToken(),
       () => compiler ?? "osprey",
-      `ospreyTests-docs-${controllerSequence}`,
+      mode,
     );
-  }
-
-  function writeFixture(name: string, content: string): vscode.Uri {
-    const filePath = path.join(fixtureDir, name);
-    fs.writeFileSync(filePath, content);
-    return vscode.Uri.file(filePath);
-  }
-
-  function token(): vscode.CancellationToken {
-    return new vscode.CancellationTokenSource().token;
   }
 
   async function discovered(uri: vscode.Uri): Promise<{
@@ -101,22 +109,16 @@ suite("Osprey test documentation and profiling", () => {
   }
 
   suiteSetup(() => {
-    fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-test-docs-"));
-    docUri = writeFixture("docs.test.osp", DOC_FIXTURE);
-    docFailUri = writeFixture("docfail.test.osp", DOC_FAIL_FIXTURE);
-    mlDocUri = writeFixture("docs.test.ospml", ML_DOC_FIXTURE);
-    profileUri = writeFixture("profiled.test.osp", PROFILE_FIXTURE);
+    fixtures = makeFixtureDir("osprey-test-docs-");
+    docUri = fixtures.write("docs.test.osp", DOC_FIXTURE);
+    docFailUri = fixtures.write("docfail.test.osp", DOC_FAIL_FIXTURE);
+    mlDocUri = fixtures.write("docs.test.ospml", ML_DOC_FIXTURE);
+    profileUri = fixtures.write("profiled.test.osp", PROFILE_FIXTURE);
   });
 
-  suiteTeardown(() => {
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
-  });
+  suiteTeardown(() => fixtures.remove());
 
-  teardown(() => {
-    for (const disposable of disposables.splice(0)) {
-      disposable.dispose();
-    }
-  });
+  teardown(() => disposeRegistered(disposables));
 
   // ---------------------------------------------------------------- discovery
 
@@ -142,8 +144,7 @@ suite("Osprey test documentation and profiling", () => {
     }
 
     test("a documented case's whole doc becomes the TestItem description", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(file.children.size, 3, "every case discovered");
       const rich = leaf(file, docUri, "documented case");
@@ -160,8 +161,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a summary-only case describes with its one line", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(
         leaf(file, docUri, "summary only").description,
@@ -170,8 +170,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("an undocumented case has no description", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       assert.strictEqual(
         leaf(file, docUri, "undocumented case").description,
@@ -180,8 +179,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a function's own doc does not leak onto the cases", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       for (const [, item] of file.children) {
         assert.notStrictEqual(
@@ -193,8 +191,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the range still marks the test( call, not the doc block", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       // DOC_FIXTURE declares the cases on 1-based lines 23, 26 and 28; the
       // `///` block above the first starts on line 4. VS Code ranges are
@@ -214,8 +211,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the full doc is stashed for the detail panel, section by section", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const id = leaf(file, docUri, "documented case").id;
       const doc = testDocFor(id);
@@ -246,8 +242,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("an undocumented case records an empty doc, not a missing one", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const doc = testDocFor(leaf(file, docUri, "undocumented case").id);
       assert.ok(doc, "a record exists");
@@ -257,8 +252,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the ML flavor's (** … *) blocks reach the same TestItems", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(mlDocUri);
       assert.strictEqual(file.children.size, 2);
       const documented = leaf(file, mlDocUri, "ml documented");
@@ -280,11 +274,10 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("re-resolving a file after the doc is deleted drops the description", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
-      const uri = writeFixture("edited-docs.test.osp", DOC_FIXTURE);
+      const osprey = requireCompiler(this, compiler, 30000);
+      const uri = fixtures.write("edited-docs.test.osp", DOC_FIXTURE);
       const controller = newController();
-      const before = await refreshTestFile(controller, uri, compiler);
+      const before = await refreshTestFile(controller, uri, osprey);
       assertWholeDoc(
         leaf(before, uri, "documented case").description,
         "Addition is commutative.",
@@ -294,7 +287,7 @@ suite("Osprey test documentation and profiling", () => {
         uri.fsPath,
         'fn add(a, b) = wrapAdd(a, b)\ntest("documented case", fn() => expect(add(1, 1), 2))\n',
       );
-      const after = await refreshTestFile(controller, uri, compiler);
+      const after = await refreshTestFile(controller, uri, osprey);
       const stale = leaf(after, uri, "documented case");
       assert.strictEqual(stale.description, undefined, "description cleared");
       assert.strictEqual(testDocFor(stale.id)?.markdown, "", "doc cleared");
@@ -302,8 +295,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("every discovered leaf is registered in the docs index", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const ids = documentedTestIds();
       for (const [, item] of file.children) {
@@ -316,17 +308,10 @@ suite("Osprey test documentation and profiling", () => {
 
   suite("documentation reaches run results", () => {
     test("a documented case's failure message leads with its documentation", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { controller, file } = await discovered(docFailUri);
       const sink = new RecordingSink();
-      await executeRunRequest(
-        controller,
-        new vscode.TestRunRequest([file]),
-        sink,
-        token(),
-        () => compiler,
-      );
+      await runItems(controller, [file], sink);
       const failed = sink.ofKind("failed");
       assert.strictEqual(failed.length, 1, "the one case failed");
       const message = failed[0].message ?? "";
@@ -351,17 +336,10 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("running a documented suite still reports every verdict", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { controller, file } = await discovered(docUri);
       const sink = new RecordingSink();
-      await executeRunRequest(
-        controller,
-        new vscode.TestRunRequest([file]),
-        sink,
-        token(),
-        () => compiler,
-      );
+      await runItems(controller, [file], sink);
       assert.strictEqual(sink.ofKind("passed").length, 3, "all three passed");
       assert.strictEqual(sink.ofKind("failed").length, 0);
       assert.strictEqual(sink.ofKind("end").length, 1);
@@ -371,9 +349,18 @@ suite("Osprey test documentation and profiling", () => {
   // -------------------------------------------------------- documentation UI
 
   suite("Show Test Documentation command", () => {
+    /** Show `target`'s documentation, insisting no notification is needed. */
+    function shownDoc(target: Parameters<typeof showTestDocumentation>[0]) {
+      return showTestDocumentation(
+        target,
+        () => undefined,
+        undefined,
+        () => assert.fail("no notification expected"),
+      );
+    }
+
     test("a TestItem argument resolves to that case's documentation", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const item = leaf(file, docUri, "documented case");
       const shown: string[] = [];
@@ -394,31 +381,19 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a bare id string resolves the same way", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const id = leaf(file, docUri, "summary only").id;
-      const markdown = showTestDocumentation(
-        id,
-        () => undefined,
-        undefined,
-        () => assert.fail("no notification expected"),
-      );
+      const markdown = shownDoc(id);
       assert.ok(markdown?.startsWith("### summary only\n"), markdown);
       assert.ok(markdown?.includes("Zero is the additive identity."), markdown);
     });
 
     test("an undocumented case still opens, explaining how to document it", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const item = leaf(file, docUri, "undocumented case");
-      const markdown = showTestDocumentation(
-        item,
-        () => undefined,
-        undefined,
-        () => assert.fail("no notification expected"),
-      );
+      const markdown = shownDoc(item);
       assert.ok(markdown?.includes("No documentation"), markdown);
       assert.ok(markdown?.includes("`///`"), markdown);
     });
@@ -436,8 +411,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("resolveTargetId picks the nearest case at or above the cursor", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const rich = leaf(file, docUri, "documented case").id;
       const summary = leaf(file, docUri, "summary only").id;
@@ -492,8 +466,7 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a TestItem argument wins over the cursor position", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const { file } = await discovered(docUri);
       const bare = leaf(file, docUri, "undocumented case");
       // The cursor sits on the documented case, but the explicit item wins.
@@ -507,22 +480,60 @@ suite("Osprey test documentation and profiling", () => {
       const item = leaf(file, docUri, "documented case");
       const record = testDocFor(item.id);
       assert.ok(record);
-      const existing = new Set(vscode.workspace.textDocuments.map((doc) => doc.uri.toString()));
+      const existing = new Set(
+        vscode.workspace.textDocuments.map((doc) => doc.uri.toString()),
+      );
       const expected = testDocMarkdown(record, docUri.fsPath);
-      assert.strictEqual(await vscode.commands.executeCommand(SHOW_TEST_DOCS_COMMAND, item), expected);
-      const preview = await waitFor(() => vscode.window.visibleTextEditors.find((editor) =>
-        !existing.has(editor.document.uri.toString()) && editor.document.getText() === expected),
-        Boolean, 5000, "the real documentation preview");
+      assert.strictEqual(
+        await vscode.commands.executeCommand(SHOW_TEST_DOCS_COMMAND, item),
+        expected,
+      );
+      const preview = await waitFor(
+        () =>
+          vscode.window.visibleTextEditors.find(
+            (editor) =>
+              !existing.has(editor.document.uri.toString()) &&
+              editor.document.getText() === expected,
+          ),
+        Boolean,
+        5000,
+        "the real documentation preview",
+      );
       assert.ok(preview?.document.isUntitled);
       assert.strictEqual(preview.document.languageId, "markdown");
       await vscode.window.showTextDocument(preview.document);
-      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+      await vscode.commands.executeCommand(
+        "workbench.action.revertAndCloseActiveEditor",
+      );
     });
   });
 
   // ---------------------------------------------------------------- profiling
 
   suite("Profile run profile ([TESTING-PROFILE])", () => {
+    /** Skip unless the POSIX-only sampling profiler can run here ([PROF-CLI-RUN]). */
+    function requireSamplingProfiler(
+      testContext: { skip(): unknown; timeout(ms: number): unknown },
+      budgetMs: number,
+    ): void {
+      if (!compiler || process.platform === "win32") {
+        testContext.skip();
+      }
+      testContext.timeout(budgetMs);
+    }
+
+    /** A profile root for one test, removed again when `body` finishes. */
+    async function withProfileRoot(
+      body: (root: string) => Promise<void>,
+    ): Promise<void> {
+      const root = await makeProfileRoot();
+      try {
+        await body(root);
+      } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    }
+
     test("registerTestProfileProfile adds a non-default Run profile named Profile", () => {
       const controller = newController();
       const profile = registerTestProfileProfile(
@@ -567,22 +578,11 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("a profiling run reports TAP verdicts AND writes profiler artifacts", async function () {
-      if (!compiler || process.platform === "win32") {
-        this.skip(); // the sampling profiler is POSIX-only ([PROF-CLI-RUN])
-      }
-      this.timeout(120000);
+      requireSamplingProfiler(this, 120000);
       const { controller, file } = await discovered(profileUri);
       const sink = new ProfileRecordingSink();
-      const root = await makeProfileRoot();
-      try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+      await withProfileRoot(async (root) => {
+        await runItems(controller, [file], sink, profileMode(root));
         // The verdicts are unchanged by profiling.
         assert.strictEqual(sink.ofKind("passed").length, 1, sink.output);
         assert.strictEqual(sink.ofKind("failed").length, 0, sink.output);
@@ -603,28 +603,15 @@ suite("Osprey test documentation and profiling", () => {
             `${ext} export written into ${dir}: ${fs.readdirSync(dir).join(", ")}`,
           );
         }
-      } finally {
-        fs.rmSync(root, { recursive: true, force: true });
-      }
+      });
     });
 
     test("presentProfile loads the artifacts, opens the flame panel, and applies heat", async function () {
-      if (!compiler || process.platform === "win32") {
-        this.skip();
-      }
-      this.timeout(120000);
+      requireSamplingProfiler(this, 120000);
       const { controller, file } = await discovered(profileUri);
       const sink = new ProfileRecordingSink();
-      const root = await makeProfileRoot();
-      try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+      await withProfileRoot(async (root) => {
+        await runItems(controller, [file], sink, profileMode(root));
         const dir = sink.profiles[0]?.dir;
         assert.ok(dir, "a profile directory was reported");
         const shown: string[] = [];
@@ -649,9 +636,7 @@ suite("Osprey test documentation and profiling", () => {
         assert.strictEqual(applied.length, 1, "heat decorations applied");
         assert.ok(applied[0] > 0, "the profile really collected samples");
         assert.ok(outcome.detail.length > 0, "a summary line for the output");
-      } finally {
-        fs.rmSync(root, { recursive: true, force: true });
-      }
+      });
     });
 
     test("a directory with no artifacts reports a failure instead of throwing", () => {
@@ -719,11 +704,8 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("profiling one selected case filters through OSPREY_TEST_FILTER", async function () {
-      if (!compiler || process.platform === "win32") {
-        this.skip();
-      }
-      this.timeout(120000);
-      const uri = writeFixture(
+      requireSamplingProfiler(this, 120000);
+      const uri = fixtures.write(
         "two-profiled.test.osp",
         `fn spin(n, acc) = match n <= 0 {
     true => acc
@@ -736,54 +718,37 @@ test("second profiled", fn() => expect(spin(500000, 0) > 0, true))
 `,
       );
       const controller = newController();
-      const file = await refreshTestFile(controller, uri, compiler);
+      const file = await refreshTestFile(controller, uri, compiler ?? "osprey");
       const only = file.children.get(
         leafTestId(uri.toString(), "second profiled"),
       );
       assert.ok(only);
       const sink = new ProfileRecordingSink();
-      const root = await makeProfileRoot();
-      try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([only]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+      await withProfileRoot(async (root) => {
+        await runItems(controller, [only], sink, profileMode(root));
         assert.strictEqual(sink.ofKind("passed").length, 1);
         assert.ok(sink.output.includes("second profiled"), sink.output);
         assert.ok(!sink.output.includes("ok 1 - first profiled"), sink.output);
         assert.strictEqual(sink.profiles.length, 1);
-      } finally {
-        fs.rmSync(root, { recursive: true, force: true });
-      }
+      });
     });
 
     test("a suite that fails to compile profiles nothing but still errors the item", async function () {
-      if (!compiler || process.platform === "win32") {
-        this.skip();
-      }
-      this.timeout(60000);
-      const broken = writeFixture(
+      requireSamplingProfiler(this, 60000);
+      const broken = fixtures.write(
         "brokenprof.test.osp",
         'test("ok", fn() => expect(1, 1))\n',
       );
       const controller = newController();
-      const file = await refreshTestFile(controller, broken, compiler);
+      const file = await refreshTestFile(
+        controller,
+        broken,
+        compiler ?? "osprey",
+      );
       fs.writeFileSync(broken.fsPath, "fn broken( = nonsense !!\n");
       const sink = new ProfileRecordingSink();
-      const root = await makeProfileRoot();
-      try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+      await withProfileRoot(async (root) => {
+        await runItems(controller, [file], sink, profileMode(root));
         assert.ok(
           sink.ofKind("errored").length > 0,
           "compile failure surfaced",
@@ -794,9 +759,7 @@ test("second profiled", fn() => expect(spin(500000, 0) > 0, true))
           assert.fail("no panel for a failed compile"),
         );
         assert.strictEqual(outcome.loaded, false);
-      } finally {
-        fs.rmSync(root, { recursive: true, force: true });
-      }
+      });
     });
   });
 });

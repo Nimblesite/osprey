@@ -8,7 +8,7 @@ return their operands, `is` tests, `|` filters and string/dict method calls.
 Filters, tests and methods live in `Filters`; this module parses and dispatches.
 """
 
-from jinja2.Value import halt
+from jinja2.Value import halt, map_indexed
 from jinja2 import Value as V
 from jinja2 import Filters as F
 from jinja2 import Render as R
@@ -116,12 +116,22 @@ def tokenize_from(s, i, acc):
             return tokenize_from(s, t.next, listAppend(acc, t.tok))
 
 
-def digits(s, j):
-    """Consume ASCII digits from `j`."""
-    if is_digit(byte(s, j)):
-        return digits(s, j + 1)
+def run_while(s, j, pred):
+    """The first byte from `j` that fails `pred`."""
+    if pred(byte(s, j)):
+        return run_while(s, j + 1, pred)
     else:
         return j
+
+
+def digits(s, j):
+    """Consume ASCII digits from `j`."""
+    return run_while(s, j, is_digit)
+
+
+def is_exp_byte(b):
+    """Whether a byte is an `e`/`E` exponent marker."""
+    return b == 101 or b == 69
 
 
 def exponent(s, j):
@@ -149,7 +159,7 @@ def scan_num(s, i):
     if byte(s, j) == 46 and is_digit(byte(s, j + 1)):
         k = digits(s, j + 1)
         return exponent_or(s, k, True)
-    elif byte(s, j) == 101 or byte(s, j) == 69:
+    elif is_exp_byte(byte(s, j)):
         return Num(end=exponent(s, j), is_f=True)
     else:
         return Num(end=j, is_f=False)
@@ -157,7 +167,7 @@ def scan_num(s, i):
 
 def exponent_or(s, k, is_f):
     """Whether an exponent follows at `k`, extending the number."""
-    if byte(s, k) == 101 or byte(s, k) == 69:
+    if is_exp_byte(byte(s, k)):
         return Num(end=exponent(s, k), is_f=True)
     else:
         return Num(end=k, is_f=is_f)
@@ -181,10 +191,7 @@ def scan_ident(s, i):
 
 def ident_end(s, j):
     """The byte after the identifier starting at `j`."""
-    if is_ident_char(byte(s, j)):
-        return ident_end(s, j + 1)
-    else:
-        return j
+    return run_while(s, j, is_ident_char)
 
 
 def scan_string(s, i, quote):
@@ -271,20 +278,21 @@ def eval_condexpr(toks, i, env):
 
 def eval_or(toks, i, env):
     """`a or b`: the first truthy operand, or the last."""
-    p = eval_and(toks, i, env)
-    if is_name(tok(toks, p.next), "or"):
-        q = eval_or(toks, p.next + 1, env)
-        return P(value=p.value if V.truthy(p.value) else q.value, next=q.next)
-    else:
-        return p
+    return eval_short(toks, i, env, "or", eval_and, True)
 
 
 def eval_and(toks, i, env):
     """`a and b`: the first falsy operand, or the last."""
-    p = eval_not(toks, i, env)
-    if is_name(tok(toks, p.next), "and"):
-        q = eval_and(toks, p.next + 1, env)
-        return P(value=q.value if V.truthy(p.value) else p.value, next=q.next)
+    return eval_short(toks, i, env, "and", eval_not, False)
+
+
+def eval_short(toks, i, env, word, operand, keep_truthy):
+    """`operand (word operand)*`, keeping the left operand when its truthiness
+    equals `keep_truthy` and the last otherwise."""
+    p = operand(toks, i, env)
+    if is_name(tok(toks, p.next), word):
+        q = eval_short(toks, p.next + 1, env, word, operand, keep_truthy)
+        return P(value=p.value if V.truthy(p.value) == keep_truthy else q.value, next=q.next)
     else:
         return p
 
@@ -317,6 +325,11 @@ def compare_chain(toks, i, env, left):
         return P(value=left, next=i)
 
 
+def le(left, right):
+    """`left <= right`."""
+    return V.less(left, right) or V.equal(left, right)
+
+
 def compare_op(t, a, b):
     """One comparison operator."""
     if is_op(t, "=="):
@@ -326,11 +339,11 @@ def compare_op(t, a, b):
     elif is_op(t, "<"):
         return V.bool_(V.less(a, b))
     elif is_op(t, "<="):
-        return V.bool_(V.less(a, b) or V.equal(a, b))
+        return V.bool_(le(a, b))
     elif is_op(t, ">"):
         return V.bool_(V.less(b, a))
     elif is_op(t, ">="):
-        return V.bool_(V.less(b, a) or V.equal(a, b))
+        return V.bool_(le(b, a))
     else:
         return V.bool_(V.contains(b, a))
 
@@ -557,13 +570,21 @@ def eval_postfix(toks, i, env, obj):
     elif is_op(t, "["):
         return eval_subscript(toks, i + 1, env, obj)
     elif is_op(t, "("):
-        p = parse_call_args(toks, i + 1, env)
-        if p.error != "":
-            return P(value=halt(p.error), next=p.next)
-        else:
-            return eval_postfix(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
+        return call_then(toks, i, env, obj, eval_postfix)
     else:
         return P(value=obj, next=i)
+
+
+def call_then(toks, i, env, callee, cont):
+    """A call `callee(...)` whose arguments are parsed at `i`, continuing with `cont`."""
+    return call_args(toks, i, env, lambda p: cont(toks, p.next, env, call_value(env, callee, p.args, p.kwargs)))
+
+
+def call_args(toks, i, env, then):
+    """A parenthesised argument list at `i`, then `then` on the parse, or the
+    call's own error."""
+    p = parse_call_args(toks, i + 1, env)
+    return P(value=halt(p.error), next=p.next) if p.error != "" else then(p)
 
 
 def eval_subscript(toks, i, env, obj):
@@ -678,11 +699,7 @@ def eval_filter(toks, i, env, obj):
     elif is_name(t, "is"):
         return eval_test(toks, i + 1, env, obj)
     elif is_op(t, "("):
-        p = parse_call_args(toks, i + 1, env)
-        if p.error != "":
-            return P(value=halt(p.error), next=p.next)
-        else:
-            return eval_filter(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
+        return call_then(toks, i, env, obj, eval_filter)
     else:
         return P(value=obj, next=i)
 
@@ -785,14 +802,16 @@ def type_name(v):
 
 def operand_error(a, b):
     """The fault Value when `a` or `b` is undefined or already an error, else `none`."""
-    if a.kind == "undefined":
-        return halt("'" + a.sval + "' is undefined")
-    elif V.is_error(a):
-        return a
-    elif b.kind == "undefined":
-        return halt("'" + b.sval + "' is undefined")
-    elif V.is_error(b):
-        return b
+    e = undefined_error(a)
+    return undefined_error(b) if e.kind == "none" else e
+
+
+def undefined_error(v):
+    """The fault Value when `v` is undefined or already an error, else `none`."""
+    if v.kind == "undefined":
+        return halt("'" + v.sval + "' is undefined")
+    elif V.is_error(v):
+        return v
     else:
         return V.none()
 
@@ -811,11 +830,16 @@ def add_ok(a, b):
     if a.kind == V.K_STRING and b.kind == V.K_STRING:
         return V.text(a.sval + b.sval)
     elif a.kind == V.K_STRING:
-        return halt("can only concatenate str (not \"" + type_name(b) + "\") to str")
+        return concat_fault(b)
     elif b.kind == V.K_STRING:
-        return halt("can only concatenate str (not \"" + type_name(a) + "\") to str")
+        return concat_fault(a)
     else:
         return bin_num(a, b, lambda x, y: x + y, lambda x, y: x + y, "+")
+
+
+def concat_fault(v):
+    """CPython's str-concatenation type error for the offending operand."""
+    return halt("can only concatenate str (not \"" + type_name(v) + "\") to str")
 
 
 def sub(a, b):
@@ -884,10 +908,9 @@ def bin_num(a, b, ifun, ffun, op):
 
 def neg(v):
     """Unary minus."""
-    if v.kind == "undefined":
-        return halt("'" + v.sval + "' is undefined")
-    elif V.is_error(v):
-        return v
+    e = undefined_error(v)
+    if e.kind != "none":
+        return e
     elif v.kind == V.K_INT:
         return V.int_(0 - v.ival)
     elif v.kind == V.K_FLOAT:
@@ -935,8 +958,8 @@ def arg0(args):
 
 def kwargs_dict(kwargs):
     """A dict Value from keyword arguments."""
-    keys = toList(map(range(len(kwargs)), lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name))
-    vals = toList(map(range(len(kwargs)), lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value))
+    keys = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name)
+    vals = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value)
     return V.dict_(keys, vals)
 
 

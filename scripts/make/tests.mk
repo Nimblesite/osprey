@@ -68,6 +68,9 @@ _coverage_check_rust:
 #
 # Shared container suites use GC hooks; dedicated ARC suites cover ownership.
 C_TEST_MEMORY_SRC = runtime/memory_gc.c
+# file_runtime.c builds listDir's List<string> results, so every suite linking it
+# links the string and list runtimes too; C_SUITE_BUILD dedupes overlaps.
+FILE_RUNTIME_SRC = runtime/file_runtime.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/float_spelling.c
 C_TEST_MEMORY_LIBS = -pthread
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
 OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
@@ -75,7 +78,7 @@ OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
 # runtime unit [PROF-COLLECT-REGISTRY] [PROF-ATTACH-ENDPOINT].
 PROF_SRC    = runtime/profiler_runtime.c runtime/profiler_store.c runtime/profiler_dump.c \
               runtime/profiler_sampler.c runtime/profiler_stream.c runtime/profiler_endpoint.c
-RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/file_runtime.c runtime/effects_runtime.c runtime/effects_coro.c \
+RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c $(FILE_RUNTIME_SRC) runtime/effects_runtime.c runtime/effects_coro.c \
               $(PROF_SRC)
 # Frame-pointer profile for the profiler suite: its unwind tests need -g and
 # real frame chains, and it predates the WARN core, so it keeps its own flags.
@@ -110,30 +113,30 @@ C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 # Every tensor-reader suite shares the numeric binary16 conversion.
 TENSOR_READER_SRC = runtime/tensor_file.c runtime/float_spelling.c
-C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
 C_LIBS_memory_golden_tests = -pthread
 C_FLAGS_memory_golden_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_memory_golden_tests += $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_runtime_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
 C_SRC_gpu_float_tests = runtime/gpu_float_tests.c runtime/float_spelling.c
 C_FLAGS_gpu_float_tests = -ffp-contract=off
-C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
-C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_selection_tests = -DOSPREY_GPU_BUFFER_SUITE=1 -DOSPREY_GPU_METAL=1 -DOSPREY_GPU_OPENCL=1
 C_SRC_gpu_no_device_tests = $(C_SRC_gpu_selection_tests)
 C_FLAGS_gpu_no_device_tests = -DOSPREY_GPU_BUFFER_SUITE=1
 ifeq ($(UNAME_S),Darwin)
 C_TEST_SUITES += gpu_metal_tests
-C_SRC_gpu_metal_tests = runtime/gpu_metal_tests.m runtime/gpu_metal.m runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_metal_tests = runtime/gpu_metal_tests.m runtime/gpu_metal.m $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_metal_tests = -fobjc-arc -DOSPREY_GPU_METAL=1
 C_LIBS_gpu_metal_tests = -framework Foundation -framework Metal -pthread
 endif
@@ -143,15 +146,15 @@ C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runti
 # The same suite on the portable float-spelling path wasm32 uses.
 C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
-C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c
 C_LIBS_json_runtime_tests = -pthread
-C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/file_runtime.c $(PROF_SRC)
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
 C_LIBS_effects_runtime_tests = -pthread
 C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_entropy_tests.c runtime/term_tty_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
-C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_LIBS_test_system_runtime = -pthread
-C_SRC_test_file_runtime = runtime/test_file_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
-C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_test_file_runtime = runtime/test_file_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
@@ -200,7 +203,7 @@ C_SUITE_GC = $(if $(filter-out memory_gc_tests memory_gc_stack_root_tests,$(1)),
 C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
 C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_sort_tests.c runtime/map_tests.c
-C_SUITE_BUILD = $(foreach src,$(C_SRC_$(1)),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(C_SRC_$(1)),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
+C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
 _test_gc_stack_root:
@@ -239,7 +242,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
 # Apple silicon; strictly worse under GC) — GitHub issue #306, plan 0034
-# known-bug items, docs/reviews/review.md#hunt. Verify a fix
+# known-bug items. Verify a fix
 # with `make _test_hunt_clean`; it stays red until the fix lands.
 HUNT_KNOWN_BUGS ?= clean
 
@@ -430,7 +433,7 @@ _tui: build
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make -C src/toolchain/targets graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C src/toolchain/targets/macos graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
@@ -512,25 +515,28 @@ _lint: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run lint
 
 # _deslop: Code-duplication gate. Fails the build when measured
-# duplication exceeds the ceiling in .config/deslop.toml (exit 3). Exclusions and the
-# threshold live in that committed config — the single source of truth.
+# duplication exceeds the ceiling in .deslop.toml (exit 3). The ceiling (no exclusions: every file counts)
+# lives in that committed config — the single source of truth.
 # The installer resolves the latest release for both local and hosted CI.
 
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
 	bash scripts/ci/install-deslop.sh
-	deslop . --config .config/deslop.toml --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages
-# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
-# editor see it. A package's tests list sibling source roots by hand, so they
-# stay green when the package's own manifest cannot resolve its dependencies.
-.PHONY: _check_packages
-_check_packages:
-	for manifest in src/osprey/packages/*/osprey.toml; do \
-		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
-	done
+# [CI-PROGRAMS-COMPILE] [PACKAGE-WORKSPACE] Every tracked Osprey program
+# compiles: each osprey.toml project as a consumer and the editor see it, and
+# every other .osp, .ospml or Python-flavour .py on its own, 16 at a time.
+# failscompilation/ and the registry data are left out: each is checked
+# elsewhere (see the script's docstring). The Osprey script lists each failure with the compiler's message and
+# ends on "N programs, F failed"; any F above 0 fails the build.
+.PHONY: _check_programs
+_check_programs: export OSPREY_BIN = $(abspath $(BIN))
+_check_programs:
+	python3 scripts/ci/test-check-programs.py --compiler $(abspath $(BIN))
+	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
 # reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json

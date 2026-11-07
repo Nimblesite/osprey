@@ -303,13 +303,21 @@ pub(crate) fn acc_result(cg: &mut Codegen, acc: &str, tmpl: &Value) -> Value {
     v
 }
 
-/// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
-fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let range = gen_expr(cg, nth(args, 0)?)?;
+/// The accumulator preamble `fold` and `foldList` share: the `i64` slot, the
+/// type template that recovers its real type, and the combining callback taken
+/// from the 3rd argument.
+fn acc_seed(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value, Callback)> {
     let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
     let (acc, seed) = acc_init(cg, args, numeric)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let tmpl = typed_seed(cg, seed, &combine);
+    Ok((acc, tmpl, combine))
+}
+
+/// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
+fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let range = gen_expr(cg, nth(args, 0)?)?;
+    let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_range_elem(cg, &range, |cg, elem| {
         acc_step(cg, &acc, &tmpl, &combine, elem)
     })?;
@@ -387,8 +395,14 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         out_elem = push_built(cg, &bld, mapped, "mapList")?;
         Ok(())
     })?;
-    let sealed = crate::collections::list_builder_seal(cg, &bld);
-    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem.as_deref()))))
+    Ok(seal_built(cg, &bld, out_elem.as_deref()))
+}
+
+/// Seal the list under construction and hand it the element type it latched,
+/// which tags the built list ([`crate::collections::LIST_TAG`]).
+fn seal_built(cg: &mut Codegen, bld: &str, out_elem: Option<&str>) -> Value {
+    let sealed = crate::collections::list_builder_seal(cg, bld);
+    sealed.with_owner(Some(crate::collections::list_owner(out_elem)))
 }
 
 /// Store a freshly produced element in the list under construction. Answers
@@ -425,17 +439,13 @@ fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         out_elem = push_built(cg, &bld, elem, "toList")?;
         Ok(())
     })?;
-    let sealed = crate::collections::list_builder_seal(cg, &bld);
-    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem.as_deref()))))
+    Ok(seal_built(cg, &bld, out_elem.as_deref()))
 }
 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
 fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
-    let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
-    let (acc, seed) = acc_init(cg, args, numeric)?;
-    let combine = callback_of(cg, nth(args, 2)?)?;
-    let tmpl = typed_seed(cg, seed, &combine);
+    let (acc, tmpl, combine) = acc_seed(cg, args)?;
     each_list_elem(cg, &l, |cg, _, elem| {
         acc_step(cg, &acc, &tmpl, &combine, elem)
     })?;

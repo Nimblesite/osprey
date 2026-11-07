@@ -1,0 +1,5 @@
+[project]
+name = "pascal"
+source_roots = [".", "../../shared"]
+default_namespace = "pascal"
+entry = "pascal.osp"

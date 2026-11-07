@@ -1,0 +1,5 @@
+[project]
+name = "factorial"
+source_roots = [".", "../../shared"]
+default_namespace = "factorial"
+entry = "factorial.osp"

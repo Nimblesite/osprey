@@ -60,6 +60,24 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
         "match readFileBytes(\"model.gguf\", 0, 4) {\n    Success { value } => print(\"${listLength(value)} bytes\")\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(
+        "listDir",
+        "Lists one directory's entries as full child paths; directories carry a trailing `/`, and `.` and `..` never appear. Returns `Result<List<string>, Error>`.",
+        ["path" => "Path to the directory"],
+        "match listDir(\"src\") {\n    Success { value } => forEachList(value, print)\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
+        "kindOf",
+        "Classifies one path as `\"dir\"`, `\"file\"` or `\"other\"` as `stat` reports it. A path that cannot be stated is an `Error` naming the reason.",
+        ["path" => "Path to classify"],
+        "match kindOf(\"src\") {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
+        "makeDir",
+        "Creates one directory, idempotently: an existing directory is success. Returns `Result<int, Error>`.",
+        ["path" => "Path of the directory to create"],
+        "match makeDir(\"out/notes\") {\n    Success { value } => print(\"ready\")\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
         "fileSize",
         "The byte length of a regular file, as `stat` reports it. A missing path or a path that is not a regular file is an `Error` naming the reason.",
         ["path" => "Path to the file"],

@@ -11,7 +11,7 @@ multiclass shape); the binary one-column spelling is expressed as its two-column
 equivalent. Implements [PORT-TEST-ORACLE].
 """
 
-from sklearn.Stats import argsort_float, index_of, mean_float, unique_ints
+from sklearn.Stats import argsort_float, encode_labels, map_indexed, mean_float, unique_ints
 
 __all__ = [
     "RocCurve", "PrecisionRecallCurve", "accuracy_score", "precision_score",
@@ -63,19 +63,19 @@ class PRFResult:
     f1: float
 
 
+def inf():
+    """IEEE infinity as `exp(1000.0)`, the flavor's only way to spell it."""
+    return exp(1000.0)
+
+
 def nan():
-    """IEEE NaN as `inf - inf`, the flavor's only way to spell it."""
-    return exp(1000.0) - exp(1000.0)
+    """IEEE NaN as `inf - inf`."""
+    return inf() - inf()
 
 
 def count_of(xs, v):
     """Number of elements of an int list equal to `v`."""
     return foldList(xs, 0, lambda acc, x: acc + 1 if x == v else acc)
-
-
-def count_both(yt, yp, v):
-    """Positions where both `yt` and `yp` equal `v`."""
-    return fold(range(len(yt)), 0, lambda acc, i: acc + 1 if unwrap_or(listGet(yt, i), v) == v and unwrap_or(listGet(yp, i), v) == v else acc)
 
 
 def count_pair(yt, yp, a, b):
@@ -99,14 +99,19 @@ def weighted_mean(vals, weights):
     return num / toFloat(sum_int(weights))
 
 
+def tp_ratio(tp, denominator, i, zd):
+    """`tp[i] / denominator[i]` under sklearn's zero-division policy."""
+    return divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(denominator, i), 0)), zd)
+
+
 def class_stats(yt, yp, labels, zd):
     """Per-label tp, predicted and true counts, then precision/recall/f1."""
-    tp = toList(map(range(len(labels)), lambda i: count_both(yt, yp, unwrap_or(listGet(labels, i), 0))))
-    pred = toList(map(range(len(labels)), lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0))))
-    true = toList(map(range(len(labels)), lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0))))
-    precision = toList(map(range(len(labels)), lambda i: divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(pred, i), 0)), zd)))
-    recall = toList(map(range(len(labels)), lambda i: divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)), zd)))
-    f1 = toList(map(range(len(labels)), lambda i: divide_z(2.0 * toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)) + toFloat(unwrap_or(listGet(pred, i), 0)), zd)))
+    tp = map_indexed(labels, lambda i: count_pair(yt, yp, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, i), 0)))
+    pred = map_indexed(labels, lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0)))
+    true = map_indexed(labels, lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0)))
+    precision = map_indexed(labels, lambda i: tp_ratio(tp, pred, i, zd))
+    recall = map_indexed(labels, lambda i: tp_ratio(tp, true, i, zd))
+    f1 = map_indexed(labels, lambda i: divide_z(2.0 * toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)) + toFloat(unwrap_or(listGet(pred, i), 0)), zd))
     return ClassStats(tp=tp, pred=pred, true=true, precision=precision, recall=recall, f1=f1)
 
 
@@ -115,9 +120,12 @@ def prf_scores(yt, yp, average, zd):
     labels = [1] if average == "binary" else unique_ints(listConcat(yt, yp))
     s = class_stats(yt, yp, labels, zd)
     if average == "micro":
-        p = divide_z(toFloat(sum_int(s.tp)), toFloat(sum_int(s.pred)), zd)
-        r = divide_z(toFloat(sum_int(s.tp)), toFloat(sum_int(s.true)), zd)
-        f = divide_z(2.0 * toFloat(sum_int(s.tp)), toFloat(sum_int(s.true)) + toFloat(sum_int(s.pred)), zd)
+        tp = toFloat(sum_int(s.tp))
+        pr = toFloat(sum_int(s.pred))
+        tr = toFloat(sum_int(s.true))
+        p = divide_z(tp, pr, zd)
+        r = divide_z(tp, tr, zd)
+        f = divide_z(2.0 * tp, tr + pr, zd)
         return PRFResult(precision=p, recall=r, f1=f)
     elif average == "weighted":
         return PRFResult(precision=weighted_mean(s.precision, s.true), recall=weighted_mean(s.recall, s.true), f1=weighted_mean(s.f1, s.true))
@@ -152,17 +160,17 @@ def f1_score(y_true, y_pred, average, zero_division):
 def confusion_matrix(y_true, y_pred, labels):
     """`sklearn.metrics.confusion_matrix` over an explicit, sorted label list:
     entry `[i][j]` counts true `labels[i]` predicted as `labels[j]`."""
-    return toList(map(range(len(labels)), lambda i: toList(map(range(len(labels)), lambda j: count_pair(y_true, y_pred, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, j), 0))))))
+    return map_indexed(labels, lambda i: toList(map(range(len(labels)), lambda j: count_pair(y_true, y_pred, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, j), 0)))))
 
 
 def gather_float(xs, indices):
     """`xs` gathered at the given indices, as floats."""
-    return toList(map(range(len(indices)), lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(indices, i), 0)), 0.0)))
+    return map_indexed(indices, lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(indices, i), 0)), 0.0))
 
 
 def negate_scores(ys):
     """`-ys` elementwise, so an ascending sort becomes descending."""
-    return toList(map(range(len(ys)), lambda i: 0.0 - unwrap_or(listGet(ys, i), 0.0)))
+    return map_indexed(ys, lambda i: 0.0 - unwrap_or(listGet(ys, i), 0.0))
 
 
 def threshold_indices(ss):
@@ -181,11 +189,11 @@ def threshold_points(yt, ys):
     """True/false-positive counts and scores at each distinct threshold,
     matching sklearn's stable descending sort and cumulative sums."""
     order = argsort_float(negate_scores(ys))
-    st = gather_float(toList(map(range(len(yt)), lambda i: 1.0 if unwrap_or(listGet(yt, i), 0) == 1 else 0.0)), order)
+    st = gather_float(map_indexed(yt, lambda i: 1.0 if unwrap_or(listGet(yt, i), 0) == 1 else 0.0), order)
     ss = gather_float(ys, order)
     tids = threshold_indices(ss)
-    tps = toList(map(range(len(tids)), lambda k: sum_first(st, unwrap_or(listGet(tids, k), 0) + 1)))
-    fps = toList(map(range(len(tids)), lambda k: 1.0 + toFloat(unwrap_or(listGet(tids, k), 0)) - unwrap_or(listGet(tps, k), 0.0)))
+    tps = map_indexed(tids, lambda k: sum_first(st, unwrap_or(listGet(tids, k), 0) + 1))
+    fps = map_indexed(tids, lambda k: 1.0 + toFloat(unwrap_or(listGet(tids, k), 0)) - unwrap_or(listGet(tps, k), 0.0))
     thresholds = gather_float(ss, tids)
     return Points(fps=fps, tps=tps, thresholds=thresholds)
 
@@ -210,7 +218,7 @@ def filter_floats(xs, flags):
 def divide_by_last(xs):
     """`xs / xs[-1]`, for the last element being the total count."""
     last = unwrap_or(listGet(xs, len(xs) - 1), 0.0)
-    return toList(map(range(len(xs)), lambda i: unwrap_or(listGet(xs, i), 0.0) / last))
+    return map_indexed(xs, lambda i: unwrap_or(listGet(xs, i), 0.0) / last)
 
 
 def all_nan(n):
@@ -227,9 +235,14 @@ def roc_curve(y_true, y_score):
     thresholds = filter_floats(p.thresholds, flags)
     fps0 = listConcat([0.0], fps)
     tps0 = listConcat([0.0], tps)
-    fpr = all_nan(len(fps0)) if unwrap_or(listGet(fps0, len(fps0) - 1), 0.0) <= 0.0 else divide_by_last(fps0)
-    tpr = all_nan(len(tps0)) if unwrap_or(listGet(tps0, len(tps0) - 1), 0.0) <= 0.0 else divide_by_last(tps0)
-    return RocCurve(fpr=fpr, tpr=tpr, thresholds=listConcat([exp(1000.0)], thresholds))
+    fpr = rate_curve(fps0)
+    tpr = rate_curve(tps0)
+    return RocCurve(fpr=fpr, tpr=tpr, thresholds=listConcat([inf()], thresholds))
+
+
+def rate_curve(xs):
+    """A rate curve: all NaN when its last count is zero, else the running ratio."""
+    return all_nan(len(xs)) if unwrap_or(listGet(xs, len(xs) - 1), 0.0) <= 0.0 else divide_by_last(xs)
 
 
 def auc_trapezoid(xs, ys):
@@ -240,22 +253,27 @@ def auc_trapezoid(xs, ys):
 def roc_auc_score(y_true, y_score):
     """`sklearn.metrics.roc_auc_score` for binary labels: NaN when one class is
     absent, else the trapezoidal AUC of the ROC curve."""
-    return nan() if len(unique_ints(y_true)) != 2 else auc_trapezoid(roc_curve(y_true, y_score).fpr, roc_curve(y_true, y_score).tpr)
+    return nan() if len(unique_ints(y_true)) != 2 else curve_auc(roc_curve(y_true, y_score))
+
+
+def curve_auc(curve):
+    """The trapezoidal area under a ROC curve."""
+    return auc_trapezoid(curve.fpr, curve.tpr)
 
 
 def precision_recall_curve(y_true, y_score):
     """`sklearn.metrics.precision_recall_curve` (pos_label=1, no dropping)."""
     p = threshold_points(y_true, y_score)
     last = unwrap_or(listGet(p.tps, len(p.tps) - 1), 0.0)
-    precision = toList(map(range(len(p.tps)), lambda i: precision_at(p, i)))
-    recall = toList(map(range(len(p.tps)), lambda i: 1.0 if last == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / last))
+    precision = map_indexed(p.tps, lambda i: precision_at(p, i))
+    recall = map_indexed(p.tps, lambda i: 1.0 if last == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / last)
     return PrecisionRecallCurve(precision=listAppend(listReverse(precision), 1.0), recall=listAppend(listReverse(recall), 0.0), thresholds=listReverse(p.thresholds))
 
 
 def precision_at(p, i):
     """`tps/(tps+fps)` at point `i`, zero when no predictions."""
-    ps = unwrap_or(listGet(p.tps, i), 0.0) + unwrap_or(listGet(p.fps, i), 0.0)
-    return 0.0 if ps == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / ps
+    tp = unwrap_or(listGet(p.tps, i), 0.0)
+    return divide_z(tp, tp + unwrap_or(listGet(p.fps, i), 0.0), 0)
 
 
 def average_precision_score(y_true, y_score):
@@ -280,24 +298,34 @@ def log_loss(y_true, y_proba):
     """`sklearn.metrics.log_loss` over a list of per-class probability rows,
     clipping each to `[eps, 1 - eps]` with eps = float64 machine epsilon."""
     eps = 2.220446049250313e-16
-    losses = toList(map(range(len(y_true)), lambda i: 0.0 - ln(clip_prob(unwrap_or(listGet(unwrap_or(listGet(y_proba, i), []), unwrap_or(listGet(y_true, i), 0)), 0.0), eps))))
+    losses = map_indexed(y_true, lambda i: 0.0 - ln(clip_prob(unwrap_or(listGet(unwrap_or(listGet(y_proba, i), []), unwrap_or(listGet(y_true, i), 0)), 0.0), eps)))
     return mean_float(losses)
+
+
+def diff_at(yt, yp, i):
+    """`yt[i] - yp[i]`, the residual shared by the error metrics."""
+    return unwrap_or(listGet(yt, i), 0.0) - unwrap_or(listGet(yp, i), 0.0)
+
+
+def sq_dev(xs, m, i):
+    """`(xs[i] - m)^2`, the square shared by the squared-error metrics."""
+    d = unwrap_or(listGet(xs, i), 0.0) - m
+    return d * d
 
 
 def sq_diff(yt, yp, i):
     """`(yt[i] - yp[i])^2`."""
-    d = unwrap_or(listGet(yt, i), 0.0) - unwrap_or(listGet(yp, i), 0.0)
-    return d * d
+    return sq_dev(yt, unwrap_or(listGet(yp, i), 0.0), i)
 
 
 def mean_squared_error(y_true, y_pred):
     """`sklearn.metrics.mean_squared_error`."""
-    return mean_float(toList(map(range(len(y_true)), lambda i: sq_diff(y_true, y_pred, i))))
+    return mean_float(map_indexed(y_true, lambda i: sq_diff(y_true, y_pred, i)))
 
 
 def mean_absolute_error(y_true, y_pred):
     """`sklearn.metrics.mean_absolute_error`."""
-    return mean_float(toList(map(range(len(y_true)), lambda i: abs(unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0)))))
+    return mean_float(map_indexed(y_true, lambda i: abs(diff_at(y_true, y_pred, i))))
 
 
 def assemble(num, den):
@@ -315,7 +343,7 @@ def sse(yt, yp):
 def sse_around_mean(yt):
     """Sum of squared deviations from the mean."""
     m = mean_float(yt)
-    return fold(range(len(yt)), 0.0, lambda acc, i: acc + (unwrap_or(listGet(yt, i), 0.0) - m) * (unwrap_or(listGet(yt, i), 0.0) - m))
+    return fold(range(len(yt)), 0.0, lambda acc, i: acc + sq_dev(yt, m, i))
 
 
 def r2_score(y_true, y_pred):
@@ -327,22 +355,22 @@ def r2_score(y_true, y_pred):
 def explained_variance_score(y_true, y_pred):
     """`sklearn.metrics.explained_variance_score`: 1 minus the ratio of the
     unexplained to the total variance."""
-    diffs = toList(map(range(len(y_true)), lambda i: unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0)))
+    diffs = map_indexed(y_true, lambda i: diff_at(y_true, y_pred, i))
     dm = mean_float(diffs)
-    num = mean_float(toList(map(range(len(diffs)), lambda i: (unwrap_or(listGet(diffs, i), 0.0) - dm) * (unwrap_or(listGet(diffs, i), 0.0) - dm))))
+    num = mean_sq_dev(diffs, dm)
     ym = mean_float(y_true)
-    den = mean_float(toList(map(range(len(y_true)), lambda i: (unwrap_or(listGet(y_true, i), 0.0) - ym) * (unwrap_or(listGet(y_true, i), 0.0) - ym))))
+    den = mean_sq_dev(y_true, ym)
     return assemble(num, den)
 
 
-def label_encode(labels, ys):
-    """Maps each label to its index in `labels`."""
-    return toList(map(range(len(ys)), lambda i: index_of(labels, unwrap_or(listGet(ys, i), 0))))
+def mean_sq_dev(xs, m):
+    """The mean of the squared deviations of `xs` from `m`."""
+    return mean_float(map_indexed(xs, lambda i: sq_dev(xs, m, i)))
 
 
 def row_sum(C, i):
     """Sum of one row of an int matrix."""
-    return foldList(unwrap_or(listGet(C, i), []), 0, lambda acc, x: acc + x)
+    return sum_int(unwrap_or(listGet(C, i), []))
 
 
 def col_sum(C, j):
@@ -358,12 +386,12 @@ def dot_float(a, b):
 def matthews_corrcoef(y_true, y_pred):
     """`sklearn.metrics.matthews_corrcoef` for binary and multiclass labels."""
     labels = unique_ints(listConcat(y_true, y_pred))
-    ey = label_encode(labels, y_true)
-    ep = label_encode(labels, y_pred)
-    classes = toList(map(range(len(labels)), lambda i: i))
+    ey = encode_labels(labels, y_true)
+    ep = encode_labels(labels, y_pred)
+    classes = map_indexed(labels, lambda i: i)
     C = confusion_matrix(ey, ep, classes)
-    t_sum = toList(map(range(len(labels)), lambda k: toFloat(row_sum(C, k))))
-    p_sum = toList(map(range(len(labels)), lambda k: toFloat(col_sum(C, k))))
+    t_sum = map_indexed(labels, lambda k: toFloat(row_sum(C, k)))
+    p_sum = map_indexed(labels, lambda k: toFloat(col_sum(C, k)))
     n_correct = toFloat(fold(range(len(labels)), 0, lambda acc, k: acc + unwrap_or(listGet(unwrap_or(listGet(C, k), []), k), 0)))
     n_samples = toFloat(len(y_true))
     cov_ytyp = n_correct * n_samples - dot_float(t_sum, p_sum)
@@ -393,5 +421,5 @@ def hit_top_k(label, scores, k):
 def top_k_accuracy_score(y_true, y_score, k):
     """`sklearn.metrics.top_k_accuracy_score` over a list of per-class score
     rows."""
-    hits = toList(map(range(len(y_true)), lambda i: hit_top_k(unwrap_or(listGet(y_true, i), 0), unwrap_or(listGet(y_score, i), []), k)))
+    hits = map_indexed(y_true, lambda i: hit_top_k(unwrap_or(listGet(y_true, i), 0), unwrap_or(listGet(y_score, i), []), k))
     return toFloat(sum_int(hits)) / toFloat(len(y_true))

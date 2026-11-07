@@ -115,8 +115,8 @@ print("${pick(10, "twenty")}")"#,
 spec_cases! {
     /// "without it, `T` in an annotation names a nominal type" — an undeclared
     /// nominal name is not a type.
-    an_unbound_annotation_name_is_nominal_not_a_binder: rejected_somehow(Default, r#"fn nom(a: T) -> T = a
-print("${nom(1)}")"#);
+    an_unbound_annotation_name_is_nominal_not_a_binder: rejects_with(Default, r#"fn nom(a: T) -> T = a
+print("${nom(1)}")"#, "cannot unify T with int");
 }
 
 /// …and when that nominal name IS declared, it binds nothing: the function is
@@ -187,12 +187,12 @@ print("${id(5)} ${id("os")} ${toString(id(true))}")"#);
 print("${pair(1, "a")} ${pair(1, 2)}")"#);
 
     /// A binder list names DISTINCT parameters; a repeat has no meaning.
-    a_repeated_binder_name_is_rejected: rejected_somehow(Default, r#"fn dup<T, T>(first: T, second: T) -> T = first
-print("${dup(1, 2)}")"#);
+    a_repeated_binder_name_is_rejected: rejects_with(Default, r#"fn dup<T, T>(first: T, second: T) -> T = first
+print("${dup(1, 2)}")"#, "duplicate type parameter `T`");
 
     /// An empty binder list is not a binder list.
-    an_empty_binder_list_is_rejected: rejected_somehow(Default, r#"fn none<>(x) = x
-print("${none(1)}")"#);
+    an_empty_binder_list_is_rejected: parse_rejects_with(Default, r#"fn none<>(x) = x
+print("${none(1)}")"#, "missing identifier");
 
     /// A binder may appear in the return position only — the shape call-site type
     /// application exists to serve ([TYPE-GENERICS-APPLY]).
@@ -252,7 +252,7 @@ spec_cases! {
     ml_function_binders_live_on_the_signature: accepts(Ml, "pick<T> : (T, T) -> T\npick (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n");
 
     /// "A binding without a signature cannot declare function type parameters."
-    ml_a_binding_cannot_declare_type_parameters_without_a_signature: rejected_somehow(Ml, "pick<T> (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n");
+    ml_a_binding_cannot_declare_type_parameters_without_a_signature: parse_rejects_with(Ml, "pick<T> (first, second) = first\nkept = pick (10, 20)\nprint \"${kept}\"\n", "a binding cannot declare type parameters without a signature");
 
     /// The ML twin of the one-binder-relates-two-parameters rule.
     ml_one_binder_relates_two_parameters: rejects_with(Ml, "pick<T> : (T, T) -> T\npick (first, second) = first\nkept = pick (10, \"twenty\")\nprint \"${kept}\"\n", "cannot unify");

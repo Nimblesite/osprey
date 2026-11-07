@@ -1,23 +1,10 @@
 // Sum of decimal digit-sums over 1..N — integer division (n/10) and modulo in recursion.
-fn add(a, b) = a + b
-fn mod_(a, b) = a % b
+import bench::Bench::{guarded, add, modp}
 fn div10(n) = intDiv(n, 10)
 
 fn digsum(n) = match (n < 10) {
     true  => n
-    false => add(mod_(n, 10), digsum(div10(n)))
+    false => add(modp(n, 10), digsum(div10(n)))
 }
 fn step(acc, i) = add(acc, digsum(i))
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${range(1, 2000001) |> fold(0, step)}")
-}
+fn main() = guarded(|| => print("${range(1, 2000001) |> fold(0, step)}"))

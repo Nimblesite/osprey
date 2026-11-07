@@ -26,11 +26,7 @@ module GoalViews
         true => 23
         false => WorkViews::documentSize (27, 21)
 
-    headingLeading () = match (WorkViews::layout ()).generatedOpen
-        true => 27.6
-        false => match (WorkViews::layout ()).paperFirst
-            true => 32.4
-            false => 25.2
+    headingLeading () = WorkViews::leading (27.6, 32.4, 25.2)
 
     contextTop () = WorkViews::documentSize (34, 18)
 
@@ -72,7 +68,7 @@ module GoalViews
 
     declared (found, rows, head, row, selected) = match listGet found.problems 0
         Success problem => Error(message = problem.message)
-        Error _ => Success(value = Goals::trace (found.statement, Lists::first (mapList (Steps::sentences found.proof, \sentence => Steps::read sentence), selectedCount (selected, rows, head, row))))
+        Error _ => Success(value = Goals::trace (found.statement, Lists::first (Steps::readAll found.proof, selectedCount (selected, rows, head, row))))
 
     selectedCount (selected, rows, head, row) = match selected >= 0
         true => satAdd selected 1

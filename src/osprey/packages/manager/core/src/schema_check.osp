@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Json
 import registry::Bytes
 import registry::Digests
@@ -62,14 +63,29 @@ module SchemaCheck {
         else if month == 4 || month == 6 || month == 9 || month == 11 { 30 }
         else { 31 }
 
-    fn dateTimeShape(text) = byteLength(text) == 24
-        && digitsOk(text, 0, 4) && fixedAt(text, 4, 45)
-        && digitsOk(text, 5, 7) && fixedAt(text, 7, 45)
-        && digitsOk(text, 8, 10) && fixedAt(text, 10, 84)
-        && digitsOk(text, 11, 13) && fixedAt(text, 13, 58)
-        && digitsOk(text, 14, 16) && fixedAt(text, 16, 58)
-        && digitsOk(text, 17, 19) && fixedAt(text, 19, 46)
-        && digitsOk(text, 20, 23) && fixedAt(text, 23, 90)
+    /// `YYYY-MM-DDTHH:mm:ss.SSSZ`: four- then two-digit runs joined by `-`,
+    /// `T`, `:` and `.`, closed by `Z`.
+    let dateTimeRuns = [4, 2, 2, 2, 2, 2, 3]
+    let dateTimeSeparators = [45, 45, 84, 58, 58, 46, 90]
+    /// `8-4-4-4-12` hex runs joined by `-`.
+    let uuidRuns = [8, 4, 4, 4, 12]
+    let uuidSeparators = [45, 45, 45, 45]
+
+    fn dateTimeShape(text) = runsOk(text, digitsOk, dateTimeRuns, dateTimeSeparators)
+
+    /// True when `text` is exactly one `check`ed run per `runs` entry, each
+    /// followed by its `separators` byte, and nothing more.
+    fn runsOk(text, check, runs, separators) = runsFrom(text, check, runs, separators, 0, 0)
+
+    fn runsFrom(text, check, runs, separators, from, i) -> bool = match listGet(runs, i) {
+        Error => from == byteLength(text)
+        Success { value } => check(text, from, from + value) && afterRun(text, check, runs, separators, from + value, i)
+    }
+
+    fn afterRun(text, check, runs, separators, at, i) -> bool = match listGet(separators, i) {
+        Error => runsFrom(text, check, runs, separators, at, i + 1)
+        Success { value } => fixedAt(text, at, value) && runsFrom(text, check, runs, separators, at + 1, i + 1)
+    }
 
     fn dateTimeRange(text) = {
         let year = numAt(text, 0, 4)
@@ -92,28 +108,20 @@ module SchemaCheck {
 
     fn hexOk(text, from, to) = Bytes::lowerHexBetween(text, from, to)
 
-    fn uuidCode(text) = if byteLength(text) == 36
-        && hexOk(text, 0, 8) && fixedAt(text, 8, 45)
-        && hexOk(text, 9, 13) && fixedAt(text, 13, 45)
-        && hexOk(text, 14, 18) && fixedAt(text, 18, 45)
-        && hexOk(text, 19, 23) && fixedAt(text, 23, 45)
-        && hexOk(text, 24, 36) { "" } else { uuidFailure }
+    fn uuidCode(text) = if runsOk(text, hexOk, uuidRuns, uuidSeparators) { "" } else { uuidFailure }
 
-    fn dateTimeOk(value) = match value {
-        Json::Str { text } => dateTimeCode(text) == ""
+    /// `code` for a string value through `check`; another kind is `notString`.
+    fn textCodeOk(value, check) = match value {
+        Json::Str { text } => check(text) == ""
         _ => false
     }
 
-    fn uuidOk(value) = match value {
-        Json::Str { text } => uuidCode(text) == ""
-        _ => false
-    }
+    fn dateTimeOk(value) = textCodeOk(value, fn(text) => dateTimeCode(text))
+
+    fn uuidOk(value) = textCodeOk(value, fn(text) => uuidCode(text))
 
     fn digestOk(value) = match value {
-        Json::Str { text } => match Digests::parse(text) {
-            Success => true
-            Error => false
-        }
+        Json::Str { text } => Checked::succeeded(Digests::parse(text))
         _ => false
     }
 
@@ -123,10 +131,10 @@ module SchemaCheck {
         else if name == "DateTime" { if dateTimeOk(value) { "" } else { dateTimeFailure } }
         else { if uuidOk(value) { "" } else { uuidFailure } }
 
-    fn validateScalar(name, value, pointer) = {
-        let code = scalarCode(name, value)
-        if code == "" { Success { value: value } } else { err(code, pointer) }
-    }
+    /// `value` when `code` is `""`, else the code at `pointer`.
+    fn checked(code, value, pointer) = if code == "" { Success { value: value } } else { err(code, pointer) }
+
+    fn validateScalar(name, value, pointer) = checked(scalarCode(name, value), value, pointer)
 
     fn isBuiltinScalar(name) = name == "String" || name == "Int" || name == "Bool" || name == "DateTime" || name == "Uuid"
 
@@ -146,10 +154,7 @@ module SchemaCheck {
 
     fn validateAlias(model, aliasName, target, value, pointer) = match validateRef(model, target, value, pointer) {
         Error { message } => Error { message: message }
-        Success => {
-            let code = aliasCode(aliasName, value)
-            if code == "" { Success { value: value } } else { err(code, pointer) }
-        }
+        Success => checked(aliasCode(aliasName, value), value, pointer)
     }
 
     fn validateNamed(model, name, v, pointer) = if isBuiltinScalar(name) {
@@ -168,11 +173,6 @@ module SchemaCheck {
     fn isField(fields, name) = foldList(fields, false, fn(found, f) => found || f.name == name)
     fn isMember(members, name) = foldList(members, false, fn(found, m) => found || m.key == name)
 
-    fn memberValue(members, name) = foldList(members, Error { message: missingField }, fn(acc, m) => match acc {
-        Success => acc
-        Error => if m.key == name { Success { value: m.value } } else { acc }
-    })
-
     fn isOption(typ) = match typ {
         TypeDiagram::OptionOf { _ } => true
         _ => false
@@ -186,7 +186,7 @@ module SchemaCheck {
     fn checkField(model, f, members, pointer) = if !isMember(members, f.name) {
         if isOption(f.typ) { Success { value: members } } else { err(missingField, child(pointer, f.name)) }
     } else {
-        match memberValue(members, f.name) {
+        match Json::memberOr(members, f.name, missingField) {
             Error { message } => Error { message: message }
             Success { value } => match validateRef(model, f.typ, value, child(pointer, f.name)) {
                 Success => Success { value: members }

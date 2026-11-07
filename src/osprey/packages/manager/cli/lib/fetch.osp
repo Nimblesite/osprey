@@ -32,7 +32,6 @@ module Fetch {
     let sourceSuffix = "/source"
     let okStatus = 200
     let notFoundStatus = 404
-    let failStatus = 1
     let anyEpoch = -1
     let slashByte = 47
     let digestPrefix = "sha256:"
@@ -57,10 +56,6 @@ module Fetch {
     /// A parsed command line: the target word and the registry base URL.
     type CommandLine = { target: string, base: string }
 
-    fn failed(code) = Reports::Report { status: failStatus, lines: [code] }
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-
     fn withBase(target, base) = Success { value: CommandLine { target: target, base: base } }
 
     /// `<target> [--registry <base-url>]`, the flag only after the target.
@@ -73,20 +68,17 @@ module Fetch {
         _ => Error { message: usageCode }
     }
 
-    fn digestAsk(text) = match Digests::parse(text) {
-        Success { value } => Success { value: ByDigest { digest: value } }
+    /// One argument parsed as a release selector, or `fetch.usage`.
+    fn ask(parsed, make) = match parsed {
+        Success { value } => Success { value: make(value) }
         Error => Error { message: usageCode }
     }
 
-    fn newestAsk(text) = match Names::parse(text) {
-        Success { value } => Success { value: Newest { key: value } }
-        Error => Error { message: usageCode }
-    }
+    fn digestAsk(text) = ask(Digests::parse(text), fn(value) => ByDigest { digest: value })
 
-    fn epochOf(key, versionText) = match decimal(drop(versionText, 1)) {
-        Success { value } => Success { value: InEpoch { key: key, epoch: value } }
-        Error => Error { message: usageCode }
-    }
+    fn newestAsk(text) = ask(Names::parse(text), fn(value) => Newest { key: value })
+
+    fn epochOf(key, versionText) = ask(decimal(drop(versionText, 1)), fn(value) => InEpoch { key: key, epoch: value })
 
     fn epochAsk(keyText, versionText) = match Names::parse(keyText) {
         Error => Error { message: usageCode }
@@ -131,33 +123,13 @@ module Fetch {
 
     fn sourcePath(digest) = "${sourcePrefix}${digest}${sourceSuffix}"
 
-    // `JsonRead::field` reads a missing member as `Json::Null` and a
-    // mistyped one as its empty value; matching the concrete value keeps the
-    // strict `fetch.package-shape` refusal without re-implementing a JSON reader.
-    fn stringField(value, field) = match JsonRead::field(value, field) {
-        Json::Str { text } => Success { value: text }
-        _ => Error { message: shapeCode }
-    }
+    fn rowWith(item, digest, epoch) = Checked::andThen(JsonRead::requiredInt(item, "ordinal", shapeCode), fn(value) => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } })
 
-    fn intField(value, field) = match JsonRead::field(value, field) {
-        Json::Num { value } => Success { value: value }
-        _ => Error { message: shapeCode }
-    }
+    fn rowFrom(item, digest) = Checked::andThen(JsonRead::requiredInt(item, "epoch", shapeCode), fn(value) => rowWith(item, digest, value))
 
-    fn rowWith(item, digest, epoch) = Checked::andThen(intField(item, "ordinal"), fn(value) => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } })
+    fn rowOf(item) = Checked::andThen(JsonRead::requiredText(item, "digest", shapeCode), fn(value) => rowFrom(item, value))
 
-    fn rowFrom(item, digest) = Checked::andThen(intField(item, "epoch"), fn(value) => rowWith(item, digest, value))
-
-    fn rowOf(item) = Checked::andThen(stringField(item, "digest"), fn(value) => rowFrom(item, value))
-
-    fn appendOne(rows, item) = Checked::andThen(rowOf(item), fn(value) => Success { value: listAppend(rows, value) })
-
-    fn appendRow(acc, item) = match acc {
-        Error => acc
-        Success { value } => appendOne(value, item)
-    }
-
-    fn rowsOf(items) = foldList(items, Success { value: [] }, appendRow)
+    fn rowsOf(items) = Checked::collectAll(items, fn(item) => rowOf(item))
 
     fn releasesOf(root) = match JsonRead::field(root, "releases") {
         Json::Arr { items } => rowsOf(items)
@@ -166,16 +138,13 @@ module Fetch {
 
     /// `{"key":"@s/n","releases":[{"digest","epoch","ordinal"}]}`; any other
     /// shape is `"fetch.package-shape"`.
-    export fn parseListing(text) = match Json::parse(text) {
-        Error => Error { message: shapeCode }
-        Success { value } => releasesOf(value)
-    }
+    export fn parseListing(text) = Checked::orElseCode(Json::parse(text), shapeCode, releasesOf)
 
     fn releaseOf(key, row: Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
 
     fn keyedRows(key, rows) = Checked::andThen(rows, fn(value) => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) })
 
-    fn keyOfItem(item) = match stringField(item, "key") {
+    fn keyOfItem(item) = match JsonRead::requiredText(item, "key", shapeCode) {
         Error { message } => Error { message: message }
         Success { value } => match Names::parse(value) {
             Error => Error { message: shapeCode }
@@ -186,12 +155,7 @@ module Fetch {
     /// The releases of one `{"key","releases"}` package item as identities.
     fn packageReleases(item) = Checked::andThen(keyOfItem(item), fn(value) => keyedRows(value, releasesOf(item)))
 
-    fn concatPackage(done, item) = Checked::andThen(packageReleases(item), fn(value) => Success { value: listConcat(done, value) })
-
-    fn appendPackage(acc, item) = match acc {
-        Error => acc
-        Success { value } => concatPackage(value, item)
-    }
+    fn appendPackage(acc, item) = Checked::andThen(acc, fn(done) => Checked::andThen(packageReleases(item), fn(value) => Success { value: listConcat(done, value) }))
 
     /// Every release of `{"packages":[{"key","releases":[…]}]}` as identities
     /// in listing order, so `lock` reads the whole registry in one request;
@@ -208,7 +172,7 @@ module Fetch {
     // issue #273 needs the receivers spelled out.
     fn missingRow() = Row { digest: "", epoch: 0, ordinal: 0 }
 
-    fn later(a: Row, b: Row) = Order::thenCompare(Order::compareInts(a.epoch, b.epoch), Order::compareInts(a.ordinal, b.ordinal)) > 0
+    fn later(a: Row, b: Row) = Order::compareSpots(a.epoch, a.ordinal, b.epoch, b.ordinal) > 0
 
     fn keepBest(best, row) = if later(row, best) { row } else { best }
 
@@ -354,27 +318,15 @@ module Fetch {
     export fn install(base, digest) = installAt("", base, digest)
 
     /// `fetched` as a report: the `fetch <target>` outcome.
-    export fn installAt(project, base, digest) = match fetched(project, base, digest) {
-        Error { message } => failed(message)
-        Success { value } => fetchedReport(project, value)
-    }
+    export fn installAt(project, base, digest) = Reports::checked(fetched(project, base, digest), fn(value) => fetchedReport(project, value))
 
     fn installRow(base, row: Row) = install(base, row.digest)
 
-    fn withRows(base, rows, epoch) = match chosen(rows, epoch) {
-        Error { message } => failed(message)
-        Success { value } => installRow(base, value)
-    }
+    fn withRows(base, rows, epoch) = Reports::checked(chosen(rows, epoch), fn(value) => installRow(base, value))
 
-    fn withListing(base, epoch, text) = match parseListing(text) {
-        Error { message } => failed(message)
-        Success { value } => withRows(base, value, epoch)
-    }
+    fn withListing(base, epoch, text) = Reports::checked(parseListing(text), fn(value) => withRows(base, value, epoch))
 
-    fn installKey(base, key, epoch) = match getBody(base, listingPath(key)) {
-        Error { message } => failed(message)
-        Success { value } => withListing(base, epoch, value)
-    }
+    fn installKey(base, key, epoch) = Reports::checked(getBody(base, listingPath(key)), fn(value) => withListing(base, epoch, value))
 
     fn runFetch(base, ask) = match ask {
         ByDigest { digest } => install(base, digest)
@@ -383,7 +335,7 @@ module Fetch {
     }
 
     fn asked(cmd) = match parseTarget(cmd.target) {
-        Error => usageReport()
+        Error => Reports::usageFor(usageCode, usageText)
         Success { value } => runFetch(cmd.base, value)
     }
 
@@ -393,7 +345,7 @@ module Fetch {
     /// `.osprey/packages/@scope/name/<digest>/`. Implements
     /// [PACKAGE-FOLDER-REGISTRY].
     export fn run(args) = match commandLine(args) {
-        Error => usageReport()
+        Error => Reports::usageFor(usageCode, usageText)
         Success { value } => asked(value)
     }
 }

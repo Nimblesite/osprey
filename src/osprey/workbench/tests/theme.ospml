@@ -17,10 +17,10 @@ module ThemeCases
 
     // The four theme-appearance combinations both themes are tested in.
     scenes () = [
-        scene ("paper", Palettes::paper, true),
-        scene ("paper", Palettes::paper, false),
-        scene ("chalk", Palettes::chalk, true),
-        scene ("chalk", Palettes::chalk, false),
+        scene ("paper", Palettes::paper (), true),
+        scene ("paper", Palettes::paper (), false),
+        scene ("chalk", Palettes::chalk (), true),
+        scene ("chalk", Palettes::chalk (), false),
     ]
 
     appearance light = match light
@@ -77,8 +77,8 @@ module ThemeCases
 
     (** [WORKBENCH-DESIGN-COLOUR]: every token name is present in each theme exactly once, and no theme has extra tokens. *)
     export tokens () =
-        paper = Palettes::paper
-        chalk = Palettes::chalk
+        paper = Palettes::paper ()
+        chalk = Palettes::chalk ()
         expect (join (presenceFailures ("paper", paper), "; "), "")
         expect (join (presenceFailures ("chalk", chalk), "; "), "")
         expect (length paper.tokens, length tokenNames)

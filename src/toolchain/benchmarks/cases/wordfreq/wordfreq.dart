@@ -2,12 +2,7 @@
 import 'dart:io';
 import 'dart:math';
 
-const int minstd = 16807;
-const int modulus = 2147483647;
-
-int r1(int x) => (x * minstd) % modulus;
-
-int hashAt(int s, int i) => r1(r1(s + i));
+import '../../shared/seed.dart';
 
 int readSeed() {
   final line = stdin.readLineSync();

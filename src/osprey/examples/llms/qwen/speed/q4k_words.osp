@@ -1,4 +1,5 @@
 // The Q4_K matvec reading the block bytes four at a time as uint32 words.
+let STEPS = 120
 fn weights() -> Result<GpuBuffer<uint32>, Error> = gpuMapFile("q4k.bin", 0, 12533760)
 fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
 fn word(w, i) = toInt(gpuGet(w, i) ?: toUint32(0))
@@ -44,9 +45,9 @@ fn row(w, x, r, nb) = fold(range(0, nb), toFloat32(0.0), fn(acc, blk) => block(w
 fn matvec(w, x, rows, nb) = match gpuIota(rows) {
     Success { value } => match value |> gpuMap(fn(r) => row(w, x, r, nb)) {
         Success { value } => value
-        Error { message } => x
+        Error => x
     }
-    Error { message } => x
+    Error => x
 }
 fn run() = match inputs() {
     Error { message } => print(message)
@@ -56,7 +57,7 @@ fn run() = match inputs() {
             Error { message } => print(message)
             Success { value } => {
                 let w = value
-                let y = fold(range(0, STEPS), x, fn(acc, _i) => matvec(w, x, 17408, 20))
+                let y = fold(range(0, STEPS), x, fn(_acc, _i) => matvec(w, x, 17408, 20))
                 print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 1) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 17407) ?: toFloat32(0.0))}")
             }
         }

@@ -2,9 +2,9 @@
 
 Scripts for building the Osprey website.
 
-## Homepage motion
+## Videos
 
-Run `node scripts/render-flight.mjs` from `src/toolchain/website/` to reproduce the original wireframe osprey film and its static poster in `src/assets/motion/`. The geometry lives in `flight-scene.js`; Playwright's Chromium records an eight-second VP9 WebM loop. These authored media assets ship with the site, so normal builds need no rendering step. The browser decodes the film without running its canvas renderer. Playback pauses offscreen and in background tabs; reduced-motion and data-saving preferences use the poster until the visitor requests playback.
+The site's videos, posters, caption tracks and homepage motion are made in the Videos repository, copied here with `make media` from the repository root and committed through Git LFS ([MEDIA-VIDEOS-REPO] in [plan 0059](../../../../docs/plans/0059-video-tutorials.md)). `make -C src/toolchain/website video-metadata` measures them for `src/_data/videos.json`.
 
 ## Browser runtime assets
 

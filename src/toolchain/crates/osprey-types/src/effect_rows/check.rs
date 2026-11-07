@@ -25,6 +25,23 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> CheckedEffects 
     proof
 }
 
+/// Report the operation names `offenders` that a function's row does not admit.
+fn report_row_error(
+    errors: &mut Vec<TypeError>,
+    function: &super::Function<'_>,
+    offenders: &BTreeSet<String>,
+    wording: &str,
+) {
+    errors.push(
+        TypeError::new(format!(
+            "function `{}` {wording}: {}",
+            function.qualified,
+            offenders.iter().cloned().collect::<Vec<_>>().join(", ")
+        ))
+        .with_pos(function.position),
+    );
+}
+
 #[expect(
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
@@ -68,14 +85,7 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
             .map(|effect| effect.name.clone())
             .collect();
         if !unknown.is_empty() {
-            errors.push(
-                TypeError::new(format!(
-                    "function `{}` declares unknown effects: {}",
-                    function.qualified,
-                    unknown.into_iter().collect::<Vec<_>>().join(", ")
-                ))
-                .with_pos(function.position),
-            );
+            report_row_error(&mut errors, function, &unknown, "declares unknown effects");
         }
     }
     // Without declarations or written row contracts, there is no algebraic
@@ -164,13 +174,11 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
                 .map(requirement_name)
                 .collect();
             if !undeclared.is_empty() {
-                errors.push(
-                    TypeError::new(format!(
-                        "function `{}` performs effects outside its declared row: {}",
-                        function.qualified,
-                        undeclared.into_iter().collect::<Vec<_>>().join(", ")
-                    ))
-                    .with_pos(function.position),
+                report_row_error(
+                    &mut errors,
+                    function,
+                    &undeclared,
+                    "performs effects outside its declared row",
                 );
             }
             // Host operations are tracked separately from user-declared

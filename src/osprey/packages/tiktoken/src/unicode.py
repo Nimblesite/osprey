@@ -20,8 +20,13 @@ __all__ = [
     "at", "at_str", "at_list", "max_int", "min_int", "code_points", "text_of", "cp_len",
     "is_letter", "is_number", "is_space", "is_other", "class_of",
     "utf8_of_cp", "utf8_range", "utf8_text", "decode_utf8", "cmp_text",
-    "ints_text",
+    "ints_text", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 def at(xs, i):
@@ -150,7 +155,7 @@ def utf8_text(s):
 
 def ints_text(values):
     """`[1, 2, 3]`: an int list as Python prints it."""
-    return "[" + join(toList(map(range(len(values)), lambda i: toString(at(values, i)))), ", ") + "]"
+    return "[" + join(map_indexed(values, lambda i: toString(at(values, i))), ", ") + "]"
 
 
 class Chunk:

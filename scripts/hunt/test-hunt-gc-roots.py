@@ -42,6 +42,17 @@ def run(command, cwd=ROOT):
     return result
 
 
+PLUGIN = ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"
+SINGLE_PASS = "-passes=osprey-gc-roots"
+DOUBLE_PASS = "-passes=osprey-gc-roots,osprey-gc-roots"
+
+
+def gc_roots_opt(llvm, source, output, passes=DOUBLE_PASS, emit_llvm=True):
+    """Runs the GC-roots pass over `source` and writes the result to `output`."""
+    flags = ["-S"] if emit_llvm else []
+    run([str(llvm / "opt"), "-load-pass-plugin=" + str(PLUGIN), passes, "-verify-each", *flags, str(source), "-o", str(output)])
+
+
 def verify(out):
     errors = [f"{path.name}: {path.read_text()}" for path in out.glob("*.err")]
     info = (out / "info").read_text()
@@ -52,8 +63,7 @@ def verify(out):
 def call_graph_regressions(llvm, folder):
     source, output = folder / "calls.ll", folder / "calls-rooted.ll"
     source.write_text(CALL_GRAPH)
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
-         "-passes=osprey-gc-roots,osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
+    gc_roots_opt(llvm, source, output)
     text = output.read_text()
     bodies = dict(re.findall(r"define[^@]*@(\w+)\([^\n]*\).*?\{(.*?)^\}", text, re.S | re.M))
     for name in ("leaf", "pure_chain"):
@@ -73,8 +83,7 @@ def pass_regressions(llvm, folder):
                       'declare i64 @free(ptr)\n'
                       'define void @unused_return(ptr %p, i1 %flag) { entry: br i1 %flag, label %yes, label %no yes: %ignored = call i64 @free(ptr %p) br label %end no: br label %end end: %dead = phi i64 [ %ignored, %yes ], [ 0, %no ] ret void }\n')
     output = folder / "attributes-rooted.ll"
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
-         "-passes=osprey-gc-roots,osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
+    gc_roots_opt(llvm, source, output)
     text = output.read_text()
     assert "memory(none)" not in text and "speculatable" not in text, "stale LLVM effects after rooting"
     assert text.count("define internal void @osp.gc.roots.register") == 0, "immutable globals registered"
@@ -97,8 +106,7 @@ def compile_module(llvm, source, module, memory):
          "-isystem", "runtime/klee/include", "-emit-llvm", "-c", "-g", "-O1",
          "-DOSP_SYMBOLIC", *( ["-DOSP_HUNT_ARC"] if memory == "arc" else []), str(source), "-o", str(module)], ROOT / "src" / "toolchain" / "compiler")
     if memory == "gc":
-        run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
-             "-passes=osprey-gc-roots", "-verify-each", str(module), "-o", str(module)])
+        gc_roots_opt(llvm, module, module, SINGLE_PASS, emit_llvm=False)
 
 
 def regression(llvm, klee, folder, memory):
@@ -134,8 +142,7 @@ def global_regressions(llvm, folder):
     source.write_text('target datalayout = "e-p:64:64"\n' +
                       ''.join(f'@root{i} = global ptr null\n' for i in range(64)))
     output = folder / "globals-rooted.ll"
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
-         "-passes=osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
+    gc_roots_opt(llvm, source, output, SINGLE_PASS)
     text = output.read_text()
     assert len(re.findall(r'@osp\.gc\.global\.table(?:\.\d+)? =', text)) == 1, "one module needs one global root table"
     assert "i64 64" in text, "every mutable global must remain registered"

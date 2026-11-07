@@ -1,4 +1,5 @@
 namespace registry_api;
+import registry::Checked
 import registry::Json
 import registry_host::Host
 
@@ -24,30 +25,15 @@ module Config {
         Error => Error { message: "config.port" }
     }
 
-    fn withPort(document, root, address) = match port(document) {
-        Success { value } => Success { value: Settings { root: root, address: address, port: value } }
-        Error { message } => Error { message: message }
-    }
+    fn withPort(document, root, address) = Checked::andThen(port(document), fn(value) => Success { value: Settings { root: root, address: address, port: value } })
 
-    fn withAddress(document, root) = match text(document, "address") {
-        Success { value } => withPort(document, root, value)
-        Error { message } => Error { message: message }
-    }
+    fn withAddress(document, root) = Checked::andThen(text(document, "address"), fn(value) => withPort(document, root, value))
 
-    fn settingsOf(document) = match text(document, "root") {
-        Success { value } => withAddress(document, value)
-        Error { message } => Error { message: message }
-    }
+    fn settingsOf(document) = Checked::andThen(text(document, "root"), fn(value) => withAddress(document, value))
 
     /// Settings from configuration text, or a `config.*` / `json.*` code.
-    export fn parse(source) = match Json::parse(source) {
-        Success { value } => settingsOf(value)
-        Error { message } => Error { message: Json::describe(message) }
-    }
+    export fn parse(source) = Checked::andThen(Checked::mapError(Json::parse(source), Json::describe), settingsOf)
 
     /// Settings read through `Host::Files`, or the reason they are unusable.
-    export fn load() = match perform Host::Files.read(fileName) {
-        Success { value } => parse(value)
-        Error { message } => Error { message: "config.unreadable: ${fileName}: ${message}" }
-    }
+    export fn load() = Checked::andThen(Checked::mapError(perform Host::Files.read(fileName), fn(message) => "config.unreadable: ${fileName}: ${message}"), parse)
 }

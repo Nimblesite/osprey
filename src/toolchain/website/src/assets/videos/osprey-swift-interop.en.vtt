@@ -78,5 +78,29 @@ Then it links the Osprey library built for that platform, and imports its header
 02:51.166 --> 02:58.291
 So the same Osprey code runs on iPhone, drawn with the phone's own controls, dark mode and larger text included.
 
-02:59.041 --> 03:12.068
-To try it, run make run-mac-hd for the Mac, and src/osprey/examples/macos/run.sh ios-sim for the simulator. The full source is in the repository. Try it on your projects.
+02:59.041 --> 03:11.286
+Now run the Osprey side's tests. They answer the Disk Facts effect with fixed data, so the browser runs with no Swift, no window and no disk. This one checks the ranking under the hidden-files setting.
+
+03:11.486 --> 03:16.392
+These check every screen against what the disk holds, and what an iPhone lets an app see.
+
+03:16.592 --> 03:18.702
+All seven pass, in a few seconds.
+
+03:19.452 --> 03:31.871
+Now change the rule that decides what's hidden. In sight says an entry is shown when hidden files are on, or when the entry isn't hidden. Replace the whole body with true, so hidden entries always show.
+
+03:32.071 --> 03:36.667
+Counted builds on it, so the totals change too. Nothing in Swift has changed.
+
+03:37.417 --> 03:46.193
+Run the tests again. The ranking test fails: hidden entries like Library and dot cache now appear, and the hidden contents are counted in the total.
+
+03:46.393 --> 03:53.117
+The screens test fails too. The hidden folder is no longer gone, and the size isn't the visible size any more.
+
+03:53.317 --> 04:05.174
+Five pass, two fail, and each failure names the check and the values. The rule lives in one Osprey function, and the tests guard it on both platforms at once. Put it back, and all seven pass.
+
+04:05.924 --> 04:19.259
+To try it, run the three commands on screen: the storage target for the Mac, the run script for the iPhone simulator, and the tests, which need no Swift at all. Osprey is actively evolving. Try it on your projects.

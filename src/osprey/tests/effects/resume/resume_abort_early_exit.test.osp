@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 /// A stopped continuation returns the handler arm value and omits later work.
 effect Stop {
     /// Check `value`; the handler may resume or stop the continuation.
@@ -99,28 +80,20 @@ fn resumeAbortEarlyExitCase() = {
     // Preserve the complete five-line golden transcript and every visible line.
     checkAll("early-exit legacy observations", [
         legacyTranscript == "before first check\nafter first check: 10\nstopping at zero\ncontinued check 1: answer=999\nresult=999\n",
-        contains(legacyTranscript, "before first check\n"),
-        contains(legacyTranscript, "after first check: 10\n"),
-        contains(legacyTranscript, "stopping at zero\n"),
-        contains(legacyTranscript, "continued check 1: answer=999\n"),
-        contains(legacyTranscript, "result=999\n"),
-        !contains(legacyTranscript, "after second check"),
-        !contains(legacyTranscript, "result=99\n")
+        containsAll(legacyTranscript, ["before first check\n", "after first check: 10\n", "stopping at zero\n", "continued check 1: answer=999\n", "result=999\n"]),
+        containsNone(legacyTranscript, ["after second check", "result=99\n"])
     ])
 
     // Assert the internal branch counts and the arm value that replaced the body.
     checkAll("early-exit internal state", [
-        result == 999,
-        checks == 2,
-        resumed == 1,
-        aborted == 1,
+        structuralEquals([result, checks, resumed, aborted], [999, 2, 1, 1]),
         checks == (resumed + aborted )
     ])
 }
 
 // Register the explicit-resume early-exit regression.
 
-test("returning without resume aborts the suspended continuation", fn() => exactArithmetic(resumeAbortEarlyExitCase))
+test("returning without resume aborts the suspended continuation", exactly(resumeAbortEarlyExitCase))
 
 /// This case verifies an arm's mode is its own, not its siblings'.
 fn resumeSiblingArmIndependenceCase() = {
@@ -154,26 +127,18 @@ fn resumeSiblingArmIndependenceCase() = {
     // The non-resuming arm substitutes: every later line of the body still runs.
     checkAll("sibling-arm legacy observations", [
         legacyTranscript == "work start\nafter tally: 10\nafter supply: 200\nafter second supply: 300\nresult=510\n",
-        contains(legacyTranscript, "work start\n"),
-        contains(legacyTranscript, "after tally: 10\n"),
-        contains(legacyTranscript, "after supply: 200\n"),
-        contains(legacyTranscript, "after second supply: 300\n"),
+        containsAll(legacyTranscript, ["work start\n", "after tally: 10\n", "after supply: 200\n", "after second supply: 300\n"]),
         endsWith(legacyTranscript, "result=510\n"),
-        !contains(legacyTranscript, "result=200\n"),
-        !contains(legacyTranscript, "result=300\n")
+        containsNone(legacyTranscript, ["result=200\n", "result=300\n"])
     ])
 
     // A sibling's `resume` must not turn these arms into early exits.
     checkAll("sibling-arm internal state", [
-        result == 510,
-        tallyCalls == 1,
-        supplyCalls == 2,
-        lastSupplied == 300,
-        resumedAnswer == 510,
-        resumedAnswer == result,
-        (tallyCalls + supplyCalls ) == 3
+        structuralEquals([result, tallyCalls, supplyCalls], [510, 1, 2]),
+        structuralEquals([lastSupplied, resumedAnswer, (tallyCalls + supplyCalls )], [300, 510, 3]),
+        resumedAnswer == result
     ])
 }
 
 // Register the sibling-arm independence regression for issue #177.
-test("a non-resuming arm is unaffected by a sibling arm's resume", fn() => exactArithmetic(resumeSiblingArmIndependenceCase))
+test("a non-resuming arm is unaffected by a sibling arm's resume", exactly(resumeSiblingArmIndependenceCase))

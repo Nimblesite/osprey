@@ -141,24 +141,21 @@ module Model
     export key (provider, value) = ProviderKey(keyProvider = provider, keyValue = value)
 
     (** The saved key for `provider`, empty when none. *)
-    export keyOf (settings, provider) = match Lists::find (settings.keys, \key => key.keyProvider == provider)
-        Success found => found.keyValue
-        Error _ => ""
+    export keyOf (settings, provider) = McpModel::firstWhere (settings.keys, \key => key.keyProvider == provider, \key => key.keyValue, "")
 
     (** The key being typed for `provider`, empty when none. *)
-    export draftOf (settings, provider) = match Lists::find (settings.keyDrafts, \key => key.keyProvider == provider)
-        Success found => found.keyValue
-        Error _ => ""
+    export draftOf (settings, provider) = McpModel::firstWhere (settings.keyDrafts, \key => key.keyProvider == provider, \key => key.keyValue, "")
+
+    (** `keys` with `provider`'s entry set to `value`; an empty value removes it. *)
+    replacing (keys, provider, value) =
+        others = filterList (keys, \key => key.keyProvider != provider)
+        Pick::either (value == "", others, listPrepend others (key (provider, value)))
 
     (** `settings` with `provider`'s key set to `value`; an empty value removes it. *)
-    export withKey (settings, provider, value) =
-        others = filterList (settings.keys, \key => key.keyProvider != provider)
-        settings(keys = Pick::either (value == "", others, listPrepend others (key (provider, value))))
+    export withKey (settings, provider, value) = settings(keys = replacing (settings.keys, provider, value))
 
     (** `settings` with `provider`'s draft set to `value`; an empty value removes it. *)
-    export withDraft (settings, provider, value) =
-        others = filterList (settings.keyDrafts, \key => key.keyProvider != provider)
-        settings(keyDrafts = Pick::either (value == "", others, listPrepend others (key (provider, value))))
+    export withDraft (settings, provider, value) = settings(keyDrafts = replacing (settings.keyDrafts, provider, value))
 
     (** Whether `provider` has a saved key. *)
     export hasKey (settings, provider) = keyOf (settings, provider) != ""
@@ -182,9 +179,7 @@ module Model
     export blank (id, folder, model, effort, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = model, chatEffort = effort, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatProblemStatus = 0, chatStarted = now)
 
     (** The models `provider` offers: what its API said, or the catalogue until it has answered. *)
-    export modelsOf (settings, provider) = match Lists::find (settings.listed, \list => list.listedProvider == provider)
-        Success found => found.listedIds
-        Error _ => Engine::model_ids provider
+    export modelsOf (settings, provider) = McpModel::firstWhere (settings.listed, \list => list.listedProvider == provider, \list => list.listedIds, Engine::model_ids provider)
 
     (** `effort` when `model` has that level, otherwise the provider's default, which is the empty level. *)
     export effortFor (model, effort) = Pick::either (Lists::any (Engine::model_levels model, \level => level == effort), effort, "")
@@ -272,12 +267,12 @@ module Model
 
     resultOf doc = Engine::ToolResult(resultId = Doc::text (doc, "id"), resultName = Doc::text (doc, "name"), resultContent = Doc::text (doc, "content"))
 
-    chatJson chat = JsonObject [Doc::str ("id", chat.chatId), Doc::str ("title", chat.chatTitle), Doc::str ("folder", chat.chatFolder), Doc::str ("model", chat.chatModel), Doc::str ("effort", chat.chatEffort), JsonMember "history" chat.chatHistory, Doc::str ("stage", chat.chatStage), Doc::str ("ticket", chat.chatTicket), Doc::str ("call", chat.chatCall), JsonMember "results" (JsonArray (mapList (chat.chatResults, \result => resultJson result))), Doc::str ("problem", chat.chatProblem), Doc::num ("status", chat.chatProblemStatus), Doc::num ("started", chat.chatStarted)]
+    chatJson chat = JsonObject [Doc::str ("id", chat.chatId), Doc::str ("title", chat.chatTitle), Doc::str ("folder", chat.chatFolder), Doc::str ("model", chat.chatModel), Doc::str ("effort", chat.chatEffort), JsonMember "history" chat.chatHistory, Doc::str ("stage", chat.chatStage), Doc::str ("ticket", chat.chatTicket), Doc::str ("call", chat.chatCall), JsonMember "results" (McpModel::arrayOf (chat.chatResults, \result => resultJson result)), Doc::str ("problem", chat.chatProblem), Doc::num ("status", chat.chatProblemStatus), Doc::num ("started", chat.chatStarted)]
 
-    chatOf doc = Chat(chatId = Doc::text (doc, "id"), chatTitle = Doc::text (doc, "title"), chatFolder = Doc::text (doc, "folder"), chatModel = Doc::text (doc, "model"), chatEffort = Doc::text (doc, "effort"), chatHistory = Doc::field (doc, "history"), chatStage = Doc::text (doc, "stage"), chatTicket = Doc::text (doc, "ticket"), chatCall = Doc::text (doc, "call"), chatResults = mapList (Doc::items (Doc::field (doc, "results")), \item => resultOf item), chatProblem = Doc::text (doc, "problem"), chatProblemStatus = Doc::number (doc, "status"), chatStarted = Doc::number (doc, "started"))
+    chatOf doc = Chat(chatId = Doc::text (doc, "id"), chatTitle = Doc::text (doc, "title"), chatFolder = Doc::text (doc, "folder"), chatModel = Doc::text (doc, "model"), chatEffort = Doc::text (doc, "effort"), chatHistory = Doc::field (doc, "history"), chatStage = Doc::text (doc, "stage"), chatTicket = Doc::text (doc, "ticket"), chatCall = Doc::text (doc, "call"), chatResults = McpModel::listField (doc, "results", \item => resultOf item), chatProblem = Doc::text (doc, "problem"), chatProblemStatus = Doc::number (doc, "status"), chatStarted = Doc::number (doc, "started"))
 
     (** The conversations signal's encoding, for change detection. *)
-    export chatsJson chats = JsonArray (mapList (chats.chatList, \chat => chatJson chat))
+    export chatsJson chats = McpModel::arrayOf (chats.chatList, \chat => chatJson chat)
 
     (** The draft signal's encoding. *)
     export draftJson draft = JsonString draft.draftText
@@ -287,15 +282,18 @@ module Model
 
     keyJson key = JsonObject [Doc::str ("provider", key.keyProvider), Doc::str ("value", key.keyValue)]
 
+    (** One provider's listed model ids. *)
+    listedJson list = JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (Doc::strings list.listedIds)]
+
     keyOfJson doc = ProviderKey(keyProvider = Doc::text (doc, "provider"), keyValue = Doc::text (doc, "value"))
 
     (** The settings signal's encoding, covering everything a view draws. *)
     export settingsJson settings = JsonObject [
         Doc::str ("platform", settings.platform),
         Doc::str ("home", settings.homeFolder),
-        JsonMember "keys" (JsonArray (mapList (settings.keys, \key => keyJson key))),
-        JsonMember "drafts" (JsonArray (mapList (settings.keyDrafts, \key => keyJson key))),
-        JsonMember "listed" (JsonArray (mapList (settings.listed, \list => JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (JsonArray (mapList (list.listedIds, \id => JsonString id)))]))),
+        JsonMember "keys" (McpModel::arrayOf (settings.keys, keyJson)),
+        JsonMember "drafts" (McpModel::arrayOf (settings.keyDrafts, keyJson)),
+        JsonMember "listed" (McpModel::arrayOf (settings.listed, listedJson)),
         Doc::str ("model", settings.defaultModel),
         Doc::str ("effort", settings.defaultEffort),
         Doc::bit ("open", settings.settingsOpen),
@@ -305,30 +303,33 @@ module Model
     ]
 
     (** The store as the session document, which lives only in this process. *)
-    export storeJson store = JsonObject [JsonMember "mcp" (McpModel::storeJson store.mcp), JsonMember "chats" (JsonArray (mapList (store.chats, \chat => chatJson chat))), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
+    export storeJson store = JsonObject [JsonMember "mcp" (McpModel::storeJson store.mcp), JsonMember "chats" (McpModel::arrayOf (store.chats, \chat => chatJson chat)), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
+
+    // One provider's models as its listing wrote them.
+    listedOf doc = ListedModels(listedProvider = Doc::text (doc, "provider"), listedIds = mapList (Doc::items (Doc::field (doc, "ids")), \id => Doc::string id))
 
     (** The store from its session document. *)
     export storeOf doc =
         panel = Doc::field (doc, "panel")
         settingsDoc = Doc::field (doc, "settings")
-        settings = Settings(platform = Doc::text (settingsDoc, "platform"), homeFolder = Doc::text (settingsDoc, "home"), keys = mapList (Doc::items (Doc::field (settingsDoc, "keys")), \item => keyOfJson item), keyDrafts = mapList (Doc::items (Doc::field (settingsDoc, "drafts")), \item => keyOfJson item), listed = mapList (Doc::items (Doc::field (settingsDoc, "listed")), \item => ListedModels(listedProvider = Doc::text (item, "provider"), listedIds = mapList (Doc::items (Doc::field (item, "ids")), \id => Doc::string id))), defaultModel = Doc::text (settingsDoc, "model"), defaultEffort = Doc::text (settingsDoc, "effort"), settingsOpen = Doc::flag (settingsDoc, "open"), settingsTab = Doc::text (settingsDoc, "tab"), providerOpen = Doc::text (settingsDoc, "provider"), saveProblem = Doc::text (settingsDoc, "saveProblem"), saving = false, savePending = [], saveName = "")
-        Store(mcp = McpModel::storeOf (Doc::field (doc, "mcp")), chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = settings, ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
+        settings = Settings(platform = Doc::text (settingsDoc, "platform"), homeFolder = Doc::text (settingsDoc, "home"), keys = McpModel::listField (settingsDoc, "keys", \item => keyOfJson item), keyDrafts = McpModel::listField (settingsDoc, "drafts", \item => keyOfJson item), listed = McpModel::listField (settingsDoc, "listed", \item => listedOf item), defaultModel = Doc::text (settingsDoc, "model"), defaultEffort = Doc::text (settingsDoc, "effort"), settingsOpen = Doc::flag (settingsDoc, "open"), settingsTab = Doc::text (settingsDoc, "tab"), providerOpen = Doc::text (settingsDoc, "provider"), saveProblem = Doc::text (settingsDoc, "saveProblem"), saving = false, savePending = [], saveName = "")
+        Store(mcp = McpModel::storeOf (Doc::field (doc, "mcp")), chats = McpModel::listField (doc, "chats", \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = settings, ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
 
     // A conversation with no words in it is not worth keeping.
     kept chat = Engine::has_turns chat.chatHistory
 
-    fileJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (filterList (store.chats, \chat => kept chat), \chat => chatJson chat))), Doc::num ("tickets", store.ticketCount)]
+    fileJson store = JsonObject [JsonMember "chats" (McpModel::arrayOf (filterList (store.chats, \chat => kept chat), \chat => chatJson chat)), Doc::num ("tickets", store.ticketCount)]
 
     (** The providers file: every saved key, the default model and its effort. Never written to the conversations file. *)
     export providersJson settings = JsonObject [
-        JsonMember "keys" (JsonArray (mapList (filterList (settings.keys, \key => key.keyValue != ""), \key => keyJson key))),
+        JsonMember "keys" (McpModel::arrayOf (filterList (settings.keys, \key => key.keyValue != ""), keyJson)),
         Doc::str ("model", settings.defaultModel),
         Doc::str ("effort", settings.defaultEffort),
     ]
 
     (** `settings` with the providers file's saved keys and defaults; a key already there (pasted) is overwritten by the saved one, and absent keys stay as the dotenv left them. *)
     export providersOf (settings, doc) =
-        keys = mapList (Doc::items (Doc::field (doc, "keys")), \item => keyOfJson item)
+        keys = McpModel::listField (doc, "keys", \item => keyOfJson item)
         keyed = foldList (keys, settings, \(acc, key) => withKey (acc, key.keyProvider, key.keyValue))
         keyed(defaultModel = Doc::text (doc, "model"), defaultEffort = Doc::text (doc, "effort"))
 
@@ -345,6 +346,11 @@ module Model
         "mcp.json" => Doc::parse store.mcp.stateGlobal
         "mcp-state.json" => McpModel::switchesJson store.mcp
         _ => fileJson store
+
+    (** A step after `stepped` that writes `name` to the store, once whatever it asked for has finished. *)
+    export persistingAfter (stepped, name) =
+        saving = persisting (stepped.stepStore, name)
+        saving(requests = listConcat stepped.requests saving.requests)
 
     (** The conversations or the providers written to the app's private store: never the keys into the conversations file. One write runs at a time, so an older one cannot land after a newer one; a change during a write waits, by file, and is saved when it ends. *)
     export persisting (store, name) =

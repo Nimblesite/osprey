@@ -41,6 +41,18 @@ const DOC: SpeedscopeFile = { shared: { frames: FRAMES }, profiles: [PROFILE] };
 const byDepth = (rects: RenderRect[], depth: number): RenderRect[] =>
   rects.filter((r) => r.depth === depth);
 
+/** A rect as the tuple these tests compare: frame, x0, x1, self, total. */
+const fullRect = (r: RenderRect): number[] => [
+  r.frameIdx,
+  r.x0,
+  r.x1,
+  r.selfWeight,
+  r.totalWeight,
+];
+
+/** A rect as the tuple these tests compare: frame, x0, x1. */
+const spanRect = (r: RenderRect): number[] => [r.frameIdx, r.x0, r.x1];
+
 suite("flame-model parseSpeedscope", () => {
   test("accepts a valid sampled document", () => {
     const parsed = parseSpeedscope(JSON.stringify(DOC));
@@ -93,28 +105,19 @@ suite("flame-model left-heavy layout", () => {
 
   test("merges samples and sorts siblings heaviest-first", () => {
     const roots = byDepth(rects, 0);
-    assert.deepStrictEqual(
-      roots.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]),
-      [
-        [0, 0, 0.9375, 2, 15],
-        [3, 0.9375, 1, 1, 1],
-      ],
-    );
+    assert.deepStrictEqual(roots.map(fullRect), [
+      [0, 0, 0.9375, 2, 15],
+      [3, 0.9375, 1, 1, 1],
+    ]);
   });
 
   test("children accumulate weight and nest under the merged parent", () => {
     const depth1 = byDepth(rects, 1);
-    assert.deepStrictEqual(
-      depth1.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]),
-      [
-        [1, 0, 0.5625, 7, 9],
-        [3, 0.5625, 0.8125, 4, 4],
-      ],
-    );
-    assert.deepStrictEqual(
-      byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]),
-      [[2, 0, 0.125]],
-    );
+    assert.deepStrictEqual(depth1.map(fullRect), [
+      [1, 0, 0.5625, 7, 9],
+      [3, 0.5625, 0.8125, 4, 4],
+    ]);
+    assert.deepStrictEqual(byDepth(rects, 2).map(spanRect), [[2, 0, 0.125]]);
   });
 
   test("equal-weight siblings tie-break by frame index (deterministic)", () => {
@@ -141,39 +144,20 @@ suite("flame-model time-order layout", () => {
   const rects = timeOrderRects(PROFILE);
 
   test("adjacent identical stacks merge into continuous slabs", () => {
-    assert.deepStrictEqual(
-      byDepth(rects, 1).map((r) => [
-        r.frameIdx,
-        r.x0,
-        r.x1,
-        r.selfWeight,
-        r.totalWeight,
-      ]),
-      [
-        [1, 0.125, 0.6875, 7, 9],
-        [3, 0.6875, 0.9375, 4, 4],
-      ],
-    );
+    assert.deepStrictEqual(byDepth(rects, 1).map(fullRect), [
+      [1, 0.125, 0.6875, 7, 9],
+      [3, 0.6875, 0.9375, 4, 4],
+    ]);
   });
 
   test("roots split where the bottom frame changes", () => {
-    assert.deepStrictEqual(
-      byDepth(rects, 0).map((r) => [
-        r.frameIdx,
-        r.x0,
-        r.x1,
-        r.selfWeight,
-        r.totalWeight,
-      ]),
-      [
-        [0, 0, 0.9375, 2, 15],
-        [3, 0.9375, 1, 1, 1],
-      ],
-    );
-    assert.deepStrictEqual(
-      byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]),
-      [[2, 0.5625, 0.6875]],
-    );
+    assert.deepStrictEqual(byDepth(rects, 0).map(fullRect), [
+      [0, 0, 0.9375, 2, 15],
+      [3, 0.9375, 1, 1, 1],
+    ]);
+    assert.deepStrictEqual(byDepth(rects, 2).map(spanRect), [
+      [2, 0.5625, 0.6875],
+    ]);
   });
 
   test("empty profiles produce no rects", () => {

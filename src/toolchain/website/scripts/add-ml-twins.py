@@ -70,8 +70,11 @@ def has_toplevel_comma(s):
     return len(split_top_commas(s)) > 1
 
 
-def _find_match(s, open_idx):
-    """Given s[open_idx] == '(', return index of the matching ')'. Quote-aware."""
+_PAIRS = {"(": ")", "[": "]", "{": "}"}
+
+
+def _find_close(s, open_idx, openers, closers):
+    """Index of the bracket closing `s[open_idx]`, or -1. Quote-aware."""
     depth, i, quote = 0, open_idx, None
     while i < len(s):
         c = s[i]
@@ -80,14 +83,19 @@ def _find_match(s, open_idx):
                 quote = None
         elif c in '"\'':
             quote = c
-        elif c == "(":
+        elif c in openers:
             depth += 1
-        elif c == ")":
+        elif c in closers:
             depth -= 1
             if depth == 0:
                 return i
         i += 1
     return -1
+
+
+def _find_match(s, open_idx):
+    """Given s[open_idx] == '(', return index of the matching ')'. Quote-aware."""
+    return _find_close(s, open_idx, "(", ")")
 
 
 def _is_atom(s):
@@ -109,23 +117,9 @@ def _is_atom(s):
 
 
 def _find_bracket(s, open_idx):
-    pairs = {"(": ")", "[": "]", "{": "}"}
-    want, depth, i, quote = pairs[s[open_idx]], 0, open_idx, None
-    while i < len(s):
-        c = s[i]
-        if quote:
-            if c == quote and s[i-1] != "\\":
-                quote = None
-        elif c in '"\'':
-            quote = c
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
-    return -1
+    """Given s[open_idx] in '([{', return the index of its matching close bracket."""
+    _PAIRS[s[open_idx]]  # a non-bracket opener stays a KeyError
+    return _find_close(s, open_idx, "([{", ")]}")
 
 
 def paren_call_to_ws(s):
@@ -203,22 +197,8 @@ def map_literal_to_ml(s):
 
 
 def _find_brace(s, open_idx):
-    depth, i, quote = 0, open_idx, None
-    while i < len(s):
-        c = s[i]
-        if quote:
-            if c == quote and s[i-1] != "\\":
-                quote = None
-        elif c in '"\'':
-            quote = c
-        elif c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                return i
-        i += 1
-    return -1
+    """Given s[open_idx] == '{', return the index of its matching '}'."""
+    return _find_close(s, open_idx, "{", "}")
 
 
 def curried_builtin_call(s):
@@ -254,6 +234,13 @@ def translate_expr(expr):
 
 # ---- line-block translation ---------------------------------------------
 
+def _record_rows(body, separator, render_value):
+    """Offside field rows for a record body, one `key <sep> value` per field."""
+    fields = [f.strip() for f in split_top_commas(body.strip()) if f.strip()]
+    return "\n".join(f"    {key.strip()} {separator} {render_value(val.strip())}"
+                     for key, _, val in (fld.partition(":") for fld in fields))
+
+
 def translate_records(code):
     """Convert record construction `Name { f: v, ... }` and record type decls
     `type Name = { f: T, ... }` to offside ML layout:
@@ -262,25 +249,13 @@ def translate_records(code):
     Non-record content is preserved. Single-line and multi-line handled."""
     # `type Name = { body }`  -> keep header, fields use `:`
     def repl_type(m):
-        header, body = m.group(1), m.group(2)
-        fields = [f.strip() for f in split_top_commas(body.strip()) if f.strip()]
-        rows = []
-        for fld in fields:
-            key, _, typ = fld.partition(":")
-            rows.append(f"    {key.strip()} : {typ.strip()}")
-        return f"{header}\n" + "\n".join(rows)
+        return f"{m.group(1)}\n" + _record_rows(m.group(2), ":", str.strip)
 
     out = re.sub(r'(type\s+[A-Za-z_][\w<>]*\s*=)\s*\{(.*?)\}', repl_type, code, flags=re.S)
 
     # bare construction `Name { body }` (not preceded by `type ... =`) -> fields use `=`
     def repl_ctor(m):
-        name, body = m.group(1), m.group(2)
-        fields = [f.strip() for f in split_top_commas(body.strip()) if f.strip()]
-        rows = []
-        for fld in fields:
-            key, _, val = fld.partition(":")
-            rows.append(f"    {key.strip()} = {translate_expr(val.strip())}")
-        return f"{name}\n" + "\n".join(rows)
+        return f"{m.group(1)}\n" + _record_rows(m.group(2), "=", translate_expr)
 
     out = re.sub(r'\b([A-Z][\w<>]*)\s*\{(.*?)\}', repl_ctor, out, flags=re.S)
     return out

@@ -1,0 +1,5 @@
+[project]
+name = "exprtree"
+source_roots = [".", "../../shared"]
+default_namespace = "exprtree"
+entry = "exprtree.osp"

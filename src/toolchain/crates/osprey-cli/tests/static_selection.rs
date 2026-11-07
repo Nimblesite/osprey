@@ -9,9 +9,7 @@ use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::collections::BTreeSet;
 
 fn lower(source: &str, flavor: Flavor) -> Result<Program, Vec<osprey_types::TypeError>> {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    osprey_types::lower_static_checked(&parsed.program)
+    osprey_types::lower_static_checked(&parse_clean(source, flavor))
 }
 
 fn assert_discharged(source: &str, flavor: Flavor) {
@@ -21,40 +19,52 @@ fn assert_discharged(source: &str, flavor: Flavor) {
             self.0 |= matches!(expression, Expr::Perform { .. } | Expr::Handler { .. });
         }
     }
+    if let Some(program) = lowered(source, flavor) {
+        let mut residue = Residue(false);
+        walk_program(&program, &mut residue);
+        assert!(
+            !residue.0,
+            "statically selected operations remain: {program:?}"
+        );
+    }
+}
+
+/// Asserts type lowering rejected `source` with an error mentioning `needle`.
+fn assert_lower_rejects(source: &str, flavor: Flavor, needle: &str) {
     let result = lower(source, flavor);
-    assert!(result.is_ok(), "{result:?}");
-    let Ok(program) = result else { return };
-    let mut residue = Residue(false);
-    walk_program(&program, &mut residue);
-    assert!(
-        !residue.0,
-        "statically selected operations remain: {program:?}"
-    );
-    let errors = osprey_types::check_program(&program);
-    assert!(errors.is_empty(), "{errors:?}");
+    let rejected = result
+        .as_ref()
+        .is_err_and(|errors| errors.iter().any(|error| error.message.contains(needle)));
+    assert!(rejected, "{result:?}");
+}
+
+/// Parses `source`, asserting the parser reported no errors.
+fn parse_clean(source: &str, flavor: Flavor) -> Program {
+    let parsed = parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    parsed.program
+}
+
+/// Asserts the kernel stage gate rejects `source` with an unknown effect row.
+fn assert_kernel_gate_rejects(source: &str, flavor: Flavor, context: &str) {
+    let errors = osprey_ast::stage::validate(&parse_clean(source, flavor));
+    let rejected = errors
+        .iter()
+        .any(|error| error.message.contains("<unknown>"));
+    assert!(rejected, "{context}: {errors:?}");
 }
 
 #[test]
 fn ordinary_value_effects_discharge_directly_and_through_helpers_and_callbacks() {
-    assert_discharged(
-        "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(fetch)\n}\nprint(answer)",
-        Flavor::Default,
-    );
-    assert_discharged(
-        "effect Read\n    value : Unit => int\nfetch () = perform Read.value ()\ninvoke f = f ()\nanswer =\n    handle static Read\n        value => 42\n    invoke fetch\nprint answer\n",
-        Flavor::Ml,
-    );
+    assert_discharged("effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(fetch)\n}\nprint(answer)", Flavor::Default);
+    assert_discharged("effect Read\n    value : Unit => int\nfetch () = perform Read.value ()\ninvoke f = f ()\nanswer =\n    handle static Read\n        value => 42\n    invoke fetch\nprint answer\n", Flavor::Ml);
 }
 
 #[test]
 fn a_helper_retains_its_dynamic_callers_after_static_specialization() {
     let source = "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet a = {\n    handle static Read {\n        value => 42\n    }\n    fetch()\n}\nlet b = {\n    handle Read {\n        value => 7\n    }\n    fetch()\n}\nprint(\"${a}:${b}\")";
-    let result = lower(source, Flavor::Default);
-    assert!(result.is_ok(), "{result:?}");
-    if let Ok(program) = result {
+    if let Some(program) = lowered(source, Flavor::Default) {
         assert!(program.statements.iter().any(|statement| matches!(statement, osprey_ast::Stmt::Function { name, .. } if name == "fetch")));
-        let errors = osprey_types::check_program(&program);
-        assert!(errors.is_empty(), "{errors:?}");
         let result = osprey_codegen::compile_program(&program);
         assert!(result.is_ok(), "{result:?}");
     }
@@ -62,10 +72,7 @@ fn a_helper_retains_its_dynamic_callers_after_static_specialization() {
 
 #[test]
 fn static_arm_forwarding_uses_the_outer_interpretation() {
-    assert_discharged(
-        "effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    handle static Read {\n        value => perform Read.value()\n    }\n    perform Read.value()\n}\nprint(answer)",
-        Flavor::Default,
-    );
+    assert_discharged("effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    handle static Read {\n        value => perform Read.value()\n    }\n    perform Read.value()\n}\nprint(answer)", Flavor::Default);
 }
 
 #[test]
@@ -77,9 +84,7 @@ fn mixed_and_control_effects_cannot_be_selected_statically() {
         let source = format!(
             "effect E {{ {operations} }}\nlet answer = {{\n    handle static E {{\n        value => 1 stop => 2\n    }}\n    0\n}}"
         );
-        let parsed = parse_program_with_flavor(&source, Flavor::Default);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let result = osprey_ast::stage::discharge(&parsed.program);
+        let result = osprey_ast::stage::discharge(&parse_clean(&source, Flavor::Default));
         assert!(
             result.as_ref().is_err_and(|errors| errors
                 .iter()
@@ -93,13 +98,7 @@ fn mixed_and_control_effects_cannot_be_selected_statically() {
 fn unused_static_arms_reject_transitive_dynamic_requests() {
     for body in ["perform Runtime.read()", "fetch()", "internal()"] {
         let source = format!("effect Runtime {{ read: fn() -> int }}\nfn fetch() = perform Runtime.read()\nfn internal() = {{\n    handle Runtime {{\n        read => 2\n    }}\n    fetch()\n}}\neffect E {{ used: fn() -> int\nunused: fn() -> int }}\nlet answer = {{\n    handle static E {{\n        used => 1 unused => {body}\n    }}\n    perform E.used()\n}}");
-        let result = lower(&source, Flavor::Default);
-        assert!(
-            result.as_ref().is_err_and(|errors| errors
-                .iter()
-                .any(|error| error.message.contains("Runtime.read"))),
-            "{result:?}"
-        );
+        assert_lower_rejects(&source, Flavor::Default, "Runtime.read");
     }
 }
 
@@ -112,67 +111,45 @@ fn static_arms_retain_resolved_builtin_obligations() {
         "invoke(print)",
     ] {
         let source = format!("effect E {{ used: fn() -> int unused: fn() -> Unit }}\nfn emit() = print(\"bad\")\nfn invoke(f) = f(\"bad\")\nlet alias = print\nlet answer = {{\n    handle static E {{\n        used => 1 unused => {body}\n    }}\n    perform E.used()\n}}");
-        let result = lower(&source, Flavor::Default);
-        assert!(
-            result.as_ref().is_err_and(|errors| errors
-                .iter()
-                .any(|error| error.message.contains("runtime builtins: print"))),
-            "{result:?}"
-        );
+        assert_lower_rejects(&source, Flavor::Default, "runtime builtins: print");
     }
     assert_discharged("effect E { value: fn() -> int }\nlet print = fn(x) => x\nlet answer = {\n    handle static E {\n        value => print(42)\n    }\n    perform E.value()\n}", Flavor::Default);
 }
 
 #[test]
 fn generic_unmarked_effects_can_be_selected_statically() {
-    assert_discharged(
-        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo<int>.echo(42)\n}\nprint(answer)",
-        Flavor::Default,
-    );
-    assert_discharged(
-        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo.echo(42)\n}\nprint(answer)",
-        Flavor::Default,
-    );
-    assert_discharged(
-        "effect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<int>\n        echo value => value\n    perform Echo.echo 42\nprint answer\n",
-        Flavor::Ml,
-    );
-    assert_flavored_output(
-        "inferred_static_instance",
-        "osp",
-        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo.echo(42)\n}\nprint(answer)",
-        "42\n",
-    );
-    assert_flavored_output(
-        "inferred_static_instance",
-        "ospml",
-        "effect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<int>\n        echo value => value\n    perform Echo.echo 42\nprint answer\n",
-        "42\n",
-    );
+    let inferred = "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo.echo(42)\n}\nprint(answer)";
+    assert_discharged("effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo<int>.echo(42)\n}\nprint(answer)", Flavor::Default);
+    for (source, extension, flavor) in [
+        (inferred, "osp", Flavor::Default),
+        (
+            "effect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<int>\n        echo value => value\n    perform Echo.echo 42\nprint answer\n",
+            "ospml",
+            Flavor::Ml,
+        ),
+    ] {
+        assert_discharged(source, flavor);
+        assert_flavored_output("inferred_static_instance", extension, source, "42\n");
+    }
 }
 
 #[test]
 fn inferred_record_effect_arguments_discharge_at_the_resolved_instantiation() {
-    assert_discharged(
-        "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Point> {\n        echo value => value\n    }\n    perform Echo.echo(Point { x: 42, y: 1 })\n}\nprint(answer.x)",
-        Flavor::Default,
-    );
-    assert_discharged(
-        "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<Point>\n        echo value => value\n    perform Echo.echo (Point(x = 42, y = 1))\nprint answer.x\n",
-        Flavor::Ml,
-    );
-    assert_flavored_output(
-        "inferred_static_record_instance",
-        "osp",
-        "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Point> {\n        echo value => value\n    }\n    perform Echo.echo(Point { x: 42, y: 1 })\n}\nprint(answer.x)",
-        "42\n",
-    );
-    assert_flavored_output(
-        "inferred_static_record_instance",
-        "ospml",
-        "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<Point>\n        echo value => value\n    perform Echo.echo (Point(x = 42, y = 1))\nprint answer.x\n",
-        "42\n",
-    );
+    for (source, extension, flavor) in [
+        (
+            "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Point> {\n        echo value => value\n    }\n    perform Echo.echo(Point { x: 42, y: 1 })\n}\nprint(answer.x)",
+            "osp",
+            Flavor::Default,
+        ),
+        (
+            "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<Point>\n        echo value => value\n    perform Echo.echo (Point(x = 42, y = 1))\nprint answer.x\n",
+            "ospml",
+            Flavor::Ml,
+        ),
+    ] {
+        assert_discharged(source, flavor);
+        assert_flavored_output("inferred_static_record_instance", extension, source, "42\n");
+    }
 }
 
 #[test]
@@ -181,13 +158,7 @@ fn staged_generic_records_keep_distinct_effect_identities() {
     let matching = format!("{header}let answer = {{\n    handle static Echo<Box<int>> {{ echo value => value }}\n    perform Echo.echo(Box {{ item: 42 }})\n}}\nprint(answer.item)");
     assert_discharged(&matching, Flavor::Default);
     let mismatched = format!("{header}fn fetchString() = perform Echo.echo(Box {{ item: \"wrong\" }})\nlet answer = {{\n    handle static Echo<Box<int>> {{ echo value => value }}\n    fetchString()\n}}\nprint(answer.item)");
-    let result = lower(&mismatched, Flavor::Default);
-    assert!(
-        result.as_ref().is_err_and(|errors| errors
-            .iter()
-            .any(|error| error.message.contains("Echo<{ item: string }>.echo"))),
-        "{result:?}"
-    );
+    assert_lower_rejects(&mismatched, Flavor::Default, "Echo<{ item: string }>.echo");
 }
 
 #[test]
@@ -198,18 +169,12 @@ fn inferred_union_effect_arguments_discharge_at_the_resolved_instantiation() {
 
 #[test]
 fn local_closures_and_alias_chains_keep_captures_when_specialized() {
-    assert_discharged(
-        "effect Read { value: fn() -> int }\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(alias)\n}\nprint(answer)\n}",
-        Flavor::Default,
-    );
+    assert_discharged("effect Read { value: fn() -> int }\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(alias)\n}\nprint(answer)\n}", Flavor::Default);
 }
 
 #[test]
 fn kernel_selection_accepts_an_ordinary_value_effect() {
-    assert_discharged(
-        "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet answer = kernel Read value => 42 in fetch()\nprint(answer)",
-        Flavor::Default,
-    );
+    assert_discharged("effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet answer = kernel Read value => 42 in fetch()\nprint(answer)", Flavor::Default);
 }
 
 #[test]
@@ -222,26 +187,13 @@ fn a_kernel_rejects_an_unresolved_callback_requirement() {
         let source = format!(
             "effect Read {{ value: fn() -> int }}\nfn invoke(f) = f()\nfn run(callback) = {body}"
         );
-        let parsed = parse_program_with_flavor(&source, Flavor::Default);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let errors = osprey_ast::stage::validate(&parsed.program);
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.message.contains("<unknown>")),
-            "a callback with no published effect row must not pass a kernel gate: {errors:?}"
+        assert_kernel_gate_rejects(
+            &source,
+            Flavor::Default,
+            "a callback with no published effect row must not pass a kernel gate",
         );
     }
-    let ml = "effect Read\n    value : Unit => int\n\ninvoke f = f ()\nrun callback =\n    kernel\n        Read value => 42\n    in invoke callback\n";
-    let parsed = parse_program_with_flavor(ml, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let errors = osprey_ast::stage::validate(&parsed.program);
-    assert!(
-        errors
-            .iter()
-            .any(|error| error.message.contains("<unknown>")),
-        "ML callbacks must obey the same kernel stage gate: {errors:?}"
-    );
+    assert_kernel_gate_rejects("effect Read\n    value : Unit => int\n\ninvoke f = f ()\nrun callback =\n    kernel\n        Read value => 42\n    in invoke callback\n", Flavor::Ml, "ML callbacks must obey the same kernel stage gate");
 }
 
 #[test]
@@ -405,18 +357,12 @@ fn a_partial_dynamic_handler_shadows_only_the_operations_it_supplies() {
 
 #[test]
 fn partial_dynamic_shadowing_executes_with_the_outer_static_answers() {
-    assert_flavored_output(
-        "partial_static_shadowing",
-        "osp",
-        PARTIAL_SHADOWING_DEFAULT,
-        "42|42|42\n",
-    );
-    assert_flavored_output(
-        "partial_static_shadowing",
-        "ospml",
-        PARTIAL_SHADOWING_ML,
-        "42|42|42\n",
-    );
+    for (extension, source) in [
+        ("osp", PARTIAL_SHADOWING_DEFAULT),
+        ("ospml", PARTIAL_SHADOWING_ML),
+    ] {
+        assert_flavored_output("partial_static_shadowing", extension, source, "42|42|42\n");
+    }
 }
 
 /// `total` declares its row. The copy reached under the whole static

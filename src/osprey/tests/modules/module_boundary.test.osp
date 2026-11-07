@@ -8,27 +8,6 @@
 
 namespace billing;
 
-
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
-
 module Tax {
     //! Documents the module body from the inside, alongside the `///` a caller
     //! reads from the outside. Both survive to the AST.
@@ -66,34 +45,25 @@ module Ledger {
 
 /// Exported functions compute across the private constant and helper.
 fn exportedSurfaceCase() = checkAll("Tax exported surface", [
-    Tax::add(100) == 110,
-    Tax::add(0) == 0,
-    Tax::add(1) == 1,
-    Tax::add(9) == 9,
-    Tax::add(10) == 11,
-    Tax::rateUsed() == 10
+    structuralEquals([Tax::add(100), Tax::add(0), Tax::add(1)], [110, 0, 1]),
+    structuralEquals([Tax::add(9), Tax::add(10), Tax::rateUsed()], [9, 11, 10])
 ])
 
 /// Nested modules are addressable through their exporting parent.
 fn nestedModuleCase() = checkAll("nested module boundary", [
-    Tax::Rounding::down(13) == 10,
-    Tax::Rounding::down(10) == 10,
-    Tax::Rounding::down(4) == 0,
-    Tax::addRounded(100) == 110,
-    Tax::addRounded(37) == 40,
-    Tax::addRounded(9) == 5
+    structuralEquals([Tax::Rounding::down(13), Tax::Rounding::down(10), Tax::Rounding::down(4)], [10, 10, 0]),
+    structuralEquals([Tax::addRounded(100), Tax::addRounded(37), Tax::addRounded(9)], [110, 40, 5])
 ])
 
 /// One module consuming another's exports keeps both boundaries intact.
 fn crossModuleCase() = checkAll("cross-module consumption", [
     Ledger::withTax(200) == 220,
     Ledger::withTax(100) == Tax::add(100),
-    Ledger::label(100) == "cents=110",
-    Ledger::label(0) == "cents=0"
+    structuralEquals([Ledger::label(100), Ledger::label(0)], ["cents=110", "cents=0"])
 ])
 
 exactArithmetic(fn() => print("${Tax::add(100)} ${Tax::Rounding::down(13)} ${Tax::addRounded(37)} ${Ledger::label(200)}"))
 
-test("module exports expose only marked items", fn() => exactArithmetic(exportedSurfaceCase))
-test("nested plain modules nest their boundaries", fn() => exactArithmetic(nestedModuleCase))
-test("modules consume each other through exports", fn() => exactArithmetic(crossModuleCase))
+test("module exports expose only marked items", exactly(exportedSurfaceCase))
+test("nested plain modules nest their boundaries", exactly(nestedModuleCase))
+test("modules consume each other through exports", exactly(crossModuleCase))

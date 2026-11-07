@@ -32,14 +32,11 @@ module Clauses {
 
     // Field accessors for records whose field names are shared across types
     // (issue #273): the receivers are spelled out.
-    fn entryAt(xs, i) -> Resolution::Entry = listGet(xs, i) ?: Resolution::blankEntry()
     fn keyAt(xs, i) -> Names::Key = listGet(xs, i) ?: Names::blank()
     fn keyOf(e: Resolution::Entry) = e.release.key
     fn activeOf(e: Resolution::Entry) = ManifestModel::activeEdges(e.dependencies)
     fn mentionsAt(problem: Problem, i) -> List<Names::Key> = listGet(problem.mentions, i) ?: []
 
-    fn reqOf(edge) = ManifestModel::requirementOf(edge)
-    fn reqKeyOf(edge) = ManifestModel::requirementOf(edge).package
 
     fn indexes(xs) = range(0, length(xs)) |> toList
 
@@ -57,24 +54,24 @@ module Clauses {
     fn matches(entry: Resolution::Entry, req: ManifestModel::Requirement) = Names::same(entry.release.key, req.package) && entry.release.epoch == req.epoch && entry.release.ordinal >= req.minimumOrdinal
 
     /// Candidate variables whose release satisfies `req`.
-    fn matchingVars(entries, req) = foldList(indexes(entries), [], fn(acc, i) => if matches(entryAt(entries, i), req) { listAppend(acc, i + 1) } else { acc })
+    fn matchingVars(entries, req) = foldList(indexes(entries), [], fn(acc, i) => if matches(Resolution::entryAt(entries, i), req) { listAppend(acc, i + 1) } else { acc })
 
     /// Root edge clauses: OR of matching candidates per root edge, about the required key.
-    fn rootClauses(graph, entries) = mapList(graph.rootDeps, fn(e) => tagged(matchingVars(entries, reqOf(e)), [reqKeyOf(e)]))
+    fn rootClauses(graph, entries) = mapList(graph.rootDeps, fn(e) => tagged(matchingVars(entries, ManifestModel::requirementOf(e)), [ManifestModel::requirementKey(e)]))
 
     /// Candidate edge clauses: -x OR (matching candidates) per Runtime/Build
     /// edge, about the candidate's key and the required key; non-root Test
     /// edges are never activated.
     fn edgeClauses(entries) = foldList(indexes(entries), [], fn(acc, i) => {
-        let entry = entryAt(entries, i)
-        listConcat(acc, mapList(activeOf(entry), fn(d) => tagged(listPrepend(matchingVars(entries, reqOf(d)), SatClauses::neg(i + 1)), [keyOf(entry), reqKeyOf(d)])))
+        let entry = Resolution::entryAt(entries, i)
+        listConcat(acc, mapList(activeOf(entry), fn(d) => tagged(listPrepend(matchingVars(entries, ManifestModel::requirementOf(d)), SatClauses::neg(i + 1)), [keyOf(entry), ManifestModel::requirementKey(d)])))
     })
 
     /// One release per package key across all epochs: pairwise at-most-one.
     fn uniquenessClauses(entries) = foldList(indexes(entries), [], fn(acc, i) =>
         foldList(range(i + 1, length(entries)) |> toList, acc, fn(acc2, j) =>
-            if Names::same(keyOf(entryAt(entries, i)), keyOf(entryAt(entries, j))) {
-                listAppend(acc2, tagged([SatClauses::neg(i + 1), SatClauses::neg(j + 1)], [keyOf(entryAt(entries, i))]))
+            if Names::same(keyOf(Resolution::entryAt(entries, i)), keyOf(Resolution::entryAt(entries, j))) {
+                listAppend(acc2, tagged([SatClauses::neg(i + 1), SatClauses::neg(j + 1)], [keyOf(Resolution::entryAt(entries, i))]))
             } else { acc2 }))
 
     fn requires(entry, key) = Names::includes(ManifestModel::targets(activeOf(entry)), key)
@@ -82,14 +79,14 @@ module Clauses {
     /// Candidates of a key that carry a Runtime/Build edge to it; a selected
     /// release must be supported by a root edge or one of these.
     fn supportersOf(entries, key) = foldList(indexes(entries), [], fn(acc, i) =>
-        if requires(entryAt(entries, i), key) { listAppend(acc, i + 1) } else { acc })
+        if requires(Resolution::entryAt(entries, i), key) { listAppend(acc, i + 1) } else { acc })
 
     fn rootSupports(graph, key) = Names::includes(ManifestModel::targets(graph.rootDeps), key)
 
     /// Anti-spurious closure clauses: a candidate with no root edge and no
     /// selected supporter may not be selected.
     fn supportClauses(graph, entries) = foldList(indexes(entries), [], fn(acc, i) => {
-        let key = keyOf(entryAt(entries, i))
+        let key = keyOf(Resolution::entryAt(entries, i))
         if rootSupports(graph, key) { acc } else { listAppend(acc, tagged(listPrepend(supportersOf(entries, key), SatClauses::neg(i + 1)), [key])) }
     })
 
@@ -101,9 +98,9 @@ module Clauses {
         let n = length(entries)
         let k = length(keys)
         foldList(indexes(entries), [], fn(acc, i) => {
-            let entry = entryAt(entries, i)
+            let entry = Resolution::entryAt(entries, i)
             let u = keyIndexOf(keys, keyOf(entry))
-            listConcat(acc, mapList(activeOf(entry), fn(d) => tagged([SatClauses::neg(i + 1), reachVar(n, k, u, keyIndexOf(keys, reqKeyOf(d)))], [keyOf(entry), reqKeyOf(d)])))
+            listConcat(acc, mapList(activeOf(entry), fn(d) => tagged([SatClauses::neg(i + 1), reachVar(n, k, u, keyIndexOf(keys, ManifestModel::requirementKey(d)))], [keyOf(entry), ManifestModel::requirementKey(d)])))
         })
     }
 

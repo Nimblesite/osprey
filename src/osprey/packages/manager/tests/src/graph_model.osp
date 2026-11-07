@@ -13,19 +13,19 @@ import registry_tests::Fixtures
 /// `Resolution`, and requirements and edges reuse `ManifestModel`. Implements
 /// [PACKAGE-RESOLUTION].
 module GraphModel {
-    fn key(v) = Names::Key { scope: Fixtures::text(Fixtures::field(v, "scope")), name: Fixtures::text(Fixtures::field(v, "name")) }
+    fn key(v) = Names::Key { scope: Fixtures::textOf(v, "scope"), name: Fixtures::textOf(v, "name") }
 
     fn releaseId(v) = Identity::ReleaseId {
         key: key(Fixtures::field(v, "package")),
-        epoch: Fixtures::number(Fixtures::field(v, "epoch")),
-        ordinal: Fixtures::number(Fixtures::field(v, "ordinal")),
-        digest: Fixtures::text(Fixtures::field(v, "digest"))
+        epoch: Fixtures::numberOf(v, "epoch"),
+        ordinal: Fixtures::numberOf(v, "ordinal"),
+        digest: Fixtures::textOf(v, "digest")
     }
 
     fn requirement(v) = ManifestModel::Requirement {
         package: key(Fixtures::field(v, "package")),
-        epoch: Fixtures::number(Fixtures::field(v, "epoch")),
-        minimumOrdinal: Fixtures::number(Fixtures::field(v, "minimumOrdinal"))
+        epoch: Fixtures::numberOf(v, "epoch"),
+        minimumOrdinal: Fixtures::numberOf(v, "minimumOrdinal")
     }
 
     /// One edge object `{"Runtime": {"requirement": {...}}}` into its
@@ -56,7 +56,7 @@ module GraphModel {
         activation: releaseState(Fixtures::field(v, "state")),
         targets: strings(Fixtures::field(v, "targets")),
         capabilities: strings(Fixtures::field(v, "capabilities")),
-        dependencies: mapList(Fixtures::items(Fixtures::field(v, "dependencies")), edge)
+        dependencies: mapList(Fixtures::itemsOf(v, "dependencies"), edge)
     }
 
     /// One `{"package": {...}, "capabilities": [...]}` grant of the root.
@@ -65,11 +65,11 @@ module GraphModel {
     /// The typed graph of one parsed fixture object; `grants` is optional and
     /// empty when the fixture carries none.
     export fn graphOf(v) = Resolution::Graph {
-        target: Fixtures::text(Fixtures::field(v, "target")),
+        target: Fixtures::textOf(v, "target"),
         granted: strings(Fixtures::field(v, "grantedCapabilities")),
-        grants: mapList(Fixtures::items(Fixtures::field(v, "grants")), grant),
+        grants: mapList(Fixtures::itemsOf(v, "grants"), grant),
         rootDeps: mapList(Fixtures::items(Fixtures::field(Fixtures::field(v, "root"), "dependencies")), edge),
-        current: mapList(Fixtures::items(Fixtures::field(v, "current")), releaseId),
-        catalog: mapList(Fixtures::items(Fixtures::field(v, "catalog")), entry)
+        current: mapList(Fixtures::itemsOf(v, "current"), releaseId),
+        catalog: mapList(Fixtures::itemsOf(v, "catalog"), entry)
     }
 }

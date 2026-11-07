@@ -53,6 +53,19 @@ fn ml_err(src: &str) -> Parsed {
     parsed
 }
 
+/// Parse ML source expecting an error whose message mentions every one of `needles`.
+fn assert_ml_error(src: &str, needles: &[&str]) {
+    let parsed = ml_err(src);
+    assert!(
+        parsed
+            .errors
+            .iter()
+            .any(|e| needles.iter().all(|needle| e.message.contains(needle))),
+        "{src:?} expected an error mentioning {needles:?}, got {:?}",
+        parsed.errors
+    );
+}
+
 /// The value of a single top-level `let`/binding, or a test failure.
 fn let_value(src: &str) -> Expr {
     match ml_one(src) {
@@ -134,15 +147,7 @@ fn float_literal_lexes_and_lowers() {
 #[test]
 fn integer_overflow_is_a_lex_error() {
     // A literal too large for i64 fails to parse — the invalid-integer branch.
-    let parsed = ml_err("x = 99999999999999999999999999\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("invalid integer")),
-        "expected invalid integer error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("x = 99999999999999999999999999\n", &["invalid integer"]);
 }
 
 #[test]
@@ -168,15 +173,7 @@ fn string_escapes_are_carried_through_lexing() {
 
 #[test]
 fn unterminated_string_reports_an_error() {
-    let parsed = ml_err("s = \"oops\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("unterminated")),
-        "expected unterminated string error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("s = \"oops\n", &["unterminated"]);
 }
 
 #[test]
@@ -184,15 +181,7 @@ fn unexpected_character_reports_an_error() {
     // `@`/`#`/`;` are not Osprey operators — the single-char operator table
     // returns None and the scanner reports an unexpected-character error.
     for src in ["x = @\n", "x = #\n", "y = ;\n"] {
-        let parsed = ml_err(src);
-        assert!(
-            parsed
-                .errors
-                .iter()
-                .any(|e| e.message.contains("unexpected character")),
-            "src {src:?} expected unexpected-character error, got {:?}",
-            parsed.errors
-        );
+        assert_ml_error(src, &["unexpected character"]);
     }
 }
 
@@ -218,15 +207,7 @@ fn inconsistent_indentation_reports_an_error() {
     // The third line dedents to column 2, which matches no enclosing level
     // (levels are 0 and 4) — the offside rule reports it.
     let src = "f =\n    a\n  b\n";
-    let parsed = ml_err(src);
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("inconsistent indentation")),
-        "expected inconsistent-indentation error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error(src, &["inconsistent indentation"]);
 }
 
 // --- parser.rs ---------------------------------------------------------------
@@ -255,12 +236,7 @@ fn type_application_in_signature_flows_to_parameter_types() {
 #[test]
 fn unexpected_token_in_type_reports_an_error() {
     // `x : =` puts an `=` where a type atom is expected.
-    let parsed = ml_err("x : =\nx = 1\n");
-    assert!(
-        parsed.errors.iter().any(|e| e.message.contains("in type")),
-        "expected an in-type error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("x : =\nx = 1\n", &["in type"]);
 }
 
 #[test]
@@ -269,14 +245,9 @@ fn tuple_domain_on_a_curried_binding_is_rejected() {
     // lower to an UNTYPED parameter — the written signature silently vanished
     // and the binding was checked as if unannotated, so `f "str"` compiled.
     // The lowering now reports the mismatch instead of dropping the type.
-    let parsed = ml_err("f : (int, int) -> int\nf x = 1\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("parenthesised signature domain")),
-        "expected a flat-domain mismatch error, got {:?}",
-        parsed.errors
+    assert_ml_error(
+        "f : (int, int) -> int\nf x = 1\n",
+        &["parenthesised signature domain"],
     );
 }
 
@@ -284,13 +255,9 @@ fn tuple_domain_on_a_curried_binding_is_rejected() {
 fn flat_tuple_domain_with_wrong_arity_is_rejected() {
     // The flat form is representable only when the tuple's arity matches the
     // binding's — a mismatch used to drop the whole domain silently.
-    let parsed = ml_err("f : (int, string, bool) -> string\nf (a, b) = \"x\"\n");
-    assert!(
-        parsed.errors.iter().any(|e| e
-            .message
-            .contains("declares 3 parameters but the binding takes 2")),
-        "expected an arity mismatch error, got {:?}",
-        parsed.errors
+    assert_ml_error(
+        "f : (int, string, bool) -> string\nf (a, b) = \"x\"\n",
+        &["declares 3 parameters but the binding takes 2"],
     );
 }
 
@@ -322,13 +289,9 @@ fn a_parenthesised_flat_function_type_is_a_valid_signature_slot() {
 fn signature_shorter_than_the_binding_is_rejected() {
     // `g : int -> string` types ONE parameter; a two-parameter binding used to
     // absorb the RETURN type as its second parameter's annotation.
-    let parsed = ml_err("g : int -> string\ng (a, b) = \"x\"\n");
-    assert!(
-        parsed.errors.iter().any(|e| e
-            .message
-            .contains("provides 1 parameter types but the binding takes 2")),
-        "expected a too-short-signature error, got {:?}",
-        parsed.errors
+    assert_ml_error(
+        "g : int -> string\ng (a, b) = \"x\"\n",
+        &["provides 1 parameter types but the binding takes 2"],
     );
 }
 
@@ -365,40 +328,19 @@ fn float_argument_and_atom_parse() {
 
 #[test]
 fn unclosed_paren_reports_an_error() {
-    let parsed = ml_err("r = (1 + 2\n");
-    assert!(
-        parsed.errors.iter().any(|e| e.message.contains("')'")),
-        "expected an unclosed-paren error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("r = (1 + 2\n", &["')'"]);
 }
 
 #[test]
 fn lambda_missing_fat_arrow_reports_an_error() {
     // `\x x` has no `=>` after the parameter list.
-    let parsed = ml_err("f = \\x x\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("=>") && e.message.contains("lambda")),
-        "expected a lambda-arrow error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("f = \\x x\n", &["=>", "lambda"]);
 }
 
 #[test]
 fn match_arm_missing_fat_arrow_reports_an_error() {
     let src = "r =\n    match x\n        0 1\n";
-    let parsed = ml_err(src);
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("=>") && e.message.contains("arm")),
-        "expected a match-arm-arrow error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error(src, &["=>", "arm"]);
 }
 
 #[test]
@@ -423,28 +365,14 @@ fn match_over_literal_and_binding_and_wildcard_patterns() {
 fn unexpected_token_in_pattern_reports_an_error() {
     // A `=>` where a pattern atom is expected (empty arm head).
     let src = "r =\n    match x\n        => 1\n";
-    let parsed = ml_err(src);
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("in pattern")),
-        "expected an in-pattern error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error(src, &["in pattern"]);
 }
 
 #[test]
 fn record_field_missing_name_recovers() {
     // A record field line starting with a non-identifier triggers the recover
     // path inside `record_fields`.
-    let src = "p =\n    Point\n        1 = 2\n        y = 3\n";
-    let parsed = ml_err(src);
-    assert!(
-        !parsed.errors.is_empty(),
-        "expected a record-field error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("p =\n    Point\n        1 = 2\n        y = 3\n", &[]);
 }
 
 #[test]
@@ -452,12 +380,7 @@ fn binding_missing_equals_reports_an_error() {
     // A lambda body that drops the `=` of an inner binding: force expect_eq's
     // error path with a record field that has no `=`.
     let src = "p =\n    Point\n        x 1\n";
-    let parsed = ml_err(src);
-    assert!(
-        parsed.errors.iter().any(|e| e.message.contains("'='")),
-        "expected a missing-equals error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error(src, &["'='"]);
 }
 
 #[test]
@@ -475,15 +398,7 @@ fn reserved_words_each_report_not_yet_supported() {
     // Callable `handler` values are supported; standalone `do` is reserved.
     for word in ["do"] {
         for source in [format!("{word} Foo\n"), format!("value = {word} Foo\n")] {
-            let parsed = ml_err(&source);
-            assert!(
-                parsed
-                    .errors
-                    .iter()
-                    .any(|e| e.message.contains("not yet supported")),
-                "word {word:?} expected a not-yet-supported error, got {:?}",
-                parsed.errors
-            );
+            assert_ml_error(&source, &["not yet supported"]);
         }
     }
 }
@@ -836,15 +751,7 @@ fn stray_operator_as_an_operand_falls_through_to_an_error() {
     // The right of `+` starts with `*`, which is an operator but neither `-` nor
     // `!`: the unary prefix branch is skipped and the atom parser reports the
     // unexpected operator token.
-    let parsed = ml_err("r = 1 + * 2\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("in expression")),
-        "expected an in-expression error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error("r = 1 + * 2\n", &["in expression"]);
 }
 
 #[test]
@@ -878,15 +785,7 @@ fn block_with_a_skipped_line_keeps_parsing() {
     // block returns None for that line (the block_line None path) yet recovery
     // lets the surrounding parse continue and report the error.
     let src = "f x =\n    do thing\n    x\n";
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|e| e.message.contains("not yet supported")),
-        "expected a not-yet-supported error, got {:?}",
-        parsed.errors
-    );
+    assert_ml_error(src, &["not yet supported"]);
 }
 
 #[test]
@@ -903,15 +802,7 @@ fn empty_interpolation_fragment_falls_back_to_an_identifier() {
 
 #[test]
 fn orphan_signature_without_a_matching_binding_is_rejected() {
-    let parsed = ml_err("foo : int\nbar = 1\n");
-    assert!(
-        parsed
-            .errors
-            .iter()
-            .any(|error| error.message.contains("immediately followed")),
-        "errors: {:?}",
-        parsed.errors
-    );
+    assert_ml_error("foo : int\nbar = 1\n", &["immediately followed"]);
 }
 
 // ---- generics, variance, and generic effects ([FLAVOR-ML-GENERICS]) ----
@@ -965,17 +856,9 @@ fn variance_markers_on_type_declarations() {
     }
     // A variance marker must be followed by a parameter name — `out`/`in`
     // are reserved inside type-parameter position in BOTH flavors.
-    let parsed = parse_program_with_flavor("type Odd out =\n    supply : int\n", Flavor::Ml);
-    assert!(parsed
-        .errors
-        .iter()
-        .any(|e| e.message.contains("after 'out'")));
+    assert_ml_error("type Odd out =\n    supply : int\n", &["after 'out'"]);
     // `in` must be followed by a parameter name.
-    let parsed = parse_program_with_flavor("type Bad in =\n    x : int\n", Flavor::Ml);
-    assert!(parsed
-        .errors
-        .iter()
-        .any(|e| e.message.contains("after 'in'")));
+    assert_ml_error("type Bad in =\n    x : int\n", &["after 'in'"]);
 }
 
 #[test]

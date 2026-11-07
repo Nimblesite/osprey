@@ -110,9 +110,8 @@ maskedWithOwn () =
 (** mask skips one activation per level and keeps handlers installed inside it. *)
 maskCase () =
     checkAll "mask skips exactly one enclosing activation" [
-        layered (\() => perform Store.get "k") == 1,
-        layered maskedOnce == 10, layered maskedTwice == 100,
-        layered maskedWithOwn == 5,
+        structuralEquals [layered (\() => perform Store.get "k"), layered maskedOnce] [1, 10],
+        structuralEquals [layered maskedTwice, layered maskedWithOwn] [100, 5],
         layered (\() => wrapAdd (perform Store.get "k") (maskedOnce ())) == 11
     ]
 
@@ -129,8 +128,7 @@ instanceCase () =
     both = \() => wrapAdd (perform left.get "a") (wrapMul (perform right.get "b") 10)
     mixed = \() => wrapAdd (perform Store.get "x") (perform left.get "y")
     checkAll "an instance is a capability only its own handlers answer" [
-        leftAnswers (\() => rightAnswers both) == 21,
-        rightAnswers (\() => leftAnswers both) == 21,
+        structuralEquals [leftAnswers (\() => rightAnswers both), rightAnswers (\() => leftAnswers both)] [21, 21],
         defaultAnswers (\() => leftAnswers mixed) == 51,
         leftAnswers (\() => defaultAnswers mixed) == 51
     ]

@@ -37,23 +37,15 @@ fn recoverWith(a, b, fallback) = {
     addThroughPolicy(a, b)
 }
 
-test("success can be rendered without contextual coercion", fn() =>
-    expect(toString(renderSum(1, 1)), "Success(2)"))
+/// Renders `work` through `toString` and asserts the exact Result text.
+fn assertRendered(label, work, expected) = test(label, fn() => expect(toString(work()), expected))
 
-test("rendering preserves the overflow error Result", fn() =>
-    expect(toString(renderSum(9223372036854775807, 1)), "Error(integer overflow)"))
-
-test("effect policy bypasses its handler on success", fn() =>
-    expect(toString(preserveFailure(20, 22)), "Success(42)"))
-
-test("effect policy can preserve the exact overflow Result", fn() =>
-    expect(toString(preserveFailure(9223372036854775807, 1)), "Error(integer overflow)"))
-
-test("effect policy may deliberately recover from known overflow", fn() =>
-    expect(toString(recoverWith(9223372036854775807, 1, 7)), "Success(7)"))
-
-test("healthy arithmetic never invokes the recovery decision", fn() =>
-    expect(toString(recoverWith(19, 23, 7)), "Success(42)"))
+assertRendered("success can be rendered without contextual coercion", fn() => renderSum(1, 1), "Success(2)")
+assertRendered("rendering preserves the overflow error Result", fn() => renderSum(9223372036854775807, 1), "Error(integer overflow)")
+assertRendered("effect policy bypasses its handler on success", fn() => preserveFailure(20, 22), "Success(42)")
+assertRendered("effect policy can preserve the exact overflow Result", fn() => preserveFailure(9223372036854775807, 1), "Error(integer overflow)")
+assertRendered("effect policy may deliberately recover from known overflow", fn() => recoverWith(9223372036854775807, 1, 7), "Success(7)")
+assertRendered("healthy arithmetic never invokes the recovery decision", fn() => recoverWith(19, 23, 7), "Success(42)")
 
 /// #230: preserve the mathematical answer in a wider numeric representation.
 fn maskedSquare(x) = {
@@ -74,7 +66,9 @@ fn maskedSquare(x) = {
 test("masked square preserves the mathematical answer", fn() =>
     expect(maskedSquare(4000000000), 16000000000000000000.0))
 
-fn wrappingTotal(work) = {
+/// Runs `work` under a policy that counts overflows and keeps the wrapped value,
+/// then asserts the exact fault count.
+fn countingTotal(work, expected) = {
     mut faults = 0
     handle Arith {
         overflow _ _ _ wrapped => {
@@ -83,9 +77,12 @@ fn wrappingTotal(work) = {
         }
     }
     let total = work()
-    expect(faults, 2)
+    expect(faults, expected)
     total
 }
+
+/// The wrapped total of `work` after exactly two counted overflow faults.
+fn wrappingTotal(work) = countingTotal(work, 2)
 
 fn posting(i) = match i == 0 { true => 1 false => -1 }
 
@@ -128,18 +125,18 @@ fn applyPair(f, a, b) = f(a, b)
 test("total helpers choose modular or saturating arithmetic", fn() => checkAll("total arithmetic helpers", [
     wrapAdd(9223372036854775807, 1) == -9223372036854775808,
     wrapSub(-9223372036854775808, 1) == 9223372036854775807,
-    wrapMul(9223372036854775807, 2) == -2,
     satAdd(9223372036854775807, 1) == 9223372036854775807,
-    satSub(-9223372036854775808, 1) == -9223372036854775808,
     satMul(-9223372036854775808, -1) == 9223372036854775807,
+    applyPair(wrapSub, -9223372036854775808, 1) == 9223372036854775807,
+    applyPair(satAdd, 9223372036854775807, 1) == 9223372036854775807,
+    applyPair(satMul, -9223372036854775808, -1) == 9223372036854775807,
+    wrapMul(9223372036854775807, 2) == -2,
+    satSub(-9223372036854775808, 1) == -9223372036854775808,
     satMul(-9223372036854775808, 2) == -9223372036854775808,
     satMul(7, -6) == -42,
     applyPair(wrapAdd, 9223372036854775807, 1) == -9223372036854775808,
-    applyPair(wrapSub, -9223372036854775808, 1) == 9223372036854775807,
     applyPair(wrapMul, 9223372036854775807, 2) == -2,
-    applyPair(satAdd, 9223372036854775807, 1) == 9223372036854775807,
     applyPair(satSub, -9223372036854775808, 1) == -9223372036854775808,
-    applyPair(satMul, -9223372036854775808, -1) == 9223372036854775807,
     (range(0, 3) |> fold(9223372036854775807, wrapAdd)) == -9223372036854775806
 ]))
 
@@ -150,16 +147,12 @@ fn literalDivisors(x) = {
 test("nonzero literal divisors need no policy", fn() => literalDivisors(-9223372036854775808))
 
 fn outerRecovery() = {
-    mut outer = 0
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            outer = wrapAdd(outer, 1)
-            wrapped
-        }
+    let nested = fn() => {
+        let inner = handler Arith { overflow _ lhs rhs _ => lhs + rhs - 1 }
+        inner(fn() => inferredSum(9223372036854775807, 1))
     }
-    let inner = handler Arith { overflow _ lhs rhs _ => lhs + rhs - 1 }
-    let answer = inner(fn() => inferredSum(9223372036854775807, 1))
-    checkAll("recovery executes outside its own installation", [answer == 9223372036854775807, outer == 2])
+    let answer = countingTotal(nested, 2)
+    checkAll("recovery executes outside its own installation", [answer == 9223372036854775807])
 }
 
 test("recovery arithmetic forwards to the outer policy", outerRecovery)
@@ -170,16 +163,22 @@ effect ResultRelay {
     fraction: fn(Result<float, Error>) -> Result<float, Error>
 }
 
+/// Renders one relayed integer Result through the installed handler.
+fn renderedInteger(value) = toString(perform ResultRelay.integer(value))
+
+/// Renders one relayed float Result through the installed handler.
+fn renderedFraction(value) = toString(perform ResultRelay.fraction(value))
+
 fn resultRelay() = {
     handle ResultRelay {
         integer value => value
         fraction value => value
     }
     checkAll("direct handler Result payloads", [
-        toString(perform ResultRelay.integer(Success { value: 42 })) == "Success(42)",
-        toString(perform ResultRelay.integer(Error { message: "kept" })) == "Error(kept)",
-        toString(perform ResultRelay.fraction(Success { value: 1.25 })) == "Success(1.25)",
-        toString(perform ResultRelay.fraction(Error { message: "fraction" })) == "Error(fraction)"
+        renderedInteger(Success { value: 42 }) == "Success(42)",
+        renderedInteger(Error { message: "kept" }) == "Error(kept)",
+        renderedFraction(Success { value: 1.25 }) == "Success(1.25)",
+        renderedFraction(Error { message: "fraction" }) == "Error(fraction)"
     ])
 }
 

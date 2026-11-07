@@ -225,6 +225,18 @@ tap label = tapAt (label, 0.5)
 
 level () = Semantics::value (elements (), "Level")
 
+// Runs of readings that only their label distinguishes.
+lettered (texts) = forEachList (texts, \text => expect (Drive::letters (driven, text), true))
+
+covering (labels) = forEachList (labels, \label => expect (Drive::offers (elements (), label), true))
+
+// Dragging the slider to `fraction` of its width leaves it reading `want`.
+levelAt (fraction, want) =
+    tapAt ("Level", fraction)
+    expect (level (), want)
+
+shownAll (labels) = forEachList (labels, \label => expect (Drive::shows (driven, label), true))
+
 selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
 
 test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
@@ -238,7 +250,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     expect (listGet curve 2 ?: 0.0, 110.0)
     expect (listGet curve 3 ?: 0.0, 80.0)
     expect (Drive::letters (driven, "Hello"), true)
-    expect (Drive::letters (driven, "Choice "), true)
+    lettered (["Choice "])
     expect (Drive::letters (driven, "Missing lettering"), false)
     expect (Drive::offers (elements (), "Menu"), true)
     expect (Drive::offers (elements (), "Level"), true)
@@ -246,21 +258,13 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     tap "Press"
     expect (Drive::letters (driven, "Pressed"), true)
     expect (Drive::letters (driven, "Hello"), false)
-    tapAt ("Level", 0.0)
-    expect (level (), 0.0)
-    tapAt ("Level", 0.5)
-    expect (level (), 0.5)
-    tapAt ("Level", 1.0)
-    expect (level (), 1.0)
-    tapAt ("Level", 0.75)
-    expect (level (), 0.75)
+    levelAt (0.0, 0.0)
+    levelAt (0.5, 0.5)
+    levelAt (1.0, 1.0)
+    levelAt (0.75, 0.75)
     tap "Menu"
-    expect (Drive::offers (elements (), "One"), true)
-    expect (Drive::offers (elements (), "Two"), true)
-    expect (Drive::offers (elements (), "Three"), true)
-    expect (Drive::letters (driven, "One"), true)
-    expect (Drive::letters (driven, "Two"), true)
-    expect (Drive::letters (driven, "Three"), true)
+    covering (["One", "Two", "Three"])
+    lettered (["One", "Two", "Three"])
     tap "Two"
     expect (Drive::offers (elements (), "One"), false)
     expect (Drive::letters (driven, "Choice two"), true)
@@ -288,9 +292,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
 
 test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
     begun "plain"
-    expect (Drive::shows (driven, "Native"), true)
-    expect (Drive::shows (driven, "Native action"), true)
-    expect (Drive::shows (driven, "Pick"), true)
+    shownAll (["Native", "Native action", "Pick"])
     expect (Drive::shows (driven, "Missing control"), false)
     expect (selected (), "")
     press "Native action"
@@ -305,8 +307,7 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     expect (Drive::shows (driven, "one"), false)
     choose ("Pick", "two")
     expect (selected (), "two")
-    expect (Drive::shows (driven, "two"), true)
-    expect (Drive::shows (driven, "Pressed"), true)
+    shownAll (["two", "Pressed"])
     post (Drive::frame (driven, 0.5))
     post (Drive::opened (driven, "/tmp/native.mp3"))
     post (Drive::chosen (driven, "choose", "/tmp/chosen.mp3"))

@@ -17,10 +17,6 @@ from tokenizers.Tokenizer import QwenTokenizer
 
 __all__ = ["load_qwen_tokenizer"]
 
-QWEN_PATTERN_MARK = "the-split-pattern"
-"""Stands in the fact table for the split pattern itself, which is long."""
-
-
 def load_qwen_tokenizer(text) -> Result[QwenTokenizer, str]:
     """The tokenizer a `tokenizer.json` document declares."""
     match jsonDecode(text):
@@ -29,14 +25,12 @@ def load_qwen_tokenizer(text) -> Result[QwenTokenizer, str]:
         case Error(message=message):
             return Error(message="tokenizer.json is not JSON: " + message)
 
-
 def load_document(doc) -> Result[QwenTokenizer, str]:
     match check_pipeline(doc):
         case Success(value=_checked):
             return Error(message="tokenizer.json: this port reads the vocabulary and merges from supplied data, not from the document (see this module's docstring)")
         case Error(message=message):
             return Error(message=message)
-
 
 def check_pipeline(doc) -> Result[bool, str]:
     """Refuse a document whose pipeline differs from the one this port implements."""
@@ -46,58 +40,76 @@ def check_pipeline(doc) -> Result[bool, str]:
     else:
         return Error(message="tokenizer.json declares a pipeline this port does not implement: " + describe(wrong))
 
-
 def pipeline_facts(doc) -> list[list[str]]:
     """Each declared pipeline fact as [what, required, declared], as JSON text."""
     pre = field(doc, "pre_tokenizer")
-    split_pt = unwrap_or(jsonIndex(field(pre, "pretokenizers"), 0), JsonNull())
-    byte_pt = unwrap_or(jsonIndex(field(pre, "pretokenizers"), 1), JsonNull())
-    model = field(doc, "model")
-    decoder = field(doc, "decoder")
-    post = field(doc, "post_processor")
-    return [
-        ["normalizer.type", q("NFC"), flatten(field(field(doc, "normalizer"), "type"))],
-        ["pre_tokenizer.type", q("Sequence"), flatten(field(pre, "type"))],
-        ["pre_tokenizer.pretokenizers[0].type", q("Split"), flatten(field(split_pt, "type"))],
-        ["pre_tokenizer.pretokenizers[0].behavior", q("Isolated"), flatten(field(split_pt, "behavior"))],
-        ["pre_tokenizer.pretokenizers[0].invert", "false", flatten(field(split_pt, "invert"))],
-        ["pre_tokenizer.pretokenizers[0].pattern.Regex", q(QWEN_PATTERN), flatten(field(field(split_pt, "pattern"), "Regex"))],
-        ["pre_tokenizer.pretokenizers[1].type", q("ByteLevel"), flatten(field(byte_pt, "type"))],
-        ["pre_tokenizer.pretokenizers[1].add_prefix_space", "false", flatten(field(byte_pt, "add_prefix_space"))],
-        ["pre_tokenizer.pretokenizers[1].use_regex", "false", flatten(field(byte_pt, "use_regex"))],
-        ["decoder.type", q("ByteLevel"), flatten(field(decoder, "type"))],
-        ["decoder.add_prefix_space", "false", flatten(field(decoder, "add_prefix_space"))],
-        ["decoder.use_regex", "false", flatten(field(decoder, "use_regex"))],
-        ["post_processor.type", q("ByteLevel"), flatten(field(post, "type"))],
-        ["post_processor.add_prefix_space", "false", flatten(field(post, "add_prefix_space"))],
-        ["post_processor.trim_offsets", "false", flatten(field(post, "trim_offsets"))],
-        ["model.type", q("BPE"), flatten(field(model, "type"))],
-        ["model.ignore_merges", "false", flatten(field(model, "ignore_merges"))],
-        ["model.byte_fallback", "false", flatten(field(model, "byte_fallback"))],
-        ["model.fuse_unk", "false", flatten(field(model, "fuse_unk"))],
-        ["model.unk_token", "null", flatten(field(model, "unk_token"))],
-        ["model.continuing_subword_prefix", q(""), flatten(field(model, "continuing_subword_prefix"))],
-        ["model.end_of_word_suffix", q(""), flatten(field(model, "end_of_word_suffix"))],
+    split_pt = pt_at(pre, 0)
+    head = [
+        member_fact("normalizer", field(doc, "normalizer"), "type", q("NFC")),
+        member_fact("pre_tokenizer", pre, "type", q("Sequence")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "type", q("Split")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "behavior", q("Isolated")),
+        member_fact("pre_tokenizer.pretokenizers[0]", split_pt, "invert", "false"),
+        declared("pre_tokenizer.pretokenizers[0].pattern.Regex", q(QWEN_PATTERN), field(field(split_pt, "pattern"), "Regex")),
     ]
+    return concat_facts([
+        head,
+        bytelevel_facts("pre_tokenizer.pretokenizers[1]", pt_at(pre, 1), "use_regex"),
+        bytelevel_facts("decoder", field(doc, "decoder"), "use_regex"),
+        bytelevel_facts("post_processor", field(doc, "post_processor"), "trim_offsets"),
+        model_facts(field(doc, "model")),
+    ])
 
+def pt_at(pre, i):
+    """Pre-tokenizer i of the declared sequence, or JsonNull when absent."""
+    return unwrap_or(jsonIndex(field(pre, "pretokenizers"), i), JsonNull())
+
+def member_fact(path, obj, name, want):
+    """One fact: obj's member `name` must be the JSON text `want`."""
+    return declared(path + "." + name, want, field(obj, name))
+
+def stage_facts(path, obj, wants):
+    """The facts of one pipeline stage: each [member, required JSON text]."""
+    return mapList(wants, lambda row: member_fact(path, obj, at_str(row, 0), at_str(row, 1)))
+
+def bytelevel_facts(path, obj, last):
+    """What every ByteLevel stage declares: its type, no prefix space, and `last` off."""
+    return stage_facts(path, obj, [["type", q("ByteLevel")], ["add_prefix_space", "false"], [last, "false"]])
+
+def model_facts(model):
+    """What the BPE model declares: its type and every option this port pins."""
+    return stage_facts("model", model, [
+        ["type", q("BPE")],
+        ["ignore_merges", "false"],
+        ["byte_fallback", "false"],
+        ["fuse_unk", "false"],
+        ["unk_token", "null"],
+        ["continuing_subword_prefix", q("")],
+        ["end_of_word_suffix", q("")],
+    ])
+
+def concat_facts(groups):
+    """Fact groups joined into one table, in order."""
+    return fold(range(len(groups)), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(groups, i), [])))
+
+def declared(path, want, value):
+    """One pipeline fact: what it is, what this port requires, and what the
+    document declares, all as JSON text."""
+    return [path, want, flatten(value)]
 
 def q(text):
     """A string's JSON text, which is how every declared value is compared."""
     return unwrap_or(jsonQuote(text), "")
 
-
 def describe(rows):
     return join(mapList(rows, lambda row: at_str(row, 0) + " is " + at_str(row, 2) + ", want " + at_str(row, 1)), "; ")
-
 
 def at_str(row, i):
     return unwrap_or(listGet(row, i), "")
 
-
 def flatten(value) -> string:
     """A JSON value as its canonical text, so a declared shape compares as a string."""
     return unwrap_or(jsonEncode(value), "")
-
 
 def field(value, name):
     """The member called name, or JsonNull."""

@@ -14,7 +14,7 @@ are part of NFC, so both live here rather than in the table. Implements
 [LLM-TOKENIZER]'s NFC normalizer.
 """
 from tokenizers import NfcData
-from tokenizers.Unicode import cps_text, text_cps
+from tokenizers.Unicode import cps_text, map_indexed, text_cps
 
 __all__ = [
     "combining_class", "decompose_cp", "decompose", "canonical_order",
@@ -194,7 +194,7 @@ def push(state, cp, cc):
 
 
 def replace_at(xs, position, value):
-    return toList(map(range(len(xs)), lambda i: value if i == position else at(xs, i)))
+    return map_indexed(xs, lambda i: value if i == position else at(xs, i))
 
 
 def nfd_cps(cps):

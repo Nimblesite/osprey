@@ -44,6 +44,11 @@ class Varlen:
     v: list[float]
 
 
+def row(xs, i):
+    """Row `i` of a table of lists, [] past the end."""
+    return unwrap_or(listGet(xs, i), [])
+
+
 def shapes_of(shapes_list, i):
     """The Shapes record for case i's [batch, seqlen_q, seqlen_k, heads_q, heads_k, headdim]."""
     s = unwrap_or(listGet(shapes_list, i), [0, 0, 0, 0, 0, 0])
@@ -62,14 +67,14 @@ def case_of(shapes_list, scales_list, causal_list, windows_list, alibi_list, ret
     w = unwrap_or(listGet(windows_list, i), [-1, -1])
     return Case(
         shapes=shapes_of(shapes_list, i),
-        q=unwrap_or(listGet(q_list, i), []),
-        k=unwrap_or(listGet(k_list, i), []),
-        v=unwrap_or(listGet(v_list, i), []),
+        q=row(q_list, i),
+        k=row(k_list, i),
+        v=row(v_list, i),
         scale=unwrap_or(listGet(scales_list, i), 0.0),
         causal=unwrap_or(listGet(causal_list, i), False),
         window_left=unwrap_or(listGet(w, 0), -1),
         window_right=unwrap_or(listGet(w, 1), -1),
-        alibi=unwrap_or(listGet(alibi_list, i), []),
+        alibi=row(alibi_list, i),
         ret=unwrap_or(listGet(ret_list, i), False),
     )
 
@@ -96,10 +101,7 @@ def case_checks(c, want_out, want_lse, want_probs, name):
 def finite_checks(i):
     """Case i from the finite-lse constants."""
     c = case_of(Expected.CASE_SHAPES, Expected.CASE_SCALES, Expected.CASE_CAUSAL, Expected.CASE_WINDOWS, Expected.CASE_ALIBI, Expected.CASE_RETURN, Expected.CASE_Q, Expected.CASE_K, Expected.CASE_V, i)
-    want_out = unwrap_or(listGet(Expected.CASE_OUT, i), [])
-    want_lse = unwrap_or(listGet(Expected.CASE_LSE, i), [])
-    want_probs = unwrap_or(listGet(Expected.CASE_PROBS, i), [])
-    return case_checks(c, want_out, want_lse, want_probs, f"case{i}")
+    return case_checks(c, row(Expected.CASE_OUT, i), row(Expected.CASE_LSE, i), row(Expected.CASE_PROBS, i), f"case{i}")
 
 
 def decoded_lse(raw):
@@ -110,10 +112,7 @@ def decoded_lse(raw):
 def nonfinite_checks(i):
     """Case i from the non-finite constants (lse holds -inf, written as strings)."""
     c = case_of(Expected.NF_SHAPES, Expected.NF_SCALES, Expected.NF_CAUSAL, Expected.NF_WINDOWS, Expected.NF_ALIBI, Expected.NF_RETURN, Expected.NF_Q, Expected.NF_K, Expected.NF_V, i)
-    want_out = unwrap_or(listGet(Expected.NF_OUT, i), [])
-    want_lse = decoded_lse(unwrap_or(listGet(Expected.NF_LSE, i), []))
-    want_probs = unwrap_or(listGet(Expected.NF_PROBS, i), [])
-    return case_checks(c, want_out, want_lse, want_probs, f"nf{i}")
+    return case_checks(c, row(Expected.NF_OUT, i), decoded_lse(row(Expected.NF_LSE, i)), row(Expected.NF_PROBS, i), f"nf{i}")
 
 
 def flatten(xss):
@@ -143,8 +142,8 @@ def varlen_case_of(i):
     """Unpack varlen case i into a Varlen."""
     w = unwrap_or(listGet(Expected.VARLEN_WINDOWS, i), [-1, -1])
     return Varlen(
-        cu_q=unwrap_or(listGet(Expected.VARLEN_CUQ, i), []),
-        cu_k=unwrap_or(listGet(Expected.VARLEN_CUK, i), []),
+        cu_q=row(Expected.VARLEN_CUQ, i),
+        cu_k=row(Expected.VARLEN_CUK, i),
         hq=unwrap_or(listGet(Expected.VARLEN_HQ, i), 0),
         hk=unwrap_or(listGet(Expected.VARLEN_HK, i), 0),
         hd=unwrap_or(listGet(Expected.VARLEN_HD, i), 0),
@@ -152,11 +151,11 @@ def varlen_case_of(i):
         causal=unwrap_or(listGet(Expected.VARLEN_CAUSAL, i), False),
         window_left=unwrap_or(listGet(w, 0), -1),
         window_right=unwrap_or(listGet(w, 1), -1),
-        alibi=unwrap_or(listGet(Expected.VARLEN_ALIBI, i), []),
+        alibi=row(Expected.VARLEN_ALIBI, i),
         ret=unwrap_or(listGet(Expected.VARLEN_RETURN, i), False),
-        q=unwrap_or(listGet(Expected.VARLEN_Q, i), []),
-        k=unwrap_or(listGet(Expected.VARLEN_K, i), []),
-        v=unwrap_or(listGet(Expected.VARLEN_V, i), []),
+        q=row(Expected.VARLEN_Q, i),
+        k=row(Expected.VARLEN_K, i),
+        v=row(Expected.VARLEN_V, i),
     )
 
 
@@ -165,11 +164,11 @@ def varlen_checks(i):
     c = varlen_case_of(i)
     r = Attention.flash_attn_varlen_func(c.q, c.k, c.v, c.cu_q, c.cu_k, max_diff(c.cu_q), max_diff(c.cu_k), c.hq, c.hk, c.hd, c.scale, c.causal, c.window_left, c.window_right, c.alibi, c.ret)
     checks = [
-        Check.close_all(f"varlen{i}.out", r.out, unwrap_or(listGet(Expected.VARLEN_OUT, i), []), RTOL, ATOL),
-        Check.close_all(f"varlen{i}.lse", r.lse, unwrap_or(listGet(Expected.VARLEN_LSE, i), []), RTOL, ATOL),
+        Check.close_all(f"varlen{i}.out", r.out, row(Expected.VARLEN_OUT, i), RTOL, ATOL),
+        Check.close_all(f"varlen{i}.lse", r.lse, row(Expected.VARLEN_LSE, i), RTOL, ATOL),
     ]
     if c.ret:
-        return listAppend(checks, Check.close_all(f"varlen{i}.probs", r.probs, unwrap_or(listGet(Expected.VARLEN_PROBS, i), []), RTOL, ATOL))
+        return listAppend(checks, Check.close_all(f"varlen{i}.probs", r.probs, row(Expected.VARLEN_PROBS, i), RTOL, ATOL))
     else:
         return listAppend(checks, Check.equal(f"varlen{i}.probs.empty", len(r.probs), 0))
 
@@ -229,8 +228,4 @@ def all_checks():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_checks())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_checks)

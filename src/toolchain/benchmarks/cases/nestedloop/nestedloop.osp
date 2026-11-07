@@ -1,12 +1,9 @@
 // Triple-nested counting loop accumulating (i*j*k) mod P — nested iteration.
-fn add(a, b) = a + b
-fn sub(a, b) = a - b
-fn mul(a, b) = a * b
-fn mod_(a, b) = a % b
+import bench::Bench::{guarded, add, sub, mul, modp}
 
 fn loopK(i, j, k, acc) = match k {
     0 => acc
-    _ => loopK(i, j, sub(k, 1), mod_(add(acc, mul(mul(i, j), k)), 1000000007))
+    _ => loopK(i, j, sub(k, 1), modp(add(acc, mul(mul(i, j), k)), 1000000007))
 }
 fn loopJ(i, j, n, acc) = match j {
     0 => acc
@@ -17,16 +14,4 @@ fn loopI(i, n, acc) = match i {
     _ => loopI(sub(i, 1), n, loopJ(i, n, n, acc))
 }
 
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${loopI(250, 250, 0)}")
-}
+fn main() = guarded(|| => print("${loopI(250, 250, 0)}"))

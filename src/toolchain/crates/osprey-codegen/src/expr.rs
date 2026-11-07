@@ -16,11 +16,13 @@ mod operators;
 use operators::{checked_intrinsic, gen_binary, gen_checked_arith, gen_unary};
 pub(crate) use operators::{emit_overflow_arith, gen_comparison};
 mod calls;
+pub(crate) use calls::{callee_name, unapplied, with_application};
 use calls::{gen_call, gen_method_call};
-pub(crate) use calls::{unapplied, with_application};
 mod lambdas;
 use lambdas::{apply_bound_lambda, apply_lambda, with_lambda_captures};
-pub(crate) use lambdas::{apply_lambda_values, fit_lambda_return, inline_sig, reduce_lambda};
+pub(crate) use lambdas::{
+    apply_lambda_values, concrete_lambda_type, fit_lambda_return, inline_sig, reduce_lambda,
+};
 mod arguments;
 pub(crate) use arguments::{call_with_values, has_value_form};
 use arguments::{eval_arg, gen_user_call, is_binary_integer_builtin};

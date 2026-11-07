@@ -59,9 +59,14 @@ date: "git Last Modified"
 <section class="home-install" id="install" aria-labelledby="install-title">
   <div class="container install-strip">
     <h2 class="section-title" id="install-title">Install Osprey.</h2>
-    <pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre>
     <a class="btn btn-primary" href="/docs/installation/">Getting started guide <span aria-hidden="true">→</span></a>
-    <p class="install-alt">Windows uses Scoop. Native compilation requires clang (LLVM 15+). Or <a href="/playground/">try Osprey online ↗</a></p>
+    <div class="install-options">
+      <div class="install-option" data-os="vscode"><p class="install-label">Recommended: the VS Code extension</p><pre class="language-bash"><code class="language-bash">code --install-extension nimblesite.osprey</code></pre></div>
+      <div class="install-option" data-os="unix"><p class="install-label">macOS and Linux</p><pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre></div>
+      <div class="install-option" data-os="windows"><p class="install-label">Windows</p><pre class="language-powershell"><code class="language-powershell">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
+scoop install osprey</code></pre></div>
+    </div>
+    <p class="install-alt">The extension bundles the compiler, runtime and tools. Native builds also need clang (LLVM 15+). Or <a href="/playground/">try Osprey online ↗</a></p>
   </div>
 </section>
 

@@ -61,16 +61,27 @@ pub(crate) fn owned_effect_names(
     effects: &BTreeSet<String>,
     aliases: &[String],
 ) -> BTreeSet<String> {
-    let relative_prefix = module.path.join("::");
-    let absolute_prefix = absolute_prefix(module);
     let mut names = BTreeSet::new();
     for effect in effects {
         let _ = names.insert(effect.clone());
-        let _ = names.insert(format!("{relative_prefix}::{effect}"));
-        let _ = names.insert(format!("{absolute_prefix}::{effect}"));
-        names.extend(aliases.iter().map(|alias| format!("{alias}::{effect}")));
+        qualified_names(module, effect, aliases, &mut names);
     }
     names
+}
+
+/// `name` as this module spells it relatively, absolutely, and through each
+/// of its aliases.
+fn qualified_names(
+    module: &SymbolKey,
+    name: &str,
+    aliases: &[String],
+    names: &mut BTreeSet<String>,
+) {
+    let relative_prefix = module.path.join("::");
+    let absolute_prefix = absolute_prefix(module);
+    let _ = names.insert(format!("{relative_prefix}::{name}"));
+    let _ = names.insert(format!("{absolute_prefix}::{name}"));
+    names.extend(aliases.iter().map(|alias| format!("{alias}::{name}")));
 }
 
 pub(crate) fn owned_cell_names(
@@ -78,13 +89,9 @@ pub(crate) fn owned_cell_names(
     cells: &BTreeSet<String>,
     aliases: &[String],
 ) -> BTreeSet<String> {
-    let relative_prefix = module.path.join("::");
-    let absolute_prefix = absolute_prefix(module);
     let mut names = BTreeSet::new();
     for cell in cells {
-        let _ = names.insert(format!("{relative_prefix}::{cell}"));
-        let _ = names.insert(format!("{absolute_prefix}::{cell}"));
-        names.extend(aliases.iter().map(|alias| format!("{alias}::{cell}")));
+        qualified_names(module, cell, aliases, &mut names);
     }
     names
 }

@@ -150,21 +150,8 @@ stringInteractions () =
     ]
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
-
-test "unions, Results and scalar operations compose" (\() => exactArithmetic (unionsResultsAndScalars))
-test "functions, forward calls, booleans and pipes compose" (\() => exactArithmetic (functionsPipesAndBooleans))
-test "effects mutate handled state beside persistent collections" (\() => exactArithmetic (effectsAndCollections))
-test "string transformations consume values from other features" (\() => exactArithmetic (stringInteractions))
+test "unions, Results and scalar operations compose" (exactly unionsResultsAndScalars)
+test "functions, forward calls, booleans and pipes compose" (exactly functionsPipesAndBooleans)
+test "effects mutate handled state beside persistent collections" (exactly effectsAndCollections)
+test "string transformations consume values from other features" (exactly stringInteractions)

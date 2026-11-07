@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 /// Default surface for [MODULES-NAMESPACE], [MODULES-FILE-SCOPED-NAMESPACE],
 /// [MODULES-FLAVOR-PROJECTION] and [MODULES-RESOLUTION]: an open logical group
 /// that several block contributions may extend, addressed by explicit label.
@@ -52,31 +33,24 @@ import "geometry/metric"::Metric as Metric
 
 /// Every path spelling that must resolve to the geometry contributions.
 fn geometryPathsCase() = checkAll("geometry namespace paths", [
-    geometry::square(4) == 16,
-    geometry::cube(3) == 27,
-    geometry::unitSquare() == 4,
-    geometry::square(0) == 0,
-    geometry::cube(1) == 1,
-    geometry::square(geometry::square(2)) == 16
+    structuralEquals([geometry::square(4), geometry::cube(3), geometry::unitSquare()], [16, 27, 4]),
+    structuralEquals([geometry::square(0), geometry::cube(1), geometry::square(geometry::square(2))], [0, 1, 16])
 ])
 
 /// Two namespaces holding the same simple name stay distinct [MODULES-ABI].
 fn sameNameDifferentNamespaceCase() = checkAll("same name, two namespaces", [
     geometry::square(3) == 9,
-    text::square("ab") == "abab",
-    "${geometry::square(5)}" == "25",
-    text::square("") == ""
+    structuralEquals([text::square("ab"), "${geometry::square(5)}", text::square("")], ["abab", "25", ""])
 ])
 
 /// A quoted label is one opaque segment, not a nested `geometry` child.
 fn quotedLabelCase() = checkAll("quoted namespace label", [
-    Metric::centimetres(3) == 300,
-    Metric::centimetres(0) == 0,
+    structuralEquals([Metric::centimetres(3), Metric::centimetres(0)], [300, 0]),
     geometry::square(Metric::centimetres(1)) == 10000
 ])
 
 exactArithmetic(fn() => print("${geometry::square(4)} ${geometry::cube(3)} ${text::square("ab")} ${Metric::centimetres(2)}"))
 
-test("namespace paths resolve every contribution", fn() => exactArithmetic(geometryPathsCase))
-test("namespaces keep same-named declarations apart", fn() => exactArithmetic(sameNameDifferentNamespaceCase))
-test("quoted namespace labels are opaque", fn() => exactArithmetic(quotedLabelCase))
+test("namespace paths resolve every contribution", exactly(geometryPathsCase))
+test("namespaces keep same-named declarations apart", exactly(sameNameDifferentNamespaceCase))
+test("quoted namespace labels are opaque", exactly(quotedLabelCase))

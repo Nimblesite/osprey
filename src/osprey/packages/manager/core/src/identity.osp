@@ -19,6 +19,14 @@ module Identity {
     /// The display form.
     export fn display(id: ReleaseId) = "${Names::display(id.key)}@e${id.epoch}.r${id.ordinal}#${id.digest}"
 
+    // `ReleaseId` shares its field names with `Source::Entry` and `Mapping`;
+    // issue #273 needs the receiver's record spelled out, so callers project
+    // through these instead of declaring their own copy.
+    export fn keyOf(id: ReleaseId) = id.key
+    export fn epochOf(id: ReleaseId) = id.epoch
+    export fn ordinalOf(id: ReleaseId) = id.ordinal
+    export fn digestOf(id: ReleaseId) = id.digest
+
     /// Identity equality: same key, epoch, ordinal and digest.
     export fn same(a: ReleaseId, b: ReleaseId) = Names::same(a.key, b.key) && a.epoch == b.epoch && a.ordinal == b.ordinal && a.digest == b.digest
 
@@ -38,10 +46,7 @@ module Identity {
         }
     }
 
-    fn versionParts(parts) = match length(parts) == 2 {
-        false => Error { message: "release.version" }
-        true => numbers(listGet(parts, 0) ?: "", listGet(parts, 1) ?: "")
-    }
+    fn versionParts(parts) = pairParts(parts, "release.version", numbers)
 
     /// `[epoch, ordinal]` from their decimal spellings: positive, no sign, no
     /// leading zero; otherwise `release.epoch` or `release.ordinal`. Shared by
@@ -69,16 +74,18 @@ module Identity {
     /// Parse a display form; failures are reason codes.
     export fn parse(text) = match split(text, "#") {
         Error => Error { message: "release.missing-digest" }
-        Success { value } => match length(value) == 2 {
-            false => Error { message: "release.missing-digest" }
-            true => parseHalves(listGet(value, 0) ?: "", listGet(value, 1) ?: "")
-        }
+        Success { value } => pairParts(value, "release.missing-digest", parseHalves)
+    }
+
+    /// `apply` over the two halves of `split`, or `code` when it is not exactly two.
+    fn pairParts(parts, code, apply) = match length(parts) == 2 {
+        false => Error { message: code }
+        true => apply(listGet(parts, 0) ?: "", listGet(parts, 1) ?: "")
     }
 
     fn parseHalves(head, digestText) = Checked::andThen(Digests::parse(digestText), fn(value) => withKey(head, value))
 
     /// Canonical `(package, epoch, ordinal, digest)` order.
     export fn compare(a: ReleaseId, b: ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),
-        Order::thenCompare(Order::compareInts(a.epoch, b.epoch),
-            Order::thenCompare(Order::compareInts(a.ordinal, b.ordinal), Order::compareStrings(a.digest, b.digest))))
+        Order::thenCompare(Order::compareSpots(a.epoch, a.ordinal, b.epoch, b.ordinal), Order::compareStrings(a.digest, b.digest)))
 }

@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** Represent pure pass, failure, and precondition-skip outcomes. *)
 type Verdict = Pass | Fail string | Skip string
 
@@ -43,9 +29,8 @@ passingCase () =
 skippedCase () =
     andThen (assume (2 > 3)) (checkVerdict "ignored after skip" "0" "1")
 
-
-test "pass folds several good interactions" (\() => exactArithmetic (passingCase))
-test "skip preserves an unmet precondition" (\() => exactArithmetic (skippedCase))
+test "pass folds several good interactions" (exactly passingCase)
+test "skip preserves an unmet precondition" (exactly skippedCase)
 
 (** Trace records every operation a curried body performs. *)
 effect Trace
@@ -116,26 +101,17 @@ curriedEffectsReachTheHandlerCase () =
     // Each arity consumes consecutive indices: 1-2, 3-5, 6-9, 10-14, 15-18.
     checkAll "curried arities consume every operation index" [
         traceReport == "3/12/30/60/66",
-        startsWith traceReport "3/",
-        endsWith traceReport "/66",
-        contains traceReport "/12/",
-        contains traceReport "/30/",
-        contains traceReport "/60/",
-        !(contains traceReport "/0/"),
-        !(contains traceReport "//")
+        structuralEquals [startsWith traceReport "3/", endsWith traceReport "/66"] [true, true],
+        containsAll traceReport ["/12/", "/30/", "/60/"],
+        containsNone traceReport ["/0/", "//"]
     ]
 
     // The handler saw eighteen distinct labels, in source order, once each.
     checkAll "every performed label reached the handler" [
-        steps == 18,
+        structuralEquals [steps, length seen, steps] [18, 36, 18],
         seen == "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|",
-        length seen == 36,
-        startsWith seen "a|b|",
-        endsWith seen "q|r|",
-        contains seen "e|f|",
-        contains seen "i|j|",
-        contains seen "n|o|",
-        steps == 18,
+        structuralEquals [startsWith seen "a|b|", endsWith seen "q|r|"] [true, true],
+        containsAll seen ["e|f|", "i|j|", "n|o|"],
         steps > 14,
         steps != 14,
         steps != 9
@@ -148,13 +124,9 @@ curriedEffectsReachTheHandlerCase () =
         // that ends in one needs its own parentheses to sit under the `==`
         // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
         ((6 + 7 ) + (8 + 9 ) ) == 30,
-        ((15 + 16 ) + (17 + 18 ) ) == 66,
-        contains traceReport "30",
-        contains traceReport "66",
-        (1 + 2 ) == 3,
-        ((3 + 4 ) + 5 ) == 12,
-        (((10 + 11 ) + (12 + 13 ) ) + 14 ) == 60,
-        steps == 18
+        structuralEquals [((15 + 16 ) + (17 + 18 ) ), (1 + 2 ), ((3 + 4 ) + 5 )] [66, 3, 12],
+        structuralEquals [(((10 + 11 ) + (12 + 13 ) ) + 14 ), steps] [60, 18],
+        containsAll traceReport ["30", "66"]
     ]
 
 (** Add three integers through whitespace parameters. *)
@@ -175,35 +147,23 @@ partialApplicationCase () =
 
     // Every grouping of the same three arguments is the same call.
     checkAll "curried application groups freely" [
-        addThree 1 2 3 == 6,
-        (addThree 1) 2 3 == 6,
-        (addThree 1 2) 3 == 6,
-        ((addThree 1) 2) 3 == 6,
-        onePart 2 3 == 6,
-        twoPart 3 == 6,
-        reused 3 == 6,
-        addFlat (1, 2, 3) == 6,
+        structuralEquals [addThree 1 2 3, (addThree 1) 2 3, (addThree 1 2) 3, ((addThree 1) 2) 3] [6, 6, 6, 6],
+        structuralEquals [onePart 2 3, twoPart 3, reused 3, addFlat (1, 2, 3)] [6, 6, 6, 6],
         addThree 1 2 3 == addFlat (1, 2, 3)
     ]
 
     // A partial application is a value: reusing one does not consume it, and
     // two partials of the same function stay independent.
     checkAll "partial applications are independent reusable values" [
-        onePart 2 3 == 6,
-        onePart 2 4 == 7,
-        onePart 5 5 == 11,
-        otherPart 2 3 == 15,
-        otherPart 20 30 == 60,
-        twoPart 3 == 6,
-        twoPart 30 == 33,
-        reused 4 == 7,
+        structuralEquals [onePart 2 3, onePart 2 4, onePart 5 5, otherPart 2 3] [6, 7, 11, 15],
+        structuralEquals [otherPart 20 30, twoPart 3, twoPart 30, reused 4] [60, 6, 33, 7],
         onePart 2 3 != otherPart 2 3,
         twoPart 3 == onePart 2 3,
         addFlat (10, 2, 3) == otherPart 2 3
     ]
 
-test "curried ML bodies perform every operation through the handler" (\() => exactArithmetic (curriedEffectsReachTheHandlerCase))
-test "ML partial application follows the currying rule" (\() => exactArithmetic (partialApplicationCase))
+test "curried ML bodies perform every operation through the handler" (exactly curriedEffectsReachTheHandlerCase)
+test "ML partial application follows the currying rule" (exactly partialApplicationCase)
 
 (** Render a Verdict as canonical text so both its state and its payload are
     assertable without comparing union values directly. Adjacent clauses with a
@@ -214,6 +174,9 @@ test "ML partial application follows the currying rule" (\() => exactArithmetic 
 verdictLabel (Pass) = "pass"
 verdictLabel (Fail reason) = "fail(${reason})"
 verdictLabel (Skip why) = "skip(${why})"
+
+(** Whether regrouping an `andThen` chain leaves the same reported outcome. *)
+associates left right = verdictLabel left == verdictLabel right
 
 (** [TESTING-VERDICT] fixes three contracts at once: `assume` turns a false
     condition into `Skip` and a true one into `Pass`; the labeled comparison
@@ -230,12 +193,12 @@ verdictAlgebraCase () =
     skip1 = Skip "first"
     skip2 = Skip "second"
     sumCheck = checkVerdict "sum"
+    mismatch = verdictLabel (checkVerdict "sum" "5" "6")
 
     // Nine ordered pairs over {Pass, Fail, Skip}: the first non-Pass wins, and
     // the second operand's payload must never surface when it does.
     checkAll "andThen retains the first non-Pass verdict" [
-        verdictLabel (andThen Pass Pass) == "pass",
-        verdictLabel (andThen Pass fail2) == "fail(two)",
+        structuralEquals [verdictLabel (andThen Pass Pass), verdictLabel (andThen Pass fail2)] ["pass", "fail(two)"],
         verdictLabel (andThen Pass skip2) == "skip(second)",
         verdictLabel (andThen fail1 Pass) == "fail(one)",
         verdictLabel (andThen fail1 fail2) == "fail(one)",
@@ -260,12 +223,9 @@ verdictAlgebraCase () =
         verdictLabel (andThen Pass skip1) == verdictLabel skip1,
         verdictLabel (andThen fail1 Pass) == verdictLabel fail1,
         verdictLabel (andThen skip1 Pass) == verdictLabel skip1,
-        verdictLabel (andThen (andThen Pass fail1) skip2) ==
-            verdictLabel (andThen Pass (andThen fail1 skip2)),
-        verdictLabel (andThen (andThen fail1 Pass) skip2) ==
-            verdictLabel (andThen fail1 (andThen Pass skip2)),
-        verdictLabel (andThen (andThen skip1 fail2) Pass) ==
-            verdictLabel (andThen skip1 (andThen fail2 Pass)),
+        associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)),
+        associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)),
+        associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
         verdictLabel (andThen (andThen Pass Pass) fail2) == "fail(two)",
         verdictLabel (andThen Pass (andThen Pass fail2)) == "fail(two)",
         verdictLabel (andThen (andThen Pass Pass) Pass) == "pass",
@@ -279,8 +239,7 @@ verdictAlgebraCase () =
     // The Fail payload is the whole labeled mismatch, verbatim. Its rendered
     // length is fixed: "fail(" + "sum: expected 5, got 6" (22) + ")" = 28.
     checkAll "the labeled mismatch is carried verbatim" [
-        verdictLabel (checkVerdict "sum" "5" "5") == "pass",
-        verdictLabel (checkVerdict "sum" "5" "6") == "fail(sum: expected 5, got 6)",
+        structuralEquals [verdictLabel (checkVerdict "sum" "5" "5"), mismatch] ["pass", "fail(sum: expected 5, got 6)"],
         verdictLabel (checkVerdict "empty" "" "") == "pass",
         verdictLabel (checkVerdict "empty" "" "x") == "fail(empty: expected , got x)",
         verdictLabel (checkVerdict "case" "A" "a") == "fail(case: expected A, got a)",
@@ -288,16 +247,15 @@ verdictAlgebraCase () =
         verdictLabel (checkVerdict "space" "a b" "ab") == "fail(space: expected a b, got ab)",
         verdictLabel (checkVerdict "digits" (toString (add 2 3)) "5") == "pass",
         verdictLabel (checkVerdict "bool" (toString (3 < 5)) "true") == "pass",
-        verdictLabel (checkVerdict "bool" (toString (5 < 3)) "true") ==
-            "fail(bool: expected false, got true)",
-        contains (verdictLabel (checkVerdict "sum" "5" "6")) "expected 5",
-        contains (verdictLabel (checkVerdict "sum" "5" "6")) "got 6",
-        startsWith (verdictLabel (checkVerdict "sum" "5" "6")) "fail(sum:",
-        length (verdictLabel (checkVerdict "sum" "5" "6")) == 28,
-        !(contains (verdictLabel (checkVerdict "sum" "5" "5")) "expected"),
         verdictLabel (sumCheck "5" "5") == "pass",
         verdictLabel (sumCheck "5" "6") == "fail(sum: expected 5, got 6)",
-        verdictLabel ((checkVerdict "sum" "5") "7") == "fail(sum: expected 5, got 7)"
+        verdictLabel ((checkVerdict "sum" "5") "7") == "fail(sum: expected 5, got 7)",
+        verdictLabel (checkVerdict "bool" (toString (5 < 3)) "true") ==
+            "fail(bool: expected false, got true)",
+        containsAll mismatch ["expected 5", "got 6"],
+        startsWith mismatch "fail(sum:",
+        length mismatch == 28,
+        !(contains (verdictLabel (checkVerdict "sum" "5" "5")) "expected")
     ]
 
     // assume is the precondition gate: "skip(" + "precondition not met" (20)
@@ -306,8 +264,7 @@ verdictAlgebraCase () =
         verdictLabel (assume true) == "pass",
         verdictLabel (assume false) == "skip(precondition not met)",
         verdictLabel (assume (2 > 3)) == "skip(precondition not met)",
-        verdictLabel (assume (3 > 2)) == "pass",
-        verdictLabel (assume (0 == 0)) == "pass",
+        structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"],
         verdictLabel (assume ("a" == "b")) == "skip(precondition not met)",
         verdictLabel (assume (5 >= 5)) == "pass",
         verdictLabel (assume (5 > 5)) == "skip(precondition not met)",
@@ -369,22 +326,11 @@ curriedArityLadderCase () =
 
     // 1+2 = 3, 1+2+3+4 = 10, 1+..+5 = 15, 1+..+6 = 21.
     checkAll "every curried arity answers its own sum" [
-        add 1 2 == 3,
-        add 0 0 == 0,
-        add 0 7 == 7,
-        add 7 0 == 7,
+        structuralEquals [add 1 2, add 0 0, add 0 7, add 7 0] [3, 0, 7, 7],
+        structuralEquals [add 5 ((0 - 5) ), addThree 1 2 3, sum4 1 2 3 4, sum4 0 0 0 0] [0, 6, 10, 0],
+        structuralEquals [sum4 4 3 2 1, sum5 1 2 3 4 5, sum5 0 0 0 0 5, sum6 1 2 3 4 5 6] [10, 15, 5, 21],
+        structuralEquals [sum6 6 5 4 3 2 1, sum6 0 0 0 0 0 0, sumFlat6 (1, 2, 3, 4, 5, 6)] [21, 0, 21],
         add 3 4 == add 4 3,
-        add 5 ((0 - 5) ) == 0,
-        addThree 1 2 3 == 6,
-        sum4 1 2 3 4 == 10,
-        sum4 0 0 0 0 == 0,
-        sum4 4 3 2 1 == 10,
-        sum5 1 2 3 4 5 == 15,
-        sum5 0 0 0 0 5 == 5,
-        sum6 1 2 3 4 5 6 == 21,
-        sum6 6 5 4 3 2 1 == 21,
-        sum6 0 0 0 0 0 0 == 0,
-        sumFlat6 (1, 2, 3, 4, 5, 6) == 21,
         sum6 1 2 3 4 5 6 == sumFlat6 (1, 2, 3, 4, 5, 6),
         sum6 1 2 3 4 5 6 != 20,
         sum5 1 2 3 4 5 != sum6 1 2 3 4 5 6
@@ -392,45 +338,21 @@ curriedArityLadderCase () =
 
     // Left-associative application: the parentheses are noise, not structure.
     checkAll "every grouping of one curried call agrees" [
-        (add 1) 2 == 3,
-        (addThree 1) 2 3 == 6,
-        (addThree 1 2) 3 == 6,
-        (sum4 1) 2 3 4 == 10,
-        (sum4 1 2) 3 4 == 10,
-        (sum4 1 2 3) 4 == 10,
-        ((sum4 1) 2) 3 4 == 10,
-        ((sum4 1) 2 3) 4 == 10,
-        (((sum4 1) 2) 3) 4 == 10,
-        (sum5 1) 2 3 4 5 == 15,
-        (sum5 1 2) 3 4 5 == 15,
-        (sum5 1 2 3) 4 5 == 15,
-        (sum5 1 2 3 4) 5 == 15,
-        ((((sum5 1) 2) 3) 4) 5 == 15,
-        (sum6 1) 2 3 4 5 6 == 21,
-        (sum6 1 2 3) 4 5 6 == 21,
-        (sum6 1 2 3 4 5) 6 == 21,
-        (((((sum6 1) 2) 3) 4) 5) 6 == 21,
-        (sum6 1 2 3 4 5 6) == 21
+        structuralEquals [(add 1) 2, (addThree 1) 2 3, (addThree 1 2) 3, (sum4 1) 2 3 4] [3, 6, 6, 10],
+        structuralEquals [(sum4 1 2) 3 4, (sum4 1 2 3) 4, ((sum4 1) 2) 3 4] [10, 10, 10],
+        structuralEquals [((sum4 1) 2 3) 4, (((sum4 1) 2) 3) 4, (sum5 1) 2 3 4 5] [10, 10, 15],
+        structuralEquals [(sum5 1 2) 3 4 5, (sum5 1 2 3) 4 5, (sum5 1 2 3 4) 5] [15, 15, 15],
+        structuralEquals [((((sum5 1) 2) 3) 4) 5, (sum6 1) 2 3 4 5 6, (sum6 1 2 3) 4 5 6] [15, 21, 21],
+        structuralEquals [(sum6 1 2 3 4 5) 6, (((((sum6 1) 2) 3) 4) 5) 6, (sum6 1 2 3 4 5 6)] [21, 21, 21]
     ]
 
     // Each prefix partial of sum6 carries the arguments already supplied:
     // p1 holds 1, p2 holds 3, p3 holds 6, p4 holds 10, p5 holds 15.
     checkAll "prefix partials are reusable independent values" [
-        inc 41 == 42,
-        inc 0 == 1,
-        inc ((0 - 1) ) == 0,
+        structuralEquals [inc 41, inc 0, inc ((0 - 1) ), p1 2 3 4 5 6, p2 3 4 5 6] [42, 1, 0, 21, 21],
+        structuralEquals [p3 4 5 6, p4 5 6, p5 6, p5 0, p5 100] [21, 21, 21, 15, 115],
+        structuralEquals [p4 0 0, p3 0 0 0, p2 0 0 0 0, p1 0 0 0 0 0] [10, 6, 3, 1],
         inc 41 == inc 41,
-        p1 2 3 4 5 6 == 21,
-        p2 3 4 5 6 == 21,
-        p3 4 5 6 == 21,
-        p4 5 6 == 21,
-        p5 6 == 21,
-        p5 0 == 15,
-        p5 100 == 115,
-        p4 0 0 == 10,
-        p3 0 0 0 == 6,
-        p2 0 0 0 0 == 3,
-        p1 0 0 0 0 0 == 1,
         p5 6 != p5 7,
         p5 6 == p4 5 6,
         p3 4 5 6 == p2 3 4 5 6,
@@ -441,13 +363,8 @@ curriedArityLadderCase () =
     // The same ladder over strings, booleans and floats. blend3 a b c = a*b+c,
     // so blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps the 2.0 factor.
     checkAll "currying is not integer-specific" [
-        tag3 "a" "b" "c" == "abc",
-        (tag3 "a") "b" "c" == "abc",
-        (tag3 "a" "b") "c" == "abc",
-        openTag "x" ">" == "<x>",
-        openTag "" ">" == "<>",
-        openTag "abc" "" == "<abc",
-        tag3 "" "" "" == "",
+        structuralEquals [tag3 "a" "b" "c", (tag3 "a") "b" "c", (tag3 "a" "b") "c"] ["abc", "abc", "abc"],
+        structuralEquals [openTag "x" ">", openTag "" ">", openTag "abc" "", tag3 "" "" ""] ["<x>", "<>", "<abc", ""],
         length (openTag "x" ">") == 3,
         all3 true true true,
         !(all3 true true false),
@@ -456,11 +373,8 @@ curriedArityLadderCase () =
         bothTrue true true,
         !(bothTrue true false),
         !(bothTrue false false),
-        blend3 2.0 3.0 1.0 == 7.0,
-        blend3 2.0 0.0 1.0 == 1.0,
-        blend3 0.0 9.0 4.5 == 4.5,
-        scaled 3.0 1.0 == 7.0,
-        scaled 0.5 0.0 == 1.0,
+        structuralEquals [blend3 2.0 3.0 1.0, blend3 2.0 0.0 1.0, blend3 0.0 9.0 4.5] [7.0, 1.0, 4.5],
+        structuralEquals [scaled 3.0 1.0, scaled 0.5 0.0] [7.0, 1.0],
         scaled 3.0 1.0 != blend3 2.0 3.0 2.0
     ]
 
@@ -494,82 +408,50 @@ lambdaCurryingCase () =
     // Curried and flat heads compute the same sums from the same arguments;
     // only their application shape differs.
     checkAll "curried and flat lambda heads split as specified" [
-        curriedAdd 3 4 == 7,
-        (curriedAdd 3) 4 == 7,
-        curriedAdd 0 0 == 0,
-        curriedAdd 0 9 == 9,
-        curriedAdd 9 0 == 9,
+        structuralEquals [curriedAdd 3 4, (curriedAdd 3) 4, curriedAdd 0 0, curriedAdd 0 9] [7, 7, 0, 9],
+        structuralEquals [curriedAdd 9 0, curriedAdd 5 ((0 - 5) ), flatAdd (3, 4), flatAdd (0, 0)] [9, 0, 7, 0],
+        structuralEquals [flatAdd (0, 9), flatAdd (9, 0), flatAdd (5, ((0 - 5) ))] [9, 9, 0],
+        structuralEquals [bump 5, bump 0, bump ((0 - 10) )] [15, 10, 0],
         curriedAdd 3 4 == curriedAdd 4 3,
-        curriedAdd 5 ((0 - 5) ) == 0,
-        flatAdd (3, 4) == 7,
-        flatAdd (0, 0) == 0,
-        flatAdd (0, 9) == 9,
-        flatAdd (9, 0) == 9,
-        flatAdd (5, ((0 - 5) )) == 0,
         flatAdd (3, 4) == curriedAdd 3 4,
-        bump 5 == 15,
-        bump 0 == 10,
-        bump ((0 - 10) ) == 0,
         bump 5 != curriedAdd 5 5,
         bump 5 == curriedAdd 10 5
     ]
 
     // `\x y => e` and `\x => \y => e` are the same value by [FLAVOR-ML-CURRY].
     checkAll "a curried lambda head is nested one-parameter lambdas" [
-        nestedAdd 3 4 == 7,
-        (nestedAdd 3) 4 == 7,
+        structuralEquals [nestedAdd 3 4, (nestedAdd 3) 4, nestedAdd 12 30, curriedTri 1 2 3] [7, 7, 42, 6],
+        structuralEquals [(curriedTri 1) 2 3, (curriedTri 1 2) 3, ((curriedTri 1) 2) 3, curriedTri 0 0 0] [6, 6, 6, 0],
+        structuralEquals [tri1 2 3, tri2 3, tri1 0 0, tri2 0, tri1 2 4] [6, 6, 1, 3, 7],
         nestedAdd 3 4 == curriedAdd 3 4,
         nestedAdd 0 0 == curriedAdd 0 0,
-        nestedAdd 12 30 == 42,
-        curriedTri 1 2 3 == 6,
-        (curriedTri 1) 2 3 == 6,
-        (curriedTri 1 2) 3 == 6,
-        ((curriedTri 1) 2) 3 == 6,
-        curriedTri 0 0 0 == 0,
-        tri1 2 3 == 6,
-        tri2 3 == 6,
         tri1 2 3 == tri2 3,
-        tri1 0 0 == 1,
-        tri2 0 == 3,
-        tri1 2 4 == 7,
         tri1 2 3 != tri1 2 4
     ]
 
     // A lambda keeps its arity shape when it is passed as an argument, piped
     // into, or closed over an outer binding.
     checkAll "lambdas keep their arity shape through higher-order calls" [
-        applyCurried curriedAdd 3 4 == 7,
-        applyCurried nestedAdd 3 4 == 7,
-        applyCurried curriedAdd 0 0 == 0,
-        applyCurried (\x y => x + y ) 20 22 == 42,
-        applyCurried (\x y => (x + y ) + 1 ) 20 21 == 42,
-        (applyCurried curriedAdd 3) 4 == 7,
+        structuralEquals [applyCurried curriedAdd 3 4, applyCurried nestedAdd 3 4] [7, 7],
+        structuralEquals [applyCurried curriedAdd 0 0, applyCurried (\x y => x + y ) 20 22] [0, 42],
+        structuralEquals [applyCurried (\x y => (x + y ) + 1 ) 20 21, (applyCurried curriedAdd 3) 4] [42, 7],
+        structuralEquals [applyFlat (flatAdd, 3, 4), applyFlat (flatAdd, 0, 0)] [7, 0],
+        structuralEquals [applyFlat (flatAdd, 5, ((0 - 5) )), (5 |> \x => x + 100 )] [0, 105],
+        structuralEquals [(5 |> (\x => x + 100 ) |> (\x => x * 2 )), shifted 5, shifted 0] [210, 105, 100],
         applyCurried curriedAdd 3 4 != applyCurried curriedAdd 3 5,
-        applyFlat (flatAdd, 3, 4) == 7,
-        applyFlat (flatAdd, 0, 0) == 0,
-        applyFlat (flatAdd, 5, ((0 - 5) )) == 0,
         applyFlat (flatAdd, 3, 4) == applyCurried curriedAdd 3 4,
-        (5 |> \x => x + 100 ) == 105,
-        (5 |> (\x => x + 100 ) |> (\x => x * 2 )) == 210,
-        shifted 5 == 105,
-        shifted 0 == 100,
         shifted 5 == curriedAdd 100 5
     ]
 
     // The same lambda forms over strings and booleans.
     checkAll "curried lambdas over strings and booleans" [
-        joinTwo "a" "b" == "ab",
-        (joinTwo "a") "b" == "ab",
-        joinTwo "" "" == "",
-        joinTwo "" "b" == "b",
-        joinTwo "a" "" == "a",
+        structuralEquals [joinTwo "a" "b", (joinTwo "a") "b", joinTwo "" ""] ["ab", "ab", ""],
+        structuralEquals [joinTwo "" "b", joinTwo "a" ""] ["b", "a"],
+        structuralEquals [toUpperCase (joinTwo "ab" "cd"), toLowerCase (joinTwo "AB" "CD")] ["ABCD", "abcd"],
         length (joinTwo "ab" "cde") == 5,
-        startsWith (joinTwo "ab" "cde") "ab",
-        endsWith (joinTwo "ab" "cde") "cde",
-        contains (joinTwo "ab" "cde") "bc",
-        !(contains (joinTwo "ab" "cde") "ce"),
-        toUpperCase (joinTwo "ab" "cd") == "ABCD",
-        toLowerCase (joinTwo "AB" "CD") == "abcd",
+        structuralEquals [startsWith (joinTwo "ab" "cde") "ab", endsWith (joinTwo "ab" "cde") "cde"] [true, true],
+        containsAll (joinTwo "ab" "cde") ["bc"],
+        containsNone (joinTwo "ab" "cde") ["ce"],
         andBoth true true,
         !(andBoth true false),
         !(andBoth false true),
@@ -596,6 +478,10 @@ layoutBuilt =
         depth = 3
         valid = true
 
+(** Whether `record` carries `sensor`, `value`, `depth` and `valid` exactly. *)
+holdsFields record sensor value depth valid =
+    record.sensor == sensor && record.value == value && record.depth == depth && record.valid == valid
+
 (** [FLAVOR-ML-RECORD]: an uppercase head is construction and lowers to
     `Expr::TypeConstructor`; a lowercase inline head is a non-destructive record
     update and lowers to `Expr::Update`. "Non-destructive" is the load-bearing
@@ -620,14 +506,8 @@ recordLayoutAndUpdateCase () =
 
     // The layout head and the inline head must agree on all four fields.
     checkAll "layout and inline record heads build the same value" [
-        layoutBuilt.sensor == "north",
-        layoutBuilt.value == 1.5,
-        layoutBuilt.depth == 3,
-        layoutBuilt.valid,
-        inlineBuilt.sensor == "north",
-        inlineBuilt.value == 1.5,
-        inlineBuilt.depth == 3,
-        inlineBuilt.valid,
+        holdsFields layoutBuilt "north" 1.5 3 true,
+        holdsFields inlineBuilt "north" 1.5 3 true,
         layoutBuilt.sensor == inlineBuilt.sensor,
         layoutBuilt.value == inlineBuilt.value,
         layoutBuilt.depth == inlineBuilt.depth,
@@ -640,50 +520,26 @@ recordLayoutAndUpdateCase () =
 
     // An update replaces exactly the named fields and copies the rest.
     checkAll "an update replaces exactly the named fields" [
-        renamed.sensor == "south",
-        renamed.value == 1.5,
-        renamed.depth == 3,
-        renamed.valid,
-        revalued.value == 2.5,
-        revalued.sensor == "north",
-        revalued.depth == 3,
-        revalued.valid,
-        deepened.depth == 30,
-        deepened.sensor == "north",
-        deepened.value == 1.5,
+        structuralEquals [holdsFields renamed "south" 1.5 3 true, holdsFields revalued "north" 2.5 3 true] [true, true],
+        holdsFields deepened "north" 1.5 30 true,
         !invalidated.valid,
-        invalidated.sensor == "north",
-        invalidated.depth == 3,
-        invalidated.value == 1.5,
-        twoFields.sensor == "south",
-        twoFields.depth == 30,
-        twoFields.value == 1.5,
-        twoFields.valid,
-        everything.sensor == "east",
-        everything.value == 0.0,
-        everything.depth == 0,
-        !everything.valid
+        holdsFields invalidated "north" 1.5 3 false,
+        holdsFields twoFields "south" 1.5 30 true,
+        holdsFields everything "east" 0.0 0 false
     ]
 
     // Every derived record leaves its source untouched, including a second
     // update derived from an already-derived record.
     checkAll "every derived record leaves its source untouched" [
-        inlineBuilt.sensor == "north",
-        inlineBuilt.value == 1.5,
-        inlineBuilt.depth == 3,
-        inlineBuilt.valid,
+        holdsFields inlineBuilt "north" 1.5 3 true,
         renamed.sensor != inlineBuilt.sensor,
         revalued.value != inlineBuilt.value,
         deepened.depth != inlineBuilt.depth,
         invalidated.valid != inlineBuilt.valid,
         everything.depth != inlineBuilt.depth,
-        chained.sensor == "south",
-        chained.depth == 4,
-        chained.value == 1.5,
-        chained.valid,
-        renamed.depth == 3,
+        holdsFields chained "south" 1.5 4 true,
+        structuralEquals [renamed.depth, reverted.depth] [3, 3],
         reverted.sensor == "north",
-        reverted.depth == 3,
         reverted.sensor == inlineBuilt.sensor,
         reverted.valid == inlineBuilt.valid,
         reverted.sensor != renamed.sensor
@@ -692,21 +548,15 @@ recordLayoutAndUpdateCase () =
     // An update expression may read the source's own fields: 1.5 * 2.0 = 3.0
     // and 3 + 1 = 4, with the source still reading 1.5 and 3 afterwards.
     checkAll "computed updates read the source's own fields" [
-        doubledValue == 3.0,
-        nextDepth == 4,
-        computed.value == 3.0,
-        computed.depth == 4,
-        computed.sensor == "north",
-        computed.valid,
-        inlineBuilt.value == 1.5,
-        inlineBuilt.depth == 3,
+        structuralEquals [doubledValue, inlineBuilt.value] [3.0, 1.5],
+        structuralEquals [nextDepth, inlineBuilt.depth] [4, 3],
+        holdsFields computed "north" 3.0 4 true,
         computed.value == inlineBuilt.value * 2.0,
         computed.depth == (inlineBuilt.depth + 1 ),
         computed.value > inlineBuilt.value,
         computed.depth > inlineBuilt.depth,
         computed.value != inlineBuilt.value,
-        toString computed.value == "3.0",
-        "${computed.sensor}:${computed.depth}" == "north:4",
+        structuralEquals [toString computed.value, "${computed.sensor}:${computed.depth}"] ["3.0", "north:4"],
         "${computed.value}" == "3.0"
     ]
 
@@ -783,61 +633,44 @@ matchLayoutAndClausesCase () =
 
     // One clause per variant, each reading its own payload.
     checkAll "layout union variants dispatch to their own clause" [
-        describeLevel deep == "deep:north:7",
-        describeLevel shallow == "shallow:south",
-        describeLevel Flat == "flat",
-        describeLevel (Deep(marker = "", rank = 0)) == "deep::0",
+        structuralEquals [describeLevel deep, describeLevel shallow] ["deep:north:7", "shallow:south"],
+        structuralEquals [describeLevel Flat, describeLevel (Deep(marker = "", rank = 0))] ["flat", "deep::0"],
         describeLevel (Shallow(marker = "")) == "shallow:",
+        describeLevel (Deep(marker = "a b", rank = 12)) == "deep:a b:12",
+        describeLevel (Deep(marker = "12", rank = 12)) == "deep:12:12",
         describeLevel deep != describeLevel shallow,
-        startsWith (describeLevel deep) "deep:",
-        endsWith (describeLevel deep) ":7",
+        structuralEquals [startsWith (describeLevel deep) "deep:", endsWith (describeLevel deep) ":7"] [true, true],
         contains (describeLevel deep) "north",
         !(contains (describeLevel shallow) "north"),
         length (describeLevel Flat) == 4,
         describeLevel (Deep(marker = "north", rank = 7)) == describeLevel deep,
         describeLevel (Deep(marker = "north", rank = 8)) != describeLevel deep,
-        describeLevel (Shallow(marker = "north")) != describeLevel deep,
-        describeLevel (Deep(marker = "a b", rank = 12)) == "deep:a b:12",
-        describeLevel (Deep(marker = "12", rank = 12)) == "deep:12:12"
+        describeLevel (Shallow(marker = "north")) != describeLevel deep
     ]
 
     // Column order wins over spelling: "north/7", never "7/north".
     checkAll "a payload binder takes its column, not its spelling" [
-        swappedLevel deep == "north/7",
-        swappedLevel shallow == "south",
-        swappedLevel Flat == "-",
-        swappedLevel (Deep(marker = "x", rank = 1)) == "x/1",
+        structuralEquals [swappedLevel deep, swappedLevel shallow] ["north/7", "south"],
+        structuralEquals [swappedLevel Flat, swappedLevel (Deep(marker = "x", rank = 1))] ["-", "x/1"],
+        structuralEquals [swappedLevel (Deep(marker = "", rank = 0)), swappedLevel (Shallow(marker = ""))] ["/0", ""],
+        swappedLevel (Deep(marker = "7", rank = 7)) == "7/7",
         swappedLevel deep != describeLevel deep,
-        contains (swappedLevel deep) "/",
-        startsWith (swappedLevel deep) "north",
+        structuralEquals [contains (swappedLevel deep) "/", startsWith (swappedLevel deep) "north"] [true, true],
         endsWith (swappedLevel deep) "7",
         length (swappedLevel deep) == 7,
-        swappedLevel (Deep(marker = "", rank = 0)) == "/0",
-        swappedLevel (Shallow(marker = "")) == "",
         !(contains (swappedLevel Flat) "north"),
-        swappedLevel (Deep(marker = "7", rank = 7)) == "7/7",
         swappedLevel (Deep(marker = "north", rank = 8)) != swappedLevel deep
     ]
 
     // Literal clauses match their own value only; everything else falls to the
     // wildcard that follows them.
     checkAll "literal clauses and the wildcard that follows them" [
-        band 0 == "zero",
-        band 1 == "one",
-        band 2 == "two",
-        band 3 == "many",
-        band 99 == "many",
-        band ((0 - 1) ) == "many",
+        structuralEquals [band 0, band 1, band 2, band 3] ["zero", "one", "two", "many"],
+        structuralEquals [band 99, band ((0 - 1) ), route "", route "/"] ["many", "many", "root", "root"],
+        structuralEquals [route "/home", route "/away", route "home"] ["home", "other", "other"],
+        structuralEquals [route "/HOME", route (toLowerCase "/HOME"), route " "] ["other", "home", "other"],
         band 0 != band 1,
         band 3 == band 99,
-        route "" == "root",
-        route "/" == "root",
-        route "/home" == "home",
-        route "/away" == "other",
-        route "home" == "other",
-        route "/HOME" == "other",
-        route (toLowerCase "/HOME") == "home",
-        route " " == "other",
         route "" == route "/",
         route "/home" != route "/away"
     ]
@@ -845,24 +678,14 @@ matchLayoutAndClausesCase () =
     // List shapes: [] and [x] and [x, y] each own a clause, and everything
     // longer takes head-tail, whose tail length is one less than the list.
     checkAll "list patterns and Result arms select by shape" [
-        shape (List ()) == "empty",
-        shape single == "one(42)",
-        shape [1, 2] == "two(1,2)",
-        shape nums == "many(10+2)",
-        shape [1, 2, 3, 4] == "many(1+3)",
-        shape (listAppend nums 40) == "many(10+3)",
-        shape (listReverse nums) == "many(30+2)",
-        shape (listPrepend nums 5) == "many(5+3)",
-        shape single != shape nums,
-        readAt nums 0 == "at 0 = 10",
-        readAt nums 1 == "at 1 = 20",
-        readAt nums 2 == "at 2 = 30",
-        readAt nums 3 == "miss 3",
-        readAt nums 99 == "miss 99",
-        readAt nums ((0 - 1) ) == "miss -1",
-        readAt single 0 == "at 0 = 42",
-        readAt [7] 1 == "miss 1",
+        structuralEquals [shape (List ()), shape single, shape [1, 2]] ["empty", "one(42)", "two(1,2)"],
+        structuralEquals [shape nums, shape [1, 2, 3, 4]] ["many(10+2)", "many(1+3)"],
+        structuralEquals [shape (listAppend nums 40), shape (listReverse nums)] ["many(10+3)", "many(30+2)"],
+        structuralEquals [shape (listPrepend nums 5), readAt nums 3, readAt nums 99] ["many(5+3)", "miss 3", "miss 99"],
+        structuralEquals [readAt nums ((0 - 1) ), readAt single 0, readAt [7] 1] ["miss -1", "at 0 = 42", "miss 1"],
         readAt [7] 0 == "at 0 = 7",
+        shape single != shape nums,
+        structuralEquals (mapList [0, 1, 2] (\k => readAt nums k)) ["at 0 = 10", "at 1 = 20", "at 2 = 30"],
         readAt nums 0 != readAt nums 1,
         contains (readAt nums 1) "20",
         !(contains (readAt nums 3) "=")
@@ -908,20 +731,11 @@ layoutAndInterpolationCase () =
 
     // staged n = 3n + 1; spread a b = a + b across three source lines.
     checkAll "layout blocks and split parentheses are one expression" [
-        staged 0 == 1,
-        staged 1 == 4,
-        staged 2 == 7,
-        staged 3 == 10,
-        staged 4 == 13,
-        staged 5 == 16,
-        staged 10 == 31,
+        structuralEquals [staged 0, staged 1, staged 2, staged 3] [1, 4, 7, 10],
+        structuralEquals [staged 4, staged 5, staged 10, spread 2 3] [13, 16, 31, 5],
+        structuralEquals [spread 0 0, spread 20 22, spread 5 ((0 - 5) ), spread 1 2] [0, 42, 0, 3],
         staged 5 != staged 4,
-        spread 2 3 == 5,
-        spread 0 0 == 0,
         spread 2 3 == spread 3 2,
-        spread 20 22 == 42,
-        spread 5 ((0 - 5) ) == 0,
-        spread 1 2 == 3,
         staged 5 == spread 10 6,
         staged 0 == spread 1 0
     ]
@@ -929,83 +743,56 @@ layoutAndInterpolationCase () =
     // An interpolation hole renders the value it holds: an unwrapped int as a
     // bare number, a checked operation as its Result, a bool as true/false.
     checkAll "interpolation renders juxtaposed calls and checked arithmetic" [
-        "${add 3 5}" == "8",
-        "${addThree 1 2 5}" == "8",
-        "${staged 5}" == "16",
-        "${toString (staged 5)}" == "16",
-        "${3 + 5}" == "8",
-        "total=${add 3 5} raw=${3 + 5}" == "total=8 raw=8",
-        "${toUpperCase flavorName}" == "ML",
-        "${length flavorName}" == "2",
-        "${first}/${last}" == "3/13",
-        "${apple}" == "2",
-        "${missing}" == "-1",
-        "${past}" == "-1",
-        "${3 < 5}" == "true",
-        "${3 > 5}" == "false",
-        "${ratio}" == "1.5",
-        "a${flavorName}b" == "amlb",
-        "${flavorName}${flavorName}" == "mlml",
+        structuralEquals ["${add 3 5}", "${addThree 1 2 5}", "${staged 5}"] ["8", "8", "16"],
+        structuralEquals ["${toString (staged 5)}", "${3 + 5}"] ["16", "8"],
+        structuralEquals ["total=${add 3 5} raw=${3 + 5}", "${toUpperCase flavorName}"] ["total=8 raw=8", "ML"],
+        structuralEquals ["${length flavorName}", "${first}/${last}", "${apple}"] ["2", "3/13", "2"],
+        structuralEquals ["${missing}", "${past}", "${3 < 5}", "${3 > 5}"] ["-1", "-1", "true", "false"],
+        structuralEquals ["${ratio}", "a${flavorName}b", "${flavorName}${flavorName}"] ["1.5", "amlb", "mlml"],
         "${spread 20 22}" == "42"
     ]
 
     // Indexing and map lookup at the first slot, the last slot, one past the
     // end, and a key that was never set [FLAVOR-ML-INDEX], [FLAVOR-ML-MAP].
     checkAll "list and map literals index and fall back as declared" [
-        first == 3,
-        last == 13,
+        structuralEquals [first, last, (xs[1] ?: 0), (xs[2] ?: 0)] [3, 13, 5, 8],
+        structuralEquals [(listGet xs 4 ?: 0), listLength xs, apple, (prices["banana"] ?: 0)] [0, 4, 2, 3],
+        structuralEquals [mapLength prices, mapLength (mapRemove prices "apple"), mapLength prices] [2, 1, 2],
         past == ((0 - 1) ),
-        (xs[1] ?: 0) == 5,
-        (xs[2] ?: 0) == 8,
         (listGet xs 0 ?: 0) == first,
         (listGet xs 3 ?: 0) == last,
-        (listGet xs 4 ?: 0) == 0,
-        listLength xs == 4,
         listContains xs 8,
         !(listContains xs 4),
         !(isEmpty xs),
-        apple == 2,
         missing == ((0 - 1) ),
-        (prices["banana"] ?: 0) == 3,
         (mapGet prices "apple" ?: 0) == apple,
-        mapLength prices == 2,
         mapContains prices "apple",
-        !(mapContains prices "pear"),
-        mapLength (mapRemove prices "apple") == 1,
-        mapLength prices == 2
+        !(mapContains prices "pear")
     ]
 
     // Text boundaries: empty needle, prefix, suffix, an absent reversal, a
     // repeated substring, digits inside a string, and case folding.
     checkAll "string builtins over the boundary shapes" [
-        length text == 10,
+        structuralEquals [length text, length ""] [10, 0],
         !(isEmpty text),
         isEmpty "",
-        length "" == 0,
-        startsWith text "ab",
-        endsWith text "12",
-        startsWith text "",
-        endsWith text "",
-        contains text "",
-        contains text ", ",
-        contains text "ab",
-        !(contains text "ba"),
-        !(startsWith text "b"),
-        !(endsWith text "1"),
+        structuralEquals [startsWith text "ab", endsWith text "12", startsWith text ""] [true, true, true],
+        structuralEquals [endsWith text "", contains text "", containsAll text [", ", "ab"]] [true, true, true],
+        containsNone text ["ba", "AB"],
+        !(startsWith text "b"), !(endsWith text "1"),
         toUpperCase text == "AB, AB, 12",
         toLowerCase "AB, AB, 12" == text,
         toUpperCase (toLowerCase text) == toUpperCase text,
         toLowerCase text == text,
         length (toUpperCase text) == length text,
-        contains (toUpperCase text) "AB",
-        !(contains text "AB")
+        contains (toUpperCase text) "AB"
     ]
 
 // Registration order fixes the TAP numbering, so these follow the four cases
 // registered above.
-test "Verdict folding obeys the andThen monoid laws" (\() => exactArithmetic (verdictAlgebraCase))
-test "curried arities two through six apply in every grouping" (\() => exactArithmetic (curriedArityLadderCase))
-test "curried and flat lambda heads split as specified" (\() => exactArithmetic (lambdaCurryingCase))
-test "ML record layout, inline heads and updates agree" (\() => exactArithmetic (recordLayoutAndUpdateCase))
-test "ML match layout, clauses and list patterns select correctly" (\() => exactArithmetic (matchLayoutAndClausesCase))
-test "ML layout blocks and interpolation render juxtaposed calls" (\() => exactArithmetic (layoutAndInterpolationCase))
+test "Verdict folding obeys the andThen monoid laws" (exactly verdictAlgebraCase)
+test "curried arities two through six apply in every grouping" (exactly curriedArityLadderCase)
+test "curried and flat lambda heads split as specified" (exactly lambdaCurryingCase)
+test "ML record layout, inline heads and updates agree" (exactly recordLayoutAndUpdateCase)
+test "ML match layout, clauses and list patterns select correctly" (exactly matchLayoutAndClausesCase)
+test "ML layout blocks and interpolation render juxtaposed calls" (exactly layoutAndInterpolationCase)

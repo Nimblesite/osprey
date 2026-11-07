@@ -1,0 +1,24 @@
+// The bank's native suites ([TESTING-BUILTINS]) run against the real domain
+// modules in ../src/domain; this file is the entry the manifest names, because
+// a test statement is only legal in the entry source.
+namespace bank
+
+import bank::MoneyCases
+import bank::JsonCases
+import bank::AccountCases
+
+test "cents format to two padded places" MoneyCases::centsCase
+test "dollars group in thousands at every boundary" MoneyCases::groupingCase
+test "positive guard classifies amounts" MoneyCases::positiveCase
+test "opaque amounts preserve the public cents representation" MoneyCases::representationCase
+test "scalar fields encode with quoted keys" JsonCases::fieldCase
+test "string escaping is applied exactly once" JsonCases::escapeCase
+test "obj and arr compose into documents" JsonCases::structureCase
+test "error body is a valid escaped object" JsonCases::errorCase
+test "namable enforces a non-empty owner" AccountCases::namableCase
+test "movable enforces positive whole cents" AccountCases::movableCase
+test "Outcome classifies landed vs refused" AccountCases::outcomeCase
+test "Account renders escaped JSON" AccountCases::jsonCase
+test "Account renders an aligned TUI row" AccountCases::rowCase
+test "handler values reuse state and isolate factory instances" AccountCases::mockedVaultCase
+test "invalid payments never perform storage operations" AccountCases::guardCase

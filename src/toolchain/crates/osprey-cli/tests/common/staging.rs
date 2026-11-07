@@ -39,6 +39,16 @@ pub(crate) fn diagnostics(source: &str, flavor: Flavor) -> String {
         .join("\n")
 }
 
+/// Assert the frontend rejects `source` with diagnostics naming every one of
+/// `needles`; `why` says what the rejection proves.
+pub(crate) fn assert_rejected(source: &str, flavor: Flavor, needles: &[&str], why: &str) {
+    let errors = diagnostics(source, flavor);
+    assert!(
+        needles.iter().all(|needle| errors.contains(needle)),
+        "{why}: expected {needles:?}, got: {errors:?}"
+    );
+}
+
 /// Compile `source` for `target` through the real CLI, returning stderr and
 /// whether it succeeded — the only path that runs the per-target capability
 /// gate [MULTI-WASM] and [STAGE-WASM] are checked by.

@@ -1,6 +1,5 @@
 // Naive recursive Fibonacci — exercises raw function-call + recursion overhead.
-fn add(a, b) = a + b
-fn sub(a, b) = a - b
+import bench::Bench::{guarded, add, sub}
 
 fn fib(n) = match n {
     0 => 0
@@ -8,10 +7,4 @@ fn fib(n) = match n {
     _ => add(fib(sub(n, 1)), fib(sub(n, 2)))
 }
 
-fn main() = {
-    handle Arith { overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        } }
-    print("${fib(35)}")
-}
+fn main() = guarded(|| => print("${fib(35)}"))

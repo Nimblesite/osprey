@@ -1,0 +1,41 @@
+//! The GPU helpers test programs share. A unit of its own: these match on the
+//! built-in `Success`, so a program that declares its own `Success` variant and
+//! names only the arithmetic policy must not receive them. Implements
+//! [TESTING-ARITH-POLICY].
+
+/// Fails the case with the reason a GPU operation reported. [FAILURE-EXPLICIT]
+fn gpuFailed(message) = check("GPU operation", "success", toString(message))
+
+/// Runs `work` on the value of a successful GPU operation; a failed one fails
+/// the case with its reason before the consumer runs. [FAILURE-EXPLICIT]
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => gpuFailed(message)
+}
+
+/// Whether a successful GPU operation's value satisfies `predicate`; a failed
+/// one fails the case with its reason and the predicate. [FAILURE-EXPLICIT]
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => {
+        gpuFailed(message)
+        false
+    }
+}
+
+/// Whether a successful GPU operation's value equals `expected`; a failed one
+/// fails the case with its reason. [FAILURE-EXPLICIT]
+fn gpuEquals(result, expected) = gpuSatisfies(result, fn(value) => value == expected)
+
+/// Whether a successful GPU operation's buffer holds `expected` elements; a
+/// failed one fails the case with its reason. [FAILURE-EXPLICIT]
+fn gpuLengthIs(result, expected) = gpuSatisfies(result, fn(buffer) => gpuLength(buffer) == expected)
+
+/// Runs `work` on the indices `0..n` on the GPU, or fails the case.
+fn withIndices(n, work) = withBuffer(gpuIota(n), work)
+
+/// The reason `gpuIota(n)` fails, or the length it unexpectedly produced.
+fn iotaError(n) = match gpuIota(n) {
+    Success { value } => "unexpected success ${gpuLength(value)}"
+    Error { message } => toString(message)
+}

@@ -10,15 +10,11 @@ import registry_cli::Project
 /// defaults to the project directory's last segment, or `app` for the
 /// working directory. An existing manifest is `init.exists`, never rewritten.
 module Init {
-    let failStatus = 1
     let usageCode = "init.usage"
     let existsCode = "init.exists"
     let nameFlag = "--name"
     let defaultName = "app"
     let usageText = ["usage: osprey-pkg package init [--name <project>] [--project <dir>]"]
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
 
     fn lastSegment(path) = {
         let parts = split(path, "/") ?: [path]
@@ -35,19 +31,15 @@ module Init {
     /// The smallest manifest `Manifest::parse` accepts.
     export fn skeleton(name) = "[project]\nname = \"${name}\"\nsource_roots = [\"src\"]\n"
 
-    fn written(project, name) = match perform Host::Files.write(Project::manifestPathAt(project), skeleton(name)) {
-        Error { message } => failed([message])
-        Success => Reports::success(["wrote ${Project::manifestPathAt(project)}"])
-    }
+    fn written(project, name) = Reports::checked(perform Host::Files.write(Project::manifestPathAt(project), skeleton(name)),
+        fn(_written) => Reports::success(["wrote ${Project::manifestPathAt(project)}"]))
 
     fn at(project, name) = match perform Host::Files.read(Project::manifestPathAt(project)) {
-        Success => failed(["${existsCode} ${Project::manifestPathAt(project)}"])
+        Success => Reports::failure(["${existsCode} ${Project::manifestPathAt(project)}"])
         Error => written(project, name)
     }
 
     /// The whole command.
-    export fn run(args) = match Flags::parse(args, [nameFlag, Flags::projectFlag], []) {
-        Error => usageReport()
-        Success { value } => at(Flags::project(value), nameOf(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [nameFlag, Flags::projectFlag], [], usageCode, usageText,
+        fn(parsed) => at(Flags::project(parsed), nameOf(parsed)))
 }

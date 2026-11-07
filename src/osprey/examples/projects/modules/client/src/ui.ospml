@@ -36,14 +36,44 @@ module UI
 
     export field : string -> string -> string -> string -> string -> string
     field id name label placeholder kind =
-        control = leaf "input" (prop "id" id + "," + prop "name" name + "," + prop "className" "field-control" + "," + prop "placeholder" placeholder + "," + prop "type" kind) ""
-        node "label" (prop "className" "field") (leaf "span" (prop "className" "field-label") label + "," + control)
+        control = leaf "input" (prop "id" id + "," + prop "name" name + "," + cls "field-control" + "," + prop "placeholder" placeholder + "," + prop "type" kind) ""
+        node "label" (cls "field") (leaf "span" (cls "field-label") label + "," + control)
 
     export selectStart : string -> string -> string -> string
-    selectStart id name label = leaf "label" (prop "className" "field-label" + "," + prop "htmlFor" id) label + "," + node "select" (prop "id" id + "," + prop "name" name + "," + prop "className" "field-control") ""
+    selectStart id name label = leaf "label" (cls "field-label" + "," + prop "htmlFor" id) label + "," + node "select" (prop "id" id + "," + prop "name" name + "," + cls "field-control") ""
 
     export option : string -> string -> string
     option value label = leaf "option" (prop "value" value) label
 
     export empty : string -> string -> string -> string
-    empty icon title body = node "div" (prop "className" "empty-state") (leaf "div" (prop "className" "empty-icon") icon + "," + leaf "h3" "" title + "," + leaf "p" "" body)
+    empty icon title body = node "div" (cls "empty-state") (leaf "div" (cls "empty-icon") icon + "," + leaf "h3" "" title + "," + leaf "p" "" body)
+
+    // Join a rendered child onto a properties/children string without a dangling comma.
+    export append base extra = match length extra == 0
+        true => base
+        false => base + "," + extra
+
+    // Prefix a child with its separator, or nothing when it is absent.
+    export leading content = match length content == 0
+        true => ""
+        false => "," + content
+
+    export cls name = prop "className" name
+
+    export block className children = node "div" (cls className) children
+
+    export card className children = node "section" (cls "card ${className}") children
+
+    export page name content = block "page ${name}-page" content
+
+    export pageHead eyebrow title lead action =
+        heading = node "div" "" (text "eyebrow" eyebrow + "," + leaf "h1" "" title + "," + leaf "p" "" lead)
+        node "header" (cls "page-heading") (append heading action)
+
+    export sectionHead eyebrow title action =
+        heading = node "div" "" (text "eyebrow" eyebrow + "," + leaf "h2" "" title)
+        block "section-heading" (append heading action)
+
+    export orEmpty className icon title body content = match length content == 0
+        true => empty icon title body
+        false => block className content

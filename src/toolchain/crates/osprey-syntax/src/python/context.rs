@@ -144,9 +144,9 @@ impl<'s> Lowerer<'s> {
     pub(super) fn import_binding(&mut self, node: Node<'_>) -> Result<()> {
         self.bind(node, false)?;
         let name = self.text(node).to_owned();
-        if let Some(scope) = self.scopes.last_mut() {
+        self.in_current_scope(|scope| {
             let _ = scope.imports.insert(name);
-        }
+        });
         Ok(())
     }
 
@@ -168,15 +168,22 @@ impl<'s> Lowerer<'s> {
     }
 
     pub(super) fn import_typing_name(&mut self, name: String, canonical: String) {
-        if let Some(scope) = self.scopes.last_mut() {
+        self.in_current_scope(|scope| {
             let _ = scope.typing_names.insert(name, canonical);
-        }
+        });
     }
 
     pub(super) fn record_constructor(&mut self, name: Node<'_>) {
         let name = self.text(name).to_owned();
-        if let Some(scope) = self.scopes.last_mut() {
+        self.in_current_scope(|scope| {
             let _ = scope.constructors.insert(name);
+        });
+    }
+
+    /// Run `record` against the innermost open scope, when the lowerer has one.
+    fn in_current_scope(&mut self, record: impl FnOnce(&mut Scope)) {
+        if let Some(scope) = self.scopes.last_mut() {
+            record(scope);
         }
     }
 

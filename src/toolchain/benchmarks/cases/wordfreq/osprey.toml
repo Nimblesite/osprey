@@ -1,0 +1,5 @@
+[project]
+name = "wordfreq"
+source_roots = [".", "../../shared"]
+default_namespace = "wordfreq"
+entry = "wordfreq.osp"

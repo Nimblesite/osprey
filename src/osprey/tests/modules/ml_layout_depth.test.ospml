@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** ML layout is the one place the two surfaces genuinely differ: Default marks
     every boundary with braces, ML marks them only with indentation. This pair
@@ -21,7 +9,6 @@ exactArithmetic work =
     behind a brace-delimited twin ([FLAVOR-ML-LAYOUT], [MODULES-FLAVOR-PROJECTION]). *)
 
 namespace depth
-
 
     signature LeafApi
         value : Unit -> int
@@ -91,6 +78,6 @@ deepEffectCase () = checkAll ("an effect four segments deep still propagates", [
 exactArithmetic (\() =>
     print "${Twig::scaled 3} ${boost 2} ${tapping (2, \() => Bud::drink 5)} ${depth::Trunk::Branch::pick ()}")
 
-test ("layout nesting keeps every level addressable", \() => exactArithmetic (nestingDepthCase))
-test ("an indented import selection binds every member", \() => exactArithmetic (layoutImportCase))
-test ("an effect declared four segments deep propagates", \() => exactArithmetic (deepEffectCase))
+test ("layout nesting keeps every level addressable", exactly nestingDepthCase)
+test ("an indented import selection binds every member", exactly layoutImportCase)
+test ("an effect declared four segments deep propagates", exactly deepEffectCase)

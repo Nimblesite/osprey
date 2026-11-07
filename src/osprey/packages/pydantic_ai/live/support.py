@@ -7,7 +7,12 @@ from pydantic_ai import Exceptions as E
 from pydantic_ai import Messages as M
 from pydantic_ai import Models
 
-__all__ = ["ask_judge", "env_value"]
+__all__ = ["ask_judge", "env_value", "tool_names"]
+
+
+def tool_names(messages):
+    """Every tool name called across the run's responses, in order."""
+    return foldList(M.responses(messages), [], lambda acc, r: listConcat(acc, mapList(M.tool_calls(r), M.tool_name_of)))
 
 
 def env_value(text, name):

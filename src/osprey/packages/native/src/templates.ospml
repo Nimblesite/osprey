@@ -23,6 +23,9 @@ module Templates
 
     argument (parts, i) = parseFloat (listGet parts i ?: "0") ?: 0.0
 
+    // `argument` as a whole number.
+    argumentWhole (parts, i) = floatToInt (argument (parts, i)) ?: 0
+
     // `over:other:k:offset` is name / other * k + offset (offset when other is 0); `scale:k:offset` is name * k + offset.
     measured (machine, name, parts) =
         value = Machines::number (machine, name)
@@ -33,8 +36,8 @@ module Templates
             "scale" => toString (value * argument (parts, 1) + argument (parts, 2))
             "count" => toString (toFloat (length (Machines::choicesOf (machine, name))) * argument (parts, 1) + argument (parts, 2))
             "fit" => fitted (Machines::text (machine, name), parts)
-            "fixed" => fixed (value * Pick::either (length parts > 2, argument (parts, 2), 1.0) + argument (parts, 3), floatToInt (argument (parts, 1)) ?: 0)
-            "expo" => fixed (argument (parts, 2) * pow (argument (parts, 3) / Pick::either (argument (parts, 2) > 0.0, argument (parts, 2), 1.0), value), floatToInt (argument (parts, 1)) ?: 0)
+            "fixed" => fixed (value * Pick::either (length parts > 2, argument (parts, 2), 1.0) + argument (parts, 3), argumentWhole (parts, 1))
+            "expo" => fixed (argument (parts, 2) * pow (argument (parts, 3) / Pick::either (argument (parts, 2) > 0.0, argument (parts, 2), 1.0), value), argumentWhole (parts, 1))
             _ => Machines::text (machine, name)
 
     // `value` with exactly `digits` decimals, as `fixed:digits:k:offset` writes value × k + offset and `expo:digits:low:high` writes low × (high ÷ low)^value.
@@ -48,7 +51,7 @@ module Templates
 
     // `fit:n` keeps the first n characters of a text input, ending with an ellipsis when cut.
     fitted (text, parts) =
-        most = floatToInt (argument (parts, 1)) ?: 0
+        most = argumentWhole (parts, 1)
         Pick::either (length text <= most, text, "${substring text 0 (satSub most 1) ?: text}…")
 
     filtered (machine, name, filter) = match filter

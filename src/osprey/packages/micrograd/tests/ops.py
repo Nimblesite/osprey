@@ -126,6 +126,15 @@ def build_combo(i, g, a, b):
         return Engine.mul(g, a, b)
 
 
+def chain(z, a, b):
+    """The three-step graph the mul and add shapes share, from its first node."""
+    zz = Engine.mul(z, Engine.top(z), Engine.top(z))
+    za = Engine.mul(zz, Engine.top(z), a)
+    zb = Engine.mul(za, Engine.top(z), b)
+    s = Engine.add(zb, Engine.top(zz), Engine.top(za))
+    return Engine.add(s, Engine.top(s), Engine.top(zb))
+
+
 def build_math(i, g, a, b):
     """Op cases 29..36: tanh and exp, bare and composed."""
     if i == 29 or i == 30 or i == 31:
@@ -179,19 +188,9 @@ def build_extra(k, g, a, b):
         pp = Engine.pow_const(prod, Engine.top(prod), 2)
         return Engine.add(pp, Engine.top(m), Engine.top(pp))
     elif shape == 5:
-        z = Engine.mul(g, a, b)
-        zz = Engine.mul(z, Engine.top(z), Engine.top(z))
-        za = Engine.mul(zz, Engine.top(z), a)
-        zb = Engine.mul(za, Engine.top(z), b)
-        s = Engine.add(zb, Engine.top(zz), Engine.top(za))
-        return Engine.add(s, Engine.top(s), Engine.top(zb))
+        return chain(Engine.mul(g, a, b), a, b)
     elif shape == 6:
-        z = Engine.add(g, a, b)
-        zz = Engine.mul(z, Engine.top(z), Engine.top(z))
-        za = Engine.mul(zz, Engine.top(z), a)
-        zb = Engine.mul(za, Engine.top(z), b)
-        s = Engine.add(zb, Engine.top(zz), Engine.top(za))
-        return Engine.add(s, Engine.top(s), Engine.top(zb))
+        return chain(Engine.add(g, a, b), a, b)
     elif shape == 7:
         t = Engine.tanh(g, a)
         tt = Engine.mul(t, Engine.top(t), Engine.top(t))

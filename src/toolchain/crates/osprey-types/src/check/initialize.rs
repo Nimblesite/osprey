@@ -73,29 +73,27 @@ impl Checker {
             .set_variance(names::MAP, vec![Variance::Invariant, Variance::Covariant]);
     }
 
-    /// Built-in `Result` constructors `Success { value: T }` / `Error { message: E }`.
-    pub(super) fn register_result_ctors(&mut self) {
+    /// One `Result<T, E>` constructor: a variant of `Result` over both its
+    /// parameters, carrying the single field `field`.
+    fn insert_result_ctor(&mut self, name: &str, field: (&str, &str)) {
         let _ = self.ctors.insert(
-            names::SUCCESS.into(),
+            name.into(),
             CtorInfo {
                 owner: names::RESULT.into(),
                 owner_is_record: false,
                 type_params: vec!["T".into(), "E".into()],
-                fields: vec![("value".into(), "T".into())],
+                fields: vec![(field.0.into(), field.1.into())],
             },
         );
+    }
+
+    /// Built-in `Result` constructors `Success { value: T }` / `Error { message: E }`.
+    pub(super) fn register_result_ctors(&mut self) {
+        self.insert_result_ctor(names::SUCCESS, ("value", "T"));
         // `Error { message: <string> }` builds the E side of a `Result<T, E>`;
         // the message is a concrete string, leaving E free to unify with the
         // declared error type (e.g. the nominal `Error`), not pinned to string.
-        let _ = self.ctors.insert(
-            names::ERROR.into(),
-            CtorInfo {
-                owner: names::RESULT.into(),
-                owner_is_record: false,
-                type_params: vec!["T".into(), "E".into()],
-                fields: vec![("message".into(), "string".into())],
-            },
-        );
+        self.insert_result_ctor(names::ERROR, ("message", "string"));
         let _ = self.union_variants.insert(
             names::RESULT.into(),
             vec![names::SUCCESS.into(), names::ERROR.into()],

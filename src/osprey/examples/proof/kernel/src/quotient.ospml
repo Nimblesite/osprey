@@ -73,7 +73,7 @@ module Quotients
         Axiom => sound (env, decl)
         other => Error(message = "`${decl.name}` is reserved for quotient theory")
 
-    primitive (env, decl, kind) = match decl.name == nameOf kind && previous (env, kind) && equalityReady env
+    primitive (env, decl, kind) = match decl.name == Environment::quotName kind && previous (env, kind) && equalityReady env
         false => Error(message = "invalid quotient primitive `${decl.name}` or initialization order")
         true => claim (env, decl, expected (kind, decl.params))
 
@@ -91,12 +91,6 @@ module Quotients
         Success _ => Environment::add (env, decl)
         Error message => Error(message = message)
 
-    nameOf kind = match kind
-        QuotType => "Quot"
-        QuotCtor => "Quot.mk"
-        QuotLift => "Quot.lift"
-        QuotInd => "Quot.ind"
-
     previous (env, kind) = match kind
         QuotType => true
         QuotCtor => installed (env, "Quot")
@@ -105,7 +99,7 @@ module Quotients
 
     installed (env, name) = match Environment::find (env, name)
         Success decl => match decl.body
-            Quotient kind => nameOf kind == name
+            Quotient kind => Environment::quotName kind == name
             other => false
         Error _ => false
 

@@ -63,26 +63,25 @@ module Sha256 {
     }
 
     fn stateOf(h) = State {
-        a: listGet(h, 0) ?: 0,
-        b: listGet(h, 1) ?: 0,
-        c: listGet(h, 2) ?: 0,
-        d: listGet(h, 3) ?: 0,
-        e: listGet(h, 4) ?: 0,
-        f: listGet(h, 5) ?: 0,
-        g: listGet(h, 6) ?: 0,
-        h: listGet(h, 7) ?: 0
+        a: hashAt(h, 0),
+        b: hashAt(h, 1),
+        c: hashAt(h, 2),
+        d: hashAt(h, 3),
+        e: hashAt(h, 4),
+        f: hashAt(h, 5),
+        g: hashAt(h, 6),
+        h: hashAt(h, 7)
     }
 
-    fn addState(h, st) = [
-        modAdd(listGet(h, 0) ?: 0, st.a),
-        modAdd(listGet(h, 1) ?: 0, st.b),
-        modAdd(listGet(h, 2) ?: 0, st.c),
-        modAdd(listGet(h, 3) ?: 0, st.d),
-        modAdd(listGet(h, 4) ?: 0, st.e),
-        modAdd(listGet(h, 5) ?: 0, st.f),
-        modAdd(listGet(h, 6) ?: 0, st.g),
-        modAdd(listGet(h, 7) ?: 0, st.h)
-    ]
+    fn hashAt(h, i) = listGet(h, i) ?: 0
+
+    fn partsOf(st) = [st.a, st.b, st.c, st.d, st.e, st.f, st.g, st.h]
+
+    /// The hash words with the working state folded back in, mod 2^32.
+    fn addState(h, st) = {
+        let parts = partsOf(st)
+        mapList(range(0, length(parts)) |> toList, fn(i) => modAdd(hashAt(h, i), listGet(parts, i) ?: 0))
+    }
 
     fn compressBlock(h, padded, bi) = {
         let w = schedule(padded, wrapMul(bi, 64))

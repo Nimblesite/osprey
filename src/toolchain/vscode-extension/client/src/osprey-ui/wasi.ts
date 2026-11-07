@@ -70,14 +70,23 @@ interface WasiState {
   bytes: number;
 }
 
-function view(state: WasiState): DataView {
+function exported(state: WasiState): WebAssembly.Memory {
   if (!state.memory) throw new Error("WASI module has no exported memory");
-  return new DataView(state.memory.buffer);
+  return state.memory;
+}
+
+function view(state: WasiState): DataView {
+  return new DataView(exported(state).buffer);
 }
 
 function bytes(state: WasiState): Uint8Array {
-  if (!state.memory) throw new Error("WASI module has no exported memory");
-  return new Uint8Array(state.memory.buffer);
+  return new Uint8Array(exported(state).buffer);
+}
+
+/** One iovec: the buffer `index` of the vector array at `iovs` names. */
+function iovec(data: DataView, iovs: number, index: number): { ptr: number; length: number } {
+  const at = iovs + index * 8;
+  return { ptr: data.getUint32(at, true), length: data.getUint32(at + 4, true) };
 }
 
 function span(state: WasiState, ptr: number, length: number, what: string): Uint8Array {
@@ -108,8 +117,7 @@ function fdWrite(state: WasiState, fd: number, iovs: number, count: number, writ
   const data = view(state);
   let written = 0;
   for (let index = 0; index < count; index += 1) {
-    const ptr = data.getUint32(iovs + index * 8, true);
-    const length = data.getUint32(iovs + index * 8 + 4, true);
+    const { ptr, length } = iovec(data, iovs, index);
     append(state, fd, Buffer.from(span(state, ptr, length, "fd_write buffer")));
     written += length;
   }
@@ -126,8 +134,7 @@ function fdRead(state: WasiState, fd: number, iovs: number, count: number, readP
   const data = view(state);
   let read = 0;
   for (let index = 0; index < count; index += 1) {
-    const ptr = data.getUint32(iovs + index * 8, true);
-    const length = data.getUint32(iovs + index * 8 + 4, true);
+    const { ptr, length } = iovec(data, iovs, index);
     const take = Math.max(0, Math.min(length, state.stdin.length - state.cursor));
     write(state, ptr, take, "fd_read buffer").set(state.stdin.subarray(state.cursor, state.cursor + take));
     state.cursor += take;

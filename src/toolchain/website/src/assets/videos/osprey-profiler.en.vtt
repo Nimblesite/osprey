@@ -1,46 +1,91 @@
 WEBVTT
 
-00:00.500 --> 00:08.913
-Osprey has a CPU profiler built into VS Code. Here's how to find your hot code, read your memory, and check a program for leaks.
+00:00.500 --> 00:12.801
+Osprey has a CPU profiler built into VS Code. In this tutorial, we'll read two small programs, predict where their time and memory go, then prove it with the profiler and the ARC leak check.
 
-00:09.663 --> 00:18.259
-Open a program, and press Run and Profile CPU in the Processes view. Osprey builds it, starts it under the debugger, and starts sampling.
+00:13.551 --> 00:17.090
+Here's what you'll learn. Profile a program straight from VS Code.
 
-00:18.459 --> 00:22.974
-The count climbs while it runs, and the panel names the hottest function so far.
+00:17.290 --> 00:21.361
+Read the flame graph, and the heat the profiler puts on your source lines.
 
-00:23.174 --> 00:25.763
+00:21.560 --> 00:24.942
+Attach to a program that's already running, without restarting it.
+
+00:25.142 --> 00:28.337
+And check a program for leaks with the ARC memory backend.
+
+00:29.087 --> 00:38.545
+Start with the code, so you know what to expect. Busy.osp has two kinds of work. Fib is the classic doubly recursive Fibonacci: every call makes two more.
+
+00:38.745 --> 00:47.910
+Collatz counts the steps of the Collatz sequence. Halve an even number, triple an odd one and add one, until you reach one. Both branches are tail calls.
+
+00:48.110 --> 00:57.635
+Longest runs collatz for every number from n down to one, and keeps the longest chain. With n at twenty thousand, that's twenty thousand sequences per round.
+
+00:58.385 --> 01:06.817
+Round to prints one round, then calls itself, forever. So the program runs until you stop it, which is exactly what you want for a profiler.
+
+01:07.017 --> 01:16.883
+Main installs a handler for the Arith effect. Integer overflow in Osprey is an effect, not a crash, and this handler says to wrap. Then main starts round one.
+
+01:17.633 --> 01:27.659
+Now profile it. Open busy.osp, and press Run and Profile CPU in the Processes view. Osprey builds it, starts it, and starts sampling.
+
+01:27.859 --> 01:32.824
+The sample count climbs while it runs, and the panel names the hottest function so far.
+
+01:33.024 --> 01:35.613
 To stop, click the counter in the status bar.
 
-00:26.513 --> 00:33.036
+01:36.363 --> 01:42.886
 The results open on their own. The flame graph shows where the time went: the wider the frame, the hotter the code.
 
-00:33.236 --> 00:38.849
-Back in the source, each hot line carries its share of the samples, so collatz stands out at a glance.
+01:43.086 --> 01:52.829
+Back in the source, each hot line carries its share of the samples, and collatz stands out, as the code predicted: it runs twenty thousand sequences every round.
 
-00:45.113 --> 00:56.970
-You can also profile a program that's already running, with no restart. Build it with dash dash profile so its samples carry source lines, start it from the terminal, and it shows up in Processes.
+01:54.963 --> 02:06.705
+You can also profile a program that's already running, with no restart. Build it with --profile, so its samples carry source lines, start it from the terminal, and it appears in Processes.
 
-00:57.170 --> 01:02.116
+02:06.905 --> 02:11.851
 Hover its row to see its CPU and memory, then press the flame to start sampling.
 
-01:02.316 --> 01:04.646
+02:12.051 --> 02:14.382
 Stop it the same way, from the status bar.
 
-01:08.180 --> 01:14.431
+02:18.030 --> 02:24.281
 Memory works differently in Osprey. Values never change once they're built, so the heap can never hold a cycle.
 
-01:14.631 --> 01:23.530
-You choose a memory backend when you build: the default, a tracing GC, or ARC, which frees each value the moment its last owner lets go.
+02:24.481 --> 02:29.580
+You choose a memory backend when you build. The default is a tracing garbage collector.
 
-01:23.730 --> 01:32.076
+02:29.780 --> 02:36.506
+With --memory=arc, reference counting frees each value the moment its last owner lets go.
+
+02:36.706 --> 02:45.051
 Osprey has no live heap tracker yet, so the profiler doesn't pretend to offer one. Each row in Processes shows the program's memory.
 
-01:32.826 --> 01:38.112
-To check for leaks, build with ARC, and run with OSPREY_ARC_DEBUG set to one.
+02:45.801 --> 02:50.063
+Words.osp is the leak-check sample. Label builds a new string for a number.
 
-01:38.312 --> 01:47.408
-When the program exits, ARC counts every object still alive. Zero means nothing leaked. Set it to two, and it lists each survivor by kind.
+02:50.263 --> 02:58.546
+Total builds fifty thousand of those strings, adds up their lengths, and drops each one straight away. Under ARC, every one of them should be freed.
 
-01:50.926 --> 01:57.937
-Both programs are in the Osprey repo, under examples slash profiling. Find more at ospreylang.dev.
+02:59.296 --> 03:07.906
+In the editor, build it with ARC, and run it with OSPREY_ARC_DEBUG set to one. When the program exits, ARC counts every object still alive.
+
+03:17.396 --> 03:24.676
+Here's the same check from the command line. Compile with --memory=arc, then run with the leak report on.
+
+03:24.876 --> 03:34.686
+Zero live objects. Fifty thousand strings were built and every one was freed. Set the variable to two, and ARC lists each survivor by kind, when there are any.
+
+03:35.436 --> 03:45.980
+Now change the hot code. In a one-round copy of busy.osp, make longest search two thousand numbers instead of twenty thousand. That's a tenth of the collatz work.
+
+03:46.180 --> 04:00.493
+Run both. Fib is untouched, and still prints the same number. The longest chain drops from two hundred and seventy eight steps to one hundred and eighty one, because the search covers fewer numbers. Profile it again to see where the time goes now.
+
+04:01.243 --> 04:14.531
+To try it, build with --profile to attach with source lines, and check for leaks with ARC and the leak report. Both samples are in the repository. Osprey is actively evolving. Try it on your projects.

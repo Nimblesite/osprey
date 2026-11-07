@@ -65,6 +65,27 @@ module ManifestModel {
         Test { requirement } => requirement
     }
 
+    /// The key any edge requires.
+    export fn requirementKey(edge) = requirementOf(edge).package
+
+    // `Requirement` shares `package`, `epoch` and `minimumOrdinal` with other
+    // records; issue #273 needs the receiver's record spelled out.
+    /// The package key a requirement names.
+    export fn packageOf(r: Requirement) = r.package
+    /// The epoch a requirement's floor lives in.
+    export fn requirementEpoch(r: Requirement) = r.epoch
+    /// The minimum ordinal a requirement accepts.
+    export fn requirementFloor(r: Requirement) = r.minimumOrdinal
+
+    // `Manifest` shares `projectName` and `dependencies` with other records;
+    // issue #273 needs the receiver's record spelled out.
+    /// The project name the manifest declares.
+    export fn nameOf(manifest: Manifest) = manifest.projectName
+    /// The manifest's dependency edges.
+    export fn edgesOf(manifest: Manifest) = manifest.dependencies
+    /// The ambient capability grants of the manifest.
+    export fn grantsOf(manifest: Manifest) = manifest.grants
+
     /// Canonical edge rank: Runtime, Build, Test.
     export fn edgeRank(edge) = match edge {
         Runtime => 0
@@ -77,7 +98,7 @@ module ManifestModel {
     export fn activeEdges(edges) = filterList(edges, fn(edge) => edgeRank(edge) != 2)
 
     /// The package keys the edges require.
-    export fn targets(edges) = mapList(edges, fn(edge) => requirementOf(edge).package)
+    export fn targets(edges) = mapList(edges, requirementKey)
 
     /// The package keys the Runtime and Build edges require.
     export fn activeTargets(edges) = targets(activeEdges(edges))

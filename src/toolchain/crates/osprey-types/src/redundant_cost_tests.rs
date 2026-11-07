@@ -1,11 +1,13 @@
 //! Bound diagnostic proof work without a wall-clock timeout.
 use std::{
-    fmt::Write,
+    fmt::{self, Write},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use osprey_ast::{Program, Stmt};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+
+use crate::redundant_sites::{sites, Site};
 
 const SENTINEL: &str = "annotation_cost_sentinel";
 const PARALLEL_SENTINEL: &str = "annotation_parallelism_sentinel";
@@ -23,6 +25,7 @@ static BLAME_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 type CostExample = (String, usize, Vec<usize>);
+const GREETING: &str = "(name: string) -> string = \"hi \" + name";
 
 pub(super) fn record(program: &Program) -> ProofGuard {
     count_calls(program);
@@ -68,9 +71,10 @@ fn contains_marker(program: &Program, marker: &str) -> bool {
 
 #[test]
 fn mutually_pinning_annotations_solve_each_candidate_once() -> Result<(), String> {
-    let source = format!("fn {MEMO_SENTINEL}() = 0\nfn pin(x: int) -> int = x\n");
-    let program = program(&source);
-    let written = crate::redundant_sites::sites(&program);
+    let program = program(&format!(
+        "fn {MEMO_SENTINEL}() = 0\nfn pin(x: int) -> int = x\n"
+    ));
+    let written = sites(&program);
     assert_eq!(written.len(), 2);
     MEMO_CALLS.store(0, Ordering::Relaxed);
     let baseline = super::published(&program).ok_or("fixture must typecheck")?;
@@ -78,11 +82,9 @@ fn mutually_pinning_annotations_solve_each_candidate_once() -> Result<(), String
     assert_eq!(removable.len(), 1, "joint removal changes the type");
     let calls = MEMO_CALLS.load(Ordering::Relaxed);
     assert_eq!(calls, 4, "distinct programs need one full proof each");
-    MEMO_CALLS.store(0, Ordering::Relaxed);
-    assert_default_sites(&program, &written, &[0]);
+    let calls = directed_search(&MEMO_CALLS, &program, 2, &[0]);
     assert_eq!(
-        MEMO_CALLS.load(Ordering::Relaxed),
-        5,
+        calls, 5,
         "the directed search judges each erasure once, then runs its final proof"
     );
     Ok(())
@@ -98,84 +100,74 @@ fn program(source: &str) -> Program {
 fn dense_mutually_pinning_sites_bound_full_typechecker_work() -> Result<(), String> {
     for (source, site_count, expected) in cost_examples().map_err(|error| error.to_string())? {
         let program = program(&format!("fn {DENSE_SENTINEL}() = 0\n{source}"));
-        assert_eq!(crate::redundant_sites::sites(&program).len(), site_count);
+        assert_eq!(sites(&program).len(), site_count);
         assert_cost_windows(&program, &expected)?;
     }
     Ok(())
 }
 
-fn cost_examples() -> Result<[CostExample; 5], std::fmt::Error> {
-    let greetings = definitions(64, "greet", "(name: string) -> string = \"hi \" + name")?;
+fn cost_examples() -> Result<[CostExample; 5], fmt::Error> {
+    let greetings = definitions(64, "greet", GREETING)?;
     let pins = definitions(32, "pin", "(x: int) -> int = x")?;
     let necessary = definitions(32, "required", "(x: int) = 0")?;
     let sparse = format!("fn pin(x: int) -> int = x\n{greetings}");
     let isolated = format!("fn required(x: int) = 0\n{greetings}");
+    let periodic = periodic_definitions()?;
     Ok([
         (pins, 64, (0..64).step_by(2).collect()),
         (necessary, 32, Vec::new()),
         (sparse, 130, (0..130).filter(|i| *i != 1).collect()),
         (isolated, 129, (1..129).collect()),
-        (
-            periodic_definitions()?,
-            48,
-            (0..48).filter(|i| i % 3 != 0).collect(),
-        ),
+        (periodic, 48, (0..48).filter(|i| i % 3 != 0).collect()),
     ])
 }
 
-fn periodic_definitions() -> Result<String, std::fmt::Error> {
+fn periodic_definitions() -> Result<String, fmt::Error> {
     (0..16).try_fold(String::new(), |mut text, index| {
         writeln!(text, "fn required{index}(x: int) = 0\nfn greet{index}(name: string) -> string = \"hi \" + name")?;
         Ok(text)
     })
 }
 
+/// Checks the removals and the proof budget of every search window, then the default search.
 fn assert_cost_windows(program: &Program, expected: &[usize]) -> Result<(), String> {
     let baseline = super::published(program).ok_or("fixture must typecheck")?;
-    let written = crate::redundant_sites::sites(program);
+    let written = sites(program);
     for window in [1, 2, 4, 8, 14, 32] {
-        assert_window_cost(program, &baseline, &written, expected, window);
+        DENSE_CALLS.store(0, Ordering::Relaxed);
+        assert_eq!(
+            super::accumulate(program, &baseline, &written, window),
+            expected
+        );
+        let budget = written.len() + window + 2;
+        let calls = DENSE_CALLS.load(Ordering::Relaxed);
+        assert_proof_budget(written.len(), calls, budget, &format!("window {window}"));
     }
-    assert_default_cost(program, &written, expected);
-    Ok(())
-}
-
-fn assert_window_cost(
-    program: &Program,
-    baseline: &super::Snapshot,
-    written: &[crate::redundant_sites::Site],
-    expected: &[usize],
-    window: usize,
-) {
     DENSE_CALLS.store(0, Ordering::Relaxed);
-    assert_eq!(
-        super::accumulate(program, baseline, written, window),
-        expected
-    );
-    let calls = DENSE_CALLS.load(Ordering::Relaxed);
-    let budget = written.len() + window + 2;
-    assert_proof_budget(written.len(), calls, budget, &format!("window {window}"));
-}
-
-fn assert_default_cost(
-    program: &Program,
-    written: &[crate::redundant_sites::Site],
-    expected: &[usize],
-) {
-    DENSE_CALLS.store(0, Ordering::Relaxed);
-    assert_default_sites(program, written, expected);
+    assert_default_sites(program, &written, expected);
     let calls = DENSE_CALLS.load(Ordering::Relaxed);
     let budget = default_cost_budget(written.len(), expected.len());
     assert_proof_budget(written.len(), calls, budget, "default search");
+    Ok(())
 }
 
-fn assert_default_sites(
+/// Asserts the directed search over `count` written sites reports `expected` and counts its solves.
+fn directed_search(
+    counter: &AtomicUsize,
     program: &Program,
-    written: &[crate::redundant_sites::Site],
+    count: usize,
     expected: &[usize],
-) {
-    let found = super::redundant_annotation_sites_for(program, |_| true, &|_| false);
-    let positions: Vec<_> = found
+) -> usize {
+    let written = sites(program);
+    assert_eq!(written.len(), count);
+    counter.store(0, Ordering::Relaxed);
+    assert_default_sites(program, &written, expected);
+    counter.load(Ordering::Relaxed)
+}
+
+/// Asserts the directed search reports exactly the `expected` written sites.
+fn assert_default_sites(program: &Program, written: &[Site], expected: &[usize]) {
+    let positions: Vec<_> = super::redundant_annotation_sites_for(program, |_| true, &|_| false)
         .iter()
         .map(|annotation| Some(annotation.annotation_position))
         .collect();
@@ -195,10 +187,8 @@ fn default_cost_budget(sites: usize, kept: usize) -> usize {
 }
 
 fn assert_proof_budget(sites: usize, calls: usize, budget: usize, search: &str) {
-    assert!(
-        calls <= budget,
-        "{search}: {calls} full solves exceeds {budget}"
-    );
+    let complaint = format!("{search}: {calls} full solves exceeds {budget}");
+    assert!(calls <= budget, "{complaint}");
     eprintln!("{sites} sites, {search}: {calls} full solves");
 }
 
@@ -215,7 +205,7 @@ fn memoized_windows_keep_accepted_prefixes_distinct() -> Result<(), String> {
 
 fn assert_windows(program: &Program, expected: &[usize]) -> Result<(), String> {
     let baseline = super::published(program).ok_or("fixture must typecheck")?;
-    let written = crate::redundant_sites::sites(program);
+    let written = sites(program);
     assert_eq!(written.len(), 4);
     for window in [1, 2, 4] {
         assert_eq!(
@@ -248,7 +238,7 @@ fn concurrent_identical_erasures_share_one_full_proof() -> Result<(), String> {
         "fn {FLIGHT_SENTINEL}() = 0\nfn pin(x: int) -> int = x\n"
     ));
     let baseline = super::published(&program).ok_or("fixture must typecheck")?;
-    let written = crate::redundant_sites::sites(&program);
+    let written = sites(&program);
     let proofs = super::proofs::Proofs::new(&program, &baseline);
     FLIGHT_CALLS.store(0, Ordering::Relaxed);
     concurrent_erasure(&proofs, &written);
@@ -256,35 +246,22 @@ fn concurrent_identical_erasures_share_one_full_proof() -> Result<(), String> {
     Ok(())
 }
 
-fn concurrent_erasure(
-    proofs: &super::proofs::Proofs<'_>,
-    written: &[crate::redundant_sites::Site],
-) {
+/// Runs four concurrent erasures, asserting every one reports the annotation as load bearing.
+fn concurrent_erasure(proofs: &super::proofs::Proofs<'_>, written: &[Site]) {
     std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..4)
-            .map(|index| {
-                scope.spawn(move || {
-                    let chosen: &[usize] = if index % 2 == 0 { &[0] } else { &[0, 0] };
-                    proofs.keeps(written, chosen)
-                })
-            })
-            .collect();
+        let mut handles = Vec::new();
+        for index in 0..4 {
+            let chosen: &[usize] = if index % 2 == 0 { &[0] } else { &[0, 0] };
+            handles.push(scope.spawn(move || proofs.keeps(written, chosen)));
+        }
         for handle in handles {
             assert!(matches!(handle.join(), Ok(true)));
         }
     });
 }
 
-fn fixture() -> Result<Program, std::fmt::Error> {
-    fixture_with(256, SENTINEL)
-}
-
-fn fixture_with(count: usize, marker: &str) -> Result<Program, std::fmt::Error> {
-    let greetings = definitions(
-        count,
-        "greeting",
-        "(name: string) -> string = \"hi \" + name",
-    )?;
+fn fixture_with(count: usize, marker: &str) -> Result<Program, fmt::Error> {
+    let greetings = definitions(count, "greeting", GREETING)?;
     let source = format!(
         "{}\nfn {marker}() = 0\n{greetings}",
         crate::redundant_window_tests::MIXED
@@ -292,7 +269,7 @@ fn fixture_with(count: usize, marker: &str) -> Result<Program, std::fmt::Error> 
     Ok(program(&source))
 }
 
-fn definitions(count: usize, prefix: &str, signature: &str) -> Result<String, std::fmt::Error> {
+fn definitions(count: usize, prefix: &str, signature: &str) -> Result<String, fmt::Error> {
     (0..count).try_fold(String::new(), |mut text, index| {
         writeln!(text, "fn {prefix}{index}{signature}")?;
         Ok(text)
@@ -309,7 +286,7 @@ fn environment_marker_visits(source: &str) -> usize {
 }
 
 #[test]
-fn closed_functions_do_not_rescan_the_global_environment() -> Result<(), std::fmt::Error> {
+fn closed_functions_do_not_rescan_the_global_environment() -> Result<(), fmt::Error> {
     let marker = crate::env::tests::ENVIRONMENT_MARKER;
     let definitions = definitions(64, "closed", "() = 0")?;
     let source = format!(
@@ -320,10 +297,8 @@ fn closed_functions_do_not_rescan_the_global_environment() -> Result<(), std::fm
         0,
         "closed functions have no declared binders to quantify"
     );
-    let control = source.replace(
-        "fn main() = 0",
-        "fn main() = wrapAdd(phantom<int>(), phantom<string>())",
-    ) + "fn phantom<T>() = 0\n";
+    let phantom_main = "fn main() = wrapAdd(phantom<int>(), phantom<string>())";
+    let control = source.replace("fn main() = 0", phantom_main) + "fn phantom<T>() = 0\n";
     assert!(
         environment_marker_visits(&control) > 0,
         "phantom binders must still use the environment oracle"
@@ -332,12 +307,12 @@ fn closed_functions_do_not_rescan_the_global_environment() -> Result<(), std::fm
 }
 
 #[test]
-fn full_program_proofs_have_bounded_parallelism() -> Result<(), std::fmt::Error> {
+fn full_program_proofs_have_bounded_parallelism() -> Result<(), fmt::Error> {
     let program = fixture_with(64, PARALLEL_SENTINEL)?;
     let baseline = super::published(&program).expect("valid annotation proof fixture");
-    let sites = crate::redundant_sites::sites(&program);
+    let written = sites(&program);
     PEAK.store(0, Ordering::SeqCst);
-    let removable = super::individually_removable(&program, &baseline, &sites);
+    let removable = super::individually_removable(&program, &baseline, &written);
     assert!(
         !removable.is_empty(),
         "fixture must exercise successful proofs"
@@ -364,10 +339,10 @@ fn full_program_proofs_have_bounded_parallelism() -> Result<(), std::fmt::Error>
 
 #[test]
 fn isolated_load_bearing_sites_do_not_force_every_annotation_through_a_full_solve(
-) -> Result<(), std::fmt::Error> {
-    let program = fixture()?;
-    let sites = crate::redundant_sites::sites(&program).len();
-    let workers = super::judges().min(sites).max(1);
+) -> Result<(), fmt::Error> {
+    let program = fixture_with(256, SENTINEL)?;
+    let count = sites(&program).len();
+    let workers = super::judges().min(count).max(1);
     CALLS.store(0, Ordering::Relaxed);
     let warnings = super::redundant_annotation_sites_for(&program, |_| true, &|_| false);
     assert!(
@@ -375,10 +350,10 @@ fn isolated_load_bearing_sites_do_not_force_every_annotation_through_a_full_solv
         "fixture must contain removable annotations"
     );
     let calls = CALLS.load(Ordering::Relaxed);
-    let budget = sites.div_ceil(workers) + 3 * workers + 64;
+    let budget = count.div_ceil(workers) + 3 * workers + 64;
     assert!(
         calls <= budget,
-        "{calls} full solves for {sites} annotations exceeds {budget}"
+        "{calls} full solves for {count} annotations exceeds {budget}"
     );
     Ok(())
 }
@@ -386,7 +361,7 @@ fn isolated_load_bearing_sites_do_not_force_every_annotation_through_a_full_solv
 /// [TYPE-ANNOTATION-REDUNDANT] Necessary annotations spread through a large
 /// application must not permanently turn later independent proofs into singles.
 #[test]
-fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), std::fmt::Error> {
+fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), fmt::Error> {
     for position in [0, 7, 15] {
         let mut source = format!("fn {SPACED_SENTINEL}() = 0\n");
         for group in 0..8 {
@@ -399,16 +374,9 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
             }
         }
         let program = program(&source);
-        let written = crate::redundant_sites::sites(&program);
-        assert_eq!(written.len(), 128);
         let expected: Vec<_> = (0..128).filter(|index| index % 16 != position).collect();
-        SPACED_CALLS.store(0, Ordering::Relaxed);
-        assert_default_sites(&program, &written, &expected);
-        let calls = SPACED_CALLS.load(Ordering::Relaxed);
-        assert!(
-            calls <= 96,
-            "position {position}: {calls} full solves for 128 sites exceeds 96"
-        );
+        let calls = directed_search(&SPACED_CALLS, &program, 128, &expected);
+        assert_proof_budget(128, calls, 96, &format!("position {position}"));
     }
     for required in [8, 16] {
         assert_dense_prefix_cost(required)?;
@@ -420,63 +388,40 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
 /// follows the annotations at fault and not the number of annotations written.
 #[test]
 fn proof_work_follows_the_annotations_at_fault_not_the_annotations_written(
-) -> Result<(), std::fmt::Error> {
-    let all_safe = format!(
-        "fn {BLAME_SENTINEL}() = 0\n{}",
-        definitions(32, "safe", "() -> string = \"hi\"")?
-    );
-    let all_safe = program(&all_safe);
-    let written = crate::redundant_sites::sites(&all_safe);
-    assert_eq!(written.len(), 32);
-    let expected: Vec<_> = (0..written.len()).collect();
-    BLAME_CALLS.store(0, Ordering::Relaxed);
-    assert_default_sites(&all_safe, &written, &expected);
+) -> Result<(), fmt::Error> {
+    let safe = definitions(32, "safe", "() -> string = \"hi\"")?;
+    let all_safe = program(&format!("fn {BLAME_SENTINEL}() = 0\n{safe}"));
+    let expected: Vec<_> = (0..32).collect();
+    let calls = directed_search(&BLAME_CALLS, &all_safe, 32, &expected);
     assert_eq!(
-        BLAME_CALLS.load(Ordering::Relaxed),
-        4,
+        calls, 4,
         "joint success needs one trial, followed by the unchanged final oracle"
     );
     for required in [1, 2, 4, 8, 16, 32] {
-        let source =
-            (0..required).try_fold(format!("fn {BLAME_SENTINEL}() = 0\n"), |mut text, group| {
-                writeln!(text, "fn required{group}(x: int) = 0")?;
-                for item in 0..3 {
-                    writeln!(text, "fn kept{group}_{item}() -> string = \"hi\"")?;
-                }
-                Ok(text)
-            })?;
+        let mut source = format!("fn {BLAME_SENTINEL}() = 0\n");
+        for group in 0..required {
+            writeln!(source, "fn required{group}(x: int) = 0")?;
+            for item in 0..3 {
+                writeln!(source, "fn kept{group}_{item}() -> string = \"hi\"")?;
+            }
+        }
         let program = program(&source);
-        let written = crate::redundant_sites::sites(&program);
-        assert_eq!(written.len(), required * 4);
-        let expected: Vec<_> = (0..written.len()).filter(|i| i % 4 != 0).collect();
-        BLAME_CALLS.store(0, Ordering::Relaxed);
-        assert_default_sites(&program, &written, &expected);
-        let calls = BLAME_CALLS.load(Ordering::Relaxed);
-        assert!(
-            calls <= required + 6,
-            "{required} necessary of {} sites: {calls} solves exceeds {}",
-            written.len(),
-            required + 6
-        );
+        let expected: Vec<_> = (0..required * 4).filter(|i| i % 4 != 0).collect();
+        let calls = directed_search(&BLAME_CALLS, &program, required * 4, &expected);
+        let search = format!("{required} necessary");
+        assert_proof_budget(required * 4, calls, required + 6, &search);
     }
     Ok(())
 }
 
-fn assert_dense_prefix_cost(required: usize) -> Result<(), std::fmt::Error> {
+fn assert_dense_prefix_cost(required: usize) -> Result<(), fmt::Error> {
     let necessary = definitions(required, "required", "(x: int) = 0")?;
     let independent = definitions(128, "independent", "() -> string = \"hi\"")?;
-    let program = program(&format!(
-        "fn {SPACED_SENTINEL}() = 0\n{necessary}{independent}"
-    ));
-    let written = crate::redundant_sites::sites(&program);
-    assert_eq!(written.len(), required + 128);
+    let source = format!("fn {SPACED_SENTINEL}() = 0\n{necessary}{independent}");
+    let program = program(&source);
     let expected: Vec<_> = (required..required + 128).collect();
-    SPACED_CALLS.store(0, Ordering::Relaxed);
-    assert_default_sites(&program, &written, &expected);
-    let calls = SPACED_CALLS.load(Ordering::Relaxed);
-    assert!(
-        calls <= 64,
-        "dense prefix {required}: {calls} full solves exceeds 64"
-    );
+    let calls = directed_search(&SPACED_CALLS, &program, required + 128, &expected);
+    let search = format!("dense prefix {required}");
+    assert_proof_budget(required + 128, calls, 64, &search);
     Ok(())
 }

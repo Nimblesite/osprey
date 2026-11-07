@@ -2,15 +2,18 @@
 //! program may use without declaring them. A unit attaches on demand — only
 //! to a program that names one of its declarations — so a program that does
 //! not is checked and compiled exactly as written. `json` implements
-//! [BUILTIN-JSON-TYPED]; `signals` implements [STAGE-SIGNALS-STD].
+//! [BUILTIN-JSON-TYPED]; `signals` implements [STAGE-SIGNALS-STD]; `testing`
+//! implements [TESTING-ARITH-POLICY].
 
-use osprey_ast::{walk_program, AstVisitor, Expr, Position, Program, Stmt};
+use osprey_ast::{walk_program, AstVisitor, Expr, Program, Stmt};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 const JSON: &str = include_str!("prelude/json.osp");
 const SIGNALS: &str = include_str!("prelude/signals.osp");
+const TESTING: &str = include_str!("prelude/testing.osp");
+const TESTING_GPU: &str = include_str!("prelude/testing_gpu.osp");
 
 /// Prelude positions start here, past any assembled project, so no prelude
 /// inference site shares a key with a source one and coverage can leave the
@@ -55,6 +58,18 @@ fn signals() -> &'static Loaded {
     UNIT.get_or_init(|| loaded(SIGNALS, PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE))
 }
 
+/// The testing unit, rebased past signals' lines.
+fn testing() -> &'static Loaded {
+    static UNIT: OnceLock<Loaded> = OnceLock::new();
+    UNIT.get_or_init(|| loaded(TESTING, PRELUDE_LINE_BASE + 2 * PRELUDE_UNIT_STRIDE))
+}
+
+/// The GPU testing unit, rebased past the testing unit's lines.
+fn testing_gpu() -> &'static Loaded {
+    static UNIT: OnceLock<Loaded> = OnceLock::new();
+    UNIT.get_or_init(|| loaded(TESTING_GPU, PRELUDE_LINE_BASE + 3 * PRELUDE_UNIT_STRIDE))
+}
+
 /// The program with the prelude units it needs in front of it. A unit
 /// attaches when the program names one of its declarations and declares none
 /// of its data names; `signals` is written against `json`, so it attaches
@@ -75,11 +90,19 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
     let beside_json = own.data.is_disjoint(&json.names.data);
     let signals_wanted = beside_json && wanted(&signals.names, &own, &uses);
     let json_wanted = wanted(&json.names, &own, &uses) || signals_wanted;
-    let units: Vec<&Loaded> = match (json_wanted, signals_wanted) {
-        (true, true) => vec![json, signals],
-        (true, false) => vec![json],
-        _ => return Cow::Borrowed(program),
-    };
+    let (testing, testing_gpu) = (testing(), testing_gpu());
+    let units: Vec<&Loaded> = [
+        (json_wanted, json),
+        (signals_wanted, signals),
+        (wanted(&testing.names, &own, &uses), testing),
+        (wanted(&testing_gpu.names, &own, &uses), testing_gpu),
+    ]
+    .into_iter()
+    .filter_map(|(want, unit)| want.then_some(unit))
+    .collect();
+    if units.is_empty() {
+        return Cow::Borrowed(program);
+    }
     Cow::Owned(attach(program, &units, &own))
 }
 
@@ -126,21 +149,14 @@ fn attach(program: &Program, units: &[&Loaded], own: &Names) -> Program {
     attached
 }
 
-/// Whether a program already has the prelude in front of it: json attaches
-/// whenever anything does, so its first statement is the tell.
+/// Whether a program already has the prelude in front of it: units go first,
+/// so a first statement on a prelude line is the tell.
 fn attached(program: &Program) -> bool {
     program
         .statements
         .first()
-        .and_then(type_position)
+        .and_then(osprey_ast::stmt_meta::statement_position)
         .is_some_and(|position| is_prelude_line(position.line))
-}
-
-fn type_position(statement: &Stmt) -> Option<Position> {
-    match statement {
-        Stmt::Type { position, .. } => *position,
-        _ => None,
-    }
 }
 
 fn function_name(statement: &Stmt) -> Option<&str> {

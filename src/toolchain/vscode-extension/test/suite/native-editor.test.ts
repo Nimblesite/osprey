@@ -1,12 +1,12 @@
 import * as assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { ViewColumn, window } from "vscode";
-import type { Frame } from "playwright-core";
+import type { CDPSession, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { record } from "../../client/src/osprey-ui/protocol";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
-import { connectEditorBrowser, editorWebviewFrame } from "./profiler-kit";
+import { connectEditorBrowser, editorWebviewFrame, press } from "./profiler-kit";
 
 const editorNode = (extra: Record<string, unknown> = {}) => ({ kind: "editor", label: "Argument", value: "Assume h : p ∧ q.\nFrom hp.", cursor: 0,
   marks: [{ line: 2, underlined: true, tone: "danger", badge: "Needs attention", note: "The goal is q; this step establishes p." }],
@@ -34,7 +34,7 @@ function editorFrame(epoch: number, value: string, shown: boolean, revision: num
 async function withEditorView(run: (frame: Frame, update: EditorUpdate, events: Record<string, unknown>[]) => Promise<void>): Promise<void> {
   const browser = await connectEditorBrowser(), events: Record<string, unknown>[] = [];
   const panel = window.createWebviewPanel("osprey.editor.focus", "Editor focus contract", ViewColumn.One, { enableScripts: true });
-  let revision = 0;
+  let revision = 0, focus: CDPSession | undefined;
   const update: EditorUpdate = async (epoch, value = "p", shown = true, dialog = "none", region = "root") => {
     await panel.webview.postMessage({ type: "render", html: editorFrame(epoch, value, shown, ++revision, dialog, region), diagnostics: [] });
   };
@@ -45,8 +45,26 @@ async function withEditorView(run: (frame: Frame, update: EditorUpdate, events: 
   });
   try {
     panel.webview.html = workspaceHtml({ nonce: randomBytes(16).toString("hex"), assetUri: "", cspSource: panel.webview.cspSource });
-    await run(await editorWebviewFrame(browser, 'textarea[aria-label="Argument"]'), update, events);
-  } finally { listener.dispose(); panel.dispose(); await browser.close(); }
+    const frame = await editorWebviewFrame(browser, 'textarea[aria-label="Argument"]');
+    // [#344] Focus requests honour `document.hasFocus()`, so these tests need an
+    // active window with the webview as the focused frame. Linux xvfb gives both on
+    // creation; a macOS run behind other apps gives neither, and a scripted
+    // `focus()` cannot move frame focus into the cross-origin webview. Emulate the
+    // active window (as Playwright does for browsers it launches) without raising
+    // it, then enter the webview with real input on its empty body, as a user would.
+    focus = await frame.page().context().newCDPSession(frame.page());
+    await focus.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    const body = await frame.locator("body").boundingBox();
+    assert.ok(body, "the webview body has a layout box");
+    await frame.locator("body").click({ position: { x: body.width / 2, y: body.height - 8 } });
+    assert.ok(await frame.evaluate(() => document.hasFocus()), "the webview is the active frame before each focus contract");
+    await run(frame, update, events);
+  } finally {
+    // The emulation belongs to the shared VS Code window: switch it off so it never reaches a later suite.
+    await focus?.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await focus?.detach();
+    listener.dispose(); panel.dispose(); await browser.close();
+  }
 }
 
 async function waitEditorFrame(frame: Frame, epoch: number, value: string): Promise<void> {
@@ -111,7 +129,7 @@ suite("native marked editor", () => {
 
   test("an authored epoch advance returns focus for continued Unicode typing", async () => {
     await withEditorView(async (frame, update, events) => {
-      await frame.getByRole("button", { name: "Insert symbol", exact: true }).click();
+      await press(frame, "Insert symbol");
       await update(6, "p → ");
       await waitEditorFrame(frame, 6, "p → ");
       await frame.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Argument", undefined, { timeout: 1000 });
@@ -155,21 +173,27 @@ suite("native marked editor", () => {
 
   test("the Osprey marks retain their line, tone and explanatory text", () => {
     const html = editor();
-    assert.ok(html.includes("<textarea"));
-    assert.ok(html.includes('data-place-ordinal="5"'));
-    assert.ok(html.includes('data-event-ordinal="4"'));
-    assert.ok(html.includes('data-mark-line="2"'));
-    assert.ok(html.includes("osp-editor-underlined osp-tone-danger"));
-    assert.ok(html.includes("Needs attention") && html.includes("The goal is q; this step establishes p."));
-    assert.ok(html.includes("aria-describedby="));
+    for (const mark of [
+      "<textarea",
+      'data-place-ordinal="5"',
+      'data-event-ordinal="4"',
+      'data-mark-line="2"',
+      "osp-editor-underlined osp-tone-danger",
+      "Needs attention",
+      "The goal is q; this step establishes p.",
+      "aria-describedby=",
+    ]) {
+      assert.ok(html.includes(mark), mark);
+    }
   });
 
   test("source text, labels, badges and notes cannot inject markup", () => {
     const html = editor({ label: '"><script>label</script>', value: "</textarea><script>source</script>",
       marks: [{ line: 1, underlined: true, tone: 'danger" onclick="bad', badge: "<img src=x>", note: "<script>note</script>" }] });
-    assert.ok(!html.includes("<script>") && !html.includes("<img src=x>"));
+    for (const injected of ["<script>", "<img src=x>", 'onclick="bad']) {
+      assert.ok(!html.includes(injected), injected);
+    }
     assert.ok(html.includes("&lt;/textarea&gt;"));
-    assert.ok(!html.includes('onclick="bad'));
   });
 
   test("malformed editor values and marks fail explicitly", () => {

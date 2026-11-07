@@ -13,49 +13,43 @@ are variable (a backreference to a fixed-width group is the one CPython
 case this scanner rejects; see the README).
 """
 
-from re import Unicode
+from re import Program, Unicode
 
 __all__ = ["sub_width"]
-
 
 def at(xs, i):
     """Element `i` of an int list, or 0 past the end."""
     return unwrap_or(listGet(xs, i), 0)
 
-
 def is_digit(cp):
     """Whether a code point is an ASCII digit."""
     return cp >= 48 and cp <= 57
-
 
 def sub_width(cps, i, n):
     """[width, next]: the fixed width of the sub-pattern at `i`, or -1."""
     return alt_width(cps, i, n)
 
-
 def alt_width(cps, i, n):
     """The width of `seq (| seq)*`."""
     first = seq_width(cps, i, n)
-    w = unwrap_or(listGet(first, 0), 0)
-    j = unwrap_or(listGet(first, 1), n)
+    w = Program.pair_value(first)
+    j = Program.pair_next(first, n)
     if w < 0 or j >= n or at(cps, j) != 124:
         return first
     else:
         return alt_width_rest(cps, j + 1, n, w)
 
-
 def alt_width_rest(cps, i, n, want):
     """Check that each `|` branch has width `want`."""
     branch = seq_width(cps, i, n)
-    w = unwrap_or(listGet(branch, 0), 0)
-    j = unwrap_or(listGet(branch, 1), n)
+    w = Program.pair_value(branch)
+    j = Program.pair_next(branch, n)
     if w != want:
         return [-1, j]
     elif j < n and at(cps, j) == 124:
         return alt_width_rest(cps, j + 1, n, want)
     else:
         return [want, j]
-
 
 def seq_width(cps, i, n):
     """The sum of atom widths until `)` or `|` or the end."""
@@ -64,18 +58,16 @@ def seq_width(cps, i, n):
     else:
         return seq_width_rest(cps, i, n)
 
-
 def seq_width_rest(cps, i, n):
     """One atom's width plus the rest of the sequence."""
     aw = atom_width(cps, i, n)
-    w = unwrap_or(listGet(aw, 0), 0)
-    j = unwrap_or(listGet(aw, 1), n)
+    w = Program.pair_value(aw)
+    j = Program.pair_next(aw, n)
     if w < 0:
         return [-1, j]
     else:
         rest = seq_width(cps, j, n)
-        return [w + unwrap_or(listGet(rest, 0), 0), unwrap_or(listGet(rest, 1), n)]
-
+        return [w + Program.pair_value(rest), Program.pair_next(rest, n)]
 
 def atom_width(cps, i, n):
     """The width of one atom (before any quantifier)."""
@@ -95,11 +87,9 @@ def atom_width(cps, i, n):
     else:
         return quantified(cps, i, n, [1, i + 1])
 
-
 def class_width(cps, i, n):
     """The width of `[...]`: 1, skipping to the closing `]`."""
     return [1, skip_class(cps, i + 1, n)]
-
 
 def skip_class(cps, i, n):
     """The index just past the closing `]` of a class."""
@@ -112,7 +102,6 @@ def skip_class(cps, i, n):
     else:
         return skip_class(cps, i + 1, n)
 
-
 def escape_width(cps, i, n):
     """The width of a backslash escape atom: assertions are 0, the rest 1."""
     c = at(cps, i + 1)
@@ -123,11 +112,10 @@ def escape_width(cps, i, n):
     else:
         return quantified(cps, i, n, [1, i + 2])
 
-
 def quantified(cps, i, n, base):
     """Apply a quantifier after the atom at `i` to the atom's width."""
-    j = unwrap_or(listGet(base, 1), n)
-    w = unwrap_or(listGet(base, 0), 0)
+    j = Program.pair_next(base, n)
+    w = Program.pair_value(base)
     c = at(cps, j)
     if c == 42 or c == 43 or c == 63:
         return [-1, j + 1]
@@ -136,18 +124,17 @@ def quantified(cps, i, n, base):
     else:
         return [w, j]
 
-
 def braces_width(cps, j, n, w):
     """The width of `{m,n}` at `j`: fixed only when m == n."""
     lo = read_digits(cps, j + 1, n)
-    mn = unwrap_or(listGet(lo, 0), 0)
-    k = unwrap_or(listGet(lo, 1), j + 1)
+    mn = Program.pair_value(lo)
+    k = Program.pair_next(lo, j + 1)
     if at(cps, k) == 125:
         return [mn * w, k + 1]
     elif at(cps, k) == 44:
         hi = read_digits(cps, k + 1, n)
         mx = unwrap_or(listGet(hi, 0), -1)
-        k2 = unwrap_or(listGet(hi, 1), k + 1)
+        k2 = Program.pair_next(hi, k + 1)
         if at(cps, k2) == 125:
             if is_digit(at(cps, k + 1)) and mx == mn:
                 return [mn * w, k2 + 1]
@@ -158,11 +145,9 @@ def braces_width(cps, j, n, w):
     else:
         return [w, j]
 
-
 def read_digits(cps, i, n):
     """[value, next] of a digit run, with -1 for an empty run."""
     return read_digits_from(cps, i, n, -1, 0)
-
 
 def read_digits_from(cps, i, n, has, acc):
     """Accumulate digits from `i`."""
@@ -171,6 +156,11 @@ def read_digits_from(cps, i, n, has, acc):
     else:
         return read_digits_from(cps, i + 1, n, 1, acc * 10 + at(cps, i) - 48)
 
+def content_width(cps, i, n, inner):
+    """The width of a group's content, then the quantifier if any."""
+    w = Program.pair_value(inner)
+    j = Program.pair_next(inner, n)
+    return [-1, j] if w < 0 or j >= n else quantified(cps, i, n, [w, j + 1])
 
 def group_width(cps, i, n):
     """The width of a `(` group, recursing into its content."""
@@ -180,17 +170,9 @@ def group_width(cps, i, n):
     else:
         return group_body_width(cps, i, i + 1, n)
 
-
 def group_body_width(cps, i, content, n):
     """The width of a group's content, then the quantifier if any."""
-    inner = sub_width(cps, content, n)
-    w = unwrap_or(listGet(inner, 0), 0)
-    j = unwrap_or(listGet(inner, 1), n)
-    if w < 0 or j >= n:
-        return [-1, j]
-    else:
-        return quantified(cps, i, n, [w, j + 1])
-
+    return content_width(cps, i, n, sub_width(cps, content, n))
 
 def ext_width(cps, i, n):
     """The width of a `(?...)` group: lookahead/flag groups are 0, the rest
@@ -207,18 +189,10 @@ def ext_width(cps, i, n):
     else:
         return [0, skip_group(cps, i, n)]
 
-
 def named_width(cps, i, n, c):
     """The width of a non-capturing or named group's content."""
     content = i + 3 if c == 58 else skip_name(cps, i + 3, n)
-    inner = sub_width(cps, content, n)
-    w = unwrap_or(listGet(inner, 0), 0)
-    j = unwrap_or(listGet(inner, 1), n)
-    if w < 0 or j >= n:
-        return [-1, j]
-    else:
-        return quantified(cps, i, n, [w, j + 1])
-
+    return content_width(cps, i, n, sub_width(cps, content, n))
 
 def skip_name(cps, i, n):
     """The index after a named group's `>`."""
@@ -227,11 +201,9 @@ def skip_name(cps, i, n):
     else:
         return skip_name(cps, i + 1, n)
 
-
 def skip_group(cps, i, n):
     """The index just past the `)` closing the group at `i`."""
     return skip_group_body(cps, i + 1, n)
-
 
 def skip_group_body(cps, i, n):
     """Scan inside a group, stopping after its matching closing parenthesis."""
@@ -245,7 +217,6 @@ def skip_group_body(cps, i, n):
         return i + 1
     else:
         return skip_group_body(cps, i + 1, n)
-
 
 def skip_comment_group(cps, i, n):
     """The index just past a `(?#...)` comment."""

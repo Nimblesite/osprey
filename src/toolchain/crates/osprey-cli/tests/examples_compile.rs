@@ -9,11 +9,75 @@
 //! assertion run, which executes out-of-process and cannot reach this profile.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+// Only the corpus walk is used here; the IR-symbol helpers `common` also
+// carries serve the wellformedness gates, not this one.
+#[expect(
+    dead_code,
+    reason = "the corpus walk is shared; the IR-symbol helpers are not used here"
+)]
+mod common;
 #[path = "examples_compile/support.rs"]
 mod support;
-use support::{compile, rejection_diagnostics, repo_root, sources};
+use support::{compile, compile_project, rejection_diagnostics, repo_root, sources};
+
+/// The must-reject corpus, `src/osprey/examples/failscompilation`.
+fn failscompilation_dir() -> PathBuf {
+    repo_root().join("src/osprey/examples/failscompilation")
+}
+
+/// Assert the must-reject fixture `name` is rejected; an empty `expected`
+/// fragment means rejection alone is pinned.
+fn reject(name: &str, expected: &str, why: &str) {
+    let path = failscompilation_dir().join(name);
+    let source = fs::read_to_string(&path);
+    assert!(source.is_ok(), "{name}: read fixture: {source:?}");
+    let reason = compile(&path, &source.unwrap_or_default()).err();
+    assert!(reason.is_some(), "{name} must be rejected ({why})");
+    let reason = reason.unwrap_or_default();
+    assert!(
+        reason.contains(expected),
+        "{name}: expected a diagnostic containing {expected:?}, got {reason:?}"
+    );
+}
+
+/// `path` relative to `dir`, as a display string.
+fn rel(dir: &Path, path: &Path) -> String {
+    path.strip_prefix(dir).unwrap_or(path).display().to_string()
+}
+
+/// Compile every `ext` source under `dir`, asserting the corpus is complete and
+/// clean; returns the IR bytes it produced.
+fn check_corpus(
+    dir: &Path,
+    exts: &[&str],
+    at_least: usize,
+    what: &str,
+    one: impl Fn(&Path) -> Result<usize, String>,
+) -> usize {
+    let mut files: Vec<PathBuf> = exts.iter().flat_map(|ext| sources(dir, ext)).collect();
+    files.sort();
+    assert!(
+        files.len() >= at_least,
+        "expected the full {what}, found {}",
+        files.len()
+    );
+    let mut total_ir = 0;
+    let mut failures = Vec::new();
+    for path in &files {
+        match one(path) {
+            Ok(ir_len) => total_ir += ir_len,
+            Err(stage) => failures.push(format!("{}: {stage}", rel(dir, path))),
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{what} must compile cleanly; failures:\n{}",
+        failures.join("\n")
+    );
+    total_ir
+}
 
 #[test]
 fn unhandled_integer_overflow_in_mutation_is_rejected() {
@@ -76,12 +140,11 @@ print (toString (addPreservingError 9223372036854775807 1))
         ),
     ];
 
-    let mut accepted = Vec::new();
-    for (path, source) in cases {
-        if compile(Path::new(path), source).is_ok() {
-            accepted.push(path);
-        }
-    }
+    let accepted: Vec<_> = cases
+        .iter()
+        .filter(|(path, source)| compile(Path::new(path), source).is_ok())
+        .map(|(path, _)| *path)
+        .collect();
 
     assert!(
         accepted.is_empty(),
@@ -91,93 +154,48 @@ print (toString (addPreservingError 9223372036854775807 1))
 }
 
 #[test]
-fn every_language_test_compiles_to_ir() {
+fn every_language_test_and_benchmark_source_compiles_to_ir() {
     let dir = repo_root().join("src/osprey/tests");
     // BOTH flavors. An ML twin is not a translation of its Default twin — it is
     // a second front end producing the same IR ([FLAVOR-IR-EQUIV]) — and it
     // reaches AST forms the Default lowerer never builds (`Expr::MethodCall`
     // among them), so compiling only `.osp` here left the ML half of every
     // shared walker unexercised in-process.
-    let mut files = sources(&dir, "osp");
-    files.extend(sources(&dir, "ospml"));
-    files.sort();
-    assert!(
-        files.len() >= 80,
-        "expected the full tested corpus in both flavors, found {}",
-        files.len()
-    );
-    let mut failures = Vec::new();
-    let mut total_ir = 0usize;
-    for path in &files {
-        let source = fs::read_to_string(path).expect("read example");
-        match compile(path, &source) {
-            Ok(ir_len) => {
-                let rel = path.strip_prefix(&dir).unwrap_or(path);
-                assert!(ir_len > 0, "{}: produced empty IR", rel.display());
-                total_ir += ir_len;
-            }
-            Err(stage) => {
-                let rel = path.strip_prefix(&dir).unwrap_or(path);
-                failures.push(format!("{}: {stage}", rel.display()));
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "tested examples must compile cleanly; failures:\n{}",
-        failures.join("\n")
+    let total_ir = check_corpus(
+        &dir,
+        &["osp", "ospml"],
+        80,
+        "tested corpus in both flavors",
+        |path| {
+            let ir_len = compile(path, &fs::read_to_string(path).expect("read example"))?;
+            assert!(ir_len > 0, "{}: produced empty IR", rel(&dir, path));
+            Ok(ir_len)
+        },
     );
     assert!(total_ir > 0, "the corpus lowered to non-empty IR");
-}
 
-#[test]
-fn every_benchmark_source_compiles_after_checked_arithmetic_change() {
+    // A case with its own osprey.toml shares the benchmark module, so it
+    // compiles as the project `run.sh` builds; a lone file compiles alone.
     let dir = repo_root().join("src/toolchain/benchmarks/cases");
-    let files = sources(&dir, "osp");
-    assert!(
-        files.len() >= 22,
-        "expected the full Osprey benchmark corpus, found {}",
-        files.len()
-    );
-
-    let mut failures = Vec::new();
-    for path in &files {
-        let source = fs::read_to_string(path).expect("read benchmark");
-        if let Err(stage) = compile(path, &source) {
-            let rel = path.strip_prefix(&dir).unwrap_or(path);
-            failures.push(format!("{}: {stage}", rel.display()));
-        }
-    }
-
-    assert!(
-        failures.is_empty(),
-        "benchmark sources must compile cleanly; failures:\n{}",
-        failures.join("\n")
+    let _ = check_corpus(
+        &dir,
+        &["osp"],
+        22,
+        "Osprey benchmark corpus",
+        |path| match path.parent().filter(|d| d.join("osprey.toml").is_file()) {
+            Some(root) => compile_project(root),
+            None => compile(path, &fs::read_to_string(path).expect("read benchmark")),
+        },
     );
 }
 
 #[test]
-fn list_pattern_negative_cases_are_rejected() {
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
+fn list_pattern_generics_and_variance_negative_cases_are_rejected() {
+    // Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-ASSIGN],
+    // [EFFECTS-GENERIC-ROWS]; a rest binder belongs only at the tail, once.
     for name in [
         "list_pattern_middle_rest.ospo",
         "list_pattern_double_rest.ospo",
-    ] {
-        let path = dir.join(name);
-        let source = fs::read_to_string(&path).expect("read ospo");
-        assert!(
-            compile(&path, &source).is_err(),
-            "{name} must be rejected (rest binder only at the tail; one rest max)"
-        );
-    }
-}
-
-#[test]
-fn generics_and_variance_negative_cases_are_rejected() {
-    // Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-ASSIGN],
-    // [EFFECTS-GENERIC-ROWS].
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
-    for name in [
         "variance_out_in_input_position.ospo",
         "variance_in_in_output_position.ospo",
         "variance_on_fn_type_param.ospo",
@@ -186,12 +204,7 @@ fn generics_and_variance_negative_cases_are_rejected() {
         "generic_effect_arg_mismatch.ospo",
         "generic_effect_variance_position.ospo",
     ] {
-        let path = dir.join(name);
-        let source = fs::read_to_string(&path).expect("read ospo");
-        assert!(
-            compile(&path, &source).is_err(),
-            "{name} must be rejected (variance/generic-effect misuse)"
-        );
+        reject(name, "", "list pattern or variance/row misuse");
     }
 }
 
@@ -201,7 +214,7 @@ fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
     // parse -> inference -> entry-proof boundary, including ML lowering. An
     // arm performing its own operation forwards OUTWARD, so with no outer
     // handler the recursive fixtures surface as unhandled at program entry.
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
+    // Every fixture has an `ml_` twin pinning the same diagnostic.
     let cases = [
         (
             "static_effect_unhandled_inferred_transitive.ospo",
@@ -217,38 +230,16 @@ fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
             "static_effect_recursive_handler.ospo",
             "unhandled effect operations at program entry: Loop.again",
         ),
-        (
-            "ml_static_effect_unhandled_inferred_transitive.ospo",
-            "Alarm.ring",
-        ),
-        ("ml_static_effect_escaped_lambda.ospo", "Alarm.ring"),
-        (
-            "ml_static_effect_partial_missing_operation.ospo",
-            "Pair.second",
-        ),
-        ("ml_static_effect_generic_mismatch.ospo", "Stash<int>.put"),
-        (
-            "ml_static_effect_recursive_handler.ospo",
-            "unhandled effect operations at program entry: Loop.again",
-        ),
     ];
 
     for (name, expected) in cases {
-        let path = dir.join(name);
-        let source = fs::read_to_string(&path).expect("read static effect fixture");
-        let Err(reason) = compile(&path, &source) else {
-            panic!("{name} must be rejected by static effect discharge");
-        };
-        assert!(
-            reason.contains(expected),
-            "{name}: expected a diagnostic containing {expected:?}, got {reason:?}"
-        );
+        reject(name, expected, "static effect discharge");
+        reject(&format!("ml_{name}"), expected, "static effect discharge");
     }
 }
 
 /// The ML-flavor must-reject fixtures, each paired with the ML-specific fragment
-/// of the diagnostic it pins. Naming the fragment is what makes the assertion
-/// meaningful: a fixture that started failing for a *Default*-grammar reason
+/// of the diagnostic it pins: a fixture failing for a *Default*-grammar reason
 /// would still be "rejected", and only the message catches that.
 /// Implements [FLAVOR-ML-HANDLER], [FLAVOR-ML-LAYOUT], [FLAVOR-ML-COMMENTS],
 /// [FLAVOR-ML-MATCH], [FLAVOR-BOUNDARY].
@@ -270,41 +261,29 @@ fn ml_flavor_negative_cases_are_rejected_by_the_ml_frontend() {
     // ML negatives are `.ospo` (the must-reject extension, which no source
     // harness compiles) plus a leading `// osprey: flavor=ml` marker — the
     // marker alone selects the ML frontend, since `.ospo` implies no flavor.
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
     for (name, expected) in ML_NEGATIVES {
-        let path = dir.join(name);
-        let source = fs::read_to_string(&path).expect("read ospo");
-        let Err(reason) = compile(&path, &source) else {
-            panic!("{name} must be rejected by the ML frontend");
-        };
-        assert!(
-            reason.contains(expected),
-            "{name}: expected an ML diagnostic containing {expected:?}, got {reason:?}"
-        );
+        reject(name, expected, "the ML frontend");
     }
 }
 
 #[test]
 fn failscompilation_corpus_drives_rejection_paths() {
-    // Every `.ospo` is run through the pipeline to cover the rejection branches.
-    // EVERY ill-formed program must be rejected, whatever the corpus size — the
-    // count is read from the directory rather than written down here, because a
-    // number in a comment goes stale the first time a case is added and then
-    // describes a corpus that no longer exists.
+    // Every `.ospo` runs through the pipeline to cover the rejection branches,
+    // and EVERY ill-formed program must be rejected whatever the corpus size:
+    // the count is read from the directory rather than written down, because a
+    // number in a comment goes stale the first time a case is added.
     //
-    // This assertion used to read `rejected * 2 >= files.len()`, i.e. "a healthy
-    // majority", which tolerated half the corpus silently starting to compile. Its
-    // comment deferred the exact residue to "the shell harness ratchet", but
-    // that harness (crates/diff_examples.sh, FC_EXPECTED_ESCAPES=0) was deleted,
-    // so the strict count it pointed at no longer existed. A must-reject corpus
-    // that permits half its cases to be accepted is not a gate.
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
+    // This used to read `rejected * 2 >= files.len()` — "a healthy majority" —
+    // which tolerated half the corpus silently compiling, and deferred the
+    // residue to a shell harness (crates/diff_examples.sh) since deleted. A
+    // must-reject corpus that permits half its cases is not a gate.
+    let dir = failscompilation_dir();
     let files = sources(&dir, "ospo");
     assert!(!files.is_empty(), "expected a must-reject corpus");
     let escaped: Vec<String> = files
         .iter()
         .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_ok())
-        .map(|p| p.strip_prefix(&dir).unwrap_or(p).display().to_string())
+        .map(|p| rel(&dir, p))
         .collect();
     assert!(
         escaped.is_empty(),
@@ -320,19 +299,13 @@ fn failscompilation_corpus_matches_its_expected_diagnostics() {
     // Rejection alone is a weak gate: a case can keep failing for a reason that
     // has nothing to do with what it was written to pin. Each `.ospo` therefore
     // carries a sibling `.expectedoutput` holding the exact diagnostics, and
-    // this asserts them byte-for-byte.
-    //
-    // These goldens previously described Go-era messages ("line 6:12: cannot
-    // access field 'value' on non-struct type") that the Rust compiler stopped
-    // emitting years ago, and nothing read them — 33 of 82 were stale.
-    let dir = repo_root().join("src/osprey/examples/failscompilation");
+    // this asserts them byte-for-byte. The old ones described Go-era messages
+    // ("line 6:12: cannot access field 'value' on non-struct type"), nothing
+    // read them, and 33 of 82 were stale.
+    let dir = failscompilation_dir();
     let mut drift = Vec::new();
     for path in sources(&dir, "ospo") {
-        let name = path
-            .strip_prefix(&dir)
-            .unwrap_or(&path)
-            .display()
-            .to_string();
+        let name = rel(&dir, &path);
         let source = fs::read_to_string(&path).unwrap_or_default();
         let golden_path = path.with_extension("ospo.expectedoutput");
         let Ok(expected) = fs::read_to_string(&golden_path) else {

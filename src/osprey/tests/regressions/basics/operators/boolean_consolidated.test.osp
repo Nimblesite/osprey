@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 // [CALL-ARGUMENTS] also covers a reordered all-named call below.
 // Boolean operators end-to-end: literals, comparisons (int/float/string),
@@ -139,7 +121,7 @@ fn booleanBehaviorCase() = {
     ])
 }
 
-test("boolean operators preserve values and short-circuiting", fn() => exactArithmetic(booleanBehaviorCase))
+test("boolean operators preserve values and short-circuiting", exactly(booleanBehaviorCase))
 
 /// Produces infinity at runtime for the [FLOAT-COMPARE] truth tables.
 fn growFloat(x, count) = match count {
@@ -172,8 +154,8 @@ fn orderedFloatComparisonsCase() = {
     checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
     checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
 }
-test("NaN comparison truth table", fn() => exactArithmetic(nanComparisonsCase))
-test("ordered float comparison controls", fn() => exactArithmetic(orderedFloatComparisonsCase))
+test("NaN comparison truth table", exactly(nanComparisonsCase))
+test("ordered float comparison controls", exactly(orderedFloatComparisonsCase))
 
 /// [FLOAT-IEEE-RESULTS]: non-finite values require no overflow policy.
 fn floatIdentity(value) = value

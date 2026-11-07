@@ -19,10 +19,13 @@ type Theme =
 module Contrast
     digit code = indexOf "0123456789ABCDEF" (toUpperCase code) ?: 0
 
-    channel (hex, at) =
+    (** The byte the `#RRGGBB` hex pair at `at` encodes. *)
+    export hexByte (hex, at) =
         high = digit (substring hex at (satAdd at 1) ?: "0")
         low = digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0")
-        toFloat (satAdd (satMul high 16) low) / 255.0
+        satAdd (satMul high 16) low
+
+    channel (hex, at) = toFloat (hexByte (hex, at)) / 255.0
 
     linear value = match value <= 0.04045
         true => value / 12.92

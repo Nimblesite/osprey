@@ -19,63 +19,42 @@ module ArithmeticTests {
     }
 
     fn rounding() = checkAll("round-half-up division and signed form", [
-        Arithmetic::roundDiv(7, 2) == 4,
-        Arithmetic::roundDiv(5, 2) == 3,
-        Arithmetic::roundDiv(4, 3) == 1,
-        Arithmetic::roundDiv(0, 3) == 0,
-        Arithmetic::roundDiv(10000 * 1, 3) == 3333,
-        Arithmetic::roundDiv(10000 * 2, 3) == 6667,
+        structuralEquals([Arithmetic::roundDiv(7, 2), Arithmetic::roundDiv(5, 2)], [4, 3]),
+        structuralEquals([Arithmetic::roundDiv(4, 3), Arithmetic::roundDiv(0, 3)], [1, 0]),
+        structuralEquals([Arithmetic::roundDiv(10000 * 1, 3), Arithmetic::roundDiv(10000 * 2, 3)], [3333, 6667]),
+        structuralEquals([Arithmetic::signedRoundDiv(7, 2), Arithmetic::signedRoundDiv(0, 9)], [4, 0]),
         Arithmetic::signedRoundDiv(-7, 2) == -4,
-        Arithmetic::signedRoundDiv(7, 2) == 4,
-        Arithmetic::signedRoundDiv(0, 9) == 0,
         faults(fn() => Arithmetic::roundDiv(-1, 2)) == -1,
         faults(fn() => Arithmetic::roundDiv(1, 0)) == -1
     ])
 
     fn ramps() = checkAll("clamp, higher, lower and ratio", [
-        Arithmetic::clamp(5, 0, 10) == 5,
-        Arithmetic::clamp(-5, 0, 10) == 0,
-        Arithmetic::clamp(15, 0, 10) == 10,
-        Arithmetic::higher(0, 0, 100) == 0,
-        Arithmetic::higher(100, 0, 100) == 10000,
-        Arithmetic::higher(150, 0, 100) == 10000,
-        Arithmetic::higher(50, 0, 100) == 5000,
-        Arithmetic::higher(1, 0, 3) == 3333,
-        Arithmetic::higher(-5, 0, 100) == 0,
-        Arithmetic::lower(0, 0, 100) == 10000,
-        Arithmetic::lower(100, 0, 100) == 0,
-        Arithmetic::lower(25, 0, 100) == 7500,
+        structuralEquals([Arithmetic::clamp(5, 0, 10), Arithmetic::clamp(-5, 0, 10)], [5, 0]),
+        structuralEquals([Arithmetic::clamp(15, 0, 10), Arithmetic::higher(0, 0, 100)], [10, 0]),
+        structuralEquals([Arithmetic::higher(100, 0, 100), Arithmetic::higher(150, 0, 100)], [10000, 10000]),
+        structuralEquals([Arithmetic::higher(50, 0, 100), Arithmetic::higher(1, 0, 3)], [5000, 3333]),
+        structuralEquals([Arithmetic::higher(-5, 0, 100), Arithmetic::lower(0, 0, 100)], [0, 10000]),
+        structuralEquals([Arithmetic::lower(100, 0, 100), Arithmetic::lower(25, 0, 100)], [0, 7500]),
         faults(fn() => Arithmetic::higher(1, 5, 5)) == -1,
         faults(fn() => Arithmetic::lower(1, 5, 5)) == -1,
-        Arithmetic::ratio(1, 4) == 2500,
-        Arithmetic::ratio(5, 4) == 10000,
-        Arithmetic::ratio(0, 4) == 0,
+        structuralEquals([Arithmetic::ratio(1, 4), Arithmetic::ratio(5, 4), Arithmetic::ratio(0, 4)], [2500, 10000, 0]),
         Arithmetic::ratio(1, 3) == 3333
     ])
 
     fn aggregates() = checkAll("weighted means, percentiles, days and display", [
         Arithmetic::weighted([w(1, 100), w(3, 200)]) == 175,
-        Arithmetic::weighted([w(2, 5), w(2, 6)]) == 6,
-        Arithmetic::weighted([w(1, 7)]) == 7,
-        Arithmetic::percentileIndex(50, 1) == 0,
-        Arithmetic::percentileIndex(50, 2) == 0,
-        Arithmetic::percentileIndex(50, 3) == 1,
-        Arithmetic::percentileIndex(50, 4) == 1,
-        Arithmetic::percentileIndex(90, 10) == 8,
-        Arithmetic::percentileIndex(90, 11) == 9,
+        structuralEquals([Arithmetic::weighted([w(2, 5), w(2, 6)]), Arithmetic::weighted([w(1, 7)])], [6, 7]),
+        structuralEquals([Arithmetic::percentileIndex(50, 1), Arithmetic::percentileIndex(50, 2)], [0, 0]),
+        structuralEquals([Arithmetic::percentileIndex(50, 3), Arithmetic::percentileIndex(50, 4)], [1, 1]),
+        structuralEquals([Arithmetic::percentileIndex(90, 10), Arithmetic::percentileIndex(90, 11)], [8, 9]),
         Arithmetic::percentileIndex(100, 5) == 4,
         (Arithmetic::percentile(50, [30, 10, 20]) ?: -1) == 20,
         (Arithmetic::percentile(90, [5, 4, 3, 2, 1, 6, 7, 8, 9, 10]) ?: -1) == 9,
+        structuralEquals([Arithmetic::ceilDays(0), Arithmetic::ceilDays(1), Arithmetic::ceilDays(86400000)], [0, 1, 1]),
+        structuralEquals([Arithmetic::ceilDays(86400001), Arithmetic::fullScale()], [2, 10000]),
         (Arithmetic::percentile(50, []) ?: -1) == -1,
-        Arithmetic::ceilDays(0) == 0,
-        Arithmetic::ceilDays(1) == 1,
-        Arithmetic::ceilDays(86400000) == 1,
-        Arithmetic::ceilDays(86400001) == 2,
-        Arithmetic::display(0) == "0.00",
-        Arithmetic::display(5) == "0.05",
-        Arithmetic::display(1234) == "12.34",
-        Arithmetic::display(10000) == "100.00",
-        Arithmetic::fullScale() == 10000
+        structuralEquals([Arithmetic::display(0), Arithmetic::display(5)], ["0.00", "0.05"]),
+        structuralEquals([Arithmetic::display(1234), Arithmetic::display(10000)], ["12.34", "100.00"])
     ])
 
     fn advisory(severity, reach, ms) = Objective::Advisory { severityWeight: severity, reachabilityFactor: reach, overdueMilliseconds: ms }
@@ -86,14 +65,11 @@ module ArithmeticTests {
         Objective::advisoryCost(advisory(7000, 5000, 0)) == 3500,
         Objective::advisoryCost(advisory(1, 1, 0)) == 0,
         Objective::vulnerability([advisory(7000, 5000, 0), advisory(10000, 10000, 0)]) == 13500,
-        Objective::vulnerability([]) == 0,
-        Objective::overdueDays(0) == 0,
-        Objective::overdueDays(1) == 1,
-        Objective::overdueDays(86400000 * 4000) == 3650,
+        structuralEquals([Objective::vulnerability([]), Objective::overdueDays(0)], [0, 0]),
+        structuralEquals([Objective::overdueDays(1), Objective::overdueDays(86400000 * 4000)], [1, 3650]),
         Objective::overdue([advisory(10000, 10000, 86400000 * 2 + 1)]) == 30000,
         Objective::overdue([advisory(10000, 10000, 0), advisory(7000, 5000, 86400000)]) == 3500,
-        Objective::lag(42, 40) == 2,
-        Objective::lag(42, 42) == 0
+        structuralEquals([Objective::lag(42, 40), Objective::lag(42, 42)], [2, 0])
     ])
 
     fn ordering() = checkAll("lexicographic tuple and canonical tie-breaks", [

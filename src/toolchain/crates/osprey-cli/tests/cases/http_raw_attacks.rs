@@ -13,57 +13,68 @@ use super::{
     SIZE_OVER_LIMIT,
 };
 
-/// A reply the client must answer, with the default close and timeout.
-const fn ok(name: &'static str, reply: &'static [u8], status: i32, body: &'static str) -> Attack {
+/// A reply on the default socket: neither filled nor dripped.
+const fn plain(
+    name: &'static str,
+    reply: &'static [u8],
+    hold_open: bool,
+    timeout_ms: i32,
+    expect: Expected,
+) -> Attack {
     Attack {
         name,
         reply,
         fill_to: None,
-        hold_open: false,
+        hold_open,
         drip_ms: 0,
-        timeout_ms: DEFAULT_TIMEOUT_MS,
-        expect: Expected::Response(status, Body::Text(body)),
+        timeout_ms,
+        expect,
     }
+}
+
+/// A reply the client must answer, with the default close and timeout.
+const fn ok(name: &'static str, reply: &'static [u8], status: i32, body: &'static str) -> Attack {
+    plain(
+        name,
+        reply,
+        false,
+        DEFAULT_TIMEOUT_MS,
+        Expected::Response(status, Body::Text(body)),
+    )
 }
 
 /// A reply the client must refuse, with the default close and timeout.
 const fn refused(name: &'static str, reply: &'static [u8], message: &'static str) -> Attack {
-    Attack {
+    plain(
         name,
         reply,
-        fill_to: None,
-        hold_open: false,
-        drip_ms: 0,
-        timeout_ms: DEFAULT_TIMEOUT_MS,
-        expect: Expected::Refused(message),
-    }
+        false,
+        DEFAULT_TIMEOUT_MS,
+        Expected::Refused(message),
+    )
 }
 
 /// A framed answer the server holds the socket open after, on its own patient
 /// client: complete framing must end the read without waiting for the close.
 const fn held(name: &'static str, reply: &'static [u8], status: i32, body: &'static str) -> Attack {
-    Attack {
+    plain(
         name,
         reply,
-        fill_to: None,
-        hold_open: true,
-        drip_ms: 0,
-        timeout_ms: HOLD_OPEN_TIMEOUT_MS,
-        expect: Expected::Response(status, Body::Text(body)),
-    }
+        true,
+        HOLD_OPEN_TIMEOUT_MS,
+        Expected::Response(status, Body::Text(body)),
+    )
 }
 
 /// A refusal the server holds the socket open after: the timeout alone ends it.
 const fn held_refused(name: &'static str, reply: &'static [u8], message: &'static str) -> Attack {
-    Attack {
+    plain(
         name,
         reply,
-        fill_to: None,
-        hold_open: true,
-        drip_ms: 0,
-        timeout_ms: DEFAULT_TIMEOUT_MS,
-        expect: Expected::Refused(message),
-    }
+        true,
+        DEFAULT_TIMEOUT_MS,
+        Expected::Refused(message),
+    )
 }
 
 /// A dripped reply, one byte at a time, on its own client and timeout.

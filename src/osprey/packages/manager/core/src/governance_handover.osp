@@ -102,39 +102,25 @@ module GovernanceHandover {
                     Checked::andThen(Governance::livePrincipal(p), fn(_) =>
                         Checked::andThen(Governance::humanPrincipal(p), fn(_) => Success { value: p.id })))))
 
-    fn noLiveProposal(registry, id) = match Maybe::isPresent(Governance::liveTransferFor(registry, id)) {
-        true => Error { message: "governance.transfer.pending-exists" }
-        false => Success { value: id }
-    }
+    fn noLiveProposal(registry, id) = Governance::unique(id, Maybe::isPresent(Governance::liveTransferFor(registry, id)), "governance.transfer.pending-exists")
 
     fn recipient(registry, pkg: Governance::Package, proposed) = match proposed == pkg.admin {
         true => Error { message: "governance.recipient.self" }
         false => Checked::andThen(Governance::membershipOf(registry, proposed), fn(m: Governance::Membership) =>
             Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Checked::andThen(Governance::sameOrgMember(m, pkg.org), fn(_) => humanRecipient(registry, m))))
+                Checked::andThen(Governance::sameOrgMember(m, pkg.org), fn(_) => Governance::humanMemberOf(registry, m))))
     }
-
-    fn humanRecipient(registry, m: Governance::Membership) =
-        Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
-            Governance::humanPrincipal(p))
 
     fn liveAcceptingHuman(p: Governance::Principal, proof) =
         Checked::andThen(Governance::livePrincipal(p), fn(_) =>
             Checked::andThen(Governance::humanPrincipal(p), fn(_) => Governance::requireHumanCeremony(proof)))
 
-    fn principalOfMembership(registry, membership) =
-        Checked::andThen(Governance::membershipOf(registry, membership), fn(m: Governance::Membership) =>
-            Success { value: m.principal })
+    fn liveTransfer(t: Governance::Transfer) = requiredTransfer(t, Governance::isLiveTransfer(t), "governance.transfer.not-pending")
 
-    fn liveTransfer(t: Governance::Transfer) = match Governance::isLiveTransfer(t) {
-        true => Success { value: t }
-        false => Error { message: "governance.transfer.not-pending" }
-    }
+    fn acceptedTransfer(t: Governance::Transfer) = requiredTransfer(t, Governance::isAcceptedTransfer(t), "governance.transfer.acceptance-missing")
 
-    fn acceptedTransfer(t: Governance::Transfer) = match Governance::isAcceptedTransfer(t) {
-        true => Success { value: t }
-        false => Error { message: "governance.transfer.acceptance-missing" }
-    }
+    /// `t` when the proposal passes `flag`, else the refusal `code`.
+    fn requiredTransfer(t: Governance::Transfer, flag, code) = if flag { Success { value: t } } else { Error { message: code } }
 
     fn withinHold(t: Governance::Transfer, decidedAt) = match decidedAt < t.notBefore {
         true => Error { message: "governance.transfer.hold" }

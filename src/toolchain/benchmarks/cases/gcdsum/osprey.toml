@@ -1,0 +1,5 @@
+[project]
+name = "gcdsum"
+source_roots = [".", "../../shared"]
+default_namespace = "gcdsum"
+entry = "gcdsum.osp"

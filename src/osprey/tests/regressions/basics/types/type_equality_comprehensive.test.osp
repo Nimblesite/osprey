@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 // Type equality coverage: GenericType.Equals, FunctionType.Equals,
 // UnionType.Equals. Same-shape generics unify; different-shape generics
@@ -344,7 +326,7 @@ fn typeEqualityCase() = {
     ])
 }
 
-test("equivalent type shapes compose while union tags remain distinct", fn() => exactArithmetic(typeEqualityCase))
+test("equivalent type shapes compose while union tags remain distinct", exactly(typeEqualityCase))
 
 /// A transparent alias is its representation everywhere it is written: a
 /// scalar, a function type and a record field alike unify with what they
@@ -363,4 +345,4 @@ fn aliasCase() = checkAll("transparent type aliases are their representation eve
     combine(fn(a, b) => a + b, 1.5, 2.0) == 3.5
 ])
 
-test("transparent type aliases are their representation everywhere", fn() => exactArithmetic(aliasCase))
+test("transparent type aliases are their representation everywhere", exactly(aliasCase))

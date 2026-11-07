@@ -1,0 +1,5 @@
+[project]
+name = "quicksort"
+source_roots = [".", "../../shared"]
+default_namespace = "quicksort"
+entry = "quicksort.osp"

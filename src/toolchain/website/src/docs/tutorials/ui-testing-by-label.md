@@ -8,13 +8,25 @@ eleventyComputed:
 tags: [tutorials, video, ui-testing, accessibility, ai-agents]
 ---
 
-Every control in an Osprey UI machine has a role and a label. This video shows the accessibility tree that produces, and end-to-end UI tests that tap controls by label with real pointer events.
+Learn to test an Osprey app the way a screen reader or an AI agent uses it: by the role and label of each control. This tutorial reads [`@osprey/uitest`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/uitest) and [`@osprey/native`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/native), then the [casting player's tests](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/casting/test).
 
 {% videoPlayer video %}
 
-The full write-up, with the code and its limits, is [An accessibility tree AI agents can drive](/blog/2026-11-01-accessibility-tree-ai-agents-ui-testing/).
+## What you will learn
 
-Osprey is actively evolving.
+- Where a control's role and label come from (the machine document).
+- How `@osprey/native` turns them into a typed accessibility tree.
+- Finding controls by label, reading roles and slider values, and the outline an agent reads (`semantics.ospml`).
+- Driving the app with real pointer events, and checks that explain themselves when they fail (`drive.ospml`).
+- A whole user journey, the real run, and one renamed label that three tests catch.
+
+## Try it
+
+```sh
+osprey src/osprey/examples/casting/test --run          # no window, no TV
+```
+
+The longer write-up is [An accessibility tree AI agents can drive](/blog/2026-11-01-accessibility-tree-ai-agents-ui-testing/). Osprey is actively evolving.
 
 ## Transcript
 

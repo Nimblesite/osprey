@@ -17,6 +17,32 @@ import { closeAllEditors, pollUntilResult, removeTestDir } from "@nimblesite/lsp
 import type { OspreyExtensionApi } from "../../client/src/extension";
 import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
 
+/** The workbench is idle once its root has left the `aria-busy` state. */
+export async function waitForIdleWorkbench(
+  frame: Frame,
+  timeoutMs = 1000,
+): Promise<void> {
+  await frame.waitForFunction(
+    () =>
+      document.getElementById("osprey-root")?.getAttribute("aria-busy") ===
+      "false",
+    undefined,
+    { timeout: timeoutMs },
+  );
+}
+
+/** The accessible role a control is addressed by; the tests never use the DOM. */
+type AriaRole = Parameters<Frame["getByRole"]>[0];
+
+/** Click the control `name` labels — one accessible name is one control. */
+export async function press(
+  frame: Frame,
+  name: string,
+  role: AriaRole = "button",
+): Promise<void> {
+  await frame.getByRole(role, { name, exact: true }).click();
+}
+
 export async function connectEditorBrowser(): Promise<Browser> {
   const userData = process.env.OSPREY_TEST_USER_DATA;
   assert.ok(userData, "runner supplies its isolated browser profile");

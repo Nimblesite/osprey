@@ -1,28 +1,31 @@
 WEBVTT
 
-00:00.000 --> 00:09.041
+00:00.000 --> 00:17.488
 Rust UI without Rust
 
-00:09.041 --> 00:20.184
-Drawn by GPUI
+00:17.488 --> 00:58.122
+Goal: GPUI, from Osprey
 
-00:20.184 --> 00:40.295
-Where it sits
+00:58.122 --> 01:19.657
+Code: the boundary
 
-00:40.295 --> 00:56.107
-Layers in parallel
+01:19.657 --> 02:02.855
+Code: the store
 
-00:56.107 --> 01:05.372
-One adapter
+02:02.855 --> 02:38.543
+Code: drawing rules
 
-01:05.372 --> 01:16.302
-Refused on load
+02:38.543 --> 03:37.185
+Code: the view
 
-01:16.302 --> 01:25.078
-Refused on load
+03:37.185 --> 04:00.904
+Run: tests, no window
 
-01:25.078 --> 01:34.387
-What to know
+04:00.904 --> 04:19.593
+Change it: a new dash
 
-01:34.387 --> 01:44.227
+04:19.593 --> 04:44.484
+Or: one machine document
+
+04:44.484 --> 05:11.924
 Try it

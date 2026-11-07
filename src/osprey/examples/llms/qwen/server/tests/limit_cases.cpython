@@ -1,0 +1,81 @@
+"""The `/api/chat` and `/api/generate` limit cases, run on both table lanes.
+
+Loaded by `clients.cpython` after its own cases, so `main` runs these too. A
+prompt's count is the tokenizer's own: the fixture model's, read from the
+reference's rendering of the same bytes, never a number a case invented
+([LLM-API-LIMIT]).
+"""
+import ollama
+import openai
+
+from harness import case, client, openai_client, reference, MODEL, READ_PROMPT
+
+
+@case
+def a_prompt_over_num_ctx_is_rejected_naming_both_counts(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    for over in (1, 7):
+        boundary = tokens - over
+        for call in (
+            lambda: client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": boundary}),
+            lambda: client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], options={"num_ctx": boundary}),
+        ):
+            try:
+                call()
+            except ollama.ResponseError as error:
+                assert error.status_code == 400, error.status_code
+                message = str(error)
+                assert str(tokens) in message, message
+                assert str(boundary) in message, message
+                assert "num_ctx" in message, message
+            else:
+                raise AssertionError(f"a prompt of {tokens} tokens was accepted under num_ctx {boundary}")
+
+
+@case
+def a_prompt_that_exactly_fills_num_ctx_is_rejected_naming_both_counts(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    try:
+        openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], extra_body={"options": {"num_ctx": tokens}})
+    except openai.BadRequestError as error:
+        message = str(error.message)
+        assert str(tokens) in message, message
+        assert "num_ctx" in message, message
+    else:
+        raise AssertionError(f"a prompt filling num_ctx {tokens} was accepted")
+
+
+@case
+def a_prompt_that_fits_is_served_whole(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    reply = client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": tokens + 256, "num_predict": 256})
+    assert reply.done is True, reply
+    assert reply.prompt_eval_count == tokens, reply
+    assert reply.response == model.continuation(module.rendered(READ_PROMPT)), reply
+
+
+@case
+def an_agent_sized_prompt_is_served_whole(port):
+    """A 40 KB user message and a 10 KB tool description, the sizes an agent's harness sends,
+    are tokenized, rendered and answered; before 2026-11-07 a frame per byte in the table
+    tokenizer and in the prompt's JSON writer overflowed the stack at about 3 KB and the
+    server died without a response ([LLM-API-LIMIT] rejects by count, never by crashing)."""
+    module = reference()
+    model = module.Model()
+    long_text = ("open the readme " * 2500).strip()
+    asked = [{"role": "user", "content": long_text}]
+    reply = client(port).chat(model=MODEL, messages=asked, options={"num_predict": 4})
+    assert reply.prompt_eval_count == len(model.tokenize(module.rendered_chat(asked))), reply.prompt_eval_count
+    assert reply.done is True, reply
+    described = {"type": "function", "function": {"name": "read_file", "description": ("Read one file " * 700).strip(), "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}}
+    short = [{"role": "user", "content": READ_PROMPT}]
+    told = client(port).chat(model=MODEL, messages=short, tools=[described], options={"num_predict": 4})
+    rendered = module.rendered_chat(short, [described])
+    assert told.prompt_eval_count == len(model.tokenize(rendered)), (told.prompt_eval_count, len(model.tokenize(rendered)))
+    assert told.done is True, told

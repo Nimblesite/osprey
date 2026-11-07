@@ -242,6 +242,14 @@ fn single_numeric(value: &Value) -> Numeric {
     operand_numeric(value, value)
 }
 
+/// `0 - value` at `n`'s width: the wrapped bits, the overflow flag an
+/// `Arith` handler answers, and the zero operand the caller reports with.
+fn negate_checked(cg: &mut Codegen, n: Numeric, value: Value) -> Result<(String, String, Value)> {
+    let zero = Value::new("0", LType::Num(n));
+    let (wrapped, bad) = crate::expr::emit_overflow_arith(cg, "sub", n, zero.clone(), value)?;
+    Ok((wrapped, bad, zero))
+}
+
 pub(crate) fn negation(cg: &mut Codegen, value: Value) -> Result<Value> {
     let n = single_numeric(&value);
     if n.is_float() {
@@ -255,9 +263,7 @@ pub(crate) fn negation(cg: &mut Codegen, value: Value) -> Result<Value> {
         };
         return Ok(Value::new(reg, LType::Num(n)));
     }
-    let zero = Value::new("0", LType::Num(n));
-    let (wrapped, bad) =
-        crate::expr::emit_overflow_arith(cg, "sub", n, zero.clone(), value.clone())?;
+    let (wrapped, bad, zero) = negate_checked(cg, n, value.clone())?;
     let wrapped = Value::new(cg.emit_reg(wrapped), LType::Num(n));
     overflow(cg, &bad, "neg", value, zero, wrapped)
 }
@@ -295,9 +301,7 @@ fn integer_absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
     }
     let value = as_num(cg, value, n)?;
     let ty = n.llvm();
-    let zero = Value::new("0", LType::Num(n));
-    let (negated, bad) =
-        crate::expr::emit_overflow_arith(cg, "sub", n, zero.clone(), value.clone())?;
+    let (negated, bad, zero) = negate_checked(cg, n, value.clone())?;
     let negated = cg.emit_reg(negated);
     let negative = cg.emit_reg(format!("icmp slt {ty} {}, 0", value.operand));
     let wrapped = cg.emit_reg(format!(

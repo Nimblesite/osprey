@@ -17,10 +17,20 @@ fn ml_binding(prefix: &str, binding: &str, value: &str) -> String {
     format!("{prefix}{binding} = {value}\nprint \"${{{binding}}}\"")
 }
 
+/// An ML program: the `identity` signature followed by `body`, with no brace escaping.
+fn identity_program(body: &str) -> String {
+    format!("{ML_IDENTITY}{body}")
+}
+
+/// Pins `identity<call>` in a `pinned` binding — this file's dominant call shape.
+fn pinned_identity(call: &str) -> String {
+    ml_binding(ML_IDENTITY, "pinned", &format!("identity{call}"))
+}
+
 spec_cases! {
     /// "Call-site type arguments attach to the callee name and precede the
     /// juxtaposed argument: `identity<int> 5`."
-    ml_type_application_pins_a_binder: accepts(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int> 5"));
+    ml_type_application_pins_a_binder: accepts(Ml, pinned_identity("<int> 5"));
 
     /// The ML twin of the no-parameter-position case.
     ml_type_application_pins_a_binder_no_argument_mentions: accepts(Ml, r#"empty<T> : Unit -> List<T>
@@ -36,19 +46,15 @@ print "${length held}""#);
 
     /// The arity contract lives in the shared core, so ML reports the same
     /// sentence as Default ([FLAVOR-BOUNDARY]).
-    ml_type_application_arity_is_checked: rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int, string> 5"), fn_arity_message("identity", 1, 2));
+    ml_type_application_arity_is_checked: rejects_with(Ml, pinned_identity("<int, string> 5"), fn_arity_message("identity", 1, 2));
 
     /// "A binding without a signature cannot declare function type parameters" —
     /// and so cannot be applied at a call site either.
-    ml_a_binding_without_a_signature_takes_no_type_arguments: rejects_with(Ml, r#"plain x = x
-pinned = plain<int> 5
-print "${pinned}""#, fn_arity_message("plain", 0, 1));
+    ml_a_binding_without_a_signature_takes_no_type_arguments: rejects_with(Ml, ml_binding("plain x = x\n", "pinned", "plain<int> 5"), fn_arity_message("plain", 0, 1));
 
     /// A nested ML type argument closes with `>>` here too.
-    ml_a_type_argument_may_itself_be_generic: accepts(Ml, format!(
-            r#"{ML_IDENTITY}held = identity<List<int>> [1, 2]
-print "${{length held}}""#
-        ));
+    ml_a_type_argument_may_itself_be_generic: accepts(Ml, identity_program(r#"held = identity<List<int>> [1, 2]
+print "${length held}""#));
 
     /// The ML control: `<` stays comparison under layout juxtaposition.
     ml_a_comparison_is_not_type_application: accepts(Ml, r#"lower (a, b) = a < b
@@ -56,91 +62,69 @@ flag = lower (1, 2)
 print "${toString flag}""#);
 
     /// The ML gap rule matches Default's: `identity <int> 5` is not application.
-    ml_a_gap_before_the_angle_is_not_type_application: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity <int> 5"));
+    ml_a_gap_before_the_angle_is_not_type_application: rejects_with(Ml, pinned_identity(" <int> 5"), "unknown identifier `int`");
 
     /// ML variance markers are declaration-site only, at the call site as well.
-    ml_a_variance_marker_at_a_call_site_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<out int> 5"));
+    ml_a_variance_marker_at_a_call_site_is_rejected: rejects_with(Ml, pinned_identity("<out int> 5"), "unknown type `out`");
 
     /// Curry-by-default: the written arguments attach to the callee name, so a
     /// curried application takes them exactly once, at the front.
-    ml_type_application_survives_curried_application: accepts(Ml, r#"pick<T, U> : T -> U -> T
-pick first second = first
-kept = pick<int, string> 1 "two"
-print "${kept}""#);
+    ml_type_application_survives_curried_application: accepts(Ml, ml_binding("pick<T, U> : T -> U -> T\npick first second = first\n", "kept", r#"pick<int, string> 1 "two""#));
 
     /// The ML twin of the value-argument contradiction.
-    ml_type_application_contradicting_the_value_argument_is_rejected: rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<int> "text""#), "cannot unify int with string");
+    ml_type_application_contradicting_the_value_argument_is_rejected: rejects_with(Ml, pinned_identity(r#"<int> "text""#), "cannot unify int with string");
 
     /// The ML twin of the expected-type contradiction, pinned by a signature.
-    ml_type_application_contradicting_the_expected_type_is_rejected: rejects_with(Ml, format!(
-            r#"{ML_IDENTITY}pinned : string
-pinned = identity<int> 5
-print "${{pinned}}""#
-        ), "cannot unify");
+    ml_type_application_contradicting_the_expected_type_is_rejected: rejects_with(Ml, identity_program(&ml_binding("pinned : string\n", "pinned", "identity<int> 5")), "cannot unify");
 
     /// The ML twin of "too few type arguments".
     ml_too_few_type_arguments_are_rejected_by_count: rejects_with(Ml, ml_binding(ML_PICK, "kept", r#"pick<int> (1, "two")"#), fn_arity_message("pick", 2, 1));
 
     /// The ML twin of the lambda rule: `\x => x` declares no binder.
-    ml_a_lambda_binding_takes_no_type_arguments: rejects_with(Ml, r#"f = \x => x
-pinned = f<int> 5
-print "${pinned}""#, fn_arity_message("f", 0, 1));
+    ml_a_lambda_binding_takes_no_type_arguments: rejects_with(Ml, ml_binding("f = \\x => x\n", "pinned", "f<int> 5"), fn_arity_message("f", 0, 1));
 
     /// A declared record is a type argument in ML too.
     ml_a_declared_record_may_be_a_type_argument: accepts(Ml, format!(
-            r#"type Box T =
-    value : T
-{ML_IDENTITY}held = identity<Box<int>> (Box(value = 7))
-print "${{held.value}}""#
-        ));
+        "type Box T =\n    value : T\n{ML_IDENTITY}{}", r#"held = identity<Box<int>> (Box(value = 7))
+print "${held.value}""#));
 
     /// A function type is a type argument in ML too.
-    ml_a_function_type_may_be_a_type_argument: accepts(Ml, format!(
-            r#"{ML_IDENTITY}double n = wrapMul (n, 2)
+    ml_a_function_type_may_be_a_type_argument: accepts(Ml, identity_program(r#"double n = wrapMul (n, 2)
 f = identity<(int) -> int> double
-print "${{f 21}}""#
-        ));
+print "${f 21}""#));
 
     /// Two written instantiations of one ML binding coexist.
-    ml_two_written_instantiations_coexist: accepts(Ml, format!(
-            r#"{ML_IDENTITY}n = identity<int> 5
+    ml_two_written_instantiations_coexist: accepts(Ml, identity_program(r#"n = identity<int> 5
 s = identity<string> "os"
-print "${{n}} ${{s}}""#
-        ));
+print "${n} ${s}""#));
 
     /// Written arguments do not excuse a wrong value argument: applying `Unit`
-    /// where `int` was pinned still fails. The layer that catches it is not pinned
-    /// — under curry-by-default this reads as either an arity or a unification
-    /// failure, and both are truthful rejections.
-    ml_writing_type_arguments_does_not_excuse_the_value_argument: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int> ()"));
+    /// where `int` was pinned still fails. Curry-by-default reports it as the
+    /// missing argument, which is what the written `<int>` failed to supply.
+    ml_writing_type_arguments_does_not_excuse_the_value_argument: rejects_with(Ml, pinned_identity("<int> ()"), "call arity mismatch: expected 1 argument(s), got 0");
 
     /// A pipe target has no juxtaposed argument, so it is not an application site.
-    ml_type_arguments_in_a_pipe_target_are_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"5 |> identity<int>"));
+    ml_type_arguments_in_a_pipe_target_are_rejected: parse_rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r"5 |> identity<int>"), "a pipe target cannot take type arguments");
 
     /// An undeclared type name is not a type argument.
-    ml_an_undeclared_type_argument_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<Nope> 5"));
+    ml_an_undeclared_type_argument_is_rejected: rejects_with(Ml, pinned_identity("<Nope> 5"), "unknown type `Nope`");
 
     /// An empty argument list is not a type list in ML either.
-    ml_an_empty_type_argument_list_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<> 5"));
+    ml_an_empty_type_argument_list_is_rejected: parse_rejects_with(Ml, pinned_identity("<> 5"), "unexpected token Op(\">\") in type");
 
     /// Type application inside a lambda body and a match arm.
-    ml_type_application_works_inside_lambdas_and_match_arms: accepts(Ml, format!(
-            r#"{ML_IDENTITY}wrap = \n => identity<int> n
+    ml_type_application_works_inside_lambdas_and_match_arms: accepts(Ml, identity_program(r#"wrap = \n => identity<int> n
 chosen = match wrap 1
     1 => identity<string> "one"
     _ => identity<string> "other"
-print "${{chosen}}""#
-        ));
+print "${chosen}""#));
 
     /// Call-site application coexists with an inferred generic effect in ML too.
     ml_type_application_coexists_with_generic_effect_instantiation: accepts(Ml, format!(
-            r#"effect Stash T
-    take : Unit => T
-{ML_IDENTITY}main () =
+        "effect Stash T\n    take : Unit => T\n{ML_IDENTITY}{}", r#"main () =
     held =
         handle Stash
             take => identity<int> 9
         perform Stash.take ()
-    print "${{held}}""#
-        ));
+    print "${held}""#));
 }

@@ -55,15 +55,32 @@ module Lexer
     // Greek letters and sub- and superscript digits are part of a name, as in `α₁`.
     named code = letter code || (code >= 945 && code <= 969) || (code >= 8320 && code <= 8329) || (code >= 8304 && code <= 8313) || code == 185 || code == 178 || code == 179
 
-    blank code = code == 32 || code == 9 || code == 10 || code == 13
+    (** Whether `code` is one of the four whitespace code points every reader skips. *)
+    export blank code = code == 32 || code == 9 || code == 10 || code == 13
 
+    // The byte width of the code point `code`, one when it is unknown.
     width code = codePointWidth code ?: 1
 
-    codeAt (text, at) = codePointAt (text, at) ?: 0
+    (** The code point at byte offset `at`, 0 past the end. *)
+    export codeAt (text, at) = codePointAt (text, at) ?: 0
+
+    (** The byte offset just past the code point at `at`. *)
+    export after (text, at) = satAdd at (width (codeAt (text, at)))
+
+    (** The text of the code point at `at`, empty past the end. *)
+    export glyphAt (text, at) = substring (text, at, after (text, at)) ?: ""
+
+    (** The text from `from` to `to`, empty when the range falls outside it. *)
+    export cut (text, from, to) = substring (text, from, to) ?: ""
+
+    (** The byte offset of the first code point at or after `at` that is not blank. *)
+    export skipBlank (text, at) = match at < length text && blank (codeAt (text, at))
+        true => skipBlank (text, after (text, at))
+        false => at
 
     // The byte just past the run of name characters starting at `at`, and its length in characters.
     nameEnd (text, at, count) = match at < length text && named (codeAt (text, at))
-        true => nameEnd (text, satAdd at (width (codeAt (text, at))), satAdd count 1)
+        true => nameEnd (text, after (text, at), satAdd count 1)
         false => Run(stop = at, count = count)
 
     word text = match listContains (reserved, toLowerCase text)
@@ -79,8 +96,8 @@ module Lexer
 
     step (text, at, column, done) =
         code = codeAt (text, at)
-        next = satAdd at (width code)
-        glyph = substring (text, at, next) ?: ""
+        next = after (text, at)
+        glyph = glyphAt (text, at)
         match blank code
             true => scan (text, next, satAdd column 1, done)
             false => match named code
@@ -93,7 +110,7 @@ module Lexer
 
     nameToken (text, at, column, done) =
         run = nameEnd (text, at, 0)
-        found = word (substring (text, at, run.stop) ?: "")
+        found = word (cut (text, at, run.stop))
         scan (text, run.stop, satAdd column run.count, listPrepend (done, found(column = column)))
 
 (** Reads, writes and compares formulas ([WORKBENCH-FORMULA]). *)

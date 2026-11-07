@@ -56,13 +56,15 @@ module Audit {
 
     fn specProblem(specs, path) = if listContains(rawGoldens(), path) { strictProblem(path) } else { citedProblem(specs, path) }
 
+    fn parseProblem(path, message) = "${path}: ${Json::describe(message)}"
+
     fn strictProblem(path) = match parsed(path) {
-        Error { message } => "${path}: ${Json::describe(message)}"
+        Error { message } => parseProblem(path, message)
         Success => ""
     }
 
     fn citedProblem(specs, path) = match parsed(path) {
-        Error { message } => "${path}: ${Json::describe(message)}"
+        Error { message } => parseProblem(path, message)
         Success { value } => Citations::problem(specs, JsonRead::text(JsonRead::field(value, "spec")), "${path}: spec")
     }
 

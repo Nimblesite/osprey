@@ -6,7 +6,7 @@
 #   lean4checker aa03950243dc18750c1546602ab054609ea8d57d (tag v4.25.0)
 # This rev of lean4export writes the NDJSON format 3.1.0, which is the format
 # the kernel's reader (src/osprey/examples/proof/kernel/src/export.ospml) reads — see
-# docs/reviews/review.md for the recording.
+# docs/plans/0041-dependent-types-and-mathlib.md#evidence for the recording.
 name = "idimp-tools"
 
 [[require]]

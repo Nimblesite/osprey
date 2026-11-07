@@ -256,46 +256,51 @@ def div(tape, a, b):
     return record_value(tape, Array.divide(av, bv), "div", [a, b], [av, bv])
 
 
+def unary(tape, a, name, kernel, save):
+    """Tape one elementwise unary op, saving its input when the backward
+    formula needs it."""
+    av = value_of(tape, a)
+    return record_value(tape, kernel(av), name, [a], [av] if save else [])
+
+
 def neg(tape, a):
     """Tape negative."""
-    return record_value(tape, Array.negative(value_of(tape, a)), "neg", [a], [])
+    return unary(tape, a, "neg", Array.negative, False)
 
 
 def exp(tape, a):
     """Tape elementwise exp: backward is `g * out`."""
-    return record_value(tape, Array.exp(value_of(tape, a)), "exp", [a], [])
+    return unary(tape, a, "exp", Array.exp, False)
 
 
 def log(tape, a):
     """Tape elementwise natural log: backward is `g / a`."""
-    av = value_of(tape, a)
-    return record_value(tape, Array.log(av), "log", [a], [av])
+    return unary(tape, a, "log", Array.log, True)
 
 
 def sqrt(tape, a):
     """Tape elementwise sqrt: backward is `g / (2 * out)`."""
-    return record_value(tape, Array.sqrt(value_of(tape, a)), "sqrt", [a], [])
+    return unary(tape, a, "sqrt", Array.sqrt, False)
 
 
 def square(tape, a):
     """Tape elementwise square: backward is `2 * g * a`."""
-    av = value_of(tape, a)
-    return record_value(tape, Array.square(av), "square", [a], [av])
+    return unary(tape, a, "square", Array.square, True)
 
 
 def tanh(tape, a):
     """Tape elementwise tanh: backward is `g * (1 - out^2)`."""
-    return record_value(tape, Array.tanh(value_of(tape, a)), "tanh", [a], [])
+    return unary(tape, a, "tanh", Array.tanh, False)
 
 
 def sigmoid(tape, a):
     """Tape elementwise sigmoid: backward is `g * out * (1 - out)`."""
-    return record_value(tape, sigmoid_forward(value_of(tape, a)), "sigmoid", [a], [])
+    return unary(tape, a, "sigmoid", sigmoid_forward, False)
 
 
 def relu(tape, a):
     """Tape elementwise ReLU: backward is `g * (out > 0)`."""
-    return record_value(tape, Tensor.max_scalar(value_of(tape, a), 0.0), "relu", [a], [])
+    return unary(tape, a, "relu", relu_forward, False)
 
 
 def leaky_relu(tape, a, slope):
@@ -308,44 +313,46 @@ def leaky_relu(tape, a, slope):
 
 def gelu(tape, a):
     """Tape GELU with torch's default exact forward and backward formulas."""
-    av = value_of(tape, a)
-    return record_value(tape, gelu_forward(av), "gelu", [a], [av])
+    return unary(tape, a, "gelu", gelu_forward, True)
 
 
 def silu(tape, a):
     """Tape SiLU (swish): `x * sigmoid(x)`, torch's exact backward."""
-    av = value_of(tape, a)
-    return record_value(tape, Array.multiply(av, sigmoid_forward(av)), "silu", [a], [av])
+    return unary(tape, a, "silu", silu_forward, True)
+
+
+def all_element(tape, a, name, kernel):
+    """Tape a whole-tensor reduction: the output is a rank-0 scalar tensor."""
+    out = Array.scalar(kernel(value_of(tape, a)))
+    return append(tape, Node(op=name, inputs=[a], saved=[], shape=[], value=out, axis=0, param=0.0, keep=False))
 
 
 def sum_all(tape, a):
     """Tape sum over every element: the output is a rank-0 scalar tensor."""
+    return all_element(tape, a, "sum_all", Array.sum)
+
+
+def axis_reduce(tape, a, axis, keepdims, name, kernel):
+    """Tape one axis reduction, keeping the reduced axis when `keepdims`."""
     av = value_of(tape, a)
-    out = Array.scalar(Array.sum(av))
-    return append(tape, Node(op="sum_all", inputs=[a], saved=[], shape=[], value=out, axis=0, param=0.0, keep=False))
+    ax = norm_axis(axis, len(av.shape))
+    out = kernel(av, ax, keepdims)
+    return append(tape, Node(op=name, inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=keepdims))
 
 
 def sum_axis(tape, a, axis, keepdims):
     """Tape sum along `axis`, with torch's keepdims flag."""
-    av = value_of(tape, a)
-    ax = norm_axis(axis, len(av.shape))
-    out = Array.sum_axis(av, ax, keepdims)
-    return append(tape, Node(op="sum_axis", inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=keepdims))
+    return axis_reduce(tape, a, axis, keepdims, "sum_axis", Array.sum_axis)
 
 
 def mean_all(tape, a):
     """Tape mean over every element: the output is a rank-0 scalar tensor."""
-    av = value_of(tape, a)
-    out = Array.scalar(Array.mean(av))
-    return append(tape, Node(op="mean_all", inputs=[a], saved=[], shape=[], value=out, axis=0, param=0.0, keep=False))
+    return all_element(tape, a, "mean_all", Array.mean)
 
 
 def mean_axis(tape, a, axis, keepdims):
     """Tape mean along `axis`, with torch's keepdims flag."""
-    av = value_of(tape, a)
-    ax = norm_axis(axis, len(av.shape))
-    out = Array.mean_axis(av, ax, keepdims)
-    return append(tape, Node(op="mean_axis", inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=keepdims))
+    return axis_reduce(tape, a, axis, keepdims, "mean_axis", Array.mean_axis)
 
 
 def matmul(tape, a, b):
@@ -378,6 +385,16 @@ def log_softmax(tape, a, dim):
 
 
 # Activation math ----------------------------------------------------------
+
+def relu_forward(x):
+    """torch's ReLU: `max(x, 0)`."""
+    return Tensor.max_scalar(x, 0.0)
+
+
+def silu_forward(x):
+    """torch's SiLU: `x * sigmoid(x)`."""
+    return Array.multiply(x, sigmoid_forward(x))
+
 
 def sigmoid_forward(x):
     """torch's sigmoid: `1 / (1 + exp(-x))`."""

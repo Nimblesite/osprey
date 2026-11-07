@@ -106,84 +106,46 @@ noCrlf (client, framing) = refuses (client, framing, "chunk data not followed by
 truncated (client, framing) = refuses (client, framing, "truncated")
 
 sizesBeyondTheBody client =
-    tooBig (client, "10\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "3\r\nhi")
-    tooBig (client, "6\r\nhello")
-    tooBig (client, "5\r\nhel")
-    tooBig (client, "1\r\n")
-    tooBig (client, "400\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "10000\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "7FFFFFFF\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "7fffffff\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "80000000\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "FFFFFFFF\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "100000000\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "8000000000000000\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "3\r\nabc\r\n7FFFFFFF\r\nhi\r\n0\r\n\r\n")
-    tooBig (client, "1;ext=1\r\n")
-    tooBig (client, "FFFFFFFF;ext=1\r\nhi\r\n0\r\n\r\n")
+    forEachList [
+        "10\r\nhi\r\n0\r\n\r\n", "3\r\nhi", "6\r\nhello",
+        "5\r\nhel", "1\r\n", "400\r\nhi\r\n0\r\n\r\n",
+        "10000\r\nhi\r\n0\r\n\r\n", "7FFFFFFF\r\nhi\r\n0\r\n\r\n", "7fffffff\r\nhi\r\n0\r\n\r\n",
+        "80000000\r\nhi\r\n0\r\n\r\n", "FFFFFFFF\r\nhi\r\n0\r\n\r\n", "100000000\r\nhi\r\n0\r\n\r\n",
+        "7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", "8000000000000000\r\nhi\r\n0\r\n\r\n", "FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n",
+        "3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n", "3\r\nabc\r\n7FFFFFFF\r\nhi\r\n0\r\n\r\n", "1;ext=1\r\n",
+        "FFFFFFFF;ext=1\r\nhi\r\n0\r\n\r\n"
+    ] (\framing => tooBig (client, framing))
 
 sizesThatAreNotSizes client =
-    badSize (client, "10000000000000000\r\n\r\n")
-    badSize (client, "10000000000000005\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n")
-    badSize (client, "-1\r\nhi\r\n0\r\n\r\n")
-    badSize (client, "-5\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "-0\r\n\r\n")
-    badSize (client, "-7FFFFFFF\r\nhi\r\n0\r\n\r\n")
-    badSize (client, "+5\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "0x5\r\nhello\r\n0\r\n\r\n")
-    badSize (client, " 5\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "\t5\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "zz\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "5z\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "5 z\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "5,3\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "g\r\n")
-    badSize (client, "\r\n")
-    badSize (client, "\r\n0\r\n\r\n")
-    badSize (client, ";ext\r\nhi\r\n0\r\n\r\n")
-    badSize (client, "5\nhello\n0\n\n")
-    badSize (client, "0\n\n")
-    badSize (client, "3\r\nabc\r\nzz\r\n")
-    badSize (client, "3\r\nabc\r\n-1\r\nhi\r\n")
-    badSize (client, "5\r\nhello\r\n\r\n")
-    badSize (client, "5;a\nb\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "5;a\rb\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "5;\n\r\nhello\r\n0\r\n\r\n")
-    badSize (client, "0;a\nb\r\n\r\n")
+    forEachList [
+        "10000000000000000\r\n\r\n", "10000000000000005\r\nhello\r\n0\r\n\r\n", "FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n",
+        "-1\r\nhi\r\n0\r\n\r\n", "-5\r\nhello\r\n0\r\n\r\n", "-0\r\n\r\n",
+        "-7FFFFFFF\r\nhi\r\n0\r\n\r\n", "+5\r\nhello\r\n0\r\n\r\n", "0x5\r\nhello\r\n0\r\n\r\n",
+        " 5\r\nhello\r\n0\r\n\r\n", "\t5\r\nhello\r\n0\r\n\r\n", "zz\r\nhello\r\n0\r\n\r\n",
+        "5z\r\nhello\r\n0\r\n\r\n", "5 z\r\nhello\r\n0\r\n\r\n", "5,3\r\nhello\r\n0\r\n\r\n",
+        "g\r\n", "\r\n", "\r\n0\r\n\r\n",
+        ";ext\r\nhi\r\n0\r\n\r\n", "5\nhello\n0\n\n", "0\n\n",
+        "3\r\nabc\r\nzz\r\n", "3\r\nabc\r\n-1\r\nhi\r\n", "5\r\nhello\r\n\r\n",
+        "5;a\nb\r\nhello\r\n0\r\n\r\n", "5;a\rb\r\nhello\r\n0\r\n\r\n", "5;\n\r\nhello\r\n0\r\n\r\n",
+        "0;a\nb\r\n\r\n"
+    ] (\framing => badSize (client, framing))
 
 dataWithoutItsCrlf client =
-    noCrlf (client, "5\r\nhelloXX0\r\n\r\n")
-    noCrlf (client, "5\r\nhello0\r\n\r\n")
-    noCrlf (client, "5\r\nhello\n0\r\n\r\n")
-    noCrlf (client, "5\r\nhello\rX0\r\n\r\n")
-    noCrlf (client, "5\r\nhello\n\r0\r\n\r\n")
-    noCrlf (client, "4\r\nhello\r\n0\r\n\r\n")
-    noCrlf (client, "6\r\nhello\r\n0\r\n\r\n")
-    noCrlf (client, "3\r\nabc\r\n2\r\nhiXX0\r\n\r\n")
+    forEachList [
+        "5\r\nhelloXX0\r\n\r\n", "5\r\nhello0\r\n\r\n", "5\r\nhello\n0\r\n\r\n",
+        "5\r\nhello\rX0\r\n\r\n", "5\r\nhello\n\r0\r\n\r\n", "4\r\nhello\r\n0\r\n\r\n",
+        "6\r\nhello\r\n0\r\n\r\n", "3\r\nabc\r\n2\r\nhiXX0\r\n\r\n"
+    ] (\framing => noCrlf (client, framing))
 
 framingCutShort client =
-    truncated (client, "")
-    truncated (client, "5")
-    truncated (client, "5\r")
-    truncated (client, "5 ")
-    truncated (client, "5;ext")
-    truncated (client, "5\r\nhello")
-    truncated (client, "5\r\nhello\r")
-    truncated (client, "5\r\nhello\r\n")
-    truncated (client, "5\r\nhello\r\n0")
-    truncated (client, "5\r\nhello\r\n0\r")
-    truncated (client, "5\r\nhello\r\n0\r\n")
-    truncated (client, "5\r\nhello\r\n0\r\n\r")
-    truncated (client, "0")
-    truncated (client, "0\r\n")
-    truncated (client, "0\r\nX-Trailer: yes")
-    truncated (client, "0\r\nX-Trailer: yes\r\n")
-    truncated (client, "0\r\nX-One: 1\r\nX-Two: 2\r\n")
+    forEachList [
+        "", "5", "5\r",
+        "5 ", "5;ext", "5\r\nhello",
+        "5\r\nhello\r", "5\r\nhello\r\n", "5\r\nhello\r\n0",
+        "5\r\nhello\r\n0\r", "5\r\nhello\r\n0\r\n", "5\r\nhello\r\n0\r\n\r",
+        "0", "0\r\n", "0\r\nX-Trailer: yes",
+        "0\r\nX-Trailer: yes\r\n", "0\r\nX-One: 1\r\nX-Two: 2\r\n"
+    ] (\framing => truncated (client, framing))
 
 wellFormedBodies client =
     accepts (client, "0\r\n\r\n", "")

@@ -645,6 +645,7 @@ ok select.batch.not
 ok select.range
 ok select.range.not
 ok select.record
+ok indexed.rebuild
 ok search.result.record
 ok range.result.record
 ok topk.record
@@ -652,4 +653,4 @@ ok flat.reset
 ok sq.qt8
 ok sq.qt4
 ok sq.qt8u
-654 passed, 0 failed
+655 passed, 0 failed

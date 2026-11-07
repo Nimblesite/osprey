@@ -141,7 +141,7 @@ So a row leaves its manifest only when the program works on that target, and the
 | --- | --- |
 | `src/osprey/examples/tui/api_browser.osp` | does not compile: recursive `awaitSpinning` awaits a Fiber parameter (#340) |
 
-- [ ] Fix #341 (bug): compare this list to reality. The four `gpt2/model` rows already skip nothing and go with that fix. `staging-type.osp` is a deliberate type error and stays listed. (5 rows)
+- [ ] Fix #341 (bug): compare this list to reality. The four `gpt2/model` rows already skip nothing and go with that fix. `staging-type.osp` moved to `failscompilation/` with its diagnostic golden, so it no longer needs a skip row. (4 rows)
 
 | Program | Reason |
 | --- | --- |
@@ -149,7 +149,6 @@ So a row leaves its manifest only when the program works on that target, and the
 | `src/osprey/examples/llms/gpt2/model/cpu.osp` | a module of the gpt2 example, not a program of its own |
 | `src/osprey/examples/llms/gpt2/model/gpu.osp` | a module of the gpt2 example, not a program of its own |
 | `src/osprey/examples/llms/gpt2/model/model.osp` | a module of the gpt2 example, not a program of its own |
-| `src/osprey/examples/handlers/staging-type.osp` | a deliberate type error, kept as a diagnostics example |
 
 ## Mobile C ABI targets reject: `MOBILE_UNPORTABLE.txt` (63 rows)
 
@@ -229,8 +228,8 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 
 | Program | Reason |
 | --- | --- |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `spawnProcess` |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `spawnProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `awaitProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `awaitProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp` | process spawning builtin `spawnProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml` | process spawning builtin `spawnProcess` |
 
@@ -321,8 +320,8 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 
 | Program | Reason |
 | --- | --- |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `spawnProcess` |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `spawnProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `awaitProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `awaitProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp` | process spawning builtin `spawnProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml` | process spawning builtin `spawnProcess` |
 

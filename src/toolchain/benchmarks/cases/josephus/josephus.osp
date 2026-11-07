@@ -1,17 +1,4 @@
 // Josephus problem — survivor index for n people, step k=7, via the modular recurrence.
-fn add(a, b) = a + b
-fn mod_(a, b) = a % b
-fn step(acc, i) = mod_(add(acc, 7), i)
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${range(2, 10000001) |> fold(0, step)}")
-}
+import bench::Bench::{guarded, add, modp}
+fn step(acc, i) = modp(add(acc, 7), i)
+fn main() = guarded(|| => print("${range(2, 10000001) |> fold(0, step)}"))

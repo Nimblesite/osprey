@@ -335,6 +335,19 @@ struct Value {
     deferred: Summary,
 }
 
+impl Value {
+    /// Every value this one carries: its fields, its element, its `Result`
+    /// payload and its fiber payload. Walking these is what makes a projection
+    /// or a latent effect search complete.
+    fn nested(&self) -> impl Iterator<Item = &Value> {
+        self.fields
+            .values()
+            .chain(self.element.as_deref())
+            .chain(self.result_payload.as_deref())
+            .chain(self.fiber_payload.as_deref())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum EmptyCase {
     Nullary,

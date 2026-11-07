@@ -64,6 +64,11 @@ ok hdr.meta_value
 ok hdr.len_hi
 ok hdr.huge
 ok hdr.overflow
+ok hdr.dtype_unknown
+ok hdr.same_start
+ok hdr.same_start_reversed
+ok hdr.offsets_out_of_order
+ok hdr.repeated_name_keys
 ok slice.one_row
 ok slice.empty_rows
 ok slice.vector
@@ -84,6 +89,9 @@ ok dtype.nonint
 ok bytes.pow2i
 ok bytes.pow2
 ok bytes.le_bytes
+ok bytes.checked_mul
+ok bytes.checked_mul_zero
+ok bytes.checked_mul_overflow
 ok bytes.le16
 ok bytes.le32
 ok bytes.le64
@@ -193,4 +201,4 @@ ok json.reject_14
 ok json.unterminated_escape
 ok json.unterminated_member_escape
 ok tensor_info.byte_extent
-195 passed, 0 failed
+203 passed, 0 failed

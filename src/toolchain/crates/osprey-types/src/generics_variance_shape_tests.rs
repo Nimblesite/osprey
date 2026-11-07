@@ -8,7 +8,7 @@
 //! and `position_message` helpers this module reuses.
 
 use crate::generics_variance_tests::{decl, position_message};
-use crate::testutil::{accepts, check, rejected_somehow, spec_cases};
+use crate::testutil::{accepts, check, rejects_with, spec_cases};
 use osprey_syntax::Flavor;
 
 spec_cases! {
@@ -31,8 +31,16 @@ spec_cases! {
 /// …and in the invariant KEY channel, both markers are refused.
 #[test]
 fn map_keys_refuse_both_markers() {
-    rejected_somehow(Flavor::Default, decl("<out T>", "byKey", "Map<T, int>"));
-    rejected_somehow(Flavor::Default, decl("<in T>", "byKey", "Map<T, int>"));
+    rejects_with(
+        Flavor::Default,
+        decl("<out T>", "byKey", "Map<T, int>"),
+        position_message("T", "out", "invariant", "byKey", "Holder"),
+    );
+    rejects_with(
+        Flavor::Default,
+        decl("<in T>", "byKey", "Map<T, int>"),
+        position_message("T", "in", "invariant", "byKey", "Holder"),
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -103,9 +111,10 @@ fn a_positional_variant_payload_is_an_output_position() {
         Flavor::Default,
         "type Maybe<out T> = Some(T) | None\nprint(\"declared\")",
     );
-    rejected_somehow(
+    rejects_with(
         Flavor::Default,
         "type Maybe<in T> = Some(T) | None\nprint(\"declared\")",
+        position_message("T", "in", "output", "0", "Maybe"),
     );
 }
 

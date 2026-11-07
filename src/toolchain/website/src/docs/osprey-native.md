@@ -16,7 +16,7 @@ tags: [native, applications, ui, gpui, vscode]
 
 {% videoPlayer "agent-native", true %}
 
-[Watch the agent walkthrough with chapters and transcript →](/docs/tutorials/agent-native/)
+[Watch the agent walkthrough with chapters and transcript →](/docs/osprey-native/agent/)
 
 **Osprey Agent is not sandboxed:** it can run commands and change files your account can.
 

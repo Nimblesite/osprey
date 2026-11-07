@@ -1,5 +1,6 @@
 namespace registry;
 import registry::Order
+import registry::Bytes
 
 /// The ASCII relative POSIX path grammar of a canonical source tree: segments
 /// of `[A-Za-z0-9._-]{1,128}` that are neither `.` nor `..`, at most 1,024
@@ -17,16 +18,11 @@ module Paths {
     let legalStems = ["license", "copying", "notice", "authors", "third_party_notices"]
     let legalSuffixes = ["", ".txt", ".md"]
 
-    fn alpha(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-    fn digit(b) = b >= 48 && b <= 57
-    fn segmentByte(b) = alpha(b) || digit(b) || b == 46 || b == 95 || b == 45
-    fn allSegmentBytes(s) = fold(range(0, byteLength(s)), true, fn(ok, i) => ok && segmentByte(byteAt(s, i) ?: 0))
-    fn hasByte(s, p) = fold(range(0, byteLength(s)), false, fn(found, i) => found || p(byteAt(s, i) ?: 0))
+    fn segmentByte(b) = Bytes::isAlnumIn(b, [Bytes::dot, Bytes::underscore, Bytes::hyphen])
+    fn allSegmentBytes(s) = Bytes::everyByte(s, segmentByte)
+    fn hasByte(s, p) = Bytes::anyByte(s, p)
 
-    fn stem(segment) = match indexOf(segment, ".") {
-        Success { value } => take(segment, value)
-        Error => segment
-    }
+    fn stem(segment) = Bytes::before(segment, ".")
 
     fn deviceStem(segment) = listContains(devices, toUpperCase(stem(segment)))
 

@@ -113,7 +113,7 @@ def parser_contract():
     axis = Parsing.Axis(kind="named", name="a", value=0)
     group = Parsing.Composite(kind="group", axes=[axis])
     parsed = Parsing.ParsedExpression(expression="a", has_ellipsis=False, has_ellipsis_parenthesized=False, has_non_unitary_anonymous_axes=False, identifiers=[axis], composition=[group])
-    return [Check.truth("named axis", structuralEquals(Parsing.named("a"), axis), "named axis differs"), Check.equal("axis repr", Parsing.axis_repr(axis), "'a'"), Check.equal("axis set", Parsing.format_axes([Parsing.named("b"), axis]), "{'a', 'b'}"), Check.equal("axis membership", Parsing.axis_in_idents([axis], Parsing.named("a")), True), Check.equal("absent axis", Parsing.axis_in_idents([axis], Parsing.named("b")), False), Check.truth("flat order", structuralEquals(Parsing.flat_axes_order(parsed), [axis]), "axis order differs"), Check.equal("uncomposed", Parsing.has_composed_axes(parsed), False), Check.equal("ellipsis", Parsing.ELLIPSIS, "…"), Check.equal("valid identifier", Parsing.check_axis_name("axis"), True), Check.truth("invalid identifier", structuralEquals(Parsing.check_axis_name_return_reason("1a", False), Parsing.AxisNameCheck(is_valid=False, reason="not a valid python identifier")), "identifier verdict differs"), Check.ints_equal("immutable set", Recipe.set_at([1, 2, 3], 1, 9), [1, 9, 3])]
+    return [Check.truth("named axis", structuralEquals(Parsing.named("a"), axis), "named axis differs"), Check.equal("axis repr", Parsing.axis_repr(axis), "'a'"), Check.equal("axis set", Parsing.format_axes([Parsing.named("b"), axis]), "{'a', 'b'}"), Check.equal("axis membership", Parsing.axis_in_idents([axis], Parsing.named("a")), True), Check.equal("absent axis", Parsing.axis_in_idents([axis], Parsing.named("b")), False), Check.truth("flat order", structuralEquals(Parsing.flat_axes_order(parsed), [axis]), "axis order differs"), Check.equal("uncomposed", Parsing.has_composed_axes(parsed), False), Check.equal("ellipsis", Parsing.ELLIPSIS, "…"), Check.equal("valid identifier", Parsing.check_axis_name("axis"), True), Check.truth("invalid identifier", structuralEquals(Parsing.check_axis_name_return_reason("1a", False), Parsing.AxisNameCheck(is_valid=False, reason="not a valid python identifier")), "identifier verdict differs"), Check.ints_equal("immutable set", Recipe.set_at([1, 2, 3], 1, 9), [1, 9, 3]), Check.ints_equal("indexed rebuild", Parsing.map_indexed([5, 6, 7], lambda i: i * 3), [0, 3, 6]), Check.ints_equal("indexed single", Parsing.map_indexed(["x"], lambda i: i + 4), [4])]
 
 
 def recipe_contract():
@@ -127,8 +127,4 @@ def cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(cases)

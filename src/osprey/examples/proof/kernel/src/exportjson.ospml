@@ -32,52 +32,51 @@ module ExportJson
         Success _ => true
         Error _ => false
 
-    export textIn (json, name) = upon (fieldIn (json, name), \value => textAs (value, name))
+    export textIn (json, name) = asIn (json, name, textAs)
+
+    // The member `name`, read by `read`.
+    asIn (json, name, read) = upon (fieldIn (json, name), \value => read (value, name))
 
     textAs (value, name) = match jsonText value
         Success text => Success(value = text)
         Error _ => Error(message = "${name} is not a string")
 
-    export intIn (json, name) = upon (fieldIn (json, name), \value => intAs (value, name))
+    export intIn (json, name) = asIn (json, name, intAs)
 
     (** The integer `value`, which `name` names. *)
     export intAs (value, name) = match jsonInt value
         Success number => Success(value = number)
         Error _ => Error(message = "${name} is not an integer")
 
-    export arrayIn (json, name) = upon (fieldIn (json, name), \value => arrayAs (value, name))
+    export arrayIn (json, name) = asIn (json, name, arrayAs)
 
     arrayAs (value, name) = match value
         JsonArray items => Success(value = items)
         other => Error(message = "${name} is not an array")
 
-    export boolIn (json, name) = upon (fieldIn (json, name), \value => boolAs (value, name))
+    export boolIn (json, name) = asIn (json, name, boolAs)
 
     boolAs (value, name) = match jsonBool value
         Success flag => Success(value = flag)
         Error _ => Error(message = "${name} is not a boolean")
 
+    (** The entry `index` of `table`, or an error naming the `kind` of table
+        that does not hold it. *)
+    entryOf (table, kind, index) = match mapGet (table, toString index)
+        Success value => Success(value = value)
+        Error _ => Error(message = "unknown ${kind} ${toString index}")
+
     (** Name 0 is the anonymous root and prints as the empty prefix. *)
     export nameOf (tables, index) = match index == 0
         true => Success(value = "")
-        false => namedEntry (tables, index)
-
-    namedEntry (tables, index) = match mapGet (tables.names, toString index)
-        Success name => Success(value = name)
-        Error _ => Error(message = "unknown name ${toString index}")
+        false => entryOf (tables.names, "name", index)
 
     (** Level 0 is `Zero`. *)
     export levelOf (tables, index) = match index == 0
         true => Success(value = Zero)
-        false => leveledEntry (tables, index)
+        false => entryOf (tables.levels, "level", index)
 
-    leveledEntry (tables, index) = match mapGet (tables.levels, toString index)
-        Success level => Success(value = level)
-        Error _ => Error(message = "unknown level ${toString index}")
-
-    export exprOf (tables, index) = match mapGet (tables.exprs, toString index)
-        Success term => Success(value = term)
-        Error _ => Error(message = "unknown expr ${toString index}")
+    export exprOf (tables, index) = entryOf (tables.exprs, "expr", index)
 
     (** A declaration's name, through the name table. *)
     export declName (tables, json) = upon (intIn (json, "name"), \ref => declarationName (tables, ref))

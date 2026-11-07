@@ -61,7 +61,8 @@ module HandoverTests {
         let cancelled = Fixture::orKeep(pending, fn(w) =>
             GovernanceHandover::cancelHandover(w, "t-1",
                 Fixture::adminProof(w, "pkg-f1", Governance::cancelStatement("t-1"))))
-        let declined = Fixture::orKeep(Fixture::orKeep(cancelled, fn(w) => propose(w, "t-2", "m-bob")), fn(w) =>
+        let proposedAgain = Fixture::orKeep(cancelled, fn(w) => propose(w, "t-2", "m-bob"))
+        let declined = Fixture::orKeep(proposedAgain, fn(w) =>
             GovernanceHandover::declineHandover(w, "t-2",
                 Fixture::verified("p-bob", "m-bob", Governance::declineStatement("t-2"))))
         checkAll("one live proposal per package, evidence for every outcome", [
@@ -71,11 +72,18 @@ module HandoverTests {
             Fixture::code(GovernanceHandover::cancelHandover(pending, "t-1",
                 Fixture::adminProof(pending, "pkg-f1", Governance::cancelStatement("t-1")))) == "",
             Fixture::code(propose(cancelled, "t-2", "m-bob")) == "",
-            Fixture::code(GovernanceHandover::declineHandover(cancelled, "t-2",
+            Fixture::code(GovernanceHandover::declineHandover(proposedAgain, "t-2",
                 Fixture::verified("p-carol", "m-carol", Governance::declineStatement("t-2")))) == "governance.proof.wrong-membership",
-            Fixture::code(GovernanceHandover::declineHandover(cancelled, "t-2",
+            Fixture::code(GovernanceHandover::declineHandover(proposedAgain, "t-2",
                 Fixture::verified("p-bob", "m-bob", Governance::declineStatement("t-2")))) == "",
-            Fixture::code(GovernanceHandover::expireHandover(declined, "t-2", 1000)) == "governance.transfer.not-expired",
+            // [PACKAGE-OWNERSHIP-ADMIN] "a 24-hour pending hold" and "Cancelled,
+            // declined, expired and completed proposals remain evidence": only a
+            // live proposal has an expiry window, so the refusal below is asked of
+            // the pending t-2 (proposed at 100, expires at 292), not of the
+            // already-declined row that is terminal evidence.
+            Fixture::code(GovernanceHandover::expireHandover(proposedAgain, "t-2", 200)) == "governance.transfer.not-expired",
+            // A declined row is terminal evidence, never a live proposal to expire.
+            Fixture::code(GovernanceHandover::expireHandover(declined, "t-2", 1000)) == "governance.transfer.not-pending",
             Fixture::code(propose(declined, "t-3", "m-carol")) == "",
             Fixture::code(GovernanceHandover::expireHandover(Fixture::orKeep(declined, fn(w) => propose(w, "t-3", "m-carol")), "t-3", 1000)) == "",
             length(declined.transfers) >= 2
@@ -91,13 +99,22 @@ module HandoverTests {
             Fixture::code(accept(pending, "t-1", "p-carol", "m-carol")) == "governance.proof.wrong-membership",
             Fixture::code(accept(pending, "t-1", "p-bob", "m-erin")) == "governance.proof.wrong-membership",
             Fixture::code(accept(pending, "t-1", "p-erin", "m-bob")) == "governance.proof.wrong-actor",
-            Fixture::code(accept(pending, "t-1", "p-bot", "m-bot")) == "governance.proof.wrong-actor",
+            // [PACKAGE-OWNERSHIP-ADMIN] "the proposed active human org member's
+            // fresh acceptance": the acceptance is bound to the recipient's own
+            // membership, so this proof must carry m-bob to reach the actor guard;
+            // a workflow principal's proof carries its own membership and is
+            // refused as the wrong membership below.
+            Fixture::code(accept(pending, "t-1", "p-bot", "m-bob")) == "governance.proof.wrong-actor",
+            Fixture::code(accept(pending, "t-1", "p-bot", "m-bot")) == "governance.proof.wrong-membership",
             Fixture::code(GovernanceHandover::acceptHandover(pending, "t-1",
                 Fixture::workflow("p-bob", "m-bob", Governance::handoverAcceptanceStatement("t-1", ledger, 1, "m-alice", "m-bob")))) == "governance.proof.ceremony",
             Fixture::code(accept(pending, "t-1", "p-bob", "m-bob")) == "",
             Fixture::code(GovernanceHandover::finalizeHandover(pending, "t-1", 124)) == "governance.transfer.acceptance-missing",
-            match Governance::packageOf(accept(pending, "t-1", "p-bob", "m-bob"), "pkg-f1") {
-                Success { value } => value.admin == "m-alice"
+            match accept(pending, "t-1", "p-bob", "m-bob") {
+                Success { value } => match Governance::packageOf(value, "pkg-f1") {
+                    Success { value } => value.admin == "m-alice"
+                    Error => false
+                }
                 Error => false
             }
         ])

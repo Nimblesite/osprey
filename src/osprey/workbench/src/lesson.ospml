@@ -139,7 +139,7 @@ module Lessons
         Success doc => checked (doc, Doc::text (doc, "slug"))
 
     checked (doc, slug) = match header (doc, slug)
-        "" => gathered (doc, slug, (foldList (Doc::items (Doc::field (doc, "blocks")), { at = 0, done = Gathering [] }, \(walk, item) => { at = satAdd walk.at 1, done = gather (walk.done, slug, item, walk.at) })).done)
+        "" => gathered (doc, slug, (foldList (Doc::fieldItems (doc, "blocks"), { at = 0, done = Gathering [] }, \(walk, item) => { at = satAdd walk.at 1, done = gather (walk.done, slug, item, walk.at) })).done)
         problem => Error(message = problem)
 
     gather (done, slug, item, at) = match done
@@ -240,21 +240,18 @@ module Challenges
         "" => Posed (ProveTask (Proving(provedHeading = Doc::text (doc, "statement"), provedGiven = Doc::texts (doc, "given"), provedSolution = Doc::texts (doc, "solution"))))
         problem => Unposed problem
 
-    stating (doc, path) = match Lessons::firstOf [Lessons::needText (doc, "expected", path), variablesProblem (doc, path)]
-        "" => Posed (StateTask (Stating(statedVariables = Doc::texts (doc, "variables"), statedExpected = Doc::text (doc, "expected"))))
+    // A task posed only when its `heading` text is there and its `key` list is not empty.
+    listed (doc, path, heading, key, complaint, then) = match Lessons::firstOf [Lessons::needText (doc, heading, path), missing (doc, path, key, complaint)]
+        "" => then ()
         problem => Unposed problem
 
-    variablesProblem (doc, path) = match isEmpty (Doc::texts (doc, "variables"))
-        true => path + ".variables must name at least one proposition"
+    missing (doc, path, key, complaint) = match isEmpty (Doc::texts (doc, key))
+        true => path + "." + key + " must " + complaint
         false => ""
 
-    judging (doc, path) = match Lessons::firstOf [Lessons::needText (doc, "statement", path), stepsProblem (doc, path)]
-        "" => Posed (JudgeTask (Judging(judgedHeading = Doc::text (doc, "statement"), judgedSteps = Doc::texts (doc, "steps"))))
-        problem => Unposed problem
+    stating (doc, path) = listed (doc, path, "expected", "variables", "name at least one proposition", \() => Posed (StateTask (Stating(statedVariables = Doc::texts (doc, "variables"), statedExpected = Doc::text (doc, "expected")))))
 
-    stepsProblem (doc, path) = match isEmpty (Doc::texts (doc, "steps"))
-        true => path + ".steps must list the proof to judge"
-        false => ""
+    judging (doc, path) = listed (doc, path, "statement", "steps", "list the proof to judge", \() => Posed (JudgeTask (Judging(judgedHeading = Doc::text (doc, "statement"), judgedSteps = Doc::texts (doc, "steps")))))
 
 (** One stage of the catalogue: its number and its name ([LESSONS-FILES]). *)
 type Stage =
@@ -273,7 +270,7 @@ module Catalogues
     problem doc = Lessons::firstOf [
         format doc,
         slugsProblem (Doc::texts (doc, "lessons")),
-        stagesProblem (mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item)),
+        stagesProblem (mapList (Doc::fieldItems (doc, "stages"), \item => stage item)),
     ]
 
     format doc = match Doc::number (doc, "format") == 1
@@ -292,5 +289,5 @@ module Catalogues
     export read source = match jsonDecode source
         Error _ => Error(message = "the catalogue is not JSON")
         Success doc => match problem doc
-            "" => Success(value = Catalogue(catalogueStages = mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item), catalogueSlugs = Doc::texts (doc, "lessons")))
+            "" => Success(value = Catalogue(catalogueStages = mapList (Doc::fieldItems (doc, "stages"), \item => stage item), catalogueSlugs = Doc::texts (doc, "lessons")))
             found => Error(message = found)

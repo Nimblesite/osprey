@@ -1,6 +1,6 @@
 # Each macOS app's tests on its real host [UI-MACHINE-SELF-TEST]. One target runs one app: <app> in a
 # real window, <app>-headless with the same script and no window to see. Records go to target/.
-# Tests with no host at all, the same on every platform: src/toolchain/targets/tests.
+# Tests with no host at all, the same on every platform: tests.
 ROOT ?= ../../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
@@ -20,7 +20,7 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live storage-headless synth-headless
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live examples graphics qwen qwen-headless storage-headless synth-headless workbench
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.
@@ -29,6 +29,30 @@ $(GPUI_APPS):
 
 $(GPUI_APPS:%=%-headless): %-headless:
 	$(MAKE) -C $(ROOT) _gpui-app-self-test APP_DIR=$(app_$*) SCRIPT_DIR=$(script_$*)
+
+## examples: The iPhone C ABI fixture, the whole corpus against the same goldens and skip manifest,
+##           and the storage example, on this Mac. The storage domain suite runs natively, so it needs
+##           `_runtime`.
+examples: _macos-examples _runtime
+	$(MAKE) _test_macos
+
+## graphics: Render every graphics scene for GFX_SMOKE_FRAMES frames and require each to report them.
+##           Needs a desktop session and a Metal GPU.
+graphics:
+	$(MAKE) _graphics-smoke
+
+## qwen: The Qwen server on the real weights and Metal: generate, chat with tools, the OpenAI route,
+##       checkpoint reuse and the num_ctx limit, through the real ollama and openai clients; the GGUF is
+##       pulled first if it is missing. Unload Ollama's resident model first.
+qwen: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-lanes LANES=real
+
+## qwen-headless: The Qwen model suite on the Metal device, equal to the golden byte for byte, with at
+##                least one Metal dispatch completed (plan 0049 Phase 3).
+qwen-headless: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
 ## synth-headless: The synth's recorded events through the GPUI host's C boundary, with no window.
 # The synth's recorded events through the GPUI host, with no window.
@@ -56,4 +80,10 @@ agent-headless: _runtime_macos
 agent-live: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
+
+## workbench: Build the Mac Workbench host, then `0 failures` from its Swift suite. Fetch the LFS
+##            lesson assets first.
+workbench: build
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/workbench/hosts/apple/run.sh --build
+	swift test --package-path src/osprey/workbench/hosts/apple
 endif

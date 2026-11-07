@@ -28,30 +28,51 @@ fn returned_step(returned: Value) -> Value {
     })))
 }
 
+/// Sweep `element` through `history`, returning each sweep's joined return.
+fn swept_returns(
+    element: impl Fn(usize) -> Value,
+    history: &mut ReturnHistory,
+) -> Vec<Option<Value>> {
+    let mut before: Option<Value> = None;
+    let mut returned = Vec::new();
+    for sweep in 0..SWEEPS {
+        let _ = advance_return(&mut before, element(sweep), FUNCTION, history);
+        returned.push(before.clone());
+    }
+    returned
+}
+
+/// Every pair of returns in the settled tail must agree: the program reached a
+/// fixed point instead of drifting for `SWEEPS` sweeps.
+fn assert_settled(returned: &[Option<Value>], moving: &str) {
+    let tail = returned.get(SWEEPS - SETTLED_TAIL..).unwrap_or_default();
+    assert!(
+        tail.windows(2).all(|pair| pair.first() == pair.last()),
+        "{moving} after {SWEEPS} sweeps never reaches a fixed point"
+    );
+}
+
+/// The `functions - 1` declarations that hand off to the next one, one per
+/// line — the spine of every long-cycle test below.
+fn chained(functions: usize, declaration: impl Fn(usize) -> String) -> String {
+    (0..functions - 1)
+        .map(declaration)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[test]
 fn recursive_returns_settle_at_existing_provenance_limits() {
     crate::effect_rows_tests::assert_accepted(RECURSIVE_STEP);
     let mut history = ReturnHistory::default();
-    let mut before: Option<Value> = None;
-    let mut returned = Vec::new();
-    for sweep in 0..SWEEPS {
-        let _ = advance_return(&mut before, fresh_return(sweep), FUNCTION, &mut history);
-        returned.push(before.clone());
-    }
-    let tail = returned.get(SWEEPS - SETTLED_TAIL..).unwrap_or_default();
-    assert!(
-        tail.windows(2).all(|pair| pair.first() == pair.last()),
-        "a return still moving after {SWEEPS} sweeps never reaches a fixed point"
-    );
+    let returned = swept_returns(fresh_return, &mut history);
+    assert_settled(&returned, "a return still moving");
 }
 
 #[test]
 fn finite_returned_function_spines_keep_their_precise_provenance() {
     for depth in [20, 30] {
-        let links = (0..depth - 1)
-            .map(|index| format!("fn link{index}()=link{}", index + 1))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let links = chained(depth, |index| format!("fn link{index}()=link{}", index + 1));
         let calls = "()".repeat(depth);
         let last = depth - 1;
         crate::effect_rows_tests::assert_accepted(&format!(
@@ -82,31 +103,16 @@ fn never_revisiting_return(sweep: usize) -> Value {
 #[test]
 fn recursive_returns_that_never_revisit_still_settle() {
     let mut history = ReturnHistory::new([FUNCTION].into());
-    let mut before: Option<Value> = None;
-    let mut returned = Vec::new();
-    for sweep in 0..SWEEPS {
-        let _ = advance_return(
-            &mut before,
-            never_revisiting_return(sweep),
-            FUNCTION,
-            &mut history,
-        );
-        returned.push(before.clone());
-    }
-    let tail = returned.get(SWEEPS - SETTLED_TAIL..).unwrap_or_default();
-    assert!(
-        tail.windows(2).all(|pair| pair.first() == pair.last()),
-        "a return that never revisits is still moving after {SWEEPS} sweeps"
-    );
+    let returned = swept_returns(never_revisiting_return, &mut history);
+    assert_settled(&returned, "a return that never revisits is still moving");
 }
 
 /// `relay0 … relay{n-1}` hand a callback around one cycle of `n` functions,
 /// closed by the last relay's fallback call back to the first.
 fn mutual_relay(functions: usize, handled: bool) -> String {
-    let relays = (0..functions - 1)
-        .map(|index| format!("fn relay{index}(stop)=relay{}(stop)", index + 1))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let relays = chained(functions, |index| {
+        format!("fn relay{index}(stop)=relay{}(stop)", index + 1)
+    });
     let last = functions - 1;
     let call = "let callback=relay0(true)\ncallback()";
     let body = if handled {
@@ -136,10 +142,9 @@ fn long_mutual_recursion_cycles_keep_their_precise_callback() {
 /// unwraps `n - 1` closures; the last spine's fallback reaches back to the
 /// first, making all of them one cycle whose return grows for `n` sweeps.
 fn mutual_spine(functions: usize, tail: &str, handled: bool) -> String {
-    let spines = (0..functions - 1)
-        .map(|index| format!("fn spine{index}(stop)=fn()=>spine{}(true)", index + 1))
-        .collect::<Vec<_>>()
-        .join("\n");
+    let spines = chained(functions, |index| {
+        format!("fn spine{index}(stop)=fn()=>spine{}(true)", index + 1)
+    });
     let last = functions - 1;
     let call = format!("spine0(true){}", "()".repeat(last));
     let body = if handled {

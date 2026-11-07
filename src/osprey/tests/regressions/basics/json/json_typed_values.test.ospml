@@ -96,10 +96,10 @@ encodingIsCompactAndOrdered () =
     print "encoded: ${text}"
     checkAll "members keep their order, floats keep their point" [
         text == "{\"name\":\"osprey\",\"tags\":[\"fast\",\"typed\"],\"version\":3,\"ratio\":0.25,\"whole\":2.0,\"nested\":{\"empty\":[],\"none\":{}},\"flags\":[true,false,null]}",
-        encoded JsonNull == "null", encoded (JsonInt (-9223372036854775807)) == "-9223372036854775807",
-        encoded (JsonFloat (parseFloat "1e300" ?: 0.0)) == "1e+300", encoded (JsonFloat (-0.5)) == "-0.5",
-        encoded (JsonArray []) == "[]", encoded (JsonObject []) == "{}",
-        encoded (JsonArray [JsonArray [JsonArray []]]) == "[[[]]]",
+        structuralEquals [encoded JsonNull, encoded (JsonInt (-9223372036854775807))] ["null", "-9223372036854775807"],
+        encoded (JsonFloat (parseFloat "1e300" ?: 0.0)) == "1e+300",
+        structuralEquals [encoded (JsonFloat (-0.5)), encoded (JsonArray [])] ["-0.5", "[]"],
+        structuralEquals [encoded (JsonObject []), encoded (JsonArray [JsonArray [JsonArray []]])] ["{}", "[[[]]]"],
     ]
 
 stringsEscapeExactly () =
@@ -110,19 +110,14 @@ stringsEscapeExactly () =
         quoted == "\"quote\\\" back\\\\ slash/ tab\\t nl\\n cr\\r esc\\u001b del${char 127} é 😀\"",
         (jsonQuote "" ?: "x") == "\"\"",
         (jsonQuote "${char 1}${char 31}${char 8}${char 12}" ?: "x") == "\"\\u0001\\u001f\\b\\f\"",
+        (jsonText (jsonDecode "\"\\u00e9\\ud83d\\ude00\\/\"" ?: JsonNull) ?: "x") == "é😀/",
         canonical quoted == quoted,
         (jsonText (jsonDecode quoted ?: JsonNull) ?: "x") == awkward,
-        (jsonText (jsonDecode "\"\\u00e9\\ud83d\\ude00\\/\"" ?: JsonNull) ?: "x") == "é😀/",
     ]
 
 numbersKeepTheirKind () = checkAll "integers and floats stay distinct both ways" [
-    firstKind "[1]" == "int", firstKind "[1.0]" == "float", firstKind "[1e2]" == "float",
-    firstKind "[-0]" == "int", firstKind "[0.5e-3]" == "float",
-    (jsonInt (jsonDecode "9223372036854775807" ?: JsonNull) ?: 0) == 9223372036854775807,
-    (jsonInt (jsonDecode "-9223372036854775808" ?: JsonNull) ?: 0) == satSub (-9223372036854775807) 1,
-    (jsonFloat (jsonDecode "1e2" ?: JsonNull) ?: 0.0) == 100.0,
-    (jsonFloat (jsonDecode "7" ?: JsonNull) ?: 0.0) == 7.0,
-    (jsonInt (jsonDecode "7.0" ?: JsonNull) ?: 0) == 0,
+    structuralEquals [firstKind "[1]", firstKind "[1.0]", firstKind "[1e2]"] ["int", "float", "float"],
+    structuralEquals [firstKind "[-0]", firstKind "[0.5e-3]"] ["int", "float"],
     canonical "[1,1.0,1e2,-0,123456789012345678]" == "[1,1.0,100.0,0,123456789012345678]",
     canonical "[0.1,2.5e-8,1.7976931348623157e308]" == "[0.1,2.5e-08,1.7976931348623157e+308]",
     reason (jsonDecode "[9223372036854775808]") == "jsonDecode: byte 1: integer outside the 64-bit range",
@@ -130,6 +125,11 @@ numbersKeepTheirKind () = checkAll "integers and floats stay distinct both ways"
     reason (jsonDecode "1e999") == "jsonDecode: byte 0: number outside the float range",
     reason (jsonEncode (JsonFloat (sqrt (-1.0)))) == "jsonEncode: value: float is not finite",
     reason (jsonEncode (JsonArray [JsonInt 1, JsonFloat (exp 1000.0)])) == "jsonEncode: value: float is not finite",
+    (jsonInt (jsonDecode "9223372036854775807" ?: JsonNull) ?: 0) == 9223372036854775807,
+    (jsonInt (jsonDecode "7.0" ?: JsonNull) ?: 0) == 0,
+    (jsonInt (jsonDecode "-9223372036854775808" ?: JsonNull) ?: 0) == satSub (-9223372036854775807) 1,
+    (jsonFloat (jsonDecode "1e2" ?: JsonNull) ?: 0.0) == 100.0,
+    (jsonFloat (jsonDecode "7" ?: JsonNull) ?: 0.0) == 7.0,
 ]
 
 malformedTextSaysWhere () = checkAll "every rejection names its byte and its reason" [
@@ -155,10 +155,6 @@ accessorsAreTyped () =
     scores = jsonField user "scores" ?: JsonNull
     checkAll "each accessor answers its own kind and explains the rest" [
         (jsonText (jsonField user "name" ?: JsonNull) ?: "?") == "Ada",
-        (jsonInt (jsonField user "age" ?: JsonNull) ?: 0) == 36,
-        jsonBool (jsonField user "admin" ?: JsonNull) ?: false,
-        (jsonFloat (jsonIndex scores 0 ?: JsonNull) ?: 0.0) == 9.5,
-        (jsonFloat (jsonIndex scores 1 ?: JsonNull) ?: 0.0) == 7.0,
         kind (jsonIndex scores 2 ?: JsonInt 0) == "null",
         reason (jsonField user "email") == "jsonField: no member email",
         reason (jsonField scores "name") == "jsonField: not an object",
@@ -169,7 +165,10 @@ accessorsAreTyped () =
         reason (jsonInt (jsonIndex scores 0 ?: JsonNull)) == "jsonInt: not an integer",
         reason (jsonFloat (jsonField user "name" ?: JsonNull)) == "jsonFloat: not a number",
         reason (jsonBool JsonNull) == "jsonBool: not a boolean",
-        sumInts document == 43,
+        structuralEquals [(jsonInt (jsonField user "age" ?: JsonNull) ?: 0), sumInts document] [36, 43],
+        jsonBool (jsonField user "admin" ?: JsonNull) ?: false,
+        (jsonFloat (jsonIndex scores 0 ?: JsonNull) ?: 0.0) == 9.5,
+        (jsonFloat (jsonIndex scores 1 ?: JsonNull) ?: 0.0) == 7.0,
     ]
 
 recordsRoundTrip () =
@@ -179,9 +178,10 @@ recordsRoundTrip () =
     print "order: ${text}"
     checkAll "a record survives encode then decode" [
         text == "{\"id\":42,\"customer\":\"Grace \\\"G\\\" Hopper\",\"total\":19.99,\"paid\":true,\"lines\":[\"cable\",\"adapter\"]}",
-        back.id == 42, back.customer == "Grace \"G\" Hopper", back.total == 19.99, back.paid,
-        canonical text == text,
+        back.customer == "Grace \"G\" Hopper",
         canonical " { \"a\" : [ 1 , { } ] , \"b\" : \"\" } " == "{\"a\":[1,{}],\"b\":\"\"}",
+        back.id == 42, back.total == 19.99, back.paid,
+        canonical text == text,
     ]
 
 test "encoding is compact and ordered" encodingIsCompactAndOrdered

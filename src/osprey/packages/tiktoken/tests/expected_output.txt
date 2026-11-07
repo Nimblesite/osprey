@@ -3095,6 +3095,7 @@ ok is_special[4]
 ok is_special[5]
 ok special.names
 ok special.ids
+ok unicode.map_indexed
 ok overlap[0]
 ok overlap[1]
 ok overlap[2]
@@ -3221,4 +3222,4 @@ ok helpers.earliest_special.token
 ok helpers.SimpleBytePairEncoding
 ok helpers.encode_range
 ok helpers.split_cps
-3223 passed, 0 failed
+3224 passed, 0 failed

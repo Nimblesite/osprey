@@ -28,7 +28,6 @@ import registry::ReleasePath
 /// new release is served after `registry-serve` restarts. The authenticated
 /// `publish` of the trust plane (spec 0030) replaces this in Milestone B.
 module Publish {
-    let failStatus = 1
     let usageCode = "publish.usage"
     let noPackageCode = "publish.no-package"
     let folderFlag = "--folder"
@@ -37,19 +36,12 @@ module Publish {
 
     type CommandLine = { folder: string, project: string, breaking: bool }
 
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
     fn commandLine(parsed) = CommandLine { folder: Flags::given(parsed, folderFlag, ""), project: Flags::project(parsed), breaking: Flags::has(parsed, breakingFlag) }
 
     // Shared field names need typed receivers (issue #273).
     fn folderOf(cmd: CommandLine) = cmd.folder
     fn projectOf(cmd: CommandLine) = cmd.project
     fn breakingOf(cmd: CommandLine) = cmd.breaking
-    fn epochOf(id: Identity::ReleaseId) = id.epoch
-    fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
-    fn idOf(s: Release::Served) = s.id
-    fn filesOf(s: Release::Served) = s.files
     fn assetPath(a: ManifestModel::Asset) = a.path
 
     fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
@@ -91,9 +83,9 @@ module Publish {
         Success { value } => foldList(value.regular, [], fn(ids, path) => appendId(ids, key, path))
     }
 
-    fn newestEpoch(ids) = foldList(ids, 0, fn(best, id) => if epochOf(id) > best { epochOf(id) } else { best })
+    fn newestEpoch(ids) = foldList(ids, 0, fn(best, id) => if Identity::epochOf(id) > best { Identity::epochOf(id) } else { best })
 
-    fn newestOrdinal(ids, epoch) = foldList(ids, 0, fn(best, id) => if epochOf(id) == epoch && ordinalOf(id) > best { ordinalOf(id) } else { best })
+    fn newestOrdinal(ids, epoch) = foldList(ids, 0, fn(best, id) => if Identity::epochOf(id) == epoch && Identity::ordinalOf(id) > best { Identity::ordinalOf(id) } else { best })
 
     /// `1.1` for a new package; else the next ordinal of the newest epoch, or
     /// the first ordinal of the next epoch with `--breaking`.
@@ -106,40 +98,27 @@ module Publish {
 
     // ---- placing the release ----
 
-    fn placed(cmd, served) = match Fetch::writeFiles("${folderOf(cmd)}/${ReleasePath::format(idOf(served))}", filesOf(served)) {
-        Error { message } => failed([message])
-        Success => Reports::success([
-            "published ${Lockfile::compact(idOf(served))}",
-            Reports::field("into", "${folderOf(cmd)}/${ReleasePath::format(idOf(served))}"),
-            Reports::field("files", "${length(filesOf(served))}"),
-            "restart registry-serve to serve it"
-        ])
-    }
+    fn placedAt(cmd, served) = "${folderOf(cmd)}/${ReleasePath::format(Release::idOf(served))}"
+
+    fn placedLines(cmd, served) = [
+        "published ${Lockfile::compact(Release::idOf(served))}",
+        Reports::field("into", placedAt(cmd, served)),
+        Reports::field("files", "${length(Release::filesOf(served))}"),
+        "restart registry-serve to serve it"
+    ]
+
+    fn placed(cmd, served) = Reports::checked(Fetch::writeFiles(placedAt(cmd, served), Release::filesOf(served)), fn(_finished) => Reports::success(placedLines(cmd, served)))
 
     /// Check and digest the tree as the server will, then place it.
-    fn assembled(cmd, key, fileList) = match ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList) {
-        Error { message } => failed([message])
-        Success { value } => placed(cmd, value)
-    }
+    fn assembled(cmd, key, fileList) = Reports::checked(ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList), fn(value) => placed(cmd, value))
 
-    fn withKey(cmd, mf, key) = match treeFiles(projectOf(cmd), mf) {
-        Error { message } => failed([message])
-        Success { value } => assembled(cmd, key, value)
-    }
+    fn withKey(cmd, mf, key) = Reports::checked(treeFiles(projectOf(cmd), mf), fn(value) => assembled(cmd, key, value))
 
-    fn withManifest(cmd, mf) = match packageKey(mf) {
-        Error { message } => failed([message])
-        Success { value } => withKey(cmd, mf, value)
-    }
+    fn withManifest(cmd, mf) = Reports::checked(packageKey(mf), fn(value) => withKey(cmd, mf, value))
 
-    fn withCommand(cmd) = if folderOf(cmd) == "" { usageReport() } else { match Project::readAt(projectOf(cmd)) {
-        Error { message } => failed([message])
-        Success { value } => withManifest(cmd, value)
-    } }
+    fn withCommand(cmd) = if folderOf(cmd) == "" { Reports::usageFor(usageCode, usageText) } else { Reports::checked(Project::readAt(projectOf(cmd)), fn(value) => withManifest(cmd, value)) }
 
     /// The whole command.
-    export fn run(args) = match Flags::parse(args, [folderFlag, Flags::projectFlag], [breakingFlag]) {
-        Error => usageReport()
-        Success { value } => withCommand(commandLine(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [folderFlag, Flags::projectFlag], [breakingFlag], usageCode, usageText,
+        fn(parsed) => withCommand(commandLine(parsed)))
 }

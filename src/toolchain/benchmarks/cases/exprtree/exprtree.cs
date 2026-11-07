@@ -1,8 +1,7 @@
 // Expression tree — build a heap-allocated tree, then evaluate it.
+using static Seed;
 using System;
 
-const long MINSTD = 16807;
-const long MODULUS = 2147483647;
 const long BIG_MOD = 1000000007;
 
 long seed = ReadSeed();
@@ -14,10 +13,6 @@ for (long t = 0; t < 10; t++)
 }
 
 Console.WriteLine(acc);
-
-static long R1(long x) => (x * MINSTD) % MODULUS;
-
-static long HashAt(long s, long i) => R1(R1(s + i));
 
 static long ReadSeed()
 {

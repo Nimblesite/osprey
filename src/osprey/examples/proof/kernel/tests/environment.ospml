@@ -2,12 +2,7 @@ namespace prooftests
 
 import proof::Environment
 import proof
-    Zero
-    Succ
-    Sort
-    Axiom
-    Definition
-    Theorem
+    Zero Succ Sort Axiom Definition Theorem
 import prooftests::Support
 
 (** Declaration order, duplicate rejection and opaque bodies. *)
@@ -21,10 +16,6 @@ module EnvironmentTests
         test ("unfold refuses a theorem", \() =>
             expect (Support::unfolded (Support::envWith (Theorem (closed ())), "c"), "error: theorems are opaque"))
 
-        test ("unfold returns a definition and refuses an axiom", \() =>
-            expect (Support::unfolded (Support::envWith (Definition (closed ())), "c"), "Type")
-            expect (Support::unfolded (Support::envWith Axiom, "c"), "error: axioms do not unfold"))
+        test ("unfold returns a definition and refuses an axiom", \() => expectAll [Support::unfolded (Support::envWith (Definition (closed ())), "c") == "Type", Support::unfolded (Support::envWith Axiom, "c") == "error: axioms do not unfold"])
 
-        test ("find locates a declared constant and nothing else", \() =>
-            expect (Support::declares (Support::envWith Axiom, "c"), true)
-            expect (Support::declares (Environment::empty (), "c"), false))
+        test ("find locates a declared constant and nothing else", \() => expectAll [Support::declares (Support::envWith Axiom, "c") == true, Support::declares (Environment::empty (), "c") == false])

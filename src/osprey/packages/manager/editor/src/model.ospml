@@ -37,15 +37,21 @@ module Store
 
     export create (workspace, registry) = PackageState(packageSearch = "", packageSelection = "", packageTab = "installed", packageRegistry = registry, packageWorkspace = workspace, packageCatalog = [], packageGraph = emptyWorkspace "No workspace graph has been read yet.", packageNotice = "Loading your package workspace…", packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = 0, packageWaiting = 0)
 
-    export edit (current, query, selection, tab) = PackageState(packageSearch = query, packageSelection = selection, packageTab = tab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = current.packageNotice, packagePending = current.packagePending, packageFault = current.packageFault, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+    /// The confirm prompt closed again.
+    cleared current = current(packageConfirming = "", packageConfirmKey = "")
 
-    export status (current, notice, pending, fault) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = pending, packageFault = fault, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+    /// A refresh with `waiting` work outstanding: nothing has faulted yet.
+    awaiting (current, notice, waiting) = cleared (current(packageNotice = notice, packagePending = waiting > 0, packageFault = false, packageWaiting = waiting))
 
-    export fault (current, notice) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = false, packageFault = true, packageConfirming = "", packageConfirmKey = "", packageGeneration = satAdd current.packageGeneration 1, packageWaiting = 0)
+    export edit (current, query, selection, tab) = cleared (current(packageSearch = query, packageSelection = selection, packageTab = tab))
 
-    export begin (current, notice, confirming, confirmKey) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = false, packageFault = false, packageConfirming = confirming, packageConfirmKey = confirmKey, packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+    export status (current, notice, pending, fault) = cleared (current(packageNotice = notice, packagePending = pending, packageFault = fault))
 
-    export confirm (current, confirming, key) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = current.packageNotice, packagePending = current.packagePending, packageFault = current.packageFault, packageConfirming = confirming, packageConfirmKey = key, packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+    export fault (current, notice) = cleared (current(packageNotice = notice, packagePending = false, packageFault = true, packageGeneration = satAdd current.packageGeneration 1, packageWaiting = 0))
+
+    export begin (current, notice, confirming, confirmKey) = current(packageNotice = notice, packagePending = false, packageFault = false, packageConfirming = confirming, packageConfirmKey = confirmKey)
+
+    export confirm (current, confirming, key) = current(packageConfirming = confirming, packageConfirmKey = key)
 
     export clearConfirm current = confirm (current, "", "")
 
@@ -63,7 +69,7 @@ module Store
         true => "Refreshing packages…"
         false => "Workspace refreshed"
 
-    export withCatalog (current, entries, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = entries, packageGraph = current.packageGraph, packageNotice = waitingNotice waiting, packagePending = waiting > 0, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = waiting)
+    export withCatalog (current, entries, waiting) = awaiting (current(packageCatalog = entries), waitingNotice waiting, waiting)
 
     graphNotice (workspace, waiting) = match waiting > 0
         true => "Refreshing packages…"
@@ -71,9 +77,9 @@ module Store
             true => workspace.workspaceReason
             false => "Workspace refreshed"
 
-    export withGraph (current, workspace, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = workspace, packageNotice = graphNotice (workspace, waiting), packagePending = waiting > 0, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = waiting)
+    export withGraph (current, workspace, waiting) = awaiting (current(packageGraph = workspace), graphNotice (workspace, waiting), waiting)
 
-    export change (current, notice, generation, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = generation, packageWaiting = waiting)
+    export change (current, notice, generation, waiting) = cleared (current(packageNotice = notice, packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = waiting))
 
     export graphRequest (current, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json tree --graph --project .\n", current.packageWorkspace, 120000, 4194304, "package/graph")
 
@@ -83,7 +89,7 @@ module Store
 
     export refresh current =
         generation = satAdd current.packageGeneration 1
-        ready = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = "Refreshing packages…", packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = generation, packageWaiting = 2)
+        ready = cleared (current(packageNotice = "Refreshing packages…", packagePending = true, packageFault = false, packageGeneration = generation, packageWaiting = 2))
         catalog = Requests::ask ("package/catalog:${generation}", ui::Http(method = "GET", url = current.packageRegistry + "/v1/packages", headers = [], body = "", responseLimit = 1048576, deadline = 15000, httpSlice = "package/catalog"))
         match graphRequest (ready, "package/graph:${generation}")
             Error problem => Runtime::step (fault (ready, problem))

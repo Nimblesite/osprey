@@ -20,7 +20,7 @@ mod staging;
 use effect_execution::assert_flavored_output;
 use osprey_syntax::Flavor;
 use residue::HANDLER_RUNTIME_SYMBOLS;
-use staging::{compile_for_target, compile_staged, diagnostics};
+use staging::{assert_rejected, compile_for_target, compile_staged, diagnostics};
 
 /// `corner` reads element 3 of a 2x2 product plus element 2 of a doubled iota:
 /// 50 + 4 under either interpretation.
@@ -264,10 +264,11 @@ fn a_discharged_tensor_program_compiles_for_wasm32() {
 
 #[test]
 fn an_explicit_instantiation_never_answers_another_instantiation() {
-    let report = diagnostics(MISMATCHED_INSTANTIATION, Flavor::Default);
-    assert!(
-        report.contains("Stash<int>.put"),
-        "expected the int request to stay unhandled, got: {report}"
+    assert_rejected(
+        MISMATCHED_INSTANTIATION,
+        Flavor::Default,
+        &["Stash<int>.put"],
+        "expected the int request to stay unhandled",
     );
 }
 
@@ -357,9 +358,10 @@ fn a_static_arm_may_hand_a_helper_a_known_callback() {
 /// named, not hidden behind `<unknown>` and not admitted.
 #[test]
 fn a_static_arm_handing_a_helper_a_dynamic_callback_names_its_effect() {
-    let report = diagnostics(DYNAMIC_CALLBACK, Flavor::Default);
-    assert!(
-        report.contains("static handler arm `Measure.named` requires runtime effects: Log.write;"),
-        "expected the arm to name Log.write, got: {report}"
+    assert_rejected(
+        DYNAMIC_CALLBACK,
+        Flavor::Default,
+        &["static handler arm `Measure.named` requires runtime effects: Log.write;"],
+        "expected the arm to name Log.write",
     );
 }

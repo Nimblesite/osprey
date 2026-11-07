@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 // ML-flavor twin of validation_pipeline.osp. User-defined fallible functions
 // return `Result<int, string>` and construct `Error(message = "...")` inline;
 // these propagate through layout `match` arms binding the `Success value` /
@@ -89,11 +75,10 @@ rejects (s, expected) =
 validationPipelineCase () =
     checkAll "age validation pipeline" [
         accepts ("30", 30), accepts ("0", 0), accepts ("150", 150),
-        rejects ("abc", "not a number"),
-        rejects ("-4", "age must be non-negative"),
+        structuralEquals [rejects ("abc", "not a number"), rejects ("-4", "age must be non-negative")] [true, true],
         rejects ("999", "age unrealistically large"),
-        inputAt 0 == "30", inputAt 3 == "abc", inputAt 9 == "",
+        structuralEquals [inputAt 0, inputAt 3, inputAt 9] ["30", "abc", ""],
         runAll (0, 4) == 0
     ]
 
-test "age validation preserves values and rejection reasons" (\() => exactArithmetic (validationPipelineCase))
+test "age validation preserves values and rejection reasons" (exactly validationPipelineCase)

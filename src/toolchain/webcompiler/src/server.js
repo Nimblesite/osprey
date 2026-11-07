@@ -84,16 +84,34 @@ app.get('/api', (req, res) => {
     })
 })
 
-function logCompilerResult(result) {
-    console.log('🔨 COMPILER OUTPUT (stderr):')
+function logSection(title, text) {
+    console.log(title)
     console.log('-'.repeat(50))
-    console.log(result.stderr || 'NO COMPILER OUTPUT')
+    console.log(text)
     console.log('-'.repeat(50))
+}
 
-    console.log('📋 PROGRAM OUTPUT (stdout):')
-    console.log('-'.repeat(50))
-    console.log(result.stdout || 'NO PROGRAM OUTPUT')
-    console.log('-'.repeat(50))
+function logCompilerResult(result) {
+    logSection('🔨 COMPILER OUTPUT (stderr):', result.stderr || 'NO COMPILER OUTPUT')
+    logSection('📋 PROGRAM OUTPUT (stdout):', result.stdout || 'NO PROGRAM OUTPUT')
+}
+
+// The osprey binary from PATH (installed in Docker) or the local Rust release
+// build (cargo build --release).
+function ospreyBinaryPath() {
+    return process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV
+        ? 'osprey'
+        : path.resolve(__dirname, '../../../../target/release/osprey')
+}
+
+// Remove a request's temp folder, logging the outcome under `context`.
+async function removeTempFolder(tempRequestDir, requestId, context = '') {
+    try {
+        await fs.rm(tempRequestDir, { recursive: true, force: true })
+        console.log(`🗑️ Cleaned up temp folder${context}: ${requestId}`)
+    } catch (e) {
+        console.error(`⚠️ Failed to clean up temp folder${context}:`, e.message)
+    }
 }
 
 function sendSystemError(res, error) {
@@ -277,11 +295,7 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
             console.log(`💾 Writing temp file: ${tempFile}`)
             await fs.writeFile(tempFile, code)
             
-            // Use the osprey binary from PATH (installed in Docker) or fall back
-            // to the local Rust release build (cargo build --release)
-            const ospreyPath = process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV
-                ? 'osprey'
-                : path.resolve(__dirname, '../../../../target/release/osprey')
+            const ospreyPath = ospreyBinaryPath()
             
             const startTime = Date.now()
             console.log(`🔨 Running: ${ospreyPath} ${tempFile} ${args.join(' ')}`)
@@ -314,12 +328,7 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
                 console.log(`⏱️ Duration: ${duration}ms`)
                 
                 // Clean up the ENTIRE temp folder for this request
-                try {
-                    await fs.rm(tempRequestDir, { recursive: true, force: true })
-                    console.log(`🗑️ Cleaned up temp folder: ${requestId}`)
-                } catch (e) {
-                    console.error('⚠️ Failed to clean up temp folder:', e.message)
-                }
+                await removeTempFolder(tempRequestDir, requestId)
 
                 // Handle timeout/signal termination
                 if (exitCode === null && signal) {
@@ -338,12 +347,7 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
 
             child.on('error', async (error) => {
                 // Clean up temp folder on error
-                try {
-                    await fs.rm(tempRequestDir, { recursive: true, force: true })
-                    console.log(`🗑️ Cleaned up temp folder after error: ${requestId}`)
-                } catch (e) {
-                    console.error('⚠️ Failed to clean up temp folder after error:', e.message)
-                }
+                await removeTempFolder(tempRequestDir, requestId, ' after error')
                 reject(error)
             })
         } catch (error) {
@@ -392,11 +396,8 @@ wss.on('connection', (ws, req) => {
     console.log('🔍 Connection headers:', JSON.stringify(req.headers, null, 2))
 
     // The Osprey language server is the Rust `osprey lsp` subcommand, spoken over
-    // stdio — the same binary that backs /api/run. In Docker it's on PATH; in
-    // local dev it's the release build under target/release.
-    const ospreyPath = process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV
-        ? 'osprey'
-        : path.resolve(__dirname, '../../../../target/release/osprey')
+    // stdio — the same binary that backs /api/run.
+    const ospreyPath = ospreyBinaryPath()
 
     console.log('🚀 Starting Osprey LSP:', `${ospreyPath} lsp`)
 

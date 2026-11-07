@@ -178,6 +178,7 @@ def helper_cases():
     any_done = toList(map(range(len(Expected.STOPANY_DONE)), lambda i: Check.equal(f"stopped_any[{i}]", StoppingCriteria.stopped_any(stoppers, unwrap_or(listGet(Expected.STOP_IDS, i), [])), unwrap_or(listGet(Expected.STOPANY_DONE, i), False))))
     extrema = [
         Check.equal("min_i", min_i(3, 7), 3),
+        Check.ints_equal("lists.map_indexed", Lists.map_indexed([4, 4], lambda i: i * 10), [0, 10]),
         Check.equal("max_i", max_i(3, 7), 7),
         Check.equal("min_f", min_f(0.5, -2.0), -2.0),
         Check.equal("max_f", max_f(0.5, -2.0), 0.5),
@@ -227,8 +228,4 @@ def all_cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_cases)

@@ -7,6 +7,7 @@ import registry::Digests
 import registry::Order
 import registry::ManifestModel
 import registry::ManifestSections
+import registry::Bytes
 
 /// `[dependencies]`, `[build-dependencies]`, `[test-dependencies]`,
 /// `[system.*]` and `[[assets]]`. A dependency names one epoch and a minimum
@@ -28,12 +29,6 @@ module ManifestDeps {
 
     fn fail(code, span) = ManifestSections::fail(code, span)
 
-    // `value` and `span` are shared field names (issue #273): the pair
-    // receiver is spelled out once here, like `ManifestSections` does.
-    fn spanOfPair(pair: Toml::Pair) = pair.span
-
-    fn valueOf(pair: Toml::Pair) = pair.value
-
     fn classify(key) = if listContains(requirementKeys, key) { "" }
         else if listContains(versionKeys, key) { "manifest.dependency.version" }
         else if listContains(pathKeys, key) { "manifest.dependency.path" }
@@ -53,9 +48,6 @@ module ManifestDeps {
 
     /// An integer pair at or above `floor`, else `code` at `span`.
     fn boundedInt(pair: Toml::Pair, floor, code, span) = Checked::andThen(ManifestSections::intOf(pair, code), fn(value) => if value >= floor { Success { value: value } } else { fail(code, span) })
-
-    /// Append a successful element, or keep the failure.
-    fn appended(sofar, result) = Checked::andThen(result, fn(value) => Success { value: listAppend(sofar, value) })
 
     fn epochOf(pairs, span) = match ManifestSections::find(pairs, "epoch") {
         Error => fail("manifest.dependency.epoch", span)
@@ -98,21 +90,24 @@ module ManifestDeps {
 
     fn edgePair(kind, pair) = Checked::andThen(requirementPair(pair), fn(value) => Success { value: edgeOf(kind, value) })
 
-    fn edgesOf(kind, pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, edgePair(kind, pair))))
+    fn edgesOf(kind, pairs) = Checked::collectAll(pairs, fn(pair) => edgePair(kind, pair))
 
     fn concatenated(sofar, result) = Checked::andThen(result, fn(value) => Success { value: listConcat(sofar, value) })
 
-    fn tableEdges(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
-        Error => Success { value: sofar }
-        Success { value } => concatenated(sofar, edgesOf(kind, ManifestSections::pairsOf(valueOf(value))))
+    /// The pairs of one table of `root`, or no pairs when it is absent.
+    fn tablePairs(root, kind) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
+        Error => []
+        Success { value } => ManifestSections::pairsOf(Toml::valueOf(value))
     }
+
+    fn tableEdges(root, kind, sofar) = concatenated(sofar, edgesOf(kind, tablePairs(root, kind)))
 
     fn compareEdges(a, b) = {
         let ra = ManifestModel::requirementOf(a)
         let rb = ManifestModel::requirementOf(b)
         Order::thenCompare(Order::compareInts(ManifestModel::edgeRank(a), ManifestModel::edgeRank(b)),
             Order::thenCompare(Names::compare(ra.package, rb.package),
-                Order::thenCompare(Order::compareInts(ra.epoch, rb.epoch), Order::compareInts(ra.minimumOrdinal, rb.minimumOrdinal))))
+                Order::compareSpots(ra.epoch, ra.minimumOrdinal, rb.epoch, rb.minimumOrdinal)))
     }
 
     /// Every edge for one key names the same epoch ([PACKAGE-TYPE-INVARIANTS]).
@@ -128,10 +123,13 @@ module ManifestDeps {
 
     fn missingRequirement() = ManifestModel::Requirement { package: Names::Key { scope: "", name: "" }, epoch: 0, minimumOrdinal: 0 }
 
-    fn sortedEdges(edges) = {
-        let at = fn(i) => listGet(edges, i) ?: missingEdge()
-        mapList(Order::permutation(length(edges), fn(i, j) => compareEdges(at(i), at(j))), at)
+    /// `items` in canonical order; a hole reads as `fallback`.
+    fn sortedBy(items, compare, fallback) = {
+        let at = fn(i) => listGet(items, i) ?: fallback
+        mapList(Order::permutation(length(items), fn(i, j) => compare(at(i), at(j))), at)
     }
+
+    fn sortedEdges(edges) = sortedBy(edges, compareEdges, missingEdge())
 
     fn checkedEdges(edges, root) = if epochsAgree(edges) { Success { value: sortedEdges(edges) } }
         else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), "dependencies", ManifestSections::rootSpan())) }
@@ -143,7 +141,7 @@ module ManifestDeps {
         _ => fail(grantCode, span)
     }
 
-    fn capabilityList(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => Checked::andThen(acc, fn(value) => appended(value, capabilityValue(item, span))))
+    fn capabilityList(items, span) = Checked::collectAll(items, fn(item) => capabilityValue(item, span))
 
     fn grantValue(pair: Toml::Pair) = match pair.value {
         Toml::Arr { items } => capabilityList(items, pair.span)
@@ -167,20 +165,15 @@ module ManifestDeps {
 
     fn grantWith(keyText, capabilities) = Checked::andThen(capabilities, fn(value) => grantFor(Names::parse(keyText), value))
 
-    fn tableGrants(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
-        Error => Success { value: sofar }
-        Success { value } => foldList(ManifestSections::pairsOf(valueOf(value)), Success { value: sofar }, fn(acc, pair) => Checked::andThen(acc, fn(value) => concatenated(value, grantOf(pair))))
-    }
+    fn tableGrants(root, kind, sofar) = foldList(tablePairs(root, kind), Success { value: sofar }, fn(acc, pair) => Checked::andThen(acc, fn(value) => concatenated(value, grantOf(pair))))
 
     fn missingGrant() = ManifestModel::Grant { package: Names::Key { scope: "", name: "" }, capabilities: [] }
 
     fn grantKey(g: ManifestModel::Grant) = g.package
     fn grantCapabilities(g: ManifestModel::Grant) = g.capabilities
 
-    fn distinctStrings(capabilities) = foldList(capabilities, [], fn(acc, c) => if listContains(acc, c) { acc } else { listAppend(acc, c) })
-
     /// Sorted and duplicate-free: the same capability granted in two tables is one grant.
-    fn canonicalOrEmpty(capabilities) = listSort(distinctStrings(capabilities))
+    fn canonicalOrEmpty(capabilities) = listSort(Order::distinctStrings(capabilities))
 
     /// One grant per key: the union of every entry's capabilities, canonical.
     fn mergedGrant(grants, key) = ManifestModel::Grant {
@@ -204,9 +197,9 @@ module ManifestDeps {
 
     fn withTest(root, sofar) = Checked::andThen(tableEdges(root, "test-dependencies", sofar), fn(value) => checkedEdges(value, root))
 
-    fn segmentByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 45
+    fn segmentByte(b) = Bytes::isLowerDigitIn(b, [Bytes::dot, Bytes::hyphen])
     fn segmentOk(s) = byteLength(s) >= 1 && byteLength(s) <= segmentMax && !startsWith(s, ".") && !startsWith(s, "-")
-        && fold(range(0, byteLength(s)), true, fn(ok, i) => ok && segmentByte(byteAt(s, i) ?: 0))
+        && Bytes::everyByte(s, segmentByte)
 
     /// `[a-z0-9][a-z0-9.-]{0,63}` segments joined by `/`, at most 128 bytes ([PACKAGE-MANIFEST]).
     export fn capabilityOk(name) = byteLength(name) <= capabilityMax && foldList(split(name, "/") ?: [""], true, fn(ok, s) => ok && segmentOk(s))
@@ -219,21 +212,18 @@ module ManifestDeps {
     fn systemWith(pair: Toml::Pair, capability) = if !capabilityOk(capability) { fail("manifest.system.capability", pair.span) }
         else { match ManifestSections::find(ManifestSections::pairsOf(pair.value), "min_revision") {
             Error => fail("manifest.system.min-revision", pair.span)
-            Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", spanOfPair(value)))
+            Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", Toml::pairSpan(value)))
         } }
 
     fn systemRevision(capability, result) = Checked::andThen(result, fn(value) => Success { value: ManifestModel::SystemRequirement { capability: capability, minimumRevision: value } })
 
-    fn systemsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => Checked::andThen(acc, fn(value) => appended(value, systemOf(pair))))
+    fn systemsOf(pairs) = Checked::collectAll(pairs, systemOf)
 
     fn compareSystems(a, b) = Order::thenCompare(Order::compareStrings(a.capability, b.capability), Order::compareInts(a.minimumRevision, b.minimumRevision))
 
     fn missingSystem() = ManifestModel::SystemRequirement { capability: "", minimumRevision: 0 }
 
-    fn sortedSystems(requirements) = {
-        let at = fn(i) => listGet(requirements, i) ?: missingSystem()
-        mapList(Order::permutation(length(requirements), fn(i, j) => compareSystems(at(i), at(j))), at)
-    }
+    fn sortedSystems(requirements) = sortedBy(requirements, compareSystems, missingSystem())
 
     fn uniqueCapabilities(requirements, span) = match Order::canonicalSet(mapList(requirements, fn(r) => r.capability)) {
         Success => Success { value: sortedSystems(requirements) }
@@ -243,7 +233,7 @@ module ManifestDeps {
     /// `[system.*]` as canonical, sorted requirements with unique capabilities.
     export fn systems(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "system") {
         Error => Success { value: [] }
-        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(valueOf(value))), spanOfPair(value))
+        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(Toml::valueOf(value))), Toml::pairSpan(value))
     }
 
     fn systemsSorted(result, span) = Checked::andThen(result, fn(value) => uniqueCapabilities(value, span))
@@ -279,14 +269,14 @@ module ManifestDeps {
 
     fn assetLength(pairs, span) = match ManifestSections::find(pairs, "byte_length") {
         Error => fail("manifest.asset.byte-length", span)
-        Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", spanOfPair(value))
+        Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", Toml::pairSpan(value))
     }
 
     fn assetRole(pairs, kind, span) = Checked::andThen(ManifestSections::requiredString(pairs, "role", "manifest.asset.role", span), fn(value) => roleOf(value, kind, capabilityText(pairs), ManifestSections::spanOf(pairs, "role", span)))
 
     /// `!` is not a capability character, so a non-string value fails as one.
     fn capabilityText(pairs) = match ManifestSections::find(pairs, "required_capability") {
-        Success { value } => match valueOf(value) {
+        Success { value } => match Toml::valueOf(value) {
             Toml::Str { text } => text
             _ => "!"
         }
@@ -306,22 +296,16 @@ module ManifestDeps {
 
     fn assetDigested(pairs, span, path, role, size) = Checked::andThen(assetDigest(pairs, span), fn(value) => Success { value: ManifestModel::Asset { path: path, byteLength: size, digest: value, role: role } })
 
-    fn assetItems(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
-        Error { message } => Error { message: message }
-        Success { value } => match item {
-            Toml::Table { pairs } => appended(value, assetOf(pairs, span))
-            _ => fail("manifest.asset.shape", span)
-        }
+    fn assetItems(items, span) = Checked::collectAll(items, fn(item) => match item {
+        Toml::Table { pairs } => assetOf(pairs, span)
+        _ => fail("manifest.asset.shape", span)
     })
 
     fn compareAssets(a: ManifestModel::Asset, b: ManifestModel::Asset) = Order::thenCompare(Order::compareStrings(a.path, b.path), Order::compareStrings(a.digest, b.digest))
 
     fn missingAsset() = ManifestModel::Asset { path: "", byteLength: 0, digest: "", role: ManifestModel::Documentation { kind: ManifestModel::Utf8Text } }
 
-    fn sortedAssets(assets) = {
-        let at = fn(i) => listGet(assets, i) ?: missingAsset()
-        mapList(Order::permutation(length(assets), fn(i, j) => compareAssets(at(i), at(j))), at)
-    }
+    fn sortedAssets(assets) = sortedBy(assets, compareAssets, missingAsset())
 
     fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a: ManifestModel::Asset) => a.path)) {
         Success => Success { value: sortedAssets(assets) }
@@ -331,9 +315,9 @@ module ManifestDeps {
     /// `[[assets]]` as canonical, sorted declarations with collision-free paths.
     export fn assets(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "assets") {
         Error => Success { value: [] }
-        Success { value } => match valueOf(value) {
-            Toml::Arr { items } => assetsFrom(items, spanOfPair(value))
-            _ => fail("manifest.asset.shape", spanOfPair(value))
+        Success { value } => match Toml::valueOf(value) {
+            Toml::Arr { items } => assetsFrom(items, Toml::pairSpan(value))
+            _ => fail("manifest.asset.shape", Toml::pairSpan(value))
         }
     }
 

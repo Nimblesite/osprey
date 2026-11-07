@@ -52,13 +52,16 @@ module Encode
         OnEdit => "edit"
         OnSubmit => "submit"
 
-    str key value = Doc::str (key, value)
+    (** The protocol member `key` holding `value` as text. *)
+    export str key value = Doc::str (key, value)
 
-    num key value = Doc::num (key, value)
+    (** The protocol member `key` holding `value` as a number. *)
+    export num key value = Doc::num (key, value)
 
     bit key value = Doc::bit (key, value)
 
-    kind name members = JsonObject (listPrepend members (str "kind" name))
+    (** A protocol object of `name`'s kind, whose other members are `members`. *)
+    export kind name members = JsonObject (listPrepend members (str "kind" name))
 
     one<A> : (List<Binding<A>>, Json) -> Walked<A>
     one (bindings, json) = Walked(bindings = bindings, nodes = [json])
@@ -88,30 +91,33 @@ module Encode
     first walked = listGet walked.nodes 0 ?: JsonNull
 
     entryAt<A> : (Walked<A>, List<Tab<A>>, int) -> Walked<A>
-    entryAt (walked, tabs, index) = match listGet tabs index
-        Success tab =>
-            inner = walk (walked.bindings, tab.page)
-            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
-            Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
-        Error _ => walked
+    entryAt (walked, tabs, index) = at (walked, tabs, index, \tab => tab.page, \tab => [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol])
 
     rowAt<A> : (Walked<A>, List<Row<A>>, int) -> Walked<A>
-    rowAt (walked, rows, index) = match listGet rows index
-        Success item =>
-            inner = walk (walked.bindings, item.cell)
-            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
+    rowAt (walked, rows, index) = at (walked, rows, index, \row => row.cell, \row => [str "key" row.rowKey, str "symbol" row.rowSymbol, str "group" row.rowGroup])
+
+    // The `index`th entry as one more child of `walked`: its own content is walked first, so its controls take ordinals before the entries after it.
+    at<A, B> : (Walked<A>, List<B>, int, (B) -> Node<A>, (B) -> List<JsonMember>) -> Walked<A>
+    at (walked, entries, index, content, members) = match listGet entries index
+        Success entry =>
+            inner = walk (walked.bindings, content entry)
+            json = JsonObject (listAppend (members entry) (JsonMember "child" (first inner)))
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 
     tabs<A> : (List<Binding<A>>, List<Tab<A>>, string, A) -> Walked<A>
-    tabs (bindings, entries, selected, action) =
-        inner = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => entryAt (walked, entries, index))
-        bound (inner.bindings, ChoiceInput(action = action), "tabs", [str "selected" selected, JsonMember "tabs" (JsonArray inner.nodes)])
+    tabs (bindings, entries, selected, action) = chosen (entryWalked (bindings, entries, \(walked, index) => entryAt (walked, entries, index)), "tabs", selected, action)
 
     rows<A> : (List<Binding<A>>, List<Row<A>>, string, A) -> Walked<A>
-    rows (bindings, entries, selected, action) =
-        inner = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => rowAt (walked, entries, index))
-        bound (inner.bindings, ChoiceInput(action = action), "rows", [str "selected" selected, JsonMember "rows" (JsonArray inner.nodes)])
+    rows (bindings, entries, selected, action) = chosen (entryWalked (bindings, entries, \(walked, index) => rowAt (walked, entries, index)), "rows", selected, action)
+
+    // `bindings` and every entry's own controls, walked in order.
+    entryWalked<A, B> : (List<Binding<A>>, List<B>, (Walked<A>, int) -> Walked<A>) -> Walked<A>
+    entryWalked (bindings, entries, one) = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => one (walked, index))
+
+    // A choice control named `name`, whose entries are its children and whose binding takes the next ordinal.
+    chosen<A> : (Walked<A>, string, string, A) -> Walked<A>
+    chosen (inner, name, selected, action) = bound (inner.bindings, ChoiceInput(action = action), name, [str "selected" selected, JsonMember name (JsonArray inner.nodes)])
 
     choiceJson item = JsonObject [str "key" item.choiceKey, str "label" item.choiceLabel]
 
@@ -167,6 +173,10 @@ module Encode
     leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
     leaf (bindings, name, members) = one (bindings, kind name members)
 
+    // A leaf named `name` whose two members are the texts `first` and `second`.
+    pairLeaf<A> : (List<Binding<A>>, string, string, string, string, string) -> Walked<A>
+    pairLeaf (bindings, name, firstKey, first, secondKey, second) = leaf (bindings, name, [str firstKey first, str secondKey second])
+
     // [UI-COMPONENTS-METER] The amount is clamped into 0..total and the total is at least 1, so a host divides safely.
     meter (label, amount, total, meterTone) =
         whole = Pick::either (total < 1, 1, total)
@@ -174,7 +184,22 @@ module Encode
 
     runJson run = JsonObject [str "text" run.runText, str "ink" run.runInk, bit "italic" run.runItalic, str "emphasis" run.runEmphasis]
 
-    frameJson style = JsonObject [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "viewportHeightInset" style.frameViewportHeightInset, bit "scrollY" style.frameScrollY, num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap, str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow, str "font" style.frameFont, num "textSize" style.frameTextSize, JsonMember "mathScale" (JsonFloat style.frameMathScale), JsonMember "lineHeight" (JsonFloat style.frameLineHeight), JsonMember "tracking" (JsonFloat style.frameTracking), bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross, num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, bit "selectionGroup" style.frameSelectionGroup, str "shadow" style.frameShadow]
+    frameJson style = JsonObject (listConcat (frameBox style) (listConcat (frameInset style) (listConcat (frameInk style) (listConcat (frameType style) (listConcat (frameControls style) [str "shadow" style.frameShadow])))))
+
+    // A frame's name and size.
+    frameBox style = [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "viewportHeightInset" style.frameViewportHeightInset, bit "scrollY" style.frameScrollY]
+
+    // A frame's edges and corners.
+    frameInset style = [num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap]
+
+    // A frame's colours.
+    frameInk style = [str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow]
+
+    // A frame's type.
+    frameType style = [str "font" style.frameFont, num "textSize" style.frameTextSize, JsonMember "mathScale" (JsonFloat style.frameMathScale), JsonMember "lineHeight" (JsonFloat style.frameLineHeight), JsonMember "tracking" (JsonFloat style.frameTracking), bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross]
+
+    // A frame's control metrics.
+    frameControls style = [num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, bit "selectionGroup" style.frameSelectionGroup]
 
     framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
     framed (bindings, style, content) =
@@ -199,17 +224,18 @@ module Encode
     // y size colour depth anchor weight). One `mapList` builds the
     // whole list; appending value by value costs a tail clone per value under ARC.
     numbers primitive = match primitive
-        Rect x y w h angle color depth => [JsonInt 0, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth]
-        Disc x y radius color depth => [JsonInt 1, real x, real y, real radius, JsonInt color, JsonInt depth]
-        Strip points color stroke depth => listConcat [JsonInt 2, JsonInt (intDiv (length points) 2)] (listConcat (mapList (points, \point => real point)) [JsonInt color, real stroke, JsonInt depth])
-        Sprite index x y w h angle color depth => [JsonInt 3, JsonInt index, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth]
-        Glyphs text x y size color depth => [JsonInt 4, JsonString text, real x, real y, real size, JsonInt color, JsonInt depth]
-        Lettering text x y size color depth anchor weight => [JsonInt 6, JsonString text, real x, real y, real size, JsonInt color, JsonInt depth, JsonInt anchor, real weight]
-        Path steps outline paint moveX moveY scale depth => [JsonInt 5, JsonArray (mapList (steps, step)), JsonArray (stroke outline), JsonArray (painted paint), JsonArray (moved (moveX, moveY, scale)), JsonInt depth]
+        Rect x y w h angle color depth => coded (0, [real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth])
+        Disc x y radius color depth => coded (1, [real x, real y, real radius, JsonInt color, JsonInt depth])
+        Strip points color stroke depth => listConcat (coded (2, [JsonInt (intDiv (length points) 2)])) (listConcat (mapList (points, \point => real point)) [JsonInt color, real stroke, JsonInt depth])
+        Sprite index x y w h angle color depth => coded (3, [JsonInt index, real x, real y, real w, real h, real angle, JsonInt color, JsonInt depth])
+        Glyphs text x y size color depth => coded (4, [JsonString text, real x, real y, real size, JsonInt color, JsonInt depth])
+        Lettering text x y size color depth anchor weight => coded (6, [JsonString text, real x, real y, real size, JsonInt color, JsonInt depth, JsonInt anchor, real weight])
+        Path steps outline paint moveX moveY scale depth => coded (5, [JsonArray (mapList (steps, step)), JsonArray (stroke outline), JsonArray (painted paint), JsonArray (moved (moveX, moveY, scale)), JsonInt depth])
 
-    flag on = match on
-        true => JsonInt 1
-        false => JsonInt 0
+    // A primitive's values behind its one-word type code.
+    coded (code, values) = listConcat [JsonInt code] values
+
+    flag on = JsonInt (Pick::either (on, 1, 0))
 
     reals values = mapList (values, \value => real value)
 
@@ -253,17 +279,17 @@ module Encode
     walk (bindings, node) = match node
         RichText runs textRole => leaf (bindings, "rich-text", [JsonMember "runs" (JsonArray (mapList (runs, runJson))), str "role" (role textRole)])
         Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
-        Evidence label value => leaf (bindings, "evidence", [str "label" label, str "value" value])
-        Pair label value => leaf (bindings, "pair", [str "label" label, str "value" value])
+        Evidence label value => pairLeaf (bindings, "evidence", "label", label, "value", value)
+        Pair label value => pairLeaf (bindings, "pair", "label", label, "value", value)
         Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
-        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" symbol])
+        Label label symbol => pairLeaf (bindings, "label", "label", label, "symbol", symbol)
         Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
-        Link label address => leaf (bindings, "link", [str "label" label, str "url" address])
+        Link label address => pairLeaf (bindings, "link", "label", label, "url", address)
         Spacer => leaf (bindings, "spacer", [])
         Divider => leaf (bindings, "divider", [])
         Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
         Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
-        Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
+        Progress label detail => pairLeaf (bindings, "progress", "label", label, "detail", detail)
         Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])

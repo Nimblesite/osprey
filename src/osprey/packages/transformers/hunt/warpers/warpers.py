@@ -14,8 +14,8 @@ from transformers.LogitsProcess import (
 def run():
     x0 = unwrap_or(parseFloat(input()), 0.0)
     x1 = unwrap_or(parseFloat(input()), 0.0)
-    t = unwrap_or(parseFloat(input()), 1.0)
-    logits = listConcat([x0, x1], Check.specials())
+    t = toFloat32(unwrap_or(parseFloat(input()), 1.0))
+    logits = mapList(listConcat([x0, x1], Check.specials()), toFloat32)
     a = apply(TemperatureLogitsWarper(t), [], logits)
     c = apply(MinPLogitsWarper(0.1, neg_inf(), 1), [], logits)
     e = apply(EpsilonLogitsWarper(0.1, neg_inf(), 1), [], logits)

@@ -25,17 +25,17 @@ module Doctor {
 
     fn filesLine() = Reports::field("files", readBack(perform Host::Files.write(probePath, probeText)))
 
-    fn compilerLine() = {
-        let found = perform Host::Process.run("command -v osprey")
-        Reports::field("compiler", if found.status == 0 { trim(found.stdout) } else { "missing (osprey is not on PATH)" })
+    /// One `command -v` probe as a `label: path` line, or `missing` guidance.
+    fn toolLine(label, tool, missing) = {
+        let found = perform Host::Process.run("command -v ${tool}")
+        Reports::field(label, if found.status == 0 { trim(found.stdout) } else { missing })
     }
+
+    fn compilerLine() = toolLine("compiler", "osprey", "missing (osprey is not on PATH)")
 
     /// uv is the provider of the one system capability Osprey invokes,
     /// `python/interop`; it is reported as guidance, never installed ([PACKAGE-PYTHON-UV]).
-    fn uvLine() = {
-        let found = perform Host::Process.run("command -v uv")
-        Reports::field("uv", if found.status == 0 { trim(found.stdout) } else { "missing (python/uv: needed only by packages declaring python/interop)" })
-    }
+    fn uvLine() = toolLine("uv", "uv", "missing (python/uv: needed only by packages declaring python/interop)")
 
     fn blockedLines() = mapList(Capabilities::blocked(), fn(c) => Reports::field("blocked", "${c.id} (${c.summary})"))
 

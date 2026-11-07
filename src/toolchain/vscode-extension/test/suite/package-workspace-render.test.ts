@@ -11,7 +11,7 @@ import { WEBVIEW_SCRIPT } from "../../client/src/osprey-ui/webview-client";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
 import { createWorkspaceSession } from "../../client/src/osprey-ui/session";
 import { record, type Regions } from "../../client/src/osprey-ui/protocol";
-import { BUILD_MS, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
+import { BUILD_MS, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
 import { compileSdkWasm, runSdkWasmJson, extensionRoot } from "./osprey-test-env";
 
 function regions(root: unknown, packages?: unknown): Regions {
@@ -252,6 +252,21 @@ async function assertSdkFields(frame: Frame): Promise<void> {
   assert.strictEqual(await frame.getByRole("button", { name: "SDK disabled" }).isDisabled(), true);
 }
 
+/** Re-render `node` at `revision` into the panel, as a host update would. */
+async function renderRevision(
+  panel: WebviewPanel,
+  node: unknown,
+  revision: number,
+): Promise<void> {
+  const next = new Map(regions(node));
+  next.set("root", { revision, node });
+  await panel.webview.postMessage({
+    type: "render",
+    html: renderWorkspace({ regions: next }),
+    diagnostics: [],
+  });
+}
+
 async function verifySdkEditor(frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown): Promise<void> {
   const field = frame.getByRole("textbox", { name: "SDK argument", exact: true });
   await field.focus();
@@ -261,9 +276,7 @@ async function verifySdkEditor(frame: Frame, events: unknown[], panel: WebviewPa
   await field.fill("p ∧ q\nFrom hq.");
   await waitFor(() => events.length, (count) => count === 2, 3000, "editor text reaches its separate binding");
   assert.ok(record(events[1]) && events[1].ordinal === 8 && events[1].value === "p ∧ q\nFrom hq.");
-  const next = new Map(regions(node));
-  next.set("root", { revision: 4, node });
-  await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: next }), diagnostics: [] });
+  await renderRevision(panel, node, 4);
   await frame.locator('textarea[data-native-editor][data-event-revision="4"]').waitFor();
   assert.strictEqual(await field.inputValue(), "p ∧ q\nFrom hq.");
   assert.strictEqual(await frame.locator(".osp-editor-mirror").textContent(), "p ∧ q\nFrom hq.");
@@ -385,7 +398,7 @@ async function assertLayerFill(frame: Frame, events: unknown[], panel: WebviewPa
     const expected = root ? await frame.evaluate(() => innerHeight) : 600;
     assert.ok(grow ? height >= expected - 10 : height < 100, `grow=${grow},root=${root} gave ${height}px; expected ${expected}`);
     const before = events.length;
-    await frame.getByRole("button", { name: "Direct layer action", exact: true }).click();
+    await press(frame, "Direct layer action");
     await waitFor(() => events.length, count => count === before + 1, 1000, "a direct overlay control remains clickable");
   }
 }
@@ -410,7 +423,7 @@ async function assertSdkVariants(frame: Frame, events: unknown[]): Promise<void>
   assert.strictEqual(await frame.locator(".osp-section-title, .osp-section-footer").count(), 0);
   assert.strictEqual(await frame.locator('[data-region-slot="root"]').count(), 1);
   await frame.getByRole("switch", { name: "SDK off" }).click();
-  await frame.getByRole("option", { name: "<untrusted>", exact: true }).click();
+  await press(frame, "<untrusted>", "option");
   await frame.locator(".osp-splitter").press("ArrowLeft");
   assert.strictEqual(await aside.evaluate((node) => (node as HTMLElement).style.getPropertyValue("--osp-aside-width")), "620px");
   await assertHostEvents(events, [true, "plain", 620]);
@@ -430,9 +443,7 @@ async function verifyWideSdkVariants(frame: Frame, events: unknown[]): Promise<v
 async function assertInFlightEdit(frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown): Promise<void> {
   await frame.getByRole("textbox", { name: "SDK draft", exact: true }).fill("draft");
   await waitFor(() => events.length, (count) => count === 1, 3000, "the original edit reaches the host");
-  const next = new Map(regions(node));
-  next.set("root", { revision: 4, node });
-  await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: next }), diagnostics: [] });
+  await renderRevision(panel, node, 4);
   await frame.locator('input[placeholder="Draft"][data-event-revision="4"]').waitFor();
   assert.deepStrictEqual(events.map((event) => record(event) ? [event.revision, event.value] : event), [[3, "draft"]]);
   assert.strictEqual(await frame.getByRole("textbox", { name: "SDK draft", exact: true }).inputValue(), "draft");
@@ -440,12 +451,10 @@ async function assertInFlightEdit(frame: Frame, events: unknown[], panel: Webvie
 }
 
 async function assertNewerDraft(frame: Frame, events: unknown[], panel: WebviewPanel, node: unknown): Promise<void> {
-  const next = new Map(regions(node));
   await frame.getByRole("textbox", { name: "SDK draft", exact: true }).fill("newer");
   assert.ok(record(events[0]));
   await panel.webview.postMessage({ type: "edit-result", edit: events[0].edit, accepted: true });
-  next.set("root", { revision: 5, node });
-  await panel.webview.postMessage({ type: "render", html: renderWorkspace({ regions: next }), diagnostics: [] });
+  await renderRevision(panel, node, 5);
   await waitFor(() => events.length, (count) => count === 2, 3000, "an older receipt cannot discard a newer edit");
   assert.deepStrictEqual(events.map((event) => record(event) ? [event.revision, event.value] : event), [[3, "draft"], [4, "newer"]]);
   assert.strictEqual(await frame.getByRole("textbox", { name: "SDK draft", exact: true }).inputValue(), "newer");

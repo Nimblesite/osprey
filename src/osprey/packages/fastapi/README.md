@@ -58,8 +58,6 @@ Known remaining parameter limits: implicit `Annotated`/decorator binding is not 
 
 The HTTP drivers refuse `python -O`, retain diagnostic logs, and bound owned processes by runtime, memory and output limits. Native suites retry occupied loopback ports and verify listener recovery; GC/ARC acceptance runs concurrently. The external corpus also checks all eight non-GET methods, empty HEAD bodies, raw non-NUL binary payloads, CRLF content and larger echo bodies.
 
-Run `make -C src/osprey/packages fastapi-benchmark` to compare health and bundle routing, valid identity-provider bodies and indexed 422 responses on GC, ARC and pinned CPython FastAPI. Every timed response is asserted. The benchmark writes per-trial results to `target/fastapi/benchmark/results.json`. See [FASTAPI-BENCHMARK-SUBSET](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) and the [measured results](../../../../docs/reviews/review.md).
-
 `Applications.with_exception_handler(app, status, handler)` registers an immutable handler for typed HTTP failures from routing, dependencies or endpoints. The latest registration for a status wins. Handlers receive the request and typed exception, and their response passes through the app middleware. Ordinary responses keep their original body and headers. `Applications.include_router` preserves registrations. Class-based uncaught exception and database error handling remain open.
 
 `Applications.with_lifespan(port, host, startup, build, run, shutdown)` runs startup before binding. It passes startup's state to the application builder and to shutdown. When startup succeeds, the scope stops its listener and runs shutdown after work returns, including when work or binding fails. When both work and cleanup fail, the result preserves both errors in order. Real loopback tests cover startup refusal, state available to requests, occupied ports, work and shutdown failures, and socket closure before shutdown. Request cancellation and disconnect cleanup remain open. [FASTAPI-HTTP-LIFESPAN]
@@ -73,3 +71,24 @@ The explicit `jsonDecodePython` boundary decoder preserves first-key insertion o
 The body oracle records 808 cases from seven generated fixture models, with contract and schema hashes in `BODY_JSON`. GC and ARC match all responses, including the 68 escaped NUL cases. The HTTP server preserves literal NUL in binary bodies and rejects invalid JSON with the recorded status and offset, even after a complete JSON prefix. The native HTTP client preserves binary request and response bytes across Content-Length, chunked and close-delimited response framing. General UTF-16/UTF-32 body decoding remains open.
 
 `Body.bind_binary(request, media_types, max_bytes, endpoint)` checks the first Content-Type against the configured exact tokens, ignoring parameters. It returns 415 for an unsupported type, 400 for an empty body, or 413 for a body over the byte limit. The endpoint receives the original bytes. The native listener's request limit also applies. [FASTAPI-HTTP-FILES]
+
+## Benchmark
+
+Two commands, both informational — neither runs in CI:
+
+- `make -C src/toolchain/benchmarks fastapi-benchmark` — runs the benchmark, then renders the report from what it measured. Compares health and bundle routing, valid identity-provider bodies and indexed 422 responses on GC, ARC and pinned CPython FastAPI; every timed response is asserted.
+- `make -C src/toolchain/benchmarks fastapi-benchreport` — re-renders the report from the existing results without re-running the benchmark.
+
+Outputs live in one folder: `target/fastapi/benchmark/results.json` (per-trial measurements written by `tests/benchmark.cpython`) and `target/fastapi/benchmark/report.html` (rendered by the `bench/` Osprey project — `bench/src/benchreport.osp` decodes the JSON once at its edge and fails with a non-zero exit, never a half-written page, on unreadable input, an unexpected shape or degenerate data). See [FASTAPI-BENCHMARK-SUBSET](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md). Both commands print `report: target/fastapi/benchmark/report.html` as their last line.
+
+What is measured: sequential servers over fresh TCP connections, five trials per workload — median throughput (req/s), median latency (p50 ms), the median of each trial's p95 latency (p95 ms) and the maximum sampled RSS (MiB).
+
+How to read the report: throughput is higher-is-better; latency and memory are lower-is-better. Green ◀ best marks the winning runtime per column, and the chips compare each runtime against the Python baseline (▲ faster, ▼ slower, ≈ within ±2%). Results are shared-machine measurements, not gates.
+
+Results from 5 November 2026 on an Apple-silicon Mac, over 18,603 verified responses (IDP is the identity-provider model-binding workload):
+
+| Runtime | Health req/s | Bundle req/s | Valid IDP req/s | Invalid IDP req/s |
+|---|---:|---:|---:|---:|
+| osprey-gc | 3,302 | 3,185 | 2,479 | 2,662 |
+| osprey-arc | 6,075 | 5,791 | 4,272 | 4,408 |
+| cpython | 5,585 | 4,509 | 4,905 | 3,594 |

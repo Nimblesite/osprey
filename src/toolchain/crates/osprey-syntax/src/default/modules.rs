@@ -157,9 +157,7 @@ impl Lowerer<'_> {
         Some(match item.kind() {
             "signature_value" => SignatureItem::Value {
                 name: self.field_text(item, "name"),
-                ty: item
-                    .child_by_field_name("type")
-                    .map_or_else(|| TypeExpr::named(""), |ty| self.lower_type(ty)),
+                ty: self.type_or_empty(item),
                 position: Some(self.pos(item)),
             },
             "signature_function" => {

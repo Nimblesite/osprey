@@ -1,0 +1,5 @@
+[project]
+name = "python-gpt2-check"
+source_roots = [".."]
+python_sources = ["../backends.py", "../cpu.py", "../gpu.py", "../model.py"]
+entry = "check.py"

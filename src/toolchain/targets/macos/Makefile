@@ -1,5 +1,5 @@
 # The desktop apps on macOS, each in the GPUI host. Recipes run from the repo root through scripts/make/forward.mk;
-# `make help` at the root lists these too. Windows: src/toolchain/targets/windows.
+# `make help` at the root lists these too. Windows: windows.
 # Each app's tests: src/toolchain/targets/macos/tests, and with no host at all, src/toolchain/targets/tests.
 # The Flock and painting measurements: src/toolchain/benchmarks.
 ROOT ?= ../../../..
@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting flock painting signal-flow synth storage probe
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage probe workbench-render-review
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -24,6 +24,18 @@ casting: _runtime_macos _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/casting/run.sh
 
+## examples: Build the Mac runtime, the compiler and every macOS example: the storage app and the
+##           three graphics scenes, each a Swift host linked to the Mac slice. Requires an Apple silicon
+##           Mac with Xcode. [IOS-TARGET-MACOS]
+examples: _macos-examples
+
+## graphics: Build the Metal graphics host and run the animated GPU demo. Osprey drives the scene; the
+##           GPU shades every pixel through Metal in a Swift host linked to the Mac slice, and the Osprey
+##           sources are the same files Windows draws through Direct3D 12. SCENE=kali|opal|character picks
+##           the scene; GFX_WARN overrides the C warning set. See src/osprey/examples/graphics/README.md.
+graphics:
+	$(MAKE) _graphics
+
 ## flock: Open Flock, the boids herding game. [GPUI-HOST-SCENE]
 flock: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
@@ -33,6 +45,24 @@ flock: _runtime_macos
 painting: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
+
+## qwen-server: Rebuild the compiler and the runtime, then serve Qwen3.8-27B from the real weights on Metal at
+##       http://127.0.0.1:11435 (QWEN_PORT), answering the Ollama and OpenAI routes; Ctrl-C stops it. The
+##       GGUF is pulled first if it is missing (QWEN_QUANT, UD-Q4_K_XL by default). Unload Ollama's
+##       resident model first (ollama stop <model>): on 36 GB the two do not fit together. [LLM-SERVING]
+qwen-server: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-serve
+
+## qwen-server-quick: The same server without rebuilding anything but the server: assumes
+##                    target/release/osprey and the runtime are already fresh.
+qwen-server-quick:
+	$(MAKE) -C $(ROOT) _qwen-serve
+
+## qwen-client: Chat with the running qwen-server (start it first, in another terminal) through the
+##              ollama command: type a message, /bye to leave. Needs the ollama CLI (brew install ollama).
+qwen-client:
+	$(MAKE) -C $(ROOT) _qwen-client
 
 ## signal-flow: Open the signal-flow editor, a UI machine with the four canvas
 ##              skins of src/osprey/packages/signal_flow. [UI-MACHINE-FLOW]
@@ -56,4 +86,11 @@ storage: _runtime_macos
 probe: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
+
+## workbench-render-review: Render a captured region tree natively (full page).
+##   TREE defaults to the browser suite's slate board; expect a 1488x1102 image.
+##   Matching dimensions do not prove pixel fidelity.
+WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
+workbench-render-review:
+	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/osprey/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
 endif

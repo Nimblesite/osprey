@@ -118,18 +118,47 @@ fn ml_flavor_doc_comments_reach_hover() {
 fn hover_renders_builtin_signature_and_rejects_unknowns() {
     // [BUILTIN-PRINT] Hover uses the constrained public signature, not the
     // internal `any` scheme used to implement receiver dispatch.
-    let md = builtin_hover("print");
-    let signature = osprey_types::builtin_doc_view("print")
-        .expect("print documentation")
-        .signature;
-    // The rich hover carries the call signature and the description, not just
-    // a bare `name : type` line.
-    assert!(
-        md.as_deref()
-            .is_some_and(|m| m.contains(&signature) && m.contains("supported scalar or Result")),
-        "{md:?}"
-    );
-    assert!(builtin_hover("notARealBuiltin").is_none());
+    // [#352] Literal signatures, never the renderer's own output, so a
+    // regression in `render_signature` or `display_param_type` fails here.
+    const PRINTABLE: &str = "int8 | int16 | int32 | int | uint8 | uint16 | uint32 | float16 | float32 | float | bool | string | Unit | any | Result<printable, printable>";
+    let cases = [
+        (
+            "print",
+            format!("print(value: {PRINTABLE}) -> Unit"),
+            "supported scalar or Result",
+        ),
+        (
+            "toString",
+            format!("toString(value: {PRINTABLE}) -> string"),
+            "toString",
+        ),
+        (
+            "length",
+            "length(s: string | List<T> | Map<string, V>) -> int".into(),
+            "length",
+        ),
+        ("input", "input() -> string".into(), "input"),
+        ("sleep", "sleep(milliseconds: int) -> Unit".into(), "sleep"),
+        (
+            "range",
+            "range(start: int, end: int) -> Iterator<int>".into(),
+            "range",
+        ),
+    ];
+    for (name, signature, description) in cases {
+        let md = builtin_hover(name);
+        // The rich hover carries the call signature and the description, not
+        // just a bare `name : type` line.
+        assert!(
+            md.as_deref().is_some_and(|m| m.contains(&signature)
+                && m.contains(description)
+                && !m.contains(&format!("{name} :"))),
+            "{name}: {md:?}"
+        );
+    }
+    for unknown in ["notARealBuiltin", "", "Print", "print ", "printx"] {
+        assert!(builtin_hover(unknown).is_none(), "{unknown:?}");
+    }
 }
 
 #[test]

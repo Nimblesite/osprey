@@ -27,15 +27,12 @@ module Update
     ready model = Model::set (model, "value", "ready")
     unchanged model = Reply(model = model, commands = "[]")
     failure (model, message) = unchanged (Model::set (model, "value", message))
-    export restore (model, source) = match Storage::restore (ready model, source)
+    settled (model, outcome) = match outcome
         Error message => failure (Model::set (ready model, "value", "bad"), message)
         Success value => unchanged (Model::set (value, "value", "good"))
-    export restoreCurried model source = match Storage::restoreCurried (ready model) source
-        Error message => failure (Model::set (ready model, "value", "bad"), message)
-        Success value => unchanged (Model::set (value, "value", "good"))
-    export restoreInferred (model, source) = match Storage::restoreInferred (ready model, source)
-        Error message => failure (Model::set (ready model, "value", "bad"), message)
-        Success value => unchanged (Model::set (value, "value", "good"))
+    export restore (model, source) = settled (model, Storage::restore (ready model, source))
+    export restoreCurried model source = settled (model, Storage::restoreCurried (ready model) source)
+    export restoreInferred (model, source) = settled (model, Storage::restoreInferred (ready model, source))
 
 module Payload
     answer ok = match ok

@@ -72,7 +72,8 @@ typedef struct {
 #define GC_MARKED 1u
 #define GC_FINAL 2u
 #define GC_STRING 4u
-#define GC_PERSISTENT (GC_FINAL | GC_STRING)
+#define GC_PINNED 8u // osp_mem_immortal: a root of every collection, never swept
+#define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED)
 
 static _Thread_local int g_lock_owned;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -351,9 +352,22 @@ static void gc_sweep(void) {
 }
 
 // Caller holds g_lock. The root provider covers all active callers and globals.
+// Pinned blocks are roots wherever they are referenced from: a runtime
+// singleton held only by a global stays alive even on a host whose data
+// segment this collector cannot scan.
+static void gc_scan_pinned(void) {
+  for (size_t i = 0; i < g_cap; i++) {
+    if (g_tab[i].base != 0 && (g_tab[i].mark & GC_PINNED) && !(g_tab[i].mark & GC_MARKED)) {
+      g_tab[i].mark |= GC_MARKED;
+      gc_ms_push(g_tab[i].base);
+    }
+  }
+}
+
 static void gc_collect_locked(void) {
   g_ms_top = 0;
   gc_scan_roots();
+  gc_scan_pinned();
 
   while (g_ms_top > 0) {
     uintptr_t w = g_ms[--g_ms_top];
@@ -489,8 +503,19 @@ void osp_release(void *o) { (void)o; }
 // Codegen-proved-unique drop (memory_hooks.h) — a no-op like osp_release; the
 // separate symbol carries LLVM free-pair attributes in the emitted IR.
 void osp_release_unique(void *o) { (void)o; }
-// Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
-void osp_mem_immortal(void *p) { (void)p; }
+// Singleton-immortality hook (memory_hooks.h): the block is pinned, a root of
+// every later collection, so a singleton the runtime keeps only in a global
+// survives on every host, data-segment scan or not.
+void osp_mem_immortal(void *p) {
+  if (p == NULL) {
+    return;
+  }
+  int held = g_lock_owned;
+  if (!held) gc_lock();
+  OspGcEnt *e = gc_lookup((uintptr_t)p);
+  if (e) e->mark |= GC_PINNED;
+  if (!held) gc_unlock();
+}
 // Multithreaded-heap trip (memory_hooks.h): a second thread is about to touch
 // the heap — switch every op from lock-free to mutex-guarded (see g_gc_mt).
 void osp_mem_notify_multithreaded(void) {

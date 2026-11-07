@@ -5,7 +5,6 @@
 
 import * as assert from "assert";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
@@ -16,10 +15,7 @@ import {
   debugSuite,
   type DebugSuiteRunner,
 } from "../../client/src/test-debug";
-import {
-  refreshTestFile,
-  registerOspreyTestExplorer,
-} from "../../client/src/test-explorer";
+import { refreshTestFile } from "../../client/src/test-explorer";
 import { leafTestId } from "../../client/src/test-explorer-parse";
 import {
   assertCurrentLine,
@@ -27,12 +23,24 @@ import {
   clearDebugBreakpoints,
   continueExecution,
   setSourceBreakpoints,
-  waitForDebugSessionStart,
+  stopActiveDebugSession,
   waitForDebugSessionEnd,
+  waitForDebugSessionStart,
   waitForStop,
 } from "./dap-harness";
-import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
-import { RecordingSink } from "./test-explorer-harness";
+import {
+  pinOspreySettings,
+  resolveBuiltOsprey,
+  resolveRequiredLldbDap,
+  type PinnedOspreySettings,
+} from "./osprey-test-env";
+import {
+  controllerFactory,
+  disposeRegistered,
+  makeFixtureDir,
+  RecordingSink,
+  type FixtureDir,
+} from "./test-explorer-harness";
 
 // Line numbers are load-bearing — the assertions below reference them. A `let`
 // inside the case body is what a breakpoint lands on; verified against the
@@ -64,11 +72,14 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
   this.retries(2);
   const compiler = resolveBuiltOsprey();
   const disposables: vscode.Disposable[] = [];
-  let fixtureDir: string;
+  let fixtures: FixtureDir;
   let uri: vscode.Uri;
-  let priorCompilerPath: string | undefined;
-  let priorLldbDapPath: string | undefined;
-  let controllerSequence = 0;
+  let pinned: PinnedOspreySettings;
+  const newController = controllerFactory(
+    disposables,
+    "ospreyTests-debug-e2e",
+    () => compiler ?? "osprey",
+  );
 
   const realRun: DebugSuiteRunner = (target, filter, token) =>
     debugSuite(target, filter, token, (folder, config) =>
@@ -78,68 +89,34 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
   suiteSetup(async function () {
     this.timeout(60_000);
     assert.ok(compiler, "a built osprey compiler is required for this E2E");
-    fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-debug-tests-"));
-    uri = vscode.Uri.file(path.join(fixtureDir, "steps.test.osp"));
-    fs.writeFileSync(uri.fsPath, FIXTURE);
+    fixtures = makeFixtureDir("osprey-debug-tests-");
+    uri = fixtures.write("steps.test.osp", FIXTURE);
 
-    const lldbDapPath = resolveRequiredLldbDap();
-    const config = vscode.workspace.getConfiguration("osprey");
-    priorCompilerPath = config.get<string>("server.compilerPath");
-    priorLldbDapPath = config.get<string>("debug.lldbDapPath");
-    await config.update(
-      "server.compilerPath",
-      compiler,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      lldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    pinned = await pinOspreySettings({
+      "server.compilerPath": compiler,
+      "debug.lldbDapPath": resolveRequiredLldbDap(),
+    });
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, "Osprey extension must be installed in the test host");
     await extension.activate();
   });
 
   suiteTeardown(async () => {
-    const config = vscode.workspace.getConfiguration("osprey");
-    await config.update(
-      "server.compilerPath",
-      priorCompilerPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      priorLldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await pinned.restore();
+    fixtures.remove();
   });
 
   teardown(async () => {
     clearDebugBreakpoints();
-    for (const disposable of disposables.splice(0)) {
-      disposable.dispose();
-    }
-    if (vscode.debug.activeDebugSession) {
-      try {
-        await vscode.debug.stopDebugging();
-      } catch {
-        // A session may terminate naturally while cleanup races it.
-      }
-    }
+    disposeRegistered(disposables);
+    await stopActiveDebugSession();
   });
 
   async function discoveredFile(): Promise<{
     controller: vscode.TestController;
     file: vscode.TestItem;
   }> {
-    controllerSequence += 1;
-    const controller = registerOspreyTestExplorer(
-      { subscriptions: disposables } as unknown as vscode.ExtensionContext,
-      () => compiler ?? "osprey",
-      `ospreyTests-debug-e2e-${controllerSequence}`,
-    );
+    const controller = newController();
     const file = await refreshTestFile(controller, uri, compiler ?? "osprey");
     assert.strictEqual(file.error, undefined);
     return { controller, file };
@@ -214,7 +191,7 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
     for (const console of ["internalConsole", "integratedTerminal"]) {
       test(`console selection preserves input and breakpoints (${console}, ${flavor})`, async function () {
         this.timeout(TEST_TIMEOUT_MS);
-        const program = path.join(fixtureDir, `console.${flavor}`);
+        const program = path.join(fixtures.path, `console.${flavor}`);
         const input =
           console === "integratedTerminal" ? "input()" : '"console answer"';
         const mlInput = console === "integratedTerminal" ? "input ()" : input;
@@ -287,7 +264,7 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
         request: "launch",
         name: "console contract",
         program,
-        cwd: fixtureDir,
+        cwd: fixtures.path,
         compilerPath: compiler,
         lldbDapPath: resolveRequiredLldbDap(),
         console,
@@ -332,9 +309,9 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
     test(`external console requests the external host terminal (${flavor})`, async function () {
       this.timeout(TEST_TIMEOUT_MS);
       assert.ok(compiler);
-      const program = path.join(fixtureDir, `external.${flavor}`);
+      const program = path.join(fixtures.path, `external.${flavor}`);
       const output = path.join(
-        fixtureDir,
+        fixtures.path,
         `external-${flavor}${process.platform === "win32" ? ".exe" : ""}`,
       );
       fs.writeFileSync(
@@ -345,7 +322,7 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
         compiler,
         program,
         output,
-        fixtureDir,
+        fixtures.path,
         () => {},
       );
       const adapter = resolveRequiredLldbDap();
@@ -355,11 +332,11 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
       );
       const request = await terminalRequest(adapter, {
         program: output,
-        cwd: fixtureDir,
+        cwd: fixtures.path,
         console,
       });
       assert.strictEqual(request.kind, "external");
-      assert.strictEqual(request.cwd, fixtureDir);
+      assert.strictEqual(request.cwd, fixtures.path);
       assert.ok(request.args.includes(output), JSON.stringify(request));
     });
   }

@@ -6,6 +6,7 @@ const compilerRoots = /^(src\/toolchain\/crates|src\/toolchain\/compiler|src\/to
 const content = (path) => /^(src\/toolchain\/website|docs\/book|src\/toolchain\/benchmarks)\//.test(path)
   || (path.endsWith('.md') && !compilerRoots.test(path))
 const embeddedGrammar = 'src/toolchain/website/src/js/osprey-grammar.mjs'
+const program = (path) => /\.(osp|ospml|ospo|py)$/.test(path) || path.split('/').pop() === 'osprey.toml'
 
 export const classify = (files) => {
   if (!Array.isArray(files) || files.some((path) => typeof path !== 'string' || !path)) {
@@ -16,6 +17,7 @@ export const classify = (files) => {
     website: files.some((path) => path.startsWith('src/toolchain/website/')),
     book: files.some((path) => path.startsWith('docs/book/')),
     benchmarks: files.some((path) => path.startsWith('src/toolchain/benchmarks/')),
+    programs: files.some(program),
   }
 }
 

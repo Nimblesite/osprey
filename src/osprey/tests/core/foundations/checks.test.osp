@@ -47,31 +47,12 @@ fn stringsAndListsCase() = {
     ])
 }
 
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // Register the arithmetic foundation interaction.
-test("arithmetic checks share derived values", fn() => exactArithmetic(arithmeticCase))
+test("arithmetic checks share derived values", exactly(arithmeticCase))
 // Register the classification interaction.
-test("classification checks include computed inputs", fn() => exactArithmetic(classifyCase))
+test("classification checks include computed inputs", exactly(classifyCase))
 // Register the standard-library composition interaction.
-test("strings and lists mix with matching", fn() => exactArithmetic(stringsAndListsCase))
+test("strings and lists mix with matching", exactly(stringsAndListsCase))
 
 /// Assertions are valid outside any case; a passing one prints nothing.
 checkTrue("assertions run outside a test case", startsWith("osprey", "osp"))

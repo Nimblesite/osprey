@@ -94,15 +94,20 @@ impl Lowerer<'_> {
         }
     }
 
+    /// Record `name` as exported at `at`, refusing a second declaration.
+    fn record_export(&mut self, name: &str, at: Node<'_>) -> Result<()> {
+        if self.exports.insert(name.to_owned(), position(at)).is_some() {
+            return Err(Self::error(at, format!("duplicate export `{name}`")));
+        }
+        Ok(())
+    }
+
     pub(super) fn mark_export(&mut self, node: Node<'_>) -> Result<()> {
         if !self.file_scope() {
             return self.unsupported(node);
         }
         let name = self.text(node).to_owned();
-        if self.exports.insert(name.clone(), position(node)).is_some() {
-            return Err(Self::error(node, format!("duplicate export `{name}`")));
-        }
-        Ok(())
+        self.record_export(&name, node)
     }
 
     pub(super) fn export_list(&mut self, node: Node<'_>) -> Result<()> {
@@ -117,9 +122,7 @@ impl Lowerer<'_> {
             if !identifier(&name) {
                 return self.unsupported(item);
             }
-            if self.exports.insert(name.clone(), position(item)).is_some() {
-                return Err(Self::error(item, format!("duplicate export `{name}`")));
-            }
+            self.record_export(&name, item)?;
         }
         Ok(())
     }

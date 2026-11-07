@@ -156,21 +156,13 @@ fn choose_entry(
             .collect::<Vec<_>>();
         return unique_entry(&candidates, configured.to_string_lossy().as_ref(), errors);
     }
-    let mains = sources
-        .iter()
-        .enumerate()
-        .filter(|(_, source)| has_namespace_main(&source.program.statements))
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
+    let mains = selected_sources(sources, |source| {
+        has_namespace_main(&source.program.statements)
+    });
     if !mains.is_empty() {
         return unique_entry(&mains, "a namespace-level `main`", errors);
     }
-    let executable = sources
-        .iter()
-        .enumerate()
-        .filter(|(_, source)| has_executable(&source.program.statements))
-        .map(|(index, _)| index)
-        .collect::<Vec<_>>();
+    let executable = selected_sources(sources, |source| has_executable(&source.program.statements));
     if !executable.is_empty() {
         return unique_entry(&executable, "top-level executable statements", errors);
     }
@@ -199,6 +191,16 @@ fn declares(statements: &[Stmt]) -> bool {
         Stmt::Import(_) => false,
         _ => true,
     })
+}
+
+/// The indexes of the sources `selected` picks, in source order.
+fn selected_sources(sources: &[SourceFile], selected: impl Fn(&SourceFile) -> bool) -> Vec<usize> {
+    sources
+        .iter()
+        .enumerate()
+        .filter(|(_, source)| selected(source))
+        .map(|(index, _)| index)
+        .collect()
 }
 
 fn unique_entry(

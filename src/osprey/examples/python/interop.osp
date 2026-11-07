@@ -27,15 +27,14 @@ let fake = handler Python { call _ _ _ => Success { value: "test answer" } }
 
 fn squareRoot(value: float) = perform Python.call("math", "sqrt", "[${toString(value)}]")
 
-fn squareRootText(value) = match live(fn() => squareRoot(value)) {
+fn answerText(computed) = match computed {
     Success { value } => value
     Error { message } => "error: ${message}"
 }
 
-fn mockedSquareRoot() = match fake(fn() => squareRoot(81.0)) {
-    Success { value } => value
-    Error { message } => "error: ${message}"
-}
+fn squareRootText(value) = answerText(live(fn() => squareRoot(value)))
+
+fn mockedSquareRoot() = answerText(fake(fn() => squareRoot(81.0)))
 
 // Returns a result-object handle envelope; the tensor payload stays in Python.
 fn scaleTensor(objectId) = osprey_python_object("call", objectId, "mul", "{\"args\":[{\"value\":2.0}]}")

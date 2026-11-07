@@ -18,13 +18,11 @@ module Github
 
     export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
 
-    scalar doc path = jsonGet doc path ?: ""
+    positive doc path = (parseInt (Json::scalar doc path) ?: 0) > 0
 
-    positive doc path = (parseInt (scalar doc path) ?: 0) > 0
+    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (Json::scalar doc (prefix + ".title")) > 0 && length (Json::scalar doc (prefix + ".user.login")) > 0 && (parseInt (Json::scalar doc (prefix + ".comments")) ?: ((0 - 1) )) >= 0
 
-    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (scalar doc (prefix + ".title")) > 0 && length (scalar doc (prefix + ".user.login")) > 0 && (parseInt (scalar doc (prefix + ".comments")) ?: ((0 - 1) )) >= 0
-
-    optional doc path = match scalar doc path
+    optional doc path = match Json::scalar doc path
         "null" => ""
         value => value
 
@@ -32,24 +30,13 @@ module Github
     labels doc prefix index count = match index >= count || index >= 10
         true => ""
         false =>
-            name = scalar doc "${prefix}.labels[${index}].name"
+            name = Json::scalar doc "${prefix}.labels[${index}].name"
             rest = labels doc prefix ((satAdd index 1) ) count
             match length rest > 0
                 true => name + " · " + rest
                 false => name
 
-    issue doc prefix = Json::obj (
-        Json::strField "id" (scalar doc (prefix + ".id")) + "," +
-        Json::numField "number" (parseInt (scalar doc (prefix + ".number")) ?: 0) + "," +
-        Json::strField "title" (scalar doc (prefix + ".title")) + "," +
-        Json::strField "author" (scalar doc (prefix + ".user.login")) + "," +
-        Json::numField "comments" (parseInt (scalar doc (prefix + ".comments")) ?: 0) + "," +
-        Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000) + "," +
-        Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels"))))
-
-    append left right = match length left == 0
-        true => right
-        false => left + "," + right
+    issue doc prefix = Json::obj (Json::members [Json::strField "id" (Json::scalar doc (prefix + ".id")), Json::numField "number" (parseInt (Json::scalar doc (prefix + ".number")) ?: 0), Json::strField "title" (Json::scalar doc (prefix + ".title")), Json::strField "author" (Json::scalar doc (prefix + ".user.login")), Json::numField "comments" (parseInt (Json::scalar doc (prefix + ".comments")) ?: 0), Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000), Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels")))])
 
     collect : int -> int -> int -> string -> Result<string, string>
     collect doc index count output = match index >= count
@@ -60,7 +47,7 @@ module Github
             match jsonLength doc (prefix + ".pull_request") >= 0
                 true => collect doc next count output
                 false => match issueValid doc prefix
-                    true => collect doc next count (append output (issue doc prefix))
+                    true => collect doc next count (Json::append output (issue doc prefix))
                     false => Error(message = "GitHub returned an issue missing a valid id, number, title, author, or comment count.")
 
     parseDocument doc = match jsonLength doc "" <= 100

@@ -1,4 +1,5 @@
 namespace registry_api;
+import registry::Bytes
 
 /// Strict selection from a Cookie header value: exact-name lookup with
 /// duplicate and malformed rejection. A selected cookie is opaque data, never
@@ -17,8 +18,7 @@ module HostedCookies {
     export type Selection = Found { value: string } | Missing | Reject { status: int, code: string }
 
     fn visible(b) = b >= 33 && b < 127
-    fn nameByte(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45
-    fn allBytes(s, ok) = fold(range(0, byteLength(s)), true, fn(good, i) => good && ok(byteAt(s, i) ?: 0))
+    fn nameByte(b) = Bytes::isAlnumIn(b, [Bytes::underscore, Bytes::hyphen])
 
     /// One segment after the separator: exactly one optional leading space,
     /// then `name=value`; the value may itself contain `=` (base64).
@@ -29,7 +29,7 @@ module HostedCookies {
             let name = take(segment, colon)
             let text = drop(segment, colon + 1)
             if byteLength(name) == 0 || byteLength(text) == 0 { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
-            else if !allBytes(name, nameByte) || !allBytes(text, visible) { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
+            else if !Bytes::everyByte(name, nameByte) || !Bytes::everyByte(text, visible) { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
             else { PairsOk { pairs: [Pair { name: name, value: text }] } }
         }
     }

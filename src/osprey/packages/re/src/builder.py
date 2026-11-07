@@ -26,10 +26,14 @@ def repeat_frag(body, mn, mx, greedy):
         return count_frag(body, mn, mx, greedy)
 
 
+def split_to(greedy, target):
+    """A split that prefers `target` when greedy and falls past it when lazy."""
+    return [Program.ins_ab("split", 1, target)] if greedy else [Program.ins_ab("split", target, 1)]
+
+
 def star_frag(body, greedy):
     """`body*`: a split that prefers the body (greedy) or the exit (lazy)."""
-    l = len(body) + 2
-    head = [Program.ins_ab("split", 1, l)] if greedy else [Program.ins_ab("split", l, 1)]
+    head = split_to(greedy, len(body) + 2)
     return listAppend(Program.concat(head, body), Program.ins_a("jmp", 0))
 
 
@@ -40,9 +44,7 @@ def plus_frag(body, greedy):
 
 def opt_frag(body, greedy):
     """`body?`: body once or not at all."""
-    l = len(body) + 1
-    head = [Program.ins_ab("split", 1, l)] if greedy else [Program.ins_ab("split", l, 1)]
-    return Program.concat(head, body)
+    return Program.concat(split_to(greedy, len(body) + 1), body)
 
 
 def count_frag(body, mn, mx, greedy):
@@ -58,9 +60,7 @@ def opt_range_frag(body, mx, greedy):
     if mx == 0:
         return []
     else:
-        l = len(body) + 1
-        head = [Program.ins_ab("split", 1, l)] if greedy else [Program.ins_ab("split", l, 1)]
-        return Program.concat(head, Program.concat(body, opt_range_frag(body, mx - 1, greedy)))
+        return Program.concat(split_to(greedy, len(body) + 1), Program.concat(body, opt_range_frag(body, mx - 1, greedy)))
 
 
 def alt_frag(l, r):

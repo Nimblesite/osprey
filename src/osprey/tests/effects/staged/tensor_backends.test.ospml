@@ -69,25 +69,23 @@ geluScale = 0.7978845608028654
 geluCubic = 0.044715
 tolerance = 0.000000001
 
+(** [FAILURE-EXPLICIT] Report a failed tensor operation and answer `fallback`. *)
+tensorFailed (message, fallback) =
+    check ("tensor operation", "success", toString message)
+    fallback
 (** [FAILURE-EXPLICIT] A failed tensor operation fails the predicate with its reason. *)
 tensorSatisfies (result, predicate) = match result
     Success value => predicate value
-    Error message =>
-        check ("tensor operation", "success", toString message)
-        false
+    Error message => tensorFailed (message, false)
 (** [FAILURE-EXPLICIT] A case ends here; a failure has already failed an assertion. *)
 settled result = match result
     Success _ => 0
-    Error message =>
-        check ("tensor operation", "success", toString message)
-        0
+    Error message => tensorFailed (message, 0)
 (** [FAILURE-EXPLICIT] The same for a string-producing case: the empty text can
     never equal the expected rendering, so a failure cannot pass. *)
 settledText result = match result
     Success value => value
-    Error message =>
-        check ("tensor operation", "success", toString message)
-        ""
+    Error message => tensorFailed (message, "")
 at (m, i) = perform Backends::Tensor.get m i
 size m = perform Backends::Tensor.length m
 vector xs = perform Backends::Tensor.fromList xs
@@ -100,6 +98,8 @@ maxF (a, x) = match x > a
     false => a
 near (actual, expected) = abs (actual - expected) < tolerance
 gelu x = 0.5 * x * (1.0 + tanh (geluScale * (x + geluCubic * x * x * x)))
+(** Every element of x through gelu, as a new buffer. *)
+smoothed x = perform Backends::Tensor.build (size x) (\i => gelu (at (x, i)))
 
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (n, step, modulus, shift, scale) = perform Backends::Tensor.build n (\i => toFloat ((i * step) % modulus - shift) / scale)
@@ -187,7 +187,7 @@ block (x, t) =
                         \projected => Backends::andThen(perform Backends::Tensor.zipWith (x) (projected) (addF),
                             \x2 => Backends::andThen(layerNorm(x2, t, w.ln2gain, w.ln2bias),
                                 \normed2 => Backends::andThen(linear(normed2, t, width, mlpWidth, w.fcWeight, w.fcBias),
-                                    \f => Backends::andThen(perform Backends::Tensor.build (size(f)) (\i => gelu(at(f, i))),
+                                    \f => Backends::andThen(smoothed f,
                                         \hidden => Backends::andThen(linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias),
                                             \out => perform Backends::Tensor.zipWith (x2) (out) (addF)))))))))))
 
@@ -200,11 +200,17 @@ blockOutput () =
                 \x => block(x, 2))))
 rendered y = range 0 (size y) |> fold "" (\(acc, i) => acc + " " + toString (at (y, i)))
 
+(** The oracle values of the block, element by element. *)
+oracle = [ -1.6005739040598597, 1.6570609567125532, 0.7819120177177687, 2.600026966458822, -1.4874618953251921, 0.04813056859620782, -0.6083624491502386, 1.4214195552139615 ]
+
+(** Element i of y against the oracle: a missing oracle is never near a real element. *)
+oracleAt (y, i) = near (at (y, i), listGet oracle i ?: 0.0)
+
 (** The oracle values of the block, plus which interpretation answered. *)
 blockChecks (name, expectedDevice) =
     Backends::andThen(blockOutput(),
         \y =>
-            checkAll(name, [ size(y) == 8, device() == expectedDevice, near(at(y, 0), -1.6005739040598597), near(at(y, 1), 1.6570609567125532), near(at(y, 2), 0.7819120177177687), near(at(y, 3), 2.600026966458822), near(at(y, 4), -1.4874618953251921), near(at(y, 5), 0.04813056859620782), near(at(y, 6), -0.6083624491502386), near(at(y, 7), 1.4214195552139615), tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
+            checkAll(name, [ size(y) == 8, device() == expectedDevice, oracleAt(y, 0), oracleAt(y, 1), oracleAt(y, 2), oracleAt(y, 3), oracleAt(y, 4), oracleAt(y, 5), oracleAt(y, 6), oracleAt(y, 7), tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
             Success(value = 0) )
 
 listsCase () = settled (Backends::onLists (\() => blockChecks ("the block over lists matches the reference pass", "lists")))
@@ -238,16 +244,19 @@ inferenceCase () = checkAll "an inferred instantiation selects the innermost reg
     inline lambda, a named function and a closure over a local all run. *)
 doubled n = perform Backends::Tensor.build n (\i => toFloat i * 2.0)
 scaled (n, scale) = perform Backends::Tensor.build n (\i => toFloat i * scale)
-smoothed x = perform Backends::Tensor.build (size x) (\i => gelu (at (x, i)))
+(** The scaled kernel closure over the local scale, checked at one element. *)
+scaledCase scale = tensorSatisfies (scaled (2, scale), \t => at (t, 1) == 3.0)
+(** Two uploaded vectors multiplied into one product, checked at one element. *)
+productCase () = tensorSatisfies (vector [1.0, 2.0, 3.0, 4.0], \left => tensorSatisfies (vector [5.0, 6.0, 7.0, 8.0], \right => tensorSatisfies (product (left, right, 2, 2, 2), \assembled => at (assembled, 3) == 50.0)))
 forwardedKernelCase () =
     scale = 3.0
     checkAll "a static arm forwards the model's callback to its kernel" [
         Backends::onGpu (\() => tensorSatisfies (doubled 3, \t => at (t, 2) == 4.0)),
         Backends::onGpu (\() => tensorSatisfies (vector [1.0, 2.0], \uploaded => tensorSatisfies (smoothed uploaded, \t => at (t, 1) == gelu 2.0))),
-        Backends::onGpu (\() => tensorSatisfies (scaled (2, scale), \t => at (t, 1) == 3.0)),
-        Backends::onLists (\() => tensorSatisfies (scaled (2, scale), \t => at (t, 1) == 3.0)),
-        Backends::onGpu (\() => tensorSatisfies (vector [1.0, 2.0, 3.0, 4.0], \left => tensorSatisfies (vector [5.0, 6.0, 7.0, 8.0], \right => tensorSatisfies (product (left, right, 2, 2, 2), \assembled => at (assembled, 3) == 50.0)))),
-        Backends::onLists (\() => tensorSatisfies (vector [1.0, 2.0, 3.0, 4.0], \left => tensorSatisfies (vector [5.0, 6.0, 7.0, 8.0], \right => tensorSatisfies (product (left, right, 2, 2, 2), \assembled => at (assembled, 3) == 50.0))))
+        Backends::onGpu (\() => scaledCase scale),
+        Backends::onLists (\() => scaledCase scale),
+        Backends::onGpu productCase,
+        Backends::onLists productCase
     ]
 
 (** An operation's declared callback type survives discharge inside a generic
@@ -266,27 +275,13 @@ declaredTypes () =
                         \doubles => Backends::andThen(total(doubles),
                             \doubleTotal => Success(value = "${headTotal} ${doubleTotal}")))))))
 declaredTypesCase () = checkAll "a kernel keeps the operation's declared element types inside a generic function" [
-    Backends::onGpu (\() => settledText (declaredTypes ())) == "6.0 18.0",
-    Backends::onLists (\() => settledText (declaredTypes ())) == "6.0 18.0"
+    settledText (Backends::onGpu(declaredTypes)) == "6.0 18.0",
+    settledText (Backends::onLists(declaredTypes)) == "6.0 18.0"
 ]
 
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
-test "the block over lists matches the reference pass" (\() => exactArithmetic listsCase)
-test "the same block over GPU buffers matches the reference pass" (\() => exactArithmetic gpuCase)
-test "both interpretations compute the same doubles" (\() => exactArithmetic agreementSettled)
-test "an inferred instantiation selects the innermost region" (\() => exactArithmetic inferenceCase)
-test "a static arm forwards the model's callback to its kernel" (\() => exactArithmetic forwardedKernelCase)
-test "a kernel keeps the operation's declared element types inside a generic function" (\() => exactArithmetic declaredTypesCase)
+test "the block over lists matches the reference pass" (exactly listsCase)
+test "the same block over GPU buffers matches the reference pass" (exactly gpuCase)
+test "both interpretations compute the same doubles" (exactly agreementSettled)
+test "an inferred instantiation selects the innermost region" (exactly inferenceCase)
+test "a static arm forwards the model's callback to its kernel" (exactly forwardedKernelCase)
+test "a kernel keeps the operation's declared element types inside a generic function" (exactly declaredTypesCase)

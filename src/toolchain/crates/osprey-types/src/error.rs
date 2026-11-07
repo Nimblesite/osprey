@@ -1,7 +1,7 @@
 //! Type errors as plain located messages — the CLI prints `file:line:col:
 //! message`, identical to the syntax-error path.
 
-use crate::ty::Type;
+use crate::ty::{names, Type};
 use osprey_ast::Position;
 
 /// A single type error with an optional source position.
@@ -39,16 +39,32 @@ impl TypeError {
         self
     }
 
-    /// Build an error for two types that fail to unify.
+    /// Build an error for two types that fail to unify. A `Result` met where
+    /// its own payload was expected, as programs written against the HTTP
+    /// externs' old `int` returns do, names how to decode it ([FAILURE-EXPLICIT]).
     #[must_use]
     pub(crate) fn mismatch(a: &Type, b: &Type) -> TypeError {
-        TypeError::new(format!("type mismatch: cannot unify {a} with {b}"))
+        let message = format!("type mismatch: cannot unify {a} with {b}");
+        TypeError::new(match payload_of(b, a) {
+            Some(payload) => format!("{message}; decode the `Result` with `match` or `?:` before using it as `{payload}`"),
+            None => message,
+        })
     }
 
     /// Build an error for a type that recursively contains itself (occurs check).
     #[must_use]
     pub(crate) fn recursive(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("recursive type: {a} occurs in {b}"))
+    }
+}
+
+/// `wanted` when `result` is a `Result` whose success type is exactly it.
+fn payload_of<'t>(result: &Type, wanted: &'t Type) -> Option<&'t Type> {
+    match result {
+        Type::Con { name, args } if name == names::RESULT && args.first() == Some(wanted) => {
+            Some(wanted)
+        }
+        _ => None,
     }
 }
 

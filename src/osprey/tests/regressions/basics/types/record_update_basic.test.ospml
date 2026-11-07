@@ -2,6 +2,13 @@
 
 print "=== RECORD UPDATE BASIC TESTS ==="
 
+(** Print a label followed by the two field values it describes. *)
+showFields (label, first, second) =
+    print label
+    print first
+    print second
+
+
 (** Test 1: Simple record type *)
 type Point =
     x : int
@@ -9,25 +16,17 @@ type Point =
 
 print "Test 1: Basic single field update"
 point1 = Point(x = 10, y = 20)
-print "Original: x=10, y=20"
-print point1.x
-print point1.y
+showFields ("Original: x=10, y=20", point1.x, point1.y)
 
 point2 = point1(x = 30)
-print "After update x=30: x=30, y=20"
-print point2.x
-print point2.y
+showFields ("After update x=30: x=30, y=20", point2.x, point2.y)
 
-print "Original unchanged: x=10, y=20"
-print point1.x
-print point1.y
+showFields ("Original unchanged: x=10, y=20", point1.x, point1.y)
 
 // Test 2: Multiple field update
 print "Test 2: Multiple field update"
 point3 = point1(x = 50, y = 60)
-print "After update x=50, y=60"
-print point3.x
-print point3.y
+showFields ("After update x=50, y=60", point3.x, point3.y)
 
 (** Test 3: Different record type *)
 type Person =
@@ -36,21 +35,15 @@ type Person =
 
 print "Test 3: Different record type"
 alice = Person(name = "Alice", age = 25)
-print "Original: Alice, 25"
-print alice.name
-print alice.age
+showFields ("Original: Alice, 25", alice.name, alice.age)
 
 older = alice(age = 26)
-print "After age update: Alice, 26"
-print older.name
-print older.age
+showFields ("After age update: Alice, 26", older.name, older.age)
 
 // Test 4: Update with expressions
 print "Test 4: Update with expressions"
 computed = point1(x = 10, y = point1.x)
-print "Computed update: x=10, y=10"
-print computed.x
-print computed.y
+showFields ("Computed update: x=10, y=10", computed.x, computed.y)
 
 print "=== RECORD UPDATE BASIC TESTS COMPLETE ==="
 
@@ -66,19 +59,10 @@ recordUpdateCase () =
     olderPerson = person(age = 26)
     computedPoint = original(x = original.y, y = original.x)
     checkAll "non-destructive record updates" [
-        original.x == 10,
-        original.y == 20,
-        moved.x == 30,
-        moved.y == 20,
-        replaced.x == 50,
-        replaced.y == 60,
-        person.name == "Alice",
-        person.age == 25,
-        olderPerson.name == "Alice",
-        olderPerson.age == 26,
-        computedPoint.x == 20,
-        computedPoint.y == 10,
-        (_(x = 9)).x == 9
+        structuralEquals [original.x, original.y, moved.x, moved.y] [10, 20, 30, 20],
+        structuralEquals [replaced.x, replaced.y, person.age, olderPerson.age] [50, 60, 25, 26],
+        structuralEquals [computedPoint.x, computedPoint.y, (_(x = 9)).x] [20, 10, 9],
+        structuralEquals [person.name, olderPerson.name] ["Alice", "Alice"]
     ]
 test "record updates preserve the source and untouched fields" recordUpdateCase
 
@@ -148,18 +132,10 @@ genericUpdateCase () =
     pair = Pair(first = 1, second = "one")
     repaired = second pair "uno"
     checkAll "updates through generic functions" [
-        movedPoint.x == 7,
-        movedPoint.y == 2,
-        point.x == 1,
-        retagged.x == "b",
-        renamed.name == "Bob",
-        renamed.age == 25,
-        boxed.held == 1,
-        reboxed.held == 5,
-        swapped.held == "b",
-        repaired.first == 1,
-        repaired.second == "uno",
-        pair.second == "one"
+        structuralEquals [movedPoint.x, movedPoint.y, point.x, renamed.age] [7, 2, 1, 25],
+        structuralEquals [boxed.held, reboxed.held, repaired.first] [1, 5, 1],
+        structuralEquals [retagged.x, renamed.name, swapped.held] ["b", "Bob", "b"],
+        structuralEquals [repaired.second, pair.second] ["uno", "one"]
     ]
 
 nestedUpdateCase () =
@@ -172,17 +148,10 @@ nestedUpdateCase () =
     pair = Pair(first = "a", second = 1)
     bumped = pair(second = satAdd pair.second 1, first = "b")
     checkAll "nested and generic records update without touching their source" [
-        moved.address.city == "Hobart",
-        moved.address.zip == 6000,
-        acme.address.city == "Perth",
-        closed.active == false,
-        closed.name == "Acme (closed)",
-        closed.address.city == "Hobart",
-        doubled.held == 4,
-        boxed.held == 2,
-        bumped.first == "b",
-        bumped.second == 2,
-        pair.second == 1
+        structuralEquals [moved.address.city, acme.address.city, closed.name] ["Hobart", "Perth", "Acme (closed)"],
+        structuralEquals [closed.address.city, bumped.first] ["Hobart", "b"],
+        structuralEquals [moved.address.zip, doubled.held, boxed.held, bumped.second, pair.second] [6000, 4, 2, 2, 1],
+        closed.active == false
     ]
 
 httpRecordPattern response = match response
@@ -298,23 +267,12 @@ flowUpdateCase () =
     walked = walk (start, 3)
     steeredPoint = steered ()
     checkAll "updates inside match arms, lambdas, recursion and handler arms" [
-        stepped.x == 1,
-        stepped.y == 0,
-        shifted.y == 10,
-        shifted.x == 1,
-        walked.x == 3,
-        walked.y == 6,
-        start.x == 0,
-        steeredPoint.x == 11,
-        steeredPoint.y == 6,
+        structuralEquals [stepped.x, stepped.y, shifted.y, shifted.x, walked.x] [1, 0, 10, 1, 3],
+        structuralEquals [walked.y, start.x, steeredPoint.x, steeredPoint.y] [6, 0, 11, 6],
         describe (start(y = 9, x = 8)) == "8,9",
-        nestedAnonymousCapture (),
-        httpRecordLayout (),
-        resultRecordCase (),
-        genericResultRecordCase (),
-        anonymousResultRecordCase (),
-        resultTransportCase (),
-        genericUnionResultCase ()
+        structuralEquals [nestedAnonymousCapture (), httpRecordLayout (), resultRecordCase ()] [true, true, true],
+        structuralEquals [genericResultRecordCase (), anonymousResultRecordCase ()] [true, true],
+        structuralEquals [resultTransportCase (), genericUnionResultCase ()] [true, true]
     ]
 
 erasedCell = erase (Cell(v = "s"))

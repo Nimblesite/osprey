@@ -279,6 +279,7 @@ ok filter name
 ok filter args
 ok test args
 ok chars of empty
+ok indexed rebuild
 ok length of undefined
 ok method on int
 ok bind fallback innermost
@@ -355,4 +356,4 @@ ok chat bad effort
 ok vision picture numbering is call scoped (known divergence)
 ok namespace write inside a macro (known divergence)
 ok tuple literal prints as a list (known divergence)
-357 passed, 0 failed
+358 passed, 0 failed

@@ -1,7 +1,23 @@
 //! Small declaration helpers shared by graph collection.
 
+use crate::assemble::source_error;
 use crate::model::DeclKind;
-use osprey_ast::{stmt_meta, SignatureItem, Stmt};
+use crate::{ProjectError, SourceMetadata};
+use osprey_ast::{stmt_meta, Position, SignatureItem, Stmt};
+
+/// The diagnostics sink every assembly pass shares: one `error` wording,
+/// located through the pass's own source table.
+pub(crate) trait Diagnostics {
+    /// The pass's diagnostics and the source table that locates them.
+    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>);
+
+    /// Record `message` at `source`, located when that index names a known
+    /// source and unlocated otherwise [MODULES-DIAG].
+    fn error(&mut self, source: usize, position: Option<Position>, message: impl Into<String>) {
+        let (sources, errors) = self.sink();
+        errors.push(source_error(sources, source, position, message));
+    }
+}
 
 pub(crate) fn primary_name(statement: &Stmt) -> Option<String> {
     match statement {

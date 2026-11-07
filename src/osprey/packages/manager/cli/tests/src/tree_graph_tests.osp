@@ -1,6 +1,4 @@
 namespace registry_tests;
-import registry_host::Host
-import registry_cli::Dispatch
 import registry_cli::Fetch
 import registry_cli::Lockfile
 import registry_tests::Fixture
@@ -20,25 +18,13 @@ import registry::Names
 module TreeGraphTests {
     fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/report\" = { epoch = 1 }\n[build-dependencies]\n\"@demo/tool\" = { epoch = 1 }\n"
 
-    fn runGraph(reads, walks, args) = {
-        let files = handler Host::Files {
-            read path => Fixture::readFor(reads, path)
-            exists path => Fixture::existsIn(reads, path)
-            remove path => Error { message: "fixture: unexpected remove ${path}" }
-            write path content => Error { message: "fixture: graph never writes ${path} (${byteLength(content)} bytes)" }
-        }
-        let tree = handler Host::Tree {
-            walk dir => Fixture::walkFor(walks, dir)
-            ensure dir => Error { message: "fixture: graph never ensures ${dir}" }
-        }
-        let web = handler Host::Web {
-            get base path => Error { message: "fixture: graph never fetches ${base}${path}" }
-        }
-        let process = handler Host::Process {
-            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: graph never runs ${command}" }
-        }
-        process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
-    }
+    fn runGraph(reads, walks, args) = RegistryFixture::runReadOnly(reads, walks, args, "graph")
+
+    /// `tree --graph` over every served package's installed tree.
+    fn runAll(served, words) = runGraph(allReads(served), walksOfMany(served), words)
+
+    /// One report line with the status the run must exit with.
+    fn oneLine(a, status) = a.status == status && length(a.lines) == 1
 
     fn key(scope, name) = Names::Key { scope: scope, name: name }
     fn requirement(scope, name) = ManifestModel::Requirement { package: key(scope, name), epoch: 1, minimumOrdinal: 1 }
@@ -94,11 +80,10 @@ module TreeGraphTests {
     }
 
     fn diamondGraph() = {
-        let a = runGraph(allReads(all()), walksOfMany(all()), ["tree", "--graph"])
+        let a = runAll(all(), ["tree", "--graph"])
         let doc = graphOf(a)
         checkAll("tree graph: project, direct keys and empty findings", [
-            a.status == 0,
-            length(a.lines) == 1,
+            oneLine(a, 0),
             textField(doc, "project") == "app",
             structuralEquals(itemsField(doc, "direct"), ["@demo/report", "@demo/tool"]),
             length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5,
@@ -113,14 +98,17 @@ module TreeGraphTests {
 
     fn localLockReads(text) = listAppend(allReads(all()), Fixture::readRoute("osprey.local.lock", text))
 
+    /// The graph a development lock `text` produces beside the installed trees.
+    fn graphOverLocal(text) = graphOf(runGraph(localLockReads(text), walksOfMany(all()), ["tree", "--graph"]))
+
     /// [PACKAGE-LOCAL-OVERRIDE]: a checkout is named on its own package only, and a
     /// development lock that cannot be read never looks like one with no overrides.
     fn localOverrides() = {
         let override = Lockfile::Override { package: key("demo", "maths"), path: "../maths", epoch: 1, manifestDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" }
         let local = RegistryFixture::devLockText(manifestText(), packages(), [override])
-        let doc = graphOf(runGraph(localLockReads(local), walksOfMany(all()), ["tree", "--graph"]))
-        let plain = graphOf(runGraph(allReads(all()), walksOfMany(all()), ["tree", "--graph"]))
-        let broken = graphOf(runGraph(localLockReads("not a lock"), walksOfMany(all()), ["tree", "--graph"]))
+        let doc = graphOverLocal(local)
+        let plain = graphOf(runAll(all(), ["tree", "--graph"]))
+        let broken = graphOverLocal("not a lock")
         checkAll("tree graph: local overrides", [
             textField(nodeFor(doc, "@demo/maths"), "override") == "../maths",
             textField(nodeFor(doc, "@demo/report"), "override") == "",
@@ -133,15 +121,13 @@ module TreeGraphTests {
     }
 
     fn jsonEnvelope() = {
-        let a = runGraph(allReads(all()), walksOfMany(all()), ["--json", "tree", "--graph"])
+        let a = runAll(all(), ["--json", "tree", "--graph"])
         let outer = graphOf(a)
         let lines = itemsField(outer, "lines")
         let inner = Json::parse(listGet(lines, 0) ?: "") ?: Json::Null
         checkAll("tree graph: --json has one semantic graph line", [
-            a.status == 0,
-            length(a.lines) == 1,
-            length(lines) == 1,
-            JsonRead::number(JsonRead::field(outer, "status")) == 0,
+            oneLine(a, 0),
+            structuralEquals([length(lines), JsonRead::number(JsonRead::field(outer, "status"))], [1, 0]),
             textField(inner, "project") == "app"
         ])
     }
@@ -151,8 +137,7 @@ module TreeGraphTests {
         let a = runGraph([Fixture::readRoute("osprey.toml", fresh)], [], ["tree", "--graph"])
         let doc = graphOf(a)
         checkAll("tree graph: a new project without a lock has an explicit state", [
-            a.status == 0,
-            length(a.lines) == 1,
+            oneLine(a, 0),
             textField(doc, "project") == "fresh",
             structuralEquals(itemsField(doc, "direct"), []),
             isEmpty(JsonRead::items(JsonRead::field(doc, "packages"))),
@@ -163,8 +148,7 @@ module TreeGraphTests {
     fn corruptLock() = {
         let a = runGraph([Fixture::readRoute("osprey.toml", manifestText()), Fixture::readRoute("osprey.lock", "not json")], [], ["tree", "--graph"])
         checkAll("tree graph: a corrupt lock is a nonzero lock.shape", [
-            a.status == 1,
-            length(a.lines) == 1,
+            oneLine(a, 1),
             Fixture::line(a, 0) == "lock.shape"
         ])
     }
@@ -172,19 +156,17 @@ module TreeGraphTests {
     fn invalidManifest() = {
         let a = runGraph([Fixture::readRoute("osprey.toml", "not toml\n")], [], ["tree", "--graph"])
         checkAll("tree graph: a rejected manifest is a nonzero source error", [
-            a.status == 1,
-            length(a.lines) == 1,
+            oneLine(a, 1),
             Fixture::line(a, 0) == "toml.expected-equals at 1:5"
         ])
     }
 
     fn missingPackage() = {
         let present = [maths(), report(), tool(), otherGreeting()]
-        let a = runGraph(allReads(present), walksOfMany(present), ["tree", "--graph"])
+        let a = runAll(present, ["tree", "--graph"])
         let doc = graphOf(a)
         checkAll("tree graph: a locked package without a tree is not present", [
-            a.status == 0,
-            length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5
+            structuralEquals([a.status, length(JsonRead::items(JsonRead::field(doc, "packages")))], [0, 5])
         ])
         checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], ["verify.missing"], false)
     }

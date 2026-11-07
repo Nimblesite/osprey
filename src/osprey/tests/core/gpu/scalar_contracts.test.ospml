@@ -1,11 +1,5 @@
 emptyRead : List<int>
 emptyRead = []
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
 // Scalar transfer conformance: inferred element types survive runtime lists,
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
@@ -84,22 +78,10 @@ emptyTypedLiteralCase () =
         gpuSatisfies (toGpu (emptyRead), \uploaded8 => gpuSatisfies (fromGpu (uploaded8), \checked0 => listLength (checked0) == 0))
     ]
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-test ("runtime list values retain float and bool GPU element tags", \() => exactArithmetic (listValueTagsCase))
-test ("fromGpu reads float and bool elements at their source types", \() => exactArithmetic (fromGpuScalarCase))
-test ("repeated List and GpuBuffer crossings preserve scalar types", \() => exactArithmetic (repeatedCrossingCase))
-test ("empty GPU literals retain contextual scalar types", \() => exactArithmetic (emptyTypedLiteralCase))
+test ("runtime list values retain float and bool GPU element tags", exactly listValueTagsCase)
+test ("fromGpu reads float and bool elements at their source types", exactly fromGpuScalarCase)
+test ("repeated List and GpuBuffer crossings preserve scalar types", exactly repeatedCrossingCase)
+test ("empty GPU literals retain contextual scalar types", exactly emptyTypedLiteralCase)
 (** [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract. *)
 squareScalar value = value * value
 subtractSelf value = value - value
@@ -232,4 +214,4 @@ gpuBitRoundTripCase () =
                         Error message => check ("GPU operation", "success", toString message)
                 Error message => check ("GPU operation", "success", toString message)
         Error message => check ("GPU operation", "success", toString message)
-test "GPU bit conversion kernels preserve exact words" (\() => exactArithmetic gpuBitRoundTripCase)
+test "GPU bit conversion kernels preserve exact words" (exactly gpuBitRoundTripCase)

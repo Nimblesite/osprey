@@ -5,35 +5,16 @@
     binary32 in the kernels' order: part p covers the blocks from
     p * blocks / 16 to (p + 1) * blocks / 16, each weight is multiplied then
     added, and the parts are added in order from 0.0. x is 0..inner-1. *)
-(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
-withBuffer (result, work) = match result
-    Success value => work value
-    Error message => check ("GPU operation", "success", toString message)
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
 (** Compare the product's two words with ggml's own decode element for element. *)
 productWith (label, kind, x, w, inner, expected) = withBuffer (gpuMatMulQuant (x, w, kind, 1, inner, 2), \out => checkAll (label, [
     gpuLength out == 2,
     gpuSatisfies (fromGpu out, \values => structuralEquals (values, expected))
 ]))
+(** The elements at [indices] in order, with [fallback] standing in for every out-of-bounds read: one gather pins a whole run of index reads. *)
+valuesAt (buffer, indices, fallback) = mapList (indices, \i => gpuGet (buffer, i) ?: fallback)
+(** Whether [buffer] reads exactly [expected] at [indices]. *)
+readsTo (buffer, indices, fallback, expected) = structuralEquals (valuesAt (buffer, indices, fallback), expected)
 productCase (label, kind, bytes, inner, expected) = withBuffer (toGpu (range (0, inner)), \indices => withBuffer (gpuMap (indices, \i => toFloat32 i), \x => withBuffer (toGpu bytes, \w => productWith (label, kind, x, w, inner, expected))))
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** [LLM-MATMUL-QUANT] Q8_0: 32 weights per 34-byte block, a binary16 scale and one signed byte per weight. *)
 q8_0Case () =
@@ -96,10 +77,10 @@ iq3_sCase () =
     expected : List<float32>
     expected = [137610.21875, -171571.40625]
     productCase ("the IQ3_S product matches ggml's decode in the kernels' lane order", "IQ3_S", bytes, 256, expected)
-test ("the Q8_0 product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (q8_0Case))
-test ("the Q6_K product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (q6_kCase))
-test ("the Q5_K product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (q5_kCase))
-test ("the Q3_K product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (q3_kCase))
-test ("the IQ4_NL product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (iq4_nlCase))
-test ("the IQ4_XS product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (iq4_xsCase))
-test ("the IQ3_S product matches ggml's decode in the kernels' lane order", \() => exactArithmetic (iq3_sCase))
+test ("the Q8_0 product matches ggml's decode in the kernels' lane order", exactly q8_0Case)
+test ("the Q6_K product matches ggml's decode in the kernels' lane order", exactly q6_kCase)
+test ("the Q5_K product matches ggml's decode in the kernels' lane order", exactly q5_kCase)
+test ("the Q3_K product matches ggml's decode in the kernels' lane order", exactly q3_kCase)
+test ("the IQ4_NL product matches ggml's decode in the kernels' lane order", exactly iq4_nlCase)
+test ("the IQ4_XS product matches ggml's decode in the kernels' lane order", exactly iq4_xsCase)
+test ("the IQ3_S product matches ggml's decode in the kernels' lane order", exactly iq3_sCase)

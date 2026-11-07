@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 /// An inferred recursive function specializes at each call's element type.
 /// The self-call must resolve to the matching emitted specialization.
 fn walk(xs, n) = match n {
@@ -31,17 +12,13 @@ fn recursiveGenericCase() = {
     let ints = walk([5, 6, 7], 2)
     let strings = walk(["a", "b"], 1)
     checkAll("recursive generic calls specialize without annotations", [
-        listLength(ints) == 3,
-        (listGet(ints, 0) ?: 0) == 5,
-        (listGet(ints, 1) ?: 0) == 6,
-        (listGet(ints, 2) ?: 0) == 7,
-        listLength(strings) == 2,
-        (listGet(strings, 0) ?: "") == "b",
-        (listGet(strings, 1) ?: "") == "a"
+        structuralEquals([listLength(ints), (listGet(ints, 0) ?: 0), (listGet(ints, 1) ?: 0)], [3, 5, 6]),
+        structuralEquals([(listGet(ints, 2) ?: 0), listLength(strings)], [7, 2]),
+        structuralEquals([(listGet(strings, 0) ?: ""), (listGet(strings, 1) ?: "")], ["b", "a"])
     ])
 }
 
-test("recursive generic functions specialize for integers and strings", fn() => exactArithmetic(recursiveGenericCase))
+test("recursive generic functions specialize for integers and strings", exactly(recursiveGenericCase))
 
 /// Repeated generic calls share closed instantiations after bounded expansion.
 fn twice(x) = "${x}${x}"
@@ -68,14 +45,10 @@ fn withProbe(label) = {
 fn sharedGenericCase() = {
     let expanded = twoFiftySix("q")
     checkAll("shared generic ABI and Result normalization", [
-        byteLength(expanded) == 256,
-        (byteAt(expanded, 0) ?: 0) == 113,
-        (byteAt(expanded, 255) ?: 0) == 113,
-        unpack(Packet { payload: "payload" }) == "payload",
-        unpack(Packet { payload: 73 }) == 73,
-        recover(Error { message: "bad" }) == 3,
-        recover(Success { value: 41 }) == 42,
-        withProbe("left") == "left!",
+        structuralEquals([byteLength(expanded), (byteAt(expanded, 0) ?: 0)], [256, 113]),
+        structuralEquals([(byteAt(expanded, 255) ?: 0), unpack(Packet { payload: 73 })], [113, 73]),
+        structuralEquals([recover(Error { message: "bad" }), recover(Success { value: 41 })], [3, 42]),
+        structuralEquals([unpack(Packet { payload: "payload" }), withProbe("left")], ["payload", "left!"]),
         withProbe("right") == "right!"
     ])
 }
@@ -101,11 +74,8 @@ fn sharedResultPayloadCase() = {
     let numbers = payloadResult("ints", true, 1) ?: []
     let second = payloadResult(73, true, 1) ?: []
     checkAll("specialized Result list payloads remain lists", [
-        byteLength(expanded) == 256,
-        length(numbers) == 2,
-        length(second) == 2,
-        payloadLength("marker") == 2,
-        payloadLength(73) == 2
+        structuralEquals([byteLength(expanded), length(numbers), length(second)], [256, 2, 2]),
+        structuralEquals([payloadLength("marker"), payloadLength(73)], [2, 2])
     ])
 }
 

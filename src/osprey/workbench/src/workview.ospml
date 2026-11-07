@@ -45,7 +45,7 @@ module WorkViews
         Ui::themed (palette current, Ui::framed (plain(frameName = "workbench", frameGrow = true, frameFill = "canvas"), Ui::column [Ui::framed (plain(frameHeight = 75), Ui::slot "heading"), ui::Divider, navigation current, ui::Divider, contextBar current, operationNotice current, surface current, footer ()]))
 
     palette current = match current.slate
-        true => Palettes::chalk
+        true => Palettes::chalk ()
         false => Palettes::initial ()
 
     export header () = Ui::framed (plain(frameName = "app-header", frameControlPadding = 12, frameAlign = "center", frameControlHeight = 40, frameQuietControls = true, frameFont = "sans", frameTextSize = 12, frameHeight = 75, frameLeft = 36, frameRight = 36), Ui::row [wordmark (), ui::Spacer, Ui::framed (plain(frameName = "document-name", frameHeight = 42, frameGap = 6, frameHug = true, frameAlign = "center"), Ui::column [Ui::caption (documentTitle (draft ())), Ui::caption (documentStatus (perform Signal<Reviewed>.read ()).checks)]), ui::Spacer, headerActions (layout ())])
@@ -212,11 +212,14 @@ module WorkViews
         true => "Commutativity\nof conjunction"
         false => proofTitle statement
 
-    titleLeading () = match (layout ()).generatedOpen
-        true => 34.72
+    (** A line height in each of the three layouts: the generated source open, the paper first, or the rail ([WORKBENCH-DESIGN-TYPE]). *)
+    export leading (generated, paper, rail) = match (layout ()).generatedOpen
+        true => generated
         false => match (layout ()).paperFirst
-            true => 49.28
-            false => 32.48
+            true => paper
+            false => rail
+
+    titleLeading () = leading (34.72, 49.28, 32.48)
 
     titleTracking () = match (layout ()).paperFirst
         true => -1.0
@@ -242,7 +245,7 @@ module WorkViews
 
     proofRows (draft, found) =
         sentences = Steps::sentences found.proof
-        result = Goals::run (found.statement, mapList (sentences, \sentence => Steps::read sentence))
+        result = Goals::run (found.statement, Steps::reads sentences)
         count = visibleRows (draft, sentences, result)
         selected = match draft.selectedStep >= 0
             true => draft.selectedStep
@@ -297,11 +300,7 @@ module WorkViews
 
     proseText (content, names) = Ui::rich (mapList (proseParts content, \word => Ui::run (word, "", italicWord (word, names))), ui::Lead)
 
-    proseLeading () = match (layout ()).generatedOpen
-        true => 31.5
-        false => match (layout ()).paperFirst
-            true => 36.0
-            false => 27.0
+    proseLeading () = leading (31.5, 36.0, 27.0)
 
     proseSize () = match (layout ()).generatedOpen
         true => 21
@@ -328,7 +327,7 @@ module WorkViews
         UnsupportedStep text _ => Ui::framed (plain(frameName = "unsupported-feedback", frameTop = 12, frameLeft = 18, frameBottom = 12, frameGap = 12), Ui::column [Ui::badge ("Wording not recognised", "text.bubble", ui::Secondary), Ui::text text, Ui::caption "This wording has not been checked. The goal is from the last understood step."])
         Advanced _ => Ui::caption ""
 
-    proofs text = mapList (filterList (Statements::document text, \found => isEmpty found.problems), \found => Proof(statement = found.statement, steps = mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))
+    proofs text = mapList (filterList (Statements::document text, \found => isEmpty found.problems), \found => Proof(statement = found.statement, steps = Steps::readAll found.proof))
 
     (** [WORKBENCH-EMIT] The generated Lean module, read only. *)
     export generated () = match proofs (draft ()).draftText

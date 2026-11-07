@@ -137,6 +137,15 @@ def required_source_files(root: Path, kind: str, name: str) -> set[str]:
     return set(files)
 
 
+UNFINISHED_ALLOWED = frozenset({(PACKAGES_DIR, "transformers")})
+"""The only projects the user approved to drop the floor; any other `unfinished` key is a config error."""
+
+
+def unfinished_problem(kind: str, name: str, entry: dict) -> list[str]:
+    allowed = entry.get("unfinished") is True and (kind, name) in UNFINISHED_ALLOWED
+    return [] if entry.get("unfinished", False) is False or allowed else ["unfinished may only be true, and only for transformers"]
+
+
 def minimum(entry: dict) -> int:
-    """An `"unfinished": true` project (user decision) still reports coverage but has no 90% floor."""
+    """An allowlisted `"unfinished": true` project still reports coverage but has no 90% floor."""
     return 0 if entry.get("unfinished") is True else MIN_THRESHOLD

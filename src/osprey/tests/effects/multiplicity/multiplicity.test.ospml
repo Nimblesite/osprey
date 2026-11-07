@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** Resumption multiplicity — how many times an effect's request may be answered
     ([MULTI-AXIS], docs/specs/language/0017-AlgebraicEffects.md). The ML twin of
@@ -160,8 +148,7 @@ contextualKeywordCase () =
         total == 15, abort == 115
     ]
 
-
-test "a once arm retrying internally sends exactly one receipt" (\() => exactArithmetic (retrySendsOneReceiptCase))
-test "a once arm that declines to resume sends no receipt" (\() => exactArithmetic (declineSendsNoReceiptCase))
-test "one unannotated function serves both multiplicities" (\() => exactArithmetic (sharedAcrossMultiplicitiesCase))
-test "abort, once, many and replayable stay legal identifiers" (\() => exactArithmetic (contextualKeywordCase))
+test "a once arm retrying internally sends exactly one receipt" (exactly retrySendsOneReceiptCase)
+test "a once arm that declines to resume sends no receipt" (exactly declineSendsNoReceiptCase)
+test "one unannotated function serves both multiplicities" (exactly sharedAcrossMultiplicitiesCase)
+test "abort, once, many and replayable stay legal identifiers" (exactly contextualKeywordCase)

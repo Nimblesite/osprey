@@ -39,10 +39,12 @@ src/osprey/tests/modules/module_effects_rows.test.osp a continuation for `pipeli
 src/osprey/tests/modules/module_effects_rows.test.ospml a continuation for `pipeline::Source::Feed.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 src/osprey/tests/modules/signature_ascription.test.osp a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 src/osprey/tests/modules/signature_ascription.test.ospml a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+src/osprey/tests/regressions/basics/files/directory_io.test.osp directory access builtin `listDir`
+src/osprey/tests/regressions/basics/files/directory_io.test.ospml directory access builtin `listDir`
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp fiber concurrency
 src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml fiber concurrency
-src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `spawnProcess`
-src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `spawnProcess`
+src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `awaitProcess`
+src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
 src/osprey/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp fiber concurrency builtin `Channel`

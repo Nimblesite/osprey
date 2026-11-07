@@ -32,25 +32,25 @@ module Phone
         true => yes
         false => no
 
-    sized title symbol tint bytes whole = Native::node "entry" [
-        Native::field "text" title,
+    // The one "entry" row every list in this screen is built from.
+    export entryFields text symbol tint accent detail caption value = [
+        Native::field "text" text,
         Native::field "symbol" symbol,
         Native::field "tint" tint,
-        Native::field "accent" tint,
-        Native::field "detail" (Disk::formatBytes bytes),
-        Native::field "caption" (Disk::shareText (bytes, whole)),
-        Native::field "value" (toString (Disk::permille (bytes, whole))),
+        Native::field "accent" accent,
+        Native::field "detail" detail,
+        Native::field "caption" caption,
+        Native::field "value" value,
     ]
 
-    waiting detail action = Native::node "entry" (listConcat [
-        Native::field "text" "Photos & Videos",
-        Native::field "symbol" "photo.on.rectangle.angled",
-        Native::field "tint" "orange",
-        Native::field "accent" "gray",
-        Native::field "detail" detail,
-        Native::field "caption" "",
-        Native::field "value" "0",
-    ] action)
+    sized title symbol tint bytes whole =
+        Native::node "entry" (entryFields title symbol tint tint
+            (Disk::formatBytes bytes) (Disk::shareText (bytes, whole))
+            (toString (Disk::permille (bytes, whole))))
+
+    waiting detail action =
+        Native::node "entry" (listConcat
+            (entryFields "Photos & Videos" "photo.on.rectangle.angled" "orange" "gray" detail "" "0") action)
 
     counts photos = photos.status == "ready" || photos.status == "limited"
 
@@ -102,15 +102,7 @@ module Phone
             false => output
 
     // Originals iCloud keeps while the device holds a smaller copy, or none.
-    cloudRow photos = pick (photos.cloud > 0) [Native::node "entry" [
-        Native::field "text" "Only in iCloud",
-        Native::field "symbol" "icloud.fill",
-        Native::field "tint" "gray",
-        Native::field "accent" "gray",
-        Native::field "detail" (Disk::formatBytes photos.cloud),
-        Native::field "caption" "",
-        Native::field "value" "0",
-    ]] []
+    cloudRow photos = pick (photos.cloud > 0) [Native::node "entry" (entryFields "Only in iCloud" "icloud.fill" "gray" "gray" (Disk::formatBytes photos.cloud) "" "0")] []
 
     kinds photos =
         rows = range (0, length photos.kinds) |> fold [] (\(output, index) => kindRow photos output index)
@@ -244,15 +236,7 @@ module View
     remainder model ranking largest =
         count = satSub ranking.count ranking.kept
         bytes = satSub ranking.bytes (sizes model ranking.top)
-        pick (count > 0) [Native::node "entry" [
-            Native::field "text" "${plural count "smaller item" "smaller items"}",
-            Native::field "symbol" "ellipsis.circle.fill",
-            Native::field "tint" "gray",
-            Native::field "accent" "gray",
-            Native::field "detail" (Disk::formatBytes bytes),
-            Native::field "caption" (Disk::shareText (bytes, ranking.bytes)),
-            Native::field "value" (toString (capped (Disk::permille (bytes, largest)))),
-        ]] []
+        pick (count > 0) [Native::node "entry" (Phone::entryFields "${plural count "smaller item" "smaller items"}" "ellipsis.circle.fill" "gray" "gray" (Disk::formatBytes bytes) (Disk::shareText (bytes, ranking.bytes)) (toString (capped (Disk::permille (bytes, largest)))))] []
 
     unreadable model = match phone model
         true => "iOS keeps them from the app."

@@ -10,7 +10,12 @@ sacrebleu (not duplicated) because @osprey/rouge_score depends on
 @osprey/sacrebleu.
 """
 
-__all__ = ["codepoints", "from_codepoints", "map_codepoints", "is_ascii_digit", "is_ascii_lower_alnum", "collapse_whitespace"]
+__all__ = ["codepoints", "from_codepoints", "map_codepoints", "is_ascii_digit", "is_ascii_lower_alnum", "collapse_whitespace", "map_indexed"]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 def codepoints_from(s, i, acc):

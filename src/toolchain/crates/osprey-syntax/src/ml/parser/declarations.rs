@@ -1,7 +1,7 @@
 //! ML declarations parsing.
 use super::{
-    is_constructor, MlExternParam, MlItem, MlTypeField, MlTypeParam, MlVariance, MlVariant, Parser,
-    Position, TokKind,
+    is_constructor, MlExternParam, MlItem, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
+    Parser, Position, TokKind,
 };
 
 impl Parser<'_> {
@@ -162,16 +162,22 @@ impl Parser<'_> {
         fields
     }
 
+    /// `name : type` — the head both a type field and an `extern` parameter
+    /// spell, reporting a missing `:` with the caller's own wording.
+    fn name_and_type(&mut self, missing_colon: &str) -> Option<(String, MlType)> {
+        let name = self.ident()?;
+        if !self.eat(&TokKind::Colon) {
+            self.error(missing_colon);
+        }
+        Some((name, self.ty()))
+    }
+
     /// One `field : type` declaration, shared by the layout block and the
     /// inline parenthesised payload so neither restates the rule. A function
     /// type may close with the effect row a call through the field performs
     /// (`edit : (string) -> A ![]`) ([EFFECTS-FIELD-ROWS]).
     pub(in crate::ml) fn type_field(&mut self) -> Option<MlTypeField> {
-        let name = self.ident()?;
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in type field");
-        }
-        let ty = self.ty();
+        let (name, ty) = self.name_and_type("expected ':' in type field")?;
         let (effects, tail, present) = self.effect_row();
         if tail.is_some() {
             self.error("a field's effect row is closed; it cannot name a row variable");
@@ -291,11 +297,7 @@ impl Parser<'_> {
     /// One `( name : type )` parameter of an `extern` declaration.
     pub(in crate::ml) fn extern_param(&mut self) -> Option<MlExternParam> {
         self.advance(); // `(`
-        let name = self.ident()?;
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in extern parameter");
-        }
-        let ty = self.ty();
+        let (name, ty) = self.name_and_type("expected ':' in extern parameter")?;
         if !self.eat(&TokKind::RParen) {
             self.error("expected ')'");
         }

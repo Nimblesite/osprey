@@ -23,8 +23,6 @@ namespace app
 print "${app::show (lib::Done(result = "yes"))} ${app::describe false}"
 
 test ("qualified constructors match across namespaces", \() => checkAll ("cross-namespace patterns", [
-    app::show (lib::Done(result = "a")) == "a",
-    app::show (lib::Failed(reason = "b")) == "b",
-    app::describe true == "yes",
-    app::describe false == "no"
+    structuralEquals [app::show (lib::Done(result = "a")), app::show (lib::Failed(reason = "b"))] ["a", "b"],
+    structuralEquals [app::describe true, app::describe false] ["yes", "no"]
 ]))

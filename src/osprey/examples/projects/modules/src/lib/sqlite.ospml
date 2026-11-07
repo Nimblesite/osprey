@@ -80,23 +80,29 @@ module Sqlite
         _fin = sqlite3_finalize stmt
         rc
 
-    // SELECT one int scalar with one bound int (first row, first column).
-    export queryInt : Ptr -> string -> int -> int
-    queryInt db sql key =
+    // A statement of `sql` with `key` bound as its first parameter.
+    bindInt db sql key =
         stmt = prepare db sql
         _b1 = sqlite3_bind_int stmt 1 key
+        stmt
+
+    // One statement stepped once: its first column as an int, and the statement finalized.
+    intColumn stmt =
         _rc = sqlite3_step stmt
         v = sqlite3_column_int stmt 0
         _fin = sqlite3_finalize stmt
         v
+
+    // SELECT one int scalar with one bound int (first row, first column).
+    export queryInt : Ptr -> string -> int -> int
+    queryInt db sql key = intColumn (bindInt db sql key)
 
     // SELECT one text scalar with one bound int. The column pointer is only
     // valid until finalize, so the text is copied into a fresh Osprey string
     // (via interpolation) BEFORE the statement is finalized.
     export queryText : Ptr -> string -> int -> string
     queryText db sql key =
-        stmt = prepare db sql
-        _b1 = sqlite3_bind_int stmt 1 key
+        stmt = bindInt db sql key
         _rc = sqlite3_step stmt
         v = "${sqlite3_column_text stmt 0}"
         _fin = sqlite3_finalize stmt
@@ -104,12 +110,7 @@ module Sqlite
 
     // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
     export queryScalar : Ptr -> string -> int
-    queryScalar db sql =
-        stmt = prepare db sql
-        _rc = sqlite3_step stmt
-        v = sqlite3_column_int stmt 0
-        _fin = sqlite3_finalize stmt
-        v
+    queryScalar db sql = intColumn (prepare db sql)
 
     // --- cursor API: multi-row reads without exposing pointer plumbing ---
     // `query` hands back a live statement; callers walk it with `step`

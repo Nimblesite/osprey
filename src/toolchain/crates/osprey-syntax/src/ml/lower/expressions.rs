@@ -212,23 +212,18 @@ pub(in crate::ml) fn lower_record(
     type_args: &[MlType],
     fields: Vec<MlField>,
 ) -> Expr {
-    let fields = fields.into_iter().map(lower_field).collect();
-    if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
-        return Expr::Update {
-            record: name,
-            fields,
-        };
-    }
-    Expr::TypeConstructor {
+    // Explicit type arguments follow the same path as Default construction
+    // ([FLAVOR-ML-GENERICS]).
+    osprey_ast::record_expression(
         name,
-        // Explicit type arguments follow the same path as Default construction.
-        // Implements [FLAVOR-ML-GENERICS].
-        type_args: type_args
-            .iter()
-            .map(|arg| type_expr(arg).unwrap_or_else(|| TypeExpr::named(render_type(arg))))
-            .collect(),
-        fields,
-    }
+        type_args.iter().map(written_type).collect(),
+        fields.into_iter().map(lower_field).collect(),
+    )
+}
+
+/// One written type argument, rendered when it has no AST type of its own.
+fn written_type(arg: &MlType) -> TypeExpr {
+    type_expr(arg).unwrap_or_else(|| TypeExpr::named(render_type(arg)))
 }
 
 pub(in crate::ml) fn lower_lambda_node(

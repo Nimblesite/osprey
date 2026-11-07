@@ -6,7 +6,8 @@ mod support;
 use osprey_ast::{Expr, ImportSelection, ModuleKind, Stmt, SymbolPath, Visibility};
 use osprey_project::assemble;
 use support::{
-    ast, config, contains, error_messages, function, handler, import, item, path, state_module,
+    ast, config, contains, error_messages, function, handler, import, item, path, rejects,
+    state_module,
 };
 
 #[test]
@@ -56,11 +57,7 @@ fn ordinary_state_read_and_write_are_rejected() {
         vec![read, write],
         handler("CounterFx", Expr::Identifier("count".to_string())),
     );
-    let messages = error_messages(&config("state.osp"), &[ast("state.osp", vec![state])]);
-    assert!(
-        contains(&messages, "only accessible inside"),
-        "{messages:?}"
-    );
+    rejects("state.osp", vec![state], &["only accessible inside"]);
 }
 
 #[test]
@@ -77,14 +74,10 @@ fn lambda_and_spawn_cannot_create_handler_factories() {
             position: None,
         },
     );
-    let lambda_messages = error_messages(&config("lambda.osp"), &[ast("lambda.osp", vec![lambda])]);
-    assert!(
-        contains(&lambda_messages, "exported handler installer"),
-        "{lambda_messages:?}"
-    );
-    assert!(
-        contains(&lambda_messages, "only accessible inside"),
-        "{lambda_messages:?}"
+    rejects(
+        "lambda.osp",
+        vec![lambda],
+        &["exported handler installer", "only accessible inside"],
     );
 
     let spawned = state_module(
@@ -96,34 +89,21 @@ fn lambda_and_spawn_cannot_create_handler_factories() {
             Expr::Identifier("count".to_string()),
         ))),
     );
-    let spawn_messages = error_messages(&config("spawn.osp"), &[ast("spawn.osp", vec![spawned])]);
-    assert!(
-        contains(&spawn_messages, "exported handler installer"),
-        "{spawn_messages:?}"
-    );
-    assert!(
-        contains(&spawn_messages, "only accessible inside"),
-        "{spawn_messages:?}"
+    rejects(
+        "spawn.osp",
+        vec![spawned],
+        &["exported handler installer", "only accessible inside"],
     );
 }
 
 #[test]
 fn differently_qualified_same_tail_effect_does_not_authorize_state() {
     // Implements [MODULES-STATE-MODULE].
-    let state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("Other::CounterFx", Expr::Identifier("count".to_string())),
-    );
-    let messages = error_messages(&config("state.osp"), &[ast("state.osp", vec![state])]);
-    assert!(
-        contains(&messages, "only accessible inside"),
-        "{messages:?}"
-    );
-    assert!(
-        contains(&messages, "exported handler installer"),
-        "{messages:?}"
+    let state = counter_handled_by("Other::CounterFx");
+    rejects(
+        "state.osp",
+        vec![state],
+        &["only accessible inside", "exported handler installer"],
     );
 }
 
@@ -165,19 +145,13 @@ fn state_initializer_must_be_pure_and_dependency_free() {
         Vec::new(),
         handler("CounterFx", Expr::Identifier("count".to_string())),
     );
-    let messages = error_messages(&config("state.osp"), &[ast("state.osp", vec![state])]);
-    assert!(contains(&messages, "must be pure"), "{messages:?}");
+    rejects("state.osp", vec![state], &["must be pure"]);
 }
 
 #[test]
 fn wildcard_import_from_state_module_is_always_rejected() {
     // Implements [MODULES-IMPORT], [MODULES-STATE-MODULE].
-    let state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let state = counter_handled_by("CounterFx");
     let entry = ast(
         "main.osp",
         vec![
@@ -193,12 +167,7 @@ fn wildcard_import_from_state_module_is_always_rejected() {
         "{messages:?}"
     );
 
-    let namespace_state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let namespace_state = counter_handled_by("CounterFx");
     let namespace_entry = ast(
         "main.osp",
         vec![
@@ -240,14 +209,10 @@ fn nested_module_handler_cannot_qualify_as_outer_installer() {
         vec![item(Visibility::Private, nested)],
         Expr::Bool(true),
     );
-    let messages = error_messages(&config("state.osp"), &[ast("state.osp", vec![state])]);
-    assert!(
-        contains(&messages, "exported handler installer"),
-        "{messages:?}"
-    );
-    assert!(
-        contains(&messages, "only accessible inside"),
-        "{messages:?}"
+    rejects(
+        "state.osp",
+        vec![state],
+        &["exported handler installer", "only accessible inside"],
     );
 }
 
@@ -269,12 +234,7 @@ fn namespace_cannot_have_two_state_owners() {
 #[test]
 fn private_effect_is_not_a_valid_state_surface() {
     // Implements [MODULES-STATE-MODULE].
-    let mut state = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let mut state = counter_handled_by("CounterFx");
     if let Stmt::Module { body, .. } = &mut state {
         if let Some(effect) = body
             .iter_mut()
@@ -283,8 +243,7 @@ fn private_effect_is_not_a_valid_state_surface() {
             effect.visibility = Visibility::Private;
         }
     }
-    let messages = error_messages(&config("state.osp"), &[ast("state.osp", vec![state])]);
-    assert!(contains(&messages, "exported owned effect"), "{messages:?}");
+    rejects("state.osp", vec![state], &["exported owned effect"]);
 }
 
 #[test]
@@ -321,29 +280,15 @@ fn module_mutation_boundaries_preserve_ordinary_local_mut() {
         position: None,
         inner_doc: None,
     };
-    let plain_messages = error_messages(&config("plain.osp"), &[ast("plain.osp", vec![plain])]);
-    assert!(
-        contains(&plain_messages, "plain modules cannot declare"),
-        "{plain_messages:?}"
-    );
+    rejects("plain.osp", vec![plain], &["plain modules cannot declare"]);
 
-    let mut exported = state_module(
-        "Counter",
-        Expr::Integer(0),
-        Vec::new(),
-        handler("CounterFx", Expr::Identifier("count".to_string())),
-    );
+    let mut exported = counter_handled_by("CounterFx");
     if let Stmt::Module { body, .. } = &mut exported {
         if let Some(cell) = body.first_mut() {
             cell.visibility = Visibility::Exported;
         }
     }
-    let export_messages =
-        error_messages(&config("export.osp"), &[ast("export.osp", vec![exported])]);
-    assert!(
-        contains(&export_messages, "`export mut` is forbidden"),
-        "{export_messages:?}"
-    );
+    rejects("export.osp", vec![exported], &["`export mut` is forbidden"]);
 
     let local_main = function(
         "main",
@@ -374,4 +319,15 @@ fn empty_state(name: &str) -> Stmt {
         position: None,
         inner_doc: None,
     }
+}
+
+/// The `Counter` state module whose installer handles `effect` by reading its
+/// own `count` cell.
+fn counter_handled_by(effect: &str) -> Stmt {
+    state_module(
+        "Counter",
+        Expr::Integer(0),
+        Vec::new(),
+        handler(effect, Expr::Identifier("count".to_string())),
+    )
 }

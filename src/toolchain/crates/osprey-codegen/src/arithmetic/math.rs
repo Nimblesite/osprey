@@ -93,10 +93,10 @@ pub(crate) fn float_bits_view(cg: &mut Codegen, name: &str, value: Value) -> Res
     match name {
         "floatBits" => float_bits(cg, value),
         "floatFromBits" => float_from_bits(cg, value),
-        "float32Bits" => float32_bits(cg, value),
-        "float32FromBits" => float32_from_bits(cg, value),
-        "float16Bits" => float16_bits(cg, value),
-        "float16FromBits" => float16_from_bits(cg, value),
+        "float32Bits" => float32_view(cg, value, Numeric::FLOAT32, Numeric::INT32),
+        "float32FromBits" => float32_view(cg, value, Numeric::INT32, Numeric::FLOAT32),
+        "float16Bits" => float16_view(cg, value, Numeric::FLOAT16, Numeric::INT16),
+        "float16FromBits" => float16_view(cg, value, Numeric::INT16, Numeric::FLOAT16),
         _ => Err(CodegenError::invalid(format!(
             "{name} is not a float bit view"
         ))),
@@ -116,31 +116,25 @@ fn float_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
     Ok(unbox_from_i64(cg, &b.operand, LType::F64))
 }
 
-/// [BUILTIN-FLOAT-BITS] The binary32 word of a `float32`, as an `int32`.
-fn float32_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_num(cg, value, Numeric::FLOAT32)?;
-    let w = cg.emit_reg(format!("bitcast float {} to i32", x.operand));
-    Ok(Value::new(w, LType::Num(Numeric::INT32)))
-}
-
-/// [BUILTIN-FLOAT-BITS] The `float32` the `int32` word `bits` holds.
-fn float32_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let b = as_num(cg, value, Numeric::INT32)?;
-    let f = cg.emit_reg(format!("bitcast i32 {} to float", b.operand));
-    Ok(Value::new(f, LType::Num(Numeric::FLOAT32)))
+/// [BUILTIN-FLOAT-BITS] One `bitcast` between the binary32 value and its
+/// `int32` word.
+fn float32_view(cg: &mut Codegen, value: Value, from: Numeric, to: Numeric) -> Result<Value> {
+    let x = as_num(cg, value, from)?;
+    let word = cg.emit_reg(format!(
+        "bitcast {} {} to {}",
+        from.llvm(),
+        x.operand,
+        to.llvm()
+    ));
+    Ok(Value::new(word, LType::Num(to)))
 }
 
 /// [BUILTIN-FLOAT-BITS] A binary16 value already travels as its `i16` bits
-/// ([TYPE-NUMERIC-SIZED]), so the view retags the word it is given.
-fn float16_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let x = as_num(cg, value, Numeric::FLOAT16)?;
-    Ok(Value::new(x.operand, LType::Num(Numeric::INT16)))
-}
-
-/// [BUILTIN-FLOAT-BITS] The `float16` the `int16` word `bits` holds.
-fn float16_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let b = as_num(cg, value, Numeric::INT16)?;
-    Ok(Value::new(b.operand, LType::Num(Numeric::FLOAT16)))
+/// ([TYPE-NUMERIC-SIZED]), so the view only converts and retags the word it is
+/// given.
+fn float16_view(cg: &mut Codegen, value: Value, from: Numeric, to: Numeric) -> Result<Value> {
+    let x = as_num(cg, value, from)?;
+    Ok(Value::new(x.operand, LType::Num(to)))
 }
 
 /// [BUILTIN-FLOATTOINT] Checked truncation toward zero from any float width
@@ -254,6 +248,23 @@ mod tests {
         cg.render()
     }
 
+    /// `render` a single call whose result the test only inspects as IR.
+    fn render_call(mut build: impl FnMut(&mut Codegen) -> Result<Value>) -> String {
+        render(&mut |cg| {
+            let _ = build(cg).unwrap();
+        })
+    }
+
+    /// `bitwise` over the `int` operands `left` and `right`, once per `name`.
+    fn bitwise_ir(left: &str, right: &str, names: &[&str]) -> String {
+        render(&mut |cg| {
+            let (a, b) = (Value::new(left, LType::I64), Value::new(right, LType::I64));
+            for name in names {
+                let _ = bitwise(cg, name, a.clone(), b.clone()).unwrap();
+            }
+        })
+    }
+
     #[test]
     fn float_bits_bitcast_preserve_the_word() {
         let ir = render(&mut |cg| {
@@ -297,9 +308,7 @@ mod tests {
 
     #[test]
     fn float_to_int_checks_the_domain_before_fptosi() {
-        let ir = render(&mut |cg| {
-            let _ = float_to_int(cg, Value::new("-2.9", LType::F64)).unwrap();
-        });
+        let ir = render_call(|cg| float_to_int(cg, Value::new("-2.9", LType::F64)));
         shows(
             &ir,
             &[
@@ -314,25 +323,17 @@ mod tests {
 
     #[test]
     fn bitwise_operators_emit_the_word_instruction() {
-        let ir = render(&mut |cg| {
-            let a = Value::new("12", LType::I64);
-            let b = Value::new("10", LType::I64);
-            for name in ["bitAnd", "bitOr", "bitXor"] {
-                let _ = bitwise(cg, name, a.clone(), b.clone()).unwrap();
-            }
-        });
+        let ir = bitwise_ir("12", "10", &["bitAnd", "bitOr", "bitXor"]);
         shows(&ir, &["and i64 12, 10", "or i64 12, 10", "xor i64 12, 10"]);
     }
 
     #[test]
     fn shifts_clamp_out_of_range_counts() {
-        let ir = render(&mut |cg| {
-            let a = Value::new("-16", LType::I64);
-            let b = Value::new("2", LType::I64);
-            for name in ["shiftLeft", "shiftRight", "shiftRightLogical"] {
-                let _ = bitwise(cg, name, a.clone(), b.clone()).unwrap();
-            }
-        });
+        let ir = bitwise_ir(
+            "-16",
+            "2",
+            &["shiftLeft", "shiftRight", "shiftRightLogical"],
+        );
         shows(
             &ir,
             &[
@@ -347,9 +348,7 @@ mod tests {
 
     #[test]
     fn bit_not_inverts_with_xor() {
-        let ir = render(&mut |cg| {
-            let _ = bit_not(cg, Value::new("12", LType::I64)).unwrap();
-        });
+        let ir = render_call(|cg| bit_not(cg, Value::new("12", LType::I64)));
         shows(&ir, &["xor i64 12, -1"]);
     }
 

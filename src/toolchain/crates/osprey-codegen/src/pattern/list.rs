@@ -1,9 +1,9 @@
 //! List pattern lowering.
 use super::{
-    bind_value, finish_checked_arm, finish_phi, match_state, open_guarded_arm, take_catch_all,
+    bind_value, close_chain, finish_checked_arm, finish_phi, match_state, open_guarded_arm,
 };
 use crate::builder::Codegen;
-use crate::error::{CodegenError, Result};
+use crate::error::Result;
 use crate::llty::{LType, Value};
 use osprey_ast::{MatchArm, Pattern};
 
@@ -31,25 +31,27 @@ pub(super) fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) 
     let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
-        match &arm.pattern {
-            Pattern::List { elements, rest } => {
-                let n = elements.len();
-                let op = if rest.is_some() { "sge" } else { "eq" };
-                let cond = cg.emit_reg(format!("icmp {op} i64 {len}, {n}"));
-                let next_lbl = open_guarded_arm(cg, &cond);
-                let captured = super::nested::elements(cg, &list_val, elements, &next_lbl)?;
-                finish_checked_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |cg| {
-                    super::nested::bind(cg, captured)?;
-                    bind_list_arm(cg, &list_val, &[], rest.as_deref(), n);
-                    Ok(())
-                })?;
-            }
-            Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                take_catch_all(cg, arm, &original, &mut phi_in)?;
-                break;
-            }
-            _ => return Err(CodegenError::unsupported("non-list arm in list match")),
-        }
+        let Pattern::List { elements, rest } = &arm.pattern else {
+            close_chain(
+                cg,
+                &arm.pattern,
+                arm,
+                &original,
+                &mut phi_in,
+                "non-list arm in list match",
+            )?;
+            break;
+        };
+        let n = elements.len();
+        let op = if rest.is_some() { "sge" } else { "eq" };
+        let cond = cg.emit_reg(format!("icmp {op} i64 {len}, {n}"));
+        let next_lbl = open_guarded_arm(cg, &cond);
+        let captured = super::nested::elements(cg, &list_val, elements, &next_lbl)?;
+        finish_checked_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |cg| {
+            super::nested::bind(cg, captured)?;
+            bind_list_arm(cg, &list_val, &[], rest.as_deref(), n);
+            Ok(())
+        })?;
     }
     finish_phi(cg, &phi_in, &end, mark)
 }

@@ -54,8 +54,7 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
         // A handle discriminant (e.g. a WHERE-constrained constructor that
         // currently always succeeds) has no numeric tag — take the Success arm
         // and bind the handle itself.
-        let empty = Value::new(cg.string_constant("").operand, LType::Str);
-        ("true".to_string(), disc.clone(), empty)
+        always_success(cg, disc.clone())
     } else {
         // A scalar that is NOT a `Result` is matched under the auto-wrap rule:
         // "any value may be matched as if wrapped in `Success`"
@@ -68,18 +67,34 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
         // on. It made `-1 ?: 99` evaluate to `99` and `abs(-1)` see `0`: a
         // SILENT wrong answer on every negative value reaching `?:`.
         // Implements [PATTERN-RESULT-AUTOWRAP].
-        let empty = Value::new(cg.string_constant("").operand, LType::Str);
-        ("true".to_string(), disc.clone(), empty)
+        always_success(cg, disc.clone())
     };
 
-    let (sl, el, end) = cg.diamond(&cond);
-
-    let mark = match_mark(cg);
-    let mut phi_in: Vec<(Value, String)> = Vec::new();
+    let (sl, el, end, mark, mut phi_in) = split_state(cg, &cond);
     emit_result_arm(cg, &sl, success, succ_val, disc, &mut phi_in)?;
     emit_result_arm(cg, &el, error, err_val, disc, &mut phi_in)?;
 
     finish_phi(cg, &phi_in, &end, mark)
+}
+
+/// A scrutinee the checker did not type as a `Result` is matched under the
+/// auto-wrap rule — "any value may be matched as if wrapped in `Success`" — so
+/// the Success arm always selects and binds the value itself
+/// ([PATTERN-RESULT-AUTOWRAP]).
+fn always_success(cg: &mut Codegen, disc: Value) -> (String, Value, Value) {
+    let empty = Value::new(cg.string_constant("").operand, LType::Str);
+    ("true".to_string(), disc, empty)
+}
+
+/// The join state of a two-way split on `cond`: the Success and Error blocks,
+/// the exit, the arc frame mark taken before either arm runs, and the phi
+/// inputs.
+fn split_state(
+    cg: &mut Codegen,
+    cond: &str,
+) -> (String, String, String, usize, Vec<(Value, String)>) {
+    let (success, error, end) = cg.diamond(cond);
+    (success, error, end, match_mark(cg), Vec::new())
 }
 
 /// Select the first matching variant or catch-all, preserving source order.
@@ -158,9 +173,7 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let operands = [list.operand.as_str(), index.operand.as_str()];
     let in_bounds = cg.call("i32", "osprey_list_in_bounds", "i8*, i64", &operands);
     let cond = cg.emit_reg(format!("icmp ne i32 {in_bounds}, 0"));
-    let (sl, el, end) = cg.diamond(&cond);
-    let mark = match_mark(cg);
-    let mut phi_in: Vec<(Value, String)> = Vec::new();
+    let (sl, el, end, mark, mut phi_in) = split_state(cg, &cond);
     cg.start_block(&sl);
     let raw = cg.call("i64", "osprey_list_get", "i8*, i64", &operands);
     let element = crate::collections::elem_value(cg, &list, &raw);

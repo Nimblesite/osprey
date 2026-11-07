@@ -5,7 +5,7 @@
 of a `Success`, and take the first element of a selection or the error naming it.
 """
 
-__all__ = ["then", "first_or_error"]
+__all__ = ["then", "first_or_error", "walk_checked"]
 
 
 def then(result, continue_with):
@@ -24,3 +24,15 @@ def first_or_error(found, failure):
             return Success(value=value)
         case Error(message=_problem):
             return Error(message=failure)
+
+
+def walk_checked(count, start, step):
+    """`count` steps folded from `start`, or the first problem a step carried.
+
+    `start` is a walk record whose `problem` is "" until a step fails; the fold is
+    never recursion per entry, so a huge count costs a loop and not a stack."""
+    walk = fold(range(count), start, step)
+    if walk.problem != "":
+        return Error(message=walk.problem)
+    else:
+        return Success(value=walk)

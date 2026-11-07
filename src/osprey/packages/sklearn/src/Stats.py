@@ -13,8 +13,13 @@ by the suite.
 
 __all__ = [
     "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
-    "unique_ints", "index_of",
+    "unique_ints", "index_of", "encode_labels", "cmp_int", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 def sum_float(xs):
@@ -57,7 +62,7 @@ def cmp_index(xs, a, b):
 def argsort_float(xs):
     """Indices that sort `xs` ascending, ties broken by original index order
     (a stable sort): `argsort_float([3.0, 1.0, 3.0]) == [1, 0, 2]`."""
-    indices = toList(map(range(len(xs)), lambda i: i))
+    indices = map_indexed(xs, lambda i: i)
     return listSortBy(indices, lambda a, b: cmp_index(xs, a, b))
 
 
@@ -85,3 +90,9 @@ def unique_ints(xs):
 def index_of(xs, v):
     """The first index of `v` in an int list, or -1 when absent."""
     return fold(range(len(xs)), -1, lambda acc, i: i if unwrap_or(listGet(xs, i), v) == v and acc == -1 else acc)
+
+
+def encode_labels(labels, ys):
+    """Each label of `ys` as its index in `labels`: LabelEncoder.transform's
+    mapping, which the metrics share."""
+    return map_indexed(ys, lambda i: index_of(labels, unwrap_or(listGet(ys, i), 0)))

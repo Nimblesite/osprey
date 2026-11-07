@@ -106,13 +106,7 @@ module Trust
         Recursor elim => elimRefs elim
 
     (** A quotient primitive stands on the equality it is derived from. *)
-    quotientRefs (kind) = listPrepend (["Eq", "Eq.refl"], primitive kind)
-
-    primitive (kind) = match kind
-        QuotType => "Quot"
-        QuotCtor => "Quot.mk"
-        QuotLift => "Quot.lift"
-        QuotInd => "Quot.ind"
+    quotientRefs (kind) = listPrepend (["Eq", "Eq.refl"], Environment::quotName kind)
 
     (** A recursor names its family, and every rule its constructor and the
         term that rule computes to — metadata no declaration term carries. *)

@@ -51,17 +51,7 @@ module Bundle {
 
     fn withText(root, path) = Checked::andThen(stringField(root, "text"), fn(value) => Success { value: Release::File { relPath: path, content: value } })
 
-    // A recursive accumulator avoids `foldList` over a `Result<List<…>>`,
-    // which crashes the runtime under the current codegen.
-    fn filesAt(items, i, acc) -> Result<List<Release::File>, string> = match i >= length(items) {
-        true => Success { value: acc }
-        false => Checked::andThen(fileOf(listGet(items, i) ?: Json::Null), fn(value) => filesAt(items, i + 1, listAppend(acc, value)))
-    }
-
-    fn filesOf(items) = {
-        let empty: List<Release::File> = []
-        filesAt(items, 0, empty)
-    }
+    fn filesOf(items) = Checked::collectAll(items, fileOf)
 
     fn filesField(root) = match Json::itemsAt(root, "files") {
         Success { value } => filesOf(value)

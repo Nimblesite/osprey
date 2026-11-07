@@ -23,7 +23,6 @@ import registry::Surface
 /// still run, and the status is 1 at the end. Implements the lock-consuming
 /// half of [PACKAGE-FOLDER-REGISTRY].
 module Install {
-    let failStatus = 1
     let usageCode = "install.usage"
     let noLockCode = "install.no-lock"
     let surfaceCode = "capability.surface"
@@ -32,8 +31,6 @@ module Install {
     type CommandLine = { base: string, project: string }
 
     let usageText = ["usage: osprey-pkg fetch [--registry <base-url>] [--project <dir>]"]
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
 
     fn commandLine(parsed) = CommandLine { base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry), project: Flags::project(parsed) }
 
@@ -59,7 +56,8 @@ module Install {
     /// Whether the recomputed surface is the one the lock pins.
     export fn surfaceMatches(pkg: Lockfile::Package, fileList) = join(surfaceOfFiles(fileList), "\n") == join(pkg.surface, "\n")
 
-    fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
+    /// Whether a tree's bytes are the release's pinned digest.
+    export fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
         Success { value } => value == pkg.release.digest
         Error => false
     }
@@ -89,42 +87,35 @@ module Install {
         Error { message } => failedLine(tally, message)
     }
 
-    fn packagesOf(lock: Lockfile::Lock) = lock.packages
-    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
 
     /// An overridden key lives in its checkout: nothing to install.
     fn localLine(tally, pkg: Lockfile::Package, o: Lockfile::Override) = line(tally, "local ${Lockfile::compact(pkg.release)} (${o.path})")
 
-    fn installPackage(base, project, lock, tally, pkg: Lockfile::Package) = match Lockfile::overrideFor(overridesOf(lock), pkg.release.key) {
+    fn installPackage(base, project, lock, tally, pkg: Lockfile::Package) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => localLine(tally, pkg, value)
         Error => installOne(base, project, tally, pkg)
     }
 
-    fn pythonOf(lock: Lockfile::Lock) = lock.python
 
     /// With the uv plane pinned, `uv sync --frozen` creates the environment ([PACKAGE-PYTHON-UV]).
-    fn synced(project, lock, tally) = Maybe::fold(pythonOf(lock), tally, fn(pins) => match PythonPlane::synced(project, pins) {
+    fn synced(project, lock, tally) = Maybe::fold(Lockfile::pinsOf(lock), tally, fn(pins) => match PythonPlane::synced(project, pins) {
         Success { value } => line(tally, value)
         Error { message } => failedLine(tally, message)
     })
 
     fn installLock(base, project, lock) = {
-        let installed = foldList(packagesOf(lock), Tally { lines: [], failed: false }, fn(t, p) => installPackage(base, project, lock, t, p))
+        let installed = foldList(Lockfile::packagesOf(lock), Tally { lines: [], failed: false }, fn(t, p) => installPackage(base, project, lock, t, p))
         let tally = if installed.failed { installed } else { synced(project, lock, installed) }
-        if tally.failed { Reports::Report { status: failStatus, lines: tally.lines } }
+        if tally.failed { Reports::failure(tally.lines) }
         else { Reports::success(tally.lines) }
     }
 
     /// The whole command: parse `[--registry <base-url>] [--project <dir>]`,
     /// read the lock the overlay selects, and install each locked release in
     /// lock order ([PACKAGE-LOCAL-OVERRIDE]: overridden keys are skipped).
-    export fn run(args) = match Flags::parse(args, [Fetch::registryFlag, Flags::projectFlag], []) {
-        Error => usageReport()
-        Success { value } => withArgs(commandLine(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [Fetch::registryFlag, Flags::projectFlag], [], usageCode, usageText,
+        fn(parsed) => withArgs(commandLine(parsed)))
 
-    fn withArgs(cmd: CommandLine) = match Overlay::activeLockAt(cmd.project) {
-        Error { message } => Reports::Report { status: failStatus, lines: ["${noLockCode} ${message}"] }
-        Success { value } => installLock(cmd.base, cmd.project, value)
-    }
+    fn withArgs(cmd: CommandLine) = Reports::checkedWith(Overlay::activeLockAt(cmd.project), noLockCode,
+        fn(value) => installLock(cmd.base, cmd.project, value))
 }

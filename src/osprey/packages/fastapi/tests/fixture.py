@@ -61,26 +61,30 @@ def config_response(request, identity, limit, period):
         case M.Invalid(issues=errors):
             return E.validation(errors)
 
-def bundle(request):
-    match P.path(request, "path"):
-        case Success(value=path):
-            match P.query_all(request, "tags"):
-                case Success(value=tags):
-                    return E.json_response(200, JsonObject([JsonMember("path", JsonString(path)), JsonMember("tags", JsonArray(mapList(tags, lambda tag: JsonString(tag))))]), "")
-                case Error(message=message):
-                    return E.exception_response(E.exception(400, message, ""))
+def reached(result, step):
+    """`step` applied to a parameter that decoded, or the 400 its refusal reports."""
+    match result:
+        case Success(value=value):
+            return step(value)
         case Error(message=message):
-            return E.exception_response(E.exception(400, message, ""))
+            return failed(400, message)
+
+def failed(status, message):
+    """The exception reply every refusal in this fixture reports."""
+    return E.exception_response(E.exception(status, message, ""))
+
+def refused(status, message):
+    """The same exception, as the value a dependency provider rejects with."""
+    return M.Rejected(error=E.exception(status, message, ""))
+
+def bundle(request):
+    return reached(P.path(request, "path"), lambda path: reached(P.query_all(request, "tags"), lambda tags: E.json_response(200, JsonObject([JsonMember("path", JsonString(path)), JsonMember("tags", JsonArray(mapList(tags, lambda tag: JsonString(tag))))]), "")))
 
 def me(_request):
     return E.json_response(200, JsonObject([JsonMember("value", JsonString("me"))]), "")
 
 def ordered(request):
-    match P.path(request, "value"):
-        case Success(value=text):
-            return E.json_response(200, JsonObject([JsonMember("value", JsonString(text))]), "")
-        case Error(message=message):
-            return E.exception_response(E.exception(400, message, ""))
+    return reached(P.path(request, "value"), lambda text: E.json_response(200, JsonObject([JsonMember("value", JsonString(text))]), ""))
 
 def metrics(_request):
     return E.json_response(200, JsonObject([JsonMember("latency", JsonFloat(exp(1000.0)))]), "")
@@ -123,7 +127,7 @@ def reset_trace(path, request, next: Callable[[M.Request], M.Response]):
             case Success():
                 return next(request)
             case Error(message=message):
-                return E.exception_response(E.exception(500, message, ""))
+                return failed(500, message)
 
 def logged(path, message, result):
     match readFile(path):
@@ -132,9 +136,9 @@ def logged(path, message, result):
                 case Success():
                     return M.Provided(value=result)
                 case Error(message=error):
-                    return M.Rejected(error=E.exception(500, error, ""))
+                    return refused(500, error)
         case Error(message=error):
-            return M.Rejected(error=E.exception(500, error, ""))
+            return refused(500, error)
 
 def trace_lines(path):
     return B.bind(readFile(path), lambda text: split(text, "\n"))
@@ -145,14 +149,14 @@ def open_session(path, _request, _children):
             identity = satAdd(len(filterList(previous, lambda line: startsWith(line, "open:"))), 1)
             return logged(path, f"open:{identity}", SessionValue(id=identity))
         case Error(message=error):
-            return M.Rejected(error=E.exception(500, error, ""))
+            return refused(500, error)
 
 def close_session(path, resource):
     match resource:
         case SessionValue(id=identity):
             return logged(path, f"close:{identity}", None)
         case _:
-            return M.Rejected(error=E.exception(500, "Expected session resource", ""))
+            return refused(500, "Expected session resource")
 
 def identity_provider(path, request, children):
     match listGet(children, 0):
@@ -161,9 +165,9 @@ def identity_provider(path, request, children):
                 case SessionValue(id=identity):
                     return authenticate(path, request, identity)
                 case _:
-                    return M.Rejected(error=E.exception(500, "Expected session dependency", ""))
+                    return refused(500, "Expected session dependency")
         case Error(message=error):
-            return M.Rejected(error=E.exception(500, error, ""))
+            return refused(500, error)
 
 def authenticate(path, request, identity):
     match P.header(request, "Authorization"):
@@ -173,7 +177,7 @@ def authenticate(path, request, identity):
                     case Success(value=role):
                         return logged(path, f"auth:{identity}", IdentityValue(id=identity, role=role))
                     case Error(message=error):
-                        return M.Rejected(error=E.exception(500, error, ""))
+                        return refused(500, error)
             else:
                 return M.Rejected(error=E.exception(401, "not_authenticated", "WWW-Authenticate: Bearer"))
         case Error():
@@ -189,19 +193,19 @@ def credit_provider(path, request, children):
                 case Success(value=person):
                     return authorize_credit(path, person, credit)
                 case Error(message=error):
-                    return M.Rejected(error=E.exception(500, error, ""))
+                    return refused(500, error)
 
 def authorize_credit(path, person, credit):
     match person:
         case IdentityValue(id=identity, role=role):
             if role != "writer":
-                return M.Rejected(error=E.exception(403, "writer_required", ""))
+                return refused(403, "writer_required")
             elif credit <= 0:
-                return M.Rejected(error=E.exception(402, "insufficient_credit", ""))
+                return refused(402, "insufficient_credit")
             else:
                 return logged(path, f"credit:{identity}", CreditValue(id=identity, role=role, credit=credit))
         case _:
-            return M.Rejected(error=E.exception(500, "Expected identity dependency", ""))
+            return refused(500, "Expected identity dependency")
 
 def fake_identity(_request, _children):
     return M.Provided(value=IdentityValue(id=0, role="writer"))
@@ -223,23 +227,23 @@ def dependency_response(_request, values):
                 case SessionValue(id=identity):
                     return identity_response(identity, second, third)
                 case _:
-                    return E.exception_response(E.exception(500, "Expected session value", ""))
+                    return failed(500, "Expected session value")
         case _:
-            return E.exception_response(E.exception(500, "Expected three resolved dependencies", ""))
+            return failed(500, "Expected three resolved dependencies")
 
 def identity_response(first, person, spend):
     match person:
         case IdentityValue(id=identity, role=role):
             return credit_response(first, identity, role, spend)
         case _:
-            return E.exception_response(E.exception(500, "Expected identity value", ""))
+            return failed(500, "Expected identity value")
 
 def credit_response(first, second, role, spend):
     match spend:
         case CreditValue(id=identity, credit=credit):
             return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(second), JsonInt(identity)])), JsonMember("role", JsonString(role)), JsonMember("credit", JsonInt(credit))]), "")
         case _:
-            return E.exception_response(E.exception(500, "Expected credit value", ""))
+            return failed(500, "Expected credit value")
 
 def sessions_response(_request, values):
     match values:
@@ -248,16 +252,16 @@ def sessions_response(_request, values):
                 case SessionValue(id=identity):
                     return second_session_response(identity, second)
                 case _:
-                    return E.exception_response(E.exception(500, "Expected first session value", ""))
+                    return failed(500, "Expected first session value")
         case _:
-            return E.exception_response(E.exception(500, "Expected two session dependencies", ""))
+            return failed(500, "Expected two session dependencies")
 
 def second_session_response(first, second):
     match second:
         case SessionValue(id=identity):
             return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(identity)]))]), "")
         case _:
-            return E.exception_response(E.exception(500, "Expected second session value", ""))
+            return failed(500, "Expected second session value")
 
 def trace_response(path, _request):
     match trace_lines(path):
@@ -265,28 +269,28 @@ def trace_response(path, _request):
             lines = filterList(trace, lambda line: line != "")
             return E.json_response(200, JsonObject([JsonMember("trace", JsonArray(mapList(lines, lambda line: JsonString(line))))]), "")
         case Error(message=error):
-            return E.exception_response(E.exception(500, error, ""))
+            return failed(500, error)
 
 def passthrough(_request, children):
     match listGet(children, 0):
         case Success(value=child):
             return M.Provided(value=child)
         case Error(message=error):
-            return M.Rejected(error=E.exception(500, error, ""))
+            return refused(500, error)
 
 def credit_single_response(_request, values):
     match values:
         case [credit]:
             return credit_single_value(credit)
         case _:
-            return E.exception_response(E.exception(500, "Expected credit dependency", ""))
+            return failed(500, "Expected credit dependency")
 
 def credit_single_value(credit_value):
     match credit_value:
         case CreditValue(id=identity, role=role):
             return credit_response(identity, identity, role, credit_value)
         case _:
-            return E.exception_response(E.exception(500, "Expected credit value", ""))
+            return failed(500, "Expected credit value")
 
 def number_provider(path, request, children, header, label):
     parsed = V.integer(["header", toLowerCase(header)], P.header(request, header), -9223372036854775807, 9223372036854775807)
@@ -301,7 +305,7 @@ def number_session(path, children, number, label):
         case [SessionValue(id=identity)]:
             return logged(path, f"{label}:{identity}", NumberValue(number=number))
         case _:
-            return M.Rejected(error=E.exception(500, "Expected number session", ""))
+            return refused(500, "Expected number session")
 
 def sum_response(_request, values):
     match values:
@@ -310,9 +314,9 @@ def sum_response(_request, values):
                 case NumberValue(number=number):
                     return sum_second(number, second)
                 case _:
-                    return E.exception_response(E.exception(500, "Expected first number", ""))
+                    return failed(500, "Expected first number")
         case _:
-            return E.exception_response(E.exception(500, "Expected two numbers", ""))
+            return failed(500, "Expected two numbers")
 
 def sum_second(first, second):
     match second:
@@ -321,15 +325,15 @@ def sum_second(first, second):
                 case Success(value=total):
                     return E.json_response(200, JsonObject([JsonMember("sum", JsonInt(total))]), "")
                 case Error(message=error):
-                    return E.exception_response(E.exception(500, error, ""))
+                    return failed(500, error)
         case _:
-            return E.exception_response(E.exception(500, "Expected second number", ""))
+            return failed(500, "Expected second number")
 
 def failing_close(path, resource, validation):
     closed = close_session(path, resource)
     match closed:
         case M.Provided():
-            return M.DependencyInvalid(issues=[E.issue(["dependency", "cleanup"], "value_error", "cleanup_invalid", "bad", False, M.NoContext())]) if validation else M.Rejected(error=E.exception(409, "cleanup_failed", ""))
+            return M.DependencyInvalid(issues=[E.issue(["dependency", "cleanup"], "value_error", "cleanup_invalid", "bad", False, M.NoContext())]) if validation else refused(409, "cleanup_failed")
         case _:
             return closed
 

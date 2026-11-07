@@ -53,6 +53,20 @@ export function clearDebugBreakpoints(): void {
   vscode.debug.removeBreakpoints(vscode.debug.breakpoints);
 }
 
+/**
+ * Stop the debug session that is still running, if any. Cleanup that races a
+ * session which is already terminating is expected and swallowed.
+ */
+export async function stopActiveDebugSession(): Promise<void> {
+  if (vscode.debug.activeDebugSession) {
+    try {
+      await vscode.debug.stopDebugging();
+    } catch {
+      // The session can terminate naturally while cleanup races it.
+    }
+  }
+}
+
 /** Replace all breakpoints with one per spec on `filePath` (1-based lines). */
 export function setSourceBreakpoints(
   filePath: string,
@@ -384,6 +398,21 @@ export async function assertLocalVariable(
   return variable;
 }
 
+/**
+ * Assert a named local in the TOP frame of `stop` matches — the frame a test
+ * stopped at a breakpoint always inspects.
+ */
+export async function assertTopLocal(
+  session: vscode.DebugSession,
+  stop: DapStop,
+  name: string,
+  matcher: ValueMatcher,
+): Promise<DapVariable> {
+  const frame = stop.stack.stackFrames[0];
+  assert.ok(frame, "a stop must report at least one stack frame");
+  return assertLocalVariable(session, frame.id, name, matcher);
+}
+
 /** Assert an evaluated watch expression matches. Returns the result string. */
 export async function assertWatch(
   session: vscode.DebugSession,
@@ -397,6 +426,23 @@ export async function assertWatch(
     `watch "${expression}" = ${JSON.stringify(result.result)} did not match ${String(matcher)}`,
   );
   return result.result;
+}
+
+/** Compare two source paths regardless of separator or case. */
+const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
+
+/** The top frame of `stop`, asserted to sit in `sourcePath`. */
+export function assertTopFrameInSource(
+  stack: { stackFrames: DapStackFrame[] },
+  sourcePath: string,
+): DapStackFrame {
+  const top = stack.stackFrames[0];
+  assert.ok(top, "expected at least one stack frame");
+  assert.ok(
+    top.source?.path && norm(top.source.path) === norm(sourcePath),
+    `expected top frame in ${sourcePath}, was ${top.source?.path}`,
+  );
+  return top;
 }
 
 /** Assert the top frame is on `expectedLine` (and optionally in `sourcePath`). */
@@ -413,7 +459,6 @@ export function assertCurrentLine(
     `expected to stop on line ${expectedLine}`,
   );
   if (sourcePath !== undefined) {
-    const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
     assert.ok(
       top.source?.path && norm(top.source.path) === norm(sourcePath),
       `expected top frame in ${sourcePath}, was ${top.source?.path}`,

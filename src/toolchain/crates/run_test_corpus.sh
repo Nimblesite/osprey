@@ -248,7 +248,7 @@ done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' \) -print
 
 # Programs that contend for an OS resource are run one at a time. Two kinds do:
 #
-#   * Socket binders. A Default/ML pair is ONE program written on two surfaces,
+#   * Socket binders (a server created OR listened on). A Default/ML pair is ONE program written on two surfaces,
 #     so both hard-code the SAME port (18280, 18107, 18095, 18080, 18099 — each
 #     unique per program, each shared by its pair). Run concurrently, one twin
 #     loses the bind and prints a connection failure instead of its transcript.
@@ -264,7 +264,7 @@ done < <(find "$TESTDIR" \( -name '*.test.osp' -o -name '*.test.ospml' \) -print
 serialized=()
 concurrent=()
 for (( index = 1; index <= ${#FILES}; index++ )); do
-  if grep -qE 'httpListen|websocketListen|spawnProcess' -- "$FILES[$index]" 2>/dev/null; then
+  if grep -qE 'httpListen|httpCreateServer|websocketListen|websocketCreateServer|spawnProcess' -- "$FILES[$index]" 2>/dev/null; then
     serialized+=("$index" "$FILES[$index]")
   else
     concurrent+=("$index" "$FILES[$index]")

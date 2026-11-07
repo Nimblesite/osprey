@@ -1,21 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 // Portable cross-contract oracle for [EFFECTS-OP-TYPING],
 // [EFFECTS-STATIC-DISCHARGE], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
@@ -133,4 +115,4 @@ fn mutationCase() = {
 
 // Run the complete state-transition scenario as one named test.
 
-test("handled mutation retains every counter transition", fn() => exactArithmetic(mutationCase))
+test("handled mutation retains every counter transition", exactly(mutationCase))

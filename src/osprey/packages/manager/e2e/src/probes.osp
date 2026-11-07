@@ -1,5 +1,6 @@
 namespace registry_e2e;
 import registry::Digests
+import registry::Identity
 import registry::Json
 import registry::JsonRead
 import registry::Names
@@ -99,14 +100,10 @@ module Probes {
         }
     }
 
-    fn servedOf(catalog: Release::Catalog) = catalog.served
-
-    fn digestOf(s: Release::Served) = s.id.digest
-
     fn paths(catalog) = listConcat(
         ["/v1/health", "/v1/packages", "/v1/packages/demo/maths", "/v1/packages/@demo/report", "/v1/packages/demo/missing", "/v1/nowhere",
          "/v1/releases/sha256:0000000000000000000000000000000000000000000000000000000000000000"],
-        foldList(servedOf(catalog), [], fn(out, s) => listConcat(out, ["/v1/releases/${digestOf(s)}", "/v1/releases/${digestOf(s)}/source"])))
+        foldList(Release::servedOf(catalog), [], fn(out, s) => listConcat(out, ["/v1/releases/${Release::digestOf(s)}", "/v1/releases/${Release::digestOf(s)}/source"])))
 
     fn fetched(target) = Probe { label: "fetch ${target}", expected: "0", actual: "${Fetch::run([target, "--registry", base]).status}" }
 
@@ -121,6 +118,13 @@ module Probes {
     }
 
     fn consumerDir(cwd) = "${cwd}/${work}/consumer"
+
+    /// An empty consumer tree at `dir`: the directory removed, `src` recreated.
+    fn freshProject(dir) = {
+        let _reset = sh("rm -rf ${Host::shellWord(dir)}")
+        let _made = perform Host::Tree.ensure("${dir}/src")
+        dir
+    }
 
     fn rooted(dir, path) = if startsWith(path, "/") { path } else { "${dir}/${path}" }
 
@@ -226,9 +230,7 @@ module Probes {
     /// folder lock, `fetch` installs it, `verify --offline` audits it and
     /// `build --run` compiles and runs the consumer against the locked trees.
     fn consumer(cwd, catalog) = {
-        let dir = consumerDir(cwd)
-        let _reset = sh("rm -rf ${Host::shellWord(dir)}")
-        let _made = perform Host::Tree.ensure("${dir}/src")
+        let dir = freshProject(consumerDir(cwd))
         let _manifest = perform Host::Files.write("${dir}/osprey.toml", readFile("${managerDir}/e2e/consumer/osprey.toml") ?: "")
         let _main = perform Host::Files.write("${dir}/src/main.osp", readFile("${managerDir}/e2e/consumer/src/main.osp") ?: "")
         let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
@@ -252,9 +254,11 @@ module Probes {
     /// The closure of `@demo/report`: what the consumer's lock selects.
     let consumerClosure = ["@demo/greeting", "@demo/maths", "@demo/report"]
 
-    fn expectedPlus(catalog) = join(mapList(filterList(servedOf(newest(catalog)), fn(s) => listContains(consumerClosure, keyOf(s))), fn(s: Release::Served) => "+ ${Names::display(s.id.key)} e${s.id.epoch}.r${s.id.ordinal} ${s.id.digest}"), "\n")
+    fn expectedPlus(catalog) = join(mapList(filterList(Release::servedOf(newest(catalog)), fn(s) => listContains(consumerClosure, keyOf(s))), fn(s: Release::Served) => "+ ${Names::display(s.id.key)} e${s.id.epoch}.r${s.id.ordinal} ${s.id.digest}"), "\n")
 
     fn keyOf(s: Release::Served) = Names::display(s.id.key)
+
+    fn ordinalOf(s: Release::Served) = Identity::ordinalOf(Release::idOf(s))
 
     // ---- the Python plane at the real boundary ([PACKAGE-PYTHON-UV]) ----
 
@@ -330,9 +334,7 @@ module Probes {
     /// A consumer of `@demo/pyadd`, which declares `python/interop`: the outcome
     /// depends on whether the host has uv, and both outcomes are asserted.
     fn pythonConsumer(cwd) = {
-        let dir = "${cwd}/${work}/consumer-py space's \\path"
-        let _reset = sh("rm -rf ${Host::shellWord(dir)}")
-        let _made = perform Host::Tree.ensure("${dir}/src")
+        let dir = freshProject("${cwd}/${work}/consumer-py space's \\path")
         let _manifest = perform Host::Files.write("${dir}/osprey.toml", pyConsumerManifest + pyConsumerPlane)
         let _python = perform Host::Files.write("${dir}/osprey_consumer_probe.py", consumerPython)
         let _pyproject = perform Host::Files.write("${dir}/pyproject.toml", consumerPyproject)
@@ -347,11 +349,9 @@ module Probes {
         Probe { label: "doctor reports uv as a path or as guidance", expected: if found.status == 0 { "uv: ${trim(found.stdout)}" } else { uvGuidance }, actual: listGet(Dispatch::run(["doctor"]).lines, 3) ?: "" }
     }
 
-    fn ordinalOf(s: Release::Served) = s.id.ordinal
-
     /// The newest release of each package: the ones `fetch @scope/name` installs.
-    fn newest(catalog) = Release::Catalog { served: filterList(servedOf(catalog), fn(s) =>
-        !foldList(servedOf(catalog), false, fn(newer, o) => newer || (keyOf(o) == keyOf(s) && ordinalOf(o) > ordinalOf(s)))), refused: [] }
+    fn newest(catalog) = Release::Catalog { served: filterList(Release::servedOf(catalog), fn(s) =>
+        !foldList(Release::servedOf(catalog), false, fn(newer, o) => newer || (keyOf(o) == keyOf(s) && ordinalOf(o) > ordinalOf(s)))), refused: [] }
 
     fn stop() = {
         let _killed = sh("kill $(cat ${work}/server.pid)")
@@ -363,8 +363,8 @@ module Probes {
 
     fn running(cwd, catalog) = {
         let endpoints = mapList(paths(catalog), fn(p) => exchange(catalog, p))
-        let fetches = listConcat(mapList(["@demo/greeting", "@demo/maths@e1", "@demo/report", "@demo/pyadd"], fetched), mapList(servedOf(catalog), fn(s) => fetched(digestOf(s))))
-        let files = mapList(servedOf(catalog), installed)
+        let fetches = listConcat(mapList(["@demo/greeting", "@demo/maths@e1", "@demo/report", "@demo/pyadd"], fetched), mapList(Release::servedOf(catalog), fn(s) => fetched(Release::digestOf(s))))
+        let files = mapList(Release::servedOf(catalog), installed)
         listConcat(listConcat(endpoints, fetches), listConcat(files, projects(cwd, catalog)))
     }
 

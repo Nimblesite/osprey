@@ -32,6 +32,24 @@ module Fixtures {
     /// The texts of an array of strings.
     export fn texts(value) = JsonRead::texts(value)
 
+    /// The text of member `key`, or "".
+    export fn textOf(value, key) = text(field(value, key))
+
+    /// The integer of member `key`, or -1.
+    export fn numberOf(value, key) = number(field(value, key))
+
+    /// The items of member `key`, or [].
+    export fn itemsOf(value, key) = items(field(value, key))
+
+    /// The texts of member `key`, or [].
+    export fn textsOf(value, key) = texts(field(value, key))
+
+    /// The items of member `key` of the fixture at `name`.
+    export fn loadItems(name, key) = itemsOf(load(name), key)
+
+    /// The texts of member `key` of the fixture at `name`.
+    export fn loadTexts(name, key) = textsOf(load(name), key)
+
     /// The cases for which `run` is false.
     export fn failures(cases, run) = foldList(cases, [], fn(bad, case) => if run(case) { bad } else { listAppend(bad, case) })
 

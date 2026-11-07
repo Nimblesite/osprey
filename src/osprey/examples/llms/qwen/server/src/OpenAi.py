@@ -12,7 +12,6 @@ from the same parsed call, in `call_of` here and in `Ollama.call_of` there.
 
 from qwen_server import Completions
 from qwen_server import Requests as Q
-from qwen_server import TableModel
 from qwen_server import Wire
 
 __all__ = ["models", "completions", "failed"]
@@ -35,25 +34,21 @@ def entry():
     ])
 
 
-def completions(request):
+def completions(model, request):
     """`/v1/chat/completions`: one assistant turn, streamed as SSE or answered whole."""
-    match TableModel.installed():
-        case Success(value=model):
-            return turn(model, request)
-        case Error(message=message):
-            return failed(500, message)
+    return turn(model, request)
 
 
 def turn(model, request):
     """The reply for a decoded request, once the served model is known."""
     match Completions.complete(model, request.prompt, request.sampling, request.tools):
         case Success(value=finished):
-            return Wire.reply(200, Wire.SSE, stream(events(request, finished))) if request.stream else Wire.ok(completion(request, finished))
+            return Wire.reply(200, Wire.SSE, stream(events(finished))) if request.stream else Wire.ok(completion(finished))
         case Error(message=message):
             return failed(400, message)
 
 
-def completion(request, turn):
+def completion(turn):
     """The whole chat completion: one choice carrying the turn's text and calls."""
     return JsonObject(listConcat(envelope(), [
         Wire.member("choices", JsonArray([choice(turn)])),
@@ -89,7 +84,7 @@ def usage(turn):
     ])
 
 
-def events(request, turn):
+def events(turn):
     """The SSE documents of one streamed turn, ending with the choice's finish reason."""
     pieces = mapList(turn.pieces, lambda piece: chunk([Wire.member("delta", delta_of(piece))], ""))
     calls = [] if len(turn.calls) == 0 else [chunk([Wire.member("delta", JsonObject([Wire.member("tool_calls", JsonArray(mapList(turn.calls, delta_call))) ]))], "")]
@@ -110,12 +105,12 @@ def delta_of(piece):
 
 def text_of(turn):
     """The turn's free text."""
-    return join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.TEXT), lambda piece: piece.text), "")
+    return Completions.pieces_text(turn, Completions.TEXT)
 
 
 def reasoning_of(turn):
     """The `reasoning_content` member when the turn reasoned, and nothing when it did not."""
-    reasoned = join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.THINKING), lambda piece: piece.text), "")
+    reasoned = Completions.pieces_text(turn, Completions.THINKING)
     return [] if reasoned == "" else [Wire.text_member("reasoning_content", reasoned)]
 
 

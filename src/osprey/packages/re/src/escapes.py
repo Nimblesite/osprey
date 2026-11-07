@@ -43,7 +43,7 @@ def escape_dispatch(cps, i, n, flags, gs):
     """Dispatch on the escaped character."""
     c = Program.at(cps, i + 1)
     if c == 100 or c == 68 or c == 119 or c == 87 or c == 115 or c == 83:
-        return Success(value=Program.PRes(frag=[cat_frag(cat_code(c))], next=i + 2, gs=gs))
+        return Success(value=Program.PRes(frag=[cat_frag(Charset.cat_code(c))], next=i + 2, gs=gs))
     elif c == 65:
         return Success(value=Program.PRes(frag=[Program.ins("a_start")], next=i + 2, gs=gs))
     elif c == 90:
@@ -56,22 +56,6 @@ def escape_dispatch(cps, i, n, flags, gs):
         return backref(cps, i, n, gs, c - 48)
     else:
         return literal_escape(cps, i, n, flags, gs)
-
-
-def cat_code(c):
-    """The category code for `\\d \\D \\w \\W \\s \\S`."""
-    if c == 100:
-        return 1
-    elif c == 68:
-        return -1
-    elif c == 119:
-        return 2
-    elif c == 87:
-        return -2
-    elif c == 115:
-        return 3
-    else:
-        return -3
 
 
 def backref(cps, i, n, gs, gid):
@@ -88,6 +72,6 @@ def literal_escape(cps, i, n, flags, gs):
         case Error(message=message):
             return Error(message=message)
         case Success(value=value):
-            cp = unwrap_or(listGet(value, 0), 0)
-            nxt = unwrap_or(listGet(value, 1), n)
+            cp = Program.pair_value(value)
+            nxt = Program.pair_next(value, n)
             return Success(value=Program.PRes(frag=[lit_frag(cp, flags)], next=nxt, gs=gs))

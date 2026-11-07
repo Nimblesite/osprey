@@ -41,7 +41,7 @@ module Shelves
     (** The store write of the progress slice to `lessons/progress.json`. *)
     export store () = Requests::ask (savedKey, ui::StoreWrite(writeName = "lessons/progress.json", writeSlice = progressKey))
 
-    files text = Doc::items (Doc::field (Doc::parse text, "files"))
+    files text = Doc::fieldItems (Doc::parse text, "files")
 
     // A file the host could not read reports its error; an empty text is a fault too.
     fileText file = match isEmpty (Doc::text (file, "error"))

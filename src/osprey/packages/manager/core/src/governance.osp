@@ -58,62 +58,51 @@ module Governance {
 
     fn found(maybe, code) = Maybe::fold(maybe, Error { message: code }, fn(value) => Success { value: value })
 
-    export fn principalOf(registry, id) = found(firstWhere(registry.principals, fn(p: Principal) => p.id == id), "governance.principal.missing")
-    export fn organizationOf(registry, id) = found(firstWhere(registry.organizations, fn(o: Organization) => o.id == id), "governance.organization.missing")
-    export fn membershipOf(registry, id) = found(firstWhere(registry.memberships, fn(m: Membership) => m.id == id), "governance.membership.missing")
-    export fn packageOf(registry, id) = found(firstWhere(registry.packages, fn(p: Package) => p.id == id), "governance.package.missing")
-    export fn transferOf(registry, id) = found(firstWhere(registry.transfers, fn(t: Transfer) => t.id == id), "governance.transfer.missing")
-    export fn grantOf(registry, id) = found(firstWhere(registry.grants, fn(g: Grant) => g.id == id), "governance.grant.missing")
+    /// The row of `entries` matching `predicate`, or `code`.
+    fn lookup(entries, predicate, code) = found(firstWhere(entries, predicate), code)
+
+    /// `id` when nothing of its kind is already present, else `code`: the
+    /// uniqueness guard of organization handles and live transfer proposals.
+    export fn unique(id, present, code) = match present {
+        true => Error { message: code }
+        false => Success { value: id }
+    }
+
+    /// The row of `entries` whose `id` is `id`, or `code`. Every governance
+    /// row carries the same `id` field (issue #273), so one lookup serves all.
+    fn byId(entries, id, code) = lookup(entries, fn(row) => row.id == id, code)
+
+    export fn principalOf(registry, id) = byId(registry.principals, id, "governance.principal.missing")
+    export fn organizationOf(registry, id) = byId(registry.organizations, id, "governance.organization.missing")
+    export fn membershipOf(registry, id) = byId(registry.memberships, id, "governance.membership.missing")
+    export fn packageOf(registry, id) = byId(registry.packages, id, "governance.package.missing")
+    export fn transferOf(registry, id) = byId(registry.transfers, id, "governance.transfer.missing")
+    export fn grantOf(registry, id) = byId(registry.grants, id, "governance.grant.missing")
 
     /// The organization's package row for one leaf name, in any lifecycle
     /// status: tombstones keep occupying their key [PACKAGE-NAMES-NO-SITTING].
     export fn packageByName(registry, org, name) = firstWhere(registry.packages, fn(p: Package) => p.org == org && p.key.name == name)
     export fn organizationByHandle(registry, orgHandle) = firstWhere(registry.organizations, fn(o: Organization) => o.orgHandle == orgHandle)
 
-    export fn isActive(membership: Membership) = match membership.status {
-        MemberActive => true
-        Revoked => false
-    }
+    export fn isActive(membership: Membership) = membership.status == MemberActive
 
-    export fn isCustodian(membership: Membership) = match membership.role {
-        Custodian => true
-        Member => false
-    }
+    export fn isCustodian(membership: Membership) = membership.role == Custodian
 
-    export fn isHuman(principal: Principal) = match principal.kind {
-        Human => true
-        Workflow => false
-    }
+    export fn isHuman(principal: Principal) = principal.kind == Human
 
-    export fn isLive(principal: Principal) = match principal.status {
-        PrincipalActive => true
-        Suspended => false
-    }
+    export fn isLive(principal: Principal) = principal.status == PrincipalActive
 
     /// A proposal that has not concluded: it still occupies the package's
     /// one live slot [PACKAGE-OWNERSHIP-ADMIN].
-    export fn isLiveTransfer(transfer: Transfer) = match transfer.status {
-        Pending => true
-        Accepted => true
-        _ => false
-    }
+    export fn isLiveTransfer(transfer: Transfer) = transfer.status == Pending || transfer.status == Accepted
 
     /// A proposal the recipient has already accepted.
-    export fn isAcceptedTransfer(transfer: Transfer) = match transfer.status {
-        Accepted => true
-        _ => false
-    }
+    export fn isAcceptedTransfer(transfer: Transfer) = transfer.status == Accepted
 
     /// A package that has not seen its first accepted release.
-    export fn isDraft(pkg: Package) = match pkg.status {
-        Draft => true
-        _ => false
-    }
+    export fn isDraft(pkg: Package) = pkg.status == Draft
 
-    export fn isActiveGrant(grant: Grant) = match grant.status {
-        GrantActive => true
-        GrantRevoked => false
-    }
+    export fn isActiveGrant(grant: Grant) = grant.status == GrantActive
 
     export fn permissionName(permission) = match permission {
         PublishRelease => "publish-release"
@@ -126,34 +115,27 @@ module Governance {
     /// Permission equality by canonical name.
     export fn samePermission(a, b) = permissionName(a) == permissionName(b)
 
-    export fn activeMemberOf(membership: Membership) = match isActive(membership) {
-        true => Success { value: membership }
-        false => Error { message: "governance.membership.inactive" }
-    }
+    /// `value` when `flag` holds, else the refusal `code`.
+    fn required(flag, value, code) = if flag { Success { value: value } } else { Error { message: code } }
 
-    export fn sameOrgMember(membership: Membership, org) = match membership.org == org {
-        true => Success { value: membership }
-        false => Error { message: "governance.membership.other-org" }
-    }
+    export fn activeMemberOf(membership: Membership) = required(isActive(membership), membership, "governance.membership.inactive")
 
-    export fn humanPrincipal(principal: Principal) = match isHuman(principal) {
-        true => Success { value: principal }
-        false => Error { message: "governance.principal.workflow" }
-    }
+    export fn sameOrgMember(membership: Membership, org) = required(membership.org == org, membership, "governance.membership.other-org")
 
-    export fn livePrincipal(principal: Principal) = match isLive(principal) {
-        true => Success { value: principal }
-        false => Error { message: "governance.principal.suspended" }
-    }
+    export fn humanPrincipal(principal: Principal) = required(isHuman(principal), principal, "governance.principal.workflow")
+
+    export fn livePrincipal(principal: Principal) = required(isLive(principal), principal, "governance.principal.suspended")
+
+    /// The live human principal behind a membership: the actor every
+    /// organizational decision is signed by.
+    export fn humanMemberOf(registry, m: Membership) = Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) => humanPrincipal(p))
 
     /// Package writes need a writable lifecycle status
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; each refusal names its status.
     export fn writable(pkg: Package) = match pkg.status {
         Draft => Success { value: pkg }
         Active => Success { value: pkg }
-        WriteFrozen => Error { message: "governance.package.frozen" }
-        Deprecated => Error { message: "governance.package.deprecated" }
-        Tombstoned => Error { message: "governance.package.tombstoned" }
+        _ => Error { message: refusalCode(pkg.status) }
     }
 
     /// Operational authorization needs an active package: a draft has no
@@ -161,10 +143,16 @@ module Governance {
     /// operations with their own reason codes.
     export fn operational(pkg: Package) = match pkg.status {
         Active => Success { value: pkg }
-        Draft => Error { message: "governance.package.draft" }
-        WriteFrozen => Error { message: "governance.package.frozen" }
-        Deprecated => Error { message: "governance.package.deprecated" }
-        Tombstoned => Error { message: "governance.package.tombstoned" }
+        _ => Error { message: refusalCode(pkg.status) }
+    }
+
+    /// The reason code of a lifecycle status that refuses a write; both
+    /// callers above match every status they admit before asking.
+    fn refusalCode(status) = match status {
+        WriteFrozen => "governance.package.frozen"
+        Deprecated => "governance.package.deprecated"
+        Tombstoned => "governance.package.tombstoned"
+        _ => "governance.package.draft"
     }
 
     /// Demand one exact verified proof: the host ceremony accepted it, it

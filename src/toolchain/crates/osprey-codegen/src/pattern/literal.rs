@@ -1,7 +1,7 @@
 //! Literal pattern lowering.
-use super::{finish_guarded_arm, finish_phi, match_state, open_guarded_arm, take_catch_all};
+use super::{close_chain, finish_guarded_arm, finish_phi, match_state, open_guarded_arm};
 use crate::builder::Codegen;
-use crate::error::{CodegenError, Result};
+use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::llty::Value;
 use osprey_ast::{Expr, MatchArm, Pattern};
@@ -15,18 +15,20 @@ pub(super) fn gen_literal_match(
     let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
-        match &arm.pattern {
-            Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                take_catch_all(cg, arm, disc, &mut phi_in)?;
-                break;
-            }
-            Pattern::Literal(lit) => {
-                let cond = gen_eq(cg, disc, lit)?;
-                let next_lbl = open_guarded_arm(cg, &cond);
-                finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |_| {})?;
-            }
-            _ => return Err(CodegenError::unsupported("destructuring match arm")),
-        }
+        let Pattern::Literal(lit) = &arm.pattern else {
+            close_chain(
+                cg,
+                &arm.pattern,
+                arm,
+                disc,
+                &mut phi_in,
+                "destructuring match arm",
+            )?;
+            break;
+        };
+        let cond = gen_eq(cg, disc, lit)?;
+        let next_lbl = open_guarded_arm(cg, &cond);
+        finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last, |_| {})?;
     }
 
     finish_phi(cg, &phi_in, &end, mark)

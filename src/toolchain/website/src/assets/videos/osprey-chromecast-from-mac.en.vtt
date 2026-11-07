@@ -1,37 +1,127 @@
 WEBVTT
 
-00:00.500 --> 00:10.399
-A Mac has no Cast button. Chrome casts a browser tab, but it won't play an MP3 from your Mac on the TV with proper controls. This native player does.
+00:00.500 --> 00:17.845
+In this tutorial, you'll learn how Osprey handles input and output with algebraic effects, so the same code talks to real hardware in production and to a fake in tests. Our worked example casts an MP3 from a Mac to a TV, using the @osprey/chromecast package.
 
-00:11.149 --> 00:18.622
-It finds every Chromecast and Google TV on your network by name. Open an MP3, pick a TV, and press play.
+00:18.595 --> 00:28.980
+This is the example app: a native player that finds every Chromecast and Google TV on your network and plays an audio file on it, with pause, seek, volume and speed.
 
-00:18.822 --> 00:29.537
-Pause, seek, volume and speed all work, and the controls show what the TV reports. With ffmpeg installed, the TV shows a moving spectrum of the music.
+00:29.180 --> 00:37.934
+Every byte it sends or receives goes through one Osprey effect. That's the idea this tutorial teaches, and the casting code is how we'll see it work.
 
-00:30.287 --> 00:33.126
-A Chromecast never receives your file directly.
+00:38.684 --> 00:39.849
+Here's what you'll learn.
 
-00:33.326 --> 00:45.418
-The player finds TVs, opens a TLS session, and launches the default media receiver. Then it serves the file over HTTP from your Mac, and tells the TV where to fetch it.
+00:40.049 --> 00:57.016
+Write all I/O as an effect, so there's exactly one place where bytes leave the program. Return every failure as a Result, never a crash. Answer the effect for real with a handler. Answer it in tests with a fake handler. And prove it by breaking one line and watching the tests catch it.
 
-00:46.168 --> 00:52.654
-Discovery uses the dns-sd tool that macOS already ships. Nothing extra to install.
+00:57.766 --> 01:13.013
+Here's the package manifest. The chromecast package is written in Osprey's Python flavor: ordinary Python syntax, compiled ahead of time, with types inferred, not annotated. These are its nine source files, in the order they build on each other.
 
-00:53.404 --> 01:02.708
-The whole interface is one data file of state machines and skins. The only code is this adapter, which answers each request with the Chromecast package.
+01:13.213 --> 01:20.098
+It's published as @osprey/chromecast, under the MIT licence, so any Osprey project can depend on it.
 
-01:02.908 --> 01:07.328
-An unknown request becomes an error on screen, never a silent no-op.
+01:20.848 --> 01:26.818
+Step one: find the TV. Discover takes a number of seconds and returns a list of devices.
 
-01:08.078 --> 01:17.157
-Every byte goes through one algebraic effect. In the tests, a handler plays the TV, so four whole journeys run with no window and no network.
+01:27.018 --> 01:40.526
+It runs the dns-sd tool that macOS already ships, browsing for the googlecast service on the local network. A perl alarm stops the browse after the given seconds, and the output goes to a scratch file.
 
-01:17.357 --> 01:18.421
-All four pass.
+01:40.726 --> 01:49.885
+Then it reads that file back and hands the text to browse. Running the process is kept apart from reading its output, so the parsing can be tested on its own.
 
-01:19.171 --> 01:27.144
-What to know first. It plays MP3 files only, it runs on macOS, and it does not verify the TV's certificate.
+01:50.635 --> 02:06.167
+Browse turns the transcript into devices. Each TV prints a TXT record with its friendly name, and an SRV record with its host and port. Browse keeps the names that have a matching SRV record, and builds a Device from each pair.
 
-01:27.894 --> 01:34.702
-Build Osprey, then open the player. Osprey is actively evolving. Try it on your projects, and tell us what breaks.
+02:06.367 --> 02:18.350
+Named finds one device by name. Look at the return type: a Result. If no TV has that name, you get an error you have to handle. It never crashes, and it never hands back an empty device.
+
+02:19.100 --> 02:35.480
+Step two: speak Cast. Open dials the TV over TLS, usually on port 8009. Notice the dial isn't a direct call. It's performed as an effect, which we'll come back to. A bad handle becomes a readable error, like connection refused.
+
+02:35.680 --> 02:44.083
+Once it's connected, it writes one CONNECT message to receiver-0. That opens the virtual connection every other message travels on.
+
+02:44.833 --> 02:54.029
+Every message is a protobuf frame. Field writes one length-delimited field: a tag byte, the length as a varint, and the UTF-8 bytes.
+
+02:54.229 --> 03:08.753
+Frame puts the fields together: the sender, the destination, the namespace and the JSON payload. Then it adds a four-byte, big-endian length prefix. That's the whole CAST v2 wire format, in a dozen lines you can read.
+
+03:09.503 --> 03:26.075
+Step three: serve the file. A TV plays a URL, so your Mac has to serve the file. Media URL asks the effect for the local address that routes to the TV, optionally renders a visualiser video, and starts a small HTTP server on that address.
+
+03:26.275 --> 03:39.767
+Every failure is a typed error with a clear message. No route to the TV, or the file can't be opened. And if the server fails after a render has started, the render is stopped before the error is returned, so nothing leaks.
+
+03:39.967 --> 03:45.817
+On success, you get a Served record: the URL, the port and the content type the TV should load.
+
+03:46.567 --> 03:53.632
+Begin ties it together. It serves the file, then dials the device and asks it to launch the default media receiver.
+
+03:53.832 --> 04:07.294
+When the receiver reports its transport, loading connects to it and sends LOAD with the URL of your file. From then on, the player's poll folds in whatever the TV reports: playing, paused, the position and the volume.
+
+04:08.044 --> 04:16.490
+Here's the design choice that makes all of this testable. Every byte the package exchanges goes through one algebraic effect, called Wire.
+
+04:16.690 --> 04:20.753
+Dial, write, read, status and close cover the TLS session.
+
+04:20.953 --> 04:32.854
+Route, serve and unserve cover the file server, and render covers the visualiser. Session, Media and Player only ever perform these operations. None of them calls the network directly.
+
+04:33.604 --> 04:45.656
+Native is the handler that answers Wire for real. Each operation is one call into Osprey's C runtime: a TLS client, a routing lookup, and a one-file HTTP server.
+
+04:45.856 --> 04:55.602
+Run your casting code under Native, and it talks to real TVs. Run it under a different handler, and the same code talks to whatever that handler pretends to be.
+
+04:56.352 --> 05:11.674
+Now the app. The player's whole interface is a data file of state machines. When you press Stop, the machine enters its stopping state, and that state asks the host for cast.stop. The machine doesn't know what Chromecast is. It just makes a request.
+
+05:12.424 --> 05:22.419
+The adapter is the only Osprey code in the app. Answer matches each request by name. cast.start finds the chosen TV and calls Player.begin.
+
+05:22.619 --> 05:26.831
+Pause, resume and stop each call one Player function on the live cast.
+
+05:27.031 --> 05:34.078
+And any request the adapter doesn't know becomes an error shown on screen, never a silent no-op. Keep that line in mind.
+
+05:34.828 --> 05:42.528
+Step four: run it, with no TV. The app's tests install their own handler for the Wire effect. It's an in-memory TV.
+
+05:42.728 --> 05:50.398
+Every frame the sender writes is decoded, and the fake answers the way a real receiver would. Reads hand back the bytes it queued.
+
+05:50.598 --> 05:58.907
+Route returns a made-up address, and serve returns a made-up port. No socket is opened, so the tests run anywhere, in a few seconds.
+
+05:59.657 --> 06:15.020
+Run the test folder with osprey, and the real machine, the real adapter and the real chromecast package run against the fake. The first journey finds TVs, opens a file, plays, pauses, seeks, changes volume and speed, stops and plays again.
+
+06:15.220 --> 06:21.363
+Other journeys cover finding no TVs at all, and a TV that can't be reached, which shows why on screen.
+
+06:21.563 --> 06:22.560
+All eight pass.
+
+06:23.310 --> 06:30.400
+Step five: change it, and watch the effect. Delete one line from the adapter: the one that answers cast.stop.
+
+06:31.150 --> 06:37.426
+Run the tests again. The whole-cast journey now fails, and so does the canvas journey, because both press Stop.
+
+06:37.626 --> 06:39.008
+Six pass, two fail.
+
+06:39.208 --> 06:52.178
+And the test reports exactly what the player shows: the machine asked for an unknown request, cast.stop. That's the fallback line from the adapter doing its job. Put the line back, and all eight pass again.
+
+06:52.928 --> 07:04.309
+What to know before you try it. The player plays MP3 files, it runs on macOS, and it doesn't verify the TV's certificate, because Chromecasts present a self-signed one.
+
+07:05.059 --> 07:19.763
+To try it, run the tests first: no TV needed, because a handler plays the TV. Then build and open the player, and read the package to see effects at work. Osprey is actively evolving. Try it on your projects, and tell us what breaks.

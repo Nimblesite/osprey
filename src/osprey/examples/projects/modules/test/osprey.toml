@@ -1,0 +1,8 @@
+[project]
+name = "talon-bank-tests"
+source_roots = [".", "../src/domain"]
+default_namespace = "bank"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

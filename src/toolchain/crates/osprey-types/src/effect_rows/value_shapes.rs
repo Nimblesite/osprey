@@ -26,24 +26,45 @@ pub(super) fn project_field_value(
     projected
 }
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
-    let mut projected = value.element.take().map(|value| *value);
-    project_unknown_structure(value.unknown_structure, &mut projected);
-    project_callable(value.callable, Projection::Element, &mut projected);
-    projected
+    let payload = value.element.take().map(|value| *value);
+    project_tail(
+        payload,
+        value.unknown_structure,
+        value.callable,
+        Projection::Element,
+    )
 }
 pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
-    let mut projected = value.result_payload.take().map(|value| *value);
+    let mut payload = value.result_payload.take().map(|value| *value);
     if let Some(field) = value.fields.remove("value") {
-        merge_optional_value(&mut projected, field);
+        merge_optional_value(&mut payload, field);
     }
-    project_unknown_structure(value.unknown_structure, &mut projected);
-    project_callable(value.callable, Projection::SuccessValue, &mut projected);
-    projected
+    project_tail(
+        payload,
+        value.unknown_structure,
+        value.callable,
+        Projection::SuccessValue,
+    )
 }
 pub(super) fn project_fiber_value(mut value: Value) -> Option<Value> {
-    let mut projected = value.fiber_payload.take().map(|value| *value);
-    project_unknown_structure(value.unknown_structure, &mut projected);
-    project_callable(value.callable, Projection::FiberValue, &mut projected);
+    let payload = value.fiber_payload.take().map(|value| *value);
+    project_tail(
+        payload,
+        value.unknown_structure,
+        value.callable,
+        Projection::FiberValue,
+    )
+}
+/// Add what a value's own erased box or callable contributes to the payload
+/// `projected` it holds.
+fn project_tail(
+    mut projected: Option<Value>,
+    unknown: bool,
+    callable: Option<Callable>,
+    projection: Projection,
+) -> Option<Value> {
+    project_unknown_structure(unknown, &mut projected);
+    project_callable(callable, projection, &mut projected);
     projected
 }
 fn project_unknown_structure(unknown: bool, projected: &mut Option<Value>) {
@@ -65,13 +86,7 @@ fn collect_deep(value: &Value, merged: &mut Value) {
     let mut leaf = leaf_metadata(value);
     deepen_symbolic(&mut leaf);
     merged.union(leaf);
-    let nested = value
-        .fields
-        .values()
-        .chain(value.element.as_deref())
-        .chain(value.result_payload.as_deref())
-        .chain(value.fiber_payload.as_deref());
-    for nested in nested {
+    for nested in value.nested() {
         collect_deep(nested, merged);
     }
 }

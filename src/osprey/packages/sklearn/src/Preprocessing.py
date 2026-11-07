@@ -10,7 +10,7 @@ record holding the learned attributes, and `*_transform` applies it, so
 zero-variance handling and quantile interpolation match sklearn 1.9.1.
 """
 
-from sklearn.Stats import argsort_float, index_of, max_float, mean_float, min_float, sum_float, unique_ints
+from sklearn.Stats import argsort_float, encode_labels, index_of, map_indexed, max_float, mean_float, min_float, sum_float, unique_ints
 
 __all__ = [
     "StandardScaler", "StandardScalerFitted", "standard_scaler_fit",
@@ -83,19 +83,24 @@ def sq(x):
     return x * x
 
 
+def col_of(X, j, fallback):
+    """Column `j` of a matrix as a flat list, `fallback` for a missing element."""
+    return map_indexed(X, lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), fallback))
+
+
 def col_float(X, j):
     """Column `j` of a float matrix as a flat list."""
-    return toList(map(range(len(X)), lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0)))
+    return col_of(X, j, 0.0)
 
 
 def col_int(X, j):
     """Column `j` of an int matrix as a flat list."""
-    return toList(map(range(len(X)), lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0)))
+    return col_of(X, j, 0)
 
 
 def col_var(X, j, mean):
     """Population variance (ddof 0) of column `j`."""
-    return mean_float(toList(map(range(len(X)), lambda i: sq(unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - mean))))
+    return mean_float(map_indexed(X, lambda i: sq(unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - mean)))
 
 
 def is_constant_feature(var, mean, n):
@@ -127,7 +132,7 @@ def scaled_value(fitted, x, j):
 def standard_scaler_transform(fitted, X):
     """Applies a fitted StandardScaler to `X`."""
     nf = len(fitted.mean)
-    return toList(map(range(len(X)), lambda i: toList(map(range(nf), lambda j: scaled_value(fitted, unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0), j)))))
+    return map_indexed(X, lambda i: toList(map(range(nf), lambda j: scaled_value(fitted, unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0), j))))
 
 
 def handle_zero_range(dr):
@@ -149,13 +154,13 @@ def minmax_scaler_fit(scaler, X):
 def minmax_scaler_transform(fitted, X):
     """Applies a fitted MinMaxScaler: `X * scale + min_`."""
     nf = len(fitted.scale)
-    return toList(map(range(len(X)), lambda i: toList(map(range(nf), lambda j: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) * unwrap_or(listGet(fitted.scale, j), 1.0) + unwrap_or(listGet(fitted.min_, j), 0.0)))))
+    return map_indexed(X, lambda i: toList(map(range(nf), lambda j: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) * unwrap_or(listGet(fitted.scale, j), 1.0) + unwrap_or(listGet(fitted.min_, j), 0.0))))
 
 
 def sorted_float(xs):
     """A float list sorted ascending."""
     idx = argsort_float(xs)
-    return toList(map(range(len(idx)), lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(idx, i), 0)), 0.0)))
+    return map_indexed(idx, lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(idx, i), 0)), 0.0))
 
 
 def trunc_int(x):
@@ -187,30 +192,35 @@ def robust_scaler_fit(scaler, X):
 def robust_scaler_transform(fitted, X):
     """Applies a fitted RobustScaler: `(X - center) / scale`."""
     nf = len(fitted.center)
-    return toList(map(range(len(X)), lambda i: toList(map(range(nf), lambda j: (unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - unwrap_or(listGet(fitted.center, j), 0.0)) / unwrap_or(listGet(fitted.scale, j), 1.0)))))
+    return map_indexed(X, lambda i: toList(map(range(nf), lambda j: (unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - unwrap_or(listGet(fitted.center, j), 0.0)) / unwrap_or(listGet(fitted.scale, j), 1.0))))
+
+
+def abs_row(row):
+    """A float row's absolute values."""
+    return map_indexed(row, lambda i: abs(unwrap_or(listGet(row, i), 0.0)))
 
 
 def row_norm(row, norm):
     """The l1, l2 or max norm of a float row."""
     if norm == "l1":
-        return sum_float(toList(map(range(len(row)), lambda i: abs(unwrap_or(listGet(row, i), 0.0)))))
+        return sum_float(abs_row(row))
     elif norm == "max":
-        return max_float(toList(map(range(len(row)), lambda i: abs(unwrap_or(listGet(row, i), 0.0)))))
+        return max_float(abs_row(row))
     else:
-        return sqrt(sum_float(toList(map(range(len(row)), lambda i: sq(unwrap_or(listGet(row, i), 0.0))))))
+        return sqrt(sum_float(map_indexed(row, lambda i: sq(unwrap_or(listGet(row, i), 0.0)))))
 
 
 def normalize(X, norm):
     """`sklearn.preprocessing.normalize` with norm in l1/l2/max: each row
     divided by its norm, a zero norm kept as 1.0."""
-    rows = toList(map(range(len(X)), lambda i: unwrap_or(listGet(X, i), [])))
-    return toList(map(range(len(rows)), lambda i: normalize_row(unwrap_or(listGet(rows, i), []), norm)))
+    rows = map_indexed(X, lambda i: unwrap_or(listGet(X, i), []))
+    return map_indexed(rows, lambda i: normalize_row(unwrap_or(listGet(rows, i), []), norm))
 
 
 def normalize_row(row, norm):
     """One normalized row."""
     n = handle_zero_range(row_norm(row, norm))
-    return toList(map(range(len(row)), lambda i: unwrap_or(listGet(row, i), 0.0) / n))
+    return map_indexed(row, lambda i: unwrap_or(listGet(row, i), 0.0) / n)
 
 
 def label_encoder_fit(y):
@@ -220,7 +230,7 @@ def label_encoder_fit(y):
 
 def label_encoder_transform(classes, y):
     """`LabelEncoder.transform`: each label mapped to its index in `classes`."""
-    return toList(map(range(len(y)), lambda i: index_of(classes, unwrap_or(listGet(y, i), 0))))
+    return encode_labels(classes, y)
 
 
 def one_hot_encoder_fit(X):
@@ -232,23 +242,23 @@ def one_hot_encoder_fit(X):
 def one_hot_segment(cats, v):
     """One-hot vector for one feature's value."""
     idx = index_of(cats, v)
-    return toList(map(range(len(cats)), lambda k: 1.0 if k == idx else 0.0))
+    return map_indexed(cats, lambda k: 1.0 if k == idx else 0.0)
 
 
 def one_hot_row(categories, row):
     """One-hot encoding of one sample, features concatenated in order."""
-    segments = toList(map(range(len(categories)), lambda j: one_hot_segment(unwrap_or(listGet(categories, j), []), unwrap_or(listGet(row, j), 0))))
+    segments = map_indexed(categories, lambda j: one_hot_segment(unwrap_or(listGet(categories, j), []), unwrap_or(listGet(row, j), 0)))
     return foldList(segments, [], lambda acc, seg: listConcat(acc, seg))
 
 
 def one_hot_encoder_transform(categories, X):
     """`OneHotEncoder.transform` (dense output)."""
-    return toList(map(range(len(X)), lambda i: one_hot_row(categories, unwrap_or(listGet(X, i), []))))
+    return map_indexed(X, lambda i: one_hot_row(categories, unwrap_or(listGet(X, i), [])))
 
 
 def offset_combo(c, d):
     """Each element of a combination shifted by `d`."""
-    return toList(map(range(len(c)), lambda i: unwrap_or(listGet(c, i), 0) + d))
+    return map_indexed(c, lambda i: unwrap_or(listGet(c, i), 0) + d)
 
 
 def combos_no_rep(n, k):
@@ -309,4 +319,4 @@ def monomial(row, exps):
 
 def polynomial_features_transform(powers, X):
     """`PolynomialFeatures.transform` over the given exponent vectors."""
-    return toList(map(range(len(X)), lambda i: toList(map(range(len(powers)), lambda k: monomial(unwrap_or(listGet(X, i), []), unwrap_or(listGet(powers, k), []))))))
+    return map_indexed(X, lambda i: toList(map(range(len(powers)), lambda k: monomial(unwrap_or(listGet(X, i), []), unwrap_or(listGet(powers, k), [])))))

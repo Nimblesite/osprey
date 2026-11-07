@@ -18,13 +18,7 @@ module TomlParser {
 
     // -- statements ---------------------------------------------------------
 
-    fn expectClose(c) = {
-        let c1 = TomlLexer::skipSpaces(c)
-        match TomlLexer::cur(c1) == TomlValues::byteRBracket {
-            true => Success { value: TomlLexer::advance(c1) }
-            false => Error { message: Toml::fail(c1, "toml.unexpected-token") }
-        }
-    }
+    fn expectClose(c) = TomlValues::expectByte(c, TomlValues::byteRBracket, "toml.unexpected-token")
 
     fn expectDoubleClose(c) = {
         let c1 = TomlLexer::skipSpaces(c)
@@ -47,27 +41,18 @@ module TomlParser {
         }
     }
 
-    fn parseTableHeader(doc, c, start) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => tableHeaderClose(doc, value, start))
+    fn parseTableHeader(doc, c, start) = headerChain(doc, c, start, fn(at) => expectClose(at), fn(table, segs) => TomlTree::defineTable(table, segs))
 
-    fn tableHeaderClose(doc, path, start) = Checked::andThen(expectClose(path.at), fn(value) => tableHeaderTail(doc, path, value, start))
+    fn parseArrayHeader(doc, c, start) = headerChain(doc, c, start, fn(at) => expectDoubleClose(at), fn(table, segs) => TomlTree::defineArrayTable(table, segs))
 
-    fn tableHeaderTail(doc, path, close, start) = Checked::andThen(TomlLexer::skipLineTail(close), fn(value) => tableHeaderDefine(doc, path, value, start))
-
-    fn tableHeaderDefine(doc, path, tail, start) = {
-        let segs = headerSegs(path.segs, start)
-        Checked::andThen(TomlTree::defineTable(doc, segs), fn(value) => Success { value: Step { doc: value, at: tail } })
-    }
-
-    fn parseArrayHeader(doc, c, start) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => arrayHeaderClose(doc, value, start))
-
-    fn arrayHeaderClose(doc, path, start) = Checked::andThen(expectDoubleClose(path.at), fn(value) => arrayHeaderTail(doc, path, value, start))
-
-    fn arrayHeaderTail(doc, path, close, start) = Checked::andThen(TomlLexer::skipLineTail(close), fn(value) => arrayHeaderDefine(doc, path, value, start))
-
-    fn arrayHeaderDefine(doc, path, tail, start) = {
-        let segs = headerSegs(path.segs, start)
-        Checked::andThen(TomlTree::defineArrayTable(doc, segs), fn(value) => Success { value: Step { doc: value, at: tail } })
-    }
+    /// A header's key path, its closing bracket(s), its line tail, and the
+    /// table `define` creates for the header's segments.
+    fn headerChain(doc, c, start, closer, define) =
+        Checked::andThen(TomlValues::parseKeyPath(c), fn(path) =>
+            Checked::andThen(closer(path.at), fn(close) =>
+                Checked::andThen(TomlLexer::skipLineTail(close), fn(tail) =>
+                    Checked::andThen(define(doc, headerSegs(path.segs, start)), fn(defined) =>
+                        Success { value: Step { doc: defined, at: tail } }))))
 
     fn parseKeyValue(doc, c) = Checked::andThen(TomlValues::parseKeyPath(c), fn(value) => kvEquals(doc, value))
 

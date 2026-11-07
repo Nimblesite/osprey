@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Bytes
 
 /// Parses a typeDiagram document — `typeDiagram`, then `alias X = T`,
 /// `type X { ... }`, and `union X { Variant { ... } ... }` declarations whose
@@ -26,7 +27,7 @@ module TypeDiagram {
 
     let unknownType = "schema.unknown-type"
 
-    fn isWordByte(b) = (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
+    fn isWordByte(b) = Bytes::isAlnum(b) || b == 95
     fn isPunct(b) = b == 123 || b == 125 || b == 58 || b == 61 || b == 60 || b == 62
 
     fn finishWord(text, i, acc) = if acc.wordStart < 0 { acc.tokens } else {
@@ -50,15 +51,15 @@ module TypeDiagram {
 
     fn peek(tokens, i) = listGet(tokens, i) ?: ""
 
-    fn listStep(tokens, i) = {
+    /// `List<T>` and `Option<T>`: one inner reference wrapped by `wrap`.
+    fn wrapStep(tokens, i, wrap) = {
         let inner = parseTypeRef(tokens, i + 2)
-        RefStep { ref: ListOf { element: inner.ref }, next: inner.next + 1 }
+        RefStep { ref: wrap(inner.ref), next: inner.next + 1 }
     }
 
-    fn optionStep(tokens, i) = {
-        let inner = parseTypeRef(tokens, i + 2)
-        RefStep { ref: OptionOf { element: inner.ref }, next: inner.next + 1 }
-    }
+    fn listStep(tokens, i) = wrapStep(tokens, i, fn(element) => ListOf { element: element })
+
+    fn optionStep(tokens, i) = wrapStep(tokens, i, fn(element) => OptionOf { element: element })
 
     fn parseTypeRef(tokens, i) = {
         let name = peek(tokens, i)
@@ -72,22 +73,20 @@ module TypeDiagram {
         parseFields(tokens, typ.next, listAppend(out, Field { name: tok, typ: typ.ref }))
     }
 
-    fn parseFields(tokens, i, out) = {
+    /// Scan members up to `}` or the end: `step` parses one, `done` closes the list.
+    fn scanMembers(tokens, i, out, step, done) = {
         let tok = peek(tokens, i)
-        if tok == "}" || tok == "" { FieldsStep { parsed: out, next: i + 1 } }
-        else { fieldStep(tokens, i, tok, out) }
+        if tok == "}" || tok == "" { done(out, i + 1) } else { step(tokens, i, tok, out) }
     }
+
+    fn parseFields(tokens, i, out) = scanMembers(tokens, i, out, fieldStep, fn(parsed, next) => FieldsStep { parsed: parsed, next: next })
 
     fn variantStep(tokens, i, tok, out) = {
         let fs = parseFields(tokens, i + 2, [])
         parseVariants(tokens, fs.next, listAppend(out, Variant { name: tok, payload: fs.parsed }))
     }
 
-    fn parseVariants(tokens, i, out) = {
-        let tok = peek(tokens, i)
-        if tok == "}" || tok == "" { VariantsStep { variants: out, next: i + 1 } }
-        else { variantStep(tokens, i, tok, out) }
-    }
+    fn parseVariants(tokens, i, out) = scanMembers(tokens, i, out, variantStep, fn(variants, next) => VariantsStep { variants: variants, next: next })
 
     fn aliasStep(tokens, i, out) = {
         let t = parseTypeRef(tokens, i + 3)
@@ -127,9 +126,11 @@ module TypeDiagram {
         OptionOf { element } => refKnown(names, element)
     }
 
-    fn fieldKnown(names, field) = refKnown(names, field.typ)
-    fn fieldsKnown(names, fields) = foldList(fields, true, fn(ok, f) => ok && fieldKnown(names, f))
-    fn variantsKnown(names, variants) = foldList(variants, true, fn(ok, v) => ok && fieldsKnown(names, v.payload))
+    /// True when every item satisfies `ok`.
+    fn allOf(items, ok) = foldList(items, true, fn(acc, item) => acc && ok(item))
+
+    fn fieldsKnown(names, fields) = allOf(fields, fn(field) => refKnown(names, field.typ))
+    fn variantsKnown(names, variants) = allOf(variants, fn(variant) => fieldsKnown(names, variant.payload))
 
     fn declKnown(names, decl) = match decl {
         Alias { target } => refKnown(names, target)

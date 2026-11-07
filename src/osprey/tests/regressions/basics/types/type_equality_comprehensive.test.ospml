@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 // ML-flavor twin of type_equality_comprehensive.osp — byte-identical IR.
 // Generic records, function-type equality through HOFs, generic
@@ -380,7 +368,7 @@ typeEqualityCase () =
         keepSink (sinkInt ()) == 7
     ]
 
-test "equivalent type shapes compose while union tags remain distinct" (\() => exactArithmetic (typeEqualityCase))
+test "equivalent type shapes compose while union tags remain distinct" (exactly typeEqualityCase)
 
 (** A transparent alias is its representation everywhere it is written: a
     scalar, a function type and a record field alike unify with what they
@@ -401,4 +389,4 @@ aliasCase () = checkAll "transparent type aliases are their representation every
         combine (\(a, b) => a + b, 1.5, 2.0) == 3.5
     ]
 
-test "transparent type aliases are their representation everywhere" (\() => exactArithmetic (aliasCase))
+test "transparent type aliases are their representation everywhere" (exactly aliasCase)

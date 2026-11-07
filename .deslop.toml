@@ -1,0 +1,4 @@
+# Deslop duplication gate (https://deslop.live/docs/for-ai/). CI and make lint run
+# `deslop .`; it exits 3 above this ceiling. No exclusions: every file counts.
+[threshold]
+max_duplication_percent = 6.2

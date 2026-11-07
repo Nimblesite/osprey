@@ -24,21 +24,17 @@ module Optimize {
     type Changed = { lits: List<int>, acc: Acc }
 
     // Field accessors with the receiver spelled out (issue #273).
-    fn entryAt(xs, i) -> Resolution::Entry = listGet(xs, i) ?: Resolution::blankEntry()
     fn releaseAt(xs, i) -> Identity::ReleaseId = listGet(xs, i) ?: Identity::blank()
     fn litAt(xs, i) = listGet(xs, i) ?: 0
 
     // ---- SAT verdicts ----
 
-    fn satisfiable(vars, clauses) = match Sat::solve(vars, clauses) {
-        Success { value } => match value {
-            Sat::Satisfiable { model } => true
-            _ => false
-        }
-        Error => false
-    }
+    fn satisfiable(vars, clauses) = satisfied(Sat::solve(vars, clauses))
 
-    fn satisfiableWith(vars, clauses, assumptions) = match Sat::assume(vars, clauses, assumptions) {
+    fn satisfiableWith(vars, clauses, assumptions) = satisfied(Sat::assume(vars, clauses, assumptions))
+
+    /// True only for a completed satisfiable search; an unknown result is not a proof.
+    fn satisfied(result) = match result {
         Success { value } => match value {
             Sat::Satisfiable { model } => true
             _ => false
@@ -84,7 +80,7 @@ module Optimize {
     fn candidateVars(entries) = range(0, length(entries)) |> map(fn(i) => i + 1) |> toList
 
     fn candVarsOf(entries, key) = foldList(range(0, length(entries)) |> toList, [], fn(acc, i) =>
-        if Names::same(Candidates::releaseOf(entryAt(entries, i)).key, key) { listAppend(acc, i + 1) } else { acc })
+        if Names::same(Candidates::releaseOf(Resolution::entryAt(entries, i)).key, key) { listAppend(acc, i + 1) } else { acc })
 
     fn currentRelease(graph, key) = foldList(graph.current, Error { message: "none" }, fn(acc, r: Identity::ReleaseId) => match acc {
         Success => acc
@@ -92,7 +88,7 @@ module Optimize {
     })
 
     fn entryIndexOf(entries, r) = foldList(range(0, length(entries)) |> toList, -1, fn(acc, i) =>
-        if acc >= 0 { acc } else if Identity::same(Candidates::releaseOf(entryAt(entries, i)), r) { i } else { acc })
+        if acc >= 0 { acc } else if Identity::same(Candidates::releaseOf(Resolution::entryAt(entries, i)), r) { i } else { acc })
 
     fn changedStep(graph, entries, st, key) = {
         let candVars = candVarsOf(entries, key)
@@ -133,12 +129,12 @@ module Optimize {
     fn repeatLit(l, n) = range(0, n) |> map(fn(_i) => l) |> toList
 
     fn lagLiterals(graph, entries) = foldList(range(0, length(entries)) |> toList, [], fn(acc, i) =>
-        listConcat(acc, repeatLit(i + 1, weightOf(graph, entryAt(entries, i)))))
+        listConcat(acc, repeatLit(i + 1, weightOf(graph, Resolution::entryAt(entries, i)))))
 
     // ---- tie-break ----
 
     fn tieBreak(entries, acc) = {
-        let perm = Order::permutation(length(entries), fn(i, j) => Objective::comparePackageTie(Candidates::releaseOf(entryAt(entries, i)), Candidates::releaseOf(entryAt(entries, j))))
+        let perm = Order::permutation(length(entries), fn(i, j) => Objective::comparePackageTie(Candidates::releaseOf(Resolution::entryAt(entries, i)), Candidates::releaseOf(Resolution::entryAt(entries, j))))
         foldList(perm, acc, fn(a, i) => {
             let v = i + 1
             if satisfiableWith(a.next - 1, a.clauses, listAppend(a.forced, v)) {
@@ -147,7 +143,7 @@ module Optimize {
         })
     }
 
-    fn selected(entries, forced) = foldList(forced, [], fn(acc, v) => listAppend(acc, Candidates::releaseOf(entryAt(entries, v - 1))))
+    fn selected(entries, forced) = foldList(forced, [], fn(acc, v) => listAppend(acc, Candidates::releaseOf(Resolution::entryAt(entries, v - 1))))
 
     fn sortedReleases(entries, forced) = {
         let rs = selected(entries, forced)

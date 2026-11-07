@@ -9,7 +9,8 @@ import {
   rangeOf,
   replace,
   save,
-  waitFor,
+  saveClean,
+  undoTo,
 } from "./editor";
 
 function unused(
@@ -83,8 +84,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       await vscode.commands.executeCommand("redo");
       await noRemoval(editor, [second]);
       await vscode.commands.executeCommand("redo");
-      await diagnostics(editor.document, []);
-      await save(editor.document);
+      await saveClean(editor.document);
     }
   });
 
@@ -110,16 +110,10 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       source.replace("ignored", "_ignored").replace("spare", "_spare"),
     );
     await save(editor.document);
-    await vscode.commands.executeCommand("undo");
-    await waitFor(
-      () => editor.document.getText(),
-      (text) => text === source,
-      "Undo restores both unused names",
-    );
+    await undoTo(editor.document, source, "Undo restores both unused names");
     await diagnostics(editor.document, warnings);
     await vscode.commands.executeCommand("redo");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("ML currying never leaks an invented lambda owner and local use clears only its own warning", async () => {
@@ -134,8 +128,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     await replace(editor, "    used\n", "    wrapAdd used spare\n");
     await diagnostics(editor.document, [parameter]);
     await replace(editor, "ignored", "_ignored");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("a local initialization is retained; reading it clears the warning and undo restores it", async () => {
@@ -144,14 +137,8 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     const warning = unused("variable", "spare", "variable");
     await noRemoval(editor, [warning]);
     await replace(editor, "\n2 }", "\nspare }");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
-    await vscode.commands.executeCommand("undo");
-    await waitFor(
-      () => editor.document.getText(),
-      (text) => text === source,
-      "Undo restores the unread local",
-    );
+    await saveClean(editor.document);
+    await undoTo(editor.document, source, "Undo restores the unread local");
     await diagnostics(editor.document, [warning]);
     await save(editor.document);
   });
@@ -165,8 +152,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     assert.ok(diagnostic.range.isEqual(rangeOf(editor.document, "value", 0)));
     assert.ok(!diagnostic.range.isEqual(rangeOf(editor.document, "value", 1)));
     await replace(editor, "= 7", "= value");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("closure capture uses the outer parameter and only the written unused lambda parameter is faded", async () => {
@@ -176,8 +162,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     );
     await noRemoval(editor, [unused("parameter", "other", "parameter")]);
     await replace(editor, "=> value", "=> wrapAdd(value, other)");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("record pattern warnings select the binder rather than a matching field at the call site", async () => {
@@ -193,8 +178,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       [],
     );
     await replace(editor, "=> left", "=> wrapAdd(left, right)");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("list rest binding warns independently and a real tail read clears it", async () => {
@@ -206,8 +190,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       unused("pattern-binding", "tail", "pattern binding"),
     ]);
     await replace(editor, "=> head", "=> wrapAdd(head, listLength(tail))");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("handler parameters carry their operation name while fiber captures remain used", async () => {
@@ -220,8 +203,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     };
     await noRemoval(editor, [warning]);
     await replace(editor, "resume(first)", "resume(wrapAdd(first, second))");
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("writes to a mutable local do not count as reads and fixing its use leaves assignments intact", async () => {

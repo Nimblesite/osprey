@@ -20,6 +20,9 @@
 extern int64_t write_file(char *filename, char *content);
 extern char *read_file(char *filename);
 
+#define CHECK(c) assert(c)
+#include "file_dir_tests.h"
+
 #define FILE_ROUNDTRIP_PATH "/tmp/osprey_file_runtime_test.txt"
 
 // write_file returns the byte count written; read_file returns the exact
@@ -465,6 +468,7 @@ int main(int argc, char **argv) {
   test_io_failures_report_a_truthful_reason();
   test_read_file_reports_a_stream_error();
   test_error_channel_shapes();
+  run_directory_tests();
   run_nul_filesystem_tests();
 
   printf("=== ALL FILE RUNTIME TESTS PASSED ===\n");

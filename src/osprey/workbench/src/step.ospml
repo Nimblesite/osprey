@@ -4,6 +4,7 @@
 namespace workbench
 
 import workbench::Formulas
+import workbench::Lexer
 
 (** A proof step as phrased by the writer ([WORKBENCH-STEPS]). *)
 type Step = Assume string Formula | Cases string (List<string>) | Split | Left | Right | Exact string | Apply string | Absurd string string | Done | Unknown string
@@ -13,17 +14,9 @@ module Steps
     // Whitespace a sentence may hold, including the line breaks of a pasted proof body.
     separators = [" ", "\t", "\n", "\r"]
 
-    blank code = code == 32 || code == 9 || code == 10 || code == 13
-
     letter code = (code >= 97 && code <= 122) || (code >= 65 && code <= 90)
 
     nameChar code = letter code || (code >= 48 && code <= 57) || code == 95 || code == 39
-
-    codeAt (text, at) = codePointAt (text, at) ?: 0
-
-    width code = codePointWidth code ?: 1
-
-    glyphAt (text, at) = substring (text, at, satAdd at (width (codeAt (text, at)))) ?: ""
 
     token (items, at) = listGet items at ?: ""
 
@@ -40,7 +33,7 @@ module Steps
         false => gathered (items, satAdd at 1, count, listAppend (done, token (items, at)))
 
     // The first letter may be either case; every later letter must match the table.
-    lowerFirst text = toLowerCase (glyphAt (text, 0)) + drop (text, length (glyphAt (text, 0)))
+    lowerFirst text = toLowerCase (Lexer::glyphAt (text, 0)) + drop (text, length (Lexer::glyphAt (text, 0)))
 
     sameWord (given, fixed) = given == fixed || lowerFirst given == lowerFirst fixed
 
@@ -51,8 +44,8 @@ module Steps
         false => separated (text, at, done)
 
     separated (text, at, done) =
-        glyph = glyphAt (text, at)
-        next = satAdd at (width (codeAt (text, at)))
+        glyph = Lexer::glyphAt (text, at)
+        next = Lexer::after (text, at)
         match punctuation glyph
             true => spaced (text, next, done + " " + glyph + " ")
             false => spaced (text, next, done + glyph)
@@ -72,14 +65,14 @@ module Steps
     // The words and the marks `:`, `,` and `.` of a sentence, each a token of its own.
     words text = foldList (separators, [spaced (text, 0, "")], \(parts, separator) => carved (parts, separator))
 
-    nameStart text = letter (codeAt (text, 0))
+    nameStart text = letter (Lexer::codeAt (text, 0))
 
     nameRest (text, at) = match at >= length text
         true => true
         false => continued (text, at)
 
-    continued (text, at) = match nameChar (codeAt (text, at))
-        true => nameRest (text, satAdd at (width (codeAt (text, at))))
+    continued (text, at) = match nameChar (Lexer::codeAt (text, at))
+        true => nameRest (text, Lexer::after (text, at))
         false => false
 
     isIdentifier text = nameStart text && nameRest (text, 1)
@@ -231,24 +224,30 @@ module Steps
             true => Absurd first second
             false => Unknown kept
 
+    (** Every sentence of `phrases` read into the step it phrases. *)
+    export reads phrases = mapList (phrases, \sentence => read sentence)
+
+    (** The steps of a proof body: every sentence of `text` read into the step it phrases. *)
+    export readAll text = reads (sentences text)
+
     (** The step sentences of a proof body in order: each ends at a `.` followed by whitespace or the end, and empty pieces are dropped. *)
     export sentences text = walked (text, 0, 0, [])
 
     walked (text, start, at, done) = match at >= length text
-        true => pushed (done, substring (text, start, at) ?: "")
+        true => pushed (done, Lexer::cut (text, start, at))
         false => spread (text, start, at, done)
 
-    spread (text, start, at, done) = match glyphAt (text, at) == "."
+    spread (text, start, at, done) = match Lexer::glyphAt (text, at) == "."
         true => stopped (text, start, at, done)
-        false => walked (text, start, satAdd at (width (codeAt (text, at))), done)
+        false => walked (text, start, Lexer::after (text, at), done)
 
     stopped (text, start, at, done) = match sentenceEnd (text, at)
-        true => walked (text, satAdd at 1, satAdd at 1, pushed (done, substring (text, start, satAdd at 1) ?: ""))
+        true => walked (text, satAdd at 1, satAdd at 1, pushed (done, Lexer::cut (text, start, satAdd at 1)))
         false => walked (text, start, satAdd at 1, done)
 
     sentenceEnd (text, at) = match satAdd at 1 >= length text
         true => true
-        false => blank (codeAt (text, satAdd at 1))
+        false => Lexer::blank (Lexer::codeAt (text, satAdd at 1))
 
     pushed (done, piece) = match isEmpty (trim piece)
         true => done

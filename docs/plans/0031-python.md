@@ -48,7 +48,7 @@ Constraints:
 
 ## Phase F — backward pass and training (deferred)
 
-- [ ] [FLAVOR-PYTHON-GPU] Port `linear_back`, `layer_norm_back`, `gelu_slope`, `attention_back`, `block_back`, loss/backprop, embedding gradients, checksums and one SGD update from `src/osprey/examples/llms/gpt2/reference.py` into a new `train.py` Python-flavor project reusing the forward helpers; mutation becomes immutable buffers/folds. Tiny deterministic gradients plus finite-difference; real 124M step compares losses and all 148 gradient sums. Keep `make -C src/toolchain/targets gpt2-train` rejecting `FLAVOR=python` (`Makefile:403`) until done.
+- [ ] [FLAVOR-PYTHON-GPU] Port `linear_back`, `layer_norm_back`, `gelu_slope`, `attention_back`, `block_back`, loss/backprop, embedding gradients, checksums and one SGD update from `src/osprey/examples/llms/gpt2/reference.py` into a new `train.py` Python-flavor project reusing the forward helpers; mutation becomes immutable buffers/folds. Tiny deterministic gradients plus finite-difference; real 124M step compares losses and all 148 gradient sums. Keep `make -C src/toolchain/targets/llms gpt2-train` rejecting `FLAVOR=python` (`Makefile:403`) until done.
 
 ## Phase G — publication and measurements
 

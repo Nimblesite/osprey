@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Bytes
 import registry::Canonical
 import registry::Json
 
@@ -8,10 +9,21 @@ module Reports {
     export type Report = { status: int, lines: List<string> }
 
     let ok = 0
+    let failureStatus = 1
     let usageError = 2
 
     /// A successful report.
     export fn success(lines) = Report { status: ok, lines: lines }
+
+    // `Report` shares `status` and `lines` with other records; issue #273 needs
+    // the receiver's record spelled out.
+    /// The process status a report answers.
+    export fn statusOf(report: Report) = report.status
+    /// The lines a report shows.
+    export fn linesOf(report: Report) = report.lines
+
+    /// A command that could not do what was asked.
+    export fn failure(lines) = Report { status: failureStatus, lines: lines }
 
     /// Verification output projected into editor finding codes.
     export fn findings(report: Report) = if report.status == ok { [] } else { report.lines }
@@ -19,17 +31,32 @@ module Reports {
     /// A report for a command line the frontend cannot act on.
     export fn usage(lines) = Report { status: usageError, lines: lines }
 
+    /// The usage report of the command that owns `code`: the code line, then
+    /// the command's own usage lines.
+    export fn usageFor(code, text) = usage(listPrepend(text, code))
+
+    /// `onSuccess` of a valid result, else the failure report naming its message.
+    export fn checked(result, onSuccess) = match result {
+        Error { message } => failure([message])
+        Success { value } => onSuccess(value)
+    }
+
+    /// `onSuccess` of a valid result, else the failure naming `code` and the message.
+    export fn checkedWith(result, code, onSuccess) = match result {
+        Error { message } => failure(["${code} ${message}"])
+        Success { value } => onSuccess(value)
+    }
+
     /// One line per entry of `label: value`.
     export fn field(label, value) = "${label}: ${value}"
 
-    fn member(key, value) = Json::Member { key: key, value: value }
 
     /// The report as one canonical JSON line, `{"lines":[…],"status":N}`, for
     /// editors and automation ([PACKAGE-API]): the very value the terminal
     /// rendering shows, so there is no second semantic API to keep in step.
     export fn json(report: Report) = Canonical::serialize(Json::Obj { members: [
-        member("lines", Json::Arr { items: mapList(report.lines, fn(text) => Json::Str { text: text }) }),
-        member("status", Json::Num { value: report.status })
+        Json::member("lines", Json::Arr { items: mapList(report.lines, fn(text) => Json::Str { text: text }) }),
+        Json::member("status", Json::Num { value: report.status })
     ] }) ?: "{}"
 
     let replacement = "?"
@@ -38,21 +65,11 @@ module Reports {
 
     fn control(b) = b < space || b == delete
 
-    type Scan = { out: string, start: int }
-
-    fn between(line, from, to) = take(drop(line, from), to - from)
-
-    fn scanByte(line, acc: Scan, i) = if control(byteAt(line, i) ?: space) {
-        Scan { out: acc.out + between(line, acc.start, i) + replacement, start: i + 1 }
-    } else { acc }
+    fn printableByte(b) = if control(b) { replacement } else { "" }
 
     /// `line` with every byte below 0x20 and the byte 0x7F replaced by `?`, so
     /// a registry- or lock-supplied string cannot carry a terminal escape
     /// sequence to the console ([PACKAGE-HARDENING] C7). Every line the
     /// frontend prints passes through here.
-    export fn printable(line) = {
-        let n = byteLength(line)
-        let scanned = fold(range(0, n), Scan { out: "", start: 0 }, fn(acc, i) => scanByte(line, acc, i))
-        scanned.out + between(line, scanned.start, n)
-    }
+    export fn printable(line) = Bytes::substitute(line, printableByte)
 }

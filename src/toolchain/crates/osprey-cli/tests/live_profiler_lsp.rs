@@ -169,14 +169,14 @@ fn busy_document_source() -> String {
     })
 }
 
-fn change_flood(source: &str) -> String {
-    (2..82).fold(String::new(), |mut frames, version| {
-        let body = json!({ "jsonrpc": "2.0", "method": "textDocument/didChange", "params": {
-            "textDocument": { "uri": "file:///tmp/osprey-overload.osp", "version": version },
-            "contentChanges": [{ "text": source }]
-        }})
+/// More analysis requests than the queue holds, written at once. Edits no
+/// longer wait behind analysis, so only requests can outrun it.
+fn request_flood() -> String {
+    (1000..1400).fold(String::new(), |mut frames, id| {
+        let body = json!({ "jsonrpc": "2.0", "id": id, "method": "textDocument/documentSymbol",
+            "params": { "textDocument": { "uri": "file:///tmp/osprey-overload.osp" } } })
         .to_string();
-        write!(frames, "Content-Length: {}\r\n\r\n{body}", body.len()).expect("frame changes");
+        write!(frames, "Content-Length: {}\r\n\r\n{body}", body.len()).expect("frame requests");
         frames
     })
 }
@@ -186,7 +186,7 @@ fn flooded_session(server: &mut Server) -> Value {
     server.send(&json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
         "textDocument": { "uri": "file:///tmp/osprey-overload.osp", "languageId": "osprey", "version": 1, "text": source }
     }}));
-    if let Err(error) = server.stdin.write_all(change_flood(&source).as_bytes()) {
+    if let Err(error) = server.stdin.write_all(request_flood().as_bytes()) {
         assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
     }
     let status = server.child.wait().expect("overloaded server exits");

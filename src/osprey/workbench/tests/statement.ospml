@@ -18,15 +18,15 @@ module StatementCases
     brokenText = "Theorem broken. p ∧.\nProof.\n  From h."
 
     // A declaration to stand in for a missing list entry; every field says so.
-    fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
+    export fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
 
-    sole found = match listGet found 0
+    entry (found, index) = match listGet found index
         Success one => one
         Error _ => fresh ()
 
-    spot found at = match listGet found at
-        Success one => one
-        Error _ => fresh ()
+    export sole found = entry (found, 0)
+
+    spot found index = entry (found, index)
 
     (** A problem to stand in for a missing entry; every field says so. *)
     problem problems at = match listGet problems at

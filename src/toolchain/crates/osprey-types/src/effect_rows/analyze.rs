@@ -350,13 +350,8 @@ impl Analyzer<'_> {
                     &self.instances.handlers,
                     "handler",
                 );
-                let site = super::handlers::HandlerSite {
-                    effect,
-                    arms,
-                    body,
-                    position: *position,
-                    stage: *stage,
-                };
+                let site =
+                    super::handlers::HandlerSite::new(effect, arms, body, *position, *stage);
                 let local = self.handler_body_env(&site, scope, env);
                 let body_summary = self.expression(body, scope, &local);
                 let effect = osprey_ast::effect_name::base(effect);

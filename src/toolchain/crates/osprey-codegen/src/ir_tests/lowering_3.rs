@@ -1,5 +1,57 @@
 use super::*;
 
+/// Assert the one runtime-list seal in `main` precedes its first `marker`.
+fn sealed_before(main: &str, marker: &str) {
+    let sealed = main
+        .find("call i8* @osprey_list_builder_seal")
+        .unwrap_or(main.len());
+    let published = main.find(marker).unwrap_or(0);
+    assert!(sealed < published, "seal after {marker}:\n{main}");
+}
+
+/// The `@main` body, asserting it makes exactly one `needle` call.
+fn main_calls_once(ir: &str, needle: &str) -> String {
+    let main = function_body(ir, "define i32 @main()");
+    assert_eq!(main.matches(needle).count(), 1, "{needle} in:\n{main}");
+    main
+}
+
+/// Assert `text` contains `needle` exactly `n` times.
+fn assert_calls(text: &str, needle: &str, n: usize) {
+    assert_eq!(text.matches(needle).count(), n, "{needle} in:\n{text}");
+}
+
+/// A program whose whole body is one `fn main() -> Unit`.
+fn main_body(body: &str) -> String {
+    module(&["fn main() -> Unit = {\n", body, "\n}\n"].concat())
+}
+
+/// Source for an `inspect` operation over a Result/fiber pair, in the direct
+/// or the `resuming` (`control`) ABI; `checkedAdd` supplies the failures.
+fn inspect_handler_source(effect: &str, resuming: bool) -> String {
+    let (control, success, failed) = if resuming {
+        ("control ", "resume(value)", "resume(7)")
+    } else {
+        ("", "value", "7")
+    };
+    format!(
+        "effect {effect} {{ {control}inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }}\n\
+         fn ask() -> int !{effect} = perform {effect}.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
+         fn main() -> int = {{\n\
+             handle {effect} {{\n\
+                 inspect immediate deferred => match immediate {{\n\
+                 Success {{ value }} => {success}\n\
+                 Error {{ message }} => match await(deferred) {{\n\
+                 Success {{ value }} => {success}\n\
+                 Error {{ message }} => {failed}\n\
+                 }}\n\
+                 }}\n\
+             }}\n\
+             ask()\n\
+         }}\n"
+    )
+}
+
 #[test]
 fn allocation_masks_follow_the_targets_mixed_record_layout() {
     let program = parsed(
@@ -46,40 +98,32 @@ fn match_result_constructor_arms_share_the_contextual_success_layout() {
 fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
     // `checkedAdd` is the arithmetic that still returns overflow as a
     // Result value ([ARITH-EFFECT]).
-    let named = module(
-        "fn choose(r: Result<int, Error>) -> int = match r {\n\
-               Success { value } => value\n\
-               Error { message } => 0\n\
-             }\n\
-             let failed = choose(checkedAdd(9223372036854775807, 1))\n\
-             let wrapped = choose(7)\n\
-             print(\"${failed}:${wrapped}\")\n",
-    );
-    shows(
-        &named,
-        &[
-            "define internal i64 @choose(i8* %$p0)",
-            "bitcast i8* %$p0 to { i64, i8, i8* }*",
-        ],
-    );
-
-    let closure = module(
-        "let choose = fn(r: Result<int, Error>) => match r {\n\
-               Success { value } => value\n\
-               Error { message } => 0\n\
-             }\n\
-             let failed = choose(checkedAdd(9223372036854775807, 1))\n\
-             let wrapped = choose(7)\n\
-             print(\"${failed}:${wrapped}\")\n",
-    );
-    shows(
-        &closure,
-        &[
-            "define internal i64 @__closure_fn_",
-            "i8* %__env, i8* %$p0",
-            "bitcast i8* %$p0 to { i64, i8, i8* }*",
-        ],
-    );
+    let body = "match r {\n\
+                Success { value } => value\n\
+                Error { message } => 0\n\
+              }\n\
+              let failed = choose(checkedAdd(9223372036854775807, 1))\n\
+              let wrapped = choose(7)\n\
+              print(\"${failed}:${wrapped}\")\n";
+    for (head, expected) in [
+        (
+            "fn choose(r: Result<int, Error>) -> int = ",
+            &[
+                "define internal i64 @choose(i8* %$p0)",
+                "bitcast i8* %$p0 to { i64, i8, i8* }*",
+            ][..],
+        ),
+        (
+            "let choose = fn(r: Result<int, Error>) => ",
+            &[
+                "define internal i64 @__closure_fn_",
+                "i8* %__env, i8* %$p0",
+                "bitcast i8* %$p0 to { i64, i8, i8* }*",
+            ][..],
+        ),
+    ] {
+        shows(&module(&[head, body].concat()), expected);
+    }
 }
 
 /// Matching a bare scalar against `Success`/`Error` arms takes the Success
@@ -107,33 +151,33 @@ fn result_match_on_a_scalar_discriminant_always_takes_success() {
 }
 
 #[test]
-fn union_match_with_named_catch_all_binds_the_scrutinee() {
+fn pattern_lowering_binds_and_compares() {
     // A union match whose catch-all is a binding (not `_`) binds the whole
-    // scrutinee (pattern.rs gen_union_match's Binding catch-all arm).
-    let ir = module(
-        "type Shape = Circle { r: int } | Square { s: int } | Blank\n\
+    // scrutinee (pattern.rs gen_union_match's Binding catch-all arm). A
+    // string-literal compare/branch chain ending in a catch-all is
+    // pattern.rs gen_literal_match + gen_eq's osp_string_compare path.
+    for (src, needles) in [
+        (
+            "type Shape = Circle { r: int } | Square { s: int } | Blank\n\
              fn name(sh: Shape) -> int = match sh {\n\
                Circle { r } => r\n\
                other        => 0\n\
              }\n\
              fn main() -> Unit = print(\"${name(Blank)}\")\n",
-    );
-    shows(&ir, &["load i64, i64*"]);
-}
-
-#[test]
-fn string_literal_match_chain() {
-    // A string-literal compare/branch chain ending in a catch-all
-    // (pattern.rs gen_literal_match + gen_eq's osp_string_compare path).
-    let ir = module(
-        "fn route(p: string) -> string = match p {\n\
+            &["load i64, i64*"][..],
+        ),
+        (
+            "fn route(p: string) -> string = match p {\n\
                \"/a\" => \"A\"\n\
                \"/b\" => \"B\"\n\
                _     => \"404\"\n\
              }\n\
              fn main() -> Unit = print(route(\"/a\"))\n",
-    );
-    shows(&ir, &["@osp_string_compare"]);
+            &["@osp_string_compare"][..],
+        ),
+    ] {
+        shows(&module(src), needles);
+    }
 }
 
 // ---- strings ----
@@ -142,29 +186,27 @@ fn string_literal_match_chain() {
 fn string_builtins_total_and_fallible() {
     // A broad sweep of string builtins: total transforms, predicates,
     // fallible parse/substring/split, cursor ops, fromCodePoint, join.
-    let ir = module(
-            "fn main() -> Unit = {\n\
-               let s = \"  Hello World  \"\n\
-               print(\"${length(s)} ${isEmpty(s)} ${contains(s, \"World\")}\")\n\
-               print(\"${startsWith(s, \"  \")} ${endsWith(s, \"  \")}\")\n\
-               print(\"${toUpperCase(s)} ${toLowerCase(s)} ${trim(s)}\")\n\
-               print(\"${trimStart(s)} ${trimEnd(s)} ${reverse(s)}\")\n\
-               print(\"${take(s, 2)} ${drop(s, 2)}\")\n\
-               print(\"${repeat(\"ab\", 3)} ${padStart(\"x\", 3, \"-\")} ${padEnd(\"x\", 3, \"-\")}\")\n\
-               print(\"${replace(\"aaa\", \"a\", \"b\")} ${byteLength(s)}\")\n\
-               match indexOf(s, \"World\") { Success { value } => print(\"i=${value}\") Error { message } => print(\"no\") }\n\
-               match substring(s, 2, 5) { Success { value } => print(\"sub=${value}\") Error { message } => print(\"no\") }\n\
-               match parseInt(\"42\") { Success { value } => print(\"n=${value}\") Error { message } => print(\"no\") }\n\
-               match parseFloat(\"4.5\") { Success { value } => print(\"f=${value}\") Error { message } => print(\"no\") }\n\
-               match split(\"a,b,c\", \",\") { Success { value } => print(\"parts=${listLength(value)}\") Error { message } => print(\"no\") }\n\
-               match byteAt(s, 0) { Success { value } => print(\"b=${value}\") Error { message } => print(\"no\") }\n\
-               match codePointAt(s, 0) { Success { value } => print(\"cp=${value}\") Error { message } => print(\"no\") }\n\
-               match fromCodePoint(65) { Success { value } => print(\"c=${value}\") Error { message } => print(\"no\") }\n\
-               let ws = words(s)\n\
-               let ls = lines(s)\n\
-               print(\"${join(ws, \"-\")} ${listLength(ls)}\")\n\
-             }\n",
-        );
+    let ir = main_body(
+        "let s = \"  Hello World  \"\n\
+         print(\"${length(s)} ${isEmpty(s)} ${contains(s, \"World\")}\")\n\
+         print(\"${startsWith(s, \"  \")} ${endsWith(s, \"  \")}\")\n\
+         print(\"${toUpperCase(s)} ${toLowerCase(s)} ${trim(s)}\")\n\
+         print(\"${trimStart(s)} ${trimEnd(s)} ${reverse(s)}\")\n\
+         print(\"${take(s, 2)} ${drop(s, 2)}\")\n\
+         print(\"${repeat(\"ab\", 3)} ${padStart(\"x\", 3, \"-\")} ${padEnd(\"x\", 3, \"-\")}\")\n\
+         print(\"${replace(\"aaa\", \"a\", \"b\")} ${byteLength(s)}\")\n\
+         match indexOf(s, \"World\") { Success { value } => print(\"i=${value}\") Error { message } => print(\"no\") }\n\
+         match substring(s, 2, 5) { Success { value } => print(\"sub=${value}\") Error { message } => print(\"no\") }\n\
+         match parseInt(\"42\") { Success { value } => print(\"n=${value}\") Error { message } => print(\"no\") }\n\
+         match parseFloat(\"4.5\") { Success { value } => print(\"f=${value}\") Error { message } => print(\"no\") }\n\
+         match split(\"a,b,c\", \",\") { Success { value } => print(\"parts=${listLength(value)}\") Error { message } => print(\"no\") }\n\
+         match byteAt(s, 0) { Success { value } => print(\"b=${value}\") Error { message } => print(\"no\") }\n\
+         match codePointAt(s, 0) { Success { value } => print(\"cp=${value}\") Error { message } => print(\"no\") }\n\
+         match fromCodePoint(65) { Success { value } => print(\"c=${value}\") Error { message } => print(\"no\") }\n\
+         let ws = words(s)\n\
+         let ls = lines(s)\n\
+         print(\"${join(ws, \"-\")} ${listLength(ls)}\")",
+    );
     shows(
         &ir,
         &[
@@ -183,18 +225,16 @@ fn string_builtins_total_and_fallible() {
 fn map_literal_and_map_operations() {
     // Map literal build, set/get/contains/remove/merge, keys/values lists,
     // indexing — collections.rs gen_map_literal, map_* and map_to_list.
-    let ir = module(
-            "fn main() -> Unit = {\n\
-               let m = { \"a\": 1, \"b\": 2 }\n\
-               let m2 = mapSet(m, \"c\", 3)\n\
-               let m3 = mapRemove(m2, \"a\")\n\
-               let merged = m2 + m3\n\
-               print(\"len=${mapLength(merged)} has=${mapContains(m2, \"a\")}\")\n\
-               print(\"keys=${listLength(mapKeys(m2))} vals=${listLength(mapValues(m2))}\")\n\
-               match mapGet(m2, \"b\") { Success { value } => print(\"g=${value}\") Error { message } => print(\"no\") }\n\
-               match m[\"a\"] { Success { value } => print(\"i=${value}\") Error { message } => print(\"no\") }\n\
-             }\n",
-        );
+    let ir = main_body(
+        "let m = { \"a\": 1, \"b\": 2 }\n\
+         let m2 = mapSet(m, \"c\", 3)\n\
+         let m3 = mapRemove(m2, \"a\")\n\
+         let merged = m2 + m3\n\
+         print(\"len=${mapLength(merged)} has=${mapContains(m2, \"a\")}\")\n\
+         print(\"keys=${listLength(mapKeys(m2))} vals=${listLength(mapValues(m2))}\")\n\
+         match mapGet(m2, \"b\") { Success { value } => print(\"g=${value}\") Error { message } => print(\"no\") }\n\
+         match m[\"a\"] { Success { value } => print(\"i=${value}\") Error { message } => print(\"no\") }",
+    );
     shows(
         &ir,
         &[
@@ -210,58 +250,41 @@ fn map_literal_and_map_operations() {
 fn bare_length_and_is_empty_dispatch_on_the_receiver_type() {
     // [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]: the bare
     // spec names are receiver-directed. Routing a List/Map handle into the
-    // string runtime reads an `i8*` heap pointer as a NUL-terminated string
-    // — a wrong answer AND an out-of-bounds read. A flat list *literal* is a
-    // third layout: it matched neither collection tag and fell through to
-    // `osp_strlen`, which counted the length word's own bytes and answered
-    // `1` for every list of 1..=255 elements.
-    let ir = module(
-            "fn main() -> Unit = {\n\
-               let xs = listAppend(listAppend(List(), 1), 2)\n\
-               let m = mapSet(Map(), \"a\", 1)\n\
-               let lit = [7, 8, 9]\n\
-               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")\n\
-             }\n",
-        );
+    // string runtime reads an `i8*` heap pointer as a NUL-terminated string —
+    // a wrong answer AND an out-of-bounds read. A flat list *literal* is a
+    // third layout: it matched neither collection tag, fell through to
+    // `osp_strlen`, and answered `1` for every list of 1..=255 elements.
+    let ir = main_body(
+        "let xs = listAppend(listAppend(List(), 1), 2)\n\
+         let m = mapSet(Map(), \"a\", 1)\n\
+         let lit = [7, 8, 9]\n\
+         print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")",
+    );
     shows(
         &ir,
         &["osprey_list_length", "osprey_map_length", "osp_strlen"],
     );
-    // Exactly one `osp_strlen` call site: the sole string receiver.
-    assert_eq!(
-        ir.matches("call i64 @osp_strlen").count(),
-        1,
-        "only the string receiver may reach osp_strlen"
-    );
-    assert_eq!(
-        ir.matches("@osp_string_is_empty").count(),
-        0,
-        "no collection receiver may reach the string isEmpty"
-    );
+    // Exactly one `osp_strlen` call site: the sole string receiver, and no
+    // collection receiver may reach the string isEmpty.
+    assert_calls(&ir, "call i64 @osp_strlen", 1);
+    assert_calls(&ir, "@osp_string_is_empty", 0);
 }
 
 #[test]
 fn list_literal_operands_of_plus_are_rebuilt_before_concatenation() {
     // `+` on lists is `listConcat`, selected by the LIST_OWNER tag — which a
-    // flat list literal does not carry. `xs + [1]` therefore handed
-    // `osprey_list_concat` the literal's foreign `{ i64, i8* }` header (a
-    // SEGFAULT), and `[1] + [2]` matched neither operand and fell through to
-    // integer arithmetic. Both operands are now rebuilt into runtime lists.
-    let ir = module(
-        "fn main() -> Unit = {\n\
-               let xs = listAppend(List(), 1)\n\
-               let both = [1, 2] + [3]\n\
-               let mixedL = xs + [4]\n\
-               let mixedR = [5] + xs\n\
-               print(\"${listLength(both)} ${listLength(mixedL)} ${listLength(mixedR)}\")\n\
-             }\n",
+    // flat list literal does not carry: `xs + [1]` handed `osprey_list_concat`
+    // the literal's foreign `{ i64, i8* }` header (a SEGFAULT) and `[1] + [2]`
+    // fell through to integer arithmetic. Both are now rebuilt as runtime lists.
+    let ir = main_body(
+        "let xs = listAppend(List(), 1)\n\
+         let both = [1, 2] + [3]\n\
+         let mixedL = xs + [4]\n\
+         let mixedR = [5] + xs\n\
+         print(\"${listLength(both)} ${listLength(mixedL)} ${listLength(mixedR)}\")",
     );
     // Three concatenations, each over two real OspreyList handles.
-    assert_eq!(
-        ir.matches("call i8* @osprey_list_concat").count(),
-        3,
-        "every `+` over a list must reach the list runtime"
-    );
+    assert_calls(&ir, "call i8* @osprey_list_concat", 3);
     // Five literals appear; each is sealed into a runtime list before use.
     assert!(
         ir.matches("osprey_list_builder_seal").count() >= 5,
@@ -274,9 +297,8 @@ fn a_list_literal_argument_is_rebuilt_before_it_crosses_into_a_callee() {
     // A callee's `List<T>` parameter is one `i8*` whichever layout the caller
     // wrote, so the body cannot branch on it. `osprey_list_length` reads both
     // layouts (shared leading `i64`), but `osprey_list_get`/`_drop` need the
-    // real trie — so a list pattern over a literal argument SEGFAULTED while
-    // the same call on a `listAppend` chain worked. The literal is rebuilt at
-    // the boundary instead.
+    // real trie — a list pattern over a literal argument SEGFAULTED while a
+    // `listAppend` chain worked, so the literal is rebuilt at the boundary.
     let ir = module(
         "fn headOf(xs: List<int>) -> int = match xs {\n\
                [] => 0\n\
@@ -288,11 +310,7 @@ fn a_list_literal_argument_is_rebuilt_before_it_crosses_into_a_callee() {
              }\n",
     );
     // The literal argument seals a runtime list; the handle argument does not.
-    assert_eq!(
-        ir.matches("call i8* @osprey_list_builder_seal").count(),
-        1,
-        "exactly the literal argument is rebuilt"
-    );
+    assert_calls(&ir, "call i8* @osprey_list_builder_seal", 1);
     shows(&ir, &["osprey_list_get"]);
 }
 
@@ -311,15 +329,7 @@ fn a_file_scope_list_literal_is_rebuilt_before_a_function_reads_it() {
              }\n\
              print(first())\n",
     );
-    let main = function_body(&ir, "define i32 @main()");
-    let sealed = main.find("call i8* @osprey_list_builder_seal");
-    let published = main.find("@osp.g.big");
-    assert!(
-        sealed
-            .zip(published)
-            .is_some_and(|(seal, store)| seal < store),
-        "the literal must be sealed into a runtime list before it is published:\n{main}"
-    );
+    sealed_before(&function_body(&ir, "define i32 @main()"), "@osp.g.big");
 }
 
 #[test]
@@ -329,26 +339,12 @@ fn a_list_literal_fold_seed_is_rebuilt_once_before_the_loop() {
     // `{ length, data }` header and SEGFAULTED. The seed now takes the runtime
     // layout once, at the escape into the slot, and the loop body converts
     // nothing per iteration [BUILTIN-ITER-FOLD].
-    let ir = module(
-        "fn main() -> Unit = {\n\
-               let xs = range(0, 3) |> fold([], fn(acc, i) => listAppend(acc, i))\n\
-               print(listLength(xs))\n\
-             }\n",
+    let ir = main_body(
+        "let xs = range(0, 3) |> fold([], fn(acc, i) => listAppend(acc, i))\n\
+         print(listLength(xs))",
     );
-    let main = function_body(&ir, "define i32 @main()");
-    assert_eq!(
-        main.matches("call i8* @osprey_list_builder_new_of").count(),
-        1,
-        "exactly one conversion, the seed's:\n{main}"
-    );
-    let sealed = main
-        .find("call i8* @osprey_list_builder_seal")
-        .unwrap_or(main.len());
-    let appended = main.find("@osprey_list_append").unwrap_or(0);
-    assert!(
-        sealed < appended,
-        "the seed is sealed before the loop's first append:\n{main}"
-    );
+    let main = main_calls_once(&ir, "call i8* @osprey_list_builder_new_of");
+    sealed_before(&main, "@osprey_list_append");
 }
 
 #[test]
@@ -357,42 +353,25 @@ fn a_bound_string_list_is_settled_once_at_its_binding() {
     // list on every read (50 000 lines × 5 000 reads: 6.9 GB and nine seconds).
     // The binding settles the `[]i8*` result once; the loop reads the runtime
     // list in place [BUILTIN-LIST-GET].
-    let ir = module(
-        "fn main() -> Unit = {\n\
-               let rows = lines(\"a\\nb\\nc\")\n\
-               let total = range(0, 3) |> fold(0, fn(acc, i) => wrapAdd(acc, length(listGet(rows, i) ?: \"\")))\n\
-               print(total)\n\
-             }\n",
+    let ir = main_body(
+        "let rows = lines(\"a\\nb\\nc\")\n\
+         let total = range(0, 3) |> fold(0, fn(acc, i) => wrapAdd(acc, length(listGet(rows, i) ?: \"\")))\n\
+         print(total)",
     );
-    let main = function_body(&ir, "define i32 @main()");
-    assert_eq!(
-        main.matches("call i8* @osprey_list_builder_new_of(i32 1)")
-            .count(),
-        1,
-        "exactly one string-list conversion, at the binding:\n{main}"
-    );
-    let sealed = main
-        .find("call i8* @osprey_list_builder_seal")
-        .unwrap_or(main.len());
-    let read = main.find("@osprey_list_in_bounds").unwrap_or(0);
-    assert!(
-        sealed < read,
-        "the list is settled before the loop's first read:\n{main}"
-    );
+    let main = main_calls_once(&ir, "call i8* @osprey_list_builder_new_of(i32 1)");
+    sealed_before(&main, "@osprey_list_in_bounds");
 }
 
 #[test]
 fn list_get_and_contains_runtime_calls() {
     // listGet (bounds-checked Result) and listContains (linear scan with
     // both the int and string equality paths).
-    let ir = module(
-            "fn main() -> Unit = {\n\
-               let xs = listAppend(listAppend(List(), 1), 2)\n\
-               let ss = listAppend(List(), \"hi\")\n\
-               print(\"c=${listContains(xs, 2)} s=${listContains(ss, \"hi\")}\")\n\
-               match listGet(xs, 0) { Success { value } => print(\"v=${value}\") Error { message } => print(\"no\") }\n\
-             }\n",
-        );
+    let ir = main_body(
+        "let xs = listAppend(listAppend(List(), 1), 2)\n\
+         let ss = listAppend(List(), \"hi\")\n\
+         print(\"c=${listContains(xs, 2)} s=${listContains(ss, \"hi\")}\")\n\
+         match listGet(xs, 0) { Success { value } => print(\"v=${value}\") Error { message } => print(\"no\") }",
+    );
     shows(&ir, &["osprey_list_in_bounds", "@osp_string_compare"]);
 }
 
@@ -408,54 +387,20 @@ fn effect_result_parameters_preserve_shape_in_direct_and_resuming_abis() {
         compile_program(&parsed.program).map_err(|error| error.to_string())
     }
 
-    // `checkedAdd` supplies the failed Result values ([ARITH-EFFECT]).
-    let direct = try_module(
-            "effect Inspect { inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }\n\
-             fn ask() -> int !Inspect = perform Inspect.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
-             fn main() -> int = {\n\
-                 handle Inspect {\n\
-                     inspect immediate deferred => match immediate {\n\
-                     Success { value } => value\n\
-                     Error { message } => match await(deferred) {\n\
-                     Success { value } => value\n\
-                     Error { message } => 7\n\
-                     }\n\
-                     }\n\
-                 }\n\
-                 ask()\n\
-             }\n",
-        );
-    let resuming = try_module(
-            "effect ResumeInspect { control inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }\n\
-             fn ask() -> int !ResumeInspect = perform ResumeInspect.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
-             fn main() -> int = {\n\
-                 handle ResumeInspect {\n\
-                     inspect immediate deferred => match immediate {\n\
-                     Success { value } => resume(value)\n\
-                     Error { message } => match await(deferred) {\n\
-                     Success { value } => resume(value)\n\
-                     Error { message } => resume(7)\n\
-                     }\n\
-                     }\n\
-                 }\n\
-                 ask()\n\
-             }\n",
-        );
-    assert!(
-            direct.is_ok() && resuming.is_ok(),
-            "effect Result parameters must compile without erasing their wrapper:\n  direct={direct:?}\n  resuming={resuming:?}"
-        );
-
-    for (ir, function) in [
+    for (effect, resuming, function) in [
+        ("Inspect", false, "@__handler_Inspect_inspect_"),
         (
-            direct.expect("checked above"),
-            "@__handler_Inspect_inspect_",
-        ),
-        (
-            resuming.expect("checked above"),
+            "ResumeInspect",
+            true,
             "@__resume_arm_ResumeInspect_inspect_",
         ),
     ] {
+        let compiled = try_module(&inspect_handler_source(effect, resuming));
+        assert!(
+            compiled.is_ok(),
+            "effect Result parameters must compile without erasing their wrapper:\n  {effect}={compiled:?}"
+        );
+        let ir = compiled.expect("checked above");
         let definition = ir
             .lines()
             .find(|line| line.starts_with("define ") && line.contains(function))

@@ -8,7 +8,7 @@ import registry::Bytes
 module Citations {
     let closeBracket = 93
 
-    fn idByte(b) = (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 45
+    fn idByte(b) = (b >= 65 && b <= 90) || Bytes::isDigit(b) || b == 45
 
     fn upper(b) = b >= 65 && b <= 90
 

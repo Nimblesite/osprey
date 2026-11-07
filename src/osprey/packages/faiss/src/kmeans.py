@@ -13,6 +13,7 @@ breaks when the objective is unchanged from the previous iteration.
 """
 
 from faiss.Flat import IndexFlatL2, add, search
+from faiss.Metrics import map_indexed
 
 __all__ = ["Kmeans", "train", "assign"]
 
@@ -71,7 +72,7 @@ def assign(km, x):
 
 def flatten(labels):
     """A k=1 label matrix flattened to one id per row."""
-    return toList(map(range(len(labels)), lambda q: unwrap_or(listGet(unwrap_or(listGet(labels, q), []), 0), 0)))
+    return map_indexed(labels, lambda q: unwrap_or(listGet(unwrap_or(listGet(labels, q), []), 0), 0))
 
 
 def recompute(x, assignments, k, d):
@@ -84,7 +85,7 @@ def recompute(x, assignments, k, d):
 def centroid_of(x, assignments, c, d):
     """The mean of the rows assigned to cluster `c`, or the zero vector when
     none are."""
-    members = filterList(toList(map(range(len(x)), lambda j: j)), lambda j: unwrap_or(listGet(assignments, j), -1) == c)
+    members = filterList(map_indexed(x, lambda j: j), lambda j: unwrap_or(listGet(assignments, j), -1) == c)
     n = len(members)
     if n == 0:
         return toList(map(range(d), lambda _t: 0.0))

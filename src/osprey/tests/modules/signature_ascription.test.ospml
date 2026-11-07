@@ -5,22 +5,6 @@
 
 namespace store
 
-
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
-
 signature CounterApi
     type Counter
     empty : Unit -> Counter
@@ -95,8 +79,7 @@ module Extended
 
 (** The abstract `Counter` flows through the ascribed surface without leaking. *)
 abstractTypeCase () = checkAll ("abstract signature type round-trips", [
-    Counters::size (Counters::empty ()) == 0,
-    Counters::size (Counters::bump (Counters::empty ())) == 1,
+    structuralEquals [Counters::size (Counters::empty ()), Counters::size (Counters::bump (Counters::empty ()))] [0, 1],
     Counters::size (Counters::bump (Counters::bump (Counters::empty ()))) == 2,
     Counters::size (Counters::bump (Counters::bump (Counters::bump (Counters::empty ())))) == 3,
     Tallies::size (Tallies::empty ()) == 0,
@@ -111,25 +94,18 @@ readAs stamp =
 
 (** A signature effect is declared by the module and handled by the caller. *)
 signatureEffectCase () = checkAll ("signature effect stays performable", [
-    readAs 7 == 7,
-    readAs 0 == 0,
-    readAs 41 == 41,
-    ((readAs 41 + 1) ) == 42,
-    readAs (readAs 3) == 3
+    structuralEquals [readAs 7, readAs 0, readAs 41, ((readAs 41 + 1) ), readAs (readAs 3)] [7, 0, 41, 42, 3]
 ])
 
 (** Nested ascription and the plain-export surface both stay addressable. *)
 nestedAndExtraCase () = checkAll ("nested ascription and extra exports", [
-    Trees::Leaf::value () == 21,
-    Trees::doubled () == 42,
-    Extended::size (Extended::empty ()) == 5,
-    Extended::size (Extended::bump (Extended::empty ())) == 7,
-    Extended::seeded () == 5
+    structuralEquals [Trees::Leaf::value (), Trees::doubled (), Extended::size (Extended::empty ())] [21, 42, 5],
+    structuralEquals [Extended::size (Extended::bump (Extended::empty ())), Extended::seeded ()] [7, 5]
 ])
 
 exactArithmetic (\() =>
     print "${Counters::size (Counters::bump (Counters::empty ()))} ${Trees::doubled ()} ${Extended::seeded ()}")
 
-test ("abstract signature types stay abstract", \() => exactArithmetic (abstractTypeCase))
-test ("signature effects remain performable", \() => exactArithmetic (signatureEffectCase))
-test ("nested ascription and extra exports conform", \() => exactArithmetic (nestedAndExtraCase))
+test ("abstract signature types stay abstract", exactly abstractTypeCase)
+test ("signature effects remain performable", exactly signatureEffectCase)
+test ("nested ascription and extra exports conform", exactly nestedAndExtraCase)

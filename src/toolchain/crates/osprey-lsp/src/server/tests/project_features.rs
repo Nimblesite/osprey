@@ -1,53 +1,110 @@
 use super::*;
 
-// [LSP-WORKSPACE] Every feature must see the same unsaved project as diagnostics.
-#[tokio::test]
-async fn project_features_follow_unsaved_siblings_in_both_flavors(
-) -> Result<(), Box<dyn std::error::Error>> {
-    for extension in ["osp", "ospml"] {
-        live_project_features(extension).await?;
-    }
-    Ok(())
+use crate::test_support::ProjectFixture;
+
+/// Boxed error type shared by the project-feature tests.
+type Failure = Box<dyn std::error::Error>;
+
+/// Result type shared by the project-feature tests.
+type Fallible = Result<(), Failure>;
+
+/// Per-flavor `(extension, disk, live, main)` texts for the unsaved-sibling test.
+const SIBLING_SOURCES: [(&str, &str, &str, &str); 2] = [
+    (
+        "osp",
+        "fn saved(x) = x\n",
+        "\nfn fresh(x) = x + \"!\"\n",
+        "fn main() = print(fresh(\"x\"))\n",
+    ),
+    (
+        "ospml",
+        "saved x = x\n",
+        "\nfresh x = x + \"!\"\n",
+        "main () = print (fresh \"x\")\n",
+    ),
+];
+
+/// Per-flavor `(extension, main, live)` texts for the live-effect test.
+const EFFECT_SOURCES: [(&str, &str, &str); 2] = [
+    (
+        "osp",
+        "fn read() = perform Reader.name()\nfn main() = provide(read)\n",
+        "effect Reader { name: fn() -> string }\nfn provide(work) = {\n    handle Reader { name => \"live\" }\n    work()\n}\n",
+    ),
+    (
+        "ospml",
+        "read () = perform Reader.name ()\nmain () = provide read\n",
+        "effect Reader\n    name : Unit => string\nprovide work =\n    handle Reader\n        name => \"live\"\n    work ()\n",
+    ),
+];
+
+/// Per-flavor `(extension, main, helper)` texts for the watched-project test.
+const WATCHED_SOURCES: [(&str, &str, &str); 2] = [
+    (
+        "osp",
+        "fn main() = fresh(\"x\")\n",
+        "fn fresh(x) = x + \"!\"\n",
+    ),
+    ("ospml", "main () = fresh \"x\"\n", "fresh x = x + \"!\"\n"),
+];
+
+/// The LSP URI of `path`.
+fn path_uri(path: &std::path::Path) -> Result<String, Failure> {
+    Ok(lspkit_server::uri::path_to_uri(path)?)
 }
 
-async fn live_project_features(extension: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new(extension)?;
-    let disk = if extension == "osp" {
-        "fn saved(x) = x\n"
-    } else {
-        "saved x = x\n"
-    };
-    let live = if extension == "osp" {
-        "\nfn fresh(x) = x + \"!\"\n"
-    } else {
-        "\nfresh x = x + \"!\"\n"
-    };
-    let main = if extension == "osp" {
-        "fn main() = print(fresh(\"x\"))\n"
-    } else {
-        "main () = print (fresh \"x\")\n"
-    };
-    let uri = fixture.write("main", main)?;
-    let sibling = fixture.write("helper", disk)?;
-    let mut h = Harness::start();
-    let _ = h.open_at(&uri, main).await;
-    let _ = h.open_at(&sibling, live).await;
-    let parses = h.engine.project_cache.parses();
-    assert_live_features(&mut h, &uri, &sibling, main).await;
-    assert_eq!(
-        h.engine.project_cache.parses(),
-        parses,
-        "requests must reuse unchanged syntax"
+/// Prepend `flavor = "<flavor>"` to the fixture manifest and return its text.
+fn set_flavor(fixture: &ProjectFixture, flavor: &str) -> Result<String, Failure> {
+    let manifest = fixture.root.join("osprey.toml");
+    let config = format!(
+        "{}flavor = \"{flavor}\"\n",
+        std::fs::read_to_string(&manifest)?
     );
-    h.notify("textDocument/didClose", text_doc(&sibling)).await;
-    let completion = h
-        .request(906, "textDocument/completion", position_params(&uri, 0, 0))
-        .await;
-    assert!(
-        !format!("{:?}", completion.result).contains("fresh"),
-        "{completion:?}"
-    );
-    h.shutdown_and_exit().await;
+    std::fs::write(&manifest, &config)?;
+    Ok(config)
+}
+
+/// Send a watched-file change for `changed` and return the settled reports.
+async fn watch_event(h: &mut Harness, changed: &str, kind: u8) -> Vec<Value> {
+    h.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes":[{"uri":changed,"type":kind}]}),
+    )
+    .await;
+    settled(h, 990).await
+}
+
+/// Watch `changed` and assert every `needles` entry appears in the reports.
+async fn assert_watch_mentions(h: &mut Harness, changed: &str, kind: u8, needles: &[&str]) {
+    let reports = watch_event(h, changed, kind).await;
+    let text = format!("{reports:?}");
+    for needle in needles {
+        assert!(text.contains(needle), "missing {needle}: {reports:?}");
+    }
+}
+
+// [LSP-WORKSPACE] Every feature must see the same unsaved project as diagnostics.
+#[tokio::test]
+async fn project_features_follow_unsaved_siblings_in_both_flavors() -> Fallible {
+    for (extension, disk, live, main) in SIBLING_SOURCES {
+        let fixture = ProjectFixture::new(extension)?;
+        let uri = fixture.write("main", main)?;
+        let sibling = fixture.write("helper", disk)?;
+        let mut h = Harness::start_with_progress().await;
+        let _ = h.open_at(&uri, main).await;
+        let _ = h.open_at(&sibling, live).await;
+        let parses = h.engine.project_cache.parses();
+        assert_live_features(&mut h, &uri, &sibling, main).await;
+        let reused = h.engine.project_cache.parses();
+        assert_eq!(reused, parses, "requests must reuse unchanged syntax");
+        h.notify("textDocument/didClose", text_doc(&sibling)).await;
+        let completion = h
+            .request(906, "textDocument/completion", position_params(&uri, 0, 0))
+            .await;
+        let items = format!("{:?}", completion.result);
+        assert!(!items.contains("fresh"), "{completion:?}");
+        h.shutdown_and_exit().await;
+    }
     Ok(())
 }
 
@@ -72,48 +129,28 @@ async fn assert_live_features(h: &mut Harness, uri: &str, sibling: &str, main: &
             )
             .await;
         let text = format!("{:?}", reply.result);
+        let fresh = text.contains("fresh") && text.contains("string");
         match *method {
             "definition" | "references" => assert!(text.contains(sibling), "{method}: {reply:?}"),
-            _ => assert!(
-                text.contains("fresh") && text.contains("string"),
-                "{method}: {reply:?}"
-            ),
+            _ => assert!(fresh, "{method}: {reply:?}"),
         }
-        assert!(
-            !text.contains("saved"),
-            "stale disk symbol in {method}: {reply:?}"
-        );
+        let stale = text.contains("saved");
+        assert!(!stale, "stale disk symbol in {method}: {reply:?}");
     }
 }
 
 #[tokio::test]
-async fn live_effect_declarations_and_handler_locations_follow_both_flavors(
-) -> Result<(), Box<dyn std::error::Error>> {
-    for extension in ["osp", "ospml"] {
-        live_effect_features(extension).await?;
+async fn live_effect_declarations_and_handler_locations_follow_both_flavors() -> Fallible {
+    for (extension, main, live) in EFFECT_SOURCES {
+        let fixture = ProjectFixture::new(extension)?;
+        let uri = fixture.write("main", main)?;
+        let sibling = fixture.write("helper", "// saved file has no handler\n")?;
+        let mut h = Harness::start_with_progress().await;
+        let _ = h.open_at(&uri, main).await;
+        let _ = h.open_at(&sibling, live).await;
+        assert_effect_features(&mut h, &uri, &sibling, main).await;
+        h.shutdown_and_exit().await;
     }
-    Ok(())
-}
-
-async fn live_effect_features(extension: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new(extension)?;
-    let main = if extension == "osp" {
-        "fn read() = perform Reader.name()\nfn main() = provide(read)\n"
-    } else {
-        "read () = perform Reader.name ()\nmain () = provide read\n"
-    };
-    let live = if extension == "osp" {
-        "effect Reader { name: fn() -> string }\nfn provide(work) = {\n    handle Reader { name => \"live\" }\n    work()\n}\n"
-    } else {
-        "effect Reader\n    name : Unit => string\nprovide work =\n    handle Reader\n        name => \"live\"\n    work ()\n"
-    };
-    let uri = fixture.write("main", main)?;
-    let sibling = fixture.write("helper", "// saved file has no handler\n")?;
-    let mut h = Harness::start();
-    let _ = h.open_at(&uri, main).await;
-    let _ = h.open_at(&sibling, live).await;
-    assert_effect_features(&mut h, &uri, &sibling, main).await;
-    h.shutdown_and_exit().await;
     Ok(())
 }
 
@@ -123,10 +160,8 @@ async fn assert_effect_features(h: &mut Harness, uri: &str, sibling: &str, main:
         .request(910, "textDocument/hover", position_params(uri, 0, column))
         .await;
     let text = format!("{:?}", hover.result);
-    assert!(
-        text.contains("Reader.name") && text.contains("string"),
-        "{hover:?}"
-    );
+    let declared = text.contains("Reader.name") && text.contains("string");
+    assert!(declared, "{hover:?}");
     let implementations = h
         .request(
             911,
@@ -136,123 +171,75 @@ async fn assert_effect_features(h: &mut Harness, uri: &str, sibling: &str, main:
         .await;
     let locations = array_result(&implementations, "live handler locations");
     assert_eq!(locations.len(), 1, "{implementations:?}");
-    assert_eq!(
-        locations
-            .first()
-            .and_then(|location| location.get("uri"))
-            .and_then(Value::as_str),
-        Some(sibling)
-    );
+    let handler = locations.first().and_then(|location| location.get("uri"));
+    assert_eq!(handler.and_then(Value::as_str), Some(sibling));
 }
 
 #[tokio::test]
-async fn watched_sources_and_manifest_refresh_the_live_project(
-) -> Result<(), Box<dyn std::error::Error>> {
-    for extension in ["osp", "ospml"] {
-        watched_project(extension).await?;
+async fn watched_sources_and_manifest_refresh_the_live_project() -> Fallible {
+    for (extension, main, helper) in WATCHED_SOURCES {
+        let fixture = ProjectFixture::new(extension)?;
+        let uri = fixture.write("main", main)?;
+        let mut h = Harness::start_with_progress().await;
+        let initial = h.open_at(&uri, main).await;
+        assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
+        let sibling = fixture.write("helper", helper)?;
+        assert_watched(&mut h, &uri, &sibling, 1, false).await;
+        let parses = h.engine.project_cache.parses();
+        let _ = h
+            .request(916, "textDocument/completion", position_params(&uri, 0, 0))
+            .await;
+        assert_eq!(h.engine.project_cache.parses(), parses);
+        exclude_helper(&fixture, &mut h, &uri, extension).await?;
+        h.shutdown_and_exit().await;
     }
     Ok(())
 }
 
-async fn watched_project(extension: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new(extension)?;
-    let main = if extension == "osp" {
-        "fn main() = fresh(\"x\")\n"
-    } else {
-        "main () = fresh \"x\"\n"
-    };
-    let helper = if extension == "osp" {
-        "fn fresh(x) = x + \"!\"\n"
-    } else {
-        "fresh x = x + \"!\"\n"
-    };
-    let uri = fixture.write("main", main)?;
-    let mut h = Harness::start();
-    let initial = h.open_at(&uri, main).await;
-    assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
-    let sibling = fixture.write("helper", helper)?;
-    assert_watched(&mut h, &uri, &sibling, 1, false).await;
-    let parses = h.engine.project_cache.parses();
-    let _ = h
-        .request(916, "textDocument/completion", position_params(&uri, 0, 0))
-        .await;
-    assert_eq!(h.engine.project_cache.parses(), parses);
-    exclude_helper(&fixture, &mut h, &uri, extension).await?;
-    h.shutdown_and_exit().await;
-    Ok(())
-}
-
 async fn exclude_helper(
-    fixture: &crate::test_support::ProjectFixture,
+    fixture: &ProjectFixture,
     h: &mut Harness,
     uri: &str,
     extension: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Fallible {
     let manifest = fixture.root.join("osprey.toml");
     let original = std::fs::read_to_string(&manifest)?;
     std::fs::write(
         &manifest,
         original.replace("[\"src\"]", &format!("[\"src/main.{extension}\"]")),
     )?;
-    let manifest_uri = lspkit_server::uri::path_to_uri(&manifest)?;
+    let manifest_uri = path_uri(&manifest)?;
     assert_watched(h, uri, &manifest_uri, 2, true).await;
     std::fs::write(&manifest, &original)?;
     assert_watched(h, uri, &manifest_uri, 2, false).await;
     let helper = fixture.root.join(format!("src/helper.{extension}"));
-    let helper_uri = lspkit_server::uri::path_to_uri(&helper)?;
+    let helper_uri = path_uri(&helper)?;
     std::fs::remove_file(helper)?;
     assert_watched(h, uri, &helper_uri, 3, true).await;
     Ok(())
 }
 
 async fn assert_watched(h: &mut Harness, uri: &str, changed: &str, kind: u8, errors: bool) {
-    h.notify(
-        "workspace/didChangeWatchedFiles",
-        json!({"changes":[{"uri":changed,"type":kind}]}),
-    )
-    .await;
-    let reports = drain_reports(h).await;
+    let reports = watch_event(h, changed, kind).await;
     let report = reports
         .iter()
         .find(|report| report.get("uri").and_then(Value::as_str) == Some(uri));
+    let published = report.is_some();
     assert!(
-        report.is_some(),
+        published,
         "watch event failed to publish {uri}: {reports:?}"
     );
-    assert_eq!(
-        format!("{report:?}").contains("type-error"),
-        errors,
-        "{reports:?}"
-    );
-}
-
-async fn drain_reports(h: &mut Harness) -> Vec<Value> {
-    h.send(&Message::request(
-        RequestId::Number(990),
-        "initialize",
-        json!({}),
-    ))
-    .await;
-    let mut reports = Vec::new();
-    loop {
-        let message = h.read_message().await;
-        if message.id == Some(RequestId::Number(990)) {
-            return reports;
-        }
-        if let Some(params) = message.params {
-            reports.push(params);
-        }
-    }
+    let typed = format!("{report:?}").contains("type-error");
+    assert_eq!(typed, errors, "{reports:?}");
 }
 
 #[tokio::test]
-async fn unsaved_mixed_flavor_files_join_and_leave_the_project(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+async fn unsaved_mixed_flavor_files_join_and_leave_the_project() -> Fallible {
+    let fixture = ProjectFixture::new("osp")?;
     let main = "fn main() = print(fresh(\"x\"))\n";
     let uri = fixture.write("main", main)?;
-    let sibling = lspkit_server::uri::path_to_uri(&fixture.root.join("src/helper.ospml"))?;
-    let mut h = Harness::start();
+    let sibling = path_uri(&fixture.root.join("src/helper.ospml"))?;
+    let mut h = Harness::start_with_progress().await;
     let _ = h.open_at(&uri, main).await;
     let _ = h.open_at(&sibling, "\nfresh text = text + \"!\"\n").await;
     assert_live_features(&mut h, &uri, &sibling, main).await;
@@ -260,97 +247,60 @@ async fn unsaved_mixed_flavor_files_join_and_leave_the_project(
     let definition = h
         .request(930, "textDocument/definition", position_params(&uri, 0, 20))
         .await;
-    assert_eq!(
-        definition.result,
-        Some(json!([])),
-        "closed unsaved definition: {definition:?}"
-    );
+    let closed = format!("closed unsaved definition: {definition:?}");
+    assert_eq!(definition.result, Some(json!([])), "{closed}");
     h.shutdown_and_exit().await;
     Ok(())
 }
 
 #[tokio::test]
-async fn unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("ospml")?;
+async fn unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis() -> Fallible {
+    let fixture = ProjectFixture::new("ospml")?;
     let main = "decorate : string -> string\ndecorate text = suffix text\nmain () = print (decorate \"x\")\n";
     let uri = fixture.write("main", main)?;
     let sibling = fixture.write("helper", "suffix text = (\n")?;
-    let mut h = Harness::start();
+    let mut h = Harness::start_with_progress().await;
     let _ = h.open_at(&uri, main).await;
     let _ = h.open_at(&sibling, "suffix text = text + \"!\"\n").await;
-    let _ = drain_reports(&mut h).await;
+    let _ = settled(&mut h, 990).await;
     let before = h.engine.project_cache.analyses();
     let actions = h.request(931, "textDocument/codeAction", json!({"textDocument":{"uri":uri},"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":20}},"context":{"only":["quickfix"]}})).await;
-    assert_eq!(
-        array_result(&actions, "repaired project actions").len(),
-        1,
-        "{actions:?}"
-    );
-    assert_eq!(
-        h.engine.project_cache.analyses(),
-        before,
-        "actions repeated an identical proof"
-    );
+    let repaired = array_result(&actions, "repaired project actions").len();
+    assert_eq!(repaired, 1, "{actions:?}");
+    let analyses = h.engine.project_cache.analyses();
+    assert_eq!(analyses, before, "actions repeated an identical proof");
     h.shutdown_and_exit().await;
     Ok(())
 }
 
 #[tokio::test]
-async fn watched_invalid_project_inputs_report_their_source(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("osp")?;
-    let uri = fixture.write("main", "fn main() = print(\"ready\")\n")?;
-    let mut h = Harness::start();
-    let _ = h.open_at(&uri, "fn main() = print(\"ready\")\n").await;
+async fn watched_invalid_project_inputs_report_their_source() -> Fallible {
+    let fixture = ProjectFixture::new("osp")?;
+    let ready = "fn main() = print(\"ready\")\n";
+    let uri = fixture.write("main", ready)?;
+    let mut h = Harness::start_with_progress().await;
+    let _ = h.open_at(&uri, ready).await;
     let helper = fixture.write("helper", "fn helper(\n")?;
-    assert_load_error(&mut h, &helper, "helper.osp").await;
+    assert_watch_mentions(&mut h, &helper, 2, &["project-error", "helper.osp"]).await;
     let manifest = fixture.root.join("osprey.toml");
     std::fs::write(&manifest, "[project]\nsource_roots = invalid\n")?;
-    assert_load_error(
-        &mut h,
-        &lspkit_server::uri::path_to_uri(&manifest)?,
-        "osprey.toml",
-    )
-    .await;
+    let manifest_uri = path_uri(&manifest)?;
+    assert_watch_mentions(&mut h, &manifest_uri, 2, &["project-error", "osprey.toml"]).await;
     h.shutdown_and_exit().await;
     Ok(())
 }
 
-async fn assert_load_error(h: &mut Harness, changed: &str, path: &str) {
-    h.notify(
-        "workspace/didChangeWatchedFiles",
-        json!({"changes":[{"uri":changed,"type":2}]}),
-    )
-    .await;
-    let reports = drain_reports(h).await;
-    let text = format!("{reports:?}");
-    assert!(
-        text.contains("project-error") && text.contains(path),
-        "{reports:?}"
-    );
-}
-
 #[tokio::test]
-async fn manifest_flavor_controls_diagnostics_and_features_together(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+async fn manifest_flavor_controls_diagnostics_and_features_together() -> Fallible {
+    let fixture = ProjectFixture::new("osp")?;
     let manifest = fixture.root.join("osprey.toml");
-    let config = format!("{}flavor = \"ml\"\n", std::fs::read_to_string(&manifest)?);
-    std::fs::write(&manifest, &config)?;
+    let config = set_flavor(&fixture, "ml")?;
     let main = "main () = print (fresh \"x\")\n";
     let uri = fixture.write("main", main)?;
     let sibling = fixture.write("helper", "fresh x = x + \"!\"\n")?;
-    let mut h = Harness::start();
+    let mut h = Harness::start_with_progress().await;
     let opened = h.open_at(&uri, main).await;
-    assert_eq!(
-        opened
-            .params
-            .as_ref()
-            .and_then(|params| params.get("diagnostics")),
-        Some(&json!([])),
-        "{opened:?}"
-    );
+    assert_eq!(diagnostics(&opened), Some(&json!([])), "{opened:?}");
     assert_live_features(&mut h, &uri, &sibling, main).await;
     let formatted = h
         .request(939, "textDocument/formatting", text_doc(&uri))
@@ -366,55 +316,37 @@ async fn manifest_flavor_controls_diagnostics_and_features_together(
             json!({"textDocument":{"uri":sibling},"range":{"start":{"line":0,"character":0},"end":{"line":1,"character":0}},"context":{"diagnostics":[]}}),
         )
         .await;
-    assert_eq!(
-        array_result(&actions, "manifest-flavor annotation fixes").len(),
-        2
-    );
+    let fixes = array_result(&actions, "manifest-flavor annotation fixes").len();
+    assert_eq!(fixes, 2);
     std::fs::write(&manifest, config.replace("\"ml\"", "\"default\""))?;
-    h.notify(
-        "workspace/didChangeWatchedFiles",
-        json!({"changes":[{"uri":lspkit_server::uri::path_to_uri(&manifest)?,"type":2}]}),
-    )
-    .await;
-    let reports = drain_reports(&mut h).await;
-    assert!(
-        format!("{reports:?}").contains("syntax-error"),
-        "{reports:?}"
-    );
+    let manifest_uri = path_uri(&manifest)?;
+    assert_watch_mentions(&mut h, &manifest_uri, 2, &["syntax-error"]).await;
     h.shutdown_and_exit().await;
     Ok(())
 }
 
 #[tokio::test]
-async fn files_outside_source_roots_keep_standalone_flavor_and_symbols(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+async fn files_outside_source_roots_keep_standalone_flavor_and_symbols() -> Fallible {
+    let fixture = ProjectFixture::new("osp")?;
     let _ = fixture.write("main", "main () = print \"project\"\n")?;
     let _ = fixture.write("helper", "projectOnly x = x\n")?;
-    let manifest = fixture.root.join("osprey.toml");
-    std::fs::write(
-        &manifest,
-        format!("{}flavor = \"ml\"\n", std::fs::read_to_string(&manifest)?),
-    )?;
-    let uri = lspkit_server::uri::path_to_uri(&fixture.root.join("scratch.osp"))?;
-    let mut h = Harness::start();
+    let _ = set_flavor(&fixture, "ml")?;
+    let uri = path_uri(&fixture.root.join("scratch.osp"))?;
+    let mut h = Harness::start_with_progress().await;
     let opened = h.open_at(&uri, "fn main() = print(\"standalone\")\n").await;
     assert_eq!(diagnostics(&opened), Some(&json!([])), "{opened:?}");
     let completion = h
         .request(950, "textDocument/completion", position_params(&uri, 0, 0))
         .await;
-    assert!(
-        !format!("{completion:?}").contains("projectOnly"),
-        "{completion:?}"
-    );
+    let items = format!("{completion:?}");
+    assert!(!items.contains("projectOnly"), "{completion:?}");
     h.shutdown_and_exit().await;
     Ok(())
 }
 
 #[tokio::test]
-async fn nested_project_edits_refresh_every_project_that_includes_the_source(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+async fn nested_project_edits_refresh_every_project_that_includes_the_source() -> Fallible {
+    let fixture = ProjectFixture::new("osp")?;
     let main = "fn main() = print(fresh(\"x\"))\n";
     let uri = fixture.write("main", main)?;
     let nested = fixture.root.join("src/nested");
@@ -422,25 +354,26 @@ async fn nested_project_edits_refresh_every_project_that_includes_the_source(
     std::fs::write(nested.join("osprey.toml"), "[project]\nsource_roots = [\"src\"]\ndefault_namespace = \"nested\"\nentry = \"src/helper.osp\"\n")?;
     let helper = nested.join("src/helper.osp");
     std::fs::write(&helper, "fn saved(x) = x\n")?;
-    let sibling = lspkit_server::uri::path_to_uri(&helper)?;
-    let mut h = Harness::start();
+    let sibling = path_uri(&helper)?;
+    let mut h = Harness::start_with_progress().await;
     let initial = h.open_at(&uri, main).await;
     assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
     let _ = h.open_at(&sibling, "fn fresh(x) = x + \"!\"\n").await;
-    let reports = drain_reports(&mut h).await;
+    let reports = settled(&mut h, 990).await;
+    let drift = json!([{
+        "code": "namespace-folder-drift", "severity": 2, "source": "osprey",
+        "message": "namespace `live` spans 2 folders; source paths do not change its identity",
+        "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 29}}
+    }]);
     assert!(
         reports.iter().any(
             |report| report.get("uri").and_then(Value::as_str) == Some(&uri)
-                && report.get("diagnostics") == Some(&json!([{
-                    "code": "namespace-folder-drift", "severity": 2, "source": "osprey",
-                    "message": "namespace `live` spans 2 folders; source paths do not change its identity",
-                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 29}}
-                }]))
+                && report.get("diagnostics") == Some(&drift)
         ),
         "{reports:?}"
     );
     h.notify("textDocument/didClose", text_doc(&sibling)).await;
-    let reports = drain_reports(&mut h).await;
+    let reports = settled(&mut h, 990).await;
     assert!(format!("{reports:?}").contains("type-error"), "{reports:?}");
     h.shutdown_and_exit().await;
     Ok(())

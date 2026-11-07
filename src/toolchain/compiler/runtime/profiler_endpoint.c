@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include "osprey_path.h"
 
 enum {
   OSP_DIAG_MAX_CLIENTS = 8,
@@ -195,9 +196,8 @@ static void remove_if_stale(const char *dir, const char *name) {
     return;
   }
   char path[sizeof(g_diag.path)];
-  int n = snprintf(path, sizeof(path), "%s/%s", dir, name);
-  if (kill((pid_t)pid, 0) != 0 && errno == ESRCH && n > 0 &&
-      (size_t)n < sizeof(path)) {
+  size_t n = osp_path_child(path, sizeof(path), dir, name);
+  if (kill((pid_t)pid, 0) != 0 && errno == ESRCH && n > 0) {
     (void)unlink(path);
   }
 }

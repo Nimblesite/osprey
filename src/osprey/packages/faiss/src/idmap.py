@@ -13,6 +13,7 @@ remaining labels unchanged (faiss does not compact ID-mapped labels).
 """
 
 from faiss.Flat import IndexFlat, SearchResult, add as flat_add, ntotal as flat_ntotal, search as flat_search
+from faiss.Metrics import map_indexed
 from faiss.Selectors import selected
 
 __all__ = ["IndexIDMap", "IndexIDMap2", "add_with_ids", "search", "ntotal", "remove_ids", "reconstruct"]
@@ -57,13 +58,13 @@ def label_row(labels, ordinals):
 def search(index, xq, k):
     """faiss's `index.search(xq, k)`: sub-index search with labels mapped."""
     res = flat_search(index.sub, xq, k)
-    return SearchResult(distances=res.distances, labels=toList(map(range(len(res.labels)), lambda q: label_row(index.labels, unwrap_or(listGet(res.labels, q), [])))))
+    return SearchResult(distances=res.distances, labels=map_indexed(res.labels, lambda q: label_row(index.labels, unwrap_or(listGet(res.labels, q), []))))
 
 
 def remove_ids(index, selector):
     """faiss's `index.remove_ids(selector)`: drop selected labels and their
     vectors, preserving the remaining labels."""
-    kept = filterList(toList(map(range(len(index.labels)), lambda j: j)), lambda j: not selected(selector, unwrap_or(listGet(index.labels, j), -1)))
+    kept = filterList(map_indexed(index.labels, lambda j: j), lambda j: not selected(selector, unwrap_or(listGet(index.labels, j), -1)))
     return IdMap(kind=index.kind, sub=IndexFlat(metric=index.sub.metric, d=index.sub.d, vectors=mapList(kept, lambda j: unwrap_or(listGet(index.sub.vectors, j), []))), labels=mapList(kept, lambda j: unwrap_or(listGet(index.labels, j), -1)))
 
 

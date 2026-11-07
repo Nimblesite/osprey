@@ -331,6 +331,14 @@ mod tests {
         }
     }
 
+    /// The source line of the one error `text` reports; a manifest bug that
+    /// reports none or many fails here rather than in a caller's assertion.
+    fn error_line_of(text: &str) -> Option<usize> {
+        let errors = errors_of(text);
+        assert_eq!(errors.len(), 1, "{text}: {errors:?}");
+        errors.first().and_then(|error| error.line)
+    }
+
     #[test]
     fn decodes_escaped_backslashes_and_quotes_in_supported_values() {
         let text =
@@ -366,10 +374,7 @@ mod tests {
             "\"@o/p\" = { = \"x\" }",
         ] {
             let text = format!("[dependencies]\n{line}\n");
-            let errors = errors_of(&text);
-            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
-            let diagnosed = errors.first().and_then(|error| error.line);
-            assert_eq!(diagnosed, Some(2), "{line}: {errors:?}");
+            assert_eq!(error_line_of(&text), Some(2), "{line}");
         }
     }
 
@@ -431,10 +436,7 @@ mod tests {
             "\"@o/p\" = { \"path\" = \"a\", path = \"b\" }",
         ] {
             let text = format!("[dependencies]\n{line}\n");
-            let errors = errors_of(&text);
-            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
-            let diagnosed = errors.first().and_then(|error| error.line);
-            assert_eq!(diagnosed, Some(2), "{line}: {errors:?}");
+            assert_eq!(error_line_of(&text), Some(2), "{line}");
         }
     }
 
@@ -469,10 +471,7 @@ mod tests {
         ];
         for (line, number) in cases {
             let text = format!("[project]\nname = \"ok\"\n{line}\n");
-            let errors = errors_of(&text);
-            assert_eq!(errors.len(), 1, "{line}: {errors:?}");
-            let diagnosed = errors.first().and_then(|error| error.line);
-            assert_eq!(diagnosed, Some(number), "{line}: {errors:?}");
+            assert_eq!(error_line_of(&text), Some(number), "{line}");
         }
     }
 

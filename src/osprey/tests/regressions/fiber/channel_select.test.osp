@@ -1,25 +1,6 @@
 // [CONCURRENCY-SELECT] Select chooses among channel operations; the arms join as a
 // match does and every arm kind is exercised across element types.
 
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 /// A shopping order on a channel, for a managed element.
 type Order = { item: string, qty: int }
 
@@ -138,10 +119,10 @@ fn operandsEvaluateOnceInOrder() = {
     checkAll("operands", [picked == 100, recv(log) == 1, recv(log) == 2, recv(log) == 3, recv(channel) == 10])
 }
 
-test("ready arms run in source order", fn() => exactArithmetic(tieBreaksInSourceOrder))
-test("send arms respect capacity", fn() => exactArithmetic(sendArmsRespectCapacity))
-test("receive bindings have the element type", fn() => exactArithmetic(bindingsHaveTheElementType))
-test("managed sends keep their ownership", fn() => exactArithmetic(managedSendsKeepTheirOwnership))
-test("timeouts decide only when nothing is ready", fn() => exactArithmetic(timeoutsDecideOnlyWhenNothingIsReady))
-test("a fiber wakes a blocked select", fn() => exactArithmetic(aFiberWakesABlockedSelect))
-test("operands evaluate once in order", fn() => exactArithmetic(operandsEvaluateOnceInOrder))
+test("ready arms run in source order", exactly(tieBreaksInSourceOrder))
+test("send arms respect capacity", exactly(sendArmsRespectCapacity))
+test("receive bindings have the element type", exactly(bindingsHaveTheElementType))
+test("managed sends keep their ownership", exactly(managedSendsKeepTheirOwnership))
+test("timeouts decide only when nothing is ready", exactly(timeoutsDecideOnlyWhenNothingIsReady))
+test("a fiber wakes a blocked select", exactly(aFiberWakesABlockedSelect))
+test("operands evaluate once in order", exactly(operandsEvaluateOnceInOrder))

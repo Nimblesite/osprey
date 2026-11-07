@@ -2,17 +2,13 @@
 import 'dart:io';
 import 'dart:math';
 
-const int minstd = 16807;
-const int modulus = 2147483647;
+import '../../shared/seed.dart';
+
 const int bigMod = 1000000007;
 
 const int tagLit = 0;
 const int tagAdd = 1;
 const int tagMul = 2;
-
-int r1(int x) => (x * minstd) % modulus;
-
-int hashAt(int s, int i) => r1(r1(s + i));
 
 int readSeed() {
   int m = 0;

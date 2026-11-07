@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 pub(crate) fn discover(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBuf>, ProjectError> {
     let mut paths = Vec::new();
     for source_root in &config.source_roots {
-        visit(&root.join(source_root), &mut paths)?;
+        DISCOVERY.visit(&root.join(source_root), &mut paths, &ProjectError::io)?;
     }
     paths.extend(python_sources(root, config)?);
     validate_flavor(config, &paths)?;
@@ -16,22 +16,48 @@ pub(crate) fn discover(root: &Path, config: &ProjectConfig) -> Result<Vec<PathBu
     Ok(paths)
 }
 
-fn visit(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), ProjectError> {
-    if path.is_file() {
-        if is_source(path) {
-            out.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
-    let entries = std::fs::read_dir(path).map_err(|error| ProjectError::io(path, &error))?;
-    for entry in entries {
-        let entry = entry.map_err(|error| ProjectError::io(path, &error))?;
-        if !hidden(&entry.path()) {
-            visit(&entry.path(), out)?;
-        }
-    }
-    Ok(())
+/// The rules a source-tree walk applies: which files it collects and which
+/// entries it never enters.
+pub(crate) struct Rules<'a> {
+    /// Whether `path` is a file the walk collects.
+    pub(crate) keep: &'a dyn Fn(&Path) -> bool,
+    /// Whether `path` is an entry the walk climbs past.
+    pub(crate) skip: &'a dyn Fn(&Path) -> bool,
 }
+
+impl Rules<'_> {
+    /// Collect every kept file at or below `path`, in directory order.
+    /// `unreadable` names a directory the walk cannot list, in the caller's
+    /// own error type, so discovery and the discipline checker share one
+    /// traversal while keeping their messages.
+    pub(crate) fn visit<E>(
+        &self,
+        path: &Path,
+        out: &mut Vec<PathBuf>,
+        unreadable: &dyn Fn(&Path, &std::io::Error) -> E,
+    ) -> Result<(), E> {
+        if path.is_file() {
+            if (self.keep)(path) {
+                out.push(path.to_path_buf());
+            }
+            return Ok(());
+        }
+        let entries = std::fs::read_dir(path).map_err(|error| unreadable(path, &error))?;
+        for entry in entries {
+            let found = entry.map_err(|error| unreadable(path, &error))?.path();
+            if !(self.skip)(&found) {
+                self.visit(&found, out, unreadable)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// A tree of the flavor's sources only, skipping hidden entries and `target`.
+const DISCOVERY: Rules<'_> = Rules {
+    keep: &is_source,
+    skip: &hidden,
+};
 
 fn is_source(path: &Path) -> bool {
     path.extension()

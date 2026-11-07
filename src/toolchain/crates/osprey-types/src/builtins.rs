@@ -359,6 +359,12 @@ fn tensors(e: &mut TypeEnv) {
     );
     // [BUILTIN-FILE-SIZE] The length a reader of bytes needs before it starts.
     mono(e, "fileSize", vec![s()], res(i()));
+    // [BUILTIN-FILE-LISTDIR] One directory's entries; directories end in '/'.
+    mono(e, "listDir", vec![s()], res(Type::list(s())));
+    // [BUILTIN-FILE-KIND] "dir", "file" or "other" for one path.
+    mono(e, "kindOf", vec![s()], res(s()));
+    // [BUILTIN-FILE-MAKEDIR] One directory, idempotent.
+    mono(e, "makeDir", vec![s()], res(i()));
 }
 
 fn json(e: &mut TypeEnv) {

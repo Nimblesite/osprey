@@ -251,9 +251,11 @@ ok ellipsis
 ok valid identifier
 ok invalid identifier
 ok immutable set
+ok indexed rebuild
+ok indexed single
 ok recipe type
 ok name position
 ok added position
 ok added length
 ok cooked type
-258 passed, 0 failed
+260 passed, 0 failed

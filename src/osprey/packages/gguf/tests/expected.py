@@ -126,13 +126,13 @@ ALIGN_TENSOR_OFFSETS = [192]
 """Oracle value `ALIGN_TENSOR_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_TENSOR_DATA = [[0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64]]
 """Oracle value `ALIGN_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-ALIGN_DISTINCT_TYPES = ["F32"]
+ALIGN_DISTINCT_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `ALIGN_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_FIELD_INTS = [[3], [1], [2], [], [64]]
 """Oracle value `ALIGN_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_FIELD_FLOATS = [[], [], [], [], []]
 """Oracle value `ALIGN_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-ALIGN_FIELD_BOOLS = [[], [], [], [], []]
+ALIGN_FIELD_BOOLS = ALIGN_FIELD_FLOATS
 """Oracle value `ALIGN_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 ALIGN_FIELD_STRINGS = [[], [], [], ["qwen3"], []]
 """Oracle value `ALIGN_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -158,23 +158,23 @@ BE_TENSOR_INFO_OFFSET = 192
 """Oracle value `BE_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_TOKENIZER_KEYS = []
 """Oracle value `BE_TOKENIZER_KEYS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSORS = ["t"]
+BE_TENSORS = ALIGN_TENSORS
 """Oracle value `BE_TENSORS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSOR_TYPES = ["F32"]
+BE_TENSOR_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `BE_TENSOR_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSOR_TYPE_IDS = [0]
+BE_TENSOR_TYPE_IDS = ALIGN_TENSOR_TYPE_IDS
 """Oracle value `BE_TENSOR_TYPE_IDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSOR_DIMS = [[4]]
+BE_TENSOR_DIMS = ALIGN_TENSOR_DIMS
 """Oracle value `BE_TENSOR_DIMS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSOR_ELEMENTS = [4]
+BE_TENSOR_ELEMENTS = ALIGN_TENSOR_ELEMENTS
 """Oracle value `BE_TENSOR_ELEMENTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_TENSOR_SIZES = [16]
+BE_TENSOR_SIZES = ALIGN_TENSOR_SIZES
 """Oracle value `BE_TENSOR_SIZES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_TENSOR_OFFSETS = [256]
 """Oracle value `BE_TENSOR_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_TENSOR_DATA = [[0, 0, 0, 0, 63, 128, 0, 0, 64, 0, 0, 0, 64, 64, 0, 0]]
 """Oracle value `BE_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-BE_DISTINCT_TYPES = ["F32"]
+BE_DISTINCT_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `BE_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 BE_FIELD_INTS = [[3], [1], [6], [], [], [70000], [], [-1099511627776], [1, 2, 3]]
 """Oracle value `BE_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -228,7 +228,7 @@ QUANT_FIELD_INTS = [[3], [5], [1], []]
 """Oracle value `QUANT_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 QUANT_FIELD_FLOATS = [[], [], [], []]
 """Oracle value `QUANT_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-QUANT_FIELD_BOOLS = [[], [], [], []]
+QUANT_FIELD_BOOLS = QUANT_FIELD_FLOATS
 """Oracle value `QUANT_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 QUANT_FIELD_STRINGS = [[], [], [], ["qwen3"]]
 """Oracle value `QUANT_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -256,21 +256,21 @@ TOK_TOKENIZER_KEYS = ["tokenizer.ggml.model", "tokenizer.ggml.pre", "tokenizer.g
 """Oracle value `TOK_TOKENIZER_KEYS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_TENSORS = ["tokens_embedding"]
 """Oracle value `TOK_TENSORS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TENSOR_TYPES = ["F32"]
+TOK_TENSOR_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `TOK_TENSOR_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TENSOR_TYPE_IDS = [0]
+TOK_TENSOR_TYPE_IDS = ALIGN_TENSOR_TYPE_IDS
 """Oracle value `TOK_TENSOR_TYPE_IDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TENSOR_DIMS = [[4]]
+TOK_TENSOR_DIMS = ALIGN_TENSOR_DIMS
 """Oracle value `TOK_TENSOR_DIMS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TENSOR_ELEMENTS = [4]
+TOK_TENSOR_ELEMENTS = ALIGN_TENSOR_ELEMENTS
 """Oracle value `TOK_TENSOR_ELEMENTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_TENSOR_SIZES = [16]
+TOK_TENSOR_SIZES = ALIGN_TENSOR_SIZES
 """Oracle value `TOK_TENSOR_SIZES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_TENSOR_OFFSETS = [960]
 """Oracle value `TOK_TENSOR_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_TENSOR_DATA = [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
 """Oracle value `TOK_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-TOK_DISTINCT_TYPES = ["F32"]
+TOK_DISTINCT_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `TOK_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 TOK_FIELD_INTS = [[3], [1], [12], [], [], [], [], [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3], [], [], [1], [2], [3], [], []]
 """Oracle value `TOK_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -286,17 +286,17 @@ EMPTY_HEADER = [3, 0, 1, 32, 96]
 """Oracle value `EMPTY_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EMPTY_BYTE_ORDER = "I"
 """Oracle value `EMPTY_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture"]
+EMPTY_FIELDS = QUANT_FIELDS
 """Oracle value `EMPTY_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_OFFSETS = [4, 8, 16, 24]
+EMPTY_FIELD_OFFSETS = QUANT_FIELD_OFFSETS
 """Oracle value `EMPTY_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_KINDS = ["uint32", "uint64", "uint64", "string"]
+EMPTY_FIELD_KINDS = QUANT_FIELD_KINDS
 """Oracle value `EMPTY_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_ITEM_KINDS = ["", "", "", ""]
+EMPTY_FIELD_ITEM_KINDS = QUANT_FIELD_ITEM_KINDS
 """Oracle value `EMPTY_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_TYPE_OFFSETS = [-1, -1, -1, 52]
+EMPTY_FIELD_TYPE_OFFSETS = QUANT_FIELD_TYPE_OFFSETS
 """Oracle value `EMPTY_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_VALUE_OFFSETS = [-1, -1, -1, 56]
+EMPTY_FIELD_VALUE_OFFSETS = QUANT_FIELD_VALUE_OFFSETS
 """Oracle value `EMPTY_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EMPTY_TENSOR_INFO_OFFSET = -1
 """Oracle value `EMPTY_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -322,11 +322,11 @@ EMPTY_DISTINCT_TYPES = []
 """Oracle value `EMPTY_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EMPTY_FIELD_INTS = [[3], [0], [1], []]
 """Oracle value `EMPTY_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_FLOATS = [[], [], [], []]
+EMPTY_FIELD_FLOATS = QUANT_FIELD_FLOATS
 """Oracle value `EMPTY_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_BOOLS = [[], [], [], []]
+EMPTY_FIELD_BOOLS = QUANT_FIELD_FLOATS
 """Oracle value `EMPTY_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EMPTY_FIELD_STRINGS = [[], [], [], ["qwen3"]]
+EMPTY_FIELD_STRINGS = QUANT_FIELD_STRINGS
 """Oracle value `EMPTY_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_BYTES = [71, 71, 85, 70, 3, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 97, 114, 99, 104, 105, 116, 101, 99, 116, 117, 114, 101, 8, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 113, 119, 101, 110, 51, 6, 0, 0, 0, 0, 0, 0, 0, 115, 99, 97, 108, 97, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 """Oracle value `SCALAR_BYTES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -334,17 +334,17 @@ SCALAR_HEADER = [3, 1, 1, 32, 128]
 """Oracle value `SCALAR_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_BYTE_ORDER = "I"
 """Oracle value `SCALAR_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture"]
+SCALAR_FIELDS = QUANT_FIELDS
 """Oracle value `SCALAR_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_OFFSETS = [4, 8, 16, 24]
+SCALAR_FIELD_OFFSETS = QUANT_FIELD_OFFSETS
 """Oracle value `SCALAR_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_KINDS = ["uint32", "uint64", "uint64", "string"]
+SCALAR_FIELD_KINDS = QUANT_FIELD_KINDS
 """Oracle value `SCALAR_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_ITEM_KINDS = ["", "", "", ""]
+SCALAR_FIELD_ITEM_KINDS = QUANT_FIELD_ITEM_KINDS
 """Oracle value `SCALAR_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_TYPE_OFFSETS = [-1, -1, -1, 52]
+SCALAR_FIELD_TYPE_OFFSETS = QUANT_FIELD_TYPE_OFFSETS
 """Oracle value `SCALAR_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_VALUE_OFFSETS = [-1, -1, -1, 56]
+SCALAR_FIELD_VALUE_OFFSETS = QUANT_FIELD_VALUE_OFFSETS
 """Oracle value `SCALAR_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_INFO_OFFSET = 69
 """Oracle value `SCALAR_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -352,29 +352,29 @@ SCALAR_TOKENIZER_KEYS = []
 """Oracle value `SCALAR_TOKENIZER_KEYS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSORS = ["scalar"]
 """Oracle value `SCALAR_TENSORS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_TENSOR_TYPES = ["F32"]
+SCALAR_TENSOR_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `SCALAR_TENSOR_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_TENSOR_TYPE_IDS = [0]
+SCALAR_TENSOR_TYPE_IDS = ALIGN_TENSOR_TYPE_IDS
 """Oracle value `SCALAR_TENSOR_TYPE_IDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_DIMS = [[]]
 """Oracle value `SCALAR_TENSOR_DIMS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_ELEMENTS = [1]
 """Oracle value `SCALAR_TENSOR_ELEMENTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_TENSOR_SIZES = [4]
+SCALAR_TENSOR_SIZES = ALIGN_TENSOR_ELEMENTS
 """Oracle value `SCALAR_TENSOR_SIZES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_OFFSETS = [128]
 """Oracle value `SCALAR_TENSOR_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_TENSOR_DATA = [[0, 0, 192, 63]]
 """Oracle value `SCALAR_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_DISTINCT_TYPES = ["F32"]
+SCALAR_DISTINCT_TYPES = ALIGN_TENSOR_TYPES
 """Oracle value `SCALAR_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 SCALAR_FIELD_INTS = [[3], [1], [1], []]
 """Oracle value `SCALAR_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_FLOATS = [[], [], [], []]
+SCALAR_FIELD_FLOATS = QUANT_FIELD_FLOATS
 """Oracle value `SCALAR_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_BOOLS = [[], [], [], []]
+SCALAR_FIELD_BOOLS = QUANT_FIELD_FLOATS
 """Oracle value `SCALAR_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-SCALAR_FIELD_STRINGS = [[], [], [], ["qwen3"]]
+SCALAR_FIELD_STRINGS = QUANT_FIELD_STRINGS
 """Oracle value `SCALAR_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_BYTES = [71, 71, 85, 70, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 97, 114, 99, 104, 105, 116, 101, 99, 116, 117, 114, 101, 8, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 113, 119, 101, 110, 51, 12, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 110, 97, 109, 101, 8, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 111, 115, 112, 114, 101, 121, 45, 116, 105, 110, 121, 17, 0, 0, 0, 0, 0, 0, 0, 103, 101, 110, 101, 114, 97, 108, 46, 97, 108, 105, 103, 110, 109, 101, 110, 116, 4, 0, 0, 0, 32, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 117, 56, 0, 0, 0, 0, 250, 2, 0, 0, 0, 0, 0, 0, 0, 105, 56, 1, 0, 0, 0, 251, 3, 0, 0, 0, 0, 0, 0, 0, 117, 49, 54, 2, 0, 0, 0, 255, 255, 3, 0, 0, 0, 0, 0, 0, 0, 105, 49, 54, 3, 0, 0, 0, 208, 138, 3, 0, 0, 0, 0, 0, 0, 0, 117, 51, 50, 4, 0, 0, 0, 0, 40, 107, 238, 3, 0, 0, 0, 0, 0, 0, 0, 105, 51, 50, 5, 0, 0, 0, 0, 108, 202, 136, 3, 0, 0, 0, 0, 0, 0, 0, 102, 51, 50, 6, 0, 0, 0, 0, 0, 192, 63, 3, 0, 0, 0, 0, 0, 0, 0, 117, 54, 52, 10, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 105, 54, 52, 11, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 3, 0, 0, 0, 0, 0, 0, 0, 102, 54, 52, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 192, 1, 0, 0, 0, 0, 0, 0, 0, 98, 7, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 115, 8, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 104, 195, 169, 108, 108, 111, 32, 240, 159, 152, 128, 4, 0, 0, 0, 0, 0, 0, 0, 105, 110, 116, 115, 9, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 115, 116, 114, 115, 9, 0, 0, 0, 8, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 97, 2, 0, 0, 0, 0, 0, 0, 0, 98, 98, 3, 0, 0, 0, 0, 0, 0, 0, 99, 99, 99, 6, 0, 0, 0, 0, 0, 0, 0, 102, 108, 111, 97, 116, 115, 9, 0, 0, 0, 6, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 160, 63, 5, 0, 0, 0, 0, 0, 0, 0, 98, 111, 111, 108, 115, 9, 0, 0, 0, 7, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 116, 97, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 116, 98, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64, 0, 0, 128, 64, 0, 0, 160, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 64, 0, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 """Oracle value `V2_BYTES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -382,47 +382,47 @@ V2_HEADER = [2, 2, 19, 32, 640]
 """Oracle value `V2_HEADER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_BYTE_ORDER = "I"
 """Oracle value `V2_BYTE_ORDER`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELDS = ["GGUF.version", "GGUF.tensor_count", "GGUF.kv_count", "general.architecture", "general.name", "general.alignment", "u8", "i8", "u16", "i16", "u32", "i32", "f32", "u64", "i64", "f64", "b", "s", "ints", "strs", "floats", "bools"]
+V2_FIELDS = BASE_FIELDS
 """Oracle value `V2_FIELDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_OFFSETS = [4, 8, 16, 24, 69, 112, 145, 160, 175, 192, 209, 228, 247, 266, 289, 312, 335, 349, 381, 421, 479, 517]
+V2_FIELD_OFFSETS = BASE_FIELD_OFFSETS
 """Oracle value `V2_FIELD_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_KINDS = ["uint32", "uint64", "uint64", "string", "string", "uint32", "uint8", "int8", "uint16", "int16", "uint32", "int32", "float32", "uint64", "int64", "float64", "bool", "string", "array", "array", "array", "array"]
+V2_FIELD_KINDS = BASE_FIELD_KINDS
 """Oracle value `V2_FIELD_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_ITEM_KINDS = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "int32", "string", "float32", "bool"]
+V2_FIELD_ITEM_KINDS = BASE_FIELD_ITEM_KINDS
 """Oracle value `V2_FIELD_ITEM_KINDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_TYPE_OFFSETS = [-1, -1, -1, 52, 89, 137, 155, 170, 186, 203, 220, 239, 258, 277, 300, 323, 344, 358, 393, 433, 493, 530]
+V2_FIELD_TYPE_OFFSETS = BASE_FIELD_TYPE_OFFSETS
 """Oracle value `V2_FIELD_TYPE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_VALUE_OFFSETS = [-1, -1, -1, 56, 93, 141, 159, 174, 190, 207, 224, 243, 262, 281, 304, 327, 348, 362, 397, 437, 497, 534]
+V2_FIELD_VALUE_OFFSETS = BASE_FIELD_VALUE_OFFSETS
 """Oracle value `V2_FIELD_VALUE_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_TENSOR_INFO_OFFSET = 548
 """Oracle value `V2_TENSOR_INFO_OFFSET`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_TOKENIZER_KEYS = []
 """Oracle value `V2_TOKENIZER_KEYS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSORS = ["ta", "tb"]
+V2_TENSORS = BASE_TENSORS
 """Oracle value `V2_TENSORS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_TYPES = ["F32", "F16"]
+V2_TENSOR_TYPES = BASE_TENSOR_TYPES
 """Oracle value `V2_TENSOR_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_TYPE_IDS = [0, 1]
+V2_TENSOR_TYPE_IDS = BASE_TENSOR_TYPE_IDS
 """Oracle value `V2_TENSOR_TYPE_IDS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_DIMS = [[3, 2], [4]]
+V2_TENSOR_DIMS = BASE_TENSOR_DIMS
 """Oracle value `V2_TENSOR_DIMS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_ELEMENTS = [6, 4]
+V2_TENSOR_ELEMENTS = BASE_TENSOR_ELEMENTS
 """Oracle value `V2_TENSOR_ELEMENTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_SIZES = [24, 8]
+V2_TENSOR_SIZES = BASE_TENSOR_SIZES
 """Oracle value `V2_TENSOR_SIZES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_OFFSETS = [640, 672]
+V2_TENSOR_OFFSETS = BASE_TENSOR_OFFSETS
 """Oracle value `V2_TENSOR_OFFSETS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_TENSOR_DATA = [[0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64, 0, 0, 128, 64, 0, 0, 160, 64], [0, 0, 0, 60, 0, 64, 0, 66]]
+V2_TENSOR_DATA = BASE_TENSOR_DATA
 """Oracle value `V2_TENSOR_DATA`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_DISTINCT_TYPES = ["F16", "F32"]
+V2_DISTINCT_TYPES = BASE_DISTINCT_TYPES
 """Oracle value `V2_DISTINCT_TYPES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 V2_FIELD_INTS = [[2], [2], [19], [], [], [32], [250], [-5], [65535], [-30000], [4000000000], [-2000000000], [], [1099511627776], [-1099511627776], [], [], [], [1, 2, 3], [], [], []]
 """Oracle value `V2_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_FLOATS = [[], [], [], [], [], [], [], [], [], [], [], [], [1.5], [], [], [-2.5], [], [], [], [], [0.5, 1.25], []]
+V2_FIELD_FLOATS = BASE_FIELD_FLOATS
 """Oracle value `V2_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_BOOLS = [[], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [], [True], [], [], [], [], [True, False]]
+V2_FIELD_BOOLS = BASE_FIELD_BOOLS
 """Oracle value `V2_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-V2_FIELD_STRINGS = [[], [], [], ["qwen3"], ["osprey-tiny"], [], [], [], [], [], [], [], [], [], [], [], [], ["héllo 😀"], [], ["a", "bb", "ccc"], [], []]
+V2_FIELD_STRINGS = BASE_FIELD_STRINGS
 """Oracle value `V2_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EDGE_BYTES = [71, 71, 85, 70, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 101, 95, 105, 110, 116, 115, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 101, 95, 115, 116, 114, 115, 9, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 115, 48, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 110, 101, 115, 116, 101, 100, 9, 0, 0, 0, 9, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 105, 110, 116, 115, 9, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 8, 0, 0, 0]
 """Oracle value `EDGE_BYTES`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
@@ -468,7 +468,7 @@ EDGE_FIELD_INTS = [[3], [0], [5], [], [], [], [10, 20], [7, 8]]
 """Oracle value `EDGE_FIELD_INTS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EDGE_FIELD_FLOATS = [[], [], [], [], [], [], [], []]
 """Oracle value `EDGE_FIELD_FLOATS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
-EDGE_FIELD_BOOLS = [[], [], [], [], [], [], [], []]
+EDGE_FIELD_BOOLS = EDGE_FIELD_FLOATS
 """Oracle value `EDGE_FIELD_BOOLS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""
 EDGE_FIELD_STRINGS = [[], [], [], [], [], [""], [], []]
 """Oracle value `EDGE_FIELD_STRINGS`, computed by src/osprey/packages/gguf/oracle/gguf.cpython."""

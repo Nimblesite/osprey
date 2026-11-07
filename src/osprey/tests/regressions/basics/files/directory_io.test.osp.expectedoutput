@@ -1,0 +1,21 @@
+made <root>: 0
+made <root>: 0
+made <root>/nested: 0
+made <root>/empty: 0
+wrote 5 bytes to <root>/leaf.txt
+wrote 6 bytes to <root>/nested/inner.txt
+3 entries in <root>
+<root>/empty/
+<root>/leaf.txt
+<root>/nested/
+1 entries in <root>/nested/
+<root>/nested/inner.txt
+0 entries in <root>/empty
+<root> is a dir
+<root>/leaf.txt is a file
+<root>/nested/ is a dir
+kindOf refused: true
+listDir refused: true
+listDir refused: true
+makeDir refused: true
+makeDir refused: true

@@ -69,16 +69,22 @@ def encode_range(ranks, pattern, cps, start, stop) -> Result[list[int], str]:
     return encode_pieces(ranks, pieces, 0, [])
 
 
-def encode_pieces(ranks, pieces, i, acc) -> Result[list[int], str]:
-    """Byte-pair encode each piece and concatenate the token id lists."""
-    if i >= len(pieces):
+def each_item(items, step, i, acc, combine) -> Result[list, str]:
+    """`step`'s value for each of items[i:], folded into `acc` by `combine`;
+    the first Error ends the walk."""
+    if i >= len(items):
         return Success(value=acc)
     else:
-        match Bpe.bpe_encode(ranks, Unicode.at_list(pieces, i)):
+        match step(i):
             case Success(value=value):
-                return encode_pieces(ranks, pieces, i + 1, listConcat(acc, value))
+                return each_item(items, step, i + 1, combine(acc, value), combine)
             case Error(message=message):
                 return Error(message=message)
+
+
+def encode_pieces(ranks, pieces, i, acc) -> Result[list[int], str]:
+    """Byte-pair encode each piece and concatenate the token id lists."""
+    return each_item(pieces, lambda j: Bpe.bpe_encode(ranks, Unicode.at_list(pieces, j)), i, acc, lambda a, v: listConcat(a, v))
 
 
 def encode(enc, text, allowed_special):
@@ -166,14 +172,7 @@ def decode_bytes(enc, tokens):
 
 
 def bytes_of_tokens(enc, tokens, i, acc) -> Result[list[int], str]:
-    if i >= len(tokens):
-        return Success(value=acc)
-    else:
-        match token_bytes(enc, Unicode.at(tokens, i)):
-            case Success(value=value):
-                return bytes_of_tokens(enc, tokens, i + 1, listConcat(acc, value))
-            case Error(message=message):
-                return Error(message=message)
+    return each_item(tokens, lambda j: token_bytes(enc, Unicode.at(tokens, j)), i, acc, lambda a, v: listConcat(a, v))
 
 
 def token_bytes(enc, token):
@@ -210,14 +209,7 @@ def decode_tokens_bytes(enc, tokens):
 
 
 def tokens_bytes_of(enc, tokens, i, acc) -> Result[list[list[int]], str]:
-    if i >= len(tokens):
-        return Success(value=acc)
-    else:
-        match token_bytes(enc, Unicode.at(tokens, i)):
-            case Success(value=value):
-                return tokens_bytes_of(enc, tokens, i + 1, listAppend(acc, value))
-            case Error(message=message):
-                return Error(message=message)
+    return each_item(tokens, lambda j: token_bytes(enc, Unicode.at(tokens, j)), i, acc, lambda a, v: listAppend(a, v))
 
 
 def token_byte_values(enc):

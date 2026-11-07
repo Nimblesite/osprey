@@ -8,15 +8,17 @@ patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding
 
 defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
 
+// One second of `p` per case: every voice case renders the whole second.
+sized p = expect (length (Synth::samples p), Synth::rate)
+
 voiceCase (p, expectedPeak) =
-    samples = Synth::samples p
-    expect (length samples, Synth::rate)
+    sized p
     nearPeak (p, expectedPeak)
     expect (length (Synth::played p), 1)
 
 silentCase p =
+    sized p
     samples = Synth::samples p
-    expect (length samples, Synth::rate)
     expect (Synth::peak samples, 0)
     expect (ui::Lists::all (samples, \sample => sample == 128), true)
     expect (length (Synth::played p), 0)
@@ -60,20 +62,20 @@ voiceCases () =
     silentCase (d(audible = false))
     silentCase (patch ("Sine", 0.7, 0.7, 2.0, 0.0))
 
+// Two patches whose clips must not match.
+differ (one, other) = expect (Synth::wav (Synth::samples one) == Synth::wav (Synth::samples other), false)
+
+// Table rows: each patch must describe itself differently from `base`.
+renamed (base, others) = forEachList (others, \other => expect (Synth::describe other == base, false))
+
 // Every field of a patch changes what it sounds like.
 descriptionsDiffer () =
     d = defaultPatch ()
     base = Synth::describe d
-    expect (Synth::describe (patch ("Saw", 0.7, 0.7, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.1, 0.7, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.3, 2.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 8.0, 0.75)) == base, false)
-    expect (Synth::describe (patch ("Sine", 0.7, 0.7, 2.0, 0.5)) == base, false)
-    expect (Synth::describe (d(filtered = false)) == base, false)
-    expect (Synth::describe (d(pitch = 440.0)) == base, false)
-    expect (Synth::wav (Synth::samples (d(pitch = 440.0))) == Synth::wav (Synth::samples d), false)
-    expect (Synth::wav (Synth::samples (patch ("Square", 0.1, 0.7, 2.0, 0.75))) == Synth::wav (Synth::samples (patch ("Saw", 0.1, 0.7, 2.0, 0.75))), false)
-    expect (Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 0.5, 0.75))) == Synth::wav (Synth::samples (patch ("Sine", 0.1, 0.7, 8.0, 0.75))), false)
+    renamed (base, [patch ("Saw", 0.7, 0.7, 2.0, 0.75), patch ("Sine", 0.1, 0.7, 2.0, 0.75), patch ("Sine", 0.7, 0.3, 2.0, 0.75), patch ("Sine", 0.7, 0.7, 8.0, 0.75), patch ("Sine", 0.7, 0.7, 2.0, 0.5), d(filtered = false), d(pitch = 440.0)])
+    differ (d(pitch = 440.0), d)
+    differ (patch ("Square", 0.1, 0.7, 2.0, 0.75), patch ("Saw", 0.1, 0.7, 2.0, 0.75))
+    differ (patch ("Sine", 0.1, 0.7, 0.5, 0.75), patch ("Sine", 0.1, 0.7, 8.0, 0.75))
 
 wavCase () =
     clip = Synth::wav (Synth::samples (defaultPatch ()))

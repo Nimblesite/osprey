@@ -16,6 +16,17 @@ module Json {
     export type Value = Null | Bool { flag: bool } | Num { value: int } | Str { text: string } | Arr { items: List<Value> } | Obj { members: List<Member> }
     export type Member = { key: string, value: Value }
 
+    /// A `key`/`value` member of an object value.
+    export fn member(key, value) = Member { key: key, value: value }
+    /// A string value.
+    export fn str(text) = Str { text: text }
+    /// An integer value.
+    export fn num(value) = Num { value: value }
+    /// An object value from its members.
+    export fn obj(members) = Obj { members: members }
+    /// An array value from its items.
+    export fn arr(items) = Arr { items: items }
+
     type Step = { value: Value, next: int }
     type Seen = { member: Member, keyAt: int }
 
@@ -48,6 +59,9 @@ module Json {
     let notObject = "json.not-an-object"
 
     fn err(code, offset) = JsonScan::failure(code, offset)
+
+    /// The failure for text that ended in the middle of a value.
+    fn endErr(text) = err(unexpectedEnd, byteLength(text))
 
     fn isWs(b) = b == 32 || b == 9 || b == 13 || b == 10
     fn isDigit(b) = b >= digitZero && b <= digitNine
@@ -84,7 +98,7 @@ module Json {
         let k = digitsEnd(text, j)
         let tail = byteAt(text, k) ?: -1
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if !isDigit(first) {
             err(unexpectedToken, j)
         } else if badShape(first, k - j, neg) {
@@ -105,7 +119,7 @@ module Json {
     fn expectWord(text, i, word, node) = {
         let end = i + byteLength(word)
         if byteLength(text) < end {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else {
             match substring(text, i, end) {
                 Success { value } => if value == word {
@@ -113,7 +127,7 @@ module Json {
                 } else {
                     err(unexpectedToken, i)
                 }
-                Error => err(unexpectedEnd, byteLength(text))
+                Error => endErr(text)
             }
         }
     }
@@ -123,7 +137,7 @@ module Json {
         let j = skipWs(text, i)
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == openObject { parseObject(text, j, depth) }
         else if b == openArray { parseArray(text, j, depth) }
         else if b == quote { parseStr(text, j) }
@@ -139,16 +153,19 @@ module Json {
     fn membersOf(seen) = mapList(seen, fn(s) => s.member)
     fn hasKey(seen, key) = foldList(seen, false, fn(found, s) => found || s.member.key == key)
 
-    fn parseObject(text, i, depth) = match depth + 1 > depthMax {
+    /// `inside` one level deeper, or `json.depth` when nesting is exhausted.
+    fn nested(depth, i, inside) = match depth + 1 > depthMax {
         true => err(depthCode, i)
-        false => parseMembers(text, skipWs(text, i + 1), depth + 1, [])
+        false => inside(depth + 1)
     }
+
+    fn parseObject(text, i, depth) = nested(depth, i, fn(next) => parseMembers(text, skipWs(text, i + 1), next, []))
 
     /// One member position; `[]` and trailing commas never parse.
     fn parseMembers(text, j, depth, seen) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == closeObject && isEmpty(seen) {
             Success { value: Step { value: Obj { members: membersOf(seen) }, next: j + 1 } }
         } else if b != quote {
@@ -164,7 +181,7 @@ module Json {
         let colon = skipWs(text, scan.next)
         let b = byteAt(text, colon) ?: 0
         if colon >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b != colonByte {
             err(unexpectedToken, colon)
         } else {
@@ -186,7 +203,7 @@ module Json {
     fn nextMember(text, j, depth, seen) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == commaByte {
             parseMembers(text, skipWs(text, j + 1), depth, seen)
         } else if b == closeObject {
@@ -196,15 +213,12 @@ module Json {
         }
     }
 
-    fn parseArray(text, i, depth) = match depth + 1 > depthMax {
-        true => err(depthCode, i)
-        false => parseItems(text, skipWs(text, i + 1), depth + 1, [])
-    }
+    fn parseArray(text, i, depth) = nested(depth, i, fn(next) => parseItems(text, skipWs(text, i + 1), next, []))
 
     fn parseItems(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == closeArray && isEmpty(items) {
             Success { value: Step { value: Arr { items: items }, next: j + 1 } }
         } else {
@@ -217,7 +231,7 @@ module Json {
     fn nextItem(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == commaByte {
             parseItems(text, skipWs(text, j + 1), depth, items)
         } else if b == closeArray {
@@ -246,7 +260,8 @@ module Json {
         _ => false
     }
 
-    fn findMember(members, key) = foldList(members, Error { message: missingKey }, fn(acc, m) => match acc {
+    /// The value of the member named `key`, or `code` when it is absent.
+    export fn memberOr(members, key, code) = foldList(members, Error { message: code }, fn(acc, m) => match acc {
         Success => acc
         Error => if m.key == key { Success { value: m.value } } else { acc }
     })
@@ -254,7 +269,7 @@ module Json {
     /// The value at `key`, or `"json.missing-key"` / `"json.not-an-object"`.
     /// Implements [PACKAGE-PUBLISH].
     export fn get(object, key) = match object {
-        Obj { members } => findMember(members, key)
+        Obj { members } => memberOr(members, key, missingKey)
         _ => Error { message: notObject }
     }
 
@@ -289,10 +304,7 @@ module Json {
     export fn describe(problem) = "${problemCode(problem)} at byte ${problemOffset(problem)}"
 
     /// The dotted reason code of an encoded problem.
-    export fn problemCode(problem) = match indexOf(problem, "@") {
-        Success { value } => take(problem, value)
-        Error => problem
-    }
+    export fn problemCode(problem) = Bytes::before(problem, "@")
 
     /// The byte offset of an encoded problem, or -1 when it carries none.
     export fn problemOffset(problem) = match indexOf(problem, "@") {

@@ -57,4 +57,11 @@ module Flags {
     /// The words after the first: a command's argument vector after its
     /// name, or a command's flags after its positional word.
     export fn tail(args) = range(1, length(args)) |> map(fn(i) => listGet(args, i) ?: "") |> toList
+
+    /// Parse `args`; a command line the frontend cannot act on answers the usage
+    /// report of the command owning `code`, else `body` runs over the parsed flags.
+    export fn dispatch(args, valued, switches, code, text, body) = match parse(args, valued, switches) {
+        Error => Reports::usageFor(code, text)
+        Success { value } => body(value)
+    }
 }

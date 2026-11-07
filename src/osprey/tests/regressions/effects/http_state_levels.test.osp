@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // ============================================================================
 //  Osprey reference app — STATE AT EVERY LEVEL OF AN HTTP API, with algebraic
 //  effects. A live HTTP server keeps ALL of its state inside effect handlers:
@@ -197,9 +178,6 @@ let _ = exactArithmetic(fn() => {
 // Verifies state mutated through the live server, client, and background fiber.
 
 test("HTTP requests update every handled state layer", fn() => exactArithmetic(fn() => checkAll("HTTP state levels", [
-    taskCount == 3,
-    requests == 4,
-    diskBytes == 60,
-    contains(tasks, "#1 welcome to osprey"),
-    contains(tasks, "#3 land the effects PR")
+    structuralEquals([taskCount, requests, diskBytes], [3, 4, 60]),
+    containsAll(tasks, ["#1 welcome to osprey", "#3 land the effects PR"])
 ])))

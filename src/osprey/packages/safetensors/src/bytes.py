@@ -12,7 +12,7 @@ type, widens exactly through arithmetic. Encoders round through
 correctly rounded spelling. Implements [BUILTIN-FLOAT-BITS].
 """
 
-__all__ = ["pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "read_u64", "f16_from_bits", "bf16_from_bits", "f32_from_bits", "f64_from_parts", "decode_f16", "decode_bf16", "decode_f32", "decode_f64", "bytes_to_string", "int_bytes", "f64_bytes", "f32_bytes", "f16_bytes", "bf16_bytes"]
+__all__ = ["pow2i", "pow2", "le_bytes", "le16", "le32", "le64", "read_bytes", "read_u64", "f16_from_bits", "bf16_from_bits", "f32_from_bits", "f64_from_parts", "decode_f16", "decode_bf16", "decode_f32", "decode_f64", "bytes_to_string", "int_bytes", "f64_bytes", "f32_bytes", "f16_bytes", "bf16_bytes", "checked_mul"]
 
 
 def pow2i(e):
@@ -41,22 +41,19 @@ def le64(data, off):
     return le_bytes(data, off, 8)
 
 
+def signed(value, limit, span, to_signed):
+    """The signed reading of an unsigned `value`, two's complement above `limit`."""
+    return to_signed(value - span) if value >= limit else to_signed(value)
+
+
 def le16s(data, off):
     """The int16 whose bits are the two little-endian bytes at `off`."""
-    v = le16(data, off)
-    if v >= 32768:
-        return toInt16(v - 65536)
-    else:
-        return toInt16(v)
+    return signed(le16(data, off), 32768, 65536, toInt16)
 
 
 def le32s(data, off):
     """The int32 whose bits are the four little-endian bytes at `off`."""
-    v = le32(data, off)
-    if v >= 2147483648:
-        return toInt32(v - 4294967296)
-    else:
-        return toInt32(v)
+    return signed(le32(data, off), 2147483648, 4294967296, toInt32)
 
 
 def read_bytes(data, off, n):
@@ -426,3 +423,13 @@ def utf8_four(data, i, b0):
         return Error(message="bad utf-8 4-byte sequence")
     else:
         return Success(value=Utf8Step(cp=cp, next=i + 4))
+
+
+def checked_mul(a, b):
+    """a*b for non-negative a and b, or -1 when it overflows an int64."""
+    if a == 0 or b == 0:
+        return 0
+    elif a > intDiv(9223372036854775807, b):
+        return -1
+    else:
+        return a * b

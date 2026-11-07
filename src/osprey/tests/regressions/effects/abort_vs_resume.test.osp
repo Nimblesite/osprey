@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // Run one effectful pipeline under a handler that always resumes, then under a
 // handler that aborts by returning without resume. [EFFECTS-RESUME]
 
@@ -124,10 +105,8 @@ print("mixed answer: ${stoppedAnswer}")
 // Verifies both continuation policies and their exact operation counts.
 
 test("resuming completes while returning aborts the pipeline", fn() => exactArithmetic(fn() => checkAll("abort versus resume state", [
-    recovered == 60,
-    counter == 3,
+    structuralEquals([recovered, counter, counter2], [60, 3, 2]),
     aborted == sentinel,
-    counter2 == 2,
     recovered != aborted,
     stoppedAnswer == "stopped"
 ])))

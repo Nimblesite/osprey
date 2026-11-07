@@ -24,8 +24,13 @@ __all__ = [
     "str_len", "str_get", "slice_list", "slice_str", "json_text", "str_split", "str_split_sep",
     "py_mod", "py_floordiv", "capitalize", "lookup", "bind", "bind_found", "bind_at", "dict_of", "dict_set",
     "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error",
-    "env_with", "bind_macro", "macro_ref", "find_macro",
+    "env_with", "bind_macro", "macro_ref", "find_macro", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 K_NONE = "none"
@@ -149,7 +154,7 @@ def list_(elems):
 
 def dict_(keys, vals):
     """A dict value; keys stay in insertion order."""
-    return typed_dict(toList(map(range(len(keys)), lambda i: text(unwrap_or(listGet(keys, i), "")))), vals)
+    return typed_dict(map_indexed(keys, lambda i: text(unwrap_or(listGet(keys, i), ""))), vals)
 
 
 def typed_dict(keys, vals):
@@ -325,12 +330,12 @@ def concat_text(v):
 
 def repr_list(elems):
     """`[1, 'a']`: a list as Python prints it."""
-    return "[" + join(toList(map(range(len(elems)), lambda i: repr_text(unwrap_or(listGet(elems, i), none())))), ", ") + "]"
+    return "[" + join(map_indexed(elems, lambda i: repr_text(unwrap_or(listGet(elems, i), none()))), ", ") + "]"
 
 
 def repr_dict(v):
     """`{'k': 1}`: a dict as Python prints it."""
-    entries = toList(map(range(len(v.keys)), lambda i: repr_text(unwrap_or(listGet(v.keys, i), none())) + ": " + repr_text(unwrap_or(listGet(v.vals, i), none()))))
+    entries = map_indexed(v.keys, lambda i: repr_text(unwrap_or(listGet(v.keys, i), none())) + ": " + repr_text(unwrap_or(listGet(v.vals, i), none())))
     return "{" + join(entries, ", ") + "}"
 
 
@@ -367,13 +372,18 @@ def esc_char(c, delimiter):
                 return c
 
 
+def contains_any(xs, item):
+    """Whether `item` equals any of `xs`."""
+    return any_from(len(xs), lambda i: equal(unwrap_or(listGet(xs, i), none()), item))
+
+
 def contains(container, item):
     """Jinja `in`: list/dict membership, or substring test for strings."""
     match container.kind:
         case "list":
-            return any_from(len(container.elems), lambda i: equal(unwrap_or(listGet(container.elems, i), none()), item))
+            return contains_any(container.elems, item)
         case "dict":
-            return any_from(len(container.keys), lambda i: equal(unwrap_or(listGet(container.keys, i), none()), item))
+            return contains_any(container.keys, item)
         case "string":
             return item.kind == K_STRING and contains_text(container.sval, item.sval)
         case _:
@@ -441,7 +451,7 @@ def chars(s):
 def char_values(s):
     """A string's codepoints as string Values (for iteration)."""
     cs = chars(s)
-    return toList(map(range(len(cs)), lambda i: text(unwrap_or(listGet(cs, i), ""))))
+    return map_indexed(cs, lambda i: text(unwrap_or(listGet(cs, i), "")))
 
 
 def char_step(s, st, i):
@@ -535,14 +545,14 @@ def slice_count(b):
 def slice_list(elems, sl):
     """`elems[sl]` as Python slices it."""
     indices = slice_indices(len(elems), sl)
-    return toList(map(range(len(indices)), lambda k: unwrap_or(listGet(elems, unwrap_or(listGet(indices, k), 0)), none())))
+    return map_indexed(indices, lambda k: unwrap_or(listGet(elems, unwrap_or(listGet(indices, k), 0)), none()))
 
 
 def slice_str(s, sl):
     """`s[sl]` by codepoints, as Python slices it."""
     cs = chars(s)
     indices = slice_indices(len(cs), sl)
-    return join(toList(map(range(len(indices)), lambda k: unwrap_or(listGet(cs, unwrap_or(listGet(indices, k), 0)), ""))), "")
+    return join(map_indexed(indices, lambda k: unwrap_or(listGet(cs, unwrap_or(listGet(indices, k), 0)), "")), "")
 
 
 def json_text(v, indent):
@@ -577,8 +587,8 @@ def json_value(v, list_text, dict_text):
 def json_compact(v):
     """Compact JSON with the default `', '` / `': '` separators."""
     return json_value(v,
-        lambda l: "[" + join(toList(map(range(len(l.elems)), lambda i: json_compact(unwrap_or(listGet(l.elems, i), none())))), ", ") + "]",
-        lambda d: "{" + join(toList(map(range(len(d.keys)), lambda i: json_quote(concat_text(unwrap_or(listGet(d.keys, i), none()))) + ": " + json_compact(unwrap_or(listGet(d.vals, i), none())))), ", ") + "}")
+        lambda l: "[" + join(map_indexed(l.elems, lambda i: json_compact(unwrap_or(listGet(l.elems, i), none()))), ", ") + "]",
+        lambda d: "{" + join(map_indexed(d.keys, lambda i: json_quote(concat_text(unwrap_or(listGet(d.keys, i), none()))) + ": " + json_compact(unwrap_or(listGet(d.vals, i), none()))), ", ") + "}")
 
 
 def json_pretty(v, indent, level):
@@ -591,7 +601,7 @@ def json_pretty_list(elems, indent, level):
     if len(elems) == 0:
         return "[]"
     else:
-        inner = join(toList(map(range(len(elems)), lambda i: pad(indent, level + 1) + json_pretty(unwrap_or(listGet(elems, i), none()), indent, level + 1))), ",\n")
+        inner = join(map_indexed(elems, lambda i: pad(indent, level + 1) + json_pretty(unwrap_or(listGet(elems, i), none()), indent, level + 1)), ",\n")
         return "[\n" + inner + "\n" + pad(indent, level) + "]"
 
 
@@ -600,7 +610,7 @@ def json_pretty_dict(v, indent, level):
     if len(v.keys) == 0:
         return "{}"
     else:
-        inner = join(toList(map(range(len(v.keys)), lambda i: pad(indent, level + 1) + json_quote(concat_text(unwrap_or(listGet(v.keys, i), none()))) + ": " + json_pretty(unwrap_or(listGet(v.vals, i), none()), indent, level + 1))), ",\n")
+        inner = join(map_indexed(v.keys, lambda i: pad(indent, level + 1) + json_quote(concat_text(unwrap_or(listGet(v.keys, i), none()))) + ": " + json_pretty(unwrap_or(listGet(v.vals, i), none()), indent, level + 1)), ",\n")
         return "{\n" + inner + "\n" + pad(indent, level) + "}"
 
 
@@ -755,7 +765,7 @@ def env_with(env, frames):
 
 def replace_at(xs, i, x):
     """`xs` with element `i` replaced by `x`."""
-    return toList(map(range(len(xs)), lambda k: x if k == i else unwrap_or(listGet(xs, k), x)))
+    return map_indexed(xs, lambda k: x if k == i else unwrap_or(listGet(xs, k), x))
 
 
 def dict_of(pairs):

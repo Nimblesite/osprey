@@ -15,6 +15,8 @@ struct Harness {
     from_server: BufReader<DuplexStream>,
     engine: OspreyEngine,
     join: tokio::task::JoinHandle<Result<(), ServerError>>,
+    /// Whether the server's diagnostics progress has begun and not ended.
+    checking: bool,
 }
 
 impl Harness {
@@ -42,6 +44,7 @@ impl Harness {
             from_server: BufReader::new(client_reads),
             engine,
             join,
+            checking: false,
         }
     }
 
@@ -84,7 +87,25 @@ impl Harness {
             json!({ "textDocument": { "uri": uri, "version": 1, "text": text } }),
         )
         .await;
-        self.read_message().await
+        self.next_report().await
+    }
+
+    /// A harness whose client shows work-done progress, so [`settled`] can
+    /// wait until every queued diagnostic is published.
+    async fn start_with_progress() -> Self {
+        let mut h = Self::start();
+        let _ = h.request(1, "initialize", with_progress(json!({}))).await;
+        h
+    }
+
+    /// The next `publishDiagnostics`, past any progress the server reports.
+    async fn next_report(&mut self) -> Message {
+        loop {
+            let message = self.read_message().await;
+            if message.method.as_deref() == Some("textDocument/publishDiagnostics") {
+                return message;
+            }
+        }
     }
 
     /// Send `method` with `params` and assert the reply is a null result
@@ -106,7 +127,7 @@ impl Harness {
     /// Notifications (e.g. `publishDiagnostics`) encountered first are dropped.
     async fn read_response_for(&mut self, id: i64) -> Message {
         loop {
-            let message = read_message(&mut self.from_server).await.expect("read");
+            let message = self.read_message().await;
             if message.id == Some(RequestId::Number(id)) {
                 return message;
             }
@@ -114,7 +135,10 @@ impl Harness {
     }
 
     async fn read_message(&mut self) -> Message {
-        read_message(&mut self.from_server).await.expect("read")
+        let message = read_message(&mut self.from_server).await.expect("read");
+        self.checking = (self.checking || sweep_progress(&message, "begin"))
+            && !sweep_progress(&message, "end");
+        message
     }
 
     async fn shutdown_and_exit(mut self) {
@@ -128,7 +152,7 @@ mod project_features;
 mod project_tests;
 
 async fn assert_refreshed(h: &mut Harness, uri: &str, expected: &Value) {
-    let notification = tokio::time::timeout(std::time::Duration::from_secs(3), h.read_message())
+    let notification = tokio::time::timeout(std::time::Duration::from_secs(3), h.next_report())
         .await
         .expect("dependent diagnostics must be republished");
     let params = notification.params.expect("diagnostics notification");
@@ -268,7 +292,41 @@ fn diagnostics(published: &Message) -> Option<&Value> {
         .and_then(|params| params.get("diagnostics"))
 }
 
-async fn scope_reports(h: &mut Harness, id: i64) -> Vec<Value> {
+/// `initialize` params for a client that shows work-done progress, as VS Code
+/// does: the workspace sweep then reports when it begins and ends.
+fn with_progress(mut params: Value) -> Value {
+    let capabilities = json!({"window": {"workDoneProgress": true}});
+    if let Some(fields) = params.as_object_mut() {
+        let _ = fields.insert("capabilities".into(), capabilities);
+    }
+    params
+}
+
+/// Whether `message` is the workspace sweep's progress of `kind`.
+fn sweep_progress(message: &Message, kind: &str) -> bool {
+    message.method.as_deref() == Some("$/progress")
+        && message
+            .params
+            .as_ref()
+            .and_then(|params| params.pointer("/value/kind"))
+            == Some(&json!(kind))
+}
+
+/// Every diagnostic the server publishes up to the barrier request's reply and,
+/// when diagnostics work began meanwhile, until it ends: requests are answered
+/// while files are still being checked [LSP-DIAGNOSTICS-SCOPE].
+/// Settle request `id` and prove its reports cleared every diagnostic for `uri`.
+async fn settles_cleared(h: &mut Harness, id: i64, uri: &str, why: &str) {
+    let reports = settled(h, id).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri && p["diagnostics"] == json!([])),
+        "{why}: {reports:?}"
+    );
+}
+
+async fn settled(h: &mut Harness, id: i64) -> Vec<Value> {
     h.send(&Message::request(
         RequestId::Number(id),
         "textDocument/documentSymbol",
@@ -276,16 +334,15 @@ async fn scope_reports(h: &mut Harness, id: i64) -> Vec<Value> {
     ))
     .await;
     tokio::time::timeout(std::time::Duration::from_secs(20), async {
-        let mut reports = Vec::new();
-        loop {
+        let (mut reports, mut answered) = (Vec::new(), false);
+        while !answered || h.checking {
             let message = h.read_message().await;
-            if message.id == Some(RequestId::Number(id)) {
-                return reports;
-            }
+            answered |= message.id == Some(RequestId::Number(id));
             if message.method.as_deref() == Some("textDocument/publishDiagnostics") {
                 reports.push(message.params.expect("diagnostics"));
             }
         }
+        reports
     })
     .await
     .expect("scope analysis responds")

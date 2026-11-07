@@ -299,6 +299,11 @@ ok skf.2100120.k3.test.0
 ok skf.2100120.k3.test.1
 ok skf.2100120.k3.test.2
 ok stats.sum
+ok stats.cmp_int_less
+ok stats.cmp_int_more
+ok stats.cmp_int_same
+ok stats.encode_labels
+ok stats.map_indexed
 ok stats.mean
 ok stats.min
 ok stats.max
@@ -484,4 +489,4 @@ ok mse.scaleup
 ok mae.scaleup
 ok r2.scaleup
 ok evs.scaleup
-486 passed, 0 failed
+491 passed, 0 failed

@@ -88,10 +88,7 @@ impl Codegen {
     }
 
     pub(crate) fn with_local_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
-        let saved = LexicalScopeState::child(self);
-        let result = emit(self);
-        saved.restore(self);
-        result
+        self.in_scope(LexicalScopeState::child, emit)
     }
 
     /// Caller expressions must not inherit the callee's type substitution.
@@ -118,7 +115,17 @@ impl Codegen {
     }
 
     pub(crate) fn with_file_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
-        let saved = LexicalScopeState::enter(self);
+        self.in_scope(LexicalScopeState::enter, emit)
+    }
+
+    /// Run `emit` in the lexical state `open` prepares, then put back what the
+    /// caller had: bindings made inside never outlive the callee's frame.
+    fn in_scope<T>(
+        &mut self,
+        open: fn(&mut Self) -> LexicalScopeState,
+        emit: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let saved = open(self);
         let result = emit(self);
         saved.restore(self);
         result

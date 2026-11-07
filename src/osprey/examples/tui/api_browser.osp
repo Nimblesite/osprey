@@ -169,23 +169,30 @@ fn screenText(doc: int, sel: int, n: int) =
 // ---- detail view: shows the repo header + its LIVE file tree (/contents) ----
 // Each tree entry exposes name / type / size / path. `path` is the full path
 // from the repo root, so descending needs no manual path joins.
-fn entType(tree: int, i: int) = field(doc: tree, path: "[${i}].type")
-fn entName(tree: int, i: int) = field(doc: tree, path: "[${i}].name")
-fn entSize(tree: int, i: int) = field(doc: tree, path: "[${i}].size")
-fn entPath(tree: int, i: int) = field(doc: tree, path: "[${i}].path")
+fn entField(tree: int, i: int, key: string) = field(doc: tree, path: "[${i}].${key}")
 
 fn icon(t: string) = match t { "dir" => "▸" _ => "·" }
 fn sizeText(t: string, s: string) = match t { "dir" => "" _ => s + " B" }
 fn nameColor(t: string, s: string) = match t { "dir" => "\e[1;34m${s}\e[0m" _ => s }
 
 // One file-tree row; the selected row is inverted, like the repo list.
-fn treeRow(tree: int, i: int, sel: int) = match i == sel {
-    true  => "  " + cyan(">") + " " + invert(" " + icon(t: entType(tree: tree, i: i)) + " " +
-             pad(s: entName(tree: tree, i: i), n: 34) +
-             pad(s: sizeText(t: entType(tree: tree, i: i), s: entSize(tree: tree, i: i)), n: 12) + " ")
-    false => "    " + nameColor(t: entType(tree: tree, i: i),
-             s: icon(t: entType(tree: tree, i: i)) + " " + pad(s: entName(tree: tree, i: i), n: 34)) +
-             dim(sizeText(t: entType(tree: tree, i: i), s: entSize(tree: tree, i: i)))
+fn treeRow(tree: int, i: int, sel: int) = {
+    let t = entField(tree: tree, i: i, key: "type")
+    let glyph = icon(t: t) + " " + pad(s: entField(tree: tree, i: i, key: "name"), n: 34)
+    let measured = sizeText(t: t, s: entField(tree: tree, i: i, key: "size"))
+    match i == sel {
+        true  => "  " + cyan(">") + " " + invert(" " + glyph + pad(s: measured, n: 12) + " ")
+        false => "    " + nameColor(t: t, s: glyph) + dim(measured)
+    }
+}
+
+// The cursor a key asks for: the two arrows and their j/k aliases, else unchanged.
+fn nextSel(sel: int, n: int, key: string) = match key {
+    "Up"   => moveUp(sel)
+    "k"    => moveUp(sel)
+    "Down" => moveDown(sel: sel, n: n)
+    "j"    => moveDown(sel: sel, n: n)
+    _      => sel
 }
 
 // A scrolling window keeps the cursor on screen for big directories.
@@ -240,9 +247,9 @@ fn endApp() -> Unit ![Console, Terminal] = {
 // browseDir recursively, and pressing Esc simply RETURNS to the caller, which
 // re-displays the parent level. At the repo root, returning lands back in the
 // repository list. No mutable path stack - the recursion *is* the stack.
-fn contentsPath(repo: string, path: string) = match path {
-    "" => "/repos/" + githubUser() + "/" + repo + "/contents"
-    _  => "/repos/" + githubUser() + "/" + repo + "/contents/" + path
+fn contentsPath(repo: string, path: string) = {
+    let base = "/repos/" + githubUser() + "/" + repo + "/contents"
+    match path { "" => base _ => base + "/" + path }
 }
 
 // Build the path string for the repository list's "Enter" action.
@@ -273,30 +280,26 @@ fn browseLoop(repo: string, path: string, tree: int, sel: int, n: int) -> Unit !
 }
 
 fn browseKey(repo: string, path: string, tree: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
-    "Up"    => browseLoop(repo: repo, path: path, tree: tree, sel: moveUp(sel), n: n)
-    "k"     => browseLoop(repo: repo, path: path, tree: tree, sel: moveUp(sel), n: n)
-    "Down"  => browseLoop(repo: repo, path: path, tree: tree, sel: moveDown(sel: sel, n: n), n: n)
-    "j"     => browseLoop(repo: repo, path: path, tree: tree, sel: moveDown(sel: sel, n: n), n: n)
     "Enter" => openEntry(repo: repo, path: path, tree: tree, sel: sel, n: n)
     "Esc"   => perform Console.print("")
     "u"     => perform Console.print("")
-    _       => browseLoop(repo: repo, path: path, tree: tree, sel: sel, n: n)
+    _       => browseLoop(repo: repo, path: path, tree: tree, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }
 
 // Enter on a dir descends (recursion); Enter on a file views its source. Either
 // way, control flows back here afterwards to re-display this directory level.
-fn openEntry(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = match entType(tree: tree, i: sel) {
+fn openEntry(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = match entField(tree: tree, i: sel, key: "type") {
     "dir" => descend(repo: repo, path: path, tree: tree, sel: sel, n: n)
     _     => openFile(repo: repo, path: path, tree: tree, sel: sel, n: n)
 }
 
 fn descend(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
-    browseDir(repo: repo, path: entPath(tree: tree, i: sel))
+    browseDir(repo: repo, path: entField(tree: tree, i: sel, key: "path"))
     browseLoop(repo: repo, path: path, tree: tree, sel: sel, n: n)
 }
 
 fn openFile(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
-    viewFile(repo: repo, file: entPath(tree: tree, i: sel))
+    viewFile(repo: repo, file: entField(tree: tree, i: sel, key: "path"))
     browseLoop(repo: repo, path: path, tree: tree, sel: sel, n: n)
 }
 
@@ -328,12 +331,8 @@ fn uiLoop(doc: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
 fn handleKey(doc: int, sel: int, n: int, key: string) -> Unit ![Console, Terminal, Http] = match key {
     "q"     => endApp()
     "Esc"   => endApp()
-    "Up"    => uiLoop(doc: doc, sel: moveUp(sel), n: n)
-    "k"     => uiLoop(doc: doc, sel: moveUp(sel), n: n)
-    "Down"  => uiLoop(doc: doc, sel: moveDown(sel: sel, n: n), n: n)
-    "j"     => uiLoop(doc: doc, sel: moveDown(sel: sel, n: n), n: n)
     "Enter" => openRepo(doc: doc, sel: sel, n: n)
-    _       => uiLoop(doc: doc, sel: sel, n: n)
+    _       => uiLoop(doc: doc, sel: nextSel(sel: sel, n: n, key: key), n: n)
 }
 
 // startUi enters raw mode + the alternate screen and runs the loop over the
@@ -370,11 +369,11 @@ fn rawGet(clientId: int, path: string, headers: string) = match httpGetResponse(
 
 // Foreground animation loop: paint a frame, nap, re-probe - exit the instant
 // the fiber finishes and hand back the (awaited) response handle.
-fn awaitSpinning(fib: Fiber, frame: int) = match fiberDone(fib) {
+fn awaitSpinning(fib: Fiber<int>, frame: int) = match fiberDone(fib) {
     1 => await(fib)
     _ => spinFrame(fib: fib, frame: frame)
 }
-fn spinFrame(fib: Fiber, frame: int) = {
+fn spinFrame(fib: Fiber<int>, frame: int) = {
     print(loaderFrame(frame))
     sleep(60)
     awaitSpinning(fib: fib, frame: inc(frame))

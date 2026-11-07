@@ -68,6 +68,20 @@ pub(crate) fn bad_with(src: &str, needle: &str) {
     rejects_with(Flavor::Default, src, needle);
 }
 
+/// Assert the PARSER rejects `src` with a syntax error containing `needle`. The
+/// frontend is where some spellings are refused outright (a variance marker at
+/// a call site, an empty type-argument list), so [`rejects_with`] cannot express
+/// them: it requires a clean parse.
+pub(crate) fn parse_rejects_with(flavor: Flavor, src: impl AsRef<str>, needle: impl AsRef<str>) {
+    let (src, needle) = (src.as_ref(), needle.as_ref());
+    let parsed = parse_program_with_flavor(src, flavor);
+    assert!(
+        parsed.errors.iter().any(|e| e.message.contains(needle)),
+        "{flavor}: expected a syntax error containing {needle:?}, got {:?}\n{src}",
+        parsed.errors
+    );
+}
+
 /// Assert the CHECKER rejects `src`, whatever the wording. Used where the claim
 /// is that a relation does NOT hold, and pinning one sentence would over-specify
 /// which of several true diagnostics must be the one reported.
@@ -80,15 +94,6 @@ pub(crate) fn rejects(flavor: Flavor, src: impl AsRef<str>) {
     );
 }
 
-/// Assert `src` is rejected SOMEHOW — by the parser or by the checker. Used
-/// where the spec forbids a form without fixing which layer must catch it.
-pub(crate) fn rejected_somehow(flavor: Flavor, src: impl AsRef<str>) {
-    let src = src.as_ref();
-    let parsed = parse_program_with_flavor(src, flavor);
-    let rejected = !parsed.errors.is_empty() || !check_program(&parsed.program).is_empty();
-    assert!(rejected, "{flavor}: expected a rejection, got none\n{src}");
-}
-
 /// The call-site arity contract's exact wording, mirroring
 /// [GENERICS-CTOR-ARITY]'s ``constructor `Box` takes 1 type argument(s), got 2``.
 pub(crate) fn fn_arity_message(name: &str, declared: usize, written: usize) -> String {
@@ -98,6 +103,11 @@ pub(crate) fn fn_arity_message(name: &str, declared: usize, written: usize) -> S
 /// The construction-site arity wording ([GENERICS-CTOR-ARITY]).
 pub(crate) fn ctor_arity_message(name: &str, declared: usize, written: usize) -> String {
     format!("constructor `{name}` takes {declared} type argument(s), got {written}")
+}
+
+/// The effect-row instantiation arity wording ([EFFECTS-GENERIC-DECL]).
+pub(crate) fn effect_arity_message(name: &str, declared: usize, written: usize) -> String {
+    format!("effect `{name}` takes {declared} type argument(s), got {written}")
 }
 
 /// The declaration-site variance diagnostic, from

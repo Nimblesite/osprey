@@ -9,7 +9,7 @@ The header is a JSON object whose keys are tensor names, so this module parses
 it into a tagged record and returns every member in order.
 """
 
-__all__ = ["JsonValue", "JsonMember", "parse"]
+__all__ = ["JsonValue", "JsonMember", "jnull", "parse"]
 
 
 class JsonValue:
@@ -52,6 +52,7 @@ def jbool(b):
 
 
 def jnull():
+    """The JSON null value, the fallback when a member or item is absent."""
     return JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])
 
 
@@ -208,13 +209,18 @@ def escape_char(text, pos, c, pieces):
         return simple_escape(text, pos, c, pieces)
 
 
-def simple_escape(text, pos, c, pieces):
-    """Handle a simple backslash escape letter `c`."""
-    match escaped_char(c):
+def continued(result, step):
+    """The next parse step's answer on success, or the reason it already failed."""
+    match result:
         case Success(value=value):
-            return string_body(text, pos + 2, listAppend(pieces, value))
+            return step(value)
         case Error(message=message):
             return Error(message=message)
+
+
+def simple_escape(text, pos, c, pieces):
+    """Handle a simple backslash escape letter `c`."""
+    return continued(escaped_char(c), lambda value: string_body(text, pos + 2, listAppend(pieces, value)))
 
 
 def unicode_escape(text, pos, pieces):
@@ -244,11 +250,7 @@ def array_items(text, pos, items) -> Result[Parsed, str]:
 
 def array_item(text, p, items):
     """Parse one array item at `p` and continue the array."""
-    match skip_value(text, p):
-        case Success(value=value):
-            return array_continue(text, value.next, listAppend(items, value.value))
-        case Error(message=message):
-            return Error(message=message)
+    return continued(skip_value(text, p), lambda value: array_continue(text, value.next, listAppend(items, value.value)))
 
 
 def array_continue(text, pos, items):
@@ -282,11 +284,7 @@ def object_members(text, pos, members) -> Result[Parsed, str]:
 
 def object_key(text, p, members):
     """Parse the member name whose opening quote is at `p`, then its value."""
-    match parse_string(text, p):
-        case Success(value=value):
-            return member_value(text, value.value.s, value.next, members)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(parse_string(text, p), lambda value: member_value(text, value.value.s, value.next, members))
 
 
 def member_value(text, name, pos, members):
@@ -300,12 +298,7 @@ def member_value(text, name, pos, members):
 
 def member_body(text, name, pos, members):
     """Parse the member's value at `pos` and continue the object."""
-    match skip_value(text, pos):
-        case Success(value=value):
-            member = JsonMember(name=name, value=value.value)
-            return object_after(text, value.next, listAppend(members, member))
-        case Error(message=message):
-            return Error(message=message)
+    return continued(skip_value(text, pos), lambda value: object_after(text, value.next, listAppend(members, JsonMember(name=name, value=value.value))))
 
 
 def object_after(text, pos, members):
@@ -325,22 +318,23 @@ def parse_object(text, pos):
     return object_members(text, pos + 1, [])
 
 
-def float_number(token, end):
-    """Parse a float token's text into a float value."""
-    match parseFloat(token):
+def number_from(parsed, end, wrap):
+    """A parsed number token wrapped into a JSON value, or a bad-number error."""
+    match parsed:
         case Success(value=value):
-            return Success(value=Parsed(value=jfloat(value), next=end))
+            return Success(value=Parsed(value=wrap(value), next=end))
         case Error(message=message):
             return Error(message="invalid JSON: bad number")
+
+
+def float_number(token, end):
+    """Parse a float token's text into a float value."""
+    return number_from(parseFloat(token), end, jfloat)
 
 
 def int_number(token, end):
     """Parse an integer token's text into an int value."""
-    match parseInt(token):
-        case Success(value=value):
-            return Success(value=Parsed(value=jint(value), next=end))
-        case Error(message=message):
-            return Error(message="invalid JSON: bad number")
+    return number_from(parseInt(token), end, jint)
 
 
 def number_value(token, end):
@@ -391,8 +385,4 @@ def ensure_end(text, p):
 
 def parse(text):
     """Parse `text` as one complete JSON value, or Error with a reason."""
-    match skip_value(text, 0):
-        case Success(value=value):
-            return ensure_end(text, value)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(skip_value(text, 0), lambda value: ensure_end(text, value))

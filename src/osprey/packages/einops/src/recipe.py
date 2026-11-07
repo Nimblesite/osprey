@@ -11,7 +11,7 @@ input shape into a `CookedRecipe` of concrete reshapes, matching
 `einops.einops._reconstruct_from_shape` (einops 0.8.2). Magic axis lengths use
 the original's markers: `-999999` unknown, `-99999` supplied by the caller.
 """
-from einops.Parsing import ELLIPSIS, Axis, Composite, axis_in_idents, check_axis_name, format_axes, named, parse
+from einops.Parsing import ELLIPSIS, Axis, Composite, axis_in_idents, check_axis_name, format_axes, map_indexed, named, parse
 
 __all__ = ["TransformRecipe", "NamePos", "PosElem", "prepare", "set_at"]
 
@@ -83,7 +83,7 @@ def list_index(xs, v) -> int:
 
 def set_at(xs, i, v) -> list[int]:
     """`xs` with element `i` replaced by `v`; shared with `Reconstruct`."""
-    return toList(map(range(len(xs)), lambda j: v if j == i else unwrap_or(listGet(xs, j), v)))
+    return map_indexed(xs, lambda j: v if j == i else unwrap_or(listGet(xs, j), v))
 
 
 def find_named(axes, name) -> int:
@@ -111,17 +111,22 @@ def unpack_error(n) -> str:
 
 def composition_axes(expr) -> list[list[Axis]]:
     """A parsed composition as plain groups of axes."""
-    return toList(map(range(len(expr.composition)), lambda i: unwrap_or(listGet(expr.composition, i), Composite(kind="group", axes=[])).axes))
+    return map_indexed(expr.composition, lambda i: unwrap_or(listGet(expr.composition, i), Composite(kind="group", axes=[])).axes)
+
+
+def ell_groups(ell_axes) -> list[list[Axis]]:
+    """One group per ellipsis axis, in order."""
+    return map_indexed(ell_axes, lambda i: [unwrap_or(listGet(ell_axes, i), named(""))])
 
 
 def expand_left_comp(comp, ell_axes) -> list[list[Axis]]:
     """The left composition with the ellipsis slot expanded to one group per axis."""
-    return foldList(comp, [], lambda acc, c: listConcat(acc, toList(map(range(len(ell_axes)), lambda i: [unwrap_or(listGet(ell_axes, i), named(""))]))) if c.kind == "ellipsis" else listAppend(acc, c.axes))
+    return foldList(comp, [], lambda acc, c: listConcat(acc, ell_groups(ell_axes)) if c.kind == "ellipsis" else listAppend(acc, c.axes))
 
 
 def expand_right_one(c, ell_axes) -> list[list[Axis]]:
     if c.kind == "ellipsis":
-        return toList(map(range(len(ell_axes)), lambda i: [unwrap_or(listGet(ell_axes, i), named(""))]))
+        return ell_groups(ell_axes)
     else:
         group = foldList(c.axes, [], lambda acc, ax: listConcat(acc, ell_axes) if ax.kind == "ellipsis" else listAppend(acc, ax))
         return [group]
@@ -129,7 +134,7 @@ def expand_right_one(c, ell_axes) -> list[list[Axis]]:
 
 def expand_right_comp(comp, ell_axes) -> list[list[Axis]]:
     """The right composition with every ellipsis marker expanded to the ellipsis axes."""
-    return flatten(toList(map(range(len(comp)), lambda i: expand_right_one(unwrap_or(listGet(comp, i), Composite(kind="group", axes=[])), ell_axes))))
+    return flatten(map_indexed(comp, lambda i: expand_right_one(unwrap_or(listGet(comp, i), Composite(kind="group", axes=[])), ell_axes)))
 
 
 def assign_group_go(group, axes, lengths, j, positions) -> GroupAssigned:
@@ -204,7 +209,7 @@ def apply_axes_lengths(axes_names, axes, lengths) -> Result[str, str]:
 
 def name2pos_of(axes_names, axes) -> list[NamePos]:
     """The supplied axes' name-to-elementary-position pairs."""
-    return toList(map(range(len(axes_names)), lambda i: NamePos(name=unwrap_or(listGet(axes_names, i), ""), pos=find_named(axes, unwrap_or(listGet(axes_names, i), "")))))
+    return map_indexed(axes_names, lambda i: NamePos(name=unwrap_or(listGet(axes_names, i), ""), pos=find_named(axes, unwrap_or(listGet(axes_names, i), ""))))
 
 
 def known_unknown_go(left_positions, axes, lengths, g, acc) -> Result[list[list[list[int]]], str]:
@@ -217,7 +222,7 @@ def known_unknown_go(left_positions, axes, lengths, g, acc) -> Result[list[list[
 def known_unknown_group(left_positions, axes, lengths, g, acc, group) -> Result[list[list[list[int]]], str]:
     unknown = filterList(group, lambda p: unwrap_or(listGet(lengths, p), 0) == UNKNOWN_AXIS_LENGTH)
     if len(unknown) > 1:
-        unknown_axes = toList(map(range(len(unknown)), lambda i: unwrap_or(listGet(axes, unwrap_or(listGet(unknown, i), 0)), named(""))))
+        unknown_axes = map_indexed(unknown, lambda i: unwrap_or(listGet(axes, unwrap_or(listGet(unknown, i), 0)), named("")))
         return Error(message=f"Could not infer sizes for {format_axes(unknown_axes)}")
     else:
         known = filterList(group, lambda p: unwrap_or(listGet(lengths, p), 0) != UNKNOWN_AXIS_LENGTH)
@@ -293,7 +298,7 @@ def build_recipe_known(left_assigned, right_assigned, left_idents, right_idents,
             right_flat = flatten(right_assigned.positions)
             reduced = filterList(left_flat, lambda p: not axis_in_idents(right_idents, unwrap_or(listGet(axes, p), named(""))))
             order_after = listConcat(filterList(right_flat, lambda p: axis_in_idents(left_idents, unwrap_or(listGet(axes, p), named("")))), reduced)
-            permutation = toList(map(range(len(order_after)), lambda i: list_index(left_flat, unwrap_or(listGet(order_after, i), 0))))
+            permutation = map_indexed(order_after, lambda i: list_index(left_flat, unwrap_or(listGet(order_after, i), 0)))
             return Success(value=TransformRecipe(
                 elementary_axes_lengths=lengths,
                 axis_name2elementary_axis=listSortBy(name2pos, lambda a, b: 1 if a.name > b.name else (-1 if a.name < b.name else 0)),
@@ -321,21 +326,22 @@ def prepare_parts(parts, pattern, operation, axes_names, ndim):
         return prepare_left(parts, pattern, operation, axes_names, ndim)
 
 
-def prepare_left(parts, pattern, operation, axes_names, ndim):
-    rght_str = unwrap_or(listGet(parts, 1), "")
-    match parse(unwrap_or(listGet(parts, 0), ""), False, False):
+def parsed(text, then):
+    """`then` applied to the parsed form of `text`, or the parse's own error."""
+    match parse(text, False, False):
         case Error(message=message):
             return Error(message=message)
         case Success(value=value):
-            return prepare_right(value, rght_str, pattern, operation, axes_names, ndim)
+            return then(value)
+
+
+def prepare_left(parts, pattern, operation, axes_names, ndim):
+    rght_str = unwrap_or(listGet(parts, 1), "")
+    return parsed(unwrap_or(listGet(parts, 0), ""), lambda left: prepare_right(left, rght_str, pattern, operation, axes_names, ndim))
 
 
 def prepare_right(left, rght_str, pattern, operation, axes_names, ndim):
-    match parse(rght_str, False, False):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return prepare_checked(left, value, pattern, operation, axes_names, ndim)
+    return parsed(rght_str, lambda right: prepare_checked(left, right, pattern, operation, axes_names, ndim))
 
 
 def prepare_checked(left, right, pattern, operation, axes_names, ndim):

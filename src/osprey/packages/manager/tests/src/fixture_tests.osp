@@ -16,56 +16,56 @@ import registry_tests::Fixtures
 module FixtureTests {
     fn names() = {
         let fx = Fixtures::load("names.json")
-        Fixtures::report("names valid", Fixtures::texts(Fixtures::field(fx, "valid")), fn(t) => Fixtures::code(Names::parse(t)) == "")
-        Fixtures::report("names invalid", Fixtures::items(Fixtures::field(fx, "invalid")), fn(c) => Fixtures::code(Names::parse(Fixtures::text(Fixtures::field(c, "text")))) == Fixtures::text(Fixtures::field(c, "code")))
+        Fixtures::report("names valid", Fixtures::textsOf(fx, "valid"), fn(t) => Fixtures::code(Names::parse(t)) == "")
+        Fixtures::report("names invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
     }
 
     fn releaseIds() = {
         let fx = Fixtures::load("release-ids.json")
-        Fixtures::report("release ids valid", Fixtures::texts(Fixtures::field(fx, "valid")), fn(t) => match Identity::parse(t) {
+        Fixtures::report("release ids valid", Fixtures::textsOf(fx, "valid"), fn(t) => match Identity::parse(t) {
             Success { value } => Identity::display(value) == t
             Error => false
         })
-        Fixtures::report("release ids invalid", Fixtures::items(Fixtures::field(fx, "invalid")), fn(c) => Fixtures::code(Identity::parse(Fixtures::text(Fixtures::field(c, "text")))) == Fixtures::text(Fixtures::field(c, "code")))
+        Fixtures::report("release ids invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Identity::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
     }
 
     fn pathRows() = {
         let fx = Fixtures::load("paths.json")
-        Fixtures::report("paths valid", Fixtures::texts(Fixtures::field(fx, "valid")), fn(p) => Fixtures::code(Paths::validate(p)) == "")
-        Fixtures::report("paths invalid", Fixtures::items(Fixtures::field(fx, "invalid")), fn(c) => Fixtures::code(Paths::validate(Fixtures::text(Fixtures::field(c, "path")))) == Fixtures::text(Fixtures::field(c, "code")))
-        Fixtures::report("path collisions", Fixtures::items(Fixtures::field(fx, "collisions")), fn(c) => Fixtures::code(Paths::canonicalSet(Fixtures::texts(Fixtures::field(c, "paths")))) == Fixtures::text(Fixtures::field(c, "code")))
-        Fixtures::report("excluded paths", Fixtures::texts(Fixtures::field(fx, "excluded")), Paths::excluded)
-        Fixtures::report("included paths", Fixtures::texts(Fixtures::field(fx, "included")), fn(p) => !Paths::excluded(p))
+        Fixtures::report("paths valid", Fixtures::textsOf(fx, "valid"), fn(p) => Fixtures::code(Paths::validate(p)) == "")
+        Fixtures::report("paths invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => Fixtures::code(Paths::validate(Fixtures::textOf(c, "path"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("path collisions", Fixtures::itemsOf(fx, "collisions"), fn(c) => Fixtures::code(Paths::canonicalSet(Fixtures::textsOf(c, "paths"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("excluded paths", Fixtures::textsOf(fx, "excluded"), Paths::excluded)
+        Fixtures::report("included paths", Fixtures::textsOf(fx, "included"), fn(p) => !Paths::excluded(p))
     }
 
     fn treeRows() = {
         let fx = Fixtures::load("paths.json")
-        Fixtures::report("forbidden kinds", Fixtures::items(Fixtures::field(fx, "forbiddenKinds")), fn(c) => Source::kindCode(Fixtures::text(Fixtures::field(c, "kind"))) == Fixtures::text(Fixtures::field(c, "code")))
+        Fixtures::report("forbidden kinds", Fixtures::itemsOf(fx, "forbiddenKinds"), fn(c) => Source::kindCode(Fixtures::textOf(c, "kind")) == Fixtures::textOf(c, "code"))
         expectTrue(Source::lfsPointer(Fixtures::text(Fixtures::field(Fixtures::field(fx, "lfsPointer"), "content"))))
         Fixtures::report("submission limits", Fixtures::items(Fixtures::field(Fixtures::field(fx, "limits"), "cases")), fn(c) =>
-            Source::limitCode(Fixtures::number(Fixtures::field(c, "fileCount")), Fixtures::number(Fixtures::field(c, "totalBytes")), Fixtures::number(Fixtures::field(c, "assetBytes"))) == Fixtures::text(Fixtures::field(c, "code")))
+            Source::limitCode(Fixtures::numberOf(c, "fileCount"), Fixtures::numberOf(c, "totalBytes"), Fixtures::numberOf(c, "assetBytes")) == Fixtures::textOf(c, "code"))
     }
 
-    fn entryOf(file) = Source::entryOf(Fixtures::text(Fixtures::field(file, "path")), Bytes::ofString(Fixtures::text(Fixtures::field(file, "content"))))
+    fn entryOf(file) = Source::entryOf(Fixtures::textOf(file, "path"), Bytes::ofString(Fixtures::textOf(file, "content")))
 
-    fn fileDigestsMatch(fx) = foldList(Fixtures::items(Fixtures::field(fx, "files")), true, fn(ok, file) => ok && Bytes::hex(entryOf(file).digest) == Fixtures::text(Fixtures::field(file, "sha256")))
+    fn fileDigestsMatch(fx) = foldList(Fixtures::itemsOf(fx, "files"), true, fn(ok, file) => ok && Bytes::hex(entryOf(file).digest) == Fixtures::textOf(file, "sha256"))
 
     fn tampered(fx, entries) = {
         let sub = Fixtures::field(fx, "digestSubstitution")
-        let fakeDigest = Bytes::fromHex(Fixtures::text(Fixtures::field(sub, "sha256")))
-        let replaced = mapList(entries, fn(e: Source::Entry) => if e.path == Fixtures::text(Fixtures::field(sub, "path")) { Source::Entry { path: e.path, byteLength: e.byteLength, digest: fakeDigest } } else { e })
-        (Source::digest(replaced) ?: "") == Fixtures::text(Fixtures::field(sub, "sourceDigest"))
+        let fakeDigest = Bytes::fromHex(Fixtures::textOf(sub, "sha256"))
+        let replaced = mapList(entries, fn(e: Source::Entry) => if e.path == Fixtures::textOf(sub, "path") { Source::Entry { path: e.path, byteLength: e.byteLength, digest: fakeDigest } } else { e })
+        (Source::digest(replaced) ?: "") == Fixtures::textOf(sub, "sourceDigest")
     }
 
     fn tree(name) = {
         let fx = Fixtures::load("source/${name}.json")
-        let entries = mapList(Fixtures::items(Fixtures::field(fx, "files")), entryOf)
+        let entries = mapList(Fixtures::itemsOf(fx, "files"), entryOf)
         let envelope = Source::envelope(entries) ?: []
         checkAll("source tree ${name}", [
             fileDigestsMatch(fx),
-            length(envelope) == Fixtures::number(Fixtures::field(fx, "envelopeLength")),
-            Bytes::hex(envelope) == Fixtures::text(Fixtures::field(fx, "envelopeHex")),
-            (Source::digest(entries) ?: "") == Fixtures::text(Fixtures::field(fx, "sourceDigest")),
+            length(envelope) == Fixtures::numberOf(fx, "envelopeLength"),
+            Bytes::hex(envelope) == Fixtures::textOf(fx, "envelopeHex"),
+            (Source::digest(entries) ?: "") == Fixtures::textOf(fx, "sourceDigest"),
             match Json::get(fx, "digestSubstitution") {
                 Success => tampered(fx, entries)
                 Error => true
@@ -75,29 +75,29 @@ module FixtureTests {
 
     fn domainHashes() = {
         let fx = Fixtures::load("digests.json")
-        Fixtures::report("H(d, x) cases", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) => Digests::hashText(Fixtures::text(Fixtures::field(c, "domain")), Fixtures::text(Fixtures::field(c, "payload"))) == Fixtures::text(Fixtures::field(c, "digest")))
+        Fixtures::report("H(d, x) cases", Fixtures::itemsOf(fx, "cases"), fn(c) => Digests::hashText(Fixtures::textOf(c, "domain"), Fixtures::textOf(c, "payload")) == Fixtures::textOf(c, "digest"))
     }
 
     fn confusables() = {
         let fx = Fixtures::load("malicious/confusables.json")
-        Fixtures::report("confusable names", Fixtures::items(Fixtures::field(fx, "names")), fn(c) => Fixtures::code(Names::parse(Fixtures::text(Fixtures::field(c, "text")))) == Fixtures::text(Fixtures::field(c, "code")))
-        Fixtures::report("confusable lookalikes are valid names", Fixtures::items(Fixtures::field(fx, "names")), fn(c) => Fixtures::code(Names::parse(Fixtures::text(Fixtures::field(c, "lookalike")))) == "")
-        Fixtures::report("confusable paths", Fixtures::items(Fixtures::field(fx, "paths")), fn(c) => Fixtures::code(Paths::validate(Fixtures::text(Fixtures::field(c, "path")))) == Fixtures::text(Fixtures::field(c, "code")))
+        Fixtures::report("confusable names", Fixtures::itemsOf(fx, "names"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "text"))) == Fixtures::textOf(c, "code"))
+        Fixtures::report("confusable lookalikes are valid names", Fixtures::itemsOf(fx, "names"), fn(c) => Fixtures::code(Names::parse(Fixtures::textOf(c, "lookalike"))) == "")
+        Fixtures::report("confusable paths", Fixtures::itemsOf(fx, "paths"), fn(c) => Fixtures::code(Paths::validate(Fixtures::textOf(c, "path"))) == Fixtures::textOf(c, "code"))
     }
 
     /// The structural verdict a case expects: `structure` when the full
     /// verdict needs inflation, else `code`.
     fn structureExpected(c) = match Json::get(c, "structure") {
         Success { value } => Fixtures::text(value)
-        Error => Fixtures::text(Fixtures::field(c, "code"))
+        Error => Fixtures::textOf(c, "code")
     }
 
     fn pngCaseHolds(c) = {
-        let bytes = Bytes::fromHex(Fixtures::text(Fixtures::field(c, "hex")))
-        length(bytes) == Fixtures::number(Fixtures::field(c, "byteLength")) && Png::structureCode(bytes) == structureExpected(c)
+        let bytes = Bytes::fromHex(Fixtures::textOf(c, "hex"))
+        length(bytes) == Fixtures::numberOf(c, "byteLength") && Png::structureCode(bytes) == structureExpected(c)
     }
 
-    fn pngBombs() = Fixtures::report("png structure and bombs", Fixtures::items(Fixtures::field(Fixtures::load("malicious/png-bombs.json"), "cases")), pngCaseHolds)
+    fn pngBombs() = Fixtures::report("png structure and bombs", Fixtures::loadItems("malicious/png-bombs.json", "cases"), pngCaseHolds)
 
     export fn run() = {
         test("fixtures: names", names)

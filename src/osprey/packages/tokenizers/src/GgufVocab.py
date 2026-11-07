@@ -21,7 +21,7 @@ and `UNUSED` (5, the `[PAD…]` placeholders, special). The reference's
 special; the GGUF has no record of that distinction, and the README notes it.
 """
 
-from tokenizers.Models import build_bpe
+from tokenizers.Models import build_bpe, token_index
 from tokenizers.PreTokenizers import bytelevel_text
 from tokenizers.Tokenizer import AddedToken, QwenTokenizer
 
@@ -42,7 +42,7 @@ class Merges:
 
 def qwen_from_vocabulary(tokens, types, merges) -> Result[QwenTokenizer, str]:
     """The tokenizer the three GGUF tables describe, or the first thing missing."""
-    ids = index_of(tokens)
+    ids = token_index(tokens)
     match byte_ids(ids):
         case Success(value=bytes_ids):
             return with_merges(tokens, types, ids, bytes_ids, split_merges(ids, merges))
@@ -59,11 +59,6 @@ def with_merges(tokens, types, ids, bytes_ids, merges) -> Result[QwenTokenizer, 
                 return Success(value=QwenTokenizer(model=model, added=added_tokens(tokens, types)))
             case Error(message=message):
                 return Error(message=message)
-
-
-def index_of(tokens):
-    """Every spelling's id."""
-    return fold(range(len(tokens)), {}, lambda acc, i: mapSet(acc, unwrap_or(listGet(tokens, i), ""), i))
 
 
 def id_of(ids, text):

@@ -8,9 +8,19 @@ CPython code does inline (`data.get('x')`, `to_json`, `from_json`).
 """
 
 __all__ = [
-    "text_at", "int_at", "float_at", "bool_at", "list_at", "object_at", "member", "obj",
+    "text_at", "int_at", "float_at", "bool_at", "number", "list_at", "object_at", "member", "obj",
     "encode", "decode", "members_of", "items_of", "of_map", "to_map", "is_null", "has", "jtext", "jint", "member_name", "member_value",
+    "rewrap",
 ]
+
+
+def rewrap(result, wrap):
+    """`result`'s value passed to `wrap`, or its error unchanged."""
+    match result:
+        case Success(value=value):
+            return Success(value=wrap(value))
+        case Error(message=message):
+            return Error(message=message)
 
 
 def is_null(value) -> bool:
@@ -24,18 +34,17 @@ def is_null(value) -> bool:
 
 def text_at(value, name, fallback) -> str:
     """`value[name]` as text, `fallback` when absent or not a string."""
-    return unwrap_or(jsonText(unwrap_or(jsonField(value, name), JsonNull())), fallback)
+    return unwrap_or(jsonText(object_at(value, name)), fallback)
 
 
 def int_at(value, name, fallback) -> int:
     """`value[name]` as an int, `fallback` when absent or not an integer."""
-    return unwrap_or(jsonInt(unwrap_or(jsonField(value, name), JsonNull())), fallback)
+    return unwrap_or(jsonInt(object_at(value, name)), fallback)
 
 
-def float_at(value, name, fallback) -> float:
-    """`value[name]` as a float (an integer converts), `fallback` otherwise."""
-    field = unwrap_or(jsonField(value, name), JsonNull())
-    match field:
+def number(value, fallback) -> float:
+    """A JSON number as a float (an integer converts), `fallback` otherwise."""
+    match value:
         case JsonInt(i):
             return toFloat(i)
         case JsonFloat(f):
@@ -44,9 +53,14 @@ def float_at(value, name, fallback) -> float:
             return fallback
 
 
+def float_at(value, name, fallback) -> float:
+    """`value[name]` as a float (an integer converts), `fallback` otherwise."""
+    return number(object_at(value, name), fallback)
+
+
 def bool_at(value, name, fallback) -> bool:
     """`value[name]` as a bool, `fallback` when absent or not a boolean."""
-    return unwrap_or(jsonBool(unwrap_or(jsonField(value, name), JsonNull())), fallback)
+    return unwrap_or(jsonBool(object_at(value, name)), fallback)
 
 
 def items_of(value) -> list[Json]:
@@ -69,7 +83,7 @@ def members_of(value) -> list[JsonMember]:
 
 def list_at(value, name) -> list[Json]:
     """`value[name]` as an array's elements, `[]` when absent."""
-    return items_of(unwrap_or(jsonField(value, name), JsonNull()))
+    return items_of(object_at(value, name))
 
 
 def object_at(value, name) -> Json:

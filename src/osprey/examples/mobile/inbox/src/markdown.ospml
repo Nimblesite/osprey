@@ -4,7 +4,6 @@
 namespace mobile
 
 import bank::Json
-import mobile::View
 
 type Cut =
     head : string
@@ -49,7 +48,7 @@ module Markdown
             first = smaller (smaller (position text "**") (position text "*")) (smaller (smaller (position text "`") (position text "[")) (underscore text 0))
             match first >= length text
                 true => plain text
-                false => View::append (plain (take text first)) (marker (drop text first))
+                false => Json::append (plain (take text first)) (marker (drop text first))
 
     marker rest = match startsWith rest "**"
         true => wrapped rest "**" "bold" false
@@ -81,8 +80,8 @@ module Markdown
         close = position inner mark
         after = byteAt inner ((satAdd close 1) ) ?: 32
         match close >= length inner || close == 0 || (wordBoundary && isWordByte after)
-            true => View::append (plain mark) (spans inner)
-            false => View::append (span style (take inner close) "") (spans (drop inner (satAdd close (length mark))))
+            true => Json::append (plain mark) (spans inner)
+            false => Json::append (span style (take inner close) "") (spans (drop inner (satAdd close (length mark))))
 
     // `rest` begins with `[`; only `[text](https://…)` becomes a link.
     linked rest =
@@ -92,10 +91,10 @@ module Markdown
         end = position after ")"
         url = take after end
         match close >= length inner || end >= length after || close == 0
-            true => View::append (plain "[") (spans inner)
+            true => Json::append (plain "[") (spans inner)
             false => match startsWith url "https://"
-                true => View::append (span "link" (take inner close) url) (spans (drop after (satAdd end 1)))
-                false => View::append (plain "[") (spans inner)
+                true => Json::append (span "link" (take inner close) url) (spans (drop after (satAdd end 1)))
+                false => Json::append (plain "[") (spans inner)
 
     line s = match indexOf s "\n"
         Success i => Cut(head = take s i, tail = drop s (satAdd i 1))
@@ -103,19 +102,19 @@ module Markdown
 
     flushParagraph doc = match length doc.paragraph == 0
         true => doc
-        false => Doc(nodes = View::append doc.nodes (richNode "body" doc.paragraph), paragraph = "", code = doc.code, mode = doc.mode)
+        false => Doc(nodes = Json::append doc.nodes (richNode "body" doc.paragraph), paragraph = "", code = doc.code, mode = doc.mode)
 
     // Code lines are kept with their newline so a blank first line survives.
     flushCode doc =
         content = take doc.code ((satSub (length doc.code) 1) )
         nodes = match length doc.code == 0
             true => doc.nodes
-            false => View::append doc.nodes (textNode "code" content)
+            false => Json::append doc.nodes (textNode "code" content)
         Doc(nodes = nodes, paragraph = doc.paragraph, code = "", mode = "text")
 
     withNode doc content =
         flushed = flushParagraph doc
-        Doc(nodes = View::append flushed.nodes content, paragraph = "", code = flushed.code, mode = flushed.mode)
+        Doc(nodes = Json::append flushed.nodes content, paragraph = "", code = flushed.code, mode = flushed.mode)
 
     // GitHub renders a single newline inside an issue paragraph as a line break.
     withParagraph doc text =

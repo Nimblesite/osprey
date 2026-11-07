@@ -7,7 +7,7 @@ import * as NativeRendering from "../../client/src/osprey-ui/render";
 import * as WebviewHtml from "../../client/src/osprey-ui/webview-html";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
 import { withWorkbench } from "./workbench-browser-kit";
-import { COMMAND_MS } from "./profiler-kit";
+import { COMMAND_MS, waitForIdleWorkbench } from "./profiler-kit";
 import { themeStyle } from "../../client/src/osprey-ui/theme";
 
 suite("native application theme", () => {
@@ -18,11 +18,16 @@ suite("native application theme", () => {
       { name: "sourceKeyword", light: "#794A64", dark: "#D5B0C7" },
       { name: "dangerSurface", light: "#F6E8E3", dark: "#453330" },
     ], feedback: 140, settle: 240 });
-    assert.ok(css.includes("--osp-canvas: light-dark(#FAFAF7, #202723);"));
-    assert.ok(css.includes("--osp-text: light-dark(#242923, #ECEDE5);"));
-    assert.ok(css.includes("--osp-source-keyword: light-dark(#794A64, #D5B0C7);"));
-    assert.ok(css.includes("--osp-danger-surface: light-dark(#F6E8E3, #453330);"));
-    assert.ok(css.includes("--osp-motion:140ms;") && css.includes("--osp-settle:240ms;"));
+    for (const declaration of [
+      "--osp-canvas: light-dark(#FAFAF7, #202723);",
+      "--osp-text: light-dark(#242923, #ECEDE5);",
+      "--osp-source-keyword: light-dark(#794A64, #D5B0C7);",
+      "--osp-danger-surface: light-dark(#F6E8E3, #453330);",
+      "--osp-motion:140ms;",
+      "--osp-settle:240ms;",
+    ]) {
+      assert.ok(css.includes(declaration), declaration);
+    }
   });
 
   test("malformed names, colours and motion cannot become style declarations", () => {
@@ -31,8 +36,9 @@ suite("native application theme", () => {
       { name: "canvas", light: "url(https://example.test)", dark: "#000000" },
       { name: "sourceKeyword", light: "#794A64", dark: "#D5B0C7" },
     ], feedback: "0;}body{color:red", settle: -1 });
-    assert.ok(!css.includes("body") && !css.includes("url("));
-    assert.ok(!css.includes("--osp-motion:") && !css.includes("--osp-settle:"));
+    for (const survivor of ["body", "url(", "--osp-motion:", "--osp-settle:"]) {
+      assert.ok(!css.includes(survivor), survivor);
+    }
     assert.ok(css.includes("--osp-source-keyword:"));
     assert.equal(themeStyle(null), "");
   });
@@ -135,7 +141,7 @@ async function finishGesture(frame: Frame, end: GestureEnd, bounds: { x: number;
 async function assertGestureApplied(frame: Frame, end: GestureEnd): Promise<void> {
   const title = frame.getByRole("textbox", { name: "Solution title", exact: true });
   const theme = frame.getByRole("button", { name: "Switch appearance", exact: true });
-  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: COMMAND_MS });
+  await waitForIdleWorkbench(frame, COMMAND_MS);
   const actions = await gestureActions(frame);
   assert.strictEqual(actions.length, end === "commit" || end === "unrelated" ? 1 : 0, "the gesture must emit exactly its owned action");
   await theme.locator(end === "commit" || end === "unrelated" ? '[data-symbol="sun.max"]' : '[data-symbol="moon"]').waitFor();

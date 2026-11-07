@@ -8,20 +8,15 @@ module BytesTests {
     fn strs(xs) = join(xs, ",")
 
     fn encodings() = checkAll("big-endian widths and hex spelling", [
-        ints(Bytes::u32be(0)) == "0,0,0,0",
-        ints(Bytes::u32be(1)) == "0,0,0,1",
-        ints(Bytes::u32be(258)) == "0,0,1,2",
-        ints(Bytes::u32be(4294967295)) == "255,255,255,255",
+        structuralEquals([ints(Bytes::u32be(0)), ints(Bytes::u32be(1))], ["0,0,0,0", "0,0,0,1"]),
+        structuralEquals([ints(Bytes::u32be(258)), ints(Bytes::u32be(4294967295))], ["0,0,1,2", "255,255,255,255"]),
         ints(Bytes::u64be(0)) == "0,0,0,0,0,0,0,0",
         ints(Bytes::u64be(4294967296)) == "0,0,0,1,0,0,0,0",
         ints(Bytes::u64be(9223372036854775807)) == "127,255,255,255,255,255,255,255",
-        Bytes::hex([0, 15, 16, 171, 255]) == "000f10abff",
-        Bytes::hex([]) == "",
-        ints(Bytes::ofString("abc")) == "97,98,99",
-        ints(Bytes::ofString("")) == "",
+        structuralEquals([Bytes::hex([0, 15, 16, 171, 255]), Bytes::hex([])], ["000f10abff", ""]),
+        structuralEquals([ints(Bytes::ofString("abc")), ints(Bytes::ofString(""))], ["97,98,99", ""]),
         ints(Bytes::concatAll([[1], [], [2, 3]])) == "1,2,3",
-        Bytes::wellFormed([0, 255]),
-        !Bytes::wellFormed([256]),
+        structuralEquals([Bytes::wellFormed([0, 255]), Bytes::wellFormed([256])], [true, false]),
         !Bytes::wellFormed([-1])
     ])
 
@@ -33,8 +28,7 @@ module BytesTests {
         ints(Order::permutation(0, intsAt([]))) == "",
         ints(Order::permutation(1, intsAt([5]))) == "0",
         ints(Order::sortedIndexes(["b", "a", "Z", "aa"])) == "2,1,3,0",
-        ints(Order::sortedIndexes(["b", "a", "b"])) == "1,0,2",
-        ints(Order::sortedIndexes([])) == "",
+        structuralEquals([ints(Order::sortedIndexes(["b", "a", "b"])), ints(Order::sortedIndexes([]))], ["1,0,2", ""]),
         ints(Order::sortedIndexes(mapList([10, 9, 100], Order::intKey))) == "1,0,2",
         Order::intKey(42) == "0000000042",
         Order::thenCompare(0, -1) == -1,
@@ -48,8 +42,7 @@ module BytesTests {
             Error { message } => message == "list.duplicate"
         },
         Order::strictlyAscending(["a", "b", "c"]),
-        !Order::strictlyAscending(["a", "a"]),
-        !Order::strictlyAscending(["b", "a"]),
+        structuralEquals([Order::strictlyAscending(["a", "a"]), Order::strictlyAscending(["b", "a"])], [false, false]),
         Order::strictlyAscending([])
     ])
 

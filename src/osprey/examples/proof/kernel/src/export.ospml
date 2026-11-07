@@ -80,17 +80,16 @@ module Export
         true => Success(value = json)
         false => Error(message = "${toString count} members where one kind is expected")
 
-    routedName (reading, json) = match ExportJson::hasField (json, "in")
-        true => nameLine (reading, json)
-        false => routedLevel (reading, json)
+    routedName (reading, json) = whenField (json, "in", \item => nameLine (reading, item), \item => routedLevel (reading, item))
 
-    routedLevel (reading, json) = match ExportJson::hasField (json, "il")
-        true => levelLine (reading, json)
-        false => routedExpr (reading, json)
+    routedLevel (reading, json) = whenField (json, "il", \item => levelLine (reading, item), \item => routedExpr (reading, item))
 
-    routedExpr (reading, json) = match ExportJson::hasField (json, "ie")
-        true => exprLine (reading, json)
-        false => declLine (reading, json)
+    routedExpr (reading, json) = whenField (json, "ie", \item => exprLine (reading, item), \item => declLine (reading, item))
+
+    // `then` on `json` when it carries `field`, `otherwise` when it does not.
+    whenField (json, field, then, otherwise) = match ExportJson::hasField (json, field)
+        true => then (json)
+        false => otherwise (json)
 
     (** The line's kind: the one member besides its index member. *)
     kindOf (json, skip) = match json
@@ -131,11 +130,14 @@ module Export
 
     setTables (reading, tables) = Reading(tables = tables, items = reading.items, line = reading.line)
 
-    setName (reading, index, name) = setTables (reading, Tables(names = mapSet (reading.tables.names, toString index, name), levels = reading.tables.levels, exprs = reading.tables.exprs))
+    setName (reading, index, name) = setTables (reading, Tables(names = keyed (reading.tables.names, index, name), levels = reading.tables.levels, exprs = reading.tables.exprs))
 
-    setLevel (reading, index, level) = setTables (reading, Tables(names = reading.tables.names, levels = mapSet (reading.tables.levels, toString index, level), exprs = reading.tables.exprs))
+    setLevel (reading, index, level) = setTables (reading, Tables(names = reading.tables.names, levels = keyed (reading.tables.levels, index, level), exprs = reading.tables.exprs))
 
-    setExpr (reading, index, term) = setTables (reading, Tables(names = reading.tables.names, levels = reading.tables.levels, exprs = mapSet (reading.tables.exprs, toString index, term)))
+    setExpr (reading, index, term) = setTables (reading, Tables(names = reading.tables.names, levels = reading.tables.levels, exprs = keyed (reading.tables.exprs, index, term)))
+
+    // `table` with this line's `index` bound to `value`; indices are keys by their written number.
+    keyed (table, index, value) = mapSet (table, toString index, value)
 
     addItem (reading, item) = Reading(tables = reading.tables, items = listAppend (reading.items, item), line = reading.line)
 
@@ -144,8 +146,11 @@ module Export
         "" => leaf
         other => "${other}.${leaf}"
 
+    (** The line's own index in `table`, checked fresh, then read by `form`. *)
+    freshLine (reading, json, field, table, first, kind, form) = ExportJson::upon (ExportJson::intIn (json, field), \index => ExportJson::upon (freshIn (table, index, first, kind), \fresh => form (reading, json, fresh)))
+
     (** A name is `str` or `num`; both name their dotted prefix by index. *)
-    nameLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "in"), \index => ExportJson::upon (freshIn (reading.tables.names, index, 1, "name"), \fresh => nameForm (reading, json, fresh)))
+    nameLine (reading, json) = freshLine (reading, json, "in", reading.tables.names, 1, "name", nameForm)
 
     nameForm (reading, json, index) = match ExportJson::hasField (json, "str")
         true => nameStr (reading, json, index)
@@ -179,7 +184,7 @@ module Export
     nameDone (reading, index, parent, leaf) = ExportJson::upon (ExportJson::nameOf (reading.tables, parent), \prefix => Success(value = setName (reading, index, dotted (prefix, leaf))))
 
     (** A level is `succ`, `max`, `imax` or `param`. *)
-    levelLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "il"), \index => ExportJson::upon (freshIn (reading.tables.levels, index, 1, "level"), \fresh => levelForm (reading, json, fresh)))
+    levelLine (reading, json) = freshLine (reading, json, "il", reading.tables.levels, 1, "level", levelForm)
 
     levelForm (reading, json, index) = ExportJson::upon (kindOf (json, "il"), \kind => levelKind (reading, json, index, kind))
 
@@ -215,7 +220,7 @@ module Export
     paramLevel (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "param"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => Success(value = setLevel (reading, index, Param name))))
 
     (** Read a supported expression; unknown kinds are refused. *)
-    exprLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "ie"), \index => ExportJson::upon (freshIn (reading.tables.exprs, index, 0, "expr"), \fresh => exprForm (reading, json, fresh)))
+    exprLine (reading, json) = freshLine (reading, json, "ie", reading.tables.exprs, 0, "expr", exprForm)
 
     exprForm (reading, json, index) = ExportJson::upon (kindOf (json, "ie"), \kind => exprKind (reading, json, index, kind))
 

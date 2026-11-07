@@ -995,6 +995,9 @@ ok norm.prepend.0
 ok norm.prepend.1
 ok norm.prepend.2
 ok norm.align.text
+ok norm.each
+ok models.token_index
+ok unicode.map_indexed
 ok norm.align.char
 ok norm.align.start
 ok norm.align.end
@@ -1806,4 +1809,4 @@ ok qwen.contraction.re
 ok qwen.contraction.ve
 ok qwen.contraction.ll
 ok qwen.json.external.tables
-1808 passed, 0 failed
+1811 passed, 0 failed

@@ -1,5 +1,6 @@
 namespace registry_api;
 import registry::Bundle
+import registry::Bytes
 import registry::Canonical
 import registry::Catalog
 import registry::Json
@@ -29,9 +30,6 @@ module Router {
     let noCache = "Cache-Control: no-cache"
     let allowGet = "Allow: GET"
 
-    fn member(key, value) = Json::Member { key: key, value: value }
-    fn str(text) = Json::Str { text: text }
-    fn num(value) = Json::Num { value: value }
 
     fn okResponse(body) = Response { status: okStatus, contentType: jsonType, etag: "", body: body }
 
@@ -40,9 +38,9 @@ module Router {
         contentType: problemType,
         etag: "",
         body: Canonical::serialize(Json::Obj { members: [
-            member("code", str(code)),
-            member("status", num(status)),
-            member("title", str(title))
+            Json::member("code", Json::str(code)),
+            Json::member("status", Json::num(status)),
+            Json::member("title", Json::str(title))
         ] }) ?: ""
     }
 
@@ -67,10 +65,7 @@ module Router {
         _ => notFound()
     }
 
-    fn withoutQuery(path) = match indexOf(path, "?") {
-        Success { value } => take(path, value)
-        Error => path
-    }
+    fn withoutQuery(path) = Bytes::before(path, "?")
 
     fn segments(path) = split(path, "/") ?: [path]
 

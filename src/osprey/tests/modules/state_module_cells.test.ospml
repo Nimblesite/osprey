@@ -7,22 +7,6 @@
 
 namespace metrics
 
-
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
-
 state Tally
     (** The assembler removes these cells from module scope and injects a fresh
         pair into every call of the installer below. *)
@@ -68,18 +52,15 @@ addThenReset () =
 
 (** Cell writes accumulate across operations inside one installed scope. *)
 accumulationCase () = checkAll ("state accumulates within one scope", [
-    Tally::withTally threeAdds == "1/11/111",
-    Tally::withTally addThenCount == "5:1",
+    structuralEquals [Tally::withTally threeAdds, Tally::withTally addThenCount] ["1/11/111", "5:1"],
     Tally::withTally addThenReset == "9->1"
 ])
 
 (** Every installer call allocates its own cells [MODULES-STATE-MODULE]. *)
 freshCellsCase () = checkAll ("each installer call gets fresh cells", [
     Tally::withTally threeAdds == Tally::withTally threeAdds,
-    Tally::withTally addThenCount == "5:1",
-    Tally::withTally addThenCount == "5:1",
-    Tally::withTally threeAdds == "1/11/111",
-    Tally::withTally addThenReset == "9->1"
+    structuralEquals [Tally::withTally addThenCount, Tally::withTally addThenCount] ["5:1", "5:1"],
+    structuralEquals [Tally::withTally threeAdds, Tally::withTally addThenReset] ["1/11/111", "9->1"]
 ])
 
 (** Reading through the effect is the only route to the owned state. *)
@@ -93,6 +74,6 @@ effectMediatedCase () = checkAll ("all access is effect-mediated", [
 exactArithmetic (\() =>
     print "${Tally::withTally threeAdds} ${Tally::withTally addThenCount} ${Tally::withTally addThenReset}")
 
-test ("owned cells accumulate inside one installer scope", \() => exactArithmetic (accumulationCase))
-test ("installer calls do not share cells", \() => exactArithmetic (freshCellsCase))
-test ("owned state is reachable only through the effect", \() => exactArithmetic (effectMediatedCase))
+test ("owned cells accumulate inside one installer scope", exactly accumulationCase)
+test ("installer calls do not share cells", exactly freshCellsCase)
+test ("owned state is reachable only through the effect", exactly effectMediatedCase)

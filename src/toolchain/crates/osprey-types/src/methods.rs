@@ -145,6 +145,12 @@ use crate::ty::Type;
 
 pub(crate) const OBLIGATION: &str = "$method:";
 
+/// The next `:`-separated descriptor field as a number, or `0` when it is
+/// missing or unreadable — an obligation written without a site.
+fn descriptor_number(parts: &mut std::str::SplitN<'_, char>) -> u32 {
+    parts.next().and_then(|part| part.parse().ok()).unwrap_or(0)
+}
+
 impl Checker {
     /// A generic dotted call keeps both possible callees until its receiver
     /// resolves. The relation travels with the ordinary HM scheme, including
@@ -155,14 +161,8 @@ impl Checker {
         };
         let mut descriptor = descriptor.splitn(6, ':');
         let explicit = descriptor.next().and_then(|n| n.parse::<usize>().ok());
-        let line = descriptor
-            .next()
-            .and_then(|n| n.parse::<u32>().ok())
-            .unwrap_or(0);
-        let column = descriptor
-            .next()
-            .and_then(|n| n.parse::<u32>().ok())
-            .unwrap_or(0);
+        let line = descriptor_number(&mut descriptor);
+        let column = descriptor_number(&mut descriptor);
         let (Some(site), Some(field), Some(method)) =
             (descriptor.next(), descriptor.next(), descriptor.next())
         else {

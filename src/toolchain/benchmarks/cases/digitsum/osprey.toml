@@ -1,0 +1,5 @@
+[project]
+name = "digitsum"
+source_roots = [".", "../../shared"]
+default_namespace = "digitsum"
+entry = "digitsum.osp"

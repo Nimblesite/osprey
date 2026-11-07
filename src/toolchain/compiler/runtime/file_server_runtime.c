@@ -28,6 +28,7 @@
 
 #include "socket_platform.h"
 #include "socket_safety.h"
+#include "osprey_path.h"
 
 enum { FS_TICK_MS = 100 }; // how soon a connection blocked on its peer notices a stop
 enum { FS_SERVERS = 16, FS_CHUNK = 65536, FS_REQUEST = 8192, FS_WAIT = 120 };
@@ -248,7 +249,9 @@ static bool resolve(const FileServer *server, const char *path, Served *served) 
   if (path[0] != '/' || !is_plain_name(name)) {
     return false;
   }
-  snprintf(served->path, sizeof served->path, "%s/%s", server->path, name);
+  if (osp_path_child(served->path, sizeof served->path, server->path, name) == 0) {
+    return false; // a truncated path could name a different file: refuse it
+  }
   served->content_type = folder_type(name);
   struct stat info;
   for (int waited = 0; stat(served->path, &info) != 0; waited++) {

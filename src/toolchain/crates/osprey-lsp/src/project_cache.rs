@@ -40,11 +40,14 @@ pub(crate) struct Checked {
     pub(crate) warnings: crate::warning_actions::Warnings,
 }
 
+/// The latest analysis of one project root, locked on its own.
+type Slot = Arc<Mutex<Option<(Inputs, Arc<Checked>)>>>;
+
 /// Each engine owns its memo: unrelated servers and parallel tests cannot
 /// evict the project while its open siblings are being refreshed.
 #[derive(Debug, Default)]
 pub(crate) struct ProjectCache {
-    latest: Mutex<std::collections::BTreeMap<PathBuf, (Inputs, Arc<Checked>)>>,
+    latest: Mutex<std::collections::BTreeMap<PathBuf, Slot>>,
     sources: Mutex<crate::project_sources::SourceCache>,
     #[cfg(test)]
     computed: std::sync::atomic::AtomicUsize,
@@ -58,11 +61,13 @@ impl ProjectCache {
         sources: &[SourceFile],
     ) -> Arc<Checked> {
         let inputs = Inputs::of(config, sources);
+        let slot = Arc::clone(lock(&self.latest).entry(root.to_path_buf()).or_default());
         // The entry is replaced whole, so a poisoned mutex cannot expose a
-        // partially written analysis. Hold it through computation to avoid
-        // duplicate work if two requests arrive together.
-        let mut latest = lock(&self.latest);
-        if let Some((_, value)) = latest.get(root).filter(|(seen, _)| *seen == inputs) {
+        // partially written analysis. One lock per project, held through the
+        // computation: siblings asking together share one analysis, while a
+        // request in another project never waits for it.
+        let mut latest = lock(&slot);
+        if let Some((_, value)) = latest.as_ref().filter(|(seen, _)| *seen == inputs) {
             return Arc::clone(value);
         }
         let value = Arc::new(analyse(config, sources));
@@ -70,7 +75,7 @@ impl ProjectCache {
         let _ = self
             .computed
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let _ = latest.insert(root.to_path_buf(), (inputs, Arc::clone(&value)));
+        *latest = Some((inputs, Arc::clone(&value)));
         value
     }
 

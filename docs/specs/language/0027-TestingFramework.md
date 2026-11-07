@@ -65,6 +65,30 @@ either: static discovery (`[TESTING-LIST]`), the test-case hover
 (`[TESTING-DOC-HOVER]`), and skip warnings (`[TESTING-SKIP-WARNING]`) all treat
 its `test(...)` calls as ordinary calls to the user's own function.
 
+### `exactArithmetic(work: fn() -> a) -> a` — `[TESTING-ARITH-POLICY]`
+
+The `Arith` policy a test installs around exact-value work. It runs `work` and
+records any arithmetic fault in it as a failed assertion that names the
+operator (`unexpected arithmetic overflow`, `unexpected zero divisor`), so a
+test cannot pass on a wrapped or substituted value. It ships as the `testing`
+unit of the source prelude
+([`prelude/testing.osp`](../../../src/toolchain/crates/osprey-types/src/prelude/testing.osp)),
+which attaches only to a program that names it; a program that declares its
+own `exactArithmetic` keeps its own. Installing it is still explicit and by
+name, as [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)
+requires: no test gets an ambient policy.
+`exactly(work)` is the test body that runs `work` under that policy, so a
+case registers as `test("name", exactly(work))`.
+
+The same unit holds the GPU `Result` helpers the GPU suites share:
+`withBuffer(result, work)` runs `work` on a successful operation's value,
+`gpuSatisfies(result, predicate)` tests it, `gpuEquals(result, expected)` and
+`gpuLengthIs(result, expected)` compare its value or length, `withIndices(n, work)` runs `work`
+on `gpuIota(n)`, and `iotaError(n)` names why `gpuIota(n)` failed. A failed
+operation fails the case with its reason, never a substituted value
+([FAILURE-EXPLICIT]). `containsAll(text, parts)` and `containsNone(text, parts)`
+state that a rendered transcript holds every part, or none, in one assertion.
+
 ## Equality semantics
 
 **`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality

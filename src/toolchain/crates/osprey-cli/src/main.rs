@@ -68,6 +68,13 @@ use native::c_compiler;
 use native::{child_exit_code, native_executable, scratch_stem};
 use pipeline::{load_input, reject_cross_target_options, report_type_errors, run, target_error};
 
+/// A usage error: reported on stderr and answered as the usage exit status,
+/// which every subcommand that cannot parse its arguments shares.
+pub(crate) fn usage_error(message: &str) -> ExitCode {
+    eprintln!("{message}");
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args
@@ -104,10 +111,7 @@ fn report_version(args: &[String]) -> ExitCode {
 fn run_arguments(args: &[String]) -> ExitCode {
     let cli = match parse_args(args) {
         Ok(cli) => cli,
-        Err(message) => {
-            eprintln!("{message}");
-            return ExitCode::from(2);
-        }
+        Err(message) => return usage_error(&message),
     };
     match cli.mode.as_str() {
         "--deps" => report_dependencies(&cli),

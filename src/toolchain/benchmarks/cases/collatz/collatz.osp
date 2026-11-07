@@ -1,28 +1,14 @@
 // Collatz (3n+1) stopping time summed over 1..N — integer division (n/2) in deep recursion.
-fn add(a, b) = a + b
-fn mul(a, b) = a * b
-fn mod_(a, b) = a % b
+import bench::Bench::{guarded, add, mul, modp}
 fn half(n) = intDiv(n, 2)
 fn next3(n) = add(mul(3, n), 1)
 
 fn collatz(n) = match n {
     1 => 0
-    _ => match mod_(n, 2) {
+    _ => match modp(n, 2) {
         0 => add(1, collatz(half(n)))
         _ => add(1, collatz(next3(n)))
     }
 }
 fn step(acc, i) = add(acc, collatz(i))
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${range(1, 100001) |> fold(0, step)}")
-}
+fn main() = guarded(|| => print("${range(1, 100001) |> fold(0, step)}"))

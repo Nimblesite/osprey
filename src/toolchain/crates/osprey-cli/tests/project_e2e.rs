@@ -7,6 +7,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Fixture setup and cleanup failures end these tests through `?`.
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+/// A rewritten fixture copy: its directory, the original text and the new text.
+type Rewritten = (PathBuf, String, String);
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
@@ -50,6 +56,29 @@ fn arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
+/// Asserts a pipeline invocation succeeded, returning its output.
+fn checked(output: Output) -> Output {
+    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+    output
+}
+
+/// Checks `project` quietly, asserting the flat project pipeline accepted it.
+fn check_passes(project: &Path) {
+    let output = run(&[arg(project), "--check".into(), "--quiet".into()]);
+    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+}
+
+/// A process-scoped temporary path plus the namespace its directory name spells.
+fn temp_project(name: &str) -> (PathBuf, String) {
+    let path = std::env::temp_dir().join(format!("osprey_{name}_e2e_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    let namespace = path.file_name().and_then(|name| name.to_str());
+    let namespace = namespace
+        .expect("temporary directory has an identifier name")
+        .to_owned();
+    (path, namespace)
+}
+
 const FIXTURE_SOURCES: [&str; 11] = [
     "osprey.toml",
     "src/main.ospml",
@@ -64,10 +93,11 @@ const FIXTURE_SOURCES: [&str; 11] = [
     "src/web/pages.ospml",
 ];
 
+/// The module the project-layout tests import their `answer` from.
+const ANSWERS_MODULE: &str = "module Answers {\n    export fn answer() -> int = 42\n}\n";
+
 fn copy_fixture(name: &str) -> PathBuf {
-    let root =
-        std::env::temp_dir().join(format!("osprey_project_e2e_{name}_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let root = temp_project(&format!("fixture_{name}")).0;
     for relative in FIXTURE_SOURCES {
         let destination = root.join(relative);
         if let Some(parent) = destination.parent() {
@@ -81,6 +111,28 @@ fn copy_fixture(name: &str) -> PathBuf {
 
 fn expected_output() -> String {
     std::fs::read_to_string(fixture().join("expectedoutput")).expect("read expectedoutput fixture")
+}
+
+/// Copies the bank fixture under `name`, rewriting `relative` from `from` to `to`.
+fn rewritten_fixture(name: &str, relative: &str, from: &str, to: &str) -> Rewritten {
+    let project = copy_fixture(name);
+    let file = project.join(relative);
+    let original = std::fs::read_to_string(&file).expect("read fixture source");
+    let rewritten = original.replace(from, to);
+    std::fs::write(&file, &rewritten).expect("write rewritten fixture source");
+    (project, original, rewritten)
+}
+
+/// Runs `project` under the GC and ARC backends, returning each run's stderr.
+fn run_under_each_backend(project: &Path, expected: &str) -> Vec<String> {
+    let mut stderrs = Vec::new();
+    for backend in ["gc", "arc"] {
+        let output = run(&[arg(project), "--run".into(), format!("--memory={backend}")]);
+        assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
+        assert_eq!(output.stdout, expected, "{backend}");
+        stderrs.push(output.stderr);
+    }
+    stderrs
 }
 
 /// The Talon Bank demo binds one fixed HTTP port and one `SQLite` file, so
@@ -117,33 +169,37 @@ fn demo_preparation_preserves_another_sessions_hold_marker() {
 }
 
 #[test]
-fn directory_and_manifest_inputs_share_the_flat_project_pipeline() {
+fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
     let project = fixture();
     let manifest = project.join("osprey.toml");
     for path in [&project, &manifest] {
-        let output = run(&[arg(path), "--check".to_string(), "--quiet".to_string()]);
-        assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+        check_passes(path);
     }
 
-    let ast = run(&[arg(&project), "--ast".to_string()]);
-    assert_eq!(ast.code, Some(0), "stderr={}", ast.stderr);
-    assert!(!ast.stdout.contains("Import("), "{}", ast.stdout);
-    assert!(!ast.stdout.contains("Namespace {"), "{}", ast.stdout);
-    assert!(!ast.stdout.contains("Module {"), "{}", ast.stdout);
+    let ast = checked(run(&[arg(&project), "--ast".to_string()])).stdout;
+    assert!(!ast.contains("Import("), "{ast}");
+    assert!(!ast.contains("Namespace {"), "{ast}");
+    assert!(!ast.contains("Module {"), "{ast}");
 
-    let llvm = run(&[arg(&project), "--llvm".to_string()]);
-    assert_eq!(llvm.code, Some(0), "stderr={}", llvm.stderr);
-    assert!(llvm.stdout.contains("define"), "{}", llvm.stdout);
+    let llvm = checked(run(&[arg(&project), "--llvm".to_string()])).stdout;
+    assert!(llvm.contains("define"), "{llvm}");
 
-    let symbols = run(&[arg(&project), "--symbols".to_string()]);
-    assert_eq!(symbols.code, Some(0), "stderr={}", symbols.stderr);
-    assert!(
-        symbols.stdout.contains("bank/web::Pages::render"),
-        "{}",
-        symbols.stdout
-    );
-    assert!(!symbols.stdout.contains("__osp_"), "{}", symbols.stdout);
-    assert_project_main_symbol_is_local(&symbols.stdout, &project.join("src/main.ospml"));
+    let symbols = checked(run(&[arg(&project), "--symbols".to_string()])).stdout;
+    assert!(symbols.contains("bank/web::Pages::render"), "{symbols}");
+    assert!(!symbols.contains("__osp_"), "{symbols}");
+    assert_project_main_symbol_is_local(&symbols, &project.join("src/main.ospml"));
+
+    // An ordinary script keeps its own names: no project name mangling.
+    let source = temp_project("plain_script").0.with_extension("osp");
+    std::fs::write(
+        &source,
+        "fn historicalName(value: int) -> int = value\nprint(historicalName(7))\n",
+    )
+    .expect("write ordinary script");
+    let llvm = checked(run(&[arg(&source), "--llvm".to_string()])).stdout;
+    assert!(llvm.contains("@historicalName("), "{llvm}");
+    assert!(!llvm.contains("__osp_"), "{llvm}");
+    let _ = std::fs::remove_file(source);
 }
 
 fn assert_project_main_symbol_is_local(json: &str, source: &Path) {
@@ -158,55 +214,58 @@ fn assert_project_main_symbol_is_local(json: &str, source: &Path) {
         .lines()
         .position(|line| line.trim_start().starts_with("main () ="))
         .and_then(|line| u64::try_from(line.saturating_add(1)).ok());
-    assert_eq!(
-        main.and_then(|entry| entry.get("line"))
-            .and_then(serde_json::Value::as_u64),
-        expected_line
-    );
-    assert_eq!(
-        main.and_then(|entry| entry.get("path"))
-            .and_then(serde_json::Value::as_str),
-        std::fs::canonicalize(source)
-            .ok()
-            .as_deref()
-            .and_then(Path::to_str)
-    );
+    let line = main
+        .and_then(|entry| entry.get("line"))
+        .and_then(serde_json::Value::as_u64);
+    assert_eq!(line, expected_line);
+    let path = main
+        .and_then(|entry| entry.get("path"))
+        .and_then(serde_json::Value::as_str);
+    let canonical = std::fs::canonicalize(source).ok();
+    assert_eq!(path, canonical.as_deref().and_then(Path::to_str));
 }
 
 #[test]
-fn bank_project_runs_byte_exact_against_expectedoutput() {
+fn bank_project_runs_and_builds_byte_exact_against_expectedoutput() {
     let _serialized = demo_run_lock();
+
     let project = fixture();
-    let output = run(&[arg(&project), "--run".to_string()]);
-    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+    let output = checked(run(&[arg(&project), "--run".to_string()]));
     assert_eq!(output.stdout, expected_output());
+
+    let project = copy_fixture("build");
+    let artifact = project.join("talon-bank");
+    let _ = checked(run_in(&project, &["build", "--quiet"]));
+    assert!(artifact.is_file(), "missing {}", artifact.display());
+
+    let executed = Command::new(&artifact).output().expect("run built project");
+    assert!(executed.status.success());
+    assert_eq!(String::from_utf8_lossy(&executed.stdout), expected_output());
+    let _ = std::fs::remove_dir_all(project);
 }
 
 // [MODULES-SIGNATURE], [MODULES-OPAQUE-TYPES]: exercise the shipped bank source.
 #[test]
-fn bank_money_signature_keeps_amounts_opaque_and_cents_manifest(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn bank_money_signature_is_opaque_from_both_flavors() -> TestResult {
     for (extension, source) in [
         ("osp", "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n"),
         ("ospml", "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n"),
     ] {
         let project = money_client_fixture(extension, source)?;
-        assert_money_runs(&project);
+        let expected = "$4,200.05|420006|true|-$92,233,720,368,547,758.08\n";
+        for stderr in run_under_each_backend(&project, expected) {
+            assert!(!stderr.contains("redundant"), "{stderr}");
+        }
+        std::fs::remove_dir_all(project)?;
+    }
+    for &(extension, source, error) in MONEY_REJECTIONS {
+        let project = money_client_fixture(extension, source)?;
+        let output = run(&[arg(&project), "--check".into(), "--quiet".into()]);
+        assert_eq!(output.code, Some(1), "{source}: {}", output.stderr);
+        assert!(output.stderr.contains(error), "{source}: {}", output.stderr);
         std::fs::remove_dir_all(project)?;
     }
     Ok(())
-}
-
-fn assert_money_runs(project: &Path) {
-    for backend in ["gc", "arc"] {
-        let output = run(&[arg(project), "--run".into(), format!("--memory={backend}")]);
-        assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
-        assert_eq!(
-            output.stdout, "$4,200.05|420006|true|-$92,233,720,368,547,758.08\n",
-            "{backend}"
-        );
-        assert!(!output.stderr.contains("redundant"), "{}", output.stderr);
-    }
 }
 
 const MONEY_REJECTIONS: &[(&str, &str, &str)] = &[
@@ -234,26 +293,17 @@ const MONEY_REJECTIONS: &[(&str, &str, &str)] = &[
     ("ospml", "main () = Money::show 1\n", "type mismatch"),
 ];
 
-#[test]
-fn bank_money_signature_rejects_representation_access_from_both_flavors(
-) -> Result<(), Box<dyn std::error::Error>> {
-    for &(extension, source, error) in MONEY_REJECTIONS {
-        let project = money_client_fixture(extension, source)?;
-        let output = run(&[arg(&project), "--check".into(), "--quiet".into()]);
-        assert_eq!(output.code, Some(1), "{source}: {}", output.stderr);
-        assert!(output.stderr.contains(error), "{source}: {}", output.stderr);
-        std::fs::remove_dir_all(project)?;
-    }
-    Ok(())
-}
-
 fn money_client_fixture(
     extension: &str,
     source: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let project = money_project_directory(extension, source.len())?;
-    let entry = project.join(format!("src/main.{extension}"));
-    std::fs::write(&entry, source)?;
+    let project = temp_project(&format!("money_signature_{extension}_{}", source.len())).0;
+    std::fs::create_dir_all(project.join("src"))?;
+    let _ = std::fs::copy(
+        fixture().join("src/domain/money.ospml"),
+        project.join("src/money.ospml"),
+    )?;
+    std::fs::write(project.join(format!("src/main.{extension}")), source)?;
     std::fs::write(
         project.join("osprey.toml"),
         format!("[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"),
@@ -261,134 +311,79 @@ fn money_client_fixture(
     Ok(project)
 }
 
-fn money_project_directory(extension: &str, source_length: usize) -> std::io::Result<PathBuf> {
-    let project = std::env::temp_dir().join(format!(
-        "osprey_money_signature_{}_{}_{}",
-        std::process::id(),
-        extension,
-        source_length
-    ));
-    std::fs::create_dir_all(project.join("src"))?;
-    let _ = std::fs::copy(
-        fixture().join("src/domain/money.ospml"),
-        project.join("src/money.ospml"),
-    )?;
-    Ok(project)
-}
-
 #[test]
-fn module_aware_single_file_uses_assembly_without_loading_siblings() {
-    let directory =
-        std::env::temp_dir().join(format!("osprey_single_module_e2e_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&directory);
+fn answers_project_layouts_are_path_spelling_independent() {
+    // A single file carrying its own module; the sibling stays unloaded.
+    let (directory, namespace) = temp_project("single_module");
     std::fs::create_dir_all(&directory).expect("create single-source directory");
     let source = directory.join("main.osp");
-    let namespace = directory
-        .file_name()
-        .and_then(|name| name.to_str())
-        .expect("temporary directory has an identifier name");
     std::fs::write(
         &source,
         format!(
-            concat!(
-                "module Answers {{\n",
-                "    export fn answer() -> int = 42\n",
-                "}}\n",
-                "import {}::Answers::{{answer}}\n",
-                "fn main() = print(\"answer=${{answer()}}\")\n",
-            ),
-            namespace
+            "{ANSWERS_MODULE}import {namespace}::Answers::{{answer}}\nfn main() = print(\"answer=${{answer()}}\")\n"
         ),
     )
     .expect("write single module source");
     std::fs::write(directory.join("broken.osp"), "fn = = =\n").expect("write ignored sibling");
-
-    let output = run(&[arg(&source), "--run".to_string()]);
-    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+    let output = checked(run(&[arg(&source), "--run".to_string()]));
     assert_eq!(output.stdout, "answer=42\n");
-    let relative = run_in(&directory, &["main.osp", "--check", "--quiet"]);
-    assert_eq!(relative.code, Some(0), "stderr={}", relative.stderr);
+    let _ = checked(run_in(&directory, &["main.osp", "--check", "--quiet"]));
     let _ = std::fs::remove_dir_all(directory);
-}
 
-#[test]
-fn manifest_free_project_identity_is_path_spelling_independent() {
-    let directory =
-        std::env::temp_dir().join(format!("osprey_manifest_free_e2e_{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&directory);
+    // A manifest-free project under `src`, addressed absolutely and relatively.
+    let (directory, namespace) = temp_project("manifest_free");
     let sources = directory.join("src");
     std::fs::create_dir_all(&sources).expect("create manifest-free source root");
-    let namespace = directory
-        .file_name()
-        .and_then(|name| name.to_str())
-        .expect("temporary directory has an identifier name");
-    std::fs::write(
-        sources.join("values.osp"),
-        "module Answers {\n    export fn answer() -> int = 42\n}\n",
-    )
-    .expect("write module source");
+    std::fs::write(sources.join("values.osp"), ANSWERS_MODULE).expect("write module source");
     std::fs::write(
         sources.join("main.osp"),
         format!("import {namespace}::Answers::{{answer}}\nfn main() = print(\"${{answer()}}\")\n"),
     )
     .expect("write entry source");
-
-    let absolute = run(&[
-        arg(&directory),
-        "--check".to_string(),
-        "--quiet".to_string(),
-    ]);
-    assert_eq!(absolute.code, Some(0), "stderr={}", absolute.stderr);
-    let relative = run_in(&directory, &[".", "--check", "--quiet"]);
-    assert_eq!(relative.code, Some(0), "stderr={}", relative.stderr);
+    check_passes(&directory);
+    let _ = checked(run_in(&directory, &[".", "--check", "--quiet"]));
     let _ = std::fs::remove_dir_all(directory);
-}
-
-#[test]
-fn ordinary_script_bypasses_project_name_mangling() {
-    let source = std::env::temp_dir().join(format!(
-        "osprey_plain_script_e2e_{}.osp",
-        std::process::id()
-    ));
-    std::fs::write(
-        &source,
-        "fn historicalName(value: int) -> int = value\nprint(historicalName(7))\n",
-    )
-    .expect("write ordinary script");
-    let output = run(&[arg(&source), "--llvm".to_string()]);
-    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
-    assert!(
-        output.stdout.contains("@historicalName("),
-        "{}",
-        output.stdout
-    );
-    assert!(!output.stdout.contains("__osp_"), "{}", output.stdout);
-    let _ = std::fs::remove_file(source);
 }
 
 /// A namespaced declaration reaches the type checker under its flat linkage
 /// name, so a diagnostic about it must be translated back before a human sees
-/// it — the same rule `--symbols` and `--llvm` already hold to.
+/// it — the same rule `--symbols` and `--llvm` already hold to. The reported
+/// position is the declaring module's physical line, never a flattened one.
 #[test]
-fn a_project_type_diagnostic_names_declarations_in_source_form() {
-    let project = copy_fixture("diagnostic_names");
-    let main = project.join("src/main.ospml");
-    let source = std::fs::read_to_string(&main).expect("read project entry");
-    std::fs::write(
-        &main,
-        source.replace(
-            "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
-            "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]",
-        ),
-    )
-    .expect("drop one effect from the declared row");
-
+fn project_type_diagnostics_map_back_to_physical_source_lines() {
+    let (project, _, _) = rewritten_fixture(
+        "diagnostic_names",
+        "src/main.ospml",
+        "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
+        "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]",
+    );
     let output = run(&[arg(&project), "--check".to_string()]);
     assert_ne!(output.code, Some(0), "stdout={}", output.stdout);
     let rendered = format!("{}{}", output.stdout, output.stderr);
     assert!(rendered.contains("`bank::serve`"), "{rendered}");
     assert!(rendered.contains("bank::Api::Audit.log"), "{rendered}");
     assert!(!rendered.contains("__osp_"), "{rendered}");
+    let _ = std::fs::remove_dir_all(project);
+
+    let (project, original, broken) = rewritten_fixture(
+        "diagnostic",
+        "src/domain/money.ospml",
+        "show : Amount -> string",
+        "show : Amount -> int",
+    );
+    assert_ne!(
+        broken, original,
+        "fixture mutation must change the ML source"
+    );
+    let line = broken
+        .lines()
+        .position(|line| line.contains("show amount ="))
+        .map_or(0, |line| line.saturating_add(1));
+    let money = project.join("src/domain/money.ospml");
+    let output = run(&[arg(&project), "--check".to_string()]);
+    assert_ne!(output.code, Some(0));
+    let expected = format!("{}:{line}:", money.display());
+    assert!(output.stderr.contains(&expected), "{}", output.stderr);
     let _ = std::fs::remove_dir_all(project);
 }
 
@@ -426,46 +421,10 @@ fn link_directives_from_a_non_entry_source_reach_the_native_driver() {
         .arg(&output_path)
         .env("OSPREY_CC", &driver)
         .env("OSPREY_CC_LOG", &log);
-    let output = finish(&mut command);
-    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
+    let _ = checked(finish(&mut command));
     let arguments = std::fs::read_to_string(log).expect("read recorded compiler args");
     assert!(arguments.lines().any(|arg| arg == "-lproof_from_non_entry"));
     assert!(arguments.lines().any(|arg| arg == "-L/proof/non-entry"));
-    let _ = std::fs::remove_dir_all(project);
-}
-
-#[test]
-fn build_subcommand_uses_project_name_inside_project_directory() {
-    let _serialized = demo_run_lock();
-    let project = copy_fixture("build");
-    let artifact = project.join("talon-bank");
-    let output = run_in(&project, &["build", "--quiet"]);
-    assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
-    assert!(artifact.is_file(), "missing {}", artifact.display());
-
-    let executed = Command::new(&artifact).output().expect("run built project");
-    assert!(executed.status.success());
-    assert_eq!(String::from_utf8_lossy(&executed.stdout), expected_output());
-    let _ = std::fs::remove_dir_all(project);
-}
-
-#[test]
-fn flattened_type_errors_map_back_to_physical_local_lines() {
-    let project = copy_fixture("diagnostic");
-    let money = project.join("src/domain/money.ospml");
-    let source = std::fs::read_to_string(&money).expect("read ML source");
-    let broken = source.replace("show : Amount -> string", "show : Amount -> int");
-    assert_ne!(broken, source, "fixture mutation must change the ML source");
-    let line = broken
-        .lines()
-        .position(|line| line.contains("show amount ="))
-        .map_or(0, |line| line.saturating_add(1));
-    std::fs::write(&money, broken).expect("write broken ML source");
-
-    let output = run(&[arg(&project), "--check".to_string()]);
-    assert_ne!(output.code, Some(0));
-    let expected = format!("{}:{line}:", money.display());
-    assert!(output.stderr.contains(&expected), "{}", output.stderr);
     let _ = std::fs::remove_dir_all(project);
 }
 
@@ -551,11 +510,7 @@ const RECURSIVE_OPEN_PAYLOAD_PROJECT: &str = concat!(
 );
 
 fn recursive_project(name: &str, source: &str) -> std::io::Result<PathBuf> {
-    let project = std::env::temp_dir().join(format!(
-        "osprey_recursive_result_{name}_{}",
-        std::process::id()
-    ));
-    let _ = std::fs::remove_dir_all(&project);
+    let project = temp_project(&format!("recursive_result_{name}")).0;
     std::fs::create_dir_all(project.join("src"))?;
     std::fs::write(
         project.join("osprey.toml"),
@@ -565,39 +520,22 @@ fn recursive_project(name: &str, source: &str) -> std::io::Result<PathBuf> {
     Ok(project)
 }
 
-#[test]
-fn recursive_result_group_runs_without_written_signatures() -> Result<(), Box<dyn std::error::Error>>
-{
-    let project = recursive_project("annotated", RECURSIVE_RESULT_PROJECT)?;
-    for backend in ["gc", "arc"] {
-        let output = run(&[arg(&project), "--run".into(), format!("--memory={backend}")]);
-        assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
-        assert_eq!(output.stdout, "(1 2)\n", "{backend}");
-        assert!(
-            !output
-                .stderr
-                .contains("is recursive and its return type is not inferred"),
-            "{backend}: {}",
-            output.stderr
-        );
-    }
-    std::fs::remove_dir_all(project)?;
-    Ok(())
-}
+/// The diagnostic a recursive group without an inferred return type reports.
+const RECURSIVE_NEEDS_SIGNATURE: &str = "is recursive and its return type is not inferred";
 
 #[test]
-fn recursive_function_with_an_open_payload_still_asks_for_a_signature(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn recursive_result_groups_need_an_annotation_only_for_an_open_payload() -> TestResult {
+    let project = recursive_project("annotated", RECURSIVE_RESULT_PROJECT)?;
+    for stderr in run_under_each_backend(&project, "(1 2)\n") {
+        assert!(!stderr.contains(RECURSIVE_NEEDS_SIGNATURE), "{stderr}");
+    }
+    std::fs::remove_dir_all(project)?;
+
     let project = recursive_project("open", RECURSIVE_OPEN_PAYLOAD_PROJECT)?;
     let output = run(&[arg(&project), "--run".into(), "--quiet".into()]);
     assert_eq!(output.code, Some(1), "stdout={}", output.stdout);
-    assert!(
-        output
-            .stderr
-            .contains("is recursive and its return type is not inferred"),
-        "{}",
-        output.stderr
-    );
+    let stderr = &output.stderr;
+    assert!(stderr.contains(RECURSIVE_NEEDS_SIGNATURE), "{stderr}");
     std::fs::remove_dir_all(project)?;
     Ok(())
 }

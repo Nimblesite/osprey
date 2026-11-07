@@ -6,13 +6,7 @@ import proof::Environment
 import proof::Fixtures
 import proof::Terms
 import proof
-    Single
-    Theorem
-    Const
-    App
-    NatLit
-    Succ
-    Zero
+    Single Theorem Const App NatLit Succ Zero
 import proof::Naturals
 import prooftests::Support
 
@@ -20,12 +14,9 @@ import prooftests::Support
     ordinary checked constructor applications. Implements [PROOF-EXPORT]. *)
 module StringTests
     export run () =
-        test ("the empty string literal reads as the checked UTF8 construction", \() =>
-            expect (readValue "", "((String.ofByteArray (List.utf8Encode (List.nil.{0} Char))) (((ByteArray.IsValidUTF8.intro (List.utf8Encode (List.nil.{0} Char))) (List.nil.{0} Char)) ((Eq.refl.{1} ByteArray) (List.utf8Encode (List.nil.{0} Char)))))"))
-        test ("string literals preserve ASCII and supplementary Unicode code points", \() =>
-            expect (characters "A😀", "65,128512"))
-        test ("a string literal cannot acquire a type from an empty environment", \() =>
-            expect (startsWith (Support::messageOf (Checked::exported (Environment::empty (), literal "")), "unknown constant `String.ofByteArray`"), true))
+        test ("the empty string literal reads as the checked UTF8 construction", \() => expect (readValue "", "((String.ofByteArray (List.utf8Encode (List.nil.{0} Char))) (((ByteArray.IsValidUTF8.intro (List.utf8Encode (List.nil.{0} Char))) (List.nil.{0} Char)) ((Eq.refl.{1} ByteArray) (List.utf8Encode (List.nil.{0} Char)))))"))
+        test ("string literals preserve ASCII and supplementary Unicode code points", \() => expect (characters "A😀", "65,128512"))
+        test ("a string literal cannot acquire a type from an empty environment", \() => expect (startsWith (Support::messageOf (Checked::exported (Environment::empty (), literal "")), "unknown constant `String.ofByteArray`"), true))
 
     literal text = inserted (replace (Fixtures::idImp (), "\"value\":6", "\"value\":7") ?: "MISSING NEEDLE", text)
 

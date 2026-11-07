@@ -1,10 +1,11 @@
 //! Import validation and contribution-local lookup scopes.
 //! Implements [MODULES-IMPORT] and its wildcard/ambiguity policy.
 
+use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::model::{ProjectGraph, SymbolKey};
 use crate::{ProjectConfig, ProjectError, SourceMetadata};
-use osprey_ast::{ImportDecl, ImportMember, ImportSelection, ModuleKind, Position};
+use osprey_ast::{ImportDecl, ImportMember, ImportSelection, ModuleKind};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Default)]
@@ -57,6 +58,12 @@ pub(crate) fn build(
         .map(|contribution| builder.scope(contribution))
         .collect();
     (scopes, builder.errors)
+}
+
+impl Diagnostics for Builder<'_> {
+    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
+        (self.sources, &mut self.errors)
+    }
 }
 
 struct Builder<'a> {
@@ -275,15 +282,6 @@ impl Builder<'_> {
             .filter(|key| self.member_visible(target, key))
             .cloned()
             .collect()
-    }
-
-    fn error(&mut self, source: usize, position: Option<Position>, message: impl Into<String>) {
-        self.errors.push(ProjectError::in_source(
-            self.sources,
-            source,
-            position,
-            message,
-        ));
     }
 }
 

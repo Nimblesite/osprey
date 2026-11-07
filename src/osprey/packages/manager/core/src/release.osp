@@ -18,4 +18,17 @@ module Release {
 
     /// Every valid release, ordered by key, epoch, ordinal, and every refusal.
     export type Catalog = { served: List<Served>, refused: List<Refused> }
+
+    // `Catalog` shares `served`/`refused` and `Served` shares `id`/`files`
+    // with other records; issue #273 needs the receiver's record spelled out.
+    /// The valid releases of a catalog.
+    export fn servedOf(catalog: Catalog) = catalog.served
+    /// The releases a catalog refused.
+    export fn refusedOf(catalog: Catalog) = catalog.refused
+    /// The identity of a served release.
+    export fn idOf(served: Served) = served.id
+    /// The files of a served release.
+    export fn filesOf(served: Served) = served.files
+    /// The digest of a served release's identity.
+    export fn digestOf(served: Served) = Identity::digestOf(served.id)
 }

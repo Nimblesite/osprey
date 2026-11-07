@@ -32,9 +32,13 @@ their work; it does not imply that they endorse this port.
 
 ## Tests
 
-`tests/` runs 2,177 assertions under `Check.strictly`, identical under GC and ARC and
-golden in `tests/expected_output.txt`; it runs in the package matrix
-(`cargo test -p osprey-cli --test python_packages`) beside the packages it uses.
+`tests/` runs 2,315 assertions under `Check.strictly`, identical under GC, ARC, Metal GC and
+Metal ARC and golden in `tests/expected_output.txt`: the tool-call modules (`ToolSupport`,
+`ParserCases`, `ConstrainCases`), the device model against the fixture (`ModelCases`,
+`FixtureCases`, `TiledCases`) and the GGUF loader against `tests/fixtures/` (`GgufCases`,
+written by `oracle/qwen3_5_gguf.cpython`). Run it with
+`osprey src/osprey/examples/llms/qwen/model/tests --run --memory=gc` (and `--memory=arc`,
+and `OSPREY_GPU=metal` for the device); it is not in the CI package matrix yet.
 
 ## The tiny `Qwen3_5TextConfig` fixture
 
@@ -49,7 +53,8 @@ row-major values, and for `MODEL_HIDDEN_*` every layer's output hidden state and
 norm output over three inputs: one token, eight tokens in one pass, and the same eight fed
 one token at a time through `DynamicCache`. `MODEL_CACHE_*` is the conv, recurrent and
 key/value state that cached run leaves behind, `MODEL_HOOK_NAMES`/`MODEL_HOOK_SHAPES` the
-activations a forward hook can record (in fire order), and `MODEL_DTYPE_PATH` the dtype each
+activations a forward hook can record (in fire order), `MODEL_LOGITS` the batched run's
+logits through the head tied to the embedding, and `MODEL_DTYPE_PATH` the dtype each
 value carries from `input_ids` (`torch.int64`) to state (`torch.float32`). Values are the
 shortest decimals that read back as the same binary32 bits, and the whole module is about
 2.2 MB, so CI never downloads weights.

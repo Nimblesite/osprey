@@ -1,6 +1,7 @@
 namespace registry;
 import registry::Order
 import registry::Release
+import registry::Bytes
 
 /// The capability surface of a release ([PACKAGE-CAPABILITY-CONFINEMENT]):
 /// the ambient capabilities whose builtins its source names, plus its
@@ -24,7 +25,7 @@ module Surface {
     /// The builtin-to-capability map of [PACKAGE-CAPABILITY-CONFINEMENT];
     /// every `http*` and `websocket*` builtin is `io/network` by prefix.
     export fn table() = [
-        named("readFile", files), named("readFileBytes", files), named("fileSize", files), named("writeFile", files), named("gpuLoad", files), named("gpuMapFile", files), named("gpuLoadTensor", files), named("loadTensor", files),
+        named("readFile", files), named("readFileBytes", files), named("fileSize", files), named("writeFile", files), named("gpuLoad", files), named("gpuMapFile", files), named("gpuLoadTensor", files), named("loadTensor", files), named("listDir", files), named("kindOf", files), named("makeDir", files),
         named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
         named("httpGet", network), named("httpPost", network), named("httpPostResponse", network), named("httpPut", network), named("httpDelete", network),
         named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
@@ -72,11 +73,9 @@ module Surface {
 
     fn begin(text) = Scan { mode: codeMode, start: -1, previous: "", found: [], declared: [], frames: [], skip: if startsWith(text, bom) { byteLength(bom) } else { 0 }, python: startsWith(text, pythonMarker) || startsWith(text, bom + pythonMarker), ml: false, boundary: true }
 
-    fn identByte(s, b) = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95 || ((s.ml || s.python) && b >= 128)
+    fn identByte(s, b) = Bytes::isAlnum(b) || b == 95 || ((s.ml || s.python) && b >= 128)
 
     fn lineBreak(b) = b == newline || b == carriageReturn
-
-    fn between(text, from, to) = take(drop(text, from), to - from)
 
     fn declares(s: Scan, capability) = capability != "" && listContains(declarers, s.previous)
 
@@ -91,7 +90,7 @@ module Surface {
         }
     }
 
-    fn closed(text, s, i) = if s.start < 0 { s } else { closedWord(s, between(text, s.start, i)) }
+    fn closed(text, s, i) = if s.start < 0 { s } else { closedWord(s, Bytes::between(text, s.start, i)) }
 
     fn moved(s: Scan, mode, start, frames, skip) = s { mode: mode, start: start, frames: frames, skip: skip }
 
@@ -174,10 +173,9 @@ module Surface {
 
     fn foundIn(s: Scan) = s.found
 
-    fn distinct(capabilities) = foldList(capabilities, [], fn(acc, c) => if listContains(acc, c) { acc } else { listAppend(acc, c) })
 
     /// Sorted and duplicate-free: a surface is a set.
-    fn canonicalOrEmpty(capabilities) = listSort(distinct(capabilities))
+    fn canonicalOrEmpty(capabilities) = listSort(Order::distinctStrings(capabilities))
 
     fn scanFrom(text, initial) = {
         let n = byteLength(text)

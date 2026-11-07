@@ -35,10 +35,19 @@ suite("native lesson media", () => {
 
   test("videos are user-started with a poster and captions enabled by default", () => {
     const html = renderWorkspace({ regions: regions(video), resolveAsset });
-    assert.ok(html.includes("<video") && html.includes(" controls") && html.includes(" playsinline"));
-    assert.ok(!html.includes(" autoplay") && !html.includes(" loop"));
-    assert.ok(html.includes('poster="https://assets.example.test/media/poster.jpg"'));
-    assert.ok(html.includes('<track kind="captions"') && html.includes('src="https://assets.example.test/media/proof.vtt" default'));
+    for (const attribute of ["<video", " controls", " playsinline"]) {
+      assert.ok(html.includes(attribute), attribute);
+    }
+    for (const absent of [" autoplay", " loop"]) {
+      assert.ok(!html.includes(absent), absent);
+    }
+    for (const captions of [
+      'poster="https://assets.example.test/media/poster.jpg"',
+      '<track kind="captions"',
+      'src="https://assets.example.test/media/proof.vtt" default',
+    ]) {
+      assert.ok(html.includes(captions), captions);
+    }
     assert.ok(html.includes('aria-label="A proof develops one justified step at a time"'));
     assert.ok(!html.includes("data-event-ordinal"));
   });
@@ -46,7 +55,9 @@ suite("native lesson media", () => {
   test("media text and resolved URLs cannot inject markup", () => {
     const html = renderWorkspace({ regions: regions({ ...image, alt: '"><script>bad</script>' }),
       resolveAsset: () => 'https://assets.example.test/a.jpg" onerror="bad' });
-    assert.ok(!html.includes("<script>") && !html.includes(' onerror="bad'));
+    for (const injected of ["<script>", ' onerror="bad']) {
+      assert.ok(!html.includes(injected), injected);
+    }
     assert.ok(html.includes("&lt;script&gt;bad&lt;/script&gt;"));
   });
 

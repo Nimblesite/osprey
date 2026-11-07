@@ -38,7 +38,7 @@ module Workspaces
         declarations = filterList (Statements::document bench.draft.draftText, \found => isEmpty found.problems)
         match isEmpty declarations
             true => Runtime::step (notice (bench, "No supported statement is available to export.", true))
-            false => saving (bench, "workspace:source", "proof.ospml", Emit::document (mapList (declarations, \found => Proof(statement = found.statement, steps = mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))))
+            false => saving (bench, "workspace:source", "proof.ospml", Emit::document (mapList (declarations, \found => Proof(statement = found.statement, steps = Steps::readAll found.proof))))
 
     export decode source = match jsonDecode source
         Error _ => Error(message = "The workspace is not valid JSON.")

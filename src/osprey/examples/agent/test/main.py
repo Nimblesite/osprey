@@ -36,6 +36,16 @@ def result(call_id, name, text):
     return Engine.ToolResult(resultId=call_id, resultName=name, resultContent=text)
 
 
+def wire_field(wire, back, field):
+    """`field` of the `back`th wire message from the end."""
+    return J.text_at(at(wire, len(wire) - back, JsonNull()), field, "")
+
+
+def first_block(code):
+    """The first block the Markdown `code` draws."""
+    return at(Transcript.blocks_of(code), 0, Transcript.block("", 0, ""))
+
+
 def conversation_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Fix it")
     body = Engine.request_body(opened, MODEL, "")
@@ -73,7 +83,7 @@ def conversation_cases():
         Check.equal("cut.output_keeps_characters", take(Engine.tool_result_text("read_file", 0, repeat_text("a", Engine.OUTPUT_LIMIT - 1) + "éz", ""), Engine.OUTPUT_LIMIT), repeat_text("a", Engine.OUTPUT_LIMIT - 1) + "\n"),
         Check.equal("cut.whole_character_fits", Engine.cut_text("aé", 3), "aé"),
         Check.equal("cut.nothing", Engine.cut_text("é", 1), ""),
-        Check.equal("transcript.kinds", join(mapList(items, lambda i: i.itemKind), ","), "user,answer,tools,answer"),
+        Check.equal("transcript.kinds", item_kinds(items), "user,answer,tools,answer"),
         Check.equal("transcript.user", at(items, 0, tools).itemText, "Fix it"),
         Check.equal("transcript.rounds_merge", len(tools.itemSteps), 3),
         Check.equal("transcript.title", Transcript.step_title(tools.itemSteps), "Edited 1 file, Ran 1 command, Read 1 file"),
@@ -114,7 +124,7 @@ def folder_prompt_cases():
     back = Engine.add_user(unchanged, FOLDER, "five")
     corrupt = Engine.add_user(JsonString("broken"), FOLDER, "fresh")
     wire = J.list_at(unwrap_or(J.decode(Engine.request_body(moved, MODEL, "")), JsonNull()), "messages")
-    prompt = J.text_at(at(wire, len(wire) - 2, JsonNull()), "content", "")
+    prompt = wire_field(wire, 2, "content")
     return [
         Check.equal("folder.empty_gets_prompt", len(last_systems(empty)), 1),
         Check.truth("folder.empty_names_path", contains(at(last_systems(empty), 0, ""), FOLDER), J.encode(empty)),
@@ -126,9 +136,9 @@ def folder_prompt_cases():
         Check.truth("folder.changing_back_names_original", contains(at(last_systems(back), 0, ""), FOLDER), J.encode(back)),
         Check.equal("folder.corrupt_reads_empty", len(M.requests(unwrap_or(M.validate_messages(corrupt), []))), 1),
         Check.equal("folder.corrupt_gets_prompt", len(last_systems(corrupt)), 1),
-        Check.equal("folder.wire_system_role", J.text_at(at(wire, len(wire) - 2, JsonNull()), "role", ""), "system"),
-        Check.equal("folder.wire_user_role", J.text_at(at(wire, len(wire) - 1, JsonNull()), "role", ""), "user"),
-        Check.equal("folder.wire_user_words", J.text_at(at(wire, len(wire) - 1, JsonNull()), "content", ""), "three"),
+        Check.equal("folder.wire_system_role", wire_field(wire, 2, "role"), "system"),
+        Check.equal("folder.wire_user_role", wire_field(wire, 1, "role"), "user"),
+        Check.equal("folder.wire_user_words", wire_field(wire, 1, "content"), "three"),
         Check.truth("folder.wire_prompt_before_user", contains(prompt, other) and not contains(prompt, FOLDER), J.encode(JsonArray(wire))),
     ]
 
@@ -143,9 +153,14 @@ def in_flight_cases():
     ]
 
 
+def flat_map(items, project):
+    """The lists `project` gives for each of `items`, joined in order."""
+    return foldList(items, [], lambda acc, item: listConcat(acc, project(item)))
+
+
 def prov_pairs():
     """Every `provider/model` in the catalogue, in order."""
-    return foldList(Engine.provider_ids(), [], lambda acc, pid: listConcat(acc, mapList(Engine.model_ids(pid), lambda mid: Engine.full_model(pid, mid))))
+    return flat_map(Engine.provider_ids(), lambda pid: mapList(Engine.model_ids(pid), lambda mid: Engine.full_model(pid, mid)))
 
 
 def prov_zai(model):
@@ -185,13 +200,11 @@ def prov_body_checks(model, level):
 
 
 def prov_level_checks(model):
-    return foldList(listPrepend(Engine.model_levels(model), ""), [], lambda acc, level: listConcat(acc, prov_body_checks(model, level)))
+    return flat_map(listPrepend(Engine.model_levels(model), ""), lambda level: prov_body_checks(model, level))
 
 
 def prov_cases():
-    bodies = foldList(prov_pairs(), [], lambda acc, model: listConcat(acc, prov_level_checks(model)))
-    roundtrip = prov_roundtrip_cases()
-    return listConcat(bodies, roundtrip)
+    return listConcat(flat_map(prov_pairs(), prov_level_checks), prov_roundtrip_cases())
 
 
 def prov_roundtrip_cases():
@@ -257,7 +270,18 @@ def command_cases():
 
 
 def kinds(text):
-    return join(mapList(Transcript.blocks_of(text), lambda b: b.blockKind), ",")
+    """The `blockKind` of every block `text` draws, joined."""
+    return kinds_of(Transcript.blocks_of(text))
+
+
+def kinds_of(blocks):
+    """The `blockKind` of each of `blocks`, joined."""
+    return join(mapList(blocks, lambda block: block.blockKind), ",")
+
+
+def item_kinds(items):
+    """The `itemKind` of each of `items`, joined."""
+    return join(mapList(items, lambda item: item.itemKind), ",")
 
 
 def span_text(spans):
@@ -267,18 +291,18 @@ def span_text(spans):
 def markdown_cases():
     table = Transcript.blocks_of("Before\n\n| File | Change |\n|---|:-:|\n| `a.py` | **fixed** |\n| b.py | none |\n\nAfter")
     rows = at(table, 1, Transcript.block("", 0, "")).blockRows
-    code = at(Transcript.blocks_of("```python\nx = 1\n  y = 2\n```"), 0, Transcript.block("", 0, ""))
-    unclosed = at(Transcript.blocks_of("```\nkept"), 0, Transcript.block("", 0, ""))
+    code = first_block("```python\nx = 1\n  y = 2\n```")
+    unclosed = first_block("```\nkept")
     return [
         Check.equal("md.kinds", kinds("# H\n\npara one\nstill one\n\n- a\n* b\n1. c\n12. d\n> q\n\n```\ncode\n```"), "heading,paragraph,bullet,bullet,numbered,numbered,quote,code"),
-        Check.equal("md.heading_level", at(Transcript.blocks_of("### deep"), 0, Transcript.block("", 0, "")).blockLevel, 3),
-        Check.equal("md.number", at(Transcript.blocks_of("12. twelve"), 0, Transcript.block("", 0, "")).blockLevel, 12),
+        Check.equal("md.heading_level", first_block("### deep").blockLevel, 3),
+        Check.equal("md.number", first_block("12. twelve").blockLevel, 12),
         Check.equal("md.zero_padded_number", span_text(at(Transcript.blocks_of("001. item"), 0, Transcript.block("", 0, "")).blockSpans), ":item"),
         Check.equal("md.paragraph_joins", span_text(at(Transcript.blocks_of("one\ntwo"), 0, Transcript.block("", 0, "")).blockSpans), ":one two"),
         Check.equal("md.code_language", code.blockLanguage, "python"),
         Check.equal("md.code_keeps_indent", code.blockCode, "x = 1\n  y = 2"),
         Check.equal("md.unclosed_fence_shows", unclosed.blockCode, "kept"),
-        Check.equal("md.table_kinds", join(mapList(table, lambda b: b.blockKind), ","), "paragraph,table,paragraph"),
+        Check.equal("md.table_kinds", kinds_of(table), "paragraph,table,paragraph"),
         Check.equal("md.table_rows", len(rows), 3),
         Check.equal("md.table_cells", len(at(rows, 0, [])), 2),
         Check.equal("md.table_code_cell", span_text(at(at(rows, 1, []), 0, [])), "code:a.py"),
@@ -361,7 +385,7 @@ def hl_snip(name, kind, text):
 def hl_roundtrip_checks():
     """Joining every token's text gives the code back, for every snippet and every malformed input in every language."""
     codes = listConcat(HL_MALFORMED, mapList(HL_SNIPPETS, lambda s: s.snipCode))
-    pairs = foldList(HL_SNIPPETS, [], lambda acc, s: listConcat(acc, mapList(codes, lambda code: Snip(snipName=s.snipName, snipCode=code))))
+    pairs = flat_map(HL_SNIPPETS, lambda s: mapList(codes, lambda code: Snip(snipName=s.snipName, snipCode=code)))
     return mapList(pairs, lambda p: Check.truth("hl.roundtrip." + p.snipName, join(mapList(Highlight.tokens_of(p.snipName, p.snipCode), lambda t: t.tokenText), "") == p.snipCode, hl_marked(p.snipName, p.snipCode)))
 
 
@@ -549,16 +573,9 @@ def mcp_cases():
 
 
 def suite():
-    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), prov_cases()), markdown_cases()), highlight_cases()), mcp_cases())
-
-
-def report_suite():
-    return Check.report(suite())
+    groups = [conversation_cases(), folder_prompt_cases(), in_flight_cases(), listConcat(failure_cases(), command_cases()), prov_cases(), markdown_cases(), highlight_cases(), mcp_cases()]
+    return flat_map(groups, lambda group: group)
 
 
 def main():
-    match Check.strictly(lambda: report_suite()):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(suite)

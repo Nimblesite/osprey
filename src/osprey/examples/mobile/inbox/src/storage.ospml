@@ -50,26 +50,16 @@ module Storage
 
     validItem doc index =
         prefix = "[${index}]"
-        id = jsonGet doc (prefix + ".id") ?: ""
-        number = parseInt (jsonGet doc (prefix + ".number") ?: "") ?: 0
-        title = jsonGet doc (prefix + ".title") ?: ""
-        author = jsonGet doc (prefix + ".author") ?: ""
-        comments = parseInt (jsonGet doc (prefix + ".comments") ?: "") ?: ((0 - 1) )
+        id = Json::scalar doc (prefix + ".id")
+        number = parseInt (Json::scalar doc (prefix + ".number")) ?: 0
+        title = Json::scalar doc (prefix + ".title")
+        author = Json::scalar doc (prefix + ".author")
+        comments = parseInt (Json::scalar doc (prefix + ".comments")) ?: ((0 - 1) )
         (parseInt id ?: 0) > 0 && number > 0 && length title > 0 && length author > 0 && comments >= 0
 
-    validItems doc index count = match index >= count
-        true => true
-        false => validItem doc index && validItems doc ((satAdd index 1) ) count
+    validItems doc index count = Json::everyRow index count (\at => validItem doc at)
 
-    validArray source = match startsWith (trimStart source) "["
-        false => false
-        true => match jsonParse source
-            Error why => false
-            Success doc =>
-                count = jsonLength doc ""
-                valid = count >= 0 && count <= 100 && validItems doc 0 count
-                freed = jsonFree doc ?: 0
-                valid
+    validArray source = Json::validArray source 100 validItems
 
     export restore model snapshot =
         repo = Json::getOr snapshot "repo" ""

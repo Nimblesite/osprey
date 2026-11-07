@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 // ML text-and-pipeline twin covering composition and interpolation.
 
@@ -91,6 +79,5 @@ stringsCase () =
         "a\nb${length (filterList (rows, \row => row > 1))}" == "a\nb2"
     ]
 
-
-test "pipelines retain each stage and complete chain" (\() => exactArithmetic (pipeChainCase))
-test "string calls retain interpolation and concatenation" (\() => exactArithmetic (stringsCase))
+test "pipelines retain each stage and complete chain" (exactly pipeChainCase)
+test "string calls retain interpolation and concatenation" (exactly stringsCase)

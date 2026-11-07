@@ -55,16 +55,11 @@ module Database {
 
     fn connectionString(config: Connection) = "service=${config.service} sslmode=verify-full sslrootcert=${config.rootCertificate} connect_timeout=5"
 
-    fn serviceCode(text) = text != "" && fold(range(0, byteLength(text)), true, fn(ok, i) => {
-            let b = byteAt(text, i) ?: 0
-            ok && ((b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45)
-    })
+    fn serviceNameByte(b) = Bytes::isLowerDigitIn(b, [Bytes::underscore, Bytes::hyphen])
+    fn serviceCode(text) = text != "" && Bytes::everyByte(text, serviceNameByte)
 
-    fn mountedPath(text) = startsWith(text, "/run/registry/") && fold(range(0, byteLength(text)), true, fn(ok, i) => {
-            let b = byteAt(text, i) ?: 0
-            ok && ((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57)
-                || b == 47 || b == 46 || b == 95 || b == 45)
-    })
+    fn mountedByte(b) = Bytes::isAlnumIn(b, [Bytes::slash, Bytes::dot, Bytes::underscore, Bytes::hyphen])
+    fn mountedPath(text) = startsWith(text, "/run/registry/") && Bytes::everyByte(text, mountedByte)
 
     /// Validate mounted connection references before installing the transport.
     export fn configurationCode(config: Connection) = if !serviceCode(config.service) || !mountedPath(config.serviceFile)

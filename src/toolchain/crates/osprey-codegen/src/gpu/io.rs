@@ -29,6 +29,24 @@ fn arg_as(cg: &mut Codegen, args: &[Expr], i: usize, ty: LType) -> Result<String
     Ok(crate::cast::coerce_to(cg, v, ty)?.operand)
 }
 
+/// The `path`, `offset`, `count` a `gpuLoad`-shaped builtin reads a file span
+/// with: the path as a string, the offset and count as `i64`.
+fn file_span(cg: &mut Codegen, args: &[Expr]) -> Result<(String, String, String)> {
+    let path = arg_as(cg, args, 0, LType::Str)?;
+    let offset = arg_as(cg, args, 1, LType::I64)?;
+    let count = arg_as(cg, args, 2, LType::I64)?;
+    Ok((path, offset, count))
+}
+
+/// The `rows`, `inner`, `cols` triple a matrix builtin states its shape with,
+/// starting at positional index `base`.
+fn matrix_shape(cg: &mut Codegen, args: &[Expr], base: usize) -> Result<(String, String, String)> {
+    let rows = arg_as(cg, args, base, LType::I64)?;
+    let inner = arg_as(cg, args, base + 1, LType::I64)?;
+    let cols = arg_as(cg, args, base + 2, LType::I64)?;
+    Ok((rows, inner, cols))
+}
+
 /// Call a runtime producer of a buffer of `elem` elements and wrap its
 /// nullable handle, tagged with that element's owner.
 fn fallible_buffer(
@@ -49,9 +67,7 @@ pub(super) fn mat_mul(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let left = buffer_arg(cg, args, 0)?;
     let right = buffer_arg(cg, args, 1)?;
     let elem = matrix_elem(&left, &right)?;
-    let rows = arg_as(cg, args, 2, LType::I64)?;
-    let inner = arg_as(cg, args, 3, LType::I64)?;
-    let cols = arg_as(cg, args, 4, LType::I64)?;
+    let (rows, inner, cols) = matrix_shape(cg, args, 2)?;
     let width = elem.bytes().to_string();
     fallible_buffer(
         cg,
@@ -114,9 +130,7 @@ pub(super) fn mat_mul_quant(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let x = buffer_arg(cg, args, 0)?;
     let weights = buffer_arg(cg, args, 1)?;
     let kind = arg_as(cg, args, 2, LType::Str)?;
-    let rows = arg_as(cg, args, 3, LType::I64)?;
-    let inner = arg_as(cg, args, 4, LType::I64)?;
-    let cols = arg_as(cg, args, 5, LType::I64)?;
+    let (rows, inner, cols) = matrix_shape(cg, args, 3)?;
     fallible_buffer(
         cg,
         "osprey_gpu_matmul_quant",
@@ -154,9 +168,7 @@ fn matrix_elem(left: &Value, right: &Value) -> Result<Numeric> {
 /// `gpuLoad(path, offset, count)` [GPU-BUFFER-LOAD]: little-endian binary32
 /// words byte for byte, no widening, as `GpuBuffer<float32>`.
 pub(super) fn load(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let path = arg_as(cg, args, 0, LType::Str)?;
-    let offset = arg_as(cg, args, 1, LType::I64)?;
-    let count = arg_as(cg, args, 2, LType::I64)?;
+    let (path, offset, count) = file_span(cg, args)?;
     fallible_buffer(
         cg,
         "osprey_gpu_load_f32",
@@ -189,9 +201,7 @@ pub(super) fn load_tensor(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// `gpuMapFile(path, offset, count)` [LLM-WEIGHTS-MAPPED]: a read-only mapped
 /// region at the numeric type this call's result pins.
 pub(super) fn map_file(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let path = arg_as(cg, args, 0, LType::Str)?;
-    let offset = arg_as(cg, args, 1, LType::I64)?;
-    let count = arg_as(cg, args, 2, LType::I64)?;
+    let (path, offset, count) = file_span(cg, args)?;
     let asked = result_elem(cg).ok_or_else(|| {
         CodegenError::unsupported("gpuMapFile needs a concrete numeric result type")
     })?;

@@ -1,0 +1,48 @@
+(** [BUILTIN-FILE-LISTDIR] [BUILTIN-FILE-KIND] [BUILTIN-FILE-MAKEDIR] Directory
+    IO against the real disk: the test builds its own tree under a fresh
+    random name in the working directory, lists it, classifies it and proves
+    every refusal. A listing is full child paths, directories carry one trailing
+    separator, dot entries never appear and no path ever doubles a separator.
+    `makeDir` is idempotent. Refusals print whether the reason names its
+    operation, never raw strerror text, because reasons vary per platform. *)
+
+root = "osprey_directory_io_${random ()}_${random ()}"
+
+shown path = replace (path, root, "<root>") ?: path
+
+listing path = match listDir path
+    Success value =>
+        sorted = listSort value
+        print "${toString (length sorted)} entries in ${shown path}"
+        forEachList (sorted, \entry => print (shown entry))
+    Error message => print "listDir refused: ${toString (contains (message, "listDir"))}"
+
+kind path = match kindOf path
+    Success value => print "${shown path} is a ${value}"
+    Error message => print "kindOf refused: ${toString (contains (message, "kindOf"))}"
+
+made path = match makeDir path
+    Success value => print "made ${shown path}: ${toString value}"
+    Error message => print "makeDir refused: ${toString (contains (message, "makeDir"))}"
+
+wrote (path, text) = match writeFile (path, text)
+    Success value => print "wrote ${toString value} bytes to ${shown path}"
+    Error message => print "writeFile refused: ${message}"
+
+made root
+made root
+made "${root}/nested"
+made "${root}/empty"
+wrote ("${root}/leaf.txt", "leaf\n")
+wrote ("${root}/nested/inner.txt", "inner\n")
+listing root
+listing "${root}/nested/"
+listing "${root}/empty"
+kind root
+kind "${root}/leaf.txt"
+kind "${root}/nested/"
+kind "${root}/absent"
+listing "${root}/leaf.txt"
+listing "${root}/absent"
+made "${root}/leaf.txt"
+made "${root}/absent/deeper"

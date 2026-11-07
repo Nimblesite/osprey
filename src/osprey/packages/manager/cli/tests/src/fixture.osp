@@ -70,6 +70,10 @@ module Fixture {
     /// The served release no registry has: the `?:` fallback of `served`.
     export fn missingServed() = Release::Served { id: Identity::blank(), files: [] }
 
+    /// Element `i` of a served list, or the missing release: the `?:` fallback
+    /// every case over a positional release list repeats.
+    export fn at(served, i) = listGet(served, i) ?: missingServed()
+
     /// A served release assembled from in-memory files, as the server would
     /// serve `@scope/name/<epoch>.<ordinal>`.
     export fn served(dir, files) = ReleaseFiles::assemble(dir, files) ?: missingServed()

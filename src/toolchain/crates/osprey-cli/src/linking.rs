@@ -468,19 +468,19 @@ mod install_layout_tests {
         // `<prefix>/lib/lib*.a`, and links both into the Homebrew prefix. A
         // lookup that only knows `bin` and `src/toolchain/compiler/{bin,lib}` fails the
         // very first native link on an installed compiler (issue #304).
-        let bin = Path::new("/opt/homebrew/Cellar/osprey/0.22.0/bin");
-        let candidates = runtime_lib_candidates("libfiber_runtime_gc.a", Some(bin));
-        assert!(
-            candidates.contains(
-                &"/opt/homebrew/Cellar/osprey/0.22.0/lib/libfiber_runtime_gc.a".to_owned()
-            ),
-            "{candidates:#?}"
+        let resolves = |name: &str, bin: &str, expected: &str| {
+            let candidates = runtime_lib_candidates(name, Some(Path::new(bin)));
+            assert!(candidates.contains(&expected.to_owned()), "{candidates:#?}");
+        };
+        resolves(
+            "libfiber_runtime_gc.a",
+            "/opt/homebrew/Cellar/osprey/0.22.0/bin",
+            "/opt/homebrew/Cellar/osprey/0.22.0/lib/libfiber_runtime_gc.a",
         );
-        let linked = Path::new("/opt/homebrew/bin");
-        let candidates = runtime_lib_candidates("libosprey_runtime_macos.a", Some(linked));
-        assert!(
-            candidates.contains(&"/opt/homebrew/lib/libosprey_runtime_macos.a".to_owned()),
-            "{candidates:#?}"
+        resolves(
+            "libosprey_runtime_macos.a",
+            "/opt/homebrew/bin",
+            "/opt/homebrew/lib/libosprey_runtime_macos.a",
         );
     }
 }

@@ -23,11 +23,7 @@ use support::{config, contains, error_messages, parsed};
 /// parse errors first — some boundary rules (ML's exact ascription) are decided
 /// by the grammar and never reach assembly — otherwise the assembler's.
 fn diagnose(flavor: Flavor, text: &str) -> Vec<String> {
-    let name = match flavor {
-        Flavor::Ml => "main.ospml",
-        Flavor::Default => "main.osp",
-        Flavor::Python => "main.py",
-    };
+    let name = support::main_name(flavor);
     let parsed = parse_program_with_flavor(text, flavor);
     if !parsed.errors.is_empty() {
         return parsed.errors.into_iter().map(|e| e.message).collect();

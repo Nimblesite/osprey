@@ -128,7 +128,7 @@ ERR_META_BYTES = [54, 0, 0, 0, 0, 0, 0, 0, 123, 34, 116, 34, 58, 123, 34, 100, 1
 """Oracle value `ERR_META_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 ERR_META = "incomplete metadata, file not fully covered"
 """Oracle value `ERR_META`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-ERR_NOTFOUND_BYTES = [168, 0, 0, 0, 0, 0, 0, 0, 123, 34, 98, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 54, 52, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 50, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 49, 54, 93, 125, 44, 34, 97, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 51, 50, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 50, 44, 51, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 49, 54, 44, 52, 48, 93, 125, 44, 34, 99, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 73, 51, 50, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 51, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 52, 48, 44, 53, 50, 93, 125, 125, 32, 0, 0, 0, 0, 0, 0, 240, 63, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64, 0, 0, 128, 64, 0, 0, 160, 64, 255, 255, 255, 255, 2, 0, 0, 0, 253, 255, 255, 255]
+ERR_NOTFOUND_BYTES = MULTI_BYTES
 """Oracle value `ERR_NOTFOUND_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 ERR_NOTFOUND = "File does not contain tensor missing"
 """Oracle value `ERR_NOTFOUND`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -176,7 +176,7 @@ SLICE_EMPTY_ROWS = []
 """Oracle value `SLICE_EMPTY_ROWS`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 VECTOR_BYTES = [56, 0, 0, 0, 0, 0, 0, 0, 123, 34, 118, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 51, 50, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 52, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 49, 54, 93, 125, 125, 32, 0, 0, 0, 0, 0, 0, 128, 63, 0, 0, 0, 64, 0, 0, 64, 64]
 """Oracle value `VECTOR_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-VECTOR_SLICE = [1.0, 2.0]
+VECTOR_SLICE = MULTI_B
 """Oracle value `VECTOR_SLICE`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 SCALAR_BYTES = [56, 0, 0, 0, 0, 0, 0, 0, 123, 34, 120, 34, 58, 123, 34, 100, 116, 121, 112, 101, 34, 58, 34, 70, 51, 50, 34, 44, 34, 115, 104, 97, 112, 101, 34, 58, 91, 93, 44, 34, 100, 97, 116, 97, 95, 111, 102, 102, 115, 101, 116, 115, 34, 58, 91, 48, 44, 52, 93, 125, 125, 32, 32, 32, 0, 0, 192, 63]
 """Oracle value `SCALAR_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -204,9 +204,9 @@ F16_INF_BYTES = [0, 124]
 """Oracle value `F16_INF_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 F16_NEG_INF_BYTES = [0, 252]
 """Oracle value `F16_NEG_INF_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-F16_OVERFLOW_BYTES = [0, 124]
+F16_OVERFLOW_BYTES = F16_INF_BYTES
 """Oracle value `F16_OVERFLOW_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-F16_TINY_BYTES = [0, 0]
+F16_TINY_BYTES = F16_ZERO_BYTES
 """Oracle value `F16_TINY_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 F16_BOUNDARY_BYTES = [0, 4]
 """Oracle value `F16_BOUNDARY_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -214,9 +214,9 @@ F16_ROUND_BYTES = [0, 104]
 """Oracle value `F16_ROUND_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 F16_MIN_SUBNORMAL_BYTES = [1, 0]
 """Oracle value `F16_MIN_SUBNORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_ZERO_BYTES = [0, 0]
+BF16_ZERO_BYTES = F16_ZERO_BYTES
 """Oracle value `BF16_ZERO_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_NEG_ZERO_BYTES = [0, 128]
+BF16_NEG_ZERO_BYTES = F16_NEG_ZERO_BYTES
 """Oracle value `BF16_NEG_ZERO_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 BF16_NAN_BYTES = [192, 127]
 """Oracle value `BF16_NAN_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -224,7 +224,7 @@ BF16_INF_BYTES = [128, 127]
 """Oracle value `BF16_INF_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 BF16_NEG_INF_BYTES = [128, 255]
 """Oracle value `BF16_NEG_INF_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_OVERFLOW_BYTES = [128, 127]
+BF16_OVERFLOW_BYTES = BF16_INF_BYTES
 """Oracle value `BF16_OVERFLOW_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 BF16_HALF_BYTES = [0, 63]
 """Oracle value `BF16_HALF_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -236,15 +236,15 @@ BF16_TIE_UP_BYTES = [130, 63]
 """Oracle value `BF16_TIE_UP_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 BF16_TIE_DOWN_BYTES = [128, 63]
 """Oracle value `BF16_TIE_DOWN_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_MIN_SUBNORMAL_BYTES = [1, 0]
+BF16_MIN_SUBNORMAL_BYTES = F16_MIN_SUBNORMAL_BYTES
 """Oracle value `BF16_MIN_SUBNORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 BF16_BELOW_NORMAL_BYTES = [128, 0]
 """Oracle value `BF16_BELOW_NORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_MIN_NORMAL_BYTES = [128, 0]
+BF16_MIN_NORMAL_BYTES = BF16_BELOW_NORMAL_BYTES
 """Oracle value `BF16_MIN_NORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_DOUBLE_SUBNORMAL_BYTES = [0, 0]
+BF16_DOUBLE_SUBNORMAL_BYTES = F16_ZERO_BYTES
 """Oracle value `BF16_DOUBLE_SUBNORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-BF16_NEG_DOUBLE_SUBNORMAL_BYTES = [0, 128]
+BF16_NEG_DOUBLE_SUBNORMAL_BYTES = F16_NEG_ZERO_BYTES
 """Oracle value `BF16_NEG_DOUBLE_SUBNORMAL_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 F32_ZERO_BYTES = [0, 0, 0, 0]
 """Oracle value `F32_ZERO_BYTES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
@@ -266,7 +266,7 @@ JSON_EMPTY_TEXT = "{\"a\":[],\"b\":{}}"
 """Oracle value `JSON_EMPTY_TEXT`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 JSON_EMPTY_KINDS = ["arr", "obj"]
 """Oracle value `JSON_EMPTY_KINDS`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
-JSON_EMPTY_SIZES = [0, 0]
+JSON_EMPTY_SIZES = F16_ZERO_BYTES
 """Oracle value `JSON_EMPTY_SIZES`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""
 JSON_NUMBER_TEXT = "[-12,1.5e-2]"
 """Oracle value `JSON_NUMBER_TEXT`, computed by src/osprey/packages/safetensors/oracle/safetensors.cpython."""

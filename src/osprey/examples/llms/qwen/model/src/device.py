@@ -81,6 +81,7 @@ def must(result) -> GpuBuffer[float32]:
 
 
 def must_ints(result) -> GpuBuffer[int]:
+    """The int buffer a step produced, or the fault that ends the pass."""
     match result:
         case Success(value=value):
             return value
@@ -163,6 +164,7 @@ def added(a, b, g) -> GpuBuffer[float32]:
 
 
 def sigmoid(x) -> GpuBuffer[float32]:
+    """`torch.sigmoid` of every value of the buffer `x`."""
     return must(gpuSigmoid(x))
 
 

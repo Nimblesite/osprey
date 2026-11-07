@@ -681,19 +681,11 @@ def expand_value(value, environment):
 
 
 def expand_string(text, environment) -> Result[Json, str]:
-    match expand_text(text, environment):
-        case Success(value=expanded):
-            return Success(value=JsonString(expanded))
-        case Error(message=message):
-            return Error(message=message)
+    return J.rewrap(expand_text(text, environment), lambda expanded: JsonString(expanded))
 
 
 def expand_members(members, environment):
-    match M.collect(members, lambda member: expand_member(member, environment)):
-        case Success(value=expanded):
-            return Success(value=JsonObject(expanded))
-        case Error(message=message):
-            return Error(message=message)
+    return J.rewrap(M.collect(members, lambda member: expand_member(member, environment)), lambda expanded: JsonObject(expanded))
 
 
 def expand_member(member, environment) -> Result[JsonMember, str]:
@@ -705,11 +697,7 @@ def expand_member(member, environment) -> Result[JsonMember, str]:
 
 
 def expand_items(items, environment):
-    match M.collect(items, lambda item: expand_value(item, environment)):
-        case Success(value=expanded):
-            return Success(value=JsonArray(expanded))
-        case Error(message=message):
-            return Error(message=message)
+    return J.rewrap(M.collect(items, lambda item: expand_value(item, environment)), lambda expanded: JsonArray(expanded))
 
 
 def expand_text(text, environment):

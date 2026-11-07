@@ -12,10 +12,12 @@ documented in the README's recursion-strategy section. Shared parse helpers
 here so every parser module imports them from one place.
 """
 
+from re import Unicode
+
 __all__ = [
     "Ins", "Program", "GState", "PRes", "ins", "ins_a", "ins_ab", "ins_class",
     "ins_lit", "shift", "append_match", "groups_len", "range_piece", "cat_piece",
-    "at", "fail", "has", "concat", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead",
+    "at", "pair_value", "pair_next", "fail", "has", "concat", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead", "then", "read_name",
 ]
 
 I_BIT = 2
@@ -65,9 +67,41 @@ class NameRead:
     next: int
 
 
+def read_name(cps, j, n, term):
+    """The string from `j` to `term`, and the terminator's index."""
+    return read_name_from(cps, j, n, term, "")
+
+
+def read_name_from(cps, j, n, term, acc):
+    """Accumulate the name until `term` or the end."""
+    if j >= n or at(cps, j) == term:
+        return NameRead(name=acc, next=j)
+    else:
+        return read_name_from(cps, j + 1, n, term, acc + Unicode.utf8_of(at(cps, j)))
+
+
 def at(xs, i):
     """Element `i` of an int list, or 0 past the end."""
     return unwrap_or(listGet(xs, i), 0)
+
+
+def pair_value(pair):
+    """The value of a `[value, next]` parse pair."""
+    return unwrap_or(listGet(pair, 0), 0)
+
+
+def pair_next(pair, fallback):
+    """Where a `[value, next]` parse pair stopped, or `fallback` past the end."""
+    return unwrap_or(listGet(pair, 1), fallback)
+
+
+def then(result, next):
+    """`next` applied to a `Success` value; an `Error` propagates unchanged."""
+    match result:
+        case Success(value=value):
+            return next(value)
+        case Error(message=message):
+            return Error(message=message)
 
 
 def fail(msg, pos):

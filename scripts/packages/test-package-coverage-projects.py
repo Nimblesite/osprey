@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regressions for `src/toolchain/targets/` gating and `--project` selection in the coverage gate.
+"""Regressions for app gating (`projects.apps`, sources under `src/osprey/<name>/src`) and `--project` selection in the coverage gate.
 
 Every shipped app is covered by the same 90% floor as a package, `--project`
 collects exactly one project, an ungated app fails the inventory before any
@@ -32,8 +32,7 @@ class ProjectTests(CoverageTestCase):
                             apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
 
     def test_apps_project_is_gated_at_the_90_floor(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(10)}}},
-                               apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
+        fixture = self.two_projects()
         fixture.write_report("demo", own_report("demo", 9, 10))
         for covered, code in ((9, 0), (8, 1)):
             with self.subTest(covered=covered):

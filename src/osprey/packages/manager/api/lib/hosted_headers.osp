@@ -1,4 +1,6 @@
 namespace registry_api;
+import registry::Checked
+import registry::Bytes
 
 /// Strict HTTP header parsing for hosted requests: RFC token names,
 /// case-insensitive lookup, line/count limits and duplicate rejection for
@@ -20,13 +22,11 @@ module HostedHeaders {
 
     fn reject(status, code) = Reject { status: status, code: code }
 
-    fn alpha(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-    fn digit(b) = b >= 48 && b <= 57
     fn symbol(b) = listContains([33, 35, 37, 38, 39, 42, 43, 45, 46, 94, 95, 96, 126], b)
-    fn tokenByte(b) = alpha(b) || digit(b) || symbol(b)
-    fn allBytes(s, ok) = fold(range(0, byteLength(s)), true, fn(good, i) => good && ok(byteAt(s, i) ?: 0))
+    fn tokenByte(b) = Bytes::isAlnum(b) || symbol(b)
 
-    fn hasSpace(s) = fold(range(0, byteLength(s)), false, fn(found, i) => found || (byteAt(s, i) ?: 0) == 32 || (byteAt(s, i) ?: 0) == 9)
+    fn spaceByte(b) = b == 32 || b == 9
+    fn hasSpace(s) = Bytes::anyByte(s, spaceByte)
 
     fn visible(b) = b >= 32 && b < 127
     fn trimmedEdge(s) = (byteAt(s, 0) ?: 0) == 32 || (byteAt(s, 0) ?: 0) == 9
@@ -34,9 +34,9 @@ module HostedHeaders {
 
     fn nameOk(name) = if byteLength(name) == 0 { false }
         else if hasSpace(name) { false }
-        else { allBytes(name, tokenByte) }
+        else { Bytes::everyByte(name, tokenByte) }
 
-    fn valueOk(value) = byteLength(value) > 0 && !trimmedEdge(value) && allBytes(value, visible)
+    fn valueOk(value) = byteLength(value) > 0 && !trimmedEdge(value) && Bytes::everyByte(value, visible)
 
     fn afterColon(text) = if startsWith(text, " ") { drop(text, 1) } else { text }
 
@@ -141,8 +141,5 @@ module HostedHeaders {
     })
 
     /// True when a header with that name is present exactly once-verified input.
-    export fn has(headers, name) = match find(headers, name) {
-        Success => true
-        Error => false
-    }
+    export fn has(headers, name) = Checked::succeeded(find(headers, name))
 }

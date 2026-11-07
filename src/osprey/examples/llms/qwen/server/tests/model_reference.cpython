@@ -10,6 +10,14 @@ the Osprey one: wrapping `int64` hashes, `abs(v) % limit` residues, counts as
 integers, and the first index holding the largest score on a tie, which is
 `Math.argmax`'s rule.
 
+Prompts are not hand-written: `rendered_chat` renders the GGUF's own
+`tests/chat_template.jinja` through jinja2, so every byte and every token count a
+case asserts is the template's. The template is rendered as the server serves it:
+`preserve_thinking=false`, so a history turn carries no `<think>` block, and
+`enable_thinking=false`, because a prompt with thinking enabled also carries the
+template's reasoning-instruction line in its system turn; the generation prompt's
+`<think>` trailer is then removed, leaving `<|im_start|>assistant\n`.
+
 Run it directly to print a continuation:
 
     ~/.cache/osprey-llm/oracle-venv/bin/python -I model_reference.cpython "open the readme"
@@ -18,13 +26,19 @@ import ast
 import sys
 from pathlib import Path
 
+import jinja2
+
 HERE = Path(__file__).resolve().parent
 SOURCE = HERE.parent / "src" / "TableModel.py"
+TEMPLATE = HERE / "chat_template.jinja"
 EOS_CHAR = "~"
 MASK = (1 << 64) - 1
 SEEDED_ROW = 1024
 LOW = -(1 << 63)
 HIGH = (1 << 63) - 1
+THINK_TRAILER = "<think>\n\n</think>\n\n"
+"""What the template appends to the generation prompt with thinking disabled: the
+server leaves the model to write its own reasoning, so the prompt ends before it."""
 
 
 def source_constants():
@@ -128,10 +142,32 @@ class Model:
         return "".join(self.detokenize(one) for one in generated)
 
 
+def rejecting(message):
+    """The template's `raise_exception`: a message it cannot render is a failure, not text."""
+    raise ValueError(message)
+
+
+def environment():
+    """The jinja2 environment the template needs: `raise_exception` and nothing else."""
+    env = jinja2.Environment(loader=None)
+    env.globals["raise_exception"] = rejecting
+    return env
+
+
+def rendered_chat(messages, tools=None):
+    """The prompt the template writes for `messages`, without the generation prompt's trailer."""
+    template = environment().from_string(TEMPLATE.read_text())
+    text = template.render(
+        messages=messages, tools=tools or None, add_generation_prompt=True, preserve_thinking=False, enable_thinking=False
+    )
+    assert text.endswith(THINK_TRAILER), text[-len(THINK_TRAILER):]
+    return text.removesuffix(THINK_TRAILER)
+
+
 def rendered(prompt, system=""):
-    """The chat framing `src/Prompts.py` writes for one user turn."""
-    head = "" if system == "" else f"<|im_start|>system\n{system}\n<|im_end|>\n"
-    return head + f"<|im_start|>user\n{prompt}\n<|im_end|>\n<|im_start|>assistant\n"
+    """The framing for one user turn, with an optional system turn before it, as the server writes it."""
+    head = [] if system == "" else [{"role": "system", "content": system}]
+    return rendered_chat(head + [{"role": "user", "content": prompt}])
 
 
 def call_of(text):

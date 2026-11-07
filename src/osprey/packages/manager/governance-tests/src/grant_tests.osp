@@ -30,8 +30,7 @@ module GrantTests {
         let granted = grantPkgF1(world, "g-1", "m-carol", Governance::PublishRelease, Maybe::none())
         checkAll("each grant records grantor, epochs and expiry", [
             grantRow(granted, "g-1").grantor == "m-alice",
-            grantRow(granted, "g-1").packageEpoch == 1,
-            grantRow(granted, "g-1").memberEpoch == 1,
+            structuralEquals([grantRow(granted, "g-1").packageEpoch, grantRow(granted, "g-1").memberEpoch], [1, 1]),
             Maybe::isPresent(grantRow(granted, "g-1").expiresAt) == false,
             Fixture::code(GovernanceTransitions::authorize(granted, "pkg-f1", "m-carol", Governance::PublishRelease, 100)) == "",
             Fixture::code(GovernanceTransitions::authorize(granted, "pkg-f1", "m-bob", Governance::PublishRelease, 100)) == "governance.permission.missing",
@@ -64,7 +63,7 @@ module GrantTests {
         let once = grantPkgF1(world, "g-1", "m-carol", Governance::EditMetadata, Maybe::none())
         let revoked = Fixture::orKeep(once, fn(w) => GovernanceTransitions::revokeGrant(w, "g-1", adminRevokeProof(w, "g-1")))
         checkAll("one active row per package, member and permission", [
-            Fixture::code(grantPkgF1(once, "g-2", "m-carol", Governance::EditMetadata, Maybe::none())) == "governance.permission.duplicate",
+            Fixture::grantCode(once, "pkg-f1", "g-2", "m-carol", Governance::EditMetadata, Maybe::none(), 100) == "governance.permission.duplicate",
             Fixture::code(grantPkgF1(once, "g-2", "m-carol", Governance::PublishRelease, Maybe::none())) == "",
             Fixture::code(GovernanceTransitions::revokeGrant(once, "g-1", adminRevokeProof(once, "g-1"))) == "",
             Governance::isActiveGrant(grantRow(revoked, "g-1")) == false,
@@ -83,7 +82,10 @@ module GrantTests {
 
     /// Revocation and renewal [PACKAGE-OWNERSHIP-PERMISSIONS]: the admin
     /// revokes immediately, renewal retires the old row atomically, and the
-    /// subject cannot touch either.
+    /// subject cannot touch either. The admin's proof signs the decision it
+    /// authorizes: "renewal atomically revokes the previous row and inserts a
+    /// newly signed decision with a new ID", so the signed expiry is the new
+    /// expiry (300), never the retired row's (200).
     fn revocationAndRenewal() = {
         let world = Fixture::world()
         let granted = grantPkgF1(world, "g-1", "m-carol", Governance::EditMetadata, Maybe::none())
@@ -91,7 +93,7 @@ module GrantTests {
         let regranted = grantPkgF1(revoked, "g-2", "m-carol", Governance::EditMetadata, Maybe::some(200))
         let renewed = Fixture::orKeep(regranted, fn(w) =>
             GovernanceTransitions::renewGrant(w, "g-2", "g-3",
-                Fixture::adminProof(w, "pkg-f1", renewalStatement(w, "g-2", Maybe::some(200))), Maybe::some(300), 100))
+                Fixture::adminProof(w, "pkg-f1", renewalStatement(w, "g-2", Maybe::some(300))), Maybe::some(300), 100))
         checkAll("revoked and renewed rows stay auditable and never double-grant", [
             Fixture::code(GovernanceTransitions::authorize(revoked, "pkg-f1", "m-carol", Governance::EditMetadata, 100)) == "governance.permission.missing",
             Governance::isActiveGrant(grantRow(revoked, "g-1")) == false,
@@ -125,7 +127,7 @@ module GrantTests {
             Fixture::code(GovernanceTransitions::authorize(until200, "pkg-f1", "m-carol", Governance::EditMetadata, 199)) == "",
             Fixture::code(GovernanceTransitions::authorize(until200, "pkg-f1", "m-carol", Governance::EditMetadata, 200)) == "",
             Fixture::code(GovernanceTransitions::authorize(until200, "pkg-f1", "m-carol", Governance::EditMetadata, 201)) == "governance.permission.expired",
-            Fixture::code(grantPkgF1(world, "g-9", "m-carol", Governance::EditMetadata, Maybe::some(100))) == "governance.permission.expiry-past"
+            Fixture::grantCode(world, "pkg-f1", "g-9", "m-carol", Governance::EditMetadata, Maybe::some(100), 100) == "governance.permission.expiry-past"
         ])
     }
 

@@ -42,8 +42,7 @@ module BundleTests {
         Error => checkAll("assemble computes the golden digest and sorts files", [false])
         Success { value } => checkAll("assemble computes the golden digest and sorts files", [
             value.id.digest == goldenDigest,
-            value.id.epoch == 1,
-            value.id.ordinal == 3,
+            structuralEquals([value.id.epoch, value.id.ordinal], [1, 3]),
             Names::display(value.id.key) == "@finch/ledger",
             joined(value.files) == "osprey.toml:key = ledger\n|src/main.osp:fn main() = 0\n"
         ])
@@ -95,8 +94,7 @@ module BundleTests {
     fn verifyAccepts() = match Bundle::verify(goodBundle(), goldenDigest) {
         Success { value } => checkAll("verify accepts a good bundle and returns the release", [
             value.id.digest == goldenDigest,
-            value.id.epoch == 1,
-            value.id.ordinal == 3,
+            structuralEquals([value.id.epoch, value.id.ordinal], [1, 3]),
             Names::display(value.id.key) == "@finch/ledger",
             joined(value.files) == "osprey.toml:key = ledger\n|src/main.osp:fn main() = 0\n"
         ])
@@ -110,8 +108,7 @@ module BundleTests {
         codeOf(Bundle::verify(goodBundle(), wrongDigest)) == "bundle.unexpected-digest",
         codeOf(Bundle::verify("not json", goldenDigest)) == "json.unexpected-token at byte 0",
         codeOf(Bundle::verify(missingFieldBundle(), goldenDigest)) == "bundle.shape",
-        Bundle::sizeCode(134217728) == "",
-        Bundle::sizeCode(134217729) == "bundle.too-large"
+        structuralEquals([Bundle::sizeCode(134217728), Bundle::sizeCode(134217729)], ["", "bundle.too-large"])
     ])
 
     export fn run() = {

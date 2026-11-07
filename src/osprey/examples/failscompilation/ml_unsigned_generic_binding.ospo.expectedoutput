@@ -1,0 +1,1 @@
+3:0: a binding cannot declare type parameters without a signature: declare them on `name<T> : type` above it

@@ -49,7 +49,7 @@ endif
 COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= src/toolchain src/toolchain/targets src/toolchain/targets/tests src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
+MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/toolchain/targets/ios src/toolchain/targets/ios/tests src/toolchain/targets/android src/toolchain/targets/android/tests src/toolchain/targets/web src/toolchain/targets/web/tests src/toolchain/targets/llms src/toolchain/targets/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches src/toolchain/compiler/bin at --run time).
@@ -119,12 +119,15 @@ RUST_LOG     = $(LOG_DIR)/rust-test.log
 # archive objects fully satisfy but a few in-tree test programs intentionally
 # trip (string literals passed into char* buffers under test; K&R decls), so it
 # applies to the archives only; the unit-test profile uses WARN.
+# -Wimplicit-fallthrough, -Wswitch-enum and -Wunreachable-code: every case
+# falls through only on purpose, every enum switch names every member, and no
+# dead code survives in the shipped runtime.
 # EVERY flag here MUST be understood by BOTH clang (macOS/dev) and gcc (Linux
 # CI + the web-compiler Docker builder). clang-only spellings such as
 # -Wmissing-variable-declarations break `make _runtime` under gcc — keep the set
 # to the portable intersection.
 WARN     ?= -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wvla -Wundef -Wredundant-decls -Wcast-qual -Wcast-align -Wold-style-definition -Wbad-function-cast
-WARN_MAX ?= $(WARN) -Wstrict-prototypes -Wwrite-strings
+WARN_MAX ?= $(WARN) -Wstrict-prototypes -Wwrite-strings -Wimplicit-fallthrough -Wswitch-enum -Wunreachable-code
 # C runtime compile flag profiles (hardened; mirror the original recipes).
 # -fno-omit-frame-pointer is load-bearing: the profiler captures stacks by a
 # frame-pointer chain walk only [PROF-COLLECT-UNWIND], so every runtime frame

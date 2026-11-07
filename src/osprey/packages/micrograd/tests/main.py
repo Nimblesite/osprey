@@ -14,6 +14,70 @@ from micrograd_tests import Ops
 from testing import Check
 
 
+class Loss:
+    """A loss graph, its value and the gradients backward produced for it."""
+    graph: Engine.Graph
+    value: float
+    grads: list[float]
+
+
+def node_datas(graph):
+    """Every node's data, numbered."""
+    return toList(map(range(Engine.size(graph)), lambda i: Engine.data(graph, i)))
+
+
+def graph_cases(prefix, datas, grads, want_datas, want_grads, rtol):
+    """Data then gradient `list_cases` for one graph's nodes under `prefix`."""
+    return listConcat(Ops.list_cases(f"{prefix}.data", datas, want_datas, rtol),
+                      Ops.list_cases(f"{prefix}.grads", grads, want_grads, rtol))
+
+
+def node_cases(graph, prefix, want_datas, want_grads, rtol):
+    """Every node's data and gradient of `graph`, backward from its top node."""
+    return graph_cases(prefix, node_datas(graph), Engine.backward(graph, Engine.top(graph)), want_datas, want_grads, rtol)
+
+
+def trained(graph, outs, ys, n):
+    """The loss `graph` reaches over `n` points, its gradients and value."""
+    loss = sum_squares(graph, outs, ys, n)
+    grads = Engine.backward(loss, Engine.top(loss))
+    return Loss(graph=loss, value=Engine.data(loss, Engine.top(loss)), grads=grads)
+
+
+def seeded(nin, nouts, params, xs):
+    """A model holding `params` in a fresh graph, called on `xs`."""
+    g = NN.init_mlp(Engine.empty(), nin, nouts, params)
+    return NN.call_mlp(g, NN.mlp_of(nin, nouts), xs)
+
+
+def layer_of(m, i):
+    """Layer `i` of a model, or an empty one when the model is shorter."""
+    return unwrap_or(listGet(m.layers, i), NN.Layer(neurons=[]))
+
+
+def neuron_of(layer, i):
+    """Neuron `i` of a layer, or an empty one when the layer is shorter."""
+    return unwrap_or(listGet(layer.neurons, i), NN.Neuron(weights=[], bias=-1, nonlin=True))
+
+
+def demo_mlp():
+    """The demo MLP(3, [4, 4, 1]) and its first two layers/neurons as records."""
+    m = NN.mlp_of(3, [4, 4, 1])
+    layer0 = layer_of(m, 0)
+    layer1 = layer_of(m, 1)
+    return DemoMlp(m=m, layer0=layer0, n0=neuron_of(layer0, 0), layer1=layer1, n1=neuron_of(layer1, 0))
+
+
+def seeded_mlp():
+    """A fresh MLP(3, [4, 4, 1]) graph seeded with the oracle's weights."""
+    return NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
+
+
+def demo_layer_pass(dm):
+    """A seeded MLP's first `call_layer` pass over the oracle's inputs."""
+    return NN.call_layer(seeded_mlp(), dm.layer0, ORACLE_XS)
+
+
 class ForwardAll:
     """A finished forward pass: the graph and the ids this step hands on."""
     graph: Engine.Graph
@@ -37,6 +101,19 @@ class TanhInit:
     """The untrained tanh net's loss and per-parameter gradients."""
     loss: float
     grads: list[float]
+
+
+ORACLE_XS = [2.0, 3.0, -1.0]
+"""The oracle's MLP demo inputs, shared by the single-pass NN cases."""
+
+
+class DemoMlp:
+    """The demo MLP(3, [4, 4, 1]) with its first two layers and neurons."""
+    m: NN.MLP
+    layer0: NN.Layer
+    n0: NN.Neuron
+    layer1: NN.Layer
+    n1: NN.Neuron
 
 
 class MoreState:
@@ -72,10 +149,8 @@ def nn_records_cases():
     """NN's records and construction helpers: Neuron/Layer/MLP/Forward/neuron_at/layer_at."""
     na = NN.neuron_at(0, 3, True)
     la = NN.layer_at(16, 4, 4, True)
-    first_of_layer = unwrap_or(listGet(la.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
-    m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    n0 = unwrap_or(listGet(first_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+    first_of_layer = neuron_of(la, 0)
+    dm = demo_mlp()
     return [
         Check.equal("nn.param_count.matches", NN.param_count(3, [4, 4, 1]), len(Expected.MLP_WEIGHTS)),
         Check.ints_equal("nn.neuron_at.weights", na.weights, [0, 1, 2]),
@@ -84,31 +159,28 @@ def nn_records_cases():
         Check.equal("nn.layer_at.count", len(la.neurons), 4),
         Check.ints_equal("nn.layer_at.weights", first_of_layer.weights, [16, 17, 18, 19]),
         Check.equal("nn.layer_at.bias", first_of_layer.bias, 20),
-        Check.ints_equal("nn.Neuron.weights", n0.weights, [0, 1, 2]),
-        Check.equal("nn.Neuron.bias", n0.bias, 3),
-        Check.equal("nn.Layer.count", len(first_layer.neurons), 4),
+        Check.ints_equal("nn.Neuron.weights", dm.n0.weights, [0, 1, 2]),
+        Check.equal("nn.Neuron.bias", dm.n0.bias, 3),
+        Check.equal("nn.Layer.count", len(dm.layer0.neurons), 4),
     ]
 
 
 def nn_record_cases():
-    """The bare MLP and Forward records."""
+    """The bare MLP and Forward records; a model with no layers adds no nodes."""
+    empty = Engine.empty()
     return [
         Check.equal("nn.MLP.layers", len(NN.MLP(layers=[]).layers), 0),
-        Check.ints_equal("nn.Forward.outputs", NN.Forward(graph=Engine.empty(), outputs=[0, 1]).outputs, [0, 1]),
+        Check.equal("nn.MLP.no_layers", Engine.size(NN.call_mlp(empty, NN.MLP(layers=[]), [2.0, 3.0, -1.0])), Engine.size(empty)),
+        Check.ints_equal("nn.Forward.outputs", NN.Forward(graph=empty, outputs=[0, 1]).outputs, [0, 1]),
     ]
 
 
 def nn_neuron_cases():
     """`call_neuron`/`call_neuron_values` outputs match the oracle's nodes."""
-    m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    n0 = unwrap_or(listGet(first_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
-    second_layer = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
-    n1 = unwrap_or(listGet(second_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
-    g0 = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
-    neuron = NN.call_neuron(g0, n0, [2.0, 3.0, -1.0])
-    layer0 = NN.call_layer(g0, first_layer, [2.0, 3.0, -1.0])
-    neuron_values = NN.call_neuron_values(layer0.graph, n1, layer0.outputs)
+    dm = demo_mlp()
+    neuron = NN.call_neuron(seeded_mlp(), dm.n0, ORACLE_XS)
+    layer0 = demo_layer_pass(dm)
+    neuron_values = NN.call_neuron_values(layer0.graph, dm.n1, layer0.outputs)
     return [
         Check.close("nn.call_neuron", Engine.data(neuron, Engine.top(neuron)), unwrap_or(listGet(Expected.MLP_FORWARD_DATA, 50), 0.0), 1e-12, 0.0),
         Check.close("nn.call_neuron_values", Engine.data(neuron_values, Engine.top(neuron_values)), unwrap_or(listGet(Expected.MLP_FORWARD_DATA, 89), 0.0), 1e-12, 0.0),
@@ -117,12 +189,9 @@ def nn_neuron_cases():
 
 def nn_layer_cases():
     """`call_layer`/`call_layer_values` output ids match the oracle's layout."""
-    m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    second_layer = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
-    g0 = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
-    layer = NN.call_layer(g0, first_layer, [2.0, 3.0, -1.0])
-    layer_values = NN.call_layer_values(layer.graph, second_layer, layer.outputs)
+    dm = demo_mlp()
+    layer = demo_layer_pass(dm)
+    layer_values = NN.call_layer_values(layer.graph, dm.layer1, layer.outputs)
     return [
         Check.ints_equal("nn.call_layer.outputs", layer.outputs, [50, 60, 70, 80]),
         Check.close("nn.call_layer.data", Engine.data(layer.graph, unwrap_or(listGet(layer.outputs, 3), 0)), unwrap_or(listGet(Expected.MLP_FORWARD_DATA, 80), 0.0), 1e-12, 0.0),
@@ -139,6 +208,11 @@ def libm_cases():
         Check.close("libm.exp_of.pos", Libm.exp_of(2.0), unwrap_or(listGet(unwrap_or(listGet(Expected.OP_WANT, 33), []), 0), 0.0), 1e-9, 0.0),
         Check.close("libm.exp_of.zero", Libm.exp_of(0.0), unwrap_or(listGet(unwrap_or(listGet(Expected.OP_WANT, 34), []), 0), 0.0), 1e-9, 0.0),
     ]
+
+
+def torch_case(name, got, want, i, rtol):
+    """One `Check.close` against element `i` of an oracle's torch verdict."""
+    return Check.close(name, got, unwrap_or(listGet(want, i), 0.0), rtol, 0.0)
 
 
 def sanity_prefix(g):
@@ -175,10 +249,9 @@ def sanity_cases():
     y = done.graph
     yid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(y, yid)
-    datas = toList(map(range(Engine.size(y)), lambda i: Engine.data(y, i)))
-    return listConcat(listConcat(Ops.list_cases("sanity.data", datas, Expected.SANITY_DATA, 1e-12), Ops.list_cases("sanity.grads", grads, Expected.SANITY_GRADS, 1e-12)), [
-        Check.close("sanity.torch.data", Engine.data(y, yid), unwrap_or(listGet(Expected.SANITY_TORCH, 0), 0.0), 1e-12, 0.0),
-        Check.close("sanity.torch.grad", unwrap_or(listGet(grads, xid), 0.0), unwrap_or(listGet(Expected.SANITY_TORCH, 1), 0.0), 1e-12, 0.0),
+    return listConcat(graph_cases("sanity", node_datas(y), grads, Expected.SANITY_DATA, Expected.SANITY_GRADS, 1e-12), [
+        torch_case("sanity.torch.data", Engine.data(y, yid), Expected.SANITY_TORCH, 0, 1e-12),
+        torch_case("sanity.torch.grad", unwrap_or(listGet(grads, xid), 0.0), Expected.SANITY_TORCH, 1, 1e-12),
     ])
 
 
@@ -246,47 +319,31 @@ def more_cases():
     aid = unwrap_or(listGet(done.outs, 0), 0)
     bid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(g, gid2)
-    datas = toList(map(range(Engine.size(g)), lambda i: Engine.data(g, i)))
-    return listConcat(listConcat(Ops.list_cases("more.data", datas, Expected.MORE_DATA, 1e-12), Ops.list_cases("more.grads", grads, Expected.MORE_GRADS, 1e-12)), [
-        Check.close("more.torch.data", Engine.data(g, gid2), unwrap_or(listGet(Expected.MORE_TORCH, 0), 0.0), 1e-6, 0.0),
-        Check.close("more.torch.a", unwrap_or(listGet(grads, aid), 0.0), unwrap_or(listGet(Expected.MORE_TORCH, 1), 0.0), 1e-6, 0.0),
-        Check.close("more.torch.b", unwrap_or(listGet(grads, bid), 0.0), unwrap_or(listGet(Expected.MORE_TORCH, 2), 0.0), 1e-6, 0.0),
+    return listConcat(graph_cases("more", node_datas(g), grads, Expected.MORE_DATA, Expected.MORE_GRADS, 1e-12), [
+        torch_case("more.torch.data", Engine.data(g, gid2), Expected.MORE_TORCH, 0, 1e-6),
+        torch_case("more.torch.a", unwrap_or(listGet(grads, aid), 0.0), Expected.MORE_TORCH, 1, 1e-6),
+        torch_case("more.torch.b", unwrap_or(listGet(grads, bid), 0.0), Expected.MORE_TORCH, 2, 1e-6),
     ])
 
 
 def mlp_cases():
     """MLP(3, [4, 4, 1]) with the oracle's seeded weights: forward and backward."""
-    g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
-    m = NN.mlp_of(3, [4, 4, 1])
-    g2 = NN.call_mlp(g, m, [2.0, 3.0, -1.0])
-    root = Engine.top(g2)
-    grads = Engine.backward(g2, root)
-    datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
-    return listConcat(Ops.list_cases("mlp.data", datas, Expected.MLP_FORWARD_DATA, 1e-12), Ops.list_cases("mlp.grads", grads, Expected.MLP_FORWARD_GRADS, 1e-12))
+    return node_cases(seeded(3, [4, 4, 1], Expected.MLP_WEIGHTS, ORACLE_XS), "mlp", Expected.MLP_FORWARD_DATA, Expected.MLP_FORWARD_GRADS, 1e-12)
 
 
 def mlp2_cases():
     """MLP(2, [3, 2, 1]) with the oracle's second seeded weights."""
-    g = NN.init_mlp(Engine.empty(), 2, [3, 2, 1], Expected.MLP2_WEIGHTS)
-    m = NN.mlp_of(2, [3, 2, 1])
-    g2 = NN.call_mlp(g, m, [0.5, -1.5])
-    root = Engine.top(g2)
-    grads = Engine.backward(g2, root)
-    datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
-    return listConcat(Ops.list_cases("mlp2.data", datas, Expected.MLP2_FORWARD_DATA, 1e-12), Ops.list_cases("mlp2.grads", grads, Expected.MLP2_FORWARD_GRADS, 1e-12))
+    return node_cases(seeded(2, [3, 2, 1], Expected.MLP2_WEIGHTS, [0.5, -1.5]), "mlp2", Expected.MLP2_FORWARD_DATA, Expected.MLP2_FORWARD_GRADS, 1e-12)
+
+
+def chain_forward(acc, gnext):
+    """Append one forward pass's graph and top node id to the running pass."""
+    return ForwardAll(graph=gnext, outs=listAppend(acc.outs, Engine.top(gnext)))
 
 
 def forward_all(g, m, xs):
     """The README demo's four forward passes over one shared parameter graph."""
-    g0 = NN.call_mlp(g, m, unwrap_or(listGet(xs, 0), []))
-    o0 = Engine.top(g0)
-    g1 = NN.call_mlp(g0, m, unwrap_or(listGet(xs, 1), []))
-    o1 = Engine.top(g1)
-    g2 = NN.call_mlp(g1, m, unwrap_or(listGet(xs, 2), []))
-    o2 = Engine.top(g2)
-    g3 = NN.call_mlp(g2, m, unwrap_or(listGet(xs, 3), []))
-    o3 = Engine.top(g3)
-    return ForwardAll(graph=g3, outs=[o0, o1, o2, o3])
+    return fold(range(4), ForwardAll(graph=g, outs=[]), lambda acc, i: chain_forward(acc, NN.call_mlp(acc.graph, m, xi(xs, i))))
 
 
 def loss_step(st, i, outs, ys):
@@ -306,29 +363,28 @@ def sum_squares(g, outs, ys, n):
     return final.graph
 
 
+def readme_pass(params):
+    """The README demo's MLP, seeded from `params`, run over the dataset."""
+    g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], params)
+    m = NN.mlp_of(3, [4, 4, 1])
+    return forward_all(g, m, Expected.DATASET_X)
+
+
 def train_step(st, _):
     """One README demo SGD step: forward, loss, backward, parameter update."""
-    g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], st.params)
-    m = NN.mlp_of(3, [4, 4, 1])
-    f = forward_all(g, m, Expected.DATASET_X)
-    lg = sum_squares(f.graph, f.outs, Expected.DATASET_Y, 4)
-    root = Engine.top(lg)
-    loss_val = Engine.data(lg, root)
-    grads = Engine.backward(lg, root)
-    ids = NN.parameters(m)
-    param_grads = toList(map(range(len(ids)), lambda i: unwrap_or(listGet(grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
-    new_params = NN.sgd_step(st.params, grads, ids, 0.05)
-    return TrainState(params=new_params, losses=listAppend(st.losses, loss_val), grads=listAppend(st.grads, param_grads))
+    f = readme_pass(st.params)
+    loss = trained(f.graph, f.outs, Expected.DATASET_Y, 4)
+    ids = NN.parameters(NN.mlp_of(3, [4, 4, 1]))
+    param_grads = toList(map(range(len(ids)), lambda i: unwrap_or(listGet(loss.grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
+    new_params = NN.sgd_step(st.params, loss.grads, ids, 0.05)
+    return TrainState(params=new_params, losses=listAppend(st.losses, loss.value), grads=listAppend(st.grads, param_grads))
 
 
 def readme_cases():
     """20 README demo SGD steps: the per-step losses and gradients, final params and preds."""
     st = fold(range(20), TrainState(params=Expected.MLP_WEIGHTS, losses=[], grads=[]), train_step)
-    g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], st.params)
-    m = NN.mlp_of(3, [4, 4, 1])
-    f = forward_all(g, m, Expected.DATASET_X)
-    lg = sum_squares(f.graph, f.outs, Expected.DATASET_Y, 4)
-    losses = listAppend(st.losses, Engine.data(lg, Engine.top(lg)))
+    f = readme_pass(st.params)
+    losses = listAppend(st.losses, trained(f.graph, f.outs, Expected.DATASET_Y, 4).value)
     preds = toList(map(range(4), lambda i: Engine.data(f.graph, unwrap_or(listGet(f.outs, i), 0))))
     loss_cases = listConcat(listConcat(Ops.list_cases("train.losses", losses, Expected.TRAIN_LOSSES, 1e-12), Ops.list_cases("train.params", st.params, Expected.TRAIN_PARAMS, 1e-12)), Ops.list_cases("train.preds", preds, Expected.TRAIN_PREDS, 1e-12))
     return listConcat(loss_cases, Ops.nested_cases("train.step_grads", st.grads, Expected.TRAIN_STEP_GRADS, 1e-12))
@@ -376,50 +432,41 @@ def tanh_weights(params):
     return fold(range(9), Engine.empty(), lambda acc, i: Engine.value(acc, unwrap_or(listGet(params, i), 0.0)))
 
 
+def tanh_param_ids():
+    """The tanh demo's nine parameter node ids, 0..8."""
+    return toList(map(range(9), lambda i: i))
+
+
 def tanh_forward(g, W, xs):
     """Three tanh-net forward passes over the shared nine-parameter graph."""
-    f0 = tanh_net(g, W, xij(xs, 0, 0), xij(xs, 0, 1))
-    o0 = Engine.top(f0)
-    f1 = tanh_net(f0, W, xij(xs, 1, 0), xij(xs, 1, 1))
-    o1 = Engine.top(f1)
-    f2 = tanh_net(f1, W, xij(xs, 2, 0), xij(xs, 2, 1))
-    o2 = Engine.top(f2)
-    return ForwardAll(graph=f2, outs=[o0, o1, o2])
+    return fold(range(3), ForwardAll(graph=g, outs=[]), lambda acc, i: chain_forward(acc, tanh_net(acc.graph, W, xij(xs, i, 0), xij(xs, i, 1))))
+
+
+def tanh_run(params):
+    """A fresh tanh net from `params`: forward/backward over the tanh dataset."""
+    g = tanh_weights(params)
+    f = tanh_forward(g, tanh_param_ids(), Expected.TANH_X)
+    return trained(f.graph, f.outs, Expected.TANH_Y, 3)
 
 
 def tanh_step(st, _):
     """One tanh-demo SGD step: forward, loss, backward, parameter update."""
-    g = tanh_weights(st.params)
-    W = toList(map(range(9), lambda i: i))
-    f = tanh_forward(g, W, Expected.TANH_X)
-    lg = sum_squares(f.graph, f.outs, Expected.TANH_Y, 3)
-    root = Engine.top(lg)
-    loss_val = Engine.data(lg, root)
-    grads = Engine.backward(lg, root)
-    new_params = NN.sgd_step(st.params, grads, W, 0.1)
-    return TanhState(params=new_params, losses=listAppend(st.losses, loss_val))
+    loss = tanh_run(st.params)
+    new_params = NN.sgd_step(st.params, loss.grads, tanh_param_ids(), 0.1)
+    return TanhState(params=new_params, losses=listAppend(st.losses, loss.value))
 
 
 def tanh_init():
     """The untrained tanh net's loss and per-parameter gradients."""
-    g = tanh_weights(Expected.TANH_W0)
-    W = toList(map(range(9), lambda i: i))
-    f = tanh_forward(g, W, Expected.TANH_X)
-    lg = sum_squares(f.graph, f.outs, Expected.TANH_Y, 3)
-    root = Engine.top(lg)
-    grads = Engine.backward(lg, root)
-    return TanhInit(loss=Engine.data(lg, root), grads=toList(map(range(9), lambda i: unwrap_or(listGet(grads, i), 0.0))))
+    loss = tanh_run(Expected.TANH_W0)
+    return TanhInit(loss=loss.value, grads=toList(map(range(9), lambda i: unwrap_or(listGet(loss.grads, i), 0.0))))
 
 
 def tanh_cases():
     """The tiny tanh network: init loss/grads, 12 SGD steps, final params."""
     init = tanh_init()
     st = fold(range(12), TanhState(params=Expected.TANH_W0, losses=[]), tanh_step)
-    W = toList(map(range(9), lambda i: i))
-    g2 = tanh_weights(st.params)
-    f2 = tanh_forward(g2, W, Expected.TANH_X)
-    lg2 = sum_squares(f2.graph, f2.outs, Expected.TANH_Y, 3)
-    losses = listAppend(st.losses, Engine.data(lg2, Engine.top(lg2)))
+    losses = listAppend(st.losses, tanh_run(st.params).value)
     return listConcat(listConcat([Check.close("tanh.init_loss", init.loss, Expected.TANH_INIT_LOSS, 1e-9, 0.0)], Ops.list_cases("tanh.init_grads", init.grads, Expected.TANH_INIT_GRADS, 1e-9)), listConcat(Ops.list_cases("tanh.losses", losses, Expected.TANH_LOSSES, 1e-9), Ops.list_cases("tanh.w", st.params, Expected.TANH_W, 1e-9)))
 
 
@@ -448,8 +495,4 @@ def all_cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_cases)

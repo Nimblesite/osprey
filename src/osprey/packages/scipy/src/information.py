@@ -19,20 +19,23 @@ __all__ = ["xlogy", "xlog1py", "entr", "rel_entr", "kl_div", "huber",
            "pseudo_huber", "logsumexp", "logsumexp_b", "softmax", "log_softmax"]
 
 
-def xlogy(x: float, y: float) -> float:
-    """scipy.special.xlogy(x, y): x*ln(y), 0 at x=0."""
+def guarded(x: float, y: float, log_of) -> float:
+    """x * log_of(y), and 0 at x = 0 unless y is NaN: the rule `xlogy` and
+    `xlog1py` share."""
     if x == 0.0 and (not is_nan(y)):
         return 0.0
     else:
-        return x * log_s(y)
+        return x * log_of(y)
+
+
+def xlogy(x: float, y: float) -> float:
+    """scipy.special.xlogy(x, y): x*ln(y), 0 at x=0."""
+    return guarded(x, y, log_s)
 
 
 def xlog1py(x: float, y: float) -> float:
     """scipy.special.xlog1py(x, y): x*ln(1+y), 0 at x=0."""
-    if x == 0.0 and (not is_nan(y)):
-        return 0.0
-    else:
-        return x * log1p(y)
+    return guarded(x, y, log1p)
 
 
 def entr(x: float) -> float:

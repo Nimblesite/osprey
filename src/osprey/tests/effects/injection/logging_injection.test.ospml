@@ -17,8 +17,7 @@ loggingInjectionCase () =
     actual = live (\() => serve "Ada")
     simulated = mock (\() => serve "Ada")
     checkAll "same work uses console or in-memory logging" [
-        actual == 42,
-        simulated == 42,
+        structuralEquals [actual, simulated] [42, 42],
         recorded == "accepted Ada\nreceipt Ada\n"
     ]
 

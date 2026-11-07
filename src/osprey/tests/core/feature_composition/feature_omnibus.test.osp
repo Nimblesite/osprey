@@ -146,30 +146,11 @@ fn stringInteractions() = {
     ])
 }
 
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // Register the union, Result, and scalar interaction.
-test("unions, Results and scalar operations compose", fn() => exactArithmetic(unionsResultsAndScalars))
+test("unions, Results and scalar operations compose", exactly(unionsResultsAndScalars))
 // Register the function, boolean, and pipeline interaction.
-test("functions, forward calls, booleans and pipes compose", fn() => exactArithmetic(functionsPipesAndBooleans))
+test("functions, forward calls, booleans and pipes compose", exactly(functionsPipesAndBooleans))
 // Register the effect and persistent-collection interaction.
-test("effects mutate handled state beside persistent collections", fn() => exactArithmetic(effectsAndCollections))
+test("effects mutate handled state beside persistent collections", exactly(effectsAndCollections))
 // Register the cross-feature string interaction.
-test("string transformations consume values from other features", fn() => exactArithmetic(stringInteractions))
+test("string transformations consume values from other features", exactly(stringInteractions))

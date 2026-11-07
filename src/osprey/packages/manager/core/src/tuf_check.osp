@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Canonical
 import registry::Digests
 import registry::Domains
@@ -75,10 +76,7 @@ module TufCheck {
 
     fn fieldText(record, key) = Json::textAt(record, key) ?: ""
 
-    fn hasField(record, key) = match Json::get(record, key) {
-        Success => true
-        Error => false
-    }
+    fn hasField(record, key) = Checked::succeeded(Json::get(record, key))
 
     /// The sole member key of a union object such as `{"Eligible":{}}`, or
     /// "" when it does not hold exactly one member.

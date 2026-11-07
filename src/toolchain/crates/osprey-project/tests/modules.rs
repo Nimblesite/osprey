@@ -9,7 +9,9 @@ use osprey_ast::{
 };
 use osprey_project::assemble;
 use osprey_syntax::Flavor;
-use support::{ast, config, contains, error_messages, function, import, item, parsed};
+use support::{
+    ast, config, contains, error_messages, function, import, item, parsed, rejects_sources,
+};
 
 #[test]
 fn mixed_flavors_resolve_by_namespace_not_file_path() {
@@ -77,57 +79,45 @@ fn imported_static_effects_are_validated_after_cross_flavor_assembly() {
 #[test]
 fn private_member_import_is_rejected() {
     // Implements [MODULES-EXPORTS], [MODULES-IMPORT].
-    let library = parsed(
-        "lib.osp",
-        Flavor::Default,
-        "namespace billing;\nmodule Tax { fn secret() = 1 }\n",
-    );
-    let entry = parsed(
+    rejects_sources(
         "main.osp",
-        Flavor::Default,
-        "import billing::Tax::{secret}\nfn main() = 0\n",
-    );
-    let messages = error_messages(&config("main.osp"), &[library, entry]);
-    assert!(
-        contains(&messages, "private imported member"),
-        "{messages:?}"
+        &[
+            (
+                "lib.osp",
+                Flavor::Default,
+                "namespace billing;\nmodule Tax { fn secret() = 1 }\n",
+            ),
+            (
+                "main.osp",
+                Flavor::Default,
+                "import billing::Tax::{secret}\nfn main() = 0\n",
+            ),
+        ],
+        &["private imported member"],
     );
 }
 
 #[test]
 fn duplicate_declarations_across_open_namespace_contributions_are_rejected() {
     // Implements [MODULES-NAMESPACE], [MODULES-EXPORTS].
-    let first = parsed(
+    rejects_sources(
         "one.osp",
-        Flavor::Default,
-        "namespace shared;\nfn clash() = 1\n",
-    );
-    let second = parsed("two.ospml", Flavor::Ml, "namespace shared\nclash () = 2\n");
-    let messages = error_messages(&config("one.osp"), &[first, second]);
-    assert!(
-        contains(&messages, "duplicate declaration `shared::clash`"),
-        "{messages:?}"
+        &[
+            (
+                "one.osp",
+                Flavor::Default,
+                "namespace shared;\nfn clash() = 1\n",
+            ),
+            ("two.ospml", Flavor::Ml, "namespace shared\nclash () = 2\n"),
+        ],
+        &["duplicate declaration `shared::clash`"],
     );
 }
 
 #[test]
 fn ambiguous_member_imports_are_rejected_even_when_unused() {
     // Implements [MODULES-IMPORT].
-    let modules = parsed(
-        "modules.osp",
-        Flavor::Default,
-        "namespace lib;\nmodule A { export fn run() = 1 }\nmodule B { export fn run() = 2 }\n",
-    );
-    let entry = parsed(
-        "main.osp",
-        Flavor::Default,
-        "import lib::A::{run}\nimport lib::B::{run}\nfn main() = 0\n",
-    );
-    let messages = error_messages(&config("main.osp"), &[modules, entry]);
-    assert!(
-        contains(&messages, "ambiguous import binding `run`"),
-        "{messages:?}"
-    );
+    rejects_sources("main.osp", &[("modules.osp", Flavor::Default, "namespace lib;\nmodule A { export fn run() = 1 }\nmodule B { export fn run() = 2 }\n"), ("main.osp", Flavor::Default, "import lib::A::{run}\nimport lib::B::{run}\nfn main() = 0\n")], &["ambiguous import binding `run`"]);
 }
 
 #[test]
@@ -423,13 +413,15 @@ fn initializer_and_type_alias_cycles_fail_before_codegen() {
         "{messages:?}"
     );
 
-    let aliases = parsed(
+    rejects_sources(
         "main.osp",
-        Flavor::Default,
-        "type First = List<Second>\ntype Second = List<First>\nfn main() = 0\n",
+        &[(
+            "main.osp",
+            Flavor::Default,
+            "type First = List<Second>\ntype Second = List<First>\nfn main() = 0\n",
+        )],
+        &["type alias cycle"],
     );
-    let messages = error_messages(&config("main.osp"), &[aliases]);
-    assert!(contains(&messages, "type alias cycle"), "{messages:?}");
 }
 
 #[test]

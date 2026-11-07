@@ -1,28 +1,28 @@
 WEBVTT
 
-00:00.000 --> 00:15.008
+00:00.000 --> 00:13.704
 Static typing, no hints
 
-00:15.008 --> 00:26.104
-Inferred, not written
+00:13.704 --> 00:34.776
+Goal: types you never write
 
-00:26.104 --> 00:29.687
-Inferred, not written
+00:34.776 --> 01:07.478
+Code: inferred, not written
 
-00:29.687 --> 00:40.970
-Caught before it runs
+01:07.478 --> 01:24.931
+Run: caught before it runs
 
-00:40.970 --> 00:53.534
-A real port
+01:24.931 --> 02:13.843
+Code: a real package
 
-00:53.534 --> 00:58.885
-A real port
+02:13.843 --> 02:56.621
+Code: effects, not exceptions
 
-00:58.885 --> 01:09.351
-Checked against CPython
+02:56.621 --> 03:57.830
+Run: checked against CPython
 
-01:09.351 --> 01:20.884
-Not CPython
+03:57.830 --> 04:17.479
+Change it: mix two types
 
-01:20.884 --> 01:30.160
+04:17.479 --> 04:50.622
 Try it

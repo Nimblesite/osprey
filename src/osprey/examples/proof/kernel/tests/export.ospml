@@ -8,18 +8,7 @@ import proof::Terms
 import proof::Trust
 import prooftests::Shapes
 import proof
-    Axiom
-    Definition
-    Theorem
-    Single
-    Group
-    Pi
-    Sort
-    Zero
-    Const
-    App
-    BVar
-    Succ
+    Axiom Definition Theorem Single Group Pi Sort Zero Const App BVar Succ
 import prooftests::Support
 
 (** Reading `lean4export` NDJSON 3.1.0 files into kernel declarations
@@ -61,9 +50,7 @@ module ExportTests
             `Branch`) recursor computations exported from Lean 4.25 with no
             axioms; the kernel does not accept these yet, so this stays RED
             until mutual and nested inductives are supported. *)
-        test ("the genuine mutual, nested and indexed recursor theorems check axiom-free from an empty environment", \() =>
-            expect (checkedRecursorRoots (Checked::exported (Environment::empty (), recursorCases ())), "declared;declared;declared;declared;declared;declared;declared;declared;")
-            expect (axioms (Export::read (recursorCases ())), "0"))
+        test ("the genuine mutual, nested and indexed recursor theorems check axiom-free from an empty environment", \() => expectAll [checkedRecursorRoots (Checked::exported (Environment::empty (), recursorCases ())) == "declared;declared;declared;declared;declared;declared;declared;declared;", axioms (Export::read (recursorCases ())) == "0"])
 
         test ("the actual Lean HAdd recursor consumes identity type annotations", \() =>
             expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), haddExport (), "HAdd.rec")), "declared"))
@@ -71,9 +58,7 @@ module ExportTests
         test ("Nat.add_comm states addition commutativity over all natural numbers", \() =>
             expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddComm (), "Nat.add_comm"), natCommutativity ()), "equal"))
 
-        test ("the false arithmetic statement n plus m equals m is rejected", \() =>
-            expect (Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddCommWrong (), "Nat.add_comm"), natWrongStatement ()), "equal")
-            expect (Shapes::kindOf (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddCommWrong (), "Nat.add_comm"))), "type mismatch"))
+        test ("the false arithmetic statement n plus m equals m is rejected", \() => expectAll [Shapes::shapeOf (Shapes::statementOf (Fixtures::natAddCommWrong (), "Nat.add_comm"), natWrongStatement ()) == "equal", Shapes::kindOf (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), Fixtures::natAddCommWrong (), "Nat.add_comm"))) == "type mismatch"])
 
         test ("the recorded Nat.add_comm dependency closure contains no axioms", \() =>
             expect (axioms (Export::read (Fixtures::natAddComm ())), "0"))
@@ -119,11 +104,7 @@ module ExportTests
             expect (boundaryMessage ("\"name\":1,\"type\":0", "\"name\":0,\"type\":0"), "line 8: name 0 is the anonymous root, not a declaration name"))
         forEachList (["max", "imax"], \key => test ("${key} refuses silently discarded extra universe operands", \() =>
             expect (Support::messageOf (Export::read (line ("{\"il\":1,\"${key}\":[0,0,0]}"))), "line 2: ${key} needs two sides")))
-        test ("safe declaration flags keep the actual control checkable", \() =>
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), boundaryExport (), "t")), "declared")
-            expect (checkedVariant ("\"isUnsafe\":false,", ""), "declared")
-            expect (checkedVariant ("\"thm\":{", "\"def\":{"), "declared")
-            expect (checkedVariant ("\"thm\":{", "\"def\":{\"safety\":\"safe\","), "declared"))
+        test ("safe declaration flags keep the actual control checkable", \() => expectAll [declaredOutcome (Checked::exportedDeclaring (Environment::empty (), boundaryExport (), "t")) == "declared", checkedVariant ("\"isUnsafe\":false,", "") == "declared", checkedVariant ("\"thm\":{", "\"def\":{") == "declared", checkedVariant ("\"thm\":{", "\"def\":{\"safety\":\"safe\",") == "declared"])
 
     checkedVariant (before, after) = match replace (boundaryExport (), before, after)
         Error message => "fixture error: ${message}"
@@ -144,15 +125,9 @@ module ExportTests
         test ("an undeclared numeric-string proof name cannot alias a numeric name", \() =>
             expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (5, 5), "t")), "unknown constant `\"5\"`"))
 
-        test ("distinct name components retain their own valid proof declarations", \() =>
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (4, 3), "t")), "declared")
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (6, 5), "t")), "declared")
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (3, 2), "t")), "declared")
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (5, 4), "t")), "declared"))
+        test ("distinct name components retain their own valid proof declarations", \() => expectAll [declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (4, 3), "t")) == "declared", declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (6, 5), "t")) == "declared", declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (3, 2), "t")) == "declared", declaredOutcome (Checked::exportedDeclaring (Environment::empty (), identityExport (5, 4), "t")) == "declared"])
 
-        test ("namespace and quoted names and numeric and string names coexist without shadowing", \() =>
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), coexist (3, 4, 3), "t")), "declared")
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), coexist (5, 6, 5), "t")), "declared"))
+        test ("namespace and quoted names and numeric and string names coexist without shadowing", \() => expectAll [declaredOutcome (Checked::exportedDeclaring (Environment::empty (), coexist (3, 4, 3), "t")) == "declared", declaredOutcome (Checked::exportedDeclaring (Environment::empty (), coexist (5, 6, 5), "t")) == "declared"])
 
     coexist (first, second, proof) = replace (identityExport (first, proof), "{\"thm\":", "{\"axiom\":{\"name\":${toString second},\"type\":1,\"levelParams\":[],\"isUnsafe\":false}}\n{\"thm\":") ?: ""
 

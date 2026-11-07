@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** Prompt suspends a form until its handler supplies a value. *)
 effect Prompt
     (** Request the value the caller should use for `label`; the handler decides what is supplied. *)
@@ -62,25 +48,17 @@ resumeOuterHandlerBridgeCase () =
     // Preserve the complete bridge transcript.
     checkAll "outer-handler legacy observations" [
         legacyTranscript == "[log] form start\nask name\n[log] got Ada\nafter ask: Ada\nresult=Ada\n",
-        contains legacyTranscript "[log] form start\n",
-        contains legacyTranscript "ask name\n",
-        contains legacyTranscript "[log] got Ada\n",
-        contains legacyTranscript "after ask: Ada\n",
+        containsAll legacyTranscript ["[log] form start\n", "ask name\n", "[log] got Ada\n", "after ask: Ada\n"],
         endsWith legacyTranscript "result=Ada\n"
     ]
 
     // Both logs cross the prompt, which settles once.
     checkAll "outer-handler internal state" [
-        result == "Ada",
-        settledAnswer == "Ada",
-        logCalls == 2,
-        promptCalls == 1,
-        promptSettled == 1,
-        logMessages == "form start|got Ada|"
+        structuralEquals [result, settledAnswer, logMessages] ["Ada", "Ada", "form start|got Ada|"],
+        structuralEquals [logCalls, promptCalls, promptSettled] [2, 1, 1]
     ]
 
-
-test "a resumed body retains its outer handlers" (\() => exactArithmetic (resumeOuterHandlerBridgeCase))
+test "a resumed body retains its outer handlers" (exactly resumeOuterHandlerBridgeCase)
 
 (** Ledger is handled by two nested regions, only one of which is complete. *)
 effect Ledger
@@ -130,15 +108,11 @@ partialHandlerDelegationCase () =
     // The arm's own operation stays with the inner region; the operation it
     // does not cover reaches the outer one, twice.
     checkAll "a partial handler delegates the operation it lacks" [
-        total == 28,
-        innerRecords == 2,
-        outerAudits == 2,
-        outerRecords == 0,
-        lastNoted == 8,
+        structuralEquals [total, innerRecords, outerAudits] [28, 2, 2],
+        structuralEquals [outerRecords, lastNoted, (innerRecords + outerAudits )] [0, 8, 4],
         auditLog == "record:5|record:7|",
         innerRecords == outerAudits,
-        innerRecords != outerRecords,
-        (innerRecords + outerAudits ) == 4
+        innerRecords != outerRecords
     ]
 
     // The outer `record` arm multiplies by 1000, so any leak of a `record`
@@ -148,29 +122,23 @@ partialHandlerDelegationCase () =
         total != (5000 + 7000 ),
         total != 24,
         total < 100,
-        outerRecords == 0,
-        !(contains auditLog "record:12"),
-        contains auditLog "record:5|",
-        contains auditLog "record:7|",
-        startsWith auditLog "record:5|",
-        endsWith auditLog "record:7|",
-        length auditLog == 18
+        structuralEquals [outerRecords, length auditLog] [0, 18],
+        containsAll auditLog ["record:5|", "record:7|"],
+        structuralEquals [containsNone auditLog ["record:12"], startsWith auditLog "record:5|"] [true, true],
+        endsWith auditLog "record:7|"
     ]
 
     // Each delegated audit answered its own label's length, and the label the
     // outer arm saw was built from the amount the inner arm received.
     checkAll "delegated answers return to the performing arm" [
         lastNoted == length "record:7",
-        lastNoted == 8,
-        (5 + 8 ) == 13,
-        (7 + 8 ) == 15,
-        // `?:` is the LOWEST precedence and right-associative, so the whole
-        // sum needs its own parentheses to sit under the `==` [SYNTAX].
+        structuralEquals [lastNoted, (5 + 8 ), (7 + 8 ), outerAudits] [8, 13, 15, 2],
+        // `?:` is the LOWEST precedence and right-associative, so the whole,
+        // sum needs its own parentheses to sit under the `==` [SYNTAX].,
         total == ((5 + 7 ) + (8 + 8 ) ),
-        outerAudits == 2,
         auditLog != "",
         auditLog != "record:5|",
         length auditLog == (9 + 9 )
     ]
 
-test "an arm delegates an operation its own handler does not cover" (\() => exactArithmetic (partialHandlerDelegationCase))
+test "an arm delegates an operation its own handler does not cover" (exactly partialHandlerDelegationCase)

@@ -93,19 +93,30 @@ def item_step(acc, item):
     return Transformed(schema=JsonArray(listAppend(J.items_of(acc.schema), inner.schema)), is_strict_compatible=acc.is_strict_compatible and inner.is_strict_compatible)
 
 
+def replaced(members, key, value):
+    """The object `members` with the member `key` replaced by `value`."""
+    return J.obj(listAppend(without(members, [key]), J.member(key, value)))
+
+
+def handle_child(parent, key, schema) -> Transformed:
+    """Walk `schema`'s object-valued child `key`, replacing it with the walked
+    schema when it is an object and keeping `schema` when it is not."""
+    child = J.object_at(schema, key)
+    match child:
+        case JsonObject():
+            inner = handle(child)
+            return Transformed(schema=replaced(J.members_of(schema), key, inner.schema), is_strict_compatible=parent.is_strict_compatible and inner.is_strict_compatible)
+        case _:
+            return Transformed(schema=schema, is_strict_compatible=parent.is_strict_compatible)
+
+
 def handle_object(members):
     """`_handle_object`: walk `properties` and an object-valued `additionalProperties`."""
     schema = J.obj(members)
     props = J.members_of(J.object_at(schema, "properties"))
     walked = foldList(props, Transformed(schema=J.obj([]), is_strict_compatible=True), def_step)
-    with_props = J.obj(listAppend(without(members, ["properties"]), J.member("properties", walked.schema))) if len(props) > 0 else schema
-    additional = J.object_at(schema, "additionalProperties")
-    match additional:
-        case JsonObject():
-            inner = handle(additional)
-            return Transformed(schema=J.obj(listAppend(without(J.members_of(with_props), ["additionalProperties"]), J.member("additionalProperties", inner.schema))), is_strict_compatible=walked.is_strict_compatible and inner.is_strict_compatible)
-        case _:
-            return Transformed(schema=with_props, is_strict_compatible=walked.is_strict_compatible)
+    with_props = replaced(members, "properties", walked.schema) if len(props) > 0 else schema
+    return handle_child(walked, "additionalProperties", with_props)
 
 
 def handle_array(members) -> Transformed:
@@ -113,40 +124,30 @@ def handle_array(members) -> Transformed:
     schema = J.obj(members)
     prefix = J.list_at(schema, "prefixItems")
     walked_prefix = foldList(prefix, Transformed(schema=JsonArray([]), is_strict_compatible=True), item_step)
-    with_prefix = J.obj(listAppend(without(members, ["prefixItems"]), J.member("prefixItems", walked_prefix.schema))) if len(prefix) > 0 else schema
-    items = J.object_at(schema, "items")
-    match items:
-        case JsonObject():
-            inner = handle(items)
-            return Transformed(schema=J.obj(listAppend(without(J.members_of(with_prefix), ["items"]), J.member("items", inner.schema))), is_strict_compatible=walked_prefix.is_strict_compatible and inner.is_strict_compatible)
-        case _:
-            return Transformed(schema=with_prefix, is_strict_compatible=walked_prefix.is_strict_compatible)
-
-
-def has_key(schema, key):
-    return len(filterList(J.members_of(schema), lambda m: J.member_name(m) == key)) > 0
+    with_prefix = replaced(members, "prefixItems", walked_prefix.schema) if len(prefix) > 0 else schema
+    return handle_child(walked_prefix, "items", with_prefix)
 
 
 def transform_node(schema, compatible) -> Transformed:
     """`OpenAIJsonSchemaTransformer.transform` with `strict=None`."""
     members = without(J.members_of(schema), DROPPED_KEYS)
     type_ = J.text_at(schema, "type", "")
-    incompatible = len(filterList(STRICT_INCOMPATIBLE_KEYS, lambda key: has_key(schema, key))) > 0
+    incompatible = len(filterList(STRICT_INCOMPATIBLE_KEYS, lambda key: J.has(schema, key))) > 0
     format_ = J.text_at(schema, "format", "")
     bad_format = format_ != "" and not listContains(STRICT_COMPATIBLE_STRING_FORMATS, format_)
-    still = compatible and not has_key(schema, "default") and not incompatible and not bad_format and not has_key(schema, "oneOf")
+    still = compatible and not J.has(schema, "default") and not incompatible and not bad_format and not J.has(schema, "oneOf")
     if type_ == "object":
         additional = J.object_at(schema, "additionalProperties")
         allows_extra = not J.is_null(additional) and not J.encode(additional) == "false"
         props = J.members_of(J.object_at(schema, "properties"))
         required = mapList(J.list_at(schema, "required"), lambda r: unwrap_or(jsonText(r), ""))
-        all_required = has_key(schema, "properties") and has_key(schema, "required") and len(filterList(props, lambda m: not listContains(required, J.member_name(m)))) == 0
-        with_props = members if has_key(schema, "properties") else listAppend(members, J.member("properties", J.obj([])))
+        all_required = J.has(schema, "properties") and J.has(schema, "required") and len(filterList(props, lambda m: not listContains(required, J.member_name(m)))) == 0
+        with_props = members if J.has(schema, "properties") else listAppend(members, J.member("properties", J.obj([])))
         closed = listAppend(without(with_props, ["additionalProperties"]), J.member("additionalProperties", JsonBool(False))) if not allows_extra else with_props
         return Transformed(schema=J.obj(closed), is_strict_compatible=still and not allows_extra and all_required)
     elif type_ == "array":
         items = J.object_at(schema, "items")
-        typed = len(filterList(TYPE_BEARING_KEYS, lambda key: has_key(items, key))) > 0
-        return Transformed(schema=J.obj(members), is_strict_compatible=still and (typed or has_key(schema, "prefixItems")))
+        typed = len(filterList(TYPE_BEARING_KEYS, lambda key: J.has(items, key))) > 0
+        return Transformed(schema=J.obj(members), is_strict_compatible=still and (typed or J.has(schema, "prefixItems")))
     else:
         return Transformed(schema=J.obj(members), is_strict_compatible=still)

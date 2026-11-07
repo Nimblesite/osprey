@@ -20,7 +20,7 @@ at, and it is the documented tie order for larger vocabs.
 """
 
 from transformers.Math import log_softmax, max_f, max_i, min_f, min_i, neg_inf, softmax
-from transformers.Lists import contains_int, last_n
+from transformers.Lists import contains_int, last_n, map_indexed
 
 __all__ = [
     "Processor",
@@ -95,16 +95,14 @@ def warper(kind, setting, filter_value, min_tokens_to_keep):
 def TemperatureLogitsWarper(temperature):
     """`TemperatureLogitsWarper(temperature)`: divide every logit by the
     strictly positive temperature."""
-    base = blank()
-    return update(base, kind="temperature", temperature=temperature)
+    return update(blank(), kind="temperature", temperature=temperature)
 
 
 def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
     """`TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep)`: keep the
     top-k scores, masking the rest with `filter_value`; the kept count is at
     least `min_tokens_to_keep`."""
-    base = blank()
-    return update(base, kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
+    return update(blank(), kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
 
 
 def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
@@ -147,59 +145,51 @@ def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
     positive scores and multiply negative scores of each token already present
     (after skipping the first `prompt_ignore_length` history tokens) by
     `penalty`."""
-    base = blank()
-    return update(base, kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
+    return update(blank(), kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
 
 
 def NoRepeatNGramLogitsProcessor(ngram_size):
     """`NoRepeatNGramLogitsProcessor(ngram_size)`: mask with -inf every token
     that would complete an n-gram that already appears in the history."""
-    base = blank()
-    return update(base, kind="no_repeat_ngram", ngram_size=ngram_size)
+    return update(blank(), kind="no_repeat_ngram", ngram_size=ngram_size)
 
 
 def MinLengthLogitsProcessor(min_length, eos_ids):
     """`MinLengthLogitsProcessor(min_length, eos_ids)`: mask every eos id with
     -inf while the sequence is shorter than `min_length`."""
-    base = blank()
-    return update(base, kind="min_length", min_length=min_length, eos_ids=eos_ids)
+    return update(blank(), kind="min_length", min_length=min_length, eos_ids=eos_ids)
 
 
 def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos_ids):
     """`MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens,
     eos_ids)`: mask every eos id with -inf while fewer than `min_new_tokens`
     tokens follow the skipped prompt."""
-    base = blank()
-    return update(base, kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
+    return update(blank(), kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
 
 
 def ForcedBOSTokenLogitsProcessor(bos_token_id):
     """`ForcedBOSTokenLogitsProcessor(bos_token_id)`: when the history is one
     token long, force `bos_token_id` (everything else -inf)."""
-    base = blank()
-    return update(base, kind="forced_bos", bos_token_id=bos_token_id)
+    return update(blank(), kind="forced_bos", bos_token_id=bos_token_id)
 
 
 def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
     """`ForcedEOSTokenLogitsProcessor(max_length, eos_ids)`: when the history is
     `max_length - 1` tokens long, force the eos ids (everything else -inf)."""
-    base = blank()
-    return update(base, kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
+    return update(blank(), kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
 
 
 def SuppressTokensLogitsProcessor(suppress_ids):
     """`SuppressTokensLogitsProcessor(suppress_ids)`: mask every listed token
     with -inf."""
-    base = blank()
-    return update(base, kind="suppress_tokens", suppress_ids=suppress_ids)
+    return update(blank(), kind="suppress_tokens", suppress_ids=suppress_ids)
 
 
 def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     """`NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)`: mask with -inf the
     last token of any bad word the history is about to complete, and every
     single-token bad word; single-token bad words equal to an eos id are ignored."""
-    base = blank()
-    return update(base, kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
+    return update(blank(), kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
 
 
 def apply_list(processors, input_ids, scores: list[float32]):
@@ -230,7 +220,7 @@ def mass_processor(processor, input_ids, scores):
         case "typical":
             return typical_warper(processor.mass, processor.filter_value, processor.min_tokens_to_keep, scores)
         case "epsilon":
-            return epsilon_warper(processor.epsilon, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return below_cutoff(processor.epsilon, processor.filter_value, processor.min_tokens_to_keep, scores)
         case "eta":
             return eta_warper(processor.epsilon, processor.filter_value, processor.min_tokens_to_keep, scores)
         case "suppress_tokens":
@@ -271,12 +261,17 @@ def cmp_i(a, b):
     return -1 if a < b else (1 if a > b else 0)
 
 
+def get_or(xs, i, fallback):
+    """Element `i` of `xs`, or `fallback` when `i` is out of range."""
+    return unwrap_or(listGet(xs, i), fallback)
+
+
 def score_at(xs, i):
-    return unwrap_or(listGet(xs, i), neg_inf())
+    return get_or(xs, i, neg_inf())
 
 
 def prob_at(xs, i):
-    return unwrap_or(listGet(xs, i), toFloat32(0.0))
+    return get_or(xs, i, toFloat32(0.0))
 
 
 def cumsum(xs):
@@ -288,7 +283,7 @@ def cumsum_from(xs, i, running, acc):
     if i == len(xs):
         return acc
     else:
-        r = running + unwrap_or(listGet(xs, i), toFloat32(0.0))
+        r = running + get_or(xs, i, toFloat32(0.0))
         return cumsum_from(xs, i + 1, r, listAppend(acc, r))
 
 
@@ -297,7 +292,7 @@ def entropy(logits):
     `Categorical(logits=...).entropy()`; -inf logits (probability 0) contribute
     0 and NaN propagates when every logit is -inf."""
     nls = log_softmax(logits)
-    return fold(range(len(nls)), toFloat32(0.0), lambda acc, i: acc + entropy_term(unwrap_or(listGet(nls, i), neg_inf())))
+    return fold(range(len(nls)), toFloat32(0.0), lambda acc, i: acc + entropy_term(get_or(nls, i, neg_inf())))
 
 
 def entropy_term(x):
@@ -306,40 +301,51 @@ def entropy_term(x):
 
 def sort_indices_by(values):
     """Indices 0..n-1 sorted by ascending value, ties broken by smaller index."""
-    idx = toList(map(range(len(values)), lambda i: i))
+    idx = map_indexed(values, lambda i: i)
     return listSortBy(idx, lambda a, b: cmp_entries(values, a, b))
+
+
+def in_index_order(idx, xs):
+    """`xs` gathered in the order of the index list `idx`."""
+    return mapList(idx, lambda j: score_at(xs, j))
+
+
+def cum_probs(idx, logits):
+    """Cumulative softmax of `logits` gathered in `idx` order."""
+    return cumsum(softmax(in_index_order(idx, logits)))
 
 
 def cmp_entries(values, a, b):
     """Ascending by value, ties by index."""
-    return ranked(values, a, b, cmp_f(score_at(values, a), score_at(values, b)))
+    return ranked(a, b, cmp_f(score_at(values, a), score_at(values, b)))
 
 
-def ranked(_values, a, b, by_value):
+def ranked(a, b, by_value):
+    """`by_value`, falling back to ascending index on a tie."""
     return by_value if by_value != 0 else cmp_i(a, b)
 
 
 def sorted_pos(idx, i):
     """The sorted position of original index `i`."""
-    return fold(range(len(idx)), -1, lambda found, j: found if found != -1 else (j if unwrap_or(listGet(idx, j), -1) == i else -1))
+    return fold(range(len(idx)), -1, lambda found, j: found if found != -1 else (j if get_or(idx, j, -1) == i else -1))
 
 
 def kth_largest(scores, k):
     """The k-th largest score (1-indexed), the threshold torch.topk uses."""
     desc = listSortBy(scores, lambda a, b: cmp_f(b, a))
-    return unwrap_or(listGet(desc, k - 1), neg_inf())
+    return get_or(desc, k - 1, neg_inf())
 
 
 def top_k_indices(scores, k):
     """Indices of the k largest scores, ties broken by smaller index."""
-    idx = toList(map(range(len(scores)), lambda i: i))
+    idx = map_indexed(scores, lambda i: i)
     ordered = listSortBy(idx, lambda a, b: cmp_entries_desc(scores, a, b))
-    return toList(map(range(k), lambda i: unwrap_or(listGet(ordered, i), 0)))
+    return toList(map(range(k), lambda i: get_or(ordered, i, 0)))
 
 
 def cmp_entries_desc(scores, a, b):
     """Descending by value, ties by index."""
-    return ranked(scores, a, b, cmp_f(score_at(scores, b), score_at(scores, a)))
+    return ranked(a, b, cmp_f(score_at(scores, b), score_at(scores, a)))
 
 
 def count_lt(xs, limit):
@@ -357,14 +363,13 @@ def top_k_warper(k, fv, scores):
 
 def top_p_warper(p, fv, m, scores):
     idx = sort_indices_by(scores)
-    sorted_scores = mapList(idx, lambda j: score_at(scores, j))
-    cum = cumsum(softmax(sorted_scores))
+    cum = cum_probs(idx, scores)
     # torch computes `1 - top_p` as a Python float64 scalar and casts it to the
     # tensor's dtype; match that rather than subtracting in binary32, so a
     # boundary lands on the same side torch chose.
     cutoff = toFloat32(1.0 - toFloat(p))
     keep_from = len(scores) - m
-    return toList(map(range(len(scores)), lambda i: fv if removed_top_p(i, idx, cum, cutoff, keep_from) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if removed_top_p(i, idx, cum, cutoff, keep_from) else score_at(scores, i))
 
 
 def removed_top_p(i, idx, cum, cutoff, keep_from):
@@ -374,20 +379,19 @@ def removed_top_p(i, idx, cum, cutoff, keep_from):
 
 def min_p_warper(p, fv, m, scores):
     probs = softmax(scores)
-    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max_f(a, unwrap_or(listGet(probs, i), neg_inf())))
+    scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max_f(a, get_or(probs, i, neg_inf())))
     keep = top_k_indices(scores, min_i(m, len(scores)))
-    return toList(map(range(len(scores)), lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i))
 
 
 def typical_warper(mass, fv, m, scores):
     shifted = mapList(log_softmax(scores), lambda x: abs((0.0 - x) - entropy(scores)))
     idx = sort_indices_by(shifted)
-    sorted_shifted = mapList(idx, lambda j: score_at(shifted, j))
-    sorted_logits = mapList(idx, lambda j: score_at(scores, j))
-    cum = cumsum(softmax(sorted_logits))
+    sorted_shifted = in_index_order(idx, shifted)
+    cum = cum_probs(idx, scores)
     last = min_i(count_lt(cum, mass), len(scores) - 1)
     threshold = score_at(sorted_shifted, last)
-    return toList(map(range(len(scores)), lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i))
 
 
 def removed_typical(i, idx, shifted, threshold, m):
@@ -395,11 +399,8 @@ def removed_typical(i, idx, shifted, threshold, m):
     return j >= m and score_at(shifted, i) > threshold
 
 
-def epsilon_warper(e, fv, m, scores):
-    return below_cutoff(e, fv, m, scores)
-
-
 def eta_warper(e, fv, m, scores):
+    """The eta threshold warper: `below_cutoff` at eta's entropy-scaled limit."""
     return below_cutoff(min_f(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
 
 
@@ -407,14 +408,14 @@ def below_cutoff(limit, fv, m, scores):
     """Filter every token whose probability is under `limit`, keeping the `m` best."""
     probs = softmax(scores)
     threshold = kth_largest(scores, min_i(m, len(scores)))
-    return toList(map(range(len(scores)), lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i))
 
 
 # --- processors over the token history ------------------------------------
 
 def repetition_warper(pen, ig, ids, scores):
-    tail = toList(map(range(len(ids) - ig), lambda i: unwrap_or(listGet(ids, i + ig), 0)))
-    return toList(map(range(len(scores)), lambda i: penalized(score_at(scores, i), pen) if contains_int(tail, i) else score_at(scores, i)))
+    tail = toList(map(range(len(ids) - ig), lambda i: get_or(ids, i + ig, 0)))
+    return map_indexed(scores, lambda i: penalized(score_at(scores, i), pen) if contains_int(tail, i) else score_at(scores, i))
 
 
 def penalized(score, penalty):
@@ -423,12 +424,12 @@ def penalized(score, penalty):
 
 def masked(scores, ids):
     """`scores` with every listed token id set to -inf."""
-    return toList(map(range(len(scores)), lambda i: neg_inf() if contains_int(ids, i) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: neg_inf() if contains_int(ids, i) else score_at(scores, i))
 
 
 def forced(scores, ids):
     """A row that allows only the listed token ids: 0 for them, -inf elsewhere."""
-    return toList(map(range(len(scores)), lambda i: 0.0 if contains_int(ids, i) else neg_inf()))
+    return map_indexed(scores, lambda i: 0.0 if contains_int(ids, i) else neg_inf())
 
 
 def no_repeat_warper(n, ids, scores):
@@ -436,12 +437,13 @@ def no_repeat_warper(n, ids, scores):
         return scores
     else:
         prefix = last_n(ids, n - 1)
-        banned = fold(range(len(ids) - n + 1), [], lambda acc, s: listAppend(acc, unwrap_or(listGet(ids, s + n - 1), 0)) if window_prefix_matches(ids, s, n - 1, prefix) else acc)
+        banned = fold(range(len(ids) - n + 1), [], lambda acc, s: listAppend(acc, get_or(ids, s + n - 1, 0)) if spans_match(ids, s, prefix) else acc)
         return masked(scores, banned)
 
 
-def window_prefix_matches(ids, s, n1, prefix):
-    return fold(range(n1), True, lambda ok, j: ok and unwrap_or(listGet(ids, s + j), -1) == unwrap_or(listGet(prefix, j), -1))
+def spans_match(xs, offset, ys):
+    """Whether the `len(ys)` elements of `xs` from `offset` equal `ys` pairwise."""
+    return fold(range(len(ys)), True, lambda ok, j: ok and get_or(xs, offset + j, -1) == get_or(ys, j, -1))
 
 
 def min_length_warper(ml, eos, ids, scores):
@@ -465,31 +467,29 @@ def suppress_warper(supp, scores):
 
 
 def bad_words_warper(bw, eos, ids, scores):
-    filtered = filterList(bw, lambda w: not (len(w) == 1 and contains_int(eos, unwrap_or(listGet(w, 0), -1))))
+    filtered = filterList(bw, lambda w: not (len(w) == 1 and contains_int(eos, get_or(w, 0, -1))))
     return foldList(filtered, scores, lambda acc, w: ban_one(w, ids, acc))
 
 
 def ban_one(w, ids, scores):
     if len(w) == 1:
-        return set_neg_inf(scores, unwrap_or(listGet(w, 0), -1))
+        return set_neg_inf(scores, get_or(w, 0, -1))
     else:
         return set_neg_inf(scores, last_token(w)) if ends_with(ids, all_but_last(w)) else scores
 
 
 def ends_with(xs, suffix):
-    if len(xs) < len(suffix):
-        return False
-    else:
-        return fold(range(len(suffix)), True, lambda ok, j: ok and unwrap_or(listGet(xs, len(xs) - len(suffix) + j), -1) == unwrap_or(listGet(suffix, j), -1))
+    """Whether `xs` ends with `suffix`, compared token by token."""
+    return len(xs) >= len(suffix) and spans_match(xs, len(xs) - len(suffix), suffix)
 
 
 def all_but_last(xs):
-    return toList(map(range(len(xs) - 1), lambda i: unwrap_or(listGet(xs, i), 0)))
+    return toList(map(range(len(xs) - 1), lambda i: get_or(xs, i, 0)))
 
 
 def last_token(xs):
-    return unwrap_or(listGet(xs, len(xs) - 1), 0)
+    return get_or(xs, len(xs) - 1, 0)
 
 
 def set_neg_inf(scores, i):
-    return toList(map(range(len(scores)), lambda j: neg_inf() if j == i else score_at(scores, j)))
+    return map_indexed(scores, lambda j: neg_inf() if j == i else score_at(scores, j))

@@ -3,6 +3,7 @@
 //! [MODULES-STATE-TOPLEVEL].
 
 use crate::collect_support::primary_name;
+use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::model::{ConstantInfo, DeclInfo, DeclKind, ModuleInfo, ProjectGraph, SymbolKey};
 use crate::{ProjectError, SourceMetadata};
@@ -65,6 +66,12 @@ pub(crate) struct Collector<'a> {
     /// The selected entry source, whose file scope may hold handler-owned
     /// cells ([MODULES-FILE-SCOPE-BINDING]).
     pub(crate) entry_source: Option<usize>,
+}
+
+impl Diagnostics for Collector<'_> {
+    fn sink(&mut self) -> (&[SourceMetadata], &mut Vec<ProjectError>) {
+        (self.sources, &mut self.errors)
+    }
 }
 
 impl Collector<'_> {

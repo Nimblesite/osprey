@@ -15,7 +15,9 @@ Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE].
 __all__ = ["Config", "LINEAR", "FULL", "layer_type", "key_dim", "value_dim", "conv_dim", "state_cells", "kv_groups", "rotary_dim", "is_full"]
 
 LINEAR = "linear_attention"
+"""`Qwen3_5TextConfig.layer_types`' entry naming a linear-attention layer."""
 FULL = "full_attention"
+"""`Qwen3_5TextConfig.layer_types`' entry naming a full-attention layer."""
 
 
 class Config:
@@ -44,6 +46,7 @@ def layer_type(config, index):
 
 
 def is_full(config, index):
+    """Whether layer `index` is a `full_attention` layer, and everything else linear."""
     return layer_type(config, index) == FULL
 
 

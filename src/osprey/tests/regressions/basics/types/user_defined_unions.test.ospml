@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** Cross-contract oracle for [TYPE-MATCH-EXHAUSTIVE], [TYPE-LIST],
     [TYPE-LIST-PATTERNS], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
@@ -206,7 +194,7 @@ userDefinedUnionCase () =
         render (Reason(text = "blocked")) == "reason blocked"
     ]
 
-test "user-defined union variants preserve their tags and payloads" (\() => exactArithmetic (userDefinedUnionCase))
+test "user-defined union variants preserve their tags and payloads" (exactly userDefinedUnionCase)
 
 (** Exercise generic lookup at scalar and nested collection types on maps BUILT
     at runtime, then route every recovered value through one generic effect. *)
@@ -283,4 +271,4 @@ builtMapIndexCase () =
         listValueAt (listGet nestedMaps 0 ?: ["fallback" => [99]], "odd", 2, 99) == 5,
         listValueAt (listGet nestedMaps 1 ?: ["fallback" => [99]], "prime", 3, 99) == 7
     ]
-test "built maps support indexed lookup" (\() => exactArithmetic (builtMapIndexCase))
+test "built maps support indexed lookup" (exactly builtMapIndexCase)

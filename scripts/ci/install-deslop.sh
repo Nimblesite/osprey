@@ -3,7 +3,8 @@
 #
 # Local / devcontainer installer for the gate binary, matching the CI duplication gate.
 # Downloads the release tarball,
-# verifies its SHA-256, and installs the `deslop` binary onto PATH.
+# verifies its SHA-256, and installs `deslop` and `deslop-mcp` (the MCP server
+# agents use for find-similar) onto PATH.
 #
 # Usage:
 #   scripts/ci/install-deslop.sh [INSTALL_DIR]
@@ -21,11 +22,11 @@ fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 # Pinned: 0.39.0 added an Osprey grammar that returns no parse tree for this repo's own sources
 # (src/toolchain/benchmarks/cases/binarytrees/binarytrees.ospml among them) and fails the whole analysis. Move this
 # forward once a release parses them.
-DESLOP_VERSION="0.38.0"
+DESLOP_VERSION="0.40.1"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
 # Already at this release? Nothing to do (keeps `make setup` idempotent).
-if command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
+if command -v deslop-mcp &>/dev/null && command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
     ok "deslop ${DESLOP_VERSION} already installed ($(command -v deslop))"
     exit 0
 fi
@@ -69,8 +70,10 @@ fi
 ok "checksum verified"
 
 tar -xzf "$tmp/$asset" -C "$tmp"
-install -m 0755 "$tmp/$stem/deslop" "$dest/deslop"
-ok "installed deslop ${DESLOP_VERSION} → $dest/deslop"
+for tool in deslop deslop-mcp; do
+    install -m 0755 "$tmp/$stem/$tool" "$dest/$tool"
+    ok "installed $tool ${DESLOP_VERSION} → $dest/$tool"
+done
 
 # CI: make the install dir discoverable by subsequent steps.
 if [[ -n "${GITHUB_PATH:-}" ]]; then

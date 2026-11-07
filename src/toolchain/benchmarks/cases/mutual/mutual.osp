@@ -1,20 +1,6 @@
 // Mutually-recursive isEven/isOdd applied across a range — classic mutual recursion.
-fn add(a, b) = a + b
-fn sub(a, b) = a - b
-fn mod_(a, b) = a % b
+import bench::Bench::{guarded, add, sub, modp}
 fn isEven(n) = match n { 0 => true  _ => isOdd(sub(n, 1)) }
 fn isOdd(n) = match n { 0 => false _ => isEven(sub(n, 1)) }
-fn step(acc, i) = match isEven(mod_(i, 1000)) { true => add(acc, 1)  false => acc }
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${range(1, 130000) |> fold(0, step)}")
-}
+fn step(acc, i) = match isEven(modp(i, 1000)) { true => add(acc, 1)  false => acc }
+fn main() = guarded(|| => print("${range(1, 130000) |> fold(0, step)}"))

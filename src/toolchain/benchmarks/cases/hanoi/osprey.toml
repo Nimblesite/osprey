@@ -1,0 +1,5 @@
+[project]
+name = "hanoi"
+source_roots = [".", "../../shared"]
+default_namespace = "hanoi"
+entry = "hanoi.osp"

@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** Audit supplies numbered values and observes continuation unwind order. *)
 effect Audit
     (** Request the numbered value for `label`, recording the visit. *)
@@ -49,15 +35,13 @@ resumeLifoAuditCase () =
 
     (* Assert issue order, settle order, operation count, and combined answer. *)
     checkAll "LIFO internal state" [
-        total == 3,
-        n == 2,
-        issued == "load:1|parse:2|",
-        settled == "parse:3|load:3|"
+        structuralEquals [total, n] [3, 2],
+        structuralEquals [issued, settled] ["load:1|parse:2|", "parse:3|load:3|"]
     ]
 
 (* Register the post-resume LIFO regression. *)
 
-test "post-resume code unwinds in reverse operation order" (\() => exactArithmetic (resumeLifoAuditCase))
+test "post-resume code unwinds in reverse operation order" (exactly resumeLifoAuditCase)
 
 (** Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
     depth, so every transcript entry names both the region that answered an
@@ -135,8 +119,7 @@ nestedInterleavedDepthTwoCase () =
        answers them: the outer region answers first and third. *)
     checkAll "two nested depths enter in perform order" [
         entered == "a:a1|b:b1|a:a2|b:b2|",
-        alphaCalls == 2,
-        betaCalls == 2
+        structuralEquals [alphaCalls, betaCalls] [2, 2]
     ]
 
     (* Settlement follows the live arm nesting: `a2` crossed the Beta region on
@@ -162,7 +145,7 @@ nestedInterleavedDepthTwoCase () =
     ]
 
 (* Register the two-depth interleaved settlement audit. *)
-test "interleaved performs across two nested regions settle innermost first" (\() => exactArithmetic (nestedInterleavedDepthTwoCase))
+test "interleaved performs across two nested regions settle innermost first" (exactly nestedInterleavedDepthTwoCase)
 
 (** Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
     Alpha and the innermost one Beta, while the body performs them in a third
@@ -221,9 +204,7 @@ nestedDepthThreeRotationCase () =
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
     checkAll "three rotated depths enter in perform order" [
         entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
-        gammaCalls == 2,
-        alphaCalls == 2,
-        betaCalls == 2
+        structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]
     ]
 
     (* Settlement does NOT reverse that sequence: each crossing operation put
@@ -248,7 +229,7 @@ nestedDepthThreeRotationCase () =
     ]
 
 (* Register the three-depth rotated settlement audit. *)
-test "three rotated regions settle by live arm nesting, not by perform order" (\() => exactArithmetic (nestedDepthThreeRotationCase))
+test "three rotated regions settle by live arm nesting, not by perform order" (exactly nestedDepthThreeRotationCase)
 
 (** Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
     pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
@@ -330,10 +311,7 @@ nestedDepthFourStaircaseCase () =
     (* Eight operations descend the four depths and climb back out. *)
     checkAll "four nested depths enter in perform order" [
         entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
-        alphaCalls == 2,
-        betaCalls == 2,
-        gammaCalls == 2,
-        deltaCalls == 2
+        structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]
     ]
 
     (* Deepest live arm first: both Delta suspensions, then both Gamma, then
@@ -364,7 +342,7 @@ nestedDepthFourStaircaseCase () =
     ]
 
 (* Register the four-depth nested settlement audit. *)
-test "four nested regions settle by live arm nesting, deepest arm first" (\() => exactArithmetic (nestedDepthFourStaircaseCase))
+test "four nested regions settle by live arm nesting, deepest arm first" (exactly nestedDepthFourStaircaseCase)
 
 (** Twin gives two nested regions something to divide between them. *)
 effect Twin
@@ -432,15 +410,12 @@ nestedPartialInnerResumeCase () =
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)
     checkAll "a partial inner region keeps only its own operation" [
-        innerNear == 2,
-        outerFar == 2,
-        outerNear == 0
+        structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]
     ]
 
     (* Entry order is the body's order, alternating between the two depths. *)
     checkAll "a crossing operation enters between inner suspensions" [
-        entered == "near:1|far:2|near:3|far:4|",
-        supplies == "n1=10|f2=2000|n3=30|f4=4000|"
+        structuralEquals [entered, supplies] ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"]
     ]
 
     (* Both inner `near` arms settle first: each `far` crossed them on its way
@@ -458,7 +433,7 @@ nestedPartialInnerResumeCase () =
     ]
 
 (* Register the partial-inner-region settlement audit. *)
-test "a partial inner region resumes while its uncovered operation crosses outward" (\() => exactArithmetic (nestedPartialInnerResumeCase))
+test "a partial inner region resumes while its uncovered operation crosses outward" (exactly nestedPartialInnerResumeCase)
 
 (** Layer is handled twice at two depths, the inner region covering only part of
     the outer body. *)
@@ -515,8 +490,7 @@ sameEffectTwoDepthsCase () =
     (* Shadow and restore: the inner arm answered exactly the two operations
        inside its region, the outer arm the one before it and the one after it. *)
     checkAll "an inner region shadows only its own lexical region" [
-        outerCalls == 2,
-        innerCalls == 2,
+        structuralEquals [outerCalls, innerCalls] [2, 2],
         entered == "out:before|in:in1|in:in2|out:after|"
     ]
 
@@ -540,4 +514,4 @@ sameEffectTwoDepthsCase () =
     ]
 
 (* Register the same-effect two-depth settlement audit. *)
-test "an inner region settles fully before the outer region's later operation" (\() => exactArithmetic (sameEffectTwoDepthsCase))
+test "an inner region settles fully before the outer region's later operation" (exactly sameEffectTwoDepthsCase)

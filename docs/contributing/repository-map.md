@@ -34,7 +34,9 @@ The root Makefile defines every public target, so `make` and editor task panels,
 | `scripts/make/apps.mk` | Graphics hosts, GPT-2 weights, benchmark tooling and website steps |
 | `scripts/make/extension.mk` | Extension packaging and installation verification |
 
-`scripts/make/ios.mk` and `scripts/make/android.mk` own the mobile runtime archives and test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
+Every app's targets live in a folder under `src/toolchain/targets/` named for its platform: `src/toolchain/targets/macos/`, `src/toolchain/targets/windows/`, `src/toolchain/targets/ios/`, `src/toolchain/targets/android/` and `src/toolchain/targets/web/` open or build each app, and each one's `tests/` folder holds that app's tests on the platform. `src/toolchain/targets/tests/` holds the host-free suites, the same on every platform, and `src/toolchain/targets/llms/` runs and fetches the language models. The root holds no app targets. A recipe two folders need is one private `_` step in a fragment, never a copy.
+
+`scripts/make/ios.mk` and `scripts/make/android.mk` own the mobile runtime archives, the iOS, macOS and Android app builds the platform folders share, and their test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
 
 ## Applications and presentation
 
@@ -56,6 +58,6 @@ Manual `osprey program.osp --run` retains normal application semantics: relative
 
 ## Supporting material
 
-Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
+Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. `docs/regressions.md` lists regressions since the last release; released bugs are GitHub issues.
 
 Configuration files stay at the root when their tools discover them there. Workspace, compiler and release manifests are entry points, not miscellaneous project documentation.

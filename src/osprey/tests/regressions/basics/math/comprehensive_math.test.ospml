@@ -1,16 +1,4 @@
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** Faults are recorded at a numeric API boundary; recovery values remain integers. *)
 type Measurement =
@@ -218,4 +206,4 @@ comprehensiveMathCase () =
         input () == ""
     ]
 
-test "math showcase produces checked deterministic state" (\() => exactArithmetic (comprehensiveMathCase))
+test "math showcase produces checked deterministic state" (exactly comprehensiveMathCase)

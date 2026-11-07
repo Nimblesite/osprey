@@ -1,0 +1,5 @@
+[project]
+name = "fib"
+source_roots = [".", "../../shared"]
+default_namespace = "fib"
+entry = "fib.osp"

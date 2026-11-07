@@ -26,7 +26,9 @@ const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
 );
 
 // Node's WASI writes to the real stdout fd, so capture it by pointing the
-// instance's fd 1 at a temp file and reading it back after the run.
+// instance's fd 1 at a temp file and reading it back after the run. The capture
+// file and the sandbox below are scratch: both go once the run ends, so a corpus
+// run leaves nothing beside its modules.
 const capturePath = `${wasmPath}.stdout.txt`;
 const fd = openSync(capturePath, "w");
 
@@ -51,6 +53,11 @@ const wasi = new WASI({
   returnOnExit: true,
 });
 
+function removeScratch() {
+  rmSync(capturePath, { force: true });
+  rmSync(sandbox, { recursive: true, force: true });
+}
+
 let exitCode = 0;
 try {
   const { instance } = await WebAssembly.instantiate(bytes, {
@@ -59,12 +66,14 @@ try {
   exitCode = wasi.start(instance);
 } catch (err) {
   closeSync(fd);
+  removeScratch();
   console.error(`FAIL: module trapped: ${err?.message ?? err}`);
   process.exit(1);
 }
 closeSync(fd);
 
 const captured = readFileSync(capturePath, "utf8");
+removeScratch();
 process.stdout.write(captured);
 
 if (exitCode) {

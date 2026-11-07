@@ -1,114 +1,7 @@
-// Native test suite for the account domain rules and renderings.
-// [TESTING-BUILTINS]
-//
-// Mirrors src/domain/{money,json,accounts}.ospml. Exercises the pure business
-// rules (namable/movable), the Outcome union pattern-match, the JSON encoding
-// of an Account (escaping included), and the fixed-width TUI row.
+// Account domain cases, run against the real `bank::Accounts` rules (src/domain/accounts.ospml): the pure business rules (namable/movable), the Outcome union pattern-match, the JSON encoding of an Account (escaping included), the fixed-width TUI row and a storage effect handled in place of SQLite. [TESTING-BUILTINS]
+namespace bank
 
-signature MoneyApi
-    type Cents = int
-    type Amount
-    fromCents : Cents -> Amount
-    toCents : Amount -> Cents
-    show : Amount -> string
-    positive : Amount -> bool
-
-module Money : MoneyApi
-    type Cents = int
-    type Amount =
-        cents : Cents
-
-    fromCents cents = Amount(cents = cents)
-    toCents amount = amount.cents
-
-    (** "$4,250.05" — cents are zero-padded via the two-digit remainder and
-        dollars are thousands-grouped by recursion. `/` is float division, so
-        this runs on `intDiv` and `%` by nonzero literals: total, never faulting. *)
-    pennies c =
-        remainder = c % 100
-        match remainder < 10
-            true => "0${remainder}"
-            false => "${remainder}"
-
-    triple n = match n < 10
-        true => "00${n}"
-        false => match n < 100
-            true => "0${n}"
-            false => "${n}"
-
-    group dollars = match dollars < 1000
-        true => "${dollars}"
-        false =>
-            next = intDiv dollars 1000
-            remainder = dollars % 1000
-            "${group next},${triple remainder}"
-
-    show amount =
-        cents = toCents amount
-        dollars = intDiv cents 100
-        // Divide before negating: both parts fit even when cents is INT64_MIN.
-        match cents < 0
-            true => "-$${group (wrapSub 0 dollars)}.${pennies (wrapSub 0 (cents % 100))}"
-            false => "$${group dollars}.${pennies cents}"
-
-    positive amount = toCents amount > 0
-
-(** Hand-written JSON text for the account fixtures. *)
-module Json
-    escape s =
-        bslash = "\\"
-        quote = "\""
-        step = replace s bslash (bslash + bslash) ?: ""
-        replace step quote (bslash + quote) ?: ""
-
-    quoted s =
-        quote = "\""
-        quote + escape s + quote
-
-    (** `"key":"value"`, with the value escaped as a JSON string. *)
-    export strField key value = quoted key + ":" + quoted value
-
-    (** `"key":value` for a number. *)
-    export numField key value = quoted key + ":" + toString value
-
-    (** A JSON object around already-joined `members`. *)
-    export obj members = "{" + members + "}"
-
-type Account =
-    id : int
-    owner : string
-    balance : int
-
-type Outcome =
-    Landed
-        balance : int
-    Refused
-        why : string
-
-(** Account rules and renderings the bank's tests check. *)
-module Accounts
-    (** Whether `owner` is a usable account name: not empty. *)
-    export namable owner = length owner > 0
-
-    (** Whether `cents` is an amount that can move: more than zero. *)
-    export movable cents = Money::positive (Money::fromCents cents)
-
-    (** The account as a JSON object, balance in cents and as money text. *)
-    export json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show (Money::fromCents a.balance)))
-
-    (** The account as one fixed-width table row. *)
-    export row a =
-        owner = padEnd a.owner 12 " " ?: a.owner
-        cash = padStart (Money::show (Money::fromCents a.balance)) 9 " " ?: Money::show (Money::fromCents a.balance)
-        id = padStart (toString a.id) 2 " " ?: toString a.id
-        "│ ${id} │ ${owner} │ ${cash} │"
-
-q = "\""
-
-(** A refusal is a domain value, not an error: classify one exhaustively. *)
-settle o = match o
-    Landed balance => "landed ${balance}"
-    Refused why => "refused ${why}"
+import bank::Accounts
 
 (** The pure ML-flavor testing surface [TESTING-VERDICT]: a three-state Verdict
     value and combinators. A case is a pure function returning a Verdict; `test`
@@ -120,42 +13,6 @@ type Verdict =
     Skip
         why : string
 
-check (label, expected, actual) = match expected == actual
-    true => Pass
-    false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
-
-andThen first rest = match first
-    Pass => rest
-    Fail reason => Fail(reason = reason)
-    Skip why => Skip(why = why)
-
-(** --- account-opening rule --- *)
-namableCase () =
-    real = andThen (check ("a real name is namable", true, Accounts::namable "Amelia Chen")) (check ("single char is namable", true, Accounts::namable "x"))
-    andThen real (check ("empty name is refused", false, Accounts::namable ""))
-
-(** --- movement-amount rule --- *)
-movableCase () =
-    pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
-    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (-250)))
-    andThen pos zeroNeg
-
-(** --- the Outcome union both API and main pattern-match --- *)
-outcomeCase () =
-    andThen (check ("landed carries the new balance", "landed 3600", settle (Landed(balance = 3600)))) (check ("refused carries the reason", "refused insufficient funds", settle (Refused(why = "insufficient funds"))))
-
-(** --- JSON rendering, escaping the owner name through the encoder --- *)
-jsonCase () =
-    plain = check ("plain account row", "{${q}id${q}:1,${q}owner${q}:${q}Amelia Chen${q},${q}cents${q}:246240,${q}balance${q}:${q}$2,462.40${q}}", Accounts::json (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
-    andThen plain (check ("owner with a quote stays valid JSON", "{${q}id${q}:9,${q}owner${q}:${q}a${bs}${q}b${q},${q}cents${q}:0,${q}balance${q}:${q}$0.00${q}}", Accounts::json (Account(id = 9, owner = "a${q}b", balance = 0))))
-
-(** --- fixed-width TUI row alignment --- *)
-rowCase () =
-    wide = check ("row pads owner and right-aligns money", "│  1 │ Amelia Chen  │ $2,462.40 │", Accounts::row (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
-    andThen wide (check ("short owner and small balance pad out", "│  3 │ Bo           │     $0.05 │", Accounts::row (Account(id = 3, owner = "Bo", balance = 5))))
-
-bs = "\\"
-
 (** A small storage contract for testing the rent workflow without SQLite. *)
 effect Vault
     (** Read the balance held for `account`. *)
@@ -163,46 +20,85 @@ effect Vault
     (** Withdraw `amount` from `account`, reporting the `Outcome`. *)
     debit : (int, int) => Outcome
 
-(** The workflow under test: rent only moves when the guard says it can. *)
-payRent account cents = match Accounts::movable cents && perform Vault.balance account >= cents
-    true => perform Vault.debit account cents
-    false => Refused(why = "blocked by guard")
+(** Account rules and renderings, each case a Verdict. *)
+module AccountCases
+    q = "\""
 
-(** Each factory call owns a balance; reusing its handler shares that balance.
-    The return clause converts the completed workflow's Outcome to text. *)
-vault opening =
-    mut balance = opening
-    handler Vault
-        balance _ => balance
-        debit _ cents =>
-            balance := satSub balance cents
-            Landed(balance = balance)
-        return outcome => settle outcome
+    (** A refusal is a domain value, not an error: classify one exhaustively. *)
+    settle o = match o
+        Landed balance => "landed ${balance}"
+        Refused why => "refused ${why}"
 
-mockedVaultCase () =
-    flush = vault 9000
-    broke = vault 40
-    rent = \() => payRent 1 2500
-    landed = check ("flush vault lands the rent", "landed 6500", flush rent)
-    reused = andThen landed (check ("reusing a handler keeps its balance", "landed 4000", flush rent))
-    andThen reused (check ("independent handler refuses via the guard", "refused blocked by guard", broke rent))
+    check (label, expected, actual) = match expected == actual
+        true => Pass
+        false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
 
-guardCase () =
-    mut touched = false
-    spy = handler Vault
-        balance _ =>
-            touched := true
-            999999
-        debit _ _ =>
-            touched := true
-            Refused(why = "vault touched")
-    refused = check ("zero cents are refused", "refused blocked by guard", settle (spy (\() => payRent 1 0)))
-    andThen refused (check ("invalid amount performs no storage operations", false, touched))
+    andThen first rest = match first
+        Pass => rest
+        Fail reason => Fail(reason = reason)
+        Skip why => Skip(why = why)
 
-test "namable enforces a non-empty owner" namableCase
-test "movable enforces positive whole cents" movableCase
-test "Outcome classifies landed vs refused" outcomeCase
-test "Account renders escaped JSON" jsonCase
-test "Account renders an aligned TUI row" rowCase
-test "handler values reuse state and isolate factory instances" mockedVaultCase
-test "invalid payments never perform storage operations" guardCase
+    (** --- account-opening rule --- *)
+    export namableCase () =
+        real = andThen (check ("a real name is namable", true, Accounts::namable "Amelia Chen")) (check ("single char is namable", true, Accounts::namable "x"))
+        andThen real (check ("empty name is refused", false, Accounts::namable ""))
+
+    (** --- movement-amount rule --- *)
+    export movableCase () =
+        pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
+        zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (-250)))
+        andThen pos zeroNeg
+
+    (** --- the Outcome union both API and main pattern-match --- *)
+    export outcomeCase () =
+        andThen (check ("landed carries the new balance", "landed 3600", settle (Landed(balance = 3600)))) (check ("refused carries the reason", "refused insufficient funds", settle (Refused(why = "insufficient funds"))))
+
+    (** --- JSON rendering, escaping the owner name through the encoder --- *)
+    export jsonCase () =
+        plain = check ("plain account row", "{${q}id${q}:1,${q}owner${q}:${q}Amelia Chen${q},${q}cents${q}:246240,${q}balance${q}:${q}$2,462.40${q}}", Accounts::json (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
+        andThen plain (check ("owner with a quote stays valid JSON", "{${q}id${q}:9,${q}owner${q}:${q}a${bs}${q}b${q},${q}cents${q}:0,${q}balance${q}:${q}$0.00${q}}", Accounts::json (Account(id = 9, owner = "a${q}b", balance = 0))))
+
+    (** --- fixed-width TUI row alignment --- *)
+    export rowCase () =
+        wide = check ("row pads owner and right-aligns money", "│  1 │ Amelia Chen  │ $2,462.40 │", Accounts::row (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
+        andThen wide (check ("short owner and small balance pad out", "│  3 │ Bo           │     $0.05 │", Accounts::row (Account(id = 3, owner = "Bo", balance = 5))))
+
+    bs = "\\"
+
+    (** The workflow under test: rent only moves when the guard says it can. *)
+    payRent account cents = match Accounts::movable cents && perform Vault.balance account >= cents
+        true => perform Vault.debit account cents
+        false => Refused(why = "blocked by guard")
+
+    (** Each factory call owns a balance; reusing its handler shares that balance.
+        The return clause converts the completed workflow's Outcome to text. *)
+    vault opening =
+        mut balance = opening
+        handler Vault
+            balance _ => balance
+            debit _ cents =>
+                balance := satSub balance cents
+                Landed(balance = balance)
+            return outcome => settle outcome
+
+    (** --- a reused handler keeps its balance; a fresh factory call starts its own --- *)
+    export mockedVaultCase () =
+        flush = vault 9000
+        broke = vault 40
+        rent = \() => payRent 1 2500
+        landed = check ("flush vault lands the rent", "landed 6500", flush rent)
+        reused = andThen landed (check ("reusing a handler keeps its balance", "landed 4000", flush rent))
+        andThen reused (check ("independent handler refuses via the guard", "refused blocked by guard", broke rent))
+
+    (** --- a refused amount never reaches storage: the spy handler stays untouched --- *)
+    export guardCase () =
+        mut touched = false
+        spy = handler Vault
+            balance _ =>
+                touched := true
+                999999
+            debit _ _ =>
+                touched := true
+                Refused(why = "vault touched")
+        refused = check ("zero cents are refused", "refused blocked by guard", settle (spy (\() => payRent 1 0)))
+        andThen refused (check ("invalid amount performs no storage operations", false, touched))

@@ -35,6 +35,12 @@ module SatTests {
         Error => []
     }
 
+    /// The error message of a solve or assume, or "ok" when it succeeded.
+    fn codeOf(r) = match r {
+        Error { message } => message
+        Success => "ok"
+    }
+
     fn canonicalModel(vars, model) = length(model) == vars &&
         fold(range(0, vars), true, fn(ok, i) => ok && SatClauses::absLit(listGet(model, i) ?: 0) == i + 1)
 
@@ -133,17 +139,14 @@ module SatTests {
     fn trivial() = checkAll("trivial satisfiable and unsatisfiable formulas", [
         outcome(Sat::solve(2, [[1], [-2]])) == "sat:1,-2",
         outcome(Sat::solve(1, [[1], [-1]])) == "unsat:0,1:",
-        outcome(Sat::solve(3, [])) == "sat:-1,-2,-3",
-        outcome(Sat::solve(2, [[]])) == "unsat:0:",
+        structuralEquals([outcome(Sat::solve(3, [])), outcome(Sat::solve(2, [[]]))], ["sat:-1,-2,-3", "unsat:0:"]),
         outcome(Sat::solve(2, [[1, 2]])) == "sat:-1,2",
         outcome(Sat::solve(2, [[1], [-1], []])) == "unsat:0,1:"
     ])
 
     fn oracle() = checkAll("every model is canonical and passes the oracle", [
-        passesOracle(2, [[1], [-2]]),
-        passesOracle(3, []),
-        passesOracle(2, [[1, 2]]),
-        passesOracle(4, [[2, 3, 4], [-4]]),
+        structuralEquals([passesOracle(2, [[1], [-2]]), passesOracle(3, [])], [true, true]),
+        structuralEquals([passesOracle(2, [[1, 2]]), passesOracle(4, [[2, 3, 4], [-4]])], [true, true]),
         passesOracle(3, [[-1, 2], [-2, 3], [1, 2, 3], [-3]]),
         passesOracle(3, [[1, 2], [2, 3]])
     ])
@@ -180,11 +183,11 @@ module SatTests {
     ])
 
     fn rejects() = checkAll("malformed literals are rejected", [
-        match Sat::solve(2, [[3]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::solve(2, [[1, 0]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::solve(2, [[-3]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::assume(2, [[1]], [3]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::assume(2, [], [0]) { Error { message } => message == "sat.bad-literal"  Success => false }
+        codeOf(Sat::solve(2, [[3]])) == "sat.bad-literal",
+        codeOf(Sat::solve(2, [[1, 0]])) == "sat.bad-literal",
+        codeOf(Sat::solve(2, [[-3]])) == "sat.bad-literal",
+        codeOf(Sat::assume(2, [[1]], [3])) == "sat.bad-literal",
+        codeOf(Sat::assume(2, [], [0])) == "sat.bad-literal"
     ])
 
     export fn run() = {

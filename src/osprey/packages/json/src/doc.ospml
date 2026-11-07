@@ -72,8 +72,11 @@ module Doc
     named m = match m
         JsonMember name _ => name
 
+    (** The elements of the array member `key`, or none when it is absent or not an array. *)
+    export fieldItems (doc, key) = items (field (doc, key))
+
     (** The array member `key` as strings; an element that is not a string reads as an empty string. *)
-    export texts (doc, key) = mapList (items (field (doc, key)), \item => jsonText item ?: "")
+    export texts (doc, key) = mapList (fieldItems (doc, key), \item => jsonText item ?: "")
 
     (** A string member for building an object. *)
     export str (key, value) = JsonMember key (JsonString value)
