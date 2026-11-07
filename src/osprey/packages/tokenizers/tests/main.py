@@ -67,9 +67,19 @@ def pair(o):
     return [o.start, o.end]
 
 
+def each(n, seed, f):
+    """`f(i)` for every `i` before `n`, concatenated onto `seed` in order."""
+    return fold(range(n), seed, lambda acc, i: listConcat(acc, f(i)))
+
+
+def each_one(n, seed, f):
+    """`f(i)`, one case at a time, for every `i` before `n`, appended onto `seed`."""
+    return fold(range(n), seed, lambda acc, i: listAppend(acc, f(i)))
+
+
 def concat_all(groups):
     """One flat list of cases from a list of case groups."""
-    return fold(range(len(groups)), [], lambda acc, i: listConcat(acc, atl(groups, i)))
+    return each(len(groups), [], lambda i: atl(groups, i))
 
 
 def strs_text(xs):
@@ -104,13 +114,14 @@ def wp_enc_cases(name, enc, want_ids, want_tokens, want_offsets, want_type_ids):
     return listConcat(core_cases(name, enc, want_ids, want_tokens, want_offsets), [Check.ints_equal(name + ".type_ids", enc.type_ids, want_type_ids)])
 
 
+def roundtrip_case(name, enc, core, decode_fn, want_decode):
+    """Encoding checks plus the decode round-trip, keyed `<name>.decode`."""
+    return listConcat(core, [Check.equal(name + ".decode", decode_fn(enc.ids), want_decode)])
+
+
 def wp_case(wp, cls_id, sep_id, i):
-    text = ats(Expected.WP_INPUTS, i)
-    enc = wordpiece_encode(wp, text, cls_id, sep_id)
-    return listConcat(
-        wp_enc_cases(f"wp.{i}", enc, atl(Expected.WP_IDS, i), atl(Expected.WP_TOKENS, i), atl(Expected.WP_OFFSETS, i), atl(Expected.WP_TYPE_IDS, i)),
-        [Check.equal(f"wp.{i}.decode", wordpiece_decode_pipeline(wp, enc.ids), ats(Expected.WP_DECODES, i))],
-    )
+    enc = wordpiece_encode(wp, ats(Expected.WP_INPUTS, i), cls_id, sep_id)
+    return roundtrip_case(f"wp.{i}", enc, wp_enc_cases(f"wp.{i}", enc, atl(Expected.WP_IDS, i), atl(Expected.WP_TOKENS, i), atl(Expected.WP_OFFSETS, i), atl(Expected.WP_TYPE_IDS, i)), lambda ids: wordpiece_decode_pipeline(wp, ids), ats(Expected.WP_DECODES, i))
 
 
 def wp_pair_case(wp, cls_id, sep_id, i):
@@ -121,25 +132,17 @@ def wp_pair_case(wp, cls_id, sep_id, i):
 
 
 def uni_case(m, tag, byte_fallback_mode, i, ids_c, tokens_c, offsets_c, decodes_c):
-    text = ats(Expected.UNI_INPUTS, i)
-    enc = unigram_encode_pipeline(m, text)
-    return listConcat(
-        core_cases(f"{tag}.{i}", enc, atl(ids_c, i), atl(tokens_c, i), atl(offsets_c, i)),
-        [Check.equal(f"{tag}.{i}.decode", unigram_decode_pipeline(m, enc.ids, byte_fallback_mode), ats(decodes_c, i))],
-    )
+    enc = unigram_encode_pipeline(m, ats(Expected.UNI_INPUTS, i))
+    return roundtrip_case(f"{tag}.{i}", enc, core_cases(f"{tag}.{i}", enc, atl(ids_c, i), atl(tokens_c, i), atl(offsets_c, i)), lambda ids: unigram_decode_pipeline(m, ids, byte_fallback_mode), ats(decodes_c, i))
 
 
 def uni_cases(m, tag, byte_fallback_mode, ids_c, tokens_c, offsets_c, decodes_c):
-    return fold(range(len(Expected.UNI_INPUTS)), [], lambda acc, i: listConcat(acc, uni_case(m, tag, byte_fallback_mode, i, ids_c, tokens_c, offsets_c, decodes_c)))
+    return each(len(Expected.UNI_INPUTS), [], lambda i: uni_case(m, tag, byte_fallback_mode, i, ids_c, tokens_c, offsets_c, decodes_c))
 
 
 def wl_case(wl, i):
-    text = ats(Expected.WL_INPUTS, i)
-    enc = wordlevel_encode_pipeline(wl, text)
-    return listConcat(
-        core_cases(f"wl.{i}", enc, atl(Expected.WL_IDS, i), atl(Expected.WL_TOKENS, i), atl(Expected.WL_OFFSETS, i)),
-        [Check.equal(f"wl.{i}.decode", wordlevel_decode_pipeline(wl, enc.ids), ats(Expected.WL_DECODES, i))],
-    )
+    enc = wordlevel_encode_pipeline(wl, ats(Expected.WL_INPUTS, i))
+    return roundtrip_case(f"wl.{i}", enc, core_cases(f"wl.{i}", enc, atl(Expected.WL_IDS, i), atl(Expected.WL_TOKENS, i), atl(Expected.WL_OFFSETS, i)), lambda ids: wordlevel_decode_pipeline(wl, ids), ats(Expected.WL_DECODES, i))
 
 
 def pretok_offsets(text, splits):
@@ -165,7 +168,7 @@ def pretok_case(name, split_fn, want_tokens_c, want_offsets_c, i):
 
 
 def pretok_cases(name, split_fn, want_tokens_c, want_offsets_c):
-    return fold(range(len(Expected.PRE_INPUTS)), [], lambda acc, i: listConcat(acc, pretok_case(name, split_fn, want_tokens_c, want_offsets_c, i)))
+    return each(len(Expected.PRE_INPUTS), [], lambda i: pretok_case(name, split_fn, want_tokens_c, want_offsets_c, i))
 
 
 BERT_MODES = ["default", "clean", "lower", "strip", "chinese"]
@@ -187,11 +190,11 @@ def norm_mode(text, flags):
 
 
 def uni_pred_case(name, pred, want_c):
-    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.equal(f"{name}.{i}", pred(ati(Expected.UNI_CPS, i)), atb(want_c, i))))
+    return each_one(len(Expected.UNI_CPS), [], lambda i: Check.equal(f"{name}.{i}", pred(ati(Expected.UNI_CPS, i)), atb(want_c, i)))
 
 
 def uni_list_case(name, f, want_c):
-    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.ints_equal(f"{name}.{i}", f(ati(Expected.UNI_CPS, i)), atl(want_c, i))))
+    return each_one(len(Expected.UNI_CPS), [], lambda i: Check.ints_equal(f"{name}.{i}", f(ati(Expected.UNI_CPS, i)), atl(want_c, i)))
 
 
 def unicode_cases():
@@ -218,33 +221,18 @@ def token_field(toks, get):
     return toList(map(range(len(toks)), lambda k: get(unwrap_or(listGet(toks, k), empty_token()))))
 
 
-def token_ids(toks):
-    return token_field(toks, lambda token: token.id)
-
-
-def token_values(toks):
-    return token_field(toks, lambda token: token.value)
-
-
-def token_starts(toks):
-    return token_field(toks, lambda token: token.start)
-
-
-def token_ends(toks):
-    return token_field(toks, lambda token: token.end)
-
-
 def model_row_case(name, toks, want_ids, want_values, want_starts, want_ends):
+    """ids, values, starts and ends for one tokenize row."""
     return [
-        Check.ints_equal(name + ".ids", token_ids(toks), want_ids),
-        strs_equal(name + ".values", token_values(toks), want_values),
-        Check.ints_equal(name + ".starts", token_starts(toks), want_starts),
-        Check.ints_equal(name + ".ends", token_ends(toks), want_ends),
+        Check.ints_equal(name + ".ids", token_field(toks, lambda token: token.id), want_ids),
+        strs_equal(name + ".values", token_field(toks, lambda token: token.value), want_values),
+        Check.ints_equal(name + ".starts", token_field(toks, lambda token: token.start), want_starts),
+        Check.ints_equal(name + ".ends", token_field(toks, lambda token: token.end), want_ends),
     ]
 
 
 def model_rows_case(name, rows_fn, texts_c, ids_c, values_c, starts_c, ends_c):
-    return fold(range(len(ids_c)), [], lambda acc, i: listConcat(acc, model_row_case(f"{name}.{i}", rows_fn(ats(texts_c, i)), atl(ids_c, i), atl(values_c, i), atl(starts_c, i), atl(ends_c, i))))
+    return each(len(ids_c), [], lambda i: model_row_case(f"{name}.{i}", rows_fn(ats(texts_c, i)), atl(ids_c, i), atl(values_c, i), atl(starts_c, i), atl(ends_c, i)))
 
 
 def wp_model_cases(wp):
@@ -265,7 +253,7 @@ def uni_encode_case(uni_nobf, i):
 
 
 def uni_encode_cases(uni_nobf):
-    return fold(range(len(Expected.MODEL_UNI_TEXTS)), [], lambda acc, i: listAppend(acc, uni_encode_case(uni_nobf, i)))
+    return each_one(len(Expected.MODEL_UNI_TEXTS), [], lambda i: uni_encode_case(uni_nobf, i))
 
 
 def id_to_token_case(wp, i):
@@ -274,7 +262,7 @@ def id_to_token_case(wp, i):
 
 
 def id_to_token_cases(wp):
-    return fold(range(len(Expected.MODEL_WP_IDS)), [], lambda acc, i: listAppend(acc, id_to_token_case(wp, i)))
+    return each_one(len(Expected.MODEL_WP_IDS), [], lambda i: id_to_token_case(wp, i))
 
 
 def decode_case(name, dec_fn, toks_c, want_c, i):
@@ -284,17 +272,25 @@ def decode_case(name, dec_fn, toks_c, want_c, i):
 
 def decoder_cases():
     """WordPiece, Metaspace and ByteFallback decoders on token lists."""
-    wp_cases = fold(range(len(Expected.DECODE_WP)), [], lambda acc, i: listAppend(acc, decode_case("dec.wp", lambda t: wordpiece_decode(t, "##", True), Expected.DECODE_WP_TOKENS, Expected.DECODE_WP, i)))
-    meta_cases = fold(range(len(Expected.DECODE_META)), [], lambda acc, i: listAppend(acc, decode_case("dec.meta", lambda t: join(metaspace_decode_chain(t, META_CP, 0), ""), Expected.DECODE_META_TOKENS, Expected.DECODE_META, i)))
-    bf_cases = fold(range(len(Expected.DECODE_BF)), [], lambda acc, i: listAppend(acc, decode_case("dec.bf", lambda t: join(byte_fallback_decode_chain(t), ""), Expected.DECODE_BF_TOKENS, Expected.DECODE_BF, i)))
-    return concat_all([wp_cases, meta_cases, bf_cases])
+    return concat_all([
+        each_one(len(Expected.DECODE_WP), [], lambda i: decode_case("dec.wp", lambda t: wordpiece_decode(t, "##", True), Expected.DECODE_WP_TOKENS, Expected.DECODE_WP, i)),
+        each_one(len(Expected.DECODE_META), [], lambda i: decode_case("dec.meta", lambda t: join(metaspace_decode_chain(t, META_CP, 0), ""), Expected.DECODE_META_TOKENS, Expected.DECODE_META, i)),
+        each_one(len(Expected.DECODE_BF), [], lambda i: decode_case("dec.bf", lambda t: join(byte_fallback_decode_chain(t), ""), Expected.DECODE_BF_TOKENS, Expected.DECODE_BF, i)),
+    ])
 
 
 def meta_helper_cases():
     """Metaspace's replacement and prepend primitives on a Norm."""
-    repl = fold(range(len(Expected.META_HELPER_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.replace.{i}", norm_text(replace_space(norm_of(ats(Expected.META_HELPER_INPUTS, i)), META_CP)), ats(Expected.META_REPLACE, i))))
-    prep = fold(range(len(Expected.META_PREPEND_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.prepend.{i}", norm_text(prepend_cp(norm_of(ats(Expected.META_PREPEND_INPUTS, i)), META_CP)), ats(Expected.META_PREPEND, i))))
-    return concat_all([repl, prep, alignment_cases()])
+    return concat_all([
+        meta_primitive_cases("norm.replace", lambda n: replace_space(n, META_CP), Expected.META_HELPER_INPUTS, Expected.META_REPLACE),
+        meta_primitive_cases("norm.prepend", lambda n: prepend_cp(n, META_CP), Expected.META_PREPEND_INPUTS, Expected.META_PREPEND),
+        alignment_cases(),
+    ])
+
+
+def meta_primitive_cases(name, f, inputs_c, want_c):
+    """One metaspace Norm primitive applied to every oracle input."""
+    return each_one(len(inputs_c), [], lambda i: Check.equal(f"{name}.{i}", norm_text(f(norm_of(ats(inputs_c, i)))), ats(want_c, i)))
 
 
 def alignment_cases():
@@ -366,15 +362,14 @@ def encode_cases():
     wp = wordpiece_model()
     cls_id = cls_id_of(wp)
     sep_id = sep_id_of(wp)
-    uni = unigram_model()
-    uni_nobf = unigram_nobf_model()
     wl = wordlevel_model()
-    wp_cases = fold(range(len(Expected.WP_INPUTS)), [], lambda acc, i: listConcat(acc, wp_case(wp, cls_id, sep_id, i)))
-    pair_cases = fold(range(len(Expected.WP_PAIR_IDS)), [], lambda acc, i: listConcat(acc, wp_pair_case(wp, cls_id, sep_id, i)))
-    uni_bf = uni_cases(uni, "uni", True, Expected.UNI_IDS, Expected.UNI_TOKENS_OUT, Expected.UNI_OFFSETS, Expected.UNI_DECODES)
-    uni_no = uni_cases(uni_nobf, "uni.nobf", False, Expected.UNI_NOBF_IDS, Expected.UNI_NOBF_TOKENS, Expected.UNI_NOBF_OFFSETS, Expected.UNI_NOBF_DECODES)
-    wl_cases = fold(range(len(Expected.WL_INPUTS)), [], lambda acc, i: listConcat(acc, wl_case(wl, i)))
-    return concat_all([wp_cases, pair_cases, uni_bf, uni_no, wl_cases])
+    return concat_all([
+        each(len(Expected.WP_INPUTS), [], lambda i: wp_case(wp, cls_id, sep_id, i)),
+        each(len(Expected.WP_PAIR_IDS), [], lambda i: wp_pair_case(wp, cls_id, sep_id, i)),
+        uni_cases(unigram_model(), "uni", True, Expected.UNI_IDS, Expected.UNI_TOKENS_OUT, Expected.UNI_OFFSETS, Expected.UNI_DECODES),
+        uni_cases(unigram_nobf_model(), "uni.nobf", False, Expected.UNI_NOBF_IDS, Expected.UNI_NOBF_TOKENS, Expected.UNI_NOBF_OFFSETS, Expected.UNI_NOBF_DECODES),
+        each(len(Expected.WL_INPUTS), [], lambda i: wl_case(wl, i)),
+    ])
 
 
 def pretokenizer_cases():
@@ -390,7 +385,7 @@ def pretokenizer_cases():
 
 
 def normalizer_cases():
-    return fold(range(len(Expected.NORM_INPUTS)), [], lambda acc, i: listConcat(acc, norm_case(i)))
+    return each(len(Expected.NORM_INPUTS), [], norm_case)
 
 
 def direct_cases():
@@ -424,15 +419,16 @@ def utf8_cases():
     names = ["utf8.empty", "utf8.ascii", "utf8.two", "utf8.three", "utf8.four", "utf8.long"]
     byte_rows = [[], [104, 105], [195, 169], [230, 151, 165], [240, 159, 152, 128], long_cps]
     text_rows = ["", "hi", cps_text([233]), cps_text([26085]), cps_text([128512]), long_text]
-    cases = fold(range(len(names)), [], lambda acc, i: listAppend(acc, utf8_text(ats(names, i), atl(byte_rows, i), ats(text_rows, i))))
-    return listConcat(cases, [
-        Check.truth("utf8.lone continuation", is_error(utf8_decode([128], 0, "")), "a lone continuation byte decoded"),
-        Check.truth("utf8.truncated", is_error(utf8_decode([230, 151], 0, "")), "a truncated sequence decoded"),
-        Check.truth("utf8.bad lead", is_error(utf8_decode([245], 0, "")), "0xF5 decoded"),
-        Check.truth("utf8.overlong lead", is_error(utf8_decode([192, 128], 0, "")), "an overlong pair decoded"),
-        Check.truth("utf8.surrogate", is_error(utf8_decode([237, 160, 128], 0, "")), "a surrogate decoded"),
-        Check.truth("utf8.bad continuation", is_error(utf8_decode([230, 65, 165], 0, "")), "a bad continuation byte decoded"),
-    ])
+    cases = each_one(len(names), [], lambda i: utf8_text(ats(names, i), atl(byte_rows, i), ats(text_rows, i)))
+    return listConcat(cases, utf8_broken_cases())
+
+
+def utf8_broken_cases():
+    """Every malformed byte shape `utf8_decode` must refuse."""
+    names = ["utf8.lone continuation", "utf8.truncated", "utf8.bad lead", "utf8.overlong lead", "utf8.surrogate", "utf8.bad continuation"]
+    byte_rows = [[128], [230, 151], [245], [192, 128], [237, 160, 128], [230, 65, 165]]
+    whys = ["a lone continuation byte decoded", "a truncated sequence decoded", "0xF5 decoded", "an overlong pair decoded", "a surrogate decoded", "a bad continuation byte decoded"]
+    return each_one(len(names), [], lambda i: Check.truth(ats(names, i), is_error(utf8_decode(atl(byte_rows, i), 0, "")), ats(whys, i)))
 
 
 def wide_byte(i):
@@ -472,17 +468,13 @@ def empty_bpe():
 
 def qwen_added():
     return toList(map(range(len(Expected.QWEN_ADDED_CONTENT)), lambda i: AddedToken(
-        content=at_str(Expected.QWEN_ADDED_CONTENT, i),
+        content=ats(Expected.QWEN_ADDED_CONTENT, i),
         id=at_int(Expected.QWEN_ADDED_IDS, i),
         special=at_int(Expected.QWEN_ADDED_SPECIAL, i) == 1,
         lstrip=False,
         rstrip=False,
         single_word=False,
     )))
-
-
-def at_str(row, i):
-    return ats(row, i)
 
 
 def at_int(row, i):
@@ -496,7 +488,7 @@ def qwen_tokenizer():
 def nfc_cases():
     """The reference's NFC and NFD for decomposed, precomposed, Hangul, Vietnamese,
     Devanagari, Thai, Hebrew and Arabic text, plus the combining-class ordering."""
-    return fold(range(len(Expected.NFC_INPUTS)), unicode_table_cases(), lambda acc, i: listConcat(acc, nfc_row(i)))
+    return each(len(Expected.NFC_INPUTS), unicode_table_cases(), nfc_row)
 
 
 def unicode_table_cases():
@@ -534,7 +526,7 @@ def qwen_cases():
     `tokenizer.json` tables and again from the same vocabulary in GGUF form."""
     tok = qwen_tokenizer()
     return concat_all([
-        fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i, "qwen"))),
+        each(len(Expected.QWEN_INPUTS), [], lambda i: qwen_row(tok, i, "qwen")),
         qwen_refusal_cases(),
         gguf_cases(),
     ])
@@ -548,7 +540,7 @@ def gguf_cases():
     match GgufVocab.qwen_from_vocabulary(tables.tokens, tables.types, tables.merges):
         case Success(value=tok):
             return concat_all([
-                fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i, "gguf"))),
+                each(len(Expected.QWEN_INPUTS), [], lambda i: qwen_row(tok, i, "gguf")),
                 [Check.equal("gguf.added.count", len(tok.added), len(Expected.QWEN_ADDED_IDS))],
                 gguf_refusals(tables),
             ])
@@ -567,13 +559,13 @@ def gguf_tables():
     """`tokens[id]` for every byte, merge and added id the oracle recorded, `""` and
     type 0 elsewhere, and each merge as `left right`."""
     n = Lists_max(Expected.QWEN_ADDED_IDS) + 1
-    spelled = fold(range(len(Expected.QWEN_MERGE_IDS)), fold(range(256), {}, lambda acc, b: mapSet(acc, toString(at_int(Expected.QWEN_BYTE_IDS, b)), bytelevel_text([b]))), lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_MERGE_IDS, i)), at_str(Expected.QWEN_MERGES_LEFT, i) + at_str(Expected.QWEN_MERGES_RIGHT, i)))
-    named = fold(range(len(Expected.QWEN_ADDED_IDS)), spelled, lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_ADDED_IDS, i)), at_str(Expected.QWEN_ADDED_CONTENT, i)))
+    spelled = fold(range(len(Expected.QWEN_MERGE_IDS)), fold(range(256), {}, lambda acc, b: mapSet(acc, toString(at_int(Expected.QWEN_BYTE_IDS, b)), bytelevel_text([b]))), lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_MERGE_IDS, i)), ats(Expected.QWEN_MERGES_LEFT, i) + ats(Expected.QWEN_MERGES_RIGHT, i)))
+    named = fold(range(len(Expected.QWEN_ADDED_IDS)), spelled, lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_ADDED_IDS, i)), ats(Expected.QWEN_ADDED_CONTENT, i)))
     kinds = fold(range(len(Expected.QWEN_ADDED_IDS)), {}, lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_ADDED_IDS, i)), GgufVocab.CONTROL if at_int(Expected.QWEN_ADDED_SPECIAL, i) == 1 else GgufVocab.USER_DEFINED))
     return GgufTables(
         tokens=toList(map(range(n), lambda i: unwrap_or(mapGet(named, toString(i)), ""))),
         types=toList(map(range(n), lambda i: unwrap_or(mapGet(kinds, toString(i)), 1))),
-        merges=toList(map(range(len(Expected.QWEN_MERGE_IDS)), lambda i: at_str(Expected.QWEN_MERGES_LEFT, i) + " " + at_str(Expected.QWEN_MERGES_RIGHT, i))),
+        merges=toList(map(range(len(Expected.QWEN_MERGE_IDS)), lambda i: ats(Expected.QWEN_MERGES_LEFT, i) + " " + ats(Expected.QWEN_MERGES_RIGHT, i))),
     )
 
 
@@ -604,16 +596,15 @@ def qwen_row(tok, i, label):
     text = ats(Expected.QWEN_INPUTS, i)
     match qwen_encode(tok, text):
         case Success(value=enc):
-            return listConcat([
+            return [
                 Check.ints_equal(f"{label}.{i}.ids", enc.ids, atl(Expected.QWEN_IDS, i)),
                 strs_equal(f"{label}.{i}.tokens", enc.tokens, atl(Expected.QWEN_TOKENS, i)),
-            ], [
                 Check.ints_equal(f"{label}.{i}.type_ids", enc.type_ids, atl(Expected.QWEN_TYPE_IDS, i)),
                 offs_equal(f"{label}.{i}.offsets", offs_list(enc), atl(Expected.QWEN_OFFSETS, i)),
                 Check.equal(f"{label}.{i}.decode", decoded(tok, enc.ids, False), ats(Expected.QWEN_DECODES, i)),
                 Check.equal(f"{label}.{i}.skip", decoded(tok, enc.ids, True), ats(Expected.QWEN_SKIP_DECODES, i)),
                 strs_equal(f"{label}.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), atl(Expected.QWEN_PRETOK_PIECES, i)),
-            ])
+            ]
         case Error(message=message):
             return [Check.failed(f"{label}.{i}", "Error: " + message)]
 
@@ -643,15 +634,11 @@ def empty_byte_ids_test():
 
 def accepted(r):
     """Whether a Result holds a value."""
-    match r:
-        case Success(value=_value):
-            return True
-        case Error(message=_message):
-            return False
+    return not is_error(r)
 
 
 def split_oracle_case(i):
-    text = nfc_text(at_str(Expected.SPLIT_INPUTS, i))
+    text = nfc_text(ats(Expected.SPLIT_INPUTS, i))
     pieces = qwen_pretokenize(norm_of(text))
     return [
         strs_equal(f"split.{i}.pieces", mapList(pieces, norm_text), atl(Expected.SPLIT_PIECES, i)),
@@ -660,10 +647,10 @@ def split_oracle_case(i):
 
 
 def byte_boundaries():
-    return [
-        refused("utf8.e0.overlong", utf8_decode([224, 159, 128], 0, ""), "bad utf8 at byte 0"),
-        refused("utf8.f0.overlong", utf8_decode([240, 143, 128, 128], 0, ""), "bad utf8 at byte 0"),
-        refused("utf8.f4.too_high", utf8_decode([65, 244, 144, 128, 128], 0, ""), "bad utf8 at byte 1"),
+    names = ["utf8.e0.overlong", "utf8.f0.overlong", "utf8.f4.too_high"]
+    byte_rows = [[224, 159, 128], [240, 143, 128, 128], [65, 244, 144, 128, 128]]
+    whys = ["bad utf8 at byte 0", "bad utf8 at byte 0", "bad utf8 at byte 1"]
+    return listConcat(each_one(len(names), [], lambda i: refused(ats(names, i), utf8_decode(atl(byte_rows, i), 0, ""), ats(whys, i))), [
         Check.equal("utf8.offset", unwrap_or(utf8_decode([65, 195, 169], 1, "x"), ""), "xé"),
         refused("bytelevel.rejects", bytelevel_decode(["中", "a"]), "character 20013 is not a byte-level symbol"),
         Check.equal("bytelevel.split.char", unwrap_or(bytelevel_decode([bytelevel_text([195]), bytelevel_text([169])]), ""), "é"),
@@ -671,7 +658,7 @@ def byte_boundaries():
         strs_equal("meta.first", mapList(metaspace_pretokenize(norm_of("a b"), META_CP, 1, True), norm_text), ["▁a", "▁b"]),
         strs_equal("meta.first.nonzero", mapList(metaspace_pretokenize(append_norm(empty_norm(), 97, 5, 6), META_CP, 1, True), norm_text), ["a"]),
         strs_equal("meta.never.unsplit", mapList(metaspace_pretokenize(norm_of("a b"), META_CP, 2, False), norm_text), ["a▁b"]),
-    ]
+    ])
 
 
 def qwen_error_boundaries():
@@ -721,17 +708,16 @@ def qwen_added_requires_boundaries(tok, id):
 
 
 def qwen_public_boundaries():
-    return [
-        Check.equal("qwen.contraction.re", qwen_piece_len(norm_of("'RE"), 0), 3),
-        Check.equal("qwen.contraction.ve", qwen_piece_len(norm_of("'ve"), 0), 3),
-        Check.equal("qwen.contraction.ll", qwen_piece_len(norm_of("'Ll"), 0), 3),
+    names = ["qwen.contraction.re", "qwen.contraction.ve", "qwen.contraction.ll"]
+    contractions = ["'RE", "'ve", "'Ll"]
+    return listConcat(each_one(len(names), [], lambda i: Check.equal(ats(names, i), qwen_piece_len(norm_of(ats(contractions, i)), 0), 3)), [
         refused("qwen.json.external.tables", load_qwen_tokenizer(qwen_pipeline_document()), "tokenizer.json: this port reads the vocabulary and merges from supplied data, not from the document (see this module's docstring)"),
-    ]
+    ])
 
 
 def all_cases():
     """Every suite case, grouped by pipeline layer."""
-    splits = fold(range(len(Expected.SPLIT_INPUTS)), [], lambda acc, i: listConcat(acc, split_oracle_case(i)))
+    splits = each(len(Expected.SPLIT_INPUTS), [], split_oracle_case)
     return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases(), nfc_cases(), qwen_cases(), splits, byte_boundaries(), qwen_error_boundaries(), qwen_added_boundaries(), qwen_public_boundaries()])
 
 
