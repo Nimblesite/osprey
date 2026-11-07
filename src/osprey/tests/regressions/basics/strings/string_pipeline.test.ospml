@@ -38,6 +38,39 @@ route (method, path) =
         "GET"  => handleGet path
         "POST" => handlePost path
         _      => "405 method-not-allowed"
+
+(** Renders `label="value"` on success, or `<label> err` on failure. *)
+quotedLine (label, result) =
+    match result
+        Success value => "${label}=\"${value}\""
+        Error _message => "${label} err"
+
+(** Renders `label=value` on success, or the given failure line. *)
+plainLine (label, failure, result) = match result
+    Success value => "${label}=${value}"
+    Error _message => failure
+
+(** Renders a list's element count under a label. *)
+countLine (label, items) = "${label} count=${listLength items}"
+
+(** True when an operation fails with a non-empty message. *)
+rejected result =
+    match result
+        Success _value => false
+        Error message => length message > 0
+
+(** One routing line per path requested with the given method. *)
+routedLines (method, paths) = mapList (paths, \path => route (method, path))
+
+(** The routing table as one result per request, blank-line separated. *)
+routingReport () =
+    join [
+        join (routedLines ("GET", ["/health", "/api/users/42", "/api/orders"])) "\n\n",
+        join (routedLines ("POST", ["/api/users"])) "\n\n",
+        route ("GET", "/random"),
+        route ("DELETE", "/anything")
+    ] "\n\n"
+
 print "=== String Pipeline ===\n"
 
 (** ----- Inspection / search (total, no Result wrap) ----- *)
@@ -45,8 +78,7 @@ raw = "  GET /api/users?name=alice&age=30  "
 print "raw=\"${raw}\" len=${raw |> length}\n"
 print "isEmpty=${raw |> isEmpty}\n"
 print "contains 'GET'=${raw |> contains "GET"}\n"
-print "startsWith '  '=${raw |> startsWith "  "}\n"
-print "endsWith '  '=${raw |> endsWith "  "}\n"
+print "startsWith '  '=${raw |> startsWith "  "}\n\nendsWith '  '=${raw |> endsWith "  "}\n"
 
 // pipe == UFCS == direct
 print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n"
@@ -54,60 +86,47 @@ print "ctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${
 
 (** ----- Transformation chain via pipe ----- *)
 normalized = raw |> trim |> toLowerCase
+dashed = join ["a", "b", "c"] "-"
 print "normalized=\"${normalized}\"\n"
 print "isGetRequest=${normalized |> startsWith "get "}\n"
 print "upper=\"${toUpperCase "hello"}\"\n"
 print "trimStart=\"${trimStart "  hi  "}\"\n"
 print "trimEnd=\"${trimEnd "  hi  "}\"\n"
-print "join=\"${join ["a", "b", "c"] "-"}\"\n"
+print "join=\"${dashed}\"\n"
 
 // UFCS chain
 print "chain=\"${take (toLowerCase (trim raw)) 5}\"\n"
 
 // ----- Substring & search (fallible — Result<T,E>) -----
-match indexOf raw "?"
-    Success value   => print "query starts at ${value}\n"
-    Error   _message => print "no query string\n"
-match substring "hello world" 6 11
-    Success value   => print "substring=\"${value}\"\n"
-    Error   _message => print "substring err\n"
+queryLine = match indexOf raw "?"
+    Success value => "query starts at ${value}"
+    Error _message => "no query string"
+print ((join [queryLine, quotedLine ("substring", substring "hello world" 6 11)] "\n\n") + "\n")
 
 // ----- Transformation (fallible) -----
-match replace "a-b-c-d" "-" "/"
-    Success value => print "replace=\"${value}\"\n"
-    Error _message => print "replace err\n"
-match repeat "ab" 4
-    Success value => print "repeat=\"${value}\"\n"
-    Error _message => print "repeat err\n"
-match padStart "42" 5 "0"
-    Success value => print "padS=\"${value}\"\n"
-    Error _message => print "padS err\n"
-match padEnd "42" 5 "0"
-    Success value => print "padE=\"${value}\"\n"
-    Error _message => print "padE err\n"
+print ((join [
+    quotedLine ("replace", replace "a-b-c-d" "-" "/"),
+    quotedLine ("repeat", repeat "ab" 4),
+    quotedLine ("padS", padStart "42" 5 "0"),
+    quotedLine ("padE", padEnd "42" 5 "0")
+] "\n\n") + "\n")
 
 (** ----- take/drop/reverse (UFCS form) ----- *)
 hello = "hello"
-print "take ufcs=\"${take hello 3}\"\n"
-print "drop ufcs=\"${drop hello 3}\"\n"
+print "take ufcs=\"${take hello 3}\"\n\ndrop ufcs=\"${drop hello 3}\"\n"
 print "reverse=\"${reverse "abc"}\"\n"
 
 // ----- Parsing -----
-match parseInt "123"
-    Success value => print "parseInt=${value}\n"
-    Error _message => print "pi err\n"
-match parseInt "oops"
-    Success value => print "oops=${value}\n"
-    Error _message => print "parseInt strict: rejects 'oops'\n"
-match parseFloat "3.14"
-    Success value => print "parseFloat=${value}\n"
-    Error _message => print "pf err\n"
+print ((join [
+    plainLine ("parseInt", "pi err", parseInt "123"),
+    plainLine ("oops", "parseInt strict: rejects 'oops'", parseInt "oops"),
+    plainLine ("parseFloat", "pf err", parseFloat "3.14")
+] "\n\n") + "\n")
 
 (** ----- Split/lines/words → List<string> ----- *)
 multi  = "a\nb\nc"
 spaced = "  hello   world  "
-print "lines count=${listLength (lines multi)}\n"
-print "words count=${listLength (words spaced)}\n"
+print ((join [countLine ("lines", lines multi), countLine ("words", words spaced)] "\n\n") + "\n")
 match split "a,b,c" ","
     Success value => print "split count=${listLength value}\n"
     Error _message => print "split err\n"
@@ -116,12 +135,7 @@ match split "anything" ""
     Error _message => print "split empty rejected\n"
 
 // ----- HTTP-routing via startsWith + pattern matching -----
-print "${route ("GET", "/health")}\n"
-print "${route ("GET", "/api/users/42")}\n"
-print "${route ("GET", "/api/orders")}\n"
-print "${route ("POST", "/api/users")}\n"
-print "${route ("GET", "/random")}\n"
-print "${route ("DELETE", "/anything")}\n"
+print (routingReport () + "\n")
 
 print "=== Pipeline Complete ===\n"
 
@@ -129,24 +143,12 @@ print "=== Pipeline Complete ===\n"
 stringPipelineCase () =
     source = "  GET /api/users?name=alice&age=30  "
     cleaned = source |> trim |> toLowerCase
-    splitCount = match split "a,b,c" ","
-        Success value => listLength value
-        Error _message => (0 - 1) 
-    splitEmptyRejected = match split "anything" ""
-        Success _value => false
-        Error message => message != ""
-    invalidIntegerRejected = match parseInt "oops"
-        Success _value => false
-        Error message => message != ""
-    missingIndexRejected = match indexOf "hello" "xyz"
-        Success _value => false
-        Error message => message != ""
+    splitCount = listLength (split "a,b,c" "," ?: [])
     checkAll "string inspection and transformations" [
         structuralEquals [length source, (source |> length)] [36, 36],
-        !(isEmpty source),
-        structuralEquals [contains source "GET", startsWith source "  ", endsWith source "  "] [true, true, true],
+        structuralEquals [isEmpty source, contains source "GET", startsWith source "  ", endsWith source "  "] [false, true, true, true],
         structuralEquals [cleaned, toUpperCase "hello"] ["get /api/users?name=alice&age=30", "HELLO"],
-        structuralEquals [trimStart "  hi  ", trimEnd "  hi  ", join ["a", "b", "c"] "-"] ["hi  ", "  hi", "a-b-c"],
+        structuralEquals [trimStart "  hi  ", trimEnd "  hi  ", dashed] ["hi  ", "  hi", "a-b-c"],
         structuralEquals [take cleaned 5, take "hello" 3, drop "hello" 3, reverse "abc"] ["get /", "hel", "lo", "cba"],
         startsWith cleaned "get "
     ]
@@ -155,12 +157,12 @@ stringPipelineCase () =
         structuralEquals [listLength (lines "a\nb\nc"), listLength (words "  hello   world  "), splitCount] [3, 2, 3],
         (substring "hello world" 6 11 ?: "missing") == "world",
         (replace "a-b-c-d" "-" "/" ?: "missing") == "a/b/c/d",
-        structuralEquals [(repeat "ab" 4 ?: "missing"), (padStart "42" 5 "0" ?: "missing")] ["abababab", "00042"],
-        (padEnd "42" 5 "0" ?: "missing") == "42000",
+        structuralEquals [("42" |> padStart 5 "0" ?: "missing"), ("42" |> padEnd 5 "0" ?: "missing")] ["00042", "42000"],
+        (repeat "ab" 4 ?: "missing") == "abababab",
         (parseFloat "3.14" ?: 0.0) == 3.14,
-        splitEmptyRejected,
-        invalidIntegerRejected,
-        missingIndexRejected
+        rejected (split "anything" ""),
+        rejected (parseInt "oops"),
+        rejected (indexOf "hello" "xyz")
     ]
     checkAll "HTTP routing branches" [
         structuralEquals (mapList ["/health", "/api/users/42"] (\k => route ("GET", k))) ["200 ok", "200 user-detail 42"],
