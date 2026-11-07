@@ -206,4 +206,4 @@ comprehensiveMathCase () =
         input () == ""
     ]
 
-test "math showcase produces checked deterministic state" (\() => exactArithmetic (comprehensiveMathCase))
+test "math showcase produces checked deterministic state" (exactly comprehensiveMathCase)

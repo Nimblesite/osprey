@@ -275,4 +275,4 @@ fn adventureGameCase() = {
     ])
 }
 
-test("adventure game preserves branch and progression state", fn() => exactArithmetic(adventureGameCase))
+test("adventure game preserves branch and progression state", exactly(adventureGameCase))

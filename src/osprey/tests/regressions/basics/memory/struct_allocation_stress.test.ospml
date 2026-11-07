@@ -79,4 +79,4 @@ structAllocationCase () =
         (listGet (keepSuccess (listAppend [] 9, true)).items 0 ?: 0) == 9
     ]
 
-test "record allocation preserves aggregate values" (\() => exactArithmetic (structAllocationCase))
+test "record allocation preserves aggregate values" (exactly structAllocationCase)

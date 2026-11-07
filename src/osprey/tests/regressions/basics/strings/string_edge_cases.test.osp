@@ -390,7 +390,7 @@ fn stringEdgeCase() = {
     ])
 }
 
-test("string edge cases preserve values and error payloads", fn() => exactArithmetic(stringEdgeCase))
+test("string edge cases preserve values and error payloads", exactly(stringEdgeCase))
 
 /// [STRING-INTERPOLATION] Rendering: "Integers, floats, and booleans use their
 /// normal scalar rendering"; [BUILTIN-TOSTRING] "Uses the same accepted types and
@@ -1059,11 +1059,11 @@ third"
 }
 
 // Registration order fixes the TAP order in the shared golden.
-test("interpolation renders every printable scalar", fn() => exactArithmetic(interpolationScalarCase))
-test("a Result is never unwrapped at an interpolation hole", fn() => exactArithmetic(interpolationResultCase))
-test("escape sequences resolve to their exact bytes", fn() => exactArithmetic(escapeSequenceCase))
-test("search builtins scan every substring position", fn() => exactArithmetic(substringPositionCase))
-test("ASCII case folding is total and round-trips", fn() => exactArithmetic(caseFoldingCase))
-test("concatenation and length arithmetic hold", fn() => exactArithmetic(concatLengthCase))
-test("interpolation composes expressions and preserves text", fn() => exactArithmetic(interpolationCompositionCase))
-test("a byte count never splits a UTF-8 character", fn() => exactArithmetic(utf8CutCase))
+test("interpolation renders every printable scalar", exactly(interpolationScalarCase))
+test("a Result is never unwrapped at an interpolation hole", exactly(interpolationResultCase))
+test("escape sequences resolve to their exact bytes", exactly(escapeSequenceCase))
+test("search builtins scan every substring position", exactly(substringPositionCase))
+test("ASCII case folding is total and round-trips", exactly(caseFoldingCase))
+test("concatenation and length arithmetic hold", exactly(concatLengthCase))
+test("interpolation composes expressions and preserves text", exactly(interpolationCompositionCase))
+test("a byte count never splits a UTF-8 character", exactly(utf8CutCase))

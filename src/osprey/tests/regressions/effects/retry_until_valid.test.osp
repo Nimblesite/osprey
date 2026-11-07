@@ -279,7 +279,7 @@ fn retryAttemptMatrixCase() = {
 }
 
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
-test("retry loops accept after zero one two and eight rejections", fn() => exactArithmetic(retryAttemptMatrixCase))
+test("retry loops accept after zero one two and eight rejections", exactly(retryAttemptMatrixCase))
 
 type Exhaustion = { out: int, calls: int, trail: string, settled: string }
 
@@ -446,7 +446,7 @@ fn retryBudgetExhaustionCase() = {
 }
 
 // Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
-test("an exhausted retry budget stops the loop without resuming", fn() => exactArithmetic(retryBudgetExhaustionCase))
+test("an exhausted retry budget stops the loop without resuming", exactly(retryBudgetExhaustionCase))
 
 /// [EFFECTS-OP-TYPING] Every operation named by a handler arm must match the
 /// declared payload type, so one effect can carry a retry loop per type. Each
@@ -750,7 +750,7 @@ fn retryPayloadChannelMatrixCase() = {
 }
 
 // Crosses the payload-type axis against partial one-arm and six-arm regions.
-test("retry channels carry text boolean float checked and Unit payloads", fn() => exactArithmetic(retryPayloadChannelMatrixCase))
+test("retry channels carry text boolean float checked and Unit payloads", exactly(retryPayloadChannelMatrixCase))
 
 /// [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
 /// only the handler's own cursor cell advances, so a lost, repeated or
@@ -921,7 +921,7 @@ fn retryScriptedCandidateMatrixCase() = {
 }
 
 // Crosses the candidate-source axis: list, map, missing key and boundaries.
-test("scripted list and map candidates drive one retry cursor", fn() => exactArithmetic(retryScriptedCandidateMatrixCase))
+test("scripted list and map candidates drive one retry cursor", exactly(retryScriptedCandidateMatrixCase))
 
 /// Budget is a DIFFERENT effect handled outside both retry regions, so a Retry
 /// arm may perform it — an arm may not perform its own active operation, but an
@@ -1082,7 +1082,7 @@ fn nestedRetryRegionsCase() = {
 }
 
 // Crosses nesting depth against a shared outer effect and LIFO settlement.
-test("nested retry regions override and restore around a shared budget", fn() => exactArithmetic(nestedRetryRegionsCase))
+test("nested retry regions override and restore around a shared budget", exactly(nestedRetryRegionsCase))
 
 /// [EFFECTS-OPERATION-MAILBOX] The mailbox is sized by the operation's real
 /// arity, so zero-, one-, two-, three- and four-argument operations all deliver
@@ -1294,4 +1294,4 @@ fn retryPerformSiteMatrixCase() = {
 }
 
 // Crosses the perform-site axis against operation arities zero through four.
-test("every perform site reaches the same retry handler", fn() => exactArithmetic(retryPerformSiteMatrixCase))
+test("every perform site reaches the same retry handler", exactly(retryPerformSiteMatrixCase))

@@ -274,15 +274,15 @@ literalsAndDispatchCase () =
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 
-test "maps construct, overwrite, and retain source bindings" (\() => exactArithmetic (constructionAndOverwriteCase))
+test "maps construct, overwrite, and retain source bindings" (exactly constructionAndOverwriteCase)
 
-test "map generations and sibling branches remain isolated" (\() => exactArithmetic (generationsAndBranchesCase))
+test "map generations and sibling branches remain isolated" (exactly generationsAndBranchesCase)
 
-test "map removal and merge preserve values and bias" (\() => exactArithmetic (removalAndMergeCase))
+test "map removal and merge preserve values and bias" (exactly removalAndMergeCase)
 
-test "map views and list interactions preserve both collections" (\() => exactArithmetic (viewsAndCrossCollectionCase))
+test "map views and list interactions preserve both collections" (exactly viewsAndCrossCollectionCase)
 
-test "map literals and receiver dispatch preserve lookup semantics" (\() => exactArithmetic (literalsAndDispatchCase))
+test "map literals and receiver dispatch preserve lookup semantics" (exactly literalsAndDispatchCase)
 
 (** [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
     equivalent to `map[key]`, with a missing key returning `Error`. `V` is the
@@ -400,7 +400,7 @@ typedValueRetrievalCase () =
         mapLength entries == 2
     ]
 
-test "mapGet returns the value type for every value type" (\() => exactArithmetic (typedValueRetrievalCase))
+test "mapGet returns the value type for every value type" (exactly typedValueRetrievalCase)
 
 (** [BUILTIN-MAP] states that `Map()` and map literals create *string*-keyed maps,
     and [BUILTIN-MAP-GET]/[BUILTIN-MAP-CONTAINS] key them by that string alone. A
@@ -529,7 +529,7 @@ keyShapeCase () =
         !(listContains (mapValues shaped) 12)
     ]
 
-test "map keys are distinguished by exact string content" (\() => exactArithmetic (keyShapeCase))
+test "map keys are distinguished by exact string content" (exactly keyShapeCase)
 
 (** [BUILTIN-MAP-SET] returns a map with `key` bound to `value`, "replacing any
     prior binding", while the Collection Functions preamble states operations
@@ -645,7 +645,7 @@ overwriteChainCase () =
         listContains (mapValues prefixes) 2
     ]
 
-test "map overwrite chains keep one binding per key" (\() => exactArithmetic (overwriteChainCase))
+test "map overwrite chains keep one binding per key" (exactly overwriteChainCase)
 
 (** [BUILTIN-MAP-MERGE] "returns the right-biased union" and states `left + right`
     is equivalent. Right bias makes merge non-commutative but still associative,
@@ -769,7 +769,7 @@ mergeAlgebraCase () =
         (mapGet (mapMerge (mapRemove lr "k") lr) "k" ?: ((0 - 999) )) == 10
     ]
 
-test "map merge is right-biased, associative, and identity-preserving" (\() => exactArithmetic (mergeAlgebraCase))
+test "map merge is right-biased, associative, and identity-preserving" (exactly mergeAlgebraCase)
 
 (** [BUILTIN-MAP-REMOVE] "returns a map without `key`" and states "a missing key
     leaves the map unchanged". Sweeping a five-key map one key at a time must drop
@@ -895,7 +895,7 @@ removalSweepCase () =
         listContains (mapValues noA) 5
     ]
 
-test "map removal drops exactly one binding and leaves absent keys alone" (\() => exactArithmetic (removalSweepCase))
+test "map removal drops exactly one binding and leaves absent keys alone" (exactly removalSweepCase)
 
 (** Bucket holds a Map and a List field, so a record can carry whole collections. *)
 type Bucket =
@@ -1052,7 +1052,7 @@ nestedCollectionCase () =
         isEmpty missingItems
     ]
 
-test "maps nest inside lists, maps, and records without flattening" (\() => exactArithmetic (nestedCollectionCase))
+test "maps nest inside lists, maps, and records without flattening" (exactly nestedCollectionCase)
 
 (** [BUILTIN-MAP-KEYS] returns all keys "in unspecified order" and
     [BUILTIN-MAP-VALUES] returns all values "in the same traversal order as
@@ -1169,4 +1169,4 @@ keyValueViewPairingCase () =
         listLength (mapValues (mapRemove trimmed "zzz")) == 5
     ]
 
-test "mapKeys and mapValues stay paired index by index" (\() => exactArithmetic (keyValueViewPairingCase))
+test "mapKeys and mapValues stay paired index by index" (exactly keyValueViewPairingCase)

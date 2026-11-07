@@ -192,7 +192,7 @@ fn contextualKeywordCase() = {
     ])
 }
 
-test("a once arm retrying internally sends exactly one receipt", fn() => exactArithmetic(retrySendsOneReceiptCase))
-test("a once arm that declines to resume sends no receipt", fn() => exactArithmetic(declineSendsNoReceiptCase))
-test("one unannotated function serves both multiplicities", fn() => exactArithmetic(sharedAcrossMultiplicitiesCase))
-test("abort, once, many and replayable stay legal identifiers", fn() => exactArithmetic(contextualKeywordCase))
+test("a once arm retrying internally sends exactly one receipt", exactly(retrySendsOneReceiptCase))
+test("a once arm that declines to resume sends no receipt", exactly(declineSendsNoReceiptCase))
+test("one unannotated function serves both multiplicities", exactly(sharedAcrossMultiplicitiesCase))
+test("abort, once, many and replayable stay legal identifiers", exactly(contextualKeywordCase))

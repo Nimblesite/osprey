@@ -79,5 +79,5 @@ stringsCase () =
         "a\nb${length (filterList (rows, \row => row > 1))}" == "a\nb2"
     ]
 
-test "pipelines retain each stage and complete chain" (\() => exactArithmetic (pipeChainCase))
-test "string calls retain interpolation and concatenation" (\() => exactArithmetic (stringsCase))
+test "pipelines retain each stage and complete chain" (exactly pipeChainCase)
+test "string calls retain interpolation and concatenation" (exactly stringsCase)

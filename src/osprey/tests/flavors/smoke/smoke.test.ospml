@@ -91,4 +91,4 @@ helloSmokeCase () =
         listLength (mapValues numberBuckets) == 2
     ]
 
-test "top-level binding and interpolation retain both hello lines" (\() => exactArithmetic (helloSmokeCase))
+test "top-level binding and interpolation retain both hello lines" (exactly helloSmokeCase)

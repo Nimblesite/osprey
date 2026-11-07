@@ -121,7 +121,7 @@ fn booleanBehaviorCase() = {
     ])
 }
 
-test("boolean operators preserve values and short-circuiting", fn() => exactArithmetic(booleanBehaviorCase))
+test("boolean operators preserve values and short-circuiting", exactly(booleanBehaviorCase))
 
 /// Produces infinity at runtime for the [FLOAT-COMPARE] truth tables.
 fn growFloat(x, count) = match count {
@@ -154,8 +154,8 @@ fn orderedFloatComparisonsCase() = {
     checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
     checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
 }
-test("NaN comparison truth table", fn() => exactArithmetic(nanComparisonsCase))
-test("ordered float comparison controls", fn() => exactArithmetic(orderedFloatComparisonsCase))
+test("NaN comparison truth table", exactly(nanComparisonsCase))
+test("ordered float comparison controls", exactly(orderedFloatComparisonsCase))
 
 /// [FLOAT-IEEE-RESULTS]: non-finite values require no overflow policy.
 fn floatIdentity(value) = value

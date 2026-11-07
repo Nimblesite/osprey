@@ -132,4 +132,4 @@ nestedListEffectPatternCase () =
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 
-test "nested generic lists mix effects patterns Results and persistence" (\() => exactArithmetic (nestedListEffectPatternCase))
+test "nested generic lists mix effects patterns Results and persistence" (exactly nestedListEffectPatternCase)

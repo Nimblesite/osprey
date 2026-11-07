@@ -290,4 +290,4 @@ adventureGameCase () =
         questBalance == 385
     ]
 
-test "adventure game preserves branch and progression state" (\() => exactArithmetic (adventureGameCase))
+test "adventure game preserves branch and progression state" (exactly adventureGameCase)

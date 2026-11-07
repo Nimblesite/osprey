@@ -195,4 +195,4 @@ typedErrorChannelCase () =
         listLength (mapValues grown) == 3
     ]
 
-test "typed error channels compose and restore shadowed handlers" (\() => exactArithmetic (typedErrorChannelCase))
+test "typed error channels compose and restore shadowed handlers" (exactly typedErrorChannelCase)

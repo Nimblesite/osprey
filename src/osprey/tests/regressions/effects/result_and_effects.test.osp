@@ -172,4 +172,4 @@ fn resultAndEffectsCase() = {
     ])
 }
 
-test("fallible arithmetic is recovered without masking healthy results", fn() => exactArithmetic(resultAndEffectsCase))
+test("fallible arithmetic is recovered without masking healthy results", exactly(resultAndEffectsCase))

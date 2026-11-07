@@ -147,10 +147,10 @@ fn stringInteractions() = {
 }
 
 // Register the union, Result, and scalar interaction.
-test("unions, Results and scalar operations compose", fn() => exactArithmetic(unionsResultsAndScalars))
+test("unions, Results and scalar operations compose", exactly(unionsResultsAndScalars))
 // Register the function, boolean, and pipeline interaction.
-test("functions, forward calls, booleans and pipes compose", fn() => exactArithmetic(functionsPipesAndBooleans))
+test("functions, forward calls, booleans and pipes compose", exactly(functionsPipesAndBooleans))
 // Register the effect and persistent-collection interaction.
-test("effects mutate handled state beside persistent collections", fn() => exactArithmetic(effectsAndCollections))
+test("effects mutate handled state beside persistent collections", exactly(effectsAndCollections))
 // Register the cross-feature string interaction.
-test("string transformations consume values from other features", fn() => exactArithmetic(stringInteractions))
+test("string transformations consume values from other features", exactly(stringInteractions))

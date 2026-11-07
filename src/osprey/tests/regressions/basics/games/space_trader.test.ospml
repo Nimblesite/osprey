@@ -337,4 +337,4 @@ spaceTraderCase () =
         projected == 3400
     ]
 
-test "space trading preserves market, ledger, and ship state" (\() => exactArithmetic (spaceTraderCase))
+test "space trading preserves market, ledger, and ship state" (exactly spaceTraderCase)

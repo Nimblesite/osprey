@@ -276,4 +276,4 @@ inferredBehaviorCase () =
         pick ("left", "right") == "left"
     ]
 
-test "inference preserves polymorphism and derived values" (\() => exactArithmetic (inferredBehaviorCase))
+test "inference preserves polymorphism and derived values" (exactly inferredBehaviorCase)

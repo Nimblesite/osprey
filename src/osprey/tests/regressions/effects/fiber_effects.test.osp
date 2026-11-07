@@ -377,7 +377,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
 }
 
 // Register the cached-result rule for a fiber that performs.
-test("awaiting a finished effectful fiber replays one cached run", fn() => exactArithmetic(awaitReplaysOneEffectfulRunCase))
+test("awaiting a finished effectful fiber replays one cached run", exactly(awaitReplaysOneEffectfulRunCase))
 
 /// [EFFECTS-FIBER-PERFORM]: "Concurrent performs into one resuming handler are
 /// serialized for the full suspend-to-resume round trip. This prevents arguments
@@ -537,7 +537,7 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
 }
 
 // Register the no-crossed-answers rule for several fibers into one handler.
-test("concurrent fibers performing into one resuming handler keep their own answers", fn() => exactArithmetic(concurrentPerformsKeepTheirOwnAnswersCase))
+test("concurrent fibers performing into one resuming handler keep their own answers", exactly(concurrentPerformsKeepTheirOwnAnswersCase))
 
 /// [EFFECTS-HANDLER-STATE]: "Code generation promotes the captured binding to a
 /// shared heap cell, so every arm, the handled body, and code after the region
@@ -686,7 +686,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 }
 
 // Register the shared-cell rule the spec names this file for.
-test("handler state is one promoted cell across the fiber boundary", fn() => exactArithmetic(handlerCellCrossesTheFiberBoundaryCase))
+test("handler state is one promoted cell across the fiber boundary", exactly(handlerCellCrossesTheFiberBoundaryCase))
 
 /// [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
 /// "appends `value`" and whose `recv` "removes its oldest value". Fibers are
@@ -805,7 +805,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
 }
 
 // Register channel handoff plus a perform escaping the producer fiber.
-test("a channel hands values between fibers while the effect reaches outside", fn() => exactArithmetic(channelHandoffKeepsFibersIsolatedCase))
+test("a channel hands values between fibers while the effect reaches outside", exactly(channelHandoffKeepsFibersIsolatedCase))
 
 /// Handler lookup "is per effect and operation. Nested handlers may override
 /// selected operations; the innermost matching arm wins and an outer arm remains
@@ -983,7 +983,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
 }
 
 // Register innermost-arm selection and partial-handler fall-through for fibers.
-test("nested regions pick the innermost arm for a spawned fiber", fn() => exactArithmetic(nestedRegionsPickTheInnermostArmForFibersCase))
+test("nested regions pick the innermost arm for a spawned fiber", exactly(nestedRegionsPickTheInnermostArmForFibersCase))
 
 /// Where the spec fixes no order among concurrent fibers, the PROGRAM can fix one:
 /// each stage below awaits the previous, so [CONCURRENCY-SPAWN-AWAIT] makes the
@@ -1145,7 +1145,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 }
 
 // Register the program-fixed ordering contract for an effectful fiber pipeline.
-test("a data-dependent fiber pipeline fixes the handler transcript order", fn() => exactArithmetic(fiberPipelineTranscriptIsDeterministicCase))
+test("a data-dependent fiber pipeline fixes the handler transcript order", exactly(fiberPipelineTranscriptIsDeterministicCase))
 
 /// Arithmetic faults use the same serialized fiber request as explicit effects.
 fn arithmeticFiberJob(maximum, zero) = {

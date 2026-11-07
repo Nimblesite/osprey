@@ -115,4 +115,4 @@ fn mutationCase() = {
 
 // Run the complete state-transition scenario as one named test.
 
-test("handled mutation retains every counter transition", fn() => exactArithmetic(mutationCase))
+test("handled mutation retains every counter transition", exactly(mutationCase))

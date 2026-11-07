@@ -332,7 +332,7 @@ stringEdgeCase () =
         divisionRejected
     ]
 
-test "string edge cases preserve values and error payloads" (\() => exactArithmetic (stringEdgeCase))
+test "string edge cases preserve values and error payloads" (exactly stringEdgeCase)
 
 (** [STRING-INTERPOLATION] Rendering: "Integers, floats, and booleans use their
     normal scalar rendering"; [BUILTIN-TOSTRING] "Uses the same accepted types and
@@ -990,11 +990,11 @@ third"
     ]
 
 // Registration order fixes the TAP order in the shared golden.
-test "interpolation renders every printable scalar" (\() => exactArithmetic (interpolationScalarCase))
-test "a Result is never unwrapped at an interpolation hole" (\() => exactArithmetic (interpolationResultCase))
-test "escape sequences resolve to their exact bytes" (\() => exactArithmetic (escapeSequenceCase))
-test "search builtins scan every substring position" (\() => exactArithmetic (substringPositionCase))
-test "ASCII case folding is total and round-trips" (\() => exactArithmetic (caseFoldingCase))
-test "concatenation and length arithmetic hold" (\() => exactArithmetic (concatLengthCase))
-test "interpolation composes expressions and preserves text" (\() => exactArithmetic (interpolationCompositionCase))
-test "a byte count never splits a UTF-8 character" (\() => exactArithmetic (utf8CutCase))
+test "interpolation renders every printable scalar" (exactly interpolationScalarCase)
+test "a Result is never unwrapped at an interpolation hole" (exactly interpolationResultCase)
+test "escape sequences resolve to their exact bytes" (exactly escapeSequenceCase)
+test "search builtins scan every substring position" (exactly substringPositionCase)
+test "ASCII case folding is total and round-trips" (exactly caseFoldingCase)
+test "concatenation and length arithmetic hold" (exactly concatLengthCase)
+test "interpolation composes expressions and preserves text" (exactly interpolationCompositionCase)
+test "a byte count never splits a UTF-8 character" (exactly utf8CutCase)

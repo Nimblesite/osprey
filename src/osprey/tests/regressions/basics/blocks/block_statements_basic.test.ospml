@@ -174,7 +174,7 @@ blockStatementsCase () =
         "outer=${outer} inner=${shadowedBlock ()}" == "outer=100 inner=85"
     ]
 
-test "blocks preserve values and lexical scope" (\() => exactArithmetic (blockStatementsCase))
+test "blocks preserve values and lexical scope" (exactly blockStatementsCase)
 
 (** [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings. *)
 effect BlockRead

@@ -89,4 +89,4 @@ websiteExamplesCase () =
         fiberValue == 14
     ]
 
-test "website snippets produce their documented values" (\() => exactArithmetic (websiteExamplesCase))
+test "website snippets produce their documented values" (exactly websiteExamplesCase)

@@ -65,6 +65,6 @@ resolutionOrderCase () = checkAll ("resolution prefers the nearest binding", [
 exactArithmetic (\() =>
     print "${pack 2} ${bigCrate 1} ${Metric::grams 2} ${U::each} ${cents 3}")
 
-test ("member imports bind selected exports", \() => exactArithmetic (memberImportCase))
-test ("whole-module imports bind a module name", \() => exactArithmetic (wholeModuleImportCase))
-test ("nearer declarations outrank imported ones", \() => exactArithmetic (resolutionOrderCase))
+test ("member imports bind selected exports", exactly memberImportCase)
+test ("whole-module imports bind a module name", exactly wholeModuleImportCase)
+test ("nearer declarations outrank imported ones", exactly resolutionOrderCase)

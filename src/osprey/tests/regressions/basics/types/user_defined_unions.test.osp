@@ -185,7 +185,7 @@ fn userDefinedUnionCase() = {
     ])
 }
 
-test("user-defined union variants preserve their tags and payloads", fn() => exactArithmetic(userDefinedUnionCase))
+test("user-defined union variants preserve their tags and payloads", exactly(userDefinedUnionCase))
 
 /// Exercises generic lookup at scalar and nested collection types on maps BUILT
 /// at runtime, then routes every recovered value through one generic effect.
@@ -264,4 +264,4 @@ fn builtMapIndexCase() = {
             listValueAt(listGet(nestedMaps, 1) ?: { "fallback": [99] }, "prime", 3, 99) == 7
     ])
 }
-test("built maps support indexed lookup", fn() => exactArithmetic(builtMapIndexCase))
+test("built maps support indexed lookup", exactly(builtMapIndexCase))

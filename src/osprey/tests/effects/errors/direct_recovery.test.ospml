@@ -1284,60 +1284,60 @@ boundaryValueRecoveryCase () =
     The handler is installed but its operations stay untouched, so the
     value reaching the caller is the ordinary computed one. *)
 
-test "successful paths bypass recovery handlers" (\() => exactArithmetic (happyPathBypassCase))
+test "successful paths bypass recovery handlers" (exactly happyPathBypassCase)
 (** A handler-supplied value resumes ordinary arithmetic where the
     failure was performed, rather than unwinding to the handler. *)
-test "fallback values continue at the perform site" (\() => exactArithmetic (fallbackContinuationCase))
+test "fallback values continue at the perform site" (exactly fallbackContinuationCase)
 (** Three substitutions in one handler scope observe the handler's own
     mutable state, proving each recovery resumes into the same handler
     instance instead of a fresh one. *)
-test "repeated recoveries share handler-owned state" (\() => exactArithmetic (repeatedRecoveryStateCase))
+test "repeated recoveries share handler-owned state" (exactly repeatedRecoveryStateCase)
 (** A `Unit`-returning report operation records a broken rule and lets
     every later rule still run, so one validation pass collects all
     failures instead of stopping at the first. *)
-test "Unit error reports collect without early exit" (\() => exactArithmetic (collectAllReportsCase))
+test "Unit error reports collect without early exit" (exactly collectAllReportsCase)
 (** One handler answers `int`, `string`, and `bool` operations of the
     same effect, proving each operation keeps its own result type. *)
-test "one handler supplies several result types" (\() => exactArithmetic (multipleResultTypesCase))
+test "one handler supplies several result types" (exactly multipleResultTypesCase)
 (** The same effectful function runs under two different handlers and
     yields two different answers — the policy lives in the handler, not
     in the function. *)
-test "one effectful function supports two policies" (\() => exactArithmetic (twoPoliciesCase))
+test "one effectful function supports two policies" (exactly twoPoliciesCase)
 (** An inner handler shadows ONE operation of an effect; the outer
     handler still answers the others, and its behavior returns once the
     inner scope ends. *)
-test "nested handlers override locally and restore outer behavior" (\() => exactArithmetic (nestedOverrideCase))
+test "nested handlers override locally and restore outer behavior" (exactly nestedOverrideCase)
 (** A recovery arm performs a second, outer effect while recovering from
     the first — composition across effect boundaries. *)
-test "a recovery arm can use an outer effect" (\() => exactArithmetic (outerEffectCompositionCase))
+test "a recovery arm can use an outer effect" (exactly outerEffectCompositionCase)
 (** A failure performed several helper calls and recursion levels deep
     still reaches the installed handler. *)
-test "recovery reaches through helpers and recursion" (\() => exactArithmetic (deepRecursionCase))
+test "recovery reaches through helpers and recursion" (exactly deepRecursionCase)
 (** A handler may answer with a complete `Result`, choosing success or
     failure itself rather than only supplying a bare fallback.
 
     # Since
     0.3 *)
-test "handlers can return whole Result operation values" (\() => exactArithmetic (wholeResultOperationCase))
+test "handlers can return whole Result operation values" (exactly wholeResultOperationCase)
 (** A direct arm may supply `int`, `float`, `bool`, `string`, a record, a
     tagged union, a whole `Result` or `Unit`, and each one reaches the
     perform site with its declared type and payload intact. *)
-test "every declared operation result type crosses a direct arm" (\() => exactArithmetic (everyResultTypeCase))
+test "every declared operation result type crosses a direct arm" (exactly everyResultTypeCase)
 (** Discharge is per operation: partial regions cover complementary
     operations, an inner arm overrides one operation while its siblings fall
     through, and the outer policy answers again once the inner region ends. *)
-test "partial and nested handlers split one effect's operations" (\() => exactArithmetic (partialOverrideLatticeCase))
+test "partial and nested handlers split one effect's operations" (exactly partialOverrideLatticeCase)
 (** A `perform` inside a lambda handed to `forEachList` reaches the installed
     handler once per element, in index order, for empty, singleton, duplicate
     and nested inputs alike. *)
-test "a callback passed to a higher-order function reaches the handler" (\() => exactArithmetic (higherOrderRecoveryCase))
+test "a callback passed to a higher-order function reaches the handler" (exactly higherOrderRecoveryCase)
 (** Recursion in the handled body enters the handler exactly once per level,
     including at depth zero, depth one and past the thirty-two level mark. *)
-test "recursion in the handled body enters the handler once per level" (\() => exactArithmetic (recursiveAccumulationCase))
+test "recursion in the handled body enters the handler once per level" (exactly recursiveAccumulationCase)
 (** Four effects performed by one body are discharged by four nested regions;
     nesting order does not change any value, and one shared transcript records
     the exact interleaving of the four channels. *)
-test "four effects compose in one nested region stack" (\() => exactArithmetic (multiEffectRegionCase))
+test "four effects compose in one nested region stack" (exactly multiEffectRegionCase)
 (** Empty, single-character, punctuated, repeated and case-mixed text, and
     zero, maximum and negated numbers, all cross a direct arm unchanged. *)
-test "boundary values cross a direct arm unchanged" (\() => exactArithmetic (boundaryValueRecoveryCase))
+test "boundary values cross a direct arm unchanged" (exactly boundaryValueRecoveryCase)

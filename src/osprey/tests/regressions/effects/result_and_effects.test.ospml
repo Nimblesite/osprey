@@ -171,4 +171,4 @@ resultAndEffectsCase () =
         listLength (mapValues grownMap) == 4
     ]
 
-test "fallible arithmetic is recovered without masking healthy results" (\() => exactArithmetic (resultAndEffectsCase))
+test "fallible arithmetic is recovered without masking healthy results" (exactly resultAndEffectsCase)

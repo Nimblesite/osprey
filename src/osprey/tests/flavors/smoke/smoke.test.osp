@@ -91,4 +91,4 @@ fn helloSmokeCase() = {
 
 // Run the paired flavor and interpolation smoke test.
 
-test("top-level binding and interpolation retain both hello lines", fn() => exactArithmetic(helloSmokeCase))
+test("top-level binding and interpolation retain both hello lines", exactly(helloSmokeCase))

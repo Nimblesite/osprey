@@ -75,4 +75,4 @@ fn structAllocationCase() = {
     ])
 }
 
-test("record allocation preserves aggregate values", fn() => exactArithmetic(structAllocationCase))
+test("record allocation preserves aggregate values", exactly(structAllocationCase))

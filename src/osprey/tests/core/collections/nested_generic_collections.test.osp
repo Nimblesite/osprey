@@ -132,4 +132,4 @@ fn nestedListEffectPatternCase() = {
     ])
 }
 
-test("nested generic lists mix effects patterns Results and persistence", fn() => exactArithmetic(nestedListEffectPatternCase))
+test("nested generic lists mix effects patterns Results and persistence", exactly(nestedListEffectPatternCase))

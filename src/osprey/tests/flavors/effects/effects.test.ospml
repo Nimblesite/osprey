@@ -108,4 +108,4 @@ mutationCase () =
 
     runBatchAssertions ()
 
-test "handled mutation retains every counter transition" (\() => exactArithmetic (mutationCase))
+test "handled mutation retains every counter transition" (exactly mutationCase)

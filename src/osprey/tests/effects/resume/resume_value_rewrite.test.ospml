@@ -121,7 +121,7 @@ resumeValueRewriteCase () =
 
 (* Register the value-rewriting and generic-resume regression. *)
 
-test "resume rewrites values across scalar, Result, and generic effects" (\() => exactArithmetic (resumeValueRewriteCase))
+test "resume rewrites values across scalar, Result, and generic effects" (exactly resumeValueRewriteCase)
 
 (** Script hands the performer one scripted integer per numbered slot. *)
 effect Script
@@ -229,7 +229,7 @@ resumeSubstitutesSuppliedValueCase () =
     ]
 
 (* Register value substitution at the perform site. *)
-test "resume substitutes exactly the value each arm supplied" (\() => exactArithmetic (resumeSubstitutesSuppliedValueCase))
+test "resume substitutes exactly the value each arm supplied" (exactly resumeSubstitutesSuppliedValueCase)
 
 (** Layer lets each arm adjust the answer its resumed continuation produced. *)
 effect Layer
@@ -335,7 +335,7 @@ resumeAnswerComposesLifoCase () =
     ]
 
 (* Register the composition of post-resume adjustments. *)
-test "post-resume adjustments compose into the region answer" (\() => exactArithmetic (resumeAnswerComposesLifoCase))
+test "post-resume adjustments compose into the region answer" (exactly resumeAnswerComposesLifoCase)
 
 (** Scalar carries one operation per scalar payload kind a resume can supply. *)
 effect Scalar
@@ -453,7 +453,7 @@ resumeScalarPayloadsCase () =
     ]
 
 (* Register integer and float resume payloads. *)
-test "resume carries integer and float payloads" (\() => exactArithmetic (resumeScalarPayloadsCase))
+test "resume carries integer and float payloads" (exactly resumeScalarPayloadsCase)
 
 (** Three booleans rendered in order, so both truth values must survive. *)
 flagBody () =
@@ -577,7 +577,7 @@ resumeBoolAndUnitPayloadsCase () =
     ]
 
 (* Register boolean and Unit resume payloads. *)
-test "resume carries boolean and Unit payloads" (\() => exactArithmetic (resumeBoolAndUnitPayloadsCase))
+test "resume carries boolean and Unit payloads" (exactly resumeBoolAndUnitPayloadsCase)
 
 (** Slot is a record supplied whole through one resumed operation. *)
 type Slot =
@@ -727,7 +727,7 @@ resumeManagedPayloadsCase () =
     ]
 
 (* Register string, record and Result resume payloads. *)
-test "resume carries string record and Result payloads" (\() => exactArithmetic (resumeManagedPayloadsCase))
+test "resume carries string record and Result payloads" (exactly resumeManagedPayloadsCase)
 
 (** Depth exposes one operation performed only by the deepest frame. *)
 effect Depth
@@ -831,7 +831,7 @@ resumeFromNestedHelpersCase () =
     ]
 
 (* Register a perform reached through four frames of helpers. *)
-test "resume reaches a perform four frames deep" (\() => exactArithmetic (resumeFromNestedHelpersCase))
+test "resume reaches a perform four frames deep" (exactly resumeFromNestedHelpersCase)
 
 (** Ticker supplies one scripted value per index of a twelve-step walk. *)
 effect Ticker
@@ -907,4 +907,4 @@ manyPerformsOneRegionCase () =
     ]
 
 (* Register twelve performs settling through one region. *)
-test "twelve performs in one region each settle once" (\() => exactArithmetic (manyPerformsOneRegionCase))
+test "twelve performs in one region each settle once" (exactly manyPerformsOneRegionCase)
