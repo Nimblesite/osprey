@@ -6,12 +6,17 @@
 fn addFloats(a, x) = a + x
 /// Numeric operators must specialize this definition from gpuFold's float slots.
 fn plus(a, x) = a + x
-fn atFloat(xs, i) = gpuGet(xs, i) ?: 0.0
+/// Element with an explicit fallback; every assertion row reads through it.
+fn at(xs, i, fallback) = gpuGet(xs, i) ?: fallback
+/// Two elements of one buffer as a row, for whole-row structural comparison.
+fn rowOf(xs, i, j, fallback) = [at(xs, i, fallback), at(xs, j, fallback)]
+/// Asserts the float sum of `xs` from 0.0 with addFloats is `expected`.
+fn floatSumIs(xs, expected) = gpuEquals(gpuFold(xs, 0.0, addFloats), expected)
 /// This deliberately has no signature. A concrete device specialization must
 /// be emitted from its use with GpuBuffer<float> values, including the self-call.
 fn rowDot(matrix, vector, cols, row, col) = match col == cols {
     true => 0.0
-    false => atFloat(matrix, (((row * cols) ) + col) ) * atFloat(vector, col)
+    false => at(matrix, (((row * cols) ) + col), 0.0) * at(vector, col, 0.0)
     + rowDot(matrix, vector, cols, row, (col + 1) )
 }
 fn multiplicationOrderCase() = {
@@ -21,9 +26,9 @@ fn multiplicationOrderCase() = {
                     withBuffer(gpuZipWith(xs, ys, fn(x, y) => t * x * y), fn(captureFirst) => {
                             withBuffer(gpuZipWith(xs, ys, fn(x, y) => x * y * t), fn(captureLast) => {
                                     checkAll("buffer slots type every multiplication order", [
-                                            gpuEquals(gpuFold(captureFirst, 0.0, addFloats), 22.0), gpuEquals(gpuFold(captureLast, 0.0, addFloats), 22.0),
-                                            (gpuGet(captureFirst, 0) ?: 0.0) == 6.0,
-                                            (gpuGet(captureLast, 1) ?: 0.0) == 16.0
+                                            floatSumIs(captureFirst, 22.0), floatSumIs(captureLast, 22.0),
+                                            at(captureFirst, 0, 0.0) == 6.0,
+                                            at(captureLast, 1, 0.0) == 16.0
                                     ])
                                 })
                         })
@@ -33,7 +38,7 @@ fn multiplicationOrderCase() = {
 fn genericCombineCase() = {
     withBuffer(toGpu([1.0, 2.0, 3.0]), fn(xs) => {
             checkAll("named generic float combines specialize from buffer slots", [
-                    gpuEquals(gpuFold(xs, 0.0, plus), 6.0), gpuSatisfies(gpuScan(xs, 0.0, plus), fn(uploaded200) => (gpuGet(uploaded200, 2) ?: 0.0) == 6.0)
+                    gpuEquals(gpuFold(xs, 0.0, plus), 6.0), gpuSatisfies(gpuScan(xs, 0.0, plus), fn(uploaded200) => at(uploaded200, 2, 0.0) == 6.0)
             ])
         })
 }
@@ -43,10 +48,9 @@ fn recursiveHelperWith(indices) = {
             withBuffer(toGpu([10.0, 20.0]), fn(vector) => {
                     withBuffer(gpuMap(indices, fn(row) => rowDot(matrix, vector, 2, row, 0)), fn(rows) => {
                             checkAll("recursive GPU helpers monomorphize from their call site", [
-                                    gpuLength(rows) == 2,
-                                    (gpuGet(rows, 0) ?: 0.0) == 50.0,
-                                    (gpuGet(rows, 1) ?: 0.0) == 110.0,
-                                    gpuEquals(gpuFold(rows, 0.0, addFloats), 160.0)
+                                    gpuLengthIs(rows, 2),
+                                    structuralEquals(rowOf(rows, 0, 1, 0.0), [50.0, 110.0]),
+                                    floatSumIs(rows, 160.0)
                             ])
                         })
                 })
@@ -61,9 +65,9 @@ fn blockBodyCase() = {
             }), fn(mapped) => {
                     checkAll("block-bodied kernels preserve local bindings", [
                             gpuLength(mapped) == 3,
-                            structuralEquals([(gpuGet(mapped, 0) ?: 0.0), (gpuGet(mapped, 1) ?: 0.0)], [4.0, 6.0]),
-                            (gpuGet(mapped, 2) ?: 0.0) == 8.0,
-                            gpuEquals(gpuFold(mapped, 0.0, addFloats), 18.0)
+                            structuralEquals(rowOf(mapped, 0, 1, 0.0), [4.0, 6.0]),
+                            at(mapped, 2, 0.0) == 8.0,
+                            floatSumIs(mapped, 18.0)
                     ])
                 })
         })
@@ -81,11 +85,10 @@ fn builtinMapCase() = {
                                     withBuffer(toGpu([3.0]), fn(uploaded14) => {
                                             withBuffer(gpuMap(uploaded14, abs), fn(shadowed) => {
                                                     checkAll("builtin maps preserve scalar types and lexical shadowing", [
-                                                            (gpuGet(floats, 0) ?: 0.0) == 9007199254740992.0,
-                                                            (gpuGet(positive, 0) ?: 0.0) == 1.5,
-                                                            (gpuGet(positive, 2) ?: 0.0) == 2.25,
-                                                            (gpuGet(shadowed, 0) ?: 0.0) == 6.0,
-                                                            (gpuGet(floats, 1) ?: 0.0) == -7.0, toString(gpuGet(positive, 1) ?: 1.0) == "0.0"
+                                                            at(floats, 0, 0.0) == 9007199254740992.0,
+                                                            at(positive, 0, 0.0) == 1.5, at(positive, 2, 0.0) == 2.25,
+                                                            at(shadowed, 0, 0.0) == 6.0,
+                                                            at(floats, 1, 0.0) == -7.0, toString(at(positive, 1, 0.0)) == "0.0"
                                                     ])
                                                 })
                                         })
@@ -101,13 +104,10 @@ fn builtinZipCaseUploaded(left, right) = {
                     withBuffer(gpuZipWith(left, right, wrapMul), fn(multiplied) => {
                             withBuffer(gpuZipWith(left, right, satMul), fn(saturated) => {
                                     checkAll("builtin zip preserves wrapping and saturation boundaries", [
-                                            (gpuGet(added, 0) ?: 0) == -9223372036854775808,
-                                            (gpuGet(added, 1) ?: 0) == 9223372036854775807,
-                                            (gpuGet(subtracted, 0) ?: 0) == 9223372036854775806,
-                                            (gpuGet(saturated, 1) ?: 0) == 9223372036854775807,
-                                            (gpuGet(saturated, 2) ?: 0) == 9223372036854775807,
-                                            (gpuGet(subtracted, 1) ?: 0) == -9223372036854775807, (gpuGet(multiplied, 1) ?: 0) == -9223372036854775808,
-                                            (gpuGet(multiplied, 2) ?: 0) == -2446744073709551616
+                                            structuralEquals(rowOf(added, 0, 1, 0), [-9223372036854775808, 9223372036854775807]),
+                                            at(subtracted, 0, 0) == 9223372036854775806, at(subtracted, 1, 0) == -9223372036854775807,
+                                            at(saturated, 1, 0) == 9223372036854775807, at(saturated, 2, 0) == 9223372036854775807,
+                                            structuralEquals(rowOf(multiplied, 1, 2, 0), [-9223372036854775808, -2446744073709551616])
                                     ])
                                 })
                         })
@@ -119,8 +119,8 @@ fn builtinFoldCase() = {
             withBuffer(gpuScan(source, -9223372036854775808, satSub), fn(lower) => {
                     withBuffer(gpuScan(source, 9223372036854775807, satAdd), fn(upper) => {
                             checkAll("builtin folds and scans preserve accumulator policy", [
-                                    gpuEquals(gpuFold(source, 9223372036854775807, wrapAdd), -9223372036854775807), gpuEquals(gpuFold(source, 9223372036854775807, satAdd), 9223372036854775807), (gpuGet(lower, 1) ?: 0) == -9223372036854775808,
-                                    (gpuGet(upper, 1) ?: 0) == 9223372036854775807
+                                    gpuEquals(gpuFold(source, 9223372036854775807, wrapAdd), -9223372036854775807), gpuEquals(gpuFold(source, 9223372036854775807, satAdd), 9223372036854775807),
+                                    structuralEquals([at(lower, 1, 0), at(upper, 1, 0)], [-9223372036854775808, 9223372036854775807])
                             ])
                         })
                 })
@@ -140,8 +140,8 @@ fn builtinPolicyCase() = {
     withBuffer(toGpu([-9223372036854775808, -4, 5]), fn(uploaded10) => {
             withBuffer(gpuMap(uploaded10, abs), fn(values) => {
                     checkAll("builtin kernel dispatches to the active arithmetic policy", [
-                            structuralEquals([faults, (gpuGet(values, 0) ?: 0)], [1, 77]),
-                            structuralEquals([(gpuGet(values, 1) ?: 0), (gpuGet(values, 2) ?: 0)], [4, 5])
+                            structuralEquals([faults, at(values, 0, 0)], [1, 77]),
+                            structuralEquals(rowOf(values, 1, 2, 0), [4, 5])
                     ])
                 })
         })
@@ -171,8 +171,8 @@ fn builtinDivisionCase() = {
                     withBuffer(gpuZipWith(uploaded8, uploaded9, intDiv), fn(values) => {
                             checkAll("builtin division dispatches once in element order", [
                                     faults == "overflow;zero;",
-                                    structuralEquals([(gpuGet(values, 0) ?: 0), (gpuGet(values, 1) ?: 0)], [41, 42]),
-                                    (gpuGet(values, 2) ?: 0) == 4
+                                    structuralEquals(rowOf(values, 0, 1, 0), [41, 42]),
+                                    at(values, 2, 0) == 4
                             ])
                         })
                 })
@@ -190,10 +190,9 @@ fn lexicalKernelCase() = {
                     withBuffer(gpuZipWith(source, uploaded7, choose), fn(zipped) => {
                             withBuffer(gpuScan(source, 42.0, choose), fn(scanned) => {
                                     checkAll("closed kernels keep their definition environment", [
-                                            enabled == false, gpuLengthIs(gpuFilter(source, keep), 2), gpuSatisfies(gpuMap(source, identity), fn(uploaded181) => (gpuGet(uploaded181, 1) ?: 0.0) == 2.0),
-                                            (gpuGet(zipped, 1) ?: 0.0) == 2.0,
-                                            (gpuGet(scanned, 0) ?: 0.0) == 42.0,
-                                            (gpuGet(scanned, 1) ?: 0.0) == 42.0,
+                                            enabled == false, gpuLengthIs(gpuFilter(source, keep), 2), gpuSatisfies(gpuMap(source, identity), fn(uploaded181) => at(uploaded181, 1, 0.0) == 2.0),
+                                            at(zipped, 1, 0.0) == 2.0,
+                                            structuralEquals(rowOf(scanned, 0, 1, 0.0), [42.0, 42.0]),
                                             gpuEquals(gpuFold(source, 42.0, choose), 42.0)
                                     ])
                                 })
@@ -210,9 +209,7 @@ fn liveKernelCellCase() = {
             0
         } }
     let changed = perform KernelSwitch.disable()
-    checkAll("host-bound kernels retain live cell identity", [
-            changed == 0, gpuSatisfies(toGpu([1, 2]), fn(uploaded5) => gpuLengthIs(gpuFilter(uploaded5, keep), 0))
-    ])
+    checkAll("host-bound kernels retain live cell identity", [changed == 0, gpuSatisfies(toGpu([1, 2]), fn(uploaded5) => gpuLengthIs(gpuFilter(uploaded5, keep), 0))])
 }
 test("closed GPU kernels retain lexical uniforms", lexicalKernelCase)
 test("host GPU kernels retain live cells", liveKernelCellCase)
@@ -220,9 +217,7 @@ fn managedKernelCase() = {
     let label = "kept"
     let keep = fn(_x) => length(label) > 0
     let label = ""
-    checkAll("declined extraction retains the captured managed value", [
-            label == "", gpuSatisfies(toGpu([1, 2]), fn(uploaded4) => gpuLengthIs(gpuFilter(uploaded4, keep), 2))
-    ])
+    checkAll("declined extraction retains the captured managed value", [label == "", gpuSatisfies(toGpu([1, 2]), fn(uploaded4) => gpuLengthIs(gpuFilter(uploaded4, keep), 2))])
 }
 fn capturedArithmeticCase() = {
     let limit = 9223372036854775807
@@ -243,8 +238,8 @@ fn capturedArithmeticCase() = {
     withBuffer(toGpu([1, 0]), fn(uploaded3) => {
             withBuffer(gpuMap(uploaded3, add), fn(values) => {
                     checkAll("captured kernel dispatches through the active policy", [
-                            structuralEquals([limit, faults, (gpuGet(values, 0) ?: 0)], [0, 1, 42]),
-                            (gpuGet(values, 1) ?: 0) == 9223372036854775807
+                            structuralEquals([limit, faults, at(values, 0, 0)], [0, 1, 42]),
+                            at(values, 1, 0) == 9223372036854775807
                     ])
                 })
         })
@@ -259,7 +254,7 @@ fn mathTotalityCase() = {
                             structuralEquals([sqrt(4.0), tanh(1000000.0)], [2.0, 1.0]),
                             (gpuGet(probabilities, 0) ?: 0.0) == 1.0,
                             nan != nan, ln(0.0) < -1000.0, ln(0.0) == ln(0.0) * 2.0, exp(1000.0) == exp(2000.0), exp(1000.0) > 1.0, tanh(-1000000.0) == -1.0,
-                            gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuEquals(gpuFold(uploaded175, 0.0, addFloats), 6.0)))
+                            gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => floatSumIs(uploaded175, 6.0)))
                     ])
                 })
         })

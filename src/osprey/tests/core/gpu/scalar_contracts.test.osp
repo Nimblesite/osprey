@@ -12,24 +12,17 @@ fn countTrue(a, x) = match x {
 fn checkEach(label, rows) = forEachList(rows, fn(row) => checkTrue(label, row))
 /// Every row of each group in `groups`, in order.
 fn rows(groups) = foldList(groups, [], fn(all, group) => listConcat(all, group))
-/// One row: the GPU buffer holds `want` at `index`.
-fn gpuElementRow(buffer, index, want) = gpuSatisfies(gpuGet(buffer, index), fn(got) => got == want)
-/// The row a GPU element check makes at `index`.
-fn gpuElementAt(buffer, expected) = fn(i) => match listGet(expected, i) {
-    Success { value } => gpuElementRow(buffer, i, value)
+/// One row: `read` yields the element `expected` holds at `i`; a failed read fails the row.
+fn rowAt(read, expected, i) = match listGet(expected, i) {
+    Success { value } => gpuSatisfies(read, fn(got) => got == value)
     Error _ => false
 }
 /// One row per expected element: the GPU buffer holds it at that index.
-fn gpuElementRows(buffer, expected) = toList(map(range(0, listLength(expected)), gpuElementAt(buffer, expected)))
+fn gpuElementRows(buffer, expected) = toList(map(range(0, listLength(expected)), fn(i) => rowAt(gpuGet(buffer, i), expected, i)))
 /// One row: the runtime list holds `want` at `index`.
 fn listElementRow(list, index, want) = gpuSatisfies(listGet(list, index), fn(got) => got == want)
-/// The row a runtime list element check makes at `index`.
-fn listElementAt(list, expected) = fn(i) => match listGet(expected, i) {
-    Success { value } => listElementRow(list, i, value)
-    Error _ => false
-}
 /// One row per expected element: the runtime list holds it at that index.
-fn listElementRows(list, expected) = toList(map(range(0, listLength(expected)), listElementAt(list, expected)))
+fn listElementRows(list, expected) = toList(map(range(0, listLength(expected)), fn(i) => rowAt(listGet(list, i), expected, i)))
 /// The float sum and true-count folds every list-value case asserts.
 fn foldRows(floats, flags) = [
     gpuEquals(gpuFold(floats, 0.0, addFloats), 4.0),
@@ -164,8 +157,7 @@ test("host GPU arithmetic preserves IEEE non-finite values", gpuIeeeCase)
 test("host GPU float zero divisors use explicit recovery", gpuFloatZeroCase)
 /// [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy.
 fn absFloatRows(floats, faults, expectedFaults) = [
-    (gpuGet(floats, 0) ?: 0.0) == 2.5,
-    (gpuGet(floats, 2) ?: 0.0) == 3.5,
+    structuralEquals([(gpuGet(floats, 0) ?: 0.0), (gpuGet(floats, 2) ?: 0.0)], [2.5, 3.5]),
     structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", expectedFaults])
 ]
 fn gpuAbsoluteCase() = {
@@ -185,13 +177,13 @@ fn gpuAbsoluteCase() = {
                         let integers = value
                         checkEach("GPU abs keeps float and integer callback contracts", rows([
                                 absFloatRows(floats, faults, "abs"),
-                                [structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [17, 3]), (gpuGet(integers, 2) ?: 0) == 4]
+                                [structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0), (gpuGet(integers, 2) ?: 0)], [17, 3, 4])]
                         ]))
                     }
                     Error { message } => checkEach("GPU abs keeps float and integer callback contracts", rows([
                             absFloatRows(floats, faults, ""),
                             [gpuDevice() != "host", contains(message, "integer overflow")],
-                            [gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))]
+                            [gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [3, 4])))]
                     ]))
                 }
                 Error { message } => gpuFailed(message)
@@ -201,22 +193,28 @@ fn gpuAbsoluteCase() = {
     }
 }
 test("host GPU abs callbacks retain numeric types and recovery", gpuAbsoluteCase)
+/// Rows: `outputWords` holds `words`; every slot beyond them reads back NaN.
+fn remainderRows(output, outputWords, words) = gpuLength(outputWords) == 6 && fold(range(0, 6), true, fn(ok, i) => ok && match listGet(words, i) {
+    Success { value } => gpuSatisfies(gpuGet(outputWords, i), fn(word) => word == value)
+    Error _ => gpuSatisfies(gpuGet(output, i), fn(x) => x != x)
+})
 /// [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 64.
-fn remainder64Case() = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat(2.0)), fn(output) => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), fn(x) => floatBits(x) == 4609434218613702656) && gpuSatisfies(gpuGet(output, 1), fn(x) => floatBits(x) == -4613937818241073152) && gpuSatisfies(gpuGet(output, 2), fn(x) => floatBits(x) == -9223372036854775808) && gpuSatisfies(gpuGet(output, 3), fn(x) => floatBits(x) == 1) && gpuSatisfies(gpuGet(output, 4), fn(x) => x != x) && gpuSatisfies(gpuGet(output, 5), fn(x) => x != x)))
+fn remainder64Case() = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat(2.0)), fn(output) => gpuSatisfies(gpuMap(output, floatBits), fn(outputWords) => remainderRows(output, outputWords, [4609434218613702656, -4613937818241073152, -9223372036854775808, 1]))))
 /// [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 32.
-fn remainder32Case() = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat32(2.0)), fn(output) => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), fn(x) => float32Bits(x) == 1069547520) && gpuSatisfies(gpuGet(output, 1), fn(x) => float32Bits(x) == -1077936128) && gpuSatisfies(gpuGet(output, 2), fn(x) => float32Bits(x) == -2147483648) && gpuSatisfies(gpuGet(output, 3), fn(x) => float32Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), fn(x) => x != x) && gpuSatisfies(gpuGet(output, 5), fn(x) => x != x)))
+fn remainder32Case() = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat32(2.0)), fn(output) => gpuSatisfies(gpuMap(output, float32Bits), fn(outputWords) => remainderRows(output, outputWords, [1069547520, -1077936128, -2147483648, 1]))))
 /// [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16.
-fn remainder16Case() = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat16(2.0)), fn(output) => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), fn(x) => float16Bits(x) == 15872) && gpuSatisfies(gpuGet(output, 1), fn(x) => float16Bits(x) == -16896) && gpuSatisfies(gpuGet(output, 2), fn(x) => float16Bits(x) == -32768) && gpuSatisfies(gpuGet(output, 3), fn(x) => float16Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), fn(x) => x != x) && gpuSatisfies(gpuGet(output, 5), fn(x) => x != x)))
-/// The sized bit views run as kernels too: binary32 words through
-/// float32FromBits/float32Bits and binary16 words through float16FromBits/float16Bits
-/// come back as the words they were, on the host and on a device.
+fn remainder16Case() = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat16(2.0)), fn(output) => gpuSatisfies(gpuMap(output, float16Bits), fn(outputWords) => remainderRows(output, outputWords, [15872, -16896, -32768, 1]))))
+/// Every element of `restored` equals the matching word of `words`, at the `zero`/`one` fallbacks.
+fn wordsRestored(restored, words, zero, one) = gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: zero) == (listGet(words, i) ?: one))
+/// binary32 words through float32FromBits/float32Bits come back as the words they were.
 fn sized32BitsCase() = {
     let words = [toInt32(0), toInt32(-2147483648), toInt32(1065353216), toInt32(-1082130432), toInt32(2139095040), toInt32(2143289344), toInt32(-4194304), toInt32(1), toInt32(8388607)]
-    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float32FromBits), fn(floats) => gpuSatisfies(gpuMap(floats, float32Bits), fn(restored) => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: toInt32(0)) == (listGet(words, i) ?: toInt32(1))))))
+    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float32FromBits), fn(floats) => gpuSatisfies(gpuMap(floats, float32Bits), fn(restored) => wordsRestored(restored, words, toInt32(0), toInt32(1)))))
 }
+/// binary16 words through float16FromBits/float16Bits come back as the words they were.
 fn sized16BitsCase() = {
     let words = [toInt16(0), toInt16(-32768), toInt16(15360), toInt16(-17408), toInt16(31744), toInt16(32256), toInt16(1), toInt16(1023), toInt16(-1025)]
-    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float16FromBits), fn(halves) => gpuSatisfies(gpuMap(halves, float16Bits), fn(restored) => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: toInt16(0)) == (listGet(words, i) ?: toInt16(1))))))
+    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float16FromBits), fn(halves) => gpuSatisfies(gpuMap(halves, float16Bits), fn(restored) => wordsRestored(restored, words, toInt16(0), toInt16(1)))))
 }
 /// Emitted bit-conversion kernels must preserve signed zeros and NaN payloads.
 fn gpuBitRoundTripCase() = {
@@ -227,7 +225,7 @@ fn gpuBitRoundTripCase() = {
                     withBuffer(gpuMap(uploaded1, floatBits), fn(restored) => {
                             checkAll("GPU bit conversions retain every payload bit", [
                                     remainder64Case(), remainder32Case(), remainder16Case(), sized32BitsCase(), sized16BitsCase(),
-                                    gpuLength(restored) == listLength(words), fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1))
+                                    wordsRestored(restored, words, 0, 1)
                             ])
                         })
                 })
