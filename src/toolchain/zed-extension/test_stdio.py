@@ -89,36 +89,56 @@ class ZedStdio(unittest.TestCase):
     def notify(self, method, params):
         TRANSPORT.send(self.process, method, params)
 
-    def request(self, method, params):
-        self.next_id += 1
-        TRANSPORT.send(self.process, method, params, self.next_id)
+    def pump(self, done):
+        """Read messages, recording published diagnostics, until `done(message)` holds."""
         deadline = time.monotonic() + 20
         while True:
-            message = self.incoming.get(timeout=max(0, deadline - time.monotonic()))
+            try:
+                message = self.incoming.get(timeout=max(0, deadline - time.monotonic()))
+            except queue.Empty:
+                return None
             if isinstance(message, Exception):
                 raise message
             if message.get("method") == "textDocument/publishDiagnostics":
                 report = message["params"]
                 self.reports[report["uri"]] = report["diagnostics"]
-            if message.get("id") == self.next_id:
-                self.assertNotIn("error", message, message)
-                return message.get("result")
+            if done(message):
+                return message
+
+    def request(self, method, params):
+        self.next_id += 1
+        TRANSPORT.send(self.process, method, params, self.next_id)
+        message = self.pump(lambda item: item.get("id") == self.next_id)
+        self.assertIsNotNone(message, f"{method} must answer within 20 s")
+        self.assertNotIn("error", message, message)
+        return message.get("result")
+
+    def published(self, uri, why):
+        """Diagnostics run on a background worker [LSP-DIAGNOSTICS-SCOPE], so the
+        publish for `uri` can trail the reply to a later request; wait for it."""
+        if uri not in self.reports:
+            self.pump(lambda item: item.get("method") == "textDocument/publishDiagnostics"
+                      and item["params"]["uri"] == uri)
+        self.assertIn(uri, self.reports, why)
 
     def document(self, name, language, source):
         path = self.root / name
         path.write_text(source)
         uri = path.as_uri()
+        self.reports.pop(uri, None)
         self.notify("textDocument/didOpen", {"textDocument": {
             "uri": uri, "languageId": language, "version": 1, "text": source}})
         self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
-        self.assertIn(uri, self.reports, "opening must publish diagnostics")
+        self.published(uri, "opening must publish diagnostics")
         return uri
 
     def change(self, uri, version, source):
-        """Send an edit and refresh symbols, which republishes diagnostics."""
+        """Send an edit and wait for the diagnostics it republishes."""
+        self.reports.pop(uri, None)
         self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": version},
                     "contentChanges": [{"text": source}]})
         self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        self.published(uri, "an edit must republish diagnostics")
 
     def errors(self, uri):
         """Error-severity diagnostics currently published for `uri`."""
@@ -162,9 +182,7 @@ class ZedStdio(unittest.TestCase):
                     "textDocument": {"uri": uri},
                     "options": {"tabSize": 4, "insertSpaces": True}})
                 self.assertIsInstance(formatting, list)
-                self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
-                            "contentChanges": [{"text": source.replace("double(3)", "missing(3)").replace("double 3", "missing 3")}]})
-                self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+                self.change(uri, 2, source.replace("double(3)", "missing(3)").replace("double 3", "missing 3"))
                 self.assertTrue(self.errors(uri))
                 self.change(uri, 3, source)
                 self.assertFalse(self.errors(uri))
@@ -199,9 +217,7 @@ class ZedStdio(unittest.TestCase):
         hover = self.request("textDocument/hover", self.at(uri, 0, 15))
         self.assertIn("increment", str(hover))
         helper_uri = self.document("src/helper.ospml", "osprey-ml", helper)
-        self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 2},
-                    "contentChanges": [{"text": "increment value = missingName\n"}]})
-        self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
+        self.change(helper_uri, 2, "increment value = missingName\n")
         self.assertTrue(self.errors(helper_uri), self.reports)
         self.change(helper_uri, 3, helper)
         self.assertFalse(self.errors(helper_uri))
