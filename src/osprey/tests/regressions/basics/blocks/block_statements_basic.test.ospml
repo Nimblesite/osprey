@@ -98,6 +98,18 @@ r6 = exactArithmetic (\() =>
     conditionalBlock value)
 print "6 cond match block: ${r6}\n=== Done ==="
 
+(** Values held at the given indexes of a list, 99 for each absent index. *)
+valuesAt xs indexes = mapList indexes (\i => (listGet xs i ?: 99))
+
+(** Row at the given index of a list of lists, [99] when the index is absent. *)
+rowAt rows i = (listGet rows i ?: [99])
+
+(** Lengths of every list held in a list. *)
+lengthsOf rows = mapList rows (\row => listLength row)
+
+(** Map values for the given keys, 99 for each key the map does not hold. *)
+mapValuesAt table keys = mapList keys (\key => (mapGet table key ?: 99))
+
 (** Verify every block result, including shadowing and the wildcard branch. *)
 blockStatementsCase () =
     results = [r1, r2, r3, compute (), r5, r6]
@@ -126,22 +138,19 @@ blockStatementsCase () =
     ]
 
     checkAll "block results retain element types in nested lists" [
-        structuralEquals [listLength results, (listGet results 0 ?: 99), (listGet results 1 ?: 99)] [6, 42, 20],
-        structuralEquals [(listGet results 2 ?: 99), (listGet results 3 ?: 99), (listGet results 4 ?: 99)] [85, 30, 20],
-        structuralEquals [(listGet results 5 ?: 99), (listGet results 9 ?: 99), listLength nestedResults] [94, 99, 3],
-        listLength (listGet nestedResults 0 ?: [99]) == 6,
-        listLength (listGet nestedResults 1 ?: [99]) == 2,
-        listLength (listGet nestedResults 2 ?: [99]) == 1,
-        (listGet (listGet nestedResults 0 ?: [99]) 2 ?: 99) == 85,
-        (listGet (listGet nestedResults 1 ?: [99]) 1 ?: 99) == 20,
-        (listGet (listGet nestedResults 2 ?: [99]) 0 ?: 99) == 0
+        listLength results == 6,
+        structuralEquals (valuesAt results [0, 1, 2, 3, 4, 5, 9]) [42, 20, 85, 30, 20, 94, 99],
+        listLength nestedResults == 3,
+        structuralEquals (lengthsOf nestedResults) [6, 2, 1],
+        structuralEquals (rowAt nestedResults 0) results,
+        structuralEquals (rowAt nestedResults 1) [listHeadBlock (), matrixBlock ()],
+        structuralEquals (rowAt nestedResults 2) [conditionalBlock 10]
     ]
 
     checkAll "block results remain coherent in maps and interpolation" [
-        structuralEquals [mapLength byName, (mapGet byName "head" ?: 99)] [6, 42],
-        structuralEquals [(mapGet byName "map" ?: 99), (mapGet byName "shadow" ?: 99)] [20, 85],
-        structuralEquals [(mapGet byName "compute" ?: 99), (mapGet byName "matrix" ?: 99)] [30, 20],
-        structuralEquals [(mapGet byName "conditional" ?: 99), (mapGet byName "missing" ?: 99)] [94, 99],
+        mapLength byName == 6,
+        structuralEquals (mapValuesAt byName ["head", "map", "shadow", "compute", "matrix", "conditional"]) results,
+        (mapGet byName "missing" ?: 99) == 99,
         structuralEquals [listLength (mapKeys byName), listLength (mapValues byName)] [6, 6],
         "${r1}/${r2}/${r3}/${r5}/${r6}" == "42/20/85/20/94",
         "outer=${outer} inner=${shadowedBlock ()}" == "outer=100 inner=85"
