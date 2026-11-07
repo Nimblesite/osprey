@@ -104,7 +104,7 @@ print "${n} ${s}""#));
     ml_writing_type_arguments_does_not_excuse_the_value_argument: rejects_with(Ml, pinned_identity("<int> ()"), "call arity mismatch: expected 1 argument(s), got 0");
 
     /// A pipe target has no juxtaposed argument, so it is not an application site.
-    ml_type_arguments_in_a_pipe_target_are_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"5 |> identity<int>"));
+    ml_type_arguments_in_a_pipe_target_are_rejected: parse_rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r"5 |> identity<int>"), "a pipe target cannot take type arguments");
 
     /// An undeclared type name is not a type argument.
     ml_an_undeclared_type_argument_is_rejected: rejects_with(Ml, pinned_identity("<Nope> 5"), "unknown type `Nope`");

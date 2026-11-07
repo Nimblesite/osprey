@@ -56,6 +56,7 @@ impl Parser<'_> {
     /// single-argument [`MlExpr::App`] ([FLAVOR-ML-CALL]).
     pub(in crate::ml) fn application(&mut self) -> MlExpr {
         let pos = self.pos();
+        let after_pipe = self.follows_pipe();
         let mut func = self.postfix();
         // `Head(field = v, …)` is an inline record literal, not application: any
         // identifier immediately followed by `(ident = …`. An UPPERCASE head is
@@ -87,6 +88,8 @@ impl Parser<'_> {
                 args,
                 pos,
             };
+        } else if after_pipe && record_head(&func).is_some() && self.glued() {
+            self.reject_pipe_target_type_args();
         }
         // `f ()` is a zero-argument application, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
@@ -204,6 +207,27 @@ impl Parser<'_> {
     /// Whether the token `ahead` of the cursor abuts its predecessor.
     pub(in crate::ml) fn glued_at(&self, ahead: usize) -> bool {
         self.toks.get(self.i + ahead).is_some_and(|t| t.glued)
+    }
+
+    /// Whether the token before the cursor is `|>`, so the expression about
+    /// to parse is a pipe target.
+    fn follows_pipe(&self) -> bool {
+        self.i
+            .checked_sub(1)
+            .and_then(|prev| self.toks.get(prev))
+            .is_some_and(|t| matches!(&t.kind, TokKind::Op(op) if op == "|>"))
+    }
+
+    /// `x |> f<T>`: a pipe target has no juxtaposed argument, so it is not an
+    /// application site and cannot take type arguments. Report that rule and
+    /// consume the angle run, rather than misreading `<` and `>` as
+    /// comparisons that swallow the next line. Implements
+    /// [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS].
+    fn reject_pipe_target_type_args(&mut self) {
+        if self.past_angle_run().is_some() {
+            self.error("a pipe target cannot take type arguments: apply them where the function is called, `f<T> x`");
+            let _ = self.ty_generic_args(String::new());
+        }
     }
 
     /// Whether the next token can begin an argument atom.
