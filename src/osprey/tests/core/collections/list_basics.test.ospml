@@ -11,13 +11,29 @@ type Slot =
     weight : float
     ready : bool
 
+(** sentinelSlot is the out-of-range fallback record every typed bounds check reads fields from. *)
+sentinelSlot () = Slot(label = "missing", weight = 0.0, ready = false)
+
+(** leftRightSlots is the two-slot fixture indexed, traversed, and destructured by the typed cases. *)
+leftRightSlots () = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
+
 (** The int at `index` in `xs`, or -999 past either end. *)
 intAt (xs, index) = listGet xs index ?: (0 - 999)
+
+(** isOob reports whether `result` failed with the declared out-of-bounds message. *)
+isOob result = match result
+    Success _value => false
+    Error message => message == "index out of bounds"
 
 (** appendThrough builds inclusive integer ranges while preserving every prior list version. *)
 appendThrough xs next last = match next > last
     true => xs
     false => appendThrough (listAppend xs next) (next + 1 ) last
+
+(** grownBy extends `xs` by listAppend with each element of `values`, in order. *)
+grownBy (xs, values) = match values
+    [] => xs
+    [head, ...tail] => grownBy (listAppend xs head, tail)
 
 (** classify exercises exact-length, singleton, pair, and head-tail list patterns. *)
 classify : List int -> string
@@ -48,8 +64,8 @@ encodeIteration xs =
 (** constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations. *)
 constructionAndIdentityCase () =
     empty = List ()
-    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
-    b = listAppend (listAppend (List ()) 10) 20
+    a = grownBy (List (), [1, 2, 3])
+    b = grownBy (List (), [10, 20])
     reversed = listReverse a
     restored = listReverse reversed
     prepended = listPrepend a 0
@@ -96,9 +112,9 @@ constructionAndIdentityCase () =
 
 (** iterationAndPersistenceCase preserves callback order plus every generation and branch observation. *)
 iterationAndPersistenceCase () =
-    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
+    a = grownBy (List (), [1, 2, 3])
     reversed = listReverse a
-    b = listAppend (listAppend (List ()) 10) 20
+    b = grownBy (List (), [10, 20])
     combined = a + b
     g0 = List ()
     g1 = listAppend g0 10
@@ -185,25 +201,21 @@ indexingPatternsAndDispatchCase () =
     commands = ["echo hello", "echo world", "echo test"]
     empty : List<string>
     empty = []
-    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
-    b = listAppend (listAppend (List ()) 10) 20
+    a = grownBy (List (), [1, 2, 3])
+    b = grownBy (List (), [10, 20])
     singleton = listAppend (List ()) 7
     short = listAppend (List ()) 9
     pair = listAppend short 8
-    four = listAppend (listAppend pair 7) 6
-    patternFour = listAppend (listAppend (listAppend (listAppend (List ()) 4) 5) 6) 7
+    four = grownBy (pair, [7, 6])
+    patternFour = grownBy (List (), [4, 5, 6, 7])
     t = appendThrough (List ()) 1 10
-    dispatchFive = listAppend (listAppend (listAppend (listAppend (listAppend (List ()) 1) 2) 3) 4) 5
+    dispatchFive = grownBy (List (), [1, 2, 3, 4, 5])
     dispatchTen = listConcat dispatchFive dispatchFive
     dispatchTwenty = listConcat dispatchTen dispatchTen
     dispatchThirty = listConcat dispatchTwenty dispatchTen
     dispatchThirtyFive = listConcat dispatchThirty dispatchFive
-    commandOob = match commands[5]
-        Success _value => false
-        Error message => message == "index out of bounds"
-    emptyOob = match empty[0]
-        Success _value => false
-        Error message => message == "index out of bounds"
+    commandOob = isOob (commands[5])
+    emptyOob = isOob (empty[0])
 
     // Successful and failing index paths retain all four legacy observations and exact failure reasons.
     checkAll "list index Result behavior" [
@@ -263,9 +275,9 @@ indexingPatternsAndDispatchCase () =
     checkAll "list literal and runtime handle concatenate in either position" [
         structuralEquals [listLength (commands + commands), listLength (commands + empty)] [6, 3],
         structuralEquals [listLength (empty + commands), listLength (a + [7, 8])] [3, 5],
-        structuralEquals [listLength ([7, 8] + a), (listGet ([7, 8] + a) 0 ?: ((0 - 999) ))] [5, 7],
-        structuralEquals [(listGet ([7, 8] + a) 2 ?: ((0 - 999) )), (listGet (a + [7, 8]) 3 ?: ((0 - 999) ))] [1, 7],
-        structuralEquals [(listGet (a + [7, 8]) 4 ?: ((0 - 999) )), length ([7, 8] + a)] [8, 5],
+        structuralEquals [listLength ([7, 8] + a), intAt ([7, 8] + a, 0)] [5, 7],
+        structuralEquals [intAt ([7, 8] + a, 2), intAt (a + [7, 8], 3)] [1, 7],
+        structuralEquals [intAt (a + [7, 8], 4), length ([7, 8] + a)] [8, 5],
         listContains (commands + empty) "echo test",
         !(listContains (empty + commands) "echo missing")
     ]
@@ -293,8 +305,8 @@ typedElementRetrievalCase () =
     words = ["alpha", "beta", "gamma"]
     ratios = [0.5, 1.25, 2.75]
     flags = [true, false, true]
-    slots = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
-    missingSlot = Slot(label = "missing", weight = 0.0, ready = false)
+    slots = leftRightSlots ()
+    missingSlot = sentinelSlot ()
     firstSlot = listGet slots 0 ?: missingSlot
     secondSlot = listGet slots 1 ?: missingSlot
     pastEndSlot = listGet slots 2 ?: missingSlot
@@ -390,6 +402,9 @@ test "listGet returns the element type for every element type" (exactly typedEle
 effect TranscriptProbe
     (** Record one rendered element in traversal order. *)
     note : string => Unit
+
+(** noteEach reports `render` of every element of `xs` to the transcript probe, in traversal order. *)
+noteEach (xs, render) = forEachList xs (\value => perform TranscriptProbe.note (render value))
 
 (** shapeOf reads only the SHAPE of a list, never an element, so one function
     pins arm selection for every element type: [TYPE-LIST-PATTERNS] says "a list
@@ -689,12 +704,12 @@ test "float and bool lists destructure and recombine through list patterns" (exa
     "managed handles such as nested lists and records compare by identity", so a
     freshly built record with identical field values is NOT a member. *)
 recordListPatternCase () =
-    missingSlot = Slot(label = "missing", weight = 0.0, ready = false)
+    missingSlot = sentinelSlot ()
     soloSlot = Slot(label = "solo", weight = 3.0, ready = true)
     noSlots : List<Slot>
     noSlots = []
     oneSlot = [soloSlot]
-    slots = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
+    slots = leftRightSlots ()
     trio = listAppend slots (Slot(label = "extra", weight = 4.0, ready = true))
     noneHead = headOr (noSlots, missingSlot)
     soloHead = headOr (oneSlot, missingSlot)
@@ -839,14 +854,14 @@ typedIterationOrderCase () =
     flags = [true, false]
     counts = [7, 8, 9]
     ratios = [0.5, 1.25, 2.75]
-    missingSlot = Slot(label = "missing", weight = 0.0, ready = false)
-    slots = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
+    missingSlot = sentinelSlot ()
+    slots = leftRightSlots ()
     mut log = ""
 
     handle TranscriptProbe
         note text =>
             log := "${log}${text}|"
-    forEachList noWords (\word => perform TranscriptProbe.note word)
+    noteEach (noWords, \word => word)
 
     // "Once per element" over zero elements is zero calls.
     checkAll "forEachList over an empty list records nothing" [
@@ -857,7 +872,7 @@ typedIterationOrderCase () =
         tailLength noWords == ((0 - 1) )
     ]
 
-    forEachList words (\word => perform TranscriptProbe.note word)
+    noteEach (words, \word => word)
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll "forEachList visits string elements in index order" [
@@ -868,7 +883,7 @@ typedIterationOrderCase () =
         log == joinWords words
     ]
 
-    forEachList flags (\flag => perform TranscriptProbe.note "${flag}")
+    noteEach (flags, \flag => "${flag}")
 
     // 17 + "true|" (5) + "false|" (6) = 28.
     checkAll "forEachList visits bool elements in index order" [
@@ -879,7 +894,7 @@ typedIterationOrderCase () =
         contains log "gamma|true|"
     ]
 
-    forEachList counts (\count => perform TranscriptProbe.note "${count}")
+    noteEach (counts, \count => "${count}")
 
     // 28 + "7|8|9|" (6) = 34.
     checkAll "forEachList visits int elements in index order" [
@@ -890,7 +905,7 @@ typedIterationOrderCase () =
         contains log "false|7|"
     ]
 
-    forEachList slots (\slot => perform TranscriptProbe.note slot.label)
+    noteEach (slots, \slot => slot.label)
 
     // 34 + "left|" (5) + "right|" (6) = 45.
     checkAll "forEachList visits record elements in index order" [
@@ -901,7 +916,7 @@ typedIterationOrderCase () =
         contains log "9|left|"
     ]
 
-    forEachList (listReverse words) (\word => perform TranscriptProbe.note word)
+    noteEach (listReverse words, \word => word)
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll "forEachList follows the derived list, not its source" [
@@ -971,20 +986,14 @@ boundaryIndexCase () =
     words = ["alpha", "beta", "gamma"]
     ratios = [0.5, 1.25, 2.75]
     marks = [true, false]
-    missingSlot = Slot(label = "missing", weight = 0.0, ready = false)
-    slots = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
+    missingSlot = sentinelSlot ()
+    slots = leftRightSlots ()
     negIndex = (0 - 1) 
     farNegIndex = (0 - 1000) 
     lastIndex = (listLength forty - 1) 
-    negError = match listGet words negIndex
-        Success _value => false
-        Error message => message == "index out of bounds"
-    farError = match listGet forty 1000
-        Success _value => false
-        Error message => message == "index out of bounds"
-    emptyError = match listGet noWords 0
-        Success _value => false
-        Error message => message == "index out of bounds"
+    negError = isOob (listGet words negIndex)
+    farError = isOob (listGet forty 1000)
+    emptyError = isOob (listGet noWords 0)
 
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".

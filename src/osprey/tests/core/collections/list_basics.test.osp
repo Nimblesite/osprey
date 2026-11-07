@@ -9,8 +9,23 @@ effect IterationProbe {
 /// Slot is a record element, so `listGet` must hand back the whole record.
 type Slot = { label: string, weight: float, ready: bool }
 
+/// sentinelSlot is the out-of-range fallback record every typed bounds check reads fields from.
+fn sentinelSlot() = Slot { label: "missing", weight: 0.0, ready: false }
+
+/// leftRightSlots is the two-slot fixture indexed, traversed, and destructured by the typed cases.
+fn leftRightSlots() = [
+    Slot { label: "left", weight: 1.5, ready: true },
+    Slot { label: "right", weight: 2.5, ready: false }
+]
+
 /// The int at `index` in `xs`, or -999 past either end.
 fn intAt(xs, index) = listGet(xs, index) ?: (0 - 999)
+
+/// isOob reports whether `result` failed with the declared out-of-bounds message.
+fn isOob(result) = match result {
+    Success => false
+    Error { message } => message == "index out of bounds"
+}
 
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs) =
@@ -18,6 +33,12 @@ fn appendThrough(xs) =
         true => xs
         false => appendThrough(listAppend(xs, next))(next + 1 )(last)
     }
+
+/// grownBy extends `xs` by listAppend with each element of `values`, in order.
+fn grownBy(xs, values) = match values {
+    [] => xs
+    [head, ...tail] => grownBy(listAppend(xs, head), tail)
+}
 
 /// classify exercises exact-length, singleton, pair, and head-tail list patterns.
 fn classify(xs: List<int>) = match xs {
@@ -53,8 +74,8 @@ fn encodeIteration(xs) = {
 /// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
 fn constructionAndIdentityCase() = {
     let empty = List()
-    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
-    let b = listAppend(listAppend(List(), 10), 20)
+    let a = grownBy(List(), [1, 2, 3])
+    let b = grownBy(List(), [10, 20])
     let reversed = listReverse(a)
     let restored = listReverse(reversed)
     let prepended = listPrepend(a, 0)
@@ -99,9 +120,9 @@ fn constructionAndIdentityCase() = {
 
 /// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
 fn iterationAndPersistenceCase() = {
-    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
+    let a = grownBy(List(), [1, 2, 3])
     let reversed = listReverse(a)
-    let b = listAppend(listAppend(List(), 10), 20)
+    let b = grownBy(List(), [10, 20])
     let combined = a + b
     let g0 = List()
     let g1 = listAppend(g0, 10)
@@ -176,27 +197,21 @@ fn tailBoundaryCase() = {
 fn indexingPatternsAndDispatchCase() = {
     let commands = ["echo hello", "echo world", "echo test"]
     let empty: List<string> = []
-    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
-    let b = listAppend(listAppend(List(), 10), 20)
+    let a = grownBy(List(), [1, 2, 3])
+    let b = grownBy(List(), [10, 20])
     let singleton = listAppend(List(), 7)
     let short = listAppend(List(), 9)
     let pair = listAppend(short, 8)
-    let four = listAppend(listAppend(pair, 7), 6)
-    let patternFour = listAppend(listAppend(listAppend(listAppend(List(), 4), 5), 6), 7)
+    let four = grownBy(pair, [7, 6])
+    let patternFour = grownBy(List(), [4, 5, 6, 7])
     let t = appendThrough(List())(1)(10)
-    let dispatchFive = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 1), 2), 3), 4), 5)
+    let dispatchFive = grownBy(List(), [1, 2, 3, 4, 5])
     let dispatchTen = listConcat(dispatchFive, dispatchFive)
     let dispatchTwenty = listConcat(dispatchTen, dispatchTen)
     let dispatchThirty = listConcat(dispatchTwenty, dispatchTen)
     let dispatchThirtyFive = listConcat(dispatchThirty, dispatchFive)
-    let commandOob = match commands[5] {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let emptyOob = match empty[0] {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
+    let commandOob = isOob(commands[5])
+    let emptyOob = isOob(empty[0])
 
     // Successful and failing index paths retain all four legacy observations and exact failure reasons.
     checkAll("list index Result behavior", [
@@ -252,9 +267,9 @@ fn indexingPatternsAndDispatchCase() = {
     checkAll("list literal and runtime handle concatenate in either position", [
         structuralEquals([listLength(commands + commands), listLength(commands + empty)], [6, 3]),
         structuralEquals([listLength(empty + commands), listLength(a + [7, 8])], [3, 5]),
-        structuralEquals([listLength([7, 8] + a), (listGet([7, 8] + a, 0) ?: ((0 - 999) ))], [5, 7]),
-        structuralEquals([(listGet([7, 8] + a, 2) ?: ((0 - 999) )), (listGet(a + [7, 8], 3) ?: ((0 - 999) ))], [1, 7]),
-        structuralEquals([(listGet(a + [7, 8], 4) ?: ((0 - 999) )), length([7, 8] + a)], [8, 5]),
+        structuralEquals([listLength([7, 8] + a), intAt([7, 8] + a, 0)], [5, 7]),
+        structuralEquals([intAt([7, 8] + a, 2), intAt(a + [7, 8], 3)], [1, 7]),
+        structuralEquals([intAt(a + [7, 8], 4), length([7, 8] + a)], [8, 5]),
         listContains(commands + empty, "echo test"),
         !listContains(empty + commands, "echo missing")
     ])
@@ -283,11 +298,8 @@ fn typedElementRetrievalCase() = {
     let words = ["alpha", "beta", "gamma"]
     let ratios = [0.5, 1.25, 2.75]
     let flags = [true, false, true]
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
-    let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
+    let slots = leftRightSlots()
+    let missingSlot = sentinelSlot()
     let firstSlot = listGet(slots, 0) ?: missingSlot
     let secondSlot = listGet(slots, 1) ?: missingSlot
     let pastEndSlot = listGet(slots, 2) ?: missingSlot
@@ -384,6 +396,9 @@ effect TranscriptProbe {
     /// Record one rendered element in traversal order.
     note: fn(string) -> Unit
 }
+
+/// noteEach reports `render` of every element of `xs` to the transcript probe, in traversal order.
+fn noteEach(xs, render) = forEachList(xs, fn(value) => perform TranscriptProbe.note(render(value)))
 
 /// shapeOf reads only the SHAPE of a list, never an element, so one function
 /// pins arm selection for every element type: [TYPE-LIST-PATTERNS] says "a list
@@ -687,14 +702,11 @@ test("float and bool lists destructure and recombine through list patterns", exa
 /// "managed handles such as nested lists and records compare by identity", so a
 /// freshly built record with identical field values is NOT a member.
 fn recordListPatternCase() = {
-    let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
+    let missingSlot = sentinelSlot()
     let soloSlot = Slot { label: "solo", weight: 3.0, ready: true }
     let noSlots: List<Slot> = []
     let oneSlot = [soloSlot]
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let slots = leftRightSlots()
     let trio = listAppend(slots, Slot { label: "extra", weight: 4.0, ready: true })
     let noneHead = headOr(noSlots, missingSlot)
     let soloHead = headOr(oneSlot, missingSlot)
@@ -840,17 +852,14 @@ fn typedIterationOrderCase() = {
     let flags = [true, false]
     let counts = [7, 8, 9]
     let ratios = [0.5, 1.25, 2.75]
-    let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let missingSlot = sentinelSlot()
+    let slots = leftRightSlots()
     mut log = ""
 
     handle TranscriptProbe {
         note text => { log = "${log}${text}|" }
     }
-    forEachList(noWords, fn(word) => perform TranscriptProbe.note(word))
+    noteEach(noWords, fn(word) => word)
 
     // "Once per element" over zero elements is zero calls.
     checkAll("forEachList over an empty list records nothing", [
@@ -861,7 +870,7 @@ fn typedIterationOrderCase() = {
         tailLength(noWords) == ((0 - 1) )
     ])
 
-    forEachList(words, fn(word) => perform TranscriptProbe.note(word))
+    noteEach(words, fn(word) => word)
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll("forEachList visits string elements in index order", [
@@ -872,7 +881,7 @@ fn typedIterationOrderCase() = {
         log == joinWords(words)
     ])
 
-    forEachList(flags, fn(flag) => perform TranscriptProbe.note("${flag}"))
+    noteEach(flags, fn(flag) => "${flag}")
 
     // 17 + "true|" (5) + "false|" (6) = 28.
     checkAll("forEachList visits bool elements in index order", [
@@ -882,7 +891,7 @@ fn typedIterationOrderCase() = {
         contains(log, "gamma|true|")
     ])
 
-    forEachList(counts, fn(count) => perform TranscriptProbe.note("${count}"))
+    noteEach(counts, fn(count) => "${count}")
 
     // 28 + "7|8|9|" (6) = 34.
     checkAll("forEachList visits int elements in index order", [
@@ -892,7 +901,7 @@ fn typedIterationOrderCase() = {
         contains(log, "false|7|")
     ])
 
-    forEachList(slots, fn(slot) => perform TranscriptProbe.note(slot.label))
+    noteEach(slots, fn(slot) => slot.label)
 
     // 34 + "left|" (5) + "right|" (6) = 45.
     checkAll("forEachList visits record elements in index order", [
@@ -902,7 +911,7 @@ fn typedIterationOrderCase() = {
         contains(log, "9|left|")
     ])
 
-    forEachList(listReverse(words), fn(word) => perform TranscriptProbe.note(word))
+    noteEach(listReverse(words), fn(word) => word)
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll("forEachList follows the derived list, not its source", [
@@ -970,26 +979,14 @@ fn boundaryIndexCase() = {
     let words = ["alpha", "beta", "gamma"]
     let ratios = [0.5, 1.25, 2.75]
     let marks = [true, false]
-    let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let missingSlot = sentinelSlot()
+    let slots = leftRightSlots()
     let negIndex = (0 - 1) 
     let farNegIndex = (0 - 1000) 
     let lastIndex = (listLength(forty) - 1) 
-    let negError = match listGet(words, negIndex) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let farError = match listGet(forty, 1000) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let emptyError = match listGet(noWords, 0) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
+    let negError = isOob(listGet(words, negIndex))
+    let farError = isOob(listGet(forty, 1000))
+    let emptyError = isOob(listGet(noWords, 0))
 
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".
