@@ -160,6 +160,9 @@ module Model
     (** Whether `provider` has a saved key. *)
     export hasKey (settings, provider) = keyOf (settings, provider) != ""
 
+    // The local loopback model uses no credentials; remote providers still require their own key.
+    export ready (settings, provider) = provider == "osprey" || hasKey (settings, provider)
+
     (** The key under `names` in dotenv text, empty when none. `names` come from the catalogue, so the store names no provider. *)
     export keyIn (text, names) =
         lines = split text "\n" ?: []

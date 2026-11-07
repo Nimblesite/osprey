@@ -405,7 +405,7 @@ module View
 
     modelChoices (chat, settings) =
         current = chat.chatModel
-        keyed = filterList (Engine::provider_ids (), \provider => Model::hasKey (settings, provider))
+        keyed = filterList (Engine::provider_ids (), \provider => Model::ready (settings, provider))
         offered = foldList (keyed, [], \(acc, provider) => listConcat acc (mapList (Model::modelsOf (settings, provider), \model => Ui::choice (Engine::full_model (provider, model), modelLine (Engine::full_model (provider, model))))))
         Pick::either (Lists::any (offered, \choice => choice.choiceKey == current), offered, listPrepend offered (Ui::choice (current, modelLine current)))
 
@@ -416,7 +416,7 @@ module View
             true => []
             false => [Ui::picker ("Effort", listPrepend (mapList (levels, \level => Ui::choice (level, "Effort: ${effortLabel level}"))) (Ui::choice ("", "Effort: Default")), Model::effortFor (model, effort), pick)]
 
-    missingKey (chat, settings) = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+    missingKey (chat, settings) = Model::ready (settings, Engine::provider_id_of chat.chatModel) == false
 
     (** Why nothing can be sent, in words. Only a missing key stops a send: a provider's own answer decides everything else. *)
     keyProblem (chat, settings) =
@@ -458,6 +458,11 @@ module View
         Ui::framed (outer(frameCross = "center"), Ui::column [Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyProblem (chat, settings))))), access ()])
 
     providerCard (settings, provider) =
+        match provider == "osprey"
+            true => Ui::framed (Look::panel (), Ui::column [titleRow (Engine::provider_label provider, [], Look::badge ("No API key required", ui::Check, ui::Good)), Look::endpoint (Engine::provider_base provider)])
+            false => keyProviderCard (settings, provider)
+
+    keyProviderCard (settings, provider) =
         keySaved = Model::hasKey (settings, provider)
         label = Engine::provider_label provider
         badge = Pick::either (keySaved, Look::badge ("Key saved", ui::Check, ui::Good), Look::badge ("No key", ui::Warning, ui::Caution))

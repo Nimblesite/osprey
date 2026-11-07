@@ -59,7 +59,8 @@ module Turn
     sending (store, chat, body) =
         ticket = "model:${chat.chatId}:${store.ticketCount}"
         key = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel)
-        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = body, responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        auth = Pick::either (key == "", [], [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}")])
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = listPrepend auth (ui::Header(headerName = "Content-Type", headerValue = "application/json")), body = body, responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
         moved = thinking (store, chat, ticket)
         Runtime::asking (moved, [request])
 
@@ -150,7 +151,7 @@ module Turn
     export submit (store, text) =
         words = trim text
         chat = Model::active store
-        missing = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel) == ""
+        missing = Model::ready (store.settings, Engine::provider_id_of chat.chatModel) == false
         problem = Model::modelProblem (store.settings, chat.chatModel)
         match words == "" || Model::busy chat || missing || problem != ""
             true => Runtime::step (store(draft = Draft(draftText = words)))
