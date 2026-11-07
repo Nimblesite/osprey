@@ -21,12 +21,31 @@ def post_json(base_url, path, body, headers) -> Result[P.HttpReply, str]:
     """One POST through the runtime HTTP client; `Error` names a transport failure."""
     match httpCreateClient(base_url, REQUEST_TIMEOUT_MS):
         case Success(value=client):
-            return after_close(post_with(client, path, body, headers), httpCloseClient(client))
+            return after_close(post_with(client, provider_path(base_url, path), body, headers), httpCloseClient(client))
         case Error(message=message):
             return Error(message=f"httpCreateClient failed: {message}")
 
 
-def post_with(client, path, body, headers) -> Result[P.HttpReply, str]:
+def provider_path(base_url, path):
+    """Add the provider's base path to the origin-relative runtime request."""
+    match indexOf(base_url, "://"):
+        case Success(value=scheme):
+            return path_after_authority(drop(base_url, satAdd(scheme, 3)), path)
+        case Error():
+            return path_after_authority(base_url, path)
+
+
+def path_after_authority(authority, path):
+    match indexOf(authority, "/"):
+        case Error():
+            return path
+        case Success(value=start):
+            prefix = drop(authority, start)
+            directory = prefix if endsWith(prefix, "/") else prefix + "/"
+            return directory + (drop(path, 1) if startsWith(path, "/") else path)
+
+
+def post_with(client, path, body, headers):
     match httpPostResponse(client, path, body, headers):
         case Success(value=handle):
             status = httpResponseStatus(handle)
