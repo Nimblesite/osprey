@@ -61,9 +61,9 @@ int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count);
 void *osprey_gpu_sigmoid(void *x);
 int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim, int64_t steps);
 void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values, void *beta, void *decay, int64_t heads, int64_t dim);
-// The rows one tile of the quantized product kernels covers (QUANT_ROWS in
-// gpu_device_lib.metal), for the dispatch that sizes their grid.
-int64_t osprey_gpu_quant_rows(void);
+// The threads a [rows, cols] quantized product dispatches: 32 per tile of
+// QUANT_ROWS by QUANT_COLS outputs (gpu_device_lib.metal).
+int64_t osprey_gpu_quant_threads(int64_t rows, int64_t cols);
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
                                    int64_t cols);
 // The host entry behind `gpuMatMulQuant` (gpu_host.c): the result buffer, or NULL with the reason recorded.

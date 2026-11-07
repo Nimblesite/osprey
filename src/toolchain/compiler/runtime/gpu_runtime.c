@@ -206,13 +206,12 @@ int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t hea
 }
 
 // The quantized product as one library-kernel dispatch of 32 threads per
-// tile of QUANT_ROWS outputs ([LLM-MATMUL-QUANT]): `x` is [rows, inner] float32, `w` the quantized
+// tile of QUANT_ROWS by QUANT_COLS outputs ([LLM-MATMUL-QUANT]): `x` is [rows, inner] float32, `w` the quantized
 // weight rows, and `out` [rows, cols] float32 is left on the device.
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
                                    int64_t cols) {
   if (device_selection() <= 0) return device_selection();
-  int64_t tile = osprey_gpu_quant_rows(), tiles = (rows + tile - 1) / tile;
-  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(tiles * cols) * 32};
+  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)osprey_gpu_quant_threads(rows, cols)};
   buffer_argument(&product, OSPREY_GPU_INPUT, x);
   buffer_argument(&product, OSPREY_GPU_INPUT, w);
   buffer_argument(&product, OSPREY_GPU_OUTPUT, out);

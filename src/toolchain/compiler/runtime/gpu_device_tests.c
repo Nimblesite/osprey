@@ -207,8 +207,8 @@ static void quant_words(const char *type, void *x, void *w, const int64_t shape[
   }
 }
 
-// One block format's parity: seeded operands over one full row tile and one
-// partial tile (QUANT_ROWS is 8), the words compared, and the three errors a
+// One block format's parity: seeded operands over one full and one partial tile
+// in each direction (QUANT_ROWS is 8, QUANT_COLS 4), the words compared, and the three errors a
 // wrong format, a short row and a short weight buffer are.
 static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                          unsigned scales) {

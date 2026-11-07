@@ -153,18 +153,18 @@ typedef struct {
   const char *kernel;
   int64_t elements;
   int64_t bytes;
-  float (*lane)(float acc, const float *x, const unsigned char *block, uint lane);
+  void (*weights)(const unsigned char *block, uint lane, float *w);
 } QuantFormat;
 
 static const QuantFormat QUANT_FORMATS[] = {
-    {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4_k_lane},
-    {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_lane},
-    {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_lane},
-    {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_lane},
-    {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_lane},
-    {"IQ4_NL", "osprey_matmul_iq4_nl", 32, 18, iq4_nl_lane},
-    {"IQ4_XS", "osprey_matmul_iq4_xs", 256, 136, iq4_xs_lane},
-    {"IQ3_S", "osprey_matmul_iq3_s", 256, 110, iq3_s_lane},
+    {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4_k_weights},
+    {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_weights},
+    {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_weights},
+    {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_weights},
+    {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_weights},
+    {"IQ4_NL", "osprey_matmul_iq4_nl", 32, 18, iq4_nl_weights},
+    {"IQ4_XS", "osprey_matmul_iq4_xs", 256, 136, iq4_xs_weights},
+    {"IQ3_S", "osprey_matmul_iq3_s", 256, 110, iq3_s_weights},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 
@@ -180,8 +180,11 @@ static const QuantFormat *quant_format(const char *type) {
 static float lane_sum(const QuantFormat *format, const float *xr, const unsigned char *row, int64_t blocks, uint lane) {
   uint per_block = (uint)format->elements / 8, per_span = QUANT_LANES / per_block;
   float acc = 0.0f;
-  for (int64_t blk = lane / per_block; blk < blocks; blk += per_span)
-    acc = format->lane(acc, xr + blk * format->elements, row + blk * format->bytes, lane % per_block);
+  for (int64_t blk = lane / per_block; blk < blocks; blk += per_span) {
+    float w[8];
+    format->weights(row + blk * format->bytes, lane % per_block, w);
+    acc = quant_lane(acc, xr + blk * format->elements + (lane % per_block) * 8, w);
+  }
   return acc;
 }
 
@@ -196,7 +199,9 @@ static float butterfly(float *sums) {
   return sums[0];
 }
 
-int64_t osprey_gpu_quant_rows(void) { return QUANT_ROWS; }
+int64_t osprey_gpu_quant_threads(int64_t rows, int64_t cols) {
+  return (rows + QUANT_ROWS - 1) / QUANT_ROWS * ((cols + QUANT_COLS - 1) / QUANT_COLS) * QUANT_LANES;
+}
 
 // The oracle of the library kernels `osprey_matmul_<type>`, lane for lane.
 static void product_quant(const QuantFormat *format, float *out, const float *x, const unsigned char *w, int64_t rows,
