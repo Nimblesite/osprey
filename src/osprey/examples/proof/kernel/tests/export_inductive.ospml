@@ -34,23 +34,23 @@ module ExportInductiveTests
 
         test ("the Eq block's member names and statements are the line's", \() => expect (memberNames (firstBlock ()), "Eq [u] | Eq.refl [u] | Eq.rec [u_1, u]"))
 
-        test ("a mutual group's line reads as one block of every family it declares", \() => expect (groupShape (swapped ("\"types\":[" + eqType (), "\"types\":[" + eqType () + "," + eqType ())), "families 2, recursors 1"))
+        test ("a mutual group's line reads as one block of every family it declares", \() => expect (groupShape (twice ("\"types\":[", eqType ())), "families 2, recursors 1"))
 
-        test ("a group's every recursor reads into the same block", \() => expect (groupShape (swapped ("\"recs\":[" + eqRec (), "\"recs\":[" + eqRec () + "," + eqRec ())), "families 1, recursors 2"))
+        test ("a group's every recursor reads into the same block", \() => expect (groupShape (twice ("\"recs\":[", eqRec ())), "families 1, recursors 2"))
 
         mutation ("a nested family's count is a claim the block carries", nestedClaim, eqType (), "\"numNested\":0", "\"numNested\":1", "nested 1")
 
-        mutation ("a type's all is the inventory it claims", familyAllClaim, eqType (), "\"all\":[1]", "\"all\":[1,9]", "all [Eq, Eq.refl]")
+        oneMoreAll ("a type's all is the inventory it claims", familyAllClaim, eqType ())
 
-        mutation ("a recursor's all is the inventory it claims", recAllClaim, eqRec (), "\"all\":[1]", "\"all\":[1,9]", "all [Eq, Eq.refl]")
+        oneMoreAll ("a recursor's all is the inventory it claims", recAllClaim, eqRec ())
 
         mutation ("a recursor's motive count is a claim the block carries", motivesClaim, eqRec (), "\"numMotives\":1", "\"numMotives\":2", "motives 2")
 
-        mutation ("an unsafe type former is refused", refused, eqType (), "\"isUnsafe\":false", "\"isUnsafe\":true", "line 60: unsupported: unsafe declaration")
+        refuseUnsafe ("an unsafe type former is refused", eqType ())
 
-        mutation ("an unsafe constructor is refused", refused, eqCtor (), "\"isUnsafe\":false", "\"isUnsafe\":true", "line 60: unsupported: unsafe declaration")
+        refuseUnsafe ("an unsafe constructor is refused", eqCtor ())
 
-        mutation ("an unsafe recursor is refused", refused, eqRec (), "\"isUnsafe\":false", "\"isUnsafe\":true", "line 60: unsupported: unsafe declaration")
+        refuseUnsafe ("an unsafe recursor is refused", eqRec ())
 
         mutation ("a constructor without numParams names the missing member", refused, eqCtor (), "\"numParams\":2,", "", "line 60: no numParams")
 
@@ -78,13 +78,13 @@ module ExportInductiveTests
 
         mutation ("a type's universe parameters must be names the file defined", refused, eqType (), "\"levelParams\":[2]", "\"levelParams\":[99]", "line 60: unknown name 99")
 
-        swappedRefusal ("a group without types names the missing member", swapped (",\"types\":[" + eqType () + "]", ""), "line 60: no types")
+        swappedRefusal ("a group without types names the missing member", deleted ("types", eqType ()), "line 60: no types")
 
-        swappedRefusal ("a group without recursors names the missing member", swapped (",\"recs\":[" + eqRec () + "]", ""), "line 60: no recs")
+        swappedRefusal ("a group without recursors names the missing member", deleted ("recs", eqRec ()), "line 60: no recs")
 
-        swappedRefusal ("a group with no type at all is refused", swapped ("\"types\":[" + eqType () + "]", "\"types\":[]"), "line 60: no type")
+        swappedRefusal ("a group with no type at all is refused", emptied ("types", eqType ()), "line 60: no type")
 
-        swappedRefusal ("a group with no recursor at all is refused", swapped ("\"recs\":[" + eqRec () + "]", "\"recs\":[]"), "line 60: no recursor")
+        swappedRefusal ("a group with no recursor at all is refused", emptied ("recs", eqRec ()), "line 60: no recursor")
 
         swappedRefusal ("an inductive line carrying a second kind is refused, not read as the first", swapped ("{\"inductive\":{\"ctors\":[", "{\"inductive\":{},\"thm\":{\"ctors\":["), "line 60: 2 members where one kind is expected")
 
@@ -104,6 +104,12 @@ module ExportInductiveTests
     (** The case `name`: the reader refuses `text` with `expected`. *)
     swappedRefusal (name, text, expected) = test (name, \() => expect (refused (text), expected))
 
+    (** The case `name`: the reader refuses `kind` marked unsafe. *)
+    refuseUnsafe (name, kind) = mutation (name, refused, kind, "\"isUnsafe\":false", "\"isUnsafe\":true", "line 60: unsupported: unsafe declaration")
+
+    (** The case `name`: `reader` of `kind` claiming one more family in its inventory. *)
+    oneMoreAll (name, reader, kind) = mutation (name, reader, kind, "\"all\":[1]", "\"all\":[1,9]", "all [Eq, Eq.refl]")
+
     firstBlock () = blockAt (0)
 
     secondBlock () = blockAt (1)
@@ -111,19 +117,17 @@ module ExportInductiveTests
     thirdBlock () = blockAt (2)
 
     (** The `at`th block of the recorded export, counting only blocks. *)
-    blockAt (at) = found (items (), at)
+    blockAt (at) = atBlock (items (), at, \block => block, missing)
 
-    found (items, at) = match items
-        [] => missing ()
-        [first, ...rest] => foundOf (first, rest, at)
-
-    foundOf (item, rest, at) = match item
-        Group block => chosen (block, rest, at)
-        Single decl => found (rest, at)
-
-    chosen (block, rest, at) = match at == 0
-        true => block
-        false => found (rest, satSub at 1)
+    (** The `at`th block in `items` counting only blocks, given to `act`, or
+        `noneOf` when the export stops short. *)
+    atBlock (items, at, act, noneOf) = match items
+        [] => noneOf ()
+        [first, ...rest] => match first
+            Single decl => atBlock (rest, at, act, noneOf)
+            Group block => match at == 0
+                true => act (block)
+                false => atBlock (rest, satSub at 1, act, noneOf)
 
     (** A failed lookup fails the enclosing case before falling back. *)
     missing () =
@@ -151,79 +155,70 @@ module ExportInductiveTests
         export declares. *)
     groupShape (text) = match Export::read text
         Error message => message
-        Success items => shaped (items)
+        Success readItems => atBlock (readItems, 0, counted, \() => "no items")
 
-    shaped (items) = match items
-        [] => "no items"
-        [first, ...rest] => match first
-            Single decl => shaped (rest)
-            Group block => "families ${toString (listLength block.formers)}, recursors ${toString (listLength block.recursors)}"
+    (** The block's family and recursor counts. *)
+    counted (block) = "families ${toString (listLength block.formers)}, recursors ${toString (listLength block.recursors)}"
 
-    (** The first block's claimed item, blank when there is none: `its` reads
-        the block's list and `pick` the item. *)
-    claimed (text, its, pick, blank) = match Export::read text
+    (** The first declaration of the first block's `its` list in a readable
+        export, or the blank when the read refuses or names no such item. *)
+    claimedItem (text, its, blank) = match Export::read text
         Error message => blank
-        Success items => claimedIn (items, its, pick, blank)
+        Success readItems => atBlock (readItems, 0, \block => headDecl (its block, blank), \() => blank)
 
-    claimedIn (items, its, pick, blank) = match items
-        [] => blank
-        [first, ...rest] => match first
-            Single decl => claimedIn (rest, its, pick, blank)
-            Group block => firstItem (its block, pick, blank)
+    (** The first declaration in `decls`, or the blank. *)
+    headDecl (decls, blank) = listGet (decls, 0) ?: blank
 
-    firstItem (decls, pick, blank) = match decls
-        [] => blank
-        [first, ...rest] => pick (first.body, blank)
+    (** The first block's claimed type former, or the blank one. *)
+    claimedFamily (text) = familyOf (claimedItem (text, \block => block.formers, blank ()), blankFamily ())
 
-    claimedFamily (text) = claimed (text, \block => block.formers, familyOf, blankFamily ())
-
-    familyOf (body, blank) = match body
+    (** The declaration's type former, or the blank one. *)
+    familyOf (decl, blank) = match decl.body
         TypeFormer family => family
         other => blank
 
-    nestedClaim (text) = familyNestedText (claimedFamily text)
+    (** The first block's claimed recursor, or the blank one. *)
+    claimedEliminator (text) = eliminatorOf (claimedItem (text, \block => block.recursors, blank ()), blankElim ())
 
-    familyNestedText (family) = "nested ${toString family.familyNested}"
-
-    familyAllClaim (text) = familyAllText (claimedFamily text)
-
-    familyAllText (family) = "all ${listed family.familyAll}"
-
-    (** The first block's claimed recursor, blank when there is none. *)
-    claimedEliminator (text) = claimed (text, \block => block.recursors, eliminatorOf, blankElim ())
-
-    eliminatorOf (body, blank) = match body
+    (** The declaration's recursor, or the blank one. *)
+    eliminatorOf (decl, blank) = match decl.body
         Recursor elim => elim
         other => blank
 
-    recAllClaim (text) = elimAllText (claimedEliminator text)
+    nestedClaim (text) = fact ("nested", toString (claimedFamily text).familyNested)
 
-    elimAllText (elim) = "all ${listed elim.elimAll}"
+    familyAllClaim (text) = fact ("all", listed (claimedFamily text).familyAll)
 
-    motivesClaim (text) = elimMotivesText (claimedEliminator text)
+    recAllClaim (text) = fact ("all", listed (claimedEliminator text).elimAll)
 
-    elimMotivesText (elim) = "motives ${toString elim.elimMotives}"
+    motivesClaim (text) = fact ("motives", toString (claimedEliminator text).elimMotives)
 
     (** A block's type formers, its constructors and its recursors, each
         with the facts the line claims about it. *)
-    blockShape (block) = joined ([formersText block.formers, ctorTexts block.ctors, recTexts block.recursors])
+    blockShape (block) = joined ([rendered (block.formers, formerText), rendered (block.ctors, ctorText), rendered (block.recursors, recText)])
 
-    formersText (decls) = rendered (decls, formerText)
+    (** A type former's counts, constructor inventory, flags, inventory and nesting. *)
+    familyFacts (family) = [fact ("params", toString family.familyParams), fact ("indices", toString family.familyIndices), fact ("ctors", listed family.familyCtors), fact ("recursive", toString family.familyRecursive), fact ("reflexive", toString family.familyReflexive), fact ("all", listed family.familyAll), fact ("nested", toString family.familyNested)]
 
     formerText (decl) = match decl.body
-        TypeFormer family => "${declaredText decl} {params ${toString family.familyParams}, indices ${toString family.familyIndices}, ctors ${listed family.familyCtors}, recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}, all ${listed family.familyAll}, nested ${toString family.familyNested}}"
+        TypeFormer family => "${declaredText decl} {${commaSeparated (familyFacts family)}}"
         other => "${declaredText decl} is not a type former"
 
-    ctorTexts (decls) = rendered (decls, ctorText)
+    (** A constructor's family, index, parameter and field counts. *)
+    ctorFactsOf (ctor) = [fact ("family", ctor.ctorFamily), fact ("index", toString ctor.ctorIndex), fact ("params", toString ctor.ctorParams), fact ("fields", toString ctor.ctorFields)]
 
     ctorText (decl) = match decl.body
-        Constructor ctor => "${declaredText decl} {family ${ctor.ctorFamily}, index ${toString ctor.ctorIndex}, params ${toString ctor.ctorParams}, fields ${toString ctor.ctorFields}}"
+        Constructor ctor => "${declaredText decl} {${commaSeparated (ctorFactsOf ctor)}}"
         other => "${declaredText decl} is not a constructor"
 
-    recTexts (decls) = rendered (decls, recText)
+    (** A recursor's index, minor, K, rule, motive and inventory facts. *)
+    recFacts (elim, rules) = [fact ("indices", toString elim.elimIndices), fact ("minors", toString elim.elimMinors), fact ("k", toString elim.elimK), fact ("rules", rules), fact ("motives", toString elim.elimMotives), fact ("all", listed elim.elimAll)]
+
+    (** The recursor's family and parameter facts followed by its claimed ones. *)
+    recParts (elim, rules) = listConcat ([fact ("family", elim.elimFamily), fact ("params", toString elim.elimParams)], recFacts (elim, rules))
 
     recText (decl) = match decl.body
-        Recursor elim => "${declaredText decl} {family ${elim.elimFamily}, params ${toString elim.elimParams}, indices ${toString elim.elimIndices}, minors ${toString elim.elimMinors}, k ${toString elim.elimK}, rules ${ruleTexts elim.elimRules}, motives ${toString elim.elimMotives}, all ${listed elim.elimAll}}"
+        Recursor elim => "${declaredText decl} {${commaSeparated (recParts (elim, ruleTexts elim.elimRules))}}"
         other => "${declaredText decl} is not a recursor"
 
     (** A constant as the line gives it: its name, its universe parameters
@@ -234,14 +229,17 @@ module ExportInductiveTests
     ctorFacts (block) = folded (block.ctors, ctorFact)
 
     ctorFact (decl) = match decl.body
-        Constructor ctor => "${decl.name} family ${ctor.ctorFamily} index ${toString ctor.ctorIndex} params ${toString ctor.ctorParams} fields ${toString ctor.ctorFields}"
+        Constructor ctor => "${decl.name} ${spaced (ctorFactsOf ctor)}"
         other => "${decl.name} is not a constructor"
 
-    (** The one recursor's family and counts, K flag and rule fields. *)
+    (** The one recursor's family, universe parameters and the facts it claims. *)
     elimFacts (block) = folded (block.recursors, elimFact)
 
+    (** The recursor's bare family and universe parameters, then its claimed facts. *)
+    elimParts (elim, decl, rules) = listConcat ([elim.elimFamily, listed decl.params], recFacts (elim, rules))
+
     elimFact (decl) = match decl.body
-        Recursor elim => "${elim.elimFamily} ${listed decl.params} indices ${toString elim.elimIndices} minors ${toString elim.elimMinors} k ${toString elim.elimK} rules ${ruleNames elim.elimRules} motives ${toString elim.elimMotives} all ${listed elim.elimAll}"
+        Recursor elim => spaced (elimParts (elim, decl, ruleNames elim.elimRules))
         other => "${decl.name} is not a recursor"
 
     (** The name and universe parameters of every former and member. *)
@@ -249,11 +247,14 @@ module ExportInductiveTests
 
     named (decl) = "${decl.name} ${listed decl.params}"
 
+    (** A rule's constructor and field count, as `Name/N`. *)
+    ruleName (rule) = "${rule.ruleCtor}/${toString rule.ruleFields}"
+
     ruleTexts (rules) = listed (mapList (rules, ruleText))
 
-    ruleText (rule) = "${rule.ruleCtor}/${toString rule.ruleFields} => ${Terms::show (rule.ruleRhs, [])}"
+    ruleText (rule) = "${ruleName rule} => ${Terms::show (rule.ruleRhs, [])}"
 
-    ruleNames (rules) = listed (mapList (rules, \rule => "${rule.ruleCtor}/${toString rule.ruleFields}"))
+    ruleNames (rules) = listed (mapList (rules, ruleName))
 
     (** A rendering of one or more parts, or of the failure that stopped it. *)
     folded (decls, part) = match decls
@@ -266,19 +267,51 @@ module ExportInductiveTests
     (** `a, b` inside brackets, and `[]` for none. *)
     listed (names) = match names
         [] => "[]"
-        [first, ...rest] => "[${foldList (rest, first, \(acc, name) => "${acc}, ${name}")}]"
+        _ => bracketed (names)
 
-    joined (parts) = foldList (parts, "", \(acc, part) => "${acc}${gap acc}${part}")
+    (** The names bracketed, comma-separated. *)
+    bracketed (names) = "[${commaSeparated names}]"
 
-    gap (acc) = match acc == ""
+    (** The parts with a comma and a space between neighbours. *)
+    commaSeparated (parts) = separated (parts, ", ")
+
+    (** The parts with a space between neighbours. *)
+    spaced (parts) = separated (parts, " ")
+
+    joined (parts) = separated (parts, " | ")
+
+    (** The parts with `sep` between neighbours. *)
+    separated (parts, sep) = foldList (parts, "", \(acc, part) => "${acc}${glued (acc, sep)}${part}")
+
+    (** `sep` once a first part exists. *)
+    glued (acc, sep) = match acc == ""
         true => ""
-        false => " | "
+        false => sep
 
-    (** The recorded export with every occurrence of `from` replaced by `to`. *)
-    swapped (from, to) = replace (Fixtures::andSwap (), from, to) ?: ""
+    (** One claimed fact, as `label value`. *)
+    fact (label, shown) = "${label} ${shown}"
 
-    (** `object` with every occurrence of `from` replaced by `to`. *)
-    mutated (object, from, to) = replace (object, from, to) ?: object
+    (** `object` with every occurrence of `from` replaced by `to`, or
+        `fallback` when the replacement fails. *)
+    replaced (object, from, to, fallback) = replace (object, from, to) ?: fallback
+
+    (** The recorded export with every occurrence of `from` replaced by `to`,
+        empty when the replacement fails. *)
+    swapped (from, to) = replaced (Fixtures::andSwap (), from, to, "")
+
+    (** `object` with every occurrence of `from` replaced by `to`, or itself
+        when the replacement fails. *)
+    mutated (object, from, to) = replaced (object, from, to, object)
+
+    (** The recorded export with a second `object` appended in the list that
+        `opening` introduces, so the group reads with one more member. *)
+    twice (opening, object) = swapped (opening + object, opening + object + "," + object)
+
+    (** The recorded export with `member`'s only `object` deleted from its list. *)
+    deleted (member, object) = swapped (",\"${member}\":[" + object + "]", "")
+
+    (** The recorded export with `member`'s list emptied of its `object`. *)
+    emptied (member, object) = swapped ("\"${member}\":[" + object + "]", "\"${member}\":[]")
 
     (** The recorded export with the `Eq` object `object` replaced by the same
         object holding one edit, so each refusal is about the block it names. *)
