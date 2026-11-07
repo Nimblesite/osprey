@@ -15,6 +15,7 @@ import { renderToString as renderTypeDiagram } from "typediagram-core";
 import { ospreyGrammar } from "./src/js/osprey-grammar.mjs";
 import videos from "./lib/videos.mjs";
 import { renderNavigation } from "./lib/navigation.mjs";
+import { versionAssets } from "./lib/asset-versions.mjs";
 
 const SITE_URL = "https://www.ospreylang.dev";
 const AUTHOR_URL = "https://www.christianfindlay.com/";
@@ -414,6 +415,8 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy({ "../../osprey/examples/wasm/studio.osp": "wasm/studio.osp" });
   eleventyConfig.addPassthroughCopy({ "../../osprey/examples/wasm/studio.ospml": "wasm/studio.ospml" });
 
+  // [WEBSITE-ASSET-VERSIONS]: hash every local CSS/JS URL once the site is written.
+  eleventyConfig.on("eleventy.after", ({ directories }) => versionAssets(directories.output));
   eleventyConfig.addWatchTarget("src/css/");
   eleventyConfig.addWatchTarget("src/js/");
   eleventyConfig.addWatchTarget("../../osprey/examples/wasm/");
