@@ -14,28 +14,34 @@ use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Parse ML source, asserting a clean parse, and return the statements.
 fn ml_ok(src: &str) -> Vec<Stmt> {
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(
-        parsed.errors.is_empty(),
-        "unexpected ml errors: {parsed:#?}"
-    );
-    parsed.program.statements
+    ml_program(src).statements
 }
 
-/// The concatenated diagnostics of a source that must be rejected.
-fn ml_errors(src: &str) -> String {
+/// A source that must parse cleanly, as its program.
+fn ml_program(src: &str) -> osprey_ast::Program {
+    let parsed = parse_program_with_flavor(src, Flavor::Ml);
+    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
+    parsed.program
+}
+
+/// Assert `src` is rejected with a diagnostic containing `expected`.
+fn assert_rejected(src: &str, expected: &str) {
     let parsed = parse_program_with_flavor(src, Flavor::Ml);
     assert!(
         !parsed.errors.is_empty(),
         "expected errors but got none: {:#?}",
         parsed.program
     );
-    parsed
+    let errors = parsed
         .errors
         .iter()
-        .map(|e| e.message.clone())
+        .map(|e| e.message.as_str())
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    assert!(
+        errors.contains(expected),
+        "expected {expected:?} from {src:?}, got: {errors}"
+    );
 }
 
 /// The variants of the single `type` statement in `src`, as
@@ -48,6 +54,20 @@ fn variants(src: &str) -> Vec<(String, Vec<String>)> {
             .collect(),
         other => panic!("expected a type declaration, got {other:?}"),
     }
+}
+
+/// Assert the variants `src` declares, spelled `(name, field names)`.
+fn assert_variants(src: &str, expected: &[(&str, &[&str])]) {
+    let want: Vec<(String, Vec<String>)> = expected
+        .iter()
+        .map(|(name, fields)| {
+            (
+                (*name).to_owned(),
+                fields.iter().map(|f| (*f).to_owned()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(variants(src), want, "variants of {src:?}");
 }
 
 /// The body of the single function named `name`.
@@ -67,42 +87,81 @@ fn function_body(src: &str, name: &str) -> (Vec<String>, Expr) {
     }
 }
 
+/// The body under a curried function's lambda wrapper, unwrapped if present.
+fn under_lambda(body: Expr) -> Expr {
+    match body {
+        Expr::Lambda { body, .. } => *body,
+        other => other,
+    }
+}
+
+/// The scrutinee and arms of the match a clause-set body must hold.
+fn match_parts(body: Expr) -> (Expr, Vec<osprey_ast::MatchArm>) {
+    match under_lambda(body) {
+        Expr::Match { value, arms } => (*value, arms),
+        other => panic!("expected a match body, got {other:?}"),
+    }
+}
+
+/// The first match expression's arms in a source that must parse cleanly.
+fn match_arms_of(src: &str) -> Vec<osprey_ast::MatchArm> {
+    let found = ml_program(src).statements.iter().find_map(|s| match s {
+        Stmt::Function {
+            body: Expr::Match { arms, .. },
+            ..
+        } => Some(arms.clone()),
+        _ => None,
+    });
+    match found {
+        Some(arms) => arms,
+        None => panic!("expected a match expression in the program"),
+    }
+}
+
+/// How many of `stmts` are functions named `name`.
+fn count_named<'a>(stmts: impl Iterator<Item = &'a Stmt>, name: &str) -> usize {
+    stmts
+        .filter(|s| matches!(s, Stmt::Function { name: n, .. } if n == name))
+        .count()
+}
+
+/// A constructor pattern naming `name` over positional binders, as ML lowers it.
+fn ctor(name: &str, binders: &[&str]) -> Pattern {
+    Pattern::Constructor {
+        name: name.to_owned(),
+        fields: vec![],
+        sub_patterns: binders
+            .iter()
+            .map(|b| Pattern::Binding((*b).to_owned()))
+            .collect(),
+    }
+}
+
 // ─── [FLAVOR-ML-UNION-INLINE] ───────────────────────────────────────────────
 
+/// Payload-free variants; positional payloads keeping their generated slot names
+/// beside named ones; a parenthesised type atom in payload position read as a
+/// positional slot, not a named-field list — the two `(` forms are told apart by
+/// the `field :` shape.
 #[test]
-fn inline_union_declares_payload_free_variants() {
-    assert_eq!(
-        variants("type Colour = Red | Green | Blue\n"),
-        vec![
-            ("Red".to_owned(), vec![]),
-            ("Green".to_owned(), vec![]),
-            ("Blue".to_owned(), vec![]),
-        ]
-    );
-}
-
-/// A positional payload gets generated slot names; a named payload keeps the
-/// spelled ones. Both spellings coexist in one declaration.
-#[test]
-fn inline_union_mixes_positional_and_named_payloads() {
-    assert_eq!(
-        variants("type Shape = Dot | Circle float | Rect(w : float, h : float)\n"),
-        vec![
-            ("Dot".to_owned(), vec![]),
-            ("Circle".to_owned(), vec!["0".to_owned()]),
-            ("Rect".to_owned(), vec!["w".to_owned(), "h".to_owned()]),
-        ]
-    );
-}
-
-/// A parenthesised type atom in payload position is a positional slot, not a
-/// named-field list — the two `(` forms are told apart by the `field :` shape.
-#[test]
-fn inline_union_takes_parenthesised_positional_atoms() {
-    assert_eq!(
-        variants("type Holder = Wrap (List int) int\n"),
-        vec![("Wrap".to_owned(), vec!["0".to_owned(), "1".to_owned()])]
-    );
+fn inline_union_variants_keep_their_slot_names() {
+    let cases: &[(&str, &[(&str, &[&str])])] = &[
+        (
+            "type Colour = Red | Green | Blue\n",
+            &[("Red", &[]), ("Green", &[]), ("Blue", &[])],
+        ),
+        (
+            "type Shape = Dot | Circle float | Rect(w : float, h : float)\n",
+            &[("Dot", &[]), ("Circle", &["0"]), ("Rect", &["w", "h"])],
+        ),
+        (
+            "type Holder = Wrap (List int) int\n",
+            &[("Wrap", &["0", "1"])],
+        ),
+    ];
+    for (src, expected) in cases {
+        assert_variants(src, expected);
+    }
 }
 
 /// A lowercase right-hand side is a manifest alias, never a one-variant union.
@@ -119,29 +178,17 @@ fn lowercase_right_hand_side_stays_an_alias() {
     }
 }
 
-#[test]
-fn inline_variant_must_be_uppercase() {
-    assert!(ml_errors("type Bad = Good | oops\n").contains("must start with an uppercase letter"));
-}
-
-#[test]
-fn inline_named_payload_wants_a_closing_paren() {
-    assert!(ml_errors("type Bad = Rect(w : float\n").contains("expected ')'"));
-}
-
 // ─── [TYPE-UNION-POSITIONAL] ────────────────────────────────────────────────
 
 /// A saturated application of a positionally-declared constructor folds into
 /// the construction node, with arguments landing in slot order
-/// ([FLAVOR-ML-CTOR-POSITIONAL]).
+/// ([FLAVOR-ML-CTOR-POSITIONAL]). A nullary positional variant needs no
+/// application at all, and an unsaturated one is left as written so the checker
+/// reports the arity against the call the author actually spelled.
 #[test]
-fn saturated_positional_application_becomes_a_construction() {
+fn positional_applications_fold_only_when_saturated() {
     let (_, body) = function_body("type Pair = Both int int\nmk a b = Both a b\n", "mk");
-    let inner = match body {
-        Expr::Lambda { body, .. } => *body,
-        other => other,
-    };
-    match inner {
+    match under_lambda(body) {
         Expr::TypeConstructor { name, fields, .. } => {
             assert_eq!(name, "Both");
             assert_eq!(
@@ -151,18 +198,8 @@ fn saturated_positional_application_becomes_a_construction() {
         }
         other => panic!("expected a positional construction, got {other:?}"),
     }
-}
-
-/// A nullary positional variant needs no application at all, and an
-/// unsaturated one is left as written so the checker reports the arity against
-/// the call the author actually spelled.
-#[test]
-fn unsaturated_positional_application_is_left_alone() {
     let (_, body) = function_body("type Pair = Both int int\nhalf a = Both a\n", "half");
-    let inner = match body {
-        Expr::Lambda { body, .. } => *body,
-        other => other,
-    };
+    let inner = under_lambda(body);
     assert!(
         matches!(inner, Expr::Call { .. }),
         "an unsaturated constructor must stay a call: {inner:?}"
@@ -181,44 +218,15 @@ fn clause_set_collapses_into_a_match() {
                check (Node l r) = 1 + check l + check r\n";
     let (params, body) = function_body(src, "check");
     assert_eq!(params.len(), 1);
-    match body {
-        Expr::Match { value, arms } => {
-            assert_eq!(*value, Expr::Identifier(params[0].clone()));
-            assert_eq!(arms.len(), 2);
-            assert_eq!(
-                arms[0].pattern,
-                Pattern::Constructor {
-                    name: "Leaf".to_owned(),
-                    fields: vec![],
-                    sub_patterns: vec![],
-                }
-            );
-            match &arms[1].pattern {
-                Pattern::Constructor {
-                    name,
-                    fields,
-                    sub_patterns,
-                } => {
-                    assert_eq!(name, "Node");
-                    // ML's only constructor destructure is positional, so its
-                    // binders lower into `sub_patterns` — the same node the
-                    // Default twin `Node(l, r)` emits. Lowering them into
-                    // `fields` made each binder resolve to the payload slot that
-                    // happened to share its spelling ([TYPE-UNION-POSITIONAL]).
-                    assert!(fields.is_empty(), "{fields:?}");
-                    assert_eq!(
-                        sub_patterns,
-                        &[
-                            Pattern::Binding("l".to_owned()),
-                            Pattern::Binding("r".to_owned()),
-                        ]
-                    );
-                }
-                other => panic!("expected a Node pattern, got {other:?}"),
-            }
-        }
-        other => panic!("expected a match body, got {other:?}"),
-    }
+    let (value, arms) = match_parts(body);
+    assert_eq!(value, Expr::Identifier(params[0].clone()));
+    assert_eq!(arms.len(), 2);
+    assert_eq!(arms[0].pattern, ctor("Leaf", &[]));
+    // ML's only constructor destructure is positional, so its binders lower into
+    // `sub_patterns` — the same node the Default twin `Node(l, r)` emits.
+    // Lowering them into `fields` made each binder resolve to the payload slot
+    // that happened to share its spelling ([TYPE-UNION-POSITIONAL]).
+    assert_eq!(arms[1].pattern, ctor("Node", &["l", "r"]));
 }
 
 /// The merged parameter takes the first plain binder any clause spells in the
@@ -228,17 +236,13 @@ fn clause_set_collapses_into_a_match() {
 fn clause_set_borrows_the_first_plain_binder_as_the_parameter() {
     let (params, body) = function_body("make 0 = 1\nmake d = d\n", "make");
     assert_eq!(params, vec!["d".to_owned()]);
-    match body {
-        Expr::Match { value, arms } => {
-            assert_eq!(*value, Expr::Identifier("d".to_owned()));
-            assert_eq!(
-                arms[0].pattern,
-                Pattern::Literal(Box::new(Expr::Integer(0)))
-            );
-            assert_eq!(arms[1].pattern, Pattern::Binding("d".to_owned()));
-        }
-        other => panic!("expected a match body, got {other:?}"),
-    }
+    let (value, arms) = match_parts(body);
+    assert_eq!(value, Expr::Identifier("d".to_owned()));
+    assert_eq!(
+        arms[0].pattern,
+        Pattern::Literal(Box::new(Expr::Integer(0)))
+    );
+    assert_eq!(arms[1].pattern, Pattern::Binding("d".to_owned()));
 }
 
 /// Every clause selecting or ignoring the column leaves no binder to borrow, so
@@ -247,12 +251,8 @@ fn clause_set_borrows_the_first_plain_binder_as_the_parameter() {
 fn clause_set_generates_a_scrutinee_when_no_clause_binds_it() {
     let (params, body) = function_body("sign 0 = 0\nsign _ = 1\n", "sign");
     assert_eq!(params, vec![osprey_ast::clause_param_name(0)]);
-    match body {
-        Expr::Match { arms, .. } => {
-            assert_eq!(arms[1].pattern, Pattern::Wildcard);
-        }
-        other => panic!("expected a match body, got {other:?}"),
-    }
+    let (_, arms) = match_parts(body);
+    assert_eq!(arms[1].pattern, Pattern::Wildcard);
 }
 
 /// List patterns are valid match patterns and the binding-head lookahead
@@ -263,34 +263,10 @@ fn list_patterns_are_accepted_in_clause_heads() {
                size [_, ...tail] = 1 + size tail\n";
     let (params, body) = function_body(src, "size");
     assert_eq!(params.len(), 1);
-    match body {
-        Expr::Match { arms, .. } => {
-            assert_eq!(arms.len(), 2);
-            assert!(matches!(arms[0].pattern, Pattern::List { .. }));
-            assert!(matches!(arms[1].pattern, Pattern::List { .. }));
-        }
-        other => panic!("expected a match body, got {other:?}"),
-    }
-}
-
-/// An irrefutable arm consumes every value, so accepting a later clause would
-/// silently make source order change program meaning.
-#[test]
-fn clause_after_irrefutable_arm_is_rejected_as_unreachable() {
-    let errors = ml_errors("choose 0 = 0\nchoose n = n\nchoose _ = 2\n");
-    assert!(
-        errors.contains("unreachable clause"),
-        "expected an unreachable-clause diagnostic, got: {errors}"
-    );
-}
-
-#[test]
-fn repeated_irrefutable_clauses_are_rejected_as_unreachable() {
-    let errors = ml_errors("choose n = n\nchoose other = other\n");
-    assert!(
-        errors.contains("unreachable clause"),
-        "expected an unreachable-clause diagnostic, got: {errors}"
-    );
+    let (_, arms) = match_parts(body);
+    assert_eq!(arms.len(), 2);
+    assert!(matches!(arms[0].pattern, Pattern::List { .. }));
+    assert!(matches!(arms[1].pattern, Pattern::List { .. }));
 }
 
 /// A clause that spells a non-selected column differently keeps its own
@@ -301,13 +277,11 @@ fn clause_set_renames_divergent_columns_in_the_arm_body() {
     let (params, body) = function_body(src, "pick");
     // Two columns curry ([FLAVOR-ML-CURRY]), so the match sits under a lambda.
     assert_eq!(params, vec!["n".to_owned()]);
-    let arms = match body {
-        Expr::Lambda { body, .. } => match *body {
-            Expr::Match { arms, .. } => arms,
-            other => panic!("expected a match under the lambda, got {other:?}"),
-        },
-        other => panic!("expected a curried lambda, got {other:?}"),
-    };
+    assert!(
+        matches!(body, Expr::Lambda { .. }),
+        "expected a curried lambda, got {body:?}"
+    );
+    let (_, arms) = match_parts(body);
     let renamed = arms.iter().any(|arm| {
         let Expr::Block {
             statements,
@@ -336,33 +310,23 @@ fn a_plain_binding_is_not_rewritten() {
     );
 }
 
-/// Same-name bindings separated by another declaration are not adjacent, so
-/// they are never merged.
+/// A run ends at a gap or at a differing arity: same-name bindings separated by
+/// another declaration are never adjacent, and arity is part of what makes
+/// clauses one set, so neither merges into a ragged match.
 #[test]
-fn non_adjacent_clauses_do_not_merge() {
-    let src = "f 0 = 1\ng x = x\nf n = n\n";
-    let matches = ml_ok(src)
-        .into_iter()
-        .filter(|s| matches!(s, Stmt::Function { name, .. } if name == "f"))
-        .count();
-    assert_eq!(matches, 2, "a gap must leave both clauses standing");
-}
-
-#[test]
-fn a_clause_set_may_select_on_only_one_column() {
-    assert!(ml_errors("f 0 y = y\nf x 0 = x\n").contains("selects on columns 0 and 1"));
-}
-
-/// Arity is part of what makes clauses one set, so a differing head ends the
-/// run rather than merging into a ragged match.
-#[test]
-fn a_differing_arity_starts_a_new_run() {
-    let src = "f 0 y = y\nf 1 = 2\nf x y = x\n";
-    let fs = ml_ok(src)
-        .into_iter()
-        .filter(|s| matches!(s, Stmt::Function { name, .. } if name == "f"))
-        .count();
-    assert_eq!(fs, 3, "each arity is its own run: {src}");
+fn a_gap_or_a_differing_arity_ends_a_run() {
+    let cases: &[(&str, usize)] = &[
+        ("f 0 = 1\ng x = x\nf n = n\n", 2),
+        ("f 0 y = y\nf 1 = 2\nf x y = x\n", 3),
+    ];
+    for (src, runs) in cases {
+        let stmts = ml_ok(src);
+        assert_eq!(
+            count_named(stmts.iter(), "f"),
+            *runs,
+            "each head is its own run: {src}"
+        );
+    }
 }
 
 /// A `mut` binding is a cell, never a case, so it never joins a run.
@@ -375,31 +339,13 @@ fn a_mutable_binding_is_never_a_clause() {
     );
 }
 
-/// `|` separates union variants; it is meaningless in pattern position.
-#[test]
-fn or_patterns_are_rejected() {
-    let src = "type Colour = Red | Green\nname c = match c\n    Red | Green => \"warm\"\n";
-    assert!(ml_errors(src).contains("or-patterns are not supported"));
-}
-
-/// `( p )` groups exactly one pattern ([FLAVOR-ML-PATTERN-GROUP]); a comma
-/// list is a tuple pattern, and each of its slots is a binder or `_` — a
-/// constructor cannot ride in a slot ([PATTERN-TUPLE]).
-#[test]
-fn a_grouped_pattern_holds_one_pattern() {
-    let src = "type Pair = Both int int\nfst p = match p\n    (Both a, b) => a\n";
-    assert!(ml_errors(src).contains("a tuple pattern slot binds a name or `_`"));
-}
-
 /// `(a, b)` lowers to the canonical positional row — the same
 /// [`Pattern::Structural`] both flavors share ([PATTERN-TUPLE],
 /// [FLAVOR-ML-TUPLE]).
 #[test]
 fn a_tuple_pattern_lowers_to_the_positional_row() {
     let src = "type Pair = Both(int, string)\nfst p = match p\n    (a, _) => a\n";
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
-    let arms = find_match_arms(&parsed.program);
+    let arms = match_arms_of(src);
     assert!(
         matches!(
             &arms[0].pattern,
@@ -419,9 +365,7 @@ fn a_tuple_pattern_lowers_to_the_positional_row() {
 #[test]
 fn structural_patterns_parse_closed_and_open() {
     let src = "title page = match page\n    { heading, .. } => heading\n    { name } => name\n    _ => \"untitled\"\n";
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
-    let arms = find_match_arms(&parsed.program);
+    let arms = match_arms_of(src);
     assert!(matches!(
         &arms[0].pattern,
         Pattern::Structural { fields, open: true }
@@ -434,42 +378,57 @@ fn structural_patterns_parse_closed_and_open() {
     ));
 }
 
-/// The first match expression's arms anywhere in the program — the shared
-/// digging for the pattern-shape assertions above.
-fn find_match_arms(program: &osprey_ast::Program) -> Vec<osprey_ast::MatchArm> {
-    fn from_expr(e: &Expr) -> Option<Vec<osprey_ast::MatchArm>> {
-        match e {
-            Expr::Match { arms, .. } => Some(arms.clone()),
-            _ => None,
-        }
-    }
-    let found = program.statements.iter().find_map(|s| match s {
-        Stmt::Function { body, .. } => from_expr(body),
-        _ => None,
-    });
-    match found {
-        Some(arms) => arms,
-        None => panic!("expected a match expression in the program"),
-    }
-}
-
 /// Clause merging reaches inside the declaration containers, so a clause set in
 /// a module body collapses exactly as a top-level one does.
 #[test]
 fn clause_sets_merge_inside_a_module_body() {
     let src = "module Trees\n    type Tree = Leaf | Node Tree Tree\n\
                \n    check Leaf = 0\n    check (Node l r) = 1\n";
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
-    let body = match parsed.program.statements.into_iter().next() {
+    let body = match ml_program(src).statements.into_iter().next() {
         Some(Stmt::Module { body, .. }) => body,
         other => panic!("expected a module, got {other:?}"),
     };
-    let checks = body
-        .iter()
-        .filter(|item| {
-            matches!(item.declaration.as_ref(), Stmt::Function { name, .. } if name == "check")
-        })
-        .count();
-    assert_eq!(checks, 1, "the clause set must collapse: {body:#?}");
+    assert_eq!(
+        count_named(body.iter().map(|item| item.declaration.as_ref()), "check"),
+        1,
+        "the clause set must collapse: {body:#?}"
+    );
+}
+
+// ─── normative restrictions ─────────────────────────────────────────────────
+
+/// Every restriction the elegance surface imposes reports the diagnostic that
+/// names it: an uppercase variant head, a closed named payload list, no clause
+/// after an irrefutable arm, one selected column per clause set, no
+/// or-patterns, and no constructor in a tuple slot ([PATTERN-TUPLE]).
+#[test]
+fn rejected_surfaces_report_their_diagnostic() {
+    for (src, expected) in [
+        (
+            "type Bad = Good | oops\n",
+            "must start with an uppercase letter",
+        ),
+        ("type Bad = Rect(w : float\n", "expected ')'"),
+        // An irrefutable arm consumes every value, so accepting a later clause
+        // would silently make source order change program meaning.
+        (
+            "choose 0 = 0\nchoose n = n\nchoose _ = 2\n",
+            "unreachable clause",
+        ),
+        ("choose n = n\nchoose other = other\n", "unreachable clause"),
+        ("f 0 y = y\nf x 0 = x\n", "selects on columns 0 and 1"),
+        // `|` separates union variants; it is meaningless in pattern position.
+        (
+            "type Colour = Red | Green\nname c = match c\n    Red | Green => \"warm\"\n",
+            "or-patterns are not supported",
+        ),
+        // `( p )` groups exactly one pattern ([FLAVOR-ML-PATTERN-GROUP]); a comma
+        // list is a tuple pattern whose slots each bind a name or `_`.
+        (
+            "type Pair = Both int int\nfst p = match p\n    (Both a, b) => a\n",
+            "a tuple pattern slot binds a name or `_`",
+        ),
+    ] {
+        assert_rejected(src, expected);
+    }
 }
