@@ -1182,6 +1182,9 @@ jobs:
           - part: Qwen model (Metal)
             minutes: 30
             run: make -C src/toolchain/targets/tests qwen-metal
+          - part: Qwen pull
+            minutes: 5
+            run: make -C src/toolchain/targets/tests qwen-pull-headless
           - part: Talon Bank
             minutes: 22
             run: make -C src/toolchain/targets bank-ios-test

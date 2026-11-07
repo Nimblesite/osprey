@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-mobile casting flock inbox painting qwen-metal signal-flow storage synth workbench
+.PHONY: agent bank bank-mobile casting flock inbox painting qwen-metal qwen-pull-headless signal-flow storage synth workbench
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -64,6 +64,10 @@ qwen-metal: _runtime
 	OSPREY_GPU=metal $(BIN) src/osprey/examples/llms/qwen/model/tests --run --quiet --memory=arc > target/llms/qwen-model/metal-arc.out 2> target/llms/qwen-model/metal-arc.err
 	cmp target/llms/qwen-model/metal-arc.out src/osprey/examples/llms/qwen/model/tests/expected_output.txt
 	grep -q '^\[gpu\] metal:.*completed dispatch' target/llms/qwen-model/metal-arc.err || { echo 'qwen-metal: no Metal dispatch completed; the suite ran on the host' >&2; exit 1; }
+
+## qwen-pull-headless: The GGUF pull against a local Range-capable server: fresh, resumed, corrupt, present and missing cases, offline.
+qwen-pull-headless:
+	sh src/osprey/examples/llms/qwen/pull_test.sh
 
 ## signal-flow: The signal-flow editor, driven by accessible label. [UI-MACHINE-TEST]
 signal-flow:

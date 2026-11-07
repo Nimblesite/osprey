@@ -3,6 +3,7 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ../../..
 WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
+QUANT ?= UD-Q4_K_XL
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else
@@ -22,7 +23,7 @@ casting-android:
 
 bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
-.PHONY: python-app-ports bank bank-web bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-test android android-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-native-test workbench-render-review
+.PHONY: python-app-ports bank bank-web bank-e2e graphics graphics-smoke gpt2 gpt2-train qwen-pull ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-test android android-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-native-test workbench-render-review
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports: build
@@ -77,6 +78,10 @@ graphics:
 ##                 each to report them. Needs a desktop session and a Metal GPU.
 graphics-smoke:
 	$(MAKE) -C $(ROOT) _graphics-smoke
+
+## qwen-pull: Download the Qwen3.8-27B GGUF (QUANT=UD-Q4_K_XL, the plan's default; also UD-Q5_K_M, UD-IQ3_XXS) into ~/.cache/osprey-llm/gguf, resuming a partial file and checking its SHA-256 against Hugging Face's LFS metadata before it is named .gguf.
+qwen-pull:
+	QWEN_QUANT=$(QUANT) sh src/osprey/examples/llms/qwen/pull.sh
 
 ## gpt2: Run GPT-2 (usage: make gpt2 FLAVOR=default|python PROMPT="..." TOKENS=20 BACKEND=gpu|lists)
 ## BACKEND=gpu runs the model on the GPU surface: every kernel and product on GPU=auto|metal|opencl, or on the CPU with GPU=host; BACKEND=lists runs the same model over host lists.
