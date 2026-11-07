@@ -8,7 +8,7 @@ loaded through the Transformers-layout loader ([LLM-MODEL-ORACLE], [LLM-MODEL-DE
 from testing import Check
 from qwen_expected import Expected
 from qwen import Qwen3_5Attention, Qwen3_5Cache, Qwen3_5Config, Qwen3_5DeltaNet, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Shapes
-from qwen_tests.ModelCases import CACHED, MODEL_ATOL, MODEL_RTOL, SINGLE, cache_value, close_list, compare, compare_heads, compare_rows, fixture_params, flatten, greedy_case, hidden_row, hook_cases, hook_row, input_tokens, model_config, name_at, shape_size, shape_total, stage_cases, started, to_floats, token_in
+from qwen_tests.ModelCases import CACHED, MODEL_ATOL, MODEL_RTOL, SINGLE, cache_value, close_list, compare, compare_heads, compare_rows, fixture_params, flatten, greedy_case, hidden_row, hook_cases, hook_row, input_tokens, logits_row, model_config, name_at, shape_size, shape_total, stage_cases, started, to_floats, token_in
 from qwen_tests.TiledCases import model_fault_cases, refusal_cases, tiled_cases
 
 __all__ = ["model_fixture_cases"]
@@ -162,11 +162,17 @@ def shape_grid_cases(shapes):
 def rope_cases(cfg, shapes):
     angles = Qwen3_5Rope.tables(1, cfg)
     head = Qwen3_5Device.constant(toList(map(range(1, 17), lambda i: toFloat32(i))))
-    return [
+    return listConcat([
         compare("model.rope.Tables.cos", angles.cos, to_floats([0.54030231, 0.99995, 0.54030231, 0.99995])),
         compare("model.rope.Tables.sin", angles.sin, to_floats([0.84147098, 0.00999983, 0.84147098, 0.00999983])),
         compare_rows("model.rope.rotated", Qwen3_5Rope.rotated(head, angles, Qwen3_5Device.grid(16), shapes, cfg), 0, 6, to_floats([-1.98411065, 1.95990067, 2.46237790, 4.01979967, 5.0, 6.0])),
-    ]
+    ], rope_hook_cases(cfg))
+
+
+def rope_hook_cases(cfg):
+    """The fixture's `rotary_emb` cos table, one check per position of the batched run."""
+    width = Qwen3_5Config.rotary_dim(cfg)
+    return toList(map(range(len(input_tokens(1))), lambda t: compare(f"model.rope.cos.{t}", Qwen3_5Rope.tables(t, cfg).cos, hook_row("rotary_emb", t, width))))
 
 
 def head_norm_cases():
@@ -225,7 +231,13 @@ def model_interface_run(model, cache):
         case Error(message=message):
             return [Check.failed("model.Walk.forward", message)]
         case Success(value=walk):
-            return flatten([[compare("model.Embedding.row", row, hidden_row(CACHED, 0)), compare("model.Walk.forward", walk.hidden, hook_row("layers.3", 0))], layer_interface_cases(model, cache, row, 0), layer_interface_cases(model, cache, Qwen3_5Device.constant(hook_row("layers.2", 0)), 3)])
+            return listConcat([compare("model.Embedding.row", row, hidden_row(CACHED, 0)), compare("model.Walk.forward", walk.hidden, hook_row("layers.3", 0, Expected.MODEL_HIDDEN))], flatten(toList(map(range(Expected.MODEL_LAYERS), lambda index: layer_interface_cases(model, cache, layer_input(row, index), index)))))
+
+
+def layer_input(row, index):
+    """Layer `index`'s input: the embedding row for layer 0, the fixture's layer
+    `index - 1` output after it."""
+    return row if index == 0 else Qwen3_5Device.constant(hook_row(f"layers.{index - 1}", 0, Expected.MODEL_HIDDEN))
 
 
 def layer_interface_cases(model, cache, row, index):
@@ -244,45 +256,57 @@ def layer_hook_cases(model, row, index, layer, slot):
     cfg = model.config
     shapes = model.shapes
     normed = Qwen3_5Norm.rms_row(row, layer.input_norm, cfg, shapes)
-    return flatten([
-        [compare(f"model.Layer.input_norm.{index}", normed, hook_row(f"layers.{index}.input_layernorm", 0))],
-        mixer_cases(model, layer.mixer, slot, normed),
-        [compare(f"model.Mlp.swiglu.{index}", Qwen3_5Mlp.swiglu(Qwen3_5Device.constant(hook_row(f"layers.{index}.post_attention_layernorm", 0)), layer.mlp, cfg, shapes), hook_row(f"layers.{index}.mlp", 0))],
-    ])
+    return listConcat(
+        [compare(f"model.Layer.input_norm.{index}", normed, hook_row(f"layers.{index}.input_layernorm", 0, Expected.MODEL_HIDDEN))],
+        mixer_cases(model, layer, slot, row, normed, index),
+    )
 
 
-def mixer_cases(model, mixer, slot, row):
-    match mixer:
-        case Qwen3_5Model.Linear(layer=layer):
+def mixer_cases(model, layer, slot, row, normed, index):
+    match layer.mixer:
+        case Qwen3_5Model.Linear(layer=mixer):
             match slot:
                 case Qwen3_5Cache.Delta(held=held):
-                    return delta_mixer_cases(model, layer, row, held)
+                    return delta_mixer_cases(model, layer, mixer, row, normed, held, index)
                 case Qwen3_5Cache.Attention():
                     return [Check.failed("model.Mixer.linear", "expected the delta slot")]
-        case Qwen3_5Model.Full(layer=layer):
+        case Qwen3_5Model.Full(layer=mixer):
             match slot:
                 case Qwen3_5Cache.Attention(held=held):
-                    return attention_mixer_cases(model, layer, row, held)
+                    return attention_mixer_cases(model, layer, mixer, row, normed, held, index)
                 case Qwen3_5Cache.Delta():
                     return [Check.failed("model.Mixer.attention", "expected the attention slot")]
 
 
-def delta_mixer_cases(model, layer, row, held):
-    mixed = Qwen3_5DeltaNet.mix(row, layer, held, model.tiled, model.config, model.shapes)
+def tail_cases(model, layer, row, index, mixed):
+    """The post-attention norm of the residual `row + mixed` against its hook, then the
+    MLP of the fixture's normed row."""
+    cfg = model.config
+    shapes = model.shapes
+    post = Qwen3_5Norm.rms_row(Qwen3_5Device.added(row, mixed, shapes.hidden), layer.post_norm, cfg, shapes)
+    normed = hook_row(f"layers.{index}.post_attention_layernorm", 0, Expected.MODEL_HIDDEN)
+    return [
+        compare(f"model.Layer.post_norm.{index}", post, normed),
+        compare(f"model.Mlp.swiglu.{index}", Qwen3_5Mlp.swiglu(Qwen3_5Device.constant(normed), layer.mlp, cfg, shapes), hook_row(f"layers.{index}.mlp", 0, Expected.MODEL_HIDDEN)),
+    ]
+
+
+def delta_mixer_cases(model, layer, mixer, row, normed, held, index):
+    mixed = Qwen3_5DeltaNet.mix(normed, mixer, held, model.tiled, model.config, model.shapes)
     slot = Qwen3_5Cache.Delta(held=Qwen3_5Cache.DeltaSlot(conv=mixed.slot.conv, state=mixed.slot.state))
     grown = Qwen3_5Cache.grown(Qwen3_5Cache.Cache(slots=[]), slot)
-    return [
-        compare("model.Mixer.linear.Mixed", mixed.hidden, hook_row("layers.0.linear_attn", 0)),
-        Check.equal("model.DeltaSlot.grown", len(grown.slots), 1),
-    ]
+    return listConcat([
+        compare(f"model.Mixer.linear.Mixed.{index}", mixed.hidden, hook_row(f"layers.{index}.linear_attn", 0, Expected.MODEL_HIDDEN)),
+        Check.equal(f"model.DeltaSlot.grown.{index}", len(grown.slots), 1),
+    ], tail_cases(model, layer, row, index, mixed.hidden))
 
 
-def attention_mixer_cases(model, layer, row, held):
-    mixed = Qwen3_5Attention.mix(row, layer, held, model.config, model.shapes)
-    return [
-        compare("model.Mixer.attention.Mixed", mixed.hidden, hook_row("layers.3.self_attn", 0)),
-        Check.equal("model.AttentionSlot.positions", mixed.slot.positions, 1),
-    ]
+def attention_mixer_cases(model, layer, mixer, row, normed, held, index):
+    mixed = Qwen3_5Attention.mix(normed, mixer, held, model.config, model.shapes)
+    return listConcat([
+        compare(f"model.Mixer.attention.Mixed.{index}", mixed.hidden, hook_row(f"layers.{index}.self_attn", 0, Expected.MODEL_HIDDEN)),
+        Check.equal(f"model.AttentionSlot.positions.{index}", mixed.slot.positions, 1),
+    ], tail_cases(model, layer, row, index, mixed.hidden))
 
 
 def cached_cases(model):
@@ -298,7 +322,12 @@ def walk_tokens(model, tokens, t, cache, acc):
             case Error(message=message):
                 return listAppend(acc, Check.failed(f"model_cached{t}", message))
             case Success(value=next):
-                return walk_tokens(model, tokens, t + 1, next.walk.cache, listConcat(acc, listConcat(stage_cases(f"model_cached{t}", next, CACHED, t), hook_cases(next, t))))
+                return walk_tokens(model, tokens, t + 1, next.walk.cache, listConcat(acc, listConcat(stage_cases(f"model_cached{t}", next, CACHED, t), listConcat(hook_cases(next, t), [logits_case(next, t)]))))
+
+
+def logits_case(next, t):
+    """The step's logits against the oracle's batched-run logits row `t`."""
+    return compare(f"model_cached{t}_logits", next.logits, logits_row(t))
 
 
 def cache_tensor_cases(model, cache):

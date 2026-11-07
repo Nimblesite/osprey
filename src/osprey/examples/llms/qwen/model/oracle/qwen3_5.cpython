@@ -7,7 +7,8 @@ src/osprey/examples/llms/qwen/model/tests/expected.py, so the port's layer-by-la
 comparison reads numbers the real package produced. The three inputs are one token,
 eight tokens in one pass, and the same eight tokens fed one at a time through the cache;
 every layer's output hidden state and the final norm output are written for each, with
-the conv/recurrent/KV state the cached run leaves behind. CI never downloads weights.
+the conv/recurrent/KV state the cached run leaves behind and the batched run's logits
+through the head tied to the embedding. CI never downloads weights.
 """
 import math
 import struct
@@ -187,6 +188,13 @@ def run_cases(C, model, cfg):
     # The activation each hook saw for the eight-token batched input, row-major
     # float32, so a port can test one module at a time.
     C["MODEL_HOOK_VALUES"] = [values for _, _, _, values in fired]
+    # The batched run's logits, row-major float32, so a port checks them too.
+    C["MODEL_LOGITS"] = tied_logits(model, outputs[1])
+
+
+def tied_logits(model, output):
+    """The batched run's logits: `last_hidden_state` through the tied embedding head."""
+    return flat(output.last_hidden_state[0] @ model.embed_tokens.weight.T)
 
 
 def dtype_path(model, ids, cache):

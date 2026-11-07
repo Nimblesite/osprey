@@ -9,7 +9,7 @@ from qwen_expected import Expected
 from qwen import Qwen3_5Attention, Qwen3_5Cache, Qwen3_5Config, Qwen3_5DeltaNet, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Shapes
 from transformers.Math import argmax
 
-__all__ = ["CACHED", "MODEL_ATOL", "MODEL_RTOL", "SINGLE", "cache_value", "close_list", "compare", "compare_heads", "compare_rows", "fixture_params", "fixture_row", "flatten", "greedy_case", "hidden_row", "hook_cases", "hook_row", "input_tokens", "model_config", "model_with", "name_at", "refusal", "shape_size", "shape_total", "stage_cases", "stages_against", "started", "to_floats", "token_in"]
+__all__ = ["CACHED", "MODEL_ATOL", "MODEL_RTOL", "SINGLE", "cache_value", "close_list", "compare", "compare_heads", "compare_rows", "fixture_params", "fixture_row", "flatten", "greedy_case", "hidden_row", "hook_cases", "hook_row", "input_tokens", "logits_row", "model_config", "model_with", "name_at", "refusal", "shape_size", "shape_total", "stage_cases", "stages_against", "started", "to_floats", "token_in"]
 
 
 def close_list(name, got, want, rtol, atol):
@@ -120,9 +120,15 @@ def fixture_row(table, k, t):
     return take_row(to_floats(unwrap_or(listGet(table, k), [])), t * Expected.MODEL_HIDDEN, Expected.MODEL_HIDDEN)
 
 
-def hook_row(name, t):
-    """Row `t` of one `MODEL_HOOK_*` activation, or `[]` when the fixture has no such hook."""
-    return take_row(to_floats(unwrap_or(listGet(Expected.MODEL_HOOK_VALUES, index_in(Expected.MODEL_HOOK_NAMES, name)), [])), t * Expected.MODEL_HIDDEN, Expected.MODEL_HIDDEN)
+def hook_row(name, t, width):
+    """Row `t`, `width` values, of one `MODEL_HOOK_*` activation, or zero-padded when
+    the fixture has no such hook."""
+    return take_row(to_floats(unwrap_or(listGet(Expected.MODEL_HOOK_VALUES, index_in(Expected.MODEL_HOOK_NAMES, name)), [])), t * width, width)
+
+
+def logits_row(t):
+    """Row `t` of `MODEL_LOGITS`, `MODEL_VOCAB` wide."""
+    return take_row(to_floats(Expected.MODEL_LOGITS), t * Expected.MODEL_VOCAB, Expected.MODEL_VOCAB)
 
 
 def cache_value(name):
@@ -206,20 +212,17 @@ def greedy_case(label, next):
 
 
 def hook_cases(next, t):
-    """At position 0 the batched run and the cached run agree, so the first token also
-    checks every layer's output hook, including layer 3's, which no hidden stage records."""
-    if t == 0:
-        return toList(map(range(Expected.MODEL_LAYERS), lambda i: hook_case(next, i)))
-    else:
-        return []
+    """Every layer's output hook at position `t`, including layer 3's, which no hidden
+    stage records."""
+    return toList(map(range(Expected.MODEL_LAYERS), lambda i: hook_case(next, t, i)))
 
 
-def hook_case(next, i):
+def hook_case(next, t, i):
     match listGet(next.walk.stages, i):
         case Success(value=stage):
-            return compare(f"model_hook_layer{i}", stage, hook_row(f"layers.{i}", 0))
+            return compare(f"model_hook{t}_layer{i}", stage, hook_row(f"layers.{i}", t, Expected.MODEL_HIDDEN))
         case Error(message=message):
-            return Check.failed(f"model_hook_layer{i}", toString(message))
+            return Check.failed(f"model_hook{t}_layer{i}", toString(message))
 
 
 def compare_heads(name, buffer, positions, cfg, want):

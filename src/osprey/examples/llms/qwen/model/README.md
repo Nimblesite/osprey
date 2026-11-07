@@ -53,7 +53,8 @@ row-major values, and for `MODEL_HIDDEN_*` every layer's output hidden state and
 norm output over three inputs: one token, eight tokens in one pass, and the same eight fed
 one token at a time through `DynamicCache`. `MODEL_CACHE_*` is the conv, recurrent and
 key/value state that cached run leaves behind, `MODEL_HOOK_NAMES`/`MODEL_HOOK_SHAPES` the
-activations a forward hook can record (in fire order), and `MODEL_DTYPE_PATH` the dtype each
+activations a forward hook can record (in fire order), `MODEL_LOGITS` the batched run's
+logits through the head tied to the embedding, and `MODEL_DTYPE_PATH` the dtype each
 value carries from `input_ids` (`torch.int64`) to state (`torch.float32`). Values are the
 shortest decimals that read back as the same binary32 bits, and the whole module is about
 2.2 MB, so CI never downloads weights.
