@@ -286,7 +286,9 @@ async def coding_trial(port, name, broken=False):
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.ollama import OllamaProvider
     async with httpx2.AsyncClient(timeout=180.0, trust_env=False) as http:
-        model = OpenAIChatModel(MODEL, provider=OllamaProvider(base_url=base(port) + "/v1", http_client=http))
+        provider = OllamaProvider(base_url=base(port) + "/v1", http_client=http)
+        provider.client.max_retries = 0  # Agent retries do not disable SDK transport retries.
+        model = OpenAIChatModel(MODEL, provider=provider)
         code, usage = await candidate(model, name, broken)
         checks = coding_checks(code, name)
         judged = await direct_qwen_judge(model, name, code)
