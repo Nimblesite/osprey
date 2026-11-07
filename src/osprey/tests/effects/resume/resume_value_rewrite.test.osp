@@ -536,52 +536,41 @@ fn beatBody() = {
     "steady"
 }
 
+type Flagged = { text: string, calls: int, gave: string }
+
+/// Runs `body` under a flag handler that answers false at step 2 and true
+/// otherwise, recording how often it answered and each answer it gave.
+fn flagged(body) = {
+    mut calls = 0
+    mut gave = ""
+    let text = {
+        handle Scalar {
+            flag step => {
+                calls = calls + 1 
+                let value = match step {
+                    2 => false
+                    _ => true
+                }
+                let mark = match value {
+                    true => "T"
+                    false => "F"
+                }
+                gave = "${gave}${mark}|"
+                resume(value)
+            }
+        }
+        body()
+    }
+    Flagged { text: text, calls: calls, gave: gave }
+}
+
 /// [EFFECTS-RESUME] "`resume()` supplies `Unit`." A Unit operation still
 /// suspends its performer, so its arm still observes the handled computation's
 /// answer after resuming — here a string, three times over. The boolean half
 /// pins both truth values, including one that decides the caller's own branch.
 fn resumeBoolAndUnitPayloadsCase() = {
-    mut flagCalls = 0
-    mut flagGave = ""
-    let flagText = {
-        handle Scalar {
-            flag step => {
-                flagCalls = flagCalls + 1 
-                let value = match step {
-                    2 => false
-                    _ => true
-                }
-                let mark = match value {
-                    true => "T"
-                    false => "F"
-                }
-                flagGave = "${flagGave}${mark}|"
-                resume(value)
-            }
-        }
-        flagBody()
-    }
-
-    mut routeCalls = 0
-    mut routeGave = ""
-    let routeText = {
-        handle Scalar {
-            flag step => {
-                routeCalls = routeCalls + 1 
-                let value = match step {
-                    2 => false
-                    _ => true
-                }
-                let mark = match value {
-                    true => "T"
-                    false => "F"
-                }
-                routeGave = "${routeGave}${mark}|"
-                resume(value)
-            }
-        }
-        routes()
-    }
+    let flag = flagged(flagBody)
+    let route = flagged(routes)
 
     mut beats = 0
     mut beatOrder = ""
@@ -604,24 +593,24 @@ fn resumeBoolAndUnitPayloadsCase() = {
     // "true|false|true" is 15 bytes and holds both renderings; a boolean that
     // collapsed to an integer would print "1" or "0" instead.
     checkAll("boolean payloads keep both truth values", [
-        flagText == "true|false|true", length(flagText) == 15,
-        contains(flagText, "true"), contains(flagText, "false"),
-        startsWith(flagText, "true|"), endsWith(flagText, "|true"),
-        !startsWith(flagText, "false"), flagCalls == 3,
-        flagGave == "T|F|T|", !contains(flagText, "1"),
-        !contains(flagText, "0"), toString(true) == "true",
+        flag.text == "true|false|true", length(flag.text) == 15,
+        contains(flag.text, "true"), contains(flag.text, "false"),
+        startsWith(flag.text, "true|"), endsWith(flag.text, "|true"),
+        !startsWith(flag.text, "false"), flag.calls == 3,
+        flag.gave == "T|F|T|", !contains(flag.text, "1"),
+        !contains(flag.text, "0"), toString(true) == "true",
         toString(false) == "false"
     ])
 
     // The supplied bit selects the caller's own match arm, so the route text
     // orders itself by which perform received which value.
     checkAll("a supplied boolean drives the caller's own branch", [
-        routeText == "allow/deny", length(routeText) == 10,
-        startsWith(routeText, "allow"), endsWith(routeText, "deny"),
-        contains(routeText, "/"), routeText != "deny/allow",
-        !contains(routeText, "denyallow"), routeCalls == 2,
-        routeGave == "T|F|", routeText != flagText,
-        routeCalls != flagCalls, flagGave != routeGave
+        route.text == "allow/deny", length(route.text) == 10,
+        startsWith(route.text, "allow"), endsWith(route.text, "deny"),
+        contains(route.text, "/"), route.text != "deny/allow",
+        !contains(route.text, "denyallow"), route.calls == 2,
+        route.gave == "T|F|", route.text != flag.text,
+        route.calls != flag.calls, flag.gave != route.gave
     ])
 
     // Each Unit arm resumes with nothing and still observes the string the
@@ -638,11 +627,11 @@ fn resumeBoolAndUnitPayloadsCase() = {
     // Three regions over the same effect, each with its own counters; the
     // boolean regions never ran a `beat` arm and vice versa.
     checkAll("bool and Unit regions keep separate state", [
-        flagCalls == 3, routeCalls == 2, beats == 3,
-        flagCalls == beats, flagCalls != routeCalls,
-        (((flagCalls + routeCalls) ) + beats ) == 8,
-        beatSeen != flagText, beatOrder != routeGave,
-        flagText != routeText, beatText != flagText
+        flag.calls == 3, route.calls == 2, beats == 3,
+        flag.calls == beats, flag.calls != route.calls,
+        (((flag.calls + route.calls) ) + beats ) == 8,
+        beatSeen != flag.text, beatOrder != route.gave,
+        flag.text != route.text, beatText != flag.text
     ])
 }
 
