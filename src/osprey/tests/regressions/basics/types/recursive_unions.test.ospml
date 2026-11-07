@@ -33,6 +33,48 @@ describe j =
 
 announce j = print (describe j)
 
+(** Prints each row on its own line. *)
+announceLine v = print v
+
+(** True when `j`'s tag is among the described tags of `items`. *)
+tagsHave items j = listContains (mapList items describe) (describe j)
+
+(** Prints `found` when `ok` holds, `lost` otherwise. *)
+reportMember ok found lost =
+    match ok
+        true => print found
+        false => print lost
+
+(** Applies `test` to a JArr payload's items, or yields `fallback` for other variants. *)
+withArrItems a test fallback =
+    match a
+        JArr items => test items
+        _ => fallback
+
+(** Applies `test` to a JObj payload's entries, or yields `fallback` for other variants. *)
+withObjEntries o test fallback =
+    match o
+        JObj entries => test entries
+        _ => fallback
+
+(** Announces `found`/`lost` for `j`'s tag against a JArr payload's items. *)
+announceArrTag a j found lost =
+    match a
+        JArr items => reportMember (tagsHave items j) found lost
+        _ => print "not arr"
+
+(** Announces `found`/`lost` for `key` against a JObj payload's entries. *)
+announceObjKey o key found lost =
+    match o
+        JObj entries => reportMember (mapContains entries key) found lost
+        _ => print "not obj"
+
+(** Announces `found`/`lost` for `j`'s tag against a JObj payload's values. *)
+announceObjTag o j found lost =
+    match o
+        JObj entries => reportMember (tagsHave (mapValues entries) j) found lost
+        _ => print "not obj"
+
 (** --- List<Self> payload --- *)
 jNum = JNum(v = 42)
 jStr = JStr(v = "hi")
@@ -49,18 +91,8 @@ match arr
 match arr
     JArr items => forEachList items announce
     _ => print "not arr"
-match arr
-    JArr items =>
-        match listContains (mapList items describe) (describe jNum)
-            true => print "hasNum"
-            false => print "lostNum"
-    _ => print "not arr"
-match arr
-    JArr items =>
-        match listContains (mapList items describe) (describe jBool)
-            true => print "hasBool"
-            false => print "lostBool"
-    _ => print "not arr"
+announceArrTag arr jNum "hasNum" "lostNum"
+announceArrTag arr jBool "hasBool" "lostBool"
 
 (** --- Map<string, Self> payload --- *)
 nameVal = JStr(v = "alice")
@@ -70,21 +102,11 @@ obj = JObj(entries = Map() |> mapSet "name" nameVal |> mapSet "age" ageVal)
 match obj
     JObj entries => print (toString (mapLength entries))
     _ => print "not obj"
-match obj
-    JObj entries =>
-        match mapContains entries "name"
-            true => print "has name"
-            false => print "no name"
-    _ => print "not obj"
+announceObjKey obj "name" "has name" "no name"
 match obj
     JObj entries => forEachList (mapValues entries) announce
     _ => print "not obj"
-match obj
-    JObj entries =>
-        match listContains (mapList (mapValues entries) describe) (describe nameVal)
-            true => print "hasName"
-            false => print "lostName"
-    _ => print "not obj"
+announceObjTag obj nameVal "hasName" "lostName"
 match obj
     JObj entries => print (toString (listLength (mapKeys entries)))
     _ => print "not obj"
@@ -97,6 +119,12 @@ type Tree =
         left : Tree
         right : Tree
 
+(** A leaf carrying `v`. *)
+leaf v = Node(value = v, left = Leaf, right = Leaf)
+
+(** A node whose left child is a leaf and whose right child is the leaf `w`. *)
+skewed v w = Node(value = v, left = Leaf, right = leaf w)
+
 label t =
     match t
         Leaf => "leaf"
@@ -105,44 +133,46 @@ rootVal t =
     match t
         Leaf => 0
         Node value _left _right => value
-leftLabel t =
+(** Applies `f` to `t`'s right child when `toRight`, its left child otherwise. *)
+navigate t toRight f fallback =
     match t
-        Leaf => "leaf"
-        Node _value left _right => label left
-rightRootVal t =
-    match t
-        Leaf => 0
-        Node _value _left right => rootVal right
-rightRightVal t =
-    match t
-        Leaf => 0
-        Node _value _left right => rightRootVal right
-leftRightVal t =
-    match t
-        Leaf => 0
-        Node _value left _right => rightRootVal left
+        Leaf => fallback
+        Node _value left right =>
+            match toRight
+                true => f right
+                false => f left
+(** Label of `t`'s left child, or "leaf" when there is none. *)
+leftLabel t = navigate t false label "leaf"
+(** Value at the root of `t`'s right child, or 0 when there is none. *)
+rightRootVal t = navigate t true rootVal 0
+(** Value at the root of `t`'s right child's right child. *)
+rightRightVal t = navigate t true rightRootVal 0
+(** Value at the root of `t`'s left child's right child. *)
+leftRightVal t = navigate t false rightRootVal 0
 
 (**             4
               /   \
             2       6
            / \     / \
           1   3   5   7 *)
-n1 = Node(value = 1, left = Leaf, right = Leaf)
-n3 = Node(value = 3, left = Leaf, right = Leaf)
-n5 = Node(value = 5, left = Leaf, right = Leaf)
-n7 = Node(value = 7, left = Leaf, right = Leaf)
+n1 = leaf 1
+n3 = leaf 3
+n5 = leaf 5
+n7 = leaf 7
 n2 = Node(value = 2, left = n1, right = n3)
 n6 = Node(value = 6, left = n5, right = n7)
 root = Node(value = 4, left = n2, right = n6)
 
-print (label root)
-print (label Leaf)
-print (toString (rootVal root))
-print (leftLabel root)
-print (leftLabel n1)
-print (toString (rightRootVal root))
-print (toString (rightRightVal root))
-print (toString (leftRightVal root))
+forEachList [
+    label root,
+    label Leaf,
+    toString (rootVal root),
+    leftLabel root,
+    leftLabel n1,
+    toString (rightRootVal root),
+    toString (rightRightVal root),
+    toString (leftRightVal root)
+] announceLine
 
 (** ---------- 4: Mutually recursive (Expr <-> Stmt) ---------- *)
 type Expr =
@@ -196,16 +226,17 @@ sum = EAdd(args = List() |> listAppend(two) |> listAppend(three))
 stmt = SRet(value = sum)
 outer = EBlk(body = stmt)
 
-print (descExpr two)
-print (descExpr sum)
-print (descExpr outer)
-print (descStmt stmt)
-
 s1 = unwrapBlk outer
-print (descStmt s1)
 e1 = unwrapRet s1
-print (descExpr e1)
-print (toString (unwrapAddLen e1))
+forEachList [
+    descExpr two,
+    descExpr sum,
+    descExpr outer,
+    descStmt stmt,
+    descStmt s1,
+    descExpr e1,
+    toString (unwrapAddLen e1)
+] announceLine
 
 match e1
     EAdd args =>
@@ -218,21 +249,13 @@ recursiveUnionCase () =
     arrayNumber = JNum(v = 7)
     arrayText = JStr(v = "seven")
     recursiveArray = JArr(items = List() |> listAppend arrayNumber |> listAppend arrayText)
-    arrayLength = match recursiveArray
-        JArr items => listLength items
-        _ => 0
-    arrayHasNumber = match recursiveArray
-        JArr items => listContains (mapList items describe) (describe arrayNumber)
-        _ => false
+    arrayLength = withArrItems recursiveArray (\items => listLength items) 0
+    arrayHasNumber = withArrItems recursiveArray (\items => tagsHave items arrayNumber) false
     recursiveObject = JObj(entries = Map() |> mapSet "answer" arrayNumber |> mapSet "word" arrayText)
-    objectLength = match recursiveObject
-        JObj entries => mapLength entries
-        _ => 0
-    objectHasWord = match recursiveObject
-        JObj entries => mapContains entries "word"
-        _ => false
-    leftChild = Node(value = 2, left = Leaf, right = Node(value = 3, left = Leaf, right = Leaf))
-    rightChild = Node(value = 6, left = Leaf, right = Node(value = 7, left = Leaf, right = Leaf))
+    objectLength = withObjEntries recursiveObject (\entries => mapLength entries) 0
+    objectHasWord = withObjEntries recursiveObject (\entries => mapContains entries "word") false
+    leftChild = skewed 2 3
+    rightChild = skewed 6 7
     recursiveTree = Node(value = 4, left = leftChild, right = rightChild)
     expressionArgs = List() |> listAppend (ENum(v = 2)) |> listAppend (ENum(v = 3))
     recursiveExpression = EBlk(body = SRet(value = EAdd(args = expressionArgs)))
