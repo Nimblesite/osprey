@@ -12,6 +12,36 @@ type Slot = { label: string, weight: float, ready: bool }
 /// The int at `index` in `xs`, or -999 past either end.
 fn intAt(xs, index) = listGet(xs, index) ?: (0 - 999)
 
+/// The element at `index` in `xs`, or `fallback` past either end ([BUILTIN-LIST-GET]).
+fn elementOr(xs, index, fallback) = listGet(xs, index) ?: fallback
+
+/// True when [BUILTIN-LIST-GET] answers `Error` for `index` with the exact
+/// "index out of bounds" message, and false for any other outcome.
+fn oobGet(xs, index) = match listGet(xs, index) {
+    Success => false
+    Error { message } => message == "index out of bounds"
+}
+
+/// Every item of `wanted` is an element of `xs`.
+fn allListed(xs, wanted) = match wanted {
+    [] => true
+    [head, ...tail] => listContains(xs, head) && allListed(xs, tail)
+}
+
+/// No item of `absent` is an element of `xs`.
+fn noneListed(xs, absent) = match absent {
+    [] => true
+    [head, ...tail] => !listContains(xs, head) && noneListed(xs, tail)
+}
+
+/// The traversal transcript spells `expected` at `size` bytes, ends with `tail`
+/// and not its reversal, and carries `seam` where the last traversal joined it.
+fn transcriptSealed(log, expected, size, tail, reversed, seam) =
+    structuralEquals(
+        [log == expected, length(log) == size, endsWith(log, tail), endsWith(log, reversed), contains(log, seam)],
+        [true, true, true, false, true]
+    )
+
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs) =
     fn(next) => fn(last) => match next > last {
@@ -191,21 +221,13 @@ fn indexingPatternsAndDispatchCase() = {
     let dispatchTwenty = listConcat(dispatchTen, dispatchTen)
     let dispatchThirty = listConcat(dispatchTwenty, dispatchTen)
     let dispatchThirtyFive = listConcat(dispatchThirty, dispatchFive)
-    let commandOob = match commands[5] {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let emptyOob = match empty[0] {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
 
     // Successful and failing index paths retain all four legacy observations and exact failure reasons.
     checkAll("list index Result behavior", [
         (commands[0] ?: "missing") == "echo hello",
         (commands[2] ?: "missing") == "echo test",
-        commandOob,
-        emptyOob,
+        oobGet(commands, 5),
+        oobGet(empty, 0),
         (commands[1] ?: "missing") == "echo world",
         listLength(commands) == 3,
         listLength(empty) == 0
@@ -261,10 +283,10 @@ fn indexingPatternsAndDispatchCase() = {
         !listContains(empty + commands, "echo missing"),
         listLength(a + [7, 8]) == 5,
         listLength([7, 8] + a) == 5,
-        (listGet([7, 8] + a, 0) ?: ((0 - 999) )) == 7,
-        (listGet([7, 8] + a, 2) ?: ((0 - 999) )) == 1,
-        (listGet(a + [7, 8], 3) ?: ((0 - 999) )) == 7,
-        (listGet(a + [7, 8], 4) ?: ((0 - 999) )) == 8,
+        intAt([7, 8] + a, 0) == 7,
+        intAt([7, 8] + a, 2) == 1,
+        intAt(a + [7, 8], 3) == 7,
+        intAt(a + [7, 8], 4) == 8,
         length([7, 8] + a) == 5
     ])
 }
@@ -297,33 +319,33 @@ fn typedElementRetrievalCase() = {
         Slot { label: "right", weight: 2.5, ready: false }
     ]
     let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
-    let firstSlot = listGet(slots, 0) ?: missingSlot
-    let secondSlot = listGet(slots, 1) ?: missingSlot
-    let pastEndSlot = listGet(slots, 2) ?: missingSlot
+    let firstSlot = elementOr(slots, 0, missingSlot)
+    let secondSlot = elementOr(slots, 1, missingSlot)
+    let pastEndSlot = elementOr(slots, 2, missingSlot)
 
     // A string element comes back as its own string, at every index, through
     // both spellings the spec calls equivalent [BUILTIN-LIST-GET].
     checkAll("string elements survive listGet", [
-        (listGet(words, 0) ?: "none") == "alpha",
-        (listGet(words, 1) ?: "none") == "beta",
-        (listGet(words, 2) ?: "none") == "gamma",
+        elementOr(words, 0, "none") == "alpha",
+        elementOr(words, 1, "none") == "beta",
+        elementOr(words, 2, "none") == "gamma",
         (words[0] ?: "none") == "alpha",
         (words[1] ?: "none") == "beta",
         (words[2] ?: "none") == "gamma",
-        (listGet(words, 0) ?: "none") == (words[0] ?: "other"),
-        (listGet(words, 1) ?: "none") == (words[1] ?: "other"),
-        (listGet(words, 2) ?: "none") == (words[2] ?: "other"),
-        length(listGet(words, 0) ?: "") == 5,
-        length(listGet(words, 1) ?: "") == 4,
-        length(listGet(words, 2) ?: "") == 5,
-        "${listGet(words, 0) ?: "none"}-${listGet(words, 2) ?: "none"}" == "alpha-gamma",
-        contains(listGet(words, 1) ?: "none", "et"),
-        !contains(listGet(words, 1) ?: "none", "alpha"),
-        startsWith(listGet(words, 2) ?: "none", "gam"),
-        endsWith(listGet(words, 2) ?: "none", "mma"),
-        toUpperCase(listGet(words, 0) ?: "none") == "ALPHA",
-        (listGet(words, 3) ?: "past end") == "past end",
-        (listGet(words, 99) ?: "past end") == "past end",
+        elementOr(words, 0, "none") == (words[0] ?: "other"),
+        elementOr(words, 1, "none") == (words[1] ?: "other"),
+        elementOr(words, 2, "none") == (words[2] ?: "other"),
+        length(elementOr(words, 0, "")) == 5,
+        length(elementOr(words, 1, "")) == 4,
+        length(elementOr(words, 2, "")) == 5,
+        "${elementOr(words, 0, "none")}-${elementOr(words, 2, "none")}" == "alpha-gamma",
+        contains(elementOr(words, 1, "none"), "et"),
+        !contains(elementOr(words, 1, "none"), "alpha"),
+        startsWith(elementOr(words, 2, "none"), "gam"),
+        endsWith(elementOr(words, 2, "none"), "mma"),
+        toUpperCase(elementOr(words, 0, "none")) == "ALPHA",
+        elementOr(words, 3, "past end") == "past end",
+        elementOr(words, 99, "past end") == "past end",
         (words[3] ?: "past end") == "past end"
     ])
 
@@ -332,43 +354,43 @@ fn typedElementRetrievalCase() = {
     // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-APPEND],
     // [BUILTIN-LIST-CONCAT]).
     checkAll("string elements survive every list producer", [
-        (listGet(listReverse(words), 0) ?: "none") == "gamma",
-        (listGet(listReverse(words), 2) ?: "none") == "alpha",
-        (listGet(listPrepend(words, "zero"), 0) ?: "none") == "zero",
-        (listGet(listPrepend(words, "zero"), 1) ?: "none") == "alpha",
-        (listGet(listAppend(words, "delta"), 3) ?: "none") == "delta",
-        (listGet(listAppend(words, "delta"), 0) ?: "none") == "alpha",
-        (listGet(words + ["delta"], 3) ?: "none") == "delta",
-        (listGet(["zero"] + words, 0) ?: "none") == "zero",
-        (listGet(["zero"] + words, 1) ?: "none") == "alpha",
+        elementOr(listReverse(words), 0, "none") == "gamma",
+        elementOr(listReverse(words), 2, "none") == "alpha",
+        elementOr(listPrepend(words, "zero"), 0, "none") == "zero",
+        elementOr(listPrepend(words, "zero"), 1, "none") == "alpha",
+        elementOr(listAppend(words, "delta"), 3, "none") == "delta",
+        elementOr(listAppend(words, "delta"), 0, "none") == "alpha",
+        elementOr(words + ["delta"], 3, "none") == "delta",
+        elementOr(["zero"] + words, 0, "none") == "zero",
+        elementOr(["zero"] + words, 1, "none") == "alpha",
         listLength(listAppend(words, "delta")) == 4,
         listLength(listPrepend(words, "zero")) == 4,
-        structuralEquals([listContains(words, "beta"), listContains(words, "delta")], [true, false]),
+        allListed(words, ["beta"]) && noneListed(words, ["delta"]),
         listContains(listAppend(words, "delta"), "delta"),
-        (listGet(listReverse(listReverse(words)), 1) ?: "none") == "beta"
+        elementOr(listReverse(listReverse(words)), 1, "none") == "beta"
     ])
 
     // A float element keeps its IEEE value; a bool element keeps true/false.
     checkAll("float and bool elements survive listGet", [
-        (listGet(ratios, 0) ?: 0.0) == 0.5,
-        (listGet(ratios, 1) ?: 0.0) == 1.25,
-        (listGet(ratios, 2) ?: 0.0) == 2.75,
+        elementOr(ratios, 0, 0.0) == 0.5,
+        elementOr(ratios, 1, 0.0) == 1.25,
+        elementOr(ratios, 2, 0.0) == 2.75,
         (ratios[1] ?: 0.0) == 1.25,
-        (listGet(ratios, 0) ?: 0.0) + (listGet(ratios, 1) ?: 0.0) == 1.75,
-        (listGet(ratios, 2) ?: 0.0) - (listGet(ratios, 0) ?: 0.0) == 2.25,
-        (listGet(ratios, 1) ?: 0.0) * 2.0 == 2.5,
-        (listGet(ratios, 9) ?: 9.5) == 9.5,
-        (listGet(listReverse(ratios), 0) ?: 0.0) == 2.75,
+        elementOr(ratios, 0, 0.0) + elementOr(ratios, 1, 0.0) == 1.75,
+        elementOr(ratios, 2, 0.0) - elementOr(ratios, 0, 0.0) == 2.25,
+        elementOr(ratios, 1, 0.0) * 2.0 == 2.5,
+        elementOr(ratios, 9, 9.5) == 9.5,
+        elementOr(listReverse(ratios), 0, 0.0) == 2.75,
         listLength(ratios) == 3,
-        (listGet(flags, 0) ?: false),
-        !(listGet(flags, 1) ?: true),
-        (listGet(flags, 2) ?: false),
+        elementOr(flags, 0, false),
+        !elementOr(flags, 1, true),
+        elementOr(flags, 2, false),
         (flags[0] ?: false),
         !(flags[1] ?: true),
-        (listGet(flags, 0) ?: false) == (listGet(flags, 2) ?: true),
-        (listGet(flags, 0) ?: false) != (listGet(flags, 1) ?: true),
-        !(listGet(flags, 7) ?: false),
-        (listGet(listReverse(flags), 1) ?: true) == false,
+        elementOr(flags, 0, false) == elementOr(flags, 2, true),
+        elementOr(flags, 0, false) != elementOr(flags, 1, true),
+        !elementOr(flags, 7, false),
+        elementOr(listReverse(flags), 1, true) == false,
         listLength(flags) == 3
     ])
 
@@ -392,10 +414,10 @@ fn typedElementRetrievalCase() = {
         pastEndSlot.label == "missing",
         pastEndSlot.weight == 0.0,
         !pastEndSlot.ready,
-        (listGet(listReverse(slots), 0) ?: missingSlot).label == "right",
-        (listGet(listReverse(slots), 1) ?: missingSlot).label == "left",
-        (listGet(listAppend(slots, missingSlot), 2) ?: firstSlot).label == "missing",
-        (listGet(listPrepend(slots, missingSlot), 0) ?: firstSlot).weight == 0.0,
+        elementOr(listReverse(slots), 0, missingSlot).label == "right",
+        elementOr(listReverse(slots), 1, missingSlot).label == "left",
+        elementOr(listAppend(slots, missingSlot), 2, firstSlot).label == "missing",
+        elementOr(listPrepend(slots, missingSlot), 0, firstSlot).weight == 0.0,
         listLength(slots) == 2
     ])
 }
@@ -606,24 +628,24 @@ fn stringListPatternCase() = {
     // ([BUILTIN-LIST-CONTAINS]), so the empty string is a findable element and a
     // case difference is not.
     checkAll("string element edge cases survive indexing and membership", [
-        (listGet(odd, 0) ?: "x") == "",
-        isEmpty(listGet(odd, 0) ?: "x"),
-        length(listGet(odd, 0) ?: "x") == 0,
-        (listGet(odd, 1) ?: "x") == " ",
-        length(listGet(odd, 1) ?: "x") == 1,
-        (listGet(odd, 3) ?: "x") == "12",
-        contains(listGet(odd, 4) ?: "x", ","),
-        startsWith(listGet(odd, 5) ?: "x", "ab"),
-        endsWith(listGet(odd, 5) ?: "x", "ab"),
-        contains(listGet(odd, 5) ?: "x", " "),
-        toUpperCase(listGet(words, 1) ?: "x") == "BETA",
-        toLowerCase(toUpperCase(listGet(words, 2) ?: "x")) == "gamma",
+        elementOr(odd, 0, "x") == "",
+        isEmpty(elementOr(odd, 0, "x")),
+        length(elementOr(odd, 0, "x")) == 0,
+        elementOr(odd, 1, "x") == " ",
+        length(elementOr(odd, 1, "x")) == 1,
+        elementOr(odd, 3, "x") == "12",
+        contains(elementOr(odd, 4, "x"), ","),
+        startsWith(elementOr(odd, 5, "x"), "ab"),
+        endsWith(elementOr(odd, 5, "x"), "ab"),
+        contains(elementOr(odd, 5, "x"), " "),
+        toUpperCase(elementOr(words, 1, "x")) == "BETA",
+        toLowerCase(toUpperCase(elementOr(words, 2, "x"))) == "gamma",
         structuralEquals([listContains(odd, ""), listContains(odd, " "), listContains(odd, "A")], [true, true, false]),
         structuralEquals([listContains(dup, "same"), listContains(dup, "other")], [true, true]),
         structuralEquals([listContains(dup, "missing"), listContains(noWords, "")], [false, false]),
         structuralEquals([listLength(dup), listLength(odd), listLength(listReverse(dup))], [4, 6, 4]),
-        (listGet(dup, 0) ?: "x") == (listGet(dup, 3) ?: "y"),
-        (listGet(dup, 0) ?: "x") != (listGet(dup, 2) ?: "y"),
+        elementOr(dup, 0, "x") == elementOr(dup, 3, "y"),
+        elementOr(dup, 0, "x") != elementOr(dup, 2, "y"),
         listLength(words) == 3
     ])
 }
@@ -691,7 +713,7 @@ fn floatAndBoolListPatternCase() = {
         sumFloats([0.25, 0.25]) == 0.5,
         listLength(ratios) == 3,
         listLength(ratios + twoFloats) == 5,
-        structuralEquals([listContains(ratios, 1.25), listContains(ratios, 1.5)], [true, false]),
+        allListed(ratios, [1.25]) && noneListed(ratios, [1.5]),
         listContains(dupFloats, 2.0)
     ])
 
@@ -715,7 +737,7 @@ fn floatAndBoolListPatternCase() = {
         structuralEquals([headOr(mixed, false), headOr(listReverse(pairOn), true)], [true, false]),
         structuralEquals([secondOr(mixed, true), secondOr(pairOn, true)], [false, false]),
         structuralEquals([secondOr([false, true], false), secondOr(noFlags, true)], [true, true]),
-        structuralEquals([listContains(mixed, false), listContains(mixed, true)], [true, true]),
+        allListed(mixed, [false, true]),
         structuralEquals([listContains(allOn, false), listContains(allOff, true)], [false, false]),
         structuralEquals([listLength(mixed + allOff), countTrue(mixed + allOff), tailLength(mixed)], [6, 2, 2]),
         tailLength(noFlags) == ((0 - 1) ),
@@ -810,12 +832,12 @@ fn recordListPatternCase() = {
         !contains(slotLabels(noSlots), "${missingSlot.label}>"),
         listLength(listAppend(trio, missingSlot)) == 4,
         listLength(trio) == 3,
-        (listGet(trio, 2) ?: missingSlot).label == "extra",
-        (listGet(trio, 2) ?: missingSlot).weight == 4.0,
-        (listGet(trio, 2) ?: missingSlot).ready,
-        (listGet(trio, 3) ?: missingSlot).label == "missing",
-        (listGet(slots, 2) ?: missingSlot).label == "missing",
-        (listGet(noSlots, 0) ?: missingSlot).label == "missing",
+        elementOr(trio, 2, missingSlot).label == "extra",
+        elementOr(trio, 2, missingSlot).weight == 4.0,
+        elementOr(trio, 2, missingSlot).ready,
+        elementOr(trio, 3, missingSlot).label == "missing",
+        elementOr(slots, 2, missingSlot).label == "missing",
+        elementOr(noSlots, 0, missingSlot).label == "missing",
         isEmpty(noSlots),
         !isEmpty(slots),
         length(slots) == 2,
@@ -845,15 +867,15 @@ fn nestedListCase() = {
     // sumInner(grown) = 45 + 21 = 66.
     checkAll("nested list elements come back as lists", [
         structuralEquals([listLength(rows), listLength(firstRow), sumList(firstRow)], [3, 2, 3]),
-        (listGet(firstRow, 0) ?: 0) == 1,
-        (listGet(firstRow, 1) ?: 0) == 2,
+        elementOr(firstRow, 0, 0) == 1,
+        elementOr(firstRow, 1, 0) == 2,
         listLength(rowAt(rows, 1)) == 3,
         sumList(rowAt(rows, 1)) == 12,
-        (listGet(rowAt(rows, 1), 2) ?: 0) == 5,
+        elementOr(rowAt(rows, 1), 2, 0) == 5,
         listLength(rowAt(rows, 2)) == 4,
         sumList(rowAt(rows, 2)) == 30,
-        (listGet(rowAt(rows, 2), 3) ?: 0) == 9,
-        (listGet(rowAt(rows, 2), 4) ?: 77) == 77,
+        elementOr(rowAt(rows, 2), 3, 0) == 9,
+        elementOr(rowAt(rows, 2), 4, 77) == 77,
         structuralEquals([sumList(sentinelProbe), listLength(sentinelProbe), sumInner(rows)], [777, 1, 45]),
         structuralEquals([sumInner(oneRow), sumInner(twoRows), sumInner(withEmptyRow)], [27, 6, 45]),
         structuralEquals([sumInner(grown), listLength(withEmptyRow)], [66, 4]),
@@ -946,30 +968,21 @@ fn typedIterationOrderCase() = {
 
     // 17 + "true|" (5) + "false|" (6) = 28.
     checkAll("forEachList visits bool elements in index order", [
-        log == "alpha|beta|gamma|true|false|",
-        length(log) == 28,
-        structuralEquals([endsWith(log, "true|false|"), endsWith(log, "false|true|")], [true, false]),
-        contains(log, "gamma|true|")
+        transcriptSealed(log, "alpha|beta|gamma|true|false|", 28, "true|false|", "false|true|", "gamma|true|")
     ])
 
     forEachList(counts, fn(count) => perform TranscriptProbe.note("${count}"))
 
     // 28 + "7|8|9|" (6) = 34.
     checkAll("forEachList visits int elements in index order", [
-        log == "alpha|beta|gamma|true|false|7|8|9|",
-        length(log) == 34,
-        structuralEquals([endsWith(log, "7|8|9|"), contains(log, "9|8|7|")], [true, false]),
-        contains(log, "false|7|")
+        transcriptSealed(log, "alpha|beta|gamma|true|false|7|8|9|", 34, "7|8|9|", "9|8|7|", "false|7|")
     ])
 
     forEachList(slots, fn(slot) => perform TranscriptProbe.note(slot.label))
 
     // 34 + "left|" (5) + "right|" (6) = 45.
     checkAll("forEachList visits record elements in index order", [
-        log == "alpha|beta|gamma|true|false|7|8|9|left|right|",
-        length(log) == 45,
-        structuralEquals([endsWith(log, "left|right|"), endsWith(log, "right|left|")], [true, false]),
-        contains(log, "9|left|")
+        transcriptSealed(log, "alpha|beta|gamma|true|false|7|8|9|left|right|", 45, "left|right|", "right|left|", "9|left|")
     ])
 
     forEachList(listReverse(words), fn(word) => perform TranscriptProbe.note(word))
@@ -988,15 +1001,15 @@ fn typedIterationOrderCase() = {
     // forEachList, so the two mechanisms cross-check each other.
     // weave(0,7)=7, weave(7,8)=78, weave(78,9)=789.
     checkAll("range folds reproduce list order for every element type", [
-        (range(0, 3) |> fold("", fn(acc, i) => "${acc}${listGet(words, i) ?: "?"}|")) == "alpha|beta|gamma|",
-        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, (listGet(counts, i) ?: 0)))) == 789,
-        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, (listGet(listReverse(counts), i) ?: 0)))) == 987,
-        (range(1, 3) |> fold(0, fn(acc, i) => weave(acc, (listGet(counts, i) ?: 0)))) == 89,
-        (range(0, 0) |> fold(0, fn(acc, i) => weave(acc, (listGet(counts, i) ?: 0)))) == 0,
-        (range(0, 2) |> fold(0, fn(acc, i) => acc + boolWeight(listGet(flags, i) ?: false) )) == 1,
-        (range(0, 2) |> fold(0.0, fn(acc, i) => acc + (listGet(ratios, i) ?: 0.0))) == 1.75,
-        (range(0, 3) |> fold(0.0, fn(acc, i) => acc + (listGet(ratios, i) ?: 0.0))) == 4.5,
-        (range(0, 2) |> fold("", fn(acc, i) => "${acc}${(listGet(slots, i) ?: missingSlot).label}>")) == "left>right>",
+        (range(0, 3) |> fold("", fn(acc, i) => "${acc}${elementOr(words, i, "?")}|")) == "alpha|beta|gamma|",
+        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 789,
+        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(listReverse(counts), i, 0)))) == 987,
+        (range(1, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 89,
+        (range(0, 0) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 0,
+        (range(0, 2) |> fold(0, fn(acc, i) => acc + boolWeight(elementOr(flags, i, false)) )) == 1,
+        (range(0, 2) |> fold(0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0))) == 1.75,
+        (range(0, 3) |> fold(0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0))) == 4.5,
+        (range(0, 2) |> fold("", fn(acc, i) => "${acc}${elementOr(slots, i, missingSlot).label}>")) == "left>right>",
         (range(0, 5) |> fold(0, fn(acc, i) => acc + i )) == 10,
         (range(5, 5) |> fold(99, weave)) == 99,
         (range(1, 6) |> fold(0, weave)) == 12345,
@@ -1053,68 +1066,56 @@ fn boundaryIndexCase() = {
     let negIndex = (0 - 1) 
     let farNegIndex = (0 - 1000) 
     let lastIndex = (listLength(forty) - 1) 
-    let negError = match listGet(words, negIndex) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let farError = match listGet(forty, 1000) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
-    let emptyError = match listGet(noWords, 0) {
-        Success => false
-        Error { message } => message == "index out of bounds"
-    }
 
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".
     checkAll("string list index boundaries around the 32-element tail", [
         structuralEquals([listLength(five), listLength(ten), listLength(twenty), listLength(forty)], [5, 10, 20, 40]),
         lastIndex == 39,
-        (listGet(forty, 0) ?: "?") == "s0",
-        (listGet(forty, 4) ?: "?") == "s4",
-        (listGet(forty, 5) ?: "?") == "s0",
-        (listGet(forty, 30) ?: "?") == "s0",
-        (listGet(forty, 31) ?: "?") == "s1",
-        (listGet(forty, 32) ?: "?") == "s2",
-        (listGet(forty, 33) ?: "?") == "s3",
-        (listGet(forty, lastIndex) ?: "?") == "s4",
-        (listGet(forty, 40) ?: "past") == "past",
-        (listGet(forty, 1000) ?: "past") == "past",
-        (listGet(forty, negIndex) ?: "past") == "past",
-        (listGet(forty, farNegIndex) ?: "past") == "past",
-        (listGet(listReverse(forty), 0) ?: "?") == "s4",
-        (listGet(listReverse(forty), 7) ?: "?") == "s2",
-        (listGet(listReverse(forty), 39) ?: "?") == "s0",
+        elementOr(forty, 0, "?") == "s0",
+        elementOr(forty, 4, "?") == "s4",
+        elementOr(forty, 5, "?") == "s0",
+        elementOr(forty, 30, "?") == "s0",
+        elementOr(forty, 31, "?") == "s1",
+        elementOr(forty, 32, "?") == "s2",
+        elementOr(forty, 33, "?") == "s3",
+        elementOr(forty, lastIndex, "?") == "s4",
+        elementOr(forty, 40, "past") == "past",
+        elementOr(forty, 1000, "past") == "past",
+        elementOr(forty, negIndex, "past") == "past",
+        elementOr(forty, farNegIndex, "past") == "past",
+        elementOr(listReverse(forty), 0, "?") == "s4",
+        elementOr(listReverse(forty), 7, "?") == "s2",
+        elementOr(listReverse(forty), 39, "?") == "s0",
         listLength(listAppend(forty, "tail")) == 41,
-        (listGet(listAppend(forty, "tail"), 40) ?: "?") == "tail",
-        (listGet(listAppend(forty, "tail"), 32) ?: "?") == "s2",
-        (listGet(listPrepend(forty, "head"), 0) ?: "?") == "head",
-        (listGet(listPrepend(forty, "head"), 33) ?: "?") == "s2",
+        elementOr(listAppend(forty, "tail"), 40, "?") == "tail",
+        elementOr(listAppend(forty, "tail"), 32, "?") == "s2",
+        elementOr(listPrepend(forty, "head"), 0, "?") == "head",
+        elementOr(listPrepend(forty, "head"), 33, "?") == "s2",
         listLength(forty) == 40
     ])
 
     // The Error branch is taken for every element type. Asserting BOTH fallbacks
     // for the bool list proves the fallback was used rather than a stored value.
     checkAll("out-of-range indexing takes the Error branch for every type", [
-        negError,
-        farError,
-        emptyError,
-        (listGet(words, 3) ?: "past") == "past",
-        (listGet(words, negIndex) ?: "past") == "past",
-        (listGet(words, 2) ?: "past") == "gamma",
-        (listGet(ratios, 3) ?: 9.5) == 9.5,
-        (listGet(ratios, negIndex) ?: 9.5) == 9.5,
-        (listGet(ratios, 2) ?: 9.5) == 2.75,
-        (listGet(marks, 2) ?: false) == false,
-        (listGet(marks, 2) ?: true) == true,
-        (listGet(marks, negIndex) ?: true) == true,
-        (listGet(marks, 1) ?: true) == false,
-        (listGet(slots, 2) ?: missingSlot).label == "missing",
-        (listGet(slots, negIndex) ?: missingSlot).label == "missing",
-        (listGet(slots, 1) ?: missingSlot).label == "right",
-        (listGet(noWords, 0) ?: "past") == "past",
-        (listGet(noWords, negIndex) ?: "past") == "past",
+        oobGet(words, negIndex),
+        oobGet(forty, 1000),
+        oobGet(noWords, 0),
+        elementOr(words, 3, "past") == "past",
+        elementOr(words, negIndex, "past") == "past",
+        elementOr(words, 2, "past") == "gamma",
+        elementOr(ratios, 3, 9.5) == 9.5,
+        elementOr(ratios, negIndex, 9.5) == 9.5,
+        elementOr(ratios, 2, 9.5) == 2.75,
+        elementOr(marks, 2, false) == false,
+        elementOr(marks, 2, true) == true,
+        elementOr(marks, negIndex, true) == true,
+        elementOr(marks, 1, true) == false,
+        elementOr(slots, 2, missingSlot).label == "missing",
+        elementOr(slots, negIndex, missingSlot).label == "missing",
+        elementOr(slots, 1, missingSlot).label == "right",
+        elementOr(noWords, 0, "past") == "past",
+        elementOr(noWords, negIndex, "past") == "past",
         isEmpty(noWords),
         listLength(noWords) == 0
     ])
@@ -1129,15 +1130,15 @@ fn boundaryIndexCase() = {
         tailLength(forty) == 39,
         structuralEquals([headOr(forty, "?"), secondOr(forty, "?"), lastWord(five)], ["s0", "s1", "s4"]),
         lastWord(ten) == "s4",
-        structuralEquals([listContains(forty, "s3"), listContains(forty, "s5")], [true, false]),
+        allListed(forty, ["s3"]) && noneListed(forty, ["s5"]),
         structuralEquals([listContains(five, "s0"), listContains(noWords, "s0")], [true, false]),
-        (listGet(ten, 9) ?: "?") == "s4",
-        (listGet(twenty, 19) ?: "?") == "s4",
-        (listGet(twenty, 10) ?: "?") == "s0",
+        elementOr(ten, 9, "?") == "s4",
+        elementOr(twenty, 19, "?") == "s4",
+        elementOr(twenty, 10, "?") == "s0",
         listLength(ten + five) == 15,
-        (listGet(ten + five, 10) ?: "?") == "s0",
-        (listGet(five + ten, 4) ?: "?") == "s4",
-        (listGet(five + ten, 5) ?: "?") == "s0"
+        elementOr(ten + five, 10, "?") == "s0",
+        elementOr(five + ten, 4, "?") == "s4",
+        elementOr(five + ten, 5, "?") == "s0"
     ])
 }
 
@@ -1154,10 +1155,10 @@ fn foldSeedCase() = {
     let doubled = range(0, 3) |> fold([], fn(acc, i) => listConcat(acc, [i, i]))
     let seeded = range(3, 6) |> fold([1, 2], fn(acc, i) => listAppend(acc, i))
     checkAll("fold over a list-literal seed", [
-        listLength(squares) == 4, (listGet(squares, 3) ?: 0) == 16, sumList(squares) == 30,
-        listLength(words) == 3, (listGet(words, 2) ?: "?") == "w2", joinWords(words) == "w0|w1|w2|",
-        listLength(doubled) == 6, (listGet(doubled, 4) ?: -1) == 2, sumList(doubled) == 6,
-        listLength(seeded) == 5, (listGet(seeded, 0) ?: 0) == 1, (listGet(seeded, 4) ?: 0) == 5, sumList(seeded) == 15
+        listLength(squares) == 4, elementOr(squares, 3, 0) == 16, sumList(squares) == 30,
+        listLength(words) == 3, elementOr(words, 2, "?") == "w2", joinWords(words) == "w0|w1|w2|",
+        listLength(doubled) == 6, elementOr(doubled, 4, -1) == 2, sumList(doubled) == 6,
+        listLength(seeded) == 5, elementOr(seeded, 0, 0) == 1, elementOr(seeded, 4, 0) == 5, sumList(seeded) == 15
     ])
 }
 
@@ -1174,9 +1175,9 @@ fn lineAfter(acc, i) = match i == 0 {
 fn linesIndexCase() = {
     let text = range(0, 2000) |> fold("", lineAfter)
     let rows = lines(text)
-    let total = range(0, 10000) |> fold(0, fn(acc, i) => acc + byteLength(listGet(rows, i % 2000) ?: ""))
+    let total = range(0, 10000) |> fold(0, fn(acc, i) => acc + byteLength(elementOr(rows, i % 2000, "")))
     checkAll("a bound string list is read by index in constant time", [
-        listLength(rows) == 2000, (listGet(rows, 1999) ?: "?") == "line 1999", total == 84450
+        listLength(rows) == 2000, elementOr(rows, 1999, "?") == "line 1999", total == 84450
     ])
 }
 
