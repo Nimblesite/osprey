@@ -24,7 +24,7 @@ Learn how Osprey handles input and output with algebraic effects. Every byte the
 
 ```sh
 osprey src/osprey/examples/casting/test --run          # no TV needed
-make -C src/toolchain/targets/macos casting            # open the player
+make -C macos casting            # open the player
 ```
 
 The longer write-up, with the player's limits, is [How to Chromecast from a Mac to a TV](/blog/2026-11-01-chromecast-from-mac-to-tv/). Osprey is actively evolving.

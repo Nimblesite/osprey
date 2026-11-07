@@ -36,7 +36,7 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 ## 5. Storage on GPUI, plus the two unrecorded measurements
 
 - [ ] Add the GPUI `MeasureFolders` adapter `src/toolchain/hosts/gpui/src/adapters/measure.rs` ([UI-EFFECTS-MEASURE]): Rust on `std::fs`, `st_blocks` and `(st_dev, st_ino)` on Unix, the Windows rules from spec 0048's folder walk. Tests on a temporary tree: hidden file, symbolic link, a hard link counted once, an unreadable folder, deadline, cancel. Move `measure-folders` from UNANSWERED to ANSWERED in `coverage.rs`. Check: `cargo test --manifest-path src/toolchain/hosts/gpui/Cargo.toml measure`.
-- [ ] Map `split` and `context-menu` in `src/toolchain/hosts/gpui/src/render.rs` (+ `render/controls.rs`) so Storage's root split and row menus draw; move them from REFUSED to DRAWN in `coverage.rs`. Check: `cargo test coverage`; `make -C src/toolchain/targets/macos storage` opens with no diagnostics.
+- [ ] Map `split` and `context-menu` in `src/toolchain/hosts/gpui/src/render.rs` (+ `render/controls.rs`) so Storage's root split and row menus draw; move them from REFUSED to DRAWN in `coverage.rs`. Check: `cargo test coverage`; `make -C macos storage` opens with no diagnostics.
 - [ ] Storage acceptance: `./target/release/osprey test src/osprey/examples/storage/test` green on every OS; no host source names Storage ([NATIVE-HOSTS-NEUTRAL]).
 - [ ] Record flat memory over ten minutes of Flock in the GPUI window; put the numbers in `src/toolchain/hosts/gpui/README.md`.
 - [ ] Record a focused-window fps reading at 5,000 birds with the screen unlocked (M-series Mac); put it in `src/osprey/examples/gpui/flock/README.md`.
@@ -73,8 +73,8 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 - [ ] iPhone counter on `src/toolchain/hosts/swift`.
 - [ ] Talon Bank's Android and iOS apps on the Compose and SwiftUI hosts; Talon Bank's web client on the browser host.
-- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`src/osprey/examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `src/toolchain/targets/windows.json` gains a `graphics` entry.
-- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `src/toolchain/targets/windows.json` with the capabilities listed in AGENTS.md § Apps.
+- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`src/osprey/examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `windows/apps.json` gains a `graphics` entry.
+- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `windows/apps.json` with the capabilities listed in AGENTS.md § Apps.
 - [ ] Bank and GPT-2 sandboxed in AppContainers launched by the apps Makefile.
 
 ## 11. Replace the JSON bridge with shared memory [NATIVE-SHM]

@@ -23,11 +23,11 @@ startup with `model error: …` and exit code 1; nothing is served from a model
 that did not load. The runtime logs one structured line per request on stdout,
 and the process stops the listener and exits cleanly when its lifetime ends.
 
-That GGUF comes from `make -C src/toolchain/targets qwen-pull`: it fetches the
+That GGUF comes from `make -C llms qwen-pull`: it fetches the
 pinned quant from `unsloth/Qwen3.8-27B-GGUF` into `~/.cache/osprey-llm/gguf`,
 resuming a partial download and checking its SHA-256 against Hugging Face's LFS
 metadata before the file is named `.gguf`. The baseline's other quants:
-`QWEN_QUANT=UD-Q5_K_M make -C src/toolchain/targets qwen-pull` (also
+`QWEN_QUANT=UD-Q5_K_M make -C llms qwen-pull` (also
 `QWEN_QUANT=UD-IQ3_XXS`).
 
 ## What it serves

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { rootViolations } from './root-layout.mjs'
 
-const clean = { tracked: ['Makefile', 'src', 'docs'], files: ['Makefile', '.env', '.DS_Store', '.mcp.json'] }
+const clean = { tracked: ['Makefile', 'src', 'docs', 'android', 'ios', 'llms', 'macos', 'tests', 'web', 'windows'], files: ['Makefile', '.env', '.DS_Store', '.mcp.json'] }
 
 test('a clean root has no violations', () => {
   assert.deepEqual(rootViolations(clean), [])

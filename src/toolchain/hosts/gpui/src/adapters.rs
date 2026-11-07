@@ -3,7 +3,7 @@
 mod files;
 // [CAST-MOBILE-DELIVERY] the iOS OS bridge; its protocol layer also compiles for
 // boundary tests, while the C calls themselves stay iOS-only. Mobile is unfinished,
-// so CI leaves those tests out: `make -C src/toolchain/targets/tests casting-mobile-tools` runs them.
+// so CI leaves those tests out: `make -C tests casting-mobile-tools` runs them.
 #[cfg(any(
     target_os = "ios",
     target_os = "android",

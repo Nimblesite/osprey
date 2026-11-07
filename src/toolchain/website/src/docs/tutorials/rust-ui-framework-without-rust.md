@@ -25,7 +25,7 @@ Learn to write a GPUI app in Osprey. GPUI is the GPU-rendered Rust UI framework 
 
 ```sh
 osprey test src/osprey/examples/gpui/painting/test     # no window needed
-make -C src/toolchain/targets/macos painting           # open the app
+make -C macos painting           # open the app
 ```
 
 More on UI machine documents: [A Rust UI framework without writing Rust](/blog/2026-11-01-rust-ui-framework-without-rust/). Osprey is actively evolving.

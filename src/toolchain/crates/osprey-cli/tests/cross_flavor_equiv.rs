@@ -179,9 +179,9 @@ fn python_gpt2_generator_prints_the_default_generator_messages() -> std::io::Res
 /// pass, KV-cached steps and greedy sampling print the Default example's
 /// output byte for byte on the host surface, over host lists and on the GPU
 /// hardware this host has ([GPU-DEVICE], [FLAVOR-PYTHON-GPU]). It needs the
-/// published checkpoint in src/osprey/examples/llms/gpt2/weights, which `make -C src/toolchain/targets gpt2` downloads.
+/// published checkpoint in src/osprey/examples/llms/gpt2/weights, which `make -C llms gpt2` downloads.
 #[test]
-#[ignore = "needs the GPT-2 checkpoint (`make -C src/toolchain/targets gpt2` downloads it): run with --ignored"]
+#[ignore = "needs the GPT-2 checkpoint (`make -C llms gpt2` downloads it): run with --ignored"]
 fn python_gpt2_generator_output_is_byte_identical_to_the_default_generator() -> std::io::Result<()>
 {
     let devices: &[&str] = if cfg!(target_os = "macos") {

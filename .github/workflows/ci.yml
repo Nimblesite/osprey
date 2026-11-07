@@ -1085,10 +1085,10 @@ jobs:
           target: google_apis
           arch: x86_64
           script: |
-            make -C src/toolchain/targets android-test
+            make -C android/tests inbox
             mkdir -p src/osprey/examples/projects/modules/mobile/android/build
             adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
-            make -C src/toolchain/targets bank-android-test
+            make -C android/tests bank
             src/osprey/examples/projects/modules/mobile/android/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd src/osprey/examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
@@ -1175,19 +1175,19 @@ jobs:
         include:
           - part: iOS
             minutes: 22
-            run: make -C src/toolchain/targets ios-test mobile-ios-test
+            run: make -C ios/tests examples inbox
           - part: macOS
             minutes: 15
-            run: make -C src/toolchain/targets macos-test
+            run: make -C macos/tests examples
           - part: Qwen model (Metal)
             minutes: 30
-            run: make -C src/toolchain/targets/macos/tests qwen-headless
+            run: make -C macos/tests qwen-headless
           - part: Qwen pull
             minutes: 5
-            run: make -C src/toolchain/targets/tests qwen-pull-headless
+            run: make -C tests qwen-pull-headless
           - part: Talon Bank
             minutes: 22
-            run: make -C src/toolchain/targets bank-ios-test
+            run: make -C ios/tests bank
           - part: Workbench
             minutes: 15
             run: |
@@ -1332,7 +1332,7 @@ jobs:
           OSPREY_AGENT_GOLDENS: ${{ github.workspace }}/src/osprey/examples/agent/goldens/macos-26-ci
         run: |
           make _runtime
-          OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make -C src/toolchain/targets/macos/tests agent-headless
+          OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make -C macos/tests agent-headless
 
       - name: Collect the remaining Agent screenshots after a failed comparison
         if: failure() && steps.agent-check.outcome == 'failure'

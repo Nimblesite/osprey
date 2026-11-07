@@ -1,5 +1,5 @@
-# Graphics: settings and the platform hosts behind `make -C src/toolchain/targets graphics` and
-# `make -C src/toolchain/targets graphics-smoke`, which the root Makefile documents.
+# Graphics: settings and the platform hosts behind `make -C macos graphics` (or windows) and
+# `make -C macos/tests graphics` (or windows/tests).
 GFX_DIR := src/osprey/examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make -C src/toolchain/targets graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C windows graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
@@ -109,6 +109,14 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 			*) echo "graphics-smoke: $$scene did not draw $(GFX_SMOKE_FRAMES) frames" >&2; exit 1 ;; esac; \
 	done
 endif
+
+## _bank-web: Regenerate Talon Bank's embedded React host and Osprey WebAssembly client. Requires Node and
+##            a WASI sysroot; the generated Osprey Bundle is committed so native and CI builds need neither.
+.PHONY: _bank-web
+_bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
+	@echo "==> Building Talon Bank browser application..."
+	cd src/osprey/examples/projects/modules/web && npm run build
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2

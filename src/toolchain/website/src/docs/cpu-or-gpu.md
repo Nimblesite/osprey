@@ -55,8 +55,8 @@ OSPREY_GPU=metal osprey product.py --run
 Run all of GPT-2 on either backend from a built checkout. The first output line names the backend:
 
 ```sh
-make -C src/toolchain/targets gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
-make -C src/toolchain/targets gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
+make -C llms gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
+make -C llms gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=lists
 ```
 
 ## How it works

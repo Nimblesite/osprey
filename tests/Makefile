@@ -1,13 +1,13 @@
 # Each app's headless tests: no host, no window and no network, so they run the same on every
-# platform. One target runs one app. Tests on a real host: src/toolchain/targets/macos/tests and src/toolchain/targets/windows/tests.
-ROOT ?= ../../../..
+# platform. One target runs one app. Tests on a real host: macos/tests, windows/tests, ios/tests, android/tests and web/tests.
+ROOT ?= ..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-mobile casting flock inbox painting qwen qwen-pull-headless signal-flow storage synth workbench
+.PHONY: agent bank bank-mobile casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -57,9 +57,13 @@ inbox: _runtime
 painting:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/gpui/painting/test
 
+## python-app-ports: Verify the classifier, vector search and text evaluation ports.
+python-app-ports: build
+	$(MAKE) _test_python_app_ports
+
 ## qwen: The Qwen model suite on the host under GC and ARC, each equal to the golden byte for byte, and
 ##       the server's fixture-table lanes through the real ollama and openai clients
-##       (~/.cache/osprey-llm/oracle-venv). The Metal run: src/toolchain/targets/macos/tests qwen-headless.
+##       (~/.cache/osprey-llm/oracle-venv). The Metal run: macos/tests qwen-headless.
 qwen: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) _qwen-suite MEMORY=gc
@@ -88,4 +92,10 @@ workbench: build
 	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
 	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
 	done
+
+## workbench-proof-assets: Stage and byte-check the 13 bundled proof exports and
+##                         2 upstream licences; any extra, missing or changed file fails.
+workbench-proof-assets:
+	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
+	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
 endif

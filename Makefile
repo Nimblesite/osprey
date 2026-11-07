@@ -1,7 +1,7 @@
 # Build from the repository root. See docs/contributing/repository-map.md.
 # This file holds the repository-wide targets. Every other public target lives
-# in a folder Makefile, one folder per area, as docs/book/Makefile does: src/toolchain/targets/ (every
-# app), src/osprey/packages/, src/osprey/tests/hunt/, src/toolchain/vscode-extension/, src/toolchain/website/, src/toolchain/benchmarks/ and
+# in a folder Makefile, one folder per area, as docs/book/Makefile does: the platform folders macos/, windows/, ios/,
+# android/ and web/ (every app, its tests in <platform>/tests/), tests/ (host-free), llms/, src/osprey/packages/, src/osprey/tests/hunt/, src/toolchain/vscode-extension/, src/toolchain/website/, src/toolchain/benchmarks/ and
 # src/osprey/examples/proof/. A folder Makefile defines each of its targets once and runs it
 # from here through scripts/make/forward.mk; the included fragments hold the configuration and shared private steps. Keep `NAME := value` lines in the
 # fragments: those panels list them as targets.
@@ -62,7 +62,7 @@ test: build _build_c_runtime_tests
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions
 # twice buys nothing and doubles the slowest stage in the build. The `osprey
-# test` subcommand itself stays covered by `make -C src/toolchain/targets/tests bank` and the CLI e2e suite.
+# test` subcommand itself stays covered by `make -C tests bank` and the CLI e2e suite.
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_proof_kernel
@@ -108,11 +108,11 @@ clean:
 ## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
 ci: lint test build
 	$(MAKE) -C src/toolchain hawk
-	$(MAKE) -C src/toolchain/targets/tests bank
-	$(MAKE) -C src/toolchain/targets bank-e2e
+	$(MAKE) -C tests bank
+	$(MAKE) -C web/tests bank
 	$(MAKE) -C src/toolchain/website docs-html-test
-	$(MAKE) -C src/toolchain/targets/tests inbox
-	$(MAKE) -C src/toolchain/targets/tests bank-mobile
+	$(MAKE) -C tests inbox
+	$(MAKE) -C tests bank-mobile
 
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 

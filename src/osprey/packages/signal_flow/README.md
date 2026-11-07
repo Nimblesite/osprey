@@ -18,8 +18,8 @@ Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE P
 ## Run
 
 ```sh
-make -C src/toolchain/targets/macos signal-flow                    # or: bash src/osprey/packages/signal_flow/app/run.sh
-make -C src/toolchain/targets/windows signal-flow                  # Windows: the WinUI sandbox
+make -C macos signal-flow                    # or: bash src/osprey/packages/signal_flow/app/run.sh
+make -C windows signal-flow                  # Windows: the WinUI sandbox
 ```
 
 Pass `--skin notation` (or `paper`, `prism`) after the script to start in another skin.

@@ -20,7 +20,7 @@ The source is in [`src/osprey/examples/macos/`](https://github.com/Nimblesite/os
 ## 1. Run it
 
 ```sh
-make -C src/toolchain/targets/macos storage                 # rebuild the compiler, the Mac runtime and the app, then open it
+make -C macos storage                 # rebuild the compiler, the Mac runtime and the app, then open it
 src/osprey/examples/macos/run.sh ios-sim      # build and launch it in the iPhone simulator
 ```
 

@@ -1,11 +1,17 @@
 # The desktop apps on Windows, each its own MSIX package in an AppContainer on the WinUI host
-# [WINUI-HOST-SANDBOX], as ../windows.json describes them. Run from PowerShell with GNU make on the
-# PATH; src/toolchain/hosts/winui/app.ps1 builds and registers each. macOS: src/toolchain/targets/macos.
-# Each app's tests: src/toolchain/targets/windows/tests, and with no host at all, src/toolchain/targets/tests.
-ROOT ?= ../../../..
+# [WINUI-HOST-SANDBOX], as apps.json beside this file describes them. Run from PowerShell with GNU make
+# on the PATH; src/toolchain/hosts/winui/app.ps1 builds and registers each. macOS: macos.
+# Each app's tests: windows/tests, and with no host at all, tests.
+ROOT ?= ..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
-.PHONY: storage flock painting signal-flow probe casting
+.PHONY: storage flock graphics painting signal-flow probe casting
+
+## graphics: Build the Direct3D 12 graphics host and run the animated GPU demo from the MSYS2 UCRT64
+##           shell. The Osprey sources are the same files macOS draws through Metal; SCENE=kali|opal|character
+##           picks the scene. See src/osprey/examples/graphics/README.md.
+graphics:
+	$(MAKE) -C $(ROOT) _graphics
 
 ## storage: Open Osprey Storage, where your disk space goes folder by folder, in its sandbox.
 ##          It reads the whole drive once Settings > Privacy & security > File system allows it.

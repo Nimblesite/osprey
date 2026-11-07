@@ -1,6 +1,6 @@
 # One Osprey application on Windows, in its own sandbox [WINUI-HOST-SANDBOX]. Builds the compiler,
 # the MinGW runtime, the application's DLL and the Native AOT host, lays them out as the MSIX
-# package src/toolchain/targets/windows.json describes, registers it (Developer Mode, no signing) and opens it in
+# package windows/apps.json describes, registers it (Developer Mode, no signing) and opens it in
 # its AppContainer. With -Test it runs the application's self-test inside the sandbox instead and
 # compares every picture with the goldens in <source>/goldens/windows.
 #   app.ps1 -App flock                               open Flock
@@ -16,9 +16,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
-$apps = Get-Content (Join-Path $repo 'src\toolchain\targets\windows.json') -Raw | ConvertFrom-Json
+$apps = Get-Content (Join-Path $repo 'windows\apps.json') -Raw | ConvertFrom-Json
 $entry = $apps.apps.$App
-if (-not $entry) { throw "src/toolchain/targets/windows.json has no app called $App; it has $($apps.apps.PSObject.Properties.Name -join ', ')" }
+if (-not $entry) { throw "windows/apps.json has no app called $App; it has $($apps.apps.PSObject.Properties.Name -join ', ')" }
 $source = Join-Path $repo $entry.source
 $layout = Join-Path $repo "target\winui\$App"
 $publish = Join-Path $PSScriptRoot 'OspreyHost\bin\Release\net10.0-windows10.0.26100.0\win-x64\publish'

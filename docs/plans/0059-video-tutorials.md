@@ -181,7 +181,7 @@ Walks through [`src/osprey/examples/gpui`](../../src/osprey/examples/gpui)
 
 - how a view is declared as a value, and how state updates redraw it;
 - how the GPUI host renders that view tree;
-- **Run:** `make -C src/toolchain/targets/macos/tests painting-headless`, then
+- **Run:** `make -C macos/tests painting-headless`, then
   the app itself;
 - **Change it:** add a control, and see it in the window and the self-test.
 
@@ -217,7 +217,7 @@ Extends the current video to the full four steps using
   the exported functions that become the C header;
 - `OspreyStorage/StorageServices.swift` and `PhotoLibrary.swift`, and the
   `@_cdecl` functions Osprey imports;
-- **Run:** `make -C src/toolchain/targets/macos storage`;
+- **Run:** `make -C macos storage`;
 - **Change it:** add one export, call it from Swift, and see it in the app.
 
 ## Checklist

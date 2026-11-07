@@ -20,11 +20,11 @@ The project links separate device/simulator archives through SDK-specific build 
 
 [`src/osprey/examples/graphics/`](../../../src/osprey/examples/graphics) runs three real-time scenes this way. Each scene compiles with `--entry-only`, because its host calls only `osprey_main`, which runs the scene's own frame loop; a Swift Metal host defines the six `osp_gfx_*` imports, exchanging the window as a `Ptr`.
 
-`make -C src/toolchain/targets macos-test` runs the C ABI fixture above natively, then the whole corpus through the Mac slice against the native goldens and [`MOBILE_UNPORTABLE.txt`](../../../src/osprey/tests/MOBILE_UNPORTABLE.txt), the storage domain suite, and the storage app's smoke assertions, which drive the browser through the events the app sends. The smoke measures a folder with known contents, a hidden `.git`, a hidden `.cache` and an unreadable folder among them. Its prerequisite `make -C src/toolchain/targets macos` builds every graphics host; `make -C src/toolchain/targets graphics-smoke` renders each scene, which needs a desktop session and a Metal GPU. Hosted CI runs `make -C src/toolchain/targets macos-test` beside `make -C src/toolchain/targets ios-test` on the `macos-15` runner.
+`make -C macos/tests examples` runs the C ABI fixture above natively, then the whole corpus through the Mac slice against the native goldens and [`MOBILE_UNPORTABLE.txt`](../../../src/osprey/tests/MOBILE_UNPORTABLE.txt), the storage domain suite, and the storage app's smoke assertions, which drive the browser through the events the app sends. The smoke measures a folder with known contents, a hidden `.git`, a hidden `.cache` and an unreadable folder among them. Its prerequisite `make -C macos examples` builds every graphics host; `make -C macos/tests graphics` renders each scene, which needs a desktop session and a Metal GPU. Hosted CI runs `make -C macos/tests examples` beside `make -C ios/tests examples` on the `macos-15` runner.
 
 ## Verification [IOS-VERIFICATION]
 
-`make -C src/toolchain/targets ios-test` builds both platform variants and runs three layers of checks.
+`make -C ios/tests examples` builds both platform variants and runs three layers of checks.
 
 The C ABI fixture in [`scripts/mobile/mobile-abi.osp`](../../../scripts/mobile/mobile-abi.osp) and its C host link for the device and execute in the simulator. Its assertions cover what a header cannot state: integers at both 64-bit extremes, overflow recovered by an explicit `Arith` handler, doubles round-tripping, C booleans passed through registers under both bool ABIs, UTF-8 strings crossing intact in both directions, an empty and a 4096-byte string, an Osprey-allocated string reaching a host import, and a borrowed host buffer being copied rather than aliased. Android runs the same fixture, so one file states the boundary contract once.
 
@@ -34,7 +34,7 @@ Finally the actual SwiftUI app's smoke assertions run. They cover initialization
 
 Compiler unit tests pin target selection, options, inferred header types, symbol collision rejection, boolean/Unit adaptation, initialization, and target capability diagnostics. Unsupported effect resumption and unavailable APIs have negative tests that run before SDK discovery, so target legality remains verifiable on machines without Xcode.
 
-Hosted CI is configured to run `make -C src/toolchain/targets ios-test mobile-ios-test` on an ARM64 `macos-15` runner for every pull request. It builds the device archive and links its C host, then executes the fixture, the corpus and both application smokes in an iPhone simulator, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`. The runner and a phone share one instruction set, so what a device adds is signing, provisioning and device-only OS behaviour rather than different code generation.
+Hosted CI is configured to run `make -C ios/tests examples inbox` on an ARM64 `macos-15` runner for every pull request. It builds the device archive and links its C host, then executes the fixture, the corpus and both application smokes in an iPhone simulator, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`. The runner and a phone share one instruction set, so what a device adds is signing, provisioning and device-only OS behaviour rather than different code generation.
 
 A signed build on real hardware is outside what a hosted runner can do, so it is a manual check. `OSPREY_DEVELOPMENT_TEAM=<team-id> src/osprey/examples/mobile/ios/run.sh ios-device` builds, signs, installs and launches the [Issue Inbox](../applications/0040-ReactiveMobileApplications.md) on a connected, unlocked iPhone; launching the installed application with `--inbox-smoke` runs the assertions the simulator runs and writes the same marker to its sandbox. The signed application passed that smoke and displayed live GitHub issues on an iPhone 16. That run predates [issue-description Markdown](../applications/0040-ReactiveMobileApplications.md#issue-description-markdown-mobile-markdown) and the callable handler migration. A pre-migration build compiled, signed and installed on the same phone on 5 October 2026, but iOS refused to launch it on a locked phone, so that device smoke did not execute. Neither that installation nor earlier simulator evidence verifies the callable handler migration.
 
@@ -42,7 +42,7 @@ Simulator, device, and hosted CI execution evidence predates the callable handle
 
 ## Host build integration
 
-`make _runtime_ios` creates `libosprey_runtime_ios.a`; `make _runtime_ios_sim` creates `libosprey_runtime_ios_sim.a`. `make -C src/toolchain/targets ios` builds both runtimes, the compiler, and both SwiftUI sample apps. Signing and deployment are performed by Xcode, outside the Osprey compiler.
+`make _runtime_ios` creates `libosprey_runtime_ios.a`; `make _runtime_ios_sim` creates `libosprey_runtime_ios_sim.a`. `make -C ios examples` builds both runtimes, the compiler, and both SwiftUI sample apps. Signing and deployment are performed by Xcode, outside the Osprey compiler.
 
 ## Host callbacks
 

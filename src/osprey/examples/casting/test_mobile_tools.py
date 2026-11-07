@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regressions for the unfinished iOS and Android casting tools. [CAST-MOBILE-GPUI]
 
-Mobile casting is not finished, so CI does not run these: `make -C src/toolchain/targets/tests casting-mobile-tools` does.
+Mobile casting is not finished, so CI does not run these: `make -C tests casting-mobile-tools` does.
 """
 
 import importlib.util
@@ -40,7 +40,7 @@ class CastingGoldenVerdict(unittest.TestCase):
                 env = dict(os.environ, PATH=str(root) + ":" + BASE_PATH, EXPECTED_VISIBLE=visible)
                 env.pop("OSPREY_SIMULATOR_VISIBLE", None)
                 if target == "casting-headless": env["OSPREY_SIMULATOR_VISIBLE"] = "1"
-                result = subprocess.run(["/usr/bin/make", "-f", str(ROOT / "src/toolchain/targets/ios/tests/Makefile"), target],
+                result = subprocess.run(["/usr/bin/make", "-f", str(ROOT / "ios/tests/Makefile"), target],
                                         cwd=root, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
