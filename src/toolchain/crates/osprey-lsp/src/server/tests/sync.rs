@@ -310,6 +310,52 @@ async fn repository_scope_expands_git_parent_and_initial_open_only_does_not_scan
 
 const SWEPT_FILES: usize = 120;
 
+/// The repository sweep follows the same files as the CLI's `git ls-files`
+/// gate ([CI-PROGRAMS-COMPILE]): tracked and unignored ones only. Gitignored
+/// build output — a bundled package registry — never reaches the editor as
+/// phantom errors. Implements [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn repository_sweep_skips_files_git_ignores() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("osprey gitignored {}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("gen"))?;
+    std::fs::write(root.join(".gitignore"), "gen/\n")?;
+    std::fs::write(root.join("keep.osp"), "fn kept() { missing }\n")?;
+    std::fs::write(root.join("gen/skip.ospml"), "let skipped = also_missing\n")?;
+    // A real repository: the sweep asks git which files it tracks or leaves
+    // unignored, exactly like the CLI's program gate.
+    let init = std::process::Command::new("git")
+        .args(["init", "-q"])
+        .arg(&root)
+        .status()?;
+    assert!(init.success(), "git init prepares the fixture");
+    let keep_uri = crate::workspace::uri_of(&root.join("keep.osp")).ok_or("keep URI")?;
+    let skip_uri = crate::workspace::uri_of(&root.join("gen/skip.ospml")).ok_or("skip URI")?;
+    let folder = crate::workspace::uri_of(&root).ok_or("folder URI")?;
+    let mut h = Harness::start();
+    let _ = h
+        .request(
+            620,
+            "initialize",
+            with_progress(json!({"workspaceFolders":[{"uri":folder,"name":"repo"}]})),
+        )
+        .await;
+    h.notify("initialized", json!({})).await;
+    let reports = settled(&mut h, 621).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == keep_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "unignored file still checked: {reports:?}"
+    );
+    assert!(
+        !reports.iter().any(|p| p["uri"] == skip_uri),
+        "gitignored file never reported: {reports:?}"
+    );
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(&root)?;
+    Ok(())
+}
+
 /// A hover is answered while the repository sweep is still checking files, so
 /// a large workspace never leaves the editor's hover on "Loading…"; the sweep
 /// still publishes every file and reports its progress [LSP-DIAGNOSTICS-SCOPE].

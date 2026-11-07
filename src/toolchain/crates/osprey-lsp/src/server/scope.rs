@@ -8,7 +8,7 @@ use lspkit::EngineApi;
 use lspkit_server::diagnostics::DiagnosticsBatch;
 use lspkit_server::DiagnosticsBus;
 use serde_json::Value;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{MutexGuard, PoisonError};
 
@@ -148,7 +148,8 @@ impl Scope {
         }
         let mut documents = self.open.clone();
         for root in self.roots() {
-            discover(&root, &mut documents);
+            let unignored = unignored(&root);
+            discover(&root, unignored.as_ref(), &mut documents);
         }
         documents.retain(|uri| !self.excludes(uri));
         documents
@@ -261,7 +262,28 @@ fn resolve_root(root: &str, folders: &[PathBuf]) -> Vec<PathBuf> {
     folders.iter().map(|folder| folder.join(path)).collect()
 }
 
-fn discover(root: &Path, documents: &mut BTreeSet<String>) {
+/// The files `git` lists under `root`: tracked ones plus untracked files no
+/// ignore rule matches — the same set the CLI's program gate reads with
+/// `git ls-files` ([CI-PROGRAMS-COMPILE]). `None` when `root` is outside any
+/// git work tree or git cannot answer, so a plain folder keeps every file.
+fn unignored(root: &Path) -> Option<HashSet<PathBuf>> {
+    let listed = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
+        .output()
+        .ok()?;
+    listed.status.success().then(|| {
+        listed
+            .stdout
+            .split(|&byte| byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| root.join(String::from_utf8_lossy(path).into_owned()))
+            .collect()
+    })
+}
+
+fn discover(root: &Path, unignored: Option<&HashSet<PathBuf>>, documents: &mut BTreeSet<String>) {
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
         Err(error) => {
@@ -271,13 +293,17 @@ fn discover(root: &Path, documents: &mut BTreeSet<String>) {
     };
     for entry in entries {
         match entry {
-            Ok(entry) => visit(&entry, documents),
+            Ok(entry) => visit(&entry, unignored, documents),
             Err(error) => eprintln!("osprey lsp: cannot read {}: {error}", root.display()),
         }
     }
 }
 
-fn visit(entry: &std::fs::DirEntry, documents: &mut BTreeSet<String>) {
+fn visit(
+    entry: &std::fs::DirEntry,
+    unignored: Option<&HashSet<PathBuf>>,
+    documents: &mut BTreeSet<String>,
+) {
     let path = entry.path();
     let kind = match entry.file_type() {
         Ok(kind) => kind,
@@ -287,9 +313,12 @@ fn visit(entry: &std::fs::DirEntry, documents: &mut BTreeSet<String>) {
         }
     };
     if kind.is_dir() && !excluded(&path) {
-        discover(&path, documents);
+        discover(&path, unignored, documents);
     }
-    if kind.is_file() && source_file(&path) {
+    if kind.is_file()
+        && source_file(&path)
+        && unignored.is_none_or(|files| files.contains(&path))
+    {
         if let Some(uri) = uri_of(&path) {
             let _ = documents.insert(uri);
         }
