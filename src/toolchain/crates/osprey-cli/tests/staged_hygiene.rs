@@ -13,17 +13,16 @@ fn assert_cases(cases: &[(&str, &str, &str)]) {
     }
 }
 
-#[test]
-fn lexical_bindings_survive_static_discharge() {
-    assert_cases(&[
-        (
-            "lexical",
-            include_str!("../../../../osprey/examples/handlers/staging-scope.osp"),
-            "static=1 dynamic=1\n",
-        ),
-        (
-            "helper_shadow",
-            r#"
+/// Lexical scoping cases: shadowing, captures, recursion and namespaces.
+const LEXICAL_CASES: &[(&str, &str, &str)] = &[
+    (
+        "lexical",
+        include_str!("../../../../osprey/examples/handlers/staging-scope.osp"),
+        "static=1 dynamic=1\n",
+    ),
+    (
+        "helper_shadow",
+        r#"
 static effect Read { get: fn() -> int }
 fn value() = perform Read.get()
 let first = {
@@ -43,11 +42,11 @@ let second = {
 }
 print("${first}:${second}")
 "#,
-            "1:3\n",
-        ),
-        (
-            "helper_capture",
-            r#"
+        "1:3\n",
+    ),
+    (
+        "helper_capture",
+        r#"
 static effect Read { get: fn() -> int }
 fn value() = perform Read.get()
 fn run(outer) = {
@@ -58,11 +57,11 @@ fn run(outer) = {
 }
 print("${run(1)}:${run(2)}")
 "#,
-            "1:2\n",
-        ),
-        (
-            "nested_scopes",
-            r#"
+        "1:2\n",
+    ),
+    (
+        "nested_scopes",
+        r#"
 static effect Read { get: fn() -> int }
 type Box = { outer: int }
 let outer = 1
@@ -79,11 +78,11 @@ let value = {
 }
 print("${value}")
 "#,
-            "3\n",
-        ),
-        (
-            "global_capture",
-            r#"
+        "3\n",
+    ),
+    (
+        "global_capture",
+        r#"
 static effect Read { get: fn() -> int }
 let amount = 2
 fn work() = satAdd(perform Read.get(), amount)
@@ -95,11 +94,11 @@ let value = {
 }
 print("${value}")
 "#,
-            "3\n",
-        ),
-        (
-            "recursive_capture",
-            r#"
+        "3\n",
+    ),
+    (
+        "recursive_capture",
+        r#"
 static effect Read { get: fn() -> int }
 fn readAfterSteps(n) = match n == 0 {
     true => perform Read.get()
@@ -113,11 +112,11 @@ fn run(outer) = {
 }
 print("${run(1)}:${run(2)}")
 "#,
-            "1:2\n",
-        ),
-        (
-            "namespaced",
-            r#"
+        "1:2\n",
+    ),
+    (
+        "namespaced",
+        r#"
 static effect Read { get: fn() -> int }
 namespace app {
     module Math {
@@ -134,14 +133,17 @@ let total = {
 }
 print("${total}")
 "#,
-            "42\n",
-        ),
-    ]);
-}
+        "42\n",
+    ),
+];
 
 #[test]
-fn binders_arguments_and_signals_survive_static_discharge() {
-    assert_cases(&[
+fn lexical_bindings_survive_static_discharge() {
+    assert_cases(LEXICAL_CASES);
+}
+
+/// Binder, argument-order and signal cases.
+const BINDER_CASES: &[(&str, &str, &str)] = &[
         (
             "binders",
             r#"
@@ -275,7 +277,11 @@ print("${first.value}:${first.revision}|${changed.value}:${changed.revision}|${u
 "#,
             "42:1|43:2|43:2\n",
         ),
-    ]);
+];
+
+#[test]
+fn binders_arguments_and_signals_survive_static_discharge() {
+    assert_cases(BINDER_CASES);
 }
 
 #[test]

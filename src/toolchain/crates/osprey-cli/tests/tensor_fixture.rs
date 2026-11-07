@@ -316,8 +316,12 @@ fn assert_dense_fixture(path: &Path, mode: &str) {
         .args(["--run", "--quiet", "--memory=arc", "--no-warnings"])
         .env("OSPREY_ARC_DEBUG", "1")
         .env("OSPREY_GPU_KERNELS", mode)
-        .output()
-        .expect("compile and run dense fixture");
+        .output();
+    assert!(
+        output.is_ok(),
+        "{mode}: compile and run dense fixture: {output:?}"
+    );
+    let Ok(output) = output else { return };
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{mode}: {stderr}");
     assert_eq!(output.stdout, b"1000040 1000000 127\n", "{mode}: payload");
@@ -327,17 +331,22 @@ fn assert_dense_fixture(path: &Path, mode: &str) {
 /// the committed safetensors fixture.
 fn project_at(directory: PathBuf, entry: &str, source: &str, config: &str) -> PathBuf {
     let fixture = manifest().join("tests/fixtures/transformer.safetensors");
-    std::fs::create_dir_all(&directory).expect("create project directory");
-    std::fs::write(directory.join("osprey.toml"), config).expect("write project manifest");
     let source = source.replace("@FIXTURE@", &fixture.display().to_string());
-    std::fs::write(directory.join(entry), source).expect("write project entry");
+    let written = std::fs::create_dir_all(&directory)
+        .and_then(|()| std::fs::write(directory.join("osprey.toml"), config))
+        .and_then(|()| std::fs::write(directory.join(entry), source));
+    assert!(
+        written.is_ok(),
+        "write project {}: {written:?}",
+        directory.display()
+    );
     directory
 }
 /// A project whose `main.osp` is `source`, importing the gpt2 model modules.
 fn gpt2_project(name: &str, source: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!("osprey_gpt2_{name}_{}", std::process::id()));
     let model = repo().join("src/osprey/examples/llms/gpt2/model");
-    let model = serde_json::to_string(&model.to_string_lossy()).expect("model path");
+    let model = serde_json::Value::from(model.to_string_lossy()).to_string();
     let config = format!("[project]\nname = \"failure\"\nsource_roots = [{model}, \".\"]\ndefault_namespace = \"failure\"\nentry = \"main.osp\"\n");
     project_at(directory, "main.osp", source, &config)
 }
@@ -348,7 +357,7 @@ fn python_gpt2_project(name: &str, source: &str) -> PathBuf {
         .join("target")
         .join(format!("osprey_pygpt2_{name}_{}", std::process::id()));
     let port = repo().join("src/osprey/examples/llms/gpt2/python");
-    let port = serde_json::to_string(&port.to_string_lossy()).expect("port path");
+    let port = serde_json::Value::from(port.to_string_lossy()).to_string();
     let modules = ["backends", "cpu", "gpu", "model"]
         .map(|m| format!("\"../../src/osprey/examples/llms/gpt2/python/{m}.py\""))
         .join(", ");

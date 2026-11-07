@@ -64,7 +64,9 @@ fn compile_in_flavor(source: &str, flavor: Flavor, label: &str) -> String {
     }
     let parsed = parse_program_with_flavor(source, flavor);
     assert!(parsed.errors.is_empty(), "{label}: {:?}", parsed.errors);
-    osprey_codegen::compile_program(&parsed.program).expect("static codegen")
+    let ir = osprey_codegen::compile_program(&parsed.program);
+    assert!(ir.is_ok(), "{label}: static codegen: {ir:?}");
+    ir.unwrap_or_default()
 }
 
 const STATIC_SOURCE: &str = r#"

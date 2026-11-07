@@ -51,17 +51,6 @@ fn module_and_namespace_hovers_carry_both_doc_scopes() {
 
 #[test]
 fn outline_covers_every_declaration_form() {
-    let json = symbols_json(&parse_ok(
-        "type Shade = Light | Dark\n\
-             effect Log { info: fn(string) -> Unit }\n\
-             extern fn puts(s: string) -> int\n\
-             let limit: int = 10\n\
-             fn multiply(a: int, b: int) -> int = (a * b) ?: 0\n\
-             type Box<T> = { item: T }\n\
-             effect Feed<out T> { next: fn() -> T }\n\
-             fn pick<T, out U>(a: T, b: U) -> T = a\n\
-             fn main() -> Unit = print(multiply(a: limit, b: 2))\n",
-    ));
     const OUTLINE: [&str; 13] = [
         "\"name\":\"Shade\",\"kind\":\"type\",\"type\":\"type\",\"line\":1,\"column\":1",
         "\"name\":\"Log\",\"kind\":\"type\",\"type\":\"effect\",\"line\":2",
@@ -79,11 +68,25 @@ fn outline_covers_every_declaration_form() {
         "\"signature\":\"fn pick<T, out U>(a: T, b: U) -> T\"",
         "\"name\":\"main\",\"kind\":\"function\",\"type\":\"fn main() -> Unit\",\"line\":9",
     ];
+    let json = symbols_json(&parse_ok(
+        "type Shade = Light | Dark\n\
+             effect Log { info: fn(string) -> Unit }\n\
+             extern fn puts(s: string) -> int\n\
+             let limit: int = 10\n\
+             fn multiply(a: int, b: int) -> int = (a * b) ?: 0\n\
+             type Box<T> = { item: T }\n\
+             effect Feed<out T> { next: fn() -> T }\n\
+             fn pick<T, out U>(a: T, b: U) -> T = a\n\
+             fn main() -> Unit = print(multiply(a: limit, b: 2))\n",
+    ));
     crate::testkit::contents(&json, &OUTLINE, &[]);
 }
 
 #[test]
 fn an_inferred_return_type_reaches_the_outline_instead_of_unit() {
+    const STRING_RETURN: &str = "\"returnType\":\"string\"";
+    const STRING_SIG: &str = "\"signature\":\"fn describeAny(v: any) -> string\"";
+
     // RED: `--symbols` renders the DECLARED return type and falls back to
     // `Unit` when there is none, so a function whose return type is
     // inferred is reported as returning `Unit`. Every arm below yields a
@@ -108,9 +111,6 @@ print(describeAny(42) + "!")
     // correctly today — so any difference below is the annotation's
     // presence alone, not the program.
     let annotated = inferred.replacen(") = match", ") -> string = match", 1);
-
-    const STRING_RETURN: &str = "\"returnType\":\"string\"";
-    const STRING_SIG: &str = "\"signature\":\"fn describeAny(v: any) -> string\"";
 
     let json = probe_json(
         inferred,

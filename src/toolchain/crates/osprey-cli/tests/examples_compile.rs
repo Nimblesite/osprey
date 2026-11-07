@@ -31,10 +31,11 @@ fn failscompilation_dir() -> PathBuf {
 /// fragment means rejection alone is pinned.
 fn reject(name: &str, expected: &str, why: &str) {
     let path = failscompilation_dir().join(name);
-    let source = fs::read_to_string(&path).expect("read ospo");
-    let Err(reason) = compile(&path, &source) else {
-        panic!("{name} must be rejected ({why})");
-    };
+    let source = fs::read_to_string(&path);
+    assert!(source.is_ok(), "{name}: read fixture: {source:?}");
+    let reason = compile(&path, &source.unwrap_or_default()).err();
+    assert!(reason.is_some(), "{name} must be rejected ({why})");
+    let reason = reason.unwrap_or_default();
     assert!(
         reason.contains(expected),
         "{name}: expected a diagnostic containing {expected:?}, got {reason:?}"
