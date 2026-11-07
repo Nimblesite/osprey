@@ -56,6 +56,7 @@ int64_t osprey_media_unrender(char *folder) {
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "osprey_path.h"
 
 #if !(defined(__GLIBC__) && defined(_GNU_SOURCE))
 extern char **environ;
@@ -218,8 +219,7 @@ static int64_t delete_folder(const char *folder) {
   }
   char path[MR_FILE];
   for (struct dirent *entry = readdir(dir); entry; entry = readdir(dir)) {
-    if (entry->d_name[0] != '.') {
-      snprintf(path, sizeof path, "%s/%s", folder, entry->d_name);
+    if (entry->d_name[0] != '.' && osp_path_child(path, sizeof path, folder, entry->d_name) != 0) {
       unlink(path);
     }
   }

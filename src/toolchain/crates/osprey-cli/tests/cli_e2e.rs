@@ -638,12 +638,15 @@ fn compile_writes_executable_to_cwd() {
 #[test]
 fn sandbox_blocks_filesystem_capability() {
     // [SECURITY-CAPABILITY-GATES]
-    let o = run_source(
-        "fs",
-        "let c = readFile(\"x.txt\")\n",
-        &["--llvm", "--no-fs"],
-    );
-    o.expect_rejected(&["security: `readFile` is disabled by --no-fs"]);
+    for (name, call) in [
+        ("readFile", "readFile(\"x.txt\")"),
+        ("listDir", "listDir(\".\")"),
+        ("kindOf", "kindOf(\"/\")"),
+        ("makeDir", "makeDir(\"made\")"),
+    ] {
+        let o = run_source(name, &format!("let c = {call}\n"), &["--llvm", "--no-fs"]);
+        o.expect_rejected(&[&format!("security: `{name}` is disabled by --no-fs")]);
+    }
 }
 
 #[test]

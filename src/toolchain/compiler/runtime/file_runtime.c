@@ -22,7 +22,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "collection_runtime.h"
 #include "io_error.h"
+#include "memory_hooks.h"
+#include "osprey_path.h"
+#include "string_runtime.h"
+#if !defined(__wasm__) && !defined(OSP_SYMBOLIC) && !defined(_WIN32)
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 #ifdef OSP_SYMBOLIC
 #include "klee/hunt_mock.h"
 #endif
@@ -223,3 +231,166 @@ int64_t write_file(char *filename, char *content) {
   }
   return (int64_t)written;
 }
+
+// ===== Central path joining, directory listing and path kinds ==============
+//
+// osp_path_child is THE child-path builder [BUILTIN-FILE-LISTDIR]: listDir, the
+// media render's folder sweep, the profiler's socket sweep and the file
+// server's static route all ask it instead of spelling "%s/%s", so the
+// separator, trailing-separator collapse and truncation refusal have exactly
+// one definition. Root stays "/x", never "//x".
+size_t osp_path_child(char *out, size_t size, const char *dir, const char *name) {
+  if (out == NULL || size == 0 || dir == NULL || name == NULL || name[0] == '\0') {
+    return 0;
+  }
+  size_t end = strlen(dir);
+  while (end > 0 && dir[end - 1] == OSP_PATH_SEP) {
+    end--;
+  }
+  int wrote = snprintf(out, size, "%.*s%c%s", (int)end, dir, OSP_PATH_SEP, name);
+  if (wrote <= 0 || (size_t)wrote >= size) {
+    out[0] = '\0';
+    return 0;
+  }
+  return (size_t)wrote;
+}
+
+static const char OP_LIST_DIR[] = "listDir";
+static const char OP_KIND_OF[] = "kindOf";
+static const char OP_MAKE_DIR[] = "makeDir";
+
+#if !defined(__wasm__) && !defined(OSP_SYMBOLIC) && !defined(_WIN32)
+// One directory entry's full path, with OSP_PATH_SEP appended when the entry
+// is a directory. A symlink is never a directory here (lstat, not stat), so a
+// link to an ancestor can never make a walker recurse forever. Returns 0 on
+// success or the errno that refuses the entry.
+static int entry_path(char *out, size_t size, const char *dir, const struct dirent *entry) {
+  size_t length = osp_path_child(out, size, dir, entry->d_name);
+  if (length == 0 || length + 1 >= size) {
+    return ENAMETOOLONG;
+  }
+  int is_dir = entry->d_type == DT_DIR;
+  struct stat info;
+  if (entry->d_type == DT_UNKNOWN) {
+    if (lstat(out, &info) != 0) {
+      return errno;
+    }
+    is_dir = S_ISDIR(info.st_mode);
+  }
+  if (is_dir) {
+    out[length] = OSP_PATH_SEP;
+    out[length + 1] = '\0';
+  }
+  return 0;
+}
+
+static int is_dot_entry(const char *name) {
+  return strcmp(name, ".") == 0 || strcmp(name, "..") == 0;
+}
+
+// Pushes every entry of `dir` onto `builder`; 0, or the errno that stopped
+// the read. errno is cleared before each readdir so an I/O error at the end
+// of the stream is never mistaken for end-of-directory.
+static int push_entries(DIR *dir, const char *path, OspreyListBuilder *builder) {
+  char joined[OSP_PATH_MAX];
+  for (;;) {
+    errno = 0;
+    struct dirent *entry = readdir(dir);
+    if (entry == NULL) {
+      return errno;
+    }
+    if (is_dot_entry(entry->d_name)) {
+      continue;
+    }
+    int failure = entry_path(joined, sizeof joined, path, entry);
+    char *text = failure == 0 ? osp_host_string_copy(joined) : NULL;
+    if (text == NULL) {
+      return failure != 0 ? failure : ENOMEM;
+    }
+    osprey_list_builder_push_of(builder, (int64_t)(intptr_t)text, 1);
+  }
+}
+
+// [BUILTIN-FILE-LISTDIR] The entries of one directory as a List<string> of
+// full child paths, directories marked with a trailing separator so a walker
+// recurses without a second syscall per entry; "." and ".." never appear. A
+// failure anywhere is NULL with the reason recorded, never a partial list.
+OspreyList *osprey_list_dir(const char *path) {
+  if (path == NULL) {
+    osp_io_error_text(OP_LIST_DIR, NULL, "no path");
+    return NULL;
+  }
+  DIR *dir = opendir(path);
+  if (dir == NULL) {
+    osp_io_error_set(OP_LIST_DIR, path, errno);
+    return NULL;
+  }
+  OspreyListBuilder *builder = osprey_list_builder_new_of(1);
+  int failure = builder == NULL ? ENOMEM : push_entries(dir, path, builder);
+  (void)closedir(dir);
+  OspreyList *list = builder == NULL ? NULL : osprey_list_builder_seal(builder);
+  if (failure != 0) {
+    osp_release(list);
+    osp_io_error_set(OP_LIST_DIR, path, failure);
+    return NULL;
+  }
+  return list;
+}
+
+// [BUILTIN-FILE-KIND] "dir", "file" or "other" for one path, from stat — the
+// one classification every walker shares. A path that cannot be stated is
+// NULL with the reason recorded, never a guessed kind.
+char *osprey_kind_of(const char *path) {
+  struct stat info;
+  if (path == NULL || stat(path, &info) != 0) {
+    osp_io_error_set(OP_KIND_OF, path, path == NULL ? EINVAL : errno);
+    return NULL;
+  }
+  const char *kind = S_ISDIR(info.st_mode) ? "dir" : S_ISREG(info.st_mode) ? "file" : "other";
+  char *copy = osp_host_string_copy(kind);
+  if (copy == NULL) {
+    osp_io_error_set(OP_KIND_OF, path, ENOMEM);
+  }
+  return copy;
+}
+
+// [BUILTIN-FILE-MAKEDIR] One directory, created idempotently: an existing
+// directory at `path` is Success. A failure (a file in the way, permission
+// denied) is -1 with the reason recorded, never silence.
+int64_t osprey_make_dir(const char *path) {
+  if (path == NULL) {
+    osp_io_error_set(OP_MAKE_DIR, NULL, EINVAL);
+    return -1;
+  }
+  struct stat info;
+  if (mkdir(path, 0777) == 0) {
+    return 0;
+  }
+  int failure = errno;
+  if (failure == EEXIST && stat(path, &info) == 0 && S_ISDIR(info.st_mode)) {
+    return 0;
+  }
+  osp_io_error_set(OP_MAKE_DIR, path, failure == EEXIST ? ENOTDIR : failure);
+  return -1;
+}
+#else
+// wasm32 (no directory syscalls in this WASI profile), KLEE's bitcode libc
+// (no dirent or mkdir: an unmodelled call) and Windows (no POSIX dirent yet)
+// refuse every directory operation with the reason, never a fake answer.
+static const char NO_DIRECTORIES[] = "no directory operations on this target";
+
+OspreyList *osprey_list_dir(const char *path) {
+  osp_io_error_text(OP_LIST_DIR, path, NO_DIRECTORIES);
+  return NULL;
+}
+
+char *osprey_kind_of(const char *path) {
+  osp_io_error_text(OP_KIND_OF, path, NO_DIRECTORIES);
+  return NULL;
+}
+
+int64_t osprey_make_dir(const char *path) {
+  osp_io_error_text(OP_MAKE_DIR, path, NO_DIRECTORIES);
+  return -1;
+}
+#endif

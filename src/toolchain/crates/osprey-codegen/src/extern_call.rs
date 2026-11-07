@@ -40,6 +40,9 @@ enum Ret {
     ResultFloats(Option<&'static str>),
     /// A fresh `List<int>` handle, or NULL with the reason recorded.
     ResultInts(Option<&'static str>),
+    /// `Result<List<string>, _>`: the C `i8*` is a fresh managed-string list;
+    /// `null` ⇒ Error, with the same fallback rule as `ResultStr`.
+    ResultStrs(Option<&'static str>),
 }
 
 /// One builtin's lowering: its C symbol, parameter LLVM types, and return
@@ -85,6 +88,21 @@ fn lookup(name: &str) -> Option<Sig> {
         ),
         // [BUILTIN-FILE-SIZE] (tensor_list.c): a regular file's byte length.
         "fileSize" => sig("osprey_file_size", &[Str], Ret::ResultInt),
+        // [BUILTIN-FILE-LISTDIR] (file_runtime.c): one directory's entries as
+        // full child paths; directories carry a trailing separator.
+        "listDir" => sig(
+            "osprey_list_dir",
+            &[Str],
+            Ret::ResultStrs(Some("listDir: could not read the directory")),
+        ),
+        // [BUILTIN-FILE-KIND] (file_runtime.c): "dir", "file" or "other".
+        "kindOf" => sig(
+            "osprey_kind_of",
+            &[Str],
+            Ret::ResultStr(Some("kindOf: could not state the path")),
+        ),
+        // [BUILTIN-FILE-MAKEDIR] (file_runtime.c): one directory, idempotent.
+        "makeDir" => sig("osprey_make_dir", &[Str], Ret::ResultInt),
         // --- processes [BUILTIN-PROCESS] (system_runtime.c); arg 2 is callback ---
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
         "awaitProcess" => sig("fiber_await_process", &[I64], Ret::Int),
@@ -304,6 +322,10 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
         }
         Ret::ResultInts(err) => {
             let owner = crate::collections::list_owner(None);
+            fallible_handle(cg, sig.cname, &params, &op_refs, &owner, err)
+        }
+        Ret::ResultStrs(err) => {
+            let owner = crate::collections::list_owner(Some("i8*"));
             fallible_handle(cg, sig.cname, &params, &op_refs, &owner, err)
         }
     }

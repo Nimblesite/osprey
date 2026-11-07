@@ -795,6 +795,25 @@ match fileSize("model.gguf") {
 }
 ```
 
+### `listDir(path: string) -> Result<List<string>, Error>` — [BUILTIN-FILE-LISTDIR]
+
+The entries of one directory, as full child paths built by the runtime's single path joiner (`osp_path_child`). Exactly one separator ever joins the parts, so `listDir("a/")` yields `a/x`, never `a//x`. A directory entry carries one trailing `/`, so a walker recurses without stating every entry. A symbolic link is never marked as a directory, so following the marks cannot loop. `.` and `..` never appear, and the order is the filesystem's: sort it when the order matters. Any failure (a missing path, a file, a read error mid-listing, a path too long) is an `Error` naming the reason. It is never a partial list. `--no-fs` refuses it, and wasm32 rejects it at compile time.
+
+```osprey
+match listDir("src") {
+    Success { value } => forEachList(listSort(value), print)  // src/main.osp, src/util/
+    Error { message } => print(message)  // listDir: src: No such file or directory
+}
+```
+
+### `kindOf(path: string) -> Result<string, Error>` — [BUILTIN-FILE-KIND]
+
+`"dir"`, `"file"` or `"other"` for one path, as `stat` reports it. A path that cannot be stated is an `Error` naming the reason, never a guessed kind. `--no-fs` refuses it, and wasm32 rejects it at compile time.
+
+### `makeDir(path: string) -> Result<int, Error>` — [BUILTIN-FILE-MAKEDIR]
+
+Creates one directory. It is idempotent: an existing directory is `Success 0`. A file in the way, a missing parent or a refused permission is an `Error` naming the reason. `--no-fs` refuses it, and wasm32 rejects it at compile time.
+
 ### `loadTensor(path: string, name: string) -> Result<List<float>, Error>` — [BUILTIN-FILE-TENSOR]
 
 Reads the tensor `name` out of the safetensors file at `path` as a host list. Every `F64`, `F32`, `F16` or `BF16` element widens exactly to the `float` it holds, in file order. A missing name, an unsupported dtype, malformed `data_offsets`, and a file that ends before the tensor does are each an `Error` naming the reason; none of them yields a shorter list. The reader is the one `gpuLoadTensor` uses ([GPU-BUFFER-TENSOR](0034-GPUComputation.md)), so the two loaders accept and refuse the same files, but `loadTensor` builds no `GpuBuffer` and calls nothing on the GPU surface. A program that loads its weights this way and never names a GPU built-in links no GPU code. Like `gpuLoadTensor`, it may answer an operation of a static handler; `--no-fs` refuses it.

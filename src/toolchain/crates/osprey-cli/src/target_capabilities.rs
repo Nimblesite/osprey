@@ -329,11 +329,17 @@ fn continuation_limit(target: &str) -> &'static str {
     }
 }
 
+/// Directory builtins have no implementation in this WASI profile
+/// [BUILTIN-FILE-LISTDIR].
+const DIRECTORY_FNS: &[&str] = &["listDir", "kindOf", "makeDir"];
+
 fn wasm_builtin(name: &str) -> Option<&'static str> {
     if FIBER_FNS.contains(&name) {
         Some("fiber concurrency")
     } else if TERMINAL_FNS.contains(&name) {
         Some("terminal control")
+    } else if DIRECTORY_FNS.contains(&name) {
+        Some("directory access")
     } else {
         None
     }
