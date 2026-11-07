@@ -3,13 +3,16 @@ effect Supply
     (** Request the next scripted value for `label`. *)
     control next : string => int
 
+(** One labeled check that `got` equals `want` [TESTING-BUILTIN-CHECK]. *)
+checkEq name got want = check name want got
+
 (** This helper sums three values supplied through explicit resume calls. *)
 total : Unit -> int ![Supply, Arith]
 total () =
     first = perform Supply.next "first"
     second = perform Supply.next "second"
     third = perform Supply.next "third"
-    first + second + third 
+    first + second + third
 
 (** Relay proves generic operation values unbox at two distinct instantiations. *)
 effect Relay T
@@ -44,8 +47,8 @@ resumeValueRewriteCase () =
     result =
         handle Supply
             next label =>
-                supplyCalls := supplyCalls + 1 
-                seed := seed + 5 
+                supplyCalls := supplyCalls + 1
+                seed := seed + 5
                 supplied := "${supplied}${label}:${toString seed}|"
                 supplyTranscript := "${supplyTranscript}supply ${label}=${toString seed}\n"
                 answer = resume seed
@@ -60,7 +63,7 @@ resumeValueRewriteCase () =
     word =
         handle Relay
             ask =>
-                wordRelayCalls := wordRelayCalls + 1 
+                wordRelayCalls := wordRelayCalls + 1
                 answer = resume "carried"
                 wordSettled := answer
                 relayTranscript := "${relayTranscript}relay answered: ${answer}\n"
@@ -71,7 +74,7 @@ resumeValueRewriteCase () =
     checked =
         handle Checked
             half n =>
-                checkedCalls := checkedCalls + 1 
+                checkedCalls := checkedCalls + 1
                 resume (Success(value = n))
         runChecked ()
 
@@ -79,38 +82,34 @@ resumeValueRewriteCase () =
     num =
         handle Relay
             ask =>
-                numRelayCalls := numRelayCalls + 1 
+                numRelayCalls := numRelayCalls + 1
                 resume 41
         echoNum ()
     legacyTranscript = "${supplyTranscript}result=${toString result}\n${relayTranscript}word=${word}\nchecked=${toString checked} num=${toString num}\n"
 
     (* Preserve the complete ten-line golden transcript and every output phase. *)
-    checkAll "value-rewrite legacy observations" [
-        legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
-        contains legacyTranscript "supply first=105\n",
-        contains legacyTranscript "supply second=110\n",
-        contains legacyTranscript "supply third=115\n",
-        contains legacyTranscript "seen after third: 330\n",
-        contains legacyTranscript "seen after second: 330\n",
-        contains legacyTranscript "seen after first: 330\n",
-        contains legacyTranscript "result=330\n",
-        contains legacyTranscript "relay answered: carried\n",
-        contains legacyTranscript "word=carried\n",
-        endsWith legacyTranscript "checked=10 num=41\n"
-    ]
+    checkEq "value-rewrite legacy transcript" legacyTranscript "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n"
+    checkTrue "legacy has the first supply" (contains legacyTranscript "supply first=105\n")
+    checkTrue "legacy has the second supply" (contains legacyTranscript "supply second=110\n")
+    checkTrue "legacy has the third supply" (contains legacyTranscript "supply third=115\n")
+    checkTrue "legacy has the third settle" (contains legacyTranscript "seen after third: 330\n")
+    checkTrue "legacy has the second settle" (contains legacyTranscript "seen after second: 330\n")
+    checkTrue "legacy has the first settle" (contains legacyTranscript "seen after first: 330\n")
+    checkTrue "legacy has the result" (contains legacyTranscript "result=330\n")
+    checkTrue "legacy has the relay answer" (contains legacyTranscript "relay answered: carried\n")
+    checkTrue "legacy has the word" (contains legacyTranscript "word=carried\n")
+    checkTrue "legacy ends with the scalar line" (endsWith legacyTranscript "checked=10 num=41\n")
 
     (* Assert supplied values, LIFO settlement, Result shape, and both Relay types. *)
-    checkAll "value-rewrite internal state" [
-        structuralEquals [result, seed, supplyCalls] [330, 115, 3],
-        supplied == "first:105|second:110|third:115|",
-        settled == "third:330|second:330|first:330|",
-        result == (105 + 110 + 115 ),
-        word == "carried",
-        wordRelayCalls == 1,
-        wordSettled == "carried",
-        structuralEquals [checked, checkedCalls, num, numRelayCalls] [10, 1, 41, 1],
-        checked != num
-    ]
+    checkTrue "counters and results agree" (structuralEquals [result, seed, supplyCalls] [330, 115, 3])
+    checkEq "supplies are issued in order" supplied "first:105|second:110|third:115|"
+    checkEq "supplies settle LIFO" settled "third:330|second:330|first:330|"
+    checkEq "the region sums its supplies" result (105 + 110 + 115)
+    checkEq "relay answers with the supplied word" word "carried"
+    checkEq "relay runs one word operation" wordRelayCalls 1
+    checkEq "the relay word settles into its cell" wordSettled "carried"
+    checkTrue "Result and numeric relay keep their own counts" (structuralEquals [checked, checkedCalls, num, numRelayCalls] [10, 1, 41, 1])
+    checkTrue "the two Relay instantiations differ" (checked != num)
 
 (* Register the value-rewriting and generic-resume regression. *)
 
@@ -128,8 +127,8 @@ weightedReads () =
     b = perform Script.read 2
     c = perform Script.read 3
     d = perform Script.read 4
-    weighted = ((a * 1000) ) + ((b * 100) ) + ((c * 10) ) 
-    (weighted + d) 
+    weighted = (a * 1000) + (b * 100) + (c * 10)
+    (weighted + d)
 
 (** [EFFECTS-RESUME] "`resume(value)` supplies the current operation result and
     runs the rest of the handled computation." Each perform site must observe
@@ -146,11 +145,11 @@ resumeSubstitutesSuppliedValueCase () =
     picked =
         handle Script
             read slot =>
-                reads := reads + 1 
+                reads := reads + 1
                 value = match slot
                     1 => 0
                     2 => 7
-                    3 => (0 - 4) 
+                    3 => (0 - 4)
                     _ => 7
                 asked := "${asked}${toString slot}|"
                 gave := "${gave}${toString value}|"
@@ -163,7 +162,7 @@ resumeSubstitutesSuppliedValueCase () =
     steady =
         handle Script
             read _slot =>
-                steadyReads := steadyReads + 1 
+                steadyReads := steadyReads + 1
                 resume 1
         weightedReads ()
 
@@ -171,7 +170,7 @@ resumeSubstitutesSuppliedValueCase () =
     zeroed =
         handle Script
             read _slot =>
-                zeroReads := zeroReads + 1 
+                zeroReads := zeroReads + 1
                 resume 0
         weightedReads ()
 
@@ -179,47 +178,67 @@ resumeSubstitutesSuppliedValueCase () =
         The rejected values are the answers a broken delivery would produce: 10 is
         the unweighted sum, 7777 every site receiving 7, 6670 the script arriving
         reversed, and 1234 the slot numbers arriving instead of the script. *)
-    checkAll "resume substitutes the scripted value at each perform site" [
-        picked == 667, picked == ((660 + 7) ), reads == 4,
-        gave == "0|7|-4|7|", asked == "1|2|3|4|",
-        picked != 10, picked != 7777, picked != 6670, picked != 1234,
-        picked != 0, picked > 660, picked < 700,
-        length gave == 9, length asked == 8
-    ]
+    checkEq "resume substitutes the scripted value" picked 667
+    checkEq "the script splits into 660 head plus 7 unit" picked (660 + 7)
+    checkEq "the body performs four reads" reads 4
+    checkEq "the script is issued in order" gave "0|7|-4|7|"
+    checkEq "the slots are asked in order" asked "1|2|3|4|"
+    checkTrue "the unweighted sum is not delivered" (picked != 10)
+    checkTrue "every site receiving 7 is ruled out" (picked != 7777)
+    checkTrue "the reversed script is ruled out" (picked != 6670)
+    checkTrue "slot numbers are not delivered" (picked != 1234)
+    checkTrue "the answer is not zero" (picked != 0)
+    checkTrue "the answer exceeds the weighted head" (picked > 660)
+    checkTrue "the answer stays under one per site" (picked < 700)
+    checkEq "three issued values plus separators" (length gave) 9
+    checkEq "four asked slots plus separators" (length asked) 8
 
     (* Operations enter in the order the body performs them and their arms
         settle in the reverse order, so `asked` and `seen` must disagree. *)
-    checkAll "reads enter in slot order and settle in reverse" [
-        asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
-        startsWith seen "4:667|", endsWith seen "1:667|",
-        contains seen "3:667|", contains seen "2:667|",
-        !(startsWith seen "1:"), asked != seen,
-        length seen == 24, reads == 4,
-        !(contains seen "0:"), !(contains seen ":660")
-    ]
+    checkEq "slots are asked in order" asked "1|2|3|4|"
+    checkEq "arms settle in reverse slot order" seen "4:667|3:667|2:667|1:667|"
+    checkTrue "settlement starts at the last slot" (startsWith seen "4:667|")
+    checkTrue "settlement ends at the first slot" (endsWith seen "1:667|")
+    checkTrue "slot three settled with the answer" (contains seen "3:667|")
+    checkTrue "slot two settled with the answer" (contains seen "2:667|")
+    checkTrue "settlement never starts with slot one" (!(startsWith seen "1:"))
+    checkTrue "ask and settle transcripts disagree" (asked != seen)
+    checkEq "four settle entries of six bytes" (length seen) 24
+    checkEq "exactly four reads again" reads 4
+    checkTrue "no slot zero ever entered" (!(contains seen "0:"))
+    checkTrue "no partial answer leaked" (!(contains seen ":660"))
 
     (* Every arm's resume returns the one completed answer, never the value that
         arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
         supplied value could have been handed back by mistake. *)
-    checkAll "every arm observes the completed computation answer" [
-        contains seen "1:667", contains seen "2:667",
-        contains seen "3:667", contains seen "4:667",
-        !(contains seen "4:7|"), !(contains seen "2:7|"),
-        !(contains seen "3:-4|"), !(contains seen "1:0|"),
-        contains seen (toString picked),
-        contains gave "0|", contains gave "-4|", !(contains gave "|4|")
-    ]
+    checkTrue "slot one observed the completed answer" (contains seen "1:667")
+    checkTrue "slot two observed the completed answer" (contains seen "2:667")
+    checkTrue "slot three observed the completed answer" (contains seen "3:667")
+    checkTrue "slot four observed the completed answer" (contains seen "4:667")
+    checkTrue "slot four never saw its own supply" (!(contains seen "4:7|"))
+    checkTrue "slot two never saw its own supply" (!(contains seen "2:7|"))
+    checkTrue "slot three never saw its own supply" (!(contains seen "3:-4|"))
+    checkTrue "slot one never saw its own supply" (!(contains seen "1:0|"))
+    checkTrue "the completed answer appears verbatim" (contains seen (toString picked))
+    checkTrue "the zero supply was issued" (contains gave "0|")
+    checkTrue "the negative supply was issued" (contains gave "-4|")
+    checkTrue "no stray four was issued" (!(contains gave "|4|"))
 
     (* The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
         and under an all-zero script answers 0 — the body is fixed, the supplies
         are what move. Neither later region disturbs the first region's state. *)
-    checkAll "the same body answers differently under a different script" [
-        steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
-        ((steady - picked) ) == 444,
-        steady == (((1000 + 100) ) + ((10 + 1) ) ),
-        zeroed == 0, zeroReads == 4, zeroed != picked,
-        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
-    ]
+    checkEq "a constant script answers one per weight" steady 1111
+    checkEq "the constant script also reads four times" steadyReads 4
+    checkTrue "a constant script differs from the mixed one" (steady != picked)
+    checkTrue "the mixed script is not constant" (picked != 1111)
+    checkEq "the scripts differ by one per weight" (steady - picked) 444
+    checkEq "the constant script equals its weights" steady ((1000 + 100) + (10 + 1))
+    checkEq "an all-zero script answers zero" zeroed 0
+    checkEq "the zero script also reads four times" zeroReads 4
+    checkTrue "the zero script differs from the mixed one" (zeroed != picked)
+    checkEq "asks are unchanged by the later regions" asked "1|2|3|4|"
+    checkEq "supplies are unchanged by the later regions" gave "0|7|-4|7|"
+    checkEq "both scripts issued the same count" reads steadyReads
 
 (* Register value substitution at the perform site. *)
 test "resume substitutes exactly the value each arm supplied" (\() => exactArithmetic (resumeSubstitutesSuppliedValueCase))
@@ -234,10 +253,10 @@ layered () =
     a = perform Layer.fetch 1
     b = perform Layer.fetch 2
     c = perform Layer.fetch 3
-    ((a * 100) ) + ((b * 10) ) + c 
+    (a * 100) + (b * 10) + c
 
 (** One perform, so the arm's own value is unmistakably the region's answer. *)
-soloLayer () = (perform Layer.fetch 4 + 1) 
+soloLayer () = (perform Layer.fetch 4 + 1)
 
 (** [EFFECTS-RESUME] resume "evaluates to that computation's answer, so the arm
     may execute code after the resumed computation returns", and handlers "are
@@ -258,7 +277,7 @@ resumeAnswerComposesLifoCase () =
                 entered := "${entered}${toString slot}|"
                 answer = resume slot
                 observed := "${observed}${toString slot}:${toString answer}|"
-                adjusted = (answer + slot) 
+                adjusted = (answer + slot)
                 returned := "${returned}${toString slot}:${toString adjusted}|"
                 adjusted
         layered ()
@@ -267,7 +286,7 @@ resumeAnswerComposesLifoCase () =
     plain =
         handle Layer
             fetch slot =>
-                plainCalls := plainCalls + 1 
+                plainCalls := plainCalls + 1
                 resume slot
         layered ()
 
@@ -276,56 +295,72 @@ resumeAnswerComposesLifoCase () =
     solo =
         handle Layer
             fetch slot =>
-                soloCalls := soloCalls + 1 
+                soloCalls := soloCalls + 1
                 answer = resume slot
                 soloObserved := answer
-                (answer * 3) 
+                (answer * 3)
         soloLayer ()
 
     (* 124 is the answer if every arm saw the raw body value instead of the
         next-inner arm's value; 126 is the answer if only the innermost
         adjustment survived; 123 is the answer if all three were discarded. *)
-    checkAll "post-resume adjustments compose out of the region" [
-        layeredResult == 129, entered == "1|2|3|",
-        observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
-        layeredResult != 123, layeredResult != 126, layeredResult != 124,
-        layeredResult == ((123 + 6) ),
-        startsWith observed "3:", endsWith observed "1:128|",
-        observed != returned, contains observed "3:123|"
-    ]
+    checkEq "post-resume adjustments compose to 129" layeredResult 129
+    checkEq "operations enter in body order" entered "1|2|3|"
+    checkEq "each arm observes the next-inner answer" observed "3:123|2:126|1:128|"
+    checkEq "each arm returns its adjusted answer" returned "3:126|2:128|1:129|"
+    checkTrue "discarding all adjustments is ruled out" (layeredResult != 123)
+    checkTrue "one surviving adjustment is ruled out" (layeredResult != 126)
+    checkTrue "raw body value delivery is ruled out" (layeredResult != 124)
+    checkEq "three adjustments of one each" layeredResult (123 + 6)
+    checkTrue "settlement starts at the innermost" (startsWith observed "3:")
+    checkTrue "settlement ends at the outermost" (endsWith observed "1:128|")
+    checkTrue "observed and returned differ" (observed != returned)
+    checkTrue "the body answer appears in observations" (contains observed "3:123|")
 
     (* Each arm's returned value is exactly the answer the next-outer arm then
         observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
         128; 1 returns 129, which is the whole handle expression's result. *)
-    checkAll "each arm's value becomes the next-outer arm's answer" [
-        contains returned "3:126|", contains observed "2:126|",
-        contains returned "2:128|", contains observed "1:128|",
-        contains returned "1:129|", !(contains observed "2:123|"),
-        !(contains observed "1:123|"), !(contains returned "3:123|"),
-        length observed == 18, length returned == 18,
-        layeredResult == 129, endsWith returned "1:129|"
-    ]
+    checkTrue "three returns 126" (contains returned "3:126|")
+    checkTrue "two observes 126" (contains observed "2:126|")
+    checkTrue "two returns 128" (contains returned "2:128|")
+    checkTrue "one observes 128" (contains observed "1:128|")
+    checkTrue "one returns 129" (contains returned "1:129|")
+    checkTrue "two never observes the raw body answer" (!(contains observed "2:123|"))
+    checkTrue "one never observes the raw body answer" (!(contains observed "1:123|"))
+    checkTrue "three never returns the raw body answer" (!(contains returned "3:123|"))
+    checkEq "three observed entries" (length observed) 18
+    checkEq "three returned entries" (length returned) 18
+    checkEq "the outermost arm's value is the region result" layeredResult 129
+    checkTrue "the region result ends the returned chain" (endsWith returned "1:129|")
 
     (* An arm that returns its answer unchanged leaves the body's own value as
         the region's result, which is what the adjusting region moved by 1+2+3. *)
-    checkAll "an unadjusted region answers with the body value" [
-        plain == 123, plainCalls == 3,
-        plain == ((((1 * 100) ) + ((2 * 10) ) + 3) ),
-        plain != layeredResult, ((layeredResult - plain) ) == 6,
-        layeredResult == ((plain + 6) ),
-        plain > 100, plain < 129, plainCalls == 3,
-        !(contains observed "3:129|"), entered == "1|2|3|"
-    ]
+    checkEq "an unadjusted region answers with the body value" plain 123
+    checkEq "the unadjusted region also performs three times" plainCalls 3
+    checkEq "the body value is its weights" plain ((1 * 100) + (2 * 10) + 3)
+    checkTrue "unadjusted and adjusted regions differ" (plain != layeredResult)
+    checkEq "adjustment moves the answer by six" (layeredResult - plain) 6
+    checkEq "the adjusted answer is plain plus six" layeredResult (plain + 6)
+    checkTrue "the body answer is a three-digit weight sum" (plain > 100)
+    checkTrue "the body answer stays under the adjusted one" (plain < 129)
+    checkEq "the plain region performs three times, again" plainCalls 3
+    checkTrue "no adjusted answer leaks into observations" (!(contains observed "3:129|"))
+    checkEq "entry order is unchanged" entered "1|2|3|"
 
     (* With one perform the arm's own value is unmistakably the region answer:
         the body computes 4 + 1 = 5 and the arm triples it. *)
-    checkAll "a single-perform arm supplies the whole region answer" [
-        solo == 15, soloObserved == 5, soloCalls == 1,
-        solo == ((soloObserved * 3) ),
-        soloObserved == ((4 + 1) ),
-        solo != 5, solo != 4, solo != 12, solo != layeredResult,
-        solo > 5, solo < 129, soloObserved != 4
-    ]
+    checkEq "a single-perform arm triples the answer" solo 15
+    checkEq "the single arm observed the body answer" soloObserved 5
+    checkEq "the single arm performed once" soloCalls 1
+    checkEq "the region answer is thrice the observed" solo (soloObserved * 3)
+    checkEq "the body computed four plus one" soloObserved (4 + 1)
+    checkTrue "the tripled answer differs from the body" (solo != 5)
+    checkTrue "the tripled answer differs from the body value" (solo != 4)
+    checkTrue "double the answer is ruled out" (solo != 12)
+    checkTrue "the solo region differs from the layered one" (solo != layeredResult)
+    checkTrue "the tripled answer exceeds the body" (solo > 5)
+    checkTrue "the tripled answer stays under the layered one" (solo < 129)
+    checkTrue "the body answer is not four" (soloObserved != 4)
 
 (* Register the composition of post-resume adjustments. *)
 test "post-resume adjustments compose into the region answer" (\() => exactArithmetic (resumeAnswerComposesLifoCase))
@@ -372,12 +407,12 @@ resumeScalarPayloadsCase () =
     countText =
         handle Scalar
             count step =>
-                countCalls := countCalls + 1 
+                countCalls := countCalls + 1
                 value = match step
                     1 => 0
-                    2 => (0 - 9) 
+                    2 => (0 - 9)
                     3 => 1000000
-                    _ => (0 - 9) 
+                    _ => (0 - 9)
                 countGave := "${countGave}${toString value}|"
                 resume value
         countBody ()
@@ -386,7 +421,7 @@ resumeScalarPayloadsCase () =
     lone =
         handle Scalar
             ratio _step =>
-                loneCalls := loneCalls + 1 
+                loneCalls := loneCalls + 1
                 resume 2.5
         loneRatio ()
 
@@ -397,7 +432,7 @@ resumeScalarPayloadsCase () =
     ratioTotal =
         handle Scalar
             ratio step =>
-                ratioCalls := ratioCalls + 1 
+                ratioCalls := ratioCalls + 1
                 ratioSlots := "${ratioSlots}${toString step}|"
                 value = match step
                     1 => 1.25
@@ -411,39 +446,52 @@ resumeScalarPayloadsCase () =
 
     (* "0/-9/1000000/-9" is 15 bytes; "/0/" would appear only if the large
         supply had been dropped, and "|9|" only if a sign had been lost. *)
-    checkAll "integer payloads: zero, negative, large and duplicate" [
-        countText == "0/-9/1000000/-9", countCalls == 4,
-        length countText == 15,
-        startsWith countText "0/-9/", endsWith countText "/-9",
-        contains countText "/1000000/", !(contains countText "/0/"),
-        countGave == "0|-9|1000000|-9|", length countGave == 16,
-        contains countGave "|1000000|", !(contains countGave "|9|"),
-        toString 1000000 == "1000000", countText != countGave
-    ]
+    checkEq "integer payloads render in order" countText "0/-9/1000000/-9"
+    checkEq "the count region performs four times" countCalls 4
+    checkEq "the rendered transcript is 15 bytes" (length countText) 15
+    checkTrue "the transcript starts zero minus nine" (startsWith countText "0/-9/")
+    checkTrue "the transcript ends minus nine" (endsWith countText "/-9")
+    checkTrue "the large supply is present" (contains countText "/1000000/")
+    checkTrue "no dropped supply left an empty slot" (!(contains countText "/0/"))
+    checkEq "the issued supplies match the script" countGave "0|-9|1000000|-9|"
+    checkEq "the issued transcript is 16 bytes" (length countGave) 16
+    checkTrue "the issued large supply is delimited" (contains countGave "|1000000|")
+    checkTrue "no sign was lost from minus nine" (!(contains countGave "|9|"))
+    checkEq "the large value renders verbatim" (toString 1000000) "1000000"
+    checkTrue "rendered and issued transcripts differ" (countText != countGave)
 
     (* A float payload crosses the mailbox as its own bits: 2.5 arrives as 2.5,
         and only an exactly-supplied 2.5 doubles to 5.0. *)
-    checkAll "float payloads arrive as the bits that were supplied" [
-        lone == 2.5, loneCalls == 1, lone != 0.0, lone != 2.0, lone != 3.0,
-        (lone * 2.0) == 5.0, (lone + lone) == 5.0, toString lone == "2.5",
-        ratioTotal == 3.5, ratioCalls == 3, ratioTotal != 0.0,
-        ratioTotal != 5.0, lastRatioAnswer == 3.5,
-        ratioSlots == "1|2|3|", ratioSettled == "3|2|1|",
-        ratioSlots != ratioSettled
-    ]
+    checkEq "the lone ratio arrives as supplied" lone 2.5
+    checkEq "the lone region performs once" loneCalls 1
+    checkTrue "the ratio is not zero" (lone != 0.0)
+    checkTrue "the ratio is not two" (lone != 2.0)
+    checkTrue "the ratio is not three" (lone != 3.0)
+    checkEq "the ratio doubles exactly" (lone * 2.0) 5.0
+    checkEq "the ratio sums to itself exactly" (lone + lone) 5.0
+    checkEq "the ratio renders verbatim" (toString lone) "2.5"
+    checkEq "the scaled ratios sum exactly" ratioTotal 3.5
+    checkEq "the ratio region performs three times" ratioCalls 3
+    checkTrue "the scaled sum is not zero" (ratioTotal != 0.0)
+    checkTrue "the scaled sum is not five" (ratioTotal != 5.0)
+    checkEq "the innermost arm observed the whole sum" lastRatioAnswer 3.5
+    checkEq "ratio operations enter in body order" ratioSlots "1|2|3|"
+    checkEq "ratio operations settle in reverse" ratioSettled "3|2|1|"
+    checkTrue "enter and settle orders differ" (ratioSlots != ratioSettled)
 
     (* The float region's answer decomposes exactly, and the three scalar
         regions each keep their own handler-owned counter. *)
-    checkAll "scalar regions keep separate state" [
-        ratioTotal == (5.0 - 1.5),
-        ratioTotal == (((1.25 * 4.0) + (0.0 * 100.0)) + ((0.0 - 0.75) * 2.0)),
-        ((0.0 - 0.75) * 2.0) == -1.5,
-        lastRatioAnswer == ratioTotal, lone != ratioTotal,
-        countCalls == 4, ratioCalls == 3, loneCalls == 1,
-        countCalls != ratioCalls,
-        (((countCalls + ratioCalls) ) + loneCalls ) == 8,
-        countText != ""
-    ]
+    checkEq "the scaled sum is five minus one and a half" ratioTotal (5.0 - 1.5)
+    checkEq "the scaled sum decomposes into its three arms" ratioTotal ((1.25 * 4.0) + (0.0 * 100.0) + ((0.0 - 0.75) * 2.0))
+    checkEq "the negative ratio contributes minus one and a half" ((0.0 - 0.75) * 2.0) -1.5
+    checkEq "the innermost arm saw the whole sum" lastRatioAnswer ratioTotal
+    checkTrue "the lone ratio differs from the scaled sum" (lone != ratioTotal)
+    checkEq "the count region kept its counter" countCalls 4
+    checkEq "the ratio region kept its counter" ratioCalls 3
+    checkEq "the lone region kept its counter" loneCalls 1
+    checkTrue "count and ratio counters differ" (countCalls != ratioCalls)
+    checkEq "the three regions performed eight operations" (countCalls + ratioCalls + loneCalls) 8
+    checkTrue "the count transcript is not empty" (countText != "")
 
 (* Register integer and float resume payloads. *)
 test "resume carries integer and float payloads" (\() => exactArithmetic (resumeScalarPayloadsCase))
@@ -483,7 +531,7 @@ resumeBoolAndUnitPayloadsCase () =
     flagText =
         handle Scalar
             flag step =>
-                flagCalls := flagCalls + 1 
+                flagCalls := flagCalls + 1
                 value = match step
                     2 => false
                     _ => true
@@ -499,7 +547,7 @@ resumeBoolAndUnitPayloadsCase () =
     routeText =
         handle Scalar
             flag step =>
-                routeCalls := routeCalls + 1 
+                routeCalls := routeCalls + 1
                 value = match step
                     2 => false
                     _ => true
@@ -517,7 +565,7 @@ resumeBoolAndUnitPayloadsCase () =
     beatText =
         handle Scalar
             beat step =>
-                beats := beats + 1 
+                beats := beats + 1
                 beatOrder := "${beatOrder}${toString step}|"
                 answer = resume ()
                 beatAfter := "${beatAfter}${toString step}|"
@@ -527,47 +575,62 @@ resumeBoolAndUnitPayloadsCase () =
 
     (* "true|false|true" is 15 bytes and holds both renderings; a boolean that
         collapsed to an integer would print "1" or "0" instead. *)
-    checkAll "boolean payloads keep both truth values" [
-        flagText == "true|false|true", length flagText == 15,
-        contains flagText "true", contains flagText "false",
-        startsWith flagText "true|", endsWith flagText "|true",
-        !(startsWith flagText "false"), flagCalls == 3,
-        flagGave == "T|F|T|", !(contains flagText "1"),
-        !(contains flagText "0"), toString true == "true",
-        toString false == "false"
-    ]
+    checkEq "boolean payloads keep both truth values" flagText "true|false|true"
+    checkEq "the flag transcript is 15 bytes" (length flagText) 15
+    checkTrue "the transcript contains a true" (contains flagText "true")
+    checkTrue "the transcript contains a false" (contains flagText "false")
+    checkTrue "the transcript starts true" (startsWith flagText "true|")
+    checkTrue "the transcript ends true" (endsWith flagText "|true")
+    checkTrue "the transcript never starts false" (!(startsWith flagText "false"))
+    checkEq "the flag region performs three times" flagCalls 3
+    checkEq "the handler marked each truth value" flagGave "T|F|T|"
+    checkTrue "no boolean collapsed to one" (!(contains flagText "1"))
+    checkTrue "no boolean collapsed to zero" (!(contains flagText "0"))
+    checkEq "true renders verbatim" (toString true) "true"
+    checkEq "false renders verbatim" (toString false) "false"
 
     (* The supplied bit selects the caller's own match arm, so the route text
         orders itself by which perform received which value. *)
-    checkAll "a supplied boolean drives the caller's own branch" [
-        routeText == "allow/deny", length routeText == 10,
-        startsWith routeText "allow", endsWith routeText "deny",
-        contains routeText "/", routeText != "deny/allow",
-        !(contains routeText "denyallow"), routeCalls == 2,
-        routeGave == "T|F|", routeText != flagText,
-        routeCalls != flagCalls, flagGave != routeGave
-    ]
+    checkEq "the supplied bits order the caller's routes" routeText "allow/deny"
+    checkEq "the route transcript is 10 bytes" (length routeText) 10
+    checkTrue "the first route allows" (startsWith routeText "allow")
+    checkTrue "the second route denies" (endsWith routeText "deny")
+    checkTrue "the routes are separated" (contains routeText "/")
+    checkTrue "the routes never swap" (routeText != "deny/allow")
+    checkTrue "the routes never concatenate" (!(contains routeText "denyallow"))
+    checkEq "the route region performs twice" routeCalls 2
+    checkEq "the route handler marked each truth value" routeGave "T|F|"
+    checkTrue "route and flag transcripts differ" (routeText != flagText)
+    checkTrue "route and flag counts differ" (routeCalls != flagCalls)
+    checkTrue "the two handlers marked different counts" (flagGave != routeGave)
 
     (* Each Unit arm resumes with nothing and still observes the string the
         whole computation answers with, three times, unwinding in reverse. *)
-    checkAll "resume() supplies Unit and still returns the answer" [
-        beatText == "steady", beats == 3,
-        beatOrder == "1|2|3|", beatAfter == "3|2|1|",
-        beatOrder != beatAfter, beatSeen == "steady|steady|steady|",
-        length beatSeen == 21, contains beatSeen "steady|steady|",
-        startsWith beatOrder "1|", endsWith beatAfter "1|",
-        beatText != "", length beatText == 6
-    ]
+    checkEq "the beat body answers after three acknowledgements" beatText "steady"
+    checkEq "the beat region performs three times" beats 3
+    checkEq "beat operations enter in body order" beatOrder "1|2|3|"
+    checkEq "beat operations settle in reverse" beatAfter "3|2|1|"
+    checkTrue "enter and settle orders differ" (beatOrder != beatAfter)
+    checkEq "every arm observed the body answer" beatSeen "steady|steady|steady|"
+    checkEq "three observed answers of seven bytes" (length beatSeen) 21
+    checkTrue "the observed answers repeat" (contains beatSeen "steady|steady|")
+    checkTrue "entry starts at the first beat" (startsWith beatOrder "1|")
+    checkTrue "settlement ends at the first beat" (endsWith beatAfter "1|")
+    checkTrue "the beat transcript is not empty" (beatText != "")
+    checkEq "the beat body answer is six bytes" (length beatText) 6
 
     (* Three regions over the same effect, each with its own counters; the
         boolean regions never ran a `beat` arm and vice versa. *)
-    checkAll "bool and Unit regions keep separate state" [
-        flagCalls == 3, routeCalls == 2, beats == 3,
-        flagCalls == beats, flagCalls != routeCalls,
-        (((flagCalls + routeCalls) ) + beats ) == 8,
-        beatSeen != flagText, beatOrder != routeGave,
-        flagText != routeText, beatText != flagText
-    ]
+    checkEq "the flag region kept its counter" flagCalls 3
+    checkEq "the route region kept its counter" routeCalls 2
+    checkEq "the beat region kept its counter" beats 3
+    checkEq "flag and beat regions performed equally" flagCalls beats
+    checkTrue "flag and route counts differ" (flagCalls != routeCalls)
+    checkEq "the three regions performed eight operations" (flagCalls + routeCalls + beats) 8
+    checkTrue "beat and flag transcripts differ" (beatSeen != flagText)
+    checkTrue "beat order and route marks differ" (beatOrder != routeGave)
+    checkTrue "flag and route transcripts differ" (flagText != routeText)
+    checkTrue "beat and flag transcripts differ" (beatText != flagText)
 
 (* Register boolean and Unit resume payloads. *)
 test "resume carries boolean and Unit payloads" (\() => exactArithmetic (resumeBoolAndUnitPayloadsCase))
@@ -605,18 +668,18 @@ slotBody () =
 (** One record whose numeric field the caller does arithmetic with. *)
 weightBody () =
     held = perform Managed.slot 7
-    (held.weight * 2) 
+    (held.weight * 2)
 
 (** The caller, not the handler, turns the supplied Result into an integer. *)
 parseValue key = match perform Managed.parse key
     Success value => value
-    Error message => (0 - length message) 
+    Error message => (0 - length message)
 
 (** One success and one error weighted 10/1, so both must arrive intact. *)
 parsedPair () =
     good = parseValue "ok"
     bad = parseValue "bad"
-    ((good * 10) ) + bad 
+    (good * 10) + bad
 
 (** [EFFECTS-RESUME] with [EFFECTS-OPERATION-MAILBOX]: a managed payload is
     borrowed by the arm "for the whole time it can reach them — including after
@@ -630,7 +693,7 @@ resumeManagedPayloadsCase () =
     textResult =
         handle Managed
             text key =>
-                textCalls := textCalls + 1 
+                textCalls := textCalls + 1
                 value = match key
                     "empty" => ""
                     "one" => "x"
@@ -644,7 +707,7 @@ resumeManagedPayloadsCase () =
     slotText =
         handle Managed
             slot n =>
-                slotCalls := slotCalls + 1 
+                slotCalls := slotCalls + 1
                 match n
                     1 => resume (Slot(label = "left", weight = 3, ready = true))
                     _ => resume (Slot(label = "", weight = 0, ready = false))
@@ -654,7 +717,7 @@ resumeManagedPayloadsCase () =
     doubledWeight =
         handle Managed
             slot _n =>
-                weightCalls := weightCalls + 1 
+                weightCalls := weightCalls + 1
                 resume (Slot(label = "seven", weight = 21, ready = true))
         weightBody ()
 
@@ -663,7 +726,7 @@ resumeManagedPayloadsCase () =
     parsedTotal =
         handle Managed
             parse key =>
-                parseCalls := parseCalls + 1 
+                parseCalls := parseCalls + 1
                 match key
                     "ok" =>
                         parseGave := "${parseGave}ok=Success|"
@@ -676,48 +739,65 @@ resumeManagedPayloadsCase () =
     (* "[][x][a1, b2!][abab]" is 20 bytes: eight brackets around 0 + 1 + 7 + 4
         bytes of payload. The leading "[]" is the empty supply arriving as an
         empty string rather than as a missing one. *)
-    checkAll "string payloads: empty, one byte, punctuation, repeats" [
-        textResult == "[][x][a1, b2!][abab]", length textResult == 20,
-        startsWith textResult "[][x]", endsWith textResult "[abab]",
-        contains textResult "[]", contains textResult "a1, b2!",
-        toUpperCase textResult == "[][X][A1, B2!][ABAB]",
-        toLowerCase (toUpperCase textResult) == "[][x][a1, b2!][abab]",
-        textCalls == 4,
-        textGave == "empty=|one=x|mixed=a1, b2!|repeated=abab|",
-        length textGave == 41, contains textGave "empty=|",
-        !(contains textResult "empty"), textResult != textGave
-    ]
+    checkEq "string payloads render bracketed in order" textResult "[][x][a1, b2!][abab]"
+    checkEq "the text transcript is 20 bytes" (length textResult) 20
+    checkTrue "the transcript starts with the empty supply" (startsWith textResult "[][x]")
+    checkTrue "the transcript ends with the repeated supply" (endsWith textResult "[abab]")
+    checkTrue "the empty supply is present" (contains textResult "[]")
+    checkTrue "the punctuation supply is present" (contains textResult "a1, b2!")
+    checkEq "upper-casing preserves the shape" (toUpperCase textResult) "[][X][A1, B2!][ABAB]"
+    checkEq "lower-casing restores the transcript" (toLowerCase (toUpperCase textResult)) "[][x][a1, b2!][abab]"
+    checkEq "the text region performs four times" textCalls 4
+    checkEq "the handler issued each text in order" textGave "empty=|one=x|mixed=a1, b2!|repeated=abab|"
+    checkEq "the issued transcript is 41 bytes" (length textGave) 41
+    checkTrue "the empty supply was issued" (contains textGave "empty=|")
+    checkTrue "the word empty appears only as a key" (!(contains textResult "empty"))
+    checkTrue "rendered and issued transcripts differ" (textResult != textGave)
 
     (* Both records arrive whole: three fields each, the second one carrying an
         empty label, a zero weight and a false flag. *)
-    checkAll "a whole record crosses one operation intact" [
-        slotText == "left:3:true/:0:false", length slotText == 20,
-        startsWith slotText "left:3:true", endsWith slotText ":0:false",
-        contains slotText "/:0:", !(contains slotText "//"),
-        contains slotText "true", contains slotText "false",
-        slotCalls == 2, doubledWeight == 42, weightCalls == 1,
-        doubledWeight == ((21 * 2) ),
-        doubledWeight != 21, doubledWeight != 0
-    ]
+    checkEq "both records render whole in order" slotText "left:3:true/:0:false"
+    checkEq "the slot transcript is 20 bytes" (length slotText) 20
+    checkTrue "the first record keeps its fields" (startsWith slotText "left:3:true")
+    checkTrue "the second record keeps its fields" (endsWith slotText ":0:false")
+    checkTrue "the records are separated" (contains slotText "/:0:")
+    checkTrue "no empty field collapsed" (!(contains slotText "//"))
+    checkTrue "the true flag survived" (contains slotText "true")
+    checkTrue "the false flag survived" (contains slotText "false")
+    checkEq "the slot region performs twice" slotCalls 2
+    checkEq "the weight arm doubles its supplied weight" doubledWeight 42
+    checkEq "the weight region performs once" weightCalls 1
+    checkEq "the doubled weight is twice 21" doubledWeight (21 * 2)
+    checkTrue "the weight was actually doubled" (doubledWeight != 21)
+    checkTrue "the weight did not vanish" (doubledWeight != 0)
 
     (* Success carries 12 and Error carries a five-byte message, so the caller's
         own match turns them into 12 and -5, weighted to 120 - 5 = 115. *)
-    checkAll "resume inside a match arm supplies whole Results" [
-        parsedTotal == 115, parseCalls == 2,
-        parsedTotal == ((120 - 5) ), length "nope!" == 5,
-        parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
-        parseGave == "ok=Success|bad=Error|", length parseGave == 21,
-        contains parseGave "ok=Success|", contains parseGave "bad=Error|",
-        startsWith parseGave "ok=", endsWith parseGave "Error|"
-    ]
+    checkEq "weighted checked results sum to 115" parsedTotal 115
+    checkEq "the parse region performs twice" parseCalls 2
+    checkEq "ten times success minus the error length" parsedTotal (120 - 5)
+    checkEq "the error message is five bytes" (length "nope!") 5
+    checkTrue "dropping the error is ruled out" (parsedTotal != 120)
+    checkTrue "sign flips are ruled out" (parsedTotal != 125)
+    checkTrue "the unweighted success is ruled out" (parsedTotal != 12)
+    checkEq "the handler issued both verdicts in order" parseGave "ok=Success|bad=Error|"
+    checkEq "the issued transcript is 21 bytes" (length parseGave) 21
+    checkTrue "the success verdict was issued" (contains parseGave "ok=Success|")
+    checkTrue "the error verdict was issued" (contains parseGave "bad=Error|")
+    checkTrue "issuing starts with success" (startsWith parseGave "ok=")
+    checkTrue "issuing ends with the error" (endsWith parseGave "Error|")
 
     (* Four regions over three managed operations, each with its own counter. *)
-    checkAll "managed regions keep separate state" [
-        textCalls == 4, slotCalls == 2, weightCalls == 1, parseCalls == 2,
-        (((textCalls + slotCalls) ) + ((weightCalls + parseCalls) ) ) == 9,
-        textCalls != parseCalls, slotCalls == parseCalls,
-        textResult != slotText, slotText != "", parsedTotal > 100
-    ]
+    checkEq "the text region kept its counter" textCalls 4
+    checkEq "the slot region kept its counter" slotCalls 2
+    checkEq "the weight region kept its counter" weightCalls 1
+    checkEq "the parse region kept its counter" parseCalls 2
+    checkEq "the four regions performed nine operations" (textCalls + slotCalls + weightCalls + parseCalls) 9
+    checkTrue "text and parse counts differ" (textCalls != parseCalls)
+    checkEq "slot and parse counts agree" slotCalls parseCalls
+    checkTrue "text and slot transcripts differ" (textResult != slotText)
+    checkTrue "the slot transcript is not empty" (slotText != "")
+    checkTrue "the parsed total is weighted up" (parsedTotal > 100)
 
 (* Register string, record and Result resume payloads. *)
 test "resume carries string record and Result payloads" (\() => exactArithmetic (resumeManagedPayloadsCase))
@@ -731,20 +811,20 @@ effect Depth
 depth3 tag = perform Depth.supply tag
 
 (** One frame up performs twice through the deepest one. *)
-depth2 tag = (depth3 "${tag}.a" + depth3 "${tag}.b") 
+depth2 tag = (depth3 "${tag}.a" + depth3 "${tag}.b")
 
 (** Each frame on the way out applies its own transform. *)
-depth1 tag = (depth2 tag * 2) 
+depth1 tag = (depth2 tag * 2)
 
 (** The outermost frame adds the constant the transforms must not erase. *)
-depth0 () = (depth1 "deep" + 5) 
+depth0 () = (depth1 "deep" + 5)
 
 (** The chain performs from three different depths, before and after a resume. *)
 spanBody () =
     first = depth3 "shallow"
     inner = depth1 "nested"
     tailValue = depth3 "tail"
-    ((first + inner) ) + tailValue 
+    (first + inner) + tailValue
 
 (** [EFFECTS-RESUME] Handlers "are deep: the same handler remains installed
     while the continuation runs", and [EFFECTS-STATIC-DISCHARGE] propagates the
@@ -760,10 +840,10 @@ resumeFromNestedHelpersCase () =
     deepResult =
         handle Depth
             supply tag =>
-                depthCalls := depthCalls + 1 
-                depthSeed := (depthSeed + 1) 
+                depthCalls := depthCalls + 1
+                depthSeed := (depthSeed + 1)
                 depthTags := "${depthTags}${tag}|"
-                answer = resume ((depthSeed + 2) )
+                answer = resume (depthSeed + 2)
                 depthSettled := "${depthSettled}${tag}|"
                 depthAnswers := "${depthAnswers}${toString answer}|"
                 answer
@@ -777,8 +857,8 @@ resumeFromNestedHelpersCase () =
     spanResult =
         handle Depth
             supply tag =>
-                spanCalls := spanCalls + 1 
-                spanSeed := (spanSeed + 1) 
+                spanCalls := spanCalls + 1
+                spanSeed := (spanSeed + 1)
                 spanTags := "${spanTags}${tag}|"
                 answer = resume spanSeed
                 spanSettled := "${spanSettled}${tag}|"
@@ -788,40 +868,54 @@ resumeFromNestedHelpersCase () =
 
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)
-    checkAll "a perform four frames deep reaches the region's arm" [
-        deepResult == 19, depthCalls == 2, depthSeed == 2,
-        depthTags == "deep.a|deep.b|", depthSettled == "deep.b|deep.a|",
-        depthTags != depthSettled, depthAnswers == "19|19|",
-        deepResult == ((14 + 5) ), ((3 + 4) ) == 7,
-        ((7 * 2) ) == 14,
-        deepResult != 7, deepResult != 14, deepResult != 24,
-        deepResult > 14, deepResult < 24
-    ]
+    checkEq "a perform four frames deep reaches the arm" deepResult 19
+    checkEq "the deep region performs twice" depthCalls 2
+    checkEq "the deep handler seeded twice" depthSeed 2
+    checkEq "deep operations enter in body order" depthTags "deep.a|deep.b|"
+    checkEq "deep operations settle in reverse" depthSettled "deep.b|deep.a|"
+    checkTrue "deep enter and settle orders differ" (depthTags != depthSettled)
+    checkEq "both deep arms observed the region answer" depthAnswers "19|19|"
+    checkEq "the outermost constant completes the answer" deepResult (14 + 5)
+    checkEq "the nested performs supply three then four" (3 + 4) 7
+    checkEq "the doubling produces fourteen" (7 * 2) 14
+    checkTrue "losing the doubling is ruled out" (deepResult != 7)
+    checkTrue "losing the constant is ruled out" (deepResult != 14)
+    checkTrue "doubling after the constant is ruled out" (deepResult != 24)
+    checkTrue "the answer exceeds the doubled sum" (deepResult > 14)
+    checkTrue "the answer stays under the misfolded one" (deepResult < 24)
 
     (* The same handler serves a perform before the nested chain, two inside it,
         and one after it returned: 1 + ((2+3)*2) + 4 = 15. *)
-    checkAll "the deep handler stays installed across the continuation" [
-        spanResult == 15, spanCalls == 4,
-        spanTags == "shallow|nested.a|nested.b|tail|",
-        spanSettled == "tail|nested.b|nested.a|shallow|",
-        startsWith spanTags "shallow|", endsWith spanTags "tail|",
-        startsWith spanSettled "tail|", endsWith spanSettled "shallow|",
-        spanTags != spanSettled, length spanTags == 31,
-        length spanSettled == 31, spanResult == ((11 + 4) ),
-        (((2 + 3) ) * 2 ) == 10, spanResult != 10, spanResult != 5
-    ]
+    checkEq "the handler serves all four spans" spanResult 15
+    checkEq "the span region performs four times" spanCalls 4
+    checkEq "span operations enter in body order" spanTags "shallow|nested.a|nested.b|tail|"
+    checkEq "span operations settle in reverse" spanSettled "tail|nested.b|nested.a|shallow|"
+    checkTrue "span entry starts at the shallow call" (startsWith spanTags "shallow|")
+    checkTrue "span entry ends at the tail call" (endsWith spanTags "tail|")
+    checkTrue "span settlement starts at the tail" (startsWith spanSettled "tail|")
+    checkTrue "span settlement ends at the shallow call" (endsWith spanSettled "shallow|")
+    checkTrue "span enter and settle orders differ" (spanTags != spanSettled)
+    checkEq "the span transcript is 31 bytes" (length spanTags) 31
+    checkEq "the settle transcript is 31 bytes" (length spanSettled) 31
+    checkEq "the nested chain supplies eleven" spanResult (11 + 4)
+    checkEq "the nested chain doubles to ten" ((2 + 3) * 2) 10
+    checkTrue "ten is not the whole answer" (spanResult != 10)
+    checkTrue "five is not the whole answer" (spanResult != 5)
 
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
-    checkAll "both deep regions keep their own transcripts" [
-        contains spanTags "nested.a|nested.b|",
-        contains spanTags "|tail|",
-        !(contains spanSettled "shallow|tail"),
-        spanSeen == "15|15|15|15|", length spanSeen == 12,
-        spanCalls == 4, spanSeed == 4,
-        depthCalls == 2, depthSeed == 2, deepResult == 19,
-        deepResult != spanResult, depthTags != spanTags
-    ]
+    checkTrue "the nested chain entered as one span" (contains spanTags "nested.a|nested.b|")
+    checkTrue "the tail performed after the chain" (contains spanTags "|tail|")
+    checkTrue "settlement never joins the first and last" (!(contains spanSettled "shallow|tail"))
+    checkEq "every span arm observed the completed answer" spanSeen "15|15|15|15|"
+    checkEq "four observed answers of three bytes" (length spanSeen) 12
+    checkEq "the span region performed four times, again" spanCalls 4
+    checkEq "the span handler seeded four times" spanSeed 4
+    checkEq "the deep region still performed twice" depthCalls 2
+    checkEq "the deep handler still seeded twice" depthSeed 2
+    checkEq "the deep region still answers 19" deepResult 19
+    checkTrue "the two regions answered differently" (deepResult != spanResult)
+    checkTrue "the two regions kept separate transcripts" (depthTags != spanTags)
 
 (* Register a perform reached through four frames of helpers. *)
 test "resume reaches a perform four frames deep" (\() => exactArithmetic (resumeFromNestedHelpersCase))
@@ -837,7 +931,7 @@ scriptValues () = [0, 7, -4, 7, 100, 0, -1, 12, 12, 3, 0, 25]
 
 (** Twelve sequential performs in one region, folded on the way back out. *)
 drain i = match i < 12
-    true => perform Ticker.tick i + drain ((i + 1) ) 
+    true => perform Ticker.tick i + drain (i + 1)
     false => 0
 
 (** [EFFECTS-RESUME] Every suspension in one region settles exactly once, in
@@ -854,50 +948,61 @@ manyPerformsOneRegionCase () =
     drained =
         handle Ticker
             tick i =>
-                tickEntered := (tickEntered + 1) 
+                tickEntered := (tickEntered + 1)
                 value = listGet (scriptValues ()) i ?: 0
                 tickGave := "${tickGave}${toString value}|"
                 answer = resume value
-                tickSettled := (tickSettled + 1) 
+                tickSettled := (tickSettled + 1)
                 tickOrder := "${tickOrder}${toString i}|"
-                seenSum := (seenSum + answer) 
+                seenSum := (seenSum + answer)
                 answer
         drain 0
 
     (* The script is exactly twelve entries long, so the sum below is exhaustive
         and every out-of-range read falls back instead of contributing. *)
-    checkAll "twelve sequential suspensions each settle exactly once" [
-        drained == 161, tickEntered == 12, tickSettled == 12,
-        tickEntered == tickSettled, listLength (scriptValues ()) == 12,
-        (listGet (scriptValues ()) 0 ?: 99) == 0,
-        (listGet (scriptValues ()) 11 ?: 99) == 25,
-        (listGet (scriptValues ()) 12 ?: 99) == 99,
-        (listGet (scriptValues ()) (-1) ?: 99) == 99,
-        (listGet (scriptValues ()) 1000 ?: 99) == 99,
-        drained != 0, drained > 100, drained < 200
-    ]
+    checkEq "twelve sequential suspensions answer 161" drained 161
+    checkEq "twelve operations entered" tickEntered 12
+    checkEq "twelve operations settled" tickSettled 12
+    checkEq "every entry settled exactly once" tickEntered tickSettled
+    checkEq "the script is twelve entries long" (listLength (scriptValues ())) 12
+    checkEq "the first script entry is zero" (listGet (scriptValues ()) 0 ?: 99) 0
+    checkEq "the last script entry is 25" (listGet (scriptValues ()) 11 ?: 99) 25
+    checkTrue "past-the-end reads fall back" ((listGet (scriptValues ()) 12 ?: 99) == 99)
+    checkTrue "negative reads fall back" ((listGet (scriptValues ()) (-1) ?: 99) == 99)
+    checkTrue "far out-of-range reads fall back" ((listGet (scriptValues ()) 1000 ?: 99) == 99)
+    checkTrue "the answer is not zero" (drained != 0)
+    checkTrue "the answer exceeds one hundred" (drained > 100)
+    checkTrue "the answer stays under two hundred" (drained < 200)
 
     (* Partial sums: 0+7-4+7 = 10, 100+0-1+12 = 111, 12+3+0+25 = 40. *)
-    checkAll "each index receives its own scripted value" [
-        tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
-        length tickGave == 31,
-        startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
-        contains tickGave "|100|", contains tickGave "|-1|",
-        contains tickGave "|12|12|", !(contains tickGave "|13|"),
-        drained == 161, (((10 + 111) ) + 40 ) == 161,
-        drained != 10, drained != 40, drained != 111
-    ]
+    checkEq "each index received its own scripted value" tickGave "0|7|-4|7|100|0|-1|12|12|3|0|25|"
+    checkEq "the issued transcript is 31 bytes" (length tickGave) 31
+    checkTrue "issuing starts with the first four entries" (startsWith tickGave "0|7|-4|")
+    checkTrue "issuing ends with the last entry" (endsWith tickGave "|25|")
+    checkTrue "the large entry is delimited" (contains tickGave "|100|")
+    checkTrue "the negative entry is delimited" (contains tickGave "|-1|")
+    checkTrue "the adjacent duplicates are present" (contains tickGave "|12|12|")
+    checkTrue "no phantom 13 was issued" (!(contains tickGave "|13|"))
+    checkEq "the answer is still 161" drained 161
+    checkEq "the script's three groups sum to 161" (10 + 111 + 40) 161
+    checkTrue "ten is not the whole answer" (drained != 10)
+    checkTrue "forty is not the whole answer" (drained != 40)
+    checkTrue "one hundred eleven is not the whole answer" (drained != 111)
 
     (* Twelve arms, one completed answer: 161 * 12 = 1932. *)
-    checkAll "the whole region settles in reverse index order" [
-        tickOrder == "11|10|9|8|7|6|5|4|3|2|1|0|",
-        length tickOrder == 26,
-        startsWith tickOrder "11|10|", endsWith tickOrder "|1|0|",
-        !(startsWith tickOrder "0|"), contains tickOrder "|5|4|",
-        tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
-        seenSum == 1932, seenSum == ((161 * 12) ),
-        seenSum != 161, seenSum != 0
-    ]
+    checkEq "settlement runs in reverse index order" tickOrder "11|10|9|8|7|6|5|4|3|2|1|0|"
+    checkEq "the settle transcript is 26 bytes" (length tickOrder) 26
+    checkTrue "settlement starts at the last two indices" (startsWith tickOrder "11|10|")
+    checkTrue "settlement ends at the first two indices" (endsWith tickOrder "|1|0|")
+    checkTrue "settlement never starts at index zero" (!(startsWith tickOrder "0|"))
+    checkTrue "the middle indices settle in order" (contains tickOrder "|5|4|")
+    checkTrue "settle and issue transcripts differ" (tickOrder != tickGave)
+    checkEq "settlement ran once per operation" tickSettled 12
+    checkEq "entry ran once per operation" tickEntered 12
+    checkEq "twelve arms each observed the 161 answer" seenSum 1932
+    checkEq "twelve times 161" seenSum (161 * 12)
+    checkTrue "one answer is not the sum" (seenSum != 161)
+    checkTrue "the sum is not zero" (seenSum != 0)
 
 (* Register twelve performs settling through one region. *)
 test "twelve performs in one region each settle once" (\() => exactArithmetic (manyPerformsOneRegionCase))
