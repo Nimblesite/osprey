@@ -1,4 +1,4 @@
-"""The harness every case in `clients.cpython` runs under: build, launch, report.
+"""The harness every case in `clients.cpython` and `real_cases.cpython` runs under: build, launch, report.
 
 It keeps the suite's case registries, compiles the server for one memory backend,
 waits for its listener, runs every registered case against it, and reports one
