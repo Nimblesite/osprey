@@ -46,6 +46,8 @@ typedef struct {
 } HttpRequestBuffer;
 
 bool http_socket_interrupted(void);
+void http_serving_client(int client_fd);
+int64_t http_client_gone(void);
 RequestReadStatus read_http_request(int socket_fd, HttpRequestBuffer *request);
 void sanitize_log_token(const char *input, char *output, size_t capacity);
 int http_send_all(int socket_fd, const char *data, size_t length);

@@ -110,7 +110,16 @@ def continued(result, step):
 
 def next_step(result, sampling):
     """One step of the fold, or the failure that already ended the turn."""
-    return continued(result, lambda draft: Success(value=draft) if draft.done else one_step(draft, sampling))
+    return continued(result, lambda draft: Success(value=draft) if draft.done else attended(draft, sampling))
+
+
+def attended(draft, sampling):
+    """The next token while the client still waits; a client that hung up ends the
+    turn, so the queue moves on instead of generating for nobody ([LLM-API-QUEUE])."""
+    if httpClientGone() == 1:
+        return Error(message="client disconnected; generation cancelled")
+    else:
+        return one_step(draft, sampling)
 
 
 def one_step(draft, sampling):

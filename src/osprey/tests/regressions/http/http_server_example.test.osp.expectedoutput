@@ -18,6 +18,10 @@ PUT /api/users/1
 PUT /api/users/1 result: 200
 DELETE /api/users/1
 DELETE /api/users/1 result: 200
+=== Testing Client Gone ===
+GET /slow result: -2, handler saw the client leave: true
+GET /alive
+GET /alive result: 200
 === Testing Error Cases ===
 GET /nonexistent
 GET /nonexistent result: 404

@@ -184,6 +184,12 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
         ["serverID" => "Server identifier to stop"],
         http_example!("toString(httpGet(client, \"/\", \"\") ?: -1)"),
     ),
+    builtin_doc!(
+        "httpClientGone",
+        "1 once the client of the request this handler is serving has closed its connection, so a long handler can stop; 0 while it waits, and outside any handler.",
+        [],
+        http_example!("toString(httpClientGone())"),
+    ),
 ];
 
 /// `json` built-in documentation. Prose only — types come from the

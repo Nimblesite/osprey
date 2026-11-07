@@ -1,5 +1,6 @@
-// Local server callback plus status-only GET, POST, PUT, and DELETE requests.
-// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT]
+// Local server callback plus status-only GET, POST, PUT, and DELETE requests,
+// and a slow handler that stops once its client hangs up.
+// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT] [HTTP-SERVER-CLIENT-GONE]
 
 print("=== Comprehensive HTTP API Test ===")
 
@@ -13,6 +14,28 @@ fn jsonResponse(status, body) = HttpResponse {
     partialBody: body
 }
 
+/// What the slow handler saw: how many 10 ms waits passed before its client left,
+/// or -1 if the client never did.
+let goneAfter = Channel(1)
+
+/// Waits in 10 ms steps until the client of this request hangs up, for 5 s at most.
+fn waitGone(waits) = match httpClientGone() {
+    1 => waits
+    _ => match waits {
+        500 => -1
+        _ => {
+            sleep(10)
+            waitGone(satAdd(waits, 1))
+        }
+    }
+}
+
+/// The slow route: reports through `goneAfter` when its client left.
+fn slowRoute() = {
+    send(goneAfter, waitGone(0))
+    jsonResponse(200, "{\"late\": true}")
+}
+
 // Test HTTP server creation
 print("Creating HTTP server on port 18080...")
 let serverId = (httpCreateServer(18080, "127.0.0.1") ?: -1)
@@ -20,10 +43,12 @@ print("Server created with ID: ${serverId}")
 
 /// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
 /// This function receives HTTP requests from the C runtime and returns HttpResponse
-fn handleHttpRequest(method: string, path: string, _headers: string, _body: string) = match method {
+fn handleHttpRequest(method, path, _headers: string, _body: string) = match method {
     "GET" => match path {
         "/api/users" => jsonResponse(200, "{\"users\": [{\"id\": 1, \"name\": \"Alice\"}, {\"id\": 2, \"name\": \"Bob\"}]}")
         "/health" => jsonResponse(200, "{\"status\": \"ok\", \"timestamp\": \"2025-01-15T10:30:00Z\"}")
+        "/alive" => jsonResponse(satAdd(200, httpClientGone()), "{}")
+        "/slow" => slowRoute()
         _ => jsonResponse(404, "{\"error\": \"Not found\"}")
     }
     "POST" => match path {
@@ -78,6 +103,18 @@ let loginResult = request(clientId, "POST", "/api/auth/login", "{\"username\": \
 let putResult = request(clientId, "PUT", "/api/users/1", "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}")
 let deleteResult = request(clientId, "DELETE", "/api/users/1", "")
 
+// A client that gives up after 300 ms: the handler notices it left, and the
+// listener serves the next request.
+print("=== Testing Client Gone ===")
+let impatient = (httpCreateClient("http://127.0.0.1:18080", 300) ?: -1)
+let slowResult = match httpGet(impatient, "/slow", "") {
+    Success { value } => value
+    Error => -2
+}
+let waited = recv(goneAfter)
+print("GET /slow result: ${slowResult}, handler saw the client leave: ${waited > 0}")
+let aliveResult = request(clientId, "GET", "/alive", "")
+
 // Test non-existent endpoints
 print("=== Testing Error Cases ===")
 let notFoundResult = request(clientId, "GET", "/nonexistent", "")
@@ -96,6 +133,11 @@ print("=== HTTP API Test Complete ===")
 test("local HTTP API routes every method and status", fn() => checkAll("HTTP API statuses", [
     serverId > 0,
     clientId > 0,
+    httpClientGone() == 0,
+    slowResult == -2,
+    waited > 0,
+    waited < 500,
+    aliveResult == 200,
     structuralEquals([getUsersResult, getHealthResult, postResult, loginResult], [200, 200, 201, 200]),
     structuralEquals([putResult, deleteResult, notFoundResult, stopResult], [200, 200, 404, 0])
 ]))

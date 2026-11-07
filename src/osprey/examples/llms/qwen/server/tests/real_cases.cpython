@@ -2,8 +2,12 @@
 when `OSPREY_QWEN_GGUF` names the GGUF; otherwise the harness prints a named skip for
 each. Loaded by `clients.cpython`, which owns the fixture-table cases and `main`.
 Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-LIMIT], [LLM-TOOL-CONSTRAIN] and
-[LLM-CACHE-CHECKPOINT] of docs/specs/applications/LocalCodingModel.md on the mapped weights.
+[LLM-CACHE-CHECKPOINT] and [LLM-API-QUEUE] of docs/specs/applications/LocalCodingModel.md on the mapped weights.
 """
+import json
+import socket
+import time
+
 import ollama
 
 from harness import real_case, client, openai_client, MODEL, READ_FILE, ROOT
@@ -98,3 +102,23 @@ def real_tool_call_is_schema_valid_on_the_real_vocabulary(port):
     assert isinstance(arguments, dict), call.function
     assert isinstance(arguments.get("path"), str) and "README" in arguments["path"], arguments
     assert reply.done_reason == "stop", (reply.done_reason, reply.message.content)
+
+
+@real_case
+def real_turn_is_cancelled_when_its_client_hangs_up(port):
+    """[LLM-API-QUEUE] on the real weights: a client asks for a 4,000-token turn (minutes
+    of generation) and hangs up after three seconds; the server stops that turn at its
+    next token, so the request queued behind it answers in seconds, not minutes."""
+    payload = json.dumps({"model": MODEL, "prompt": "Count from one to ten thousand in words.", "options": {"num_predict": 4000}}).encode()
+    with socket.create_connection(("127.0.0.1", port), timeout=30) as abandoned:
+        abandoned.sendall(
+            b"POST /api/generate HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+            + f"Content-Length: {len(payload)}\r\n\r\n".encode()
+            + payload
+        )
+        time.sleep(3)
+    started = time.monotonic()
+    reply = client(port).generate(model=MODEL, prompt="Reply with exactly: pong", options={"num_predict": 8})
+    waited = time.monotonic() - started
+    assert waited < 60, f"the queued request waited {waited:.1f} s behind a turn nobody was reading"
+    assert reply.eval_count == 8 and reply.prompt_eval_count > 5, (reply.eval_count, reply.prompt_eval_count)

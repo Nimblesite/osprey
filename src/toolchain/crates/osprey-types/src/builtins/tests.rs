@@ -230,6 +230,7 @@ fn network_builtins_match_the_runtime_status_abi() {
             "httpStopServer",
             "httpStopServer : (int) -> Result<int, Error>",
         ),
+        ("httpClientGone", "httpClientGone : () -> int"),
         ("websocketClose", "websocketClose : (int) -> int"),
         ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
     ];

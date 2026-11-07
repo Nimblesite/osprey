@@ -9,6 +9,7 @@
     {"builtin": "gpuLoad", "capability": "io/files"},
     {"builtin": "gpuLoadTensor", "capability": "io/files"},
     {"builtin": "gpuMapFile", "capability": "io/files"},
+    {"builtin": "httpClientGone", "capability": "io/network"},
     {"builtin": "httpCloseClient", "capability": "io/network"},
     {"builtin": "httpDelete", "capability": "io/network"},
     {"builtin": "httpGet", "capability": "io/network"},
