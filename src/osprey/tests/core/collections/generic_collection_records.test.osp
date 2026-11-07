@@ -7,31 +7,22 @@ effect RecordAudit {
     note: fn(string) -> Unit
 }
 
-fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
-listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
-
-fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
-listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
+/// Reads `index` out of `found`, or out of `fallbackList` when it is missing.
+fn atOr(found, index, fallbackList, fallback) =
+listGet(found ?: fallbackList, index) ?: fallback
 
 /// The cases' shared fallbacks, one accessor per element type.
-fn intAt(matrix, row, column) = nestedAt(matrix, row, column, [99], 99)
-fn textGroup(groups, key, index) = groupAt(groups, key, index, ["row"], "item")
+fn intAt(matrix, row, column) = atOr(listGet(matrix, row), column, [99], 99)
+fn textGroup(groups, key, index) = atOr(mapGet(groups, key), index, ["row"], "item")
 
-/// One nested-matrix probe: where to read and the exact value it must hold.
-type CellProbe = { row: int, column: int, value: int }
+/// The exact values the listed columns of `row` hold inside `matrix`.
+fn rowCells(matrix, row, columns) = mapList(columns, fn(column) => intAt(matrix, row, column))
 
-/// One group probe: which key and index, and the exact element it must hold.
-type GroupProbe = { key: string, index: int, value: string }
+/// The exact cells the two probed rows of `matrix` hold: columns 0, 1 then 0, 2.
+fn probedCells(matrix) = [rowCells(matrix, 0, [0, 1]), rowCells(matrix, 1, [0, 2])]
 
-/// Asserts every cell probe reads its exact value out of `matrix`.
-fn checkCells(label, matrix, probes) = {
-    let _ = forEachList(probes, fn(probe) => check(label, probe.value, intAt(matrix, probe.row, probe.column)))
-}
-
-/// Asserts every group probe reads its exact element out of `groups`.
-fn checkGroups(label, groups, probes) = {
-    let _ = forEachList(probes, fn(probe) => check(label, probe.value, textGroup(groups, probe.key, probe.index)))
-}
+/// The exact elements the listed indices hold under `key` inside `groups`.
+fn keyCells(groups, key, indices) = mapList(indices, fn(index) => textGroup(groups, key, index))
 
 /// The number of elements stored under `key`, or none when the key is absent.
 fn groupSize(groups, key) = listLength(mapGet(groups, key) ?: ["missing"])
@@ -73,30 +64,16 @@ fn genericRecordCollectionEffectCase() = {
     checkAll("Envelope<List<List<int>>,string> survives list storage and persistence", [
             structuralEquals([listLength(envelopes), listLength(grown), length(firstBack.metadata)], [2, 3, 10]),
             structuralEquals([length(secondBack.metadata), length(thirdBack.metadata)], [6, 5]),
-            nestedAt((listGet(envelopes, 8) ?: fallback).payload, 0, 0, [91], 98) == 99,
+            atOr(listGet((listGet(envelopes, 8) ?: fallback).payload, 0), 0, [91], 98) == 99,
             listLength(envelopes) == 2,
             structuralEquals([firstBack.metadata, secondBack.metadata], ["int-matrix", "second"]),
             structuralEquals([thirdBack.metadata, (listGet(envelopes, 8) ?: fallback).metadata], ["third", "fallback"]),
             firstBack.metadata == "int-matrix",
             auditEnvelopeMetadata(envelopes) == "int-matrix/second/",
-            auditEnvelopeMetadata(grown) == "int-matrix/second/third/"
-    ])
-
-    checkCells("first envelope matrix cells", firstBack.payload, [
-        CellProbe { row: 0, column: 0, value: 1 },
-        CellProbe { row: 0, column: 1, value: 2 },
-        CellProbe { row: 1, column: 0, value: 3 },
-        CellProbe { row: 1, column: 2, value: 5 }
-    ])
-    checkCells("second envelope matrix cells", secondBack.payload, [
-        CellProbe { row: 0, column: 0, value: 6 },
-        CellProbe { row: 0, column: 1, value: 7 },
-        CellProbe { row: 1, column: 0, value: 8 },
-        CellProbe { row: 1, column: 2, value: 10 }
-    ])
-    checkCells("grown envelope matrix cells", thirdBack.payload, [
-        CellProbe { row: 0, column: 0, value: 11 },
-        CellProbe { row: 0, column: 1, value: 12 }
+            auditEnvelopeMetadata(grown) == "int-matrix/second/third/",
+            structuralEquals(probedCells(firstBack.payload), [[1, 2], [3, 5]]),
+            structuralEquals(probedCells(secondBack.payload), [[6, 7], [8, 10]]),
+            structuralEquals(rowCells(thirdBack.payload, 0, [0, 1]), [11, 12])
     ])
 
     checkAll("Envelope<Map<string,List<string>>,int> survives map storage and lookup", [
@@ -109,17 +86,10 @@ fn genericRecordCollectionEffectCase() = {
             structuralEquals(mapList(["short", "long"], fn(k) => groupSize(stringBack.payload, k)), [2, 2]),
             listContains(mapKeys(stringBack.payload), "short"),
             listContains(mapKeys(stringBack.payload), "long"),
-            !listContains(mapKeys(stringBack.payload), "missing")
-    ])
-
-    checkGroups("primary envelope groups", stringBack.payload, [
-        GroupProbe { key: "short", index: 0, value: "a" },
-        GroupProbe { key: "short", index: 1, value: "bb" },
-        GroupProbe { key: "long", index: 0, value: "three" },
-        GroupProbe { key: "long", index: 1, value: "seven" }
-    ])
-    checkGroups("missing envelope group", missingBack.payload, [
-        GroupProbe { key: "missing", index: 0, value: "fallback" }
+            !listContains(mapKeys(stringBack.payload), "missing"),
+            structuralEquals(keyCells(stringBack.payload, "short", [0, 1]), ["a", "bb"]),
+            structuralEquals(keyCells(stringBack.payload, "long", [0, 1]), ["three", "seven"]),
+            structuralEquals(keyCells(missingBack.payload, "missing", [0]), ["fallback"])
     ])
 
     checkAll("different T and U argument lists remain isolated", [
