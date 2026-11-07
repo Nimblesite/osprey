@@ -25,6 +25,11 @@ def reader_cases():
     """Every reader of the schema sub-language, over the request's own tool list."""
     tools = tool_list()
     policy = ToolSchema.parameters(ToolSchema.tool_named(tools, "run_tests"))
+    return listConcat(reader_declared_cases(tools, policy), reader_violation_cases(policy))
+
+
+def reader_declared_cases(tools, policy):
+    """The readers of what a schema declares: kinds, names, requirements, items, enums and tools."""
     mode = ToolSchema.property_schema(ToolSchema.property_schema(policy, "policy"), "mode")
     suites = ToolSchema.property_schema(policy, "suites")
     return [
@@ -38,6 +43,12 @@ def reader_cases():
         Check.equal("reader_enum", join(mapList(ToolSchema.enum_values(mode), lambda value: encoded(value)), ","), "\"check\",\"apply\",\"preview\""),
         Check.equal("reader_tool", ToolSchema.tool_name(ToolSchema.tool_named(tools, "find_symbol")), "find_symbol"),
         Check.equal("reader_tools", toString(len(ToolSchema.tool_list(tools))), "5"),
+    ]
+
+
+def reader_violation_cases(policy):
+    """The readers' violation records and their fallbacks outside a schema."""
+    return [
         Check.equal("reader_violation", ToolSchema.violation_keyword(ToolSchema.violation("enum", "mode", "not a member")), "enum"),
         Check.equal("reader_violation_path", ToolSchema.violation_path(ToolSchema.violation("enum", "mode", "not a member")), "mode"),
         Check.equal("reader_members_of", toString(len(ToolSchema.members(policy))), "2"),
@@ -70,7 +81,11 @@ def scanner_cases():
 
 def scanner_boundary_cases():
     """JSON scalar, escape and object boundaries under the same byte scanner."""
-    closed_object = decoded("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+    return listConcat(scanner_end_cases(), scanner_text_cases())
+
+
+def scanner_end_cases():
+    """Where a value or the text ends: scalars, literals and an unclosed container."""
     null_schema = decoded("{\"type\":\"null\"}")
     return [
         Check.equal("scan_null_schema", scanned(null_schema, "null"), "complete"),
@@ -79,6 +94,13 @@ def scanner_boundary_cases():
         Check.equal("scan_nested_number_at_end", scanned(JsonNull, "[1"), "incomplete"),
         Check.equal("scan_nested_literal_at_end", scanned(JsonNull, "[null"), "incomplete"),
         Check.equal("scan_any_nested", scanned(JsonNull, "[\"text\",true,false,null,{},[],[-12.50E+23,1e-12,2e2]]"), "complete"),
+    ]
+
+
+def scanner_text_cases():
+    """Inside values: escapes, keys, a number's fraction and exponent, and the empty stack."""
+    closed_object = decoded("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+    return [
         Check.equal("scan_escape_valid", scanned(JsonNull, "\"\\u0041\""), "complete"),
         Check.equal("scan_escape_invalid", scanned(JsonNull, "\"\\u00x1\""), "rejected"),
         Check.equal("scan_control_key", scanned(JsonNull, "{\"\n\":1}"), "rejected"),

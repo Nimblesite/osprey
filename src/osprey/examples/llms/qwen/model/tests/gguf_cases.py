@@ -76,6 +76,11 @@ def config_cases(source):
 
 def config_checks(got, want):
     """Every field of the file's config against the fixture's."""
+    return listConcat(config_transformer_checks(got, want), config_linear_checks(got, want))
+
+
+def config_transformer_checks(got, want):
+    """The transformer block's checks: sizes, attention heads, head dim, rotary and norm."""
     return [
         Check.equal("gguf_config.hidden_size", got.hidden_size, want.hidden_size),
         Check.equal("gguf_config.intermediate_size", got.intermediate_size, want.intermediate_size),
@@ -87,6 +92,12 @@ def config_checks(got, want):
         Check.close("gguf_config.partial_rotary_factor", got.partial_rotary_factor, want.partial_rotary_factor, 0.0, 0.0),
         Check.close("gguf_config.rope_theta", got.rope_theta, want.rope_theta, 0.0, 0.0),
         Check.close("gguf_config.rms_norm_eps", got.rms_norm_eps, want.rms_norm_eps, 1e-7, 0.0),
+    ]
+
+
+def config_linear_checks(got, want):
+    """The linear-attention block's checks: its head geometry, conv kernel and layer types."""
+    return [
         Check.equal("gguf_config.linear_num_key_heads", got.linear_num_key_heads, want.linear_num_key_heads),
         Check.equal("gguf_config.linear_num_value_heads", got.linear_num_value_heads, want.linear_num_value_heads),
         Check.equal("gguf_config.linear_key_head_dim", got.linear_key_head_dim, want.linear_key_head_dim),
