@@ -696,11 +696,9 @@
             "type": "string",
             "minLength": 1
           },
-          "default": [
-            "**/failscompilation/**"
-          ],
+          "default": [],
           "scope": "window",
-          "markdownDescription": "Glob patterns for files the editor shows no compiler errors or warnings for, open or not: absolute, or relative to each workspace folder (`**` spans folders, `*` and `?` stay within one). The default hides `failscompilation/` programs, which must not compile. Editor only: `osprey <file> --check` still reports every error."
+          "markdownDescription": "Glob patterns for files the editor shows no compiler errors or warnings for, open or not: absolute, or relative to each workspace folder (`**` spans folders, `*` and `?` stay within one), for example `**/failscompilation/**` for programs that must not compile. Editor only: `osprey <file> --check` still reports every error."
         },
         "osprey.hunt.maxTime": {
           "type": "number",

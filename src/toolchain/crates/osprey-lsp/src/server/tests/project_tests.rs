@@ -348,7 +348,7 @@ async fn references_from_a_shared_source_root_reach_every_project_that_includes_
     Ok(())
 }
 
-/// failscompilation/ is quiet by default, open or not; replacing the exclude
+/// The repository's glob keeps failscompilation/ quiet, open or not; replacing the exclude
 /// globs reports it and clears whatever the new globs match.
 /// Implements [LSP-DIAGNOSTICS-EXCLUDE].
 async fn excluded_until_overridden(
@@ -358,7 +358,7 @@ async fn excluded_until_overridden(
 ) {
     assert!(
         !reports.iter().any(|p| p["uri"] == uri("failscompilation")),
-        "failscompilation excluded by default: {reports:?}"
+        "failscompilation excluded by its glob: {reports:?}"
     );
     let rejected = json!({"textDocument":{"uri":uri("failscompilation"),"languageId":"osprey","version":1,"text":"fn broken() { missing }\n"}});
     h.notify("textDocument/didOpen", rejected).await;
@@ -376,7 +376,7 @@ async fn excluded_until_overridden(
     assert!(
         reports.iter().any(|p| p["uri"] == uri("failscompilation")
             && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
-        "overriding the default reports failscompilation: {reports:?}"
+        "replacing the glob reports failscompilation: {reports:?}"
     );
     for folder in ["other", "two"] {
         assert!(
@@ -416,7 +416,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         .request(
             400,
             "initialize",
-            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]})),
+            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}], "initializationOptions": {"diagnostics": {"exclude": ["**/failscompilation/**"]}}})),
         )
         .await;
     h.notify("initialized", json!({})).await;
@@ -435,7 +435,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
     excluded_until_overridden(&mut h, &reports, &uri).await;
     h.notify(
         "workspace/didChangeConfiguration",
-        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"]}}}}),
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"], "exclude":["**/failscompilation/**"]}}}}),
     )
     .await;
     let reports = settled(&mut h, 402).await;
@@ -443,7 +443,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         reports
             .iter()
             .any(|p| p["uri"] == uri("failscompilation") && p["diagnostics"] == json!([])),
-        "the default exclude returns and clears the open file: {reports:?}"
+        "the glob returns and clears the open file: {reports:?}"
     );
     assert!(
         reports.iter().any(|p| p["uri"] == uri("two")

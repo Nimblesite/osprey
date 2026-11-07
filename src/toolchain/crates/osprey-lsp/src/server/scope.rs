@@ -12,10 +12,6 @@ use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{MutexGuard, PoisonError};
 
-/// Programs the compiler must reject: red by design, so the editor stays
-/// quiet unless the user overrides `osprey.diagnostics.exclude`.
-const DEFAULT_EXCLUDE: &str = "**/failscompilation/**";
-
 #[derive(Debug, Default)]
 pub(crate) struct Scope {
     folders: Vec<PathBuf>,
@@ -201,10 +197,13 @@ impl Scope {
     }
 
     fn exclude_globs(&self) -> Vec<&str> {
-        match self.diagnostics.get("exclude").and_then(Value::as_array) {
-            Some(globs) => globs.iter().filter_map(Value::as_str).collect(),
-            None => vec![DEFAULT_EXCLUDE],
-        }
+        self.diagnostics
+            .get("exclude")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect()
     }
 }
 
