@@ -319,7 +319,7 @@ def args_as_dict(part) -> dict[str, Json]:
     else:
         match J.decode(raw):
             case Success(value=value):
-                return J.to_map(value) if len(J.members_of(value)) > 0 or J.encode(value) == "{}" else {"INVALID_JSON": JsonString(raw)}
+                return J.to_map(value) if has_object_shape(value) else {"INVALID_JSON": JsonString(raw)}
             case Error():
                 return {"INVALID_JSON": JsonString(raw)}
 
@@ -333,9 +333,14 @@ def args_as_json_str(part) -> str:
 def is_object_text(raw):
     match J.decode(raw):
         case Success(value=value):
-            return len(J.members_of(value)) > 0 or J.encode(value) == "{}"
+            return has_object_shape(value)
         case Error():
             return False
+
+
+def has_object_shape(value) -> bool:
+    """Whether a decoded JSON value is an object, the empty one included."""
+    return len(J.members_of(value)) > 0 or J.encode(value) == "{}"
 
 
 def retry_model_response(part) -> str:
@@ -351,9 +356,19 @@ def retry_model_response(part) -> str:
 # Wire form: ModelMessagesTypeAdapter.dump_python(messages, mode="json") / validate_python
 
 
+def null_if_empty(value):
+    """Optional CPython string fields ride the wire as `null` when empty."""
+    return JsonNull() if value == "" else JsonString(value)
+
+
+def part_json(members, kind) -> Json:
+    """A part's JSON form: its members closed by its `part_kind` tag."""
+    return J.obj(listConcat(members, [J.member("part_kind", JsonString(kind))]))
+
+
 def content_part(content, kind) -> Json:
     """A part's JSON form when its content and its part_kind are all it has."""
-    return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString(kind))])
+    return part_json([J.member("content", JsonString(content))], kind)
 
 
 def dump_request_part(part):
@@ -363,9 +378,9 @@ def dump_request_part(part):
         case UserPromptPart(content=content):
             return content_part(content, "user-prompt")
         case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id):
-            return J.obj([J.member("tool_name", JsonString(tool_name)), J.member("content", JsonString(content)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("tool-return"))])
+            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("content", JsonString(content)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-return")
         case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id):
-            return J.obj([J.member("content", JsonString(content)), J.member("tool_name", JsonNull() if tool_name == "" else JsonString(tool_name)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("retry-prompt"))])
+            return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member("tool_call_id", JsonString(tool_call_id))], "retry-prompt")
         case InstructionPart(content=content):
             return content_part(content, "instruction")
 
@@ -377,7 +392,7 @@ def dump_response_part(part):
         case ThinkingPart(content=content):
             return content_part(content, "thinking")
         case ToolCallPart(tool_name=tool_name, args=args, tool_call_id=tool_call_id):
-            return J.obj([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("tool-call"))])
+            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-call")
 
 
 def dump_usage(usage):
@@ -391,10 +406,6 @@ def dump_usage(usage):
         J.member("output_audio_tokens", JsonInt(usage.output_audio_tokens)),
         J.member("details", JsonObject(mapList(mapKeys(usage.details), lambda key: JsonMember(key, JsonInt(unwrap_or(mapGet(usage.details, key), 0)))))),
     ])
-
-
-def null_if_empty(value):
-    return JsonNull() if value == "" else JsonString(value)
 
 
 def dump_request(request) -> Json:
@@ -480,7 +491,7 @@ def validate_usage(value) -> Usage.RequestUsage:
         input_audio_tokens=J.int_at(value, "input_audio_tokens", 0),
         cache_audio_read_tokens=J.int_at(value, "cache_audio_read_tokens", 0),
         output_audio_tokens=J.int_at(value, "output_audio_tokens", 0),
-        details=fold(range(len(mapKeys(details))), {}, lambda acc, i: mapSet(acc, unwrap_or(listGet(mapKeys(details), i), ""), unwrap_or(jsonInt(unwrap_or(mapGet(details, unwrap_or(listGet(mapKeys(details), i), "")), JsonNull())), 0))),
+        details=foldList(mapKeys(details), {}, lambda acc, key: mapSet(acc, key, unwrap_or(jsonInt(unwrap_or(mapGet(details, key), JsonNull())), 0))),
     )
 
 
@@ -505,17 +516,9 @@ def validate_message(data) -> Result[ModelMessage, str]:
     """One message from its `ModelMessagesTypeAdapter` JSON form."""
     kind = J.text_at(data, "kind", "")
     if kind == "request":
-        match collect(J.list_at(data, "parts"), validate_request_part):
-            case Success(value=parts):
-                return Success(value=Request(request=ModelRequest(parts=parts, instructions=J.text_at(data, "instructions", ""))))
-            case Error(message=message):
-                return Error(message=message)
+        return J.rewrap(collect(J.list_at(data, "parts"), validate_request_part), lambda parts: Request(request=ModelRequest(parts=parts, instructions=J.text_at(data, "instructions", ""))))
     elif kind == "response":
-        match collect(J.list_at(data, "parts"), validate_response_part):
-            case Success(value=parts):
-                return Success(value=Response(response=ModelResponse(parts=parts, usage=validate_usage(J.object_at(data, "usage")), model_name=J.text_at(data, "model_name", ""), provider_name=J.text_at(data, "provider_name", ""), provider_response_id=J.text_at(data, "provider_response_id", ""), finish_reason=J.text_at(data, "finish_reason", ""))))
-            case Error(message=message):
-                return Error(message=message)
+        return J.rewrap(collect(J.list_at(data, "parts"), validate_response_part), lambda parts: Response(response=ModelResponse(parts=parts, usage=validate_usage(J.object_at(data, "usage")), model_name=J.text_at(data, "model_name", ""), provider_name=J.text_at(data, "provider_name", ""), provider_response_id=J.text_at(data, "provider_response_id", ""), finish_reason=J.text_at(data, "finish_reason", ""))))
     else:
         return Error(message=f"unknown message kind: {kind}")
 
