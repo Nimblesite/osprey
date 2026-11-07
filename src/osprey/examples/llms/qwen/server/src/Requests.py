@@ -7,10 +7,9 @@ The metadata here is the model plan 0049 pins
 (docs/specs/applications/LocalCodingModel.md *Model and weights* and
 *Memory budget*): `Qwen/Qwen3.8-27B` at revision `1d4bf0f2…` with weights from
 `unsloth/Qwen3.8-27B-GGUF` revision `4ca7207…`, quantized `UD-Q4_K_XL` at 64K
-context. The inference handler behind these endpoints is the fixture model in
-`TableModel.py` until plan 0049 Phase 3 lands the real weights; the declared
-shape is what the weights *will* be, and no field below claims a byte the
-server has read. `digest` is therefore absent rather than invented.
+context. These are declared metadata, not measurements of the loaded GGUF.
+The real-weight handler reads the supplied GGUF; `digest` remains absent
+rather than invented.
 
 No clock builtin exists in Osprey ([BUILTIN-TERM] has none), so the timestamps
 the protocols require are one fixed instant rather than a measured one.
@@ -121,6 +120,51 @@ def positive(value, fallback):
     return value if value > 0 else fallback
 
 
+def openai_budget(document, name, fallback):
+    """[LLM-API-OPENAI] A supplied token cap must be a positive integer."""
+    match Wire.field(document, name):
+        case JsonNull:
+            return Success(value=fallback)
+        case JsonInt(value):
+            return Success(value=value) if value > 0 else Error(message=f"{name} must be a positive integer")
+        case _:
+            return Error(message=f"{name} must be a positive integer")
+
+
+def openai_temperature(document, fallback):
+    """Reject invalid supplied temperatures instead of silently sampling greedily."""
+    match Wire.field(document, "temperature"):
+        case JsonNull:
+            return Success(value=fallback)
+        case value:
+            match jsonFloat(value):
+                case Success(value=number):
+                    return Success(value=number) if number >= 0.0 and number <= 2.0 else Error(message="temperature must be between 0 and 2")
+                case Error():
+                    return Error(message="temperature must be a number between 0 and 2")
+
+
+def openai_sampling(document, defaults):
+    """OpenAI root controls override defaults; context bounds still apply at inference."""
+    match openai_budget(document, "max_tokens", defaults.num_predict):
+        case Success(value=budget):
+            return completion_sampling(document, defaults, budget)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def completion_sampling(document, defaults, budget):
+    match openai_budget(document, "max_completion_tokens", budget):
+        case Success(value=limit):
+            match openai_temperature(document, defaults.temperature):
+                case Success(value=temperature):
+                    return Success(value=Sampling(num_ctx=defaults.num_ctx, num_predict=limit, temperature=temperature, seed=defaults.seed))
+                case Error(message=message):
+                    return Error(message=message)
+        case Error(message=message):
+            return Error(message=message)
+
+
 def decimal(options, name, fallback):
     """A numeric member written as a JSON float or as an integer."""
     match jsonFloat(Wire.field(options, name)):
@@ -158,23 +202,32 @@ def decode_chat(body, openai):
             history = Wire.openai_history(messages) if openai else Success(value=messages)
             match history:
                 case Success(value=normalized):
-                    return named(Wire.text(document, "model"), document, normalized)
+                    return sampled_chat(document, normalized, openai)
                 case Error(message=message):
                     return Error(message=message)
         case Error(message=message):
             return Error(message=message)
 
 
-def named(model, document, messages):
-    """Build a `Chat` once its body decoded and its model name is present."""
-    match required(model):
-        case Success(value=name):
-            return chat_request_named(name, document, messages)
+def sampled_chat(document, messages, openai):
+    defaults = sampling_of(Wire.field(document, "options"))
+    match openai_sampling(document, defaults) if openai else Success(value=defaults):
+        case Success(value=sampling):
+            return named(Wire.text(document, "model"), document, messages, sampling)
         case Error(message=message):
             return Error(message=message)
 
 
-def chat_request_named(name, document, messages):
+def named(model, document, messages, sampling):
+    """Build a `Chat` once its body decoded and its model name is present."""
+    match required(model):
+        case Success(value=name):
+            return chat_request_named(name, document, messages, sampling)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def chat_request_named(name, document, messages, sampling):
     """The chat turn for a request whose model name is present, or the refusal the prompt's
     rendering made of one of its tool calls."""
     tools = advertised(document)
@@ -186,7 +239,7 @@ def chat_request_named(name, document, messages):
                 tools=tools,
                 loading=len(messages) == 0,
                 stream=Wire.flag(document, "stream"),
-                sampling=sampling_of(Wire.field(document, "options")),
+                sampling=sampling,
             ))
         case Error(message=message):
             return Error(message=message)
