@@ -13,6 +13,9 @@ outputs:
   benchmarks:
     description: Benchmark data, programs or tooling changed
     value: ${{ steps.scope.outputs.benchmarks }}
+  programs:
+    description: Possible Osprey programs (.osp, .ospml, .ospo, .py) or osprey.toml manifests changed, wherever they live
+    value: ${{ steps.scope.outputs.programs }}
 runs:
   using: composite
   steps:

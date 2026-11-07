@@ -74,6 +74,7 @@ jobs:
       website: ${{ steps.filter.outputs.website }}
       book: ${{ steps.filter.outputs.book }}
       benchmarks: ${{ steps.filter.outputs.benchmarks }}
+      programs: ${{ steps.filter.outputs.programs }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/detect-ci-scope
@@ -108,7 +109,7 @@ jobs:
   build:
     name: Build
     needs: changes
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.programs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -321,7 +322,7 @@ jobs:
   check-programs:
     name: "Check: every Osprey program compiles"
     needs: [changes, build]
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    if: ${{ needs.changes.outputs.code == 'true' || needs.changes.outputs.programs == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
