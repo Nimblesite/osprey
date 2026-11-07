@@ -281,8 +281,8 @@ erfc(1.0)  // 0.15729920705028516
 
 ### Rounding and floating-point classification — [BUILTIN-MATH-ROUNDING]
 `floor`, `ceil`, `trunc` and `round` have signature `(x: T) -> T`;
-`pow`, `atan2` (see [BUILTIN-MATH-TRIG]), `hypot`, `fmod` and `copysign`
-have signature `(x: T, y: T) -> T` at one float type `T` ([BUILTIN-MATH]). All are total and pure, so a
+`pow`, `atan2` (see [BUILTIN-MATH-TRIG]), `hypot`, `fmod`, `copysign` and
+`floatDiv` have signature `(x: T, y: T) -> T` at one float type `T` ([BUILTIN-MATH]). All are total and pure, so a
 kernel may call or name them.
 
 - `floor` is the greatest integer `<= x`, `ceil` the least `>= x`, `trunc`
@@ -305,6 +305,15 @@ kernel may call or name them.
   unlike integer `%`, which performs `Arith.remainderByZero`.
 - `copysign(x, y)` is `x`'s magnitude with `y`'s sign: `copysign(3.0, -1.0)`
   is `-3.0`. A NaN keeps its payload and takes `y`'s sign bit.
+- `floatDiv(x, y)` is the IEEE quotient — [BUILTIN-MATH-FLOATDIV]. A zero
+  divisor yields an infinity with the sign of `x/y` (`floatDiv(1.0, -0.0)` is
+  `-inf`), and `0/0` or a NaN operand yields NaN. The `/` operator on floats
+  performs `Arith.divideByZero` instead, and a device kernel cannot reach an
+  `Arith` handler ([ARITH-DEVICE-RECOVERY](../language/0037-ArithmeticEffects.md#device-recovery-arith-device-recovery)),
+  so a kernel that wants IEEE division, such as a softmax's reciprocal total,
+  writes `floatDiv`. It lowers to the `fdiv` instruction on the host, the
+  software binary64 divide for `float` kernels, and the device's own division
+  (IEEE under Metal's safe math mode) for `float32` and `float16` kernels.
 
 Like every builtin, `round` is a reserved name: a program may not define its
 own function under it (`cannot redefine built-in function`).

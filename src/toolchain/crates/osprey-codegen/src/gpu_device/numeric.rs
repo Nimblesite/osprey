@@ -159,6 +159,16 @@ impl Emitter<'_> {
             ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::FLOAT, a), (Ty::FLOAT, b)]) => {
                 unary(Ty::FLOAT, format!("{name}64({a}, {b})"))
             }
+            // [BUILTIN-MATH-FLOATDIV] The IEEE quotient with no fault word:
+            // binary64 through the software divide, binary32 (and binary16,
+            // which computes as binary32) as the device's own division, which
+            // the safe math mode keeps IEEE.
+            ("floatDiv", [(Ty::FLOAT, a), (Ty::FLOAT, b)]) => {
+                unary(Ty::FLOAT, format!("divide64({a}, {b})"))
+            }
+            ("floatDiv", [(Ty::Num(n), a), (Ty::Num(m), b)]) if n == m && n.is_float() => {
+                unary(Ty::Num(*n), format!("((float)(({a}) / ({b})))"))
+            }
             // [BUILTIN-FLOAT-BITS] the bit-level views. A device float IS its
             // binary64 word, so floatBits is the identity and floatFromBits a
             // cast of the word.

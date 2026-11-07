@@ -70,7 +70,8 @@ pub(crate) const UNARY_FLOAT_BUILTINS: [&str; 25] = [
 ];
 
 /// The binary functions open over the float widths [BUILTIN-MATH].
-pub(crate) const BINARY_FLOAT_BUILTINS: [&str; 5] = ["pow", "atan2", "hypot", "fmod", "copysign"];
+pub(crate) const BINARY_FLOAT_BUILTINS: [&str; 6] =
+    ["pow", "atan2", "hypot", "fmod", "copysign", "floatDiv"];
 
 fn is_integer(ty: &Type) -> bool {
     Numeric::of_type(ty).is_some_and(Numeric::is_integer)
