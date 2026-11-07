@@ -252,64 +252,43 @@ retryAttemptMatrixCase () =
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
 test "retry loops accept after zero one two and eight rejections" (\() => exactArithmetic (retryAttemptMatrixCase))
 
+type Exhaustion =
+    out : int
+    calls : int
+    trail : string
+    settled : string
+
+(** One retry loop whose handler refuses every attempt past `limit` by
+    answering `sentinel` without resuming; it records the attempts, the trail
+    of tries and refusals, and the frames the abandoned continuation settles. *)
+exhausted (limit, sentinel) =
+    mut calls = 0
+    mut trail = ""
+    mut settled = ""
+    out =
+        handle Retry
+            supply n =>
+                calls := calls + 1 
+                match n > limit
+                    true =>
+                        trail := "${trail}giveup:${toString n}|"
+                        sentinel
+                    false =>
+                        trail := "${trail}try:${toString n}|"
+                        answer = resume ((0 - n) )
+                        settled := "${settled}${toString n}:${toString answer}|"
+                        answer
+        acceptPositive 1
+    Exhaustion(out = out, calls = calls, trail = trail, settled = settled)
+
 (** [EFFECTS-RESUME] "returning from the selected branch without resuming stops
     the suspended computation and its value becomes the result of the whole
     handler." A retry budget therefore ends the loop by NOT resuming, and the
     sentinel it returns is what every still-suspended frame observes. *)
 retryBudgetExhaustionCase () =
-    mut calls1 = 0
-    mut trail1 = ""
-    mut settled1 = ""
-    out1 =
-        handle Retry
-            supply n =>
-                calls1 := calls1 + 1 
-                match n > 1
-                    true =>
-                        trail1 := "${trail1}giveup:${toString n}|"
-                        (0 - 1000) 
-                    false =>
-                        trail1 := "${trail1}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled1 := "${settled1}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
-
-    mut calls2 = 0
-    mut trail2 = ""
-    mut settled2 = ""
-    out2 =
-        handle Retry
-            supply n =>
-                calls2 := calls2 + 1 
-                match n > 2
-                    true =>
-                        trail2 := "${trail2}giveup:${toString n}|"
-                        (0 - 2000) 
-                    false =>
-                        trail2 := "${trail2}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled2 := "${settled2}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
-
-    mut calls3 = 0
-    mut trail3 = ""
-    mut settled3 = ""
-    out3 =
-        handle Retry
-            supply n =>
-                calls3 := calls3 + 1 
-                match n > 3
-                    true =>
-                        trail3 := "${trail3}giveup:${toString n}|"
-                        (0 - 3000) 
-                    false =>
-                        trail3 := "${trail3}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled3 := "${settled3}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
+    r1 = exhausted (1, (0 - 1000) )
+    r2 = exhausted (2, (0 - 2000) )
+    r3 = exhausted (3, (0 - 3000) )
 
     (** A generous budget the loop never reaches: success arrives on attempt 3. *)
     mut calls5 = 0
@@ -335,95 +314,95 @@ retryBudgetExhaustionCase () =
 
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll "an exhausted budget answers with its own sentinel" [
-        out1 == ((0 - 1000) ),
-        out2 == ((0 - 2000) ),
-        out3 == ((0 - 3000) ),
+        r1.out == ((0 - 1000) ),
+        r2.out == ((0 - 2000) ),
+        r3.out == ((0 - 3000) ),
         out5 == 777,
-        out1 < 0,
-        out2 < 0,
-        out3 < 0,
+        r1.out < 0,
+        r2.out < 0,
+        r3.out < 0,
         out5 > 0,
-        out1 != out2,
-        out2 != out3,
-        out1 != out5,
-        (out1 + out2 + out3 ) == ((0 - 6000) ),
-        (out2 - out1 ) == ((0 - 1000) ),
-        out3 == (out1 * 3 )
+        r1.out != r2.out,
+        r2.out != r3.out,
+        r1.out != out5,
+        (r1.out + r2.out + r3.out ) == ((0 - 6000) ),
+        (r2.out - r1.out ) == ((0 - 1000) ),
+        r3.out == (r1.out * 3 )
     ]
 
     // Budget B costs B resuming attempts plus the one refusal that ends it.
     checkAll "attempt count is the budget plus one refusal" [
-        calls1 == 2,
-        calls2 == 3,
-        calls3 == 4,
+        r1.calls == 2,
+        r2.calls == 3,
+        r3.calls == 4,
         calls5 == 3,
-        (calls1 - 1 ) == 1,
-        (calls2 - 1 ) == 2,
-        (calls3 - 1 ) == 3,
-        calls1 < calls2,
-        calls2 < calls3,
-        calls2 == calls5,
-        (calls1 + calls2 + calls3 ) == 9,
-        calls1 != calls3,
-        calls3 > calls5,
-        calls1 > 0
+        (r1.calls - 1 ) == 1,
+        (r2.calls - 1 ) == 2,
+        (r3.calls - 1 ) == 3,
+        r1.calls < r2.calls,
+        r2.calls < r3.calls,
+        r2.calls == calls5,
+        (r1.calls + r2.calls + r3.calls ) == 9,
+        r1.calls != r3.calls,
+        r3.calls > calls5,
+        r1.calls > 0
     ]
 
     // The ordered trail distinguishes a resumed try from the terminal refusal.
     checkAll "the trail names every try and then the refusal" [
-        trail1 == "try:1|giveup:2|",
-        trail2 == "try:1|try:2|giveup:3|",
-        trail3 == "try:1|try:2|try:3|giveup:4|",
+        r1.trail == "try:1|giveup:2|",
+        r2.trail == "try:1|try:2|giveup:3|",
+        r3.trail == "try:1|try:2|try:3|giveup:4|",
         trail5 == "try:1|try:2|try:3|",
-        startsWith trail1 "try:1|",
-        endsWith trail1 "giveup:2|",
-        endsWith trail2 "giveup:3|",
-        endsWith trail3 "giveup:4|",
+        startsWith r1.trail "try:1|",
+        endsWith r1.trail "giveup:2|",
+        endsWith r2.trail "giveup:3|",
+        endsWith r3.trail "giveup:4|",
         endsWith trail5 "try:3|",
-        contains trail3 "try:2|",
+        contains r3.trail "try:2|",
         !(contains trail5 "giveup"),
-        !(contains trail1 "try:2|"),
-        !(contains trail2 "try:3|"),
-        !(contains trail3 "try:4|"),
-        length trail1 == 15,
+        !(contains r1.trail "try:2|"),
+        !(contains r2.trail "try:3|"),
+        !(contains r3.trail "try:4|"),
+        length r1.trail == 15,
         length trail5 == 18
     ]
 
     // Abandoning the innermost frame still delivers the sentinel to every
     // outer frame's `resume`, so their post-resume code runs with it.
     checkAll "an abandoned continuation settles the outer frames" [
-        settled1 == "1:-1000|",
-        settled2 == "2:-2000|1:-2000|",
-        settled3 == "3:-3000|2:-3000|1:-3000|",
+        r1.settled == "1:-1000|",
+        r2.settled == "2:-2000|1:-2000|",
+        r3.settled == "3:-3000|2:-3000|1:-3000|",
         settled5 == "3:777|2:777|1:777|",
-        startsWith settled2 "2:-2000|",
-        endsWith settled2 "1:-2000|",
-        startsWith settled3 "3:-3000|",
-        endsWith settled3 "1:-3000|",
-        contains settled3 "2:-3000|",
-        !(contains settled1 "2:"),
-        !(contains settled2 "3:"),
-        !(contains settled3 "4:"),
-        length settled1 == 8,
+        startsWith r2.settled "2:-2000|",
+        endsWith r2.settled "1:-2000|",
+        startsWith r3.settled "3:-3000|",
+        endsWith r3.settled "1:-3000|",
+        contains r3.settled "2:-3000|",
+        !(contains r1.settled "2:"),
+        !(contains r2.settled "3:"),
+        !(contains r3.settled "4:"),
+        length r1.settled == 8,
         length settled5 == 18,
-        settled1 != settled2
+        r1.settled != r2.settled
     ]
 
     // The refusing attempt is issued but never settles: it has no continuation.
     checkAll "the refusing attempt is issued but never settles" [
-        contains trail1 "giveup:2|",
-        !(contains settled1 "2:"),
-        contains trail2 "giveup:3|",
-        !(contains settled2 "3:"),
-        contains trail3 "giveup:4|",
-        !(contains settled3 "4:"),
+        contains r1.trail "giveup:2|",
+        !(contains r1.settled "2:"),
+        contains r2.trail "giveup:3|",
+        !(contains r2.settled "3:"),
+        contains r3.trail "giveup:4|",
+        !(contains r3.settled "4:"),
         !(contains trail5 "giveup:"),
         contains settled5 "3:777|",
-        out1 == ((0 - 1000) ),
-        out2 != out5,
-        out5 != out3,
-        trail1 != trail2,
-        settled5 != settled3
+        r1.out == ((0 - 1000) ),
+        r2.out != out5,
+        out5 != r3.out,
+        r1.trail != r2.trail,
+        settled5 != r3.settled
     ]
 
 // Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
