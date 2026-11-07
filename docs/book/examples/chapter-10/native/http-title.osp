@@ -27,21 +27,15 @@ fn request(client) = match httpGetResponse(client, "/title.txt", "") {
 
 fn requestAndClose(client) = {
     let body = request(client)
-    let closed = httpCloseClient(client) ?: -1
-    if closed == 0 {
-        body
-    } else {
-        Error { message: "could not close HTTP client" }
+    match httpCloseClient(client) {
+        Success => body
+        Error { message } => Error { message: message }
     }
 }
 
-fn nativeTitle() = {
-    let client = httpCreateClient("http://127.0.0.1:18872", 2000) ?: -1
-    if client > 0 {
-        requestAndClose(client)
-    } else {
-        Error { message: "could not create HTTP client" }
-    }
+fn nativeTitle() = match httpCreateClient("http://127.0.0.1:18872", 2000) {
+    Success { value } => requestAndClose(value)
+    Error { message } => Error { message: message }
 }
 
 fn fetch() = perform Web.title()

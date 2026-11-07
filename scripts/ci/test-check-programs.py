@@ -34,6 +34,8 @@ RED = 'print(1 + "x")\n'
 PY_RED = ('#!/usr/bin/env python3\n'
           '# Copyright 2026 Nobody. Licensed MIT.\n'
           '# osprey: flavor=python\n' + RED)
+# A `//` marker the compiler reads and rejects in a .py (flavour disagreement).
+PY_SLASH = '// osprey: flavor=ml\nfn bad() { missing }\n'
 PY_PLAIN = '# a plain python file\ndef add(a, b):\n    return a + b\n'
 PROJECT_TOML = ('[project]\nname = "gate-fixture"\nsource_roots = ["src"]\n'
                 'default_namespace = "app"\nentry = "main.osp"\n')
@@ -46,12 +48,13 @@ FIXTURES = {
     "loose/good.osp": GOOD,
     "loose/bad.osp": RED,
     "pyflavor/script.py": PY_RED,
+    "pyflavor/slash.py": PY_SLASH,
     "pyflavor/plain.py": PY_PLAIN,
     "x/failscompilation/red.osp": RED,
     "x/sample-registry/red.osp": RED,
 }
 PROJECT = "app"
-MUST_FAIL = ("app/scratch/stray.osp", "loose/bad.osp", "pyflavor/script.py")
+MUST_FAIL = ("app/scratch/stray.osp", "loose/bad.osp", "pyflavor/script.py", "pyflavor/slash.py")
 MUST_PASS = ("loose/good.osp",)
 EXCLUDED = ("x/failscompilation/red.osp", "x/sample-registry/red.osp")
 FINAL_LINE = f"{1 + len(MUST_FAIL) + len(MUST_PASS)} programs, {len(MUST_FAIL)} failed"
@@ -128,6 +131,8 @@ def reported_checks(done, fails, log):
          else f"FAIL set {sorted(fails)}, log mentions good: {'loose/good.osp' in log}"),
         ("fixture 4: python flavour behind shebang+licence is reported",
          None if "pyflavor/script.py" in fails else f"FAIL set {sorted(fails)}"),
+        ("fixture 4: a // flavour marker in a .py is compiled and its rejection reported",
+         None if "pyflavor/slash.py" in fails else f"FAIL set {sorted(fails)}"),
         ("fixture 4: plain .py without the marker is never compiled",
          None if "pyflavor/plain.py" not in log and "pyflavor/plain.py" not in done.stdout
          else "plain.py was compiled or counted"),
@@ -145,7 +150,7 @@ def compiler_checks(root, fails, log):
         ("fixture 6: no hard-wired target/release/osprey output in the repo",
          None if not (root/"target/release/osprey").exists()
          else "target/release/osprey exists, so a hard-wired path would compile"),
-        ("gate: FAIL set is exactly the three red fixtures",
+        ("gate: FAIL set is exactly the red fixtures",
          None if fails == set(MUST_FAIL) else f"FAIL set {sorted(fails)}, want {sorted(MUST_FAIL)}"),
     )
 

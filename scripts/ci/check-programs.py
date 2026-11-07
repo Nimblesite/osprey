@@ -17,7 +17,7 @@ COMPILER = "\"${OSPREY_BIN:-target/release/osprey}\""
 BATCH = 16
 NEWLINE = "\n"
 EXCLUDED = ["/failscompilation/", "/sample-registry/", "/e2e/consumer/", "/fixtures/manifests/"]
-PYTHON_MARKERS = ["# osprey: flavor=python", "#osprey: flavor=python"]
+MARKERS = ["# osprey: flavor=", "#osprey: flavor=", "// osprey: flavor=", "//osprey: flavor="]
 SOURCE_KEY = "\"source\":\""
 SOURCES_KEY = "\"sources\":["
 
@@ -161,12 +161,19 @@ def excluded(path):
     return foldList(EXCLUDED, False, lambda found, part: found or contains("/" + path, part))
 
 
+def marked(t):
+    return foldList(MARKERS, False, lambda found, m: found or startsWith(t, m))
+
+
 def scan(header, line):
+    """Any flavour marker in the leading comment block, as osprey-syntax's
+    flavor_marker reads it, makes a .py an Osprey program: a marker the
+    compiler rejects (// osprey: flavor=ml in a .py) must fail, not hide."""
     t = trim(line)
-    if not header.open or t == "" or startsWith(t, "//"):
+    if not header.open or t == "":
         return header
-    elif startsWith(t, "#"):
-        return Header(open=True, found=header.found or listContains(PYTHON_MARKERS, t))
+    elif startsWith(t, "#") or startsWith(t, "//"):
+        return Header(open=True, found=header.found or marked(t))
     else:
         return Header(open=False, found=header.found)
 
