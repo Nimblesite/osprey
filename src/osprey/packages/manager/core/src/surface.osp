@@ -25,7 +25,7 @@ module Surface {
     /// The builtin-to-capability map of [PACKAGE-CAPABILITY-CONFINEMENT];
     /// every `http*` and `websocket*` builtin is `io/network` by prefix.
     export fn table() = [
-        named("readFile", files), named("readFileBytes", files), named("fileSize", files), named("writeFile", files), named("gpuLoad", files), named("gpuMapFile", files), named("gpuLoadTensor", files), named("loadTensor", files),
+        named("readFile", files), named("readFileBytes", files), named("fileSize", files), named("writeFile", files), named("gpuLoad", files), named("gpuMapFile", files), named("gpuLoadTensor", files), named("loadTensor", files), named("listDir", files), named("kindOf", files), named("makeDir", files),
         named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
         named("httpGet", network), named("httpPost", network), named("httpPostResponse", network), named("httpPut", network), named("httpDelete", network),
         named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
