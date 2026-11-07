@@ -369,11 +369,11 @@ fn rawGet(clientId: int, path: string, headers: string) = match httpGetResponse(
 
 // Foreground animation loop: paint a frame, nap, re-probe - exit the instant
 // the fiber finishes and hand back the (awaited) response handle.
-fn awaitSpinning(fib: Fiber, frame: int) = match fiberDone(fib) {
+fn awaitSpinning(fib: Fiber<int>, frame: int) = match fiberDone(fib) {
     1 => await(fib)
     _ => spinFrame(fib: fib, frame: frame)
 }
-fn spinFrame(fib: Fiber, frame: int) = {
+fn spinFrame(fib: Fiber<int>, frame: int) = {
     print(loaderFrame(frame))
     sleep(60)
     awaitSpinning(fib: fib, frame: inc(frame))
