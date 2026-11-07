@@ -85,22 +85,6 @@ let combined = exactArithmetic(fn() => {
 )
 print("final combined result = ${toString(combined)}")
 
-/// Applies the strict inner Range policy in isolation.
-fn strictRangeForTest() = {
-    handle Range {
-        clamp _v _hi => 1
-    }
-    loadRetries(500)(10)
-}
-
-/// Applies the ordinary clamping Range policy in isolation.
-fn relaxedRangeForTest() = {
-    handle Range {
-        clamp _v hi => hi
-    }
-    loadRetries(500)(10)
-}
-
 fn parseUnder(raw, replacement) = {
     handle Parse {
         bad _text => replacement
@@ -115,12 +99,16 @@ fn missingUnder(key) = {
     perform Missing.fill(key)
 }
 
-fn clampUnder(raw, high) = {
+/// Runs `body` under the ordinary clamping Range policy.
+fn clampingRange(body) = {
     handle Range {
         clamp value limit => match value > limit { true => limit false => value }
     }
-    loadRetries(raw)(high)
+    body()
 }
+
+/// Clamps `raw` to at most `high` under the ordinary policy.
+fn clampUnder(raw, high) = clampingRange(fn() => loadRetries(raw)(high))
 
 fn forceUnder(raw, high, replacement) = {
     handle Range {
@@ -129,10 +117,16 @@ fn forceUnder(raw, high, replacement) = {
     loadRetries(raw)(high)
 }
 
-fn rangePolicyTrace(raw, high) = {
-    handle Range {
-        clamp value limit => match value > limit { true => limit false => value }
-    }
+/// Applies the forced Range policy, which always yields `4`, to `raw`.
+fn forcedPolicy(raw) = forceUnder(raw, 10, 4)
+
+/// Applies the strict inner Range policy in isolation.
+fn strictRangeForTest() = forceUnder(500, 10, 1)
+
+/// Applies the ordinary clamping Range policy in isolation.
+fn relaxedRangeForTest() = clampUnder(500, 10)
+
+fn rangePolicyTrace(raw, high) = clampingRange(fn() => {
     let before = loadRetries(raw)(high)
     let strict = {
         handle Range {
@@ -142,7 +136,7 @@ fn rangePolicyTrace(raw, high) = {
     }
     let after = loadRetries(raw)(high)
     [before, strict, after]
-}
+})
 
 fn traceShape(values) = match values {
     [] => "empty"
@@ -150,6 +144,21 @@ fn traceShape(values) = match values {
     [first, second] => "two:${first}/${second}"
     [head, ...tail] => "many:${head}+${listLength(tail)}"
 }
+
+/// Element `index` of `values`, or `fallback` when out of range.
+fn listSlot(values, index, fallback) = values.listGet(index) ?: fallback
+
+/// Every observed fact about a Range trace: length, then elements 0..2.
+fn traceFacts(values) = [listLength(values), listSlot(values, 0, 99), listSlot(values, 1, 99), listSlot(values, 2, 99)]
+
+/// Scalar stored under `key`, or `fallback` when the key is absent.
+fn mapSlot(map, key, fallback) = map.mapGet(key) ?: fallback
+
+/// Length of the list stored under `key`, treating an absent key as empty.
+fn mapListLength(map, key) = listLength(map.mapGet(key) ?: [99])
+
+/// Element `index` of the list stored under `key`, or `fallback` when absent.
+fn mapListSlot(map, key, index, fallback) = listSlot(map.mapGet(key) ?: [99], index, fallback)
 
 /// Replays Range under two policies and checks the composed channel result.
 fn typedErrorChannelCase() = {
@@ -164,37 +173,28 @@ fn typedErrorChannelCase() = {
         "outer-inner-outer": trace,
         "healthy-inner-healthy": healthyTrace
     }
-    let grown = mapSet(nested, "forced", [forceUnder(9, 10, 4), forceUnder(99, 10, 4)])
+    let grown = mapSet(nested, "forced", [forcedPolicy(9), forcedPolicy(99)])
 
     checkAll("typed channel direct substitution policies", [
             structuralEquals([combined, strictRangeForTest(), relaxedRangeForTest()], [40, 1, 10]),
             structuralEquals([parseUnder("bad", 0), parseUnder("bad", 7), parseUnder("other", 99)], [0, 7, 99]),
             structuralEquals([missingUnder("timeout"), missingUnder("retries"), clampUnder(5, 10)], [30, 1, 5]),
             structuralEquals([clampUnder(10, 10), clampUnder(11, 10), clampUnder(500, 10)], [10, 10, 10]),
-            structuralEquals([forceUnder(5, 10, 4), forceUnder(500, 10, 4)], [4, 4]),
+            structuralEquals([forcedPolicy(5), forcedPolicy(500)], [4, 4]),
             strictRangeForTest() != relaxedRangeForTest()
     ])
 
     checkAll("nested handlers restore outer policies around collection values", [
-            structuralEquals([listLength(trace), (trace.listGet(0) ?: 99)], [3, 10]),
-            structuralEquals([(trace.listGet(1) ?: 99), (trace.listGet(2) ?: 99)], [1, 10]),
-            structuralEquals([listLength(healthyTrace), (healthyTrace.listGet(0) ?: 99)], [3, 5]),
-            structuralEquals([(healthyTrace.listGet(1) ?: 99), (healthyTrace.listGet(2) ?: 99)], [1, 5]),
+            structuralEquals([traceFacts(trace), traceFacts(healthyTrace)], [[3, 10, 1, 10], [3, 5, 1, 5]]),
             structuralEquals([traceShape([]), traceShape([7])], ["empty", "one:7"]),
             structuralEquals([traceShape([7, 8]), traceShape(trace)], ["two:7/8", "many:10+2"])
     ])
 
     checkAll("typed effect results remain coherent inside maps of lists", [
-            structuralEquals([mapLength(scalars), (scalars.mapGet("parse") ?: 99)], [3, 7]),
-            structuralEquals([(scalars.mapGet("missing") ?: 99), (scalars.mapGet("range") ?: 99)], [30, 10]),
-            structuralEquals([(scalars.mapGet("absent") ?: 99), mapLength(nested), mapLength(grown)], [99, 2, 3]),
-            listLength(nested.mapGet("outer-inner-outer") ?: [99]) == 3,
-            ((nested.mapGet("outer-inner-outer") ?: [99]).listGet(1) ?: 99) == 1,
-            ((nested.mapGet("healthy-inner-healthy") ?: [99]).listGet(2) ?: 99) == 5,
-            listLength(grown.mapGet("forced") ?: [99]) == 2,
-            ((grown.mapGet("forced") ?: [99]).listGet(0) ?: 99) == 4,
-            structuralEquals([((grown.mapGet("forced") ?: [99]).listGet(1) ?: 99), listLength(mapKeys(grown))], [4, 3]),
-            listLength(mapValues(grown)) == 3,
+            structuralEquals([mapLength(scalars), mapSlot(scalars, "parse", 99), mapSlot(scalars, "missing", 99), mapSlot(scalars, "range", 99), mapSlot(scalars, "absent", 99)], [3, 7, 30, 10, 99]),
+            structuralEquals([mapLength(nested), mapLength(grown), mapListLength(nested, "outer-inner-outer"), mapListLength(grown, "forced")], [2, 3, 3, 2]),
+            structuralEquals([listLength(mapKeys(grown)), listLength(mapValues(grown))], [3, 3]),
+            structuralEquals([mapListSlot(nested, "outer-inner-outer", 1, 99), mapListSlot(nested, "healthy-inner-healthy", 2, 99), mapListSlot(grown, "forced", 0, 99), mapListSlot(grown, "forced", 1, 99)], [1, 5, 4, 4]),
             !mapContains(nested, "forced"),
             mapContains(grown, "forced")
     ])
