@@ -143,9 +143,12 @@ fn ctor(name: &str, binders: &[&str]) -> Pattern {
 /// beside named ones; a parenthesised type atom in payload position read as a
 /// positional slot, not a named-field list — the two `(` forms are told apart by
 /// the `field :` shape.
+/// Each variant name with the slot names its payload keeps.
+type VariantSlots<'a> = &'a [(&'a str, &'a [&'a str])];
+
 #[test]
 fn inline_union_variants_keep_their_slot_names() {
-    let cases: &[(&str, &[(&str, &[&str])])] = &[
+    let cases: &[(&str, VariantSlots<'_>)] = &[
         (
             "type Colour = Red | Green | Blue\n",
             &[("Red", &[]), ("Green", &[]), ("Blue", &[])],
