@@ -133,10 +133,12 @@ def nn_records_cases():
 
 
 def nn_record_cases():
-    """The bare MLP and Forward records."""
+    """The bare MLP and Forward records; a model with no layers adds no nodes."""
+    empty = Engine.empty()
     return [
         Check.equal("nn.MLP.layers", len(NN.MLP(layers=[]).layers), 0),
-        Check.ints_equal("nn.Forward.outputs", NN.Forward(graph=Engine.empty(), outputs=[0, 1]).outputs, [0, 1]),
+        Check.equal("nn.MLP.no_layers", Engine.size(NN.call_mlp(empty, NN.MLP(layers=[]), [2.0, 3.0, -1.0])), Engine.size(empty)),
+        Check.ints_equal("nn.Forward.outputs", NN.Forward(graph=empty, outputs=[0, 1]).outputs, [0, 1]),
     ]
 
 
