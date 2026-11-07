@@ -2,12 +2,13 @@
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
 # osprey: namespace=qwen
 # osprey: module=Qwen3_5Model
-"""`Qwen3_5TextModel` and the causal head, one token per step, on device buffers.
+"""`Qwen3_5TextModel` and the causal head over stacked token rows, on device buffers.
 
 A `Layer` is `Qwen3_5DecoderLayer`: `input_layernorm`, the token mixer its
 `layer_types` entry names, a residual, `post_attention_layernorm`, `Qwen3_5MLP`, a
-residual. `forward` threads one hidden row and the cache through every layer and
-keeps each layer's output (`output_hidden_states`); `normed` is the final norm,
+residual. `forward` threads `count` stacked hidden rows and the cache through every
+layer and keeps each layer's output at the last row (`output_hidden_states`); `decode`
+is one row, `prefill` a prompt's rows ([LLM-PREFILL]); `normed` is the final norm,
 `logits` the tied or separate `lm_head`, `finite` the check that no logit is NaN or
 infinite, `greedy` the first index of the largest logit. Every GPU failure ends the step as the `Error` of its `Result` through the
 shared `Fault` handler. The embedding row comes from a dense table or straight from a
@@ -23,9 +24,14 @@ from qwen import Qwen3_5DeltaNet as DeltaNet
 from qwen import Qwen3_5Mlp as Mlp
 from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Shapes as Shapes
-from qwen.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, slice_of, strictly, wrapping
+from qwen.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, row_at, slice_of, stacked, strictly, wrapping
 
-__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "finite", "greedy", "step", "decode", "prefill"]
+__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "finite", "greedy", "step", "decode", "prefill", "prefill_by", "PREFILL_CHUNK"]
+
+
+PREFILL_CHUNK = 256
+"""Prompt tokens one prefill pass stacks: every weight is read once per chunk, and a
+chunk's `[T, intermediate]` activations stay a few tens of megabytes on a real model."""
 
 
 @union
@@ -70,7 +76,8 @@ class Model:
 
 
 class Walk:
-    """The hidden row after the layers so far, the cache they left, and each layer's output."""
+    """The hidden rows after the layers so far, the cache they left, and each layer's
+    output at the last row."""
     hidden: GpuBuffer[float32]
     cache: Cache.Cache
     stages: list[GpuBuffer[float32]]
@@ -114,19 +121,19 @@ def mapped_row(path, start, row_bytes, type, basis, hidden):
             return perform(Fault.halt(toString(message)))
 
 
-def mixed(model, x, mixer, slot, index) -> Result[Step, str]:
-    """The mixer's output for the normed row `x`, given the slot of its own kind."""
+def mixed(model, x, mixer, slot, index, count) -> Result[Step, str]:
+    """The mixer's output for the `count` normed rows `x`, given the slot of its own kind."""
     match mixer:
         case Linear(layer=layer):
             match slot:
                 case Cache.Delta(held=held):
-                    return Success(value=delta_step(DeltaNet.mix(x, layer, held, model.tiled, model.config, model.shapes)))
+                    return Success(value=delta_step(DeltaNet.mix(x, layer, held, model.tiled, model.config, model.shapes, count)))
                 case Cache.Attention(held=_):
                     return Error(message=f"layer {index}: a linear_attention layer was given an attention cache slot")
         case Full(layer=layer):
             match slot:
                 case Cache.Attention(held=held):
-                    return Success(value=attention_step(Attn.mix(x, layer, held, model.config, model.shapes)))
+                    return Success(value=attention_step(Attn.mix(x, layer, held, model.config, model.shapes, count)))
                 case Cache.Delta(held=_):
                     return Error(message=f"layer {index}: a full_attention layer was given a linear cache slot")
 
@@ -139,48 +146,50 @@ def attention_step(r) -> Step:
     return Step(hidden=r.hidden, slot=Cache.Attention(held=r.slot))
 
 
-def layered(model, walk, layer, slot, index) -> Result[Walk, str]:
-    """`Qwen3_5DecoderLayer.forward` on the walk's row."""
+def layered(model, walk, layer, slot, index, rows) -> Result[Walk, str]:
+    """`Qwen3_5DecoderLayer.forward` on the walk's rows."""
     config = model.config
     shapes = model.shapes
-    match mixed(model, Norm.rms_row(walk.hidden, layer.input_norm, config, shapes), layer.mixer, slot, index):
+    match mixed(model, Norm.rms_rows(walk.hidden, layer.input_norm, config, shapes, rows), layer.mixer, slot, index, rows.count):
         case Error(message=message):
             return Error(message=message)
         case Success(value=step):
-            y = added(walk.hidden, step.hidden, shapes.hidden)
-            out = added(y, Mlp.swiglu(Norm.rms_row(y, layer.post_norm, config, shapes), layer.mlp, config, shapes), shapes.hidden)
-            return Success(value=Walk(hidden=out, cache=Cache.grown(walk.cache, step.slot), stages=listAppend(walk.stages, out)))
+            y = added(walk.hidden, step.hidden, rows.hidden)
+            out = added(y, Mlp.swiglu(Norm.rms_rows(y, layer.post_norm, config, shapes, rows), layer.mlp, config, rows), rows.hidden)
+            last = row_at(out, rows.count - 1, rows.count, config.hidden_size, shapes.hidden)
+            return Success(value=Walk(hidden=out, cache=Cache.grown(walk.cache, step.slot), stages=listAppend(walk.stages, last)))
 
 
-def with_slot(model, walk, layer, cache, index):
+def with_slot(model, walk, layer, cache, index, rows):
     match Cache.slot_at(cache, index):
         case Success(value=slot):
-            return layered(model, walk, layer, slot, index)
+            return layered(model, walk, layer, slot, index, rows)
         case Error(message=message):
             return Error(message=f"layer {index}: no cache slot: {toString(message)}")
 
 
-def advance(model, cache, acc, index):
+def advance(model, cache, acc, index, rows):
     match acc:
         case Error(message=message):
             return Error(message=message)
         case Success(value=walk):
             match listGet(model.layers, index):
                 case Success(value=layer):
-                    return with_slot(model, walk, layer, cache, index)
+                    return with_slot(model, walk, layer, cache, index, rows)
                 case Error(message=message):
                     return Error(message=f"layer {index}: {toString(message)}")
 
 
-def forward(model, cache, row) -> Result[Walk, str]:
-    """Every layer over the embedded row, reading `cache` and building the next one."""
-    start: Result[Walk, str] = Success(value=Walk(hidden=row, cache=Cache.Cache(slots=[]), stages=[]))
-    return fold(range(model.config.num_hidden_layers), start, lambda acc, i: advance(model, cache, acc, i))
+def forward(model, cache, x, count) -> Result[Walk, str]:
+    """Every layer over the `count` embedded rows `x`, reading `cache` and building the next one."""
+    rows = Shapes.rows_of(model.config, model.shapes, count)
+    start: Result[Walk, str] = Success(value=Walk(hidden=x, cache=Cache.Cache(slots=[]), stages=[]))
+    return fold(range(model.config.num_hidden_layers), start, lambda acc, i: advance(model, cache, acc, i, rows))
 
 
 def normed(model, hidden) -> GpuBuffer[float32]:
     """The final `norm`."""
-    return Norm.rms_row(hidden, model.final_norm, model.config, model.shapes)
+    return Norm.rms_rows(hidden, model.final_norm, model.config, model.shapes, Shapes.rows_of(model.config, model.shapes, 1))
 
 
 def logits(model, x) -> GpuBuffer[float32]:
@@ -208,16 +217,16 @@ def greedy(model, values) -> int:
     return fold(range(0, count), 0, lambda best, c: better(values, winners, c, best))
 
 
-def step(model, cache, row) -> Result[Walk, str]:
+def step(model, cache, x, count) -> Result[Walk, str]:
     """`forward` with every device failure caught as the `Error`."""
     with strictly:
         with wrapping:
-            return forward(model, cache, row)
+            return forward(model, cache, x, count)
 
 
 def decoded(model, cache, token):
     row = embed(model, token)
-    match forward(model, cache, row):
+    match forward(model, cache, row, 1):
         case Success(value=walk):
             return finished(model, row, walk)
         case Error(message=message):
@@ -258,26 +267,41 @@ def decode(model, cache, token) -> Result[Next, str]:
 
 def prefill(model, cache, tokens) -> Result[Next, str]:
     """[LLM-PREFILL] A prompt's tokens in one call: the `Next` after the last token,
-    with the cache every token built — for now a fold of the per-token path threaded
-    through `walk.cache`. This is the reference the batched implementation (one forward
-    pass over a `[T, hidden]` matrix) must equal; it replaces this body behind the
-    same signature."""
+    with the cache every token built, in chunks of `PREFILL_CHUNK`."""
+    return prefill_by(model, cache, tokens, PREFILL_CHUNK)
+
+
+def prefill_by(model, cache, tokens, chunk) -> Result[Next, str]:
+    """`prefill` stacking `chunk` tokens per pass: each pass reads every weight once
+    for all its rows, and only a mixer's cache update steps a position at a time."""
     with strictly:
         with wrapping:
-            return prefilled(model, cache, tokens)
+            return prefilled(model, cache, tokens, chunk)
 
 
-def prefilled(model, cache, tokens):
+def prefilled(model, cache, tokens, chunk):
     if len(tokens) == 0:
         return Error(message="prefill: no tokens")
     else:
-        first = decoded(model, cache, unwrap_or(listGet(tokens, 0), 0))
-        return fold(range(1, len(tokens)), first, lambda acc, t: redecoded(model, tokens, acc, t))
+        first = passed(model, cache, tokens, 0, chunk)
+        return fold(range(1, (len(tokens) + chunk - 1) // chunk), first, lambda acc, c: repassed(model, tokens, acc, c, chunk))
 
 
-def redecoded(model, tokens, acc, t):
+def repassed(model, tokens, acc, c, chunk):
     match acc:
         case Error():
             return acc
         case Success(value=next):
-            return decoded(model, next.walk.cache, unwrap_or(listGet(tokens, t), 0))
+            return passed(model, next.walk.cache, tokens, c * chunk, chunk)
+
+
+def passed(model, cache, tokens, first, chunk):
+    """One prefill pass over the tokens from `first`, at most `chunk` of them."""
+    count = chunk if first + chunk <= len(tokens) else len(tokens) - first
+    hidden = model.config.hidden_size
+    x = stacked(toList(map(range(count), lambda t: embed(model, unwrap_or(listGet(tokens, first + t), 0)))), hidden)
+    match forward(model, cache, x, count):
+        case Success(value=walk):
+            return finished(model, row_at(x, count - 1, count, hidden, model.shapes.hidden), Walk(hidden=row_at(walk.hidden, count - 1, count, hidden, model.shapes.hidden), cache=walk.cache, stages=walk.stages))
+        case Error(message=message):
+            return Error(message=message)

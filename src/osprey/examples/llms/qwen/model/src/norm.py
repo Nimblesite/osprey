@@ -2,35 +2,38 @@
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
 # osprey: namespace=qwen
 # osprey: module=Qwen3_5Norm
-"""`Qwen3_5RMSNorm` and `Qwen3_5RMSNormGated` on device buffers, one token at a time.
+"""`Qwen3_5RMSNorm` and `Qwen3_5RMSNormGated` on device buffers, over stacked rows.
 
 `Qwen3_5RMSNorm` is zero-centred: `x * rsqrt(mean(x²) + eps) * (1 + weight)`. The
 weights a model holds are already `1 + weight` (a GGUF stores them that way, and
 `Qwen3_5Hf` adds the one), so every kernel multiplies by the stored value. The gated
 norm of the DeltaNet is `x * rsqrt(mean(x²) + eps) * weight * silu(gate)`, per value
 head, with the raw weight. A hidden row reduces in `norm_chunk` pieces, one thread
-each, then one thread sums the pieces; a head reduces in one thread. Implements
+each, then one thread per row sums its pieces; a head reduces in one thread. Implements
 [LLM-MODEL-ATTENTION], [LLM-MODEL-DELTANET].
 """
 
 from qwen.Qwen3_5Device import at, inverse, must, quot, rem, rsqrt, sigmoid, squares
 
-__all__ = ["rms_row", "rms_heads", "gated"]
+__all__ = ["rms_rows", "rms_heads", "gated"]
 
 
-def rms_row(x, w, config, shapes) -> GpuBuffer[float32]:
-    """`Qwen3_5RMSNorm` over the one hidden row `x`."""
+def rms_rows(x, w, config, shapes, rows) -> GpuBuffer[float32]:
+    """`Qwen3_5RMSNorm` over each of the `rows.count` hidden rows of `x`."""
     eps = toFloat32(config.rms_norm_eps)
     chunk = shapes.norm_chunk
-    count = config.hidden_size // chunk
-    mean = inverse(config.hidden_size)
-    pieces = must(gpuMap(shapes.hidden_chunks, lambda c: squares(x, wrapMul(c, chunk), chunk)))
-    scale = must(gpuMap(shapes.one, lambda _: rsqrt(total(pieces, count) * mean + eps)))
-    return must(gpuMap(shapes.hidden, lambda i: at(x, i) * at(scale, 0) * at(w, i)))
+    hidden = config.hidden_size
+    count = hidden // chunk
+    mean = inverse(hidden)
+    hm = shapes.hidden_div.mul
+    hs = shapes.hidden_div.shift
+    pieces = must(gpuMap(rows.hidden_chunks, lambda c: squares(x, wrapMul(c, chunk), chunk)))
+    scale = must(gpuMap(rows.rows, lambda r: rsqrt(total(pieces, wrapMul(r, count), count) * mean + eps)))
+    return must(gpuMap(rows.hidden, lambda i: at(x, i) * at(scale, quot(i, hm, hs)) * at(w, rem(i, hm, hs, hidden))))
 
 
-def total(pieces, count):
-    return fold(range(0, count), toFloat32(0.0), lambda a, c: a + at(pieces, c))
+def total(pieces, first, count):
+    return fold(range(0, count), toFloat32(0.0), lambda a, c: a + at(pieces, wrapAdd(first, c)))
 
 
 def head_scales(x, heads, width, eps):

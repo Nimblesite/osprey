@@ -2,7 +2,8 @@
 # osprey: namespace=qwen_tests
 # osprey: module=PrefillCases
 """[LLM-PREFILL] The prompt path against the fixture: the cached run's whole input in
-one `prefill` call, a shorter prefill continued by `decode`, and the one-token input,
+one `prefill` call, the same input in passes of 3 and of 1, a shorter prefill
+continued by `decode`, and the one-token input,
 each compared with the rows the per-token path already proved ([LLM-MODEL-ORACLE])."""
 from testing import Check
 from qwen import Qwen3_5Model
@@ -17,7 +18,19 @@ def prefill_cases(model):
 
 
 def prefill_runs(model, cache):
-    return listConcat(whole_prompt_cases(model, cache), listConcat(split_prompt_cases(model, cache), listConcat(one_prompt_cases(model, cache), no_prompt_case(model, cache))))
+    return listConcat(whole_prompt_cases(model, cache), listConcat(chunked_cases(model, cache, 3), listConcat(chunked_cases(model, cache, 1), listConcat(split_prompt_cases(model, cache), listConcat(one_prompt_cases(model, cache), no_prompt_case(model, cache))))))
+
+
+def chunked_cases(model, cache, chunk):
+    """The 8 tokens in passes of `chunk` (3: passes of 3, 3 and 2; 1: a pass per token):
+    each pass resumes from the cache the one before left, and position 7 still equals
+    the cached run's rows, logits and argmax."""
+    label = f"model_prefill8_by{chunk}"
+    match Qwen3_5Model.prefill_by(model, cache, input_tokens(2), chunk):
+        case Error(message=message):
+            return [Check.failed(label, message)]
+        case Success(value=next):
+            return listConcat(stage_cases(label, next, CACHED, 7), listConcat([logits_case(label, next)], [greedy_case(label, next)]))
 
 
 def whole_prompt_cases(model, cache):

@@ -2,7 +2,7 @@
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
 # osprey: namespace=qwen
 # osprey: module=Qwen3_5DeltaNet
-"""`Qwen3_5GatedDeltaNet` for one cached token: the recurrent gated delta rule.
+"""`Qwen3_5GatedDeltaNet` over stacked rows: the recurrent gated delta rule, a position at a time.
 
 As `Qwen3_5GatedDeltaNet.forward` on the single-token path: `in_proj_qkv` feeds a
 depthwise causal convolution over the last `conv_kernel` inputs of every channel
@@ -23,7 +23,7 @@ with key head `t % num_k_heads`; a checkpoint in Transformers' order pairs `t` w
 from qwen import Qwen3_5Cache as Cache
 from qwen import Qwen3_5Config as C
 from qwen import Qwen3_5Norm as Norm
-from qwen.Qwen3_5Device import Weight, at, linear, must, quot, rem, rsqrt, sigmoid, slice_of, softplus, squares
+from qwen.Qwen3_5Device import Weight, at, linear, must, quot, rem, row_at, rsqrt, sigmoid, slice_of, softplus, squares, stacked
 
 __all__ = ["Layer", "Mixed", "mix"]
 
@@ -116,16 +116,42 @@ def recurred(mixed, old, b, a, layer, tiled, config, shapes):
     return must(gpuDeltaRule(old, queries, keys, values, sigmoid(b), decay_of(a, layer, shapes), config.linear_num_value_heads, config.linear_key_head_dim))
 
 
-def mix(x, layer, slot, tiled, config, shapes) -> Mixed:
-    """`Qwen3_5GatedDeltaNet.forward` for the normed row `x` with the slot's state."""
+class Core:
+    """The gated outputs of the positions so far and the slot they leave."""
+    gated: list[GpuBuffer[float32]]
+    slot: Cache.DeltaSlot
+
+
+class Projected:
+    """`in_proj_qkv`, `in_proj_z`, `in_proj_b` and `in_proj_a` of every row."""
+    qkv: GpuBuffer[float32]
+    z: GpuBuffer[float32]
+    b: GpuBuffer[float32]
+    a: GpuBuffer[float32]
+
+
+def step(p, t, count, layer, slot, tiled, config, shapes) -> Core:
+    """Position `t`: the convolution rolled, the delta rule stepped, the output gated."""
+    heads = config.linear_num_value_heads
+    hist = history(row_at(p.qkv, t, count, C.conv_dim(config), shapes.conv), slot.conv, config, shapes)
+    state = recurred(convolved(layer.conv, hist, config, shapes), slot.state, row_at(p.b, t, count, heads, shapes.linear_v_heads), row_at(p.a, t, count, heads, shapes.linear_v_heads), layer, tiled, config, shapes)
+    out = slice_of(state, C.state_cells(config), shapes.value)
+    z = row_at(p.z, t, count, C.value_dim(config), shapes.value)
+    gated = Norm.gated(out, z, layer.norm, shapes.linear_v_heads, shapes.value, shapes.linear_v_dim, config.linear_value_head_dim, toFloat32(config.rms_norm_eps))
+    return Core(gated=[gated], slot=Cache.DeltaSlot(conv=hist, state=state))
+
+
+def stepped(acc, p, t, count, layer, tiled, config, shapes):
+    core = step(p, t, count, layer, acc.slot, tiled, config, shapes)
+    return Core(gated=listConcat(acc.gated, core.gated), slot=core.slot)
+
+
+def mix(x, layer, slot, tiled, config, shapes, count) -> Mixed:
+    """`Qwen3_5GatedDeltaNet.forward` for the `count` normed rows `x` with the slot's
+    state: each projection reads its weight once for every row, then the recurrence
+    steps through the positions in order ([LLM-PREFILL])."""
     hidden = config.hidden_size
     heads = config.linear_num_value_heads
-    qkv = linear(x, layer.qkv, 1, hidden, C.conv_dim(config))
-    z = linear(x, layer.z, 1, hidden, C.value_dim(config))
-    b = linear(x, layer.b, 1, hidden, heads)
-    a = linear(x, layer.a, 1, hidden, heads)
-    hist = history(qkv, slot.conv, config, shapes)
-    state = recurred(convolved(layer.conv, hist, config, shapes), slot.state, b, a, layer, tiled, config, shapes)
-    out = slice_of(state, C.state_cells(config), shapes.value)
-    gated = Norm.gated(out, z, layer.norm, shapes.linear_v_heads, shapes.value, shapes.linear_v_dim, config.linear_value_head_dim, toFloat32(config.rms_norm_eps))
-    return Mixed(hidden=linear(gated, layer.out, 1, C.value_dim(config), hidden), slot=Cache.DeltaSlot(conv=hist, state=state))
+    p = Projected(qkv=linear(x, layer.qkv, count, hidden, C.conv_dim(config)), z=linear(x, layer.z, count, hidden, C.value_dim(config)), b=linear(x, layer.b, count, hidden, heads), a=linear(x, layer.a, count, hidden, heads))
+    core = fold(range(0, count), Core(gated=[], slot=slot), lambda acc, t: stepped(acc, p, t, count, layer, tiled, config, shapes))
+    return Mixed(hidden=linear(stacked(core.gated, C.value_dim(config)), layer.out, count, C.value_dim(config), hidden), slot=core.slot)

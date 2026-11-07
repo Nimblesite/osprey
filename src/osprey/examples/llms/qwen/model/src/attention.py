@@ -2,7 +2,7 @@
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
 # osprey: namespace=qwen
 # osprey: module=Qwen3_5Attention
-"""`Qwen3_5Attention` for one token: gated grouped-query attention over the cache.
+"""`Qwen3_5Attention` over stacked rows: gated grouped-query attention over the cache.
 
 As `Qwen3_5Attention.forward`: `q_proj` yields each head's query and its gate side by
 side; the queries are normed per head, keys likewise, both rotated; the new key and
@@ -17,9 +17,9 @@ from qwen import Qwen3_5Cache as Cache
 from qwen import Qwen3_5Config as C
 from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Rope as Rope
-from qwen.Qwen3_5Device import Weight, at, grid, linear, must, quot, rem, sigmoid
+from qwen.Qwen3_5Device import Weight, at, grid, joined, linear, must, quot, rem, row_at, sigmoid, stacked
 
-__all__ = ["Geometry", "Layer", "Mixed", "mix"]
+__all__ = ["Geometry", "Layer", "Mixed", "Core", "attend", "mix"]
 
 
 class Layer:
@@ -55,12 +55,6 @@ def half(both, offset, cells, shapes, width):
     shift = shapes.head_dim.shift
     pair = 2 * width
     return must(gpuMap(cells, lambda i: at(both, wrapAdd(wrapMul(quot(i, mul, shift), pair), wrapAdd(offset, rem(i, mul, shift, width))))))
-
-
-def appended(old, count, width, fresh):
-    """`count` cached rows of `width` with `fresh` as row `count`."""
-    edge = count * width
-    return must(gpuMap(grid(edge + width), lambda i: at(old, i) if i < edge else at(fresh, wrapSub(i, edge))))
 
 
 def score(q, keys, h, t, width, kv_width, kvh, scale):
@@ -127,21 +121,47 @@ def output(w, values, n, config, shapes):
     return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, width), heads, width, kv_width, quot(quot(i, mul, shift), gm, gs))))
 
 
-def mix(x, layer, slot, config, shapes) -> Mixed:
-    """`Qwen3_5Attention.forward` for the normed row `x` at position `slot.positions`."""
-    hidden = config.hidden_size
+class Core:
+    """The gated outputs of the positions so far and the slot they leave."""
+    gated: list[GpuBuffer[float32]]
+    slot: Cache.AttentionSlot
+
+
+def attend(both, base, k, v, layer, slot, config, shapes) -> Core:
+    """One position: its query and gate read from `both` at `base`, its projected key
+    `k` and value `v` joining the slot, and its gated heads before `o_proj`."""
     width = config.head_dim
     eps = toFloat32(config.rms_norm_eps)
-    q_width = config.num_attention_heads * width
     kv_width = config.num_key_value_heads * width
-    both = linear(x, layer.q, 1, hidden, 2 * q_width)
     t = Rope.tables(slot.positions, config)
-    q = Rope.rotated(Norm.rms_heads(half(both, 0, shapes.q_cells, shapes, width), layer.q_norm, shapes.q_heads, shapes.q_cells, shapes.head_dim, width, eps), t, shapes.q_cells, shapes, config)
-    k = Rope.rotated(Norm.rms_heads(linear(x, layer.k, 1, hidden, kv_width), layer.k_norm, shapes.kv_heads, shapes.kv_cells, shapes.head_dim, width, eps), t, shapes.kv_cells, shapes, config)
-    keys = appended(slot.keys, slot.positions, kv_width, k)
-    values = appended(slot.values, slot.positions, kv_width, linear(x, layer.v, 1, hidden, kv_width))
+    q = Rope.rotated(Norm.rms_heads(half(both, base, shapes.q_cells, shapes, width), layer.q_norm, shapes.q_heads, shapes.q_cells, shapes.head_dim, width, eps), t, shapes.q_cells, shapes, config)
+    key = Rope.rotated(Norm.rms_heads(k, layer.k_norm, shapes.kv_heads, shapes.kv_cells, shapes.head_dim, width, eps), t, shapes.kv_cells, shapes, config)
+    edge = slot.positions * kv_width
+    keys = joined(slot.keys, edge, key, kv_width)
+    values = joined(slot.values, edge, v, kv_width)
     n = slot.positions + 1
     out = output(weights(scores(q, keys, n, config, shapes), n, config, shapes), values, n, config, shapes)
-    gate = sigmoid(half(both, width, shapes.q_cells, shapes, width))
+    gate = sigmoid(half(both, wrapAdd(base, width), shapes.q_cells, shapes, width))
     gated = must(gpuMap(shapes.q_cells, lambda i: at(out, i) * at(gate, i)))
-    return Mixed(hidden=linear(gated, layer.o, 1, q_width, hidden), slot=Cache.AttentionSlot(keys=keys, values=values, positions=n))
+    return Core(gated=[gated], slot=Cache.AttentionSlot(keys=keys, values=values, positions=n))
+
+
+def attend_next(acc, both, ks, vs, t, count, layer, config, shapes):
+    width = config.head_dim
+    kv_width = config.num_key_value_heads * width
+    core = attend(both, t * 2 * config.num_attention_heads * width, row_at(ks, t, count, kv_width, shapes.kv_cells), row_at(vs, t, count, kv_width, shapes.kv_cells), layer, acc.slot, config, shapes)
+    return Core(gated=listConcat(acc.gated, core.gated), slot=core.slot)
+
+
+def mix(x, layer, slot, config, shapes, count) -> Mixed:
+    """`Qwen3_5Attention.forward` for the `count` normed rows `x` from position
+    `slot.positions`: each projection reads its weight once for every row, then each
+    position attends over the cache and the positions before it ([LLM-PREFILL])."""
+    hidden = config.hidden_size
+    q_width = config.num_attention_heads * config.head_dim
+    kv_width = config.num_key_value_heads * config.head_dim
+    both = linear(x, layer.q, count, hidden, 2 * q_width)
+    ks = linear(x, layer.k, count, hidden, kv_width)
+    vs = linear(x, layer.v, count, hidden, kv_width)
+    core = fold(range(0, count), Core(gated=[], slot=slot), lambda acc, t: attend_next(acc, both, ks, vs, t, count, layer, config, shapes))
+    return Mixed(hidden=linear(stacked(core.gated, q_width), layer.o, count, q_width, hidden), slot=core.slot)

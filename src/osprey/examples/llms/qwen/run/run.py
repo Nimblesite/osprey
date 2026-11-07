@@ -3,8 +3,8 @@
 
 Three lines on stdin: the GGUF path, the prompt, and how many tokens to add. The
 tokenizer is built from the file's own `tokenizer.ggml.*` tables, the model is
-`Qwen3_5Gguf.load_path`, and every token prints as `position token -> next`, so a run is
-its own receipt ([LLM-TOKENIZER], [LLM-WEIGHTS-MAPPED], [LLM-MODEL-ORACLE]):
+`Qwen3_5Gguf.load_path`, the prompt goes in as one prefill (`prefill N -> next`) and
+every generated token prints as `position token -> next`, so a run is its own receipt ([LLM-TOKENIZER], [LLM-WEIGHTS-MAPPED], [LLM-MODEL-ORACLE]):
 
     printf '%s\\n%s\\n%s\\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf 'The capital of France is' 8 \\
       | OSPREY_GPU=metal osprey src/osprey/examples/llms/qwen/run --run --memory=arc
@@ -23,30 +23,33 @@ class Run:
     failed: str
 
 
-def step(model, state, prompt, pos):
-    """One token through the model: the prompt's next token, else the last best."""
+def step(model, state, pos):
+    """One generated token through the model after the last best."""
     if state.failed != "":
         return state
     else:
-        return stepped(model, state, unwrap_or(listGet(prompt, pos), state.best), pos, pos >= len(prompt) - 1)
+        return stepped(model, state, state.best, pos)
 
 
-def stepped(model, state, token, pos, generating):
+def stepped(model, state, token, pos):
     match Qwen3_5Model.decode(model, state.cache, token):
         case Success(value=next):
             print(f"{pos} {token} -> {next.best}")
-            return Run(cache=next.walk.cache, best=next.best, added=listAppend(state.added, next.best) if generating else state.added, failed="")
+            return Run(cache=next.walk.cache, best=next.best, added=listAppend(state.added, next.best), failed="")
         case Error(message=message):
             return Run(cache=state.cache, best=state.best, added=state.added, failed=f"step {pos}: {message}")
 
 
 def generated(model, prompt, count):
-    """`count` greedy tokens after `prompt`, or the step that failed."""
-    match Qwen3_5Cache.empty(model.config, model.shapes):
+    """`count` greedy tokens after `prompt`, the prompt taken in by one prefill
+    ([LLM-PREFILL]), or the step that failed."""
+    match Chain.then(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Qwen3_5Model.prefill(model, cache, prompt)):
         case Error(message=message):
             return Error(message=message)
-        case Success(value=cache):
-            return finished(fold(range(len(prompt) + count - 1), Run(cache=cache, best=0, added=[], failed=""), lambda state, pos: step(model, state, prompt, pos)))
+        case Success(value=next):
+            print(f"prefill {len(prompt)} -> {next.best}")
+            start = Run(cache=next.walk.cache, best=next.best, added=[next.best], failed="")
+            return finished(fold(range(len(prompt), len(prompt) + count - 1), start, lambda state, pos: step(model, state, pos)))
 
 
 def finished(run):

@@ -18,7 +18,7 @@ multiplication", 1994): a kernel with no fault site stays in the open command bu
 ([LLM-DISPATCH-BATCH]). Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION].
 """
 
-__all__ = ["Weight", "Fault", "strictly", "wrapping", "must", "must_ints", "must_values", "grid", "at", "zeros", "constant", "inverse", "Div", "divider", "quot", "rem", "linear", "added", "sigmoid", "rsqrt", "softplus", "squares", "slice_of"]
+__all__ = ["Weight", "Fault", "strictly", "wrapping", "must", "must_ints", "must_values", "grid", "at", "zeros", "constant", "inverse", "Div", "divider", "quot", "rem", "linear", "added", "sigmoid", "rsqrt", "softplus", "squares", "slice_of", "joined", "stacked", "row_at"]
 
 
 @union
@@ -186,3 +186,27 @@ def squares(x, start, n) -> float32:
 def slice_of(x, start, g) -> GpuBuffer[float32]:
     """The values of `x` from `start`, one per index of `g`."""
     return must(gpuMap(g, lambda i: at(x, wrapAdd(start, i))))
+
+
+def joined(a, na, b, nb) -> GpuBuffer[float32]:
+    """The first `na` values of `a` followed by the first `nb` of `b`."""
+    return must(gpuMap(grid(na + nb), lambda i: at(a, i) if i < na else at(b, wrapSub(i, na))))
+
+
+def stacked(rows, width) -> GpuBuffer[float32]:
+    """[LLM-PREFILL] Equal-width row buffers as one row-major `[len(rows), width]`
+    buffer, joined by halves so T rows cost O(T log T) copies; one row is itself."""
+    return stacked_span(rows, 0, len(rows), width)
+
+
+def stacked_span(rows, lo, hi, width):
+    if hi - lo == 1:
+        return unwrap_or(listGet(rows, lo), zeros(grid(width)))
+    else:
+        mid = (lo + hi) // 2
+        return joined(stacked_span(rows, lo, mid, width), (mid - lo) * width, stacked_span(rows, mid, hi, width), (hi - mid) * width)
+
+
+def row_at(x, t, count, width, g) -> GpuBuffer[float32]:
+    """Row `t` of the `[count, width]` buffer `x` (`g` spans `width`): `x` itself when it is one row."""
+    return x if count == 1 else slice_of(x, t * width, g)
