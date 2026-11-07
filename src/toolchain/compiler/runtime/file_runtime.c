@@ -232,28 +232,10 @@ int64_t write_file(char *filename, char *content) {
   return (int64_t)written;
 }
 
-// ===== Central path joining, directory listing and path kinds ==============
+// ===== Directory listing and path kinds [BUILTIN-FILE-LISTDIR] =============
 //
-// osp_path_child is THE child-path builder [BUILTIN-FILE-LISTDIR]: listDir, the
-// media render's folder sweep, the profiler's socket sweep and the file
-// server's static route all ask it instead of spelling "%s/%s", so the
-// separator, trailing-separator collapse and truncation refusal have exactly
-// one definition. Root stays "/x", never "//x".
-size_t osp_path_child(char *out, size_t size, const char *dir, const char *name) {
-  if (out == NULL || size == 0 || dir == NULL || name == NULL || name[0] == '\0') {
-    return 0;
-  }
-  size_t end = strlen(dir);
-  while (end > 0 && dir[end - 1] == OSP_PATH_SEP) {
-    end--;
-  }
-  int wrote = snprintf(out, size, "%.*s%c%s", (int)end, dir, OSP_PATH_SEP, name);
-  if (wrote <= 0 || (size_t)wrote >= size) {
-    out[0] = '\0';
-    return 0;
-  }
-  return (size_t)wrote;
-}
+// Child paths come from osp_path_child (osprey_path.h), the runtime's one
+// path builder.
 
 static const char OP_LIST_DIR[] = "listDir";
 static const char OP_KIND_OF[] = "kindOf";
