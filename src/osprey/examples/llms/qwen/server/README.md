@@ -9,6 +9,12 @@ and the evaluation need.
 
 ## Run it
 
+`make -C macos qwen-server` rebuilds the compiler and runtime and serves the real
+weights on Metal (`qwen-server-quick` serves with the toolchain as built); in a
+second terminal, `make -C macos qwen-client` chats with it through the stock
+`ollama` command (`OLLAMA_HOST=127.0.0.1:11435 ollama run qwen3.8:27b`), which
+needs only `/`, `/api/show` and `/api/chat` from this server. By hand:
+
 ```sh
 target/release/osprey src/osprey/examples/llms/qwen/server --compile --memory=arc -o target/llms/qwen-server/server-arc
 printf '11435\n%s\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf \
