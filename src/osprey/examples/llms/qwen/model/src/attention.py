@@ -92,16 +92,76 @@ def total(raw, h, n, heads):
     return fold(range(0, n), toFloat32(0.0), lambda a, t: a + at(raw, wrapAdd(wrapMul(t, heads), h)))
 
 
+def peaks_of(s, n, config, shapes):
+    """Each head's largest score over `n` positions."""
+    heads = config.num_attention_heads
+    return must(gpuMap(shapes.q_heads, lambda h: peak(s, h, n, heads)))
+
+
+def raw_of(s, n, peaks, config, shapes):
+    """`exp(s - peak)` for every head and position."""
+    heads = config.num_attention_heads
+    hm = shapes.attention_heads.mul
+    hs = shapes.attention_heads.shift
+    return must(gpuMap(grid(heads * n), lambda i: exp(at(s, i) - at(peaks, rem(i, hm, hs, heads)))))
+
+
+def scaled(raw, n, inverse, config, shapes):
+    """The raw weights times their head's reciprocal total."""
+    heads = config.num_attention_heads
+    hm = shapes.attention_heads.mul
+    hs = shapes.attention_heads.shift
+    return must(gpuMap(grid(heads * n), lambda i: at(raw, i) * at(inverse, rem(i, hm, hs, heads))))
+
+
 def weights(s, n, config, shapes):
     """`softmax` over positions for every head: `exp(s - peak) / total`, as unnormalised
     weights times the per-head reciprocal, which the output kernel applies."""
     heads = config.num_attention_heads
-    hm = shapes.attention_heads.mul
-    hs = shapes.attention_heads.shift
-    peaks = must(gpuMap(shapes.q_heads, lambda h: peak(s, h, n, heads)))
-    raw = must(gpuMap(grid(heads * n), lambda i: exp(at(s, i) - at(peaks, rem(i, hm, hs, heads)))))
+    raw = raw_of(s, n, peaks_of(s, n, config, shapes), config, shapes)
     inverse = must(gpuMap(shapes.q_heads, lambda h: exp(toFloat32(0.0) - ln(total(raw, h, n, heads)))))
-    return must(gpuMap(grid(heads * n), lambda i: at(raw, i) * at(inverse, rem(i, hm, hs, heads))))
+    return scaled(raw, n, inverse, config, shapes)
+
+
+def split_output(q, slot, n, config, shapes):
+    """[LLM-STATE-OWNED] `softmax(scores) @ values` over the sealed rows and the tail as
+    one softmax: one peak per head across both, one total, each segment's weighted sum."""
+    heads = config.num_attention_heads
+    a = slot.sealed
+    b = n - a
+    sa = scores(q, slot.sealed_keys, a, config, shapes)
+    sb = scores(q, slot.keys, b, config, shapes)
+    pa = peaks_of(sa, a, config, shapes)
+    pb = peaks_of(sb, b, config, shapes)
+    top = must(gpuMap(shapes.q_heads, lambda h: at(pa, h) if at(pa, h) > at(pb, h) else at(pb, h)))
+    ra = raw_of(sa, a, top, config, shapes)
+    rb = raw_of(sb, b, top, config, shapes)
+    inverse = must(gpuMap(shapes.q_heads, lambda h: exp(toFloat32(0.0) - ln(total(ra, h, a, heads) + total(rb, h, b, heads)))))
+    oa = output(scaled(ra, a, inverse, config, shapes), slot.sealed_values, a, config, shapes)
+    ob = output(scaled(rb, b, inverse, config, shapes), slot.values, b, config, shapes)
+    return must(gpuMap(shapes.q_cells, lambda i: at(oa, i) + at(ob, i)))
+
+
+def appended(slot, key, value, kv_width, block):
+    """The slot with one more position: the tail grows by a row, and a full tail is
+    sealed onto the sealed rows first, so a token copies at most `block` rows."""
+    tail = slot.positions - slot.sealed
+    if tail == block:
+        sealed_keys = slot.keys if slot.sealed == 0 else joined(slot.sealed_keys, slot.sealed * kv_width, slot.keys, tail * kv_width)
+        sealed_values = slot.values if slot.sealed == 0 else joined(slot.sealed_values, slot.sealed * kv_width, slot.values, tail * kv_width)
+        return Cache.AttentionSlot(keys=key, values=value, positions=slot.positions + 1, sealed_keys=sealed_keys, sealed_values=sealed_values, sealed=slot.positions)
+    else:
+        edge = tail * kv_width
+        return update(slot, keys=joined(slot.keys, edge, key, kv_width), values=joined(slot.values, edge, value, kv_width), positions=slot.positions + 1)
+
+
+def attended_all(q, slot, config, shapes):
+    """Every head's attention over the slot's positions: one segment until a block is sealed."""
+    n = slot.positions
+    if slot.sealed == 0:
+        return output(weights(scores(q, slot.keys, n, config, shapes), n, config, shapes), slot.values, n, config, shapes)
+    else:
+        return split_output(q, slot, n, config, shapes)
 
 
 def attended(w, values, n, h, d, heads, width, kv_width, kvh):
@@ -136,14 +196,11 @@ def attend(both, base, k, v, layer, slot, config, shapes) -> Core:
     t = Rope.tables(slot.positions, config)
     q = Rope.rotated(Norm.rms_heads(half(both, base, shapes.q_cells, shapes, width), layer.q_norm, shapes.q_heads, shapes.q_cells, shapes.head_dim, width, eps), t, shapes.q_cells, shapes, config)
     key = Rope.rotated(Norm.rms_heads(k, layer.k_norm, shapes.kv_heads, shapes.kv_cells, shapes.head_dim, width, eps), t, shapes.kv_cells, shapes, config)
-    edge = slot.positions * kv_width
-    keys = joined(slot.keys, edge, key, kv_width)
-    values = joined(slot.values, edge, v, kv_width)
-    n = slot.positions + 1
-    out = output(weights(scores(q, keys, n, config, shapes), n, config, shapes), values, n, config, shapes)
+    grown = appended(slot, key, v, kv_width, shapes.kv_block)
+    out = attended_all(q, grown, config, shapes)
     gate = sigmoid(half(both, wrapAdd(base, width), shapes.q_cells, shapes, width))
     gated = must(gpuMap(shapes.q_cells, lambda i: at(out, i) * at(gate, i)))
-    return Core(gated=[gated], slot=Cache.AttentionSlot(keys=keys, values=values, positions=n))
+    return Core(gated=[gated], slot=grown)
 
 
 def attend_next(acc, both, ks, vs, t, count, layer, config, shapes):
