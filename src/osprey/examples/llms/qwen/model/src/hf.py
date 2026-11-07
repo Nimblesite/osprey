@@ -36,7 +36,7 @@ def index_of(names, name):
     return fold(range(len(names)), -1, lambda hit, i: i if hit < 0 and unwrap_or(listGet(names, i), "") == name else hit)
 
 
-def sized(params, name, count) -> list[float32]:
+def sized(params, name, count):
     """The `count` values of `name`, or the fault that ends the load."""
     match listGet(params.values, index_of(params.names, name)):
         case Error(message=_):
@@ -54,10 +54,12 @@ def transposed(values, rows, cols):
 
 
 def plus_one(values):
+    """Every norm weight plus one: the zero-centred `weight` as the `1 + weight` the kernels multiply."""
     return mapList(values, lambda x: x + toFloat32(1.0))
 
 
 def neg_exp(values):
+    """Every `A_log` entry as `-exp` of itself: the decay's `-exp(A_log)` factor, pre-negated."""
     return mapList(values, lambda x: toFloat32(0.0) - exp(x))
 
 
@@ -66,11 +68,11 @@ def dense(params, name, rows, cols):
     return Device.Dense(values=constant(transposed(sized(params, name, rows * cols), rows, cols)))
 
 
-def buffer(params, name, count) -> GpuBuffer[float32]:
+def buffer(params, name, count):
     return constant(sized(params, name, count))
 
 
-def centred(params, name, count) -> GpuBuffer[float32]:
+def centred(params, name, count):
     """A zero-centred norm weight as the `1 + weight` the kernels multiply by."""
     return constant(plus_one(sized(params, name, count)))
 
@@ -117,7 +119,7 @@ def attention_of(params, i, config) -> Attn.Layer:
     )
 
 
-def mixer_of(params, i, config) -> Model.Mixer:
+def mixer_of(params, i, config):
     if C.is_full(config, i):
         return Model.Full(layer=attention_of(params, i, config))
     else:

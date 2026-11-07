@@ -310,36 +310,33 @@ def is_tokenizer_field(field):
 
 
 def holds(field, ok, label, value):
-    """`value` when the entry passes `ok`, or the Error naming the kind it does not hold."""
+    """`value` when the entry passes `ok`, or the Error naming the kind it does not
+    hold. The value is read eagerly: a field read cannot fault, and a closure here
+    would leave the accessor generic for the code generator."""
     if ok:
         return Success(value=value)
     else:
         return Error(message=kind_error(field, label))
 
 
-def scalar_field(field, kinds, label, element):
-    """The value `element` reads from the entry when its kind is one of `kinds`."""
-    return holds(field, listContains(kinds, field.value.kind), label, element(field.value))
-
-
 def field_int(field):
     """The integer a metadata entry holds, or Error for another kind."""
-    return scalar_field(field, INT_KINDS, "an int", element_int)
+    return holds(field, listContains(INT_KINDS, field.value.kind), "an int", field.value.i)
 
 
 def field_bool(field):
     """The boolean a metadata entry holds, or Error for another kind."""
-    return scalar_field(field, ["bool"], "a bool", element_bool)
+    return holds(field, field.value.kind == "bool", "a bool", field.value.i != 0)
 
 
 def field_float(field):
     """The number a floating-point metadata entry holds, or Error for another kind."""
-    return scalar_field(field, FLOAT_KINDS, "a float", element_float)
+    return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", field.value.f)
 
 
 def field_string(field):
     """The text a string metadata entry holds, or Error for another kind."""
-    return scalar_field(field, ["string"], "a string", element_string)
+    return holds(field, field.value.kind == "string", "a string", field.value.s)
 
 
 def array_field(field, kinds, label, element):

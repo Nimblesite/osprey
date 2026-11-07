@@ -14,7 +14,7 @@ After this plan:
 - A kernel over `float32` runs native binary32 on the device, bit for bit the host's result for `+ - * /`, `sqrt` and the comparisons. Software binary64 remains only for `float`, which is the binary64 contract and stays.
 - The emulation builtins `float32`, `float32Bits(x: float)` and `float32FromBits` are gone. Nothing widens silently: `gpuLoad` returns `GpuBuffer<float32>`, and `gpuLoadTensor` returns the type the caller asks for or an `Error`.
 
-No legacy path survives: every call site in `src/osprey/examples/`, `src/osprey/packages/`, `src/osprey/tests/` and `src/toolchain/targets/` moves to the new types in the same commit as the change that affects it.
+No legacy path survives: every call site in `src/osprey/examples/`, `src/osprey/packages/` and `src/osprey/tests/` moves to the new types in the same commit as the change that affects it.
 
 ## Decisions
 

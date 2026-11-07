@@ -17,28 +17,30 @@ from qwen_server import Wire
 __all__ = ["dispatch"]
 
 
-def dispatch(method, url, body):
-    """The reply for one request; the 404 for a path neither protocol serves."""
+def dispatch(method, url, body, model):
+    """The reply for one request under the installed `model`; the 404 for a path neither protocol serves."""
     path = Wire.path_of(url)
-    if startsWith(path, "/api/"):
-        return ollama(method, path, body)
+    if path == "/":
+        return heartbeat(method)
+    elif startsWith(path, "/api/"):
+        return ollama(method, path, body, model)
     elif startsWith(path, "/v1/"):
-        return openai(method, path, body)
+        return openai(method, path, body, model)
     else:
         return absent(path)
 
 
-def openai(method, path, body):
+def openai(method, path, body, model):
     """The OpenAI protocol's routes."""
     if path == "/v1/models":
         return read_only(method, OpenAi.models())
     elif path == "/v1/chat/completions":
-        return posted(method, body, OpenAi.completions, Q.chat_request)
+        return posted(method, body, lambda request: OpenAi.completions(model, request), Q.chat_request)
     else:
         return OpenAi.failed(404, f"no route for {path}")
 
 
-def ollama(method, path, body):
+def ollama(method, path, body, model):
     """The Ollama protocol's routes."""
     if path == "/api/version":
         return read_only(method, Ollama.version())
@@ -49,11 +51,16 @@ def ollama(method, path, body):
     elif path == "/api/show":
         return posted(method, body, Ollama.show, Q.show_request)
     elif path == "/api/chat":
-        return posted(method, body, Ollama.chat, Q.chat_request)
+        return posted(method, body, lambda request: Ollama.chat(model, request), Q.chat_request)
     elif path == "/api/generate":
-        return posted(method, body, Ollama.generate, Q.generate_request)
+        return posted(method, body, lambda request: Ollama.generate(model, request), Q.generate_request)
     else:
         return absent(path)
+
+
+def heartbeat(method):
+    """`/`: the liveness probe the `ollama` command sends (as HEAD) before every command."""
+    return Wire.text_reply(200, "Ollama is running") if method == "GET" or method == "HEAD" else Wire.failed(405, "method not allowed; GET")
 
 
 def read_only(method, reply):

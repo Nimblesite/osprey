@@ -521,7 +521,9 @@ suite("package workspace capabilities", () => {
         ? "read-plists"
         : match[1].replace(/(?<!^)([A-Z])/g, "-$1").toLowerCase(),
     );
-    const encodedKinds = [...source.matchAll(/str "kind" "([^"]+)"/g)].map(
+    // A request kind is written `Encode::str "kind" "<name>"` or through the
+    // `kind "<name>"` helper, so both spellings count ([NATIVE-HOSTS-COVERAGE]).
+    const encodedKinds = [...source.matchAll(/\bkind"? "([^"]+)"/g)].map(
       (match) => match[1],
     );
     assert.deepStrictEqual(

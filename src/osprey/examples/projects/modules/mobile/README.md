@@ -25,7 +25,7 @@ Native hosts initialize `osprey_main()` once, then call `osprey_talonmobile_star
 From the repository root:
 
 ```sh
-make -C src/toolchain/targets bank
+make -C src/toolchain/targets/web bank
 ```
 
 The demo API runs at `http://127.0.0.1:18790`; each server run recreates and seeds `/tmp/talon_bank.db`. Keep this terminal running while using either mobile app. Native connection settings accept a different server origin. For a physical iPhone, that origin must be reachable from the phone; forward the demo service through your development machine's LAN proxy when needed.
@@ -35,7 +35,7 @@ The demo API runs at `http://127.0.0.1:18790`; each server run recreates and see
 Requires JDK 17, Android SDK 34, NDK 28.2.13676358, and a connected Android device or emulator running API 26 or newer.
 
 ```sh
-make -C src/toolchain/targets bank-android
+make -C src/toolchain/targets/android bank
 OSPREY_ANDROID_SKIP_BUILD=1 src/osprey/examples/projects/modules/mobile/android/run.sh
 ```
 
@@ -48,7 +48,7 @@ The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. The app has its 
 Requires an Apple silicon Mac with Xcode, iOS SDKs, and an installed iPhone simulator. The app requires iOS 16 or later.
 
 ```sh
-make -C src/toolchain/targets bank-ios
+make -C src/toolchain/targets/ios bank
 OSPREY_IOS_SKIP_BUILD=1 src/osprey/examples/projects/modules/mobile/ios/run.sh ios-sim
 ```
 
@@ -67,11 +67,11 @@ Stop the manually running bank server before native acceptance tests. These targ
 | Command | Coverage |
 | --- | --- |
 | `make -C src/toolchain/targets/tests bank-mobile` | Shared Osprey routes, screen data, validation, request payloads, success/refusal/error states, filter/search, handler behavior, and duplicate-submission protection |
-| `make -C src/toolchain/targets bank-android-test` | Android build and instrumentation: native controls, banking journeys, exact API balances, validation, lifecycle restoration, and network failure |
-| `make -C src/toolchain/targets bank-ios-test` | Device/simulator builds, XCTest protocol checks, and simulator UI journeys against the real API |
-| `make -C src/toolchain/targets bank-e2e` | Existing browser tests, verifying changes to shared application modules preserve the web client |
+| `make -C src/toolchain/targets/android/tests bank` | Android build and instrumentation: native controls, banking journeys, exact API balances, validation, lifecycle restoration, and network failure |
+| `make -C src/toolchain/targets/ios/tests bank` | Device/simulator builds, XCTest protocol checks, and simulator UI journeys against the real API |
+| `make -C src/toolchain/targets/web/tests bank` | Existing browser tests, verifying changes to shared application modules preserve the web client |
 
-`make -C src/toolchain/targets bank-mobile-test` runs shared, Android, and iOS checks sequentially; it requires both platform toolchains and test devices. Android instrumentation reports and screenshots live under `android/build/`; iOS produces `.xcresult` bundles with screenshots under `ios/build/ios-sim/`. API build/run logs are in `target/bank-mobile/`.
+`make -C src/toolchain/targets/tests bank-mobile`, `make -C src/toolchain/targets/android/tests bank` and `make -C src/toolchain/targets/ios/tests bank` run the shared, Android and iOS checks; each platform's target requires its toolchain and a test device. Android instrumentation reports and screenshots live under `android/build/`; iOS produces `.xcresult` bundles with screenshots under `ios/build/ios-sim/`. API build/run logs are in `target/bank-mobile/`.
 
 CI runs shared tests and Android instrumentation in the integration job, and iOS simulator tests in the macOS job.
 

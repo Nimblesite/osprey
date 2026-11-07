@@ -46,7 +46,7 @@ bcast_shapes2 = Layout.broadcast_two
 compatible, as the port's ops keep them)."""
 
 
-def combine_op(op, x, y):
+def combine_op(op, x: float, y: float):
     """The elementwise combine selected by an int tag."""
     match op:
         case 0:

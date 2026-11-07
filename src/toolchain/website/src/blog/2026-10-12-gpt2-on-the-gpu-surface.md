@@ -95,10 +95,10 @@ From the repository root, after building Osprey:
 
 ```bash
 # Choose the backend available on your machine: metal, opencl or host.
-make -C src/toolchain/targets gpt2 GPU=metal PROMPT="The capital of France is" TOKENS=20
-make -C src/toolchain/targets gpt2-train GPU=metal PROMPT="The capital of France is"
+make -C src/toolchain/targets/llms gpt2 GPU=metal PROMPT="The capital of France is" TOKENS=20
+make -C src/toolchain/targets/llms gpt2-train GPU=metal PROMPT="The capital of France is"
 # The same generator, written in the Python flavor:
-make -C src/toolchain/targets gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
+make -C src/toolchain/targets/llms gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
 ```
 
 The first run downloads the weights and tokenizer data. The program prints its actual backend and reports unsupported GPU work without silently substituting CPU execution.

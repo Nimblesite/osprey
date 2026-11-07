@@ -37,14 +37,9 @@ class DecodedTensor:
     ints: list[int]
 
 
-def null_value():
-    """A JSON null value, the fallback when a member or item is absent."""
-    return JsonParser.JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])
-
-
-def empty_member():
-    """An empty JSON member, the fallback when a member is absent."""
-    return JsonParser.JsonMember(name="", value=null_value())
+def member_at(members, i):
+    """Member `i` of a JSON object, or an empty member past the end."""
+    return unwrap_or(listGet(members, i), JsonParser.JsonMember(name="", value=JsonParser.jnull()))
 
 
 def header_length(data):
@@ -63,18 +58,17 @@ def header_length(data):
             n = b3 * 16777216 + Bytes.le16(data, 0) + Bytes.le_bytes(data, 2, 1) * 65536
             if n > 100000000:
                 return Error(message="header too large")
-            elif len(data) - 8 < n:
-                return Error(message="invalid header length")
             else:
                 return Success(value=n)
 
 
 def header_string(data, n):
-    """The header text of length `n`, or the Rust crate's UTF-8/length error."""
+    """The header text of length `n`: read_bytes keeps the crate's error for a
+    header that runs past the buffer, so a corrupt length never reads short."""
     match Bytes.read_bytes(data, 8, n):
         case Success(value=value):
             return utf8_of(value)
-        case Error(message=message):
+        case Error():
             return Error(message="invalid header length")
 
 
@@ -143,7 +137,7 @@ def collect_members(members, i, meta, infos) -> Result[Collected, str]:
     if i >= len(members):
         return Success(value=Collected(metadata=meta, infos=infos))
     else:
-        m = unwrap_or(listGet(members, i), empty_member())
+        m = member_at(members, i)
         if m.name == "__metadata__":
             return add_metadata(members, i, meta, infos, m)
         else:
@@ -217,7 +211,7 @@ def find_at(members, i, name) -> Result[JsonParser.JsonMember, str]:
     if i >= len(members):
         return Error(message="invalid JSON in header: missing " + name)
     else:
-        m = unwrap_or(listGet(members, i), empty_member())
+        m = member_at(members, i)
         if m.name == name:
             return Success(value=m)
         else:
@@ -242,7 +236,7 @@ def collect_ints(items, i, acc) -> Result[list[int], str]:
     if i >= len(items):
         return Success(value=acc)
     else:
-        it = unwrap_or(listGet(items, i), null_value())
+        it = unwrap_or(listGet(items, i), JsonParser.jnull())
         if it.kind != "int":
             return Error(message="invalid JSON in header: array element not an int")
         else:
@@ -262,7 +256,7 @@ def collect_metadata(members, i, acc) -> Result[dict[str, str], str]:
     if i >= len(members):
         return Success(value=acc)
     else:
-        m = unwrap_or(listGet(members, i), empty_member())
+        m = member_at(members, i)
         if m.value.kind != "str":
             return Error(message="invalid JSON in header: metadata value not a string")
         else:

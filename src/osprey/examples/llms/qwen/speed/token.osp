@@ -4,6 +4,7 @@
 // and the norms are not here; this times the products, which are the bulk of
 // the 26G operations per token. Under Metal the 640 dispatches of a token form
 // one command buffer and the host reads one logit at the end.
+let TOKENS = 64
 fn matrix(offset, bytes) -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", offset, bytes)
 fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
 fn byte(w, i) = toInt(gpuGet(w, i) ?: toUint8(0))

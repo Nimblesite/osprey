@@ -27,7 +27,8 @@ public sealed class CoverageTests
         var nodes = Framework.Source("encode.ospml");
         var requests = Framework.Source("capability.ospml");
         Assert.All(Framework.NodeKinds, kind => Assert.Contains($"\"{kind}\"", nodes, StringComparison.Ordinal));
-        Assert.All(Framework.CapabilityKinds, kind => Assert.Contains($"\"kind\" \"{kind}\"", requests, StringComparison.Ordinal));
+        // A request is written `Encode::str "kind" "<name>"` or through the `kind "<name>"` helper.
+        Assert.All(Framework.CapabilityKinds, kind => Assert.Matches($"\\bkind\"? \"{System.Text.RegularExpressions.Regex.Escape(kind)}\"", requests));
     }
 
     [Fact]

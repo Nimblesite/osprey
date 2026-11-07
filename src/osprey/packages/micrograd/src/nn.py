@@ -53,11 +53,6 @@ class Built:
     layers: list[Layer]
 
 
-def no_neuron():
-    """A neutral neuron for a missing list entry."""
-    return Neuron(weights=[], bias=-1, nonlin=True)
-
-
 def no_layer():
     """A neutral layer for a missing list entry."""
     return Layer(neurons=[])
@@ -126,25 +121,25 @@ def call_neuron_values(g, n, x_ids):
 
 def over_neurons(l, g, step):
     """Each neuron of the layer over the same inputs, in construction order."""
-    return fold(range(len(l.neurons)), Forward(graph=g, outputs=[]), step)
+    return foldList(l.neurons, Forward(graph=g, outputs=[]), step)
 
 
-def layer_neuron(acc, l, j, call):
-    """One neuron of the layer, its output id appended to the running list."""
-    g2 = call(acc.graph, unwrap_or(listGet(l.neurons, j), no_neuron()))
+def layer_neuron(acc, n, call, inputs):
+    """One neuron over `inputs`, its output id appended to the running list."""
+    g2 = call(acc.graph, n, inputs)
     return Forward(graph=g2, outputs=listAppend(acc.outputs, top(g2)))
 
 
 def call_layer(g, l, xs):
     """micrograd's `Layer.__call__` with bare-number inputs: each neuron over
     the same inputs, in construction order; returns the graph and output ids."""
-    return over_neurons(l, g, lambda acc, j: layer_neuron(acc, l, j, lambda gr, n: call_neuron(gr, n, xs)))
+    return over_neurons(l, g, lambda acc, n: layer_neuron(acc, n, call_neuron, xs))
 
 
 def call_layer_values(g, l, x_ids):
     """micrograd's `Layer.__call__` over Value inputs: each neuron over the
     same output ids, in construction order; returns the graph and output ids."""
-    return over_neurons(l, g, lambda acc, j: layer_neuron(acc, l, j, lambda gr, n: call_neuron_values(gr, n, x_ids)))
+    return over_neurons(l, g, lambda acc, n: layer_neuron(acc, n, call_neuron_values, x_ids))
 
 
 def call_mlp(g, m, xs):

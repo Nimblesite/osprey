@@ -1,7 +1,7 @@
 # Build from the repository root. See docs/contributing/repository-map.md.
 # This file holds the repository-wide targets. Every other public target lives
-# in a folder Makefile, one folder per area, as docs/book/Makefile does: src/toolchain/targets/ (every
-# app), src/osprey/packages/, src/osprey/tests/hunt/, src/toolchain/vscode-extension/, src/toolchain/website/, src/toolchain/benchmarks/ and
+# in a folder Makefile, one folder per area, as docs/book/Makefile does: the platform folders macos/, windows/, ios/,
+# android/ and web/ (every app, its tests in <platform>/tests/), tests/ (host-free), llms/, src/osprey/packages/, src/osprey/tests/hunt/, src/toolchain/vscode-extension/, src/toolchain/website/, src/toolchain/benchmarks/ and
 # src/osprey/examples/proof/. A folder Makefile defines each of its targets once and runs it
 # from here through scripts/make/forward.mk; the included fragments hold the configuration and shared private steps. Keep `NAME := value` lines in the
 # fragments: those panels list them as targets.
@@ -42,7 +42,7 @@ test: build _build_c_runtime_tests
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
-	$(MAKE) _check_projects
+	$(MAKE) _check_programs
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
 	$(MAKE) target/osprey-pkg
@@ -109,7 +109,7 @@ clean:
 ci: lint test build
 	$(MAKE) -C src/toolchain hawk
 	$(MAKE) -C src/toolchain/targets/tests bank
-	$(MAKE) -C src/toolchain/targets bank-e2e
+	$(MAKE) -C src/toolchain/targets/web/tests bank
 	$(MAKE) -C src/toolchain/website docs-html-test
 	$(MAKE) -C src/toolchain/targets/tests inbox
 	$(MAKE) -C src/toolchain/targets/tests bank-mobile

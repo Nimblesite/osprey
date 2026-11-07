@@ -21,10 +21,12 @@ from qwen_server import Inference
 from qwen_server import Lists
 from qwen import ToolParser
 
-__all__ = ["TEXT", "THINKING", "complete", "pieces_text"]
+__all__ = ["TEXT", "THINKING", "complete", "loaded", "pieces_text"]
 
 TEXT = "text"
+"""`Piece.kind` of the free text a turn speaks, sent as `content`."""
 THINKING = "thinking"
+"""`Piece.kind` of the model's reasoning, sent as `reasoning_content`."""
 
 
 class Piece:
@@ -42,8 +44,9 @@ class Turn:
     reason: str
 
 
-class Draft:
-    """The turn in progress: its raw text, its history and what it has emitted."""
+class Draft[M]:
+    """The turn in progress: the handle to step from, its raw text, its history and what it has emitted."""
+    model: M
     prompt_tokens: int
     tools: Json
     raw: str
@@ -53,6 +56,11 @@ class Draft:
     text_length: int
     think_length: int
     done: bool
+
+
+def loaded():
+    """The empty turn of a request that only loads the model ([LLM-API-OLLAMA])."""
+    return Turn(pieces=[], calls=[], prompt_tokens=0, eval_tokens=0, reason="load")
 
 
 def complete(model, prompt, sampling, tools):
@@ -72,8 +80,8 @@ def bounded(model, tokens, sampling, tools):
     elif room == 0:
         return Error(message=f"prompt is {Lists.count(tokens)} tokens and fills num_ctx {sampling.num_ctx}; no room to generate")
     else:
-        start = Draft(prompt_tokens=Lists.count(tokens), tools=tools, raw="", history=tokens, pieces=[], calls=[], text_length=0, think_length=0, done=False)
-        return run(model, start, sampling, budget(sampling, room))
+        start = Draft(model=model, prompt_tokens=Lists.count(tokens), tools=tools, raw="", history=tokens, pieces=[], calls=[], text_length=0, think_length=0, done=False)
+        return run(start, sampling, budget(sampling, room))
 
 
 def budget(sampling, room):
@@ -81,11 +89,11 @@ def budget(sampling, room):
     return sampling.num_predict if sampling.num_predict < room else room
 
 
-def run(model, start, sampling, limit):
+def run(start, sampling, limit):
     """Fold one sampling step per token, stopping early once the turn is done."""
-    match fold(range(limit), Success(value=start), lambda result, _step: next_step(result, model, sampling)):
+    match fold(range(limit), Success(value=start), lambda result, _step: next_step(result, sampling)):
         case Success(value=draft):
-            return finished_turn(model, draft)
+            return finished_turn(draft)
         case Error(message=message):
             return Error(message=message)
 
@@ -100,24 +108,24 @@ def continued(result, step):
             return Error(message=message)
 
 
-def next_step(result, model, sampling):
+def next_step(result, sampling):
     """One step of the fold, or the failure that already ended the turn."""
-    return continued(result, lambda draft: Success(value=draft) if draft.done else one_step(model, draft, sampling))
+    return continued(result, lambda draft: Success(value=draft) if draft.done else one_step(draft, sampling))
 
 
-def one_step(model, draft, sampling):
-    """Sample one token and add it to the turn."""
-    return continued(perform(Inference.Generator.step(model, draft.history, sampling)), lambda token: consumed(model, draft, token))
+def one_step(draft, sampling):
+    """Sample one token, keep the handle it leaves, and add the token to the turn."""
+    return continued(perform(Inference.Generator.step(draft.model, draft.history, sampling)), lambda stepped: consumed(update(draft, model=stepped.model), stepped.token))
 
 
-def consumed(model, draft, token):
+def consumed(draft, token):
     """A turn that ends at the model's end-of-turn token, or one that keeps going."""
-    return continued(perform(Inference.Generator.eos(model)), lambda eos: Success(value=update(draft, done=True)) if token == eos else decoded(model, draft, token))
+    return continued(perform(Inference.Generator.eos(draft.model)), lambda eos: Success(value=update(draft, done=True)) if token == eos else decoded(draft, token))
 
 
-def decoded(model, draft, token):
+def decoded(draft, token):
     """Feed one decoded token into the tool parser."""
-    return continued(perform(Inference.Generator.decode(model, token)), lambda piece: fed(model, draft, token, piece))
+    return continued(perform(Inference.Generator.decode(draft.model, token)), lambda piece: fed(draft, token, piece))
 
 
 def parses(tools):
@@ -129,7 +137,7 @@ def parses(tools):
             return True
 
 
-def fed(model, draft, token, piece):
+def fed(draft, token, piece):
     """The draft with the parser's newest step folded in, or with `piece` as plain text."""
     grown = update(draft, raw=draft.raw + piece, history=listAppend(draft.history, token))
     if parses(draft.tools):
@@ -144,7 +152,8 @@ def fed_parsed(draft):
 
 
 def grown_pieces(draft, step):
-    """The draft over one parser step's new text, reasoning and calls."""
+    """The draft over one parser step: only the text, reasoning and calls past what the
+    earlier replays already emitted, so a closed parse adds nothing twice."""
     text = drop(step.text, draft.text_length)
     think = drop(step.think, draft.think_length)
     return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: Success(value=update(
@@ -180,22 +189,20 @@ def collected(calls, seen, at, kept_calls):
             return Success(value=kept_calls) if satAdd(seen, at) >= Lists.count(calls) else Error(message=message)
 
 
-def finished_turn(model, draft):
-    """Close the parser, reject an invalid call, and report the turn."""
-    if not parses(draft.tools):
-        return calls_checked(draft)
-    else:
+def finished_turn(draft):
+    """Close the parser, reject an invalid call, and report the turn. Only a turn the
+    model ended is closed: one the token budget cut off reports what it emitted, with
+    `length` as its reason, because a tag left open by the budget is not the model's
+    doing ([LLM-TOOL-REPAIR])."""
+    if parses(draft.tools) and draft.done:
         return closed(draft)
+    else:
+        return calls_checked(draft)
 
 
 def closed(draft):
     """The turn over the parser's closed read of the turn's whole text."""
-    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: settled(draft, step))
-
-
-def settled(draft, step):
-    """The turn over the closed parse, unless one of its calls failed its schema."""
-    return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: calls_checked(update(draft, pieces=listConcat(draft.pieces, listConcat(kept(step.think, THINKING), kept(step.text, TEXT))), calls=listConcat(draft.calls, fresh))))
+    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: continued(grown_pieces(draft, step), calls_checked))
 
 
 def calls_checked(draft):

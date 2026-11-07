@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regressions for `src/toolchain/targets/` gating and `--project` selection in the coverage gate.
+"""Regressions for app gating (`projects.apps`, sources under `src/osprey/<name>/src`) and `--project` selection in the coverage gate.
 
 Every shipped app is covered by the same 90% floor as a package, `--project`
 collects exactly one project, an ungated app fails the inventory before any

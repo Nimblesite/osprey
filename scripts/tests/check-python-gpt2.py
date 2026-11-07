@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[2]
 PORT = ROOT / "src/osprey/examples/llms/gpt2/python"
+PROJECT = PORT / "check"  # the tracked check program over the self-contained modules
 MEMORIES = ("gc", "arc")
 
 
@@ -54,18 +55,6 @@ def expected(module):
         result[f"probs{t}"], result[f"attention{t}"] = module.attention(qkv, t)
     result.update({f"block.{name}": values for name, values in module.block(vector(3 * module.WIDTH, 0.25), 3, layer(module)).items()})
     return result
-
-
-def project(directory):
-    """The check program over the self-contained Python-flavor modules: no `.osp` source."""
-    (directory / "check.py").write_text((PORT / "check.py").read_text())
-    modules = ", ".join(f'"{Path(os.path.relpath(PORT / name, directory)).as_posix()}"' for name in ("backends.py", "cpu.py", "gpu.py", "model.py"))
-    (directory / "osprey.toml").write_text(f'''[project]
-name = "python-gpt2-check"
-source_roots = [".", "{PORT.as_posix()}"]
-python_sources = [{modules}]
-entry = "check.py"
-''')
 
 
 def run(command, **kwargs):
@@ -133,7 +122,7 @@ def check_device(result, backend, device):
 
 def compile_memory(compiler, directory, memory):
     binary = directory / f"gpt2-{memory}"
-    run([str(compiler), str(directory), "--compile", f"--memory={memory}", "-o", str(binary)])
+    run([str(compiler), str(PROJECT), "--compile", f"--memory={memory}", "-o", str(binary)])
     return binary
 
 
@@ -152,9 +141,7 @@ def main():
     args = parser.parse_args()
     wanted = expected(reference())
     with tempfile.TemporaryDirectory(prefix="osprey-python-gpt2-", dir=ROOT / "target") as temporary:
-        directory = Path(temporary)
-        project(directory)
-        check_matrix(args.compiler.resolve(), directory, wanted, args.device)
+        check_matrix(args.compiler.resolve(), Path(temporary), wanted, args.device)
     print(f"matched {len(wanted)} complete tensors across both handlers and GC/ARC memory modes")
 
 

@@ -96,8 +96,11 @@ module HandoverTests {
                 Fixture::workflow("p-bob", "m-bob", Governance::handoverAcceptanceStatement("t-1", ledger, 1, "m-alice", "m-bob")))) == "governance.proof.ceremony",
             Fixture::code(accept(pending, "t-1", "p-bob", "m-bob")) == "",
             Fixture::code(GovernanceHandover::finalizeHandover(pending, "t-1", 124)) == "governance.transfer.acceptance-missing",
-            match Governance::packageOf(accept(pending, "t-1", "p-bob", "m-bob"), "pkg-f1") {
-                Success { value } => value.admin == "m-alice"
+            match accept(pending, "t-1", "p-bob", "m-bob") {
+                Success { value } => match Governance::packageOf(value, "pkg-f1") {
+                    Success { value } => value.admin == "m-alice"
+                    Error => false
+                }
                 Error => false
             }
         ])

@@ -29,11 +29,11 @@ def rms_row(x, w, config, shapes) -> GpuBuffer[float32]:
     return must(gpuMap(shapes.hidden, lambda i: at(x, i) * at(scale, 0) * at(w, i)))
 
 
-def total(pieces, count) -> float32:
+def total(pieces, count):
     return fold(range(0, count), toFloat32(0.0), lambda a, c: a + at(pieces, c))
 
 
-def head_scales(x, heads, width, eps: float32) -> GpuBuffer[float32]:
+def head_scales(x, heads, width, eps):
     """`rsqrt(mean(x²) + eps)` of every `width`-wide head of `x`, one thread per head."""
     mean = inverse(width)
     return must(gpuMap(heads, lambda h: rsqrt(squares(x, wrapMul(h, width), width) * mean + eps)))

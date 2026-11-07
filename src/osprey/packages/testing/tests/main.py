@@ -72,6 +72,7 @@ def helper_cases():
         Check.equal("close_all.detail", Check.close_all("x", [1.0, 5.0], [1.0, 2.0], RTOL, ATOL).detail, "index 1: got 5.0, want 2.0"),
         Check.ints_equal("ints_equal", [1, 2, 3], [1, 2, 3]),
         Check.equal("ints_equal.detail", Check.ints_equal("x", [1, 2, 4], [1, 2, 3]).detail, "index 2: got [1, 2, 4], want [1, 2, 3]"),
+        Check.equal("ints_equal.length", Check.ints_equal("x", [1, 2], [1, 2, 3]).detail, "length 2, want 3: got [1, 2]"),
         Check.equal("ints_text.empty", Check.ints_text([]), "[]"),
         Check.equal("float_of.number", Check.float_of("1.5"), 1.5),
         Check.truth("float_of.unparseable_is_nan", Check.float_of("x") != Check.float_of("x"), "unparseable text decodes to NaN"),
@@ -79,8 +80,14 @@ def helper_cases():
     ]
 
 
+def stopped_suite_case():
+    """A suite whose port overflows stops and reports why, instead of the fault
+    escaping the harness; the golden's first row is that report."""
+    return Check.run(lambda: [Check.equal("stopped.overflow", plus(9223372036854775807, 1), 0)])
+
+
 def main():
-    Check.run(lambda: [Check.equal("run.fault", remainder(7, 0), 0)])
+    stopped_suite_case()
     match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
         case Success(value=value):
             return value

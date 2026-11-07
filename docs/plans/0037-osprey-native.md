@@ -73,8 +73,8 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 - [ ] iPhone counter on `src/toolchain/hosts/swift`.
 - [ ] Talon Bank's Android and iOS apps on the Compose and SwiftUI hosts; Talon Bank's web client on the browser host.
-- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`src/osprey/examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `src/toolchain/targets/windows.json` gains a `graphics` entry.
-- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `src/toolchain/targets/windows.json` with the capabilities listed in AGENTS.md § Apps.
+- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`src/osprey/examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `src/toolchain/targets/windows/apps.json` gains a `graphics` entry.
+- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `src/toolchain/targets/windows/apps.json` with the capabilities listed in AGENTS.md § Apps.
 - [ ] Bank and GPT-2 sandboxed in AppContainers launched by the apps Makefile.
 
 ## 11. Replace the JSON bridge with shared memory [NATIVE-SHM]

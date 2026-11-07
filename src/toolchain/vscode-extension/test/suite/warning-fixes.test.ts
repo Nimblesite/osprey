@@ -36,7 +36,8 @@ function untitled(
 async function wrappedAction(
   document: vscode.TextDocument,
 ): Promise<vscode.CodeAction & { data?: object }> {
-  const action = await wrappedAction(document);
+  const action = annotated(document);
+  await wrap(document, [action]);
   return action;
 }
 

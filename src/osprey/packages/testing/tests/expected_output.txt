@@ -1,4 +1,4 @@
-suite stopped: remainder by zero: 7 % 0
+suite stopped: integer overflow: 9223372036854775807 + 1
 ok near(1.000001, 1.0)
 ok near(1.001, 1.0)
 ok near(0.0, 1e-09)
@@ -32,6 +32,7 @@ ok close_all.length
 ok close_all.detail
 ok ints_equal
 ok ints_equal.detail
+ok ints_equal.length
 ok ints_text.empty
 ok float_of.number
 ok float_of.unparseable_is_nan
@@ -40,4 +41,4 @@ ok strictly.overflow
 ok strictly.division
 ok strictly.remainder
 ok lenient.division
-41 passed, 0 failed
+42 passed, 0 failed

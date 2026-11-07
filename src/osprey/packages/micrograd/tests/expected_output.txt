@@ -168,6 +168,7 @@ ok nn.Neuron.weights
 ok nn.Neuron.bias
 ok nn.Layer.count
 ok nn.MLP.layers
+ok nn.MLP.no_layers
 ok nn.Forward.outputs
 ok nn.call_neuron
 ok nn.call_neuron_values
@@ -1668,4 +1669,4 @@ ok repeat.5.2.0
 ok repeat.5.2.1
 ok repeat.5.2.length
 ok repeat.5.rows
-1670 passed, 0 failed
+1671 passed, 0 failed

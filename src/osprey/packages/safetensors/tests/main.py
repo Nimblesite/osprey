@@ -63,6 +63,33 @@ def dtype_table(names, files, values, case):
     return concat_all(toList(map(range(len(names)), lambda i: case(unwrap_or(listGet(names, i), ""), unwrap_or(listGet(files, i), []), unwrap_or(listGet(values, i), [])))))
 
 
+def utf8_bytes(text):
+    """`text`'s UTF-8 bytes, in order."""
+    return toList(map(range(byteLength(text)), lambda i: unwrap_or(byteAt(text, i), 0)))
+
+
+def header_file(header, data):
+    """A safetensors buffer: the 8-byte header length, the header text, then `data`."""
+    return listConcat(listConcat(Bytes.int_bytes(byteLength(header), 8), utf8_bytes(header)), data)
+
+
+def header_edge_cases():
+    """Hand-built headers: an unknown dtype, offset orderings load must sort or
+    reject, and a repeated name, whose equal-key comparison sorts it twice."""
+    ordered = file_of(header_file('{"b":{"dtype":"F32","shape":[1],"data_offsets":[4,8]},"a":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}}', [0, 0, 0, 0, 0, 0, 0, 0]))
+    repeated = file_of(header_file('{"a":{"dtype":"U8","shape":[1],"data_offsets":[0,1]},"a":{"dtype":"U8","shape":[1],"data_offsets":[1,2]}}', [7, 9]))
+    same_start = '{"p":{"dtype":"F32","shape":[1],"data_offsets":[0,4]},"q":{"dtype":"F32","shape":[1],"data_offsets":[0,8]}}'
+    same_start_reversed = '{"q":{"dtype":"F32","shape":[1],"data_offsets":[0,8]},"p":{"dtype":"F32","shape":[1],"data_offsets":[0,4]}}'
+    zeros = [0, 0, 0, 0, 0, 0, 0, 0]
+    return [
+        rejection_check("hdr.dtype_unknown", SafeTensors.load(header_file('{"t":{"dtype":"Q9","shape":[1],"data_offsets":[0,4]}}', zeros)), "invalid JSON in header: unknown dtype Q9", "load succeeded"),
+        rejection_check("hdr.same_start", SafeTensors.load(header_file(same_start, zeros)), "invalid offset for tensor `q`", "load succeeded"),
+        rejection_check("hdr.same_start_reversed", SafeTensors.load(header_file(same_start_reversed, zeros)), "invalid offset for tensor `q`", "load succeeded"),
+        str_list_equal("hdr.offsets_out_of_order", SafeTensors.offset_keys(ordered), ["a", "b"]),
+        str_list_equal("hdr.repeated_name_keys", SafeTensors.keys(repeated), ["a", "a"]),
+    ]
+
+
 def dtype_cases():
     """Every dtype's file decodes to the oracle's values."""
     return concat_all([
@@ -464,7 +491,7 @@ def json_reject_cases():
 
 def all_cases():
     """Every case of the suite."""
-    return concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
+    return concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), header_edge_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
 
 
 def long_text_bytes():

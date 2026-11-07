@@ -1,5 +1,5 @@
-# Graphics: settings and the platform hosts behind `make -C src/toolchain/targets graphics` and
-# `make -C src/toolchain/targets graphics-smoke`, which the root Makefile documents.
+# Graphics: settings and the platform hosts behind `make -C src/toolchain/targets/macos graphics` (or windows) and
+# `make -C src/toolchain/targets/macos/tests graphics` (or src/toolchain/targets/windows/tests).
 GFX_DIR := src/osprey/examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make -C src/toolchain/targets graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C src/toolchain/targets/windows graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
@@ -110,6 +110,14 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 	done
 endif
 
+## _bank-web: Regenerate Talon Bank's embedded React host and Osprey WebAssembly client. Requires Node and
+##            a WASI sysroot; the generated Osprey Bundle is committed so native and CI builds need neither.
+.PHONY: _bank-web
+_bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+_bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
+	@echo "==> Building Talon Bank browser application..."
+	cd src/osprey/examples/projects/modules/web && npm run build
+
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
 GPT2_DIR    := src/osprey/examples/llms/gpt2
 GPT2_SOURCE := https://huggingface.co/openai-community/gpt2/resolve/main
@@ -172,6 +180,39 @@ _gpui-app-self-test: _runtime_macos
 _app-suite: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
+
+## _qwen-serve: Compile the Qwen server and serve the GGUF pull.sh names (pulled first if missing,
+##              QWEN_QUANT picks the quant) on Metal at QWEN_PORT. Uses the compiler and runtime as built.
+## _qwen-suite: The Qwen model suite under MEMORY, on the device QWEN_GPU names (the host when empty),
+##              its stdout equal to the golden byte for byte; on metal at least one Metal dispatch must
+##              complete, or the run proves nothing about the device.
+## _qwen-lanes: The Qwen server suite's LANES (gc, arc: the fixture table; real: the pulled GGUF) through
+##              the real ollama and openai clients in QWEN_PYTHON's environment.
+## _qwen-client: The ollama command's interactive chat against the server at QWEN_PORT.
+QWEN_DIR := src/osprey/examples/llms/qwen
+QWEN_OUT := target/llms/qwen-model
+QWEN_SERVER := target/llms/qwen-server/server-arc
+QWEN_PORT ?= 11435
+QWEN_MODEL := qwen3.8:27b
+QWEN_PYTHON ?= $(HOME)/.cache/osprey-llm/oracle-venv/bin/python
+QWEN_RUN = $(QWEN_OUT)/$(or $(QWEN_GPU),host)-$(MEMORY)
+.PHONY: _qwen-serve _qwen-suite _qwen-lanes _qwen-client
+_qwen-serve:
+	mkdir -p $(dir $(QWEN_SERVER))
+	./$(BIN) $(QWEN_DIR)/server --compile --memory=arc -o $(QWEN_SERVER)
+	GGUF=$$(sh $(QWEN_DIR)/pull.sh) && printf '%s\n%s\n' "$(QWEN_PORT)" "$$GGUF" | OSPREY_GPU=metal $(QWEN_SERVER)
+
+_qwen-client:
+	OLLAMA_HOST=127.0.0.1:$(QWEN_PORT) ollama run $(QWEN_MODEL)
+
+_qwen-suite:
+	mkdir -p $(QWEN_OUT)
+	$(if $(QWEN_GPU),OSPREY_GPU=$(QWEN_GPU)) $(BIN) $(QWEN_DIR)/model/tests --run --quiet --memory=$(MEMORY) > $(QWEN_RUN).out 2> $(QWEN_RUN).err
+	cmp $(QWEN_RUN).out $(QWEN_DIR)/model/tests/expected_output.txt
+	test "$(QWEN_GPU)" != metal || grep -q '^\[gpu\] metal:.*completed dispatch' $(QWEN_RUN).err || { echo 'qwen: no Metal dispatch completed; the suite ran on the host' >&2; exit 1; }
+
+_qwen-lanes:
+	$(if $(filter real,$(LANES)),GGUF=$$(sh $(QWEN_DIR)/pull.sh) &&) OSPREY_QWEN_GGUF="$$GGUF" OSPREY_COMPILER="$(CURDIR)/$(BIN)" $(QWEN_PYTHON) -I $(QWEN_DIR)/server/tests/clients.cpython $(LANES)
 
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]

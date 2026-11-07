@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- One application's MSIX package [WINUI-HOST-SANDBOX]: the host, the Windows App SDK runtime and
-     the application's DLL. app.ps1 fills each {placeholder} from src/toolchain/targets/windows.json. The application
+     the application's DLL. app.ps1 fills each {placeholder} from src/toolchain/targets/windows/apps.json. The application
      runs in an AppContainer: no runFullTrust, and only the capabilities its entry lists. -->
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"

@@ -15,7 +15,7 @@ On macOS `run.sh` compiles the app to a C archive and links it, with the TLS and
 
 ## Mobile
 
-The iPhone and Android apps are this same GPUI host: `src/toolchain/hosts/gpui` draws the player on both, through `gpui_ios` and through its own Android backend in `src/toolchain/hosts/gpui/android`. Native code answers only what the platform alone can do. On iOS that is discovery, the document picker and TLS (`ios/`). On Android it is discovery and the document picker (`android/src/main/java`), with TLS and media serving from the same C runtime as desktop. `make -C src/toolchain/targets/android casting-build` builds the APK.
+The iPhone and Android apps are this same GPUI host: `src/toolchain/hosts/gpui` draws the player on both, through `gpui_ios` and through its own Android backend in `src/toolchain/hosts/gpui/android`. Native code answers only what the platform alone can do. On iOS that is discovery, the document picker and TLS (`src/toolchain/targets/ios/`). On Android it is discovery and the document picker (`android/src/main/java`), with TLS and media serving from the same C runtime as desktop. `make -C src/toolchain/targets/android casting-build` builds the APK.
 
 ## How it fits together
 

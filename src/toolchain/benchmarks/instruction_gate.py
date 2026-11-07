@@ -70,7 +70,7 @@ def measure(case: str, build: Path) -> float:
     osprey = build / f"{case}-osprey"
     rust = build / f"{case}-rust"
     subprocess.run(
-        [str(OSPREY), str(source / f"{case}.osp"), "--compile", "--quiet", "--no-warnings", "-o", str(osprey)],
+        [str(OSPREY), str(source), "--compile", "--quiet", "--no-warnings", "-o", str(osprey)],
         check=True,
     )
     subprocess.run(

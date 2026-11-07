@@ -9,7 +9,7 @@ The header is a JSON object whose keys are tensor names, so this module parses
 it into a tagged record and returns every member in order.
 """
 
-__all__ = ["JsonValue", "JsonMember", "parse"]
+__all__ = ["JsonValue", "JsonMember", "jnull", "parse"]
 
 
 class JsonValue:
@@ -52,6 +52,7 @@ def jbool(b):
 
 
 def jnull():
+    """The JSON null value, the fallback when a member or item is absent."""
     return JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])
 
 

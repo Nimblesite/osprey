@@ -57,3 +57,31 @@ _test_ios: _test_ios_goldens
 _test_ios_goldens:
 	@echo "==> [ios-sim] golden stdout comparison in the simulator..."
 	@OSPREY_TARGET=ios-sim zsh src/toolchain/crates/run_test_corpus.sh
+
+## _ios-examples: The iPhone and simulator libraries and the SwiftUI example apps. Device output is unsigned.
+## _ios-inbox: The inbox app for iOS devices and the simulator.
+## _ios-bank: Talon Bank for iOS devices and the simulator.
+## _macos-examples: The Mac runtime, the compiler and every macOS example: the storage app and the three
+##                  graphics scenes, each a Swift host linked to the Mac slice. [IOS-TARGET-MACOS]
+.PHONY: _ios-examples _ios-inbox _ios-bank _macos-examples
+_ios-examples: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
+
+_ios-inbox: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	bash src/osprey/examples/mobile/ios/run.sh --build ios
+	bash src/osprey/examples/mobile/ios/run.sh --build ios-sim
+
+_ios-bank: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios-sim
+
+_macos-examples: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
+	for scene in kali opal character; do \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \
+	done

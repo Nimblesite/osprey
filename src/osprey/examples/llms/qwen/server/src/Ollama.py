@@ -12,7 +12,6 @@ and a failure is `{"error": message}` with a status the client raises
 
 from qwen_server import Completions
 from qwen_server import Requests as Q
-from qwen_server import TableModel
 from qwen_server import Wire
 
 __all__ = ["version", "tags", "show", "ps", "chat", "generate"]
@@ -98,27 +97,29 @@ def running():
     ])
 
 
-def chat(request):
+def chat(model, request):
     """`/api/chat`: one assistant turn, streamed as NDJSON or answered whole."""
-    return with_model(request, chat_turn_of, request.tools)
+    return completed_turn(model, request, chat_turn_of, request.tools)
 
 
-def generate(request):
+def generate(model, request):
     """`/api/generate`: the same turn as one completion, streamed or answered whole."""
-    return with_model(request, generate_turn_of, JsonNull)
-
-
-def with_model(request, turn_of, tools):
-    """Run one turn under the installed model, or report why there is none."""
-    match TableModel.installed():
-        case Success(value=model):
-            return completed_turn(model, request, turn_of, tools)
-        case Error(message=message):
-            return Wire.failed(500, message)
+    return completed_turn(model, request, generate_turn_of, JsonNull)
 
 
 def completed_turn(model, request, turn_of, tools):
-    """The complete or streamed reply for a turn `turn_of` renders."""
+    """The complete or streamed reply for a turn `turn_of` renders; a request with nothing to
+    answer only loads the model, as Ollama's `done_reason: "load"` reply says."""
+    return loaded(request, turn_of) if request.loading else answered(model, request, turn_of, tools)
+
+
+def loaded(request, turn_of):
+    """The reply to a load request: an empty turn that ended because the model is loaded."""
+    return turn_of(request, Completions.loaded())
+
+
+def answered(model, request, turn_of, tools):
+    """The turn the model completes for the request's prompt."""
     match Completions.complete(model, request.prompt, request.sampling, tools):
         case Success(value=turn):
             return turn_of(request, turn)

@@ -28,34 +28,34 @@ __all__ = [
 ]
 
 MODEL = "qwen3.8:27b"
+"""The name both protocols serve, and require of requests as their `model`."""
 FAMILY = "qwen3_5"
+"""The family and `general.architecture` `/api/show` reports, prefixing its `model_info` keys."""
 QUANTIZATION = "UD-Q4_K_XL"
+"""The quantization of the served weights, as Ollama and the GGUF name it."""
 CONTEXT = 65536
+"""The served context length in tokens, and the default `num_ctx`."""
 BLOCKS = 64
+"""The transformer block count `/api/show` reports."""
 EMBEDDING = 5120
+"""The embedding width `/api/show` reports."""
 PARAMETERS = 27781427952
+"""The declared parameter count `/api/show` reports."""
 WEIGHTS_BYTES = 18897914266
+"""The size in bytes `/api/ps` reports for the weights and their VRAM residency."""
 WEIGHT_FILE = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+"""The GGUF file the served weights come from."""
 REVISION = "4ca720788d1e01f1bff70c033e0d0028fd02e502"
+"""The Hugging Face revision the weights were taken at."""
 INSTANT = "2026-11-05T00:00:00Z"
+"""The one timestamp every protocol field carries, Osprey having no clock."""
 EPOCH = 1762300800
+"""`INSTANT` as a Unix epoch second, OpenAI's `created`."""
 VERSION = "0.1.0"
+"""The server version `/api/version` reports."""
 TEMPERATURE = 0.0
+"""The served default sampling temperature."""
 NUM_PREDICT = 256
-
-
-def show_request(body):
-    """The model name from an `/api/show` body ([LLM-API-OLLAMA])."""
-    match Wire.decode(body):
-        case Success(value=document):
-            return required(Wire.text(document, "model"))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def required(name):
-    """A required model name, or the rejection both protocols use."""
-    return Success(value=name) if name != "" else Error(message="model is required")
 
 
 class Sampling:
@@ -71,6 +71,7 @@ class Chat:
     model: str
     prompt: str
     tools: Json
+    loading: bool
     stream: bool
     sampling: Sampling
 
@@ -79,8 +80,25 @@ class Generate:
     """A completion request: its prompt as served, and how to run it."""
     model: str
     prompt: str
+    loading: bool
     stream: bool
     sampling: Sampling
+
+
+def show_request(body):
+    """The model name from an `/api/show` body, under `model` or the older `name` the `ollama`
+    command still sends ([LLM-API-OLLAMA])."""
+    match Wire.decode(body):
+        case Success(value=document):
+            model = Wire.text(document, "model")
+            return required(model if model != "" else Wire.text(document, "name"))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def required(name):
+    """A required model name, or the rejection both protocols use."""
+    return Success(value=name) if name != "" else Error(message="model is required")
 
 
 def default_sampling():
@@ -112,6 +130,17 @@ def decimal(options, name, fallback):
             return fallback
 
 
+def advertised(document):
+    """The request's `tools`, or an empty list when it names none: a chat turn always runs
+    through the tool parser, so the model's `<think>` reasoning is returned apart from its
+    text; only `/api/generate` keeps the raw completion."""
+    match Wire.field(document, "tools"):
+        case JsonNull:
+            return JsonArray([])
+        case value:
+            return value
+
+
 def chat_request(body):
     """An `/api/chat` or `/v1/chat/completions` body as a `Chat` ([LLM-API-OLLAMA])."""
     match Wire.decode(body):
@@ -125,10 +154,22 @@ def named(model, document):
     """Build a `Chat` once its body decoded and its model name is present."""
     match required(model):
         case Success(value=name):
+            return chat_request_named(name, document)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def chat_request_named(name, document):
+    """The chat turn for a request whose model name is present, or the refusal the prompt's
+    rendering made of one of its tool calls."""
+    tools = advertised(document)
+    match Prompts.render(Wire.items(Wire.field(document, "messages")), tools):
+        case Success(value=prompt):
             return Success(value=Chat(
                 model=name,
-                prompt=Prompts.render(Wire.items(Wire.field(document, "messages"))),
-                tools=Wire.field(document, "tools"),
+                prompt=prompt,
+                tools=tools,
+                loading=len(Wire.items(Wire.field(document, "messages"))) == 0,
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))
@@ -154,6 +195,7 @@ def named_generate(model, document):
             return Success(value=Generate(
                 model=name,
                 prompt=prompt if Wire.flag(document, "raw") else Prompts.render_single(prompt, system),
+                loading=prompt == "",
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))

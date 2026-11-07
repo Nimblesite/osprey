@@ -430,7 +430,7 @@ _tui: build
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make -C src/toolchain/targets graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C src/toolchain/targets/macos graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
@@ -523,19 +523,17 @@ _deslop:
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages
-# [PACKAGE-WORKSPACE] Every Osprey project in the repository compiles on its
-# own, as a consumer and the editor see it: each tracked osprey.toml under
-# src/osprey (packages, their tests and hunt drivers, examples) is lowered to
-# LLVM IR. The registry's sample packages, the e2e consumer and the manifest
-# fixtures are left out: they are data that resolves only through a registry.
-.PHONY: _check_projects
-_check_projects:
-	git ls-files 'src/osprey/**/osprey.toml' 'src/osprey/*/osprey.toml' \
-		| grep -vE '/sample-registry/|/e2e/consumer/|/fixtures/manifests/' \
-		| { failed=0; while read -r manifest; do \
-			$(BIN) $$(dirname $$manifest) --llvm --quiet --no-warnings >/dev/null \
-				|| { echo "project does not compile: $$manifest" >&2; failed=1; }; \
-		done; exit $$failed; }
+# [CI-PROGRAMS-COMPILE] [PACKAGE-WORKSPACE] Every tracked Osprey program
+# compiles: each osprey.toml project as a consumer and the editor see it, and
+# every other .osp, .ospml or Python-flavour .py on its own, 16 at a time.
+# failscompilation/ and the registry data are left out: each is checked
+# elsewhere (see the script's docstring). The Osprey script lists each failure with the compiler's message and
+# ends on "N programs, F failed"; any F above 0 fails the build.
+.PHONY: _check_programs
+_check_programs: export OSPREY_BIN = $(abspath $(BIN))
+_check_programs:
+	python3 scripts/ci/test-check-programs.py --compiler $(abspath $(BIN))
+	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
 # reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json

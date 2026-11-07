@@ -32,26 +32,26 @@ export effect Render
 ## Run
 
 ```sh
-make -C src/toolchain/targets bank
+make -C src/toolchain/targets/web bank
 ```
 
 Open <http://127.0.0.1:18790>. The demo supports accounts, deposits, withdrawals, transfers, a filterable activity ledger and browser navigation. Each run resets the demo SQLite database at `/tmp/talon_bank.db`.
 
-`make -C src/toolchain/targets bank` rebuilds the browser bundle before serving it. Use `make -C src/toolchain/targets bank-web` to rebuild only that bundle after changing the client or browser host.
+`make -C src/toolchain/targets/web bank` rebuilds the browser bundle before serving it. Use `make -C src/toolchain/targets/web bank-build` to rebuild only that bundle after changing the client or browser host.
 
 ## Native Android and iOS
 
 [The mobile bank](mobile/README.md) uses the same Osprey screens, state transitions, validation, and API as the web client. Android widgets and SwiftUI render the shared view tree with the web palette and a shared Inter font. Both include all five screens, account creation, money movement, journal filtering, notices, and server connection settings.
 
 ```sh
-make -C src/toolchain/targets bank-android       # ARM64/x86-64 APK
-make -C src/toolchain/targets bank-ios           # device and simulator apps; requires Xcode
+make -C src/toolchain/targets/android bank       # ARM64/x86-64 APK
+make -C src/toolchain/targets/ios bank           # device and simulator apps; requires Xcode
 make -C src/toolchain/targets/tests bank-mobile
-make -C src/toolchain/targets bank-android-test  # live API + native UI tests on a connected device/emulator
-make -C src/toolchain/targets bank-ios-test      # live API + iOS simulator tests
+make -C src/toolchain/targets/android/tests bank  # live API + native UI tests on a connected device/emulator
+make -C src/toolchain/targets/ios/tests bank      # live API + iOS simulator tests
 ```
 
-The API stays on the server. Start it with `make -C src/toolchain/targets bank`, then follow the [native launch instructions](mobile/README.md). The test targets start and stop their own seeded server.
+The API stays on the server. Start it with `make -C src/toolchain/targets/web bank`, then follow the [native launch instructions](mobile/README.md). The test targets start and stop their own seeded server.
 
 ## Boundaries
 
@@ -84,7 +84,7 @@ Osprey sends one `{model, view, commands}` envelope per render. The host returns
 | --- | --- |
 | `make -C src/toolchain/targets/tests bank` | Native domain assertions, handler state, return clauses and storage guards |
 | `cd src/osprey/examples/projects/modules/web && npm test` | Browser host, protocol, WASI and embedding tests |
-| `make -C src/toolchain/targets bank-e2e` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
+| `make -C src/toolchain/targets/web/tests bank` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
 
 The deterministic native tour is byte-compared with [`expectedoutput`](expectedoutput) by `src/toolchain/crates/osprey-cli/tests/project_e2e.rs`. Browser builds regenerate `src/web/bundle.ospml`; edit its inputs rather than the generated module.
 

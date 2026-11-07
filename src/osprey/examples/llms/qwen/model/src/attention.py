@@ -49,7 +49,7 @@ class Mixed:
     slot: Cache.AttentionSlot
 
 
-def half(both, offset, cells, shapes, width) -> GpuBuffer[float32]:
+def half(both, offset, cells, shapes, width):
     """The query (`offset` 0) or gate (`offset` `head_dim`) half of every head of `q_proj`'s row."""
     mul = shapes.head_dim.mul
     shift = shapes.head_dim.shift
@@ -57,13 +57,13 @@ def half(both, offset, cells, shapes, width) -> GpuBuffer[float32]:
     return must(gpuMap(cells, lambda i: at(both, wrapAdd(wrapMul(quot(i, mul, shift), pair), wrapAdd(offset, rem(i, mul, shift, width))))))
 
 
-def appended(old, count, width, fresh) -> GpuBuffer[float32]:
+def appended(old, count, width, fresh):
     """`count` cached rows of `width` with `fresh` as row `count`."""
     edge = count * width
     return must(gpuMap(grid(edge + width), lambda i: at(old, i) if i < edge else at(fresh, wrapSub(i, edge))))
 
 
-def score(q, keys, h, t, width, kv_width, kvh, scale: float32) -> float32:
+def score(q, keys, h, t, width, kv_width, kvh, scale):
     """`q_h · k_{t, kvh}` times `head_dim^-0.5`."""
     return fold(range(0, width), toFloat32(0.0), lambda a, d: a + at(q, wrapAdd(wrapMul(h, width), d)) * at(keys, wrapAdd(wrapMul(t, kv_width), wrapAdd(wrapMul(kvh, width), d)))) * scale
 
@@ -75,22 +75,30 @@ def geometry(config, shapes) -> Geometry:
     return Geometry(heads=config.num_attention_heads, width=width, kv_width=config.num_key_value_heads * width, hm=shapes.attention_heads.mul, hs=shapes.attention_heads.shift, gm=shapes.kv_groups.mul, gs=shapes.kv_groups.shift)
 
 
-def scores(q, keys, n, config, shapes) -> GpuBuffer[float32]:
-    """Every head's score against every cached position, `[position, head]`."""
+def scores(q, keys, n, config, shapes):
+    """Every head's score against every cached position, `[position, head]`. The geometry
+    is unpacked into scalars first: a kernel captures numbers, never a record."""
     g = geometry(config, shapes)
-    scale = toFloat32(1.0 / sqrt(toFloat(g.width)))
-    return must(gpuMap(grid(g.heads * n), lambda i: score(q, keys, rem(i, g.hm, g.hs, g.heads), quot(i, g.hm, g.hs), g.width, g.kv_width, quot(rem(i, g.hm, g.hs, g.heads), g.gm, g.gs), scale)))
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    hm = g.hm
+    hs = g.hs
+    gm = g.gm
+    gs = g.gs
+    scale = toFloat32(1.0 / sqrt(toFloat(width)))
+    return must(gpuMap(grid(heads * n), lambda i: score(q, keys, rem(i, hm, hs, heads), quot(i, hm, hs), width, kv_width, quot(rem(i, hm, hs, heads), gm, gs), scale)))
 
 
-def peak(s, h, n, heads) -> float32:
+def peak(s, h, n, heads):
     return fold(range(0, n), at(s, h), lambda a, t: a if a > at(s, wrapAdd(wrapMul(t, heads), h)) else at(s, wrapAdd(wrapMul(t, heads), h)))
 
 
-def total(raw, h, n, heads) -> float32:
+def total(raw, h, n, heads):
     return fold(range(0, n), toFloat32(0.0), lambda a, t: a + at(raw, wrapAdd(wrapMul(t, heads), h)))
 
 
-def weights(s, n, config, shapes) -> GpuBuffer[float32]:
+def weights(s, n, config, shapes):
     """`softmax` over positions for every head: `exp(s - peak) / total`, as unnormalised
     weights times the per-head reciprocal, which the output kernel applies."""
     heads = config.num_attention_heads
@@ -102,16 +110,21 @@ def weights(s, n, config, shapes) -> GpuBuffer[float32]:
     return must(gpuMap(grid(heads * n), lambda i: at(raw, i) * at(inverse, rem(i, hm, hs, heads))))
 
 
-def attended(w, values, n, h, d, heads, width, kv_width, kvh) -> float32:
+def attended(w, values, n, h, d, heads, width, kv_width, kvh):
     return fold(range(0, n), toFloat32(0.0), lambda a, t: a + at(w, wrapAdd(wrapMul(t, heads), h)) * at(values, wrapAdd(wrapMul(t, kv_width), wrapAdd(wrapMul(kvh, width), d))))
 
 
-def output(w, values, n, config, shapes) -> GpuBuffer[float32]:
+def output(w, values, n, config, shapes):
     """`softmax(scores) @ values` for every head, heads side by side."""
     g = geometry(config, shapes)
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    gm = g.gm
+    gs = g.gs
     mul = shapes.head_dim.mul
     shift = shapes.head_dim.shift
-    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, g.width), g.heads, g.width, g.kv_width, quot(quot(i, mul, shift), g.gm, g.gs))))
+    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, width), heads, width, kv_width, quot(quot(i, mul, shift), gm, gs))))
 
 
 def mix(x, layer, slot, config, shapes) -> Mixed:

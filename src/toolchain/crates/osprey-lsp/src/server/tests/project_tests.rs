@@ -344,14 +344,61 @@ async fn references_from_a_shared_source_root_reach_every_project_that_includes_
     Ok(())
 }
 
-/// Unopened files must be checked on startup, then removed when out of scope.
-/// Implements [LSP-DIAGNOSTICS-SCOPE].
+/// The repository's glob keeps failscompilation/ quiet, open or not; replacing the exclude
+/// globs reports it and clears whatever the new globs match.
+/// Implements [LSP-DIAGNOSTICS-EXCLUDE].
+async fn excluded_until_overridden(
+    h: &mut Harness,
+    reports: &[Value],
+    uri: &impl Fn(&str) -> String,
+) {
+    assert!(
+        !reports.iter().any(|p| p["uri"] == uri("failscompilation")),
+        "failscompilation excluded by its glob: {reports:?}"
+    );
+    let rejected = json!({"textDocument":{"uri":uri("failscompilation"),"languageId":"osprey","version":1,"text":"fn broken() { missing }\n"}});
+    h.notify("textDocument/didOpen", rejected).await;
+    let reports = settled(h, 406).await;
+    assert!(
+        !reports.iter().any(|p| p["uri"] == uri("failscompilation")),
+        "an open excluded file stays quiet: {reports:?}"
+    );
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"exclude":["oth?r/*.osp", "/**/tw*/bad.osp"]}}}}),
+    )
+    .await;
+    let reports = settled(h, 407).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == uri("failscompilation")
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "replacing the glob reports failscompilation: {reports:?}"
+    );
+    for folder in ["other", "two"] {
+        assert!(
+            reports
+                .iter()
+                .any(|p| p["uri"] == uri(folder) && p["diagnostics"] == json!([])),
+            "{folder} cleared by its glob: {reports:?}"
+        );
+    }
+    assert!(
+        !reports
+            .iter()
+            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
+        "one stays reported: {reports:?}"
+    );
+}
+
+/// Unopened files must be checked on startup, then removed when out of scope;
+/// failscompilation/ stays quiet, open or not, until the exclude globs change.
+/// Implements [LSP-DIAGNOSTICS-SCOPE], [LSP-DIAGNOSTICS-EXCLUDE].
 #[tokio::test]
 async fn repository_diagnostics_default_and_live_scope_roots(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = std::env::temp_dir().join(format!("osprey scopes {}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    for folder in ["one", "two", "other", "target"] {
+    for folder in ["one", "two", "other", "target", "failscompilation"] {
         std::fs::create_dir_all(root.join(folder))?;
         std::fs::write(
             root.join(folder).join("bad.osp"),
@@ -365,7 +412,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         .request(
             400,
             "initialize",
-            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]})),
+            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}], "initializationOptions": {"diagnostics": {"exclude": ["**/failscompilation/**"]}}})),
         )
         .await;
     h.notify("initialized", json!({})).await;
@@ -381,12 +428,24 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         !reports.iter().any(|p| p["uri"] == uri("target")),
         "build outputs excluded"
     );
+    excluded_until_overridden(&mut h, &reports, &uri).await;
     h.notify(
         "workspace/didChangeConfiguration",
-        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"]}}}}),
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"], "exclude":["**/failscompilation/**"]}}}}),
     )
     .await;
-    settles_cleared(&mut h, 402, &uri("other"), "clear excluded diagnostics").await;
+    let reports = settled(&mut h, 402).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri("failscompilation") && p["diagnostics"] == json!([])),
+        "the glob returns and clears the open file: {reports:?}"
+    );
+    assert!(
+        reports.iter().any(|p| p["uri"] == uri("two")
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "two is back in scope: {reports:?}"
+    );
     std::fs::write(root.join("two/bad.osp"), "fn broken() { 1 }\n")?;
     h.notify(
         "workspace/didChangeWatchedFiles",

@@ -20,5 +20,8 @@
     "deslop.embedding.provider": "ollama",
     "deslop.embedding.model": "nomic-embed-text",
     "deslop.embedding.mode": "auto",
-    "deslop.configPath": ".deslop.toml"
+    "deslop.configPath": ".deslop.toml",
+    "osprey.diagnostics.exclude": [
+        "**/failscompilation/**"
+    ]
 }
