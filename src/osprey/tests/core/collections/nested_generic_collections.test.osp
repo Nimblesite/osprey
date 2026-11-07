@@ -19,6 +19,21 @@ fn checkMatrix(label, matrix, expected, fallbackRow, fallback) =
 forEachList(toList(range(0, listLength(expected))), fn(row) =>
     checkRow(label, matrix, listGet(expected, row) ?: fallbackRow, row, fallbackRow, fallback))
 
+/// Asserts every cell of `matrix` decodes back to itself through `nestedAt`.
+fn checkSelf(label, matrix, fallbackRow, fallback) =
+checkMatrix(label, matrix, matrix, fallbackRow, fallback)
+
+/// Asserts the two list lengths are `expected`.
+fn checkLengths(first, second, expected) =
+structuralEquals([listLength(first), listLength(second)], expected)
+
+/// Asserts `matrixShape` of `first` and `second` are `firstShape` and `secondShape`.
+fn checkShapes(first, second, firstShape, secondShape) =
+matrixShape(first) == firstShape && matrixShape(second) == secondShape
+
+/// `nestedAt` over the text matrices, with the text fallbacks.
+fn textAt(matrix, row, column) = nestedAt(matrix, row, column, ["row"], "item")
+
 fn chooseByCollection<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
     true => empty
     false => present
@@ -35,29 +50,29 @@ fn matrixShape<T>(matrix: List<List<T>>) = match matrix {
     [head, ...tail] => "many:${listLength(head)}+${listLength(tail)}"
 }
 
-fn auditInts(rows) = {
-    mut encoded = 0
+/// Folds every leaf of `rows` through `LeafAudit.observe`, starting at `seed`.
+fn auditLeaves(seed, step, rows) = {
+    mut encoded = seed
     handle LeafAudit {
-        observe value => { encoded = encoded * 10 + value  }
+        observe value => { encoded = step(encoded, value) }
     }
     forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
     encoded
 }
 
-fn auditStrings(rows) = {
-    mut encoded = ""
-    handle LeafAudit {
-        observe value => { encoded = encoded + value + "/" }
-    }
-    forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
-    encoded
-}
+/// Encodes leaf integers in base ten, so `[[1, 2], [3]]` becomes `123`.
+fn auditInts(rows) = auditLeaves(0, fn(acc, value) => acc * 10 + value, rows)
+
+/// Appends each leaf string to a `/`-terminated log, so `[[ant]]` becomes `ant/`.
+fn auditStrings(rows) = auditLeaves("", fn(acc, value) => acc + value + "/", rows)
 
 /// Crosses generic inference, nested storage, Result recovery, patterns,
 /// persistent rebuilds, callbacks, and generic operation erasure. Implements
 /// [TYPE-GENERICS-FN], [TYPE-LIST-PATTERNS], [BUILTIN-LIST-GET],
 /// [BUILTIN-LIST-FOREACH], and [EFFECTS-GENERIC-RUNTIME].
 fn nestedListEffectPatternCase() = {
+    let leaf = "four leaf arguments survive nested Result extraction"
+    let grown = "deep persistence patterns and generic effects stay coherent"
     let ints = [[1, 2], [3, 4, 5]]
     let strings = [["ant", "bee"], ["cat", "dog", "eel"]]
     let floats = [[1.25, 2.5], [3.75, 4.5, 5.25]]
@@ -69,39 +84,39 @@ fn nestedListEffectPatternCase() = {
     let grownInts = listReverse(listPrepend(listAppend(ints, [6, 7]), [8, 9]))
     let grownStrings = listReverse(listAppend(strings, ["fox", "gnu"]))
 
-    checkMatrix("four leaf arguments survive nested Result extraction", ints, [[1, 2], [3, 4, 5]], [99], 99)
-    checkMatrix("four leaf arguments survive nested Result extraction", strings, [["ant", "bee"], ["cat", "dog", "eel"]], ["row"], "item")
-    checkMatrix("four leaf arguments survive nested Result extraction", floats, [[1.25, 2.5], [3.75, 4.5, 5.25]], [9.0], 9.5)
-    checkMatrix("four leaf arguments survive nested Result extraction", bools, [[true, false], [false, true, true]], [false], false)
+    checkSelf(leaf, ints, [99], 99)
+    checkSelf(leaf, strings, ["row"], "item")
+    checkSelf(leaf, floats, [9.0], 9.5)
+    checkSelf(leaf, bools, [false], false)
 
-    checkAll("four leaf arguments survive nested Result extraction", [
-            structuralEquals([listLength(ints), listLength(strings)], [2, 2]),
-            structuralEquals([listLength(floats), listLength(bools)], [2, 2]),
+    checkAll(leaf, [
+            checkLengths(ints, strings, [2, 2]),
+            checkLengths(floats, bools, [2, 2]),
             structuralEquals([listLength(listGet(ints, 0) ?: [99]), listLength(listGet(ints, 1) ?: [99])], [2, 3]),
             structuralEquals([nestedAt(ints, 8, 0, [91, 92], 99), nestedAt(ints, 0, 8, [91], 99)], [91, 99]),
-            length(nestedAt(strings, 1, 0, ["row"], "item")) == 3,
-            nestedAt(strings, 8, 0, ["row"], "item") == "row",
-            nestedAt(strings, 0, 8, ["row"], "item") == "item",
+            length(textAt(strings, 1, 0)) == 3,
+            textAt(strings, 8, 0) == "row",
+            textAt(strings, 0, 8) == "item",
             nestedAt(floats, 0, 0, [9.0], 9.5) + nestedAt(floats, 0, 1, [9.0], 9.5) == 3.75,
             structuralEquals([nestedAt(floats, 9, 0, [9.0], 9.5), nestedAt(floats, 0, 9, [9.0], 9.5)], [9.0, 9.5]),
             nestedAt(bools, 9, 0, [true], false),
             !nestedAt(bools, 0, 9, [true], false)
     ])
 
-    checkMatrix("deep persistence patterns and generic effects stay coherent", grownInts, [[6, 7], [3, 4, 5], [1, 2], [8, 9]], [99], 99)
-    checkMatrix("deep persistence patterns and generic effects stay coherent", grownStrings, [["fox", "gnu"], ["cat", "dog", "eel"], ["ant", "bee"]], ["row"], "item")
+    checkMatrix(grown, grownInts, [[6, 7], [3, 4, 5], [1, 2], [8, 9]], [99], 99)
+    checkMatrix(grown, grownStrings, [["fox", "gnu"], ["cat", "dog", "eel"], ["ant", "bee"]], ["row"], "item")
 
-    checkAll("deep persistence patterns and generic effects stay coherent", [
-            structuralEquals([listLength(intCube), listLength(stringCube)], [3, 3]),
+    checkAll(grown, [
+            checkLengths(intCube, stringCube, [3, 3]),
             nestedAt(intPlane, 1, 2, [99], 99) == 9,
             structuralEquals([nestedAt(listGet(intCube, 2) ?: [[99]], 0, 3, [99], 99), auditInts(ints)], [13, 12345]),
             structuralEquals([auditInts([[6], [7, 8]]), listLength(grownInts), listLength(grownStrings)], [678, 4, 3]),
             chooseByCollection(listGet(strings, 0) ?: ["x"], 41, 99) == 41,
-            nestedAt(stringPlane, 1, 1, ["row"], "item") == "hare",
-            nestedAt(listGet(stringCube, 2) ?: [["missing"]], 0, 1, ["row"], "item") == "jay",
-            structuralEquals([matrixShape(List()), matrixShape([[]])], ["empty", "one-empty-row"]),
-            structuralEquals([matrixShape([[7]]), matrixShape(ints)], ["one-singleton-row", "two:2/3"]),
-            structuralEquals([matrixShape(strings), matrixShape([[1], [2], [3]])], ["two:2/3", "many:1+2"]),
+            textAt(stringPlane, 1, 1) == "hare",
+            textAt(listGet(stringCube, 2) ?: [["missing"]], 0, 1) == "jay",
+            checkShapes(List(), [[]], "empty", "one-empty-row"),
+            checkShapes([[7]], ints, "one-singleton-row", "two:2/3"),
+            checkShapes(strings, [[1], [2], [3]], "two:2/3", "many:1+2"),
             auditStrings(strings) == "ant/bee/cat/dog/eel/",
             auditStrings([["fox"], ["gnu", "hare"]]) == "fox/gnu/hare/",
             chooseByCollection(listGet(ints, 0) ?: [99], "present", "empty") == "present",
