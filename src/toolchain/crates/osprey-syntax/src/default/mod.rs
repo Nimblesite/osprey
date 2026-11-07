@@ -82,15 +82,12 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
         out.push(error);
         return;
     }
-    if node.is_error() || node.is_missing() {
-        let p = node.start_position();
+    if node.is_error() {
+        out.push(error_node_message(node, src));
+    } else if node.is_missing() {
         out.push(SyntaxError {
-            message: if node.is_missing() {
-                format!("missing {}", node.kind())
-            } else {
-                format!("syntax error near {:?}", node.utf8_text(src).unwrap_or(""))
-            },
-            position: position_from_point(p),
+            message: format!("missing {}", node.kind()),
+            position: position_from_point(node.start_position()),
         });
     } else if node.kind() == "identifier"
         && node
@@ -130,6 +127,53 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
 }
 
 /// Variance declares a binder; it cannot decorate a call's type argument.
+/// Characters of the offending text an error quotes: enough to find it, never
+/// a whole block of escaped source.
+const SNIPPET_CHARS: usize = 40;
+
+/// What a tree-sitter ERROR node means, pointed at the token to change: a `;`
+/// is a C-style terminator Osprey does not have; anything else quotes the
+/// first line of the text the parser could not place.
+fn error_node_message(node: Node<'_>, src: &[u8]) -> SyntaxError {
+    match semicolon_in(node) {
+        Some(semicolon) => SyntaxError {
+            message: "unexpected `;`: Osprey ends a statement at the line break, so delete the `;`"
+                .to_string(),
+            position: position_from_point(semicolon.start_position()),
+        },
+        None => SyntaxError {
+            message: format!(
+                "syntax error near `{}`",
+                snippet(node.utf8_text(src).unwrap_or(""))
+            ),
+            position: position_from_point(node.start_position()),
+        },
+    }
+}
+
+/// The first `;` token inside an ERROR node, at any depth.
+fn semicolon_in(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    let children: Vec<Node<'_>> = node.children(&mut cursor).collect();
+    children.into_iter().find_map(|child| {
+        if child.kind() == ";" {
+            Some(child)
+        } else {
+            semicolon_in(child)
+        }
+    })
+}
+
+/// The first line of `text`, trimmed, cut to [`SNIPPET_CHARS`] with an ellipsis.
+fn snippet(text: &str) -> String {
+    let line = text.lines().next().unwrap_or("").trim();
+    if line.chars().count() > SNIPPET_CHARS {
+        format!("{}…", line.chars().take(SNIPPET_CHARS).collect::<String>())
+    } else {
+        line.to_string()
+    }
+}
+
 fn call_variance_error(node: Node<'_>, src: &[u8]) -> Option<SyntaxError> {
     if node.kind() != "call_expression" {
         return None;
