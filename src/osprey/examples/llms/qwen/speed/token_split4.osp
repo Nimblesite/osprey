@@ -48,31 +48,31 @@ fn part(w, x, t, nb) = {
 fn partials(w, x, rows, nb) = match gpuIota(rows * 4) {
     Success { value } => match value |> gpuMap(fn(t) => part(w, x, t, nb)) {
         Success { value } => value
-        Error { message } => x
+        Error => x
     }
-    Error { message } => x
+    Error => x
 }
 fn matvec(w, x, rows, nb) = {
     let p = partials(w, x, rows, nb)
     match gpuIota(rows) {
         Success { value } => match value |> gpuMap(fn(r) => fold(range(0, 4), toFloat32(0.0), fn(a, k) => a + xAt(p, r * 4 + k))) {
             Success { value } => value
-            Error { message } => x
+            Error => x
         }
-        Error { message } => x
+        Error => x
     }
 }
 fn kept(result, fallback) = match result {
     Success { value } => value
-    Error { message } => fallback
+    Error => fallback
 }
-fn product(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p * s), a)
+fn product(a, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p * s), a)
 fn residual(x, o) = kept(gpuZipWith(x, o, fn(p, s) => p * toFloat32(0.5) + s), x)
-fn added(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p + s), a)
+fn added(a, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p + s), a)
 fn step(m, x) = {
     let q = matvec(m.q, x, 5120, 20)
-    let k = matvec(m.k, x, 5120, 20)
-    let v = matvec(m.v, x, 5120, 20)
+    let _k = matvec(m.k, x, 5120, 20)
+    let _v = matvec(m.v, x, 5120, 20)
     let o = matvec(m.o, q, 5120, 20)
     let g = matvec(m.gate, x, 17408, 20)
     let u = matvec(m.up, x, 17408, 20)

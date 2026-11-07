@@ -8,7 +8,7 @@ fn weights() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", OFFSET
 fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, INNER)
 fn once(x, w) = match gpuMatMulQuant(x, w, "Q4_K", 1, INNER, ROWS) {
     Success { value } => value
-    Error { message } => x
+    Error => x
 }
 fn main() = match inputs() {
     Error { message } => print(message)
@@ -18,7 +18,7 @@ fn main() = match inputs() {
             Error { message } => print(message)
             Success { value } => {
                 let w = value
-                let y = fold(range(0, 300), x, fn(acc, _i) => once(x, w))
+                let y = fold(range(0, 300), x, fn(_acc, _i) => once(x, w))
                 print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))}")
             }
         }
