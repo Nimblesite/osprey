@@ -1,0 +1,12 @@
+[project]
+# Renders target/fastapi/benchmark/report.html from the results.json written by
+# ../tests/benchmark.cpython. A separate project, not part of the tests suite:
+# its own entry and Arith policy would collide with tests/main.py. Run from the
+# repository root:
+#
+#     make -C src/toolchain/benchmarks fastapi-benchreport
+name = "fastapi-benchreport"
+source_roots = ["src"]
+default_namespace = "fastapi_bench"
+entry = "src/benchreport.osp"
+

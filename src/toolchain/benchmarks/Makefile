@@ -8,7 +8,25 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bench bench-osprey instruction-gate flock-bench painting-compare
+.PHONY: bench bench-osprey instruction-gate flock-bench painting-compare fastapi-benchmark fastapi-benchreport
+
+## fastapi-benchmark: Compare routing and IDP body binding against pinned CPython
+##        FastAPI (src/osprey/packages/fastapi/tests/benchmark.cpython; GC/ARC,
+##        fresh connections, five trials), then render the report with the Osprey
+##        bench project src/osprey/packages/fastapi/bench. Writes
+##        target/fastapi/benchmark/results.json and report.html; the last line
+##        printed names the report. Informational only: NOT part of `make ci`/`make test`.
+fastapi-benchmark:
+	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/benchmark.cpython
+	cd $(ROOT) && $(BIN) src/osprey/packages/fastapi/bench --run
+
+## fastapi-benchreport: Re-render the HTML benchmark report from an existing
+##        target/fastapi/benchmark/results.json (written by fastapi-benchmark)
+##        without re-running the benchmark. Writes
+##        target/fastapi/benchmark/report.html; the last line printed names it.
+##        Informational only: NOT part of `make ci`/`make test`.
+fastapi-benchreport:
+	cd $(ROOT) && $(BIN) src/osprey/packages/fastapi/bench --run
 
 ## bench: Build, then run the cross-language performance benchmark suite
 ##        (Osprey vs Rust/C/C#/Dart/Codon/OCaml/Haskell — CPU via hyperfine, peak memory via
