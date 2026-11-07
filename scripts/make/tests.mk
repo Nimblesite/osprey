@@ -532,6 +532,7 @@ _deslop:
 .PHONY: _check_programs
 _check_programs: export OSPREY_BIN = $(abspath $(BIN))
 _check_programs:
+	python3 scripts/ci/test-check-programs.py --compiler $(abspath $(BIN))
 	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
