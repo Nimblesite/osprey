@@ -7,20 +7,25 @@ fn tourClassify(n) = match n {
     _ => "many"
 }
 
-/// Assert the three literal-tour labels under one check label.
-fn tourLines(label) = checkAll(label, [
-        structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
-])
-
 /// This case documents the three formerly printed match-tour branches.
 fn matchTourCase() = {
     // Preserve each complete one-word output line independently.
-    tourLines("match tour legacy rendered lines")
+    checkAll("match tour legacy rendered lines", [
+            tourClassify(0) == "zero",
+            tourClassify(1) == "one",
+            tourClassify(9) == "many"
+    ])
     // Repeat the dynamic branch results as explicit constituent assertions.
-    tourLines("match tour legacy constituent values")
+    checkAll("match tour legacy constituent values", [
+            tourClassify(0) == "zero",
+            tourClassify(1) == "one",
+            tourClassify(9) == "many"
+    ])
     // Extend wildcard coverage across adjacent, negative, and large integers.
     checkAll("match tour wildcard edge cases", [
-            structuralEquals([tourClassify(2), tourClassify((0 - 1) ), tourClassify(100)], ["many", "many", "many"]),
+            tourClassify(2) == "many",
+            tourClassify((0 - 1) ) == "many",
+            tourClassify(100) == "many",
             (tourClassify(0) == tourClassify(1)) == false
     ])
 }
@@ -37,12 +42,6 @@ fn matchEven(n) = match (n % 2 ) == 0 {
     false => "odd"
 }
 
-/// Assert grade and parity labels for two grading and two parity inputs.
-fn checkGradeParity(label, passIn, failIn, evenIn, oddIn) = checkAll(label, [
-        structuralEquals([matchGrade(passIn), matchGrade(failIn)], ["pass", "fail"]),
-        structuralEquals([matchEven(evenIn), matchEven(oddIn)], ["even", "odd"])
-])
-
 /// This case documents boolean scrutinees for grading and parity.
 fn matchBooleanCase() = {
     // Preserve the complete combined boolean-match output line.
@@ -51,9 +50,19 @@ fn matchBooleanCase() = {
             "g80=pass g20=fail e4=even e7=odd"
     ])
     // Split all four matched labels into independent assertions.
-    checkGradeParity("boolean match legacy constituent values", 80, 20, 4, 7)
+    checkAll("boolean match legacy constituent values", [
+            matchGrade(80) == "pass",
+            matchGrade(20) == "fail",
+            matchEven(4) == "even",
+            matchEven(7) == "odd"
+    ])
     // Exercise the grade threshold and parity boundary values.
-    checkGradeParity("boolean match boundaries", 50, 49, 0, 9)
+    checkAll("boolean match boundaries", [
+            matchGrade(50) == "pass",
+            matchGrade(49) == "fail",
+            matchEven(0) == "even",
+            matchEven(9) == "odd"
+    ])
 }
 
 /// Label zero, one, and two explicitly before the integer wildcard.
@@ -64,9 +73,6 @@ fn matchLabel(n) = match n {
     _ => "many"
 }
 
-/// Assert that two integer inputs produce the expected labels.
-fn labelPair(a, b, expected) = structuralEquals([matchLabel(a), matchLabel(b)], expected)
-
 /// This case documents literal and wildcard matching over integers.
 fn matchIntegerCase() = {
     // Preserve the complete combined integer-match output line.
@@ -76,12 +82,16 @@ fn matchIntegerCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-            labelPair(0, 1, ["none", "single"]),
-            labelPair(2, 7, ["pair", "many"])
+            matchLabel(0) == "none",
+            matchLabel(1) == "single",
+            matchLabel(2) == "pair",
+            matchLabel(7) == "many"
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
-            structuralEquals([matchLabel(3), matchLabel((0 - 1) ), matchLabel(100)], ["many", "many", "many"])
+            matchLabel(3) == "many",
+            matchLabel((0 - 1) ) == "many",
+            matchLabel(100) == "many"
     ])
 }
 
@@ -144,16 +154,20 @@ fn bindingScope() = {
     let value = 100
     let selected = match 2 { value => value }
     checkAll("a catch-all binding leaves its outer value intact", [
-        structuralEquals([selected, value], [2, 100])
+        selected == 2, value == 100
     ])
 }
 
 fn siblingScopeCase() = checkAll("pattern arms have independent bindings", [
     resultScope(Success { value: 2 }) == "2:outer:100:outer",
-    structuralEquals([resultScope(Error { message: "bad" }), unionScope(Pick(2))], ["100:bad:100:outer", "2:100"]),
-    structuralEquals([unionScope(Other), listScope([2, 3]), listScope([])], ["100:100", "3:100:2", "100:100:2"]),
+    resultScope(Error { message: "bad" }) == "100:bad:100:outer",
+    unionScope(Pick(2)) == "2:100",
+    unionScope(Other) == "100:100",
+    listScope([2, 3]) == "3:100:2",
+    listScope([]) == "100:100:2",
     structuralScope(Coordinates { x: 2, y: 3 }) == "3:100",
-    structuralEquals([erasedScope(Coordinates { x: 2, y: 3 }), erasedScope(0)], ["2:100", "none:100"])
+    erasedScope(Coordinates { x: 2, y: 3 }) == "2:100",
+    erasedScope(0) == "none:100"
 ])
 
 fn capturedPattern(input) = {
@@ -166,7 +180,8 @@ fn capturedPattern(input) = {
 }
 
 fn capturedPatternCase() = checkAll("closures retain the selected arm's binding", [
-    structuralEquals([capturedPattern(Pick(2)), capturedPattern(Other)], ["2:100", "100:100"])
+    capturedPattern(Pick(2)) == "2:100",
+    capturedPattern(Other) == "100:100"
 ])
 
 test("catch-all bindings remain inside their arm", bindingScope)
@@ -199,7 +214,7 @@ fn mutablePatternCase() = {
     let selected = selectedReader()
     let updated = perform PatternCounter.set(101)
     checkAll("pattern values shadow cell storage without changing it", [
-        structuralEquals([selected, selectedReader(), updated, value, readOuter()], [2, 2, 101, 101, 101])
+        selected == 2, selectedReader() == 2, updated == 101, value == 101, readOuter() == 101
     ])
 }
 
@@ -217,34 +232,34 @@ fn callablePatternCase() = {
     let record = IntOperation { run: fn(n) => wrapAdd(n, 2) }
     let structural = match record { { run } => run(2) }
     checkAll("pattern bindings retain function signatures", [
-        structuralEquals([selected, apply(2), structural, run(2)], [3, 102, 4, 202])
+        selected == 3, apply(2) == 102, structural == 4, run(2) == 202
     ])
 }
 
 test("callable pattern bindings retain their own signatures", callablePatternCase)
 
-/// Apply a callable Result payload to the value two, or return the error length.
-fn applyPayload(wrapped) = match wrapped {
-    Success { value } => value(2)
-    Error { message } => length(message)
-}
-
 fn callablePayloadCase() = {
     let value = fn(n) => wrapAdd(n, 100)
     let wrapped = Success { value: fn(n) => wrapAdd(n, 1) }
-    let selected = applyPayload(wrapped)
+    let selected = match wrapped {
+        Success { value } => value(2)
+        Error { message } => length(message)
+    }
     let callbacks = [fn(n) => wrapAdd(n, 2)]
     let listed = match callbacks { [] => 0 [value, ...rest] => wrapAdd(value(2), listLength(rest)) }
     let bound = match value { call => call(2) }
     checkAll("Result list and catch-all bindings retain callable signatures", [
-        structuralEquals([selected, listed, bound, value(2)], [3, 4, 102, 102])
+        selected == 3, listed == 4, bound == 102, value(2) == 102
     ])
 }
 
 test("callable payload patterns preserve function values", callablePayloadCase)
 
 fn directCallablePatternCase() = {
-    let result = applyPayload(Success { value: fn(n) => wrapAdd(n, 1) })
+    let result = match Success { value: fn(n) => wrapAdd(n, 1) } {
+        Success { value } => value(2)
+        Error { message } => length(message)
+    }
     let listed = match [fn(n) => wrapAdd(n, 2)] { [] => 0 [value] => value(2) }
     let called = match (fn(n) => wrapAdd(n, 3)) { call => call(2) }
     checkAll("direct scrutinees keep their callable payloads", [result == 3, listed == 4, called == 5])
@@ -261,7 +276,7 @@ fn applyJoined(flag) = match joinedCallable(flag) {
     Error { message } => toFloat(length(message))
 }
 fn joinedCallablePatternCase() = checkAll("joined callable Results retain their float ABI", [
-    structuralEquals([applyJoined(true), applyJoined(false)], [2.5, 3.75])
+    applyJoined(true) == 2.5, applyJoined(false) == 3.75
 ])
 
 test("joined callable Results retain their payload signatures", joinedCallablePatternCase)

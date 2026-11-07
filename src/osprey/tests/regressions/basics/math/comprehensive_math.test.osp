@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Faults are recorded at a numeric API boundary; recovery values remain integers.
 type Measurement = { value: int, fault: string }
 fn observed(work) = {
@@ -151,31 +170,46 @@ fn comprehensiveMathCase() = {
         Error { message } => message != ""
     }
     checkAll("math values, branches, and checked errors", [
-        structuralEquals([(power(base: 2, exp: 0) ), (power(base: 2, exp: 1) ), (power(base: 2, exp: 2) )], [1, 2, 4]),
-        structuralEquals([(power(base: 2, exp: 3) ), (power(base: 2, exp: 4) ), factorial(0)], [8, 16, 1]),
-        structuralEquals([factorial(5), factorial(9), fibonacci(0), fibonacci(5), fibonacci(9)], [120, 720, 0, 5, 8]),
-        structuralEquals([(complex(a: 5, b: 3) ), safeDivide(a: 10, b: 2), safeDivide(a: 20, b: 4)], [18, 5, 5]),
-        structuralEquals([safeDivide(a: 15, b: 3), safeDivide(a: 15, b: 0), (checkedAdd(2, 3) ?: 0)], [0, 999999, 5]),
-        structuralEquals([(checkedMul(6, 7) ?: 0), (intDiv(25, 2) ), (abs((0 - 5000000000) ) )], [42, 12, 5000000000]),
+        (power(base: 2, exp: 0) ) == 1,
+        (power(base: 2, exp: 1) ) == 2,
+        (power(base: 2, exp: 2) ) == 4,
+        (power(base: 2, exp: 3) ) == 8,
+        (power(base: 2, exp: 4) ) == 16,
+        factorial(0) == 1,
+        factorial(5) == 120,
+        factorial(9) == 720,
+        fibonacci(0) == 0,
+        fibonacci(5) == 5,
+        fibonacci(9) == 8,
+        (complex(a: 5, b: 3) ) == 18,
         isEven(8),
         !isEven(7),
-        structuralEquals([classify(0), classify(1)], ["Zero", "One"]),
-        structuralEquals([classify(5), minimumAbs.fault], ["Many", "integer overflow"]),
-        structuralEquals([minimumDivision.fault, input()], ["integer overflow", ""]),
+        classify(0) == "Zero",
+        classify(1) == "One",
+        classify(5) == "Many",
+        safeDivide(a: 10, b: 2) == 5,
+        safeDivide(a: 20, b: 4) == 5,
+        safeDivide(a: 15, b: 3) == 0,
+        safeDivide(a: 15, b: 0) == 999999,
+        (checkedAdd(2, 3) ?: 0) == 5,
         (checkedSub(2, 3) ?: 0) == ((0 - 1) ),
+        (checkedMul(6, 7) ?: 0) == 42,
+        (intDiv(25, 2) ) == 12,
+        (abs((0 - 5000000000) ) ) == 5000000000,
         overflowRejected,
         zeroDivisionRejected,
-        minimumAbs.value == -9223372036854775808,
-        minimumDivision.value == -9223372036854775808,
+        minimumAbs.fault == "integer overflow", minimumAbs.value == -9223372036854775808,
+        minimumDivision.fault == "integer overflow", minimumDivision.value == -9223372036854775808,
         boundedRandom,
         invalidRandomBound,
         random() >= 0,
-        // [BUILTIN-RANDOM]: "calls are not reproducible". Two draws that match,
-        // mean the source is not one -- an uninitialised stack word reused from,
-        // the same frame slot satisfies `>= 0` above and this catches it. A,
-        // genuine collision is one in 2^63.,
-        random() != random()
+        // [BUILTIN-RANDOM]: "calls are not reproducible". Two draws that match
+        // mean the source is not one -- an uninitialised stack word reused from
+        // the same frame slot satisfies `>= 0` above and this catches it. A
+        // genuine collision is one in 2^63.
+        random() != random(),
+        input() == ""
     ])
 }
 
-test("math showcase produces checked deterministic state", exactly(comprehensiveMathCase))
+test("math showcase produces checked deterministic state", fn() => exactArithmetic(comprehensiveMathCase))

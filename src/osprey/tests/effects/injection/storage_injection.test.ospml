@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Storage names the persistence the notebook logic needs and nothing more.
     No implementation appears here: `save`, `load` and `exists` are answered
     by whoever installs the handler, so the logic compiles once and runs unchanged
@@ -88,21 +102,12 @@ withReadOnlyStorage action =
         exists _key => true
     action ()
 
-(** Report whether `file` is gone with `needle` in the failure message. *)
-fileAbsent (file, needle) =
-    match readFile file
-        Success _value => false
-        Error message => contains message needle
-
 (** A fresh 126-bit random suffix isolates concurrent executions of either flavor. *)
 diskBook = "osprey_storage_injection_${random ()}_${random ()}.txt"
 diskArchive = "${diskBook}.archive.txt"
 
 (** This case runs the logic against the real file system and verifies the
     bytes with `readFile` from outside the handler. *)
-(** The answers both storage implementations must give for the same logic. *)
-sharedAnswers (first, second, counted) = first == 1 && second == 2 && counted == 2
-
 diskStorageCase () =
     (** Truncate both paths so a rerun starts from the same file system state. *)
     clearedBook = writeFile diskBook "" ?: (0 - 1 )
@@ -117,21 +122,27 @@ diskStorageCase () =
 
     // The logic's answers come back through the injected disk implementation.
     checkAll "disk implementation answers" [
-        sharedAnswers (first, second, counted),
-        structuralEquals [clearedBook, clearedArchive, missing] [0, 0, 0],
-        archived == byteLength onDisk
+        clearedBook == 0,
+        clearedArchive == 0,
+        first == 1,
+        second == 2,
+        counted == 2,
+        archived == byteLength onDisk,
+        missing == 0
     ]
 
     // The file system really was written: these bytes are read back directly.
     checkAll "disk implementation side effects" [
         onDisk == "buy milk\ncall dentist\n",
         archivedOnDisk == onDisk,
-        structuralEquals [byteLength onDisk, entryCount onDisk] [22, 2],
+        byteLength onDisk == 22,
         contains onDisk "buy milk\n",
-        endsWith onDisk "call dentist\n"
+        endsWith onDisk "call dentist\n",
+        entryCount onDisk == 2
     ]
 
-test "injected disk handler persists the notebook to real files" (exactly diskStorageCase)
+
+test "injected disk handler persists the notebook to real files" (\() => exactArithmetic (diskStorageCase))
 
 (** This case runs the identical logic against the in-memory double and
     verifies both the answers and the calls the logic made. *)
@@ -146,30 +157,44 @@ mockStorageCase () =
 
     // Every answer matches the disk run above: same logic, same results.
     checkAll "mock answers match the disk implementation" [
-        sharedAnswers (first, second, counted),
-        structuralEquals [archived, missing, fixture] [22, 0, 1],
+        first == 1,
+        second == 2,
+        counted == 2,
+        archived == 22,
+        missing == 0,
+        fixture == 1,
         stored == "buy milk\ncall dentist\n",
         (mapGet mockFiles "archive.txt" ?: "") == stored
     ]
 
     // Verification a real file system cannot offer: which calls were made.
     checkAll "mock recorded every call" [
-        structuralEquals [mockSaves, mockLoads, mockExistsCalls, mapLength mockFiles] [3, 5, 4, 3],
+        mockSaves == 3,
+        mockLoads == 5,
+        mockExistsCalls == 4,
+        mapLength mockFiles == 3,
         !(mapContains mockFiles "never-written.txt"),
         mockLog == "load(notes.txt);save(notes.txt,9);load(notes.txt);save(notes.txt,22);exists(notes.txt);load(notes.txt);exists(notes.txt);load(notes.txt);save(archive.txt,22);exists(never-written.txt);exists(fixture.txt);load(fixture.txt);",
         startsWith mockLog "load(notes.txt);save(notes.txt,9);",
-        structuralEquals [contains mockLog "save(archive.txt,22);", endsWith mockLog "load(fixture.txt);"] [true, true]
+        contains mockLog "save(archive.txt,22);",
+        endsWith mockLog "load(fixture.txt);"
     ]
 
     (** The double touched no file system: nothing named by the test exists. *)
-    notesAbsent = fileAbsent ("notes.txt", "No such file or directory")
-    archiveAbsent = fileAbsent ("archive.txt", "readFile")
+    notesAbsent =
+        match readFile "notes.txt"
+            Success _value => false
+            Error message => contains message "No such file or directory"
+    archiveAbsent =
+        match readFile "archive.txt"
+            Success _value => false
+            Error message => contains message "readFile"
     checkAll "mock touched no file system" [
         notesAbsent,
         archiveAbsent
     ]
 
-test "injected mock handler replaces the file system and records every call" (exactly mockStorageCase)
+test "injected mock handler replaces the file system and records every call" (\() => exactArithmetic (mockStorageCase))
 
 (** This case swaps in a third policy to show the logic is unchanged by it. *)
 readOnlyStorageCase () =
@@ -181,7 +206,10 @@ readOnlyStorageCase () =
     // A refused write still answers the operation's declared type, so the
     // logic keeps running and reports what the policy actually stored.
     checkAll "read-only policy answers" [
-        structuralEquals [appended, counted, archived, entryCount "locked entry\n"] [2, 1, 0, 1]
+        appended == 2,
+        counted == 1,
+        archived == 0,
+        entryCount "locked entry\n" == 1
     ]
 
     // Swapping the handler swapped the implementation and nothing else: the
@@ -190,8 +218,8 @@ readOnlyStorageCase () =
         mockSaves == savesBefore,
         mockSaves == 3,
         (mapGet mockFiles "notes.txt" ?: "") == "buy milk\ncall dentist\n",
-        (readFile diskBook ?: "") == "buy milk\ncall dentist\n",
-        !(contains mockLog "locked")
+        !(contains mockLog "locked"),
+        (readFile diskBook ?: "") == "buy milk\ncall dentist\n"
     ]
 
-test "swapping the injected handler swaps the policy, not the logic" (exactly readOnlyStorageCase)
+test "swapping the injected handler swaps the policy, not the logic" (\() => exactArithmetic (readOnlyStorageCase))

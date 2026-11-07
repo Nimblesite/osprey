@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Portable cross-contract oracle for [EFFECTS-OP-TYPING],
     [EFFECTS-STATIC-DISCHARGE], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
     [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [FLAVOR-ML-HANDLER],
@@ -8,27 +22,31 @@ effect FlavorCounter
     (** Add `amount` to the counter the handler owns. *)
     tick : int => Unit
 
-(** The list stored under `key` in `m`, or the sentinel `[99]` when it is absent. *)
-storedList m k = mapGet m k ?: [99]
-
-(** The length and index-`i` element of the list stored under `key`, or sentinels. *)
-listShape m k i = [listLength (storedList m k), listGet (storedList m k) i ?: 99]
-
 runBatchAssertions () =
     mut total = 10
+    empty = [99]
     base = ["first" => [2, 3], "second" => [5, 9]]
     grown = base |> mapSet "third" [7, 11, 13]
     replaced = grown |> mapSet "first" [20]
     removed = replaced |> mapRemove "second"
-    first = storedList base "first"
-    second = storedList base "second"
-    missing = storedList base "missing"
+    first = mapGet base "first" ?: empty
+    second = mapGet base "second" ?: empty
+    missing = mapGet base "missing" ?: [99]
 
     checkAll "effect batch collection preconditions" [
-        structuralEquals [total, mapLength base, mapLength grown, mapLength replaced] [10, 2, 3, 3],
-        structuralEquals [mapLength removed, listLength first, listLength second] [2, 2, 2],
-        structuralEquals [listLength missing, (listGet first 0 ?: 99), (listGet first 1 ?: 99)] [1, 2, 3],
-        structuralEquals [(listGet second 0 ?: 99), (listGet second 1 ?: 99), (listGet missing 0 ?: 0)] [5, 9, 99],
+        total == 10,
+        mapLength base == 2,
+        mapLength grown == 3,
+        mapLength replaced == 3,
+        mapLength removed == 2,
+        listLength first == 2,
+        listLength second == 2,
+        listLength missing == 1,
+        (listGet first 0 ?: 99) == 2,
+        (listGet first 1 ?: 99) == 3,
+        (listGet second 0 ?: 99) == 5,
+        (listGet second 1 ?: 99) == 9,
+        (listGet missing 0 ?: 0) == 99,
         !(mapContains base "third"),
         mapContains grown "third",
         !(mapContains removed "second")
@@ -56,9 +74,16 @@ runBatchAssertions () =
     ]
 
     checkAll "handler exit preserves state and persistent collection versions" [
-        structuralEquals [listShape grown "third" 2, listShape replaced "first" 0] [[3, 13], [1, 20]],
-        structuralEquals [total, mapLength base, mapLength grown, listLength (mapValues grown)] [25, 2, 3, 3],
-        structuralEquals [listLength (storedList base "first"), listLength (mapKeys grown)] [2, 3]
+        total == 25,
+        mapLength base == 2,
+        mapLength grown == 3,
+        listLength (mapGet grown "third" ?: empty) == 3,
+        (listGet (mapGet grown "third" ?: empty) 2 ?: 99) == 13,
+        listLength (mapGet replaced "first" ?: empty) == 1,
+        (listGet (mapGet replaced "first" ?: empty) 0 ?: 99) == 20,
+        listLength (mapGet base "first" ?: empty) == 2,
+        listLength (mapKeys grown) == 3,
+        listLength (mapValues grown) == 3
     ]
 
 (** Verify state before, during, and after the handler. *)
@@ -95,4 +120,5 @@ mutationCase () =
 
     runBatchAssertions ()
 
-test "handled mutation retains every counter transition" (exactly mutationCase)
+
+test "handled mutation retains every counter transition" (\() => exactArithmetic (mutationCase))

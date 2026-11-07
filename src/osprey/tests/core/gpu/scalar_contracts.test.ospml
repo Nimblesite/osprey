@@ -1,5 +1,11 @@
 emptyRead : List<int>
 emptyRead = []
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
 // Scalar transfer conformance: inferred element types survive runtime lists,
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
@@ -12,39 +18,88 @@ countTrue (a, x) = match x
 floatListValue () = listReverse [2.5, 1.5]
 boolListValue () = listReverse [true, false, false]
 listValueTagsCase () =
-    withBuffer (toGpu (floatListValue ()), \floats => withBuffer (toGpu (boolListValue ()), \flags => checkAll "runtime list values keep GPU scalar tags" [
-                structuralEquals [gpuLength floats, gpuLength flags] [2, 3],
-                structuralEquals [(gpuGet (floats, 0) ?: 99.0), (gpuGet (floats, 1) ?: 99.0)] [1.5, 2.5],
-                gpuEquals(gpuFold(floats, 0.0, addFloats), 4.0), (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
-                gpuEquals(gpuFold(flags, 0, countTrue), 1)
-            ]))
+    match toGpu (floatListValue ())
+        Success floats =>
+            match toGpu (boolListValue ())
+                Success flags =>
+                    checkAll "runtime list values keep GPU scalar tags" [
+                        gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded15 => (uploaded15) == 4.0), gpuLength flags == 3, (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
+                        gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded14 => (uploaded14) == 1)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 fromGpuScalarCase () =
-    withBuffer (toGpu ([1.25, 2.5, 5.0]), \uploaded17 => withBuffer (fromGpu (uploaded17), \floats => withBuffer (toGpu ([true, false, true]), \uploaded16 => withBuffer (fromGpu (uploaded16), \flags => checkAll "fromGpu preserves float and bool list elements" [
-                        structuralEquals [listLength floats, listLength flags] [3, 3],
-                        structuralEquals [(listGet (floats, 0) ?: 99.0), (listGet (floats, 1) ?: 99.0)] [1.25, 2.5],
-                        (listGet (floats, 2) ?: 99.0) == 5.0,
-                        (listGet (flags, 0) ?: false) == true, (listGet (flags, 1) ?: true) == false, (listGet (flags, 2) ?: false) == true
-                    ]))))
+    match toGpu ([1.25, 2.5, 5.0])
+        Success uploaded17 =>
+            match fromGpu (uploaded17)
+                Success read0 =>
+                    floats = read0
+                    match toGpu ([true, false, true])
+                        Success uploaded16 =>
+                            match fromGpu (uploaded16)
+                                Success read1 =>
+                                    flags = read1
+                                    checkAll "fromGpu preserves float and bool list elements" [
+                                        listLength floats == 3, (listGet (floats, 0) ?: 99.0) == 1.25, (listGet (floats, 1) ?: 99.0) == 2.5, (listGet (floats, 2) ?: 99.0) == 5.0, listLength flags == 3, (listGet (flags, 0) ?: false) == true, (listGet (flags, 1) ?: true) == false, (listGet (flags, 2) ?: false) == true
+                                    ]
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 repeatedCrossingCase () =
-    withBuffer (toGpu (floatListValue ()), \uploaded15 => withBuffer (fromGpu (uploaded15), \read0 => withBuffer (toGpu (read0), \floats => withBuffer (toGpu (boolListValue ()), \uploaded14 => withBuffer (fromGpu (uploaded14), \read1 => withBuffer (toGpu (read1), \flags => withBuffer (fromGpu (floats), \floatsBack => withBuffer (fromGpu (flags), \flagsBack => checkAll "repeated host and GPU crossings retain scalar types" [
-                                        structuralEquals [gpuLength floats, gpuLength flags] [2, 3],
-                                        (gpuGet (floats, 0) ?: 99.0) == 1.5,
-                                        (gpuGet (floats, 1) ?: 99.0) == 2.5,
-                                        (listGet (floatsBack, 0) ?: 99.0) == 1.5,
-                                        (listGet (floatsBack, 1) ?: 99.0) == 2.5,
-                                        gpuEquals(gpuFold(floats, 0.0, addFloats), 4.0),
-                                        gpuEquals(gpuFold(flags, 0, countTrue), 1), (listGet (flagsBack, 0) ?: true) == false, (listGet (flagsBack, 2) ?: false) == true
-                                    ]))))))))
+    match toGpu (floatListValue ())
+        Success uploaded15 =>
+            match fromGpu (uploaded15)
+                Success read0 =>
+                    match toGpu (read0)
+                        Success floats =>
+                            match toGpu (boolListValue ())
+                                Success uploaded14 =>
+                                    match fromGpu (uploaded14)
+                                        Success read1 =>
+                                            match toGpu (read1)
+                                                Success flags =>
+                                                    match fromGpu (floats)
+                                                        Success read2 =>
+                                                            floatsBack = read2
+                                                            match fromGpu (flags)
+                                                                Success read3 =>
+                                                                    flagsBack = read3
+                                                                    checkAll "repeated host and GPU crossings retain scalar types" [
+                                                                        gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded13 => (uploaded13) == 4.0), (listGet (floatsBack, 0) ?: 99.0) == 1.5, (listGet (floatsBack, 1) ?: 99.0) == 2.5,
+                                                                        gpuLength flags == 3, gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded12 => (uploaded12) == 1), (listGet (flagsBack, 0) ?: true) == false, (listGet (flagsBack, 2) ?: false) == true
+                                                                    ]
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** With no first element to inspect, lowering must use the inferred result type. *)
 emptyTypedLiteralCase () =
     checkAll "empty literals retain contextual scalar types" [
         gpuSatisfies (toGpu ([]), \(uploaded11: GpuBuffer<int>) => gpuLength (uploaded11) == 0), gpuSatisfies (toGpu ([]), \uploaded10 => (gpuGet (uploaded10, 0) ?: 9.5) == 9.5), gpuSatisfies (toGpu ([]), \uploaded9 => (gpuGet (uploaded9, 0) ?: true) == true),
         gpuSatisfies (toGpu (emptyRead), \uploaded8 => gpuSatisfies (fromGpu (uploaded8), \checked0 => listLength (checked0) == 0))
     ]
-test ("runtime list values retain float and bool GPU element tags", exactly listValueTagsCase)
-test ("fromGpu reads float and bool elements at their source types", exactly fromGpuScalarCase)
-test ("repeated List and GpuBuffer crossings preserve scalar types", exactly repeatedCrossingCase)
-test ("empty GPU literals retain contextual scalar types", exactly emptyTypedLiteralCase)
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+test ("runtime list values retain float and bool GPU element tags", \() => exactArithmetic (listValueTagsCase))
+test ("fromGpu reads float and bool elements at their source types", \() => exactArithmetic (fromGpuScalarCase))
+test ("repeated List and GpuBuffer crossings preserve scalar types", \() => exactArithmetic (repeatedCrossingCase))
+test ("empty GPU literals retain contextual scalar types", \() => exactArithmetic (emptyTypedLiteralCase))
 (** [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract. *)
 squareScalar value = value * value
 subtractSelf value = value - value
@@ -52,39 +107,41 @@ divideZero value = value / 0.0
 remainderZero value = value % -0.0
 gpuIeeeCase () =
     match toGpu ([10000000000000000.0])
-        Success value =>
-            seed = value
+        Success seed =>
             match gpuMap(seed, squareScalar)
-                Success value =>
-                    uploaded9 = value
+                Success uploaded9 =>
                     match gpuMap(uploaded9, squareScalar)
-                        Success value =>
-                            fourth = value
+                        Success fourth =>
                             match gpuMap(fourth, squareScalar)
-                                Success value =>
-                                    uploaded10 = value
+                                Success uploaded10 =>
                                     match gpuMap(uploaded10, squareScalar)
-                                        Success value =>
-                                            uploaded17 = value
+                                        Success uploaded17 =>
                                             match gpuMap(uploaded17, squareScalar)
-                                                Success value =>
-                                                    infinityBuffer = value
+                                                Success infinityBuffer =>
                                                     infinity = gpuGet (infinityBuffer, 0) ?: 0.0
                                                     match gpuMap(infinityBuffer, subtractSelf)
-                                                        Success value =>
-                                                            nanBuffer = value
+                                                        Success nanBuffer =>
                                                             nan = gpuGet (nanBuffer, 0) ?: 0.0
-                                                            withBuffer (toGpu ([infinity, nan, -0.0]), \uploaded7 => withBuffer (fromGpu (uploaded7), \read0 => withBuffer (toGpu (listReverse (read0)), \roundTrip => checkAll "host GPU kernels preserve non-finite values and signed zero" [
-                                                                            infinity > 10000000000000000.0, nan != nan, gpuEquals(gpuFold(infinityBuffer, 0.0, addFloats), infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
-                                                                            toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
-                                                                        ])))
-                                                        Error message => gpuFailed message
-                                                Error message => gpuFailed message
-                                        Error message => gpuFailed message
-                                Error message => gpuFailed message
-                        Error message => gpuFailed message
-                Error message => gpuFailed message
-        Error message => gpuFailed message
+                                                            match toGpu ([infinity, nan, -0.0])
+                                                                Success uploaded7 =>
+                                                                    match fromGpu (uploaded7)
+                                                                        Success read0 =>
+                                                                            match toGpu (listReverse (read0))
+                                                                                Success roundTrip =>
+                                                                                    checkAll "host GPU kernels preserve non-finite values and signed zero" [
+                                                                                        infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), \uploaded8 => (uploaded8) == infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
+                                                                                        toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
+                                                                                    ]
+                                                                                Error message => check ("GPU operation", "success", toString message)
+                                                                        Error message => check ("GPU operation", "success", toString message)
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery. *)
 deviceFault (result, reason) = match result
     Success _ => false
@@ -96,20 +153,19 @@ gpuFloatZeroCase () =
             faults := faults + op
             0.25
     match toGpu ([1.0, 0.0, -1.0])
-        Success value =>
-            input = value
+        Success input =>
             quotients = gpuMap(input, divideZero)
             remainders = gpuMap(input, remainderZero)
             match gpuDevice () == "host"
                 true => checkAll "host GPU zero divisors use the enclosing policy" [
-                    gpuSatisfies(quotients, \q => gpuEquals(gpuFold(q, 0.0, addFloats), 0.75)),
-                    gpuSatisfies(remainders, \r => gpuEquals(gpuFold(r, 0.0, addFloats), 0.75)),
+                    gpuSatisfies(quotients, \q => gpuSatisfies(gpuFold(q, 0.0, addFloats), \total => total == 0.75)),
+                    gpuSatisfies(remainders, \r => gpuSatisfies(gpuFold(r, 0.0, addFloats), \total => total == 0.75)),
                     faults == "///%%%"
                 ]
                 false => checkAll "host GPU zero divisors use the enclosing policy" [
                     deviceFault(quotients, "division by zero"), deviceFault(remainders, "remainder by zero"), faults == ""
                 ]
-        Error message => gpuFailed message
+        Error message => check ("GPU operation", "success", toString message)
 
 test "host GPU arithmetic preserves IEEE non-finite values" gpuIeeeCase
 test "host GPU float zero divisors use explicit recovery" gpuFloatZeroCase
@@ -118,8 +174,7 @@ gpuAbsoluteCase () =
     match toGpu ([-2.5, -0.0, 3.5])
         Success value =>
             match gpuMap(value, abs)
-                Success value =>
-                    floats = value
+                Success floats =>
                     mut faults = ""
                     handle Arith
                         overflow op lhs rhs wrapped =>
@@ -131,26 +186,18 @@ gpuAbsoluteCase () =
                     match toGpu ([-9223372036854775808, -3, 4])
                         Success value =>
                             match gpuMap(value, abs)
-                                Success value =>
-                                    integers = value
+                                Success integers =>
                                     checkAll "GPU abs keeps float and integer callback contracts" [
-                                        (gpuGet (floats, 0) ?: 0.0) == 2.5,
-                                        (gpuGet (floats, 2) ?: 0.0) == 3.5,
-                                        structuralEquals [toString (gpuGet (floats, 1) ?: 1.0), faults] ["0.0", "abs"],
-                                        (gpuGet (integers, 0) ?: 0) == 17,
-                                        (gpuGet (integers, 1) ?: 0) == 3,
-                                        (gpuGet (integers, 2) ?: 0) == 4
+                                        (gpuGet (floats, 0) ?: 0.0) == 2.5, toString (gpuGet (floats, 1) ?: 1.0) == "0.0", (gpuGet (floats, 2) ?: 0.0) == 3.5, (gpuGet (integers, 0) ?: 0) == 17, (gpuGet (integers, 1) ?: 0) == 3, (gpuGet (integers, 2) ?: 0) == 4, faults == "abs"
                                     ]
                                 Error message => checkAll "GPU abs keeps float and integer callback contracts" [
-                                    (gpuGet (floats, 0) ?: 0.0) == 2.5,
-                                    (gpuGet (floats, 2) ?: 0.0) == 3.5,
-                                    structuralEquals [toString (gpuGet (floats, 1) ?: 1.0), faults] ["0.0", ""],
-                                    gpuDevice () != "host", contains(message, "integer overflow"),
+                                    (gpuGet (floats, 0) ?: 0.0) == 2.5, toString (gpuGet (floats, 1) ?: 1.0) == "0.0", (gpuGet (floats, 2) ?: 0.0) == 3.5,
+                                    gpuDevice () != "host", contains(message, "integer overflow"), faults == "",
                                     gpuSatisfies(toGpu([-3, 4]), \safe => gpuSatisfies(gpuMap(safe, abs), \integers => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                                 ]
-                        Error message => gpuFailed message
-                Error message => gpuFailed message
-        Error message => gpuFailed message
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 test "host GPU abs callbacks retain numeric types and recovery" gpuAbsoluteCase
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 64. *)
 remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => floatBits(x) == 4609434218613702656) && gpuSatisfies(gpuGet(output, 1), \x => floatBits(x) == -4613937818241073152) && gpuSatisfies(gpuGet(output, 2), \x => floatBits(x) == -9223372036854775808) && gpuSatisfies(gpuGet(output, 3), \x => floatBits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
@@ -172,8 +219,17 @@ gpuBitRoundTripCase () =
     words = [0, -9223372036854775808, 4607182418800017408, -4616189618054758400,
         9218868437227405312, -4503599627370496, 9221120237041090851, -2251799813684957,
         9218868437227405603, -4503599627370205, 1, -9223372036854775807]
-    withBuffer (toGpu (words), \value => withBuffer (gpuMap(value, floatFromBits), \uploaded1 => withBuffer (gpuMap(uploaded1, floatBits), \restored => checkAll "GPU bit conversions retain every payload bit" [
-                    remainder64Case(), remainder32Case(), remainder16Case(), sized32BitsCase(), sized16BitsCase(),
-                    gpuLength restored == listLength words, fold (range (0, listLength words)) true (\(ok, i) => ok && (gpuGet (restored, i) ?: 0) == (listGet (words, i) ?: 1))
-                ])))
-test "GPU bit conversion kernels preserve exact words" (exactly gpuBitRoundTripCase)
+    match toGpu (words)
+        Success value =>
+            match gpuMap(value, floatFromBits)
+                Success uploaded1 =>
+                    match gpuMap(uploaded1, floatBits)
+                        Success restored =>
+                            checkAll "GPU bit conversions retain every payload bit" [
+                                remainder64Case(), remainder32Case(), remainder16Case(), sized32BitsCase(), sized16BitsCase(),
+                                gpuLength restored == listLength words, fold (range (0, listLength words)) true (\(ok, i) => ok && (gpuGet (restored, i) ?: 0) == (listGet (words, i) ?: 1))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+test "GPU bit conversion kernels preserve exact words" (\() => exactArithmetic gpuBitRoundTripCase)

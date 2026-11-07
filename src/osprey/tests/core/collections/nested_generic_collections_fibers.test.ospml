@@ -90,10 +90,10 @@ fiberChannelCollectionCase () =
     send abandonedGroups (mapSet floats "orphan" [1.5])
 
     checkAll "spawn and out-of-order await reconstruct nested collection owners" [
-        structuralEquals [nestedAt (ints, 0, 0, [99], 99), nestedAt (ints, 0, 1, [99], 99)] [1, 2],
-        structuralEquals [nestedAt (ints, 1, 0, [99], 99), nestedAt (ints, 1, 2, [99], 99), listLength ints] [3, 5, 2],
-        structuralEquals [listLength strings, mapLength floats, mapLength bools, fiberDone intFiber] [2, 2, 2, 1],
-        structuralEquals [fiberDone stringFiber, fiberDone floatFiber, fiberDone boolFiber] [1, 1, 1],
+        nestedAt (ints, 0, 0, [99], 99) == 1,
+        nestedAt (ints, 0, 1, [99], 99) == 2,
+        nestedAt (ints, 1, 0, [99], 99) == 3,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
         nestedAt (strings, 0, 0, ["row"], "item") == "ant",
         nestedAt (strings, 0, 1, ["row"], "item") == "bee",
         nestedAt (strings, 1, 0, ["row"], "item") == "cat",
@@ -104,31 +104,49 @@ fiberChannelCollectionCase () =
         groupAt (bools, "left", 0, [false], false),
         !(groupAt (bools, "left", 1, [true], true)),
         !(groupAt (bools, "right", 0, [true], true)),
-        groupAt (bools, "right", 1, [false], false)
+        groupAt (bools, "right", 1, [false], false),
+        listLength ints == 2,
+        listLength strings == 2,
+        mapLength floats == 2,
+        mapLength bools == 2,
+        fiberDone intFiber == 1,
+        fiberDone stringFiber == 1,
+        fiberDone floatFiber == 1,
+        fiberDone boolFiber == 1
     ]
 
     checkAll "Channel<collection> round trips full nested descriptors in FIFO order" [
-        structuralEquals [listLength firstMatrix, listLength secondMatrix] [2, 3],
-        structuralEquals [nestedAt (firstMatrix, 0, 0, [99], 99), nestedAt (firstMatrix, 1, 2, [99], 99)] [1, 5],
-        structuralEquals [nestedAt (secondMatrix, 0, 0, [99], 99), nestedAt (secondMatrix, 2, 0, [99], 99)] [1, 6],
-        structuralEquals [nestedAt (secondMatrix, 2, 1, [99], 99), mapLength firstGroups] [7, 2],
-        structuralEquals [mapLength secondGroups, nestedAt (ints, 1, 2, [99], 99), listLength ints] [3, 5, 2],
-        structuralEquals [mapLength floats, listLength matrixViaParameter] [2, 3],
-        nestedAt (matrixViaParameter, 0, 0, [99], 99) == 1,
-        nestedAt (matrixViaParameter, 1, 2, [99], 99) == 5,
-        nestedAt (matrixViaParameter, 2, 0, [99], 99) == 6,
-        structuralEquals [nestedAt (matrixViaParameter, 2, 1, [99], 99), mapLength groupsViaParameter] [7, 3],
-        structuralEquals [listLength matrixViaField, nestedAt (matrixViaField, 0, 1, [99], 99)] [3, 2],
-        structuralEquals [nestedAt (matrixViaField, 1, 2, [99], 99), nestedAt (matrixViaField, 2, 1, [99], 99)] [5, 7],
+        listLength firstMatrix == 2,
+        listLength secondMatrix == 3,
+        nestedAt (firstMatrix, 0, 0, [99], 99) == 1,
+        nestedAt (firstMatrix, 1, 2, [99], 99) == 5,
+        nestedAt (secondMatrix, 0, 0, [99], 99) == 1,
+        nestedAt (secondMatrix, 2, 0, [99], 99) == 6,
+        nestedAt (secondMatrix, 2, 1, [99], 99) == 7,
+        mapLength firstGroups == 2,
+        mapLength secondGroups == 3,
         groupAt (firstGroups, "small", 0, [9.0], 9.5) == 0.5,
         groupAt (firstGroups, "large", 1, [9.0], 9.5) == 9.75,
         groupAt (secondGroups, "small", 1, [9.0], 9.5) == 1.25,
         groupAt (secondGroups, "extra", 0, [9.0], 9.5) == 6.25,
         groupAt (secondGroups, "extra", 1, [9.0], 9.5) == 7.5,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
         groupAt (floats, "small", 0, [9.0], 9.5) == 0.5,
+        listLength ints == 2,
+        mapLength floats == 2,
+        listLength matrixViaParameter == 3,
+        nestedAt (matrixViaParameter, 0, 0, [99], 99) == 1,
+        nestedAt (matrixViaParameter, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaParameter, 2, 0, [99], 99) == 6,
+        nestedAt (matrixViaParameter, 2, 1, [99], 99) == 7,
+        mapLength groupsViaParameter == 3,
         groupAt (groupsViaParameter, "small", 0, [9.0], 9.5) == 0.5,
         groupAt (groupsViaParameter, "extra", 0, [9.0], 9.5) == 6.25,
-        groupAt (groupsViaParameter, "extra", 1, [9.0], 9.5) == 7.5
+        groupAt (groupsViaParameter, "extra", 1, [9.0], 9.5) == 7.5,
+        listLength matrixViaField == 3,
+        nestedAt (matrixViaField, 0, 1, [99], 99) == 2,
+        nestedAt (matrixViaField, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaField, 2, 1, [99], 99) == 7
     ]
 
 (** A generic effect is performed inside a spawned body, answered by an
@@ -142,19 +160,26 @@ fiberEffectCollectionCase () =
     grownBools = bools |> mapSet "extra" [true, false] |> mapRemove "left"
 
     checkAll "inherited generic handlers preserve collection results from fibers" [
-        structuralEquals [listLength ints, mapLength bools, nestedAt (ints, 0, 0, [99], 99)] [2, 2, 1],
-        structuralEquals [nestedAt (ints, 0, 1, [99], 99), nestedAt (ints, 1, 2, [99], 99)] [2, 5],
-        structuralEquals [listLength grownInts, nestedAt (grownInts, 0, 0, [99], 99)] [3, 6],
-        structuralEquals [nestedAt (grownInts, 0, 1, [99], 99), nestedAt (grownInts, 2, 0, [99], 99)] [7, 1],
-        structuralEquals [mapLength grownBools, listLength ints] [2, 2],
+        listLength ints == 2,
+        mapLength bools == 2,
+        nestedAt (ints, 0, 0, [99], 99) == 1,
+        nestedAt (ints, 0, 1, [99], 99) == 2,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
         groupAt (bools, "left", 0, [false], false),
         !(groupAt (bools, "left", 1, [true], true)),
         !(groupAt (bools, "right", 0, [true], true)),
         groupAt (bools, "right", 1, [false], false),
+        listLength grownInts == 3,
+        nestedAt (grownInts, 0, 0, [99], 99) == 6,
+        nestedAt (grownInts, 0, 1, [99], 99) == 7,
+        nestedAt (grownInts, 2, 0, [99], 99) == 1,
+        mapLength grownBools == 2,
         !(mapContains grownBools "left"),
-        structuralEquals (mapList ["right", "extra"] (\k => mapContains grownBools k)) [true, true],
+        mapContains grownBools "right",
+        mapContains grownBools "extra",
         groupAt (grownBools, "extra", 0, [false], false),
         !(groupAt (grownBools, "extra", 1, [true], true)),
+        listLength ints == 2,
         mapContains bools "left",
         !(mapContains bools "extra")
     ]
@@ -186,12 +211,16 @@ channelThroughClosureCase () =
     send groups (floatGroups ())
     groupsViaLambdaParameter = drainVia (\c => recv c) groups
     checkAll "a channel reached through a closure keeps its element descriptor" [
-            structuralEquals [listLength viaLambdaParameter, nestedAt (viaLambdaParameter, 0, 0, [99], 99)] [2, 1],
+            listLength viaLambdaParameter == 2,
+            nestedAt (viaLambdaParameter, 0, 0, [99], 99) == 1,
             nestedAt (viaLambdaParameter, 0, 1, [99], 99) == 2,
             nestedAt (viaLambdaParameter, 1, 2, [99], 99) == 5,
-            structuralEquals [listLength (listGet viaLambdaParameter 1 ?: [99]), listLength viaCapture] [3, 3],
-            structuralEquals [nestedAt (viaCapture, 0, 0, [99], 99), nestedAt (viaCapture, 2, 0, [99], 99)] [1, 6],
-            structuralEquals [nestedAt (viaCapture, 2, 1, [99], 99), listLength (listGet viaCapture 2 ?: [99])] [7, 2],
+            listLength (listGet viaLambdaParameter 1 ?: [99]) == 3,
+            listLength viaCapture == 3,
+            nestedAt (viaCapture, 0, 0, [99], 99) == 1,
+            nestedAt (viaCapture, 2, 0, [99], 99) == 6,
+            nestedAt (viaCapture, 2, 1, [99], 99) == 7,
+            listLength (listGet viaCapture 2 ?: [99]) == 2,
             mapLength groupsViaLambdaParameter == 2,
             groupAt (groupsViaLambdaParameter, "small", 0, [9.0], 9.5) == 0.5,
             groupAt (groupsViaLambdaParameter, "large", 1, [9.0], 9.5) == 9.75

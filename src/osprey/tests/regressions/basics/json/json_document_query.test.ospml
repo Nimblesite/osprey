@@ -69,16 +69,21 @@ objectFieldCount value =
         JsonObject fields => mapLength fields
         _ => 0
 
-(** Traverse the module's recursive document under the test runner, reusing
-    the value the walk above already built. *)
+(** Rebuild and traverse the recursive document under the test runner. *)
 jsonDocumentCase () =
-    reportDeepString document
+    deepest = JsonString(value = "devon@osprey.dev")
+    inner = JsonArray(values = List() |> listAppend deepest)
+    outer = JsonArray(values = List() |> listAppend inner)
+    root = JsonObject(fields = Map() |> mapSet "workspace" outer)
+    reportDeepString root
     checkAll "recursive JSON document" [
-        structuralEquals [describe JsonNull, describe (JsonBoolean(value = true))] ["null", "boolean"],
-        structuralEquals [describe (JsonNumber(value = 17)), describe deepestValue] ["number", "string"],
-        structuralEquals [describe outerArray, describe document] ["array", "object"],
-        structuralEquals [deepString document, deepString JsonNull] ["devon@osprey.dev", ""],
-        objectFieldCount document == 1
+        describe JsonNull == "null",
+        describe (JsonBoolean(value = true)) == "boolean",
+        describe (JsonNumber(value = 17)) == "number",
+        describe deepest == "string", describe outer == "array",
+        describe root == "object", objectFieldCount root == 1,
+        deepString root == "devon@osprey.dev",
+        deepString JsonNull == ""
     ]
 test "recursive JSON traversal preserves the nested value" jsonDocumentCase
 
@@ -89,28 +94,19 @@ notReleased = -1
 (** Read one scalar by path, or a marker when the path names no scalar. *)
 scalarAt (doc, path) = jsonGet doc path ?: noScalar
 
-(** Release `doc` once and check what a released handle must show: the release
-    succeeds, a scalar and a container path answer nothing, and a second
-    release is refused. *)
-checkReleased (label, doc, scalarPath, containerPath) = checkAll label [
-    (jsonFree doc ?: notReleased) == 0,
-    scalarAt (doc, scalarPath) == noScalar,
-    jsonLength doc containerPath == notAContainer,
-    (jsonFree doc ?: notReleased) == notReleased
-]
-
 (** Parse a document with the built-in JSON functions, read scalars and
     lengths by path, then release the handle exactly once. [BUILTIN-JSON] *)
 parsedDocumentCase () =
     match jsonParse "{\"owner\":\"devon\",\"tags\":[\"a\",\"b\",\"c\"],\"active\":true,\"stars\":17}"
-        Success value =>
-            checkAll "built-in JSON document" [
-                structuralEquals [scalarAt (value, "owner"), scalarAt (value, "tags[1]")] ["devon", "b"],
-                structuralEquals [scalarAt (value, "active"), scalarAt (value, "stars")] ["true", "17"],
-                scalarAt (value, "tags") == noScalar, scalarAt (value, "absent") == noScalar,
-                structuralEquals [jsonLength value "", jsonLength value "tags"] [4, 3]
-            ]
-            checkReleased ("built-in JSON document", value, "owner", "owner")
+        Success value => checkAll "built-in JSON document" [
+            scalarAt (value, "owner") == "devon", scalarAt (value, "tags[1]") == "b",
+            scalarAt (value, "active") == "true", scalarAt (value, "stars") == "17",
+            scalarAt (value, "tags") == noScalar, scalarAt (value, "absent") == noScalar,
+            jsonLength value "" == 4, jsonLength value "tags" == 3,
+            jsonLength value "owner" == notAContainer,
+            (jsonFree value ?: notReleased) == 0,
+            (jsonFree value ?: notReleased) == notReleased
+        ]
         Error _message => checkAll "built-in JSON document" [false]
 test "built-in JSON functions parse, query and release a document" parsedDocumentCase
 
@@ -127,12 +123,6 @@ parses text =
         Success doc => (jsonFree doc ?: notReleased) == 0
         Error _message => false
 
-(** Answer whether every text in `texts` is one complete document. *)
-allParse texts = foldList texts true (\(okay, text) => okay && (parses text))
-
-(** Answer whether no text in `texts` is a complete document. *)
-noneParse texts = foldList texts true (\(okay, text) => okay && !(parses text))
-
 (** Parse text, read one scalar by path, and release the handle. *)
 textAt (text, path) =
     match jsonParse text
@@ -142,16 +132,14 @@ textAt (text, path) =
 (** Read back a raw number token stored as the only field of an object. *)
 numberText raw = textAt ("{\"v\":${raw}}", "v")
 
-(** A number token is refused inside an array and inside an object alike, so
-    no token in `raws` may parse. *)
-refusedNumbers raws = foldList raws true (\(okay, raw) => okay && !(parses "[${raw}]") && !(parses "{\"v\":${raw}}"))
+(** A number token is refused inside an array and inside an object alike. *)
+refusesNumber raw = !(parses "[${raw}]") && !(parses "{\"v\":${raw}}")
 
 (** The decoded value of a JSON string literal whose body is `body`. *)
 decoded body = textAt ("{\"v\":\"${body}\"}", "v")
 
-(** A JSON string literal whose body is `body` makes the document malformed,
-    so no body in `bodies` may parse. *)
-refusedStrings bodies = foldList bodies true (\(okay, body) => okay && !(parses "{\"v\":\"${body}\"}"))
+(** A JSON string literal whose body is `body` makes the document malformed. *)
+refusesString body = !(parses "{\"v\":\"${body}\"}")
 
 (** A single code point as a string, for control characters a literal cannot spell. *)
 ctl codePoint = fromCodePoint codePoint ?: noScalar
@@ -160,20 +148,27 @@ ctl codePoint = fromCodePoint codePoint ?: noScalar
     exact source text. [BUILTIN-JSON-NUMBER] *)
 jsonNumberCase () =
     checkAll "RFC 8259 numbers are accepted" [
-        allParse ["0", "-0", "17", "-17", "0.5", "-0.5", "1e5", "1E5", "1e+5", "1e-5", "1.25e-3", "[0,-0,1.5e10,-2E-2]"]
+        parses "0", parses "-0", parses "17", parses "-17", parses "0.5",
+        parses "-0.5", parses "1e5", parses "1E5", parses "1e+5", parses "1e-5",
+        parses "1.25e-3", parses "[0,-0,1.5e10,-2E-2]"
     ]
     checkAll "a number reads back as its source text" [
-        structuralEquals [numberText "1.50", numberText "-0", numberText "1E+05"] ["1.50", "-0", "1E+05"],
-        numberText "2.5e-3" == "2.5e-3",
+        numberText "1.50" == "1.50", numberText "-0" == "-0",
+        numberText "1E+05" == "1E+05", numberText "2.5e-3" == "2.5e-3",
         numberText "123456789012345678901234567890" == "123456789012345678901234567890",
-        structuralEquals [numberText "0", textAt ("17", ""), textAt ("-0.25", "")] ["0", "17", "-0.25"]
+        numberText "0" == "0", textAt ("17", "") == "17", textAt ("-0.25", "") == "-0.25"
     ]
     checkAll "every non-RFC number makes the document malformed" [
-        refusedNumbers ["-", "+1", ".5", "1.", "1.e5", "1e", "1e+", "1E-", "--1", "1..2", "01", "-01", "00", "0x1F", "NaN", "Infinity", "-Infinity", "1_000", "1e5.5", "- 1"]
+        refusesNumber "-", refusesNumber "+1", refusesNumber ".5", refusesNumber "1.",
+        refusesNumber "1.e5", refusesNumber "1e", refusesNumber "1e+", refusesNumber "1E-",
+        refusesNumber "--1", refusesNumber "1..2", refusesNumber "01", refusesNumber "-01",
+        refusesNumber "00", refusesNumber "0x1F", refusesNumber "NaN",
+        refusesNumber "Infinity", refusesNumber "-Infinity", refusesNumber "1_000",
+        refusesNumber "1e5.5", refusesNumber "- 1"
     ]
     checkAll "a complete root number followed by more text is refused" [
-        noneParse ["01", "1 2", "1.5.5", "-", "+1", "1."],
-        numberText "01" == noScalar
+        !(parses "01"), !(parses "1 2"), !(parses "1.5.5"), !(parses "-"),
+        !(parses "+1"), !(parses "1."), numberText "01" == noScalar
     ]
 test "JSON numbers follow RFC 8259 and keep their source text" jsonNumberCase
 
@@ -182,29 +177,36 @@ test "JSON numbers follow RFC 8259 and keep their source text" jsonNumberCase
     [BUILTIN-JSON-STRING] *)
 jsonStringCase () =
     checkAll "the eight short escapes decode" [
-        structuralEquals [decoded "a\\\"b", decoded "a\\\\b", decoded "a\\/b"] ["a\"b", "a\\b", "a/b"],
-        structuralEquals [decoded "a\\nb", decoded "a\\tb", decoded "a\\rb"] ["a\nb", "a\tb", "a\rb"],
+        decoded "a\\\"b" == "a\"b", decoded "a\\\\b" == "a\\b",
+        decoded "a\\/b" == "a/b", decoded "a\\nb" == "a\nb",
+        decoded "a\\tb" == "a\tb", decoded "a\\rb" == "a\rb",
         decoded "\\b" == ctl 8, decoded "\\f" == ctl 12
     ]
     checkAll "unicode escapes and literal UTF-8 decode to their scalars" [
-        structuralEquals [decoded "\\u0041", decoded "\\u00e9", decoded "\\u00E9"] ["A", "é", "é"],
-        structuralEquals [decoded "\\u20AC", decoded "\\uD83E\\uDD85", decoded "é🦅"] ["€", "🦅", "é🦅"],
-        structuralEquals [decoded "", decoded "plain"] ["", "plain"],
-        byteLength (decoded "\\uD83E\\uDD85") == 4,
+        decoded "\\u0041" == "A", decoded "\\u00e9" == "é", decoded "\\u00E9" == "é",
+        decoded "\\u20AC" == "€", decoded "\\uD83E\\uDD85" == "🦅",
+        byteLength (decoded "\\uD83E\\uDD85") == 4, decoded "é🦅" == "é🦅",
         decoded "\\u0001" == ctl 1, decoded "\\u001F" == ctl 31,
-        decoded (ctl 127) == ctl 127
+        decoded (ctl 127) == ctl 127, decoded "" == "", decoded "plain" == "plain"
     ]
     checkAll "any other escape is refused, never taken literally" [
-        refusedStrings ["\\a", "\\x41", "\\'", "\\0", "\\U0041", "\\e", "\\ ", "\\"]
+        refusesString "\\a", refusesString "\\x41", refusesString "\\'",
+        refusesString "\\0", refusesString "\\U0041", refusesString "\\e",
+        refusesString "\\ ", refusesString "\\"
     ]
     checkAll "a unicode escape needs exactly four hex digits" [
-        refusedStrings ["\\u", "\\u1", "\\u12", "\\u123", "\\u12G4", "\\uXYZW"]
+        refusesString "\\u", refusesString "\\u1", refusesString "\\u12",
+        refusesString "\\u123", refusesString "\\u12G4", refusesString "\\uXYZW"
     ]
     checkAll "surrogates must arrive as a high-low pair" [
-        refusedStrings ["\\uD83E", "\\uD83Ex", "\\uD83E\\u0041", "\\uD83E\\uD83E", "\\uDD85", "\\uDD85\\uD83E", "a\\uDC00b"]
+        refusesString "\\uD83E", refusesString "\\uD83Ex", refusesString "\\uD83E\\u0041",
+        refusesString "\\uD83E\\uD83E", refusesString "\\uDD85",
+        refusesString "\\uDD85\\uD83E", refusesString "a\\uDC00b"
     ]
     checkAll "NUL and raw control characters are refused" [
-        refusedStrings ["\\u0000", "a\\u0000b", ctl 1, ctl 9, ctl 10, ctl 13, ctl 31, "a${ctl 10}b"]
+        refusesString "\\u0000", refusesString "a\\u0000b", refusesString (ctl 1),
+        refusesString (ctl 9), refusesString (ctl 10), refusesString (ctl 13),
+        refusesString (ctl 31), refusesString "a${ctl 10}b"
     ]
 test "JSON strings decode RFC 8259 escapes and refuse everything else" jsonStringCase
 
@@ -212,14 +214,18 @@ test "JSON strings decode RFC 8259 escapes and refuse everything else" jsonStrin
     [BUILTIN-JSON-STRING] *)
 jsonDocumentShapeCase () =
     checkAll "every complete value parses, whitespace around it included" [
-        allParse ["{}", "[]", " {\"a\":1} ", "true", "false", "null", "\"text\"", "[[],{},[{}]]"],
-        structuralEquals [textAt ("\"text\"", ""), textAt ("true", "")] ["text", "true"],
-        structuralEquals [textAt ("null", ""), textAt ("false", "")] ["null", "false"]
+        parses "{}", parses "[]", parses " {\"a\":1} ", parses "true", parses "false",
+        parses "null", parses "\"text\"", parses "[[],{},[{}]]",
+        textAt ("\"text\"", "") == "text", textAt ("true", "") == "true",
+        textAt ("null", "") == "null", textAt ("false", "") == "false"
     ]
     checkAll "empty, trailing, unseparated and unterminated documents are refused" [
-        noneParse ["", "   ", "{\"a\":1} x", "{\"a\":1}{}", "[1] [2]", "{\"a\":1 \"b\":2}", "[1 2]",
-            "{\"a\" 1}", "{\"a\":1,}", "[1,]", "[,1]", "{\"a\":1", "[1,2", "\"abc", "{a:1}",
-            "{'a':1}", "tru", "nul", "True", "{\"a\":}", "{,}", "]", "}"]
+        !(parses ""), !(parses "   "), !(parses "{\"a\":1} x"), !(parses "{\"a\":1}{}"),
+        !(parses "[1] [2]"), !(parses "{\"a\":1 \"b\":2}"), !(parses "[1 2]"),
+        !(parses "{\"a\" 1}"), !(parses "{\"a\":1,}"), !(parses "[1,]"), !(parses "[,1]"),
+        !(parses "{\"a\":1"), !(parses "[1,2"), !(parses "\"abc"), !(parses "{a:1}"),
+        !(parses "{'a':1}"), !(parses "tru"), !(parses "nul"), !(parses "True"),
+        !(parses "{\"a\":}"), !(parses "{,}"), !(parses "]"), !(parses "}")
     ]
 test "a JSON document parses whole or is refused whole" jsonDocumentShapeCase
 
@@ -231,21 +237,27 @@ jsonPathCase () =
     match jsonParse nested
         Success doc =>
             checkAll "a live document answers every path" [
-                doc > 0,
-                structuralEquals [scalarAt (doc, "user.name"), scalarAt (doc, "user.items[0].name")] ["devon", "talon"],
-                structuralEquals [scalarAt (doc, "user.items[1].name"), scalarAt (doc, "user.flag")] ["wing", "false"],
-                scalarAt (doc, "user.nothing") == "null",
+                doc > 0, scalarAt (doc, "user.name") == "devon",
+                scalarAt (doc, "user.items[0].name") == "talon",
+                scalarAt (doc, "user.items[1].name") == "wing",
                 scalarAt (doc, "user.items[2].name") == noScalar,
+                scalarAt (doc, "user.flag") == "false",
+                scalarAt (doc, "user.nothing") == "null",
                 scalarAt (doc, "user.items") == noScalar, scalarAt (doc, "user") == noScalar,
                 scalarAt (doc, "user.missing") == noScalar, scalarAt (doc, "") == noScalar,
-                structuralEquals [jsonLength doc "", jsonLength doc "user"] [1, 6],
-                structuralEquals [jsonLength doc "user.items", jsonLength doc "user.items[0]"] [2, 1],
-                structuralEquals [jsonLength doc "user.empty", jsonLength doc "user.none"] [0, 0],
+                jsonLength doc "" == 1, jsonLength doc "user" == 6,
+                jsonLength doc "user.items" == 2, jsonLength doc "user.items[0]" == 1,
+                jsonLength doc "user.empty" == 0, jsonLength doc "user.none" == 0,
                 jsonLength doc "user.name" == notAContainer,
                 jsonLength doc "user.nothing" == notAContainer,
                 jsonLength doc "user.missing" == notAContainer
             ]
-            checkReleased ("a released handle answers nothing", doc, "user.name", "user")
+            checkAll "a released handle answers nothing" [
+                (jsonFree doc ?: notReleased) == 0,
+                scalarAt (doc, "user.name") == noScalar,
+                jsonLength doc "user" == notAContainer,
+                (jsonFree doc ?: notReleased) == notReleased
+            ]
         Error _message => checkAll "nested JSON document" [false]
     checkAll "a handle that was never issued answers nothing" [
         (jsonFree 0 ?: notReleased) == notReleased, jsonLength 0 "" == notAContainer,

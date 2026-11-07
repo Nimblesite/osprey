@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of type_equality_comprehensive.osp — byte-identical IR.
 // Generic records, function-type equality through HOFs, generic
 // monomorphization, and union variants compared by tag.
@@ -306,47 +320,67 @@ typeEqualityCase () =
     pair = makePair (8, "eight")
     triple = makeTriple (9, "nine", 10)
     checkAll "generic, function, and union type behavior" [
-        structuralEquals [container.value, pair.first, triple.first, triple.third] [7, 8, 9, 10],
-        structuralEquals [applyInt (addOne, 9), applyInt (timesTwo, 9), applyInt (minusOne, 9)] [10, 18, 8],
-        structuralEquals [applyTwo (twoArgAdd, 5, 7), applyThree (threeArgAdd, 1, 2, 3)] [12, 6],
-        structuralEquals [length (identityOf<List<int>> [1, 2]), length (emptyOf<int> ())] [2, 0],
-        length (identityOf<List<string>> ["a", "b"]) == 2,
-        mapLength (identityOf<Map<string, List<int>>> ["a" => [1], "b" => [2]]) == 2,
-        (identityOf<Container<int>> (Container(value = 9))).value == 9,
-        (identityOf<(int) -> int> timesTwo) 21 == 42,
-        structuralEquals [applyInt (identityOf<(int) -> int> addOne, 9), ([4, 5] |> headOr 0)] [10, 4],
-        structuralEquals [(identityOf<Result<int, string>> (20 * 5) ?: 0), (srcInt ()).produce] [100, 4],
-        structuralEquals [(srcInt ()).make 9, length (srcInt ()).items, (listGet (srcInt ()).items 1 ?: 0)] [9, 2, 2],
-        structuralEquals [(sinkInt ()).hof (\_n => 3), (bothInt ()).slot, (bothInt ()).consume 1] [7, 5, 6],
-        structuralEquals [keepSource (srcInt ()), keepSink (sinkInt ())] [4, 7],
-        structuralEquals [pair.second, triple.second, applyStr (excl, "hi")] ["eight", "nine", "hi!"],
-        structuralEquals [applyStr (ques, "hi"), applyToStr (intToString, 42), colorName Green] ["hi?", "42", "green"],
-        structuralEquals [label (mkFeed ()), erasedChainValue (integerChain ())] ["supplied", "19,23,end"],
-        structuralEquals [erasedFunctionFeedValue (functionFeed ()), describe (mkGate ())] ["17", "guarded"],
-        (identityOf<Container<string>> (Container(value = "c"))).value == "c",
+        container.value == 7,
+        pair.first == 8,
+        pair.second == "eight",
+        triple.first == 9,
+        triple.second == "nine",
+        triple.third == 10,
+        applyInt (addOne, 9) == 10,
+        applyInt (timesTwo, 9) == 18,
+        applyInt (minusOne, 9) == 8,
+        applyStr (excl, "hi") == "hi!",
+        applyStr (ques, "hi") == "hi?",
+        applyToStr (intToString, 42) == "42",
+        applyTwo (twoArgAdd, 5, 7) == 12,
+        applyThree (threeArgAdd, 1, 2, 3) == 6,
         sameColor (Red, Red),
         !(sameColor (Red, Blue)),
+        colorName Green == "green",
+        label (mkFeed ()) == "supplied",
         covariantErasureCase (),
+        erasedChainValue (integerChain ()) == "19,23,end",
+        erasedFunctionFeedValue (functionFeed ()) == "17",
         contravariantErasureCase (),
+        describe (mkGate ()) == "guarded",
         identityOf<int> 5 == 5,
         identityOf<string> "os" == "os",
+        length (identityOf<List<int>> [1, 2]) == 2,
+        length (emptyOf<int> ()) == 0,
         pickOf<int, string> (7, "seven") == 7,
         identityOf<bool> true,
         !(identityOf<bool> false),
         identityOf<float> 2.5 == 2.5,
+        length (identityOf<List<string>> ["a", "b"]) == 2,
+        mapLength (identityOf<Map<string, List<int>>> ["a" => [1], "b" => [2]]) == 2,
+        (identityOf<Container<int>> (Container(value = 9))).value == 9,
+        (identityOf<Container<string>> (Container(value = "c"))).value == "c",
         isEmpty (emptyOf<string> ()),
         pickOf<string, int> ("first", 2) == "first",
         pickOf<int, int> (3, 4) == 3,
         alsoOf<int> (21, timesTwo) == 42,
+        (identityOf<(int) -> int> timesTwo) 21 == 42,
+        applyInt (identityOf<(int) -> int> addOne, 9) == 10,
+        ([4, 5] |> headOr 0) == 4,
         headOr<int> ([], 9) == 9,
         headOr<string> (["a"], "z") == "a",
         repeatOf<int> (7, 3) == 7,
         repeatOf<string> ("os", 2) == "os",
+        (identityOf<Result<int, string>> (20 * 5) ?: 0) == 100,
         identityOf<int> (identityOf<int> 6) == 6,
-        (sinkInt ()).admit 1
+        (srcInt ()).produce == 4,
+        (srcInt ()).make 9 == 9,
+        length (srcInt ()).items == 2,
+        (listGet (srcInt ()).items 1 ?: 0) == 2,
+        (sinkInt ()).admit 1,
+        (sinkInt ()).hof (\_n => 3) == 7,
+        (bothInt ()).slot == 5,
+        (bothInt ()).consume 1 == 6,
+        keepSource (srcInt ()) == 4,
+        keepSink (sinkInt ()) == 7
     ]
 
-test "equivalent type shapes compose while union tags remain distinct" (exactly typeEqualityCase)
+test "equivalent type shapes compose while union tags remain distinct" (\() => exactArithmetic (typeEqualityCase))
 
 (** A transparent alias is its representation everywhere it is written: a
     scalar, a function type and a record field alike unify with what they
@@ -363,7 +397,8 @@ applyKernel (k : Kernel, i) = k i
 combine (c : Combine, a, b) = c (a, b)
 aliasCase () = checkAll "transparent type aliases are their representation everywhere" [
         (Scored(label = "a", score = 41)).score + 1 == 42,
-        structuralEquals [applyKernel (\i => toFloat i * 0.5, 4), combine (\(a, b) => a + b, 1.5, 2.0)] [2.0, 3.5]
+        applyKernel (\i => toFloat i * 0.5, 4) == 2.0,
+        combine (\(a, b) => a + b, 1.5, 2.0) == 3.5
     ]
 
-test "transparent type aliases are their representation everywhere" (exactly aliasCase)
+test "transparent type aliases are their representation everywhere" (\() => exactArithmetic (aliasCase))

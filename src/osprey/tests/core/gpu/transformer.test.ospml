@@ -1,7 +1,19 @@
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] A failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU operation", "success", toString message)
 (** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
 andThen (result, next) = match result
     Success value => next value
     Error message => Error(message = message)
+(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
+withIndices (n, work) = withBuffer(gpuIota n, work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
 // port in src/osprey/examples/llms/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
@@ -190,21 +202,19 @@ matMulExactCaseUploaded (left, right) =
                                                         Success value =>
                                                             hollow = value
                                                             checkAll "gpuMatMul forms the row-major product of the stated shapes" [
-                                                                gpuLength square == 4,
-                                                                gpuLength hollow == 4,
-                                                                exact (at (square, 0), 58.0), exact (at (square, 1), 64.0),
+                                                                gpuLength square == 4, exact (at (square, 0), 58.0), exact (at (square, 1), 64.0),
                                                                 exact (at (square, 2), 139.0), exact (at (square, 3), 154.0), exact (at (outer, 0), 10.0),
                                                                 exact (at (outer, 1), 14.0), exact (at (outer, 2), 15.0), exact (at (outer, 3), 21.0),
-                                                                gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
+                                                                gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
                                                                 gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
                                                             ]
-                                                        Error message => gpuFailed message
-                                                Error message => gpuFailed message
-                                        Error message => gpuFailed message
-                                Error message => gpuFailed message
-                        Error message => gpuFailed message
-                Error message => gpuFailed message
-        Error message => gpuFailed message
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
     added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
@@ -237,14 +247,14 @@ matMulOrderCase () =
                                                                     checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
                                                                         exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
                                                                     ]
-                                                                Error message => gpuFailed message
-                                                        Error message => gpuFailed message
-                                                Error message => gpuFailed message
-                                        Error message => gpuFailed message
-                                Error message => gpuFailed message
-                        Error message => gpuFailed message
-                Error message => gpuFailed message
-        Error message => gpuFailed message
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 matMulShapeCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0]), \four => withBuffer(floats ([1.0, 2.0, 3.0]), \three => matMulShapeCaseUploaded(four, three)))
 matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
@@ -324,9 +334,8 @@ attentionExactWith (grid0, grid1, grid2) =
         \single => withBuffer(pairQkv(),
         \uploaded12 => withBuffer(attention(uploaded12, 2, grid2, grid1, grid2),
         \pair => checkAll("attention returns a lone token's value and averages equal keys", [
-        structuralEquals [gpuLength(single), gpuLength(pair)] [4, 8],
-        exact(at(single, 0), 8.0), exact(at(single, 1), 9.0), exact(at(single, 2), 10.0), exact(at(single, 3), 11.0),
-        exact(at(pair, 0), 1.0), exact(at(pair, 1), 2.0), exact(at(pair, 2), 3.0), exact(at(pair, 3), 4.0),
+        gpuLength(single) == 4, exact(at(single, 0), 8.0), exact(at(single, 1), 9.0), exact(at(single, 2), 10.0), exact(at(single, 3), 11.0),
+        gpuLength(pair) == 8, exact(at(pair, 0), 1.0), exact(at(pair, 1), 2.0), exact(at(pair, 2), 3.0), exact(at(pair, 3), 4.0),
         exact(at(pair, 4), 3.0), exact(at(pair, 5), 4.0), exact(at(pair, 6), 5.0), exact(at(pair, 7), 6.0)
     ])))))
 embedCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => embedWith (grid0, grid1, grid2))))
@@ -433,7 +442,7 @@ nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, gr
         near(at(logits, 0), 1.2843501567840576), near(at(logits, 1), 2.434096336364746),
         near(at(logits, 2), 3.5838427543640137), near(at(logits, 3), 4.733589172363281),
         near(at(logits, 4), -4.4127888679504395),
-        token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuEquals(argmax(uploaded4, grid3), 1))
+        token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuSatisfies(argmax(uploaded4, grid3), \peak => peak == 1))
     ])))))))))
 (** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names the operation, the path and the reason. *)
 loadCase () =
@@ -447,10 +456,8 @@ loadCase () =
                 Success value =>
                     tail = value
                     checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
-                        ready,
-                        structuralEquals [gpuLength words, gpuLength tail] [3, 2],
-                        exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
-                        exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
+                        ready, gpuLength words == 3, exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
+                        gpuLength tail == 2, exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
                         gpuSatisfies (gpuLoad (raw, 12, 0), \uploaded1 => gpuLength (uploaded1) == 0),
                         loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
                         loadFailure (raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
@@ -458,8 +465,8 @@ loadCase () =
                         loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
                         loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
                     ]
-                Error message => gpuFailed message
-        Error message => gpuFailed message
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Only ASCII content can be written from a NUL-terminated string, so the header-length prefix is either missing or absurd; the full header grammar is pinned by the
     checked-in fixture under src/toolchain/crates/osprey-cli/tests. *)
 tensorHeaderCase () =
@@ -473,18 +480,30 @@ tensorHeaderCase () =
         tensorFailure (missing, "wte.weight") == "gpuLoadTensor: " + missing + ": No such file or directory"
     ]
 (** Exact-value tests record any arithmetic fault as a failed assertion; the kernels' `%` and `/` by a non-literal divisor dispatch to this policy. *)
-test ("gpuMatMul forms the row-major product of the stated shapes", exactly matMulExactCase)
-test ("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", exactly matMulOrderCase)
-test ("gpuMatMul names the operand whose length disagrees with the stated shape", exactly matMulShapeCase)
-test ("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", exactly mathKernelsCase)
-test ("gelu is the tanh approximation GPT-2 was trained with", exactly geluCase)
-test ("layerNorm normalises each row and applies the column gain and bias", exactly layerNormCase)
-test ("softmax normalises every causal row, shifted by its peak", exactly softmaxCase)
-test ("attention returns a lone token's value and averages equal keys", exactly attentionExactCase)
-test ("embed gathers each token's row and adds its position's row", exactly embedCase)
-test ("attention over the embedded pair matches the reference pass", exactly attentionCase)
-test ("the newest position attends through the cache exactly as the full pass does", exactly cachedStepCase)
-test ("one pre-norm block matches the reference pass", exactly blockCase)
-test ("the tied readout scores every token row and argmax picks the first peak", exactly nextTokenCase)
-test ("gpuLoad keeps little-endian binary32 words and refuses a short read", exactly loadCase)
-test ("gpuLoadTensor names the file and the reason its header cannot be read", exactly tensorHeaderCase)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+test ("gpuMatMul forms the row-major product of the stated shapes", \() => exactArithmetic (matMulExactCase))
+test ("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", \() => exactArithmetic (matMulOrderCase))
+test ("gpuMatMul names the operand whose length disagrees with the stated shape", \() => exactArithmetic (matMulShapeCase))
+test ("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", \() => exactArithmetic (mathKernelsCase))
+test ("gelu is the tanh approximation GPT-2 was trained with", \() => exactArithmetic (geluCase))
+test ("layerNorm normalises each row and applies the column gain and bias", \() => exactArithmetic (layerNormCase))
+test ("softmax normalises every causal row, shifted by its peak", \() => exactArithmetic (softmaxCase))
+test ("attention returns a lone token's value and averages equal keys", \() => exactArithmetic (attentionExactCase))
+test ("embed gathers each token's row and adds its position's row", \() => exactArithmetic (embedCase))
+test ("attention over the embedded pair matches the reference pass", \() => exactArithmetic (attentionCase))
+test ("the newest position attends through the cache exactly as the full pass does", \() => exactArithmetic (cachedStepCase))
+test ("one pre-norm block matches the reference pass", \() => exactArithmetic (blockCase))
+test ("the tied readout scores every token row and argmax picks the first peak", \() => exactArithmetic (nextTokenCase))
+test ("gpuLoad keeps little-endian binary32 words and refuses a short read", \() => exactArithmetic (loadCase))
+test ("gpuLoadTensor names the file and the reason its header cannot be read", \() => exactArithmetic (tensorHeaderCase))

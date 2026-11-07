@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Struct-allocation stress across the swappable memory backends. A lazy range
 // drives creation of a LARGE number of transient records; the default backend,
 // the tracing GC (--memory=gc) and Perceus ARC (--memory=arc) must all print
@@ -58,15 +77,20 @@ fn structAllocationCase() = {
     let sample = forge(4)
     let bumpedOnce = bump(sample, 99)
     checkAll("struct allocation and aggregate state", [
-        structuralEquals([testTotal, testHeavyTotal, testBumped.mass], [15000050000, 11249875000, 100002]),
-        structuralEquals([sample.id, sample.mass, energy(sample), bumpedOnce.mass], [4, 12, 16, 13]),
+        testTotal == 15000050000,
+        testHeavyTotal == 11249875000,
+        testBumped.mass == 100002,
+        sample.id == 4,
+        sample.mass == 12,
+        energy(sample) == 16,
+        bumpedOnce.mass == 13,
+        !heavy(forge(50000)),
+        heavy(forge(50001)),
         length(keepItems(listAppend([], 7), false).items) == 0,
         (listGet(keepItems(listAppend([], 7), true).items, 0) ?: 0) == 7,
         length(keepSuccess(listAppend([], 9), false).items) == 0,
-        (listGet(keepSuccess(listAppend([], 9), true).items, 0) ?: 0) == 9,
-        !heavy(forge(50000)),
-        heavy(forge(50001))
+        (listGet(keepSuccess(listAppend([], 9), true).items, 0) ?: 0) == 9
     ])
 }
 
-test("record allocation preserves aggregate values", exactly(structAllocationCase))
+test("record allocation preserves aggregate values", fn() => exactArithmetic(structAllocationCase))

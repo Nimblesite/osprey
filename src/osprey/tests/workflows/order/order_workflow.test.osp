@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Returns a catalog item or a caller-supplied fallback after Result matching.
 fn itemAt(index: int) -> (string) -> string =
     fn(fallback) => ["coffee", "bread", "fruit"][index] ?: fallback
@@ -29,10 +48,13 @@ fn receipt(customer: string) -> (string) -> (string) -> (int) -> string =
 fn catalogueInteraction() = {
     // Eight independent predicates cover both successful and fallback interactions.
     checkAll("catalogue state", [
-        structuralEquals([itemAt(0)("missing"), itemAt(2)("missing")], ["coffee", "fruit"]),
+        itemAt(0)("missing") == "coffee",
+        itemAt(2)("missing") == "fruit",
         itemAt(8)("missing") == "missing",
-        structuralEquals([unitPrice(itemAt(0)("missing")), unitPrice(itemAt(1)("missing"))], [12, 5]),
-        structuralEquals([unitPrice("tea"), listLength(["coffee", "bread", "fruit"])], [0, 3]),
+        unitPrice(itemAt(0)("missing")) == 12,
+        unitPrice(itemAt(1)("missing")) == 5,
+        unitPrice("tea") == 0,
+        listLength(["coffee", "bread", "fruit"]) == 3,
         itemAt(9)("missing") != itemAt(0)("missing")
     ])
 }
@@ -41,9 +63,12 @@ fn catalogueInteraction() = {
 fn pricingInteraction() = {
     // The batch checks every pricing branch and a cross-tier business invariant.
     checkAll("pricing state", [
-        structuralEquals([total("gold")("coffee")(5), total("silver")("bread")(4)], [48, 18]),
-        structuralEquals([total("guest")("fruit")(3), total("gold")("tea")(10)], [21, 0]),
-        structuralEquals([loyaltyDiscount("gold")(60), loyaltyDiscount("silver")(60)], [12, 6]),
+        total("gold")("coffee")(5) == 48,
+        total("silver")("bread")(4) == 18,
+        total("guest")("fruit")(3) == 21,
+        total("gold")("tea")(10) == 0,
+        loyaltyDiscount("gold")(60) == 12,
+        loyaltyDiscount("silver")(60) == 6,
         loyaltyDiscount("guest")(60) == 0,
         total("gold")("coffee")(5) < total("guest")("coffee")(5)
     ])
@@ -55,19 +80,19 @@ fn receiptInteraction() = {
     checkAll("receipt state", [
         receipt("  Ada ")("gold")("coffee")(5) == "ADA:coffee:5:48",
         receipt("Lin")("guest")("tea")(2) == "LIN:tea:2:0",
-        (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
-        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ) == "KAI:bread:4:18",
         contains(receipt("Ada")("gold")("bread")(2), ":bread:"),
         startsWith(receipt("  jo ")("guest")("fruit")(1), "JO:"),
         endsWith(receipt("Ada")("silver")("coffee")(2), ":22"),
-        !contains(receipt(" Ada ")("guest")("fruit")(1), " ")
+        !contains(receipt(" Ada ")("guest")("fruit")(1), " "),
+        (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
+        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ) == "KAI:bread:4:18"
     ])
 }
 
 // Register the catalog lookup interaction.
 
-test("catalogue lookup drives prices and fallbacks", exactly(catalogueInteraction))
+test("catalogue lookup drives prices and fallbacks", fn() => exactArithmetic(catalogueInteraction))
 // Register the pricing-policy interaction.
-test("pricing combines maps, matches, Results and arithmetic", exactly(pricingInteraction))
+test("pricing combines maps, matches, Results and arithmetic", fn() => exactArithmetic(pricingInteraction))
 // Register the complete receipt workflow.
-test("receipts compose normalization, totals and pipelines", exactly(receiptInteraction))
+test("receipts compose normalization, totals and pipelines", fn() => exactArithmetic(receiptInteraction))

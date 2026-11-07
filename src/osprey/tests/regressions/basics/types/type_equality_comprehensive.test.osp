@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Type equality coverage: GenericType.Equals, FunctionType.Equals,
 // UnionType.Equals. Same-shape generics unify; different-shape generics
 // don't. Functions with identical signatures unify when passed through
@@ -264,47 +283,68 @@ fn typeEqualityCase() = {
     let pair = makePair(a: 8, b: "eight")
     let triple = makeTriple(a: 9, b: "nine", c: 10)
     checkAll("generic, function, and union type behavior", [
-        structuralEquals([container.value, pair.first, triple.first, triple.third], [7, 8, 9, 10]),
-        structuralEquals([applyInt(f: addOne, x: 9), applyInt(f: timesTwo, x: 9)], [10, 18]),
-        structuralEquals([applyInt(f: minusOne, x: 9), applyTwo(f: twoArgAdd, a: 5, b: 7)], [8, 12]),
-        structuralEquals([applyThree(f: threeArgAdd, a: 1, b: 2, c: 3), length(identityOf<List<int>>([1, 2]))], [6, 2]),
-        structuralEquals([length(emptyOf<int>()), length(identityOf<List<string>>(["a", "b"]))], [0, 2]),
-        mapLength(identityOf<Map<string, List<int>>>({ "a": [1], "b": [2] })) == 2,
-        structuralEquals([(identityOf<Result<int, string>>(20 * 5) ?: 0), length(srcInt().items)], [100, 2]),
-        structuralEquals([(srcInt().items.listGet(1) ?: 0), sinkInt().hof(|_n| => 3), bothInt().slot], [2, 7, 5]),
-        structuralEquals([bothInt().consume(1), keepSource(srcInt()), keepSink(sinkInt())], [6, 4, 7]),
-        structuralEquals([pair.second, triple.second], ["eight", "nine"]),
-        structuralEquals([applyStr(f: excl, s: "hi"), applyStr(f: ques, s: "hi")], ["hi!", "hi?"]),
-        structuralEquals([applyToStr(f: intToString, x: 42), colorName(Green)], ["42", "green"]),
-        structuralEquals([label(mkFeed()), erasedChainValue(integerChain())], ["supplied", "19,23,end"]),
-        structuralEquals([erasedFunctionFeedValue(functionFeed()), describe(mkGate())], ["17", "guarded"]),
+        container.value == 7,
+        pair.first == 8,
+        pair.second == "eight",
+        triple.first == 9,
+        triple.second == "nine",
+        triple.third == 10,
+        applyInt(f: addOne, x: 9) == 10,
+        applyInt(f: timesTwo, x: 9) == 18,
+        applyInt(f: minusOne, x: 9) == 8,
+        applyStr(f: excl, s: "hi") == "hi!",
+        applyStr(f: ques, s: "hi") == "hi?",
+        applyToStr(f: intToString, x: 42) == "42",
+        applyTwo(f: twoArgAdd, a: 5, b: 7) == 12,
+        applyThree(f: threeArgAdd, a: 1, b: 2, c: 3) == 6,
         sameColor(a: Red, b: Red),
         !(sameColor(a: Red, b: Blue)),
+        colorName(Green) == "green",
+        label(mkFeed()) == "supplied",
         covariantErasureCase(),
+        erasedChainValue(integerChain()) == "19,23,end",
+        erasedFunctionFeedValue(functionFeed()) == "17",
         contravariantErasureCase(),
+        describe(mkGate()) == "guarded",
         identityOf<int>(5) == 5,
         identityOf<string>("os") == "os",
+        length(identityOf<List<int>>([1, 2])) == 2,
+        length(emptyOf<int>()) == 0,
         pickOf<int, string>(7, "seven") == 7,
         identityOf<bool>(true),
         !identityOf<bool>(false),
         identityOf<float>(2.5) == 2.5,
+        length(identityOf<List<string>>(["a", "b"])) == 2,
+        mapLength(identityOf<Map<string, List<int>>>({ "a": [1], "b": [2] })) == 2,
         identityOf<Container<int>>(Container { value: 9 }).value == 9,
         identityOf<Container<string>>(Container { value: "c" }).value == "c",
         isEmpty(emptyOf<string>()),
         pickOf<string, int>("first", 2) == "first",
-        structuralEquals([pickOf<int, int>(3, 4), alsoOf<int>(21, timesTwo)], [3, 42]),
+        pickOf<int, int>(3, 4) == 3,
+        alsoOf<int>(21, timesTwo) == 42,
         identityOf<(int) -> int>(timesTwo)(21) == 42,
-        structuralEquals([applyInt(f: identityOf<(int) -> int>(addOne), x: 9), [4, 5].headOr<int>(0)], [10, 4]),
+        applyInt(f: identityOf<(int) -> int>(addOne), x: 9) == 10,
+        [4, 5].headOr<int>(0) == 4,
         headOr<int>([], 9) == 9,
         headOr<string>(["a"], "z") == "a",
         repeatOf<int>(7, 3) == 7,
         repeatOf<string>("os", 2) == "os",
-        structuralEquals([identityOf<int>(identityOf<int>(6)), srcInt().produce, srcInt().make(9)], [6, 4, 9]),
-        sinkInt().admit(1)
+        (identityOf<Result<int, string>>(20 * 5) ?: 0) == 100,
+        identityOf<int>(identityOf<int>(6)) == 6,
+        srcInt().produce == 4,
+        srcInt().make(9) == 9,
+        length(srcInt().items) == 2,
+        (srcInt().items.listGet(1) ?: 0) == 2,
+        sinkInt().admit(1),
+        sinkInt().hof(|_n| => 3) == 7,
+        bothInt().slot == 5,
+        bothInt().consume(1) == 6,
+        keepSource(srcInt()) == 4,
+        keepSink(sinkInt()) == 7
     ])
 }
 
-test("equivalent type shapes compose while union tags remain distinct", exactly(typeEqualityCase))
+test("equivalent type shapes compose while union tags remain distinct", fn() => exactArithmetic(typeEqualityCase))
 
 /// A transparent alias is its representation everywhere it is written: a
 /// scalar, a function type and a record field alike unify with what they
@@ -319,7 +359,8 @@ fn applyKernel(k: Kernel, i) = k(i)
 fn combine(c: Combine, a, b) = c(a, b)
 fn aliasCase() = checkAll("transparent type aliases are their representation everywhere", [
     Scored { label: "a", score: 41 }.score + 1 == 42,
-    structuralEquals([applyKernel(fn(i) => toFloat(i) * 0.5, 4), combine(fn(a, b) => a + b, 1.5, 2.0)], [2.0, 3.5])
+    applyKernel(fn(i) => toFloat(i) * 0.5, 4) == 2.0,
+    combine(fn(a, b) => a + b, 1.5, 2.0) == 3.5
 ])
 
-test("transparent type aliases are their representation everywhere", exactly(aliasCase))
+test("transparent type aliases are their representation everywhere", fn() => exactArithmetic(aliasCase))

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Cross-contract oracle for [ARITH-CHECKED], [PATTERN-RESULT-DEFAULT],
 // [ERR-PAYLOAD], [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
 // [TYPE-MAP], [TYPE-MAP-LOOKUP], and [BUILTIN-STRING-UFCS].
@@ -24,13 +43,6 @@ fn integerDefault(value, work) = {
     handle Arith { remainderByZero _ => value }
     work()
 }
-
-/// intDiv under the local `-1` replacement policy.
-fn intDivDefault(a, b) = integerDefault(-1, fn() => intDiv(a, b))
-
-/// Remainder under the local `-1` replacement policy.
-fn modDefault(a, b) = integerDefault(-1, fn() => a % b)
-
 fn floatDefault(work) = {
     handle Arith { divideByZero op lhs => {
         checkAll("float fault payload", [op == "/", lhs == 10.0])
@@ -59,22 +71,22 @@ fn recoveredValues(fallback) = {
     ]
 }
 
-/// Print one labelled pipeline step's rescued value and pass the value on.
-fn step(label, work) = {
-    let value = work()
-    print("${label}-> ${toString(value)}")
-    value
-}
-
 /// Every failed step receives a replacement value, so later steps still run.
-fn pipeline() = foldList([
-    step("  step a  intDiv 10 / 0   ", fn() => divRescue(10, 0)),
-    step("  step b  intDiv 20 / 4   ", fn() => divRescue(20, 4)),
-    step("  step c  7 % 0           ", fn() => modRescue(7, 0)),
-    step("  step d  17 % 5          ", fn() => modRescue(17, 5)),
-    step("  step e  MAX + 1         ", fn() => addRescue(9223372036854775807, 1)),
-    step("  step f  100 + 23        ", fn() => addRescue(100, 23))
-], 0, fn(total, value) => total + value)
+fn pipeline() = {
+    let a = divRescue(10, 0)
+    print("  step a  intDiv 10 / 0   -> ${toString(a)}")
+    let b = divRescue(20, 4)
+    print("  step b  intDiv 20 / 4   -> ${toString(b)}")
+    let c = modRescue(7, 0)
+    print("  step c  7 % 0           -> ${toString(c)}")
+    let d = modRescue(17, 5)
+    print("  step d  17 % 5          -> ${toString(d)}")
+    let e = addRescue(9223372036854775807, 1)
+    print("  step e  MAX + 1         -> ${toString(e)}")
+    let f = addRescue(100, 23)
+    print("  step f  100 + 23        -> ${toString(f)}")
+    a + b + c + d + e + f 
+}
 
 print("=== Result -> effect rescue pipeline ===")
 
@@ -103,24 +115,6 @@ print("local remainder policy  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toSt
 print("float policy for 10 / 0 = ${toString(floatDefault(fn() => 10 / 0))}")
 print("=== pipeline complete ===")
 
-/// Read the element at `index`, or the `99` sentinel past the end.
-fn at(xs, index) = xs.listGet(index) ?: 99
-
-/// Read the elements at `indices`, each `99` past the end.
-fn atAll(xs, indices) = mapList(indices, fn(index) => at(xs, index))
-
-/// True when `xs` reads `wants` at every index of `indices`.
-fn reads(xs, indices, wants) = structuralEquals(atAll(xs, indices), wants)
-
-/// Read the nested list at `row` of `rows`, or `[99]` past the end.
-fn rowAt(rows, row) = rows.listGet(row) ?: [99]
-
-/// Read the list stored under `key`, or `[99]` when the map has no such key.
-fn storedList(m, key) = m.mapGet(key) ?: [99]
-
-/// Read the element at `index` of the list stored under `key`.
-fn storedAt(m, key, index) = at(storedList(m, key), index)
-
 /// Verifies rescued failures beside healthy Result, nested collections, and local fallbacks.
 fn resultAndEffectsCase() = {
     let hundreds = recoveredValues(100)
@@ -137,30 +131,63 @@ fn resultAndEffectsCase() = {
     }
 
     checkAll("Result and effect pipeline state", [
-            structuralEquals([bareSuccess, bareError, boundResult, rescues, total, localOk], [1, 9, 1, 3, 430, 1]),
-            structuralEquals([intDivDefault(20, 4), modDefault(17, 5)], [5, 2]),
-            structuralEquals([(checkedAdd(100, 23) ?: 0), (checkedAdd(9223372036854775807, 1) ?: 77)], [123, 77]),
-            toString(intDivDefault(20, 0)) == "-1",
-            structuralEquals([localBad, intDivDefault(20, 0), modDefault(17, 0)], [(0 - 1) , (0 - 1) , (0 - 1) ]),
-            structuralEquals([toString(floatDefault(fn() => 10 / 0)), toString(intDiv(20, 4))], ["-1.0", "5"]),
+            bareSuccess == 1,
+            bareError == 9,
+            boundResult == 1,
+            rescues == 3,
+            total == 430,
+            localOk == 1,
+            localBad == ((0 - 1) ),
+            toString(floatDefault(fn() => 10 / 0)) == "-1.0",
+            integerDefault(-1, fn() => intDiv(20, 4)) == 5,
+            integerDefault(-1, fn() => intDiv(20, 0)) == ((0 - 1) ),
+            integerDefault(-1, fn() => 17 % 5) == 2,
+            integerDefault(-1, fn() => 17 % 0) == ((0 - 1) ),
+            (checkedAdd(100, 23) ?: 0) == 123,
+            (checkedAdd(9223372036854775807, 1) ?: 77) == 77,
+            toString(intDiv(20, 4)) == "5",
+            toString(integerDefault(-1, fn() => intDiv(20, 0))) == "-1",
             toString(checkedAdd(9223372036854775807, 1)) == "Error(integer overflow)"
     ])
 
     checkAll("each Rescue policy replaces only failing collection elements", [
-            reads(hundreds, [0, 1, 2, 3, 4, 5, 9], [100, 5, 100, 2, 100, 123, 99]),
-            reads(sevens, [0, 1, 2, 3, 4, 5], [7, 5, 7, 2, 7, 123]),
-            reads(negatives, [0, 4], [(0 - 1) , (0 - 1) ])
+            listLength(hundreds) == 6,
+            (hundreds.listGet(0) ?: 99) == 100,
+            (hundreds.listGet(1) ?: 99) == 5,
+            (hundreds.listGet(2) ?: 99) == 100,
+            (hundreds.listGet(3) ?: 99) == 2,
+            (hundreds.listGet(4) ?: 99) == 100,
+            (hundreds.listGet(5) ?: 99) == 123,
+            (hundreds.listGet(9) ?: 99) == 99,
+            listLength(sevens) == 6,
+            (sevens.listGet(0) ?: 99) == 7,
+            (sevens.listGet(1) ?: 99) == 5,
+            (sevens.listGet(2) ?: 99) == 7,
+            (sevens.listGet(3) ?: 99) == 2,
+            (sevens.listGet(4) ?: 99) == 7,
+            (sevens.listGet(5) ?: 99) == 123,
+            (negatives.listGet(0) ?: 99) == ((0 - 1) ),
+            (negatives.listGet(4) ?: 99) == ((0 - 1) )
     ])
 
     checkAll("recovered lists retain element types inside nested maps", [
-            structuralEquals([listLength(policyMatrix), listLength(rowAt(policyMatrix, 0))], [3, 6]),
-            structuralEquals(mapList([0, 1, 2], fn(row) => at(rowAt(policyMatrix, row), 4)), [100, 7, (0 - 1) ]),
-            structuralEquals([mapLength(policyMap), mapLength(grownMap), listLength(storedList(policyMap, "hundred"))], [3, 4, 6]),
-            structuralEquals([storedAt(policyMap, "hundred", 0), storedAt(policyMap, "seven", 2), storedAt(grownMap, "zero", 0)], [100, 7, 0]),
-            structuralEquals([storedAt(policyMap, "negative", 4), listLength(mapKeys(grownMap)), listLength(mapValues(grownMap))], [(0 - 1) , 4, 4]),
+            listLength(policyMatrix) == 3,
+            listLength(policyMatrix.listGet(0) ?: [99]) == 6,
+            ((policyMatrix.listGet(0) ?: [99]).listGet(4) ?: 99) == 100,
+            ((policyMatrix.listGet(1) ?: [99]).listGet(4) ?: 99) == 7,
+            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
+            mapLength(policyMap) == 3,
+            mapLength(grownMap) == 4,
+            listLength(policyMap.mapGet("hundred") ?: [99]) == 6,
+            ((policyMap.mapGet("hundred") ?: [99]).listGet(0) ?: 99) == 100,
+            ((policyMap.mapGet("seven") ?: [99]).listGet(2) ?: 99) == 7,
+            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
+            ((grownMap.mapGet("zero") ?: [99]).listGet(0) ?: 99) == 0,
             !mapContains(policyMap, "zero"),
-            mapContains(grownMap, "zero")
+            mapContains(grownMap, "zero"),
+            listLength(mapKeys(grownMap)) == 4,
+            listLength(mapValues(grownMap)) == 4
     ])
 }
 
-test("fallible arithmetic is recovered without masking healthy results", exactly(resultAndEffectsCase))
+test("fallible arithmetic is recovered without masking healthy results", fn() => exactArithmetic(resultAndEffectsCase))

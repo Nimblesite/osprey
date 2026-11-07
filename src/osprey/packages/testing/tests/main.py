@@ -80,4 +80,8 @@ def helper_cases():
 
 
 def main():
-    return Check.run(lambda: listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))
+    match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            return print(f"suite stopped: {message}")

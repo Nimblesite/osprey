@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // [CALL-ARGUMENTS] also covers a reordered all-named call below.
 // Boolean operators end-to-end: literals, comparisons (int/float/string),
 // equality, logical && / ||, short-circuit, de Morgan, bool from match,
@@ -99,8 +118,12 @@ fn booleanBehaviorCase() = {
     }
     let localLabel = (3 < 5) ? "yes" : "no"
     checkAll("boolean operators and branches", [
-        structuralEquals([getTrue(), getFalse(), isEqual(x: 5, y: 5), isEqual(x: 5, y: 6)], [true, false, true, false]),
-        structuralEquals([xor(a: true, b: true), xor(a: true, b: false)], [false, true]),
+        getTrue(),
+        !getFalse(),
+        isEqual(x: 5, y: 5),
+        !isEqual(x: 5, y: 6),
+        !xor(a: true, b: true),
+        xor(a: true, b: false),
         !xor(a: false, b: false),
         leftShortCircuits,
         rightShortCircuits,
@@ -116,7 +139,7 @@ fn booleanBehaviorCase() = {
     ])
 }
 
-test("boolean operators preserve values and short-circuiting", exactly(booleanBehaviorCase))
+test("boolean operators preserve values and short-circuiting", fn() => exactArithmetic(booleanBehaviorCase))
 
 /// Produces infinity at runtime for the [FLOAT-COMPARE] truth tables.
 fn growFloat(x, count) = match count {
@@ -149,8 +172,8 @@ fn orderedFloatComparisonsCase() = {
     checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
     checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
 }
-test("NaN comparison truth table", exactly(nanComparisonsCase))
-test("ordered float comparison controls", exactly(orderedFloatComparisonsCase))
+test("NaN comparison truth table", fn() => exactArithmetic(nanComparisonsCase))
+test("ordered float comparison controls", fn() => exactArithmetic(orderedFloatComparisonsCase))
 
 /// [FLOAT-IEEE-RESULTS]: non-finite values require no overflow policy.
 fn floatIdentity(value) = value
@@ -170,7 +193,8 @@ fn ieeeArithmeticCase() = {
         isNan(infinity + -infinity), isNan(infinity * 0.0),
         isNan(nan + 1.0), isNan(1.0 - nan), isNan(nan * 2.0),
         isNan(-nan), -infinity < -large,
-        structuralEquals([(5 + 0.5), (0.5 * 5), toFloat(9223372036854775807)], [5.5, 2.5, 9223372036854775808.0]),
+        (5 + 0.5) == 5.5, (0.5 * 5) == 2.5,
+        toFloat(9223372036854775807) == 9223372036854775808.0,
         toFloat(-9223372036854775808) == -9223372036854775808.0
     ])
 }
@@ -178,14 +202,13 @@ fn ieeeArithmeticCase() = {
 fn signedZeroAndUnderflowCase() = {
     let small = floatIdentity(smallFinite)
     checkAll("signed zeros and gradual underflow", [
-        structuralEquals([small * small, 5.5 % 2.0, 5.5 % -2.0], [0.0, 1.5, 1.5]),
-        -small * small == -0.0,
-        structuralEquals([toString(-small * small), toString(-0.0 * 2.0)], ["-0.0", "-0.0"]),
-        structuralEquals([toString(-0.0 - 0.0), toString(-(-0.0))], ["-0.0", "0.0"]),
-        structuralEquals([toString(-0.0 / 2.0), toString(-0.0 % 2.0)], ["-0.0", "-0.0"]),
+        small * small == 0.0, -small * small == -0.0,
+        toString(-small * small) == "-0.0", toString(-0.0 * 2.0) == "-0.0",
+        toString(-0.0 - 0.0) == "-0.0", toString(-(-0.0)) == "0.0",
         smallFinite * 0.0000000001 > 0.0, -0.0 == 0.0,
-        -5.5 % 2.0 == -1.5,
-        -5.5 % -2.0 == -1.5
+        toString(-0.0 / 2.0) == "-0.0", toString(-0.0 % 2.0) == "-0.0",
+        5.5 % 2.0 == 1.5, -5.5 % 2.0 == -1.5,
+        5.5 % -2.0 == 1.5, -5.5 % -2.0 == -1.5
     ])
 }
 
@@ -196,11 +219,10 @@ fn nonFiniteDivisionCase() = {
         0.0 } }
     checkAll("nonzero division and remainder retain IEEE results", [
         largeFinite / smallFinite == infinity,
-        infinity / 2.0 == infinity,
-        structuralEquals([2.0 / infinity, 2.0 % infinity], [0.0, 2.0]),
+        infinity / 2.0 == infinity, 2.0 / infinity == 0.0,
         toString(-2.0 / infinity) == "-0.0", isNan(infinity / infinity),
         isNan(nan / 2.0), isNan(2.0 / nan), isNan(nan / nan),
-        isNan(infinity % 2.0),
+        isNan(infinity % 2.0), 2.0 % infinity == 2.0,
         isNan(nan % 2.0), isNan(2.0 % nan), isNan(infinity % infinity)
     ])
 }
@@ -214,9 +236,10 @@ fn zeroDivisorCase() = {
         7.25
     } }
     checkAll("zero divisors recover before IEEE division or remainder", [
-        structuralEquals([1.0 / 0.0, 1.0 / -0.0, 0.0 / 0.0, infinity / -0.0], [7.25, 7.25, 7.25, 7.25]),
-        structuralEquals([nan / 0.0, 1.0 % 0.0, 1.0 % -0.0], [7.25, 7.25, 7.25]),
-        structuralEquals([0.0 % 0.0, infinity % -0.0, nan % 0.0], [7.25, 7.25, 7.25])
+        1.0 / 0.0 == 7.25, 1.0 / -0.0 == 7.25,
+        0.0 / 0.0 == 7.25, infinity / -0.0 == 7.25, nan / 0.0 == 7.25,
+        1.0 % 0.0 == 7.25, 1.0 % -0.0 == 7.25,
+        0.0 % 0.0 == 7.25, infinity % -0.0 == 7.25, nan % 0.0 == 7.25
     ])
     expect(faults, "/v/v/v/v/n%v%v%v%v%n")
 }
@@ -234,11 +257,11 @@ fn floatAbsoluteCase() = {
     let nan = infinity - infinity
     let magnitude = abs
     checkAll("float absolute value preserves its numeric type and IEEE values", [
-        structuralEquals([abs(-2.5), abs(2.5), absoluteValue(-3.5)], [2.5, 2.5, 3.5]),
-        structuralEquals([magnitude(-4.5), applyAbsolute(abs, -5.5)], [4.5, 5.5]),
-        structuralEquals([toString(abs(-0.0)), toString(abs(0.0))], ["0.0", "0.0"]),
+        abs(-2.5) == 2.5, abs(2.5) == 2.5,
+        toString(abs(-0.0)) == "0.0", toString(abs(0.0)) == "0.0",
         abs(-infinity) == infinity, abs(infinity) == infinity,
-        isNan(abs(nan))
+        isNan(abs(nan)), absoluteValue(-3.5) == 3.5,
+        magnitude(-4.5) == 4.5, applyAbsolute(abs, -5.5) == 5.5
     ])
 }
 test("float absolute value is total through function values", floatAbsoluteCase)
@@ -253,7 +276,8 @@ fn absoluteTransportCase() = {
     let selected = listGet(functions, 0) ?: fn(value) => value * 1.0
     let branch = true ? abs : fn(value) => value * 1.0
     checkAll("absolute function values retain float ABI and lexical bindings", [
-        structuralEquals([returned(-2.5), record.apply(-3.5), selected(-4.5), branch(-5.5)], [2.5, 3.5, 4.5, 5.5]),
+        returned(-2.5) == 2.5, record.apply(-3.5) == 3.5,
+        selected(-4.5) == 4.5, branch(-5.5) == 5.5,
         shadowedAbsolute(fn(value) => value * 2.0) == -13.0
     ])
 }
@@ -268,9 +292,9 @@ fn integerAbsoluteCase() = {
     } }
     let magnitude = abs
     checkAll("integer abs function values retain explicit recovery", [
-        structuralEquals([magnitude(-9223372036854775808), applyAbsolute(abs, -9223372036854775808)], [19, 19]),
-        magnitude(-27) == 27,
-        faults == "absabs"
+        magnitude(-9223372036854775808) == 19,
+        applyAbsolute(abs, -9223372036854775808) == 19,
+        magnitude(-27) == 27, faults == "absabs"
     ])
 }
 test("integer absolute function values keep overflow recovery", integerAbsoluteCase)

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // The six tiny code blocks that appear on the website, run as one file
 // to keep them honest. If a copy/paste snippet stops compiling, this
 // breaks. Sections preserved verbatim (apart from being concatenated).
@@ -78,11 +97,20 @@ fn websiteExamplesCase() = {
     let worker = spawn compute(7)
     let fiberValue = await(worker)
     checkAll("website example behavior", [
-        structuralEquals([double(21), square(12), pipedValue, compute(11), fiberValue], [42, 144, 100, 22, 14]),
-        structuralEquals([analyzeNumber(0), analyzeNumber(42)], ["Zero", "The answer!"]),
-        structuralEquals([analyzeNumber(5), getGrade(100), getGrade(95)], ["Something else", "Perfect!", "Excellent"]),
-        structuralEquals([getGrade(85), getGrade(75), getGrade(50)], ["Very Good", "Good", "Needs Improvement"])
+        double(21) == 42,
+        square(12) == 144,
+        pipedValue == 100,
+        analyzeNumber(0) == "Zero",
+        analyzeNumber(42) == "The answer!",
+        analyzeNumber(5) == "Something else",
+        getGrade(100) == "Perfect!",
+        getGrade(95) == "Excellent",
+        getGrade(85) == "Very Good",
+        getGrade(75) == "Good",
+        getGrade(50) == "Needs Improvement",
+        compute(11) == 22,
+        fiberValue == 14
     ])
 }
 
-test("website snippets produce their documented values", exactly(websiteExamplesCase))
+test("website snippets produce their documented values", fn() => exactArithmetic(websiteExamplesCase))

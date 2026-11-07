@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of functional_showcase.osp. Layout blocks, whitespace
 // application (`range 1 6`), and `\x => …` lambdas lower to the SAME canonical
 // AST as the Default braces/parens/`fn(x) =>` form — byte-identical IR
@@ -18,21 +32,6 @@ add : (int, int) -> int
 add (a, b) = a + b 
 
 mul (a, b) = a * b 
-
-(** Prints `label = value` for `work`, valued under exact arithmetic. *)
-printExact (label, work) = print "${label} = ${toString (exactArithmetic work)}"
-
-(** The chained scalar pipe `3 |> inc |> dbl |> sq`. *)
-chainedPipe () = 3 |> inc |> dbl |> sq
-
-(** The inline-lambda pipe `10 |> (x + 5)`. *)
-inlineAddPipe () = 10 |> \x => x + 5
-
-(** The twice-chained lambda pipe `5 |> (+100)` then `x * 2`. *)
-twiceChainedPipe () = 5 |> (\x => x + 100 ) |> (\x => x * 2 )
-
-(** A fold from `seed` by `step` over 1..`hi`. *)
-foldOver (seed, step, hi) = range 1 hi |> fold seed step
 
 print "=== Functional Showcase ==="
 
@@ -66,17 +65,27 @@ exactArithmetic (\() =>
     range 1 6 |> filter lt3 |> map dbl |> forEach print)
 
 (** 7. fold (sum, product) *)
-printExact ("sum 1..5", \() => foldOver (0, add, 6))
-printExact ("prod 1..4", \() => foldOver (1, mul, 5))
+s = exactArithmetic (\() =>
+    range 1 6 |> fold 0 add)
+print "sum 1..5 = ${toString s}"
+p = exactArithmetic (\() =>
+    range 1 5 |> fold 1 mul)
+print "prod 1..4 = ${toString p}"
 
 (** 8. chained pipes on a single value *)
-printExact ("3|>inc|>dbl|>sq", chainedPipe)
+r = exactArithmetic (\() =>
+    3 |> inc |> dbl |> sq)
+print "3|>inc|>dbl|>sq = ${toString r}"
 
 (** 9. inline lambda in pipeline *)
-printExact ("10|>(x+5)", inlineAddPipe)
+lr = exactArithmetic (\() =>
+    10 |> \x => x + 5) 
+print "10|>(x+5) = ${toString lr}"
 
 (** 10. lambda chained twice (parens around each so the chain doesn't get swallowed) *)
-printExact ("5|>+100|>*2", twiceChainedPipe)
+lr2 = exactArithmetic (\() =>
+    5 |> (\x => x + 100 ) |> (\x => x * 2 ))
+print "5|>+100|>*2 = ${toString lr2}"
 
 print "=== Showcase Complete ==="
 // Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
@@ -86,10 +95,12 @@ print "=== Showcase Complete ==="
 (** Verify direct helpers and every scalar pipe from the showcase. *)
 scalarPipelineCase () =
     checkAll "functional scalar pipelines" [
-        structuralEquals [dbl 7, sq 5, inc 9, add (7, 8), mul (6, 7), chainedPipe ()] [14, 25, 10, 15, 42, 64],
-        structuralEquals [inlineAddPipe (), twiceChainedPipe ()] [15, 210],
+        dbl 7 == 14, sq 5 == 25, inc 9 == 10,
         gt4 5, !gt4 4, lt3 2, !lt3 3,
-        even 2, !even 3
+        even 2, !even 3, add (7, 8) == 15, mul (6, 7) == 42,
+        (3 |> inc |> dbl |> sq) == 64,
+        (10 |> \x => x + 5 ) == 15,
+        (5 |> (\x => x + 100 ) |> (\x => x * 2 )) == 210
     ]
 
 (** Verify range boundaries and both map/filter orderings through folds. *)
@@ -101,14 +112,23 @@ iteratorPipelineCase () =
     names = range 0 3 |> map (\i => "n${i}") |> toList
     halves = range 1 3 |> map (\i => toFloat i * 0.5) |> toList
     checkAll "functional iterator pipelines" [
-        structuralEquals [(range 1 6 |> fold 0 add), (range 1 5 |> fold 1 mul), (range 5 5 |> fold 9 add)] [15, 24, 9],
+        (range 1 6 |> fold 0 add) == 15,
+        (range 1 5 |> fold 1 mul) == 24,
+        (range 5 5 |> fold 9 add) == 9,
         (range ((0 - 2) ) 3 |> fold 0 add) == 0,
         (range 1 5 |> map dbl |> filter gt4 |> fold 0 add) == 14,
-        structuralEquals [(range 1 6 |> filter lt3 |> map dbl |> fold 0 add), (small |> fold 0 add)] [6, 3],
-        structuralEquals [(doubled |> fold 0 add), (doubled |> filter gt4 |> fold 0 add)] [20, 14],
-        structuralEquals [(doubled |> fold 0 add), (source |> fold 0 add), listLength kept] [20, 10, 2],
-        structuralEquals [(listGet kept 0 ?: 0), (listGet kept 1 ?: 0), listLength (range 3 3 |> toList)] [6, 8, 0],
-        structuralEquals [listLength (source |> toList), listLength names] [4, 3],
+        (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6,
+        (small |> fold 0 add) == 3,
+        (doubled |> fold 0 add) == 20,
+        (doubled |> filter gt4 |> fold 0 add) == 14,
+        (doubled |> fold 0 add) == 20,
+        (source |> fold 0 add) == 10,
+        listLength kept == 2,
+        (listGet kept 0 ?: 0) == 6,
+        (listGet kept 1 ?: 0) == 8,
+        listLength (range 3 3 |> toList) == 0,
+        listLength (source |> toList) == 4,
+        listLength names == 3,
         (listGet names 2 ?: "none") == "n2",
         (listGet halves 1 ?: 9.5) == 1.0
     ]
@@ -133,9 +153,12 @@ lambdaOverloadCase () =
     curriedJoin = \a => \b => a + b
     sum = \(a, b) => a + b 
     checkAll "a let-bound lambda picks its overload from its use" [
-        structuralEquals [join ("os", "prey"), join ("", "x")] ["osprey", "x"],
-        structuralEquals [curriedJoin "os" "prey", curriedJoin "a" ""] ["osprey", "a"],
-        structuralEquals [sum (20, 22), length (join ("ab", "cde"))] [42, 5]
+        join ("os", "prey") == "osprey",
+        join ("", "x") == "x",
+        curriedJoin "os" "prey" == "osprey",
+        curriedJoin "a" "" == "a",
+        sum (20, 22) == 42,
+        length (join ("ab", "cde")) == 5
     ]
 
 (** A handler region inside a closure, driven by a list literal the closure
@@ -149,7 +172,9 @@ closureHandlerCase () =
         forEachList keys (\k => perform Tally.note k)
         seen
     checkAll "a handler inside a closure keeps its captured state" [
-        structuralEquals [digits [1, 2, 3], digits [7], digits [9, 0]] [123, 7, 90]
+        digits [1, 2, 3] == 123,
+        digits [7] == 7,
+        digits [9, 0] == 90
     ]
 
 (** A function VALUE that returns a tagged collection. A named function recovers
@@ -162,18 +187,6 @@ closureHandlerCase () =
     [BUILTIN-MAP-GET], [TYPE-GENERICS-FN]. *)
 applyTo f x = f x
 
-(** The element at `i` of `xs`, or a double sentinel when it is missing. *)
-doubleAt (xs, i) = listGet xs i ?: 9.5
-
-(** The element at `i` of `xs`, or a text sentinel when it is missing. *)
-textAt (xs, i) = listGet xs i ?: "none"
-
-(** Row `i` of the nested collection `rows`, or an int sentinel row. *)
-rowAt (rows, i) = listGet rows i ?: [99]
-
-(** Element `j` of row `i` of `rows`, or an int sentinel. *)
-nestedAt (rows, i, j) = listGet (rowAt (rows, i)) j ?: 99
-
 functionValueCollectionCase () =
     floatsFrom = \n => [n, n * 2.0]
     namesFrom = \s => [s, s + "!"]
@@ -182,15 +195,20 @@ functionValueCollectionCase () =
     takeCaptured = \i => listGet captured i
     groupsFrom = \k => mapSet (Map ()) k [1.5, 2.5]
     checkAll "a function value returning a collection keeps its element type" [
-        structuralEquals [doubleAt (floatsFrom 0.5, 0), doubleAt (floatsFrom 0.5, 1)] [0.5, 1.0],
-        structuralEquals [(takeCaptured 0 ?: 9.5), (takeCaptured 2 ?: 9.5)] [0.25, 0.75],
-        doubleAt (applyTo floatsFrom 1.25, 0) == 1.25,
-        doubleAt (mapGet (groupsFrom "k") "k" ?: [9.0], 1) == 2.5,
-        structuralEquals [listLength (floatsFrom 0.5), nestedAt (nestedFrom 1, 0, 1)] [2, 2],
-        nestedAt (nestedFrom 1, 1, 0) == 3,
-        structuralEquals [listLength (rowAt (nestedFrom 1, 0)), mapLength (groupsFrom "k")] [2, 1],
-        structuralEquals [textAt (namesFrom "os", 0), textAt (namesFrom "os", 1)] ["os", "os!"],
-        textAt (applyTo namesFrom "hi", 1) == "hi!"
+        (listGet (floatsFrom 0.5) 0 ?: 9.5) == 0.5,
+        (listGet (floatsFrom 0.5) 1 ?: 9.5) == 1.0,
+        listLength (floatsFrom 0.5) == 2,
+        (listGet (namesFrom "os") 0 ?: "none") == "os",
+        (listGet (namesFrom "os") 1 ?: "none") == "os!",
+        (listGet (listGet (nestedFrom 1) 0 ?: [99]) 1 ?: 99) == 2,
+        (listGet (listGet (nestedFrom 1) 1 ?: [99]) 0 ?: 99) == 3,
+        listLength (listGet (nestedFrom 1) 0 ?: [99]) == 2,
+        (takeCaptured 0 ?: 9.5) == 0.25,
+        (takeCaptured 2 ?: 9.5) == 0.75,
+        (listGet (applyTo floatsFrom 1.25) 0 ?: 9.5) == 1.25,
+        (listGet (applyTo namesFrom "hi") 1 ?: "none") == "hi!",
+        (listGet (mapGet (groupsFrom "k") "k" ?: [9.0]) 1 ?: 9.5) == 2.5,
+        mapLength (groupsFrom "k") == 1
     ]
 
 (** A GENERIC function whose body is a lambda. One closure cell has one ABI and
@@ -237,14 +255,22 @@ genericReturnedLambdaCase () =
                 runs := runs + value 
         agreesFromSeed ()
     checkAll "a generic function's returned lambda specialises per call site" [
-        structuralEquals [identityValue 7, alwaysNumber "z", alwaysNumber false] [7, 42, 42],
-        structuralEquals [sharedIdentity 5, seedAgrees, runs] [5, 1, 1],
-        structuralEquals [identityValue "os", alwaysText 0] ["os", "kept"],
-        structuralEquals [alwaysText "any", alwaysText 1.5] ["kept", "kept"],
+        identityValue 7 == 7,
+        identityValue "os" == "os",
+        identityValue 2.5 == 2.5,
+        identityValue true,
+        alwaysText 0 == "kept",
+        alwaysText "any" == "kept",
+        alwaysText 1.5 == "kept",
+        alwaysNumber "z" == 42,
+        alwaysNumber false == 42,
+        sharedIdentity 5 == 5,
         sharedIdentity "across a function boundary" == "across a function boundary",
-        structuralEquals [identityValue 2.5, sharedIdentity 1.25] [2.5, 1.25],
-        identityValue true
+        sharedIdentity 1.25 == 1.25,
+        seedAgrees == 1,
+        runs == 1
     ]
+
 
 (** A still-generic lambda has no closure cell, so it is applied inline at each
     call site. Its environment is nonetheless fixed where it was DEFINED. A
@@ -297,22 +323,33 @@ genericLambdaEnvironmentCase () =
             total := total + value
     perform Tally.note 5
     checkAll "a generic lambda keeps the environment it was defined in" [
-        structuralEquals [fold staged "" (\(acc, s) => acc + s), afterStage] ["0:kept-51:kept-5", "kept-6"],
-        structuralEquals [shadowedStage, tagged 1, tagged "s"] ["shadow0:kept-71:kept-7", "1:kept-7", "s:kept-7"],
-        structuralEquals [fromFactory 1, fromFactory "s", later] ["kept-8", "kept-8", "kept-9"],
-        structuralEquals [shadowed, runThunk (\() => tagged 2)] ["1:kept-7/shadow", "2:kept-7"],
+        fold staged "" (\(acc, s) => acc + s) == "0:kept-51:kept-5",
+        afterStage == "kept-6",
+        shadowedStage == "shadow0:kept-71:kept-7",
+        tagged 1 == "1:kept-7",
+        tagged "s" == "s:kept-7",
+        fromFactory 1 == "kept-8",
+        fromFactory "s" == "kept-8",
+        later == "kept-9",
+        shadowed == "1:kept-7/shadow",
+        runThunk (\() => tagged 2) == "2:kept-7",
         runThunk (\() => runThunk (\() => tagged "deep")) == "deep:kept-7",
-        structuralEquals [runThunk (\() => fromFactory 3), runThunk (\() => viaLambda 4)] ["kept-8", "4:kept-7"],
-        structuralEquals [viaAlias "a", viaShout 4, viaShout "b", inArm] ["a", "4!", "b!", "arm:kept-7"],
-        structuralEquals [report "t", runThunk (\() => report true)] ["t=5", "true=5"],
+        runThunk (\() => fromFactory 3) == "kept-8",
+        runThunk (\() => viaLambda 4) == "4:kept-7",
         viaAlias 3 == 3,
-        rebound
+        viaAlias "a" == "a",
+        viaShout 4 == "4!",
+        viaShout "b" == "b!",
+        rebound,
+        inArm == "arm:kept-7",
+        report "t" == "t=5",
+        runThunk (\() => report true) == "true=5"
     ]
 
-test "scalar pipes preserve helper composition" (exactly scalarPipelineCase)
-test "iterator pipes preserve order and boundaries" (exactly iteratorPipelineCase)
-test "a let-bound lambda picks its arithmetic overload from its use" (exactly lambdaOverloadCase)
-test "a handler inside a closure keeps its captured state" (exactly closureHandlerCase)
-test "a function value returning a collection keeps its element type" (exactly functionValueCollectionCase)
-test "a generic function's returned lambda specialises per call site" (exactly genericReturnedLambdaCase)
-test "a generic lambda keeps the environment it was defined in" (exactly genericLambdaEnvironmentCase)
+test "scalar pipes preserve helper composition" (\() => exactArithmetic (scalarPipelineCase))
+test "iterator pipes preserve order and boundaries" (\() => exactArithmetic (iteratorPipelineCase))
+test "a let-bound lambda picks its arithmetic overload from its use" (\() => exactArithmetic (lambdaOverloadCase))
+test "a handler inside a closure keeps its captured state" (\() => exactArithmetic (closureHandlerCase))
+test "a function value returning a collection keeps its element type" (\() => exactArithmetic (functionValueCollectionCase))
+test "a generic function's returned lambda specialises per call site" (\() => exactArithmetic (genericReturnedLambdaCase))
+test "a generic lambda keeps the environment it was defined in" (\() => exactArithmetic (genericLambdaEnvironmentCase))

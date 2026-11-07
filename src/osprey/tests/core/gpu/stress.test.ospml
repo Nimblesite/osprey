@@ -2,6 +2,19 @@
 andThen (result, next) = match result
     Success value => next value
     Error message => Error(message = message)
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
+withIndices (n, work) = match gpuIota n
+    Success value => work value
+    Error message => check "index allocation" "success" (toString message)
+iotaError n = match gpuIota n
+    Success value => "unexpected success ${gpuLength value}"
+    Error message => toString message
 // GPU stress, scale and numeric-edge workloads: million-element pipelines,
 // two-dozen-pass chains, buffers rebuilt from their own output, and the
 // checked-arithmetic boundaries where a `?:` fallback is all that stands
@@ -99,28 +112,36 @@ rebuild (buf, n) = match n
 (** Run a million elements through map, fold, filter and scan. *)
 megaPipelineCase () = withIndices (1000000, \idx => megaPipelineWith (idx))
 megaPipelineWith (idx) =
-    withBuffer (gpuMap(idx, square), \squares => withBuffer (gpuFilter(idx, isEven), \evens => withBuffer (gpuScan(idx, 0, tally), \running => checkAll "million-element pipeline" [
-                    gpuEquals(gpuFold(squares, 0, tally), 333332833333500000), gpuEquals(gpuFold(idx, 0, tally), 499999500000),
-                    structuralEquals [gpuLength idx, gpuLength squares] [1000000, 1000000],
-                    structuralEquals [(gpuGet (idx, 0) ?: -1), (gpuGet (idx, 999999) ?: -1)] [0, 999999],
-                    structuralEquals [(gpuGet (squares, 999999) ?: -1), gpuLength evens] [999998000001, 500000],
-                    structuralEquals [(gpuGet (evens, 499999) ?: -1), gpuLength running] [999998, 1000000],
-                    structuralEquals [(gpuGet (running, 0) ?: -1), (gpuGet (running, 1) ?: -1)] [0, 1],
-                    (gpuGet (running, 999999) ?: -1) == 499999500000,
-                    (gpuGet (idx, 1000000) ?: -1) == -1, gpuEquals(gpuFold(evens, 0, tally), 249999500000)
-                ])))
+    match gpuMap(idx, square)
+        Success squares =>
+            match gpuFilter(idx, isEven)
+                Success evens =>
+                    match gpuScan(idx, 0, tally)
+                        Success running =>
+                            checkAll "million-element pipeline" [
+                                gpuSatisfies(gpuFold(squares, 0, tally), \uploaded120 => (uploaded120) == 333332833333500000), gpuSatisfies(gpuFold(idx, 0, tally), \uploaded119 => (uploaded119) == 499999500000), gpuLength idx == 1000000, gpuLength squares == 1000000, (gpuGet (idx, 0) ?: -1) == 0, (gpuGet (idx, 999999) ?: -1) == 999999,
+                                (gpuGet (idx, 1000000) ?: -1) == -1, (gpuGet (squares, 999999) ?: -1) == 999998000001, gpuLength evens == 500000, gpuSatisfies(gpuFold(evens, 0, tally), \uploaded118 => (uploaded118) == 249999500000), (gpuGet (evens, 499999) ?: -1) == 999998, gpuLength running == 1000000, (gpuGet (running, 0) ?: -1) == 0,
+                                (gpuGet (running, 1) ?: -1) == 1, (gpuGet (running, 999999) ?: -1) == 499999500000
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Read a 100k prefix sum, a seeded scan and a scan of a scan. *)
 scanScaleCase () = withIndices (100000, \indices100000 => scanScaleWith (indices100000))
 scanScaleWith (indices100000) =
-    withBuffer (gpuScan(indices100000, 0, tally), \running => withBuffer (gpuScan(indices100000, 1000, tally), \seeded => withBuffer (gpuScan(running, 0, tally), \twice => checkAll "100k prefix scan" [
-                    structuralEquals [(gpuGet (running, 0) ?: -1), (gpuGet (running, 1) ?: -1)] [0, 1],
-                    structuralEquals [(gpuGet (running, 2) ?: -1), (gpuGet (running, 99999) ?: -1)] [3, 4999950000],
-                    structuralEquals [gpuLength running, (gpuGet (seeded, 0) ?: -1)] [100000, 1000],
-                    structuralEquals [(gpuGet (seeded, 99999) ?: -1), gpuLength seeded] [4999951000, 100000],
-                    structuralEquals [(gpuGet (twice, 0) ?: -1), (gpuGet (twice, 2) ?: -1)] [0, 4],
-                    (gpuGet (twice, 99999) ?: -1) == 166666666650000,
-                    gpuEquals(gpuFold(running, 0, minI), 0)
-                ])))
+    match gpuScan(indices100000, 0, tally)
+        Success running =>
+            match gpuScan(indices100000, 1000, tally)
+                Success seeded =>
+                    match gpuScan(running, 0, tally)
+                        Success twice =>
+                            checkAll "100k prefix scan" [
+                                (gpuGet (running, 0) ?: -1) == 0, (gpuGet (running, 1) ?: -1) == 1, (gpuGet (running, 2) ?: -1) == 3, (gpuGet (running, 99999) ?: -1) == 4999950000, gpuLength running == 100000, (gpuGet (seeded, 0) ?: -1) == 1000, (gpuGet (seeded, 99999) ?: -1) == 4999951000, gpuLength seeded == 100000,
+                                (gpuGet (twice, 0) ?: -1) == 0, (gpuGet (twice, 2) ?: -1) == 4, (gpuGet (twice, 99999) ?: -1) == 166666666650000, gpuSatisfies(gpuFold(running, 0, minI), \uploaded114 => (uploaded114) == 0)
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Run sixteen climbs then sixteen descents, back to back. *)
 longChainCase () = withIndices (100000, \indices100000 => longChainWith (indices100000))
 longChainWith (indices100000) =
@@ -131,155 +152,227 @@ longChainWith (indices100000) =
         |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower))
         |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) )
     match climbResult
-        Success value =>
-            climbed = value
+        Success climbed =>
             cancelResult = (gpuMap(climbed, lower) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower))
                 |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) )
-            withBuffer (cancelResult, \cancelled => checkAll "twenty-four chained passes" [
-                    structuralEquals [gpuLength climbed, (gpuGet (climbed, 0) ?: -1)] [100000, 8],
-                    structuralEquals [(gpuGet (climbed, 99999) ?: -1), gpuLength cancelled] [100007, 100000],
-                    structuralEquals [(gpuGet (cancelled, 0) ?: -1), (gpuGet (cancelled, 99999) ?: -1)] [0, 99999],
-                    gpuEquals(gpuFold(climbed, 0, tally), 5000750000),
-                    gpuEquals(gpuFold(cancelled, 0, tally), 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), \uploaded109 => gpuEquals(gpuFold(uploaded109, 0, tally), 2499950000))
-                ])
-        Error message => gpuFailed message
+            match cancelResult
+                Success cancelled =>
+                    checkAll "twenty-four chained passes" [
+                        gpuLength climbed == 100000, (gpuGet (climbed, 0) ?: -1) == 8, (gpuGet (climbed, 99999) ?: -1) == 100007, gpuSatisfies(gpuFold(climbed, 0, tally), \uploaded111 => (uploaded111) == 5000750000), gpuLength cancelled == 100000, (gpuGet (cancelled, 0) ?: -1) == 0, (gpuGet (cancelled, 99999) ?: -1) == 99999,
+                        gpuSatisfies(gpuFold(cancelled, 0, tally), \uploaded110 => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), \uploaded109 => gpuSatisfies(gpuFold(uploaded109, 0, tally), \uploaded144 => (uploaded144) == 2499950000))
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Rebuild a buffer from its own materialized output six times. *)
 rebuildCase () = withIndices (20000, \indices20000 => withIndices (0, \indices0 => withIndices (1, \indices1 => rebuildWith (indices20000, indices0, indices1))))
 rebuildWith (indices20000, indices0, indices1) =
-    withBuffer (rebuild (indices20000, 6), \settled => withBuffer (fromGpu (settled), \back => withBuffer (toGpu (back), \again => checkAll "six host round trips" [
-                    structuralEquals [gpuLength settled, (gpuGet (settled, 0) ?: -1)] [20000, 6],
-                    structuralEquals [(gpuGet (settled, 19999) ?: -1), listLength back] [20005, 20000],
-                    structuralEquals [(listGet (back, 0) ?: -1), (listGet (back, 19999) ?: -1)] [6, 20005],
-                    gpuLength again == 20000,
-                    gpuEquals(gpuFold(settled, 0, tally), 200110000),
-                    gpuEquals(gpuFold(again, 0, tally), 200110000), gpuSatisfies(gpuFilter(again, isEven), \uploaded106 => gpuEquals(gpuFold(uploaded106, 0, tally), 100050000)),
-                    gpuSatisfies (rebuild (indices0, 4), \checked0 => gpuLength (checked0) == 0), gpuSatisfies (rebuild (indices1, 3), \checked0 => gpuEquals(gpuFold(checked0, 0, tally), 3))
-                ])))
+    match rebuild (indices20000, 6)
+        Success read0 =>
+            settled = read0
+            match fromGpu (settled)
+                Success back =>
+                    match toGpu (back)
+                        Success again =>
+                            checkAll "six host round trips" [
+                                gpuLength settled == 20000, (gpuGet (settled, 0) ?: -1) == 6, (gpuGet (settled, 19999) ?: -1) == 20005, gpuSatisfies(gpuFold(settled, 0, tally), \uploaded108 => (uploaded108) == 200110000), listLength back == 20000, (listGet (back, 0) ?: -1) == 6, (listGet (back, 19999) ?: -1) == 20005,
+                                gpuLength again == 20000, gpuSatisfies(gpuFold(again, 0, tally), \uploaded107 => (uploaded107) == 200110000), gpuSatisfies(gpuFilter(again, isEven), \uploaded106 => gpuSatisfies(gpuFold(uploaded106, 0, tally), \uploaded143 => (uploaded143) == 100050000)),
+                                gpuSatisfies (rebuild (indices0, 4), \checked0 => gpuLength (checked0) == 0), gpuSatisfies (rebuild (indices1, 3), \checked0 => gpuSatisfies(gpuFold(checked0, 0, tally), \uploaded105 => (uploaded105) == 3))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Compact 500k elements and then compact that result. *)
 compactionScaleCase () = withIndices (500000, \src => compactionScaleWith (src))
 compactionScaleWith (src) =
-    withBuffer (gpuFilter(src, isEven), \evens => withBuffer (gpuFilter(evens, isQuad), \quads => checkAll "500k compaction" [
-                structuralEquals [gpuLength evens, (gpuGet (evens, 0) ?: -1)] [250000, 0],
-                structuralEquals [(gpuGet (evens, 249999) ?: -1), gpuLength quads] [499998, 125000],
-                (gpuGet (quads, 124999) ?: -1) == 499996,
-                gpuEquals(gpuFold(evens, 0, tally), 62499750000), (gpuGet (evens, 250000) ?: -1) == -1,
-                gpuEquals(gpuFold(quads, 0, tally), 31249750000), gpuLengthIs(gpuFilter(src, isNeg), 0), gpuLengthIs(gpuFilter(src, isPos), 499999),
-                gpuSatisfies(gpuFilter(src, isPos), \uploaded98 => gpuEquals(gpuFold(uploaded98, 0, tally), 124999750000)), gpuSatisfies(gpuFilter(src, isPos), \uploaded97 => gpuLengthIs(gpuFilter(uploaded97, isNeg), 0))
-            ]))
+    match gpuFilter(src, isEven)
+        Success evens =>
+            match gpuFilter(evens, isQuad)
+                Success quads =>
+                    checkAll "500k compaction" [
+                        gpuLength evens == 250000, gpuSatisfies(gpuFold(evens, 0, tally), \uploaded102 => (uploaded102) == 62499750000), (gpuGet (evens, 0) ?: -1) == 0, (gpuGet (evens, 249999) ?: -1) == 499998, (gpuGet (evens, 250000) ?: -1) == -1, gpuLength quads == 125000, (gpuGet (quads, 124999) ?: -1) == 499996,
+                        gpuSatisfies(gpuFold(quads, 0, tally), \uploaded101 => (uploaded101) == 31249750000), gpuSatisfies(gpuFilter(src, isNeg), \uploaded100 => gpuLength (uploaded100) == 0), gpuSatisfies(gpuFilter(src, isPos), \uploaded99 => gpuLength (uploaded99) == 499999),
+                        gpuSatisfies(gpuFilter(src, isPos), \uploaded98 => gpuSatisfies(gpuFold(uploaded98, 0, tally), \uploaded142 => (uploaded142) == 124999750000)), gpuSatisfies(gpuFilter(src, isPos), \uploaded97 => gpuSatisfies(gpuFilter(uploaded97, isNeg), \uploaded141 => gpuLength (uploaded141) == 0))
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Multiply 250k buffers, truncate ragged pairs and cancel. *)
 zipScaleCase () = withIndices (250000, \idx => withIndices (1000000, \indices1000000 => withIndices (3, \indices3 => withIndices (0, \indices0 => zipScaleWith (idx, indices1000000, indices3, indices0)))))
 zipScaleWith (idx, indices1000000, indices3, indices0) =
-    withBuffer (gpuZipWith (idx, idx, product), \squares => withBuffer (gpuZipWith (indices1000000, indices3, tally), \ragged => withBuffer (gpuMap(idx, negate), \uploaded96 => withBuffer (gpuZipWith (idx,uploaded96, tally), \cancel => checkAll "250k zip" [
-                        gpuEquals(gpuFold(squares, 0, tally), 5208302083375000),
-                        structuralEquals [gpuLength squares, (gpuGet (squares, 249999) ?: -1)] [250000, 62499500001],
-                        structuralEquals [gpuLength ragged, gpuLength cancel] [3, 250000],
-                        (gpuGet (cancel, 249999) ?: -1) == 0,
-                        gpuEquals(gpuFold(ragged, 0, tally), 6),
-                        gpuLengthIs(gpuZipWith (indices3, indices1000000, tally), 3), gpuLengthIs(gpuZipWith (idx, indices0, tally), 0), gpuEquals(gpuFold(cancel, 0, tally), 0)
-                    ]))))
+    match gpuZipWith (idx, idx, product)
+        Success squares =>
+            match gpuZipWith (indices1000000, indices3, tally)
+                Success ragged =>
+                    match gpuMap(idx, negate)
+                        Success uploaded96 =>
+                            match gpuZipWith (idx,uploaded96, tally)
+                                Success cancel =>
+                                    checkAll "250k zip" [
+                                        gpuSatisfies(gpuFold(squares, 0, tally), \uploaded93 => (uploaded93) == 5208302083375000), gpuLength squares == 250000, (gpuGet (squares, 249999) ?: -1) == 62499500001, gpuLength ragged == 3, gpuSatisfies(gpuFold(ragged, 0, tally), \uploaded92 => (uploaded92) == 6),
+                                        gpuSatisfies(gpuZipWith (indices3, indices1000000, tally), \uploaded91 => gpuLength (uploaded91) == 3), gpuSatisfies(gpuZipWith (idx, indices0, tally), \uploaded90 => gpuLength (uploaded90) == 0), gpuLength cancel == 250000, gpuSatisfies(gpuFold(cancel, 0, tally), \uploaded89 => (uploaded89) == 0),
+                                        (gpuGet (cancel, 249999) ?: -1) == 0
+                                    ]
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Run 500 whole-buffer passes over 10k elements, then split the pass count in half without changing the answer. *)
 simulationCase () = withIndices (10000, \indices10000 => withIndices (0, \indices0 => withIndices (1, \indices1 => simulationWith (indices10000, indices0, indices1))))
 simulationWith (indices10000, indices0, indices1) =
-    withBuffer (simulate (indices10000, 500), \settled => withBuffer (simulate (indices10000, 250), \uploaded7 => withBuffer (simulate (uploaded7, 250), \staged => checkAll "500-pass simulation" [
-                    gpuEquals(gpuFold(settled, 0, tally), 54995000),
-                    structuralEquals [gpuLength settled, (gpuGet (settled, 0) ?: -1)] [10000, 500],
-                    structuralEquals [(gpuGet (settled, 9999) ?: -1), (gpuGet (staged, 9999) ?: -1)] [10499, 10499],
-                    gpuEquals(gpuFold(staged, 0, tally), 54995000),
-                    gpuLengthIs(simulate (indices0, 100), 0), gpuSatisfies(simulate (indices1, 7), \uploaded4 => gpuEquals(gpuFold(uploaded4, 0, tally), 7))
-                ])))
+    match simulate (indices10000, 500)
+        Success settled =>
+            match simulate (indices10000, 250)
+                Success uploaded7 =>
+                    match simulate (uploaded7, 250)
+                        Success staged =>
+                            checkAll "500-pass simulation" [
+                                gpuSatisfies(gpuFold(settled, 0, tally), \uploaded88 => (uploaded88) == 54995000), gpuLength settled == 10000, (gpuGet (settled, 0) ?: -1) == 500, (gpuGet (settled, 9999) ?: -1) == 10499, gpuSatisfies(gpuFold(staged, 0, tally), \uploaded87 => (uploaded87) == 54995000), (gpuGet (staged, 9999) ?: -1) == 10499,
+                                gpuSatisfies(simulate (indices0, 100), \uploaded5 => gpuLength (uploaded5) == 0), gpuSatisfies(simulate (indices1, 7), \uploaded4 => gpuSatisfies(gpuFold(uploaded4, 0, tally), \uploaded86 => (uploaded86) == 7))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Walk each checked operator to the int edge and one step past: 20! fits and 21! does not, 2^62 fits and 2^63 does not, 3037000499 squares and its successor does not, and minInt cannot negate. *)
 overflowBoundaryCase () = withIndices (20, \indices20 => withIndices (21, \indices21 => withIndices (62, \indices62 => withIndices (63, \indices63 => overflowBoundaryWith (indices20, indices21, indices62, indices63)))))
 overflowBoundaryWith (indices20, indices21, indices62, indices63) =
-    withBuffer (gpuMap(indices20, bump), \uploaded84 => withBuffer (gpuFold(uploaded84, 1, prodSat), \fits => withBuffer (gpuMap(indices21, bump), \uploaded85 => withBuffer (gpuFold(uploaded85, 1, prodSat), \spills => withBuffer (toGpu ([3037000499, 3037000500]), \value => withBuffer (gpuMap(value, sqSat), \roots => withBuffer (toGpu ([minInt (), -1, 0, 1, maxInt ()]), \value => withBuffer (gpuMap(value, negSat), \edges => checkAll "checked overflow boundaries" [
-                                        fits == 2432902008176640000,
-                                        (gpuGet (roots, 0) ?: 0) == 9223372030926249001,
-                                        structuralEquals [(gpuGet (edges, 1) ?: 0), (gpuGet (edges, 2) ?: 0)] [1, 0],
-                                        spills == overflowMark (), gpuEquals(gpuFold(indices62, 1, doubleUp), 4611686018427387904), gpuSatisfies(gpuFold(indices63, 1, doubleUp), \uploaded80 => (uploaded80) == overflowMark ()),
-                                        (gpuGet (roots, 1) ?: 0) == overflowMark (), (gpuGet (edges, 0) ?: 0) == overflowMark (), (gpuGet (edges, 3) ?: 0) == -1,
-                                        (gpuGet (edges, 4) ?: 0) == -9223372036854775807, gpuSatisfies (toGpu ([maxInt ()]), \uploaded10 => gpuSatisfies(gpuFold(uploaded10, 0, addOr), \uploaded79 => (uploaded79) == maxInt ())),
-                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded9 => gpuSatisfies(gpuFold(uploaded9, 0, addOr), \uploaded78 => (uploaded78) == overflowMark ())),
-                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded8 => gpuSatisfies(gpuFold(uploaded8, 0, tally), \uploaded77 => (uploaded77) == maxInt ())),
-                                        gpuSatisfies (toGpu ([minInt ()]), \uploaded7 => gpuSatisfies(gpuMap(uploaded7, lowerSat), \uploaded76 => gpuSatisfies(gpuFold(uploaded76, 0, addOr), \uploaded137 => (uploaded137) == overflowMark ()))),
-                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded6 => gpuLengthIs(gpuFilter(uploaded6, isMax), 1))
-                                    ]))))))))
+    match gpuMap(indices20, bump)
+        Success uploaded84 =>
+            match gpuFold(uploaded84, 1, prodSat)
+                Success fits =>
+                    match gpuMap(indices21, bump)
+                        Success uploaded85 =>
+                            match gpuFold(uploaded85, 1, prodSat)
+                                Success spills =>
+                                    match toGpu ([3037000499, 3037000500])
+                                        Success value =>
+                                            match gpuMap(value, sqSat)
+                                                Success roots =>
+                                                    match toGpu ([minInt (), -1, 0, 1, maxInt ()])
+                                                        Success value =>
+                                                            match gpuMap(value, negSat)
+                                                                Success edges =>
+                                                                    checkAll "checked overflow boundaries" [
+                                                                        fits == 2432902008176640000, spills == overflowMark (), gpuSatisfies(gpuFold(indices62, 1, doubleUp), \uploaded81 => (uploaded81) == 4611686018427387904), gpuSatisfies(gpuFold(indices63, 1, doubleUp), \uploaded80 => (uploaded80) == overflowMark ()),
+                                                                        (gpuGet (roots, 0) ?: 0) == 9223372030926249001, (gpuGet (roots, 1) ?: 0) == overflowMark (), (gpuGet (edges, 0) ?: 0) == overflowMark (), (gpuGet (edges, 1) ?: 0) == 1, (gpuGet (edges, 2) ?: 0) == 0, (gpuGet (edges, 3) ?: 0) == -1,
+                                                                        (gpuGet (edges, 4) ?: 0) == -9223372036854775807, gpuSatisfies (toGpu ([maxInt ()]), \uploaded10 => gpuSatisfies(gpuFold(uploaded10, 0, addOr), \uploaded79 => (uploaded79) == maxInt ())),
+                                                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded9 => gpuSatisfies(gpuFold(uploaded9, 0, addOr), \uploaded78 => (uploaded78) == overflowMark ())),
+                                                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded8 => gpuSatisfies(gpuFold(uploaded8, 0, tally), \uploaded77 => (uploaded77) == maxInt ())),
+                                                                        gpuSatisfies (toGpu ([minInt ()]), \uploaded7 => gpuSatisfies(gpuMap(uploaded7, lowerSat), \uploaded76 => gpuSatisfies(gpuFold(uploaded76, 0, addOr), \uploaded137 => (uploaded137) == overflowMark ()))),
+                                                                        gpuSatisfies (toGpu ([maxInt (), 1]), \uploaded6 => gpuSatisfies(gpuFilter(uploaded6, isMax), \uploaded75 => gpuLength (uploaded75) == 1))
+                                                                    ]
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Cross the int edge part way through two thousand elements. *)
 saturationCase () = withIndices (2000, \indices2000 => saturationWith (indices2000))
 saturationWith (indices2000) =
-    withBuffer (gpuMap(indices2000, hugeScale), \bigs => withBuffer (gpuFilter(bigs, isMax), \saturated => checkAll "saturating accumulation" [
-                structuralEquals [gpuLength bigs, (gpuGet (bigs, 0) ?: -1)] [2000, 0],
-                structuralEquals [(gpuGet (bigs, 92) ?: -1), gpuLength saturated] [9200000000000000000, 1907],
-                (gpuGet (bigs, 93) ?: -1) == maxInt (), (gpuGet (bigs, 1999) ?: -1) == maxInt (), (gpuGet (saturated, 0) ?: -1) == maxInt (),
-                gpuSatisfies(gpuFold(bigs, 0, clampAdd), \uploaded72 => (uploaded72) == maxInt ()), gpuEquals(gpuFold(bigs, 0, tally), 9100000000000000000), gpuLengthIs(gpuFilter(bigs, isNeg), 0),
-                gpuLengthIs(gpuMap(bigs, isMax), 2000)
-            ]))
+    match gpuMap(indices2000, hugeScale)
+        Success bigs =>
+            match gpuFilter(bigs, isMax)
+                Success saturated =>
+                    checkAll "saturating accumulation" [
+                        gpuLength bigs == 2000, (gpuGet (bigs, 0) ?: -1) == 0, (gpuGet (bigs, 92) ?: -1) == 9200000000000000000, (gpuGet (bigs, 93) ?: -1) == maxInt (), (gpuGet (bigs, 1999) ?: -1) == maxInt (), gpuLength saturated == 1907, (gpuGet (saturated, 0) ?: -1) == maxInt (),
+                        gpuSatisfies(gpuFold(bigs, 0, clampAdd), \uploaded72 => (uploaded72) == maxInt ()), gpuSatisfies(gpuFold(bigs, 0, tally), \uploaded71 => (uploaded71) == 9100000000000000000), gpuSatisfies(gpuFilter(bigs, isNeg), \uploaded70 => gpuLength (uploaded70) == 0),
+                        gpuSatisfies(gpuMap(bigs, isMax), \uploaded69 => gpuLength (uploaded69) == 2000)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Carry a wholly negative buffer through every combinator. *)
 negativeCase () = withIndices (100000, \indices100000 => negativeWith (indices100000))
 negativeWith (indices100000) =
-    withBuffer (gpuMap(indices100000, negate), \negs => withBuffer (gpuMap(negs, negate), \restored => withBuffer (gpuScan(negs, 0, tally), \running => withBuffer (gpuScan(negs, 0, minI), \lows => checkAll "negative values at scale" [
-                        gpuEquals(gpuFold(negs, 0, tally), -4999950000),
-                        structuralEquals [gpuLength negs, (gpuGet (negs, 0) ?: 1)] [100000, 0],
-                        structuralEquals [(gpuGet (restored, 99999) ?: -1), (gpuGet (lows, 0) ?: 1)] [99999, 0],
-                        (gpuGet (negs, 99999) ?: 1) == -99999, gpuLengthIs(gpuFilter(negs, isNeg), 99999),
-                        gpuLengthIs(gpuFilter(negs, isPos), 0), gpuLengthIs(gpuFilter(negs, isEven), 50000),
-                        gpuSatisfies(gpuFilter(negs, isEven), \uploaded60 => gpuEquals(gpuFold(uploaded60, 0, tally), -2499950000)), gpuEquals(gpuFold(restored, 0, tally), 4999950000),
-                        (gpuGet (running, 1) ?: 1) == -1, (gpuGet (running, 99999) ?: 1) == -4999950000, (gpuGet (lows, 99999) ?: 1) == -99999, gpuSatisfies(gpuZipWith (negs, indices100000, tally), \uploaded58 => gpuEquals(gpuFold(uploaded58, 0, tally), 0)),
-                        gpuSatisfies(gpuMap(negs, absI), \uploaded57 => gpuEquals(gpuFold(uploaded57, 0, tally), 4999950000))
-                    ]))))
+    match gpuMap(indices100000, negate)
+        Success negs =>
+            match gpuMap(negs, negate)
+                Success restored =>
+                    match gpuScan(negs, 0, tally)
+                        Success running =>
+                            match gpuScan(negs, 0, minI)
+                                Success lows =>
+                                    checkAll "negative values at scale" [
+                                        gpuSatisfies(gpuFold(negs, 0, tally), \uploaded64 => (uploaded64) == -4999950000), gpuLength negs == 100000, (gpuGet (negs, 0) ?: 1) == 0, (gpuGet (negs, 99999) ?: 1) == -99999, gpuSatisfies(gpuFilter(negs, isNeg), \uploaded63 => gpuLength (uploaded63) == 99999),
+                                        gpuSatisfies(gpuFilter(negs, isPos), \uploaded62 => gpuLength (uploaded62) == 0), gpuSatisfies(gpuFilter(negs, isEven), \uploaded61 => gpuLength (uploaded61) == 50000),
+                                        gpuSatisfies(gpuFilter(negs, isEven), \uploaded60 => gpuSatisfies(gpuFold(uploaded60, 0, tally), \uploaded136 => (uploaded136) == -2499950000)), gpuSatisfies(gpuFold(restored, 0, tally), \uploaded59 => (uploaded59) == 4999950000), (gpuGet (restored, 99999) ?: -1) == 99999,
+                                        (gpuGet (running, 1) ?: 1) == -1, (gpuGet (running, 99999) ?: 1) == -4999950000, (gpuGet (lows, 0) ?: 1) == 0, (gpuGet (lows, 99999) ?: 1) == -99999, gpuSatisfies(gpuZipWith (negs, indices100000, tally), \uploaded58 => gpuSatisfies(gpuFold(uploaded58, 0, tally), \uploaded135 => (uploaded135) == 0)),
+                                        gpuSatisfies(gpuMap(negs, absI), \uploaded57 => gpuSatisfies(gpuFold(uploaded57, 0, tally), \uploaded134 => (uploaded134) == 4999950000))
+                                    ]
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Flip sign on every other element of a 200k buffer: the fold telescopes, the scan oscillates, squaring erases the signs. *)
 alternatingCase () = withIndices (200000, \indices200000 => alternatingWith (indices200000))
 alternatingWith (indices200000) =
-    withBuffer (gpuMap(indices200000, altSign), \alt => withBuffer (gpuScan(alt, 0, tally), \running => checkAll "alternating signs" [
-                gpuEquals(gpuFold(alt, 0, tally), -100000),
-                structuralEquals [gpuLength alt, (gpuGet (alt, 0) ?: 1), (gpuGet (alt, 2) ?: 0)] [200000, 0, 2],
-                structuralEquals [(gpuGet (running, 0) ?: 1), (gpuGet (running, 2) ?: 0)] [0, 1],
-                (gpuGet (alt, 1) ?: 0) == -1, (gpuGet (alt, 199999) ?: 0) == -199999, (gpuGet (running, 1) ?: 0) == -1,
-                (gpuGet (running, 3) ?: 0) == -2, (gpuGet (running, 199999) ?: 0) == -100000, gpuLengthIs(gpuFilter(alt, isNeg), 100000),
-                gpuSatisfies(gpuFilter(alt, isNeg), \uploaded52 => gpuEquals(gpuFold(uploaded52, 0, tally), -10000000000)), gpuLengthIs(gpuFilter(alt, isPos), 99999),
-                gpuSatisfies(gpuFilter(alt, isPos), \uploaded50 => gpuEquals(gpuFold(uploaded50, 0, tally), 9999900000)), gpuSatisfies(gpuMap(alt, absI), \uploaded49 => gpuEquals(gpuFold(uploaded49, 0, tally), 19999900000)),
-                gpuSatisfies(gpuMap(alt, square), \uploaded48 => gpuEquals(gpuFold(uploaded48, 0, tally), 2666646666700000)), gpuSatisfies(gpuZipWith (alt, alt, product), \uploaded47 => gpuEquals(gpuFold(uploaded47, 0, tally), 2666646666700000))
-            ]))
+    match gpuMap(indices200000, altSign)
+        Success alt =>
+            match gpuScan(alt, 0, tally)
+                Success running =>
+                    checkAll "alternating signs" [
+                        gpuSatisfies(gpuFold(alt, 0, tally), \uploaded54 => (uploaded54) == -100000), gpuLength alt == 200000, (gpuGet (alt, 0) ?: 1) == 0, (gpuGet (alt, 1) ?: 0) == -1, (gpuGet (alt, 2) ?: 0) == 2, (gpuGet (alt, 199999) ?: 0) == -199999, (gpuGet (running, 0) ?: 1) == 0, (gpuGet (running, 1) ?: 0) == -1,
+                        (gpuGet (running, 2) ?: 0) == 1, (gpuGet (running, 3) ?: 0) == -2, (gpuGet (running, 199999) ?: 0) == -100000, gpuSatisfies(gpuFilter(alt, isNeg), \uploaded53 => gpuLength (uploaded53) == 100000),
+                        gpuSatisfies(gpuFilter(alt, isNeg), \uploaded52 => gpuSatisfies(gpuFold(uploaded52, 0, tally), \uploaded133 => (uploaded133) == -10000000000)), gpuSatisfies(gpuFilter(alt, isPos), \uploaded51 => gpuLength (uploaded51) == 99999),
+                        gpuSatisfies(gpuFilter(alt, isPos), \uploaded50 => gpuSatisfies(gpuFold(uploaded50, 0, tally), \uploaded132 => (uploaded132) == 9999900000)), gpuSatisfies(gpuMap(alt, absI), \uploaded49 => gpuSatisfies(gpuFold(uploaded49, 0, tally), \uploaded131 => (uploaded131) == 19999900000)),
+                        gpuSatisfies(gpuMap(alt, square), \uploaded48 => gpuSatisfies(gpuFold(uploaded48, 0, tally), \uploaded130 => (uploaded130) == 2666646666700000)), gpuSatisfies(gpuZipWith (alt, alt, product), \uploaded47 => gpuSatisfies(gpuFold(uploaded47, 0, tally), \uploaded129 => (uploaded129) == 2666646666700000))
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Pin the empty buffer, the inverted extent and all-zeros. *)
 zeroDegenerateCase () = withIndices (0, \empty => withIndices (50000, \indices50000 => withIndices (1000000, \indices1000000 => zeroDegenerateWith (empty, indices50000, indices1000000))))
 zeroDegenerateWith (empty, indices50000, indices1000000) =
     inverted = iotaError (-1000000)
-    withBuffer (gpuMap(indices50000, (\_x => 0)), \zeros => checkAll "zero and empty at every combinator" [
-            structuralEquals [gpuLength empty, gpuLength zeros, (gpuGet (zeros, 49999) ?: -1)] [0, 50000, 0],
-            inverted == "gpu: buffer allocation: a negative element count",
-            iotaError (-7) == "gpu: buffer allocation: a negative element count",
-            gpuSatisfies (toGpu ([]), \(uploaded5: GpuBuffer<int>) => gpuLength (uploaded5) == 0), gpuEquals(gpuFold(empty, 42, tally), 42),
-            gpuLengthIs(gpuMap(empty, bump), 0), gpuLengthIs(gpuFilter(empty, isEven), 0), gpuLengthIs(gpuScan(empty, 0, tally), 0),
-            gpuLengthIs(gpuZipWith (empty, indices1000000, tally), 0), gpuLengthIs(gpuZipWith (indices1000000, empty, tally), 0), (gpuGet (empty, 0) ?: -1) == -1, gpuSatisfies (fromGpu (empty), \checked0 => listLength (checked0) == 0),
-            gpuSatisfies (fromGpu (empty), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded4 => gpuLength (uploaded4) == 0)), gpuEquals(gpuFold(zeros, 0, tally), 0),
-            gpuLengthIs(gpuFilter(zeros, isEven), 50000), gpuLengthIs(gpuFilter(zeros, isPos), 0), gpuSatisfies(gpuScan(zeros, 0, tally), \uploaded36 => (gpuGet (uploaded36, 49999) ?: -1) == 0),
-            gpuSatisfies(gpuZipWith (zeros, indices50000, product), \uploaded35 => gpuEquals(gpuFold(uploaded35, 0, tally), 0)), gpuSatisfies(gpuMap(zeros, square), \uploaded34 => gpuEquals(gpuFold(uploaded34, 0, tally), 0))
-        ])
+    match gpuMap(indices50000, (\_x => 0))
+        Success zeros =>
+            checkAll "zero and empty at every combinator" [
+                gpuLength empty == 0, inverted == "gpu: buffer allocation: a negative element count", gpuSatisfies (toGpu ([]), \(uploaded5: GpuBuffer<int>) => gpuLength (uploaded5) == 0), gpuSatisfies(gpuFold(empty, 42, tally), \uploaded45 => (uploaded45) == 42), iotaError (-7) == "gpu: buffer allocation: a negative element count",
+                gpuSatisfies(gpuMap(empty, bump), \uploaded44 => gpuLength (uploaded44) == 0), gpuSatisfies(gpuFilter(empty, isEven), \uploaded43 => gpuLength (uploaded43) == 0), gpuSatisfies(gpuScan(empty, 0, tally), \uploaded42 => gpuLength (uploaded42) == 0),
+                gpuSatisfies(gpuZipWith (empty, indices1000000, tally), \uploaded41 => gpuLength (uploaded41) == 0), gpuSatisfies(gpuZipWith (indices1000000, empty, tally), \uploaded40 => gpuLength (uploaded40) == 0), (gpuGet (empty, 0) ?: -1) == -1, gpuSatisfies (fromGpu (empty), \checked0 => listLength (checked0) == 0),
+                gpuSatisfies (fromGpu (empty), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded4 => gpuLength (uploaded4) == 0)), gpuLength zeros == 50000, gpuSatisfies(gpuFold(zeros, 0, tally), \uploaded39 => (uploaded39) == 0), (gpuGet (zeros, 49999) ?: -1) == 0,
+                gpuSatisfies(gpuFilter(zeros, isEven), \uploaded38 => gpuLength (uploaded38) == 50000), gpuSatisfies(gpuFilter(zeros, isPos), \uploaded37 => gpuLength (uploaded37) == 0), gpuSatisfies(gpuScan(zeros, 0, tally), \uploaded36 => (gpuGet (uploaded36, 49999) ?: -1) == 0),
+                gpuSatisfies(gpuZipWith (zeros, indices50000, product), \uploaded35 => gpuSatisfies(gpuFold(uploaded35, 0, tally), \uploaded128 => (uploaded128) == 0)), gpuSatisfies(gpuMap(zeros, square), \uploaded34 => gpuSatisfies(gpuFold(uploaded34, 0, tally), \uploaded127 => (uploaded127) == 0))
+            ]
+        Error message => check ("GPU operation", "success", toString message)
 (** Read one ahead, one behind and straight across a 100k buffer from inside kernels: each shift falls off exactly one end, and an out-of-range index is a visible Error rather than a silent zero. *)
 gatherBoundaryCase () = withIndices (100000, \src => gatherBoundaryWith (src))
 gatherBoundaryWith (src) =
-    withBuffer (gpuMap(src, (\i => gpuGet (src, (i + 1) ) ?: -7)), \ahead => withBuffer (gpuMap(src, (\i => gpuGet (src, (i - 1) ) ?: -7)), \behind => withBuffer (gpuMap(src, (\i => gpuGet (src, (99999 - i) ) ?: -7)), \mirror => checkAll "gathers at the buffer edges" [
-                    structuralEquals [(gpuGet (ahead, 0) ?: 0), (gpuGet (ahead, 99998) ?: 0)] [1, 99999],
-                    structuralEquals [(gpuGet (behind, 1) ?: 0), (gpuGet (behind, 99999) ?: 0)] [0, 99998],
-                    structuralEquals [(gpuGet (mirror, 0) ?: 0), (gpuGet (mirror, 99999) ?: 0)] [99999, 0],
-                    (gpuGet (src, 99999) ?: -1) == 99999,
-                    (gpuGet (ahead, 99999) ?: 0) == -7, gpuEquals(gpuFold(ahead, 0, tally), 4999949993), (gpuGet (behind, 0) ?: 0) == -7,
-                    gpuEquals(gpuFold(behind, 0, tally), 4999849994), gpuEquals(gpuFold(mirror, 0, tally), 4999950000),
-                    gpuLengthIs(gpuFilter(ahead, isNeg), 1), gpuLengthIs(gpuFilter(behind, isNeg), 1), (gpuGet (src, 100000) ?: -1) == -1, (gpuGet (src, 1000000) ?: -1) == -1, (gpuGet (src, -1) ?: -1) == -1,
-                    (gpuGet (src, minInt ()) ?: -1) == -1, (gpuGet (src, maxInt ()) ?: -1) == -1
-                ])))
+    match gpuMap(src, (\i => gpuGet (src, (i + 1) ) ?: -7))
+        Success ahead =>
+            match gpuMap(src, (\i => gpuGet (src, (i - 1) ) ?: -7))
+                Success behind =>
+                    match gpuMap(src, (\i => gpuGet (src, (99999 - i) ) ?: -7))
+                        Success mirror =>
+                            checkAll "gathers at the buffer edges" [
+                                (gpuGet (ahead, 0) ?: 0) == 1, (gpuGet (ahead, 99998) ?: 0) == 99999, (gpuGet (ahead, 99999) ?: 0) == -7, gpuSatisfies(gpuFold(ahead, 0, tally), \uploaded30 => (uploaded30) == 4999949993), (gpuGet (behind, 0) ?: 0) == -7, (gpuGet (behind, 1) ?: 0) == 0, (gpuGet (behind, 99999) ?: 0) == 99998,
+                                gpuSatisfies(gpuFold(behind, 0, tally), \uploaded29 => (uploaded29) == 4999849994), (gpuGet (mirror, 0) ?: 0) == 99999, (gpuGet (mirror, 99999) ?: 0) == 0, gpuSatisfies(gpuFold(mirror, 0, tally), \uploaded28 => (uploaded28) == 4999950000),
+                                gpuSatisfies(gpuFilter(ahead, isNeg), \uploaded27 => gpuLength (uploaded27) == 1), gpuSatisfies(gpuFilter(behind, isNeg), \uploaded26 => gpuLength (uploaded26) == 1), (gpuGet (src, 99999) ?: -1) == 99999, (gpuGet (src, 100000) ?: -1) == -1, (gpuGet (src, 1000000) ?: -1) == -1, (gpuGet (src, -1) ?: -1) == -1,
+                                (gpuGet (src, minInt ()) ?: -1) == -1, (gpuGet (src, maxInt ()) ?: -1) == -1
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Widen a 100k index buffer through the float combinators. *)
 floatScaleCase () = withIndices (100000, \indices100000 => floatScaleWith (indices100000))
 floatScaleWith (indices100000) =
-    withBuffer (gpuMap(indices100000, toFloat), \xs => withBuffer (gpuMap(xs, half), \halves => withBuffer (gpuMap(xs, negF), \flipped => withBuffer (gpuMap(xs, recip), \recips => checkAll "float buffers at scale" [
-                        gpuEquals(gpuFold(xs, 0.0, addF), 4999950000.0), gpuLength xs == 100000,
-                        structuralEquals [(gpuGet (xs, 0) ?: -1.0), (gpuGet (xs, 99999) ?: -1.0)] [0.0, 99999.0],
-                        structuralEquals [(gpuGet (halves, 3) ?: -1.0), (gpuGet (recips, 0) ?: -1.0)] [1.5, 0.0],
-                        structuralEquals [(gpuGet (recips, 1) ?: -1.0), (gpuGet (recips, 4) ?: -1.0)] [1.0, 0.25],
-                        toFloat 9007199254740992 == 9007199254740992.0,
-                        gpuEquals(gpuFold(halves, 0.0, addF), 2499975000.0),
-                        gpuEquals(gpuFold(flipped, 0.0, addF), -4999950000.0), (gpuGet (flipped, 99999) ?: 0.0) == -99999.0,
-                        gpuSatisfies(gpuScan(xs, 0.0, addF), \uploaded18 => (gpuGet (uploaded18, 99999) ?: -1.0) == 4999950000.0), gpuSatisfies(gpuZipWith (xs, flipped, addF), \uploaded17 => gpuEquals(gpuFold(uploaded17, 0.0, addF), 0.0)),
-                        gpuLengthIs(gpuFilter(xs, isPositiveF), 99999), toFloat 9007199254740993 == toFloat 9007199254740992, toFloat 9007199254740991 < toFloat 9007199254740992, toFloat (-9007199254740992) == -9007199254740992.0
-                    ]))))
+    match gpuMap(indices100000, toFloat)
+        Success xs =>
+            match gpuMap(xs, half)
+                Success halves =>
+                    match gpuMap(xs, negF)
+                        Success flipped =>
+                            match gpuMap(xs, recip)
+                                Success recips =>
+                                    checkAll "float buffers at scale" [
+                                        gpuSatisfies(gpuFold(xs, 0.0, addF), \uploaded21 => (uploaded21) == 4999950000.0), gpuLength xs == 100000, (gpuGet (xs, 0) ?: -1.0) == 0.0, (gpuGet (xs, 99999) ?: -1.0) == 99999.0, gpuSatisfies(gpuFold(halves, 0.0, addF), \uploaded20 => (uploaded20) == 2499975000.0),
+                                        (gpuGet (halves, 3) ?: -1.0) == 1.5, gpuSatisfies(gpuFold(flipped, 0.0, addF), \uploaded19 => (uploaded19) == -4999950000.0), (gpuGet (flipped, 99999) ?: 0.0) == -99999.0, (gpuGet (recips, 0) ?: -1.0) == 0.0, (gpuGet (recips, 1) ?: -1.0) == 1.0, (gpuGet (recips, 4) ?: -1.0) == 0.25,
+                                        gpuSatisfies(gpuScan(xs, 0.0, addF), \uploaded18 => (gpuGet (uploaded18, 99999) ?: -1.0) == 4999950000.0), gpuSatisfies(gpuZipWith (xs, flipped, addF), \uploaded17 => gpuSatisfies(gpuFold(uploaded17, 0.0, addF), \uploaded126 => (uploaded126) == 0.0)),
+                                        gpuSatisfies(gpuFilter(xs, isPositiveF), \uploaded16 => gpuLength (uploaded16) == 99999), toFloat 9007199254740992 == 9007199254740992.0, toFloat 9007199254740993 == toFloat 9007199254740992, toFloat 9007199254740991 < toFloat 9007199254740992, toFloat (-9007199254740992) == -9007199254740992.0
+                                    ]
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Make accumulation order observable: [GPU-FOLD] contracts the host backend to combine left-to-right, so a huge leading term absorbs every small one after it while the same terms reversed all survive — why the spec calls a non-associative combine backend-dependent. *)
 floatOrderCase () = withIndices (1001, \indices1001 => withIndices (100000, \indices100000 => floatOrderWith (indices1001, indices100000)))
 floatOrderWith (indices1001, indices100000) =
@@ -289,36 +382,76 @@ floatOrderWith (indices1001, indices100000) =
                 op == "/", lhs == 1.0
             ]
             -1.0
-    withBuffer (gpuMap(indices1001, toFloat), \xs => withBuffer (gpuMap(xs, headBig), \leading => withBuffer (gpuMap(xs, tailBig), \trailing => withBuffer (gpuFold(leading, 0.0, addF), \absorbed => withBuffer (gpuFold(trailing, 0.0, addF), \survived => withBuffer (gpuMap(indices100000, tenthOf), \uploaded15 => withBuffer (gpuFold(uploaded15, 0.0, addF), \tenths => checkAll "float accumulation order is observable" [
-                                    absorbed == hugeFloat (), survived == hugeFloat () + 1000.0, survived > absorbed,
-                                    survived - absorbed == 1000.0,
-                                    (gpuGet (leading, 1000) ?: 0.0) == 1.0,
-                                    gpuSatisfies (toGpu ([hugeFloat (), 1.0, 1.0, 1.0]), \uploaded3 => gpuSatisfies(gpuFold(uploaded3, 0.0, addF), \uploaded9 => (uploaded9) == hugeFloat ())),
-                                    gpuSatisfies (toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \uploaded2 => gpuSatisfies(gpuFold(uploaded2, 0.0, addF), \uploaded8 => (uploaded8) > hugeFloat ())),
-                                    gpuSatisfies (toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), \uploaded7 => (uploaded7) - hugeFloat () == 4.0)), (gpuGet (leading, 0) ?: 0.0) == hugeFloat (),
-                                    (gpuGet (trailing, 1000) ?: 0.0) == hugeFloat (), gpuSatisfies(gpuScan(leading, 0.0, addF), \uploaded6 => (gpuGet (uploaded6, 1000) ?: 0.0) == hugeFloat ()), tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0
-                                ])))))))
+    match gpuMap(indices1001, toFloat)
+        Success xs =>
+            match gpuMap(xs, headBig)
+                Success leading =>
+                    match gpuMap(xs, tailBig)
+                        Success trailing =>
+                            match gpuFold(leading, 0.0, addF)
+                                Success absorbed =>
+                                    match gpuFold(trailing, 0.0, addF)
+                                        Success survived =>
+                                            match gpuMap(indices100000, tenthOf)
+                                                Success uploaded15 =>
+                                                    match gpuFold(uploaded15, 0.0, addF)
+                                                        Success tenths =>
+                                                            checkAll "float accumulation order is observable" [
+                                                                absorbed == hugeFloat (), survived == hugeFloat () + 1000.0, survived > absorbed, survived - absorbed == 1000.0, gpuSatisfies (toGpu ([hugeFloat (), 1.0, 1.0, 1.0]), \uploaded3 => gpuSatisfies(gpuFold(uploaded3, 0.0, addF), \uploaded9 => (uploaded9) == hugeFloat ())),
+                                                                gpuSatisfies (toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \uploaded2 => gpuSatisfies(gpuFold(uploaded2, 0.0, addF), \uploaded8 => (uploaded8) > hugeFloat ())),
+                                                                gpuSatisfies (toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), \uploaded7 => (uploaded7) - hugeFloat () == 4.0)), (gpuGet (leading, 0) ?: 0.0) == hugeFloat (), (gpuGet (leading, 1000) ?: 0.0) == 1.0,
+                                                                (gpuGet (trailing, 1000) ?: 0.0) == hugeFloat (), gpuSatisfies(gpuScan(leading, 0.0, addF), \uploaded6 => (gpuGet (uploaded6, 1000) ?: 0.0) == hugeFloat ()), tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0
+                                                            ]
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Run 400 float passes over the canonical [GPU-CONVERT] seed. *)
 floatChurnCase () = withIndices (8, \indices8 => withIndices (0, \indices0 => floatChurnWith (indices8, indices0)))
 floatChurnWith (indices8, indices0) =
-    withBuffer (gpuMap(indices8, toFloat), \uploaded4 => withBuffer (mix (uploaded4, 400), \mixed => withBuffer (gpuFold(mixed, 0.0, addF), \total => checkAll "400-pass float churn" [
-                    total > 1627.8, total < 1627.9, gpuLength mixed == 8, (gpuGet (mixed, 0) ?: 0.0) > 0.0, (gpuGet (mixed, 7) ?: 0.0) > (gpuGet (mixed, 0) ?: 0.0), gpuLengthIs(gpuFilter(mixed, isPositiveF), 8),
-                    gpuSatisfies(gpuMap(indices0, toFloat), \uploaded2 => gpuLengthIs(mix (uploaded2, 50), 0)),
-                    gpuSatisfies(gpuMap(indices8, toFloat), \uploaded1 => gpuSatisfies(mix (uploaded1, 0), \uploaded1 => gpuEquals(gpuFold(uploaded1, 0.0, addF), 28.0)))
-                ])))
-test ("a million elements map, fold, filter and scan in one pipeline", exactly megaPipelineCase)
-test ("a 100k prefix scan matches its closed form", exactly scanScaleCase)
-test ("twenty-four dependent map passes stay exact", exactly longChainCase)
-test ("a buffer rebuilt from its own output six times stays exact", exactly rebuildCase)
-test ("half a million elements compact and compact again", exactly compactionScaleCase)
-test ("quarter-million-element zips multiply, truncate and cancel", exactly zipScaleCase)
-test ("five hundred simulation passes stay exact", exactly simulationCase)
-test ("checked arithmetic marks the exact overflow boundary", exactly overflowBoundaryCase)
-test ("a saturating accumulation freezes instead of wrapping", exactly saturationCase)
-test ("negative buffers survive every combinator", exactly negativeCase)
-test ("alternating signs telescope through fold, scan and filter", exactly alternatingCase)
-test ("zero and empty buffers are defined everywhere", exactly zeroDegenerateCase)
-test ("gathers report every out-of-range index as an error", exactly gatherBoundaryCase)
-test ("float buffers keep their bits at scale", exactly floatScaleCase)
-test ("float accumulation order changes the sum", exactly floatOrderCase)
-test ("float churn keeps double words through 400 passes", exactly floatChurnCase)
+    match gpuMap(indices8, toFloat)
+        Success uploaded4 =>
+            match mix (uploaded4, 400)
+                Success mixed =>
+                    match gpuFold(mixed, 0.0, addF)
+                        Success total =>
+                            checkAll "400-pass float churn" [
+                                total > 1627.8, total < 1627.9, gpuLength mixed == 8, (gpuGet (mixed, 0) ?: 0.0) > 0.0, (gpuGet (mixed, 7) ?: 0.0) > (gpuGet (mixed, 0) ?: 0.0), gpuSatisfies(gpuFilter(mixed, isPositiveF), \uploaded3 => gpuLength (uploaded3) == 8),
+                                gpuSatisfies(gpuMap(indices0, toFloat), \uploaded2 => gpuSatisfies(mix (uploaded2, 50), \uploaded2 => gpuLength (uploaded2) == 0)),
+                                gpuSatisfies(gpuMap(indices8, toFloat), \uploaded1 => gpuSatisfies(mix (uploaded1, 0), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), \uploaded124 => (uploaded124) == 28.0)))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+test ("a million elements map, fold, filter and scan in one pipeline", \() => exactArithmetic (megaPipelineCase))
+test ("a 100k prefix scan matches its closed form", \() => exactArithmetic (scanScaleCase))
+test ("twenty-four dependent map passes stay exact", \() => exactArithmetic (longChainCase))
+test ("a buffer rebuilt from its own output six times stays exact", \() => exactArithmetic (rebuildCase))
+test ("half a million elements compact and compact again", \() => exactArithmetic (compactionScaleCase))
+test ("quarter-million-element zips multiply, truncate and cancel", \() => exactArithmetic (zipScaleCase))
+test ("five hundred simulation passes stay exact", \() => exactArithmetic (simulationCase))
+test ("checked arithmetic marks the exact overflow boundary", \() => exactArithmetic (overflowBoundaryCase))
+test ("a saturating accumulation freezes instead of wrapping", \() => exactArithmetic (saturationCase))
+test ("negative buffers survive every combinator", \() => exactArithmetic (negativeCase))
+test ("alternating signs telescope through fold, scan and filter", \() => exactArithmetic (alternatingCase))
+test ("zero and empty buffers are defined everywhere", \() => exactArithmetic (zeroDegenerateCase))
+test ("gathers report every out-of-range index as an error", \() => exactArithmetic (gatherBoundaryCase))
+test ("float buffers keep their bits at scale", \() => exactArithmetic (floatScaleCase))
+test ("float accumulation order changes the sum", \() => exactArithmetic (floatOrderCase))
+test ("float churn keeps double words through 400 passes", \() => exactArithmetic (floatChurnCase))

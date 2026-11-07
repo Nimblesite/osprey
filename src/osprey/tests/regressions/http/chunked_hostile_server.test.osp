@@ -157,51 +157,43 @@ fn framingCutShort(client) = forEachList([
     "0\r\nX-Trailer: yes\r\n", "0\r\nX-One: 1\r\nX-Two: 2\r\n"
 ], fn(framing) => truncated(client, framing))
 
-/// Every well-formed framing paired with the body it must decode to.
-fn wellFormedBodies(client) = forEachList([
-    { framing: "0\r\n\r\n", body: "" },
-    { framing: "00000\r\n\r\n", body: "" },
-    { framing: "5\r\nhello\r\n0\r\n\r\n", body: "hello" },
-    { framing: "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", body: "hello world" },
-    { framing: "1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n", body: "abcd" },
-    { framing: "a\r\n0123456789\r\n0\r\n\r\n", body: "0123456789" },
-    { framing: "A\r\n0123456789\r\n0\r\n\r\n", body: "0123456789" },
-    { framing: "0005\r\nhello\r\n000\r\n\r\n", body: "hello" },
-    { framing: "00000000000000000000005\r\nhello\r\n0\r\n\r\n", body: "hello" },
-    { framing: "5;name=value\r\nhello\r\n0;last\r\n\r\n", body: "hello" },
-    { framing: "5 ;name\r\nhello\r\n0\t;last\r\n\r\n", body: "hello" },
-    { framing: "5  \r\nhello\r\n0 \r\n\r\n", body: "hello" },
-    { framing: "5;a\tb\r\nhello\r\n0\r\n\r\n", body: "hello" },
-    { framing: "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", body: "abc" },
-    { framing: "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n", body: "abc" },
-    { framing: "8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", body: "a\r\n0\r\n\r\n" },
-    { framing: "2\r\n\r\n\r\n0\r\n\r\n", body: "\r\n" },
-    { framing: "2\r\né\r\n0\r\n\r\n", body: "é" },
-    { framing: "3\r\nabc\r\n0\r\n\r\nleft over", body: "abc" }
-], fn(row) => accepts(client, row.framing, row.body))
-
-/// Checks each listed path answers `want` when posted the same `framing`.
-fn headerEcho(client, framing, want, rows) = forEachList(rows, fn(row) => check(row.label, want, posted(client, row.path, framing)))
+fn wellFormedBodies(client) = {
+    accepts(client, "0\r\n\r\n", "")
+    accepts(client, "00000\r\n\r\n", "")
+    accepts(client, "5\r\nhello\r\n0\r\n\r\n", "hello")
+    accepts(client, "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", "hello world")
+    accepts(client, "1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n", "abcd")
+    accepts(client, "a\r\n0123456789\r\n0\r\n\r\n", "0123456789")
+    accepts(client, "A\r\n0123456789\r\n0\r\n\r\n", "0123456789")
+    accepts(client, "0005\r\nhello\r\n000\r\n\r\n", "hello")
+    accepts(client, "00000000000000000000005\r\nhello\r\n0\r\n\r\n", "hello")
+    accepts(client, "5;name=value\r\nhello\r\n0;last\r\n\r\n", "hello")
+    accepts(client, "5 ;name\r\nhello\r\n0\t;last\r\n\r\n", "hello")
+    accepts(client, "5  \r\nhello\r\n0 \r\n\r\n", "hello")
+    accepts(client, "5;a\tb\r\nhello\r\n0\r\n\r\n", "hello")
+    accepts(client, "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", "abc")
+    accepts(client, "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n", "abc")
+    accepts(client, "8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", "a\r\n0\r\n\r\n")
+    accepts(client, "2\r\n\r\n\r\n0\r\n\r\n", "\r\n")
+    accepts(client, "2\r\né\r\n0\r\n\r\n", "é")
+    accepts(client, "3\r\nabc\r\n0\r\n\r\nleft over", "abc")
+}
 
 fn whichResponsesAreChunked(client) = {
     let framing = "2\r\nhi\r\n0\r\n\r\n"
     let hostile = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
-    headerEcho(client, framing, "status=200 body=hi", [
-        { label: "lower-case header", path: "/lower" },
-        { label: "upper-case header", path: "/upper" },
-        { label: "padded value", path: "/padded" },
-        { label: "chunked last", path: "/gzip-chunked" },
-        { label: "trailing comma", path: "/trailing-comma" },
-        { label: "empty line after", path: "/empty-line-after" }
-    ])
-    headerEcho(client, hostile, "status=200 body=${hostile}", [
-        { label: "coding beats length", path: "/gzip-length" },
-        { label: "named header only", path: "/x-te" },
-        { label: "another header's value", path: "/note" },
-        { label: "chunked not last", path: "/chunked-gzip" },
-        { label: "a longer word", path: "/notchunked" },
-        { label: "no header", path: "/plain" }
-    ])
+    check("lower-case header", "status=200 body=hi", posted(client, "/lower", framing))
+    check("upper-case header", "status=200 body=hi", posted(client, "/upper", framing))
+    check("padded value", "status=200 body=hi", posted(client, "/padded", framing))
+    check("chunked last", "status=200 body=hi", posted(client, "/gzip-chunked", framing))
+    check("trailing comma", "status=200 body=hi", posted(client, "/trailing-comma", framing))
+    check("empty line after", "status=200 body=hi", posted(client, "/empty-line-after", framing))
+    check("coding beats length", "status=200 body=${hostile}", posted(client, "/gzip-length", hostile))
+    check("named header only", "status=200 body=${hostile}", posted(client, "/x-te", hostile))
+    check("another header's value", "status=200 body=${hostile}", posted(client, "/note", hostile))
+    check("chunked not last", "status=200 body=${hostile}", posted(client, "/chunked-gzip", hostile))
+    check("a longer word", "status=200 body=${hostile}", posted(client, "/notchunked", hostile))
+    check("no header", "status=200 body=${hostile}", posted(client, "/plain", hostile))
 }
 
 fn hostileThenValid(client) = {
@@ -254,40 +246,31 @@ fn bodiesPastTheBuffer(client) = {
     check("a lie after 16 KiB", "error=http response: chunked body: chunk size exceeds the remaining body", fetched(client, "/big-then-lie"))
 }
 
-/// Checks each listed path, posted its own framing, is refused for a malformed head line.
-fn malformedHead(client, rows) = forEachList(rows, fn(row) => check(row.label, "error=http response: head: malformed", posted(client, row.path, row.framing)))
-
 fn headsThatHideFraming(client) = {
+    let malformed = "error=http response: head: malformed"
     let hostile = "7FFFFFFF\r\nhi\r\n"
-    malformedHead(client, [
-        { label: "bare LF in a value", path: "/bare-lf", framing: hostile },
-        { label: "bare CR in a value", path: "/bare-cr", framing: "hello" },
-        { label: "space before the colon", path: "/spaced-name", framing: hostile },
-        { label: "a folded line", path: "/folded", framing: "2\r\nhi\r\n0\r\n\r\n" },
-        { label: "a line with no colon", path: "/no-colon", framing: "hello" },
-        { label: "a line with no name", path: "/no-name", framing: "hello" }
-    ])
+    check("bare LF in a value", malformed, posted(client, "/bare-lf", hostile))
+    check("bare CR in a value", malformed, posted(client, "/bare-cr", "hello"))
+    check("space before the colon", malformed, posted(client, "/spaced-name", hostile))
+    check("a folded line", malformed, posted(client, "/folded", "2\r\nhi\r\n0\r\n\r\n"))
+    check("a line with no colon", malformed, posted(client, "/no-colon", "hello"))
+    check("a line with no name", malformed, posted(client, "/no-name", "hello"))
     check("still serving", "status=200 body=alive", posted(client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
 }
 
-/// Checks every listed path is refused with the same fixed `expected` text.
-fn refusesPath(client, expected, request, rows) = forEachList(rows, fn(row) => check(row.label, expected, request(row.path)))
-
 fn statusesThatAreNotStatuses(client) = {
-    refusesPath(client, "error=http response: status line: not HTTP/1.x", fn(path) => fetched(client, path), [
-        { label: "four digits", path: "/four-digits" },
-        { label: "two digits", path: "/two-digits" },
-        { label: "our own negative code", path: "/negative" }
-    ])
+    let notHttp = "error=http response: status line: not HTTP/1.x"
+    check("four digits", notHttp, fetched(client, "/four-digits"))
+    check("two digits", notHttp, fetched(client, "/two-digits"))
+    check("our own negative code", notHttp, fetched(client, "/negative"))
     check("a real 404", "status=404 body=gone", posted(client, "/404-plain", "gone"))
 }
 
 fn lengthsThatLie(client) = {
-    refusesPath(client, "error=http response: body: invalid Content-Length", fn(path) => posted(client, path, "hello"), [
-        { label: "a second, different length", path: "/length-lie" },
-        { label: "a length that isn't one", path: "/length-junk" },
-        { label: "a negative length", path: "/length-negative" }
-    ])
+    let invalid = "error=http response: body: invalid Content-Length"
+    check("a second, different length", invalid, posted(client, "/length-lie", "hello"))
+    check("a length that isn't one", invalid, posted(client, "/length-junk", "hello"))
+    check("a negative length", invalid, posted(client, "/length-negative", "hello"))
     check("chunked ignores a lie", "status=200 body=hi", posted(client, "/two-lines", "2\r\nhi\r\n0\r\n\r\n"))
 }
 

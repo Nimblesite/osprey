@@ -11,6 +11,20 @@ divideResult (a, b) =
         true => Error(message = "division by zero")
         false => Success(value = value)
 
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of string_edge_cases.osp. Layout `match` arms, whitespace
 // application (`startsWith ""`), pipe chains, and a layout-block `main` body
 // lower to the SAME canonical AST as the Default braces/parens form —
@@ -34,42 +48,6 @@ divideResult (a, b) =
 (** A user-declared fallible function: its Error message must reach the arm. *)
 failWith : string -> Result int string
 failWith reason = Error(message = reason)
-
-(** Print a successful value between `open` and `close`; a failure is loud. *)
-showDelimited (open, close, label, result) =
-    match result
-        Success value => print "${label}=${open}${value}${close}\n"
-        Error _message => print "${label} FAILED\n"
-
-(** Print a successful `Result` as `<label>=<value>`; a failure is loud. *)
-showValue (label, result) = showDelimited ("", "", label, result)
-
-(** Same, with the value quoted: `<label>="<value>"`. *)
-showQuoted (label, result) = showDelimited ("\"", "\"", label, result)
-
-(** Print a rejected call as `<label> rejected`; a success is unexpected. *)
-showRejected (label, result) =
-    match result
-        Success _value => print "${label} unexpected\n"
-        Error _message => print "${label} rejected\n"
-
-(** Print a Result's real Error reason; a success is unexpected. *)
-showError (label, result) =
-    match result
-        Success _value => print "${label} unexpected\n"
-        Error message => print "${label}=${message}\n"
-
-(** Print a successful value, or the reason it failed. *)
-showOrFail (label, result) =
-    match result
-        Success value => print "${label}=${value}\n"
-        Error message => print "${label} FAILED: ${message}\n"
-
-(** Whether a fallible call failed with a non-empty diagnostic. *)
-rejected result =
-    match result
-        Success _value => false
-        Error message => message != ""
 // ---- isEmpty edges ----
 print "empty-emp=${"" |> isEmpty}\n"
 print "empty-x=${"x" |> isEmpty}\n"
@@ -92,81 +70,223 @@ print "trim-allws=\"${"   " |> trim}\"\n"
 print "trim-empty=\"${"" |> trim}\"\n"
 
 // ---- substring boundaries ----
-showQuoted ("sub-empty", substring "hi" 0 0)
-showQuoted ("sub-full", substring "hi" 0 2)
-showRejected ("sub-neg", substring "hi" ((0 - 1) ) 2)
-showRejected ("sub-over", substring "hi" 0 99)
-showRejected ("sub-inverted", substring "hi" 2 0)
+match substring "hi" 0 0
+    Success value   => print "sub-empty=\"${value}\"\n"
+    Error   _message => print "sub-empty FAILED\n"
+match substring "hi" 0 2
+    Success value   => print "sub-full=\"${value}\"\n"
+    Error   _message => print "sub-full FAILED\n"
+match substring "hi" ((0 - 1) ) 2
+    Success _value   => print "sub-neg unexpected\n"
+    Error   _message => print "sub-neg rejected\n"
+match substring "hi" 0 99
+    Success _value   => print "sub-over unexpected\n"
+    Error   _message => print "sub-over rejected\n"
+match substring "hi" 2 0
+    Success _value   => print "sub-inverted unexpected\n"
+    Error   _message => print "sub-inverted rejected\n"
 
 // ---- indexOf empty needle and not-found ----
-showValue ("idx-empty", indexOf "hello" "")
-showRejected ("idx-missing", indexOf "hello" "xyz")
+match indexOf "hello" ""
+    Success value   => print "idx-empty=${value}\n"
+    Error   _message => print "idx-empty FAILED\n"
+match indexOf "hello" "xyz"
+    Success _value   => print "idx-missing unexpected\n"
+    Error   _message => print "idx-missing rejected\n"
 
 // ---- replace empty needle rejected ----
-showRejected ("rep-empty", replace "hello" "" "x")
+match replace "hello" "" "x"
+    Success _value   => print "rep-empty unexpected\n"
+    Error   _message => print "rep-empty rejected\n"
 // replace shrinking
-showQuoted ("rep-shrink", replace "hello" "l" "")
+match replace "hello" "l" ""
+    Success value   => print "rep-shrink=\"${value}\"\n"
+    Error   _message => print "rep-shrink FAILED\n"
 
 // ---- repeat n=0 and n<0 ----
-showQuoted ("rep0", repeat "ab" 0)
-showRejected ("rep-neg", repeat "ab" ((0 - 1) ))
+match repeat "ab" 0
+    Success value   => print "rep0=\"${value}\"\n"
+    Error   _message => print "rep0 FAILED\n"
+match repeat "ab" ((0 - 1) )
+    Success _value   => print "rep-neg unexpected\n"
+    Error   _message => print "rep-neg rejected\n"
 
 // ---- padStart / padEnd empty fill rejected ----
-showRejected ("padS-empty", padStart "hi" 5 "")
-showRejected ("padE-empty", padEnd "hi" 5 "")
+match padStart "hi" 5 ""
+    Success _value   => print "padS-empty unexpected\n"
+    Error   _message => print "padS-empty rejected\n"
+match padEnd "hi" 5 ""
+    Success _value   => print "padE-empty unexpected\n"
+    Error   _message => print "padE-empty rejected\n"
 // target <= len → no padding
-showQuoted ("padS-noop", padStart "hi" 1 "x")
+match padStart "hi" 1 "x"
+    Success value   => print "padS-noop=\"${value}\"\n"
+    Error   _message => print "padS-noop FAILED\n"
 // multi-char fill cycles
-showQuoted ("padS-multi", padStart "42" 5 "ab")
+match padStart "42" 5 "ab"
+    Success value   => print "padS-multi=\"${value}\"\n"
+    Error   _message => print "padS-multi FAILED\n"
 
 // ---- parseFloat rejects junk ----
-showRejected ("pf-empty", parseFloat "")
-showRejected ("pf-trailing", parseFloat "3.14x")
-showRejected ("pf-space", parseFloat " 3.14")
-showRejected ("pf-nan", parseFloat "nan")
-showRejected ("pf-hex", parseFloat "0x1p2")
-showRejected ("pf-infinite", parseFloat "1e9999")
+match parseFloat ""
+    Success _value   => print "pf-empty unexpected\n"
+    Error   _message => print "pf-empty rejected\n"
+match parseFloat "3.14x"
+    Success _value   => print "pf-trailing unexpected\n"
+    Error   _message => print "pf-trailing rejected\n"
+match parseFloat " 3.14"
+    Success _value   => print "pf-space unexpected\n"
+    Error   _message => print "pf-space rejected\n"
+match parseFloat "nan"
+    Success _value   => print "pf-nan unexpected\n"
+    Error   _message => print "pf-nan rejected\n"
+match parseFloat "0x1p2"
+    Success _value   => print "pf-hex unexpected\n"
+    Error   _message => print "pf-hex rejected\n"
+match parseFloat "1e9999"
+    Success _value   => print "pf-infinite unexpected\n"
+    Error   _message => print "pf-infinite rejected\n"
 
 // ---- parseInt overflow ----
-showRejected ("pi-overflow", parseInt "99999999999999999999")
-showValue ("pi-min", parseInt "-9223372036854775808")
-showRejected ("pi-leading-space", parseInt " 42")
+match parseInt "99999999999999999999"
+    Success _value   => print "pi-overflow unexpected\n"
+    Error   _message => print "pi-overflow rejected\n"
+match parseInt "-9223372036854775808"
+    Success value   => print "pi-min=${value}\n"
+    Error   _message => print "pi-min FAILED\n"
+match parseInt " 42"
+    Success _value   => print "pi-leading-space unexpected\n"
+    Error   _message => print "pi-leading-space rejected\n"
 
 // ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
 // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
 print "byteLen=${byteLength("héllo")}\n"
-showOrFail ("byteAt1", byteAt "héllo" 1)
-showError ("byteAt-oob", byteAt "héllo" 99)
-showOrFail ("cpAt1", codePointAt "héllo" 1)
-showError ("cpAt-mid", codePointAt "héllo" 2)
-showOrFail ("cpWidth", codePointWidth 128512)
-showError ("cpWidth-surrogate", codePointWidth 55296)
-showOrFail ("fromCp", fromCodePoint 128512)
-showError ("fromCp-bad", fromCodePoint 2000000)
+match byteAt "héllo" 1
+    Success value   => print "byteAt1=${value}\n"
+    Error   message => print "byteAt1 FAILED: ${message}\n"
+match byteAt "héllo" 99
+    Success _value   => print "byteAt-oob unexpected\n"
+    Error   message => print "byteAt-oob=${message}\n"
+match codePointAt "héllo" 1
+    Success value   => print "cpAt1=${value}\n"
+    Error   message => print "cpAt1 FAILED: ${message}\n"
+match codePointAt "héllo" 2
+    Success _value   => print "cpAt-mid unexpected\n"
+    Error   message => print "cpAt-mid=${message}\n"
+match codePointWidth 128512
+    Success value   => print "cpWidth=${value}\n"
+    Error   message => print "cpWidth FAILED: ${message}\n"
+match codePointWidth 55296
+    Success _value   => print "cpWidth-surrogate unexpected\n"
+    Error   message => print "cpWidth-surrogate=${message}\n"
+match fromCodePoint 128512
+    Success value   => print "fromCp=${value}\n"
+    Error   message => print "fromCp FAILED: ${message}\n"
+match fromCodePoint 2000000
+    Success _value   => print "fromCp-bad unexpected\n"
+    Error   message => print "fromCp-bad=${message}\n"
 // U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
 // [BUILTIN-STRING-FROMCODEPOINT] representation.
-showError ("fromCp-nul", fromCodePoint 0)
+match fromCodePoint 0
+    Success _value   => print "fromCp-nul unexpected\n"
+    Error   message => print "fromCp-nul=${message}\n"
 // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
 match fromCodePoint 233
-    Success value => showOrFail ("roundtrip", codePointAt value 0)
-    Error message => print "roundtrip FAILED: ${message}\n"
+    Success value   =>
+        match codePointAt value 0
+            Success value   => print "roundtrip=${value}\n"
+            Error   message => print "roundtrip FAILED: ${message}\n"
+    Error   message => print "roundtrip FAILED: ${message}\n"
 
 // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
-showError ("pi-msg", parseInt "oops")
-exactArithmetic (\() => showError ("div-msg", divideResult (10, 0)))
-showError ("user-msg", failWith "custom boom")
+match parseInt "oops"
+    Success _value   => print "pi-msg unexpected\n"
+    Error   message => print "pi-msg=${message}\n"
+exactArithmetic (\() =>
+    match divideResult (10, 0)
+        Success _value   => print "div-msg unexpected\n"
+        Error   message => print "div-msg=${message}\n")
+match failWith "custom boom"
+    Success _value   => print "user-msg unexpected\n"
+    Error   message => print "user-msg=${message}\n"
 
 print "=== Edge Cases Complete ===\n"
 
 (** Re-evaluate successful boundaries, rejected inputs, cursor values, and payloads. *)
 stringEdgeCase () =
     negativeOne = (0 - 1) 
+    substringNegative = match substring "hi" negativeOne 2
+        Success _value => false
+        Error message => message != ""
+    substringOverrun = match substring "hi" 0 99
+        Success _value => false
+        Error message => message != ""
+    substringInverted = match substring "hi" 2 0
+        Success _value => false
+        Error message => message != ""
+    indexMissing = match indexOf "hello" "xyz"
+        Success _value => false
+        Error message => message != ""
+    replaceEmpty = match replace "hello" "" "x"
+        Success _value => false
+        Error message => message != ""
+    repeatNegative = match repeat "ab" negativeOne
+        Success _value => false
+        Error message => message != ""
+    padStartEmpty = match padStart "hi" 5 ""
+        Success _value => false
+        Error message => message != ""
+    padEndEmpty = match padEnd "hi" 5 ""
+        Success _value => false
+        Error message => message != ""
+    emptyFloat = match parseFloat ""
+        Success _value => false
+        Error message => message != ""
+    trailingFloat = match parseFloat "3.14x"
+        Success _value => false
+        Error message => message != ""
+    spacedFloat = match parseFloat " 3.14"
+        Success _value => false
+        Error message => message != ""
+    nanFloat = match parseFloat "nan"
+        Success _value => false
+        Error message => message != ""
+    hexFloat = match parseFloat "0x1p2"
+        Success _value => false
+        Error message => message != ""
+    infiniteFloat = match parseFloat "1e9999"
+        Success _value => false
+        Error message => message != ""
+    integerOverflow = match parseInt "99999999999999999999"
+        Success _value => false
+        Error message => message != ""
+    integerLeadingSpace = match parseInt " 42"
+        Success _value => false
+        Error message => message != ""
+    byteOutOfBounds = match byteAt "héllo" 99
+        Success _value => false
+        Error message => message != ""
+    codePointMidSequence = match codePointAt "héllo" 2
+        Success _value => false
+        Error message => message != ""
+    surrogateRejected = match codePointWidth 55296
+        Success _value => false
+        Error message => message != ""
+    invalidCodePoint = match fromCodePoint 2000000
+        Success _value => false
+        Error message => message != ""
+    nulCodePoint = match fromCodePoint 0
+        Success _value => false
+        Error message => message != ""
     roundTrip = match fromCodePoint 233
         Success value => (codePointAt value 0 ?: 0) == 233
         Error _message => false
     customPayload = match failWith "custom boom"
         Success _value => false
         Error message => message == "custom boom"
+    divisionRejected = match divideResult (10, 0)
+        Success _value => false
+        Error message => message != ""
 
     checkAll "total string boundary values" [
         isEmpty "",
@@ -175,47 +295,56 @@ stringEdgeCase () =
         endsWith "abc" "",
         !(startsWith "hi" "hello"),
         !(endsWith "hi" "hello"),
-        structuralEquals [take "hi" ((0 - 5) ), take "hi" 99, drop "hi" ((0 - 5) )] ["", "hi", "hi"],
-        structuralEquals [drop "hi" 99, trim "   ", trim ""] ["", "", ""],
-        structuralEquals [(substring "hi" 0 0 ?: "missing"), (substring "hi" 0 2 ?: "missing")] ["", "hi"],
-        structuralEquals [(replace "hello" "l" "" ?: "missing"), (repeat "ab" 0 ?: "missing")] ["heo", ""],
-        structuralEquals [(padStart "hi" 1 "x" ?: "missing"), (padStart "42" 5 "ab" ?: "missing")] ["hi", "aba42"],
-        (indexOf "hello" "" ?: negativeOne) == 0
+        take "hi" ((0 - 5) ) == "",
+        take "hi" 99 == "hi",
+        drop "hi" ((0 - 5) ) == "hi",
+        drop "hi" 99 == "",
+        trim "   " == "",
+        trim "" == "",
+        (substring "hi" 0 0 ?: "missing") == "",
+        (substring "hi" 0 2 ?: "missing") == "hi",
+        (indexOf "hello" "" ?: negativeOne) == 0,
+        (replace "hello" "l" "" ?: "missing") == "heo",
+        (repeat "ab" 0 ?: "missing") == "",
+        (padStart "hi" 1 "x" ?: "missing") == "hi",
+        (padStart "42" 5 "ab" ?: "missing") == "aba42"
     ]
     checkAll "rejected string inputs" [
-        rejected (substring "hi" negativeOne 2),
-        rejected (substring "hi" 0 99),
-        rejected (substring "hi" 2 0),
-        rejected (indexOf "hello" "xyz"),
-        rejected (replace "hello" "" "x"),
-        rejected (repeat "ab" negativeOne),
-        rejected (padStart "hi" 5 ""),
-        rejected (padEnd "hi" 5 ""),
-        rejected (parseFloat ""),
-        rejected (parseFloat "3.14x"),
-        rejected (parseFloat " 3.14"),
-        rejected (parseFloat "nan"),
-        rejected (parseFloat "0x1p2"),
-        rejected (parseFloat "1e9999"),
-        rejected (parseInt "99999999999999999999"),
-        rejected (parseInt " 42")
+        substringNegative,
+        substringOverrun,
+        substringInverted,
+        indexMissing,
+        replaceEmpty,
+        repeatNegative,
+        padStartEmpty,
+        padEndEmpty,
+        emptyFloat,
+        trailingFloat,
+        spacedFloat,
+        nanFloat,
+        hexFloat,
+        infiniteFloat,
+        integerOverflow,
+        integerLeadingSpace
     ]
     checkAll "cursor values and error payloads" [
-        structuralEquals [byteLength "héllo", (byteAt "héllo" 1 ?: 0)] [6, 195],
-        structuralEquals [(codePointAt "héllo" 1 ?: 0), (codePointWidth 128512 ?: 0)] [233, 4],
-        rejected (byteAt "héllo" 99),
-        rejected (codePointAt "héllo" 2),
-        rejected (codePointWidth 55296),
+        byteLength "héllo" == 6,
+        (byteAt "héllo" 1 ?: 0) == 195,
+        byteOutOfBounds,
+        (codePointAt "héllo" 1 ?: 0) == 233,
+        codePointMidSequence,
+        (codePointWidth 128512 ?: 0) == 4,
+        surrogateRejected,
         (fromCodePoint 128512 ?: "missing") == "😀",
-        rejected (fromCodePoint 2000000),
-        rejected (fromCodePoint 0),
+        invalidCodePoint,
+        nulCodePoint,
         roundTrip,
         (parseInt "-9223372036854775808" ?: 0) == (((0 - 9223372036854775807) - 1) ),
         customPayload,
-        rejected (divideResult (10, 0))
+        divisionRejected
     ]
 
-test "string edge cases preserve values and error payloads" (exactly stringEdgeCase)
+test "string edge cases preserve values and error payloads" (\() => exactArithmetic (stringEdgeCase))
 
 (** [STRING-INTERPOLATION] Rendering: "Integers, floats, and booleans use their
     normal scalar rendering"; [BUILTIN-TOSTRING] "Uses the same accepted types and
@@ -232,15 +361,24 @@ interpolationScalarCase () =
     // Integers: no thousands separator, no sign for a positive, an explicit
     // "-" for a negative, and the two 64-bit extremes spelled in full.
     checkAll "integers render identically in a hole and in toString" [
-        structuralEquals ["${0}", "${1}", "${42}", "${negativeSeven}"] ["0", "1", "42", "-7"],
-        structuralEquals ["${intMax}", "${intMin}", toString 0] ["9223372036854775807", "-9223372036854775808", "0"],
-        structuralEquals [toString 42, toString negativeSeven, toString intMax] ["42", "-7", "9223372036854775807"],
+        "${0}" == "0",
+        "${1}" == "1",
+        "${42}" == "42",
+        "${negativeSeven}" == "-7",
+        "${intMax}" == "9223372036854775807",
+        "${intMin}" == "-9223372036854775808",
+        toString 0 == "0",
+        toString 42 == "42",
+        toString negativeSeven == "-7",
+        toString intMax == "9223372036854775807",
         toString intMin == "-9223372036854775808",
         "${0}" == toString 0,
         "${negativeSeven}" == toString negativeSeven,
         "${intMax}" == toString intMax,
         "${intMin}" == toString intMin,
-        structuralEquals [length "${0}", length "${negativeSeven}", length "${intMin}"] [1, 2, 20],
+        length "${0}" == 1,
+        length "${negativeSeven}" == 2,
+        length "${intMin}" == 20,
         "${0}" != "0.0",
         "${1}" != "true"
     ]
@@ -249,27 +387,52 @@ interpolationScalarCase () =
     // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat 7 == 7.0 and
     // toFloat (-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll "floats and booleans render with their scalar spelling" [
-        structuralEquals ["${0.0}", "${1.5}", "${3.5}", "${2.0}"] ["0.0", "1.5", "3.5", "2.0"],
-        structuralEquals ["${100000.0}", "${0.0 - 0.25}", "${1.5 + 2.5}"] ["100000.0", "-0.25", "4.0"],
-        structuralEquals ["${1.5 * 2.0}", toString 0.0, toString 3.5, "${toFloat 7}"] ["3.0", "0.0", "3.5", "7.0"],
-        structuralEquals ["${toFloat 0}", "${toFloat negativeSeven}", "${true}"] ["0.0", "-7.0", "true"],
-        structuralEquals ["${false}", toString true, toString false, "${1 == 1}"] ["false", "true", "false", "true"],
-        structuralEquals ["${1 != 1}", "${!(1 == 2)}"] ["false", "true"],
+        "${0.0}" == "0.0",
+        "${1.5}" == "1.5",
+        "${3.5}" == "3.5",
+        "${2.0}" == "2.0",
+        "${100000.0}" == "100000.0",
+        "${0.0 - 0.25}" == "-0.25",
+        "${1.5 + 2.5}" == "4.0",
+        "${1.5 * 2.0}" == "3.0",
+        toString 0.0 == "0.0",
+        toString 3.5 == "3.5",
         "${2.0}" == toString 2.0,
+        "${toFloat 7}" == "7.0",
+        "${toFloat 0}" == "0.0",
+        "${toFloat negativeSeven}" == "-7.0",
+        "${true}" == "true",
+        "${false}" == "false",
+        toString true == "true",
+        toString false == "false",
+        "${1 == 1}" == "true",
+        "${1 != 1}" == "false",
+        "${!(1 == 2)}" == "true",
         "${2.0}" != "2",
         "${true}" != "1"
     ]
 
     // "Strings are inserted unchanged" — no quoting, no escaping, no trimming.
     checkAll "strings are inserted into a hole unchanged" [
-        structuralEquals ["${emptyText}", "${spaceText}", "${"x"}", "${"a b"}"] ["", " ", "x", "a b"],
-        structuralEquals ["${"  padded  "}", toString "abc", "a${emptyText}b"] ["  padded  ", "abc", "ab"],
-        structuralEquals ["${emptyText}${emptyText}", "[${spaceText}]", "${toString 42}"] ["", "[ ]", "42"],
-        structuralEquals ["${toUpperCase "ab"}", "${"ab" |> toUpperCase}", "${length "abc"}"] ["AB", "AB", "3"],
+        "${emptyText}" == "",
+        "${spaceText}" == " ",
+        "${"x"}" == "x",
+        "${"a b"}" == "a b",
+        "${"  padded  "}" == "  padded  ",
+        toString "abc" == "abc",
         "${"abc"}" == toString "abc",
-        structuralEquals [length "${emptyText}", length "${spaceText}", length "${"  padded  "}"] [0, 1, 10],
+        length "${emptyText}" == 0,
+        length "${spaceText}" == 1,
+        length "${"  padded  "}" == 10,
         isEmpty "${emptyText}",
-        !(isEmpty "${spaceText}")
+        !(isEmpty "${spaceText}"),
+        "a${emptyText}b" == "ab",
+        "${emptyText}${emptyText}" == "",
+        "[${spaceText}]" == "[ ]",
+        "${toString 42}" == "42",
+        "${toUpperCase "ab"}" == "AB",
+        "${"ab" |> toUpperCase}" == "AB",
+        "${length "abc"}" == "3"
     ]
 
 (** [STRING-INTERPOLATION]: "A `Result` is never unwrapped at an interpolation
@@ -282,15 +445,24 @@ interpolationResultCase () =
     negativeFive = (0 - 5) 
 
     checkAll "Results retain their wrapper and arithmetic stays plain" [
-        structuralEquals ["${parseInt "42"}", "${parseInt "0"}"] ["Success(42)", "Success(0)"],
+        "${parseInt "42"}" == "Success(42)",
+        "${parseInt "0"}" == "Success(0)",
         "${parseInt "-9223372036854775808"}" == "Success(-9223372036854775808)",
-        structuralEquals ["${parseFloat "3.5"}", "${parseFloat "2"}"] ["Success(3.5)", "Success(2.0)"],
-        structuralEquals ["${parseFloat "1e3"}", "${parseFloat "-0.5"}"] ["Success(1000.0)", "Success(-0.5)"],
-        structuralEquals ["${intDiv (7, 2)}", "${intDiv (255643, 10)}", "${10 / 4}"] ["3", "25564", "2.5"],
-        structuralEquals ["${abs negativeFive}", "${fromCodePoint 65}"] ["5", "Success(A)"],
-        structuralEquals ["${indexOf "banana" "na"}", "${substring "banana" 1 4}"] ["Success(2)", "Success(ana)"],
-        structuralEquals ["${repeat "ab" 2}", "${padStart "7" 3 "0"}"] ["Success(abab)", "Success(007)"],
-        structuralEquals ["${byteAt "A" 0}", "${codePointWidth 233}"] ["Success(65)", "Success(2)"]
+        "${parseFloat "3.5"}" == "Success(3.5)",
+        "${parseFloat "2"}" == "Success(2.0)",
+        "${parseFloat "1e3"}" == "Success(1000.0)",
+        "${parseFloat "-0.5"}" == "Success(-0.5)",
+        "${intDiv (7, 2)}" == "3",
+        "${intDiv (255643, 10)}" == "25564",
+        "${10 / 4}" == "2.5",
+        "${abs negativeFive}" == "5",
+        "${fromCodePoint 65}" == "Success(A)",
+        "${indexOf "banana" "na"}" == "Success(2)",
+        "${substring "banana" 1 4}" == "Success(ana)",
+        "${repeat "ab" 2}" == "Success(abab)",
+        "${padStart "7" 3 "0"}" == "Success(007)",
+        "${byteAt "A" 0}" == "Success(65)",
+        "${codePointWidth 233}" == "Success(2)"
     ]
 
     // Every message here is the reason the runtime actually produces; a
@@ -327,14 +499,15 @@ interpolationResultCase () =
         "value=${intDiv (10, 5)}" == "value=2",
         "a${divideResult (5, 0)}b" == "aError(division by zero)b",
         "${intDiv (7, 2)}${intDiv (7, 2)}" == "33",
-        structuralEquals [length "${intDiv (10, 5)}", length "${divideResult (10, 0)}"] [1, 23],
-        (indexOf "${parseInt "oops"}" "(" ?: negativeOne) == 5,
+        length "${intDiv (10, 5)}" == 1,
+        length "${divideResult (10, 0)}" == 23,
         startsWith "${parseInt "42"}" "Success(",
         endsWith "${parseInt "42"}" ")",
         !(contains "${parseInt "42"}" "Error"),
         startsWith "${parseInt "oops"}" "Error(",
         contains "${parseInt "oops"}" "invalid integer",
         !(contains "${parseInt "oops"}" "Success"),
+        (indexOf "${parseInt "oops"}" "(" ?: negativeOne) == 5,
         (indexOf "${intDiv (10, 5)}" "(" ?: negativeOne) == negativeOne
     ]
 
@@ -350,51 +523,86 @@ escapeSequenceCase () =
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
     checkAll "each recognised escape collapses to exactly one byte" [
-        structuralEquals [length "\n", (byteAt "\n" 0 ?: 0), length "\r", (byteAt "\r" 0 ?: 0)] [1, 10, 1, 13],
-        structuralEquals [length "\t", (byteAt "\t" 0 ?: 0), length "\e", (byteAt "\e" 0 ?: 0)] [1, 9, 1, 27],
-        structuralEquals [length "\"", (byteAt "\"" 0 ?: 0), length "\\", (byteAt "\\" 0 ?: 0)] [1, 34, 1, 92],
-        structuralEquals [byteLength "\n\r\t\e", (byteAt "\n\r\t\e" 0 ?: 0), (byteAt "\n\r\t\e" 3 ?: 0)] [4, 10, 27],
-        structuralEquals [length "a\nb", (byteAt "a\nb" 0 ?: 0), (byteAt "a\nb" 1 ?: 0)] [3, 97, 10],
-        structuralEquals [(byteAt "a\nb" 2 ?: 0), length "\\n", length "a\"b", (byteAt "a\"b" 1 ?: 0)] [98, 2, 3, 34],
+        length "\n" == 1,
+        (byteAt "\n" 0 ?: 0) == 10,
+        length "\r" == 1,
+        (byteAt "\r" 0 ?: 0) == 13,
+        length "\t" == 1,
+        (byteAt "\t" 0 ?: 0) == 9,
+        length "\e" == 1,
+        (byteAt "\e" 0 ?: 0) == 27,
+        length "\"" == 1,
+        (byteAt "\"" 0 ?: 0) == 34,
+        length "\\" == 1,
+        (byteAt "\\" 0 ?: 0) == 92,
+        byteLength "\n\r\t\e" == 4,
+        (byteAt "\n\r\t\e" 0 ?: 0) == 10,
+        (byteAt "\n\r\t\e" 3 ?: 0) == 27,
+        length "a\nb" == 3,
+        (byteAt "a\nb" 0 ?: 0) == 97,
+        (byteAt "a\nb" 1 ?: 0) == 10,
+        (byteAt "a\nb" 2 ?: 0) == 98,
         "\n" != "n",
-        "\\n" != "\n"
+        "\\n" != "\n",
+        length "\\n" == 2,
+        length "a\"b" == 3,
+        (byteAt "a\"b" 1 ?: 0) == 34
     ]
 
     // An unrecognised escape keeps BOTH bytes: 'q' is 113, 'd' is 100, 'x' 120.
     checkAll "an unknown escape keeps its backslash verbatim" [
-        structuralEquals [length "\q", (byteAt "\q" 0 ?: 0), (byteAt "\q" 1 ?: 0)] [2, 92, 113],
-        structuralEquals [length "\d", (byteAt "\d" 1 ?: 0), length "\s\q"] [2, 100, 4],
-        structuralEquals [length "path\to", (byteAt "path\to" 4 ?: 0), length "path\xo"] [6, 9, 7],
-        structuralEquals [(byteAt "path\xo" 4 ?: 0), (byteAt "path\xo" 5 ?: 0)] [92, 120],
-        structuralEquals ["\q", toUpperCase "\q", toLowerCase "\Q", reverse "\q"] ["\\q", "\Q", "\q", "q\\"],
-        structuralEquals [contains "\q" "\\", startsWith "\q" "\\", endsWith "\q" "q"] [true, true, true],
+        length "\q" == 2,
+        (byteAt "\q" 0 ?: 0) == 92,
+        (byteAt "\q" 1 ?: 0) == 113,
+        "\q" == "\\q",
+        length "\d" == 2,
+        (byteAt "\d" 1 ?: 0) == 100,
+        length "\s\q" == 4,
+        contains "\q" "\\",
+        startsWith "\q" "\\",
+        endsWith "\q" "q",
         !(contains "\q" "\t"),
-        !(isEmpty "\q")
+        !(isEmpty "\q"),
+        toUpperCase "\q" == "\Q",
+        toLowerCase "\Q" == "\q",
+        reverse "\q" == "q\\",
+        length "path\to" == 6,
+        (byteAt "path\to" 4 ?: 0) == 9,
+        length "path\xo" == 7,
+        (byteAt "path\xo" 4 ?: 0) == 92,
+        (byteAt "path\xo" 5 ?: 0) == 120
     ]
 
     // ASCII whitespace for trim/words is space, TAB, LF, CR, VT and FF; ESC is
     // NOT whitespace ([BUILTIN-STRING-TRIM], [BUILTIN-STRING-WORDS]).
     // "A trailing newline does not produce an empty final element" ([BUILTIN-STRING-LINES]).
     checkAll "escaped whitespace drives trim, words, lines and split" [
-        structuralEquals [trim "\n\t hi \r\n", trimStart "\n\thi", trimEnd "hi\t\n"] ["hi", "hi", "hi"],
-        structuralEquals [trim "\t\r\n ", trim "\e", (listGet (lines "a\nb") 1 ?: "missing")] ["", "\e", "b"],
-        structuralEquals [(listGet (lines "a\nb") 0 ?: "missing"), (listGet (words "a\tb") 1 ?: "missing")] ["a", "b"],
-        structuralEquals [join (lines "a\nb\nc") "-", join (words "  x  y  ") "+"] ["a-b-c", "x+y"],
-        structuralEquals [length (trim "\e hi "), listLength (lines "a\nb\nc"), listLength (lines "a\n")] [4, 3, 1],
-        structuralEquals [listLength (lines "a\n\nb"), listLength (lines "solo")] [3, 1],
-        structuralEquals [listLength (words "a\tb\nc"), listLength (words "   "), listLength (words "")] [3, 0, 0],
-        structuralEquals [listLength (words " a "), listLength (words "a\r\nb"), tabSplitCount] [1, 2, 2],
+        trim "\n\t hi \r\n" == "hi",
+        trimStart "\n\thi" == "hi",
+        trimEnd "hi\t\n" == "hi",
+        trim "\t\r\n " == "",
+        trim "\e" == "\e",
+        length (trim "\e hi ") == 4,
+        listLength (lines "a\nb\nc") == 3,
+        listLength (lines "a\n") == 1,
+        listLength (lines "a\n\nb") == 3,
+        listLength (lines "solo") == 1,
+        listLength (words "a\tb\nc") == 3,
+        listLength (words "   ") == 0,
+        listLength (words "") == 0,
+        listLength (words " a ") == 1,
+        listLength (words "a\r\nb") == 2,
+        (listGet (lines "a\nb") 1 ?: "missing") == "b",
+        (listGet (lines "a\nb") 0 ?: "missing") == "a",
+        (listGet (words "a\tb") 1 ?: "missing") == "b",
+        join (lines "a\nb\nc") "-" == "a-b-c",
+        join (words "  x  y  ") "+" == "x+y",
+        tabSplitCount == 2,
         contains "a\nb" "\n",
         !(contains "ab" "\n"),
         startsWith "\tx" "\t",
         endsWith "x\n" "\n"
     ]
-
-(** Whether `s` starts with each needle in `needles`, as a parallel boolean list. *)
-startsWithAll (s, needles) = mapList needles (\k => startsWith s k)
-
-(** Whether `s` ends with each needle in `needles`, as a parallel boolean list. *)
-endsWithAll (s, needles) = mapList needles (\k => endsWith s k)
 
 (** [BUILTIN-STRING-CONTAINS]: "True if `needle` occurs anywhere in `s`. An empty
     `needle` returns `true`." [BUILTIN-STRING-INDEXOF]: "Returns the byte index of
@@ -407,11 +615,26 @@ substringPositionCase () =
     indexAbsent = match indexOf subject "xyz"
         Success _value => false
         Error message => message == "indexOf: substring not found"
+    indexEmptySubject = match indexOf "" "a"
+        Success _value => false
+        Error message => message != ""
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll "contains finds a needle at the start, middle, end and nowhere" [
-        containsAll subject ["ban", "nan", "ana", "banana", "b", "a", "n", ""],
-        structuralEquals [containsNone subject ["bananas", "xyz", "BAN", "bn", " "], contains "" ""] [true, true],
+        contains subject "ban",
+        contains subject "nan",
+        contains subject "ana",
+        contains subject "banana",
+        contains subject "b",
+        contains subject "a",
+        contains subject "n",
+        contains subject "",
+        !(contains subject "bananas"),
+        !(contains subject "xyz"),
+        !(contains subject "BAN"),
+        !(contains subject "bn"),
+        !(contains subject " "),
+        contains "" "",
         !(contains "" "a"),
         contains "a" "a",
         !(contains "a" "aa"),
@@ -421,13 +644,18 @@ substringPositionCase () =
     ]
 
     checkAll "startsWith and endsWith agree with contains at both ends" [
-        structuralEquals (startsWithAll (subject, ["", "b", "ba"])) [true, true, true],
+        startsWith subject "",
+        startsWith subject "b",
+        startsWith subject "ba",
         startsWith subject "banana",
         !(startsWith subject "banana!"),
         !(startsWith subject "anana"),
         !(startsWith subject "B"),
-        structuralEquals (endsWithAll (subject, ["", "a", "na"])) [true, true, true],
-        structuralEquals (endsWithAll (subject, ["ana", "banana"])) [true, true],
+        endsWith subject "",
+        endsWith subject "a",
+        endsWith subject "na",
+        endsWith subject "ana",
+        endsWith subject "banana",
         !(endsWith subject "!banana"),
         !(endsWith subject "banan"),
         !(endsWith subject "A"),
@@ -435,24 +663,34 @@ substringPositionCase () =
         !(startsWith "" "a"),
         endsWith "" "",
         !(endsWith "" "a"),
-        structuralEquals [startsWith "a" "a", endsWith "a" "a", containsAll subject ["ba", "na"]] [true, true, true]
+        startsWith "a" "a",
+        endsWith "a" "a",
+        contains subject "ba",
+        contains subject "na"
     ]
 
     // The reported index must reconstruct the needle through substring/take/drop.
     checkAll "indexOf returns the first occurrence as a byte index" [
-        structuralEquals [(indexOf subject "b" ?: missing), (indexOf subject "a" ?: missing)] [0, 1],
-        structuralEquals [(indexOf subject "n" ?: missing), (indexOf subject "na" ?: missing)] [2, 2],
-        structuralEquals [(indexOf subject "ana" ?: missing), (indexOf subject "banana" ?: missing)] [1, 0],
-        structuralEquals [(indexOf subject "" ?: missing), (indexOf "" "" ?: missing)] [0, 0],
-        structuralEquals [(indexOf "a" "a" ?: missing), (indexOf (toUpperCase subject) "NA" ?: missing)] [0, 2],
+        (indexOf subject "b" ?: missing) == 0,
+        (indexOf subject "a" ?: missing) == 1,
+        (indexOf subject "n" ?: missing) == 2,
+        (indexOf subject "na" ?: missing) == 2,
+        (indexOf subject "ana" ?: missing) == 1,
+        (indexOf subject "banana" ?: missing) == 0,
+        (indexOf subject "" ?: missing) == 0,
+        (indexOf "" "" ?: missing) == 0,
+        (indexOf "a" "a" ?: missing) == 0,
         indexAbsent,
-        rejected (indexOf "" "a"),
-        structuralEquals [(substring subject 1 4 ?: "missing"), (substring subject 2 4 ?: "missing")] ["ana", "na"],
-        structuralEquals [(substring subject 6 6 ?: "missing"), (substring subject 3 3 ?: "missing")] ["", ""],
+        indexEmptySubject,
+        (substring subject 1 4 ?: "missing") == "ana",
+        (substring subject 2 4 ?: "missing") == "na",
+        (substring subject 0 6 ?: "missing") == subject,
+        (substring subject 6 6 ?: "missing") == "",
+        (substring subject 3 3 ?: "missing") == "",
         take subject (indexOf subject "na" ?: missing) == "ba",
         drop subject (indexOf subject "na" ?: missing) == "nana",
-        (substring subject 0 6 ?: "missing") == subject,
-        startsWith (drop subject (indexOf subject "ana" ?: missing)) "ana"
+        startsWith (drop subject (indexOf subject "ana" ?: missing)) "ana",
+        (indexOf (toUpperCase subject) "NA" ?: missing) == 2
     ]
 
 (** [BUILTIN-STRING-TOUPPERCASE] / [BUILTIN-STRING-TOLOWERCASE]: "ASCII case
@@ -465,15 +703,26 @@ caseFoldingCase () =
     missing = (0 - 1) 
 
     checkAll "ASCII letters fold and every other byte is copied unchanged" [
-        structuralEquals [toUpperCase "", toLowerCase "", toUpperCase "a"] ["", "", "A"],
-        structuralEquals [toLowerCase "A", toUpperCase mixed, toLowerCase mixed] ["a", "MIXED 123!", "mixed 123!"],
-        structuralEquals [toUpperCase "0123456789", toLowerCase "0123456789"] ["0123456789", "0123456789"],
-        structuralEquals [toUpperCase "!@#%^&*()", toLowerCase "!@#%^&*()"] ["!@#%^&*()", "!@#%^&*()"],
-        structuralEquals [toUpperCase " \t\n", toUpperCase "\e"] [" \t\n", "\e"],
-        structuralEquals [toUpperCase accented, toLowerCase "HÉLLO"] ["HéLLO", "hÉllo"],
-        structuralEquals [length (toUpperCase accented), byteLength (toLowerCase accented)] [6, 6],
-        structuralEquals [(byteAt (toUpperCase accented) 0 ?: 0), (byteAt (toUpperCase accented) 1 ?: 0)] [72, 195],
-        structuralEquals [(byteAt (toUpperCase accented) 2 ?: 0), (byteAt (toUpperCase accented) 3 ?: 0)] [169, 76]
+        toUpperCase "" == "",
+        toLowerCase "" == "",
+        toUpperCase "a" == "A",
+        toLowerCase "A" == "a",
+        toUpperCase mixed == "MIXED 123!",
+        toLowerCase mixed == "mixed 123!",
+        toUpperCase "0123456789" == "0123456789",
+        toLowerCase "0123456789" == "0123456789",
+        toUpperCase "!@#%^&*()" == "!@#%^&*()",
+        toLowerCase "!@#%^&*()" == "!@#%^&*()",
+        toUpperCase " \t\n" == " \t\n",
+        toUpperCase "\e" == "\e",
+        toUpperCase accented == "HéLLO",
+        toLowerCase "HÉLLO" == "hÉllo",
+        length (toUpperCase accented) == 6,
+        byteLength (toLowerCase accented) == 6,
+        (byteAt (toUpperCase accented) 0 ?: 0) == 72,
+        (byteAt (toUpperCase accented) 1 ?: 0) == 195,
+        (byteAt (toUpperCase accented) 2 ?: 0) == 169,
+        (byteAt (toUpperCase accented) 3 ?: 0) == 76
     ]
 
     // Idempotent, length preserving, and a lower/upper round trip that survives
@@ -481,10 +730,10 @@ caseFoldingCase () =
     checkAll "case conversion is idempotent, length preserving and round trips" [
         toUpperCase (toUpperCase mixed) == toUpperCase mixed,
         toLowerCase (toLowerCase mixed) == toLowerCase mixed,
-        structuralEquals [toLowerCase (toUpperCase "Hello"), toUpperCase (toLowerCase "Hello")] ["hello", "HELLO"],
-        structuralEquals [toUpperCase (toLowerCase accented), toUpperCase "ABC"] ["HéLLO", "ABC"],
-        toLowerCase "abc" == "abc",
+        toLowerCase (toUpperCase "Hello") == "hello",
+        toUpperCase (toLowerCase "Hello") == "HELLO",
         toLowerCase (toUpperCase accented) == accented,
+        toUpperCase (toLowerCase accented) == "HéLLO",
         toUpperCase (toLowerCase mixed) == toUpperCase mixed,
         toUpperCase (toLowerCase mixed) != mixed,
         length (toUpperCase mixed) == length mixed,
@@ -494,6 +743,8 @@ caseFoldingCase () =
         toUpperCase "HeLLo" == toUpperCase "hEllO",
         toLowerCase "HeLLo" != "HeLLo",
         toUpperCase "abc" != "abc",
+        toUpperCase "ABC" == "ABC",
+        toLowerCase "abc" == "abc",
         reverse (toUpperCase "abc") == toUpperCase (reverse "abc"),
         toUpperCase ("a" + "b") == (toUpperCase "a" + toUpperCase "b"),
         toLowerCase ("A" + "B") == (toLowerCase "A" + toLowerCase "B"),
@@ -516,13 +767,13 @@ caseFoldingCase () =
         (repeat (toUpperCase "ab") 2 ?: "missing") == "ABAB",
         (padStart (toUpperCase "z") 3 "y" ?: "missing") == "yyZ",
         (padEnd (toLowerCase "Z") 3 "y" ?: "missing") == "zyy",
-        structuralEquals [(substring (toUpperCase "banana") 0 3 ?: "missing"), trim (toUpperCase "  a  ")] ["BAN", "A"],
-        structuralEquals [toUpperCase (trim "  a  "), join [toUpperCase "a", toLowerCase "B"] "-"] ["A", "A-b"],
-        structuralEquals ["${toUpperCase "ab"}", "${toLowerCase "AB"}"] ["AB", "ab"]
+        (substring (toUpperCase "banana") 0 3 ?: "missing") == "BAN",
+        trim (toUpperCase "  a  ") == "A",
+        toUpperCase (trim "  a  ") == "A",
+        join [toUpperCase "a", toLowerCase "B"] "-" == "A-b",
+        "${toUpperCase "ab"}" == "AB",
+        "${toLowerCase "AB"}" == "ab"
     ]
-
-(** Whether take and drop reassemble `s` when cut at byte `n`. *)
-partitionsAt (s, n) = take s n + drop s n == s
 
 (** [BUILTIN-STRING-CONCAT]: "The `+` operator on two `string` values returns
     `string` directly. String concatenation cannot fail and is never
@@ -539,60 +790,85 @@ concatLengthCase () =
     noParts = []
 
     checkAll "concatenation is associative with the empty string as identity" [
-        structuralEquals [((left + middle) + right), (left + (middle + right)), joined] ["abcdef", "abcdef", "abcdef"],
-        structuralEquals [("" + ""), ("ab" + "ba"), ("ba" + "ab")] ["", "abba", "baab"],
+        ((left + middle) + right) == "abcdef",
+        (left + (middle + right)) == "abcdef",
         ((left + middle) + right) == (left + (middle + right)),
+        joined == "abcdef",
         (left + "") == left,
         ("" + left) == left,
+        ("" + "") == "",
         (left + right) != (right + left),
+        ("ab" + "ba") == "abba",
+        ("ba" + "ab") == "baab",
         (left + middle) == "${left}${middle}",
         joined == "${left}${middle}${right}",
-        structuralEquals [length joined, length ("" + "")] [6, 0],
+        length joined == 6,
         byteLength joined == length joined,
         length (left + middle) == ((length left + length middle) ),
         length joined == ((((length left + length middle) ) + length right) ),
+        length ("" + "") == 0,
         isEmpty ("" + ""),
         !(isEmpty joined),
-        structuralEquals [startsWith joined left, endsWith joined right, contains joined middle] [true, true, true]
+        startsWith joined left,
+        endsWith joined right,
+        contains joined middle
     ]
 
     // take s n + drop s n == s must hold at, inside and outside both ends.
     checkAll "take and drop partition a string at every boundary" [
-        partitionsAt (joined, 0),
-        partitionsAt (joined, 1),
-        partitionsAt (joined, 3),
-        partitionsAt (joined, 6),
-        partitionsAt (joined, 7),
-        partitionsAt (joined, negativeFive),
-        structuralEquals [take joined 0, drop joined 6, drop joined 99, take joined negativeFive] ["", "", "", ""],
-        structuralEquals [(substring joined 0 0 ?: "missing"), (substring joined 6 6 ?: "missing")] ["", ""],
+        (take joined 0 + drop joined 0) == joined,
+        (take joined 1 + drop joined 1) == joined,
+        (take joined 3 + drop joined 3) == joined,
+        (take joined 6 + drop joined 6) == joined,
+        (take joined 7 + drop joined 7) == joined,
+        (take joined negativeFive + drop joined negativeFive) == joined,
+        take joined 0 == "",
         drop joined 0 == joined,
         take joined 6 == joined,
+        drop joined 6 == "",
         take joined 99 == joined,
+        drop joined 99 == "",
+        take joined negativeFive == "",
         drop joined negativeFive == joined,
-        structuralEquals [length (take joined 3), length (drop joined 3)] [3, 3],
+        length (take joined 3) == 3,
+        length (drop joined 3) == 3,
         ((length (take joined 2) + length (drop joined 2)) ) == length joined,
         take joined 3 == (substring joined 0 3 ?: "missing"),
         drop joined 3 == (substring joined 3 6 ?: "missing"),
+        (substring joined 0 0 ?: "missing") == "",
+        (substring joined 6 6 ?: "missing") == "",
         (substring joined 0 6 ?: "missing") == joined
     ]
 
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
     checkAll "repeat, reverse, padding and join keep their length contracts" [
-        structuralEquals [(repeat left 0 ?: "missing"), (repeat left 3 ?: "missing")] ["", "ababab"],
-        structuralEquals [(repeat "" 5 ?: "missing"), reverse "", reverse "a", reverse joined] ["", "", "a", "fedcba"],
-        structuralEquals [reverse (reverse "héllo"), (padStart "7" 5 "0" ?: "missing")] ["héllo", "00007"],
-        structuralEquals [(padEnd "7" 5 "0" ?: "missing"), (padStart "x" 6 "ab" ?: "missing")] ["70000", "ababax"],
-        structuralEquals [(padEnd "x" 6 "ab" ?: "missing"), (padStart "hello" 3 "0" ?: "missing")] ["xababa", "hello"],
-        structuralEquals [(padEnd "hello" 3 "0" ?: "missing"), join ["a", "b", "c"] ""] ["hello", "abc"],
-        structuralEquals [join ["a"] "-", join ["", ""] "-", join noParts "-"] ["a", "-", ""],
+        (repeat left 0 ?: "missing") == "",
         (repeat left 1 ?: "missing") == left,
-        structuralEquals [length (repeat left 5 ?: ""), length (repeat "" 5 ?: "x")] [10, 0],
-        structuralEquals [length (reverse "héllo"), length (padStart "7" 5 "0" ?: "")] [6, 5],
-        structuralEquals [length (padEnd "7" 5 "0" ?: ""), length (join ["ab", "cd", "ef"] "--")] [5, 10],
+        (repeat left 3 ?: "missing") == "ababab",
+        length (repeat left 5 ?: "") == 10,
+        (repeat "" 5 ?: "missing") == "",
+        length (repeat "" 5 ?: "x") == 0,
+        reverse "" == "",
+        reverse "a" == "a",
+        reverse joined == "fedcba",
         reverse (reverse joined) == joined,
+        reverse (reverse "héllo") == "héllo",
+        length (reverse "héllo") == 6,
         length (reverse joined) == length joined,
-        reverse (left + middle) == (reverse middle + reverse left)
+        reverse (left + middle) == (reverse middle + reverse left),
+        length (padStart "7" 5 "0" ?: "") == 5,
+        length (padEnd "7" 5 "0" ?: "") == 5,
+        (padStart "7" 5 "0" ?: "missing") == "00007",
+        (padEnd "7" 5 "0" ?: "missing") == "70000",
+        (padStart "x" 6 "ab" ?: "missing") == "ababax",
+        (padEnd "x" 6 "ab" ?: "missing") == "xababa",
+        (padStart "hello" 3 "0" ?: "missing") == "hello",
+        (padEnd "hello" 3 "0" ?: "missing") == "hello",
+        join ["a", "b", "c"] "" == "abc",
+        join ["a"] "-" == "a",
+        join ["", ""] "-" == "-",
+        join noParts "-" == "",
+        length (join ["ab", "cd", "ef"] "--") == 10
     ]
 
 (** [STRING-INTERPOLATION]: "An interpolation expression may contain operators,
@@ -614,45 +890,82 @@ interpolationCompositionCase () =
         Error _message => (0 - 1) 
 
     checkAll "a hole may hold a call, a pipe, an operator or an index" [
-        structuralEquals ["${length "abc"}", "${toUpperCase name}", "${name |> toUpperCase}"] ["3", "ALICE", "ALICE"],
-        structuralEquals ["${name |> length}", "${toString count}"] ["5", "3"],
-        structuralEquals ["${toUpperCase (toLowerCase "AbC")}", "${take name 2}"] ["ABC", "al"],
-        structuralEquals ["${drop name 2}", "${reverse name}", "${count == 3}"] ["ice", "ecila", "true"],
-        structuralEquals ["${count != 3}", "${!(count == 3)}", "${isEmpty ""}"] ["false", "false", "true"],
-        structuralEquals ["${contains name "lic"}", "${(count + 4) }", "${(count * 4) }"] ["true", "7", "12"],
-        structuralEquals ["${(listGet xs 0) ?: "none"}", "${(listGet xs 9) ?: "none"}"] ["red", "none"],
-        structuralEquals ["${xs[2] ?: "none"}", "${prices["apple"] ?: 0}"] ["blue", "2"],
-        structuralEquals ["${prices["mango"] ?: 0}", "${listLength xs}"] ["0", "3"]
+        "${length "abc"}" == "3",
+        "${toUpperCase name}" == "ALICE",
+        "${name |> toUpperCase}" == "ALICE",
+        "${name |> length}" == "5",
+        "${toString count}" == "3",
+        "${toUpperCase (toLowerCase "AbC")}" == "ABC",
+        "${take name 2}" == "al",
+        "${drop name 2}" == "ice",
+        "${reverse name}" == "ecila",
+        "${count == 3}" == "true",
+        "${count != 3}" == "false",
+        "${!(count == 3)}" == "false",
+        "${isEmpty ""}" == "true",
+        "${contains name "lic"}" == "true",
+        "${(count + 4) }" == "7",
+        "${(count * 4) }" == "12",
+        "${(listGet xs 0) ?: "none"}" == "red",
+        "${(listGet xs 9) ?: "none"}" == "none",
+        "${xs[2] ?: "none"}" == "blue",
+        "${prices["apple"] ?: 0}" == "2",
+        "${prices["mango"] ?: 0}" == "0",
+        "${listLength xs}" == "3"
     ]
 
     // "alice has 3" is 5 + 5 + 1 = 11 bytes; '$' is byte 36.
     checkAll "the literal text around every hole survives verbatim" [
-        structuralEquals ["${count}", "${count}x", "x${count}"] ["3", "3x", "x3"],
-        structuralEquals ["x${count}y", "${count}${count}", "${count}-${count}"] ["x3y", "33", "3-3"],
-        structuralEquals ["a${count}b${count}c", "no holes here"] ["a3b3c", "no holes here"],
-        structuralEquals ["${name} has ${count}", ("${name}" + " has " + "${count}")] ["alice has 3", "alice has 3"],
-        structuralEquals [length "${count}", length "x${count}y", length "${name} has ${count}"] [1, 3, 11],
-        structuralEquals [length "$", (byteAt "$" 0 ?: 0), length "$x"] [1, 36, 2],
+        "${count}" == "3",
+        "${count}x" == "3x",
+        "x${count}" == "x3",
+        "x${count}y" == "x3y",
+        "${count}${count}" == "33",
+        "${count}-${count}" == "3-3",
+        "a${count}b${count}c" == "a3b3c",
+        "no holes here" == "no holes here",
+        length "${count}" == 1,
+        length "x${count}y" == 3,
+        "${name} has ${count}" == "alice has 3",
+        length "${name} has ${count}" == 11,
         "$" == "$",
+        length "$" == 1,
+        (byteAt "$" 0 ?: 0) == 36,
         "$x" == "$x",
+        length "$x" == 2,
         "a$b" == "a$b",
         contains "cost: $5" "$",
-        !(contains "${name}" "$")
+        !(contains "${name}" "$"),
+        ("${name}" + " has " + "${count}") == "alice has 3"
     ]
 
     // Grown one hole at a time. Every intermediate is asserted, so a lost
     // append cannot hide behind a correct final transcript.
     checkAll "a transcript built hole by hole records every intermediate" [
-        structuralEquals [step0, step1, step2, step3] ["", "red|", "red|green|", "red|green|blue|"],
-        structuralEquals [step4, toUpperCase step2, reverse step1] ["red|green|blue|?|", "RED|GREEN|", "|der"],
-        structuralEquals [length step1, length step2, length step3, length step4] [4, 10, 15, 17],
-        structuralEquals [(indexOf step3 "green" ?: 0), (indexOf step3 "blue" ?: 0), segmentCount] [4, 10, 4],
-        structuralEquals [startsWith step4 step3, startsWith step3 step2, startsWith step2 step1] [true, true, true],
+        step0 == "",
+        step1 == "red|",
+        step2 == "red|green|",
+        step3 == "red|green|blue|",
+        step4 == "red|green|blue|?|",
+        length step1 == 4,
+        length step2 == 10,
+        length step3 == 15,
+        length step4 == 17,
+        startsWith step4 step3,
+        startsWith step3 step2,
+        startsWith step2 step1,
         !(startsWith step1 step2),
-        structuralEquals [endsWith step4 "?|", endsWith step3 "blue|", contains step3 "green|"] [true, true, true],
+        endsWith step4 "?|",
+        endsWith step3 "blue|",
+        contains step3 "green|",
         !(contains step2 "blue"),
         (step1 + "green|") == step2,
-        (step2 + "blue|") == step3
+        (step2 + "blue|") == step3,
+        (indexOf step3 "green" ?: 0) == 4,
+        (indexOf step3 "blue" ?: 0) == 10,
+        segmentCount == 4,
+        toUpperCase step2 == "RED|GREEN|",
+        reverse step1 == "|der"
     ]
 
 (** Byte counts move past a character they would split, and take and drop stay complementary. *)
@@ -661,15 +974,24 @@ utf8CutCase () =
     eagle = "🦅x"
     checkAll "utf-8 cuts" [
         length quote == 8,
-        structuralEquals (mapList [1, 2, 3, 4] (\k => take quote k)) ["“", "“", "“", "“o"],
-        structuralEquals (mapList [1, 3, 5, 6] (\k => drop quote k)) ["ok”", "ok”", "”", ""],
-        structuralEquals [take eagle 1, drop eagle 1] ["🦅", "x"],
-        partitionsAt (quote, 2),
-        partitionsAt (eagle, 3)
+        take quote 1 == "“",
+        take quote 2 == "“",
+        take quote 3 == "“",
+        take quote 4 == "“o",
+        drop quote 1 == "ok”",
+        drop quote 3 == "ok”",
+        drop quote 5 == "”",
+        drop quote 6 == "",
+        take eagle 1 == "🦅",
+        drop eagle 1 == "x",
+        take quote 2 + drop quote 2 == quote,
+        take eagle 3 + drop eagle 3 == eagle
     ]
     checkAll "utf-8 substring bounds" [
-        structuralEquals [(substring quote 0 3 ?: "bad"), (substring quote 3 5 ?: "bad")] ["“", "ok"],
-        structuralEquals [byteLength (substring quote 1 3 ?: ""), byteLength (substring quote 0 1 ?: "")] [2, 1]
+        (substring quote 0 3 ?: "bad") == "“",
+        (substring quote 3 5 ?: "bad") == "ok",
+        byteLength (substring quote 1 3 ?: "") == 2,
+        byteLength (substring quote 0 1 ?: "") == 1
     ]
     block = "first
   second ${length quote}
@@ -680,11 +1002,11 @@ third"
     ]
 
 // Registration order fixes the TAP order in the shared golden.
-test "interpolation renders every printable scalar" (exactly interpolationScalarCase)
-test "a Result is never unwrapped at an interpolation hole" (exactly interpolationResultCase)
-test "escape sequences resolve to their exact bytes" (exactly escapeSequenceCase)
-test "search builtins scan every substring position" (exactly substringPositionCase)
-test "ASCII case folding is total and round-trips" (exactly caseFoldingCase)
-test "concatenation and length arithmetic hold" (exactly concatLengthCase)
-test "interpolation composes expressions and preserves text" (exactly interpolationCompositionCase)
-test "a byte count never splits a UTF-8 character" (exactly utf8CutCase)
+test "interpolation renders every printable scalar" (\() => exactArithmetic (interpolationScalarCase))
+test "a Result is never unwrapped at an interpolation hole" (\() => exactArithmetic (interpolationResultCase))
+test "escape sequences resolve to their exact bytes" (\() => exactArithmetic (escapeSequenceCase))
+test "search builtins scan every substring position" (\() => exactArithmetic (substringPositionCase))
+test "ASCII case folding is total and round-trips" (\() => exactArithmetic (caseFoldingCase))
+test "concatenation and length arithmetic hold" (\() => exactArithmetic (concatLengthCase))
+test "interpolation composes expressions and preserves text" (\() => exactArithmetic (interpolationCompositionCase))
+test "a byte count never splits a UTF-8 character" (\() => exactArithmetic (utf8CutCase))

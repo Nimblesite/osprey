@@ -10,58 +10,24 @@ effect CallSupply T
 intGroups () = Map () |> mapSet "low" [1, 2] |> mapSet "high" [30, 40, 50]
 stringGroups () = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"]
 
+requestIntGroups : Unit -> Map string (List int)
+requestIntGroups () = perform CallSupply.groups ()
+requestStringGroups : Unit -> Map string (List string)
+requestStringGroups () = perform CallSupply.groups ()
+
 suppliedInts () =
     handle CallSupply
         groups => intGroups ()
-    perform CallSupply.groups ()
+    requestIntGroups ()
 
 suppliedStrings () =
     handle CallSupply
         groups => stringGroups ()
-    perform CallSupply.groups ()
+    requestStringGroups ()
 
+groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =
     (groups |> mapGet key ?: fallbackList) |> listGet index ?: fallback
-
-(** One group probe: which key and index, and the exact int it must hold. *)
-type IntProbe =
-    key : string
-    index : int
-    value : int
-
-(** One group probe: which key and index, and the exact text it must hold. *)
-type TextProbe =
-    key : string
-    index : int
-    value : string
-
-(** Asserts every probe reads its exact value out of the map `groups`, or the fallback. *)
-checkProbes (label, groups, probes, fallbackList, fallback) =
-    forEachList probes (\probe => check label probe.value (groupAt (groups, probe.key, probe.index, fallbackList, fallback)))
-
-(** Asserts the free `length` and `isEmpty` views of `xs` answer `expected`. *)
-checkUnarySized (label, xs, expected) =
-    checkAll label [
-        length (xs) == expected,
-        !((isEmpty xs))
-    ]
-
-(** Asserts the receiver-first size views of the map `groups` answer `expected`. *)
-checkMapSized (label, groups, expected) =
-    check label (mapLength groups) (groups |> mapLength)
-    checkUnarySized (label, groups, expected)
-
-(** Asserts the receiver-first size views of the list `xs` answer `expected`. *)
-checkListSized (label, xs, expected) =
-    check label expected (xs |> listLength)
-    checkUnarySized (label, xs, expected)
-
-(** Asserts `holds` answers true for each item of `present` and false for each of `absent`. *)
-checkMembership (label, present, absent, holds) =
-    forEachList (present |> listConcat absent) (\item => check label (present |> listContains item) (holds item))
-
-(** The length of the nested list at `index` of `xs`, or none when it is absent. *)
-nestedLength (xs, index) = (listGet xs index ?: [99]) |> listLength
 
 (** One call chain crosses generic effect erasure, Map<string,List<T>> lookup,
     `Result` recovery, persistent operations, view conversion, reversal, and
@@ -77,44 +43,52 @@ receiverFirstCollectionCase () =
     intValues = ints |> mapValues |> listReverse
     stringKeys = strings |> mapKeys |> listReverse
 
-    checkMapSized ("original int map size", ints, 2)
-    checkMapSized ("original string map size", strings, 2)
-    checkMapSized ("grown int map size", grownInts, 2)
-    checkMapSized ("grown string map size", grownStrings, 2)
-    checkListSized ("high group size", high, 3)
-    checkListSized ("long group size", long, 2)
-    checkListSized ("reversed values size", intValues, 2)
-    checkListSized ("reversed keys size", stringKeys, 2)
-    checkProbes ("original int group probes", ints, [
-        IntProbe(key = "low", index = 0, value = 1),
-        IntProbe(key = "low", index = 1, value = 2)
-    ], [91], 99)
-    checkProbes ("grown int group probes", grownInts, [
-        IntProbe(key = "high", index = 2, value = 50),
-        IntProbe(key = "extra", index = 0, value = 6),
-        IntProbe(key = "extra", index = 1, value = 7)
-    ], [91], 99)
-    checkProbes ("original string group probes", strings, [
-        TextProbe(key = "short", index = 0, value = "a"),
-        TextProbe(key = "short", index = 1, value = "bb"),
-        TextProbe(key = "long", index = 0, value = "three")
-    ], ["row"], "item")
-    checkProbes ("grown string group probes", grownStrings, [
-        TextProbe(key = "long", index = 0, value = "eight"),
-        TextProbe(key = "long", index = 1, value = "nine")
-    ], ["row"], "item")
-    checkMembership ("grown int keys", ["high", "extra"], ["low"], \key => grownInts |> mapContains key)
-    checkMembership ("original int keys", ["low"], ["extra"], \key => ints |> mapContains key)
-    checkMembership ("reversed key membership", ["short", "long"], ["missing"], \key => stringKeys |> listContains key)
+    checkAll "ML receiver-first pipes preserve nested generic descriptors" [
+        (ints |> mapLength) == mapLength ints,
+        (ints |> length) == 2,
+        !((ints |> isEmpty)),
+        (strings |> mapLength) == 2,
+        (strings |> length) == 2,
+        !((strings |> isEmpty)),
+        (high |> listLength) == 3,
+        (high |> length) == 3,
+        !((high |> isEmpty)),
+        (high |> listGet 0 ?: 99) == 30,
+        (high |> listGet 1 ?: 99) == 40,
+        (high |> listGet 2 ?: 99) == 50,
+        (long |> listLength) == 2,
+        (long |> listGet 0 ?: "missing") == "three",
+        (long |> listGet 1 ?: "missing") == "seven",
+        length (long |> listGet 0 ?: "missing") == 5,
+        groupAt (ints, "low", 0, [91], 99) == 1,
+        groupAt (ints, "low", 1, [91], 99) == 2,
+        groupAt (strings, "short", 0, ["row"], "item") == "a",
+        groupAt (strings, "short", 1, ["row"], "item") == "bb"
+    ]
 
-    checkAll "receiver-first entries and nested leaves" [
-        structuralEquals [(high |> listGet 0 ?: 99), (high |> listGet 1 ?: 99)] [30, 40],
-        structuralEquals [(high |> listGet 2 ?: 99), length (long |> listGet 0 ?: "missing")] [50, 5],
+    checkAll "pipe chains preserve persistence views and source isolation" [
+        mapLength grownInts == 2,
+        !(mapContains grownInts "low"),
+        mapContains grownInts "high",
+        mapContains grownInts "extra",
+        groupAt (grownInts, "high", 2, [91], 99) == 50,
+        groupAt (grownInts, "extra", 0, [91], 99) == 6,
+        groupAt (grownInts, "extra", 1, [91], 99) == 7,
+        mapContains ints "low",
+        !(mapContains ints "extra"),
+        mapLength grownStrings == 2,
+        groupAt (grownStrings, "long", 0, ["row"], "item") == "eight",
+        groupAt (grownStrings, "long", 1, ["row"], "item") == "nine",
+        groupAt (strings, "long", 0, ["row"], "item") == "three",
+        listLength intValues == 2,
+        listLength (listGet intValues 0 ?: [99]) >= 2,
+        listLength (listGet intValues 1 ?: [99]) >= 2,
+        listLength stringKeys == 2,
+        listContains stringKeys "short",
+        listContains stringKeys "long",
+        !(listContains stringKeys "missing"),
         ((Map () |> mapSet "one" [1] |> mapGet "one" ?: [99]) |> listGet 0 ?: 99) == 1,
-        ((List () |> listAppend [8, 9] |> listGet 0 ?: [99]) |> listGet 1 ?: 99) == 9,
-        structuralEquals [(long |> listGet 0 ?: "missing"), (long |> listGet 1 ?: "missing")] ["three", "seven"],
-        nestedLength (intValues, 0) >= 2,
-        nestedLength (intValues, 1) >= 2
+        ((List () |> listAppend [8, 9] |> listGet 0 ?: [99]) |> listGet 1 ?: 99) == 9
     ]
 
 test "receiver-first collection call syntax composes over nested generics" receiverFirstCollectionCase

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // 🚀 Space Trading Simulation - Complex Game Example
 // An epic CLI adventure showcasing Osprey's pattern matching and safe arithmetic
 
@@ -72,21 +91,6 @@ fn getReputationTitle(rep) = match rep {
 // Cargo valuation has an explicit ceiling at the maximum representable credit value.
 fn calculateCargoValue(amount, price) = satMul(amount, price)
 
-/// Cargo value at unitPrice under the explicit arithmetic check every ledger step needs.
-fn cargoValue(amount, unitPrice) = exactArithmetic(fn() => calculateCargoValue(amount: amount, price: unitPrice))
-
-/// Ledger addition under the explicit arithmetic check.
-fn plus(total, amount) = exactArithmetic(fn() => total + amount)
-
-/// Ledger subtraction under the explicit arithmetic check.
-fn minus(total, amount) = exactArithmetic(fn() => total - amount)
-
-/// Market price raised by markup under the explicit arithmetic check.
-fn premium(price, markup) = exactArithmetic(fn() => price + markup)
-
-/// Total shared over count under the explicit arithmetic check.
-fn average(total, count) = exactArithmetic(fn() => total / count)
-
 fn getShipStatus(fuel) = match fuel {
     100 => "Excellent"
     75 => "Good"
@@ -94,25 +98,6 @@ fn getShipStatus(fuel) = match fuel {
     25 => "Low"
     _ => "Critical"
 }
-
-/// Print every row of a report, in order.
-fn printRows(rows) = forEachList(rows, fn(row) => print(row))
-
-/// Print an arrival row, a specialty row, and the market price.
-fn reportMarket(arrivalLine, specialtyLine, price) =
-    printRows([arrivalLine, specialtyLine, "Market price: ${price} credits per unit"])
-
-/// Print a jump headline, its fuel cost, the fuel left, and a blank row.
-fn reportJump(headline, fuelCost, fuelLeft) =
-    printRows([headline, "Fuel consumed: ${fuelCost}%", "Current fuel: ${fuelLeft}% ⛽", ""])
-
-/// Print a purchase receipt followed by any extra rows and a blank row.
-fn reportPurchase(amount, resource, costLabel, cost, balance, extraRows) =
-    printRows(["Purchasing ${amount} units of ${resource}", "${costLabel} ${cost} credits", "Remaining credits: ${balance} 💰"] + extraRows + [""])
-
-/// Print a sale receipt followed by any extra rows and a blank row.
-fn reportSale(amount, resource, priceLine, revenueLine, balance, extraRows) =
-    printRows(["Selling ${amount} units of ${resource}", priceLine, revenueLine, "New balance: ${balance} credits"] + extraRows + [""])
 
 // Mission briefing and setup
 print("🛸 MISSION BRIEFING 🛸")
@@ -128,70 +113,101 @@ print("🌍 GALACTIC TRADING SIMULATION 🌍")
 print("")
 
 /// Planet 1: Nebula Prime
-let planet1Name = getPlanetName(1)
-let specialty1 = getPlanetSpecialty(1)
+let planet1 = 1
+let planet1Name = getPlanetName(planet1)
+let specialty1 = getPlanetSpecialty(planet1)
 let resource1Name = getResourceName(specialty1)
 let resource1Price = getResourcePrice(specialty1)
 
-reportMarket("📍 Arriving at ${planet1Name}", "This planet specializes in: ${resource1Name}", resource1Price)
+print("📍 Arriving at ${planet1Name}")
+print("This planet specializes in: ${resource1Name}")
+print("Market price: ${resource1Price} credits per unit")
 
 let purchaseAmount1 = 10
-let totalCost1 = cargoValue(purchaseAmount1, resource1Price)
-let newCredits1 = minus(credits, totalCost1)
-let newCargoUsed1 = plus(cargoUsed, purchaseAmount1)
+let totalCost1 = exactArithmetic(fn() => calculateCargoValue(amount: purchaseAmount1, price: resource1Price))
+let newCredits1 = exactArithmetic(fn() => credits - totalCost1)
+let newCargoUsed1 = exactArithmetic(fn() => cargoUsed + purchaseAmount1)
 let travelCost1 = calculateTravelCost(2)
-let newFuel1 = minus(shipFuel, travelCost1)
+let newFuel1 = exactArithmetic(fn() => shipFuel - travelCost1)
 
-reportPurchase(purchaseAmount1, resource1Name, "Total cost:", totalCost1, newCredits1, ["Cargo: ${newCargoUsed1}/${cargoSpace} 📦"])
+print("Purchasing ${purchaseAmount1} units of ${resource1Name}")
+print("Total cost: ${totalCost1} credits")
+print("Remaining credits: ${newCredits1} 💰")
+print("Cargo: ${newCargoUsed1}/${cargoSpace} 📦")
+print("")
 
 /// Planet 2: Crystal Moon
-let planet2Name = getPlanetName(2)
-reportJump("🚀 Traveling to ${planet2Name}...", travelCost1, newFuel1)
+let planet2 = 2
+let planet2Name = getPlanetName(planet2)
+print("🚀 Traveling to ${planet2Name}...")
+print("Fuel consumed: ${travelCost1}%")
+print("Current fuel: ${newFuel1}% ⛽")
+print("")
 
-let specialty2 = getPlanetSpecialty(2)
+let specialty2 = getPlanetSpecialty(planet2)
 let resource2Name = getResourceName(specialty2)
 let resource2Price = getResourcePrice(specialty2)
 
-reportMarket("📍 Arrived at ${planet2Name}", "Local specialty: ${resource2Name}", resource2Price)
+print("📍 Arrived at ${planet2Name}")
+print("Local specialty: ${resource2Name}")
+print("Market price: ${resource2Price} credits per unit")
 
 /// Sell previous cargo at premium
-let sellPrice1 = premium(resource1Price, 25)  // 50% markup
-let revenue1 = cargoValue(purchaseAmount1, sellPrice1)
-let newCredits2 = plus(newCredits1, revenue1)
-let newCargoUsed2 = minus(newCargoUsed1, purchaseAmount1)
+let sellPrice1 = exactArithmetic(fn() => resource1Price + 25  // 50% markup
+)
+let revenue1 = exactArithmetic(fn() => calculateCargoValue(amount: purchaseAmount1, price: sellPrice1))
+let newCredits2 = exactArithmetic(fn() => newCredits1 + revenue1)
+let newCargoUsed2 = exactArithmetic(fn() => newCargoUsed1 - purchaseAmount1)
 
-reportSale(purchaseAmount1, resource1Name, "Sale price: ${sellPrice1} credits per unit", "Revenue: ${revenue1} credits 💰", newCredits2, ["Cargo space freed: ${newCargoUsed2}/${cargoSpace} 📦"])
+print("Selling ${purchaseAmount1} units of ${resource1Name}")
+print("Sale price: ${sellPrice1} credits per unit")
+print("Revenue: ${revenue1} credits 💰")
+print("New balance: ${newCredits2} credits")
+print("Cargo space freed: ${newCargoUsed2}/${cargoSpace} 📦")
+print("")
 
 /// Buy local specialty
 let purchaseAmount2 = 15
-let totalCost2 = cargoValue(purchaseAmount2, resource2Price)
-let newCredits3 = minus(newCredits2, totalCost2)
-let newCargoUsed3 = plus(newCargoUsed2, purchaseAmount2)
+let totalCost2 = exactArithmetic(fn() => calculateCargoValue(amount: purchaseAmount2, price: resource2Price))
+let newCredits3 = exactArithmetic(fn() => newCredits2 - totalCost2)
+let newCargoUsed3 = exactArithmetic(fn() => newCargoUsed2 + purchaseAmount2)
 
-reportPurchase(purchaseAmount2, resource2Name, "Cost:", totalCost2, newCredits3, [])
+print("Purchasing ${purchaseAmount2} units of ${resource2Name}")
+print("Cost: ${totalCost2} credits")
+print("Remaining credits: ${newCredits3} 💰")
+print("")
 
 /// Planet 3: Trade Station Alpha (Major Hub)
-let planet3Name = getPlanetName(3)
+let planet3 = 3
+let planet3Name = getPlanetName(planet3)
 let travelCost2 = calculateTravelCost(3)
-let newFuel2 = minus(newFuel1, travelCost2)
+let newFuel2 = exactArithmetic(fn() => newFuel1 - travelCost2)
 
-reportJump("🚀 Long-range jump to ${planet3Name}", travelCost2, newFuel2)
+print("🚀 Long-range jump to ${planet3Name}")
+print("Fuel consumed: ${travelCost2}%")
+print("Current fuel: ${newFuel2}% ⛽")
+print("")
 
 print("📍 Docking at ${planet3Name}")
 print("This is the galaxy's premier trading hub!")
 
 /// Major trade at hub
-let sellPrice2 = premium(resource2Price, 30)  // Premium for rare goods
-let revenue2 = cargoValue(purchaseAmount2, sellPrice2)
-let newCredits4 = plus(newCredits3, revenue2)
-let newCargoUsed4 = minus(newCargoUsed3, purchaseAmount2)
+let sellPrice2 = exactArithmetic(fn() => resource2Price + 30  // Premium for rare goods
+)
+let revenue2 = exactArithmetic(fn() => calculateCargoValue(amount: purchaseAmount2, price: sellPrice2))
+let newCredits4 = exactArithmetic(fn() => newCredits3 + revenue2)
+let newCargoUsed4 = exactArithmetic(fn() => newCargoUsed3 - purchaseAmount2)
 
-reportSale(purchaseAmount2, resource2Name, "Hub premium price: ${sellPrice2} credits per unit", "Major revenue: ${revenue2} credits! 💰", newCredits4, [])
+print("Selling ${purchaseAmount2} units of ${resource2Name}")
+print("Hub premium price: ${sellPrice2} credits per unit")
+print("Major revenue: ${revenue2} credits! 💰")
+print("New balance: ${newCredits4} credits")
+print("")
 
 /// Calculate profit and reputation
-let totalProfit = minus(newCredits4, credits)
-let newReputation = plus(reputation, 1)
-let newPlanetsVisited = plus(planetsVisited, 3)
+let totalProfit = exactArithmetic(fn() => newCredits4 - credits)
+let newReputation = exactArithmetic(fn() => reputation + 1)
+let newPlanetsVisited = exactArithmetic(fn() => planetsVisited + 3)
 let newReputationTitle = getReputationTitle(newReputation)
 
 print("📈 TRADING RESULTS 📈")
@@ -211,8 +227,8 @@ print("Ship condition: Operational")
 print("")
 
 /// Advanced calculations and projections
-let fuelEfficiency = average(newFuel2, newPlanetsVisited)
-let profitPerPlanet = average(totalProfit, newPlanetsVisited)
+let fuelEfficiency = exactArithmetic(fn() => newFuel2 / newPlanetsVisited)
+let profitPerPlanet = exactArithmetic(fn() => totalProfit / newPlanetsVisited)
 let projectedWealth = exactArithmetic(fn() => newCredits4 * 2)
 
 print("📊 ADVANCED ANALYTICS 📊")
@@ -258,32 +274,70 @@ fn spaceTraderCase() = {
     let projected = (creditsFour * 2) 
 
     checkAll("space trader branch tables", [
-        structuralEquals([getResourcePrice(1), getResourcePrice(2), getResourcePrice(3)], [50, 25, 75]),
-        structuralEquals([getResourcePrice(4), getResourcePrice(5), getResourcePrice(9)], [100, 30, 10]),
-        structuralEquals([getPlanetSpecialty(1), getPlanetSpecialty(2), getPlanetSpecialty(3)], [1, 2, 3]),
-        structuralEquals([getPlanetSpecialty(4), getPlanetSpecialty(5), getPlanetSpecialty(9)], [4, 5, 6]),
-        structuralEquals([calculateTravelCost(1), calculateTravelCost(2), calculateTravelCost(3)], [10, 20, 30]),
-        structuralEquals([calculateTravelCost(4), calculateTravelCost(9)], [40, 50]),
-        structuralEquals([getResourceName(1), getResourceName(2)], ["Quantum Crystals", "Space Metal"]),
-        structuralEquals([getResourceName(3), getResourceName(4)], ["Exotic Spices", "Rare Artifacts"]),
-        structuralEquals([getResourceName(5), getResourceName(9)], ["Energy Cells", "Common Minerals"]),
-        structuralEquals([getPlanetName(1), getPlanetName(2)], ["Nebula Prime", "Crystal Moon"]),
-        structuralEquals([getPlanetName(3), getPlanetName(4)], ["Trade Station Alpha", "Asteroid Mining Base"]),
-        structuralEquals([getPlanetName(5), getPlanetName(9)], ["Galactic Hub", "Unknown Sector"])
+        getResourcePrice(1) == 50,
+        getResourcePrice(2) == 25,
+        getResourcePrice(3) == 75,
+        getResourcePrice(4) == 100,
+        getResourcePrice(5) == 30,
+        getResourcePrice(9) == 10,
+        getResourceName(1) == "Quantum Crystals",
+        getResourceName(2) == "Space Metal",
+        getResourceName(3) == "Exotic Spices",
+        getResourceName(4) == "Rare Artifacts",
+        getResourceName(5) == "Energy Cells",
+        getResourceName(9) == "Common Minerals",
+        getPlanetName(1) == "Nebula Prime",
+        getPlanetName(2) == "Crystal Moon",
+        getPlanetName(3) == "Trade Station Alpha",
+        getPlanetName(4) == "Asteroid Mining Base",
+        getPlanetName(5) == "Galactic Hub",
+        getPlanetName(9) == "Unknown Sector",
+        getPlanetSpecialty(1) == 1,
+        getPlanetSpecialty(2) == 2,
+        getPlanetSpecialty(3) == 3,
+        getPlanetSpecialty(4) == 4,
+        getPlanetSpecialty(5) == 5,
+        getPlanetSpecialty(9) == 6,
+        calculateTravelCost(1) == 10,
+        calculateTravelCost(2) == 20,
+        calculateTravelCost(3) == 30,
+        calculateTravelCost(4) == 40,
+        calculateTravelCost(9) == 50
     ])
     checkAll("space trader ledger and ship state", [
-        structuralEquals([getReputationTitle(0), getReputationTitle(1)], ["Unknown Trader", "Novice Merchant"]),
-        structuralEquals([getReputationTitle(2), getReputationTitle(3)], ["Skilled Trader", "Master Merchant"]),
-        structuralEquals([getReputationTitle(4), getReputationTitle(9)], ["Trade Baron", "Galactic Legend"]),
-        structuralEquals([getShipStatus(100), getShipStatus(75), getShipStatus(50)], ["Excellent", "Good", "Fair"]),
-        structuralEquals([getShipStatus(25), getShipStatus(10), getShipStatus(fuelTwo)], ["Low", "Critical", "Fair"]),
+        getReputationTitle(0) == "Unknown Trader",
+        getReputationTitle(1) == "Novice Merchant",
+        getReputationTitle(2) == "Skilled Trader",
+        getReputationTitle(3) == "Master Merchant",
+        getReputationTitle(4) == "Trade Baron",
+        getReputationTitle(9) == "Galactic Legend",
+        getShipStatus(100) == "Excellent",
+        getShipStatus(75) == "Good",
+        getShipStatus(50) == "Fair",
+        getShipStatus(25) == "Low",
+        getShipStatus(10) == "Critical",
         calculateCargoValue(amount: 10, price: 50) == 500,
         calculateCargoValue(amount: 9223372036854775807, price: 2) == 9223372036854775807,
-        structuralEquals([costOne, creditsOne, cargoOne, fuelOne, sellPriceOne], [500, 500, 10, 80, 75]),
-        structuralEquals([revenueOne, creditsTwo, cargoTwo, costTwo, creditsThree], [750, 1250, 0, 375, 875]),
-        structuralEquals([cargoThree, fuelTwo, sellPriceTwo, revenueTwo, creditsFour], [15, 50, 55, 825, 1700]),
-        structuralEquals([cargoFour, profit, projected], [0, 700, 3400])
+        costOne == 500,
+        creditsOne == 500,
+        cargoOne == 10,
+        fuelOne == 80,
+        sellPriceOne == 75,
+        revenueOne == 750,
+        creditsTwo == 1250,
+        cargoTwo == 0,
+        costTwo == 375,
+        creditsThree == 875,
+        cargoThree == 15,
+        fuelTwo == 50,
+        sellPriceTwo == 55,
+        revenueTwo == 825,
+        creditsFour == 1700,
+        cargoFour == 0,
+        profit == 700,
+        getShipStatus(fuelTwo) == "Fair",
+        projected == 3400
     ])
 }
 
-test("space trading preserves market, ledger, and ship state", exactly(spaceTraderCase))
+test("space trading preserves market, ledger, and ship state", fn() => exactArithmetic(spaceTraderCase))

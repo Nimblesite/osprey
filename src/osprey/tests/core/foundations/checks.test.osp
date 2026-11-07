@@ -11,7 +11,9 @@ fn classify(n) = match n {
 fn arithmeticCase() = {
     // Six independent soft assertions cover results and algebraic behavior.
     checkAll("arithmetic foundations", [
-            structuralEquals([sub(7)(3), (6 * 7 ), sub(20)(2 * 4 )], [4, 42, 12]),
+            sub(7)(3) == 4,
+            (6 * 7 ) == 42,
+            sub(20)(2 * 4 ) == 12,
             sub(8)(3) > 4,
             sub(100)(1) > 0,
             sub(9)(4) != sub(4)(9)
@@ -22,8 +24,10 @@ fn arithmeticCase() = {
 fn classifyCase() = {
     // The conditions cover exact arms, wildcard behavior, and string consumers.
     checkAll("classification foundations", [
-            structuralEquals([classify(0), classify(1)], ["zero", "one"]),
-            structuralEquals([classify(9), classify(sub(4)(3))], ["many", "one"]),
+            classify(0) == "zero",
+            classify(1) == "one",
+            classify(9) == "many",
+            classify(sub(4)(3)) == "one",
             startsWith(classify(20), "m"),
             classify(99) != classify(0)
     ])
@@ -34,7 +38,8 @@ fn stringsAndListsCase() = {
     // Seven separately reported conditions document the combined standard-library behavior.
     checkAll("string and list foundations", [
             contains("talon bank", "bank"),
-            structuralEquals([(repeat("ab", 3) ?: ""), trim("  Osprey  ")], ["ababab", "Osprey"]),
+            (repeat("ab", 3) ?: "") == "ababab",
+            trim("  Osprey  ") == "Osprey",
             toUpperCase("Osprey") == "OSPREY",
             startsWith("osprey language", "osprey"),
             !endsWith("osprey language", "compiler"),
@@ -42,12 +47,31 @@ fn stringsAndListsCase() = {
     ])
 }
 
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Register the arithmetic foundation interaction.
-test("arithmetic checks share derived values", exactly(arithmeticCase))
+test("arithmetic checks share derived values", fn() => exactArithmetic(arithmeticCase))
 // Register the classification interaction.
-test("classification checks include computed inputs", exactly(classifyCase))
+test("classification checks include computed inputs", fn() => exactArithmetic(classifyCase))
 // Register the standard-library composition interaction.
-test("strings and lists mix with matching", exactly(stringsAndListsCase))
+test("strings and lists mix with matching", fn() => exactArithmetic(stringsAndListsCase))
 
 /// Assertions are valid outside any case; a passing one prints nothing.
 checkTrue("assertions run outside a test case", startsWith("osprey", "osp"))

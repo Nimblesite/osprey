@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // `readPositive` validates values supplied by Prompt. One handler keeps
 // resuming with scripted values; another returns without resume to stop.
 
@@ -23,9 +42,9 @@ mut attempt = 0
 let accepted = exactArithmetic(fn() => {
     handle Prompt {
         ask _label => {
-            attempt = attempt + 1
+            attempt = attempt + 1 
             let value = match attempt {
-                1 => (0 - 3)
+                1 => (0 - 3) 
                 2 => 0
                 _ => 7
             }
@@ -42,15 +61,15 @@ mut tries = 0
 let outcome = exactArithmetic(fn() => {
     handle Prompt {
         ask _label => {
-            tries = tries + 1
+            tries = tries + 1 
             match tries > 3 {
                 true => {
                     print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
-                    let sentinel = (0 - 999)
+                    let sentinel = (0 - 999) 
                     sentinel
                 }
                 false => {
-                    let value = (0 - tries)
+                    let value = (0 - tries) 
                     print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
                     resume(value)
                 }
@@ -68,8 +87,10 @@ print("SCENARIO 2 outcome: ${verdict}")
 // Verifies successful retries and the non-resuming early-exit policy.
 
 test("retry handlers resume until success or abort at their limit", fn() => exactArithmetic(fn() => checkAll("retry outcomes", [
-    structuralEquals([accepted, attempt, tries], [7, 3, 4]),
+    accepted == 7,
+    attempt == 3,
     outcome == ((0 - 999) ),
+    tries == 4,
     contains(verdict, "after 3 bad answers")
 ])))
 
@@ -98,154 +119,207 @@ fn acceptPositive(attempt) ![Retry, Arith] = {
 /// success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each arm
 /// records what it issued before `resume` and what the resumed computation
 /// answered afterwards, which pins both the issue order and the LIFO unwind.
-type RetryRun = {
-    calls: int,
-    issued: string,
-    settled: string,
-    accepted: int
-}
-
-/// Runs `acceptPositive` under a handler that derives each candidate from `n`.
-fn retryRun(candidateFor) = {
-    mut calls = 0
-    mut issued = ""
-    mut settled = ""
-    let accepted = {
+fn retryAttemptMatrixCase() = {
+    mut callsA = 0
+    mut issuedA = ""
+    mut settledA = ""
+    let acceptedA = {
         handle Retry {
             supply n => {
-                calls = calls + 1
-                let candidate = candidateFor(n)
-                issued = "${issued}${toString(n)}:${toString(candidate)}|"
+                callsA = callsA + 1 
+                let candidate = (n * 100) 
+                issuedA = "${issuedA}${toString(n)}:${toString(candidate)}|"
                 let answer = resume(candidate)
-                settled = "${settled}${toString(n)}:${toString(answer)}|"
+                settledA = "${settledA}${toString(n)}:${toString(answer)}|"
                 answer
             }
         }
         acceptPositive(1)
     }
-    RetryRun { calls: calls, issued: issued, settled: settled, accepted: accepted }
-}
 
-fn retryAttemptMatrixCase() = {
-    let runA = retryRun(fn(n) => (n * 100) )
-    let runB = retryRun(fn(n) => match n {
-        1 => 0
-        _ => 200
-    })
-    let runC = retryRun(fn(n) => match n {
-        1 => 0
-        2 => (0 - 5)
-        _ => 300
-    })
-    let runD = retryRun(fn(n) => match n > 8 {
-        true => 900
-        false => (0 - n)
-    })
+    mut callsB = 0
+    mut issuedB = ""
+    mut settledB = ""
+    let acceptedB = {
+        handle Retry {
+            supply n => {
+                callsB = callsB + 1 
+                let candidate = match n {
+                    1 => 0
+                    _ => 200
+                }
+                issuedB = "${issuedB}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledB = "${settledB}${toString(n)}:${toString(answer)}|"
+                answer
+            }
+        }
+        acceptPositive(1)
+    }
+
+    mut callsC = 0
+    mut issuedC = ""
+    mut settledC = ""
+    let acceptedC = {
+        handle Retry {
+            supply n => {
+                callsC = callsC + 1 
+                let candidate = match n {
+                    1 => 0
+                    2 => (0 - 5) 
+                    _ => 300
+                }
+                issuedC = "${issuedC}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledC = "${settledC}${toString(n)}:${toString(answer)}|"
+                answer
+            }
+        }
+        acceptPositive(1)
+    }
+
+    mut callsD = 0
+    mut issuedD = ""
+    mut settledD = ""
+    let acceptedD = {
+        handle Retry {
+            supply n => {
+                callsD = callsD + 1 
+                let candidate = match n > 8 {
+                    true => 900
+                    false => (0 - n) 
+                }
+                issuedD = "${issuedD}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledD = "${settledD}${toString(n)}:${toString(answer)}|"
+                answer
+            }
+        }
+        acceptPositive(1)
+    }
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll("each rejection count accepts its own magnitude", [
-        structuralEquals([runA.accepted, runB.accepted, runC.accepted, runD.accepted], [100, 200, 300, 900]),
-        structuralEquals([(runA.accepted + runB.accepted ), (runA.accepted + runB.accepted + runC.accepted + runD.accepted )], [300, 1500]),
-        runA.accepted != runB.accepted,
-        runB.accepted != runC.accepted,
-        runC.accepted != runD.accepted,
-        runA.accepted < runB.accepted,
-        runB.accepted < runC.accepted,
-        runC.accepted < runD.accepted,
-        runD.accepted == (runA.accepted * 9 ),
-        runC.accepted == (runA.accepted * 3 )
+        acceptedA == 100,
+        acceptedB == 200,
+        acceptedC == 300,
+        acceptedD == 900,
+        acceptedA != acceptedB,
+        acceptedB != acceptedC,
+        acceptedC != acceptedD,
+        acceptedA < acceptedB,
+        acceptedB < acceptedC,
+        acceptedC < acceptedD,
+        (acceptedA + acceptedB ) == 300,
+        (acceptedA + acceptedB + acceptedC + acceptedD ) == 1500,
+        acceptedD == (acceptedA * 9 ),
+        acceptedC == (acceptedA * 3 )
     ])
 
     // Attempts are rejections plus one: 0+1, 1+1, 2+1 and 8+1.
     checkAll("one operation per attempt and not one more", [
-        structuralEquals([runA.calls, runB.calls, runC.calls, runD.calls], [1, 2, 3, 9]),
-        structuralEquals([(runA.calls + runB.calls + runC.calls + runD.calls ), (runB.calls - runA.calls ), (runC.calls - runB.calls )], [15, 1, 1]),
-        structuralEquals([(runD.calls - runC.calls ), (runD.calls - 1 ), (runC.calls - 1 )], [6, 8, 2]),
-        runA.calls != runB.calls,
-        runB.calls != runD.calls,
-        runA.calls > 0,
-        runD.calls > runC.calls,
-        runC.calls > runB.calls,
-        runB.calls > runA.calls
+        callsA == 1,
+        callsB == 2,
+        callsC == 3,
+        callsD == 9,
+        (callsA + callsB + callsC + callsD ) == 15,
+        (callsB - callsA ) == 1,
+        (callsC - callsB ) == 1,
+        (callsD - callsC ) == 6,
+        callsA != callsB,
+        callsB != callsD,
+        callsA > 0,
+        callsD > callsC,
+        callsC > callsB,
+        callsB > callsA,
+        (callsD - 1 ) == 8,
+        (callsC - 1 ) == 2
     ])
 
     // The issue transcript names every candidate in the order it was supplied.
     checkAll("issue transcripts record every attempt in order", [
-        structuralEquals([runA.issued, runB.issued], ["1:100|", "1:0|2:200|"]),
-        structuralEquals([runC.issued, runD.issued], ["1:0|2:-5|3:300|", "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"]),
-        structuralEquals([startsWith(runB.issued, "1:0|"), endsWith(runB.issued, "2:200|")], [true, true]),
-        structuralEquals([startsWith(runC.issued, "1:0|2:-5|"), endsWith(runC.issued, "3:300|")], [true, true]),
-        structuralEquals([startsWith(runD.issued, "1:-1|"), endsWith(runD.issued, "9:900|")], [true, true]),
-        structuralEquals([contains(runD.issued, "5:-5|"), contains(runC.issued, "2:-5|")], [true, true]),
-        structuralEquals([contains(runA.issued, "2:"), contains(runB.issued, "3:")], [false, false]),
-        structuralEquals([contains(runC.issued, "4:"), contains(runD.issued, "10:")], [false, false]),
-        length(runA.issued) == 6
+        issuedA == "1:100|",
+        issuedB == "1:0|2:200|",
+        issuedC == "1:0|2:-5|3:300|",
+        issuedD == "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|",
+        startsWith(issuedB, "1:0|"),
+        endsWith(issuedB, "2:200|"),
+        startsWith(issuedC, "1:0|2:-5|"),
+        endsWith(issuedC, "3:300|"),
+        startsWith(issuedD, "1:-1|"),
+        endsWith(issuedD, "9:900|"),
+        contains(issuedD, "5:-5|"),
+        contains(issuedC, "2:-5|"),
+        !contains(issuedA, "2:"),
+        !contains(issuedB, "3:"),
+        !contains(issuedC, "4:"),
+        !contains(issuedD, "10:"),
+        length(issuedA) == 6
     ])
 
     // Post-resume code unwinds in reverse, each frame seeing the accepted answer.
     checkAll("settlement unwinds LIFO with the accepted answer", [
-        structuralEquals([runA.settled, runB.settled, runC.settled], ["1:100|", "2:200|1:200|", "3:300|2:300|1:300|"]),
-        runD.settled == "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|",
-        runA.settled == runA.issued,
-        runB.settled != runB.issued,
-        runC.settled != runC.issued,
-        runD.settled != runD.issued,
-        structuralEquals([startsWith(runB.settled, "2:200|"), endsWith(runB.settled, "1:200|")], [true, true]),
-        structuralEquals([startsWith(runC.settled, "3:300|"), endsWith(runC.settled, "1:300|")], [true, true]),
-        structuralEquals([startsWith(runD.settled, "9:900|"), endsWith(runD.settled, "1:900|")], [true, true]),
-        structuralEquals([contains(runB.settled, "1:0|"), contains(runC.settled, "2:-5|")], [false, false])
+        settledA == "1:100|",
+        settledB == "2:200|1:200|",
+        settledC == "3:300|2:300|1:300|",
+        settledD == "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|",
+        settledA == issuedA,
+        settledB != issuedB,
+        settledC != issuedC,
+        settledD != issuedD,
+        startsWith(settledB, "2:200|"),
+        endsWith(settledB, "1:200|"),
+        startsWith(settledC, "3:300|"),
+        endsWith(settledC, "1:300|"),
+        startsWith(settledD, "9:900|"),
+        endsWith(settledD, "1:900|"),
+        !contains(settledB, "1:0|"),
+        !contains(settledC, "2:-5|")
     ])
 
     // Four regions, four separate cells: nothing crosses between them.
     checkAll("no retry region leaks into another", [
-        runA.issued != runB.issued,
-        runB.issued != runC.issued,
-        runC.issued != runD.issued,
-        structuralEquals([contains(runA.issued, "200"), contains(runB.issued, "300")], [false, false]),
-        structuralEquals([contains(runC.issued, "900"), contains(runD.issued, "100|")], [false, false]),
-        structuralEquals([contains(runD.settled, "300"), contains(runD.issued, "900")], [false, true]),
-        runD.accepted != runC.accepted,
-        structuralEquals([(runD.accepted - runC.accepted ), length(runB.settled)], [600, 12]),
-        structuralEquals([length(runC.settled), length(runD.settled)], [18, 54])
+        issuedA != issuedB,
+        issuedB != issuedC,
+        issuedC != issuedD,
+        !contains(issuedA, "200"),
+        !contains(issuedB, "300"),
+        !contains(issuedC, "900"),
+        !contains(issuedD, "100|"),
+        !contains(settledD, "300"),
+        contains(issuedD, "900"),
+        acceptedD != acceptedC,
+        (acceptedD - acceptedC ) == 600,
+        length(settledB) == 12,
+        length(settledC) == 18,
+        length(settledD) == 54
     ])
 }
 
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
-test("retry loops accept after zero one two and eight rejections", exactly(retryAttemptMatrixCase))
+test("retry loops accept after zero one two and eight rejections", fn() => exactArithmetic(retryAttemptMatrixCase))
 
 /// [EFFECTS-RESUME] "returning from the selected branch without resuming stops
 /// the suspended computation and its value becomes the result of the whole
 /// handler." A retry budget therefore ends the loop by NOT resuming, and the
 /// sentinel it returns is what every still-suspended frame observes.
-/// A budgeted retry run: what the handler issued, what it settled and the
-/// value the whole handled computation produced.
-type BudgetRun = {
-    calls: int,
-    trail: string,
-    settled: string,
-    out: int
-}
-
-/// Retries `acceptPositive` with a budget: attempts up to `budget` resume
-/// with `candidateFor n`; the attempt after `budget` refuses without resuming
-/// and answers `sentinel`, which every outer frame observes.
-fn budgetRun(budget, sentinel, candidateFor) = {
-    mut calls = 0
-    mut trail = ""
-    mut settled = ""
-    let out = {
+fn retryBudgetExhaustionCase() = {
+    mut calls1 = 0
+    mut trail1 = ""
+    mut settled1 = ""
+    let out1 = {
         handle Retry {
             supply n => {
-                calls = calls + 1
-                match n > budget {
+                calls1 = calls1 + 1 
+                match n > 1 {
                     true => {
-                        trail = "${trail}giveup:${toString(n)}|"
-                        (0 - sentinel)
+                        trail1 = "${trail1}giveup:${toString(n)}|"
+                        (0 - 1000) 
                     }
                     false => {
-                        trail = "${trail}try:${toString(n)}|"
-                        let answer = resume(candidateFor(n))
-                        settled = "${settled}${toString(n)}:${toString(answer)}|"
+                        trail1 = "${trail1}try:${toString(n)}|"
+                        let answer = resume((0 - n) )
+                        settled1 = "${settled1}${toString(n)}:${toString(answer)}|"
                         answer
                     }
                 }
@@ -253,94 +327,180 @@ fn budgetRun(budget, sentinel, candidateFor) = {
         }
         acceptPositive(1)
     }
-    BudgetRun { calls: calls, trail: trail, settled: settled, out: out }
-}
 
-/// Every budgeted attempt offers its own negation until one is accepted.
-fn negate(n) = (0 - n)
+    mut calls2 = 0
+    mut trail2 = ""
+    mut settled2 = ""
+    let out2 = {
+        handle Retry {
+            supply n => {
+                calls2 = calls2 + 1 
+                match n > 2 {
+                    true => {
+                        trail2 = "${trail2}giveup:${toString(n)}|"
+                        (0 - 2000) 
+                    }
+                    false => {
+                        trail2 = "${trail2}try:${toString(n)}|"
+                        let answer = resume((0 - n) )
+                        settled2 = "${settled2}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
+                }
+            }
+        }
+        acceptPositive(1)
+    }
 
-fn retryBudgetExhaustionCase() = {
-    let run1 = budgetRun(1, 1000, negate)
-    let run2 = budgetRun(2, 2000, negate)
-    let run3 = budgetRun(3, 3000, negate)
+    mut calls3 = 0
+    mut trail3 = ""
+    mut settled3 = ""
+    let out3 = {
+        handle Retry {
+            supply n => {
+                calls3 = calls3 + 1 
+                match n > 3 {
+                    true => {
+                        trail3 = "${trail3}giveup:${toString(n)}|"
+                        (0 - 3000) 
+                    }
+                    false => {
+                        trail3 = "${trail3}try:${toString(n)}|"
+                        let answer = resume((0 - n) )
+                        settled3 = "${settled3}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
+                }
+            }
+        }
+        acceptPositive(1)
+    }
 
-    // A generous budget the loop never reaches: success arrives on attempt 3.
-    let run5 = budgetRun(5, 5000, fn(n) => match n {
-        3 => 777
-        _ => negate(n)
-    })
+    /// A generous budget the loop never reaches: success arrives on attempt 3.
+    mut calls5 = 0
+    mut trail5 = ""
+    mut settled5 = ""
+    let out5 = {
+        handle Retry {
+            supply n => {
+                calls5 = calls5 + 1 
+                match n > 5 {
+                    true => {
+                        trail5 = "${trail5}giveup:${toString(n)}|"
+                        (0 - 5000) 
+                    }
+                    false => {
+                        let candidate = match n {
+                            3 => 777
+                            _ => (0 - n) 
+                        }
+                        trail5 = "${trail5}try:${toString(n)}|"
+                        let answer = resume(candidate)
+                        settled5 = "${settled5}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
+                }
+            }
+        }
+        acceptPositive(1)
+    }
 
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll("an exhausted budget answers with its own sentinel", [
-        run1.out == ((0 - 1000) ),
-        run2.out == ((0 - 2000) ),
-        run3.out == ((0 - 3000) ),
-        run5.out == 777,
-        run1.out < 0,
-        run2.out < 0,
-        run3.out < 0,
-        run5.out > 0,
-        run1.out != run2.out,
-        run2.out != run3.out,
-        run1.out != run5.out,
-        (run1.out + run2.out + run3.out ) == ((0 - 6000) ),
-        (run2.out - run1.out ) == ((0 - 1000) ),
-        run3.out == (run1.out * 3 )
+        out1 == ((0 - 1000) ),
+        out2 == ((0 - 2000) ),
+        out3 == ((0 - 3000) ),
+        out5 == 777,
+        out1 < 0,
+        out2 < 0,
+        out3 < 0,
+        out5 > 0,
+        out1 != out2,
+        out2 != out3,
+        out1 != out5,
+        (out1 + out2 + out3 ) == ((0 - 6000) ),
+        (out2 - out1 ) == ((0 - 1000) ),
+        out3 == (out1 * 3 )
     ])
 
     // Budget B costs B resuming attempts plus the one refusal that ends it.
     checkAll("attempt count is the budget plus one refusal", [
-        structuralEquals([run1.calls, run2.calls, run3.calls, run5.calls], [2, 3, 4, 3]),
-        structuralEquals([(run1.calls - 1 ), (run2.calls - 1 ), (run3.calls - 1 ), (run1.calls + run2.calls + run3.calls )], [1, 2, 3, 9]),
-        run1.calls < run2.calls,
-        run2.calls < run3.calls,
-        run2.calls == run5.calls,
-        run1.calls != run3.calls,
-        run3.calls > run5.calls,
-        run1.calls > 0
+        calls1 == 2,
+        calls2 == 3,
+        calls3 == 4,
+        calls5 == 3,
+        (calls1 - 1 ) == 1,
+        (calls2 - 1 ) == 2,
+        (calls3 - 1 ) == 3,
+        calls1 < calls2,
+        calls2 < calls3,
+        calls2 == calls5,
+        (calls1 + calls2 + calls3 ) == 9,
+        calls1 != calls3,
+        calls3 > calls5,
+        calls1 > 0
     ])
 
     // The ordered trail distinguishes a resumed try from the terminal refusal.
     checkAll("the trail names every try and then the refusal", [
-        structuralEquals([run1.trail, run2.trail], ["try:1|giveup:2|", "try:1|try:2|giveup:3|"]),
-        structuralEquals([run3.trail, run5.trail], ["try:1|try:2|try:3|giveup:4|", "try:1|try:2|try:3|"]),
-        structuralEquals([startsWith(run1.trail, "try:1|"), endsWith(run1.trail, "giveup:2|")], [true, true]),
-        structuralEquals([endsWith(run2.trail, "giveup:3|"), endsWith(run3.trail, "giveup:4|")], [true, true]),
-        structuralEquals([endsWith(run5.trail, "try:3|"), contains(run3.trail, "try:2|")], [true, true]),
-        structuralEquals([contains(run5.trail, "giveup"), contains(run1.trail, "try:2|")], [false, false]),
-        structuralEquals([contains(run2.trail, "try:3|"), contains(run3.trail, "try:4|")], [false, false]),
-        structuralEquals([length(run1.trail), length(run5.trail)], [15, 18])
+        trail1 == "try:1|giveup:2|",
+        trail2 == "try:1|try:2|giveup:3|",
+        trail3 == "try:1|try:2|try:3|giveup:4|",
+        trail5 == "try:1|try:2|try:3|",
+        startsWith(trail1, "try:1|"),
+        endsWith(trail1, "giveup:2|"),
+        endsWith(trail2, "giveup:3|"),
+        endsWith(trail3, "giveup:4|"),
+        endsWith(trail5, "try:3|"),
+        contains(trail3, "try:2|"),
+        !contains(trail5, "giveup"),
+        !contains(trail1, "try:2|"),
+        !contains(trail2, "try:3|"),
+        !contains(trail3, "try:4|"),
+        length(trail1) == 15,
+        length(trail5) == 18
     ])
 
     // Abandoning the innermost frame still delivers the sentinel to every
     // outer frame's `resume`, so their post-resume code runs with it.
     checkAll("an abandoned continuation settles the outer frames", [
-        structuralEquals([run1.settled, run2.settled], ["1:-1000|", "2:-2000|1:-2000|"]),
-        structuralEquals([run3.settled, run5.settled], ["3:-3000|2:-3000|1:-3000|", "3:777|2:777|1:777|"]),
-        structuralEquals([startsWith(run2.settled, "2:-2000|"), endsWith(run2.settled, "1:-2000|")], [true, true]),
-        structuralEquals([startsWith(run3.settled, "3:-3000|"), endsWith(run3.settled, "1:-3000|")], [true, true]),
-        structuralEquals([contains(run3.settled, "2:-3000|"), contains(run1.settled, "2:")], [true, false]),
-        structuralEquals([contains(run2.settled, "3:"), contains(run3.settled, "4:")], [false, false]),
-        structuralEquals([length(run1.settled), length(run5.settled)], [8, 18]),
-        run1.settled != run2.settled
+        settled1 == "1:-1000|",
+        settled2 == "2:-2000|1:-2000|",
+        settled3 == "3:-3000|2:-3000|1:-3000|",
+        settled5 == "3:777|2:777|1:777|",
+        startsWith(settled2, "2:-2000|"),
+        endsWith(settled2, "1:-2000|"),
+        startsWith(settled3, "3:-3000|"),
+        endsWith(settled3, "1:-3000|"),
+        contains(settled3, "2:-3000|"),
+        !contains(settled1, "2:"),
+        !contains(settled2, "3:"),
+        !contains(settled3, "4:"),
+        length(settled1) == 8,
+        length(settled5) == 18,
+        settled1 != settled2
     ])
 
     // The refusing attempt is issued but never settles: it has no continuation.
     checkAll("the refusing attempt is issued but never settles", [
-        structuralEquals([contains(run1.trail, "giveup:2|"), contains(run1.settled, "2:")], [true, false]),
-        structuralEquals([contains(run2.trail, "giveup:3|"), contains(run2.settled, "3:")], [true, false]),
-        structuralEquals([contains(run3.trail, "giveup:4|"), contains(run3.settled, "4:")], [true, false]),
-        structuralEquals([contains(run5.trail, "giveup:"), contains(run5.settled, "3:777|")], [false, true]),
-        run1.out == ((0 - 1000) ),
-        run2.out != run5.out,
-        run5.out != run3.out,
-        run1.trail != run2.trail,
-        run5.settled != run3.settled
+        contains(trail1, "giveup:2|"),
+        !contains(settled1, "2:"),
+        contains(trail2, "giveup:3|"),
+        !contains(settled2, "3:"),
+        contains(trail3, "giveup:4|"),
+        !contains(settled3, "4:"),
+        !contains(trail5, "giveup:"),
+        contains(settled5, "3:777|"),
+        out1 == ((0 - 1000) ),
+        out2 != out5,
+        out5 != out3,
+        trail1 != trail2,
+        settled5 != settled3
     ])
 }
 
 // Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
-test("an exhausted retry budget stops the loop without resuming", exactly(retryBudgetExhaustionCase))
+test("an exhausted retry budget stops the loop without resuming", fn() => exactArithmetic(retryBudgetExhaustionCase))
 
 /// [EFFECTS-OP-TYPING] Every operation named by a handler arm must match the
 /// declared payload type, so one effect can carry a retry loop per type. Each
@@ -407,7 +567,7 @@ fn markDown(left) ![Payload, Arith] = match left {
     0 => 0
     _ => {
         perform Payload.mark(left)
-        (markDown((left - 1) ) + 1)
+        (markDown((left - 1) ) + 1) 
     }
 }
 
@@ -423,7 +583,7 @@ fn comboBody() ![Payload, Arith] = {
         true => 1
         false => 0
     }
-    length(word) + firstTrue + ratioFlag + value + scaledValue
+    length(word) + firstTrue + ratioFlag + value + scaledValue 
 }
 
 /// [EFFECTS-RESUME] `resume(value)` supplies the current operation result, so
@@ -435,7 +595,7 @@ fn retryPayloadChannelMatrixCase() = {
     let word = {
         handle Payload {
             text n => {
-                textCalls = textCalls + 1
+                textCalls = textCalls + 1 
                 let candidate = match n {
                     1 => "no"
                     2 => "abc"
@@ -453,7 +613,7 @@ fn retryPayloadChannelMatrixCase() = {
     let firstTrue = {
         handle Payload {
             flag n => {
-                flagCalls = flagCalls + 1
+                flagCalls = flagCalls + 1 
                 let ok = n > 3
                 flagTrail = "${flagTrail}${toString(n)}:${toString(ok)}|"
                 resume(ok)
@@ -467,7 +627,7 @@ fn retryPayloadChannelMatrixCase() = {
     let acceptedRatio = {
         handle Payload {
             ratio n => {
-                ratioCalls = ratioCalls + 1
+                ratioCalls = ratioCalls + 1 
                 let candidate = match n {
                     1 => 0.25
                     2 => 1.0
@@ -485,7 +645,7 @@ fn retryPayloadChannelMatrixCase() = {
     let checkedValue = {
         handle Payload {
             checked n => {
-                checkedCalls = checkedCalls + 1
+                checkedCalls = checkedCalls + 1 
                 checkedTrail = "${checkedTrail}${toString(n)}|"
                 match n {
                     1 => resume(Error { message: "cold" })
@@ -502,7 +662,7 @@ fn retryPayloadChannelMatrixCase() = {
     let markTotal = {
         handle Payload {
             mark n => {
-                markCalls = markCalls + 1
+                markCalls = markCalls + 1 
                 markTrail = "${markTrail}${toString(n)}|"
                 resume()
             }
@@ -515,34 +675,34 @@ fn retryPayloadChannelMatrixCase() = {
     let combo = {
         handle Payload {
             text n => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}t${toString(n)}|"
                 resume("steady")
             }
             flag n => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}f${toString(n)}|"
                 resume(n > 1)
             }
             ratio n => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}r${toString(n)}|"
                 resume(3.5)
             }
             checked n => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}c${toString(n)}|"
                 resume(Success { value: 60 })
             }
             mark n => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}m${toString(n)}|"
                 resume()
             }
             scaled n base step => {
-                comboCalls = comboCalls + 1
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}s${toString(n)}|"
-                let candidate = (base + ((n * step) ) - 50)
+                let candidate = (base + ((n * step) ) - 50) 
                 resume(candidate)
             }
         }
@@ -552,60 +712,84 @@ fn retryPayloadChannelMatrixCase() = {
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
     checkAll("each payload type completes its own retry loop", [
         word == "ready",
-        structuralEquals([length(word), firstTrue, checkedValue], [5, 4, 4200]),
-        structuralEquals([markTotal, combo, (markTotal + firstTrue )], [4, 73, 8]),
+        length(word) == 5,
+        firstTrue == 4,
         acceptedRatio == 2.5,
         acceptedRatio > 1.0,
+        checkedValue == 4200,
+        markTotal == 4,
+        combo == 73,
         word != "abc",
         firstTrue != 3,
         acceptedRatio != 1.0,
         checkedValue != 0,
         markTotal != 0,
-        combo < checkedValue
+        combo < checkedValue,
+        (markTotal + firstTrue ) == 8
     ])
 
     // Counts per channel: 3, 4, 3, 3, 4 and eight in the six-arm region.
     checkAll("operation counts per payload channel", [
-        structuralEquals([textCalls, flagCalls, ratioCalls, checkedCalls, markCalls, comboCalls], [3, 4, 3, 3, 4, 8]),
-        (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ) == 17,
-        (comboCalls - markCalls ) == 4,
+        textCalls == 3,
+        flagCalls == 4,
+        ratioCalls == 3,
+        checkedCalls == 3,
+        markCalls == 4,
+        comboCalls == 8,
         textCalls == ratioCalls,
         ratioCalls == checkedCalls,
         flagCalls == markCalls,
         textCalls != flagCalls,
+        (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ) == 17,
         comboCalls > textCalls,
+        (comboCalls - markCalls ) == 4,
         markCalls == markTotal
     ])
 
     // Every channel's transcript is its own, in issue order.
     checkAll("channel transcripts record each candidate in order", [
-        structuralEquals([textTrail, flagTrail], ["1:no|2:abc|3:ready|", "1:false|2:false|3:false|4:true|"]),
-        structuralEquals([ratioTrail, checkedTrail, markTrail], ["1|2|3|", "1|2|3|", "4|3|2|1|"]),
+        textTrail == "1:no|2:abc|3:ready|",
+        flagTrail == "1:false|2:false|3:false|4:true|",
+        ratioTrail == "1|2|3|",
+        checkedTrail == "1|2|3|",
+        markTrail == "4|3|2|1|",
         ratioTrail == checkedTrail,
         markTrail != ratioTrail,
-        structuralEquals([startsWith(textTrail, "1:no|"), endsWith(textTrail, "3:ready|")], [true, true]),
-        structuralEquals([contains(textTrail, "2:abc|"), startsWith(flagTrail, "1:false|")], [true, true]),
-        structuralEquals([endsWith(flagTrail, "4:true|"), contains(flagTrail, "5:")], [true, false]),
-        structuralEquals([contains(textTrail, "4:"), startsWith(markTrail, "4|")], [false, true]),
+        startsWith(textTrail, "1:no|"),
+        endsWith(textTrail, "3:ready|"),
+        contains(textTrail, "2:abc|"),
+        startsWith(flagTrail, "1:false|"),
+        endsWith(flagTrail, "4:true|"),
+        !contains(flagTrail, "5:"),
+        !contains(textTrail, "4:"),
+        startsWith(markTrail, "4|"),
         endsWith(markTrail, "1|")
     ])
 
     // The six-arm region interleaves all six channels in body order.
     checkAll("a six-arm region serves every channel in body order", [
         comboTrail == "t1|f1|f2|r1|c1|m0|s1|s2|",
-        structuralEquals([startsWith(comboTrail, "t1|"), endsWith(comboTrail, "s2|")], [true, true]),
-        containsAll(comboTrail, ["f1|f2|", "m0|", "c1|"]),
-        containsNone(comboTrail, ["t2|", "s3|", "f3|"]),
-        structuralEquals([length(comboTrail), comboCalls], [24, 8]),
+        startsWith(comboTrail, "t1|"),
+        endsWith(comboTrail, "s2|"),
+        contains(comboTrail, "f1|f2|"),
+        contains(comboTrail, "m0|"),
+        contains(comboTrail, "c1|"),
+        !contains(comboTrail, "t2|"),
+        !contains(comboTrail, "s3|"),
+        !contains(comboTrail, "f3|"),
+        length(comboTrail) == 24,
         combo == (6 + 2 + 1 + 60 + 4 ),
+        comboCalls == 8,
         comboTrail != textTrail,
         combo != checkedValue
     ])
 
     // One channel's retries never disturb another's cell.
     checkAll("one channel's retries never disturb another", [
-        structuralEquals([contains(textTrail, "true"), contains(flagTrail, "ready")], [false, false]),
-        structuralEquals([contains(ratioTrail, ":"), contains(checkedTrail, ":")], [false, false]),
+        !contains(textTrail, "true"),
+        !contains(flagTrail, "ready"),
+        !contains(ratioTrail, ":"),
+        !contains(checkedTrail, ":"),
         !contains(markTrail, ":"),
         textTrail != flagTrail,
         textCalls != markCalls,
@@ -613,12 +797,14 @@ fn retryPayloadChannelMatrixCase() = {
         checkedValue != combo,
         acceptedRatio != 3.5,
         firstTrue == markTotal,
-        structuralEquals([length(ratioTrail), length(markTrail), length(flagTrail)], [6, 8, 31])
+        length(ratioTrail) == 6,
+        length(markTrail) == 8,
+        length(flagTrail) == 31
     ])
 }
 
 // Crosses the payload-type axis against partial one-arm and six-arm regions.
-test("retry channels carry text boolean float checked and Unit payloads", exactly(retryPayloadChannelMatrixCase))
+test("retry channels carry text boolean float checked and Unit payloads", fn() => exactArithmetic(retryPayloadChannelMatrixCase))
 
 /// [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
 /// only the handler's own cursor cell advances, so a lost, repeated or
@@ -631,8 +817,8 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromList = {
         handle Retry {
             supply _n => {
-                scriptCalls = scriptCalls + 1
-                cursor = cursor + 1
+                scriptCalls = scriptCalls + 1 
+                cursor = cursor + 1 
                 let candidate = listGet(script, (cursor - 1) ) ?: 0
                 drawn = "${drawn}${toString(candidate)}|"
                 resume(candidate)
@@ -647,7 +833,7 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromMap = {
         handle Retry {
             supply n => {
-                mapCalls = mapCalls + 1
+                mapCalls = mapCalls + 1 
                 let candidate = mapGet(table, toString(n)) ?: ((0 - 7) )
                 mapTrail = "${mapTrail}${toString(n)}=>${toString(candidate)}|"
                 resume(candidate)
@@ -659,10 +845,22 @@ fn retryScriptedCandidateMatrixCase() = {
     /// A sparse table: the three missing keys take the declared `Error` branch,
     /// whose message length is the negative candidate that asks again.
     let sparse = mapSet(Map(), "4", 5555)
-    let runSparse = retryRun(fn(n) => match mapGet(sparse, toString(n)) {
-        Success { value } => value
-        Error { message } => (0 - length(message))
-    })
+    mut sparseCalls = 0
+    mut sparseTrail = ""
+    let fromSparse = {
+        handle Retry {
+            supply n => {
+                sparseCalls = sparseCalls + 1 
+                let candidate = match mapGet(sparse, toString(n)) {
+                    Success { value } => value
+                    Error { message } => (0 - length(message)) 
+                }
+                sparseTrail = "${sparseTrail}${toString(n)}:${toString(candidate)}|"
+                resume(candidate)
+            }
+        }
+        acceptPositive(1)
+    }
 
     /// Boundary candidates: zero, minus one, then the smallest accepted value.
     mut boundaryCalls = 0
@@ -670,10 +868,10 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromBoundary = {
         handle Retry {
             supply n => {
-                boundaryCalls = boundaryCalls + 1
+                boundaryCalls = boundaryCalls + 1 
                 let candidate = match n {
                     1 => 0
-                    2 => (0 - 1)
+                    2 => (0 - 1) 
                     3 => 1
                     _ => 0
                 }
@@ -686,74 +884,98 @@ fn retryScriptedCandidateMatrixCase() = {
 
     // Each loop stops on the first valid candidate its source offers.
     checkAll("scripted loops accept the first valid candidate", [
-        structuralEquals([fromList, fromMap, runSparse.accepted], [4321, 8888, 5555]),
-        structuralEquals([fromBoundary, (fromList + fromMap + runSparse.accepted + fromBoundary )], [1, 18765]),
+        fromList == 4321,
+        fromMap == 8888,
+        fromSparse == 5555,
+        fromBoundary == 1,
         fromList != fromMap,
-        fromMap != runSparse.accepted,
+        fromMap != fromSparse,
         fromBoundary < fromList,
         fromList > 0,
         fromMap > 0,
-        runSparse.accepted > 0,
+        fromSparse > 0,
         fromBoundary > 0,
-        fromMap > runSparse.accepted,
-        runSparse.accepted > fromList
+        (fromList + fromMap + fromSparse + fromBoundary ) == 18765,
+        fromMap > fromSparse,
+        fromSparse > fromList
     ])
 
     // The cursor advances exactly once per operation, never more.
     checkAll("the cursor advances once per operation", [
-        structuralEquals([scriptCalls, cursor, mapCalls, runSparse.calls, boundaryCalls], [6, 6, 3, 4, 3]),
-        structuralEquals([listLength(script), (scriptCalls - mapCalls ), (runSparse.calls - boundaryCalls )], [6, 3, 1]),
-        (scriptCalls + mapCalls + runSparse.calls + boundaryCalls ) == 16,
+        scriptCalls == 6,
+        cursor == 6,
         cursor == scriptCalls,
+        mapCalls == 3,
+        sparseCalls == 4,
+        boundaryCalls == 3,
         cursor == listLength(script),
+        listLength(script) == 6,
+        (scriptCalls - mapCalls ) == 3,
+        (sparseCalls - boundaryCalls ) == 1,
         mapCalls == boundaryCalls,
-        scriptCalls > runSparse.calls,
+        scriptCalls > sparseCalls,
+        (scriptCalls + mapCalls + sparseCalls + boundaryCalls ) == 16,
         cursor != 0
     ])
 
     // The drawn transcript follows list order exactly, boundaries included.
     checkAll("the drawn transcript follows list order", [
         drawn == "0|-1|0|-100000|0|4321|",
-        structuralEquals([startsWith(drawn, "0|-1|"), endsWith(drawn, "4321|")], [true, true]),
-        structuralEquals(mapList(["-100000|", "|4321|4321"], fn(k) => contains(drawn, k)), [true, false]),
-        structuralEquals([(listGet(script, 0) ?: 1), (listGet(script, 5) ?: 0)], [0, 4321]),
-        structuralEquals([(listGet(listReverse(script), 0) ?: 0), length(drawn)], [4321, 22]),
+        startsWith(drawn, "0|-1|"),
+        endsWith(drawn, "4321|"),
+        contains(drawn, "-100000|"),
+        !contains(drawn, "|4321|4321"),
+        (listGet(script, 0) ?: 1) == 0,
         (listGet(script, 1) ?: 0) == ((0 - 1) ),
         (listGet(script, 3) ?: 0) == ((0 - 100000) ),
+        (listGet(script, 5) ?: 0) == 4321,
         listContains(script, 4321),
         !listContains(script, 8888),
+        (listGet(listReverse(script), 0) ?: 0) == 4321,
         !isEmpty(script),
+        length(drawn) == 22,
         fromList == (listGet(script, 5) ?: 0)
     ])
 
     // A map-driven loop reads exactly one key per attempt.
     checkAll("map-driven retries read one key per attempt", [
-        structuralEquals([mapTrail, runSparse.issued], ["1=>0|2=>0|3=>8888|", "1:-21|2:-21|3:-21|4:5555|"]),
-        structuralEquals([mapLength(table), mapLength(sparse), (mapGet(table, "3") ?: 0)], [3, 1, 8888]),
-        structuralEquals([(mapGet(sparse, "4") ?: 0), length("mapGet: key not found")], [5555, 21]),
-        structuralEquals(mapList(["3", "4"], fn(k) => mapContains(table, k)), [true, false]),
-        structuralEquals(mapList(["4", "1"], fn(k) => mapContains(sparse, k)), [true, false]),
+        mapTrail == "1=>0|2=>0|3=>8888|",
+        sparseTrail == "1:-21|2:-21|3:-21|4:5555|",
+        mapLength(table) == 3,
+        mapLength(sparse) == 1,
+        mapContains(table, "3"),
+        !mapContains(table, "4"),
+        mapContains(sparse, "4"),
+        !mapContains(sparse, "1"),
+        (mapGet(table, "3") ?: 0) == 8888,
+        (mapGet(sparse, "4") ?: 0) == 5555,
+        length("mapGet: key not found") == 21,
         startsWith(mapTrail, "1=>0|"),
         endsWith(mapTrail, "3=>8888|"),
-        endsWith(runSparse.issued, "4:5555|"),
-        contains(runSparse.issued, "3:-21|")
+        endsWith(sparseTrail, "4:5555|"),
+        contains(sparseTrail, "3:-21|")
     ])
 
     // Zero and minus one are rejected; one is the smallest accepted candidate.
     checkAll("zero and minus one are rejected and one is accepted", [
         boundaryTrail == "0|-1|1|",
-        structuralEquals([fromBoundary, length(boundaryTrail), boundaryCalls], [1, 7, 3]),
-        structuralEquals([startsWith(boundaryTrail, "0|"), contains(boundaryTrail, "-1|")], [true, true]),
-        structuralEquals([endsWith(boundaryTrail, "1|"), contains(boundaryTrail, "2|")], [true, false]),
+        fromBoundary == 1,
+        startsWith(boundaryTrail, "0|"),
+        contains(boundaryTrail, "-1|"),
+        endsWith(boundaryTrail, "1|"),
+        !contains(boundaryTrail, "2|"),
+        length(boundaryTrail) == 7,
+        boundaryCalls == 3,
         boundaryTrail != drawn,
-        structuralEquals([contains(drawn, "8888"), contains(mapTrail, "4321")], [false, false]),
-        !contains(runSparse.issued, "8888"),
-        fromBoundary != runSparse.accepted
+        !contains(drawn, "8888"),
+        !contains(mapTrail, "4321"),
+        !contains(sparseTrail, "8888"),
+        fromBoundary != fromSparse
     ])
 }
 
 // Crosses the candidate-source axis: list, map, missing key and boundaries.
-test("scripted list and map candidates drive one retry cursor", exactly(retryScriptedCandidateMatrixCase))
+test("scripted list and map candidates drive one retry cursor", fn() => exactArithmetic(retryScriptedCandidateMatrixCase))
 
 /// Budget is a DIFFERENT effect handled outside both retry regions, so a Retry
 /// arm may perform it — an arm may not perform its own active operation, but an
@@ -779,15 +1001,15 @@ fn nestedRetryRegionsCase() = {
     let total = {
         handle Budget {
             charge weight => {
-                chargeCalls = chargeCalls + 1
-                charged = charged + weight
+                chargeCalls = chargeCalls + 1 
+                charged = charged + weight 
                 chargeTrail = "${chargeTrail}${toString(weight)}@${toString(charged)}|"
                 charged
             }
         }
         handle Retry {
             supply n => {
-                outerCalls = outerCalls + 1
+                outerCalls = outerCalls + 1 
                 let tag = outerCalls
                 let candidate = match n > 2 {
                     true => 50
@@ -804,7 +1026,7 @@ fn nestedRetryRegionsCase() = {
         let inside = {
             handle Retry {
                 supply n => {
-                    innerCalls = innerCalls + 1
+                    innerCalls = innerCalls + 1 
                     let tag = innerCalls
                     let candidate = match n > 1 {
                         true => 700
@@ -820,13 +1042,16 @@ fn nestedRetryRegionsCase() = {
             acceptPositive(1)
         }
         let after = acceptPositive(1)
-        before + inside + after
+        before + inside + after 
     }
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll("nested retry regions each accept their own value", [
-        structuralEquals([total, charged, outerCalls], [800, 62, 6]),
-        structuralEquals([innerCalls, chargeCalls, (outerCalls - innerCalls )], [2, 8, 4]),
+        total == 800,
+        charged == 62,
+        outerCalls == 6,
+        innerCalls == 2,
+        chargeCalls == 8,
         chargeCalls == (outerCalls + innerCalls ),
         total == (50 + 700 + 50 ),
         outerCalls > innerCalls,
@@ -834,6 +1059,7 @@ fn nestedRetryRegionsCase() = {
         charged != total,
         total > charged,
         innerCalls != outerCalls,
+        (outerCalls - innerCalls ) == 4,
         charged == (30 + 2 + 30 )
     ])
 
@@ -841,11 +1067,16 @@ fn nestedRetryRegionsCase() = {
     checkAll("the inner region overrides then restores the outer", [
         outerTrail == "o1=1:0|o2=2:0|o3=3:50|o4=1:0|o5=2:0|o6=3:50|",
         innerTrail == "i1=1:0|i2=2:700|",
-        structuralEquals([startsWith(outerTrail, "o1=1:0|"), endsWith(outerTrail, "o6=3:50|")], [true, true]),
-        containsAll(outerTrail, ["o4=1:0|", "o3=3:50|"]),
-        structuralEquals([contains(outerTrail, "700"), contains(innerTrail, "50|")], [false, false]),
-        structuralEquals([startsWith(innerTrail, "i1=1:0|"), endsWith(innerTrail, "i2=2:700|")], [true, true]),
-        structuralEquals([contains(innerTrail, "i3"), contains(outerTrail, "o7")], [false, false]),
+        startsWith(outerTrail, "o1=1:0|"),
+        endsWith(outerTrail, "o6=3:50|"),
+        contains(outerTrail, "o4=1:0|"),
+        contains(outerTrail, "o3=3:50|"),
+        !contains(outerTrail, "700"),
+        !contains(innerTrail, "50|"),
+        startsWith(innerTrail, "i1=1:0|"),
+        endsWith(innerTrail, "i2=2:700|"),
+        !contains(innerTrail, "i3"),
+        !contains(outerTrail, "o7"),
         outerTrail != innerTrail,
         length(innerTrail) == 16
     ])
@@ -854,11 +1085,16 @@ fn nestedRetryRegionsCase() = {
     checkAll("settlement unwinds LIFO across the whole nest", [
         outerSettled == "o6:800|o5:800|o4:800|o3:800|o2:800|o1:800|",
         innerSettled == "i2:700|i1:700|",
-        structuralEquals([startsWith(outerSettled, "o6:800|"), endsWith(outerSettled, "o1:800|")], [true, true]),
-        structuralEquals([startsWith(innerSettled, "i2:700|"), endsWith(innerSettled, "i1:700|")], [true, true]),
-        structuralEquals(mapList(["o4:800|", "700"], fn(k) => contains(outerSettled, k)), [true, false]),
-        structuralEquals([contains(innerSettled, "800"), contains(outerSettled, "o7")], [false, false]),
-        structuralEquals([length(outerSettled), length(innerSettled)], [42, 14]),
+        startsWith(outerSettled, "o6:800|"),
+        endsWith(outerSettled, "o1:800|"),
+        startsWith(innerSettled, "i2:700|"),
+        endsWith(innerSettled, "i1:700|"),
+        contains(outerSettled, "o4:800|"),
+        !contains(outerSettled, "700"),
+        !contains(innerSettled, "800"),
+        !contains(outerSettled, "o7"),
+        length(outerSettled) == 42,
+        length(innerSettled) == 14,
         outerSettled != outerTrail,
         innerSettled != innerTrail
     ])
@@ -866,28 +1102,41 @@ fn nestedRetryRegionsCase() = {
     // One outer Budget cell serves both regions; its running total is ordered.
     checkAll("the outer Budget handler serves both retry regions", [
         chargeTrail == "10@10|10@20|10@30|1@31|1@32|10@42|10@52|10@62|",
-        structuralEquals([chargeCalls, charged, length(chargeTrail), (charged - 2 )], [8, 62, 46, 60]),
-        structuralEquals([startsWith(chargeTrail, "10@10|"), endsWith(chargeTrail, "10@62|")], [true, true]),
-        containsAll(chargeTrail, ["1@31|1@32|", "10@42|"]),
-        containsNone(chargeTrail, ["1@33", "10@70", "@63"]),
+        chargeCalls == 8,
+        charged == 62,
+        startsWith(chargeTrail, "10@10|"),
+        endsWith(chargeTrail, "10@62|"),
+        contains(chargeTrail, "1@31|1@32|"),
+        contains(chargeTrail, "10@42|"),
+        !contains(chargeTrail, "1@33"),
+        !contains(chargeTrail, "10@70"),
+        !contains(chargeTrail, "@63"),
+        length(chargeTrail) == 46,
         charged > 0,
+        (charged - 2 ) == 60,
         chargeCalls != charged
     ])
 
     // A Retry arm performs Budget, never its own Retry.supply.
     checkAll("an arm performs a different effect, never its own", [
-        structuralEquals([innerCalls, outerCalls, chargeCalls], [2, 6, 8]),
-        structuralEquals([charged, total, (innerCalls * 4 )], [62, 800, 8]),
-        structuralEquals([containsAll(chargeTrail, ["1@31|", "1@32|"]), contains(innerTrail, "o")], [true, false]),
+        innerCalls == 2,
+        outerCalls == 6,
+        chargeCalls == 8,
+        contains(chargeTrail, "1@31|"),
+        contains(chargeTrail, "1@32|"),
+        !contains(innerTrail, "o"),
         !contains(outerTrail, "i"),
+        charged == 62,
+        total == 800,
         innerCalls < outerCalls,
+        (innerCalls * 4 ) == 8,
         chargeCalls == (outerCalls + innerCalls ),
         innerSettled != outerSettled
     ])
 }
 
 // Crosses nesting depth against a shared outer effect and LIFO settlement.
-test("nested retry regions override and restore around a shared budget", exactly(nestedRetryRegionsCase))
+test("nested retry regions override and restore around a shared budget", fn() => exactArithmetic(nestedRetryRegionsCase))
 
 /// [EFFECTS-OPERATION-MAILBOX] The mailbox is sized by the operation's real
 /// arity, so zero-, one-, two-, three- and four-argument operations all deliver
@@ -941,7 +1190,7 @@ fn performSiteBody(xs) ![Arity, Arith] = {
         true => perform Arity.four(1, 2, 3, 4)
         false => 0
     }
-    fromLoop + fromHelper + fromTwoDeep + fromThreeDeep + fromMatchArm
+    fromLoop + fromHelper + fromTwoDeep + fromThreeDeep + fromMatchArm 
 }
 
 /// Crosses the perform-site axis against the operation-arity axis. Every
@@ -966,7 +1215,7 @@ fn retryPerformSiteMatrixCase() = {
     let sited = {
         handle Arity {
             zero => {
-                zeroCalls = zeroCalls + 1
+                zeroCalls = zeroCalls + 1 
                 trail = "${trail}z${toString(zeroCalls)}|"
                 suppliedZero = match zeroCalls > 2 {
                     true => 9
@@ -975,32 +1224,32 @@ fn retryPerformSiteMatrixCase() = {
                 resume(suppliedZero)
             }
             one a => {
-                oneCalls = oneCalls + 1
+                oneCalls = oneCalls + 1 
                 trail = "${trail}o${toString(a)}|"
-                suppliedOne = (a * 100)
+                suppliedOne = (a * 100) 
                 resume(suppliedOne)
             }
             two a b => {
-                twoCalls = twoCalls + 1
+                twoCalls = twoCalls + 1 
                 trail = "${trail}t${toString(a)}+${toString(b)}|"
-                suppliedTwo = (a + b)
+                suppliedTwo = (a + b) 
                 resume(suppliedTwo)
             }
             three a b c => {
-                threeCalls = threeCalls + 1
+                threeCalls = threeCalls + 1 
                 trail = "${trail}h${toString(a)}+${toString(b)}+${toString(c)}|"
-                suppliedThree = (a + b + c)
+                suppliedThree = (a + b + c) 
                 resume(suppliedThree)
             }
             four a b c d => {
-                fourCalls = fourCalls + 1
+                fourCalls = fourCalls + 1 
                 trail = "${trail}f${toString(a)}${toString(b)}${toString(c)}${toString(d)}|"
-                suppliedFour = (a * 1000 + b * 100 + c * 10 + d)
+                suppliedFour = (a * 1000 + b * 100 + c * 10 + d) 
                 resume(suppliedFour)
             }
             note v => {
-                noteCalls = noteCalls + 1
-                noteTotal = noteTotal + v
+                noteCalls = noteCalls + 1 
+                noteTotal = noteTotal + v 
                 trail = "${trail}n${toString(v)}|"
                 resume()
             }
@@ -1010,8 +1259,14 @@ fn retryPerformSiteMatrixCase() = {
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll("every perform site reaches the same region", [
-        structuralEquals([sited, zeroCalls, oneCalls, twoCalls, threeCalls, fourCalls], [2024, 3, 1, 1, 1, 1]),
-        structuralEquals([noteCalls, (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls )], [2, 9]),
+        sited == 2024,
+        zeroCalls == 3,
+        oneCalls == 1,
+        twoCalls == 1,
+        threeCalls == 1,
+        fourCalls == 1,
+        noteCalls == 2,
+        (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ) == 9,
         sited == (9 + 400 + 55 + 326 + 1234 ),
         zeroCalls > noteCalls,
         noteCalls > oneCalls,
@@ -1024,16 +1279,28 @@ fn retryPerformSiteMatrixCase() = {
     // Argument order is load-bearing: a swap would change these strings.
     checkAll("arity is preserved and every argument keeps its slot", [
         trail == "z1|z2|z3|o4|t5+50|h6+20+300|n7|n8|f1234|",
-        containsAll(trail, ["o4|", "t5+50|", "h6+20+300|", "f1234|", "n7|n8|"]),
-        containsNone(trail, ["t50+5|", "h300+20+6|", "f4321|", "n8|n7|", "z4|"]),
-        structuralEquals([startsWith(trail, "z1|z2|z3|"), endsWith(trail, "f1234|")], [true, true]),
+        contains(trail, "o4|"),
+        contains(trail, "t5+50|"),
+        contains(trail, "h6+20+300|"),
+        contains(trail, "f1234|"),
+        contains(trail, "n7|n8|"),
+        !contains(trail, "t50+5|"),
+        !contains(trail, "h300+20+6|"),
+        !contains(trail, "f4321|"),
+        !contains(trail, "n8|n7|"),
+        !contains(trail, "z4|"),
+        startsWith(trail, "z1|z2|z3|"),
+        endsWith(trail, "f1234|"),
         length(trail) == 40
     ])
 
     // Call depth changes nothing about which handler answers.
     checkAll("call depth does not change which handler answers", [
-        structuralEquals([suppliedZero, suppliedOne, suppliedTwo], [9, 400, 55]),
-        structuralEquals([suppliedThree, suppliedFour], [326, 1234]),
+        suppliedZero == 9,
+        suppliedOne == 400,
+        suppliedTwo == 55,
+        suppliedThree == 326,
+        suppliedFour == 1234,
         sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ),
         suppliedOne != suppliedTwo,
         suppliedTwo != suppliedThree,
@@ -1047,26 +1314,38 @@ fn retryPerformSiteMatrixCase() = {
 
     // A lambda handed to forEachList performs under the very same handler.
     checkAll("a callback passed to a HOF performs under the handler", [
-        structuralEquals([noteCalls, listLength(probe), (listGet(probe, 0) ?: 0)], [2, 2, 7]),
-        structuralEquals([(listGet(probe, 1) ?: 0), noteTotal], [8, 15]),
+        noteCalls == 2,
         noteCalls == listLength(probe),
-        structuralEquals([containsAll(trail, ["n7|", "n8|"]), contains(trail, "n9|")], [true, false]),
-        structuralEquals(mapList([7, 9], fn(k) => listContains(probe, k)), [true, false]),
+        listLength(probe) == 2,
+        (listGet(probe, 0) ?: 0) == 7,
+        (listGet(probe, 1) ?: 0) == 8,
+        contains(trail, "n7|"),
+        contains(trail, "n8|"),
+        !contains(trail, "n9|"),
+        listContains(probe, 7),
+        !listContains(probe, 9),
+        noteTotal == 15,
         noteCalls != zeroCalls,
         !isEmpty(probe)
     ])
 
     // The recursion and the match arm are ordinary perform sites.
     checkAll("recursion and a match arm are ordinary perform sites", [
-        structuralEquals([zeroCalls, suppliedZero, fourCalls], [3, 9, 1]),
-        structuralEquals([suppliedFour, sited, (zeroCalls - 1 )], [1234, 2024, 2]),
-        structuralEquals([startsWith(trail, "z1|"), contains(trail, "z3|o4|")], [true, true]),
-        containsNone(trail, ["z3|z4|", "|f1234|f"]),
+        zeroCalls == 3,
+        suppliedZero == 9,
+        startsWith(trail, "z1|"),
+        contains(trail, "z3|o4|"),
+        !contains(trail, "z3|z4|"),
+        fourCalls == 1,
+        suppliedFour == 1234,
         endsWith(trail, "f1234|"),
+        !contains(trail, "|f1234|f"),
+        sited == 2024,
+        (zeroCalls - 1 ) == 2,
         suppliedFour != suppliedOne,
         trail != ""
     ])
 }
 
 // Crosses the perform-site axis against operation arities zero through four.
-test("every perform site reaches the same retry handler", exactly(retryPerformSiteMatrixCase))
+test("every perform site reaches the same retry handler", fn() => exactArithmetic(retryPerformSiteMatrixCase))

@@ -28,45 +28,6 @@ fn describe(j) = match j {
 
 fn announce(j) = print(describe(j))
 
-/// Prints each row on its own line.
-fn announceLine(v) = print(v)
-
-/// True when `j`'s tag is among the described tags of `items`.
-fn tagsHave(items, j) = listContains(mapList(items, describe), describe(j))
-
-/// Prints `found` when `ok` holds, `lost` otherwise.
-fn reportMember(ok, found, lost) = match ok { true => print(found) false => print(lost) }
-
-/// Applies `test` to a JArr payload's items, or yields `fallback` for other variants.
-fn withArrItems(a, test, fallback) = match a {
-    JArr { items } => test(items)
-    _              => fallback
-}
-
-/// Applies `test` to a JObj payload's entries, or yields `fallback` for other variants.
-fn withObjEntries(o, test, fallback) = match o {
-    JObj { entries } => test(entries)
-    _                => fallback
-}
-
-/// Announces `found`/`lost` for `j`'s tag against a JArr payload's items.
-fn announceArrTag(a, j, found, lost) = match a {
-    JArr { items } => reportMember(tagsHave(items, j), found, lost)
-    _              => print("not arr")
-}
-
-/// Announces `found`/`lost` for `key` against a JObj payload's entries.
-fn announceObjKey(o, key, found, lost) = match o {
-    JObj { entries } => reportMember(mapContains(entries, key), found, lost)
-    _                => print("not obj")
-}
-
-/// Announces `found`/`lost` for `j`'s tag against a JObj payload's values.
-fn announceObjTag(o, j, found, lost) = match o {
-    JObj { entries } => reportMember(tagsHave(mapValues(entries), j), found, lost)
-    _                => print("not obj")
-}
-
 /// --- List<Self> payload ---
 let jNum  = JNum  { v: 42 }
 let jStr  = JStr  { v: "hi" }
@@ -85,8 +46,14 @@ match arr {
     JArr { items } => forEachList(items, announce)
     _              => print("not arr")
 }
-announceArrTag(arr, jNum, "hasNum", "lostNum")
-announceArrTag(arr, jBool, "hasBool", "lostBool")
+match arr {
+    JArr { items } => match listContains(mapList(items, describe), describe(jNum))  { true => print("hasNum")  false => print("lostNum")  }
+    _              => print("not arr")
+}
+match arr {
+    JArr { items } => match listContains(mapList(items, describe), describe(jBool)) { true => print("hasBool") false => print("lostBool") }
+    _              => print("not arr")
+}
 
 /// --- Map<string, Self> payload ---
 let nameVal = JStr { v: "alice" }
@@ -100,12 +67,18 @@ match obj {
     JObj { entries } => print(toString(mapLength(entries)))
     _                => print("not obj")
 }
-announceObjKey(obj, "name", "has name", "no name")
+match obj {
+    JObj { entries } => match mapContains(entries, "name") { true => print("has name") false => print("no name") }
+    _                => print("not obj")
+}
 match obj {
     JObj { entries } => forEachList(mapValues(entries), announce)
     _                => print("not obj")
 }
-announceObjTag(obj, nameVal, "hasName", "lostName")
+match obj {
+    JObj { entries } => match listContains(mapList(mapValues(entries), describe), describe(nameVal)) { true => print("hasName") false => print("lostName") }
+    _                => print("not obj")
+}
 match obj {
     JObj { entries } => print(toString(listLength(mapKeys(entries))))
     _                => print("not obj")
@@ -113,12 +86,6 @@ match obj {
 
 /// ---------- 3: Plain self-recursive (Tree) ----------
 type Tree = Leaf | Node { value: int, left: Tree, right: Tree }
-
-/// A leaf carrying `v`.
-fn leaf(v) = Node { value: v, left: Leaf, right: Leaf }
-
-/// A node whose left child is a leaf and whose right child is the leaf `w`.
-fn skewed(v, w) = Node { value: v, left: Leaf, right: leaf(w) }
 
 fn label(t) = match t {
     Leaf                        => "leaf"
@@ -128,43 +95,44 @@ fn rootVal(t) = match t {
     Leaf                        => 0
     Node(value, _left, _right) => value
 }
-/// Applies `f` to `t`'s right child when `toRight`, its left child otherwise.
-fn navigate(t, toRight, f, fallback) = match t {
-    Leaf                      => fallback
-    Node(_value, left, right) => match toRight { true => f(right) false => f(left) }
+fn leftLabel(t) = match t {
+    Leaf                        => "leaf"
+    Node(_value, left, _right) => label(left)
 }
-/// Label of `t`'s left child, or "leaf" when there is none.
-fn leftLabel(t) = navigate(t, false, label, "leaf")
-/// Value at the root of `t`'s right child, or 0 when there is none.
-fn rightRootVal(t) = navigate(t, true, rootVal, 0)
-/// Value at the root of `t`'s right child's right child.
-fn rightRightVal(t) = navigate(t, true, rightRootVal, 0)
-/// Value at the root of `t`'s left child's right child.
-fn leftRightVal(t) = navigate(t, false, rightRootVal, 0)
+fn rightRootVal(t) = match t {
+    Leaf                        => 0
+    Node(_value, _left, right) => rootVal(right)
+}
+fn rightRightVal(t) = match t {
+    Leaf                        => 0
+    Node(_value, _left, right) => rightRootVal(right)
+}
+fn leftRightVal(t) = match t {
+    Leaf                        => 0
+    Node(_value, left, _right) => rightRootVal(left)
+}
 
 ///             4
 ///           /   \
 ///         2       6
 ///        / \     / \
 ///       1   3   5   7
-let n1 = leaf(1)
-let n3 = leaf(3)
-let n5 = leaf(5)
-let n7 = leaf(7)
+let n1 = Node { value: 1, left: Leaf, right: Leaf }
+let n3 = Node { value: 3, left: Leaf, right: Leaf }
+let n5 = Node { value: 5, left: Leaf, right: Leaf }
+let n7 = Node { value: 7, left: Leaf, right: Leaf }
 let n2 = Node { value: 2, left: n1, right: n3 }
 let n6 = Node { value: 6, left: n5, right: n7 }
 let root = Node { value: 4, left: n2, right: n6 }
 
-forEachList([
-    label(root),
-    label(Leaf),
-    toString(rootVal(root)),
-    leftLabel(root),
-    leftLabel(n1),
-    toString(rightRootVal(root)),
-    toString(rightRightVal(root)),
-    toString(leftRightVal(root))
-], announceLine)
+print(label(root))
+print(label(Leaf))
+print(toString(rootVal(root)))
+print(leftLabel(root))
+print(leftLabel(n1))
+print(toString(rightRootVal(root)))
+print(toString(rightRightVal(root)))
+print(toString(leftRightVal(root)))
 
 /// ---------- 4: Mutually recursive (Expr <-> Stmt) ----------
 type Expr =
@@ -212,17 +180,16 @@ let sum   = EAdd { args: List() |> listAppend(two) |> listAppend(three) }
 let stmt  = SRet { value: sum }
 let outer = EBlk { body: stmt }
 
+print(descExpr(two))
+print(descExpr(sum))
+print(descExpr(outer))
+print(descStmt(stmt))
+
 let s1 = unwrapBlk(outer)
+print(descStmt(s1))
 let e1 = unwrapRet(s1)
-forEachList([
-    descExpr(two),
-    descExpr(sum),
-    descExpr(outer),
-    descStmt(stmt),
-    descStmt(s1),
-    descExpr(e1),
-    toString(unwrapAddLen(e1))
-], announceLine)
+print(descExpr(e1))
+print(toString(unwrapAddLen(e1)))
 
 match e1 {
     EAdd { args } => {
@@ -239,29 +206,48 @@ fn recursiveUnionCase() = {
     let recursiveArray = JArr {
         items: List() |> listAppend(arrayNumber) |> listAppend(arrayText)
     }
-    let arrayLength = withArrItems(recursiveArray, fn(items) => listLength(items), 0)
-    let arrayHasNumber = withArrItems(recursiveArray, fn(items) => tagsHave(items, arrayNumber), false)
+    let arrayLength = match recursiveArray {
+        JArr { items } => listLength(items)
+        _ => 0
+    }
+    let arrayHasNumber = match recursiveArray {
+        JArr { items } => listContains(mapList(items, describe), describe(arrayNumber))
+        _ => false
+    }
     let recursiveObject = JObj {
         entries: Map() |> mapSet("answer", arrayNumber) |> mapSet("word", arrayText)
     }
-    let objectLength = withObjEntries(recursiveObject, fn(entries) => mapLength(entries), 0)
-    let objectHasWord = withObjEntries(recursiveObject, fn(entries) => mapContains(entries, "word"), false)
-    let leftChild = skewed(2, 3)
-    let rightChild = skewed(6, 7)
+    let objectLength = match recursiveObject {
+        JObj { entries } => mapLength(entries)
+        _ => 0
+    }
+    let objectHasWord = match recursiveObject {
+        JObj { entries } => mapContains(entries, "word")
+        _ => false
+    }
+    let leftChild = Node { value: 2, left: Leaf, right: Node { value: 3, left: Leaf, right: Leaf } }
+    let rightChild = Node { value: 6, left: Leaf, right: Node { value: 7, left: Leaf, right: Leaf } }
     let recursiveTree = Node { value: 4, left: leftChild, right: rightChild }
     let expressionArgs = List() |> listAppend(ENum { v: 2 }) |> listAppend(ENum { v: 3 })
     let recursiveExpression = EBlk { body: SRet { value: EAdd { args: expressionArgs } } }
     let unwrappedExpression = unwrapRet(unwrapBlk(recursiveExpression))
     checkAll("recursive union payloads", [
-        structuralEquals([describe(recursiveArray), describe(recursiveObject)], ["arr", "obj"]),
-        structuralEquals([label(recursiveTree), leftLabel(recursiveTree)], ["node", "node"]),
-        structuralEquals([descExpr(recursiveExpression), descStmt(unwrapBlk(recursiveExpression))], ["blk", "ret"]),
-        descExpr(unwrappedExpression) == "add",
-        structuralEquals([arrayLength, objectLength, rootVal(recursiveTree)], [2, 2, 4]),
-        structuralEquals([leftRightVal(recursiveTree), rightRootVal(recursiveTree)], [3, 6]),
-        structuralEquals([rightRightVal(recursiveTree), unwrapAddLen(unwrappedExpression)], [7, 2]),
+        describe(recursiveArray) == "arr",
+        arrayLength == 2,
         arrayHasNumber,
-        objectHasWord
+        describe(recursiveObject) == "obj",
+        objectLength == 2,
+        objectHasWord,
+        label(recursiveTree) == "node",
+        rootVal(recursiveTree) == 4,
+        leftLabel(recursiveTree) == "node",
+        leftRightVal(recursiveTree) == 3,
+        rightRootVal(recursiveTree) == 6,
+        rightRightVal(recursiveTree) == 7,
+        descExpr(recursiveExpression) == "blk",
+        descStmt(unwrapBlk(recursiveExpression)) == "ret",
+        descExpr(unwrappedExpression) == "add",
+        unwrapAddLen(unwrappedExpression) == 2
     ])
 }
 test("recursive union payloads retain nested tags and values", recursiveUnionCase)

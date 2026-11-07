@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-STATIC-DISCHARGE],
     [EFFECTS-HANDLER-STATE], [TYPE-LIST], [TYPE-LIST-PATTERNS], [TYPE-MAP],
     [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [PATTERN-RESULT-DEFAULT],
@@ -70,6 +84,18 @@ combined =
         total)
 print "final combined result = ${toString combined}"
 
+(** Apply the strict inner Range policy in isolation. *)
+strictRangeForTest () =
+    handle Range
+        clamp _v _hi => 1
+    loadRetries 500 10
+
+(** Apply the ordinary clamping Range policy in isolation. *)
+relaxedRangeForTest () =
+    handle Range
+        clamp _v hi => hi
+    loadRetries 500 10
+
 parseUnder (raw, replacement) =
     handle Parse
         bad _text => replacement
@@ -82,60 +108,36 @@ missingUnder key =
             _ => 1
     perform Missing.fill key
 
-(** Runs `body` under the ordinary clamping Range policy. *)
-clampingRange body =
+clampUnder (raw, high) =
     handle Range
         clamp value limit => match value > limit
             true => limit
             false => value
-    body ()
-
-(** Clamps `raw` to at most `high` under the ordinary policy. *)
-clampUnder (raw, high) = clampingRange (\() => loadRetries raw high)
+    loadRetries raw high
 
 forceUnder (raw, high, replacement) =
     handle Range
         clamp _value _limit => replacement
     loadRetries raw high
 
-(** Applies the forced Range policy, which always yields `4`, to `raw`. *)
-forcedPolicy raw = forceUnder (raw, 10, 4)
-
-(** Applies the strict inner Range policy in isolation. *)
-strictRangeForTest () = forceUnder (500, 10, 1)
-
-(** Applies the ordinary clamping Range policy in isolation. *)
-relaxedRangeForTest () = clampUnder (500, 10)
-
-rangePolicyTrace (raw, high) = clampingRange (\() =>
+rangePolicyTrace (raw, high) =
+    handle Range
+        clamp value limit => match value > limit
+            true => limit
+            false => value
     before = loadRetries raw high
     strict =
         handle Range
             clamp _value _limit => 1
         loadRetries raw high
     after = loadRetries raw high
-    [before, strict, after])
+    [before, strict, after]
 
 traceShape values = match values
     [] => "empty"
     [only] => "one:${only}"
     [first, second] => "two:${first}/${second}"
     [head, ...tail] => "many:${head}+${listLength tail}"
-
-(** Element `index` of `values`, or `fallback` when out of range. *)
-listSlot (values, index, fallback) = (listGet values index ?: fallback)
-
-(** Every observed fact about a Range trace: length, then elements 0..2. *)
-traceFacts values = [listLength values, listSlot (values, 0, 99), listSlot (values, 1, 99), listSlot (values, 2, 99)]
-
-(** Scalar stored under `key`, or `fallback` when the key is absent. *)
-mapSlot (map, key, fallback) = (mapGet map key ?: fallback)
-
-(** Length of the list stored under `key`, treating an absent key as empty. *)
-mapListLength (map, key) = listLength (mapGet map key ?: [99])
-
-(** Element `index` of the list stored under `key`, or `fallback` when absent. *)
-mapListSlot (map, key, index, fallback) = listSlot (mapGet map key ?: [99], index, fallback)
 
 (** Replay Range under two policies and check the composed channel result. *)
 typedErrorChannelCase () =
@@ -150,30 +152,59 @@ typedErrorChannelCase () =
         "outer-inner-outer" => trace,
         "healthy-inner-healthy" => healthyTrace
     ]
-    grown = nested |> mapSet "forced" [forcedPolicy 9, forcedPolicy 99]
+    grown = nested |> mapSet "forced" [forceUnder (9, 10, 4), forceUnder (99, 10, 4)]
 
     checkAll "typed channel direct substitution policies" [
-        structuralEquals [combined, strictRangeForTest (), relaxedRangeForTest ()] [40, 1, 10],
-        structuralEquals [parseUnder ("bad", 0), parseUnder ("bad", 7), parseUnder ("other", 99)] [0, 7, 99],
-        structuralEquals [missingUnder "timeout", missingUnder "retries", clampUnder (5, 10)] [30, 1, 5],
-        structuralEquals [clampUnder (10, 10), clampUnder (11, 10), clampUnder (500, 10)] [10, 10, 10],
-        structuralEquals [forcedPolicy 5, forcedPolicy 500] [4, 4],
-        strictRangeForTest () != relaxedRangeForTest ()
+        combined == 40,
+        strictRangeForTest () == 1,
+        relaxedRangeForTest () == 10,
+        strictRangeForTest () != relaxedRangeForTest (),
+        parseUnder ("bad", 0) == 0,
+        parseUnder ("bad", 7) == 7,
+        parseUnder ("other", 99) == 99,
+        missingUnder "timeout" == 30,
+        missingUnder "retries" == 1,
+        clampUnder (5, 10) == 5,
+        clampUnder (10, 10) == 10,
+        clampUnder (11, 10) == 10,
+        clampUnder (500, 10) == 10,
+        forceUnder (5, 10, 4) == 4,
+        forceUnder (500, 10, 4) == 4
     ]
 
     checkAll "nested handlers restore outer policies around collection values" [
-        structuralEquals [traceFacts trace, traceFacts healthyTrace] [[3, 10, 1, 10], [3, 5, 1, 5]],
-        structuralEquals [traceShape [], traceShape [7]] ["empty", "one:7"],
-        structuralEquals [traceShape [7, 8], traceShape trace] ["two:7/8", "many:10+2"]
+        listLength trace == 3,
+        (listGet trace 0 ?: 99) == 10,
+        (listGet trace 1 ?: 99) == 1,
+        (listGet trace 2 ?: 99) == 10,
+        listLength healthyTrace == 3,
+        (listGet healthyTrace 0 ?: 99) == 5,
+        (listGet healthyTrace 1 ?: 99) == 1,
+        (listGet healthyTrace 2 ?: 99) == 5,
+        traceShape [] == "empty",
+        traceShape [7] == "one:7",
+        traceShape [7, 8] == "two:7/8",
+        traceShape trace == "many:10+2"
     ]
 
     checkAll "typed effect results remain coherent inside maps of lists" [
-        structuralEquals [mapLength scalars, mapSlot (scalars, "parse", 99), mapSlot (scalars, "missing", 99), mapSlot (scalars, "range", 99), mapSlot (scalars, "absent", 99)] [3, 7, 30, 10, 99],
-        structuralEquals [mapLength nested, mapLength grown, mapListLength (nested, "outer-inner-outer"), mapListLength (grown, "forced")] [2, 3, 3, 2],
-        structuralEquals [listLength (mapKeys grown), listLength (mapValues grown)] [3, 3],
-        structuralEquals [mapListSlot (nested, "outer-inner-outer", 1, 99), mapListSlot (nested, "healthy-inner-healthy", 2, 99), mapListSlot (grown, "forced", 0, 99), mapListSlot (grown, "forced", 1, 99)] [1, 5, 4, 4],
+        mapLength scalars == 3,
+        (mapGet scalars "parse" ?: 99) == 7,
+        (mapGet scalars "missing" ?: 99) == 30,
+        (mapGet scalars "range" ?: 99) == 10,
+        (mapGet scalars "absent" ?: 99) == 99,
+        mapLength nested == 2,
+        mapLength grown == 3,
+        listLength (mapGet nested "outer-inner-outer" ?: [99]) == 3,
+        (listGet (mapGet nested "outer-inner-outer" ?: [99]) 1 ?: 99) == 1,
+        (listGet (mapGet nested "healthy-inner-healthy" ?: [99]) 2 ?: 99) == 5,
+        listLength (mapGet grown "forced" ?: [99]) == 2,
+        (listGet (mapGet grown "forced" ?: [99]) 0 ?: 99) == 4,
+        (listGet (mapGet grown "forced" ?: [99]) 1 ?: 99) == 4,
         !(mapContains nested "forced"),
-        mapContains grown "forced"
+        mapContains grown "forced",
+        listLength (mapKeys grown) == 3,
+        listLength (mapValues grown) == 3
     ]
 
-test "typed error channels compose and restore shadowed handlers" (exactly typedErrorChannelCase)
+test "typed error channels compose and restore shadowed handlers" (\() => exactArithmetic (typedErrorChannelCase))

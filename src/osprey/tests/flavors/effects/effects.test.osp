@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Portable cross-contract oracle for [EFFECTS-OP-TYPING],
 // [EFFECTS-STATIC-DISCHARGE], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
 // [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], and
@@ -9,29 +28,33 @@ effect FlavorCounter {
     tick: fn(int) -> Unit
 }
 
-/// The list stored under `key` in `m`, or the sentinel `[99]` when it is absent.
-fn storedList(m, key) = mapGet(m, key) ?: [99]
-
-/// The length and index-`i` element of the list stored under `key`, or sentinels.
-fn listShape(m, key, i) = [listLength(storedList(m, key)), listGet(storedList(m, key), i) ?: 99]
-
 fn runBatchAssertions() = {
     mut total = 10
+    let empty = [99]
     let base = { "first": [2, 3], "second": [5, 9] }
     let grown = mapSet(base, "third", [7, 11, 13])
     let replaced = mapSet(grown, "first", [20])
     let removed = mapRemove(replaced, "second")
-    let first = storedList(base, "first")
-    let second = storedList(base, "second")
-    let missing = storedList(base, "missing")
+    let first = mapGet(base, "first") ?: empty
+    let second = mapGet(base, "second") ?: empty
+    let missing = mapGet(base, "missing") ?: [99]
 
     checkAll("effect batch collection preconditions", [
-            structuralEquals([total, mapLength(base), mapLength(grown)], [10, 2, 3]),
-            structuralEquals([mapLength(replaced), mapLength(removed), listLength(first)], [3, 2, 2]),
-            structuralEquals([listLength(second), listLength(missing), (first.listGet(0) ?: 99)], [2, 1, 2]),
-            structuralEquals([(first.listGet(1) ?: 99), (second.listGet(0) ?: 99)], [3, 5]),
-            structuralEquals([(second.listGet(1) ?: 99), (missing.listGet(0) ?: 0)], [9, 99]),
-            structuralEquals([mapContains(base, "third"), mapContains(grown, "third")], [false, true]),
+            total == 10,
+            mapLength(base) == 2,
+            mapLength(grown) == 3,
+            mapLength(replaced) == 3,
+            mapLength(removed) == 2,
+            listLength(first) == 2,
+            listLength(second) == 2,
+            listLength(missing) == 1,
+            (first.listGet(0) ?: 99) == 2,
+            (first.listGet(1) ?: 99) == 3,
+            (second.listGet(0) ?: 99) == 5,
+            (second.listGet(1) ?: 99) == 9,
+            (missing.listGet(0) ?: 0) == 99,
+            !mapContains(base, "third"),
+            mapContains(grown, "third"),
             !mapContains(removed, "second")
     ])
 
@@ -57,9 +80,16 @@ fn runBatchAssertions() = {
     ])
 
     checkAll("handler exit preserves state and persistent collection versions", [
-            structuralEquals([listShape(grown, "third", 2), listShape(replaced, "first", 0)], [[3, 13], [1, 20]]),
-            structuralEquals([total, mapLength(base), mapLength(grown), listLength(mapValues(grown))], [25, 2, 3, 3]),
-            structuralEquals([listLength(storedList(base, "first")), listLength(mapKeys(grown))], [2, 3])
+            total == 25,
+            mapLength(base) == 2,
+            mapLength(grown) == 3,
+            listLength(grown.mapGet("third") ?: empty) == 3,
+            ((grown.mapGet("third") ?: empty).listGet(2) ?: 99) == 13,
+            listLength(replaced.mapGet("first") ?: empty) == 1,
+            ((replaced.mapGet("first") ?: empty).listGet(0) ?: 99) == 20,
+            listLength(base.mapGet("first") ?: empty) == 2,
+            listLength(mapKeys(grown)) == 3,
+            listLength(mapValues(grown)) == 3
     ])
 }
 
@@ -103,4 +133,4 @@ fn mutationCase() = {
 
 // Run the complete state-transition scenario as one named test.
 
-test("handled mutation retains every counter transition", exactly(mutationCase))
+test("handled mutation retains every counter transition", fn() => exactArithmetic(mutationCase))

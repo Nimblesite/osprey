@@ -10,44 +10,40 @@ effect MapDepot<T> {
 fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
 listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
 
-/// The cases' shared fallbacks, one accessor per element type.
-fn intGroup(groups, key, index) = groupAt(groups, key, index, [91], 99)
-fn textGroup(groups, key, index) = groupAt(groups, key, index, ["row"], "item")
-fn floatGroup(groups, key, index) = groupAt(groups, key, index, [9.0], 9.5)
-fn boolGroup(groups, key, index) = groupAt(groups, key, index, [false], false)
-fn boolMissGroup(groups, key, index) = groupAt(groups, key, index, [true], true)
-
-/// The int at `index` of `xs`, or a sentinel no case expects.
-fn listInt(xs, index) = listGet(xs, index) ?: (0 - 999)
-
-/// The string at `index` of `xs`, or a sentinel no case expects.
-fn listText(xs, index) = listGet(xs, index) ?: ""
-
-/// The float at `index` of `xs`, or a sentinel no case expects.
-fn listFloat(xs, index) = listGet(xs, index) ?: (0.0 - 999.0)
-
-/// Asserts each `keys[i]`/`indices[i]` cell of `groups` reads back `values[i]`.
-fn cells(label, groups, keys, indices, values, group, leaf) =
-forEachList(toList(range(0, listLength(values))), fn(i) =>
-    check(label, leaf(values, i), group(groups, listText(keys, i), listInt(indices, i))))
-
 fn intGroups() = mapSet(mapSet(Map(), "low", [1, 2]), "high", [30, 40, 50])
 fn stringGroups() = mapSet(mapSet(Map(), "short", ["a", "bb"]), "long", ["three", "seven"])
 fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
 fn boolGroups() = mapSet(mapSet(Map(), "left", [true, false]), "right", [false, true])
 
-/// Answers every depot request with `groups`, then runs a `kind`ed request.
-fn depotGroups(groups, kind) = {
-    handle MapDepot {
-        fetch _key => groups
-    }
-    perform MapDepot.fetch(kind)
-}
+fn requestIntGroups() -> Map<string, List<int>> = perform MapDepot.fetch("ints")
+fn requestStringGroups() -> Map<string, List<string>> = perform MapDepot.fetch("strings")
+fn requestFloatGroups() -> Map<string, List<float>> = perform MapDepot.fetch("floats")
+fn requestBoolGroups() -> Map<string, List<bool>> = perform MapDepot.fetch("bools")
 
-fn effectIntGroups() = depotGroups(intGroups(), "ints")
-fn effectStringGroups() = depotGroups(stringGroups(), "strings")
-fn effectFloatGroups() = depotGroups(floatGroups(), "floats")
-fn effectBoolGroups() = depotGroups(boolGroups(), "bools")
+fn effectIntGroups() = {
+    handle MapDepot {
+        fetch _key => intGroups()
+    }
+    requestIntGroups()
+}
+fn effectStringGroups() = {
+    handle MapDepot {
+        fetch _key => stringGroups()
+    }
+    requestStringGroups()
+}
+fn effectFloatGroups() = {
+    handle MapDepot {
+        fetch _key => floatGroups()
+    }
+    requestFloatGroups()
+}
+fn effectBoolGroups() = {
+    handle MapDepot {
+        fetch _key => boolGroups()
+    }
+    requestBoolGroups()
+}
 
 fn mapListShape<T>(groups: Map<string, List<T>>) = match mapLength(groups) {
     0 => "empty"
@@ -72,44 +68,78 @@ fn nestedMapEffectPipelineCase() = {
     let rewritten = mapRemove(mapSet(ints, "extra", [6, 7]), "low")
     let merged = mapMerge(ints, mapSet(Map(), "high", [80, 90]))
 
-    cells("Map<string,List<T>> recovers four concrete leaf arguments", ints, ["low", "low", "high", "high", "high"], [0, 1, 0, 1, 2], [1, 2, 30, 40, 50], intGroup, listInt)
-    cells("Map<string,List<T>> recovers four concrete leaf arguments", strings, ["short", "short", "long", "long"], [0, 1, 0, 1], ["a", "bb", "three", "seven"], textGroup, listText)
-    cells("Map<string,List<T>> recovers four concrete leaf arguments", floats, ["small", "small", "large", "large"], [0, 1, 0, 1], [0.5, 1.25, 8.5, 9.75], floatGroup, listFloat)
     checkAll("Map<string,List<T>> recovers four concrete leaf arguments", [
-            structuralEquals([mapLength(ints), mapLength(strings), mapLength(floats)], [2, 2, 2]),
-            structuralEquals([mapLength(bools), listLength(mapGet(ints, "low") ?: [99])], [2, 2]),
-            structuralEquals([listLength(mapGet(ints, "high") ?: [99]), intGroup(ints, "missing", 0)], [3, 91]),
-            structuralEquals([intGroup(ints, "low", 8), length(textGroup(strings, "long", 1))], [99, 5]),
-            textGroup(strings, "missing", 0) == "row",
-            floatGroup(floats, "small", 0) + floatGroup(floats, "small", 1) == 1.75,
-            structuralEquals([boolGroup(bools, "left", 0), boolMissGroup(bools, "left", 1)], [true, false]),
-            structuralEquals([boolMissGroup(bools, "right", 0), boolGroup(bools, "right", 1)], [false, true])
+            mapLength(ints) == 2,
+            mapLength(strings) == 2,
+            mapLength(floats) == 2,
+            mapLength(bools) == 2,
+            listLength(mapGet(ints, "low") ?: [99]) == 2,
+            listLength(mapGet(ints, "high") ?: [99]) == 3,
+            groupAt(ints, "low", 0, [91], 99) == 1,
+            groupAt(ints, "low", 1, [91], 99) == 2,
+            groupAt(ints, "high", 0, [91], 99) == 30,
+            groupAt(ints, "high", 1, [91], 99) == 40,
+            groupAt(ints, "high", 2, [91], 99) == 50,
+            groupAt(ints, "missing", 0, [91], 99) == 91,
+            groupAt(ints, "low", 8, [91], 99) == 99,
+            groupAt(strings, "short", 0, ["row"], "item") == "a",
+            groupAt(strings, "short", 1, ["row"], "item") == "bb",
+            groupAt(strings, "long", 0, ["row"], "item") == "three",
+            groupAt(strings, "long", 1, ["row"], "item") == "seven",
+            length(groupAt(strings, "long", 1, ["row"], "item")) == 5,
+            groupAt(strings, "missing", 0, ["row"], "item") == "row",
+            groupAt(floats, "small", 0, [9.0], 9.5) == 0.5,
+            groupAt(floats, "small", 1, [9.0], 9.5) == 1.25,
+            groupAt(floats, "large", 0, [9.0], 9.5) == 8.5,
+            groupAt(floats, "large", 1, [9.0], 9.5) == 9.75,
+            groupAt(floats, "small", 0, [9.0], 9.5) + groupAt(floats, "small", 1, [9.0], 9.5) == 1.75,
+            groupAt(bools, "left", 0, [false], false),
+            !groupAt(bools, "left", 1, [true], true),
+            !groupAt(bools, "right", 0, [true], true),
+            groupAt(bools, "right", 1, [false], false)
     ])
 
     checkAll("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", [
-            structuralEquals([listLength(listOfMaps), mapLength(mapOfListsOfMaps), listLength(generations)], [3, 1, 3]),
-            structuralEquals([mapLength(listGet(generations, 0) ?: Map()), mapLength(second)], [2, 2]),
-            structuralEquals([mapLength(third), intGroup(listGet(generations, 0) ?: intGroups(), "high", 2)], [1, 50]),
-            structuralEquals([mapListShape(Map()), mapListShape(mapSet(Map(), "one", [1]))], ["empty", "one:1"]),
-            structuralEquals([mapListShape(ints), mapListShape(strings)], ["many:2/2", "many:2/2"]),
-            structuralEquals([mapListShape(floats), mapListShape(bools)], ["many:2/2", "many:2/2"])
+            listLength(listOfMaps) == 3,
+            mapLength(mapOfListsOfMaps) == 1,
+            listLength(generations) == 3,
+            mapLength(listGet(generations, 0) ?: Map()) == 2,
+            mapLength(second) == 2,
+            mapLength(third) == 1,
+            groupAt(listGet(generations, 0) ?: intGroups(), "high", 2, [91], 99) == 50,
+            groupAt(second, "high", 0, [91], 99) == 60,
+            groupAt(second, "high", 1, [91], 99) == 70,
+            groupAt(third, "only", 0, [91], 99) == 80,
+            groupAt(third, "only", 1, [91], 99) == 90,
+            mapListShape(Map()) == "empty",
+            mapListShape(mapSet(Map(), "one", [1])) == "one:1",
+            mapListShape(ints) == "many:2/2",
+            mapListShape(strings) == "many:2/2",
+            mapListShape(floats) == "many:2/2",
+            mapListShape(bools) == "many:2/2"
     ])
-    cells("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", second, ["high", "high"], [0, 1], [60, 70], intGroup, listInt)
-    cells("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", third, ["only", "only"], [0, 1], [80, 90], intGroup, listInt)
 
-    cells("persistent map pipelines preserve descendants and source generations", rewritten, ["high", "extra", "extra"], [2, 0, 1], [50, 6, 7], intGroup, listInt)
-    cells("persistent map pipelines preserve descendants and source generations", merged, ["high", "high"], [0, 1], [80, 90], intGroup, listInt)
-    cells("persistent map pipelines preserve descendants and source generations", ints, ["high"], [0], [30], intGroup, listInt)
     checkAll("persistent map pipelines preserve descendants and source generations", [
-            structuralEquals([mapLength(rewritten), mapLength(merged)], [2, 2]),
-            structuralEquals([listLength(mapKeys(ints)), listLength(mapValues(ints))], [2, 2]),
-            structuralEquals(mapList(["low", "high"], fn(k) => mapContains(rewritten, k)), [false, true]),
+            mapLength(rewritten) == 2,
+            !mapContains(rewritten, "low"),
+            mapContains(rewritten, "high"),
             mapContains(rewritten, "extra"),
+            groupAt(rewritten, "high", 2, [91], 99) == 50,
+            groupAt(rewritten, "extra", 0, [91], 99) == 6,
+            groupAt(rewritten, "extra", 1, [91], 99) == 7,
+            mapLength(merged) == 2,
+            groupAt(merged, "high", 0, [91], 99) == 80,
+            groupAt(merged, "high", 1, [91], 99) == 90,
+            groupAt(ints, "high", 0, [91], 99) == 30,
             mapContains(ints, "low"),
             !mapContains(ints, "extra"),
-            structuralEquals(mapList(["low", "high"], fn(k) => listContains(mapKeys(ints), k)), [true, true]),
+            listLength(mapKeys(ints)) == 2,
+            listLength(mapValues(ints)) == 2,
+            listContains(mapKeys(ints), "low"),
+            listContains(mapKeys(ints), "high"),
             !listContains(mapKeys(ints), "extra"),
-            structuralEquals(mapList([0, 1], fn(i) => listLength(listGet(mapValues(ints), i) ?: [99]) >= 2), [true, true])
+            listLength(listGet(mapValues(ints), 0) ?: [99]) >= 2,
+            listLength(listGet(mapValues(ints), 1) ?: [99]) >= 2
     ])
 }
 

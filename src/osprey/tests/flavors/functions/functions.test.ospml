@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML function twin covering currying, higher-order calls, and recursion.
 
 (** Capture an offset in a RETURNED lambda: one parameter whose body is a
@@ -23,11 +37,15 @@ closuresCase () =
     ]
     // Check each captured call independently.
     checkAll "closures legacy constituent values" [
-        structuralEquals [add10 5, add100 5, (closureAdder 3) 4] [15, 105, 7]
+        add10 5 == 15,
+        add100 5 == 105,
+        (closureAdder 3) 4 == 7
     ]
     // Exercise identity, cancellation, and capture independence.
     checkAll "closures capture edge cases" [
-        structuralEquals [add10 ((0 - 10) ), add100 0, (closureAdder 0) 9] [0, 100, 9],
+        add10 ((0 - 10) ) == 0,
+        add100 0 == 100,
+        (closureAdder 0) 9 == 9,
         (add10 5 == add100 5) == false
     ]
 
@@ -48,11 +66,16 @@ curryPartialCase () =
     ]
     // Check each application independently.
     checkAll "partial application legacy constituent values" [
-        structuralEquals [add5 10, add5 0, add100 23, (partialAdd 7) 8] [15, 5, 123, 15]
+        add5 10 == 15,
+        add5 0 == 5,
+        add100 23 == 123,
+        (partialAdd 7) 8 == 15
     ]
     // Exercise identity, cancellation, and equivalent sums.
     checkAll "partial application edge cases" [
-        structuralEquals [add5 ((0 - 5) ), add100 0, (partialAdd 0) 9] [0, 100, 9],
+        add5 ((0 - 5) ) == 0,
+        add100 0 == 100,
+        (partialAdd 0) 9 == 9,
         (partialAdd 5) 5 == (partialAdd 8) 2
     ]
 
@@ -79,13 +102,17 @@ higherOrderCase () =
     ]
     // Check each application independently.
     checkAll "higher-order legacy constituent values" [
-        structuralEquals [hofApply hofDouble 5, hofApply hofInc 9] [10, 10],
-        structuralEquals [hofTwice hofDouble 3, hofTwice hofInc 40] [12, 42]
+        hofApply hofDouble 5 == 10,
+        hofApply hofInc 9 == 10,
+        hofTwice hofDouble 3 == 12,
+        hofTwice hofInc 40 == 42
     ]
     // Exercise zero, repetition, and nested higher-order calls.
     checkAll "higher-order edge cases" [
-        structuralEquals [hofApply hofDouble 0, hofTwice hofInc 0] [0, 2],
-        structuralEquals [hofTwice hofDouble 1, hofApply hofInc (hofApply hofDouble 3)] [4, 7]
+        hofApply hofDouble 0 == 0,
+        hofTwice hofInc 0 == 2,
+        hofTwice hofDouble 1 == 4,
+        hofApply hofInc (hofApply hofDouble 3) == 7
     ]
 
 (** Increment values in nested call expressions. *)
@@ -108,12 +135,16 @@ nestedCallsCase () =
     ]
     // Check each nested result independently.
     checkAll "nested calls legacy constituent values" [
-        structuralEquals [deep, nestedDouble (nestedDouble 4)] [15, 16],
-        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) )
+        deep == 15,
+        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) ),
+        nestedDouble (nestedDouble 4) == 16
     ]
     // Exercise each helper and additional zero paths.
     checkAll "nested calls edge cases" [
-        structuralEquals [nestedInc 0, nestedDouble 0, nestedNeg 0, nestedInc (nestedDouble 2)] [1, 0, 0, 5],
+        nestedInc 0 == 1,
+        nestedDouble 0 == 0,
+        nestedNeg 0 == 0,
+        nestedInc (nestedDouble 2) == 5,
         nestedNeg (nestedInc (nestedDouble 0)) == ((0 - 1) )
     ]
 
@@ -130,19 +161,24 @@ recursionCase () =
     ]
     // Check each sum independently.
     checkAll "recursion legacy constituent values" [
-        structuralEquals [recursiveSumTo 5, recursiveSumTo 10, recursiveSumTo 1] [15, 55, 1]
+        recursiveSumTo 5 == 15,
+        recursiveSumTo 10 == 55,
+        recursiveSumTo 1 == 1
     ]
     // Exercise the base, short, long, and recurrence cases.
     checkAll "recursion edge cases" [
-        structuralEquals [recursiveSumTo 0, recursiveSumTo 2, recursiveSumTo 6] [0, 3, 21],
+        recursiveSumTo 0 == 0,
+        recursiveSumTo 2 == 3,
+        recursiveSumTo 6 == 21,
         recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 
-test "closures retain independent captured state" (exactly closuresCase)
-test "partial application retains every curried golden" (exactly curryPartialCase)
-test "higher-order functions retain every application golden" (exactly higherOrderCase)
-test "nested calls retain evaluation structure" (exactly nestedCallsCase)
-test "recursion retains base and recursive branches" (exactly recursionCase)
+
+test "closures retain independent captured state" (\() => exactArithmetic (closuresCase))
+test "partial application retains every curried golden" (\() => exactArithmetic (curryPartialCase))
+test "higher-order functions retain every application golden" (\() => exactArithmetic (higherOrderCase))
+test "nested calls retain evaluation structure" (\() => exactArithmetic (nestedCallsCase))
+test "recursion retains base and recursive branches" (\() => exactArithmetic (recursionCase))
 
 (** Identity as a GENERIC definition — no single concrete ABI, so it exists
     only as a body its call sites specialise ([TYPE-GENERICS-FN]). *)
@@ -200,16 +236,22 @@ applyTwo (f, a, b) = f a b
 genericValueCase () =
     curriedSum = \a => \b => a + b 
     checkAll "file-scope generic function values resolve by name" [
-        structuralEquals [throughAlias 7, throughLambda 9, nestedGeneric 21] [7, 9, 21],
-        structuralEquals [genericIdentity (genericIdentity (genericIdentity 5)), globalHead ()] [5, 1],
-        structuralEquals [throughAlias "osp", throughLambda "ml", nestedGeneric "x"] ["osp", "ml", "x"]
+        throughAlias 7 == 7,
+        throughAlias "osp" == "osp",
+        throughLambda 9 == 9,
+        throughLambda "ml" == "ml",
+        nestedGeneric 21 == 21,
+        nestedGeneric "x" == "x",
+        genericIdentity (genericIdentity (genericIdentity 5)) == 5,
+        globalHead () == 1
     ]
     checkAll "a parameter never changes calls outside its own scope" [
-        structuralEquals [shadowsBuiltin 3, applyTwo (curriedSum, 20, 22)] [3, 42],
+        shadowsBuiltin 3 == 3,
         shadowsBuiltin "keep" == "keep",
         builtinAfterShadow (),
         contains "alpha" "ph",
-        !(contains "alpha" "zz")
+        !(contains "alpha" "zz"),
+        applyTwo (curriedSum, 20, 22) == 42
     ]
 
-test "file-scope generic function values resolve by name" (exactly genericValueCase)
+test "file-scope generic function values resolve by name" (\() => exactArithmetic (genericValueCase))

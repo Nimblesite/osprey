@@ -7,25 +7,11 @@ effect RecordAudit {
     note: fn(string) -> Unit
 }
 
-/// Reads `index` out of `found`, or out of `fallbackList` when it is missing.
-fn atOr(found, index, fallbackList, fallback) =
-listGet(found ?: fallbackList, index) ?: fallback
+fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
+listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
 
-/// The cases' shared fallbacks, one accessor per element type.
-fn intAt(matrix, row, column) = atOr(listGet(matrix, row), column, [99], 99)
-fn textGroup(groups, key, index) = atOr(mapGet(groups, key), index, ["row"], "item")
-
-/// The exact values the listed columns of `row` hold inside `matrix`.
-fn rowCells(matrix, row, columns) = mapList(columns, fn(column) => intAt(matrix, row, column))
-
-/// The exact cells the two probed rows of `matrix` hold: columns 0, 1 then 0, 2.
-fn probedCells(matrix) = [rowCells(matrix, 0, [0, 1]), rowCells(matrix, 1, [0, 2])]
-
-/// The exact elements the listed indices hold under `key` inside `groups`.
-fn keyCells(groups, key, indices) = mapList(indices, fn(index) => textGroup(groups, key, index))
-
-/// The number of elements stored under `key`, or none when the key is absent.
-fn groupSize(groups, key) = listLength(mapGet(groups, key) ?: ["missing"])
+fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
+listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
 
 fn auditEnvelopeMetadata(envelopes) = {
     mut transcript = ""
@@ -62,44 +48,64 @@ fn genericRecordCollectionEffectCase() = {
     let missingBack = mapGet(envelopeMap, "missing") ?: stringFallback
 
     checkAll("Envelope<List<List<int>>,string> survives list storage and persistence", [
-            structuralEquals([listLength(envelopes), listLength(grown), length(firstBack.metadata)], [2, 3, 10]),
-            structuralEquals([length(secondBack.metadata), length(thirdBack.metadata)], [6, 5]),
-            atOr(listGet((listGet(envelopes, 8) ?: fallback).payload, 0), 0, [91], 98) == 99,
             listLength(envelopes) == 2,
-            structuralEquals([firstBack.metadata, secondBack.metadata], ["int-matrix", "second"]),
-            structuralEquals([thirdBack.metadata, (listGet(envelopes, 8) ?: fallback).metadata], ["third", "fallback"]),
+            listLength(grown) == 3,
+            firstBack.metadata == "int-matrix",
+            secondBack.metadata == "second",
+            thirdBack.metadata == "third",
+            length(firstBack.metadata) == 10,
+            length(secondBack.metadata) == 6,
+            length(thirdBack.metadata) == 5,
+            nestedAt(firstBack.payload, 0, 0, [99], 99) == 1,
+            nestedAt(firstBack.payload, 0, 1, [99], 99) == 2,
+            nestedAt(firstBack.payload, 1, 0, [99], 99) == 3,
+            nestedAt(firstBack.payload, 1, 2, [99], 99) == 5,
+            nestedAt(secondBack.payload, 0, 0, [99], 99) == 6,
+            nestedAt(secondBack.payload, 0, 1, [99], 99) == 7,
+            nestedAt(secondBack.payload, 1, 0, [99], 99) == 8,
+            nestedAt(secondBack.payload, 1, 2, [99], 99) == 10,
+            nestedAt(thirdBack.payload, 0, 0, [99], 99) == 11,
+            nestedAt(thirdBack.payload, 0, 1, [99], 99) == 12,
+            (listGet(envelopes, 8) ?: fallback).metadata == "fallback",
+            nestedAt((listGet(envelopes, 8) ?: fallback).payload, 0, 0, [91], 98) == 99,
+            listLength(envelopes) == 2,
             firstBack.metadata == "int-matrix",
             auditEnvelopeMetadata(envelopes) == "int-matrix/second/",
-            auditEnvelopeMetadata(grown) == "int-matrix/second/third/",
-            structuralEquals(probedCells(firstBack.payload), [[1, 2], [3, 5]]),
-            structuralEquals(probedCells(secondBack.payload), [[6, 7], [8, 10]]),
-            structuralEquals(rowCells(thirdBack.payload, 0, [0, 1]), [11, 12])
+            auditEnvelopeMetadata(grown) == "int-matrix/second/third/"
     ])
 
     checkAll("Envelope<Map<string,List<string>>,int> survives map storage and lookup", [
-            structuralEquals([mapLength(envelopeMap), stringBack.metadata], [1, 17]),
-            structuralEquals([length(textGroup(stringBack.payload, "long", 1)), missingBack.metadata], [5, 99]),
-            structuralEquals([mapLength(stringBack.payload), mapLength(missingBack.payload)], [2, 1]),
-            listLength(mapKeys(stringBack.payload)) == 2,
+            mapLength(envelopeMap) == 1,
             mapContains(envelopeMap, "primary"),
             !mapContains(envelopeMap, "missing"),
-            structuralEquals(mapList(["short", "long"], fn(k) => groupSize(stringBack.payload, k)), [2, 2]),
+            stringBack.metadata == 17,
+            groupAt(stringBack.payload, "short", 0, ["row"], "item") == "a",
+            groupAt(stringBack.payload, "short", 1, ["row"], "item") == "bb",
+            groupAt(stringBack.payload, "long", 0, ["row"], "item") == "three",
+            groupAt(stringBack.payload, "long", 1, ["row"], "item") == "seven",
+            length(groupAt(stringBack.payload, "long", 1, ["row"], "item")) == 5,
+            listLength(mapGet(stringBack.payload, "short") ?: ["missing"]) == 2,
+            listLength(mapGet(stringBack.payload, "long") ?: ["missing"]) == 2,
+            missingBack.metadata == 99,
+            groupAt(missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
+            mapLength(stringBack.payload) == 2,
+            mapLength(missingBack.payload) == 1,
+            listLength(mapKeys(stringBack.payload)) == 2,
             listContains(mapKeys(stringBack.payload), "short"),
             listContains(mapKeys(stringBack.payload), "long"),
-            !listContains(mapKeys(stringBack.payload), "missing"),
-            structuralEquals(keyCells(stringBack.payload, "short", [0, 1]), ["a", "bb"]),
-            structuralEquals(keyCells(stringBack.payload, "long", [0, 1]), ["three", "seven"]),
-            structuralEquals(keyCells(missingBack.payload, "missing", [0]), ["fallback"])
+            !listContains(mapKeys(stringBack.payload), "missing")
     ])
 
     checkAll("different T and U argument lists remain isolated", [
             firstBack.metadata != secondBack.metadata,
             secondBack.metadata != thirdBack.metadata,
-            intAt(firstBack.payload, 0, 0) != intAt(secondBack.payload, 0, 0),
-            intAt(secondBack.payload, 0, 0) != intAt(thirdBack.payload, 0, 0),
+            nestedAt(firstBack.payload, 0, 0, [99], 99) != nestedAt(secondBack.payload, 0, 0, [99], 99),
+            nestedAt(secondBack.payload, 0, 0, [99], 99) != nestedAt(thirdBack.payload, 0, 0, [99], 99),
             stringBack.metadata != missingBack.metadata,
-            textGroup(stringBack.payload, "short", 0) != textGroup(missingBack.payload, "missing", 0),
-            structuralEquals([mapLength(envelopeMap), listLength(envelopes), listLength(grown)], [1, 2, 3])
+            groupAt(stringBack.payload, "short", 0, ["row"], "item") != groupAt(missingBack.payload, "missing", 0, ["row"], "item"),
+            mapLength(envelopeMap) == 1,
+            listLength(envelopes) == 2,
+            listLength(grown) == 3
     ])
 }
 

@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Cross-contract oracle for [BLOCK-SCOPE], [PATTERN-RESULT-DEFAULT],
     [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [ARITH-CHECKED],
     [FLAVOR-ML-BLOCK], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP],
@@ -98,18 +112,6 @@ r6 = exactArithmetic (\() =>
     conditionalBlock value)
 print "6 cond match block: ${r6}\n=== Done ==="
 
-(** Values held at the given indexes of a list, 99 for each absent index. *)
-valuesAt xs indexes = mapList indexes (\i => (listGet xs i ?: 99))
-
-(** Row at the given index of a list of lists, [99] when the index is absent. *)
-rowAt rows i = (listGet rows i ?: [99])
-
-(** Lengths of every list held in a list. *)
-lengthsOf rows = mapList rows (\row => listLength row)
-
-(** Map values for the given keys, 99 for each key the map does not hold. *)
-mapValuesAt table keys = mapList keys (\key => (mapGet table key ?: 99))
-
 (** Verify every block result, including shadowing and the wildcard branch. *)
 blockStatementsCase () =
     results = [r1, r2, r3, compute (), r5, r6]
@@ -124,39 +126,67 @@ blockStatementsCase () =
     ]
 
     checkAll "block statement values" [
-        structuralEquals [listHeadBlock (), mapProductBlock (), shadowedBlock (), compute ()] [42, 20, 85, 30],
-        structuralEquals [matrixBlock (), conditionalBlock 42, conditionalBlock 10] [20, 94, 0]
+        listHeadBlock () == 42,
+        mapProductBlock () == 20,
+        shadowedBlock () == 85,
+        compute () == 30,
+        matrixBlock () == 20,
+        conditionalBlock 42 == 94,
+        conditionalBlock 10 == 0
     ]
 
     checkAll "top-level bindings and lexical shadowing remain stable" [
-        structuralEquals [r1, r2, r3, r5, r6, outer, value, conditionalBlock 0] [42, 20, 85, 20, 94, 100, 42, 0],
-        structuralEquals [conditionalBlock 41, conditionalBlock 43, conditionalBlock ((0 - 1) )] [0, 0, 0],
+        r1 == 42,
+        r2 == 20,
+        r3 == 85,
+        r5 == 20,
+        r6 == 94,
+        outer == 100,
+        value == 42,
         shadowedBlock () == r3,
         compute () == compute (),
         matrixBlock () == r5,
-        conditionalBlock value == r6
+        conditionalBlock value == r6,
+        conditionalBlock 0 == 0,
+        conditionalBlock 41 == 0,
+        conditionalBlock 43 == 0,
+        conditionalBlock ((0 - 1) ) == 0
     ]
 
     checkAll "block results retain element types in nested lists" [
         listLength results == 6,
-        structuralEquals (valuesAt results [0, 1, 2, 3, 4, 5, 9]) [42, 20, 85, 30, 20, 94, 99],
+        (listGet results 0 ?: 99) == 42,
+        (listGet results 1 ?: 99) == 20,
+        (listGet results 2 ?: 99) == 85,
+        (listGet results 3 ?: 99) == 30,
+        (listGet results 4 ?: 99) == 20,
+        (listGet results 5 ?: 99) == 94,
+        (listGet results 9 ?: 99) == 99,
         listLength nestedResults == 3,
-        structuralEquals (lengthsOf nestedResults) [6, 2, 1],
-        structuralEquals (rowAt nestedResults 0) results,
-        structuralEquals (rowAt nestedResults 1) [listHeadBlock (), matrixBlock ()],
-        structuralEquals (rowAt nestedResults 2) [conditionalBlock 10]
+        listLength (listGet nestedResults 0 ?: [99]) == 6,
+        listLength (listGet nestedResults 1 ?: [99]) == 2,
+        listLength (listGet nestedResults 2 ?: [99]) == 1,
+        (listGet (listGet nestedResults 0 ?: [99]) 2 ?: 99) == 85,
+        (listGet (listGet nestedResults 1 ?: [99]) 1 ?: 99) == 20,
+        (listGet (listGet nestedResults 2 ?: [99]) 0 ?: 99) == 0
     ]
 
     checkAll "block results remain coherent in maps and interpolation" [
         mapLength byName == 6,
-        structuralEquals (mapValuesAt byName ["head", "map", "shadow", "compute", "matrix", "conditional"]) results,
+        (mapGet byName "head" ?: 99) == 42,
+        (mapGet byName "map" ?: 99) == 20,
+        (mapGet byName "shadow" ?: 99) == 85,
+        (mapGet byName "compute" ?: 99) == 30,
+        (mapGet byName "matrix" ?: 99) == 20,
+        (mapGet byName "conditional" ?: 99) == 94,
         (mapGet byName "missing" ?: 99) == 99,
-        structuralEquals [listLength (mapKeys byName), listLength (mapValues byName)] [6, 6],
+        listLength (mapKeys byName) == 6,
+        listLength (mapValues byName) == 6,
         "${r1}/${r2}/${r3}/${r5}/${r6}" == "42/20/85/20/94",
         "outer=${outer} inner=${shadowedBlock ()}" == "outer=100 inner=85"
     ]
 
-test "blocks preserve values and lexical scope" (exactly blockStatementsCase)
+test "blocks preserve values and lexical scope" (\() => exactArithmetic (blockStatementsCase))
 
 (** [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings. *)
 effect BlockRead

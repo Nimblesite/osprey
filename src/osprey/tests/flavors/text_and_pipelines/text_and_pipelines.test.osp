@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Assertion-driven replacement for the former pipeline and string goldens.
 
 /// Increment a pipeline value by one.
@@ -19,13 +38,16 @@ fn pipeChainCase() = {
     ])
     // Split the three final pipeline values into independent assertions.
     checkAll("pipe chain legacy constituent values", [
-            structuralEquals([p1, p2, p3], [12, 37, 24])
+            p1 == 12,
+            p2 == 37,
+            p3 == 24
     ])
     // Exercise intermediate stages, zero input, and a different stage order.
     checkAll("pipe chain composition edges", [
-            structuralEquals([(5 |> pipeInc), (0 |> pipeInc |> pipeDouble)], [6, 2]),
-            (3 |> pipeSquare |> pipeDouble) == 18,
-            p1 == pipeDouble(pipeInc(5))
+            (5 |> pipeInc) == 6,
+            p1 == pipeDouble(pipeInc(5)),
+            (0 |> pipeInc |> pipeDouble) == 2,
+            (3 |> pipeSquare |> pipeDouble) == 18
     ])
 }
 
@@ -46,13 +68,17 @@ fn stringsCase() = {
     ])
     // Split all four dynamic string values into independent assertions.
     checkAll("strings legacy constituent values", [
-            structuralEquals([hello, stringShout(hello)], ["Hi Ada", "Hi Ada!"]),
-            structuralEquals([stringShout(stringGreet(name)), hello + name], ["Hi Ada!", "Hi AdaAda"])
+            hello == "Hi Ada",
+            stringShout(hello) == "Hi Ada!",
+            stringShout(stringGreet(name)) == "Hi Ada!",
+            hello + name == "Hi AdaAda"
     ])
     // Exercise empty inputs, equivalent nested calls, and reversed concatenation.
     checkAll("strings composition edges", [
-            structuralEquals([stringGreet(""), stringShout(""), name + hello], ["Hi ", "!", "AdaHi Ada"]),
-            stringShout(hello) == stringShout(stringGreet(name))
+            stringGreet("") == "Hi ",
+            stringShout("") == "!",
+            stringShout(hello) == stringShout(stringGreet(name)),
+            name + hello == "AdaHi Ada"
     ])
     let rows = [1, 2, 3]
     // A lambda parameter inside an interpolation stays code, whatever its first letter.
@@ -68,6 +94,6 @@ fn stringsCase() = {
 
 // Register the pipeline composition scenario.
 
-test("pipelines retain each stage and complete chain", exactly(pipeChainCase))
+test("pipelines retain each stage and complete chain", fn() => exactArithmetic(pipeChainCase))
 // Register the string composition scenario.
-test("string calls retain interpolation and concatenation", exactly(stringsCase))
+test("string calls retain interpolation and concatenation", fn() => exactArithmetic(stringsCase))

@@ -53,5 +53,6 @@ fn stagedCase() = {
 }
 
 test("a let-aliased closure keeps its pinned instantiation", fn() => checkAll("sidebars", [
-            structuralEquals([plainCase(), stagedCase()], ["2:7", "2:2"])
+            plainCase() == "2:7",
+            stagedCase() == "2:2"
         ]))

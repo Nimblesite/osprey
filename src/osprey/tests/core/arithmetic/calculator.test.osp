@@ -33,7 +33,11 @@ fn additionCase() = {
     let subtotal = add(10, 20)
     // One batch keeps seven independent arithmetic assertions compact.
     checkAll("addition state", [
-        structuralEquals([add(2, 3), add(-1, 1), add(subtotal, -5), add(0, 0), add(1000, -250)], [5, 0, 25, 0, 750]),
+        add(2, 3) == 5,
+        add(-1, 1) == 0,
+        add(subtotal, -5) == 25,
+        add(0, 0) == 0,
+        add(1000, -250) == 750,
         add(4, 5) > add(2, 3),
         !(add(-2, 1) > 0)
     ])
@@ -44,7 +48,8 @@ fn pipelineCase() = {
     let six = 3 |> double
     // Every condition is reported separately even though the syntax is grouped.
     checkAll("pipeline state", [
-        structuralEquals([(10 |> double |> double), (5 |> fn(x) => x + 100)], [40, 105]),
+        (10 |> double |> double) == 40,
+        (5 |> fn(x) => x + 100) == 105,
         (six |> fn(x) => add(x, 4)) == 10,
         (-2 |> double |> double) == -8,
         (6 |> double |> fn(x) => x == 12),
@@ -56,8 +61,11 @@ fn pipelineCase() = {
 fn patternCase() = {
     // The batch covers both branches and several cross-feature compositions.
     checkAll("pattern state", [
-        structuralEquals([parity(4), parity(7), parity(add(5, 5))], ["even", "odd", "even"]),
-        structuralEquals(["${parity(3)}:${double(3)}", parity(double(9))], ["odd:6", "even"]),
+        parity(4) == "even",
+        parity(7) == "odd",
+        parity(add(5, 5)) == "even",
+        "${parity(3)}:${double(3)}" == "odd:6",
+        parity(double(9)) == "even",
         parity(3) != parity(4)
     ])
 }
@@ -71,8 +79,8 @@ let exactArithmetic = handler Arith {
 }
 
 // Register the mixed arithmetic interaction.
-test("arithmetic composes across calls", exactly(additionCase))
+test("arithmetic composes across calls", fn() => exactArithmetic(additionCase))
 // Register the multi-stage pipeline interaction.
-test("pipes and lambdas compose", exactly(pipelineCase))
+test("pipes and lambdas compose", fn() => exactArithmetic(pipelineCase))
 // Register the matching and rendering interaction.
-test("matching, interpolation and calls interact", exactly(patternCase))
+test("matching, interpolation and calls interact", fn() => exactArithmetic(patternCase))
