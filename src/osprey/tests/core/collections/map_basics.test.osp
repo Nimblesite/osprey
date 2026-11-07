@@ -243,7 +243,7 @@ fn literalsAndDispatchCase() = {
 
 // Register empty, set, overwrite, and source-isolation behavior. The testing
 // prelude supplies exactArithmetic beside every program that names it.
-test("maps construct, overwrite, and retain source bindings", fn() => exactArithmetic(constructionAndOverwriteCase))
+test("maps construct, overwrite, and retain source bindings", exactly(constructionAndOverwriteCase))
 
 // Register generation-chain and sibling-branch persistence behavior.
 test("map generations and sibling branches remain isolated", exactly(generationsAndBranchesCase))

@@ -239,7 +239,9 @@ literalsAndDispatchCase () =
     ]
 
 // The testing prelude supplies exactArithmetic beside every program that names it.
-test "maps construct, overwrite, and retain source bindings" (\() => exactArithmetic (constructionAndOverwriteCase))
+test "maps construct, overwrite, and retain source bindings" (exactly constructionAndOverwriteCase)
+
+test "map generations and sibling branches remain isolated" (exactly generationsAndBranchesCase)
 
 test "map removal and merge preserve values and bias" (exactly removalAndMergeCase)
 
