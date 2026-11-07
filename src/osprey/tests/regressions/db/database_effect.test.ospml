@@ -52,24 +52,27 @@ effect Database
     close : Ptr => int
 
 (** --- real SQLite handler implementations (top-level, no captures) --- *)
-openReal path =
+(** Run `call` against a fresh out-parameter cell, yielding its status code and pointer. *)
+withCell call =
     cell = osprey_ffi_cell ()
-    rc = sqlite3_open path cell
-    db = osprey_ffi_deref cell
+    rc = call cell
+    value = osprey_ffi_deref cell
     _freed = osprey_ffi_free cell
-    match rc
-        0 => Success(value = db)
+    { rc = rc, value = value }
+
+openReal path =
+    opened = withCell (\cell => sqlite3_open path cell)
+    match opened.rc
+        0 => Success(value = opened.value)
         _ => Error(message = "open failed")
 
 execReal (db, sql) =
-    sqlite3_exec db sql (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
+    nullptr = osprey_ffi_null ()
+    sqlite3_exec db sql nullptr nullptr nullptr
 
 prepareReal (db, sql) =
-    cell = osprey_ffi_cell ()
-    _rc = sqlite3_prepare_v2 db sql ((0 - 1) ) cell (osprey_ffi_null ())
-    stmt = osprey_ffi_deref cell
-    _freed = osprey_ffi_free cell
-    stmt
+    prepared = withCell (\cell => sqlite3_prepare_v2 db sql ((0 - 1) ) cell (osprey_ffi_null ()))
+    prepared.value
 
 (** --- application logic: effect-typed, knows nothing about SQLite or FFI --- *)
 seedUser (db, uid, uname) =
@@ -79,6 +82,9 @@ seedUser (db, uid, uname) =
     rc = perform Database.step stmt
     _fin = perform Database.finalize stmt
     rc
+
+(** Seed the two demo users, yielding the line that reports their status codes. *)
+seedDemoUsers db = "inserted ${seedUser (db, 1, "Ada")} ${seedUser (db, 2, "Linus")}"
 
 showUser stmt =
     rc = perform Database.step stmt
@@ -90,9 +96,7 @@ runApp db =
     match createrc
         0 => print "create ok"
         _ => print "create err"
-    i1 = seedUser (db, 1, "Ada")
-    i2 = seedUser (db, 2, "Linus")
-    print "inserted ${i1} ${i2}"
+    print (seedDemoUsers db)
     q = perform Database.prepare db "SELECT id, name FROM users ORDER BY id"
     _r1 = showUser q
     _r2 = showUser q
@@ -117,11 +121,20 @@ withDatabase work =
         close db => sqlite3_close db
     work ()
 
-databaseDemo () =
+(** Run `work` against a fresh in-memory database inside the real handler. *)
+withMemoryDatabase work =
     withDatabase (\() =>
         match perform Database.open ":memory:"
-            Success value => runApp value
-            Error message => print "open ${message}")
+            Success value => work value
+            Error message => Error(message = message))
+
+(** Report an open failure, otherwise yield whatever the run produced. *)
+reportOpened result =
+    match result
+        Success value => value
+        Error message => print "open ${message}"
+
+databaseDemo () = reportOpened (withMemoryDatabase runApp)
 databaseDemo ()
 
 (** Capture every externally visible result of one handled database interaction. *)
@@ -158,11 +171,7 @@ observeDatabase db =
     )
 
 (** Install the real handler and preserve an open failure in the Result channel. *)
-runDatabaseProbe () =
-    withDatabase (\() =>
-        match perform Database.open ":memory:"
-            Success value => Success(value = observeDatabase value)
-            Error message => Error(message = message))
+runDatabaseProbe () = withMemoryDatabase observeDatabase
 
 (** Report whether the real handler produced an observation instead of an error. *)
 databaseOpened result =
