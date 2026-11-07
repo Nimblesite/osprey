@@ -74,7 +74,7 @@ def read_header(prefix, file_size):
 
     Every tensor's range is checked against `file_size`, so weights too large to hold
     in a list stay on disk; `tensor_bytes` refuses a tensor past the prefix."""
-    return Chain.then(header_of(prefix), lambda head: sections_of(prefix, head, file_size))
+    return Chain.then(Values.header_at(prefix), lambda head: Chain.then(fields_of(prefix, head), lambda section: assemble(prefix, head, section, file_size)))
 
 
 def read_path(path, file_size, count):
@@ -100,16 +100,6 @@ def retry_longer(path, file_size, count, message):
         return read_path(path, file_size, count * 2)
 
 
-def header_of(data):
-    """The fixed header, or the first thing wrong with it."""
-    return Values.header_at(data)
-
-
-def sections_of(data, head, file_size):
-    """The metadata entries, then the tensors and the tensor-data layout."""
-    return Chain.then(fields_of(data, head), lambda section: assemble(data, head, section, file_size))
-
-
 def fields_of(data, head):
     """Every metadata entry in file order, or the first entry that cannot be read."""
     if head.kv_count < 0 or head.kv_count > len(data) - head.offs:
@@ -128,15 +118,15 @@ def checked_walk(data, head):
 def header_fields(head):
     """The three entries GGUFReader publishes for the fixed header."""
     return [
-        Field(offset=4, name="GGUF.version", value=header_number("uint32", head.version)),
-        Field(offset=8, name="GGUF.tensor_count", value=header_number("uint64", head.tensor_count)),
-        Field(offset=16, name="GGUF.kv_count", value=header_number("uint64", head.kv_count)),
+        header_field(4, "GGUF.version", "uint32", head.version),
+        header_field(8, "GGUF.tensor_count", "uint64", head.tensor_count),
+        header_field(16, "GGUF.kv_count", "uint64", head.kv_count),
     ]
 
 
-def header_number(kind, number):
-    """One fixed header figure as the metadata value GGUFReader publishes."""
-    return Values.Value(kind=kind, item_kind="", i=number, f=0.0, s="", items=[])
+def header_field(offset, name, kind, number):
+    """One fixed header figure as the metadata entry GGUFReader publishes."""
+    return Field(offset=offset, name=name, value=Values.Value(kind=kind, item_kind="", i=number, f=0.0, s="", items=[]))
 
 
 def field_step(data, acc, swapped):
@@ -158,7 +148,7 @@ def read_field(data, acc, swapped):
 
 def place_field(acc, entry):
     """`acc` with the entry appended, or gguf's duplicate-key rejection."""
-    if listContains(field_names_of(acc.items), entry.field.name):
+    if listContains(mapList(acc.items, field_name), entry.field.name):
         return FieldWalk(offs=acc.offs, items=acc.items, problem=duplicate_key(entry))
     else:
         return FieldWalk(offs=acc.offs + entry.size, items=listAppend(acc.items, entry.field), problem="")
@@ -212,19 +202,19 @@ def byte_order_of(swapped):
         return "I"
 
 
+def first_named(items, name, missing):
+    """The first item named `name`, or the Error carrying `missing`."""
+    return Chain.first_or_error(filterList(items, lambda item: item.name == name), missing)
+
+
 def field(file, key):
     """The metadata entry named `key`, or Error when the file has none."""
-    return Chain.first_or_error(filterList(file.fields, lambda entry: entry.name == key), "gguf: the file has no metadata key `" + key + "`")
+    return first_named(file.fields, key, "gguf: the file has no metadata key `" + key + "`")
 
 
 def field_names(file):
     """Every metadata key in file order."""
-    return field_names_of(file.fields)
-
-
-def field_names_of(fields):
-    """Every key of `fields` in order."""
-    return mapList(fields, field_name)
+    return mapList(file.fields, field_name)
 
 
 def field_name(field):
@@ -300,7 +290,7 @@ def tensor_bytes(file, name):
 
 def named_tensor(tensors, name):
     """The first tensor named `name`, or the error naming the absent one."""
-    return Chain.first_or_error(filterList(tensors, lambda item: item.name == name), no_tensor_named(name))
+    return first_named(tensors, name, no_tensor_named(name))
 
 
 def no_tensor_named(name):
@@ -319,53 +309,62 @@ def is_tokenizer_field(field):
     return startsWith(field.name, TOKENIZER_PREFIX)
 
 
-def holds(field, ok, label, extract):
-    """`extract`'s value when the entry passes `ok`, or the Error naming the kind
-    it does not hold."""
+def holds(field, ok, label, value):
+    """`value` when the entry passes `ok`, or the Error naming the kind it does not hold."""
     if ok:
-        return Success(value=extract())
+        return Success(value=value)
     else:
         return Error(message=kind_error(field, label))
 
 
+def scalar_field(field, kinds, label, element):
+    """The value `element` reads from the entry when its kind is one of `kinds`."""
+    return holds(field, listContains(kinds, field.value.kind), label, element(field.value))
+
+
 def field_int(field):
     """The integer a metadata entry holds, or Error for another kind."""
-    return holds(field, listContains(INT_KINDS, field.value.kind), "an int", lambda: field.value.i)
+    return scalar_field(field, INT_KINDS, "an int", element_int)
 
 
 def field_bool(field):
     """The boolean a metadata entry holds, or Error for another kind."""
-    return holds(field, field.value.kind == "bool", "a bool", lambda: field.value.i != 0)
+    return scalar_field(field, ["bool"], "a bool", element_bool)
 
 
 def field_float(field):
     """The number a floating-point metadata entry holds, or Error for another kind."""
-    return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", lambda: field.value.f)
+    return scalar_field(field, FLOAT_KINDS, "a float", element_float)
 
 
 def field_string(field):
     """The text a string metadata entry holds, or Error for another kind."""
-    return holds(field, field.value.kind == "string", "a string", lambda: field.value.s)
+    return scalar_field(field, ["string"], "a string", element_string)
+
+
+def array_field(field, kinds, label, element):
+    """Every `element` of the entry's items when it is an array of one of `kinds`."""
+    return holds(field, array_of(field, kinds), label, mapList(field.value.items, element))
 
 
 def field_ints(field):
     """The integers an array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, INT_KINDS), "an int array", lambda: mapList(field.value.items, element_int))
+    return array_field(field, INT_KINDS, "an int array", element_int)
 
 
 def field_bools(field):
     """The booleans an array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, ["bool"]), "a bool array", lambda: mapList(field.value.items, element_bool))
+    return array_field(field, ["bool"], "a bool array", element_bool)
 
 
 def field_floats(field):
     """The numbers a floating-point array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, FLOAT_KINDS), "a float array", lambda: mapList(field.value.items, element_float))
+    return array_field(field, FLOAT_KINDS, "a float array", element_float)
 
 
 def field_strings(field):
     """The texts a string array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, ["string"]), "a string array", lambda: mapList(field.value.items, element_string))
+    return array_field(field, ["string"], "a string array", element_string)
 
 
 def array_of(field, kinds):
