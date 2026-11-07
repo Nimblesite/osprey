@@ -146,8 +146,48 @@ def items(value):
 
 
 def openai_history(messages):
-    """Convert OpenAI's serialized function arguments before rendering the chat template."""
-    return mapList(messages, openai_message)
+    """Normalize OpenAI text parts and serialized arguments before template rendering."""
+    return foldList(messages, Success(value=[]), openai_next)
+
+
+def openai_next(acc, message):
+    match acc:
+        case Error(message=reason):
+            return Error(message=reason)
+        case Success(value=history):
+            match openai_content(message):
+                case Error(message=reason):
+                    return Error(message=reason)
+                case Success(value=normalized):
+                    return Success(value=listConcat(history, [openai_message(normalized)]))
+
+
+def openai_content(message):
+    match field(message, "content"):
+        case JsonArray(parts):
+            match foldList(parts, Success(value=""), content_part):
+                case Error(message=reason):
+                    return Error(message=reason)
+                case Success(value=joined):
+                    return Success(value=map_field(message, "content", lambda _value: JsonString(joined)))
+        case JsonString():
+            return Success(value=message)
+        case JsonNull():
+            return Success(value=message)
+        case _:
+            return Error(message="OpenAI content must be text or text parts")
+
+
+def content_part(acc, part):
+    match acc:
+        case Error(message=reason):
+            return Error(message=reason)
+        case Success(value=joined):
+            match field(part, "text"):
+                case JsonString(value):
+                    return Success(value=joined + value) if text(part, "type") == "text" else Error(message="OpenAI content supports text parts only")
+                case _:
+                    return Error(message="OpenAI content part requires text")
 
 
 def openai_message(message):

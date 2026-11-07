@@ -8,7 +8,25 @@ reference's rendering of the same bytes, never a number a case invented
 import ollama
 import openai
 
-from harness import case, client, openai_client, reference, MODEL, READ_PROMPT
+from harness import case, client, openai_client, reference, MODEL, READ_PROMPT, READ_FILE, RUN_TESTS
+
+
+@case
+def openai_text_parts_preserve_the_entire_prompt_and_reject_other_parts(port):
+    api = openai_client(port)
+    tools = [READ_FILE, RUN_TESTS]
+    plain = api.chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=tools)
+    for parts in ([{"type": "text", "text": READ_PROMPT}], [{"type": "text", "text": "read "}, {"type": "text", "text": "the readme"}]):
+        reply = api.chat.completions.create(model=MODEL, messages=[{"role": "user", "content": parts}], tools=tools)
+        assert reply.usage.prompt_tokens == plain.usage.prompt_tokens, (reply.usage, plain.usage)
+        assert reply.choices[0].message.tool_calls[0].function == plain.choices[0].message.tool_calls[0].function
+    for parts in ([{"type": "text"}], [{"type": "text", "text": 7}], [{"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}], [{"type": "text", "text": READ_PROMPT}, {"type": "unknown"}]):
+        try:
+            api.chat.completions.create(model=MODEL, messages=[{"role": "user", "content": parts}], tools=tools)
+        except openai.BadRequestError as error:
+            assert "content" in str(error).lower(), error
+        else:
+            raise AssertionError(f"unsupported content accepted: {parts}")
 
 
 @case

@@ -155,7 +155,12 @@ def decode_chat(body, openai):
     match Wire.decode(body):
         case Success(value=document):
             messages = Wire.items(Wire.field(document, "messages"))
-            return named(Wire.text(document, "model"), document, Wire.openai_history(messages) if openai else messages)
+            history = Wire.openai_history(messages) if openai else Success(value=messages)
+            match history:
+                case Success(value=normalized):
+                    return named(Wire.text(document, "model"), document, normalized)
+                case Error(message=message):
+                    return Error(message=message)
         case Error(message=message):
             return Error(message=message)
 
