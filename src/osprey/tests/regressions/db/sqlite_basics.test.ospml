@@ -44,14 +44,18 @@ prepare (db, sql) =
     _freed = osprey_ffi_free cell
     stmt
 
+(** Step the statement once, release it, and report both statuses as `rc` and `fin`. *)
+runStatement stmt =
+    rc = sqlite3_step stmt
+    fin = sqlite3_finalize stmt
+    { rc = rc, fin = fin }
+
 (** Insert one user with BOUND parameters — no string interpolation of values. *)
 insertUser (db, uid, uname) =
     stmt = prepare (db, "INSERT INTO users(id, name) VALUES (?, ?)")
     _b1 = sqlite3_bind_int stmt 1 uid
     _b2 = sqlite3_bind_text stmt 2 uname ((0 - 1) ) (osprey_ffi_transient ())
-    rc = sqlite3_step stmt
-    _fin = sqlite3_finalize stmt
-    rc
+    (runStatement stmt).rc
 
 (** Read the next row and print it as a typed (int, text) pair. *)
 printRow stmt =
@@ -59,13 +63,22 @@ printRow stmt =
     print "user ${sqlite3_column_int stmt 0} = ${sqlite3_column_text stmt 1}"
     rc
 
-dbCell = osprey_ffi_cell ()
-openrc = sqlite3_open ":memory:" dbCell
-db = osprey_ffi_deref dbCell
-print "open ${okText openrc}"
+(** Create the users table over the FFI and hand back the exec status. *)
+createUsers db = sqlite3_exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)" (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
 
-ddl = sqlite3_exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)" (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
-print "create ${okText ddl}"
+(** Open an in-memory database on `cell`, create the users table, and report both
+statuses alongside the live connection. *)
+openUsers cell =
+    openrc = sqlite3_open ":memory:" cell
+    db = osprey_ffi_deref cell
+    ddlrc = createUsers db
+    { openrc = openrc, ddlrc = ddlrc, db = db }
+
+dbCell = osprey_ffi_cell ()
+opened = openUsers dbCell
+db = opened.db
+print "open ${okText opened.openrc}"
+print "create ${okText opened.ddlrc}"
 
 i1 = insertUser (db, 1, "Ada")
 i2 = insertUser (db, 2, "Linus")
@@ -83,30 +96,28 @@ print "closed ${okText closed}"
 (** Verify generic FFI pointer cells, bound parameters, and typed row access. *)
 sqliteRoundTripCase () =
     testCell = osprey_ffi_cell ()
-    testOpen = sqlite3_open ":memory:" testCell
-    testDb = osprey_ffi_deref testCell
-    testDdl = sqlite3_exec testDb "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)" (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
+    setup = openUsers testCell
+    testDb = setup.db
     testInsert = insertUser (testDb, 7, "Grace")
     testQuery = prepare (testDb, "SELECT id, name FROM users WHERE id = 7")
     testRow = sqlite3_step testQuery
     selectedId = sqlite3_column_int testQuery 0
     selectedName = "${sqlite3_column_text testQuery 1}"
-    testDone = sqlite3_step testQuery
-    testFinalized = sqlite3_finalize testQuery
+    finished = runStatement testQuery
     testClosed = sqlite3_close testDb
     testFreed = osprey_ffi_free testCell
     // Opening, schema creation, and status rendering agree on SQLITE_OK.
     checkAll "SQLite setup status" [
-        structuralEquals [testOpen, testDdl] [0, 0],
-        okText testOpen == "ok"
+        structuralEquals [setup.openrc, setup.ddlrc] [0, 0],
+        okText setup.openrc == "ok"
     ]
     // Bound parameters produce SQLITE_DONE and the expected typed row.
     checkAll "SQLite bound row" [
-        structuralEquals [testInsert, testRow, selectedId, testDone] [101, 100, 7, 101],
+        structuralEquals [testInsert, testRow, selectedId, finished.rc] [101, 100, 7, 101],
         selectedName == "Grace"
     ]
     // Statements, connections, and generic pointer cells all release cleanly.
     checkAll "SQLite cleanup status" [
-        structuralEquals [testFinalized, testClosed, testFreed] [0, 0, 0]
+        structuralEquals [finished.fin, testClosed, testFreed] [0, 0, 0]
     ]
 test "SQLite FFI binds and reads a typed row" sqliteRoundTripCase
