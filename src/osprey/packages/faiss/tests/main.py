@@ -171,12 +171,12 @@ def value_of(result):
 def remove_one(t):
     """One remove_ids case: nremoved via ntotal delta and the surviving labels."""
     s = cell(Expected.REMOVE_SCEN, t, 0)
+    v = vectors(s)
     kind = cell(Expected.REMOVE_KIND, t, "batch")
     arg = cell(Expected.REMOVE_ARG, t, [])
+    sel = IDSelectorBatch(arg) if kind == "batch" else IDSelectorRange(cell(arg, 0, 0), cell(arg, 1, 0))
     want_n = cell(Expected.REMOVE_N, t, 0)
     want_i = cell(Expected.REMOVE_SEARCH_I, t, [])
-    v = vectors(s)
-    sel = IDSelectorBatch(arg) if kind == "batch" else IDSelectorRange(cell(arg, 0, 0), cell(arg, 1, 0))
     before = ntotal(built("L2", v.base, d_of(v.query)))
     after_idx = remove_ids(built("L2", v.base, d_of(v.query)), sel)
     res = search(after_idx, v.query, 5)
@@ -238,20 +238,14 @@ def norm_cases():
 
 def kmeans_one(t):
     """One Kmeans case: centroids, per-iteration objective and assignments."""
-    d = cell(Expected.KM_D, t, 0)
-    k = cell(Expected.KM_K, t, 1)
-    niter = cell(Expected.KM_NITER, t, 1)
-    seed = cell(Expected.KM_SEED, t, 0)
+    km = Kmeans(cell(Expected.KM_D, t, 0), cell(Expected.KM_K, t, 1), cell(Expected.KM_NITER, t, 1), cell(Expected.KM_SEED, t, 0))
     x = cell(Expected.KM_X, t, [])
     init = cell(Expected.KM_INIT, t, [])
-    want_c = cell(Expected.KM_CENTROIDS, t, [])
-    want_o = cell(Expected.KM_OBJ, t, [])
-    want_a = cell(Expected.KM_ASSIGN, t, [])
-    match train(Kmeans(d, k, niter, seed), x, init):
+    match train(km, x, init):
         case Success(value=value):
-            return concat_all([close_rows(f"kmeans.{t}.centroids", value.centroids, want_c, RTOL_EXACT, ATOL_EXACT),
-                               [Check.close_all(f"kmeans.{t}.obj", value.obj, want_o, RTOL_EXACT, ATOL_EXACT)],
-                               [Check.ints_equal(f"kmeans.{t}.assign", assign(value, x), want_a)]])
+            return concat_all([close_rows(f"kmeans.{t}.centroids", value.centroids, cell(Expected.KM_CENTROIDS, t, []), RTOL_EXACT, ATOL_EXACT),
+                               [Check.close_all(f"kmeans.{t}.obj", value.obj, cell(Expected.KM_OBJ, t, []), RTOL_EXACT, ATOL_EXACT)],
+                               [Check.ints_equal(f"kmeans.{t}.assign", assign(value, x), cell(Expected.KM_ASSIGN, t, []))]])
         case Error(message=message):
             return [Check.truth(f"kmeans.{t}.ok", False, message)]
 
@@ -263,14 +257,18 @@ def kmeans_cases():
     return listConcat(outs, [Check.truth("kmeans.too_few", not ok_of(err), "fewer points than clusters")])
 
 
+def trained_sq(x, qtype):
+    """A ScalarQuantizer of `qtype` trained on `x`."""
+    return sq_train(ScalarQuantizer(d_of(x), qtype), x)
+
+
 def scalar_one(t):
     """One ScalarQuantizer case: exact codes and rtol-1e-6 reconstruction."""
-    qtype = cell(Expected.SQ_QTYPE, t, 0)
     x = cell(Expected.SQ_X, t, [])
+    sq = trained_sq(x, cell(Expected.SQ_QTYPE, t, 0))
+    codes = compute_codes(sq, x)
     want_codes = cell(Expected.SQ_CODES, t, [])
     want_decode = cell(Expected.SQ_DECODE, t, [])
-    sq = sq_train(ScalarQuantizer(d_of(x), qtype), x)
-    codes = compute_codes(sq, x)
     return code_rows(f"sq.{t}", codes, want_codes, decode(sq, codes), want_decode, RTOL_SQRT, ATOL_SQRT)
 
 
@@ -282,14 +280,11 @@ def scalar_cases():
 def sqidx_one(t):
     """One IndexScalarQuantizer search case: rtol distances, exact labels."""
     qtype = cell(Expected.SQIDX_QTYPE, t, 0)
-    metric = cell(Expected.SQIDX_METRIC, t, "L2")
     x = cell(Expected.SQIDX_X, t, [])
-    q = cell(Expected.SQIDX_Q, t, [])
-    k = cell(Expected.SQIDX_K, t, 1)
-    d = d_of(x)
-    sq = sq_train(ScalarQuantizer(d, qtype), x)
-    idx = sq_add(IndexScalarQuantizer(d, qtype, metric), sq, x)
-    return result_rows(f"sqidx.{t}", sq_search(idx, q, k), Expected.SQIDX_D, Expected.SQIDX_I, t, RTOL_SQRT, ATOL_SQRT)
+    sq = trained_sq(x, qtype)
+    metric = cell(Expected.SQIDX_METRIC, t, "L2")
+    idx = sq_add(IndexScalarQuantizer(d_of(x), qtype, metric), sq, x)
+    return result_rows(f"sqidx.{t}", sq_search(idx, cell(Expected.SQIDX_Q, t, []), cell(Expected.SQIDX_K, t, 1)), Expected.SQIDX_D, Expected.SQIDX_I, t, RTOL_SQRT, ATOL_SQRT)
 
 
 def sqidx_cases():
@@ -297,19 +292,20 @@ def sqidx_cases():
     return each(Expected.SQIDX_QTYPE, sqidx_one)
 
 
+def pq_with_centroids(t):
+    """PQ case `t`'s ProductQuantizer with the oracle's centroids installed."""
+    return set_centroids(ProductQuantizer(cell(Expected.PQ_D, t, 0), cell(Expected.PQ_M, t, 1), cell(Expected.PQ_NBITS, t, 4)), cell(Expected.PQ_CENTROIDS, t, []))
+
+
 def pq_one(t):
     """One ProductQuantizer case: exact codes, decode and sdc table."""
-    d = cell(Expected.PQ_D, t, 0)
-    M = cell(Expected.PQ_M, t, 1)
-    nbits = cell(Expected.PQ_NBITS, t, 4)
+    pq = pq_with_centroids(t)
     x = cell(Expected.PQ_X, t, [])
-    centroids = cell(Expected.PQ_CENTROIDS, t, [])
+    codes = pq_compute_codes(pq, x)
+    want_sdc = cell(Expected.PQ_SDC, t, [])
+    sdc = sdc_table(pq) if len(want_sdc) > 0 else []
     want_codes = cell(Expected.PQ_CODES, t, [])
     want_decode = cell(Expected.PQ_DECODE, t, [])
-    want_sdc = cell(Expected.PQ_SDC, t, [])
-    pq = set_centroids(ProductQuantizer(d, M, nbits), centroids)
-    codes = pq_compute_codes(pq, x)
-    sdc = sdc_table(pq) if len(want_sdc) > 0 else []
     return listConcat(code_rows(f"pq.{t}", codes, want_codes, pq_decode(pq, codes), want_decode, RTOL_EXACT, ATOL_EXACT),
                       [Check.close_all(f"pq.{t}.sdc", sdc, want_sdc, RTOL_EXACT, ATOL_EXACT)])
 
@@ -322,13 +318,8 @@ def pq_cases():
 def pqidx_one(t):
     """One IndexPQ search case (L2 then IP per PQ case)."""
     c = intDiv(t, 2)
-    d = cell(Expected.PQ_D, c, 0)
-    M = cell(Expected.PQ_M, c, 1)
-    nbits = cell(Expected.PQ_NBITS, c, 4)
     x = cell(Expected.PQ_X, c, [])
-    metric = cell(Expected.PQIDX_METRIC, t, "L2")
-    centroids = cell(Expected.PQ_CENTROIDS, c, [])
-    idx = pq_add(IndexPQ(set_centroids(ProductQuantizer(d, M, nbits), centroids), metric), x)
+    idx = pq_add(IndexPQ(pq_with_centroids(c), cell(Expected.PQIDX_METRIC, t, "L2")), x)
     return result_rows(f"pqidx.{t}", pq_search(idx, x, 3), Expected.PQIDX_D, Expected.PQIDX_I, t, RTOL_EXACT, ATOL_EXACT)
 
 
