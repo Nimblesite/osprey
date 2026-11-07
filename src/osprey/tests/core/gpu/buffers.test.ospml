@@ -53,16 +53,36 @@ bufferReadsTo (result, indices, fallback, expected) = gpuSatisfies (result, \buf
 (** A list round-trip relayed back onto the GPU, checked through the same gathers. *)
 relayReadsTo (buffer, indices, fallback, expected) = gpuSatisfies (fromGpu (buffer), \values => bufferReadsTo (toGpu (values), indices, fallback, expected))
 relayLengthIs (buffer, expected) = gpuSatisfies (fromGpu (buffer), \values => gpuLengthIs (toGpu (values), expected))
+(** Whether every listed read of [b] renders as the out-of-bounds payload [GPU-GET]. *)
+errorsAt (b, indices) = structuralEquals (mapList (indices, \i => readback (b, i)), mapList (indices, \i => oobMessage ()))
+(** Whether folding [b] from [seed] with addInts publishes [expected]. *)
+foldsIntsTo (b, seed, expected) = gpuEquals (gpuFold (b, seed, addInts), expected)
+(** Whether folding [b] from [seed] with addFloats publishes [expected]. *)
+foldsFloatsTo (b, seed, expected) = gpuEquals (gpuFold (b, seed, addFloats), expected)
+(** Whether folding [b] from [seed] with countOdd publishes [expected]. *)
+foldsBoolsTo (b, seed, expected) = gpuEquals (gpuFold (b, seed, countOdd), expected)
+(** foldsIntsTo for an operation that hands back a `Result` rather than a buffer. *)
+foldsIntsResultTo (result, seed, expected) = gpuSatisfies (result, \b => foldsIntsTo (b, seed, expected))
+(** foldsFloatsTo for an operation that hands back a `Result` rather than a buffer. *)
+foldsFloatsResultTo (result, seed, expected) = gpuSatisfies (result, \b => foldsFloatsTo (b, seed, expected))
+(** foldsBoolsTo for an operation that hands back a `Result` rather than a buffer. *)
+foldsBoolsResultTo (result, seed, expected) = gpuSatisfies (result, \b => foldsBoolsTo (b, seed, expected))
+(** Fold a list round-trip relayed back onto the GPU through toGpu. *)
+relayFoldIntsTo (buffer, seed, expected) = gpuSatisfies (fromGpu (buffer), \values => foldsIntsResultTo (toGpu (values), seed, expected))
+(** Whether every listed gpuIota count fails with exactly [message]. *)
+iotaErrorsAt (counts, message) = structuralEquals (mapList (counts, iotaError), mapList (counts, \count => message))
+(** Whether uploading the empty int literal yields a zero-length buffer. *)
+emptyLiteralIs () = gpuSatisfies (toGpu ([]), \(uploaded: GpuBuffer<int>) => gpuLength (uploaded) == 0)
 (** Pin [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold. *)
 literalCase () = withBuffer(toGpu ([3, 1, 4, 1, 5]), \ints => withBuffer(toGpu ([0.25, 0.5, 0.75, 1.0]), \floats => withBuffer(toGpu ([true, false, true]), \flags => withBuffer(toGpu ([-3, 0, 7, -1]), \signed => withBuffer(toGpu ([4611686018427387904, -4611686018427387904]), \wide => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 literalCaseUploaded (ints, floats, flags, signed, wide) =
     checkAll "buffer literals" [
         structuralEquals [gpuLength ints, gpuLength floats, gpuLength flags, gpuLength signed] [5, 4, 3, 4],
         structuralEquals [gpuLength wide, widthOf ints, (lastOf ints ?: 0)] [2, 5, 5],
-        gpuLengthIs (toGpu ([9]), 1), gpuSatisfies (toGpu ([]), \(uploaded41: GpuBuffer<int>) => gpuLength (uploaded41) == 0),
+        gpuLengthIs (toGpu ([9]), 1), emptyLiteralIs (),
         readsTo (ints, [0, 1, 2, 3, 4], 0, [3, 1, 4, 1, 5]), readsTo (floats, [0, 1, 2, 3], 9.5, [0.25, 0.5, 0.75, 1.0]), readsTo (flags, [0, 1, 2], false, [true, false, true]),
         (lastOf flags ?: false) == true, readsTo (signed, [0, 1, 2, 3], 9, [-3, 0, 7, -1]), readsTo (wide, [0, 1], 0, [4611686018427387904, -4611686018427387904]), (lastOf floats ?: 9.5) == 1.0,
-        bufferReadsTo (toGpu ([9]), [0], 0, [9]), gpuEquals (gpuFold (ints, 0, addInts), 14), gpuEquals (gpuFold (signed, 0, addInts), 3), gpuEquals (gpuFold (floats, 0.0, addFloats), 2.5), gpuEquals (gpuFold (flags, 0, countOdd), 2)
+        bufferReadsTo (toGpu ([9]), [0], 0, [9]), foldsIntsTo (ints, 0, 14), foldsIntsTo (signed, 0, 3), foldsFloatsTo (floats, 0.0, 2.5), foldsBoolsTo (flags, 0, 2)
     ]
 (** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists. *)
 listCopyCase () = withIndices (0, \indices0 => listCopyWith (indices0))
@@ -72,8 +92,8 @@ listCopyWith (indices0) =
     withBuffer (toGpu (source), \copied => withBuffer (fromGpu (copied), \read0 => withBuffer (toGpu (read0), \relayed => withBuffer (fromGpu (indices0), \none => checkAll "list copy path" [
                         structuralEquals [listLength source, gpuLength copied, (lastOf copied ?: 0)] [4, 4, 8],
                         structuralEquals [gpuLength relayed, listLength none] [4, 0],
-                        readsTo (copied, [0, 1, 2, 3], 0, [2, 4, 6, 8]), readback (copied, 4) == oobMessage (),
-                        readback (copied, -1) == oobMessage (), readback (copied, 0) == "2", gpuEquals (gpuFold (copied, 0, addInts), 20), readsTo (relayed, [2], 0, [6]), gpuEquals (gpuFold (relayed, 0, addInts), 20),
+                        readsTo (copied, [0, 1, 2, 3], 0, [2, 4, 6, 8]), errorsAt (copied, [4, -1]),
+                        readback (copied, 0) == "2", foldsIntsTo (copied, 0, 20), readsTo (relayed, [2], 0, [6]), foldsIntsTo (relayed, 0, 20),
                         gpuLengthIs (toGpu (lone), 1), bufferReadsTo (toGpu (lone), [0], 0, [11]), gpuSatisfies (toGpu (lone), \uploaded35 => (lastOf (uploaded35) ?: 0) == 11), gpuLengthIs (toGpu (none), 0),
                         gpuSatisfies (toGpu (none), \uploaded33 => gpuEquals (gpuFold (uploaded33, 7, addInts), 7)), gpuSatisfies (toGpu (source), \uploaded32 => widthOf (uploaded32) == widthOf copied),
                         gpuSatisfies (toGpu (source), \uploaded31 => gpuSatisfies(gpuFold(uploaded31, 0, addInts), \uploaded85 => gpuSatisfies(gpuFold(copied, 0, addInts), \uploaded86 => (uploaded85) == (uploaded86))))
@@ -84,10 +104,9 @@ roundTripWith (indices0, indices6) =
     withBuffer (toGpu ([3, 1, 4, 1, 5]), \buf => withBuffer (fromGpu (buf), \back => withBuffer (toGpu (back), \viaList => withBuffer (fromGpu (viaList), \twice => checkAll "round trip" [
                         structuralEquals [gpuLength buf, listLength back] [5, 5],
                         structuralEquals [gpuLength viaList, listLength twice] [5, 5],
-                        listReadsTo (back, [0, 1, 2, 3, 4, 5, -1], 99, [3, 1, 4, 1, 5, 99, 99]), readsTo (viaList, [0, 2, 4], 0, [3, 4, 5]), readback (viaList, 5) == oobMessage (),
-                        gpuEquals (gpuFold (viaList, 0, addInts), 14), listReadsTo (twice, [4], 0, [5]), gpuSatisfies (toGpu (twice), \uploaded28 => gpuEquals (gpuFold (uploaded28, 0, addInts), 14)),
-                        listLengthIs (fromGpu (indices0), 0), relayLengthIs (indices6, 6),
-                        gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded26 => gpuEquals (gpuFold (uploaded26, 0, addInts), 15))),
+                        listReadsTo (back, [0, 1, 2, 3, 4, 5, -1], 99, [3, 1, 4, 1, 5, 99, 99]), readsTo (viaList, [0, 2, 4], 0, [3, 4, 5]), errorsAt (viaList, [5]),
+                        foldsIntsTo (viaList, 0, 14), listReadsTo (twice, [4], 0, [5]), foldsIntsResultTo (toGpu (twice), 0, 14),
+                        listLengthIs (fromGpu (indices0), 0), relayLengthIs (indices6, 6), relayFoldIntsTo (indices6, 0, 15),
                         relayReadsTo (indices6, [5], 0, [5])
                     ]))))
 (** Pin the zero-element buffer through every builtin that takes one: no element is readable at any index, it materializes as an empty list, maps to another empty buffer, and folds to its seed untouched. *)
@@ -97,11 +116,11 @@ emptyWith (indices0) =
     withBuffer (gpuMap(none, square), \mapped => withBuffer (gpuMap(none, isOdd), \flags => withBuffer (gpuMap(none, toFloat), \widened => checkAll "empty buffers" [
                     structuralEquals [gpuLength none, gpuLength mapped, gpuLength flags] [0, 0, 0],
                     structuralEquals [gpuLength widened, widthOf none, (lastOf none ?: 42)] [0, 0, 42],
-                    gpuSatisfies (toGpu ([]), \(uploaded24: GpuBuffer<int>) => gpuLength (uploaded24) == 0), listLengthIs (fromGpu (none), 0),
-                    listLengthIs (fromGpu (mapped), 0), gpuEquals (gpuFold (none, 0, addInts), 0), gpuEquals (gpuFold (none, (-7), addInts), -7),
-                    gpuEquals (gpuFold (mapped, 3, addInts), 3), gpuEquals (gpuFold (flags, 0, countOdd), 0), gpuEquals (gpuFold (widened, 2.5, addFloats), 2.5), readsTo (none, [0, 1, -1, 1000000], 42, [42, 42, 42, 42]),
-                    readback (none, 0) == oobMessage (), readback (none, -1) == oobMessage (), readback (mapped, 0) == oobMessage (),
-                    readback (flags, 0) == oobMessage (), readback (widened, 0) == oobMessage ()
+                    emptyLiteralIs (), listLengthIs (fromGpu (none), 0),
+                    listLengthIs (fromGpu (mapped), 0), foldsIntsTo (none, 0, 0), foldsIntsTo (none, (-7), -7),
+                    foldsIntsTo (mapped, 3, 3), foldsBoolsTo (flags, 0, 0), foldsFloatsTo (widened, 2.5, 2.5), readsTo (none, [0, 1, -1, 1000000], 42, [42, 42, 42, 42]),
+                    errorsAt (none, [0, -1]), errorsAt (mapped, [0]),
+                    errorsAt (flags, [0]), errorsAt (widened, [0])
                 ])))
 (** Pin the one-element buffer: index 0 is the only address in bounds, so both 1 and -1 fail, and a fold sees exactly one element. *)
 singletonCase () = withIndices (1, \indices1 => singletonWith (indices1))
@@ -111,9 +130,9 @@ singletonWithUploaded (indices1, lone, loneF, loneB) =
             structuralEquals [gpuLength lone, gpuLength loneF, gpuLength loneB] [1, 1, 1],
             structuralEquals [gpuLength (indices1), (lastOf lone ?: 0), gpuLength doubled] [1, 42, 1],
             readsTo (indices1, [0], 9, [0]), readsTo (lone, [0, 1, -1], 9, [42, 9, 9]), readsTo (loneF, [0, 1], 9.5, [2.5, 9.5]), readsTo (loneB, [0, 1], true, [false, true]),
-            readback (lone, 1) == oobMessage (), readback (loneF, -1) == oobMessage (), readback (loneB, 2) == oobMessage (), readback (lone, 0) == "42",
-            (lastOf loneF ?: 9.5) == 2.5, (lastOf loneB ?: true) == false, gpuEquals (gpuFold (lone, 0, addInts), 42), gpuEquals (gpuFold (loneF, 0.0, addFloats), 2.5),
-            gpuEquals (gpuFold (loneB, 0, countOdd), 0), readsTo (doubled, [0], 0, [84]), listLengthIs (fromGpu (lone), 1),
+            errorsAt (lone, [1]), errorsAt (loneF, [-1]), errorsAt (loneB, [2]), readback (lone, 0) == "42",
+            (lastOf loneF ?: 9.5) == 2.5, (lastOf loneB ?: true) == false, foldsIntsTo (lone, 0, 42), foldsFloatsTo (loneF, 0.0, 2.5),
+            foldsBoolsTo (loneB, 0, 0), readsTo (doubled, [0], 0, [84]), listLengthIs (fromGpu (lone), 1),
             listResultReadsTo (fromGpu (lone), [0], 0, [42]), relayLengthIs (lone, 1)
         ])
 (** Pin [GPU-GET] at both ends and far outside them for every element type: an in-bounds read returns the element at the buffer's own scalar type, and index == length, index == -1 and indices a million past either edge all return the identical Error payload. *)
@@ -123,8 +142,7 @@ boundsCaseUploaded (ints, floats, flags) =
         readsTo (ints, [0, 2, (gpuLength ints - 1)], 0, [10, 30, 30]),
         structuralEquals [readback (ints, 0), readback (ints, 2), readback (floats, 0)] ["10", "30", "1.25"],
         structuralEquals [readback (floats, 1), readback (flags, 0), readback (flags, 1)] ["2.5", "true", "false"],
-        readback (ints, 3) == oobMessage (), readback (ints, 4) == oobMessage (), readback (ints, 1000000) == oobMessage (), readback (ints, -1) == oobMessage (), readback (ints, -1000000) == oobMessage (), readback (floats, 2) == oobMessage (),
-        readback (floats, -1) == oobMessage (), readback (flags, 2) == oobMessage (), readback (flags, -1) == oobMessage (), readsTo (ints, [gpuLength ints, 3, -1], -1, [-1, -1, -1]), readsTo (floats, [2, -1], 9.5, [9.5, 9.5]),
+        errorsAt (ints, [3, 4, 1000000, -1, -1000000]), errorsAt (floats, [2, -1]), errorsAt (flags, [2, -1]), readsTo (ints, [gpuLength ints, 3, -1], -1, [-1, -1, -1]), readsTo (floats, [2, -1], 9.5, [9.5, 9.5]),
         readsTo (flags, [2], true, [true]), readsTo (flags, [-1], false, [false]), (lastOf ints ?: 0) == 30, (lastOf floats ?: 9.5) == 2.5, (lastOf flags ?: true) == false
     ]
 (** Pin [GPU-IOTA] across its domain: the empty, one- and two-element index buffers, a large one whose closed-form sum a miscounted loop cannot match, and negative counts, which report allocation errors rather than successful empty buffers. *)
@@ -138,16 +156,14 @@ iotaWith (indices0, indices1, indices2, indices7, indicesWide) =
         structuralEquals [gpuLength (indices0), gpuLength one, gpuLength pair] [0, 1, 2],
         structuralEquals [gpuLength seven, gpuLength wide, widthOf seven] [7, 200000, 7],
         structuralEquals [(lastOf seven ?: 0), (lastOf wide ?: 0)] [6, 199999],
-        iotaError (-1) == "gpu: buffer allocation: a negative element count",
-        iotaError (-200000) == "gpu: buffer allocation: a negative element count",
-        iotaError 9223372036854775807 == "gpu: buffer allocation: element count overflows the byte size",
-        iotaError 1152921504606846975 == "gpu: buffer allocation: out of memory",
-        iotaError (-1) == "gpu: buffer allocation: a negative element count",
+        iotaErrorsAt ([-1, -200000, -1], "gpu: buffer allocation: a negative element count"),
+        iotaErrorsAt ([9223372036854775807], "gpu: buffer allocation: element count overflows the byte size"),
+        iotaErrorsAt ([1152921504606846975], "gpu: buffer allocation: out of memory"),
         readsTo (one, [0], 9, [0]), readsTo (pair, [0, 1], 9, [0, 1]), readsTo (seven, [0, 6], 9, [0, 6]),
-        readsTo (wide, [0, 100000], 9, [0, 100000]), readback (seven, 7) == oobMessage (), readback (one, 1) == oobMessage (), readback (wide, 200000) == oobMessage (),
-        gpuEquals (gpuFold (seven, 0, addInts), 21), gpuEquals (gpuFold (pair, 0, addInts), 1),
-        gpuEquals (gpuFold (one, 0, addInts), 0), gpuEquals (gpuFold (wide, 0, addInts), 19999900000),
-        gpuSatisfies (gpuMap(seven, square), \uploaded65 => gpuEquals (gpuFold (uploaded65, 0, addInts), 91)), listLengthIs (fromGpu (seven), 7), listResultReadsTo (fromGpu (seven), [3], 0, [3])
+        readsTo (wide, [0, 100000], 9, [0, 100000]), errorsAt (seven, [7]), errorsAt (one, [1]), errorsAt (wide, [200000]),
+        foldsIntsTo (seven, 0, 21), foldsIntsTo (pair, 0, 1),
+        foldsIntsTo (one, 0, 0), foldsIntsTo (wide, 0, 19999900000),
+        foldsIntsResultTo (gpuMap(seven, square), 0, 91), listLengthIs (fromGpu (seven), 7), listResultReadsTo (fromGpu (seven), [3], 0, [3])
     ]
 (** Pin [GPU-BUFFER-ELEM]: int, float and bool words go through the identity kernel and come back bit-for-bit at their own type — a float buffer must never read back as the integer its bits spell. *)
 elementCase () = withBuffer(toGpu ([-9, 0, 9]), \ints => withBuffer(toGpu ([-0.5, 0.0, 0.125]), \floats => withBuffer(toGpu ([false, true]), \flags => elementCaseUploaded(ints, floats, flags))))
@@ -156,9 +172,9 @@ elementCaseUploaded (ints, floats, flags) =
         bufferReadsTo (gpuMap(ints, same), [0, 1, 2], 0, [-9, 0, 9]), bufferReadsTo (gpuMap(floats, same), [0, 1, 2], 9.5, [-0.5, 0.0, 0.125]), bufferReadsTo (gpuMap(flags, same), [0, 1], true, [false, true]),
         structuralEquals [readback (ints, 0), readback (ints, 1), readback (floats, 0)] ["-9", "0", "-0.5"],
         structuralEquals [readback (floats, 1), readback (floats, 2), readback (flags, 0)] ["0.0", "0.125", "false"],
-        gpuEquals (gpuFold (ints, 0, addInts), 0), gpuEquals (gpuFold (floats, 0.0, addFloats), -0.375),
-        gpuEquals (gpuFold (flags, 0, countOdd), 1), gpuLengthIs (gpuMap(floats, same), 3), gpuSatisfies(gpuMap(flags, same), \uploaded52 => widthOf (uploaded52) == 2),
-        gpuSatisfies(gpuMap(ints, same), \uploaded51 => listLengthIs (fromGpu (uploaded51), 3)), gpuSatisfies (toGpu ([2.0]), \uploaded22 => gpuEquals (gpuFold (uploaded22, 0.0, addFloats), 2.0)),
+        foldsIntsTo (ints, 0, 0), foldsFloatsTo (floats, 0.0, -0.375),
+        foldsBoolsTo (flags, 0, 1), gpuLengthIs (gpuMap(floats, same), 3), gpuSatisfies(gpuMap(flags, same), \uploaded52 => widthOf (uploaded52) == 2),
+        gpuSatisfies(gpuMap(ints, same), \uploaded51 => listLengthIs (fromGpu (uploaded51), 3)), foldsFloatsResultTo (toGpu ([2.0]), 0.0, 2.0),
         gpuSatisfies(gpuMap(floats, same), \uploaded49 => (lastOf (uploaded49) ?: 9.5) == 0.125)
     ]
 (** Pin the handle and its element tag through all four binding forms a value takes — a let, a pipe, a function parameter and a function return — plus a match arm and a lambda parameter. A float buffer that lost its tag anywhere along the way would read back as raw bits. *)
@@ -185,10 +201,10 @@ flowCase () =
                                         readsTo (chooseBuffer (false, held, piped), [1], 9.5, [3.75]), readsTo (twice, [0], 9.5, [3.375]),
                                         structuralEquals [widthOf held, widthOf piped, widthOf returned] [3, 3, 3],
                                         structuralEquals [widthOf chosen, lamLength held, lamLength twice] [3, 3, 3],
-                                        gpuEquals (gpuFold (held, 0.0, addFloats), 7.5), gpuEquals (gpuFold (piped, 0.0, addFloats), 11.25),
-                                        gpuEquals (gpuFold (returned, 0.0, addFloats), 11.25), gpuEquals (gpuFold (twice, 0.0, addFloats), 16.875),
+                                        foldsFloatsTo (held, 0.0, 7.5), foldsFloatsTo (piped, 0.0, 11.25),
+                                        foldsFloatsTo (returned, 0.0, 11.25), foldsFloatsTo (twice, 0.0, 16.875),
                                         structuralEquals [readback (held, 0), readback (returned, 0)] ["1.5", "2.25"],
-                                        readback (returned, 3) == oobMessage (), readback (twice, -1) == oobMessage (), listLengthIs (fromGpu (held), 3)
+                                        errorsAt (returned, [3]), errorsAt (twice, [-1]), listLengthIs (fromGpu (held), 3)
                                     ]
                                 Error message => gpuFailed message
                         Error message => gpuFailed message
@@ -205,9 +221,9 @@ aliasCase () =
                     structuralEquals [gpuLength source, gpuLength alias] [4, 4],
                     structuralEquals [gpuLength alsoAlias, gpuLength derived] [4, 4],
                     widthOf alias == widthOf source, readsTo (alias, [0, 3], 0, [1, 4]), readsTo (alsoAlias, [0, 3], 0, [1, 4]),
-                    (lastOf alias ?: 0) == (lastOf source ?: 0), gpuEquals (gpuFold (source, 0, addInts), 10), gpuEquals (gpuFold (alias, 0, addInts), 10),
-                    gpuEquals (gpuFold (alsoAlias, 0, addInts), 10), gpuEquals (gpuFold (derived, 0, addInts), 20), readsTo (derived, [1], 0, [4]), readsTo (source, [1], 0, [2]),
-                    readsTo (alias, [1], 0, [2]), readsTo (alsoAlias, [1], 0, [2]), readback (alias, 4) == oobMessage (), readback (alsoAlias, -1) == oobMessage (), readback (source, 4) == readback (alias, 4), listLengthIs (fromGpu (alias), 4),
+                    (lastOf alias ?: 0) == (lastOf source ?: 0), foldsIntsTo (source, 0, 10), foldsIntsTo (alias, 0, 10),
+                    foldsIntsTo (alsoAlias, 0, 10), foldsIntsTo (derived, 0, 20), readsTo (derived, [1], 0, [4]), readsTo (source, [1], 0, [2]),
+                    readsTo (alias, [1], 0, [2]), readsTo (alsoAlias, [1], 0, [2]), errorsAt (alias, [4]), errorsAt (alsoAlias, [-1]), readback (source, 4) == readback (alias, 4), listLengthIs (fromGpu (alias), 4),
                     listResultReadsTo (fromGpu (alsoAlias), [2], 0, [3])
                 ])
         Error message => gpuFailed message
@@ -217,10 +233,10 @@ fusionCase () =
                         structuralEquals [gpuLength straight, (lastOf straight ?: 0), gpuLength squares] [6, 5, 4],
                         structuralEquals [(lastOf squares ?: 0), gpuLength lone] [16, 1],
                         structuralEquals [gpuLength empty, widthOf empty] [0, 0],
-                        readsTo (straight, [0, 5], 9, [0, 5]), readback (straight, 6) == oobMessage (), readback (straight, -1) == oobMessage (), readsTo (squares, [0, 1, 2, 3], 0, [1, 4, 9, 16]),
-                        readback (squares, 4) == oobMessage (), readsTo (lone, [0], 0, [4]), readback (lone, 1) == oobMessage (),
-                        readback (empty, 0) == oobMessage (), gpuEquals (gpuFold (empty, 5, addInts), 5), listLengthIs (fromGpu (straight), 6),
-                        listResultReadsTo (fromGpu (squares), [1], 0, [4]), gpuSatisfies (fromGpu (squares), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded15 => gpuEquals (gpuFold (uploaded15, 0, addInts), 30)))
+                        readsTo (straight, [0, 5], 9, [0, 5]), errorsAt (straight, [6, -1]), readsTo (squares, [0, 1, 2, 3], 0, [1, 4, 9, 16]),
+                        errorsAt (squares, [4]), readsTo (lone, [0], 0, [4]), errorsAt (lone, [1]),
+                        errorsAt (empty, [0]), foldsIntsTo (empty, 5, 5), listLengthIs (fromGpu (straight), 6),
+                        listResultReadsTo (fromGpu (squares), [1], 0, [4]), relayFoldIntsTo (squares, 0, 30)
                     ]))))
 (** Pipe a buffer through a named kernel and fold it away, including over negative elements and over no elements at all. *)
 intKernelCase () = withIndices (0, \indices0 => intKernelWith (indices0))
@@ -247,10 +263,10 @@ intKernelWith (indices0) =
                                                                 structuralEquals [total, listLength squares] [30, 3],
                                                                 gpuLength negatives == 3,
                                                                 listReadsTo (squares, [0, 2], 0, [1, 9]),
-                                                                gpuSatisfies (toGpu ([10, 20]), \uploaded11 => gpuEquals (gpuFold (uploaded11, 5, addInts), 35)), readsTo (negatives, [0, 2], 0, [1, 9]),
-                                                                gpuEquals (gpuFold (negatives, 0, addInts), 14),
-                                                                gpuSatisfies (toGpu ([7]), \uploaded10 => gpuSatisfies(gpuMap(uploaded10, square), \uploaded29 => gpuEquals (gpuFold (uploaded29, 0, addInts), 49))),
-                                                                gpuSatisfies(gpuMap(indices0, square), \uploaded28 => gpuEquals (gpuFold (uploaded28, 0, addInts), 0))
+                                                                foldsIntsResultTo (toGpu ([10, 20]), 5, 35), readsTo (negatives, [0, 2], 0, [1, 9]),
+                                                                foldsIntsTo (negatives, 0, 14),
+                                                                gpuSatisfies (toGpu ([7]), \uploaded10 => foldsIntsResultTo (gpuMap(uploaded10, square), 0, 49)),
+                                                                foldsIntsResultTo (gpuMap(indices0, square), 0, 0)
                                                             ]))
                                                 Error message => gpuFailed message
                                         Error message => gpuFailed message
@@ -262,11 +278,10 @@ intKernelWith (indices0) =
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
 floatKernelWith (indices0, indices4) =
     withBuffer (toGpu ([1.0, 2.0, 3.0]), \value => withBuffer (gpuMap(value, scale), \uploaded27 => withBuffer (gpuFold(uploaded27, 0.0, addFloats), \sum => withBuffer (toGpu ([0.5, 0.25, 0.125]), \halves => checkAll "float kernels" [
-                        sum == 9.0, gpuEquals (gpuFold (halves, 0.0, addFloats), 0.875), gpuSatisfies(gpuMap(halves, scale), \uploaded25 => gpuEquals (gpuFold (uploaded25, 0.0, addFloats), 1.3125)),
-                        bufferReadsTo (gpuMap(halves, scale), [2], 9.5, [0.1875]), gpuLengthIs (gpuMap(halves, scale), 3),
-                        gpuSatisfies (toGpu ([0.5, 0.25]), \uploaded7 => gpuEquals (gpuFold (uploaded7, 0.0, addFloats), 0.75)),
-                        gpuSatisfies(gpuMap(indices4, toFloat), \uploaded21 => gpuEquals (gpuFold (uploaded21, 0.0, addFloats), 6.0)), bufferReadsTo (gpuMap(indices4, toFloat), [3], 9.5, [3.0]),
-                        gpuSatisfies(gpuMap(indices0, toFloat), \uploaded19 => gpuEquals (gpuFold (uploaded19, 2.5, addFloats), 2.5))
+                        sum == 9.0, foldsFloatsTo (halves, 0.0, 0.875), foldsFloatsResultTo (gpuMap(halves, scale), 0.0, 1.3125),
+                        bufferReadsTo (gpuMap(halves, scale), [2], 9.5, [0.1875]), gpuLengthIs (gpuMap(halves, scale), 3), foldsFloatsResultTo (toGpu ([0.5, 0.25]), 0.0, 0.75),
+                        foldsFloatsResultTo (gpuMap(indices4, toFloat), 0.0, 6.0), bufferReadsTo (gpuMap(indices4, toFloat), [3], 9.5, [3.0]),
+                        foldsFloatsResultTo (gpuMap(indices0, toFloat), 2.5, 2.5)
                     ]))))
 (** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)
 boolKernelCase () = withIndices (0, \indices0 => boolKernelWith (indices0))
@@ -283,9 +298,9 @@ boolKernelWith (indices0) =
                                     allTrue = value
                                     withBuffer (toGpu ([2, 4]), \value => withBuffer (gpuMap(value, isOdd), \allFalse => checkAll "bool kernels" [
                                                 structuralEquals [gpuLength odds, gpuLength allTrue] [5, 2],
-                                                gpuEquals (gpuFold (odds, 0, countOdd), 3), readsTo (odds, [0, 1, 4], false, [true, false, true]), (lastOf odds ?: false) == true,
-                                                readback (odds, 1) == "false", readback (odds, 5) == oobMessage (), gpuEquals (gpuFold (allTrue, 0, countOdd), 2),
-                                                gpuEquals (gpuFold (allFalse, 0, countOdd), 0), gpuSatisfies (toGpu ([true, true, false]), \uploaded3 => gpuEquals (gpuFold (uploaded3, 0, countOdd), 2)),
+                                                foldsBoolsTo (odds, 0, 3), readsTo (odds, [0, 1, 4], false, [true, false, true]), (lastOf odds ?: false) == true,
+                                                readback (odds, 1) == "false", errorsAt (odds, [5]), foldsBoolsTo (allTrue, 0, 2),
+                                                foldsBoolsTo (allFalse, 0, 0), foldsBoolsResultTo (toGpu ([true, true, false]), 0, 2),
                                                 gpuLengthIs (gpuMap(indices0, isOdd), 0)
                                             ]))
                                 Error message => gpuFailed message
@@ -299,9 +314,9 @@ bigWith (indicesWide) =
     withBuffer (doubledInts(wide), \doubled => withBuffer (fromGpu (wide), \back => withBuffer (toGpu (back), \rebuilt => checkAll "hundred-thousand element copies" [
                     structuralEquals [gpuLength wide, gpuLength doubled, listLength back] [100000, 100000, 100000],
                     structuralEquals [gpuLength rebuilt, (lastOf wide ?: 0)] [100000, 99999],
-                    gpuEquals (gpuFold (wide, 0, addInts), 4999950000),
-                    gpuEquals (gpuFold (doubled, 0, addInts), 9999900000), gpuEquals (gpuFold (rebuilt, 0, addInts), 4999950000), readsTo (wide, [0], 9, [0]),
-                    readsTo (doubled, [99999], 0, [199998]), readsTo (rebuilt, [99999], 0, [99999]), listReadsTo (back, [99999, 100000], -1, [99999, -1]), readback (wide, 100000) == oobMessage (), readback (rebuilt, -1) == oobMessage (),
+                    foldsIntsTo (wide, 0, 4999950000),
+                    foldsIntsTo (doubled, 0, 9999900000), foldsIntsTo (rebuilt, 0, 4999950000), readsTo (wide, [0], 9, [0]),
+                    readsTo (doubled, [99999], 0, [199998]), readsTo (rebuilt, [99999], 0, [99999]), listReadsTo (back, [99999, 100000], -1, [99999, -1]), errorsAt (wide, [100000]), errorsAt (rebuilt, [-1]),
                     widthOf rebuilt == widthOf wide
                 ])))
 (** A kernel whose body is a BLOCK with an internal binding. Plan 0002 recorded this as failing with `unknown identifier \`base\`` — the inline-callback path was said to lose the block's local scope, with named kernels as the workaround. It lowers correctly; nothing pinned it, so the item could not be closed. The suite runs under BOTH `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted and the inlined lowering alike. Implements [GPU-KERNEL-FORM]. *)
@@ -325,7 +340,7 @@ blockBodiedKernelWith (indices4, indices3) =
                             checkAll "a block-bodied kernel keeps its internal let bindings" [
                                 structuralEquals [gpuLength fromFn, gpuLength fromLambda, gpuLength widened] [4, 4, 3],
                                 readsTo (fromFn, [0, 1, 3], 99, [1, 4, 10]), readsTo (fromLambda, [0, 3], 99, [1, 10]),
-                                gpuEquals (gpuFold (fromFn, 0, addInts), 22), readsTo (widened, [0, 2], 9.5, [0.0, 1.0])
+                                foldsIntsTo (fromFn, 0, 22), readsTo (widened, [0, 2], 9.5, [0.0, 1.0])
                             ]
                         Error message => gpuFailed message
                 Error message => gpuFailed message
