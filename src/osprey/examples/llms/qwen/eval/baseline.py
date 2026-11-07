@@ -31,6 +31,7 @@ MAX_TOOL_RETRIES = 2
 MAX_NEW_TOKENS = 8192
 REQUEST_TIMEOUT_SECONDS = 1800
 CODING_TASK_COUNT = 30
+TOOL_CASE_COUNT = 200
 GGUF_MAGIC = b"GGUF"
 MB = 1024.0
 TOOL_SYSTEM = (
@@ -395,7 +396,7 @@ def is_full_baseline(tools, coding, rates, sampler):
     return (sampler.peak is not None and sampler.samples > 0
             and rates["median_tokens_per_second"] is not None
             and rates["median_prompt_tokens_per_second"] is not None
-            and coding["total"] == CODING_TASK_COUNT and tools["goals"] > 0)
+            and coding["total"] == CODING_TASK_COUNT and tools["goals"] == TOOL_CASE_COUNT)
 
 
 def limitations(rates, sampler):
