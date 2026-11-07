@@ -1,15 +1,3 @@
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
-(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
-withBuffer (result, work) = match result
-    Success value => work value
-    Error message => check ("GPU operation", "success", toString message)
-(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
-withIndices (n, work) = withBuffer (gpuIota n, work)
 // Rasterisation on the GPU surface: a fragment-shader-shaped renderer, and
 // the addressing algebra every rasteriser is built out of. Every scene is one
 // pure kernel dispatched over `gpuIota (width * height)` — the flat pixel grid

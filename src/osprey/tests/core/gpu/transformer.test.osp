@@ -1,21 +1,8 @@
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
-/// [FAILURE-EXPLICIT] A failure stops the case before its consumer.
-fn withBuffer(result, work) = match result {
-    Success { value } => work(value)
-    Error { message } => check("GPU operation", "success", toString(message))
-}
 /// [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error.
 fn andThen(result, next) = match result {
     Success { value } => next(value)
     Error { message } => Error { message: message }
 }
-/// [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid.
-fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
 // port in src/osprey/examples/llms/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,

@@ -1,17 +1,3 @@
-/// [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer.
-fn withBuffer(result, work) = match result {
-    Success { value } => work(value)
-    Error { message } => check("GPU operation", "success", toString(message))
-}
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
-/// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
-fn withIndices(n, work) = withBuffer(gpuIota(n), work)
-fn iotaError(n) = match gpuIota(n) { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
 // GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and
 // one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to
 // reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-

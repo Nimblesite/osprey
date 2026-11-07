@@ -1,10 +1,4 @@
 let emptyRead: List<int> = []
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
 // Scalar transfer conformance: inferred element types survive runtime lists,
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].

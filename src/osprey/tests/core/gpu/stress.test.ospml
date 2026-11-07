@@ -2,19 +2,10 @@
 andThen (result, next) = match result
     Success value => next value
     Error message => Error(message = message)
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
 (** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
 withIndices (n, work) = match gpuIota n
     Success value => work value
     Error message => check "index allocation" "success" (toString message)
-iotaError n = match gpuIota n
-    Success value => "unexpected success ${gpuLength value}"
-    Error message => toString message
 // GPU stress, scale and numeric-edge workloads: million-element pipelines,
 // two-dozen-pass chains, buffers rebuilt from their own output, and the
 // checked-arithmetic boundaries where a `?:` fallback is all that stands

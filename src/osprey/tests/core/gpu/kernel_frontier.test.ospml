@@ -1,13 +1,3 @@
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
-(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
-withBuffer (result, work) = match result
-    Success value => work value
-    Error message => check ("GPU operation", "success", toString message)
 (** Kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
     [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below
     exercises the ML spelling of Default block bodies. *)
