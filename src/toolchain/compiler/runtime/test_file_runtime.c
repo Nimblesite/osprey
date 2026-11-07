@@ -17,11 +17,11 @@
 
 #include "io_error.h"
 
-#define CHECK(c) assert(c)
-#include "file_dir_tests.h"
-
 extern int64_t write_file(char *filename, char *content);
 extern char *read_file(char *filename);
+
+#define CHECK(c) assert(c)
+#include "file_dir_tests.h"
 
 #define FILE_ROUNDTRIP_PATH "/tmp/osprey_file_runtime_test.txt"
 

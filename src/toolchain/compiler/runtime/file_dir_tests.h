@@ -192,8 +192,6 @@ static void t_kind_other_and_missing_parent(void) {
 
 // Out-of-memory arms, forced through test_alloc.h's injector: every one is NULL
 // (or -1) with ENOMEM's reason on the channel and leaks nothing it allocated.
-extern char *read_file(char *filename);
-extern int64_t write_file(char *filename, char *content);
 
 static void t_read_file_out_of_memory(void) {
   char path[128];
