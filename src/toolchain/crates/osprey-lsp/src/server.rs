@@ -159,6 +159,7 @@ async fn notify(
             }
         }
         "workspace/didChangeWatchedFiles" => {
+            forget_deleted(engine, &params);
             scope::refresh(engine, bus).await;
         }
         "$/cancelRequest" => {
@@ -167,6 +168,25 @@ async fn notify(
             }
         }
         _ => {}
+    }
+}
+
+/// LSP `FileChangeType.Deleted`.
+const DELETED: u64 = 3;
+
+/// A file deleted on disk leaves the project even while its tab stays open, so
+/// the refresh clears its diagnostics; an edit to that buffer reopens it.
+/// Implements [LSP-DIAGNOSTICS-SCOPE].
+fn forget_deleted(engine: &OspreyEngine, params: &Value) {
+    let changes = params.get("changes").and_then(Value::as_array);
+    let deleted = changes.into_iter().flatten().filter_map(|change| {
+        (change.get("type").and_then(Value::as_u64) == Some(DELETED))
+            .then(|| change.get("uri").and_then(Value::as_str))
+            .flatten()
+    });
+    for uri in deleted {
+        scope::lock(engine).opened(uri, false);
+        engine.project_cache.opened(uri, false);
     }
 }
 

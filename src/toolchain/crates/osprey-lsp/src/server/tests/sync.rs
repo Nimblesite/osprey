@@ -409,3 +409,50 @@ async fn requests_are_answered_before_the_workspace_sweep_finishes(
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
+
+/// A file deleted on disk while its tab stays open is no longer a project
+/// file: its diagnostics clear, so the explorer stops painting its folders red.
+/// An edit to the orphaned buffer brings them back.
+/// Implements [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn deleted_open_file_clears_until_edited() -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("osprey deleted open {}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let ghost = root.join("ghost.ospml");
+    let text = "double : int -> int\ndouble x = x * 2\n";
+    std::fs::write(&ghost, text)?;
+    let ghost_uri = crate::workspace::uri_of(&ghost).ok_or("ghost URI")?;
+    let root_uri = crate::workspace::uri_of(&root).ok_or("root URI")?;
+    let mut h = Harness::start();
+    let _ = h
+        .request(
+            600,
+            "initialize",
+            with_progress(json!({"rootUri":root_uri})),
+        )
+        .await;
+    h.notify("initialized", json!({})).await;
+    let _ = settled(&mut h, 601).await;
+    let opened = h.open_at(&ghost_uri, text).await;
+    assert_eq!(
+        diagnostics(&opened).and_then(|d| d.pointer("/0/code")),
+        Some(&json!("redundant-annotation")),
+        "open file reports its warning"
+    );
+    std::fs::remove_file(&ghost)?;
+    let deleted = json!({"changes":[{"uri":ghost_uri,"type":3}]});
+    h.notify("workspace/didChangeWatchedFiles", deleted).await;
+    settles_cleared(&mut h, 602, &ghost_uri, "deleted open file clears").await;
+    let edited =
+        json!({"textDocument":{"uri":ghost_uri,"version":2},"contentChanges":[{"text":text}]});
+    h.notify("textDocument/didChange", edited).await;
+    let reports = settled(&mut h, 603).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == ghost_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
+        "editing the orphaned buffer reports again: {reports:?}"
+    );
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
