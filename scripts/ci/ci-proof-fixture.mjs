@@ -93,7 +93,6 @@ function compiler(args) {
 function wasm(args) {
   const binary = args[1]
   const text = output(process.env.FIXTURE_ROOT, JSON.parse(readFileSync(binary, 'utf8')).source)
-  writeFileSync(binary.replace(/\.wasm$/, '.wasm.stdout.txt'), text)
   if (args[2] && text !== readFileSync(args[2], 'utf8')) process.exit(18)
   process.stdout.write(text)
 }

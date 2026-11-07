@@ -49,8 +49,8 @@ src/osprey/tests/modules/module_effects_rows.test.osp a continuation for `pipeli
 src/osprey/tests/modules/module_effects_rows.test.ospml a continuation for `pipeline::Source::Feed.next` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/modules/signature_ascription.test.osp a continuation for `store::Clocks::Clock.now` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/modules/signature_ascription.test.ospml a continuation for `store::Clocks::Clock.now` (a suspended continuation cannot cross or outlive a synchronous host call)
-src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `spawnProcess`
-src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `spawnProcess`
+src/osprey/tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `awaitProcess`
+src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `awaitProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`
 src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
 src/osprey/tests/regressions/db/database_effect.test.osp link directive `// @link: sqlite3`

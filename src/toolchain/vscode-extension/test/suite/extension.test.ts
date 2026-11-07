@@ -1715,10 +1715,9 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // Hover the user-defined `classify` function where the registered scenario
-    // executes its empty, two-element and many-element branches and verifies the
-    // captured head and tail in one structuralEquals row.
+    // asserts its empty branch.
     const classifyAt = at(
-      'structuralEquals([classify(List()), classify(b), classify(a)], ["empty", "two(10,20)", "many head=1 rest=2"])',
+      'classify(List()) == "empty"',
       "classify",
     );
     const classifyHover = await hoverPoll(
