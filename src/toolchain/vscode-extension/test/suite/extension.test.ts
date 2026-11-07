@@ -1696,7 +1696,7 @@ suite("Osprey Language Features Tests", () => {
     // Hover `listLength` where the registered indexing scenario asserts the
     // constructed command list's exact size. This probe is both executed by the
     // corpus and tied to observable list behavior rather than legacy stdout.
-    const lenAt = at("listLength(commands) == 3", "listLength");
+    const lenAt = at("listLength(commands), listLength(empty)", "listLength");
     const lenHover = await hoverPoll(
       doc.uri,
       lenAt.line,
@@ -1717,7 +1717,7 @@ suite("Osprey Language Features Tests", () => {
     // Hover the user-defined `classify` function where the registered scenario
     // asserts its empty branch.
     const classifyAt = at(
-      'classify(List()) == "empty"',
+      "answersHold(classify, [List(), b",
       "classify",
     );
     const classifyHover = await hoverPoll(

@@ -236,8 +236,8 @@ fn quantWeights() = {
     toGpu(bytes)
 }
 fn quantMessage(result) = match result { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
-/// The exact reason gpuMatMulQuant reports for `x` against the Q4_K weights `w` under `type`, `inner` and `cols`.
-fn quantRejection(x, w, type, inner, cols) = quantMessage(gpuMatMulQuant(x, w, type, 1, inner, cols))
+/// The exact reason gpuMatMulQuant reports for `x` against the Q4_K weights `w` under `kind`, `inner` and `cols`.
+fn quantRejection(x, w, kind, inner, cols) = quantMessage(gpuMatMulQuant(x, w, kind, 1, inner, cols))
 fn quantCase() = withBuffer(toGpu(range(0, 256)), fn(ints) => withBuffer(gpuMap(ints, fn(i) => toFloat32(i)), fn(x) => withBuffer(quantWeights(), fn(w) => quantWith(x, w))))
 fn quantWith(x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), fn(out) => checkAll("quantized product", [
     lengthIs(out, 2), elementIs(out, 0, toFloat32(0.0), toFloat32(496.0)), elementIs(out, 1, toFloat32(0.0), toFloat32(992.0)), quantRejection(x, w, "Q2_K", 256, 2) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S", quantRejection(x, w, "Q4_K", 200, 2) == "gpuMatMulQuant: inner: must be a positive multiple of 256", quantRejection(x, w, "Q4_K", 256, 3) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432", quantMessage(gpuMatMulQuant(x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
