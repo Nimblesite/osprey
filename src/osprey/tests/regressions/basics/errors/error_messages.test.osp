@@ -33,17 +33,24 @@ fn longFailure() -> Result<int, string> = Error { message: longText() }
 
 fn longSuccess() -> Result<string, string> = Success { value: longText() }
 
-/// Prints a fallible call under its label: the reason on Error, "unexpected" on Success.
-fn report(name, result) = match result {
-    Success { value } => print("${name}: unexpected ${toString(value)}\n")
-    Error { message } => print("${name}: ${message}\n")
+/// "unexpected " marks the half of a Result that should not have happened.
+fn surprise(wrong) = if wrong { "unexpected " } else { "" }
+
+/// Prints one labelled arm as "<name>: <detail>".
+fn printArm(name, wrong, detail) = print("${name}: ${surprise(wrong)}${detail}\n")
+
+/// Prints a Result under its label, marking "unexpected" on whichever half is wrong.
+fn reportUnder(name, result, wrongOnSuccess) = match result {
+    Success { value } => printArm(name, wrongOnSuccess, toString(value))
+    Error { message } => printArm(name, !wrongOnSuccess, message)
 }
 
+/// Prints a fallible call under its label: the reason on Error, "unexpected" on Success.
+fn report(name, result) = reportUnder(name, result, true)
+
 /// Prints a call expected to succeed: the value on Success, "unexpected" on Error.
-fn reportOk(name, result) = match result {
-    Success { value } => print("${name}: ${toString(value)}\n")
-    Error { message } => print("${name}: unexpected ${message}\n")
-}
+/// Prints an expected-success Result under its label, marking "unexpected" on Error.
+fn reportOk(name, result) = reportUnder(name, result, false)
 
 /// Like `report`, for a payload whose type has no toString.
 fn reportPlain(name, result) = match result {
@@ -54,53 +61,93 @@ fn reportPlain(name, result) = match result {
 /// Prints one toString(Result) rendering under its aligned label.
 fn showToString(label, result) = print("${label}${toString(result)}\n")
 
+// The failing calls below are bound once, so the catalogue and the checks that
+// re-verify them share a single definition of each fault.
+
+/// Parsing rejects a non-numeric string.
+let parseIntErr = parseInt("nope")
+let parseFloatErr = parseFloat("x")
+
+/// String operations reject an empty separator, needle or fill, a negative
+/// index or count, and an out-of-range substring.
+let splitErr = split("a", "")
+let indexOfErr = indexOf("abc", "z")
+let substringErr = substring("hi", (0 - 1), 5)
+let replaceErr = replace("h", "", "")
+let repeatErr = repeat("a", (0 - 1))
+let padStartErr = padStart("x", 5, "")
+let padEndErr = padEnd("x", 5, "")
+
+/// Cursor primitives reject an out-of-range byte, a mid-codepoint offset, a
+/// surrogate, and a value past the last scalar.
+let byteAtErr = byteAt("a", 9)
+let codePointAtOobErr = codePointAt("a", 9)
+let codePointAtMidErr = codePointAt("é", 1)
+let surrogateErr = codePointWidth(55296)
+let tooBigErr = codePointWidth(1114112)
+let fromCodePointErr = fromCodePoint(1114112)
+
+/// A user-declared failure keeps its reason for both rendering and checking.
+let userBoom = boom()
+
+/// Valid counterparts: a whole character reads back, division and parsing
+/// succeed, and a scalar builds its string.
+let wholeCodePoint = codePointAt(take("é", 1), 0)
+let divideOk = divideResult(7, 2)
+let parsedOk = parseInt("42")
+let codePointA = fromCodePoint(65)
+
+/// Collections reject a bad index and a missing key.
+let xs = [1, 2, 3]
+let prices = { "apple": 2, "banana": 3 }
+let listIndexErr = xs[9]
+let mapKeyErr = prices["mango"]
+
   // ---- numeric parsing ----
-  report("parseInt", parseInt("nope"))
-  report("parseFloat", parseFloat("x"))
+  report("parseInt", parseIntErr)
+  report("parseFloat", parseFloatErr)
 
   // ---- string operations ----
-  reportPlain("split", split("a", ""))
-  report("indexOf", indexOf("abc", "z"))
-  report("substring", substring("hi", (0 - 1) , 5))
-  report("replace", replace("h", "", ""))
-  report("repeat", repeat("a", (0 - 1) ))
-  report("padStart", padStart("x", 5, ""))
-  report("padEnd", padEnd("x", 5, ""))
+  reportPlain("split", splitErr)
+  report("indexOf", indexOfErr)
+  report("substring", substringErr)
+  report("replace", replaceErr)
+  report("repeat", repeatErr)
+  report("padStart", padStartErr)
+  report("padEnd", padEndErr)
 
   // ---- O(1) cursor primitives ([BUILTIN-STRING-CURSOR]) ----
-  report("byteAt", byteAt("a", 9))
-  report("codePointAt-oob", codePointAt("a", 9))
+  report("byteAt", byteAtErr)
+  report("codePointAt-oob", codePointAtOobErr)
   // "é" is U+00E9 (bytes 0xC3 0xA9): byte index 1 lands mid-codepoint.
-  report("codePointAt-mid", codePointAt("é", 1))
+  report("codePointAt-mid", codePointAtMidErr)
   // 0xD800 = 55296 (a UTF-16 surrogate — not a valid scalar value).
-  report("codePointWidth-surrogate", codePointWidth(55296))
+  report("codePointWidth-surrogate", surrogateErr)
   // 0x110000 = 1114112 (one past the last Unicode scalar value).
-  report("codePointWidth-toobig", codePointWidth(1114112))
-  report("fromCodePoint", fromCodePoint(1114112))
+  report("codePointWidth-toobig", tooBigErr)
+  report("fromCodePoint", fromCodePointErr)
   // `take` keeps a character whole, so no Osprey string operation can produce the
   // truncated or broken sequences the runtime's C tests feed `codePointAt`.
-  reportOk("codePointAt-whole", codePointAt(take("é", 1), 0))
+  reportOk("codePointAt-whole", wholeCodePoint)
 
   // ---- division: error AND success on the same construct ----
   exactArithmetic(fn() => report("divide", divideResult(10, 0)))
-  reportOk("divide-ok", divideResult(7, 2))
+  reportOk("divide-ok", divideOk)
 
   /// ---- out-of-bounds list index ----
-  let xs = [1, 2, 3]
-  report("listIndex", xs[9])
+  report("listIndex", listIndexErr)
 
   /// ---- missing map key ----
-  let prices = { "apple": 2, "banana": 3 }
-  report("mapKey", prices["mango"])
+  report("mapKey", mapKeyErr)
 
   // ---- toString(Result) renders the real reason (the other half of
   //      [ERR-PAYLOAD]): Error(<reason>) for failures, Success(<value>) else ----
-  showToString("toString cursor err = ", codePointWidth(55296))  // surrogate
-  showToString("toString builtin err = ", parseInt("nope"))
-  showToString("toString user err   = ", boom())
-  showToString("toString ok int     = ", parseInt("42"))
-  showToString("toString ok float   = ", divideResult(7, 2))
-  showToString("toString ok string  = ", fromCodePoint(65))
+  showToString("toString cursor err = ", surrogateErr)  // surrogate
+  showToString("toString builtin err = ", parseIntErr)
+  showToString("toString user err   = ", userBoom)
+  showToString("toString ok int     = ", parsedOk)
+  showToString("toString ok float   = ", divideOk)
+  showToString("toString ok string  = ", codePointA)
 
   print("=== Error Catalogue Complete ===\n")
 
@@ -115,12 +162,12 @@ fn bothDiagnosed(a, b) = structuralEquals([hasDiagnostic(a), hasDiagnostic(b)], 
 
 /// Verifies parsing, arithmetic, and user-created Result failures.
 fn numericErrorCase() = {
-    let userFailure = match boom() {
+    let userFailure = match userBoom {
         Success => false
         Error { message } => message == "user boom"
     }
     checkAll("numeric Result diagnostics", [
-        bothDiagnosed(parseInt("nope"), parseFloat("x")),
+        bothDiagnosed(parseIntErr, parseFloatErr),
         hasDiagnostic(divideResult(10, 0)),
         userFailure
     ])
@@ -128,33 +175,31 @@ fn numericErrorCase() = {
 
 /// Verifies every fallible string operation used by the catalogue.
 fn stringErrorCase() = checkAll("string Result diagnostics", [
-    bothDiagnosed(split("a", ""), indexOf("abc", "z")),
-    bothDiagnosed(substring("hi", (0 - 1) , 5), replace("h", "", "")),
-    bothDiagnosed(repeat("a", (0 - 1) ), padStart("x", 5, "")),
-    hasDiagnostic(padEnd("x", 5, ""))
+    bothDiagnosed(splitErr, indexOfErr),
+    bothDiagnosed(substringErr, replaceErr),
+    bothDiagnosed(repeatErr, padStartErr),
+    hasDiagnostic(padEndErr)
 ])
 
 /// Verifies cursor bounds, invalid scalars, and malformed UTF-8 diagnostics.
 fn cursorErrorCase() = checkAll("cursor Result diagnostics", [
-    bothDiagnosed(byteAt("a", 9), codePointAt("a", 9)),
-    bothDiagnosed(codePointAt("é", 1), codePointWidth(55296)),
-    bothDiagnosed(codePointWidth(1114112), fromCodePoint(1114112)),
-    !hasDiagnostic(codePointAt(take("é", 1), 0))
+    bothDiagnosed(byteAtErr, codePointAtOobErr),
+    bothDiagnosed(codePointAtMidErr, surrogateErr),
+    bothDiagnosed(tooBigErr, fromCodePointErr),
+    !hasDiagnostic(wholeCodePoint)
 ])
 
 /// Verifies collection errors alongside the successful counterparts.
 fn collectionAndSuccessCase() = {
-    let xs = [1, 2, 3]
-    let prices = { "apple": 2, "banana": 3 }
-    let divisionWorks = match divideResult(7, 2) {
+    let divisionWorks = match divideOk {
         Success { value } => value == 3.5
         Error => false
     }
     checkAll("collection errors and successful Results", [
-        hasDiagnostic(xs[9]),
-        hasDiagnostic(prices["mango"]),
-        (parseInt("42") ?: 0) == 42,
-        structuralEquals([(fromCodePoint(65) ?: ""), toString(boom())], ["A", "Error(user boom)"]),
+        hasDiagnostic(listIndexErr),
+        hasDiagnostic(mapKeyErr),
+        (parsedOk ?: 0) == 42,
+        structuralEquals([(codePointA ?: ""), toString(userBoom)], ["A", "Error(user boom)"]),
         divisionWorks
     ])
 }
@@ -166,7 +211,7 @@ fn oversizedPayloadCase() = {
     checkAll("toString sizes its buffer for the payload", [
         toString(longFailure()) == "Error(${text})",
         toString(longSuccess()) == "Success(${text})",
-        length(toString(longSuccess())) == ((length(text) + 9) )
+        length(toString(longSuccess())) == ((length(text) + 9))
     ])
 }
 
