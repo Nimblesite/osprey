@@ -52,6 +52,9 @@ reportPlain (name, result) =
     match result
         Success _value => print "${name}: unexpected\n"
         Error message => print "${name}: ${message}\n"
+
+(** Print one toString(Result) rendering under its aligned label. *)
+showToString (label, result) = print "${label}${toString result}\n"
 // ---- numeric parsing ----
 report ("parseInt", parseInt "nope")
 report ("parseFloat", parseFloat "x")
@@ -93,12 +96,12 @@ report ("mapKey", prices["mango"])
 
 // ---- toString(Result) renders the real reason (the other half of
 //      [ERR-PAYLOAD]): Error(<reason>) for failures, Success(<value>) else ----
-print "toString cursor err = ${toString (codePointWidth 55296)}\n"  // surrogate
-print "toString builtin err = ${toString (parseInt "nope")}\n"
-print "toString user err   = ${toString (boom ())}\n"
-print "toString ok int     = ${toString (parseInt "42")}\n"
-print "toString ok float   = ${toString (divideResult (7, 2))}\n"
-print "toString ok string  = ${toString (fromCodePoint 65)}\n"
+showToString ("toString cursor err = ", codePointWidth 55296)  // surrogate
+showToString ("toString builtin err = ", parseInt "nope")
+showToString ("toString user err   = ", boom ())
+showToString ("toString ok int     = ", parseInt "42")
+showToString ("toString ok float   = ", divideResult (7, 2))
+showToString ("toString ok string  = ", fromCodePoint 65)
 
 print "=== Error Catalogue Complete ===\n"
 
@@ -108,13 +111,16 @@ hasDiagnostic result =
         Success _value => false
         Error message => length (toString message) > 0
 
+(** Check that two fallible calls both fail with a diagnostic payload. *)
+bothDiagnosed (a, b) = structuralEquals [hasDiagnostic a, hasDiagnostic b] [true, true]
+
 (** Verify parsing, arithmetic, and user-created Result failures. *)
 numericErrorCase () =
     userFailure = match boom ()
         Success _value => false
         Error message => message == "user boom"
     checkAll "numeric Result diagnostics" [
-        structuralEquals [hasDiagnostic (parseInt "nope"), hasDiagnostic (parseFloat "x")] [true, true],
+        bothDiagnosed (parseInt "nope", parseFloat "x"),
         hasDiagnostic (divideResult (10, 0)),
         userFailure
     ]
@@ -122,18 +128,18 @@ numericErrorCase () =
 (** Verify every fallible string operation used by the catalogue. *)
 stringErrorCase () =
     checkAll "string Result diagnostics" [
-        structuralEquals [hasDiagnostic (split "a" ""), hasDiagnostic (indexOf "abc" "z")] [true, true],
-        structuralEquals [hasDiagnostic (substring "hi" ((0 - 1) ) 5), hasDiagnostic (replace "h" "" "")] [true, true],
-        structuralEquals [hasDiagnostic (repeat "a" ((0 - 1) )), hasDiagnostic (padStart "x" 5 "")] [true, true],
+        bothDiagnosed (split "a" "", indexOf "abc" "z"),
+        bothDiagnosed (substring "hi" ((0 - 1) ) 5, replace "h" "" ""),
+        bothDiagnosed (repeat "a" ((0 - 1) ), padStart "x" 5 ""),
         hasDiagnostic (padEnd "x" 5 "")
     ]
 
 (** Verify cursor bounds, invalid scalars, and malformed UTF-8 diagnostics. *)
 cursorErrorCase () =
     checkAll "cursor Result diagnostics" [
-        structuralEquals [hasDiagnostic (byteAt "a" 9), hasDiagnostic (codePointAt "a" 9)] [true, true],
-        structuralEquals [hasDiagnostic (codePointAt "é" 1), hasDiagnostic (codePointWidth 55296)] [true, true],
-        structuralEquals [hasDiagnostic (codePointWidth 1114112), hasDiagnostic (fromCodePoint 1114112)] [true, true],
+        bothDiagnosed (byteAt "a" 9, codePointAt "a" 9),
+        bothDiagnosed (codePointAt "é" 1, codePointWidth 55296),
+        bothDiagnosed (codePointWidth 1114112, fromCodePoint 1114112),
         !hasDiagnostic (codePointAt (take "é" 1) 0)
     ]
 
