@@ -14,6 +14,14 @@ const RESTRICTED_TARGETS: [&str; 6] = [
     "android-x64",
 ];
 
+/// Runs the compiler on an existing program file for `target`.
+fn compile_file(path: &Path, target: &str) -> std::io::Result<Output> {
+    Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .args([path.as_os_str(), "--llvm".as_ref()])
+        .arg(format!("--target={target}"))
+        .output()
+}
+
 fn compile(source: &str, target: &str) -> std::io::Result<Output> {
     let directory = std::env::temp_dir().join(format!(
         "osprey_target_caps_{}_{:?}",
@@ -23,21 +31,35 @@ fn compile(source: &str, target: &str) -> std::io::Result<Output> {
     std::fs::create_dir_all(&directory)?;
     let input = directory.join("check.osp");
     std::fs::write(&input, source)?;
-    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .args([input.as_os_str(), "--llvm".as_ref()])
-        .arg(format!("--target={target}"))
-        .output();
+    let output = compile_file(&input, target);
     std::fs::remove_dir_all(directory)?;
     output
 }
 
-fn rejects(source: &str, target: &str, feature: &str) -> std::io::Result<()> {
+/// Compiles `source` for `target`, asserting success and returning its stdout.
+fn accepts(source: &str, target: &str) -> std::io::Result<String> {
     let output = compile(source, target)?;
-    let error = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success(), "{target} accepted {feature}");
-    assert!(error.contains(target) && error.contains(feature), "{error}");
-    assert!(error.contains("line"), "missing source location: {error}");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Asserts the compile failed on `feature` with no IR emitted; returns stderr.
+fn refused(output: &Output, feature: &str) -> String {
+    let error = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(!output.status.success(), "accepted `{feature}`");
+    assert!(error.contains(feature), "{error}");
     assert!(output.stdout.is_empty(), "rejected program emitted LLVM IR");
+    error
+}
+
+fn rejects(source: &str, target: &str, feature: &str) -> std::io::Result<()> {
+    let error = refused(&compile(source, target)?, feature);
+    assert!(error.contains(target), "{error}");
+    assert!(error.contains("line"), "missing source location: {error}");
     Ok(())
 }
 
@@ -65,22 +87,14 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
             "src/osprey/tests/effects/resume/resume_value_rewrite.test.{extension}"
         ));
         for target in RESTRICTED_TARGETS {
-            let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-                .arg(&path)
-                .arg("--llvm")
-                .arg(format!("--target={target}"))
-                .output()?;
-            let error = String::from_utf8_lossy(&output.stderr);
-            assert!(!output.status.success(), "accepted {target} {extension}");
             // [MULTI-WASM] The rejection names the OPERATION whose request
             // cannot be suspended, not the `resume` keyword: a row that cannot
             // say which effects will start working when stack switching lands
             // is a row that cannot be planned against.
-            assert!(
-                error.contains("a continuation for `Supply.next`"),
-                "{error}"
+            let _ = refused(
+                &compile_file(&path, target)?,
+                "a continuation for `Supply.next`",
             );
-            assert_eq!(output.stdout, Vec::<u8>::new());
         }
     }
     Ok(())
@@ -106,12 +120,9 @@ fn a_continuation_rejection_explains_the_target_it_names() -> std::io::Result<()
         ("macos", "synchronous host call", "stack-switching"),
         ("android-arm64", "synchronous host call", "stack-switching"),
     ] {
-        let output = compile(source, target)?;
-        let error = String::from_utf8_lossy(&output.stderr);
-        assert!(!output.status.success(), "{target} accepted a continuation");
-        assert!(
-            error.contains("a continuation for `Supply.next`"),
-            "{target}: {error}"
+        let error = refused(
+            &compile(source, target)?,
+            "a continuation for `Supply.next`",
         );
         assert!(
             error.contains(expected),
@@ -137,15 +148,16 @@ fn unsupported_runtime_builtins_reject_through_aliases() -> std::io::Result<()> 
 
 #[test]
 fn wasm_rejects_fibers_terminals_and_foreign_imports() -> std::io::Result<()> {
-    for source in [
-        "let task = spawn 1\n",
-        "let task = Channel(1)\n",
-        "sleep(1)\n",
+    for (source, feature) in [
+        ("let task = spawn 1\n", "fiber"),
+        ("let task = Channel(1)\n", "fiber"),
+        ("sleep(1)\n", "fiber"),
+        ("let columns = termCols()\n", "terminal"),
+        ("extern fn absent(value: int) -> int\n", "absent"),
     ] {
-        rejects(source, "wasm32", "fiber")?;
+        rejects(source, "wasm32", feature)?;
     }
-    rejects("let columns = termCols()\n", "wasm32", "terminal")?;
-    rejects("extern fn absent(value: int) -> int\n", "wasm32", "absent")
+    Ok(())
 }
 
 /// Each WASI libc symbol must be declared once and called once through the C
@@ -186,13 +198,7 @@ fn assert_wasi_closures(ir: &str) {
 fn wasm_accepts_wasi_libc_perror_and_abort() -> std::io::Result<()> {
     let source = "extern fn perror(message: string) -> Unit\nextern fn abort() -> Unit\n\
                   perror(\"wasm libc\")\nabort()\n";
-    let output = compile(source, "wasm32")?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_wasi_void_calls(&String::from_utf8_lossy(&output.stdout));
+    assert_wasi_void_calls(&accepts(source, "wasm32")?);
     Ok(())
 }
 
@@ -205,13 +211,7 @@ fn wasm_wraps_wasi_libc_imports_as_first_class_values() -> std::io::Result<()> {
                   extern fn abort() -> Unit\n\
                   fn main() =\n\
                       print(\"${toString(listLength([perror]))}${toString(listLength([abort]))}\")\n";
-    let output = compile(source, "wasm32")?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let ir = String::from_utf8_lossy(&output.stdout);
+    let ir = accepts(source, "wasm32")?;
     assert_wasi_closures(&ir);
     assert_wasi_void_calls(&ir);
     Ok(())
@@ -245,13 +245,7 @@ fn wasm_preserves_browser_imports_and_substituting_effects() -> std::io::Result<
                       perform Supply.ask()\n\
                   }\n\
                   print(answer)\n";
-    let output = compile(source, "wasm32")?;
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(String::from_utf8_lossy(&output.stdout).contains("define i32 @main"));
+    assert!(accepts(source, "wasm32")?.contains("define i32 @main"));
     Ok(())
 }
 
@@ -263,12 +257,7 @@ fn builtin_spellings_in_local_bindings_are_not_platform_capabilities() -> std::i
         "let identity = fn(httpGet) => httpGet\nprint(identity(41))\n",
         "let value = match 41 { sleep => sleep }\nprint(value)\n",
     ] {
-        let output = compile(source, "wasm32")?;
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let _ = accepts(source, "wasm32")?;
     }
     Ok(())
 }
@@ -285,12 +274,7 @@ fn namespaced_functions_and_scalar_ios_host_imports_are_preserved() -> std::io::
             "ios-sim",
         ),
     ] {
-        let output = compile(source, target)?;
-        assert!(
-            output.status.success(),
-            "{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let _ = accepts(source, target)?;
     }
     Ok(())
 }
@@ -303,28 +287,11 @@ fn app_library_targets_refuse_unscoped_link_directives() -> std::io::Result<()> 
     let linked = "// @link: sqlite3\nextern fn sqlite3_libversion_number() -> int\nprint(sqlite3_libversion_number())\n";
     let scoped = "// @link(windows): ospgfx\nextern fn host_ready() -> int\nprint(host_ready())\n";
     for target in ["ios", "ios-sim", "macos", "android-arm64", "android-x64"] {
-        let output = compile(linked, target)?;
-        let error = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            !output.status.success(),
-            "{target} accepted a link directive"
+        let _ = refused(
+            &compile(linked, target)?,
+            &format!("target `{target}` does not support link directive `// @link: sqlite3`"),
         );
-        assert!(
-            error.contains(&format!(
-                "target `{target}` does not support link directive `// @link: sqlite3`"
-            )),
-            "{error}"
-        );
-        assert!(
-            output.stdout.is_empty(),
-            "{target} emitted IR for a refused program"
-        );
-        let scoped = compile(scoped, target)?;
-        assert!(
-            scoped.status.success(),
-            "{target}: {}",
-            String::from_utf8_lossy(&scoped.stderr)
-        );
+        let _ = accepts(scoped, target)?;
     }
     Ok(())
 }
@@ -334,12 +301,9 @@ fn app_library_targets_refuse_unscoped_link_directives() -> std::io::Result<()> 
 #[test]
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn python_rejects_pointer_exports() -> std::io::Result<()> {
-    let output = compile("fn keep(window: Ptr) = window\n", "python")?;
-    let error = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success(), "python accepted a Ptr export");
-    assert!(
-        error.contains("Python export `keep` passes a Ptr"),
-        "{error}"
+    let _ = refused(
+        &compile("fn keep(window: Ptr) = window\n", "python")?,
+        "Python export `keep` passes a Ptr",
     );
     Ok(())
 }
@@ -381,11 +345,7 @@ fn android_library_abi_rejects_unhandled_exports_and_aggregate_imports() -> std:
             ("effect Supply { ask: fn() -> int }\nfn answer() = perform Supply.ask()\nfn main() = print(0)\n", "Supply.ask"),
             ("extern fn host(values: List<int>) -> int\n", "unsupported C ABI signature"),
         ] {
-            let output = compile(source, target)?;
-            let error = String::from_utf8_lossy(&output.stderr);
-            assert!(!output.status.success());
-            assert!(error.contains(feature), "{error}");
-            assert_eq!(output.stdout, Vec::<u8>::new());
+            let _ = refused(&compile(source, target)?, feature);
         }
     }
     Ok(())
