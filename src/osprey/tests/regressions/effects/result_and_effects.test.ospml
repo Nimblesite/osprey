@@ -25,6 +25,12 @@ integerDefault (value, work) =
         remainderByZero _ => value
     work ()
 
+(** intDiv under the local `-1` replacement policy. *)
+intDivDefault (a, b) = integerDefault (-1, \() => intDiv (a, b))
+
+(** Remainder under the local `-1` replacement policy. *)
+modDefault (a, b) = integerDefault (-1, \() => a % b)
+
 floatDefault work =
     handle Arith
         divideByZero op lhs =>
@@ -49,21 +55,21 @@ recoveredValues fallback =
         addRescue (100, 23)
     ]
 
+(** Print one labelled pipeline step's rescued value and pass the value on. *)
+step (label, work) =
+    value = work ()
+    print "${label}-> ${toString value}"
+    value
+
 (** Every failed step receives a replacement value, so later steps still run. *)
-pipeline () =
-    a = divRescue (10, 0)
-    print "  step a  intDiv 10 / 0   -> ${toString a}"
-    b = divRescue (20, 4)
-    print "  step b  intDiv 20 / 4   -> ${toString b}"
-    c = modRescue (7, 0)
-    print "  step c  7 % 0           -> ${toString c}"
-    d = modRescue (17, 5)
-    print "  step d  17 % 5          -> ${toString d}"
-    e = addRescue (9223372036854775807, 1)
-    print "  step e  MAX + 1         -> ${toString e}"
-    f = addRescue (100, 23)
-    print "  step f  100 + 23        -> ${toString f}"
-    a + b + c + d + e + f 
+pipeline () = foldList ([
+    step ("  step a  intDiv 10 / 0   ", \() => divRescue (10, 0)),
+    step ("  step b  intDiv 20 / 4   ", \() => divRescue (20, 4)),
+    step ("  step c  7 % 0           ", \() => modRescue (7, 0)),
+    step ("  step d  17 % 5          ", \() => modRescue (17, 5)),
+    step ("  step e  MAX + 1         ", \() => addRescue (9223372036854775807, 1)),
+    step ("  step f  100 + 23        ", \() => addRescue (100, 23))
+], 0, \(total, value) => total + value)
 
 print "=== Result -> effect rescue pipeline ==="
 
@@ -90,6 +96,24 @@ print "local remainder policy  10 % 3 -> ${toString localOk}   10 % 0 -> ${toStr
 print "float policy for 10 / 0 = ${toString (floatDefault (\() => 10 / 0))}"
 print "=== pipeline complete ==="
 
+(** Read the element at `index`, or the `99` sentinel past the end. *)
+at (xs, index) = listGet (xs, index) ?: 99
+
+(** Read the elements at `indices`, each `99` past the end. *)
+atAll (xs, indices) = mapList (indices, \index => at (xs, index))
+
+(** True when `xs` reads `wants` at every index of `indices`. *)
+reads (xs, indices, wants) = structuralEquals (atAll (xs, indices), wants)
+
+(** Read the nested list at `row` of `rows`, or `[99]` past the end. *)
+rowAt (rows, row) = listGet (rows, row) ?: [99]
+
+(** Read the list stored under `key`, or `[99]` when the map has no such key. *)
+storedList (m, key) = mapGet (m, key) ?: [99]
+
+(** Read the element at `index` of the list stored under `key`. *)
+storedAt (m, key, index) = at (storedList (m, key), index)
+
 (** Verify rescued failures beside healthy Result, nested collections, and local fallbacks. *)
 resultAndEffectsCase () =
     hundreds = recoveredValues 100
@@ -112,38 +136,26 @@ resultAndEffectsCase () =
 
     checkAll "Result and effect pipeline state" [
         structuralEquals [bareSuccess, bareError, boundResult, rescues, total, localOk] [1, 9, 1, 3, 430, 1],
-        structuralEquals [integerDefault (-1, \() => intDiv 20 4), integerDefault (-1, \() => 17 % 5)] [5, 2],
+        structuralEquals [intDivDefault (20, 4), modDefault (17, 5)] [5, 2],
         structuralEquals [(checkedAdd 100 23 ?: 0), (checkedAdd 9223372036854775807 1 ?: 77)] [123, 77],
-        localBad == ((0 - 1) ),
+        toString (intDivDefault (20, 0)) == "-1",
+        structuralEquals [localBad, intDivDefault (20, 0), modDefault (17, 0)] [(0 - 1) , (0 - 1) , (0 - 1) ],
         structuralEquals [toString (floatDefault (\() => 10 / 0)), toString (intDiv 20 4)] ["-1.0", "5"],
-        toString (integerDefault (-1, \() => intDiv 20 0)) == "-1",
-        toString (checkedAdd 9223372036854775807 1) == "Error(integer overflow)",
-        integerDefault (-1, \() => intDiv 20 0) == ((0 - 1) ),
-        integerDefault (-1, \() => 17 % 0) == ((0 - 1) )
+        toString (checkedAdd 9223372036854775807 1) == "Error(integer overflow)"
     ]
 
     checkAll "each Rescue policy replaces only failing collection elements" [
-        structuralEquals [listLength hundreds, (listGet hundreds 0 ?: 99), (listGet hundreds 1 ?: 99)] [6, 100, 5],
-        structuralEquals [(listGet hundreds 2 ?: 99), (listGet hundreds 3 ?: 99)] [100, 2],
-        structuralEquals [(listGet hundreds 4 ?: 99), (listGet hundreds 5 ?: 99)] [100, 123],
-        structuralEquals [(listGet hundreds 9 ?: 99), listLength sevens, (listGet sevens 0 ?: 99)] [99, 6, 7],
-        structuralEquals [(listGet sevens 1 ?: 99), (listGet sevens 2 ?: 99), (listGet sevens 3 ?: 99)] [5, 7, 2],
-        structuralEquals [(listGet sevens 4 ?: 99), (listGet sevens 5 ?: 99)] [7, 123],
-        (listGet negatives 0 ?: 99) == ((0 - 1) ),
-        (listGet negatives 4 ?: 99) == ((0 - 1) )
+        reads (hundreds, [0, 1, 2, 3, 4, 5, 9], [100, 5, 100, 2, 100, 123, 99]),
+        reads (sevens, [0, 1, 2, 3, 4, 5], [7, 5, 7, 2, 7, 123]),
+        reads (negatives, [0, 4], [(0 - 1) , (0 - 1) ])
     ]
 
     checkAll "recovered lists retain element types inside nested maps" [
-        structuralEquals [listLength policyMatrix, listLength (listGet policyMatrix 0 ?: [99])] [3, 6],
-        (listGet (listGet policyMatrix 0 ?: [99]) 4 ?: 99) == 100,
-        structuralEquals [(listGet (listGet policyMatrix 1 ?: [99]) 4 ?: 99), mapLength policyMap] [7, 3],
-        structuralEquals [mapLength grownMap, listLength (mapGet policyMap "hundred" ?: [99])] [4, 6],
-        (listGet (mapGet policyMap "hundred" ?: [99]) 0 ?: 99) == 100,
-        (listGet (mapGet policyMap "seven" ?: [99]) 2 ?: 99) == 7,
-        structuralEquals [(listGet (mapGet grownMap "zero" ?: [99]) 0 ?: 99), listLength (mapKeys grownMap)] [0, 4],
-        listLength (mapValues grownMap) == 4,
-        (listGet (listGet policyMatrix 2 ?: [99]) 4 ?: 99) == ((0 - 1) ),
-        (listGet (mapGet policyMap "negative" ?: [99]) 4 ?: 99) == ((0 - 1) ),
+        structuralEquals [listLength policyMatrix, listLength (rowAt (policyMatrix, 0))] [3, 6],
+        structuralEquals (mapList [0, 1, 2] (\row => at (rowAt (policyMatrix, row), 4))) [100, 7, (0 - 1) ],
+        structuralEquals [mapLength policyMap, mapLength grownMap, listLength (storedList (policyMap, "hundred"))] [3, 4, 6],
+        structuralEquals [storedAt (policyMap, "hundred", 0), storedAt (policyMap, "seven", 2), storedAt (grownMap, "zero", 0)] [100, 7, 0],
+        structuralEquals [storedAt (policyMap, "negative", 4), listLength (mapKeys grownMap), listLength (mapValues grownMap)] [(0 - 1) , 4, 4],
         !(mapContains policyMap "zero"),
         mapContains grownMap "zero"
     ]

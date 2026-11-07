@@ -19,6 +19,21 @@ add (a, b) = a + b
 
 mul (a, b) = a * b 
 
+(** Prints `label = value` for `work`, valued under exact arithmetic. *)
+printExact (label, work) = print "${label} = ${toString (exactArithmetic work)}"
+
+(** The chained scalar pipe `3 |> inc |> dbl |> sq`. *)
+chainedPipe () = 3 |> inc |> dbl |> sq
+
+(** The inline-lambda pipe `10 |> (x + 5)`. *)
+inlineAddPipe () = 10 |> \x => x + 5
+
+(** The twice-chained lambda pipe `5 |> (+100)` then `x * 2`. *)
+twiceChainedPipe () = 5 |> (\x => x + 100 ) |> (\x => x * 2 )
+
+(** A fold from `seed` by `step` over 1..`hi`. *)
+foldOver (seed, step, hi) = range 1 hi |> fold seed step
+
 print "=== Functional Showcase ==="
 
 // 1. forEach over a range
@@ -51,27 +66,17 @@ exactArithmetic (\() =>
     range 1 6 |> filter lt3 |> map dbl |> forEach print)
 
 (** 7. fold (sum, product) *)
-s = exactArithmetic (\() =>
-    range 1 6 |> fold 0 add)
-print "sum 1..5 = ${toString s}"
-p = exactArithmetic (\() =>
-    range 1 5 |> fold 1 mul)
-print "prod 1..4 = ${toString p}"
+printExact ("sum 1..5", \() => foldOver (0, add, 6))
+printExact ("prod 1..4", \() => foldOver (1, mul, 5))
 
 (** 8. chained pipes on a single value *)
-r = exactArithmetic (\() =>
-    3 |> inc |> dbl |> sq)
-print "3|>inc|>dbl|>sq = ${toString r}"
+printExact ("3|>inc|>dbl|>sq", chainedPipe)
 
 (** 9. inline lambda in pipeline *)
-lr = exactArithmetic (\() =>
-    10 |> \x => x + 5) 
-print "10|>(x+5) = ${toString lr}"
+printExact ("10|>(x+5)", inlineAddPipe)
 
 (** 10. lambda chained twice (parens around each so the chain doesn't get swallowed) *)
-lr2 = exactArithmetic (\() =>
-    5 |> (\x => x + 100 ) |> (\x => x * 2 ))
-print "5|>+100|>*2 = ${toString lr2}"
+printExact ("5|>+100|>*2", twiceChainedPipe)
 
 print "=== Showcase Complete ==="
 // Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
@@ -81,8 +86,8 @@ print "=== Showcase Complete ==="
 (** Verify direct helpers and every scalar pipe from the showcase. *)
 scalarPipelineCase () =
     checkAll "functional scalar pipelines" [
-        structuralEquals [dbl 7, sq 5, inc 9, add (7, 8), mul (6, 7), (3 |> inc |> dbl |> sq)] [14, 25, 10, 15, 42, 64],
-        structuralEquals [(10 |> \x => x + 5 ), (5 |> (\x => x + 100 ) |> (\x => x * 2 ))] [15, 210],
+        structuralEquals [dbl 7, sq 5, inc 9, add (7, 8), mul (6, 7), chainedPipe ()] [14, 25, 10, 15, 42, 64],
+        structuralEquals [inlineAddPipe (), twiceChainedPipe ()] [15, 210],
         gt4 5, !gt4 4, lt3 2, !lt3 3,
         even 2, !even 3
     ]
@@ -157,6 +162,18 @@ closureHandlerCase () =
     [BUILTIN-MAP-GET], [TYPE-GENERICS-FN]. *)
 applyTo f x = f x
 
+(** The element at `i` of `xs`, or a double sentinel when it is missing. *)
+doubleAt (xs, i) = listGet xs i ?: 9.5
+
+(** The element at `i` of `xs`, or a text sentinel when it is missing. *)
+textAt (xs, i) = listGet xs i ?: "none"
+
+(** Row `i` of the nested collection `rows`, or an int sentinel row. *)
+rowAt (rows, i) = listGet rows i ?: [99]
+
+(** Element `j` of row `i` of `rows`, or an int sentinel. *)
+nestedAt (rows, i, j) = listGet (rowAt (rows, i)) j ?: 99
+
 functionValueCollectionCase () =
     floatsFrom = \n => [n, n * 2.0]
     namesFrom = \s => [s, s + "!"]
@@ -165,15 +182,15 @@ functionValueCollectionCase () =
     takeCaptured = \i => listGet captured i
     groupsFrom = \k => mapSet (Map ()) k [1.5, 2.5]
     checkAll "a function value returning a collection keeps its element type" [
-        structuralEquals [(listGet (floatsFrom 0.5) 0 ?: 9.5), (listGet (floatsFrom 0.5) 1 ?: 9.5)] [0.5, 1.0],
+        structuralEquals [doubleAt (floatsFrom 0.5, 0), doubleAt (floatsFrom 0.5, 1)] [0.5, 1.0],
         structuralEquals [(takeCaptured 0 ?: 9.5), (takeCaptured 2 ?: 9.5)] [0.25, 0.75],
-        (listGet (applyTo floatsFrom 1.25) 0 ?: 9.5) == 1.25,
-        (listGet (mapGet (groupsFrom "k") "k" ?: [9.0]) 1 ?: 9.5) == 2.5,
-        structuralEquals [listLength (floatsFrom 0.5), (listGet (listGet (nestedFrom 1) 0 ?: [99]) 1 ?: 99)] [2, 2],
-        (listGet (listGet (nestedFrom 1) 1 ?: [99]) 0 ?: 99) == 3,
-        structuralEquals [listLength (listGet (nestedFrom 1) 0 ?: [99]), mapLength (groupsFrom "k")] [2, 1],
-        structuralEquals [(listGet (namesFrom "os") 0 ?: "none"), (listGet (namesFrom "os") 1 ?: "none")] ["os", "os!"],
-        (listGet (applyTo namesFrom "hi") 1 ?: "none") == "hi!"
+        doubleAt (applyTo floatsFrom 1.25, 0) == 1.25,
+        doubleAt (mapGet (groupsFrom "k") "k" ?: [9.0], 1) == 2.5,
+        structuralEquals [listLength (floatsFrom 0.5), nestedAt (nestedFrom 1, 0, 1)] [2, 2],
+        nestedAt (nestedFrom 1, 1, 0) == 3,
+        structuralEquals [listLength (rowAt (nestedFrom 1, 0)), mapLength (groupsFrom "k")] [2, 1],
+        structuralEquals [textAt (namesFrom "os", 0), textAt (namesFrom "os", 1)] ["os", "os!"],
+        textAt (applyTo namesFrom "hi", 1) == "hi!"
     ]
 
 (** A GENERIC function whose body is a lambda. One closure cell has one ABI and
