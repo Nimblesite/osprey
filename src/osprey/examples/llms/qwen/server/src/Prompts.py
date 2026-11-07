@@ -1,20 +1,10 @@
 # osprey: flavor=python
 # osprey: namespace=qwen_server
 # osprey: module=Prompts
-"""Rendering a request into the prompt the GGUF's `tokenizer.chat_template` writes.
+"""Render the GGUF chat template pinned in tests/chat_template.jinja [LLM-TEMPLATE].
 
-That template is the specification, and `tests/chat_template.jinja` is the copy the
-tests render through. The tools system turn (`# Tools`, each tool as jinja2's
-`tojson` writes it, the call-format instructions, then the merged leading
-`system`/`developer` text), an assistant turn's `<tool_call>` blocks and a `tool`
-message's `<tool_response>` are the template's own bytes. Two things are the
-server's: a history turn carries no `<think>` block, which the template writes with
-`preserve_thinking=false`, and the prompt stops at `<|im_start|>assistant` and its
-newline rather than carrying the template's trailing `<think>` line, so a thinking
-model's reasoning arrives in the reply instead of in the prompt ([LLM-API-OLLAMA]).
-With no tools advertised a leading system message is still its own turn, where the
-template would merge consecutive ones into the first; and a `system` message after
-the leading run is a turn here, where the template raises.
+The server drops historical thinking and omits the generation prompt's trailing
+<think> line, so the model's reasoning arrives in the reply ([LLM-API-OLLAMA]).
 """
 
 from qwen_server import Lists
@@ -62,24 +52,21 @@ HTML_SAFE = [["<", "\\u003c"], [">", "\\u003e"], ["&", "\\u0026"], ["'", "\\u002
 
 
 def render(messages, tools):
-    """Every message as one turn, after the template's tools system turn when tools are
-    advertised, and then the assistant prefix; or the template's refusal for a tool call
-    in the history whose arguments it cannot render."""
-    fault = history_fault(messages)
+    """Render the chat or return the template's first refusal."""
+    systems = leading_systems(messages, 0)
+    start = Lists.count(systems)
+    fault = history_fault(messages, start)
     if fault != "":
         return Error(message=fault)
     else:
-        return Success(value=prompt(messages, tools))
+        return Success(value=prompt(messages, tools, merged_text(systems), start))
 
 
-def prompt(messages, tools):
-    """The prompt: the tools system turn and the turns after the leading system run it carries,
-    or every turn when the request advertises no tool."""
+def prompt(messages, tools, system, start):
+    """The merged system turn, remaining messages and assistant prefix."""
     listed = Wire.items(tools)
-    if Lists.count(listed) == 0:
-        return turns(messages, 0) + ASSISTANT
-    else:
-        return tools_turn(listed, messages) + turns(messages, Lists.count(leading_systems(messages, 0))) + ASSISTANT
+    head = requested_system_turn(system) if Lists.count(listed) == 0 else tools_turn(listed, system)
+    return head + turns(messages, start) + ASSISTANT
 
 
 def render_single(prompt, system):
@@ -138,23 +125,16 @@ def message_turn(messages, at, message):
 # --- the tools system turn -------------------------------------------------
 
 
-def tools_turn(tools, messages):
-    """The template's tools system turn: the heading, every tool, the format, the merged
-    leading system text, and the end of the turn."""
+def tools_turn(tools, system):
+    """Write the tool declarations and optional merged system text."""
     listed = tool_list(tools)
-    return f"{OPEN}system\n{TOOLS_HEADER}{listed}\n</tools>{FORMAT}{merged_tail(messages)}{CLOSE}\n"
+    tail = "" if system == "" else f"\n\n{system}"
+    return f"{OPEN}system\n{TOOLS_HEADER}{listed}\n</tools>{FORMAT}{tail}{CLOSE}\n"
 
 
 def tool_list(tools):
     """Each tool's `tojson`, on its own line under `<tools>`."""
     return foldList(tools, "", lambda rendered, tool: rendered + "\n" + tojson(tool))
-
-
-def merged_tail(messages):
-    """The merged leading system text, after the blank line the template puts before it, and
-    nothing when the leading messages carry no content."""
-    text = merged_text(leading_systems(messages, 0))
-    return "" if text == "" else f"\n\n{text}"
 
 
 def leading_systems(messages, at):
@@ -303,15 +283,24 @@ def role_at(messages, at):
 # --- the refusals the template makes --------------------------------------
 
 
-def history_fault(messages):
-    """The refusal the template raises for the first tool call in the history it cannot
-    render, and nothing when it renders every one."""
-    return foldList(messages, "", lambda fault, message: fault if fault != "" else message_fault(message))
+def history_fault(messages, start):
+    """Find the template's first refusal after the leading system messages."""
+    return fold(range(start, Lists.count(messages)), "", lambda fault, i: fault if fault != "" else fault_at(messages, i))
+
+
+def fault_at(messages, index):
+    match listGet(messages, index):
+        case Success(value=message):
+            return message_fault(message)
+        case Error():
+            return ""
 
 
 def message_fault(message):
-    """The refusal one message's tool calls raise, or nothing."""
-    return calls_fault(calls_of(message)) if Wire.text(message, "role") == "assistant" else ""
+    if systemic(message):
+        return "System message must be at the beginning."
+    else:
+        return calls_fault(calls_of(message)) if Wire.text(message, "role") == "assistant" else ""
 
 
 def calls_fault(calls):
