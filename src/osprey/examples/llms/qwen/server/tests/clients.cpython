@@ -93,6 +93,27 @@ def show_rejects_a_model_the_server_does_not_serve(port):
 
 
 @case
+def the_ollama_command_starts_a_chat(port):
+    """The requests `ollama run` sends before its first prompt, replayed byte for byte as captured
+    on 2026-11-07: the heartbeat, `/api/show` under the older `name`, and the empty load."""
+    for method in ("HEAD", "GET"):
+        beat = httpx.request(method, base(port) + "/", timeout=30.0)
+        assert beat.status_code == 200, (method, beat.status_code)
+        assert beat.text == ("" if method == "HEAD" else "Ollama is running"), (method, beat.text)
+    assert httpx.post(base(port) + "/", timeout=30.0).status_code == 405
+    shown = httpx.post(base(port) + "/api/show", json={"model": "", "system": "", "template": "", "verbose": False, "options": None, "name": MODEL}, timeout=30.0)
+    assert shown.status_code == 200, shown.text
+    assert shown.json()["model_info"]["qwen3_5.context_length"] == CONTEXT, shown.text
+    for route, body, empty in (("/api/generate", {"model": MODEL}, ("response", "")), ("/api/chat", {"model": MODEL, "messages": []}, ("message", {"role": "assistant", "content": ""}))):
+        for stream in (False, True):
+            lines = httpx.post(base(port) + route, json={**body, "stream": stream}, timeout=30.0).text.strip().splitlines()
+            assert len(lines) == 1, (route, stream, lines)
+            loaded = json.loads(lines[0])
+            assert (loaded["done"], loaded["done_reason"], loaded["eval_count"]) == (True, "load", 0), loaded
+            assert loaded[empty[0]] == empty[1], loaded
+
+
+@case
 def show_requires_a_model_name(port):
     reply = httpx.post(base(port) + "/api/show", json={}, timeout=30.0)
     assert reply.status_code == 400, reply.status_code
