@@ -8,12 +8,17 @@ typedef struct { int locked; } pthread_mutex_t;
 typedef struct { int unused; } pthread_mutexattr_t;
 typedef struct { int unused; } pthread_attr_t;
 #define PTHREAD_MUTEX_INITIALIZER { 0 }
+#define PTHREAD_CREATE_DETACHED 1
 int pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attributes);
 int pthread_mutex_destroy(pthread_mutex_t *mutex);
 int pthread_mutex_lock(pthread_mutex_t *mutex);
 int pthread_mutex_unlock(pthread_mutex_t *mutex);
 int pthread_create(pthread_t *thread, const pthread_attr_t *attributes,
                    void *(*start)(void *), void *argument);
+int pthread_attr_init(pthread_attr_t *attributes);
+int pthread_attr_setstacksize(pthread_attr_t *attributes, unsigned long bytes);
+int pthread_attr_setdetachstate(pthread_attr_t *attributes, int state);
+int pthread_attr_destroy(pthread_attr_t *attributes);
 int pthread_join(pthread_t thread, void **result);
 int pthread_detach(pthread_t thread);
 pthread_t pthread_self(void);

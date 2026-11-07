@@ -88,6 +88,28 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attributes, void *(*
   UNSUPPORTED("pthread_create");
 }
 
+int pthread_attr_init(pthread_attr_t *attributes) {
+  (void)attributes;
+  UNSUPPORTED("pthread_attr_init");
+}
+
+int pthread_attr_setstacksize(pthread_attr_t *attributes, unsigned long bytes) {
+  (void)attributes;
+  (void)bytes;
+  UNSUPPORTED("pthread_attr_setstacksize");
+}
+
+int pthread_attr_setdetachstate(pthread_attr_t *attributes, int state) {
+  (void)attributes;
+  (void)state;
+  UNSUPPORTED("pthread_attr_setdetachstate");
+}
+
+int pthread_attr_destroy(pthread_attr_t *attributes) {
+  (void)attributes;
+  UNSUPPORTED("pthread_attr_destroy");
+}
+
 int pthread_join(pthread_t thread, void **result) {
   (void)thread;
   (void)result;
