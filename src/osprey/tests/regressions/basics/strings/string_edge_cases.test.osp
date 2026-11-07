@@ -33,17 +33,17 @@ fn divideResult(a, b) = {
 /// A user-declared fallible function: its Error message must reach the arm.
 fn failWith(reason) -> Result<int, string> = Error { message: reason }
 
-/// Prints a successful `Result` as `<label>=<value>`; a failure is loud.
-fn showValue(label, result) = match result {
-    Success { value } => print("${label}=${value}\n")
+/// Prints a successful value between `open` and `close`; a failure is loud.
+fn showDelimited(open, close, label, result) = match result {
+    Success { value } => print("${label}=${open}${value}${close}\n")
     Error => print("${label} FAILED\n")
 }
 
+/// Prints a successful `Result` as `<label>=<value>`; a failure is loud.
+fn showValue(label, result) = showDelimited("", "", label, result)
+
 /// Same, with the value quoted: `<label>="<value>"`.
-fn showQuoted(label, result) = match result {
-    Success { value } => print("${label}=\"${value}\"\n")
-    Error => print("${label} FAILED\n")
-}
+fn showQuoted(label, result) = showDelimited("\"", "\"", label, result)
 
 /// Prints a rejected call as `<label> rejected`; a success is unexpected.
 fn showRejected(label, result) = match result {
@@ -147,11 +147,8 @@ fn rejected(result) = match result {
   showError("fromCp-nul", fromCodePoint(0))
   // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
   match fromCodePoint(233) {
-Success { value }   => match codePointAt(value, 0) {
-  Success { value }   => print("roundtrip=${value}\n")
-  Error   { message } => print("roundtrip FAILED: ${message}\n")
-}
-Error   { message } => print("roundtrip FAILED: ${message}\n")
+      Success { value } => showOrFail("roundtrip", codePointAt(value, 0))
+      Error { message } => print("roundtrip FAILED: ${message}\n")
   }
 
   // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
@@ -164,27 +161,6 @@ exactArithmetic(fn() => showError("div-msg", divideResult(10, 0)))
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {
     let negativeOne = (0 - 1) 
-    let substringNegative = rejected(substring("hi", negativeOne, 2))
-    let substringOverrun = rejected(substring("hi", 0, 99))
-    let substringInverted = rejected(substring("hi", 2, 0))
-    let indexMissing = rejected(indexOf("hello", "xyz"))
-    let replaceEmpty = rejected(replace("hello", "", "x"))
-    let repeatNegative = rejected(repeat("ab", negativeOne))
-    let padStartEmpty = rejected(padStart("hi", 5, ""))
-    let padEndEmpty = rejected(padEnd("hi", 5, ""))
-    let emptyFloat = rejected(parseFloat(""))
-    let trailingFloat = rejected(parseFloat("3.14x"))
-    let spacedFloat = rejected(parseFloat(" 3.14"))
-    let nanFloat = rejected(parseFloat("nan"))
-    let hexFloat = rejected(parseFloat("0x1p2"))
-    let infiniteFloat = rejected(parseFloat("1e9999"))
-    let integerOverflow = rejected(parseInt("99999999999999999999"))
-    let integerLeadingSpace = rejected(parseInt(" 42"))
-    let byteOutOfBounds = rejected(byteAt("héllo", 99))
-    let codePointMidSequence = rejected(codePointAt("héllo", 2))
-    let surrogateRejected = rejected(codePointWidth(55296))
-    let invalidCodePoint = rejected(fromCodePoint(2000000))
-    let nulCodePoint = rejected(fromCodePoint(0))
     let roundTrip = match fromCodePoint(233) {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
         Error => false
@@ -192,10 +168,6 @@ fn stringEdgeCase() = {
     let customPayload = match failWith("custom boom") {
         Success => false
         Error { message } => message == "custom boom"
-    }
-    let divisionRejected = match divideResult(10, 0) {
-        Success => false
-        Error { message } => message != ""
     }
 
     checkAll("total string boundary values", [
@@ -211,36 +183,36 @@ fn stringEdgeCase() = {
         (indexOf("hello", "") ?: negativeOne) == 0
     ])
     checkAll("rejected string inputs", [
-        substringNegative,
-        substringOverrun,
-        substringInverted,
-        indexMissing,
-        replaceEmpty,
-        repeatNegative,
-        padStartEmpty,
-        padEndEmpty,
-        emptyFloat,
-        trailingFloat,
-        spacedFloat,
-        nanFloat,
-        hexFloat,
-        infiniteFloat,
-        integerOverflow,
-        integerLeadingSpace
+        rejected(substring("hi", negativeOne, 2)),
+        rejected(substring("hi", 0, 99)),
+        rejected(substring("hi", 2, 0)),
+        rejected(indexOf("hello", "xyz")),
+        rejected(replace("hello", "", "x")),
+        rejected(repeat("ab", negativeOne)),
+        rejected(padStart("hi", 5, "")),
+        rejected(padEnd("hi", 5, "")),
+        rejected(parseFloat("")),
+        rejected(parseFloat("3.14x")),
+        rejected(parseFloat(" 3.14")),
+        rejected(parseFloat("nan")),
+        rejected(parseFloat("0x1p2")),
+        rejected(parseFloat("1e9999")),
+        rejected(parseInt("99999999999999999999")),
+        rejected(parseInt(" 42"))
     ])
     checkAll("cursor values and error payloads", [
         structuralEquals([byteLength("héllo"), (byteAt("héllo", 1) ?: 0)], [6, 195]),
         structuralEquals([(codePointAt("héllo", 1) ?: 0), (codePointWidth(128512) ?: 0)], [233, 4]),
-        byteOutOfBounds,
-        codePointMidSequence,
-        surrogateRejected,
+        rejected(byteAt("héllo", 99)),
+        rejected(codePointAt("héllo", 2)),
+        rejected(codePointWidth(55296)),
         (fromCodePoint(128512) ?: "missing") == "😀",
-        invalidCodePoint,
-        nulCodePoint,
+        rejected(fromCodePoint(2000000)),
+        rejected(fromCodePoint(0)),
         roundTrip,
         (parseInt("-9223372036854775808") ?: 0) == (((0 - 9223372036854775807) - 1) ),
         customPayload,
-        divisionRejected
+        rejected(divideResult(10, 0))
     ])
 }
 
@@ -423,6 +395,12 @@ fn escapeSequenceCase() = {
     ])
 }
 
+/// Whether `s` starts with each needle in `needles`, as a parallel boolean list.
+fn startsWithAll(s, needles) = mapList(needles, fn(k) => startsWith(s, k))
+
+/// Whether `s` ends with each needle in `needles`, as a parallel boolean list.
+fn endsWithAll(s, needles) = mapList(needles, fn(k) => endsWith(s, k))
+
 /// [BUILTIN-STRING-CONTAINS]: "True if `needle` occurs anywhere in `s`. An empty
 /// `needle` returns `true`." [BUILTIN-STRING-INDEXOF]: "Returns the byte index of
 /// the FIRST occurrence of `needle`" and an empty needle returns
@@ -435,10 +413,6 @@ fn substringPositionCase() = {
         Success => false
         Error { message } => message == "indexOf: substring not found"
     }
-    let indexEmptySubject = match indexOf("", "a") {
-        Success => false
-        Error { message } => message != ""
-    }
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
@@ -450,12 +424,12 @@ fn substringPositionCase() = {
     ])
 
     checkAll("startsWith and endsWith agree with contains at both ends", [
-        structuralEquals(mapList(["", "b", "ba", "banana"], fn(k) => startsWith(subject, k)), [true, true, true, true]),
-        structuralEquals(mapList(["banana!", "anana"], fn(k) => startsWith(subject, k)), [false, false]),
+        structuralEquals(startsWithAll(subject, ["", "b", "ba", "banana"]), [true, true, true, true]),
+        structuralEquals(startsWithAll(subject, ["banana!", "anana"]), [false, false]),
         structuralEquals([startsWith(subject, "B"), endsWith(subject, "")], [false, true]),
-        structuralEquals(mapList(["a", "na"], fn(k) => endsWith(subject, k)), [true, true]),
-        structuralEquals(mapList(["ana", "banana"], fn(k) => endsWith(subject, k)), [true, true]),
-        structuralEquals(mapList(["!banana", "banan"], fn(k) => endsWith(subject, k)), [false, false]),
+        structuralEquals(endsWithAll(subject, ["a", "na"]), [true, true]),
+        structuralEquals(endsWithAll(subject, ["ana", "banana"]), [true, true]),
+        structuralEquals(endsWithAll(subject, ["!banana", "banan"]), [false, false]),
         structuralEquals([endsWith(subject, "A"), startsWith("", ""), startsWith("", "a")], [false, true, false]),
         structuralEquals([endsWith("", ""), endsWith("", "a"), startsWith("a", "a")], [true, false, true]),
         structuralEquals([endsWith("a", "a"), containsAll(subject, ["ba", "na"])], [true, true])
@@ -469,7 +443,7 @@ fn substringPositionCase() = {
         structuralEquals([(indexOf(subject, "") ?: missing), (indexOf("", "") ?: missing)], [0, 0]),
         structuralEquals([(indexOf("a", "a") ?: missing), (indexOf(toUpperCase(subject), "NA") ?: missing)], [0, 2]),
         indexAbsent,
-        indexEmptySubject,
+        rejected(indexOf("", "a")),
         (substring(subject, 1, 4) ?: "missing") == "ana",
         (substring(subject, 2, 4) ?: "missing") == "na",
         structuralEquals([(substring(subject, 6, 6) ?: "missing"), (substring(subject, 3, 3) ?: "missing")], ["", ""]),
@@ -546,6 +520,9 @@ fn caseFoldingCase() = {
     ])
 }
 
+/// Whether take and drop reassemble `s` when cut at byte `n`.
+fn partitionsAt(s, n) = take(s, n) + drop(s, n) == s
+
 /// [BUILTIN-STRING-CONCAT]: "The `+` operator on two `string` values returns
 /// `string` directly. String concatenation cannot fail and is never
 /// `Result`-wrapped." [BUILTIN-STRING-LENGTH] counts bytes and
@@ -578,12 +555,12 @@ fn concatLengthCase() = {
 
     // take(s, n) + drop(s, n) == s must hold at, inside and outside both ends.
     checkAll("take and drop partition a string at every boundary", [
-        take(joined, 0) + drop(joined, 0) == joined,
-        take(joined, 1) + drop(joined, 1) == joined,
-        take(joined, 3) + drop(joined, 3) == joined,
-        take(joined, 6) + drop(joined, 6) == joined,
-        take(joined, 7) + drop(joined, 7) == joined,
-        take(joined, negativeFive) + drop(joined, negativeFive) == joined,
+        partitionsAt(joined, 0),
+        partitionsAt(joined, 1),
+        partitionsAt(joined, 3),
+        partitionsAt(joined, 6),
+        partitionsAt(joined, 7),
+        partitionsAt(joined, negativeFive),
         structuralEquals([take(joined, 0), drop(joined, 6)], ["", ""]),
         structuralEquals([drop(joined, 99), take(joined, negativeFive)], ["", ""]),
         structuralEquals([(substring(joined, 0, 0) ?: "missing"), (substring(joined, 6, 6) ?: "missing")], ["", ""]),
@@ -691,8 +668,8 @@ fn utf8CutCase() = {
         structuralEquals(mapList([1, 2, 3, 4], fn(k) => take(quote, k)), ["“", "“", "“", "“o"]),
         structuralEquals(mapList([1, 3, 5, 6], fn(k) => drop(quote, k)), ["ok”", "ok”", "”", ""]),
         structuralEquals([take(eagle, 1), drop(eagle, 1)], ["🦅", "x"]),
-        take(quote, 2) + drop(quote, 2) == quote,
-        take(eagle, 3) + drop(eagle, 3) == eagle
+        partitionsAt(quote, 2),
+        partitionsAt(eagle, 3)
     ])
     checkAll("utf-8 substring bounds", [
         structuralEquals([(substring(quote, 0, 3) ?: "bad"), (substring(quote, 3, 5) ?: "bad")], ["“", "ok"]),

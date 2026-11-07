@@ -35,17 +35,17 @@ divideResult (a, b) =
 failWith : string -> Result int string
 failWith reason = Error(message = reason)
 
-(** Print a successful `Result` as `<label>=<value>`; a failure is loud. *)
-showValue (label, result) =
+(** Print a successful value between `open` and `close`; a failure is loud. *)
+showDelimited (open, close, label, result) =
     match result
-        Success value => print "${label}=${value}\n"
+        Success value => print "${label}=${open}${value}${close}\n"
         Error _message => print "${label} FAILED\n"
 
+(** Print a successful `Result` as `<label>=<value>`; a failure is loud. *)
+showValue (label, result) = showDelimited ("", "", label, result)
+
 (** Same, with the value quoted: `<label>="<value>"`. *)
-showQuoted (label, result) =
-    match result
-        Success value => print "${label}=\"${value}\"\n"
-        Error _message => print "${label} FAILED\n"
+showQuoted (label, result) = showDelimited ("\"", "\"", label, result)
 
 (** Print a rejected call as `<label> rejected`; a success is unexpected. *)
 showRejected (label, result) =
@@ -148,11 +148,8 @@ showError ("fromCp-bad", fromCodePoint 2000000)
 showError ("fromCp-nul", fromCodePoint 0)
 // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
 match fromCodePoint 233
-    Success value   =>
-        match codePointAt value 0
-            Success value   => print "roundtrip=${value}\n"
-            Error   message => print "roundtrip FAILED: ${message}\n"
-    Error   message => print "roundtrip FAILED: ${message}\n"
+    Success value => showOrFail ("roundtrip", codePointAt value 0)
+    Error message => print "roundtrip FAILED: ${message}\n"
 
 // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
 showError ("pi-msg", parseInt "oops")
@@ -164,36 +161,12 @@ print "=== Edge Cases Complete ===\n"
 (** Re-evaluate successful boundaries, rejected inputs, cursor values, and payloads. *)
 stringEdgeCase () =
     negativeOne = (0 - 1) 
-    substringNegative = rejected (substring "hi" negativeOne 2)
-    substringOverrun = rejected (substring "hi" 0 99)
-    substringInverted = rejected (substring "hi" 2 0)
-    indexMissing = rejected (indexOf "hello" "xyz")
-    replaceEmpty = rejected (replace "hello" "" "x")
-    repeatNegative = rejected (repeat "ab" negativeOne)
-    padStartEmpty = rejected (padStart "hi" 5 "")
-    padEndEmpty = rejected (padEnd "hi" 5 "")
-    emptyFloat = rejected (parseFloat "")
-    trailingFloat = rejected (parseFloat "3.14x")
-    spacedFloat = rejected (parseFloat " 3.14")
-    nanFloat = rejected (parseFloat "nan")
-    hexFloat = rejected (parseFloat "0x1p2")
-    infiniteFloat = rejected (parseFloat "1e9999")
-    integerOverflow = rejected (parseInt "99999999999999999999")
-    integerLeadingSpace = rejected (parseInt " 42")
-    byteOutOfBounds = rejected (byteAt "héllo" 99)
-    codePointMidSequence = rejected (codePointAt "héllo" 2)
-    surrogateRejected = rejected (codePointWidth 55296)
-    invalidCodePoint = rejected (fromCodePoint 2000000)
-    nulCodePoint = rejected (fromCodePoint 0)
     roundTrip = match fromCodePoint 233
         Success value => (codePointAt value 0 ?: 0) == 233
         Error _message => false
     customPayload = match failWith "custom boom"
         Success _value => false
         Error message => message == "custom boom"
-    divisionRejected = match divideResult (10, 0)
-        Success _value => false
-        Error message => message != ""
 
     checkAll "total string boundary values" [
         isEmpty "",
@@ -210,36 +183,36 @@ stringEdgeCase () =
         (indexOf "hello" "" ?: negativeOne) == 0
     ]
     checkAll "rejected string inputs" [
-        substringNegative,
-        substringOverrun,
-        substringInverted,
-        indexMissing,
-        replaceEmpty,
-        repeatNegative,
-        padStartEmpty,
-        padEndEmpty,
-        emptyFloat,
-        trailingFloat,
-        spacedFloat,
-        nanFloat,
-        hexFloat,
-        infiniteFloat,
-        integerOverflow,
-        integerLeadingSpace
+        rejected (substring "hi" negativeOne 2),
+        rejected (substring "hi" 0 99),
+        rejected (substring "hi" 2 0),
+        rejected (indexOf "hello" "xyz"),
+        rejected (replace "hello" "" "x"),
+        rejected (repeat "ab" negativeOne),
+        rejected (padStart "hi" 5 ""),
+        rejected (padEnd "hi" 5 ""),
+        rejected (parseFloat ""),
+        rejected (parseFloat "3.14x"),
+        rejected (parseFloat " 3.14"),
+        rejected (parseFloat "nan"),
+        rejected (parseFloat "0x1p2"),
+        rejected (parseFloat "1e9999"),
+        rejected (parseInt "99999999999999999999"),
+        rejected (parseInt " 42")
     ]
     checkAll "cursor values and error payloads" [
         structuralEquals [byteLength "héllo", (byteAt "héllo" 1 ?: 0)] [6, 195],
         structuralEquals [(codePointAt "héllo" 1 ?: 0), (codePointWidth 128512 ?: 0)] [233, 4],
-        byteOutOfBounds,
-        codePointMidSequence,
-        surrogateRejected,
+        rejected (byteAt "héllo" 99),
+        rejected (codePointAt "héllo" 2),
+        rejected (codePointWidth 55296),
         (fromCodePoint 128512 ?: "missing") == "😀",
-        invalidCodePoint,
-        nulCodePoint,
+        rejected (fromCodePoint 2000000),
+        rejected (fromCodePoint 0),
         roundTrip,
         (parseInt "-9223372036854775808" ?: 0) == (((0 - 9223372036854775807) - 1) ),
         customPayload,
-        divisionRejected
+        rejected (divideResult (10, 0))
     ]
 
 test "string edge cases preserve values and error payloads" (exactly stringEdgeCase)
@@ -417,6 +390,12 @@ escapeSequenceCase () =
         endsWith "x\n" "\n"
     ]
 
+(** Whether `s` starts with each needle in `needles`, as a parallel boolean list. *)
+startsWithAll (s, needles) = mapList needles (\k => startsWith s k)
+
+(** Whether `s` ends with each needle in `needles`, as a parallel boolean list. *)
+endsWithAll (s, needles) = mapList needles (\k => endsWith s k)
+
 (** [BUILTIN-STRING-CONTAINS]: "True if `needle` occurs anywhere in `s`. An empty
     `needle` returns `true`." [BUILTIN-STRING-INDEXOF]: "Returns the byte index of
     the FIRST occurrence of `needle`" and an empty needle returns
@@ -428,9 +407,6 @@ substringPositionCase () =
     indexAbsent = match indexOf subject "xyz"
         Success _value => false
         Error message => message == "indexOf: substring not found"
-    indexEmptySubject = match indexOf "" "a"
-        Success _value => false
-        Error message => message != ""
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll "contains finds a needle at the start, middle, end and nowhere" [
@@ -445,13 +421,13 @@ substringPositionCase () =
     ]
 
     checkAll "startsWith and endsWith agree with contains at both ends" [
-        structuralEquals (mapList ["", "b", "ba"] (\k => startsWith subject k)) [true, true, true],
+        structuralEquals (startsWithAll (subject, ["", "b", "ba"])) [true, true, true],
         startsWith subject "banana",
         !(startsWith subject "banana!"),
         !(startsWith subject "anana"),
         !(startsWith subject "B"),
-        structuralEquals (mapList ["", "a", "na"] (\k => endsWith subject k)) [true, true, true],
-        structuralEquals (mapList ["ana", "banana"] (\k => endsWith subject k)) [true, true],
+        structuralEquals (endsWithAll (subject, ["", "a", "na"])) [true, true, true],
+        structuralEquals (endsWithAll (subject, ["ana", "banana"])) [true, true],
         !(endsWith subject "!banana"),
         !(endsWith subject "banan"),
         !(endsWith subject "A"),
@@ -470,7 +446,7 @@ substringPositionCase () =
         structuralEquals [(indexOf subject "" ?: missing), (indexOf "" "" ?: missing)] [0, 0],
         structuralEquals [(indexOf "a" "a" ?: missing), (indexOf (toUpperCase subject) "NA" ?: missing)] [0, 2],
         indexAbsent,
-        indexEmptySubject,
+        rejected (indexOf "" "a"),
         structuralEquals [(substring subject 1 4 ?: "missing"), (substring subject 2 4 ?: "missing")] ["ana", "na"],
         structuralEquals [(substring subject 6 6 ?: "missing"), (substring subject 3 3 ?: "missing")] ["", ""],
         take subject (indexOf subject "na" ?: missing) == "ba",
@@ -545,6 +521,9 @@ caseFoldingCase () =
         structuralEquals ["${toUpperCase "ab"}", "${toLowerCase "AB"}"] ["AB", "ab"]
     ]
 
+(** Whether take and drop reassemble `s` when cut at byte `n`. *)
+partitionsAt (s, n) = take s n + drop s n == s
+
 (** [BUILTIN-STRING-CONCAT]: "The `+` operator on two `string` values returns
     `string` directly. String concatenation cannot fail and is never
     `Result`-wrapped." [BUILTIN-STRING-LENGTH] counts bytes and
@@ -579,12 +558,12 @@ concatLengthCase () =
 
     // take s n + drop s n == s must hold at, inside and outside both ends.
     checkAll "take and drop partition a string at every boundary" [
-        (take joined 0 + drop joined 0) == joined,
-        (take joined 1 + drop joined 1) == joined,
-        (take joined 3 + drop joined 3) == joined,
-        (take joined 6 + drop joined 6) == joined,
-        (take joined 7 + drop joined 7) == joined,
-        (take joined negativeFive + drop joined negativeFive) == joined,
+        partitionsAt (joined, 0),
+        partitionsAt (joined, 1),
+        partitionsAt (joined, 3),
+        partitionsAt (joined, 6),
+        partitionsAt (joined, 7),
+        partitionsAt (joined, negativeFive),
         structuralEquals [take joined 0, drop joined 6, drop joined 99, take joined negativeFive] ["", "", "", ""],
         structuralEquals [(substring joined 0 0 ?: "missing"), (substring joined 6 6 ?: "missing")] ["", ""],
         drop joined 0 == joined,
@@ -685,8 +664,8 @@ utf8CutCase () =
         structuralEquals (mapList [1, 2, 3, 4] (\k => take quote k)) ["“", "“", "“", "“o"],
         structuralEquals (mapList [1, 3, 5, 6] (\k => drop quote k)) ["ok”", "ok”", "”", ""],
         structuralEquals [take eagle 1, drop eagle 1] ["🦅", "x"],
-        take quote 2 + drop quote 2 == quote,
-        take eagle 3 + drop eagle 3 == eagle
+        partitionsAt (quote, 2),
+        partitionsAt (eagle, 3)
     ]
     checkAll "utf-8 substring bounds" [
         structuralEquals [(substring quote 0 3 ?: "bad"), (substring quote 3 5 ?: "bad")] ["“", "ok"],
