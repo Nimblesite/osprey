@@ -34,9 +34,6 @@ sys.modules["harness"] = _harness
 from harness import case, real_case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, base, load, main  # the harness registers cases through `case`
 
 
-# --- step 1: metadata endpoints of the Ollama protocol ---------------------
-
-
 @case
 def version_reports_the_protocol_version(port):
     reply = httpx.get(base(port) + "/api/version", timeout=30.0)
@@ -130,9 +127,6 @@ def ps_lists_the_running_model_with_its_context(port):
         assert running.size > 0, running
         assert running.context_length == CONTEXT, running
         assert running.details.family == "qwen3_5", running.details
-
-
-# --- step 2: /api/chat and /api/generate over NDJSON ----------------------
 
 
 def json_lines(body):
@@ -355,9 +349,6 @@ def a_repeated_request_answers_identically(port):
         assert [dict(call.function.arguments) for call in again.message.tool_calls] == [dict(call.function.arguments) for call in first.message.tool_calls], again
 
 
-# --- step 3: the OpenAI protocol ------------------------------------------
-
-
 @case
 def openai_lists_the_served_model(port):
     listed = openai_client(port).models.list()
@@ -377,6 +368,14 @@ def openai_chat_completes_one_turn(port):
     assert isinstance(call.function.arguments, str), call.function
     jsonschema.validate(json.loads(call.function.arguments), READ_FILE["function"]["parameters"])
     assert reply.usage.total_tokens == reply.usage.prompt_tokens + reply.usage.completion_tokens, reply.usage
+    asked = {"role": "user", "content": READ_PROMPT}
+    result = {"role": "tool", "tool_call_id": call.id, "content": "# Osprey\n"}
+    recorded = choice.message.model_dump(exclude_none=True)
+    followup = openai_client(port).chat.completions.create(model=MODEL, messages=[asked, recorded, result], tools=[READ_FILE, RUN_TESTS])
+    recorded["tool_calls"][0]["function"]["arguments"] = json.loads(call.function.arguments)
+    module = reference()
+    rendered = module.rendered_chat([asked, recorded, result], [READ_FILE, RUN_TESTS])
+    assert followup.usage.prompt_tokens == len(module.Model().tokenize(rendered)), followup.usage
 
 
 @case
