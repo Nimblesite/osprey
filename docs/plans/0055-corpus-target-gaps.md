@@ -228,8 +228,8 @@ Continuation reasons below end with `(a suspended continuation cannot cross or o
 
 | Program | Reason |
 | --- | --- |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `spawnProcess` |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `spawnProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `awaitProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `awaitProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp` | process spawning builtin `spawnProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml` | process spawning builtin `spawnProcess` |
 
@@ -320,8 +320,8 @@ Continuation reasons below end with `(wasm32 acquires one-shot continuations whe
 
 | Program | Reason |
 | --- | --- |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `spawnProcess` |
-| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `spawnProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.osp` | process spawning builtin `awaitProcess` |
+| `src/osprey/tests/regressions/basics/processes/async_process_management.test.ospml` | process spawning builtin `awaitProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.osp` | process spawning builtin `spawnProcess` |
 | `src/osprey/tests/regressions/basics/processes/callback_stdout_demo.test.ospml` | process spawning builtin `spawnProcess` |
 
