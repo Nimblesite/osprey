@@ -1,6 +1,7 @@
 #include "http_shared.h"
 #include "socket_safety.h"
 #include "memory_hooks.h"
+#include "osprey_thread.h"
 #include <signal.h>
 
 #ifdef _WIN32
@@ -202,8 +203,8 @@ void *websocket_server_thread(void *arg) {
     pthread_mutex_lock(&server->mutex);
     server->handler_count++;
     pthread_mutex_unlock(&server->mutex);
-    if (pthread_create(&connection_thread, NULL, handle_websocket_connection,
-                       data) != 0) {
+    if (osp_thread_start(&connection_thread, handle_websocket_connection, data,
+                         false) != 0) {
       fprintf(stderr, "Failed to create connection thread\n");
       close(client_fd);
       free(data);

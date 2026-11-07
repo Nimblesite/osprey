@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "memory_hooks.h"
+#include "osprey_thread.h"
 
 // The process runtime spawns children and streams their output. POSIX uses
 // fork/exec/pipe/select; Windows uses the Win32 process APIs from <windows.h>
@@ -326,7 +327,7 @@ int64_t spawn_process_with_handler(const char *command,
 
   // Monitor thread fires user callbacks concurrently with the caller.
   osp_mem_notify_multithreaded();
-  if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread, proc) != 0) {
+  if (osp_thread_start(&proc->monitor_thread, process_monitor_thread, proc, false) != 0) {
     // Same contract as the POSIX -5 arm: end the unmonitorable child and WAIT
     // for it before releasing the handle. The WAIT is what proves nothing is
     // left, not the request: TerminateProcess is asynchronous, so its success

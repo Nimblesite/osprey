@@ -18,16 +18,12 @@
 
 #include "effects_runtime.h"
 #include "memory_hooks.h"
+#include "osprey_thread.h"
 #include "profiler_runtime.h"
 #include "effects_scanned.h"
 #include "memory_parked_wait.h"
 
 #include <setjmp.h>
-
-// A deep but finite body recursion must end in its own result, not a bus error
-// at the 512 KiB a default secondary thread gets. Address space, committed only
-// as it is touched; the main thread's own limit is 8 MiB.
-#define OSPREY_CORO_STACK_BYTES ((size_t)256u << 20)
 
 // Hand the baton over and sleep [MEM-EFFECT-BATON].
 static void baton_wait(pthread_cond_t *cond, pthread_mutex_t *lock) {
@@ -241,16 +237,7 @@ void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env,
     osp_mem_notify_multithreaded();
     osp_mem_baton_prepare();
 
-    pthread_attr_t attributes;
-    int rc = pthread_attr_init(&attributes);
-    if (rc == 0) {
-        rc = pthread_attr_setstacksize(&attributes, OSPREY_CORO_STACK_BYTES);
-        if (rc == 0) {
-            rc = pthread_create(&coro->thread, &attributes, __osprey_coro_thread, args);
-        }
-        pthread_attr_destroy(&attributes);
-    }
-    if (rc != 0) {
+    if (osp_thread_start(&coro->thread, __osprey_coro_thread, args, false) != 0) {
         free(args);
         fprintf(stderr, "FATAL: Failed to start effect continuation thread\n");
         abort();

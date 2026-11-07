@@ -12,6 +12,7 @@
 
 #include "memory_hooks.h"
 #include "memory_parked_wait.h"
+#include "osprey_thread.h"
 #include "profiler_runtime.h"
 
 // Forward declarations for effect handler snapshot/restore
@@ -214,19 +215,12 @@ static void *fiber_thread_func(void *arg) {
 // for, and a fiber nobody awaits must not keep its stack for the life of the process.
 static bool start_fiber_thread(Fiber *fiber) {
   pthread_t thread;
-  pthread_attr_t attributes;
-  if (pthread_attr_init(&attributes) != 0) {
-    return false;
-  }
-  pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
   // A real fiber thread is about to touch the shared value heap: trip the
   // memory backend off its single-threaded fast path BEFORE the thread that
   // needs the lock can exist (pthread_create is the happens-before barrier).
   osp_mem_notify_multithreaded();
   osp_mem_baton_prepare();
-  bool started = pthread_create(&thread, &attributes, fiber_thread_func, fiber) == 0;
-  pthread_attr_destroy(&attributes);
-  return started;
+  return osp_thread_start(&thread, fiber_thread_func, fiber, true) == 0;
 }
 
 // Create and schedule a fiber (shared by both spawn ABIs).

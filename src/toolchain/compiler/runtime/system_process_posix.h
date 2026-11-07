@@ -167,7 +167,7 @@ static int64_t launch_process(ProcessResult *proc) {
   processes[proc->process_id] = proc;
   // Callbacks allocate concurrently with the caller: lock the shared heap first.
   osp_mem_notify_multithreaded();
-  if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread, proc) != 0)
+  if (osp_thread_start(&proc->monitor_thread, process_monitor_thread, proc, false) != 0)
     return abandon_unmonitored_process(proc);
   pthread_mutex_unlock(&process_mutex);
   return proc->process_id;
