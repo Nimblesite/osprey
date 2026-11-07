@@ -25,7 +25,7 @@ from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Shapes as Shapes
 from qwen.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, slice_of, strictly, wrapping
 
-__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "finite", "greedy", "step", "decode"]
+__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "finite", "greedy", "step", "decode", "prefill"]
 
 
 @union
@@ -254,3 +254,30 @@ def decode(model, cache, token) -> Result[Next, str]:
     with strictly:
         with wrapping:
             return decoded(model, cache, token)
+
+
+def prefill(model, cache, tokens) -> Result[Next, str]:
+    """[LLM-PREFILL] A prompt's tokens in one call: the `Next` after the last token,
+    with the cache every token built — for now a fold of the per-token path threaded
+    through `walk.cache`. This is the reference the batched implementation (one forward
+    pass over a `[T, hidden]` matrix) must equal; it replaces this body behind the
+    same signature."""
+    with strictly:
+        with wrapping:
+            return prefilled(model, cache, tokens)
+
+
+def prefilled(model, cache, tokens):
+    if len(tokens) == 0:
+        return Error(message="prefill: no tokens")
+    else:
+        first = decoded(model, cache, unwrap_or(listGet(tokens, 0), 0))
+        return fold(range(1, len(tokens)), first, lambda acc, t: redecoded(model, tokens, acc, t))
+
+
+def redecoded(model, tokens, acc, t):
+    match acc:
+        case Error():
+            return acc
+        case Success(value=next):
+            return decoded(model, next.walk.cache, unwrap_or(listGet(tokens, t), 0))

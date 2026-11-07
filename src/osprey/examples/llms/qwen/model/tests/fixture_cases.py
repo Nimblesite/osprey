@@ -9,6 +9,7 @@ from testing import Check
 from qwen_expected import Expected
 from qwen import Qwen3_5Attention, Qwen3_5Cache, Qwen3_5Config, Qwen3_5DeltaNet, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Shapes
 from qwen_tests.ModelCases import BATCH, CACHED, MODEL_ATOL, MODEL_RTOL, SINGLE, cache_value, close_list, compare, compare_heads, compare_rows, fixture_params, flatten, greedy_case, hidden_row, hook_cases, hook_row, input_tokens, logits_row, model_config, name_at, shape_size, shape_total, stage_cases, started, to_floats, token_in
+from qwen_tests.PrefillCases import prefill_cases
 from qwen_tests.TiledCases import model_fault_cases, refusal_cases, tiled_cases
 
 __all__ = ["model_fixture_cases"]
@@ -90,7 +91,7 @@ def model_layer_cases(parameters):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), checked_device_cases(model.config), single_cases(model), model_interface_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
+            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), checked_device_cases(model.config), single_cases(model), model_interface_cases(model), cached_cases(model), prefill_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
 
 
 def model_geometry_cases(model):

@@ -2254,6 +2254,25 @@ ok model_cache2_conv_states
 ok model_cache2_recurrent_states
 ok model_cache3_keys
 ok model_cache3_values
+ok model_prefill8_embed
+ok model_prefill8_layer0
+ok model_prefill8_layer1
+ok model_prefill8_layer2
+ok model_prefill8_final_norm
+ok model_prefill8_logits
+ok model_prefill8_greedy
+ok model_prefill7_then_decode_embed
+ok model_prefill7_then_decode_layer0
+ok model_prefill7_then_decode_layer1
+ok model_prefill7_then_decode_layer2
+ok model_prefill7_then_decode_final_norm
+ok model_prefill7_then_decode_logits
+ok model_prefill1_embed
+ok model_prefill1_layer0
+ok model_prefill1_layer1
+ok model_prefill1_layer2
+ok model_prefill1_final_norm
+ok model_prefill_empty
 ok model_tiled_embed
 ok model_tiled_layer0
 ok model_tiled_layer1
@@ -2439,4 +2458,4 @@ ok gguf_refuse_key
 ok gguf_refuse_heads
 ok gguf_refuse_truncated
 ok gguf_refuse_absent
-2441 passed, 0 failed
+2460 passed, 0 failed
