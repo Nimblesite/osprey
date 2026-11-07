@@ -1,4 +1,5 @@
 // The Q4_K matvec reading the block bytes four at a time as uint32 words.
+let STEPS = 120
 fn weights() -> Result<GpuBuffer<uint32>, Error> = gpuMapFile("q4k.bin", 0, 12533760)
 fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
 fn word(w, i) = toInt(gpuGet(w, i) ?: toUint32(0))

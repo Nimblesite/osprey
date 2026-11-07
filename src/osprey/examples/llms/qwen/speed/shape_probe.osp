@@ -1,3 +1,9 @@
+// The shape under test, q/k/v/o by default: ROWS x INNER Q4_K weights at OFFSET in block.bin
+// (144 bytes per 256 weights). Set these four for gate/up (17408 x 5120) or down (5120 x 17408).
+let ROWS = 5120
+let INNER = 5120
+let OFFSET = 0
+let BYTES = 14745600
 fn weights() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", OFFSET, BYTES)
 fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, INNER)
 fn once(x, w) = match gpuMatMulQuant(x, w, "Q4_K", 1, INNER, ROWS) {
