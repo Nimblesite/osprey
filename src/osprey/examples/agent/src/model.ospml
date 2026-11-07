@@ -282,15 +282,18 @@ module Model
 
     keyJson key = JsonObject [Doc::str ("provider", key.keyProvider), Doc::str ("value", key.keyValue)]
 
+    (** One provider's listed model ids. *)
+    listedJson list = JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (Doc::strings list.listedIds)]
+
     keyOfJson doc = ProviderKey(keyProvider = Doc::text (doc, "provider"), keyValue = Doc::text (doc, "value"))
 
     (** The settings signal's encoding, covering everything a view draws. *)
     export settingsJson settings = JsonObject [
         Doc::str ("platform", settings.platform),
         Doc::str ("home", settings.homeFolder),
-        JsonMember "keys" (McpModel::arrayOf (settings.keys, \key => keyJson key)),
-        JsonMember "drafts" (McpModel::arrayOf (settings.keyDrafts, \key => keyJson key)),
-        JsonMember "listed" (McpModel::arrayOf (settings.listed, \list => JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (Doc::strings list.listedIds)])),
+        JsonMember "keys" (McpModel::arrayOf (settings.keys, keyJson)),
+        JsonMember "drafts" (McpModel::arrayOf (settings.keyDrafts, keyJson)),
+        JsonMember "listed" (McpModel::arrayOf (settings.listed, listedJson)),
         Doc::str ("model", settings.defaultModel),
         Doc::str ("effort", settings.defaultEffort),
         Doc::bit ("open", settings.settingsOpen),
