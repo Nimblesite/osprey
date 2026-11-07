@@ -259,7 +259,10 @@ suite("workbench VSIX visual comparison", () => {
       assert.strictEqual(await frame.getByRole("button", { name: "Use this sample statement", exact: true }).count(), 0, "the removed sample-statement action cannot survive as an inert control");
       const entry = frame.getByRole("textbox", { name: "Write the next step…", exact: true });
       await entry.waitFor({ state: "visible" });
-      assert.ok((await entry.boundingBox())?.height, "the typed proof entry remains the visible writing surface");
+      // A re-render between waitFor and one boundingBox read can return null, so
+      // the height is polled; a surface that never lays out still fails here.
+      const height = await pollUntilResult({ fn: async () => (await entry.boundingBox())?.height ?? 0, until: value => value > 0, timeoutMs: 5000, description: "the typed proof entry lays out" });
+      assert.ok(height > 0, "the typed proof entry remains the visible writing surface");
     }, "failure-transcription-removed");
   });
   test("the typed proof document replaces the removed transcription reference surface", async () => {
