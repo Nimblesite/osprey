@@ -287,9 +287,6 @@ module Model
 
     keyOfJson doc = ProviderKey(keyProvider = Doc::text (doc, "provider"), keyValue = Doc::text (doc, "value"))
 
-    // One provider's listing as the settings document wrote it; a named function so the generic `arrayOf` slot gets a concrete type.
-    listedJson list = JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (Doc::strings list.listedIds)]
-
     (** The settings signal's encoding, covering everything a view draws. *)
     export settingsJson settings = JsonObject [
         Doc::str ("platform", settings.platform),
@@ -325,7 +322,7 @@ module Model
 
     (** The providers file: every saved key, the default model and its effort. Never written to the conversations file. *)
     export providersJson settings = JsonObject [
-        JsonMember "keys" (McpModel::arrayOf (filterList (settings.keys, \key => key.keyValue != ""), \key => keyJson key)),
+        JsonMember "keys" (McpModel::arrayOf (filterList (settings.keys, \key => key.keyValue != ""), keyJson)),
         Doc::str ("model", settings.defaultModel),
         Doc::str ("effort", settings.defaultEffort),
     ]
