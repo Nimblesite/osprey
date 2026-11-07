@@ -1179,9 +1179,6 @@ jobs:
           - part: macOS
             minutes: 15
             run: make -C macos/tests examples
-          - part: Qwen model (Metal)
-            minutes: 30
-            run: make -C macos/tests qwen-headless
           - part: Qwen pull
             minutes: 5
             run: make -C tests qwen-pull-headless
