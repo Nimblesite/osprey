@@ -9,7 +9,7 @@ from qwen_expected import Expected
 from qwen import Qwen3_5Attention, Qwen3_5Cache, Qwen3_5Config, Qwen3_5DeltaNet, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Shapes
 from transformers.Math import argmax
 
-__all__ = ["CACHED", "MODEL_ATOL", "MODEL_RTOL", "SINGLE", "cache_value", "close_list", "compare", "compare_heads", "compare_rows", "fixture_params", "fixture_row", "flatten", "greedy_case", "hidden_row", "hook_cases", "hook_row", "input_tokens", "logits_row", "model_config", "model_with", "name_at", "refusal", "shape_size", "shape_total", "stage_cases", "stages_against", "started", "to_floats", "token_in"]
+__all__ = ["BATCH", "CACHED", "MODEL_ATOL", "MODEL_RTOL", "SINGLE", "cache_value", "close_list", "compare", "compare_heads", "compare_rows", "fixture_params", "fixture_row", "flatten", "greedy_case", "hidden_row", "hook_cases", "hook_row", "input_tokens", "logits_row", "model_config", "model_with", "name_at", "refusal", "shape_size", "shape_total", "stage_cases", "stages_against", "started", "to_floats", "token_in"]
 
 
 def close_list(name, got, want, rtol, atol):
@@ -52,6 +52,11 @@ not apply."""
 
 SINGLE = 0
 """`MODEL_HIDDEN_VALUES` index of the one-token input's embedding; its stages follow."""
+
+
+BATCH = 5
+"""`MODEL_HIDDEN_VALUES` index of the eight-token batched run's embeddings, which torch
+took through the chunked delta rule; its stages follow."""
 
 
 CACHED = 10

@@ -8,7 +8,7 @@ loaded through the Transformers-layout loader ([LLM-MODEL-ORACLE], [LLM-MODEL-DE
 from testing import Check
 from qwen_expected import Expected
 from qwen import Qwen3_5Attention, Qwen3_5Cache, Qwen3_5Config, Qwen3_5DeltaNet, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Shapes
-from qwen_tests.ModelCases import CACHED, MODEL_ATOL, MODEL_RTOL, SINGLE, cache_value, close_list, compare, compare_heads, compare_rows, fixture_params, flatten, greedy_case, hidden_row, hook_cases, hook_row, input_tokens, logits_row, model_config, name_at, shape_size, shape_total, stage_cases, started, to_floats, token_in
+from qwen_tests.ModelCases import BATCH, CACHED, MODEL_ATOL, MODEL_RTOL, SINGLE, cache_value, close_list, compare, compare_heads, compare_rows, fixture_params, flatten, greedy_case, hidden_row, hook_cases, hook_row, input_tokens, logits_row, model_config, name_at, shape_size, shape_total, stage_cases, started, to_floats, token_in
 from qwen_tests.TiledCases import model_fault_cases, refusal_cases, tiled_cases
 
 __all__ = ["model_fixture_cases"]
@@ -53,6 +53,17 @@ def hidden_cases():
     )))
 
 
+def rule_cases():
+    """The two delta rules agree: torch took the batched run through the chunked rule and
+    the cached run through the recurrent one the port implements, and every stage of
+    every position matches within the port's own tolerance."""
+    stages = len(Expected.MODEL_HIDDEN_STAGES)
+    return toList(map(range(stages * len(input_tokens(1))), lambda j: close_list(
+        f"model_rules_agree{j // stages}[" + name_at(Expected.MODEL_HIDDEN_STAGES, j % stages) + "]",
+        hidden_row(BATCH + j % stages, j // stages), hidden_row(CACHED + j % stages, j // stages), MODEL_RTOL, MODEL_ATOL,
+    )))
+
+
 def cache_cases():
     """One assertion per cache state tensor: its values fill its shape."""
     return toList(map(range(len(Expected.MODEL_CACHE_VALUES)), lambda k: Check.equal(
@@ -67,7 +78,7 @@ def model_fixture_cases():
     self-consistent (its counts and shapes), and the device model built from its
     parameters reproduces its activations and cache."""
     parameter_values = Expected.MODEL_PARAM_VALUES
-    return listConcat(manifest_cases(parameter_values), listConcat(param_cases(parameter_values), listConcat(hidden_cases(), listConcat(cache_cases(), model_layer_cases(fixture_params(parameter_values))))))
+    return listConcat(manifest_cases(parameter_values), listConcat(param_cases(parameter_values), listConcat(hidden_cases(), listConcat(rule_cases(), listConcat(cache_cases(), model_layer_cases(fixture_params(parameter_values)))))))
 
 
 def model_layer_cases(parameters):
