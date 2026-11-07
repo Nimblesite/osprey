@@ -31,8 +31,8 @@ def ui_evidence(records):
     root = pathlib.Path(records)
     live, replay = (root / "live.log").read_text(), (root / "replay.log").read_text()
     assert "self-test passed:" in live and "self-test passed:" in replay, "UI framework failed"
-    assert sum(line.startswith("ok ") for line in live.splitlines()) >= 75, "incomplete UI script"
-    assert sum(line.startswith("ok ") for line in replay.splitlines()) >= 31, "incomplete replay script"
+    assert sum(line.startswith("ok ") for line in live.splitlines()) >= 77, "incomplete UI script"
+    assert sum(line.startswith("ok ") for line in replay.splitlines()) >= 32, "incomplete replay script"
     shots = sorted((root / "coding").glob("*.png"))
     assert len(shots) >= 12 and len(list((root / "replay").glob("*.png"))) >= 5, "missing screenshots"
     return {"task": "Fix add and mean without removing tests, then implement median with new tests. "

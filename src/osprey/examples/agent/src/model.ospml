@@ -334,7 +334,8 @@ module Model
     export providersOf (settings, doc) =
         keys = McpModel::listField (doc, "keys", \item => keyOfJson item)
         keyed = foldList (keys, settings, \(acc, key) => withKey (acc, key.keyProvider, key.keyValue))
-        keyed(defaultModel = Doc::text (doc, "model"), defaultEffort = Doc::text (doc, "effort"))
+        model = Doc::text (doc, "model")
+        keyed(defaultModel = model, providerOpen = Engine::provider_id_of model, defaultEffort = Doc::text (doc, "effort"))
 
     (** What one save failure names: the settings or the conversations. *)
     export saveLabel name = match name
