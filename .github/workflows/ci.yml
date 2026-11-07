@@ -555,6 +555,8 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Corpus and goldens (GC)
         run: make _conformance-gc
+      - name: Qwen tiny checkpoint and oracle (GC)
+        run: make _qwen-suite MEMORY=gc QWEN_GPU=host
 
   test-instructions:
     name: "Tests: instruction-count ratios"
@@ -597,6 +599,8 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Corpus and goldens (ARC, leak oracle enabled)
         run: make _conformance-arc
+      - name: Qwen tiny checkpoint and oracle (ARC)
+        run: make _qwen-suite MEMORY=arc QWEN_GPU=host
 
   # [PROOF-KERNEL] [PROOF-SPEED] The M0 proof kernel of plan 0041 and the Lean
   # head-to-head speed gate of spec 0049. `make _test_proof_kernel` holds
