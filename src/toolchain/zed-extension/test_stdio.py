@@ -89,8 +89,9 @@ class ZedStdio(unittest.TestCase):
     def notify(self, method, params):
         TRANSPORT.send(self.process, method, params)
 
-    def pump(self, done):
-        """Read messages, recording published diagnostics, until `done(message)` holds."""
+    def request(self, method, params):
+        self.next_id += 1
+        TRANSPORT.send(self.process, method, params, self.next_id)
         deadline = time.monotonic() + 20
         while True:
             message = self.receive(deadline)
@@ -124,7 +125,6 @@ class ZedStdio(unittest.TestCase):
         path = self.root / name
         path.write_text(source)
         uri = path.as_uri()
-        self.reports.pop(uri, None)
         self.notify("textDocument/didOpen", {"textDocument": {
             "uri": uri, "languageId": language, "version": 1, "text": source}})
         self.reports.pop(uri, None)
