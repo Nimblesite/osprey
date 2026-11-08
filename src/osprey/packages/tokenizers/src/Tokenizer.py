@@ -221,19 +221,20 @@ def empty_added():
 def segments_of(tok, cps):
     """The input split at its added tokens: they are matched in the raw text before
     any normalization, the longest match at the earliest position winning."""
-    st = fold(range(len(cps)), Segments(done=[], plain=0, chars=0), lambda acc, i: segment_step(tok, cps, acc, i))
+    added_chars = mapList(tok.added, lambda token: text_cps(token.content))
+    st = fold(range(len(cps)), Segments(done=[], plain=0, chars=0), lambda acc, i: segment_step(tok, added_chars, cps, acc, i))
     return listAppend(st.done, Segment(added=-1, chars=st.plain))
 
 
-def segment_step(tok, cps, acc, i):
+def segment_step(tok, added_chars, cps, acc, i):
     if i < acc.chars:
         return acc
     else:
-        return segment_at(tok, cps, acc, i)
+        return segment_at(tok, added_chars, cps, acc, i)
 
 
-def segment_at(tok, cps, acc, i):
-    hit = match_added(tok, cps, i)
+def segment_at(tok, added_chars, cps, acc, i):
+    hit = match_added(tok, added_chars, cps, i)
     if hit.width == 0:
         return Segments(done=acc.done, plain=acc.plain, chars=i + 1)
     else:
@@ -272,19 +273,18 @@ def leading_space(cps, i, stop):
     return fold(range(i, stop), 0, lambda acc, k: acc + 1 if acc == k - i and is_whitespace(at_cp(cps, k)) else acc)
 
 
-def match_added(tok, cps, i):
+def match_added(tok, added_chars, cps, i):
     """The longest added token matching at i, the reference's preference."""
-    return fold(range(len(tok.added)), Hit(index=-1, width=0), lambda acc, a: try_added(tok, cps, i, acc, a))
+    return fold(range(len(tok.added)), Hit(index=-1, width=0), lambda acc, a: try_added(tok, added_chars, cps, i, acc, a))
 
 
-def try_added(tok, cps, i, acc, a):
-    width = match_length(unwrap_or(listGet(tok.added, a), empty_added()), cps, i)
+def try_added(tok, added_chars, cps, i, acc, a):
+    width = match_length(unwrap_or(listGet(tok.added, a), empty_added()), unwrap_or(listGet(added_chars, a), []), cps, i)
     return Hit(index=a, width=width) if width > acc.width else acc
 
 
-def match_length(token, cps, i):
+def match_length(token, chars, cps, i):
     """How many characters of the token match at i, or 0 when it does not."""
-    chars = text_cps(token.content)
     if len(chars) == 0 or i + len(chars) > len(cps):
         return 0
     else:
