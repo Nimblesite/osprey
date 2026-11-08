@@ -35,7 +35,7 @@ def openai(method, path, body, model):
     if path == "/v1/models":
         return read_only(method, OpenAi.models())
     elif path == "/v1/chat/completions":
-        return posted(method, body, lambda request: OpenAi.completions(model, request), Q.openai_chat_request)
+        return posted(method, body, lambda request: OpenAi.completions(model, request), Q.openai_chat_request, OpenAi.failed)
     else:
         return OpenAi.failed(404, f"no route for {path}")
 
@@ -49,11 +49,11 @@ def ollama(method, path, body, model):
     elif path == "/api/ps":
         return read_only(method, Ollama.ps())
     elif path == "/api/show":
-        return posted(method, body, Ollama.show, Q.show_request)
+        return posted(method, body, Ollama.show, Q.show_request, Wire.failed)
     elif path == "/api/chat":
-        return posted(method, body, lambda request: Ollama.chat(model, request), Q.chat_request)
+        return posted(method, body, lambda request: Ollama.chat(model, request), Q.chat_request, Wire.failed)
     elif path == "/api/generate":
-        return posted(method, body, lambda request: Ollama.generate(model, request), Q.generate_request)
+        return posted(method, body, lambda request: Ollama.generate(model, request), Q.generate_request, Wire.failed)
     else:
         return absent(path)
 
@@ -68,21 +68,21 @@ def read_only(method, reply):
     return reply if method == "GET" else Wire.failed(405, "method not allowed; GET")
 
 
-def posted(method, body, handler, decode):
+def posted(method, body, handler, decode, fail):
     """A POST route's reply, after the body decodes into the route's record."""
     if method == "POST":
-        return requested(decode(body), handler)
+        return requested(decode(body), handler, fail)
     else:
-        return Wire.failed(405, "method not allowed; POST")
+        return fail(405, "method not allowed; POST")
 
 
-def requested(decoded, handler):
+def requested(decoded, handler, fail):
     """Run `handler` over the decoded request, or answer the decode's fault."""
     match decoded:
         case Success(value=request):
             return handler(request)
         case Error(message=message):
-            return Wire.failed(400, message)
+            return fail(400, message)
 
 
 def absent(path):
