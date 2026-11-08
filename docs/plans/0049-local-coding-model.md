@@ -170,6 +170,32 @@ Gate: real `ollama run`, an OpenAI SDK client and `@osprey/pydantic-ai` each com
 
 Gate [LLM-ACCEPT]: on the same GGUF, task pass rate within 1 of the 30 against the Ollama baseline; no schema-invalid tool call reaches a harness; the 24 GB and speed gates still hold.
 
+## Research — the fast-cuda handler ([LLM-KERNELS-STATIC]), 2026-11-08
+
+This is web research only; nothing has been built or run on a CUDA device. Statements marked *unverified* have not been checked against the llama.cpp source.
+
+**What llama.cpp runs on NVIDIA for a Q4_K prompt.** These are the kernels to adapt, all MIT-licensed:
+- **Quantized products: MMQ** (`ggml/src/ggml-cuda/mmq.cuh`, with tensor-core primitives in `mma.cuh`). Since [PR #7860](https://github.com/ggml-org/llama.cpp/pull/7860) (June 2024), Q4_K, Q5_K and Q6_K multiply on int8 tensor cores through `vec_dot_q4_K_q8_1_mma`. Int8 tensor cores need Ampere or newer; Turing also runs the path, and Volta stays on FP16 cuBLAS. Against the earlier dp4a MMQ, prompt processing was 1.3–1.7× faster for Q4_K_S on an RTX 4090 and 3090. A vendored copy in SGLang reports Q4_K at M=4096 dropping from 38.4 ms to 3.10 ms against the old dp4a MMQ ([sglang#43650](https://github.com/sgl-project/sglang/pull/43650)). The activations are quantized to `q8_1` blocks so both operands are int8, but this is inferred from the kernel name and is *unverified*.
+- **Few-row products:** a few-row int8 MMA kernel for 2–24 columns ([PR #31533](https://github.com/ggml-org/llama.cpp/pull/31533)) reads each weight once and multiplies all columns on tensor cores. It covers decode with a short batch, which [LLM-SPEED] needs.
+- **Attention: FlashAttention on PTX `mma`** (`fattn-mma-f16.cuh`, chosen in `fattn.cu` and `fattn-common.cuh`), from [PR #11583](https://github.com/ggml-org/llama.cpp/pull/11583) (February 2025). It runs on Turing and newer, and Volta keeps the older WMMA kernel. Long prompts got 1.1–1.5× faster, for example 1.33× for llama 8B Q4_0 at a 131K prompt on an RTX 4090. Small batches go to a tile kernel instead. A quantized KV cache is converted to float for large batches. The exact `mma` shapes are *unverified*.
+
+**Reference rates on NVIDIA for this model size** (community reports, not ours):
+- an RTX 3090 with a 27B Q4_K_XL processes prompts at about 520 tok/s and generates at about 37 tok/s ([Towards AI](https://pub.towardsai.net/running-qwen3-8-27b-on-an-rtx-4090-cde0cb4ba338) and a Reddit thread);
+- a DGX Spark processes Qwen3.8-27B Q4_K_M prompts at about 900 tok/s ([remio](https://www.remio.ai/post/llama-cpp-cuda-fusion-merges-with-up-to-10-7-faster-prompt-processing)).
+
+So the fast-cuda build's [LLM-PROMPT-RATE] baseline is llama.cpp on the same NVIDIA host, not Ollama's rate on the M4 Max.
+
+**How Osprey loads and runs the kernels** ([GPU-DEVICE], [GPU-BACKEND-DEVICE]). The CUDA adapter is optional under 0034, so the portable core never needs CUDA.
+- **Adapter:** a new `src/toolchain/compiler/runtime/gpu_cuda.c` beside `gpu_metal.m` and `gpu_opencl.c`. It talks to the CUDA driver API (`cuModuleLoadData`, `cuModuleGetFunction`, `cuLaunchKernel`), and loads `libcuda` with `dlopen`, so builds on machines without CUDA still compile and link.
+- **Kernel compilation:** the library kernels are CUDA C adapted from `mmq.cuh`, `mma.cuh` and `fattn-mma-f16.cuh`. [NVRTC](https://docs.nvidia.com/cuda/nvrtc/index.html) compiles them to PTX (`nvrtcCreateProgram`, `nvrtcCompileProgram`, `nvrtcGetPTX`). NVRTC runs on a machine with no GPU, on Linux x86_64 and aarch64 and on Windows x86_64, so CI can compile the PTX at build time and embed it in the binary. The driver then JIT-compiles it for the installed GPU.
+- **Program kernels:** kernels generated from Osprey code for this adapter are a later step, since the device dialect today covers Metal and OpenCL. The fast-cuda handler only needs the library kernels.
+
+**Steps, appended after step (4) of the [LLM-KERNELS-STATIC] item:**
+1. `gpu_cuda.c` dispatches `osprey_matmul32`, with a test that PTX built by NVRTC loads and runs. CI compiles it on a hosted Linux runner without a GPU.
+2. The MMQ Q4_K and Q6_K product and its `q8_1` activation quantization, checked against the exact handler within [LLM-MODEL-ORACLE]'s tolerance.
+3. The FlashAttention `mma` kernel for this model's attention shape (24 query heads over 4 key/value heads; the head dimension comes from the GGUF's `attention.key_length`).
+4. A receipt from a CUDA host comparing prompt rates against llama.cpp on the same GPU. GitHub's hosted runners have no GPU, so this needs a CUDA machine, and its cost has to be approved before one is rented.
+
 ## Runtime defect found 2026-11-07
 
 - [ ] A request handler that overflows its stack kills the server with SIGBUS and no message (`server-gc`, a 3 KB prompt through a per-byte recursion; the coroutine stack is `OSPREY_CORO_STACK_BYTES` 256 MB in `effects_coro.c`, so the HTTP handler evidently runs on a smaller stack, about a few thousand frames). [FAILURE-EXPLICIT] says Osprey never aborts: the runtime owes a guard-page handler that turns the overflow into a typed error for that request, or a documented stack size with a compile-time depth warning. Reproduce with `scratchpad/probe_long_tool2.py` against the pre-fix `TableModel`; the Osprey-side recursions are already gone. 2026-11-08: the Qwen runner hits the same class on its main thread (8 MB stack) for an 8,000-token prompt, in the tokenizer's per-character recursions (`byte_char_go`, then `norm_build`), as SIGSEGV with no message.
