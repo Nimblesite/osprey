@@ -43,36 +43,37 @@ def turn(model, request):
     """The reply for a decoded request, once the served model is known."""
     match Completions.complete(model, request.prompt, request.sampling, request.tools):
         case Success(value=finished):
-            return Wire.reply(200, Wire.SSE, stream(events(finished))) if request.stream else Wire.ok(completion(finished))
+            reply_id = f"{random()}-{random()}"
+            return Wire.reply(200, Wire.SSE, stream(events(finished, reply_id))) if request.stream else Wire.ok(completion(finished, reply_id))
         case Error(message=message):
             return failed(400, message)
 
 
-def completion(turn):
+def completion(turn, reply_id):
     """The whole chat completion: one choice carrying the turn's text and calls."""
-    return JsonObject(listConcat(envelope(), [
-        Wire.member("choices", JsonArray([choice(turn)])),
+    return JsonObject(listConcat(envelope(reply_id), [
+        Wire.member("choices", JsonArray([choice(turn, reply_id)])),
         Wire.member("usage", usage(turn)),
     ]))
 
 
-def envelope():
+def envelope(reply_id):
     """The members every completion reply of this server carries."""
-    return [Wire.text_member("id", f"chatcmpl-{Q.EPOCH}"), Wire.text_member("object", "chat.completion"), Wire.number_member("created", Q.EPOCH), Wire.text_member("model", Q.MODEL)]
+    return [Wire.text_member("id", f"chatcmpl-{reply_id}"), Wire.text_member("object", "chat.completion"), Wire.number_member("created", Q.EPOCH), Wire.text_member("model", Q.MODEL)]
 
 
-def choice(turn):
+def choice(turn, reply_id):
     """One completion choice over the finished turn."""
     return JsonObject([
         Wire.number_member("index", 0),
-        Wire.member("message", message(turn)),
+        Wire.member("message", message(turn, reply_id)),
         Wire.text_member("finish_reason", turn.reason),
     ])
 
 
-def message(turn):
+def message(turn, reply_id):
     """The assistant message: its text, and its calls with arguments as JSON text."""
-    return JsonObject(listConcat(listConcat([Wire.text_member("role", "assistant"), Wire.text_member("content", text_of(turn))], reasoning_of(turn)), calls_of(turn.calls)))
+    return JsonObject(listConcat(listConcat([Wire.text_member("role", "assistant"), Wire.text_member("content", text_of(turn))], reasoning_of(turn)), calls_of(turn.calls, reply_id)))
 
 
 def usage(turn):
@@ -84,16 +85,16 @@ def usage(turn):
     ])
 
 
-def events(turn):
+def events(turn, reply_id):
     """The SSE documents of one streamed turn, ending with the choice's finish reason."""
-    pieces = mapList(turn.pieces, lambda piece: chunk([Wire.member("delta", delta_of(piece))], ""))
-    calls = [] if len(turn.calls) == 0 else [chunk([Wire.member("delta", JsonObject([Wire.member("tool_calls", JsonArray(mapList(turn.calls, delta_call))) ]))], "")]
-    return listAppend(listConcat(pieces, calls), chunk([Wire.member("delta", JsonObject([]))], turn.reason))
+    pieces = mapList(turn.pieces, lambda piece: chunk(reply_id, [Wire.member("delta", delta_of(piece))], ""))
+    calls = [] if len(turn.calls) == 0 else [chunk(reply_id, [Wire.member("delta", JsonObject([Wire.member("tool_calls", JsonArray(indexed(turn.calls, reply_id, True, 0, []))) ]))], "")]
+    return listAppend(listConcat(pieces, calls), chunk(reply_id, [Wire.member("delta", JsonObject([]))], turn.reason))
 
 
-def chunk(members, finish):
+def chunk(reply_id, members, finish):
     """One `chat.completion.chunk` document."""
-    head = [Wire.text_member("id", f"chatcmpl-{Q.EPOCH}"), Wire.text_member("object", "chat.completion.chunk"), Wire.number_member("created", Q.EPOCH), Wire.text_member("model", Q.MODEL)]
+    head = [Wire.text_member("id", f"chatcmpl-{reply_id}"), Wire.text_member("object", "chat.completion.chunk"), Wire.number_member("created", Q.EPOCH), Wire.text_member("model", Q.MODEL)]
     choice_members = listConcat(members, [Wire.number_member("index", 0), Wire.member("finish_reason", JsonNull if finish == "" else JsonString(finish))])
     return JsonObject(listConcat(head, [Wire.member("choices", JsonArray([JsonObject(choice_members)]))]))
 
@@ -114,37 +115,28 @@ def reasoning_of(turn):
     return [] if reasoned == "" else [Wire.text_member("reasoning_content", reasoned)]
 
 
-def calls_of(calls):
-    """The `tool_calls` member when the turn called tools, and nothing when it did not."""
-    return [] if len(calls) == 0 else [Wire.member("tool_calls", JsonArray(indexed(calls, 0, [])))]
+def calls_of(calls, reply_id):
+    """The tool calls in a whole completion."""
+    return [] if len(calls) == 0 else [Wire.member("tool_calls", JsonArray(indexed(calls, reply_id, False, 0, [])))]
 
 
-def indexed(calls, at, kept):
-    """Every call numbered from `at`, each with its streaming index."""
+def indexed(calls, reply_id, streamed, at, kept):
+    """Encode calls in order, including the position for SSE clients."""
     match listGet(calls, at):
         case Success(value=call):
-            return indexed(calls, satAdd(at, 1), listAppend(kept, call_of(call, at)))
+            return indexed(calls, reply_id, streamed, satAdd(at, 1), listAppend(kept, call_of(call, reply_id, streamed, at)))
         case Error():
             return kept
 
 
-def call_of(call, at):
-    """One tool call with its arguments as JSON text ([LLM-API-OPENAI])."""
-    return JsonObject([
-        Wire.text_member("id", f"call_{at}"),
+def call_of(call, reply_id, streamed, at):
+    """Give each call a distinct ID and retain its JSON-text arguments."""
+    index = [Wire.number_member("index", at)] if streamed else []
+    return JsonObject(listConcat(index, [
+        Wire.text_member("id", f"call_{reply_id}_{at}"),
         Wire.text_member("type", "function"),
         Wire.member("function", JsonObject([Wire.text_member("name", call.name), Wire.text_member("arguments", arguments_of(call))])),
-    ])
-
-
-def delta_call(call):
-    """One tool call as a stream delta, with its index."""
-    return JsonObject([
-        Wire.number_member("index", 0),
-        Wire.text_member("id", "call_0"),
-        Wire.text_member("type", "function"),
-        Wire.member("function", JsonObject([Wire.text_member("name", call.name), Wire.text_member("arguments", arguments_of(call))])),
-    ])
+    ]))
 
 
 def arguments_of(call):

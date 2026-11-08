@@ -379,6 +379,17 @@ def openai_chat_completes_one_turn(port):
 
 
 @case
+def openai_tool_ids_are_unique_across_responses(port):
+    completions = openai_client(port).chat.completions
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    first = completions.create(model=MODEL, messages=asked, tools=[READ_FILE, RUN_TESTS])
+    second = completions.create(model=MODEL, messages=asked, tools=[READ_FILE, RUN_TESTS])
+    first_ids = {call.id for call in first.choices[0].message.tool_calls}
+    second_ids = {call.id for call in second.choices[0].message.tool_calls}
+    assert first_ids and second_ids and first_ids.isdisjoint(second_ids), (first_ids, second_ids)
+
+
+@case
 def openai_chat_answer_matches_the_model_reference(port):
     module = reference()
     model = module.Model()
