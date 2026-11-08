@@ -8,6 +8,13 @@ Static review on 2026-11-08 compared v0.28.2 (`659ee827bd67362beda01c1b526e10dd4
 and CI gates, coverage policy, Windows host process I/O, and the Qwen acceptance gates. The comparison
 uses committed files. Runtime performance and Windows behavior require separate tests.
 
+The PR #373 follow-up compared `1b3ba2b16` with `1d67de091`, focusing on HTTP disconnect detection,
+thread and sleep behavior, Transformers generation errors, and the Agent's real local-model lane.
+The HTTP review reproduced a missed orderly close above the POSIX `select` descriptor limit. The fix
+passed the real-socket regression and both HTTP C suites locally. The package coverage timeout seen on
+an earlier PR head was traced to repeated tokenizer work. Exact-head CI is the integration check for
+these fixes.
+
 ## Defects
 
 | Regression | Where | Issue or status |
@@ -28,6 +35,8 @@ WASM job restores the compiler from `osprey-build`. Those workflow moves preserv
 
 ## New-feature acceptance gaps
 
-Qwen landed after v0.28.2. CI compiles its programs and runs the offline download tests. Its Metal model
-lane runs locally, while real-weight baseline, cold prompt throughput, and long-context acceptance remain
+Qwen landed after v0.28.2. CI compiles its programs and runs host Qwen fixtures. Local acceptance used
+real Qwen weights and verified the Agent's command, file edit, rerun and native UI goldens with an exact
+edit supplied in the task. The Pydantic lane passed six checks, including a negative control for the direct
+Qwen judge. Cold prefill measurements still trail the Ollama reference, and long-context acceptance remains
 open in [Plan 0049](plans/0049-local-coding-model.md).
