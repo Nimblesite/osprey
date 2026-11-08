@@ -8,4 +8,4 @@ max_duplication_percent = 6.2
 # hand-written file duplicating it is still reported, while the parser
 # duplicating itself stays out of the headline number.
 [defaults]
-report_hide = ["src/toolchain/tree-sitter-osprey/src/**"]
+report_hide = ["src/toolchain/tree-sitter-osprey/src/parser.c"]
