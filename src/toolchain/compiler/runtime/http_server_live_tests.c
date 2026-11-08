@@ -381,7 +381,8 @@ void test_client_gone_follows_the_served_client(void) {
   assert(setrlimit(RLIMIT_NOFILE, &wide) == 0);
   assert(dup2(pair[0], FD_SETSIZE) == FD_SETSIZE);
   http_serving_client(FD_SETSIZE);
-  assert(http_client_gone() == 0 && "a socket select cannot watch is not judged");
+  assert(http_client_gone() == 0 &&
+         "a socket select cannot watch is not judged");
   http_serving_client(-1);
   assert(close(FD_SETSIZE) == 0);
   assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
