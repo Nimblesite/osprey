@@ -152,6 +152,12 @@ class CollectorInterruptionTests(CoverageTestCase):
         self.assertEqual(self.run_collector(fixture), [])
         self.assertIn("ok demo", (fixture.reports / "demo.stdout.log").read_text())
         self.assertTrue((fixture.reports / "demo.process.jsonl").is_file())
+        slow = fixture.root / "slow-ps"
+        slow.mkdir()
+        (slow / "ps").write_text(f"#!/bin/sh\nsleep 1.5\nexec /bin/ps \"$@\"\n")
+        (slow / "ps").chmod(0o755)
+        with patch.dict(os.environ, {"PATH": f"{slow}{os.pathsep}{os.environ['PATH']}"}):
+            self.assertEqual(self.run_collector(self.collector("time.sleep(2)")), [], "a slow ps on a loaded host is not a failed collection")
 
     def test_termination_interrupts_the_collector_and_keeps_diagnostics(self):
         fixture = self.collector("print('started before hang', flush=True)\ntime.sleep(4)")

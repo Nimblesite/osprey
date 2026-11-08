@@ -436,7 +436,7 @@ class CheckerTests(CoverageTestCase):
         names = ["demo", *(f"peer{i}" for i in range(18))]
         for count, expected_exit in ((5, 1), (4, 0)):
             with self.subTest(required_overlap=count):
-                fixture = self.barrier_fixture(names, names[:count])
+                fixture = self.barrier_fixture(names, sorted(names)[:count])  # the pool starts peer10 before peer2
                 with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "4"}):
                     result = fixture.collect()
                 self.assert_exit(result, expected_exit)

@@ -23,6 +23,7 @@ POLL_SECONDS = 0.1
 DEFAULT_TIMEOUT = 300
 DEFAULT_RSS_MB = 3072  # faiss needs the compiler (437 MB) and clang (632 MB) at once; a runaway reaches this in seconds
 DEFAULT_OUTPUT_MB = 16
+PS_SECONDS = 10  # one ps sample; a loaded CI host takes over a second, which is no collector failure
 
 
 @contextmanager
@@ -51,7 +52,7 @@ def group_snapshot(pid):
     if os.name != "posix":
         return []
     result = subprocess.run(["ps", "-axo", "pid=,ppid=,pgid=,rss=,pcpu=,comm="],
-                            capture_output=True, text=True, timeout=1, check=True)
+                            capture_output=True, text=True, timeout=PS_SECONDS, check=True)
     rows = []
     for line in result.stdout.splitlines():
         parts = line.split(None, 5)
