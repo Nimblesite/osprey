@@ -64,6 +64,8 @@ void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values
 // The threads a [rows, cols] quantized product dispatches: 32 per tile of
 // QUANT_ROWS by QUANT_COLS outputs (gpu_device_lib.metal).
 int64_t osprey_gpu_quant_threads(int64_t rows, int64_t cols);
+// [LLM-MATMUL-QUANT] From this many rows Metal runs the tiled `_mm` product.
+#define QUANT_MM_ROWS 32
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
                                    int64_t cols);
 // The host entry behind `gpuMatMulQuant` (gpu_host.c): the result buffer, or NULL with the reason recorded.

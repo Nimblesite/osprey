@@ -20,6 +20,7 @@
 
 #include <errno.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -208,10 +209,18 @@ int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t hea
 // The quantized product as one library-kernel dispatch of 32 threads per
 // tile of QUANT_ROWS by QUANT_COLS outputs ([LLM-MATMUL-QUANT]): `x` is [rows, inner] float32, `w` the quantized
 // weight rows, and `out` [rows, cols] float32 is left on the device.
+// On Metal a product of QUANT_MM_ROWS rows or more (a prompt chunk) runs the
+// kernel's `_mm` form, a 256-thread group per 64-square tile on the SIMD-group
+// matrix units, held to the oracle within a tolerance instead of bit for bit.
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
                                    int64_t cols) {
-  if (device_selection() <= 0) return device_selection();
-  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)osprey_gpu_quant_threads(rows, cols)};
+  int selected = device_selection();
+  if (selected <= 0) return selected;
+  char tiled[64];
+  bool many = selected == 2 && rows >= QUANT_MM_ROWS;
+  (void)snprintf(tiled, sizeof tiled, "%s_mm", kernel);
+  uint64_t threads = many ? (uint64_t)((rows + 63) / 64 * ((cols + 63) / 64) * 256) : (uint64_t)osprey_gpu_quant_threads(rows, cols);
+  OspreyGpuDispatch product = {many ? tiled : kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads};
   buffer_argument(&product, OSPREY_GPU_INPUT, x);
   buffer_argument(&product, OSPREY_GPU_INPUT, w);
   buffer_argument(&product, OSPREY_GPU_OUTPUT, out);
