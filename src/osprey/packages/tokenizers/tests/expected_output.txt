@@ -1744,6 +1744,9 @@ ok gguf.38.pretok
 ok gguf.added.count
 ok gguf.rejects.merge
 ok gguf.rejects.byte
+ok qwen.long.ids
+ok qwen.long.offset.end
+ok qwen.long.decode
 ok split.0.pieces
 ok split.0.offsets
 ok split.1.pieces
@@ -1809,4 +1812,4 @@ ok qwen.contraction.re
 ok qwen.contraction.ve
 ok qwen.contraction.ll
 ok qwen.json.external.tables
-1811 passed, 0 failed
+1814 passed, 0 failed
