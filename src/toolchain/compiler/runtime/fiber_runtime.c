@@ -729,29 +729,37 @@ void channel_cleanup(void) {
   pthread_mutex_unlock(&runtime_mutex);
 }
 
-// Sleep for specified milliseconds. On Linux the profiler's directed SIGPROF
-// would cut a plain usleep short (sleeping calls are exempt from SA_RESTART),
-// so sleep to an absolute deadline and re-arm on EINTR — the wait stays exact
-// whether or not sampling is active [PROF-COLLECT-SAMPLER].
+// Sleep for `milliseconds`, however many: the count never narrows to 32-bit
+// microseconds (a day's sleep once wrapped to 500 s). On Linux the profiler's
+// directed SIGPROF would cut a sleep short (sleeping calls are exempt from
+// SA_RESTART), so it sleeps to an absolute monotonic deadline and re-arms on
+// EINTR; elsewhere nanosleep resumes with the time it had left. The wait stays
+// exact whether or not sampling is active [PROF-COLLECT-SAMPLER].
+static struct timespec span_of(int64_t milliseconds) {
+  struct timespec span;
+  span.tv_sec = (time_t)(milliseconds / 1000);
+  span.tv_nsec = (long)(milliseconds % 1000) * 1000000L;
+  return span;
+}
+
 static void sleep_for(int64_t milliseconds) {
+  struct timespec span = span_of(milliseconds);
 #if defined(__linux__)
   struct timespec until;
-  if (clock_gettime(CLOCK_MONOTONIC, &until) != 0) {
-    usleep((unsigned int)(milliseconds * 1000));
+  if (clock_gettime(CLOCK_MONOTONIC, &until) == 0) {
+    until.tv_sec += span.tv_sec;
+    until.tv_nsec += span.tv_nsec;
+    if (until.tv_nsec >= 1000000000L) {
+      until.tv_sec += 1;
+      until.tv_nsec -= 1000000000L;
+    }
+    while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, NULL) == EINTR) {
+    }
     return;
   }
-  until.tv_sec += (time_t)(milliseconds / 1000);
-  until.tv_nsec += (long)(milliseconds % 1000) * 1000000L;
-  if (until.tv_nsec >= 1000000000L) {
-    until.tv_sec += 1;
-    until.tv_nsec -= 1000000000L;
-  }
-  while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, NULL) ==
-         EINTR) {
-  }
-#else
-  usleep((unsigned int)(milliseconds * 1000)); // ms -> µs
 #endif
+  while (nanosleep(&span, &span) == -1 && errno == EINTR) {
+  }
 }
 
 // A sleeping fiber holds up no collection.
