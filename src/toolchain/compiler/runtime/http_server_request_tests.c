@@ -53,6 +53,7 @@ static HttpServer server;
 static const char *receive_chunks[8];
 static size_t receive_count;
 static size_t receive_index;
+static int receive_flags;
 static char captured_body[256];
 static char captured_log[2048];
 static size_t select_calls;
@@ -99,7 +100,7 @@ static int mock_accept(int socket_fd, struct sockaddr *address,
 static ssize_t mock_recv(int socket_fd, void *buffer, size_t length,
                          int flags) {
   assert(socket_fd == 42);
-  assert(flags == 0);
+  assert(flags == receive_flags);
   if (receive_index >= receive_count) {
     errno = EAGAIN;
     return -1;
@@ -701,6 +702,28 @@ static void test_missing_request_line_is_rejected(void) {
   free(request.data);
 }
 
+// [HTTP-SERVER-CLIENT-GONE] A ready descriptor can carry data or EOF.
+static void test_serving_client_disconnect(void) {
+  assert(http_client_gone() == 0);
+#ifndef _WIN32
+  http_serving_client(FD_SETSIZE);
+  assert(http_client_gone() == 0);
+#endif
+  const char *data_then_close[] = {"x", NULL};
+  const int readiness[] = {0, 1, 1, 1};
+  reset_receive(data_then_close, 2);
+  set_select_results(readiness, 4);
+  http_serving_client(42);
+  receive_flags = MSG_PEEK;
+  assert(http_client_gone() == 0 && receive_index == 0);
+  assert(http_client_gone() == 0 && receive_index == 1);
+  assert(http_client_gone() == 1 && receive_index == 2);
+  assert(http_client_gone() == 1); // A failed peek also indicates disconnect.
+  receive_flags = 0;
+  http_serving_client(-1);
+  assert(http_client_gone() == 0 && select_calls == 4);
+}
+
 static void run_hardening_tests(void) {
   test_partial_request_waits_with_a_deadline();
   test_deadline_is_absolute_across_reads();
@@ -721,6 +744,7 @@ static void run_hardening_tests(void) {
   test_unreadable_descriptor_and_timeout_are_distinguished();
   test_socket_error_and_close_differ();
   test_missing_request_line_is_rejected();
+  test_serving_client_disconnect();
 }
 
 int main(void) {
