@@ -24,6 +24,10 @@ fn link_args_adds_ffi_directives_and_openssl_for_http() {
     // No HTTP markers => no openssl flags.
     let plain = link_args("call void @osprey_list_empty()", "", "gc");
     assert!(!plain.iter().any(|a| a == "-lssl"));
+    // Windows alone needs its main-thread stack raised to the 8 MiB the others have.
+    let stack = |args: &[String]| args.iter().any(|a| a == "-Wl,--stack,8388608");
+    assert_eq!(stack(&plain), cfg!(windows), "{plain:?}");
+    assert_eq!(stack(&http), cfg!(windows), "{http:?}");
 }
 
 #[test]
