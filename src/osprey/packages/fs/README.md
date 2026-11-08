@@ -6,7 +6,7 @@ builtin ([BUILTIN-FILE-LISTDIR]).
 - `Path`: central path handling with `join`, `dirOf`, `nameOf`, `slug`, `under`, `resolve` and
   `isDir`. It holds the one definition of separator handling, so no other module
   spells `"/"`.
-- `Walk`: `tree root` returns every file under a directory as
+- `Walk`: `tree root` returns every file under a directory, sorted, as
   `Result<List<string>, Error>`, recursing through the `/`-marked directory
   entries `listDir` returns. A directory that cannot be listed fails the walk
   with its error; it never reads as empty.

@@ -1,5 +1,6 @@
 // Directory walking over the `listDir` builtin: one directory's subtree as a
-// flat `List<string>` of file paths. `listDir` marks directories with a
+// flat, sorted `List<string>` of file paths, the same order on every host
+// whatever order `listDir` answers in. `listDir` marks directories with a
 // trailing separator (`Path::isDir`), so the recursion needs no second syscall
 // per entry. A directory that cannot be listed — missing, not a directory, or
 // refused on wasm — fails the whole walk with its Error.
@@ -10,8 +11,12 @@ import fs::Path
 
 (** Recursive directory walking: every file of a subtree as one flat list. *)
 module Walk
-    (** Every file under `root`, directories recursed, or the first listing Error. *)
-    export tree root = match listDir root
+    (** Every file under `root`, directories recursed and sorted, or the first listing Error. *)
+    export tree root = match listed root
+        Success found => Success(value = listSort found)
+        failed => failed
+
+    listed root = match listDir root
         Success entries => foldList (entries, Success(value = []), \(acc, entry) => visit (acc, entry))
         failed => failed
 
@@ -20,7 +25,7 @@ module Walk
         failed => failed
 
     grown (files, entry) = match Path::isDir entry
-        true => match tree entry
+        true => match listed entry
             Success nested => Success(value = listConcat (files, nested))
             failed => failed
         false => Success(value = listAppend (files, entry))
