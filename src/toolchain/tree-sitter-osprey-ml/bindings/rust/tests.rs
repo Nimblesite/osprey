@@ -312,7 +312,7 @@ fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Err
         let source = std::fs::read_to_string(path)?;
         let tree = parser.parse(&source, None).ok_or("missing parse tree")?;
         if tree.root_node().has_error() {
-            failures.push(path.strip_prefix(root)?.display().to_string());
+            failures.push(path.strip_prefix(&root)?.display().to_string());
         }
     }
     assert!(
@@ -323,4 +323,63 @@ fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Err
         failures.join("\n")
     );
     Ok(())
+}
+
+
+/// The top-level declarations of `source`, each read through its node's byte range.
+fn declarations(source: &str) -> Vec<&str> {
+    let tree = parser().parse(source, None).expect("tree");
+    let mut cursor = tree.root_node().walk();
+    let ranges: Vec<_> = tree.root_node().named_children(&mut cursor).map(|node| node.byte_range()).collect();
+    ranges.into_iter().map(|range| &source[range]).collect()
+}
+
+const BLOCK: &str = "double x =\n    x * 2\n";
+const NESTED_BLOCK: &str = "pick x =\n    match x\n        0 => \"zero\"\n        _ => \"many\"\n";
+const RECORD: &str = "type Point =\n    x : int\n    y : int\n";
+const EFFECT: &str = "effect Clock\n    now : Unit => int\n";
+const UNFINISHED: &str = "unfinished value =\n    if value > then\n        value +\n";
+
+/// [FLAVOR-ML-LAYOUT] Nimblesite/osprey#374: a declaration that ends in an indented block
+/// ends at the end of its own last line. The blank lines, spaces and line breaks before
+/// the next declaration belong to no declaration, on every separator and at end of file.
+#[test]
+fn a_block_declaration_ends_at_its_own_last_line_whatever_follows() {
+    for block in [BLOCK, NESTED_BLOCK, RECORD, EFFECT] {
+        assert_eq!(declarations(block), [block], "at end of file");
+        for gap in ["", "\n", "\n\n\n", "   \n", "\n    \n\t\n", "\r\n"] {
+            for next in ["next y = y\n", "next y =\n    y\n", BLOCK] {
+                let source = format!("{block}{gap}{next}");
+                let found = declarations(&source);
+                assert_eq!(found.first(), Some(&block), "{source:?}");
+                assert_eq!(found.len(), 2, "{source:?}");
+                let next_found = found.get(1).copied().unwrap_or_default();
+                assert!(next.starts_with(next_found) && !next_found.is_empty(), "{source:?}: {next_found:?}");
+            }
+        }
+    }
+}
+
+/// The byte-exact repro from #374: an 84-byte function, a blank line, then an unfinished
+/// declaration. The function ends at byte 84 and the broken neighbour stays its own error.
+#[test]
+fn an_unfinished_neighbour_never_extends_the_declaration_before_it() {
+    let function = "sums items =\n    counted = length items\n    summed = sum items\n    summed + counted\n";
+    assert_eq!(function.len(), 84);
+    let source = format!("{function}\n{UNFINISHED}");
+    let tree = parser().parse(&source, None).expect("tree");
+    let first = tree.root_node().named_child(0).expect("the function");
+    assert_eq!(first.byte_range(), 0..84);
+    assert!(!first.has_error());
+    assert!(tree.root_node().has_error());
+    assert_eq!(declarations(function), [function]);
+}
+
+/// One-line declarations keep their ranges: the line's own text, with no line break.
+#[test]
+fn one_line_declarations_keep_their_ranges() {
+    for gap in ["", "\n", "\n\n  \n"] {
+        let source = format!("one x = x\n{gap}next y = y\n");
+        assert_eq!(declarations(&source), ["one x = x", "next y = y"], "{source:?}");
+    }
 }

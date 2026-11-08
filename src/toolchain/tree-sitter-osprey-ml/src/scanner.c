@@ -116,13 +116,19 @@ static bool comment_after_open(TSLexer *lexer) {
   return depth == 0;
 }
 
-static bool skip_layout_space(TSLexer *lexer) {
+// Skips spaces and line breaks. When `close_line` is set and the line is still open, the
+// token's end is marked at the line break that closes it, so a zero-width DEDENT never
+// takes in the blank lines and indentation after the block it closes.
+static bool skip_layout_space(TSLexer *lexer, bool close_line) {
   bool newline = false;
+  close_line = close_line && lexer->get_column(lexer) > 0;
   lexer->mark_end(lexer);
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
          lexer->lookahead == '\r' || lexer->lookahead == '\n') {
-    newline = newline || lexer->lookahead == '\n';
+    const bool first_break = !newline && lexer->lookahead == '\n';
+    newline = newline || first_break;
     lexer->advance(lexer, true);
+    if (first_break && close_line) lexer->mark_end(lexer);
   }
   return newline;
 }
@@ -140,7 +146,8 @@ static bool dedent(MlScanner *scanner, TSLexer *lexer, const bool *valid, bool n
   const bool line_start = newline || (scanner->pending_line && scanner->pending_column == column);
   if (!((line_start && column < current) || lexer->eof(lexer) || (closing && region >= scanner->brackets))) return false;
   scanner->pending_line = true; scanner->pending_column = column;
-  scanner->depth--; return emit(lexer, DEDENT);
+  // Zero-width where the skip marked it: at the end of the closed block's last line.
+  scanner->depth--; lexer->result_symbol = DEDENT; return true;
 }
 
 static bool indent(MlScanner *scanner, TSLexer *lexer, const bool *valid, bool newline) {
@@ -188,7 +195,7 @@ static bool code_token(MlScanner *scanner, TSLexer *lexer, const bool *valid) {
 static bool ml_layout(MlScanner *scanner, TSLexer *lexer, const bool *valid) {
   const unsigned start_column = lexer->get_column(lexer);
   if (scanner->after_arrow && lexer->get_column(lexer) != scanner->arrow_column) scanner->after_arrow = false;
-  const bool newline = skip_layout_space(lexer);
+  const bool newline = skip_layout_space(lexer, !valid[STATEMENT_BREAK]);
   if (valid[STATEMENT_BREAK] && (newline || lexer->eof(lexer) ||
       (scanner->pending_line && lexer->get_column(lexer) == scanner->pending_column) ||
       (scanner->depth && scanner->regions[scanner->depth - 1] >= scanner->brackets &&
