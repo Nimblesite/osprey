@@ -131,8 +131,9 @@ jobs:
           sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libvulkan-dev \
             libx11-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev
 
-      - name: Cache GPUI host
-        uses: actions/cache@v6
+      - name: Restore GPUI host
+        id: gpui-cache
+        uses: actions/cache/restore@v6
         with:
           path: src/toolchain/hosts/gpui/target
           key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
@@ -140,6 +141,15 @@ jobs:
 
       - name: Every desktop app's headless smoke and self-test
         run: make _gpui-smoke _gpui-self-test
+
+      # Saved as soon as the host is built, not in a post step: a cold build that uses the job's budget
+      # lost its post-step save to the timeout (PR #376), so every rerun started cold again.
+      - name: Save GPUI host
+        if: steps.gpui-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ steps.gpui-cache.outputs.cache-primary-key }}
 
       - name: Host tests and clippy
         working-directory: src/toolchain/hosts/gpui

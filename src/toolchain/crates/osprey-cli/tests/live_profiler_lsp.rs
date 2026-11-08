@@ -153,9 +153,12 @@ fn with_server_deadline(
     reply
 }
 
-fn timely_shutdown(server: Server) -> Result<Value, std::sync::mpsc::RecvTimeoutError> {
-    with_server_deadline(server, Duration::from_secs(3), |server| {
-        let reply = server.request(2, "shutdown", &Value::Null);
+/// `shutdown` then `exit`, and the server leaves by itself, cleanly and on
+/// time. Killing it instead can land while it writes its coverage profile, and
+/// one truncated profile fails the whole CI coverage merge.
+fn timely_shutdown(server: Server, id: i64) -> Result<Value, std::sync::mpsc::RecvTimeoutError> {
+    with_server_deadline(server, Duration::from_secs(3), move |server| {
+        let reply = server.request(id, "shutdown", &Value::Null);
         server.send(&json!({ "jsonrpc": "2.0", "method": "exit" }));
         assert!(server.child.wait().expect("server exits").success());
         reply
@@ -229,7 +232,7 @@ fn shutdown_remains_responsive_while_an_open_document_is_analyzed() {
         }}),
     );
     std::thread::sleep(Duration::from_millis(50));
-    let reply = timely_shutdown(server).expect("shutdown responds while diagnostics are busy");
+    let reply = timely_shutdown(server, 2).expect("shutdown responds while diagnostics are busy");
     assert_eq!(reply.get("result"), Some(&Value::Null), "{reply}");
 }
 
@@ -300,7 +303,6 @@ fn lists_and_profiles(flavor: Flavor, name: &str) {
                 .contains(&l.get("line").and_then(Value::as_i64).unwrap_or(0))),
         "a hot line inside {HOT_FUNCTION}: {report}"
     );
-    let shutdown = server.request(5, "shutdown", &Value::Null);
-    assert!(shutdown.get("error").is_none(), "{shutdown}");
-    server.send(&json!({ "jsonrpc": "2.0", "method": "exit" }));
+    let shutdown = timely_shutdown(server, 5).expect("the server shuts down promptly");
+    assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
 }
