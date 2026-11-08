@@ -529,7 +529,28 @@ def qwen_cases():
         each(len(Expected.QWEN_INPUTS), [], lambda i: qwen_row(tok, i, "qwen")),
         qwen_refusal_cases(),
         gguf_cases(),
+        qwen_long_case(tok),
     ])
+
+
+def qwen_long_case(tok):
+    """[LLM-TOKENIZER] A prompt the size of a source file: 2,000 copies of one row,
+    66,000 bytes, encode to that row's ids 2,000 times over and decode back to the
+    text. A per-character recursion overflowed the stack here (an 8K-token prompt
+    crashed the Qwen runner), so the length is the regression."""
+    copies = 2000
+    row = ats(Expected.QWEN_INPUTS, 3)
+    text = join(toList(map(range(copies), lambda _: row)), "")
+    want = fold(range(copies), [], lambda acc, _: listConcat(acc, atl(Expected.QWEN_IDS, 3)))
+    match qwen_encode(tok, text):
+        case Success(value=enc):
+            return [
+                Check.ints_equal("qwen.long.ids", enc.ids, want),
+                Check.equal("qwen.long.offset.end", unwrap_or(listGet(enc.offsets, len(enc.offsets) - 1), Offset(start=0, end=0)).end, copies * len(row)),
+                Check.equal("qwen.long.decode", decoded(tok, enc.ids, False), text),
+            ]
+        case Error(message=message):
+            return [Check.failed("qwen.long", "Error: " + message)]
 
 
 def gguf_cases():

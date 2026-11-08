@@ -16,7 +16,7 @@ from tokenizers.Models import BpeModel, Token, bpe_tokenize, char_starts, id_to_
 from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_each, norm_of, norm_text, start_at
 from tokenizers.PreTokenizers import META_CP, bert_pretokenize, bytelevel_text, metaspace_pretokenize, qwen_pretokenize, whitespace_pretokenize
 from tokenizers.Processors import Encoding, Offset, bert_template, concat_two, empty_encoding
-from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, text_cp_starts, text_cps
+from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, starts_cp, text_cp_starts, text_cps
 from tokenizers.Decoders import byte_fallback_decode_chain, metaspace_decode_chain, wordpiece_decode
 
 __all__ = [
@@ -28,18 +28,9 @@ __all__ = [
 
 
 def byte_char_map(s):
-    """For each byte of s, the index of the char that byte belongs to."""
-    return byte_char_go(s, 0, 0, [])
-
-
-def byte_char_go(s, i, ci, acc):
-    if i >= len(s):
-        return acc
-    else:
-        cp = unwrap_or(codePointAt(s, i), 63)
-        w = unwrap_or(codePointWidth(cp), 1)
-        acc2 = fold(range(w), acc, lambda a, _: listAppend(a, ci))
-        return byte_char_go(s, i + w, ci + 1, acc2)
+    """For each byte of s, the index of the char that byte belongs to: a fold over
+    the bytes, so a prompt of any length keeps a flat stack ([LLM-TOKENIZER])."""
+    return fold(range(len(s)), [], lambda acc, k: listAppend(acc, unwrap_or(listGet(acc, len(acc) - 1), -1) + (1 if starts_cp(s, k) else 0)))
 
 
 def char_of(byte_char, nchars, b):

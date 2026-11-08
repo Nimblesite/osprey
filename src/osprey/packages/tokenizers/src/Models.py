@@ -13,6 +13,7 @@ a backward pass that fuses consecutive unknown pieces.
 
 from tiktoken import Bpe
 from tokenizers.PreTokenizers import bytelevel_raw, bytelevel_text
+from tokenizers.Unicode import text_cp_starts
 
 __all__ = [
     "Token", "build_wordpiece", "wordpiece_tokenize", "build_unigram",
@@ -73,15 +74,7 @@ class Step:
 
 def char_starts(s):
     """The byte offset where each codepoint of s starts."""
-    return char_starts_go(s, 0, len(s), [])
-
-
-def char_starts_go(s, i, n, acc):
-    if i >= n:
-        return acc
-    else:
-        w = unwrap_or(codePointWidth(unwrap_or(codePointAt(s, i), 63)), 1)
-        return char_starts_go(s, i + w, n, listAppend(acc, i))
+    return text_cp_starts(s)
 
 
 def id_to_token(tokens, id):
