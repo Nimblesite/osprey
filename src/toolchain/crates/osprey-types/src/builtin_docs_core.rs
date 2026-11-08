@@ -324,6 +324,12 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
         "print(fmod(-7.5, 2.0))  // -1.5",
     ),
     builtin_doc!(
+        "floatDiv",
+        "The IEEE quotient x/y: a zero divisor yields an infinity of the right sign, or NaN for 0/0. Total, so it never performs Arith.divideByZero, and a kernel may call it on any device.",
+        ["x" => "The dividend", "y" => "The divisor"],
+        "print(floatDiv(1.0, 0.0))  // inf",
+    ),
+    builtin_doc!(
         "copysign",
         "x's magnitude with y's sign. Total; a NaN keeps its payload and takes y's sign bit.",
         ["x" => "The magnitude", "y" => "The sign donor"],

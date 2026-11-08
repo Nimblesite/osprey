@@ -200,7 +200,7 @@ print("${apply(|n| => n, 5)}")"#, fn_arity_message("f", 0, 1));
     an_undeclared_type_argument_is_rejected: rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<Nope>(5)}}")"#), "unknown type `Nope`");
 
     /// An empty argument list is not a type list.
-    an_empty_type_argument_list_is_rejected: parse_rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<>(5)}}")"#), "syntax error near \"<\"");
+    an_empty_type_argument_list_is_rejected: parse_rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<>(5)}}")"#), "syntax error near `<`");
 
     /// "the matching `>` immediately precedes the call's argument list" — with no
     /// argument list there is no type application, so a bare `identity<int>` value

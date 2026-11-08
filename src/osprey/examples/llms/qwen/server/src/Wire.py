@@ -13,7 +13,7 @@ required members are absent is rejected by `decode` before a record exists.
 __all__ = [
     "member", "text_member", "number_member", "flag_member",
     "encode", "reply", "ok", "json_reply", "failed", "text_reply",
-    "path_of", "decode", "field", "text", "number", "flag", "items",
+    "path_of", "decode", "field", "text", "number", "flag", "items", "openai_history",
     "ndjson", "sse", "NDJSON", "SSE",
 ]
 
@@ -143,6 +143,101 @@ def items(value):
             return values
         case _:
             return []
+
+
+def openai_history(messages):
+    """Normalize OpenAI text parts and serialized arguments before template rendering."""
+    return foldList(messages, Success(value=[]), openai_next)
+
+
+def openai_next(acc, message):
+    match acc:
+        case Error(message=reason):
+            return Error(message=reason)
+        case Success(value=history):
+            match openai_content(message):
+                case Error(message=reason):
+                    return Error(message=reason)
+                case Success(value=normalized):
+                    return Success(value=listConcat(history, [openai_message(normalized)]))
+
+
+def openai_content(message):
+    match field(message, "content"):
+        case JsonArray(parts):
+            match foldList(parts, Success(value=""), content_part):
+                case Error(message=reason):
+                    return Error(message=reason)
+                case Success(value=joined):
+                    return Success(value=map_field(message, "content", lambda _value: JsonString(joined)))
+        case JsonString():
+            return Success(value=message)
+        case JsonNull():
+            return Success(value=message)
+        case _:
+            return Error(message="OpenAI content must be text or text parts")
+
+
+def content_part(acc, part):
+    match acc:
+        case Error(message=reason):
+            return Error(message=reason)
+        case Success(value=joined):
+            match field(part, "text"):
+                case JsonString(value):
+                    return Success(value=joined + value) if text(part, "type") == "text" else Error(message="OpenAI content supports text parts only")
+                case _:
+                    return Error(message="OpenAI content part requires text")
+
+
+def openai_message(message):
+    return map_field(message, "tool_calls", openai_calls) if text(message, "role") == "assistant" else message
+
+
+def openai_calls(calls):
+    match calls:
+        case JsonArray(values):
+            return JsonArray(mapList(values, lambda call: map_field(call, "function", openai_function)))
+        case _:
+            return calls
+
+
+def openai_function(function):
+    return map_field(function, "arguments", openai_arguments)
+
+
+def openai_arguments(arguments):
+    match arguments:
+        case JsonString(raw):
+            match jsonDecode(raw):
+                case Success(value=decoded):
+                    return object_or(decoded, arguments)
+                case Error():
+                    return arguments
+        case _:
+            return arguments
+
+
+def object_or(decoded, fallback):
+    match decoded:
+        case JsonObject(members):
+            return JsonObject(members)
+        case _:
+            return fallback
+
+
+def map_field(document, name, transform):
+    match document:
+        case JsonObject(members):
+            return JsonObject(mapList(members, lambda item: mapped_member(item, name, transform)))
+        case _:
+            return document
+
+
+def mapped_member(item, name, transform):
+    match item:
+        case JsonMember(key, value):
+            return member(key, transform(value)) if key == name else item
 
 
 def quoted(message):

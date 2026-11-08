@@ -13,12 +13,15 @@ here depends on the weights. Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTI
 from qwen import Qwen3_5Config as C
 from qwen.Qwen3_5Device import Div, divider, grid
 
-__all__ = ["Shapes", "shapes_of", "NORM_CHUNK", "VOCAB_CHUNK", "chunk_of"]
+__all__ = ["Shapes", "Rows", "shapes_of", "rows_of", "NORM_CHUNK", "VOCAB_CHUNK", "KV_BLOCK", "chunk_of"]
 
 NORM_CHUNK = 256
 """Values summed per thread when a norm reduces a hidden row."""
 VOCAB_CHUNK = 512
 """Logits scanned per thread when the argmax reduces the vocabulary."""
+KV_BLOCK = 256
+"""[LLM-STATE-OWNED] Positions an attention layer's tail holds before it is sealed: a token
+copies at most this many key and value rows, and the sealed rows once per block."""
 
 
 class Shapes:
@@ -40,6 +43,8 @@ class Shapes:
     kv_heads: GpuBuffer[int]
     vocab_chunks: GpuBuffer[int]
     vocab_chunk: int
+    kv_block: int
+    hidden_div: Div
     head_dim: Div
     linear_k_dim: Div
     linear_v_dim: Div
@@ -48,6 +53,24 @@ class Shapes:
     linear_k_heads_div: Div
     linear_ratio: Div
     conv_kernel: Div
+
+
+class Rows:
+    """[LLM-PREFILL] The grids of `count` stacked hidden rows: the per-row operations
+    (norms, the MLP, residuals) map over these, so a prompt's rows share one dispatch."""
+    count: int
+    rows: GpuBuffer[int]
+    hidden: GpuBuffer[int]
+    hidden_chunks: GpuBuffer[int]
+    intermediate: GpuBuffer[int]
+
+
+def rows_of(config, shapes, count) -> Rows:
+    """The grids for `count` rows; one row reuses the model's own."""
+    if count == 1:
+        return Rows(count=1, rows=shapes.one, hidden=shapes.hidden, hidden_chunks=shapes.hidden_chunks, intermediate=shapes.intermediate)
+    else:
+        return Rows(count=count, rows=grid(count), hidden=grid(count * config.hidden_size), hidden_chunks=grid(count * (config.hidden_size // shapes.norm_chunk)), intermediate=grid(count * config.intermediate_size))
 
 
 def chunk_of(width, preferred):
@@ -77,6 +100,8 @@ def shapes_of(config) -> Shapes:
         kv_heads=grid(config.num_key_value_heads),
         vocab_chunks=grid(config.vocab_size // vocab_chunk),
         vocab_chunk=vocab_chunk,
+        kv_block=KV_BLOCK,
+        hidden_div=divider(config.hidden_size),
         head_dim=divider(config.head_dim),
         linear_k_dim=divider(config.linear_key_head_dim),
         linear_v_dim=divider(config.linear_value_head_dim),

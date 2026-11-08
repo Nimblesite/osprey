@@ -1,0 +1,13 @@
+[project]
+name = "fs"
+source_roots = ["src"]
+default_namespace = "fs"
+
+[package]
+name = "@osprey/fs"
+license = "MIT"
+summary = "Directory walking and path handling over the listDir runtime builtin"
+keywords = ["directory", "fs", "path", "walk"]
+
+[modules]
+allow_wildcard_imports = false

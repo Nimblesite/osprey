@@ -448,9 +448,10 @@ public final class SelfTestRun {
 
     /// Cmd-V through the event queue with a small picture on this run's own pasteboard, which is
     /// the route a person's paste takes; their clipboard stays theirs. It waits for a field to hold
-    /// the keyboard, because a paste while a picker still has it lands nowhere.
+    /// the keyboard with its paste monitor on: a paste while a picker still has it, or before the
+    /// field's focus lands, lands nowhere.
     private func pasteImage() throws -> String? {
-        guard window.firstResponder is NSText else { return "no field holds the keyboard to paste into" }
+        guard window.firstResponder is NSText, !PastedImage.receivers.isEmpty else { return "no message field holds the keyboard to paste into" }
         let board = NSPasteboard(name: NSPasteboard.Name("Osprey self-test paste"))
         board.clearContents()
         let image = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in

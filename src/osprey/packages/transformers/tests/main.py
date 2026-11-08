@@ -223,8 +223,54 @@ def nonfinite_case():
             return Check.truth("non-finite logits", message == "generate: step 2: logits are not finite" and Expected.GEN_NONFINITE_MULTINOMIAL == "RuntimeError", message + " (torch argmax picked index " + toString(Expected.GEN_NONFINITE_ARGMAX) + ")")
 
 
+def generation_error(name, result, expected):
+    """[FAILURE-EXPLICIT] Invalid generation must never manufacture a token."""
+    match result:
+        case Error(message=message):
+            return Check.equal(name, message, expected)
+        case Success(value=tokens):
+            return Check.failed(name, Check.ints_text(tokens))
+
+
+def generation_success(name, result, expected):
+    match result:
+        case Success(value=tokens):
+            return Check.ints_equal(name, tokens, expected)
+        case Error(message=message):
+            return Check.failed(name, message)
+
+
+def generation_boundaries():
+    """Bounded invalid inputs plus controls for zero budget and legal masks."""
+    stops = [StoppingCriteria.MaxLengthCriteria(2)]
+    row = lambda _tokens: [toFloat32(1.0), toFloat32(2.0)]
+    masked = [LogitsProcess.SuppressTokensLogitsProcessor([0, 1])]
+    return [
+        generation_error("negative budget", Generation.generate(row, [7], [], stops, argmax, -1), "generate: negative token budget"),
+        generation_error("empty logits", Generation.generate(lambda _tokens: [], [7], [], stops, argmax, 1), "generate: step 1: empty logits"),
+        generation_error("all masked", Generation.generate(row, [7], masked, stops, argmax, 1), "generate: step 1: no selectable logits"),
+        generation_error("negative sampled id", Generation.generate(row, [7], [], stops, lambda _scores: -1, 1), "generate: step 1: invalid sampled token"),
+        generation_error("oversize sampled id", Generation.generate(row, [7], [], stops, lambda _scores: 2, 1), "generate: step 1: invalid sampled token"),
+        generation_error("masked sampled id", Generation.generate(row, [7], [LogitsProcess.SuppressTokensLogitsProcessor([0])], stops, lambda _scores: 0, 1), "generate: step 1: invalid sampled token"),
+        generation_success("zero budget", Generation.generate(lambda _tokens: [], [7], [], stops, argmax, 0), [7]),
+        generation_success("partial mask", Generation.generate(row, [7], [LogitsProcess.SuppressTokensLogitsProcessor([0])], stops, argmax, 1), [7, 1]),
+    ]
+
+
+def generation_processor_boundaries():
+    row = lambda _tokens: [toFloat32(1.0), toFloat32(2.0)]
+    nan = float32FromBits(toInt32(2143289344))
+    inf = float32FromBits(toInt32(2139095040))
+    return [
+        generation_error("processed NaN", Generation.generate(row, [], [LogitsProcess.TopKLogitsWarper(1, nan, 1)], [], argmax, 1), "generate: step 1: invalid processed logits"),
+        generation_error("processed infinity", Generation.generate(row, [], [LogitsProcess.TopKLogitsWarper(1, inf, 1)], [], argmax, 1), "generate: step 1: invalid processed logits"),
+        generation_success("empty prompt", Generation.generate(row, [], [], [], argmax, 1), [1]),
+        generation_error("later empty logits", Generation.generate(lambda tokens: row(tokens) if len(tokens) == 0 else [], [], [], [], argmax, 2), "generate: step 2: empty logits"),
+    ]
+
+
 def all_cases():
-    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), [generate_case(), nonfinite_case()])))))
+    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), listConcat([generate_case(), nonfinite_case()], listConcat(generation_boundaries(), generation_processor_boundaries())))))))
 
 
 def main():

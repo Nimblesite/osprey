@@ -18,7 +18,7 @@ produce.
 __all__ = [
     "is_whitespace", "is_control", "is_chinese_char", "is_punctuation",
     "is_numeric", "is_word_char", "lowercase", "strip_base",
-    "text_cps", "text_cp_starts", "cps_text", "in_ranges", "map_indexed",
+    "text_cps", "text_cp_starts", "starts_cp", "cps_text", "in_ranges", "map_indexed",
 ]
 
 

@@ -26,7 +26,7 @@ const cases = [
   ['embedded compiler documentation', ['src/toolchain/crates/osprey-cli/assets/help.md'], true, false, false, false],
   ['ported package documentation the package suite checks', ['src/osprey/packages/testing/README.md'], true, false, false, false],
   ['Python-flavor package regression', ['src/osprey/packages/faiss/tests/main.py'], true, false, false, true],
-  ['symbolic execution regression', ['scripts/hunt/test-hunt-default-budget.py'], true, false, false, true],
+  ['symbolic execution app and engine gates', ['scripts/hunt/src/sweep.ospml', 'src/toolchain/crates/osprey-cli/tests/hunt_engine.rs'], true, false, false, true],
   ['GPU regression in both flavors', ['src/osprey/tests/core/gpu/scalar_contracts.test.osp', 'src/osprey/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false, true],
   ['proof kernel sources are compiler code', ['src/osprey/examples/proof/kernel/main.ospml', 'src/osprey/examples/proof/kernel/expectedoutput'], true, false, false, true],
   ['proof speed benchmark harness and cases', ['src/toolchain/benchmarks/proof/run.sh', 'src/toolchain/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true, false],
@@ -265,10 +265,12 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
   assert.doesNotMatch(workflow, /_test_hunt_crashes/)
   assert.match(job('test-c-runtime', '.github/workflows/ci.yml'), /make _test_hunt_mock/)
   const expectations = readFileSync('scripts/make/tests.mk', 'utf8')
-  assert.match(expectations, /HUNT_KNOWN_BUGS \?= clean/)
   assert.match(expectations, /^_test_hunt_clean:/m)
+  const engine = readFileSync('src/toolchain/crates/osprey-cli/tests/hunt_engine.rs', 'utf8')
+  assert.match(engine, /const KNOWN_BUGS: \[&str; 1\] = \["clean"\];/)
   for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`src/osprey/tests/hunt/${control}`).length > 0)
-  assert.match(readFileSync('scripts/hunt/test-hunt-default-budget.py', 'utf8'), /\('gc', 'arc'\), \('crash',\)/)
+  assert.match(engine, /const BACKENDS: \[&str; 2\] = \["gc", "arc"\];/)
+  assert.ok(readFileSync('src/osprey/tests/hunt/crash.expected').length > 0)
 })
 
 test('the Rust shards run every test: each name the rest skips, another shard selects', () => {

@@ -91,8 +91,9 @@ def hangul_jamo(cp):
 
 
 def decompose(cps):
-    """The full canonical decomposition of every code point, in order."""
-    return fold(range(len(cps)), [], lambda acc, i: listConcat(acc, decompose_cp(at(cps, i))))
+    """The full canonical decomposition of every code point, in order: each one
+    appended, never the whole text re-copied per character."""
+    return fold(range(len(cps)), [], lambda acc, i: foldList(decompose_cp(at(cps, i)), acc, lambda out, cp: listAppend(out, cp)))
 
 
 class Ordering:

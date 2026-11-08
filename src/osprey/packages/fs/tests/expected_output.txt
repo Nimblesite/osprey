@@ -1,0 +1,12 @@
+ok 1 - join separates without doubling
+ok 2 - dirOf answers the parent and drops the name
+ok 3 - nameOf answers the last segment
+ok 4 - slug flattens every separator
+ok 5 - under answers the one inside-a-directory test
+ok 6 - resolve climbs, skips dots and keeps plain segments
+ok 7 - isDir reads listDir's trailing-separator directory marker
+ok 8 - tree walks real directories, nested ones included
+ok 9 - tree reports an unreadable directory as an Error, never an empty walk
+ok 10 - nameOf and dirOf agree on every shape of path
+1..10
+# tests=10 passed=10 failed=0 skipped=0

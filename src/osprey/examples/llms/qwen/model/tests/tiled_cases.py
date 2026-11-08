@@ -55,7 +55,7 @@ def tiled_param(cfg, name, values):
     elif contains(name, "A_log") or contains(name, "dt_bias"):
         return reordered_rows(values, 0, hk, r, 1, 1)
     elif contains(name, "out_proj"):
-        return reordered_columns(values, hk, r, dv, hidden)
+        return reordered_columns(values, hk, r, dv)
     else:
         return values
 
@@ -75,8 +75,8 @@ def source_row(j, hk, r, dim, width):
     return (grouped_of(row // dim, hk, r) * dim + row % dim) * width + j % width
 
 
-def reordered_columns(values, hk, r, dim, rows):
-    """`[rows, hk * r * dim]` with its columns in tiled value-head order."""
+def reordered_columns(values, hk, r, dim):
+    """Rows of `hk * r * dim` columns, the columns in tiled value-head order."""
     cols = hk * r * dim
     return toList(map(range(len(values)), lambda j: unwrap_or(listGet(values, (j // cols) * cols + grouped_of((j % cols) // dim, hk, r) * dim + j % dim), toFloat32(0.0))))
 
@@ -123,7 +123,7 @@ def nan_decode(model):
 
 def step_missing_slot(model):
     with Qwen3_5Device.strictly:
-        return Qwen3_5Model.step(model, Qwen3_5Cache.Cache(slots=[]), Qwen3_5Model.embed(model, 0))
+        return Qwen3_5Model.step(model, Qwen3_5Cache.Cache(slots=[]), Qwen3_5Model.embed(model, 0), 1)
 
 
 def wrong_slot_cases(model, cache):

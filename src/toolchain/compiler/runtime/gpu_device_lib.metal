@@ -412,29 +412,30 @@ float quant_half(GPU_GLOBAL const uchar *b, uint at) {
 }
 
 // Four weights of a linear block from one little-endian word of 8-bit levels:
-// each weight rounds its scale product and its minimum, each contribution rounds
-// its product, and the additions run in element order, exactly as one at a time.
-// Reading the word once is what makes the kernel fast: a byte load per weight
-// costs up to four times as much on the real tensors. `gpuMatMulQuant` checks
-// that the weights start on a 4-byte boundary, and every block format below
-// keeps its word fields on one.
-float quant_lanes(float acc, GPU_GLOBAL const float *x, uint word, float d1, float m1) {
+// each weight rounds its scale product and its minimum. Reading the word once is
+// what makes the kernel fast: a byte load per weight costs up to four times as
+// much on the real tensors. `gpuMatMulQuant` checks that the weights start on a
+// 4-byte boundary, and every block format below keeps its word fields on one.
+void quant_levels(GPU_PRIVATE float *w, uint word, float d1, float m1) {
     float w0 = d1 * (float)(word & 255), w1 = d1 * (float)((word >> 8) & 255);
     float w2 = d1 * (float)((word >> 16) & 255), w3 = d1 * (float)(word >> 24);
-    w0 = w0 - m1;
-    w1 = w1 - m1;
-    w2 = w2 - m1;
-    w3 = w3 - m1;
-    float p0 = x[0] * w0, p1 = x[1] * w1, p2 = x[2] * w2, p3 = x[3] * w3;
-    acc = acc + p0;
-    acc = acc + p1;
-    acc = acc + p2;
-    return acc + p3;
+    w[0] = w0 - m1;
+    w[1] = w1 - m1;
+    w[2] = w2 - m1;
+    w[3] = w3 - m1;
+}
+
+// A lane's eight contributions to one output from one block: its eight decoded
+// weights against the eight inputs it owns, each product rounded, then added in
+// element order, exactly as one at a time.
+float quant_lane(float acc, GPU_PRIVATE const float *x, GPU_PRIVATE const float *w) {
+    for (uint m = 0; m < 8; m++) acc = quant_add(acc, x[m], w[m]);
+    return acc;
 }
 
 // Q4_K: 256 weights per 144-byte block, a binary16 scale and minimum, eight
 // 6-bit sub-block scales and minimums, 4-bit weights.
-float q4_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void q4_k_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     uint4 h = gpu_word4(b);
     float d = gpu_f16_to_f32((ushort)(h.x & 0xffffu)), dmin = gpu_f16_to_f32((ushort)(h.x >> 16));
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
@@ -442,43 +443,37 @@ float q4_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b,
     uint sc = q4k_scale(h, j), mn = q4k_min(h, j);
     float d1 = d * (float)sc;
     float m1 = dmin * (float)mn;
-    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++)
-        acc = quant_lanes(acc, x + j * 32 + l * 4, (qs[g * 8 + l] >> (high * 4)) & 0x0f0f0f0fu, d1, m1);
-    return acc;
+    for (uint l = 0; l < 2; l++)
+        quant_levels(w + 4 * l, (qs[g * 8 + (lane & 3) * 2 + l] >> (high * 4)) & 0x0f0f0f0fu, d1, m1);
 }
 
 // Q6_K: 256 weights per 210-byte block, six bits per weight from a low nibble and
 // two mask bits, a binary16 scale and sixteen 8-bit sub-block scales.
-float q6_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void q6_k_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 208);
     GPU_GLOBAL const ushort *low = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)b;
     GPU_GLOBAL const ushort *high = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)(b + 128);
     uint j = lane >> 2, group = j >> 2, quarter = j & 3;
     GPU_GLOBAL const ushort *nibbles = low + 32 * group + 16 * (quarter & 1);
     GPU_GLOBAL const ushort *tops = high + 16 * group;
-    GPU_GLOBAL const float *xq = x + j * 32;
-    for (uint i = (lane & 3) * 4; i < (lane & 3) * 4 + 4; i++) {
+    for (uint m = 0; m < 4; m++) {
+        uint i = (lane & 3) * 4 + m;
         float scale = d * (float)(signed char)b[192 + 8 * group + (i >> 3) + 2 * quarter];
         uint word = ((((uint)nibbles[i]) >> (4 * (quarter >> 1))) & 0x0f0fu) | ((((((uint)tops[i]) >> (2 * quarter)) & 0x0303u)) << 4);
-        float w0 = scale * (float)((int)(word & 255) - 32), w1 = scale * (float)((int)(word >> 8) - 32);
-        float p0 = xq[2 * i] * w0, p1 = xq[2 * i + 1] * w1;
-        acc = acc + p0;
-        acc = acc + p1;
+        w[2 * m] = scale * (float)((int)(word & 255) - 32);
+        w[2 * m + 1] = scale * (float)((int)(word >> 8) - 32);
     }
-    return acc;
 }
 
 // Q8_0: 32 weights per 34-byte block, one binary16 scale and one signed byte per weight.
-float q8_0_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void q8_0_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 0);
-    for (uint j = lane * 8; j < lane * 8 + 8; j++)
-        acc = quant_add(acc, x[j], d * (float)(signed char)b[2 + j]);
-    return acc;
+    for (uint m = 0; m < 8; m++) w[m] = d * (float)(signed char)b[2 + lane * 8 + m];
 }
 
 // Q5_K: 256 weights per 176-byte block, Q4_K's four low bits plus a high-bit mask,
 // a binary16 scale and minimum and eight 6-bit sub-block scales and minimums.
-float q5_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void q5_k_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     uint4 h = gpu_word4(b);
     float d = gpu_f16_to_f32((ushort)(h.x & 0xffffu)), dmin = gpu_f16_to_f32((ushort)(h.x >> 16));
     GPU_GLOBAL const uint *mask = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
@@ -487,11 +482,11 @@ float q5_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b,
     uint sc = q4k_scale(h, sub), mn = q4k_min(h, sub);
     float d1 = d * (float)sc;
     float m1 = dmin * (float)mn;
-    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++) {
+    for (uint m = 0; m < 2; m++) {
+        uint l = (lane & 3) * 2 + m;
         uint low = (qs[g * 8 + l] >> (hi * 4)) & 0x0f0f0f0fu;
-        acc = quant_lanes(acc, x + sub * 32 + l * 4, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
+        quant_levels(w + 4 * m, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
     }
-    return acc;
 }
 
 // Q3_K's descrambled 6-bit scale `index` of a block: ggml's `dequantize_row_q3_K`
@@ -510,19 +505,19 @@ uint q3k_scale(GPU_GLOBAL const uchar *b, uint index) {
 
 // Q3_K: 256 weights per 110-byte block, two low bits per weight plus a high-bit
 // mask, a binary16 scale and sixteen 6-bit sub-block scales.
-float q3_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void q3_k_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 108);
     uint g = lane >> 4, j = (lane >> 2) & 3, side = (lane >> 1) & 1;
     uint sc = q3k_scale(b, 8 * g + 2 * j + side);
     float dl = d * (float)((int)sc - 32);
     GPU_GLOBAL const uchar *q = b + 32 + 32 * g + 16 * side;
     GPU_GLOBAL const uchar *hm = b + 16 * side;
-    for (uint l = (lane & 1) * 8; l < (lane & 1) * 8 + 8; l++) {
+    for (uint m = 0; m < 8; m++) {
+        uint l = (lane & 1) * 8 + m;
         int low = (int)((q[l] >> (2 * j)) & 3);
         int high = (int)((hm[l] >> (4 * g + j)) & 1);
-        acc = quant_add(acc, x[g * 128 + j * 32 + side * 16 + l], dl * (float)(low - (high ? 0 : 4)));
+        w[m] = dl * (float)(low - (high ? 0 : 4));
     }
-    return acc;
 }
 
 // ggml's `kvalues_iq4nl`: the sixteen non-linear levels IQ4_NL and IQ4_XS use
@@ -531,35 +526,32 @@ constant float IQ4_NL_LEVELS[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -3
 
 // IQ4_NL: 32 weights per 18-byte block, one of the sixteen non-linear levels per
 // weight and a binary16 scale.
-float iq4_nl_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void iq4_nl_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 0);
-    for (uint j = lane * 8; j < lane * 8 + 8; j++) {
+    for (uint m = 0; m < 8; m++) {
+        uint j = lane * 8 + m;
         uint level = j < 16 ? (uint)(b[2 + j] & 15) : (uint)(b[2 + j - 16] >> 4);
-        acc = quant_add(acc, x[j], d * IQ4_NL_LEVELS[level]);
+        w[m] = d * IQ4_NL_LEVELS[level];
     }
-    return acc;
 }
 
 // IQ4_XS: 256 weights per 136-byte block, IQ4_NL's levels with a six-bit
 // sub-block scale and a binary16 block scale.
-float iq4_xs_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void iq4_xs_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 0);
     uint scales_h = (uint)(b[2] | (b[3] << 8));
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 8);
     uint ib = lane >> 2;
     uint ls = (uint)((b[4 + (ib >> 1)] >> (4 * (ib & 1))) & 15) | (((scales_h >> (2 * ib)) & 3) << 4);
     float dl = d * (float)((int)ls - 32);
-    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++) {
+    for (uint m = 0; m < 2; m++) {
+        uint l = (lane & 3) * 2 + m;
         uint word = qs[ib * 4 + (l & 3)] >> (4 * (l >> 2));
-        GPU_GLOBAL const float *xe = x + 32 * ib + 4 * l;
-        float p0 = xe[0] * (dl * IQ4_NL_LEVELS[word & 15]), p1 = xe[1] * (dl * IQ4_NL_LEVELS[(word >> 8) & 15]);
-        float p2 = xe[2] * (dl * IQ4_NL_LEVELS[(word >> 16) & 15]), p3 = xe[3] * (dl * IQ4_NL_LEVELS[(word >> 24) & 15]);
-        acc = acc + p0;
-        acc = acc + p1;
-        acc = acc + p2;
-        acc = acc + p3;
+        w[4 * m] = dl * IQ4_NL_LEVELS[word & 15];
+        w[4 * m + 1] = dl * IQ4_NL_LEVELS[(word >> 8) & 15];
+        w[4 * m + 2] = dl * IQ4_NL_LEVELS[(word >> 16) & 15];
+        w[4 * m + 3] = dl * IQ4_NL_LEVELS[(word >> 24) & 15];
     }
-    return acc;
 }
 
 // ggml's `iq3s_grid`: 512 words, each four 4-bit grid values packed little-endian
@@ -633,108 +625,270 @@ constant uint IQ3S_GRID[512] = {
 
 // IQ3_S: 256 weights per 110-byte block, a nine-bit grid index and a sign bit per
 // weight, a binary16 scale and eight 2-bit sub-block scales.
-float iq3_s_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
+void iq3_s_weights(GPU_GLOBAL const uchar *b, uint lane, GPU_PRIVATE float *w) {
     float d = quant_half(b, 0);
     uint group = lane >> 3, side = (lane >> 2) & 1, l = lane & 3;
     uint sc = (uint)b[106 + group];
     float db = d * (float)(1 + 2 * (int)(side ? (sc >> 4) : (sc & 15)));
     uint mask = (uint)b[66 + 2 * group + side];
     uint signs = (uint)b[74 + 8 * group + 4 * side + l];
-    for (uint w = 0; w < 8; w++) {
-        uint qs = (uint)b[2 + 16 * group + 8 * side + 2 * l + (w >> 2)];
-        uint index = qs | ((mask << (8 - 2 * l - (w >> 2))) & 256);
-        float weight = db * (float)((IQ3S_GRID[index] >> (8 * (w & 3))) & 255);
-        if ((signs >> w) & 1) weight = -weight;
-        acc = quant_add(acc, x[group * 64 + side * 32 + l * 8 + w], weight);
+    for (uint m = 0; m < 8; m++) {
+        uint qs = (uint)b[2 + 16 * group + 8 * side + 2 * l + (m >> 2)];
+        uint index = qs | ((mask << (8 - 2 * l - (m >> 2))) & 256);
+        float weight = db * (float)((IQ3S_GRID[index] >> (8 * (m & 3))) & 255);
+        w[m] = ((signs >> m) & 1) ? -weight : weight;
     }
-    return acc;
 }
 
-// [LLM-MATMUL-QUANT] One output per 32 consecutive threads: lane l owns weights
-// [8l, 8l + 8) of every block it visits (a 256-weight block has 32 lanes; eight
-// 32-weight blocks share them), summing its products in block order from 0.0f,
-// and quant_reduce combines the lanes. The host oracle in gpu_host.c compiles
-// these same lane functions and runs the same rounds, so every backend writes
-// the same words. Threadgroups are a multiple of 32 threads (gpu_metal.m,
-// gpu_opencl.c), at most QUANT_GROUP, so a lane's group never straddles two.
+// [LLM-MATMUL-QUANT] One tile of QUANT_ROWS rows by QUANT_COLS columns of
+// outputs per 32 consecutive threads: lane l owns weights [8l, 8l + 8) of every
+// block it visits (a 256-weight block has 32 lanes; eight 32-weight blocks share
+// them). Each block it decodes each column's eight weights once, reads each row's
+// eight inputs once and multiplies every row into every column, summing each
+// output's products in block order from 0.0f; quant_reduce then combines the
+// lanes output by output. A prompt of T rows so reads and decodes the weights
+// T / QUANT_ROWS times instead of T, and the inputs cols / QUANT_COLS times
+// instead of cols ([LLM-PREFILL]); one row is one tile with the other rows idle,
+// the decode path unchanged. The tile loops have constant bounds so the tile
+// stays in registers (an 8 by 8 tile spills and runs twice as slow; staging the
+// inputs in threadgroup memory costs more in barriers than it saves). Each
+// output's sum is the same lane-for-lane chain whatever the tile holds, so the
+// host oracle in gpu_host.c, which compiles these same lane functions and runs
+// the same rounds one output at a time, writes the same words as every backend.
+// Threadgroups are a multiple of 32 threads (gpu_metal.m, gpu_opencl.c), at most
+// QUANT_GROUP, so a lane's group never straddles two.
 #define QUANT_LANES 32
 #define QUANT_GROUP 256
+#define QUANT_ROWS 8
+#define QUANT_COLS 4
 
-// The 32 lane sums of one output in a fixed butterfly: each round adds to every
-// lane the lane `off` away, so lane 0 ends with the total. The order never
-// depends on which lane reads first: a + b and b + a are the same word.
-float quant_reduce(GPU_LOCAL float *sums, uint lane, float acc) {
-    sums[lane] = acc;
+// The 32 lane sums of QUANT_COLS outputs in a fixed butterfly: each round adds
+// to every lane the lane `off` away, so lane 0 ends with the totals, left in
+// `acc`. The order never depends on which lane reads first: a + b and b + a are
+// the same word. Where the hardware's SIMD group is exactly the 32 lanes (Apple
+// GPUs) the partner's word comes through a SIMD shuffle; anywhere else through
+// threadgroup memory, between barriers.
+void quant_reduce(GPU_LOCAL float *sums, uint lane, uint simd_width, GPU_PRIVATE float *acc) {
+    if (simd_width == QUANT_LANES) {
+        for (uint off = QUANT_LANES / 2; off > 0; off >>= 1)
+            for (uint j = 0; j < QUANT_COLS; j++) acc[j] = acc[j] + GPU_SIMD_XOR(acc[j], off);
+        return;
+    }
+    for (uint j = 0; j < QUANT_COLS; j++) sums[j * QUANT_GROUP + lane] = acc[j];
     GPU_BARRIER();
     for (uint off = QUANT_LANES / 2; off > 0; off >>= 1) {
-        float other = sums[lane ^ off];
+        float other[QUANT_COLS];
+        for (uint j = 0; j < QUANT_COLS; j++) other[j] = sums[j * QUANT_GROUP + (lane ^ off)];
         GPU_BARRIER();
-        sums[lane] = sums[lane] + other;
+        for (uint j = 0; j < QUANT_COLS; j++) sums[j * QUANT_GROUP + lane] = sums[j * QUANT_GROUP + lane] + other[j];
         GPU_BARRIER();
     }
-    return sums[lane];
+    for (uint j = 0; j < QUANT_COLS; j++) acc[j] = sums[j * QUANT_GROUP + lane];
 }
 
-#define QUANT_KERNEL(TYPE, LANE, ELEMENTS, BYTES) \
+#define QUANT_KERNEL(TYPE, WEIGHTS, ELEMENTS, BYTES) \
 kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
                                  GPU_GLOBAL const uchar *w GPU_BUFFER(1), \
                                  GPU_GLOBAL float *out GPU_BUFFER(2), \
                                  GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4), \
                                  GPU_PARAM cols GPU_BUFFER(5) GPU_LANE_THREAD) { \
-    GPU_LOCAL float sums[QUANT_GROUP]; \
-    ulong i = GPU_INDEX / QUANT_LANES; \
+    GPU_LOCAL float sums[QUANT_COLS * QUANT_GROUP]; \
+    ulong i = GPU_INDEX / QUANT_LANES, tiles = (rows + QUANT_ROWS - 1) / QUANT_ROWS, ctiles = (cols + QUANT_COLS - 1) / QUANT_COLS; \
     uint lane = (uint)(GPU_INDEX % QUANT_LANES), per_block = (ELEMENTS) / 8, per_span = QUANT_LANES / per_block; \
-    bool live = i < rows * cols; \
-    ulong r = live ? i / cols : 0, c = live ? i % cols : 0; \
+    bool live = i < tiles * ctiles; \
+    ulong r0 = live ? (i / ctiles) * QUANT_ROWS : 0, c0 = live ? (i % ctiles) * QUANT_COLS : 0; \
+    uint span = live ? (uint)(rows - r0 < QUANT_ROWS ? rows - r0 : QUANT_ROWS) : 0; \
+    uint cspan = live ? (uint)(cols - c0 < QUANT_COLS ? cols - c0 : QUANT_COLS) : 0; \
     uint blocks = live ? (uint)(inner / (ELEMENTS)) : 0; \
-    GPU_GLOBAL const float *xr = x + r * inner; \
-    GPU_GLOBAL const uchar *row = w + c * (ulong)(inner / (ELEMENTS)) * (BYTES); \
-    float acc = 0.0f; \
-    for (uint blk = lane / per_block; blk < blocks; blk += per_span) \
-        acc = LANE(acc, xr + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES), lane % per_block); \
-    acc = quant_reduce(sums, GPU_LOCAL_INDEX, acc); \
-    if (live && lane == 0) out[i] = acc; \
+    ulong stride = (ulong)(inner / (ELEMENTS)) * (BYTES); \
+    GPU_GLOBAL const float *xr = x + r0 * inner; \
+    GPU_GLOBAL const uchar *row = w + c0 * stride; \
+    float acc[QUANT_ROWS][QUANT_COLS]; \
+    for (uint k = 0; k < QUANT_ROWS; k++) \
+        for (uint j = 0; j < QUANT_COLS; j++) acc[k][j] = 0.0f; \
+    for (uint blk = lane / per_block; blk < blocks; blk += per_span) { \
+        float wt[QUANT_COLS][8]; \
+        for (uint j = 0; j < QUANT_COLS; j++) \
+            if (j < cspan) WEIGHTS(row + j * stride + (ulong)blk * (BYTES), lane % per_block, wt[j]); \
+        for (uint k = 0; k < QUANT_ROWS; k++) { \
+            if (k < span) { \
+                GPU_GLOBAL const float *xb = xr + k * inner + (ulong)blk * (ELEMENTS) + (lane % per_block) * 8; \
+                float xv[8]; \
+                for (uint m = 0; m < 8; m++) xv[m] = xb[m]; \
+                for (uint j = 0; j < QUANT_COLS; j++) \
+                    if (j < cspan) acc[k][j] = quant_lane(acc[k][j], xv, wt[j]); \
+            } \
+        } \
+    } \
+    for (uint k = 0; k < QUANT_ROWS; k++) { \
+        quant_reduce(sums, GPU_LOCAL_INDEX, GPU_SIMD_WIDTH, acc[k]); \
+        for (uint j = 0; j < QUANT_COLS; j++) \
+            if (live && lane == 0 && k < span && j < cspan) out[(r0 + k) * cols + c0 + j] = acc[k][j]; \
+    } \
 }
-QUANT_KERNEL(q4_k, q4_k_lane, 256, 144)
-QUANT_KERNEL(q8_0, q8_0_lane, 32, 34)
-QUANT_KERNEL(q6_k, q6_k_lane, 256, 210)
-QUANT_KERNEL(q5_k, q5_k_lane, 256, 176)
-QUANT_KERNEL(q3_k, q3_k_lane, 256, 110)
-QUANT_KERNEL(iq4_nl, iq4_nl_lane, 32, 18)
-QUANT_KERNEL(iq4_xs, iq4_xs_lane, 256, 136)
-QUANT_KERNEL(iq3_s, iq3_s_lane, 256, 110)
+QUANT_KERNEL(q4_k, q4_k_weights, 256, 144)
+QUANT_KERNEL(q8_0, q8_0_weights, 32, 34)
+QUANT_KERNEL(q6_k, q6_k_weights, 256, 210)
+QUANT_KERNEL(q5_k, q5_k_weights, 256, 176)
+QUANT_KERNEL(q3_k, q3_k_weights, 256, 110)
+QUANT_KERNEL(iq4_nl, iq4_nl_weights, 32, 18)
+QUANT_KERNEL(iq4_xs, iq4_xs_weights, 256, 136)
+QUANT_KERNEL(iq3_s, iq3_s_weights, 256, 110)
 #undef QUANT_KERNEL
 
-// [LLM-DELTA-RULE] One token of the recurrent gated delta rule, fused into one
-// kernel: thread t is value element v = t % dim of head h = t / dim. It decays
-// its column of the [heads, dim, dim] state, recalls through the keys, writes the
-// updated column and reads it out through the queries. `out` holds the new state
-// then the heads * dim outputs, and every product is rounded before its add, as
-// the host oracle in gpu_host.c does.
+// The many-row product's tile, which the host's thread count reads too.
+#define QUANT_MM_TILE 64
+#define QUANT_MM_STEP 32
+
+#if defined(__METAL_VERSION__)
+// [LLM-MATMUL-QUANT] The many-row product (QUANT_MM_ROWS rows or more, a prompt
+// chunk): each 256-thread group computes a 64-square tile of `out`. Every
+// k-step of 32 the group decodes the tile's 64 weight rows once into threadgroup
+// memory beside its 64 input rows, then its eight SIMD groups multiply 8x8
+// float32 tiles in hardware, two by four tiles each. A 128-row tile with four by
+// four tiles per group ran four times slower (2026-11-08, interleaved A/B). The hardware
+// fuses and orders those sums itself, so this kernel is held to the host oracle
+// within a recorded tolerance (gpu_device_tests.c) instead of bit for bit; the
+// few-row kernel above keeps the order contract for decoding one token.
+#define QUANT_MM_KERNEL(TYPE, WEIGHTS, ELEMENTS, BYTES) \
+[[max_total_threads_per_threadgroup(QUANT_GROUP)]] \
+kernel void osprey_matmul_##TYPE##_mm(device const float *x [[buffer(0)]], device const uchar *w [[buffer(1)]], \
+                                      device float *out [[buffer(2)]], constant ulong &rows [[buffer(3)]], \
+                                      constant ulong &inner [[buffer(4)]], constant ulong &cols [[buffer(5)]], \
+                                      uint index [[thread_position_in_grid]], uint t [[thread_position_in_threadgroup]]) { \
+    threadgroup float tiles[2 * QUANT_MM_TILE * QUANT_MM_STEP]; \
+    threadgroup float *sa = tiles, *sb = tiles + QUANT_MM_TILE * QUANT_MM_STEP; \
+    ulong tile = index / QUANT_GROUP, ctiles = (cols + QUANT_MM_TILE - 1) / QUANT_MM_TILE; \
+    ulong r0 = (tile / ctiles) * QUANT_MM_TILE, c0 = (tile % ctiles) * QUANT_MM_TILE; \
+    uint lr = t / 4, lg = t % 4, sg = t / 32, sr = (sg / 2) * 16, sc = (sg % 2) * 32; \
+    ulong stride = (inner / (ELEMENTS)) * (BYTES), r = r0 + lr, c = c0 + lr; \
+    simdgroup_float8x8 acc[2][4]; \
+    for (uint i = 0; i < 2; i++) \
+        for (uint j = 0; j < 4; j++) acc[i][j] = make_filled_simdgroup_matrix<float, 8, 8>(0.0f); \
+    for (ulong k0 = 0; k0 < inner; k0 += QUANT_MM_STEP) { \
+        ulong k = k0 + lg * 8; \
+        float wt[8]; \
+        if (c < cols) WEIGHTS(w + c * stride + (k / (ELEMENTS)) * (BYTES), (uint)((k % (ELEMENTS)) / 8), wt); \
+        for (uint m = 0; m < 8; m++) { \
+            sa[lr * QUANT_MM_STEP + lg * 8 + m] = r < rows ? x[r * inner + k + m] : 0.0f; \
+            sb[lr * QUANT_MM_STEP + lg * 8 + m] = c < cols ? wt[m] : 0.0f; \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+        for (uint kk = 0; kk < QUANT_MM_STEP; kk += 8) { \
+            simdgroup_float8x8 a[2], b[4]; \
+            for (uint i = 0; i < 2; i++) simdgroup_load(a[i], sa + (sr + 8 * i) * QUANT_MM_STEP + kk, QUANT_MM_STEP); \
+            for (uint j = 0; j < 4; j++) \
+                simdgroup_load(b[j], sb + (sc + 8 * j) * QUANT_MM_STEP + kk, QUANT_MM_STEP, ulong2(0, 0), true); \
+            for (uint i = 0; i < 2; i++) \
+                for (uint j = 0; j < 4; j++) simdgroup_multiply_accumulate(acc[i][j], a[i], b[j], acc[i][j]); \
+        } \
+        threadgroup_barrier(mem_flags::mem_threadgroup); \
+    } \
+    for (uint i = 0; i < 2; i++) \
+        for (uint j = 0; j < 4; j++) \
+            simdgroup_store(acc[i][j], tiles + (sr + 8 * i) * QUANT_MM_TILE + sc + 8 * j, QUANT_MM_TILE); \
+    threadgroup_barrier(mem_flags::mem_threadgroup); \
+    for (uint e = t; e < QUANT_MM_TILE * QUANT_MM_TILE; e += QUANT_GROUP) { \
+        ulong orow = r0 + e / QUANT_MM_TILE, ocol = c0 + e % QUANT_MM_TILE; \
+        if (orow < rows && ocol < cols) out[orow * cols + ocol] = tiles[e]; \
+    } \
+}
+QUANT_MM_KERNEL(q4_k, q4_k_weights, 256, 144)
+QUANT_MM_KERNEL(q8_0, q8_0_weights, 32, 34)
+QUANT_MM_KERNEL(q6_k, q6_k_weights, 256, 210)
+QUANT_MM_KERNEL(q5_k, q5_k_weights, 256, 176)
+QUANT_MM_KERNEL(q3_k, q3_k_weights, 256, 110)
+QUANT_MM_KERNEL(iq4_nl, iq4_nl_weights, 32, 18)
+QUANT_MM_KERNEL(iq4_xs, iq4_xs_weights, 256, 136)
+QUANT_MM_KERNEL(iq3_s, iq3_s_weights, 256, 110)
+#undef QUANT_MM_KERNEL
+#endif
+
+// [LLM-DELTA-RULE] Qwen's head width: a thread holds its whole state column in
+// registers across the steps and writes it once at the end, instead of reading
+// it twice and writing it once from device memory every token. The arithmetic
+// is the general loop's below, in the same order, so the bytes are the same.
+#define DELTA_DIM 128
+static float delta_recall(GPU_PRIVATE const float *col, GPU_GLOBAL const float *k, float fade) {
+    float recalled = 0.0f;
+    for (uint i = 0; i < DELTA_DIM; i++) {
+        float kept = col[i] * fade;
+        float product = kept * k[i];
+        recalled = recalled + product;
+    }
+    return recalled;
+}
+
+static float delta_write(GPU_PRIVATE float *col, GPU_GLOBAL const float *k, GPU_GLOBAL const float *q, float fade,
+                         float delta) {
+    float read = 0.0f;
+    for (uint i = 0; i < DELTA_DIM; i++) {
+        float kept = col[i] * fade;
+        float update = k[i] * delta;
+        float next = kept + update;
+        col[i] = next;
+        float product = next * q[i];
+        read = read + product;
+    }
+    return read;
+}
+
+static void delta_held(GPU_GLOBAL const float *state, GPU_GLOBAL const float *queries, GPU_GLOBAL const float *keys,
+                       GPU_GLOBAL const float *values, GPU_GLOBAL const float *beta, GPU_GLOBAL const float *decay,
+                       GPU_GLOBAL float *out, uint heads, uint steps, uint t) {
+    uint h = t / DELTA_DIM, v = t % DELTA_DIM, plane = h * DELTA_DIM * DELTA_DIM, cells = heads * DELTA_DIM;
+    float col[DELTA_DIM];
+    for (uint i = 0; i < DELTA_DIM; i++) col[i] = state[plane + i * DELTA_DIM + v];
+    for (uint s = 0; s < steps; s++) {
+        GPU_GLOBAL const float *k = keys + s * cells + h * DELTA_DIM, *q = queries + s * cells + h * DELTA_DIM;
+        float fade = decay[s * heads + h];
+        float delta = (values[s * cells + t] - delta_recall(col, k, fade)) * beta[s * heads + h];
+        out[heads * DELTA_DIM * DELTA_DIM + s * cells + t] = delta_write(col, k, q, fade, delta);
+    }
+    for (uint i = 0; i < DELTA_DIM; i++) out[plane + i * DELTA_DIM + v] = col[i];
+}
+
+// [LLM-DELTA-RULE] `steps` tokens of the recurrent gated delta rule, fused into
+// one kernel ([LLM-PREFILL]): thread t is value element v = t % dim of head
+// h = t / dim and owns column v of the [heads, dim, dim] state outright, so it
+// steps through the tokens with no other thread to wait for. Each step it decays
+// its column, recalls through that token's keys, writes the updated column and
+// reads it out through that token's queries. `out` holds the final state then
+// the steps * heads * dim outputs in token order, and every product is rounded
+// before its add, as the host oracle in gpu_host.c does.
 kernel void osprey_delta_rule(GPU_GLOBAL const float *state GPU_BUFFER(0), GPU_GLOBAL const float *queries GPU_BUFFER(1),
                               GPU_GLOBAL const float *keys GPU_BUFFER(2), GPU_GLOBAL const float *values GPU_BUFFER(3),
                               GPU_GLOBAL const float *beta GPU_BUFFER(4), GPU_GLOBAL const float *decay GPU_BUFFER(5),
                               GPU_GLOBAL float *out GPU_BUFFER(6), GPU_PARAM heads GPU_BUFFER(7),
-                              GPU_PARAM dim GPU_BUFFER(8) GPU_THREAD) {
-    uint t = (uint)GPU_INDEX, d = (uint)dim;
+                              GPU_PARAM dim GPU_BUFFER(8), GPU_PARAM steps GPU_BUFFER(9) GPU_THREAD) {
+    uint t = (uint)GPU_INDEX, d = (uint)dim, cells = (uint)(heads * dim);
     if ((ulong)t >= heads * dim) return;
     uint h = t / d, v = t % d, plane = h * d * d;
-    float fade = decay[h], recalled = 0.0f;
-    for (uint k = 0; k < d; k++) {
-        float kept = state[plane + k * d + v] * fade;
-        float product = kept * keys[h * d + k];
-        recalled = recalled + product;
+    if (d == DELTA_DIM) {
+        delta_held(state, queries, keys, values, beta, decay, out, (uint)heads, (uint)steps, t);
+        return;
     }
-    float delta = (values[t] - recalled) * beta[h], read = 0.0f;
-    for (uint k = 0; k < d; k++) {
-        float kept = state[plane + k * d + v] * fade;
-        float update = keys[h * d + k] * delta;
-        float next = kept + update;
-        out[plane + k * d + v] = next;
-        float product = next * queries[h * d + k];
-        read = read + product;
+    GPU_GLOBAL const float *column = state;
+    for (uint s = 0; s < (uint)steps; s++) {
+        GPU_GLOBAL const float *q = queries + s * cells, *k = keys + s * cells;
+        float fade = decay[s * (uint)heads + h], recalled = 0.0f;
+        for (uint i = 0; i < d; i++) {
+            float kept = column[plane + i * d + v] * fade;
+            float product = kept * k[h * d + i];
+            recalled = recalled + product;
+        }
+        float delta = (values[s * cells + t] - recalled) * beta[s * (uint)heads + h], read = 0.0f;
+        for (uint i = 0; i < d; i++) {
+            float kept = column[plane + i * d + v] * fade;
+            float update = k[h * d + i] * delta;
+            float next = kept + update;
+            out[plane + i * d + v] = next;
+            float product = next * q[h * d + i];
+            read = read + product;
+        }
+        out[(uint)(heads * dim * dim) + s * cells + t] = read;
+        column = out;
     }
-    out[(uint)(heads * dim * dim) + t] = read;
 }
 
 // [LLM-SIGMOID] The logistic function of every element, on the target's native

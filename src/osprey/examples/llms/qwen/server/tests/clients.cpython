@@ -34,9 +34,6 @@ sys.modules["harness"] = _harness
 from harness import case, real_case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, base, load, main  # the harness registers cases through `case`
 
 
-# --- step 1: metadata endpoints of the Ollama protocol ---------------------
-
-
 @case
 def version_reports_the_protocol_version(port):
     reply = httpx.get(base(port) + "/api/version", timeout=30.0)
@@ -130,9 +127,6 @@ def ps_lists_the_running_model_with_its_context(port):
         assert running.size > 0, running
         assert running.context_length == CONTEXT, running
         assert running.details.family == "qwen3_5", running.details
-
-
-# --- step 2: /api/chat and /api/generate over NDJSON ----------------------
 
 
 def json_lines(body):
@@ -293,6 +287,34 @@ def chat_with_tools_renders_the_template_system_block(port):
 
 
 @case
+def chat_merges_leading_instructions_without_tools(port):
+    module = reference()
+    messages = [
+        {"role": "system", "content": "  Be terse.  "}, {"role": "developer", "content": "Use one sentence."},
+        {"role": "system", "content": "  "}, {"role": "user", "content": "Say hello."},
+    ]
+    expected = len(module.Model().tokenize(module.rendered_chat(messages)))
+    reply = httpx.post(base(port) + "/api/chat", json={"model": MODEL, "messages": messages, "options": {"num_ctx": 1}}, timeout=30.0)
+    assert reply.status_code == 400 and f"prompt is {expected} tokens, over num_ctx 1;" in reply.json()["error"], reply.text
+
+
+@case
+def chat_rejects_instructions_after_a_user_turn(port):
+    for role in ("system", "developer"):
+        messages = [{"role": "user", "content": READ_PROMPT}, {"role": role, "content": "Too late."}]
+        for tools in ([], [READ_FILE]):
+            try:
+                reference().rendered_chat(messages, tools)
+            except ValueError as error:
+                expected = str(error)
+            else:
+                raise AssertionError("template accepted a late instruction")
+            reply = httpx.post(base(port) + "/api/chat", json={"model": MODEL, "messages": messages, "tools": tools, "options": {"num_ctx": 1}}, timeout=30.0)
+            assert reply.status_code == 400, (role, tools, reply.status_code, reply.text)
+            assert expected in reply.json()["error"], reply.text
+
+
+@case
 def chat_tool_result_turn_continues_the_conversation(port):
     module = reference()
     tools = [READ_FILE, RUN_TESTS]
@@ -327,9 +349,6 @@ def a_repeated_request_answers_identically(port):
         assert [dict(call.function.arguments) for call in again.message.tool_calls] == [dict(call.function.arguments) for call in first.message.tool_calls], again
 
 
-# --- step 3: the OpenAI protocol ------------------------------------------
-
-
 @case
 def openai_lists_the_served_model(port):
     listed = openai_client(port).models.list()
@@ -349,6 +368,25 @@ def openai_chat_completes_one_turn(port):
     assert isinstance(call.function.arguments, str), call.function
     jsonschema.validate(json.loads(call.function.arguments), READ_FILE["function"]["parameters"])
     assert reply.usage.total_tokens == reply.usage.prompt_tokens + reply.usage.completion_tokens, reply.usage
+    asked = {"role": "user", "content": READ_PROMPT}
+    result = {"role": "tool", "tool_call_id": call.id, "content": "# Osprey\n"}
+    recorded = choice.message.model_dump(exclude_none=True)
+    followup = openai_client(port).chat.completions.create(model=MODEL, messages=[asked, recorded, result], tools=[READ_FILE, RUN_TESTS])
+    recorded["tool_calls"][0]["function"]["arguments"] = json.loads(call.function.arguments)
+    module = reference()
+    rendered = module.rendered_chat([asked, recorded, result], [READ_FILE, RUN_TESTS])
+    assert followup.usage.prompt_tokens == len(module.Model().tokenize(rendered)), followup.usage
+
+
+@case
+def openai_tool_ids_are_unique_across_responses(port):
+    completions = openai_client(port).chat.completions
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    first = completions.create(model=MODEL, messages=asked, tools=[READ_FILE, RUN_TESTS])
+    second = completions.create(model=MODEL, messages=asked, tools=[READ_FILE, RUN_TESTS])
+    first_ids = {call.id for call in first.choices[0].message.tool_calls}
+    second_ids = {call.id for call in second.choices[0].message.tool_calls}
+    assert first_ids and second_ids and first_ids.isdisjoint(second_ids), (first_ids, second_ids)
 
 
 @case

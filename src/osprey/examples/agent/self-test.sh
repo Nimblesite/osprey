@@ -14,17 +14,23 @@ mode=double
 env_file=""
 goldens_flag=()
 case "${1:-}" in
+    --qwen) mode=qwen ;;
     --live) mode=live; env_file=${2:-"$repo/.env"}; live_model=${3:-deepseek/deepseek-chat} ;;
     --update-goldens) goldens_flag=(--update-goldens) ;;
     "") ;;
-    *) echo "Usage: self-test.sh [--live [dotenv] | --update-goldens]" >&2; exit 2 ;;
+    *) echo "Usage: self-test.sh [--qwen | --live [dotenv] | --update-goldens]" >&2; exit 2 ;;
 esac
 records=${OSPREY_AGENT_RECORDS:-$(mktemp -d "${TMPDIR:-/tmp}/osprey-agent-self-test.XXXXXX")}
 # One fixed folder on every machine: its path shows in the pictures, and TMPDIR differs per user.
 work=/tmp/osprey-agent-work
-rm -rf "$work"
+[ "$mode" != qwen ] || work="$records/work"
+if [ "$mode" = qwen ]; then
+    [ ! -e "$work" ] || { echo "Refusing to overwrite real-run evidence: $work" >&2; exit 1; }
+else
+    rm -rf "$work"
+fi
 mkdir -p "$work"
-trap 'rm -rf "$work"' EXIT
+[ "$mode" = qwen ] || trap 'rm -rf "$work"' EXIT
 echo "records: $records"
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="$name" OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent
 bundle=$(bash "$repo/src/toolchain/hosts/swift/run.sh" --build | tail -1)
@@ -34,6 +40,54 @@ iconutil -c iconset "$bundle/Contents/Resources/AppIcon.icns" -o "$work/AppIcon.
 project="$work/calc-project"
 bash "$here/drive/demo-project.sh" "$project" >/dev/null
 os_goldens=${OSPREY_AGENT_GOLDENS:-"$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"}
+
+if [ "$mode" = qwen ]; then
+    # The ui harness owns the real Osprey server and weights; no cloud key or HTTP double is read.
+    cp "$project/test_calc.py" "$records/original-test_calc.py"
+    if (cd "$project" && python3 test_calc.py) > "$records/project-before.log" 2>&1; then
+        echo "FAILED: the starting project must have the two real defects" >&2; exit 1
+    fi
+    grep -q '^FAILED (failures=2)$' "$records/project-before.log" || { cat "$records/project-before.log"; exit 1; }
+    mkdir -p "$work/store"
+    printf '{"keys":[],"model":"osprey/qwen3.8:27b","effort":""}' > "$work/store/providers.json"
+    python3 - "$here/self-test/coding.json" "$work" <<'SCRIPT'
+import json, pathlib, sys
+suite = json.loads(pathlib.Path(sys.argv[1]).read_text())
+task = "Run the tests with python3 test_calc.py"
+steps = suite["steps"]
+second_turn = next(i for i, step in enumerate(steps)
+                   if step.get("type", ["", ""])[1].startswith("Add a median(values) function"))
+expected = "def add(a, b):\n    return a + b\n\n\ndef mean(values):\n    return sum(values) / len(values)\n"
+pathlib.Path(sys.argv[2], "expected-calc.py").write_text(expected)
+message = next(step["type"] for step in steps[:second_turn] if "type" in step)
+message[1] = (task + " using run_command. Next use write_file to replace calc/__init__.py "
+              "with exactly this content (no Markdown fences):\n" + expected
+              + "Do not change test_calc.py. Run the same command again and report its result.\n")
+replay = [{"wait": task} if step.get("wait") == "median" else step for step in suite["qwenAfter"]]
+after = [{"choose": task}] + replay
+coding = [{"wait": task} if step.get("wait", "").startswith(task) else step for step in steps[:second_turn]]
+live = suite["qwenBefore"] + coding + [{"invoke": "New chat"}] + after
+for name, steps in (("preflight", suite["qwenBefore"]), ("live", live), ("replay", after)):
+    pathlib.Path(sys.argv[2], name + ".json").write_text(json.dumps({"steps": steps}))
+SCRIPT
+    "$host" --self-test "$work/preflight.json" "$records/preflight" --store "$work/store" --patience 30 --goldens "$os_goldens-qwen" "$project" 2>&1 | tee "$records/preflight.log"
+    # Capture a real run, then compare the persisted conversation on a fresh real window.
+    # Fresh model prose is not a stable pixel oracle; replay uses the exact saved output.
+    "$host" --self-test "$work/live.json" "$records/coding" --store "$work/store" --patience 600 --goldens "$records/goldens" --update-goldens "$project" 2>&1 | tee "$records/live.log"
+    python3 - "$work/expected-calc.py" "$project/calc/__init__.py" <<'SCRIPT'
+from pathlib import Path
+import sys
+expected, actual = (Path(path).read_bytes().removesuffix(b"\n") for path in sys.argv[1:])
+if actual != expected:
+    sys.exit("FAILED: Agent did not write the supplied code")
+SCRIPT
+    cmp "$records/original-test_calc.py" "$project/test_calc.py"
+    (cd "$project" && python3 test_calc.py) 2>&1 | tee "$records/project-tests.log"
+    "$host" --self-test "$work/replay.json" "$records/replay" --store "$work/store" --patience 30 --goldens "$records/goldens" "$project" 2>&1 | tee "$records/replay.log"
+    "${OSPREY_QWEN_PYTHON:?the real ui harness supplies its Python}" "$here/drive/judge.py" --qwen "$records"
+    echo "real Qwen UI E2E passed; actual screenshots, replay comparisons and judge: $records"
+    exit 0
+fi
 
 if [ "$mode" = live ]; then
     # The key leaves ~/Documents first: the app reading a file there would raise a privacy prompt.

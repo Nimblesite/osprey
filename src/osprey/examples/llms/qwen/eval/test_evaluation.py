@@ -176,6 +176,17 @@ class EvaluationUseCases(unittest.TestCase):
             self.assertIn("error", result.stderr.lower())
             self.assertFalse(output.exists())
 
+    def test_full_baseline_requires_the_entire_tool_corpus(self):
+        driver = module("baseline")
+        sampler = driver.RssSampler(None)
+        sampler.peak, sampler.samples = 100, 1
+        rates = {"median_tokens_per_second": 8, "median_prompt_tokens_per_second": 100}
+        coding = {"total": 30}
+        self.assertTrue(driver.is_full_baseline({"goals": 200}, coding, rates, sampler))
+        for count in (0, 1, 139, 199, 201):
+            with self.subTest(tool_goals=count):
+                self.assertFalse(driver.is_full_baseline({"goals": count}, coding, rates, sampler))
+
 
 if __name__ == "__main__":
     unittest.main()

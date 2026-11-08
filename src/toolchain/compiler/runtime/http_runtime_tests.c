@@ -354,6 +354,7 @@ void run_all_http_tests(void) {
   test_server_rejects_bad_requests();
   test_server_self_stop_from_handler();
   test_server_handle_bounds();
+  test_client_gone_follows_the_served_client();
   test_live_loopback_exchange();    // full end-to-end request path
   test_post_response_loopback();    // POST body retained behind a handle
   test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected

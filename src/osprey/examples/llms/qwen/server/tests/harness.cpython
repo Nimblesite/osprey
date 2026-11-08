@@ -8,10 +8,11 @@ waits for its listener, runs every registered case against it, and reports one
 Two lanes: the fixture table (`gc` and `arc`, every `case`), which CI runs, and
 the real weights (`real`, every `real_case`), which runs only when
 `OSPREY_QWEN_GGUF` names a GGUF that exists; otherwise each real case prints a
-`skip real/<case>` line, never a silent pass.
+`skip real/<case>` line, never a silent pass. The explicit `pydantic` lane
+requires real weights and runs local coding/judge tests. The `ui` lane drives the
+actual native Agent window over those weights. Neither is selected by default.
 """
 import importlib.machinery
-import json
 import os
 import subprocess
 import sys
@@ -31,10 +32,10 @@ ROOT = PROJECT.parents[5]
 COMPILER = Path(os.environ.get("OSPREY_COMPILER", ROOT / "target/debug/osprey"))
 MODEL = "qwen3.8:27b"
 CONTEXT = 65536
-PORTS = {"gc": 11535, "arc": 11536, "real": 11537}
+PORTS = {"gc": 11535, "arc": 11536, "real": 11537, "pydantic": 11538, "ui": 11435}
 WEIGHTS = os.environ.get("OSPREY_QWEN_GGUF", "")
-READY_SECONDS = {"gc": 60.0, "arc": 60.0, "real": 300.0}
-LANE_SECONDS = {"gc": 600.0, "arc": 600.0, "real": 900.0}
+READY_SECONDS = {"gc": 60.0, "arc": 60.0, "real": 300.0, "pydantic": 300.0, "ui": 300.0}
+LANE_SECONDS = {"gc": 600.0, "arc": 600.0, "real": 900.0, "pydantic": 900.0, "ui": 2100.0}
 """The wall-clock cap on one lane: the server is killed when it runs out, so a hung
 model never holds the GPU past it."""
 READ_FILE = {
@@ -56,6 +57,7 @@ RUN_TESTS = {
 READ_PROMPT = "read the readme"
 CASES = []
 REAL_CASES = []
+PYDANTIC_CASES = []
 
 
 def case(fn):
@@ -67,6 +69,12 @@ def case(fn):
 def real_case(fn):
     """Register a case that needs the real weights; it runs on the `real` lane only."""
     REAL_CASES.append(fn)
+    return fn
+
+
+def pydantic_case(fn):
+    """Explicit local-only lane: never part of default or CI case selection."""
+    PYDANTIC_CASES.append(fn)
     return fn
 
 
@@ -173,12 +181,56 @@ def real_lane():
     return [], 0
 
 
+def pydantic_lane():
+    """Explicit real-model testing: missing dependencies or weights are hard failures."""
+    os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
+    __import__("pydantic_ai")
+    if not WEIGHTS or not Path(WEIGHTS).is_file():
+        raise SystemExit("pydantic requires OSPREY_QWEN_GGUF: real weights, no fixture fallback")
+    return run_cases("pydantic", PORTS["pydantic"], WEIGHTS, PYDANTIC_CASES, "arc"), len(PYDANTIC_CASES)
+
+
+def real_window(port):
+    """Real model + native Agent window, project tests, goldens and direct Qwen judgement."""
+    assert port == 11435, "the Agent local provider must reach this owned real server"
+    import signal
+    records = ROOT / "target/logs/plan0049/qwen-ui" / time.strftime("%Y%m%d-%H%M%S")
+    env = dict(os.environ, OSPREY_BIN=str(COMPILER), OSPREY_QWEN_PYTHON=sys.executable,
+               OSPREY_AGENT_RECORDS=str(records))
+    process = subprocess.Popen(["bash", str(ROOT / "src/osprey/examples/agent/self-test.sh"), "--qwen"],
+                               env=env, start_new_session=True)
+    try:
+        assert process.wait(timeout=1800) == 0, f"real UI failed; preserved evidence: {records}"
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=10)
+
+
+def ui_lane():
+    """Explicit local-only full E2E: never starts a fixture or borrows another server."""
+    import socket
+    if not WEIGHTS or not Path(WEIGHTS).is_file():
+        raise SystemExit("ui requires OSPREY_QWEN_GGUF: real weights, no fixture fallback")
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", PORTS["ui"]))
+    return run_cases("ui", PORTS["ui"], WEIGHTS, [real_window], "arc"), 1
+
+
 def main(argv):
     if not COMPILER.exists():
         raise SystemExit(f"no compiler at {COMPILER}; set OSPREY_COMPILER")
     failures, total = [], 0
     for lane in lanes(argv):
-        if lane == "real":
+        if lane == "ui":
+            found, ran = ui_lane()
+        elif lane == "pydantic":
+            found, ran = pydantic_lane()
+        elif lane == "real":
             found, ran = real_lane()
         else:
             found, ran = run_cases(lane, PORTS[lane], "", CASES, lane), len(CASES)

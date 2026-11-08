@@ -1,0 +1,138 @@
+// The hunt app's suite, run without KLEE by `make _test_hunt_mock`: the corpus
+// inventory over path permutations and the real tree, every run classification
+// from real report shapes, the HTML report, and a real sweep of runs that need
+// no engine (a compile error, a missing program) [SYMEX-CORPUS].
+
+namespace hunt_tests
+
+import hunt::Inventory
+import hunt::Report
+import hunt::Sweep
+
+FILES = [
+    "r/app/osprey.toml", "r/app/src/main.ospml", "r/app/src/util.osp", "r/app/tool.py",
+    "r/lib/osprey.toml", "r/lib/src/lib.ospml",
+    "r/loose.osp", "r/loose.ospml", "r/bad.osp", "r/bad.expectederror",
+    "r/failscompilation/x.osp", "r/failscompilation/proj/osprey.toml",
+    "r/script.py", "r/plain.py", "r/readme.md", "r/data.json",
+    "r/nest/osprey.toml", "r/nest/inner/osprey.toml", "r/nest/inner/main.osp",
+    "r/shared/model.osp", "r/shared/one.ospml", "r/gen/osprey.toml", "r/gen/main.ospml",
+    "src/osprey/tests/hunt/crash.osp", "src/osprey/tests/hunt/python/osprey.toml"]
+
+APP = "[project]\nname = \"app\"\nentry = \"src/main.ospml\"\n"
+LIB = "[project]\nname = \"lib\"\n# no entry: a library\n"
+GEN = "[project]\nsource_roots = [\".\", \"../shared/model.osp\", \"./src\"]\nentry=\"main.ospml\"\n"
+PY = "# osprey: flavor=python\nprint(1)\n"
+
+fixture path = match path
+    "r/app/osprey.toml" => APP
+    "r/nest/osprey.toml" => APP
+    "r/nest/inner/osprey.toml" => APP
+    "r/failscompilation/proj/osprey.toml" => APP
+    "src/osprey/tests/hunt/python/osprey.toml" => APP
+    "r/lib/osprey.toml" => LIB
+    "r/gen/osprey.toml" => GEN
+    "r/script.py" => PY
+    "r/app/tool.py" => PY
+    _ => "print(2)\n"
+
+programs files = join (Inventory::programsIn (files, fixture), ",")
+
+test ("programsIn keeps apps and loose programs, sorted, and nothing else", \() =>
+    expect (programs FILES, "r/app,r/gen,r/loose.osp,r/loose.ospml,r/nest,r/nest/inner,r/script.py,r/shared/one.ospml")
+    expect (programs [], "")
+    expect (programs ["r/a.ospml", "r/a.expectederror"], "")
+    expect (programs ["r/a.osp", "r/a.ospml.expectederror"], "r/a.osp")
+    expect (programs ["src/osprey/tests/hunting.osp"], "src/osprey/tests/hunting.osp")
+    expect (programs ["r/lib/osprey.toml", "r/lib/src/lib.ospml", "r/lib/x.py"], "")
+    expect (programs ["r/gen/osprey.toml", "r/shared/model.osp", "r/shared/other.osp"], "r/gen,r/shared/other.osp")
+    expect (programs ["r/plain.py", "r/script.py", "r/readme.md"], "r/script.py"))
+
+test ("discover inventories the real corpus", \() =>
+    corpus = Inventory::discover () ?: []
+    expect (listContains (corpus, "src/osprey/examples/llms/gpt2/generate"), true)
+    expect (listContains (corpus, "src/osprey/tests/hunt/crash.osp"), false)
+    expect (listContains (corpus, "src/osprey/examples/llms/gpt2/model/backends.osp"), false)
+    expect (length (filterList (corpus, \p => contains (p, "failscompilation"))), 0)
+    expect (length (filterList (corpus, \p => contains (p, "/src/"))) < 50, true)
+    expect (length (corpus) > 200, true))
+
+ROWS = ["a/b.osp some reason here", "a/b.ospml other", "a/c the `x` call"]
+
+test ("reasonFor answers a listed program's reason and nothing for others", \() =>
+    expect (Inventory::reasonFor ("a/b.osp", ROWS), "some reason here")
+    expect (Inventory::reasonFor ("a/b.ospml", ROWS), "other")
+    expect (Inventory::reasonFor ("a/c", ROWS), "the `x` call")
+    expect (Inventory::reasonFor ("a/b", ROWS), "")
+    expect (Inventory::reasonFor ("a/b.osp", []), "")
+    expect (length (Inventory::unportable () ?: []) > 50, true)
+    expect (Inventory::reasonFor ("src/osprey/examples/llms/gpt2/model/backends.osp", Inventory::unportable () ?: []), "a module of the gpt2 example, not a program of its own"))
+
+CLEAN = "{\"explored\":{\"paths\":4,\"completed\":4},\"findings\":[]}"
+ABORT = "{\"class\":\"abort\",\"file\":\"crash.osp\",\"line\":4,\"message\":\"abort <9>\"}"
+UNMODELLED = "{\"class\":\"unmodelled\",\"file\":\"p.osp\",\"line\":7,\"message\":\"spawnProcess\"}"
+MEMORY = "{\"class\":\"memory\",\"message\":\"use after free\"}"
+
+reported findings = "{\"explored\":{\"paths\":5,\"completed\":3},\"findings\":[${join (findings, ",")}]}"
+
+judged (code, report, log) = described (Report::outcome ("p.osp", code, report, log, ""))
+
+described o = "${o.status} exit=${toString o.exit} paths=${toString o.paths} [${join (mapList (o.findings, \f => "${f.kind}@${f.file}:${toString f.line}:${f.message}"), "; ")}]"
+
+test ("outcome classifies every exit and finding shape", \() =>
+    expect (judged (0, CLEAN, ""), "clean exit=0 paths=4 []")
+    expect (judged (1, reported [ABORT], ""), "BUG_CANDIDATE exit=1 paths=5 [abort@crash.osp:4:abort <9>]")
+    expect (judged (0, reported [UNMODELLED], ""), "engine_limitation exit=0 paths=5 [unmodelled@p.osp:7:spawnProcess]")
+    expect (judged (1, reported [UNMODELLED, MEMORY], ""), "BUG_CANDIDATE exit=1 paths=5 [unmodelled@p.osp:7:spawnProcess; memory@:0:use after free]")
+    expect (judged (0, reported [ABORT], ""), "BUG_CANDIDATE exit=0 paths=5 [abort@crash.osp:4:abort <9>]")
+    expect (judged (1, CLEAN, "KLEE: ERROR: solver died\ntail"), "tool_error exit=1 paths=4 [tool_error@:0:KLEE: ERROR: solver died]")
+    expect (judged (2, reported [ABORT], "boom"), "tool_error exit=2 paths=5 [abort@crash.osp:4:abort <9>; tool_error@:0:boom]")
+    expect (judged (139, CLEAN, ""), "tool_error exit=139 paths=4 [tool_error@:0:]"))
+
+test ("a report that does not decode or holds no exploration is never clean", \() =>
+    expect (startsWith (judged (0, "", "x"), "tool_error exit=0 paths=0 [tool_error@:0:unreadable report ("), true)
+    expect (endsWith (judged (0, "not json", "last words"), "): last words]"), true)
+    expect (judged (0, "{\"findings\":[]}", "gone"), "tool_error exit=0 paths=0 [tool_error@:0:report without an exploration: gone]")
+    expect (described (Report::failed ("p.osp", -1, "cannot start", "why")), "tool_error exit=-1 paths=0 [tool_error@:0:cannot start]")
+    expect ((Report::failed ("p.osp", -1, "cannot start", "why")).unportable, "why"))
+
+test ("lastError prefers the last error line, else the last line", \() =>
+    expect (Report::lastError "a\nERROR: boom\nlast", "ERROR: boom")
+    expect (Report::lastError "x\n  y  \n\n", "y")
+    expect (Report::lastError "", "")
+    expect (Report::lastError "klee failed\nKLEE: error: z\nok", "KLEE: error: z")
+    expect (Report::lastError "first error\nsecond failed", "second failed"))
+
+test ("the sweep's commands and paths are exact", \() =>
+    expect (Sweep::reportOf "src/x.osp", "target/hunt/runs/src_x.osp.json")
+    expect (Sweep::logOf "src/x.osp", "target/hunt/runs/log/src_x.osp.log")
+    expect (Sweep::command "src/x.osp", "target/release/osprey hunt 'src/x.osp' --json --quiet --max-time 20 > 'target/hunt/runs/src_x.osp.json.part' 2> 'target/hunt/runs/log/src_x.osp.log'; code=$?; mv 'target/hunt/runs/src_x.osp.json.part' 'target/hunt/runs/src_x.osp.json'; exit $code"))
+
+BUG = Report::outcome ("<script>.osp", 1, reported [ABORT], "", "")
+LISTED = Report::outcome ("a&b.osp", 0, CLEAN, "", "needs \"fibers\"")
+
+test ("the HTML report escapes every run's text and counts each status", \() =>
+    expect (Report::escape "<a href=\"x\">&</a>", "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;")
+    expect (Report::row BUG, "<tr><td>&lt;script&gt;.osp</td><td><span class='chip bad'>BUG_CANDIDATE</span></td><td>1</td><td>5 paths</td><td><div class='f abort'>abort at crash.osp:4 — abort &lt;9&gt;</div></td></tr>")
+    expect (Report::row LISTED, "<tr><td>a&amp;b.osp<div class='u'>listed unportable: needs &quot;fibers&quot;</div></td><td><span class='chip ok'>clean</span></td><td>0</td><td>4 paths</td><td></td></tr>")
+    expect (Report::tally [BUG, LISTED, LISTED], "2 clean, 0 engine_limitation, 1 BUG_CANDIDATE, 0 tool_error")
+    expect (Report::count ([BUG, LISTED], "tool_error"), 0)
+    expect (contains (Report::page [BUG, LISTED], "<p class='l'>2 programs hunted with KLEE</p>"), true)
+    expect (contains (Report::page [BUG, LISTED], "<div class='card bad'><div class='n'>1</div><div class='l'>BUG_CANDIDATE</div></div>"), true)
+    expect (contains (Report::page [BUG, LISTED], Report::row LISTED), true)
+    expect (contains (Report::page [], "<p class='l'>0 programs hunted with KLEE</p>"), true))
+
+BROKEN = "target/hunt-tests/broken.osp"
+
+test ("a real sweep turns engine-free failures into tool errors, in order", \() =>
+    expect (succeeded (makeDir "target/hunt-tests"), true)
+    expect (succeeded (writeFile (BROKEN, "fn broken( = \n")), true)
+    swept = Sweep::run ([BROKEN, "target/hunt-tests/missing.osp"], ["target/hunt-tests/missing.osp gone on purpose"])
+    expect (join (mapList (swept, \o => "${o.program} ${o.status} ${toString o.exit} ${o.unportable}"), "|"), "${BROKEN} tool_error 1 |target/hunt-tests/missing.osp tool_error 2 gone on purpose")
+    expect (join (mapList (swept, \o => toString (length o.findings)), ","), "1,1")
+    expect (succeeded (Report::write ("target/hunt-tests/report.html", swept)), true)
+    expect (contains (readFile "target/hunt-tests/report.html" ?: "", "missing.osp"), true))
+
+succeeded result = match result
+    Success _ => true
+    Error _ => false

@@ -109,6 +109,9 @@ fn binary32_spelling(spelling: &str) -> String {
     spelling.replace(".f64", ".f32").replace('(', "f(")
 }
 
+/// The linker flag that reserves an 8 MiB main-thread stack on Windows.
+const WINDOWS_MAIN_STACK: &str = "-Wl,--stack,8388608";
+
 fn platform_flags(http: bool, libm: bool) -> Vec<String> {
     let mut flags = Vec::new();
     // Place libraries after the object/archive that references their symbols.
@@ -116,6 +119,10 @@ fn platform_flags(http: bool, libm: bool) -> Vec<String> {
         flags.push("-lm".into());
     }
     if cfg!(windows) {
+        // The main thread gets the 8 MiB stack macOS and Linux give it, not
+        // Windows' 1 MiB default, so a recursion a fiber or the main thread
+        // finishes elsewhere finishes here too [FAILURE-EXPLICIT].
+        flags.push(WINDOWS_MAIN_STACK.into());
         flags.push("-lpthread".into());
         if http {
             flags.push("-lws2_32".into());

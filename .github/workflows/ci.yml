@@ -598,6 +598,48 @@ jobs:
       - name: Corpus and goldens (ARC, leak oracle enabled)
         run: make _conformance-arc
 
+  # The Qwen oracle (the tiny checkpoint against its golden) runs beside the corpus
+  # rather than after it: under ARC the two together outran the corpus job's budget.
+  test-qwen-gc:
+    name: "Tests: Qwen tiny checkpoint and oracle (gc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Qwen tiny checkpoint and oracle (GC)
+        run: make _qwen-suite MEMORY=gc QWEN_GPU=host
+
+  test-qwen-arc:
+    name: "Tests: Qwen tiny checkpoint and oracle (arc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Qwen tiny checkpoint and oracle (ARC)
+        run: make _qwen-suite MEMORY=arc QWEN_GPU=host
+
   # [PROOF-KERNEL] [PROOF-SPEED] The M0 proof kernel of plan 0041 and the Lean
   # head-to-head speed gate of spec 0049. `make _test_proof_kernel` holds
   # src/osprey/examples/proof/kernel to its byte-exact golden under GC, ARC and wasm32 —
@@ -1403,6 +1445,8 @@ jobs:
       - test-corpus-gc
       - test-instructions
       - test-corpus-arc
+      - test-qwen-gc
+      - test-qwen-arc
       - test-proof
       - test-c-runtime
       - test-extension

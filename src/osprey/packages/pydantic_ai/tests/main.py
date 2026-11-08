@@ -448,6 +448,21 @@ def http_close_case(i):
     return Check.equal(f"providers.http_close_{i}", http_outcome(ProvidersHttp.after_close(request, http_code(i % 3, "unknown client"))), expected)
 
 
+def provider_path_response(method, path, _headers, body):
+    return HttpResponse(status=200, headers="Content-Type: text/plain", contentType="text/plain", streamFd=0, isComplete=True, partialBody=f"{method} {path} {body}")
+
+
+def provider_paths_case():
+    server = unwrap_or(httpCreateServer(18249, "127.0.0.1"), -1)
+    listening = unwrap_or(httpListen(server, provider_path_response), -1)
+    origin = "http://127.0.0.1:18249"
+    roots = ["", "/", "/v1", "/v1/", "/api/paas/v4/"]
+    observed = mapList(roots, lambda root: http_outcome(ProvidersHttp.OllamaProvider(origin + root).post("/chat/completions", "{}", "")))
+    stopped = unwrap_or(httpStopServer(server), -1)
+    expected = ["reply 200 POST /chat/completions {}", "reply 200 POST /chat/completions {}", "reply 200 POST /v1/chat/completions {}", "reply 200 POST /v1/chat/completions {}", "reply 200 POST /api/paas/v4/chat/completions {}"]
+    return same("providers.http_base_paths", listConcat([toString(listening), toString(stopped)], observed), listConcat(["0", "0"], expected))
+
+
 def usage_limit_case():
     return run_expect_error("usage_limit", build(scripted_model([ats(Expected.SCRIPTED_REPLIES, 0)], 200), False), "go", "expected UsageLimitExceeded", lambda error: [Check.equal("usage_limit", E.message_of(error), Expected.USAGE_LIMIT_MESSAGE)])
 
@@ -1448,6 +1463,7 @@ def suite():
         listConcat([transport_error_case()], usage_limit_case()),
         cases(27, http_reply_case),
         cases(6, http_close_case),
+        [provider_paths_case()],
         profile_cases(),
         settings_cases(),
         cases(len(THINKING_TABLE), thinking_body_case),

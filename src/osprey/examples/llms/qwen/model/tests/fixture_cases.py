@@ -239,7 +239,7 @@ def run_model_interfaces(model):
 
 def model_interface_run(model, cache):
     row = Qwen3_5Model.embed(model, token_in(input_tokens(2), 0))
-    match Qwen3_5Model.forward(model, cache, row):
+    match Qwen3_5Model.forward(model, cache, row, 1):
         case Error(message=message):
             return [Check.failed("model.Walk.forward", message)]
         case Success(value=walk):
@@ -267,7 +267,7 @@ def layer_interface_cases(model, cache, row, index):
 def layer_hook_cases(model, row, index, layer, slot):
     cfg = model.config
     shapes = model.shapes
-    normed = Qwen3_5Norm.rms_row(row, layer.input_norm, cfg, shapes)
+    normed = Qwen3_5Norm.rms_rows(row, layer.input_norm, cfg, shapes, Qwen3_5Shapes.rows_of(cfg, shapes, 1))
     return listConcat(
         [compare(f"model.Layer.input_norm.{index}", normed, hook_row(f"layers.{index}.input_layernorm", 0, Expected.MODEL_HIDDEN))],
         mixer_cases(model, layer, slot, row, normed, index),
@@ -295,16 +295,16 @@ def tail_cases(model, layer, row, index, mixed):
     MLP of the fixture's normed row."""
     cfg = model.config
     shapes = model.shapes
-    post = Qwen3_5Norm.rms_row(Qwen3_5Device.added(row, mixed, shapes.hidden), layer.post_norm, cfg, shapes)
+    post = Qwen3_5Norm.rms_rows(Qwen3_5Device.added(row, mixed, shapes.hidden), layer.post_norm, cfg, shapes, Qwen3_5Shapes.rows_of(cfg, shapes, 1))
     normed = hook_row(f"layers.{index}.post_attention_layernorm", 0, Expected.MODEL_HIDDEN)
     return [
         compare(f"model.Layer.post_norm.{index}", post, normed),
-        compare(f"model.Mlp.swiglu.{index}", Qwen3_5Mlp.swiglu(Qwen3_5Device.constant(normed), layer.mlp, cfg, shapes), hook_row(f"layers.{index}.mlp", 0, Expected.MODEL_HIDDEN)),
+        compare(f"model.Mlp.swiglu.{index}", Qwen3_5Mlp.swiglu(Qwen3_5Device.constant(normed), layer.mlp, cfg, Qwen3_5Shapes.rows_of(cfg, shapes, 1)), hook_row(f"layers.{index}.mlp", 0, Expected.MODEL_HIDDEN)),
     ]
 
 
 def delta_mixer_cases(model, layer, mixer, row, normed, held, index):
-    mixed = Qwen3_5DeltaNet.mix(normed, mixer, held, model.tiled, model.config, model.shapes)
+    mixed = Qwen3_5DeltaNet.mix(normed, mixer, held, model.tiled, model.config, model.shapes, 1)
     slot = Qwen3_5Cache.Delta(held=Qwen3_5Cache.DeltaSlot(conv=mixed.slot.conv, state=mixed.slot.state))
     grown = Qwen3_5Cache.grown(Qwen3_5Cache.Cache(slots=[]), slot)
     return listConcat([
@@ -314,7 +314,7 @@ def delta_mixer_cases(model, layer, mixer, row, normed, held, index):
 
 
 def attention_mixer_cases(model, layer, mixer, row, normed, held, index):
-    mixed = Qwen3_5Attention.mix(normed, mixer, held, model.config, model.shapes)
+    mixed = Qwen3_5Attention.mix(normed, mixer, held, model.config, model.shapes, 1)
     return listConcat([
         compare(f"model.Mixer.attention.Mixed.{index}", mixed.hidden, hook_row(f"layers.{index}.self_attn", 0, Expected.MODEL_HIDDEN)),
         Check.equal(f"model.AttentionSlot.positions.{index}", mixed.slot.positions, 1),

@@ -10,8 +10,8 @@ through `Qwen3_5Gguf`; a missing or invalid file is the startup error, never a s
 500. A `Session` is the handle: the model, the tokenizer, and a one-slot channel holding
 the `State` of the cache: the tokens it has seen, the logits after the last of them and
 the checkpoints kept behind it. A step takes the state out of the slot, feeds only the
-tokens the history adds past what the cache holds, and puts the state back, so a turn
-costs one forward pass per token and the next request starts where this one ended; the
+tokens the history adds past what the cache holds in one prefill ([LLM-PREFILL]), and
+puts the state back, so the next request starts where this one ended; the
 slot is the one place the server mutates, and a request waits on it for the request
 before ([LLM-MODEL-CACHE], [LLM-API-QUEUE]). The KV cache could be cut back but the
 recurrent state cannot, so when a history stops extending the cache (an agent that
@@ -204,16 +204,12 @@ def drop(items, n):
 
 
 def fed(model, state, tokens):
-    """The state after the cache has taken `tokens`, with the logits of the last."""
-    match listGet(tokens, 0):
-        case Error():
-            return Success(value=state) if Lists.count(state.logits) > 0 else Error(message="step: the history is empty")
-        case Success(value=first):
-            return Chain.then(decoded(model, state.cache, first), lambda start: Chain.then(fold(range(satSub(Lists.count(tokens), 1)), Success(value=start), lambda acc, i: Chain.then(acc, lambda step: decoded(model, step.cache, unwrap_or(listGet(tokens, satAdd(i, 1)), -1)))), lambda last: hosted(state, tokens, last)))
-
-
-def decoded(model, cache, token):
-    return Chain.then(Qwen3_5Model.decode(model, cache, token), lambda next: Success(value=Fed(cache=next.walk.cache, logits=next.logits)))
+    """The state after the cache has taken `tokens` in one prefill ([LLM-PREFILL]),
+    with the logits of the last."""
+    if Lists.count(tokens) == 0:
+        return Success(value=state) if Lists.count(state.logits) > 0 else Error(message="step: the history is empty")
+    else:
+        return Chain.then(Qwen3_5Model.prefill(model, state.cache, tokens), lambda next: hosted(state, tokens, Fed(cache=next.walk.cache, logits=next.logits)))
 
 
 def hosted(state, tokens, last):

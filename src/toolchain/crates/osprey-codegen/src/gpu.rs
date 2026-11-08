@@ -410,11 +410,8 @@ fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let out = buffer_alloc(cg, &n.operand, elem_owner(Some(LType::I64)));
     let reason = crate::extern_call::take_io_error(cg);
     let failed = cg.emit_reg(format!("icmp eq i8* {}, null", out.operand));
-    // Failed allocation has no iterations and is published only as Error.
-    let len = buffer_len(cg, &out);
-    let lp = open_range_loop(cg, "0", &len);
-    buffer_set(cg, &out, &lp.i, &lp.i.clone());
-    close_range_loop(cg, &lp);
+    // One runtime pass fills it; a failed allocation is left alone and published only as Error.
+    cg.call_void("osprey_gpu_iota_fill", "i8*", &[&out.operand]);
     crate::result::make_result_if_err_because(
         cg,
         out,

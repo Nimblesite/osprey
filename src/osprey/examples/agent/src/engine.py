@@ -102,7 +102,10 @@ GLM_MODELS = [
     ModelEntry(id="glm-4.7", label="GLM-4.7", levels=[], wire=ZAI_WIRE),
 ]
 
+LOCAL_QWEN_WIRE = Wire(kind="ollama", strict=False, reasoning=False, sendBack=True, maxTokens="max_tokens")
+
 PROVIDERS = [
+    Provider(id="osprey", label="Osprey Qwen", keyNames=[], base="http://127.0.0.1:11435/v1", models=[ModelEntry(id="qwen3.8:27b", label="Qwen 3.8 27B (local)", levels=[], wire=LOCAL_QWEN_WIRE)]),
     Provider(id="deepseek", label="DeepSeek", keyNames=["DEEPSEEKKEY", "DEEPSEEK_API_KEY"], base="https://api.deepseek.com", models=DEEPSEEK_MODELS),
     Provider(id="moonshotai", label="Kimi (Moonshot API)", keyNames=["MOONSHOT_API_KEY"], base="https://api.moonshot.ai/v1", models=MOONSHOT_MODELS),
     Provider(id="kimi-coding", label="Kimi Code plan", keyNames=["KIMI_API_KEY"], base="https://api.kimi.com/coding/v1", models=KIMI_CODING_MODELS),
@@ -321,6 +324,8 @@ def base_profile(kind, model_id):
         return Profiles.deepseek_model_profile(model_id)
     elif kind == "moonshotai":
         return Profiles.moonshotai_provider_profile(model_id)
+    elif kind == "ollama":
+        return Profiles.ollama_model_profile(model_id)
     elif kind == "zai":
         return Profiles.zai_provider_profile(model_id)
     else:
@@ -377,7 +382,8 @@ def completions(entry, profile, history, settings, tools):
 def request_body_with_tools(history, model, effort, extra_tools):
     """The Chat Completions request with the built-in and given tools."""
     settings = Settings.model_settings() if effort == "" else mapSet(Settings.model_settings(), "thinking", effort_setting(effort))
-    return completions(entry_of(model), profile_of(model), history, settings, definitions(extra_tools))
+    bounded = mapSet(settings, "max_tokens", JsonInt(2048)) if provider_id_of(model) == "osprey" else settings
+    return completions(entry_of(model), profile_of(model), history, bounded, definitions(extra_tools))
 
 
 def request_body_with_mcp(history, model, effort, servers_json):

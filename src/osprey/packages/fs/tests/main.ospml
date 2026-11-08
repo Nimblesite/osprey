@@ -1,0 +1,84 @@
+// Package tests: pure path handling over tables, plus walks over the package
+// tree itself and the regression fixture tree — fixtures every checkout has.
+// A walk that cannot read a directory is an Error, never an empty list.
+
+namespace fs_tests
+
+import fs::Path
+import fs::Walk
+
+test ("join separates without doubling", \() =>
+    expect (Path::join ("a/b", "c.osp"), "a/b/c.osp")
+    expect (Path::join ("a/b/", "c.osp"), "a/b/c.osp"))
+
+test ("dirOf answers the parent and drops the name", \() =>
+    expect (Path::dirOf ("a/b/c.osp"), "a/b")
+    expect (Path::dirOf ("leaf.osp"), "")
+    expect (Path::dirOf ("a/b/"), "a"))
+
+test ("nameOf answers the last segment", \() =>
+    expect (Path::nameOf ("a/b/c.osp"), "c.osp")
+    expect (Path::nameOf ("leaf.osp"), "leaf.osp"))
+
+test ("slug flattens every separator", \() =>
+    expect (Path::slug ("a/b/c.osp"), "a_b_c.osp")
+    expect (Path::slug ("leaf.osp"), "leaf.osp"))
+
+test ("under answers the one inside-a-directory test", \() =>
+    expect (Path::under ("a/b/c.osp", "a/b"), true)
+    expect (Path::under ("a/b/c.osp", "a"), true)
+    expect (Path::under ("a/other.osp", "a/b"), false))
+
+test ("resolve climbs, skips dots and keeps plain segments", \() =>
+    expect (Path::resolve ("a/gpt2/generate", "../model"), "a/gpt2/model")
+    expect (Path::resolve ("a/b", "."), "a/b")
+    expect (Path::resolve ("a/b", "./src/x.osp"), "a/b/src/x.osp")
+    expect (Path::resolve ("a/b", "../../../c"), "c")
+    expect (Path::resolve ("", "src"), "src")
+    expect (Path::resolve ("a//b/", "c"), "a/b/c"))
+
+test ("isDir reads listDir's trailing-separator directory marker", \() =>
+    expect (Path::isDir ("a/b/"), true)
+    expect (Path::isDir ("a/b"), false)
+    expect (Path::isDir (""), false))
+
+test ("tree walks real directories, nested ones included", \() =>
+    expect (walked "src/osprey/packages/fs/src", "src/osprey/packages/fs/src/path.ospml,src/osprey/packages/fs/src/walk.ospml")
+    expect (walked FIXTURE, "${FIXTURE}/leaf.txt,${FIXTURE}/nested/inner.txt")
+    expect (walked "${FIXTURE}/nested", "${FIXTURE}/nested/inner.txt"))
+
+test ("tree reports an unreadable directory as an Error, never an empty walk", \() =>
+    expect (walked "src/osprey/packages/fs/no-such-dir", "error")
+    expect (walked "src/osprey/packages/fs/osprey.toml", "error")
+    expect (shell "mkdir -p ${LOCKED}/a ${LOCKED}/c && touch ${LOCKED}/b.txt ${LOCKED}/c/d.txt && chmod 000 ${LOCKED}/a", 0)
+    expect (walked LOCKED, "error")
+    expect (walked "${LOCKED}/c", "${LOCKED}/c/d.txt")
+    expect (shell "chmod 755 ${LOCKED}/a", 0)
+    expect (walked LOCKED, "${LOCKED}/b.txt,${LOCKED}/c/d.txt"))
+
+test ("nameOf and dirOf agree on every shape of path", \() =>
+    forEachList (["a/b/c.osp", "leaf.osp", "a/b/", "/abs/x", "a//b", ""], \p => expect ("${Path::dirOf p}|${Path::nameOf p}", shapeOf p)))
+
+shapeOf p = match p
+    "a/b/c.osp" => "a/b|c.osp"
+    "leaf.osp" => "|leaf.osp"
+    "a/b/" => "a|"
+    "/abs/x" => "/abs|x"
+    "a//b" => "a/|b"
+    _ => "|"
+
+// A nested directory nobody may read: the walk fails at it, and every
+// entry after it keeps the Error instead of reading as more files.
+LOCKED = "target/fs-tests/locked"
+
+shell command = match spawnProcess (command) quiet
+    Success pid => awaitProcess pid
+    Error _ => -1
+
+quiet (_pid, _event, _data) = cleanupProcess 0
+
+FIXTURE = "src/osprey/tests/regressions/basics/files/list_dir_fixture"
+
+walked root = match Walk::tree root
+    Success files => join (files, ",")
+    Error _ => "error"

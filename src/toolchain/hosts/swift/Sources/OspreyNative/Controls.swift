@@ -155,6 +155,7 @@ struct FieldView: View {
     @State private var draft: String
     @FocusState private var focused: Bool
     @State private var pasteMonitor: Any?
+    @State private var pasteID = UUID()
     @Environment(\.ospreyInherited) private var inherited
     private static let singleLineHeight: CGFloat = 25
 
@@ -180,7 +181,8 @@ struct FieldView: View {
         .onAppear { if node.flag("multiline") { DispatchQueue.main.async { focused = true } } }
         #if os(macOS)
         .onAppear { if node.flag("multiline") && pasteMonitor == nil { pasteMonitor = monitorPaste() } }
-        .onDisappear { if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }; pasteMonitor = nil }
+        .onChange(of: focused) { _, now in if now && pasteMonitor != nil { PastedImage.receivers.insert(pasteID) } else { PastedImage.receivers.remove(pasteID) } }
+        .onDisappear { PastedImage.receivers.remove(pasteID); if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }; pasteMonitor = nil }
         #endif
         .onChange(of: draft) { _, next in if edits && next != value { send(next) } }
         .onChange(of: value) { _, next in if next != draft { draft = next } }

@@ -1,0 +1,12 @@
+// Implements [LEX-STATEMENT-BREAK] negative test.
+//
+// A `;` does not end a statement: the line break does. A program written with
+// C-style terminators is told to delete them, not shown its own source back.
+// A separate file because the parser reports the FIRST syntax error and stops.
+
+fn escaped(s) = {
+    let a = replace(s, "\\", "\\\\") ?: s;
+    replace(a, "\t", "\\t") ?: a
+}
+
+print(escaped("a\tb"))

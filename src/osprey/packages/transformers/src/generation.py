@@ -30,31 +30,63 @@ def generate(next_logits, tokens, processors, stoppers, sampler, max_new_tokens)
     criterion fires. `processors` is a `list[LogitsProcessor]`, `stoppers` a
     `list[StoppingCriterion]`, and `sampler` picks one token from a logits row.
     A non-finite logits row is an `Error` naming the step that produced it."""
-    return step(next_logits, tokens, processors, stoppers, sampler, max_new_tokens, 1)
+    if max_new_tokens < 0:
+        return Error(message="generate: negative token budget")
+    else:
+        return step(next_logits, tokens, processors, stoppers, sampler, max_new_tokens, 1)
 
 
-def finite(logits) -> bool:
+def finite(logits):
     """Whether every logit is a finite number: NaN is unequal to itself and an
     infinity exceeds the largest float32 in magnitude."""
-    return fold(range(len(logits)), True, lambda ok, i: ok and finite_one(unwrap_or(listGet(logits, i), toFloat32(0.0))))
+    return foldList(logits, True, lambda ok, x: ok and finite_one(x))
 
 
-def finite_one(x) -> bool:
+def finite_one(x):
     return x == x and x <= toFloat32(3.4028234663852886e38) and x >= toFloat32(-3.4028234663852886e38)
 
 
-def step(next_logits, tokens, processors, stoppers, sampler, remaining, number) -> Result[list[int], str]:
+def step(next_logits, tokens, processors, stoppers, sampler, remaining, number):
     if remaining == 0:
         return Success(value=tokens)
     else:
         scored = next_logits(tokens)
-        if finite(scored):
-            return advance(next_logits, listAppend(tokens, sampler(apply_list(processors, tokens, scored))), processors, stoppers, sampler, remaining, number)
+        if len(scored) == 0:
+            return Error(message=f"generate: step {number}: empty logits")
+        elif finite(scored):
+            return select(next_logits, tokens, processors, stoppers, sampler, remaining, number, apply_list(processors, tokens, scored))
         else:
             return Error(message=f"generate: step {number}: logits are not finite")
 
 
-def advance(next_logits, grown, processors, stoppers, sampler, remaining, number) -> Result[list[int], str]:
+def selectable(scores):
+    """[FAILURE-EXPLICIT] Masks are legal, but at least one finite score must remain."""
+    return foldList(scores, False, lambda found, x: found or finite_one(x))
+
+
+def valid_scores(scores):
+    """Processors may mask with -infinity, never introduce NaN or +infinity."""
+    return foldList(scores, True, lambda ok, x: ok and (finite_one(x) or x < toFloat32(-3.4028234663852886e38)))
+
+
+def select(next_logits, tokens, processors, stoppers, sampler, remaining, number, scores):
+    if not valid_scores(scores):
+        return Error(message=f"generate: step {number}: invalid processed logits")
+    elif not selectable(scores):
+        return Error(message=f"generate: step {number}: no selectable logits")
+    else:
+        chosen = sampler(scores)
+        match listGet(scores, chosen):
+            case Success(value=score):
+                if finite_one(score):
+                    return advance(next_logits, listAppend(tokens, chosen), processors, stoppers, sampler, remaining, number)
+                else:
+                    return Error(message=f"generate: step {number}: invalid sampled token")
+            case Error():
+                return Error(message=f"generate: step {number}: invalid sampled token")
+
+
+def advance(next_logits, grown, processors, stoppers, sampler, remaining, number):
     if stopped_any(stoppers, grown):
         return Success(value=grown)
     else:

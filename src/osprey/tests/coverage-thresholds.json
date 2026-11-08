@@ -370,6 +370,10 @@
         "language": "osprey",
         "threshold": 100.0
       },
+      "fs": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
       "signal_flow": {
         "language": "osprey",
         "threshold": 91.3

@@ -119,6 +119,7 @@ ok providers.http_close_2
 ok providers.http_close_3
 ok providers.http_close_4
 ok providers.http_close_5
+ok providers.http_base_paths
 ok profile.flags
 ok profile.texts
 ok profile.merge
@@ -508,4 +509,4 @@ ok typed.http_reply
 ok typed.settings
 ok typed.tool_definition
 ok typed.run_usage
-510 passed, 0 failed
+511 passed, 0 failed

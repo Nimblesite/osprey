@@ -8,7 +8,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: gpt2 gpt2-train qwen-pull
+.PHONY: gpt2 gpt2-train qwen-pull qwen-pydantic
 
 ## gpt2: Run GPT-2 (usage: make gpt2 FLAVOR=default|python PROMPT="..." TOKENS=20 BACKEND=gpu|lists)
 ## BACKEND=gpu runs the model on the GPU surface: every kernel and product on GPU=auto|metal|opencl, or on the CPU with GPU=host; BACKEND=lists runs the same model over host lists.
@@ -25,4 +25,9 @@ gpt2-train: build $(GPT2_DIR)/weights/model.safetensors $(GPT2_DIR)/weights/merg
 ## qwen-pull: Download the Qwen3.8-27B GGUF (QWEN_QUANT=UD-Q4_K_XL, the plan's default; also UD-Q5_K_M, UD-IQ3_XXS) into ~/.cache/osprey-llm/gguf, resuming a partial file and checking its SHA-256 against Hugging Face's LFS metadata before it is named .gguf.
 qwen-pull:
 	sh $(QWEN_DIR)/pull.sh
+
+## qwen-pydantic: Local-only real Osprey Qwen coding tests: Pydantic AI writes code, Qwen directly judges it and a broken control. No CI registration.
+## Requires QWEN_PYTHON with pydantic-ai-slim[openai]==2.46.0 and the current compiler/runtime; reserves the GPU for up to 900 seconds after building.
+qwen-pydantic:
+	$(MAKE) _qwen-lanes LANES=pydantic
 endif

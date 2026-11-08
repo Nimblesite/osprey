@@ -11,8 +11,11 @@ using namespace metal;
 #define GPU_PARAM constant ulong &
 #define GPU_THREAD , uint index [[thread_position_in_grid]]
 #define GPU_INDEX (ulong)(index)
-#define GPU_LANE_THREAD , uint index [[thread_position_in_grid]], uint local_index [[thread_position_in_threadgroup]]
+#define GPU_LANE_THREAD , uint index [[thread_position_in_grid]], uint local_index [[thread_position_in_threadgroup]], uint simd_width [[threads_per_simdgroup]]
+#define GPU_SIMD_WIDTH simd_width
+#define GPU_SIMD_XOR(v, off) simd_shuffle_xor(v, off)
 #define GPU_LOCAL threadgroup
+#define GPU_PRIVATE thread
 #define GPU_LOCAL_INDEX local_index
 #define GPU_BARRIER() threadgroup_barrier(mem_flags::mem_threadgroup)
 #elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
@@ -23,7 +26,10 @@ using namespace metal;
 #define GPU_THREAD
 #define GPU_INDEX get_global_id(0)
 #define GPU_LANE_THREAD
+#define GPU_SIMD_WIDTH 0u
+#define GPU_SIMD_XOR(v, off) (v)
 #define GPU_LOCAL __local
+#define GPU_PRIVATE
 #define GPU_LOCAL_INDEX ((uint)get_local_id(0))
 #define GPU_BARRIER() barrier(CLK_LOCAL_MEM_FENCE)
 #else
@@ -38,7 +44,10 @@ typedef uint16_t ushort;
 #define GPU_THREAD , ulong thread_index
 #define GPU_INDEX thread_index
 #define GPU_LANE_THREAD , ulong thread_index, uint local_index
+#define GPU_SIMD_WIDTH 0u
+#define GPU_SIMD_XOR(v, off) (v)
 #define GPU_LOCAL
+#define GPU_PRIVATE
 #define GPU_LOCAL_INDEX local_index
 #define GPU_BARRIER()
 #define constant static const

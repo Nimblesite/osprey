@@ -1,4 +1,4 @@
-// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT]
+// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT] [HTTP-SERVER-CLIENT-GONE]
 // ML twin of http_server_example.osp. Top-level statements are the program body;
 // the HTTP builtins are ordinary calls. The handler's `-> HttpResponse` return is
 // load-bearing (mirrored by an ML signature); its body is a layout `match` over
@@ -17,6 +17,24 @@ jsonResponse (status, body) = HttpResponse(
 
 print "=== Comprehensive HTTP API Test ==="
 
+(** What the slow handler saw: how many 10 ms waits passed before its client left,
+    or -1 if the client never did. *)
+goneAfter = Channel 1
+
+(** Waits in 10 ms steps until the client of this request hangs up, for 5 s at most. *)
+waitGone waits = match httpClientGone ()
+    1 => waits
+    _ => match waits
+        500 => -1
+        _ =>
+            sleep 10
+            waitGone (satAdd waits 1)
+
+(** The slow route: reports through `goneAfter` when its client left. *)
+slowRoute () =
+    send goneAfter (waitGone 0)
+    jsonResponse (200, "{\"late\": true}")
+
 print "Creating HTTP server on port 18080..."
 serverId = httpCreateServer 18080 "127.0.0.1" ?: -1
 print "Server created with ID: ${serverId}"
@@ -28,6 +46,8 @@ handleHttpRequest (method, path, _headers, _body) =
             match path
                 "/api/users" => jsonResponse (200, "{\"users\": [{\"id\": 1, \"name\": \"Alice\"}, {\"id\": 2, \"name\": \"Bob\"}]}")
                 "/health" => jsonResponse (200, "{\"status\": \"ok\", \"timestamp\": \"2025-01-15T10:30:00Z\"}")
+                "/alive" => jsonResponse (satAdd 200 (httpClientGone ()), "{}")
+                "/slow" => slowRoute ()
                 _ => jsonResponse (404, "{\"error\": \"Not found\"}")
         "POST" =>
             match path
@@ -76,6 +96,17 @@ loginResult = request (clientId, "POST", "/api/auth/login", "{\"username\": \"ad
 putResult = request (clientId, "PUT", "/api/users/1", "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}")
 deleteResult = request (clientId, "DELETE", "/api/users/1", "")
 
+// A client that gives up after 300 ms: the handler notices it left, and the
+// listener serves the next request.
+print "=== Testing Client Gone ==="
+impatient = httpCreateClient "http://127.0.0.1:18080" 300 ?: -1
+slowResult = match httpGet impatient "/slow" ""
+    Success value => value
+    Error _ => -2
+waited = recv goneAfter
+print "GET /slow result: ${slowResult}, handler saw the client leave: ${waited > 0}"
+aliveResult = request (clientId, "GET", "/alive", "")
+
 print "=== Testing Error Cases ==="
 notFoundResult = request (clientId, "GET", "/nonexistent", "")
 
@@ -92,6 +123,11 @@ print "=== HTTP API Test Complete ==="
 test "local HTTP API routes every method and status" (\() => checkAll "HTTP API statuses" [
     serverId > 0,
     clientId > 0,
+    httpClientGone () == 0,
+    slowResult == -2,
+    waited > 0,
+    waited < 500,
+    aliveResult == 200,
     structuralEquals [getUsersResult, getHealthResult, postResult, loginResult] [200, 200, 201, 200],
     structuralEquals [putResult, deleteResult, notFoundResult, stopResult] [200, 200, 404, 0]
 ])

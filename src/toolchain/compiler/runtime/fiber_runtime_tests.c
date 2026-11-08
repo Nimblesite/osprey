@@ -98,12 +98,19 @@ void test_multiple_fibers(void) {
   assert(result2 == 100 && "second fiber should return 100");
 }
 
+static void sleep_past_microsecond_word(void) {
+  (void)fiber_sleep(INT64_C(4294968)); // 32-bit microseconds would wrap to 704us.
+}
+
 void test_fiber_sleep(void) {
   // [CONCURRENCY-SLEEP] Non-positive durations return immediately.
   assert(fiber_sleep(0) == 0);
   assert(fiber_sleep(-1) == 0);
   int64_t result = fiber_sleep(10);
   assert(result == 0 && "fiber_sleep should return 0 on success");
+  assert(osp_death_signal_within(sleep_past_microsecond_word, 1) ==
+             OSP_DEATH_STALLED &&
+         "[CONCURRENCY-SLEEP] a long sleep must not wrap to a short delay");
 }
 
 void test_fiber_stress(void) {

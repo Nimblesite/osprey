@@ -2,3 +2,10 @@
 # `deslop .`; it exits 3 above this ceiling. No exclusions: every file counts.
 [threshold]
 max_duplication_percent = 6.2
+
+# The tree-sitter generated parser carries no generator banner, so Deslop would
+# analyse its 86k lines as hand-written C. It stays analysed but hidden: a
+# hand-written file duplicating it is still reported, while the parser
+# duplicating itself stays out of the headline number.
+[defaults]
+report_hide = ["src/toolchain/tree-sitter-osprey/src/**"]

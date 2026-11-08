@@ -1,8 +1,9 @@
 # Qwen3.8-27B on Metal
 
 The real model on the real weights, greedy, through the package: `Qwen3_5Gguf` maps the
-GGUF, the tokenizer is built from the file's own `tokenizer.ggml.*` tables (`Qwen3_5Vocab`, shared with the server), and every
-token prints as `position token -> next`, so a run is its own receipt.
+GGUF, the tokenizer is built from the file's own `tokenizer.ggml.*` tables (`Qwen3_5Vocab`, shared with the server), the
+prompt goes in as one batched prefill (`prefill N -> next`), and every generated token prints as
+`position token -> next`, so a run is its own receipt.
 
 ```
 printf '%s\n%s\n%s\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf 'The capital of France is' 61 \

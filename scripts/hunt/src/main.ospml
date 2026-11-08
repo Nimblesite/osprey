@@ -1,0 +1,21 @@
+// hunt: the Osprey app that runs `osprey hunt` (KLEE) over every Osprey
+// program in the repository and renders one HTML report [SYMEX-CORPUS].
+// Run from the repo root: `make -C src/osprey/tests/hunt hunt-corpus`.
+
+namespace hunt
+
+import hunt::Inventory
+import hunt::Report
+import hunt::Sweep
+
+main () = match Inventory::discover ()
+    Error message => print "hunt: cannot walk the corpus: ${message}"
+    Success programs => listedThen programs
+
+listedThen programs = match Inventory::unportable ()
+    Error message => print "hunt: cannot read the unportable list: ${message}"
+    Success rows => deliver (Sweep::run (programs, rows))
+
+deliver outcomes = match Report::write (Report::OUT, outcomes)
+    Success bytes => print "hunt: ${Report::OUT} (${toString bytes} bytes): ${Report::tally outcomes}"
+    Error message => print "hunt: cannot write ${Report::OUT}: ${message}"

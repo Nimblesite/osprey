@@ -41,6 +41,8 @@ fn http_server(e: &mut TypeEnv) {
         res(i()),
     );
     mono(e, "httpStopServer", vec![i()], res(i()));
+    // [HTTP-SERVER-CLIENT-GONE] A long handler asks whether anyone still waits.
+    mono(e, "httpClientGone", vec![], i());
 }
 
 pub(super) fn websocket(e: &mut TypeEnv) {

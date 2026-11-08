@@ -142,6 +142,11 @@ const PACKAGES = {
     authors: "NIMBLESITE PTY LTD, Australia",
     relationship: "original",
   },
+  fs: {
+    project: "Osprey (directory walking and paths)",
+    authors: "NIMBLESITE PTY LTD, Australia",
+    relationship: "original",
+  },
   json: {
     project: "Osprey (JSON codec)",
     authors: "NIMBLESITE PTY LTD, Australia",

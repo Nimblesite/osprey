@@ -10,7 +10,7 @@ src/osprey/examples/agent/run.sh --test                    # the suite: no netwo
 
 ![Osprey Agent fixing a project and summing up its work](screenshot.png)
 
-Without a key for the conversation's provider, the send button becomes `Add an API key` and the composer says what is missing. A failed request never locks anything: every send asks the provider again. The key stays in memory and in the app's private support folder, and is never written to the conversations file. Conversations are saved after every turn, one write at a time, and a failed save is shown in the conversation.
+For a remote provider, without its key, the send button becomes `Add an API key` and the composer says what is missing. A failed request never locks anything: every send asks the provider again. The key stays in memory and in the app's private support folder, and is never written to the conversations file. Conversations are saved after every turn, one write at a time, and a failed save is shown in the conversation.
 
 ## Providers, keys and effort
 
@@ -18,6 +18,7 @@ Open `Settings` at the foot of the sidebar. Under `Providers`, paste a key and p
 
 | Provider | Key in a dotenv file |
 | --- | --- |
+| Osprey Qwen (local) | No key; real Osprey server at `http://127.0.0.1:11435/v1` |
 | DeepSeek | `DEEPSEEKKEY` or `DEEPSEEK_API_KEY` |
 | Kimi (Moonshot API) | `MOONSHOT_API_KEY` |
 | Kimi Code plan | `KIMI_API_KEY` |
@@ -25,6 +26,8 @@ Open `Settings` at the foot of the sidebar. Under `Providers`, paste a key and p
 | GLM Coding Plan | `ZAI_CODING_API_KEY` |
 
 `run.sh` copies the dotenv file to the support folder as `key.env`, which also serves a launch from the Dock. A key saved in Settings wins over the file. `Effort` lists the levels the model has, and is absent when it has none.
+
+Select **Osprey Qwen** to use the local `qwen3.8:27b` model. Its server must be running on port 11435; a stopped server produces a request error, never a cloud fallback.
 
 ## MCP servers
 
@@ -73,6 +76,10 @@ Every pixel is a framework node, a frame and a theme token, so the application c
 ## Testing it
 
 `make -C src/toolchain/targets/tests agent` runs the host-free suites on any platform. `make -C src/toolchain/targets/macos/tests agent-headless` and `agent-live` run the two modes below.
+
+`make -C src/toolchain/targets/macos/tests agent-qwen` is the explicit local-only full E2E: it builds and starts the real Osprey server with the pinned GGUF, drives the actual Agent window to fix and extend a project, runs independent acceptance tests, compares initial UI screenshots with committed Qwen goldens, then compares the saved conversation after restarting the window. It never uses an HTTP double or cloud key and is not registered in CI. Install `pydantic-ai-slim[openai]` in the Qwen harness environment first.
+
+The direct Qwen judge uses Pydantic AI with fresh history to assess actual code, UI accessibility text and test results. It does not receive images and cannot certify screenshot appearance. Screenshots, their hashes, project files, framework traces and the raw judgement are preserved under `target/logs/plan0049/qwen-ui/`; new transcript screenshots are capture references, while the restart run performs the pixel comparisons. A failed model judgement or independent check fails the run.
 
 `self-test.sh` plays the same scripts in `self-test/` through the real views, update and capabilities on the SwiftUI host ([UI-MACHINE-SELF-TEST]):
 

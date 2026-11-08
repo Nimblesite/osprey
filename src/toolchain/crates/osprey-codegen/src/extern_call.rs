@@ -114,6 +114,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "httpCreateServer" => sig("http_create_server", &[I64, Str], Ret::ResultInt),
         "httpListen" => sig("http_listen", &[I64, Ptr], Ret::ResultInt),
         "httpStopServer" => sig("http_stop_server", &[I64], Ret::ResultInt),
+        "httpClientGone" => sig("http_client_gone", &[], Ret::Int),
         "httpCreateClient" => sig("http_create_client", &[Str, I64], Ret::ResultInt),
         "httpGet" => sig("http_get", &[I64, Str, Str], Ret::ResultInt),
         "httpPost" => sig("http_post", &[I64, Str, Str, Str], Ret::ResultInt),

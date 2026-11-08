@@ -16,7 +16,7 @@
     "rust-analyzer.cfg.setTest": true,
     "rust-analyzer.check.command": "clippy",
     "rust-analyzer.check.allTargets": true,
-    "deslop.topOffenders.groupBy": "language",
+    "deslop.topOffenders.groupBy": "kind",
     "deslop.embedding.provider": "ollama",
     "deslop.embedding.model": "nomic-embed-text",
     "deslop.embedding.mode": "auto",

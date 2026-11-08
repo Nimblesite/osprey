@@ -187,3 +187,23 @@ reusableAwaitCase () =
         fiberDone number == 1, fiberDone parts == 1
     ]
 test "a completed fiber answers every await with the same value" reusableAwaitCase
+
+(** Folds n down to zero with work after each call, so no frame can be reused. *)
+unwound n = match n
+    0 => 0
+    _ => wrapSub (wrapMul (unwound (wrapSub n 1)) 3) n
+
+(** A fiber's body recurses as deep as the main thread's, many fibers at once,
+    and answers the same value; a fiber once died with SIGBUS and no message at
+    a few thousand frames. [CONCURRENCY-SPAWN-AWAIT] [FAILURE-EXPLICIT] *)
+deepFiberCase () =
+    deep = spawn (unwound 50000)
+    deeper = spawn (unwound 80000)
+    shallow = spawn (unwound 3)
+    width = spawn (unwound 20000)
+    checkAll "a fiber recurses as deep as the main thread" [
+        await shallow == -18, await shallow == unwound 3,
+        await deep == unwound 50000, await deeper == unwound 80000,
+        await width == unwound 20000, await deep != await deeper
+    ]
+test "a fiber recurses as deep as the main thread" deepFiberCase

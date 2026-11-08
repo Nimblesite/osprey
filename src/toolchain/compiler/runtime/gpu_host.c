@@ -153,18 +153,18 @@ typedef struct {
   const char *kernel;
   int64_t elements;
   int64_t bytes;
-  float (*lane)(float acc, const float *x, const unsigned char *block, uint lane);
+  void (*weights)(const unsigned char *block, uint lane, float *w);
 } QuantFormat;
 
 static const QuantFormat QUANT_FORMATS[] = {
-    {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4_k_lane},
-    {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_lane},
-    {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_lane},
-    {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_lane},
-    {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_lane},
-    {"IQ4_NL", "osprey_matmul_iq4_nl", 32, 18, iq4_nl_lane},
-    {"IQ4_XS", "osprey_matmul_iq4_xs", 256, 136, iq4_xs_lane},
-    {"IQ3_S", "osprey_matmul_iq3_s", 256, 110, iq3_s_lane},
+    {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4_k_weights},
+    {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_weights},
+    {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_weights},
+    {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_weights},
+    {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_weights},
+    {"IQ4_NL", "osprey_matmul_iq4_nl", 32, 18, iq4_nl_weights},
+    {"IQ4_XS", "osprey_matmul_iq4_xs", 256, 136, iq4_xs_weights},
+    {"IQ3_S", "osprey_matmul_iq3_s", 256, 110, iq3_s_weights},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 
@@ -180,8 +180,11 @@ static const QuantFormat *quant_format(const char *type) {
 static float lane_sum(const QuantFormat *format, const float *xr, const unsigned char *row, int64_t blocks, uint lane) {
   uint per_block = (uint)format->elements / 8, per_span = QUANT_LANES / per_block;
   float acc = 0.0f;
-  for (int64_t blk = lane / per_block; blk < blocks; blk += per_span)
-    acc = format->lane(acc, xr + blk * format->elements, row + blk * format->bytes, lane % per_block);
+  for (int64_t blk = lane / per_block; blk < blocks; blk += per_span) {
+    float w[8];
+    format->weights(row + blk * format->bytes, lane % per_block, w);
+    acc = quant_lane(acc, xr + blk * format->elements + (lane % per_block) * 8, w);
+  }
   return acc;
 }
 
@@ -194,6 +197,13 @@ static float butterfly(float *sums) {
     for (uint l = 0; l < QUANT_LANES; l++) sums[l] = sums[l] + other[l];
   }
   return sums[0];
+}
+
+// The threads each form of the product dispatches: 32 per QUANT_ROWS by
+// QUANT_COLS tile for few rows, a QUANT_GROUP per many-row tile.
+static void quant_grid(int64_t rows, int64_t cols, uint64_t threads[2]) {
+  threads[0] = (uint64_t)((rows + QUANT_ROWS - 1) / QUANT_ROWS * ((cols + QUANT_COLS - 1) / QUANT_COLS) * QUANT_LANES);
+  threads[1] = (uint64_t)((rows + QUANT_MM_TILE - 1) / QUANT_MM_TILE * ((cols + QUANT_MM_TILE - 1) / QUANT_MM_TILE) * QUANT_GROUP);
 }
 
 // The oracle of the library kernels `osprey_matmul_<type>`, lane for lane.
@@ -260,7 +270,9 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
     return abandoned(out);
   }
-  int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols);
+  uint64_t threads[2];
+  quant_grid(rows, cols, threads);
+  int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols, threads);
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
   product_quant(format, osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
@@ -365,31 +377,38 @@ void *osprey_gpu_load_tensor(const char *path, const char *name, int64_t elem) {
   return load(OP_TENSOR, path, &span, elem);
 }
 
-// The host oracle of the library kernel `osprey_delta_rule`, in its order.
-static void delta_thread(const float *const in[6], float *out, int64_t heads, int64_t dim, int64_t t) {
-  const float *state = in[0], *queries = in[1], *keys = in[2], *values = in[3], *beta = in[4], *decay = in[5];
-  int64_t h = t / dim, v = t % dim, plane = h * dim * dim;
-  float fade = decay[h], recalled = 0.0f;
-  for (int64_t k = 0; k < dim; k++) {
-    float kept = state[plane + k * dim + v] * fade;
-    float product = kept * keys[h * dim + k];
-    recalled = recalled + product;
+// The host oracle of the library kernel `osprey_delta_rule`, in its order: thread
+// `t` owns one state column through every step.
+static void delta_thread(const float *const in[6], float *out, int64_t heads, int64_t dim, int64_t steps, int64_t t) {
+  const float *column = in[0];
+  int64_t h = t / dim, v = t % dim, plane = h * dim * dim, cells = heads * dim;
+  for (int64_t s = 0; s < steps; s++) {
+    const float *queries = in[1] + s * cells, *keys = in[2] + s * cells;
+    float fade = in[5][s * heads + h], recalled = 0.0f;
+    for (int64_t k = 0; k < dim; k++) {
+      float kept = column[plane + k * dim + v] * fade;
+      float product = kept * keys[h * dim + k];
+      recalled = recalled + product;
+    }
+    float delta = (in[3][s * cells + t] - recalled) * in[4][s * heads + h], read = 0.0f;
+    for (int64_t k = 0; k < dim; k++) {
+      float kept = column[plane + k * dim + v] * fade;
+      float update = keys[h * dim + k] * delta;
+      float next = kept + update;
+      out[plane + k * dim + v] = next;
+      float product = next * queries[h * dim + k];
+      read = read + product;
+    }
+    out[heads * dim * dim + s * cells + t] = read;
+    column = out;
   }
-  float delta = (values[t] - recalled) * beta[h], read = 0.0f;
-  for (int64_t k = 0; k < dim; k++) {
-    float kept = state[plane + k * dim + v] * fade;
-    float update = keys[h * dim + k] * delta;
-    float next = kept + update;
-    out[plane + k * dim + v] = next;
-    float product = next * queries[h * dim + k];
-    read = read + product;
-  }
-  out[heads * dim * dim + t] = read;
 }
 
 // [LLM-DELTA-RULE] `state` is a previous result or zeros: heads * dim * dim state
-// cells then heads * dim outputs, which a step ignores. `queries`, `keys` and
-// `values` hold dim values per head, `beta` and `decay` one per head.
+// cells then any outputs, which a step ignores. `queries`, `keys` and `values`
+// hold dim values per head per token, `beta` and `decay` one per head per token;
+// the token count is how many times heads * dim divides `queries`, and the result
+// is the final state then every token's outputs in order ([LLM-PREFILL]).
 void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values, void *beta, void *decay, int64_t heads, int64_t dim) {
   static const char OP[] = "gpuDeltaRule";
   int64_t cells = area(heads, dim, 4), plane = cells < 0 ? -1 : area(cells, dim, 4);
@@ -397,9 +416,18 @@ void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values
     osp_io_error_text(OP, "shape", "heads and dim must be positive and small enough for 32-bit indices");
     return NULL;
   }
-  int64_t total = plane + cells;
-  if (!shaped(OP, state, total, "state") || !shaped(OP, queries, cells, "queries") || !shaped(OP, keys, cells, "keys") ||
-      !shaped(OP, values, cells, "values") || !shaped(OP, beta, heads, "beta") || !shaped(OP, decay, heads, "decay")) {
+  int64_t steps = queries ? osprey_gpu_len(queries) / cells : 0;
+  if (steps < 1 || steps * cells > INT32_MAX - plane) {
+    osp_io_error_text(OP, "queries", "must hold heads * dim values per token, for 32-bit indices' worth of tokens");
+    return NULL;
+  }
+  int64_t total = plane + steps * cells;
+  if (osprey_gpu_len(state) < plane) {
+    osp_io_error_text(OP, "state", "must hold at least heads * dim * dim cells");
+    return NULL;
+  }
+  if (!shaped(OP, queries, steps * cells, "queries") || !shaped(OP, keys, steps * cells, "keys") ||
+      !shaped(OP, values, steps * cells, "values") || !shaped(OP, beta, steps * heads, "beta") || !shaped(OP, decay, steps * heads, "decay")) {
     return NULL;
   }
   void *const operands[6] = {state, queries, keys, values, beta, decay};
@@ -414,7 +442,7 @@ void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values
     osp_io_error_set(OP, "result", ENOMEM);
     return abandoned(out);
   }
-  int device = osprey_gpu_device_delta_rule(operands, out, heads, dim);
+  int device = osprey_gpu_device_delta_rule(operands, out, heads, dim, steps);
   if (device != 0) return device > 0 ? out : abandoned(out);
   const float *in[6];
   for (unsigned i = 0; i < 6; i++) {
@@ -422,7 +450,7 @@ void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values
     in[i] = osprey_gpu_data(operands[i]);
   }
   float *words = osprey_gpu_data(out);
-  for (int64_t t = 0; t < heads * dim; t++) delta_thread(in, words, heads, dim, t);
+  for (int64_t t = 0; t < heads * dim; t++) delta_thread(in, words, heads, dim, steps, t);
   return out;
 }
 

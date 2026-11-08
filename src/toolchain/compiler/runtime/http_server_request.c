@@ -2,6 +2,9 @@
 
 #include <ctype.h>
 #include <time.h>
+#ifndef _WIN32
+#include <poll.h>
+#endif
 
 typedef struct {
   size_t content_length;
@@ -358,4 +361,38 @@ RequestReadStatus read_http_request(int socket_fd, HttpRequestBuffer *request) {
       return status;
     }
   }
+}
+
+// The client of the request this thread is handling, -1 outside a handler.
+static _Thread_local int serving_client_fd = -1;
+
+void http_serving_client(int client_fd) { serving_client_fd = client_fd; }
+
+static bool client_readable(int fd) {
+#ifndef _WIN32
+  if (fd >= FD_SETSIZE) {
+    struct pollfd client = {.fd = fd, .events = POLLIN};
+    return poll(&client, 1, 0) > 0 &&
+           (client.revents & (POLLIN | POLLHUP | POLLERR)) != 0;
+  }
+#endif
+  fd_set read_set;
+  FD_ZERO(&read_set);
+  FD_SET(fd, &read_set);
+  struct timeval now = {0, 0};
+  return select(fd + 1, &read_set, NULL, NULL, &now) > 0;
+}
+
+// [HTTP-SERVER-CLIENT-GONE] 1 once the client of the request this thread is
+// handling has closed or reset its connection, so a long handler can stop
+// working for nobody; 0 while it is still there and outside any handler. A
+// readable socket whose peek reads nothing is an orderly close; a pipelined
+// byte waiting is a client still there.
+int64_t http_client_gone(void) {
+  int fd = serving_client_fd;
+  if (fd < 0 || !client_readable(fd)) {
+    return 0;
+  }
+  char probe;
+  return recv(fd, &probe, 1, MSG_PEEK) > 0 ? 0 : 1;
 }

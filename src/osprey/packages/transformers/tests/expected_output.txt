@@ -397,4 +397,16 @@ ok min_f
 ok max_f
 ok generate
 ok non-finite logits
-399 passed, 0 failed
+ok negative budget
+ok empty logits
+ok all masked
+ok negative sampled id
+ok oversize sampled id
+ok masked sampled id
+ok zero budget
+ok partial mask
+ok processed NaN
+ok processed infinity
+ok empty prompt
+ok later empty logits
+411 passed, 0 failed

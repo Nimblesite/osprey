@@ -168,6 +168,51 @@ fn doctests_work_in_mixed_flavor_projects() {
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
+/// A package names its own namespace as `default_namespace`, so the harness's
+/// top-level wrapper is placed in the very namespace that already holds the
+/// example's inner wrapper: each nesting level needs its own runner name.
+const PACKAGE_SOURCES: [(&str, &str); 4] = [
+    (
+        "osprey.toml",
+        "[project]\nname = \"labels\"\nsource_roots = [\"src\"]\npython_sources = [\"src/numbers.py\"]\ndefault_namespace = \"ui\"\n",
+    ),
+    (
+        "src/words.osp",
+        "namespace ui {\n    /// Words.\n    module Words {\n        /// Shouts.\n        /// # Examples\n        /// ```osprey\n        /// print(Words::shout(\"hi\"))\n        /// ```\n        /// ```output\n        /// hi!\n        /// ```\n        export fn shout(word) = \"${word}!\"\n    }\n    /// Greets.\n    /// # Examples\n    /// ```osprey\n    /// print(greet(\"Ada\"))\n    /// ```\n    /// ```output\n    /// hello Ada\n    /// ```\n    fn greet(name) = \"hello ${name}\"\n}\n",
+    ),
+    (
+        "src/labels.ospml",
+        "namespace ui\n\n(** Labels. *)\nmodule Labels\n    (** Labels a count.\n    # Examples\n    ```osprey\n    print (Labels::label 3)\n    ```\n    ```output\n    count 3\n    ```\n    *)\n    export label n = \"count ${n}\"\n",
+    ),
+    (
+        "src/numbers.py",
+        "# osprey: flavor=python\n# osprey: namespace=ui\n# osprey: module=Numbers\n\"\"\"Numbers.\"\"\"\n\n__all__ = [\"twice\"]\n\n\ndef twice(n):\n    \"\"\"Brackets a count.\n\n    # Examples\n    ```osprey\n    print(twice(4))\n    ```\n    ```output\n    <4>\n    ```\n    \"\"\"\n    return f\"<{n}>\"\n",
+    ),
+];
+
+#[test]
+fn doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor() {
+    let root = temp_dir("documentation_package");
+    for (name, text) in PACKAGE_SOURCES {
+        let path = root.join(name);
+        let made = path.parent().map(std::fs::create_dir_all);
+        assert!(matches!(made, Some(Ok(()))), "{made:?}");
+        assert!(std::fs::write(&path, text).is_ok(), "{}", path.display());
+    }
+    let result = run_file(&root, &["--doctests"]);
+    assert_eq!(result.code, Some(0), "{}{}", result.stdout, result.stderr);
+    assert_eq!(
+        result.stdout, "doctests: 4 passed, 0 failed\n",
+        "{}",
+        result.stderr
+    );
+    assert!(
+        !result.stderr.contains("duplicate declaration"),
+        "{}",
+        result.stderr
+    );
+}
+
 #[test]
 fn doctests_do_not_activate_unrelated_test_helpers() {
     let source = format!("{DOCUMENTED}\nfn unusedTestHelper() = checkAll(\"unused\", [true])\n");

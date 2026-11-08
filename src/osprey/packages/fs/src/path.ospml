@@ -1,0 +1,51 @@
+// Central path handling: THE one definition of separator handling in Osprey,
+// exactly as osp_path_child is the one definition in the C runtime. Every
+// module that needs a directory part, a name, a joined child path, a
+// separator-flattened file name, or a "is this file under that directory"
+// answer asks here. No other module may reference a separator character, so
+// the Windows versus macOS/Linux difference can only ever exist in
+// osp_path_child and this module.
+
+namespace fs
+
+(** Path strings: parents, names, children, slugs and containment. The one
+    place Osprey code knows the separator. *)
+module Path
+    (** True for a `listDir` entry naming a directory: it ends in the separator. *)
+    export isDir p = endsWith (p, "/")
+
+    (** "dir" + "name", without doubling separators. *)
+    export join (dir, name) = match isDir dir
+        true => "${dir}${name}"
+        false => "${dir}/${name}"
+
+    (** Everything before the last separator; "" when there is none. A trailing
+        separator ("dir/") reads as an empty final segment and drops out here. *)
+    export dirOf p = match isDir p
+        true => dirOf (take (p, satSub (length (p), 1)))
+        false => take (p, satSub (length (p), satAdd (length (nameOf p), 1)))
+
+    (** The last separator-delimited segment; the whole path when it has none. *)
+    export nameOf p = foldList (split (p, "/") ?: [p], p, \(_last, segment) => segment)
+
+    (** The path with every separator flattened to "_": a file name safe to
+        use as one file per program (the sweep's slug). *)
+    export slug p = replace (p, "/", "_") ?: p
+
+    (** True when `p` is anything inside `dir` — the one under-a-directory
+        test, separator handled here and nowhere else. *)
+    export under (p, dir) = startsWith (p, "${dir}/")
+
+    (** Relative `rel` resolved against relative `dir`: "." and empty segments
+        drop out and ".." climbs one directory. *)
+    export resolve (dir, rel) = foldList (split ("${dir}/${rel}", "/") ?: [], "", climbed)
+
+    climbed (acc, segment) = match segment
+        "" => acc
+        "." => acc
+        ".." => dirOf acc
+        _ => joinedOnto (acc, segment)
+
+    joinedOnto (acc, segment) = match acc
+        "" => segment
+        _ => join (acc, segment)

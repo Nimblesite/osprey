@@ -8,7 +8,7 @@ joins that list with the empty separator, matching Decoder::decode.
 """
 
 from tokenizers.PreTokenizers import bytelevel_raw
-from tokenizers.Unicode import cps_text, map_indexed
+from tokenizers.Unicode import cps_text, map_indexed, text_cps
 
 __all__ = [
     "wordpiece_decode", "metaspace_decode_chain", "byte_fallback_decode_chain",
@@ -18,16 +18,7 @@ __all__ = [
 
 def cps_of(s):
     """The codepoints of a string."""
-    return cps_go(s, 0, len(s), [])
-
-
-def cps_go(s, i, n, acc):
-    if i >= n:
-        return acc
-    else:
-        cp = unwrap_or(codePointAt(s, i), 63)
-        w = unwrap_or(codePointWidth(cp), 1)
-        return cps_go(s, i + w, n, listAppend(acc, cp))
+    return text_cps(s)
 
 
 def repl(s, needle, with_):

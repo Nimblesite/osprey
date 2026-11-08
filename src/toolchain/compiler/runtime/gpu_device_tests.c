@@ -207,11 +207,12 @@ static void quant_words(const char *type, void *x, void *w, const int64_t shape[
   }
 }
 
-// One block format's parity: seeded operands, the words compared, and the three
-// errors a wrong format, a short row and a short weight buffer are.
+// One block format's parity: seeded operands over one full and one partial tile
+// in each direction (QUANT_ROWS is 8, QUANT_COLS 4), the words compared, and the three errors a
+// wrong format, a short row and a short weight buffer are.
 static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                          unsigned scales) {
-  const int64_t shape[3] = {3, 512, 5}, blocks = shape[1] / block_elements;
+  const int64_t shape[3] = {11, 512, 5}, blocks = shape[1] / block_elements;
   void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
   float *xs = osprey_gpu_data(x);
   for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
@@ -225,6 +226,36 @@ static void quant_parity(const char *type, int64_t block_bytes, int64_t block_el
          strstr(osp_io_error(), "multiple of"));
   assert(osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2] + 1) == NULL && strstr(osp_io_error(), "weights"));
   checks += 3;
+}
+
+// [LLM-MATMUL-QUANT] At QUANT_MM_ROWS rows or more the device multiplies 8x8
+// float32 tiles in hardware, which fuses and orders its sums its own way, so the
+// words are held to the host oracle within QUANT_MM_TOLERANCE of the row's
+// largest result rather than bit for bit. Rows 140 by cols 69: one full and one
+// partial 64-square tile each way, two 256-weight blocks in every row.
+#define QUANT_MM_TOLERANCE 0x1p-16f
+static void quant_close(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
+                        unsigned scales) {
+  const int64_t shape[3] = {140, 512, 69};
+  void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
+  float *xs = osprey_gpu_data(x);
+  for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  void *w = quant_weights(shape[2], shape[1] / block_elements, block_bytes, scale_at, scales);
+  assert(setenv("OSPREY_GPU", "host", 1) == 0);
+  const float *host = osprey_gpu_data(osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2]));
+  assert(setenv("OSPREY_GPU", selected, 1) == 0);
+  osp_io_error_clear();
+  void *result = osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2]);
+  assert(result && !osp_io_error() && osprey_gpu_len(result) == shape[0] * shape[2]);
+  const float *device = osprey_gpu_data(result);
+  for (int64_t r = 0; r < shape[0]; r++) {
+    float top = 0.0f, worst = 0.0f;
+    for (int64_t c = 0; c < shape[2]; c++) top = fmaxf(top, fabsf(host[r * shape[2] + c]));
+    for (int64_t c = 0; c < shape[2]; c++) worst = fmaxf(worst, fabsf(device[r * shape[2] + c] - host[r * shape[2] + c]));
+    if (!(worst <= QUANT_MM_TOLERANCE * top)) fprintf(stderr, "%s row %lld: off by %a of %a\n", type, (long long)r, worst, top);
+    assert(top > 0.0f && worst <= QUANT_MM_TOLERANCE * top);
+    checks++;
+  }
 }
 
 // The block formats the parity gate covers, each with where its binary16 scales sit.
@@ -337,10 +368,58 @@ static void shared_file(const QuantCase *c) {
   free(device);
 }
 
+// [LLM-DELTA-RULE] One `steps`-token call's words, host and device, bit for bit:
+// `shape` is {heads, dim, steps}, the operands seeded in [-1, 1).
+static void delta_words(const char *mode, const int64_t shape[3], void *const in[6], float **words) {
+  assert(setenv("OSPREY_GPU", mode, 1) == 0);
+  osp_io_error_clear();
+  void *result = osprey_gpu_delta_rule(in[0], in[1], in[2], in[3], in[4], in[5], shape[0], shape[1]);
+  if (!result) fprintf(stderr, "delta rule: %s\n", osp_io_error());
+  int64_t cells = shape[0] * shape[1], total = cells * shape[1] + shape[2] * cells;
+  assert(result && !osp_io_error() && osprey_gpu_len(result) == total && osprey_gpu_elem_bytes(result) == 4);
+  *words = malloc((size_t)total * sizeof(float));
+  assert(*words);
+  memcpy(*words, osprey_gpu_data(result), (size_t)total * sizeof(float));
+  osprey_gpu_finalize(result);
+}
+
+static void *seeded(int64_t count) {
+  void *b = osprey_gpu_alloc(count, 4);
+  float *xs = osprey_gpu_data(b);
+  for (int64_t i = 0; i < count; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  return b;
+}
+
+// Tokens through the host oracle and the device: the device steps every token
+// inside one dispatch and must write the oracle's words, at a narrow head and at
+// Qwen's 128, where each thread holds its state column in registers.
+static void delta_parity(int64_t steps, int64_t dim) {
+  const int64_t shape[3] = {2, dim, steps}, cells = shape[0] * shape[1];
+  void *in[6] = {seeded(cells * shape[1] + cells), seeded(steps * cells), seeded(steps * cells), seeded(steps * cells),
+                 seeded(steps * shape[0]), seeded(steps * shape[0])};
+  float *host, *device;
+  delta_words("host", shape, in, &host);
+  delta_words(selected, shape, in, &device);
+  int64_t total = cells * shape[1] + steps * cells;
+  for (int64_t i = 0; i < total; i++) {
+    if (memcmp(&host[i], &device[i], 4) != 0)
+      fprintf(stderr, "delta rule parity at %lld of %lld steps: host %a device %a\n", (long long)i, (long long)steps, host[i], device[i]);
+    assert(memcmp(&host[i], &device[i], 4) == 0);
+    checks++;
+  }
+  for (unsigned i = 0; i < 6; i++) osprey_gpu_finalize(in[i]);
+  free(host);
+  free(device);
+}
+
 static void quantized_products(void) {
+  delta_parity(1, 4);
+  delta_parity(3, 4);
+  delta_parity(5, 128);
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
     quant_parity(c->type, c->bytes, c->elements, c->scale_at, c->scales);
+    quant_close(c->type, c->bytes, c->elements, c->scale_at, c->scales);
   }
   const int64_t rows = 3, inner = 512, cols = 5;
   void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * 2 * 144, 1);
@@ -461,19 +540,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 24);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 35);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 25);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 36);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 37);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 40);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;

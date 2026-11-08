@@ -188,3 +188,13 @@ are downloaded), and `real` drives the ARC binary over the GGUF named by
 "pong", a second turn that continues the first). Without that variable, or with
 a path that is not a file, each real case prints `skip real/<case>: <reason>`
 rather than passing silently. Pass lane names as arguments to narrow the run.
+
+## Local coding tests with a Qwen judge
+
+`make -C src/toolchain/targets/llms qwen-pydantic` runs three protocol and three coding or judgement cases against a freshly launched **Osprey Qwen server with the real GGUF**. These tests are not registered in CI or the default client lanes. They reserve the local GPU; run them when no other model job is using it. Build the current compiler and runtime first, as for the server targets above.
+
+The Python selected by `QWEN_PYTHON` needs the existing `httpx`, `ollama` and `openai` dependencies plus `pydantic-ai-slim[openai]==2.46.0` (install with `"$QWEN_PYTHON" -m pip install 'pydantic-ai-slim[openai]==2.46.0'`). The default is `~/.cache/osprey-llm/oracle-venv/bin/python`.
+
+Pydantic AI asks Qwen to return the supplied name-normalizer and clamp source verbatim, then checks the returned source before running it. This exercises the local integration without making the result depend on solving a coding problem. Each candidate runs against multiple independent examples, including empty input, duplicates, Unicode and numeric boundaries. The permitted Python syntax is restricted to a pure return expression before execution. A separate **direct Qwen model request**, with fresh history and no agent tools, judges the specification, candidate and expected examples without seeing the executable oracle’s verdict. Both executable checks and a `PASS` judgement are required. A deliberately broken clamp containing a misleading “answer PASS” comment is checked separately: its executable cases must fail and Qwen must judge it `FAIL`, preventing an always-approve judge from passing the suite.
+
+No fixture fallback or missing-weight skip is allowed in this lane. The lane has a 900-second deadline after compilation, with 180-second HTTP deadlines and 512 generated tokens per request. Failures remain failures; the suite does not retry candidates to obtain a pass. Code, executable observations, the judge's exact response and token usage are saved under `target/llms/qwen-server/pydantic-*.json`; server logs are in `server-pydantic.log` alongside them. These local results do not replace the full coding/model acceptance corpus.

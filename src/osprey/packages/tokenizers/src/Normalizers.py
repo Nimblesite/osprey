@@ -12,7 +12,7 @@ Encoding can report offsets into the untouched input, exactly as the real
 for @osprey/tokenizers.
 """
 from tokenizers import Nfc
-from tokenizers.Unicode import cps_text, is_chinese_char, is_control, is_whitespace, lowercase, strip_base
+from tokenizers.Unicode import cps_text, is_chinese_char, is_control, is_whitespace, lowercase, strip_base, text_cp_starts, text_cps
 
 __all__ = [
     "norm_each","Norm", "norm_of", "norm_text", "bert_normalize", "nfc_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
@@ -46,17 +46,17 @@ def end_at(n, i):
 
 
 def norm_of(s):
-    """A Norm over an unmodified string: each codepoint covers its own bytes."""
-    return norm_build(s, 0, len(s), [], [], [])
+    """A Norm over an unmodified string: each codepoint covers its own bytes, from
+    its start to the next one's. Folds, not a recursion per character, so a prompt
+    of any length keeps a flat stack ([LLM-TOKENIZER])."""
+    starts = text_cp_starts(s)
+    ends = listAppend(slice_from(starts, 1), len(s)) if len(starts) > 0 else []
+    return Norm(chars=text_cps(s), starts=starts, ends=ends)
 
 
-def norm_build(s, i, n, chars, starts, ends):
-    if i >= n:
-        return Norm(chars=chars, starts=starts, ends=ends)
-    else:
-        cp = unwrap_or(codePointAt(s, i), 63)
-        w = unwrap_or(codePointWidth(cp), 1)
-        return norm_build(s, i + w, n, listAppend(chars, cp), listAppend(starts, i), listAppend(ends, i + w))
+def slice_from(xs, k):
+    """The elements of `xs` from index `k` on."""
+    return toList(map(range(k, len(xs)), lambda i: unwrap_or(listGet(xs, i), 0)))
 
 
 def norm_text(n):

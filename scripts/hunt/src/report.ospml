@@ -1,0 +1,130 @@
+// What one hunt run means and how the sweep renders. JSON stays at this edge:
+// each run's report decodes once into typed Findings and an Outcome
+// [SYMEX-CORPUS]. `osprey hunt` exits 0 when clean, 1 with findings, 2 on a
+// tool error; any other exit, or exit 1 without a readable report, is a tool
+// error. Only `unmodelled` findings are engine limitations; any memory,
+// abort or arith finding is a BUG_CANDIDATE.
+
+namespace hunt
+
+import ui::Doc
+
+(** Hunt run classification and the HTML report. *)
+module Report
+    (** Where the sweep's HTML report is written. *)
+    export OUT = "target/hunt/report.html"
+
+    type Finding =
+        kind : string
+        file : string
+        line : int
+        message : string
+
+    type Outcome =
+        program : string
+        exit : int
+        status : string
+        paths : int
+        findings : List<Finding>
+        unportable : string
+
+    (** One run's Outcome from its exit code, JSON report and stderr log; a
+        report that does not decode, or holds no exploration, is a tool error. *)
+    export outcome (program, code, report, log, reason) = match jsonDecode report
+        Success doc => explored (program, code, doc, log, reason)
+        Error message => failed (program, code, "unreadable report (${message}): ${lastError log}", reason)
+
+    explored (program, code, doc, log, reason) = match Doc::has (doc, "explored")
+        true => judged (program, code, doc, log, reason)
+        false => failed (program, code, "report without an exploration: ${lastError log}", reason)
+
+    judged (program, code, doc, log, reason) =
+        findings = mapList (Doc::fieldItems (doc, "findings"), finding)
+        status = classify (code, findings)
+        Outcome(program = program, exit = code, status = status, paths = Doc::number (Doc::field (doc, "explored"), "paths"), findings = noted (status, findings, log), unportable = reason)
+
+    finding f = Finding(kind = Doc::text (f, "class"), file = Doc::text (f, "file"), line = Doc::number (f, "line"), message = Doc::text (f, "message"))
+
+    (** A run without a usable report: a tool error carrying `message`. *)
+    export failed (program, code, message, reason) = Outcome(program = program, exit = code, status = "tool_error", paths = 0, findings = [toolError message], unportable = reason)
+
+    toolError message = Finding(kind = "tool_error", file = "", line = 0, message = message)
+
+    (** clean, engine_limitation, BUG_CANDIDATE or tool_error for one run. *)
+    export classify (code, findings) = match code
+        0 => verdict findings
+        1 => match findings
+            [] => "tool_error"
+            _ => verdict findings
+        _ => "tool_error"
+
+    verdict findings = match findings
+        [] => "clean"
+        _ => match length (filterList (findings, \f => f.kind != "unmodelled"))
+            0 => "engine_limitation"
+            _ => "BUG_CANDIDATE"
+
+    noted (status, findings, log) = match status
+        "tool_error" => listAppend (findings, toolError (lastError log))
+        _ => findings
+
+    (** The log's last ERROR or failure line, else its last line. *)
+    export lastError log =
+        rows = filterList (mapList (lines log, trim), \row => row != "")
+        errors = filterList (rows, \row => contains (row, "ERROR") || contains (row, "error") || contains (row, "failed"))
+        lastOf (preferred (errors, rows))
+
+    preferred (errors, rows) = match errors
+        [] => rows
+        _ => errors
+
+    lastOf rows = listGet (rows, satSub (length rows, 1)) ?: ""
+
+    (** How many outcomes have `status`. *)
+    export count (outcomes, status) = length (filterList (outcomes, \o => o.status == status))
+
+    STATUSES = ["clean", "engine_limitation", "BUG_CANDIDATE", "tool_error"]
+
+    (** "N clean, N engine_limitation, N BUG_CANDIDATE, N tool_error". *)
+    export tally outcomes = join (mapList (STATUSES, \status => "${toString (count (outcomes, status))} ${status}"), ", ")
+
+    (** Writes the report page for `outcomes` to `path`. *)
+    export write (path, outcomes) = writeFile (path, page outcomes)
+
+    (** `s` made safe for HTML text and attributes: every run's text escapes first. *)
+    export escape s = replace (replace (replace (replace (s, "&", "&amp;") ?: s, "<", "&lt;") ?: s, ">", "&gt;") ?: s, "\"", "&quot;") ?: s
+
+    located f = match f.file
+        "" => ""
+        file => " at ${escape file}:${lineText f.line}"
+
+    lineText line = match line
+        0 => "-"
+        n => toString n
+
+    findingRow f = "<div class='f ${escape f.kind}'>${escape f.kind}${located f} — ${escape f.message}</div>"
+
+    chip status = "<span class='chip ${css status}'>${escape status}</span>"
+
+    css status = match status
+        "clean" => "ok"
+        "engine_limitation" => "warn"
+        _ => "bad"
+
+    pathsText paths = match paths
+        0 => "-"
+        n => "${toString n} paths"
+
+    listed reason = match reason
+        "" => ""
+        why => "<div class='u'>listed unportable: ${escape why}</div>"
+
+    (** One table row: program, unportable note, status, exit, paths, findings. *)
+    export row o = "<tr><td>${escape o.program}${listed o.unportable}</td><td>${chip o.status}</td><td>${toString o.exit}</td><td>${pathsText o.paths}</td><td>${join (mapList (o.findings, findingRow), "")}</td></tr>"
+
+    card (outcomes, status) = "<div class='card ${css status}'><div class='n'>${toString (count (outcomes, status))}</div><div class='l'>${status}</div></div>"
+
+    STYLES = "body{font-family:-apple-system,sans-serif;margin:2rem;color:#1a1a1a;background:#fafafa}.cards{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}.card{border:1px solid #ddd;border-radius:8px;padding:.6rem 1.2rem;background:#fff}.n{font-size:1.6rem;font-weight:700}.l,.u{font-size:.8rem;color:#666}.ok .n,.chip.ok{color:#2e7d32}.warn .n,.chip.warn{color:#b26a00}.bad .n,.chip.bad,.f.memory,.f.abort,.f.arith,.f.tool_error{color:#c62828}.f.unmodelled{color:#b26a00}table{border-collapse:collapse;width:100%;font-size:.85rem;background:#fff}th,td{border:1px solid #e3e3e3;padding:.35rem .6rem;text-align:left;vertical-align:top}"
+
+    (** The whole self-contained HTML report. *)
+    export page outcomes = "<!doctype html><html><head><meta charset='utf-8'><title>Osprey hunt report</title><style>${STYLES}</style></head><body><h1>Osprey hunt report</h1><p class='l'>${toString (length outcomes)} programs hunted with KLEE</p><div class='cards'>${join (mapList (STATUSES, \status => card (outcomes, status)), "")}</div><table><tr><th>program</th><th>status</th><th>exit</th><th>paths</th><th>findings</th></tr>${join (mapList (outcomes, row), "")}</table></body></html>"

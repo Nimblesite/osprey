@@ -99,14 +99,14 @@ fn assemble(
 fn inject(statements: &mut Vec<Stmt>, scope: &[usize], body: Program) -> Result<Expr, String> {
     let Some((&index, remaining)) = scope.split_first() else {
         install_snippet(statements, body);
-        return Ok(call(Expr::Identifier(runner())));
+        return Ok(call(Expr::Identifier(runner(0))));
     };
     let statement = statements
         .get_mut(index)
         .ok_or("documentation scope is missing")?;
     let target = inject_container(statement, remaining, body)?;
-    statements.push(function(target));
-    Ok(call(Expr::Identifier(runner())))
+    statements.push(function(scope.len(), target));
+    Ok(call(Expr::Identifier(runner(scope.len()))))
 }
 
 fn inject_container(
@@ -117,12 +117,15 @@ fn inject_container(
     match statement {
         Stmt::Namespace { name, body, .. } => {
             let _ = inject(body, scope, example)?;
-            Ok(qualified_call(vec![name.label().to_string(), runner()]))
+            Ok(qualified_call(vec![
+                name.label().to_string(),
+                runner(scope.len()),
+            ]))
         }
         Stmt::Module { path, body, .. } => {
             inject_module(body, scope, example)?;
             let mut segments = path.segments.clone();
-            segments.push(runner());
+            segments.push(runner(scope.len()));
             Ok(qualified_call(segments))
         }
         _ => Err("documentation scope is not a namespace or module".into()),
@@ -176,11 +179,14 @@ fn install_snippet(statements: &mut Vec<Stmt>, snippet: Program) {
             declaration => statements.push(declaration),
         }
     }
-    statements.push(function(Expr::Block {
-        position: None,
-        statements: executable,
-        value: main.map(Box::new),
-    }));
+    statements.push(function(
+        0,
+        Expr::Block {
+            position: None,
+            statements: executable,
+            value: main.map(Box::new),
+        },
+    ));
 }
 
 fn capture_helper(statement: Stmt, locals: &std::collections::BTreeSet<String>) -> Stmt {
@@ -232,8 +238,11 @@ fn capture_helper(statement: Stmt, locals: &std::collections::BTreeSet<String>) 
     }
 }
 
-fn runner() -> String {
-    osprey_ast::generated_name(RUNNER_ROLE, 0)
+/// The wrapper at `depth` levels above the example. Every level has its own
+/// name: a project's `default_namespace` can move the outermost wrapper into the
+/// namespace that already holds an inner one.
+fn runner(depth: usize) -> String {
+    osprey_ast::generated_name(RUNNER_ROLE, depth)
 }
 
 fn qualified_call(segments: Vec<String>) -> Expr {
@@ -256,9 +265,9 @@ fn expression(value: Expr) -> Stmt {
     }
 }
 
-fn function(body: Expr) -> Stmt {
+fn function(depth: usize, body: Expr) -> Stmt {
     Stmt::Function {
-        name: runner(),
+        name: runner(depth),
         type_params: Vec::new(),
         parameters: Vec::new(),
         return_type: None,

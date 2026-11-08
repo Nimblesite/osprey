@@ -4,17 +4,17 @@ Contract: [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md
 
 ## Prerequisites in place
 
-- `osprey hunt` main mode, the mock libc, `_runtime_klee`, `compile_program_symbolic`, native stdin/file replay, corpus scripts (`scripts/hunt/hunt_corpus.sh`, `scripts/hunt/hunt_summary.py`, `scripts/hunt/hunt_programs.py`), `src/osprey/tests/HUNT_UNPORTABLE.txt`, the planted-crash gate (`src/osprey/tests/hunt/crash-cases.json`, `scripts/hunt/hunt_crashes.py`, `make -C src/osprey/tests/hunt hunt-crashes`) and the VSCode `osprey.hunt` command all ship.
+- `osprey hunt` main mode, the mock libc, `_runtime_klee`, `compile_program_symbolic`, native stdin/file replay, the corpus sweep app `scripts/hunt` (an Osprey app), `src/osprey/tests/HUNT_UNPORTABLE.txt`, the planted-crash gate (`src/osprey/tests/hunt/crash-cases.json`, `src/toolchain/crates/osprey-cli/tests/hunt_engine.rs`, `make -C src/osprey/tests/hunt hunt-crashes`) and the VSCode `osprey.hunt` command all ship.
 - The KLEE engine targets (`_test_hunt`, `_test_hunt_crashes`, `_test_hunt_clean`) run by hand only; `make test`/CI exclude them while issues #306 and #307 are open (`scripts/make/tests.mk`).
-- `_test_hunt` skips `clean.osp` via `HUNT_KNOWN_BUGS ?= clean`; its complete-exploration defect is #306, at the pinned 64-byte/30-second settings.
+- `_test_hunt` skips `clean.osp` via `KNOWN_BUGS` in `src/toolchain/crates/osprey-cli/tests/hunt_engine.rs`; its complete-exploration defect is #306, at the pinned 64-byte/30-second settings.
 
 - The programs `src/osprey/tests/HUNT_UNPORTABLE.txt` skips, and the model work to bring them in, are in [plan 0055](0055-corpus-target-gaps.md) [CORPUS-TARGET-GAPS].
 
 ## Phase 3 completion proof `[SYMEX-CLI]`
 
 - [ ] Fix `clean.osp` complete exploration (#306): `src/osprey/tests/hunt/clean.osp` prints a symbolic integer whose digit/length queries over the unconstrained value need ~49 s solver work, over the 30 s budget on both gc and arc. Do not relax the 64-byte/30-second settings; do not retry these dead ends, all measured neutral or worse and reverted at `f6085332`: raw-view bounded parse, O(n) min-reduction line copy, `gc_scan_range` alignment filter, binary-search digit length in `hunt_format.c`. `--max-solver-time=30s` with the forked solver is mandatory (in-process explored 6 paths and completed 1); `--solver-backend=z3 --solver-optimize-divides` cut partial states from 18 to 3 (GC) and 19 to 3 (ARC). Acceptance: `make _test_hunt_clean` exits 0 on both backends.
-- [ ] Remove `clean` from `HUNT_KNOWN_BUGS` in `scripts/make/tests.mk` so `_test_hunt` covers `src/osprey/tests/hunt/clean.osp` again. Acceptance: `make _test_hunt` runs clean.osp without skipping and passes.
-- [ ] Wire `scripts/hunt/test-hunt-default-budget.py` into a hunt test target as a required gate (it exists but no make target references it). Acceptance: `make` runs it and fails on incomplete exploration at the default 64-byte/30-second settings.
+- [ ] Remove `clean` from `KNOWN_BUGS` in `src/toolchain/crates/osprey-cli/tests/hunt_engine.rs` so `_test_hunt` covers `src/osprey/tests/hunt/clean.osp` again. Acceptance: `make _test_hunt` runs clean.osp without skipping and passes.
+- [x] The default 64-byte/30-second budget is a required gate: `make _test_hunt` hunts `crash.osp` with it on both backends (`every_deterministic_hunt_program_matches_its_expectation_on_both_backends`).
 
 ## Verification gap `[SYMEX-CODEGEN]`
 

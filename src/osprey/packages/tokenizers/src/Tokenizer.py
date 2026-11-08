@@ -16,7 +16,7 @@ from tokenizers.Models import BpeModel, Token, bpe_tokenize, char_starts, id_to_
 from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_each, norm_of, norm_text, start_at
 from tokenizers.PreTokenizers import META_CP, bert_pretokenize, bytelevel_text, metaspace_pretokenize, qwen_pretokenize, whitespace_pretokenize
 from tokenizers.Processors import Encoding, Offset, bert_template, concat_two, empty_encoding
-from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, text_cp_starts, text_cps
+from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, starts_cp, text_cp_starts, text_cps
 from tokenizers.Decoders import byte_fallback_decode_chain, metaspace_decode_chain, wordpiece_decode
 
 __all__ = [
@@ -28,18 +28,9 @@ __all__ = [
 
 
 def byte_char_map(s):
-    """For each byte of s, the index of the char that byte belongs to."""
-    return byte_char_go(s, 0, 0, [])
-
-
-def byte_char_go(s, i, ci, acc):
-    if i >= len(s):
-        return acc
-    else:
-        cp = unwrap_or(codePointAt(s, i), 63)
-        w = unwrap_or(codePointWidth(cp), 1)
-        acc2 = fold(range(w), acc, lambda a, _: listAppend(a, ci))
-        return byte_char_go(s, i + w, ci + 1, acc2)
+    """For each byte of s, the index of the char that byte belongs to: a fold over
+    the bytes, so a prompt of any length keeps a flat stack ([LLM-TOKENIZER])."""
+    return fold(range(len(s)), [], lambda acc, k: listAppend(acc, unwrap_or(listGet(acc, len(acc) - 1), -1) + (1 if starts_cp(s, k) else 0)))
 
 
 def char_of(byte_char, nchars, b):
@@ -230,19 +221,20 @@ def empty_added():
 def segments_of(tok, cps):
     """The input split at its added tokens: they are matched in the raw text before
     any normalization, the longest match at the earliest position winning."""
-    st = fold(range(len(cps)), Segments(done=[], plain=0, chars=0), lambda acc, i: segment_step(tok, cps, acc, i))
+    added_chars = mapList(tok.added, lambda token: text_cps(token.content))
+    st = fold(range(len(cps)), Segments(done=[], plain=0, chars=0), lambda acc, i: segment_step(tok, added_chars, cps, acc, i))
     return listAppend(st.done, Segment(added=-1, chars=st.plain))
 
 
-def segment_step(tok, cps, acc, i):
+def segment_step(tok, added_chars, cps, acc, i):
     if i < acc.chars:
         return acc
     else:
-        return segment_at(tok, cps, acc, i)
+        return segment_at(tok, added_chars, cps, acc, i)
 
 
-def segment_at(tok, cps, acc, i):
-    hit = match_added(tok, cps, i)
+def segment_at(tok, added_chars, cps, acc, i):
+    hit = match_added(tok, added_chars, cps, i)
     if hit.width == 0:
         return Segments(done=acc.done, plain=acc.plain, chars=i + 1)
     else:
@@ -281,19 +273,18 @@ def leading_space(cps, i, stop):
     return fold(range(i, stop), 0, lambda acc, k: acc + 1 if acc == k - i and is_whitespace(at_cp(cps, k)) else acc)
 
 
-def match_added(tok, cps, i):
+def match_added(tok, added_chars, cps, i):
     """The longest added token matching at i, the reference's preference."""
-    return fold(range(len(tok.added)), Hit(index=-1, width=0), lambda acc, a: try_added(tok, cps, i, acc, a))
+    return fold(range(len(tok.added)), Hit(index=-1, width=0), lambda acc, a: try_added(tok, added_chars, cps, i, acc, a))
 
 
-def try_added(tok, cps, i, acc, a):
-    width = match_length(unwrap_or(listGet(tok.added, a), empty_added()), cps, i)
+def try_added(tok, added_chars, cps, i, acc, a):
+    width = match_length(unwrap_or(listGet(tok.added, a), empty_added()), unwrap_or(listGet(added_chars, a), []), cps, i)
     return Hit(index=a, width=width) if width > acc.width else acc
 
 
-def match_length(token, cps, i):
+def match_length(token, chars, cps, i):
     """How many characters of the token match at i, or 0 when it does not."""
-    chars = text_cps(token.content)
     if len(chars) == 0 or i + len(chars) > len(cps):
         return 0
     else:

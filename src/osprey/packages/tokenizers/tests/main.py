@@ -34,7 +34,7 @@ from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Tokenizer import AddedToken, QwenTokenizer, qwen_decode, qwen_encode
 from tokenizers.Unicode import (
     cps_text, in_ranges, is_chinese_char, is_control, is_numeric, is_punctuation,
-    is_whitespace, is_word_char, lowercase, strip_base, text_cp_starts, text_cps,
+    is_whitespace, is_word_char, lowercase, starts_cp, strip_base, text_cp_starts, text_cps,
 )
 
 
@@ -493,6 +493,7 @@ def nfc_cases():
 
 def unicode_table_cases():
     return [
+        Check.ints_equal("unicode.codepoint.starts", toList(filter(range(10), lambda i: starts_cp("Aé中😀", i))), [0, 1, 3, 6]),
         Check.ints_equal("unicode.letter.range", [at_int(LETTER_RANGES, 0), at_int(LETTER_RANGES, 1)], [65, 90]),
         Check.ints_equal("unicode.mark.range", [at_int(MARK_RANGES, 0), at_int(MARK_RANGES, 1)], [768, 879]),
         Check.ints_equal("unicode.number.range", [at_int(NUMBER_RANGES, 0), at_int(NUMBER_RANGES, 1)], [48, 57]),
@@ -529,7 +530,28 @@ def qwen_cases():
         each(len(Expected.QWEN_INPUTS), [], lambda i: qwen_row(tok, i, "qwen")),
         qwen_refusal_cases(),
         gguf_cases(),
+        qwen_long_case(tok),
     ])
+
+
+def qwen_long_case(tok):
+    """[LLM-TOKENIZER] A prompt the size of a source file: 2,000 copies of one row,
+    66,000 bytes, encode to that row's ids 2,000 times over and decode back to the
+    text. A per-character recursion overflowed the stack here (an 8K-token prompt
+    crashed the Qwen runner), so the length is the regression."""
+    copies = 2000
+    row = ats(Expected.QWEN_INPUTS, 3)
+    text = join(toList(map(range(copies), lambda _: row)), "")
+    want = fold(range(copies), [], lambda acc, _: listConcat(acc, atl(Expected.QWEN_IDS, 3)))
+    match qwen_encode(tok, text):
+        case Success(value=enc):
+            return [
+                Check.ints_equal("qwen.long.ids", enc.ids, want),
+                Check.equal("qwen.long.offset.end", unwrap_or(listGet(enc.offsets, len(enc.offsets) - 1), Offset(start=0, end=0)).end, copies * len(row)),
+                Check.equal("qwen.long.decode", decoded(tok, enc.ids, False), text),
+            ]
+        case Error(message=message):
+            return [Check.failed("qwen.long", "Error: " + message)]
 
 
 def gguf_cases():

@@ -27,10 +27,16 @@ class DeltaSlot:
 
 
 class AttentionSlot:
-    """One attention layer's cached keys and values, `positions` of them."""
+    """One attention layer's cached keys and values, `positions` of them: the first
+    `sealed` rows in `sealed_keys`/`sealed_values`, rewritten once per `kv_block`
+    positions, and the rest in the tail `keys`/`values` a token rewrites, so a token
+    copies at most a block of rows, not the whole cache ([LLM-STATE-OWNED])."""
     keys: GpuBuffer[float32]
     values: GpuBuffer[float32]
     positions: int
+    sealed_keys: GpuBuffer[float32]
+    sealed_values: GpuBuffer[float32]
+    sealed: int
 
 
 @union
@@ -62,7 +68,7 @@ def fresh(config, shapes) -> Cache:
 
 def fresh_slot(config, index, conv, state, none):
     if C.is_full(config, index):
-        return Attention(held=AttentionSlot(keys=none, values=none, positions=0))
+        return Attention(held=AttentionSlot(keys=none, values=none, positions=0, sealed_keys=none, sealed_values=none, sealed=0))
     else:
         return Delta(held=DeltaSlot(conv=conv, state=state))
 

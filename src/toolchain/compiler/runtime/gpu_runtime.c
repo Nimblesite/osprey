@@ -20,6 +20,7 @@
 
 #include <errno.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -194,23 +195,30 @@ int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count) {
   return settled(osprey_gpu_device_dispatch(&sigmoid), out);
 }
 
-// [LLM-DELTA-RULE] One token of the delta rule as one library-kernel dispatch.
-int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim) {
+// [LLM-DELTA-RULE] `steps` tokens of the delta rule as one library-kernel dispatch.
+int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim, int64_t steps) {
   OspreyGpuDispatch rule = {"osprey_delta_rule", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(heads * dim)};
   for (unsigned i = 0; i < 6; i++) buffer_argument(&rule, OSPREY_GPU_INPUT, operands[i]);
   buffer_argument(&rule, OSPREY_GPU_OUTPUT, out);
   scalar_argument(&rule, heads);
   scalar_argument(&rule, dim);
+  scalar_argument(&rule, steps);
   return settled(osprey_gpu_device_dispatch(&rule), out);
 }
 
-// The quantized product as one library-kernel dispatch of 32 threads per
-// output ([LLM-MATMUL-QUANT]): `x` is [rows, inner] float32, `w` the quantized
-// weight rows, and `out` [rows, cols] float32 is left on the device.
+// The quantized product as one library-kernel dispatch ([LLM-MATMUL-QUANT]): `x`
+// is [rows, inner] float32, `w` the quantized weight rows, and `out` [rows, cols]
+// float32 is left on the device. On Metal a product of QUANT_MM_ROWS rows or more
+// (a prompt chunk) runs the kernel's `_mm` form on the SIMD-group matrix units,
+// held to the oracle within a tolerance; fewer rows run the bit-exact form.
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
-                                   int64_t cols) {
-  if (device_selection() <= 0) return device_selection();
-  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols) * 32};
+                                   int64_t cols, const uint64_t threads[2]) {
+  int selected = device_selection();
+  if (selected <= 0) return selected;
+  char tiled[64];
+  bool many = selected == 2 && rows >= QUANT_MM_ROWS;
+  (void)snprintf(tiled, sizeof tiled, "%s_mm", kernel);
+  OspreyGpuDispatch product = {many ? tiled : kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads[many]};
   buffer_argument(&product, OSPREY_GPU_INPUT, x);
   buffer_argument(&product, OSPREY_GPU_INPUT, w);
   buffer_argument(&product, OSPREY_GPU_OUTPUT, out);
@@ -627,6 +635,19 @@ void osprey_gpu_set(void *buffer, int64_t index, int64_t word) {
     memcpy(b->data + index * b->elem_bytes, &word, (size_t)b->elem_bytes);
     osprey_gpu_finalize(b);
   }
+}
+
+// [GPU-IOTA] Every element its own index, in one pass: an index grid of millions
+// of cells (a prompt chunk's attention scores) costs one synchronize and one
+// finalize, not one of each per element. Stores the low elem_bytes of each index,
+// as osprey_gpu_set does.
+void osprey_gpu_iota_fill(void *buffer) {
+  OspreyGpuBuffer *b = current(buffer);
+  if (!b || !b->data) return;
+  for (int64_t i = 0; i < b->length; i++) {
+    memcpy(b->data + i * b->elem_bytes, &i, (size_t)b->elem_bytes);
+  }
+  osprey_gpu_finalize(b);
 }
 
 // The gate osprey_gpu_get's Result form branches on, so a gather reports

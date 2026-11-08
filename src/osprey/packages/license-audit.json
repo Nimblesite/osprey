@@ -24,6 +24,14 @@
       "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
       "source_notices": {}
     },
+    "fs": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey port: path handling and directory walking over the listDir runtime builtin; no third-party implementation or data.",
+      "source_notices": {}
+    },
     "faiss": {
       "license": "MIT",
       "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",

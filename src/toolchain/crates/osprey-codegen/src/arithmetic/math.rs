@@ -24,6 +24,7 @@ const BINARY_LIBM: [&str; 2] = ["atan2", "hypot"];
 
 pub(crate) fn is_binary_float_function(name: &str) -> bool {
     name == "fmod"
+        || name == "floatDiv"
         || BINARY_LIBM.contains(&name)
         || BINARY_INTRINSICS.iter().any(|(n, _)| *n == name)
 }
@@ -51,6 +52,11 @@ pub(crate) fn binary_float_function(
     if name == "fmod" {
         // Total: fmod(x, 0.0) is NaN, like any domain result.
         return super::float_op(cg, "frem", n, left, right);
+    }
+    if name == "floatDiv" {
+        // [BUILTIN-MATH-FLOATDIV] The bare IEEE quotient: a zero divisor is
+        // an infinity or NaN, never `Arith.divideByZero`.
+        return super::float_op(cg, "fdiv", n, left, right);
     }
     let symbol = BINARY_INTRINSICS
         .iter()
