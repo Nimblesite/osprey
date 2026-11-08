@@ -1,0 +1,100 @@
+// Which programs the hunt sweeps: every app project (an `osprey.toml` with an
+// `entry`) and every standalone program file outside a project, under the
+// repository's Osprey roots, found with `fs::Walk` [SYMEX-CORPUS].
+
+namespace hunt
+
+import fs::Path
+import fs::Walk
+
+(** The corpus the hunt sweeps and the programs listed as unportable. *)
+module Inventory
+    ROOTS = ["src/osprey/tests", "src/osprey/examples", "docs/book/examples", "src/osprey/packages", "src/toolchain/benchmarks"]
+    UNPORTABLE = "src/osprey/tests/HUNT_UNPORTABLE.txt"
+    (** The hunt fixtures are the hunt's own controls, gated by their own targets. *)
+    OWN = "src/osprey/tests/hunt"
+    PYTHON_MARKER = "# osprey: flavor=python"
+
+    type Source =
+        path : string
+        text : string
+
+    // Folds `step` over `items` into a list, stopping at the first Error.
+    gather (items, step) = foldList (items, Success(value = []), \(acc, item) => stepped (acc, item, step))
+
+    stepped (acc, item, step) = match acc
+        Success so => step (so, item)
+        failed => failed
+
+    (** Every program under ROOTS, sorted, or the first walk or read Error. *)
+    export discover () = match gather (ROOTS, \(files, root) => grown (files, Walk::tree root))
+        Success files => sourced files
+        failed => failed
+
+    // Only manifests and .py files are read: they decide what is a program.
+    sourced files = match gather (filterList (files, \f => isManifest f || endsWith (f, ".py")), \(sources, path) => withText (sources, path, readFile path))
+        Success sources => Success(value = programsIn (files, \path => textOf (sources, path)))
+        Error message => Error(message = message)
+
+    grown (files, more) = match more
+        Success walked => Success(value = listConcat (files, walked))
+        failed => failed
+
+    withText (sources, path, read) = match read
+        Success text => Success(value = listAppend (sources, Source(path = path, text = text)))
+        Error message => Error(message = message)
+
+    textOf (sources, path) = join (mapList (filterList (sources, \s => s.path == path), \s => s.text), "")
+
+    isManifest file = Path::nameOf file == "osprey.toml" && !contains (file, "failscompilation")
+
+    (** The sorted programs among `files`; `read` answers a manifest's or .py
+        file's text. A manifest naming an `entry` is one app; any other file
+        under a project or a manifest's `source_roots` is a module, not a program. *)
+    export programsIn (files, read) =
+        manifests = filterList (files, isManifest)
+        projects = mapList (manifests, Path::dirOf)
+        modules = foldList (manifests, [], \(acc, m) => listConcat (acc, rootsOf (m, read m)))
+        apps = mapList (filterList (manifests, \m => keyed (read m, "entry")), Path::dirOf)
+        rejected = filterList (files, \f => endsWith (f, ".expectederror"))
+        loose = filterList (files, \f => standalone (f, listConcat (projects, modules), rejected, read))
+        listSort (filterList (listConcat (apps, loose), \p => !Path::under (p, OWN)))
+
+    // True when a line of the manifest sets `key`.
+    keyed (text, key) = length (filterList (lines text, \l => startsWith (trim l, "${key} =") || startsWith (trim l, "${key}="))) > 0
+
+    // The one-line `source_roots = ["a", "b"]` array, each root resolved against the manifest's directory.
+    rootsOf (manifest, text) = mapList (listed (join (filterList (lines text, \l => startsWith (trim l, "source_roots")), "")), \r => Path::resolve (Path::dirOf manifest, r))
+
+    listed line = filterList (mapList (split (inside line, ",") ?: [], \r => trim (replace (r, "\"", "") ?: r)), \r => r != "")
+
+    inside line = segment (segment (line, "[", 1), "]", 0)
+
+    // The `index`th piece of `text` split at `separator`; "" past the last piece.
+    segment (text, separator, index) = listGet (split (text, separator) ?: [], index) ?: ""
+
+    standalone (file, owners, rejected, read) =
+        source = endsWith (file, ".osp") || endsWith (file, ".ospml") || (endsWith (file, ".py") && contains (take (read file, 256), PYTHON_MARKER))
+        source && !contains (file, "failscompilation") && !listContains (rejected, stem file) && !owned (file, owners)
+
+    stem file = "${take (file, satSub (length file, length (extension file)))}.expectederror"
+
+    extension file = match endsWith (file, ".ospml")
+        true => ".ospml"
+        false => match endsWith (file, ".osp")
+            true => ".osp"
+            false => ".py"
+
+    owned (file, owners) = length (filterList (owners, \dir => file == dir || Path::under (file, dir))) > 0
+
+    (** HUNT_UNPORTABLE.txt rows: `<program> <reason>`, comments and blanks dropped. *)
+    export unportable () = match readFile (UNPORTABLE)
+        Success text => Success(value = filterList (lines text, \row => row != "" && !startsWith (row, "#")))
+        Error message => Error(message = message)
+
+    (** Why `program` is listed unportable, or "" when it is not. *)
+    export reasonFor (program, rows) = match filterList (rows, \row => startsWith (row, "${program} "))
+        [] => ""
+        found => trim (drop (firstOf found, satAdd (length program, 1)))
+
+    firstOf rows = listGet (rows, 0) ?: ""

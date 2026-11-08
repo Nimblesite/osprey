@@ -8,26 +8,22 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: hunt hunt-sample hunt-crashes hunt-corpus hunt-demo
+.PHONY: hunt hunt-crashes hunt-corpus hunt-demo
 
 ## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
 ##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]
 hunt: build
 	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
 
-## hunt-sample: Qualify all runnable apps for a fast corpus; hard 10-second cutoff.
-hunt-sample: build
-	python3 scripts/hunt/hunt_sample.py $(HUNT_ARGS)
-
 ## hunt-crashes: Detect and natively reproduce every deliberately planted crash.
 hunt-crashes: build
 	$(MAKE) _test_hunt_crashes
 
-## hunt-corpus: Hunt every program under src/osprey/tests/ and src/osprey/examples/ not listed in
-##              src/osprey/tests/HUNT_UNPORTABLE.txt, then print the table [SYMEX-CORPUS].
+## hunt-corpus: Hunt every program in the corpus (all flavors, the unportable list
+##   too) with scripts/hunt, an Osprey app, into target/hunt/report.html; per-run
+##   JSON lands atomically in target/hunt/runs [SYMEX-CORPUS]
 hunt-corpus: build
-	scripts/hunt/hunt_corpus.sh $(HUNT_ARGS)
-	python3 scripts/hunt/hunt_summary.py target/hunt-corpus --findings-only
+	./target/release/osprey scripts/hunt --run
 
 ## hunt-demo: The bug-detection demo to show anyone first: a planted abort() on
 ##   input "9" (src/osprey/tests/hunt/crash.osp) must report `abort crash.osp:4` and

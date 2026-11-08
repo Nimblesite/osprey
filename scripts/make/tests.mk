@@ -238,37 +238,29 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # Skipped loudly without KLEE, like the bitcode it needs. Like the two KLEE
 # targets below, it is run by hand: neither `make test` nor CI runs the KLEE
 # engine gates while issues #306 and #307 are open [SYMEX-CRASH-GATE].
-# HUNT_KNOWN_BUGS: programs with a known complete-exploration defect, skipped
-# by the expectation suite. clean.osp cannot finish inside the pinned
+# KNOWN_BUGS in tests/hunt_engine.rs: programs with a known complete-exploration
+# defect, skipped by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
 # Apple silicon; strictly worse under GC) — GitHub issue #306, plan 0034
 # known-bug items. Verify a fix
 # with `make _test_hunt_clean`; it stays red until the fix lands.
-HUNT_KNOWN_BUGS ?= clean
+# The KLEE engine gates are ignored Rust tests in osprey-cli
+# (tests/hunt_engine.rs, tests/hunt_gc_roots.rs), run here by hand only.
+HUNT_CARGO_TEST = OSPREY_KLEE="$(KLEE_PREFIX)/bin/klee" OSPREY_KLEE_LLVM="$(KLEE_LLVM_BIN)" \
+  cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --profile ci
 
 # Known-bug verification target, run by hand: red until the fix lands.
 .PHONY: _test_hunt_clean
 _test_hunt_clean:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
-	set -e; fail=0; for backend in gc arc; do \
-	  out="target/hunt-tests/$$backend/clean.json"; $(MKDIR) "target/hunt-tests/$$backend"; \
-	  status=0; ./target/release/osprey hunt src/osprey/tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt/hunt_expect.py "$$out" src/osprey/tests/hunt/clean.expected "$$status" || fail=1; \
-	done; exit $$fail
+	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact clean_finishes_a_complete_exploration_on_both_backends
 
 _test_hunt:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
 	echo "==> [hunt] src/osprey/tests/hunt expectations..."; \
-	set -e; fail=0; for backend in gc arc; do for p in src/osprey/tests/hunt/*.osp; do \
-	  skip=0; for bug in $(HUNT_KNOWN_BUGS); do [ "$$(basename "$${p%.osp}")" = "$$bug" ] && skip=1; done; \
-	  [ "$$skip" = 1 ] && continue; \
-	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$backend/$$(basename "$${p%.osp}").json"; \
-	  $(MKDIR) "target/hunt-tests/$$backend"; \
-	  status=0; ./target/release/osprey hunt "$$p" --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
-	done; done; exit $$fail
+	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_deterministic_hunt_program_matches_its_expectation_on_both_backends
 
 # No skip path: run by hand (`make -C src/osprey/tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
@@ -277,9 +269,8 @@ _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_arc.bc
-	python3 scripts/hunt/test-hunt-default-budget.py
-	python3 scripts/hunt/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
-	@set -e; for backend in gc arc; do python3 scripts/hunt/hunt_crashes.py --memory $$backend; done
+	$(HUNT_CARGO_TEST) --test hunt_gc_roots -- --ignored
+	$(HUNT_CARGO_TEST) --test hunt_engine -- --ignored --exact every_planted_crash_is_found_reproduced_and_benign_on_both_backends
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
@@ -291,9 +282,8 @@ _test_hunt_mock:
 	    $(CC) -std=c11 -O1 -g $(WARN_MAX) -fno-builtin -I runtime/klee -c $$t -o bin/hunt_mock/driver_$$(basename $$t .c).o; \
 	  done && \
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
-	@echo "==> [hunt] corpus scripts and the format oracle..."
-	@python3 scripts/hunt/test-hunt-scripts.py
-	@python3 scripts/hunt/test-hunt-sample.py
+	@echo "==> [hunt] the corpus sweep app (scripts/hunt, an Osprey app)..."
+	@./target/release/osprey test scripts/hunt/tests
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into src/toolchain/compiler/bin/cov/<suite>/, reruns it there (a failing

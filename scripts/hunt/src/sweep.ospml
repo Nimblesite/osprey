@@ -1,0 +1,88 @@
+// Runs `osprey hunt` over the programs, JOBS at a time. Each run writes its
+// JSON report to a `.part` file that is renamed into place when the run ends,
+// so an interrupted sweep keeps every finished program's report
+// [SYMEX-CORPUS]. One progress line prints per finished program.
+
+namespace hunt
+
+import fs::Path
+import hunt::Inventory
+import hunt::Report
+
+(** Parallel `osprey hunt` runs, one Outcome per program. *)
+module Sweep
+    BIN = "target/release/osprey"
+    BUDGET = 20
+    JOBS = 7
+    RUNS = "target/hunt/runs"
+
+    type Job =
+        program : string
+        position : int
+        spawned : Result<int, Error>
+
+    (** Every program hunted, one Outcome each, in inventory order. *)
+    export run (programs, unportable) = match prepare ()
+        Success _ => batches (programs, 0, unportable, [])
+        Error message => mapList (programs, \p => Report::failed (p, -1, "cannot create ${RUNS}: ${message}", Inventory::reasonFor (p, unportable)))
+
+    prepare () = match makeDir "target/hunt"
+        Success _ => match makeDir (RUNS)
+            Success _ => makeDir (Path::join (RUNS, "log"))
+            failed => failed
+        failed => failed
+
+    batches (programs, from, unportable, acc) = match from < length programs
+        true => batches (programs, satAdd (from, JOBS), unportable, listConcat (acc, batch (programs, from, unportable)))
+        false => acc
+
+    batch (programs, from, unportable) =
+        jobs = mapList (window (programs, from, satAdd (from, JOBS), []), \p => start (p, from, programs))
+        mapList (jobs, \job => finish (job, length programs, unportable))
+
+    window (programs, from, to, acc) = match from < to
+        true => match listGet (programs, from)
+            Success p => window (programs, satAdd (from, 1), to, listAppend (acc, p))
+            Error _ => acc
+        false => acc
+
+    start (program, from, programs) = Job(program = program, position = satAdd (indexIn (programs, program, from), 1), spawned = spawnProcess (command program) ignore)
+
+    indexIn (programs, program, from) = match listGet (programs, from)
+        Success p => match p == program
+            true => from
+            false => indexIn (programs, program, satAdd (from, 1))
+        Error _ => from
+
+    // Output goes to the report and log files, so events need no work;
+    // process id 0 is never allocated, which makes this cleanup a no-op.
+    ignore (_pid, _event, _data) = cleanupProcess 0
+
+    (** The run's JSON report; `.part` is its staging file. *)
+    export reportOf program = Path::join (RUNS, "${Path::slug program}.json")
+    (** The run's stderr log. *)
+    export logOf program = Path::join (RUNS, "log/${Path::slug program}.log")
+
+    (** The shell line for one program: hunt, stage, rename, keep the exit code. *)
+    export command program = "${BIN} hunt '${program}' --json --quiet --max-time ${toString BUDGET} > '${reportOf program}.part' 2> '${logOf program}'; code=$?; mv '${reportOf program}.part' '${reportOf program}'; exit $code"
+
+    finish (job, total, unportable) =
+        outcome = settle (job, Inventory::reasonFor (job.program, unportable))
+        print "[${toString job.position}/${toString total}] ${job.program} ${outcome.status}"
+        outcome
+
+    settle (job, reason) = match job.spawned
+        Success pid => collected (job.program, awaitProcess pid, pid, reason)
+        Error message => Report::failed (job.program, -1, "cannot start the hunt: ${message}", reason)
+
+    collected (program, code, pid, reason) =
+        cleanupProcess pid
+        reported (program, code, readFile (reportOf program), logText program, reason)
+
+    reported (program, code, report, log, reason) = match report
+        Success json => Report::outcome (program, code, json, log, reason)
+        Error message => Report::failed (program, code, "no report (${message}): ${Report::lastError log}", reason)
+
+    logText program = match readFile (logOf program)
+        Success text => text
+        Error message => "cannot read ${logOf program}: ${message}"

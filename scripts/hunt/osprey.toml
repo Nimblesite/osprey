@@ -1,0 +1,8 @@
+[project]
+name = "hunt"
+source_roots = ["src", "../../src/osprey/packages/fs/src", "../../src/osprey/packages/json/src"]
+default_namespace = "hunt"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

@@ -102,31 +102,9 @@ osprey hunt ./my-project --out ./hunt-results --input-bytes 4
 
 Exit status is `0` when there is no failing finding, `1` for a native reproduction, any finding with replay disabled, or a compilation failure, and `2` for usage or toolchain errors. Skipped findings and incomplete paths can coexist with status `0`; automation that needs full exploration must inspect the report as well as the exit code.
 
-From the repository, `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C src/osprey/tests/hunt hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
+From the repository, `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C src/osprey/tests/hunt hunt-corpus` sweeps the whole corpus with `scripts/hunt`, an Osprey app, into `target/hunt/report.html`; it is not currently a required CI check.
 
 {{ capture("/assets/images/guides/hunt-clean.png", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", 1440, 1000) }}
-
-## Qualify a quick corpus
-
-From a built checkout with KLEE installed:
-
-```sh
-python3 scripts/hunt/hunt_sample.py --out target/my-hunt-sample
-```
-
-This inventories runnable programs across tests, examples, book examples, package apps, registry apps and benchmarks. Projects are counted once; their individual modules and libraries without an entry point are excluded. Default/ML files, standalone Python-flavor files and Python-entry projects are included. Known engine limitations are sampled rather than silently skipped.
-
-Each invocation gets a hard **10-second wall-clock deadline**, including compilation and replay. The sampler kills the whole process group on timeout. Its default engine budget is eight seconds with two symbolic bytes per stream. The ordinary Hunt `--max-time` flag limits the engine; it is not this whole-command deadline.
-
-Open `index.html` for each program's run status and issues. Logs and path counts are under Details. `safe-runs.json` lists complete, finding-free runs with their recorded input and time limits; `quick-corpus.txt` contains the same program paths.
-
-To gate the JSON list in CI, use a fresh output directory:
-
-```sh
-python3 scripts/hunt/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
-```
-
-This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The pinned 215-program `src/osprey/tests/hunt/safe-runs.json` corpus is run by hand on a machine with KLEE; CI does not run it while issues #306 and #307 are open.
 
 ## Verify deliberate crash detection
 
