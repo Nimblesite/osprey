@@ -82,8 +82,8 @@ src/osprey/tests/regressions/http/http_create_client.test.osp HTTP builtin `http
 src/osprey/tests/regressions/http/http_create_client.test.ospml HTTP builtin `httpCreateClient`
 src/osprey/tests/regressions/http/http_response_handle.test.osp HTTP builtin `httpResponseBody`
 src/osprey/tests/regressions/http/http_response_handle.test.ospml HTTP builtin `httpResponseBody`
-src/osprey/tests/regressions/http/http_server_example.test.osp HTTP builtin `httpCreateServer`
-src/osprey/tests/regressions/http/http_server_example.test.ospml HTTP builtin `httpCreateServer`
+src/osprey/tests/regressions/http/http_server_example.test.osp HTTP builtin `httpClientGone`
+src/osprey/tests/regressions/http/http_server_example.test.ospml HTTP builtin `httpClientGone`
 src/osprey/tests/regressions/http/net_local_address.test.osp link directive `// @link: ssl`
 src/osprey/tests/regressions/http/net_local_address.test.ospml link directive `// @link: ssl`
 src/osprey/tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
