@@ -61,13 +61,11 @@ int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count);
 void *osprey_gpu_sigmoid(void *x);
 int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim, int64_t steps);
 void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values, void *beta, void *decay, int64_t heads, int64_t dim);
-// The threads a [rows, cols] quantized product dispatches: 32 per tile of
-// QUANT_ROWS by QUANT_COLS outputs (gpu_device_lib.metal).
-int64_t osprey_gpu_quant_threads(int64_t rows, int64_t cols);
 // [LLM-MATMUL-QUANT] From this many rows Metal runs the tiled `_mm` product.
 #define QUANT_MM_ROWS 32
+// `threads` holds the few-row and the many-row form's thread counts.
 int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
-                                   int64_t cols);
+                                   int64_t cols, const uint64_t threads[2]);
 // The host entry behind `gpuMatMulQuant` (gpu_host.c): the result buffer, or NULL with the reason recorded.
 void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, int64_t inner, int64_t cols);
 // Copy a device object's first `count` bytes to `out`: 1, or -1 with the

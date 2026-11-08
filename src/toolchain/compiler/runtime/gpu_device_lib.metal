@@ -736,59 +736,69 @@ QUANT_KERNEL(iq4_xs, iq4_xs_weights, 256, 136)
 QUANT_KERNEL(iq3_s, iq3_s_weights, 256, 110)
 #undef QUANT_KERNEL
 
+// The many-row product's tile, which the host's thread count reads too.
+#define QUANT_MM_ROWS_TILE 128
+#define QUANT_MM_COLS_TILE 64
+#define QUANT_MM_STEP 32
+
 #if defined(__METAL_VERSION__)
 // [LLM-MATMUL-QUANT] The many-row product (QUANT_MM_ROWS rows or more, a prompt
-// chunk): each 256-thread group computes a QUANT_MM_TILE-square tile of `out`.
+// chunk): each 256-thread group computes a 128-row by 64-column tile of `out`.
 // Every k-step of 32 the group decodes the tile's 64 weight rows once into
-// threadgroup memory beside its 64 input rows, then its eight SIMD groups
-// multiply 8x8 float32 tiles in hardware, two by four tiles each. The hardware
+// threadgroup memory beside its 128 input rows, then its eight SIMD groups
+// multiply 8x8 float32 tiles in hardware, four by four tiles each. The hardware
 // fuses and orders those sums itself, so this kernel is held to the host oracle
 // within a recorded tolerance (gpu_device_tests.c) instead of bit for bit; the
 // few-row kernel above keeps the order contract for decoding one token.
-#define QUANT_MM_TILE 64
-#define QUANT_MM_STEP 32
 #define QUANT_MM_KERNEL(TYPE, WEIGHTS, ELEMENTS, BYTES) \
 [[max_total_threads_per_threadgroup(QUANT_GROUP)]] \
 kernel void osprey_matmul_##TYPE##_mm(device const float *x [[buffer(0)]], device const uchar *w [[buffer(1)]], \
                                       device float *out [[buffer(2)]], constant ulong &rows [[buffer(3)]], \
                                       constant ulong &inner [[buffer(4)]], constant ulong &cols [[buffer(5)]], \
                                       uint index [[thread_position_in_grid]], uint t [[thread_position_in_threadgroup]]) { \
-    threadgroup float tiles[2 * QUANT_MM_TILE * QUANT_MM_STEP]; \
-    threadgroup float *sa = tiles, *sb = tiles + QUANT_MM_TILE * QUANT_MM_STEP; \
-    ulong tile = index / QUANT_GROUP, ctiles = (cols + QUANT_MM_TILE - 1) / QUANT_MM_TILE; \
-    ulong r0 = (tile / ctiles) * QUANT_MM_TILE, c0 = (tile % ctiles) * QUANT_MM_TILE; \
-    uint lr = t / 4, lg = t % 4, sg = t / 32, sr = (sg / 2) * 16, sc = (sg % 2) * 32; \
-    ulong stride = (inner / (ELEMENTS)) * (BYTES), r = r0 + lr, c = c0 + lr; \
-    simdgroup_float8x8 acc[2][4]; \
-    for (uint i = 0; i < 2; i++) \
+    threadgroup float sa[QUANT_MM_ROWS_TILE * QUANT_MM_STEP], sb[QUANT_MM_COLS_TILE * QUANT_MM_STEP]; \
+    ulong tile = index / QUANT_GROUP, ctiles = (cols + QUANT_MM_COLS_TILE - 1) / QUANT_MM_COLS_TILE; \
+    ulong r0 = (tile / ctiles) * QUANT_MM_ROWS_TILE, c0 = (tile % ctiles) * QUANT_MM_COLS_TILE; \
+    uint lr = t / 4, lg = t % 4, sg = t / 32, lane = t % 32, sr = (sg / 2) * 32, sc = (sg % 2) * 32; \
+    ulong stride = (inner / (ELEMENTS)) * (BYTES), c = c0 + lr; \
+    simdgroup_float8x8 acc[4][4]; \
+    for (uint i = 0; i < 4; i++) \
         for (uint j = 0; j < 4; j++) acc[i][j] = make_filled_simdgroup_matrix<float, 8, 8>(0.0f); \
     for (ulong k0 = 0; k0 < inner; k0 += QUANT_MM_STEP) { \
         ulong k = k0 + lg * 8; \
         float wt[8]; \
         if (c < cols) WEIGHTS(w + c * stride + (k / (ELEMENTS)) * (BYTES), (uint)((k % (ELEMENTS)) / 8), wt); \
-        for (uint m = 0; m < 8; m++) { \
-            sa[lr * QUANT_MM_STEP + lg * 8 + m] = r < rows ? x[r * inner + k + m] : 0.0f; \
-            sb[lr * QUANT_MM_STEP + lg * 8 + m] = c < cols ? wt[m] : 0.0f; \
+        for (uint m = 0; m < 8; m++) sb[lr * QUANT_MM_STEP + lg * 8 + m] = c < cols ? wt[m] : 0.0f; \
+        for (uint h = 0; h < 2; h++) { \
+            ulong r = r0 + lr + h * 64; \
+            device const float4 *xp = (device const float4 *)(x + r * inner + k); \
+            float4 lo = r < rows ? xp[0] : float4(0.0f), hi = r < rows ? xp[1] : float4(0.0f); \
+            threadgroup float4 *sp = (threadgroup float4 *)(sa + (lr + h * 64) * QUANT_MM_STEP + lg * 8); \
+            sp[0] = lo; \
+            sp[1] = hi; \
         } \
         threadgroup_barrier(mem_flags::mem_threadgroup); \
         for (uint kk = 0; kk < QUANT_MM_STEP; kk += 8) { \
-            simdgroup_float8x8 a[2], b[4]; \
-            for (uint i = 0; i < 2; i++) simdgroup_load(a[i], sa + (sr + 8 * i) * QUANT_MM_STEP + kk, QUANT_MM_STEP); \
+            simdgroup_float8x8 a[4], b[4]; \
+            for (uint i = 0; i < 4; i++) simdgroup_load(a[i], sa + (sr + 8 * i) * QUANT_MM_STEP + kk, QUANT_MM_STEP); \
             for (uint j = 0; j < 4; j++) \
                 simdgroup_load(b[j], sb + (sc + 8 * j) * QUANT_MM_STEP + kk, QUANT_MM_STEP, ulong2(0, 0), true); \
-            for (uint i = 0; i < 2; i++) \
+            for (uint i = 0; i < 4; i++) \
                 for (uint j = 0; j < 4; j++) simdgroup_multiply_accumulate(acc[i][j], a[i], b[j], acc[i][j]); \
         } \
         threadgroup_barrier(mem_flags::mem_threadgroup); \
     } \
-    for (uint i = 0; i < 2; i++) \
-        for (uint j = 0; j < 4; j++) \
-            simdgroup_store(acc[i][j], tiles + (sr + 8 * i) * QUANT_MM_TILE + sc + 8 * j, QUANT_MM_TILE); \
-    threadgroup_barrier(mem_flags::mem_threadgroup); \
-    for (uint e = t; e < QUANT_MM_TILE * QUANT_MM_TILE; e += QUANT_GROUP) { \
-        ulong orow = r0 + e / QUANT_MM_TILE, ocol = c0 + e % QUANT_MM_TILE; \
-        if (orow < rows && ocol < cols) out[orow * cols + ocol] = tiles[e]; \
-    } \
+    threadgroup float *own = sa + sg * 64; \
+    for (uint i = 0; i < 4; i++) \
+        for (uint j = 0; j < 4; j++) { \
+            simdgroup_store(acc[i][j], own, 8); \
+            simdgroup_barrier(mem_flags::mem_threadgroup); \
+            for (uint e = lane; e < 64; e += 32) { \
+                ulong orow = r0 + sr + 8 * i + e / 8, ocol = c0 + sc + 8 * j + e % 8; \
+                if (orow < rows && ocol < cols) out[orow * cols + ocol] = own[e]; \
+            } \
+            simdgroup_barrier(mem_flags::mem_threadgroup); \
+        } \
 }
 QUANT_MM_KERNEL(q4_k, q4_k_weights, 256, 144)
 QUANT_MM_KERNEL(q8_0, q8_0_weights, 32, 34)

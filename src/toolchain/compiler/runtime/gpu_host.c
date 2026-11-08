@@ -199,8 +199,12 @@ static float butterfly(float *sums) {
   return sums[0];
 }
 
-int64_t osprey_gpu_quant_threads(int64_t rows, int64_t cols) {
-  return (rows + QUANT_ROWS - 1) / QUANT_ROWS * ((cols + QUANT_COLS - 1) / QUANT_COLS) * QUANT_LANES;
+// The threads each form of the product dispatches: 32 per QUANT_ROWS by
+// QUANT_COLS tile for few rows, a QUANT_GROUP per many-row tile.
+static void quant_grid(int64_t rows, int64_t cols, uint64_t threads[2]) {
+  threads[0] = (uint64_t)((rows + QUANT_ROWS - 1) / QUANT_ROWS * ((cols + QUANT_COLS - 1) / QUANT_COLS) * QUANT_LANES);
+  threads[1] = (uint64_t)((rows + QUANT_MM_ROWS_TILE - 1) / QUANT_MM_ROWS_TILE *
+                          ((cols + QUANT_MM_COLS_TILE - 1) / QUANT_MM_COLS_TILE) * QUANT_GROUP);
 }
 
 // The oracle of the library kernels `osprey_matmul_<type>`, lane for lane.
@@ -267,7 +271,9 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
     return abandoned(out);
   }
-  int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols);
+  uint64_t threads[2];
+  quant_grid(rows, cols, threads);
+  int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols, threads);
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
   product_quant(format, osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);

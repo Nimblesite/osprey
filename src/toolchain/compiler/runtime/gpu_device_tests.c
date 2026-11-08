@@ -231,12 +231,12 @@ static void quant_parity(const char *type, int64_t block_bytes, int64_t block_el
 // [LLM-MATMUL-QUANT] At QUANT_MM_ROWS rows or more the device multiplies 8x8
 // float32 tiles in hardware, which fuses and orders its sums its own way, so the
 // words are held to the host oracle within QUANT_MM_TOLERANCE of the row's
-// largest result rather than bit for bit. Rows 70 by cols 69: one full and one
-// partial 64-wide tile each way, two of the 256-weight blocks in every row.
+// largest result rather than bit for bit. Rows 140 by cols 69: one full and one
+// partial tile each way (128 rows by 64 columns), two 256-weight blocks a row.
 #define QUANT_MM_TOLERANCE 0x1p-16f
 static void quant_close(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                         unsigned scales) {
-  const int64_t shape[3] = {70, 512, 69};
+  const int64_t shape[3] = {140, 512, 69};
   void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
   float *xs = osprey_gpu_data(x);
   for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
