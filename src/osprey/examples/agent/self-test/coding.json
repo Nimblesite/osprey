@@ -49,6 +49,8 @@
     {"wait": "Send"}
   ],
   "qwenAfter": [
+    {"invoke": "New chat"},
+    {"choose": "Run the tests with python3 test_calc.py"},
     {"wait": "median"},
     {"gone": "Stop"},
     {"gone": "Working…"},
