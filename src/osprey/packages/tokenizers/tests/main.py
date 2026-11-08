@@ -34,7 +34,7 @@ from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Tokenizer import AddedToken, QwenTokenizer, qwen_decode, qwen_encode
 from tokenizers.Unicode import (
     cps_text, in_ranges, is_chinese_char, is_control, is_numeric, is_punctuation,
-    is_whitespace, is_word_char, lowercase, strip_base, text_cp_starts, text_cps,
+    is_whitespace, is_word_char, lowercase, starts_cp, strip_base, text_cp_starts, text_cps,
 )
 
 
@@ -493,6 +493,7 @@ def nfc_cases():
 
 def unicode_table_cases():
     return [
+        Check.ints_equal("unicode.codepoint.starts", toList(filter(range(10), lambda i: starts_cp("Aé中😀", i))), [0, 1, 3, 6]),
         Check.ints_equal("unicode.letter.range", [at_int(LETTER_RANGES, 0), at_int(LETTER_RANGES, 1)], [65, 90]),
         Check.ints_equal("unicode.mark.range", [at_int(MARK_RANGES, 0), at_int(MARK_RANGES, 1)], [768, 879]),
         Check.ints_equal("unicode.number.range", [at_int(NUMBER_RANGES, 0), at_int(NUMBER_RANGES, 1)], [48, 57]),

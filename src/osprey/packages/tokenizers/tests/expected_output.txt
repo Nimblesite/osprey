@@ -1026,6 +1026,7 @@ ok utf8.bad lead
 ok utf8.overlong lead
 ok utf8.surrogate
 ok utf8.bad continuation
+ok unicode.codepoint.starts
 ok unicode.letter.range
 ok unicode.mark.range
 ok unicode.number.range
@@ -1812,4 +1813,4 @@ ok qwen.contraction.re
 ok qwen.contraction.ve
 ok qwen.contraction.ll
 ok qwen.json.external.tables
-1814 passed, 0 failed
+1815 passed, 0 failed
