@@ -637,6 +637,19 @@ void osprey_gpu_set(void *buffer, int64_t index, int64_t word) {
   }
 }
 
+// [GPU-IOTA] Every element its own index, in one pass: an index grid of millions
+// of cells (a prompt chunk's attention scores) costs one synchronize and one
+// finalize, not one of each per element. Stores the low elem_bytes of each index,
+// as osprey_gpu_set does.
+void osprey_gpu_iota_fill(void *buffer) {
+  OspreyGpuBuffer *b = current(buffer);
+  if (!b || !b->data) return;
+  for (int64_t i = 0; i < b->length; i++) {
+    memcpy(b->data + i * b->elem_bytes, &i, (size_t)b->elem_bytes);
+  }
+  osprey_gpu_finalize(b);
+}
+
 // The gate osprey_gpu_get's Result form branches on, so a gather reports
 // out-of-bounds instead of reading 0 [GPU-GET].
 int32_t osprey_gpu_in_bounds(void *buffer, int64_t index) {

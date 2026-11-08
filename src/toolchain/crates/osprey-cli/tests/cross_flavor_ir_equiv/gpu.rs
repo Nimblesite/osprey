@@ -463,3 +463,19 @@ const BUILTIN_KERNELS: [(&str, &str, FixtureInputs, &str, &str); 4] = [
         "mul i128",
     ),
 ];
+
+/// [GPU-IOTA] An index grid is one runtime fill: no per-element store loop in the program.
+#[test]
+fn gpu_iota_fills_its_buffer_in_one_runtime_call() -> Result<(), String> {
+    for ir in buffer_ir("gpuIota(1000)", "gpuIota 1000", &[])? {
+        assert_eq!(calls(&ir, "@osprey_gpu_alloc("), 1);
+        assert_eq!(calls(&ir, "@osprey_gpu_iota_fill("), 1);
+        assert_eq!(calls(&ir, "@osprey_gpu_set("), 0);
+        assert_eq!(
+            backward_branches(&ir),
+            0,
+            "the fill needs no loop in the program"
+        );
+    }
+    Ok(())
+}

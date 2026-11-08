@@ -30,6 +30,7 @@ void *osprey_gpu_data(void *buffer);
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
+void osprey_gpu_iota_fill(void *buffer);
 int32_t osprey_gpu_in_bounds(void *buffer, int64_t index);
 void osprey_gpu_take(void *buffer, int64_t count);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
@@ -122,6 +123,26 @@ static void t_set_get_roundtrip(void) {
   for (int64_t i = 0; i < ROUND_LEN; i++) {
     CHECK(osprey_gpu_get(b, i) == i * i - 3);
   }
+}
+
+// [GPU-IOTA] One call fills a buffer with its own indices, whatever its element width,
+// and leaves an empty or missing buffer alone.
+static void t_iota_fill(void) {
+  const int64_t widths[] = {8, 4, 2, 1};
+  for (int w = 0; w < 4; w++) {
+    void *b = osprey_gpu_alloc(ROUND_LEN, widths[w]);
+    osprey_gpu_set(b, 7, 0x7A7A);
+    osprey_gpu_iota_fill(b);
+    const int64_t mask = widths[w] == 8 ? -1 : ((int64_t)1 << (8 * widths[w])) - 1;
+    for (int64_t i = 0; i < ROUND_LEN; i++) {
+      CHECK((osprey_gpu_get(b, i) & mask) == (i & mask));
+    }
+    CHECK(osprey_gpu_len(b) == ROUND_LEN);
+  }
+  osprey_gpu_iota_fill(NULL);
+  void *zero = osprey_gpu_alloc(0, 8);
+  osprey_gpu_iota_fill(zero);
+  CHECK(osprey_gpu_len(zero) == 0);
 }
 
 // Extreme word values survive storage exactly (raw 8-byte words, no coercion).
@@ -533,6 +554,7 @@ int main(int argc, char **argv) {
   t_alloc_failure_is_error();
   t_null_safety();
   t_set_get_roundtrip();
+  t_iota_fill();
   t_boundary_words();
   t_take_shrinks_only();
   t_matmul_exact();
