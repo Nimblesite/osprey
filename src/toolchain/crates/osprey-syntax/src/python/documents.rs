@@ -59,7 +59,7 @@ impl Lowerer<'_> {
             return Ok(None);
         };
         Ok(Some(crate::docparse::parse_doc(
-            text.trim(),
+            &clean_docstring(&text),
             DocScope::Outer,
         )))
     }
@@ -87,6 +87,33 @@ impl Lowerer<'_> {
         let Expr::Str(text) = self.string(Self::first(first)?)? else {
             return self.unsupported(first);
         };
-        Ok(Some(crate::docparse::parse_doc(text.trim(), scope)))
+        Ok(Some(crate::docparse::parse_doc(
+            &clean_docstring(&text),
+            scope,
+        )))
     }
+}
+
+/// A docstring as PEP 257 `inspect.cleandoc` reads it: every line after the
+/// first loses the indentation they share, so an example fenced inside an
+/// indented docstring keeps only the indentation its own code carries.
+fn clean_docstring(text: &str) -> String {
+    let mut lines = text.lines();
+    let first = lines.next().unwrap_or_default().trim();
+    let rest: Vec<&str> = lines.collect();
+    let margin = rest
+        .iter()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len().saturating_sub(line.trim_start().len()))
+        .min()
+        .unwrap_or(0);
+    std::iter::once(first)
+        .chain(
+            rest.iter()
+                .map(|line| line.get(margin..).unwrap_or("").trim_end()),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
