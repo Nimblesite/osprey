@@ -28,7 +28,7 @@ module Surface {
         named("readFile", files), named("readFileBytes", files), named("fileSize", files), named("writeFile", files), named("gpuLoad", files), named("gpuMapFile", files), named("gpuLoadTensor", files), named("loadTensor", files), named("listDir", files), named("kindOf", files), named("makeDir", files),
         named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
         named("httpGet", network), named("httpPost", network), named("httpPostResponse", network), named("httpPut", network), named("httpDelete", network),
-        named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
+        named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpClientGone", network), named("httpResponseFree", network),
         named("websocketClose", network),
         named("input", terminal), named("termRawMode", terminal), named("termReadKey", terminal),
         named("termCols", terminal), named("termRows", terminal), named("termClear", terminal),
