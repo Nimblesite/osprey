@@ -121,6 +121,7 @@ void test_closure_listener_serves_requests(void);
 void test_closure_listen_rejections(void);
 void test_stop_server_with_client_connected(void);
 void test_listener_spawn_failure_is_reported(void);
+void test_client_gone_follows_the_served_client(void);
 void test_server_handle_exhaustion(void);
 
 #endif // HTTP_RUNTIME_TESTS_H

@@ -2,9 +2,14 @@
 // REAL listener, so the reject path, the self-stop path and the listen/stop
 // state machine are asserted end to end [HTTP-SERVER].
 #include "http_runtime_tests.h"
+#include "http_server_internal.h"
 #include "http_shared.h"
 
 #include <assert.h>
+#include <pthread.h>
+#ifndef _WIN32
+#include <sys/resource.h>
+#endif
 
 // ---------------------------------------------------------------------------
 // Live server: raw clients against a REAL listener, so the reject path, the
@@ -337,4 +342,49 @@ void test_listener_spawn_failure_is_reported(void) {
   assert(http_stop_server(server_id) == 0);
   assert(open_descriptor_count() == before &&
          "stopping a server that never listened releases nothing further");
+}
+
+static void *client_gone_elsewhere(void *ignored) {
+  (void)ignored;
+  return (void *)(intptr_t)http_client_gone();
+}
+
+// [HTTP-SERVER-CLIENT-GONE] over a real connected pair: only the served
+// client's orderly close reads as gone, never a byte waiting, another thread or
+// a socket no handler is serving.
+void test_client_gone_follows_the_served_client(void) {
+  int pair[2];
+  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
+  assert(http_client_gone() == 0 && "outside a handler nobody has gone");
+  http_serving_client(pair[0]);
+  assert(http_client_gone() == 0 && "a quiet open client is still there");
+  assert(send(pair[1], "x", 1, 0) == 1);
+  assert(http_client_gone() == 0 && "a pipelined byte is a client still there");
+  assert(http_client_gone() == 0 && "and the probe leaves it unread");
+  char byte = 0;
+  assert(recv(pair[0], &byte, 1, 0) == 1 && byte == 'x');
+  assert(close(pair[1]) == 0);
+  assert(http_client_gone() == 1 && "an orderly close is a client gone");
+  assert(http_client_gone() == 1 && "and stays gone");
+  pthread_t other;
+  void *seen = (void *)1;
+  assert(pthread_create(&other, NULL, client_gone_elsewhere, NULL) == 0);
+  assert(pthread_join(other, &seen) == 0);
+  assert(seen == NULL && "another thread serves no client");
+  http_serving_client(-1);
+  assert(http_client_gone() == 0 && "a finished handler serves nobody");
+#ifndef _WIN32
+  struct rlimit saved;
+  assert(getrlimit(RLIMIT_NOFILE, &saved) == 0);
+  struct rlimit wide = saved;
+  wide.rlim_cur = FD_SETSIZE + 1;
+  assert(setrlimit(RLIMIT_NOFILE, &wide) == 0);
+  assert(dup2(pair[0], FD_SETSIZE) == FD_SETSIZE);
+  http_serving_client(FD_SETSIZE);
+  assert(http_client_gone() == 0 && "a socket select cannot watch is not judged");
+  http_serving_client(-1);
+  assert(close(FD_SETSIZE) == 0);
+  assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
+#endif
+  assert(close(pair[0]) == 0);
 }
