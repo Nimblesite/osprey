@@ -34,6 +34,40 @@ final class SelfTestTests: XCTestCase {
         XCTAssertGreaterThan(frame.height, 0)
     }
 
+    /// The paste step waits for a message field whose paste monitor will act, not just any text
+    /// view holding the keyboard; once it may paste, Cmd-V lands as a marker in the words.
+    @MainActor
+    func testAPictureIsPastedOnlyOnceTheMessageFieldIsReadyToTakeIt() async throws {
+        _ = NSApplication.shared
+        var sent: [String] = []
+        let node = control("field", "Message", 2, ["multiline": .bool(true), "commit": "edit", "value": "hi"])
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        XCTAssertTrue(PastedImage.receivers.isEmpty, "no field is on screen yet")
+        window.contentView = NSHostingView(rootView: FieldView(node: node, revision: 1) { sent.append($0) })
+        window.makeKeyAndOrderFront(nil)
+        for _ in 0..<50 where PastedImage.receivers.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(PastedImage.receivers.count, 1, "the focused message field takes pastes")
+        XCTAssertTrue(window.firstResponder is NSText)
+        let board = NSPasteboard(name: NSPasteboard.Name("Osprey paste test"))
+        board.clearContents()
+        XCTAssertTrue(board.setData(try XCTUnwrap(NSImage(size: NSSize(width: 2, height: 2), flipped: false) { NSColor.systemTeal.setFill(); $0.fill(); return true }.tiffRepresentation), forType: .tiff))
+        PastedImage.pasteboard = board
+        defer { PastedImage.pasteboard = nil }
+        let paste = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: "v", charactersIgnoringModifiers: "v", isARepeat: false, keyCode: 9))
+        NSApp.postEvent(paste, atStart: true)
+        if let event = NSApp.nextEvent(matching: .keyDown, until: Date(timeIntervalSinceNow: 1), inMode: .default, dequeue: true) { NSApp.sendEvent(event) }
+        for _ in 0..<50 where sent.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        let words = try XCTUnwrap(sent.last)
+        XCTAssertTrue(words.hasPrefix("hi [image: ") && words.hasSuffix(".png]"), words)
+        let name = String(words.dropFirst("hi [image: ".count).dropLast())
+        try FileManager.default.removeItem(at: PastedImage.folder.appendingPathComponent(name))
+        window.close()
+        window.contentView = nil
+        for _ in 0..<50 where !PastedImage.receivers.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertTrue(PastedImage.receivers.isEmpty, "a field that leaves the screen takes no more pastes")
+    }
+
     @MainActor
     func testControlsSurviveFramesButRejectChangedBindings() {
         let picker = control("picker", "Speed", 4, ["selected": "1", "choices": .array([.object(["key": "1.5", "label": "1.5×"])])])

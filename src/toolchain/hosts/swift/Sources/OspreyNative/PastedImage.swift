@@ -7,6 +7,9 @@ import UniformTypeIdentifiers
 enum PastedImage {
     /// Where a paste reads; a self-test points this at a named pasteboard.
     @MainActor static var pasteboard: NSPasteboard?
+    /// The multiline fields holding the keyboard with their paste monitor on: a Cmd-V reaches one
+    /// of them as a picture, so a self-test pastes only once this is not empty.
+    @MainActor static var receivers: Set<UUID> = []
     private static let longestSide: CGFloat = 2048
 
     static var folder: URL {
