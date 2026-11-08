@@ -9,6 +9,7 @@
 
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push
+- 🚫 **Coordinated pushes only.** Every push cancels the running CI. Hold the TMC lock `PUSH-<branch>` to push, run `make ci` locally first, batch commits, push once, then no push until that run finishes (except the fix for its red)
 - **Offload legwork (repetitive, simple work) to pi agents**, model per [PiNotes model comparison](../PiNotes/MODEL-COMPARISON.md), always that family's newest id in `pi --list-models` (today: `zai/glm-5.3-flash` repetitive/fixtures/tests, `zai/glm-5.3` scoped code/reviews, `deepseek/deepseek-flash` code/oracles, `kimi-coding/k3.1-pro-highspeed` UI, `deepseek/deepseek-v4-pro` narrow audits only); `pi auth check --model <id>` first, out of credit → tell user, take the next; register each pi on TMC, delete its identity when it exits; you own their output: review and fix it
 - **Tokens:** check file size before reading, grep first, smallest diff
 - **Put strict timeouts on heavy CPU runs like KLEE or LLMs** run with lower CPU priority if possible
