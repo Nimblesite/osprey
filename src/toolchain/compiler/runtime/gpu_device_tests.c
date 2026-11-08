@@ -232,7 +232,7 @@ static void quant_parity(const char *type, int64_t block_bytes, int64_t block_el
 // float32 tiles in hardware, which fuses and orders its sums its own way, so the
 // words are held to the host oracle within QUANT_MM_TOLERANCE of the row's
 // largest result rather than bit for bit. Rows 140 by cols 69: one full and one
-// partial tile each way (128 rows by 64 columns), two 256-weight blocks a row.
+// partial 64-square tile each way, two 256-weight blocks in every row.
 #define QUANT_MM_TOLERANCE 0x1p-16f
 static void quant_close(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                         unsigned scales) {
@@ -390,10 +390,11 @@ static void *seeded(int64_t count) {
   return b;
 }
 
-// One token and three tokens through the host oracle and the device: the device
-// steps every token inside one dispatch and must write the oracle's words.
-static void delta_parity(int64_t steps) {
-  const int64_t shape[3] = {2, 4, steps}, cells = shape[0] * shape[1];
+// Tokens through the host oracle and the device: the device steps every token
+// inside one dispatch and must write the oracle's words, at a narrow head and at
+// Qwen's 128, where each thread holds its state column in registers.
+static void delta_parity(int64_t steps, int64_t dim) {
+  const int64_t shape[3] = {2, dim, steps}, cells = shape[0] * shape[1];
   void *in[6] = {seeded(cells * shape[1] + cells), seeded(steps * cells), seeded(steps * cells), seeded(steps * cells),
                  seeded(steps * shape[0]), seeded(steps * shape[0])};
   float *host, *device;
@@ -412,8 +413,9 @@ static void delta_parity(int64_t steps) {
 }
 
 static void quantized_products(void) {
-  delta_parity(1);
-  delta_parity(3);
+  delta_parity(1, 4);
+  delta_parity(3, 4);
+  delta_parity(5, 128);
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
     quant_parity(c->type, c->bytes, c->elements, c->scale_at, c->scales);
@@ -538,19 +540,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 34);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 35);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 35);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 36);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 36);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 37);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 39);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 40);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;

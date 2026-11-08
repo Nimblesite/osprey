@@ -203,8 +203,7 @@ static float butterfly(float *sums) {
 // QUANT_COLS tile for few rows, a QUANT_GROUP per many-row tile.
 static void quant_grid(int64_t rows, int64_t cols, uint64_t threads[2]) {
   threads[0] = (uint64_t)((rows + QUANT_ROWS - 1) / QUANT_ROWS * ((cols + QUANT_COLS - 1) / QUANT_COLS) * QUANT_LANES);
-  threads[1] = (uint64_t)((rows + QUANT_MM_ROWS_TILE - 1) / QUANT_MM_ROWS_TILE *
-                          ((cols + QUANT_MM_COLS_TILE - 1) / QUANT_MM_COLS_TILE) * QUANT_GROUP);
+  threads[1] = (uint64_t)((rows + QUANT_MM_TILE - 1) / QUANT_MM_TILE * ((cols + QUANT_MM_TILE - 1) / QUANT_MM_TILE) * QUANT_GROUP);
 }
 
 // The oracle of the library kernels `osprey_matmul_<type>`, lane for lane.

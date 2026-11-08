@@ -154,33 +154,44 @@ def peaks_of(s, seg, rows, config, shapes):
     return must(gpuMap(rows.q_heads, lambda i: peak(s, quot(i, hm, hs), rem(i, hm, hs, heads), n, heads, limit)))
 
 
-def total(s, top, t, h, rows, heads, limit):
+def exps_of(s, top, seg, config, shapes):
+    """`exp(s - top)` of every score cell, once: the totals and the weighted sums
+    both read it, so no output cell recomputes it per head offset."""
+    heads = config.num_attention_heads
+    hm = shapes.attention_heads.mul
+    hs = shapes.attention_heads.shift
+    sm = seg.span.mul
+    ss = seg.span.shift
+    return must(gpuMap(seg.scores, lambda i: exp(at(s, i) - at(top, wrapAdd(wrapMul(quot(i, sm, ss), heads), rem(i, hm, hs, heads))))))
+
+
+def total(e, t, h, rows, heads, limit):
     """`Σ exp(s - top)` over the positions query `t` reads, in position order."""
-    return fold(range(0, rows), toFloat32(0.0), lambda a, j: a if j > wrapAdd(limit, t) else a + exp(at(s, cell_of(t, j, h, rows, heads)) - at(top, wrapAdd(wrapMul(t, heads), h))))
+    return fold(range(0, rows), toFloat32(0.0), lambda a, j: a if j > wrapAdd(limit, t) else a + at(e, cell_of(t, j, h, rows, heads)))
 
 
-def totals_of(s, top, seg, rows, config, shapes):
+def totals_of(e, seg, rows, config, shapes):
     heads = config.num_attention_heads
     hm = shapes.attention_heads.mul
     hs = shapes.attention_heads.shift
     n = seg.rows
     limit = seg.limit
-    return must(gpuMap(rows.q_heads, lambda i: total(s, top, quot(i, hm, hs), rem(i, hm, hs, heads), n, heads, limit)))
+    return must(gpuMap(rows.q_heads, lambda i: total(e, quot(i, hm, hs), rem(i, hm, hs, heads), n, heads, limit)))
 
 
-def attended(s, top, inv, values, t, h, d, rows, heads, limit, width, kv_width, kvh):
+def attended(e, inv, values, t, h, d, rows, heads, limit, width, kv_width, kvh):
     """`Σ (exp(s - top) * inv) * v` over the positions query `t` reads, in order."""
-    return fold(range(0, rows), toFloat32(0.0), lambda a, j: a if j > wrapAdd(limit, t) else a + exp(at(s, cell_of(t, j, h, rows, heads)) - at(top, wrapAdd(wrapMul(t, heads), h))) * at(inv, wrapAdd(wrapMul(t, heads), h)) * at(values, wrapAdd(wrapMul(j, kv_width), wrapAdd(wrapMul(kvh, width), d))))
+    return fold(range(0, rows), toFloat32(0.0), lambda a, j: a if j > wrapAdd(limit, t) else a + at(e, cell_of(t, j, h, rows, heads)) * at(inv, wrapAdd(wrapMul(t, heads), h)) * at(values, wrapAdd(wrapMul(j, kv_width), wrapAdd(wrapMul(kvh, width), d))))
 
 
-def attended_at(s, top, inv, values, i, mul, shift, hm, hs, gm, gs, rows, heads, limit, width, kv_width):
+def attended_at(e, inv, values, i, mul, shift, hm, hs, gm, gs, rows, heads, limit, width, kv_width):
     """Output cell `i` of the stacked `[count, heads * width]` rows: its query row, head and offset."""
     hg = quot(i, mul, shift)
     h = rem(hg, hm, hs, heads)
-    return attended(s, top, inv, values, quot(hg, hm, hs), h, rem(i, mul, shift, width), rows, heads, limit, width, kv_width, quot(h, gm, gs))
+    return attended(e, inv, values, quot(hg, hm, hs), h, rem(i, mul, shift, width), rows, heads, limit, width, kv_width, quot(h, gm, gs))
 
 
-def output(s, top, inv, seg, rows, config, shapes):
+def output(e, inv, seg, rows, config, shapes):
     """`softmax(scores) @ values` of the segment for every query row, heads side by side."""
     g = geometry(config, shapes)
     heads = g.heads
@@ -195,7 +206,7 @@ def output(s, top, inv, seg, rows, config, shapes):
     n = seg.rows
     limit = seg.limit
     values = seg.values
-    return must(gpuMap(rows.q_cells, lambda i: attended_at(s, top, inv, values, i, mul, shift, hm, hs, gm, gs, n, heads, limit, width, kv_width)))
+    return must(gpuMap(rows.q_cells, lambda i: attended_at(e, inv, values, i, mul, shift, hm, hs, gm, gs, n, heads, limit, width, kv_width)))
 
 
 def reciprocal(total_a, total_b, rows):
@@ -211,9 +222,11 @@ def split_output(q, a, b, rows, config, shapes):
     pa = peaks_of(sa, a, rows, config, shapes)
     pb = peaks_of(sb, b, rows, config, shapes)
     top = must(gpuMap(rows.q_heads, lambda h: at(pa, h) if at(pa, h) > at(pb, h) else at(pb, h)))
-    inv = reciprocal(totals_of(sa, top, a, rows, config, shapes), totals_of(sb, top, b, rows, config, shapes), rows)
-    oa = output(sa, top, inv, a, rows, config, shapes)
-    ob = output(sb, top, inv, b, rows, config, shapes)
+    ea = exps_of(sa, top, a, config, shapes)
+    eb = exps_of(sb, top, b, config, shapes)
+    inv = reciprocal(totals_of(ea, a, rows, config, shapes), totals_of(eb, b, rows, config, shapes), rows)
+    oa = output(ea, inv, a, rows, config, shapes)
+    ob = output(eb, inv, b, rows, config, shapes)
     return must(gpuMap(rows.q_cells, lambda i: at(oa, i) + at(ob, i)))
 
 
@@ -223,9 +236,9 @@ def attended_all(q, slot, tail_keys, tail_values, rows, config, shapes):
     b = segment(tail_keys, tail_values, tail + rows.count, tail, rows.count, config)
     if slot.sealed == 0:
         s = scores(q, b, config, shapes)
-        top = peaks_of(s, b, rows, config, shapes)
+        e = exps_of(s, peaks_of(s, b, rows, config, shapes), b, config, shapes)
         none = must(gpuMap(rows.q_heads, lambda _: toFloat32(0.0)))
-        return output(s, top, reciprocal(totals_of(s, top, b, rows, config, shapes), none, rows), b, rows, config, shapes)
+        return output(e, reciprocal(totals_of(e, b, rows, config, shapes), none, rows), b, rows, config, shapes)
     else:
         return split_output(q, segment(slot.sealed_keys, slot.sealed_values, slot.sealed, slot.sealed, rows.count, config), b, rows, config, shapes)
 
