@@ -53,7 +53,11 @@ if [ "$mode" = qwen ]; then
     python3 - "$here/self-test/coding.json" "$work" <<'SCRIPT'
 import json, pathlib, sys
 suite = json.loads(pathlib.Path(sys.argv[1]).read_text())
-for name, steps in (("preflight", suite["qwenBefore"]), ("live", suite["qwenBefore"] + suite["steps"] + suite["qwenAfter"]), ("replay", suite["qwenAfter"])):
+# Launch opens an empty chat beside saved chats. Match that sidebar in the live capture.
+select_saved = [{"choose": "Run the tests with python3 test_calc.py"}]
+after = select_saved + suite["qwenAfter"]
+live = suite["qwenBefore"] + suite["steps"] + [{"invoke": "New chat"}] + after
+for name, steps in (("preflight", suite["qwenBefore"]), ("live", live), ("replay", after)):
     pathlib.Path(sys.argv[2], name + ".json").write_text(json.dumps({"steps": steps}))
 SCRIPT
     "$host" --self-test "$work/preflight.json" "$records/preflight" --store "$work/store" --patience 30 --goldens "$os_goldens-qwen" "$project" 2>&1 | tee "$records/preflight.log"
