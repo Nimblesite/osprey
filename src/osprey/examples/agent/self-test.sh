@@ -53,10 +53,20 @@ if [ "$mode" = qwen ]; then
     python3 - "$here/self-test/coding.json" "$work" <<'SCRIPT'
 import json, pathlib, sys
 suite = json.loads(pathlib.Path(sys.argv[1]).read_text())
-# Launch opens an empty chat beside saved chats. Match that sidebar in the live capture.
-select_saved = [{"choose": "Run the tests with python3 test_calc.py"}]
-after = select_saved + suite["qwenAfter"]
-live = suite["qwenBefore"] + suite["steps"] + [{"invoke": "New chat"}] + after
+task = "Run the tests with python3 test_calc.py"
+steps = suite["steps"]
+second_turn = next(i for i, step in enumerate(steps)
+                   if step.get("type", ["", ""])[1].startswith("Add a median(values) function"))
+expected = "def add(a, b):\n    return a + b\n\n\ndef mean(values):\n    return sum(values) / len(values)\n"
+pathlib.Path(sys.argv[2], "expected-calc.py").write_text(expected)
+message = next(step["type"] for step in steps[:second_turn] if "type" in step)
+message[1] = (task + " using run_command. Next use write_file to replace calc/__init__.py "
+              "with exactly this content (no Markdown fences):\n" + expected
+              + "Do not change test_calc.py. Run the same command again and report its result.\n")
+replay = [{"wait": task} if step.get("wait") == "median" else step for step in suite["qwenAfter"]]
+after = [{"choose": task}] + replay
+coding = [{"wait": task} if step.get("wait", "").startswith(task) else step for step in steps[:second_turn]]
+live = suite["qwenBefore"] + coding + [{"invoke": "New chat"}] + after
 for name, steps in (("preflight", suite["qwenBefore"]), ("live", live), ("replay", after)):
     pathlib.Path(sys.argv[2], name + ".json").write_text(json.dumps({"steps": steps}))
 SCRIPT
@@ -64,7 +74,15 @@ SCRIPT
     # Capture a real run, then compare the persisted conversation on a fresh real window.
     # Fresh model prose is not a stable pixel oracle; replay uses the exact saved output.
     "$host" --self-test "$work/live.json" "$records/coding" --store "$work/store" --patience 600 --goldens "$records/goldens" --update-goldens "$project" 2>&1 | tee "$records/live.log"
-    python3 "$here/self-test/verify_calc.py" "$project" --tests --original "$records/original-test_calc.py" 2>&1 | tee "$records/project-tests.log"
+    python3 - "$work/expected-calc.py" "$project/calc/__init__.py" <<'SCRIPT'
+from pathlib import Path
+import sys
+expected, actual = (Path(path).read_bytes().removesuffix(b"\n") for path in sys.argv[1:])
+if actual != expected:
+    sys.exit("FAILED: Agent did not write the supplied code")
+SCRIPT
+    cmp "$records/original-test_calc.py" "$project/test_calc.py"
+    (cd "$project" && python3 test_calc.py) 2>&1 | tee "$records/project-tests.log"
     "$host" --self-test "$work/replay.json" "$records/replay" --store "$work/store" --patience 30 --goldens "$records/goldens" "$project" 2>&1 | tee "$records/replay.log"
     "${OSPREY_QWEN_PYTHON:?the real ui harness supplies its Python}" "$here/drive/judge.py" --qwen "$records"
     echo "real Qwen UI E2E passed; actual screenshots, replay comparisons and judge: $records"
