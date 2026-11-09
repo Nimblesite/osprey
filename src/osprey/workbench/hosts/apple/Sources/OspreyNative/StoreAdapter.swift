@@ -34,36 +34,103 @@ public struct StoreAdapter: CapabilityAdapter {
 
     /// A name stays inside the store: no absolute paths, no parent references.
     func location(_ name: String) throws -> URL {
+        try components(name).reduce(root) { $0.appendingPathComponent($1) }
+    }
+
+    private func components(_ name: String) throws -> [String] {
         let parts = name.split(separator: "/").map(String.init)
-        guard !name.isEmpty, !name.hasPrefix("/"), !parts.contains(".."), !parts.contains("") else { throw CapabilityError.notAllowed("Invalid store name \(name)") }
-        return parts.reduce(root) { $0.appendingPathComponent($1) }
+        guard !name.isEmpty, !name.hasPrefix("/"), !name.utf8.contains(0), !parts.contains("..") else {
+            throw CapabilityError.notAllowed("Invalid store name \(name)")
+        }
+        return parts
+    }
+
+    // [UI-EFFECTS] An inaccessible path is not proven absent.
+    private func exists(_ url: URL) throws -> Bool {
+        var metadata = stat()
+        if lstat(url.path, &metadata) == 0 { return true }
+        let failure = errno
+        guard failure == ENOENT else {
+            throw CapabilityError.platform("Store metadata unavailable: \(String(cString: strerror(failure)))")
+        }
+        return false
     }
 
     private func read(_ request: Request, slices: SliceStore) throws -> JSONValue {
         let url = try location(try request.text("name"))
-        guard FileManager.default.fileExists(atPath: url.path) else { return .object(["found": false]) }
+        guard try exists(url) else { return .object(["found": false]) }
         slices.write(try request.text("slice"), try Bounded.text(try Bounded.read(url.path, limit: try request.number("limit"))))
         return .object(["found": true])
     }
 
     private func write(_ request: Request, slices: SliceStore) throws -> JSONValue {
-        let url = try location(try request.text("name"))
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try Data(slices.text(try request.text("slice")).utf8).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        let parts = try components(try request.text("name"))
+        guard let leaf = parts.last else { throw CapabilityError.notAllowed("Missing store file name") }
+        let parent = try writeDirectory(parts.dropLast())
+        defer { close(parent) }
+        try replace(leaf, in: parent, with: Data(slices.text(try request.text("slice")).utf8))
+        let url = parts.reduce(root) { $0.appendingPathComponent($1) }
         return .object(["path": .string(url.path)])
+    }
+
+    // [UI-EFFECTS] Resolve each component relative to an open directory.
+    // A link substituted before its open is refused, and a later substitution
+    // cannot redirect the descriptor-relative write.
+    private func writeDirectory(_ parts: ArraySlice<String>) throws -> Int32 {
+        let flags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
+        var directory = open(root.path, flags)
+        guard directory >= 0 else { throw directoryFailure(errno) }
+        do {
+            for part in parts {
+                guard mkdirat(directory, part, 0o700) == 0 || errno == EEXIST else { throw directoryFailure(errno) }
+                let next = openat(directory, part, flags)
+                guard next >= 0 else { throw directoryFailure(errno) }
+                close(directory)
+                directory = next
+            }
+            return directory
+        } catch {
+            close(directory)
+            throw error
+        }
+    }
+
+    private func replace(_ leaf: String, in directory: Int32, with data: Data) throws {
+        let temporary = ".osprey-writing-\(UUID())"
+        let file = openat(directory, temporary, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
+        guard file >= 0 else { throw storeFailure(errno) }
+        defer { close(file) }
+        var renamed = false
+        defer { if !renamed { unlinkat(directory, temporary, 0) } }
+        #if os(iOS) && !targetEnvironment(simulator)
+        // XNU protection class C is complete until first user authentication.
+        let protectedUntilFirstAuthentication: Int32 = 3
+        guard fcntl(file, F_SETPROTECTIONCLASS, protectedUntilFirstAuthentication) == 0 else { throw storeFailure(errno) }
+        #endif
+        try FileHandle(fileDescriptor: file, closeOnDealloc: false).write(contentsOf: data)
+        guard renameat(directory, temporary, directory, leaf) == 0 else { throw storeFailure(errno) }
+        renamed = true
+    }
+
+    private func directoryFailure(_ failure: Int32) -> CapabilityError {
+        if failure == ELOOP || failure == ENOTDIR { return .notAllowed("Invalid store directory") }
+        return storeFailure(failure)
+    }
+
+    private func storeFailure(_ failure: Int32) -> CapabilityError {
+        .platform("Store write failed: \(String(cString: strerror(failure)))")
     }
 
     private func list(_ request: Request) throws -> JSONValue {
         let url = try location(try request.text("name"))
-        guard FileManager.default.fileExists(atPath: url.path) else { return .object(["names": .array([])]) }
+        guard try exists(url) else { return .object(["names": .array([])]) }
         let names = try FileManager.default.contentsOfDirectory(atPath: url.path).sorted()
         return .object(["names": .array(names.map(JSONValue.string))])
     }
 
     private func delete(_ request: Request) throws -> JSONValue {
         let url = try location(try request.text("name"))
-        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        if try exists(url) { try FileManager.default.removeItem(at: url) }
         return .object([:])
     }
 }
