@@ -14,7 +14,7 @@ Contract: [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md
 
 - [ ] Fix `clean.osp` complete exploration (#306): `src/osprey/tests/hunt/clean.osp` prints a symbolic integer whose digit/length queries over the unconstrained value need ~49 s solver work, over the 30 s budget on both gc and arc. Do not relax the 64-byte/30-second settings; do not retry these dead ends, all measured neutral or worse and reverted at `f6085332`: raw-view bounded parse, O(n) min-reduction line copy, `gc_scan_range` alignment filter, binary-search digit length in `hunt_format.c`. `--max-solver-time=30s` with the forked solver is mandatory (in-process explored 6 paths and completed 1); `--solver-backend=z3 --solver-optimize-divides` cut partial states from 18 to 3 (GC) and 19 to 3 (ARC). Acceptance: `make _test_hunt_clean` exits 0 on both backends.
 - [ ] Remove `clean` from `KNOWN_BUGS` in `src/toolchain/crates/osprey-cli/tests/hunt_engine.rs` so `_test_hunt` covers `src/osprey/tests/hunt/clean.osp` again. Acceptance: `make _test_hunt` runs clean.osp without skipping and passes.
-- [x] The default 64-byte/30-second budget is a required gate: `make _test_hunt` hunts `crash.osp` with it on both backends (`every_deterministic_hunt_program_matches_its_expectation_on_both_backends`).
+- [x] The default 64-byte/30-second budget is a required gate: `make _test_hunt` hunts `crash.osp` with it on both backends (`every_deterministic_hunt_program_matches_its_expectation_on_both_backends`). Every real-engine hunt test is `#[ignore = "needs KLEE"]`, so this gate runs wherever KLEE is installed; hosted CI runs only `_test_hunt_mock`.
 
 ## Verification gap `[SYMEX-CODEGEN]`
 
