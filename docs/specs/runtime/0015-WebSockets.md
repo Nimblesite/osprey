@@ -64,12 +64,35 @@ Stopping a server ends its connections and waits for the threads serving them
 before it returns. A connection that hasn't finished its handshake ends within a
 second.
 
-## Framing limits [BUILTIN-WEBSOCKET-FRAMING]
+## Framing [BUILTIN-WEBSOCKET-FRAMING]
 
-The runtime handles single text frames only. It does not implement fragmented,
-binary, close, ping, or pong frames, and outbound payloads are limited to 4096
-bytes. Outbound frames use the one-byte length form below 126 bytes and the
-16-bit extended form above it; the 64-bit form is never emitted and is rejected
-on input. Inbound masked frames are unmasked with the frame's masking key.
-Client frames sent by this runtime are not masked, and the client transport
-rejects `wss://`.
+Frames follow RFC 6455. The parser reads all three payload length forms: one
+byte, 16 bits and 64 bits. It reports each frame's FIN bit and opcode, and it
+takes frames from a byte stream, so a frame split across TCP segments, or
+several frames in one segment, arrive intact. It refuses reserved bits, unknown
+opcodes, fragmented control frames, control payloads over 125 bytes, lengths
+not in their shortest form, and 64-bit lengths with the top bit set.
+
+The server reads each connection as follows:
+
+- **Masking:** client frames must be masked. An unmasked frame is closed with
+  status 1002 (protocol error).
+- **Fragments:** a text message sent in fragments is delivered once, whole.
+  Continuing nothing, or starting a message while another is in fragments,
+  closes with 1002.
+- **Ping and pong:** a ping is answered with a pong carrying the same payload,
+  even between the fragments of a message. An unsolicited pong gets no answer.
+- **Close:** a close frame is answered with the same status code, then the
+  connection ends. A one-byte close payload, or a status code a peer may not
+  send, closes with 1002.
+- **Binary:** binary messages are not taken and close with 1003.
+- **Size limit:** a frame, or a message assembled from fragments, over 16384
+  bytes closes with 1009.
+- **Out of memory:** an allocation that fails while a frame is read closes the
+  connection with 1011.
+
+Text payloads are not checked for valid UTF-8.
+
+Outbound payloads are limited to 4096 bytes, so the 64-bit length form is never
+sent. Server frames are unmasked. The client masks every frame with a fresh
+random key, but it never reads frames and it rejects `wss://`.

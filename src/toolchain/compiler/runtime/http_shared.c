@@ -1,5 +1,4 @@
 #include "http_shared.h"
-#include "socket_safety.h"
 #include <time.h>
 
 // Standard OpenSSL includes - works on all platforms
@@ -167,112 +166,6 @@ char *generate_websocket_key(void) {
   unsigned char key_bytes[16];
   osp_random_bytes(key_bytes, sizeof(key_bytes));
   return base64_encode(key_bytes, sizeof(key_bytes));
-}
-
-// WebSocket frame encoding (shared)
-int send_websocket_frame(int socket_fd, const char *payload) {
-  if (!payload)
-    return -1;
-
-  size_t payload_len = strlen(payload);
-  if (payload_len > 4096)
-    return -1; // Prevent DoS attacks
-
-  unsigned char frame[4106]; // Fixed size: 4096 + 10 for header
-  int frame_len = 0;
-
-  // Opcode: 0x1 for text frame
-  frame[frame_len++] = 0x81;
-
-  // Payload length. The 4096-byte guard above already bounds payload_len well
-  // under the 16-bit extended form's 65535 limit, so the 64-bit form is
-  // unreachable here and is not emitted [BUILTIN-WEBSOCKET-FRAMING].
-  if (payload_len < 126) {
-    frame[frame_len++] = payload_len;
-  } else {
-    frame[frame_len++] = 126;
-    frame[frame_len++] = (payload_len >> 8) & 0xFF;
-    frame[frame_len++] = payload_len & 0xFF;
-  }
-
-  // Copy payload
-  memcpy(frame + frame_len, payload, payload_len);
-  frame_len += payload_len;
-
-  // `frame` is unsigned char; Winsock's send() takes `const char *` (POSIX
-  // takes `const void *`). Cast at the call site — portable both ways, mirrors
-  // the setsockopt/accept/bind casts.
-  // A frame goes whole or not at all: part of one corrupts the stream for good.
-  int sent = 0;
-  while (sent < frame_len) {
-    int n = osp_socket_send(socket_fd, (const char *)frame + sent, (size_t)(frame_len - sent));
-    if (n <= 0) {
-      return -1;
-    }
-    sent += n;
-  }
-  return sent;
-}
-
-// WebSocket frame parsing (shared)
-int parse_websocket_frame(const char *frame_data, size_t frame_len,
-                          char **payload) {
-  if (frame_len < 2)
-    return -1;
-
-  // Extract only the values we actually use in this simplified implementation
-  unsigned char second_byte = frame_data[1];
-  bool mask = (second_byte & 0x80) != 0;
-  size_t payload_len = second_byte & 0x7F;
-
-  // NOTE: This is a simplified WebSocket frame parser that ignores:
-  // - FIN bit (frame_data[0] & 0x80): fragmentation handling
-  // - Opcode (frame_data[0] & 0x0F): frame type (text, binary, close, ping,
-  // pong)
-
-  size_t offset = 2;
-
-  // Extended payload length. The bytes must be read UNSIGNED: `char` is
-  // signed here, and a length byte >= 0x80 would sign-extend into a huge
-  // size_t, rejecting every extended frame whose low length byte has the top
-  // bit set (e.g. any 128..255-byte payload).
-  if (payload_len == 126) {
-    if (frame_len < offset + 2)
-      return -1;
-    payload_len = ((size_t)(unsigned char)frame_data[offset] << 8) |
-                  (size_t)(unsigned char)frame_data[offset + 1];
-    offset += 2;
-  } else if (payload_len == 127) {
-    // Not implemented for this simple version
-    return -1;
-  }
-
-  // Masking key
-  unsigned char masking_key[4] = {0};
-  if (mask) {
-    if (frame_len < offset + 4)
-      return -1;
-    memcpy(masking_key, frame_data + offset, 4);
-    offset += 4;
-  }
-
-  // Payload
-  if (frame_len < offset + payload_len)
-    return -1;
-
-  *payload = malloc(payload_len + 1);
-  if (!*payload)
-    return -1;
-
-  for (size_t i = 0; i < payload_len; i++) {
-    (*payload)[i] = frame_data[offset + i];
-    if (mask) {
-      (*payload)[i] ^= masking_key[i % 4];
-    }
-  }
-  (*payload)[payload_len] = '\0';
-
-  return payload_len;
 }
 
 // SHA-1 over `<key><RFC 6455 GUID>`, the accept-token digest

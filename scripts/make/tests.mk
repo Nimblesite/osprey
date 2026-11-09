@@ -180,7 +180,7 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 # loopback ports (18086/18087) and runs a real accept loop, so it is single
 # threaded across suites by construction -- the Makefile runs suites serially.
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_frames_tests.c runtime/websocket_frames.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
 # server (18092/18093) and a plain TCP client against the one-file server.

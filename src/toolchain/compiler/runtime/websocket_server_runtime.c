@@ -97,27 +97,56 @@ static void unregister_connection(WebSocketServer *server, WebSocket *ws) {
   free(ws);
 }
 
-// Echoes each message back with server info until the peer goes or the server stops.
-static void serve_messages(const WebSocketServer *server, int fd) {
-  char frame_buffer[MAX_HTTP_BUFFER];
+// The echo the server answers each text message with.
+static void echo_message(int fd, const char *text) {
+  fprintf(stderr, "WebSocket received: %s\n", text);
+  char echo_response[1024];
+  snprintf(echo_response, sizeof(echo_response),
+           "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
+           "\"Server received: %s\",\"timestamp\":\"%lld\"}",
+           text, text, (long long)time(NULL));
+  send_websocket_frame(fd, echo_response);
+}
+
+// Acts on every event the bytes held make: false once the connection is over.
+static bool serve_events(int fd, WsStream *stream) {
   for (;;) {
-    int frame_bytes = recv_until_stopped(server, fd, frame_buffer, sizeof(frame_buffer));
-    if (frame_bytes <= 0) {
-      return;
+    WsEvent event = ws_stream_next(stream);
+    switch (event.kind) {
+    case WS_EVENT_NONE:
+      return true;
+    case WS_EVENT_MESSAGE:
+      if (event.payload_len > 0) {
+        echo_message(fd, event.payload);
+      }
+      break;
+    case WS_EVENT_PING:
+      send_websocket_message(fd, WS_OP_PONG, event.payload, event.payload_len, false);
+      break;
+    case WS_EVENT_CLOSE:
+      send_websocket_close(fd, event.close_code);
+      return false;
     }
-    char *payload = NULL;
-    int payload_len = parse_websocket_frame(frame_buffer, frame_bytes, &payload);
-    if (payload_len > 0 && payload) {
-      fprintf(stderr, "WebSocket received: %s\n", payload);
-      char echo_response[1024];
-      snprintf(echo_response, sizeof(echo_response),
-               "{\"type\":\"echo\",\"original\":\"%s\",\"echo\":"
-               "\"Server received: %s\",\"timestamp\":\"%lld\"}",
-               payload, payload, (long long)time(NULL));
-      send_websocket_frame(fd, echo_response);
-    }
-    free(payload); // Empty frames also own a parser allocation [BUILTIN-WEBSOCKET-FRAMING].
+    free(event.payload);
   }
+}
+
+// Reads frames into whole messages, echoing each, answering pings and the
+// closing handshake, until the peer goes, a frame is refused or the server stops
+// [BUILTIN-WEBSOCKET-FRAMING].
+static void serve_messages(const WebSocketServer *server, int fd) {
+  WsStream *stream = calloc(1, sizeof(WsStream));
+  if (!stream) {
+    send_websocket_close(fd, WS_CLOSE_INTERNAL);
+    return;
+  }
+  for (bool open = true; open;) {
+    size_t room = sizeof(stream->data) - stream->held;
+    int received = recv_until_stopped(server, fd, stream->data + stream->held, room);
+    stream->held += received > 0 ? (size_t)received : 0;
+    open = received > 0 && serve_events(fd, stream);
+  }
+  ws_stream_release(stream);
 }
 
 // Sends the handshake's answer and serves the connection while it lives.

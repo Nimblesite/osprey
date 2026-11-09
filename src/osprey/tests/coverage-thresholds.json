@@ -252,6 +252,10 @@
       "websocket_server_runtime": {
         "language": "c"
       },
+      "websocket_frames": {
+        "threshold": 99,
+        "language": "c"
+      },
       "tls_client_runtime": {
         "language": "c"
       },
