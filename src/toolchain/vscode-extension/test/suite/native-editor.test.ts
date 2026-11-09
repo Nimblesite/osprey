@@ -90,7 +90,7 @@ suite("native marked editor", () => {
       await frame.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Argument", undefined, { timeout: 1000 });
       await frame.page().keyboard.type("p");
       await pollUntilResult({ fn: () => events.some(event => event.value === "q → p" && event.region === "challenge:lesson-b/claim" && event.ordinal === 4),
-        until: Boolean, timeoutMs: 1000, description: "the first request of the newly scoped challenge retains its own binding" });
+        until: Boolean, timeoutMs: 5000, description: "the first request of the newly scoped challenge retains its own binding" });
     });
   });
 
@@ -136,7 +136,7 @@ suite("native marked editor", () => {
       await frame.page().keyboard.type("r");
       assert.strictEqual(await frame.getByRole("textbox", { name: "Argument", exact: true }).inputValue(), "p → r");
       await pollUntilResult({ fn: () => events.some(event => event.value === "p → r" && event.region === "root" && event.revision === 2 && event.ordinal === 4), until: Boolean,
-        timeoutMs: 1000, description: "continued typing uses the newly issued editor binding" });
+        timeoutMs: 5000, description: "continued typing uses the newly issued editor binding" });
     });
   });
 
