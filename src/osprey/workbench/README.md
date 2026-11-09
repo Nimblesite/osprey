@@ -6,6 +6,8 @@ Freehand drawing and handwriting recognition have been removed. Workspace format
 
 Contract: [spec 0051](../../../docs/specs/applications/0051-ProofWorkbench.md). Delivery: [plan 0042](../../../docs/plans/0042-proof-workbench.md). Status: **proof-language modules implemented; application and hosts in progress.** The app elaborates supported steps into terms and calls the shared Osprey kernel directly. A Checked badge requires the kernel to accept the statement and proof. The separate generated-text-to-Lean workflow is not the source of that verdict; incomplete generated proofs retain explicit holes. See [spec 0049](../../../docs/specs/language/0049-DependentTypesAndProofs.md).
 
+The English-sentence proof document and the generated `// osprey: types=lean4` module shown below are the deleted formats of [WORKBENCH-DELETED](../../../docs/specs/applications/0051-ProofWorkbench.md#deleted-formats-workbench-deleted): the contract is one format, `.lean`, and [plan 0041](../../../docs/plans/0041-dependent-types-and-mathlib.md) removes the `formula`, `statement`, `step`, `goals`, `emit` and `kernel` modules that still read and write them today.
+
 Lean is the development oracle for compatible statements and certificates; Osprey's kernel makes the Workbench's proof decisions. Follow the [oracle, independent-operation and discipline-correction contract](../../../docs/messaging.md#proof-development-and-the-lean-oracle). Known unsound certificates must be refused, and changing a checker, theory or axiom policy requires fresh checking rather than inherited Checked badges.
 
 ```
