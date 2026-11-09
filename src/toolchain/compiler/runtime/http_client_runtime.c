@@ -1,21 +1,13 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
 #include "io_error.h"
-#include "socket_safety.h"
 #include "string_runtime.h"
 
-#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <openssl/x509_vfy.h> // X509_VERIFY_PARAM
 
-#ifdef _WIN32
-#define osp_poll WSAPoll
-#else
+#ifndef _WIN32
 #include <poll.h>
-#define osp_poll poll
 #endif
 
 // HTTP client runtime.
@@ -78,154 +70,6 @@ int64_t http_create_client(char *base_url, int64_t timeout) {
 }
 
 typedef struct {
-  SSL_CTX *ctx;
-  SSL *ssl;
-  int sock;
-} Transport;
-
-// transport_close tears down the TLS session (if any) and closes the socket.
-static void transport_close(const Transport *t) {
-  if (t->ssl) {
-    SSL_shutdown(t->ssl);
-    SSL_free(t->ssl);
-  }
-  if (t->ctx) {
-    SSL_CTX_free(t->ctx);
-  }
-  if (t->sock < 0) {
-    return;
-  }
-#ifdef _WIN32
-  closesocket(t->sock);
-#else
-  close(t->sock);
-#endif
-}
-
-// transport_send / transport_recv route I/O over TLS when ssl is set, otherwise
-// over the bare socket, so http_perform speaks both http:// and https://.
-static ssize_t transport_send(SSL *ssl, int sock, const char *buf, int len) {
-  if (ssl) {
-    return SSL_write(ssl, buf, len);
-  }
-  return osp_socket_send(sock, buf, (size_t)len);
-}
-
-// Writes all of `buf`, however many short writes the transport makes of it.
-static bool transport_send_all(SSL *ssl, int sock, const char *buf, size_t len) {
-  size_t sent = 0;
-  while (sent < len) {
-    size_t left = len - sent;
-    int block = left > (size_t)INT_MAX ? INT_MAX : (int)left;
-    ssize_t n = transport_send(ssl, sock, buf + sent, block);
-    if (n <= 0) {
-      return false;
-    }
-    sent += (size_t)n;
-  }
-  return true;
-}
-
-static ssize_t transport_recv(SSL *ssl, int sock, char *buf, int cap) {
-  if (ssl) {
-    // SSL_get_error reads this queue, and OpenSSL requires it empty before SSL_read.
-    // No test can make this line matter: SSL_connect clears the queue, and a failed
-    // SSL_write returns before any read. It stays because the contract is OpenSSL's.
-    ERR_clear_error();
-    return SSL_read(ssl, buf, cap);
-  }
-  return recv(sock, buf, (size_t)cap, 0);
-}
-
-// Whether a read that returned n, and no bytes, was the peer closing in good order.
-// Over TLS that takes a close_notify: a bare TCP close can be forged on the wire.
-static bool transport_closed(SSL *ssl, ssize_t n) {
-  return ssl ? SSL_get_error(ssl, (int)n) == SSL_ERROR_ZERO_RETURN : n == 0;
-}
-
-// What a read that returned n, and no bytes, is waiting for, or 0 if it has ended.
-static short transport_wants(SSL *ssl, ssize_t n) {
-  if (ssl) {
-    int error = SSL_get_error(ssl, (int)n);
-    return error == SSL_ERROR_WANT_READ ? POLLIN
-         : error == SSL_ERROR_WANT_WRITE ? POLLOUT : 0;
-  }
-  bool retry = n < 0 && (errno == EINTR || osp_socket_timed_out(osp_socket_error()));
-  return retry ? POLLIN : 0;
-}
-
-// Reads return at once from here on, so that the wait is this code's to bound: a
-// blocking SSL_read stays inside a dripped TLS record for as long as it drips.
-static bool transport_read_without_blocking(int sock) {
-#ifdef _WIN32
-  u_long enabled = 1;
-  return ioctlsocket(sock, FIONBIO, &enabled) == 0;
-#else
-  int flags = fcntl(sock, F_GETFL, 0);
-  return flags >= 0 && fcntl(sock, F_SETFL, flags | O_NONBLOCK) == 0;
-#endif
-}
-
-// tls_client_ctx builds the verified client context [HTTP-STATUS-CLIENT]:
-// TLS 1.2 floor, mandatory peer verification (SSL_VERIFY_PEER) and the
-// platform trust store -- which honours SSL_CERT_FILE/SSL_CERT_DIR. A trust
-// store that cannot be loaded is an error, never a silent downgrade to
-// unauthenticated TLS. Returns NULL when any prerequisite fails.
-static SSL_CTX *tls_client_ctx(void) {
-  SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
-  if (!ctx) {
-    return NULL;
-  }
-  SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
-  SSL_CTX_set_verify_depth(ctx, 9);
-  // The protocol floor is load-bearing: continuing without it would let a
-  // peer negotiate TLS 1.0/1.1, so a failure must refuse the context.
-  if (SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION) != 1) {
-    SSL_CTX_free(ctx);
-    return NULL;
-  }
-  if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
-    SSL_CTX_free(ctx);
-    return NULL;
-  }
-  return ctx;
-}
-
-// Binds the expected peer identity to the session: DNS names via host check,
-// IPv4 literals via IP check -- so a trusted CA's certificate for the WRONG
-// host is rejected too. Returns 1 on success.
-static int tls_expect_peer(SSL *ssl, const char *host) {
-  struct in_addr addr;
-  X509_VERIFY_PARAM *param = SSL_get0_param(ssl);
-  return inet_pton(AF_INET, host, &addr) == 1
-             ? X509_VERIFY_PARAM_set1_ip(param, (unsigned char *)&addr, 4)
-             : X509_VERIFY_PARAM_set1_host(param, host, 0);
-}
-
-typedef enum { TURN_READY, TURN_TIMED_OUT, TURN_OVERDUE } TurnWait;
-
-// Waits for the socket, up to the client's timeout (none when 0) and the whole read's
-// deadline. An error from poll itself ends the read as a timeout does.
-static TurnWait wait_turn(int sock, short events, int timeout_ms, int64_t deadline_ms) {
-  for (;;) {
-    int64_t left = deadline_ms - (int64_t)osp_monotonic_ms();
-    if (left <= 0) {
-      return TURN_OVERDUE;
-    }
-    bool bound_by_deadline = timeout_ms <= 0 || left <= timeout_ms;
-    int wait_ms = !bound_by_deadline ? timeout_ms : left > INT_MAX ? INT_MAX : (int)left;
-    struct pollfd watch = {.fd = sock, .events = events};
-    int ready = osp_poll(&watch, 1, wait_ms);
-    if (ready > 0) {
-      return TURN_READY;
-    }
-    if (ready < 0 ? errno != EINTR : !bound_by_deadline) {
-      return TURN_TIMED_OUT;
-    }
-  }
-}
-
-typedef struct {
   char *buf;
   size_t cap;
   size_t len;
@@ -260,21 +104,21 @@ static int64_t response_took(ResponseRead *r, size_t n) {
 }
 
 // One read and, if it has to, one wait. Returns 0, or a negative code.
-static int64_t read_turn(const Transport *t, ResponseRead *r, int timeout_ms, int64_t deadline_ms) {
+static int64_t read_turn(const Transport *t, ResponseRead *r) {
   if (!response_room(r)) {
     return -9;
   }
-  ssize_t n = transport_recv(t->ssl, t->sock, r->buf + r->len, CHUNK_SIZE);
+  ssize_t n = transport_recv(t, r->buf + r->len, CHUNK_SIZE);
   if (n > 0) {
     return response_took(r, (size_t)n);
   }
-  short wanted = transport_wants(t->ssl, n);
+  short wanted = transport_wants(t, n, POLLIN);
   if (!wanted) {
-    r->closed = transport_closed(t->ssl, n);
+    r->closed = transport_closed(t, n);
     r->done = true;
     return 0;
   }
-  TurnWait waited = wait_turn(t->sock, wanted, timeout_ms, deadline_ms);
+  TurnWait waited = transport_wait(t, wanted);
   if (waited == TURN_OVERDUE) {
     osp_io_error_text("http response", "read", "over the time limit");
     return -16;
@@ -285,19 +129,15 @@ static int64_t read_turn(const Transport *t, ResponseRead *r, int timeout_ms, in
 
 // Reads the response into a freshly allocated, NUL-terminated buffer, until its
 // framing ends, the peer closes, a read times out, or the size limit or the whole
-// read's time limit is passed. Implements [HTTP-RESPONSE-FRAMING].
-static int64_t read_response(const Transport *t, int timeout_ms, char **out_raw,
-                             size_t *out_len, bool *out_closed) {
-  int64_t bound_ms = timeout_ms > 0 ? (int64_t)timeout_ms * HTTP_READ_BOUND_FACTOR
-                                    : HTTP_READ_BOUND_UNTIMED_MS;
-  int64_t deadline_ms = (int64_t)osp_monotonic_ms() + bound_ms;
+// request's time limit is passed. Implements [HTTP-RESPONSE-FRAMING].
+static int64_t read_response(const Transport *t, char **out_raw, size_t *out_len, bool *out_closed) {
   ResponseRead r = {.buf = malloc(MAX_HTTP_BUFFER), .cap = MAX_HTTP_BUFFER};
   if (!r.buf) {
     return -9;
   }
   int64_t rc = 0;
   while (rc == 0 && !r.done) {
-    rc = read_turn(t, &r, timeout_ms, deadline_ms);
+    rc = read_turn(t, &r);
   }
   if (rc == 0 && r.len == 0) {
     rc = -7;
@@ -312,52 +152,10 @@ static int64_t read_response(const Transport *t, int timeout_ms, char **out_raw,
   return 0;
 }
 
-// Connects a socket to the client's host. Returns 0, or a negative code.
-static int64_t transport_connect(const HttpClient *client, Transport *t) {
-  t->sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (t->sock < 0) {
-    return -3;
-  }
-  osp_socket_deadline(t->sock, client->timeout);
-  (void)osp_socket_configure_no_sigpipe(t->sock); // TLS writes reach the socket too
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(client->port);
-  if (!osp_socket_resolve_ipv4(client->host, &server_addr.sin_addr)) {
-    return -4;
-  }
-  return connect(t->sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0 ? -5 : 0;
-}
-
-// Establishes the TLS session of an https:// client. SNI (the host name) is mandatory
-// for virtual-hosted endpoints such as api.github.com, and every session verifies the
-// peer chain AND that the certificate matches the host/IP we dialed
-// [HTTP-STATUS-CLIENT]. Returns 0, or a negative code.
-static int64_t transport_secure(const HttpClient *client, Transport *t) {
-  t->ctx = tls_client_ctx();
-  if (!t->ctx) {
-    return -13; // trust store/verification prerequisites unavailable
-  }
-  t->ssl = SSL_new(t->ctx);
-  if (!t->ssl) {
-    return -11;
-  }
-  SSL_set_fd(t->ssl, t->sock);
-  SSL_set_tlsext_host_name(t->ssl, client->host);
-  if (tls_expect_peer(t->ssl, client->host) != 1) {
-    return -11;
-  }
-  if (SSL_connect(t->ssl) != 1 || SSL_get_verify_result(t->ssl) != X509_V_OK) {
-    return -12; // handshake or certificate verification failed
-  }
-  return 0;
-}
-
 // Sends the request. Only the head is formatted: the body is any size and goes out
 // after it unchanged, so a large request can neither truncate nor read past the buffer.
 // The Host header carries the bare host name (no :port) - servers like GitHub reject
-// "Host: api.github.com:443" with 400. Returns 0, or -6.
+// "Host: api.github.com:443" with 400. Returns 0, -6, or -16 past the deadline.
 static int64_t send_request(const HttpClient *client, const Transport *t, int64_t method,
                             const char *path, const char *headers, const char *body) {
   char head[MAX_HTTP_BUFFER];
@@ -377,10 +175,8 @@ static int64_t send_request(const HttpClient *client, const Transport *t, int64_
   if (head_len < 0 || (size_t)head_len >= sizeof(head)) {
     return -6; // a head that does not fit is refused, never sent truncated
   }
-  return transport_send_all(t->ssl, t->sock, head, (size_t)head_len) &&
-                 transport_send_all(t->ssl, t->sock, body, body_len)
-             ? 0
-             : -6;
+  int64_t rc = transport_send_all(t, head, (size_t)head_len);
+  return rc == 0 ? transport_send_all(t, body, body_len) : rc;
 }
 
 // http_perform connects, sends the request and reads the response. For https:// clients
@@ -401,18 +197,16 @@ int64_t http_perform(int64_t client_id, int64_t method, char *path,
   if (!path) {
     return -2;
   }
-  Transport t = {.ctx = NULL, .ssl = NULL, .sock = -1};
-  int64_t rc = transport_connect(client, &t);
+  Transport t = transport_open(client->timeout);
+  int64_t rc = transport_connect(&t, client->host, client->port);
   if (rc == 0 && client->is_https) {
-    rc = transport_secure(client, &t);
+    rc = transport_secure(&t, client->host);
   }
   if (rc == 0) {
     rc = send_request(client, &t, method, path, headers, body);
   }
   if (rc == 0) {
-    rc = transport_read_without_blocking(t.sock)
-             ? read_response(&t, client->timeout, out_raw, out_len, out_closed)
-             : -3;
+    rc = read_response(&t, out_raw, out_len, out_closed);
   }
   transport_close(&t);
   return rc;

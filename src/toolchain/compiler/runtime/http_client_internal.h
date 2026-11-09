@@ -1,9 +1,11 @@
 #ifndef HTTP_CLIENT_INTERNAL_H
 #define HTTP_CLIENT_INTERNAL_H
 
+#include <openssl/ssl.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 // Private interface shared by the client transport TU
 // (http_client_runtime.c) and the generic response-handle TU
@@ -11,7 +13,7 @@
 
 // What the client will read of one response. Implements [HTTP-RESPONSE-FRAMING].
 #define HTTP_MAX_RESPONSE_BYTES ((size_t)64 * 1024 * 1024)
-#define HTTP_READ_BOUND_FACTOR 10 // times the client's timeout: the whole read
+#define HTTP_READ_BOUND_FACTOR 10 // times the client's timeout: the whole request
 #define HTTP_READ_BOUND_UNTIMED_MS ((int64_t)10 * 60 * 1000) // with a timeout of 0
 
 // Where a walk over a chunked body has got to, within the whole response.
@@ -37,6 +39,28 @@ bool http_frame_complete(HttpFrameScan *scan, const char *raw, size_t len, size_
 bool http_chunks_complete(ChunkWalk *walk, const char *raw, size_t len, size_t *frame_end);
 const char *http_find_crlf(const char *p, const char *end);
 bool http_has_control_byte(const char *p, const char *end);
+
+// One request's connection and the deadline the whole request keeps, defined in
+// http_client_transport.c [HTTP-RESPONSE-FRAMING].
+typedef struct {
+  SSL_CTX *ctx;
+  SSL *ssl;
+  int sock;
+  int timeout_ms;      // each wait for the peer; none when 0
+  int64_t deadline_ms; // the whole request, on the monotonic clock
+} Transport;
+
+typedef enum { TURN_READY, TURN_TIMED_OUT, TURN_OVERDUE } TurnWait;
+
+Transport transport_open(int timeout_ms);
+int64_t transport_connect(Transport *t, const char *host, int port);
+int64_t transport_secure(Transport *t, char *host);
+int64_t transport_send_all(const Transport *t, const char *buf, size_t len);
+ssize_t transport_recv(const Transport *t, char *buf, int cap);
+bool transport_closed(const Transport *t, ssize_t n);
+short transport_wants(const Transport *t, ssize_t n, short direction);
+TurnWait transport_wait(const Transport *t, short events);
+void transport_close(const Transport *t);
 
 // Performs the request over http:// or https:// and returns the raw response, up
 // to the end of its framing, in a freshly allocated, NUL-terminated buffer (caller
