@@ -406,7 +406,7 @@ static void check_scan_costs_stay_linear(void) {
   expect_linear_scan("HTTP/1.1 200 OK\r\n", "\r", "\n\r\n");
 }
 
-enum { BOUND_TIMEOUT_MS = 300, BOUND_DRIP_US = 40000, TRICKLE_BYTES = 65536, TRICKLE_US = 20000 };
+enum { BOUND_TIMEOUT_MS = 300, BOUND_DRIP_US = 40000, TRICKLE_BYTES = 2 << 20, TRICKLE_US = 100000 };
 
 // The call ended at the whole request's bound, with -16 and `text`, not later.
 static void expect_bounded_failure(int64_t code, uint64_t started, const char *text) {
@@ -438,10 +438,12 @@ static void check_handshake_bound(void) {
   http_close_client(client);
 }
 
-// A request body read just fast enough to beat the timeout, 64 KiB every 20 ms,
-// ends at the same bound. Unbounded, 32 MiB at that pace takes ten seconds.
+// A request body read steadily, 2 MiB every 100 ms, ends at the same bound. Each
+// read frees more than a third of Linux's largest send buffer (4 MiB), which Linux
+// waits for before it reports the socket writable again, so no single wait reaches
+// the timeout. Unbounded, 128 MiB at that pace takes about six seconds.
 static void check_send_bound(void) {
-  size_t size = (size_t)32 * 1024 * 1024;
+  size_t size = (size_t)128 * 1024 * 1024;
   char *body = malloc(size + 1);
   assert(body != NULL);
   memset(body, 'b', size);
