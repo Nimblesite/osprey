@@ -54,6 +54,35 @@ fn assert_refused(command: &mut Command, code: i32, words: &str) {
     assert!(stderr.contains(words), "wanted {words:?} in: {stderr}");
 }
 
+/// [FAILURE-EXPLICIT]: hostile source must produce a diagnostic, including #362.
+#[test]
+fn deep_expressions_report_positioned_errors_without_aborting() {
+    let scratch = Scratch::new("expression_depth");
+    let cases = [
+        (
+            "group.osp",
+            format!("let value = {}1{}", "(".repeat(50_000), ")".repeat(50_000)),
+        ),
+        (
+            "chain.osp",
+            format!("let value = {}", vec!["1"; 50_000].join(" + ")),
+        ),
+        (
+            "list.ospml",
+            format!("value = {}1{}", "[".repeat(5_000), "]".repeat(5_000)),
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (name, source) in cases {
+        let path = scratch.write(name, &format!("// source starts below\n{source}\n"));
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(&path));
+        if code != Some(1) || !stderr.contains(":2:") || !stderr.contains("nesting limit") {
+            failures.push(format!("{name}: {code:?}\n{stdout}\n{stderr}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
 const CONTRACTS: &str = "/// A cell.
 effect Cell<T> {
     /// Reads it.
