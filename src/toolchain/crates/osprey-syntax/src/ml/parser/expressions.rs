@@ -8,10 +8,17 @@ impl Parser<'_> {
     /// — the driving loop of Pratt / precedence climbing (Pratt 1973; Norvell).
     pub(in crate::ml) fn expr(&mut self, min_bp: u8) -> MlExpr {
         let mut left = self.unary();
+        let mut chain_depth = 0;
         while let TokKind::Op(op) = self.peek() {
             let op = op.clone();
             let Some(bp) = infix_bp(&op) else { break };
             if bp < min_bp {
+                break;
+            }
+            chain_depth += 1;
+            if chain_depth > crate::MAX_SYNTAX_DEPTH {
+                self.errors.push(crate::nesting_error(self.pos()));
+                self.i = self.toks.len();
                 break;
             }
             let pos = self.pos();

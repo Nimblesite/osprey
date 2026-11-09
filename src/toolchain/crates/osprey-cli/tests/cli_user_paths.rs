@@ -60,6 +60,18 @@ fn deep_expressions_report_positioned_errors_without_aborting() {
     let scratch = Scratch::new("expression_depth");
     let cases = [
         (
+            "group.ospml",
+            format!("value = {}1{}", "(".repeat(50_000), ")".repeat(50_000)),
+        ),
+        (
+            "chain.ospml",
+            format!("value = {}", vec!["1"; 50_000].join(" + ")),
+        ),
+        (
+            "list.osp",
+            format!("let value = {}1{}", "[".repeat(5_000), "]".repeat(5_000)),
+        ),
+        (
             "group.osp",
             format!("let value = {}1{}", "(".repeat(50_000), ")".repeat(50_000)),
         ),
