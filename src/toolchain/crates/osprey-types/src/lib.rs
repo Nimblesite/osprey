@@ -38,11 +38,17 @@ mod ctx;
 mod deferred_arith_tests;
 mod effect_rows;
 #[cfg(test)]
+mod effect_rows_closure_tests;
+#[cfg(test)]
 mod effect_rows_exports_tests;
 #[cfg(test)]
 mod effect_rows_expr_tests;
 #[cfg(test)]
 mod effect_rows_field_tests;
+#[cfg(test)]
+mod effect_rows_handler_tests;
+#[cfg(test)]
+mod effect_rows_provenance_tests;
 #[cfg(test)]
 mod effect_rows_tests;
 #[cfg(test)]
@@ -82,6 +88,8 @@ mod redundant_contract_tests;
 mod redundant_sites;
 mod site_applications;
 pub use site_applications::SiteApplications;
+#[cfg(test)]
+mod redundant_corpus_tests;
 #[cfg(test)]
 mod redundant_tests;
 #[cfg(test)]
