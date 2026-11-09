@@ -141,7 +141,7 @@ So a row leaves its manifest only when the program works on that target, and the
 | --- | --- |
 | `src/osprey/examples/tui/api_browser.osp` | does not compile: recursive `awaitSpinning` awaits a Fiber parameter (#340) |
 
-- [ ] Fix #341 (bug): compare this list to reality. The four `gpt2/model` rows already skip nothing and go with that fix. `staging-type.osp` moved to `failscompilation/` with its diagnostic golden, so it no longer needs a skip row. (4 rows)
+- [ ] Fix #341 (bug): compare this list to reality. The four `gpt2/model` rows already skip nothing and go with that fix. `staging-type.osp` moved to `failscompilation/` with its diagnostic golden, and its skip row is gone. (4 rows)
 
 | Program | Reason |
 | --- | --- |

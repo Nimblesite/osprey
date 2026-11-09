@@ -26,7 +26,7 @@ The restriction has one spelling in the compiler: inference enforces it at the c
 
 ## Buffer built-ins
 
-### `toGpu(source) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
+### `toGpu(source) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-FROM-LIST]
 
 Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE], from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type comes from the source, whether that source is a literal, a list value returned by a function, or a list built at runtime — a float list copies in as a float buffer, never as raw words, and a `List<float32>`'s 8-byte words pack into a 4-byte-per-element buffer ([TYPE-NUMERIC-WORD](../language/0004-TypeSystem.md#container-words--type-numeric-word)).
 
