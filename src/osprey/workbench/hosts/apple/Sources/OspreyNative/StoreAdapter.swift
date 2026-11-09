@@ -1,6 +1,6 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [SECURITY-PRIVACY]: app-private files. The
+// Implements [UI-EFFECTS]: app-private files. The
 // directory is 0700 and files 0600; writes are atomic; names are relative
 // paths inside the store and never escape it.
 
