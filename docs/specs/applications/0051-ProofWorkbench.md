@@ -34,6 +34,8 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
+Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today the proof text is checked in Osprey instead of by Lean: `src/formula.ospml` reads propositional formulas ([WORKBENCH-FORMULA]), `src/statement.ospml` and `src/step.ospml` read a statement and its tactic steps ([WORKBENCH-STATEMENT], [WORKBENCH-STEPS]), and `src/goals.ospml` applies the tactic table to open goals ([WORKBENCH-GOALS]); the suite under `tests/` cites those ids. [WORKBENCH-CHECK] replaces that checker with Lean's server, and these ids retire with it.
+
 ## Notation [WORKBENCH-NOTATION]
 
 The editor types Unicode as Lean's VS Code extension does: `\forall` `\all`, `\exists` `\ex`, `\to` `\r` `\->`, `\iff` `\lr`, `\and` `\wedge`, `\or` `\vee`, `\not` `\neg`, `\N` `\Z` `\R`, `\le` `\ge` `\ne`, `\in` `\notin` `\sub`, `\comp`, `\times`, `\inv`, `\_0`…`\_9`, `\^0`…`\^9`, `\alpha`…`\omega`. An abbreviation is replaced the moment a non-identifier character follows it; a trailing backslash shows the matching entries as a palette; the palette region lists every row. `Notation::expand : string -> string` is total and idempotent and the table is one Osprey list of `(abbreviation, symbol)` pairs. This is an input convenience, not a format: the buffer holds Lean source.
