@@ -19,7 +19,7 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 - [ ] Add `src/osprey/packages/native/conformance/`: the probe application's start context, a recorded event sequence and the expected envelopes, produced once from `Runtime::start`/`dispatch` and checked in.
 - [ ] Add an Osprey test that regenerates the envelopes from the fixtures and diffs them, so a framework change that alters the wire shape fails here first. Check: the test lives under `src/osprey/packages/native/tests` and fails on a wire change.
-- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix vscode-extension`, GPUI in `src/toolchain/hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
+- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix src/toolchain/vscode-extension`, GPUI in `src/toolchain/hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
 
 ## 3. Coverage matrix [NATIVE-HOSTS-COVERAGE]
 
