@@ -65,5 +65,7 @@ mod lowering_3;
 mod lowering_4;
 #[path = "ir_tests/lowering_5.rs"]
 mod lowering_5;
+#[path = "ir_tests/lowering_6.rs"]
+mod lowering_6;
 #[path = "ir_tests/symbolic.rs"]
 mod symbolic;

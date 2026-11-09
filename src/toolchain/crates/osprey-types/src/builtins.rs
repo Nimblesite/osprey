@@ -13,6 +13,7 @@
 //! `checkedAdd`/`checkedSub`/`checkedMul` return overflow as data, through the
 //! generic `Error` channel.
 
+mod concurrency;
 mod core;
 mod gpu;
 mod host;
@@ -104,7 +105,7 @@ fn build_base_env() -> TypeEnv {
     tensors(&mut e);
     runtime_group(&mut e, host::http);
     json(&mut e);
-    runtime_group(&mut e, concurrency);
+    runtime_group(&mut e, concurrency::declare);
     runtime_group(&mut e, host::websocket);
     runtime_group(&mut e, host::terminal);
     gpu::declare(&mut e);
@@ -391,50 +392,6 @@ fn json(e: &mut TypeEnv) {
     mono(e, "__jsonWriteInt", vec![i(), i()], u());
     mono(e, "__jsonWriteFloat", vec![i(), Type::float()], u());
     mono(e, "__jsonWriterClose", vec![i()], res(s()));
-}
-
-fn concurrency(e: &mut TypeEnv) {
-    let t = || Type::Var(0);
-    // Fiber operations [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-YIELD].
-    // await : (Fiber<t>) -> t
-    poly(
-        e,
-        "await",
-        vec![0],
-        vec![Type::con("Fiber", vec![t()])],
-        t(),
-    );
-    poly(
-        e,
-        "fiberDone",
-        vec![0],
-        vec![Type::con("Fiber", vec![t()])],
-        i(),
-    );
-    mono(e, "yield", vec![], u());
-    mono(e, "fiber_yield", vec![i()], i());
-    // Channel<t>: create with a buffer size, send/recv values.
-    poly(
-        e,
-        "Channel",
-        vec![0],
-        vec![i()],
-        Type::con("Channel", vec![t()]),
-    );
-    poly(
-        e,
-        "send",
-        vec![0],
-        vec![Type::con("Channel", vec![t()]), t()],
-        u(),
-    );
-    poly(
-        e,
-        "recv",
-        vec![0],
-        vec![Type::con("Channel", vec![t()])],
-        t(),
-    );
 }
 
 /// The declared function type of a built-in's parameter — the callback
