@@ -7,6 +7,7 @@
 
 use crate::check::check_program;
 use crate::error::TypeError;
+use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Parse under `flavor` + type-check, returning the diagnostics. Panics if the
@@ -186,3 +187,17 @@ macro_rules! plain_cases {
     };
 }
 pub(crate) use plain_cases;
+
+/// Bind `value` to `name`. A hand-built expression under test must be bound
+/// rather than left in statement position, where its value would be
+/// discarded and rejected by [BLOCK-DISCARD].
+pub(crate) fn bind(name: &str, value: osprey_ast::Expr) -> Stmt {
+    Stmt::Let {
+        name: name.into(),
+        mutable: false,
+        ty: None,
+        value,
+        doc: None,
+        position: None,
+    }
+}
