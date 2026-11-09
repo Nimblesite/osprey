@@ -440,21 +440,10 @@ date: "git Last Modified"
     button.primary:hover {
         background: #1ea571;
     }
-
-    .playground-outage {
-        margin: 0;
-        padding: 10px 16px;
-        background: #3a2f12;
-        color: #f5d78e;
-        border-bottom: 1px solid #6b5520;
-        font-size: 14px;
-    }
-    .playground-outage a { color: #ffe3a3; }
 </style>
 
 <div class="playground-container">
     <h1 class="sr-only">Osprey Playground</h1>
-    <p id="playground-outage" class="playground-outage" role="status">The playground is offline while its servers wait for the Ubuntu fix for <a href="https://ubuntu.com/security/CVE-2026-98432">CVE-2026-98432</a>, a Linux kernel TCP flaw. It will be back soon; you can still read and edit the samples.</p>
     <div class="main">
         <div class="editor-container">
             <div class="editor-header">
@@ -856,8 +845,8 @@ def main():
             
         } catch (error) {
             output.className = 'error';
-            output.innerHTML = formatErrorOutput(`Failed to connect to compiler: ${error.message}\n\n${document.getElementById('playground-outage').textContent}`);
-            updateStatus('error', 'Offline');
+            output.innerHTML = formatErrorOutput(`Failed to connect to compiler: ${error.message}`);
+            updateStatus('error', 'Connection failed');
         }
     }
     
@@ -926,8 +915,8 @@ def main():
             
         } catch (error) {
             output.className = 'error';
-            output.innerHTML = formatErrorOutput(`Failed to connect to compiler: ${error.message}\n\n${document.getElementById('playground-outage').textContent}`);
-            updateStatus('error', 'Offline');
+            output.innerHTML = formatErrorOutput(`Failed to connect to compiler: ${error.message}`);
+            updateStatus('error', 'Connection failed');
         }
     }
     

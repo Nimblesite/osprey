@@ -57,14 +57,16 @@ test('all syntax flavor controls fit the mobile playground', async ({ page }) =>
   }
 });
 
-test('playground explains the outage and links the CVE, and a failed request repeats it', async ({ page }) => {
-  await page.route('**/api/run', (route) => route.abort('connectionrefused'));
+test('the playground is online, and a refused request reports only the connection failure', async ({ page }) => {
+  await page.route('**/api/*', (route) => route.abort('connectionrefused'));
   await page.goto('/playground/');
-  const notice = page.locator('#playground-outage');
-  await expect(notice).toBeVisible();
-  await expect(notice).toContainText('back soon');
-  await expect(notice.getByRole('link', { name: 'CVE-2026-98432' })).toHaveAttribute('href', 'https://ubuntu.com/security/CVE-2026-98432');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.locator('#output')).toContainText('CVE-2026-98432');
-  await expect(page.locator('#status-text')).toHaveText('Offline');
+  await expect(page.locator('#status-text')).toHaveText('Ready', { timeout: 30000 });
+  await expect(page.locator('#playground-outage')).toHaveCount(0);
+  await expect(page.locator('body')).not.toContainText(/offline|CVE-/i);
+  for (const action of ['Compile', 'Run']) {
+    await page.getByRole('button', { name: action, exact: true }).click();
+    await expect(page.locator('#output')).toContainText('Failed to connect to compiler');
+    await expect(page.locator('#output')).not.toContainText(/offline|CVE-/i);
+    await expect(page.locator('#status-text')).toHaveText('Connection failed');
+  }
 });
