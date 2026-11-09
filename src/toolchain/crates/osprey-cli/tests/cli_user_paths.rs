@@ -58,6 +58,18 @@ fn assert_refused(command: &mut Command, code: i32, words: &str) {
 #[test]
 fn deep_expressions_report_positioned_errors_without_aborting() {
     let scratch = Scratch::new("expression_depth");
+    for (name, prefix) in [("control.osp", "let "), ("control.ospml", "")] {
+        let source = format!(
+            "{prefix}value = {}1{}
+{prefix}values = [{}]
+{prefix}text = "{}"
+",
+            "(".repeat(20), ")".repeat(20), vec!["1"; 200].join(", "), "(".repeat(500)
+        );
+        let path = scratch.write(name, &source);
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(path));
+        assert_eq!(code, Some(0), "{name}: {stdout} {stderr}");
+    }
     let cases = [
         (
             "group.ospml",
