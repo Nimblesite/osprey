@@ -56,7 +56,7 @@ int ws_raw_connect(int port) {
   return -1;
 }
 
-static void ws_send_all(int fd, const void *buf, size_t len) {
+void ws_send_all(int fd, const void *buf, size_t len) {
   size_t sent = 0;
   while (sent < len) {
     ssize_t n = send(fd, (const char *)buf + sent, len - sent, 0);
@@ -65,7 +65,7 @@ static void ws_send_all(int fd, const void *buf, size_t len) {
   }
 }
 
-static bool ws_read_exact(int fd, void *buf, size_t len) {
+bool ws_read_exact(int fd, void *buf, size_t len) {
   size_t got = 0;
   while (got < len) {
     ssize_t n = recv(fd, (char *)buf + got, len - got, 0);
@@ -93,29 +93,40 @@ void ws_read_headers(int fd, char *out, size_t capacity) {
   out[len] = '\0';
 }
 
-// Reads exactly one server text frame off the wire and returns its payload.
-// Length is decoded from the header before the body is read, so a frame split
-// across TCP segments is reassembled instead of truncated.
-char *ws_read_text_frame(int fd) {
-  unsigned char head[4] = {0};
-  assert(ws_read_exact(fd, head, 2));
-  size_t header_len = 2;
-  size_t payload_len = head[1] & 0x7F;
-  assert((head[1] & 0x80) == 0); // servers never mask
-  if (payload_len == 126) {
-    assert(ws_read_exact(fd, head + 2, 2));
-    payload_len = ((size_t)head[2] << 8) | (size_t)head[3];
-    header_len = 4;
+// The payload length a frame header announces, in whichever of RFC 6455's three
+// forms it uses, decoded here by hand so the tests never trust the parser they test.
+static size_t ws_read_length(int fd, unsigned char second) {
+  size_t width = (second & 0x7F) == 126 ? 2 : (second & 0x7F) == 127 ? 8 : 0;
+  unsigned char bytes[8] = {0};
+  assert(width == 0 || ws_read_exact(fd, bytes, width));
+  size_t length = width ? 0 : (size_t)(second & 0x7F);
+  for (size_t i = 0; i < width; i++) {
+    length = (length << 8) | bytes[i];
   }
-  char *frame = malloc(header_len + payload_len);
-  assert(frame != NULL);
-  memcpy(frame, head, header_len);
-  assert(payload_len == 0 || ws_read_exact(fd, frame + header_len, payload_len));
-  char *payload = NULL;
-  assert(parse_websocket_frame(frame, header_len + payload_len, &payload) ==
-         (int)payload_len);
-  free(frame);
+  return length;
+}
+
+// Reads exactly one server frame off the wire: its opcode, FIN set (servers send
+// whole frames), no mask, and its payload NUL-terminated. A frame split across
+// TCP segments is reassembled instead of truncated.
+char *ws_read_frame(int fd, unsigned char *opcode, size_t *length) {
+  unsigned char head[2] = {0};
+  assert(ws_read_exact(fd, head, 2));
+  assert((head[0] & 0xF0) == 0x80 && (head[1] & 0x80) == 0);
+  *opcode = head[0] & 0x0F;
+  *length = ws_read_length(fd, head[1]);
+  char *payload = malloc(*length + 1);
   assert(payload != NULL);
+  assert(*length == 0 || ws_read_exact(fd, payload, *length));
+  payload[*length] = '\0';
+  return payload;
+}
+
+char *ws_read_text_frame(int fd) {
+  unsigned char opcode = 0;
+  size_t length = 0;
+  char *payload = ws_read_frame(fd, &opcode, &length);
+  assert(opcode == 0x1);
   return payload;
 }
 
@@ -218,6 +229,26 @@ static void test_listen_bind_conflict(void) {
 
 // The full server path: upgrade, welcome frame, echo, broadcast, and teardown
 // with a live connection still registered [BUILTIN-WEBSOCKET-SERVER].
+// The server echoed `original` to this socket: the client's frame was masked, as
+// RFC 6455 requires, or the server would have closed it with 1002. The welcome
+// and broadcasts may come first, or the client's handshake read may have taken
+// the welcome already.
+static void ws_expect_echo_on(int fd, const char *original) {
+  struct timeval tv = {WS_IO_TIMEOUT_S, 0};
+  assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
+  char needle[64];
+  snprintf(needle, sizeof(needle), "\"original\":\"%s\"", original);
+  for (int frames = 0; frames < 8; frames++) {
+    char *text = ws_read_text_frame(fd);
+    bool echoed = strstr(text, needle) != NULL;
+    free(text);
+    if (echoed) {
+      return;
+    }
+  }
+  assert(0 && "the server never echoed the client's message");
+}
+
 static void test_live_loopback_exchange(void) {
   int64_t server_id = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
   assert(server_id > 0);
@@ -270,6 +301,7 @@ static void test_live_loopback_exchange(void) {
     }
   }
   assert(reached == 2);
+  ws_expect_echo_on(websockets[ws_id]->socket_fd, "from-client");
   assert(websocket_close(ws_id) == 0);
   assert(websocket_send(ws_id, "after-close") == -2);
 
@@ -420,6 +452,7 @@ int main(void) {
   test_non_websocket_connections();
   test_client_connect_failures();
   test_websocket_lifecycle();
+  test_websocket_frames();
   test_keep_alive_until_signal(); // LAST: latches the shutdown flag
   printf("✅ WebSocket runtime tests passed\n");
   return 0;

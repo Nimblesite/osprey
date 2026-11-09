@@ -220,7 +220,11 @@
         "language": "c"
       },
       "http_client_runtime": {
-        "threshold": 96,
+        "threshold": 98,
+        "language": "c"
+      },
+      "http_client_transport": {
+        "threshold": 94,
         "language": "c"
       },
       "http_client_response": {
@@ -250,6 +254,10 @@
         "language": "c"
       },
       "websocket_server_runtime": {
+        "language": "c"
+      },
+      "websocket_frames": {
+        "threshold": 99,
         "language": "c"
       },
       "tls_client_runtime": {
