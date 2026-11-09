@@ -54,6 +54,17 @@ fn assert_refused(command: &mut Command, code: i32, words: &str) {
     assert!(stderr.contains(words), "wanted {words:?} in: {stderr}");
 }
 
+/// [FAILURE-EXPLICIT]: the depth guard preserves the existing arithmetic corpus.
+#[test]
+fn existing_deep_arithmetic_programs_remain_valid() {
+    for extension in ["osp", "ospml"] {
+        let path =
+            format!("src/osprey/tests/core/arithmetic/deep_integer_expressions.test.{extension}");
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(&path));
+        assert_eq!(code, Some(0), "{path}: {stdout} {stderr}");
+    }
+}
+
 /// [FAILURE-EXPLICIT]: hostile source must produce a diagnostic, including #362.
 #[test]
 fn deep_expressions_report_positioned_errors_without_aborting() {

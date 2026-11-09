@@ -61,7 +61,7 @@ pub struct SyntaxError {
 }
 
 /// Bound recursive frontend work before lowering. Implements [FAILURE-EXPLICIT].
-pub(crate) const MAX_SYNTAX_DEPTH: usize = 128;
+pub(crate) const MAX_SYNTAX_DEPTH: usize = 512;
 
 pub(crate) fn nesting_error(position: Position) -> SyntaxError {
     SyntaxError {
