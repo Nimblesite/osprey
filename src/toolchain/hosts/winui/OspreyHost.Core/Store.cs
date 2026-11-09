@@ -71,12 +71,12 @@ public sealed partial class Store(string root)
         var directories = new Stack<SafeFileHandle>();
         try
         {
-            directories.Push(PinDirectory(folder));
             foreach (var part in parts.AsSpan(0, parts.Length - 1))
             {
+                directories.Push(PinDirectory(folder, FileShare.Read));
                 folder = Path.Combine(folder, part);
-                directories.Push(PinDirectory(folder));
             }
+            directories.Push(PinDirectory(folder, FileShare.ReadWrite));
             Replace(folder, parts[^1], Strict.GetBytes(text));
         }
         finally
@@ -85,12 +85,15 @@ public sealed partial class Store(string root)
         }
     }
 
-    // [WINUI-HOST-CAPABILITIES] Hold each directory without write or delete
-    // sharing so it cannot be replaced or turned into a junction during a write.
-    static SafeFileHandle PinDirectory(string path)
+    // [WINUI-HOST-CAPABILITIES] Hold each directory without delete sharing, so it cannot be
+    // renamed, removed or replaced by a junction during a write. The folders above the entry
+    // also refuse write sharing, so an empty one cannot be turned into a junction in place.
+    // The entry's own folder must share writing: moving the finished file into it opens the
+    // folder for writing, and a refusal there is a sharing violation on every write.
+    static SafeFileHandle PinDirectory(string path, FileShare share)
     {
         Directory.CreateDirectory(path);
-        var handle = CreateFileFromAppW(path, ListDirectory, FileShare.Read, 0, OpenExisting, BackupSemantics | OpenReparsePoint, 0);
+        var handle = CreateFileFromAppW(path, ListDirectory, share, 0, OpenExisting, BackupSemantics | OpenReparsePoint, 0);
         try
         {
             if (handle.IsInvalid) throw new IOException(new Win32Exception(Marshal.GetLastPInvokeError()).Message);

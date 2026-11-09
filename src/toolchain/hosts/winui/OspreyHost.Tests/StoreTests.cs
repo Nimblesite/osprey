@@ -79,9 +79,19 @@ public sealed class StoreTests : IDisposable
         using var junction = Process.Start(start)!;
         Assert.True(junction.WaitForExit(10_000), "mklink did not exit");
         Assert.Equal(0, junction.ExitCode);
-        var write = Write("link/secret", "private store data");
-        Assert.False(write.Ok);
-        Assert.Empty(outside.EnumerateFileSystemInfos());
+        try
+        {
+            var write = Write("link/secret", "private store data");
+            Assert.False(write.Ok);
+            Assert.Equal($"invalid store directory {link}", write.Error);
+            Assert.Empty(outside.EnumerateFileSystemInfos());
+        }
+        finally
+        {
+            // A recursive delete takes the junction for a volume mount point and fails, so
+            // the link goes first, on its own.
+            Directory.Delete(link);
+        }
     }
 
     [Fact]
