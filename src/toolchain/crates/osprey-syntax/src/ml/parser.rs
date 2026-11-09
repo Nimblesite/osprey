@@ -95,6 +95,7 @@ pub(super) fn parse_annotations(
             errors: &mut errors,
             annotations: &mut annotations,
             source,
+            expression_depth: 0,
         };
         parser.program()
     };
@@ -156,6 +157,7 @@ pub(super) struct Parser<'t> {
     errors: &'t mut Vec<SyntaxError>,
     annotations: &'t mut Vec<crate::AnnotationEdit>,
     source: &'t str,
+    expression_depth: usize,
 }
 
 impl Parser<'_> {
