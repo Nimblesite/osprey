@@ -6,7 +6,7 @@ import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/web
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { record } from "../../client/src/osprey-ui/protocol";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
-import { connectEditorBrowser, editorWebviewFrame, press } from "./profiler-kit";
+import { COMMAND_MS, connectEditorBrowser, editorWebviewFrame, press } from "./profiler-kit";
 
 const editorNode = (extra: Record<string, unknown> = {}) => ({ kind: "editor", label: "Argument", value: "Assume h : p ∧ q.\nFrom hp.", cursor: 0,
   marks: [{ line: 2, underlined: true, tone: "danger", badge: "Needs attention", note: "The goal is q; this step establishes p." }],
@@ -90,7 +90,7 @@ suite("native marked editor", () => {
       await frame.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Argument", undefined, { timeout: 1000 });
       await frame.page().keyboard.type("p");
       await pollUntilResult({ fn: () => events.some(event => event.value === "q → p" && event.region === "challenge:lesson-b/claim" && event.ordinal === 4),
-        until: Boolean, timeoutMs: 5000, description: "the first request of the newly scoped challenge retains its own binding" });
+        until: Boolean, timeoutMs: COMMAND_MS, description: "the first request of the newly scoped challenge retains its own binding" });
     });
   });
 
@@ -136,7 +136,7 @@ suite("native marked editor", () => {
       await frame.page().keyboard.type("r");
       assert.strictEqual(await frame.getByRole("textbox", { name: "Argument", exact: true }).inputValue(), "p → r");
       await pollUntilResult({ fn: () => events.some(event => event.value === "p → r" && event.region === "root" && event.revision === 2 && event.ordinal === 4), until: Boolean,
-        timeoutMs: 5000, description: "continued typing uses the newly issued editor binding" });
+        timeoutMs: COMMAND_MS, description: "continued typing uses the newly issued editor binding" });
     });
   });
 
