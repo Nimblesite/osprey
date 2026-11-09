@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Osprey.Host.Tests;
@@ -5,9 +6,12 @@ namespace Osprey.Host.Tests;
 /// <summary>[WINUI-HOST-CAPABILITIES] The application's private store: entries stay inside its folder, reads are bounded UTF-8 and writes replace an entry whole.</summary>
 public sealed class StoreTests : IDisposable
 {
-    readonly DirectoryInfo root = Directory.CreateTempSubdirectory("osprey-store-");
+    readonly DirectoryInfo fixture = Directory.CreateTempSubdirectory("osprey-store-");
+    readonly DirectoryInfo root;
 
-    public void Dispose() => root.Delete(recursive: true);
+    public StoreTests() => root = fixture.CreateSubdirectory("store");
+
+    public void Dispose() => fixture.Delete(recursive: true);
 
     Completion Ask(string kind, Action<System.Text.Json.Utf8JsonWriter> members) =>
         new Store(root.FullName).Answer("t", JsonDocument.Parse(Json.Object(writer =>
@@ -61,6 +65,24 @@ public sealed class StoreTests : IDisposable
     [InlineData("")]
     public void ANameOutsideTheStoreIsRefused(string name) =>
         Assert.Equal($"invalid store entry {name}", Read(name).Error);
+
+    [Fact]
+    public void AWriteThroughAJunctionOutsideTheStoreIsRefused()
+    {
+        var outside = fixture.CreateSubdirectory("outside");
+        var link = Path.Combine(root.FullName, "link");
+        var start = new ProcessStartInfo("cmd.exe")
+        {
+            ArgumentList = { "/c", "mklink", "/J", link, outside.FullName },
+            UseShellExecute = false,
+        };
+        using var junction = Process.Start(start)!;
+        Assert.True(junction.WaitForExit(10_000), "mklink did not exit");
+        Assert.Equal(0, junction.ExitCode);
+        var write = Write("link/secret", "private store data");
+        Assert.False(write.Ok);
+        Assert.Empty(outside.EnumerateFileSystemInfos());
+    }
 
     [Fact]
     public void AReadPastItsLimitOrOfBrokenTextFails()
