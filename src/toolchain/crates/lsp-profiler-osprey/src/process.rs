@@ -1,4 +1,4 @@
-//! Recognising Osprey processes [PROF-PROCESSES]. A process is an Osprey
+//! Recognising Osprey processes [PROF-LSP-RUNTIME]. A process is an Osprey
 //! program when its endpoint answers `hello` [PROF-ATTACH-ENDPOINT]; the reply
 //! carries the runtime version the listing shows.
 

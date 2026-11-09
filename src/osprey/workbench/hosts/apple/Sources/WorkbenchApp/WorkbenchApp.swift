@@ -2,7 +2,7 @@ import OspreyApp
 import OspreyNative
 import SwiftUI
 
-// Implements [UI-HOST] and [WORKBENCH-STORE] for the Mac: the entry point. It
+// Implements [WORKBENCH-HOSTS] and [WORKBENCH-STORE] for the Mac: the entry point. It
 // binds the library's exports, answers the slice import, makes the bundled
 // lessons the working folder so the application's relative paths resolve, and
 // shows the root region. No application state, screen or policy lives here.

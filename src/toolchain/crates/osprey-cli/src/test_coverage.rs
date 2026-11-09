@@ -29,7 +29,7 @@ pub(crate) fn coverage_dump_path(file: &Path) -> PathBuf {
 /// `false` when the suite produced no usable evidence — a missing, unreadable,
 /// malformed or EMPTY dump. Coverage that cannot be evidenced must fail the
 /// command rather than print to stderr and let the aggregate row stand in for
-/// evidence nobody produced ([TESTING-COVERAGE]).
+/// evidence nobody produced ([TESTING-COVERAGE-CLI]).
 pub(crate) fn collect_suite_coverage(
     file: &Path,
     dump: &Path,
@@ -189,7 +189,7 @@ fn line_rate(hits: &LineHits) -> (usize, usize) {
 
 /// A rate over NOTHING is not perfection. Reporting `100.0%` for `0/0` reads
 /// as a fully covered run to every human and every log scraper, which is the
-/// exact opposite of what an empty report means ([TESTING-COVERAGE]).
+/// exact opposite of what an empty report means ([TESTING-COVERAGE-CLI]).
 fn percent(covered: usize, total: usize) -> String {
     if total == 0 {
         return String::from("n/a");
@@ -310,7 +310,7 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
-    // [TESTING-COVERAGE] Absent evidence must FAIL the command, not print to
+    // [TESTING-COVERAGE-CLI] Absent evidence must FAIL the command, not print to
     // stderr and let the run exit green. Every way a dump can be useless is a
     // `false` return, asserted here rather than inferred from stderr text.
     // Each case below is chosen to be rejected by ONE rule, so deleting that

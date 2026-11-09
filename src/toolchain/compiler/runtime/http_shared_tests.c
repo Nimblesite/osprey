@@ -4,7 +4,7 @@
 // This suite OWNS http_shared.c's coverage number: it is the only suite that
 // exercises every helper in the unit rather than whichever subset a transport
 // happens to reach. Spec anchors:
-//   [HTTP-CLIENT]                 docs/specs/runtime/0014-HTTP.md
+//   [HTTP-STATUS-CLIENT]                 docs/specs/runtime/0014-HTTP.md
 //   [BUILTIN-WEBSOCKET-FRAMING]   docs/specs/runtime/0015-WebSockets.md
 //   [BUILTIN-WEBSOCKET-HANDSHAKE] docs/specs/runtime/0015-WebSockets.md
 #include "http_shared.h"
@@ -19,7 +19,7 @@
 void sha1_websocket(const char *input, unsigned char output[20]);
 
 // Every HttpMethod maps to its wire spelling, and an out-of-range enum value
-// degrades to GET rather than returning a dangling pointer [HTTP-CLIENT].
+// degrades to GET rather than returning a dangling pointer [HTTP-STATUS-CLIENT].
 static void test_http_method_strings(void) {
   assert(strcmp(http_method_to_string(HTTP_GET), "GET") == 0);
   assert(strcmp(http_method_to_string(HTTP_POST), "POST") == 0);
@@ -32,7 +32,7 @@ static void test_http_method_strings(void) {
 }
 
 // One parse_url case: asserts the whole (host, port, path) triple at once so a
-// single expectation table drives every scheme and default [HTTP-CLIENT].
+// single expectation table drives every scheme and default [HTTP-STATUS-CLIENT].
 static void expect_url(const char *url, const char *host, int port,
                        const char *path) {
   char *got_host = NULL;

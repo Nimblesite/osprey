@@ -59,7 +59,7 @@ public final class CapabilityRunner {
     public func run(_ request: Request, completion: @escaping @MainActor (Outcome) -> Void) {
         if request.kind == "cancel" { return cancel(request, completion: completion) }
         guard let adapter = adapters[request.kind] else { return completion(.failure(.unknownKind(request.kind))) }
-        // [UI-EFFECTS-RECEIPT-OWNERSHIP]: cancelled/late writes never reach the core.
+        // [UI-EFFECTS]: cancelled/late writes never reach the core.
         inflight.removeValue(forKey: request.ticket)?.task.cancel()
         let store = slices.staged(), identity = UUID()
         let task = Task { [weak self] in
@@ -103,7 +103,7 @@ enum Bounded {
     static func snapshot(_ path: String, limit: Int) throws -> (data: Data, identity: stat) {
         guard limit >= 0, limit < Int.max else { throw CapabilityError.invalidArgument("Invalid file byte limit") }
         try Task.checkCancellation()
-        // [UI-EFFECTS-BOUNDED-READ]: opening a FIFO must not wait before fstat rejects it.
+        // [UI-EFFECTS]: opening a FIFO must not wait before fstat rejects it.
         let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard descriptor >= 0 else { throw CapabilityError.platform(String(cString: strerror(errno))) }
         defer { close(descriptor) }
@@ -133,7 +133,7 @@ enum Bounded {
         return lstat(path, &current) == 0 && current.st_dev == opened.st_dev && current.st_ino == opened.st_ino && (current.st_mode & S_IFMT) == S_IFREG
     }
 
-    // [UI-EFFECTS-BOUNDED-READ]: never trust the initial size to bound a later read.
+    // [UI-EFFECTS]: never trust the initial size to bound a later read.
     private static func contents(_ handle: FileHandle, limit: Int) throws -> Data {
         var data = Data()
         while true {

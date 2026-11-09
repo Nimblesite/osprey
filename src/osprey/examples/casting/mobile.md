@@ -83,6 +83,18 @@ Physical verification:
 
 - [ ] Physical-device casting to a real receiver on both platforms, including background playback and local-network permissions. A locked-screen install proves nothing.
 
+## Shared boundary [CAST-MOBILE-ABI]
+
+`make -C src/toolchain/targets/tests casting-mobile-build TARGET=ios-sim` builds the ARC runtime and the casting library; the other targets are `ios`, `android-arm64` and `android-x64`, and the output is `build/<target>/libOspreyApp.a`. A native shell implements `native_slice` and `native_shape`, links the Cast networking services and drives the resident start/dispatch boundary. Test builds isolate stale-source mutations from the real compiler archives.
+
+## Provenance [CAST-MOBILE-PROVENANCE]
+
+Each Android build relinks both JNI libraries and writes a SHA-256 receipt over their archive, header, C sources, recipe and output bytes. The installed-package gate checks the receipts of the installed `base.apk` only: split APKs and retired receipts prove nothing, and a missing or empty receipt, a changed input or a stale binary fails the gate.
+
+## Media route [CAST-MOBILE-ROUTE]
+
+The shared HTTP media server binds IPv4, including on dual-stack hostnames, and the iOS shell resolves the address family that listener supports before it hands a receiver the media URL.
+
 ## Entry points
 
 `make -C src/toolchain/targets/ios casting` builds, installs and launches the simulator app; `make -C src/toolchain/targets/ios casting-build TARGET=ios-sim|ios` builds the unsigned bundle. `make -C src/toolchain/targets/android casting` builds and opens the current Android package. `make -C src/toolchain/targets/tests casting-mobile-build TARGET=…` cross-compiles the shared library, and `make -C src/toolchain/targets/tests casting-mobile-transport PLATFORM=ios` exercises the native transport sources against a live loopback TLS receiver. `src/osprey/examples/casting/ios/test.sh` and `src/osprey/examples/casting/ios/ui-test.sh` run the journey and coverage gates; the coverage gate is expected to stay red until the Rust export is wired in.

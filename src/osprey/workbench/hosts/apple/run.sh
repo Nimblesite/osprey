@@ -1,5 +1,5 @@
 #!/bin/bash
-# Implements [UI-HOST] for the Mac: builds the Osprey Workbench and opens it.
+# Implements [WORKBENCH-HOSTS] for the Mac: builds the Osprey Workbench and opens it.
 # The Osprey application compiles to a static library through the Mac C ABI
 # (`--target=macos`), the SwiftUI host links it, and the lessons are bundled
 # as resources.

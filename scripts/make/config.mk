@@ -268,7 +268,7 @@ KLEE_GC_SHIMS := $(patsubst bin/gc/%.o,%,$(filter bin/gc/%,$(FIB_OBJ_GC)))
 KLEE_ARC_SHIMS := $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
 KLEE_ROOT_PLUGIN := src/toolchain/compiler/bin/libosprey_gc_roots.so
 # The mock C library built for the HOST, so its unit tests can run on any
-# machine (the mock's own klee/klee.h stands in for KLEE's) [SYMEX-MOCK-TESTS].
+# machine (the mock's own klee/klee.h stands in for KLEE's) [SYMEX-REGRESSION].
 HUNT_MOCK_SRC   := $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 HUNT_MOCK_HOST_CFLAGS ?= -nostdinc -isystem $(shell $(CC) -print-file-name=include) -isystem runtime/klee/include -ffreestanding -fno-builtin -std=c11 -O1 -g $(WARN_MAX) \
   -U_FORTIFY_SOURCE -fno-stack-protector -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='

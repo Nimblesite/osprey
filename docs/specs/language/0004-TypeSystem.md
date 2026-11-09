@@ -14,7 +14,7 @@
 - [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
 - [Redundant callbacks](#redundant-callbacks-type-warnings-callbacks)
 
-## Hindley-Milner Inference
+## Hindley-Milner Inference — [TYPE-INFERENCE]
 
 Osprey uses Hindley-Milner inference over the canonical AST produced by Default, ML and Python frontends ([FLAVOR-BOUNDARY]). Examples below show Default and ML syntax. [Python Flavor Syntax](0041-PythonFlavorSyntax.md) specifies its supported annotation and declaration forms over the same type system.
 
@@ -69,6 +69,10 @@ its helper still uses the caller at several types. Functions that call each
 other form one recursive group, which is checked together and stays
 monomorphic inside the group. A function that reads a top-level `let` which has
 not run yet is checked at its own position.
+
+### Effects are proved once — [TYPE-EFFECT-PROOF-COUNT]
+
+A build solves its whole-program effect proofs once. The gate and codegen read that one proved result, so a staged source's export verdicts outlive its residual, and the backend never proves an effect row again. The pipeline counts effect solves and its tests assert exactly one per build.
 
 ### Reporting a Partly Inferred Type — [TYPE-RENDER-HOLES]
 
@@ -532,7 +536,7 @@ record field, returned closure, or another call expression; it need not be a
 top-level function name. Chained application evaluates one function result per
 call, so `makeAdder(1)(2)` calls the closure returned by `makeAdder(1)`.
 
-## Record Types
+## Record Types — [TYPE-RECORD]
 
 ```ebnf
 recordType ::= "type" ID "=" "{" field ("," field)* "}" constraint?

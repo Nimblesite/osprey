@@ -246,7 +246,7 @@ class ZedStdio(unittest.TestCase):
             "textDocument": {"uri": uri}, "range": warnings[0]["range"],
             "context": {"diagnostics": warnings}})
         self.assertTrue(actions, "the annotation warning must offer an actual edit")
-        # [LSP-WARNING-ACTIONS] returns versioned TextDocumentEdit, which Zed
+        # [LSP-CODE-ACTIONS-ANNOTATIONS] returns versioned TextDocumentEdit, which Zed
         # supports; plain WorkspaceEdit.changes would discard that safeguard.
         document = actions[0]["edit"]["documentChanges"][0]
         self.assertEqual(document["textDocument"], {"uri": uri, "version": 1})

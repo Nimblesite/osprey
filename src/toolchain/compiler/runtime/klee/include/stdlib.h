@@ -6,7 +6,7 @@
 #include <stddef.h>
 
 // macOS declares the BSD entropy call here, and random_runtime.c reaches for
-// it under __APPLE__ when the mock is built for the host [SYMEX-MOCK-TESTS].
+// it under __APPLE__ when the mock is built for the host [SYMEX-REGRESSION].
 void arc4random_buf(void *out, size_t count);
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1

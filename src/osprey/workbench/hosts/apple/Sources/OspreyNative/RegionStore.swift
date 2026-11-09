@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-// Implements [UI-REGIONS], [UI-EVENTS], [UI-HOST] and [UI-DIAGNOSTICS]: keeps
+// Implements [UI-REGIONS], [UI-EVENTS], [WORKBENCH-HOSTS] and [NATIVE-HOSTS-DIAGNOSTICS]: keeps
 // each region as an independently observable cell, delivers events with
 // framework-issued identities, runs the capability requests of each envelope
 // and logs every event and envelope. It holds no application state: Osprey's

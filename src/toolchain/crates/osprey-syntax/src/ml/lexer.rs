@@ -326,7 +326,7 @@ impl Scanner {
                     // it parses only as the operand of a unary minus. The
                     // parser folds `-<magnitude>` into the literal and rejects
                     // every other position, exactly as the Default frontend
-                    // does ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
+                    // does ([ARITH-NEG-LITERAL], [FLAVOR-IR-EQUIV]).
                     if text == crate::I64_MIN_MAGNITUDE {
                         return TokKind::IntMinMagnitude;
                     }

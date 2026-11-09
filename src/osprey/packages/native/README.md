@@ -181,6 +181,10 @@ When `lassoing` is true, the host offers a lasso and sends the enclosed strokes 
 
 A `Button` may carry a typed `Chord`. `Primary` is Command on Apple systems and Control elsewhere, and the host shows the chord in its menu or tooltip. Osprey picks each chord per platform: Alt+Up, F5 and Ctrl+O on Windows; Command+Up, Command+R and Command+O on the Mac. Not implemented yet: `Node` carries no chord.
 
+### Context menus [UI-COMPONENTS-CONTEXT-MENU]
+
+`Ui::contextMenu(content, actions)` attaches secondary actions to content. The host exposes them through its pointer and keyboard context-menu gestures, and each action fires through the same issued binding IDs as a button.
+
 ### Rich paragraphs [UI-COMPONENTS-RICH]
 
 A `Rich` node is a paragraph of styled runs: strong, emphasis, code and link. Markdown parsing stays in Osprey, in today's `markdown.ospml`. Not implemented yet: `Node` has no `Rich` constructor; `Ui::rich`'s inline emphasis runs above are the nearest today.

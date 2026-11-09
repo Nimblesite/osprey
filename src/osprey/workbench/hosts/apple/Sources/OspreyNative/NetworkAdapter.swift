@@ -1,8 +1,8 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [AGENT-CLIENT]: HTTPS only, no redirects,
+// Implements [UI-EFFECTS] and [AGENT-PROVIDERS]: HTTPS only, no redirects,
 // cookies or disk cache, a total resource deadline and a streamed response
-// limit [UI-EFFECTS-HTTP-BOUNDS]. Nothing is retried or published partially.
+// limit [UI-EFFECTS]. Nothing is retried or published partially.
 
 public struct HttpAdapter: CapabilityAdapter {
     public let kinds = ["http"]

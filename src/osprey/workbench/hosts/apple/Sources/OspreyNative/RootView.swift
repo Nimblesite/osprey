@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-DIAGNOSTICS]: the window shows the root region
+// Implements [WORKBENCH-HOSTS] and [NATIVE-HOSTS-DIAGNOSTICS]: the window shows the root region
 // and the framework's diagnostics, and logs content that outgrows the window;
 // nothing else is composed here.
 

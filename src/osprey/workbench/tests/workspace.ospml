@@ -1,4 +1,4 @@
-// [WORKBENCH-BOARD] [WORKBENCH-FILES]: actual document save/open flows retain no drawing state.
+// [WORKBENCH-BOARD] [WORKBENCH-DOCUMENT]: actual document save/open flows retain no drawing state.
 namespace workbenchtests
 
 import workbench::Benches

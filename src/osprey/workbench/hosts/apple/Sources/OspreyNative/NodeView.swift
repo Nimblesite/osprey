@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-COMPONENTS]: every node kind maps to a native
+// Implements [WORKBENCH-HOSTS] and [UI-COMPONENTS]: every node kind maps to a native
 // control. The switch is exhaustive, so a new framework component cannot be
 // drawn by accident as something else. Events carry only the region, the
 // revision it was drawn with, the control's ordinal and a bounded value.

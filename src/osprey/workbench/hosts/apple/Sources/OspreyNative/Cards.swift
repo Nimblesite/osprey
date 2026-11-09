@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-COMPONENTS] and [DESIGN-COMPONENTS]: selectable rows. In
+// Implements [UI-COMPONENTS] and [WORKBENCH-DESIGN-SURFACES]: selectable rows. In
 // the sidebar they are the native source list; elsewhere each row is a card,
 // a full-row button whose selection shows as a tint and an outline, never
 // colour alone.
@@ -78,7 +78,7 @@ struct CardList: View {
     }
 }
 
-/// [DESIGN-COMPONENTS] finding row: symbol, content and a disclosure chevron on a 14-point card.
+/// [WORKBENCH-DESIGN-SURFACES] finding row: symbol, content and a disclosure chevron on a 14-point card.
 struct CardView: View {
     let row: RowEntry
     let selected: Bool

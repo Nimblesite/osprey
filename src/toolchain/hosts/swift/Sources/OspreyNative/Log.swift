@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-// Implements [UI-DIAGNOSTICS]: the backend writes what it does to the unified
+// Implements [NATIVE-HOSTS-DIAGNOSTICS]: the backend writes what it does to the unified
 // log under the app's bundle identifier, so a failure leaves a trace. Region
 // keys, revisions, ordinals, tickets, kinds and sizes are public; control
 // values and capability errors can hold evidence, so they are private.

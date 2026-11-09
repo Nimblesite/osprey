@@ -229,7 +229,7 @@ $(C_TEST_TARGETS): _test_c_suite_%:
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
 	@cd src/toolchain/compiler && $(call C_SUITE_CMD,gpu_device_tests)
 
-# [SYMEX-MOCK-TESTS] the mock C library behind `osprey hunt`, compiled for the
+# [SYMEX-REGRESSION] the mock C library behind `osprey hunt`, compiled for the
 # host against its own headers and linked with the runtime units it must
 # intercept (`osp_input`, `readFile`); the driver is compiled against the host
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.

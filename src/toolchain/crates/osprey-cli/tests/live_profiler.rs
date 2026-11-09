@@ -323,7 +323,7 @@ async fn native_frames_only_on_request(flavor: Flavor, name: &str) {
     service.shutdown().await;
 }
 
-/// [PROF-ERRORS] [PROF-CPU-START]: `cpu.start` classifies its refusals — a pid
+/// [PROF-LSP-RUNTIME]: `cpu.start` classifies its refusals — a pid
 /// naming no process, a live process without an Osprey endpoint (this test
 /// binary), and a pid already being recorded.
 #[tokio::test(flavor = "multi_thread")]
@@ -342,7 +342,7 @@ async fn cpu_start_refusals_are_classified() {
     service.shutdown().await;
 }
 
-/// [PROF-CPU-SESSIONS]: a duration ends the session by itself.
+/// [PROF-LSP-RUNTIME]: a duration ends the session by itself.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_duration_caps_the_recorded_time() {
     let (fixture, service) = running("lp-duration", Flavor::Default);
@@ -367,7 +367,7 @@ async fn a_duration_caps_the_recorded_time() {
     service.shutdown().await;
 }
 
-/// [PROF-CPU-SNAPSHOT]: samples stream while recording, so a snapshot has them.
+/// [PROF-LSP-RUNTIME]: samples stream while recording, so a snapshot has them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mid_session_snapshot_reports_the_samples_so_far() {
     let (fixture, service) = running("lp-snapshot", Flavor::Default);
@@ -383,7 +383,7 @@ async fn a_mid_session_snapshot_reports_the_samples_so_far() {
     service.shutdown().await;
 }
 
-/// [PROF-CPU-STOP]: a program killed mid-session keeps the samples taken while
+/// [PROF-LSP-RUNTIME]: a program killed mid-session keeps the samples taken while
 /// it lived.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_program_killed_mid_session_keeps_its_samples() {
@@ -400,7 +400,7 @@ async fn a_program_killed_mid_session_keeps_its_samples() {
     service.shutdown().await;
 }
 
-/// [PROF-CPU-PROGRESS] The live "hottest function" is the one the program
+/// [PROF-LSP-RUNTIME] The live "hottest function" is the one the program
 /// spends its time in, ranked by self samples. Ranked by inclusive samples, the
 /// root of every whole stack, `main`, would always win.
 #[tokio::test(flavor = "multi_thread")]

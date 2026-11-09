@@ -1,4 +1,4 @@
-//! The CPU backend [PROF-CPU-BACKEND]: each attach opens one live-attach
+//! The CPU backend [PROF-LSP-RUNTIME]: each attach opens one live-attach
 //! session on the program's endpoint [PROF-ATTACH-PROTOCOL].
 
 use std::io;
@@ -34,7 +34,7 @@ impl OspreyCpu {
     }
 
     /// The socket `pid` serves. Without one, a live pid is not an Osprey
-    /// program and a dead one is not a process [PROF-ERRORS].
+    /// program and a dead one is not a process [PROF-LSP-RUNTIME].
     fn endpoint_of(&self, pid: u32) -> Result<PathBuf, SamplerError> {
         self.endpoints
             .socket_for(pid)

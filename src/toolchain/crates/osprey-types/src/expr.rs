@@ -79,7 +79,7 @@ impl Checker {
                 // Publish the literal's resolved type for the backend. An empty
                 // literal has no element to lower, so this is the only channel
                 // that can tell it whether `[]` is a `List<float>` or a
-                // `List<int>` ([GPU-BUFFER-ELEM], [COLLECTIONS-LIST-ELEM]).
+                // `List<int>` ([GPU-BUFFER-ELEM], [TYPE-LIST]).
                 if let Some(p) = position {
                     self.list_tys
                         .push(((self.current_fn.clone(), *p), list.clone()));

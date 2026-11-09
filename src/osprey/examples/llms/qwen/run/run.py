@@ -8,7 +8,7 @@ every generated token prints as `position token -> next`, so a run is its own re
 A prompt line `ids: 1 2 3` feeds those token ids as they are, and a count line
 `logits: 7 8 9` adds nothing: it prints the raw logits at those ids after the prompt as
 `logits best B id=value ...`, the Osprey half of the llama.cpp comparison
-(`eval/logits.py`, [LLM-LOGITS-LLAMA]):
+(`eval/logits.py`, [LLM-MODEL-ORACLE]):
 
     printf '%s\\n%s\\n%s\\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf 'The capital of France is' 8 \\
       | OSPREY_GPU=metal osprey src/osprey/examples/llms/qwen/run --run --memory=arc

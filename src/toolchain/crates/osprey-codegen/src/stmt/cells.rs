@@ -13,7 +13,7 @@ pub(super) fn gen_cell_define(
 ) -> Result<()> {
     // The cell is typed storage every arm reads through its declared type, so
     // a list literal is settled into a runtime list before it is stored
-    // [TYPE-LIST-LITERAL]; the flat literal layout must never escape into it.
+    // [TYPE-LIST]; the flat literal layout must never escape into it.
     let v = gen_expr(cg, value)?;
     let v = crate::listlit::escaping(cg, v);
     let v = super::bindings::fit_literal(cg, position, v)?;

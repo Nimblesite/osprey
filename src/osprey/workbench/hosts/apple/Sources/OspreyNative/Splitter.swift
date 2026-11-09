@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-COMPONENTS-SPLITTER] and [DESIGN-COMPONENTS]: the splitter
+// Implements [UI-COMPONENTS-SPLITTER] and [WORKBENCH-DESIGN-SURFACES]: the splitter
 // between an aside's pane and its column. Osprey owns the width and its
 // limits; while a drag is in progress the host previews the width it would
 // send, and the drag's end delivers that width to the splitter's binding.

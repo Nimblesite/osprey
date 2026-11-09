@@ -13,7 +13,7 @@
 //! yields that code plus the body of every string literal starting on it:
 //! theory words match as whole words in the code, string contents included,
 //! while registered names match only in bodies. `kernel` is exempt: an
-//! Osprey keyword ([STAGE-KERNEL]) used throughout the GPU pipeline, with the
+//! Osprey keyword ([STAGE-GPU-KERNEL]) used throughout the GPU pipeline, with the
 //! proof kernel of plan 0041 under `src/osprey/examples/`, never under `src/toolchain/crates/`.
 //! Names are matched in literals only because `bounded` and `passthrough` are
 //! ordinary English, and a branch on a discipline compares a literal.

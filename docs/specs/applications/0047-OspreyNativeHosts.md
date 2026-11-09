@@ -62,6 +62,10 @@ The typed symbol helpers provide a closed, host-neutral vocabulary: the `Symbol`
 
 One recorded-event fixture set, kept beside the framework in `src/osprey/packages/native/conformance`, drives every host: the probe application's start context and a sequence of events with the expected envelopes. A host passes when it produces the same envelopes, draws without a rejected kind, and returns the same binding ids for the same user actions scripted through its own input layer. Each host's smoke command runs the set; the plan names them. A host not in the conformance run is not listed as running in [NATIVE-HOSTS-FAMILY].
 
+## Diagnostics [NATIVE-HOSTS-DIAGNOSTICS]
+
+A host writes what it does to the platform's structured log: every event it sends, every envelope it applies and every capability it runs. When `OSPREY_TRACE` names a file, the host also appends a plain-text trace of each event and envelope there; otherwise it writes no trace file. Diagnostics never change what the host draws or answers.
+
 ## Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
 `@osprey/native` carries nothing that only one host or one product can honour. Platform-specific work goes through `HostCall` with a namespace the host answers or rejects. Constructors and capabilities that exist for one product are moved out or generalized; [plan 0037](../../plans/0037-osprey-native.md) lists the current ones.

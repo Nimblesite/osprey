@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-// Implements [UI-DIAGNOSTICS]: the backend writes what it does to the unified
+// Implements [NATIVE-HOSTS-DIAGNOSTICS]: the backend writes what it does to the unified
 // log under the app's bundle identifier, so a failure leaves a trace. Region
 // keys, revisions, ordinals, tickets, kinds and sizes are public; control
 // values and capability errors can hold evidence, so they are private.
@@ -16,7 +16,7 @@ enum Log {
     static let layout = Logger(subsystem: subsystem, category: "layout")
 }
 
-/// A plain-text trace of every event and envelope, written only when `OSPREY_TRACE` names a file ([UI-DIAGNOSTICS]).
+/// A plain-text trace of every event and envelope, written only when `OSPREY_TRACE` names a file ([NATIVE-HOSTS-DIAGNOSTICS]).
 enum Trace {
     private static let path = ProcessInfo.processInfo.environment["OSPREY_TRACE"]
 

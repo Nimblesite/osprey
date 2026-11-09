@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-COMPONENTS-SPLITTER]: navigation and page
+// Implements [NATIVE-HOSTS-CONTRACT] and [UI-COMPONENTS-SPLITTER]: navigation and page
 // structure. A split's first pane is the system's vibrant sidebar.
 
 /// Navigation columns: the first pane stands on the system's sidebar material, under the window's title

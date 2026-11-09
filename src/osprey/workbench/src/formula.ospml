@@ -1,6 +1,6 @@
 // Implements [WORKBENCH-FORMULA]: propositional formulas read from symbols and
 // sentences in one grammar, written back in Unicode with minimal parentheses.
-// A `Result`'s error channel stores only a message ([TYPE-SYSTEM] phantom `E`),
+// A `Result`'s error channel stores only a message ([TYPE-RECORD-RESULT] phantom `E`),
 // so a reading that fails is the `Faulted` variant carrying a typed `Fault`.
 namespace workbench
 

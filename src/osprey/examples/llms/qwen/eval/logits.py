@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""llama.cpp top-20 logits driver — plan 0049 Phase 4 "Compare logits with llama.cpp", spec [LLM-LOGITS-LLAMA].
+"""llama.cpp top-20 logits driver — plan 0049 Phase 4 "Compare logits with llama.cpp", spec [LLM-MODEL-ORACLE].
 
 On the same GGUF over ~50 prompts up to 32K tokens, Osprey and llama.cpp must
 pick the same top-1 token every time and agree on the top-20 logits within a

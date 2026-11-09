@@ -1,8 +1,8 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [AGENT-CLIENT]: HTTPS, or HTTP on this machine, no redirects,
+// Implements [UI-EFFECTS] and [AGENT-PROVIDERS]: HTTPS, or HTTP on this machine, no redirects,
 // cookies or disk cache, a total resource deadline and a streamed response
-// limit [UI-EFFECTS-HTTP-BOUNDS]. Nothing is retried or published partially.
+// limit [UI-EFFECTS]. Nothing is retried or published partially.
 
 public struct HttpAdapter: CapabilityAdapter {
     public let kinds = ["http"]
@@ -23,7 +23,7 @@ public struct HttpAdapter: CapabilityAdapter {
     }
 
 
-    // [UI-EFFECTS-HTTP-HEADERS] Raw bounded transport metadata; the core interprets it.
+    // [UI-EFFECTS] Raw bounded transport metadata; the core interprets it.
     private static func receipt(_ response: HTTPURLResponse) throws -> JSONValue {
         let fields = response.allHeaderFields
         guard fields.count <= 100 else { throw CapabilityError.tooLarge(fields.count, 100) }

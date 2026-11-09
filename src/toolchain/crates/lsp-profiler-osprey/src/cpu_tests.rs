@@ -1,4 +1,4 @@
-//! The CPU backend against its error contract [PROF-ERRORS], and against a
+//! The CPU backend against its error contract [PROF-LSP-RUNTIME], and against a
 //! scripted peer on a real socket for the replies a real program never sends.
 
 use super::*;

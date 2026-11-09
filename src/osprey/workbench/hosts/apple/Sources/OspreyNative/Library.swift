@@ -1,6 +1,6 @@
 import Foundation
 
-// Implements [UI-BOUNDARY]: the C boundary to the Osprey library. The library
+// Implements [NATIVE-HOSTS-TRANSPORT]: the C boundary to the Osprey library. The library
 // is initialized once and called only from the main actor. Every string it
 // returns is copied before borrowed inputs expire. ABI version 1 copies
 // imports into Osprey ownership; its host input snapshot lives through the
@@ -153,7 +153,7 @@ public final class SliceStore: @unchecked Sendable {
         return UnsafePointer(buffer)
     }
 
-    /// Bytes held for superseded values, so growth is measurable ([UI-BOUNDARY]).
+    /// Bytes held for superseded values, so growth is measurable ([NATIVE-HOSTS-TRANSPORT]).
     public var retainedBytes: Int {
         lock.lock()
         defer { lock.unlock() }

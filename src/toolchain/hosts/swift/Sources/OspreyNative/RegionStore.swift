@@ -4,7 +4,7 @@ import AppKit
 import Combine
 import Foundation
 
-// Implements [UI-REGIONS], [UI-EVENTS], [UI-HOST] and [UI-DIAGNOSTICS]: keeps
+// Implements [UI-REGIONS], [UI-EVENTS], [NATIVE-HOSTS-CONTRACT] and [NATIVE-HOSTS-DIAGNOSTICS]: keeps
 // each region as an independently observable cell, delivers events with
 // framework-issued identities and runs the requests of each envelope. It holds
 // no application state: Osprey's opaque `state` is returned unchanged.

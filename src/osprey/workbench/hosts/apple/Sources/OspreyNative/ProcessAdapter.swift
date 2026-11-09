@@ -1,6 +1,6 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [SECURITY-COLLECTORS]: one executable with
+// Implements [UI-EFFECTS] and [UI-EFFECTS-PROCESS]: one executable with
 // arguments, no shell, a fixed minimal environment, a deadline, separate
 // stdout/stderr and an output limit. With `plist`, stdout is converted
 // mechanically to JSON. The exit status is reported, never interpreted.

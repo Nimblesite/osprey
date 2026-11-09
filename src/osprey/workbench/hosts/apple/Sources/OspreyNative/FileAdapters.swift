@@ -23,14 +23,14 @@ public struct ListDirectoriesAdapter: CapabilityAdapter {
             let (children, truncated) = try boundedChildren(url, limit: limit)
             return .object(["path": .string(path), "error": "", "missing": false, "truncated": .bool(truncated), "entries": .array(children.map(entry))])
         } catch {
-            // [SECURITY-COLLECTORS-RECEIPTS]: an inaccessible parent is not absence.
+            // [UI-EFFECTS-MEASURE]: an inaccessible parent is not absence.
             let failure = error as NSError
             let missing = failure.domain == NSCocoaErrorDomain && failure.code == NSFileReadNoSuchFileError
             return .object(["path": .string(path), "error": .string(missing ? "" : error.localizedDescription), "missing": .bool(missing), "truncated": false, "entries": .array([])])
         }
     }
 
-    // [SECURITY-COLLECTORS-RECEIPTS]: read only the bounded prefix and one lookahead.
+    // [UI-EFFECTS-MEASURE]: read only the bounded prefix and one lookahead.
     private func boundedChildren(_ url: URL, limit: Int) throws -> ([URL], Bool) {
         var failure: Error?
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isHiddenKey]

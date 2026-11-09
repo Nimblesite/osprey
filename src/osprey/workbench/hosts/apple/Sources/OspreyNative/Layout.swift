@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST], [UI-COMPONENTS] and [DESIGN-FOUNDATIONS]: navigation
+// Implements [WORKBENCH-HOSTS], [UI-COMPONENTS] and [WORKBENCH-DESIGN-SURFACES]: navigation
 // and page structure. A split's first pane is the sidebar on the theme's inset
 // colour; every other screen is a page on its canvas. A screen's toolbar joins
 // the window toolbar and a toolbar field becomes the platform search field.
@@ -44,7 +44,7 @@ struct ScreenView: View {
 
 /// A page that holds a filling child fits the window and lets it fill while its other children leave the
 /// filling content `Page.fill` points. Otherwise, and for any other page, the whole page scrolls, so no
-/// content can make a page taller than its window ([UI-HOST]).
+/// content can make a page taller than its window ([WORKBENCH-HOSTS]).
 struct PageView: View {
     let subtitle: String
     let children: [Node]
@@ -239,7 +239,7 @@ struct TabsView: View {
     }
 }
 
-/// [DESIGN-COMPONENTS] surface: an eyebrow, the content and an explanatory footer on a bordered surface.
+/// [WORKBENCH-DESIGN-SURFACES] surface: an eyebrow, the content and an explanatory footer on a bordered surface.
 struct SectionView: View {
     let title: String
     let footer: String
@@ -261,7 +261,7 @@ struct SectionView: View {
 }
 
 extension View {
-    /// An opaque rounded fill with a thin border ([DESIGN-FOUNDATIONS]: borders, not shadows, group content).
+    /// An opaque rounded fill with a thin border ([WORKBENCH-DESIGN-SURFACES]: borders, not shadows, group content).
     func surface(_ fill: Color, border: Color, radius: CGFloat, width: CGFloat = 0.5) -> some View {
         background(fill, in: RoundedRectangle(cornerRadius: radius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(border, lineWidth: width))
