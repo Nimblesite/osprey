@@ -1,11 +1,11 @@
 # Type System
 
-- [Hindley-Milner Inference](#hindley-milner-inference)
+- [Hindley-Milner Inference](#hindley-milner-inference--type-inference)
 - [Generics and Variance](#generics-and-variance)
 - [Built-in Types](#built-in-types)
 - [Result Preservation](#result-preservation)
 - [Function Types](#function-types)
-- [Record Types](#record-types) — including [anonymous records](#anonymous-records--type-record-anon) and [tuples](#tuples--type-tuple)
+- [Record Types](#record-types--type-record) — including [anonymous records](#anonymous-records--type-record-anon) and [tuples](#tuples--type-tuple)
 - [Union Types](#union-types)
 - [Collection Types](#collection-types)
 - [Built-in Error Types](#built-in-error-types)
@@ -294,7 +294,7 @@ instantiation as an integer.
 site**: `out T` (covariant — `T` only flows out), `in T` (contravariant — `T`
 only flows in), unannotated (invariant — exact match). `out` and `in` are
 contextual keywords, reserved only inside type-parameter lists
-([Lexical Structure](0002-LexicalStructure.md#keywords)).
+([Lexical Structure](0002-LexicalStructure.md#keywords--lex-reserved)).
 
 ```osprey
 type Feed<out T> = Feed { supply: T } | Dry
