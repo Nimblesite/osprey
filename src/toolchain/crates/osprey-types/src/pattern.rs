@@ -13,7 +13,7 @@ use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Scheme, Type};
 use osprey_ast::{Expr, MatchArm, Pattern};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 
 mod constructors;
 mod exhaustive;

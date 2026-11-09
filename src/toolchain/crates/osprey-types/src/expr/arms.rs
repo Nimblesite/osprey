@@ -1,7 +1,16 @@
 //! Effect performs and handler expressions: operation lookup, arm typing
 //! and the resume discipline of [EFFECTS-RESUME].
-
-use super::*;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::ty::names;
+use crate::ty::Type;
+use crate::unify::unify;
+use osprey_ast::Expr;
+use osprey_ast::NamedArgument;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::collections::HashSet;
 
 impl Checker {
     /// Infer a `perform`: resolve the effect's instantiation innermost-first

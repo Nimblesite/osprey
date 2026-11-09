@@ -1,6 +1,17 @@
 //! Structural (record, tuple and list) patterns and the row discipline they read.
 
-use super::*;
+use super::ctor_owner_ty;
+use super::is_result;
+use super::is_result_variant;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::ty::names;
+use crate::ty::Scheme;
+use crate::ty::Type;
+use osprey_ast::Pattern;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 impl Checker {
     pub(super) fn bind_structural(

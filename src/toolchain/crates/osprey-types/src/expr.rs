@@ -8,13 +8,9 @@ use crate::check::Checker;
 
 use crate::env::TypeEnv;
 use crate::error::TypeError;
-use crate::numeric::Numeric;
 use crate::ty::{names, Type};
-use crate::unify::unify;
-use osprey_ast::{
-    Expr, FieldAssignment, InterpolatedPart, NamedArgument, Parameter, Stmt, TypeExpr,
-};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use osprey_ast::{Expr, FieldAssignment, InterpolatedPart, TypeExpr};
+use std::collections::{BTreeMap, HashMap};
 
 mod apply;
 mod arith;

@@ -1,7 +1,14 @@
 //! Applying a function type to checked arguments, GPU fusion, pipes and
 //! indexing.
-
-use super::*;
+use super::constrained_builtin;
+use super::res_math_like;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::ty::names;
+use crate::ty::Type;
+use crate::unify::unify;
+use osprey_ast::Expr;
 
 impl Checker {
     pub(super) fn infer_checked(&mut self, argument: &Expr, param: &Type, env: &TypeEnv) -> Type {

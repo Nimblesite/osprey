@@ -1,6 +1,15 @@
 //! Exhaustiveness and redundancy of match arms.
 
-use super::*;
+use super::is_result_variant;
+use super::starts_uppercase;
+use crate::check::Checker;
+use crate::error::TypeError;
+use crate::ty::names;
+use crate::ty::Type;
+use osprey_ast::Expr;
+use osprey_ast::MatchArm;
+use osprey_ast::Pattern;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 
 impl Checker {

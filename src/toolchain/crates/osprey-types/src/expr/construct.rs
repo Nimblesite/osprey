@@ -1,6 +1,17 @@
 //! Lambdas, blocks, constructors and record updates.
 
-use super::*;
+use super::expected_params;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::ty::Type;
+use osprey_ast::Expr;
+use osprey_ast::FieldAssignment;
+use osprey_ast::Parameter;
+use osprey_ast::Stmt;
+use osprey_ast::TypeExpr;
+use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 impl Checker {
     pub(super) fn infer_lambda(

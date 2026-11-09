@@ -1,7 +1,15 @@
 //! Binary operators: deferred arithmetic overloads, numeric constraints,
 //! comparison and negation.
-
-use super::*;
+use super::both_vars;
+use super::locatable_obligation;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::numeric::Numeric;
+use crate::ty::names;
+use crate::ty::Type;
+use crate::unify::unify;
+use osprey_ast::Expr;
 
 /// Marks a pending arithmetic overload in the obligation list
 /// ([`Checker::deferred_arith`]). Obligations already carry per-site types

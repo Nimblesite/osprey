@@ -1,6 +1,18 @@
 //! Constructor and `Result` variant patterns: owner unification and binder aliases.
 
-use super::*;
+use super::ctor_owner_ty;
+use super::is_result;
+use super::is_result_variant;
+use super::pattern_binder_names;
+use super::starts_uppercase;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::ty::names;
+use crate::ty::Scheme;
+use crate::ty::Type;
+use osprey_ast::Pattern;
+use std::collections::BTreeMap;
 
 impl Checker {
     /// When `name` looks like a variant (capitalised) but the discriminant is a

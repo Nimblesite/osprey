@@ -1,7 +1,16 @@
 //! Call inference: callees, type applications, methods, UFCS and argument
 //! ordering.
-
-use super::*;
+use super::applied_type_parameter;
+use crate::check::Checker;
+use crate::env::TypeEnv;
+use crate::error::TypeError;
+use crate::numeric::Numeric;
+use crate::ty::names;
+use crate::ty::Type;
+use osprey_ast::Expr;
+use osprey_ast::NamedArgument;
+use osprey_ast::TypeExpr;
+use std::collections::HashMap;
 
 impl Checker {
     pub(super) fn infer_call(
