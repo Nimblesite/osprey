@@ -58,6 +58,7 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 ## 8. SwiftUI host, and retiring the old Storage app
 
+- [ ] One SwiftUI host, not two: `src/osprey/workbench/hosts/apple/Sources/OspreyNative` is a diverged copy of `src/toolchain/hosts/swift/Sources/OspreyNative` (Capabilities, Store, Process, Network and Log adapters, Layout, Controls), so #355's store fix had to land twice. Move the shared sources into one Swift package both apps depend on; the workbench keeps only its own views (Film, Math, Cards). Check: `diff -rq` finds no file in both trees, and both `swift test` suites pass.
 - [ ] Extend `src/toolchain/hosts/swift` (the in-repo SwiftUI host) to macOS and iOS, map every node and symbol (SF Symbols) and every capability including `measure-folders`, and run the conformance set. Check: Storage runs on `src/toolchain/hosts/swift` with no diagnostics.
 - [ ] Move Storage's Apple-only requests to `HostCall`s only this host answers: Photos summary `HostCall "photos" "summary"`, Full Disk Access `HostCall "macos" "privacy-settings"`.
 - [ ] Retire `src/osprey/examples/macos` once Storage runs on GPUI, WinUI and SwiftUI; move every link to `src/osprey/examples/storage`; keep a website redirect.
