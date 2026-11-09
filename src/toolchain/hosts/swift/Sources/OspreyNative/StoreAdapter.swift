@@ -2,7 +2,10 @@ import Foundation
 
 // Implements [UI-EFFECTS]: app-private files. The
 // directory is 0700 and files 0600; writes are atomic; names are relative
-// paths inside the store and never escape it.
+// paths inside the store and never escape it. Every request resolves its
+// name one component at a time from an open descriptor with O_NOFOLLOW, so a
+// link planted inside the store never redirects a read, a listing, a write
+// or a deletion outside it.
 
 public struct StoreAdapter: CapabilityAdapter {
     public let kinds = ["store-read", "store-write", "store-list", "store-delete"]
@@ -45,46 +48,62 @@ public struct StoreAdapter: CapabilityAdapter {
         return parts
     }
 
-    // [UI-EFFECTS] An inaccessible path is not proven absent.
-    private func exists(_ url: URL) throws -> Bool {
-        var metadata = stat()
-        if lstat(url.path, &metadata) == 0 { return true }
-        let failure = errno
-        guard failure == ENOENT else {
-            throw CapabilityError.platform("Store metadata unavailable: \(String(cString: strerror(failure)))")
-        }
-        return false
-    }
+    private static let directoryFlags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
 
     private func read(_ request: Request, slices: SliceStore) throws -> JSONValue {
-        let url = try location(try request.text("name"))
-        guard try exists(url) else { return .object(["found": false]) }
-        slices.write(try request.text("slice"), try Bounded.text(try Bounded.read(url.path, limit: try request.number("limit"))))
+        let parts = try components(try request.text("name"))
+        guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: false) else {
+            return .object(["found": false])
+        }
+        defer { close(parent) }
+        guard let data = try Bounded.read(parent: parent, leaf: leaf, limit: try request.number("limit")) else {
+            return .object(["found": false])
+        }
+        slices.write(try request.text("slice"), try Bounded.text(data))
         return .object(["found": true])
     }
 
     private func write(_ request: Request, slices: SliceStore) throws -> JSONValue {
         let parts = try components(try request.text("name"))
-        guard let leaf = parts.last else { throw CapabilityError.notAllowed("Missing store file name") }
-        let parent = try writeDirectory(parts.dropLast())
+        guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: true) else {
+            throw CapabilityError.notAllowed("Missing store file name")
+        }
         defer { close(parent) }
         try replace(leaf, in: parent, with: Data(slices.text(try request.text("slice")).utf8))
         let url = parts.reduce(root) { $0.appendingPathComponent($1) }
         return .object(["path": .string(url.path)])
     }
 
+    private func list(_ request: Request) throws -> JSONValue {
+        let parts = try components(try request.text("name"))
+        guard let directory = try pinnedDirectory(parts[...], create: false) else { return .object(["names": .array([])]) }
+        let names = try entries(of: directory).sorted()
+        return .object(["names": .array(names.map(JSONValue.string))])
+    }
+
+    private func delete(_ request: Request) throws -> JSONValue {
+        let parts = try components(try request.text("name"))
+        guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: false) else { return .object([:]) }
+        defer { close(parent) }
+        try remove(leaf, in: parent)
+        return .object([:])
+    }
+
     // [UI-EFFECTS] Resolve each component relative to an open directory.
     // A link substituted before its open is refused, and a later substitution
-    // cannot redirect the descriptor-relative write.
-    private func writeDirectory(_ parts: ArraySlice<String>) throws -> Int32 {
-        let flags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
-        var directory = open(root.path, flags)
+    // cannot redirect the descriptor-relative operation. Without `create`, a
+    // missing component means the name is absent, which is `nil`.
+    private func pinnedDirectory(_ parts: ArraySlice<String>, create: Bool) throws -> Int32? {
+        var directory = open(root.path, Self.directoryFlags)
         guard directory >= 0 else { throw directoryFailure(errno) }
         do {
             for part in parts {
-                guard mkdirat(directory, part, 0o700) == 0 || errno == EEXIST else { throw directoryFailure(errno) }
-                let next = openat(directory, part, flags)
-                guard next >= 0 else { throw directoryFailure(errno) }
+                if create { guard mkdirat(directory, part, 0o700) == 0 || errno == EEXIST else { throw directoryFailure(errno) } }
+                let next = openat(directory, part, Self.directoryFlags)
+                guard next >= 0 else {
+                    if !create && errno == ENOENT { close(directory); return nil }
+                    throw directoryFailure(errno)
+                }
                 close(directory)
                 directory = next
             }
@@ -112,25 +131,47 @@ public struct StoreAdapter: CapabilityAdapter {
         renamed = true
     }
 
+    /// The entry names of an open directory, consuming the descriptor.
+    private func entries(of directory: Int32) throws -> [String] {
+        guard let stream = fdopendir(directory) else {
+            let failure = errno
+            close(directory)
+            throw storeFailure(failure)
+        }
+        defer { closedir(stream) }
+        var names: [String] = []
+        while let entry = readdir(stream) {
+            let name = withUnsafePointer(to: entry.pointee.d_name) { String(cString: UnsafeRawPointer($0).assumingMemoryBound(to: CChar.self)) }
+            if name != "." && name != ".." { names.append(name) }
+        }
+        return names
+    }
+
+    /// Removes one entry of a pinned directory: a file is unlinked, a directory
+    /// is emptied through its own descriptor first, a link is removed as a link.
+    private func remove(_ leaf: String, in directory: Int32) throws {
+        var metadata = stat()
+        guard fstatat(directory, leaf, &metadata, AT_SYMLINK_NOFOLLOW) == 0 else {
+            if errno == ENOENT { return }
+            throw storeFailure(errno)
+        }
+        if (metadata.st_mode & S_IFMT) == S_IFDIR {
+            let child = openat(directory, leaf, Self.directoryFlags)
+            guard child >= 0 else { throw directoryFailure(errno) }
+            for name in try entries(of: dup(child)) { try remove(name, in: child) }
+            close(child)
+            guard unlinkat(directory, leaf, AT_REMOVEDIR) == 0 else { throw storeFailure(errno) }
+            return
+        }
+        guard unlinkat(directory, leaf, 0) == 0 || errno == ENOENT else { throw storeFailure(errno) }
+    }
+
     private func directoryFailure(_ failure: Int32) -> CapabilityError {
         if failure == ELOOP || failure == ENOTDIR { return .notAllowed("Invalid store directory") }
         return storeFailure(failure)
     }
 
     private func storeFailure(_ failure: Int32) -> CapabilityError {
-        .platform("Store write failed: \(String(cString: strerror(failure)))")
-    }
-
-    private func list(_ request: Request) throws -> JSONValue {
-        let url = try location(try request.text("name"))
-        guard try exists(url) else { return .object(["names": .array([])]) }
-        let names = try FileManager.default.contentsOfDirectory(atPath: url.path).sorted()
-        return .object(["names": .array(names.map(JSONValue.string))])
-    }
-
-    private func delete(_ request: Request) throws -> JSONValue {
-        let url = try location(try request.text("name"))
-        if try exists(url) { try FileManager.default.removeItem(at: url) }
-        return .object([:])
+        .platform("Store operation failed: \(String(cString: strerror(failure)))")
     }
 }
