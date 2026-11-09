@@ -1,6 +1,6 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [SECURITY-PRIVACY]: app-private files. The
+// Implements [UI-EFFECTS]: app-private files. The
 // directory is 0700 and files 0600; writes are atomic; names are relative
 // paths inside the store and never escape it.
 
@@ -45,7 +45,7 @@ public struct StoreAdapter: CapabilityAdapter {
         return parts
     }
 
-    // [UI-EFFECTS-STORAGE-ACCURACY] An inaccessible path is not proven absent.
+    // [UI-EFFECTS] An inaccessible path is not proven absent.
     private func exists(_ url: URL) throws -> Bool {
         var metadata = stat()
         if lstat(url.path, &metadata) == 0 { return true }
