@@ -1,5 +1,8 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Win32.SafeHandles;
 
 namespace Osprey.Host;
 
@@ -9,9 +12,13 @@ namespace Osprey.Host;
 /// LocalState in a packaged host, the one folder its sandbox may write [WINUI-HOST-SANDBOX]. Names are relative
 /// and never leave that folder; a read is bounded and UTF-8, and a write replaces its entry whole.
 /// </summary>
-public sealed class Store(string root)
+public sealed partial class Store(string root)
 {
     static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+    const uint ListDirectory = 0x0001;
+    const uint OpenExisting = 3;
+    const uint BackupSemantics = 0x02000000;
+    const uint OpenReparsePoint = 0x00200000;
 
     /// <summary>The store folder for the application compiled into <paramref name="library"/>.</summary>
     public static string RootFor(string library) =>
@@ -47,18 +54,81 @@ public sealed class Store(string root)
             : Completion.Done(ticket, "null", new SliceWrite(Envelopes.Text(request, "slice"), Strict.GetString(File.ReadAllBytes(path))));
     });
 
-    Completion Write(string ticket, JsonElement request) => Named(ticket, request, (_, path) =>
+    Completion Write(string ticket, JsonElement request) => Named(ticket, request, (name, _) =>
     {
         if (Slices.Get(Envelopes.Text(request, "slice")) is not { } text)
         {
             return Completion.Failed(ticket, "store-write slice is missing");
         }
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + ".writing";
-        File.WriteAllText(temporary, text, Strict);
-        File.Move(temporary, path, overwrite: true);
+        WriteEntry(name, text);
         return Completion.Done(ticket, "null");
     });
+
+    void WriteEntry(string name, string text)
+    {
+        var parts = name.Split(['/', '\\']);
+        var folder = Path.GetFullPath(root);
+        var directories = new Stack<SafeFileHandle>();
+        try
+        {
+            foreach (var part in parts.AsSpan(0, parts.Length - 1))
+            {
+                directories.Push(PinDirectory(folder, FileShare.Read));
+                folder = Path.Combine(folder, part);
+            }
+            directories.Push(PinDirectory(folder, FileShare.ReadWrite));
+            Replace(folder, parts[^1], Strict.GetBytes(text));
+        }
+        finally
+        {
+            while (directories.TryPop(out var directory)) directory.Dispose();
+        }
+    }
+
+    // [WINUI-HOST-CAPABILITIES] Hold each directory without delete sharing, so it cannot be
+    // renamed, removed or replaced by a junction during a write. The folders above the entry
+    // also refuse write sharing, so an empty one cannot be turned into a junction in place.
+    // The entry's own folder must share writing: moving the finished file into it opens the
+    // folder for writing, and a refusal there is a sharing violation on every write.
+    static SafeFileHandle PinDirectory(string path, FileShare share)
+    {
+        Directory.CreateDirectory(path);
+        var handle = CreateFileFromAppW(path, ListDirectory, share, 0, OpenExisting, BackupSemantics | OpenReparsePoint, 0);
+        try
+        {
+            if (handle.IsInvalid) throw new IOException(new Win32Exception(Marshal.GetLastPInvokeError()).Message);
+            var attributes = File.GetAttributes(handle);
+            if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != FileAttributes.Directory)
+                throw new IOException($"invalid store directory {path}");
+            return handle;
+        }
+        catch
+        {
+            handle.Dispose();
+            throw;
+        }
+    }
+
+    static void Replace(string folder, string leaf, byte[] bytes)
+    {
+        var temporary = Path.Combine(folder, $".osprey-writing-{Guid.NewGuid():N}");
+        var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        var moved = false;
+        try
+        {
+            using (file) file.Write(bytes);
+            File.Move(temporary, Path.Combine(folder, leaf), overwrite: true);
+            moved = true;
+        }
+        finally
+        {
+            if (!moved) File.Delete(temporary);
+        }
+    }
+
+    [LibraryImport("api-ms-win-core-file-fromapp-l1-1-0.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial SafeFileHandle CreateFileFromAppW(
+        string path, uint access, FileShare share, nint security, uint creation, uint flags, nint template);
 
     Completion List(string ticket, JsonElement request) => Named(ticket, request, (_, folder) => Directory.Exists(folder)
         ? Completion.Done(ticket, Json.Array(Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal)!))
@@ -90,7 +160,8 @@ public sealed class Store(string root)
             return folder ? root : null;
         }
         var parts = name.Split(['/', '\\']);
-        var safe = !Path.IsPathRooted(name) && !name.Contains(':') && parts.All(part => part is not ("" or ".."));
+        var safe = !Path.IsPathRooted(name) && parts.All(part =>
+            part.Length > 0 && !part.EndsWith('.') && !part.EndsWith(' ') && part.IndexOfAny(Path.GetInvalidFileNameChars()) < 0);
         return safe ? Path.Combine([root, .. parts]) : null;
     }
 }

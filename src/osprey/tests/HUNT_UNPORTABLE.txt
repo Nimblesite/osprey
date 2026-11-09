@@ -22,7 +22,6 @@ src/osprey/examples/handlers/returns.osp fibers and continuations: `__osprey_cor
 src/osprey/examples/handlers/returns.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 src/osprey/examples/handlers/semantics.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 src/osprey/examples/handlers/semantics.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
-src/osprey/examples/handlers/staging-type.osp a deliberate type error, kept as a diagnostics example
 src/osprey/examples/ios/app.osp `ios_host_log` is native code outside the module (not in the portable runtime)
 src/osprey/examples/projects/modules `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
 src/osprey/examples/projects/modules/client `osprey_web_render` is native code outside the module (not in the portable runtime)

@@ -141,7 +141,7 @@ int64_t websocket_send(int64_t ws_id, char *message) {
     }
 
     pthread_mutex_lock(&ws->mutex);
-    int result = send_websocket_frame(ws->socket_fd, message);
+    int result = send_websocket_message(ws->socket_fd, WS_OP_TEXT, message, strlen(message), true);
     pthread_mutex_unlock(&ws->mutex);
 
     return result > 0 ? 0 : -3;

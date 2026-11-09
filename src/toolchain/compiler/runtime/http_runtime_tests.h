@@ -54,6 +54,9 @@ typedef struct {
   unsigned reply_delay_us; // wait this long before replying
   bool hold_open; // keep the socket open after replying, until the client leaves
   unsigned drip_us; // send one byte at a time, this far apart
+  bool raw_request; // the peer speaks no HTTP (a TLS hello): take one segment, then reply
+  size_t trickle_bytes; // when set: read this much at a time, trickle_us apart,
+  unsigned trickle_us;  // until the client leaves, and never reply
   char request[MAX_HTTP_BUFFER];
   pthread_t thread;
 } ScriptedOrigin;

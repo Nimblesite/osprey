@@ -1,4 +1,4 @@
-//! Command recognition [PROF-WIRE-METHODS].
+//! Command recognition [PROF-LSP-HOST].
 use super::*;
 
 #[test]

@@ -34,6 +34,8 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
+Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today `src/formula.ospml`, `statement.ospml`, `step.ospml`, `goals.ospml`, `emit.ospml`, `kernel.ospml` and the step-elaborating half of `verdict.ospml`, the deleted formats of [WORKBENCH-DELETED], are still present and tested; [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) removes them, and the ids their tests cite ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]) retire with them. The grep gate of [WORKBENCH-VERIFICATION] does not exist yet and would fail until then.
+
 ## Notation [WORKBENCH-NOTATION]
 
 The editor types Unicode as Lean's VS Code extension does: `\forall` `\all`, `\exists` `\ex`, `\to` `\r` `\->`, `\iff` `\lr`, `\and` `\wedge`, `\or` `\vee`, `\not` `\neg`, `\N` `\Z` `\R`, `\le` `\ge` `\ne`, `\in` `\notin` `\sub`, `\comp`, `\times`, `\inv`, `\_0`…`\_9`, `\^0`…`\^9`, `\alpha`…`\omega`. An abbreviation is replaced the moment a non-identifier character follows it; a trailing backslash shows the matching entries as a palette; the palette region lists every row. `Notation::expand : string -> string` is total and idempotent and the table is one Osprey list of `(abbreviation, symbol)` pairs. This is an input convenience, not a format: the buffer holds Lean source.

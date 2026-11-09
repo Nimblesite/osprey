@@ -174,7 +174,7 @@ def real_openai_rejects_invalid_temperature(port):
 
 
 # Explicit local-only Pydantic AI lane. Not registered as real_case or case.
-# Implements [LLM-AGENT-EVAL]: executable checks and a separate model judgement.
+# Implements [LLM-ACCEPT]: executable checks and a separate model judgement.
 
 CODING_TASKS = {
     "normalize_names": (

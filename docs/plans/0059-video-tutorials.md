@@ -42,7 +42,7 @@ The rules below go into the docs specs when this plan is implemented.
 
 ### `[DOC-TUTORIAL-VIDEO-KIND]` Tutorials and introductions are different kinds
 
-Every entry in `src/_data/videos.json` has `"kind": "tutorial"` or
+Every entry in `src/toolchain/website/src/_data/videos.json` has `"kind": "tutorial"` or
 `"kind": "intro"`. The tutorials index lists only `tutorial` entries. An
 `intro` plays on its feature page (for example `agent-native` on
 [Osprey Native](../../src/toolchain/website/src/docs/osprey-native.md)) and has

@@ -1,4 +1,4 @@
-//! Which frames are plumbing [PROF-RUNTIME]: the loader's and the thread
+//! Which frames are plumbing [PROF-LSP-RUNTIME]: the loader's and the thread
 //! library's entry trampolines and the runtime's own thread starters. They sit
 //! at the root of every stack and say nothing about the program, so they never
 //! appear as hotspots or flame-graph roots.

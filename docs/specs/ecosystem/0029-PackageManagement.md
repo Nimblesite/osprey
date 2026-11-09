@@ -720,6 +720,18 @@ activation; only isolated `--audit-revoked` reproduction may consume it.
 
 A dependency with neither a local `path` nor an installed release under `.osprey/packages` resolves to the directory beside the package named by its key's last segment, when that directory's own `[package].name` declares exactly that key; its dependencies resolve the same way. `osprey --check`, `osprey build` and the language server all see that source, so a package in a workspace checks on its own without listing sibling source roots. It is development resolution only: the manifest keeps its epoch and minimum ordinal and release resolution never reads it. `make _check_programs` keeps every program in this repository compiling, packages, examples and loose programs alike ([CI-PROGRAMS-COMPILE]).
 
+## Package workspace editor `[PACKAGE-EDITOR]`
+
+"Osprey: Manage Packages" in VS Code is an Osprey Native application, `src/osprey/packages/manager/editor`, inside the VSIX shell. The host owns the panel, the WASI process, theme-safe rendering and bounded capabilities, and nothing else.
+
+- `[PACKAGE-EDITOR-STORE]` Every piece of application state and every decision is Osprey; the host holds no package state.
+- `[PACKAGE-EDITOR-WORKSPACE]` The workspace is a screen, not a picker: every value shown comes from the canonical graph or the catalog, and an empty findings list is never presented as an audit.
+- `[PACKAGE-EDITOR-GRAPH]` The editor consumes the canonical `osprey-pkg tree --graph` semantic report; it never scans TOML, a lock or package sources itself.
+- `[PACKAGE-EDITOR-USAGE-GRAPH]` Source requirements come from the compiler's resolved dependencies, including erased constant reads; no source text is scanned.
+- `[PACKAGE-EDITOR-COMPLETIONS]` Host envelopes carry bounded raw CLI output; semantic success comes only from the CLI report, never from exit code 0.
+
+Verification: `target/release/osprey src/osprey/packages/manager/editor/tests --run --quiet`, and the VSIX host through `OSPREY_TEST_GREP='package workspace|compiled SDK renderer E2E' npm test --prefix src/toolchain/vscode-extension`.
+
 ## Python interop dependencies through uv `[PACKAGE-PYTHON-UV]`
 
 The Osprey resolver selects Osprey releases and nothing else. A package whose

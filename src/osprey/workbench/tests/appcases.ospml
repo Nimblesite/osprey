@@ -59,7 +59,7 @@ module AppCases
 
     (** A stroke value an old board host could still send; the retired region must refuse it. *)
     stroke () = "{\"points\":[[1,2],[30,40]],\"width\":2,\"at\":5}"
-    (** [WORKBENCH-FILES] The current document reopens through the real host file flow. *)
+    (** [WORKBENCH-DOCUMENT] The current document reopens through the real host file flow. *)
     export reopened envelope = WorkspaceCases::opened envelope
 
     (** [WORKBENCH-BOARD] An unregistered drawing control writes no slice, draws nothing and changes no document. *)

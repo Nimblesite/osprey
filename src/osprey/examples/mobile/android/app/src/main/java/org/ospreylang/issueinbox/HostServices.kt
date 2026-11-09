@@ -16,7 +16,7 @@ import java.util.concurrent.Executors
 import javax.net.ssl.HttpsURLConnection
 
 // Generic asynchronous transport. SQL, URLs and response interpretation come from Osprey.
-// Implements [MOBILE-SERVICES] and [MOBILE-NATIVE-HOST].
+// Implements [MOBILE-HOST-SERVICES] and [MOBILE-NATIVE-HOST].
 internal class HostServices(context: Context, filename: String = "inbox.sqlite", private val httpFixture: ((JSONObject) -> JSONObject)? = null, private val complete: (JSONObject) -> Unit) {
     private val main = Handler(Looper.getMainLooper())
     private val sqlQueue = Executors.newSingleThreadExecutor()

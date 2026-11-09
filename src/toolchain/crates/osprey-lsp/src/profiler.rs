@@ -204,7 +204,7 @@ fn profiler_call(params: &Value) -> Option<(&'static str, Value)> {
 }
 
 /// Why a profiler command's arguments are not exactly one params object
-/// ([PROF-WIRE-METHODS]); `None` when they are, or when the list is absent.
+/// ([PROF-LSP-HOST]); `None` when they are, or when the list is absent.
 fn malformed_arguments(params: &Value) -> Option<&'static str> {
     match params.get("arguments") {
         None | Some(Value::Null) => None,

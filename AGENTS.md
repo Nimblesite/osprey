@@ -47,12 +47,12 @@ Three phases, each once — ❌ mixing them:
 
 - ❌ weakening gates (rulesets, job `if:`, timeouts) or merging red — fix the code. Sole required check: root `CI` job in `ci.yml` (`if: always()`, `needs:` every job). Other PR workflows via `uses:`. Skip with job-level `if:`, ❌ `paths:` filters
 - Releases depend on `make audit` of their exact SHA; scanner failure = release failure
-- `dependabot-upgrades` = permanent staging. ❌ delete, retarget or change its process without user authorization
+- `dependabot-upgrades` = permanent staging ([GITHUB-DEPENDABOT]). ❌ delete, retarget or change its process without user authorization
 
 ## Code
 - 🐛 **Duplication and superfluous code are bugs** — copies, parallel versions, dead code, unused imports, stale comments. Fix on sight. Run [deslop](https://deslop.live/docs/for-ai/) routinely: `find-similar` before writing, `top-offenders` after
 - Files < 500 LOC, functions < 20 LOC. FP: pure functions, named constants, ❌ placeholders
-- **Rust:** ❌ `panic!`/`unwrap()` outside quarantine → `Result` + match. Run `make ci` often; let clippy auto-fix
+- **Rust:** ❌ `panic!`/`unwrap()` outside quarantine → `Result` + match. Run `make ci` often; let clippy auto-fix. Every `pub` item stays reachable or becomes `pub(crate)` so `dead_code` sees it ([LINTS-DEADCODE-REACH])
 - **Osprey:** immutable types, expressions over statements, effects for abstraction, ML-style minimal brackets. Best function = one pure expression. One interpolated print, ❌ consecutive prints
 - **Osprey: redundant type annotations are defects** (Hindley-Milner — leave off anything inferable).
   - `fn add(a, b) = a + b`, not `fn add(a: int, b: int)`; `|x| => x * 2`, not `|x: int| => ...`
@@ -66,7 +66,7 @@ Three phases, each once — ❌ mixing them:
 ```
 
 - **Osprey: JSON and database access stay at the edges** — decode into typed records in one boundary module (via `@osprey/json`'s `Doc`) or behind an effect; ❌ `Json` values, `JsonInt`/`jsonIndex` matching or SQL in business logic
-- **Website:** CSS ≤ 1.8k LOC, `prose`-prefixed classes, ❌ Tailwind
+- **Website:** CSS ≤ 1.8k LOC, `prose`-prefixed classes, ❌ Tailwind; every site-local CSS/JS URL carries a content hash ([WEBSITE-ASSET-VERSIONS])
 
 ## Documentation
 - **Spec IDs:** hierarchical slugs (`[GROUP-TOPIC-DETAIL]`), ❌ numbers; cite in code (`// Implements [PARSER-EFFECTS-HANDLE]`) and tests. On disagreement, fix the stale source

@@ -1,4 +1,4 @@
-//! The session relay [PROF-SAMPLER]: endpoint batches become per-tick sample
+//! The session relay [PROF-LSP-RUNTIME]: endpoint batches become per-tick sample
 //! batches until the session asks to stop, its duration runs out, or the
 //! program exits [PROF-ATTACH-PROTOCOL].
 //!

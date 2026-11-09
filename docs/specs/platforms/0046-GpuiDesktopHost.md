@@ -45,6 +45,10 @@ Every framework symbol ([UI-COMPONENTS-SYMBOLS](../../../src/osprey/packages/nat
 
 A control bound by the framework sends back the binding id it was issued, with its value (`Tap`, `TextInput`, `FlagInput`, `ChoiceInput`, `SizeInput`). The host adds nothing else. Keyboard input reaches Osprey as key events on the region that has focus; the host does not translate keys into actions.
 
+### Opened files [GPUI-HOST-OPEN]
+
+Files the desktop asks the application to open (Finder on macOS) are held until a frame can carry them. Each is then delivered as the lifecycle phase `open:<path>`, with a `file://` URL turned back into its path.
+
 ## Frame clock [GPUI-HOST-FRAME]
 
 An application turns the host's frame clock on with an `Animate` request (`{"kind":"animate","on":true,"ticket":…}`) and off with `on` false. The host completes the request like any other capability and, while the clock runs, delivers one event per display refresh:

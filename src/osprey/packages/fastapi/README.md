@@ -20,6 +20,14 @@ The pinned reference is FastAPI 0.135.3. This port is MIT licensed by NIMBLESITE
 
 Routing now supports ordered literal, single-segment and greedy `{path:path}` routes, percent-decoded Unicode, method selection, query-preserving redirects, 404/405 and custom responses. `Params` exposes repeated queries, scalar last-value selection and case-insensitive headers. `Validation` and `Uuids` return typed `Valid`/`Invalid` outcomes, combine errors and render 422 locations, inputs and typed contexts. `Errors` renders typed HTTP exceptions with status and headers. Domain handlers receive typed values after this boundary; CPython decorator execution and automatic Pydantic binding remain unfinished.
 
+### Responses [FASTAPI-HTTP-RESPONSES]
+
+`Responses` builds every response at the transport boundary: status, headers and body are typed values until the one translation into the runtime ABI, so handlers never see raw wire bytes.
+
+### Serving [FASTAPI-HTTP-SERVE]
+
+`Applications.serve(port, host, app)` serves typed Python flavor handlers through Osprey HTTP and returns a fallible server handle; a listener that cannot bind is an error the application receives, never a crash.
+
 ## Compatibility checklist
 
 Checked items have real HTTP test coverage.

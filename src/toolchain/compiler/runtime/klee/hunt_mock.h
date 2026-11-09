@@ -106,7 +106,7 @@ void osp_hunt_decimal(double magnitude, struct osp_hunt_decimal *out);
 void osp_hunt_decimal_round(struct osp_hunt_decimal *d, int keep);
 
 // Forgets every stream, counter and errno: the unit tests' seam between
-// cases [SYMEX-MOCK-TESTS]. Under KLEE nothing calls it.
+// cases [SYMEX-REGRESSION]. Under KLEE nothing calls it.
 void osp_hunt_reset(void);
 
 #endif

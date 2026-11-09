@@ -94,7 +94,7 @@ def compare(actual, wanted, device):
 
 
 def transcendental(name):
-    # [GPU-CORE-SCALAR]: only values downstream of exp/tanh use the 1e-9 bound.
+    # [PORT-TEST-ORACLE]: only values downstream of exp/tanh use the 1e-9 bound.
     return name == "gelu" or name.startswith(("probs", "attention")) or name in {
         "block.probs", "block.a", "block.x2", "block.h2", "block.f", "block.u", "block.y"}
 

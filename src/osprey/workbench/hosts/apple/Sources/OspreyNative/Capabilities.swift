@@ -53,7 +53,7 @@ public final class CapabilityRunner {
     public func run(_ request: Request, completion: @escaping @MainActor (Outcome) -> Void) {
         if request.kind == "cancel" { return cancel(request, completion: completion) }
         guard let adapter = adapters[request.kind] else { return completion(.failure(.unknownKind(request.kind))) }
-        // [UI-EFFECTS-RECEIPT-OWNERSHIP]: cancelled/late writes never reach the core.
+        // [UI-EFFECTS]: cancelled/late writes never reach the core.
         inflight.removeValue(forKey: request.ticket)?.task.cancel()
         let store = slices.staged(), identity = UUID()
         let task = Task { [weak self] in
@@ -91,11 +91,32 @@ enum Bounded {
         try snapshot(path, limit: limit).data
     }
 
+    /// A bounded read of `leaf` inside an already pinned directory ([UI-EFFECTS]):
+    /// the leaf is opened descriptor-relative with O_NOFOLLOW, so a link there is
+    /// refused rather than followed; `nil` when the entry does not exist.
+    static func read(parent: Int32, leaf: String, limit: Int) throws -> Data? {
+        guard limit >= 0, limit < Int.max else { throw CapabilityError.invalidArgument("Invalid file byte limit") }
+        try Task.checkCancellation()
+        let descriptor = openat(parent, leaf, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
+        guard descriptor >= 0 else {
+            if errno == ENOENT { return nil }
+            if errno == ELOOP { throw CapabilityError.notAllowed("\(leaf) is a link, not a store file") }
+            throw CapabilityError.platform(String(cString: strerror(errno)))
+        }
+        defer { close(descriptor) }
+        let status = try identity(descriptor)
+        guard (status.st_mode & S_IFMT) == S_IFREG else { throw CapabilityError.notAllowed("\(leaf) is not a regular file") }
+        guard status.st_size <= limit else { throw CapabilityError.tooLarge(Int(status.st_size), limit) }
+        let data = try contents(FileHandle(fileDescriptor: descriptor, closeOnDealloc: false), limit: limit)
+        guard unchanged(status, try identity(descriptor)), status.st_size == data.count else { throw CapabilityError.platform("The file changed while it was read") }
+        return data
+    }
+
     /// Mechanical facts from the same open file; pathname replacement invalidates the read.
     static func snapshot(_ path: String, limit: Int) throws -> (data: Data, identity: stat) {
         guard limit >= 0, limit < Int.max else { throw CapabilityError.invalidArgument("Invalid file byte limit") }
         try Task.checkCancellation()
-        // [UI-EFFECTS-BOUNDED-READ]: opening a FIFO must not wait before fstat rejects it.
+        // [UI-EFFECTS]: opening a FIFO must not wait before fstat rejects it.
         let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard descriptor >= 0 else { throw CapabilityError.platform(String(cString: strerror(errno))) }
         defer { close(descriptor) }
@@ -125,7 +146,7 @@ enum Bounded {
         return lstat(path, &current) == 0 && current.st_dev == opened.st_dev && current.st_ino == opened.st_ino && (current.st_mode & S_IFMT) == S_IFREG
     }
 
-    // [UI-EFFECTS-BOUNDED-READ]: never trust the initial size to bound a later read.
+    // [UI-EFFECTS]: never trust the initial size to bound a later read.
     private static func contents(_ handle: FileHandle, limit: Int) throws -> Data {
         var data = Data()
         while true {

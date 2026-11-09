@@ -129,7 +129,7 @@ impl Parser<'_> {
     /// `gpuIota -3` applies `gpuIota` to `-3` — the parse its Default twin
     /// `gpuIota(-3)` has. `a - 3` (spaced both sides) and `a-3` (glued both
     /// sides) stay subtraction, so only the spelling that already reads as one
-    /// argument changes meaning ([FLAVOR-ML-CALL], [FLAVOR-EQUIVALENCE]).
+    /// argument changes meaning ([FLAVOR-ML-CALL], [FLAVOR-IR-EQUIV]).
     pub(in crate::ml) fn at_negative_literal_arg(&self) -> bool {
         matches!(self.peek(), TokKind::Op(op) if op == MINUS_OP)
             && !self.glued()

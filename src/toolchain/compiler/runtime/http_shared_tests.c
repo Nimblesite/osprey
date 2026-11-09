@@ -4,22 +4,17 @@
 // This suite OWNS http_shared.c's coverage number: it is the only suite that
 // exercises every helper in the unit rather than whichever subset a transport
 // happens to reach. Spec anchors:
-//   [HTTP-CLIENT]                 docs/specs/runtime/0014-HTTP.md
-//   [BUILTIN-WEBSOCKET-FRAMING]   docs/specs/runtime/0015-WebSockets.md
+//   [HTTP-STATUS-CLIENT]          docs/specs/runtime/0014-HTTP.md
 //   [BUILTIN-WEBSOCKET-HANDSHAKE] docs/specs/runtime/0015-WebSockets.md
 #include "http_shared.h"
 #include <assert.h>
-// `signal`/`SIGPIPE`/`SIG_IGN` below. macOS pulls this in transitively through
-// the socket headers and glibc does not, so leaving it out compiles here and
-// fails on Linux with -Werror=implicit-function-declaration.
-#include <signal.h>
 
 // Not in the header: internal to the handshake pipeline, asserted directly so
 // its input-validation contract is pinned rather than inferred.
 void sha1_websocket(const char *input, unsigned char output[20]);
 
 // Every HttpMethod maps to its wire spelling, and an out-of-range enum value
-// degrades to GET rather than returning a dangling pointer [HTTP-CLIENT].
+// degrades to GET rather than returning a dangling pointer [HTTP-STATUS-CLIENT].
 static void test_http_method_strings(void) {
   assert(strcmp(http_method_to_string(HTTP_GET), "GET") == 0);
   assert(strcmp(http_method_to_string(HTTP_POST), "POST") == 0);
@@ -32,7 +27,7 @@ static void test_http_method_strings(void) {
 }
 
 // One parse_url case: asserts the whole (host, port, path) triple at once so a
-// single expectation table drives every scheme and default [HTTP-CLIENT].
+// single expectation table drives every scheme and default [HTTP-STATUS-CLIENT].
 static void expect_url(const char *url, const char *host, int port,
                        const char *path) {
   char *got_host = NULL;
@@ -158,107 +153,6 @@ static void test_handshake_key_rejections(void) {
          NULL);
 }
 
-// Frame parsing: unmasked, client-masked (XOR unmasking), the 126 extended
-// length form, the empty frame, and every truncation rejection
-// [BUILTIN-WEBSOCKET-FRAMING].
-static void test_parse_websocket_frame(void) {
-  char *payload = NULL;
-  const unsigned char plain[] = {0x81, 5, 'h', 'e', 'l', 'l', 'o'};
-  assert(parse_websocket_frame((const char *)plain, sizeof(plain), &payload) ==
-         5);
-  assert(payload != NULL && strcmp(payload, "hello") == 0);
-  free(payload);
-  unsigned char masked[] = {0x81, 0x82, 1, 2, 3, 4, 'a' ^ 1, 'b' ^ 2};
-  payload = NULL;
-  assert(parse_websocket_frame((const char *)masked, sizeof(masked),
-                               &payload) == 2);
-  assert(payload != NULL && strcmp(payload, "ab") == 0);
-  free(payload);
-  unsigned char ext[204] = {0x81, 126, 0, 200};
-  memset(ext + 4, 'x', 200);
-  payload = NULL;
-  assert(parse_websocket_frame((const char *)ext, sizeof(ext), &payload) == 200);
-  assert(payload != NULL && strlen(payload) == 200 && payload[0] == 'x');
-  free(payload);
-  // A low length byte with the top bit set must NOT sign-extend.
-  unsigned char ext200[206] = {0x81, 126, 0, 0xC8};
-  memset(ext200 + 4, 'y', 200);
-  payload = NULL;
-  assert(parse_websocket_frame((const char *)ext200, 204, &payload) == 200);
-  assert(payload != NULL && strlen(payload) == 200);
-  free(payload);
-  const unsigned char empty[] = {0x81, 0};
-  payload = NULL;
-  assert(parse_websocket_frame((const char *)empty, sizeof(empty), &payload) ==
-         0);
-  assert(payload != NULL && payload[0] == '\0');
-  free(payload);
-  const unsigned char runt[] = {0x81};
-  assert(parse_websocket_frame((const char *)runt, 1, &payload) == -1);
-  const unsigned char big64[] = {0x81, 127}; // 64-bit lengths unsupported
-  assert(parse_websocket_frame((const char *)big64, 2, &payload) == -1);
-  const unsigned char trunc_ext[] = {0x81, 126, 0}; // extended length cut off
-  assert(parse_websocket_frame((const char *)trunc_ext, 3, &payload) == -1);
-  const unsigned char trunc_mask[] = {0x81, 0x81, 1, 2}; // mask key cut off
-  assert(parse_websocket_frame((const char *)trunc_mask, 4, &payload) == -1);
-  const unsigned char trunc_pay[] = {0x81, 3, 'a'}; // payload cut off
-  assert(parse_websocket_frame((const char *)trunc_pay, 3, &payload) == -1);
-}
-
-// send_websocket_frame writes the exact server wire bytes (unmasked text
-// frame), verified over a socketpair, and round-trips through the parser
-// [BUILTIN-WEBSOCKET-FRAMING].
-static void test_send_frame_wire_format(void) {
-  int pair[2];
-  assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
-  assert(send_websocket_frame(pair[0], "hi") == 4);
-  unsigned char wire[8] = {0};
-  assert(read(pair[1], wire, sizeof(wire)) == 4);
-  assert(wire[0] == 0x81 && wire[1] == 2 && wire[2] == 'h' && wire[3] == 'i');
-  static char big[131];
-  memset(big, 'A', 130);
-  big[130] = '\0';
-  assert(send_websocket_frame(pair[0], big) == 134); // 4-byte extended header
-  unsigned char ext[140] = {0};
-  ssize_t got = 0;
-  while (got < 134) {
-    ssize_t n = read(pair[1], ext + got, sizeof(ext) - (size_t)got);
-    assert(n > 0);
-    got += n;
-  }
-  assert(ext[0] == 0x81 && ext[1] == 126 && ext[2] == 0 && ext[3] == 130);
-  char *payload = NULL;
-  assert(parse_websocket_frame((const char *)ext, (size_t)got, &payload) ==
-         130);
-  assert(payload != NULL && strcmp(payload, big) == 0);
-  free(payload);
-  // The 125/126 boundary: 125 bytes still use the one-byte length form.
-  static char edge[126];
-  memset(edge, 'C', 125);
-  edge[125] = '\0';
-  assert(send_websocket_frame(pair[0], edge) == 127);
-  unsigned char edge_wire[130] = {0};
-  got = 0;
-  while (got < 127) {
-    ssize_t n = read(pair[1], edge_wire + got, sizeof(edge_wire) - (size_t)got);
-    assert(n > 0);
-    got += n;
-  }
-  assert(edge_wire[0] == 0x81 && edge_wire[1] == 125);
-  assert(send_websocket_frame(pair[0], NULL) == -1);
-  static char huge[5001];
-  memset(huge, 'B', 5000);
-  huge[5000] = '\0';
-  assert(send_websocket_frame(pair[0], huge) == -1); // DoS guard at 4096
-  // A closed peer surfaces the send failure rather than reporting success.
-  close(pair[1]);
-  signal(SIGPIPE, SIG_IGN);
-  int closed_result = send_websocket_frame(pair[0], "gone");
-  assert(closed_result == 4 || closed_result < 0);
-  close(pair[0]);
-  assert(send_websocket_frame(-1, "invalid socket") < 0);
-}
-
 // get_next_id hands out strictly increasing, never-reused handles.
 static void test_next_id_monotonic(void) {
   int64_t first = get_next_id();
@@ -276,8 +170,6 @@ int main(void) {
   test_sha1_input_validation();
   test_handshake_response_rfc6455();
   test_handshake_key_rejections();
-  test_parse_websocket_frame();
-  test_send_frame_wire_format();
   test_next_id_monotonic();
   printf("✅ http_shared tests passed\n");
   return 0;

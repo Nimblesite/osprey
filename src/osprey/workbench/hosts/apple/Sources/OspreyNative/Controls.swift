@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-EVENTS]: controls. Only native control state
+// Implements [WORKBENCH-HOSTS] and [UI-EVENTS]: controls. Only native control state
 // Osprey cannot observe stays here: the text being composed in a field.
 
 /// Text wraps within the space offered and never forces its pane taller than the window; in a list row it is compact and leaves clicks to the row's selection.
@@ -70,7 +70,7 @@ struct LinkView: View {
     }
 }
 
-/// Status uses a quiet outlined capsule; its text carries the verdict ([DESIGN-STATUS]).
+/// Status uses a quiet outlined capsule; its text carries the verdict ([WORKBENCH-DESIGN-SURFACES]).
 struct BadgeView: View {
     let label: String
     let symbol: String
@@ -210,7 +210,7 @@ struct ButtonView: View {
     }
 }
 
-/// [DESIGN-MOTION]: feedback acknowledges a press; Reduce Motion removes it.
+/// [WORKBENCH-DESIGN-SURFACES]: feedback acknowledges a press; Reduce Motion removes it.
 struct ThemedButtonStyle: ButtonStyle {
     let role: ButtonRole
     var focused = false

@@ -45,13 +45,46 @@ void origin_read_request(int fd, char *out, size_t capacity) {
   }
 }
 
+// A reader slow enough to keep a sender's every wait inside its timeout, until
+// the sender gives up: trickle_bytes per tick, trickle_us apart. A tick must free
+// more than two segments of the receive window, or TCP holds back the window
+// update and the sender stalls however fast this reads.
+static void origin_trickle(int fd, const ScriptedOrigin *origin) {
+  char scratch[MAX_HTTP_BUFFER];
+  for (;;) {
+    for (size_t taken = 0; taken < origin->trickle_bytes;) {
+      size_t left = origin->trickle_bytes - taken;
+      ssize_t n = recv(fd, scratch, left < sizeof scratch ? left : sizeof scratch, 0);
+      if (n <= 0) {
+        return;
+      }
+      taken += (size_t)n;
+    }
+    usleep(origin->trickle_us);
+  }
+}
+
+// What the origin reads before it replies: one HTTP request, one raw segment, or,
+// trickling, everything the client sends.
+static void origin_take_request(int fd, ScriptedOrigin *origin) {
+  if (origin->trickle_bytes) {
+    origin_trickle(fd, origin);
+    origin->reply = NULL;
+  } else if (origin->raw_request) {
+    ssize_t n = recv(fd, origin->request, sizeof(origin->request) - 1, 0);
+    origin->request[n > 0 ? n : 0] = '\0';
+  } else {
+    origin_read_request(fd, origin->request, sizeof(origin->request));
+  }
+}
+
 static void *origin_thread(void *arg) {
   ScriptedOrigin *origin = (ScriptedOrigin *)arg;
   int fd = accept(origin->listen_fd, NULL, NULL);
   if (fd < 0) {
     return NULL;
   }
-  origin_read_request(fd, origin->request, sizeof(origin->request));
+  origin_take_request(fd, origin);
   usleep(origin->reply_delay_us);
   if (origin->reply) {
     size_t total = origin->reply_len;

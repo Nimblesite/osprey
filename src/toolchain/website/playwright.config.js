@@ -11,7 +11,9 @@ module.exports = defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // Hosted Linux runners for this public repository have four cores; two workers
+  // left the suite at half the job's eight-minute budget.
+  workers: process.env.CI ? 4 : undefined,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     baseURL: `http://localhost:${PORT}`,

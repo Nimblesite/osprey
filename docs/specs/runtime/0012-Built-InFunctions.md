@@ -496,7 +496,7 @@ The Default/ML twins `src/osprey/tests/regressions/basics/operators/structural_e
 pin every row; `src/osprey/examples/failscompilation/structural_equals_*.ospo` pin the
 rejected types.
 
-## String Functions
+## String Functions — [BUILTIN-STRING]
 
 Strings are immutable, NUL-terminated UTF-8 byte sequences. String operations
 return new values and do not mutate their arguments.

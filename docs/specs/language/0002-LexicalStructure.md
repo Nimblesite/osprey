@@ -18,7 +18,7 @@ identifier ::= [a-zA-Z_][a-zA-Z0-9_]*
 The ML lexer accepts Unicode alphabetic characters in the same leading and
 continuation positions, plus `_`; digits remain continuation-only.
 
-## Keywords
+## Keywords — [LEX-RESERVED]
 
 The Default grammar reserves the words used by its declarations and
 expressions, including `let`, `mut`, `fn`, `extern`, `type`, `where`, `effect`,
@@ -56,7 +56,7 @@ magnitude of a negative literal. Finite values up to the largest representable
 float and signed zero remain accepted. This is a literal rule; it does not
 change the current runtime behavior of float arithmetic.
 
-### Booleans and strings
+### Booleans and strings — [LEX-STRING-LITERAL]
 
 Boolean literals are `true` and `false`. Strings are double-quoted. Shared
 unescaping recognizes `\n`, `\r`, `\t`, `\e`, `\0`, `\"`, and `\\`; an

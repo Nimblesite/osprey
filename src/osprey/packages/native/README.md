@@ -90,9 +90,9 @@ Constraints on the current compiler, each with its upstream issue:
 - **[#282](https://github.com/Nimblesite/osprey/issues/282).** A constructor from another namespace cannot appear in a pattern, so applications take `Message` apart through `Messages::route`.
 - **[#276](https://github.com/Nimblesite/osprey/issues/276)**, **[#279](https://github.com/Nimblesite/osprey/issues/279)** and **[#280](https://github.com/Nimblesite/osprey/issues/280)** (#279 and #280 fixed after 19cf04c0). Lists are transformed with the built-in `mapList`, `filterList`, `foldList` and `forEachList`; `Lists` keeps only what has no built-in yet.
 
-## Message router migration [UI-EVENTS]
+## Routing messages [UI-EVENTS-ROUTE]
 
-The current source API takes eleven arguments: `Messages::route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled)`. Clients using the earlier seven-argument API must add handlers for strokes, lassos, display frames and scene input before updating their native package source pin. Existing text/choice and size/cursor delivery stays in the same handlers. A client that does not support a new event must report that refusal through its application error state; silently retaining the previous state would hide the unsupported operation. Input refusals must not be disguised as unrelated capability completions.
+The current source API takes eleven arguments: `Messages::route (message, tapped, typed, toggled, sized, completed, phased, stroked, lassoed, framed, controlled)`. Existing text/choice and size/cursor delivery stays in the same handlers. A client that does not support a new event must report that refusal through its application error state; silently retaining the previous state would hide the unsupported operation. Input refusals must not be disguised as unrelated capability completions.
 
 Pin the package source revision together with its host renderer and capability adapters. Source compatibility and host wire compatibility are separate checks: validate the actual consuming app under GC and ARC, including a visible unsupported-event refusal, before replacing its pin. The process request serializer always emits the Boolean `plist` field, including `false`, for hosts that require it.
 
@@ -145,7 +145,7 @@ An `Aside` carries its column's width in points and a size binding, so the width
 
 During a drag the host previews the width within the limits Osprey sent and the room the window leaves. When the drag ends it sends the width once, as a whole number of points, and Osprey's answer replaces the preview. A size binding accepts only an integer, and `Events::bind` clamps it to the limits before the application's `update` sees it, so an application never stores a width outside them. On a phone an aside stacks its column under its pane, so there is nothing to drag.
 
-### Bundled symbols [UI-COMPONENTS]
+### Bundled symbols [UI-COMPONENTS-SYMBOLS-BUNDLED]
 
 The Apple host reads an optional `symbols.json` from its bundled resource root: a flat mapping such as `{"moon":"icons/moon.svg"}`. Buttons and standalone icons use the registered SVG as template artwork, inheriting the surrounding ink. An absent registry or unmapped name keeps the platform symbol; malformed registries, missing declared artwork and paths escaping the resource root produce a visible icon error. The registry is bounded to 64 KiB and 128 entries, with each SVG bounded to 256 KiB. Bundle the artwork's licence with its files.
 
@@ -180,6 +180,10 @@ When `lassoing` is true, the host offers a lasso and sends the enclosed strokes 
 ### Shortcuts [UI-COMPONENTS-SHORTCUT]
 
 A `Button` may carry a typed `Chord`. `Primary` is Command on Apple systems and Control elsewhere, and the host shows the chord in its menu or tooltip. Osprey picks each chord per platform: Alt+Up, F5 and Ctrl+O on Windows; Command+Up, Command+R and Command+O on the Mac. Not implemented yet: `Node` carries no chord.
+
+### Context menus [UI-COMPONENTS-CONTEXT-MENU]
+
+`Ui::contextMenu(content, actions)` attaches secondary actions to content. The host exposes them through its pointer and keyboard context-menu gestures, and each action fires through the same issued binding IDs as a button.
 
 ### Rich paragraphs [UI-COMPONENTS-RICH]
 
@@ -273,7 +277,7 @@ extern native_shape (code : int) (index : int) (a : float) (b : float) (c : floa
 
 The host clears its stream before each call, gives each scene with a nonzero `streamed` the next that many streamed primitives, then draws the node's own shapes followed by the streamed ones, stably sorted by depth. A count that does not match what arrived is a diagnostic. A scene streaming 5,000 discs a frame this way keeps its envelope under 2 KB.
 
-### Pending edits [UI-EVENTS]
+### Pending edits [UI-EVENTS-PENDING]
 
 Ordinary `ui` events require the current region revision. A host retaining the opaque session that issued an older control can send `{"kind":"ui-edit","prior","region","revision","ordinal","value","now"}`. The framework validates that original revision, recovers its typed binding, and looks for exactly one structurally equal binding in the current region. Missing or ambiguous bindings refuse the event without changing the current store or issuing capabilities. A successful edit updates the current session; it never restores the prior store. Labels, DOM positions and matching ordinals do not establish binding identity across revisions.
 

@@ -185,7 +185,7 @@ fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
     );
     // Counted apart from `failed`: a coverage problem is not a suite verdict,
     // so folding it in would misreport the `# suites:` line. It still fails the
-    // COMMAND — absent evidence must never exit green ([TESTING-COVERAGE]).
+    // COMMAND — absent evidence must never exit green ([TESTING-COVERAGE-CLI]).
     if failed > 0 || coverage_broken {
         ExitCode::FAILURE
     } else {

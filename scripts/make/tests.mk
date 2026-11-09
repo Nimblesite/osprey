@@ -166,7 +166,7 @@ C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/fiber_handle_tests.c $(C_TEST_MEMORY_SRC) $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_server_closure_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_server_closure_tests.c runtime/http_client_runtime.c runtime/http_client_transport.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # http_shared.c's coverage number is OWNED by this suite: it is the only one
 # that drives every helper in the unit rather than the subset one transport
@@ -180,7 +180,7 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 # loopback ports (18086/18087) and runs a real accept loop, so it is single
 # threaded across suites by construction -- the Makefile runs suites serially.
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_frames_tests.c runtime/websocket_frames.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
 # server (18092/18093) and a plain TCP client against the one-file server.
@@ -229,7 +229,7 @@ $(C_TEST_TARGETS): _test_c_suite_%:
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
 	@cd src/toolchain/compiler && $(call C_SUITE_CMD,gpu_device_tests)
 
-# [SYMEX-MOCK-TESTS] the mock C library behind `osprey hunt`, compiled for the
+# [SYMEX-REGRESSION] the mock C library behind `osprey hunt`, compiled for the
 # host against its own headers and linked with the runtime units it must
 # intercept (`osp_input`, `readFile`); the driver is compiled against the host
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.

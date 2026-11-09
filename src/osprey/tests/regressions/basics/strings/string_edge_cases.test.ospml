@@ -425,7 +425,7 @@ interpolationResultCase () =
         (indexOf "${intDiv (10, 5)}" "(" ?: negativeOne) == negativeOne
     ]
 
-(** [LEXICAL-STRUCTURE] literals: "Shared unescaping recognizes `\n`, `\r`, `\t`,
+(** [LEX-STRING-LITERAL] literals: "Shared unescaping recognizes `\n`, `\r`, `\t`,
     `\e`, `\0`, `\"`, and `\\`; an unknown escape is preserved verbatim."
     [STRING-INTERPOLATION] Escapes repeats the rule. `\0` is deliberately absent:
     the runtime string is a NUL-terminated `char*` ([BUILTIN-STRING-CURSOR]), so
@@ -755,7 +755,7 @@ concatLengthCase () =
 (** [STRING-INTERPOLATION]: "An interpolation expression may contain operators,
     calls, field access, or a nested braced expression." The literal text either
     side of a hole is preserved verbatim, and a `$` NOT followed by `{` introduces
-    nothing — [LEXICAL-STRUCTURE] gives `${` alone as the interpolation opener. *)
+    nothing — [LEX-STRING-LITERAL] gives `${` alone as the interpolation opener. *)
 interpolationCompositionCase () =
     name = "alice"
     count = 3

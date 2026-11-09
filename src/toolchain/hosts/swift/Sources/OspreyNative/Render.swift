@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-COMPONENTS]: each node kind has exactly one
+// Implements [NATIVE-HOSTS-CONTRACT] and [UI-COMPONENTS]: each node kind has exactly one
 // SwiftUI mapping. A kind without one is a visible refusal and a diagnostic,
 // never a fallback ([NATIVE-HOSTS-CONTRACT]). Events carry only the region, the
 // revision it was drawn with, the control's ordinal and a bounded value.

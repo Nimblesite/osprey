@@ -1,4 +1,4 @@
-//! The Osprey runtime for lspkit's shared profiler [PROF-RUNTIME].
+//! The Osprey runtime for lspkit's shared profiler [PROF-LSP-RUNTIME].
 //!
 //! Every native Osprey program serves a live-attach endpoint
 //! ([PROF-ATTACH-ENDPOINT] in `docs/specs/tooling/0028-Profiler.md`), so this

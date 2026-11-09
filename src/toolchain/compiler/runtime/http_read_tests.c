@@ -14,6 +14,8 @@
 static const char OVER_SIZE[] = "http response: size: over the limit";
 static const char OVER_TIME[] = "http response: read: over the time limit";
 static const char BODY_CUT[] = "http response: body: truncated";
+static const char HANDSHAKE_OVER_TIME[] = "http request: handshake: over the time limit";
+static const char SEND_OVER_TIME[] = "http request: send: over the time limit";
 static const char FAULTY_CODING[] = "http response: head: Transfer-Encoding on HTTP/1.0";
 
 static int64_t elapsed_ms_since(uint64_t started) {
@@ -404,6 +406,64 @@ static void check_scan_costs_stay_linear(void) {
   expect_linear_scan("HTTP/1.1 200 OK\r\n", "\r", "\n\r\n");
 }
 
+enum { BOUND_TIMEOUT_MS = 300, BOUND_DRIP_US = 40000, TRICKLE_BYTES = 2 << 20, TRICKLE_US = 100000 };
+
+// The call ended at the whole request's bound, with -16 and `text`, not later.
+static void expect_bounded_failure(int64_t code, uint64_t started, const char *text) {
+  assert(code == -16);
+  int64_t took = elapsed_ms_since(started);
+  assert(took >= BOUND_TIMEOUT_MS * HTTP_READ_BOUND_FACTOR - 100);
+  assert(took < BOUND_TIMEOUT_MS * (HTTP_READ_BOUND_FACTOR + 5));
+  assert(strcmp(osp_io_error(), text) == 0);
+  osp_io_error_clear();
+}
+
+// A TLS handshake dripped a byte at a time, each inside the timeout: a record
+// header announcing 16 KiB, then filler. Unbounded, the drip lasts 11 minutes.
+// The 300 ms timeout leaves a loaded machine room to schedule the origin.
+static void check_handshake_bound(void) {
+  static char hello[5 + 16384] = {0x16, 0x03, 0x03, 0x40, 0x00};
+  memset(hello + 5, 0x42, sizeof hello - 5);
+  ScriptedOrigin origin;
+  origin_start_bytes(&origin, hello, sizeof hello);
+  origin.raw_request = true;
+  origin.drip_us = BOUND_DRIP_US;
+  int64_t client = http_create_client((char *)(uintptr_t) "https://127.0.0.1:18088", BOUND_TIMEOUT_MS);
+  assert(client > 0);
+  uint64_t started = osp_monotonic_ms();
+  int64_t code = http_get_response(client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
+  expect_bounded_failure(code, started, HANDSHAKE_OVER_TIME);
+  origin_stop(&origin);
+  assert(origin.request[0] == 0x16); // what it dripped at was a TLS ClientHello
+  http_close_client(client);
+}
+
+// A request body read steadily, 2 MiB every 100 ms, ends at the same bound. Each
+// read frees more than a third of Linux's largest send buffer (4 MiB), which Linux
+// waits for before it reports the socket writable again, so no single wait reaches
+// the timeout. Unbounded, 128 MiB at that pace takes about six seconds.
+static void check_send_bound(void) {
+  size_t size = (size_t)128 * 1024 * 1024;
+  char *body = malloc(size + 1);
+  assert(body != NULL);
+  memset(body, 'b', size);
+  body[size] = '\0';
+  ScriptedOrigin origin;
+  origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+  origin.trickle_bytes = TRICKLE_BYTES;
+  origin.trickle_us = TRICKLE_US;
+  int64_t client = http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", BOUND_TIMEOUT_MS);
+  assert(client > 0);
+  long live = test_alloc_live();
+  uint64_t started = osp_monotonic_ms();
+  expect_bounded_failure(http_post(client, (char *)(uintptr_t) "/up", body, (char *)(uintptr_t) ""), started,
+                         SEND_OVER_TIME);
+  assert(test_alloc_live() == live);
+  origin_stop(&origin);
+  http_close_client(client);
+  free(body);
+}
+
 void test_response_read_bounds(void) {
   int64_t previous = shared_origin_client;
   check_frame_ends();
@@ -417,6 +477,8 @@ void test_response_read_bounds(void) {
   check_no_timeout();
   check_huge_timeout();
   check_status_only_builtins();
+  check_handshake_bound();
+  check_send_bound();
   origin_holds_connections = false;
   osp_io_error_clear();
   shared_origin_client = previous;

@@ -210,7 +210,7 @@ fn cov_seed_includes_uncalled_generic_branches_nested_in_containers() {
 /// `steps.ospml` flattened by `osprey-project`; mapper on line 7, uncalled on line 9.
 const INLINED_RECORD_MAPPER: &str = "type Item =\n    value : string\n\ntype Section =\n    records : List<Item>\n\nentries section = mapList (section.records, \\item => Item(value = item.value))\ngather sections = mapList (sections, entries)\nuncalled item = Item(value = item.value)\n\nmain () = gather [Section(records = [Item(value = \"first\")])]\n";
 /// The real `steps.ospml`; its private record mapper sits on line 11.
-const MODULE_STEPS: &str = "// [UI-TESTING-CALLBACK-COVERAGE]\nnamespace proof\n\ntype Item =\n    value : string\n\ntype Section =\n    records : List<Item>\n\nmodule Steps\n    entries section = mapList (section.records, \\item => Item(value = item.value))\n    (** Transform every record through a function value. *)\n    export gather sections = mapList (sections, entries)\n";
+const MODULE_STEPS: &str = "// [TESTING-COVERAGE-CODEGEN]\nnamespace proof\n\ntype Item =\n    value : string\n\ntype Section =\n    records : List<Item>\n\nmodule Steps\n    entries section = mapList (section.records, \\item => Item(value = item.value))\n    (** Transform every record through a function value. *)\n    export gather sections = mapList (sections, entries)\n";
 #[test]
 fn higher_order_record_mapper_header_counts_when_the_mapper_runs() {
     let parsed = osprey_syntax::parse_program_for_path("mapper.ospml", INLINED_RECORD_MAPPER);

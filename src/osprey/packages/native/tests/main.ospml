@@ -358,7 +358,7 @@ roleText role =
 test ("semantic text roles preserve every protocol spelling", \() =>
     roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
     expect (join (mapList (roles, roleText)) ",", "display,large,title,heading,lead,headline,body,callout,caption,eyebrow,mono"))
-// [UI-EFFECTS-HOST]: host extensions retain the same bounded request envelope.
+// [UI-EFFECTS]: host extensions retain the same bounded request envelope.
 test ("host capabilities preserve namespace operation arguments and bounds", \() =>
     request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = JsonObject [Doc::str ("workspace", "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
     doc = Requests::encode (Requests::ask ("host:1", request))

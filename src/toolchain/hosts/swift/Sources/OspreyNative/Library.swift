@@ -1,6 +1,6 @@
 import Foundation
 
-// [UI-BOUNDARY] Generic C ABI: initialization and calls run on the main actor.
+// [NATIVE-HOSTS-TRANSPORT] Generic C ABI: initialization and calls run on the main actor.
 // Results are copied, then released only through an explicitly supplied ABI.
 // Legacy entries never free results. ABI v1 slice buffers end with each call;
 // legacy and unscoped slice borrows retain their process lifetime.
@@ -16,9 +16,9 @@ public struct LibraryEntry: Sendable {
     public let main: MainFunction
     public let start: StartFunction
     public let dispatch: DispatchFunction
-    /// [UI-BOUNDARY-EXPORTED-RESULTS] Only for an ABI declaring owned exported strings.
+    /// [NATIVE-HOSTS-TRANSPORT] Only for an ABI declaring owned exported strings.
     public let releaseString: ReleaseStringFunction?
-    /// [UI-BOUNDARY-IMPORTED-SLICES] Explicit version marker; unknown ABIs are refused.
+    /// [NATIVE-HOSTS-TRANSPORT] Explicit version marker; unknown ABIs are refused.
     public let hostABIVersion: MainFunction?
 
     public init(main: MainFunction, start: StartFunction, dispatch: DispatchFunction, releaseString: ReleaseStringFunction? = nil, hostABIVersion: MainFunction? = nil) {
@@ -161,7 +161,7 @@ public final class SliceStore: @unchecked Sendable {
         return UnsafePointer(buffer)
     }
 
-    // [UI-BOUNDARY-IMPORTED-SLICES] Select a lifetime before the first callback.
+    // [NATIVE-HOSTS-TRANSPORT] Select a lifetime before the first callback.
     func beginCall(copiedImports requested: Bool) throws {
         lock.lock()
         defer { lock.unlock() }
@@ -183,7 +183,7 @@ public final class SliceStore: @unchecked Sendable {
         borrowing = false
     }
 
-    /// Bytes held for superseded values, so growth is measurable ([UI-BOUNDARY]).
+    /// Bytes held for superseded values, so growth is measurable ([NATIVE-HOSTS-TRANSPORT]).
     public var retainedBytes: Int {
         lock.lock()
         defer { lock.unlock() }

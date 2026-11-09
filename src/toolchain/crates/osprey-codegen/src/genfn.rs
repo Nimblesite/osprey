@@ -41,7 +41,7 @@ pub(crate) fn try_inline(
 /// mutually recursive specialisation merges to a bare `Result` block, and a
 /// field read off its payload — a field two records declare — was then
 /// quarantined although the checker had named the record
-/// ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-FN-GENERIC]). A partial
+/// ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-GENERICS-FN]). A partial
 /// application (`rest` non-empty) returns a function, not this type.
 fn checked_return(
     cg: &Codegen,

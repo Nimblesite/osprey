@@ -19,7 +19,7 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 - [ ] Add `src/osprey/packages/native/conformance/`: the probe application's start context, a recorded event sequence and the expected envelopes, produced once from `Runtime::start`/`dispatch` and checked in.
 - [ ] Add an Osprey test that regenerates the envelopes from the fixtures and diffs them, so a framework change that alters the wire shape fails here first. Check: the test lives under `src/osprey/packages/native/tests` and fails on a wire change.
-- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix vscode-extension`, GPUI in `src/toolchain/hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
+- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix src/toolchain/vscode-extension`, GPUI in `src/toolchain/hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
 
 ## 3. Coverage matrix [NATIVE-HOSTS-COVERAGE]
 
@@ -58,6 +58,7 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 ## 8. SwiftUI host, and retiring the old Storage app
 
+- [ ] One SwiftUI host, not two: `src/osprey/workbench/hosts/apple/Sources/OspreyNative` is a diverged copy of `src/toolchain/hosts/swift/Sources/OspreyNative` (Capabilities, Store, Process, Network and Log adapters, Layout, Controls), so #355's store fix had to land twice. Move the shared sources into one Swift package both apps depend on; the workbench keeps only its own views (Film, Math, Cards). Check: `diff -rq` finds no file in both trees, and both `swift test` suites pass.
 - [ ] Extend `src/toolchain/hosts/swift` (the in-repo SwiftUI host) to macOS and iOS, map every node and symbol (SF Symbols) and every capability including `measure-folders`, and run the conformance set. Check: Storage runs on `src/toolchain/hosts/swift` with no diagnostics.
 - [ ] Move Storage's Apple-only requests to `HostCall`s only this host answers: Photos summary `HostCall "photos" "summary"`, Full Disk Access `HostCall "macos" "privacy-settings"`.
 - [ ] Retire `src/osprey/examples/macos` once Storage runs on GPUI, WinUI and SwiftUI; move every link to `src/osprey/examples/storage`; keep a website redirect.

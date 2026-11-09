@@ -1,6 +1,6 @@
 // Implements [WORKBENCH-GOALS]: the hypotheses and goals after each step, and
 // why a step fails, computed in process so the goal pane answers per keystroke.
-// A `Result`'s error channel stores only a message ([TYPE-SYSTEM] phantom `E`),
+// A `Result`'s error channel stores only a message ([TYPE-RECORD-RESULT] phantom `E`),
 // so each outcome carries typed progress, a mismatch, or unsupported wording.
 namespace workbench
 

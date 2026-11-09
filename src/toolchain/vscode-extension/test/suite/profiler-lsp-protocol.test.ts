@@ -12,7 +12,7 @@ import { execute, executeError, FIXTURE_DIR, lspClient, lspCommand, profilingSui
 
 const STOP_MS = 60_000;
 
-/** The JSON-RPC codes of lspkit's error taxonomy [PROF-ERRORS]. */
+/** The JSON-RPC codes of lspkit's error taxonomy [PROF-LSP-RUNTIME]. */
 const CODE = { INVALID_PARAMS: -32602, PROCESS_NOT_FOUND: -32001, UNSUPPORTED_RUNTIME: -32002 } as const;
 
 /** Every operation the wire registry names, under Osprey's prefix. */

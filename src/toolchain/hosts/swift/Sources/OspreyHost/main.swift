@@ -2,7 +2,7 @@ import OspreyApp
 import OspreyNative
 import SwiftUI
 
-// Implements [UI-HOST] and [UI-PROTOCOL]: the entry point. It binds the
+// Implements [NATIVE-HOSTS-CONTRACT] and [UI-PROTOCOL]: the entry point. It binds the
 // application library's exports, answers the slice import and shows the root
 // region. No application state, screen or policy lives here.
 
