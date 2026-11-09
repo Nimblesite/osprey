@@ -34,7 +34,7 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
-Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today the proof text is checked in Osprey instead of by Lean: `src/formula.ospml` reads propositional formulas ([WORKBENCH-FORMULA]), `src/statement.ospml` and `src/step.ospml` read a statement and its tactic steps ([WORKBENCH-STATEMENT], [WORKBENCH-STEPS]), and `src/goals.ospml` applies the tactic table to open goals ([WORKBENCH-GOALS]); the suite under `tests/` cites those ids. [WORKBENCH-CHECK] replaces that checker with Lean's server, and these ids retire with it.
+Not implemented yet: `src/document.ospml`, `src/lean.ospml` and `src/library.ospml`; [plan 0042](../../plans/0042-proof-workbench.md) delivers them. Today `src/formula.ospml`, `statement.ospml`, `step.ospml`, `goals.ospml`, `emit.ospml`, `kernel.ospml` and the step-elaborating half of `verdict.ospml`, the deleted formats of [WORKBENCH-DELETED], are still present and tested; [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) removes them, and the ids their tests cite ([WORKBENCH-FORMULA], [WORKBENCH-STATEMENT], [WORKBENCH-STEPS], [WORKBENCH-GOALS]) retire with them. The grep gate of [WORKBENCH-VERIFICATION] does not exist yet and would fail until then.
 
 ## Notation [WORKBENCH-NOTATION]
 
