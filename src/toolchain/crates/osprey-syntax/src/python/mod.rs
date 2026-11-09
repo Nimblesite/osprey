@@ -58,7 +58,11 @@ pub fn parse_python_tree(source: &str) -> Result<Tree, SyntaxError> {
 
 fn lower(source: &str) -> (Program, Lowerer<'_>) {
     let mut lowerer = Lowerer::new(source);
-    let program = match parse_python_tree(source) {
+    let tree = parse_python_tree(source).and_then(|tree| {
+        crate::check_tree_depth(tree.root_node())?;
+        Ok(tree)
+    });
+    let program = match tree {
         Ok(tree) => {
             indentation(source, tree.root_node(), &mut lowerer);
             alignment(source, tree.root_node(), &mut lowerer);

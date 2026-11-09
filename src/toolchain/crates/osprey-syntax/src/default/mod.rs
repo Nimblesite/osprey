@@ -51,6 +51,16 @@ pub(crate) fn parse(source: &str) -> Parsed {
         };
     };
     let root = tree.root_node();
+    if let Err(error) = crate::check_tree_depth(root) {
+        return Parsed {
+            program: Program {
+                statements: Vec::new(),
+                doc: None,
+            },
+            errors: vec![error],
+            flavor: Flavor::Default,
+        };
+    }
     let lowerer = Lowerer::new(source.as_bytes());
     let program = lowerer.lower_program(root);
     let mut errors = Vec::new();
