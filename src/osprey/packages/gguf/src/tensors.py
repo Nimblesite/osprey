@@ -70,13 +70,13 @@ class PlaceWalk:
 def of(data, offs, count, swapped, alignment, file_size):
     """The tensor section: every entry checked against a file of `file_size` bytes, and
     where the tensor data starts once `offs` is rounded up to the alignment."""
-    return Chain.then(walk(data, offs, count, swapped), lambda walked: place_all(file_size, walked, alignment))
+    return andThen(walk(data, offs, count, swapped), lambda walked: place_all(file_size, walked, alignment))
 
 
 def place_all(file_size, walked, alignment):
     """The placed tensors and the tensor-data offset."""
     start = layout_offset(alignment, walked.offs)
-    return Chain.then(place_tensors(file_size, walked.drafts, start), lambda tensors: Success(value=Placed(alignment=alignment, data_offset=start, tensors=tensors)))
+    return andThen(place_tensors(file_size, walked.drafts, start), lambda tensors: Success(value=Placed(alignment=alignment, data_offset=start, tensors=tensors)))
 
 
 def walk(data, offs, count, swapped):
@@ -112,7 +112,7 @@ def read_tensor(data, acc, swapped):
 
 def tensor_info_at(data, off, swapped):
     """One tensor info entry: its name, dim count, dims, ggml type and data offset."""
-    return Chain.then(Values.string_at(data, off, swapped), lambda name: draft_dim_count(data, draft_named(off, name), swapped))
+    return andThen(Values.string_at(data, off, swapped), lambda name: draft_dim_count(data, draft_named(off, name), swapped))
 
 
 def draft_named(off, name):
@@ -122,12 +122,12 @@ def draft_named(off, name):
 
 def draft_dim_count(data, draft, swapped):
     """The dim count that follows the tensor's name, then the dims themselves."""
-    return Chain.then(Values.value_at(data, draft.next, "uint32", swapped), lambda count: draft_dims(data, draft, count.value.i, swapped))
+    return andThen(Values.value_at(data, draft.next, "uint32", swapped), lambda count: draft_dims(data, draft, count.value.i, swapped))
 
 
 def draft_dims(data, draft, count, swapped):
     """The dims as stored, innermost first, then the type that follows them."""
-    return Chain.then(dims_at(data, draft.next + 4, count, swapped), lambda dims: draft_type(data, with_dims(draft, dims, count), swapped))
+    return andThen(dims_at(data, draft.next + 4, count, swapped), lambda dims: draft_type(data, with_dims(draft, dims, count), swapped))
 
 
 def with_dims(draft, dims, count):
@@ -137,7 +137,7 @@ def with_dims(draft, dims, count):
 
 def dims_at(data, off, count, swapped):
     """The `count` uint64 dims at `off`."""
-    return Chain.then(Values.values_at(data, off, count, "uint64", swapped), lambda value: Success(value=mapList(value.value.items, dim_value)))
+    return andThen(Values.values_at(data, off, count, "uint64", swapped), lambda value: Success(value=mapList(value.value.items, dim_value)))
 
 
 def dim_value(item):
@@ -147,7 +147,7 @@ def dim_value(item):
 
 def draft_type(data, draft, swapped):
     """The tensor's ggml type id, then its offset within the data section."""
-    return Chain.then(Values.value_at(data, draft.next, "uint32", swapped), lambda id: draft_offset(data, with_type(draft, id.value.i), swapped))
+    return andThen(Values.value_at(data, draft.next, "uint32", swapped), lambda id: draft_offset(data, with_type(draft, id.value.i), swapped))
 
 
 def with_type(draft, id):
@@ -157,7 +157,7 @@ def with_type(draft, id):
 
 def draft_offset(data, draft, swapped):
     """The tensor's offset within the data section, which completes the entry."""
-    return Chain.then(Values.value_at(data, draft.next, "uint64", swapped), lambda offset: Success(value=TensorSized(draft=with_offset(draft, offset.value.i), size=draft.next + 8 - draft.off)))
+    return andThen(Values.value_at(data, draft.next, "uint64", swapped), lambda offset: Success(value=TensorSized(draft=with_offset(draft, offset.value.i), size=draft.next + 8 - draft.off)))
 
 
 def with_offset(draft, offset):
@@ -171,7 +171,7 @@ def alignment_of(fields):
     if len(declared) == 0:
         return Success(value=Constants.DEFAULT_ALIGNMENT)
     else:
-        return Chain.then(listGet(declared, 0), checked_alignment)
+        return andThen(listGet(declared, 0), checked_alignment)
 
 
 def names_alignment(field):
@@ -247,7 +247,7 @@ def placed_tensor(file_size, acc, draft, start):
 
 def tensor_of(draft, start, buffer_size):
     """One tensor's info record, once its type, size and bytes all check out."""
-    return Chain.then(Constants.quant_type(draft.type_id), lambda quant: placed(draft, quant, start, buffer_size))
+    return andThen(Constants.quant_type(draft.type_id), lambda quant: placed(draft, quant, start, buffer_size))
 
 
 def placed(draft, quant, start, buffer_size):

@@ -24,7 +24,6 @@ prompt prints how many tokens it continued from, so a log shows the reuse. Sampl
 handlers obey the same request options ([LLM-TOKENIZER], [LLM-WEIGHTS-MAPPED]).
 """
 
-from gguf import Chain
 from qwen import Qwen3_5Cache, Qwen3_5Gguf, Qwen3_5Model, Qwen3_5Vocab
 from qwen_server import Inference
 from qwen_server import Lists
@@ -123,11 +122,11 @@ def same(session):
 
 def open(path):
     """The session over the GGUF at `path`, or the startup error naming what it lacks."""
-    return Chain.then(Qwen3_5Gguf.open_file(path), lambda source: Chain.then(Qwen3_5Vocab.tokenizer(source.file), lambda tok: Chain.then(Qwen3_5Vocab.eos_of(source.file), lambda eos: Chain.then(Qwen3_5Gguf.load(source), lambda model: started(model, tok, eos)))))
+    return andThen(Qwen3_5Gguf.open_file(path), lambda source: andThen(Qwen3_5Vocab.tokenizer(source.file), lambda tok: andThen(Qwen3_5Vocab.eos_of(source.file), lambda eos: andThen(Qwen3_5Gguf.load(source), lambda model: started(model, tok, eos)))))
 
 
 def started(model, tok, eos):
-    return Chain.then(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Success(value=Session(model=model, tok=tok, eos=eos, slot=filled(State(cache=cache, seen=[], logits=[], marks=[])))))
+    return andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Success(value=Session(model=model, tok=tok, eos=eos, slot=filled(State(cache=cache, seen=[], logits=[], marks=[])))))
 
 
 def filled(state):
@@ -151,7 +150,7 @@ def at(state, cache, seen, logits):
 
 def fresh(model, state):
     """The state over an empty cache."""
-    return Chain.then(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Success(value=at(state, cache, [], [])))
+    return andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Success(value=at(state, cache, [], [])))
 
 
 def from_mark(model, state, history):
@@ -180,7 +179,7 @@ def resumed(model, state, history):
 
 def advanced(model, eos, state, history, sampling):
     """One sampled token after `history`, and the state holding its cache."""
-    return Chain.then(resumed(model, state, history), lambda base: Chain.then(fed(model, base, drop(history, Lists.count(base.seen))), lambda ready: Chain.then(Sampler.one_token(ready.logits, history, sampling, eos), lambda token: Success(value=Advance(token=token, left=marked(ready, Lists.count(base.seen)))))))
+    return andThen(resumed(model, state, history), lambda base: andThen(fed(model, base, drop(history, Lists.count(base.seen))), lambda ready: andThen(Sampler.one_token(ready.logits, history, sampling, eos), lambda token: Success(value=Advance(token=token, left=marked(ready, Lists.count(base.seen)))))))
 
 
 def marked(state, before):
@@ -209,7 +208,7 @@ def fed(model, state, tokens):
     if Lists.count(tokens) == 0:
         return Success(value=state) if Lists.count(state.logits) > 0 else Error(message="step: the history is empty")
     else:
-        return Chain.then(Qwen3_5Model.prefill(model, state.cache, tokens), lambda next: hosted(state, tokens, Fed(cache=next.walk.cache, logits=next.logits)))
+        return andThen(Qwen3_5Model.prefill(model, state.cache, tokens), lambda next: hosted(state, tokens, Fed(cache=next.walk.cache, logits=next.logits)))
 
 
 def hosted(state, tokens, last):

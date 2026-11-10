@@ -9,7 +9,7 @@ served and nothing else; `eos_of` is the end-of-turn id the file declares, and `
 encodes one text. Implements [LLM-TOKENIZER].
 """
 
-from gguf import Chain, Reader
+from gguf import Reader
 from tokenizers import GgufVocab
 from tokenizers.Tokenizer import qwen_encode
 
@@ -24,28 +24,28 @@ class Tables:
 
 
 def strings(file, key):
-    return Chain.then(Reader.field(file, key), lambda field: Reader.field_strings(field))
+    return andThen(Reader.field(file, key), lambda field: Reader.field_strings(field))
 
 
 def ints(file, key):
-    return Chain.then(Reader.field(file, key), lambda field: Reader.field_ints(field))
+    return andThen(Reader.field(file, key), lambda field: Reader.field_ints(field))
 
 
 def tables(file):
     """`tokenizer.ggml.tokens`, `token_type` and `merges`, or the first one missing."""
-    return Chain.then(strings(file, "tokenizer.ggml.tokens"), lambda tokens: Chain.then(ints(file, "tokenizer.ggml.token_type"), lambda types: Chain.then(strings(file, "tokenizer.ggml.merges"), lambda merges: Success(value=Tables(tokens=tokens, types=types, merges=merges)))))
+    return andThen(strings(file, "tokenizer.ggml.tokens"), lambda tokens: andThen(ints(file, "tokenizer.ggml.token_type"), lambda types: andThen(strings(file, "tokenizer.ggml.merges"), lambda merges: Success(value=Tables(tokens=tokens, types=types, merges=merges)))))
 
 
 def tokenizer(file):
     """The file's tokenizer, from its own tables."""
-    return Chain.then(tables(file), lambda t: GgufVocab.qwen_from_vocabulary(t.tokens, t.types, t.merges))
+    return andThen(tables(file), lambda t: GgufVocab.qwen_from_vocabulary(t.tokens, t.types, t.merges))
 
 
 def eos_of(file):
     """`tokenizer.ggml.eos_token_id`: the end-of-turn token the file declares."""
-    return Chain.then(Reader.field(file, "tokenizer.ggml.eos_token_id"), lambda field: Reader.field_int(field))
+    return andThen(Reader.field(file, "tokenizer.ggml.eos_token_id"), lambda field: Reader.field_int(field))
 
 
 def ids_of(tok, text):
     """The token ids of `text`."""
-    return Chain.then(qwen_encode(tok, text), lambda encoding: Success(value=encoding.ids))
+    return andThen(qwen_encode(tok, text), lambda encoding: Success(value=encoding.ids))

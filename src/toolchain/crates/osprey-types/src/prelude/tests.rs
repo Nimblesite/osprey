@@ -374,3 +374,11 @@ fn a_program_naming_only_its_own_copies_of_unit_functions_gets_no_unit() {
     assert_eq!(count_named(&names, "addF"), 1, "only the program's own addF");
     assert_none_attached(&names, &["withBuffer", "gpuSatisfies", "floatSumsTo"]);
 }
+
+#[test]
+fn naming_and_then_attaches_the_result_unit_once() {
+    let names = attached_names(
+        "fn half(n) = if n % 2 == 0 { Success { value: n / 2 } } else { Error { message: \"odd\" } }\nprint(\"${andThen(half(8), half)}\")\n",
+    );
+    assert_eq!(count_named(&names, "andThen"), 1);
+}

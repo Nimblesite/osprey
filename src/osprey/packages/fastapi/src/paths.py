@@ -17,7 +17,7 @@ def greedy(segment):
 
 def bind(pattern, path):
     """Match a route pattern to a decoded path and return its named captures."""
-    return B.bind(split(pattern, '/'), lambda patterns: B.bind(split(path, '/'), lambda segments: walk(patterns, segments, {})))
+    return andThen(split(pattern, '/'), lambda patterns: andThen(split(path, '/'), lambda segments: walk(patterns, segments, {})))
 
 def walk(patterns, segments, params):
     match patterns:
@@ -25,7 +25,7 @@ def walk(patterns, segments, params):
             return Success(value=params) if len(segments) == 0 else Error(message='Path does not match')
         case [head, *tail]:
             if greedy(head) and len(tail) == 0 and (len(segments) > 0):
-                return B.bind(name_of(head), lambda name: B.mapped(indexOf(name, ':'), lambda index: mapSet(params, take(name, index), join(segments, '/'))))
+                return andThen(name_of(head), lambda name: B.mapped(indexOf(name, ':'), lambda index: mapSet(params, take(name, index), join(segments, '/'))))
             else:
                 return segment(head, tail, segments, params)
 
@@ -35,7 +35,7 @@ def segment(pattern, patterns, segments, params):
             return Error(message='Path does not match')
         case [head, *tail]:
             if parameter(pattern):
-                return B.bind(name_of(pattern), lambda name: walk(patterns, tail, mapSet(params, name, head))) if head != '' else Error(message='Empty path segment')
+                return andThen(name_of(pattern), lambda name: walk(patterns, tail, mapSet(params, name, head))) if head != '' else Error(message='Empty path segment')
             else:
                 return walk(patterns, tail, params) if pattern == head else Error(message='Path does not match')
 

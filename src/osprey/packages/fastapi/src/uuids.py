@@ -11,12 +11,12 @@ def unwrapped(text):
     if startsWith(text, 'urn:uuid:'):
         return Success(value=drop(text, 9))
     elif startsWith(text, '{') and endsWith(text, '}'):
-        return B.bind(indexOf(drop(text, 1), '}'), lambda index: Success(value=take(drop(text, 1), index)))
+        return andThen(indexOf(drop(text, 1), '}'), lambda index: Success(value=take(drop(text, 1), index)))
     else:
         return Success(value=text)
 
 def bad_character(text, original):
-    return B.bind(checkedSub(len(original), len(text)), lambda offset: B.bind(checkedAdd(offset, 1), lambda index: Error(message="invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `" + take(text, 1) + f"` at {index}")))
+    return andThen(checkedSub(len(original), len(text)), lambda offset: andThen(checkedAdd(offset, 1), lambda index: Error(message="invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `" + take(text, 1) + f"` at {index}")))
 
 
 def characters(text, original):
@@ -47,11 +47,11 @@ def formatted(text, wrapped):
         found = len(text)
         return Success(value=canonical(toLowerCase(text))) if found == 32 else Error(message=f'invalid length: expected length 32 for simple format, found {found}')
     else:
-        return B.bind(split(text, '-'), lambda parts: B.bind(lengths(parts), lambda _unused: Success(value=toLowerCase(text))))
+        return andThen(split(text, '-'), lambda parts: andThen(lengths(parts), lambda _unused: Success(value=toLowerCase(text))))
 
 
 def parsed(text):
-    return B.bind(unwrapped(text), lambda inner: B.bind(characters(inner, inner), lambda _unused: formatted(inner, startsWith(text, '{') or startsWith(text, 'urn:uuid:'))))
+    return andThen(unwrapped(text), lambda inner: andThen(characters(inner, inner), lambda _unused: formatted(inner, startsWith(text, '{') or startsWith(text, 'urn:uuid:'))))
 
 
 def invalid_uuid(location, text, message):

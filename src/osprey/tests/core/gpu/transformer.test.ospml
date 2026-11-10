@@ -1,7 +1,3 @@
-(** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
-andThen (result, next) = match result
-    Success value => next value
-    Error message => Error(message = message)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
 // port in src/osprey/examples/llms/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
