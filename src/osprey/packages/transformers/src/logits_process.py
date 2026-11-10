@@ -52,10 +52,7 @@ class Processor:
     top_k: int
     filter_value: float32
     min_tokens_to_keep: int
-    top_p: float32
-    min_p: float32
-    mass: float32
-    epsilon: float32
+    setting: float32
     penalty: float32
     prompt_ignore_length: int
     ngram_size: int
@@ -73,23 +70,13 @@ def blank():
     """A processor with every setting at its neutral value: temperature 1, -inf
     filter, one token kept, full nucleus, no penalties, no ids. Each constructor
     updates only the fields its processor reads."""
-    return Processor(kind="", temperature=1.0, top_k=1, filter_value=neg_inf(), min_tokens_to_keep=1, top_p=1.0, min_p=0.0, mass=0.9, epsilon=0.1, penalty=1.0, prompt_ignore_length=0, ngram_size=2, min_length=0, eos_ids=[], prompt_length_to_skip=0, min_new_tokens=0, bos_token_id=0, max_length=0, suppress_ids=[], bad_words_ids=[])
+    return Processor(kind="", temperature=1.0, top_k=1, filter_value=neg_inf(), min_tokens_to_keep=1, setting=0.0, penalty=1.0, prompt_ignore_length=0, ngram_size=2, min_length=0, eos_ids=[], prompt_length_to_skip=0, min_new_tokens=0, bos_token_id=0, max_length=0, suppress_ids=[], bad_words_ids=[])
 
 
 def warper(kind, setting, filter_value, min_tokens_to_keep):
-    """A mass or threshold warper: the filter value and the kept-token floor it
-    shares with every warper, and `setting` in the field its `kind` reads."""
-    base = blank()
-    common = update(base, kind=kind, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
-    match kind:
-        case "top_p":
-            return update(common, top_p=setting)
-        case "min_p":
-            return update(common, min_p=setting)
-        case "typical":
-            return update(common, mass=setting)
-        case _:
-            return update(common, epsilon=setting)
+    """A mass or threshold warper: the setting its `kind` reads, plus the filter
+    value and the kept-token floor every warper shares."""
+    return update(blank(), kind=kind, setting=setting, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
 
 
 def TemperatureLogitsWarper(temperature):
@@ -206,11 +193,16 @@ def apply(processor: Processor, input_ids, scores: list[float32]):
         case "top_k":
             return top_k_warper(max_i(processor.top_k, processor.min_tokens_to_keep), processor.filter_value, scores)
         case "top_p":
-            return top_p_warper(processor.top_p, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return tuned(top_p_warper, processor, scores)
         case "min_p":
-            return min_p_warper(processor.min_p, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return tuned(min_p_warper, processor, scores)
         case _:
             return mass_processor(processor, input_ids, scores)
+
+
+def tuned(warper, processor, scores):
+    """`warper` at the processor's setting, filter value and kept floor."""
+    return warper(processor.setting, processor.filter_value, processor.min_tokens_to_keep, scores)
 
 
 def mass_processor(processor, input_ids, scores):
@@ -218,11 +210,11 @@ def mass_processor(processor, input_ids, scores):
     the token history."""
     match processor.kind:
         case "typical":
-            return typical_warper(processor.mass, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return tuned(typical_warper, processor, scores)
         case "epsilon":
-            return below_cutoff(processor.epsilon, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return tuned(below_cutoff, processor, scores)
         case "eta":
-            return eta_warper(processor.epsilon, processor.filter_value, processor.min_tokens_to_keep, scores)
+            return tuned(eta_warper, processor, scores)
         case "suppress_tokens":
             return suppress_warper(processor.suppress_ids, scores)
         case _:
@@ -302,7 +294,7 @@ def entropy_term(x):
 def sort_indices_by(values):
     """Indices 0..n-1 sorted by ascending value, ties broken by smaller index."""
     idx = map_indexed(values, lambda i: i)
-    return listSortBy(idx, lambda a, b: cmp_entries(values, a, b))
+    return listSortBy(idx, lambda a, b: cmp_entries(values, a, b, False))
 
 
 def in_index_order(idx, xs):
@@ -315,9 +307,11 @@ def cum_probs(idx, logits):
     return cumsum(softmax(in_index_order(idx, logits)))
 
 
-def cmp_entries(values, a, b):
-    """Ascending by value, ties by index."""
-    return ranked(a, b, cmp_f(score_at(values, a), score_at(values, b)))
+def cmp_entries(values, a, b, desc):
+    """Order indices by `values`, descending when `desc`, ties by index."""
+    va = score_at(values, a)
+    vb = score_at(values, b)
+    return ranked(a, b, cmp_f(vb, va) if desc else cmp_f(va, vb))
 
 
 def ranked(a, b, by_value):
@@ -339,13 +333,8 @@ def kth_largest(scores, k):
 def top_k_indices(scores, k):
     """Indices of the k largest scores, ties broken by smaller index."""
     idx = map_indexed(scores, lambda i: i)
-    ordered = listSortBy(idx, lambda a, b: cmp_entries_desc(scores, a, b))
+    ordered = listSortBy(idx, lambda a, b: cmp_entries(scores, a, b, True))
     return toList(map(range(k), lambda i: get_or(ordered, i, 0)))
-
-
-def cmp_entries_desc(scores, a, b):
-    """Descending by value, ties by index."""
-    return ranked(a, b, cmp_f(score_at(scores, b), score_at(scores, a)))
 
 
 def count_lt(xs, limit):
@@ -493,3 +482,4 @@ def last_token(xs):
 
 def set_neg_inf(scores, i):
     return map_indexed(scores, lambda j: neg_inf() if j == i else score_at(scores, j))
+
