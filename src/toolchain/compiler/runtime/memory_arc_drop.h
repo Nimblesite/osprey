@@ -45,19 +45,23 @@ static void arc_wl_push(uintptr_t body) {
   g_wl[g_wl_top++] = body;
 }
 
-// Decrement a candidate child; queue it for freeing when it hits zero.
-// A probe miss (foreign/rodata/NULL) or an immortal (rc<0) is a no-op.
-static void arc_drop_child(void *child) {
-  OspArcHdr *h = arc_lookup_body((uintptr_t)child);
-  if (!h) {
-    return;
-  }
+// Decrement a resolved managed header; queue the body at rc==0, immortal: no-op.
+static void arc_drop_hdr(void *child, OspArcHdr *h) {
   if (h->rc < 0) {
     return;
   }
   if (--h->rc == 0) {
     arc_wl_push((uintptr_t)child);
   }
+}
+
+// Probe the child, then drop it; a probe miss (foreign/rodata/NULL) is a no-op.
+static void arc_drop_child(void *child) {
+  OspArcHdr *h = arc_lookup_body((uintptr_t)child);
+  if (!h) {
+    return;
+  }
+  arc_drop_hdr(child, h);
 }
 
 // MASK_DIRECT child drop: codegen proved every masked word of the parent is
@@ -70,13 +74,7 @@ static void arc_drop_child_direct(void *child) {
   if (!child) {
     return;
   }
-  OspArcHdr *h = arc_hdr(child);
-  if (h->rc < 0) {
-    return;
-  }
-  if (--h->rc == 0) {
-    arc_wl_push((uintptr_t)child);
-  }
+  arc_drop_hdr(child, arc_hdr(child));
 }
 
 // Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
