@@ -246,22 +246,12 @@ def no_tensor(index):
 
 def tensor_names(file):
     """Every tensor name, in file order."""
-    return mapList(file.tensors, tensor_name)
-
-
-def tensor_name(info):
-    """A tensor's name."""
-    return info.name
+    return mapList(file.tensors, lambda info: info.name)
 
 
 def tensor_types(file):
     """Every tensor's ggml type name, in file order."""
-    return mapList(file.tensors, tensor_type_name)
-
-
-def tensor_type_name(info):
-    """A tensor's ggml type name."""
-    return info.type
+    return mapList(file.tensors, lambda info: info.type)
 
 
 def distinct_tensor_types(file):
