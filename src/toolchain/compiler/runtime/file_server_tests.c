@@ -33,6 +33,37 @@ static void write_media(void) {
   fclose(file);
 }
 
+// Starts a server on `path`, serving every file as `type`, on loopback.
+static int64_t start_server(char *path, char *type) {
+  int64_t port = osprey_file_server_start(path, type, LOOPBACK);
+  assert(port > 0);
+  return port;
+}
+
+// An unconnected socket dialled at the server on `port`.
+static int dial_loopback(int64_t port) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(fd >= 0);
+  struct sockaddr_in addr;
+  memset(&addr, 0, sizeof addr);
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons((uint16_t)port);
+  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
+  assert(connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0);
+  return fd;
+}
+
+// A connection with `receive_buffer` bytes of socket buffer and a 5s deadline.
+static int dial_with_deadline(int64_t port, int receive_buffer) {
+  int fd = dial_loopback(port);
+  struct timeval deadline = {5, 0};
+  assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &deadline, sizeof deadline) == 0);
+  if (receive_buffer > 0) {
+    assert(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer, sizeof receive_buffer) == 0);
+  }
+  return fd;
+}
+
 typedef struct {
   int status;
   char headers[4096];
@@ -42,14 +73,7 @@ typedef struct {
 
 // Sends one raw request and reads the whole reply until the server closes.
 static void fetch(int port, const char *request, Reply *reply) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(fd >= 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)port);
-  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
-  assert(connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0);
+  int fd = dial_loopback(port);
   assert(send(fd, request, strlen(request), 0) == (ssize_t)strlen(request));
   size_t cap = MEDIA_BYTES + 8192;
   unsigned char *all = malloc(cap);
@@ -117,8 +141,7 @@ static void expect_exchanges(int64_t port, const Exchange *cases, size_t count) 
 
 static void test_file_server_whole_and_ranges(void) {
   char type[] = "audio/mpeg";
-  int64_t port = osprey_file_server_start(media_path, type, LOOPBACK);
-  assert(port > 0);
+  int64_t port = start_server(media_path, type);
   // An open range runs to the end; an end past the file is clamped.
   static const Exchange cases[] = {
       {"GET /media HTTP/1.1\r\nHost: x\r\n\r\n", 200,
@@ -135,8 +158,7 @@ static void test_file_server_whole_and_ranges(void) {
 
 static void test_file_server_refusals(void) {
   char type[] = "audio/mpeg";
-  int64_t port = osprey_file_server_start(media_path, type, LOOPBACK);
-  assert(port > 0);
+  int64_t port = start_server(media_path, type);
   // A Range that is not `bytes=start-` is ignored: the whole file is sent.
   static const Exchange cases[] = {
       {"GET /media HTTP/1.1\r\nRange: bytes=300000-\r\n\r\n", 416, {"Content-Range: bytes */200000\r\n"}, NULL, 0, 0},
@@ -177,15 +199,8 @@ static void test_file_server_start_failures(void) {
 static void test_file_server_closes_with_the_player(void) {
   // A player that drops the connection mid-body must not take the server down.
   char type[] = "audio/mpeg";
-  int64_t port = osprey_file_server_start(media_path, type, LOOPBACK);
-  assert(port > 0);
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)port);
-  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
-  assert(connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0);
+  int64_t port = start_server(media_path, type);
+  int fd = dial_with_deadline(port, 0);
   const char *request = "GET /media HTTP/1.1\r\n\r\n";
   assert(send(fd, request, strlen(request), 0) > 0);
   char first[16];
@@ -223,15 +238,28 @@ static void write_text(const char *folder, const char *name, const char *text) {
   fclose(file);
 }
 
+// Folder tests only exercise the name check, so one ignored type serves every file.
+static int64_t start_folder_server(char *folder) {
+  char type[] = "ignored/for-folders";
+  return start_server(folder, type);
+}
+
+// Unlinks every one of `names` under `folder`; the caller removes the folder.
+static void unlink_in_folder(const char *folder, const char *const *names, size_t count) {
+  for (size_t i = 0; i < count; i++) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", folder, names[i]);
+    assert(unlink(path) == 0);
+  }
+}
+
 static void test_file_server_folder(void) {
   char folder[] = "/tmp/osprey-net-folder.XXXXXX";
   assert(mkdtemp(folder) != NULL);
   write_text(folder, "media.m3u8", "#EXTM3U\n");
   write_text(folder, "seg00000.ts", "segment-zero");
   write_text(folder, "cover.jpg", "jpeg");
-  char type[] = "ignored/for-folders";
-  int64_t port = osprey_file_server_start(folder, type, LOOPBACK);
-  assert(port > 0);
+  int64_t port = start_folder_server(folder);
   // A Cast receiver is a web page: it fetches HLS by XHR, which needs CORS.
   static const Exchange served[] = {
       {"GET /media.m3u8 HTTP/1.1\r\n\r\n", 200,
@@ -271,11 +299,7 @@ static void test_file_server_folder(void) {
   assert(never.reply.status == 404);
   free(never.reply.body);
   const char *names[] = {"media.m3u8", "seg00000.ts", "seg00001.ts", "cover.jpg"};
-  for (size_t i = 0; i < sizeof names / sizeof names[0]; i++) {
-    char path[512];
-    snprintf(path, sizeof path, "%s/%s", folder, names[i]);
-    assert(unlink(path) == 0);
-  }
+  unlink_in_folder(folder, names, sizeof names / sizeof names[0]);
   assert(rmdir(folder) == 0);
 }
 
@@ -306,9 +330,7 @@ static void test_file_server_refuses_every_separator(void) {
     write_text(folder, hostile[i], "must not be served");
   }
   write_text(folder, "plain.txt", "ok");
-  char type[] = "ignored/for-folders";
-  int64_t port = osprey_file_server_start(folder, type, LOOPBACK);
-  assert(port > 0);
+  int64_t port = start_folder_server(folder);
   for (size_t i = 0; i < count; i++) {
     char get[128], head[128];
     snprintf(get, sizeof get, "GET /%s HTTP/1.1\r\n\r\n", hostile[i]);
@@ -320,31 +342,10 @@ static void test_file_server_refuses_every_separator(void) {
   expect_exchanges(port, plain_served, 1);
   assert_folder_symlink_refused(folder, port);
   assert(osprey_file_server_stop(port) == 0);
-  for (size_t i = 0; i < count; i++) {
-    char path[512];
-    snprintf(path, sizeof path, "%s/%s", folder, hostile[i]);
-    assert(unlink(path) == 0);
-  }
-  char plain[512];
-  snprintf(plain, sizeof plain, "%s/plain.txt", folder);
-  assert(unlink(plain) == 0 && rmdir(folder) == 0);
-}
-
-static int dial_with_deadline(int64_t port, int receive_buffer) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(fd >= 0);
-  struct timeval deadline = {5, 0};
-  assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &deadline, sizeof deadline) == 0);
-  if (receive_buffer > 0) {
-    assert(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer, sizeof receive_buffer) == 0);
-  }
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof addr);
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)port);
-  addr.sin_addr.s_addr = inet_addr(LOOPBACK);
-  assert(connect(fd, (struct sockaddr *)&addr, sizeof addr) == 0);
-  return fd;
+  unlink_in_folder(folder, hostile, count);
+  const char *plain[] = {"plain.txt"};
+  unlink_in_folder(folder, plain, 1);
+  assert(rmdir(folder) == 0);
 }
 
 // Bytes the peer sends before closing; a read that times out fails the test.
@@ -361,20 +362,26 @@ static size_t drain_until_closed(int fd) {
   }
 }
 
+// Dials `port` with `receive_buffer` bytes of socket buffer, sends `request`,
+// lets the server pick it up for `settle_micros`, then stops it: the stop tests
+// read a client left mid-request or mid-send across the stop.
+static int send_then_stop(int64_t port, int receive_buffer, const char *request,
+                          unsigned int settle_micros) {
+  int fd = dial_with_deadline(port, receive_buffer);
+  assert(send(fd, request, strlen(request), 0) > 0);
+  usleep(settle_micros);
+  assert(osprey_file_server_stop(port) == 0);
+  return fd;
+}
+
 // [FFI-FILE-SERVER-STOP] A connection still reading its request ends with the stop,
 // and never sees the slot's next server: finishing the request afterwards used to
 // serve the new session's file to the old peer, off a server freed under it.
 static void test_file_server_stop_ends_an_idle_connection(void) {
   char type[] = "audio/mpeg";
-  int64_t port = osprey_file_server_start(media_path, type, LOOPBACK);
-  assert(port > 0);
-  int fd = dial_with_deadline(port, 0);
-  const char *partial = "GET /media HTTP/1.1\r\nX-A: 1\r\n";
-  assert(send(fd, partial, strlen(partial), 0) > 0);
-  usleep(100000);
-  assert(osprey_file_server_stop(port) == 0);
-  int64_t next = osprey_file_server_start(media_path, type, LOOPBACK);
-  assert(next > 0);
+  int64_t port = start_server(media_path, type);
+  int fd = send_then_stop(port, 0, "GET /media HTTP/1.1\r\nX-A: 1\r\n", 100000);
+  int64_t next = start_server(media_path, type);
   (void)!send(fd, "\r\n", 2, 0);
   assert(drain_until_closed(fd) == 0);
   close(fd);
@@ -390,13 +397,8 @@ static void test_file_server_stop_ends_a_blocked_send(void) {
   assert(file >= 0 && ftruncate(file, HUGE_BYTES) == 0);
   close(file);
   char type[] = "video/mp4";
-  int64_t port = osprey_file_server_start(huge, type, LOOPBACK);
-  assert(port > 0);
-  int fd = dial_with_deadline(port, 4096);
-  const char *request = "GET /media HTTP/1.1\r\n\r\n";
-  assert(send(fd, request, strlen(request), 0) > 0);
-  usleep(200000);
-  assert(osprey_file_server_stop(port) == 0);
+  int64_t port = start_server(huge, type);
+  int fd = send_then_stop(port, 4096, "GET /media HTTP/1.1\r\n\r\n", 200000);
   size_t delivered = drain_until_closed(fd);
   assert(delivered < HUGE_BYTES);
   close(fd);
@@ -407,8 +409,7 @@ static void test_file_server_stop_ends_a_blocked_send(void) {
 static void test_file_server_stop_repeatedly(void) {
   char type[] = "audio/mpeg";
   for (int round = 0; round < 25; round++) {
-    int64_t port = osprey_file_server_start(media_path, type, LOOPBACK);
-    assert(port > 0);
+    int64_t port = start_server(media_path, type);
     int silent = dial_with_deadline(port, 0);
     int partial = dial_with_deadline(port, 0);
     int fetching = dial_with_deadline(port, 4096);
