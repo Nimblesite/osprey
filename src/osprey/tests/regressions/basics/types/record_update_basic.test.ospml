@@ -4,9 +4,7 @@ print "=== RECORD UPDATE BASIC TESTS ==="
 
 (** Print a label followed by the two field values it describes. *)
 showFields (label, first, second) =
-    print label
-    print first
-    print second
+    print "${label}\n${first}\n${second}"
 
 
 (** Test 1: Simple record type *)

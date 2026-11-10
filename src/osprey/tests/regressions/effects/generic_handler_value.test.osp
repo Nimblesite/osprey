@@ -14,6 +14,5 @@ let halting = handler Fault {
 fn checked(work) = halting(fn() => Success { value: work() })
 
 print(toString(checked(fn() => "ok")))
-print(toString(checked(fn() => 7)))
-print(toString(checked(fn() => 1.5)))
+print("${toString(checked(fn() => 7))}\n${toString(checked(fn() => 1.5))}")
 print(toString(checked(fn() => perform Fault.halt("boom"))))

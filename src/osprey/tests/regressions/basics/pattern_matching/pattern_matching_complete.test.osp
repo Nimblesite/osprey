@@ -175,10 +175,7 @@ print(match alice { _p: PersonData => "Got PersonData type" _ => "Other" })
 /// --- Multi-variant + dynamic via function return ---
 let c = Circle { radius: 5 }
 let s = Square { x: 3, y: 7 }
-print(describe(c))
-print(describe(s))
-print(shapeKind(c))
-print(shapeKind(s))
+print("${describe(c)}\n${describe(s)}\n${shapeKind(c)}\n${shapeKind(s)}")
 
 /// --- Bool ternary + structural ternary on anonymous record ---
 let flag = { a: true }

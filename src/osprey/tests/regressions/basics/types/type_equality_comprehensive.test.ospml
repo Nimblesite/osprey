@@ -61,8 +61,7 @@ print "=== Same (string)->string passed via HOF ==="
 print (applyStr (excl, "hi"))
 print (applyStr (ques, "hi"))
 
-print "=== Different shapes ==="
-print (applyToStr (intToString, 42))
+print "=== Different shapes ===\n${(applyToStr (intToString, 42))}"
 exactArithmetic (\() =>
     print (toString (applyTwo (twoArgAdd, 5, 7))))
 exactArithmetic (\() =>
@@ -72,8 +71,7 @@ print ""
 (** --- Generic monomorphization via identity-like functions --- *)
 identity x = x
 duplicate x = x
-print (toString (identity 42))
-print (toString (duplicate 99))
+print "${(toString (identity 42))}\n${(toString (duplicate 99))}"
 print (identity "a")
 print (duplicate "b")
 

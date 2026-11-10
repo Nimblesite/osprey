@@ -26,10 +26,7 @@ analyzeNumber n = match n
     42 => "The answer!"
     _ => "Something else"
 square v = v * v 
-print "Testing functions:"
-print (analyzeNumber 0)
-print (analyzeNumber 42)
-print (analyzeNumber 5)
+print "Testing functions:\n${analyzeNumber 0}\n${analyzeNumber 42}\n${analyzeNumber 5}"
 
 xx = 5
 doubled = exactArithmetic (\() =>

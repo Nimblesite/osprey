@@ -32,10 +32,7 @@ fn analyzeNumber(n) = match n {
     _ => "Something else"
 }
 fn square(v) = v * v 
-print("Testing functions:")
-print(analyzeNumber(0))
-print(analyzeNumber(42))
-print(analyzeNumber(5))
+print("Testing functions:\n${analyzeNumber(0)}\n${analyzeNumber(42)}\n${analyzeNumber(5)}")
 
 let xx = 5
 let doubled = exactArithmetic(fn() => double(xx))

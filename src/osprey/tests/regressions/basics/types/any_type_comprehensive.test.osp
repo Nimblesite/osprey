@@ -108,10 +108,7 @@ fn processSimple(u) = match u {
 let simple1 = A
 let simple2 = B
 let simple3 = C
-print("Simple union:")
-print(processSimple(simple1))
-print(processSimple(simple2))
-print(processSimple(simple3))
+print("Simple union:\n${processSimple(simple1)}\n${processSimple(simple2)}\n${processSimple(simple3)}")
 
 /// Test union type equality
 type Color = Red | Green | Blue
@@ -135,9 +132,7 @@ fn compareColors(c1, c2) = match c1 {
     }
 }
 
-print("Union equality tests:")
-print(compareColors(c1: color1, c2: color2))
-print(compareColors(c1: color1, c2: color3))
+print("Union equality tests:\n${compareColors(c1: color1, c2: color2)}\n${compareColors(c1: color1, c2: color3)}")
 
 /// --- Structural narrowing [PATTERN-STRUCTURAL] [PATTERN-TUPLE] ---
 /// The ONLY read through an erased value is a structural match: arms select

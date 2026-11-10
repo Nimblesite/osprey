@@ -4,9 +4,7 @@ print("=== RECORD UPDATE BASIC TESTS ===")
 
 /// Prints a label followed by the two field values it describes.
 fn showFields(label, first, second) = {
-    print(label)
-    print(first)
-    print(second)
+    print("${label}\n${first}\n${second}")
 }
 
 

@@ -21,7 +21,5 @@ fn storeHeld(box: Box) = {
 }
 
 let empty = Box { items: [], note: "" }
-print(shown(empty))
-print(shown(store(empty)))
-print(shown(storeHeld(empty)))
+print("${shown(empty)}\n${shown(store(empty))}\n${shown(storeHeld(empty))}")
 print(shown(Box { items: [Item { name: "ctor", size: 5 }], note: "" }))

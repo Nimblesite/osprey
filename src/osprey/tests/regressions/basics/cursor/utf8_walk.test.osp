@@ -60,8 +60,7 @@ let mid = match codePointAt(s, 7) {
     Success { value } => "mid-sequence unexpectedly decoded ${value}"
     Error   { message } => "mid-sequence rejected: ${message}"
 }
-print(mid)
-print("=== walk complete ===")
+print("${mid}\n=== walk complete ===")
 
 /// Checks a decoded scalar at a known byte boundary.
 fn codepointIs(s, index, expected) = match codePointAt(s, index) {

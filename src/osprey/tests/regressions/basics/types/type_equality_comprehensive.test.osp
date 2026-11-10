@@ -50,8 +50,7 @@ print("=== Same (string)->string passed via HOF ===")
 print(applyStr(f: excl, s: "hi"))
 print(applyStr(f: ques, s: "hi"))
 
-print("=== Different shapes ===")
-print(applyToStr(f: intToString, x: 42))
+print("=== Different shapes ===\n${applyToStr(f: intToString, x: 42)}")
 exactArithmetic(fn() => print(toString(applyTwo(f: twoArgAdd, a: 5, b: 7))))
 exactArithmetic(fn() => print(toString(applyThree(f: threeArgAdd, a: 1, b: 2, c: 3))))
 print("")
@@ -59,8 +58,7 @@ print("")
 /// --- Generic monomorphization via identity-like functions ---
 fn identity(x) = x
 fn duplicate(x) = x
-print(toString(identity(42)))
-print(toString(duplicate(99)))
+print("${toString(identity(42))}\n${toString(duplicate(99))}")
 print(identity("a"))
 print(duplicate("b"))
 

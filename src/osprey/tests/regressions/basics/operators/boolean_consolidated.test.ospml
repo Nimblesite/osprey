@@ -16,19 +16,13 @@ xor (a, b) = (a || b) && !(a && b)
 print "=== Boolean Test ==="
 
 // Function-returned bools
-print (getTrue ())
-print (getFalse ())
+print "${(getTrue ())}\n${(getFalse ())}"
 
 // Literals
-print false
-print true
+print "${false}\n${true}"
 
 // Integer comparisons
-print (5 > 3)
-print (10 == 10)
-print (5 != 3)
-print (10 <= 15)
-print (8 >= 8)
+print "${5 > 3}\n${10 == 10}\n${5 != 3}\n${10 <= 15}\n${8 >= 8}"
 
 // Equality via function (named args normalize to positional)
 match isEqual (5, 5)
@@ -44,8 +38,7 @@ print "&& ${toString a}  || ${toString b}  comp&& ${toString c}  comp|| ${toStri
 
 // The right side must not run in either expression. A broken eager lowering
 // would print the sentinel labels and fail the golden output.
-print (false && reportTrue ())
-print (true || reportTrue ())
+print "${(false && reportTrue ())}\n${(true || reportTrue ())}"
 
 (** Negation + de Morgan: !(p && q) == (!p || !q) *)
 p = true
@@ -71,8 +64,7 @@ print "parity ${toString parity}"
 (** Float comparison *)
 f1 = 1.5
 f2 = 2.5
-print (f1 < f2)
-print (f2 == f2)
+print "${f1 < f2}\n${f2 == f2}"
 
 // String comparison (strcmp semantics, lexicographic)
 print ("apple" < "banana")
