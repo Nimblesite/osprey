@@ -98,6 +98,15 @@
         "language": "c",
         "threshold": 93
       },
+      "memory_gc_table": {
+        "language": "c"
+      },
+      "memory_gc_batons": {
+        "language": "c"
+      },
+      "memory_gc_libc": {
+        "language": "c"
+      },
       "gpu_runtime": {
         "language": "c"
       },

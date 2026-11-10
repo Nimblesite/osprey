@@ -143,6 +143,7 @@ static void t_refcount_hooks_noop(void) {
   osp_release(p);
   osp_retain(NULL);
   osp_release(NULL);
+  osp_release_unique(p); // a proved-unique drop is a no-op too: the collector owns reclamation
   for (int i = 0; i < 16; i++) {
     CHECK(p[i] == 3);
   }
@@ -504,11 +505,46 @@ static void t_multithread_disables_collection(void) {
   size_t frozen = osp_gc_collections();
   (void)alloc_churn(400000, 32); // would normally cross the budget many times
   CHECK(osp_gc_collections() == frozen); // but collection never fires again
+  osp_collect();                         // nor when asked for explicitly
+  CHECK(osp_gc_collections() == frozen);
+}
+
+// The OSPREY_GC_DEBUG child: collect at least once, then let a thread outside
+// the baton allocate, which turns collection off.
+static void debug_stats_child(void) {
+  (void)alloc_churn(400000, 32);
+  osp_mem_notify_multithreaded();
+  pthread_t th;
+  CHECK(pthread_create(&th, NULL, mt_alloc, NULL) == 0);
+  CHECK(pthread_join(th, NULL) == 0);
+}
+
+// OSPREY_GC_DEBUG reports every collection and the moment a non-baton thread
+// turned collection off, on stderr only. The switch is read once, at the first
+// allocation, so the report is checked in a child of this suite.
+static void t_debug_reports(const char *self) {
+  char command[4096];
+  int length = snprintf(command, sizeof command, "OSPREY_GC_DEBUG=1 '%s' --debug-stats 2>&1 >/dev/null", self);
+  CHECK(length > 0 && (size_t)length < sizeof command);
+  FILE *child = popen(command, "r");
+  CHECK(child != NULL);
+  int collected = 0, disabled = 0;
+  char line[256];
+  while (fgets(line, sizeof line, child)) {
+    collected |= strncmp(line, "[osp-gc] collect #1: ", 21) == 0;
+    disabled |= strstr(line, "[osp-gc] collection disabled: a non-baton thread allocated after ") == line;
+  }
+  CHECK(pclose(child) == 0);
+  CHECK(collected && disabled);
 }
 
 int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "--finalizer-stamp") == 0) {
     t_finalizer_at_sweep();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--debug-stats") == 0) {
+    debug_stats_child();
     return 0;
   }
   CHECK(argc == 1);
@@ -530,6 +566,7 @@ int main(int argc, char **argv) {
   t_interior_pointer();
   t_many_rooted_survive();
   t_finalizer_at_sweep();
+  t_debug_reports(argv[0]);
   t_scanned_blocks_are_roots();
   t_threads_collect_together();
   t_parked_thread_stays_a_root();
