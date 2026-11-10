@@ -44,6 +44,29 @@ releasedAt (machine, label, fraction) =
     p = Semantics::point (element (machine, label), fraction)
     Canvases::released (machine, p.pointX, p.pointY)
 
+// Acting on the slider at `fraction` of its width leaves it reading `fraction`.
+slidTo (machine, fraction) =
+    moved = Canvases::act (machine, "Level", fraction)
+    expect (value moved, fraction)
+    moved
+
+// Lettering that has arrived, and lettering that has gone.
+lettering (machine, shown, gone) =
+    expect (letters (machine, shown), true)
+    expect (letters (machine, gone), false)
+
+// Where the slider's track sits at `fraction` of its width.
+tracked (slider, spot) =
+    p = Semantics::point (slider, spot.fraction)
+    expect (p.pointX, spot.x)
+    expect (p.pointY, 315.0)
+
+// Feeding a fresh caption shows its lettering and retires the previous one.
+captioned (machine, shown, gone) =
+    fed = feed (machine, "caption", shown)
+    lettering (fed, shown, gone)
+    fed
+
 // An event as the host's wire carries it, for checking the encoder's contract.
 wire event = Doc::parse event
 
@@ -58,45 +81,27 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     expect (value fresh, 0.25)
     expect (letters (fresh, "Hello"), true)
     slider = element (fresh, "Level")
-    start = Semantics::point (slider, 0.0)
-    middle = Semantics::point (slider, 0.5)
-    end = Semantics::point (slider, 1.0)
-    expect (start.pointX, 20.0)
-    expect (start.pointY, 315.0)
-    expect (middle.pointX, 120.0)
-    expect (middle.pointY, 315.0)
-    expect (end.pointX, 220.0)
-    expect (end.pointY, 315.0)
+    forEachList ([{ fraction = 0.0, x = 20.0 }, { fraction = 0.5, x = 120.0 }, { fraction = 1.0, x = 220.0 }], \spot => tracked (slider, spot))
     pressed = Canvases::act (fresh, "Press", 0.5)
-    expect (letters (pressed, "Pressed"), true)
-    expect (letters (pressed, "Hello"), false)
-    zero = Canvases::act (pressed, "Level", 0.0)
-    expect (value zero, 0.0)
-    half = Canvases::act (zero, "Level", 0.5)
-    expect (value half, 0.5)
-    full = Canvases::act (half, "Level", 1.0)
-    expect (value full, 1.0)
+    lettering (pressed, "Pressed", "Hello")
+    zero = slidTo (pressed, 0.0)
+    half = slidTo (zero, 0.5)
+    full = slidTo (half, 1.0)
     released = releasedAt (full, "Level", 0.75)
     expect (value released, 0.75)
     opened = Canvases::act (released, "Menu", 0.5)
     expect (labels opened, "One|Two|Three|Menu|Press|Level")
     expect (offered (opened, "Dismiss"), false)
     expect (role (opened, "One"), "menuitem")
-    expect (letters (opened, "One"), true)
-    expect (letters (opened, "Two"), true)
-    expect (letters (opened, "Three"), true)
+    forEachList (["One", "Two", "Three"], \text => expect (letters (opened, text), true))
     dismissed = Canvases::released (opened, 5.0, 5.0)
     expect (labels dismissed, "Menu|Press|Level")
     reopened = Canvases::act (dismissed, "Menu", 0.5)
     chosen = Canvases::act (reopened, "Two", 0.5)
     expect (labels chosen, "Menu|Press|Level")
     expect (letters (chosen, "Choice two"), true)
-    updated = feed (chosen, "caption", "Updated")
-    expect (letters (updated, "Updated"), true)
-    expect (letters (updated, "Pressed"), false)
-    again = feed (updated, "caption", "Second input")
-    expect (letters (again, "Second input"), true)
-    expect (letters (again, "Updated"), false)
+    updated = captioned (chosen, "Updated", "Pressed")
+    again = captioned (updated, "Second input", "Updated")
     expect (value again, 0.75)))
 
 test ("native views are found by what they say, and every host event keeps its wire contract", \() => withFixture (\fresh =>
@@ -239,6 +244,17 @@ shownAll (labels) = forEachList (labels, \label => expect (Drive::shows (driven,
 
 selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
 
+// Choosing `key` from the picker leaves it selected and on show.
+pickedKey (key) =
+    choose ("Pick", key)
+    expect (selected (), key)
+    expect (Drive::shows (driven, key), true)
+
+// A control that is on show and one that has gone.
+shownNow (shown, gone) =
+    expect (Drive::shows (driven, shown), true)
+    expect (Drive::shows (driven, gone), false)
+
 test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
     begun "tiny"
     expect (driven.drivenNow, 2)
@@ -249,14 +265,13 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     expect (listGet curve 1 ?: 0.0, 20.0)
     expect (listGet curve 2 ?: 0.0, 110.0)
     expect (listGet curve 3 ?: 0.0, 80.0)
-    expect (Drive::letters (driven, "Hello"), true)
+    lettered (["Hello"])
     lettered (["Choice "])
     expect (Drive::letters (driven, "Missing lettering"), false)
-    expect (Drive::offers (elements (), "Menu"), true)
-    expect (Drive::offers (elements (), "Level"), true)
+    covering (["Menu", "Level"])
     expect (Drive::offers (elements (), "Dismiss"), false)
     tap "Press"
-    expect (Drive::letters (driven, "Pressed"), true)
+    lettered (["Pressed"])
     expect (Drive::letters (driven, "Hello"), false)
     levelAt (0.0, 0.0)
     levelAt (0.5, 0.5)
@@ -267,26 +282,26 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     lettered (["One", "Two", "Three"])
     tap "Two"
     expect (Drive::offers (elements (), "One"), false)
-    expect (Drive::letters (driven, "Choice two"), true)
+    lettered (["Choice two"])
     expect (level (), 0.75)
     tap "Menu"
     pointer (5.0, 5.0, true)
     pointer (5.0, 5.0, false)
     expect (Drive::offers (elements (), "Three"), false)
-    expect (Drive::letters (driven, "Choice two"), true)
+    lettered (["Choice two"])
     viewed (400.0, 400.0)
     viewed (800.0, 600.0)
-    expect (Drive::letters (driven, "Choice two"), true)
+    lettered (["Choice two"])
     post (Drive::frame (driven, 0.25))
     expect (driven.drivenSession.sessionStore.machineFault, "")
     post (Drive::chosen (driven, "choose", "/music/a \"b\".mp3"))
-    expect (Drive::letters (driven, "Choice two"), true)
+    lettered (["Choice two"])
     post (Drive::chosen (driven, "choose", "/music/second.mp3"))
     post (Drive::ran (driven, "discover", 0, ""))
     post (Drive::ran (driven, "discover", 2, "no route"))
     expect (level (), 0.75)
     post (Drive::opened (driven, "/music/opened.mp3"))
-    expect (Drive::letters (driven, "Choice two"), true)
+    lettered (["Choice two"])
     expect (driven.drivenNow > 20, true)
     expect (driven.drivenSession.sessionContext.platform, "macos")))
 
@@ -296,17 +311,11 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     expect (Drive::shows (driven, "Missing control"), false)
     expect (selected (), "")
     press "Native action"
-    expect (Drive::shows (driven, "Pressed"), true)
-    expect (Drive::shows (driven, "Native"), false)
-    choose ("Pick", "one")
-    expect (selected (), "one")
-    expect (Drive::shows (driven, "one"), true)
-    choose ("Pick", "three")
-    expect (selected (), "three")
-    expect (Drive::shows (driven, "three"), true)
+    shownNow ("Pressed", "Native")
+    pickedKey "one"
+    pickedKey "three"
     expect (Drive::shows (driven, "one"), false)
-    choose ("Pick", "two")
-    expect (selected (), "two")
+    pickedKey "two"
     shownAll (["two", "Pressed"])
     post (Drive::frame (driven, 0.5))
     post (Drive::opened (driven, "/tmp/native.mp3"))
@@ -317,8 +326,7 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     begun "plain"
     expect (driven.drivenNow, 2)
     expect (selected (), "")
-    expect (Drive::shows (driven, "Native"), true)
-    expect (Drive::shows (driven, "Pressed"), false)))
+    shownNow ("Native", "Pressed")))
 
 spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessSelected = false, accessMovable = false)
 
