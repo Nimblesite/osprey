@@ -858,11 +858,13 @@ third"
     ]
 
 // Registration order fixes the TAP order in the shared golden.
-test "interpolation renders every printable scalar" (exactly interpolationScalarCase)
-test "a Result is never unwrapped at an interpolation hole" (exactly interpolationResultCase)
-test "escape sequences resolve to their exact bytes" (exactly escapeSequenceCase)
-test "search builtins scan every substring position" (exactly substringPositionCase)
-test "ASCII case folding is total and round-trips" (exactly caseFoldingCase)
-test "concatenation and length arithmetic hold" (exactly concatLengthCase)
-test "interpolation composes expressions and preserves text" (exactly interpolationCompositionCase)
-test "a byte count never splits a UTF-8 character" (exactly utf8CutCase)
+exactTests [
+    { name = "interpolation renders every printable scalar", work = interpolationScalarCase },
+    { name = "a Result is never unwrapped at an interpolation hole", work = interpolationResultCase },
+    { name = "escape sequences resolve to their exact bytes", work = escapeSequenceCase },
+    { name = "search builtins scan every substring position", work = substringPositionCase },
+    { name = "ASCII case folding is total and round-trips", work = caseFoldingCase },
+    { name = "concatenation and length arithmetic hold", work = concatLengthCase },
+    { name = "interpolation composes expressions and preserves text", work = interpolationCompositionCase },
+    { name = "a byte count never splits a UTF-8 character", work = utf8CutCase }
+]

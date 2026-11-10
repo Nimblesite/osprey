@@ -240,21 +240,23 @@ quantCase () = withBuffer(toGpu(range(0, 256)), \ints => withBuffer(gpuMap(ints,
 quantWith (x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), \out => checkAll("quantized product", [
     lengthIs (out, 2), elementsFrom (out, 0, toFloat32(0.0), [toFloat32(496.0), toFloat32(992.0)]), quantRejection (x, w, "Q2_K", 256, 2) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S", quantRejection (x, w, "Q4_K", 200, 2) == "gpuMatMulQuant: inner: must be a positive multiple of 256", quantRejection (x, w, "Q4_K", 256, 3) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432", quantMessage (gpuMatMulQuant (x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
 ]))
-test ("buffer literals store elements densely at constant indices", \() => exactArithmetic (literalCase))
-test ("a list value copies into a buffer element for element", \() => exactArithmetic (listCopyCase))
-test ("gpu buffers round-trip lists densely", \() => exactArithmetic (roundTripCase))
-test ("the empty buffer answers every builtin without elements", \() => exactArithmetic (emptyCase))
-test ("a one-element buffer bounds gpuGet to index zero", \() => exactArithmetic (singletonCase))
-test ("gpuGet errors identically at both ends of every buffer", \() => exactArithmetic (boundsCase))
-test ("gpuIota spans zero, one and two hundred thousand indices", \() => exactArithmetic (iotaCase))
-test ("int, float and bool words survive the identity kernel", \() => exactArithmetic (elementCase))
-test ("buffers keep their tag through lets, pipes, params and returns", \() => exactArithmetic (flowCase))
-test ("aliased bindings observe one immutable buffer", \() => exactArithmetic (aliasCase))
-test ("a fused iterator buffer is addressable element by element", \() => exactArithmetic (fusionCase))
-test ("pure int kernels map and fold on buffers", \() => exactArithmetic (intKernelCase))
-test ("float kernels keep element bits through map and fold", \() => exactArithmetic (floatKernelCase))
-test ("kernels may change the element scalar type", \() => exactArithmetic (boolKernelCase))
-test ("the copy path stays exact at a hundred thousand elements", \() => exactArithmetic (bigCase))
-test ("a block-bodied kernel keeps its internal let bindings", \() => exactArithmetic (blockBodiedKernelCase))
-test ("every scalar width survives dense storage and round-trips through gpuGet", \() => exactArithmetic (denseWidthsCase))
-test ("the quantized product decodes Q4_K blocks in place on every backend", \() => exactArithmetic (quantCase))
+exactTests [
+    { name = "buffer literals store elements densely at constant indices", work = literalCase },
+    { name = "a list value copies into a buffer element for element", work = listCopyCase },
+    { name = "gpu buffers round-trip lists densely", work = roundTripCase },
+    { name = "the empty buffer answers every builtin without elements", work = emptyCase },
+    { name = "a one-element buffer bounds gpuGet to index zero", work = singletonCase },
+    { name = "gpuGet errors identically at both ends of every buffer", work = boundsCase },
+    { name = "gpuIota spans zero, one and two hundred thousand indices", work = iotaCase },
+    { name = "int, float and bool words survive the identity kernel", work = elementCase },
+    { name = "buffers keep their tag through lets, pipes, params and returns", work = flowCase },
+    { name = "aliased bindings observe one immutable buffer", work = aliasCase },
+    { name = "a fused iterator buffer is addressable element by element", work = fusionCase },
+    { name = "pure int kernels map and fold on buffers", work = intKernelCase },
+    { name = "float kernels keep element bits through map and fold", work = floatKernelCase },
+    { name = "kernels may change the element scalar type", work = boolKernelCase },
+    { name = "the copy path stays exact at a hundred thousand elements", work = bigCase },
+    { name = "a block-bodied kernel keeps its internal let bindings", work = blockBodiedKernelCase },
+    { name = "every scalar width survives dense storage and round-trips through gpuGet", work = denseWidthsCase },
+    { name = "the quantized product decodes Q4_K blocks in place on every backend", work = quantCase }
+]

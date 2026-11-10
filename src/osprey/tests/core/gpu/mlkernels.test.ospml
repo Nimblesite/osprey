@@ -309,20 +309,22 @@ trainCaseUploaded (input0, input1) =
     trainEach(toFloat32(0.0), xs, ys, 40, \w => trainEach(toFloat32(5.0), xs, ys, 40, \hi => checkAll("gradient descent", [
         w - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - w < toFloat32(0.01), w > toFloat32(1.0), hi - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - hi < toFloat32(0.01), hi < toFloat32(3.0), trainOf(toFloat32(2.0), xs, ys, 0, \start => start == toFloat32(2.0)), trainOf(toFloat32(2.0), xs, ys, 10, \settled => settled == toFloat32(2.0)), gradStepOf(toFloat32(2.0), xs, ys, \stepped => stepped == toFloat32(2.0)), mseOf(toFloat32(2.0), xs, ys, \loss => loss == toFloat32(0.0)), mseOf(toFloat32(3.0), xs, ys, \above => mseOf(toFloat32(1.0), xs, ys, \below => above == below)), mseOf(toFloat32(0.0), xs, ys, \unfit => mseOf(w, xs, ys, \fitted => unfit > fitted))
     ])))
-test("dot product fuses zip and fold", \() => exactArithmetic(dotCase))
-test("saxpy runs elementwise over buffer pairs", \() => exactArithmetic(saxpyCase))
-test("a kernel closes over one host scalar", \() => exactArithmetic(captureScalarCase))
-test("one kernel closes over several distinct scalars", \() => exactArithmetic(captureManyCase))
-test("one capture is spent by every combinator", \() => exactArithmetic(captureSharedCase))
-test("a capture folded from one buffer drives a kernel over another", \() => exactArithmetic(captureFoldedCase))
-test("captures survive gather, nesting, branching and shadowing", \() => exactArithmetic(captureShapeCase))
-test("degenerate captures stay total on empty and ragged buffers", \() => exactArithmetic(captureDegenerateCase))
-test("weighted sums normalise through a captured weight total", \() => exactArithmetic(weightedSumCase))
-test("mean centering pipes a scalar back into a kernel", \() => exactArithmetic(meanCase))
-test("variance and z-scores normalise a feature column", \() => exactArithmetic(varianceCase))
-test("min-max rescaling captures both folded extremes", \() => exactArithmetic(normalizeCase))
-test("relu clamps, leaks and counts active units", \() => exactArithmetic(reluCase))
-test("a softmax-shaped pipeline is a shift-invariant distribution", \() => exactArithmetic(softmaxCase))
-test("matrix-vector product gathers rows via iota", \() => exactArithmetic(matVecCase))
-test("dense layers stack bias and activation over gathered rows", \() => exactArithmetic(layerCase))
-test("gradient descent converges on the true weight", \() => exactArithmetic(trainCase))
+exactTests [
+    { name = "dot product fuses zip and fold", work = dotCase },
+    { name = "saxpy runs elementwise over buffer pairs", work = saxpyCase },
+    { name = "a kernel closes over one host scalar", work = captureScalarCase },
+    { name = "one kernel closes over several distinct scalars", work = captureManyCase },
+    { name = "one capture is spent by every combinator", work = captureSharedCase },
+    { name = "a capture folded from one buffer drives a kernel over another", work = captureFoldedCase },
+    { name = "captures survive gather, nesting, branching and shadowing", work = captureShapeCase },
+    { name = "degenerate captures stay total on empty and ragged buffers", work = captureDegenerateCase },
+    { name = "weighted sums normalise through a captured weight total", work = weightedSumCase },
+    { name = "mean centering pipes a scalar back into a kernel", work = meanCase },
+    { name = "variance and z-scores normalise a feature column", work = varianceCase },
+    { name = "min-max rescaling captures both folded extremes", work = normalizeCase },
+    { name = "relu clamps, leaks and counts active units", work = reluCase },
+    { name = "a softmax-shaped pipeline is a shift-invariant distribution", work = softmaxCase },
+    { name = "matrix-vector product gathers rows via iota", work = matVecCase },
+    { name = "dense layers stack bias and activation over gathered rows", work = layerCase },
+    { name = "gradient descent converges on the true weight", work = trainCase }
+]

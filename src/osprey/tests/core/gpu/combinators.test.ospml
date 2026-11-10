@@ -173,21 +173,23 @@ getWith (indices3) = withBuffer(toGpu ([7, 8, 9]), \ints => withBuffer(toGpu ([1
 deviceCase () = checkAll("device", [
     gpuDevice () == "host", length (gpuDevice ()) == 4, gpuDevice () != "cuda:0"
 ])
-test ("every combinator over an empty buffer stays empty", \() => exactArithmetic (emptyShapeCase))
-test ("gpuFold over an empty buffer is the initial value", \() => exactArithmetic (emptyFoldCase))
-test ("every combinator handles a one-element buffer", \() => exactArithmetic (singletonCase))
-test ("gpuZipWith truncates to the shorter operand in both orders", \() => exactArithmetic (raggedCase))
-test ("gpuZipWith produces the kernel's element type", \() => exactArithmetic (zipTypeCase))
-test ("gpuFilter keeps all, none, or alternates in source order", \() => exactArithmetic (filterKeepCase))
-test ("gpuFilter predicates compose comparisons and boolean operators", \() => exactArithmetic (filterPredicateCase))
-test ("gpuScan is an inclusive prefix element by element", \() => exactArithmetic (scanPrefixCase))
-test ("gpuScan seeds element zero with the initial value", \() => exactArithmetic (scanSeedCase))
-test ("non-commutative combines pin the traversal order", \() => exactArithmetic (orderCase))
-test ("five-stage and longer chains stay exact", \() => exactArithmetic (deepChainCase))
-test ("shape-changing combinators compose", \() => exactArithmetic (mixedChainCase))
-test ("kernels move elements between all three scalar types", \() => exactArithmetic (typeChangeCase))
-test ("an iterator pipeline fuses into a buffer with no list", \() => exactArithmetic (fusionSourceCase))
-test ("a fused buffer feeds every combinator", \() => exactArithmetic (fusionStageCase))
-test ("gpuIota builds the index buffer", \() => exactArithmetic (iotaCase))
-test ("gpuGet reads typed elements and errors out of bounds", \() => exactArithmetic (getCase))
-test ("gpuDevice names the active backend", \() => exactArithmetic (deviceCase))
+exactTests [
+    { name = "every combinator over an empty buffer stays empty", work = emptyShapeCase },
+    { name = "gpuFold over an empty buffer is the initial value", work = emptyFoldCase },
+    { name = "every combinator handles a one-element buffer", work = singletonCase },
+    { name = "gpuZipWith truncates to the shorter operand in both orders", work = raggedCase },
+    { name = "gpuZipWith produces the kernel's element type", work = zipTypeCase },
+    { name = "gpuFilter keeps all, none, or alternates in source order", work = filterKeepCase },
+    { name = "gpuFilter predicates compose comparisons and boolean operators", work = filterPredicateCase },
+    { name = "gpuScan is an inclusive prefix element by element", work = scanPrefixCase },
+    { name = "gpuScan seeds element zero with the initial value", work = scanSeedCase },
+    { name = "non-commutative combines pin the traversal order", work = orderCase },
+    { name = "five-stage and longer chains stay exact", work = deepChainCase },
+    { name = "shape-changing combinators compose", work = mixedChainCase },
+    { name = "kernels move elements between all three scalar types", work = typeChangeCase },
+    { name = "an iterator pipeline fuses into a buffer with no list", work = fusionSourceCase },
+    { name = "a fused buffer feeds every combinator", work = fusionStageCase },
+    { name = "gpuIota builds the index buffer", work = iotaCase },
+    { name = "gpuGet reads typed elements and errors out of bounds", work = getCase },
+    { name = "gpuDevice names the active backend", work = deviceCase }
+]

@@ -193,19 +193,21 @@ fn floatChurnCase() = withIndices(8, fn(indices8) => withIndices(0, fn(indices0)
 fn floatChurnWith(indices8, indices0) = withBuffer(gpuMap(indices8, toFloat), fn(xs) => withBuffer(mix(xs, 400), fn(mixed) => withBuffer(gpuFold(mixed, 0.0, addF), fn(total) => checkAll("400-pass float churn", [
     total > 1627.8, total < 1627.9, lengthIs(mixed, 8), (gpuGet(mixed, 0) ?: 0.0) > 0.0, (gpuGet(mixed, 7) ?: 0.0) > (gpuGet(mixed, 0) ?: 0.0), gpuLengthIs(gpuFilter(mixed, isPositiveF), 8), gpuSatisfies(gpuMap(indices0, toFloat), fn(emptyFloat) => gpuLengthIs(mix(emptyFloat, 50), 0)), gpuSatisfies(gpuMap(indices8, toFloat), fn(canonical) => gpuSatisfies(mix(canonical, 0), fn(same) => floatSumsTo(same, 0.0, 28.0)))
 ]))))
-test("a million elements map, fold, filter and scan in one pipeline", fn() => exactArithmetic(megaPipelineCase))
-test("a 100k prefix scan matches its closed form", fn() => exactArithmetic(scanScaleCase))
-test("twenty-four dependent map passes stay exact", fn() => exactArithmetic(longChainCase))
-test("a buffer rebuilt from its own output six times stays exact", fn() => exactArithmetic(rebuildCase))
-test("half a million elements compact and compact again", fn() => exactArithmetic(compactionScaleCase))
-test("quarter-million-element zips multiply, truncate and cancel", fn() => exactArithmetic(zipScaleCase))
-test("five hundred simulation passes stay exact", fn() => exactArithmetic(simulationCase))
-test("checked arithmetic marks the exact overflow boundary", fn() => exactArithmetic(overflowBoundaryCase))
-test("a saturating accumulation freezes instead of wrapping", fn() => exactArithmetic(saturationCase))
-test("negative buffers survive every combinator", fn() => exactArithmetic(negativeCase))
-test("alternating signs telescope through fold, scan and filter", fn() => exactArithmetic(alternatingCase))
-test("zero and empty buffers are defined everywhere", fn() => exactArithmetic(zeroDegenerateCase))
-test("gathers report every out-of-range index as an error", fn() => exactArithmetic(gatherBoundaryCase))
-test("float buffers keep their bits at scale", fn() => exactArithmetic(floatScaleCase))
-test("float accumulation order changes the sum", fn() => exactArithmetic(floatOrderCase))
-test("float churn keeps double words through 400 passes", fn() => exactArithmetic(floatChurnCase))
+exactTests([
+    { name: "a million elements map, fold, filter and scan in one pipeline", work: megaPipelineCase },
+    { name: "a 100k prefix scan matches its closed form", work: scanScaleCase },
+    { name: "twenty-four dependent map passes stay exact", work: longChainCase },
+    { name: "a buffer rebuilt from its own output six times stays exact", work: rebuildCase },
+    { name: "half a million elements compact and compact again", work: compactionScaleCase },
+    { name: "quarter-million-element zips multiply, truncate and cancel", work: zipScaleCase },
+    { name: "five hundred simulation passes stay exact", work: simulationCase },
+    { name: "checked arithmetic marks the exact overflow boundary", work: overflowBoundaryCase },
+    { name: "a saturating accumulation freezes instead of wrapping", work: saturationCase },
+    { name: "negative buffers survive every combinator", work: negativeCase },
+    { name: "alternating signs telescope through fold, scan and filter", work: alternatingCase },
+    { name: "zero and empty buffers are defined everywhere", work: zeroDegenerateCase },
+    { name: "gathers report every out-of-range index as an error", work: gatherBoundaryCase },
+    { name: "float buffers keep their bits at scale", work: floatScaleCase },
+    { name: "float accumulation order changes the sum", work: floatOrderCase },
+    { name: "float churn keeps double words through 400 passes", work: floatChurnCase }
+])
