@@ -23,16 +23,20 @@ type Case =
     got : string
 
 caseOf label want got = Case(label = label, want = want, got = got)
-
 each cases = forEachList cases (\entry => check entry.label entry.want entry.got)
-
 worldOf envelope = Doc::field (Probes::stored envelope, "world")
-
 itemsOf (envelope, member) = Doc::items (Doc::field (worldOf envelope, member))
-
 birdsOf envelope = itemsOf (envelope, "birds")
-
 hawksOf envelope = itemsOf (envelope, "hawks")
+
+// A member of the session's stored application store.
+sliceOf (envelope, member) = Doc::field (Probes::stored envelope, member)
+
+// The canonical renderings `check` compares, one builder per member type.
+numberText (node, field) = toString (Doc::number (node, field))
+decimalText (node, field) = toString (Doc::decimal (node, field))
+flagText (node, field) = toString (Doc::flag (node, field))
+countText xs = toString (length xs)
 
 // The session saves positions as integer hundredths of a unit.
 at (item, index) =
@@ -41,15 +45,10 @@ at (item, index) =
     toFloat (jsonInt (jsonIndex item index ?: JsonNull) ?: 0) / 100.0
 
 birdXAt (envelope, index) = at (listGet (birdsOf envelope) index ?: JsonNull, 0)
-
 memberTexts (envelope, member, field) = join (mapList (Doc::items (Doc::field (envelope, member)), \item => Doc::text (item, field))) ","
-
 requestKinds envelope = memberTexts (envelope, "requests", "kind")
-
 fieldNode envelope = Doc::field (listGet (Doc::items (Doc::field (envelope, "patches"))) 0 ?: JsonNull, "node")
-
 fieldShapes envelope = Doc::items (Doc::field (fieldNode envelope, "shapes"))
-
 (** Starts and drives Flock through the actual serialized runtime boundary. *)
 module Probes
     (** Runs `work` with the fixture's host slices in `text`. *)
@@ -78,9 +77,7 @@ module Probes
     export keys envelope = memberTexts (envelope, "patches", "key")
 
 frameEvent () = "{\"kind\":\"frame\",\"now\":2,\"elapsed\":0.0166667}"
-
 pauseEvent () = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":1,\"ordinal\":0,\"value\":{\"key\":\"p\",\"down\":true},\"now\":2}"
-
 scoresEvent () = "{\"kind\":\"completed\",\"ticket\":\"scores:read\",\"ok\":true,\"result\":null,\"now\":2}"
 
 // Starts the session, installs the store and dispatches the event built from that session.
@@ -89,43 +86,29 @@ storeEvent (store, eventOf) =
     Probes::postStore (started, store, eventOf started)
 
 afterEvent (birds, hawks, eventOf) = storeEvent (fixture (birds, hawks), eventOf)
-
 frameAfter (birds, hawks) = afterEvent (birds, hawks, \_ => frameEvent ())
 
-// One frame's assertions, read from the frame's envelope.
-eachFrame (birds, hawks, casesOf) = each (casesOf (frameAfter (birds, hawks)))
+// The scene most regressions start from: two birds far enough apart to move independently.
+pair () = [bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)]
 
-test ("a frame moves every bird", \() =>
-    eachFrame ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [], \after => [caseOf "bird count" "2" (toString (length (birdsOf after))), caseOf "first bird moved" "false" (toString (birdXAt (after, 0) == 10.0)), caseOf "second bird moved" "false" (toString (birdXAt (after, 1) == 50.0))]))
+// One lone bird, no hawks, driven by `eventOf`.
+loneEvent eventOf = afterEvent ([bird (10.0, 20.0, 0.5, 0.1)], [], eventOf)
 
-test ("a bird past x 290 is rescued and scores", \() =>
-    eachFrame ([bird (289.9, 20.0, 1.2, 0.0), bird (50.0, 60.0, 0.4, 0.2)], [], \after => [caseOf "rescued bird count" "1" (toString (length (birdsOf after))), caseOf "score" "1" (toString (Doc::number (worldOf after, "score"))), caseOf "round" "1" (toString (Doc::number (worldOf after, "round")))]))
+// One frame regression: `casesOf` the frame's envelope.
+frameRound (name, birds, hawks, casesOf) = test (name, \() => each (casesOf (frameAfter (birds, hawks))))
 
-test ("a hawk within two units takes a bird without score", \() =>
-    eachFrame ([bird (50.0, 50.0, 0.4, 0.0), bird (100.0, 100.0, 0.4, 0.2)], [hawk (51.0, 50.0)], \after => [caseOf "taken bird count" "1" (toString (length (birdsOf after))), caseOf "score" "0" (toString (Doc::number (worldOf after, "score")))]))
-
-test ("p pauses and requests animate off", \() =>
-    after = afterEvent ([bird (10.0, 20.0, 0.5, 0.1)], [], \_ => pauseEvent ())
-    settings = Doc::field (Probes::stored after, "settings")
-    request = listGet (Doc::items (Doc::field (after, "requests"))) 0 ?: JsonNull
-    each [caseOf "paused" "true" (toString (Doc::flag (settings, "paused"))), caseOf "requests" "animate" (requestKinds after), caseOf "animate off" "false" (toString (Doc::flag (request, "on")))])
-
-test ("start sends all regions and the animate and score-read requests", \() =>
-    started = Probes::started ()
-    each [caseOf "patched regions" "field,hud,panel,root" (Probes::keys started), caseOf "requests" "animate,store-read" (requestKinds started), caseOf "score read limit" "4096" (toString (Doc::number (listGet (Doc::items (Doc::field (started, "requests"))) 1 ?: JsonNull, "limit")))])
-
-test ("an empty round starts with five hundred more birds and one more hawk", \() =>
-    after = frameAfter ([], [hawk (35.0, 4.0)])
-    each [caseOf "birds" "1500" (toString (length (birdsOf after))), caseOf "hawks" "2" (toString (length (hawksOf after))), caseOf "round" "2" (toString (Doc::number (worldOf after, "round")))])
+// One regression: `casesOf` the envelope `produce` returns.
+afterTest (name, produce, casesOf) = test (name, \() => each (casesOf (produce ())))
+frameRound ("a frame moves every bird", pair (), [], \after => [caseOf "bird count" "2" (countText (birdsOf after)), caseOf "first bird moved" "false" (toString (birdXAt (after, 0) == 10.0)), caseOf "second bird moved" "false" (toString (birdXAt (after, 1) == 50.0))])
+frameRound ("a bird past x 290 is rescued and scores", [bird (289.9, 20.0, 1.2, 0.0), bird (50.0, 60.0, 0.4, 0.2)], [], \after => [caseOf "rescued bird count" "1" (countText (birdsOf after)), caseOf "score" "1" (numberText (worldOf after, "score")), caseOf "round" "1" (numberText (worldOf after, "round"))])
+frameRound ("a hawk within two units takes a bird without score", [bird (50.0, 50.0, 0.4, 0.0), bird (100.0, 100.0, 0.4, 0.2)], [hawk (51.0, 50.0)], \after => [caseOf "taken bird count" "1" (countText (birdsOf after)), caseOf "score" "0" (numberText (worldOf after, "score"))])
+afterTest ("p pauses and requests animate off", \() => loneEvent (\_ => pauseEvent ()), \after => [caseOf "paused" "true" (flagText (sliceOf (after, "settings"), "paused")), caseOf "requests" "animate" (requestKinds after), caseOf "animate off" "false" (flagText (listGet (Doc::items (Doc::field (after, "requests"))) 0 ?: JsonNull, "on"))])
+afterTest ("start sends all regions and the animate and score-read requests", \() => Probes::started (), \started => [caseOf "patched regions" "field,hud,panel,root" (Probes::keys started), caseOf "requests" "animate,store-read" (requestKinds started), caseOf "score read limit" "4096" (numberText (listGet (Doc::items (Doc::field (started, "requests"))) 1 ?: JsonNull, "limit"))])
+afterTest ("an empty round starts with five hundred more birds and one more hawk", \() => frameAfter ([], [hawk (35.0, 4.0)]), \after => [caseOf "birds" "1500" (countText (birdsOf after)), caseOf "hawks" "2" (countText (hawksOf after)), caseOf "round" "2" (numberText (worldOf after, "round"))])
 
 // Zoom 0: the 320 by 200 field grows and shrinks with the window rather than sitting at one pixel a unit.
-test ("the scene holds the ground, every bird, each hawk, the dog and the pen label", \() =>
-    eachFrame ([bird (10.0, 20.0, 0.5, 0.1), bird (50.0, 60.0, 0.4, 0.2)], [hawk (180.0, 4.0)], \after => [caseOf "shape count" "11" (toString (length (fieldShapes after))), caseOf "zoom" "0.0" (toString (Doc::decimal (fieldNode after, "zoom"))), caseOf "width" "320.0" (toString (Doc::decimal (fieldNode after, "width"))), caseOf "height" "200.0" (toString (Doc::decimal (fieldNode after, "height")))]))
-
-test ("a completed scores read fills the best-score slice and drops zero rounds", \() =>
-    after = afterEvent ([bird (10.0, 20.0, 0.5, 0.1)], [], \_ => scoresEvent ())
-    scores = Doc::field (Probes::stored after, "scores")
-    each [caseOf "best scores" "[40,30,20]" (Doc::write (Doc::field (scores, "best"))), caseOf "loaded" "true" (toString (Doc::flag (scores, "loaded")))])
+frameRound ("the scene holds the ground, every bird, each hawk, the dog and the pen label", pair (), [hawk (180.0, 4.0)], \after => [caseOf "shape count" "11" (countText (fieldShapes after)), caseOf "zoom" "0.0" (decimalText (fieldNode after, "zoom")), caseOf "width" "320.0" (decimalText (fieldNode after, "width")), caseOf "height" "200.0" (decimalText (fieldNode after, "height"))])
+afterTest ("a completed scores read fills the best-score slice and drops zero rounds", \() => loneEvent (\_ => scoresEvent ()), \after => [caseOf "best scores" "[40,30,20]" (Doc::write (Doc::field (sliceOf (after, "scores"), "best"))), caseOf "loaded" "true" (flagText (sliceOf (after, "scores"), "loaded"))])
 
 // The field re-renders on every input, so each event names the field's latest patched revision.
 latestField (found, patch) = match Doc::text (patch, "key") == "field"
@@ -134,59 +117,55 @@ latestField (found, patch) = match Doc::text (patch, "key") == "field"
 
 fieldRevision envelope = foldList (Doc::items (Doc::field (envelope, "patches")), 1, latestField)
 
-pointerEvent (envelope, x, y, down) = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":${fieldRevision envelope},\"ordinal\":0,\"value\":{\"x\":${x},\"y\":${y},\"down\":${down}},\"now\":2}"
+// A field input carrying the rendered members of its `value` object.
+fieldEvent (envelope, value) = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":${fieldRevision envelope},\"ordinal\":0,\"value\":{${value}},\"now\":2}"
 
-keyEvent (envelope, name, down) = "{\"kind\":\"ui\",\"region\":\"field\",\"revision\":${fieldRevision envelope},\"ordinal\":0,\"value\":{\"key\":\"${name}\",\"down\":${down}},\"now\":2}"
+pointerEvent (envelope, x, y, down) = fieldEvent (envelope, "\"x\":${x},\"y\":${y},\"down\":${down}")
+
+keyEvent (envelope, name, down) = fieldEvent (envelope, "\"key\":\"${name}\",\"down\":${down}")
 
 // Off-field input tests drive many frames, so they use three birds and no hawk: an emptied field would start a new round and reset the dog.
 small () = fixture ([bird (40.0, 40.0, 0.5, 0.1), bird (60.0, 120.0, 0.4, 0.2), bird (90.0, 80.0, 0.3, 0.3)], [])
-
 playerAt envelope = Doc::field (worldOf envelope, "player")
-
 frames (envelope, count) = range (0, count) |> fold envelope (\(current, _) => Probes::post (current, frameEvent ()))
-
 inField envelope =
     x = Doc::decimal (playerAt envelope, "x")
     y = Doc::decimal (playerAt envelope, "y")
     x >= 0.0 && x <= 320.0 && y >= 0.0 && y <= 200.0
 
+// The dog stays on the field; the caller adds what else its input must do.
+dogHome envelope = caseOf "dog inside the field" "true" (toString (inField envelope))
 draggedFrames (x, y) = frames (storeEvent (small (), \started => pointerEvent (started, x, y, "true")), 120)
-
 keyPressed name = storeEvent (small (), \started => keyEvent (started, name, "true"))
-
 keyDown (envelope, name) = Probes::post (envelope, keyEvent (envelope, name, "true"))
-
 pointerUp (envelope, x, y) = Probes::post (envelope, pointerEvent (envelope, x, y, "false"))
-
-test ("a drag far off the field keeps the dog inside it", \() =>
-    after = draggedFrames ("-5000.5", "-9000.25")
-    each [caseOf "dog inside the field" "true" (toString (inField after)), caseOf "birds remain" "true" (toString (length (birdsOf after) > 0))])
-
+afterTest ("a drag far off the field keeps the dog inside it", \() => draggedFrames ("-5000.5", "-9000.25"), \after => [dogHome after, caseOf "birds remain" "true" (toString (length (birdsOf after) > 0))])
 test ("a drag past the far corner keeps the dog inside it", \() =>
-    after = draggedFrames ("1e9", "2.5e9")
-    expect (inField after, true))
+    expect (inField (draggedFrames ("1e9", "2.5e9")), true))
 
-test ("holding left and up pins the dog to the corner without failing", \() =>
-    left = keyDown (keyPressed "left", "up")
-    after = frames (left, 240)
-    each [caseOf "pinned x" "0.0" (toString (Doc::decimal (playerAt after, "x"))), caseOf "pinned y" "0.0" (toString (Doc::decimal (playerAt after, "y")))])
-
-test ("a pointer released off the field stops chasing it", \() =>
-    pressed = storeEvent (small (), \started => pointerEvent (started, "400.0", "300.0", "true"))
-    after = frames (pointerUp (pressed, "400.0", "300.0"), 30)
-    each [caseOf "dog inside the field" "true" (toString (inField after)), caseOf "target cleared" "false" (toString (Doc::flag (worldOf after, "targetActive")))])
-
-test ("a bird beside a hawk bolts away from it", \() =>
-    eachFrame ([bird (50.0, 50.0, 0.5, 0.0), bird (150.0, 150.0, 0.4, 0.2)], [hawk (55.0, 50.0)], \after => [caseOf "bird count" "2" (toString (length (birdsOf after))), caseOf "first bird bolted" "true" (toString (birdXAt (after, 0) < 50.0))]))
+afterTest ("holding left and up pins the dog to the corner without failing", \() => frames (keyDown (keyPressed "left", "up"), 240), \after => [caseOf "pinned x" "0.0" (decimalText (playerAt after, "x")), caseOf "pinned y" "0.0" (decimalText (playerAt after, "y"))])
+afterTest ("a pointer released off the field stops chasing it", \() => frames (pointerUp (storeEvent (small (), \started => pointerEvent (started, "400.0", "300.0", "true")), "400.0", "300.0"), 30), \after => [dogHome after, caseOf "target cleared" "false" (flagText (worldOf after, "targetActive"))])
+frameRound ("a bird beside a hawk bolts away from it", [bird (50.0, 50.0, 0.5, 0.0), bird (150.0, 150.0, 0.4, 0.2)], [hawk (55.0, 50.0)], \after => [caseOf "bird count" "2" (countText (birdsOf after)), caseOf "first bird bolted" "true" (toString (birdXAt (after, 0) < 50.0))])
 
 // `--flock N` sizes the first round, bounded to 1 to 20,000; anything else keeps 1,000.
+type Launch =
+    label : string
+    args : List<string>
+    want : string
+
 test ("the launch arguments size the first flock", \() =>
-    each [caseOf "explicit size" "5000" (toString (Simulation::launchSize ["--bench", "20", "--flock", "5000"])), caseOf "no arguments" "1000" (toString (Simulation::launchSize [])), caseOf "missing size" "1000" (toString (Simulation::launchSize ["--flock"])), caseOf "unparsable size" "1000" (toString (Simulation::launchSize ["--flock", "lots"])), caseOf "zero size" "1000" (toString (Simulation::launchSize ["--flock", "0"])), caseOf "oversized" "20000" (toString (Simulation::launchSize ["--flock", "90000"])), caseOf "sized store" "2000" (toString (length (Simulation::sizedStore 2000).world.birds))])
+    table = [Launch(label = "explicit size", args = ["--bench", "20", "--flock", "5000"], want = "5000"), Launch(label = "no arguments", args = [], want = "1000"), Launch(label = "missing size", args = ["--flock"], want = "1000"), Launch(label = "unparsable size", args = ["--flock", "lots"], want = "1000"), Launch(label = "zero size", args = ["--flock", "0"], want = "1000"), Launch(label = "oversized", args = ["--flock", "90000"], want = "20000")]
+    sizes = mapList (table, \entry => caseOf entry.label entry.want (toString (Simulation::launchSize entry.args)))
+    each (listConcat sizes [caseOf "sized store" "2000" (toString (length (Simulation::sizedStore 2000).world.birds))]))
 
 // Twelve birds in one cell at (20 + i, 20), all still; the sorted flock as `Steering` reads it.
 huddle () =
     xs = mapList ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], \i => 20.0 + toFloat i * 0.5)
-    flock::Sorted(sortedX = xs, sortedY = mapList (xs, \_ => 20.0), sortedVx = mapList (xs, \_ => 1.0), sortedVy = mapList (xs, \_ => 0.0), sortedCell = mapList (xs, \_ => 25), cellStarts = listConcat (range (0, 26) |> fold [] (\(out, _) => listAppend out 0)) (range (26, 346) |> fold [] (\(out, _) => listAppend out 12)))
+    flock::Sorted(sortedX = xs, sortedY = filled (xs, 20.0), sortedVx = filled (xs, 1.0), sortedVy = filled (xs, 0.0), sortedCell = filled (xs, 25), cellStarts = listConcat (grid (0, 26, 0)) (grid (26, 346, 12)))
+
+// One value for every entry of a list, or for every cell of the flock's grid.
+filled (cells, value) = mapList (cells, \_ => value)
+grid (from, to, value) = range (from, to) |> fold [] (\(out, _) => listAppend out value)
 
 // A bird steers by at most its first seven flockmates in sight, never itself.
 test ("a bird counts at most seven flockmates and never itself", \() =>
