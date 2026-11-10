@@ -1,7 +1,7 @@
 # Deslop duplication gate (https://deslop.live/docs/for-ai/). CI and make lint run
 # `deslop .`; it exits 3 above this ceiling, which only goes down.
 [threshold]
-max_duplication_percent = 6.2
+max_duplication_percent = 4
 
 # Generated files carry no banner Deslop recognises, so they are named here and
 # never analysed: tree-sitter's parser, grammar JSON, node types and the runtime
