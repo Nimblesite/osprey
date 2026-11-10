@@ -6,20 +6,15 @@
 //! regression even when it still contains the word "redundant".
 
 use crate::redundant::{redundant_annotations, TypeWarning, REDUNDANT_ANNOTATION};
+use crate::testutil::parses;
 
 use osprey_ast::Position;
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+use osprey_syntax::Flavor;
 
 /// Parse under `flavor` and collect the redundancy warnings. A snippet that
 /// does not parse fails the test rather than scoring as "no warnings".
 pub(crate) fn warnings(flavor: Flavor, src: &str) -> Vec<TypeWarning> {
-    let parsed = parse_program_with_flavor(src, flavor);
-    assert!(
-        parsed.errors.is_empty(),
-        "{flavor} flavor rejected the snippet at parse time: {:?}\n{src}",
-        parsed.errors
-    );
-    redundant_annotations(&parsed.program)
+    redundant_annotations(&parses(flavor, src))
 }
 
 /// The warning messages under `flavor`, in report order.

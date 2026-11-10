@@ -57,9 +57,11 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_runtime.c     -o bin/gc/list_runtime.o && \
+	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_rebuild.c     -o bin/gc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime.c      -o bin/gc/map_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime_hamt.c -o bin/gc/map_runtime_hamt.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/list_runtime.c        -o bin/arc/list_runtime.o && \
+	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/list_rebuild.c        -o bin/arc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/map_runtime.c         -o bin/arc/map_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/map_runtime_hamt.c    -o bin/arc/map_runtime_hamt.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime.c      -o bin/arc/string_runtime.o && \
@@ -77,6 +79,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(A) runtime/string_runtime_list.c  -o bin/string_runtime_list.o && \
 	  $(CC) $(B) runtime/float_spelling.c       -o bin/float_spelling.o && \
 	  $(CC) $(B) runtime/list_runtime.c         -o bin/list_runtime.o && \
+	  $(CC) $(B) runtime/list_rebuild.c         -o bin/list_rebuild.o && \
 	  $(CC) $(B) runtime/map_runtime.c          -o bin/map_runtime.o && \
 	  $(CC) $(B) runtime/map_runtime_hamt.c     -o bin/map_runtime_hamt.o && \
 	  $(CC) $(B) runtime/json_runtime.c         -o bin/json_runtime.o && \
@@ -86,6 +89,8 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
 	  $(CC) $(B) $(GPU_DEVICE_FLAGS) runtime/gpu_runtime.c -o bin/gpu_runtime.o && \
+	  $(CC) $(B) runtime/gpu_map_file.c         -o bin/gpu_map_file.o && \
+	  $(CC) $(B) runtime/gpu_elements.c         -o bin/gpu_elements.o && \
 	  $(CC) $(B) runtime/gpu_host.c             -o bin/gpu_host.o && \
 	  $(CC) $(B) runtime/tensor_file.c          -o bin/tensor_file.o && \
 	  $(CC) $(B) runtime/tensor_list.c          -o bin/tensor_list.o && \

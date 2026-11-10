@@ -98,7 +98,22 @@
         "language": "c",
         "threshold": 93
       },
+      "memory_gc_table": {
+        "language": "c"
+      },
+      "memory_gc_batons": {
+        "language": "c"
+      },
+      "memory_gc_libc": {
+        "language": "c"
+      },
       "gpu_runtime": {
+        "language": "c"
+      },
+      "gpu_map_file": {
+        "language": "c"
+      },
+      "gpu_elements": {
         "language": "c"
       },
       "gpu_host": {
@@ -172,6 +187,9 @@
       "list_runtime": {
         "language": "c"
       },
+      "list_rebuild": {
+        "language": "c"
+      },
       "map_runtime": {
         "language": "c"
       },
@@ -179,6 +197,12 @@
         "language": "c"
       },
       "fiber_runtime": {
+        "language": "c"
+      },
+      "fiber_channels": {
+        "language": "c"
+      },
+      "fiber_waits": {
         "language": "c"
       },
       "coverage_runtime": {

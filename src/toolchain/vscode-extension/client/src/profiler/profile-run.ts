@@ -9,7 +9,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { isOspreyFile } from "../extension";
-import { runCompiler } from "../test-explorer";
+import { runCompiler } from "../test-explorer-process";
 import type { ExecResult } from "../test-explorer-parse";
 import {
   buildFlameModel,

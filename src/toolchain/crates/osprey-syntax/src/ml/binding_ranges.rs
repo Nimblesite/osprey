@@ -170,19 +170,18 @@ fn scan(source: &str) -> (Vec<BindingRange>, Vec<crate::fragment_ranges::Literal
         ..Recorder::default()
     }));
     let _ = super::lower::lower(items);
-    let bindings = RECORDER.with(|cell| {
-        cell.borrow_mut()
-            .as_mut()
-            .map(|r| std::mem::take(&mut r.bindings))
-            .unwrap_or_default()
-    });
-    let literals = RECORDER.with(|cell| {
-        cell.borrow_mut()
-            .as_mut()
-            .map(|r| std::mem::take(&mut r.literals))
-            .unwrap_or_default()
-    });
+    let bindings = take_recorded(|recorder| &mut recorder.bindings);
+    let literals = take_recorded(|recorder| &mut recorder.literals);
     (bindings, literals)
+}
+
+fn take_recorded<T: Default>(get: impl for<'b> FnOnce(&'b mut Recorder) -> &'b mut T) -> T {
+    RECORDER.with(|cell| {
+        cell.borrow_mut()
+            .as_mut()
+            .map(|recorder| std::mem::take(get(recorder)))
+            .unwrap_or_default()
+    })
 }
 
 struct Owner(Option<Position>);
@@ -281,6 +280,14 @@ mod tests {
     use super::*;
     use crate::{binding_ranges, parse_program_with_flavor, Flavor};
 
+    fn of_kind(ranges: &[BindingRange], kind: BindingKind) -> Vec<&BindingRange> {
+        ranges.iter().filter(|r| r.kind == kind).collect()
+    }
+
+    fn names<'a>(bindings: &[&'a BindingRange]) -> Vec<&'a str> {
+        bindings.iter().map(|r| r.name.as_str()).collect()
+    }
+
     fn ranges(source: &str) -> Vec<BindingRange> {
         let parsed = parse_program_with_flavor(source, Flavor::Ml);
         assert!(parsed.errors.is_empty(), "{source}\n{:?}", parsed.errors);
@@ -295,17 +302,8 @@ mod tests {
     fn curried_parameters_patterns_and_shadowed_values_keep_source_identity() {
         let source = "choose first second =\n    copy = first\n    match second\n        0 => copy\n        name => name\n        name => copy\n";
         let ranges = ranges(source);
-        let parameters: Vec<_> = ranges
-            .iter()
-            .filter(|r| r.kind == BindingKind::Parameter)
-            .collect();
-        assert_eq!(
-            parameters
-                .iter()
-                .map(|r| r.name.as_str())
-                .collect::<Vec<_>>(),
-            ["first", "second"]
-        );
+        let parameters = of_kind(&ranges, BindingKind::Parameter);
+        assert_eq!(names(&parameters), ["first", "second"]);
         assert_eq!(
             parameters
                 .iter()
@@ -316,10 +314,7 @@ mod tests {
                 Some(Position { line: 1, column: 1 })
             ]
         );
-        let patterns: Vec<_> = ranges
-            .iter()
-            .filter(|r| r.kind == BindingKind::PatternBinding)
-            .collect();
+        let patterns = of_kind(&ranges, BindingKind::PatternBinding);
         assert_eq!(patterns.len(), 2);
         assert_eq!(
             patterns.iter().map(|r| r.occurrence).collect::<Vec<_>>(),
@@ -335,14 +330,8 @@ mod tests {
     fn handler_parameters_and_clause_payloads_are_real_binders() {
         let source = "effect Pick\n    control choose : (int, int) => int\nrun seed =\n    handle Pick\n        choose first second => resume first\n    seed\nextract (Box payload) ignored = payload\nextract other ignored = 0\n";
         let ranges = ranges(source);
-        let handlers: Vec<_> = ranges
-            .iter()
-            .filter(|r| r.kind == BindingKind::HandlerParameter)
-            .collect();
-        assert_eq!(
-            handlers.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(),
-            ["first", "second"]
-        );
+        let handlers = of_kind(&ranges, BindingKind::HandlerParameter);
+        assert_eq!(names(&handlers), ["first", "second"]);
         assert!(handlers
             .iter()
             .all(|r| r.owner_position == Some(Position { line: 5, column: 8 })));
@@ -364,11 +353,7 @@ mod tests {
         let source = "outer alpha = \"${(\\alpha => 1) 2}\"\nnext beta = beta\n";
         let result = ranges(source);
         assert_eq!(
-            result
-                .iter()
-                .filter(|r| r.kind == BindingKind::Parameter)
-                .map(|r| r.name.as_str())
-                .collect::<Vec<_>>(),
+            names(&of_kind(&result, BindingKind::Parameter)),
             ["alpha", "alpha", "beta"]
         );
         let starts: Vec<_> = result

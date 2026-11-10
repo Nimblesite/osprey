@@ -88,6 +88,14 @@ void json_reject(Cursor *c, const char *why);
 // malformed or `out` cannot grow.
 bool json_decode_string(Cursor *c, JsonBuf *out);
 
+// Scan one RFC 8259 number at the cursor; `*integer` says whether it had no
+// fraction and no exponent. False when the lexeme is malformed.
+bool json_scan_number(Cursor *c, bool *integer);
+
+// Read a scanned number lexeme into `n` (int64 when `n->flag`, else double);
+// the refusal text, or NULL when it fits. [BUILTIN-JSON-NUMBER]
+const char *json_read_number(JNode *n, const char *lexeme, size_t len, bool python);
+
 // The jsonParse status codes a rejection reports, all negative.
 #define JSON_ERR_NULL ((int64_t)-1)
 #define JSON_ERR_MALFORMED ((int64_t)-2)

@@ -12,14 +12,9 @@
 
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  executeRequestWith,
-  reportLeaves,
-  testFileLabel,
-  verdictSink,
-  type LeafExecutor,
-  type TestRunSink,
-} from "./test-explorer";
+import { executeRequestWith, reportLeaves, type LeafExecutor } from "./test-explorer";
+import { verdictSink, type TestRunSink } from "./test-explorer-report";
+import { testFileLabel } from "./test-explorer-items";
 import type { ExecResult } from "./test-explorer-parse";
 
 /**

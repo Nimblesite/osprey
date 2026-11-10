@@ -5,28 +5,30 @@
 //! `onResume` → `Active`, `onPause` → `Inactive`, `onStop` → `Background`,
 //! `onStart` → `Foreground`, destroy → `Disconnected`.
 
-use android_activity::{AndroidApp, MainEvent, PollEvent};
+use android_activity::{AndroidApp, PollEvent};
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use gpui::{
     Action, AnyWindowHandle, AppLifecyclePhase, BackgroundExecutor, ClipboardItem, CursorStyle,
-    DummyKeyboardMapper, ForegroundExecutor, Keymap, Menu, MenuItem, PathPromptOptions, Platform,
-    PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, Task, ThermalState, WindowAppearance, WindowParams,
-    OperatingSystem, PlatformInfo, PlatformTarget,
+    DummyKeyboardMapper, ForegroundExecutor, Keymap, Menu, MenuItem, OperatingSystem,
+    PathPromptOptions, Platform, PlatformDisplay, PlatformInfo, PlatformKeyboardLayout,
+    PlatformKeyboardMapper, PlatformTarget, PlatformTextSystem, PlatformWindow, Result, Task,
+    ThermalState, WindowAppearance, WindowParams,
 };
 use gpui_wgpu::{CosmicTextSystem, GpuContext};
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::display::AndroidDisplay;
 use crate::dispatcher::AndroidDispatcher;
+use crate::display::AndroidDisplay;
 use crate::keyboard::AndroidKeyboardLayout;
-use crate::slot::Slot;
+use crate::slot::{locked, Slot};
 use crate::window::{AndroidPlatformWindow, AndroidWindow};
+
+mod lifecycle;
 
 /// The poll timeout, which also paces frames until Choreographer-grade vsync:
 /// a short fixed timeout keeps the looper responsive (an indefinite poll starves
@@ -45,7 +47,11 @@ fn android_text_system() -> Arc<CosmicTextSystem> {
     // and Roboto is the UI font every Android ships.
     let system = Arc::new(CosmicTextSystem::new("Roboto"));
     let mut fonts = Vec::new();
-    for entry in std::fs::read_dir("/system/fonts").into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir("/system/fonts")
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let path = entry.path();
         let loadable = matches!(
             path.extension().and_then(|extension| extension.to_str()),
@@ -142,88 +148,6 @@ impl AndroidPlatform {
         !self.0.stop.get()
     }
 
-    /// One main-thread lifecycle command.
-    fn main_event(&self, event: MainEvent<'_>) {
-        match event {
-            MainEvent::InitWindow { .. } => self.init_window(),
-            MainEvent::TerminateWindow { .. } => self.terminate_window(),
-            MainEvent::WindowResized { .. } => {
-                if let Some(window) = self.window() {
-                    window.resized(&self.0.app);
-                    window.update_insets(&self.0.app);
-                }
-            }
-            MainEvent::RedrawNeeded { .. } => {
-                // Android expects the redraw within this callback; GPUI's frame
-                // paints synchronously through the request-frame callback.
-                if let Some(window) = self.window() {
-                    window.request_frame();
-                }
-            }
-            MainEvent::ContentRectChanged { .. } | MainEvent::InsetsChanged { .. } => {
-                if let Some(window) = self.window() {
-                    window.update_insets(&self.0.app);
-                }
-            }
-            MainEvent::GainedFocus => {
-                if let Some(window) = self.window() {
-                    window.set_active(true);
-                }
-            }
-            MainEvent::LostFocus => {
-                if let Some(window) = self.window() {
-                    window.set_active(false);
-                }
-            }
-            MainEvent::ConfigChanged { .. } => {
-                if let Some(window) = self.window() {
-                    window.set_appearance(self.appearance());
-                }
-            }
-            MainEvent::LowMemory => {
-                self.0.memory_warning.with(|warn| warn());
-            }
-            MainEvent::Start => self.phase(AppLifecyclePhase::Foreground),
-            MainEvent::Resume { .. } => self.phase(AppLifecyclePhase::Active),
-            MainEvent::Pause => self.phase(AppLifecyclePhase::Inactive),
-            MainEvent::Stop => self.phase(AppLifecyclePhase::Background),
-            MainEvent::Destroy => self.phase(AppLifecyclePhase::Disconnected),
-            MainEvent::SaveState { .. } => {}
-            MainEvent::InputAvailable => self.input(),
-            _ => {}
-        }
-    }
-
-    /// Creates the activity window and launches GPUI once the surface exists.
-    fn init_window(&self) {
-        let display = AndroidDisplay::current(&self.0.app);
-        {
-            let mut window = locked(&self.0.window);
-            if window.is_none() {
-                *window = Some(AndroidWindow::new(
-                    &self.0.app,
-                    display.physical_size(),
-                    display.scale_factor(),
-                ));
-            }
-        }
-        if let Some(window) = self.window() {
-            window.init(&self.0.app, &self.0.gpu);
-        }
-        // GPUI opens its window inside this callback, which finds the native
-        // window the loop just created.
-        if let Some(launch) = self.0.finish_launching.take() {
-            launch();
-        }
-    }
-
-    /// Releases the surface Android is destroying.
-    fn terminate_window(&self) {
-        if let Some(window) = self.window() {
-            window.terminate();
-        }
-    }
-
     /// Reads and delivers queued input events.
     fn input(&self) {
         let Ok(events) = self.0.app.input_events_iter() else {
@@ -257,7 +181,12 @@ impl AndroidPlatform {
             window.update_insets(&self.0.app);
         }
         let now = Instant::now();
-        if self.0.last_frame.get().is_some_and(|last| now - last < FRAME_INTERVAL) {
+        if self
+            .0
+            .last_frame
+            .get()
+            .is_some_and(|last| now - last < FRAME_INTERVAL)
+        {
             return;
         }
         self.0.last_frame.set(Some(now));
@@ -343,7 +272,10 @@ impl Platform for AndroidPlatform {
         let window = self
             .window()
             .ok_or_else(|| anyhow!("no Android native window; open windows after InitWindow"))?;
-        Ok(Box::new(AndroidPlatformWindow::new(window, Some(self.display()))))
+        Ok(Box::new(AndroidPlatformWindow::new(
+            window,
+            Some(self.display()),
+        )))
     }
 
     fn window_appearance(&self) -> WindowAppearance {
@@ -439,7 +371,9 @@ impl Platform for AndroidPlatform {
     }
 
     fn path_for_auxiliary_executable(&self, _name: &str) -> Result<PathBuf> {
-        Err(anyhow!("auxiliary executables are not supported on Android"))
+        Err(anyhow!(
+            "auxiliary executables are not supported on Android"
+        ))
     }
 
     fn set_cursor_style(&self, _style: CursorStyle) {}
@@ -500,9 +434,4 @@ fn unimplemented_prompt<T>(what: &str) -> oneshot::Receiver<Result<T>> {
     let (sender, receiver) = oneshot::channel();
     let _ = sender.send(Err(anyhow!("{what} is not implemented for Android")));
     receiver
-}
-
-/// Locks without panicking on a poisoned mutex.
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

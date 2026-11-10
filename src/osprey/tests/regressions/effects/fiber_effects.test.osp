@@ -259,8 +259,9 @@ fn awaitReplaysOneEffectfulRunCase() = {
     mut performs = 0
     mut lastAmount = 0
 
-    /// One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
-    let replayed = {
+    /// Every region in this case installs the same tally arm: it counts the run,
+    /// folds the amount into the shared cell and answers the new total.
+    let underTally = fn(work) => {
         handle Tally {
             add amount => {
                 performs = performs + 1 
@@ -269,73 +270,42 @@ fn awaitReplaysOneEffectfulRunCase() = {
                 total
             }
         }
+        work()
+    }
+
+    /// One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
+    let replayed = underTally(fn() => {
         let f = spawn tallyJob(7)
         let a1 = await(f)
         let a2 = await(f)
         let a3 = await(f)
         a1 + a2 + a3 
-    }
+    })
 
     /// The identity amount: the run leaves the cell where it was, and both awaits
     /// still answer the total the single body produced. 7 -> 7.
-    let zeroRun = {
-        handle Tally {
-            add amount => {
-                performs = performs + 1 
-                total = total + amount 
-                lastAmount = amount
-                total
-            }
-        }
+    let zeroRun = underTally(fn() => {
         let fz = spawn tallyJob(0)
         await(fz) + await(fz) 
-    }
+    })
 
     /// A negative amount walks the shared cell back. 7 -> 2.
-    let negRun = {
-        handle Tally {
-            add amount => {
-                performs = performs + 1 
-                total = total + amount 
-                lastAmount = amount
-                total
-            }
-        }
-        await(spawn tallyJob(0 - 5 ))
-    }
+    let negRun = underTally(fn() => await(spawn tallyJob(0 - 5 )))
 
     /// Three spawn SITES, each awaited before the next is spawned, so arrival is
     /// program order. "Each spawn site allocates a distinct capture cell", so the
     /// captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
-    let stepped = {
-        handle Tally {
-            add amount => {
-                performs = performs + 1 
-                total = total + amount 
-                lastAmount = amount
-                total
-            }
-        }
+    let stepped = underTally(fn() => {
         let base = 4
         let s1 = await(spawn tallyJob(base))
         let s2 = await(spawn tallyJob(base + 1 ))
         let s3 = await(spawn tallyJob(base + 2 ))
         s1 * 10000 + s2 * 100 + s3 
-    }
+    })
 
     /// ONE fiber body performing twice, the second nested inside the first arm's
     /// round trip. 17 -> 18 -> 17, and the body answers 18 + 17.
-    let twice = {
-        handle Tally {
-            add amount => {
-                performs = performs + 1 
-                total = total + amount 
-                lastAmount = amount
-                total
-            }
-        }
-        await(spawn tallyTwice(1, 0 - 1 ))
-    }
+    let twice = underTally(fn() => await(spawn tallyTwice(1, 0 - 1 )))
 
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll("one body run answers every await", [
@@ -830,9 +800,9 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     mut innerHits = 0
     mut stampHits = 0
 
-    /// Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
-    /// enclosing one. tag 3 => "outer3" and 300.
-    let inner = {
+    /// The enclosing region: `fetch` doubles the tag, `stamp` labels it, and
+    /// both arms count their own hits.
+    let outerRegion = fn(work) => {
         handle Relay {
             fetch tag => {
                 outerHits = outerHits + 1 
@@ -843,79 +813,43 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
                 "outer${tag}"
             }
         }
+        work()
+    }
+
+    /// The partial inner region: it supplies `fetch` only, so `stamp` must reach
+    /// the enclosing arm.
+    let innerFetch = fn(work) => {
         handle Relay {
             fetch tag => {
                 innerHits = innerHits + 1 
                 tag * 100 
             }
         }
-        await(spawn relayBoth(3))
+        work()
     }
 
+    /// Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
+    /// enclosing one. tag 3 => "outer3" and 300.
+    let inner = outerRegion(fn() => innerFetch(fn() => await(spawn relayBoth(3))))
+
     /// The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
-    let outerOnly = {
-        handle Relay {
-            fetch tag => {
-                outerHits = outerHits + 1 
-                tag * 2 
-            }
-            stamp tag => {
-                stampHits = stampHits + 1 
-                "outer${tag}"
-            }
-        }
-        await(spawn relayBoth(3))
-    }
+    let outerOnly = outerRegion(fn() => await(spawn relayBoth(3)))
 
     /// The inner region covers only the fiber spawned INSIDE it; the fiber
     /// spawned after it is back on the enclosing arm. 400 then 8.
-    let restored = {
-        handle Relay {
-            fetch tag => {
-                outerHits = outerHits + 1 
-                tag * 2 
-            }
-            stamp tag => {
-                stampHits = stampHits + 1 
-                "outer${tag}"
-            }
-        }
-        let shadowed = {
-            handle Relay {
-                fetch tag => {
-                    innerHits = innerHits + 1 
-                    tag * 100 
-                }
-            }
-            await(spawn relayBoth(4))
-        }
+    let restored = outerRegion(fn() => {
+        let shadowed = innerFetch(fn() => await(spawn relayBoth(4)))
         let plain = await(spawn relayBoth(4))
         "${shadowed}/${plain}"
-    }
+    })
 
     /// Two fibers under one inner region, one carrying the identity tag and one a
     /// negative tag: 0 => 0 and -2 => -200.
-    let paired = {
-        handle Relay {
-            fetch tag => {
-                outerHits = outerHits + 1 
-                tag * 2 
-            }
-            stamp tag => {
-                stampHits = stampHits + 1 
-                "outer${tag}"
-            }
-        }
-        handle Relay {
-            fetch tag => {
-                innerHits = innerHits + 1 
-                tag * 100 
-            }
-        }
+    let paired = outerRegion(fn() => innerFetch(fn() => {
         let a = await(spawn relayBoth(0))
         let b = await(spawn relayBoth(0 - 2 ))
         "${a}+${b}"
-    }
+    }))
 
     // "outer3=6" is the answer the enclosing arm would have given the fiber that
     // was spawned inside the inner region.

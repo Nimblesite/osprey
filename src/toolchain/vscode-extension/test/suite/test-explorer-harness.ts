@@ -6,10 +6,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  registerOspreyTestExplorer,
-  type TestRunSink,
-} from "../../client/src/test-explorer";
+import { registerOspreyTestExplorer } from "../../client/src/test-explorer";
+import { type TestRunSink } from "../../client/src/test-explorer-report";
 
 /** Two passing cases ("addition works" line 3, "zero identity" line 7). */
 export const PASS_FIXTURE = `fn add(a, b) = wrapAdd(a, b)

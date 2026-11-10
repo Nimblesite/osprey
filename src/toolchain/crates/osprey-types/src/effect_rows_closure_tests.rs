@@ -101,14 +101,22 @@ fn implicit_main_body_must_have_an_empty_effect_row() {
     );
 }
 
+/// The program `prelude` with its final `call` handled by `ring => 42`,
+/// accepted.
+fn accepted_with_ring_handler(prelude: &str, call: &str) {
+    accept_alarm(&format!(
+        "{prelude}{}",
+        handled("answer", "Alarm", "ring => 42", call)
+    ));
+}
+
 #[test]
 fn complete_handler_discharges_inferred_transitive_effect() {
-    accept_alarm(&format!(
+    accepted_with_ring_handler(
         "fn ring() = perform Alarm.ring()\n\
-         fn relay() = ring()\n\
-         {}",
-        handled("answer", "Alarm", "ring => 42", "relay()")
-    ));
+         fn relay() = ring()\n",
+        "relay()",
+    );
 }
 
 #[test]
@@ -124,12 +132,11 @@ fn user_higher_order_function_propagates_callback_effect() {
 
 #[test]
 fn user_higher_order_callback_is_discharged_at_call_site() {
-    accept_alarm(&format!(
+    accepted_with_ring_handler(
         "fn apply(callback) = callback()\n\
-         fn ring() = perform Alarm.ring()\n\
-         {}",
-        handled("answer", "Alarm", "ring => 42", "apply(ring)")
-    ));
+         fn ring() = perform Alarm.ring()\n",
+        "apply(ring)",
+    );
 }
 
 #[test]

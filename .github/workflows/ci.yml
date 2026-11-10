@@ -235,8 +235,10 @@ jobs:
           node --test scripts/ci/link-skills.test.mjs
           node scripts/ci/link-skills.mjs --check .
 
-      - name: Setup Osprey Compiler
+      - name: Set up toolchain for static checks
         uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: 'false'
 
       - name: Install VS Code extension dependencies
         run: npm ci
@@ -969,22 +971,29 @@ jobs:
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
   # present, logo resolves) plus nav / hero / mobile-menu / TOC assertions.
-  # Deliberately depends on NOTHING. It is the one suite that is meaningful for
-  # a website-only PR, so it must not be gated on `changes` — a job that
-  # `needs:` a failed job is SKIPPED, and skipping every suite the moment the
-  # gate-verification step trips would leave a PR with no test signal at all.
+  # Reuse the current compiler when Build runs. A skipped or failed Build
+  # still leaves the source-build path, including for website-only PRs.
   test-website:
     name: "Tests: Website E2E (Playwright)"
+    needs: build
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v7
-        # The site's images and videos are Git LFS files; the Book's examples
-        # build the compiler.
+        # The site's images and videos are Git LFS files.
         with:
           lfs: true
       - uses: ./.github/actions/detect-ci-scope
         id: filter
+      - name: Download compiler artifacts
+        if: ${{ needs.build.result == 'success' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Make the downloaded compiler executable
+        if: ${{ needs.build.result == 'success' }}
+        run: chmod +x target/release/osprey
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -995,6 +1004,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and target
+        if: ${{ needs.build.result != 'success' }}
         uses: actions/cache@v6
         with:
           path: |
@@ -1029,6 +1039,8 @@ jobs:
       - name: Run end-to-end tests
         run: npm test
         working-directory: ./src/toolchain/website
+        env:
+          WEBSITE_PREBUILT_COMPILER: ${{ needs.build.result == 'success' && '1' || '' }}
 
       - name: Book structure and executable examples
         if: steps.filter.outputs.book == 'true' || steps.filter.outputs.code == 'true'

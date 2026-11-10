@@ -9,7 +9,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 build = "build.rs"
-include = ["bindings/rust/*", "grammar.js", "queries/*", "src/*", "build.rs"]
+include = ["bindings/rust/*", "grammar.js", "grammar/*", "queries/*", "src/*", "build.rs"]
 
 [lib]
 path = "bindings/rust/lib.rs"

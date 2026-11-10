@@ -5,6 +5,7 @@
 
 use crate::raw::{Profile, Sample, Thread};
 use crate::symbolize::{FrameKind, SymFrame};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Per-function statistics from on-CPU samples only. `self_samples` counts
@@ -153,6 +154,17 @@ struct FuncAcc {
     total_samples: u64,
 }
 
+/// Hottest-first ordering: sample counts descending, then the identity keys
+/// ascending, so equal counts still get a deterministic order.
+fn sort_hot<T, C: Ord, I: Ord>(
+    mut rows: Vec<T>,
+    counts: impl Fn(&T) -> C,
+    id: impl Fn(&T) -> I,
+) -> Vec<T> {
+    rows.sort_by_key(|row| (Reverse(counts(row)), id(row)));
+    rows
+}
+
 /// Self/total per function, on-CPU samples only, sorted hottest-first.
 fn func_stats(profile: &Profile, sym_stacks: &[Vec<SymFrame>]) -> Vec<FuncStat> {
     let mut acc: BTreeMap<FuncKey, FuncAcc> = BTreeMap::new();
@@ -161,24 +173,20 @@ fn func_stats(profile: &Profile, sym_stacks: &[Vec<SymFrame>]) -> Vec<FuncStat> 
             record_sample(&mut acc, stack);
         }
     }
-    let mut funcs: Vec<FuncStat> = acc
-        .into_iter()
-        .map(|((name, file), a)| FuncStat {
-            name,
-            file,
-            line: a.line,
-            kind: a.kind,
-            self_samples: a.self_samples,
-            total_samples: a.total_samples,
-        })
-        .collect();
-    funcs.sort_by(|a, b| {
-        b.self_samples
-            .cmp(&a.self_samples)
-            .then_with(|| b.total_samples.cmp(&a.total_samples))
-            .then_with(|| a.name.cmp(&b.name))
-    });
-    funcs
+    sort_hot(
+        acc.into_iter()
+            .map(|((name, file), a)| FuncStat {
+                name,
+                file,
+                line: a.line,
+                kind: a.kind,
+                self_samples: a.self_samples,
+                total_samples: a.total_samples,
+            })
+            .collect(),
+        |f| (f.self_samples, f.total_samples),
+        |f| f.name.clone(),
+    )
 }
 
 /// Fold one on-CPU sample into the accumulators: total counts once per
@@ -224,21 +232,17 @@ fn line_stats(profile: &Profile, sym_stacks: &[Vec<SymFrame>]) -> Vec<LineStat> 
             *acc.entry((leaf.file.clone(), leaf.line)).or_insert(0) += 1;
         }
     }
-    let mut lines: Vec<LineStat> = acc
-        .into_iter()
-        .map(|((file, line), samples)| LineStat {
-            file,
-            line,
-            samples,
-        })
-        .collect();
-    lines.sort_by(|a, b| {
-        b.samples
-            .cmp(&a.samples)
-            .then_with(|| a.file.cmp(&b.file))
-            .then_with(|| a.line.cmp(&b.line))
-    });
-    lines
+    sort_hot(
+        acc.into_iter()
+            .map(|((file, line), samples)| LineStat {
+                file,
+                line,
+                samples,
+            })
+            .collect(),
+        |l| l.samples,
+        |l| (l.file.clone(), l.line),
+    )
 }
 
 /// Per-thread sample split over ALL samples.
@@ -324,6 +328,13 @@ mod tests {
         assert!((actual - expected).abs() < 1e-9, "{actual} != {expected}");
     }
 
+    /// A single-thread profile with one `[100]` stack under one `fib` frame —
+    /// the sample-classification scaffolding.
+    fn fib_model(samples: Vec<Sample>) -> Model {
+        let prof = profile(vec![thread(0, "main")], vec![vec![100]], samples);
+        build_model(&prof, &[vec![osp_frame("fib", 5)]])
+    }
+
     /// One stack where `fib` recurses: [fib(leaf), fib, main].
     fn recursive_model() -> Model {
         let prof = profile(
@@ -396,12 +407,7 @@ mod tests {
 
     #[test]
     fn waiting_samples_never_reach_function_or_line_stats() {
-        let prof = profile(
-            vec![thread(0, "main")],
-            vec![vec![100]],
-            vec![sample(0, 0, 0, false), sample(1, 0, 0, false)],
-        );
-        let model = build_model(&prof, &[vec![osp_frame("fib", 5)]]);
+        let model = fib_model(vec![sample(0, 0, 0, false), sample(1, 0, 0, false)]);
         assert!(model.funcs.is_empty());
         assert!(model.lines.is_empty());
         assert_eq!((model.sample_count, model.oncpu_samples), (2, 0));
@@ -459,27 +465,17 @@ mod tests {
 
     #[test]
     fn wall_and_cpu_seconds() {
-        let prof = profile(
-            vec![thread(0, "main")],
-            vec![vec![100]],
-            vec![sample(2_000_000_000, 0, 0, true), sample(0, 0, 0, true)],
-        );
-        let model = build_model(&prof, &[vec![osp_frame("fib", 5)]]);
+        let model = fib_model(vec![
+            sample(2_000_000_000, 0, 0, true),
+            sample(0, 0, 0, true),
+        ]);
         approx(model.wall_seconds, 2.0);
         approx(model.cpu_seconds, 0.002); // 2 samples at the 1000 Hz test rate
     }
 
     #[test]
     fn single_sample_profiles_have_zero_wall_time() {
-        let prof = profile(
-            vec![thread(0, "main")],
-            vec![vec![100]],
-            vec![sample(5, 0, 0, true)],
-        );
-        approx(
-            build_model(&prof, &[vec![osp_frame("fib", 5)]]).wall_seconds,
-            0.0,
-        );
+        approx(fib_model(vec![sample(5, 0, 0, true)]).wall_seconds, 0.0);
     }
 
     #[test]

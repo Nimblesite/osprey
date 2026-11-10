@@ -89,7 +89,7 @@ fn sample_weights(samples: &[Sample], rate_hz: u64) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{field_str, field_u64, model_of, osp_frame, sample, thread};
+    use crate::testutil::{field_str, field_u64, first_of, model_of, osp_frame, sample, thread};
 
     fn fixture() -> Value {
         // Threads: main (3 samples incl. one waiting), fiber-7 (0 samples).
@@ -118,8 +118,7 @@ mod tests {
             .pointer("/shared/frames")
             .and_then(Value::as_array)
             .unwrap();
-        assert_eq!(frames.len(), 3);
-        let fib = frames.first().unwrap();
+        let fib = first_of(frames, 3);
         field_str(fib, "name", "fib");
         field_str(fib, "file", "/src/app.osp");
         field_u64(fib, "line", 5);
@@ -129,8 +128,7 @@ mod tests {
     fn only_threads_with_samples_get_profiles() {
         let profiles = fixture();
         let profiles = profiles.get("profiles").and_then(Value::as_array).unwrap();
-        assert_eq!(profiles.len(), 1);
-        let main = profiles.first().unwrap();
+        let main = first_of(profiles, 1);
         field_str(main, "name", "main");
         field_str(main, "type", "sampled");
         field_str(main, "unit", "seconds");

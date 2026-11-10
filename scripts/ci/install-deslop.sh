@@ -22,7 +22,7 @@ fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 # Pinned: 0.39.0 added an Osprey grammar that returns no parse tree for this repo's own sources
 # (src/toolchain/benchmarks/cases/binarytrees/binarytrees.ospml among them) and fails the whole analysis. Move this
 # forward once a release parses them.
-DESLOP_VERSION="0.40.1"
+DESLOP_VERSION="0.41.0"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
 # Already at this release? Nothing to do (keeps `make setup` idempotent).

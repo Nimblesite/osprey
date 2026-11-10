@@ -52,16 +52,20 @@ fn map_value_numeric(cg: &Codegen, m: &Value) -> Option<Numeric> {
     crate::llty::sized_of_spelling(&tag)
 }
 
-/// `mapRemove(m, k) -> Map`.
-pub(super) fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+/// A map runtime op on `(map handle, boxed key)` — the shared shape of
+/// `mapRemove` and `mapContains`: evaluate both arguments, then emit the call
+/// on their `i8*, i64` words. Returns the handle (its tag still carries the
+/// value type) and the call result.
+fn map_key_op(cg: &mut Codegen, args: &[Expr], ret: &str, name: &str) -> Result<(Value, String)> {
     let m = handle_arg(cg, args, 0)?;
     let k = boxed_arg(cg, args, 1)?;
-    let r = cg.call(
-        "i8*",
-        "osprey_map_remove",
-        "i8*, i64",
-        &[&m.operand, &k.operand],
-    );
+    let r = cg.call(ret, name, "i8*, i64", &[&m.operand, &k.operand]);
+    Ok((m, r))
+}
+
+/// `mapRemove(m, k) -> Map`.
+pub(super) fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let (m, r) = map_key_op(cg, args, "i8*", "osprey_map_remove")?;
     Ok(own_handle(
         cg,
         Value::handle(r, map_owner(tagged_map_elem(&m).as_deref())),
@@ -70,14 +74,7 @@ pub(super) fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// `mapContains(m, k) -> bool`.
 pub(super) fn map_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let m = handle_arg(cg, args, 0)?;
-    let k = boxed_arg(cg, args, 1)?;
-    let raw = cg.call(
-        "i32",
-        "osprey_map_contains",
-        "i8*, i64",
-        &[&m.operand, &k.operand],
-    );
+    let (_, raw) = map_key_op(cg, args, "i32", "osprey_map_contains")?;
     let r = cg.emit_reg(format!("icmp ne i32 {raw}, 0"));
     Ok(Value::new(r, LType::I1))
 }

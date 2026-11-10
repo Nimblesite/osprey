@@ -13,17 +13,15 @@ import {
   testDocOf,
   type TestDoc,
 } from "../../client/src/test-explorer-docs";
+import { discoveryOutcome, parseTestList, type DiscoveredTest } from "../../client/src/test-explorer-parse";
 import {
   COVERAGE_RUN,
   PLAIN_RUN,
   coverageRunArgs,
-  discoveryOutcome,
   envFilterFor,
-  parseTestList,
   runArgsFor,
-  type DiscoveredTest,
   type RunMode,
-} from "../../client/src/test-explorer-parse";
+} from "../../client/src/test-explorer-runs";
 
 const PROFILE_RUN: RunMode = { kind: "profile", dir: "/tmp/profile-root" };
 

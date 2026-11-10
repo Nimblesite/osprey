@@ -11,18 +11,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  documentedTestIds,
-  executeRunRequest,
-  refreshTestFile,
-  testDocFor,
-  type TestRunSink,
-} from "../../client/src/test-explorer";
-import {
-  leafTestId,
-  PLAIN_RUN,
-  type RunMode,
-} from "../../client/src/test-explorer-parse";
+import { executeRunRequest } from "../../client/src/test-explorer";
+import { type TestRunSink } from "../../client/src/test-explorer-report";
+import { documentedTestIds, refreshTestFile, testDocFor } from "../../client/src/test-explorer-items";
+import { leafTestId } from "../../client/src/test-explorer-parse";
+import { PLAIN_RUN, type RunMode } from "../../client/src/test-explorer-runs";
 import { testDocMarkdown } from "../../client/src/test-explorer-docs";
 import {
   NO_TEST_MESSAGE,

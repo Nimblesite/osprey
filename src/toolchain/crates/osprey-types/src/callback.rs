@@ -279,19 +279,28 @@ fn site(expression: &Expr) -> Option<Site> {
     })
 }
 
-fn forwarded_name(body: &Expr) -> Option<&str> {
+/// The callee and arguments of a call to a named function that passes no
+/// named arguments.
+pub(crate) fn plain_call(expression: &Expr) -> Option<(&str, &[Expr])> {
     let Expr::Call {
         function,
         arguments,
         named_arguments,
-    } = body
+    } = expression
     else {
         return None;
     };
     let Expr::Identifier(name) = function.as_ref() else {
         return None;
     };
-    (arguments.is_empty() && named_arguments.is_empty()).then_some(name)
+    named_arguments
+        .is_empty()
+        .then_some((name.as_str(), arguments.as_slice()))
+}
+
+fn forwarded_name(body: &Expr) -> Option<&str> {
+    let (name, arguments) = plain_call(body)?;
+    arguments.is_empty().then_some(name)
 }
 
 fn rewrite(program: &Program, removed: &[Position]) -> Program {

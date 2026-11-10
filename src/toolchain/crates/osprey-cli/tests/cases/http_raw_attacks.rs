@@ -32,49 +32,35 @@ const fn plain(
     }
 }
 
+/// The `Expected` of `status` answering with the text `body`.
+const fn text(status: i32, body: &'static str) -> Expected {
+    Expected::Response(status, Body::Text(body))
+}
+
+/// The `Expected` of a refused reply carrying `message`.
+const fn refusing(message: &'static str) -> Expected {
+    Expected::Refused(message)
+}
+
 /// A reply the client must answer, with the default close and timeout.
 const fn ok(name: &'static str, reply: &'static [u8], status: i32, body: &'static str) -> Attack {
-    plain(
-        name,
-        reply,
-        false,
-        DEFAULT_TIMEOUT_MS,
-        Expected::Response(status, Body::Text(body)),
-    )
+    plain(name, reply, false, DEFAULT_TIMEOUT_MS, text(status, body))
 }
 
 /// A reply the client must refuse, with the default close and timeout.
 const fn refused(name: &'static str, reply: &'static [u8], message: &'static str) -> Attack {
-    plain(
-        name,
-        reply,
-        false,
-        DEFAULT_TIMEOUT_MS,
-        Expected::Refused(message),
-    )
+    plain(name, reply, false, DEFAULT_TIMEOUT_MS, refusing(message))
 }
 
 /// A framed answer the server holds the socket open after, on its own patient
 /// client: complete framing must end the read without waiting for the close.
 const fn held(name: &'static str, reply: &'static [u8], status: i32, body: &'static str) -> Attack {
-    plain(
-        name,
-        reply,
-        true,
-        HOLD_OPEN_TIMEOUT_MS,
-        Expected::Response(status, Body::Text(body)),
-    )
+    plain(name, reply, true, HOLD_OPEN_TIMEOUT_MS, text(status, body))
 }
 
 /// A refusal the server holds the socket open after: the timeout alone ends it.
 const fn held_refused(name: &'static str, reply: &'static [u8], message: &'static str) -> Attack {
-    plain(
-        name,
-        reply,
-        true,
-        DEFAULT_TIMEOUT_MS,
-        Expected::Refused(message),
-    )
+    plain(name, reply, true, DEFAULT_TIMEOUT_MS, refusing(message))
 }
 
 /// A dripped reply, one byte at a time, on its own client and timeout.

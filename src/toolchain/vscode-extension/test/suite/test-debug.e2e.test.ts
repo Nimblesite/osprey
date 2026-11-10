@@ -15,7 +15,7 @@ import {
   debugSuite,
   type DebugSuiteRunner,
 } from "../../client/src/test-debug";
-import { refreshTestFile } from "../../client/src/test-explorer";
+import { refreshTestFile } from "../../client/src/test-explorer-items";
 import { leafTestId } from "../../client/src/test-explorer-parse";
 import {
   assertCurrentLine,

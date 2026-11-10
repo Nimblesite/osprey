@@ -146,18 +146,29 @@ async fn closed_reader_ends_the_loop_cleanly_via_serve_on() {
     assert!(outcome.is_ok(), "EOF is a clean disconnect: {outcome:?}");
 }
 
-#[tokio::test]
-async fn apply_changes_prefers_full_replacement_over_edits() {
+/// An open document at `URI` holding `text` at `version`.
+fn opened_doc(text: &str, version: i32) -> (Vfs, DocumentUri) {
     let vfs = Vfs::new(ENCODING);
     let doc = DocumentUri::new(URI);
-    vfs.open(doc.clone(), "old\n", DocumentVersion::new(1));
+    vfs.open(doc.clone(), text, DocumentVersion::new(version));
+    (vfs, doc)
+}
+
+/// One incremental `contentChanges` entry editing line 0, `start..end`.
+fn edit_event(start: u32, end: u32, text: &str) -> Value {
+    json!({
+        "range": { "start": { "line": 0, "character": start }, "end": { "line": 0, "character": end } },
+        "text": text
+    })
+}
+
+#[tokio::test]
+async fn apply_changes_prefers_full_replacement_over_edits() {
+    let (vfs, doc) = opened_doc("old\n", 1);
     // A batch carrying both an edit and a full replacement: full wins.
     let params = json!({
         "textDocument": { "uri": URI, "version": 2 },
-        "contentChanges": [
-            { "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 1 } }, "text": "X" },
-            { "text": "brand new\n" }
-        ]
+        "contentChanges": [edit_event(0, 1, "X"), { "text": "brand new\n" }]
     });
     apply_changes(&vfs, &doc, &params);
     assert_eq!(vfs.text(&doc).as_deref(), Some("brand new\n"));
@@ -266,17 +277,12 @@ async fn request_maps_handler_outcomes_to_responses() {
 
 #[tokio::test]
 async fn apply_changes_rejects_a_stale_incremental_edit() {
-    let vfs = Vfs::new(ENCODING);
-    let doc = DocumentUri::new(URI);
-    vfs.open(doc.clone(), "abc\n", DocumentVersion::new(5));
+    let (vfs, doc) = opened_doc("abc\n", 5);
     // An incremental edit stamped with a stale version (<= stored) is dropped
     // by the vfs; `apply_changes` surfaces the rejection and the buffer holds.
     let stale = json!({
         "textDocument": { "uri": URI, "version": 2 },
-        "contentChanges": [ {
-            "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 1 } },
-            "text": "X"
-        } ]
+        "contentChanges": [edit_event(0, 1, "X")]
     });
     apply_changes(&vfs, &doc, &stale);
     assert_eq!(

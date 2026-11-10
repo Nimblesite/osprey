@@ -6,13 +6,7 @@ use crate::{check_program, check_program_exports};
 #[test]
 fn published_effect_requirements_preserve_discharge_and_uncertainty() -> Result<(), String> {
     for (source, flavor) in REQUIREMENT_PROGRAMS {
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        assert_eq!(
-            check_program(&parsed.program),
-            Vec::<crate::TypeError>::new()
-        );
-        let types = crate::infer_program(&parsed.program);
+        let types = inferred_types(source, flavor);
         for (name, operations, runtime, unresolved) in REQUIREMENT_EXPECTATIONS {
             let report = types.function_effects.get(name).ok_or(name)?;
             assert_eq!(report.operations, operations, "{flavor}: {name}");
@@ -106,16 +100,24 @@ fn published_effect_instances_never_expose_private_inference_names() -> Result<(
         ("effect Read<T> { get: fn() -> T }\ntype t123 = Tag\nfn generic() = perform Read.get()\nfn nominal() = perform Read<t123>.get()\n", osprey_syntax::Flavor::Default),
         ("effect Read T\n    get : Unit => T\ntype t123 = Tag\ngeneric () = perform Read.get ()\nnominal () = perform Read<t123>.get ()\n", osprey_syntax::Flavor::Ml),
     ] {
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        assert_eq!(check_program(&parsed.program), Vec::<crate::TypeError>::new());
-        let types = crate::infer_program(&parsed.program);
+        let types = inferred_types(source, flavor);
         for (name, expected) in [("generic", "Read<_>.get"), ("nominal", "Read<t123>.get")] {
             let report = types.function_effects.get(name).ok_or(name)?;
             assert_eq!(report.operations, [expected], "{flavor}: {name}");
         }
     }
     Ok(())
+}
+
+/// Parses `source` in `flavor`, requires a clean check, and infers its types.
+fn inferred_types(source: &str, flavor: osprey_syntax::Flavor) -> crate::ProgramTypes {
+    let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert_eq!(
+        check_program(&parsed.program),
+        Vec::<crate::TypeError>::new()
+    );
+    crate::infer_program(&parsed.program)
 }
 
 fn program(source: &str) -> osprey_ast::Program {

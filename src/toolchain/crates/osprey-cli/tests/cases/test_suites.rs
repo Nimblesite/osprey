@@ -1,5 +1,7 @@
 //! The `test` subcommand over directories: parallelism, caching, scratch hygiene, coverage and broken suites.
 
+use std::path::{Path, PathBuf};
+
 use super::test_runner::{
     assert_parallel_default_has_serial_escape, executable_script, parallel_probe_fixture,
     run_cache_probe, run_concurrency_probe, run_conformance_probe, write_in, FAILING_TESTS,
@@ -70,6 +72,25 @@ fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
     );
 }
 
+/// One cache probe run: the test subcommand succeeds and the counting
+/// compiler driver has been invoked `count` times so far.
+#[cfg(unix)]
+fn probe_compiles(dir: &Path, driver: &Path, count: &str) {
+    let probe = run_cache_probe(dir, driver);
+    assert_eq!(probe.code, Some(0), "{}", probe.stderr);
+    assert_eq!(read_text(&dir.join("cc-count")), count);
+}
+
+/// Every path left under `scratch`, which a clean run leaves empty.
+fn leaked_paths(scratch: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(scratch)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .collect()
+}
+
 #[cfg(unix)]
 #[test]
 fn test_subcommand_reuses_unchanged_compiled_suites() {
@@ -94,13 +115,9 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
         "#!/bin/sh\nprintf x >> \"$OSPREY_CC_COUNT\"\nexec clang \"$@\"\n",
     );
 
-    let first = run_cache_probe(&dir, &driver);
-    assert_eq!(first.code, Some(0), "{}", first.stderr);
     // Three cached object/link pairs, plus one uncached combined invocation.
-    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxx");
-    let second = run_cache_probe(&dir, &driver);
-    assert_eq!(second.code, Some(0), "{}", second.stderr);
-    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxxx");
+    probe_compiles(&dir, &driver, "xxxxxxx");
+    probe_compiles(&dir, &driver, "xxxxxxxx");
 }
 
 #[cfg(unix)]
@@ -117,12 +134,7 @@ fn run_removes_temporary_native_artifacts() {
         .env_remove("OSPREY_TEST_CACHE_DIR");
     let output = finish(&mut cmd);
     assert_eq!(output.code, Some(0), "{}", output.stderr);
-    let leaked = std::fs::read_dir(&scratch)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
+    let leaked = leaked_paths(&scratch);
     assert!(leaked.is_empty(), "temporary artifacts leaked: {leaked:?}");
 }
 
@@ -159,12 +171,7 @@ fn run_keeps_test_file_output_out_of_the_callers_directory() {
         assert_eq!(output.code, Some(0), "{name}: {}", output.stderr);
         assert_eq!(output.stdout, "saved\nread\n", "{name}");
         assert_eq!(caller.join(OUTPUT).exists(), leaves_output, "{name}");
-        let leaked = std::fs::read_dir(&scratch)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|entry| entry.path())
-            .collect::<Vec<_>>();
+        let leaked = leaked_paths(&scratch);
         assert!(leaked.is_empty(), "{name}: scratch leaked: {leaked:?}");
     }
 }
@@ -234,12 +241,7 @@ fn test_subcommand_coverage_survives_type_errors_and_bad_json_paths() {
         bogus.to_string_lossy().as_ref(),
         "--quiet",
     ]);
-    assert_eq!(o.code, Some(1), "{}", o.stdout);
-    assert!(
-        o.stdout.contains("# suites: 1 passed, 1 failed"),
-        "{}",
-        o.stdout
-    );
+    o.expect_stdout(1, &["# suites: 1 passed, 1 failed"], &[]);
     assert!(o.stderr.contains("type mismatch"), "{}", o.stderr);
     assert!(o.stderr.contains("no coverage dump"), "{}", o.stderr);
     assert!(
@@ -285,12 +287,12 @@ fn error_result_assertions_render_the_error() {
         "test(\"overflow\", fn() => expect(checkedAdd(9223372036854775807, 1), 2))\n",
         &["--run"],
     );
-    assert_eq!(o.code, Some(1), "{}", o.stdout);
-    assert!(
-        o.stdout
-            .contains("# expect failed: expected 2, got Error(integer overflow)"),
-        "{}",
-        o.stdout
+    o.expect_stdout(
+        1,
+        &[
+            "# expect failed: expected 2, got Error(integer overflow)",
+            "not ok 1 - overflow",
+        ],
+        &[],
     );
-    assert!(o.stdout.contains("not ok 1 - overflow"), "{}", o.stdout);
 }

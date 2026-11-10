@@ -1,5 +1,15 @@
 use super::*;
 
+/// `Result<int, e>` — the exact-payload cases below keep needing it.
+fn int_result(e: &str) -> Type {
+    Type::result(Type::int(), Type::prim(e))
+}
+
+/// `(int) -> ret`.
+fn int_to(ret: Type) -> Type {
+    Type::fun(vec![Type::int()], ret)
+}
+
 #[test]
 fn unifies_var_with_concrete() {
     let mut c = InferCtx::new();
@@ -35,7 +45,7 @@ fn bare_collection_unifies_with_parameterized() {
 #[test]
 fn result_is_not_assignable_to_its_payload() {
     let mut c = InferCtx::new();
-    let r = Type::result(Type::int(), Type::prim("string"));
+    let r = int_result("string");
     assert!(unify_assignable(&mut c, &Type::int(), &r).is_err());
     assert!(unify(&mut c, &Type::int(), &r).is_err());
 }
@@ -98,11 +108,8 @@ fn assignable_wraps_bare_value_into_result_return() {
 #[test]
 fn assignable_function_return_cannot_erase_result() {
     let mut c = InferCtx::new();
-    let slot = Type::fun(vec![Type::int()], Type::int());
-    let lambda = Type::fun(
-        vec![Type::int()],
-        Type::result(Type::int(), Type::prim("string")),
-    );
+    let slot = int_to(Type::int());
+    let lambda = int_to(int_result("string"));
     assert!(unify_assignable(&mut c, &slot, &lambda).is_err());
 }
 
@@ -167,18 +174,12 @@ fn binding_a_var_to_itself_is_a_noop() {
 #[test]
 fn assignable_functions_reject_result_erasure_but_allow_success_wrapping() {
     let mut c = InferCtx::new();
-    let slot = Type::fun(vec![Type::int()], Type::int());
-    let value = Type::fun(
-        vec![Type::int()],
-        Type::result(Type::int(), Type::prim("string")),
-    );
+    let slot = int_to(Type::int());
+    let value = int_to(int_result("string"));
     assert!(unify_assignable(&mut c, &slot, &value).is_err());
     // The safe direction remains: a bare return is implicitly Success.
-    let result_slot = Type::fun(
-        vec![Type::int()],
-        Type::result(Type::int(), Type::prim("E")),
-    );
-    let bare = Type::fun(vec![Type::int()], Type::int());
+    let result_slot = int_to(int_result("E"));
+    let bare = int_to(Type::int());
     unify_assignable(&mut c, &result_slot, &bare).unwrap();
 }
 
@@ -228,7 +229,7 @@ fn incompatible_shapes_hit_the_final_mismatch_arm() {
 #[test]
 fn assignable_rejects_a_result_value_in_a_concrete_slot() {
     let mut c = InferCtx::new();
-    let r = Type::result(Type::int(), Type::prim("E"));
+    let r = int_result("E");
     assert!(unify_assignable(&mut c, &Type::int(), &r).is_err());
 }
 

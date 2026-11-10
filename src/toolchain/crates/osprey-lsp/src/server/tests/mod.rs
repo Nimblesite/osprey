@@ -347,3 +347,38 @@ async fn settled(h: &mut Harness, id: i64) -> Vec<Value> {
     .await
     .expect("scope analysis responds")
 }
+
+/// Start a server and open `source` at `uri`; `label` names the awaited
+/// report, so a missing publication fails with it.
+async fn started_open(
+    uri: &str,
+    source: &str,
+    label: &str,
+) -> Result<(Harness, Value), Box<dyn std::error::Error>> {
+    let mut h = Harness::start();
+    let report = h.open_at(uri, source).await.params.ok_or(label)?;
+    Ok((h, report))
+}
+
+/// Open `source` at `uri`; its first diagnostic must be `code`'s warning on
+/// `line` carrying `message`.
+async fn assert_opened_first_warning(
+    uri: &str,
+    source: &str,
+    code: &str,
+    line: u32,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (h, report) = started_open(uri, source, "missing diagnostics").await?;
+    assert_first_warning(&report, code, line, message);
+    h.shutdown_and_exit().await;
+    Ok(())
+}
+
+/// The report's first diagnostic is a `code` warning on `line` saying `message`.
+fn assert_first_warning(report: &Value, code: &str, line: u32, message: &str) {
+    assert_at(report, "/diagnostics/0/code", code);
+    assert_at(report, "/diagnostics/0/severity", 2);
+    assert_at(report, "/diagnostics/0/range/start/line", line);
+    assert_at(report, "/diagnostics/0/message", message);
+}

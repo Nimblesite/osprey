@@ -38,10 +38,6 @@ fn dotIs(a, b, expected) = dotOf(a, b, fn(total) => total == expected)
 fn meanIs(b, expected) = meanOf(b, fn(mean) => mean == expected)
 /// varianceIs is the two-pass variance of `b`, which must be `expected`.
 fn varianceIs(b, expected) = varianceOf(b, fn(spread) => spread == expected)
-/// elementIs is one [GPU-GET] read, or `fallback` when `index` misses.
-fn elementIs(b, index, fallback, expected) = (gpuGet(b, index) ?: fallback) == expected
-/// lengthIs is [GPU-BUFFER-LENGTH] on one buffer.
-fn lengthIs(b, expected) = gpuLength(b) == expected
 /// Empty statistics and zero-spread normalisation choose an explicit boundary value.
 fn degenerate(value, work) = {
     handle Arith { divideByZero _ _ => value }
@@ -149,7 +145,7 @@ fn captureManyCaseUploaded(input0) = {
     let xs = input0
     withBuffer(gpuMap(xs, fn(x) => (a * x + b) * c), fn(affine) =>
         checkAll("several captures", [
-    elementIs(affine, 0, toFloat32(0.0), toFloat32(3.5)), elementIs(affine, 1, toFloat32(0.0), toFloat32(4.5)), elementIs(affine, 2, toFloat32(0.0), toFloat32(5.5)), sumIs(affine, toFloat32(13.5)), lengthIs(affine, 3), gpuSatisfies(gpuMap(xs, fn(x) => c * x + b - a), fn(shifted) => sumIs(shifted, toFloat32(12.0))), gpuSatisfies(gpuMap(xs, fn(x) => a * x + b * c), fn(mixed) => sumIs(mixed, toFloat32(19.5))), gpuSatisfies(gpuMap(xs, fn(x) => a * c * x), fn(oneScale) => sumIs(oneScale, toFloat32(6.0))), gpuSatisfies(gpuMap(xs, fn(x) => b - a * x - c), fn(inverted) => sumIs(inverted, toFloat32(1.5))), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => a * x + c * y), fn(zipped) => sumIs(zipped, toFloat32(15.0))), gpuSatisfies(gpuFold(xs, b, fn(acc, x) => acc + c * x), fn(total) => total == toFloat32(8.0))
+    elementsFrom(affine, 0, toFloat32(0.0), [toFloat32(3.5), toFloat32(4.5), toFloat32(5.5)]), sumIs(affine, toFloat32(13.5)), lengthIs(affine, 3), gpuSatisfies(gpuMap(xs, fn(x) => c * x + b - a), fn(shifted) => sumIs(shifted, toFloat32(12.0))), gpuSatisfies(gpuMap(xs, fn(x) => a * x + b * c), fn(mixed) => sumIs(mixed, toFloat32(19.5))), gpuSatisfies(gpuMap(xs, fn(x) => a * c * x), fn(oneScale) => sumIs(oneScale, toFloat32(6.0))), gpuSatisfies(gpuMap(xs, fn(x) => b - a * x - c), fn(inverted) => sumIs(inverted, toFloat32(1.5))), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => a * x + c * y), fn(zipped) => sumIs(zipped, toFloat32(15.0))), gpuSatisfies(gpuFold(xs, b, fn(acc, x) => acc + c * x), fn(total) => total == toFloat32(8.0))
 ]))
 }
 /// captureSharedCase spends one capture across every combinator and then again
@@ -273,7 +269,7 @@ fn normalizeCaseUploaded(input0, input1) = {
         Success { lo } => match gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), maxF) {
             Success { hi } => match gpuMap(xs, fn(v) => ((v - lo) / (hi - lo)) ) {
                 Success { scaled } => checkAll("normalisation", [
-    lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(0.25)), elementIs(scaled, 2, toFloat32(0.0), toFloat32(0.5)), elementIs(scaled, 3, toFloat32(0.0), toFloat32(1.0)), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), gpuSatisfies(gpuMap(xs, fn(v) => ((hi - v) / (hi - lo)) ), fn(inverted) => sumIs(inverted, toFloat32(2.25))), gpuSatisfies(gpuFold(xs, hi, minF), fn(lowest) => lowest == toFloat32(1.0)), gpuSatisfies(gpuFilter(xs, fn(v) => v > lo), fn(above) => lengthIs(above, 3)), degenerate(0.5, fn() => gpuSatisfies(gpuMap(input1, fn(v) => (v - toFloat32(4.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(1.0))))
+    lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementsFrom(scaled, 1, toFloat32(0.0), [toFloat32(0.25), toFloat32(0.5), toFloat32(1.0)]), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), gpuSatisfies(gpuMap(xs, fn(v) => ((hi - v) / (hi - lo)) ), fn(inverted) => sumIs(inverted, toFloat32(2.25))), gpuSatisfies(gpuFold(xs, hi, minF), fn(lowest) => lowest == toFloat32(1.0)), gpuSatisfies(gpuFilter(xs, fn(v) => v > lo), fn(above) => lengthIs(above, 3)), degenerate(0.5, fn() => gpuSatisfies(gpuMap(input1, fn(v) => (v - toFloat32(4.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(1.0))))
 ])
                 Error { message } => check("GPU operation", "success", toString(message))
             }
@@ -292,7 +288,7 @@ fn reluCaseUploaded(input0, input1, input2) = {
     withBuffer(gpuMap(acts, relu), fn(clamped) =>
         withBuffer(gpuMap(acts, leaky), fn(leaked) =>
             checkAll("activations", [
-    sumIs(clamped, toFloat32(3.5)), elementIs(clamped, 0, toFloat32(9.9), toFloat32(0.0)), gpuSatisfies(gpuFilter(acts, isActive), fn(active) => lengthIs(active, 2)), sumIs(leaked, toFloat32(2.5)), elementIs(leaked, 0, toFloat32(0.0), toFloat32(0.0) - toFloat32(0.75)), elementIs(leaked, 1, toFloat32(0.0), toFloat32(2.5)), elementIs(leaked, 2, toFloat32(0.0), toFloat32(0.0) - toFloat32(0.25)), gpuSatisfies(gpuMap(acts, fn(x) => relu(x) - slope * relu(toFloat32(0.0) - x)), fn(blended) => sumIs(blended, toFloat32(2.5))), gpuSatisfies(gpuMap(acts, fn(x) => cap - relu(cap - relu(x))), fn(ceiling) => sumIs(ceiling, toFloat32(3.0))), gpuSatisfies(gpuMap(input1, relu), fn(negative) => sumIs(negative, toFloat32(0.0))), gpuSatisfies(gpuMap(input2, relu), fn(positive) => sumIs(positive, toFloat32(3.0))), gpuSatisfies(gpuMap(acts, fn(x) => slope * relu(x)), fn(damped) => sumIs(damped, toFloat32(1.75))), gpuSatisfies(gpuMap(acts, fn(x) => relu(toFloat32(0.0) - x)), fn(reflected) => gpuSatisfies(fromGpu(reflected), fn(values) => structuralEquals(values, [toFloat32(1.5), toFloat32(0.0), toFloat32(0.5), toFloat32(0.0)])))
+    sumIs(clamped, toFloat32(3.5)), elementIs(clamped, 0, toFloat32(9.9), toFloat32(0.0)), gpuSatisfies(gpuFilter(acts, isActive), fn(active) => lengthIs(active, 2)), sumIs(leaked, toFloat32(2.5)), elementsFrom(leaked, 0, toFloat32(0.0), [toFloat32(0.0) - toFloat32(0.75), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.25)]), gpuSatisfies(gpuMap(acts, fn(x) => relu(x) - slope * relu(toFloat32(0.0) - x)), fn(blended) => sumIs(blended, toFloat32(2.5))), gpuSatisfies(gpuMap(acts, fn(x) => cap - relu(cap - relu(x))), fn(ceiling) => sumIs(ceiling, toFloat32(3.0))), gpuSatisfies(gpuMap(input1, relu), fn(negative) => sumIs(negative, toFloat32(0.0))), gpuSatisfies(gpuMap(input2, relu), fn(positive) => sumIs(positive, toFloat32(3.0))), gpuSatisfies(gpuMap(acts, fn(x) => slope * relu(x)), fn(damped) => sumIs(damped, toFloat32(1.75))), gpuSatisfies(gpuMap(acts, fn(x) => relu(toFloat32(0.0) - x)), fn(reflected) => gpuSatisfies(fromGpu(reflected), fn(values) => structuralEquals(values, [toFloat32(1.5), toFloat32(0.0), toFloat32(0.5), toFloat32(0.0)])))
 ])))
 }
 /// softmaxCase pins the pipeline by its properties, not its digits: a

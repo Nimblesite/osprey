@@ -148,10 +148,10 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
         "# osprey: flavor=python\ndef broken():\n    return missing\n",
     )?;
     std::fs::write(a.join("tool.py"), "import sys\n")?;
-    let warning_uri = crate::workspace::uri_of(&warning).ok_or("warning URI")?;
-    let python_uri = crate::workspace::uri_of(&python).ok_or("python URI")?;
-    let a_uri = crate::workspace::uri_of(&a).ok_or("a URI")?;
-    let b_uri = crate::workspace::uri_of(&b).ok_or("b URI")?;
+    let warning_uri = uri(&warning, "warning URI")?;
+    let python_uri = uri(&python, "python URI")?;
+    let a_uri = uri(&a, "a URI")?;
+    let b_uri = uri(&b, "b URI")?;
     let mut h = Harness::start();
     let _ = h.request(500, "initialize", with_progress(json!({"rootUri":a_uri,"initializationOptions":{"diagnostics":{"scope":"roots","roots":[a,b_uri]}}}))).await;
     h.notify("initialized", json!({})).await;
@@ -193,12 +193,14 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
     );
     h.notify("textDocument/didClose", text_doc(&warning_uri))
         .await;
-    let reports = settled(&mut h, 503).await;
-    assert!(
-        reports.iter().any(|p| p["uri"] == warning_uri
-            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
-        "close restores disk warning: {reports:?}"
-    );
+    settled_code(
+        &mut h,
+        503,
+        &warning_uri,
+        "redundant-annotation",
+        "close restores disk warning",
+    )
+    .await;
     std::fs::remove_file(&python)?;
     h.notify(
         "workspace/didChangeWatchedFiles",
@@ -238,6 +240,36 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
     )
     .await;
     settles_cleared(h, 507, warning_uri, "removed workspace clears").await;
+}
+
+/// `uri_of` that fails the test named `label` when the path has no URI.
+fn uri(path: &std::path::Path, label: &str) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(crate::workspace::uri_of(path).ok_or(label)?)
+}
+
+/// A harness initialized over one `folder` workspace, past `initialized`.
+async fn workspace_server(id: i64, folder: &str) -> Harness {
+    let mut h = Harness::start();
+    let _ = h
+        .request(
+            id,
+            "initialize",
+            with_progress(json!({"workspaceFolders":[{"uri":folder,"name":"repo"}]})),
+        )
+        .await;
+    h.notify("initialized", json!({})).await;
+    h
+}
+
+/// Wait for `id`'s queued reports; some file `uri` must publish `code`.
+async fn settled_code(h: &mut Harness, id: i64, uri: &str, code: &str, because: &str) {
+    let reports = settled(h, id).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri && p.pointer("/diagnostics/0/code") == Some(&json!(code))),
+        "{because}: {reports:?}"
+    );
 }
 
 #[tokio::test]
@@ -311,18 +343,10 @@ async fn repository_sweep_skips_files_git_ignores() -> Result<(), Box<dyn std::e
         .arg(&root)
         .status()?;
     assert!(init.success(), "git init prepares the fixture");
-    let keep_uri = crate::workspace::uri_of(&root.join("keep.osp")).ok_or("keep URI")?;
-    let skip_uri = crate::workspace::uri_of(&root.join("gen/skip.ospml")).ok_or("skip URI")?;
-    let folder = crate::workspace::uri_of(&root).ok_or("folder URI")?;
-    let mut h = Harness::start();
-    let _ = h
-        .request(
-            620,
-            "initialize",
-            with_progress(json!({"workspaceFolders":[{"uri":folder,"name":"repo"}]})),
-        )
-        .await;
-    h.notify("initialized", json!({})).await;
+    let keep_uri = uri(&root.join("keep.osp"), "keep URI")?;
+    let skip_uri = uri(&root.join("gen/skip.ospml"), "skip URI")?;
+    let folder = uri(&root, "folder URI")?;
+    let mut h = workspace_server(620, &folder).await;
     let reports = settled(&mut h, 621).await;
     assert!(
         reports.iter().any(|p| p["uri"] == keep_uri
@@ -350,17 +374,9 @@ async fn requests_are_answered_before_the_workspace_sweep_finishes(
     for n in 0..SWEPT_FILES {
         std::fs::write(root.join(format!("f{n}.osp")), SRC)?;
     }
-    let opened = crate::workspace::uri_of(&root.join("f0.osp")).ok_or("opened URI")?;
-    let folder = crate::workspace::uri_of(&root).ok_or("folder URI")?;
-    let mut h = Harness::start();
-    let _ = h
-        .request(
-            700,
-            "initialize",
-            with_progress(json!({"workspaceFolders":[{"uri":folder,"name":"repo"}]})),
-        )
-        .await;
-    h.notify("initialized", json!({})).await;
+    let opened = uri(&root.join("f0.osp"), "opened URI")?;
+    let folder = uri(&root, "folder URI")?;
+    let mut h = workspace_server(700, &folder).await;
     h.notify(
         "textDocument/didOpen",
         json!({"textDocument":{"uri":opened,"version":1,"text":SRC}}),
@@ -421,8 +437,8 @@ async fn deleted_open_file_clears_until_edited() -> Result<(), Box<dyn std::erro
     let ghost = root.join("ghost.ospml");
     let text = "double : int -> int\ndouble x = x * 2\n";
     std::fs::write(&ghost, text)?;
-    let ghost_uri = crate::workspace::uri_of(&ghost).ok_or("ghost URI")?;
-    let root_uri = crate::workspace::uri_of(&root).ok_or("root URI")?;
+    let ghost_uri = uri(&ghost, "ghost URI")?;
+    let root_uri = uri(&root, "root URI")?;
     let mut h = Harness::start();
     let _ = h
         .request(
@@ -446,12 +462,14 @@ async fn deleted_open_file_clears_until_edited() -> Result<(), Box<dyn std::erro
     let edited =
         json!({"textDocument":{"uri":ghost_uri,"version":2},"contentChanges":[{"text":text}]});
     h.notify("textDocument/didChange", edited).await;
-    let reports = settled(&mut h, 603).await;
-    assert!(
-        reports.iter().any(|p| p["uri"] == ghost_uri
-            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
-        "editing the orphaned buffer reports again: {reports:?}"
-    );
+    settled_code(
+        &mut h,
+        603,
+        &ghost_uri,
+        "redundant-annotation",
+        "editing the orphaned buffer reports again",
+    )
+    .await;
     h.shutdown_and_exit().await;
     std::fs::remove_dir_all(root)?;
     Ok(())

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const { mkdir, writeFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
+const { expect } = require("@playwright/test");
 
 // The built site. api-docs.spec.js generates its fixture inside it, under
 // DOCS_FIXTURE_PREFIX, so the docs can be served under a URL prefix.
@@ -121,4 +122,12 @@ async function exampleResult(source, file) {
   }
 }
 
-module.exports = { SITE, DOCS_FIXTURE_PREFIX, builtPages, PAGES, VIEWPORTS, collectProblems, paintedColours, executeExample, exampleResult };
+// Follow the hero's "Install Osprey" action to the install section of the homepage.
+async function openInstallation(page) {
+  const action = page.locator(".hero-actions").getByRole("link", { name: "Install Osprey", exact: true });
+  await action.click();
+  await expect(page).toHaveURL(/\/#install$/);
+  await expect(page.locator("#install .section-title")).toBeInViewport();
+}
+
+module.exports = { SITE, DOCS_FIXTURE_PREFIX, builtPages, PAGES, VIEWPORTS, collectProblems, paintedColours, executeExample, exampleResult, openInstallation };

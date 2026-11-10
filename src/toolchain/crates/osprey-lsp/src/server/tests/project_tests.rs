@@ -30,12 +30,7 @@ async fn state_advice_changes(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = crate::test_support::ProjectFixture::new(extension)?;
     let uri = fixture.write("main", sources[0])?;
-    let mut h = Harness::start();
-    let report = h
-        .open_at(&uri, sources[0])
-        .await
-        .params
-        .ok_or("diagnostics")?;
+    let (mut h, report) = started_open(&uri, sources[0], "diagnostics").await?;
     assert_at(&report, "/diagnostics/0/code", "state-boundary");
     for (version, text, code) in [
         (2, sources[1], None),
@@ -80,12 +75,7 @@ async fn library_manifest_changes_invalidate_style_advice() -> Result<(), Box<dy
     let fixture = crate::test_support::ProjectFixture::new("osp")?;
     let source = "namespace \"com.example.app\";\nstate module Store {}\n";
     let uri = fixture.write("main", source)?;
-    let mut h = Harness::start();
-    let initial = h
-        .open_at(&uri, source)
-        .await
-        .params
-        .ok_or("initial diagnostics")?;
+    let (mut h, initial) = started_open(&uri, source, "initial diagnostics").await?;
     assert_at(&initial, "/diagnostics/0/code", "namespace-reverse-domain");
     assert_at(&initial, "/diagnostics/1/code", "state-boundary");
     let manifest = fixture.root.join("osprey.toml");
@@ -114,19 +104,14 @@ async fn state_boundaries_are_visible_in_both_flavors() -> Result<(), Box<dyn st
     ] {
         let fixture = crate::test_support::ProjectFixture::new(extension)?;
         let uri = fixture.write("main", source)?;
-        let mut h = Harness::start();
-        let report = h
-            .open_at(&uri, source)
-            .await
-            .params
-            .ok_or("missing diagnostics")?;
-        assert_first_warning(
-            &report,
+        assert_opened_first_warning(
+            &uri,
+            source,
             "state-boundary",
             1,
             "state boundary `vault::Store`: 0 private cells; exported effects: none",
-        );
-        h.shutdown_and_exit().await;
+        )
+        .await?;
     }
     Ok(())
 }
@@ -138,19 +123,14 @@ async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::erro
     let source = "namespace app;\nfn main() = 0\n";
     let uri = fixture.write("main", source)?;
     let _ = fixture.write("nested/helper", "namespace app;\nfn identity(x) = x\n")?;
-    let mut h = Harness::start();
-    let report = h
-        .open_at(&uri, source)
-        .await
-        .params
-        .ok_or("missing diagnostics")?;
-    assert_first_warning(
-        &report,
+    assert_opened_first_warning(
+        &uri,
+        source,
         "namespace-folder-drift",
         0,
         "namespace `app` spans 2 folders; source paths do not change its identity",
-    );
-    h.shutdown_and_exit().await;
+    )
+    .await?;
     Ok(())
 }
 
@@ -175,17 +155,36 @@ fn sibling_project(
     (root, uri, sibling)
 }
 
-#[tokio::test]
-async fn sibling_syntax_errors_preserve_existing_type_errors() {
-    let main = "print missingName\n";
-    let helper = "suffix text = text + \"!\"\n";
-    let (root, uri, sibling) = sibling_project("sibling error", "errors", main, helper);
+/// A sibling project whose `main` is open, with its first report in hand.
+async fn sibling_server(
+    tag: &str,
+    name: &str,
+    main: &str,
+    helper: &str,
+) -> (std::path::PathBuf, String, String, Harness, Value) {
+    let (root, uri, sibling) = sibling_project(tag, name, main, helper);
     let mut h = Harness::start();
     let initial = h
         .open_at(&uri, main)
         .await
         .params
         .expect("initial diagnostics");
+    (root, uri, sibling, h, initial)
+}
+
+/// The sibling's report comes back clean, and `uri` refreshes clean with it.
+async fn assert_sibling_and_main_clean(h: &mut Harness, uri: &str, sibling: &str, report: Value) {
+    assert_at(&report, "/uri", sibling);
+    assert_eq!(report.get("diagnostics"), Some(&json!([])));
+    assert_refreshed(h, uri, &json!([])).await;
+}
+
+#[tokio::test]
+async fn sibling_syntax_errors_preserve_existing_type_errors() {
+    let main = "print missingName\n";
+    let helper = "suffix text = text + \"!\"\n";
+    let (root, uri, sibling, mut h, initial) =
+        sibling_server("sibling error", "errors", main, helper).await;
     assert_at(&initial, "/diagnostics/0/code", "type-error");
     let expected = initial.get("diagnostics").expect("type error").clone();
     let _ = h.open_at(&sibling, helper).await;
@@ -202,13 +201,8 @@ async fn sibling_syntax_errors_preserve_existing_type_errors() {
 async fn sibling_open_change_and_close_refresh_signature_warnings() {
     let main = "decorate : string -> string\ndecorate text = suffix text\nprint (decorate \"x\")\n";
     let helper = "suffix text = text + \"!\"\n";
-    let (root, uri, sibling) = sibling_project("live diagnostics", "warnings", main, helper);
-    let mut h = Harness::start();
-    let initial = h
-        .open_at(&uri, main)
-        .await
-        .params
-        .expect("initial diagnostics");
+    let (root, uri, sibling, mut h, initial) =
+        sibling_server("live diagnostics", "warnings", main, helper).await;
     let expected = initial.get("diagnostics").expect("warning").clone();
     assert_eq!(expected.as_array().expect("warnings").len(), 1);
     assert_at(&initial, "/diagnostics/0/code", "redundant-annotation");
@@ -217,9 +211,7 @@ async fn sibling_open_change_and_close_refresh_signature_warnings() {
         .await
         .params
         .expect("sibling diagnostics");
-    assert_at(&opened, "/uri", sibling.clone());
-    assert_eq!(opened.get("diagnostics"), Some(&json!([])));
-    assert_refreshed(&mut h, &uri, &json!([])).await;
+    assert_sibling_and_main_clean(&mut h, &uri, &sibling, opened).await;
     h.notify(
         "textDocument/didChange",
         json!({"textDocument":{"uri":sibling,"version":2},"contentChanges":[{"text":helper}]}),
@@ -230,9 +222,7 @@ async fn sibling_open_change_and_close_refresh_signature_warnings() {
     assert_refreshed(&mut h, &uri, &expected).await;
     h.notify("textDocument/didChange", json!({"textDocument":{"uri":sibling,"version":3},"contentChanges":[{"text":"suffix text = text\n"}]})).await;
     let changed = h.read_message().await.params.expect("sibling diagnostics");
-    assert_at(&changed, "/uri", sibling.clone());
-    assert_eq!(changed.get("diagnostics"), Some(&json!([])));
-    assert_refreshed(&mut h, &uri, &json!([])).await;
+    assert_sibling_and_main_clean(&mut h, &uri, &sibling, changed).await;
     h.notify("textDocument/didClose", text_doc(&sibling)).await;
     assert_refreshed(&mut h, &uri, &expected).await;
     assert!(
@@ -344,6 +334,13 @@ async fn references_from_a_shared_source_root_reach_every_project_that_includes_
     Ok(())
 }
 
+/// Whether some settled report publishes `code` for `uri`.
+fn reports_code(reports: &[Value], uri: &str, code: &str) -> bool {
+    reports
+        .iter()
+        .any(|p| p["uri"] == uri && p.pointer("/diagnostics/0/code") == Some(&json!(code)))
+}
+
 /// The repository's glob keeps failscompilation/ quiet, open or not; replacing the exclude
 /// globs reports it and clears whatever the new globs match.
 /// Implements [LSP-DIAGNOSTICS-EXCLUDE].
@@ -370,8 +367,7 @@ async fn excluded_until_overridden(
     .await;
     let reports = settled(h, 407).await;
     assert!(
-        reports.iter().any(|p| p["uri"] == uri("failscompilation")
-            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        reports_code(&reports, &uri("failscompilation"), "type-error"),
         "replacing the glob reports failscompilation: {reports:?}"
     );
     for folder in ["other", "two"] {
@@ -419,8 +415,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
     let reports = settled(&mut h, 401).await;
     for folder in ["one", "two", "other"] {
         assert!(
-            reports.iter().any(|p| p["uri"] == uri(folder)
-                && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+            reports_code(&reports, &uri(folder), "type-error"),
             "unopened {folder}: {reports:?}"
         );
     }
@@ -442,8 +437,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         "the glob returns and clears the open file: {reports:?}"
     );
     assert!(
-        reports.iter().any(|p| p["uri"] == uri("two")
-            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        reports_code(&reports, &uri("two"), "type-error"),
         "two is back in scope: {reports:?}"
     );
     std::fs::write(root.join("two/bad.osp"), "fn broken() { 1 }\n")?;
@@ -474,12 +468,4 @@ async fn repository_diagnostics_default_and_live_scope_roots(
     h.shutdown_and_exit().await;
     std::fs::remove_dir_all(root)?;
     Ok(())
-}
-
-/// The report's first diagnostic is a `code` warning on `line` saying `message`.
-fn assert_first_warning(report: &Value, code: &str, line: u32, message: &str) {
-    assert_at(report, "/diagnostics/0/code", code);
-    assert_at(report, "/diagnostics/0/severity", 2);
-    assert_at(report, "/diagnostics/0/range/start/line", line);
-    assert_at(report, "/diagnostics/0/message", message);
 }
