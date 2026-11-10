@@ -52,6 +52,10 @@ fn then(result, next) = match result {
 fn collectDecode(values, decode) = foldList(values, Success { value: List() }, fn(acc, item) =>
     then(acc, fn(kept) => then(decode(item), fn(one) => Success { value: listAppend(kept, one) })))
 
+/// Threads four decoded fields into one record constructor.
+fn then4(first, second, third, fourth, build) = then(first, fn(a) => then(second, fn(b) =>
+    then(third, fn(c) => then(fourth, fn(d) => Success { value: build(a, b, c, d) }))))
+
 // --- edge: results.json -> Report — the only code that touches Json ---------
 
 fn decodeReport(source) = match jsonDecode(source) {
@@ -74,17 +78,11 @@ fn decodeRefs(m) = then(fieldAt(m, "reference"), fn(ref) =>
             then(stringAt(ref, "uvicorn"), fn(uvicorn) =>
                 Success { value: Refs { python: python, fastapiVersion: fastapiVersion, uvicorn: uvicorn } }))))
 
-fn decodeCounts(m) = then(intAt(m, "workers"), fn(workers) =>
-    then(intAt(m, "samples"), fn(samples) =>
-        then(intAt(m, "trials"), fn(trials) =>
-            then(intAt(m, "warmup"), fn(warmup) =>
-                Success { value: Counts { workers: workers, samples: samples, trials: trials, warmup: warmup } }))))
+fn decodeCounts(m) = then4(intAt(m, "workers"), intAt(m, "samples"), intAt(m, "trials"), intAt(m, "warmup"),
+    fn(workers, samples, trials, warmup) => Counts { workers: workers, samples: samples, trials: trials, warmup: warmup })
 
-fn decodeNotes(m) = then(stringAt(m, "platform"), fn(platform) =>
-    then(stringAt(m, "scope"), fn(scope) =>
-        then(stringAt(m, "method"), fn(method) =>
-            then(stringAt(m, "memory"), fn(memory) =>
-                Success { value: Notes { platform: platform, scope: scope, method: method, memory: memory } }))))
+fn decodeNotes(m) = then4(stringAt(m, "platform"), stringAt(m, "scope"), stringAt(m, "method"), stringAt(m, "memory"),
+    fn(platform, scope, method, memory) => Notes { platform: platform, scope: scope, method: method, memory: memory })
 
 fn decodeRuntimes(doc) = then(fieldAt(doc, "results"), fn(items) => match items {
         JsonArray(values) => collectDecode(values, decodeRuntime)
@@ -129,15 +127,15 @@ fn stringAt(json, key) = then(fieldAt(json, key), fn(value) => match value {
         _ => Error { message: "${key} is not text" }
 })
 
-fn intAt(json, key) = then(fieldAt(json, key), fn(value) => match jsonInt(value) {
+/// One numeric field, converted or failing with the field's own name.
+fn numberAt(json, key, convert, kind) = then(fieldAt(json, key), fn(value) => match convert(value) {
         Success { value } => Success { value: value }
-        Error => Error { message: "${key} is not an integer" }
+        Error => Error { message: "${key} is not ${kind}" }
 })
 
-fn floatAt(json, key) = then(fieldAt(json, key), fn(value) => match jsonFloat(value) {
-        Success { value } => Success { value: value }
-        Error => Error { message: "${key} is not a number" }
-})
+fn intAt(json, key) = numberAt(json, key, jsonInt, "an integer")
+
+fn floatAt(json, key) = numberAt(json, key, jsonFloat, "a number")
 
 // --- pure: lookups and comparisons over the typed report ---------------------
 
@@ -373,12 +371,14 @@ fn memoryHtml(r) = {
     let py = medianRss(r, baselineKey)
     match arc > 0.0 && py > 0.0 {
         true => match py >= arc {
-            true => "<p class=\"verdict\">Median sampled memory: Osprey (ARC) <b>${fixed(arc)} MiB</b> vs Python <b>${fixed(py)} MiB</b> — Python uses ${fixed(py / arc)}× more.</p>"
-            false => "<p class=\"verdict\">Median sampled memory: Osprey (ARC) <b>${fixed(arc)} MiB</b> vs Python <b>${fixed(py)} MiB</b> — Osprey (ARC) uses ${fixed(arc / py)}× more.</p>"
+            true => memoryLine(arc, py, "Python", py / arc)
+            false => memoryLine(arc, py, "Osprey (ARC)", arc / py)
         }
         false => ""
     }
 }
+
+fn memoryLine(arc, py, who, ratio) = "<p class=\"verdict\">Median sampled memory: Osprey (ARC) <b>${fixed(arc)} MiB</b> vs Python <b>${fixed(py)} MiB</b> — ${who} uses ${fixed(ratio)}× more.</p>"
 
 /// One card per workload: throughput bars, then every metric in one table.
 fn workloadHtml(r, row) = "<div class=\"card\">
