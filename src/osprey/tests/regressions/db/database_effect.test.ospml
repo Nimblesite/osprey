@@ -51,17 +51,8 @@ effect Database
     (** Close the connection and release its resources. *)
     close : Ptr => int
 
-(** SQLite's "rest of the string" length. *)
-allBytes = 0 - 1
-
-(** Collapse a `Result`: `onOk` sees the value, `onError` sees the message. *)
-foldResult (result, onOk, onError) =
-    match result
-        Success value => onOk value
-        Error message => onError message
-
 (** --- real SQLite handler implementations (top-level, no captures) --- *)
-(** Run `call` against a fresh out-parameter cell, yielding its status code and pointer. *)
+(** Runs `call` against a fresh out-parameter cell, yielding its status code and pointer. *)
 withCell call =
     cell = osprey_ffi_cell ()
     rc = call cell
@@ -69,11 +60,24 @@ withCell call =
     _freed = osprey_ffi_free cell
     { rc = rc, value = value }
 
-(** `label ok` when status code `rc` is zero, `label err` otherwise. *)
-statusLine (label, rc) =
-    match rc
-        0 => "${label} ok"
-        _ => "${label} err"
+openReal path =
+    opened = withCell (\cell => sqlite3_open path cell)
+    match opened.rc
+        0 => Success(value = opened.value)
+        _ => Error(message = "open failed")
+
+execReal (db, sql) =
+    nullptr = osprey_ffi_null ()
+    sqlite3_exec db sql nullptr nullptr nullptr
+
+prepareReal (db, sql) =
+    prepared = withCell (\cell => sqlite3_prepare_v2 db sql (0 - 1) cell (osprey_ffi_null ()))
+    prepared.value
+
+(** `${label} ok` when status code `rc` is zero, `${label} err` otherwise. *)
+statusLine (label, rc) = match rc
+    0 => "${label} ok"
+    _ => "${label} err"
 
 createUsersTable db = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
 readRow stmt = { id = perform Database.columnInt stmt 0, name = "${perform Database.columnText stmt 1}" }
@@ -87,7 +91,7 @@ seedUser (db, uid, uname) =
     _fin = perform Database.finalize stmt
     rc
 
-(** Seed the two demo users, yielding the line that reports their status codes. *)
+(** Seeds the two demo users, yielding the line that reports their status codes. *)
 seedDemoUsers db = "inserted ${seedUser (db, 1, "Ada")} ${seedUser (db, 2, "Linus")}"
 
 showUser stmt =
@@ -105,21 +109,14 @@ runApp db =
     _qfin = perform Database.finalize q
     print (statusLine ("closed", perform Database.close db))
 
-(** Install the real SQLite handler around `work`. SQLite ignores the `exec`
-    callback and its message, so those three pointers are null. *)
+(** Installs the real SQLite handler around `work`. *)
 withDatabase work =
     handle Database
-        open path =>
-            opened = withCell (\cell => sqlite3_open path cell)
-            match opened.rc
-                0 => Success(value = opened.value)
-                _ => Error(message = "open failed")
-        exec db sql => sqlite3_exec db sql (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
-        prepare db sql =>
-            prepared = withCell (\cell => sqlite3_prepare_v2 db sql allBytes cell (osprey_ffi_null ()))
-            prepared.value
+        open path => openReal path
+        exec db sql => execReal (db, sql)
+        prepare db sql => prepareReal (db, sql)
         bindInt stmt idx val => sqlite3_bind_int stmt idx val
-        bindText stmt idx val => sqlite3_bind_text stmt idx val allBytes (osprey_ffi_transient ())
+        bindText stmt idx val => sqlite3_bind_text stmt idx val (0 - 1) (osprey_ffi_transient ())
         step stmt => sqlite3_step stmt
         columnInt stmt col => sqlite3_column_int stmt col
         columnText stmt col => sqlite3_column_text stmt col
@@ -127,24 +124,25 @@ withDatabase work =
         close db => sqlite3_close db
     work ()
 
-(** Run `work` against a fresh in-memory database inside the real handler. *)
-withMemoryDatabase work =
-    withDatabase (\() => andThen (perform Database.open ":memory:") work)
+(** Runs `work` against a fresh in-memory database inside the real handler. *)
+withMemoryDatabase work = withDatabase (\() => andThen (perform Database.open ":memory:", work))
 
-(** Report an open failure, otherwise yield whatever the run produced. *)
-reportOpened result = foldResult (result, \value => value, \message => print "open ${message}")
+(** Reports an open failure, otherwise yields whatever the run produced. *)
+reportOpened result = match result
+    Success value => value
+    Error message => print "open ${message}"
 
 databaseDemo () = reportOpened (withMemoryDatabase runApp)
 databaseDemo ()
 
-(** Capture every externally visible result of one handled database interaction. *)
+(** Captures every externally visible result of one handled database interaction. *)
 type DatabaseObservation =
     createStatuses : List<int>
     rowStatuses : List<int>
     finishStatuses : List<int>
     selectedName : string
 
-(** Run application helpers through Database and return immutable evidence. *)
+(** Runs application helpers through Database and returns immutable evidence. *)
 observeDatabase db =
     created = createUsersTable db
     inserted = seedUser (db, 7, "Grace")
@@ -161,24 +159,24 @@ observeDatabase db =
         selectedName = row.name
     )
 
-(** Report whether the real handler produced an observation instead of an error. *)
-databaseOpened result = foldResult (result, \_value => true, \_message => false)
+(** Reports whether the real handler produced an observation instead of an error. *)
+databaseOpened result = match result
+    Success => true
+    Error => false
 
-(** Verify the Database capability performs a complete typed SQLite round trip. *)
+(** Verifies the Database capability performs a complete typed SQLite round trip. *)
 databaseEffectCase () =
     result = withMemoryDatabase observeDatabase
-    foldResult (
-        result,
-        \value => checkAll "Database effect round trip" [
+    match result
+        Success value => checkAll ("Database effect round trip", [
             databaseOpened result,
-            structuralEquals value.createStatuses [0, 101, 100],
-            structuralEquals value.rowStatuses [7, 101],
-            structuralEquals value.finishStatuses [0, 0],
+            structuralEquals (value.createStatuses, [0, 101, 100]),
+            structuralEquals (value.rowStatuses, [7, 101]),
+            structuralEquals (value.finishStatuses, [0, 0]),
             value.selectedName == "Grace"
-        ],
-        \message => checkAll "Database effect open result" [
+        ])
+        Error message => checkAll ("Database effect open result", [
             databaseOpened result,
             message == ""
-        ]
-    )
+        ])
 test "Database capability binds, queries, and closes through its handler" databaseEffectCase
