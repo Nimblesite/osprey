@@ -22,11 +22,9 @@
  * Implements [TYPE-LIST], [TYPE-LIST-OPS] from docs/specs/language/0004-TypeSystem.md.
  *
  * Backs the list builtins of docs/specs/runtime/0012-Built-InFunctions.md — [BUILTIN-LIST],
- * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
- * [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-SORT] and
- * [BUILTIN-COLLECTION-LENGTH].
- * The iterator at the bottom also carries the linear scan emitted for
- * [BUILTIN-LIST-CONTAINS] and [BUILTIN-LIST-FOREACH].
+ * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND] and [BUILTIN-COLLECTION-LENGTH].
+ * Whole-list rebuilds (prepend, concat, reverse, sort) and the iterator are in
+ * list_rebuild.c, over this file's public API.
  */
 
 typedef struct OspreyListNode {
@@ -86,11 +84,6 @@ struct OspreyListBuilder {
   OspreyListNode *root;
   OspreyListNode *tail;
   int32_t elem_managed;
-};
-
-struct OspreyListIter {
-  OspreyList *list;
-  int64_t index;
 };
 
 static OspreyListNode *alloc_node(int64_t layout) {
@@ -334,47 +327,6 @@ OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
   return osprey_list_append_of(l, v, osprey_list_elem_managed(l));
 }
 
-/* Copy `src`'s elements into `b`; a C-internal rebuild BORROWS what it reads. */
-static void builder_push_all(OspreyListBuilder *b, OspreyList *src) {
-  int64_t n = osprey_list_length(src);
-  for (int64_t i = 0; i < n; i++) {
-    osprey_list_builder_push_borrowed(b, osprey_list_get(src, i));
-  }
-}
-
-/* O(n): rebuild via builder. Spec documents the trie-concat upgrade path. */
-OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int em) {
-  OspreyListBuilder *b = osprey_list_builder_new_of(em);
-  osprey_list_builder_push_of(b, v, em);
-  builder_push_all(b, l);
-  return osprey_list_builder_seal(b);
-}
-
-OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
-  return osprey_list_prepend_of(l, v, osprey_list_elem_managed(l));
-}
-
-OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {
-  /* Alias returns carry a fresh +1 (retain-on-return): the caller owns every
-   * returned handle, aliased or not [GC-ARC-PERCEUS]. */
-  if (a == NULL || a->length == 0) {
-    if (b == NULL) {
-      return osprey_list_empty();
-    }
-    osp_retain(b);
-    return (OspreyList *)b;
-  }
-  if (b == NULL || b->length == 0) {
-    osp_retain(a);
-    return (OspreyList *)a;
-  }
-  OspreyListBuilder *bld =
-      osprey_list_builder_new_of(osprey_list_elem_managed(a));
-  builder_push_all(bld, a);
-  builder_push_all(bld, b);
-  return osprey_list_builder_seal(bld);
-}
-
 /* Drop the first `n` elements as an O(1) VIEW: a fresh header sharing `l`'s
    whole skeleton with `offset` bumped, which makes `[head, ...tail]` recursion
    linear. Node RC (the +1s below) makes it safe: last one out frees. */
@@ -390,84 +342,6 @@ OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   osp_retain(l->tail);
   return alloc_list(l->length - n, l->shift, l->tail_count, l->root, l->tail,
                     l->offset + n, l->elem_managed);
-}
-
-OspreyList *osprey_list_reverse(OspreyList *l) {
-  OspreyListBuilder *b =
-      osprey_list_builder_new_of(osprey_list_elem_managed(l));
-  for (int64_t i = osprey_list_length(l) - 1; i >= 0; i--) {
-    osprey_list_builder_push_borrowed(b, osprey_list_get(l, i));
-  }
-  return osprey_list_builder_seal(b);
-}
-
-/* Natural ascending order for [BUILTIN-LIST-SORT]: strings compare by byte
-   content, integers by signed value. Codegen guarantees the element type is
-   one of those two, so the elem_managed flag alone selects the comparison and
-   no other element kind can reach this branch. */
-static int64_t list_sort_less(OspreyList *l, int64_t a, int64_t b) {
-  if (l->elem_managed) {
-    return strcmp((const char *)(uintptr_t)a, (const char *)(uintptr_t)b) < 0;
-  }
-  return a < b;
-}
-
-/* Merge the two sorted halves [lo, mid) and [mid, hi) into `scratch`, then
-   copy the merged run back over `src`. Taking the LEFT element on a tie keeps
-   equal elements in their original relative order, making the whole sort
-   stable [BUILTIN-LIST-SORT]. */
-static void list_sort_merge(OspreyList *l, int64_t *src, int64_t *scratch,
-                            int64_t lo, int64_t mid, int64_t hi) {
-  int64_t i = lo;
-  int64_t j = mid;
-  int64_t k = lo;
-  while (i < mid && j < hi) {
-    scratch[k++] = list_sort_less(l, src[j], src[i]) ? src[j++] : src[i++];
-  }
-  while (i < mid) {
-    scratch[k++] = src[i++];
-  }
-  while (j < hi) {
-    scratch[k++] = src[j++];
-  }
-  memcpy(src + lo, scratch + lo, (size_t)(hi - lo) * sizeof(int64_t));
-}
-
-static void list_sort_range(OspreyList *l, int64_t *src, int64_t *scratch,
-                            int64_t lo, int64_t hi) {
-  if (hi - lo < 2) {
-    return;
-  }
-  int64_t mid = lo + (hi - lo) / 2;
-  list_sort_range(l, src, scratch, lo, mid);
-  list_sort_range(l, src, scratch, mid, hi);
-  list_sort_merge(l, src, scratch, lo, mid, hi);
-}
-
-/* Stable ascending sort of List<int> / List<string>. The borrowed elements are
-   copied into a scratch pair, merge-sorted in place, then pushed through the
-   builder (which dups each borrowed element) so the result owns its elements
-   exactly as `listReverse`'s does. */
-OspreyList *osprey_list_sort(OspreyList *l) {
-  int64_t n = osprey_list_length(l);
-  if (n < 2) {
-    osp_retain(l); /* alias return: +1 to the caller (see concat) */
-    return (OspreyList *)l;
-  }
-  int64_t *src = (int64_t *)malloc((size_t)n * sizeof(int64_t));
-  int64_t *scratch = (int64_t *)malloc((size_t)n * sizeof(int64_t));
-  for (int64_t i = 0; i < n; i++) {
-    src[i] = osprey_list_get(l, i);
-  }
-  list_sort_range(l, src, scratch, 0, n);
-  OspreyListBuilder *b =
-      osprey_list_builder_new_of(osprey_list_elem_managed(l));
-  for (int64_t i = 0; i < n; i++) {
-    osprey_list_builder_push_borrowed(b, src[i]);
-  }
-  free(src);
-  free(scratch);
-  return osprey_list_builder_seal(b);
 }
 
 /* ===== Builder (transient-style, no sharing during construction) ===== */
@@ -554,22 +428,4 @@ OspreyList *osprey_list_builder_seal(OspreyListBuilder *b) {
                              b->tail, 0, b->elem_managed);
   free(b);
   return l;
-}
-
-/* ===== Iterator ===== */
-
-OspreyListIter *osprey_list_iter_new(OspreyList *l) {
-  OspreyListIter *it = (OspreyListIter *)calloc(1, sizeof(OspreyListIter));
-  it->list = l;
-  it->index = 0;
-  return it;
-}
-
-int osprey_list_iter_next(OspreyListIter *it, int64_t *out) {
-  if (it->list == NULL || it->index >= it->list->length) {
-    return 0;
-  }
-  *out = osprey_list_get(it->list, it->index);
-  it->index++;
-  return 1;
 }

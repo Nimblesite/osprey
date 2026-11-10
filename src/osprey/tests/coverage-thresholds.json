@@ -172,6 +172,9 @@
       "list_runtime": {
         "language": "c"
       },
+      "list_rebuild": {
+        "language": "c"
+      },
       "map_runtime": {
         "language": "c"
       },

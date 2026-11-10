@@ -70,7 +70,7 @@ _coverage_check_rust:
 C_TEST_MEMORY_SRC = runtime/memory_gc.c
 # file_runtime.c builds listDir's List<string> results, so every suite linking it
 # links the string and list runtimes too; C_SUITE_BUILD dedupes overlaps.
-FILE_RUNTIME_SRC = runtime/file_runtime.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/float_spelling.c
+FILE_RUNTIME_SRC = runtime/file_runtime.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c runtime/float_spelling.c
 C_TEST_MEMORY_LIBS = -pthread
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
 OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
@@ -140,13 +140,13 @@ C_SRC_gpu_metal_tests = runtime/gpu_metal_tests.m runtime/gpu_metal.m $(FILE_RUN
 C_FLAGS_gpu_metal_tests = -fobjc-arc -DOSPREY_GPU_METAL=1
 C_LIBS_gpu_metal_tests = -framework Foundation -framework Metal -pthread
 endif
-C_SRC_list_tests = runtime/list_tests.c runtime/list_sort_tests.c runtime/list_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_list_tests = runtime/list_tests.c runtime/list_sort_tests.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c $(C_TEST_MEMORY_SRC)
-C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 # The same suite on the portable float-spelling path wasm32 uses.
 C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
-C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c
 C_LIBS_json_runtime_tests = -pthread
 C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
 C_LIBS_effects_runtime_tests = -pthread
@@ -154,7 +154,7 @@ C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_e
 C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_LIBS_test_system_runtime = -pthread
 C_SRC_test_file_runtime = runtime/test_file_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
-C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c runtime/list_rebuild.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)

@@ -57,9 +57,11 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_runtime.c     -o bin/gc/list_runtime.o && \
+	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/list_rebuild.c     -o bin/gc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime.c      -o bin/gc/map_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_gc_shim.h runtime/map_runtime_hamt.c -o bin/gc/map_runtime_hamt.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/list_runtime.c        -o bin/arc/list_runtime.o && \
+	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/list_rebuild.c        -o bin/arc/list_rebuild.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/map_runtime.c         -o bin/arc/map_runtime.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/map_runtime_hamt.c    -o bin/arc/map_runtime_hamt.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime.c      -o bin/arc/string_runtime.o && \
@@ -77,6 +79,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(A) runtime/string_runtime_list.c  -o bin/string_runtime_list.o && \
 	  $(CC) $(B) runtime/float_spelling.c       -o bin/float_spelling.o && \
 	  $(CC) $(B) runtime/list_runtime.c         -o bin/list_runtime.o && \
+	  $(CC) $(B) runtime/list_rebuild.c         -o bin/list_rebuild.o && \
 	  $(CC) $(B) runtime/map_runtime.c          -o bin/map_runtime.o && \
 	  $(CC) $(B) runtime/map_runtime_hamt.c     -o bin/map_runtime_hamt.o && \
 	  $(CC) $(B) runtime/json_runtime.c         -o bin/json_runtime.o && \
