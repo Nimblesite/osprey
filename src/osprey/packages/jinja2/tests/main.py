@@ -17,11 +17,6 @@ def at(xs, i):
     return unwrap_or(listGet(xs, i), "")
 
 
-def row(xs, i):
-    """Element `i` of a list of rows, or the empty row past the end."""
-    return unwrap_or(listGet(xs, i), [])
-
-
 def first_node(nodes):
     """The first node a parse produced, or a blank one when it produced none."""
     return unwrap_or(listGet(nodes, 0), P.blank("missing"))
@@ -54,31 +49,43 @@ def parse_step(name, result, step):
             return [Check.failed(name, message)]
 
 
+def row_render(entry, context):
+    """The port's render of the template in row `entry`, under `context`."""
+    return R.render(R.chat_environment(), at(entry, 1), context)
+
+
+def row_answer(entry):
+    """A check of `name` against the answer column the row `entry` recorded."""
+    return lambda name, answer: same(name, answer, at(entry, 2))
+
+
+def elements(xs, missing, work):
+    """`work` over each element of `xs`, using `missing` where `xs` runs out."""
+    return toList(map(range(len(xs)), lambda i: work(unwrap_or(listGet(xs, i), missing))))
+
+
+def all_of(groups):
+    """Every case list in `groups`, concatenated in order."""
+    return foldList(groups, [], listConcat)
+
+
 def run(case, context):
-    return contract(at(case, 0), R.render(R.chat_environment(), at(case, 1), context), True,
-                    lambda name, value: same(name, value, at(case, 2)))
+    return contract(at(case, 0), row_render(case, context), True, row_answer(case))
 
 
 def all_cases():
     context = {"name": V.text("world"), "nums": V.list_([V.int_(1), V.int_(2), V.int_(3)]), "enabled": V.bool_(True), "nothing": V.none(), "obj": V.typed_dict([V.text("x")], [V.int_(4)])}
-    renders = toList(map(range(len(Expected.RENDERS)), lambda i: run(row(Expected.RENDERS, i), context)))
-    rest = listConcat(kind_cases(), listConcat(string_cases(), listConcat(value_cases(), listConcat(scope_cases(), listConcat(syntax_cases(), macro_cases())))))
-    return listConcat(renders, listConcat(error_chain_cases(), listConcat(rest, expanded_cases(context))))
-
-
-def error_chain_cases():
     failure = V.halt("original evaluation error")
-    return [
-        same("filter preserves error", F.apply_filter("list", failure, [], []), failure),
-        same("predicate preserves error", F.apply_test("defined", failure, []), failure),
-    ]
+    chain = [same("filter preserves error", F.apply_filter("list", failure, [], []), failure),
+             same("predicate preserves error", F.apply_test("defined", failure, []), failure)]
+    return all_of([elements(Expected.RENDERS, [], lambda entry: run(entry, context)), chain, kind_cases(), string_cases(), value_cases(), scope_cases(), syntax_cases(), macro_cases(), expanded_cases(context)])
 
 
 def kind_cases():
     values = [V.none(), V.bool_(True), V.int_(2), V.float_(2.5), V.text("x"), V.list_([]), V.dict_([], []), V.undefined("x"), V.typed_pair(V.text("x"), V.int_(1)), V.func("range")]
     kinds = [V.K_NONE, V.K_BOOL, V.K_INT, V.K_FLOAT, V.K_STRING, V.K_LIST, V.K_DICT, V.K_UNDEFINED, V.K_PAIR, V.K_FUNC]
     return [
-        same("value kinds", toList(map(range(len(values)), lambda i: unwrap_or(listGet(values, i), V.none()).kind)), kinds),
+        same("value kinds", elements(values, V.none(), lambda v: v.kind), kinds),
         same("value predicates", [V.is_none(V.none()), V.is_undefined(V.undefined("x")), V.is_string(V.text("x")), V.is_number(V.float_(2.0))], [True, True, True, True]),
         same("truthiness", [V.truthy(V.none()), V.truthy(V.list_([])), V.truthy(V.int_(1))], [False, False, True]),
         same("numeric equality", V.equal(V.int_(2), V.float_(2.0)), True),
@@ -166,9 +173,14 @@ def macro_node(chunks):
             same("macro defaults", node.defaults, [""])]
 
 
+def macro_parse_of(label, source, step):
+    """`step` over the nodes lexing `source` and parsing them produced."""
+    return parse_step(label + " lex", L.scan(source, True, True),
+                      lambda chunks: parse_step(label + " parse", P.parse(chunks), step))
+
+
 def macro_parse():
-    return parse_step("macro lex", L.scan(Expected.MACRO_SOURCE, True, True),
-                      lambda chunks: parse_step("macro parse", P.parse(chunks), macro_node))
+    return macro_parse_of("macro", Expected.MACRO_SOURCE, macro_node)
 
 
 def defaulted_macro_node(chunks):
@@ -179,14 +191,12 @@ def defaulted_macro_node(chunks):
 
 
 def defaulted_macro_parse():
-    return parse_step("defaulted macro lex", L.scan("{% macro m(a, b=7, c = a + b) %}{% endmacro %}", True, True),
-                      lambda chunks: parse_step("defaulted macro parse", P.parse(chunks), defaulted_macro_node))
+    return macro_parse_of("defaulted macro", "{% macro m(a, b=7, c = a + b) %}{% endmacro %}", defaulted_macro_node)
 
 
 def macro_table_cases():
     """The macro table API the renderer's expansion path is built on."""
-    return parse_step("macro table lex", L.scan("{% macro m(a) %}{% endmacro %}", True, True),
-                      lambda chunks: parse_step("macro table parse", P.parse(chunks), macro_table_from))
+    return macro_parse_of("macro table", "{% macro m(a) %}{% endmacro %}", macro_table_from)
 
 
 def macro_table_from(nodes):
@@ -215,7 +225,7 @@ def unknown_node():
 
 
 def macro_cases():
-    return listConcat(macro_parse(), listConcat(defaulted_macro_parse(), macro_table_cases()))
+    return all_of([macro_parse(), defaulted_macro_parse(), macro_table_cases()])
 
 
 # Expression diagnostics the port reports verbatim (CPython Jinja 3.1.6 also
@@ -300,33 +310,25 @@ DIVERGENT_ERRORS = [
 
 
 def error_run(context, entry):
-    return contract(at(entry, 0), R.render(R.chat_environment(), at(entry, 1), context), False,
-                    lambda name, message: same(name, message, at(entry, 2)))
+    return contract(at(entry, 0), row_render(entry, context), False, row_answer(entry))
 
 
 def error_table(context, table):
-    return toList(map(range(len(table)), lambda i: error_run(context, row(table, i))))
-
-
-def oracle_errors(context):
-    return error_table(context, Expected.ERRORS)
+    return elements(table, [], lambda entry: error_run(context, entry))
 
 
 def rejects_like_python(context, entry):
-    return contract(at(entry, 0), R.render(R.chat_environment(), at(entry, 1), context), False,
+    return contract(at(entry, 0), row_render(entry, context), False,
                     lambda name, message: Check.truth(name, len(message) > 0, "rejected with a diagnostic"))
 
 
-def divergent_errors(context):
-    return toList(map(range(len(DIVERGENT_ERRORS)), lambda i: rejects_like_python(context, row(DIVERGENT_ERRORS, i))))
+def rejected_errors(context):
+    """Every template only the rejection itself is asserted for, in either wording."""
+    return elements(listConcat(DIVERGENT_ERRORS, MALFORMED_EXPR), [], lambda entry: rejects_like_python(context, entry))
 
 
 def error_cases(context):
-    return listConcat(error_table(context, EXPR_ERRORS), listConcat(error_table(context, STATEMENT_ERRORS), listConcat(error_table(context, LOOKUP_ERRORS), listConcat(oracle_errors(context), listConcat(divergent_errors(context), malformed_errors(context))))))
-
-
-def malformed_errors(context):
-    return toList(map(range(len(MALFORMED_EXPR)), lambda i: rejects_like_python(context, row(MALFORMED_EXPR, i))))
+    return all_of([error_table(context, EXPR_ERRORS), error_table(context, STATEMENT_ERRORS), error_table(context, LOOKUP_ERRORS), error_table(context, Expected.ERRORS), rejected_errors(context)])
 
 
 def fallback_cases():
@@ -357,8 +359,7 @@ def empty_macro_node(nodes):
 
 
 def empty_macro_cases():
-    return parse_step("empty macro lex", L.scan("{% macro m() %}Hi{% endmacro %}", True, True),
-                      lambda chunks: parse_step("empty macro parse", P.parse(chunks), empty_macro_node))
+    return macro_parse_of("empty macro", "{% macro m() %}Hi{% endmacro %}", empty_macro_node)
 
 
 def json_value(doc):
@@ -375,9 +376,9 @@ def json_value(doc):
         case JsonString(content):
             return V.text(content)
         case JsonArray(values):
-            return V.list_(toList(map(range(len(values)), lambda i: json_value(unwrap_or(listGet(values, i), JsonNull)))))
+            return V.list_(elements(values, JsonNull, json_value))
         case JsonObject(members):
-            return V.dict_of(toList(map(range(len(members)), lambda i: json_member(unwrap_or(listGet(members, i), JsonMember("", JsonNull))))))
+            return V.dict_of(elements(members, JsonMember("", JsonNull), json_member))
 
 
 def json_member(member):
@@ -424,25 +425,14 @@ def render_context(doc):
             return Error(message=message)
 
 
-def chat_case(entry):
-    """One `CHAT_RENDERS` row: the template's output over the oracle's context."""
-    return chat_contract(entry, True)
-
-
-def chat_error_case(entry):
-    """One `CHAT_ERRORS` row: the template rejects the oracle's context."""
-    return chat_contract(entry, False)
-
-
 def chat_contract(entry, accepted):
     """One chat row: the render the oracle recorded, or the diagnostic it recorded."""
-    return contract(at(entry, 0), render_chat(unwrap_or(listGet(entry, 1), "{}")), accepted,
-                    lambda name, answer: same(name, answer, at(entry, 2)))
+    return contract(at(entry, 0), render_chat(unwrap_or(listGet(entry, 1), "{}")), accepted, row_answer(entry))
 
 
 def chat_cases():
-    renders = toList(map(range(len(Expected.CHAT_RENDERS)), lambda i: chat_case(row(Expected.CHAT_RENDERS, i))))
-    return listConcat(renders, toList(map(range(len(Expected.CHAT_ERRORS)), lambda i: chat_error_case(row(Expected.CHAT_ERRORS, i)))))
+    return all_of([elements(Expected.CHAT_RENDERS, [], lambda entry: chat_contract(entry, True)),
+                   elements(Expected.CHAT_ERRORS, [], lambda entry: chat_contract(entry, False))])
 
 
 # Divergences from CPython Jinja 3.1.6 that @osprey/jinja2 documents in its README.
@@ -460,8 +450,8 @@ def vision_counts(text):
 
 def vision_divergence():
     """Picture numbering restarts in each message (Jinja counts 1, 2, 3 across both)."""
-    name = "vision picture numbering is call scoped (known divergence)"
-    return contract(name, render_chat(VISION_CONTEXT), True, lambda tag, text: same(tag, vision_counts(text), [2, 1, 0]))
+    return contract("vision picture numbering is call scoped (known divergence)", render_chat(VISION_CONTEXT), True,
+                    lambda tag, text: same(tag, vision_counts(text), [2, 1, 0]))
 
 
 def divergence_cases():
@@ -474,7 +464,7 @@ def divergence_cases():
 
 
 def expanded_cases(context):
-    return listConcat(error_cases(context), listConcat(fallback_cases(), listConcat(dict_write_cases(), listConcat(empty_macro_cases(), listConcat(chat_cases(), divergence_cases())))))
+    return all_of([error_cases(context), fallback_cases(), dict_write_cases(), empty_macro_cases(), chat_cases(), divergence_cases()])
 
 
 def main():
