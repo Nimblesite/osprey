@@ -56,6 +56,23 @@ fn allPresent(m, keys) = foldList(keys, true, fn(found, key) => found && mapCont
 /// No listed key is present in `m`.
 fn nonePresent(m, keys) = foldList(keys, true, fn(clear, key) => clear && !mapContains(m, key))
 
+/// The list holds `want` and lacks `absent`, so a view shows exactly that item.
+fn showsOnly(xs, want, absent) = allListed(xs, [want]) && noneListed(xs, [absent])
+
+/// The key view of `m` has length `n` and holds `wantKey`, while its value view
+/// holds `present` and lacks `absent`.
+fn viewHolds(m, n, wantKey, present, absent) =
+    listLength(mapKeys(m)) == n && allListed(mapKeys(m), [wantKey]) && showsOnly(mapValues(m), present, absent)
+
+/// The five-generation k1..k5 chain the generation, removal, and view cases
+/// share: gen1 roots the chain and gen0 is the empty base, gen1 minus its only key.
+fn gen1() = mapSet(Map(), "k1", 1)
+fn gen2() = mapSet(gen1(), "k2", 2)
+fn gen3() = mapSet(gen2(), "k3", 3)
+fn gen4() = mapSet(gen3(), "k4", 4)
+fn gen5() = mapSet(gen4(), "k5", 5)
+fn gen0() = mapRemove(gen1(), "k1")
+
 /// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
 fn constructionAndOverwriteCase() = {
     let empty = Map()
@@ -84,20 +101,15 @@ fn constructionAndOverwriteCase() = {
 
 /// generationsAndBranchesCase preserves the five-generation chain and validates sibling branch isolation.
 fn generationsAndBranchesCase() = {
-    let g0 = Map()
-    let g1 = mapSet(g0, "k1", 1)
-    let g2 = mapSet(g1, "k2", 2)
-    let g3 = mapSet(g2, "k3", 3)
-    let g4 = mapSet(g3, "k4", 4)
-    let g5 = mapSet(g4, "k5", 5)
+    let g3 = gen3()
     let xa = mapSet(g3, "X", 100)
     let xb = mapSet(g3, "Y", 200)
 
     // The six generation lengths and every legacy branch-membership result remain asserted.
     checkAll("persistent map generation and branch observations", [
-        answersHold(lengthOf, [g0, g1, g2, g3, g4, g5, g3], [0, 1, 2, 3, 4, 5, 3]),
-        mapContains(g2, "k1"),
-        nonePresent(g2, ["k4"]),
+        answersHold(lengthOf, [gen0(), gen1(), gen2(), g3, gen4(), gen5(), g3], [0, 1, 2, 3, 4, 5, 3]),
+        mapContains(gen2(), "k1"),
+        nonePresent(gen2(), ["k4"]),
         allPresent(xa, ["X"]),
         nonePresent(xa, ["Y"]),
         allPresent(xb, ["Y"]),
@@ -106,13 +118,13 @@ fn generationsAndBranchesCase() = {
 
     // Value-level checks prove old generations retain bindings after descendant creation.
     checkAll("persistent map generation values", [
-        allValuesHold([g1, g2, g3, g4, g5], [["k1"], ["k1", "k2"], ["k3"], ["k4"], ["k1", "k5"]], [[1], [1, 2], [3], [4], [1, 5]], (0 - 999)),
-        nonePresent(g0, ["k1"]),
-        nonePresent(g1, ["k2"]),
-        nonePresent(g2, ["k3"]),
+        allValuesHold([gen1(), gen2(), g3, gen4(), gen5()], [["k1"], ["k1", "k2"], ["k3"], ["k4"], ["k1", "k5"]], [[1], [1, 2], [3], [4], [1, 5]], (0 - 999)),
+        nonePresent(gen0(), ["k1"]),
+        nonePresent(gen1(), ["k2"]),
+        nonePresent(gen2(), ["k3"]),
         nonePresent(g3, ["k4"]),
-        nonePresent(g4, ["k5"]),
-        answersHold(lengthOf, [g2, g3], [2, 3])
+        nonePresent(gen4(), ["k5"]),
+        answersHold(lengthOf, [gen2(), g3], [2, 3])
     ])
 
     // Branch-specific values and absences catch aliasing between siblings and their parent.
@@ -127,12 +139,7 @@ fn generationsAndBranchesCase() = {
 
 /// removalAndMergeCase preserves removal and merge lengths while adding exact right-biased value checks.
 fn removalAndMergeCase() = {
-    let g0 = Map()
-    let g1 = mapSet(g0, "k1", 1)
-    let g2 = mapSet(g1, "k2", 2)
-    let g3 = mapSet(g2, "k3", 3)
-    let g4 = mapSet(g3, "k4", 4)
-    let g5 = mapSet(g4, "k5", 5)
+    let g5 = gen5()
     let removed = mapRemove(g5, "k3")
     let absentRemoved = mapRemove(g5, "nonexistent")
     let a = mapSet(mapSet(mapSet(Map(), "x", 1), "y", 2), "z", 3)
@@ -154,7 +161,7 @@ fn removalAndMergeCase() = {
         missingKey(removed, "k3"),
         intAtKey(g5, "k3") == 3,
         mapContains(absentRemoved, "k3"),
-        nonePresent(g4, ["k5"])
+        nonePresent(gen4(), ["k5"])
     ])
 
     // Every legacy merge length, operator-alias, membership, and identity observation remains asserted.
@@ -173,12 +180,8 @@ fn removalAndMergeCase() = {
 
 /// viewsAndCrossCollectionCase preserves keys, values, and list/map coexistence observations.
 fn viewsAndCrossCollectionCase() = {
-    let g0 = Map()
-    let g1 = mapSet(g0, "k1", 1)
-    let g2 = mapSet(g1, "k2", 2)
-    let g3 = mapSet(g2, "k3", 3)
-    let g4 = mapSet(g3, "k4", 4)
-    let g5 = mapSet(g4, "k5", 5)
+    let g3 = gen3()
+    let g5 = gen5()
     let keys = mapKeys(g5)
     let values = mapValues(g5)
     let xs = listAppend(listAppend(listAppend(List(), 100), 200), 300)
@@ -495,10 +498,7 @@ fn overwriteChainCase() = {
         intAtKey(prefixes, "pa") == 2,
         nonePresent(prefixes, ["pathx", "Path", ""]),
         mapContains(prefixOverwritten, "pat"),
-        listLength(mapKeys(prefixOverwritten)) == 4,
-        allListed(mapKeys(prefixOverwritten), ["path"]),
-        noneListed(mapValues(prefixOverwritten), [2]),
-        allListed(mapValues(prefixOverwritten), [20]),
+        viewHolds(prefixOverwritten, 4, "path", 20, 2),
         allListed(mapValues(prefixes), [2])
     ])
 }
@@ -566,10 +566,7 @@ fn mergeAlgebraCase() = {
         noneListed(mapKeys(lr), ["q"]),
         allListed(mapValues(lr), [10, 50]),
         noneListed(mapValues(lr), [1]),
-        listLength(mapKeys(lrThenThird)) == 7,
-        allListed(mapKeys(lrThenThird), ["q"]),
-        allListed(mapValues(lrThenThird), [700]),
-        noneListed(mapValues(lrThenThird), [30]),
+        viewHolds(lrThenThird, 7, "q", 700, 30),
         mapLength(mapMerge(lr, overrideK)) == 6,
         intAtKey(mapMerge(lr, overrideK), "k") == 999,
         intAtKey(mapMerge(overrideK, lr), "k") == 10,
@@ -768,10 +765,8 @@ fn nestedCollectionCase() = {
         rowsHold(oddsBack, [0, 1, 2], [1, 3, 5], (0 - 999)),
         rowsHold(evensBack, [0, 3], [2, 8], (0 - 999)),
         (listGet(oddsBack, 3) ?: (0 - 999)) == (0 - 999),
-        allListed(oddsBack, [5]),
-        noneListed(oddsBack, [2]),
-        allListed(evensBack, [8]),
-        noneListed(evensBack, [1]),
+        showsOnly(oddsBack, 5, 2),
+        showsOnly(evensBack, 8, 1),
         rowsHold(listMissing, [0], [0], (0 - 999)),
         rowsHold(oddsGrown, [3], [7], (0 - 999)),
         listLength(oddsBack) == 3,
@@ -861,10 +856,8 @@ fn keyValueViewPairingCase() = {
         intAtKey(bumped, "c") == 33,
         intAtKey(m, "c") == 3,
         total == 21,
-        allListed(bumpedValues, [33]),
-        noneListed(bumpedValues, [3]),
-        allListed(values, [3]),
-        noneListed(values, [33]),
+        showsOnly(bumpedValues, 33, 3),
+        showsOnly(values, 3, 33),
         allListed(bumpedKeys, ["c"]),
         pairsPair(bumped, bumpedKeys, bumpedValues)
     ])
