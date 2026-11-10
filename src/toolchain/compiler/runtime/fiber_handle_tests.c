@@ -9,18 +9,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env);
-extern int64_t fiber_await(int64_t fiber_id);
-extern int64_t fiber_done(int64_t fiber_id);
-extern int64_t fiber_set_deterministic_mode(bool enabled);
-extern void fiber_cleanup_results(void);
-extern int64_t channel_create(int64_t capacity);
-extern int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed);
-extern int64_t channel_recv(int64_t channel_id);
-extern void channel_cleanup(void);
-extern int64_t channel_select(int64_t count, const int64_t *kinds, const int64_t *ids,
-                              const int64_t *words, int64_t *received, int64_t timeout_ms);
-void run_fiber_handle_tests(void);
+#include "fiber_tests_shared.h"
 
 enum { MANY = 5000, THREADS = 8, PER_THREAD = 600, THREAD_CAP_PROBE = 12000 };
 
