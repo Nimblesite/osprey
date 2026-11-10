@@ -62,15 +62,10 @@ resumeLifoAuditCase () =
     legacyTranscript = "${transcript}total=${toString total}\n"
 
     (* Preserve all three legacy lines and their exact unwind ordering. *)
-    checkAll "LIFO legacy observations" [
-        legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n"
-    ]
+    checkAll "LIFO legacy observations" [legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n"]
 
     (* Assert issue order, settle order, operation count, and combined answer. *)
-    checkAll "LIFO internal state" [
-        structuralEquals [total, n] [3, 2],
-        structuralEquals [issued, settled] ["load:1|parse:2|", "parse:3|load:3|"]
-    ]
+    checkAll "LIFO internal state" [structuralEquals [total, n] [3, 2], structuralEquals [issued, settled] ["load:1|parse:2|", "parse:3|load:3|"]]
 
 (* Register the post-resume LIFO regression. *)
 
@@ -141,32 +136,22 @@ nestedInterleavedDepthTwoCase () =
 
     (* Operations enter in the order the body performs them, whichever depth
        answers them: the outer region answers first and third. *)
-    checkAll "two nested depths enter in perform order" [
-        log.entered == "a:a1|b:b1|a:a2|b:b2|",
-        structuralEquals [alphaCalls, betaCalls] [2, 2]
-    ]
+    checkAll "two nested depths enter in perform order" [log.entered == "a:a1|b:b1|a:a2|b:b2|", structuralEquals [alphaCalls, betaCalls] [2, 2]]
 
     (* Settlement follows the live arm nesting: `a2` crossed the Beta region on
        its way out, so its arm sits OUTSIDE `b1`'s and settles after it. A plain
        reverse of `entered` would predict `b:b2|a:a2|b:b1|a:a1|`, which is not
        what this transcript says [EFFECTS-RESUME-NESTING]. *)
-    checkAll "two nested depths settle innermost suspension first" [
-        log.settled == "b:b2|b:b1|a:a2|a:a1|"
-    ]
+    checkAll "two nested depths settle innermost suspension first" [log.settled == "b:b2|b:b1|a:a2|a:a1|"]
 
     (* Each region supplies its own magnitude — tens from Alpha, hundreds from
        Beta — so a value handed to the wrong performer changes the body's sum. *)
-    checkAll "each nested depth supplies its own magnitude" [
-        log.supplies == "a1=10|b1=100|a2=20|b2=200|"
-    ]
+    checkAll "each nested depth supplies its own magnitude" [log.supplies == "a1=10|b1=100|a2=20|b2=200|"]
 
     (* The first arm to settle sees the body's own answer, 330. Every later arm
        sees what the arm below it returned. Both Beta arms double, then both
        Alpha arms increment: 330 -> 660 -> 1320 -> 1321 -> 1322. *)
-    checkAll "nested settled answers chain through the arms" [
-        log.answers == "b2:330|b1:660|a2:1320|a1:1321|",
-        total == 1322
-    ]
+    checkAll "nested settled answers chain through the arms" [log.answers == "b2:330|b1:660|a2:1320|a1:1321|", total == 1322]
 
 (* Register the two-depth interleaved settlement audit. *)
 test "interleaved performs across two nested regions settle innermost first" (exactly nestedInterleavedDepthTwoCase)
@@ -218,31 +203,22 @@ nestedDepthThreeRotationCase () =
         (g0 + a1 ) + (b1 + g1 ) + (b2 + a2 ) 
 
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
-    checkAll "three rotated depths enter in perform order" [
-        log.entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
-        structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]
-    ]
+    checkAll "three rotated depths enter in perform order" [log.entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|", structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]]
 
     (* Settlement does NOT reverse that sequence: each crossing operation put
        its arm outside the arms it crossed, so the deepest live arms settle
        first and each region's later suspension settles before its earlier one.
        Reversing `entered` would predict `d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|`. *)
-    checkAll "three rotated depths settle by live arm nesting" [
-        log.settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"
-    ]
+    checkAll "three rotated depths settle by live arm nesting" [log.settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"]
 
     (* Body sum: 1000 + 10 + 100 + 2000 + 200 + 20 = 3330. Each arm then folds
        its own transform over the answer below it, deepest live arm first. *)
-    checkAll "three rotated depths chain their answers" [
-        log.answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"
-    ]
+    checkAll "three rotated depths chain their answers" [log.answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"]
 
     (* 3330 *3 -> 9990 *3 -> 29970 +7 -> 29977 +7 -> 29984 *2 -> 59968 *2. The
        reverse-entry order would fold +7 *3 *2 *3 +7 *2 over the same body sum
        and reach 120146, so the total alone separates the two orders. *)
-    checkAll "three rotated depths fold in exactly one order" [
-        total == 119936
-    ]
+    checkAll "three rotated depths fold in exactly one order" [total == 119936]
 
 (* Register the three-depth rotated settlement audit. *)
 test "three rotated regions settle by live arm nesting, not by perform order" (exactly nestedDepthThreeRotationCase)
@@ -310,37 +286,26 @@ nestedDepthFourStaircaseCase () =
         firstHalf + secondHalf 
 
     (* Eight operations descend the four depths and climb back out. *)
-    checkAll "four nested depths enter in perform order" [
-        log.entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
-        structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]
-    ]
+    checkAll "four nested depths enter in perform order" [log.entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|", structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]]
 
     (* Deepest live arm first: both Delta suspensions, then both Gamma, then
        both Beta, then both Alpha. The second Alpha suspension was opened LAST
        and settles seventh, because every operation it crossed put its arm
        inside it. Reversing `entered` would instead predict
        `1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|`. *)
-    checkAll "four nested depths settle deepest live arm first" [
-        log.settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"
-    ]
+    checkAll "four nested depths settle deepest live arm first" [log.settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"]
 
     (* Each depth supplies its own power of ten, twice, so a value crossing to a
        neighbouring region would move the body's sum by a whole digit. *)
-    checkAll "four nested depths supply distinct magnitudes" [
-        log.supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"
-    ]
+    checkAll "four nested depths supply distinct magnitudes" [log.supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"]
 
     (* The staircase: 3333 -> 4333 -> 5333 -> 5433 -> 5533 -> 5543 -> 5553 ->
        5554, one digit per settling depth, in the order the arms unwound — the
        thousands digit first because the Delta arms settle first. *)
-    checkAll "four nested depths climb a digit staircase" [
-        log.answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"
-    ]
+    checkAll "four nested depths climb a digit staircase" [log.answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"]
 
     (* Body sum 1111 + 2222 = 3333; the arms then add 2 * (1 + 10 + 100 + 1000). *)
-    checkAll "four nested depths total their halves and transforms" [
-        total == 5555
-    ]
+    checkAll "four nested depths total their halves and transforms" [total == 5555]
 
 (* Register the four-depth nested settlement audit. *)
 test "four nested regions settle by live arm nesting, deepest arm first" (exactly nestedDepthFourStaircaseCase)
@@ -398,28 +363,19 @@ nestedPartialInnerResumeCase () =
 
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)
-    checkAll "a partial inner region keeps only its own operation" [
-        structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]
-    ]
+    checkAll "a partial inner region keeps only its own operation" [structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]]
 
     (* Entry order is the body's order, alternating between the two depths. *)
-    checkAll "a crossing operation enters between inner suspensions" [
-        structuralEquals [log.entered, log.supplies] ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"]
-    ]
+    checkAll "a crossing operation enters between inner suspensions" [structuralEquals [log.entered, log.supplies] ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"]]
 
     (* Both inner `near` arms settle first: each `far` crossed them on its way
        out, so its arm sits outside theirs. Reversing `entered` would predict
        `far:4|near:3|far:2|near:1|` [EFFECTS-RESUME-NESTING]. *)
-    checkAll "partial nesting settles its live inner arms first" [
-        log.settled == "near:3|near:1|far:4|far:2|"
-    ]
+    checkAll "partial nesting settles its live inner arms first" [log.settled == "near:3|near:1|far:4|far:2|"]
 
     (* Body sum 10 + 2000 + 30 + 4000 = 6040, then both `near` arms add five and
        both `far` arms double: 6040 -> 6045 -> 6050 -> 12100 -> 24200. *)
-    checkAll "partial nesting chains answers across both depths" [
-        log.answers == "near:6040|near:6045|far:6050|far:12100|",
-        total == 24200
-    ]
+    checkAll "partial nesting chains answers across both depths" [log.answers == "near:6040|near:6045|far:6050|far:12100|", total == 24200]
 
 (* Register the partial-inner-region settlement audit. *)
 test "a partial inner region resumes while its uncovered operation crosses outward" (exactly nestedPartialInnerResumeCase)
@@ -469,29 +425,19 @@ sameEffectTwoDepthsCase () =
 
     (* Shadow and restore: the inner arm answered exactly the two operations
        inside its region, the outer arm the one before it and the one after it. *)
-    checkAll "an inner region shadows only its own lexical region" [
-        structuralEquals [outerCalls, innerCalls] [2, 2],
-        log.entered == "out:before|in:in1|in:in2|out:after|"
-    ]
+    checkAll "an inner region shadows only its own lexical region" [structuralEquals [outerCalls, innerCalls] [2, 2], log.entered == "out:before|in:in1|in:in2|out:after|"]
 
     (* Each depth kept its own magnitude. Had the inner region failed to shadow,
        the outer counter would have supplied 2000 and 3000 to in1 and in2. *)
-    checkAll "two depths of one effect supply their own values" [
-        log.supplies == "before=1000|in1=10|in2=20|after=2000|"
-    ]
+    checkAll "two depths of one effect supply their own values" [log.supplies == "before=1000|in1=10|in2=20|after=2000|"]
 
     (* The inner region settles completely before `after` is performed, so the
        settle transcript is NOT the reverse of the entry transcript. *)
-    checkAll "the inner region settles before the outer body continues" [
-        log.settled == "in:in2|in:in1|out:after|out:before|"
-    ]
+    checkAll "the inner region settles before the outer body continues" [log.settled == "in:in2|in:in1|out:after|out:before|"]
 
     (* 10 + 20 = 30 is the inner body's answer; the inner arms add three each,
        so the inner region evaluates to 36 and the outer body sums to 3036. *)
-    checkAll "the inner region's answer feeds the outer body" [
-        log.answers == "in2:30|in1:33|after:3036|before:6072|",
-        total == 12144
-    ]
+    checkAll "the inner region's answer feeds the outer body" [log.answers == "in2:30|in1:33|after:3036|before:6072|", total == 12144]
 
 (* Register the same-effect two-depth settlement audit. *)
 test "an inner region settles fully before the outer region's later operation" (exactly sameEffectTwoDepthsCase)
