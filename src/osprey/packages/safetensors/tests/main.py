@@ -66,16 +66,10 @@ def kind_truth(name, got, kind):
     return Check.truth(name + ".kind", got.kind == kind, "kind " + got.kind)
 
 
-def float_case(name, data, want):
-    """One float tensor: its kind and its decoded values."""
+def dtype_case(name, data, want, kind, compare):
+    """One tensor: its kind, and its decoded values against `want` by `compare`."""
     got = tensor_of(file_of(data), name)
-    return [kind_truth(name, got, "floats"), floats_close(name + ".values", got, want)]
-
-
-def int_case(name, data, want):
-    """One int tensor: its kind and its decoded values."""
-    got = tensor_of(file_of(data), name)
-    return [kind_truth(name, got, "ints"), ints_match(name + ".values", got, want)]
+    return [kind_truth(name, got, kind), compare(name + ".values", got, want)]
 
 
 def per_index(items, take):
@@ -123,8 +117,8 @@ def header_edge_cases():
 def dtype_cases():
     """Every dtype's file decodes to the oracle's values."""
     return concat_all([
-        dtype_table(["f32", "f64", "f16", "bf16"], [Expected.F32_BYTES, Expected.F64_BYTES, Expected.F16_BYTES, Expected.BF16_BYTES], [Expected.F32_VALUES, Expected.F64_VALUES, Expected.F16_VALUES, Expected.BF16_VALUES], float_case),
-        dtype_table(["bool", "u8", "i8", "i16", "u16", "i32", "u32", "i64", "u64"], [Expected.BOOL_BYTES, Expected.U8_BYTES, Expected.I8_BYTES, Expected.I16_BYTES, Expected.U16_BYTES, Expected.I32_BYTES, Expected.U32_BYTES, Expected.I64_BYTES, Expected.U64_BYTES], [Expected.BOOL_VALUES, Expected.U8_VALUES, Expected.I8_VALUES, Expected.I16_VALUES, Expected.U16_VALUES, Expected.I32_VALUES, Expected.U32_VALUES, Expected.I64_VALUES, Expected.U64_VALUES], int_case),
+        dtype_table(["f32", "f64", "f16", "bf16"], [Expected.F32_BYTES, Expected.F64_BYTES, Expected.F16_BYTES, Expected.BF16_BYTES], [Expected.F32_VALUES, Expected.F64_VALUES, Expected.F16_VALUES, Expected.BF16_VALUES], lambda n, d, w: dtype_case(n, d, w, "floats", floats_close)),
+        dtype_table(["bool", "u8", "i8", "i16", "u16", "i32", "u32", "i64", "u64"], [Expected.BOOL_BYTES, Expected.U8_BYTES, Expected.I8_BYTES, Expected.I16_BYTES, Expected.U16_BYTES, Expected.I32_BYTES, Expected.U32_BYTES, Expected.I64_BYTES, Expected.U64_BYTES], [Expected.BOOL_VALUES, Expected.U8_VALUES, Expected.I8_VALUES, Expected.I16_VALUES, Expected.U16_VALUES, Expected.I32_VALUES, Expected.U32_VALUES, Expected.I64_VALUES, Expected.U64_VALUES], lambda n, d, w: dtype_case(n, d, w, "ints", ints_match)),
     ])
 
 
@@ -265,6 +259,12 @@ def bifurcate(result, on_success, on_error):
             return on_error(message)
 
 
+def expect_error(tag, result, on_error, describe):
+    """`result` must be an Error: `on_error` checks the message, `describe(value)`
+    names a wrong success."""
+    return bifurcate(result, lambda value: Check.failed(tag, describe(value)), on_error)
+
+
 def parsed_checks(tag, text, checks_of):
     """Parse `text`: one failed check on Error, else `checks_of(value)`."""
     return bifurcate(JsonParser.parse(text), checks_of, lambda message: [Check.failed(tag, message)])
@@ -285,9 +285,7 @@ def tensor_info_case():
 
 def json_array_checks(value):
     """The parsed array's five items: two bools, null, an exponent float, a string."""
-    fallback = empty_json_value()
-    items = value.items
-    return [Check.equal("json.array_count", len(items), 5), Check.equal("json.true", unwrap_or(listGet(items, 0), fallback).b, True), Check.equal("json.false", unwrap_or(listGet(items, 1), fallback).b, False), Check.equal("json.null", unwrap_or(listGet(items, 2), fallback).kind, JsonParser.jnull().kind), Check.equal("json.exponent", unwrap_or(listGet(items, 3), fallback).f, 125.0), Check.equal("json.escaped_unicode", unwrap_or(listGet(items, 4), fallback).s, "中\n\t\b\f\r/\\\"")]
+    return [Check.equal("json.array_count", len(value.items), 5), Check.equal("json.true", json_item(value, 0).b, True), Check.equal("json.false", json_item(value, 1).b, False), Check.equal("json.null", json_item(value, 2).kind, JsonParser.jnull().kind), Check.equal("json.exponent", json_item(value, 3).f, 125.0), Check.equal("json.escaped_unicode", json_item(value, 4).s, "中\n\t\b\f\r/\\\"")]
 
 
 def binary_edge_cases():
@@ -311,7 +309,7 @@ def has_prefix(message, prefix):
 
 def header_prefix_case(tag, data, prefix):
     """A malformed header must fail inside the crate's JSON error family."""
-    return bifurcate(SafeTensors.load(data), lambda _value: [Check.failed(tag, "load succeeded")], lambda message: [Check.truth(tag, has_prefix(message, prefix), message)])
+    return [expect_error(tag, SafeTensors.load(data), lambda message: Check.truth(tag, has_prefix(message, prefix), message), lambda _value: "load succeeded")]
 
 
 def prefix_table(tags, files, prefix):
@@ -349,12 +347,12 @@ def slice_edge_cases():
 
 def rejection_check(tag, result, want, detail):
     """A read that must fail with exactly `want`; `detail` says what a wrong success did."""
-    return bifurcate(result, lambda _value: Check.failed(tag, detail), lambda message: Check.equal(tag, message, want))
+    return expect_error(tag, result, lambda message: Check.equal(tag, message, want), lambda _value: detail)
 
 
 def rejection(tag, result, describe):
     """A read that must fail with a diagnostic, `describe(value)` naming a wrong success."""
-    return bifurcate(result, lambda value: Check.failed(tag, describe(value)), lambda message: Check.truth(tag, len(message) > 0, message))
+    return expect_error(tag, result, lambda message: Check.truth(tag, len(message) > 0, message), describe)
 
 
 def zero_shape_cases():
@@ -369,29 +367,19 @@ def zero_shape_cases():
     ]
 
 
-def byte_error(tag, result):
-    """A byte read that must fail instead of inventing bytes."""
-    return rejection(tag, result, lambda _value: "read succeeded")
-
-
 def byte_guard_cases():
     """Byte readers reject negative, past-the-end and oversized ranges."""
     return [
-        byte_error("bytes.read_negative", Bytes.read_bytes([1, 2, 3], -1, 2)),
-        byte_error("bytes.read_past_end", Bytes.read_bytes([1, 2, 3], 2, 2)),
-        byte_error("bytes.u64_short", Bytes.read_u64([1, 2, 3], 0)),
-        byte_error("bytes.u64_huge", Bytes.read_u64(Expected.U64_HUGE_BYTES, 0)),
+        rejection("bytes.read_negative", Bytes.read_bytes([1, 2, 3], -1, 2), lambda _value: "read succeeded"),
+        rejection("bytes.read_past_end", Bytes.read_bytes([1, 2, 3], 2, 2), lambda _value: "read succeeded"),
+        rejection("bytes.u64_short", Bytes.read_u64([1, 2, 3], 0), lambda _value: "read succeeded"),
+        rejection("bytes.u64_huge", Bytes.read_u64(Expected.U64_HUGE_BYTES, 0), lambda _value: "read succeeded"),
     ]
-
-
-def utf8_error(tag, bs):
-    """A UTF-8 decode that must fail rather than substitute replacement text."""
-    return rejection(tag, Bytes.bytes_to_string(bs), lambda value: "decoded to " + value)
 
 
 def utf8_cases():
     """Sequences CPython's UTF-8 decoder rejects are errors, not text."""
-    return per_index(Expected.UTF8_INVALID, lambda i: utf8_error("bytes.utf8_invalid_" + toString(i), slot(Expected.UTF8_INVALID, i, [])))
+    return per_index(Expected.UTF8_INVALID, lambda i: rejection("bytes.utf8_invalid_" + toString(i), Bytes.bytes_to_string(slot(Expected.UTF8_INVALID, i, [])), lambda value: "decoded to " + value))
 
 
 def encode_table(encode, tags, values, wants):
@@ -420,10 +408,15 @@ def empty_json_member():
     return JsonParser.JsonMember(name="", value=empty_json_value())
 
 
+def json_item(value, index):
+    """The parsed item at `index`, or the empty fallback that fails every assertion for it."""
+    return slot(value.items, index, empty_json_value())
+
+
 def json_hex_checks(value):
     """Each parsed item's string equals the oracle's expected characters."""
     want = Expected.JSON_HEX_VALUES
-    return per_index(want, lambda i: Check.equal("json.hex_" + toString(i), slot(value.items, i, empty_json_value()).s, slot(want, i, "")))
+    return per_index(want, lambda i: Check.equal("json.hex_" + toString(i), json_item(value, i).s, slot(want, i, "")))
 
 
 def empty_member_checks(label, index, member, size_of):
@@ -441,22 +434,19 @@ def json_empty_checks(value):
 
 def json_number_checks(value):
     """The parsed int and float items match the oracle's kinds and values."""
+    whole = json_item(value, 0)
+    frac = json_item(value, 1)
     return [
-        Check.equal("json.number_int_kind", slot(value.items, 0, empty_json_value()).kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 0), "")),
-        Check.equal("json.number_int", slot(value.items, 0, empty_json_value()).i, Expected.JSON_NUMBER_INT),
-        Check.equal("json.number_float_kind", slot(value.items, 1, empty_json_value()).kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 1), "")),
-        Check.close("json.number_float", slot(value.items, 1, empty_json_value()).f, Expected.JSON_NUMBER_FLOAT, RTOL, ATOL),
+        Check.equal("json.number_int_kind", whole.kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 0), "")),
+        Check.equal("json.number_int", whole.i, Expected.JSON_NUMBER_INT),
+        Check.equal("json.number_float_kind", frac.kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 1), "")),
+        Check.close("json.number_float", frac.f, Expected.JSON_NUMBER_FLOAT, RTOL, ATOL),
     ]
-
-
-def json_reject(tag, text):
-    """A text CPython's json module rejects must not parse here either."""
-    return rejection(tag, JsonParser.parse(text), lambda value: "parsed as " + value.kind)
 
 
 def json_reject_cases():
     """Each malformed JSON text CPython rejects is an error here too."""
-    return listConcat(per_index(Expected.JSON_INVALID, lambda i: json_reject("json.reject_" + toString(i), slot(Expected.JSON_INVALID, i, ""))), [
+    return listConcat(per_index(Expected.JSON_INVALID, lambda i: rejection("json.reject_" + toString(i), JsonParser.parse(slot(Expected.JSON_INVALID, i, "")), lambda value: "parsed as " + value.kind)), [
         rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
         rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
     ])
