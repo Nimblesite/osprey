@@ -4,8 +4,7 @@ double n = n * 2
 
 x = 42
 name = "Alice"
-print "x = ${x}"
-print "name = ${name}"
+print "x = ${x}\nname = ${name}"
 
 result = match x
     42 => "The answer!"
@@ -37,8 +36,7 @@ doubled = exactArithmetic (\() =>
     double xx)
 squared = exactArithmetic (\() =>
     square doubled)
-print "${xx} doubled is ${doubled}"
-print "${doubled} squared is ${squared}"
+print "${xx} doubled is ${doubled}\n${doubled} squared is ${squared}"
 
 getGrade s = match s
     100 => "Perfect!"
@@ -46,11 +44,7 @@ getGrade s = match s
     85 => "Very Good"
     75 => "Good"
     _ => "Needs Improvement"
-print "Grade for 100: ${getGrade 100}"
-print "Grade for 95: ${getGrade 95}"
-print "Grade for 85: ${getGrade 85}"
-print "Grade for 75: ${getGrade 75}"
-print "Grade for 50: ${getGrade 50}"
+print "Grade for 100: ${getGrade 100}\nGrade for 95: ${getGrade 95}\nGrade for 85: ${getGrade 85}\nGrade for 75: ${getGrade 75}\nGrade for 50: ${getGrade 50}"
 
 exactArithmetic (\() =>
     5 |> double |> square |> print)
@@ -62,11 +56,9 @@ fiber1 = exactArithmetic (\() =>
     spawn (compute 5))
 fiber2 = exactArithmetic (\() =>
     spawn (compute 10))
-print "Fiber 1 result: ${fiber1}"
-print "Fiber 2 result: ${fiber2}"
+print "Fiber 1 result: ${fiber1}\nFiber 2 result: ${fiber2}"
 job1 = yield 10
-print "Processed ${job1} items"
-print "=== Fiber Example Complete ==="
+print "Processed ${job1} items\n=== Fiber Example Complete ==="
 
 (** Verify the website helpers, pipelines, matches, and fiber result end to end. *)
 websiteExamplesCase () =

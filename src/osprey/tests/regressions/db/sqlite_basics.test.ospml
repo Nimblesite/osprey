@@ -77,8 +77,7 @@ openUsers cell =
 dbCell = osprey_ffi_cell ()
 opened = openUsers dbCell
 db = opened.db
-print "open ${okText opened.openrc}"
-print "create ${okText opened.ddlrc}"
+print "open ${okText opened.openrc}\ncreate ${okText opened.ddlrc}"
 
 i1 = insertUser (db, 1, "Ada")
 i2 = insertUser (db, 2, "Linus")

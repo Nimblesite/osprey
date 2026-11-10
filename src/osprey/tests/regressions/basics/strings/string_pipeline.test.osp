@@ -45,8 +45,7 @@ print("=== String Pipeline ===\n")
 
 /// ----- Inspection / search (total, no Result wrap) -----
 let raw = "  GET /api/users?name=alice&age=30  "
-print("raw=\"${raw}\" len=${raw |> length}\n")
-print("isEmpty=${raw |> isEmpty}\n")
+print("raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n")
 print("contains 'GET'=${raw |> contains("GET")}\n")
 print("startsWith '  '=${raw |> startsWith("  ")}\n")
 print("endsWith '  '=${raw |> endsWith("  ")}\n")
@@ -85,8 +84,7 @@ match padEnd  ("42", 5, "0")       { Success { value } => print("padE=\"${value}
 
 /// ----- take/drop/reverse (UFCS form) -----
 let hello = "hello"
-print("take ufcs=\"${hello.take(3)}\"\n")
-print("drop ufcs=\"${hello.drop(3)}\"\n")
+print("take ufcs=\"${hello.take(3)}\"\n\ndrop ufcs=\"${hello.drop(3)}\"\n")
 print("reverse=\"${"abc".reverse()}\"\n")
 
 // ----- Parsing -----
@@ -97,8 +95,7 @@ match parseFloat("3.14") { Success { value } => print("parseFloat=${value}\n") E
 /// ----- Split/lines/words → List<string> -----
 let multi  = "a\nb\nc"
 let spaced = "  hello   world  "
-print("lines count=${listLength(lines(multi))}\n")
-print("words count=${listLength(words(spaced))}\n")
+print("lines count=${listLength(lines(multi))}\n\nwords count=${listLength(words(spaced))}\n")
 match split("a,b,c", ",") { Success { value } => print("split count=${listLength(value)}\n") Error => print("split err\n") }
 match split("anything", "") { Success => print("split empty unexpected\n") Error => print("split empty rejected\n") }
 

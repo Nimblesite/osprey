@@ -156,28 +156,14 @@ fn shapeKind(s) = match s {
 }
 
 // --- Literal matching ---
-print("Number analysis:")
-print("0 is ${analyze(0)}")
-print("42 is ${analyze(42)}")
-print("7 is ${analyze(7)}")
-print("")
+print("Number analysis:\n0 is ${analyze(0)}\n42 is ${analyze(42)}\n7 is ${analyze(7)}\n")
 
-print("Even check (1=yes, 0=no):")
-print("42 is even: ${isEven(42)}")
-print("7  is even: ${isEven(7)}")
-print("2  is even: ${isEven(2)}")
-print("")
+print("Even check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n")
 
-print("Score categories:")
-print("Score 100: ${category(100)}")
-print("Score 85: ${category(85)}")
-print("Score 50: ${category(50)}")
+print("Score categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}")
 
 // --- Nested match ---
-print("Nested 0,0: ${nested(x: 0, y: 0)}")
-print("Nested 0,3: ${nested(x: 0, y: 3)}")
-print("Nested 4,0: ${nested(x: 4, y: 0)}")
-print("Nested 4,5: ${nested(x: 4, y: 5)}")
+print("Nested 0,0: ${nested(x: 0, y: 0)}\nNested 0,3: ${nested(x: 0, y: 3)}\nNested 4,0: ${nested(x: 4, y: 0)}\nNested 4,5: ${nested(x: 4, y: 5)}")
 
 /// --- ADT field destructuring (both orders + type annotation pattern) ---
 let alice = PersonData { name: "Alice", age: 30 }
@@ -216,8 +202,7 @@ let goodElv = goodDiv ?: 0.0
 print("good elvis = ${toString(goodElv)}")
 
 // --- Result<T,E> toString ---
-print("ok toString  = ${toString(okCalc)}")
-print("bad toString = ${toString(badDiv)}")
+print("ok toString  = ${toString(okCalc)}\nbad toString = ${toString(badDiv)}")
 
 /// Replays every meaningful branch with value-level assertions.
 fn patternMatchingCase() = {

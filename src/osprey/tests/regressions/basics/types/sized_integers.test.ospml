@@ -40,8 +40,7 @@ u32High = 4294967295
 u8Zero : uint8
 u8Zero = 0
 
-print "${i8Low} ${i8High} ${i16Low} ${i16High} ${i32Low} ${i32High}"
-print "${u8Zero} ${u8High} ${u16High} ${u32High}"
+print "${i8Low} ${i8High} ${i16Low} ${i16High} ${i32Low} ${i32High}\n${u8Zero} ${u8High} ${u16High} ${u32High}"
 
 bump : int16 -> int16
 bump n = n + 1
@@ -56,13 +55,10 @@ arithmetic () =
     shown4 (i16High + 1, i16Low - 1, i16High * 2, -i16Low)
     shown4 (i32High + 1, i32Low - 1, i32High * 2, -i32Low)
     shown4 (u8High + 1, u8Zero - 1, u8High * 2, -u8High)
-    print "${u16High + 1} ${u16High * 2}"
-    print "${u32High + 1} ${u32High * 2}"
-    print "${abs i8Low} ${abs i16High} ${abs u8High}"
+    print "${u16High + 1} ${u16High * 2}\n${u32High + 1} ${u32High * 2}\n${abs i8Low} ${abs i16High} ${abs u8High}"
     shown4 (u8High % 7, i8Low % 7, i8Low % -1, u32High % 10)
     shown4 (u8High % u8Zero, intDiv i8Low (-1), intDiv u8High 2, intDiv u8High u8Zero)
-    print "${u8High / 2} ${i8Low / 2}"
-    print "${bump 32767} ${bump 41}"
+    print "${u8High / 2} ${i8Low / 2}\n${bump 32767} ${bump 41}"
 
 totalHelpers () =
     shown4 (wrapAdd u8High 1, wrapSub u8Zero 1, wrapMul u8High 2, wrapAdd i8High 1)
@@ -88,9 +84,7 @@ comparisons () =
 conversions () =
     shown4 (toInt u8High, toInt i8Low, toInt u32High, toInt i32Low)
     shown4 (toInt16 i8Low, toInt32 u16High, toUint16 u8High, toUint32 u16High)
-    print "${toUint8 300} ${toInt8 u8High} ${toUint8 i8Low} ${toUint32 (-1)} ${toInt32 u32High}"
-    print "${toInt8 100} ${toUint8 255} ${toFloat u8High} ${toFloat i8Low} ${toFloat u32High}"
-    print "${toInt (bitNot u8Zero) + 1}"
+    print "${toUint8 300} ${toInt8 u8High} ${toUint8 i8Low} ${toUint32 (-1)} ${toInt32 u32High}\n${toInt8 100} ${toUint8 255} ${toFloat u8High} ${toFloat i8Low} ${toFloat u32High}\n${toInt (bitNot u8Zero) + 1}"
 
 (** Unwrap a `Result` and adjust its value, or answer with `fallback`. *)
 unboxed (result, fallback, adjust) = match result
@@ -110,8 +104,7 @@ journeys () =
     print "${kept.held + 1}"
     packet = Packet(tag = 250, delta = -32768, count = 4294967295, seq = 7)
     shown4 (packet.tag + 10, packet.delta - 1, packet.count + 1, packet.seq * 2)
-    print "${identity u8High + 1} ${identity i8Low - 1}"
-    print "${twice ((\x => x + 200), u8Zero)}"
+    print "${identity u8High + 1} ${identity i8Low - 1}\n${twice ((\x => x + 200), u8Zero)}"
     scores = Map () |> mapSet "low" u8Zero |> mapSet "high" u8High
     high = unboxed (scores["high"], u8Zero, \value => value + 1)
     print "${high}"
@@ -129,8 +122,7 @@ journeys () =
     print "${unpacked}"
     erased : any
     erased = u8High
-    print "${erased}"
-    print "${1 + 2} ${identity 9 + 1}"
+    print "${erased}\n${1 + 2} ${identity 9 + 1}"
 
 wrapping arithmetic
 wrapping totalHelpers

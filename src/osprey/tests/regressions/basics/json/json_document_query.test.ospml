@@ -46,8 +46,7 @@ match document
     JsonObject fields => print "root is ${describe document} with ${toString (mapLength fields)} field"
     _ => print "root is not an object"
 reportDeepString document
-print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}"
-print "=== JSON value union complete ==="
+print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}\n=== JSON value union complete ==="
 
 (** Recursively follow the single object/array path to its string leaf. *)
 deepString value =

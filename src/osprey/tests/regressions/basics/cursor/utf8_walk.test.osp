@@ -33,9 +33,7 @@ fn walk(s, byteIndex, count) = match byteIndex >= byteLength(s) {
 
 let s = sample()
 let bytes = byteLength(s)
-print("=== UTF-8 codepoint walk ===")
-print("string    = ${s}")
-print("byteLength = ${bytes}")
+print("=== UTF-8 codepoint walk ===\nstring    = ${s}\nbyteLength = ${bytes}")
 
 /// Walk every codepoint, printing each scalar value as we advance the cursor.
 let total = exactArithmetic(fn() => walk(s, 0, 0))

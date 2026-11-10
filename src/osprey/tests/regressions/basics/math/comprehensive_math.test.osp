@@ -80,9 +80,7 @@ exactArithmetic(fn() => print("Double:    ${age * 2}"))
 print("Half:      ${age / 2}")
 
 // Modulo + isEven
-print("12 % 5  = ${12 % 5}")
-print("isEven(8) = ${toString(isEven(8))}")
-print("isEven(7) = ${toString(isEven(7))}")
+print("12 % 5  = ${12 % 5}\nisEven(8) = ${toString(isEven(8))}\nisEven(7) = ${toString(isEven(7))}")
 
 // Integer division: intDiv truncates toward zero (contrast Half = 12.5 above);
 // Zero division dispatches to the observation policy.
@@ -91,10 +89,7 @@ print("intDiv(25,2) = ${intDiv(25, 2)}, intDiv(100,7) = ${intDiv(100, 7)}")
 let zeroDivision = observed(fn() => intDiv(5, 0))
 print("intDiv(5,0): ${zeroDivision.fault}")
 
-print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}")
-print("checked overflow add=${toString(checkedAdd(9223372036854775807, 1))}")
-print("checked overflow sub=${toString(checkedSub((0 - 9223372036854775807) , 2))}")
-print("checked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
+print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}\nchecked overflow add=${toString(checkedAdd(9223372036854775807, 1))}\nchecked overflow sub=${toString(checkedSub((0 - 9223372036854775807) , 2))}\nchecked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
 
 // [BUILTIN-ABS] uses the language's i64 ABI, including values outside libc `int`.
 // Its only unrepresentable magnitude dispatches overflow to the observation policy.
@@ -112,8 +107,7 @@ let n    = 5
 let m    = 3
 exactArithmetic(fn() => print("pow(5,2)   = ${power(base: n, exp: 2)}"))
 exactArithmetic(fn() => print("pow(5,3)   = ${power(base: n, exp: 3)}"))
-print("fact(5)    = ${factorial(n)}")
-print("fib(5)     = ${fibonacci(n)}")
+print("fact(5)    = ${factorial(n)}\nfib(5)     = ${fibonacci(n)}")
 exactArithmetic(fn() => print("complex    = ${complex(a: n, b: m)}"))
 
 // Division — both branches
@@ -132,8 +126,7 @@ let rBounded = match randomBelow(100) {
     Error  => "err"
 }
 let rGuard = match randomBelow(0) { Success => "no-error"  Error => "rejected" }
-print("random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input()}]")
-print("=== Math Showcase Complete ===")
+print("random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input()}]\n=== Math Showcase Complete ===")
 
 /// Recomputes the showcase branches and validates checked-arithmetic boundaries.
 fn comprehensiveMathCase() = {

@@ -89,8 +89,7 @@ localBad = integerDefault (-1, \() => 10 % 0)
 print "local remainder policy  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString localBad}"
 
 // Floating division is recovered by an explicit value policy.
-print "float policy for 10 / 0 = ${toString (floatDefault (\() => 10 / 0))}"
-print "=== pipeline complete ==="
+print "float policy for 10 / 0 = ${toString (floatDefault (\() => 10 / 0))}\n=== pipeline complete ==="
 
 (** Verify rescued failures beside healthy Result, nested collections, and local fallbacks. *)
 resultAndEffectsCase () =

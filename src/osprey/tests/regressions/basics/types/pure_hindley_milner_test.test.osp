@@ -30,8 +30,7 @@ let addValue = exactArithmetic(fn() => add(a: 10, b: 20))
 let concatResult = concat(s1: "hello", s2: "world")
 let negateResult = negate(false)
 
-print("add(10, 20) = ${addValue}, concat = ${concatResult}, negate(false) = ${toString(negateResult)}")
-print("")
+print("add(10, 20) = ${addValue}, concat = ${concatResult}, negate(false) = ${toString(negateResult)}\n")
 
 // Test 3: Function inference with generic records
 print("Test 3: Function inference with generic records")
@@ -46,10 +45,7 @@ let firstInt = getFirst(intPair)        // int inferred
 let valueString = getValue(container1)   // string inferred
 let secondInt = getSecond(intPair)      // int inferred
 
-print("getFirst(intPair) = ${firstInt}")
-print("getValue(container1) = ${valueString}")
-print("getSecond(intPair) = ${secondInt}")
-print("")
+print("getFirst(intPair) = ${firstInt}\ngetValue(container1) = ${valueString}\ngetSecond(intPair) = ${secondInt}\n")
 
 // Test 4: Polymorphic functions with HM inference
 print("Test 4: Polymorphic function inference")
@@ -63,11 +59,7 @@ let id3 = identityP(true)        // bool -> bool
 
 let point1 = makePoint(a: 1, b: 2)              // Point<int, int>
 
-print("identityP(42) = ${id1}")
-print("identityP(\"test\") = ${id2}")
-print("identityP(true) = ${toString(id3)}")
-print("makePoint(1, 2) = {${point1.x}, ${point1.y}}")
-print("")
+print("identityP(42) = ${id1}\nidentityP(\"test\") = ${id2}\nidentityP(true) = ${toString(id3)}\nmakePoint(1, 2) = {${point1.x}, ${point1.y}}\n")
 
 // Test 5: Complex HM inference with field access
 print("Test 5: Complex field access inference")
@@ -81,9 +73,7 @@ let dist = exactArithmetic(fn() => distance(numPoint)              // int inferr
 )
 let combined = combine(textContainer)      // string inferred
 
-print("distance({3, 4}) = ${dist}")
-print("combine({\"hello\", \"world\"}) = ${combined}")
-print("")
+print("distance({3, 4}) = ${dist}\ncombine({\"hello\", \"world\"}) = ${combined}\n")
 
 // Test 6: Higher-order functions with HM inference
 print("Test 6: Higher-order HM inference")
@@ -106,15 +96,7 @@ let containerLabel = stringContainer.label   // string inferred
 let applied1 = apply(f: identityP, x: 99)          // int inferred
 let applied2 = apply(f: toString, x: 123)         // string inferred
 
-print("intPoint.x = ${pointX}")
-print("intPoint.y = ${pointY}")
-print("intPair.first = ${pairFirst}")
-print("intPair.second = ${pairSecond}")
-print("stringContainer.value = ${containerValue}")
-print("stringContainer.label = ${containerLabel}")
-print("apply(identityP, 99) = ${applied1}")
-print("apply(toString, 123) = ${applied2}")
-print("")
+print("intPoint.x = ${pointX}\nintPoint.y = ${pointY}\nintPair.first = ${pairFirst}\nintPair.second = ${pairSecond}\nstringContainer.value = ${containerValue}\nstringContainer.label = ${containerLabel}\napply(identityP, 99) = ${applied1}\napply(toString, 123) = ${applied2}\n")
 
 // Test 7: Generic type equality testing (for GenericType.Equals coverage)
 print("Test 7: Generic type equality comparison")
@@ -141,15 +123,10 @@ let val3 = gen3.data         // string from Generic<string>
 let val4 = gen4.first        // int from AnotherGeneric<int, string>
 let val5 = gen5.first        // int from AnotherGeneric<int, string> - same type
 
-print("Generic type equality test - gen1.data = ${val1}")
-print("Generic type equality test - gen2.data = ${val2}")
-print("Generic type equality test - gen3.data = ${val3}")
-print("Generic type equality test - gen4.first = ${val4}")
-print("Generic type equality test - gen5.first = ${val5}")
+print("Generic type equality test - gen1.data = ${val1}\nGeneric type equality test - gen2.data = ${val2}\nGeneric type equality test - gen3.data = ${val3}\nGeneric type equality test - gen4.first = ${val4}\nGeneric type equality test - gen5.first = ${val5}")
 
 // Test method call inference
-print("")
-print("Test 9: Method call type inference")
+print("\nTest 9: Method call type inference")
 
 type StringWrapper = { content: string }
 
@@ -164,12 +141,10 @@ let wrapper = StringWrapper { content: "hello" }
 let wrapperLen = getLength(wrapper)
 let wrapperUpper = uppercase(wrapper)
 
-print("wrapper.length() equivalent = ${wrapperLen}")
-print("wrapper.uppercase() equivalent = ${wrapperUpper}")
+print("wrapper.length() equivalent = ${wrapperLen}\nwrapper.uppercase() equivalent = ${wrapperUpper}")
 
 // Test unifyGenericTypes coverage
-print("")
-print("Test 10: Generic type unification")
+print("\nTest 10: Generic type unification")
 
 type Box<T> = { item: T }
 type Pair2<A, B> = { left: A, right: B }
@@ -189,14 +164,10 @@ let boxVal2 = box2.item
 let pairLeft = pair2_1.left
 let pairRight = pair2_1.right
 
-print("Box<int>.item = ${boxVal1}")
-print("Box<string>.item = ${boxVal2}")
-print("Pair2<int, string>.left = ${pairLeft}")
-print("Pair2<int, string>.right = ${pairRight}")
+print("Box<int>.item = ${boxVal1}\nBox<string>.item = ${boxVal2}\nPair2<int, string>.left = ${pairLeft}\nPair2<int, string>.right = ${pairRight}")
 
 // Test type equality methods coverage
-print("")
-print("Test 11: Type equality and String methods")
+print("\nTest 11: Type equality and String methods")
 
 /// This will exercise the String() and Equals() methods on various types
 fn typeTest1(x) = x * 2 
@@ -207,14 +178,11 @@ let typeResult1 = exactArithmetic(fn() => typeTest1(21))
 let typeResult2 = typeTest2("hi")
 let typeResult3 = typeTest3(false)
 
-print("typeTest1(21) = ${typeResult1}")
-print("typeTest2(\"hi\") = ${typeResult2}")
-print("typeTest3(false) = ${toString(typeResult3)}")
+print("typeTest1(21) = ${typeResult1}\ntypeTest2(\"hi\") = ${typeResult2}\ntypeTest3(false) = ${toString(typeResult3)}")
 
 // Test declared fn type parameters + explicit construction-site type args
 // Implements [TYPE-GENERICS-FN]
-print("")
-print("Test 12: Declared type parameters")
+print("\nTest 12: Declared type parameters")
 
 /// The binder is load-bearing: without <T>, the two `T` annotations would name
 /// a nominal type instead of pinning both parameters to ONE inferred type.
@@ -223,11 +191,9 @@ fn pick<T>(first: T, _second: T) = first
 let picked = pick(10, 20)
 let pickedStr = pick("left", "right")
 let pinned = Box<int> { item: 7 }
-print("pick<T>(10, 20) = ${picked}, pick<T>(\"left\", \"right\") = ${pickedStr}")
-print("Box<int> pinned explicitly: item = ${pinned.item}")
+print("pick<T>(10, 20) = ${picked}, pick<T>(\"left\", \"right\") = ${pickedStr}\nBox<int> pinned explicitly: item = ${pinned.item}")
 
-print("=== PURE HINDLEY-MILNER TEST COMPLETE ===")
-print("All types inferred from usage context - no explicit type annotations!")
+print("=== PURE HINDLEY-MILNER TEST COMPLETE ===\nAll types inferred from usage context - no explicit type annotations!")
 
 /// Verifies inferred helpers remain polymorphic across values, records, and HOFs.
 fn inferredBehaviorCase() = {

@@ -67,8 +67,7 @@ match result4 {
     Error => print("Process 4 failed")
 }
 
-print("=== Async Process Management Demo Complete ===")
-print("Note: Process output appears via C runtime callbacks during execution")
+print("=== Async Process Management Demo Complete ===\nNote: Process output appears via C runtime callbacks during execution")
 
 /// Spawns `command`, waits for it, releases it, and reports the exit code to `accept`.
 fn probeExit(command, accept) = match spawnProcess(command, processEventHandler) {

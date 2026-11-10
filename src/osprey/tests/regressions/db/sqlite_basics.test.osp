@@ -81,8 +81,7 @@ fn openUsers(cell) = {
 let dbCell = osprey_ffi_cell()
 let opened = openUsers(cell: dbCell)
 let db = opened.db
-print("open ${okText(rc: opened.openrc)}")
-print("create ${okText(rc: opened.ddlrc)}")
+print("open ${okText(rc: opened.openrc)}\ncreate ${okText(rc: opened.ddlrc)}")
 
 let i1 = insertUser(db: db, uid: 1, uname: "Ada")
 let i2 = insertUser(db: db, uid: 2, uname: "Linus")

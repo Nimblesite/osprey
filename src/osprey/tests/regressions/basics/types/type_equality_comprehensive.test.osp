@@ -23,11 +23,7 @@ let pairIS1 = makePair(a: 1, b: "test")
 let pairIS2 = makePair(a: 2, b: "hello")
 let tIBI    = makeTriple(a: 1, b: "test", c: 42)
 
-print("C<int>:  ${cInt1.value}, ${cInt2.value}")
-print("C<str>:  ${cStr.value}")
-print("P<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.second}")
-print("T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}")
-print("")
+print("C<int>:  ${cInt1.value}, ${cInt2.value}\nC<str>:  ${cStr.value}\nP<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.second}\nT<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}\n")
 
 /// --- Function type equality via HOFs ---
 fn addOne(x)     = x + 1 
@@ -83,9 +79,7 @@ fn sameColor(a, b) = match a {
 let c1 = Red
 let c2 = Red
 let c3 = Blue
-print("color1=${colorName(c1)} color3=${colorName(c3)}")
-print("sameRR=${toString(sameColor(a: c1, b: c2))}")
-print("sameRB=${toString(sameColor(a: c1, b: c3))}")
+print("color1=${colorName(c1)} color3=${colorName(c3)}\nsameRR=${toString(sameColor(a: c1, b: c2))}\nsameRB=${toString(sameColor(a: c1, b: c3))}")
 
 /// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
 /// Variance is position-checked: `out T` may appear only where the payload
@@ -211,8 +205,7 @@ fn describe(g) = match g {
 }
 fn mkGate() -> Gate<(int) -> Result<int, string>> = Gate { admit: |_f| => true }
 
-print("fn-payload feed accepted: ${label(mkFeed())}")
-print("fn-payload gate accepted: ${describe(mkGate())}")
+print("fn-payload feed accepted: ${label(mkFeed())}\nfn-payload gate accepted: ${describe(mkGate())}")
 
 /// --- Variance positions: every legal shape, exercised end to end ---
 /// `out T` sits in a field, a function RESULT and a covariant built-in;

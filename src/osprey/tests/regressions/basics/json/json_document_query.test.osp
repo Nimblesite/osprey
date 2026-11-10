@@ -42,8 +42,7 @@ match document {
     _ => print("root is not an object")
 }
 reportDeepString(document)
-print("types: ${describe(JsonNull)}, ${describe(JsonBoolean { value: true })}, ${describe(JsonNumber { value: 17 })}, ${describe(deepestValue)}, ${describe(outerArray)}, ${describe(document)}")
-print("=== JSON value union complete ===")
+print("types: ${describe(JsonNull)}, ${describe(JsonBoolean { value: true })}, ${describe(JsonNumber { value: 17 })}, ${describe(deepestValue)}, ${describe(outerArray)}, ${describe(document)}\n=== JSON value union complete ===")
 
 /// Recursively follows the single object/array path to its string leaf.
 fn deepString(value) = match value {

@@ -12,25 +12,19 @@ print("=== COMPREHENSIVE FIELD ACCESS TEST ===")
 // Test 1 - Basic integer fields
 print("Test 1 - Basic integer fields:")
 let point = Point { x: 15, y: 25 }
-print("Point x: ${point.x}")
-print("Point y: ${point.y}")
-print("")
+print("Point x: ${point.x}\nPoint y: ${point.y}\n")
 
 // Test 2 - Boolean and integer fields
 print("Test 2 - Boolean and integer fields:")
 let user = User { id: 42, active: true }
-print("User ID: ${user.id}")
-print("User active: ${match user.active { true => 1 false => 0 }}")
-print("")
+print("User ID: ${user.id}\nUser active: ${match user.active { true => 1 false => 0 }}\n")
 
 // Test 3 - Field access in arithmetic
 print("Test 3 - Field access in arithmetic:")
 let rect = Rectangle { width: 10, height: 5 }
-print("Rectangle width: ${rect.width}")
-print("Rectangle height: ${rect.height}")
+print("Rectangle width: ${rect.width}\nRectangle height: ${rect.height}")
 let area = exactArithmetic(fn() => rect.width * rect.height)
-print("Area: ${area}")
-print("")
+print("Area: ${area}\n")
 
 // Test 4 - Field access in conditionals
 print("Test 4 - Field access in conditionals:")
@@ -38,8 +32,7 @@ let status = match user.active {
     true => "Active User"
     false => "Inactive User"
 }
-print("User status: ${status}")
-print("")
+print("User status: ${status}\n")
 
 // Test 5 - Non-destructive updates
 print("Test 5 - Non-destructive updates:")
@@ -48,9 +41,7 @@ print("Original count: ${counter.count}")
 let incremented = counter { count: counter.count }
 print("After update: ${incremented.count}")
 let movedPoint = point { x: 100, y: 200 }
-print("Updated point: (${movedPoint.x}, ${movedPoint.y})")
-print("Original point unchanged: (${point.x}, ${point.y})")
-print("")
+print("Updated point: (${movedPoint.x}, ${movedPoint.y})\nOriginal point unchanged: (${point.x}, ${point.y})\n")
 
 // Test 6 - Complex expressions with field access
 print("Test 6 - Complex expressions with field access:")
@@ -59,10 +50,7 @@ let perimeter = exactArithmetic(fn() => 2 * (rect.width + rect.height))
 let manhattanDistance = exactArithmetic(fn() => point.x + point.y)
 let calculatedArea = exactArithmetic(fn() => calculateArea(rect))
 
-print("Rectangle perimeter: ${perimeter}")
-print("Manhattan distance from origin: ${manhattanDistance}")
-print("Calculated area using function: ${calculatedArea}")
-print("")
+print("Rectangle perimeter: ${perimeter}\nManhattan distance from origin: ${manhattanDistance}\nCalculated area using function: ${calculatedArea}\n")
 
 print("=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===")
 

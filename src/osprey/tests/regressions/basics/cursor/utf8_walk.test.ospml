@@ -29,9 +29,7 @@ walk (s, byteIndex, count) =
 
 s = sample ()
 bytes = byteLength s
-print "=== UTF-8 codepoint walk ==="
-print "string    = ${s}"
-print "byteLength = ${toString bytes}"
+print "=== UTF-8 codepoint walk ===\nstring    = ${s}\nbyteLength = ${toString bytes}"
 total = exactArithmetic (\() =>
     walk (s, 0, 0))
 print "codepoints = ${toString total}"

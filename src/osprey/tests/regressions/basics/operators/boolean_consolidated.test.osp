@@ -59,9 +59,7 @@ let rhs2 = (!p) && (!q)
 print("deMorgan || ${toString(lhs2 == rhs2)}")
 
 // XOR via composition
-print("xor T T ${toString(xor(a: true,  b: true))}")
-print("xor T F ${toString(xor(a: true,  b: false))}")
-print("xor F F ${toString(xor(a: false, b: false))}")
+print("xor T T ${toString(xor(a: true,  b: true))}\nxor T F ${toString(xor(a: true,  b: false))}\nxor F F ${toString(xor(a: false, b: false))}")
 
 /// Bool from match expression
 let parity = match 4 {
