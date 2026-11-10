@@ -143,8 +143,8 @@ fn filterPredicateWith(indices10, indices6) = withBuffer(toGpu([0.0 - 1.5, 0.0, 
 /// whole-buffer fold and index n is out of bounds.
 fn scanPrefixCase() = withIndices(5, fn(indices5) => scanPrefixWith(indices5))
 fn scanPrefixWith(indices5) = withBuffer(toGpu([1, 2, 3, 4, 5]), fn(value) => withBuffer(gpuScan(value, 0, sumI), fn(sums) => withBuffer(gpuScan(sums, 0, sumI), fn(twice) => withBuffer(toGpu([1, 2, 3, 4]), fn(four) => withBuffer(gpuScan(four, 1, mulI), fn(products) => checkAll("inclusive prefix", [
-    lengthIs(sums, 5), elementsFrom(sums, 0, 0, [1, 3, 6, 10]),
-    elementIs(sums, 4, 0, 15), elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
+    lengthIs(sums, 5), elementsFrom(sums, 0, 0, [1, 3, 6, 10, 15]),
+    elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
     elementIs(twice, 4, 0, 35), lengthIs(products, 4), elementIs(products, 3, 0, 24), gpuSatisfies(gpuScan(indices5, 0, sumI), fn(scanned) => elementIs(scanned, 4, 0, 10))
 ]))))))
 /// scanSeedCase pins the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch.
@@ -158,8 +158,8 @@ fn scanSeedCase() = withBuffer(toGpu([1, 2, 3]), fn(three) => withBuffer(gpuScan
 /// with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers.
 fn orderCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(digitsUp) => withBuffer(gpuScan(digitsUp, 0, horner), fn(running) => checkAll("traversal order", [
     hornerTo(digitsUp, 0, 1234), gpuSatisfies(toGpu([4, 3, 2, 1]), fn(digitsDown) => hornerTo(digitsDown, 0, 4321)), hornerTo(digitsUp, 9, 91234),
-    gpuSatisfies(toGpu([1, 2, 3]), fn(up) => differencesTo(up, 100, 94)), gpuSatisfies(toGpu([3, 2, 1]), fn(down) => differencesTo(down, 100, 94)), elementIs(running, 0, 0, 1),
-    elementsFrom(running, 1, 0, [12, 123, 1234]),
+    gpuSatisfies(toGpu([1, 2, 3]), fn(up) => differencesTo(up, 100, 94)), gpuSatisfies(toGpu([3, 2, 1]), fn(down) => differencesTo(down, 100, 94)),
+    elementsFrom(running, 0, 0, [1, 12, 123, 1234]),
     gpuSatisfies(gpuFold(digitsUp, 0, horner), fn(total) => elementIs(running, 3, 0, total)),
     gpuSatisfies(toGpu([1, 2, 3]), fn(source) => gpuSatisfies(gpuScan(source, 10, subI), fn(scanned) => sumsTo(scanned, 0, 20))), gpuSatisfies(toGpu([1, 2, 3]), fn(source) => gpuSatisfies(gpuScan(source, 0, subI), fn(scanned) => sumsTo(scanned, 10, 0))), sumsTo(running, 0, 1370)
 ])))
