@@ -104,6 +104,15 @@ fn holeToStringAgree(v, text) =
 /// `toString(v)` and the interpolation hole for `v` render identically.
 fn holeIsToString(v) = toString(v) == "${v}"
 
+/// Number of parts `split` produced, or -1 when it was rejected ([](BUILTIN-STRING-SPLIT)).
+fn splitPartCount(outcome) = match outcome {
+    Success { value } => listLength(value)
+    Error => (0 - 1)
+}
+
+/// `toUpperCase(s)` folds to `upper` and `toLowerCase(s)` folds to `lower`.
+fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) == lower])
+
   // ---- isEmpty edges ----
   printValue("empty-emp", "" |> isEmpty)
   printValue("empty-x", "x" |> isEmpty)
@@ -417,10 +426,7 @@ fn interpolationResultCase() = {
 /// the runtime string is a NUL-terminated `char*` ([BUILTIN-STRING-CURSOR]), so
 /// an embedded NUL has no observable length and the spec does not define one.
 fn escapeSequenceCase() = {
-    let tabSplitCount = match split("a\tb", "\t") {
-        Success { value } => listLength(value)
-        Error => (0 - 1) 
-    }
+    let tabSplitCount = splitPartCount(split("a\tb", "\t"))
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
     checkAll("each recognised escape collapses to exactly one byte", [
@@ -558,7 +564,7 @@ fn substringPositionCase() = {
         take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
         drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
         startsWith(drop(subject, (indexOf(subject, "ana") ?: missing)), "ana"),
-        (indexOf(toUpperCase(subject), "NA") ?: missing) == 2
+        indexOfIs(toUpperCase(subject), "NA", 2)
     ])
 }
 
@@ -571,16 +577,12 @@ fn caseFoldingCase() = {
     let accented = "héllo"
 
     checkAll("ASCII letters fold and every other byte is copied unchanged", [
-        toUpperCase("") == "",
-        toLowerCase("") == "",
+        foldsTo("", "", ""),
         toUpperCase("a") == "A",
         toLowerCase("A") == "a",
-        toUpperCase(mixed) == "MIXED 123!",
-        toLowerCase(mixed) == "mixed 123!",
-        toUpperCase("0123456789") == "0123456789",
-        toLowerCase("0123456789") == "0123456789",
-        toUpperCase("!@#%^&*()") == "!@#%^&*()",
-        toLowerCase("!@#%^&*()") == "!@#%^&*()",
+        foldsTo(mixed, "MIXED 123!", "mixed 123!"),
+        foldsTo("0123456789", "0123456789", "0123456789"),
+        foldsTo("!@#%^&*()", "!@#%^&*()", "!@#%^&*()"),
         toUpperCase(" \t\n") == " \t\n",
         toUpperCase("\e") == "\e",
         toUpperCase(accented) == "HéLLO",
@@ -751,10 +753,7 @@ fn interpolationCompositionCase() = {
     let step2 = "${step1}${listGet(xs, 1) ?: "?"}|"
     let step3 = "${step2}${listGet(xs, 2) ?: "?"}|"
     let step4 = "${step3}${listGet(xs, 9) ?: "?"}|"
-    let segmentCount = match split(step3, "|") {
-        Success { value } => listLength(value)
-        Error => (0 - 1) 
-    }
+    let segmentCount = splitPartCount(split(step3, "|"))
 
     checkAll("a hole may hold a call, a pipe, an operator or an index", [
         "${length("abc")}" == "3",
