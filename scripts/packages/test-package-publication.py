@@ -46,8 +46,14 @@ def command(*words, directory=None):
     return json.loads(result.stdout.splitlines()[0])
 
 
+# Wall-clock budget: refused connections return at once, so an attempt count
+# would give a loaded host only a few seconds to start the server.
+READY_SECONDS = 15
+
+
 def wait_ready(child, origin):
-    for _ in range(100):
+    deadline = time.monotonic() + READY_SECONDS
+    while time.monotonic() < deadline:
         if child.poll() is not None:
             raise AssertionError("Registry exited before readiness")
         try:
