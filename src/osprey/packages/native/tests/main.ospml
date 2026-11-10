@@ -91,6 +91,28 @@ editFrom (session, prior, region, revision, ordinal, value) = Probes::post (sess
 
 // An edit posted to `session` against `prior`'s saved state is refused for `reason` and changes nothing.
 refusedEdit (session, prior, region, revision, ordinal, value, reason) = refusedClean (editFrom (session, prior, region, revision, ordinal, value), reason)
+
+// A host tap of `region`'s `ordinal` control at `revision`, posted to `session`.
+postedTap (session, region, revision, ordinal) = Probes::post (session, Probes::tap (region, revision, ordinal))
+
+// A settled root edit posted to `session` against `prior`'s saved state.
+rootEdit (session, prior, ordinal) = editFrom (session, prior, "root", 1, ordinal, "null")
+
+// `envelope` reports no problem.
+problemFree envelope = expect (Probes::problems envelope, "")
+
+// `session`'s store tallies one.
+tallyOne session = expect (Doc::number (Probes::stored session, "tally"), 1)
+
+// `session` reports no problem and leaves one load ticket.
+servedLoad session =
+    problemFree session
+    expect (Doc::text (firstOf (session, "requests"), "ticket"), "load:1")
+
+// `session` refreshes only `region` and patches its `key` text to `text`.
+refreshedTo (session, region, key, text) =
+    expect (Probes::keys session, region)
+    expect (patchedText (session, key), text)
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
 revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
 test ("a disclosure takes its ordinal before the controls it reveals", \() =>
