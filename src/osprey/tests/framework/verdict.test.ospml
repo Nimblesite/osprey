@@ -72,30 +72,21 @@ curriedEffectsReachTheHandlerCase () =
 
     // Each arity consumes consecutive indices: 1-2, 3-5, 6-9, 10-14, 15-18.
     checkAll "curried arities consume every operation index" [
-        traceReport == "3/12/30/60/66",
-        structuralEquals [startsWith traceReport "3/", endsWith traceReport "/66"] [true, true],
-        containsAll traceReport ["/12/", "/30/", "/60/"],
-        containsNone traceReport ["/0/", "//"]
+        structuralEquals [traceReport == "3/12/30/60/66", startsWith traceReport "3/", endsWith traceReport "/66", containsAll traceReport ["/12/", "/30/", "/60/"], containsNone traceReport ["/0/", "//"]] [true, true, true, true, true]
     ]
 
     // The handler saw eighteen distinct labels, in source order, once each.
     checkAll "every performed label reached the handler" [
         structuralEquals [steps, length seen, steps] [18, 36, 18],
-        seen == "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|",
-        structuralEquals [startsWith seen "a|b|", endsWith seen "q|r|"] [true, true],
-        containsAll seen ["e|f|", "i|j|", "n|o|"],
-        steps > 14,
-        steps != 14,
-        steps != 9
+        structuralEquals [seen == "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|", startsWith seen "a|b|", endsWith seen "q|r|", containsAll seen ["e|f|", "i|j|", "n|o|"], steps > 14, steps != 14, steps != 9] [true, true, true, true, true, true, true]
     ]
 
     // Arity-4 curried and flat agree step for step: 6+7+8+9 == 30 and
     // 15+16+17+18 == 66. `?:` is lowest and right-associative, so each sum needs
     // its own parentheses under `==` [SYNTAX].
     checkAll "curried and flat four-parameter bodies agree" [
-        ((6 + 7 ) + (8 + 9 ) ) == 30,
-        structuralEquals [((15 + 16 ) + (17 + 18 ) ), (1 + 2 ), ((3 + 4 ) + 5 ), (((10 + 11 ) + (12 + 13 ) ) + 14 ), steps] [66, 3, 12, 60, 18],
-        containsAll traceReport ["30", "66"]
+        structuralEquals [((6 + 7 ) + (8 + 9 ) ) == 30, containsAll traceReport ["30", "66"]] [true, true],
+        structuralEquals [((15 + 16 ) + (17 + 18 ) ), (1 + 2 ), ((3 + 4 ) + 5 ), (((10 + 11 ) + (12 + 13 ) ) + 14 ), steps] [66, 3, 12, 60, 18]
     ]
 
 (** The curried integer sum, and its explicitly flat parenthesised twin. *)
@@ -149,9 +140,8 @@ associates left right = verdictLabel left == verdictLabel right
 (** Whether combining two verdicts renders exactly `renders`. *)
 thenRenders left right renders = verdictLabel (andThen left right) == renders
 
-(** Whether `Pass` leaves `v` unchanged on each side of `andThen`. *)
-identityOnLeft v = verdictLabel (andThen Pass v) == verdictLabel v
-identityOnRight v = verdictLabel (andThen v Pass) == verdictLabel v
+(** Whether `Pass` leaves `v` unchanged on either side of `andThen`. *)
+identityAround v = verdictLabel (andThen Pass v) == verdictLabel v && verdictLabel (andThen v Pass) == verdictLabel v
 
 (** Whether the labeled comparison renders exactly `renders`. *)
 labeledRenders label expected actual renders =
@@ -176,28 +166,18 @@ verdictAlgebraCase () =
     // Nine ordered pairs over {Pass, Fail, Skip}: the first non-Pass wins, and
     // the second operand's payload must never surface when it does.
     checkAll "andThen retains the first non-Pass verdict" [
-        structuralEquals [verdictLabel (andThen Pass Pass), verdictLabel (andThen Pass fail2)] ["pass", "fail(two)"],
-        thenRenders Pass skip2 "skip(second)", thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)",
-        thenRenders fail1 skip2 "fail(one)", thenRenders skip1 Pass "skip(first)", thenRenders skip1 fail2 "skip(first)",
-        thenRenders skip1 skip2 "skip(first)",
-        verdictLabel (andThen fail1 fail2) != verdictLabel fail2,
-        verdictLabel (andThen skip1 skip2) != verdictLabel skip2,
-        structuralEquals [startsWith (verdictLabel (andThen fail1 skip2)) "fail(", endsWith (verdictLabel (andThen skip1 fail2)) ")"] [true, true],
-        structuralEquals [contains (verdictLabel (andThen fail1 fail2)) "one", !(contains (verdictLabel (andThen fail1 fail2)) "two"), !(contains (verdictLabel (andThen skip1 fail2)) "two")] [true, true, true]
+        thenRenders Pass Pass "pass", thenRenders Pass fail2 "fail(two)", thenRenders Pass skip2 "skip(second)",
+        thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)", thenRenders fail1 skip2 "fail(one)",
+        thenRenders skip1 Pass "skip(first)", thenRenders skip1 fail2 "skip(first)", thenRenders skip1 skip2 "skip(first)",
+        structuralEquals [verdictLabel (andThen fail1 fail2) != verdictLabel fail2, verdictLabel (andThen skip1 skip2) != verdictLabel skip2, startsWith (verdictLabel (andThen fail1 skip2)) "fail(", endsWith (verdictLabel (andThen skip1 fail2)) ")", contains (verdictLabel (andThen fail1 fail2)) "one", !(contains (verdictLabel (andThen fail1 fail2)) "two"), !(contains (verdictLabel (andThen skip1 fail2)) "two")] [true, true, true, true, true, true, true]
     ]
 
     // Monoid laws: Pass is a two-sided identity and andThen associates, so a
     // regrouped fold cannot change the reported outcome.
     checkAll "Pass is the identity of andThen and andThen associates" [
-        identityOnLeft Pass, identityOnLeft fail1, identityOnLeft skip1,
-        identityOnRight fail1, identityOnRight skip1,
-        associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)),
-        associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)),
-        associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
-        thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)",
-        thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)",
-        thenRenders fail1 (andThen fail2 skip1) "fail(one)", thenRenders (andThen Pass Pass) (andThen Pass skip2) "skip(second)",
-        thenRenders (andThen Pass skip2) (andThen Pass fail1) "skip(second)", thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)",
+        identityAround Pass, identityAround fail1, identityAround skip1,
+        associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)), associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)), associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
+        structuralEquals [thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)", thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)", thenRenders fail1 (andThen fail2 skip1) "fail(one)", thenRenders (andThen Pass Pass) (andThen Pass skip2) "skip(second)", thenRenders (andThen Pass skip2) (andThen Pass fail1) "skip(second)", thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)"] [true, true, true, true, true, true, true, true],
     ]
 
     // The Fail payload is the whole labeled mismatch, verbatim: 28 chars rendered.
@@ -208,9 +188,8 @@ verdictAlgebraCase () =
         labeledRenders "space" "a b" "ab" "fail(space: expected a b, got ab)", labeledRenders "digits" (toString (add 2 3)) "5" "pass",
         labeledRenders "bool" (toString (3 < 5)) "true" "pass",
         structuralEquals [verdictLabel (sumCheck "5" "5"), verdictLabel (sumCheck "5" "6")] ["pass", "fail(sum: expected 5, got 6)"],
-        verdictLabel ((checkVerdict "sum" "5") "7") == "fail(sum: expected 5, got 7)",
-        verdictLabel (checkVerdict "bool" (toString (5 < 3)) "true") ==
-            "fail(bool: expected false, got true)",
+        labeledRenders "sum" "5" "7" "fail(sum: expected 5, got 7)",
+        labeledRenders "bool" (toString (5 < 3)) "true" "fail(bool: expected false, got true)",
         structuralEquals [containsAll mismatch ["expected 5", "got 6"], startsWith mismatch "fail(sum:", length mismatch == 28] [true, true, true],
         !(contains (verdictLabel (checkVerdict "sum" "5" "5")) "expected")
     ]
@@ -219,11 +198,8 @@ verdictAlgebraCase () =
     checkAll "assume converts a precondition into Pass or Skip" [
         gateRenders true "pass", gateRenders false "skip(precondition not met)", gateRenders (2 > 3) "skip(precondition not met)",
         structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"],
-        gateRenders ("a" == "b") "skip(precondition not met)",
-        gateRenders (5 >= 5) "pass", gateRenders (5 > 5) "skip(precondition not met)",
-        thenRenders (assume true) fail1 "fail(one)", thenRenders (assume false) fail1 "skip(precondition not met)",
-        thenRenders fail1 (assume false) "fail(one)", thenRenders (assume true) (assume false) "skip(precondition not met)",
-        thenRenders (assume true) (assume true) "pass",
+        gateRenders ("a" == "b") "skip(precondition not met)", gateRenders (5 >= 5) "pass", gateRenders (5 > 5) "skip(precondition not met)",
+        structuralEquals [thenRenders (assume true) fail1 "fail(one)", thenRenders (assume false) fail1 "skip(precondition not met)", thenRenders fail1 (assume false) "fail(one)", thenRenders (assume true) (assume false) "skip(precondition not met)", thenRenders (assume true) (assume true) "pass"] [true, true, true, true, true],
         structuralEquals [startsWith (verdictLabel (assume false)) "skip(", length (verdictLabel (assume false)) == 26, !(contains (verdictLabel (assume true)) "skip")] [true, true, true]
     ]
 
@@ -264,10 +240,7 @@ curriedArityLadderCase () =
     checkAll "every curried arity answers its own sum" [
         structuralEquals [add 1 2, add 0 0, add 0 7, add 7 0, add 5 ((0 - 5) ), addThree 1 2 3, sum4 1 2 3 4, sum4 0 0 0 0] [3, 0, 7, 7, 0, 6, 10, 0],
         structuralEquals [sum4 4 3 2 1, sum5 1 2 3 4 5, sum5 0 0 0 0 5, sum6 1 2 3 4 5 6, sum6 6 5 4 3 2 1, sum6 0 0 0 0 0 0, sumFlat6 (1, 2, 3, 4, 5, 6)] [10, 15, 5, 21, 21, 0, 21],
-        add 3 4 == add 4 3,
-        sum6 1 2 3 4 5 6 == sumFlat6 (1, 2, 3, 4, 5, 6),
-        sum6 1 2 3 4 5 6 != 20,
-        sum5 1 2 3 4 5 != sum6 1 2 3 4 5 6
+        structuralEquals [add 3 4 == add 4 3, sum6 1 2 3 4 5 6 == sumFlat6 (1, 2, 3, 4, 5, 6), sum6 1 2 3 4 5 6 != 20, sum5 1 2 3 4 5 != sum6 1 2 3 4 5 6] [true, true, true, true]
     ]
 
     // Left-associative application: the parentheses are noise, not structure.
@@ -282,12 +255,7 @@ curriedArityLadderCase () =
     checkAll "prefix partials are reusable independent values" [
         structuralEquals [inc 41, inc 0, inc ((0 - 1) ), p1 2 3 4 5 6, p2 3 4 5 6, p3 4 5 6, p4 5 6, p5 6, p5 0, p5 100] [42, 1, 0, 21, 21, 21, 21, 21, 15, 115],
         structuralEquals [p4 0 0, p3 0 0 0, p2 0 0 0 0, p1 0 0 0 0 0] [10, 6, 3, 1],
-        inc 41 == inc 41,
-        p5 6 != p5 7,
-        p5 6 == p4 5 6,
-        p3 4 5 6 == p2 3 4 5 6,
-        p5 6 == sumFlat6 (1, 2, 3, 4, 5, 6),
-        p1 2 3 4 5 6 == p5 6
+        structuralEquals [inc 41 == inc 41, p5 6 != p5 7, p5 6 == p4 5 6, p3 4 5 6 == p2 3 4 5 6, p5 6 == sumFlat6 (1, 2, 3, 4, 5, 6), p1 2 3 4 5 6 == p5 6] [true, true, true, true, true, true]
     ]
 
     // The same ladder over strings, booleans and floats: blend3 a b c = a*b+c, so
@@ -330,20 +298,14 @@ lambdaCurryingCase () =
     checkAll "curried and flat lambda heads split as specified" [
         structuralEquals [curriedAdd 3 4, (curriedAdd 3) 4, curriedAdd 0 0, curriedAdd 0 9, curriedAdd 9 0, curriedAdd 5 ((0 - 5) ), flatAdd (3, 4), flatAdd (0, 0)] [7, 7, 0, 9, 9, 0, 7, 0],
         structuralEquals [flatAdd (0, 9), flatAdd (9, 0), flatAdd (5, ((0 - 5) )), bump 5, bump 0, bump ((0 - 10) )] [9, 9, 0, 15, 10, 0],
-        curriedAdd 3 4 == curriedAdd 4 3,
-        flatAdd (3, 4) == curriedAdd 3 4,
-        bump 5 != curriedAdd 5 5,
-        bump 5 == curriedAdd 10 5
+        structuralEquals [curriedAdd 3 4 == curriedAdd 4 3, flatAdd (3, 4) == curriedAdd 3 4, bump 5 != curriedAdd 5 5, bump 5 == curriedAdd 10 5] [true, true, true, true]
     ]
 
     // `\x y => e` and `\x => \y => e` are the same value by [FLAVOR-ML-CURRY].
     checkAll "a curried lambda head is nested one-parameter lambdas" [
         structuralEquals [nestedAdd 3 4, (nestedAdd 3) 4, nestedAdd 12 30, curriedTri 1 2 3, (curriedTri 1) 2 3, (curriedTri 1 2) 3, ((curriedTri 1) 2) 3, curriedTri 0 0 0] [7, 7, 42, 6, 6, 6, 6, 0],
         structuralEquals [tri1 2 3, tri2 3, tri1 0 0, tri2 0, tri1 2 4] [6, 6, 1, 3, 7],
-        nestedAdd 3 4 == curriedAdd 3 4,
-        nestedAdd 0 0 == curriedAdd 0 0,
-        tri1 2 3 == tri2 3,
-        tri1 2 3 != tri1 2 4
+        structuralEquals [nestedAdd 3 4 == curriedAdd 3 4, nestedAdd 0 0 == curriedAdd 0 0, tri1 2 3 == tri2 3, tri1 2 3 != tri1 2 4] [true, true, true, true]
     ]
 
     // A lambda keeps its arity shape when it is passed as an argument, piped
@@ -352,9 +314,7 @@ lambdaCurryingCase () =
         structuralEquals [applyCurried curriedAdd 3 4, applyCurried nestedAdd 3 4, applyCurried curriedAdd 0 0, applyCurried (\x y => x + y ) 20 22] [7, 7, 0, 42],
         structuralEquals [applyCurried (\x y => (x + y ) + 1 ) 20 21, (applyCurried curriedAdd 3) 4, applyFlat (flatAdd, 3, 4), applyFlat (flatAdd, 0, 0)] [42, 7, 7, 0],
         structuralEquals [applyFlat (flatAdd, 5, ((0 - 5) )), (5 |> \x => x + 100 ), (5 |> (\x => x + 100 ) |> (\x => x * 2 )), shifted 5, shifted 0] [0, 105, 210, 105, 100],
-        applyCurried curriedAdd 3 4 != applyCurried curriedAdd 3 5,
-        applyFlat (flatAdd, 3, 4) == applyCurried curriedAdd 3 4,
-        shifted 5 == curriedAdd 100 5
+        structuralEquals [applyCurried curriedAdd 3 4 != applyCurried curriedAdd 3 5, applyFlat (flatAdd, 3, 4) == applyCurried curriedAdd 3 4, shifted 5 == curriedAdd 100 5] [true, true, true]
     ]
 
     // The same lambda forms over strings and booleans.
@@ -365,12 +325,7 @@ lambdaCurryingCase () =
         structuralEquals [startsWith (joinTwo "ab" "cde") "ab", endsWith (joinTwo "ab" "cde") "cde"] [true, true],
         containsAll (joinTwo "ab" "cde") ["bc"],
         containsNone (joinTwo "ab" "cde") ["ce"],
-        andBoth true true,
-        !(andBoth true false),
-        !(andBoth false true),
-        !(andBoth false false),
-        (andBoth true) true,
-        !((andBoth false) true)
+        structuralEquals [andBoth true true, !(andBoth true false), !(andBoth false true), !(andBoth false false), (andBoth true) true, !((andBoth false) true)] [true, true, true, true, true, true]
     ]
 
 (** One record with a field of each scalar kind, so an update can be observed
@@ -525,9 +480,7 @@ matchLayoutAndClausesCase () =
         describeLevel deep != describeLevel shallow,
         structuralEquals [startsWith (describeLevel deep) "deep:", endsWith (describeLevel deep) ":7"] [true, true],
         structuralEquals [contains (describeLevel deep) "north", !(contains (describeLevel shallow) "north"), length (describeLevel Flat) == 4] [true, true, true],
-        describeLevel (Deep(marker = "north", rank = 7)) == describeLevel deep,
-        describeLevel (Deep(marker = "north", rank = 8)) != describeLevel deep,
-        describeLevel (Shallow(marker = "north")) != describeLevel deep
+        structuralEquals [describeLevel (Deep(marker = "north", rank = 7)) == describeLevel deep, describeLevel (Deep(marker = "north", rank = 8)) != describeLevel deep, describeLevel (Shallow(marker = "north")) != describeLevel deep] [true, true, true]
     ]
 
     // Column order wins over spelling: "north/7", never "7/north".
@@ -555,9 +508,8 @@ matchLayoutAndClausesCase () =
         structuralEquals [shape (List ()), shape single, shape [1, 2], shape nums, shape [1, 2, 3, 4]] ["empty", "one(42)", "two(1,2)", "many(10+2)", "many(1+3)"],
         structuralEquals [shape (listAppend nums 40), shape (listReverse nums), shape (listPrepend nums 5), readAt nums 3, readAt nums 99] ["many(10+3)", "many(30+2)", "many(5+3)", "miss 3", "miss 99"],
         structuralEquals [readAt nums ((0 - 1) ), readAt single 0, readAt [7] 1, readAt [7] 0] ["miss -1", "at 0 = 42", "miss 1", "at 0 = 7"],
-        shape single != shape nums,
         structuralEquals (mapList [0, 1, 2] (\k => readAt nums k)) ["at 0 = 10", "at 1 = 20", "at 2 = 30"],
-        structuralEquals [readAt nums 0 != readAt nums 1, contains (readAt nums 1) "20", !(contains (readAt nums 3) "=")] [true, true, true]
+        structuralEquals [shape single != shape nums, readAt nums 0 != readAt nums 1, contains (readAt nums 1) "20", !(contains (readAt nums 3) "=")] [true, true, true, true]
     ]
 
 (** An indented body is a block whose last line is its value [FLAVOR-ML-BLOCK];
@@ -623,8 +575,7 @@ layoutAndInterpolationCase () =
         structuralEquals [length text, length ""] [10, 0],
         structuralEquals [!(isEmpty text), isEmpty "", containsNone text ["ba", "AB"], !(startsWith text "b"), !(endsWith text "1")] [true, true, true, true, true],
         structuralEquals [toUpperCase text == "AB, AB, 12", toLowerCase "AB, AB, 12" == text, toUpperCase (toLowerCase text) == toUpperCase text, toLowerCase text == text] [true, true, true, true],
-        length (toUpperCase text) == length text,
-        contains (toUpperCase text) "AB"
+        structuralEquals [length (toUpperCase text) == length text, contains (toUpperCase text) "AB"] [true, true]
     ]
 
 // Registration order fixes the TAP numbering, so these follow the four cases above.
