@@ -31,9 +31,7 @@ module LessonCases
 
     (** [LESSONS-PROVE]: a complete answer is right; the swapped answer is wrong at its third line with the kernel's reason; an unknown sentence is unfinished. *)
     export prove () =
-        expect (marked (completed "\nFrom hq.\nFrom hp."), "right: Right. The Osprey kernel checked it.")
-        expect (head (completed "\nFrom hp.\nFrom hq."), "wrong 2: T")
-        expect (head (Judge::prove (swapTask (), "Wave hands.")), "unfinished")
+        expect (join ([marked (completed "\nFrom hq.\nFrom hp."), head (completed "\nFrom hp.\nFrom hq."), head (Judge::prove (swapTask (), "Wave hands."))], "|"), "right: Right. The Osprey kernel checked it.|wrong 2: T|unfinished")
 
     stateTask expected = workbench::Stating(statedVariables = ["p", "q"], statedExpected = expected)
 
@@ -63,7 +61,6 @@ module LessonCases
     inserted (tutor, key, at, text) = Tutors::insert (Tutors::moved (tutor, key, at), key, text)
     typedInto (key, text) = Tutors::answer (Tutors::empty (), key, text)
 
-    (** The stored attempt of one challenge, read through the tutor's own API. *)
     tried (tutor, key) = Tutors::attempt (tutor, key)
     answerOf (tutor, key) = (tried (tutor, key)).attemptAnswer
     caretOf (tutor, key) = (tried (tutor, key)).attemptCursor
@@ -75,10 +72,14 @@ module LessonCases
     (** The actual editor of one challenge region, as the app drew it. *)
     editorOf (envelope, region) = Drive::findNode ("editor", Drive::node (envelope, region))
 
-    (** The text the app drew in one field of one region's editor. *)
     drawnAs (envelope, region, field, want) = expect (Doc::text (editorOf (envelope, region), field), want)
     answersAs (tutor, answer) = expect (answerOf (tutor, "l/two"), answer)
-    caretAt (tutor, caret) = expect (caretOf (tutor, "l/two"), caret)
+    caretAt (tutor, caret) = cursorIs (tutor, "l/two", caret)
+
+    (** The caret of one stored attempt, and of the two-atom answer after moving or typing. *)
+    cursorIs (tutor, key, want) = expect (Tutors::cursorOf (tried (tutor, key)), want)
+    movedCursor (tutor, at, want) = cursorIs (Tutors::moved (tutor, "l/two", at), "l/two", want)
+    typedCaret (tutor, entry) = caretAt (typedAt (tutor, entry.at, entry.key, entry.text), length entry.text)
 
     (** A formula key typed at `at` into the two-atom answer, its text checked here, its caret by the caller. *)
     typedAt (tutor, at, key, text) =
@@ -86,27 +87,23 @@ module LessonCases
         answersAs (said, text)
         said
 
-    (** The focus epoch the app drew on one challenge's editor. *)
     epochIs (envelope, region, expected) = expect (Doc::number (editorOf (envelope, region), "focusEpoch"), expected)
 
     (** [LESSONS-STATE] [WORKBENCH-NOTATION]: a formula key inserts at the caret and advances it, preserving the text around it, at the start, in the middle and past the end. *)
     keypadTyping () =
         tutor = typedInto ("l/two", "pq")
-        caretAt (typedAt (tutor, 0, "¬", "¬pq"), length "¬")
-        caretAt (typedAt (tutor, 1, "∧", "p∧q"), length "p∧")
-        let _ = typedAt (tutor, 999, "→", "pq→")
+        forEachList ([{ at = 0, key = "¬", text = "¬pq" }, { at = 1, key = "∧", text = "p∧q" }, { at = 999, key = "→", text = "pq→" }], \entry => typedCaret (tutor, entry))
         answersAs (inserted (tutor, "l/two", -5, "¬"), "¬pq")
-        expect (Tutors::cursorOf (Tutors::attempt (Tutors::moved (tutor, "l/two", -5), "l/two")), 0)
-        expect (Tutors::cursorOf (Tutors::attempt (Tutors::moved (tutor, "l/two", 999), "l/two")), 2)
+        movedCursor (tutor, -5, 0)
+        movedCursor (tutor, 999, 2)
 
     (** [LESSONS-STATE]: inserting a key clears a stale mark, never submits, and leaves the other challenge's attempt alone. *)
     keypadState () =
         right = Tutors::submit (typedInto ("l/two", "p → q"), "l/two", stateChallenge "p → q")
         expect (markKey (right, "l/two"), "right: Rig")
         edited = inserted (right, "l/two", length "p → q", "∧")
-        expect (markKey (edited, "l/two"), "none")
-        expect (length edited.tutorCompleted, 1)
-        expect (triesOf (edited, "l/two"), 0)
+        editedState = "${markKey (edited, "l/two")}/${length edited.tutorCompleted}/${triesOf (edited, "l/two")}"
+        expect (editedState, "none/1/0")
         other = Tutors::answer (edited, "l/three", "q")
         both = Tutors::insert (other, "l/two", "∨")
         expect (answerOf (both, "l/three"), "q")
@@ -116,11 +113,10 @@ module LessonCases
     keypadPersistence () =
         moved = Tutors::moved (typedInto ("l/two", "pq"), "l/two", 1)
         restored = roundTrip moved
-        expect (caretOf (restored, "l/two"), 1)
-        expect (answerOf (restored, "l/two"), "pq")
+        expect ("${answerOf (restored, "l/two")}@${caretOf (restored, "l/two")}", "pq@1")
         focusIs (restored, "l/two", 0)
         legacy = Tries::restore (Doc::parse "{\"tries\":[{\"key\":\"l/two\",\"answer\":\"p → q\",\"ruling\":\"\",\"count\":0,\"hints\":0,\"mark\":null,\"revealed\":false}],\"completed\":[]}")
-        expect (Tutors::cursorOf (tried (legacy, "l/two")), length "p → q")
+        cursorIs (legacy, "l/two", length "p → q")
         focusIs (legacy, "l/two", 0)
 
     keypadEncoding () =
@@ -130,14 +126,14 @@ module LessonCases
         expect (join (mapList (items, \button => Doc::text (button, "label")), "|"), "p|q|→ implies|¬ not|∧ and|∨ or|↔ both ways|(|)")
         expect (length (FormulaKeys::buttons (workbench::ProveTask (swapTask ()), "one")), 0)
 
+    (** The control one field of a challenge region's editor carries. *)
+    controlAt (envelope, region, field, value) = Drive::controlOf (envelope, region, Doc::number (editorOf (envelope, region), field), value)
+
     keypadInsert () =
         lesson = AppCases::opened ()
         region = "challenge:and-swap/state-swapped-goal"
-        editor = editorOf (lesson, region)
-        typed = Drive::controlOf (lesson, region, Doc::number (editor, "event"), Drive::quoted "pq")
-        current = editorOf (typed, region)
-        moved = Drive::controlOf (typed, region, Doc::number (current, "placeEvent"), "1")
-        Drive::press (moved, region, "→ implies")
+        typed = controlAt (lesson, region, "event", Drive::quoted "pq")
+        Drive::press (controlAt (typed, region, "placeEvent", "1"), region, "→ implies")
 
     (** [LESSONS-STATE]: a real issued key through App::respond inserts at the actual editor caret without submitting. *)
     keypadEvent () =
@@ -146,9 +142,8 @@ module LessonCases
         saved = Drive::stored next
         tutor = Tries::restore (Doc::field (saved, "tutor"))
         work = Tutors::attempt (tutor, "and-swap/state-swapped-goal")
-        expect (work.attemptAnswer, "p→q")
-        expect (work.attemptCursor, length "p→")
-        expect (work.attemptCount, 0)
+        caret = length "p→"
+        expect ("${work.attemptAnswer}@${work.attemptCursor}@${work.attemptCount}", "p→q@${caret}@0")
         expect (isEmpty tutor.tutorCompleted, true)
         expect (Doc::text (saved, "focused"), "state-swapped-goal")
         expect (Drive::keys next, "challenge:and-swap/state-swapped-goal")
@@ -162,28 +157,33 @@ module LessonCases
         drawnAs (next, region, "value", "p→qq")
 
     (** Actual App regions separate equal challenge ids across lessons, including their focus epochs. *)
+    (** Post one labelled occurrence of `region` to a lesson's own envelope. *)
+    labelledAs (envelope, region, text, next) =
+        FixtureFiles::bind (Drive::postSharedChallenge (envelope, Drive::labelled (envelope, envelope, region, text, "null")), next)
+
+    (** The epoch and the text one field of a challenge's editor shows. *)
+    editorState (envelope, region, epoch, field, text) =
+        epochIs (envelope, region, epoch)
+        drawnAs (envelope, region, field, text)
+
     crossLessonFocus () =
         region = "challenge:and-swap/state-swapped-goal"
-        lesson = AppCases::opened ()
-        first = foldList (toList (range (0, 8)), lesson, \(current, _) => Drive::press (current, region, "p"))
+        first = foldList (toList (range (0, 8)), AppCases::opened (), \(current, _) => Drive::press (current, region, "p"))
         epochIs (first, region, 8)
-        FixtureFiles::bind (Drive::postSharedChallenge (first, Drive::labelled (first, first, "lesson", "All lessons", "null")), \closed =>
+        labelledAs (first, "lesson", "All lessons", \closed =>
             expect (listContains (Doc::texts (closed, "removed"), region), true)
             expect (AppCases::regionKind (closed, region), "")
             FixtureFiles::bind (Drive::postSharedChallenge (closed, Drive::tap (closed, "catalogue", 0)), \opened => secondLessonFocus (first, opened, region)))
 
     secondLessonFocus (first, opened, previousRegion) =
         region = "challenge:what-is-a-proof/state-swapped-goal"
-        epochIs (opened, region, 0)
-        drawnAs (opened, region, "kind", "editor")
-        FixtureFiles::bind (Drive::postSharedChallenge (opened, Drive::labelled (opened, opened, region, "p", "null")), \next =>
-            epochIs (next, region, 1)
-            drawnAs (next, region, "value", "p")
-            FixtureFiles::bind (Drive::postSharedChallenge (next, Drive::labelled (first, first, previousRegion, "p", "null")), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
+        editorState (opened, region, 0, "kind", "editor")
+        labelledAs (opened, region, "p", \next =>
+            editorState (next, region, 1, "value", "p")
+            labelledAs (first, previousRegion, "p", \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
 
     judgeTask steps = workbench::Judging(judgedHeading = swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
 
-    (** The mark the judge gives `steps` when the learner says it checks or does not. *)
     ruleOf (steps, agrees) = head (Judge::rule (judgeTask steps, agrees))
     ruleIs (steps, agrees, want) = expect (ruleOf (steps, agrees), want)
 
@@ -210,8 +210,7 @@ module LessonCases
         rightAgain = submitJudge (Tutors::answer (roundTrip right, "l/judge", ""))
         expect (Doc::text (Doc::field (Tries::attemptJson (Tutors::attempt (rightAgain, "l/judge")), "mark"), "kind"), "correct")
         wrong = submitJudge (Tutors::pick (blank, "l/judge", workbench::Checks))
-        expect (triesOf (roundTrip wrong, "l/judge"), 1)
-        expect (triesOf (submitJudge (roundTrip wrong), "l/judge"), 2)
+        expect ("${triesOf (roundTrip wrong, "l/judge")}${triesOf (submitJudge (roundTrip wrong), "l/judge")}", "12")
         expect (revealedOf (Tutors::reveal (wrong, "l/judge", judgement ()), "l/judge"), false)
 
     challenge () = workbench::Challenge(challengeId = "swap", challengePrompt = "Prove it.", challengeHints = ["one", "two"], challengeTask = workbench::ProveTask (swapTask ()))
@@ -224,8 +223,7 @@ module LessonCases
     (** [LESSONS-FEEDBACK]: each wrong submission counts an attempt and shows the next hint, never more hints than exist. *)
     export attempts () =
         item = tried (wrongThrice (), "l/swap")
-        expect (item.attemptCount, 3)
-        expect (item.attemptHints, 2)
+        expect ("${item.attemptCount}/${item.attemptHints}", "3/2")
 
     (** [LESSONS-FEEDBACK]: the solution is offered after three wrong attempts, fills the answer, and counts only once submitted. *)
     export reveal () =
@@ -245,11 +243,11 @@ module LessonCases
         attemptPersistence right
 
     attemptPersistence right =
-        expect (markKey (roundTrip right, "l/swap"), "right: Rig")
-        expect (length (submitSwap right).tutorCompleted, 1)
+        mark = "${markKey (roundTrip right, "l/swap")}/${length (submitSwap right).tutorCompleted}"
+        expect (mark, "right: Rig/1")
         unfinished = answerSwap "Wave hands."
-        expect (markKey (unfinished, "l/swap"), "unfinished")
-        expect (markKey (roundTrip unfinished, "l/swap"), "unfinished")
+        marks = "${markKey (unfinished, "l/swap")}/${markKey (roundTrip unfinished, "l/swap")}"
+        expect (marks, "unfinished/unfinished")
         expect (triesOf (roundTrip unfinished, "l/swap"), 0)
         expect (isEmpty (roundTrip unfinished).tutorCompleted, true)
 
