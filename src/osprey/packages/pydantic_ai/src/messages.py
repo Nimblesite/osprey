@@ -198,9 +198,14 @@ def response_parts(message) -> list[ModelResponsePart]:
             return response.parts
 
 
+def picked_messages(messages, step):
+    """The history messages `step` keeps, in order."""
+    return foldList(messages, [], lambda acc, m: step(acc, m))
+
+
 def responses(messages) -> list[ModelResponse]:
     """Every `ModelResponse` in the history, in order."""
-    return foldList(messages, [], lambda acc, m: response_step(acc, m))
+    return picked_messages(messages, response_step)
 
 
 def response_step(acc, message):
@@ -213,7 +218,7 @@ def response_step(acc, message):
 
 def requests(messages) -> list[ModelRequest]:
     """Every `ModelRequest` in the history, in order."""
-    return foldList(messages, [], lambda acc, m: request_step(acc, m))
+    return picked_messages(messages, request_step)
 
 
 def request_step(acc, message):
@@ -371,6 +376,11 @@ def content_part(content, kind):
     return part_json([J.member("content", JsonString(content))], kind)
 
 
+def tool_part(kind, tool_name, middle_name, middle, tool_call_id):
+    """A part's JSON form: its `tool_name`, its `middle_name` member and its `tool_call_id`."""
+    return part_json([J.member("tool_name", JsonString(tool_name)), J.member(middle_name, JsonString(middle)), J.member("tool_call_id", JsonString(tool_call_id))], kind)
+
+
 def dump_request_part(part):
     match part:
         case SystemPromptPart(content=content):
@@ -378,7 +388,7 @@ def dump_request_part(part):
         case UserPromptPart(content=content):
             return content_part(content, "user-prompt")
         case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id):
-            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("content", JsonString(content)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-return")
+            return tool_part("tool-return", tool_name, "content", content, tool_call_id)
         case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id):
             return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member("tool_call_id", JsonString(tool_call_id))], "retry-prompt")
         case InstructionPart(content=content):
@@ -392,7 +402,7 @@ def dump_response_part(part):
         case ThinkingPart(content=content):
             return content_part(content, "thinking")
         case ToolCallPart(tool_name=tool_name, args=args, tool_call_id=tool_call_id):
-            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-call")
+            return tool_part("tool-call", tool_name, "args", args, tool_call_id)
 
 
 def dump_usage(usage):
@@ -441,16 +451,16 @@ def dump_messages(messages) -> Json:
 
 
 def validate_request_part(value) -> Result[ModelRequestPart, str]:
-    kind = J.text_at(value, "part_kind", "")
-    content = J.text_at(value, "content", "")
+    kind = field_at(value, "part_kind")
+    content = field_at(value, "content")
     if kind == "system-prompt":
         return Success(value=SystemPromptPart(content=content))
     elif kind == "user-prompt":
         return Success(value=UserPromptPart(content=content))
     elif kind == "tool-return":
-        return Success(value=ToolReturnPart(tool_name=J.text_at(value, "tool_name", ""), content=content_text(J.object_at(value, "content")), tool_call_id=J.text_at(value, "tool_call_id", "")))
+        return Success(value=ToolReturnPart(tool_name=field_at(value, "tool_name"), content=object_text(value, "content"), tool_call_id=field_at(value, "tool_call_id")))
     elif kind == "retry-prompt":
-        return Success(value=RetryPromptPart(content=content, tool_name=J.text_at(value, "tool_name", ""), tool_call_id=J.text_at(value, "tool_call_id", "")))
+        return Success(value=RetryPromptPart(content=content, tool_name=field_at(value, "tool_name"), tool_call_id=field_at(value, "tool_call_id")))
     elif kind == "instruction":
         return Success(value=InstructionPart(content=content))
     else:
@@ -468,15 +478,25 @@ def content_text(value):
             return J.encode(value)
 
 
+def field_at(value, key):
+    """An optional string field of a JSON object, empty when absent."""
+    return J.text_at(value, key, "")
+
+
+def object_text(value, key):
+    """A nested JSON object's text: verbatim when a string, its JSON text otherwise."""
+    return content_text(J.object_at(value, key))
+
+
 def validate_response_part(value) -> Result[ModelResponsePart, str]:
-    kind = J.text_at(value, "part_kind", "")
-    content = J.text_at(value, "content", "")
+    kind = field_at(value, "part_kind")
+    content = field_at(value, "content")
     if kind == "text":
         return Success(value=TextPart(content=content))
     elif kind == "thinking":
         return Success(value=ThinkingPart(content=content))
     elif kind == "tool-call":
-        return Success(value=ToolCallPart(tool_name=J.text_at(value, "tool_name", ""), args=content_text(J.object_at(value, "args")), tool_call_id=J.text_at(value, "tool_call_id", "")))
+        return Success(value=ToolCallPart(tool_name=field_at(value, "tool_name"), args=object_text(value, "args"), tool_call_id=field_at(value, "tool_call_id")))
     else:
         return Error(message=f"unknown response part_kind: {kind}")
 
