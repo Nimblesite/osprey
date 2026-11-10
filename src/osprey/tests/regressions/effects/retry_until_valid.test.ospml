@@ -133,6 +133,12 @@ carriesNone (haystack, banned) = match banned
     [] => true
     [head, ...tail] => !(contains haystack head) && carriesNone (haystack, tail)
 
+(** The transcript that appends one channel entry: `letter` then the attempt `n`. *)
+channelTag (trail, letter, n) = "${trail}${letter}${toString n}|"
+
+(** The two flags a bounded transcript must satisfy: `head` opens it, `tail` closes it. *)
+edges (text, head, tail) = [startsWith text head, endsWith text tail]
+
 (** [EFFECTS-RESUME] The handler alone decides how many rejections precede
     success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each run
     records what it issued before `resume` and what the resumed computation
@@ -186,10 +192,9 @@ retryAttemptMatrixCase () =
         structuralEquals [r0.issued, r1.issued, r2.issued, r8.issued] [
             "1:100|", "1:0|2:200|", "1:0|2:-5|3:300|",
             "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"],
-        structuralEquals [startsWith r1.issued "1:0|", endsWith r1.issued "2:200|",
-            startsWith r2.issued "1:0|2:-5|", endsWith r2.issued "3:300|",
-            startsWith r8.issued "1:-1|", endsWith r8.issued "9:900|"]
-            [true, true, true, true, true, true],
+        structuralEquals (listConcat (listConcat
+            (edges (r1.issued, "1:0|", "2:200|")) (edges (r2.issued, "1:0|2:-5|", "3:300|")))
+            (edges (r8.issued, "1:-1|", "9:900|"))) [true, true, true, true, true, true],
         contains r8.issued "5:-5|",
         contains r2.issued "2:-5|",
         structuralEquals [contains r0.issued "2:", contains r1.issued "3:",
@@ -205,10 +210,9 @@ retryAttemptMatrixCase () =
         r0.settled == r0.issued,
         structuralEquals [r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued]
             [true, true, true],
-        structuralEquals [startsWith r1.settled "2:200|", endsWith r1.settled "1:200|",
-            startsWith r2.settled "3:300|", endsWith r2.settled "1:300|",
-            startsWith r8.settled "9:900|", endsWith r8.settled "1:900|"]
-            [true, true, true, true, true, true],
+        structuralEquals (listConcat (listConcat
+            (edges (r1.settled, "2:200|", "1:200|")) (edges (r2.settled, "3:300|", "1:300|")))
+            (edges (r8.settled, "9:900|", "1:900|"))) [true, true, true, true, true, true],
         structuralEquals [contains r1.settled "1:0|", contains r2.settled "2:-5|"] [false, false]
     ]
 
@@ -515,36 +519,32 @@ retryPayloadChannelMatrixCase () =
                 resume ()
         markDown 4
 
-    mut comboCalls = 0
     mut comboTrail = ""
     combo =
         handle Payload
             text n =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}t${toString n}|"
+                comboTrail := channelTag (comboTrail, "t", n)
                 resume "steady"
             flag n =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}f${toString n}|"
+                comboTrail := channelTag (comboTrail, "f", n)
                 resume (n > 1)
             ratio n =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}r${toString n}|"
+                comboTrail := channelTag (comboTrail, "r", n)
                 resume 3.5
             checked n =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}c${toString n}|"
+                comboTrail := channelTag (comboTrail, "c", n)
                 resume (Success(value = 60))
             mark n =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}m${toString n}|"
+                comboTrail := channelTag (comboTrail, "m", n)
                 resume ()
             scaled n base step =>
-                comboCalls := comboCalls + 1 
-                comboTrail := "${comboTrail}s${toString n}|"
+                comboTrail := channelTag (comboTrail, "s", n)
                 candidate = (base + ((n * step) ) - 50) 
                 resume candidate
         comboBody ()
+
+    // One transcript entry per handler operation, so the count is the trail's.
+    comboCalls = barCount comboTrail
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
     checkAll "each payload type completes its own retry loop" [
