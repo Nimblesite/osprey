@@ -56,6 +56,9 @@ fn allPresent(m, keys) = foldList(keys, true, fn(found, key) => found && mapCont
 /// No listed key is present in `m`.
 fn nonePresent(m, keys) = foldList(keys, true, fn(clear, key) => clear && !mapContains(m, key))
 
+/// `m` holds `present`, lacks every `absent` key, and has exactly `n` bindings.
+fn mapProfile(m, present, absent, n) = mapContains(m, present) && nonePresent(m, absent) && mapLength(m) == n
+
 /// The list holds `want` and lacks `absent`, so a view shows exactly that item.
 fn showsOnly(xs, want, absent) = allListed(xs, [want]) && noneListed(xs, [absent])
 
@@ -63,6 +66,13 @@ fn showsOnly(xs, want, absent) = allListed(xs, [want]) && noneListed(xs, [absent
 /// holds `present` and lacks `absent`.
 fn viewHolds(m, n, wantKey, present, absent) =
     listLength(mapKeys(m)) == n && allListed(mapKeys(m), [wantKey]) && showsOnly(mapValues(m), present, absent)
+
+/// The order-independent total of a value view; a view shorter than six entries adds nothing past its end ([BUILTIN-MAP-VALUES]).
+fn valueViewTotal(values) = (listGet(values, 0) ?: 0) + (listGet(values, 1) ?: 0) + (listGet(values, 2) ?: 0) + (listGet(values, 3) ?: 0) + (listGet(values, 4) ?: 0) + (listGet(values, 5) ?: 0)
+
+/// `m` holds `n` bindings, both of its views are that long, and its value view totals `sum`.
+fn viewsAgree(m, keys, values, n, sum) =
+    structuralEquals([listLength(keys), listLength(values)], [n, n]) && mapLength(m) == n && sum == valueViewTotal(values)
 
 /// The five-generation k1..k5 chain the generation, removal, and view cases
 /// share: gen1 roots the chain and gen0 is the empty base, gen1 minus its only key.
@@ -298,9 +308,7 @@ fn typedValueRetrievalCase() = {
         "${valueOr(titles, "a", "none")}+${valueOr(titles, "b", "none")}" == "alpha+beta",
         absentTitle == "mapGet: key not found",
         valueOr(titles, "zzz", "absent") == "absent",
-        mapContains(titles, "a"),
-        nonePresent(titles, ["zzz"]),
-        mapLength(titles) == 3
+        mapProfile(titles, "a", ["zzz"], 3)
     ])
 
     // Persistent producers keep values typed too: an overwritten, removed or
@@ -338,9 +346,7 @@ fn typedValueRetrievalCase() = {
         !(valueOr(flags, "unknown", false)),
         valueOr(mapSet(flags, "on", false), "on", true) == false,
         valueOr(flags, "on", false),
-        mapContains(flags, "off"),
-        nonePresent(flags, ["unknown"]),
-        mapLength(flags) == 2
+        mapProfile(flags, "off", ["unknown"], 2)
     ])
 
     // A record value comes back whole: every field of the stored record is
@@ -553,8 +559,7 @@ fn mergeAlgebraCase() = {
     checkAll("merge is associative and the + alias agrees", [
         answersHold(lengthOf, [lrThenThird, leftThenRt, plusChain], [7, 7, 7]),
         allValuesHold([lrThenThird, leftThenRt, plusChain], [["k", "K", "k.k", "", "k-k", " ", "q"], ["k", "K", "k.k", "", "k-k", " ", "q"], ["K", "k-k", "q"]], [[10, 200, 3, 40, 300, 50, 700], [10, 200, 3, 40, 300, 50, 700], [200, 300, 700]], (0 - 999)),
-        intAtKey(lrThenThird, "K") == intAtKey(leftThenRt, "K"),
-        intAtKey(lrThenThird, "k-k") == intAtKey(leftThenRt, "k-k")
+        answersHold(fn(k) => intAtKey(lrThenThird, k) == intAtKey(leftThenRt, k), ["K", "k-k"], [true, true])
     ])
 
     // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
@@ -616,9 +621,7 @@ fn removalSweepCase() = {
         answersHold(lengthOf, [abFirst, baFirst], [3, 3]),
         nonePresent(abFirst, ["a", "b"]),
         nonePresent(baFirst, ["a", "b"]),
-        intAtKey(abFirst, "c") == intAtKey(baFirst, "c"),
-        intAtKey(abFirst, "d") == intAtKey(baFirst, "d"),
-        intAtKey(abFirst, "e") == intAtKey(baFirst, "e"),
+        answersHold(fn(k) => intAtKey(abFirst, k) == intAtKey(baFirst, k), ["c", "d", "e"], [true, true, true]),
         intAtKey(abFirst, "c") == 3,
         intAtKey(baFirst, "e") == 5,
         mapLength(drained) == 0,
@@ -814,15 +817,15 @@ fn keyValueViewPairingCase() = {
     let m = { "a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6 }
     let keys = mapKeys(m)
     let values = mapValues(m)
-    let total = (listGet(values, 0) ?: 0) + (listGet(values, 1) ?: 0) + (listGet(values, 2) ?: 0) + (listGet(values, 3) ?: 0) + (listGet(values, 4) ?: 0) + (listGet(values, 5) ?: 0)
+    let total = valueViewTotal(values)
     let bumped = mapSet(m, "c", 33)
     let bumpedKeys = mapKeys(bumped)
     let bumpedValues = mapValues(bumped)
-    let bumpedTotal = (listGet(bumpedValues, 0) ?: 0) + (listGet(bumpedValues, 1) ?: 0) + (listGet(bumpedValues, 2) ?: 0) + (listGet(bumpedValues, 3) ?: 0) + (listGet(bumpedValues, 4) ?: 0) + (listGet(bumpedValues, 5) ?: 0)
+    let bumpedTotal = valueViewTotal(bumpedValues)
     let trimmed = mapRemove(m, "e")
     let trimmedKeys = mapKeys(trimmed)
     let trimmedValues = mapValues(trimmed)
-    let trimmedTotal = (listGet(trimmedValues, 0) ?: 0) + (listGet(trimmedValues, 1) ?: 0) + (listGet(trimmedValues, 2) ?: 0) + (listGet(trimmedValues, 3) ?: 0) + (listGet(trimmedValues, 4) ?: 0)
+    let trimmedTotal = valueViewTotal(trimmedValues)
 
     // Whatever order the views come back in, index i of one must address index i
     // of the other; 1+2+3+4+5+6 = 21 is order-independent.
@@ -849,9 +852,7 @@ fn keyValueViewPairingCase() = {
     // Overwriting "c" from 3 to 33 raises the total by exactly 30 (21 -> 51),
     // leaves the key count at six, and the source map still totals 21.
     checkAll("an overwrite moves exactly one paired value", [
-        structuralEquals([listLength(bumpedKeys), listLength(bumpedValues)], [6, 6]),
-        mapLength(bumped) == 6,
-        bumpedTotal == 51,
+        viewsAgree(bumped, bumpedKeys, bumpedValues, 6, 51),
         (bumpedTotal - total ) == 30,
         intAtKey(bumped, "c") == 33,
         intAtKey(m, "c") == 3,
@@ -865,9 +866,7 @@ fn keyValueViewPairingCase() = {
     // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
     // views by one entry, while the remaining five stay paired.
     checkAll("a removal drops exactly one pair", [
-        structuralEquals([listLength(trimmedKeys), listLength(trimmedValues)], [5, 5]),
-        mapLength(trimmed) == 5,
-        trimmedTotal == 16,
+        viewsAgree(trimmed, trimmedKeys, trimmedValues, 5, 16),
         (total - trimmedTotal ) == 5,
         noneListed(trimmedKeys, ["e"]),
         noneListed(trimmedValues, [5]),
