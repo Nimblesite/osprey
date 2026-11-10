@@ -32,14 +32,7 @@ module Elaborate
         true => yes
         false => no
 
-    held (goal, name) = foldList (goal.hypotheses, Absent, \(found, h) => either (h.name == name, Held h.formula, found))
-
     hypothesis (name, formula) = Hypothesis(name = name, formula = formula)
-
-    // The goal holds no hypothesis of that name, so `missing` is the proof.
-    heldAs (goal, name, missing, work) = match held (goal, name)
-        Held formula => work formula
-        Absent => missing
 
     proved (name, at) = provedTerm (NVar name, at)
 
@@ -47,15 +40,27 @@ module Elaborate
 
     lamOf (name, formula, term) = NLam name (of formula) term
 
-    wrap (built, make) = match built
+    // `work` on hypothesis `name`'s formula; a goal holding none of that name proves `name` itself.
+    onHeld (goal, at, name, work) = match foldList (goal.hypotheses, Absent, \(found, h) => either (h.name == name, Held h.formula, found))
+        Held formula => work formula
+        Absent => proved (name, at)
+
+    // The term `prove` reaches at `at`, wired into what the rest of the proof expects.
+    wired (goal, steps, at, make) = match prove (goal, steps, at)
         Proved term next => Proved (make term) next
-        Holed at reason => Holed at reason
+        Holed hole reason => Holed hole reason
 
-    lamProof (goal, steps, at, step) = wrap (prove (goal, steps, satAdd at 1), \term => lamOf (step.name, step.formula, term))
+    toward (goal, steps, at, target, make) = wired (goal(target = target), steps, satAdd at 1, make)
 
-    both (first, steps, second, make) = match first
-        Holed at reason => Holed at reason
-        Proved left next => wrap (prove (second, steps, next), \right => make (left, right))
+    // A rule the workbench cannot elaborate still carries its term, so the kernel refuses it.
+    unproven (rule, at) = provedTerm (NConst rule, at)
+
+    // Two subgoals: the second proved from the step the first leaves, `make` combining both terms.
+    both (first, steps, at, second, make) = match wired (first, steps, satAdd at 1, \term => term)
+        Holed hole reason => Holed hole reason
+        Proved left next => wired (second, steps, next, \right => make (left, right))
+
+    lamProof (goal, steps, at, step) = wired (goal, steps, satAdd at 1, \term => lamOf (step.name, step.formula, term))
 
     (** The proof term of `steps` from step `at` for `goal`. *)
     export prove (goal, steps, at) = match listGet steps at
@@ -66,7 +71,7 @@ module Elaborate
         Done => prove (goal, steps, satAdd at 1)
         Unknown text => Holed at ("`" + text + "` is not a step the workbench knows")
         Assume name formula => assume (goal, steps, at, { name = name, formula = formula })
-        Cases name names => cases (goal, steps, at, { name = name, names = names })
+        Cases name names => onHeld (goal, at, name, \formula => casesOn (goal, steps, at, { parts = { name = name, names = names }, formula = formula }))
         Split => split (goal, steps, at)
         Left => side (goal, steps, at, "or_inl")
         Right => side (goal, steps, at, "or_inr")
@@ -78,48 +83,40 @@ module Elaborate
     // A negated head is read as the implication it is defined to be.
     assume (goal, steps, at, step) = match Formulas::expandNot goal.target
         Imp _ conclusion => lamProof (Goal(hypotheses = listAppend (goal.hypotheses, hypothesis (step.name, step.formula)), target = conclusion), steps, at, step)
-        Forall names body => bound (goal, steps, at, { names = names, body = body })
+        Forall names body => toward (goal, steps, at, either (length names <= 1, body, Forall (Lists::rest names) body), \term => NLam (listGet names 0 ?: "") NProp term)
         _ => lamProof (goal, steps, at, step)
-
-    bound (goal, steps, at, parts) = wrap (prove (goal(target = inner parts), steps, satAdd at 1), \term => NLam (listGet parts.names 0 ?: "") NProp term)
-
-    inner parts = either (length parts.names <= 1, parts.body, Forall (Lists::rest parts.names) parts.body)
-
-    cases (goal, steps, at, parts) = heldAs (goal, parts.name, proved (parts.name, at), \formula => casesOn (goal, steps, at, { parts = parts, formula = formula }))
 
     casesOn (goal, steps, at, split) =
         first = listGet split.parts.names 0 ?: ""
         second = listGet split.parts.names 1 ?: ""
         kept = filterList (goal.hypotheses, \hypothesis => hypothesis.name != split.parts.name)
         match split.formula
-            And left right => wrap (prove (goal(hypotheses = listConcat (kept, [hypothesis (first, left), hypothesis (second, right)])), steps, satAdd at 1), \term => casesTerm ("and_cases", goal, split, left, right, [lamOf (first, left, lamOf (second, right, term))]))
-            Or left right => both (prove (goal(hypotheses = listAppend (kept, hypothesis (first, left))), steps, satAdd at 1), steps, goal(hypotheses = listAppend (kept, hypothesis (second, right))), \(one, two) => casesTerm ("or_cases", goal, split, left, right, [lamOf (first, left, one), lamOf (second, right, two)]))
+            And left right => wired (goal(hypotheses = listConcat (kept, [hypothesis (first, left), hypothesis (second, right)])), steps, satAdd at 1, \term => casesTerm ("and_cases", goal, split, left, right, [lamOf (first, left, lamOf (second, right, term))]))
+            Or left right => both (goal(hypotheses = listAppend (kept, hypothesis (first, left))), steps, at, goal(hypotheses = listAppend (kept, hypothesis (second, right))), \(one, two) => casesTerm ("or_cases", goal, split, left, right, [lamOf (first, left, one), lamOf (second, right, two)]))
             _ => provedTerm (NApp (NConst "and_cases") (NVar split.parts.name), at)
 
     casesTerm (rule, goal, split, left, right, terms) = Propositions::apply (NConst rule, listConcat ([of left, of right, of goal.target, NVar split.parts.name], terms))
 
     split (goal, steps, at) = match goal.target
-        And left right => pair (steps, at, { rule = "and_intro", left = left, right = right, first = goal(target = left), second = goal(target = right) })
-        Iff left right => pair (steps, at, { rule = "iff_intro", left = left, right = right, first = goal(target = Imp left right), second = goal(target = Imp right left) })
-        _ => provedTerm (NConst "and_intro", at)
+        And left right => pair (goal, steps, at, { rule = "and_intro", left = left, right = right, first = left, second = right })
+        Iff left right => pair (goal, steps, at, { rule = "iff_intro", left = left, right = right, first = Imp left right, second = Imp right left })
+        _ => unproven ("and_intro", at)
 
-    pair (steps, at, parts) = both (prove (parts.first, steps, satAdd at 1), steps, parts.second, \(one, two) => Propositions::apply (NConst parts.rule, [of parts.left, of parts.right, one, two]))
+    pair (goal, steps, at, parts) = both (goal(target = parts.first), steps, at, goal(target = parts.second), \(one, two) => Propositions::apply (NConst parts.rule, [of parts.left, of parts.right, one, two]))
 
     side (goal, steps, at, rule) = match goal.target
-        Or left right => wrap (prove (goal(target = either (rule == "or_inl", left, right)), steps, satAdd at 1), \term => Propositions::apply (NConst rule, [of left, of right, term]))
-        _ => provedTerm (NConst rule, at)
+        Or left right => toward (goal, steps, at, either (rule == "or_inl", left, right), \term => Propositions::apply (NConst rule, [of left, of right, term]))
+        _ => unproven (rule, at)
 
     // `Apply h` with `h : A` on goal `A` is `h` itself, as in the goal engine.
-    applied (goal, steps, at, name) = heldAs (goal, name, proved (name, at), \formula => matchingGoal (goal, steps, at, { name = name, formula = formula }))
-
-    matchingGoal (goal, steps, at, parts) = either (Formulas::equivalent (parts.formula, goal.target), proved (parts.name, at), implication (goal, steps, at, parts))
+    applied (goal, steps, at, name) = onHeld (goal, at, name, \formula => either (Formulas::equivalent (formula, goal.target), proved (name, at), implication (goal, steps, at, { name = name, formula = formula })))
 
     // A negated head carries the implication it is defined to be, so `h : ¬p` applies as `h : p → ⊥`.
     implication (goal, steps, at, parts) = match Formulas::expandNot parts.formula
-        Imp premise _ => wrap (prove (goal(target = premise), steps, satAdd at 1), \term => NApp (NVar parts.name) term)
+        Imp premise _ => toward (goal, steps, at, premise, \term => NApp (NVar parts.name) term)
         _ => proved (parts.name, at)
 
-    absurd (goal, at, name, other) = heldAs (goal, name, proved (name, at), \formula => provedTerm (Propositions::apply (NConst "absurd", [of formula, of goal.target, NVar name, NVar other]), at))
+    absurd (goal, at, name, other) = onHeld (goal, at, name, \formula => provedTerm (Propositions::apply (NConst "absurd", [of formula, of goal.target, NVar name, NVar other]), at))
 
 (** The kernel's verdict on a declaration ([WORKBENCH-VERDICT]). *)
 module Verdicts
