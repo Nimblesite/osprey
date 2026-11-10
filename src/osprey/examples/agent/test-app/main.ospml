@@ -39,7 +39,7 @@ callsTool (callId, tool) = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index
 // The step after the model's reply in `store` asked the demo server for a tool and its input went out.
 mcpAsked (store, reply, bytes) = mcpWrote ((answered (store, reply)).stepStore, bytes)
 
-ok status = Success(value = JsonObject [Doc::num ("status", status)])
+ok status = okJson [Doc::num ("status", status)]
 
 // Each test runs under the arithmetic policy the application's C boundary uses.
 testing (name, body) = test (name, \() => Runtime::guarded body)
@@ -182,15 +182,22 @@ refusalSays (opened, status, text) =
     refused = Drive::answering (opened, ok status, "{}")
     expectTrue (shows (refused.stepStore, View::transcript, text))
 
-// Expect `step`'s requests to be `kinds`, and the request at `index` to carry `text` under `key`.
-expectSent (step, kinds, index, key, text) =
+// Expect `step`'s requests to be `kinds`, then `work` on the step, handing its result back.
+kindsAre (step, kinds, work) =
     expect (Drive::kinds step, kinds)
-    expectHas (askedField (step, index, key), text)
+    work step
+
+// Expect `step`'s request at `index` to have `key` set to `value`, handing the request back.
+askedHolding (step, index, key, value) =
+    doc = askedAt (step, index)
+    expectDoc (doc, key, value)
+    doc
+
+// Expect `step`'s requests to be `kinds`, and the request at `index` to carry `text` under `key`.
+expectSent (step, kinds, index, key, text) = kindsAre (step, kinds, \s => expectHas (askedField (s, index, key), text))
 
 // Expect `step`'s requests to be `kinds`, and the conversation to be `stage` after them.
-expectStage (step, kinds, stage) =
-    expect (Drive::kinds step, kinds)
-    expectChatStage (step.stepStore, stage)
+expectStage (step, kinds, stage) = kindsAre (step, kinds, \s => expectChatStage (s.stepStore, stage))
 
 idleChat (step, kinds) =
     expectStage (step, kinds, "idle")
@@ -210,19 +217,13 @@ expectDefaultOn (store, model, default) =
     expect (store.settings.defaultModel, default)
 
 // Expect `step`'s requests to be `kinds`, and the request at `index` to have `key` set to `value`.
-expectAskedKinds (step, kinds, index, key, value) =
-    expect (Drive::kinds step, kinds)
-    expectAsked (step, index, key, value)
+expectAskedKinds (step, kinds, index, key, value) = kindsAre (step, kinds, \s => expectDoc (askedAt (s, index), key, value))
 
 // The field `key` of `step`'s request at `index`, with its requests expected to be `kinds`.
-askedIn (step, index, key, kinds) =
-    expect (Drive::kinds step, kinds)
-    askedField (step, index, key)
+askedIn (step, index, key, kinds) = kindsAre (step, kinds, \s => askedField (s, index, key))
 
 // Expect `step`'s requests to be `kinds`, and the only file it wrote to hold `text`.
-expectWrote (step, kinds, text) =
-    expect (Drive::kinds step, kinds)
-    expectHas (written step, text)
+expectWrote (step, kinds, text) = kindsAre (step, kinds, \s => expectHas (written s, text))
 
 // Expect `text` to hold each of `parts`.
 showsAll (text, parts) = forEachList (parts, \part => expectHas (text, part))
@@ -255,10 +256,7 @@ relaunchedWith (now, name, text) = readBack (relaunch now, name, text)
 relaunchedChats (now, step) = relaunchedWith (now, "chats", written step)
 
 // Expect `step`'s requests to be `kinds`, and the request at `index` to have `key` set to `value`, handing it back.
-checkedAsked (step, index, key, value, kinds) =
-    expect (Drive::kinds step, kinds)
-    expectDoc (askedAt (step, index), key, value)
-    askedAt (step, index)
+checkedAsked (step, index, key, value, kinds) = kindsAre (step, kinds, \s => askedHolding (s, index, key, value))
 
 // The step after `store`'s tool process finished with `output`, its requests expected to be `kinds`.
 toolFinished (store, output, kinds) =
@@ -338,10 +336,7 @@ mcpStarted () = completed ((mcpLaunched ()).stepStore, "mcpstart:demo", okJson [
 mcpWrote (store, writtenBytes) = completed (store, "mcpwrite:demo", okJson [Doc::num ("written", writtenBytes)])
 
 // The step after the demo server's `written` bytes of input went out, which must be a read.
-expectMcpWrote (store, writtenBytes) =
-    afterWrite = mcpWrote (store, writtenBytes)
-    expect (Drive::kinds afterWrite, "process-read")
-    afterWrite
+expectMcpWrote (store, writtenBytes) = kindsAre (mcpWrote (store, writtenBytes), "process-read", \s => s)
 
 // The step after the person moved to the MCP tab, its settings expected to hold `text`.
 expectMcpTab (store, text) =
@@ -551,10 +546,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     removed = (acted (zai, agentapp::RemoveKey(keyProvider = "zai"))).stepStore
     expectFalse (shows (removed, View::composer, "glm-9")))
 
-travelsAsWords words =
-    step = typingAtLaunch "${words}\n"
-    expect (Drive::kinds step, "http")
-    expectHas ((askedField (step, 0, "body")), words)
+travelsAsWords words = expectSent (typingAtLaunch "${words}\n", "http", 0, "body", words)
 
 testing ("a pasted image reaches the model as image data, a typed path never leaves the machine, and a lost image says so", \() =>
     name = "0c1d2e3f.png"
@@ -799,7 +791,7 @@ serverPing () = "{\"jsonrpc\":\"2.0\",\"id\":\"server-ping-1\",\"method\":\"ping
 
 readDone (output, exited) = JsonObject [Doc::str ("output", output), Doc::str ("stderr", ""), Doc::bit ("exited", exited), Doc::num ("status", 0)]
 
-okJson members = Success(value = JsonObject members)
+okJson members = okDone (JsonObject members)
 
 okDone result = Success(value = result)
 
