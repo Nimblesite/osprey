@@ -116,16 +116,34 @@ knobsShow (cases, text) =
     expect (letters text, true)
 
 // A slider pressed at `fraction` across `label`, the knobs it must move and the lettering it must show.
-slid (label, fraction, cases, text) =
+slid (label, fraction, cases, texts) =
     tapAt (label, fraction)
-    knobsShow (cases, text)
+    knobs (cases)
+    lettered texts
 
 // A press on a control that selects, and the selection it must leave behind.
 selected (label, role) =
     tap label
     knobText ("selected", role)
 
+// A selection across the tree, the lettering its inspector shows and the controls it offers.
+inspected (label, role, texts, offers) =
+    selected (label, role)
+    lettered texts
+    offereds offers
+
+// The nodes a run of selections leaves selected.
 selects (cases) = forEachList (cases, \c => selected (c.label, c.role))
+
+// A history button pressed, then the reads its press must leave behind.
+historyPress (button, check) =
+    tap button
+    check ()
+
+// A node selected by label, whose inspector shows no parameters.
+bare name =
+    tap "Select ${name}"
+    expect (letters "No parameters", true)
 
 // A node's switch after the pointer pressed it, with the health it reports: off is bypassed, on healthy.
 health (on, report, role) =
@@ -172,24 +190,20 @@ topologyBypass () =
     tapAt ("Gateway Rate limit", 0.25)
     knobNumber ("process", 0.25)
     bypassed "process"
-    knobNumber ("level", 1.0)
-    expect (letters "25%", true)
+    knobsShow ([{ at = "level", want = 1.0 }], "25%")
     expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
 
 topologyUndo () =
-    tap "Undo"
-    knobNumber ("process", 0.7)
+    historyPress ("Undo", \() => knobNumber ("process", 0.7))
     flag ("processOn", false)
     expect (letters "70%", true)
-    tap "Undo"
-    knobNumber ("process", 0.7)
+    historyPress ("Undo", \() => knobNumber ("process", 0.7))
     healthy "process"
     knobNumber ("level", 0.49)
     history (false, true)
 
 topologyRedo () =
-    tap "Redo"
-    flag ("processOn", false)
+    historyPress ("Redo", \() => flag ("processOn", false))
     knobs ([{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }])
     offered "Enable Gateway"
     tap "Enable Gateway"
@@ -197,24 +211,17 @@ topologyRedo () =
     knobNumber ("level", 0.49)
 
 topologySelection () =
-    selected ("Select Client", "source")
-    lettered (["Client", "Connections (1)", "No parameters"])
-    offered "Inspector: Bypass Client"
+    inspected ("Select Client", "source", ["Client", "Connections (1)", "No parameters"], ["Inspector: Bypass Client"])
     missing "Inspector: Rate limit"
-    selected ("Select Telemetry", "monitor")
-    lettered (["Telemetry", "Connections (1)", "No parameters"])
-    offered "Inspector: Bypass Telemetry"
-    selected ("Select Policy", "control")
-    lettered (["Policy", "Connections (1)"])
-    offereds (["Inspector: Threshold", "Inspector: Bypass Policy"])
+    inspected ("Select Telemetry", "monitor", ["Telemetry", "Connections (1)", "No parameters"], ["Inspector: Bypass Telemetry"])
+    inspected ("Select Policy", "control", ["Policy", "Connections (1)"], ["Inspector: Threshold", "Inspector: Bypass Policy"])
 
 topologySignal () =
-    slid ("Inspector: Threshold", 0.5, [{ at = "control", want = 0.5 }, { at = "level", want = 0.35 }], "350 r/s")
+    slid ("Inspector: Threshold", 0.5, [{ at = "control", want = 0.5 }, { at = "level", want = 0.35 }], ["350 r/s"])
     tap "Bypass Client"
     bypassed "source"
     knobTexts ([{ at = "processHealth", want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
-    knobNumber ("level", 0.0)
-    expect (letters "0 r/s", true)
+    knobsShow ([{ at = "level", want = 0.0 }], "0 r/s")
     tap "Enable Client"
     flag ("sourceOn", true)
     knobText ("processHealth", "Healthy")
@@ -311,14 +318,11 @@ prismInspector () =
     lettered (["0.6 kHz", "+70%", "-6.0 dB", "-17.7"])
     tap "Bypass Master"
     knobText ("outputHealth", "Bypassed")
-    knobNumber ("delivered", 0.0)
-    expect (letters "-24.0", true)
-    tap "Undo"
-    flag ("outputOn", true)
+    knobsShow ([{ at = "delivered", want = 0.0 }], "-24.0")
+    historyPress ("Undo", \() => flag ("outputOn", true))
     expect (letters "-17.7", true)
     offered "Redo"
-    tap "Redo"
-    flag ("outputOn", false)
+    historyPress ("Redo", \() => flag ("outputOn", false))
     missing "Redo"
 
 prismInitial () =
@@ -345,11 +349,9 @@ prismRates () =
     chosen ("LFO Rate: 1/4", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/16", "LFO Rate: 1/16")
     chosen ("LFO Rate: 1/16", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/1", "LFO Rate: 1/1")
     chosen ("LFO Rate: 1/1", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/8", "LFO Rate: 1/8")
-    tap "Undo"
-    knobText ("rate", "1/1")
+    historyPress ("Undo", \() => knobText ("rate", "1/1"))
     offered "LFO Rate: 1/1"
-    tap "Redo"
-    knobText ("rate", "1/8")
+    historyPress ("Redo", \() => knobText ("rate", "1/8"))
     opened ("LFO Rate: 1/8", "rates")
     pressed (900.0, 700.0)
     knobText ("rate", "1/8")
@@ -365,43 +367,32 @@ prismWaves () =
     missing "Triangle"
     opened ("LFO Rate: 1/8", "closed")
     knobText ("wave", "Square")
-    tap "Undo"
-    knobText ("wave", "Saw")
+    historyPress ("Undo", \() => knobText ("wave", "Saw"))
     expect (letters "Saw", true)
 
 prismLevels () =
-    tapAt ("Master Level", 1.0)
-    knobs ([{ at = "volume", want = 1.0 }, { at = "delivered", want = 0.49 }])
-    lettered (["0.0 dB", "-12.2"])
-    tapAt ("Master Level", 0.0)
-    knobs ([{ at = "volume", want = 0.0 }, { at = "delivered", want = 0.0 }])
-    expect (letters "-24.0 dB", true)
+    slid ("Master Level", 1.0, [{ at = "volume", want = 1.0 }, { at = "delivered", want = 0.49 }], ["0.0 dB", "-12.2"])
+    slid ("Master Level", 0.0, [{ at = "volume", want = 0.0 }, { at = "delivered", want = 0.0 }], ["-24.0 dB"])
     tap "Select Master"
     knobText ("selected", "output")
     offered "Inspector: Level"
     missing "Inspector: Cutoff"
     expect (letters "Level", true)
-    slid ("Inspector: Level", 0.5, [{ at = "volume", want = 0.5 }, { at = "delivered", want = 0.245 }], "-12.0 dB")
-    tap "Undo"
-    knobNumber ("volume", 0.0)
-    tap "Redo"
-    knobNumber ("volume", 0.5)
+    slid ("Inspector: Level", 0.5, [{ at = "volume", want = 0.5 }, { at = "delivered", want = 0.245 }], ["-12.0 dB"])
+    historyPress ("Undo", \() => knobNumber ("volume", 0.0))
+    historyPress ("Redo", \() => knobNumber ("volume", 0.5))
 
 prismParameters () =
     selected ("Select LFO", "control")
     offered "Inspector: Depth"
-    slid ("Inspector: Depth", 0.3, [{ at = "control", want = 0.3 }, { at = "level", want = 0.21 }], "+30%")
+    slid ("Inspector: Depth", 0.3, [{ at = "control", want = 0.3 }, { at = "level", want = 0.21 }], ["+30%"])
     tap "Select Filter"
     tapAt ("Inspector: Cutoff", 1.0)
-    knobNumber ("process", 1.0)
-    expect (letters "20.0 kHz", true)
+    knobsShow ([{ at = "process", want = 1.0 }], "20.0 kHz")
     tapAt ("Filter Cutoff", 0.0)
-    knobNumber ("process", 0.0)
+    knobs ([{ at = "process", want = 0.0 }])
     knobText ("processHealth", "Degraded")
-    tap "Select Oscillator"
-    expect (letters "No parameters", true)
-    tap "Select Scope"
-    expect (letters "No parameters", true)
+    forEachList (["Oscillator", "Scope"], bare)
     missing "Inspector: Level"
 
 test ("topology: pointer editing, history, inspectors and signal health", \() => bench (\() =>
