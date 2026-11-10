@@ -39,6 +39,9 @@ addRescue (a, b) = match checkedAdd a b
     Success value => value
     Error message => perform Rescue.onErr message
 
+(** The cell at `index` of the list stored under `key`, or the 99 fallback. *)
+cellAt (listsBy, key, index) = listGet (mapGet listsBy key ?: [99]) index ?: 99
+
 recoveredValues fallback =
     handle Rescue
         onErr _message => fallback
@@ -51,21 +54,21 @@ recoveredValues fallback =
         addRescue (100, 23)
     ]
 
+(** Publishes one step's outcome, then hands its value back for the total. *)
+stepLine (prefix, value) =
+    print "${prefix}${toString value}"
+    value
+
 (** Every failed step receives a replacement value, so later steps still run. *)
 pipeline () =
-    a = divRescue (10, 0)
-    print "  step a  intDiv 10 / 0   -> ${toString a}"
-    b = divRescue (20, 4)
-    print "  step b  intDiv 20 / 4   -> ${toString b}"
-    c = modRescue (7, 0)
-    print "  step c  7 % 0           -> ${toString c}"
-    d = modRescue (17, 5)
-    print "  step d  17 % 5          -> ${toString d}"
-    e = addRescue (9223372036854775807, 1)
-    print "  step e  MAX + 1         -> ${toString e}"
-    f = addRescue (100, 23)
-    print "  step f  100 + 23        -> ${toString f}"
-    a + b + c + d + e + f 
+    foldList ([
+        stepLine ("  step a  intDiv 10 / 0   -> ", divRescue (10, 0)),
+        stepLine ("  step b  intDiv 20 / 4   -> ", divRescue (20, 4)),
+        stepLine ("  step c  7 % 0           -> ", modRescue (7, 0)),
+        stepLine ("  step d  17 % 5          -> ", modRescue (17, 5)),
+        stepLine ("  step e  MAX + 1         -> ", addRescue (9223372036854775807, 1)),
+        stepLine ("  step f  100 + 23        -> ", addRescue (100, 23))
+    ], 0, \(sum, value) => sum + value)
 
 print "=== Result -> effect rescue pipeline ==="
 
@@ -112,48 +115,29 @@ resultAndEffectsCase () =
             Error => 0
 
     checkAll "Result and effect pipeline state" [
-        bareSuccess == 1,
-        bareError == 9,
-        boundResult == 1,
-        rescues == 3,
-        total == 430,
-        localOk == 1,
-        localBad == ((0 - 1) ),
+        answersHold (\(value) => value, [bareSuccess, bareError, boundResult, rescues, total, localOk, localBad], [1, 9, 1, 3, 430, 1, ((0 - 1) )]),
         toString (floatDefault (\() => 10 / 0)) == "-1.0",
-        integerDefault (-1, \() => intDiv 20 4) == 5,
-        integerDefault (-1, \() => intDiv 20 0) == ((0 - 1) ),
-        integerDefault (-1, \() => 17 % 5) == 2,
-        integerDefault (-1, \() => 17 % 0) == ((0 - 1) ),
+        answersHold (\(work) => integerDefault (-1, work), [\() => intDiv (20, 4), \() => intDiv (20, 0), \() => 17 % 5, \() => 17 % 0], [5, ((0 - 1) ), 2, ((0 - 1) )]),
         (checkedAdd 100 23 ?: 0) == 123,
         (checkedAdd 9223372036854775807 1 ?: 77) == 77,
-        toString (intDiv 20 4) == "5",
-        toString (integerDefault (-1, \() => intDiv 20 0)) == "-1",
-        toString (checkedAdd 9223372036854775807 1) == "Error(integer overflow)"
+        answersHold (\(shown) => shown, [toString (intDiv 20 4), toString (integerDefault (-1, \() => intDiv 20 0)), toString (checkedAdd 9223372036854775807 1)], ["5", "-1", "Error(integer overflow)"]),
     ]
 
     checkAll "each Rescue policy replaces only failing collection elements" [
-        structuralEquals (hundreds, [100, 5, 100, 2, 100, 123]),
+        structuralEquals ([hundreds, sevens], [[100, 5, 100, 2, 100, 123], [7, 5, 7, 2, 7, 123]]),
         (listGet hundreds 9 ?: 99) == 99,
-        structuralEquals (sevens, [7, 5, 7, 2, 7, 123]),
-        (listGet negatives 0 ?: 99) == ((0 - 1) ),
-        (listGet negatives 4 ?: 99) == ((0 - 1) )
+        answersHold (\(index) => listGet negatives index ?: 99, [0, 4], [((0 - 1) ), ((0 - 1) )])
     ]
 
     checkAll "recovered lists retain element types inside nested maps" [
         listLength policyMatrix == 3,
         listLength (listGet policyMatrix 0 ?: [99]) == 6,
-        (listGet (listGet policyMatrix 0 ?: [99]) 4 ?: 99) == 100,
-        (listGet (listGet policyMatrix 1 ?: [99]) 4 ?: 99) == 7,
-        (listGet (listGet policyMatrix 2 ?: [99]) 4 ?: 99) == ((0 - 1) ),
-        mapLength policyMap == 3,
-        mapLength grownMap == 4,
+        answersHold (\(row) => listGet row 4 ?: 99, policyMatrix, [100, 7, ((0 - 1) )]),
+        answersHold (\(by) => mapLength by, [policyMap, grownMap], [3, 4]),
         listLength (mapGet policyMap "hundred" ?: [99]) == 6,
-        (listGet (mapGet policyMap "hundred" ?: [99]) 0 ?: 99) == 100,
-        (listGet (mapGet policyMap "seven" ?: [99]) 2 ?: 99) == 7,
-        (listGet (mapGet policyMap "negative" ?: [99]) 4 ?: 99) == ((0 - 1) ),
-        (listGet (mapGet grownMap "zero" ?: [99]) 0 ?: 99) == 0,
-        !(mapContains policyMap "zero"),
-        mapContains grownMap "zero",
+        answersHold (\(at) => cellAt (policyMap, listGet ["hundred", "seven", "negative"] at ?: "", listGet [0, 2, 4] at ?: 0), [0, 1, 2], [100, 7, ((0 - 1) )]),
+        cellAt (grownMap, "zero", 0) == 0,
+        answersHold (\(by) => mapContains by "zero", [policyMap, grownMap], [false, true]),
         listLength (mapKeys grownMap) == 4,
         listLength (mapValues grownMap) == 4
     ]
