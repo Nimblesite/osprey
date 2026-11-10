@@ -63,6 +63,10 @@ fn showsOnly(xs, want, absent) = allListed(xs, [want]) && noneListed(xs, [absent
 fn viewHolds(m, n, wantKey, present, absent) =
     listLength(mapKeys(m)) == n && allListed(mapKeys(m), [wantKey]) && showsOnly(mapValues(m), present, absent)
 
+/// Both views of `m` lack their absent items and hold their present ones.
+fn viewsList(m, keysAbsent, keysPresent, valuesAbsent, valuesPresent) =
+    noneListed(mapKeys(m), keysAbsent) && allListed(mapKeys(m), keysPresent) && noneListed(mapValues(m), valuesAbsent) && allListed(mapValues(m), valuesPresent)
+
 /// The order-independent total of a value view; a view shorter than six entries adds nothing past its end ([BUILTIN-MAP-VALUES]).
 fn valueViewTotal(values) = (listGet(values, 0) ?: 0) + (listGet(values, 1) ?: 0) + (listGet(values, 2) ?: 0) + (listGet(values, 3) ?: 0) + (listGet(values, 4) ?: 0) + (listGet(values, 5) ?: 0)
 
@@ -599,8 +603,7 @@ fn removalSweepCase() = {
         answersHold(lengthOf, [abFirst, baFirst], [3, 3]),
         allAbsent([abFirst, baFirst], [["a", "b"], ["a", "b"]]),
         answersHold(fn(k) => intAtKey(abFirst, k) == intAtKey(baFirst, k), ["c", "d", "e"], [true, true, true]),
-        intAtKey(abFirst, "c") == 3,
-        intAtKey(baFirst, "e") == 5,
+        allValuesHold([abFirst, baFirst], [["c"], ["e"]], [[3], [5]], (0 - 999)),
         mapLength(drained) == 0,
         isEmpty(drained),
         length(drained) == 0,
@@ -616,10 +619,7 @@ fn removalSweepCase() = {
     // second removal of an already-removed key must be a no-op as well.
     checkAll("removing an absent key leaves the map unchanged", [
         answersHold(lengthOf, [mapRemove(base, "z"), mapRemove(base, ""), mapRemove(base, " "), mapRemove(base, "A"), mapRemove(base, "ab"), mapRemove(base, "a "), mapRemove(drained, "a"), mapRemove(mapRemove(base, "a"), "a")], [5, 5, 5, 5, 5, 5, 0, 4]),
-        intAtKey(mapRemove(base, "A"), "a") == 1,
-        intAtKey(mapRemove(base, ""), "a") == 1,
-        intAtKey(mapRemove(base, "ab"), "b") == 2,
-        intAtKey(mapRemove(base, "a "), "a") == 1,
+        allValuesHold([mapRemove(base, "A"), mapRemove(base, ""), mapRemove(base, "ab"), mapRemove(base, "a ")], [["a"], ["a"], ["b"], ["a"]], [[1], [1], [2], [1]], (0 - 999)),
         allPresent(mapRemove(base, "z"), ["a", "e"]),
         isEmpty(mapRemove(drained, "a")),
         nonePresent(mapRemove(mapRemove(base, "a"), "a"), ["a"]),
@@ -632,19 +632,12 @@ fn removalSweepCase() = {
     // without disturbing the source generation.
     checkAll("removal composes with set and merge", [
         answersHold(lengthOf, [mapMerge(noB, base), mapMerge(base, noB), widened, mapRemove(widened, "f"), mapSet(noC, "c", 33), mapSet(drained, "a", 1)], [5, 5, 6, 5, 5, 1]),
-        intAtKey(mapMerge(noB, base), "b") == 2,
-        intAtKey(mapMerge(base, noB), "b") == 2,
+        allValuesHold([mapMerge(noB, base), mapMerge(base, noB)], [["b"], ["b"]], [[2], [2]], (0 - 999)),
         intAtKey(widened, "f") == 6,
         nonePresent(mapRemove(widened, "f"), ["f"]),
-        intAtKey(mapSet(noC, "c", 33), "c") == 33,
-        intAtKey(base, "c") == 3,
-        intAtKey(mapSet(drained, "a", 1), "a") == 1,
-        listLength(mapKeys(noA)) == 4,
-        noneListed(mapKeys(noA), ["a"]),
-        allListed(mapKeys(noA), ["b"]),
-        listLength(mapValues(noA)) == 4,
-        noneListed(mapValues(noA), [1]),
-        allListed(mapValues(noA), [5])
+        allValuesHold([mapSet(noC, "c", 33), base, mapSet(drained, "a", 1)], [["c"], ["c"], ["a"]], [[33], [3], [1]], (0 - 999)),
+        structuralEquals([listLength(mapKeys(noA)), listLength(mapValues(noA))], [4, 4]),
+        viewsList(noA, ["a"], ["b"], [1], [5])
     ])
 }
 
@@ -720,16 +713,13 @@ fn nestedCollectionCase() = {
     // A map of maps answers three outer keys while each inner map keeps its own
     // bindings, and replacing one inner map must not disturb the original nest.
     checkAll("maps stored as map values keep their own contents", [
-        mapLength(outer) == 3,
-        listLength(mapKeys(outer)) == 3,
+        structuralEquals([mapLength(outer), listLength(mapKeys(outer)), mapLength(outer), mapLength(mapRemove(outer, "two"))], [3, 3, 3, 2]),
         allListed(mapKeys(outer), ["one", "three"]),
         noneListed(mapKeys(outer), ["four"]),
         answersHold(lengthOf, [innerOne, innerTwo, innerMissing, innerReplaced], [2, 2, 1, 2]),
         allValuesHold([innerOne, innerTwo], [["x", "y"], ["x", "z"]], [[1, 2], [10, 30]], (0 - 999)),
         nonePresent(innerOne, ["z"]),
         allValuesHold([innerMissing, innerReplaced, innerOne], [["fallback"], ["z"], ["x"]], [[0], [30], [1]], (0 - 999)),
-        mapLength(outer) == 3,
-        mapLength(mapRemove(outer, "two")) == 2,
         nonePresent(mapRemove(outer, "two"), ["two"])
     ])
 
@@ -812,10 +802,7 @@ fn keyValueViewPairingCase() = {
     // Both views hold every binding and nothing extra. Reversing both preserves
     // the pairing, because reverse maps index i to index n-1-i on either side.
     checkAll("key and value views hold every binding once", [
-        allListed(keys, ["a", "b", "c", "d", "e", "f"]),
-        noneListed(keys, ["g", ""]),
-        allListed(values, [1, 2, 3, 4, 5, 6]),
-        noneListed(values, [0, 7]),
+        viewsList(m, ["g", ""], ["a", "b", "c", "d", "e", "f"], [0, 7], [1, 2, 3, 4, 5, 6]),
         listLength(listReverse(keys)) == 6,
         pairsPair(m, listReverse(keys), listReverse(values))
     ])
@@ -825,8 +812,7 @@ fn keyValueViewPairingCase() = {
     checkAll("an overwrite moves exactly one paired value", [
         viewsAgree(bumped, bumpedKeys, bumpedValues, 6, 51),
         (bumpedTotal - total ) == 30,
-        intAtKey(bumped, "c") == 33,
-        intAtKey(m, "c") == 3,
+        allValuesHold([bumped, m], [["c"], ["c"]], [[33], [3]], (0 - 999)),
         total == 21,
         showsOnly(bumpedValues, 33, 3),
         showsOnly(values, 3, 33),
