@@ -34,6 +34,7 @@ let tolerance = toFloat32(0.000000001)
 /// Scratch files are named per run so the twins never race on one path.
 let scratch = "osprey_transformer_${random()}_${random()}"
 fn at(m, i) = gpuGet(m, i) ?: toFloat32(0.0)
+fn addF(a, x) = a + x
 fn subF(a, x) = a - x
 fn maxF(a, x) = match x > a { true => x false => a }
 fn floats(xs) = toGpu(mapList(xs, toFloat32))
@@ -85,10 +86,12 @@ fn embedOf(tokensGrid, positionsGrid, ids, grid0) =
     andThen(tokenTable(tokensGrid), fn(tokens) => andThen(positionTable(positionsGrid), fn(positions) => embed(tokens, positions, ids, grid0)))
 /// The product, preserving allocation and shape failures.
 fn product(l, r, rows, inner, cols) = gpuMatMul(l, r, rows, inner, cols)
-fn matMulFailure(l, r, rows, inner, cols) = match gpuMatMul(l, r, rows, inner, cols) {
+/// The reason a kernel failed, or "no error" when it succeeded.
+fn failureOf(result: Result<GpuBuffer<float32>, Error>) = match result {
     Success _ => "no error"
     Error { message } => message
 }
+fn matMulFailure(l, r, rows, inner, cols) = failureOf(gpuMatMul(l, r, rows, inner, cols))
 /// Sum of a contiguous run of a flat buffer.
 fn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))
 fn squaredDeviation(x, start, n, mean) = range(start, start + n) |> fold(0.0, fn(a, i) => a + (at(x, i) - mean) * (at(x, i) - mean))
@@ -158,15 +161,8 @@ fn logitsOf(x, t, table, grid0, grid1, grid2) =
 fn argmax(logits, grid0) = andThen(gpuFold(logits, at(logits, 0), maxF), fn(peak) =>
     andThen(gpuFilter(grid0, fn(v) => at(logits, v) == peak), fn(indices) => Success { value: gpuGet(indices, 0) ?: -1 }))
 fn written(path, content) = match writeFile(path, content) { Success _ => true Error _ => false }
-fn loadFailure(path, offset, count) = match gpuLoad(path, offset, count) {
-    Success _ => "no error"
-    Error { message } => message
-}
-fn tensorFailure(path, name) = tensorFailure32(gpuLoadTensor(path, name))
-fn tensorFailure32(result: Result<GpuBuffer<float32>, Error>) = match result {
-    Success _ => "no error"
-    Error { message } => message
-}
+fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
+fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
 fn matMulExactCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), fn(left) => withBuffer(floats([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), fn(right) => matMulExactCaseUploaded(left, right)))
 fn matMulExactCaseUploaded(left, right) = {
     withBuffer(product(left, right, 2, 3, 2), fn(square) => {
@@ -318,21 +314,25 @@ fn embedWith(grid0, grid1, grid2) =
                     atIs(x,  4,  -1.125), atIs(x,  5,  0.5), atIs(x,  6,  -1.0), atIs(x,  7,  0.625)
             ])))
 fn attentionCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))))
-fn attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
-    withBuffer(miniTokens(), fn(uploaded9) =>
-        withBuffer(embedOf(grid0, grid1, uploaded9, grid2), fn(x) =>
+/// The embedded pair through its qkv product: the prefix the full pass and the cached step share.
+fn withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, next) =
+    withBuffer(miniTokens(), fn(tokens) =>
+        withBuffer(embedOf(grid0, grid1, tokens, grid2), fn(x) =>
             withBuffer(lnParams(grid3), fn(ln) =>
                 withBuffer(qkvParams(grid5, grid1), fn(qkvW1) =>
                     withBuffer(layerNorm(x, ln.gain, ln.bias, grid4, grid2), fn(normed) =>
                         withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6), fn(qkv) =>
-                            withBuffer(attention(qkv, 2, grid2, grid3, grid2), fn(a) =>
-                                checkAll("attention over the embedded pair matches the reference pass", [
-                                        gpuLength(a) == 8,
-                                        nearAt(a,  0,  -0.07964593172073364), nearAt(a,  1,  0.43734419345855713),
-                                        nearAt(a,  2,  -1.2230308055877686), nearAt(a,  3,  1.212903618812561),
-                                        nearAt(a,  4,  -0.06741555035114288), nearAt(a,  5,  0.41647619009017944),
-                                        nearAt(a,  6,  -1.243087649345398), nearAt(a,  7,  1.3210810422897339)
-                                ]))))))))
+                            next(x, ln, qkvW1, normed, qkv)))))))
+fn attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
+    withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, fn(_x, _ln, _qkvW1, _normed, qkv) =>
+        withBuffer(attention(qkv, 2, grid2, grid3, grid2), fn(a) =>
+            checkAll("attention over the embedded pair matches the reference pass", [
+                    gpuLength(a) == 8,
+                    nearAt(a,  0,  -0.07964593172073364), nearAt(a,  1,  0.43734419345855713),
+                    nearAt(a,  2,  -1.2230308055877686), nearAt(a,  3,  1.212903618812561),
+                    nearAt(a,  4,  -0.06741555035114288), nearAt(a,  5,  0.41647619009017944),
+                    nearAt(a,  6,  -1.243087649345398), nearAt(a,  7,  1.3210810422897339)
+            ])))
 /// The KV-cached step: the newest position attends through the earlier rows
 /// with the full pass's arithmetic, and LayerNorm and linear are row-wise, so
 /// one row's pass equals that row of the two-row pass bit for bit — which is
@@ -342,47 +342,44 @@ fn cachedStepCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => 
 fn rowOf(x, r, n, grid0) = gpuMap(grid0, fn(c) => at(x, r * n + c))
 fn sameRow(single, rows, r, n) = range(0, n) |> fold(true, fn(ok, c) => ok && at(single, c) == at(rows, r * n + c))
 fn cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
-    withBuffer(miniTokens(), fn(uploaded7) =>
-        withBuffer(embedOf(grid0, grid1, uploaded7, grid2), fn(x) =>
-            withBuffer(lnParams(grid3), fn(ln) =>
-                withBuffer(qkvParams(grid5, grid1), fn(qkvW1) =>
-                    withBuffer(layerNorm(x, ln.gain, ln.bias, grid4, grid2), fn(normed) =>
-                        withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6), fn(qkv) =>
-                            withBuffer(attentionFrom(qkv, 2, 1, grid3, grid4, grid3), fn(newest) =>
-                                withBuffer(pairQkv(), fn(uploaded8) =>
-                                    withBuffer(attentionFrom(uploaded8, 2, 1, grid3, grid4, grid3), fn(pairStep) =>
-                                        withBuffer(attention(qkv, 2, grid2, grid3, grid2), fn(full) =>
-                                            withBuffer(rowOf(x, 1, width, grid3), fn(row) =>
-                                                withBuffer(layerNorm(row, ln.gain, ln.bias, grid7, grid3), fn(rowNormed) =>
-                                                    withBuffer(rowOf(normed, 1, width, grid3), fn(normedRow) =>
-                                                        withBuffer(linear(normedRow, 1, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid1), fn(oneRow) =>
-                                                            checkAll("the newest position attends through the cache exactly as the full pass does", [
+    withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, fn(x, ln, qkvW1, normed, qkv) =>
+        withBuffer(attentionFrom(qkv, 2, 1, grid3, grid4, grid3), fn(newest) =>
+            withBuffer(pairQkv(), fn(uploaded8) =>
+                withBuffer(attentionFrom(uploaded8, 2, 1, grid3, grid4, grid3), fn(pairStep) =>
+                    withBuffer(attention(qkv, 2, grid2, grid3, grid2), fn(full) =>
+                        withBuffer(rowOf(x, 1, width, grid3), fn(row) =>
+                            withBuffer(layerNorm(row, ln.gain, ln.bias, grid7, grid3), fn(rowNormed) =>
+                                withBuffer(rowOf(normed, 1, width, grid3), fn(normedRow) =>
+                                    withBuffer(linear(normedRow, 1, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid1), fn(oneRow) =>
+                                        checkAll("the newest position attends through the cache exactly as the full pass does", [
                                                                     gpuLength(newest) == width, sameRow(newest, full, 1, width),
                                                                     nearAt(newest,  0,  -0.06741555035114288), nearAt(newest,  3,  1.3210810422897339),
                                                                     gpuLength(pairStep) == width, atIs(pairStep,  0,  3.0), atIs(pairStep,  1,  4.0), atIs(pairStep,  2,  5.0), atIs(pairStep,  3,  6.0),
                                                                     sameRow(rowNormed, normed, 1, width),
                                                                     sameRow(oneRow, qkv, 1, qkvWidth)
-                                                            ])))))))))))))))
+                                        ]))))))))))
 fn blockCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(16, fn(grid7) => withIndices(32, fn(grid8) => blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))))))))
-fn blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
-    withBuffer(miniTokens(), fn(uploaded6) =>
-        withBuffer(embedOf(grid0, grid1, uploaded6, grid2), fn(x) =>
+/// The embedded pair through one pre-norm block: the prefix blockCase and nextTokenCase share.
+fn withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, next) =
+    withBuffer(miniTokens(), fn(tokens) =>
+        withBuffer(embedOf(grid0, grid1, tokens, grid2), fn(x) =>
             withBuffer(block(x, 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7), fn(y) =>
-                withBuffer(gpuFold(y, 0.0, addF), fn(total) =>
-                    checkAll("one pre-norm block matches the reference pass", [
+                next(y))))
+fn blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
+    withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, fn(y) =>
+        withBuffer(gpuFold(y, 0.0, addF), fn(total) =>
+            checkAll("one pre-norm block matches the reference pass", [
                             gpuLength(y) == 8,
                             nearAt(y,  0,  -1.6005736589431763), nearAt(y,  1,  1.6570606231689453),
                             nearAt(y,  2,  0.7819118499755859), nearAt(y,  3,  2.600027084350586),
                             nearAt(y,  4,  -1.487461805343628), nearAt(y,  5,  0.04813048243522644),
                             nearAt(y,  6,  -0.6083625555038452), nearAt(y,  7,  1.421419620513916),
                             near(total, 2.8121519088745117)
-                    ])))))
+            ])))
 fn nextTokenCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(16, fn(grid7) => withIndices(32, fn(grid8) => withIndices(5, fn(grid9) => nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))))))))))
 fn nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
-    withBuffer(miniTokens(), fn(uploaded5) =>
-        withBuffer(embedOf(grid0, grid1, uploaded5, grid2), fn(x) =>
-            withBuffer(block(x, 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7), fn(y) =>
-                withBuffer(lnParams(grid3), fn(ln) =>
+    withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, fn(y) =>
+        withBuffer(lnParams(grid3), fn(ln) =>
                     withBuffer(layerNorm(y, ln.gain, ln.bias, grid4, grid2), fn(normed) =>
                         withBuffer(tokenTable(grid0), fn(table) =>
                             withBuffer(logitsOf(normed, 2, table, grid3, grid0, grid9), fn(logits) =>
@@ -393,7 +390,7 @@ fn nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, 
                                             nearAt(logits,  2,  3.5838427543640137), nearAt(logits,  3,  4.733589172363281),
                                             nearAt(logits,  4,  -4.4127888679504395),
                                             token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), fn(uploaded4) => gpuSatisfies(argmax(uploaded4, grid3), fn(peak) => peak == 1))
-                                    ])))))))))
+            ])))))))
 /// "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names
 /// the operation, the path and the reason.
 fn loadCase() = {
