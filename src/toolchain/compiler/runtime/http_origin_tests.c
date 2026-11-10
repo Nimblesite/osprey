@@ -13,6 +13,42 @@
 #include <assert.h>
 #include <stdio.h>
 
+// String literals cross into the C surface as plain `char *`.
+static char *wire(const char *s) { return (char *)(uintptr_t) s; }
+
+// A GET on an existing client whose status is pinned exactly.
+static void expect_get_status(int64_t client_id, const char *path,
+                              int64_t status) {
+  assert(http_get(client_id, wire(path), wire("")) == status);
+}
+
+// A valid client for `url`, plus one GET pinned to `status`; handle returned.
+static int64_t expect_client_get(const char *url, const char *path,
+                                 int64_t status) {
+  int64_t client_id = http_create_client(wire(url), 1000);
+  assert(client_id > 0);
+  expect_get_status(client_id, path, status);
+  return client_id;
+}
+
+// The request the origin saw starts with / contains exactly these bytes.
+static void expect_wire_starts(const char *request, const char *prefix) {
+  assert(strstr(request, prefix) == request);
+}
+
+static void expect_wire_contains(const char *request, const char *part) {
+  assert(strstr(request, part) != NULL);
+}
+
+// A fresh client, one GET for `path`, origin stopped; returns the handle.
+static int64_t scripted_get(ScriptedOrigin *origin, const char *path,
+                            int64_t *client_id) {
+  *client_id = origin_client();
+  int64_t handle = http_get_response(*client_id, wire(path), wire(""));
+  origin_stop(origin);
+  return handle;
+}
+
 // A chunked response is decoded before the caller sees it, and header lookup
 // ignores case [HTTP-RESPONSE-HANDLE].
 void test_client_chunked_response(void) {
@@ -22,25 +58,23 @@ void test_client_chunked_response(void) {
                         "X-Mixed-Case: Yes\r\n"
                         "\r\n"
                         "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
-  int64_t client_id = origin_client();
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/chunked",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
+  int64_t client_id;
+  int64_t handle = scripted_get(&origin, "/chunked", &client_id);
   assert(handle >= 1);
   assert(http_response_status(handle) == 200);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hello world") == 0);
   osp_release(body);
-  char *header = http_response_header(handle, (char *)(uintptr_t) "x-mixed-case");
+  char *header = http_response_header(handle, wire("x-mixed-case"));
   assert(header != NULL && strcmp(header, "Yes") == 0);
   free(header);
   // A header name that is a prefix of a real one must NOT match.
-  assert(http_response_header(handle, (char *)(uintptr_t) "X-Mixed") == NULL);
+  assert(http_response_header(handle, wire("X-Mixed")) == NULL);
   assert(http_response_header(handle, NULL) == NULL);
   assert(http_response_free(handle) == 0);
-  assert(strstr(origin.request, "GET /chunked HTTP/1.1\r\n") == origin.request);
-  assert(strstr(origin.request, "Host: 127.0.0.1\r\n") != NULL);
-  assert(strstr(origin.request, "Connection: close\r\n") != NULL);
+  expect_wire_starts(origin.request, "GET /chunked HTTP/1.1\r\n");
+  expect_wire_contains(origin.request, "Host: 127.0.0.1\r\n");
+  expect_wire_contains(origin.request, "Connection: close\r\n");
   http_close_client(client_id);
 }
 
@@ -50,18 +84,15 @@ void test_client_status_line_handling(void) {
   ScriptedOrigin origin;
   origin_start(&origin, "HTTP/1.0 404 Not Found\r\n\r\nmissing");
   int64_t client_id = origin_client();
-  assert(http_get(client_id, (char *)(uintptr_t) "/gone",
-                  (char *)(uintptr_t) "") == 404);
+  expect_get_status(client_id, "/gone", 404);
   origin_stop(&origin);
 
   origin_start(&origin, "NOT-HTTP AT ALL\r\n\r\n");
-  assert(http_get(client_id, (char *)(uintptr_t) "/junk",
-                  (char *)(uintptr_t) "") == -8);
+  expect_get_status(client_id, "/junk", -8);
   origin_stop(&origin);
 
   origin_start(&origin, NULL); // accepted, then closed in silence
-  assert(http_get(client_id, (char *)(uintptr_t) "/silent",
-                  (char *)(uintptr_t) "") == -7);
+  expect_get_status(client_id, "/silent", -7);
   origin_stop(&origin);
   http_close_client(client_id);
 }
@@ -74,25 +105,22 @@ void test_client_methods_and_body(void) {
   int64_t client_id = origin_client();
 
   origin_start(&origin, ok);
-  assert(http_post(client_id, (char *)(uintptr_t) "/submit",
-                   (char *)(uintptr_t) "data",
-                   (char *)(uintptr_t) "X-Trace: 7\r\n") == 204);
+  assert(http_post(client_id, wire("/submit"), wire("data"),
+                   wire("X-Trace: 7\r\n")) == 204);
   origin_stop(&origin);
-  assert(strstr(origin.request, "POST /submit HTTP/1.1\r\n") == origin.request);
-  assert(strstr(origin.request, "X-Trace: 7\r\n") != NULL);
-  assert(strstr(origin.request, "Content-Length: 4\r\n\r\ndata") != NULL);
+  expect_wire_starts(origin.request, "POST /submit HTTP/1.1\r\n");
+  expect_wire_contains(origin.request, "X-Trace: 7\r\n");
+  expect_wire_contains(origin.request, "Content-Length: 4\r\n\r\ndata");
 
   origin_start(&origin, ok);
-  assert(http_put(client_id, (char *)(uintptr_t) "/item",
-                  (char *)(uintptr_t) "v", (char *)(uintptr_t) "") == 204);
+  assert(http_put(client_id, wire("/item"), wire("v"), wire("")) == 204);
   origin_stop(&origin);
-  assert(strstr(origin.request, "PUT /item HTTP/1.1\r\n") == origin.request);
+  expect_wire_starts(origin.request, "PUT /item HTTP/1.1\r\n");
 
   origin_start(&origin, ok);
-  assert(http_delete(client_id, (char *)(uintptr_t) "/item",
-                     (char *)(uintptr_t) "") == 204);
+  assert(http_delete(client_id, wire("/item"), wire("")) == 204);
   origin_stop(&origin);
-  assert(strstr(origin.request, "DELETE /item HTTP/1.1\r\n") == origin.request);
+  expect_wire_starts(origin.request, "DELETE /item HTTP/1.1\r\n");
   http_close_client(client_id);
 }
 
@@ -142,8 +170,7 @@ void test_client_peer_closes_during_body(void) {
   pthread_t thread;
   assert(pthread_create(&thread, NULL, closing_origin_thread, &listen_fd) == 0);
   int64_t client_id = origin_client();
-  assert(http_post(client_id, (char *)(uintptr_t) "/gone", body,
-                   (char *)(uintptr_t) "") < 0);
+  assert(http_post(client_id, wire("/gone"), body, wire("")) < 0);
   assert(pthread_join(thread, NULL) == 0);
   close(listen_fd);
   http_close_client(client_id);
@@ -168,8 +195,7 @@ void test_client_large_request_body(void) {
   assert(pthread_create(&thread, NULL, large_origin_thread, &origin) == 0);
 
   int64_t client_id = origin_client();
-  assert(http_post(client_id, (char *)(uintptr_t) "/large", body,
-                   (char *)(uintptr_t) "X-Trace: 9") == 204);
+  assert(http_post(client_id, wire("/large"), body, wire("X-Trace: 9")) == 204);
   assert(pthread_join(thread, NULL) == 0);
   close(origin.listen_fd);
   http_close_client(client_id);
@@ -191,26 +217,18 @@ void test_client_large_request_body(void) {
 // [HTTP-STATUS-CLIENT].
 void test_client_transport_failures(void) {
   assert(http_create_client(NULL, 5000) == -1);
-  assert(http_create_client((char *)(uintptr_t) "http://h", -1) == -2);
-  assert(http_create_client((char *)(uintptr_t) "http://:0/", 5000) == -4);
+  assert(http_create_client(wire("http://h"), -1) == -2);
+  assert(http_create_client(wire("http://:0/"), 5000) == -4);
 
-  int64_t refused =
-      http_create_client((char *)(uintptr_t) "http://127.0.0.1:1", 1000);
-  assert(refused > 0);
-  assert(http_get(refused, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") ==
-         -5);
-  assert(http_get(refused, NULL, (char *)(uintptr_t) "") == -2);
+  int64_t refused = expect_client_get("http://127.0.0.1:1", "/", -5);
+  assert(http_get(refused, NULL, wire("")) == -2);
   http_close_client(refused);
 
   char long_host[400];
   memcpy(long_host, "http://", 7);
   memset(long_host + 7, 'a', sizeof(long_host) - 10);
   memcpy(long_host + sizeof(long_host) - 3, "/x", 3);
-  int64_t unresolvable = http_create_client(long_host, 1000);
-  assert(unresolvable > 0);
-  assert(http_get(unresolvable, (char *)(uintptr_t) "/",
-                  (char *)(uintptr_t) "") == -4);
-  http_close_client(unresolvable);
+  http_close_client(expect_client_get(long_host, "/", -4));
 }
 
 // A client handle outside the table must be REJECTED, never used as an index:
@@ -226,18 +244,15 @@ void test_client_large_response(void) {
   reply[head + BIG_BODY] = '\0';
   ScriptedOrigin origin;
   origin_start(&origin, reply);
-  int64_t client_id = origin_client();
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/big",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
+  int64_t client_id;
+  int64_t handle = scripted_get(&origin, "/big", &client_id);
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strlen(body) == BIG_BODY);
   assert(body[0] == 'Z' && body[BIG_BODY - 1] == 'Z');
   osp_release(body);
   // A response with no Transfer-Encoding header is returned unchanged.
-  char *length_header =
-      http_response_header(handle, (char *)(uintptr_t) "Content-Length");
+  char *length_header = http_response_header(handle, wire("Content-Length"));
   assert(length_header != NULL && strcmp(length_header, "12000") == 0);
   free(length_header);
   assert(http_response_free(handle) == 0);
@@ -254,8 +269,7 @@ static int64_t chunked_exchange(const char *chunks, int64_t client_id) {
   assert(written > 0 && (size_t)written < sizeof(reply));
   ScriptedOrigin origin;
   origin_start(&origin, reply);
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/c",
-                                     (char *)(uintptr_t) "");
+  int64_t handle = http_get_response(client_id, wire("/c"), wire(""));
   origin_stop(&origin);
   return handle;
 }
@@ -296,7 +310,7 @@ static void expect_response_allocation_failure(const char *reply, size_t bytes) 
   origin_start(&origin, reply);
   int64_t client_id = origin_client();
   test_alloc_fail_size(bytes);
-  assert(http_get(client_id, (char *)(uintptr_t) "/alloc", (char *)(uintptr_t) "") == -9);
+  assert(http_get(client_id, wire("/alloc"), wire("")) == -9);
   test_alloc_fail_off();
   http_close_client(client_id);
   origin_stop(&origin);
@@ -368,11 +382,7 @@ void test_client_malformed_chunks(void) {
 void test_client_tls_handshake_failure(void) {
   ScriptedOrigin origin;
   origin_start(&origin, NULL); // speaks no TLS
-  int64_t client_id = http_create_client(
-      (char *)(uintptr_t) "https://127.0.0.1:18088", 1000);
-  assert(client_id > 0);
-  assert(http_get(client_id, (char *)(uintptr_t) "/secure",
-                  (char *)(uintptr_t) "") == -12);
+  int64_t client_id = expect_client_get("https://127.0.0.1:18088", "/secure", -12);
   origin_stop(&origin);
   assert(origin.request[0] != 'G'); // never reached the wire as plaintext
   http_close_client(client_id);
