@@ -93,54 +93,6 @@ void cleanup_process(int64_t process_id) {
   pthread_mutex_unlock(&process_mutex);
 }
 
-// Legacy spawn_process function for backward compatibility - now blocking
-char *spawn_process(char *command) {
-  if (!command) {
-    return NULL;
-  }
-
-  // Use popen for simple blocking behavior (legacy support)
-  FILE *pipe = popen(command, "r");
-  if (!pipe) {
-    return NULL;
-  }
-
-  // Read all output
-  char *output = malloc(4096);
-  if (!output) {
-    pclose(pipe);
-    return NULL;
-  }
-
-  size_t total_read = 0;
-  size_t buffer_size = 4096;
-  char buffer[256];
-
-  while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-    size_t len = strlen(buffer);
-
-    // Resize if needed
-    if (total_read + len >= buffer_size) {
-      buffer_size *= 2;
-      char *grown = realloc(output, buffer_size);
-      if (!grown) {
-        free(output);
-        pclose(pipe);
-        return NULL;
-      }
-      output = grown;
-    }
-
-    strcpy(output + total_read, buffer);
-    total_read += len;
-  }
-
-  output[total_read] = '\0';
-  pclose(pipe);
-
-  return output;
-}
-
 #else // _WIN32 — Win32 process runtime
 
 // Windows process result: same shape as the POSIX one but with Win32 handles
@@ -367,47 +319,6 @@ void cleanup_process(int64_t process_id) {
     free(proc);
   }
   pthread_mutex_unlock(&process_mutex);
-}
-
-// Legacy blocking spawn — _popen is the Windows equivalent of popen.
-char *spawn_process(char *command) {
-  if (!command) {
-    return NULL;
-  }
-
-  FILE *pipe = _popen(command, "r");
-  if (!pipe) {
-    return NULL;
-  }
-
-  size_t buffer_size = 4096;
-  char *output = malloc(buffer_size);
-  if (!output) {
-    _pclose(pipe);
-    return NULL;
-  }
-
-  size_t total_read = 0;
-  char buffer[256];
-  while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
-    size_t len = strlen(buffer);
-    if (total_read + len >= buffer_size) {
-      buffer_size *= 2;
-      char *grown = realloc(output, buffer_size);
-      if (!grown) {
-        free(output);
-        _pclose(pipe);
-        return NULL;
-      }
-      output = grown;
-    }
-    memcpy(output + total_read, buffer, len);
-    total_read += len;
-  }
-
-  output[total_read] = '\0';
-  _pclose(pipe);
-  return output;
 }
 
 #endif // _WIN32
