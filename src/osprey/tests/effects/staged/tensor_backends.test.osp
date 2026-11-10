@@ -172,19 +172,16 @@ fn attention(qkv, t) =
         Backends::andThen(probsOf(scores, t), fn(probs) =>
             perform Backends::Tensor.build(t * width, fn(i) => weighted(probs, qkv, t, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
 
+/// A pre-norm sub-layer: normalise `x`, run `body`, then add the residual back.
+fn subLayer(x, gain, bias, body, t) =
+    Backends::andThen(layerNorm(x, t, gain, bias), fn(normed) =>
+        Backends::andThen(body(normed, t), fn(out) => perform Backends::Tensor.zipWith(x, out, addF)))
+fn attended(x, w, t) = Backends::andThen(linear(x, t, width, qkvWidth, w.qkvWeight, w.qkvBias), fn(qkv) => Backends::andThen(attention(qkv, t), fn(mixed) => linear(mixed, t, width, width, w.projWeight, w.projBias)))
+fn feedForward(x, w, t) = Backends::andThen(linear(x, t, width, mlpWidth, w.fcWeight, w.fcBias), fn(grown) => Backends::andThen(smoothed(grown), fn(hidden) => linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias)))
 /// One pre-norm block: attention and MLP, each with a residual.
-fn block(x, t) =
-    Backends::andThen(blockParams(), fn(w) =>
-        Backends::andThen(layerNorm(x, t, w.ln1gain, w.ln1bias), fn(normed) =>
-            Backends::andThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias), fn(qkv) =>
-                Backends::andThen(attention(qkv, t), fn(attended) =>
-                    Backends::andThen(linear(attended, t, width, width, w.projWeight, w.projBias), fn(projected) =>
-                        Backends::andThen(perform Backends::Tensor.zipWith(x, projected, addF), fn(x2) =>
-                            Backends::andThen(layerNorm(x2, t, w.ln2gain, w.ln2bias), fn(normed2) =>
-                                Backends::andThen(linear(normed2, t, width, mlpWidth, w.fcWeight, w.fcBias), fn(f) =>
-                                    Backends::andThen(smoothed(f), fn(hidden) =>
-                                        Backends::andThen(linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias), fn(out) =>
-                                            perform Backends::Tensor.zipWith(x2, out, addF)))))))))))
+fn block(x, t) = Backends::andThen(blockParams(), fn(w) =>
+    Backends::andThen(subLayer(x, w.ln1gain, w.ln1bias, fn(v, n) => attended(v, w, n), t), fn(x2) =>
+        subLayer(x2, w.ln2gain, w.ln2bias, fn(v, n) => feedForward(v, w, n), t)))
 
 /// Token plus position embeddings of the host-side ids, [t, width].
 fn embed(tokens, positions, ids, t) = perform Backends::Tensor.build(t * width, fn(i) => at(tokens, (listGet(ids, intDiv(i, width)) ?: 0) * width + i % width) + at(positions, i))
