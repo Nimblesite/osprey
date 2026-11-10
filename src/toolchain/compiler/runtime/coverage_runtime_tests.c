@@ -188,6 +188,21 @@ static void diagnose_fresh(const char *path, void (*child)(const char *),
     diagnostic_from_child(child, path, diag, diag_size);
 }
 
+// Runs `child` against `path` (clearing a stale dump when `fresh`) and requires
+// its refusal to state `reason` and name `path`, each explained by its own
+// message; `diag` is left for callers that check more of it
+// [TESTING-COVERAGE-DUMP].
+static void assert_refusal(void (*child)(const char *), const char *path,
+                           const char *reason, const char *reason_message,
+                           const char *path_message, char *diag, int fresh) {
+    if (fresh) {
+        diagnose_fresh(path, child, diag, COV_DIAG_MAX);
+    } else {
+        diagnostic_from_child(child, path, diag, COV_DIAG_MAX);
+    }
+    assert_refusal_names(diag, reason, reason_message, path, path_message);
+}
+
 // Without OSPREY_COVERAGE, registration stays inert: no dump file appears.
 static void child_registers_uninstrumented(const char *path) {
     (void)path; // nothing is keyed to the dump path while coverage is off
@@ -212,10 +227,10 @@ static void test_dump_written_on_exit(const char *path) {
 static void test_unwritable_dump_is_reported(void) {
     const char *unwritable = "/osprey-coverage-no-such-directory/dump.txt";
     char diag[COV_DIAG_MAX];
-    diagnostic_from_child(child_registers_to, unwritable, diag, sizeof(diag));
-    assert_refusal_names(diag, "osprey coverage: cannot write",
-                         "an unopenable dump path must be diagnosed", unwritable,
-                         "the diagnostic must name the path that failed");
+    assert_refusal(child_registers_to, unwritable,
+                   "osprey coverage: cannot write",
+                   "an unopenable dump path must be diagnosed",
+                   "the diagnostic must name the path that failed", diag, 0);
     assert(strstr(diag, "cannot finish") == NULL &&
            "a dump that never opened cannot also report a close failure");
     FILE *in = fopen(unwritable, "r");
@@ -234,11 +249,10 @@ static void test_unpublishable_dump_is_reported(const char *path) {
     // close succeed and the flush fails at exactly the publishing step.
     assert(mkdir(path, S_IRWXU) == 0);
     char diag[COV_DIAG_MAX];
-    diagnostic_from_child(child_registers_to, path, diag, sizeof(diag));
-    assert_refusal_names(diag, "osprey coverage: cannot finish",
-                         "a dump that could not be published must be diagnosed",
-                         path,
-                         "the diagnostic must name the dump the reader was promised");
+    assert_refusal(child_registers_to, path, "osprey coverage: cannot finish",
+                   "a dump that could not be published must be diagnosed",
+                   "the diagnostic must name the dump the reader was promised",
+                   diag, 0);
     // The point of publishing by rename: a reader finds NOTHING, never the
     // valid prefix of a dump whose writer died.
     struct stat published;
@@ -286,9 +300,9 @@ static void assert_lost_line_refused(void (*child)(const char *),
                                      const char *path,
                                      const char *incomplete_message) {
     char diag[COV_DIAG_MAX];
-    diagnose_fresh(path, child, diag, sizeof(diag));
-    assert(strstr(diag, "osprey coverage: out of memory") != NULL &&
-           "a line the table could not hold must be reported when it is lost");
+    assert_refusal(child, path, "osprey coverage: out of memory",
+                   "a line the table could not hold must be reported when it is lost",
+                   "the refusal names the dump that will not appear", diag, 1);
     assert_refusal_names(diag, "line table incomplete", incomplete_message,
                          path,
                          "the refusal names the dump that will not appear");
@@ -320,11 +334,10 @@ static void child_cannot_name_its_staging_file(const char *path) {
 // other: diagnosed, and nothing published [TESTING-COVERAGE-DUMP].
 static void test_unnameable_staging_path_is_reported(const char *path) {
     char diag[COV_DIAG_MAX];
-    diagnose_fresh(path, child_cannot_name_its_staging_file, diag,
-                   sizeof(diag));
-    assert(strstr(diag, "osprey coverage: cannot write") != NULL &&
-           "a staging path that cannot be formed is a write failure");
-    assert(strstr(diag, path) != NULL);
+    assert_refusal(child_cannot_name_its_staging_file, path,
+                   "osprey coverage: cannot write",
+                   "a staging path that cannot be formed is a write failure",
+                   "the diagnostic must name the dump path", diag, 1);
     assert(access(path, F_OK) != 0 && "and nothing is published");
 }
 
@@ -376,12 +389,11 @@ static void test_a_symlink_at_the_staging_path_is_not_followed(const char *path)
     assert(symlink(sentinel, staging) == 0);
 
     char diag[COV_DIAG_MAX];
-    diagnostic_from_child(child_flushes_onto_a_replanted_symlink, path, diag,
-                          sizeof(diag));
-    assert_refusal_names(diag, "osprey coverage: cannot write",
-                         "a staging name that is already taken must be refused, not opened",
-                         path,
-                         "and the refusal names the dump the reader was promised");
+    assert_refusal(child_flushes_onto_a_replanted_symlink, path,
+                   "osprey coverage: cannot write",
+                   "a staging name that is already taken must be refused, not opened",
+                   "and the refusal names the dump the reader was promised",
+                   diag, 0);
     assert(access(path, F_OK) != 0 &&
            "nothing is published: not the dump, and not the link either");
 
