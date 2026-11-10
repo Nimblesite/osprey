@@ -73,19 +73,16 @@ tolerance = 0.000000001
 tensorFailed (message, fallback) =
     check ("tensor operation", "success", toString message)
     fallback
+(** [FAILURE-EXPLICIT] A failed tensor operation fails the case with its reason, answering `fallback`. *)
+settledAs (result, fallback, work) = match result
+    Success value => work value
+    Error message => tensorFailed (message, fallback)
 (** [FAILURE-EXPLICIT] A failed tensor operation fails the predicate with its reason. *)
-tensorSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message => tensorFailed (message, false)
+tensorSatisfies (result, predicate) = settledAs (result, false, predicate)
 (** [FAILURE-EXPLICIT] A case ends here; a failure has already failed an assertion. *)
-settled result = match result
-    Success _ => 0
-    Error message => tensorFailed (message, 0)
-(** [FAILURE-EXPLICIT] The same for a string-producing case: the empty text can
-    never equal the expected rendering, so a failure cannot pass. *)
-settledText result = match result
-    Success value => value
-    Error message => tensorFailed (message, "")
+settled result = settledAs (result, 0, \_value => 0)
+(** [FAILURE-EXPLICIT] The same for a string-producing case: the empty text can never equal the expected rendering, so a failure cannot pass. *)
+settledText result = settledAs (result, "", \value => value)
 at (m, i) = perform Backends::Tensor.get m i
 size m = perform Backends::Tensor.length m
 vector xs = perform Backends::Tensor.fromList xs
@@ -102,16 +99,17 @@ smoothed x = perform Backends::Tensor.build (size x) (\i => gelu (at (x, i)))
 
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (n, step, modulus, shift, scale) = perform Backends::Tensor.build n (\i => toFloat ((i * step) % modulus - shift) / scale)
-(** Every block parameter in one bundle, so the model unwraps each once; each
-    weight is the deterministic `weight` build of its own spec, in field order. *)
-blockParams () =
-    Backends::andThen(weight (width, 3, 5, 1, 2.0), \g1 => Backends::andThen(weight (width, 5, 7, 3, 4.0), \b1 =>
-    Backends::andThen(weight (width * qkvWidth, 7, 11, 5, 8.0), \qw => Backends::andThen(weight (qkvWidth, 3, 7, 3, 8.0), \qb =>
-    Backends::andThen(weight (width * width, 5, 13, 6, 8.0), \pw => Backends::andThen(weight (width, 7, 5, 2, 4.0), \pb =>
-    Backends::andThen(weight (width, 7, 9, 4, 4.0), \g2 => Backends::andThen(weight (width, 2, 5, 2, 8.0), \b2 =>
-    Backends::andThen(weight (width * mlpWidth, 11, 13, 6, 8.0), \fw => Backends::andThen(weight (mlpWidth, 5, 11, 5, 8.0), \fb =>
-    Backends::andThen(weight (mlpWidth * width, 13, 17, 8, 16.0), \ow => Backends::andThen(weight (width, 3, 7, 3, 4.0), \ob =>
-        Success(value = { ln1gain = g1, ln1bias = b1, qkvWeight = qw, qkvBias = qb, projWeight = pw, projBias = pb, ln2gain = g2, ln2bias = b2, fcWeight = fw, fcBias = fb, outWeight = ow, outBias = ob })))))))))))))
+(** Each block parameter's weight spec, in field order, built in turn and bundled. *)
+paramSpecs = [
+    { n = width, step = 3, modulus = 5, shift = 1, scale = 2.0 }, { n = width, step = 5, modulus = 7, shift = 3, scale = 4.0 }, { n = width * qkvWidth, step = 7, modulus = 11, shift = 5, scale = 8.0 }, { n = qkvWidth, step = 3, modulus = 7, shift = 3, scale = 8.0 },
+    { n = width * width, step = 5, modulus = 13, shift = 6, scale = 8.0 }, { n = width, step = 7, modulus = 5, shift = 2, scale = 4.0 }, { n = width, step = 7, modulus = 9, shift = 4, scale = 4.0 }, { n = width, step = 2, modulus = 5, shift = 2, scale = 8.0 }, { n = width * mlpWidth, step = 11, modulus = 13, shift = 6, scale = 8.0 }, { n = mlpWidth, step = 5, modulus = 11, shift = 5, scale = 8.0 },
+    { n = mlpWidth * width, step = 13, modulus = 17, shift = 8, scale = 16.0 }, { n = width, step = 3, modulus = 7, shift = 3, scale = 4.0 }
+]
+buildParams specs = foldList specs (Success(value = [])) (\(acc, spec) => Backends::andThen(acc, \built => Backends::andThen(weight (spec.n, spec.step, spec.modulus, spec.shift, spec.scale), \value => Success(value = listAppend built value))))
+unpackParams ws = match ws
+    [ln1gain, ln1bias, qkvWeight, qkvBias, projWeight, projBias, ln2gain, ln2bias, fcWeight, fcBias, outWeight, outBias] => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })
+    _ => Error(message = "twelve block parameters")
+blockParams () = Backends::andThen(buildParams paramSpecs, unpackParams)
 
 sumRange (x, start, n) = range start (start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range start (start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
@@ -180,12 +178,14 @@ oracle = [ -1.6005739040598597, 1.6570609567125532, 0.7819120177177687, 2.600026
 
 (** Element i of y against the oracle: a missing oracle is never near a real element. *)
 oracleAt (y, i) = near (at (y, i), listGet oracle i ?: 0.0)
+(** Every oracle element of y, checked one element at a time. *)
+oracleRow y = range 0 (listLength oracle) |> fold true (\(held, i) => held && oracleAt (y, i))
 
 (** The oracle values of the block, plus which interpretation answered. *)
 blockChecks (name, expectedDevice) =
     Backends::andThen(blockOutput(),
         \y =>
-            checkAll(name, [ size(y) == 8, device() == expectedDevice, oracleAt(y, 0), oracleAt(y, 1), oracleAt(y, 2), oracleAt(y, 3), oracleAt(y, 4), oracleAt(y, 5), oracleAt(y, 6), oracleAt(y, 7), tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
+            checkAll(name, [ size(y) == 8, device() == expectedDevice, oracleRow y, tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
             Success(value = 0) )
 
 listsCase () = settled (Backends::onLists (\() => blockChecks ("the block over lists matches the reference pass", "lists")))

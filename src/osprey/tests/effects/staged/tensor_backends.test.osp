@@ -79,22 +79,18 @@ let tolerance = 0.000000001
 /// [FAILURE-EXPLICIT] Report a failed tensor operation and answer `fallback`.
 fn tensorFailed(message, fallback) = { check("tensor operation", "success", toString(message))
     fallback }
+/// [FAILURE-EXPLICIT] A failed tensor operation fails the case with its reason, answering `fallback`.
+fn settledAs(result, fallback, work) = match result {
+    Success { value } => work(value)
+    Error { message } => tensorFailed(message, fallback)
+}
 /// [FAILURE-EXPLICIT] A failed tensor operation fails the predicate with its reason.
-fn tensorSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => tensorFailed(message, false)
-}
+fn tensorSatisfies(result, predicate) = settledAs(result, false, predicate)
 /// [FAILURE-EXPLICIT] A case ends here; a failure has already failed an assertion.
-fn settled(result) = match result {
-    Success _ => 0
-    Error { message } => tensorFailed(message, 0)
-}
+fn settled(result) = settledAs(result, 0, fn(_value) => 0)
 /// [FAILURE-EXPLICIT] The same for a string-producing case: the empty text can
 /// never equal the expected rendering, so a failure cannot pass.
-fn settledText(result) = match result {
-    Success { value } => value
-    Error { message } => tensorFailed(message, "")
-}
+fn settledText(result) = settledAs(result, "", fn(value) => value)
 fn at(m, i) = perform Backends::Tensor.get(m, i)
 fn size(m) = perform Backends::Tensor.length(m)
 fn vector(xs) = perform Backends::Tensor.fromList(xs)
@@ -109,15 +105,18 @@ fn smoothed(x) = perform Backends::Tensor.build(size(x), fn(i) => gelu(at(x, i))
 
 /// Deterministic test weights: ((i * step) % modulus - shift) / scale for element i.
 fn weight(n, step, modulus, shift, scale) = perform Backends::Tensor.build(n, fn(i) => toFloat((i * step) % modulus - shift) / scale)
-/// Every block parameter in one bundle, so the model unwraps each once; each
-/// weight is the deterministic `weight` build of its own spec, in field order.
-fn blockParams() =
-    Backends::andThen(weight(width, 3, 5, 1, 2.0), fn(g1) => Backends::andThen(weight(width, 5, 7, 3, 4.0), fn(b1) =>
-    Backends::andThen(weight(width * qkvWidth, 7, 11, 5, 8.0), fn(qw) => Backends::andThen(weight(qkvWidth, 3, 7, 3, 8.0), fn(qb) =>
-    Backends::andThen(weight(width * width, 5, 13, 6, 8.0), fn(pw) => Backends::andThen(weight(width, 7, 5, 2, 4.0), fn(pb) =>
-    Backends::andThen(weight(width, 7, 9, 4, 4.0), fn(g2) => Backends::andThen(weight(width, 2, 5, 2, 8.0), fn(b2) =>
-    Backends::andThen(weight(width * mlpWidth, 11, 13, 6, 8.0), fn(fw) => Backends::andThen(weight(mlpWidth, 5, 11, 5, 8.0), fn(fb) =>
-    Backends::andThen(weight(mlpWidth * width, 13, 17, 8, 16.0), fn(ow) => Backends::andThen(weight(width, 3, 7, 3, 4.0), fn(ob) => Success { value: { ln1gain: g1, ln1bias: b1, qkvWeight: qw, qkvBias: qb, projWeight: pw, projBias: pb, ln2gain: g2, ln2bias: b2, fcWeight: fw, fcBias: fb, outWeight: ow, outBias: ob } }))))))))))))
+/// Each block parameter's weight spec, in field order, built in turn and bundled.
+let paramSpecs = [
+    { n: width, step: 3, modulus: 5, shift: 1, scale: 2.0 }, { n: width, step: 5, modulus: 7, shift: 3, scale: 4.0 }, { n: width * qkvWidth, step: 7, modulus: 11, shift: 5, scale: 8.0 }, { n: qkvWidth, step: 3, modulus: 7, shift: 3, scale: 8.0 },
+    { n: width * width, step: 5, modulus: 13, shift: 6, scale: 8.0 }, { n: width, step: 7, modulus: 5, shift: 2, scale: 4.0 }, { n: width, step: 7, modulus: 9, shift: 4, scale: 4.0 }, { n: width, step: 2, modulus: 5, shift: 2, scale: 8.0 },
+    { n: width * mlpWidth, step: 11, modulus: 13, shift: 6, scale: 8.0 }, { n: mlpWidth, step: 5, modulus: 11, shift: 5, scale: 8.0 }, { n: mlpWidth * width, step: 13, modulus: 17, shift: 8, scale: 16.0 }, { n: width, step: 3, modulus: 7, shift: 3, scale: 4.0 }
+]
+fn buildParams(specs) = foldList(specs, Success { value: [] }, fn(acc, spec) => Backends::andThen(acc, fn(built) => Backends::andThen(weight(spec.n, spec.step, spec.modulus, spec.shift, spec.scale), fn(value) => Success { value: listAppend(built, value) })))
+fn unpackParams(ws) = match ws {
+    [ln1gain, ln1bias, qkvWeight, qkvBias, projWeight, projBias, ln2gain, ln2bias, fcWeight, fcBias, outWeight, outBias] => Success { value: { ln1gain: ln1gain, ln1bias: ln1bias, qkvWeight: qkvWeight, qkvBias: qkvBias, projWeight: projWeight, projBias: projBias, ln2gain: ln2gain, ln2bias: ln2bias, fcWeight: fcWeight, fcBias: fcBias, outWeight: outWeight, outBias: outBias } }
+    _ => Error { message: "twelve block parameters" }
+}
+fn blockParams() = Backends::andThen(buildParams(paramSpecs), unpackParams)
 
 fn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))
 fn squaredDeviation(x, start, n, mean) = range(start, start + n) |> fold(0.0, fn(a, i) => a + (at(x, i) - mean) * (at(x, i) - mean))
@@ -181,16 +180,14 @@ let oracle = [-1.6005739040598597, 1.6570609567125532, 0.7819120177177687, 2.600
 
 /// Element i of y against the oracle: a missing oracle is never near a real element.
 fn oracleAt(y, i) = near(at(y, i), listGet(oracle, i) ?: 0.0)
+/// Every oracle element of y, checked one element at a time.
+fn oracleRow(y) = range(0, listLength(oracle)) |> fold(true, fn(held, i) => held && oracleAt(y, i))
 
 /// The oracle values of the block, plus which interpretation answered.
 fn blockChecks(name, expectedDevice) =
     Backends::andThen(blockOutput(), fn(y) => {
-        checkAll(name, [
-            size(y) == 8, device() == expectedDevice,
-            oracleAt(y, 0), oracleAt(y, 1), oracleAt(y, 2), oracleAt(y, 3),
-            oracleAt(y, 4), oracleAt(y, 5), oracleAt(y, 6), oracleAt(y, 7),
-            tensorSatisfies(total(y), fn(grand) => near(grand, 2.8121518161640227))
-        ])
+        checkAll(name, [size(y) == 8, device() == expectedDevice, oracleRow(y),
+            tensorSatisfies(total(y), fn(grand) => near(grand, 2.8121518161640227))])
         Success { value: 0 } })
 fn listsCase() = settled(Backends::onLists(fn() => blockChecks("the block over lists matches the reference pass", "lists")))
 fn gpuCase() = settled(Backends::onGpu(fn() => blockChecks("the same block over GPU buffers matches the reference pass", "host")))
