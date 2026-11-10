@@ -4,6 +4,29 @@
 // http_server_request_mocks.h.
 #include "http_server_request_mocks.h"
 
+// One scripted read holding `chunk`, proved against the verdict the server owes
+// it; `reason` names the input, so a wrong verdict reports what produced it.
+static HttpRequestBuffer read_one(const char *chunk, RequestReadStatus verdict,
+                                  const char *reason) {
+  HttpRequestBuffer request;
+  assert(read_chunks(&chunk, 1, &request) == verdict && reason);
+  return request;
+}
+
+// The whole input of a case that sends a single read, or none at all.
+static void script_single_read(const char *chunk) { reset_receive(&chunk, 1); }
+
+// One request built into `buffer` and proved to fit, so the read below sees a
+// whole request rather than a silently truncated one.
+static void build_request(char *buffer, size_t capacity, const char *format,
+                          ...) {
+  va_list arguments;
+  va_start(arguments, format);
+  int written = vsnprintf(buffer, capacity, format, arguments);
+  va_end(arguments);
+  assert(written > 0 && (size_t)written < capacity);
+}
+
 static void test_split_body_reaches_handler(void) {
   const char *body = "{\"account\":1,\"cents\":100,\"note\":\"split\"}";
   const char *chunks[] = {split_request_headers(body), body};
@@ -76,8 +99,7 @@ static void test_incomplete_body_is_rejected(void) {
 }
 
 static void test_partial_request_waits_with_a_deadline(void) {
-  const char *chunks[] = {"POST /api/withdraw HTTP/1.1\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
+  script_single_read("POST /api/withdraw HTTP/1.1\r\n");
   const int results[] = {0};
   set_select_results(results, sizeof(results) / sizeof(results[0]));
   HttpRequestBuffer request;
@@ -87,8 +109,7 @@ static void test_partial_request_waits_with_a_deadline(void) {
 }
 
 static void test_deadline_is_absolute_across_reads(void) {
-  const char *chunks[] = {"POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
+  script_single_read("POST / HTTP/1.1\r\nContent-Length: 1\r\n\r\n");
   const int results[] = {1, 0};
   const uint64_t times[] = {1000, 1000, 5500};
   set_select_results(results, 2);
@@ -131,10 +152,9 @@ static void test_logs_are_correlated_and_sanitized(void) {
 }
 
 static void test_bridge_request_id_is_parsed_and_sanitized(void) {
-  const char *chunks[] = {"GET / HTTP/1.1\r\n"
-                          "X-Osprey-Request-Id: bridge-\x1b[31m\r\n\r\n"};
-  HttpRequestBuffer request;
-  assert(read_chunks(chunks, 1, &request) == REQUEST_COMPLETE);
+  HttpRequestBuffer request =
+      read_one("GET / HTTP/1.1\r\nX-Osprey-Request-Id: bridge-\x1b[31m\r\n\r\n",
+               REQUEST_COMPLETE, "a bridge request id does not break the read");
   assert(strchr(request.client_request_id, '\x1b') == NULL);
   assert(strncmp(request.client_request_id, "bridge-", 7) == 0);
   captured_log[0] = '\0';
@@ -244,23 +264,22 @@ static void test_log_token_sanitizing_covers_its_boundaries(void) {
 // header is not that header -- matching it would let `Xontent-Length` set the
 // body length.
 static void test_malformed_header_names_are_rejected(void) {
-  HttpRequestBuffer request;
-  const char *no_colon[] = {"POST / HTTP/1.1\r\nNoColonHere\r\n\r\n"};
-  assert(read_chunks(no_colon, 1, &request) == REQUEST_MALFORMED);
-  free(request.data);
-
-  const char *empty_name[] = {"POST / HTTP/1.1\r\n: value\r\n\r\n"};
-  assert(read_chunks(empty_name, 1, &request) == REQUEST_MALFORMED);
-  free(request.data);
-
-  const char *spaced_name[] = {"POST / HTTP/1.1\r\nBad Header: x\r\n\r\n"};
-  assert(read_chunks(spaced_name, 1, &request) == REQUEST_MALFORMED);
-  free(request.data);
+  static const char *const malformed[] = {
+      "POST / HTTP/1.1\r\nNoColonHere\r\n\r\n",
+      "POST / HTTP/1.1\r\n: value\r\n\r\n",
+      "POST / HTTP/1.1\r\nBad Header: x\r\n\r\n",
+  };
+  for (size_t i = 0; i < sizeof malformed / sizeof malformed[0]; i++) {
+    free(read_one(malformed[i], REQUEST_MALFORMED,
+                  "a header name without a colon or value is malformed")
+             .data);
+  }
 
   // Same length as "Content-Length", one letter different: it must NOT set the
   // body length, so the request completes with an empty body.
-  const char *near_miss[] = {"POST / HTTP/1.1\r\nXontent-Length: 2\r\n\r\n"};
-  assert(read_chunks(near_miss, 1, &request) == REQUEST_COMPLETE);
+  HttpRequestBuffer request = read_one(
+      "POST / HTTP/1.1\r\nXontent-Length: 2\r\n\r\n", REQUEST_COMPLETE,
+      "a near-miss header name is not that header");
   assert(request.expected_body_bytes == 0);
   assert(strcmp(request.body, "") == 0);
   free(request.data);
@@ -270,9 +289,9 @@ static void test_malformed_header_names_are_rejected(void) {
 // allows it, so trimming it is what makes `Content-Length: 2  ` mean 2 rather
 // than malformed.
 static void test_header_values_tolerate_surrounding_space(void) {
-  HttpRequestBuffer request;
-  const char *padded[] = {"POST / HTTP/1.1\r\nContent-Length:   2  \r\n\r\n{}"};
-  assert(read_chunks(padded, 1, &request) == REQUEST_COMPLETE);
+  HttpRequestBuffer request = read_one(
+      "POST / HTTP/1.1\r\nContent-Length:   2  \r\n\r\n{}", REQUEST_COMPLETE,
+      "surrounding space is not part of a header value");
   assert(request.expected_body_bytes == 2);
   assert(strcmp(request.body, "{}") == 0);
   free(request.data);
@@ -287,14 +306,12 @@ static void test_over_long_client_request_id_is_truncated(void) {
   char identifier[HTTP_CLIENT_REQUEST_ID_BYTES * 2];
   memset(identifier, 'a', sizeof(identifier) - 1U);
   identifier[sizeof(identifier) - 1U] = '\0';
-  int written = snprintf(headers, sizeof(headers),
-                         "POST / HTTP/1.1\r\nX-Osprey-Request-Id: %s\r\n\r\n",
-                         identifier);
-  assert(written > 0 && (size_t)written < sizeof(headers));
+  build_request(headers, sizeof(headers),
+                "POST / HTTP/1.1\r\nX-Osprey-Request-Id: %s\r\n\r\n",
+                identifier);
 
-  HttpRequestBuffer request;
-  const char *chunks[] = {headers};
-  assert(read_chunks(chunks, 1, &request) == REQUEST_COMPLETE);
+  HttpRequestBuffer request = read_one(headers, REQUEST_COMPLETE,
+                                       "an over-long request id is accepted");
   assert(strlen(request.client_request_id) == HTTP_CLIENT_REQUEST_ID_BYTES - 1U);
   assert(request.client_request_id[0] == 'a');
   free(request.data);
@@ -312,21 +329,17 @@ static void test_oversized_headers_and_body_are_rejected(void) {
   memset(huge + prefix, 'p', padding);
   memcpy(huge + (size_t)prefix + padding, "\r\n\r\n", 5U);
 
-  HttpRequestBuffer request;
-  const char *chunks[] = {huge};
-  assert(read_chunks(chunks, 1, &request) == REQUEST_TOO_LARGE &&
-         "a complete but over-long header block is still too large");
-  free(request.data);
+  free(read_one(huge, REQUEST_TOO_LARGE,
+                "a complete but over-long header block is still too large")
+           .data);
 
   char body_headers[128];
-  int written = snprintf(body_headers, sizeof(body_headers),
-                         "POST / HTTP/1.1\r\nContent-Length: %u\r\n\r\n",
-                         MAX_HTTP_REQUEST_BYTES);
-  assert(written > 0 && (size_t)written < sizeof(body_headers));
-  const char *body_chunks[] = {body_headers};
-  assert(read_chunks(body_chunks, 1, &request) == REQUEST_TOO_LARGE &&
-         "headers plus body must fit the buffer, not just the body");
-  free(request.data);
+  build_request(body_headers, sizeof(body_headers),
+                "POST / HTTP/1.1\r\nContent-Length: %u\r\n\r\n",
+                MAX_HTTP_REQUEST_BYTES);
+  free(read_one(body_headers, REQUEST_TOO_LARGE,
+                "headers plus body must fit the buffer, not just the body")
+           .data);
 }
 
 // The wait before a read has three failure modes and they are NOT the same
@@ -334,9 +347,8 @@ static void test_oversized_headers_and_body_are_rejected(void) {
 // select that failed for a reason other than a signal.
 static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
   HttpRequestBuffer request;
-  const char *nothing[] = {NULL};
 
-  reset_receive(nothing, 1);
+  script_single_read(NULL);
   assert(read_http_request(-1, &request) == REQUEST_READ_FAILED &&
          "a descriptor select cannot watch is a read failure, not a timeout");
   assert(select_calls == 0 && "and it is refused before select is consulted");
@@ -344,7 +356,7 @@ static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
 
   // The deadline is absolute: the clock reads past it before the first select.
   const uint64_t spent[] = {1000U, 1000U + HTTP_REQUEST_TIMEOUT_MS};
-  reset_receive(nothing, 1);
+  script_single_read(NULL);
   set_monotonic_values(spent, sizeof(spent) / sizeof(spent[0]));
   assert(read_http_request(42, &request) == REQUEST_TIMED_OUT);
   assert(select_calls == 0 && "an expired deadline never waits");
@@ -352,7 +364,7 @@ static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
 
   // A select that failed for a reason other than EINTR ends the read.
   const int failed[] = {-1};
-  reset_receive(nothing, 1);
+  script_single_read(NULL);
   set_select_results(failed, 1);
   select_errno = EBADF;
   assert(read_http_request(42, &request) == REQUEST_READ_FAILED);
@@ -360,8 +372,7 @@ static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
 
   // EINTR is retried, and the retry succeeds: the request is read normally.
   const int interrupted_then_ready[] = {-1, 1};
-  const char *complete[] = {"POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}"};
-  reset_receive(complete, 1);
+  script_single_read("POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}");
   set_select_results(interrupted_then_ready,
                      sizeof(interrupted_then_ready) / sizeof(int));
   select_errno = EINTR;
@@ -376,14 +387,15 @@ static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
 // an incomplete request. Answering the same way for both would let a client
 // truncate a body and have the handler see it as whole.
 static void test_socket_error_and_close_differ(void) {
-  HttpRequestBuffer request;
   // No chunk left: the mock recv reports -1, the way a broken socket does.
-  const char *starved[] = {"POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n"};
-  assert(read_chunks(starved, 1, &request) == REQUEST_READ_FAILED);
-  free(request.data);
+  free(read_one("POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n",
+                REQUEST_READ_FAILED,
+                "a socket error mid-request is a read failure")
+           .data);
 
   // A clean end-of-stream partway through a body is incomplete, not an error.
   const char *closed[] = {"POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\nab", NULL};
+  HttpRequestBuffer request;
   assert(read_chunks(closed, 2, &request) == REQUEST_INCOMPLETE);
   free(request.data);
 }
