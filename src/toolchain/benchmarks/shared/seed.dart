@@ -10,18 +10,37 @@ int r1(int x) => (x * minstd) % modulus;
 
 int hashAt(int s, int i) => r1(r1(s + i));
 
+// Reads the seed's leading integer as C's strtoll does: 0 selects the fixed
+// seed 1, anything else a random one.
 int readSeed() {
   final line = stdin.readLineSync();
   int m = 0;
   if (line != null) {
-    m = int.tryParse(line.trim()) ?? 0;
+    int end = 0;
+    while (end < line.length &&
+        (line.codeUnitAt(end) == 0x20 || line.codeUnitAt(end) == 0x09)) {
+      end++;
+    }
+    final start = end;
+    if (end < line.length &&
+        (line.codeUnitAt(end) == 0x2B || line.codeUnitAt(end) == 0x2D)) {
+      end++;
+    }
+    while (end < line.length &&
+        line.codeUnitAt(end) >= 0x30 &&
+        line.codeUnitAt(end) <= 0x39) {
+      end++;
+    }
+    if (end > start) {
+      m = int.tryParse(line.substring(start, end)) ?? 0;
+    }
   }
   if (m == 0) {
     return 1;
   }
   final rng = Random.secure();
-  final val = (rng.nextInt(1 << 31) << 31) | rng.nextInt(1 << 31);
-  return (val % 2147483646) + 1;
+  final val = (rng.nextInt(1 << 32) << 32) | rng.nextInt(1 << 32);
+  return val.toUnsigned(63) % 2147483646 + 1;
 }
 
 // The sort cases' shared run: eight seeded runs of 2000 values below 100000,

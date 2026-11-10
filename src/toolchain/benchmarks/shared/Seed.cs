@@ -9,16 +9,22 @@ static class Seed
 
     public static long HashAt(long s, long i) => R1(R1(s + i));
 
+    // Reads the seed's leading integer as C's strtoll does: 0 selects the
+    // fixed seed 1, anything else a random one.
     public static long ReadSeed()
     {
         string line = System.Console.ReadLine();
         long m = 0;
         if (line != null)
         {
-            long parsed;
-            if (long.TryParse(line.Trim(), out parsed))
+            int end = 0;
+            while (end < line.Length && (line[end] == ' ' || line[end] == '\t')) end++;
+            int start = end;
+            if (end < line.Length && (line[end] == '+' || line[end] == '-')) end++;
+            while (end < line.Length && line[end] >= '0' && line[end] <= '9') end++;
+            if (end > start)
             {
-                m = parsed;
+                long.TryParse(line.Substring(start, end - start), out m);
             }
         }
         if (m == 0)

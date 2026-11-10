@@ -1,39 +1,6 @@
 // Word-frequency count over a tiny vocab — exercises hashing + counting.
-import 'dart:io';
-import 'dart:math';
 
 import '../../shared/seed.dart';
-
-int readSeed() {
-  final line = stdin.readLineSync();
-  int m = 0;
-  if (line != null) {
-    int end = 0;
-    while (end < line.length &&
-        (line.codeUnitAt(end) == 0x20 || line.codeUnitAt(end) == 0x09)) {
-      end++;
-    }
-    final start = end;
-    if (end < line.length &&
-        (line.codeUnitAt(end) == 0x2B || line.codeUnitAt(end) == 0x2D)) {
-      end++;
-    }
-    while (end < line.length &&
-        line.codeUnitAt(end) >= 0x30 &&
-        line.codeUnitAt(end) <= 0x39) {
-      end++;
-    }
-    if (end > start) {
-      m = int.tryParse(line.substring(start, end)) ?? 0;
-    }
-  }
-  if (m == 0) {
-    return 1;
-  }
-  final rng = Random.secure();
-  final val = (rng.nextInt(1 << 32) << 32) | rng.nextInt(1 << 32);
-  return val.toUnsigned(63) % 2147483646 + 1;
-}
 
 void main() {
   final seed = readSeed();
