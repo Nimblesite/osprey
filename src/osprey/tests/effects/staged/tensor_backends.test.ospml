@@ -102,36 +102,16 @@ smoothed x = perform Backends::Tensor.build (size x) (\i => gelu (at (x, i)))
 
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (n, step, modulus, shift, scale) = perform Backends::Tensor.build n (\i => toFloat ((i * step) % modulus - shift) / scale)
-ln1g () = weight (width, 3, 5, 1, 2.0)
-ln1b () = weight (width, 5, 7, 3, 4.0)
-qkvW () = weight (width * qkvWidth, 7, 11, 5, 8.0)
-qkvB () = weight (qkvWidth, 3, 7, 3, 8.0)
-projW () = weight (width * width, 5, 13, 6, 8.0)
-projB () = weight (width, 7, 5, 2, 4.0)
-ln2g () = weight (width, 7, 9, 4, 4.0)
-ln2b () = weight (width, 2, 5, 2, 8.0)
-fcW () = weight (width * mlpWidth, 11, 13, 6, 8.0)
-fcB () = weight (mlpWidth, 5, 11, 5, 8.0)
-outW () = weight (mlpWidth * width, 13, 17, 8, 16.0)
-outB () = weight (width, 3, 7, 3, 4.0)
-tokenTable () = weight (vocab * width, 9, 17, 8, 4.0)
-positionTable () = weight (3 * width, 4, 9, 4, 8.0)
-
-(** Every block parameter in one bundle, so the model unwraps each once. *)
+(** Every block parameter in one bundle, so the model unwraps each once; each
+    weight is the deterministic `weight` build of its own spec, in field order. *)
 blockParams () =
-    Backends::andThen(ln1g(),
-        \g1 => Backends::andThen(ln1b(),
-            \b1 => Backends::andThen(qkvW(),
-                \qw => Backends::andThen(qkvB(),
-                    \qb => Backends::andThen(projW(),
-                        \pw => Backends::andThen(projB(),
-                            \pb => Backends::andThen(ln2g(),
-                                \g2 => Backends::andThen(ln2b(),
-                                    \b2 => Backends::andThen(fcW(),
-                                        \fw => Backends::andThen(fcB(),
-                                            \fb => Backends::andThen(outW(),
-                                                \ow => Backends::andThen(outB(),
-                                                    \ob => Success(value = { ln1gain = g1, ln1bias = b1, qkvWeight = qw, qkvBias = qb, projWeight = pw, projBias = pb, ln2gain = g2, ln2bias = b2, fcWeight = fw, fcBias = fb, outWeight = ow, outBias = ob })))))))))))))
+    Backends::andThen(weight (width, 3, 5, 1, 2.0), \g1 => Backends::andThen(weight (width, 5, 7, 3, 4.0), \b1 =>
+    Backends::andThen(weight (width * qkvWidth, 7, 11, 5, 8.0), \qw => Backends::andThen(weight (qkvWidth, 3, 7, 3, 8.0), \qb =>
+    Backends::andThen(weight (width * width, 5, 13, 6, 8.0), \pw => Backends::andThen(weight (width, 7, 5, 2, 4.0), \pb =>
+    Backends::andThen(weight (width, 7, 9, 4, 4.0), \g2 => Backends::andThen(weight (width, 2, 5, 2, 8.0), \b2 =>
+    Backends::andThen(weight (width * mlpWidth, 11, 13, 6, 8.0), \fw => Backends::andThen(weight (mlpWidth, 5, 11, 5, 8.0), \fb =>
+    Backends::andThen(weight (mlpWidth * width, 13, 17, 8, 16.0), \ow => Backends::andThen(weight (width, 3, 7, 3, 4.0), \ob =>
+        Success(value = { ln1gain = g1, ln1bias = b1, qkvWeight = qw, qkvBias = qb, projWeight = pw, projBias = pb, ln2gain = g2, ln2bias = b2, fcWeight = fw, fcBias = fb, outWeight = ow, outBias = ob })))))))))))))
 
 sumRange (x, start, n) = range start (start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range start (start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
@@ -150,10 +130,9 @@ linear (x, rows, inner, cols, w, bias) =
     Backends::andThen(product(x, w, rows, inner, cols),
         \value => perform Backends::Tensor.build (rows * cols) (\i => at(value, i) + at(bias, i % cols)))
 
-qAt (qkv, r, h, d) = at (qkv, r * qkvWidth + h * headWidth + d)
-kAt (qkv, r, h, d) = at (qkv, r * qkvWidth + width + h * headWidth + d)
-vAt (qkv, r, h, d) = at (qkv, r * qkvWidth + 2 * width + h * headWidth + d)
-score (qkv, h, r, c) = (range 0 headWidth |> fold 0.0 (\(a, d) => a + qAt (qkv, r, h, d) * kAt (qkv, c, h, d))) * scoreScale
+(** Element d of head h of row r, in the q, k or v slice at `offset`. *)
+headAt (qkv, offset, r, h, d) = at (qkv, r * qkvWidth + offset + h * headWidth + d)
+score (qkv, h, r, c) = (range 0 headWidth |> fold 0.0 (\(a, d) => a + headAt (qkv, 0, r, h, d) * headAt (qkv, width, c, h, d))) * scoreScale
 causalScore (qkv, h, r, c) = match c <= r
     true => score (qkv, h, r, c)
     false => 0.0
@@ -161,7 +140,7 @@ rowMax (scores, row, t) = range 0 (row % t + 1) |> fold (at (scores, row * t)) (
 causalWeight (scores, peaks, t, i) = match i % t <= intDiv i t % t
     true => exp (at (scores, i) - at (peaks, intDiv i t))
     false => 0.0
-weighted (probs, qkv, t, r, h, d) = range 0 (r + 1) |> fold 0.0 (\(a, c) => a + at (probs, (h * t + r) * t + c) * vAt (qkv, c, h, d))
+weighted (probs, qkv, t, r, h, d) = range 0 (r + 1) |> fold 0.0 (\(a, c) => a + at (probs, (h * t + r) * t + c) * headAt (qkv, 2 * width, c, h, d))
 
 (** Softmax of every causal row of the [heads, t, t] scores. *)
 probsOf (scores, t) =
@@ -190,8 +169,8 @@ block (x, t) = Backends::andThen(blockParams(),
 (** Token plus position embeddings of the host-side ids, [t, width]. *)
 embed (tokens, positions, ids, t) = perform Backends::Tensor.build (t * width) (\i => at (tokens, (listGet ids (intDiv i width) ?: 0) * width + i % width) + at (positions, i))
 blockOutput () =
-    Backends::andThen(tokenTable(),
-        \tokens => Backends::andThen(positionTable(),
+    Backends::andThen(weight (vocab * width, 9, 17, 8, 4.0),
+        \tokens => Backends::andThen(weight (3 * width, 4, 9, 4, 8.0),
             \positions => Backends::andThen(embed(tokens, positions, [3, 1], 2),
                 \x => block(x, 2))))
 rendered y = range 0 (size y) |> fold "" (\(acc, i) => acc + " " + toString (at (y, i)))
