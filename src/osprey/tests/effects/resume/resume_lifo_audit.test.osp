@@ -20,6 +20,28 @@ fn supply(cell, label, value) = "${cell}${label}=${toString(value)}|"
 /// Append `${label}:${toString(value)}|`, recording the answer an arm saw.
 fn saw(cell, label, value) = "${cell}${label}:${toString(value)}|"
 
+/// One audit's four transcripts: entries, supplies, settles and answers.
+type Ledger = { entered: string, supplies: string, settled: string, answers: string }
+
+/// The ledger every audited region starts from: four empty transcripts.
+fn blankLedger() = Ledger { entered: "", supplies: "", settled: "", answers: "" }
+
+/// Record one operation's entry and the value its region supplied.
+fn noteEnter(log, key, supplyLabel, label, supplied) = Ledger {
+    entered: tag(log.entered, key, label),
+    supplies: supply(log.supplies, supplyLabel, supplied),
+    settled: log.settled,
+    answers: log.answers
+}
+
+/// Record one operation's settle and the answer its arm saw.
+fn noteExit(log, key, label, sawLabel, answer) = Ledger {
+    entered: log.entered,
+    supplies: log.supplies,
+    settled: tag(log.settled, key, label),
+    answers: saw(log.answers, sawLabel, answer)
+}
+
 /// This case proves operations enter FIFO and post-resume code exits LIFO.
 fn resumeLifoAuditCase() = {
     mut n = 0
@@ -102,21 +124,16 @@ effect Delta {
 fn nestedInterleavedDepthTwoCase() = {
     mut alphaCalls = 0
     mut betaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger()
 
     let total = {
         handle Alpha {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls * 10 
-                entered = tag(entered, "a", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "a", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "a", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "a", label, label, answer)
                 answer + 1 
             }
         }
@@ -124,11 +141,9 @@ fn nestedInterleavedDepthTwoCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 100 
-                entered = tag(entered, "b", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "b", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "b", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "b", label, label, answer)
                 answer * 2 
             }
         }
@@ -142,7 +157,7 @@ fn nestedInterleavedDepthTwoCase() = {
     // Operations enter in the order the body performs them, whichever depth
     // answers them: the outer region answers first and third.
     checkAll("two nested depths enter in perform order", [
-        entered == "a:a1|b:b1|a:a2|b:b2|",
+        log.entered == "a:a1|b:b1|a:a2|b:b2|",
         structuralEquals([alphaCalls, betaCalls], [2, 2])
     ])
 
@@ -151,20 +166,20 @@ fn nestedInterleavedDepthTwoCase() = {
     // reverse of `entered` would predict `b:b2|a:a2|b:b1|a:a1|`, which is not
     // what this transcript says [EFFECTS-RESUME-NESTING].
     checkAll("two nested depths settle innermost suspension first", [
-        settled == "b:b2|b:b1|a:a2|a:a1|"
+        log.settled == "b:b2|b:b1|a:a2|a:a1|"
     ])
 
     // Each region supplies its own magnitude — tens from Alpha, hundreds from
     // Beta — so a value handed to the wrong performer changes the body's sum.
     checkAll("each nested depth supplies its own magnitude", [
-        supplies == "a1=10|b1=100|a2=20|b2=200|"
+        log.supplies == "a1=10|b1=100|a2=20|b2=200|"
     ])
 
     // The first arm to settle sees the body's own answer, 330. Every later arm
     // sees what the arm below it returned. Both Beta arms double, then both
     // Alpha arms increment: 330 -> 660 -> 1320 -> 1321 -> 1322.
     checkAll("nested settled answers chain through the arms", [
-        answers == "b2:330|b1:660|a2:1320|a1:1321|",
+        log.answers == "b2:330|b1:660|a2:1320|a1:1321|",
         total == 1322
     ])
 }
@@ -186,19 +201,16 @@ fn nestedDepthThreeRotationCase() = {
     mut gammaCalls = 0
     mut alphaCalls = 0
     mut betaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut answers = ""
+    mut log = blankLedger()
 
     let total = {
         handle Gamma {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
                 let supplied = gammaCalls * 1000 
-                entered = tag(entered, "d1", label)
+                log = noteEnter(log, "d1", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "d1", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "d1", label, label, answer)
                 answer * 2 
             }
         }
@@ -206,10 +218,9 @@ fn nestedDepthThreeRotationCase() = {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls * 10 
-                entered = tag(entered, "d2", label)
+                log = noteEnter(log, "d2", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "d2", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "d2", label, label, answer)
                 answer + 7 
             }
         }
@@ -217,10 +228,9 @@ fn nestedDepthThreeRotationCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 100 
-                entered = tag(entered, "d3", label)
+                log = noteEnter(log, "d3", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "d3", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "d3", label, label, answer)
                 answer * 3 
             }
         }
@@ -235,7 +245,7 @@ fn nestedDepthThreeRotationCase() = {
 
     // Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2.
     checkAll("three rotated depths enter in perform order", [
-        entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
+        log.entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
         structuralEquals([gammaCalls, alphaCalls, betaCalls], [2, 2, 2])
     ])
 
@@ -244,13 +254,13 @@ fn nestedDepthThreeRotationCase() = {
     // first and each region's later suspension settles before its earlier one.
     // Reversing `entered` would predict `d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|`.
     checkAll("three rotated depths settle by live arm nesting", [
-        settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"
+        log.settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"
     ])
 
     // Body sum: 1000 + 10 + 100 + 2000 + 200 + 20 = 3330. Each arm then folds
     // its own transform over the answer below it, deepest live arm first.
     checkAll("three rotated depths chain their answers", [
-        answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"
+        log.answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"
     ])
 
     // 3330 *3 -> 9990 *3 -> 29970 +7 -> 29977 +7 -> 29984 *2 -> 59968 *2. The
@@ -283,21 +293,16 @@ fn nestedDepthFourStaircaseCase() = {
     mut betaCalls = 0
     mut gammaCalls = 0
     mut deltaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger()
 
     let total = {
         handle Alpha {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls
-                entered = tag(entered, "1", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "1", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "1", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "1", label, label, answer)
                 answer + 1 
             }
         }
@@ -305,11 +310,9 @@ fn nestedDepthFourStaircaseCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 10 
-                entered = tag(entered, "2", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "2", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "2", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "2", label, label, answer)
                 answer + 10 
             }
         }
@@ -317,11 +320,9 @@ fn nestedDepthFourStaircaseCase() = {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
                 let supplied = gammaCalls * 100 
-                entered = tag(entered, "3", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "3", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "3", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "3", label, label, answer)
                 answer + 100 
             }
         }
@@ -329,11 +330,9 @@ fn nestedDepthFourStaircaseCase() = {
             delta label => {
                 deltaCalls = deltaCalls + 1 
                 let supplied = deltaCalls * 1000 
-                entered = tag(entered, "4", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "4", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "4", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "4", label, label, answer)
                 answer + 1000 
             }
         }
@@ -352,7 +351,7 @@ fn nestedDepthFourStaircaseCase() = {
 
     // Eight operations descend the four depths and climb back out.
     checkAll("four nested depths enter in perform order", [
-        entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
+        log.entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
         structuralEquals([alphaCalls, betaCalls, gammaCalls, deltaCalls], [2, 2, 2, 2])
     ])
 
@@ -362,20 +361,20 @@ fn nestedDepthFourStaircaseCase() = {
     // inside it. Reversing `entered` would instead predict
     // `1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|`.
     checkAll("four nested depths settle deepest live arm first", [
-        settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"
+        log.settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"
     ])
 
     // Each depth supplies its own power of ten, twice, so a value crossing to a
     // neighbouring region would move the body's sum by a whole digit.
     checkAll("four nested depths supply distinct magnitudes", [
-        supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"
+        log.supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"
     ])
 
     // The staircase: 3333 -> 4333 -> 5333 -> 5433 -> 5533 -> 5543 -> 5553 ->
     // 5554, one digit per settling depth, in the order the arms unwound — the
     // thousands digit first because the Delta arms settle first.
     checkAll("four nested depths climb a digit staircase", [
-        answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"
+        log.answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"
     ])
 
     // Body sum 1111 + 2222 = 3333; the arms then add 2 * (1 + 10 + 100 + 1000).
@@ -410,31 +409,24 @@ fn nestedPartialInnerResumeCase() = {
     mut outerNear = 0
     mut outerFar = 0
     mut innerNear = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger()
 
     let total = {
         handle Twin {
             near amount => {
                 outerNear = outerNear + 1 
                 let supplied = amount * 1000000 
-                entered = tag(entered, "OUTERnear", toString(amount))
-                supplies = supply(supplies, "N${toString(amount)}", supplied)
+                log = noteEnter(log, "OUTERnear", "N${toString(amount)}", toString(amount), supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "OUTERnear", toString(amount))
-                answers = saw(answers, "OUTERnear", answer)
+                log = noteExit(log, "OUTERnear", toString(amount), "OUTERnear", answer)
                 answer
             }
             far amount => {
                 outerFar = outerFar + 1 
                 let supplied = amount * 1000 
-                entered = tag(entered, "far", toString(amount))
-                supplies = supply(supplies, "f${toString(amount)}", supplied)
+                log = noteEnter(log, "far", "f${toString(amount)}", toString(amount), supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "far", toString(amount))
-                answers = saw(answers, "far", answer)
+                log = noteExit(log, "far", toString(amount), "far", answer)
                 answer * 2 
             }
         }
@@ -442,11 +434,9 @@ fn nestedPartialInnerResumeCase() = {
             near amount => {
                 innerNear = innerNear + 1 
                 let supplied = amount * 10 
-                entered = tag(entered, "near", toString(amount))
-                supplies = supply(supplies, "n${toString(amount)}", supplied)
+                log = noteEnter(log, "near", "n${toString(amount)}", toString(amount), supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "near", toString(amount))
-                answers = saw(answers, "near", answer)
+                log = noteExit(log, "near", toString(amount), "near", answer)
                 answer + 5 
             }
         }
@@ -465,20 +455,20 @@ fn nestedPartialInnerResumeCase() = {
 
     // Entry order is the body's order, alternating between the two depths.
     checkAll("a crossing operation enters between inner suspensions", [
-        structuralEquals([entered, supplies], ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"])
+        structuralEquals([log.entered, log.supplies], ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"])
     ])
 
     // Both inner `near` arms settle first: each `far` crossed them on its way
     // out, so its arm sits outside theirs. Reversing `entered` would predict
     // `far:4|near:3|far:2|near:1|` [EFFECTS-RESUME-NESTING].
     checkAll("partial nesting settles its live inner arms first", [
-        settled == "near:3|near:1|far:4|far:2|"
+        log.settled == "near:3|near:1|far:4|far:2|"
     ])
 
     // Body sum 10 + 2000 + 30 + 4000 = 6040, then both `near` arms add five and
     // both `far` arms double: 6040 -> 6045 -> 6050 -> 12100 -> 24200.
     checkAll("partial nesting chains answers across both depths", [
-        answers == "near:6040|near:6045|far:6050|far:12100|",
+        log.answers == "near:6040|near:6045|far:6050|far:12100|",
         total == 24200
     ])
 }
@@ -505,21 +495,16 @@ effect Layer {
 fn sameEffectTwoDepthsCase() = {
     mut outerCalls = 0
     mut innerCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger()
 
     let total = {
         handle Layer {
             pick label => {
                 outerCalls = outerCalls + 1 
                 let supplied = outerCalls * 1000 
-                entered = tag(entered, "out", label)
-                supplies = supply(supplies, label, supplied)
+                log = noteEnter(log, "out", label, label, supplied)
                 let answer = resume(supplied)
-                settled = tag(settled, "out", label)
-                answers = saw(answers, label, answer)
+                log = noteExit(log, "out", label, label, answer)
                 answer * 2 
             }
         }
@@ -529,11 +514,9 @@ fn sameEffectTwoDepthsCase() = {
                 pick label => {
                     innerCalls = innerCalls + 1 
                     let supplied = innerCalls * 10 
-                    entered = tag(entered, "in", label)
-                    supplies = supply(supplies, label, supplied)
+                    log = noteEnter(log, "in", label, label, supplied)
                     let answer = resume(supplied)
-                    settled = tag(settled, "in", label)
-                    answers = saw(answers, label, answer)
+                    log = noteExit(log, "in", label, label, answer)
                     answer + 3 
                 }
             }
@@ -549,25 +532,25 @@ fn sameEffectTwoDepthsCase() = {
     // inside its region, the outer arm the one before it and the one after it.
     checkAll("an inner region shadows only its own lexical region", [
         structuralEquals([outerCalls, innerCalls], [2, 2]),
-        entered == "out:before|in:in1|in:in2|out:after|"
+        log.entered == "out:before|in:in1|in:in2|out:after|"
     ])
 
     // Each depth kept its own magnitude. Had the inner region failed to shadow,
     // the outer counter would have supplied 2000 and 3000 to in1 and in2.
     checkAll("two depths of one effect supply their own values", [
-        supplies == "before=1000|in1=10|in2=20|after=2000|"
+        log.supplies == "before=1000|in1=10|in2=20|after=2000|"
     ])
 
     // The inner region settles completely before `after` is performed, so the
     // settle transcript is NOT the reverse of the entry transcript.
     checkAll("the inner region settles before the outer body continues", [
-        settled == "in:in2|in:in1|out:after|out:before|"
+        log.settled == "in:in2|in:in1|out:after|out:before|"
     ])
 
     // 10 + 20 = 30 is the inner body's answer; the inner arms add three each,
     // so the inner region evaluates to 36 and the outer body sums to 3036.
     checkAll("the inner region's answer feeds the outer body", [
-        answers == "in2:30|in1:33|after:3036|before:6072|",
+        log.answers == "in2:30|in1:33|after:3036|before:6072|",
         total == 12144
     ])
 }
