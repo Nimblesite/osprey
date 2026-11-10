@@ -96,6 +96,10 @@ let cleanup = osprey_ffi_free(cell: dbCell)
 let closed = sqlite3_close(db: db)
 print("closed ${okText(rc: closed)}")
 
+/// Fold a table of status rows: each row's `got` codes must equal `want`,
+/// together with one further condition that is true for the same reason.
+fn assertStatuses(rows) = forEachList(rows, |row| => checkAll(row.label, [structuralEquals(row.got, row.want), row.extra]))
+
 /// Verifies generic FFI pointer cells, bound parameters, and typed row access.
 fn sqliteRoundTripCase() = {
     let testCell = osprey_ffi_cell()
@@ -109,19 +113,12 @@ fn sqliteRoundTripCase() = {
     let finished = runStatement(stmt: testQuery)
     let testClosed = sqlite3_close(db: testDb)
     let testFreed = osprey_ffi_free(cell: testCell)
-    // Opening, schema creation, and status rendering agree on SQLITE_OK.
-    checkAll("SQLite setup status", [
-        structuralEquals([setup.openrc, setup.ddlrc], [0, 0]),
-        okText(setup.openrc) == "ok"
-    ])
-    // Bound parameters produce SQLITE_DONE and the expected typed row.
-    checkAll("SQLite bound row", [
-        structuralEquals([testInsert, testRow, selectedId, finished.rc], [101, 100, 7, 101]),
-        selectedName == "Grace"
-    ])
-    // Statements, connections, and generic pointer cells all release cleanly.
-    checkAll("SQLite cleanup status", [
-        structuralEquals([finished.fin, testClosed, testFreed], [0, 0, 0])
+    // Setup agrees on SQLITE_OK, bound parameters produce SQLITE_DONE with the
+    // expected typed row, and statements, connections and pointer cells release.
+    assertStatuses([
+        { label: "SQLite setup status", got: [setup.openrc, setup.ddlrc], want: [0, 0], extra: okText(rc: setup.openrc) == "ok" },
+        { label: "SQLite bound row", got: [testInsert, testRow, selectedId, finished.rc], want: [101, 100, 7, 101], extra: selectedName == "Grace" },
+        { label: "SQLite cleanup status", got: [finished.fin, testClosed, testFreed], want: [0, 0, 0], extra: okText(rc: testClosed) == "ok" }
     ])
 }
 test("SQLite FFI binds and reads a typed row", sqliteRoundTripCase)
