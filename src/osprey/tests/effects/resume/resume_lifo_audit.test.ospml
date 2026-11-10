@@ -28,6 +28,12 @@ type Ledger =
 (** The ledger every audited region starts from: four empty transcripts. *)
 blankLedger () = Ledger(entered = "", supplies = "", settled = "", answers = "")
 
+(** Record an arm's entry; its supply label is the label it displays. *)
+enter (log, key, label, supplied) = noteEnter (log, key, label, label, supplied)
+
+(** Record an arm's settle; the label it saw is the label it displays. *)
+leave log key label answer = noteExit log key label label answer
+
 (** Record one operation's entry and the value its region supplied. *)
 noteEnter (log, key, supplyLabel, label, supplied) =
     Ledger(entered = tag (log.entered, key, label),
@@ -72,7 +78,6 @@ resumeLifoAuditCase () =
 test "post-resume code unwinds in reverse operation order" (exactly resumeLifoAuditCase)
 
 (** Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
-    depth, so every transcript entry names both the region that answered an
     operation and the position at which it did so. *)
 effect Alpha
     (** Supply Alpha's numbered value for `label`. *)
@@ -95,18 +100,6 @@ effect Delta
 
 (** Two regions, two effects, four operations performed a-b-a-b. Spec 0017
     [EFFECTS-RESUME] says `resume` "runs the rest of the handled computation" and
-    "evaluates to that computation's answer", so an arm's post-resume code only
-    runs once the computation it resumed has produced one.
-    [EFFECTS-RESUME-NESTING] settles which computation that is: a continuation
-    reaches out to the handler that ANSWERS the operation, so `a2` — which
-    crosses the Beta region to reach Alpha — has its arm installed OUTSIDE the
-    still-live `b1` arm, and `resume` puts `b1` back inside it. Settlement
-    therefore follows the live arm nesting, `b2 b1 a2 a1`, and NOT the plain
-    reverse of the entry order, `b2 a2 b1 a1`. The inner arm doubles its answer
-    and the outer arm increments its own, so the final number is reachable
-    through exactly one settlement order. Per [EFFECTS-OPERATION-MAILBOX] a
-    resumed body may perform again while an arm is still live, which is exactly
-    the interleaving below. [EFFECTS-HANDLER-STATE]: both arms write the same
     four cells, so the transcripts are one shared ordering, not two private ones. *)
 nestedInterleavedDepthTwoCase () =
     mut alphaCalls = 0
@@ -117,16 +110,16 @@ nestedInterleavedDepthTwoCase () =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                log := noteEnter (log, "a", label, label, alphaCalls * 10)
+                log := enter (log, "a", label, alphaCalls * 10)
                 answer = resume (alphaCalls * 10)
-                log := noteExit log "a" label label answer
+                log := leave log "a" label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                log := noteEnter (log, "b", label, label, betaCalls * 100)
+                log := enter (log, "b", label, betaCalls * 100)
                 answer = resume (betaCalls * 100)
-                log := noteExit log "b" label label answer
+                log := leave log "b" label answer
                 answer * 2 
         p = perform Alpha.alpha "a1"
         q = perform Beta.beta "b1"
@@ -157,14 +150,7 @@ nestedInterleavedDepthTwoCase () =
 test "interleaved performs across two nested regions settle innermost first" (exactly nestedInterleavedDepthTwoCase)
 
 (** Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
-    Alpha and the innermost one Beta, while the body performs them in a third
     order entirely. Spec 0017 [EFFECTS-RESUME-NESTING] ties settlement to the
-    LIVE ARM NESTING, not to the entry order: every operation that crosses
-    outward installs its arm outside the arms it crossed, so both Beta
-    suspensions settle first, then both Alpha, then both Gamma — the rotation in
-    the body's perform order leaves no trace in the settle order. Each depth
-    applies a different, non-commutative transform to the answer it receives
-    ([EFFECTS-HANDLER-ARMS]: the arm's value is what it supplies to the
     suspension below it), so 119936 is reachable through exactly one order. *)
 nestedDepthThreeRotationCase () =
     mut gammaCalls = 0
@@ -176,23 +162,23 @@ nestedDepthThreeRotationCase () =
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                log := noteEnter (log, "d1", label, label, gammaCalls * 1000)
+                log := enter (log, "d1", label, gammaCalls * 1000)
                 answer = resume (gammaCalls * 1000)
-                log := noteExit log "d1" label label answer
+                log := leave log "d1" label answer
                 answer * 2 
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                log := noteEnter (log, "d2", label, label, alphaCalls * 10)
+                log := enter (log, "d2", label, alphaCalls * 10)
                 answer = resume (alphaCalls * 10)
-                log := noteExit log "d2" label label answer
+                log := leave log "d2" label answer
                 answer + 7 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                log := noteEnter (log, "d3", label, label, betaCalls * 100)
+                log := enter (log, "d3", label, betaCalls * 100)
                 answer = resume (betaCalls * 100)
-                log := noteExit log "d3" label label answer
+                log := leave log "d3" label answer
                 answer * 3 
         g0 = perform Gamma.gamma "g0"
         a1 = perform Alpha.alpha "a1"
@@ -225,17 +211,6 @@ test "three rotated regions settle by live arm nesting, not by perform order" (e
 
 (** Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
     pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
-    makes each `resume` return only after the whole remaining computation —
-    including every suspension opened inside it — has produced an answer, and
-    [EFFECTS-RESUME-NESTING] puts an outward-crossing operation's arm outside
-    every arm it crossed. The eight arms therefore settle deepest region first,
-    each region's later suspension before its earlier one — NOT in reverse entry
-    order. Every arm adds its own power of ten to the answer it received, which
-    makes the digits of the answer each arm SAW a staircase that names the
-    settling depth; the total alone cannot detect a reordering, which is why
-    each step is pinned individually.
-    [EFFECTS-OPERATION-MAILBOX] covers the four live suspensions at once: a
-    nested suspension installs its own mailbox rather than overwriting one still
     in use. *)
 nestedDepthFourStaircaseCase () =
     mut alphaCalls = 0
@@ -248,30 +223,30 @@ nestedDepthFourStaircaseCase () =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                log := noteEnter (log, "1", label, label, alphaCalls)
+                log := enter (log, "1", label, alphaCalls)
                 answer = resume alphaCalls
-                log := noteExit log "1" label label answer
+                log := leave log "1" label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                log := noteEnter (log, "2", label, label, betaCalls * 10)
+                log := enter (log, "2", label, betaCalls * 10)
                 answer = resume (betaCalls * 10)
-                log := noteExit log "2" label label answer
+                log := leave log "2" label answer
                 answer + 10 
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                log := noteEnter (log, "3", label, label, gammaCalls * 100)
+                log := enter (log, "3", label, gammaCalls * 100)
                 answer = resume (gammaCalls * 100)
-                log := noteExit log "3" label label answer
+                log := leave log "3" label answer
                 answer + 100 
         handle Delta
             delta label =>
                 deltaCalls := deltaCalls + 1 
-                log := noteEnter (log, "4", label, label, deltaCalls * 1000)
+                log := enter (log, "4", label, deltaCalls * 1000)
                 answer = resume (deltaCalls * 1000)
-                log := noteExit log "4" label label answer
+                log := leave log "4" label answer
                 answer + 1000 
         a1 = perform Alpha.alpha "a1"
         b1 = perform Beta.beta "b1"
@@ -318,15 +293,7 @@ effect Twin
     control far : int => int
 
 (** One effect, two depths, one partial inner region. Spec 0017's Handlers
-    section says "the innermost matching arm wins and an outer arm remains
-    available for operations not handled by the inner region", and
     [EFFECTS-STATIC-DISCHARGE] adds that "complementary nested partial handlers
-    may each discharge the operation they cover". So `near` is answered by the
-    inner region and `far` reaches the outer one while inner suspensions are
-    still live — and by [EFFECTS-RESUME-NESTING] each crossing `far` installs
-    its arm OUTSIDE the live `near` arms it crossed, so both `near` arms settle
-    before either `far` arm does. Settlement is therefore not the reverse of the
-    entry order. The unused outer `near` arm supplies a millionfold value, so
     any leak past the inner region is visible. *)
 nestedPartialInnerResumeCase () =
     mut outerNear = 0
@@ -388,12 +355,6 @@ effect Layer
 
 (** The inner region wraps only the middle of the outer body, so it must produce
     a value before the outer body can perform again. Spec 0017 [EFFECTS-RESUME]:
-    `resume` "evaluates to that computation's answer", and the answer of the
-    inner `handle` expression is a value the outer body consumes — so both inner
-    suspensions settle BEFORE the outer region's later operation is even
-    performed. Settlement is therefore not the plain reverse of the entry
-    transcript: it is reverse order of the live suspension stack. The Handlers
-    section supplies the other half: the inner arm shadows the outer one only
     inside its lexical region, and the outer arm is restored after it. *)
 sameEffectTwoDepthsCase () =
     mut outerCalls = 0
@@ -404,18 +365,18 @@ sameEffectTwoDepthsCase () =
         handle Layer
             pick label =>
                 outerCalls := outerCalls + 1 
-                log := noteEnter (log, "out", label, label, outerCalls * 1000)
+                log := enter (log, "out", label, outerCalls * 1000)
                 answer = resume (outerCalls * 1000)
-                log := noteExit log "out" label label answer
+                log := leave log "out" label answer
                 answer * 2 
         before = perform Layer.pick "before"
         middle =
             handle Layer
                 pick label =>
                     innerCalls := innerCalls + 1 
-                    log := noteEnter (log, "in", label, label, innerCalls * 10)
+                    log := enter (log, "in", label, innerCalls * 10)
                     answer = resume (innerCalls * 10)
-                    log := noteExit log "in" label label answer
+                    log := leave log "in" label answer
                     answer + 3 
             m1 = perform Layer.pick "in1"
             m2 = perform Layer.pick "in2"
