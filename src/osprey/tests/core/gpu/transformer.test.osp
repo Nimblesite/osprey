@@ -51,30 +51,28 @@ fn weight(step, modulus, shift, scale, grid0) = gpuMap(grid0, fn(i) => toFloat32
 fn miniTokens() = toGpu([3, 1])
 fn noBias() = floats([0.0, 0.0, 0.0, 0.0, 0.0])
 /// Every block parameter in GPT-2's checkpoint order, unwrapped once per case.
-fn blockParams(grid0, grid3, grid4, grid8, grid9, grid10) =
-    andThen(weight(3, 5, 1, 2.0, grid0), fn(ln1gain) =>
-        andThen(weight(5, 7, 3, 4.0, grid0), fn(ln1bias) =>
-            andThen(weight(7, 11, 5, 8.0, grid3), fn(qkvWeight) =>
-                andThen(weight(3, 7, 3, 8.0, grid4), fn(qkvBias) =>
-                    andThen(weight(5, 13, 6, 8.0, grid8), fn(projWeight) =>
-                        andThen(weight(7, 5, 2, 4.0, grid0), fn(projBias) =>
-                            andThen(weight(7, 9, 4, 4.0, grid0), fn(ln2gain) =>
-                                andThen(weight(2, 5, 2, 8.0, grid0), fn(ln2bias) =>
-                                    andThen(weight(11, 13, 6, 8.0, grid9), fn(fcWeight) =>
-                                        andThen(weight(5, 11, 5, 8.0, grid10), fn(fcBias) =>
-                                            andThen(weight(13, 17, 8, 16.0, grid9), fn(outWeight) =>
-                                                andThen(weight(3, 7, 3, 4.0, grid0), fn(outBias) => Success { value: { ln1gain: ln1gain, ln1bias: ln1bias, qkvWeight: qkvWeight, qkvBias: qkvBias, projWeight: projWeight, projBias: projBias, ln2gain: ln2gain, ln2bias: ln2bias, fcWeight: fcWeight, fcBias: fcBias, outWeight: outWeight, outBias: outBias } }))))))))))))
-/// A LayerNorm's gain and bias, unwrapped together.
-fn lnParams(gainGrid) = andThen(weight(3, 5, 1, 2.0, gainGrid), fn(gain) => andThen(weight(5, 7, 3, 4.0, gainGrid), fn(bias) => Success { value: { gain: gain, bias: bias } }))
+fn blockParams(grid0, grid3, grid4, grid8, grid9, grid10) = andThen(weightsOf(blockSpecs(grid0, grid3, grid4, grid8, grid9, grid10)), blockRecord)
+fn weightSpec(step, modulus, shift, scale: float32, grid) = { step: step, modulus: modulus, shift: shift, scale: scale, grid: grid }
+fn appendWeight(acc, spec) = andThen(acc, fn(ws) => andThen(weight(spec.step, spec.modulus, spec.shift, spec.scale, spec.grid), fn(w) => Success { value: listConcat(ws, [w]) }))
+/// Every spec's weight, in order: the fold every checkpoint loader below shares.
+fn weightsOf(specs) = foldList(specs, Success { value: [] }, appendWeight)
+fn blockSpecs(grid0, grid3, grid4, grid8, grid9, grid10) = [
+    weightSpec(3, 5, 1, 2.0, grid0), weightSpec(5, 7, 3, 4.0, grid0), weightSpec(7, 11, 5, 8.0, grid3), weightSpec(3, 7, 3, 8.0, grid4),
+    weightSpec(5, 13, 6, 8.0, grid8), weightSpec(7, 5, 2, 4.0, grid0), weightSpec(7, 9, 4, 4.0, grid0), weightSpec(2, 5, 2, 8.0, grid0),
+    weightSpec(11, 13, 6, 8.0, grid9), weightSpec(5, 11, 5, 8.0, grid10), weightSpec(13, 17, 8, 16.0, grid9), weightSpec(3, 7, 3, 4.0, grid0)
+]
+fn blockRecord(ws) = match ws {
+    [ln1gain, ln1bias, qkvWeight, qkvBias, projWeight, projBias, ln2gain, ln2bias, fcWeight, fcBias, outWeight, outBias] => Success { value: { ln1gain: ln1gain, ln1bias: ln1bias, qkvWeight: qkvWeight, qkvBias: qkvBias, projWeight: projWeight, projBias: projBias, ln2gain: ln2gain, ln2bias: ln2bias, fcWeight: fcWeight, fcBias: fcBias, outWeight: outWeight, outBias: outBias } }
+    _ => Error { message: "transformer: a block needs twelve weights" }
+}
 /// Two Results unwrapped together, the first then the second.
 fn withPair(l, r, next) = andThen(l, fn(a) => andThen(r, fn(b) => next(a, b)))
-/// A product's weight and bias kernels, unwrapped together.
-fn qkvParams(weightGrid, biasGrid) = withPair(weight(7, 11, 5, 8.0, weightGrid), weight(3, 7, 3, 8.0, biasGrid), fn(productWeight, bias) => Success { value: { weight: productWeight, bias: bias } })
+/// A kernel and the bias kernel that pairs with it, as one gain/bias record.
+fn pairOf(l, r) = withPair(l, r, fn(gain, bias) => Success { value: { gain: gain, bias: bias } })
+fn lnParams(gainGrid) = pairOf(weight(3, 5, 1, 2.0, gainGrid), weight(5, 7, 3, 4.0, gainGrid))
+fn qkvParams(weightGrid, biasGrid) = pairOf(weight(7, 11, 5, 8.0, weightGrid), weight(3, 7, 3, 8.0, biasGrid))
 /// The embeddings for a token list, preserving both table allocations.
-fn embedOf(tokensGrid, positionsGrid, ids, grid0) =
-    andThen(weight(9, 17, 8, 4.0, tokensGrid), fn(tokens) => andThen(weight(4, 9, 4, 8.0, positionsGrid), fn(positions) => embed(tokens, positions, ids, grid0)))
-/// The product, preserving allocation and shape failures.
-fn product(l, r, rows, inner, cols) = gpuMatMul(l, r, rows, inner, cols)
+fn embedOf(tokensGrid, positionsGrid, ids, grid0) = andThen(pairOf(weight(9, 17, 8, 4.0, tokensGrid), weight(4, 9, 4, 8.0, positionsGrid)), fn(p) => embed(p.gain, p.bias, ids, grid0))
 /// The reason a kernel failed, or "no error" when it succeeded.
 fn failureOf(result: Result<GpuBuffer<float32>, Error>) = match result {
     Success _ => "no error"
@@ -91,7 +89,7 @@ fn normalised(x, means, variances, g, b, i) = (at(x, i) - at(means, intDiv(i, wi
 fn layerNorm(x, g, b, grid0, grid1) = andThen(rowMeans(x, grid0), fn(means) =>
     andThen(rowVariances(x, means, grid0), fn(variances) => gpuMap(grid1, fn(i) => normalised(x, means, variances, g, b, i))))
 /// x [rows, inner] times w [inner, cols], plus the bias on every row.
-fn linear(x, rows, inner, cols, w, bias, grid0) = andThen(product(x, w, rows, inner, cols), fn(value) =>
+fn linear(x, rows, inner, cols, w, bias, grid0) = andThen(gpuMatMul(x, w, rows, inner, cols), fn(value) =>
     gpuMap(grid0, fn(i) => at(value, i) + at(bias, i % cols)))
 /// qkv is [t, qkvWidth]: the query, key and value of head h occupy headWidth columns each.
 fn qAt(qkv, r, h, d) = at(qkv, r * qkvWidth + h * headWidth + d)
@@ -154,18 +152,18 @@ fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
 fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
 fn twoFloats(xs, ys, next) = withBuffer(floats(xs), fn(a) => withBuffer(floats(ys), fn(b) => next(a, b)))
 /// An uploaded left operand times the fixed right one, then the product.
-fn productOf(xs, right, rows, inner, cols, next) = withBuffer(toGpu(xs), fn(left) => withBuffer(product(left, right, rows, inner, cols), next))
+fn productOf(xs, right, rows, inner, cols, next) = withBuffer(toGpu(xs), fn(left) => withBuffer(gpuMatMul(left, right, rows, inner, cols), next))
 fn matMulExactCase() = twoFloats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
 fn matMulExactCaseUploaded(left, right) =
-    withBuffer(product(left, right, 2, 3, 2),
+    withBuffer(gpuMatMul(left, right, 2, 3, 2),
         fn(square) => twoFloats([2.0, 3.0], [5.0, 7.0],
-        fn(uploaded27, uploaded28) => withBuffer(product(uploaded27, uploaded28, 2, 1, 2),
+        fn(uploaded27, uploaded28) => withBuffer(gpuMatMul(uploaded27, uploaded28, 2, 1, 2),
         fn(outer) => twoFloats([], [],
-        fn(uploaded29, uploaded30) => withBuffer(product(uploaded29, uploaded30, 2, 0, 2),
+        fn(uploaded29, uploaded30) => withBuffer(gpuMatMul(uploaded29, uploaded30, 2, 0, 2),
         fn(hollow) => checkAll("gpuMatMul forms the row-major product of the stated shapes", [
             gpuLength(square) == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
             gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
-            gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
+            gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(gpuMatMul(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
         ]))))))
 /// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
 /// association; the last pin is 3 units in the last place only when the
@@ -286,7 +284,7 @@ fn withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, next) =
             withBuffer(lnParams(grid3), fn(ln) =>
                 withBuffer(qkvParams(grid5, grid1), fn(qkvW1) =>
                     withBuffer(layerNorm(x, ln.gain, ln.bias, grid4, grid2), fn(normed) =>
-                        withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6), fn(qkv) =>
+                        withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.gain, qkvW1.bias, grid6), fn(qkv) =>
                             next(x, ln, qkvW1, normed, qkv)))))))
 fn attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
     withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, fn(_x, _ln, _qkvW1, _normed, qkv) =>
@@ -312,7 +310,7 @@ fn cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
                         withBuffer(rowOf(x, 1, width, grid3), fn(row) =>
                             withBuffer(layerNorm(row, ln.gain, ln.bias, grid7, grid3), fn(rowNormed) =>
                                 withBuffer(rowOf(normed, 1, width, grid3), fn(normedRow) =>
-                                    withBuffer(linear(normedRow, 1, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid1), fn(oneRow) =>
+                                    withBuffer(linear(normedRow, 1, width, qkvWidth, qkvW1.gain, qkvW1.bias, grid1), fn(oneRow) =>
                                         checkAll("the newest position attends through the cache exactly as the full pass does", [
                                                                     gpuLength(newest) == width, sameRow(newest, full, 1, width),
                                                                     nearAt(newest,  0,  -0.06741555035114288), nearAt(newest,  3,  1.3210810422897339),
