@@ -78,9 +78,19 @@ def int_case(name, data, want):
     return [kind_truth(name, got, "ints"), ints_match(name + ".values", got, want)]
 
 
+def per_index(items, take):
+    """`take(i)` for every index of `items`."""
+    return toList(map(range(len(items)), lambda i: take(i)))
+
+
+def per_index_all(items, take):
+    """`take(i)`'s checks for every index of `items`, concatenated."""
+    return concat_all(per_index(items, take))
+
+
 def dtype_table(names, files, values, case):
     """One dtype's checks per index of parallel name, file and value lists."""
-    return concat_all(toList(map(range(len(names)), lambda i: case(unwrap_or(listGet(names, i), ""), unwrap_or(listGet(files, i), []), unwrap_or(listGet(values, i), [])))))
+    return per_index_all(names, lambda i: case(slot(names, i, ""), slot(files, i, []), slot(values, i, [])))
 
 
 def utf8_bytes(text):
@@ -177,12 +187,12 @@ def special_cases():
     file = file_of(Expected.SPECIAL_BYTES)
     got = tensor_of(file, "special")
     want = Expected.SPECIAL_VALUES
-    return toList(map(range(len(want)), lambda i: Check.close("special." + toString(i), unwrap_or(listGet(got.floats, i), 0.0), Check.float_of(unwrap_or(listGet(want, i), "")), RTOL, ATOL)))
+    return per_index(want, lambda i: Check.close("special." + toString(i), slot(got.floats, i, 0.0), Check.float_of(slot(want, i, "")), RTOL, ATOL))
 
 
 def err_table(tags, files, wants):
     """One malformed file per index of parallel tag, file and message lists: load must fail with exactly `want`."""
-    return concat_all(toList(map(range(len(tags)), lambda i: [rejection_check(unwrap_or(listGet(tags, i), ""), SafeTensors.load(unwrap_or(listGet(files, i), [])), unwrap_or(listGet(wants, i), ""), "load succeeded")])))
+    return per_index_all(tags, lambda i: [rejection_check(slot(tags, i, ""), SafeTensors.load(slot(files, i, [])), slot(wants, i, ""), "load succeeded")])
 
 
 def error_cases():
@@ -246,13 +256,18 @@ def float_byte_cases():
     ]
 
 
+def bifurcate(result, on_success, on_error):
+    """`result`'s value or its message, whichever handler matches it."""
+    match result:
+        case Success(value=value):
+            return on_success(value)
+        case Error(message=message):
+            return on_error(message)
+
+
 def parsed_checks(tag, text, checks_of):
     """Parse `text`: one failed check on Error, else `checks_of(value)`."""
-    match JsonParser.parse(text):
-        case Error(message=message):
-            return [Check.failed(tag, message)]
-        case Success(value=value):
-            return checks_of(value)
+    return bifurcate(JsonParser.parse(text), checks_of, lambda message: [Check.failed(tag, message)])
 
 
 def json_member_checks(value):
@@ -289,19 +304,19 @@ def helper_cases():
     return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), parsed_checks("json.parse", "{\"value\":7}", json_member_checks), parsed_checks("json.values", '[true,false,null,1.25e2,"\\u4e2d\\n\\t\\b\\f\\r\\/\\\\\\\""]', json_array_checks), binary_edge_cases(), byte_guard_cases(), utf8_cases(), encode_table(Bytes.f64_bytes, ["bytes.f64_nan", "bytes.f64_inf", "bytes.f64_neg_inf"], [Check.float_of("nan"), Check.float_of("inf"), Check.float_of("-inf")], [Expected.F64_NAN_BYTES, Expected.F64_INF_BYTES, Expected.F64_NEG_INF_BYTES]), f16_encode_cases(), bf16_encode_cases(), encode_table(Bytes.f32_bytes, ["bytes.f32_zero", "bytes.f32_max", "bytes.f32_overflow"], [0.0, Check.float_of("3.4028234663852886e38"), Check.float_of("1e39")], [Expected.F32_ZERO_BYTES, Expected.F32_MAX_BYTES, Expected.F32_OVERFLOW_BYTES]), [Check.ints_equal("bytes.int_positive", Bytes.int_bytes(1000, 3), Expected.INT_TRUNCATE_BYTES)], parsed_checks("json.hex", Expected.JSON_HEX_TEXT, json_hex_checks), parsed_checks("json.empty", Expected.JSON_EMPTY_TEXT, json_empty_checks), parsed_checks("json.numbers", Expected.JSON_NUMBER_TEXT, json_number_checks), json_reject_cases(), [tensor_info_case()]])
 
 
+def has_prefix(message, prefix):
+    """Whether `message` starts with `prefix`."""
+    return len(message) >= len(prefix) and unwrap_or(substring(message, 0, len(prefix)), "") == prefix
+
+
 def header_prefix_case(tag, data, prefix):
     """A malformed header must fail inside the crate's JSON error family."""
-    match SafeTensors.load(data):
-        case Success(value=value):
-            return [Check.failed(tag, "load succeeded")]
-        case Error(message=message):
-            ok = len(message) >= len(prefix) and unwrap_or(substring(message, 0, len(prefix)), "") == prefix
-            return [Check.truth(tag, ok, message)]
+    return bifurcate(SafeTensors.load(data), lambda _value: [Check.failed(tag, "load succeeded")], lambda message: [Check.truth(tag, has_prefix(message, prefix), message)])
 
 
 def prefix_table(tags, files, prefix):
     """One header-prefix rejection per index of parallel tag and file lists."""
-    return concat_all(toList(map(range(len(tags)), lambda i: header_prefix_case(unwrap_or(listGet(tags, i), ""), unwrap_or(listGet(files, i), []), prefix))))
+    return per_index_all(tags, lambda i: header_prefix_case(slot(tags, i, ""), slot(files, i, []), prefix))
 
 
 def header_json_cases():
@@ -334,20 +349,12 @@ def slice_edge_cases():
 
 def rejection_check(tag, result, want, detail):
     """A read that must fail with exactly `want`; `detail` says what a wrong success did."""
-    match result:
-        case Success(value=_value):
-            return Check.failed(tag, detail)
-        case Error(message=message):
-            return Check.equal(tag, message, want)
+    return bifurcate(result, lambda _value: Check.failed(tag, detail), lambda message: Check.equal(tag, message, want))
 
 
 def rejection(tag, result, describe):
     """A read that must fail with a diagnostic, `describe(value)` naming a wrong success."""
-    match result:
-        case Success(value=value):
-            return Check.failed(tag, describe(value))
-        case Error(message=message):
-            return Check.truth(tag, len(message) > 0, message)
+    return bifurcate(result, lambda value: Check.failed(tag, describe(value)), lambda message: Check.truth(tag, len(message) > 0, message))
 
 
 def zero_shape_cases():
@@ -384,12 +391,12 @@ def utf8_error(tag, bs):
 
 def utf8_cases():
     """Sequences CPython's UTF-8 decoder rejects are errors, not text."""
-    return toList(map(range(len(Expected.UTF8_INVALID)), lambda i: utf8_error("bytes.utf8_invalid_" + toString(i), unwrap_or(listGet(Expected.UTF8_INVALID, i), []))))
+    return per_index(Expected.UTF8_INVALID, lambda i: utf8_error("bytes.utf8_invalid_" + toString(i), slot(Expected.UTF8_INVALID, i, [])))
 
 
 def encode_table(encode, tags, values, wants):
     """One byte-encoding check per index of parallel tag, value and expected lists."""
-    return toList(map(range(len(tags)), lambda i: Check.ints_equal(unwrap_or(listGet(tags, i), ""), encode(unwrap_or(listGet(values, i), 0.0)), unwrap_or(listGet(wants, i), []))))
+    return per_index(tags, lambda i: Check.ints_equal(slot(tags, i, ""), encode(slot(values, i, 0.0)), slot(wants, i, [])))
 
 
 def f16_encode_cases():
@@ -416,7 +423,7 @@ def empty_json_member():
 def json_hex_checks(value):
     """Each parsed item's string equals the oracle's expected characters."""
     want = Expected.JSON_HEX_VALUES
-    return toList(map(range(len(want)), lambda i: Check.equal("json.hex_" + toString(i), slot(value.items, i, empty_json_value()).s, unwrap_or(listGet(want, i), ""))))
+    return per_index(want, lambda i: Check.equal("json.hex_" + toString(i), slot(value.items, i, empty_json_value()).s, slot(want, i, "")))
 
 
 def empty_member_checks(label, index, member, size_of):
@@ -427,19 +434,9 @@ def empty_member_checks(label, index, member, size_of):
     ]
 
 
-def items_size(value):
-    return len(value.items)
-
-
-def members_size(value):
-    return len(value.members)
-
-
 def json_empty_checks(value):
     """The two members' kinds and sizes match the oracle's lists."""
-    array_member = slot(value.members, 0, empty_json_member())
-    object_member = slot(value.members, 1, empty_json_member())
-    return concat_all([empty_member_checks("a", 0, array_member, items_size), empty_member_checks("b", 1, object_member, members_size)])
+    return per_index_all(["a", "b"], lambda i: empty_member_checks(slot(["a", "b"], i, ""), i, slot(value.members, i, empty_json_member()), lambda member: len(member.items) if i == 0 else len(member.members)))
 
 
 def json_number_checks(value):
@@ -459,7 +456,7 @@ def json_reject(tag, text):
 
 def json_reject_cases():
     """Each malformed JSON text CPython rejects is an error here too."""
-    return listConcat(toList(map(range(len(Expected.JSON_INVALID)), lambda i: json_reject("json.reject_" + toString(i), unwrap_or(listGet(Expected.JSON_INVALID, i), "")))), [
+    return listConcat(per_index(Expected.JSON_INVALID, lambda i: json_reject("json.reject_" + toString(i), slot(Expected.JSON_INVALID, i, ""))), [
         rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
         rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
     ])
@@ -477,11 +474,8 @@ def long_text_bytes():
 
 
 def is_error(result):
-    match result:
-        case Success(value=_value):
-            return False
-        case Error(message=_message):
-            return True
+    """Whether `result` is an Error."""
+    return bifurcate(result, lambda _value: False, lambda _message: True)
 
 
 def main():
