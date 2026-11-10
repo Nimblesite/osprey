@@ -9,34 +9,37 @@ type Envelope T U =
 effect RecordAudit
     note : string => Unit
 
+(** envelope builds the two-parameter record every case below stores. *)
+envelope<T, U> : (T, U) -> Envelope T U
+envelope (payload, metadata) = Envelope<T, U>(payload = payload, metadata = metadata)
+eachHolds (xs, holds) = range (0, listLength xs) |> fold true (\(ok, i) => ok && holds i)
+
 nestedAt<T> : (List (List T), int, int, List T, T) -> T
 nestedAt (matrix, row, column, fallbackRow, fallback) =
     listGet (listGet matrix row ?: fallbackRow) column ?: fallback
 (** rowIs reads row `row` of `matrix` cell by cell through nestedAt and holds
     when the cells are `wants`, in order. *)
-rowIs (matrix, row, fallbackRow, fallback, wants) = range (0, listLength wants) |> fold true (\(ok, c) => ok && nestedAt (matrix, row, c, fallbackRow, fallback) == (listGet wants c ?: fallback))
+rowIs (matrix, row, fallbackRow, fallback, wants) = eachHolds (wants, \c => nestedAt (matrix, row, c, fallbackRow, fallback) == (listGet wants c ?: fallback))
 
 groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =
     listGet (mapGet groups key ?: fallbackList) index ?: fallback
-(** groupIs reads group `key` of `groups` item by item through groupAt and
-    holds when the items are `wants`, in order. *)
-groupIs (groups, key, fallbackList, fallback, wants) = range (0, listLength wants) |> fold true (\(ok, i) => ok && groupAt (groups, key, i, fallbackList, fallback) == (listGet wants i ?: fallback))
+groupIs (groups, key, fallbackList, fallback, wants) = eachHolds (wants, \i => groupAt (groups, key, i, fallbackList, fallback) == (listGet wants i ?: fallback))
 
-(** envelopesHold holds each envelope of `envelopes` beside `wants`, at `sizes`. *)
-envelopesHold (envelopes, fallback, wants, sizes) = range (0, listLength wants) |> fold true (\(ok, i) => ok && (listGet envelopes i ?: fallback).metadata == (listGet wants i ?: "") && length (listGet envelopes i ?: fallback).metadata == (listGet sizes i ?: 0))
+envelopesHold (envelopes, fallback, wants, sizes) = eachHolds (wants, \i => (listGet envelopes i ?: fallback).metadata == (listGet wants i ?: "") && length (listGet envelopes i ?: fallback).metadata == (listGet sizes i ?: 0))
 
-(** rowsHold holds when every row of `matrix` reads as the row wanted for it. *)
-rowsHold (matrix, wants) = range (0, listLength wants) |> fold true (\(ok, r) => ok && rowIs (matrix, r, [99], 99, listGet wants r ?: []))
-(** matricesHold folds rowsHold over each matrix and the rows wanted for it. *)
-matricesHold (matrices, wants) = range (0, listLength wants) |> fold true (\(ok, i) => ok && rowsHold (listGet matrices i ?: [], listGet wants i ?: []))
+rowsHold (matrix, wants) = eachHolds (wants, \r => rowIs (matrix, r, [99], 99, listGet wants r ?: []))
+matricesHold (matrices, wants) = eachHolds (wants, \i => rowsHold (listGet matrices i ?: [], listGet wants i ?: []))
 
-(** groupsHold holds each group of `payload` beside `wants`, item by item, and
-    its stored size. *)
-groupsHold (payload, keys, wants) = range (0, listLength keys) |> fold true (\(ok, i) => ok && groupIs (payload, listGet keys i ?: "", ["row"], "item", listGet wants i ?: []) && listLength (mapGet payload (listGet keys i ?: "") ?: ["missing"]) == listLength (listGet wants i ?: []))
+groupsHold (payload, keys, wants) = eachHolds (keys, \i => groupIs (payload, listGet keys i ?: "", ["row"], "item", listGet wants i ?: []) && listLength (mapGet payload (listGet keys i ?: "") ?: ["missing"]) == listLength (listGet wants i ?: []))
 
-(** mapHolds holds when `groups` has `size` keys, all of `wants`, none `absent`. *)
 mapHolds (groups, size, wants, absent) = listLength (mapKeys groups) == size && allListed (mapKeys groups) wants && noneListed (mapKeys groups) absent
+
+cellOf (envelope, fallbackRow, fallback) = nestedAt (envelope.payload, 0, 0, fallbackRow, fallback)
+(** neighboursDiffer holds when no two neighbours of `values` are equal. *)
+neighboursDiffer (values, fallback) = exactArithmetic (\() => range (0, listLength values - 1) |> fold true (\(ok, i) => ok && (listGet values i ?: fallback) != (listGet values (i + 1) ?: fallback)))
+(** storedSizes holds the list storage and its grown descendant at their sizes. *)
+storedSizes (envelopes, grown) = listLength envelopes == 2 && listLength grown == 3
 
 auditEnvelopeMetadata envelopes =
     mut transcript = ""
@@ -46,35 +49,30 @@ auditEnvelopeMetadata envelopes =
     forEachList envelopes (\envelope => perform RecordAudit.note envelope.metadata)
     transcript
 
-(** The same two-parameter generic record crosses an effectful callback, list
-    and map storage, `Result` fallbacks, field recovery, an effectful callback,
-    and persistent descendants. This jointly enforces [TYPE-GENERICS-DECL],
-    [BUILTIN-LIST-FOREACH], [BUILTIN-LIST-GET], and [BUILTIN-MAP-GET]. *)
+(** The same two-parameter generic record crosses an effectful callback, list and
+    map storage, `Result` fallbacks, field recovery, and persistent descendants.
+    This jointly enforces [TYPE-GENERICS-DECL], [BUILTIN-LIST-FOREACH],
+    [BUILTIN-LIST-GET], and [BUILTIN-MAP-GET]. *)
 genericRecordCollectionEffectCase () =
-    first = Envelope<List<List<int>>, string>(payload = [[1, 2], [3, 4, 5]], metadata = "int-matrix")
-    second = Envelope<List<List<int>>, string>(payload = [[6, 7], [8, 9, 10]], metadata = "second")
-    fallback = Envelope<List<List<int>>, string>(payload = [[99]], metadata = "fallback")
-    envelopes = [first, second]
-    grown = envelopes |> listAppend (Envelope<List<List<int>>, string>(payload = [[11, 12]], metadata = "third"))
+    envelopes = [envelope ([[1, 2], [3, 4, 5]], "int-matrix"), envelope ([[6, 7], [8, 9, 10]], "second")]
+    fallback = envelope ([[99]], "fallback")
+    grown = envelopes |> listAppend (envelope ([[11, 12]], "third"))
     firstBack = listGet envelopes 0 ?: fallback
     secondBack = listGet envelopes 1 ?: fallback
     thirdBack = listGet grown 2 ?: fallback
-    stringEnvelope = Envelope<Map<string, List<string>>, int>(
-        payload = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"],
-        metadata = 17)
-    stringFallback = Envelope<Map<string, List<string>>, int>(payload = mapSet (Map ()) "missing" ["fallback"], metadata = 99)
+    absent = listGet envelopes 8 ?: fallback
+    stringEnvelope = envelope (Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"], 17)
+    stringFallback = envelope (mapSet (Map ()) "missing" ["fallback"], 99)
     envelopeMap = Map () |> mapSet "primary" stringEnvelope
     stringBack = mapGet envelopeMap "primary" ?: stringFallback
     missingBack = mapGet envelopeMap "missing" ?: stringFallback
 
     checkAll "Envelope<List<List<int>>,string> survives list storage and persistence" [
-        listLength envelopes == 2,
-        listLength grown == 3,
+        storedSizes (envelopes, grown),
         envelopesHold ([firstBack, secondBack, thirdBack], fallback, ["int-matrix", "second", "third"], [10, 6, 5]),
         matricesHold ([firstBack.payload, secondBack.payload, thirdBack.payload], [[[1, 2], [3, 4, 5]], [[6, 7], [8, 9, 10]], [[11, 12]]]),
-        (listGet envelopes 8 ?: fallback).metadata == "fallback",
-        nestedAt ((listGet envelopes 8 ?: fallback).payload, 0, 0, [91], 98) == 99,
-        listLength envelopes == 2,
+        absent.metadata == "fallback" && cellOf (absent, [91], 98) == 99,
+        storedSizes (envelopes, grown),
         firstBack.metadata == "int-matrix",
         auditEnvelopeMetadata envelopes == "int-matrix/second/",
         auditEnvelopeMetadata grown == "int-matrix/second/third/"
@@ -84,23 +82,17 @@ genericRecordCollectionEffectCase () =
         mapHolds (envelopeMap, 1, ["primary"], ["missing"]),
         stringBack.metadata == 17,
         groupsHold (stringBack.payload, ["short", "long"], [["a", "bb"], ["three", "seven"]]),
-        length (groupAt (stringBack.payload, "long", 1, ["row"], "item")) == 5,
-        missingBack.metadata == 99,
-        groupAt (missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
-        mapLength missingBack.payload == 1,
+        length (groupAt (stringBack.payload, "long", 1, ["row"], "item")) == 5 && groupAt (missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
+        missingBack.metadata == 99 && mapLength missingBack.payload == 1,
         mapHolds (stringBack.payload, 2, ["short", "long"], ["missing"])
     ]
 
     checkAll "different T and U argument lists remain isolated" [
-        firstBack.metadata != secondBack.metadata,
-        secondBack.metadata != thirdBack.metadata,
-        nestedAt (firstBack.payload, 0, 0, [99], 99) != nestedAt (secondBack.payload, 0, 0, [99], 99),
-        nestedAt (secondBack.payload, 0, 0, [99], 99) != nestedAt (thirdBack.payload, 0, 0, [99], 99),
+        neighboursDiffer ([firstBack.metadata, secondBack.metadata, thirdBack.metadata], ""),
+        neighboursDiffer ([cellOf (firstBack, [99], 99), cellOf (secondBack, [99], 99), cellOf (thirdBack, [99], 99)], 0),
         stringBack.metadata != missingBack.metadata,
         groupAt (stringBack.payload, "short", 0, ["row"], "item") != groupAt (missingBack.payload, "missing", 0, ["row"], "item"),
-        mapLength envelopeMap == 1,
-        listLength envelopes == 2,
-        listLength grown == 3
+        mapLength envelopeMap == 1 && storedSizes (envelopes, grown)
     ]
 
 test "multi-argument generic records mix effects lists maps and Results" genericRecordCollectionEffectCase
