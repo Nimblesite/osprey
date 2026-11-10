@@ -185,6 +185,32 @@ completeBoth (envelope, findings) =
 
 browsed envelope = post (envelope, chooseTab (envelope, "packages", "browse"))
 
+// Control flows: reaching a package panel, asking for a change, confirming it.
+// Each ladder of taps and the request it must issue is one call.
+chosenIn (envelope, key) = pick (browsed envelope, "packages", key)
+
+catalogDetail (registry, key) = chosenIn (completeBoth (startEnvelope registry, []), key)
+
+expectDetailButton (result, label, want) = expect (buttonEnabled (result, "details", label), want)
+
+expectNoRequest result = expect (requestCount result, 0)
+
+expectNotice (result, part) = expect (contains (noticeOf result) part, true)
+
+askAdd result = tap (result, "details", "Add to project")
+
+awaitingConfirmation (result, ask, mode) =
+    asked = tap (result, "details", ask)
+    expectNoRequest asked
+    expect (confirmingOf asked, mode)
+    asked
+
+oneRequest (result, want) =
+    expect (requestCount result, 1)
+    expect (contains (requestText (result, 0)) want, true)
+
+confirmRemove (result, key) = oneRequest (tap (result, "details", "Confirm remove ${key}"), "remove ${key}")
+
 missingFooter () =
     after = completeBoth (startEnvelope loopback, ["tree.no-lock"])
     expectHides (after, "packages", ["installed ·"])
@@ -202,13 +228,12 @@ installedCounts () =
     expect (badgeTone (after, "root", "Audit unverified"), "caution")
 
 emptyFindings () =
-    after = browsed (completeBoth (startEnvelope loopback, []))
-    chosen = pick (after, "packages", "@demo/new")
+    chosen = catalogDetail (loopback, "@demo/new")
     expect (badgeTone (chosen, "details", unverified), "caution")
     expectShows (chosen, "details", [unverified, "requires explicit confirmation"])
     expectHides (chosen, "details", ["Audited"])
     expect (hasTone (chosen, "details", "good"), false)
-    expect (buttonEnabled (chosen, "details", "Add to project"), true)
+    expectDetailButton (chosen, "Add to project", true)
 
 missingDirect () =
     first = startEnvelope loopback
@@ -219,70 +244,57 @@ missingDirect () =
     chosen = pick (ready, "root", "@demo/ghost")
     expectShows (chosen, "details", ["verify.missing"])
     expect (badgeTone (chosen, "details", "Missing from disk"), "caution")
-    expect (buttonEnabled (chosen, "details", "Remove dependency"), true)
-    asked = tap (chosen, "details", "Remove dependency")
-    confirmed = tap (asked, "details", "Confirm remove @demo/ghost")
-    expect (requestCount confirmed, 1)
-    expect (contains (requestText (confirmed, 0)) "remove @demo/ghost", true)
+    expectDetailButton (chosen, "Remove dependency", true)
+    confirmRemove (tap (chosen, "details", "Remove dependency"), "@demo/ghost")
 
 recordedFindings () =
-    after = browsed (completeBoth (startEnvelope loopback, []))
-    chosen = pick (after, "packages", "@demo/risky")
+    chosen = catalogDetail (loopback, "@demo/risky")
     expectShows (chosen, "details", [cve])
     expect (badgeTone (chosen, "details", "1 findings"), "danger")
-    expect (buttonEnabled (chosen, "details", "Add to project"), false)
+    expectDetailButton (chosen, "Add to project", false)
 
 unverifiedAdd () =
     first = startEnvelope loopback
     pending = post (first, completed (ticketAt (first, 0), Doc::write (catalogDoc ())))
-    chosen = pick (browsed pending, "packages", "@demo/new")
-    blocked = tap (chosen, "details", "Add to project")
+    chosen = chosenIn (pending, "@demo/new")
+    blocked = askAdd (chosen)
     expect (pendingOf blocked, true)
-    expect (requestCount blocked, 0)
+    expectNoRequest blocked
     expect (confirmingOf blocked, "")
     expect (problemsOf blocked, "")
     resolved = post (chosen, completed (ticketAt (first, 1), graphResult []))
-    asked = tap (resolved, "details", "Add to project")
-    expect (requestCount asked, 0)
-    expect (confirmingOf asked, "add")
+    asked = awaitingConfirmation (resolved, "Add to project", "add")
     expectShows (asked, "details", ["Confirm add @demo/new"])
-    expect (buttonEnabled (asked, "details", "Confirm add @demo/new"), true)
+    expectDetailButton (asked, "Confirm add @demo/new", true)
 
 confirmedAdd () =
     first = startEnvelope loopback
     resolved = completeBoth (first, [])
-    chosen = pick (browsed resolved, "packages", "@demo/new")
-    asked = tap (chosen, "details", "Add to project")
-    confirmed = tap (asked, "details", "Confirm add @demo/new")
-    expect (requestCount confirmed, 1)
+    chosen = chosenIn (resolved, "@demo/new")
+    confirmed = tap (askAdd (chosen), "details", "Confirm add @demo/new")
+    oneRequest (confirmed, "add @demo/new")
     expect (contains (ticketAt (confirmed, 0)) "package/add:2", true)
-    expect (contains (requestText (confirmed, 0)) "add @demo/new", true)
     stale = post (confirmed, completed (ticketAt (first, 0), "{\"packages\":[]}"))
     expect (patchKeys stale, "")
     expect (problemsOf stale, "")
-    expect (contains (noticeOf stale) "add @demo/new", true)
+    expectNotice (stale, "add @demo/new")
 
 hostedAdd () =
-    after = browsed (completeBoth (startEnvelope hosted, []))
-    chosen = pick (after, "packages", "@demo/new")
-    expect (buttonEnabled (chosen, "details", "Add to project"), false)
-    refused = tap (chosen, "details", "Add to project")
-    expect (requestCount refused, 0)
+    chosen = catalogDetail (hosted, "@demo/new")
+    expectDetailButton (chosen, "Add to project", false)
+    refused = askAdd (chosen)
+    expectNoRequest refused
     expect (faultOf refused, true)
-    expect (contains (noticeOf refused) "installation is disabled", true)
+    expectNotice (refused, "installation is disabled")
     expectShows (refused, "root", ["installation is disabled"])
     expect (confirmingOf refused, "")
 
 removeDirect () =
     after = completeBoth (startEnvelope loopback, [])
     chosen = pick (after, "packages", "@demo/report")
-    asked = tap (chosen, "details", "Remove dependency")
-    expect (requestCount asked, 0)
-    expect (confirmingOf asked, "remove")
+    asked = awaitingConfirmation (chosen, "Remove dependency", "remove")
     expectShows (asked, "details", ["Removing @demo/report", workspace])
-    confirmed = tap (asked, "details", "Confirm remove @demo/report")
-    expect (requestCount confirmed, 1)
-    expect (contains (requestText (confirmed, 0)) "remove @demo/report", true)
+    confirmRemove (asked, "@demo/report")
 
 securityFindings () =
     after = completeBoth (startEnvelope loopback, [cve])
@@ -301,19 +313,17 @@ unavailableData () =
     expectShows (failed, "root", ["Package data unavailable", workspace])
 
 verifiedFetch () =
-    ready = browsed (completeBoth (startEnvelope loopback, []))
-    selected = pick (ready, "packages", "@demo/new")
-    asked = tap (selected, "details", "Add to project")
+    selected = catalogDetail (loopback, "@demo/new")
+    asked = askAdd (selected)
     confirmed = tap (asked, "details", "Confirm add @demo/new")
     report = "{\"lines\":[],\"status\":0}"
     added = post (confirmed, completed (ticketAt (confirmed, 0), report))
-    expect (requestCount added, 1)
-    expect (contains (requestText (added, 0)) "--json fetch --registry", true)
+    oneRequest (added, "--json fetch --registry")
     expect (pendingOf added, true)
     fetched = post (added, completed (ticketAt (added, 0), report))
     expect (requestCount fetched, 2)
     failed = post (added, completed (ticketAt (added, 0), "{\"lines\":[\"Digest mismatch\"],\"status\":1}"))
-    expect (requestCount failed, 0)
+    expectNoRequest failed
     expect (pendingOf failed, false)
     expect (faultOf failed, true)
     expectShows (failed, "root", ["Digest mismatch"])
