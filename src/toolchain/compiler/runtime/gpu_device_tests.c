@@ -85,6 +85,14 @@ static void *random_buffer(int64_t count, int low, int range) {
   return buffer;
 }
 
+// `count` binary32 words seeded in [-1, 1): the operands every parity case reads.
+static void *seeded(int64_t count) {
+  void *b = osprey_gpu_alloc(count, 4);
+  float *xs = osprey_gpu_data(b);
+  for (int64_t i = 0; i < count; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  return b;
+}
+
 static int nan_word(int64_t word) {
   double value;
   memcpy(&value, &word, sizeof value);
@@ -213,9 +221,7 @@ static void quant_words(const char *type, void *x, void *w, const int64_t shape[
 static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                          unsigned scales) {
   const int64_t shape[3] = {11, 512, 5}, blocks = shape[1] / block_elements;
-  void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
-  float *xs = osprey_gpu_data(x);
-  for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  void *x = seeded(shape[0] * shape[1]);
   void *w = quant_weights(shape[2], blocks, block_bytes, scale_at, scales);
   quant_words(type, x, w, shape);
   assert(setenv("OSPREY_GPU", selected, 1) == 0);
@@ -237,9 +243,7 @@ static void quant_parity(const char *type, int64_t block_bytes, int64_t block_el
 static void quant_close(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                         unsigned scales) {
   const int64_t shape[3] = {140, 512, 69};
-  void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
-  float *xs = osprey_gpu_data(x);
-  for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  void *x = seeded(shape[0] * shape[1]);
   void *w = quant_weights(shape[2], shape[1] / block_elements, block_bytes, scale_at, scales);
   assert(setenv("OSPREY_GPU", "host", 1) == 0);
   const float *host = osprey_gpu_data(osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2]));
@@ -293,13 +297,6 @@ static void delta_words(const char *mode, const int64_t shape[3], void *const in
   assert(*words);
   memcpy(*words, osprey_gpu_data(result), (size_t)total * sizeof(float));
   osprey_gpu_finalize(result);
-}
-
-static void *seeded(int64_t count) {
-  void *b = osprey_gpu_alloc(count, 4);
-  float *xs = osprey_gpu_data(b);
-  for (int64_t i = 0; i < count; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
-  return b;
 }
 
 // Tokens through the host oracle and the device: the device steps every token
@@ -386,6 +383,11 @@ static void compiled_reduction(void) {
   same_words(&expected, &acc, 1);
 }
 
+// The raw-ABI dispatch every [GPU-DEVICE-NATIVE] case declares, over the shared shader source.
+static OspreyGpuDispatch raw_dispatch(const char *kernel, int64_t count) {
+  return (OspreyGpuDispatch){kernel, KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, count};
+}
+
 // A faulting kernel records the fault word the runtime aborts on; the abort
 // itself is covered by gpu_selection_tests.c, since a Metal device must not be
 // used across a fork.
@@ -393,7 +395,7 @@ static void fault_case(const char *name, const int64_t input[4], const int64_t e
   void *a = osprey_gpu_alloc(4, 8);
   memcpy(osprey_gpu_data(a), input, 4 * sizeof(int64_t));
   int64_t out[4] = {7, 7, 7, 7}, fault = 0;
-  OspreyGpuDispatch d = {name, KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 4};
+  OspreyGpuDispatch d = raw_dispatch(name, 4);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 4, 8);
@@ -416,7 +418,7 @@ static void compiled_fault(void) {
 static void native_float32_rounding(void) {
   float a[4] = {0x1.000002p0f, -1.0f, 0x1p24f, 1.0f};
   float b[4] = {0x1.fffffcp-1f, 0.0f, 0.0f, 0.0f}, actual[2] = {99.0f, 99.0f};
-  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
+  OspreyGpuDispatch d = raw_dispatch("osprey_kernel_float32", 1);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, a, NULL, 4, 4);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, b, NULL, 4, 4);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, actual, actual, 2, 4);
@@ -429,7 +431,7 @@ static void native_float32_rounding(void) {
 // [GPU-BUFFER-ELEM]: a three-byte GPU output cannot overwrite either guard.
 static void native_byte_transfers(void) {
   uint8_t input[3] = {0, 127, 254}, output[5] = {0xaa, 0, 0, 0, 0xbb};
-  OspreyGpuDispatch d = {"osprey_kernel_bytes", KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 3};
+  OspreyGpuDispatch d = raw_dispatch("osprey_kernel_bytes", 3);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, input, NULL, 3, 1);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, output + 1, output + 1, 3, 1);
   assert(osprey_gpu_device_dispatch(&d) == 1);
