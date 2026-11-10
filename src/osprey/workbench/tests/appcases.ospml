@@ -39,8 +39,7 @@ module AppCases
         first = Drive::started ()
         root = Drive::node (first, "root")
         paper = Drive::findNamed ("paper-document", root)
-        expect (Doc::text (paper, "kind"), "framed")
-        style = Doc::field (paper, "style")
+        style = framed paper
         flagged (style, ["grow"])
         sized (style, [{ key = "height", value = 0 }, { key = "viewportHeightInset", value = -1 }, { key = "left", value = 84 }, { key = "bottom", value = 60 }])
         margin = Doc::field (Drive::findNamed ("goal-margin", paper), "style")
@@ -66,15 +65,13 @@ module AppCases
     export absentControls () =
         loaded = reopened (typed (Drive::started (), "Theorem t. For all p, p → p."))
         unwritten loaded
-        WorkspaceCases::withoutDrawing (Drive::stored loaded)
-        kept (loaded, "Theorem t. For all p, p → p.")
+        intact (loaded, "Theorem t. For all p, p → p.")
         refused = Drive::controlOf (loaded, "board", 0, stroke ())
         undrawn refused
         unwritten refused
         unasked refused
         expect (diagnostics refused, "Stale control: region board revision 0 is not current")
-        WorkspaceCases::withoutDrawing (Drive::stored refused)
-        kept (refused, "Theorem t. For all p, p → p.")
+        intact (refused, "Theorem t. For all p, p → p.")
 
     (** The diagnostics a host was told about, so a refusal is visible rather than silent. *)
     diagnostics envelope = join (Doc::texts (envelope, "diagnostics"), ",")
@@ -99,14 +96,17 @@ module AppCases
         expect (length (itemsOf (listed, "entries")), 7)
         expect (Drive::keys listed, "root,catalogue,lesson")
         restored = Drive::completed (listed, "lessons:progress", "{}")
-        expect (join (Doc::texts (Doc::field (Drive::stored restored, "tutor"), "completed"), ","), "and-swap/judge-wrong-order")
+        expect (join (completedOf restored, ","), "and-swap/judge-wrong-order")
 
     // Learn, then open the fourth lesson, `and-swap`.
+    examplesOpen () =
+        shown = Drive::press (Drive::loaded (), "root", "Examples")
+        flagged (Drive::stored shown, ["learning"])
+        shown
+
     export opened () =
-        loaded = Drive::loaded ()
-        learning = Drive::press (loaded, "root", "Examples")
-        flagged (Drive::stored learning, ["learning"])
-        Drive::post (learning, Drive::tap (learning, "catalogue", 3))
+        listed = examplesOpen ()
+        Drive::post (listed, Drive::tap (listed, "catalogue", 3))
 
     region id = "challenge:and-swap/" + id
 
@@ -124,7 +124,7 @@ module AppCases
         expect (length (itemsOf (closed, "entries")), 7)
         expect (Doc::text (Drive::stored (Drive::post (closed, Drive::tap (closed, "catalogue", 3))), "lesson"), "and-swap")
 
-    marking envelope = match listGet (Doc::items (Doc::field (Doc::field (Drive::stored envelope, "tutor"), "tries"))) 0
+    marking envelope = match listGet (Doc::fieldItems (tutorOf envelope, "tries")) 0
         Success found => Doc::text (Doc::field (found, "mark"), "kind")
         Error _ => "none"
 
@@ -133,18 +133,21 @@ module AppCases
         Drive::press (typed, region "state-swapped-goal", "Submit")
 
     (** [LESSONS-STATE] [LESSONS-PROGRESS] A right answer is marked by the kernel and saved as progress; a wrong one is marked wrong and saves nothing. *)
+    marked (text, mark) =
+        answer = submitted (opened (), text)
+        expect (marking answer, mark)
+        answer
+
     export submit () =
-        right = submitted (opened (), "q ∧ p")
-        expect (marking right, "correct")
+        right = marked ("q ∧ p", "correct")
         expect (Drive::tickets right, "lessons:saved")
         expect (Drive::written right, "lessons:progress")
-        wrong = submitted (opened (), "p ∧ q")
-        expect (marking wrong, "incorrect")
+        wrong = marked ("p ∧ q", "incorrect")
         unasked wrong
         expect (marking (answered (wrong, "state-swapped-goal", "p ∧ q ∧ r")), "")
         lost = Drive::post (right, Drive::failed ("lessons:saved", "disk full"))
         expect (has (regionJson (lost, "catalogue"), "Your progress was not saved: disk full"), true)
-        expect (listContains (Doc::texts (Doc::field (Drive::stored lost, "tutor"), "completed"), "and-swap/state-swapped-goal"), true)
+        expect (listContains (completedOf lost, "and-swap/state-swapped-goal"), true)
 
     (** [WORKBENCH-BOARD] A stray legacy ink answer cannot overwrite the focused lesson answer, mark it or save it. *)
     export inked () =
@@ -195,8 +198,9 @@ module AppCases
     export absent (text, parts) = forEachList (parts, \part => expect (has (text, part), false))
     export holds (fields, names) = forEachList (names, \name => expect (Doc::has (fields, name), true))
     export lacks (fields, names) = forEachList (names, \name => expect (Doc::has (fields, name), false))
-    export flagged (fields, names) = forEachList (names, \name => expect (Doc::flag (fields, name), true))
-    export unflagged (fields, names) = forEachList (names, \name => expect (Doc::flag (fields, name), false))
+    export flagIs (fields, names, on) = forEachList (names, \name => expect (Doc::flag (fields, name), on))
+    export flagged (fields, names) = flagIs (fields, names, true)
+    export unflagged (fields, names) = flagIs (fields, names, false)
     export spelled (fields, pairs) = forEachList (pairs, \pair => expect (Doc::text (fields, pair.key), pair.value))
     export sized (fields, pairs) = forEachList (pairs, \pair => expect (Doc::number (fields, pair.key), pair.value))
     export agrees (after, before, names) = forEachList (names, \name => expect (Doc::text (after, name), Doc::text (before, name)))
@@ -211,6 +215,17 @@ module AppCases
     export undrawn envelope = expect (Drive::keys envelope, "")
     export unwritten envelope = expect (Drive::written envelope, "")
     export unasked envelope = expect (Drive::tickets envelope, "")
+
+    export framed node =
+        expect (Doc::text (node, "kind"), "framed")
+        Doc::field (node, "style")
+
+    export intact (envelope, text) =
+        WorkspaceCases::withoutDrawing (Drive::stored envelope)
+        kept (envelope, text)
+
+    tutorOf envelope = Doc::field (Drive::stored envelope, "tutor")
+    completedOf envelope = Doc::texts (tutorOf envelope, "completed")
 
     (** [WORKBENCH-GOALS] Unsupported wording stays verbatim and unchecked at the real host boundary, without an invented proposition. *)
     export unsupportedFeedback () =
@@ -278,22 +293,38 @@ module AppCases
 
     (** [LESSONS-FORMAT] The lesson occupies one natural page around all its challenges, without the fixed-height board aside or a filling pane. *)
     export lessonPageScroll () =
-        loaded = Drive::loaded ()
-        learning = Drive::press (loaded, "root", "Examples")
-        opened = Drive::post (learning, Drive::tap (learning, "catalogue", 3))
-        page = Drive::namedIn ("lesson-page", opened, "root")
-        expect (Doc::text (page, "kind"), "framed")
-        style = Doc::field (page, "style")
+        page = Drive::namedIn ("lesson-page", opened (), "root")
+        style = framed page
         unflagged (style, ["grow"])
-        expect (Doc::number (style, "height"), 0)
-        expect (Doc::number (style, "viewportHeightInset"), -1)
-        expect (Doc::number (style, "gap"), 24)
+        sized (style, [{ key = "height", value = 0 }, { key = "viewportHeightInset", value = -1 }, { key = "gap", value = 24 }])
         expect (Doc::text (Drive::findNode ("slot", page), "key"), "lesson")
         expect (Doc::text (Drive::findNode ("aside", page), "kind"), "")
 
 (** Real host workflows retain controls, slices and approvals across every transition. *)
 module WorkflowCases
     stored envelope = Drive::stored envelope
+
+    // The press a flow makes with the flags it must set, and the notice it
+    // shows once a file flow completes.
+    moved (envelope, where, label, names, on) =
+        pressed = Drive::press (envelope, where, label)
+        AppCases::flagIs (stored pressed, names, on)
+        pressed
+
+    noticeAfter (envelope, where, reply, message) =
+        expect (Doc::text (stored (Drive::completed (envelope, where, reply)), "notice"), message)
+
+    badNotice (envelope, parts) =
+        AppCases::flagged (stored envelope, ["noticeBad"])
+        AppCases::present (Doc::text (stored envelope, "notice"), parts)
+
+    askingWorkspace () = Drive::press (Drive::started (), "heading", "Open workspace")
+
+    bodyChildren doc = Doc::fieldItems (Doc::field (doc, "body"), "children")
+    childAt (doc, index) = listGet (bodyChildren doc) index ?: JsonNull
+    bodyStyle doc = Doc::field (Doc::field (doc, "body"), "style")
+
+    expectLeading (node) = jsonFloat (Doc::field (Doc::field (node, "style"), "lineHeight")) ?: -1.0
 
     (** The guided conjunction example, opened from a saved mathematical document. *)
     export example () =
@@ -334,31 +365,27 @@ module WorkflowCases
         expect (startsWith (AppCases::check after, "checked"), false)
 
     expectProofLeading (envelope, leading) =
-        style = Doc::field (Drive::namedIn ("proof-heading", envelope, "document"), "style")
-        expect (jsonFloat (Doc::field (style, "lineHeight")) ?: -1.0, leading)
+        expect (expectLeading (Drive::namedIn ("proof-heading", envelope, "document")), leading)
 
     expectStepInset envelope =
-        rows = Drive::namedIn ("proof-rows", envelope, "document")
-        entry = listGet (Doc::items (Doc::field (Doc::field (rows, "body"), "children"))) 1 ?: JsonNull
-        expect (Doc::text (Doc::field (Doc::field (entry, "body"), "style"), "name"), "proof-step-editor")
+        entry = childAt (Drive::namedIn ("proof-rows", envelope, "document"), 1)
+        expect (Doc::text (bodyStyle entry, "name"), "proof-step-editor")
         expect (Doc::number (Doc::field (entry, "style"), "top"), 0)
         expectedHeight = match Doc::flag (stored envelope, "paper")
             true => 56
             false => 49
-        expect (Doc::number (Doc::field (Doc::field (entry, "body"), "style"), "height"), expectedHeight)
+        expect (Doc::number (bodyStyle entry, "height"), expectedHeight)
 
     expectHeaderGeometry envelope =
         actions = Drive::namedIn ("header-actions", envelope, "heading")
-        expect (Doc::text (actions, "kind"), "framed")
-        expect (Doc::number (Doc::field (actions, "style"), "gap"), 9)
-        children = Doc::items (Doc::field (Doc::field (actions, "body"), "children"))
-        expect (length children, 4)
-        expect (Doc::number (Doc::field (listGet children 1 ?: JsonNull, "style"), "width"), 40)
-        expect (Doc::number (Doc::field (listGet children 2 ?: JsonNull, "style"), "width"), 44)
+        style = AppCases::framed actions
+        expect (Doc::number (style, "gap"), 9)
+        expect (length (bodyChildren actions), 4)
+        expect (Doc::number (Doc::field (childAt (actions, 1), "style"), "width"), 40)
+        expect (Doc::number (Doc::field (childAt (actions, 2), "style"), "width"), 44)
 
     expectCompletionLeading envelope =
-        completion = Drive::namedIn ("proof-completion", envelope, "document")
-        expect (jsonFloat (Doc::field (Doc::field (completion, "style"), "lineHeight")) ?: -1.0, 16.0)
+        expect (expectLeading (Drive::namedIn ("proof-completion", envelope, "document")), 16.0)
 
     expectRestart guide =
         expectHeaderGeometry guide
@@ -373,32 +400,27 @@ module WorkflowCases
         expect (startsWith (AppCases::check restarted, "checked"), false)
         WorkspaceCases::withoutDrawing (after)
         expect (structuralEquals (Doc::field (before, "exampleBackup")) (Doc::field (after, "exampleBackup")), true)
-        returned = Drive::press (restarted, "root", "Return to working")
-        AppCases::unflagged (stored returned, ["guided"])
+        returned = moved (restarted, "root", "Return to working", ["guided"], false)
         AppCases::kept (returned, "")
 
     export sourceModes () =
         guide = example ()
         expectProofLeading (guide, 28.75)
         expectRestart guide
-        opened = Drive::press (guide, "root", "Source")
-        AppCases::flagged (stored opened, ["paper"])
+        opened = moved (guide, "root", "Source", ["paper"], true)
         expectProofLeading (opened, 35.0)
         expect (Doc::text (Drive::labelledIn ("Source", opened, "root"), "role"), "prominent")
         AppCases::present (AppCases::regionJson (opened, "root"), ["source-panel"])
         AppCases::lacks (Drive::labelledIn ("Board", opened, "root"), ["event"])
-        closed = Drive::press (opened, "root", "Close source")
-        AppCases::unflagged (stored closed, ["generated"])
+        closed = moved (opened, "root", "Close source", ["generated"], false)
         AppCases::absent (AppCases::regionJson (closed, "root"), ["source-panel"])
-        read = Drive::press (closed, "root", "Read")
-        AppCases::flagged (stored read, ["reading"])
+        read = moved (closed, "root", "Read", ["reading"], true)
         AppCases::absent (AppCases::regionJson (read, "document"), ["inline"])
         AppCases::present (Drive::visibleText (Drive::node (read, "document")), ["From hp."])
         proofMode read
 
     proofMode read =
-        proof = Drive::press (read, "root", "Proof")
-        AppCases::unflagged (stored proof, ["reading"])
+        proof = moved (read, "root", "Proof", ["reading"], false)
         AppCases::flagged (stored proof, ["paper"])
         expect (Doc::text (stored proof, "text"), Doc::text (stored read, "text"))
 
@@ -459,8 +481,7 @@ module WorkflowCases
         expect (Doc::text (stored requested, "notice"), "Workspace opened. Supported statements have been checked again.")
         expect (Doc::text (stored cancelled, "notice"), Doc::text (stored requested, "notice"))
         expect (Doc::write (stored cancelled), Doc::write (stored requested))
-        completed = Drive::completed (requested, "workspace:saved", "{\"path\":\"working.json\"}")
-        expect (Doc::text (stored completed, "notice"), "Workspace saved.")
+        noticeAfter (requested, "workspace:saved", "{\"path\":\"working.json\"}", "Workspace saved.")
         loaded = reopened source
         AppCases::kept (loaded, savedSource ())
         WorkspaceCases::withoutDrawing (stored loaded)
@@ -468,8 +489,7 @@ module WorkflowCases
         exported loaded
 
     reopened source =
-        first = Drive::started ()
-        asked = Drive::press (first, "heading", "Open workspace")
+        asked = askingWorkspace ()
         expect (Drive::tickets asked, "workspace:opened")
         Drive::completedHeld (asked, "workspace:opened", "{\"path\":\"working.json\"}", JsonObject [Doc::str ("workspace:import", source)])
 
@@ -480,19 +500,15 @@ module WorkflowCases
         match FixtureFiles::read "../tests/golden/and_swap.ospml.expected"
             Success expected => expect (Doc::text (Drive::hostSlices [asked], "workspace:source"), expected)
             Error problem => FixtureFiles::report problem
-        completed = Drive::completed (asked, "workspace:source", "{\"path\":\"proof.ospml\"}")
-        expect (Doc::text (stored completed, "notice"), "Generated source exported.")
+        noticeAfter (asked, "workspace:source", "{\"path\":\"proof.ospml\"}", "Generated source exported.")
 
     export fileFailures () =
-        first = Drive::started ()
-        asked = Drive::press (first, "heading", "Open workspace")
+        asked = askingWorkspace ()
         cancelled = Drive::completed (asked, "workspace:opened", "{\"cancelled\":true}")
         AppCases::kept (cancelled, "")
         broken = Drive::completedHeld (asked, "workspace:opened", "{\"path\":\"broken.json\"}", JsonObject [Doc::str ("workspace:import", "not JSON")])
-        AppCases::flagged (stored broken, ["noticeBad"])
-        AppCases::present (Doc::text (stored broken, "notice"), ["JSON"])
+        badNotice (broken, ["JSON"])
         missing = Drive::completed (asked, "workspace:opened", "{}")
         AppCases::present (Doc::text (stored missing, "notice"), ["receipt"])
         failed = Drive::post (asked, Drive::failed ("workspace:opened", "Permission denied"))
-        AppCases::flagged (stored failed, ["noticeBad"])
-        AppCases::present (Doc::text (stored failed, "notice"), ["Permission denied"])
+        badNotice (failed, ["Permission denied"])
