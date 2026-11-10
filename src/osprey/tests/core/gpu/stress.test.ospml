@@ -60,12 +60,11 @@ minI (a, b) = match a < b
     true => a
     false => b
 (** prodSat and doubleUp are sticky: once the mark reaches the accumulator it stays, so the fold reports the *first* overflow rather than a later product of the sentinel. addOr marks an overflowing sum, clampAdd saturates it, and hugeScale walks elements past the int edge one at a time. *)
-prodSat (a, x) = match a == overflowMark ()
+sticky (a, step) = match a == overflowMark ()
     true => overflowMark ()
-    false => marked (\() => (a * x))
-doubleUp (a, _x) = match a == overflowMark ()
-    true => overflowMark ()
-    false => marked (\() => (a * 2))
+    false => marked step
+prodSat (a, x) = sticky (a, \() => (a * x))
+doubleUp (a, _x) = sticky (a, \() => (a * 2))
 addOr (a, x) = marked (\() => (a + x))
 clampAdd (a, x) = satAdd (a, x)
 hugeScale x = satMul (x, 100000000000000000)
@@ -75,12 +74,11 @@ recip x = zeroReciprocal (\() => 1.0 / x)
 tenthOf _x = 0.1
 isPositiveF x = x > 0.0
 stir x = (x * 1.0001 + 0.5) * 0.9999
-headBig x = match x == 0.0
+atFloat (edge, x) = match x == edge
     true => hugeFloat ()
     false => 1.0
-tailBig x = match x == 1000.0
-    true => hugeFloat ()
-    false => 1.0
+headBig x = atFloat (0.0, x)
+tailBig x = atFloat (1000.0, x)
 (** The checked one-buffer GPU step `step` applied to `buf` `times` times, retaining the first failure. *)
 repeatStep (buf, times, step) = match times
     0 => Success(value = buf)
@@ -91,13 +89,7 @@ mix (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, stir)))
 lowerTimes (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, lower)))
 rebuild (buf, n) = match n
     0 => Success(value = buf)
-    _ => match gpuMap(buf, bump)
-        Success value => match fromGpu (value)
-            Success read0 => match toGpu (read0)
-                Success again => rebuild (again, n - 1)
-                Error message => Error(message = message)
-            Error message => Error(message = message)
-        Error message => Error(message = message)
+    _ => andThen (gpuMap (buf, bump), \mapped => andThen (fromGpu (mapped), \back => andThen (toGpu (back), \again => rebuild (again, n - 1))))
 (** [GPU-FOLD] with tally: `b` from `seed` totals `expected`. *)
 sumsTo (b, seed, expected) = gpuEquals(gpuFold(b, seed, tally), expected)
 (** sumsTo from the zero seed. *)

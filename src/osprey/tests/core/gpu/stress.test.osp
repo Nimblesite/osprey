@@ -57,14 +57,9 @@ fn isMax(x) = x == maxInt()
 fn minI(a, b) = match a < b { true => a false => b }
 /// prodSat and doubleUp are sticky: once the mark reaches the accumulator it stays, so the fold reports the *first* overflow rather than a later product of the sentinel.
 /// addOr marks an overflowing sum, clampAdd saturates it, and hugeScale walks elements past the int edge one at a time.
-fn prodSat(a, x) = match a == overflowMark() {
-    true => overflowMark()
-    false => marked(fn() => (a * x))
-}
-fn doubleUp(a, _x) = match a == overflowMark() {
-    true => overflowMark()
-    false => marked(fn() => (a * 2))
-}
+fn sticky(a, step) = match a == overflowMark() { true => overflowMark() false => marked(step) }
+fn prodSat(a, x) = sticky(a, fn() => (a * x))
+fn doubleUp(a, _x) = sticky(a, fn() => (a * 2))
 fn addOr(a, x) = marked(fn() => (a + x))
 fn clampAdd(a, x) = satAdd(a, x)
 fn hugeScale(x) = satMul(x, 100000000000000000)
@@ -74,8 +69,9 @@ fn recip(x) = zeroReciprocal(fn() => 1.0 / x)
 fn tenthOf(_x) = 0.1
 fn isPositiveF(x) = x > 0.0
 fn stir(x) = (x * 1.0001 + 0.5) * 0.9999
-fn headBig(x) = match x == 0.0 { true => hugeFloat() false => 1.0 }
-fn tailBig(x) = match x == 1000.0 { true => hugeFloat() false => 1.0 }
+fn atFloat(edge, x) = match x == edge { true => hugeFloat() false => 1.0 }
+fn headBig(x) = atFloat(0.0, x)
+fn tailBig(x) = atFloat(1000.0, x)
 /// repeatStep applies the checked one-buffer GPU step `step` to `buf` `times` times, retaining the first failure.
 fn repeatStep(buf, times, step) = match times {
     0 => Success { value: buf }
@@ -88,16 +84,7 @@ fn mix(buf, n) = repeatStep(buf, n, fn(b) => gpuMap(b, stir))
 fn lowerTimes(buf, n) = repeatStep(buf, n, fn(b) => gpuMap(b, lower))
 fn rebuild(buf, n) = match n {
     0 => Success { value: buf }
-    _ => match gpuMap(buf, bump) {
-        Success { value } => match fromGpu(value) {
-            Success { value } => match toGpu(value) {
-                Success { value } => rebuild(value, n - 1)
-                Error { message } => Error { message: message }
-            }
-            Error { message } => Error { message: message }
-        }
-        Error { message } => Error { message: message }
-    }
+    _ => andThen(gpuMap(buf, bump), fn(mapped) => andThen(fromGpu(mapped), fn(back) => andThen(toGpu(back), fn(again) => rebuild(again, n - 1))))
 }
 /// sumsTo is [GPU-FOLD] with tally: `b` from `seed` totals `expected`.
 fn sumsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, tally), expected)
