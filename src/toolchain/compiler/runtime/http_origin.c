@@ -15,12 +15,13 @@
 // records the request the client actually sent [HTTP-STATUS-CLIENT].
 // ---------------------------------------------------------------------------
 
-// Reads one whole HTTP request: headers, then Content-Length bytes of body.
-void origin_read_request(int fd, char *out, size_t capacity) {
+// Reads one whole HTTP request through `receive`: headers, then
+// Content-Length bytes of body. Plain and TLS origins share it.
+void origin_read_request_via(void *conn, origin_receive receive, char *out, size_t capacity) {
   size_t len = 0;
   char *blank = NULL;
   while (len + 1 < capacity && blank == NULL) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
+    long n = receive(conn, out + len, capacity - 1 - len);
     if (n <= 0) {
       break;
     }
@@ -35,7 +36,7 @@ void origin_read_request(int fd, char *out, size_t capacity) {
   size_t want = marker ? (size_t)atoi(marker + 16) : 0;
   size_t have = len - (size_t)(blank + 4 - out);
   while (have < want && len + 1 < capacity) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
+    long n = receive(conn, out + len, capacity - 1 - len);
     if (n <= 0) {
       break;
     }
@@ -43,6 +44,14 @@ void origin_read_request(int fd, char *out, size_t capacity) {
     have += (size_t)n;
     out[len] = '\0';
   }
+}
+
+static long socket_receive(void *conn, char *out, size_t capacity) {
+  return (long)recv(*(int *)conn, out, capacity, 0);
+}
+
+void origin_read_request(int fd, char *out, size_t capacity) {
+  origin_read_request_via(&fd, socket_receive, out, capacity);
 }
 
 // A reader slow enough to keep a sender's every wait inside its timeout, until

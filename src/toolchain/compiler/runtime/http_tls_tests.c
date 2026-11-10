@@ -67,35 +67,9 @@ typedef struct {
   char request[MAX_HTTP_BUFFER];
 } TlsOrigin;
 
-// Reads one whole HTTP request through the TLS session: headers, then
-// Content-Length bytes of body.
-static void tls_origin_read_request(SSL *ssl, char *out, size_t capacity) {
-  size_t len = 0;
-  char *blank = NULL;
-  while (len + 1 < capacity && blank == NULL) {
-    int n = SSL_read(ssl, out + len, (int)(capacity - 1 - len));
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    out[len] = '\0';
-    blank = strstr(out, "\r\n\r\n");
-  }
-  if (blank == NULL) {
-    return;
-  }
-  const char *marker = strstr(out, "Content-Length: ");
-  size_t want = marker ? (size_t)atoi(marker + 16) : 0;
-  size_t have = len - (size_t)(blank + 4 - out);
-  while (have < want && len + 1 < capacity) {
-    int n = SSL_read(ssl, out + len, (int)(capacity - 1 - len));
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    have += (size_t)n;
-    out[len] = '\0';
-  }
+// Feeds origin_read_request_via from the TLS session.
+static long tls_receive(void *conn, char *out, size_t capacity) {
+  return SSL_read((SSL *)conn, out, (int)capacity);
 }
 
 // Writes the reply's records into memory, then puts them on the wire one byte at a
@@ -122,7 +96,7 @@ static void *tls_origin_thread(void *arg) {
   if (ssl) {
     SSL_set_fd(ssl, fd);
     if (SSL_accept(ssl) == 1) {
-      tls_origin_read_request(ssl, origin->request,
+      origin_read_request_via(ssl, tls_receive, origin->request,
                               sizeof(origin->request));
       if (origin->drip_us) {
         tls_origin_drip(ssl, fd, origin->reply, origin->drip_us);
