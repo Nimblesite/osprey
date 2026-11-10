@@ -1,7 +1,7 @@
 //! Screens and sections ([GPUI-HOST-RENDER]): titled sections, a screen with its heading,
 //! the empty state and progress.
 
-use gpui_kit::component::{progress::Progress, ActiveTheme as _};
+use gpui_kit::component::{progress::Progress, ActiveTheme as _, StyledExt as _};
 use gpui_kit::*;
 use serde_json::Value;
 

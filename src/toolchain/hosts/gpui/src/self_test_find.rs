@@ -12,7 +12,7 @@ use crate::smoke;
 pub(super) struct Found<'a> {
     region: String,
     ordinal: u64,
-    node: &'a Value,
+    pub(super) node: &'a Value,
 }
 
 impl Found<'_> {
