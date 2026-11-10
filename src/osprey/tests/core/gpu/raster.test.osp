@@ -161,10 +161,7 @@ range(0, h) |> fold("", |acc, y| => acc + rowText(pixels, w, y) + "\n")
 fn row(pixels, y) = rowText(pixels, frameWidth(), y)
 fn canvas(pixels) = frameText(pixels, frameWidth(), frameHeight())
 /// [FAILURE-EXPLICIT] A failed full-brightness pass fails the case rather than printing raw levels.
-fn withBrightText(result, work) = match result {
-    Success { pixels } => withBuffer(gpuMap(pixels, fullBright), fn(bright) => work(frameText(bright, tileEdge(), tileEdge())))
-    Error { message } => check("GPU operation", "success", toString(message))
-}
+fn withBrightText(result, work) = withBuffer(result, fn(pixels) => withBuffer(gpuMap(pixels, fullBright), fn(bright) => work(frameText(bright, tileEdge(), tileEdge()))))
 /// gallery renders all three layers and their buffer statistics as one frame of output — one dispatch per scene, one elementwise pass to composite — then the raster
 /// primitives at a size every pixel can be read at: both windings of a triangle, spans clipped and unclipped, a magnified texel block, and the quad whose every pixel is
 /// asserted below.
