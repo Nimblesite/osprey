@@ -142,7 +142,7 @@ C_LIBS_gpu_metal_tests = -framework Foundation -framework Metal -pthread
 endif
 C_SRC_list_tests = runtime/list_tests.c runtime/list_sort_tests.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c $(C_TEST_MEMORY_SRC)
-C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
+C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_parse_tests.c runtime/string_edge_tests.c runtime/string_cursor_tests.c runtime/string_float_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 # The same suite on the portable float-spelling path wasm32 uses.
 C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
