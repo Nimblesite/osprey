@@ -170,6 +170,7 @@ module Disk
             false => firstRule folder fallback key rest
 
     fileLook kind = firstRule false (Look(symbol = "doc.fill", tint = "gray")) kind (looks ())
+    // Finder's own folders keep their familiar symbols.
     folderLook title = firstRule true (Look(symbol = "folder.fill", tint = "blue")) title (looks ())
 
     (** The symbol and tint for an entry: apps and Finder's folders by name, files by kind. *)
