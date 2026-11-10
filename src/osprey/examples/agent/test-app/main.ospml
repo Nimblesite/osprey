@@ -433,8 +433,7 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
 testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
     opened = (typedAtLaunch "Show the code\n")
     replied = answered (opened, codeReply)
-    shown = Drive::showing (replied.stepStore, View::transcript)
-    showsAll (shown, ["\"kind\":\"rich-text\"", "\"ink\":\"codeKeyword\"", "\"ink\":\"codeString\"", "\"ink\":\"codeComment\"", "\"ink\":\"codeNumber\"", "\"text\":\"def\"", "\\n"]))
+    showsAll (Drive::showing (replied.stepStore, View::transcript), ["\"kind\":\"rich-text\"", "\"ink\":\"codeKeyword\"", "\"ink\":\"codeString\"", "\"ink\":\"codeComment\"", "\"ink\":\"codeNumber\"", "\"text\":\"def\"", "\\n"]))
 
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     calling = callingAfter "Go\n"
@@ -461,8 +460,7 @@ testing ("a blank reply fails in words and leaves no gap", \() =>
     chat = Model::active blank.stepStore
     expect (chat.chatStage, "failed")
     expectHas (chat.chatProblem, "no answer")
-    shown = Drive::showing (blank.stepStore, View::transcript)
-    showsAll (shown, ["The model returned no answer.", "Try again"]))
+    showsAll (Drive::showing (blank.stepStore, View::transcript), ["The model returned no answer.", "Try again"]))
 
 testing ("each refusal status says what to do in words, with Open Settings", \() =>
     opened = (typedAtLaunch "Go\n")
@@ -505,8 +503,7 @@ testing ("the settings pane opens in place of the conversation and closes", \() 
     opened = settingsOpened ()
     expect (opened.settings.settingsOpen, true)
     sendsNothing (acted (opened, agentapp::OpenSettings))
-    shown = Drive::showing (opened, View::settings)
-    showsAll (shown, ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
+    showsAll (Drive::showing (opened, View::settings), ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
     closed = (acted (opened, agentapp::CloseSettings)).stepStore
     expect (closed.settings.settingsOpen, false))
 
@@ -515,8 +512,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     asked = checkedAsked (launched, 0, "method", "GET", "http")
     expectDoc (asked, "url", "https://api.deepseek.com/models")
     expectHas ((Doc::write asked), "Bearer sk-test")
-    before = Drive::showing (launched.stepStore, View::composer)
-    expectSays (before, "DeepSeek Reasoner", "DeepSeek V9")
+    expectSays (Drive::showing (launched.stepStore, View::composer), "DeepSeek Reasoner", "DeepSeek V9")
     answer = "{\"data\":[{\"id\":\"deepseek-v9\"},{\"id\":\"deepseek-v4-pro\"},{\"id\":\"deepseek-flash\"}]}"
     listed = (settledWith (launched.stepStore, "models:deepseek", ok 200, answer)).stepStore
     // The default model is gone from the provider, so the empty chat and the default both move to one it names.
@@ -681,8 +677,7 @@ recoversFrom status =
     expectStage (again, "http", "thinking")
     expect ((Model::active again.stepStore).chatProblem, "")
     recovered = answeredTo (again.stepStore, textReply, "idle")
-    answers = Drive::showing (recovered.stepStore, View::transcript)
-    expectSays (answers, "Done.", "The request failed")
+    expectSays (Drive::showing (recovered.stepStore, View::transcript), "Done.", "The request failed")
 
 testing ("no credit, a refused key, a rate limit and a server fault never stop the next send", \() =>
     forEachList ([402, 401, 403, 429, 500], recoversFrom))
@@ -839,11 +834,8 @@ mcpSettled (store, name, found) = (settledBy (store, name, readOutcome found, mc
 mcpLaunched () =
     opened = App::initial (context 100)
     keyed = (settledBy (opened.stepStore, "env", ok 0, mcpSlice)).stepStore
-    providersDone = mcpSettled (keyed, "providers", false)
-    chatsDone = mcpSettled (providersDone, "chats", false)
-    globalDone = mcpSettled (chatsDone, "mcp-global", true)
-    stateDone = mcpSettled (globalDone, "mcp-state", false)
-    settledBy (stateDone, "mcp-project", ok 0, mcpSlice)
+    providers = foldList (["providers", "chats", "mcp-global", "mcp-state"], keyed, \(store, name) => mcpSettled (store, name, name == "mcp-global"))
+    settledBy (providers, "mcp-project", ok 0, mcpSlice)
 
 // The project file's slice: `doc` for the project read, nothing for any other key.
 projectOnly doc key =
@@ -894,8 +886,7 @@ testing ("no MCP documents at all is no problem and no servers", \() =>
     // The first server has to be addable: the form shows with no servers and no problems.
     launched = launchedStore ()
     onTab = acted (launched, agentapp::ShowSettingsTab(tabKey = "mcp"))
-    shown = Drive::showing (onTab.stepStore, View::settings)
-    showsAll (shown, ["No MCP servers yet", "Add server", "Paste JSON"]))
+    showsAll (Drive::showing (onTab.stepStore, View::settings), ["No MCP servers yet", "Add server", "Paste JSON"]))
 
 testing ("a stdio server connects: initialize, both list pages, the server ping answered, tools offered to the model", \() =>
     begun = mcpStarted ()
