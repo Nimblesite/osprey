@@ -44,3 +44,26 @@ fn noneListed(xs, absent) = foldList(absent, true, fn(clear, item) => clear && !
 
 /// Whether `f` maps `inputs` onto exactly `wants`, pair by pair.
 fn answersHold(f, inputs, wants) = structuralEquals(mapList(inputs, f), wants)
+
+/// Runs `work` under a recording Arith policy, then checks its value is
+/// `expected` and that the faults it raised, in order, spell `wantedFaults`
+/// (`overflow(op,lhs,rhs,wrapped);`, `zero(op,lhs);`, `remainder(lhs);`).
+fn faultsAre(work, expected, wantedFaults) = {
+    mut faults = ""
+    handle Arith {
+        overflow op lhs rhs wrapped => {
+            faults = faults + "overflow(${op},${lhs},${rhs},${wrapped});"
+            wrapped
+        }
+        divideByZero op lhs => {
+            faults = faults + "zero(${op},${lhs});"
+            -0.5
+        }
+        remainderByZero lhs => {
+            faults = faults + "remainder(${lhs});"
+            0
+        }
+    }
+    expect(work(), expected)
+    expect(faults, wantedFaults)
+}

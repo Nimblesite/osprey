@@ -16,24 +16,8 @@ minPlus delta = minValue () + delta
 (** The one fault the intermediate overflow raises for every delta. *)
 maxOverflowFault = "overflow(+,9223372036854775807,1,-9223372036854775808);"
 
-(** Runs `work` under a recording Arith policy and checks value and fault order. *)
-verify (work, expected, wantedFaults) =
-    mut faults = ""
-    handle Arith
-        overflow op lhs rhs wrapped =>
-            faults := faults + "overflow(${op},${lhs},${rhs},${wrapped});"
-            wrapped
-        divideByZero op lhs =>
-            faults := faults + "zero(${op},${lhs});"
-            -0.5
-        remainderByZero lhs =>
-            faults := faults + "remainder(${lhs});"
-            0
-    expect (work ()) expected
-    expect faults wantedFaults
-
-(** A test body that checks `work` through `verify` and the faults it must raise. *)
-checking (work, expected, wantedFaults) = \() => verify (work, expected, wantedFaults)
+(** A test body that checks `work` through `faultsAre` and the faults it must raise. *)
+checking (work, expected, wantedFaults) = \() => faultsAre (work, expected, wantedFaults)
 
 (** A delta and the two boundary results that move with it. *)
 type DeltaCase =
