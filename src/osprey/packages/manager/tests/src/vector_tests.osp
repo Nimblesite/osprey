@@ -31,11 +31,13 @@ module VectorTests {
         Success => false
     }
 
-    fn agilityCases() = {
-        let fx = Fixtures::load("vectors/digest-agility.json")
-        Fixtures::report("digest agility accepted", Fixtures::textsOf(fx, "valid"), parseOk)
-        Fixtures::report("digest agility rejected", Fixtures::itemsOf(fx, "invalid"), parseCode)
+    fn reportPair(file, first, second) = {
+        let fx = Fixtures::load(file)
+        first(fx)
+        second(fx)
     }
+
+    fn agilityCases() = reportPair("vectors/digest-agility.json", fn(fx) => Fixtures::report("digest agility accepted", Fixtures::textsOf(fx, "valid"), parseOk), fn(fx) => Fixtures::report("digest agility rejected", Fixtures::itemsOf(fx, "invalid"), parseCode))
 
     /// The successful `result`'s value equals the case's text at `key`.
     fn equalsText(result, c, key) = match result {
@@ -50,11 +52,7 @@ module VectorTests {
         Success => false
     }
 
-    fn canonCases() = {
-        let fx = Fixtures::load("vectors/rfc8785.json")
-        Fixtures::report("rfc8785 canonical form", Fixtures::itemsOf(fx, "cases"), canonOk)
-        Fixtures::report("rfc8785 rejected inputs", Fixtures::itemsOf(fx, "rejected"), canonRejected)
-    }
+    fn canonCases() = reportPair("vectors/rfc8785.json", fn(fx) => Fixtures::report("rfc8785 canonical form", Fixtures::itemsOf(fx, "cases"), canonOk), fn(fx) => Fixtures::report("rfc8785 rejected inputs", Fixtures::itemsOf(fx, "rejected"), canonRejected))
 
     fn paeOk(c) = Bytes::hex(Dsse::pae(Fixtures::textOf(c, "type"), Bytes::fromHex(Fixtures::textOf(c, "payloadHex")))) == Fixtures::textOf(c, "paeHex")
 
@@ -90,26 +88,12 @@ module VectorTests {
 
     fn hexes(hashes) = join(mapList(hashes, Bytes::hex), ",")
 
-    fn inclusionOk(c) = {
-        let index = Fixtures::numberOf(c, "index")
-        let size = Fixtures::numberOf(c, "size")
-        let proof = hexProof(c)
-        let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
-        match Merkle::verifyInclusion(index, size, leaf, proof, Bytes::fromHex(rootAt(size))) {
-            true => hexes(Merkle::inclusionProof(index, firstLeaves(merkleLeaves(), size))) == hexes(proof)
-            false => false
-        }
-    }
+    fn leafAt(index) = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
 
-    fn consistencyOk(c) = {
-        let first = Fixtures::numberOf(c, "first")
-        let second = Fixtures::numberOf(c, "second")
-        let proof = hexProof(c)
-        let verified = Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
-        match verified {
-            true => hexes(Merkle::consistencyProof(first, firstLeaves(merkleLeaves(), second))) == hexes(proof)
-            false => false
-        }
+    /// True when the verifier accepted and its recomputed proof matches the case's.
+    fn proofAgrees(verified, recomputed, proof) = match verified {
+        true => hexes(recomputed) == hexes(proof)
+        false => false
     }
 
     fn negativeRoot(c, size) = match Json::get(c, "root") {
@@ -117,25 +101,30 @@ module VectorTests {
         Error => rootAt(size)
     }
 
-    fn inclusionRejected(c) = {
-        let index = Fixtures::numberOf(c, "index")
-        let size = Fixtures::numberOf(c, "size")
-        let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
-        !Merkle::verifyInclusion(index, size, leaf, hexProof(c), Bytes::fromHex(negativeRoot(c, size)))
-    }
-
-    fn consistencyRejected(c) = {
-        let first = Fixtures::numberOf(c, "first")
-        let second = Fixtures::numberOf(c, "second")
+    /// One inclusion/consistency vector: a positive case must be accepted and
+    /// recompute the case's proof; a rejection case must be refused.
+    fn merkleCase(c, kind, reject) = {
+        let keys = if kind == "inclusion" { ["index", "size"] } else { ["first", "second"] }
+        let a = Fixtures::numberOf(c, listGet(keys, 0) ?: "")
+        let b = Fixtures::numberOf(c, listGet(keys, 1) ?: "")
         let proof = hexProof(c)
-        match Fixtures::textOf(c, "label") == "swapped roots" {
-            true => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(second)), Bytes::fromHex(rootAt(first)), proof)
-            false => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
+        let verified = if kind == "inclusion" {
+            Merkle::verifyInclusion(a, b, leafAt(a), proof, Bytes::fromHex(inclusionRoot(c, b, reject)))
+        } else {
+            Merkle::verifyConsistency(a, b, consistencyRoot(c, a, b, reject), consistencyRoot(c, b, a, reject), proof)
         }
+        let recomputed = if kind == "inclusion" { Merkle::inclusionProof(a, firstLeaves(merkleLeaves(), b)) } else { Merkle::consistencyProof(a, firstLeaves(merkleLeaves(), b)) }
+        if reject { !verified } else { proofAgrees(verified, recomputed, proof) }
     }
 
-    fn merkleCases(kind, run) = Fixtures::report("merkle ${kind}", foldList(Fixtures::loadItems("vectors/merkle.json", "negative"), [],
-        fn(acc, c) => if Fixtures::textOf(c, "kind") == kind { listAppend(acc, c) } else { acc }), run)
+    /// The trusted root a rejection case must be judged against.
+    fn inclusionRoot(c, size, reject) = if reject { negativeRoot(c, size) } else { rootAt(size) }
+
+    /// The proof's roots, swapped when a rejection case says so.
+    fn consistencyRoot(c, root, other, swapped) = Bytes::fromHex(rootAt(if swapped && Fixtures::textOf(c, "label") == "swapped roots" { other } else { root }))
+
+    fn merkleCases(kind) = Fixtures::report("merkle ${kind}", foldList(Fixtures::loadItems("vectors/merkle.json", "negative"), [],
+        fn(acc, c) => if Fixtures::textOf(c, "kind") == kind { listAppend(acc, c) } else { acc }), fn(c) => merkleCase(c, kind, true))
 
     /// Every primary-specification vector group, in one run.
     export fn run() = {
@@ -145,11 +134,11 @@ module VectorTests {
         test("vector: rfc8785", canonCases)
         test("vector: dsse", dsseCases)
         test("vector: merkle roots", fn() => Fixtures::report("merkle roots 0..8", range(0, 9) |> toList, rootMatches))
-        test("vector: merkle inclusion", fn() => Fixtures::report("merkle inclusion proofs", Fixtures::itemsOf(fx, "inclusion"), inclusionOk))
-        test("vector: merkle consistency", fn() => Fixtures::report("merkle consistency proofs", Fixtures::itemsOf(fx, "consistency"), consistencyOk))
+        test("vector: merkle inclusion", fn() => Fixtures::report("merkle inclusion proofs", Fixtures::itemsOf(fx, "inclusion"), fn(c) => merkleCase(c, "inclusion", false)))
+        test("vector: merkle consistency", fn() => Fixtures::report("merkle consistency proofs", Fixtures::itemsOf(fx, "consistency"), fn(c) => merkleCase(c, "consistency", false)))
         test("vector: merkle rejection", fn() => {
-            merkleCases("inclusion", inclusionRejected)
-            merkleCases("consistency", consistencyRejected)
+            merkleCases("inclusion")
+            merkleCases("consistency")
         })
     }
 }
