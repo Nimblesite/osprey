@@ -6,7 +6,7 @@
 //! [MODULES-EXPORTS], [MODULES-OPAQUE-TYPES], and [MODULES-IMPORT].
 
 use super::cst::{
-    MlImport, MlImportMember, MlImportSelection, MlItem, MlModuleKind, MlNamespaceName,
+    MlImport, MlImportMember, MlImportSelection, MlItem, MlModuleKind, MlNamespaceName, MlSig,
     MlSignatureItem, MlSymbolPath,
 };
 use super::parser::Parser;
@@ -189,15 +189,15 @@ fn signature_value(parser: &mut Parser<'_>) -> Option<MlSignatureItem> {
     }
     let ty = parser.ty();
     let (effects, effect_tail, effect_row_present) = parser.effect_row();
-    Some(MlSignatureItem::Value {
+    Some(MlSignatureItem::Value(MlSig {
         name,
         type_params,
         ty,
         effects,
         effect_tail,
         effect_row_present,
-        pos,
-    })
+        position: pos,
+    }))
 }
 
 fn signature_type(parser: &mut Parser<'_>) -> Option<MlSignatureItem> {

@@ -174,7 +174,7 @@ impl ItemLower {
             MlItem::InnerDoc { pos, .. } => {
                 lower_error(crate::docparse::misplaced_inner_doc("(** … *)"), pos);
             }
-            item @ MlItem::ValueSignature { .. } => self.lower_signature(item),
+            MlItem::ValueSignature(sig) => self.pending = Some(sig),
             item @ MlItem::Binding { .. } => self.lower_binding_item(item),
             item @ (MlItem::Assign { .. }
             | MlItem::Expr { .. }
@@ -187,29 +187,6 @@ impl ItemLower {
             item @ (MlItem::Namespace { .. }
             | MlItem::Module { .. }
             | MlItem::ModuleSignature { .. }) => self.lower_container(item),
-        }
-    }
-
-    fn lower_signature(&mut self, item: MlItem) {
-        if let MlItem::ValueSignature {
-            name,
-            type_params,
-            ty,
-            effects,
-            effect_tail,
-            effect_row_present,
-            pos,
-        } = item
-        {
-            self.pending = Some(MlSig {
-                name,
-                type_params,
-                ty,
-                effects,
-                effect_tail,
-                effect_row_present,
-                position: pos,
-            });
         }
     }
 
@@ -412,38 +389,7 @@ pub(super) fn attach_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
 /// the working alternative ([TYPE-TUPLE]).
 const TUPLE_UNIMPLEMENTED: &str = "has no value form; declare a positional record type instead";
 
-/// A parsed signature awaiting its binding: `name<T, U> : ty ! effects`.
-pub(super) struct MlSig {
-    pub(super) name: String,
-    type_params: Vec<MlTypeParam>,
-    ty: MlType,
-    effects: Vec<MlEffectRef>,
-    effect_tail: Option<String>,
-    effect_row_present: bool,
-    position: Position,
-}
-
-impl MlSig {
-    pub(super) fn new(
-        name: String,
-        type_params: Vec<MlTypeParam>,
-        ty: MlType,
-        effects: Vec<MlEffectRef>,
-        effect_tail: Option<String>,
-        effect_row_present: bool,
-        position: Position,
-    ) -> Self {
-        Self {
-            name,
-            type_params,
-            ty,
-            effects,
-            effect_tail,
-            effect_row_present,
-            position,
-        }
-    }
-}
+pub(super) use super::cst::MlSig;
 
 /// The payload name that denotes a zero-argument effect operation: `Unit => R`
 /// in ML mirrors the Default flavor's `fn() -> R` (no argument), so it must

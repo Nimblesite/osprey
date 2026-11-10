@@ -1,6 +1,6 @@
 //! ML items parsing.
 use super::{
-    keyword_spelling, MlItem, MlModuleKind, MlTypeParam, Parser, Position, Stage, TokKind,
+    keyword_spelling, MlItem, MlModuleKind, MlSig, MlTypeParam, Parser, Position, Stage, TokKind,
     STATIC_STAGE_KEYWORD,
 };
 
@@ -280,15 +280,15 @@ impl Parser<'_> {
                 self.annotations,
             );
         }
-        Some(MlItem::ValueSignature {
+        Some(MlItem::ValueSignature(MlSig {
             name,
             type_params,
             ty,
             effects,
             effect_tail,
             effect_row_present,
-            pos,
-        })
+            position: pos,
+        }))
     }
 
     /// `name param* = body` → a binding (value when `param*` is empty, function

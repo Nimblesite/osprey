@@ -34,28 +34,7 @@ impl ModuleLower {
         }
         let (visibility, opaque, item) = item_metadata(raw);
         match item {
-            MlItem::ValueSignature {
-                name,
-                type_params,
-                ty,
-                effects,
-                effect_tail,
-                effect_row_present,
-                pos,
-            } => {
-                self.pending = Some((
-                    MlSig::new(
-                        name,
-                        type_params,
-                        ty,
-                        effects,
-                        effect_tail,
-                        effect_row_present,
-                        pos,
-                    ),
-                    visibility,
-                ));
-            }
+            MlItem::ValueSignature(sig) => self.pending = Some((sig, visibility)),
             MlItem::Binding {
                 mutable,
                 name,
@@ -135,23 +114,7 @@ fn attach_declaration_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
 
 pub(super) fn signature_item(item: MlSignatureItem) -> SignatureItem {
     match item {
-        MlSignatureItem::Value {
-            name,
-            type_params,
-            ty,
-            effects,
-            effect_tail,
-            effect_row_present,
-            pos,
-        } => signature_value(
-            name,
-            type_params,
-            &ty,
-            effects,
-            effect_tail,
-            effect_row_present,
-            pos,
-        ),
+        MlSignatureItem::Value(sig) => signature_value(sig),
         MlSignatureItem::Type {
             name,
             manifest,
@@ -203,15 +166,17 @@ fn signature_type(
     }
 }
 
-fn signature_value(
-    name: String,
-    type_params: Vec<super::cst::MlTypeParam>,
-    ty: &MlType,
-    effects: Vec<super::cst::MlEffectRef>,
-    effect_tail: Option<String>,
-    effect_row_present: bool,
-    pos: osprey_ast::Position,
-) -> SignatureItem {
+fn signature_value(sig: MlSig) -> SignatureItem {
+    let MlSig {
+        name,
+        type_params,
+        ty,
+        effects,
+        effect_tail,
+        effect_row_present,
+        position: pos,
+    } = sig;
+    let ty = &ty;
     let spine = arrow_spine(ty);
     if spine.len() < 2 {
         return SignatureItem::Value {
