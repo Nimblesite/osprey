@@ -506,31 +506,37 @@ handlerCellCrossesTheFiberBoundaryCase () =
     mut turns = 0
     mut answered = 0
 
-    (** main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
-        and each perform's own answer is kept in its own positional field. *)
-    mixed =
+    (** The tracing arm: count the hop, fold the amount in, answer the new total. *)
+    traced = \work =>
         handle Tally
             add amount =>
                 hops := hops + 1 
                 cell := cell + amount 
                 trail := "${trail}${amount}:${cell}|"
                 cell
+        work ()
+
+    (** The identity arm: the same without the transcript. *)
+    untraced = \work =>
+        handle Tally
+            add amount =>
+                hops := hops + 1 
+                cell := cell + amount 
+                cell
+        work ()
+
+    (** main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
+        and each perform's own answer is kept in its own positional field. *)
+    mixed = traced (\() =>
         m1 = tallyJob 3
         f1 = await (spawn (tallyJob 4))
         m2 = tallyJob 5
         f2 = await (spawn (tallyJob 6))
-        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 
+        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2)
 
     (** A SECOND region over the same captured binding: promotion is to one heap
         location, not one per region. 18 -> 22. *)
-    carried =
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                trail := "${trail}${amount}:${cell}|"
-                cell
-        await (spawn (tallyJob 4))
+    carried = traced (\() => await (spawn (tallyJob 4)))
 
     (** Four fibers in flight into ONE resuming region: a turn is atomic end to
         end, so four increments of one cannot collapse into fewer. *)
@@ -544,13 +550,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
 
     (** A third region reads the cell back through the identity amount and never
         touches the trail: "code after the region observes the same location". *)
-    readBack =
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                cell
-        await (spawn (tallyJob 0))
+    readBack = untraced (\() => await (spawn (tallyJob 0)))
 
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
