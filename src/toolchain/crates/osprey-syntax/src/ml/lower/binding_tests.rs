@@ -5,7 +5,7 @@
 )]
 use crate::ml::parse_ml;
 use crate::test_support::{
-    assert_doc_pair, assert_summary, ml_one_stmt, ml_program, ml_stmts, stmt_doc,
+    assert_doc_pair, assert_summary, let_expr, ml_one_stmt, ml_program, ml_stmts, stmt_doc,
 };
 use osprey_ast::{Expr, Pattern, Stmt};
 
@@ -238,87 +238,58 @@ fn whitespace_application_is_curried_nested_call() {
 #[test]
 fn application_binds_tighter_than_operators() {
     // `add 1 2 == 3` ⇒ (add 1 2) == 3.
-    let s = ml_one_stmt("r = add 1 2 == 3\n");
-    assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Binary { .. },
-                ..
-            }
-        ),
-        "expected comparison, got {s:?}"
-    );
-    if let Stmt::Let {
-        value: Expr::Binary {
-            op, left, right, ..
-        },
-        ..
-    } = s
-    {
-        assert_eq!(op, "==");
-        assert!(matches!(*left, Expr::Call { .. }));
-        assert_eq!(*right, Expr::Integer(3));
-    }
+    let value = let_expr("comparison", ml_one_stmt("r = add 1 2 == 3\n"), |value| {
+        matches!(value, Expr::Binary { .. })
+    });
+    let Expr::Binary {
+        op, left, right, ..
+    } = value
+    else {
+        panic!("expected comparison, got {value:?}")
+    };
+    assert_eq!(op, "==");
+    assert!(matches!(*left, Expr::Call { .. }));
+    assert_eq!(*right, Expr::Integer(3));
 }
 
 #[test]
 fn unit_application_is_zero_arg_call() {
-    let s = ml_one_stmt("r = make ()\n");
-    assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Call { .. },
-                ..
-            }
-        ),
-        "expected zero-arg call, got {s:?}"
-    );
-    if let Stmt::Let {
-        value: Expr::Call {
-            function,
-            arguments,
-            ..
-        },
+    let value = let_expr("zero-arg call", ml_one_stmt("r = make ()\n"), |value| {
+        matches!(value, Expr::Call { .. })
+    });
+    let Expr::Call {
+        function,
+        arguments,
         ..
-    } = s
-    {
-        assert_eq!(arguments, Vec::<Expr>::new());
-        assert_eq!(*function, Expr::Identifier("make".to_owned()));
-    }
+    } = value
+    else {
+        panic!("expected zero-arg call, got {value:?}")
+    };
+    assert_eq!(arguments, Vec::<Expr>::new());
+    assert_eq!(*function, Expr::Identifier("make".to_owned()));
 }
 
 #[test]
 fn match_lowers_constructor_and_wildcard_arms() {
-    let s = ml_one_stmt("r =\n    match x\n        Success value => value\n        _ => 0\n");
-    assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Match { .. },
-                ..
-            }
-        ),
-        "expected match, got {s:?}"
+    let value = let_expr(
+        "match",
+        ml_one_stmt("r =\n    match x\n        Success value => value\n        _ => 0\n"),
+        |value| matches!(value, Expr::Match { .. }),
     );
-    if let Stmt::Let {
-        value: Expr::Match { arms, .. },
-        ..
-    } = s
-    {
-        assert_eq!(arms.len(), 2);
-        let p0 = &arms[0].pattern;
-        assert!(
-            matches!(p0, Pattern::Constructor { .. }),
-            "expected constructor pattern, got {p0:?}"
-        );
-        if let Pattern::Constructor { name, fields, .. } = p0 {
-            assert_eq!(name, "Success");
-            assert_eq!(fields, &vec!["value".to_owned()]);
-        }
-        assert!(matches!(arms[1].pattern, Pattern::Wildcard));
+    let Expr::Match { arms, .. } = value else {
+        panic!("expected match, got {value:?}")
+    };
+    assert_eq!(arms.len(), 2);
+    let p0 = &arms[0].pattern;
+    assert!(
+        matches!(p0, Pattern::Constructor { .. }),
+        "expected constructor pattern, got {p0:?}"
+    );
+    if let Pattern::Constructor { name, fields, .. } = p0 {
+        assert_eq!(name, "Success");
+        assert_eq!(fields, &vec!["value".to_owned()]);
     }
+    assert!(matches!(arms[1].pattern, Pattern::Wildcard));
 }
 
 #[test]
@@ -327,45 +298,34 @@ fn list_patterns_lower_to_canonical_list_pattern() {
     // SAME `Pattern::List { elements, rest }` the Default flavor emits
     // ([FLAVOR-ML-MATCH], [TYPE-LIST-PATTERNS]).
     let src = "r =\n    match xs\n        [] => 0\n        [head, ...tail] => 1\n        [_, b, ...rest] => 2\n";
-    let s = ml_one_stmt(src);
+    let value = let_expr("match", ml_one_stmt(src), |value| {
+        matches!(value, Expr::Match { .. })
+    });
+    let Expr::Match { arms, .. } = value else {
+        panic!("expected match, got {value:?}")
+    };
     assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Match { .. },
-                ..
-            }
-        ),
-        "expected match, got {s:?}"
+        matches!(&arms[0].pattern, Pattern::List { elements, rest } if elements.is_empty() && rest.is_none())
     );
-    if let Stmt::Let {
-        value: Expr::Match { arms, .. },
-        ..
-    } = s
-    {
-        assert!(
-            matches!(&arms[0].pattern, Pattern::List { elements, rest } if elements.is_empty() && rest.is_none())
-        );
-        let p1 = &arms[1].pattern;
-        assert!(
-            matches!(p1, Pattern::List { .. }),
-            "expected list pattern, got {p1:?}"
-        );
-        if let Pattern::List { elements, rest } = p1 {
-            assert_eq!(elements, &vec![Pattern::Binding("head".to_owned())]);
-            assert_eq!(rest, &Some("tail".to_owned()));
-        }
-        let p2 = &arms[2].pattern;
-        assert!(
-            matches!(p2, Pattern::List { .. }),
-            "expected list pattern, got {p2:?}"
-        );
-        if let Pattern::List { elements, rest } = p2 {
-            assert_eq!(elements.len(), 2);
-            assert!(matches!(elements[0], Pattern::Wildcard));
-            assert_eq!(elements[1], Pattern::Binding("b".to_owned()));
-            assert_eq!(rest, &Some("rest".to_owned()));
-        }
+    let p1 = &arms[1].pattern;
+    assert!(
+        matches!(p1, Pattern::List { .. }),
+        "expected list pattern, got {p1:?}"
+    );
+    if let Pattern::List { elements, rest } = p1 {
+        assert_eq!(elements, &vec![Pattern::Binding("head".to_owned())]);
+        assert_eq!(rest, &Some("tail".to_owned()));
+    }
+    let p2 = &arms[2].pattern;
+    assert!(
+        matches!(p2, Pattern::List { .. }),
+        "expected list pattern, got {p2:?}"
+    );
+    if let Pattern::List { elements, rest } = p2 {
+        assert_eq!(elements.len(), 2);
+        assert!(matches!(elements[0], Pattern::Wildcard));
+        assert_eq!(elements[1], Pattern::Binding("b".to_owned()));
+        assert_eq!(rest, &Some("rest".to_owned()));
     }
 }
 
@@ -373,17 +333,16 @@ fn list_patterns_lower_to_canonical_list_pattern() {
 fn a_wildcard_payload_lowers_to_the_default_wildcard() {
     // ML `Ctor _` binds nothing, like Default `Ctor(_)`: both lower to a
     // wildcard sub-pattern, so the payload is never loaded ([FLAVOR-IR-EQUIV]).
-    let s = ml_one_stmt("r =\n    match json\n        JsonBool _ => 1\n        _ => 0\n");
-    if let Stmt::Let {
-        value: Expr::Match { arms, .. },
-        ..
-    } = s
-    {
-        assert!(matches!(
-            &arms[0].pattern,
-            Pattern::Constructor { sub_patterns, .. } if sub_patterns == &vec![Pattern::Wildcard]
-        ));
-    } else {
-        panic!("expected a match binding, got {s:?}");
-    }
+    let value = let_expr(
+        "a match binding",
+        ml_one_stmt("r =\n    match json\n        JsonBool _ => 1\n        _ => 0\n"),
+        |value| matches!(value, Expr::Match { .. }),
+    );
+    let Expr::Match { arms, .. } = value else {
+        panic!("expected a match binding, got {value:?}")
+    };
+    assert!(matches!(
+        &arms[0].pattern,
+        Pattern::Constructor { sub_patterns, .. } if sub_patterns == &vec![Pattern::Wildcard]
+    ));
 }

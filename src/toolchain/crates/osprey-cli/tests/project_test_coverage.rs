@@ -383,9 +383,8 @@ fn python_coverage_counts_selected_returns_and_retains_untaken_branches() -> Tes
     finished(root)
 }
 
-#[test]
-fn static_handler_arm_coverage_records_execution_and_retains_unused_arms() -> TestResult {
-    let root = handler_project("static_handler_coverage", false)?;
+fn handler_coverage_suite(name: &str, dynamic: bool) -> TestResult {
+    let root = handler_project(name, dynamic)?;
     for memory in ["gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
@@ -393,12 +392,13 @@ fn static_handler_arm_coverage_records_execution_and_retains_unused_arms() -> Te
 }
 
 #[test]
+fn static_handler_arm_coverage_records_execution_and_retains_unused_arms() -> TestResult {
+    handler_coverage_suite("static_handler_coverage", false)
+}
+
+#[test]
 fn dynamic_handler_coverage_counts_execution_instead_of_registration() -> TestResult {
-    let root = handler_project("dynamic_handler_coverage", true)?;
-    for memory in ["gc", "arc"] {
-        assert_handler_coverage(&root, memory)?;
-    }
-    finished(root)
+    handler_coverage_suite("dynamic_handler_coverage", true)
 }
 
 fn namespace_project() -> PathBuf {

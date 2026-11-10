@@ -99,7 +99,14 @@ mod tests {
     use crate::model::build_model;
     use crate::raw::{Profile, Sample, Thread};
     use crate::symbolize::SymFrame;
-    use crate::testutil::{field_f64, field_str, field_u64, model_of, osp_frame, sample, thread};
+    use crate::testutil::{
+        field_f64, field_str, field_u64, first_of, model_of, osp_frame, sample, thread,
+    };
+
+    /// The array under top-level `key`, which the report sections walk.
+    fn array<'a>(doc: &'a Value, key: &str) -> &'a Vec<Value> {
+        doc.get(key).and_then(Value::as_array).unwrap()
+    }
 
     fn fixture() -> Value {
         let (_, model) = model_of(
@@ -134,9 +141,8 @@ mod tests {
     #[test]
     fn fibers_report_the_state_split_from_all_samples() {
         let doc = fixture();
-        let fibers = doc.get("fibers").and_then(Value::as_array).unwrap();
-        assert_eq!(fibers.len(), 2);
-        let main = fibers.first().unwrap();
+        let fibers = array(&doc, "fibers");
+        let main = first_of(fibers, 2);
         field_u64(main, "id", 0);
         field_str(main, "label", "main");
         field_u64(main, "samples", 3);
@@ -149,7 +155,7 @@ mod tests {
     #[test]
     fn hot_functions_carry_pcts_kind_and_sort_order() {
         let doc = fixture();
-        let funcs = doc.get("hotFunctions").and_then(Value::as_array).unwrap();
+        let funcs = array(&doc, "hotFunctions");
         let fib = funcs.first().unwrap();
         field_str(fib, "name", "fib");
         field_str(fib, "file", "/src/app.osp");
@@ -170,9 +176,8 @@ mod tests {
     #[test]
     fn hot_lines_keep_only_significant_osp_lines() {
         let doc = fixture();
-        let lines = doc.get("hotLines").and_then(Value::as_array).unwrap();
-        assert_eq!(lines.len(), 1);
-        let hot = lines.first().unwrap();
+        let lines = array(&doc, "hotLines");
+        let hot = first_of(lines, 1);
         field_str(hot, "file", "/src/app.osp");
         field_u64(hot, "line", 5);
         field_f64(hot, "pct", 66.7);
@@ -206,14 +211,8 @@ mod tests {
             .map(|i| vec![osp_frame(&format!("f{i}"), u32::try_from(i).unwrap() + 1)])
             .collect();
         let doc = summary_json("x.osp", &build_model(&prof, &sym_stacks));
-        assert_eq!(
-            doc.get("hotFunctions")
-                .and_then(Value::as_array)
-                .unwrap()
-                .len(),
-            50
-        );
-        let lines = doc.get("hotLines").and_then(Value::as_array).unwrap();
+        assert_eq!(array(&doc, "hotFunctions").len(), 50);
+        let lines = array(&doc, "hotLines");
         assert_eq!(lines.len(), 1);
         assert_eq!(
             lines.first().unwrap().get("line").and_then(Value::as_u64),

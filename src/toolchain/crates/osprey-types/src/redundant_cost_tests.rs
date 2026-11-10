@@ -165,9 +165,14 @@ fn directed_search(
     counter.load(Ordering::Relaxed)
 }
 
+/// The directed redundancy search, judging every written annotation site.
+fn all_site_removals(program: &Program) -> Vec<super::RedundantAnnotation> {
+    super::redundant_annotation_sites_for(program, |_| true, &|_| false)
+}
+
 /// Asserts the directed search reports exactly the `expected` written sites.
 fn assert_default_sites(program: &Program, written: &[Site], expected: &[usize]) {
-    let positions: Vec<_> = super::redundant_annotation_sites_for(program, |_| true, &|_| false)
+    let positions: Vec<_> = all_site_removals(program)
         .iter()
         .map(|annotation| Some(annotation.annotation_position))
         .collect();
@@ -324,7 +329,7 @@ fn full_program_proofs_have_bounded_parallelism() -> Result<(), fmt::Error> {
         "{peak} simultaneous full-program proofs exceeds the resource ceiling of 4"
     );
     PEAK.store(0, Ordering::SeqCst);
-    let warnings = super::redundant_annotation_sites_for(&program, |_| true, &|_| false);
+    let warnings = all_site_removals(&program);
     assert!(
         !warnings.is_empty(),
         "directed search must still report warnings"
@@ -344,7 +349,7 @@ fn isolated_load_bearing_sites_do_not_force_every_annotation_through_a_full_solv
     let count = sites(&program).len();
     let workers = super::judges().min(count).max(1);
     CALLS.store(0, Ordering::Relaxed);
-    let warnings = super::redundant_annotation_sites_for(&program, |_| true, &|_| false);
+    let warnings = all_site_removals(&program);
     assert!(
         !warnings.is_empty(),
         "fixture must contain removable annotations"

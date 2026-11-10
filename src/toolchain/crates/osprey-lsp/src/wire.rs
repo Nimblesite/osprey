@@ -34,12 +34,17 @@ fn nested<'a>(params: &'a Value, outer: &str, inner: &str) -> Option<&'a Value> 
     params.get(outer).and_then(|o| o.get(inner))
 }
 
+/// The string at `params["textDocument"][key]`, if present.
+fn text_document_str(params: &Value, key: &str) -> Option<String> {
+    nested(params, "textDocument", key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+}
+
 /// The document URI of a request's `textDocument`, if present.
 #[must_use]
 pub(crate) fn doc_uri(params: &Value) -> Option<String> {
-    nested(params, "textDocument", "uri")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
+    text_document_str(params, "uri")
 }
 
 /// The `(line, character)` of a request's `position`, if present.
@@ -68,9 +73,7 @@ fn field_u32(value: &Value, key: &str) -> u32 {
 /// The full text of a `textDocument/didOpen`.
 #[must_use]
 pub(crate) fn open_text(params: &Value) -> Option<String> {
-    nested(params, "textDocument", "text")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
+    text_document_str(params, "text")
 }
 
 /// The document version of a `didOpen`/`didChange`, defaulting to 0.

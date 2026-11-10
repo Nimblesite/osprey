@@ -1,11 +1,22 @@
 //! ML effects parsing.
 use super::{
-    HandleHead, MlBinder, MlClauses, MlExpr, MlHandleArm, MlParam, Parser, Stage, TokKind,
+    HandleHead, MlClauses, MlExpr, MlHandleArm, MlParam, Parser, Stage, TokKind,
     STATIC_STAGE_KEYWORD,
 };
 use crate::ml::cst::{MlSelectArm, MlSelectOperation};
 
 impl Parser<'_> {
+    /// Whether the cursor stands on `()` and, if so, consumes it — the unit
+    /// argument (`op ()`, `resume ()`), never application to unit.
+    fn eat_unit_args(&mut self) -> bool {
+        if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
+            self.advance();
+            self.advance();
+            return true;
+        }
+        false
+    }
+
     /// Where the current keyword stands, then the effect name following it,
     /// with any written instantiation, as `perform`, `mask` and `instance` all
     /// spell it ([FLAVOR-ML-EFFECT]).
@@ -33,9 +44,7 @@ impl Parser<'_> {
         }
         let operation = self.operation_ident().unwrap_or_default();
         // `op ()` is a zero-argument performance, not application to unit.
-        if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
-            self.advance();
-            self.advance();
+        if self.eat_unit_args() {
             return MlExpr::Perform {
                 effect,
                 operation,
@@ -207,14 +216,7 @@ impl Parser<'_> {
     pub(in crate::ml) fn handle_arm(&mut self) -> MlHandleArm {
         let pos = self.pos();
         let operation = self.operation_ident().unwrap_or_default();
-        let mut params = Vec::new();
-        while let TokKind::Ident(name) = self.peek() {
-            params.push(MlBinder {
-                name: name.clone(),
-                pos: Some(self.pos()),
-            });
-            self.advance();
-        }
+        let params = self.binder_run();
         if !self.eat(&TokKind::FatArrow) {
             self.error("expected '=>' in handle arm");
         }
@@ -232,9 +234,7 @@ impl Parser<'_> {
     pub(in crate::ml) fn resume_expr(&mut self) -> MlExpr {
         self.advance(); // `resume`
                         // `resume ()` is a unit resume, like the Default `resume()`.
-        if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
-            self.advance();
-            self.advance();
+        if self.eat_unit_args() {
             return MlExpr::Resume(None);
         }
         // An indented block, or a `match` whose arms are the resumed value,

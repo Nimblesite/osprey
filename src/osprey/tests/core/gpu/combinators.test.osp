@@ -17,7 +17,7 @@ fn subI(a, b) = (a - b)
 fn horner(a, d) = (((a * 10) ) + d)
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
 fn maxI(a, b: int) = match a > b { true => a false => b }
-fn addF(a: float, x: float) = a + x
+fn addF(a, x) = a + x
 fn orB(a, b) = a || b
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
@@ -54,10 +54,6 @@ fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }
-/// lengthIs is [GPU-BUFFER-LENGTH] on one buffer.
-fn lengthIs(b, expected) = gpuLength(b) == expected
-/// elementIs is one [GPU-GET] read, or `fallback` when `index` misses.
-fn elementIs(b, index, fallback, expected) = (gpuGet(b, index) ?: fallback) == expected
 /// rendersAs is one gpuGet outcome as text, so an element's own type stays visible.
 fn rendersAs(b, index, text) = oobMessage(b, index) == text
 /// sumsTo is [GPU-FOLD] with sumI: `b` from `seed` totals `expected`.
@@ -128,7 +124,7 @@ fn zipTypeCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(first) => withBuffer(toGpu
 /// source-order guarantee is checked, not just its count.
 fn filterKeepCase() = withBuffer(toGpu([9, 4, 7, 2, 5, 8]), fn(src) => withBuffer(gpuFilter(src, keepEvery), fn(kept) => withBuffer(gpuFilter(src, isEven), fn(alternates) => checkAll("filter keep sets", [
     lengthIs(kept, 6), elementIs(kept, 0, 0, 9), elementIs(kept, 5, 0, 8), sumsTo(kept, 0, 35), gpuLengthIs(gpuFilter(src, keepNone), 0),
-    lengthIs(alternates, 3), elementIs(alternates, 0, 0, 4), elementIs(alternates, 1, 0, 2), elementIs(alternates, 2, 0, 8),
+    lengthIs(alternates, 3), elementsFrom(alternates, 0, 0, [4, 2, 8]),
     elementIs(alternates, 3, 55, 55), gpuLengthIs(gpuFilter(src, isOddP), 3), gpuSatisfies(gpuFilter(src, isOddP), fn(odd) => hornerTo(odd, 0, 975))
 ]))))
 /// filterPredicateCase feeds the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the
@@ -147,13 +143,13 @@ fn filterPredicateWith(indices10, indices6) = withBuffer(toGpu([0.0 - 1.5, 0.0, 
 /// whole-buffer fold and index n is out of bounds.
 fn scanPrefixCase() = withIndices(5, fn(indices5) => scanPrefixWith(indices5))
 fn scanPrefixWith(indices5) = withBuffer(toGpu([1, 2, 3, 4, 5]), fn(value) => withBuffer(gpuScan(value, 0, sumI), fn(sums) => withBuffer(gpuScan(sums, 0, sumI), fn(twice) => withBuffer(toGpu([1, 2, 3, 4]), fn(four) => withBuffer(gpuScan(four, 1, mulI), fn(products) => checkAll("inclusive prefix", [
-    lengthIs(sums, 5), elementIs(sums, 0, 0, 1), elementIs(sums, 1, 0, 3), elementIs(sums, 2, 0, 6), elementIs(sums, 3, 0, 10),
+    lengthIs(sums, 5), elementsFrom(sums, 0, 0, [1, 3, 6, 10]),
     elementIs(sums, 4, 0, 15), elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
     elementIs(twice, 4, 0, 35), lengthIs(products, 4), elementIs(products, 3, 0, 24), gpuSatisfies(gpuScan(indices5, 0, sumI), fn(scanned) => elementIs(scanned, 4, 0, 10))
 ]))))))
 /// scanSeedCase pins the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch.
 fn scanSeedCase() = withBuffer(toGpu([1, 2, 3]), fn(three) => withBuffer(gpuScan(three, 10, sumI), fn(seeded) => withBuffer(toGpu([3, 1, 4, 1, 5, 9, 2, 6]), fn(source) => withBuffer(gpuScan(source, 0, maxI), fn(running) => withBuffer(toGpu([1, 3, 4, 7]), fn(flagsSource) => withBuffer(gpuMap(flagsSource, isEven), fn(flags) => withBuffer(gpuScan(flags, false, orB), fn(latched) => checkAll("scan seeds", [
-    elementIs(seeded, 0, 0, 11), elementIs(seeded, 1, 0, 13), elementIs(seeded, 2, 0, 16), elementIs(running, 0, 0, 3), elementIs(running, 1, 0, 3),
+    elementsFrom(seeded, 0, 0, [11, 13, 16]), elementIs(running, 0, 0, 3), elementIs(running, 1, 0, 3),
     elementIs(running, 3, 0, 4), elementIs(running, 7, 0, 9), sumsTo(running, 0, 46),
     gpuSatisfies(toGpu([3, 1, 4]), fn(source) => gpuSatisfies(gpuScan(source, 100, maxI), fn(scanned) => sumsTo(scanned, 0, 300))),
     lengthIs(latched, 4), elementIs(latched, 1, true, false), trueCountIs(latched, 2)
@@ -163,7 +159,7 @@ fn scanSeedCase() = withBuffer(toGpu([1, 2, 3]), fn(three) => withBuffer(gpuScan
 fn orderCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(digitsUp) => withBuffer(gpuScan(digitsUp, 0, horner), fn(running) => checkAll("traversal order", [
     hornerTo(digitsUp, 0, 1234), gpuSatisfies(toGpu([4, 3, 2, 1]), fn(digitsDown) => hornerTo(digitsDown, 0, 4321)), hornerTo(digitsUp, 9, 91234),
     gpuSatisfies(toGpu([1, 2, 3]), fn(up) => differencesTo(up, 100, 94)), gpuSatisfies(toGpu([3, 2, 1]), fn(down) => differencesTo(down, 100, 94)), elementIs(running, 0, 0, 1),
-    elementIs(running, 1, 0, 12), elementIs(running, 2, 0, 123), elementIs(running, 3, 0, 1234),
+    elementsFrom(running, 1, 0, [12, 123, 1234]),
     gpuSatisfies(gpuFold(digitsUp, 0, horner), fn(total) => elementIs(running, 3, 0, total)),
     gpuSatisfies(toGpu([1, 2, 3]), fn(source) => gpuSatisfies(gpuScan(source, 10, subI), fn(scanned) => sumsTo(scanned, 0, 20))), gpuSatisfies(toGpu([1, 2, 3]), fn(source) => gpuSatisfies(gpuScan(source, 0, subI), fn(scanned) => sumsTo(scanned, 10, 0))), sumsTo(running, 0, 1370)
 ])))
@@ -238,7 +234,7 @@ fn iotaWith(indices5, indices1, indices0, indices3) = {
 /// buffer is pure and therefore legal inside one.
 fn getCase() = withIndices(3, fn(indices3) => getWith(indices3))
 fn getWith(indices3) = withBuffer(toGpu([7, 8, 9]), fn(ints) => withBuffer(toGpu([1.5, 2.5]), fn(floats) => withBuffer(gpuMap(indices3, fn(i) => gpuGet(ints, (2 - i) ) ?: 0), fn(reversed) => checkAll("get", [
-    elementIs(ints, 0, 0, 7), elementIs(ints, 1, 0, 8), elementIs(ints, 2, 0, 9), elementIs(floats, 0, 0.0, 1.5), elementIs(floats, 1, 0.0, 2.5),
+    elementsFrom(ints, 0, 0, [7, 8, 9]), elementIs(floats, 0, 0.0, 1.5), elementIs(floats, 1, 0.0, 2.5),
     elementIs(ints, 3, 999, 999), elementIs(ints, (0 - 1), 999, 999), elementIs(floats, 2, 9.5, 9.5), rendersAs(ints, 0, "value 7"),
     rendersAs(ints, 3, "gpuGet: index out of bounds"), elementIs(reversed, 0, 0, 9), hornerTo(reversed, 0, 987)
 ]))))

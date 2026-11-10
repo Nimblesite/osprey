@@ -23,8 +23,6 @@ countOdd (acc, flag) = match flag
     false => acc
 (** The identity kernel: every scalar word must come back out unchanged, at the element type its source buffer was tagged with. *)
 same x = x
-(** The exact payload [GPU-GET] contracts for a read outside the buffer, so a wrong gather is a visible failure and never a sentinel element. *)
-oobMessage () = "gpuGet: index out of bounds"
 (** Render one gpuGet outcome as text — the element for a hit, the error payload for a miss. Being polymorphic over the element type, it is itself the assertion that gpuGet recovers int, float and bool alike. *)
 readback (b, i) = match gpuGet (b, i)
     Success value => toString value
@@ -41,16 +39,12 @@ scaledFloats b =gpuMap(b, scale)
 chooseBuffer (flag, a, b) = match flag
     true => a
     false => b
-(** One typed read: [GPU-GET] at `index` yields `expected`, or `fallback` when it misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet (b, index) ?: fallback) == expected
 (** The read that sits on the in-bounds boundary: the final element, or `fallback` for an empty buffer. *)
 lastIs (b, fallback, expected) = (lastOf b ?: fallback) == expected
 (** The read [GPU-GET] must refuse: its payload is exactly the contracted message, never a sentinel element. *)
 misses (b, index) = readback (b, index) == oobMessage ()
 (** One gpuGet outcome as text, so an element's own scalar type stays visible. *)
 rendersAs (b, index, text) = readback (b, index) == text
-(** [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength b == expected
 (** The length of a materialized list. *)
 listLengthIs (values, expected) = listLength values == expected
 (** One list read, or `fallback` past either end. *)
@@ -75,8 +69,6 @@ widened (b, check) = gpuSatisfies(gpuMap(b, toFloat), check)
 oddFlags (b, check) = gpuSatisfies(gpuMap(b, isOdd), check)
 (** uploaded uploads `values` and checks the dense buffer it produces. *)
 uploaded (values, check) = gpuSatisfies(toGpu (values), check)
-(** Pin the zero-element literal the element type cannot infer. *)
-emptyUploads () = gpuSatisfies(toGpu ([]), \(empty: GpuBuffer<int>) => lengthIs (empty, 0))
 (** [GPU-BUFFER-TO-LIST]: `b` materializes as `expected` list elements. *)
 readsBack (b, expected) = gpuSatisfies(fromGpu (b), \values => listLengthIs (values, expected))
 (** [GPU-BUFFER-TO-LIST] read at one index. *)
@@ -93,7 +85,7 @@ roundTripReads (b, index, fallback, expected) = gpuSatisfies(fromGpu (b), \value
 literalCase () = withBuffer(toGpu ([3, 1, 4, 1, 5]), \ints => withBuffer(toGpu ([0.25, 0.5, 0.75, 1.0]), \floats => withBuffer(toGpu ([true, false, true]), \flags => withBuffer(toGpu ([-3, 0, 7, -1]), \signed => withBuffer(toGpu ([4611686018427387904, -4611686018427387904]), \wide => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 literalCaseUploaded (ints, floats, flags, signed, wide) =
     checkAll("buffer literals", [
-        lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploaded ([9], \up => lengthIs (up, 1)), emptyUploads (), widthOf ints == 5, elementIs (ints, 0, 0, 3), elementIs (ints, 1, 0, 1), elementIs (ints, 2, 0, 4), elementIs (ints, 3, 0, 1), elementIs (ints, 4, 0, 5), lastIs (ints, 0, 5), elementIs (floats, 0, 9.5, 0.25), elementIs (floats, 1, 9.5, 0.5), elementIs (floats, 2, 9.5, 0.75), elementIs (floats, 3, 9.5, 1.0), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), elementIs (signed, 0, 0, (-3)), elementIs (signed, 1, 9, 0), elementIs (signed, 2, 0, 7), elementIs (signed, 3, 0, (-1)), elementIs (wide, 0, 0, 4611686018427387904), elementIs (wide, 1, 0, -4611686018427387904), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumsTo (floats, 0.0, 2.5), oddCountIs (flags, 2)
+        lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploaded ([9], \up => lengthIs (up, 1)), emptyUploads (), widthOf ints == 5, elementsFrom (ints, 0, 0, [3, 1, 4, 1, 5]), lastIs (ints, 0, 5), elementsFrom (floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), elementIs (signed, 0, 0, (-3)), elementIs (signed, 1, 9, 0), elementIs (signed, 2, 0, 7), elementIs (signed, 3, 0, (-1)), elementIs (wide, 0, 0, 4611686018427387904), elementIs (wide, 1, 0, -4611686018427387904), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumsTo (floats, 0.0, 2.5), oddCountIs (flags, 2)
     ])
 (** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists. *)
 listCopyCase () = withIndices (0, \indices0 => listCopyWith (indices0))
@@ -101,7 +93,7 @@ listCopyWith (indices0) =
     source = [2, 4, 6, 8]
     lone = [11]
     withBuffer(toGpu (source), \asCopy => withBuffer(fromGpu (asCopy), \read0 => withBuffer(toGpu (read0), \relayed => withBuffer(fromGpu (indices0), \none => checkAll("list copy path", [
-        listLengthIs (source, 4), lengthIs (asCopy, 4), elementIs (asCopy, 0, 0, 2), elementIs (asCopy, 1, 0, 4), elementIs (asCopy, 2, 0, 6), elementIs (asCopy, 3, 0, 8), lastIs (asCopy, 0, 8), misses (asCopy, 4), misses (asCopy, (-1)), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), elementIs (relayed, 2, 0, 6), sumIs (relayed, 20), uploaded (lone, \up => lengthIs (up, 1)), uploaded (lone, \up => elementIs (up, 0, 0, 11)), uploaded (lone, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploaded (none, \up => lengthIs (up, 0)), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (source, \up => widthOf up == widthOf asCopy), uploaded (source, \up => gpuSatisfies(gpuFold(up, 0, addInts), \one => gpuSatisfies(gpuFold(asCopy, 0, addInts), \other => one == other)))
+        listLengthIs (source, 4), lengthIs (asCopy, 4), elementsFrom (asCopy, 0, 0, [2, 4, 6, 8]), lastIs (asCopy, 0, 8), misses (asCopy, 4), misses (asCopy, (-1)), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), elementIs (relayed, 2, 0, 6), sumIs (relayed, 20), uploaded (lone, \up => lengthIs (up, 1)), uploaded (lone, \up => elementIs (up, 0, 0, 11)), uploaded (lone, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploaded (none, \up => lengthIs (up, 0)), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (source, \up => widthOf up == widthOf asCopy), uploaded (source, \up => gpuSatisfies(gpuFold(up, 0, addInts), \one => gpuSatisfies(gpuFold(asCopy, 0, addInts), \other => one == other)))
     ])))))
 (** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () = withIndices (0, \indices0 => withIndices (6, \indices6 => roundTripWith (indices0, indices6)))
@@ -154,7 +146,7 @@ aliasCase () = withBuffer(toGpu([1, 2, 3, 4]), \source => withBuffer(doubledInts
     checkAll("aliased bindings share one immutable buffer", [lengthIs(source, 4), lengthIs(alias, 4), lengthIs(alsoAlias, 4), widthOf(alias) == widthOf(source), elementIs(alias, 0, 0, 1), elementIs(alsoAlias, 0, 0, 1), elementIs(alias, 3, 0, 4), elementIs(alsoAlias, 3, 0, 4), (lastOf(alias) ?: 0) == (lastOf(source) ?: 0), sumIs(source, 10), sumIs(alias, 10), sumIs(alsoAlias, 10), lengthIs(derived, 4), sumIs(derived, 20), elementIs(derived, 1, 0, 4), elementIs(source, 1, 0, 2), elementIs(alias, 1, 0, 2), elementIs(alsoAlias, 1, 0, 2), misses(alias, 4), misses(alsoAlias, -1), readback(source, 4) == readback(alias, 4), readsBack(alias, 4), readsBackAt(alsoAlias, 2, 0, 3)])))
 (** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size. *)
 fusionCase () = withBuffer(toGpu (range (0, 6)), \straight => withBuffer(toGpu (range (1, 5) |> map square), \squares => withBuffer(toGpu (range (4, 5)), \lone => withBuffer(toGpu (range (3, 3)), \empty => checkAll("iterator fusion fills the buffer directly", [
-    lengthIs (straight, 6), elementIs (straight, 0, 9, 0), elementIs (straight, 5, 0, 5), lastIs (straight, 0, 5), misses (straight, 6), misses (straight, (-1)), lengthIs (squares, 4), elementIs (squares, 0, 0, 1), elementIs (squares, 1, 0, 4), elementIs (squares, 2, 0, 9), elementIs (squares, 3, 0, 16), lastIs (squares, 0, 16), misses (squares, 4), lengthIs (lone, 1), elementIs (lone, 0, 0, 4), misses (lone, 1), lengthIs (empty, 0), misses (empty, 0), sumsTo (empty, 5, 5), widthOf empty == 0, readsBack (straight, 6), readsBackAt (squares, 1, 0, 4), roundTripSumsTo (squares, 30)
+    lengthIs (straight, 6), elementIs (straight, 0, 9, 0), elementIs (straight, 5, 0, 5), lastIs (straight, 0, 5), misses (straight, 6), misses (straight, (-1)), lengthIs (squares, 4), elementsFrom (squares, 0, 0, [1, 4, 9, 16]), lastIs (squares, 0, 16), misses (squares, 4), lengthIs (lone, 1), elementIs (lone, 0, 0, 4), misses (lone, 1), lengthIs (empty, 0), misses (empty, 0), sumsTo (empty, 5, 5), widthOf empty == 0, readsBack (straight, 6), readsBackAt (squares, 1, 0, 4), roundTripSumsTo (squares, 30)
 ])))))
 (** Pipe a buffer through a named kernel and fold it away, including over negative elements and over no elements at all. *)
 intKernelCase () = withIndices (0, \indices0 => intKernelWith (indices0))

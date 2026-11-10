@@ -21,8 +21,6 @@ fn countOdd(acc, flag) = match flag {
 }
 /// same is the identity kernel: every scalar word must come back out unchanged, at the element type its source buffer was tagged with.
 fn same(x) = x
-/// The exact payload [GPU-GET] contracts for a read outside the buffer, so a wrong gather is a visible failure and never a sentinel element.
-fn oobMessage() = "gpuGet: index out of bounds"
 /// readback renders one gpuGet outcome as text — the element for a hit, the error payload for a miss. Being polymorphic over the element type, it is itself the assertion that gpuGet recovers int, float and bool alike.
 fn readback(b, i) = match gpuGet(b, i) {
     Success { value } => toString(value)
@@ -41,16 +39,12 @@ fn chooseBuffer(flag, a, b) = match flag {
     true => a
     false => b
 }
-/// elementIs is one typed read: [GPU-GET] at `index` yields `expected`, or `fallback` when it misses.
-fn elementIs(b, index, fallback, expected) = (gpuGet(b, index) ?: fallback) == expected
 /// lastIs is the read that sits on the in-bounds boundary: the final element, or `fallback` for an empty buffer.
 fn lastIs(b, fallback, expected) = (lastOf(b) ?: fallback) == expected
 /// misses is the read [GPU-GET] must refuse: its payload is exactly the contracted message, never a sentinel element.
 fn misses(b, index) = readback(b, index) == oobMessage()
 /// rendersAs is one gpuGet outcome as text, so an element's own scalar type stays visible.
 fn rendersAs(b, index, text) = readback(b, index) == text
-/// lengthIs is [GPU-BUFFER-LENGTH] on one buffer.
-fn lengthIs(b, expected) = gpuLength(b) == expected
 /// listLengthIs is the length of a materialized list.
 fn listLengthIs(values, expected) = listLength(values) == expected
 /// listHolds is one list read, or `fallback` past either end.
@@ -75,8 +69,6 @@ fn widened(b, check) = gpuSatisfies(gpuMap(b, toFloat), check)
 fn oddFlags(b, check) = gpuSatisfies(gpuMap(b, isOdd), check)
 /// uploaded uploads `values` and checks the dense buffer it produces.
 fn uploaded(values, check) = gpuSatisfies(toGpu(values), check)
-/// emptyUploads pins the zero-element literal the element type cannot infer.
-fn emptyUploads() = gpuSatisfies(toGpu([]), fn(empty: GpuBuffer<int>) => lengthIs(empty, 0))
 /// readsBack is [GPU-BUFFER-TO-LIST]: `b` materializes as `expected` list elements.
 fn readsBack(b, expected) = gpuSatisfies(fromGpu(b), fn(values) => listLengthIs(values, expected))
 /// readsBackAt is [GPU-BUFFER-TO-LIST] read at one index.
@@ -92,7 +84,7 @@ fn roundTripReads(b, index, fallback, expected) = gpuSatisfies(fromGpu(b), fn(va
 /// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold.
 fn literalCase() = withBuffer(toGpu([3, 1, 4, 1, 5]), fn(ints) => withBuffer(toGpu([0.25, 0.5, 0.75, 1.0]), fn(floats) => withBuffer(toGpu([true, false, true]), fn(flags) => withBuffer(toGpu([-3, 0, 7, -1]), fn(signed) => withBuffer(toGpu([4611686018427387904, -4611686018427387904]), fn(wide) => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 fn literalCaseUploaded(ints, floats, flags, signed, wide) = checkAll("buffer literals", [
-    lengthIs(ints, 5), lengthIs(floats, 4), lengthIs(flags, 3), lengthIs(signed, 4), lengthIs(wide, 2), uploaded([9], fn(up) => lengthIs(up, 1)), emptyUploads(), widthOf(ints) == 5, elementIs(ints, 0, 0, 3), elementIs(ints, 1, 0, 1), elementIs(ints, 2, 0, 4), elementIs(ints, 3, 0, 1), elementIs(ints, 4, 0, 5), lastIs(ints, 0, 5), elementIs(floats, 0, 9.5, 0.25), elementIs(floats, 1, 9.5, 0.5), elementIs(floats, 2, 9.5, 0.75), elementIs(floats, 3, 9.5, 1.0), lastIs(floats, 9.5, 1.0), elementIs(flags, 0, false, true), elementIs(flags, 1, true, false), elementIs(flags, 2, false, true), lastIs(flags, false, true), elementIs(signed, 0, 0, -3), elementIs(signed, 1, 9, 0), elementIs(signed, 2, 0, 7), elementIs(signed, 3, 0, -1), elementIs(wide, 0, 0, 4611686018427387904), elementIs(wide, 1, 0, -4611686018427387904), uploaded([9], fn(up) => elementIs(up, 0, 0, 9)), sumIs(ints, 14), sumIs(signed, 3), floatSumsTo(floats, 0.0, 2.5), oddCountIs(flags, 2)
+    lengthIs(ints, 5), lengthIs(floats, 4), lengthIs(flags, 3), lengthIs(signed, 4), lengthIs(wide, 2), uploaded([9], fn(up) => lengthIs(up, 1)), emptyUploads(), widthOf(ints) == 5, elementsFrom(ints, 0, 0, [3, 1, 4, 1, 5]), lastIs(ints, 0, 5), elementsFrom(floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs(floats, 9.5, 1.0), elementIs(flags, 0, false, true), elementIs(flags, 1, true, false), elementIs(flags, 2, false, true), lastIs(flags, false, true), elementIs(signed, 0, 0, -3), elementIs(signed, 1, 9, 0), elementIs(signed, 2, 0, 7), elementIs(signed, 3, 0, -1), elementIs(wide, 0, 0, 4611686018427387904), elementIs(wide, 1, 0, -4611686018427387904), uploaded([9], fn(up) => elementIs(up, 0, 0, 9)), sumIs(ints, 14), sumIs(signed, 3), floatSumsTo(floats, 0.0, 2.5), oddCountIs(flags, 2)
 ])
 /// listCopyCase pins [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists.
 fn listCopyCase() = withIndices(0, fn(indices0) => listCopyWith(indices0))
@@ -100,7 +92,7 @@ fn listCopyWith(indices0) = {
     let source = [2, 4, 6, 8]
     let lone = [11]
     withBuffer(toGpu(source), fn(asCopy) => withBuffer(fromGpu(asCopy), fn(read0) => withBuffer(toGpu(read0), fn(relayed) => withBuffer(fromGpu(indices0), fn(none) => checkAll("list copy path", [
-    listLengthIs(source, 4), lengthIs(asCopy, 4), elementIs(asCopy, 0, 0, 2), elementIs(asCopy, 1, 0, 4), elementIs(asCopy, 2, 0, 6), elementIs(asCopy, 3, 0, 8), lastIs(asCopy, 0, 8), misses(asCopy, 4), misses(asCopy, -1), rendersAs(asCopy, 0, "2"), sumIs(asCopy, 20), lengthIs(relayed, 4), elementIs(relayed, 2, 0, 6), sumIs(relayed, 20), uploaded(lone, fn(up) => lengthIs(up, 1)), uploaded(lone, fn(up) => elementIs(up, 0, 0, 11)), uploaded(lone, fn(up) => lastIs(up, 0, 11)), listLengthIs(none, 0), uploaded(none, fn(up) => lengthIs(up, 0)), uploaded(none, fn(up) => sumsTo(up, 7, 7)), uploaded(source, fn(up) => widthOf(up) == widthOf(asCopy)), uploaded(source, fn(up) => gpuSatisfies(gpuFold(up, 0, addInts), fn(one) => gpuSatisfies(gpuFold(asCopy, 0, addInts), fn(other) => one == other)))
+    listLengthIs(source, 4), lengthIs(asCopy, 4), elementsFrom(asCopy, 0, 0, [2, 4, 6, 8]), lastIs(asCopy, 0, 8), misses(asCopy, 4), misses(asCopy, -1), rendersAs(asCopy, 0, "2"), sumIs(asCopy, 20), lengthIs(relayed, 4), elementIs(relayed, 2, 0, 6), sumIs(relayed, 20), uploaded(lone, fn(up) => lengthIs(up, 1)), uploaded(lone, fn(up) => elementIs(up, 0, 0, 11)), uploaded(lone, fn(up) => lastIs(up, 0, 11)), listLengthIs(none, 0), uploaded(none, fn(up) => lengthIs(up, 0)), uploaded(none, fn(up) => sumsTo(up, 7, 7)), uploaded(source, fn(up) => widthOf(up) == widthOf(asCopy)), uploaded(source, fn(up) => gpuSatisfies(gpuFold(up, 0, addInts), fn(one) => gpuSatisfies(gpuFold(asCopy, 0, addInts), fn(other) => one == other)))
 ])))))
 }
 /// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing.
@@ -158,7 +150,7 @@ fn aliasCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(source) => withBuffer(double
 }))
 /// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size.
 fn fusionCase() = withBuffer(toGpu(range(0, 6)), fn(straight) => withBuffer(toGpu(range(1, 5) |> map(square)), fn(squares) => withBuffer(toGpu(range(4, 5)), fn(lone) => withBuffer(toGpu(range(3, 3)), fn(empty) => checkAll("iterator fusion fills the buffer directly", [
-    lengthIs(straight, 6), elementIs(straight, 0, 9, 0), elementIs(straight, 5, 0, 5), lastIs(straight, 0, 5), misses(straight, 6), misses(straight, -1), lengthIs(squares, 4), elementIs(squares, 0, 0, 1), elementIs(squares, 1, 0, 4), elementIs(squares, 2, 0, 9), elementIs(squares, 3, 0, 16), lastIs(squares, 0, 16), misses(squares, 4), lengthIs(lone, 1), elementIs(lone, 0, 0, 4), misses(lone, 1), lengthIs(empty, 0), misses(empty, 0), sumsTo(empty, 5, 5), widthOf(empty) == 0, readsBack(straight, 6), readsBackAt(squares, 1, 0, 4), roundTripSumsTo(squares, 30)
+    lengthIs(straight, 6), elementIs(straight, 0, 9, 0), elementIs(straight, 5, 0, 5), lastIs(straight, 0, 5), misses(straight, 6), misses(straight, -1), lengthIs(squares, 4), elementsFrom(squares, 0, 0, [1, 4, 9, 16]), lastIs(squares, 0, 16), misses(squares, 4), lengthIs(lone, 1), elementIs(lone, 0, 0, 4), misses(lone, 1), lengthIs(empty, 0), misses(empty, 0), sumsTo(empty, 5, 5), widthOf(empty) == 0, readsBack(straight, 6), readsBackAt(squares, 1, 0, 4), roundTripSumsTo(squares, 30)
 ])))))
 /// intKernelCase pipes a buffer through a named kernel and folds it away, including over negative elements and over no elements at all.
 fn intKernelCase() = withIndices(0, fn(indices0) => intKernelWith(indices0))

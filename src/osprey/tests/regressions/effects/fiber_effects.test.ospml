@@ -240,68 +240,46 @@ awaitReplaysOneEffectfulRunCase () =
     mut performs = 0
     mut lastAmount = 0
 
-    (** One spawn, THREE awaits. The cell walks 0 -> 7 and stops there. *)
-    replayed =
+    (** Every region installs the same tally arm. *)
+    underTally = \work =>
         handle Tally
             add amount =>
-                performs := performs + 1 
-                total := total + amount 
+                performs := performs + 1
+                total := total + amount
                 lastAmount := amount
                 total
+        work ()
+
+    (** One spawn, THREE awaits. The cell walks 0 -> 7 and stops there. *)
+    replayed = underTally (\() =>
         f = spawn (tallyJob 7)
         a1 = await f
         a2 = await f
         a3 = await f
-        a1 + a2 + a3 
+        a1 + a2 + a3)
 
     (** The identity amount: the run leaves the cell where it was, and both awaits
         still answer the total the single body produced. 7 -> 7. *)
-    zeroRun =
-        handle Tally
-            add amount =>
-                performs := performs + 1 
-                total := total + amount 
-                lastAmount := amount
-                total
+    zeroRun = underTally (\() =>
         fz = spawn (tallyJob 0)
-        (await fz) + (await fz) 
+        (await fz) + (await fz))
 
     (** A negative amount walks the shared cell back. 7 -> 2. *)
-    negRun =
-        handle Tally
-            add amount =>
-                performs := performs + 1 
-                total := total + amount 
-                lastAmount := amount
-                total
-        await (spawn (tallyJob (0 - 5 )))
+    negRun = underTally (\() => await (spawn (tallyJob (0 - 5))))
 
     (** Three spawn SITES, each awaited before the next is spawned, so arrival is
         program order. "Each spawn site allocates a distinct capture cell", so the
         captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17. *)
-    stepped =
-        handle Tally
-            add amount =>
-                performs := performs + 1 
-                total := total + amount 
-                lastAmount := amount
-                total
+    stepped = underTally (\() =>
         base = 4
         s1 = await (spawn (tallyJob base))
         s2 = await (spawn (tallyJob (base + 1 )))
         s3 = await (spawn (tallyJob (base + 2 )))
-        s1 * 10000 + s2 * 100 + s3 
+        s1 * 10000 + s2 * 100 + s3)
 
     (** ONE fiber body performing twice, the second nested inside the first arm's
         round trip. 17 -> 18 -> 17, and the body answers 18 + 17. *)
-    twice =
-        handle Tally
-            add amount =>
-                performs := performs + 1 
-                total := total + amount 
-                lastAmount := amount
-                total
-        await (spawn (tallyTwice (1, 0 - 1 )))
+    twice = underTally (\() => await (spawn (tallyTwice (1, 0 - 1))))
 
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll "one body run answers every await" [
@@ -759,69 +737,44 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     mut innerHits = 0
     mut stampHits = 0
 
-    (** Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
-        enclosing one. tag 3 => "outer3" and 300. *)
-    inner =
+    (** The enclosing region handles both operations. *)
+    outerRegion = \work =>
         handle Relay
             fetch tag =>
-                outerHits := outerHits + 1 
-                tag * 2 
+                outerHits := outerHits + 1
+                tag * 2
             stamp tag =>
-                stampHits := stampHits + 1 
+                stampHits := stampHits + 1
                 "outer${tag}"
+        work ()
+
+    (** The partial inner region handles fetch and lets stamp fall through. *)
+    innerFetch = \work =>
         handle Relay
             fetch tag =>
-                innerHits := innerHits + 1 
-                tag * 100 
-        await (spawn (relayBoth 3))
+                innerHits := innerHits + 1
+                tag * 100
+        work ()
+
+    (** The inner region answers 300 and the outer region labels it "outer3". *)
+    inner = outerRegion (\() => innerFetch (\() => await (spawn (relayBoth 3))))
 
     (** The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6. *)
-    outerOnly =
-        handle Relay
-            fetch tag =>
-                outerHits := outerHits + 1 
-                tag * 2 
-            stamp tag =>
-                stampHits := stampHits + 1 
-                "outer${tag}"
-        await (spawn (relayBoth 3))
+    outerOnly = outerRegion (\() => await (spawn (relayBoth 3)))
 
     (** The inner region covers only the fiber spawned INSIDE it; the fiber
         spawned after it is back on the enclosing arm. 400 then 8. *)
-    restored =
-        handle Relay
-            fetch tag =>
-                outerHits := outerHits + 1 
-                tag * 2 
-            stamp tag =>
-                stampHits := stampHits + 1 
-                "outer${tag}"
-        shadowed =
-            handle Relay
-                fetch tag =>
-                    innerHits := innerHits + 1 
-                    tag * 100 
-            await (spawn (relayBoth 4))
+    restored = outerRegion (\() =>
+        shadowed = innerFetch (\() => await (spawn (relayBoth 4)))
         plain = await (spawn (relayBoth 4))
-        "${shadowed}/${plain}"
+        "${shadowed}/${plain}")
 
     (** Two fibers under one inner region, one carrying the identity tag and one a
         negative tag: 0 => 0 and -2 => -200. *)
-    paired =
-        handle Relay
-            fetch tag =>
-                outerHits := outerHits + 1 
-                tag * 2 
-            stamp tag =>
-                stampHits := stampHits + 1 
-                "outer${tag}"
-        handle Relay
-            fetch tag =>
-                innerHits := innerHits + 1 
-                tag * 100 
+    paired = outerRegion (\() => innerFetch (\() =>
         a = await (spawn (relayBoth 0))
         b = await (spawn (relayBoth (0 - 2 )))
-        "${a}+${b}"
+        "${a}+${b}"))
 
     // "outer3=6" is the answer the enclosing arm would have given the fiber that
     // was spawned inside the inner region.

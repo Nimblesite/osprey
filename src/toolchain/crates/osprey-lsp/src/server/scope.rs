@@ -31,14 +31,27 @@ pub(crate) fn lock(engine: &OspreyEngine) -> MutexGuard<'_, Scope> {
     engine.scope.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// The folder paths the entries of `folders` name.
+fn folder_paths(folders: &Value) -> impl Iterator<Item = PathBuf> + '_ {
+    folders
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|folder| folder["uri"].as_str().and_then(file_path))
+}
+
+/// The strings `value` holds when it holds an array.
+fn strings(value: Option<&Value>) -> impl Iterator<Item = &str> {
+    value
+        .into_iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .filter_map(Value::as_str)
+}
+
 impl Scope {
     pub(super) fn initialize(&mut self, params: &Value) {
-        self.folders = params["workspaceFolders"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|folder| folder["uri"].as_str().and_then(file_path))
-            .collect();
+        self.folders = folder_paths(&params["workspaceFolders"]).collect();
         if self.folders.is_empty() {
             self.folders
                 .extend(params["rootUri"].as_str().and_then(file_path));
@@ -103,13 +116,7 @@ impl Scope {
                 self.folders.retain(|folder| *folder != path);
             }
         }
-        self.folders.extend(
-            event["added"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter_map(|folder| folder["uri"].as_str().and_then(file_path)),
-        );
+        self.folders.extend(folder_paths(&event["added"]));
         self.folders.sort();
         self.folders.dedup();
     }
@@ -125,13 +132,7 @@ impl Scope {
     fn roots(&self) -> Vec<PathBuf> {
         match self.diagnostics.get("scope").and_then(Value::as_str) {
             Some("openFiles") => Vec::new(),
-            Some("roots") => self
-                .diagnostics
-                .get("roots")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(Value::as_str)
+            Some("roots") => strings(self.diagnostics.get("roots"))
                 .flat_map(|root| resolve_root(root, &self.folders))
                 .collect(),
             _ => self
@@ -198,13 +199,7 @@ impl Scope {
     }
 
     fn exclude_globs(&self) -> Vec<&str> {
-        self.diagnostics
-            .get("exclude")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect()
+        strings(self.diagnostics.get("exclude")).collect()
     }
 }
 

@@ -67,10 +67,6 @@ oobMessage : (GpuBuffer<int>, int) -> string
 oobMessage (buf, i) = match gpuGet (buf, i)
     Success value => "value ${value}"
     Error message => message
-(** [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength b == expected
-(** One [GPU-GET] read, or `fallback` when `index` misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet (b, index) ?: fallback) == expected
 (** One gpuGet outcome as text, so an element's own type stays visible. *)
 rendersAs (b, index, text) = oobMessage (b, index) == text
 (** [GPU-FOLD] with sumI: `b` from `seed` totals `expected`. *)
@@ -117,7 +113,7 @@ zipTypeCase () = withBuffer(toGpu ([1, 2, 3, 4]), \first => withBuffer(toGpu ([3
 ])))))))))))))
 (** Pin the three shapes of a compaction — every element kept, none kept, alternating — and reads the kept run back element by element so [GPU-FILTER]'s source-order guarantee is checked, not just its count. *)
 filterKeepCase () = withBuffer(toGpu ([9, 4, 7, 2, 5, 8]), \src => withBuffer(gpuFilter(src, keepEvery), \kept => withBuffer(gpuFilter(src, isEven), \alternates => checkAll("filter keep sets", [
-    lengthIs (kept, 6), elementIs (kept, 0, 0, 9), elementIs (kept, 5, 0, 8), sumsTo (kept, 0, 35), gpuLengthIs(gpuFilter(src, keepNone), 0), lengthIs (alternates, 3), elementIs (alternates, 0, 0, 4), elementIs (alternates, 1, 0, 2), elementIs (alternates, 2, 0, 8), elementIs (alternates, 3, 55, 55), gpuLengthIs(gpuFilter(src, isOddP), 3), gpuSatisfies(gpuFilter(src, isOddP), \odd => hornerTo (odd, 0, 975))
+    lengthIs (kept, 6), elementIs (kept, 0, 0, 9), elementIs (kept, 5, 0, 8), sumsTo (kept, 0, 35), gpuLengthIs(gpuFilter(src, keepNone), 0), lengthIs (alternates, 3), elementsFrom (alternates, 0, 0, [4, 2, 8]), elementIs (alternates, 3, 55, 55), gpuLengthIs(gpuFilter(src, isOddP), 3), gpuSatisfies(gpuFilter(src, isOddP), \odd => hornerTo (odd, 0, 975))
 ]))))
 (** Feed the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the predicate. *)
 filterPredicateCase () = withIndices (10, \indices10 => withIndices (6, \indices6 => filterPredicateWith (indices10, indices6)))
@@ -127,15 +123,15 @@ filterPredicateWith (indices10, indices6) = withBuffer(toGpu ([0.0 - 1.5, 0.0, 2
 (** Read [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the whole-buffer fold and index n is out of bounds. *)
 scanPrefixCase () = withIndices (5, \indices5 => scanPrefixWith (indices5))
 scanPrefixWith (indices5) = withBuffer(toGpu ([1, 2, 3, 4, 5]), \value => withBuffer(gpuScan(value, 0, sumI), \sums => withBuffer(gpuScan(sums, 0, sumI), \twice => withBuffer(toGpu ([1, 2, 3, 4]), \four => withBuffer(gpuScan(four, 1, mulI), \products => checkAll("inclusive prefix", [
-    lengthIs (sums, 5), elementIs (sums, 0, 0, 1), elementIs (sums, 1, 0, 3), elementIs (sums, 2, 0, 6), elementIs (sums, 3, 0, 10), elementIs (sums, 4, 0, 15), elementIs (sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), \total => elementIs (sums, 4, 0, total)), elementIs (twice, 4, 0, 35), lengthIs (products, 4), elementIs (products, 3, 0, 24), gpuSatisfies(gpuScan(indices5, 0, sumI), \scanned => elementIs (scanned, 4, 0, 10))
+    lengthIs (sums, 5), elementsFrom (sums, 0, 0, [1, 3, 6, 10, 15]), elementIs (sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), \total => elementIs (sums, 4, 0, total)), elementIs (twice, 4, 0, 35), lengthIs (products, 4), elementIs (products, 3, 0, 24), gpuSatisfies(gpuScan(indices5, 0, sumI), \scanned => elementIs (scanned, 4, 0, 10))
 ]))))))
 (** Pin the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch. *)
 scanSeedCase () = withBuffer(toGpu ([1, 2, 3]), \three => withBuffer(gpuScan(three, 10, sumI), \seeded => withBuffer(toGpu ([3, 1, 4, 1, 5, 9, 2, 6]), \source => withBuffer(gpuScan(source, 0, maxI), \running => withBuffer(toGpu ([1, 3, 4, 7]), \flagSource => withBuffer(gpuMap(flagSource, isEven), \flags => withBuffer(gpuScan(flags, false, orB), \latched => checkAll("scan seeds", [
-    elementIs (seeded, 0, 0, 11), elementIs (seeded, 1, 0, 13), elementIs (seeded, 2, 0, 16), elementIs (running, 0, 0, 3), elementIs (running, 1, 0, 3), elementIs (running, 3, 0, 4), elementIs (running, 7, 0, 9), sumsTo (running, 0, 46), gpuSatisfies(toGpu ([3, 1, 4]), \source => gpuSatisfies(gpuScan(source, 100, maxI), \scanned => sumsTo (scanned, 0, 300))), lengthIs (latched, 4), elementIs (latched, 1, true, false), trueCountIs (latched, 2)
+    elementsFrom (seeded, 0, 0, [11, 13, 16]), elementIs (running, 0, 0, 3), elementIs (running, 1, 0, 3), elementIs (running, 3, 0, 4), elementIs (running, 7, 0, 9), sumsTo (running, 0, 46), gpuSatisfies(toGpu ([3, 1, 4]), \source => gpuSatisfies(gpuScan(source, 100, maxI), \scanned => sumsTo (scanned, 0, 300))), lengthIs (latched, 4), elementIs (latched, 1, true, false), trueCountIs (latched, 2)
 ]))))))))
 (** Pin the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers. *)
 orderCase () = withBuffer(toGpu ([1, 2, 3, 4]), \digitsUp => withBuffer(gpuScan(digitsUp, 0, horner), \running => checkAll("traversal order", [
-    hornerTo (digitsUp, 0, 1234), gpuSatisfies(toGpu ([4, 3, 2, 1]), \digitsDown => hornerTo (digitsDown, 0, 4321)), hornerTo (digitsUp, 9, 91234), gpuSatisfies(toGpu ([1, 2, 3]), \up => differencesTo (up, 100, 94)), gpuSatisfies(toGpu ([3, 2, 1]), \down => differencesTo (down, 100, 94)), elementIs (running, 0, 0, 1), elementIs (running, 1, 0, 12), elementIs (running, 2, 0, 123), elementIs (running, 3, 0, 1234), gpuSatisfies(gpuFold(digitsUp, 0, horner), \total => elementIs (running, 3, 0, total)), gpuSatisfies(toGpu ([1, 2, 3]), \source => gpuSatisfies(gpuScan(source, 10, subI), \scanned => sumsTo (scanned, 0, 20))), gpuSatisfies(toGpu ([1, 2, 3]), \source => gpuSatisfies(gpuScan(source, 0, subI), \scanned => sumsTo (scanned, 10, 0))), sumsTo (running, 0, 1370)
+    hornerTo (digitsUp, 0, 1234), gpuSatisfies(toGpu ([4, 3, 2, 1]), \digitsDown => hornerTo (digitsDown, 0, 4321)), hornerTo (digitsUp, 9, 91234), gpuSatisfies(toGpu ([1, 2, 3]), \up => differencesTo (up, 100, 94)), gpuSatisfies(toGpu ([3, 2, 1]), \down => differencesTo (down, 100, 94)), elementsFrom (running, 0, 0, [1, 12, 123, 1234]), gpuSatisfies(gpuFold(digitsUp, 0, horner), \total => elementIs (running, 3, 0, total)), gpuSatisfies(toGpu ([1, 2, 3]), \source => gpuSatisfies(gpuScan(source, 10, subI), \scanned => sumsTo (scanned, 0, 20))), gpuSatisfies(toGpu ([1, 2, 3]), \source => gpuSatisfies(gpuScan(source, 0, subI), \scanned => sumsTo (scanned, 10, 0))), sumsTo (running, 0, 1370)
 ])))
 (** Run pipelines of five and more dependent stages: each one allocates a fresh buffer the next stage consumes, so a stage that read a stale length or a stale pointer would corrupt every number below. *)
 deepChainCase () = withIndices (12, \indices12 => withIndices (8, \indices8 => withIndices (20, \indices20 => deepChainWith (indices12, indices8, indices20))))
@@ -169,7 +165,7 @@ iotaWith (indices5, indices1, indices0, indices3) =
 (** Pin typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a buffer is pure and therefore legal inside one. *)
 getCase () = withIndices (3, \indices3 => getWith (indices3))
 getWith (indices3) = withBuffer(toGpu ([7, 8, 9]), \ints => withBuffer(toGpu ([1.5, 2.5]), \floats => withBuffer(gpuMap(indices3, \i => gpuGet (ints, (2 - i) ) ?: 0), \reversed => checkAll("get", [
-    elementIs (ints, 0, 0, 7), elementIs (ints, 1, 0, 8), elementIs (ints, 2, 0, 9), elementIs (floats, 0, 0.0, 1.5), elementIs (floats, 1, 0.0, 2.5), elementIs (ints, 3, 999, 999), elementIs (ints, (0 - 1), 999, 999), elementIs (floats, 2, 9.5, 9.5), rendersAs (ints, 0, "value 7"), rendersAs (ints, 3, "gpuGet: index out of bounds"), elementIs (reversed, 0, 0, 9), hornerTo (reversed, 0, 987)
+    elementsFrom (ints, 0, 0, [7, 8, 9]), elementIs (floats, 0, 0.0, 1.5), elementIs (floats, 1, 0.0, 2.5), elementIs (ints, 3, 999, 999), elementIs (ints, (0 - 1), 999, 999), elementIs (floats, 2, 9.5, 9.5), rendersAs (ints, 0, "value 7"), rendersAs (ints, 3, "gpuGet: index out of bounds"), elementIs (reversed, 0, 0, 9), hornerTo (reversed, 0, 987)
 ]))))
 (** Pin backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE]. *)
 deviceCase () = checkAll("device", [

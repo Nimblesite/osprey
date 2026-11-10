@@ -200,6 +200,20 @@ fn static_effect_names_hover_at_declaration_handler_and_perform() {
     );
 }
 
+/// Hover the `ask` (line 3) and `tell` (line 5) operations `src` declares:
+/// `ask` must carry its own doc, not `tell`'s, and the `tell` hover comes back
+/// for the caller's own assertion.
+fn effect_operation_hovers(src: &str, uri: &str) -> String {
+    let ask = hover_at(src, uri, 3, "ask");
+    let tell = hover_at(src, uri, 5, "tell");
+    crate::testkit::contents(
+        &ask,
+        &["Ask the operator a question"],
+        &["Announce a result"],
+    );
+    tell
+}
+
 /// Sibling operations must hover with their OWN prose. Before
 /// [DOC-EFFECT-OP] every operation was handed the owning effect's doc, so
 /// `ask` and `tell` rendered identically and the hover said nothing about
@@ -214,14 +228,7 @@ fn ml_effect_operations_hover_with_their_own_docs() {
         "    (** Announce a result without expecting a reply. *)\n",
         "    tell : string => Unit\n",
     );
-    let ask = hover_at(src, "file:///p.ospml", 3, "ask");
-    let tell = hover_at(src, "file:///p.ospml", 5, "tell");
-
-    crate::testkit::contents(
-        &ask,
-        &["Ask the operator a question"],
-        &["Announce a result"],
-    );
+    let tell = effect_operation_hovers(src, "file:///p.ospml");
     crate::testkit::contents(&tell, &["Announce a result"], &["Ask the operator"]);
 }
 
@@ -237,14 +244,7 @@ fn default_effect_operations_hover_with_their_own_docs() {
         "    tell: fn(string) -> Unit\n",
         "}\n",
     );
-    let ask = hover_at(src, "file:///p.osp", 3, "ask");
-    let tell = hover_at(src, "file:///p.osp", 5, "tell");
-
-    crate::testkit::contents(
-        &ask,
-        &["Ask the operator a question"],
-        &["Announce a result"],
-    );
+    let tell = effect_operation_hovers(src, "file:///p.osp");
     shows(&tell, &["Announce a result"]);
 }
 

@@ -54,6 +54,14 @@ pub(super) fn parallel_probe_fixture(
     (probe, driver)
 }
 
+/// Applies the `OSPREY_TEST_JOBS` override when `jobs` is given.
+#[cfg(unix)]
+fn apply_jobs(cmd: &mut Command, jobs: Option<&str>) {
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+}
+
 #[cfg(unix)]
 pub(super) fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
     let mut cmd = osprey();
@@ -61,9 +69,7 @@ pub(super) fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str
         .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
         .env("OSPREY_CC", driver)
         .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
-    if let Some(value) = jobs {
-        let _ = cmd.env("OSPREY_TEST_JOBS", value);
-    }
+    apply_jobs(&mut cmd, jobs);
     finish(&mut cmd)
 }
 
@@ -76,9 +82,7 @@ pub(super) fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
         .current_dir(repo_root())
         .env("OSPREY_ROOT", root)
         .env("OSPREY_PARALLEL_PROBE", root.join("probe"));
-    if let Some(value) = jobs {
-        let _ = cmd.env("OSPREY_TEST_JOBS", value);
-    }
+    apply_jobs(&mut cmd, jobs);
     finish(&mut cmd)
 }
 
@@ -299,16 +303,24 @@ fn a_verdict_declaring_payload_free_states_reports_each_of_them() {
 /// [TESTING-SKIP-REASON] a skip that NAMES a reason stays a warning and keeps
 /// the suite green — the two strengths are decided by the reason alone, not by
 /// whether the `Verdict` declaration gives `Skip` a payload at all.
+/// Writes one `Skip`-verdict suite `file` in a fresh `tag` dir and runs it;
+/// `reason` is the only varying input of the case.
+fn run_skip_case(tag: &str, file: &str, reason: &str) -> Out {
+    let dir = temp_dir(tag);
+    let _ = write_in(
+        &dir,
+        file,
+        &format!(
+            "type Verdict = Pass | Fail(string) | Skip(string)\n\
+             test(\"parked\", fn() => Skip(\"{reason}\"))\n"
+        ),
+    );
+    run_args(&["test", dir.to_string_lossy().as_ref()])
+}
+
 #[test]
 fn a_reasoned_skip_warns_while_an_unexplained_one_fails_the_suite() {
-    let reasoned = temp_dir("skip-reasoned");
-    let _ = write_in(
-        &reasoned,
-        "ok.test.osp",
-        "type Verdict = Pass | Fail(string) | Skip(string)\n\
-         test(\"parked\", fn() => Skip(\"blocked on #123\"))\n",
-    );
-    let green = run_args(&["test", reasoned.to_string_lossy().as_ref()]);
+    let green = run_skip_case("skip-reasoned", "ok.test.osp", "blocked on #123");
     assert_eq!(green.code, Some(0), "{}\n{}", green.stdout, green.stderr);
     assert!(
         green
@@ -320,14 +332,7 @@ fn a_reasoned_skip_warns_while_an_unexplained_one_fails_the_suite() {
 
     // The SAME declaration with an empty reason is the error case: the author
     // had somewhere to write the cause and left it blank.
-    let blank = temp_dir("skip-blank");
-    let _ = write_in(
-        &blank,
-        "blank.test.osp",
-        "type Verdict = Pass | Fail(string) | Skip(string)\n\
-         test(\"parked\", fn() => Skip(\"\"))\n",
-    );
-    let red = run_args(&["test", blank.to_string_lossy().as_ref()]);
+    let red = run_skip_case("skip-blank", "blank.test.osp", "");
     assert_eq!(red.code, Some(1), "{}\n{}", red.stdout, red.stderr);
     assert!(
         red.stderr

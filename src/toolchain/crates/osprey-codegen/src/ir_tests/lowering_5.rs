@@ -1,5 +1,18 @@
 use super::*;
 
+/// Every `alloca` in every defined function sits in its `entry` block: a slot
+/// in a later block is dynamic to LLVM, and the GC root pass rejects any
+/// function holding one. `what` names the slots in the assertion.
+fn assert_entry_allocas(ir: &str, what: &str) {
+    for function in ir.split("define ").skip(1) {
+        let mut entry = true;
+        for line in function.lines() {
+            entry &= !line.ends_with(':') || line == "entry:";
+            assert!(!line.contains(" = alloca ") || entry, "{what}: {line}");
+        }
+    }
+}
+
 #[test]
 fn ml_generic_slice_fold_specializes_its_callback() {
     let ir = ml_module(
@@ -27,16 +40,7 @@ fn string_cursor_and_parse_out_slots_are_entry_allocas() {
         &ir,
         &["byte_at", "codepoint_at", "parse_int", "parse_float"],
     );
-    for function in ir.split("define ").skip(1) {
-        let mut entry = true;
-        for line in function.lines() {
-            entry &= !line.ends_with(':') || line == "entry:";
-            assert!(
-                !line.contains(" = alloca ") || entry,
-                "loop-local slot: {line}"
-            );
-        }
-    }
+    assert_entry_allocas(&ir, "loop-local slot");
 }
 
 /// Map key and value iteration slots, and structural map equality's, are entry
@@ -50,16 +54,7 @@ fn map_iteration_slots_are_entry_allocas() {
         print("${keys(3)} ${same(2)}")"#,
     );
     shows(&ir, &["osprey_map_iter_next"]);
-    for function in ir.split("define ").skip(1) {
-        let mut entry = true;
-        for line in function.lines() {
-            entry &= !line.ends_with(':') || line == "entry:";
-            assert!(
-                !line.contains(" = alloca ") || entry,
-                "slot outside the entry block: {line}"
-            );
-        }
-    }
+    assert_entry_allocas(&ir, "slot outside the entry block");
 }
 
 #[test]

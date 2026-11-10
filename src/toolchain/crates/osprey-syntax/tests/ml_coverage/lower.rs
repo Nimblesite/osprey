@@ -66,20 +66,8 @@ fn constructor_pattern_with_payload_fields_lowers() {
         "r =\n    match res\n        Success value => value\n        Error message => message\n",
     ) {
         Expr::Match { arms, .. } => {
-            match &arms[0].pattern {
-                Pattern::Constructor { name, fields, .. } => {
-                    assert_eq!(name, "Success");
-                    assert_eq!(fields, &vec!["value".to_owned()]);
-                }
-                other => panic!("expected a constructor pattern, got {other:?}"),
-            }
-            match &arms[1].pattern {
-                Pattern::Constructor { name, fields, .. } => {
-                    assert_eq!(name, "Error");
-                    assert_eq!(fields, &vec!["message".to_owned()]);
-                }
-                other => panic!("expected a constructor pattern, got {other:?}"),
-            }
+            assert_constructor_pattern(&arms[0].pattern, "Success", "value");
+            assert_constructor_pattern(&arms[1].pattern, "Error", "message");
         }
         other => panic!("expected a match, got {other:?}"),
     }
@@ -382,4 +370,15 @@ fn empty_interpolation_fragment_falls_back_to_an_identifier() {
 #[test]
 fn orphan_signature_without_a_matching_binding_is_rejected() {
     assert_ml_error("foo : int\nbar = 1\n", &["immediately followed"]);
+}
+
+/// A lowered arm is a constructor pattern binding exactly `field` as its payload.
+fn assert_constructor_pattern(pattern: &Pattern, constructor: &str, field: &str) {
+    match pattern {
+        Pattern::Constructor { name, fields, .. } => {
+            assert_eq!(name, constructor);
+            assert_eq!(fields, &vec![field.to_owned()]);
+        }
+        other => panic!("expected a constructor pattern, got {other:?}"),
+    }
 }

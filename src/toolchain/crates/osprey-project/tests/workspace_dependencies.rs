@@ -10,7 +10,7 @@
     reason = "test assertions: an unwritable fixture is a test failure, not a production panic"
 )]
 
-use osprey_project::{discover, load_and_assemble};
+use osprey_project::{discover, load_and_assemble, AssembledProject};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -54,12 +54,28 @@ impl Workspace {
         fs::write(manifest, text).expect("manifest");
         root
     }
+
+    /// A package named `directory`, declaring `@o/<directory>`, that depends on
+    /// a sibling `json` package whose own manifest declares `key`.
+    fn depending_on_json(&self, directory: &str, key: &str) -> PathBuf {
+        let _json = self.package("json", key, "");
+        let dependency = format!("@o/{directory}");
+        self.package_depending(directory, &dependency, &["@o/json"])
+    }
 }
 
 impl Drop for Workspace {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+fn write_source(root: &Path, relative: &str, body: &str) {
+    fs::write(root.join(relative), body).expect("source");
+}
+
+fn assembled(root: &Path) -> AssembledProject {
+    load_and_assemble(root).unwrap_or_else(|errors| panic!("{errors:?}"))
 }
 
 fn found(root: &Path) -> Vec<String> {
@@ -92,8 +108,7 @@ fn found(root: &Path) -> Vec<String> {
 #[test]
 fn a_package_reaches_the_sibling_packages_it_depends_on_transitively() {
     let workspace = Workspace::new("transitive");
-    let _json = workspace.package("json", "@o/json", "");
-    let _graphics = workspace.package_depending("graphics", "@o/graphics", &["@o/json"]);
+    let _graphics = workspace.depending_on_json("graphics", "@o/json");
     let _unrelated = workspace.package("unrelated", "@o/unrelated", "");
     let native = workspace.package_depending("native", "@o/native", &["@o/graphics"]);
     assert_eq!(
@@ -113,8 +128,7 @@ fn a_dependency_cycle_ends_and_keeps_each_package_once() {
 #[test]
 fn a_sibling_directory_answers_only_to_the_key_its_own_manifest_declares() {
     let workspace = Workspace::new("identity");
-    let _impostor = workspace.package("json", "@other/json", "");
-    let native = workspace.package_depending("native", "@o/native", &["@o/json"]);
+    let native = workspace.depending_on_json("native", "@other/json");
     assert_eq!(found(&native), ["native/lib.ospml"]);
 }
 
@@ -128,7 +142,7 @@ fn a_sibling_without_a_package_table_is_no_dependency() {
         "[project]\nname = \"@o/json\"\nsource_roots = [\"src\"]\n",
     )
     .expect("manifest");
-    fs::write(plain.join("src/lib.ospml"), "namespace json\nwidth x = x\n").expect("source");
+    write_source(&plain, "src/lib.ospml", "namespace json\nwidth x = x\n");
     let native = workspace.package_depending("native", "@o/native", &["@o/json"]);
     assert_eq!(found(&native), ["native/lib.ospml"]);
 }
@@ -153,8 +167,7 @@ fn a_dependency_with_its_own_python_sources_brings_them() {
 #[test]
 fn an_installed_release_and_a_declared_path_stay_the_solvers_business() {
     let workspace = Workspace::new("installed");
-    let _json = workspace.package("json", "@o/json", "");
-    let installed = workspace.package_depending("installed", "@o/installed", &["@o/json"]);
+    let installed = workspace.depending_on_json("installed", "@o/json");
     fs::create_dir_all(installed.join(".osprey/packages/@o/json/digest")).expect("install");
     assert_eq!(found(&installed), ["installed/lib.ospml"]);
 
@@ -169,8 +182,7 @@ fn an_installed_release_and_a_declared_path_stay_the_solvers_business() {
 #[test]
 fn a_root_the_manifest_already_lists_is_not_read_twice() {
     let workspace = Workspace::new("listed");
-    let _json = workspace.package("json", "@o/json", "");
-    let native = workspace.package_depending("native", "@o/native", &["@o/json"]);
+    let native = workspace.depending_on_json("native", "@o/json");
     let manifest = native.join("osprey.toml");
     let text = fs::read_to_string(&manifest)
         .expect("manifest")
@@ -183,10 +195,10 @@ fn a_root_the_manifest_already_lists_is_not_read_twice() {
 fn a_namespace_shared_with_a_dependency_is_not_folder_drift() {
     let workspace = Workspace::new("drift");
     let json = workspace.package("json", "@o/json", "");
-    fs::write(json.join("src/lib.ospml"), "namespace ui\nwidth x = x\n").expect("source");
+    write_source(&json, "src/lib.ospml", "namespace ui\nwidth x = x\n");
     let native = workspace.package_depending("native", "@o/native", &["@o/json"]);
-    fs::write(native.join("src/lib.ospml"), "namespace ui\nheight x = x\n").expect("source");
-    let project = load_and_assemble(&native).unwrap_or_else(|errors| panic!("{errors:?}"));
+    write_source(&native, "src/lib.ospml", "namespace ui\nheight x = x\n");
+    let project = assembled(&native);
     assert_eq!(project.sources.len(), 2);
     assert!(
         project
@@ -198,12 +210,12 @@ fn a_namespace_shared_with_a_dependency_is_not_folder_drift() {
     );
 
     fs::create_dir_all(native.join("src/deep")).expect("own folder");
-    fs::write(
-        native.join("src/deep/more.ospml"),
+    write_source(
+        &native,
+        "src/deep/more.ospml",
         "namespace ui\ndepth x = x\n",
-    )
-    .expect("source");
-    let project = load_and_assemble(&native).unwrap_or_else(|errors| panic!("{errors:?}"));
+    );
+    let project = assembled(&native);
     assert!(
         project
             .warnings

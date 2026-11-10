@@ -287,18 +287,21 @@ impl CompilationInput {
         }
     }
 
-    pub(crate) fn project_warnings(&self) -> &[osprey_project::ProjectWarning] {
+    /// The assembled project, or `None` when this input is a plain script.
+    fn project(&self) -> Option<&AssembledProject> {
         match &self.unit {
-            CompilationUnit::Project(project) => &project.warnings,
-            CompilationUnit::Script(_) => &[],
+            CompilationUnit::Project(project) => Some(project),
+            CompilationUnit::Script(_) => None,
         }
     }
 
+    pub(crate) fn project_warnings(&self) -> &[osprey_project::ProjectWarning] {
+        self.project().map_or(&[], |p| p.warnings.as_slice())
+    }
+
     pub(crate) fn state_boundaries(&self) -> &[osprey_project::StateBoundary] {
-        match &self.unit {
-            CompilationUnit::Project(project) => &project.state_boundaries,
-            CompilationUnit::Script(_) => &[],
-        }
+        self.project()
+            .map_or(&[], |p| p.state_boundaries.as_slice())
     }
 
     /// Honor `-o`; otherwise put project artifacts beside the manifest and

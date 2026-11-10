@@ -167,18 +167,8 @@ impl Copies {
 
     /// A forwarding call passing named functions, redirected to its copy.
     fn redirected(&mut self, expression: &Expr) -> Option<Expr> {
-        let Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } = expression
-        else {
-            return None;
-        };
-        let Expr::Identifier(helper) = function.as_ref() else {
-            return None;
-        };
-        let bound = self.named_callbacks(helper, arguments, named_arguments.is_empty())?;
+        let (helper, arguments) = crate::callback::plain_call(expression)?;
+        let bound = self.named_callbacks(helper, arguments)?;
         let copy = self.copy(helper, &bound)?;
         let rest = arguments
             .iter()
@@ -211,17 +201,12 @@ impl Copies {
     }
 
     /// The forwarded arguments of a call to `helper` that name a function.
-    fn named_callbacks(
-        &self,
-        helper: &str,
-        arguments: &[Expr],
-        positional: bool,
-    ) -> Option<BTreeMap<usize, String>> {
+    fn named_callbacks(&self, helper: &str, arguments: &[Expr]) -> Option<BTreeMap<usize, String>> {
         let indices = self.forwarders.get(helper)?;
         let Some(Stmt::Function { parameters, .. }) = self.definitions.get(helper) else {
             return None;
         };
-        if !positional || arguments.len() != parameters.len() {
+        if arguments.len() != parameters.len() {
             return None;
         }
         let bound: BTreeMap<usize, String> = indices

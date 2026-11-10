@@ -1,7 +1,7 @@
 //! Executable documentation is checked through the public CLI.
 //! Implements [DOC-DOCTEST-HARNESS].
 
-use super::{run_file, temp_dir, temp_osp};
+use super::{run_file, run_source, temp_dir, temp_osp};
 
 /// The `--doctests` run exited 0 and reported exactly `tally`.
 fn assert_doc_tests(result: &super::Out, tally: &str) {
@@ -15,6 +15,22 @@ fn assert_doc_tests(result: &super::Out, tally: &str) {
 fn assert_doc_tests_rejected(result: &super::Out, expected: &[&str], tally: &str) {
     result.expect_stderr(1, expected, &[]);
     assert_eq!(result.stdout, format!("doctests: {tally}\n"));
+}
+
+/// The `--doctests` run of the temp fixture `name` holding `source` was
+/// rejected, naming every string in `expected` on stderr.
+fn assert_rejected(name: &str, source: &str, expected: &[&str]) {
+    doc_tests(name, source).expect_stderr(1, expected, &[]);
+}
+
+/// The `--doctests` run of the temp fixture `name` holding `source`.
+fn doc_tests(name: &str, source: &str) -> super::Out {
+    run_source(name, source, &["--doctests"])
+}
+
+/// `DOCUMENTED` with every `from` replaced by `to`.
+fn documented_with(from: &str, to: &str) -> String {
+    DOCUMENTED.replace(from, to)
 }
 
 const DOCUMENTED: &str = r#"/// Echoes a value.
@@ -35,28 +51,24 @@ print("application entry must not run")
 
 #[test]
 fn doctests_run_in_declaration_context_and_check_compile_only_examples() {
-    let source = temp_osp("documentation_context", DOCUMENTED);
-    let result = run_file(&source, &["--doctests"]);
+    let result = doc_tests("documentation_context", DOCUMENTED);
     assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
 fn doctests_reject_an_output_mismatch() {
-    let text = DOCUMENTED.replace("/// documented\n", "/// incorrect\n");
-    let result = run_file(&temp_osp("documentation_mismatch", &text), &["--doctests"]);
+    let text = documented_with("/// documented\n", "/// incorrect\n");
+    let result = doc_tests("documentation_mismatch", &text);
     assert_doc_tests_rejected(&result, &["stdout mismatch", "echo"], "1 passed, 1 failed");
 }
 
 #[test]
 fn doctests_typecheck_examples_without_output_fences() {
-    let text = DOCUMENTED.replace(
+    let text = documented_with(
         "let checked = echo(42)",
         "let checked: int = echo(\"wrong\")",
     );
-    let result = run_file(
-        &temp_osp("documentation_type_error", &text),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_type_error", &text);
     assert_doc_tests_rejected(&result, &["cannot unify"], "1 passed, 1 failed");
 }
 
@@ -72,13 +84,11 @@ fn doctests_inherit_ml_flavor() {
 
 #[test]
 fn doctests_keep_examples_isolated() {
-    let text = DOCUMENTED
-        .replace("let checked = echo(42)", "print(onlyInOtherExample)")
-        .replace(
-            "print(echo(\"documented\"))",
-            "let onlyInOtherExample = 42\n/// print(echo(\"documented\"))",
-        );
-    let result = run_file(&temp_osp("documentation_isolation", &text), &["--doctests"]);
+    let text = documented_with("let checked = echo(42)", "print(onlyInOtherExample)").replace(
+        "print(echo(\"documented\"))",
+        "let onlyInOtherExample = 42\n/// print(echo(\"documented\"))",
+    );
+    let result = doc_tests("documentation_isolation", &text);
     assert_doc_tests_rejected(&result, &["onlyInOtherExample"], "1 passed, 1 failed");
 }
 
@@ -103,7 +113,7 @@ fn doctests_use_the_owning_nested_module_and_private_helpers() {
 }
 fn main() = print("application main must not run")
 "#;
-    let result = run_file(&temp_osp("documentation_nested", source), &["--doctests"]);
+    let result = doc_tests("documentation_nested", source);
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
@@ -129,24 +139,23 @@ module Container {
     export fn label() = "inner"
 }
 "#;
-    let result = run_file(&temp_osp("documentation_inner", source), &["--doctests"]);
+    let result = doc_tests("documentation_inner", source);
     assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
 fn doctests_reject_invalid_source_even_without_examples() {
-    let result = run_file(
-        &temp_osp("documentation_invalid", "let bad: int = \"wrong\""),
-        &["--doctests"],
+    assert_rejected(
+        "documentation_invalid",
+        "let bad: int = \"wrong\"",
+        &["cannot unify"],
     );
-    result.expect_stderr(1, &["cannot unify"], &[]);
 }
 
 #[test]
 fn doctests_preserve_stdout_whitespace_exactly() {
-    let text = DOCUMENTED.replace("/// documented\n", "/// documented \n");
-    let result = run_file(&temp_osp("documentation_space", &text), &["--doctests"]);
-    result.expect_stderr(1, &["stdout mismatch"], &[]);
+    let text = documented_with("/// documented\n", "/// documented \n");
+    assert_rejected("documentation_space", &text, &["stdout mismatch"]);
 }
 
 #[test]
@@ -216,24 +225,21 @@ fn doctests_run_in_packages_whose_default_namespace_is_their_own_in_every_flavor
 #[test]
 fn doctests_do_not_activate_unrelated_test_helpers() {
     let source = format!("{DOCUMENTED}\nfn unusedTestHelper() = checkAll(\"unused\", [true])\n");
-    let result = run_file(
-        &temp_osp("documentation_unused_tests", &source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_unused_tests", &source);
     assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
 fn doctests_typecheck_uncalled_declarations_inside_examples() {
-    let source = DOCUMENTED.replace(
+    let source = documented_with(
         "let checked = echo(42)",
         "fn unused() = missingFromExample()",
     );
-    let result = run_file(
-        &temp_osp("documentation_uncalled_error", &source),
-        &["--doctests"],
+    assert_rejected(
+        "documentation_uncalled_error",
+        &source,
+        &["missingFromExample"],
     );
-    result.expect_stderr(1, &["missingFromExample"], &[]);
 }
 
 #[test]
@@ -252,10 +258,7 @@ fn doctests_stop_examples_that_exceed_the_execution_deadline() {
 #[test]
 fn doctests_keep_example_type_positions_separate_from_source_positions() {
     let source = "let value = fn() => 42\n/// Separate lambda types.\n/// # Examples\n/// ```osprey\n/// let value = fn() => \"documentation\"\n/// print(value())\n/// ```\n/// ```output\n/// documentation\n/// ```\nfn documented() = value()\n";
-    let result = run_file(
-        &temp_osp("documentation_positions", source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_positions", source);
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
@@ -263,12 +266,9 @@ fn doctests_keep_example_type_positions_separate_from_source_positions() {
 fn doctests_can_explicitly_call_the_documented_application_main() {
     let source = "/// Entry point.\n/// # Examples\n/// ```osprey\n/// main()\n/// ```\n/// ```output\n/// called explicitly\n/// ```\nfn main() = print(\"called explicitly\")\n";
     for (prefix, name) in [("", "main"), ("namespace app;\n", "namespace_main")] {
-        let result = run_file(
-            &temp_osp(
-                &format!("documentation_{name}"),
-                &format!("{prefix}{source}"),
-            ),
-            &["--doctests"],
+        let result = doc_tests(
+            &format!("documentation_{name}"),
+            &format!("{prefix}{source}"),
         );
         assert_doc_tests(&result, "1 passed, 0 failed");
     }
@@ -277,20 +277,14 @@ fn doctests_can_explicitly_call_the_documented_application_main() {
 #[test]
 fn doctests_allow_example_helpers_to_capture_example_bindings() {
     let source = "/// Local helper.\n/// # Examples\n/// ```osprey\n/// let prefix = \"local\"\n/// fn helper() = prefix\n/// print(helper())\n/// ```\n/// ```output\n/// local\n/// ```\nfn documented() = 1\n";
-    let result = run_file(
-        &temp_osp("documentation_helper_capture", source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_helper_capture", source);
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
 fn doctests_allow_qualified_calls_to_documented_main() {
     let source = "namespace app;\n/// Entry.\n/// # Examples\n/// ```osprey\n/// app::main()\n/// ```\n/// ```output\n/// explicit\n/// ```\nfn main() = print(\"explicit\")\n";
-    let result = run_file(
-        &temp_osp("documentation_qualified_main", source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_qualified_main", source);
     assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
@@ -335,10 +329,7 @@ fn doctests_run_examples_labelled_in_the_ml_spelling() {
 #[test]
 fn doctests_compare_output_separated_from_its_example_by_blank_lines() {
     let source = "/// Adds.\n/// # Examples\n/// ```osprey\n/// print(\"${add(1, 2)}\")\n/// ```\n///\n/// ```output\n/// 9\n/// ```\nfn add(a, b) = wrapAdd(a, b)\n";
-    let result = run_file(
-        &temp_osp("documentation_blank_before_output", source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_blank_before_output", source);
     assert_doc_tests_rejected(&result, &["stdout mismatch"], "0 passed, 1 failed");
 }
 
@@ -348,9 +339,6 @@ fn doctests_compare_output_separated_from_its_example_by_blank_lines() {
 #[test]
 fn doctests_reject_an_output_fence_with_no_example_before_it() {
     let source = "/// Adds.\n/// # Examples\n/// ```\n/// print(\"${add(1, 2)}\")\n/// ```\n/// ```output\n/// 3\n/// ```\nfn add(a, b) = wrapAdd(a, b)\n";
-    let result = run_file(
-        &temp_osp("documentation_orphan_output", source),
-        &["--doctests"],
-    );
+    let result = doc_tests("documentation_orphan_output", source);
     assert_doc_tests_rejected(&result, &["add", "`output` fence"], "0 passed, 1 failed");
 }

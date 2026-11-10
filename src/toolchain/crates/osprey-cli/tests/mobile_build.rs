@@ -112,6 +112,22 @@ fn fails(output: &Output, diagnostic: &str) {
     assert!(error.contains(diagnostic), "{error}");
 }
 
+/// A finished slice build's published artifacts: it succeeded, the archive
+/// carries its bytes, the header publishes the C ABI and the IR was emitted.
+/// The tool log is handed back for the caller's target-specific checks.
+fn published_artifacts(fixture: &Fixture, result: &Output) -> std::io::Result<String> {
+    assert!(result.status.success(), "{result:?}");
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("output/app.a"))?,
+        "mobile archive\n"
+    );
+    let header = fs::read_to_string(fixture.0.join("output/app.h"))?;
+    assert!(header.contains("int64_t osprey_answer(void)"), "{header}");
+    let ir = fs::read_to_string(fixture.0.join("emitted.ll"))?;
+    assert!(ir.contains("define i64 @osprey_answer()"), "{ir}");
+    fs::read_to_string(fixture.0.join("tools.log"))
+}
+
 #[test]
 fn mobile_builds_publish_matching_headers_archives_and_clean_scratch() -> std::io::Result<()> {
     for (target, triple, runtime) in [
@@ -123,16 +139,7 @@ fn mobile_builds_publish_matching_headers_archives_and_clean_scratch() -> std::i
     ] {
         let fixture = Fixture::new(target)?;
         let result = fixture.command(target, "output/app.a").output()?;
-        assert!(result.status.success(), "{result:?}");
-        assert_eq!(
-            fs::read_to_string(fixture.0.join("output/app.a"))?,
-            "mobile archive\n"
-        );
-        let header = fs::read_to_string(fixture.0.join("output/app.h"))?;
-        assert!(header.contains("int64_t osprey_answer(void)"), "{header}");
-        let ir = fs::read_to_string(fixture.0.join("emitted.ll"))?;
-        assert!(ir.contains("define i64 @osprey_answer()"), "{ir}");
-        let log = fs::read_to_string(fixture.0.join("tools.log"))?;
+        let log = published_artifacts(&fixture, &result)?;
         assert!(
             log.lines().any(|line| line == format!("--target={triple}")),
             "{log}"
@@ -245,14 +252,7 @@ fn desktop_slices_build_with_the_hosts_tools() -> std::io::Result<()> {
     };
     let fixture = desktop_fixture("desktop-build")?;
     let result = desktop(&fixture, target, "output/app.a").output()?;
-    assert!(result.status.success(), "{result:?}");
-    let archive = fs::read_to_string(fixture.0.join("output/app.a"))?;
-    assert_eq!(archive, "mobile archive\n");
-    let header = fs::read_to_string(fixture.0.join("output/app.h"))?;
-    assert!(header.contains("int64_t osprey_answer(void)"), "{header}");
-    let ir = fs::read_to_string(fixture.0.join("emitted.ll"))?;
-    assert!(ir.contains("define i64 @osprey_answer()"), "{ir}");
-    let log = fs::read_to_string(fixture.0.join("tools.log"))?;
+    let log = published_artifacts(&fixture, &result)?;
     assert!(log.lines().any(|line| line == "-fPIC"), "{log}");
     assert!(
         log.contains("src/toolchain/compiler/bin/libfiber_runtime"),

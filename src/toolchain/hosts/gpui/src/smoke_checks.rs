@@ -1,7 +1,7 @@
 //! What a smoke step expects of the host after it runs ([GPUI-HOST-VERIFICATION]): the envelope's
 //! regions and requests, the rendered text and the diagnostics count.
 
-use super::{Expect, TextExpect};
+use super::{has_text, Expect, TextExpect};
 use crate::envelope::Envelope;
 use crate::regions::Regions;
 
