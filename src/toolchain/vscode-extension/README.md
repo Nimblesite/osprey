@@ -4,23 +4,21 @@
 
 # Osprey for VS Code
 
-Osprey is a functional language for **apps, backends, ML and AI, and mathematics**, built on three pillars: **safety, elegance and performance**. Failures are `Result` values you must handle instead of panics, inferred types and algebraic effects say more with less text, and LLVM compiles it to native code. This extension brings the language into VS Code with a language server, a debugger, a CPU profiler, a test runner and the Proof Workbench.
+Osprey is a functional language for apps, backends, ML and mathematics. **Safe, elegant, fast.** Nothing panics, types are inferred, and it compiles through LLVM to native code.
 
 <p align="center">
   <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/src/toolchain/vscode-extension/media/showcase.gif" alt="Apps written in Osprey: Prism Synth, the Casting Chromecast player and the Proof Workbench on macOS, then the signal-flow editor, Osprey Storage and Casting on Windows" width="960" />
 </p>
 
-Real Osprey Native apps on macOS and Windows: a synth, a Chromecast player, the Proof Workbench, a signal-flow editor and a disk-space explorer. [Try Osprey in your browser](https://www.ospreylang.dev/playground/) or read the [effects guide](https://www.ospreylang.dev/docs/effects/).
-
-> **Actively evolving.** Osprey is being used to build real applications. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
+Every app above is Osprey, running natively on macOS and Windows. [Try it in your browser](https://www.ospreylang.dev/playground/).
 
 ## The language
 
-- **Safety: fewer bugs.** No panics: expected failures are `Result` values, matching is exhaustive, integer arithmetic follows an explicit `Arith` policy, and effects make outside work visible and replaceable. Calling C crosses the memory-safety boundary.
-- **Elegance: more program, less text.** Inferred types, effects instead of plumbing, and concurrency without a separate async form. Fewer tokens for people and AI agents to read.
-- **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection, lightweight fibers and a memory backend chosen per build.
+- **Safe.** Failures are `Result` values you must handle. Matches must cover every case. Integer overflow follows a policy you choose.
+- **Elegant.** Types are inferred. Effects replace plumbing. Concurrent code needs no `async`.
+- **Fast.** Native binaries, no VM, no JIT warm-up. Effect handlers are picked at compile time.
 
-`effect` declares a need, `perform` requests it, and `handle` implements it. The app's edge picks the real disk; a test swaps in a full one without changing the app:
+Declare what your code needs with `effect`. Supply it with `handle`. The app gets the real disk; the test gets a full one:
 
 ```osprey
 effect Files { write: fn(string, string) -> Result<int, Error> }
@@ -42,11 +40,13 @@ test("a full disk rolls back", fn() => {
 })
 ```
 
-Types are inferred, the `match` must cover both `Success` and `Error`, and removing the handler is a compile error. Each **syntax flavor** writes the same language: Default braces (`.osp`), ML indentation (`.ospml`) or Python flavor (`.py` starting with `# osprey: flavor=python`), mixed freely in one project.
+No type annotations. Drop the `Error` case or the handler and it won't compile. Write it with braces, ML indentation or the Python flavor; the [GPT-2 port](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2) is Python flavor, on CPU or GPU.
+
+> Osprey is actively evolving. Try it on your projects and assess the risks before relying on it in production.
 
 ## Debug
 
-Press `F5` on an `.osp` or `.ospml` file. The extension builds a native debug binary and runs it under LLDB-DAP, so breakpoints, stepping, the call stack, variables and pause work on your Osprey source. The Test Explorer's **Debug** profile stops on a breakpoint inside a `test(...)` body with that case's bindings live. Fiber, channel and effect-handler views are not built yet.
+Press `F5`. Breakpoints, stepping, the call stack and variables, on your Osprey source, through LLDB-DAP. Debug a single test from the Testing view and it stops inside that case. Fiber and effect-handler views are still to come.
 
 ## Profile
 
@@ -54,7 +54,7 @@ Press `F5` on an `.osp` or `.ospml` file. The extension builds a native debug bi
   <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/src/toolchain/vscode-extension/media/profiler.gif" alt="Run and Profile CPU on busy.osp: the live sample count runs in the status bar, the Osprey Profiler opens with samples, duration and a flame graph, and the source shows each function's share of the samples" width="960" />
 </p>
 
-**Run & Profile CPU** samples the open file, or attach to an Osprey program that is already running from the **Processes** view. Results open as a flame graph, with each hot function's share of samples written beside its source. [Watch the profiler tutorial](https://www.ospreylang.dev/docs/tutorials/profiler/). Memory profiling and a Windows sampler are not built yet.
+**Run & Profile CPU** on the open file, or attach to a program that's already running. You get a flame graph, and every hot function shows its share of the time right in the source. [Watch the tutorial](https://www.ospreylang.dev/docs/tutorials/profiler/). Memory profiling and Windows sampling are still to come.
 
 ## Prove
 
@@ -62,19 +62,18 @@ Press `F5` on an `.osp` or `.ospml` file. The extension builds a native debug bi
   <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/src/toolchain/vscode-extension/media/workbench.gif" alt="The Proof Workbench inside VS Code: a checked proof that conjunction commutes, the goal pane listing hypotheses and what remains to show, a lesson answer marked Right, a step the kernel refuses with a type mismatch, and the rule reference" width="960" />
 </p>
 
-**Osprey: Open Workbench** opens the Proof Workbench in an editor tab. Write each step of an argument, see your hypotheses and what remains to show, and work through short lessons. A proof is Checked only when Osprey's own kernel accepts it; a wrong step is refused with the reason. See the [Workbench guide](https://www.ospreylang.dev/docs/proof-workbench/).
+**Osprey: Open Workbench.** Write a proof step by step, with what you know and what's left to show beside it. Osprey's own kernel checks every step and tells you exactly why a wrong one fails. [Workbench guide](https://www.ospreylang.dev/docs/proof-workbench/).
 
-## Everything else
+## Also in the box
 
-- **Language server:** diagnostics across the repository, hover, go-to-definition, references, symbols, signature help, completion and formatting, from the compiler's own parser and type checker. Python-flavor files use the CLI for now.
-- **Run:** `Osprey: Compile Osprey File` (`Ctrl/Cmd+Shift+B`) and `Osprey: Compile and Run Osprey File`.
-- **Tests:** `*.test.osp` and `*.test.ospml` cases appear in the Testing view with Run, Coverage, Profile and Debug profiles. A skipped case raises a warning you cannot miss, and `///` docs above a case show in the tree and on failure.
-- **Hunt for bugs:** `Osprey: Hunt for Bugs` explores inputs with KLEE and places findings in the source. [Prerequisites and limits](https://www.ospreylang.dev/docs/hunt/).
-- **Packages:** `Osprey: Add Package` and `Osprey: Remove Package` update `osprey.toml` and relock. Until the hosted registry is live, the extension runs a local registry of the repository's packages; its listings are unverified. [Walkthrough](https://www.ospreylang.dev/docs/packages-in-vscode/).
+- **Language server:** errors across the whole repo, hover, go to definition, references, completion and formatting, from the compiler itself.
+- **Tests:** run, cover, profile or debug any case from the Testing view. Skipped tests get flagged, never hidden.
+- **Hunt for bugs:** KLEE searches for inputs that break your program and marks them in the source. [Details](https://www.ospreylang.dev/docs/hunt/).
+- **Packages:** add and remove packages from the Command Palette. Until the hosted registry launches, they come from an unverified local one. [Walkthrough](https://www.ospreylang.dev/docs/packages-in-vscode/).
 
 ## Requirements
 
-The extension bundles a version-matched compiler, so editing needs nothing else. Compiling and running need LLVM/clang (`brew install llvm`, or `scoop install llvm gcc` on Windows); debugging needs `lldb-dap` on `PATH` or in `osprey.debug.lldbDapPath`. To get `osprey` on your `PATH` too:
+The compiler ships inside the extension. To build and run programs, install LLVM (`brew install llvm`, or `scoop install llvm gcc` on Windows); to debug, add `lldb-dap`. For `osprey` on your command line:
 
 ```bash
 brew install nimblesite/tap/osprey                                                                # macOS / Linux
