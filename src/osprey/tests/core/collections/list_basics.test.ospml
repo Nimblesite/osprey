@@ -28,12 +28,6 @@ allOob (xs, indices) = match indices
     [] => true
     [index, ...rest] => oobAt (xs, index) && allOob (xs, rest)
 
-(** Every item of `wanted` is an element of `xs` ([BUILTIN-LIST-CONTAINS]). *)
-allListed (xs, wanted) = foldList wanted true (\(found, item) => found && listContains xs item)
-
-(** No item of `absent` is an element of `xs`. *)
-noneListed (xs, absent) = foldList absent true (\(clear, item) => clear && !(listContains xs item))
-
 (** grownBy extends `xs` by listAppend with each element of `values`, in order. *)
 grownBy (xs, values) = match values
     [] => xs
@@ -52,9 +46,6 @@ elementsFrom (xs, wants, fallback, index) = match wants
     the Result path of [BUILTIN-LIST-GET]. *)
 rowsHold (xs, indices, wants, fallback) =
     range (0, listLength indices) |> fold true (\(hold, i) => hold && elementOr (xs, (intAt (indices, i)), fallback) == elementOr (wants, i, fallback))
-
-(** Every listed input answers its partner want through `f`, pair by pair. *)
-answersHold (f, inputs, wants) = structuralEquals (mapList inputs f) wants
 
 (** listLength as a first-class value, so answersHold can fold length rows. *)
 lengthOf xs = listLength xs

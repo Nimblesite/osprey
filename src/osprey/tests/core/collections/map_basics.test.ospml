@@ -20,19 +20,10 @@ missingKey (m, key) = match mapGet m key
 (** mapLength as a first-class value, so answersHold can fold length rows. *)
 lengthOf m = mapLength m
 
-(** Every listed input answers its partner want through `f`, pair by pair. *)
-answersHold (f, inputs, wants) = structuralEquals (mapList inputs f) wants
-
 (** Every listed index of `indices` yields its partner want from `xs`, through
     the Result path of [BUILTIN-LIST-GET]. *)
 rowsHold (xs, indices, wants, fallback) =
     range (0, listLength indices) |> fold true (\(hold, i) => hold && (listGet xs (listGet indices i ?: 0) ?: fallback) == (listGet wants i ?: fallback))
-
-(** Every item of `wanted` is an element of `xs` ([BUILTIN-LIST-CONTAINS]). *)
-allListed (xs, wanted) = foldList wanted true (\(found, item) => found && listContains xs item)
-
-(** No item of `absent` is an element of `xs`. *)
-noneListed (xs, absent) = foldList absent true (\(clear, item) => clear && !(listContains xs item))
 
 (** Every listed key of `m` holds its partner want, key by key through the
     Result path of [BUILTIN-MAP-GET]. *)

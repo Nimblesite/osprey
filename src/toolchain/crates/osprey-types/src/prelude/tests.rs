@@ -240,9 +240,12 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
             &[
                 "test(\"a\", fn() => checkTrue(containsAll(\"alpha|beta\", [\"alpha\", \"beta\"])))\n",
                 "test(\"n\", fn() => checkTrue(containsNone(\"alpha|beta\", [\"gamma\"])))\n",
+                "test(\"l\", fn() => checkTrue(allListed([1, 2], [2])))\n",
+                "test(\"o\", fn() => checkTrue(noneListed([1, 2], [3])))\n",
+                "test(\"h\", fn() => checkTrue(answersHold(fn(x) => x * 2, [1, 2], [2, 4])))\n",
             ][..],
-            "containsAll containsNone exactArithmetic",
-            Some("test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", [])]))\n"),
+            "containsAll containsNone allListed noneListed answersHold exactArithmetic",
+            Some("test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", []), allListed([3, 1, 2], [1, 3]), !allListed([1], [1, 4]), noneListed([1, 2], []), !noneListed([1, 2], [2]), answersHold(fn(s) => length(s), [\"ab\", \"\"], [2, 0]), !answersHold(fn(x) => x, [1], [2])]))\n"),
         ),
         (
             &["test(\"d\", fn() => checkTrue((divideResult(6.0, 2.0) ?: 0.0) == 3.0))\n"][..],
