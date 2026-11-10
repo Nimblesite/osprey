@@ -24,35 +24,40 @@ module Axioms
         false => Error(message = "`Classical.choice` does not have its derived choice signature over the genuine `Nonempty` family")
         true => Success(value = decl)
 
-    choiceSignature u = Pi "α" (Sort u) (Pi "h" (App (Const "Nonempty" [u]) (BVar 0)) (BVar 1))
+    choiceSignature u = overUniverse (u, Pi "h" (App (Const "Nonempty" [u]) (BVar 0)) (BVar 1))
 
-    genuine env = match Environment::find (env, "Nonempty")
-        Success decl => former decl && introduced env
-        Error _ => false
+    genuine env = matched (env, "Nonempty", former) && introduced env
 
-    former decl = match decl.params
-        [u] => match decl.body
-            TypeFormer info => Terms::equal (decl.ty, formerType (Param u)) && familyOk info
-            other => false
-        other => false
+    former decl = derived (decl, formerType, \body => tagged (body, familyOk, \info => false))
 
-    formerType u = Pi "α" (Sort u) (Sort Zero)
+    formerType u = overUniverse (u, Sort Zero)
 
     familyOk info = info.familyParams == 1 && info.familyIndices == 0 && DeclarationBodies::sameNames (info.familyCtors, ["Nonempty.intro"]) && !info.familyRecursive && !info.familyReflexive && DeclarationBodies::sameNames (info.familyAll, ["Nonempty"]) && info.familyNested == 0
 
-    introduced env = match Environment::find (env, "Nonempty.intro")
-        Success decl => constructor decl
+    introduced env = matched (env, "Nonempty.intro", constructor)
+
+    constructor decl = derived (decl, introType, \body => tagged (body, \info => false, ctorOk))
+
+    ctorOk info = ctorShape (info, "Nonempty", 1, 1)
+
+    introType u = overUniverse (u, Pi "val" (BVar 0) (App (Const "Nonempty" [u]) (BVar 1)))
+
+    export matched (env, name, ok) = match Environment::find (env, name)
+        Success decl => ok decl
         Error _ => false
 
-    constructor decl = match decl.params
-        [u] => match decl.body
-            Constructor info => ctorOk info && Terms::equal (decl.ty, introType (Param u))
-            other => false
+    export derived (decl, tyOf, bodyOk) = match decl.params
+        [u] => Terms::equal (decl.ty, tyOf (Param u)) && bodyOk decl.body
         other => false
 
-    ctorOk info = info.ctorFamily == "Nonempty" && info.ctorIndex == 0 && info.ctorParams == 1 && info.ctorFields == 1
+    export tagged (body, formerOk, ctorOk) = match body
+        TypeFormer info => formerOk info
+        Constructor info => ctorOk info
+        other => false
 
-    introType u = Pi "α" (Sort u) (Pi "val" (BVar 0) (App (Const "Nonempty" [u]) (BVar 1)))
+    export ctorShape (info, family, params, fields) = info.ctorFamily == family && info.ctorIndex == 0 && info.ctorParams == params && info.ctorFields == fields
+
+    export overUniverse (u, body) = Pi "α" (Sort u) body
 
 (** The four primitive quotient signatures, independently derived from
     Lean 4.25 kernel/quot.cpp. Exported claims never define their theory.
@@ -128,44 +133,30 @@ module Quotients
 
     equality (u, ty, left, right) = Terms::apps (Const "Eq" [u], [ty, left, right])
 
-    quotientType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Sort u))
+    quotientType u = Axioms::overUniverse (u, Pi "r" (relation 0) (Sort u))
 
-    constructorType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "a" (BVar 1) (quotientAt (u, 2))))
+    constructorType u = Axioms::overUniverse (u, Pi "r" (relation 0) (Pi "a" (BVar 1) (quotientAt (u, 2))))
 
-    liftType (u, v) = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "β" (Sort v) (Pi "f" (Pi "x" (BVar 2) (BVar 1)) (Pi "h" (respects v) (Pi "q" (quotientAt (u, 4)) (BVar 3))))))
+    liftType (u, v) = Axioms::overUniverse (u, Pi "r" (relation 0) (Pi "β" (Sort v) (Pi "f" (Pi "x" (BVar 2) (BVar 1)) (Pi "h" (respects v) (Pi "q" (quotientAt (u, 4)) (BVar 3))))))
 
     respects v = Pi "a" (BVar 3) (Pi "b" (BVar 4) (Pi "h" (Terms::apps (BVar 4, [BVar 1, BVar 0])) (equality (v, BVar 4, App (BVar 3) (BVar 2), App (BVar 3) (BVar 1)))))
 
-    inductionType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "β" (Pi "q" (quotientAt (u, 1)) (Sort Zero)) (Pi "mk" (Pi "a" (BVar 2) (App (BVar 1) (constructorAt (u, 3, BVar 0)))) (Pi "q" (quotientAt (u, 3)) (App (BVar 2) (BVar 0))))))
+    inductionType u = Axioms::overUniverse (u, Pi "r" (relation 0) (Pi "β" (Pi "q" (quotientAt (u, 1)) (Sort Zero)) (Pi "mk" (Pi "a" (BVar 2) (App (BVar 1) (constructorAt (u, 3, BVar 0)))) (Pi "q" (quotientAt (u, 3)) (App (BVar 2) (BVar 0))))))
 
-    soundType u = Pi "α" (Sort u) (Pi "r" (relation 0) (Pi "a" (BVar 1) (Pi "b" (BVar 2) (Pi "h" (Terms::apps (BVar 2, [BVar 1, BVar 0])) (equality (u, quotientAt (u, 4), constructorAt (u, 4, BVar 2), constructorAt (u, 4, BVar 1)))))))
+    soundType u = Axioms::overUniverse (u, Pi "r" (relation 0) (Pi "a" (BVar 1) (Pi "b" (BVar 2) (Pi "h" (Terms::apps (BVar 2, [BVar 1, BVar 0])) (equality (u, quotientAt (u, 4), constructorAt (u, 4, BVar 2), constructorAt (u, 4, BVar 1)))))))
 
-    equalityReady env = match Environment::find (env, "Eq")
-        Success decl => equalityFormer decl && equalityConstructor env
-        Error _ => false
+    equalityReady env = Axioms::matched (env, "Eq", equalityFormer) && equalityConstructor env
 
-    equalityFormer decl = match decl.params
-        [u] => Terms::equal (decl.ty, equalityType (Param u)) && equalityFamily decl.body
-        other => false
+    equalityFormer decl = Axioms::derived (decl, equalityType, \body => Axioms::tagged (body, equalityFamily, \info => false))
 
-    equalityType u = Pi "α" (Sort u) (Pi "a" (BVar 0) (Pi "b" (BVar 1) (Sort Zero)))
+    equalityType u = Axioms::overUniverse (u, Pi "a" (BVar 0) (Pi "b" (BVar 1) (Sort Zero)))
 
-    equalityFamily body = match body
-        TypeFormer info => info.familyParams == 2 && info.familyIndices == 1 && equalityNames info.familyCtors
-        other => false
+    equalityFamily info = info.familyParams == 2 && info.familyIndices == 1 && DeclarationBodies::sameNames (info.familyCtors, ["Eq.refl"])
 
-    equalityNames names = match names
-        ["Eq.refl"] => true
-        other => false
+    equalityConstructor env = Axioms::matched (env, "Eq.refl", reflexivity)
 
-    equalityConstructor env = match Environment::find (env, "Eq.refl")
-        Success decl => match decl.params
-            [u] => Terms::equal (decl.ty, reflexivityType (Param u)) && reflexivityBody decl.body
-            other => false
-        Error _ => false
+    reflexivity decl = Axioms::derived (decl, reflexivityType, \body => Axioms::tagged (body, \info => false, reflexivityBody))
 
-    reflexivityType u = Pi "α" (Sort u) (Pi "a" (BVar 0) (equality (u, BVar 1, BVar 0, BVar 0)))
+    reflexivityType u = Axioms::overUniverse (u, Pi "a" (BVar 0) (equality (u, BVar 1, BVar 0, BVar 0)))
 
-    reflexivityBody body = match body
-        Constructor info => info.ctorFamily == "Eq" && info.ctorIndex == 0 && info.ctorParams == 2 && info.ctorFields == 0
-        other => false
+    reflexivityBody info = Axioms::ctorShape (info, "Eq", 2, 0)
