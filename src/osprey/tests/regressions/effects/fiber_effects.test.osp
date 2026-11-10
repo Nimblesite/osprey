@@ -65,6 +65,19 @@ fn block(value, place) = intDiv(value, place) % 100
 /// The decimal digit of `value` `place` places from the right.
 fn digitAt(value, place) = intDiv(value, place) % 10
 
+/// Whether every two-digit block of `value`, from the last pair outwards,
+/// matches the corresponding field of `wants`.
+fn spellsAt(value, wants, place) = match wants {
+    [] => true
+    [head, ...tail] => block(value, place) == head && spellsAt(value, tail, place * 100)
+}
+
+/// Whether `value` spells `wants` as consecutive two-digit blocks from the right.
+fn spells(value, wants) = spellsAt(value, wants, 1)
+
+/// Spawn `weight`'s job and await it, so the pair reads as one step.
+fn spawnedScore(weight) = await(spawn runJob(priWeight(weight)))
+
 /// True when `haystack` contains every fragment in `wanted`.
 fn carriesAll(haystack, wanted) = match wanted {
     [] => true
@@ -84,14 +97,11 @@ fn mixupDemo() = {
         log msg => print("[LOG] " + msg)
     }
     /// priorities -> effectful fibers
-    let fHigh = spawn runJob(priWeight(High))
-    let sHigh = await(fHigh)
+    let sHigh = spawnedScore(High)
 
-    let fMed  = spawn runJob(priWeight(Med))
-    let sMed  = await(fMed)
+    let sMed  = spawnedScore(Med)
 
-    let fLow  = spawn runJob(priWeight(Low))
-    let sLow  = await(fLow)
+    let sLow  = spawnedScore(Low)
 
     /// record from a fiber result, fields read back
     let top = Job { id: 1, score: sHigh }
@@ -223,6 +233,12 @@ fn quadWeighted(a, b, c, d) ![Gift, Arith] = {
     await(f1) + await(f2) * 100 + await(f3) * 10000 + await(f4) * 1000000 
 }
 
+/// Sum one spawned `tallyJob` per amount, awaiting each in list order.
+fn sumFibers(amounts) ![Tally, Arith] = match amounts {
+    [] => 0
+    [head, ...tail] => await(spawn tallyJob(head)) + sumFibers(tail)
+}
+
 /// A spawned fiber that itself spawns: the innermost performs sit two fiber hops
 /// from the region that installed the handler. The fiber that awaits never
 /// performs, so no round trip ever waits on another round trip.
@@ -340,8 +356,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
         (18 - 1 ) == 17,
         negRun == (7 - 5 ),
         (intDiv(stepped, 10000) ) == 6,
-        block(stepped, 100) == 11,
-        block(stepped, 1) == 17,
+        spells(stepped, [17, 11]),
         twice == (18 + 17 ),
         total == 17
     ])
@@ -430,14 +445,10 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     // the fourth performer's answer landing on the first would print.
     checkAll("each performer keeps its own answer", [
         weighted == 40302010,
-        block(weighted, 1) == 10,
-        block(weighted, 100) == 20,
-        block(weighted, 10000) == 30,
+        spells(weighted, [10, 20, 30]),
         (intDiv(weighted, 1000000) ) == 40,
         duplicated == 20202020,
-        block(duplicated, 1) == 20,
-        block(duplicated, 100) == 20,
-        block(duplicated, 10000) == 20,
+        spells(duplicated, [20, 20, 20]),
         (intDiv(duplicated, 1000000) ) == 20,
         weighted != duplicated,
         weighted != 40301020,
@@ -583,9 +594,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     checkAll("one promoted cell serves main-fiber and fiber performs", [
         mixed == 3071218,
         (intDiv(mixed, 1000000) ) == 3,
-        block(mixed, 10000) == 7,
-        block(mixed, 100) == 12,
-        block(mixed, 1) == 18,
+        spells(mixed, [18, 12, 7]),
         carried == 22,
         cell == 22,
         hops == 6,
@@ -614,9 +623,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     // 305020 is what crossing the second and third performers' answers prints.
     checkAll("a resuming region totals across four concurrent fibers", [
         raced == 503020,
-        block(raced, 1) == 20,
-        block(raced, 100) == 30,
-        block(raced, 10000) == 50,
+        spells(raced, [20, 30, 50]),
         (intDiv(raced, 1000000) ) == 0,
         turns == 4,
         answered == 10,
@@ -715,9 +722,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
     checkAll("a channel hands values over oldest first", [
         drained == 11223344,
         (intDiv(drained, 1000000) ) == 11,
-        block(drained, 10000) == 22,
-        block(drained, 100) == 33,
-        block(drained, 1) == 44,
+        spells(drained, [44, 33, 22]),
         drained != 44332211,
         drained != 0,
         sent == 110,
@@ -961,10 +966,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
                 forwardTotal
             }
         }
-        let x1 = await(spawn tallyJob(2))
-        let x2 = await(spawn tallyJob(4))
-        let x3 = await(spawn tallyJob(6))
-        x1 + x2 + x3 
+        sumFibers([2, 4, 6])
     }
 
     /// ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
@@ -976,18 +978,13 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
                 reverseTotal
             }
         }
-        let y1 = await(spawn tallyJob(6))
-        let y2 = await(spawn tallyJob(4))
-        let y3 = await(spawn tallyJob(2))
-        y1 + y2 + y3 
+        sumFibers([6, 4, 2])
     }
 
     checkAll("a data-dependent pipeline fixes a total order", [
         piped == 1030715,
         (intDiv(piped, 1000000) ) == 1,
-        block(piped, 10000) == 3,
-        block(piped, 100) == 7,
-        block(piped, 1) == 15,
+        spells(piped, [15, 7, 3]),
         piped != 0,
         (1 * 2 + 1 ) == 3,
         (3 * 2 + 1 ) == 7,
