@@ -39,6 +39,19 @@ boolCell groups key index expected =
 (** The whole bool group contract in one line, instead of four copies of it. *)
 boolCells groups = boolCell groups "left" 0 true && boolCell groups "left" 1 false && boolCell groups "right" 0 false && boolCell groups "right" 1 true
 
+(** The surviving original cells every matrix crossing a boundary must answer,
+    in one line instead of a copy per crossing. *)
+keptCells matrix = intCell matrix 0 0 1 && intCell matrix 0 1 2 && intCell matrix 1 2 5
+
+(** The original head plus the appended tail a grown matrix must answer. *)
+grownCells matrix = intCell matrix 0 0 1 && intCell matrix 2 0 6 && intCell matrix 2 1 7
+
+(** The `small` and `large` cells a group map must answer after crossing. *)
+smallLargeCells groups = floatCell groups "small" 0 0.5 && floatCell groups "large" 1 9.75
+
+(** The appended `extra` group's cells, in one line instead of a copy per map. *)
+extraCells groups = floatCell groups "extra" 0 6.25 && floatCell groups "extra" 1 7.5
+
 (** A channel reached through a PARAMETER is the seam no send-site knowledge
     can cover: the callee sees only the declared `Channel T`, so the element
     representation has to come from inference, and what crossed the wire has to
@@ -58,15 +71,13 @@ requestIntMatrix () = perform FiberDepot.fetch "ints"
 requestBoolGroups : Unit -> Map string (List bool)
 requestBoolGroups () = perform FiberDepot.fetch "bools"
 
-fiberEffectIntMatrix () =
+(** One inherited-handler fiber round trip: `supply` answers the fetch and
+    the spawned `request` performs it, so the awaited result keeps its type.
+    Implements [EFFECTS-GENERIC-INSTANTIATION] and [EFFECTS-GENERIC-RUNTIME]. *)
+fiberEffect supply request =
     handle FiberDepot
-        fetch _key => intMatrix ()
-    await (spawn (requestIntMatrix ()))
-
-fiberEffectBoolGroups () =
-    handle FiberDepot
-        fetch _key => boolGroups ()
-    await (spawn (requestBoolGroups ()))
+        fetch _key => supply ()
+    await (spawn (request ()))
 
 (** A value crosses constructor inference -> nested collection storage -> fiber
     result erasure -> out-of-order await -> channel element erasure -> `Result`
@@ -137,16 +148,12 @@ fiberChannelCollectionCase () =
         listLength secondMatrix == 3,
         intCell firstMatrix 0 0 1,
         intCell firstMatrix 1 2 5,
-        intCell secondMatrix 0 0 1,
-        intCell secondMatrix 2 0 6,
-        intCell secondMatrix 2 1 7,
+        grownCells secondMatrix,
         mapLength firstGroups == 2,
         mapLength secondGroups == 3,
-        floatCell firstGroups "small" 0 0.5,
-        floatCell firstGroups "large" 1 9.75,
+        smallLargeCells firstGroups,
         floatCell secondGroups "small" 1 1.25,
-        floatCell secondGroups "extra" 0 6.25,
-        floatCell secondGroups "extra" 1 7.5,
+        extraCells secondGroups,
         intCell ints 1 2 5,
         floatCell floats "small" 0 0.5,
         listLength ints == 2,
@@ -158,8 +165,7 @@ fiberChannelCollectionCase () =
         intCell matrixViaParameter 2 1 7,
         mapLength groupsViaParameter == 3,
         floatCell groupsViaParameter "small" 0 0.5,
-        floatCell groupsViaParameter "extra" 0 6.25,
-        floatCell groupsViaParameter "extra" 1 7.5,
+        extraCells groupsViaParameter,
         listLength matrixViaField == 3,
         intCell matrixViaField 0 1 2,
         intCell matrixViaField 1 2 5,
@@ -171,17 +177,15 @@ fiberChannelCollectionCase () =
     list/map producers. This jointly enforces [EFFECTS-GENERIC-RUNTIME],
     [CONCURRENCY-SPAWN-AWAIT], [BUILTIN-LIST-APPEND], and [BUILTIN-MAP-SET]. *)
 fiberEffectCollectionCase () =
-    ints = fiberEffectIntMatrix ()
-    bools = fiberEffectBoolGroups ()
+    ints = fiberEffect intMatrix requestIntMatrix
+    bools = fiberEffect boolGroups requestBoolGroups
     grownInts = ints |> listAppend [6, 7] |> listReverse
     grownBools = bools |> mapSet "extra" [true, false] |> mapRemove "left"
 
     checkAll "inherited generic handlers preserve collection results from fibers" [
         listLength ints == 2,
         mapLength bools == 2,
-        intCell ints 0 0 1,
-        intCell ints 0 1 2,
-        intCell ints 1 2 5,
+        keptCells ints,
         boolCells bools,
         listLength grownInts == 3,
         intCell grownInts 0 0 6,
@@ -226,18 +230,13 @@ channelThroughClosureCase () =
     groupsViaLambdaParameter = drainVia (\c => recv c) groups
     checkAll "a channel reached through a closure keeps its element descriptor" [
             listLength viaLambdaParameter == 2,
-            intCell viaLambdaParameter 0 0 1,
-            intCell viaLambdaParameter 0 1 2,
-            intCell viaLambdaParameter 1 2 5,
+            keptCells viaLambdaParameter,
             listLength (listGet viaLambdaParameter 1 ?: [99]) == 3,
             listLength viaCapture == 3,
-            intCell viaCapture 0 0 1,
-            intCell viaCapture 2 0 6,
-            intCell viaCapture 2 1 7,
+            grownCells viaCapture,
             listLength (listGet viaCapture 2 ?: [99]) == 2,
             mapLength groupsViaLambdaParameter == 2,
-            floatCell groupsViaLambdaParameter "small" 0 0.5,
-            floatCell groupsViaLambdaParameter "large" 1 9.75
+            smallLargeCells groupsViaLambdaParameter
     ]
 
 type Verdict = Pass | Fail string | Skip string
