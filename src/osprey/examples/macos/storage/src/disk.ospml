@@ -51,6 +51,11 @@ type Look =
     symbol : string
     tint : string
 
+// One row of a look table: the names it answers for and the look they get.
+type Rule =
+    keys : List<string>
+    look : Look
+
 module Disk
     (** What the browser asks the platform. The host answers from Foundation's volume keys and from one measured walk of the tree, where `bytes` counts everything below an entry and `visible` leaves out the hidden items below it; the photo library comes from Photos once the person allows it; tests answer from fixed data. *)
     export effect Facts
@@ -141,40 +146,31 @@ module Disk
             true => toLowerCase (last pieces "")
             false => ""
 
-    videos () = ["mov", "mp4", "m4v", "avi", "mkv", "webm", "braw", "prores"]
-    images () = ["png", "jpg", "jpeg", "heic", "gif", "tif", "tiff", "dng", "raw", "psd", "webp", "svg"]
-    sounds () = ["mp3", "m4a", "wav", "aif", "aiff", "flac", "aac", "caf"]
-    archives () = ["zip", "gz", "tgz", "tar", "xz", "bz2", "7z", "rar", "dmg", "iso", "pkg", "ipa", "xip", "img", "qcow2", "vmdk", "vdi"]
-    sources () = ["swift", "rs", "c", "h", "m", "mm", "cpp", "js", "ts", "py", "go", "java", "kt", "json", "osp", "ospml", "sh", "html", "css"]
-    documents () = ["pdf", "txt", "md", "rtf", "doc", "docx", "pages", "key", "numbers", "xls", "xlsx", "ppt", "pptx", "csv", "epub"]
+    // Every look the browser gives, in the order it is tried: a file row keys on
+    // the extensions it answers for, a folder row on the one folder name it does.
+    looks () = [
+        Rule(keys = ["mov", "mp4", "m4v", "avi", "mkv", "webm", "braw", "prores"], look = Look(symbol = "film.fill", tint = "purple")),
+        Rule(keys = ["png", "jpg", "jpeg", "heic", "gif", "tif", "tiff", "dng", "raw", "psd", "webp", "svg"], look = Look(symbol = "photo.fill", tint = "orange")),
+        Rule(keys = ["mp3", "m4a", "wav", "aif", "aiff", "flac", "aac", "caf"], look = Look(symbol = "waveform", tint = "pink")),
+        Rule(keys = ["zip", "gz", "tgz", "tar", "xz", "bz2", "7z", "rar", "dmg", "iso", "pkg", "ipa", "xip", "img", "qcow2", "vmdk", "vdi"], look = Look(symbol = "shippingbox.fill", tint = "brown")),
+        Rule(keys = ["swift", "rs", "c", "h", "m", "mm", "cpp", "js", "ts", "py", "go", "java", "kt", "json", "osp", "ospml", "sh", "html", "css"], look = Look(symbol = "chevron.left.forwardslash.chevron.right", tint = "teal")),
+        Rule(keys = ["pdf", "txt", "md", "rtf", "doc", "docx", "pages", "key", "numbers", "xls", "xlsx", "ppt", "pptx", "csv", "epub"], look = Look(symbol = "doc.richtext.fill", tint = "green")),
+        Rule(keys = ["Applications"], look = Look(symbol = "square.grid.3x3.fill", tint = "blue")), Rule(keys = ["Desktop"], look = Look(symbol = "menubar.dock.rectangle", tint = "blue")),
+        Rule(keys = ["Documents"], look = Look(symbol = "doc.text.fill", tint = "blue")), Rule(keys = ["Downloads"], look = Look(symbol = "arrow.down.circle.fill", tint = "blue")),
+        Rule(keys = ["Library"], look = Look(symbol = "building.columns.fill", tint = "blue")), Rule(keys = ["Movies"], look = Look(symbol = "film.stack.fill", tint = "blue")),
+        Rule(keys = ["Music"], look = Look(symbol = "music.note", tint = "blue")), Rule(keys = ["Pictures"], look = Look(symbol = "photo.on.rectangle.angled", tint = "blue")),
+        Rule(keys = ["Developer"], look = Look(symbol = "hammer.fill", tint = "blue")), Rule(keys = [".Trash"], look = Look(symbol = "trash.fill", tint = "blue")),
+    ]
 
-    fileLook kind = match listContains (videos ()) kind
-        true => Look(symbol = "film.fill", tint = "purple")
-        false => match listContains (images ()) kind
-            true => Look(symbol = "photo.fill", tint = "orange")
-            false => match listContains (sounds ()) kind
-                true => Look(symbol = "waveform", tint = "pink")
-                false => match listContains (archives ()) kind
-                    true => Look(symbol = "shippingbox.fill", tint = "brown")
-                    false => match listContains (sources ()) kind
-                        true => Look(symbol = "chevron.left.forwardslash.chevron.right", tint = "teal")
-                        false => match listContains (documents ()) kind
-                            true => Look(symbol = "doc.richtext.fill", tint = "green")
-                            false => Look(symbol = "doc.fill", tint = "gray")
+    // The look of the first row of `kind`'s sort naming `key`, else `fallback`.
+    firstRule folder fallback key rules = match rules
+        [] => fallback
+        [first, ...rest] => match folder == (length first.keys == 1) && listContains first.keys key
+            true => first.look
+            false => firstRule folder fallback key rest
 
-    // Finder's own folders keep their familiar symbols.
-    folderSymbol title = match title
-        "Applications" => "square.grid.3x3.fill"
-        "Desktop" => "menubar.dock.rectangle"
-        "Documents" => "doc.text.fill"
-        "Downloads" => "arrow.down.circle.fill"
-        "Library" => "building.columns.fill"
-        "Movies" => "film.stack.fill"
-        "Music" => "music.note"
-        "Pictures" => "photo.on.rectangle.angled"
-        "Developer" => "hammer.fill"
-        ".Trash" => "trash.fill"
-        _ => "folder.fill"
+    fileLook kind = firstRule false (Look(symbol = "doc.fill", tint = "gray")) kind (looks ())
+    folderLook title = firstRule true (Look(symbol = "folder.fill", tint = "blue")) title (looks ())
 
     (** The symbol and tint for an entry: apps and Finder's folders by name, files by kind. *)
     export look entry = match entry.link
@@ -185,7 +181,7 @@ module Disk
         false => fileLook (extension entry.path)
         true => match extension entry.path == "app"
             true => Look(symbol = "app.fill", tint = "indigo")
-            false => Look(symbol = folderSymbol (name "" entry.path), tint = "blue")
+            false => folderLook (name "" entry.path)
 
     scaled tenths unit larger = match larger
         [] => shown tenths unit
