@@ -53,6 +53,16 @@ def same(name, got, want):
     return Check.truth(name, structuralEquals(got, want), "values differ")
 
 
+def flags(profile, fields, fallbacks):
+    """The bool `profile` reports for each field, with that field's fallback beside it."""
+    return cases(len(fields), lambda i: Profiles.profile_bool(profile, ats(fields, i), atb(fallbacks, i)))
+
+
+def texts(profile, fields, fallbacks):
+    """The text `profile` reports for each field, with that field's fallback beside it."""
+    return cases(len(fields), lambda i: Profiles.profile_text(profile, ats(fields, i), ats(fallbacks, i)))
+
+
 def cases(n, f):
     """The outcomes of f(i) for i in 0..n-1."""
     return toList(map(range(n), f))
@@ -348,13 +358,21 @@ def run_expect_error(tag, agent, prompt, why, on_error):
             return on_error(error)
 
 
+def run_head(tag, result, output_want, messages):
+    """A run's output and history length against the expected output and message list."""
+    return [Check.equal(f"{tag}.output", result.output, output_want), Check.equal(f"{tag}.message_count", len(result.messages), len(messages))]
+
+
+def message_checks(tag, result, messages):
+    """Every dumped message of a run against the expected list."""
+    return cases(len(messages), lambda i: Check.equal(f"{tag}.messages[{i}]", ats(dumped_messages(result.messages), i), ats(messages, i)))
+
+
 def test_agent_cases():
-    return run_ok("test_agent", build(ModelsTest.TestModel("", ["all"]), False), "go", lambda result: listConcat([
-        Check.equal("test_agent.output", result.output, Expected.TEST_AGENT_OUTPUT),
-        Check.equal("test_agent.message_count", len(result.messages), len(Expected.TEST_AGENT_MESSAGES)),
+    return run_ok("test_agent", build(ModelsTest.TestModel("", ["all"]), False), "go", lambda result: listConcat(listConcat(run_head("test_agent", result, Expected.TEST_AGENT_OUTPUT, Expected.TEST_AGENT_MESSAGES), [
         Check.ints_equal("test_agent.usage", [result.usage.requests, result.usage.tool_calls], Expected.TEST_AGENT_USAGE),
         Check.equal("test_agent.new_messages", len(Agent.new_messages(result)), len(result.messages)),
-    ], cases(len(Expected.TEST_AGENT_MESSAGES), lambda i: Check.equal(f"test_agent.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.TEST_AGENT_MESSAGES, i)))))
+    ]), message_checks("test_agent", result, Expected.TEST_AGENT_MESSAGES)))
 
 
 def test_agent_custom_cases():
@@ -387,12 +405,10 @@ def prefix(messages, n):
 def scripted_cases():
     model = scripted_model(Expected.SCRIPTED_REPLIES, 200)
     agent = build(model, True)
-    return run_ok("scripted", agent, "What is the temperature in Paris plus 10?", lambda result: concat([[
-        Check.equal("scripted.output", result.output, Expected.SCRIPTED_OUTPUT),
-        Check.equal("scripted.message_count", len(result.messages), len(Expected.SCRIPTED_MESSAGES)),
+    return run_ok("scripted", agent, "What is the temperature in Paris plus 10?", lambda result: concat([listConcat(run_head("scripted", result, Expected.SCRIPTED_OUTPUT, Expected.SCRIPTED_MESSAGES), [
         Check.ints_equal("scripted.usage", [result.usage.requests, result.usage.tool_calls, result.usage.input_tokens, result.usage.output_tokens], Expected.SCRIPTED_USAGE),
         Check.equal("scripted.total_tokens", Usage.run_total_tokens(result.usage), ati(Expected.SCRIPTED_USAGE, 2) + ati(Expected.SCRIPTED_USAGE, 3)),
-    ], cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, Models.with_tools(mapList(agent.tools, Tools.tool_definition_of)))), ats(Expected.SCRIPTED_BODIES, i))), cases(len(Expected.SCRIPTED_MESSAGES), lambda i: Check.equal(f"scripted.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.SCRIPTED_MESSAGES, i)))]))
+    ]), cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, Models.with_tools(mapList(agent.tools, Tools.tool_definition_of)))), ats(Expected.SCRIPTED_BODIES, i))), message_checks("scripted", result, Expected.SCRIPTED_MESSAGES)]))
 
 
 def status_error_cases():
@@ -472,18 +488,13 @@ def usage_limit_case():
 def profile_cases():
     deepseek = Profiles.deepseek_model_profile("deepseek-reasoner")
     return [
-        same("profile.flags", [
-            Profiles.profile_bool(deepseek, "supports_thinking", False),
-            Profiles.profile_bool(deepseek, "thinking_always_enabled", False),
-            Profiles.profile_bool(deepseek, "openai_supports_tool_choice_required", True),
+        same("profile.flags", listConcat(flags(deepseek, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [False, False, True]), [
             Profiles.profile_bool(Profiles.ollama_model_profile("llama3"), "openai_supports_strict_tool_definition", True),
             Profiles.profile_bool(Profiles.openai_model_profile_with({"openai_chat_supports_max_completion_tokens": JsonBool(False)}), "openai_chat_supports_max_completion_tokens", True),
-        ], Expected.PROFILE_FLAGS),
-        same("profile.texts", [
-            Profiles.profile_text(deepseek, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(deepseek, "openai_chat_send_back_thinking_parts", ""),
+        ]), Expected.PROFILE_FLAGS),
+        same("profile.texts", listConcat(texts(deepseek, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), [
             Profiles.profile_text(Profiles.model_profile(), "openai_system_prompt_role", ""),
-        ], Expected.PROFILE_TEXTS),
+        ]), Expected.PROFILE_TEXTS),
         Check.equal("profile.merge", Profiles.profile_bool(Profiles.merge_profile(Profiles.openai_model_profile("gpt-4o"), {"supports_tools": JsonBool(False)}), "supports_tools", True), False),
         Check.equal("profile.o1_mini_role", Profiles.profile_text(Profiles.openai_model_profile("o1-mini"), "openai_system_prompt_role", "system"), "user"),
     ]
@@ -624,46 +635,19 @@ def provider_flag_cases():
     reasoner = Profiles.deepseek_model_profile("deepseek-reasoner")
     kimi_model = Profiles.moonshotai_model_profile("kimi-k3")
     return [
-        same("providers.kimi_flags", [
-            Profiles.profile_bool(kimi, "openai_supports_tool_choice_required", True),
-            Profiles.profile_bool(kimi, "thinking_always_enabled", False),
-            Profiles.profile_bool(kimi, "supports_thinking", False),
-            Profiles.profile_bool(kimi, "supports_json_object_output", False),
-            Profiles.profile_bool(kimi_model, "supports_thinking", False),
-            Profiles.profile_bool(kimi_model, "ignore_streamed_leading_whitespace", False),
+        same("providers.kimi_flags", listConcat(listConcat(flags(kimi, ["openai_supports_tool_choice_required", "thinking_always_enabled", "supports_thinking", "supports_json_object_output"], [True, False, False, False]), flags(kimi_model, ["supports_thinking", "ignore_streamed_leading_whitespace"], [False, False])), [
             Profiles.profile_bool(Profiles.moonshotai_model_profile("moonshot-v1-8k"), "supports_thinking", True),
-        ], [False, True, True, True, True, True, False]),
-        same("providers.kimi_texts", [
-            Profiles.profile_text(kimi, "json_schema_transformer", ""),
-            Profiles.profile_text(kimi, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(kimi, "openai_chat_send_back_thinking_parts", ""),
-        ], ["openai", "reasoning_content", "field"]),
-        same("providers.kimi_v1", [Profiles.profile_bool(v1, "supports_thinking", True), Profiles.profile_bool(v1, "thinking_always_enabled", True), Profiles.profile_bool(v1, "openai_supports_tool_choice_required", True)], [False, False, False]),
-        same("providers.zai_glm-5.3", [
-            Profiles.profile_bool(glm53, "supports_thinking", False),
-            Profiles.profile_bool(glm53, "thinking_always_enabled", False),
-            Profiles.profile_bool(glm53, "zai_supports_reasoning_effort", False),
-            Profiles.profile_bool(glm53, "zai_thinking_body", False),
-        ], [True, True, True, True]),
+        ]), [False, True, True, True, True, True, False]),
+        same("providers.kimi_texts", texts(kimi, ["json_schema_transformer", "openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", "", ""]), ["openai", "reasoning_content", "field"]),
+        same("providers.kimi_v1", flags(v1, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [True, True, True]), [False, False, False]),
+        same("providers.zai_glm-5.3", flags(glm53, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort", "zai_thinking_body"], [False, False, False, False]), [True, True, True, True]),
         Check.equal("providers.zai_mapping", canon(unwrap_or(mapGet(glm53, "zai_reasoning_effort_mapping"), JsonNull())), "{\"high\":\"high\",\"low\":\"low\",\"medium\":\"high\",\"minimal\":\"low\",\"xhigh\":\"max\"}"),
-        same("providers.zai_glm-4.7_texts", [
-            Profiles.profile_text(glm47, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(glm47, "openai_chat_send_back_thinking_parts", ""),
-        ], ["reasoning_content", "field"]),
-        same("providers.zai_glm-4.7_flags", [
-            Profiles.profile_bool(glm47, "supports_thinking", False),
-            Profiles.profile_bool(glm47, "thinking_always_enabled", True),
-            Profiles.profile_bool(glm47, "zai_supports_reasoning_effort", True),
+        same("providers.zai_glm-4.7_texts", texts(glm47, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), ["reasoning_content", "field"]),
+        same("providers.zai_glm-4.7_flags", listConcat(flags(glm47, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort"], [False, True, True]), [
             len(J.members_of(unwrap_or(mapGet(glm47, "zai_reasoning_effort_mapping"), JsonNull()))) == 0,
-        ], [True, False, False, True]),
-        same("providers.zai_glm-3-turbo", [Profiles.profile_bool(glm3, "supports_thinking", True), Profiles.profile_bool(glm3, "zai_thinking_body", False), Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)], [False, True, False]),
-        same("providers.deepseek_defaults", [
-            Profiles.profile_bool(v4, "openai_reasoning_enabled_by_default", True),
-            Profiles.profile_bool(v4, "openai_supports_forced_tool_choice_with_thinking", True),
-            Profiles.profile_bool(reasoner, "openai_reasoning_enabled_by_default", True),
-            Profiles.profile_bool(reasoner, "openai_supports_forced_tool_choice_with_thinking", True),
-            Profiles.profile_bool(reasoner, "openai_supports_tool_choice_required", True),
-        ], [True, False, True, True, False]),
+        ]), [True, False, False, True]),
+        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, ["supports_thinking", "zai_thinking_body"], [True, False]), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)]), [False, True, False]),
+        same("providers.deepseek_defaults", listConcat(flags(v4, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking"], [True, True]), flags(reasoner, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking", "openai_supports_tool_choice_required"], [True, True, True])), [True, False, True, True, False]),
         Check.equal("providers.dispatch", Profiles.profile_text(ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile, "json_schema_transformer", ""), "openai"),
         Check.equal("providers.moonshotai_url", ProvidersHttp.MoonshotAIProvider("k").base_url, "https://api.moonshot.ai/v1"),
         Check.equal("providers.zai_url", ProvidersHttp.ZaiProvider("k").base_url, "https://api.z.ai/api/paas/v4"),
@@ -679,7 +663,7 @@ def coding_plan_model():
 def provider_reuse_cases():
     model = coding_plan_model()
     return [
-        same("providers.reuse_flags", [Profiles.profile_bool(model.profile, "zai_thinking_body", False), Profiles.profile_bool(model.profile, "thinking_always_enabled", False)], [True, True]),
+        same("providers.reuse_flags", flags(model.profile, ["zai_thinking_body", "thinking_always_enabled"], [False, False]), [True, True]),
         Check.equal("providers.reuse_body", body_projection(ModelsOpenai.completions_body("glm-5.3", model.profile, plain(), {"thinking": JsonString("minimal")}, forced_tools())), 'low|{"clear_thinking":false,"type":"enabled"}|required'),
     ]
 
@@ -1288,6 +1272,12 @@ def accessor_cases():
     ]
 
 
+def walked(name, schema, marker):
+    """The check that a walked schema keeps `marker` and has dropped every title."""
+    text = canon(schema.schema)
+    return Check.truth(name, contains(text, marker) and not contains(text, "\"title\""), text)
+
+
 def schema_walk_cases():
     defs = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/A\"}},\"required\":[\"a\"],\"$defs\":{\"A\":{\"type\":\"object\",\"title\":\"A\",\"properties\":{},\"required\":[]}}}"))
     union = JsonSchema.transform(decode("{\"anyOf\":[{\"type\":\"string\",\"title\":\"S\"},{\"type\":\"integer\"}]}"))
@@ -1295,10 +1285,10 @@ def schema_walk_cases():
     additional = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":{\"type\":\"string\",\"title\":\"V\"}}"))
     return [
         Check.truth("walk.defs_kept_and_walked", contains(canon(defs.schema), "\"$defs\":{\"A\"") and not contains(canon(defs.schema), "\"title\":\"A\""), canon(defs.schema)),
-        Check.truth("walk.union_members", contains(canon(union.schema), "anyOf") and not contains(canon(union.schema), "\"title\""), canon(union.schema)),
-        Check.truth("walk.prefix_items", contains(canon(prefix.schema), "prefixItems") and not contains(canon(prefix.schema), "\"title\""), canon(prefix.schema)),
+        walked("walk.union_members", union, "anyOf"),
+        walked("walk.prefix_items", prefix, "prefixItems"),
         Check.equal("walk.additional_not_strict", additional.is_strict_compatible, False),
-        Check.truth("walk.additional_walked", not contains(canon(additional.schema), "\"title\""), canon(additional.schema)),
+        walked("walk.additional_walked", additional, "additionalProperties"),
     ]
 
 
