@@ -39,46 +39,26 @@ effect Trace
     (** Record one step and answer its 1-based index. *)
     step : string => int
 
+(** One operation through the handler; every arity below shares this body. *)
+stepOf label = perform Trace.step label
+
 (** Two whitespace parameters curry [FLAVOR-ML-CURRY]. *)
-traced2 a b =
-    x = perform Trace.step a
-    y = perform Trace.step b
-    add x y 
+traced2 a b = add (stepOf a) (stepOf b)
 
 (** Three whitespace parameters curry the same way. *)
-traced3 a b c =
-    x = perform Trace.step a
-    y = perform Trace.step b
-    z = perform Trace.step c
-    addThree x y z 
+traced3 a b c = addThree (stepOf a) (stepOf b) (stepOf c)
 
 (** Four whitespace parameters — the exact shape [FLAVOR-ML-CURRY] warns about
     in issue #184, where an operation performed through the body is silently
     skipped. Every step below must reach the handler. *)
-traced4 a b c d =
-    w = perform Trace.step a
-    x = perform Trace.step b
-    y = perform Trace.step c
-    z = perform Trace.step d
-    sum4 w x y z 
+traced4 a b c d = sum4 (stepOf a) (stepOf b) (stepOf c) (stepOf d)
 
 (** Five whitespace parameters: one nesting level past the reported shape. *)
-traced5 a b c d e =
-    v = perform Trace.step a
-    w = perform Trace.step b
-    x = perform Trace.step c
-    y = perform Trace.step d
-    z = perform Trace.step e
-    sum5 v w x y z 
+traced5 a b c d e = sum5 (stepOf a) (stepOf b) (stepOf c) (stepOf d) (stepOf e)
 
 (** Parenthesised comma-separated parameters are explicitly flat, and the spec
     names this the form that works today — so both forms must agree. *)
-tracedFlat (a, b, c, d) =
-    w = perform Trace.step a
-    x = perform Trace.step b
-    y = perform Trace.step c
-    z = perform Trace.step d
-    sum4 w x y z 
+tracedFlat (a, b, c, d) = traced4 a b c d
 
 (** Curried and flat bodies perform through the same handler, so the operation
     indices they receive form one unbroken 1..18 sequence. A skipped operation
