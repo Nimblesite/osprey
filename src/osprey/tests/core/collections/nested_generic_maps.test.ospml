@@ -10,6 +10,9 @@ effect MapDepot T
 groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =
     listGet (mapGet groups key ?: fallbackList) index ?: fallback
+(** groupIs reads group `key` of `groups` item by item through groupAt and
+    holds when the items are `wants`, in order. *)
+groupIs (groups, key, fallbackList, fallback, wants) = range (0, listLength wants) |> fold true (\(ok, i) => ok && groupAt (groups, key, i, fallbackList, fallback) == (listGet wants i ?: fallback))
 
 intGroups () = Map () |> mapSet "low" [1, 2] |> mapSet "high" [30, 40, 50]
 stringGroups () = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"]
@@ -76,23 +79,16 @@ nestedMapEffectPipelineCase () =
         mapLength bools == 2,
         listLength (mapGet ints "low" ?: [99]) == 2,
         listLength (mapGet ints "high" ?: [99]) == 3,
-        groupAt (ints, "low", 0, [91], 99) == 1,
-        groupAt (ints, "low", 1, [91], 99) == 2,
-        groupAt (ints, "high", 0, [91], 99) == 30,
-        groupAt (ints, "high", 1, [91], 99) == 40,
-        groupAt (ints, "high", 2, [91], 99) == 50,
+        groupIs (ints, "low", [91], 99, [1, 2]),
+        groupIs (ints, "high", [91], 99, [30, 40, 50]),
         groupAt (ints, "missing", 0, [91], 99) == 91,
         groupAt (ints, "low", 8, [91], 99) == 99,
-        groupAt (strings, "short", 0, ["row"], "item") == "a",
-        groupAt (strings, "short", 1, ["row"], "item") == "bb",
-        groupAt (strings, "long", 0, ["row"], "item") == "three",
-        groupAt (strings, "long", 1, ["row"], "item") == "seven",
+        groupIs (strings, "short", ["row"], "item", ["a", "bb"]),
+        groupIs (strings, "long", ["row"], "item", ["three", "seven"]),
         length (groupAt (strings, "long", 1, ["row"], "item")) == 5,
         groupAt (strings, "missing", 0, ["row"], "item") == "row",
-        groupAt (floats, "small", 0, [9.0], 9.5) == 0.5,
-        groupAt (floats, "small", 1, [9.0], 9.5) == 1.25,
-        groupAt (floats, "large", 0, [9.0], 9.5) == 8.5,
-        groupAt (floats, "large", 1, [9.0], 9.5) == 9.75,
+        groupIs (floats, "small", [9.0], 9.5, [0.5, 1.25]),
+        groupIs (floats, "large", [9.0], 9.5, [8.5, 9.75]),
         groupAt (floats, "small", 0, [9.0], 9.5) + groupAt (floats, "small", 1, [9.0], 9.5) == 1.75,
         groupAt (bools, "left", 0, [false], false),
         !(groupAt (bools, "left", 1, [true], true)),
@@ -108,10 +104,8 @@ nestedMapEffectPipelineCase () =
         mapLength second == 2,
         mapLength third == 1,
         groupAt (listGet generations 0 ?: intGroups (), "high", 2, [91], 99) == 50,
-        groupAt (second, "high", 0, [91], 99) == 60,
-        groupAt (second, "high", 1, [91], 99) == 70,
-        groupAt (third, "only", 0, [91], 99) == 80,
-        groupAt (third, "only", 1, [91], 99) == 90,
+        groupIs (second, "high", [91], 99, [60, 70]),
+        groupIs (third, "only", [91], 99, [80, 90]),
         mapListShape (Map ()) == "empty",
         mapListShape (mapSet (Map ()) "one" [1]) == "one:1",
         mapListShape ints == "many:2/2",
@@ -126,11 +120,9 @@ nestedMapEffectPipelineCase () =
         mapContains rewritten "high",
         mapContains rewritten "extra",
         groupAt (rewritten, "high", 2, [91], 99) == 50,
-        groupAt (rewritten, "extra", 0, [91], 99) == 6,
-        groupAt (rewritten, "extra", 1, [91], 99) == 7,
+        groupIs (rewritten, "extra", [91], 99, [6, 7]),
         mapLength merged == 2,
-        groupAt (merged, "high", 0, [91], 99) == 80,
-        groupAt (merged, "high", 1, [91], 99) == 90,
+        groupIs (merged, "high", [91], 99, [80, 90]),
         groupAt (ints, "high", 0, [91], 99) == 30,
         mapContains ints "low",
         !(mapContains ints "extra"),
