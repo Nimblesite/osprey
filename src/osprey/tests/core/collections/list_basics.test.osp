@@ -158,14 +158,10 @@ fn constructionAndIdentityCase() = {
     let abPlusA = a + b + a
 
     // Every legacy length observation remains an independent assertion.
-    checkAll("legacy construction and operation lengths", [
-        answersHold(lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat(empty, a), listConcat(a, empty), a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3])
-    ])
+    checkAll("legacy construction and operation lengths", [answersHold(lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat(empty, a), listConcat(a, empty), a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3])])
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
-    checkAll("construction and reverse contents", [
-        allElementsAre([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]], (0 - 999))
-    ])
+    checkAll("construction and reverse contents", [allElementsAre([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]], (0 - 999))])
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll("concat identities and boundaries", [
@@ -210,14 +206,10 @@ fn iterationAndPersistenceCase() = {
     ])
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
-    checkAll("iteration constituent values", [
-        allElementsAre([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]], (0 - 999))
-    ])
+    checkAll("iteration constituent values", [allElementsAre([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]], (0 - 999))])
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
-    checkAll("persistent generation and branch lengths", [
-        answersHold(lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3])
-    ])
+    checkAll("persistent generation and branch lengths", [answersHold(lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3])])
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll("persistent generation and branch contents", [
@@ -249,9 +241,7 @@ fn tailBoundaryCase() = {
     let doubled = listConcat(t4, t4)
 
     // All six legacy tail-boundary length observations remain independent.
-    checkAll("tail boundary legacy lengths", [
-        answersHold(lengthOf, [t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70])
-    ])
+    checkAll("tail boundary legacy lengths", [answersHold(lengthOf, [t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70])])
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll("tail boundary contents", [
@@ -314,14 +304,10 @@ fn indexingPatternsAndDispatchCase() = {
     // A flat list literal is its own layout, distinct from both an OspreyList
     // handle and a string: it used to reach `osp_strlen`, which counted the
     // length word's bytes and answered 1 for any list of 1..=255 elements.
-    checkAll("receiver-directed length dispatch", [
-        structuralEquals([length(a), length(dispatchThirtyFive), length("abcd"), length(empty), length(""), length(commands), length(lines("a\nb\nc"))], [3, 35, 4, 0, 0, 3, 3])
-    ])
+    checkAll("receiver-directed length dispatch", [structuralEquals([length(a), length(dispatchThirtyFive), length("abcd"), length(empty), length(""), length(commands), length(lines("a\nb\nc"))], [3, 35, 4, 0, 0, 3, 3])])
 
     // The old composite bare-isEmpty row is split and extended across derived lists.
-    checkAll("receiver-directed isEmpty dispatch", [
-        structuralEquals([isEmpty(empty), isEmpty(a), isEmpty(""), isEmpty("abcd"), isEmpty(listReverse(a)), isEmpty(listConcat(empty, empty)), isEmpty(commands)], [true, false, true, false, false, true, false])
-    ])
+    checkAll("receiver-directed isEmpty dispatch", [structuralEquals([isEmpty(empty), isEmpty(a), isEmpty(""), isEmpty("abcd"), isEmpty(listReverse(a)), isEmpty(listConcat(empty, empty)), isEmpty(commands)], [true, false, true, false, false, true, false])])
 
     // A flat list literal is a third layout, distinct from both an OspreyList
     // handle and a string. `+` used to hand `osprey_list_concat` the literal's
@@ -1060,9 +1046,7 @@ fn linesIndexCase() = {
     let text = range(0, 2000) |> fold("", lineAfter)
     let rows = lines(text)
     let total = range(0, 10000) |> fold(0, fn(acc, i) => acc + byteLength(elementOr(rows, i % 2000, "")))
-    checkAll("a bound string list is read by index in constant time", [
-        listLength(rows) == 2000, elementOr(rows, 1999, "?") == "line 1999", total == 84450
-    ])
+    checkAll("a bound string list is read by index in constant time", [listLength(rows) == 2000, elementOr(rows, 1999, "?") == "line 1999", total == 84450])
 }
 
 exactTests([
