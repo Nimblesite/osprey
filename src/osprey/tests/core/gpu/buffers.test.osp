@@ -61,18 +61,22 @@ fn widened(b, check) = gpuSatisfies(gpuMap(b, toFloat), check)
 fn oddFlags(b, check) = gpuSatisfies(gpuMap(b, isOdd), check)
 /// uploaded uploads `values` and checks the dense buffer it produces.
 fn uploaded(values, check) = gpuSatisfies(toGpu(values), check)
+/// fromList materializes `b` and hands its list to `check` — the [GPU-BUFFER-TO-LIST] scaffolding every read-back shares.
+fn fromList(b, check) = gpuSatisfies(fromGpu(b), check)
+/// roundTripIs materializes `b`, uploads its list again and hands the rebuilt buffer to `check`.
+fn roundTripIs(b, check) = fromList(b, fn(values) => gpuSatisfies(toGpu(values), check))
 /// readsBack is [GPU-BUFFER-TO-LIST]: `b` materializes as `expected` list elements.
-fn readsBack(b, expected) = gpuSatisfies(fromGpu(b), fn(values) => listLengthIs(values, expected))
+fn readsBack(b, expected) = fromList(b, fn(values) => listLengthIs(values, expected))
 /// readsBackAt is [GPU-BUFFER-TO-LIST] read at one index.
-fn readsBackAt(b, index, fallback, expected) = gpuSatisfies(fromGpu(b), fn(values) => listHolds(values, index, fallback, expected))
+fn readsBackAt(b, index, fallback, expected) = fromList(b, fn(values) => listHolds(values, index, fallback, expected))
 /// materializesAs is the exact dense copy [GPU-BUFFER-TO-LIST] promises.
-fn materializesAs(b, values) = gpuSatisfies(fromGpu(b), fn(back) => structuralEquals(back, values))
+fn materializesAs(b, values) = fromList(b, fn(back) => structuralEquals(back, values))
 /// survivesRoundTrip sends `b` through list and buffer again at `expected` elements.
-fn survivesRoundTrip(b, expected) = gpuSatisfies(fromGpu(b), fn(values) => gpuSatisfies(toGpu(values), fn(again) => lengthIs(again, expected)))
+fn survivesRoundTrip(b, expected) = roundTripIs(b, fn(again) => lengthIs(again, expected))
 /// roundTripSumsTo folds the buffer rebuilt from `b`'s own materialized list.
-fn roundTripSumsTo(b, expected) = gpuSatisfies(fromGpu(b), fn(values) => gpuSatisfies(toGpu(values), fn(again) => sumIs(again, expected)))
+fn roundTripSumsTo(b, expected) = roundTripIs(b, fn(again) => sumIs(again, expected))
 /// roundTripReads reads the buffer rebuilt from `b`'s own materialized list.
-fn roundTripReads(b, index, fallback, expected) = gpuSatisfies(fromGpu(b), fn(values) => gpuSatisfies(toGpu(values), fn(again) => elementIs(again, index, fallback, expected)))
+fn roundTripReads(b, index, fallback, expected) = roundTripIs(b, fn(again) => elementIs(again, index, fallback, expected))
 /// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold.
 fn literalCase() = withBuffer(toGpu([3, 1, 4, 1, 5]), fn(ints) => withBuffer(toGpu([0.25, 0.5, 0.75, 1.0]), fn(floats) => withBuffer(toGpu([true, false, true]), fn(flags) => withBuffer(toGpu([-3, 0, 7, -1]), fn(signed) => withBuffer(toGpu([4611686018427387904, -4611686018427387904]), fn(wide) => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 fn literalCaseUploaded(ints, floats, flags, signed, wide) = checkAll("buffer literals", [
