@@ -216,18 +216,23 @@ module Model {
     /// Every position of qkv [t, 2304] at once, as [t, width].
     export fn attention(qkv, t) = attentionFrom(qkv, t, 0)
 
-    /// One transformer block: pre-norm attention and MLP, each with a residual.
-    export fn block(x, t, l) = {
-        let h1 = layerNorm(x, t, l.ln1g, l.ln1b)
-        let qkv = linear(h1, t, width, qkvWidth, l.qkvW, l.qkvB)
-        let attn = attention(qkv, t)
-        let x2 = plus(x, linear(attn.out, t, width, width, l.projW, l.projB))
-        let h2 = layerNorm(x2, t, l.ln2g, l.ln2b)
-        let f = linear(h2, t, width, mlpWidth, l.fcW, l.fcB)
+    /// A block over `rows` rows of x: pre-norm attention and MLP with residuals,
+    /// `first` the first row's position and `cached` its earlier qkv rows.
+    fn blockRows(x, rows, t, l, cached, first) = {
+        let h1 = layerNorm(x, rows, l.ln1g, l.ln1b)
+        let qkvNew = linear(h1, rows, width, qkvWidth, l.qkvW, l.qkvB)
+        let qkv = match first == 0 { true => qkvNew  false => appended(cached, qkvNew) }
+        let attn = attentionFrom(qkv, t, first)
+        let x2 = plus(x, linear(attn.out, rows, width, width, l.projW, l.projB))
+        let h2 = layerNorm(x2, rows, l.ln2g, l.ln2b)
+        let f = linear(h2, rows, width, mlpWidth, l.fcW, l.fcB)
         let u = gelus(f)
-        let y = plus(x2, linear(u, t, mlpWidth, width, l.outW, l.outB))
+        let y = plus(x2, linear(u, rows, mlpWidth, width, l.outW, l.outB))
         Acts { x: x, h1: h1, qkv: qkv, probs: attn.probs, a: attn.out, x2: x2, h2: h2, f: f, u: u, y: y }
     }
+
+    /// One transformer block: pre-norm attention and MLP, each with a residual.
+    export fn block(x, t, l) = blockRows(x, t, t, l, empty(), 0)
 
     fn blocks(w, x, t, i, acc) = match i == layerCount {
         true => Trace { acts: acc, x: x }
@@ -250,16 +255,11 @@ module Model {
         orStop(perform Backends::Tensor.build(n + size(more), fn(i) => match i < n { true => at(rows, i)  false => at(more, i - n) }), empty)
     }
 
-    /// One block for the newest position t - 1 alone: its row x [1, width] and
-    /// the block's qkv rows for the earlier positions [t - 1, 2304]. Each of the
-    /// row's values is the same arithmetic in the same order as the full pass
-    /// computes for that row, because LayerNorm, linear and the MLP are
-    /// row-wise and attention reads the cached rows exactly where it did.
+    /// One block for the newest position t - 1 alone: its row y [1, width] and the
+    /// qkv rows for the earlier positions [t - 1, 2304], the cached ones first.
     export fn blockStep(x, t, l, cached) = {
-        let qkv = appended(cached, linear(layerNorm(x, 1, l.ln1g, l.ln1b), 1, width, qkvWidth, l.qkvW, l.qkvB))
-        let x2 = plus(x, linear(attentionFrom(qkv, t, t - 1).out, 1, width, width, l.projW, l.projB))
-        let u = gelus(linear(layerNorm(x2, 1, l.ln2g, l.ln2b), 1, width, mlpWidth, l.fcW, l.fcB))
-        BlockStep { y: plus(x2, linear(u, 1, mlpWidth, width, l.outW, l.outB)), qkv: qkv }
+        let acts = blockRows(x, 1, t, l, cached, t - 1)
+        BlockStep { y: acts.y, qkv: acts.qkv }
     }
 
     fn stepBlocks(w, x, t, i, caches, acc) = match i == layerCount {
@@ -271,18 +271,12 @@ module Model {
     }
 
     /// The embedding of one token at position p, [1, width].
-    export fn embedOne(w, token, p) = embedRow(w.wte, w.wpe, token, p)
-    fn embedRow(wte, wpe, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(wte, token * width + c) + at(wpe, p * width + c)), empty)
+    export fn embedOne(w, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(w.wte, token * width + c) + at(w.wpe, p * width + c)), empty)
 
     /// The newest position, token at index t - 1, through the twelve blocks over
     /// their caches of the t - 1 earlier positions.
     export fn forwardStep(w, token, t, caches) = stepBlocks(w, embedOne(w, token, t - 1), t, 0, caches, [])
 
-    fn cacheAt(trace, i) = match listGet(trace.acts, i) {
-        Success { value } => value.qkv
-        Error _ => empty()
-    }
-
     /// Each block's qkv rows from a full pass: the caches a first forwardStep grows.
-    export fn qkvCaches(trace) = range(0, layerCount) |> fold([], fn(acc, i) => listAppend(acc, cacheAt(trace, i)))
+    export fn qkvCaches(trace) = range(0, layerCount) |> fold([], fn(acc, i) => listAppend(acc, match listGet(trace.acts, i) { Success { value } => value.qkv  Error _ => empty() }))
 }
