@@ -59,4 +59,19 @@ void t_number_grammar(void);
 // decode slots and the writer [BUILTIN-JSON-LIMITS] [BUILTIN-JSON-TYPED].
 void t_codec(void);
 
+// A runtime-owned copy of `n` bytes, NULs included; `text` must hold exactly
+// `want`'s `n` bytes and is released.
+char *owned_bytes(const char *bytes, size_t n);
+void check_text(char *text, const char *want, size_t n);
+
+// json_owned_text_tests.c
+void t_owned_text_preserves_nul_cursor_bounds(void);
+void t_owned_text_survives_collection_and_growth(void);
+void t_owned_text_finalizer_reads_do_not_deadlock(void);
+void t_owned_text_search_and_slices(void);
+void t_owned_text_trim_and_lists(void);
+void t_bounded_search_permutations(void);
+void t_bounded_search_long_repetitions(void);
+void t_bounded_search_exhaustive(void);
+
 #endif // OSPREY_JSON_TESTS_SHARED_H
