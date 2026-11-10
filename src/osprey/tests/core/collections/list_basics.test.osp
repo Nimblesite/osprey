@@ -34,6 +34,18 @@ fn grownBy(xs, values) = match values {
     [head, ...tail] => grownBy(listAppend(xs, head), tail)
 }
 
+/// aListFixture is the [1, 2, 3] int list every construction case starts from.
+fn aListFixture() = grownBy(List(), [1, 2, 3])
+
+/// bListFixture is the [10, 20] int list every concatenation case starts from.
+fn bListFixture() = grownBy(List(), [10, 20])
+
+/// wordTriple is the three-word string fixture the typed cases index and rebuild.
+fn wordTriple() = ["alpha", "beta", "gamma"]
+
+/// ratioTriple is the exact-binary three-float fixture the typed cases sum.
+fn ratioTriple() = [0.5, 1.25, 2.75]
+
 /// Every element of `xs` equals its partner want in `wants`, index by index,
 /// every row through the Result path of [BUILTIN-LIST-GET].
 fn elementsAre(xs, wants, fallback) = elementsFrom(xs, wants, fallback, 0)
@@ -134,8 +146,8 @@ fn encodeIteration(xs) = {
 /// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
 fn constructionAndIdentityCase() = {
     let empty = List()
-    let a = grownBy(List(), [1, 2, 3])
-    let b = grownBy(List(), [10, 20])
+    let a = aListFixture()
+    let b = bListFixture()
     let reversed = listReverse(a)
     let restored = listReverse(reversed)
     let prepended = listPrepend(a, 0)
@@ -176,9 +188,9 @@ fn constructionAndIdentityCase() = {
 
 /// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
 fn iterationAndPersistenceCase() = {
-    let a = grownBy(List(), [1, 2, 3])
+    let a = aListFixture()
     let reversed = listReverse(a)
-    let b = grownBy(List(), [10, 20])
+    let b = bListFixture()
     let combined = a + b
     let g0 = List()
     let g1 = listAppend(g0, 10)
@@ -255,8 +267,8 @@ fn tailBoundaryCase() = {
 fn indexingPatternsAndDispatchCase() = {
     let commands = ["echo hello", "echo world", "echo test"]
     let empty: List<string> = []
-    let a = grownBy(List(), [1, 2, 3])
-    let b = grownBy(List(), [10, 20])
+    let a = aListFixture()
+    let b = bListFixture()
     let singleton = listAppend(List(), 7)
     let short = listAppend(List(), 9)
     let pair = listAppend(short, 8)
@@ -348,8 +360,8 @@ test("list indexing, patterns, recursion, and receiver dispatch compose", exactl
 /// above indexes an `int` list, where a word and a value are indistinguishable,
 /// which is exactly how issue #211 survived.
 fn typedElementRetrievalCase() = {
-    let words = ["alpha", "beta", "gamma"]
-    let ratios = [0.5, 1.25, 2.75]
+    let words = wordTriple()
+    let ratios = ratioTriple()
     let flags = [true, false, true]
     let slots = leftRightSlots()
     let missingSlot = sentinelSlot()
@@ -560,7 +572,7 @@ fn stringListPatternCase() = {
     let noWords: List<string> = []
     let solo = ["solo"]
     let duo = ["left", "right"]
-    let words = ["alpha", "beta", "gamma"]
+    let words = wordTriple()
     let quad = ["a", "bb", "ccc", "dddd"]
     let odd = ["", " ", "a", "12", "a,b", "ab ab"]
     let dup = ["same", "same", "other", "same"]
@@ -629,7 +641,7 @@ fn floatAndBoolListPatternCase() = {
     let noFloats: List<float> = []
     let oneFloat = [1.5]
     let twoFloats = [0.25, 0.75]
-    let ratios = [0.5, 1.25, 2.75]
+    let ratios = ratioTriple()
     let quarters = [0.0, 0.25, 0.5, 0.75]
     let dupFloats = [2.0, 2.0, 1.0]
     let noFlags: List<bool> = []
@@ -832,10 +844,10 @@ test("nested lists index, destructure, and stay isolated", exactly(nestedListCas
 /// encoding that changes if the visit order changes.
 fn typedIterationOrderCase() = {
     let noWords: List<string> = []
-    let words = ["alpha", "beta", "gamma"]
+    let words = wordTriple()
     let flags = [true, false]
     let counts = [7, 8, 9]
-    let ratios = [0.5, 1.25, 2.75]
+    let ratios = ratioTriple()
     let missingSlot = sentinelSlot()
     let slots = leftRightSlots()
     mut log = ""
@@ -957,8 +969,8 @@ fn boundaryIndexCase() = {
     let twenty = ten + ten
     let forty = twenty + twenty
     let noWords: List<string> = []
-    let words = ["alpha", "beta", "gamma"]
-    let ratios = [0.5, 1.25, 2.75]
+    let words = wordTriple()
+    let ratios = ratioTriple()
     let marks = [true, false]
     let missingSlot = sentinelSlot()
     let slots = leftRightSlots()

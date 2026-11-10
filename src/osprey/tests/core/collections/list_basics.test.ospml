@@ -33,6 +33,18 @@ grownBy (xs, values) = match values
     [] => xs
     [head, ...tail] => grownBy ((listAppend xs head), tail)
 
+(** aListFixture is the [1, 2, 3] int list every construction case starts from. *)
+aListFixture () = grownBy ((List ()), [1, 2, 3])
+
+(** bListFixture is the [10, 20] int list every concatenation case starts from. *)
+bListFixture () = grownBy ((List ()), [10, 20])
+
+(** wordTriple is the three-word string fixture the typed cases index and rebuild. *)
+wordTriple () = ["alpha", "beta", "gamma"]
+
+(** ratioTriple is the exact-binary three-float fixture the typed cases sum. *)
+ratioTriple () = [0.5, 1.25, 2.75]
+
 (** Every element of `xs` equals its partner want in `wants`, index by index,
     every row through the Result path of [BUILTIN-LIST-GET]. *)
 elementsAre (xs, wants, fallback) = elementsFrom (xs, wants, fallback, 0)
@@ -123,8 +135,8 @@ encodeIteration xs =
 (** constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations. *)
 constructionAndIdentityCase () =
     empty = List ()
-    a = grownBy ((List ()), [1, 2, 3])
-    b = grownBy ((List ()), [10, 20])
+    a = aListFixture ()
+    b = bListFixture ()
     reversed = listReverse a
     restored = listReverse reversed
     prepended = listPrepend a 0
@@ -164,9 +176,9 @@ constructionAndIdentityCase () =
 
 (** iterationAndPersistenceCase preserves callback order plus every generation and branch observation. *)
 iterationAndPersistenceCase () =
-    a = grownBy ((List ()), [1, 2, 3])
+    a = aListFixture ()
     reversed = listReverse a
-    b = grownBy ((List ()), [10, 20])
+    b = bListFixture ()
     combined = a + b
     g0 = List ()
     g1 = listAppend g0 10
@@ -242,8 +254,8 @@ indexingPatternsAndDispatchCase () =
     commands = ["echo hello", "echo world", "echo test"]
     empty : List<string>
     empty = []
-    a = grownBy ((List ()), [1, 2, 3])
-    b = grownBy ((List ()), [10, 20])
+    a = aListFixture ()
+    b = bListFixture ()
     singleton = listAppend (List ()) 7
     short = listAppend (List ()) 9
     pair = listAppend short 8
@@ -334,8 +346,8 @@ test "list indexing, patterns, recursion, and receiver dispatch compose" (exactl
     above indexes an `int` list, where a word and a value are indistinguishable,
     which is exactly how issue #211 survived. *)
 typedElementRetrievalCase () =
-    words = ["alpha", "beta", "gamma"]
-    ratios = [0.5, 1.25, 2.75]
+    words = wordTriple ()
+    ratios = ratioTriple ()
     flags = [true, false, true]
     slots = leftRightSlots ()
     missingSlot = sentinelSlot ()
@@ -535,7 +547,7 @@ stringListPatternCase () =
     noWords = []
     solo = ["solo"]
     duo = ["left", "right"]
-    words = ["alpha", "beta", "gamma"]
+    words = wordTriple ()
     quad = ["a", "bb", "ccc", "dddd"]
     odd = ["", " ", "a", "12", "a,b", "ab ab"]
     dup = ["same", "same", "other", "same"]
@@ -604,7 +616,7 @@ floatAndBoolListPatternCase () =
     noFloats = []
     oneFloat = [1.5]
     twoFloats = [0.25, 0.75]
-    ratios = [0.5, 1.25, 2.75]
+    ratios = ratioTriple ()
     quarters = [0.0, 0.25, 0.5, 0.75]
     dupFloats = [2.0, 2.0, 1.0]
     noFlags : List<bool>
@@ -808,10 +820,10 @@ test "nested lists index, destructure, and stay isolated" (exactly nestedListCas
 typedIterationOrderCase () =
     noWords : List<string>
     noWords = []
-    words = ["alpha", "beta", "gamma"]
+    words = wordTriple ()
     flags = [true, false]
     counts = [7, 8, 9]
-    ratios = [0.5, 1.25, 2.75]
+    ratios = ratioTriple ()
     missingSlot = sentinelSlot ()
     slots = leftRightSlots ()
     mut log = ""
@@ -933,8 +945,8 @@ boundaryIndexCase () =
     forty = twenty + twenty
     noWords : List<string>
     noWords = []
-    words = ["alpha", "beta", "gamma"]
-    ratios = [0.5, 1.25, 2.75]
+    words = wordTriple ()
+    ratios = ratioTriple ()
     marks = [true, false]
     missingSlot = sentinelSlot ()
     slots = leftRightSlots ()
