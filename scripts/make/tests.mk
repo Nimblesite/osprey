@@ -100,7 +100,7 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
-C_SRC_memory_arc_tests = runtime/memory_arc_tests.c
+C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_tests.c runtime/memory_arc_shim_tests.c
 # This suite includes memory_arc.c to inject allocator failures. Keep calls
 # to its ABI out of line so gcov measures the entry points used by programs.
 C_FLAGS_memory_arc_tests = -fno-inline
