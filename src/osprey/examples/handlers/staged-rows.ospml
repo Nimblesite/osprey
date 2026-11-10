@@ -26,18 +26,14 @@ cursor () = (perform Signal<Cursor>.read ()).at
 counterView () = "counter=${count ()}"
 cursorView () = "cursor=${cursor ()}"
 statusView () = "${count ()}/${cursor ()}"
-views n at =
+withViewSignals (n, at, thunk) =
     handle static Signal<Count>
         read => Count(value = n)
     handle static Signal<Cursor>
         read => Cursor(at = at)
-    { counter = signalSnapshot counterView, cursor = signalSnapshot cursorView, status = signalSnapshot statusView }
-refreshViews old changed n at =
-    handle static Signal<Count>
-        read => Count(value = n)
-    handle static Signal<Cursor>
-        read => Cursor(at = at)
-    { counter = signalRefresh old.counter changed counterView, cursor = signalRefresh old.cursor changed cursorView, status = signalRefresh old.status changed statusView }
+    thunk ()
+views n at = withViewSignals (n, at, \() => { counter = signalSnapshot counterView, cursor = signalSnapshot cursorView, status = signalSnapshot statusView })
+refreshViews old changed n at = withViewSignals (n, at, \() => { counter = signalRefresh old.counter changed counterView, cursor = signalRefresh old.cursor changed cursorView, status = signalRefresh old.status changed statusView })
 describe frame = "${frame.counter.value} ${frame.cursor.value} status=${frame.status.value} builds=${frame.counter.revision}/${frame.cursor.revision}/${frame.status.revision}"
 first = views 1 2
 next = refreshViews first (signalDependencies count) 7 2
@@ -56,18 +52,14 @@ delivery () = match lineTotal () >= 2500
     true => "free"
     false => "paid"
 cartQuote () = { total = lineTotal (), delivery = delivery () }
-cartSnapshot items cents =
+withCartSignals (items, cents, thunk) =
     handle static Signal<Quantity>
         read => Quantity(items = items)
     handle static Signal<Price>
         read => Price(cents = cents)
-    signalSnapshot cartQuote
-refreshCart old changed items cents =
-    handle static Signal<Quantity>
-        read => Quantity(items = items)
-    handle static Signal<Price>
-        read => Price(cents = cents)
-    signalRefresh old changed cartQuote
+    thunk ()
+cartSnapshot items cents = withCartSignals (items, cents, \() => signalSnapshot cartQuote)
+refreshCart old changed items cents = withCartSignals (items, cents, \() => signalRefresh old changed cartQuote)
 cart = cartSnapshot 2 500
 bulk = refreshCart cart (signalDependencies quantity) 5 500
 sale = refreshCart bulk (signalDependencies unitPrice) 5 400
