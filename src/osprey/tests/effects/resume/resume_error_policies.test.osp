@@ -518,30 +518,32 @@ fn wideManagedArgumentCase() = {
 
 // Register recovery that resumes the caller with a fallback.
 
-test("resuming recovery continues after the failed operation", exactly(resumeRecoveryContinuesCase))
-// Register exception-style abort across a deep helper chain.
-test("returning without resume stops a deep failed computation", exactly(fatalExitStopsDeepCallCase))
-// Register recursive retry under one deep handler.
-test("resumed validation can perform the same effect again", exactly(recursiveRetryCase))
-// Register independently typed nested recovery channels.
-test("nested resuming error channels enter FIFO and settle LIFO", exactly(nestedRecoveryChannelsCase))
-// Register nearest-handler shadowing and restoration.
-test("an inner resuming handler shadows then restores its outer handler", exactly(resumingHandlerShadowCase))
-// Register post-resume transformation of the completed answer.
-test("a handler can transform the completed continuation answer", exactly(postResumeTransformsAnswerCase))
-// Register complete Result transport through resume.
-test("resume preserves Success and Error values", exactly(resumeWholeResultCase))
-// Register tagged domain recovery values through resume.
-test("resume preserves tagged recovery choices", exactly(resumeTaggedChoiceCase))
-// Register repeated deep suspension and settlement.
-test("thirty-two sequential recoveries settle exactly once", exactly(deepResumeStressCase))
-// Register multiple operation result types in one resuming handler.
-test("one handler resumes integer string boolean and Unit operations", exactly(heterogeneousResumeCase))
-// Register the managed continuation answer that must release under ARC.
-test("string continuation answers release under ARC", exactly(stringAnswerCase))
-// Register the sixteen-argument operation boundary.
-test("sixteen resumable operation arguments arrive intact", exactly(sixteenArgumentBoundaryCase))
-// Register the first arity past the mailbox's former fixed width.
-test("seventeen resumable operation arguments arrive intact", exactly(seventeenArgumentCase))
-// Register managed and scalar arguments interleaved past that width.
-test("managed and scalar arguments cross one wide operation", exactly(wideManagedArgumentCase))
+exactTests([
+    { name: "resuming recovery continues after the failed operation", work: resumeRecoveryContinuesCase },
+    // Register exception-style abort across a deep helper chain.
+    { name: "returning without resume stops a deep failed computation", work: fatalExitStopsDeepCallCase },
+    // Register recursive retry under one deep handler.
+    { name: "resumed validation can perform the same effect again", work: recursiveRetryCase },
+    // Register independently typed nested recovery channels.
+    { name: "nested resuming error channels enter FIFO and settle LIFO", work: nestedRecoveryChannelsCase },
+    // Register nearest-handler shadowing and restoration.
+    { name: "an inner resuming handler shadows then restores its outer handler", work: resumingHandlerShadowCase },
+    // Register post-resume transformation of the completed answer.
+    { name: "a handler can transform the completed continuation answer", work: postResumeTransformsAnswerCase },
+    // Register complete Result transport through resume.
+    { name: "resume preserves Success and Error values", work: resumeWholeResultCase },
+    // Register tagged domain recovery values through resume.
+    { name: "resume preserves tagged recovery choices", work: resumeTaggedChoiceCase },
+    // Register repeated deep suspension and settlement.
+    { name: "thirty-two sequential recoveries settle exactly once", work: deepResumeStressCase },
+    // Register multiple operation result types in one resuming handler.
+    { name: "one handler resumes integer string boolean and Unit operations", work: heterogeneousResumeCase },
+    // Register the managed continuation answer that must release under ARC.
+    { name: "string continuation answers release under ARC", work: stringAnswerCase },
+    // Register the sixteen-argument operation boundary.
+    { name: "sixteen resumable operation arguments arrive intact", work: sixteenArgumentBoundaryCase },
+    // Register the first arity past the mailbox's former fixed width.
+    { name: "seventeen resumable operation arguments arrive intact", work: seventeenArgumentCase },
+    // Register managed and scalar arguments interleaved past that width.
+    { name: "managed and scalar arguments cross one wide operation", work: wideManagedArgumentCase }
+])

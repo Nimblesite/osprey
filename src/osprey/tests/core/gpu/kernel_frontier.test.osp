@@ -39,10 +39,12 @@ fn blockBodyCase() = {
         gpuLength(mapped) == 3, (gpuGet(mapped, 0) ?: 0.0) == 4.0, (gpuGet(mapped, 1) ?: 0.0) == 6.0, (gpuGet(mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addF), fn(uploaded198) => (uploaded198) == 18.0)
     ])))
 }
-test("float kernel slots type both multiplication orders", exactly(multiplicationOrderCase))
-test("named generic float combines specialize from buffer slots", exactly(genericCombineCase))
-test("unannotated recursive helpers are valid GPU kernels", exactly(recursiveHelperCase))
-test("block-bodied GPU kernels keep local bindings", exactly(blockBodyCase))
+exactTests([
+    { name: "float kernel slots type both multiplication orders", work: multiplicationOrderCase },
+    { name: "named generic float combines specialize from buffer slots", work: genericCombineCase },
+    { name: "unannotated recursive helpers are valid GPU kernels", work: recursiveHelperCase },
+    { name: "block-bodied GPU kernels keep local bindings", work: blockBodyCase }
+])
 fn builtinMapCase() = withBuffer(toGpu([9007199254740993, -7]), fn(uploaded12) => withBuffer(gpuMap(uploaded12, toFloat), fn(floats) => withBuffer(toGpu([-1.5, -0.0, 2.25]), fn(uploaded13) => withBuffer(gpuMap(uploaded13, abs), fn(positive) => builtinMapCaseShadowed(floats, positive)))))
 fn builtinMapCaseShadowed(floats, positive) = {
     let abs = fn(x) => x * 2.0
@@ -78,10 +80,12 @@ fn builtinPolicyCase() = {
         faults == 1, (gpuGet(values, 0) ?: 0) == 77, (gpuGet(values, 1) ?: 0) == 4, (gpuGet(values, 2) ?: 0) == 5
     ])))
 }
-test("builtin maps specialize and respect shadowing", builtinMapCase)
-test("builtin zip pins wrapping and saturation", builtinZipCase)
-test("builtin folds and scans preserve accumulator policy", builtinFoldCase)
-test("builtin kernels preserve the active overflow policy", builtinPolicyCase)
+testCases([
+    { name: "builtin maps specialize and respect shadowing", work: builtinMapCase },
+    { name: "builtin zip pins wrapping and saturation", work: builtinZipCase },
+    { name: "builtin folds and scans preserve accumulator policy", work: builtinFoldCase },
+    { name: "builtin kernels preserve the active overflow policy", work: builtinPolicyCase }
+])
 fn builtinDivisionCase() = {
     mut faults = ""
     handle Arith {
@@ -127,8 +131,10 @@ fn liveKernelCellCase() = {
             changed == 0, gpuSatisfies(toGpu([1, 2]), fn(uploaded5) => gpuSatisfies(gpuFilter(uploaded5, keep), fn(uploaded179) => gpuLength(uploaded179) == 0))
     ])
 }
-test("closed GPU kernels retain lexical uniforms", lexicalKernelCase)
-test("host GPU kernels retain live cells", liveKernelCellCase)
+testCases([
+    { name: "closed GPU kernels retain lexical uniforms", work: lexicalKernelCase },
+    { name: "host GPU kernels retain live cells", work: liveKernelCellCase }
+])
 fn managedKernelCase() = {
     let label = "kept"
     let keep = fn(_x) => length(label) > 0
@@ -165,6 +171,8 @@ fn mathTotalityCase() = {
         gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuSatisfies(gpuFold(uploaded175, 0.0, addF), fn(uploaded206) => (uploaded206) == 6.0)))
     ])))
 }
-test("declined GPU extraction preserves managed captures", managedKernelCase)
-test("captured GPU kernels preserve arithmetic policy", capturedArithmeticCase)
-test("float math builtins are total and name GPU kernels", mathTotalityCase)
+testCases([
+    { name: "declined GPU extraction preserves managed captures", work: managedKernelCase },
+    { name: "captured GPU kernels preserve arithmetic policy", work: capturedArithmeticCase },
+    { name: "float math builtins are total and name GPU kernels", work: mathTotalityCase }
+])

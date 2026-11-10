@@ -10,10 +10,10 @@ pipeline () =
     a + b 
 
 (** Append `${key}:${label}|` to a transcript; entry and settle share this shape. *)
-tag cell key label = "${cell}${key}:${label}|"
+tag (cell, key, label) = "${cell}${key}:${label}|"
 
 (** Append `${label}=${toString value}|`, recording the value an arm supplied. *)
-supply cell label value = "${cell}${label}=${toString value}|"
+supply (cell, label, value) = "${cell}${label}=${toString value}|"
 
 (** Append `${label}:${toString value}|`, recording the answer an arm saw. *)
 saw cell label value = "${cell}${label}:${toString value}|"
@@ -26,21 +26,21 @@ type Ledger =
     answers : string
 
 (** The ledger every audited region starts from: four empty transcripts. *)
-blankLedger () = { entered = "", supplies = "", settled = "", answers = "" }
+blankLedger () = Ledger(entered = "", supplies = "", settled = "", answers = "")
 
 (** Record one operation's entry and the value its region supplied. *)
-noteEnter log key supplyLabel label supplied =
-    { entered = tag log.entered key label,
-      supplies = supply log.supplies supplyLabel supplied,
+noteEnter (log, key, supplyLabel, label, supplied) =
+    Ledger(entered = tag (log.entered, key, label),
+      supplies = supply (log.supplies, supplyLabel, supplied),
       settled = log.settled,
-      answers = log.answers }
+      answers = log.answers)
 
 (** Record one operation's settle and the answer its arm saw. *)
 noteExit log key label sawLabel answer =
-    { entered = log.entered,
+    Ledger(entered = log.entered,
       supplies = log.supplies,
-      settled = tag log.settled key label,
-      answers = saw log.answers sawLabel answer }
+      settled = tag (log.settled, key, label),
+      answers = saw log.answers sawLabel answer)
 
 (** This case proves operations enter FIFO and post-resume code exits LIFO. *)
 resumeLifoAuditCase () =
@@ -123,7 +123,7 @@ nestedInterleavedDepthTwoCase () =
             alpha label =>
                 alphaCalls := alphaCalls + 1 
                 supplied = alphaCalls * 10 
-                log := noteEnter log "a" label label supplied
+                log := noteEnter (log, "a", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "a" label label answer
                 answer + 1 
@@ -131,7 +131,7 @@ nestedInterleavedDepthTwoCase () =
             beta label =>
                 betaCalls := betaCalls + 1 
                 supplied = betaCalls * 100 
-                log := noteEnter log "b" label label supplied
+                log := noteEnter (log, "b", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "b" label label answer
                 answer * 2 
@@ -194,7 +194,7 @@ nestedDepthThreeRotationCase () =
             gamma label =>
                 gammaCalls := gammaCalls + 1 
                 supplied = gammaCalls * 1000 
-                log := noteEnter log "d1" label label supplied
+                log := noteEnter (log, "d1", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "d1" label label answer
                 answer * 2 
@@ -202,7 +202,7 @@ nestedDepthThreeRotationCase () =
             alpha label =>
                 alphaCalls := alphaCalls + 1 
                 supplied = alphaCalls * 10 
-                log := noteEnter log "d2" label label supplied
+                log := noteEnter (log, "d2", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "d2" label label answer
                 answer + 7 
@@ -210,7 +210,7 @@ nestedDepthThreeRotationCase () =
             beta label =>
                 betaCalls := betaCalls + 1 
                 supplied = betaCalls * 100 
-                log := noteEnter log "d3" label label supplied
+                log := noteEnter (log, "d3", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "d3" label label answer
                 answer * 3 
@@ -278,7 +278,7 @@ nestedDepthFourStaircaseCase () =
             alpha label =>
                 alphaCalls := alphaCalls + 1 
                 supplied = alphaCalls
-                log := noteEnter log "1" label label supplied
+                log := noteEnter (log, "1", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "1" label label answer
                 answer + 1 
@@ -286,7 +286,7 @@ nestedDepthFourStaircaseCase () =
             beta label =>
                 betaCalls := betaCalls + 1 
                 supplied = betaCalls * 10 
-                log := noteEnter log "2" label label supplied
+                log := noteEnter (log, "2", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "2" label label answer
                 answer + 10 
@@ -294,7 +294,7 @@ nestedDepthFourStaircaseCase () =
             gamma label =>
                 gammaCalls := gammaCalls + 1 
                 supplied = gammaCalls * 100 
-                log := noteEnter log "3" label label supplied
+                log := noteEnter (log, "3", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "3" label label answer
                 answer + 100 
@@ -302,7 +302,7 @@ nestedDepthFourStaircaseCase () =
             delta label =>
                 deltaCalls := deltaCalls + 1 
                 supplied = deltaCalls * 1000 
-                log := noteEnter log "4" label label supplied
+                log := noteEnter (log, "4", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "4" label label answer
                 answer + 1000 
@@ -383,14 +383,14 @@ nestedPartialInnerResumeCase () =
             near amount =>
                 outerNear := outerNear + 1 
                 supplied = amount * 1000000 
-                log := noteEnter log "OUTERnear" "N${toString amount}" (toString amount) supplied
+                log := noteEnter (log, "OUTERnear", "N${toString amount}", toString amount, supplied)
                 answer = resume supplied
                 log := noteExit log "OUTERnear" (toString amount) "OUTERnear" answer
                 answer
             far amount =>
                 outerFar := outerFar + 1 
                 supplied = amount * 1000 
-                log := noteEnter log "far" "f${toString amount}" (toString amount) supplied
+                log := noteEnter (log, "far", "f${toString amount}", toString amount, supplied)
                 answer = resume supplied
                 log := noteExit log "far" (toString amount) "far" answer
                 answer * 2 
@@ -398,7 +398,7 @@ nestedPartialInnerResumeCase () =
             near amount =>
                 innerNear := innerNear + 1 
                 supplied = amount * 10 
-                log := noteEnter log "near" "n${toString amount}" (toString amount) supplied
+                log := noteEnter (log, "near", "n${toString amount}", toString amount, supplied)
                 answer = resume supplied
                 log := noteExit log "near" (toString amount) "near" answer
                 answer + 5 
@@ -461,7 +461,7 @@ sameEffectTwoDepthsCase () =
             pick label =>
                 outerCalls := outerCalls + 1 
                 supplied = outerCalls * 1000 
-                log := noteEnter log "out" label label supplied
+                log := noteEnter (log, "out", label, label, supplied)
                 answer = resume supplied
                 log := noteExit log "out" label label answer
                 answer * 2 
@@ -471,7 +471,7 @@ sameEffectTwoDepthsCase () =
                 pick label =>
                     innerCalls := innerCalls + 1 
                     supplied = innerCalls * 10 
-                    log := noteEnter log "in" label label supplied
+                    log := noteEnter (log, "in", label, label, supplied)
                     answer = resume supplied
                     log := noteExit log "in" label label answer
                     answer + 3 

@@ -102,39 +102,38 @@ envelopeCase () =
     envelope = App::envelope loaded
     Support::each [Support::it "opaque model round trip" (Model::encode loaded.model) (Support::projected envelope "model"), Support::it "native neutral UI" "scroll" (Support::projected envelope "ui.kind"), Support::it "view included" "2" (Support::projected envelope "view.total")]
 
-test "repository validation prevents path and query injection" repositoryCase
-test "startup sequences SQLite schema load and HTTP" startupCase
-test "callable request handler substitutes native SQL commands" requestHandlerCase
-test "scoped request handler changes transport without changing transitions" scopedRequestsCase
-test "GitHub data normalized and pull requests excluded" loadedCase
-test "search reacts locally without network or SQL" searchCase
-test "bookmarks derive views and prepared SQLite writes" bookmarkCase
-test "SQLite snapshot restores offline across app starts" cacheCase
-test "out of order HTTP response cannot replace a new repository" staleCase
-test "network failure retains cached issues and reports cause" offlineCase
-test "malformed successful API response is rejected" malformedCase
-test "SQLite errors remain visible without losing in memory data" sqliteFailureCase
-test "SQL parameter binding preserves escaped user data" injectionCase
-test "one boundary returns model view commands and Osprey UI" envelopeCase
-
-test "issue details and navigation are Osprey transitions" detailCase
-test "local notes persist safely with quotes newlines and SQL text" noteCase
-test "local priority changes reactively and rejects invalid values" priorityCase
-test "GitHub descriptions and labels normalize for details" bodyCase
-test "all control characters and Unicode survive shared JSON encoding" allControlCase
-test "SQLite schema failure is visible and supports memory only operation" schemaFailureCase
-test "stale SQLite completion cannot overwrite current save status" staleSaveCase
-test "invalid or newer SQLite cache cannot become app state" invalidCacheCase
-test "GitHub rate limit status and cause reach the user" rateLimitCase
-test "clearing notes and priority releases annotation capacity" clearAnnotationCase
-test "SQLite save failure cannot stop an independent HTTP loading state" saveDuringRefreshCase
-test "refresh removing selected issue returns to the inbox" removedSelectionCase
-
-test "issue body blocks become headings, lists, quotes, rules and code" markdownBlocksCase
-test "inline emphasis, code and https links are spans; unmatched markers are literal" markdownInlineCase
-test "degenerate Markdown never breaks rendering" markdownEdgeCase
-test "the detail screen renders Markdown while the view keeps the raw body" markdownDetailCase
-
-test "Unicode limits preserve complete GitHub description characters" unicodeBodyCase
-test "Unicode limits preserve complete search characters" unicodeSearchCase
-test "Unicode limits accept and restore bounded notes" unicodeNoteCase
+testCases [
+    { name = "repository validation prevents path and query injection", work = repositoryCase },
+    { name = "startup sequences SQLite schema load and HTTP", work = startupCase },
+    { name = "callable request handler substitutes native SQL commands", work = requestHandlerCase },
+    { name = "scoped request handler changes transport without changing transitions", work = scopedRequestsCase },
+    { name = "GitHub data normalized and pull requests excluded", work = loadedCase },
+    { name = "search reacts locally without network or SQL", work = searchCase },
+    { name = "bookmarks derive views and prepared SQLite writes", work = bookmarkCase },
+    { name = "SQLite snapshot restores offline across app starts", work = cacheCase },
+    { name = "out of order HTTP response cannot replace a new repository", work = staleCase },
+    { name = "network failure retains cached issues and reports cause", work = offlineCase },
+    { name = "malformed successful API response is rejected", work = malformedCase },
+    { name = "SQLite errors remain visible without losing in memory data", work = sqliteFailureCase },
+    { name = "SQL parameter binding preserves escaped user data", work = injectionCase },
+    { name = "one boundary returns model view commands and Osprey UI", work = envelopeCase },
+    { name = "issue details and navigation are Osprey transitions", work = detailCase },
+    { name = "local notes persist safely with quotes newlines and SQL text", work = noteCase },
+    { name = "local priority changes reactively and rejects invalid values", work = priorityCase },
+    { name = "GitHub descriptions and labels normalize for details", work = bodyCase },
+    { name = "all control characters and Unicode survive shared JSON encoding", work = allControlCase },
+    { name = "SQLite schema failure is visible and supports memory only operation", work = schemaFailureCase },
+    { name = "stale SQLite completion cannot overwrite current save status", work = staleSaveCase },
+    { name = "invalid or newer SQLite cache cannot become app state", work = invalidCacheCase },
+    { name = "GitHub rate limit status and cause reach the user", work = rateLimitCase },
+    { name = "clearing notes and priority releases annotation capacity", work = clearAnnotationCase },
+    { name = "SQLite save failure cannot stop an independent HTTP loading state", work = saveDuringRefreshCase },
+    { name = "refresh removing selected issue returns to the inbox", work = removedSelectionCase },
+    { name = "issue body blocks become headings, lists, quotes, rules and code", work = markdownBlocksCase },
+    { name = "inline emphasis, code and https links are spans; unmatched markers are literal", work = markdownInlineCase },
+    { name = "degenerate Markdown never breaks rendering", work = markdownEdgeCase },
+    { name = "the detail screen renders Markdown while the view keeps the raw body", work = markdownDetailCase },
+    { name = "Unicode limits preserve complete GitHub description characters", work = unicodeBodyCase },
+    { name = "Unicode limits preserve complete search characters", work = unicodeSearchCase },
+    { name = "Unicode limits accept and restore bounded notes", work = unicodeNoteCase }
+]

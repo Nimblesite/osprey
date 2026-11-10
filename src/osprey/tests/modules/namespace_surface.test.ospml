@@ -48,6 +48,8 @@ quotedLabelCase () = checkAll ("quoted namespace label", [
 exactArithmetic (\() =>
     print "${geometry::square 4} ${geometry::cube 3} ${text::square "ab"} ${Metric::centimetres 2}")
 
-test ("namespace paths resolve every contribution", exactly geometryPathsCase)
-test ("namespaces keep same-named declarations apart", exactly sameNameDifferentNamespaceCase)
-test ("quoted namespace labels are opaque", exactly quotedLabelCase)
+exactTests [
+    { name = "namespace paths resolve every contribution", work = geometryPathsCase },
+    { name = "namespaces keep same-named declarations apart", work = sameNameDifferentNamespaceCase },
+    { name = "quoted namespace labels are opaque", work = quotedLabelCase }
+]

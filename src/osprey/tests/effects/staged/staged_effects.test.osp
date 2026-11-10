@@ -157,8 +157,10 @@ fn signalIdentityCase() = {
     ])
 }
 
-test("static handlers are discharged before the program runs", exactly(staticDischargeCase))
-test("one function serves the static and dynamic stages", exactly(sharedAcrossStagesCase))
-test("a GPU kernel may perform a static effect", exactly(stagedKernelCase))
-test("a kernel region supplies its own device dialects", exactly(kernelRegionCase))
-test("two signal instantiations are two dependencies", exactly(signalIdentityCase))
+exactTests([
+    { name: "static handlers are discharged before the program runs", work: staticDischargeCase },
+    { name: "one function serves the static and dynamic stages", work: sharedAcrossStagesCase },
+    { name: "a GPU kernel may perform a static effect", work: stagedKernelCase },
+    { name: "a kernel region supplies its own device dialects", work: kernelRegionCase },
+    { name: "two signal instantiations are two dependencies", work: signalIdentityCase }
+])

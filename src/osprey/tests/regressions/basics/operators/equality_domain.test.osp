@@ -59,8 +59,10 @@ fn listContainsUsesEquality() = {
     ])
 }
 
-test("scalars compare by value", scalarsCompareByValue)
-test("scalars order", scalarsOrder)
-test("payload-free union values compare by variant", payloadFreeUnionsCompareByVariant)
-test("a payload-free constructor tests the variant", constructorsTestTheVariant)
-test("listContains searches by ==", listContainsUsesEquality)
+testCases([
+    { name: "scalars compare by value", work: scalarsCompareByValue },
+    { name: "scalars order", work: scalarsOrder },
+    { name: "payload-free union values compare by variant", work: payloadFreeUnionsCompareByVariant },
+    { name: "a payload-free constructor tests the variant", work: constructorsTestTheVariant },
+    { name: "listContains searches by ==", work: listContainsUsesEquality }
+])

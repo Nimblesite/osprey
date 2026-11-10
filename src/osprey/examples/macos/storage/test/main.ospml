@@ -267,11 +267,12 @@ phoneCase () =
         Claim(claimLabel = "with no breakdown", claimWords = "Only in iCloud")
     ])
 
-test "sizes, counts and shares read as Finder writes them" formatCase
-test "ranking keeps the largest entries under the hidden-files setting" rankCase
-test "paths, trails and symbols" pathCase
-test "events move the browser and request host work" browseCase
-test "screens show what the disk holds" screenCase
-test "an iPhone shows what uses it, as far as iOS lets an app see" phoneCase
-
-test "links explain their disk accounting" linkCase
+testCases [
+    { name = "sizes, counts and shares read as Finder writes them", work = formatCase },
+    { name = "ranking keeps the largest entries under the hidden-files setting", work = rankCase },
+    { name = "paths, trails and symbols", work = pathCase },
+    { name = "events move the browser and request host work", work = browseCase },
+    { name = "screens show what the disk holds", work = screenCase },
+    { name = "an iPhone shows what uses it, as far as iOS lets an app see", work = phoneCase },
+    { name = "links explain their disk accounting", work = linkCase }
+]

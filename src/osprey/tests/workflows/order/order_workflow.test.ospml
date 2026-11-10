@@ -68,6 +68,8 @@ receiptInteraction () =
         receipt "Kai" "silver" (itemAt 1 "missing") ((2 * 2) ) == "KAI:bread:4:18"
     ]
 
-test "catalogue lookup drives prices and fallbacks" (exactly catalogueInteraction)
-test "pricing combines maps, matches, Results and arithmetic" (exactly pricingInteraction)
-test "receipts compose normalization, totals and pipelines" (exactly receiptInteraction)
+exactTests [
+    { name = "catalogue lookup drives prices and fallbacks", work = catalogueInteraction },
+    { name = "pricing combines maps, matches, Results and arithmetic", work = pricingInteraction },
+    { name = "receipts compose normalization, totals and pipelines", work = receiptInteraction }
+]

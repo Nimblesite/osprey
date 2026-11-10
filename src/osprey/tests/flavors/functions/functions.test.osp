@@ -152,15 +152,17 @@ fn recursionCase() = {
 
 // Register the closure capture scenario.
 
-test("closures retain independent captured state", exactly(closuresCase))
-// Register the partial-application scenario.
-test("partial application retains every curried golden", exactly(curryPartialCase))
-// Register the higher-order function scenario.
-test("higher-order functions retain every application golden", exactly(higherOrderCase))
-// Register the nested-call scenario.
-test("nested calls retain evaluation structure", exactly(nestedCallsCase))
-// Register the recursive-sum scenario.
-test("recursion retains base and recursive branches", exactly(recursionCase))
+exactTests([
+    { name: "closures retain independent captured state", work: closuresCase },
+    // Register the partial-application scenario.
+    { name: "partial application retains every curried golden", work: curryPartialCase },
+    // Register the higher-order function scenario.
+    { name: "higher-order functions retain every application golden", work: higherOrderCase },
+    // Register the nested-call scenario.
+    { name: "nested calls retain evaluation structure", work: nestedCallsCase },
+    // Register the recursive-sum scenario.
+    { name: "recursion retains base and recursive branches", work: recursionCase }
+])
 
 /// Identity as a GENERIC definition — no single concrete ABI, so it exists
 /// only as a body its call sites specialise ([TYPE-GENERICS-FN]).

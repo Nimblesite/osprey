@@ -247,19 +247,17 @@ fn literalsAndDispatchCase() = {
 
 // Register empty, set, overwrite, and source-isolation behavior. The testing
 // prelude supplies exactArithmetic beside every program that names it.
-test("maps construct, overwrite, and retain source bindings", exactly(constructionAndOverwriteCase))
-
-// Register generation-chain and sibling-branch persistence behavior.
-test("map generations and sibling branches remain isolated", exactly(generationsAndBranchesCase))
-
-// Register persistent removal and right-biased merge behavior.
-test("map removal and merge preserve values and bias", exactly(removalAndMergeCase))
-
-// Register key/value views beside independent persistent lists.
-test("map views and list interactions preserve both collections", exactly(viewsAndCrossCollectionCase))
-
-// Register literal lookup, duplicate keys, and receiver-directed dispatch.
-test("map literals and receiver dispatch preserve lookup semantics", exactly(literalsAndDispatchCase))
+exactTests([
+    { name: "maps construct, overwrite, and retain source bindings", work: constructionAndOverwriteCase },
+    // Register generation-chain and sibling-branch persistence behavior.
+    { name: "map generations and sibling branches remain isolated", work: generationsAndBranchesCase },
+    // Register persistent removal and right-biased merge behavior.
+    { name: "map removal and merge preserve values and bias", work: removalAndMergeCase },
+    // Register key/value views beside independent persistent lists.
+    { name: "map views and list interactions preserve both collections", work: viewsAndCrossCollectionCase },
+    // Register literal lookup, duplicate keys, and receiver-directed dispatch.
+    { name: "map literals and receiver dispatch preserve lookup semantics", work: literalsAndDispatchCase }
+])
 
 /// [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
 /// equivalent to `map[key]`, with a missing key returning `Error`. `V` is the

@@ -344,13 +344,13 @@ fn indexingPatternsAndDispatchCase() = {
 test("lists construct, reverse, prepend, concatenate, and retain contents", fn() => exactArithmetic(constructionAndIdentityCase))
 
 // Register the traversal, persistence, and branching scenario.
-test("list iteration and persistent branches retain order and isolation", exactly(iterationAndPersistenceCase))
-
-// Register the 32-element structural boundary scenario.
-test("lists preserve content across the 32-element tail boundary", exactly(tailBoundaryCase))
-
-// Register Result indexing, patterns, recursion, and builtin dispatch together.
-test("list indexing, patterns, recursion, and receiver dispatch compose", exactly(indexingPatternsAndDispatchCase))
+exactTests([
+    { name: "list iteration and persistent branches retain order and isolation", work: iterationAndPersistenceCase },
+    // Register the 32-element structural boundary scenario.
+    { name: "lists preserve content across the 32-element tail boundary", work: tailBoundaryCase },
+    // Register Result indexing, patterns, recursion, and builtin dispatch together.
+    { name: "list indexing, patterns, recursion, and receiver dispatch compose", work: indexingPatternsAndDispatchCase }
+])
 
 /// [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
 /// and says it is "equivalent to `list[index]`", with an out-of-range index
@@ -1066,5 +1066,7 @@ fn linesIndexCase() = {
     ])
 }
 
-test("fold rebuilds a list-literal seed once before the loop", exactly(foldSeedCase))
-test("a bound string list is read by index in constant time", exactly(linesIndexCase))
+exactTests([
+    { name: "fold rebuilds a list-literal seed once before the loop", work: foldSeedCase },
+    { name: "a bound string list is read by index in constant time", work: linesIndexCase }
+])

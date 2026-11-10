@@ -266,17 +266,19 @@ headCase () = withHostileOrigin (18121, headsThatHideFraming)
 statusLineCase () = withHostileOrigin (18122, statusesThatAreNotStatuses)
 lengthCase () = withHostileOrigin (18123, lengthsThatLie)
 
-test "chunk sizes beyond the body are refused" sizesCase
-test "chunk sizes that do not parse are refused" parseCase
-test "chunk data without its CRLF is refused" crlfCase
-test "truncated framing is refused" cutCase
-test "well-formed framing decodes" validCase
-test "only a final chunked coding means chunked" headerCase
-test "GET and POST share the decoder" methodCase
-test "repeated attacks leave the client working" repeatCase
-test "204 and 304 have no body" statusCase
-test "repeated Transfer-Encoding lines are one list" linesCase
-test "bodies past the transport buffer decode" bigCase
-test "heads that hide framing are refused" headCase
-test "statuses are three digits" statusLineCase
-test "lengths that lie are refused" lengthCase
+testCases [
+    { name = "chunk sizes beyond the body are refused", work = sizesCase },
+    { name = "chunk sizes that do not parse are refused", work = parseCase },
+    { name = "chunk data without its CRLF is refused", work = crlfCase },
+    { name = "truncated framing is refused", work = cutCase },
+    { name = "well-formed framing decodes", work = validCase },
+    { name = "only a final chunked coding means chunked", work = headerCase },
+    { name = "GET and POST share the decoder", work = methodCase },
+    { name = "repeated attacks leave the client working", work = repeatCase },
+    { name = "204 and 304 have no body", work = statusCase },
+    { name = "repeated Transfer-Encoding lines are one list", work = linesCase },
+    { name = "bodies past the transport buffer decode", work = bigCase },
+    { name = "heads that hide framing are refused", work = headCase },
+    { name = "statuses are three digits", work = statusLineCase },
+    { name = "lengths that lie are refused", work = lengthCase }
+]

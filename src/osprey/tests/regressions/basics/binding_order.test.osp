@@ -36,5 +36,7 @@ fn recursionCase() = checkAll("a recursive group below its caller", [
     structuralEquals([parity(4), parity(7)], ["even", "odd"])
 ])
 
-test("a caller above its helper is generic", orderCase)
-test("a recursive group below its caller", recursionCase)
+testCases([
+    { name: "a caller above its helper is generic", work: orderCase },
+    { name: "a recursive group below its caller", work: recursionCase }
+])

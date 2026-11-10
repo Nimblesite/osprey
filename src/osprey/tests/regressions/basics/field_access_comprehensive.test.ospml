@@ -24,11 +24,9 @@ print "Point x: ${point.x}\nPoint y: ${point.y}\n"
 // Test 2 - Boolean and integer fields
 print "Test 2 - Boolean and integer fields:"
 user = User(id = 42, active = true)
-print "User ID: ${user.id}"
-print "User active: ${match user.active
+print "User ID: ${user.id}\nUser active: ${match user.active
     true => 1
-    false => 0}"
-print ""
+    false => 0}\n"
 
 // Test 3 - Field access in arithmetic
 print "Test 3 - Field access in arithmetic:"

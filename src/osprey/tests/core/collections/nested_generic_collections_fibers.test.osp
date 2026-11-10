@@ -6,10 +6,10 @@ effect FiberDepot<T> {
     fetch: fn(string) -> T
 }
 
-fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
+fn nestedAt<T>(matrix, row, column, fallbackRow, fallback: T) =
 listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
 
-fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
+fn groupAt<T>(groups, key, index, fallbackList, fallback: T) =
 listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
 
 fn intMatrix() = [[1, 2], [3, 4, 5]]
@@ -237,6 +237,8 @@ fn channelThroughClosureCase() = {
     ])
 }
 
-test("fibers channels Results and persistence retain generic collection types", fiberChannelCollectionCase)
-test("generic effects inside fibers retain nested collection types", fiberEffectCollectionCase)
-test("a channel reached through a closure keeps its element descriptor", channelThroughClosureCase)
+testCases([
+    { name: "fibers channels Results and persistence retain generic collection types", work: fiberChannelCollectionCase },
+    { name: "generic effects inside fibers retain nested collection types", work: fiberEffectCollectionCase },
+    { name: "a channel reached through a closure keeps its element descriptor", work: channelThroughClosureCase }
+])

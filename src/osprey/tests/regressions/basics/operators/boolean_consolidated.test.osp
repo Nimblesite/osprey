@@ -144,8 +144,10 @@ fn orderedFloatComparisonsCase() = {
     checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
     checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
 }
-test("NaN comparison truth table", exactly(nanComparisonsCase))
-test("ordered float comparison controls", exactly(orderedFloatComparisonsCase))
+exactTests([
+    { name: "NaN comparison truth table", work: nanComparisonsCase },
+    { name: "ordered float comparison controls", work: orderedFloatComparisonsCase }
+])
 
 /// [FLOAT-IEEE-RESULTS]: non-finite values require no overflow policy.
 fn floatIdentity(value) = value
@@ -216,10 +218,12 @@ fn zeroDivisorCase() = {
     expect(faults, "/v/v/v/v/n%v%v%v%v%n")
 }
 
-test("IEEE arithmetic preserves defined non-finite results", ieeeArithmeticCase)
-test("float signed zero and underflow remain defined", signedZeroAndUnderflowCase)
-test("nonzero float division and remainder preserve IEEE results", nonFiniteDivisionCase)
-test("float zero divisors request explicit recovery even for NaN", zeroDivisorCase)
+testCases([
+    { name: "IEEE arithmetic preserves defined non-finite results", work: ieeeArithmeticCase },
+    { name: "float signed zero and underflow remain defined", work: signedZeroAndUnderflowCase },
+    { name: "nonzero float division and remainder preserve IEEE results", work: nonFiniteDivisionCase },
+    { name: "float zero divisors request explicit recovery even for NaN", work: zeroDivisorCase }
+])
 
 /// [BUILTIN-ABS]: float overload stays total through aliases and callbacks.
 fn absoluteValue(value) = abs(value)

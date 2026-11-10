@@ -365,3 +365,12 @@ fn a_program_with_its_own_success_variant_gets_only_the_testing_unit_it_names() 
         "{gpu:?}"
     );
 }
+
+#[test]
+fn a_program_naming_only_its_own_copies_of_unit_functions_gets_no_unit() {
+    let names = attached_names(
+        "fn addF(a, x) = a + x\nfn at(m, i) = gpuGet(m, i) ?: 0.0\nprint(\"${addF(1.0, 2.0)}\")\n",
+    );
+    assert_eq!(count_named(&names, "addF"), 1, "only the program's own addF");
+    assert_none_attached(&names, &["withBuffer", "gpuSatisfies", "floatSumsTo"]);
+}

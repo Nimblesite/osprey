@@ -761,7 +761,7 @@ type NestedRun =
     seen : string
 
 (** Runs `body` under a Depth handler answering one more each arm plus `bump`. *)
-nestedRun body bump =
+nestedRun (body, bump) =
     mut calls = 0
     mut seed = 0
     mut tags = ""
@@ -786,9 +786,9 @@ nestedRun body bump =
     `handle` reaches the same arm — and so does the next one, performed after
     the first continuation resumed. Supplying 3 then 4 gives (3+4)*2 + 5 = 19. *)
 resumeFromNestedHelpersCase () =
-    deepRun = nestedRun depth0 2
+    deepRun = nestedRun (depth0, 2)
 
-    spanRun = nestedRun spanBody 0
+    spanRun = nestedRun (spanBody, 0)
 
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)

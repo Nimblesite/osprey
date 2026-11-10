@@ -76,6 +76,8 @@ fn stringsCase() = {
 
 // Register the pipeline composition scenario.
 
-test("pipelines retain each stage and complete chain", exactly(pipeChainCase))
-// Register the string composition scenario.
-test("string calls retain interpolation and concatenation", exactly(stringsCase))
+exactTests([
+    { name: "pipelines retain each stage and complete chain", work: pipeChainCase },
+    // Register the string composition scenario.
+    { name: "string calls retain interpolation and concatenation", work: stringsCase }
+])

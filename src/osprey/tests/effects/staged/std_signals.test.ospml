@@ -74,7 +74,9 @@ framesSurviveTheJsonRoundTrip () =
         structuralEquals [signalFrameRevision one, listLength foreign] [3, 0],
     ]
 
-test "keyed regions rebuild only the changed slice" keyedRegionsRebuildOnlyTheChangedSlice
-test "a forced key rebuilds while others retain" aForcedKeyRebuildsWhileOthersRetain
-test "an unseen key has an unknown dependency set" anUnseenKeyHasAnUnknownDependencySet
-test "frames survive the json round trip" framesSurviveTheJsonRoundTrip
+testCases [
+    { name = "keyed regions rebuild only the changed slice", work = keyedRegionsRebuildOnlyTheChangedSlice },
+    { name = "a forced key rebuilds while others retain", work = aForcedKeyRebuildsWhileOthersRetain },
+    { name = "an unseen key has an unknown dependency set", work = anUnseenKeyHasAnUnknownDependencySet },
+    { name = "frames survive the json round trip", work = framesSurviveTheJsonRoundTrip }
+]

@@ -119,10 +119,12 @@ fn operandsEvaluateOnceInOrder() = {
     checkAll("operands", [picked == 100, recv(log) == 1, recv(log) == 2, recv(log) == 3, recv(channel) == 10])
 }
 
-test("ready arms run in source order", exactly(tieBreaksInSourceOrder))
-test("send arms respect capacity", exactly(sendArmsRespectCapacity))
-test("receive bindings have the element type", exactly(bindingsHaveTheElementType))
-test("managed sends keep their ownership", exactly(managedSendsKeepTheirOwnership))
-test("timeouts decide only when nothing is ready", exactly(timeoutsDecideOnlyWhenNothingIsReady))
-test("a fiber wakes a blocked select", exactly(aFiberWakesABlockedSelect))
-test("operands evaluate once in order", exactly(operandsEvaluateOnceInOrder))
+exactTests([
+    { name: "ready arms run in source order", work: tieBreaksInSourceOrder },
+    { name: "send arms respect capacity", work: sendArmsRespectCapacity },
+    { name: "receive bindings have the element type", work: bindingsHaveTheElementType },
+    { name: "managed sends keep their ownership", work: managedSendsKeepTheirOwnership },
+    { name: "timeouts decide only when nothing is ready", work: timeoutsDecideOnlyWhenNothingIsReady },
+    { name: "a fiber wakes a blocked select", work: aFiberWakesABlockedSelect },
+    { name: "operands evaluate once in order", work: operandsEvaluateOnceInOrder }
+])

@@ -420,16 +420,18 @@ fn compositeWith(indices0, indices16, indices1536) =
                         gpuLengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
                 ]))))
 exactArithmetic(fn() => withBuffer(toGpu([1, 4, 7, 9]), fn(texels) => withIndices(1536, fn(indices1536) => withIndices(64, fn(indices64) => withIndices(16, fn(indices16) => gallery(indices1536, indices64, indices16, texels))))))
-test("one kernel dispatch covers the whole pixel grid", exactly(dispatchCase))
-test("brightness levels map onto the palette", exactly(paletteCase))
-test("flat indices decompose into raster coordinates", exactly(decomposeCase))
-test("edge functions are signed areas about their edge", exactly(edgeCase))
-test("triangles rasterise to exact coverage and spans", exactly(triangleCase))
-test("spans fill scanlines and clip at the tile edge", exactly(spanCase))
-test("channel arithmetic saturates at both rails", exactly(saturateCase))
-test("clamped addressing samples and magnifies", exactly(samplingCase))
-test("gather transposes rows and columns", exactly(gatherCase))
-test("a small pipeline is correct at every pixel", exactly(quadCase))
-test("the fractal kernel renders a symmetric frame", exactly(symmetryCase))
-test("the sphere kernel shades a lit silhouette", exactly(shadingCase))
-test("zipWith composites two rendered layers", exactly(compositeCase))
+exactTests([
+    { name: "one kernel dispatch covers the whole pixel grid", work: dispatchCase },
+    { name: "brightness levels map onto the palette", work: paletteCase },
+    { name: "flat indices decompose into raster coordinates", work: decomposeCase },
+    { name: "edge functions are signed areas about their edge", work: edgeCase },
+    { name: "triangles rasterise to exact coverage and spans", work: triangleCase },
+    { name: "spans fill scanlines and clip at the tile edge", work: spanCase },
+    { name: "channel arithmetic saturates at both rails", work: saturateCase },
+    { name: "clamped addressing samples and magnifies", work: samplingCase },
+    { name: "gather transposes rows and columns", work: gatherCase },
+    { name: "a small pipeline is correct at every pixel", work: quadCase },
+    { name: "the fractal kernel renders a symmetric frame", work: symmetryCase },
+    { name: "the sphere kernel shades a lit silhouette", work: shadingCase },
+    { name: "zipWith composites two rendered layers", work: compositeCase }
+])

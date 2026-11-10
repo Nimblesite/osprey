@@ -48,11 +48,13 @@ fn stringsAndListsCase() = {
 }
 
 // Register the arithmetic foundation interaction.
-test("arithmetic checks share derived values", exactly(arithmeticCase))
-// Register the classification interaction.
-test("classification checks include computed inputs", exactly(classifyCase))
-// Register the standard-library composition interaction.
-test("strings and lists mix with matching", exactly(stringsAndListsCase))
+exactTests([
+    { name: "arithmetic checks share derived values", work: arithmeticCase },
+    // Register the classification interaction.
+    { name: "classification checks include computed inputs", work: classifyCase },
+    // Register the standard-library composition interaction.
+    { name: "strings and lists mix with matching", work: stringsAndListsCase }
+])
 
 /// Assertions are valid outside any case; a passing one prints nothing.
 checkTrue("assertions run outside a test case", startsWith("osprey", "osp"))

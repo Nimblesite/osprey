@@ -195,8 +195,10 @@ opaqueAliasCase () =
 exactArithmetic (\() =>
     print "${Geo::area (Geo::circle 3)} ${Geo::name (Geo::square 4)} ${Geo::perimeterOf (Geo::extent (Geo::square 5))} ${Boxes::held (Boxes::wrap "seven")}")
 
-test ("module unions keep their payloads", exactly unionPayloadCase)
-test ("module records keep their fields", exactly recordFieldCase)
-test ("module generics specialise per call site", exactly genericModuleCase)
-test ("module opaque records stay abstract", exactly opaqueCase)
-test ("module opaque aliases stay abstract", exactly opaqueAliasCase)
+exactTests [
+    { name = "module unions keep their payloads", work = unionPayloadCase },
+    { name = "module records keep their fields", work = recordFieldCase },
+    { name = "module generics specialise per call site", work = genericModuleCase },
+    { name = "module opaque records stay abstract", work = opaqueCase },
+    { name = "module opaque aliases stay abstract", work = opaqueAliasCase }
+]

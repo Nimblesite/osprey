@@ -29,8 +29,10 @@ passingCase () =
 skippedCase () =
     andThen (assume (2 > 3)) (checkVerdict "ignored after skip" "0" "1")
 
-test "pass folds several good interactions" (exactly passingCase)
-test "skip preserves an unmet precondition" (exactly skippedCase)
+exactTests [
+    { name = "pass folds several good interactions", work = passingCase },
+    { name = "skip preserves an unmet precondition", work = skippedCase }
+]
 
 (** Trace records every operation a curried body performs. *)
 effect Trace
@@ -162,8 +164,10 @@ partialApplicationCase () =
         addFlat (10, 2, 3) == otherPart 2 3
     ]
 
-test "curried ML bodies perform every operation through the handler" (exactly curriedEffectsReachTheHandlerCase)
-test "ML partial application follows the currying rule" (exactly partialApplicationCase)
+exactTests [
+    { name = "curried ML bodies perform every operation through the handler", work = curriedEffectsReachTheHandlerCase },
+    { name = "ML partial application follows the currying rule", work = partialApplicationCase }
+]
 
 (** Render a Verdict as canonical text so both its state and its payload are
     assertable without comparing union values directly. Adjacent clauses with a
@@ -795,9 +799,11 @@ layoutAndInterpolationCase () =
 
 // Registration order fixes the TAP numbering, so these follow the four cases
 // registered above.
-test "Verdict folding obeys the andThen monoid laws" (exactly verdictAlgebraCase)
-test "curried arities two through six apply in every grouping" (exactly curriedArityLadderCase)
-test "curried and flat lambda heads split as specified" (exactly lambdaCurryingCase)
-test "ML record layout, inline heads and updates agree" (exactly recordLayoutAndUpdateCase)
-test "ML match layout, clauses and list patterns select correctly" (exactly matchLayoutAndClausesCase)
-test "ML layout blocks and interpolation render juxtaposed calls" (exactly layoutAndInterpolationCase)
+exactTests [
+    { name = "Verdict folding obeys the andThen monoid laws", work = verdictAlgebraCase },
+    { name = "curried arities two through six apply in every grouping", work = curriedArityLadderCase },
+    { name = "curried and flat lambda heads split as specified", work = lambdaCurryingCase },
+    { name = "ML record layout, inline heads and updates agree", work = recordLayoutAndUpdateCase },
+    { name = "ML match layout, clauses and list patterns select correctly", work = matchLayoutAndClausesCase },
+    { name = "ML layout blocks and interpolation render juxtaposed calls", work = layoutAndInterpolationCase }
+]

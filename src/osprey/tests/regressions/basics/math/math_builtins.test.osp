@@ -108,5 +108,7 @@ fn transcendentalCase() = {
     ])
 }
 
-test("math builtins: exact families are byte-exact", exactCase)
-test("math builtins: transcendental families within 1e-12", transcendentalCase)
+testCases([
+    { name: "math builtins: exact families are byte-exact", work: exactCase },
+    { name: "math builtins: transcendental families within 1e-12", work: transcendentalCase }
+])

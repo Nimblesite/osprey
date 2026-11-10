@@ -329,26 +329,17 @@ verifiedFetch () =
     expectShows (failed, "root", ["Digest mismatch"])
     expect (evidenceValue (failed, "root", "Installed"), "")
 
-test ("missing workspace graph never reports zero installed in the package footer", exactly missingFooter)
-
-test ("installed counts only present entries while missing lock entries warn", exactly installedCounts)
-
-test ("empty findings read as unverified caution and never as an audit", exactly emptyFindings)
-
-test ("missing direct dependencies can be inspected and removed without hiding findings", exactly missingDirect)
-
-test ("recorded findings are visible danger warnings that block adding", exactly recordedFindings)
-
-test ("a local unverified add needs explicit confirmation and pending work blocks it", exactly unverifiedAdd)
-
-test ("confirming a local add issues one change request and stale completions are ignored", exactly confirmedAdd)
-
-test ("hosted unverified installs are blocked with a visible warning", exactly hostedAdd)
-
-test ("removing a direct dependency warns and names the project before confirming", exactly removeDirect)
-
-test ("installed and workspace security findings stay visible", exactly securityFindings)
-
-test ("unavailable package data hides counts and keeps the selected project", exactly unavailableData)
-
-test ("add waits for verified fetch before refreshing installed packages", exactly verifiedFetch)
+exactTests [
+    { name = "missing workspace graph never reports zero installed in the package footer", work = missingFooter },
+    { name = "installed counts only present entries while missing lock entries warn", work = installedCounts },
+    { name = "empty findings read as unverified caution and never as an audit", work = emptyFindings },
+    { name = "missing direct dependencies can be inspected and removed without hiding findings", work = missingDirect },
+    { name = "recorded findings are visible danger warnings that block adding", work = recordedFindings },
+    { name = "a local unverified add needs explicit confirmation and pending work blocks it", work = unverifiedAdd },
+    { name = "confirming a local add issues one change request and stale completions are ignored", work = confirmedAdd },
+    { name = "hosted unverified installs are blocked with a visible warning", work = hostedAdd },
+    { name = "removing a direct dependency warns and names the project before confirming", work = removeDirect },
+    { name = "installed and workspace security findings stay visible", work = securityFindings },
+    { name = "unavailable package data hides counts and keeps the selected project", work = unavailableData },
+    { name = "add waits for verified fetch before refreshing installed packages", work = verifiedFetch }
+]

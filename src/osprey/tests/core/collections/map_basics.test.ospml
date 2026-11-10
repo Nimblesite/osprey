@@ -244,15 +244,13 @@ literalsAndDispatchCase () =
     ]
 
 // The testing prelude supplies exactArithmetic beside every program that names it.
-test "maps construct, overwrite, and retain source bindings" (exactly constructionAndOverwriteCase)
-
-test "map generations and sibling branches remain isolated" (exactly generationsAndBranchesCase)
-
-test "map removal and merge preserve values and bias" (exactly removalAndMergeCase)
-
-test "map views and list interactions preserve both collections" (exactly viewsAndCrossCollectionCase)
-
-test "map literals and receiver dispatch preserve lookup semantics" (exactly literalsAndDispatchCase)
+exactTests [
+    { name = "maps construct, overwrite, and retain source bindings", work = constructionAndOverwriteCase },
+    { name = "map generations and sibling branches remain isolated", work = generationsAndBranchesCase },
+    { name = "map removal and merge preserve values and bias", work = removalAndMergeCase },
+    { name = "map views and list interactions preserve both collections", work = viewsAndCrossCollectionCase },
+    { name = "map literals and receiver dispatch preserve lookup semantics", work = literalsAndDispatchCase }
+]
 
 (** [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
     equivalent to `map[key]`, with a missing key returning `Error`. `V` is the

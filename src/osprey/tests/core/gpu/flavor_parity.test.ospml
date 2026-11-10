@@ -21,8 +21,10 @@ negativeIotaCase () =
         iotaOutcome direct == iotaOutcome piped,
         iotaOutcome (gpuIota (-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
     ]
-test ("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
-test ("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
+testCases [
+    { name = "minimum int literals are flavor-equivalent in GPU buffers", work = minimumIntCase },
+    { name = "negative gpuIota arguments are flavor-equivalent", work = negativeIotaCase }
+]
 denseFloatCombinatorsCase () =
     values : List<float32>
     values = [0.5, 1.0, 1.5]

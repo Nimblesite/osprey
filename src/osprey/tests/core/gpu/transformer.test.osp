@@ -44,14 +44,12 @@ fn atIs(values, i, want) = exact(at(values, i), want)
 fn nearAt(values, i, want) = near(at(values, i), want)
 /// atsFrom and nearsFrom are atIs and nearAt over a run: `values` from `index`
 /// on hold `wants`, in order.
-fn atsFrom(values, index, wants) = match wants {
+fn fromsBy(one, values, index, wants) = match wants {
     [] => true
-    [want, ...rest] => atIs(values, index, want) && atsFrom(values, index + 1, rest)
+    [want, ...rest] => one(values, index, want) && fromsBy(one, values, index + 1, rest)
 }
-fn nearsFrom(values, index, wants) = match wants {
-    [] => true
-    [want, ...rest] => nearAt(values, index, want) && nearsFrom(values, index + 1, rest)
-}
+fn atsFrom(values, index, wants) = fromsBy(atIs, values, index, wants)
+fn nearsFrom(values, index, wants) = fromsBy(nearAt, values, index, wants)
 fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
 /// Deterministic test weights: ((i * step) % modulus - shift) / scale for element i.
 fn weight(step, modulus, shift, scale, grid0) = gpuMap(grid0, fn(i) => toFloat32((i * step) % modulus - shift) / scale)
@@ -172,29 +170,19 @@ fn argmax(logits, grid0) = andThen(gpuFold(logits, at(logits, 0), maxF), fn(peak
 fn written(path, content) = match writeFile(path, content) { Success _ => true Error _ => false }
 fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
 fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
-fn matMulExactCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), fn(left) => withBuffer(floats([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), fn(right) => matMulExactCaseUploaded(left, right)))
-fn matMulExactCaseUploaded(left, right) = {
-    withBuffer(product(left, right, 2, 3, 2), fn(square) => {
-            withBuffer(floats([2.0, 3.0]), fn(uploaded27) => {
-                    withBuffer(floats([5.0, 7.0]), fn(uploaded28) => {
-                            withBuffer(product(uploaded27, uploaded28, 2, 1, 2), fn(outer) => {
-                                    withBuffer(floats([]), fn(uploaded29) => {
-                                            withBuffer(floats([]), fn(uploaded30) => {
-                                                    withBuffer(product(uploaded29, uploaded30, 2, 0, 2), fn(hollow) => {
-                                                            checkAll("gpuMatMul forms the row-major product of the stated shapes", [
-                                                                    gpuLength(square) == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]),
-                                                                    atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
-                                                                    gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
-                                                                    gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
-                                                            ])
-                                                        })
-                                                })
-                                        })
-                                })
-                        })
-                })
-        })
-}
+fn twoFloats(xs, ys, next) = withBuffer(floats(xs), fn(a) => withBuffer(floats(ys), fn(b) => next(a, b)))
+fn matMulExactCase() = twoFloats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
+fn matMulExactCaseUploaded(left, right) =
+    withBuffer(product(left, right, 2, 3, 2),
+        fn(square) => twoFloats([2.0, 3.0], [5.0, 7.0],
+        fn(uploaded27, uploaded28) => withBuffer(product(uploaded27, uploaded28, 2, 1, 2),
+        fn(outer) => twoFloats([], [],
+        fn(uploaded29, uploaded30) => withBuffer(product(uploaded29, uploaded30, 2, 0, 2),
+        fn(hollow) => checkAll("gpuMatMul forms the row-major product of the stated shapes", [
+            gpuLength(square) == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
+            gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
+            gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
+        ]))))))
 /// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
 /// association; the last pin is 3 units in the last place only when the
 /// product is rounded before it is added — a fused multiply-add keeps one
@@ -222,7 +210,7 @@ fn matMulOrderCase() = {
                 })
         })
 }
-fn matMulShapeCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0]), fn(four) => withBuffer(floats([1.0, 2.0, 3.0]), fn(three) => matMulShapeCaseUploaded(four, three)))
+fn matMulShapeCase() = twoFloats([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], matMulShapeCaseUploaded)
 fn matMulShapeCaseUploaded(four, three) = {
     checkAll("gpuMatMul names the operand whose length disagrees with the stated shape", [
             matMulFailure(three, four, 2, 2, 2) == "gpuMatMul: left operand: has 3 elements, the stated shape needs 4",
@@ -307,14 +295,17 @@ fn attentionExactWith(grid0, grid1, grid2) =
                             gpuLength(single) == 4, atsFrom(single, 0, [8.0, 9.0, 10.0, 11.0]),
                             gpuLength(pair) == 8, atsFrom(pair, 0, [1.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 6.0])
                     ])))))
-fn embedCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => embedWith(grid0, grid1, grid2))))
+fn withEmbedGrids(next) = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => next(grid0, grid1, grid2))))
+fn withPairGrids(next) = withEmbedGrids(fn(grid0, grid1, grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => next(grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))
+fn withBlockGrids(next) = withPairGrids(fn(grid0, grid1, grid2, grid3, grid4, grid5, grid6) => withIndices(16, fn(grid7) => withIndices(32, fn(grid8) => next(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))
+fn embedCase() = withEmbedGrids(embedWith)
 fn embedWith(grid0, grid1, grid2) =
     withBuffer(miniTokens(), fn(uploaded10) =>
         withBuffer(embedOf(grid0, grid1, uploaded10, grid2), fn(x) =>
             checkAll("embed gathers each token's row and adds its position's row", [
                     gpuLength(x) == 8, atsFrom(x, 0, [-1.0, 1.75, 0.25, 1.875, -1.125, 0.5, -1.0, 0.625])
             ])))
-fn attentionCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))))
+fn attentionCase() = withPairGrids(attentionWith)
 /// The embedded pair through its qkv product: the prefix the full pass and the cached step share.
 fn withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, next) =
     withBuffer(miniTokens(), fn(tokens) =>
@@ -335,7 +326,7 @@ fn attentionWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
 /// with the full pass's arithmetic, and LayerNorm and linear are row-wise, so
 /// one row's pass equals that row of the two-row pass bit for bit — which is
 /// why src/osprey/examples/llms/gpt2's generate can grow a cache instead of recomputing.
-fn cachedStepCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(1, fn(grid7) => cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))))))))
+fn cachedStepCase() = withPairGrids(fn(grid0, grid1, grid2, grid3, grid4, grid5, grid6) => withIndices(1, fn(grid7) => cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))
 /// Row r of a [rows, n] buffer, and whether a [1, n] buffer equals that row exactly.
 fn rowOf(x, r, n, grid0) = gpuMap(grid0, fn(c) => at(x, r * n + c))
 fn sameRow(single, rows, r, n) = range(0, n) |> fold(true, fn(ok, c) => ok && at(single, c) == at(rows, r * n + c))
@@ -356,7 +347,7 @@ fn cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
                                                                     sameRow(rowNormed, normed, 1, width),
                                                                     sameRow(oneRow, qkv, 1, qkvWidth)
                                         ]))))))))))
-fn blockCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(16, fn(grid7) => withIndices(32, fn(grid8) => blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))))))))
+fn blockCase() = withBlockGrids(blockWith)
 /// The embedded pair through one pre-norm block: the prefix blockCase and nextTokenCase share.
 fn withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, next) =
     withBuffer(miniTokens(), fn(tokens) =>
@@ -371,7 +362,7 @@ fn blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
                             nearsFrom(y, 0, [-1.6005736589431763, 1.6570606231689453, 0.7819118499755859, 2.600027084350586, -1.487461805343628, 0.04813048243522644, -0.6083625555038452, 1.421419620513916]),
                             near(total, 2.8121519088745117)
             ])))
-fn nextTokenCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(16, fn(grid7) => withIndices(32, fn(grid8) => withIndices(5, fn(grid9) => nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))))))))))
+fn nextTokenCase() = withBlockGrids(fn(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) => withIndices(5, fn(grid9) => nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))
 fn nextTokenWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, fn(y) =>
         withBuffer(lnParams(grid3), fn(ln) =>
@@ -420,18 +411,20 @@ fn tensorHeaderCase() = {
             tensorFailure(missing, "wte.weight") == "gpuLoadTensor: " + missing + ": No such file or directory"
     ])
 }
-test("gpuMatMul forms the row-major product of the stated shapes", exactly(matMulExactCase))
-test("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", exactly(matMulOrderCase))
-test("gpuMatMul names the operand whose length disagrees with the stated shape", exactly(matMulShapeCase))
-test("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", exactly(mathKernelsCase))
-test("gelu is the tanh approximation GPT-2 was trained with", exactly(geluCase))
-test("layerNorm normalises each row and applies the column gain and bias", exactly(layerNormCase))
-test("softmax normalises every causal row, shifted by its peak", exactly(softmaxCase))
-test("attention returns a lone token's value and averages equal keys", exactly(attentionExactCase))
-test("embed gathers each token's row and adds its position's row", exactly(embedCase))
-test("attention over the embedded pair matches the reference pass", exactly(attentionCase))
-test("the newest position attends through the cache exactly as the full pass does", exactly(cachedStepCase))
-test("one pre-norm block matches the reference pass", exactly(blockCase))
-test("the tied readout scores every token row and argmax picks the first peak", exactly(nextTokenCase))
-test("gpuLoad keeps little-endian binary32 words and refuses a short read", exactly(loadCase))
-test("gpuLoadTensor names the file and the reason its header cannot be read", exactly(tensorHeaderCase))
+exactTests([
+    { name: "gpuMatMul forms the row-major product of the stated shapes", work: matMulExactCase },
+    { name: "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", work: matMulOrderCase },
+    { name: "gpuMatMul names the operand whose length disagrees with the stated shape", work: matMulShapeCase },
+    { name: "sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", work: mathKernelsCase },
+    { name: "gelu is the tanh approximation GPT-2 was trained with", work: geluCase },
+    { name: "layerNorm normalises each row and applies the column gain and bias", work: layerNormCase },
+    { name: "softmax normalises every causal row, shifted by its peak", work: softmaxCase },
+    { name: "attention returns a lone token's value and averages equal keys", work: attentionExactCase },
+    { name: "embed gathers each token's row and adds its position's row", work: embedCase },
+    { name: "attention over the embedded pair matches the reference pass", work: attentionCase },
+    { name: "the newest position attends through the cache exactly as the full pass does", work: cachedStepCase },
+    { name: "one pre-norm block matches the reference pass", work: blockCase },
+    { name: "the tied readout scores every token row and argmax picks the first peak", work: nextTokenCase },
+    { name: "gpuLoad keeps little-endian binary32 words and refuses a short read", work: loadCase },
+    { name: "gpuLoadTensor names the file and the reason its header cannot be read", work: tensorHeaderCase }
+])

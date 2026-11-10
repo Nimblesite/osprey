@@ -29,6 +29,12 @@ fn exactArithmetic(work) = {
 /// registers as `test("name", exactly(work))`.
 fn exactly(work) = fn() => exactArithmetic(work)
 
+/// Registers each `{ name, work }` case, in order, as `test(name, work)`.
+fn testCases(cases) = forEachList(cases, fn(c) => test(c.name, c.work))
+
+/// Registers each `{ name, work }` case, in order, as `test(name, exactly(work))`.
+fn exactTests(cases) = forEachList(cases, fn(c) => test(c.name, exactly(c.work)))
+
 /// Whether `text` contains every one of `parts`; true for no parts.
 fn containsAll(text, parts) = foldList(parts, true, fn(found, part) => found && contains(text, part))
 

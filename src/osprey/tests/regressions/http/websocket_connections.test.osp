@@ -54,5 +54,7 @@ fn stopEndsLiveConnections() = {
     check("stops again", "0", "${websocket_stop_server(again)}")
 }
 
-test("closed connections stop counting", closedConnectionsStopCounting)
-test("stop ends live connections", stopEndsLiveConnections)
+testCases([
+    { name: "closed connections stop counting", work: closedConnectionsStopCounting },
+    { name: "stop ends live connections", work: stopEndsLiveConnections }
+])

@@ -203,8 +203,10 @@ oversizedPayloadCase () =
         length (toString (longSuccess ())) == ((length text + 9))
     ]
 
-test "numeric failures retain their reasons" (exactly numericErrorCase)
-test "string failures retain their reasons" (exactly stringErrorCase)
-test "cursor failures retain their reasons" (exactly cursorErrorCase)
-test "collections fail safely and valid Results succeed" (exactly collectionAndSuccessCase)
-test "toString sizes its buffer for the payload" (exactly oversizedPayloadCase)
+exactTests [
+    { name = "numeric failures retain their reasons", work = numericErrorCase },
+    { name = "string failures retain their reasons", work = stringErrorCase },
+    { name = "cursor failures retain their reasons", work = cursorErrorCase },
+    { name = "collections fail safely and valid Results succeed", work = collectionAndSuccessCase },
+    { name = "toString sizes its buffer for the payload", work = oversizedPayloadCase }
+]

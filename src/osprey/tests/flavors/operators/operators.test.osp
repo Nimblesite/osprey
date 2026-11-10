@@ -61,9 +61,11 @@ fn booleanOperatorsCase() = {
 
 // Register the arithmetic documentation scenario.
 
-test("operator precedence retains every arithmetic golden", exactly(arithmeticOperatorsCase))
-// Register the boolean documentation scenario.
-test("boolean composition retains every logical golden", exactly(booleanOperatorsCase))
+exactTests([
+    { name: "operator precedence retains every arithmetic golden", work: arithmeticOperatorsCase },
+    // Register the boolean documentation scenario.
+    { name: "boolean composition retains every logical golden", work: booleanOperatorsCase }
+])
 
 /// [FLOAT-OPERANDS] One constrained helper accepts int and float callers.
 fn numericScale(x) = x * 1.5

@@ -173,9 +173,11 @@ recordsRoundTrip () =
         canonical text == text,
     ]
 
-test "encoding is compact and ordered" encodingIsCompactAndOrdered
-test "strings escape exactly" stringsEscapeExactly
-test "numbers keep their kind" numbersKeepTheirKind
-test "malformed text says where" malformedTextSaysWhere
-test "accessors are typed" accessorsAreTyped
-test "records round trip" recordsRoundTrip
+testCases [
+    { name = "encoding is compact and ordered", work = encodingIsCompactAndOrdered },
+    { name = "strings escape exactly", work = stringsEscapeExactly },
+    { name = "numbers keep their kind", work = numbersKeepTheirKind },
+    { name = "malformed text says where", work = malformedTextSaysWhere },
+    { name = "accessors are typed", work = accessorsAreTyped },
+    { name = "records round trip", work = recordsRoundTrip }
+]

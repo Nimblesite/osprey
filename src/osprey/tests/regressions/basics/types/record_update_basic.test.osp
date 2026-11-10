@@ -273,6 +273,8 @@ fn flowUpdateCase() = {
 let erasedCell = erase(Cell { v: "s" })
 let walkedTwice = walk(Point { x: 1, y: 1 }, 2)
 print("${erasedCell.v} ${describe(walkedTwice)}")
-test("record updates through generic functions", genericUpdateCase)
-test("record updates of nested and generic records", nestedUpdateCase)
-test("record updates in control flow", flowUpdateCase)
+testCases([
+    { name: "record updates through generic functions", work: genericUpdateCase },
+    { name: "record updates of nested and generic records", work: nestedUpdateCase },
+    { name: "record updates in control flow", work: flowUpdateCase }
+])

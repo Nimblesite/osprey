@@ -131,6 +131,8 @@ resultsStateHigherOrderCase () =
         structuralEquals [resultAdder 0 9, resultAdder ((0 - 5) ) 5] [9, 0]
     ]
 
-test "curry tour retains all closure match and pipe outputs" (exactly curryTourCase)
-test "mixed workflow composes closure match pipe and interpolation" (exactly mixedFeaturesCase)
-test "Result workflow covers success error HOF and partial application" (exactly resultsStateHigherOrderCase)
+exactTests [
+    { name = "curry tour retains all closure match and pipe outputs", work = curryTourCase },
+    { name = "mixed workflow composes closure match pipe and interpolation", work = mixedFeaturesCase },
+    { name = "Result workflow covers success error HOF and partial application", work = resultsStateHigherOrderCase }
+]

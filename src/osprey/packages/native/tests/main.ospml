@@ -420,42 +420,44 @@ proceeded (session, event) =
         shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
     Runtime::proceed (session, event, update, regions)
 
-test ("a scene encodes its primitives as flat typed arrays", sceneCaseASceneEncodesItsPrimitivesAsFlat)
-test ("colours pack as RRGGBBAA", sceneCaseColoursPackAsRrggbbaa)
-test ("a path encodes its steps, outline, paint and transform", sceneCaseAPathEncodesItsStepsOutlinePaint)
-test ("a scene binding delivers keys and pointer positions in scene units", sceneCaseASceneBindingDeliversKeysAndPointer)
-test ("a frame event delivers its elapsed seconds and patches nothing when ignored", sceneCaseAFrameEventDeliversItsElapsedSeconds)
-test ("an animate request carries its on flag", sceneCaseAnAnimateRequestCarriesItsOnFlag)
-test ("every symbol encodes as a distinct host-neutral name", sceneCaseEverySymbolEncodesAsADistinctHost)
-test ("labels, icons, badges, empty states, buttons, tabs and rows send their symbol names", sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs)
-test ("a pair encodes its label and value without a binding", sceneCaseAPairEncodesItsLabelAndValue)
-test ("platforms decode to the union and encode back to their names", sceneCasePlatformsDecodeToTheUnionAndEncode)
-test ("a start context carries a linux or windows platform", sceneCaseAStartContextCarriesALinuxOr)
-test ("product-specific work is a host call with its namespace and arguments", sceneCaseProductSpecificWorkIsAHostCall)
-test ("a split scene streams its fixed-size primitives in order and keeps the rest", sceneCaseASplitSceneStreamsItsFixedSize)
-test ("an enveloped scene reports nothing streamed", sceneCaseAnEnvelopedSceneReportsNothingStreamed)
-test ("streamed primitives read back every field a host import takes", sceneCaseStreamedPrimitivesReadBackEveryFieldA)
-test ("a resident session keeps its store out of the envelope", sceneCaseAResidentSessionKeepsItsStoreOut)
-test ("a resident session refuses stale controls and prior-state edits without change", sceneCaseAResidentSessionRefusesStaleControlsAnd)
-test ("a split streams scenes from every container in the encoder's order", sceneCaseASplitStreamsScenesFromEveryContainer)
-test ("primitives that do not stream read back zero fields", sceneCasePrimitivesThatDoNotStreamReadBack)
-test ("a resident session delivers completions, phases and frames and refuses malformed text", sceneCaseAResidentSessionDeliversCompletionsPhasesAnd)
-test ("an idle session holds only its store", sceneCaseAnIdleSessionHoldsOnlyItsStore)
-test ("toggles and pickers deliver their own value kinds and refuse others", sceneCaseTogglesAndPickersDeliverTheirOwnValue)
-test ("progress, swatches, alerts, prominent buttons and leading asides encode", sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading)
-test ("a meter sends its amount clamped into a total of at least one", sceneCaseAMeterSendsItsAmountClampedInto)
-test ("an editor binds text then cursor after earlier controls and preserves its marks", AdditionCases::editorEncoding)
-test ("a cursor binding delivers placed offsets, clamps negatives and refuses text", AdditionCases::cursorValues)
-test ("a board names its host slice and binds strokes before its lasso", AdditionCases::boardEncoding)
-test ("a board stroke decodes two ordered points with their width and time", AdditionCases::strokeDecoding)
-test ("empty negative and non-pair stroke points are refused with the exact diagnostic", AdditionCases::strokeRefusals)
-test ("a lasso delivers stroke indices and refuses strings and negative indices", AdditionCases::lassoValues)
-test ("a recognition request names its stroke slices and output limit", AdditionCases::recognitionEncoding)
-test ("message routing delivers placed stroked and lassoed values to their handlers", AdditionCases::messageRouting)
-test ("board themes name the board and chalk tokens", AdditionCases::boardTokens)
-test ("mathematics decodes back to the tree it encodes across every constructor", AdditionCases::mathRoundTrip)
-test ("mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", AdditionCases::mathRefusals)
-test ("image and video encode as leaves with their media fields and no ordinal", AdditionCases::mediaEncoding)
+testCases [
+    { name = "a scene encodes its primitives as flat typed arrays", work = sceneCaseASceneEncodesItsPrimitivesAsFlat },
+    { name = "colours pack as RRGGBBAA", work = sceneCaseColoursPackAsRrggbbaa },
+    { name = "a path encodes its steps, outline, paint and transform", work = sceneCaseAPathEncodesItsStepsOutlinePaint },
+    { name = "a scene binding delivers keys and pointer positions in scene units", work = sceneCaseASceneBindingDeliversKeysAndPointer },
+    { name = "a frame event delivers its elapsed seconds and patches nothing when ignored", work = sceneCaseAFrameEventDeliversItsElapsedSeconds },
+    { name = "an animate request carries its on flag", work = sceneCaseAnAnimateRequestCarriesItsOnFlag },
+    { name = "every symbol encodes as a distinct host-neutral name", work = sceneCaseEverySymbolEncodesAsADistinctHost },
+    { name = "labels, icons, badges, empty states, buttons, tabs and rows send their symbol names", work = sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs },
+    { name = "a pair encodes its label and value without a binding", work = sceneCaseAPairEncodesItsLabelAndValue },
+    { name = "platforms decode to the union and encode back to their names", work = sceneCasePlatformsDecodeToTheUnionAndEncode },
+    { name = "a start context carries a linux or windows platform", work = sceneCaseAStartContextCarriesALinuxOr },
+    { name = "product-specific work is a host call with its namespace and arguments", work = sceneCaseProductSpecificWorkIsAHostCall },
+    { name = "a split scene streams its fixed-size primitives in order and keeps the rest", work = sceneCaseASplitSceneStreamsItsFixedSize },
+    { name = "an enveloped scene reports nothing streamed", work = sceneCaseAnEnvelopedSceneReportsNothingStreamed },
+    { name = "streamed primitives read back every field a host import takes", work = sceneCaseStreamedPrimitivesReadBackEveryFieldA },
+    { name = "a resident session keeps its store out of the envelope", work = sceneCaseAResidentSessionKeepsItsStoreOut },
+    { name = "a resident session refuses stale controls and prior-state edits without change", work = sceneCaseAResidentSessionRefusesStaleControlsAnd },
+    { name = "a split streams scenes from every container in the encoder's order", work = sceneCaseASplitStreamsScenesFromEveryContainer },
+    { name = "primitives that do not stream read back zero fields", work = sceneCasePrimitivesThatDoNotStreamReadBack },
+    { name = "a resident session delivers completions, phases and frames and refuses malformed text", work = sceneCaseAResidentSessionDeliversCompletionsPhasesAnd },
+    { name = "an idle session holds only its store", work = sceneCaseAnIdleSessionHoldsOnlyItsStore },
+    { name = "toggles and pickers deliver their own value kinds and refuse others", work = sceneCaseTogglesAndPickersDeliverTheirOwnValue },
+    { name = "progress, swatches, alerts, prominent buttons and leading asides encode", work = sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading },
+    { name = "a meter sends its amount clamped into a total of at least one", work = sceneCaseAMeterSendsItsAmountClampedInto },
+    { name = "an editor binds text then cursor after earlier controls and preserves its marks", work = AdditionCases::editorEncoding },
+    { name = "a cursor binding delivers placed offsets, clamps negatives and refuses text", work = AdditionCases::cursorValues },
+    { name = "a board names its host slice and binds strokes before its lasso", work = AdditionCases::boardEncoding },
+    { name = "a board stroke decodes two ordered points with their width and time", work = AdditionCases::strokeDecoding },
+    { name = "empty negative and non-pair stroke points are refused with the exact diagnostic", work = AdditionCases::strokeRefusals },
+    { name = "a lasso delivers stroke indices and refuses strings and negative indices", work = AdditionCases::lassoValues },
+    { name = "a recognition request names its stroke slices and output limit", work = AdditionCases::recognitionEncoding },
+    { name = "message routing delivers placed stroked and lassoed values to their handlers", work = AdditionCases::messageRouting },
+    { name = "board themes name the board and chalk tokens", work = AdditionCases::boardTokens },
+    { name = "mathematics decodes back to the tree it encodes across every constructor", work = AdditionCases::mathRoundTrip },
+    { name = "mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", work = AdditionCases::mathRefusals },
+    { name = "image and video encode as leaves with their media fields and no ordinal", work = AdditionCases::mediaEncoding }
+]
 test ("presentation frames explicitly disable viewport sizing by default", \() =>
     style = Doc::field (firstNode (Encode::walk ([], Ui::framed (plain, Ui::button ("Continue", "", Increment)))), "style")
     expect (Doc::has (style, "viewportHeightInset"), true)

@@ -151,7 +151,9 @@ stringInteractions () =
 
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 
-test "unions, Results and scalar operations compose" (exactly unionsResultsAndScalars)
-test "functions, forward calls, booleans and pipes compose" (exactly functionsPipesAndBooleans)
-test "effects mutate handled state beside persistent collections" (exactly effectsAndCollections)
-test "string transformations consume values from other features" (exactly stringInteractions)
+exactTests [
+    { name = "unions, Results and scalar operations compose", work = unionsResultsAndScalars },
+    { name = "functions, forward calls, booleans and pipes compose", work = functionsPipesAndBooleans },
+    { name = "effects mutate handled state beside persistent collections", work = effectsAndCollections },
+    { name = "string transformations consume values from other features", work = stringInteractions }
+]

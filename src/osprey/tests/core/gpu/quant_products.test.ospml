@@ -77,10 +77,12 @@ iq3_sCase () =
     expected : List<float32>
     expected = [137610.21875, -171571.40625]
     productCase ("the IQ3_S product matches ggml's decode in the kernels' lane order", "IQ3_S", bytes, 256, expected)
-test ("the Q8_0 product matches ggml's decode in the kernels' lane order", exactly q8_0Case)
-test ("the Q6_K product matches ggml's decode in the kernels' lane order", exactly q6_kCase)
-test ("the Q5_K product matches ggml's decode in the kernels' lane order", exactly q5_kCase)
-test ("the Q3_K product matches ggml's decode in the kernels' lane order", exactly q3_kCase)
-test ("the IQ4_NL product matches ggml's decode in the kernels' lane order", exactly iq4_nlCase)
-test ("the IQ4_XS product matches ggml's decode in the kernels' lane order", exactly iq4_xsCase)
-test ("the IQ3_S product matches ggml's decode in the kernels' lane order", exactly iq3_sCase)
+exactTests [
+    { name = "the Q8_0 product matches ggml's decode in the kernels' lane order", work = q8_0Case },
+    { name = "the Q6_K product matches ggml's decode in the kernels' lane order", work = q6_kCase },
+    { name = "the Q5_K product matches ggml's decode in the kernels' lane order", work = q5_kCase },
+    { name = "the Q3_K product matches ggml's decode in the kernels' lane order", work = q3_kCase },
+    { name = "the IQ4_NL product matches ggml's decode in the kernels' lane order", work = iq4_nlCase },
+    { name = "the IQ4_XS product matches ggml's decode in the kernels' lane order", work = iq4_xsCase },
+    { name = "the IQ3_S product matches ggml's decode in the kernels' lane order", work = iq3_sCase }
+]

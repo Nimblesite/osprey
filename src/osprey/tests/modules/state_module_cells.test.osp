@@ -80,6 +80,8 @@ fn effectMediatedCase() = checkAll("all access is effect-mediated", [
 
 exactArithmetic(fn() => print("${Tally::withTally(threeAdds)} ${Tally::withTally(addThenCount)} ${Tally::withTally(addThenReset)}"))
 
-test("owned cells accumulate inside one installer scope", exactly(accumulationCase))
-test("installer calls do not share cells", exactly(freshCellsCase))
-test("owned state is reachable only through the effect", exactly(effectMediatedCase))
+exactTests([
+    { name: "owned cells accumulate inside one installer scope", work: accumulationCase },
+    { name: "installer calls do not share cells", work: freshCellsCase },
+    { name: "owned state is reachable only through the effect", work: effectMediatedCase }
+])

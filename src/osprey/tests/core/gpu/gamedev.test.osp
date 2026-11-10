@@ -430,24 +430,26 @@ fn raggedCaseUploaded(input0, input1, input2, input3) = {
                                 gpuLength(doubled) == 5, gpuLength(shortest) == 1
                         ]))))))
 }
-test("q10 fixed-point scalars and scale kernels truncate toward zero", exactly(fixedPointCase))
-test("vector algebra combines four component buffers", exactly(vectorCase))
-test("octagonal distance estimates length without a root", exactly(magnitudeCase))
-test("particles integrate velocity over ticks", exactly(integrationCase))
-test("semi-implicit euler advances three buffers together", exactly(eulerCase))
-test("drag damps velocity monotonically", exactly(dragCase))
-test("folds build a bounding box and survive an empty world", exactly(aabbCase))
-test("aabb overlap zips four interval buffers", exactly(overlapCase))
-test("circle broadphase combines six buffers", exactly(circleCase))
-test("culling keeps in-range entities in draw order", exactly(cullCase))
-test("damage resolves and survivors compact", exactly(damageCase))
-test("easing and clamping normalize float buffers", exactly(easingCase))
-test("three channel buffers pack, unpack and clamp", exactly(packCase))
-test("alpha blending composites through a coverage buffer", exactly(blendCase))
-test("palette gathers paint magenta where the index misses", exactly(paletteCase))
-test("a strided gather de-interleaves a vertex stream", exactly(gatherCase))
-test("transposing a tile grid twice is the identity", exactly(transposeCase))
-test("an edge-clamped stencil blurs a heightfield", exactly(stencilCase))
-test("scan accumulates a running frame budget", exactly(budgetCase))
-test("every combinator survives an empty world", exactly(emptyWorldCase))
-test("ragged entity streams truncate to the shortest", exactly(raggedCase))
+exactTests([
+    { name: "q10 fixed-point scalars and scale kernels truncate toward zero", work: fixedPointCase },
+    { name: "vector algebra combines four component buffers", work: vectorCase },
+    { name: "octagonal distance estimates length without a root", work: magnitudeCase },
+    { name: "particles integrate velocity over ticks", work: integrationCase },
+    { name: "semi-implicit euler advances three buffers together", work: eulerCase },
+    { name: "drag damps velocity monotonically", work: dragCase },
+    { name: "folds build a bounding box and survive an empty world", work: aabbCase },
+    { name: "aabb overlap zips four interval buffers", work: overlapCase },
+    { name: "circle broadphase combines six buffers", work: circleCase },
+    { name: "culling keeps in-range entities in draw order", work: cullCase },
+    { name: "damage resolves and survivors compact", work: damageCase },
+    { name: "easing and clamping normalize float buffers", work: easingCase },
+    { name: "three channel buffers pack, unpack and clamp", work: packCase },
+    { name: "alpha blending composites through a coverage buffer", work: blendCase },
+    { name: "palette gathers paint magenta where the index misses", work: paletteCase },
+    { name: "a strided gather de-interleaves a vertex stream", work: gatherCase },
+    { name: "transposing a tile grid twice is the identity", work: transposeCase },
+    { name: "an edge-clamped stencil blurs a heightfield", work: stencilCase },
+    { name: "scan accumulates a running frame budget", work: budgetCase },
+    { name: "every combinator survives an empty world", work: emptyWorldCase },
+    { name: "ragged entity streams truncate to the shortest", work: raggedCase }
+])

@@ -92,5 +92,7 @@ spineCase () =
         startsWith (prefixWith "os" "prey") "osp"
     ]
 
-test "reserved words name operations in all three positions" operationNameCase
-test "a call spine is curried only when its head is bound" spineCase
+testCases [
+    { name = "reserved words name operations in all three positions", work = operationNameCase },
+    { name = "a call spine is curried only when its head is bound", work = spineCase }
+]

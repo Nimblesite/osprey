@@ -129,13 +129,15 @@ fn constructorOperandsRow() = {
     ])
 }
 
-test("scalars compare by value", scalarsRow)
-test("floats compare by value, so NaN is unequal to itself", floatsRow)
-test("records compare every field; a tuple is a row", recordsRow)
-test("unions compare variant then payload", unionsRow)
-test("lists compare length then elements in order", listsRow)
-test("maps compare keys then values", mapsRow)
-test("a recursive tree compares through its own comparator", treesRow)
-test("a value holding NaN is unequal to itself", nanRow)
-test("a generic caller is checked at each call site", genericCallerRow)
-test("constructor operands instantiate their generic fields", constructorOperandsRow)
+testCases([
+    { name: "scalars compare by value", work: scalarsRow },
+    { name: "floats compare by value, so NaN is unequal to itself", work: floatsRow },
+    { name: "records compare every field; a tuple is a row", work: recordsRow },
+    { name: "unions compare variant then payload", work: unionsRow },
+    { name: "lists compare length then elements in order", work: listsRow },
+    { name: "maps compare keys then values", work: mapsRow },
+    { name: "a recursive tree compares through its own comparator", work: treesRow },
+    { name: "a value holding NaN is unequal to itself", work: nanRow },
+    { name: "a generic caller is checked at each call site", work: genericCallerRow },
+    { name: "constructor operands instantiate their generic fields", work: constructorOperandsRow }
+])

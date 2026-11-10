@@ -21,36 +21,36 @@ boolGroups () = Map () |> mapSet "left" [true, false] |> mapSet "right" [false, 
 
 (** One probe into a nested int matrix; a lost row or cell must answer the
     out-of-range fallback, far from any `expected`. *)
-intCell matrix row column expected =
+intCell (matrix, row, column, expected) =
     nestedAt (matrix, row, column, [99], 99) == expected
 
 (** One probe into a nested string matrix, with the same fallback discipline. *)
-textCell matrix row column expected =
+textCell (matrix, row, column, expected) =
     nestedAt (matrix, row, column, ["row"], "item") == expected
 
 (** One probe into a float group map, fallbacks off the expected values. *)
-floatCell groups key index expected =
+floatCell (groups, key, index, expected) =
     groupAt (groups, key, index, [9.0], 9.5) == expected
 
 (** The fallback is the drawn cell's negation, so a lost key cannot answer `expected`. *)
-boolCell groups key index expected =
+boolCell (groups, key, index, expected) =
     groupAt (groups, key, index, [!expected], !expected) == expected
 
 (** The whole bool group contract in one line, instead of four copies of it. *)
-boolCells groups = boolCell groups "left" 0 true && boolCell groups "left" 1 false && boolCell groups "right" 0 false && boolCell groups "right" 1 true
+boolCells groups = boolCell (groups, "left", 0, true) && boolCell (groups, "left", 1, false) && boolCell (groups, "right", 0, false) && boolCell (groups, "right", 1, true)
 
 (** The surviving original cells every matrix crossing a boundary must answer,
     in one line instead of a copy per crossing. *)
-keptCells matrix = intCell matrix 0 0 1 && intCell matrix 0 1 2 && intCell matrix 1 2 5
+keptCells matrix = intCell (matrix, 0, 0, 1) && intCell (matrix, 0, 1, 2) && intCell (matrix, 1, 2, 5)
 
 (** The original head plus the appended tail a grown matrix must answer. *)
-grownCells matrix = intCell matrix 0 0 1 && intCell matrix 2 0 6 && intCell matrix 2 1 7
+grownCells matrix = intCell (matrix, 0, 0, 1) && intCell (matrix, 2, 0, 6) && intCell (matrix, 2, 1, 7)
 
 (** The `small` and `large` cells a group map must answer after crossing. *)
-smallLargeCells groups = floatCell groups "small" 0 0.5 && floatCell groups "large" 1 9.75
+smallLargeCells groups = floatCell (groups, "small", 0, 0.5) && floatCell (groups, "large", 1, 9.75)
 
 (** The appended `extra` group's cells, in one line instead of a copy per map. *)
-extraCells groups = floatCell groups "extra" 0 6.25 && floatCell groups "extra" 1 7.5
+extraCells groups = floatCell (groups, "extra", 0, 6.25) && floatCell (groups, "extra", 1, 7.5)
 
 (** A channel reached through a PARAMETER is the seam no send-site knowledge
     can cover: the callee sees only the declared `Channel T`, so the element
@@ -74,7 +74,7 @@ requestBoolGroups () = perform FiberDepot.fetch "bools"
 (** One inherited-handler fiber round trip: `supply` answers the fetch and
     the spawned `request` performs it, so the awaited result keeps its type.
     Implements [EFFECTS-GENERIC-INSTANTIATION] and [EFFECTS-GENERIC-RUNTIME]. *)
-fiberEffect supply request =
+fiberEffect (supply, request) =
     handle FiberDepot
         fetch _key => supply ()
     await (spawn (request ()))
@@ -121,17 +121,17 @@ fiberChannelCollectionCase () =
     send abandonedGroups (mapSet floats "orphan" [1.5])
 
     checkAll "spawn and out-of-order await reconstruct nested collection owners" [
-        intCell ints 0 0 1,
-        intCell ints 0 1 2,
-        intCell ints 1 0 3,
-        intCell ints 1 2 5,
-        textCell strings 0 0 "ant",
-        textCell strings 0 1 "bee",
-        textCell strings 1 0 "cat",
-        textCell strings 1 2 "eel",
-        floatCell floats "small" 0 0.5,
-        floatCell floats "small" 1 1.25,
-        floatCell floats "large" 1 9.75,
+        intCell (ints, 0, 0, 1),
+        intCell (ints, 0, 1, 2),
+        intCell (ints, 1, 0, 3),
+        intCell (ints, 1, 2, 5),
+        textCell (strings, 0, 0, "ant"),
+        textCell (strings, 0, 1, "bee"),
+        textCell (strings, 1, 0, "cat"),
+        textCell (strings, 1, 2, "eel"),
+        floatCell (floats, "small", 0, 0.5),
+        floatCell (floats, "small", 1, 1.25),
+        floatCell (floats, "large", 1, 9.75),
         boolCells bools,
         listLength ints == 2,
         listLength strings == 2,
@@ -146,30 +146,30 @@ fiberChannelCollectionCase () =
     checkAll "Channel<collection> round trips full nested descriptors in FIFO order" [
         listLength firstMatrix == 2,
         listLength secondMatrix == 3,
-        intCell firstMatrix 0 0 1,
-        intCell firstMatrix 1 2 5,
+        intCell (firstMatrix, 0, 0, 1),
+        intCell (firstMatrix, 1, 2, 5),
         grownCells secondMatrix,
         mapLength firstGroups == 2,
         mapLength secondGroups == 3,
         smallLargeCells firstGroups,
-        floatCell secondGroups "small" 1 1.25,
+        floatCell (secondGroups, "small", 1, 1.25),
         extraCells secondGroups,
-        intCell ints 1 2 5,
-        floatCell floats "small" 0 0.5,
+        intCell (ints, 1, 2, 5),
+        floatCell (floats, "small", 0, 0.5),
         listLength ints == 2,
         mapLength floats == 2,
         listLength matrixViaParameter == 3,
-        intCell matrixViaParameter 0 0 1,
-        intCell matrixViaParameter 1 2 5,
-        intCell matrixViaParameter 2 0 6,
-        intCell matrixViaParameter 2 1 7,
+        intCell (matrixViaParameter, 0, 0, 1),
+        intCell (matrixViaParameter, 1, 2, 5),
+        intCell (matrixViaParameter, 2, 0, 6),
+        intCell (matrixViaParameter, 2, 1, 7),
         mapLength groupsViaParameter == 3,
-        floatCell groupsViaParameter "small" 0 0.5,
+        floatCell (groupsViaParameter, "small", 0, 0.5),
         extraCells groupsViaParameter,
         listLength matrixViaField == 3,
-        intCell matrixViaField 0 1 2,
-        intCell matrixViaField 1 2 5,
-        intCell matrixViaField 2 1 7
+        intCell (matrixViaField, 0, 1, 2),
+        intCell (matrixViaField, 1, 2, 5),
+        intCell (matrixViaField, 2, 1, 7)
     ]
 
 (** A generic effect is performed inside a spawned body, answered by an
@@ -177,8 +177,8 @@ fiberChannelCollectionCase () =
     list/map producers. This jointly enforces [EFFECTS-GENERIC-RUNTIME],
     [CONCURRENCY-SPAWN-AWAIT], [BUILTIN-LIST-APPEND], and [BUILTIN-MAP-SET]. *)
 fiberEffectCollectionCase () =
-    ints = fiberEffect intMatrix requestIntMatrix
-    bools = fiberEffect boolGroups requestBoolGroups
+    ints = fiberEffect (intMatrix, requestIntMatrix)
+    bools = fiberEffect (boolGroups, requestBoolGroups)
     grownInts = ints |> listAppend [6, 7] |> listReverse
     grownBools = bools |> mapSet "extra" [true, false] |> mapRemove "left"
 
@@ -188,15 +188,15 @@ fiberEffectCollectionCase () =
         keptCells ints,
         boolCells bools,
         listLength grownInts == 3,
-        intCell grownInts 0 0 6,
-        intCell grownInts 0 1 7,
-        intCell grownInts 2 0 1,
+        intCell (grownInts, 0, 0, 6),
+        intCell (grownInts, 0, 1, 7),
+        intCell (grownInts, 2, 0, 1),
         mapLength grownBools == 2,
         !(mapContains grownBools "left"),
         mapContains grownBools "right",
         mapContains grownBools "extra",
-        boolCell grownBools "extra" 0 true,
-        boolCell grownBools "extra" 1 false,
+        boolCell (grownBools, "extra", 0, true),
+        boolCell (grownBools, "extra", 1, false),
         listLength ints == 2,
         mapContains bools "left",
         !(mapContains bools "extra")
@@ -241,6 +241,8 @@ channelThroughClosureCase () =
 
 type Verdict = Pass | Fail string | Skip string
 
-test "fibers channels Results and persistence retain generic collection types" fiberChannelCollectionCase
-test "generic effects inside fibers retain nested collection types" fiberEffectCollectionCase
-test "a channel reached through a closure keeps its element descriptor" channelThroughClosureCase
+testCases [
+    { name = "fibers channels Results and persistence retain generic collection types", work = fiberChannelCollectionCase },
+    { name = "generic effects inside fibers retain nested collection types", work = fiberEffectCollectionCase },
+    { name = "a channel reached through a closure keeps its element descriptor", work = channelThroughClosureCase }
+]
