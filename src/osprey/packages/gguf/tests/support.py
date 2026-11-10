@@ -171,33 +171,34 @@ def loaded(fixture):
             return empty_file()
 
 
+def at_or(xs, i, fallback):
+    """Element `i` of a list, or `fallback` when the index is past the end."""
+    return unwrap_or(listGet(xs, i), fallback)
+
+
 def ats(xs, i):
     """Element `i` of a string list, or ""."""
-    return unwrap_or(listGet(xs, i), "")
+    return at_or(xs, i, "")
 
 
 def ati(xs, i):
     """Element `i` of an int list, or 0."""
-    return unwrap_or(listGet(xs, i), 0)
+    return at_or(xs, i, 0)
 
 
 def atf(xs, i):
     """Element `i` of a float list, or 0.0."""
-    return unwrap_or(listGet(xs, i), 0.0)
+    return at_or(xs, i, 0.0)
 
 
 def atb(xs, i):
     """Element `i` of a bool list, or false."""
-    match listGet(xs, i):
-        case Success(value=value):
-            return value
-        case Error(message=_problem):
-            return False
+    return at_or(xs, i, False)
 
 
 def atl(xs, i):
     """Element `i` of a list of lists, or the empty list."""
-    return unwrap_or(listGet(xs, i), [])
+    return at_or(xs, i, [])
 
 
 def flag_int(value):
@@ -213,10 +214,15 @@ def first_difference(got, want):
     return fold(range(len(want)), len(want), lambda found, i: found if found < len(want) else (found if ats(got, i) == ats(want, i) else i))
 
 
+def length_failure(tag, got, want):
+    """A failure naming both lengths, so a short list never checks nothing."""
+    return Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))
+
+
 def str_list_equal(tag, got, want):
     """Exact equality of two string lists, naming the first difference."""
     if len(got) != len(want):
-        return Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))
+        return length_failure(tag, got, want)
     else:
         i = first_difference(got, want)
         return Check.truth(tag, i == len(want), "index " + toString(i) + ": got " + ats(got, i) + ", want " + ats(want, i))
@@ -226,7 +232,7 @@ def rows(tag, got, want, compare):
     """One `compare` assertion per row of `want`, numbered, or a single failure when
     the row counts differ — a short list of rows would otherwise check nothing."""
     if len(got) != len(want):
-        return [Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))]
+        return [length_failure(tag, got, want)]
     else:
         return toList(map(range(len(want)), lambda i: compare(tag + "." + toString(i), atl(got, i), atl(want, i))))
 
@@ -256,13 +262,18 @@ def swapped(fixture):
     return fixture.byte_order == "S"
 
 
+def float_kind(kind):
+    """Whether a declared value or element kind is one of the two float types."""
+    return kind == "float32" or kind == "float64"
+
+
 def cell_case(tag, field, kind, ints, floats, bools, strings):
     """One metadata value through the accessor its declared kind selects."""
     if kind == "string":
         return equal_case(tag, Reader.field_string(field), ats(strings, 0))
     elif kind == "bool":
         return equal_case(tag, Reader.field_bool(field), atb(bools, 0))
-    elif kind == "float32" or kind == "float64":
+    elif float_kind(kind):
         return equal_case(tag, Reader.field_float(field), atf(floats, 0))
     elif kind == "array":
         return array_case(tag, field, ints, floats, bools, strings)
@@ -276,7 +287,7 @@ def array_case(tag, field, ints, floats, bools, strings):
         return strings_case(tag, Reader.field_strings(field), strings)
     elif field.value.item_kind == "bool":
         return flags_case(tag, Reader.field_bools(field), bools)
-    elif field.value.item_kind == "float32" or field.value.item_kind == "float64":
+    elif float_kind(field.value.item_kind):
         return numbers_case(tag, Reader.field_floats(field), floats)
     elif field.value.item_kind == "array":
         return error_case(tag, Reader.field_ints(field))
