@@ -104,11 +104,15 @@ fn classify(xs: List<int>) = match xs {
     [head, ...tail] => "many head=${head} rest=${listLength(tail)}"
 }
 
-/// sumList proves recursive head-tail destructuring retains every element.
-fn sumList(xs) = match xs {
+/// sumBy proves recursive head-tail destructuring retains every element by
+/// adding each element's weight to the weights of the rest ([TYPE-LIST]).
+fn sumBy(xs, weight) = match xs {
     [] => 0
-    [head, ...tail] => head + sumList(tail)
+    [head, ...tail] => weight(head) + sumBy(tail, weight)
 }
+
+/// sumList weighs every int element as itself.
+fn sumList(xs) = sumBy(xs, fn(x) => x)
 
 /// restLen exercises a wildcard prefix followed by a captured list tail.
 fn restLen(xs: List<int>) = match xs {
@@ -487,18 +491,18 @@ fn boolWeight(flag) = match flag {
     false => 0
 }
 
-/// sumFloats reduces a float list through head/tail patterns. Float `+` is
+/// sumFloatBy reduces a float list through head/tail patterns. Float `+` is
 /// total, unlike checked integer `+` ([ARITH-CHECKED]), so no `?:` appears.
-fn sumFloats(xs) = match xs {
+fn sumFloatBy(xs, weight) = match xs {
     [] => 0.0
-    [head, ...tail] => head + sumFloats(tail)
+    [head, ...tail] => weight(head) + sumFloatBy(tail, weight)
 }
 
+/// sumFloats weighs every float element as itself.
+fn sumFloats(xs) = sumFloatBy(xs, fn(x) => x)
+
 /// countTrue counts the `true` elements of a bool list through list patterns.
-fn countTrue(xs) = match xs {
-    [] => 0
-    [head, ...tail] => boolWeight(head) + countTrue(tail)
-}
+fn countTrue(xs) = sumBy(xs, boolWeight)
 
 /// slotLabels proves a record element survives head/tail destructuring WHOLE:
 /// the bound head is a record whose fields are all readable.
@@ -509,16 +513,10 @@ fn slotLabels(xs) = match xs {
 
 /// readySlots reads a second field off the same bound head, so a head bound to
 /// the wrong slot cannot pass by matching only one field.
-fn readySlots(xs) = match xs {
-    [] => 0
-    [head, ...tail] => boolWeight(head.ready) + readySlots(tail)
-}
+fn readySlots(xs) = sumBy(xs, fn(slot) => boolWeight(slot.ready))
 
 /// totalWeight reads the third, float-typed field off the bound head.
-fn totalWeight(xs) = match xs {
-    [] => 0.0
-    [head, ...tail] => head.weight + totalWeight(tail)
-}
+fn totalWeight(xs) = sumFloatBy(xs, fn(slot) => slot.weight)
 
 /// rowAt unwraps a nested-list element, substituting a sentinel row that appears
 /// nowhere else, so the `Error` branch of [BUILTIN-LIST-GET] cannot pass as a
@@ -530,10 +528,7 @@ fn rowAt(rows, index) = match listGet(rows, index) {
 
 /// sumInner sums every element of every inner list, exercising a `List<T>` whose
 /// `T` is itself a `List<int>` ([TYPE-LIST]).
-fn sumInner(xs) = match xs {
-    [] => 0
-    [head, ...tail] => sumList(head) + sumInner(tail)
-}
+fn sumInner(xs) = sumBy(xs, sumList)
 
 /// describeMatrix selects its arm on the OUTER list's length while reading the
 /// INNER list's length [TYPE-LIST-PATTERNS].
