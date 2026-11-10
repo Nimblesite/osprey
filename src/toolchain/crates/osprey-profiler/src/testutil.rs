@@ -99,6 +99,12 @@ pub(crate) fn field_f64(doc: &serde_json::Value, key: &str, want: f64) {
     );
 }
 
+/// Assert a JSON array's length and hand back its first element.
+pub(crate) fn first_of(items: &[serde_json::Value], len: usize) -> &serde_json::Value {
+    assert_eq!(items.len(), len);
+    items.first().unwrap()
+}
+
 /// A unique, created scratch directory for one test.
 pub(crate) fn temp_dir(tag: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()

@@ -1,6 +1,28 @@
 use super::*;
 use crate::testutil;
 
+/// A scratch directory holding a dummy `app` binary, as `(dir, binary)`.
+fn binary_fixture(tag: &str) -> (PathBuf, PathBuf) {
+    let dir = testutil::temp_dir(tag);
+    let binary = dir.join("app");
+    std::fs::write(&binary, b"bin").unwrap();
+    (dir, binary)
+}
+
+/// The argv as owned strings, so a whole slice can be compared at once.
+fn flat_args(args: &[OsString]) -> Vec<String> {
+    args.iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect()
+}
+
+/// The single innermost frame of the first chain must name `add`.
+fn assert_names_add(chains: &[Vec<SymFrame>]) -> &SymFrame {
+    let frame = chains.first().unwrap().first().unwrap();
+    assert!(frame.name.contains("add"), "unexpected frame: {frame:?}");
+    frame
+}
+
 #[test]
 fn parses_llvm_symbolizer_blocks() {
     let out = "add\n/tmp/t.c:2:0\n\nrun\nC:\\proj\\app.osp:14:3\n\n??\n??:0:0\n\n";
@@ -73,9 +95,7 @@ fn find_tool_walks_path() {
 
 #[test]
 fn resolve_object_prefers_the_dsym_dwarf_when_present() {
-    let dir = testutil::temp_dir("dsym");
-    let binary = dir.join("app");
-    std::fs::write(&binary, b"bin").unwrap();
+    let (dir, binary) = binary_fixture("dsym");
     let dwarf_dir = dir.join("app.dSYM/Contents/Resources/DWARF");
     std::fs::create_dir_all(&dwarf_dir).unwrap();
     let dwarf = dwarf_dir.join("app");
@@ -105,18 +125,14 @@ fn resolve_object_prefers_the_dsym_dwarf_when_present() {
 /// the platform CI actually runs.
 #[test]
 fn resolve_object_treats_an_empty_image_path_as_the_main_binary() {
-    let dir = testutil::temp_dir("emptypath");
-    let binary = dir.join("app");
-    std::fs::write(&binary, b"bin").unwrap();
+    let (dir, binary) = binary_fixture("emptypath");
     assert_eq!(resolve_object(Path::new(""), &binary), Some(binary.clone()));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn resolve_object_refuses_to_stand_a_foreign_image_in() {
-    let dir = testutil::temp_dir("foreign");
-    let binary = dir.join("app");
-    std::fs::write(&binary, b"bin").unwrap();
+    let (dir, binary) = binary_fixture("foreign");
     let cache_only = Path::new("/usr/lib/system/libsystem_malloc.dylib");
     assert!(!cache_only.exists(), "fixture assumes a cache-only dylib");
     assert_eq!(resolve_object(cache_only, &binary), None);
@@ -139,10 +155,7 @@ fn atos_argv_pins_the_slice_the_image_was_mapped_as() {
         0x0D9E_4000,
         &[0x1_804A_E10C],
     );
-    let flat: Vec<String> = args
-        .iter()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
+    let flat = flat_args(&args);
     assert_eq!(
         flat,
         [
@@ -162,10 +175,7 @@ fn atos_argv_pins_the_slice_the_image_was_mapped_as() {
 #[test]
 fn atos_argv_omits_the_slice_when_none_was_recorded() {
     let args = atos_args("", Path::new("/bin/app"), 0, 0, &[0x20]);
-    let flat: Vec<String> = args
-        .iter()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
+    let flat = flat_args(&args);
     assert_eq!(flat, ["-o", "/bin/app", "-l", "0x0", "0x20"]);
 }
 
@@ -234,8 +244,7 @@ fn real_llvm_symbolizer_resolves_a_c_symbol() {
     let chains = LlvmSymbolizer::new(&bin, &[])
         .symbolize(&bin, &[addr])
         .unwrap();
-    let frame = chains.first().unwrap().first().unwrap();
-    assert!(frame.name.contains("add"), "unexpected frame: {frame:?}");
+    let _ = assert_names_add(&chains);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -258,8 +267,7 @@ fn real_atos_resolves_a_c_symbol_via_slid_addresses() {
     let Some(chains) = sym.try_atos(&bin, &[addr]) else {
         return;
     };
-    let frame = chains.first().unwrap().first().unwrap();
-    assert!(frame.name.contains("add"), "unexpected frame: {frame:?}");
+    let frame = assert_names_add(&chains);
     assert!(frame.file.ends_with("t.c"), "unexpected file: {frame:?}");
     assert!(frame.line >= 1);
     let _ = std::fs::remove_dir_all(&dir);
