@@ -69,11 +69,7 @@ websiteExamplesCase () =
         analyzeNumber 0 == "Zero",
         analyzeNumber 42 == "The answer!",
         analyzeNumber 5 == "Something else",
-        getGrade 100 == "Perfect!",
-        getGrade 95 == "Excellent",
-        getGrade 85 == "Very Good",
-        getGrade 75 == "Good",
-        getGrade 50 == "Needs Improvement",
+        answersHold (getGrade, [100, 95, 85, 75, 50], ["Perfect!", "Excellent", "Very Good", "Good", "Needs Improvement"]),
         compute 11 == 22,
         fiberValue == 14
     ]

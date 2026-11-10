@@ -132,18 +132,7 @@ fn numbersKeepTheirKind() = checkAll("integers and floats stay distinct both way
 ])
 
 fn malformedTextSaysWhere() = checkAll("every rejection names its byte and its reason", [
-    reason(jsonDecode("")) == "jsonDecode: byte 0: unexpected end of text",
-    reason(jsonDecode("[1,")) == "jsonDecode: byte 3: unexpected end of text",
-    reason(jsonDecode("[1 2]")) == "jsonDecode: byte 3: expected ',' or ']' in array",
-    reason(jsonDecode("{\"a\" 1}")) == "jsonDecode: byte 5: expected ':' after a member name",
-    reason(jsonDecode("{\"a\":1,\"a\":2}")) == "jsonDecode: byte 0: duplicate member name",
-    reason(jsonDecode("{\"ab\":1,\"a\\u0062\":2}")) == "jsonDecode: byte 0: duplicate member name",
-    reason(jsonDecode("[{\"x\":{\"k\":1,\"j\":2,\"k\":3}}]")) == "jsonDecode: byte 6: duplicate member name",
-    reason(jsonDecode("\"open")) == "jsonDecode: byte 5: unterminated string",
-    reason(jsonDecode("\"\\q\"")) == "jsonDecode: byte 3: invalid character or escape in string",
-    reason(jsonDecode("01")) == "jsonDecode: byte 1: trailing text after the value",
-    reason(jsonDecode("[1] x")) == "jsonDecode: byte 4: trailing text after the value",
-    reason(jsonDecode("nul")) == "jsonDecode: byte 0: unexpected character",
+    answersHold(fn(x) => reason(jsonDecode(x)), ["", "[1,", "[1 2]", "{\"a\" 1}", "{\"a\":1,\"a\":2}", "{\"ab\":1,\"a\\u0062\":2}", "[{\"x\":{\"k\":1,\"j\":2,\"k\":3}}]", "\"open", "\"\\q\"", "01", "[1] x", "nul"], ["jsonDecode: byte 0: unexpected end of text", "jsonDecode: byte 3: unexpected end of text", "jsonDecode: byte 3: expected ',' or ']' in array", "jsonDecode: byte 5: expected ':' after a member name", "jsonDecode: byte 0: duplicate member name", "jsonDecode: byte 0: duplicate member name", "jsonDecode: byte 6: duplicate member name", "jsonDecode: byte 5: unterminated string", "jsonDecode: byte 3: invalid character or escape in string", "jsonDecode: byte 1: trailing text after the value", "jsonDecode: byte 4: trailing text after the value", "jsonDecode: byte 0: unexpected character"]),
     reason(jsonDecode(nested(128))) == "ok",
     reason(jsonDecode(nested(129))) == "jsonDecode: byte 128: nesting deeper than 128 levels"
 ])

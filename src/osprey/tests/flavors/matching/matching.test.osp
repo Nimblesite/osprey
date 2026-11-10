@@ -82,10 +82,7 @@ fn matchIntegerCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-            matchLabel(0) == "none",
-            matchLabel(1) == "single",
-            matchLabel(2) == "pair",
-            matchLabel(7) == "many"
+            answersHold(matchLabel, [0, 1, 2, 7], ["none", "single", "pair", "many"])
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
