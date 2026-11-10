@@ -154,17 +154,11 @@ userDefinedUnionCase () =
     ]
 
     checkAll "union lists preserve order patterns Results and persistence" [
-        listLength outcomes == 2,
-        listLength grown == 3,
-        listLength prefixed == 4,
-        listLength reversed == 4,
-        describeAt (outcomes, 0, fallback) == "ok: loaded",
-        describeAt (outcomes, 1, fallback) == "err: missing",
+        answersHold (\x => listLength x) [outcomes, grown, prefixed, reversed] [2, 3, 4, 4],
+        answersHold (\index => describeAt (outcomes, index, fallback)) [0, 1, 9] ["ok: loaded", "err: missing", "err: fallback"],
+        answersHold (\index => describeAt (reversed, index, fallback)) [0, 3] ["ok: cached", "err: offline"],
         describeAt (grown, 2, fallback) == "ok: cached",
         describeAt (prefixed, 0, fallback) == "err: offline",
-        describeAt (reversed, 0, fallback) == "ok: cached",
-        describeAt (reversed, 3, fallback) == "err: offline",
-        describeAt (outcomes, 9, fallback) == "err: fallback",
         listLength outcomes == 2,
         outcomeShape [] == "empty",
         outcomeShape [loaded] == "one:ok: loaded",
@@ -175,10 +169,7 @@ userDefinedUnionCase () =
     ]
 
     checkAll "union maps preserve replacement removal lookup and generic choices" [
-        mapLength byName == 2,
-        mapLength updated == 3,
-        mapLength withoutFailure == 2,
-        mapLength merged == 3,
+        answersHold (\x => mapLength x) [byName, updated, withoutFailure, merged] [2, 3, 2, 3],
         describeKey (byName, "primary", fallback) == "ok: loaded",
         describeKey (byName, "failure", fallback) == "err: missing",
         describeKey (updated, "cached", fallback) == "ok: cached",
@@ -227,57 +218,41 @@ builtMapIndexCase () =
     checkAll "built scalar maps preserve lookup replacement and persistence" [
         (built["a"] ?: ((0 - 1) )) == 9,
         (built["b"] ?: ((0 - 1) )) == 16,
-        valueOr (built, "a", ((0 - 1) )) == 9,
-        valueOr (built, "missing", ((0 - 1) )) == ((0 - 1) ),
-        mapLength built == 2,
+        answersHold (\key => valueOr (built, key, ((0 - 1) ))) ["a", "missing"] [9, ((0 - 1) )],
+        answersHold (\x => mapLength x) [built, replaced, removed, merged] [2, 2, 1, 3],
         mapContains built "a",
         mapContains built "b",
         !(mapContains built "missing"),
         absent,
-        mapLength replaced == 2,
-        valueOr (replaced, "a", 0) == 25,
-        valueOr (built, "a", 0) == 9,
-        mapLength removed == 1,
         mapContains removed "a",
         !(mapContains removed "b"),
-        mapLength merged == 3,
-        valueOr (merged, "a", 0) == 9,
-        valueOr (merged, "b", 0) == 36,
-        valueOr (merged, "c", 0) == 49,
+        valueOr (replaced, "a", 0) == 25,
+        valueOr (built, "a", 0) == 9,
+        answersHold (\key => valueOr (merged, key, 0)) ["a", "b", "c"] [9, 36, 49],
         auditIntKeys (built, ["a", "b"]) == 916,
         auditIntKeys (merged, ["a", "b", "c"]) == 93649
     ]
 
     checkAll "generic lookup instantiations stay isolated across leaf types" [
-        valueOr (words, "first", "missing") == "ant",
-        valueOr (words, "second", "missing") == "bee",
-        valueOr (words, "absent", "missing") == "missing",
-        mapLength words == 2,
-        mapLength wordGrowth == 3,
+        answersHold (\key => valueOr (words, key, "missing")) ["first", "second", "absent", "third"] ["ant", "bee", "missing", "missing"],
+        answersHold (\x => mapLength x) [words, wordGrowth] [2, 3],
         valueOr (wordGrowth, "third", "missing") == "cat",
-        valueOr (words, "third", "missing") == "missing",
         auditStringKeys (words, ["first", "second"]) == "ant/bee/",
         auditStringKeys (wordGrowth, ["third", "first"]) == "cat/ant/",
-        listLength (mapKeys wordGrowth) == 3,
-        listLength (mapValues wordGrowth) == 3
+        answersHold (\x => listLength x) [mapKeys wordGrowth, mapValues wordGrowth] [3, 3]
     ]
 
     checkAll "maps of lists retain their nested element descriptors" [
-        mapLength buckets == 2,
-        mapLength bucketGrowth == 3,
+        answersHold (\x => mapLength x) [buckets, bucketGrowth] [2, 3],
         listLength (valueOr (buckets, "odd", [99])) == 3,
         listLength (valueOr (bucketGrowth, "prime", [99])) == 4,
-        listValueAt (buckets, "odd", 0, 99) == 1,
-        listValueAt (buckets, "odd", 2, 99) == 5,
-        listValueAt (buckets, "even", 0, 99) == 2,
-        listValueAt (buckets, "even", 2, 99) == 6,
+        answersHold (\index => listValueAt (buckets, "odd", index, 99)) [0, 2, 9] [1, 5, 99],
+        answersHold (\index => listValueAt (buckets, "even", index, 99)) [0, 2] [2, 6],
         listValueAt (bucketGrowth, "prime", 3, 99) == 7,
         listValueAt (buckets, "missing", 0, 99) == 99,
         listValueAt (buckets, "odd", 9, 99) == 99,
-        listValueAt (stringBuckets, "short", 0, "missing") == "a",
-        listValueAt (stringBuckets, "short", 1, "missing") == "bb",
-        listValueAt (stringBuckets, "long", 0, "missing") == "three",
-        listValueAt (stringBuckets, "long", 1, "missing") == "seven",
+        answersHold (\index => listValueAt (stringBuckets, "short", index, "missing")) [0, 1] ["a", "bb"],
+        answersHold (\index => listValueAt (stringBuckets, "long", index, "missing")) [0, 1] ["three", "seven"],
         listLength nestedMaps == 2,
         nestedValueAt (nestedMaps, 0, "odd", 2, 99) == 5,
         nestedValueAt (nestedMaps, 1, "prime", 3, 99) == 7
