@@ -54,6 +54,8 @@ tree () = Ui::column [
 
 encoded () = jsonEncode (firstNode (Encode::walk ([], tree ()))) ?: ""
 
+decoded () = jsonDecode (encoded ()) ?: JsonNull
+
 kindAt doc path = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) path ?: JsonNull) "kind" ?: JsonNull) ?: "missing"
 
 // The single node `walked` encodes.
@@ -109,6 +111,13 @@ problemFree envelope = expect (Probes::problems envelope, "")
 
 // `session`'s store tallies one.
 tallyOne session = expect (Doc::number (Probes::stored session, "tally"), 1)
+
+// Tapping `ordinal` of `region` at `revision` leaves `session` whole and still tallying one.
+answersStill (session, region, revision, ordinal) =
+    after = postedTap (session, region, revision, ordinal)
+    problemFree after
+    tallyOne after
+    after
 
 // The session after the host taps the root's first control on a fresh start.
 tappedStart () = postedTap (Probes::started (), "root", 1, 0)
@@ -175,12 +184,11 @@ test ("a link carries its label and web address and takes no ordinal", \() =>
 test ("controls take depth-first ordinals in drawing order", \() =>
     expect (length (Encode::walk ([], tree ())).bindings, 3))
 test ("an encoded region decodes with its components and text intact", \() =>
-    doc = jsonDecode (encoded ()) ?: JsonNull
+    doc = decoded ()
     expect (kindAt doc 2, "section")
     expect (jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull) "text" ?: JsonNull) ?: "missing", "Title \"quoted\"\n"))
 test ("a control carries the ordinal of its binding", \() =>
-    doc = jsonDecode (encoded ()) ?: JsonNull
-    expect (eventOf (itemAt (doc, "children", 3)), 2))
+    expect (eventOf (itemAt (decoded (), "children", 3)), 2))
 test ("start sends every region once with the theme", \() =>
     first = Probes::started ()
     expect (Probes::keys first, "root,note")
@@ -230,9 +238,7 @@ test ("an edit whose typed action is gone or ambiguous refuses without change", 
     gone = rootEdit (rootEdit (first, first, 0), first, 0)
     refusedClean (gone, "no longer exists")
     // The refusal changed nothing: the current session still answers its own controls.
-    intact = postedTap (gone, "root", 2, 0)
-    servedLoad intact
-    tallyOne intact)
+    servedLoad (answersStill (gone, "root", 2, 0)))
 // [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
 // The host edits whose original control the prior state cannot name, with the reason each is given.
 editedAt () = [
@@ -248,9 +254,7 @@ test ("an edit with an impossible original refuses without change", \() =>
     refusedClean (wrongKind, "wrong kind")
     expect (countOf (wrongKind, "requests"), 0)
     // Every refusal left the session whole.
-    after = postedTap (first, "root", 1, 0)
-    problemFree after
-    tallyOne after)
+    answersStill (first, "root", 1, 0))
 // [UI-EVENTS]: a resolved edit runs update on the current session, never on the prior state.
 test ("a resolved edit updates the current state", \() =>
     first = Probes::started ()
@@ -379,7 +383,6 @@ processRequestCases () = [
 // [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
 test ("filesystem and store requests preserve paths bounds and slices", \() =>
     expectRequests (filesystemRequestCases ()))
-// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
 test ("desktop requests preserve picker export and cancellation payloads", \() =>
     expectRequests (desktopRequestCases ()))
 // [UI-EFFECTS-PROCESS]: the four long-lived process capabilities encode their handles, bounds, arguments and merged environment.
@@ -412,21 +415,17 @@ test ("context menus bind actions after their content controls", \() =>
 
 mut streamedTrace = ""
 
-streamedFrom node =
+// Run `work` with the scene-stream handler recording each primitive's code, then `suffix` of its depth.
+traced (suffix, work) =
     handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive}@${Streams::depth primitive};"
-    Streams::split node
+        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive}${suffix (Streams::depth primitive)};"
+    work ()
 
-begun () =
-    handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
-    Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"linux\"}", initial, regions, theme)
+streamedFrom node = traced (\depth => "@${depth}", \() => Streams::split node)
 
-proceeded (session, event) =
-    handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
-    Runtime::proceed (session, event, update, regions)
+begun () = traced (\_ => "", \() => Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"linux\"}", initial, regions, theme))
 
+proceeded (session, event) = traced (\_ => "", \() => Runtime::proceed (session, event, update, regions))
 testCases [
     { name = "a scene encodes its primitives as flat typed arrays", work = sceneCaseASceneEncodesItsPrimitivesAsFlat },
     { name = "colours pack as RRGGBBAA", work = sceneCaseColoursPackAsRrggbbaa },
