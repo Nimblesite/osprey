@@ -89,6 +89,12 @@ fn slotReads(slot, label, weight, ready) = slot.label == label && slot.weight ==
 fn transcriptSealed(log, expected, size, tail, reversed, seam) =
     log == expected && length(log) == size && endsWith(log, tail) && !endsWith(log, reversed) && contains(log, seam)
 
+/// noteEach visits `xs` in index order, asking `spell` for each element's text.
+fn noteEach(xs, spell) = forEachList(xs, fn(item) => perform TranscriptProbe.note(spell(item)))
+
+/// sealedRow checks the log the last traversal left against `title`'s row.
+fn sealedRow(log, title, expected, size, tail, reversed, seam) = checkAll(title, [transcriptSealed(log, expected, size, tail, reversed, seam)])
+
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs) =
     fn(next) => fn(last) => match next > last {
@@ -843,7 +849,7 @@ fn typedIterationOrderCase() = {
     handle TranscriptProbe {
         note text => { log = "${log}${text}|" }
     }
-    forEachList(noWords, fn(word) => perform TranscriptProbe.note(word))
+    noteEach(noWords, fn(word) => word)
 
     // "Once per element" over zero elements is zero calls.
     checkAll("forEachList over an empty list records nothing", [
@@ -856,7 +862,7 @@ fn typedIterationOrderCase() = {
         tailLength(noWords) == ((0 - 1) )
     ])
 
-    forEachList(words, fn(word) => perform TranscriptProbe.note(word))
+    noteEach(words, fn(word) => word)
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll("forEachList visits string elements in index order", [
@@ -869,28 +875,22 @@ fn typedIterationOrderCase() = {
         log == joinWords(words)
     ])
 
-    forEachList(flags, fn(flag) => perform TranscriptProbe.note("${flag}"))
+    noteEach(flags, fn(flag) => "${flag}")
 
     // 17 + "true|" (5) + "false|" (6) = 28.
-    checkAll("forEachList visits bool elements in index order", [
-        transcriptSealed(log, "alpha|beta|gamma|true|false|", 28, "true|false|", "false|true|", "gamma|true|")
-    ])
+    sealedRow(log, "forEachList visits bool elements in index order", "alpha|beta|gamma|true|false|", 28, "true|false|", "false|true|", "gamma|true|")
 
-    forEachList(counts, fn(count) => perform TranscriptProbe.note("${count}"))
+    noteEach(counts, fn(count) => "${count}")
 
     // 28 + "7|8|9|" (6) = 34.
-    checkAll("forEachList visits int elements in index order", [
-        transcriptSealed(log, "alpha|beta|gamma|true|false|7|8|9|", 34, "7|8|9|", "9|8|7|", "false|7|")
-    ])
+    sealedRow(log, "forEachList visits int elements in index order", "alpha|beta|gamma|true|false|7|8|9|", 34, "7|8|9|", "9|8|7|", "false|7|")
 
-    forEachList(slots, fn(slot) => perform TranscriptProbe.note(slot.label))
+    noteEach(slots, fn(slot) => slot.label)
 
     // 34 + "left|" (5) + "right|" (6) = 45.
-    checkAll("forEachList visits record elements in index order", [
-        transcriptSealed(log, "alpha|beta|gamma|true|false|7|8|9|left|right|", 45, "left|right|", "right|left|", "9|left|")
-    ])
+    sealedRow(log, "forEachList visits record elements in index order", "alpha|beta|gamma|true|false|7|8|9|left|right|", 45, "left|right|", "right|left|", "9|left|")
 
-    forEachList(listReverse(words), fn(word) => perform TranscriptProbe.note(word))
+    noteEach(listReverse(words), fn(word) => word)
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll("forEachList follows the derived list, not its source", [
