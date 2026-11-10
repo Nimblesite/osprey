@@ -30,15 +30,16 @@ expectRendered machine =
     expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
     expect (machine.machineFault, "")
 
-nativeElements machine = Canvases::semantics machine
+nativeLabels machine = join (mapList (Canvases::semantics machine, \e => e.accessLabel)) "|"
 
-nativeLabels machine = join (mapList (nativeElements machine, \e => e.accessLabel)) "|"
-
-nativeElement (machine, label) = match Lists::find (nativeElements machine, \e => e.accessLabel == label)
+nativeElement (machine, label) = match Lists::find (Canvases::semantics machine, nativeLabelled label)
     Success element => element
     Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
 
-nativeOffered (machine, label) = Lists::any (nativeElements machine, \e => e.accessLabel == label)
+// Whether `e` is the element announcing `label`.
+nativeLabelled label = \e => e.accessLabel == label
+
+nativeOffered (machine, label) = Lists::any (Canvases::semantics machine, nativeLabelled label)
 
 nativeRole (machine, label) = Canvases::roleName (nativeElement (machine, label)).accessRole
 
@@ -51,20 +52,18 @@ nativePoint (element, fraction) = NativePoint(nativeX = element.accessLeft + ele
 
 nativeReleaseAt (machine, label, fraction) =
     point = nativePoint (nativeElement (machine, label), fraction)
-    Canvases::released (machine, point.nativeX, point.nativeY)
+    released = Canvases::released (machine, point.nativeX, point.nativeY)
+    expect (nativeValue (released, label), fraction)
+    released
 
 nativeWalk (out, doc) = match Doc::kind doc
     "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => nativeWalk (acc, Doc::field (doc, key)))
     "list" => foldList (Doc::items doc, listAppend out doc, nativeWalk)
     _ => out
 
-nativeTextNodes machine = filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "text") != "" || Doc::text (node, "label") != "" || Doc::text (node, "title") != "")
-
-nativeShows (machine, text) = Lists::any (nativeTextNodes machine, \node => Doc::text (node, "text") == text || Doc::text (node, "label") == text || Doc::text (node, "title") == text)
+nativeShows (machine, text) = Lists::any (filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "text") != "" || Doc::text (node, "label") != "" || Doc::text (node, "title") != ""), \node => Doc::text (node, "text") == text || Doc::text (node, "label") == text || Doc::text (node, "title") == text)
 
 nativeLetterNodes machine = filterList (nativeWalk ([], nativeTree machine), \node => Doc::kind node == "list" && Doc::real (Doc::at (node, 0)) == 6.0)
-
-nativeLettering machine = join (mapList (nativeLetterNodes machine, \node => Doc::string (Doc::at (node, 1)))) "|"
 
 nativeLetters (machine, text) = Lists::any (nativeLetterNodes machine, \node => Doc::string (Doc::at (node, 1)) == text)
 
@@ -77,6 +76,9 @@ nativeLever binding = match binding
     ui::ChoiceInput lever => lever
     _ => ui::Fire(fireName = "")
 
+// The lever bound to `walked`'s `index`th control.
+nativeBound (walked, index) = nativeLever (listGet walked.bindings index ?: ui::Tap(action = ui::Fire(fireName = "")))
+
 // The state after `act` sets `label`'s slider to `fraction`, checked to read back as that fraction.
 slidTo (machine, label, fraction) =
     slid = Canvases::act (machine, label, fraction)
@@ -85,10 +87,10 @@ slidTo (machine, label, fraction) =
 
 machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expect (nativeLabels fresh, "Menu|Press|Level")
-    expectRead (\name => nativeOffered (fresh, name), [{ name = "Menu", value = true }, { name = "Dismiss", value = false }])
+    expectVia (nativeOffered, fresh, [{ name = "Menu", value = true }, { name = "Dismiss", value = false }])
     expectRead (\name => nativeRole (fresh, name), [{ name = "Menu", value = "popup" }, { name = "Press", value = "button" }, { name = "Level", value = "slider" }, { name = "Missing", value = "none" }])
     expect (nativeValue (fresh, "Level"), 0.25)
-    expect (nativeLetters (fresh, "Hello"), true)
+    expectVia (nativeLetters, fresh, [{ name = "Hello", value = true }])
     slider = nativeElement (fresh, "Level")
     start = nativePoint (slider, 0.0)
     middle = nativePoint (slider, 0.5)
@@ -96,39 +98,32 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     // The slider's three stops run left to right at one height.
     expect (join (mapList ([start, middle, end], \point => "${point.nativeX},${point.nativeY}")) ";", "20.0,315.0;120.0,315.0;220.0,315.0")
     pressed = Canvases::act (fresh, "Press", 0.5)
-    expectRead (\name => nativeLetters (pressed, name), [{ name = "Pressed", value = true }, { name = "Hello", value = false }])
-    zero = slidTo (pressed, "Level", 0.0)
-    half = slidTo (zero, "Level", 0.5)
-    full = slidTo (half, "Level", 1.0)
+    expectVia (nativeLetters, pressed, [{ name = "Pressed", value = true }, { name = "Hello", value = false }])
+    full = foldList ([0.0, 0.5, 1.0], pressed, \(before, fraction) => slidTo (before, "Level", fraction))
     released = nativeReleaseAt (full, "Level", 0.75)
-    expect (nativeValue (released, "Level"), 0.75)
     opened = Canvases::act (released, "Menu", 0.5)
     expect (nativeLabels opened, "One|Two|Three|Menu|Press|Level")
     expect (nativeOffered (opened, "Dismiss"), false)
     expect (nativeRole (opened, "One"), "menuitem")
-    forEachList (["One", "Two", "Three"], \label => expect (nativeLetters (opened, label), true))
-    forEachList (["One", "Two", "Three", "Menu", "Press", "Level"], \label => expect (nativeSelected (opened, label), false))
+    expectVia (nativeLetters, opened, [{ name = "One", value = true }, { name = "Two", value = true }, { name = "Three", value = true }])
+    expectVia (nativeSelected, opened, [{ name = "One", value = false }, { name = "Two", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }, { name = "Press", value = false }, { name = "Level", value = false }])
     dismissed = Canvases::released (opened, 5.0, 5.0)
     expect (nativeLabels dismissed, "Menu|Press|Level")
     reopened = Canvases::act (dismissed, "Menu", 0.5)
     option = nativePoint (nativeElement (reopened, "Two"), 0.5)
     held = Canvases::pointer (reopened, option.nativeX, option.nativeY, true)
-    forEachList ([{ name = "selected", down = false, chosen = true }, { name = "level", down = false, chosen = false }, { name = "selected", down = true, chosen = false }], \probe => expect (Canvases::chooses (held, probe.name, option.nativeX, option.nativeY, probe.down), probe.chosen))
-    expect (Canvases::chooses (held, "selected", 5.0, 5.0, false), false)
+    forEachList ([{ name = "selected", down = false, chosen = true, x = option.nativeX, y = option.nativeY }, { name = "level", down = false, chosen = false, x = option.nativeX, y = option.nativeY }, { name = "selected", down = true, chosen = false, x = option.nativeX, y = option.nativeY }, { name = "selected", down = false, chosen = false, x = 5.0, y = 5.0 }], \probe => expect (Canvases::chooses (held, probe.name, probe.x, probe.y, probe.down), probe.chosen))
     chosen = Canvases::act (reopened, "Two", 0.5)
     expect (nativeLabels chosen, "Menu|Press|Level")
     expect (nativeLetters (chosen, "Choice two"), true)
     againOpened = Canvases::act (chosen, "Menu", 0.5)
-    expect (nativeSelected (againOpened, "Two"), true)
-    forEachList (["One", "Three", "Menu"], \label => expect (nativeSelected (againOpened, label), false))
+    expectVia (nativeSelected, againOpened, [{ name = "Two", value = true }, { name = "One", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }])
     expect (nativeSelected (chosen, "Menu"), false)
     scene = Lists::find (nativeWalk ([], nativeTree againOpened), \node => Doc::text (node, "kind") == "scene") ?: JsonNull
     access = Lists::find (Doc::items (Doc::field (scene, "access")), \node => Doc::text (node, "label") == "Two") ?: JsonNull
     expect (Doc::write access, "{\"role\":\"menuitem\",\"label\":\"Two\",\"x\":20.0,\"y\":190.0,\"w\":200.0,\"h\":40.0,\"value\":0.0,\"min\":0.0,\"max\":0.0,\"selected\":true,\"movable\":false}")
-    updated = nativeFeed (chosen, "caption", "Updated")
-    expectRead (\name => nativeLetters (updated, name), [{ name = "Updated", value = true }, { name = "Pressed", value = false }])
-    again = nativeFeed (updated, "caption", "Second input")
-    expectRead (\name => nativeLetters (again, name), [{ name = "Second input", value = true }, { name = "Updated", value = false }])
+    again = foldList (["Updated", "Second input"], chosen, \(before, text) => nativeFeed (before, "caption", text))
+    expectVia (nativeLetters, again, [{ name = "Second input", value = true }, { name = "Updated", value = false }, { name = "Pressed", value = false }])
     expect (nativeValue (again, "Level"), 0.75)
     unchanged = Canvases::act (again, "Missing", 0.5)
     expect (structuralEquals (MachineDocs::snapshot unchanged, MachineDocs::snapshot again), true))
@@ -137,12 +132,12 @@ machineCaseNativeViews () = withNativeFixture (\fresh =>
     native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
     walked = Encode::walk ([], Templates::view native)
     expect (length walked.bindings, 2)
-    expectRead (\name => nativeShows (native, name), [{ name = "Native", value = true }, { name = "Native action", value = true }, { name = "Pick", value = true }, { name = "Missing", value = false }])
-    pressed = Machines::pull (native, nativeLever (listGet walked.bindings 0 ?: ui::Tap(action = ui::Fire(fireName = ""))), Values::none ())
+    expectVia (nativeShows, native, [{ name = "Native", value = true }, { name = "Native action", value = true }, { name = "Pick", value = true }, { name = "Missing", value = false }])
+    pressed = Machines::pull (native, nativeBound (walked, 0), Values::none ())
     expect (Machines::text (pressed, "caption"), "Pressed")
-    chosen = Machines::pull (pressed, nativeLever (listGet walked.bindings 1 ?: ui::Tap(action = ui::Fire(fireName = ""))), Values::text "three")
+    chosen = Machines::pull (pressed, nativeBound (walked, 1), Values::text "three")
     expect (Machines::text (chosen, "selected"), "three")
-    expectRead (\name => nativeShows (chosen, name), [{ name = "three", value = true }, { name = "two", value = false }])
+    expectVia (nativeShows, chosen, [{ name = "three", value = true }, { name = "two", value = false }])
     expect (length (Machines::choicesOf (chosen, "choices")), 3)
     expectRead (\name => Machines::textual (chosen, name), [{ name = "caption", value = true }, { name = "level", value = false }])
     expectRead (\name => Machines::number (chosen, name), [{ name = "level", value = 0.25 }, { name = "caption", value = 0.0 }])
