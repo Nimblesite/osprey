@@ -59,6 +59,13 @@ typedef struct TestHttpResponse {
     char *partialBody;  // Runtime automatically calculates length
 } TestHttpResponse;
 
+// The runtime derives a response's body length from the string itself.
+static void check_body_length(const TestHttpResponse *resp, size_t expected, const char *message) {
+    size_t actual_length = strlen(resp->partialBody);
+    TEST_ASSERT_EQUALS(actual_length, expected, message);
+    TEST_ASSERT(actual_length == strlen(resp->partialBody), "Runtime should calculate length from string");
+}
+
 // Test HTTP response creation with various body lengths
 void test_http_response_length_calculation(void) {
     printf("\n🧪 Testing HTTP Response Length Calculation...\n");
@@ -72,9 +79,7 @@ void test_http_response_length_calculation(void) {
         .partialBody = ""
     };
     
-    size_t actual_length = strlen(empty_resp.partialBody);
-    TEST_ASSERT_EQUALS(actual_length, 0, "Empty response should have 0 length");
-    TEST_ASSERT(actual_length == strlen(empty_resp.partialBody), "Runtime should calculate length from string");
+    check_body_length(&empty_resp, 0, "Empty response should have 0 length");
     
     // Test 2: Short JSON response (NO MORE HARDCODED LENGTHS!)
     TestHttpResponse short_resp = {
@@ -85,9 +90,7 @@ void test_http_response_length_calculation(void) {
         .partialBody = "{\"success\": true}"
     };
     
-    actual_length = strlen(short_resp.partialBody);
-    TEST_ASSERT_EQUALS(actual_length, 17, "Short JSON response should have correct length");
-    TEST_ASSERT(actual_length == strlen(short_resp.partialBody), "Runtime should calculate length from string");
+    check_body_length(&short_resp, 17, "Short JSON response should have correct length");
     
     // Test 3: Long JSON response
     // 79-byte prefix + 50 x 78-byte chunks + 2-byte suffix + NUL = 3982 bytes.
@@ -111,7 +114,7 @@ void test_http_response_length_calculation(void) {
         .partialBody = long_json
     };
     
-    actual_length = strlen(long_resp.partialBody);
+    size_t actual_length = strlen(long_resp.partialBody);
     TEST_ASSERT(actual_length > 1000, "Long JSON response should be > 1000 chars");
     TEST_ASSERT(actual_length == strlen(long_resp.partialBody), "Runtime should calculate length from string");
     
@@ -124,23 +127,34 @@ void test_http_response_length_calculation(void) {
         .partialBody = "{\"message\": \"Hello\\nWorld\\t\\\"Test\\\"\"}"
     };
     
-    actual_length = strlen(special_resp.partialBody);
     // The escapes are DOUBLE-escaped in the C literal, so the runtime string
     // holds two characters for each of `\n`, `\t` and the three `\"` — 37
     // bytes, not the 33 this hand-written constant claimed before the suite
     // was ever built.
-    TEST_ASSERT_EQUALS(actual_length, 37, "Special chars response should have correct length");
-    TEST_ASSERT(actual_length == strlen(special_resp.partialBody), "Runtime should calculate length from string");
+    check_body_length(&special_resp, 37, "Special chars response should have correct length");
+}
+
+// Compose a request line whose oversized token is a 999-char run of 'A's.
+static void compose_oversized_request(char *input, size_t size, const char *prefix, const char *suffix) {
+    char oversized[1000];
+    memset(oversized, 'A', sizeof(oversized) - 1);
+    oversized[sizeof(oversized) - 1] = '\0';
+    snprintf(input, size, "%s%s%s", prefix, oversized, suffix);
+}
+
+// Parse a request line and check the parser reports both fields while the
+// oversized one truncates to its sscanf width.
+static void check_truncating_parse(const char *input, char *method_buffer, char *path_buffer,
+                                   char *oversized_field, size_t expected_len, const char *parses_message,
+                                   const char *truncates_message) {
+    int parsed = sscanf(input, "%15s %255s", method_buffer, path_buffer);
+    TEST_ASSERT_EQUALS(parsed, 2, parses_message);
+    TEST_ASSERT_EQUALS(strlen(oversized_field), expected_len, truncates_message);
 }
 
 // Test buffer overflow protection
 void test_buffer_overflow_protection(void) {
     printf("\n🧪 Testing Buffer Overflow Protection...\n");
-    
-    // Test 1: Oversized method string
-    char oversized_method[1000];
-    memset(oversized_method, 'A', 999);
-    oversized_method[999] = '\0';
     
     // This should not cause buffer overflow when parsing
     char method_buffer[16];
@@ -148,25 +162,28 @@ void test_buffer_overflow_protection(void) {
     int parsed = sscanf("GET /test HTTP/1.1", "%15s %255s", method_buffer, path_buffer);
     TEST_ASSERT_EQUALS(parsed, 2, "Normal parsing should work");
     
-    // Test with oversized input - should truncate safely
+    // Test 1: oversized method string, truncated safely by the parser
     char oversized_input[2000];
-    snprintf(oversized_input, sizeof(oversized_input), "%s /test HTTP/1.1", oversized_method);
+    compose_oversized_request(oversized_input, sizeof(oversized_input), "", " /test HTTP/1.1");
+    check_truncating_parse(oversized_input, method_buffer, path_buffer, method_buffer, 15,
+                           "Oversized method parsing should still work", "Method should be truncated to 15 chars");
     
-    parsed = sscanf(oversized_input, "%15s %255s", method_buffer, path_buffer);
-    TEST_ASSERT_EQUALS(parsed, 2, "Oversized method parsing should still work");
-    TEST_ASSERT_EQUALS(strlen(method_buffer), 15, "Method should be truncated to 15 chars");
-    
-    // Test 2: Oversized path string
-    char oversized_path[1000];
-    memset(oversized_path, 'A', 999);
-    oversized_path[999] = '\0';
-    
+    // Test 2: oversized path string
     char oversized_path_input[1200];
-    snprintf(oversized_path_input, sizeof(oversized_path_input), "GET %s HTTP/1.1", oversized_path);
-    
-    parsed = sscanf(oversized_path_input, "%15s %255s", method_buffer, path_buffer);
-    TEST_ASSERT_EQUALS(parsed, 2, "Oversized path parsing should work");
-    TEST_ASSERT_EQUALS(strlen(path_buffer), 255, "Path should be truncated to 255 chars");
+    compose_oversized_request(oversized_path_input, sizeof(oversized_path_input), "GET ", " HTTP/1.1");
+    check_truncating_parse(oversized_path_input, method_buffer, path_buffer, path_buffer, 255,
+                           "Oversized path parsing should work", "Path should be truncated to 255 chars");
+}
+
+// Compose a full HTTP/1.1 200 response header with a dynamic Content-Length.
+static int format_response_header(char *buffer, size_t size, const char *content_type, size_t body_len) {
+    return snprintf(buffer, size,
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: %s\r\n"
+                    "Content-Length: %zu\r\n"
+                    "Connection: close\r\n"
+                    "\r\n",
+                    content_type, body_len);
 }
 
 // Test HTTP header construction
@@ -180,13 +197,7 @@ void test_http_header_construction(void) {
     for (size_t i = 0; i < sizeof(body_lengths) / sizeof(body_lengths[0]); i++) {
         size_t body_len = body_lengths[i];
         
-        int header_len = snprintf(http_response, sizeof(http_response),
-                                "HTTP/1.1 200 OK\r\n"
-                                "Content-Type: application/json\r\n"
-                                "Content-Length: %zu\r\n"
-                                "Connection: close\r\n"
-                                "\r\n",
-                                body_len);
+        int header_len = format_response_header(http_response, sizeof(http_response), "application/json", body_len);
         
         TEST_ASSERT(header_len > 0, "Header construction should succeed");
         TEST_ASSERT(header_len > 0 && (size_t)header_len < sizeof(http_response), "Header should fit in buffer");
@@ -215,13 +226,7 @@ void test_fallback_response_dynamic_length(void) {
     size_t expected_len = strlen(test_body);
     
     char response_buffer[1024];
-    int response_len = snprintf(response_buffer, sizeof(response_buffer),
-                               "HTTP/1.1 200 OK\r\n"
-                               "Content-Type: text/plain\r\n"
-                               "Content-Length: %zu\r\n"
-                               "Connection: close\r\n"
-                               "\r\n",
-                               expected_len);
+    int response_len = format_response_header(response_buffer, sizeof(response_buffer), "text/plain", expected_len);
     
     TEST_ASSERT(response_len > 0, "Fallback response header should be constructed");
     TEST_ASSERT_EQUALS(expected_len, 13, "Hello, World! should be 13 chars");
@@ -234,13 +239,7 @@ void test_fallback_response_dynamic_length(void) {
     const char *test_body2 = "Different message";
     size_t expected_len2 = strlen(test_body2);
     
-    response_len = snprintf(response_buffer, sizeof(response_buffer),
-                           "HTTP/1.1 200 OK\r\n"
-                           "Content-Type: text/plain\r\n"
-                           "Content-Length: %zu\r\n"
-                           "Connection: close\r\n"
-                           "\r\n",
-                           expected_len2);
+    response_len = format_response_header(response_buffer, sizeof(response_buffer), "text/plain", expected_len2);
     
     TEST_ASSERT_EQUALS(expected_len2, 17, "Different message should be 17 chars");
     TEST_ASSERT(strstr(response_buffer, "Content-Length: 17") != NULL, "Should have correct dynamic length for different body");
