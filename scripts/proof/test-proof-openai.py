@@ -4,7 +4,7 @@ import copy
 import importlib.util
 import json
 import re
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 import subprocess
 import tempfile
@@ -20,14 +20,20 @@ def load_script(name, path):
 
 def windows_checkout_bytes(relative):
     """Bytes a Windows checkout with core.autocrlf=true writes for a tracked path."""
-    result = subprocess.run(["git", "-C", str(PROOF.ROOT), "-c", "core.autocrlf=true",
-                             "cat-file", "--filters", f"HEAD:{relative}"],
-                            capture_output=True, check=True)
-    return result.stdout
+    return subprocess.run(["git", "-C", str(PROOF.ROOT), "-c", "core.autocrlf=true",
+                           "cat-file", "--filters", f"HEAD:{relative}"], capture_output=True, check=True).stdout
 
 
 PROOF = load_script("proof_openai", Path(__file__).with_name("proof-openai.py"))
 BUILDER = load_script("core_builder", PROOF.CORE / "tools/build_corpus.py")
+
+
+def verify_stubbed(group, checker, **stubs):
+    """verify_group against a stubbed toolchain; `stubs` maps a PROOF helper to its mock kwargs."""
+    with ExitStack() as stack, mock.patch("builtins.print"):
+        for attribute, options in {"rejected": {}, **stubs}.items():
+            stack.enter_context(mock.patch.object(PROOF, attribute, **options))
+        PROOF.verify_group(checker, group, "gc")
 
 
 @contextmanager
@@ -45,14 +51,11 @@ class CorpusTests(unittest.TestCase):
 
     def test_group_receipts_keep_ambiguous_axiom_names_distinct(self):
         group = {"theorems": ["t"]}
-        for names, receipt in ((["none"], '"none"'), (["Ax, Other"], '"Ax, Other"'),
-                               (['"quoted"'], json.dumps('"quoted"'))):
-            with self.subTest(names=names), mock.patch.object(PROOF, "check_files", return_value=([], {}, {"t": {}})), \
-                    mock.patch.object(PROOF, "expected_axioms", return_value=names), \
-                    mock.patch.object(PROOF, "export_path", return_value=Path("unused")), \
-                    mock.patch.object(PROOF, "check", return_value=f"PASS t | axioms: {receipt}"), \
-                    mock.patch.object(PROOF, "rejected"), mock.patch("builtins.print"):
-                PROOF.verify_group([], group, "gc")
+        for names, receipt in ((["none"], '"none"'), (["Ax, Other"], '"Ax, Other"'), (['"quoted"'], json.dumps('"quoted"'))):
+            with self.subTest(names=names):
+                verify_stubbed(group, [], check_files={"return_value": ([], {}, {"t": {}})},
+                               export_path={"return_value": Path("unused")}, expected_axioms={"return_value": names},
+                               check={"return_value": f"PASS t | axioms: {receipt}"})
 
     def setUp(self):
         self.groups = json.loads((PROOF.CORPUS / "corpus.json").read_text())["groups"]
@@ -78,8 +81,7 @@ class CorpusTests(unittest.TestCase):
                 {"in": 7, "str": {"pre": 0, "str": '"A.B"'}},
                 {"in": 8, "str": {"pre": 3, "str": "C"}}]
         names, _ = PROOF.names_and_theorems(rows)
-        self.assertEqual(names, {0: "", 1: "A", 2: "A.B", 3: '"A.B"', 4: "5",
-                                 5: '"5"', 6: '""', 7: json.dumps('"A.B"'), 8: '"A.B".C'})
+        self.assertEqual(names, {0: "", 1: "A", 2: "A.B", 3: '"A.B"', 4: "5", 5: '"5"', 6: '""', 7: json.dumps('"A.B"'), 8: '"A.B".C'})
         self.assertEqual(len(set(names.values())), len(names))
         self.assertEqual(BUILDER.build_name_table([json.dumps(row) for row in rows]),
                          {key: value for key, value in names.items() if key})
@@ -97,8 +99,7 @@ class CorpusTests(unittest.TestCase):
         tests = (PROOF.ROOT / tests_path).read_text()
         for group in groups:
             PROOF.check_files(group)
-            found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$",
-                              tests, re.MULTILINE)
+            found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
             self.assertIsNotNone(found, group["id"])
             self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
 
@@ -134,19 +135,15 @@ class CorpusTests(unittest.TestCase):
         self.assertEqual(runner.call_args_list[0].kwargs["cwd"], project)
         for call in runner.call_args_list[1:]:
             self.assertEqual(call.kwargs["cwd"], PROOF.TOOLS)
-            self.assertEqual(call.kwargs["env"]["LEAN_PATH"].split(PROOF.os.pathsep)[0],
-                             str(project / ".lake/build/lib/lean"))
-        self.assertEqual(dependencies.call_args.args[1]["LEAN_PATH"].split(PROOF.os.pathsep)[0],
-                         str(project / ".lake/build/lib/lean"))
+            self.assertEqual(call.kwargs["env"]["LEAN_PATH"].split(PROOF.os.pathsep)[0], str(project / ".lake/build/lib/lean"))
+        self.assertEqual(dependencies.call_args.args[1]["LEAN_PATH"].split(PROOF.os.pathsep)[0], str(project / ".lake/build/lib/lean"))
 
     def test_root_axioms_are_distinct_from_the_export_ledger(self):
         group = self.groups[0]
         def checked(command, path, name):
             names = ", ".join(group["theorem_axioms"][name]) or "none"
             return f"PASS {name} | axioms: {names}"
-        with mock.patch.object(PROOF, "check", side_effect=checked), \
-             mock.patch.object(PROOF, "rejected"), mock.patch("builtins.print"):
-            PROOF.verify_group(["checker"], group, "gc")
+        verify_stubbed(group, ["checker"], check={"side_effect": checked})
 
     def rejected_wrong_statement(self, changer):
         self.rejected_axiom(changer("type", next(row["ie"] for row in self.rows if row.get("sort") == 0)))
@@ -180,24 +177,21 @@ class CorpusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PROOF.check_axioms(self.rows, self.names, ["Quot.sound"])
 
+    def mutated_theorem(self, proof):
+        name = self.groups[0]["theorems"][0]
+        rows = PROOF.mutation(self.rows, self.theorems[name], proof)
+        names, theorems = PROOF.names_and_theorems(rows)
+        return self.theorems[name], names, theorems[name], {row["ie"]: row for row in rows if "ie" in row}
+
     def test_corruption_retains_the_theorem_statement(self):
-        target = self.theorems[self.groups[0]["theorems"][0]]
-        rows = PROOF.mutation(self.rows, target, True)
-        _, theorems = PROOF.names_and_theorems(rows)
-        changed = theorems[self.groups[0]["theorems"][0]]
+        target, _, changed, _ = self.mutated_theorem(True)
         self.assertEqual(changed["type"], target["type"])
         self.assertEqual(changed["value"], target["type"])
 
     def test_false_statement_retains_the_actual_proof(self):
-        name = self.groups[0]["theorems"][0]
-        target = self.theorems[name]
-        rows = PROOF.mutation(self.rows, target, False)
-        names, theorems = PROOF.names_and_theorems(rows)
-        changed = theorems[name]
-        expressions = {row["ie"]: row for row in rows if "ie" in row}
+        target, names, changed, expressions = self.mutated_theorem(False)
         self.assertEqual(changed["value"], target["value"])
-        self.assertEqual(PROOF.expression_shape(changed["type"], expressions, names),
-                         ["forallE", ["sort", 0], ["bvar", 0]])
+        self.assertEqual(PROOF.expression_shape(changed["type"], expressions, names), ["forallE", ["sort", 0], ["bvar", 0]])
 
     def test_core_inventory_preserves_all_selected_and_blocked_roots(self):
         groups = PROOF.core_groups()
@@ -287,8 +281,7 @@ class CorpusTests(unittest.TestCase):
         assets = load_script("proof_assets", PROOF.ROOT / "scripts/proof/workbench-proof-assets.py")
         groups = assets.groups()
         manifest = json.loads(assets.MANIFEST.read_text())["libraries"]
-        self.assertEqual({entry["path"] for entry in manifest},
-                         {f"proof-libraries/{group['id']}.ndjson" for group in groups})
+        self.assertEqual({entry["path"] for entry in manifest}, {f"proof-libraries/{group['id']}.ndjson" for group in groups})
         for group in groups:
             relative = PROOF.export_path(group).relative_to(PROOF.ROOT).as_posix()
             checked_out = windows_checkout_bytes(relative)
