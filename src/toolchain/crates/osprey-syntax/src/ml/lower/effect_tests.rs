@@ -4,7 +4,7 @@
     reason = "test assertions: an out-of-bounds index is a test failure, not a panic"
 )]
 use crate::ml::parse_ml;
-use crate::test_support::ml_one_stmt;
+use crate::test_support::{let_expr, ml_one_stmt};
 use osprey_ast::{Expr, Stmt, Variance};
 
 // ---------- [TESTING-DOC] expression-statement documentation ----------
@@ -192,34 +192,25 @@ fn variance_markers_lower_onto_type_and_effect_params() {
 fn perform_lowers_to_perform_expr() {
     // `perform Trace.mark "one"` lowers to the SAME `Expr::Perform` the Default
     // `perform Trace.mark("one")` emits ([FLAVOR-ML-EFFECT]).
-    let s = ml_one_stmt("r = perform Trace.mark \"one\"\n");
-    assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Perform { .. },
-                ..
-            }
-        ),
-        "expected perform, got {s:?}"
+    let value = let_expr(
+        "perform",
+        ml_one_stmt("r = perform Trace.mark \"one\"\n"),
+        |value| matches!(value, Expr::Perform { .. }),
     );
-    if let Stmt::Let {
-        value:
-            Expr::Perform {
-                effect,
-                operation,
-                arguments,
-                named_arguments,
-                ..
-            },
+    let Expr::Perform {
+        effect,
+        operation,
+        arguments,
+        named_arguments,
         ..
-    } = s
-    {
-        assert_eq!(effect, "Trace");
-        assert_eq!(operation, "mark");
-        assert_eq!(arguments, vec![Expr::Str("one".to_owned())]);
-        assert_eq!(named_arguments, Vec::<osprey_ast::NamedArgument>::new());
-    }
+    } = value
+    else {
+        panic!("expected perform, got {value:?}")
+    };
+    assert_eq!(effect, "Trace");
+    assert_eq!(operation, "mark");
+    assert_eq!(arguments, vec![Expr::Str("one".to_owned())]);
+    assert_eq!(named_arguments, Vec::<osprey_ast::NamedArgument>::new());
 }
 
 #[test]
@@ -229,33 +220,23 @@ fn handle_lowers_to_handler_expr() {
     // ([FLAVOR-ML-EFFECT], [EFFECTS-HANDLE-REST]).
     let src =
         "r =\n    handle Trace\n        mark label =>\n            resume ()\n    traced ()\n";
-    let s = ml_one_stmt(src);
+    let value = let_expr("handler", ml_one_stmt(src), |value| {
+        matches!(value, Expr::Handler { .. })
+    });
+    let Expr::Handler {
+        effect, arms, body, ..
+    } = value
+    else {
+        panic!("expected handler, got {value:?}")
+    };
+    assert_eq!(effect, "Trace");
+    assert_eq!(arms.len(), 1);
+    assert_eq!(arms[0].operation, "mark");
+    assert_eq!(arms[0].params, vec!["label".to_owned()]);
     assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Handler { .. },
-                ..
-            }
-        ),
-        "expected handler, got {s:?}"
+        matches!(*body, Expr::Call { .. }),
+        "handle body should be the call, got {body:?}"
     );
-    if let Stmt::Let {
-        value: Expr::Handler {
-            effect, arms, body, ..
-        },
-        ..
-    } = s
-    {
-        assert_eq!(effect, "Trace");
-        assert_eq!(arms.len(), 1);
-        assert_eq!(arms[0].operation, "mark");
-        assert_eq!(arms[0].params, vec!["label".to_owned()]);
-        assert!(
-            matches!(*body, Expr::Call { .. }),
-            "handle body should be the call, got {body:?}"
-        );
-    }
 }
 
 #[test]
@@ -264,33 +245,14 @@ fn resume_lowers_with_and_without_argument() {
     // byte-identical to the Default `resume()` / `resume(seed)`
     // ([FLAVOR-ML-EFFECT]). Bare `resume` denotes the owned continuation
     // VALUE and never silently invokes it ([EFFECTS-CONTINUATION-OWNERSHIP]).
-    let bare = ml_one_stmt("r = resume ()\n");
-    assert!(
-        matches!(
-            bare,
-            Stmt::Let {
-                value: Expr::Resume(None),
-                ..
-            }
-        ),
-        "expected bare resume, got {bare:?}"
-    );
-    let valued = ml_one_stmt("r = resume seed\n");
-    assert!(
-        matches!(
-            valued,
-            Stmt::Let {
-                value: Expr::Resume(Some(_)),
-                ..
-            }
-        ),
-        "expected valued resume, got {valued:?}"
-    );
-    if let Stmt::Let {
-        value: Expr::Resume(Some(inner)),
-        ..
-    } = valued
-    {
-        assert_eq!(*inner, Expr::Identifier("seed".to_owned()));
-    }
+    let _bare = let_expr("bare resume", ml_one_stmt("r = resume ()\n"), |value| {
+        matches!(value, Expr::Resume(None))
+    });
+    let valued = let_expr("valued resume", ml_one_stmt("r = resume seed\n"), |value| {
+        matches!(value, Expr::Resume(Some(_)))
+    });
+    let Expr::Resume(Some(inner)) = valued else {
+        panic!("expected valued resume, got {valued:?}")
+    };
+    assert_eq!(*inner, Expr::Identifier("seed".to_owned()));
 }

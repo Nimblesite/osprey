@@ -70,6 +70,23 @@ fn a_flavor_marker_that_fights_the_extension_is_reported_not_guessed() {
 
 // ---------- [TESTING-SKIP-WARNING] ----------
 
+/// The one `test-skipped` finding `diags` holds, at `severity`, on line 2 and
+/// whose message carries `needle`; `label` names it when it is missing.
+fn skip_finding<'a>(
+    diags: &'a [Diagnostic],
+    severity: Severity,
+    needle: &str,
+    label: &str,
+) -> &'a Diagnostic {
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    let found = diags.first().expect(label);
+    assert_eq!(found.severity, severity);
+    assert_eq!(found.code.as_deref(), Some("test-skipped"));
+    assert_eq!(found.range.0, 2, "{label} sits on the test call's line");
+    assert!(found.message.contains(needle), "{}", found.message);
+    found
+}
+
 #[test]
 fn a_statically_skipped_test_raises_a_warning_diagnostic() {
     // A skipped test is never silent: the `Skip` verdict at the body's
@@ -78,18 +95,13 @@ fn a_statically_skipped_test_raises_a_warning_diagnostic() {
                test(\"ignored case\", fn() => Skip(\"blocked on #123\"))\n\
                test(\"live case\", fn() => expect(1, 1))\n";
     let diags = compute(src, OSP, U16);
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    let warn = diags.first().expect("warning");
-    assert_eq!(warn.severity, Severity::Warning);
-    assert_eq!(warn.code.as_deref(), Some("test-skipped"));
-    assert_eq!(warn.source.as_deref(), Some("osprey"));
-    assert_eq!(warn.range.0, 2, "warning sits on the test call's line");
-    assert!(
-        warn.message
-            .contains("test 'ignored case' is skipped: blocked on #123"),
-        "{}",
-        warn.message
+    let warn = skip_finding(
+        &diags,
+        Severity::Warning,
+        "test 'ignored case' is skipped: blocked on #123",
+        "warning",
     );
+    assert_eq!(warn.source.as_deref(), Some("osprey"));
 
     let ml = "type Verdict = Pass | Fail string | Skip string\n\n\
               test \"ml ignored\" (\\() => Skip \"later\")\n";
@@ -113,16 +125,11 @@ fn a_skip_with_no_reason_is_an_error_not_a_warning() {
     let src = "type Verdict = Pass | Fail(string) | Skip(string)\n\n\
                test(\"unexplained\", fn() => Skip(\"\"))\n";
     let diags = compute(src, OSP, U16);
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    let err = diags.first().expect("error");
-    assert_eq!(err.severity, Severity::Error);
-    assert_eq!(err.code.as_deref(), Some("test-skipped"));
-    assert_eq!(err.range.0, 2, "error sits on the test call's line");
-    assert!(
-        err.message
-            .contains("test 'unexplained' is skipped with no reason"),
-        "{}",
-        err.message
+    let _ = skip_finding(
+        &diags,
+        Severity::Error,
+        "test 'unexplained' is skipped with no reason",
+        "error",
     );
 
     let bare = "type Verdict = Pass | Fail | Skip\n\n\

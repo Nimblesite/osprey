@@ -22,6 +22,7 @@ use crate::analysis::collect_inferred_symbols;
 use crate::diagnostics;
 use crate::features;
 use crate::model::{At, EngineError, Query, Report};
+use crate::workspace::View;
 
 /// The Osprey analysis engine.
 #[derive(Debug, Clone)]
@@ -132,8 +133,14 @@ impl OspreyEngine {
         }
     }
 
-    fn hover(&self, at: &At) -> Option<String> {
-        crate::hover::hover(
+    /// Ask `feature` about the position `at` names, with the document text,
+    /// URI, cursor, encoding and project view every position query shares.
+    fn at_feature<T>(
+        &self,
+        at: &At,
+        feature: impl FnOnce(&str, &str, u32, u32, PositionEncoding, &View) -> T,
+    ) -> T {
+        feature(
             &self.text(&at.uri),
             at.uri.as_str(),
             at.line,
@@ -143,15 +150,12 @@ impl OspreyEngine {
         )
     }
 
+    fn hover(&self, at: &At) -> Option<String> {
+        self.at_feature(at, crate::hover::hover)
+    }
+
     fn signature(&self, at: &At) -> Option<crate::model::SignatureInfo> {
-        features::signature_help(
-            &self.text(&at.uri),
-            at.uri.as_str(),
-            at.line,
-            at.character,
-            self.encoding(),
-            &self.project_cache.view(at.uri.as_str(), &self.vfs),
-        )
+        self.at_feature(at, features::signature_help)
     }
 
     fn locate(

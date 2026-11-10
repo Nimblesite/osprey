@@ -7,20 +7,25 @@
 
 use crate::check::check_program;
 use crate::error::TypeError;
-use osprey_ast::Stmt;
+use osprey_ast::{Program, Stmt};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
-/// Parse under `flavor` + type-check, returning the diagnostics. Panics if the
-/// snippet has syntax errors, since a program that never reaches the checker
-/// must not be scored as "no type errors".
-pub(crate) fn typecheck(flavor: Flavor, src: &str) -> Vec<TypeError> {
+/// Parse `src` under `flavor`, failing the test if the snippet does not parse:
+/// a program that never reaches the checker (or analyzer) must not be scored
+/// as "no diagnostics".
+pub(crate) fn parses(flavor: Flavor, src: &str) -> Program {
     let parsed = parse_program_with_flavor(src, flavor);
     assert!(
         parsed.errors.is_empty(),
         "{flavor} flavor rejected the snippet at parse time: {:?}\n{src}",
         parsed.errors
     );
-    check_program(&parsed.program)
+    parsed.program
+}
+
+/// Parse under `flavor` + type-check, returning the diagnostics.
+pub(crate) fn typecheck(flavor: Flavor, src: &str) -> Vec<TypeError> {
+    check_program(&parses(flavor, src))
 }
 
 /// Parse + type-check a Default-flavor snippet, returning the diagnostics.
@@ -40,10 +45,17 @@ pub(crate) fn bad(src: &str) -> Vec<TypeError> {
     errs
 }
 
+/// `src` beside its diagnostics — the shared body of [`accepts`] and
+/// [`rejects`], which print the snippet when the count surprises them.
+fn checked(flavor: Flavor, src: impl AsRef<str>) -> (String, Vec<TypeError>) {
+    let src = src.as_ref().to_string();
+    let errs = typecheck(flavor, &src);
+    (src, errs)
+}
+
 /// Assert `src` is accepted whole under `flavor`: parsed AND well-typed.
 pub(crate) fn accepts(flavor: Flavor, src: impl AsRef<str>) {
-    let src = src.as_ref();
-    let errs = typecheck(flavor, src);
+    let (src, errs) = checked(flavor, src);
     assert!(
         errs.is_empty(),
         "{flavor}: unexpected type errors: {errs:?}\n{src}"
@@ -87,8 +99,7 @@ pub(crate) fn parse_rejects_with(flavor: Flavor, src: impl AsRef<str>, needle: i
 /// is that a relation does NOT hold, and pinning one sentence would over-specify
 /// which of several true diagnostics must be the one reported.
 pub(crate) fn rejects(flavor: Flavor, src: impl AsRef<str>) {
-    let src = src.as_ref();
-    let errs = typecheck(flavor, src);
+    let (src, errs) = checked(flavor, src);
     assert!(
         !errs.is_empty(),
         "{flavor}: expected a type error, got none\n{src}"

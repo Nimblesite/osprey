@@ -8,7 +8,7 @@
 //! flavor covers the crate.
 
 use crate::Parsed;
-use osprey_ast::{Program, Stmt};
+use osprey_ast::{Expr, Program, Stmt};
 
 /// The statements of a clean **Default**-flavor parse.
 pub(crate) fn stmts(src: &str) -> Vec<Stmt> {
@@ -114,4 +114,13 @@ pub(crate) fn find_kind<'t>(
     children
         .into_iter()
         .find_map(|child| find_kind(child, kind))
+}
+
+/// The `Expr` under a lowered `let` that satisfies `is_expected`, panicking
+/// with `what` and the full statement otherwise.
+pub(crate) fn let_expr(what: &str, s: Stmt, is_expected: impl Fn(&Expr) -> bool) -> Expr {
+    match s {
+        Stmt::Let { value, .. } if is_expected(&value) => value,
+        s => panic!("expected {what}, got {s:?}"),
+    }
 }
