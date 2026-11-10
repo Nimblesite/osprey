@@ -47,16 +47,15 @@ becomes (f, next) =
     moved = f(fakePlaying = next)
     queued (moved, framed ("media", mediaStatus moved))
 said hex = Doc::parse (Protocol::parse (drop hex 8)).payload
+receiverReply f = queued (f, framed ("receiver", receiverStatus f))
 answer (f, message) = match Doc::text (message, "type")
-    "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
+    "LAUNCH" => receiverReply f
     "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (message, "media"), "contentType")), "BUFFERING"), "PLAYING")
     "PAUSE" => becomes (f, "PAUSED")
     "PLAY" => becomes (f, "PLAYING")
     "SEEK" => becomes (f(fakePosition = Doc::decimal (message, "currentTime")), f.fakePlaying)
     "SET_PLAYBACK_RATE" => becomes (f(fakeRate = Doc::decimal (message, "playbackRate")), f.fakePlaying)
-    "SET_VOLUME" =>
-        turned = f(fakeVolume = Doc::decimal (Doc::field (message, "volume"), "level"))
-        queued (turned, framed ("receiver", receiverStatus turned))
+    "SET_VOLUME" => receiverReply (f(fakeVolume = Doc::decimal (Doc::field (message, "volume"), "level")))
     "STOP" => becomes (f(fakeReason = "CANCELLED"), "IDLE")
     "PING" => queued (f, framed ("tp.heartbeat", "{\"type\":\"PONG\"}"))
     _ => f
@@ -139,10 +138,8 @@ completedIn (saved, ticket, ok, problem) =
 slicesHere () = Doc::items (Doc::field (Doc::parse envelope, "slices"))
 requestsHere () = Doc::items (Doc::field (Doc::parse envelope, "requests"))
 ask ticket = listGet (filterList (requestsHere (), \r => Doc::text (r, "ticket") == ticket)) 0 ?: JsonNull
-askedKind ticket = Doc::text (ask ticket, "kind")
-askedName ticket = Doc::text (ask ticket, "name")
+asked (ticket, field) = Doc::text (ask ticket, field)
 askedLimit ticket = Doc::number (ask ticket, "limit")
-askedSlice ticket = Doc::text (ask ticket, "slice")
 staged key = Doc::text ((listGet (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) 0 ?: JsonNull), "text")
 hasSlice key = length (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) > 0
 skinNow () = ui::Machines::text (driven.drivenSession.sessionStore.screen.screenMachine, "skin")
@@ -196,7 +193,7 @@ offersAll labels = expects (offers, labels, true)
 stagedSlices keys = expects (hasSlice, keys, true)
 absentSlices keys = expects (hasSlice, keys, false)
 skinStaged key = expect (staged "casting.selected-skin", key)
-unwritten ticket = expect (askedKind ticket, "")
+unwritten ticket = expect (asked (ticket, "kind"), "")
 clearTree () = expect (Semantics::unclear (elements ()), "")
 skinPhase (phase, now) = post "{\"kind\":\"lifecycle\",\"phase\":\"${phase}\",\"now\":${toString now}}"
 skinShown (phase, now, key) =
@@ -339,18 +336,18 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     expect (token "background", "#10192B")))
 test ("the appearance the host keeps is read, restored, repaired and never overwritten by a stale read", \() => bench (\() =>
     beganIn "" launch
-    expect (askedKind "appearance:read", "store-read")
-    expect (askedName "appearance:read", "casting-appearance.txt")
+    expect (asked ("appearance:read", "kind"), "store-read")
+    expect (asked ("appearance:read", "name"), "casting-appearance.txt")
     expect (askedLimit "appearance:read", 128)
-    expect (askedSlice "appearance:read", "casting.saved-skin")
+    expect (asked ("appearance:read", "slice"), "casting.saved-skin")
     completedIn ("", "appearance:read", false, "no such store entry casting-appearance.txt")
     skinStaged "sherbet"
     absentSlices ["casting.appearance-warning"]
     beganIn "poolside" launch
     readAs "poolside"
-    expect (askedKind "appearance:write", "store-write")
-    expect (askedName "appearance:write", "casting-appearance.txt")
-    expect (askedSlice "appearance:write", "casting.selected-skin")
+    expect (asked ("appearance:write", "kind"), "store-write")
+    expect (asked ("appearance:write", "name"), "casting-appearance.txt")
+    expect (asked ("appearance:write", "slice"), "casting.selected-skin")
     skinStaged "poolside"
     absentSlices ["casting.appearance-warning"]
     completedIn ("poolside", "appearance:write", false, "permission denied")
@@ -360,7 +357,7 @@ test ("the appearance the host keeps is read, restored, repaired and never overw
     beganIn "neon" launch
     readBack "neon"
     skinKept ("sherbet", true)
-    expect (askedKind "appearance:notice", "host-call")
+    expect (asked ("appearance:notice", "kind"), "host-call")
     expect (Doc::text (ask "appearance:notice", "namespace"), "ui")
     expect (Doc::text (ask "appearance:notice", "operation"), "notice")
     expect (Doc::text (Doc::field (ask "appearance:notice", "arguments"), "title"), "Appearance restored")
