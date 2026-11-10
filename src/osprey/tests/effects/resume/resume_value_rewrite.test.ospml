@@ -35,6 +35,10 @@ runChecked () = perform Checked.half 10 ?: 0
 echoNum : Unit -> int ! Relay<int>
 echoNum () = perform Relay.ask ()
 
+mark (text, value) = "${text}${toString value}|"
+entry (text, name, value) = "${text}${name}:${toString value}|"
+line (text, name, value) = "${text}${name}=${toString value}\n"
+
 (** This case verifies rewritten values, unwind answers, Results, and generics. *)
 resumeValueRewriteCase () =
     mut supplyTranscript = ""
@@ -48,11 +52,11 @@ resumeValueRewriteCase () =
             next label =>
                 supplyCalls := supplyCalls + 1 
                 seed := seed + 5 
-                supplied := "${supplied}${label}:${toString seed}|"
-                supplyTranscript := "${supplyTranscript}supply ${label}=${toString seed}\n"
+                supplied := entry (supplied, label, seed)
+                supplyTranscript := line (supplyTranscript, "supply ${label}", seed)
                 answer = resume seed
-                settled := "${settled}${label}:${toString answer}|"
-                supplyTranscript := "${supplyTranscript}seen after ${label}: ${toString answer}\n"
+                settled := entry (settled, label, answer)
+                supplyTranscript := line (supplyTranscript, "seen after ${label}", answer)
                 answer
         total ()
 
@@ -168,17 +172,16 @@ resumeSubstitutesSuppliedValueCase () =
                     2 => 7
                     3 => (0 - 4) 
                     _ => 7
-                asked := "${asked}${toString slot}|"
-                gave := "${gave}${toString value}|"
+                asked := mark (asked, slot)
+                gave := mark (gave, value)
                 answer = resume value
-                seen := "${seen}${toString slot}:${toString answer}|"
+                seen := entry (seen, toString slot, answer)
                 answer
         weightedReads ()
 
     steadyRun = constantScript 1
     steady = steadyRun.answer
     steadyReads = steadyRun.calls
-
     zeroRun = constantScript 0
     zeroed = zeroRun.answer
     zeroReads = zeroRun.calls
@@ -200,22 +203,18 @@ resumeSubstitutesSuppliedValueCase () =
     checkAll "reads enter in slot order and settle in reverse" [
         asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
         startsWith seen "4:667|", endsWith seen "1:667|",
-        contains seen "3:667|", contains seen "2:667|",
-        !(startsWith seen "1:"), asked != seen,
-        length seen == 24, reads == 4,
-        !(contains seen "0:"), !(contains seen ":660")
+        containsAll (seen, ["3:667|", "2:667|"]), !(startsWith seen "1:"),
+        asked != seen, length seen == 24, reads == 4,
+        containsNone (seen, ["0:", ":660"])
     ]
 
     (* Every arm's resume returns the one completed answer, never the value that
         arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
         supplied value could have been handed back by mistake. *)
     checkAll "every arm observes the completed computation answer" [
-        contains seen "1:667", contains seen "2:667",
-        contains seen "3:667", contains seen "4:667",
-        !(contains seen "4:7|"), !(contains seen "2:7|"),
-        !(contains seen "3:-4|"), !(contains seen "1:0|"),
-        contains seen (toString picked),
-        contains gave "0|", contains gave "-4|", !(contains gave "|4|")
+        containsAll (seen, ["1:667", "2:667", "3:667", "4:667", toString picked]),
+        containsNone (seen, ["4:7|", "2:7|", "3:-4|", "1:0|"]),
+        containsAll (gave, ["0|", "-4|"]), !(contains gave "|4|")
     ]
 
     (* The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
@@ -263,11 +262,11 @@ resumeAnswerComposesLifoCase () =
     layeredResult =
         handle Layer
             fetch slot =>
-                entered := "${entered}${toString slot}|"
+                entered := mark (entered, slot)
                 answer = resume slot
-                observed := "${observed}${toString slot}:${toString answer}|"
+                observed := entry (observed, toString slot, answer)
                 adjusted = (answer + slot) 
-                returned := "${returned}${toString slot}:${toString adjusted}|"
+                returned := entry (returned, toString slot, adjusted)
                 adjusted
         layered ()
 
@@ -306,10 +305,10 @@ resumeAnswerComposesLifoCase () =
         observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
         128; 1 returns 129, which is the whole handle expression's result. *)
     checkAll "each arm's value becomes the next-outer arm's answer" [
-        contains returned "3:126|", contains observed "2:126|",
-        contains returned "2:128|", contains observed "1:128|",
-        contains returned "1:129|", !(contains observed "2:123|"),
-        !(contains observed "1:123|"), !(contains returned "3:123|"),
+        containsAll (returned, ["3:126|", "2:128|", "1:129|"]),
+        containsAll (observed, ["2:126|", "1:128|"]),
+        containsNone (observed, ["2:123|", "1:123|"]),
+        !(contains returned "3:123|"),
         length observed == 18, length returned == 18,
         layeredResult == 129, endsWith returned "1:129|"
     ]
@@ -386,7 +385,7 @@ resumeScalarPayloadsCase () =
                     2 => (0 - 9) 
                     3 => 1000000
                     _ => (0 - 9) 
-                countGave := "${countGave}${toString value}|"
+                countGave := mark (countGave, value)
                 resume value
         countBody ()
 
@@ -406,13 +405,13 @@ resumeScalarPayloadsCase () =
         handle Scalar
             ratio step =>
                 ratioCalls := ratioCalls + 1 
-                ratioSlots := "${ratioSlots}${toString step}|"
+                ratioSlots := mark (ratioSlots, step)
                 value = match step
                     1 => 1.25
                     2 => 0.0
                     _ => (0.0 - 0.75)
                 answer = resume value
-                ratioSettled := "${ratioSettled}${toString step}|"
+                ratioSettled := mark (ratioSettled, step)
                 lastRatioAnswer := answer
                 answer
         ratioBody ()
@@ -522,9 +521,9 @@ resumeBoolAndUnitPayloadsCase () =
         handle Scalar
             beat step =>
                 beats := beats + 1 
-                beatOrder := "${beatOrder}${toString step}|"
+                beatOrder := mark (beatOrder, step)
                 answer = resume ()
-                beatAfter := "${beatAfter}${toString step}|"
+                beatAfter := mark (beatAfter, step)
                 beatSeen := "${beatSeen}${answer}|"
                 answer
         beatBody ()
@@ -533,7 +532,7 @@ resumeBoolAndUnitPayloadsCase () =
         collapsed to an integer would print "1" or "0" instead. *)
     checkAll "boolean payloads keep both truth values" [
         flag.text == "true|false|true", length flag.text == 15,
-        contains flag.text "true", contains flag.text "false",
+        containsAll (flag.text, ["true", "false"]),
         startsWith flag.text "true|", endsWith flag.text "|true",
         !(startsWith flag.text "false"), flag.calls == 3,
         flag.gave == "T|F|T|", !(contains flag.text "1"),
@@ -683,7 +682,7 @@ resumeManagedPayloadsCase () =
     checkAll "string payloads: empty, one byte, punctuation, repeats" [
         textResult == "[][x][a1, b2!][abab]", length textResult == 20,
         startsWith textResult "[][x]", endsWith textResult "[abab]",
-        contains textResult "[]", contains textResult "a1, b2!",
+        containsAll (textResult, ["[]", "a1, b2!"]),
         toUpperCase textResult == "[][X][A1, B2!][ABAB]",
         toLowerCase (toUpperCase textResult) == "[][x][a1, b2!][abab]",
         textCalls == 4,
@@ -698,7 +697,7 @@ resumeManagedPayloadsCase () =
         slotText == "left:3:true/:0:false", length slotText == 20,
         startsWith slotText "left:3:true", endsWith slotText ":0:false",
         contains slotText "/:0:", !(contains slotText "//"),
-        contains slotText "true", contains slotText "false",
+        containsAll (slotText, ["true", "false"]),
         slotCalls == 2, doubledWeight == 42, weightCalls == 1,
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
@@ -711,7 +710,7 @@ resumeManagedPayloadsCase () =
         parsedTotal == ((120 - 5) ), length "nope!" == 5,
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
         parseGave == "ok=Success|bad=Error|", length parseGave == 21,
-        contains parseGave "ok=Success|", contains parseGave "bad=Error|",
+        containsAll (parseGave, ["ok=Success|", "bad=Error|"]),
         startsWith parseGave "ok=", endsWith parseGave "Error|"
     ]
 
@@ -775,7 +774,7 @@ nestedRun (body, bump) =
                 tags := "${tags}${tag}|"
                 answer = resume (seed + bump)
                 settled := "${settled}${tag}|"
-                seen := "${seen}${toString answer}|"
+                seen := mark (seen, answer)
                 answer
         body ()
     NestedRun(result = result, calls = calls, seed = seed, tags = tags, settled = settled, seen = seen)
@@ -818,8 +817,7 @@ resumeFromNestedHelpersCase () =
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
     checkAll "both deep regions keep their own transcripts" [
-        contains spanRun.tags "nested.a|nested.b|",
-        contains spanRun.tags "|tail|",
+        containsAll (spanRun.tags, ["nested.a|nested.b|", "|tail|"]),
         !(contains spanRun.settled "shallow|tail"),
         spanRun.seen == "15|15|15|15|", length spanRun.seen == 12,
         spanRun.calls == 4, spanRun.seed == 4,
@@ -863,10 +861,10 @@ manyPerformsOneRegionCase () =
             tick i =>
                 tickEntered := (tickEntered + 1) 
                 value = listGet (scriptValues ()) i ?: 0
-                tickGave := "${tickGave}${toString value}|"
+                tickGave := mark (tickGave, value)
                 answer = resume value
                 tickSettled := (tickSettled + 1) 
-                tickOrder := "${tickOrder}${toString i}|"
+                tickOrder := mark (tickOrder, i)
                 seenSum := (seenSum + answer) 
                 answer
         drain 0
@@ -889,8 +887,8 @@ manyPerformsOneRegionCase () =
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
         length tickGave == 31,
         startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
-        contains tickGave "|100|", contains tickGave "|-1|",
-        contains tickGave "|12|12|", !(contains tickGave "|13|"),
+        containsAll (tickGave, ["|100|", "|-1|", "|12|12|"]),
+        !(contains tickGave "|13|"),
         drained == 161, (((10 + 111) ) + 40 ) == 161,
         drained != 10, drained != 40, drained != 111
     ]
