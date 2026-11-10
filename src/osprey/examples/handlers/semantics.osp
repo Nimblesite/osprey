@@ -1,18 +1,3 @@
-// Record faults for the entire report and reject it at the publication boundary.
-fn printExact(work) = {
-    mut fault = ""
-    handle Arith {
-        overflow op lhs _ _ => { fault = "overflow in ${op}"
-            lhs }
-        divideByZero op lhs => { fault = "zero divisor in ${op}"
-            lhs }
-        remainderByZero lhs => { fault = "zero remainder divisor"
-            lhs }
-    }
-    let report = work()
-    print(match fault { "" => report _ => "REJECTED: ${fault}" })
-}
-
 // Independent semantic probe: unreachable resume must not be overlooked.
 effect Ask { control value: fn() -> int }
 fn work() = (perform Ask.value() + 1) 
