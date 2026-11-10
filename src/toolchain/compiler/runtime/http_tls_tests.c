@@ -173,24 +173,42 @@ static void tls_ca_file_restore(char *path, const char *prev) {
   free(path);
 }
 
-// Serves `reply` behind a leaf cert for `san`, then asserts a GET is refused
-// with the TLS error: a trusted CA's certificate for the WRONG identity (or
-// an untrusted issuer, when ca is NULL) must never be served.
-static void tls_expect_rejected(EVP_PKEY *ca_key, X509 *ca, const char *cn,
-                                const char *san, const char *host) {
-  EVP_PKEY *key = EVP_RSA_gen(2048);
-  X509 *leaf = tls_test_cert(ca_key, ca, key, cn, san);
-  assert(leaf != NULL);
+// A fresh RSA key plus the leaf certificate `tls_test_cert` issues over it;
+// the caller frees both members.
+typedef struct {
+  EVP_PKEY *key;
+  X509 *cert;
+} TlsLeaf;
+
+static TlsLeaf tls_leaf_issue(EVP_PKEY *ca_key, X509 *ca, const char *cn,
+                              const char *san) {
+  TlsLeaf pair;
+  pair.key = EVP_RSA_gen(2048);
+  pair.cert = tls_test_cert(ca_key, ca, pair.key, cn, san);
+  assert(pair.cert != NULL);
+  return pair;
+}
+
+// Serves `cert` with a reply the client must never see, then asserts a GET
+// is refused with the TLS error (-12) and tears the origin down.
+static void tls_assert_refused(TlsLeaf pair, const char *host) {
   TlsOrigin origin;
-  tls_origin_start(&origin, leaf, key,
+  tls_origin_start(&origin, pair.cert, pair.key,
                    "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nbad");
   int64_t client_id = tls_client(host);
   assert(http_get(client_id, (char *)(uintptr_t) "/x",
                   (char *)(uintptr_t) "") == -12);
   tls_origin_stop(&origin);
-  X509_free(leaf);
-  EVP_PKEY_free(key);
+  X509_free(pair.cert);
+  EVP_PKEY_free(pair.key);
   http_close_client(client_id);
+}
+
+// A leaf cert for `san` behind the issuer must be refused with the TLS error
+// when it is for the WRONG identity (or the issuer is untrusted, ca NULL).
+static void tls_expect_rejected(EVP_PKEY *ca_key, X509 *ca, const char *cn,
+                                const char *san, const char *host) {
+  tls_assert_refused(tls_leaf_issue(ca_key, ca, cn, san), host);
 }
 
 // Serves `reply` behind a leaf cert VALID for `host`, and asserts the full
@@ -198,14 +216,12 @@ static void tls_expect_rejected(EVP_PKEY *ca_key, X509 *ca, const char *cn,
 static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
                               const char *san, const char *host,
                               const char *expect_body) {
-  EVP_PKEY *key = EVP_RSA_gen(2048);
-  X509 *leaf = tls_test_cert(ca_key, ca, key, cn, san);
-  assert(leaf != NULL);
+  TlsLeaf pair = tls_leaf_issue(ca_key, ca, cn, san);
   char reply[128];
   snprintf(reply, sizeof(reply), "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\n\r\n%s",
            strlen(expect_body), expect_body);
   TlsOrigin origin;
-  tls_origin_start(&origin, leaf, key, reply);
+  tls_origin_start(&origin, pair.cert, pair.key, reply);
   int64_t client_id = tls_client(host);
   int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/x",
                                      (char *)(uintptr_t) "");
@@ -217,8 +233,8 @@ static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
   assert(http_response_free(handle) == 0);
   tls_origin_stop(&origin);
   assert(strncmp(origin.request, "GET /x HTTP/1.1", 15) == 0);
-  X509_free(leaf);
-  EVP_PKEY_free(key);
+  X509_free(pair.cert);
+  EVP_PKEY_free(pair.key);
   http_close_client(client_id);
 }
 
@@ -311,9 +327,9 @@ static void tls_expect_read_bounds(EVP_PKEY *key, X509 *leaf) {
 // TLS is only a different pipe: hostile framing arriving through it is decoded or
 // refused exactly as in the clear [HTTP-CHUNKED-DECODE], [HTTP-RESPONSE-FRAMING].
 static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
-  EVP_PKEY *key = EVP_RSA_gen(2048);
-  X509 *leaf = tls_test_cert(ca_key, ca, key, "127.0.0.1", "IP:127.0.0.1");
-  assert(leaf != NULL);
+  TlsLeaf pair = tls_leaf_issue(ca_key, ca, "127.0.0.1", "IP:127.0.0.1");
+  EVP_PKEY *key = pair.key;
+  X509 *leaf = pair.cert;
   int64_t handle = tls_exchange(key, leaf,
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
       "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", false);
@@ -353,16 +369,7 @@ void test_client_tls_peer_verification(void) {
   X509 *rogue = tls_test_cert(rogue_key, NULL, rogue_key, "rogue",
                               "IP:127.0.0.1");
   assert(rogue != NULL);
-  TlsOrigin origin;
-  tls_origin_start(&origin, rogue, rogue_key,
-                   "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nbad");
-  int64_t client_id = tls_client("127.0.0.1");
-  assert(http_get(client_id, (char *)(uintptr_t) "/x",
-                  (char *)(uintptr_t) "") == -12);
-  tls_origin_stop(&origin);
-  X509_free(rogue);
-  EVP_PKEY_free(rogue_key);
-  http_close_client(client_id);
+  tls_assert_refused((TlsLeaf){rogue_key, rogue}, "127.0.0.1");
 
   // 2. Trusted CA, so every leaf below chains to a published root.
   EVP_PKEY *ca_key = EVP_RSA_gen(2048);
