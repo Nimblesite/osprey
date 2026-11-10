@@ -10,12 +10,10 @@ const FONT_PATH = "@vscode/codicons/dist/codicon.ttf";
 
 // Symbols that draw the official Codicon of the same name; every other known
 // symbol needs an explicit alias row below.
-const PLAIN = [
-  "add", "check", "warning", "info", "question", "search",
-  "play", "refresh", "folder", "book", "pencil", "gear",
-  "package", "inbox", "globe", "lock", "shield", "tag",
-  "person", "terminal", "edit", "sparkle",
-];
+const PLAIN = (
+  "add check warning info question search play refresh folder book pencil gear " +
+  "package inbox globe lock shield tag person terminal edit sparkle"
+).split(" ").map((name): [string, string] => [name, name]);
 
 const ALIASES: Readonly<Record<string, string>> = {
   delete: "trash",
@@ -54,22 +52,15 @@ const ALIASES: Readonly<Record<string, string>> = {
 };
 
 /** Symbol name to Codicon for every symbol this renderer knows. */
-const SYMBOLS: ReadonlyMap<string, string> = new Map([
-  ...PLAIN.map((name): [string, string] => [name, name]),
-  ...Object.entries(ALIASES),
-]);
+const SYMBOLS: ReadonlyMap<string, string> = new Map([...PLAIN, ...Object.entries(ALIASES)]);
 
 const FALLBACK = "info";
-
-function codicon(name: string): string {
-  return SYMBOLS.get(name) ?? FALLBACK;
-}
 
 /** Official Codicon markup for `name`; never includes the raw symbol string. */
 export function symbolIcon(name: string, asset?: string): string {
   if (name === "") return "";
   if (asset !== undefined) return `<span class="osp-symbol" aria-hidden="true" data-symbol="${escapeHtml(name)}" style="--osp-symbol-image:url(${escapeHtml(JSON.stringify(asset))})"></span>`;
-  return `<span class="codicon codicon-${codicon(name)}" aria-hidden="true"></span>`;
+  return `<span class="codicon codicon-${SYMBOLS.get(name) ?? FALLBACK}" aria-hidden="true"></span>`;
 }
 
 let stylesheet = "";
