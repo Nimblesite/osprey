@@ -43,7 +43,7 @@ test ("mathematics keeps accessibility text and consumes no control ordinal", \(
     expect (length (Doc::items (Doc::field (Doc::field (maths, "math"), "items"))), 3)
     expect (Doc::has (maths, "event"), false)
     expect (Doc::number (listGet children 2 ?: JsonNull, "event"), 1)
-    expect (length walked.bindings, 2))
+    binds (walked, 2))
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
@@ -73,6 +73,12 @@ eventOf doc = jsonInt (jsonField doc "event" ?: JsonNull) ?: 0 - 1
 
 // The `index`th of `parts`, or null when the list is shorter.
 partOf (parts, index) = listGet parts index ?: JsonNull
+
+// The `index`th item of the `key` list of the node `walked` encodes.
+nodeChild (walked, key, index) = itemAt ((firstNode walked), key, index)
+
+// `walked` binds exactly `count` controls.
+binds (walked, count) = expect (length walked.bindings, count)
 
 // A refused envelope: it names `reason`, patches no region and leaves no requests behind.
 refusedClean (envelope, reason) =
@@ -104,6 +110,13 @@ problemFree envelope = expect (Probes::problems envelope, "")
 // `session`'s store tallies one.
 tallyOne session = expect (Doc::number (Probes::stored session, "tally"), 1)
 
+// The session after the host taps the root's first control on a fresh start.
+tappedStart () = postedTap (Probes::started (), "root", 1, 0)
+
+// `doc` marks its scroll position and selection group as `flag`.
+scrollAndSelection (doc, flag) =
+    expectFlags (doc, [{ name = "scrollY", value = flag }, { name = "selectionGroup", value = flag }])
+
 // `session` reports no problem and leaves one load ticket.
 servedLoad session =
     problemFree session
@@ -117,14 +130,14 @@ refreshedTo (session, region, key, text) =
 revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
 test ("a disclosure takes its ordinal before the controls it reveals", \() =>
     walked = Encode::walk ([], revealed ())
-    disclosure = itemAt ((firstNode walked), "children", 0)
-    expect (length walked.bindings, 2)
+    disclosure = nodeChild (walked, "children", 0)
+    binds (walked, 2)
     expect (kindAt (firstNode walked) 0, "disclosure")
     expect (join (mapList ([disclosure, itemAt (disclosure, "children", 2)], \child => "${eventOf child}")) ",", "0,1"))
 // [UI-EVENTS]: a screen's toolbar controls are bound before its children.
 test ("a screen's toolbar controls take ordinals before its children", \() =>
     walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
-    expect (join (mapList ([itemAt ((firstNode walked), "toolbar", 0), itemAt ((firstNode walked), "children", 0)], \child => "${eventOf child}")) ",", "0,1"))
+    expect (join (mapList ([nodeChild (walked, "toolbar", 0), nodeChild (walked, "children", 0)], \child => "${eventOf child}")) ",", "0,1"))
 // [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
 test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() =>
@@ -138,7 +151,7 @@ test ("an aside's pane takes ordinals before its column and rows keep their symb
 // limits, and binds after both columns so their controls keep their ordinals.
 test ("an aside's splitter carries the column width and its limits and binds after both columns", \() =>
     walked = Encode::walk ([], inspected ())
-    expect (length walked.bindings, 3)
+    binds (walked, 3)
     expectNumbers ((firstNode walked), [{ name = "width", value = 420 }, { name = "least", value = Splitters::least }, { name = "most", value = Splitters::most }, { name = "keep", value = Splitters::keep }, { name = "event", value = 2 }]))
 
 resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5, \(_, _) => 0 - 6, \(_, _) => 0 - 7, \_ => 0 - 8, \(_, _) => 0 - 9)
@@ -153,12 +166,12 @@ test ("a splitter delivers its dragged width clamped to its limits", \() =>
 // [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
 test ("a link carries its label and web address and takes no ordinal", \() =>
     walked = Encode::walk ([], Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)])
-    link = itemAt ((firstNode walked), "children", 0)
+    link = nodeChild (walked, "children", 0)
     expect (kindAt (firstNode walked) 0, "link")
     expectTexts (link, [{ name = "label", value = "Osprey guide" }, { name = "url", value = "https://example.test/guide" }])
     expect (eventOf link, 0 - 1)
-    expect (length walked.bindings, 1)
-    expect (eventOf (itemAt ((firstNode walked), "children", 1)), 0))
+    binds (walked, 1)
+    expect (eventOf (nodeChild (walked, "children", 1)), 0))
 test ("controls take depth-first ordinals in drawing order", \() =>
     expect (length (Encode::walk ([], tree ())).bindings, 3))
 test ("an encoded region decodes with its components and text intact", \() =>
@@ -175,15 +188,14 @@ test ("start sends every region once with the theme", \() =>
     expect (Doc::text (Doc::field (first, "theme"), "feedback") == "", true)
     expect (Doc::number (Doc::field (first, "theme"), "settle"), 220))
 test ("a tap refreshes only the region whose signal changed", \() =>
-    second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
-    expect (Probes::keys second, "root")
-    expect (Probes::problems second, "")
-    expect (patchedText (second, "text"), "Count 1"))
+    second = tappedStart ()
+    problemFree second
+    refreshedTo (second, "root", "text", "Count 1"))
 test ("text input reaches update through its binding and patches its own region", \() =>
     second = Probes::post (Probes::started (), Probes::typed (1, "hello"))
     expect (Probes::keys second, "note")
     expect ("${Doc::text (firstOf (second, "slices"), "key")}=${Doc::text (firstOf (second, "slices"), "text")}", "echo=hello")
-    third = Probes::post (second, Probes::tap ("root", 1, 0))
+    third = postedTap (second, "root", 1, 0)
     expect (Probes::keys third, "root"))
 // The events a host sends a settled session that must all be refused, with the reason each is given.
 refusalCases session = [
@@ -194,38 +206,33 @@ refusalCases session = [
 ]
 // [UI-EVENTS]: stale, unknown and mismatched events change no region and leave no request behind.
 test ("stale, unknown and mismatched events are rejected without change", \() =>
-    second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
+    second = tappedStart ()
     forEachList (refusalCases second, \probe => refusedEvent (second, probe.sent, probe.reason)))
 // [UI-EVENTS]: a trusted-host edit resolves the control the prior state meant through its typed binding, not its stale ordinal.
 test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
-    counted = editFrom (first, first, "root", 1, 0, "null")
-    expect (Probes::problems counted, "")
-    expect (Probes::keys counted, "root")
-    expect (patchedText (counted, "text"), "Count 1")
+    counted = rootEdit (first, first, 0)
+    problemFree counted
+    refreshedTo (counted, "root", "text", "Count 1")
     // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
-    shifted = editFrom (counted, first, "root", 1, 0, "null")
+    shifted = rootEdit (counted, first, 0)
     expect (Probes::keys shifted, "")
-    expect (Doc::number (Probes::stored counted, "tally"), 1)
+    tallyOne counted
     // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
-    loaded = editFrom (counted, first, "root", 1, 1, "null")
-    expect (Probes::problems loaded, "")
-    expect (Doc::text (firstOf (loaded, "requests"), "ticket"), "load:1"))
+    servedLoad (rootEdit (counted, first, 1)))
 // [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
     first = Probes::started ()
     // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
     refusedEdit (first, first, "note", 1, 1, "null", "More than one")
     // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
-    counted = editFrom (first, first, "root", 1, 0, "null")
-    gone = editFrom (counted, first, "root", 1, 0, "null")
+    gone = rootEdit (rootEdit (first, first, 0), first, 0)
     refusedClean (gone, "no longer exists")
     // The refusal changed nothing: the current session still answers its own controls.
-    intact = Probes::post (gone, Probes::tap ("root", 2, 0))
-    expect (Probes::problems intact, "")
-    expect (Doc::text (firstOf (intact, "requests"), "ticket"), "load:1")
-    expect (Doc::number (Probes::stored intact, "tally"), 1))
+    intact = postedTap (gone, "root", 2, 0)
+    servedLoad intact
+    tallyOne intact)
 // [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
 // The host edits whose original control the prior state cannot name, with the reason each is given.
 editedAt () = [
@@ -241,22 +248,22 @@ test ("an edit with an impossible original refuses without change", \() =>
     refusedClean (wrongKind, "wrong kind")
     expect (countOf (wrongKind, "requests"), 0)
     // Every refusal left the session whole.
-    after = Probes::post (first, Probes::tap ("root", 1, 0))
-    expect (Probes::problems after, "")
-    expect (Doc::number (Probes::stored after, "tally"), 1))
+    after = postedTap (first, "root", 1, 0)
+    problemFree after
+    tallyOne after)
 // [UI-EVENTS]: a resolved edit runs update on the current session, never on the prior state.
 test ("a resolved edit updates the current state", \() =>
     first = Probes::started ()
     typed = Probes::post (first, Probes::typed (1, "hello"))
-    counted = Probes::post (typed, Probes::tap ("root", 1, 0))
+    counted = postedTap (typed, "root", 1, 0)
     edited = editFrom (counted, first, "note", 1, 0, "\"world\"")
-    expect (Probes::problems edited, "")
+    problemFree edited
     expect (Doc::text (Probes::stored edited, "memo"), "world")
     expect (Doc::text (Probes::stored typed, "memo"), "hello")
     // The carried-over tally proves the prior state was not restored.
     expect (Doc::number (Probes::stored edited, "tally"), 1))
 test ("capability requests carry tickets and completions return to update", \() =>
-    asked = Probes::post (Probes::started (), Probes::tap ("note", 1, 1))
+    asked = postedTap (Probes::started (), "note", 1, 1)
     expectTexts (firstOf (asked, "requests"), [{ name = "ticket", value = "load:1" }, { name = "kind", value = "store-read" }])
     done = Probes::post (asked, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"from disk\",\"now\":9}")
     expect (Probes::keys done, "note")
@@ -283,10 +290,10 @@ tabbed () = Ui::column [
 ]
 test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() =>
     walked = Encode::walk ([], tabbed ())
-    tabs = itemAt ((firstNode walked), "children", 0)
+    tabs = nodeChild (walked, "children", 0)
     second = itemAt (tabs, "tabs", 1)
-    segments = itemAt ((firstNode walked), "children", 1)
-    expect (length walked.bindings, 2)
+    segments = nodeChild (walked, "children", 1)
+    binds (walked, 2)
     expectTexts (tabs, [{ name = "kind", value = "tabs" }, { name = "selected", value = "two" }])
     expect (Doc::number (tabs, "event"), 1)
     expectTexts (second, [{ name = "label", value = "Two" }, { name = "symbol", value = "2.circle" }])
@@ -401,7 +408,7 @@ test ("context menus bind actions after their content controls", \() =>
     expect (Doc::text ((firstNode walked), "kind"), "context-menu")
     expect (Doc::number (Doc::field ((firstNode walked), "body"), "event"), 0)
     expect (Doc::number (item, "event"), 1)
-    expect (length walked.bindings, 2))
+    binds (walked, 2))
 
 mut streamedTrace = ""
 
@@ -463,7 +470,7 @@ test ("presentation frames explicitly disable viewport sizing by default", \() =
     expect (Doc::has (style, "viewportHeightInset"), true)
     expect (Doc::number (style, "viewportHeightInset"), -1)
     expectPresence (style, [{ name = "scrollY", value = true }, { name = "selectionGroup", value = true }])
-    expectFlags (style, [{ name = "scrollY", value = false }, { name = "selectionGroup", value = false }]))
+    scrollAndSelection (style, false))
 
 test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
     style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
@@ -472,11 +479,11 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     geometry = Doc::field (encoded, "style")
     expect (Doc::text (encoded, "kind"), "framed")
     expectNumbers (geometry, [{ name = "width", value = 430 }, { name = "height", value = 440 }, { name = "viewportHeightInset", value = 270 }, { name = "left", value = 30 }, { name = "gap", value = 24 }, { name = "symbolSize", value = 13 }])
-    expectFlags (geometry, [{ name = "scrollY", value = true }, { name = "selectionGroup", value = true }])
+    scrollAndSelection (geometry, true)
     expect (Doc::text (geometry, "fill"), "canvas")
     expect (Doc::has (geometry, "symbolSize"), true)
     AdditionCases::frameTypography geometry
-    expect (length walked.bindings, 1)
+    binds (walked, 1)
     expect (Doc::number (Doc::field (encoded, "body"), "event"), 0))
 
 test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() =>
@@ -498,7 +505,7 @@ test ("inline text retains mathematical emphasis and semantic source colours wit
     expect (Doc::text ((firstNode walked), "kind"), "rich-text")
     expectTexts (variable, [{ name = "text", value = "p" }, { name = "ink", value = "sourceType" }])
     expect (Doc::flag (variable, "italic"), true)
-    expect (length walked.bindings, 0)
+    binds (walked, 0)
     branded = firstNode (Encode::walk ([], Ui::column [ui::Brand, Ui::button ("Continue", "", Increment)]))
     expect (Doc::text (firstOf (branded, "children"), "kind"), "brand"))
 
