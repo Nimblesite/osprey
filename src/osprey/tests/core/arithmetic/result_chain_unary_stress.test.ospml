@@ -34,20 +34,6 @@ multiplyThenRemainder () = faultsAre ((\() => ((maxValue () * 2) % 0)), 0, "over
 divisionThenMultiply delta = faultsAre ((\() => ((delta / 0) + (maxValue () * 2))), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
 lateOverflowThenRemainder delta = faultsAre ((\() => ((((maxValue () - delta) + delta) + 1) * (delta % 0))), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
 
-faultsAre (work, expected, wantedFaults) =
-    mut faults = ""
-    handle Arith
-        overflow op lhs rhs wrapped =>
-            faults := faults + "overflow(${op},${lhs},${rhs},${wrapped});"
-            wrapped
-        divideByZero op lhs =>
-            faults := faults + "zero(${op},${lhs});"
-            -0.5
-        remainderByZero lhs =>
-            faults := faults + "remainder(${lhs});"
-            0
-    expect (work ()) expected
-    expect faults wantedFaults
 
 choose (work, replacement) =
     handle Arith
