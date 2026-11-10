@@ -1,8 +1,8 @@
 // ARC layouts and lifetimes through the public hooks: tags, retain/release,
 // foreign pointers, immortals, layout masks, pointer arrays, list headers, deep
 // chains and wide fan-outs [GC-ARC-PERCEUS] [MEM-ACYCLIC]. Part of the memory_arc
-// suite; see memory_arc_tests_shared.h.
-#include "memory_arc_tests_shared.h"
+// suite; see arc_tests_shared.h.
+#include "arc_tests_shared.h"
 
 const char kRodata[] = "osprey-rodata-literal";
 static char g_static_buf[64];

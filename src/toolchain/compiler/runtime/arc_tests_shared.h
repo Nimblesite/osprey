@@ -2,8 +2,8 @@
 // compiled once, into memory_arc_tests.c, behind its refusable allocators; the
 // layout and shim halves reach it only through the public hooks and read the
 // {int64 meta; int32 rc; uint32 size} header at body-16 with the helpers here.
-#ifndef OSPREY_MEMORY_ARC_TESTS_SHARED_H
-#define OSPREY_MEMORY_ARC_TESTS_SHARED_H
+#ifndef OSPREY_ARC_TESTS_SHARED_H
+#define OSPREY_ARC_TESTS_SHARED_H
 
 #include "memory_hooks.h"
 

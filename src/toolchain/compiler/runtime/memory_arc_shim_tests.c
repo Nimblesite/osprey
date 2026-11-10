@@ -1,7 +1,7 @@
 // The ARC registry under churn, the libc-shaped shim, diagnostics counters,
 // threads and owned text [GC-ARC-PERCEUS] [MEM-BACKENDS-CUSTOM]. Part of the
-// memory_arc suite; see memory_arc_tests_shared.h.
-#include "memory_arc_tests_shared.h"
+// memory_arc suite; see arc_tests_shared.h.
+#include "arc_tests_shared.h"
 
 // --- registry growth, tombstone churn, slot reuse ----------------------------
 static void churn_slot(void **live, size_t i, uint64_t *seed) {

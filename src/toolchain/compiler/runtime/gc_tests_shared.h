@@ -1,8 +1,8 @@
 // Shared by the translation units of the memory_gc suite: the backend ABI
 // under test, the assertion counter and the word helpers, and the threaded
 // cases memory_gc_thread_tests.c contributes.
-#ifndef OSPREY_MEMORY_GC_TESTS_SHARED_H
-#define OSPREY_MEMORY_GC_TESTS_SHARED_H
+#ifndef OSPREY_GC_TESTS_SHARED_H
+#define OSPREY_GC_TESTS_SHARED_H
 
 #include "memory_hooks.h"
 #include <assert.h>

@@ -2,8 +2,8 @@
 // blocks as roots, threads collecting together, a parked thread's stack kept
 // alive, a busy thread never blocking an allocator, unregistered exits, the
 // multithreaded latch and its debug report. Part of the memory_gc suite; see
-// memory_gc_tests_shared.h.
-#include "memory_gc_tests_shared.h"
+// gc_tests_shared.h.
+#include "gc_tests_shared.h"
 #include "memory_parked_wait.h"
 
 static void *mt_alloc(void *arg) {

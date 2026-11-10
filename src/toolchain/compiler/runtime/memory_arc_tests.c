@@ -7,7 +7,7 @@
 // header at body-16 is read back with memcpy, and reclamation is proved by
 // *witness* leaves whose refcount can only move if their owner was really
 // dropped and its layout word really walked — never by reading freed memory.
-#include "memory_arc_tests_shared.h"
+#include "arc_tests_shared.h"
 #include "memory_hooks.h"
 #include "test_gcov.h"
 

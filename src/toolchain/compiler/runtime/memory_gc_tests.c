@@ -12,7 +12,7 @@
 //
 // Built under the hardened unit-test warning core (Makefile WARN): no shadowing,
 // no VLAs, prototypes, const-correct.
-#include "memory_gc_tests_shared.h"
+#include "gc_tests_shared.h"
 
 long g_checks = 0;
 
