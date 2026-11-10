@@ -4,7 +4,6 @@ use gpui_kit::component::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
     label::Label,
-    progress::Progress,
     separator::Separator,
     ActiveTheme as _, StyledExt as _,
 };
@@ -17,6 +16,7 @@ use crate::host::HostView;
 
 mod controls;
 mod icons;
+mod screens;
 pub(super) use icons::{icon_name, missing_symbol, symbol};
 
 /// Mutable rendering context; it carries no application state or behaviour.
@@ -114,12 +114,12 @@ fn node(ctx: &mut Ctx, node: &Value) -> AnyElement {
 /// Maps the remaining container and collection kinds.
 fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
     match kind {
-        "section" => section(ctx, node),
-        "screen" => screen(ctx, node),
+        "section" => screens::section(ctx, node),
+        "screen" => screens::screen(ctx, node),
         "divider" => Separator::horizontal().into_any_element(),
         "spacer" => div().flex_grow(1.).into_any_element(),
-        "empty" => empty(ctx, node),
-        "progress" => progress(ctx, node),
+        "empty" => screens::empty(ctx, node),
+        "progress" => screens::progress(ctx, node),
         "rows" => controls::rows(ctx, node),
         "picker" => controls::picker(ctx, node),
         "themed" => themed(ctx, node),
@@ -270,82 +270,6 @@ fn badge(ctx: &mut Ctx, node: &Value) -> AnyElement {
     Badge::new()
         .color(colour)
         .child(icon_label(ctx, node, px(4.)))
-        .into_any_element()
-}
-
-/// Draws a titled group box and optional footer caption.
-fn section(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .gap(gap(ctx))
-        .border_1()
-        .border_color(ctx.cx.theme().border)
-        .rounded_md()
-        .p_3()
-        .child(
-            div()
-                .font_semibold()
-                .child(string(node, "title").to_owned()),
-        )
-        .children(many(ctx, node, "children"))
-        .child(caption(ctx, string(node, "footer")))
-        .into_any_element()
-}
-
-/// Draws a screen heading, trailing toolbar and body.
-fn screen(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let heading = screen_heading(ctx, node);
-    let toolbar = div()
-        .flex()
-        .gap(gap(ctx))
-        .children(many(ctx, node, "toolbar"));
-    div()
-        .flex()
-        .flex_col()
-        .gap(gap(ctx))
-        .child(div().flex().justify_between().child(heading).child(toolbar))
-        .children(many(ctx, node, "children"))
-        .into_any_element()
-}
-
-/// Draws the title and subtitle half of a screen heading.
-fn screen_heading(ctx: &mut Ctx, node: &Value) -> Div {
-    div()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .text_xl()
-                .font_semibold()
-                .child(string(node, "title").to_owned()),
-        )
-        .child(caption(ctx, string(node, "subtitle")))
-}
-
-/// Draws a centred empty state.
-fn empty(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(gap(ctx))
-        .child(symbol(ctx, string(node, "symbol")))
-        .child(
-            div()
-                .font_semibold()
-                .child(string(node, "title").to_owned()),
-        )
-        .child(caption(ctx, string(node, "detail")))
-        .into_any_element()
-}
-
-/// Draws an indeterminate progress indicator with its supplied text.
-fn progress(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    labelled_column(node)
-        .child(caption(ctx, string(node, "detail")))
-        .child(Progress::new(control_id(ctx, 0)).loading(true))
         .into_any_element()
 }
 
