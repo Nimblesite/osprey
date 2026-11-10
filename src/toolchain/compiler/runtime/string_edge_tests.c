@@ -12,20 +12,36 @@ static char *make_repeat_a(size_t n) {
     return s;
 }
 
+/* Asserts `out` is non-NULL and holds `n` copies of `want`. Caller releases. */
+static void assert_filled(const char *out, size_t n, char want) {
+    assert(out != NULL);
+    for (size_t i = 0; i < n; i++) assert(out[i] == want);
+}
+
+/* Asserts pad output is `width` bytes: a `fill` cycle starting at `at`, plus
+ * `base` at `base_at`. Stronger than spot checks: every byte is verified. */
+static void assert_padded(char *out, size_t width, size_t at, const char *fill,
+                          size_t base_at, char base) {
+    assert(out != NULL);
+    assert(strlen(out) == width);
+    size_t cycle = strlen(fill);
+    for (size_t i = at; i < width; i++) assert(out[i] == fill[(i - at) % cycle]);
+    assert(out[base_at] == base);
+    release_test_buffer(out);
+}
+
 void test_long_strings(void) {
     /* length 10000: ensure no stack/buffer assumption breaks */
     const size_t big = 10000;
     char *s = make_repeat_a(big);
 
     char *out = osp_string_to_upper(s);
-    assert(out != NULL);
-    for (size_t i = 0; i < big; i++) assert(out[i] == 'A');
+    assert_filled(out, big, 'A');
     assert(out[big] == '\0');
     release_test_buffer(out);
 
     out = osp_string_reverse(s);
-    assert(out != NULL);
-    for (size_t i = 0; i < big; i++) assert(out[i] == 'a');
+    assert_filled(out, big, 'a');
     release_test_buffer(out);
 
     out = osp_string_take(s, 1000);
@@ -153,27 +169,9 @@ void test_split_pathological(void) {
 }
 
 void test_pad_overflow_guards(void) {
-    char *out;
-    /* huge target_length but reasonable */
-    out = osp_string_pad_start("x", 100, "ab");
-    assert(out != NULL);
-    assert(strlen(out) == 100);
-    assert(out[99] == 'x');
-    /* fill cycle covers exactly */
-    assert(out[0] == 'a');
-    assert(out[1] == 'b');
-    assert(out[2] == 'a');
-    release_test_buffer(out);
-
-    out = osp_string_pad_end("x", 100, "abc");
-    assert(out != NULL);
-    assert(strlen(out) == 100);
-    assert(out[0] == 'x');
-    assert(out[1] == 'a');
-    assert(out[2] == 'b');
-    assert(out[3] == 'c');
-    assert(out[4] == 'a');
-    release_test_buffer(out);
+    /* huge target_length but reasonable: fill cycle covers exactly */
+    assert_padded(osp_string_pad_start("x", 100, "ab"), 100, 0, "ab", 99, 'x');
+    assert_padded(osp_string_pad_end("x", 100, "abc"), 100, 1, "abc", 0, 'x');
 
     /* exact-match target_length == strlen(s) returns dup of s */
     text_is(osp_string_pad_start("abc", 3, "x"), "abc");
