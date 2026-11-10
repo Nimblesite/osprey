@@ -18,29 +18,27 @@ fn missingKey(m, key) = match mapGet(m, key) {
 /// mapLength as a first-class value, so answersHold can fold length rows.
 fn lengthOf(m) = mapLength(m)
 
-/// Every listed index of `indices` yields its partner want from `xs`, through
-/// the Result path of [BUILTIN-LIST-GET].
-fn rowsHold(xs, indices, wants, fallback) =
-    range(0, listLength(indices)) |> fold(true, fn(hold, i) => hold && (listGet(xs, listGet(indices, i) ?: 0) ?: fallback) == (listGet(wants, i) ?: fallback))
+/// True when `ok` holds at every index below `n`: the one fold skeleton every row family below shares.
+fn everyIndex(n, ok) = range(0, n) |> fold(true, fn(hold, i) => hold && ok(i))
 
-/// Every listed key of `m` holds its partner want, key by key through the
-/// Result path of [BUILTIN-MAP-GET].
-fn valuesHold(m, keys, wants, fallback) =
-    range(0, listLength(keys)) |> fold(true, fn(hold, i) => hold && valueOr(m, listGet(keys, i) ?: "", fallback) == (listGet(wants, i) ?: fallback))
+/// `xs[i]` and `ys[i]` satisfy `ok` at every index, with per-list fallbacks so failed lookups cannot pair up.
+fn zipHold(xs, ys, fallbackX, fallbackY, ok) =
+    everyIndex(listLength(xs), fn(i) => ok(listGet(xs, i) ?: fallbackX, listGet(ys, i) ?: fallbackY))
 
-/// Every listed map lacks its partner key list, map by map, through the same
-/// Result path as [`valuesHold`].
-fn allAbsent(maps, keys) =
-    range(0, listLength(maps)) |> fold(true, fn(hold, i) => hold && nonePresent(listGet(maps, i) ?: Map(), listGet(keys, i) ?: []))
+/// Every listed index of `indices` yields its partner want from `xs` ([BUILTIN-LIST-GET]).
+fn rowsHold(xs, indices, wants, fallback) = zipHold(indices, wants, 0, fallback, fn(i, want) => (listGet(xs, i) ?: fallback) == want)
+
+/// Every listed key of `m` holds its partner want, key by key ([BUILTIN-MAP-GET]).
+fn valuesHold(m, keys, wants, fallback) = zipHold(keys, wants, "", fallback, fn(key, want) => valueOr(m, key, fallback) == want)
+
+/// Every listed map lacks its partner key list, map by map.
+fn allAbsent(maps, keys) = zipHold(maps, keys, Map(), [], fn(m, ks) => nonePresent(m, ks))
 
 /// Every listed map answers its partner key and want rows, map by map.
-fn allValuesHold(maps, keys, wants, fallback) =
-    range(0, listLength(maps)) |> fold(true, fn(hold, i) => hold && valuesHold(listGet(maps, i) ?: Map(), listGet(keys, i) ?: [], listGet(wants, i) ?: [], fallback))
+fn allValuesHold(maps, keys, wants, fallback) = everyIndex(listLength(maps), fn(i) => valuesHold(listGet(maps, i) ?: Map(), listGet(keys, i) ?: [], listGet(wants, i) ?: [], fallback))
 
-/// Every index of `keys` addresses the value at the same index of `values`,
-/// with distinct sentinels so a pair of failed lookups cannot pair up.
-fn pairsPair(m, keys, values) =
-    range(0, listLength(keys)) |> fold(true, fn(hold, i) => hold && valueOr(m, listGet(keys, i) ?: "absent", (0 - 1)) == (listGet(values, i) ?: (0 - 2)))
+/// Every index of `keys` addresses the value at the same index of `values`, with distinct sentinels.
+fn pairsPair(m, keys, values) = zipHold(keys, values, "absent", (0 - 2), fn(key, want) => valueOr(m, key, (0 - 1)) == want)
 
 /// The entry's three fields read back `title`, `score` and `active`, so a value
 /// bound to the wrong record cannot pass by matching only one field.
@@ -377,8 +375,7 @@ fn keyShapeCase() = {
         valuesHold(shaped, ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], (0 - 999)),
         intAtKey(shapedLong, longKey) == 12,
         answersHold(lengthOf, [shaped, shapedLong], [12, 13]),
-        length(shapedLong) == 13,
-        !isEmpty(shaped),
+        length(shapedLong) == 13 && !isEmpty(shaped),
         structuralEquals([length(longKey), length(longKeyPrefix)], [40, 39]),
         missingKey(mapRemove(shaped, ""), "")
     ])
@@ -399,8 +396,7 @@ fn keyShapeCase() = {
         answersHold(fn(pair) => valueOr(shaped, listGet(pair, 0) ?: "", (0 - 999)) != valueOr(shaped, listGet(pair, 1) ?: "", (0 - 998)), [["a", "A"], [" a", "a "], ["a b", "a.b"], ["a.b", "a-b"], ["a-b", "a_b"], ["007", "7"], ["", " "]], [true, true, true, true, true, true, true]),
         valuesHold(shaped, [toUpperCase("a"), toLowerCase("A"), "a${gap}b", "${gap}a", "a${gap}"], [2, 1, 6, 4, 5], (0 - 999)),
         structuralEquals([shaped[""] ?: (0 - 999), shaped["a b"] ?: (0 - 999), shaped["007"] ?: (0 - 999)], [0, 6, 10]),
-        intAtKey(mapSet(shaped, "", 99), "") == 99,
-        mapLength(mapSet(shaped, "", 99)) == 12,
+        structuralEquals([intAtKey(mapSet(shaped, "", 99), ""), mapLength(mapSet(shaped, "", 99))], [99, 12]),
         intAtKey(shaped, "") == 0,
         intAtKey(mapSet(shaped, "A", 99), "a") == 1,
         mapLength(mapSet(shaped, "b", 99)) == 13
@@ -446,8 +442,7 @@ fn overwriteChainCase() = {
         answersHold(fn(m) => intAtKey(m, "slot"), [slotChain(1), slotChain(2), slotChain(3), slotChain(4), slotChain(5), slotChain(6), slotChain(7)], [1, 2, 3, 3, 5, 5, 5]),
         answersHold(fn(m) => intAtKey(m, "other"), [slotChain(4), slotChain(5), slotChain(6), slotChain(7)], [40, 40, 60, 60]),
         allAbsent([slotChain(0), slotChain(3)], [["slot"], ["other"]]),
-        isEmpty(slotChain(0)),
-        !isEmpty(slotChain(1))
+        isEmpty(slotChain(0)) && !isEmpty(slotChain(1))
     ])
 
     // Length arithmetic separates a fresh key (+1) from an overwrite (+0), and a
@@ -475,8 +470,7 @@ fn overwriteChainCase() = {
         isEmpty(mapRemove(mapRemove(slotChain(6), "slot"), "other")),
         allValuesHold([mapRemove(mapSet(slotChain(6), "fresh", 7), "fresh"), mapSet(mapRemove(slotChain(6), "slot"), "slot", 5)], [["slot", "other"], ["slot", "other"]], [[5, 60], [5, 60]], (0 - 999)),
         intAtKey(mapRemove(slotChain(6), "slot"), "other") == 60,
-        mapLength(slotChain(6)) == 2,
-        mapContains(slotChain(6), "slot")
+        mapLength(slotChain(6)) == 2 && mapContains(slotChain(6), "slot")
     ])
 
     // "p", "pa", "pat" and "path" are nested prefixes; overwriting "pa" alone must
@@ -529,8 +523,7 @@ fn mergeAlgebraCase() = {
         isEmpty(mapMerge(empty, empty)),
         allValuesHold([mapMerge(empty, left), mapMerge(left, empty), mapMerge(left, left), left, right], [["k", ""], ["K", "k.k"], ["k", ""], ["k", ""], ["k", ""]], [[1, 4], [2, 3], [1, 4], [1, 4], [10, 40]], (0 - 999)),
         intAtKey(mapMerge(right, right), " ") == 50,
-        mapLength(left) == 4,
-        mapLength(right) == 4,
+        mapLength(left) == 4 && mapLength(right) == 4,
         allAbsent([left, right], [["k-k"], ["K"]])
     ])
 
@@ -597,14 +590,11 @@ fn removalSweepCase() = {
         allAbsent([abFirst, baFirst], [["a", "b"], ["a", "b"]]),
         answersHold(fn(k) => intAtKey(abFirst, k) == intAtKey(baFirst, k), ["c", "d", "e"], [true, true, true]),
         allValuesHold([abFirst, baFirst], [["c"], ["e"]], [[3], [5]], (0 - 999)),
-        mapLength(drained) == 0,
-        isEmpty(drained),
-        length(drained) == 0,
+        mapLength(drained) == 0 && isEmpty(drained) && length(drained) == 0,
         viewsLengthIs(drained, 0),
         missingKey(drained, "a"),
         nonePresent(drained, ["c"]),
-        mapLength(base) == 5,
-        !isEmpty(base)
+        mapLength(base) == 5 && !isEmpty(base)
     ])
 
     // A key that is absent by case, spacing, length or emptiness is still absent,
@@ -690,8 +680,7 @@ fn nestedCollectionCase() = {
     checkAll("maps stored in a list keep their own contents", [
         listLength(maps) == 3,
         answersHold(lengthOf, [nestedAt(maps, 0, fallbackMap), nestedAt(maps, 1, fallbackMap)], [2, 2]),
-        mapLength(nestedAt(maps, 2, fallbackMap)) == 0,
-        isEmpty(nestedAt(maps, 2, fallbackMap)),
+        isEmpty(nestedAt(maps, 2, fallbackMap)) && mapLength(nestedAt(maps, 2, fallbackMap)) == 0,
         allValuesHold([nestedAt(maps, 0, fallbackMap), nestedAt(maps, 1, fallbackMap)], [["x", "y"], ["x", "z"]], [[1, 2], [10, 30]], (0 - 999)),
         allAbsent([nestedAt(maps, 0, fallbackMap), nestedAt(maps, 1, fallbackMap), nestedAt(maps, 2, fallbackMap)], [["z"], ["y"], ["x"]]),
         intAtKey(nestedAt(maps, 0, fallbackMap), "x") != intAtKey(nestedAt(maps, 1, fallbackMap), "x"),
@@ -735,9 +724,7 @@ fn nestedCollectionCase() = {
     // each record back whole with its nested collections still addressable.
     checkAll("records hold collections and maps hold records", [
         bucketA.name == "alpha",
-        mapLength(bucketItems) == 2,
-        mapLength(bucketA.items) == 2,
-        listLength(bucketTags) == 2,
+        structuralEquals([mapLength(bucketItems), mapLength(bucketA.items), listLength(bucketTags)], [2, 2, 2]),
         valuesHold(bucketItems, ["x", "y"], [1, 2], (0 - 999)),
         nonePresent(bucketItems, ["z"]),
         rowsHold(bucketTags, [0, 1], ["red", "blue"], "none"),
@@ -749,13 +736,11 @@ fn nestedCollectionCase() = {
         mapLength(betaItems) == 2,
         intAtKey(betaItems, "z") == 30,
         nonePresent(betaItems, ["y"]),
-        listLength(betaTags) == 3,
+        structuralEquals([listLength(betaTags), mapLength(buckets)], [3, 2]),
         allListed(betaTags, ["green"]),
-        mapLength(buckets) == 2,
         allListed(mapKeys(buckets), ["alpha"]),
         noneListed(mapKeys(buckets), ["gamma"]),
-        mapLength(missingItems) == 0,
-        isEmpty(missingItems)
+        isEmpty(missingItems) && mapLength(missingItems) == 0
     ])
 }
 
@@ -813,8 +798,7 @@ fn keyValueViewPairingCase() = {
         (total - valueViewTotal(mapValues(trimmed)) ) == 5,
         showsOnly(mapKeys(trimmed), "a", "e"),
         showsOnly(mapValues(trimmed), 6, 5),
-        listLength(keys) == 6,
-        allListed(keys, ["e"]),
+        listLength(keys) == 6 && allListed(keys, ["e"]),
         pairsPair(trimmed, mapKeys(trimmed), mapValues(trimmed)),
         viewsLengthIs(mapRemove(trimmed, "zzz"), 5)
     ])
