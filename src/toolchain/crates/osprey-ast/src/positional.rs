@@ -127,9 +127,33 @@ mod tests {
         }
     }
 
-    fn folded(statement: &Stmt) -> Option<&Expr> {
-        match statement {
-            Stmt::Expr { value, .. } => Some(value),
+    fn identifier(name: &str) -> Expr {
+        Expr::Identifier(name.to_owned())
+    }
+
+    /// `Pair` applied to `arguments` on top of `a`, as the ML frontend keeps a
+    /// qualified constructor whose arity it could not see.
+    fn spine(arguments: &[&str]) -> Expr {
+        Expr::Call {
+            function: Box::new(call("Pair", vec![identifier("a")])),
+            arguments: arguments.iter().copied().map(identifier).collect(),
+            named_arguments: Vec::new(),
+        }
+    }
+
+    /// What `value` folds to once `fold_constructions` has run over it.
+    fn folded_value(value: Expr, arities: &BTreeMap<String, usize>) -> Option<Expr> {
+        let mut program = Program {
+            statements: vec![Stmt::Expr {
+                value,
+                doc: None,
+                position: None,
+            }],
+            doc: None,
+        };
+        fold_constructions(&mut program, arities);
+        match program.statements.into_iter().next() {
+            Some(Stmt::Expr { value, .. }) => Some(value),
             _ => None,
         }
     }
@@ -137,68 +161,26 @@ mod tests {
     #[test]
     fn a_curried_spine_of_a_qualified_constructor_folds_when_saturated() {
         let arities = BTreeMap::from([("Pair".to_owned(), 2)]);
-        let spine = Expr::Call {
-            function: Box::new(call("Pair", vec![Expr::Identifier("a".to_owned())])),
-            arguments: vec![Expr::Identifier("b".to_owned())],
-            named_arguments: Vec::new(),
-        };
-        let mut program = Program {
-            statements: vec![Stmt::Expr {
-                value: spine,
-                doc: None,
-                position: None,
-            }],
-            doc: None,
-        };
-        fold_constructions(&mut program, &arities);
-        let value = program.statements.first().and_then(folded);
-        assert_eq!(value.and_then(slots), Some(("Pair", vec!["0", "1"])));
-        let over = Expr::Call {
-            function: Box::new(call("Pair", vec![Expr::Identifier("a".to_owned())])),
-            arguments: vec![
-                Expr::Identifier("b".to_owned()),
-                Expr::Identifier("c".to_owned()),
-            ],
-            named_arguments: Vec::new(),
-        };
-        let mut program = Program {
-            statements: vec![Stmt::Expr {
-                value: over,
-                doc: None,
-                position: None,
-            }],
-            doc: None,
-        };
-        fold_constructions(&mut program, &arities);
-        assert!(program
-            .statements
-            .first()
-            .and_then(folded)
-            .and_then(slots)
-            .is_none());
+        let folded_spine = folded_value(spine(&["b"]), &arities);
+        assert_eq!(
+            folded_spine.as_ref().and_then(slots),
+            Some(("Pair", vec!["0", "1"]))
+        );
+        let folded_over = folded_value(spine(&["b", "c"]), &arities);
+        assert!(folded_over.as_ref().and_then(slots).is_none());
     }
 
     #[test]
     fn saturated_calls_fold_nested_and_others_stay_calls() {
         let arities = BTreeMap::from([("Pair".to_owned(), 2), ("Box".to_owned(), 1)]);
-        let inner = call("Box", vec![Expr::Identifier("x".to_owned())]);
-        let statement = |value| Stmt::Expr {
-            value,
-            doc: None,
-            position: None,
-        };
-        let mut program = Program {
-            statements: vec![
-                statement(call("Pair", vec![inner.clone(), call("Box", vec![])])),
-                statement(call("Other", vec![inner])),
-            ],
-            doc: None,
-        };
-        fold_constructions(&mut program, &arities);
-        let mut statements = program.statements.iter().filter_map(folded);
-        let pair = statements.next();
-        assert_eq!(pair.and_then(slots), Some(("Pair", vec!["0", "1"])));
-        let payload: Vec<&Expr> = match pair {
+        let inner = call("Box", vec![identifier("x")]);
+        let pair = call("Pair", vec![inner.clone(), call("Box", vec![])]);
+        let folded_pair = folded_value(pair, &arities);
+        assert_eq!(
+            folded_pair.as_ref().and_then(slots),
+            Some(("Pair", vec!["0", "1"]))
+        );
+        let payload: Vec<&Expr> = match &folded_pair {
             Some(Expr::TypeConstructor { fields, .. }) => {
                 fields.iter().map(|field| &field.value).collect()
             }
@@ -213,7 +195,8 @@ mod tests {
             matches!(payload.get(1), Some(Expr::Call { .. })),
             "an unsaturated call stays a call"
         );
-        let argument = match statements.next() {
+        let folded_other = folded_value(call("Other", vec![inner]), &arities);
+        let argument = match &folded_other {
             Some(Expr::Call { arguments, .. }) => arguments.first(),
             _ => None,
         };
