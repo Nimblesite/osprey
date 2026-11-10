@@ -19,41 +19,48 @@ static void test_split_body_reaches_handler(void) {
   pthread_mutex_destroy(&server.mutex);
 }
 
-static void test_same_read_header_and_body(void) {
-  const char *chunks[] = {"POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}"};
-  assert_complete_body(chunks, sizeof(chunks) / sizeof(chunks[0]), "{}");
+// Bodies assembled whatever the read boundaries: header and body in one read,
+// a header split mid-name, a body across three reads, equal duplicate lengths.
+static void test_bodies_assemble_across_reads(void) {
+  static struct {
+    const char *chunks[4];
+    size_t count;
+    const char *body;
+  } cases[] = {
+      {{"POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}"}, 1, "{}"},
+      {{"POST / HTTP/1.1\r\nContent-Len", "gth: 2\r\n\r\n{}"}, 2, "{}"},
+      {{"POST / HTTP/1.1\r\nContent-Length: 7\r\n\r\n", "{\"a", "\":1", "}"}, 4, "{\"a\":1}"},
+      {{"POST / HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 2\r\n\r\n{}"}, 1, "{}"},
+  };
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    assert_complete_body(cases[i].chunks, cases[i].count, cases[i].body);
+  }
 }
 
-static void test_split_header_is_assembled(void) {
-  const char *chunks[] = {"POST / HTTP/1.1\r\nContent-Len", "gth: 2\r\n\r\n{}"};
-  assert_complete_body(chunks, sizeof(chunks) / sizeof(chunks[0]), "{}");
-}
-
-static void test_body_is_assembled_across_three_chunks(void) {
-  const char *chunks[] = {"POST / HTTP/1.1\r\nContent-Length: 7\r\n\r\n",
-                          "{\"a", "\":1", "}"};
-  assert_complete_body(chunks, sizeof(chunks) / sizeof(chunks[0]), "{\"a\":1}");
-}
-
-static void test_duplicate_content_lengths(void) {
-  const char *equal[] = {"POST / HTTP/1.1\r\nContent-Length: 2\r\n"
-                         "Content-Length: 2\r\n\r\n{}"};
-  assert_complete_body(equal, sizeof(equal) / sizeof(equal[0]), "{}");
-  const char *conflict[] = {"POST / HTTP/1.1\r\nContent-Length: 2\r\n"
-                            "Content-Length: 3\r\n\r\n{}"};
-  HttpRequestBuffer request;
-  assert(read_chunks(conflict, 1, &request) == REQUEST_MALFORMED);
-  free(request.data);
-}
-
-static void test_malformed_length_is_rejected(void) {
-  const char *chunks[] = {"POST /api/withdraw HTTP/1.1\r\n"
-                          "Content-Length: twelve\r\n\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
-  HttpRequestBuffer request;
-  assert(read_http_request(42, &request) == REQUEST_MALFORMED);
-  assert(request.header_bytes > 0);
-  free(request.data);
+// One read the server must refuse, with the verdict it owes: conflicting or
+// unparseable lengths and a missing request line are malformed, a body past the
+// cap is too large, and any Transfer-Encoding (with or without a length) is
+// never accepted as complete (REQUEST_COMPLETE here means "anything else").
+static void test_single_reads_are_refused(void) {
+  static struct {
+    const char *chunk;
+    RequestReadStatus verdict;
+  } cases[] = {
+      {"POST / HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}", REQUEST_MALFORMED},
+      {"POST /api/withdraw HTTP/1.1\r\nContent-Length: twelve\r\n\r\n", REQUEST_MALFORMED},
+      {"\r\n\r\n", REQUEST_MALFORMED},
+      {"POST /api/withdraw HTTP/1.1\r\nContent-Length: 1048577\r\n\r\n", REQUEST_TOO_LARGE},
+      {"POST /api/withdraw HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n", REQUEST_COMPLETE},
+      {"POST /api/withdraw HTTP/1.1\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n", REQUEST_COMPLETE},
+  };
+  for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+    HttpRequestBuffer request;
+    RequestReadStatus got = read_chunks(&cases[i].chunk, 1, &request);
+    assert(cases[i].verdict == REQUEST_COMPLETE ? got != REQUEST_COMPLETE : got == cases[i].verdict);
+    // A refused length was still read past its header block.
+    assert(strstr(cases[i].chunk, "twelve") == NULL || request.header_bytes > 0);
+    free(request.data);
+  }
 }
 
 static void test_incomplete_body_is_rejected(void) {
@@ -65,15 +72,6 @@ static void test_incomplete_body_is_rejected(void) {
   assert(read_http_request(42, &request) == REQUEST_INCOMPLETE);
   assert(request.expected_body_bytes == 10);
   assert(request.received_bytes - request.header_bytes == 7);
-  free(request.data);
-}
-
-static void test_oversized_body_is_rejected(void) {
-  const char *chunks[] = {"POST /api/withdraw HTTP/1.1\r\n"
-                          "Content-Length: 1048577\r\n\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
-  HttpRequestBuffer request;
-  assert(read_http_request(42, &request) == REQUEST_TOO_LARGE);
   free(request.data);
 }
 
@@ -103,24 +101,6 @@ static void test_deadline_is_absolute_across_reads(void) {
   free(request.data);
 }
 
-static void test_transfer_encoding_is_rejected(void) {
-  const char *chunks[] = {"POST /api/withdraw HTTP/1.1\r\n"
-                          "Transfer-Encoding: chunked\r\n\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
-  HttpRequestBuffer request;
-  assert(read_http_request(42, &request) != REQUEST_COMPLETE);
-  free(request.data);
-}
-
-static void test_te_with_content_length_is_rejected(void) {
-  const char *chunks[] = {"POST /api/withdraw HTTP/1.1\r\n"
-                          "Transfer-Encoding: chunked\r\n"
-                          "Content-Length: 4\r\n\r\n"};
-  reset_receive(chunks, sizeof(chunks) / sizeof(chunks[0]));
-  HttpRequestBuffer request;
-  assert(read_http_request(42, &request) != REQUEST_COMPLETE);
-  free(request.data);
-}
 static void test_logs_are_correlated_and_sanitized(void) {
   HttpRequestBuffer request = {0};
   strcpy(request.method, "\x1b[31mGET");
@@ -216,13 +196,9 @@ static void test_external_stop_awaits_before_destruction(void) {
 
 static void run_framing_tests(void) {
   test_split_body_reaches_handler();
-  test_same_read_header_and_body();
-  test_split_header_is_assembled();
-  test_body_is_assembled_across_three_chunks();
-  test_duplicate_content_lengths();
-  test_malformed_length_is_rejected();
+  test_bodies_assemble_across_reads();
+  test_single_reads_are_refused();
   test_incomplete_body_is_rejected();
-  test_oversized_body_is_rejected();
 }
 
 // --- rejection paths [HTTP-SERVER] -------------------------------------------
@@ -412,15 +388,6 @@ static void test_socket_error_and_close_differ(void) {
   free(request.data);
 }
 
-// A request line that is not `<method> <target>` is malformed, even when the
-// header block around it is perfectly well formed.
-static void test_missing_request_line_is_rejected(void) {
-  HttpRequestBuffer request;
-  const char *headerless[] = {"\r\n\r\n"};
-  assert(read_chunks(headerless, 1, &request) == REQUEST_MALFORMED);
-  free(request.data);
-}
-
 // [HTTP-SERVER-CLIENT-GONE] A ready descriptor can carry data or EOF.
 static void test_serving_client_disconnect(void) {
   assert(http_client_gone() == 0);
@@ -446,8 +413,6 @@ static void test_serving_client_disconnect(void) {
 static void run_hardening_tests(void) {
   test_partial_request_waits_with_a_deadline();
   test_deadline_is_absolute_across_reads();
-  test_transfer_encoding_is_rejected();
-  test_te_with_content_length_is_rejected();
   test_logs_are_correlated_and_sanitized();
   test_bridge_request_id_is_parsed_and_sanitized();
   test_server_request_ids_increase();
@@ -462,7 +427,6 @@ static void run_hardening_tests(void) {
   test_oversized_headers_and_body_are_rejected();
   test_unreadable_descriptor_and_timeout_are_distinguished();
   test_socket_error_and_close_differ();
-  test_missing_request_line_is_rejected();
   test_serving_client_disconnect();
 }
 
