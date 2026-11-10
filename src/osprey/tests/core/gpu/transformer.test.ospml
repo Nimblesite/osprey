@@ -49,46 +49,32 @@ nearsFrom (values, index, wants) = fromsBy (nearAt, values, index, wants)
 gelu x = toFloat32 0.5 * x * (toFloat32 1.0 + tanh (geluScale * (x + geluCubic * x * x * x)))
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (step, modulus, shift, scale, grid0) = gpuMap (grid0, \i => toFloat32 ((i * step) % modulus - shift) / scale)
-(** The block's parameters, named as GPT-2's checkpoint names them. *)
-ln1g (grid0) = weight(3, 5, 1, 2.0, grid0)
-ln1b (grid0) = weight(5, 7, 3, 4.0, grid0)
-qkvW (grid0) = weight(7, 11, 5, 8.0, grid0)
-qkvB (grid0) = weight(3, 7, 3, 8.0, grid0)
-projW (grid0) = weight(5, 13, 6, 8.0, grid0)
-projB (grid0) = weight(7, 5, 2, 4.0, grid0)
-ln2g (grid0) = weight(7, 9, 4, 4.0, grid0)
-ln2b (grid0) = weight(2, 5, 2, 8.0, grid0)
-fcW (grid0) = weight(11, 13, 6, 8.0, grid0)
-fcB (grid0) = weight(5, 11, 5, 8.0, grid0)
-outW (grid0) = weight(13, 17, 8, 16.0, grid0)
-outB (grid0) = weight(3, 7, 3, 4.0, grid0)
-tokenTable (grid0) = weight(9, 17, 8, 4.0, grid0)
-positionTable (grid0) = weight(4, 9, 4, 8.0, grid0)
 miniTokens () = toGpu ([3, 1])
 noBias () = floats ([0.0, 0.0, 0.0, 0.0, 0.0])
 (** Every block parameter in GPT-2's checkpoint order, unwrapped once per case. *)
 blockParams (grid0, grid3, grid4, grid8, grid9, grid10) =
-    andThen(ln1g(grid0),
-        \ln1gain => andThen(ln1b(grid0),
-        \ln1bias => andThen(qkvW(grid3),
-        \qkvWeight => andThen(qkvB(grid4),
-        \qkvBias => andThen(projW(grid8),
-        \projWeight => andThen(projB(grid0),
-        \projBias => andThen(ln2g(grid0),
-        \ln2gain => andThen(ln2b(grid0),
-        \ln2bias => andThen(fcW(grid9),
-        \fcWeight => andThen(fcB(grid10),
-        \fcBias => andThen(outW(grid9),
-        \outWeight => andThen(outB(grid0), \outBias => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })))))))))))))
+    andThen(weight(3, 5, 1, 2.0, grid0),
+        \ln1gain => andThen(weight(5, 7, 3, 4.0, grid0),
+        \ln1bias => andThen(weight(7, 11, 5, 8.0, grid3),
+        \qkvWeight => andThen(weight(3, 7, 3, 8.0, grid4),
+        \qkvBias => andThen(weight(5, 13, 6, 8.0, grid8),
+        \projWeight => andThen(weight(7, 5, 2, 4.0, grid0),
+        \projBias => andThen(weight(7, 9, 4, 4.0, grid0),
+        \ln2gain => andThen(weight(2, 5, 2, 8.0, grid0),
+        \ln2bias => andThen(weight(11, 13, 6, 8.0, grid9),
+        \fcWeight => andThen(weight(5, 11, 5, 8.0, grid10),
+        \fcBias => andThen(weight(13, 17, 8, 16.0, grid9),
+        \outWeight => andThen(weight(3, 7, 3, 4.0, grid0), \outBias => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })))))))))))))
 (** A LayerNorm's gain and bias, unwrapped together. *)
 lnParams (gainGrid) =
-    andThen(ln1g(gainGrid), \gain => andThen(ln1b(gainGrid), \bias => Success(value = { gain = gain, bias = bias })))
+    andThen(weight(3, 5, 1, 2.0, gainGrid), \gain => andThen(weight(5, 7, 3, 4.0, gainGrid), \bias => Success(value = { gain = gain, bias = bias })))
+(** Two Results unwrapped together, the first then the second. *)
+withPair (l, r, next) = andThen(l, \a => andThen(r, \b => next (a, b)))
 (** A product's weight and bias kernels, unwrapped together. *)
-qkvParams (weightGrid, biasGrid) =
-    andThen(qkvW(weightGrid), \weight => andThen(qkvB(biasGrid), \bias => Success(value = { weight = weight, bias = bias })))
+qkvParams (weightGrid, biasGrid) = withPair (weight(7, 11, 5, 8.0, weightGrid), weight(3, 7, 3, 8.0, biasGrid), \(productWeight, bias) => Success(value = { weight = productWeight, bias = bias }))
 (** The embeddings for a token list, preserving both table allocations. *)
 embedOf (tokensGrid, positionsGrid, ids, grid0) =
-    andThen(tokenTable(tokensGrid), \tokens => andThen(positionTable(positionsGrid), \positions => embed(tokens, positions, ids, grid0)))
+    andThen(weight(9, 17, 8, 4.0, tokensGrid), \tokens => andThen(weight(4, 9, 4, 8.0, positionsGrid), \positions => embed(tokens, positions, ids, grid0)))
 (** The product, preserving allocation and shape failures. *)
 product (l, r, rows, inner, cols) = gpuMatMul (l, r, rows, inner, cols)
 (** The reason a kernel failed, or "no error" when it succeeded. *)
@@ -327,7 +313,7 @@ nextTokenCase () = withBlockGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, g
 nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, \y => withBuffer(lnParams(grid3),
         \ln => withBuffer(layerNorm(y, ln.gain, ln.bias, grid4, grid2),
-        \normed => withBuffer(tokenTable(grid0),
+        \normed => withBuffer(weight(9, 17, 8, 4.0, grid0),
         \table => withBuffer(logitsOf(normed, 2, table, grid3, grid0, grid9),
         \logits => withBuffer(argmax(logits, grid9),
         \token => checkAll("the tied readout scores every token row and argmax picks the first peak", [
