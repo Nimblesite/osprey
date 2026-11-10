@@ -1,7 +1,11 @@
 //! The replacement handler grammar and declaration-bound continuation scope.
 //! Implements [EFFECTS-HANDLE-REST], [EFFECTS-HANDLER-VALUE], [EFFECTS-RESUME].
 
+#[path = "common/parse_clean.rs"]
+mod parse_clean;
+
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+use parse_clean::parse_clean;
 
 #[test]
 fn removed_handler_applications_are_syntax_errors() {
@@ -51,8 +55,7 @@ h = handler Control
 print (h (\() => perform Control.op ()))
 ";
     for (source, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let parsed = parse_clean(source, flavor, "handler fixture");
         let errors = osprey_types::check_program(&parsed.program);
         assert!(
             errors.iter().any(|error| error
@@ -90,8 +93,7 @@ b = h (\() => perform E.op ())
 print "${a}:${b}"
 "#;
     for (source, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let parsed = parse_clean(source, flavor, "handler fixture");
         let errors = osprey_types::check_program(&parsed.program);
         assert!(errors.is_empty(), "{errors:?}");
         let compiled = osprey_codegen::compile_program(&parsed.program);

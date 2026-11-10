@@ -8,6 +8,8 @@
 //! proves these assertions can fail — without it, a compiler that stopped
 //! emitting handlers entirely would still pass.
 
+#[path = "common/parse_clean.rs"]
+mod parse_clean;
 #[path = "common/residue.rs"]
 mod residue;
 #[path = "common/staging.rs"]
@@ -15,24 +17,32 @@ mod staging;
 
 use std::collections::BTreeMap;
 
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+use osprey_syntax::Flavor;
+use parse_clean::parse_clean;
 use residue::HANDLER_RUNTIME_SYMBOLS;
 use staging::{assert_rejected, compile_for_target, compile_staged, diagnostics};
 
+/// Asserts `result` is `Ok` under `label`, then unwraps it.
+fn expect_ok<T: Default + std::fmt::Debug, E: std::fmt::Debug>(
+    result: Result<T, E>,
+    label: &str,
+) -> T {
+    assert!(result.is_ok(), "{label}: {result:?}");
+    result.unwrap_or_default()
+}
+
 /// The dependency report for `source`, asserting the fixture's contracts hold.
 fn dependency_report(source: &str, flavor: Flavor) -> BTreeMap<String, Vec<String>> {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(
-        parsed.errors.is_empty(),
-        "invalid dependency fixture: {:?}",
-        parsed.errors
-    );
-    let dependencies = osprey_types::signal_dependencies(&parsed.program);
-    assert!(
-        dependencies.is_ok(),
-        "invalid signal contracts: {dependencies:?}"
-    );
-    dependencies.unwrap_or_default()
+    let parsed = parse_clean(source, flavor, "invalid dependency fixture");
+    expect_ok(
+        osprey_types::signal_dependencies(&parsed.program),
+        "invalid signal contracts",
+    )
+}
+
+/// The operations `name` depends on per `deps`, empty when it depends on none.
+fn deps_of(deps: &BTreeMap<String, Vec<String>>, name: &str) -> Vec<String> {
+    deps.get(name).cloned().unwrap_or_default()
 }
 
 /// Asserts `ir` mentions no handler-runtime symbol, `label` naming the case.
@@ -62,11 +72,11 @@ fn compile_in_flavor(source: &str, flavor: Flavor, label: &str) -> String {
     if flavor == Flavor::Default {
         return compile_staged(source);
     }
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{label}: {:?}", parsed.errors);
-    let ir = osprey_codegen::compile_program(&parsed.program);
-    assert!(ir.is_ok(), "{label}: static codegen: {ir:?}");
-    ir.unwrap_or_default()
+    let parsed = parse_clean(source, flavor, label);
+    expect_ok(
+        osprey_codegen::compile_program(&parsed.program),
+        &format!("{label}: static codegen"),
+    )
 }
 
 const STATIC_SOURCE: &str = r#"
@@ -136,18 +146,17 @@ fn statusBar() = "${greeting()} | ${counterLabel()}"
 fn footer() = "osprey"
 "#;
     let deps = dependency_report(source, Flavor::Default);
-    let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
-    assert_eq!(of("doubled"), vec!["CountSignal.read"]);
+    assert_eq!(deps_of(&deps, "doubled"), vec!["CountSignal.read"]);
     // Transitive through a call, and only what is actually read.
-    assert_eq!(of("counterLabel"), vec!["CountSignal.read"]);
-    assert_eq!(of("greeting"), vec!["NameSignal.read"]);
+    assert_eq!(deps_of(&deps, "counterLabel"), vec!["CountSignal.read"]);
+    assert_eq!(deps_of(&deps, "greeting"), vec!["NameSignal.read"]);
     assert_eq!(
-        of("statusBar"),
+        deps_of(&deps, "statusBar"),
         vec!["CountSignal.read", "NameSignal.read"],
         "a caller depends on the union of what it reaches"
     );
     assert!(
-        of("footer").is_empty(),
+        deps_of(&deps, "footer").is_empty(),
         "a function that reads nothing has no dependencies and never rebuilds"
     );
 }
@@ -173,12 +182,9 @@ fn root() = {
 }
 "#;
     let deps = dependency_report(source, Flavor::Default);
-    assert_eq!(
-        deps.get("label").cloned().unwrap_or_default(),
-        vec!["CountSignal.read"]
-    );
+    assert_eq!(deps_of(&deps, "label"), vec!["CountSignal.read"]);
     assert!(
-        deps.get("root").cloned().unwrap_or_default().is_empty(),
+        deps_of(&deps, "root").is_empty(),
         "a region that answers the signal is not a dependent of it"
     );
 }
@@ -363,13 +369,12 @@ fn counterLabel() = "count: ${(perform Signal<Count>.read()).value}"
 fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 "#;
     let deps = dependency_report(source, Flavor::Default);
-    let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
     assert_eq!(
-        of("counterLabel"),
+        deps_of(&deps, "counterLabel"),
         vec!["Signal<Count>.read"],
         "a view depends on the instantiation it reads, not the bare effect"
     );
-    assert_eq!(of("cursorLabel"), vec!["Signal<Cursor>.read"]);
+    assert_eq!(deps_of(&deps, "cursorLabel"), vec!["Signal<Cursor>.read"]);
 }
 
 #[test]
