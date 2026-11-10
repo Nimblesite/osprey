@@ -258,6 +258,9 @@ twoPoliciesCase () =
         (capped - skipped ) == 5
     ]
 
+(** Render the before|inside|after transcript shared by the override and tier cases. *)
+spliced (before, inner, after) = "${toString before}|${inner}|${toString after}"
+
 (** Verify an inner same-effect arm overrides one operation and then disappears. *)
 nestedOverrideCase () =
     rendered =
@@ -272,7 +275,7 @@ nestedOverrideCase () =
             inheritedLabel = perform PolicyError.label "inside"
             "${toString innerScore}:${inheritedLabel}"
         after = perform PolicyError.score "after"
-        "${toString before}|${inside}|${toString after}"
+        spliced (before, inside, after)
 
     // The inner score wins, the outer label remains reachable, and score restores.
     checkAll "nested override and restoration" [
@@ -441,7 +444,7 @@ restoredTranscript () =
     before = perform TierError.base "before"
     inner = withBase (70, (\() => restoredInnerQuote ()))
     after = perform TierError.base "after"
-    "${toString before}|${inner}|${toString after}"
+    spliced (before, inner, after)
 
 (** Tally lets a callback ask for a scaled contribution and then record it. *)
 effect Tally

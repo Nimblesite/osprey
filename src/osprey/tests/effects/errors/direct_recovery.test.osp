@@ -272,6 +272,9 @@ fn twoPoliciesCase() = {
     ])
 }
 
+/// Render the before|inside|after transcript shared by the override and tier cases.
+fn spliced(before, inner, after) = "${toString(before)}|${inner}|${toString(after)}"
+
 /// Verify an inner same-effect arm overrides one operation and then disappears.
 fn nestedOverrideCase() = {
     let rendered = {
@@ -289,7 +292,7 @@ fn nestedOverrideCase() = {
             "${toString(innerScore)}:${inheritedLabel}"
         }
         let after = perform PolicyError.score("after")
-        "${toString(before)}|${inside}|${toString(after)}"
+        spliced(before, inside, after)
     }
 
     // The inner score wins, the outer label remains reachable, and score restores.
@@ -467,7 +470,7 @@ fn restoredTranscript() = {
     let before = perform TierError.base("before")
     let inner = withBase(70, fn() => restoredInnerQuote())
     let after = perform TierError.base("after")
-    "${toString(before)}|${inner}|${toString(after)}"
+    spliced(before, inner, after)
 }
 
 /// Tally lets a callback ask for a scaled contribution and then record it.
