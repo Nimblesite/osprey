@@ -179,10 +179,15 @@ static void expect_refusal(unsigned char first, const char *payload, size_t len,
   expect_close(fd, code);
 }
 
-// Raw header bytes a server must refuse, refused with `code`.
-static void expect_header_refusal(const unsigned char *header, size_t len, int code) {
+// The header of a masked text frame whose length field says `len` in a `width`
+// byte field (2 or 8): refused with `code`, never treated as a frame.
+static void expect_length_refusal(size_t len, size_t width, int code) {
+  unsigned char header[10] = {FIN | OP_TEXT, (unsigned char)(MASKED | (width == 2 ? 126 : 127))};
+  for (size_t i = 0; i < width; i++) {
+    header[2 + i] = (unsigned char)((uint64_t)len >> (8 * (width - 1 - i)));
+  }
   int fd = frames_client();
-  ws_send_all(fd, header, len);
+  ws_send_all(fd, header, 2 + width);
   expect_close(fd, code);
 }
 
@@ -201,10 +206,8 @@ static void check_protocol_refusals(void) {
   for (size_t i = 0; i < sizeof reserved / sizeof reserved[0]; i++) {
     expect_refusal(FIN | OP_CLOSE, (const char *)reserved[i], 2, true, 1002);
   }
-  const unsigned char short16[] = {FIN | OP_TEXT, MASKED | 126, 0, 5}; // not the minimal form
-  expect_header_refusal(short16, sizeof short16, 1002);
-  const unsigned char top_bit[] = {FIN | OP_TEXT, MASKED | 127, 0x80, 0, 0, 0, 0, 0, 0, 1};
-  expect_header_refusal(top_bit, sizeof top_bit, 1002);
+  expect_length_refusal(5, 2, 1002); // not the minimal form
+  expect_length_refusal((size_t)0x8000000000000001, 8, 1002); // the 64-bit top bit
 }
 
 // A new message while one is still in fragments.
@@ -222,10 +225,8 @@ static void check_unacceptable_data(void) {
   char *big = malloc(OVER_THE_LIMIT);
   assert(big != NULL);
   memset(big, 'z', OVER_THE_LIMIT);
-  const unsigned char over[] = {FIN | OP_TEXT, MASKED | 126, OVER_THE_LIMIT >> 8, OVER_THE_LIMIT & 0xFF};
-  expect_header_refusal(over, sizeof over, 1009);
-  const unsigned char huge[] = {FIN | OP_TEXT, MASKED | 127, 0, 0, 0, 0, 0, 1, 0x11, 0x70};
-  expect_header_refusal(huge, sizeof huge, 1009);
+  expect_length_refusal(OVER_THE_LIMIT, 2, 1009);
+  expect_length_refusal(0x1170, 8, 1009);
   int fd = frames_client();
   send_frame(fd, OP_TEXT, big, OVER_THE_LIMIT / 2, true);
   send_frame(fd, FIN | OP_CONT, big, OVER_THE_LIMIT / 2 + 1, true);
@@ -233,6 +234,12 @@ static void check_unacceptable_data(void) {
   free(big);
 }
 
+// `frame` (`size` bytes) parses to `want` and allocates nothing.
+static void expect_parse_result(const unsigned char *frame, size_t size, int64_t want) {
+  WsFrame parsed = {0};
+  assert(parse_websocket_frame((const char *)frame, size, CODEC_LIMIT, &parsed) == want);
+  assert(parsed.payload == NULL);
+}
 
 // Out of memory is a close with 1011 or a refusal, never a crash or a leak: the
 // payload copy, the reassembly buffer, and a connection's stream, each failed
@@ -240,11 +247,9 @@ static void check_unacceptable_data(void) {
 static void check_out_of_memory(void) {
   char text[ODD_SIZE] = {0};
   unsigned char frame[ODD_SIZE + WS_HEADER_MAX];
-  WsFrame parsed = {0};
   size_t size = build_frame(frame, FIN | OP_TEXT, text, ODD_SIZE, true);
   osp_alloc_fail_size(ODD_SIZE + 1);
-  assert(parse_websocket_frame((const char *)frame, size, CODEC_LIMIT, &parsed) == WS_FRAME_NO_MEMORY);
-  assert(parsed.payload == NULL);
+  expect_parse_result(frame, size, WS_FRAME_NO_MEMORY);
   WsStream *stream = calloc(1, sizeof *stream);
   assert(stream != NULL);
   stream->held = build_frame((unsigned char *)stream->data, FIN | OP_TEXT, text, ODD_SIZE, true);
@@ -292,7 +297,6 @@ static void check_live_protocol(void) {
   assert(websocket_stop_server(server) == 0);
 }
 
-
 // ------------------------------------------------------------ frame codec
 
 // `frame` (`size` bytes) parses whole: the bytes it took and what it found.
@@ -309,12 +313,9 @@ static void expect_parsed(const unsigned char *frame, size_t size, unsigned char
 static void expect_every_prefix_partial(const unsigned char *frame, size_t size) {
   size_t step = size > 512 ? 251 : 1; // sample big frames, cover small ones byte by byte
   for (size_t cut = 0; cut < size; cut += step) {
-    WsFrame parsed = {0};
-    assert(parse_websocket_frame((const char *)frame, cut, CODEC_LIMIT, &parsed) == WS_FRAME_PARTIAL);
-    assert(parsed.payload == NULL);
+    expect_parse_result(frame, cut, WS_FRAME_PARTIAL);
   }
-  WsFrame parsed = {0};
-  assert(parse_websocket_frame((const char *)frame, size - 1, CODEC_LIMIT, &parsed) == WS_FRAME_PARTIAL);
+  expect_parse_result(frame, size - 1, WS_FRAME_PARTIAL); // the last byte is what completes it
 }
 
 // Each length at the edges of RFC 6455's three forms, masked and not: parsed
@@ -389,9 +390,7 @@ static const HeaderCase REFUSED[] = {
 
 static void check_header_refusals(void) {
   for (size_t i = 0; i < sizeof REFUSED / sizeof REFUSED[0]; i++) {
-    WsFrame parsed = {0};
-    int64_t got = parse_websocket_frame((const char *)REFUSED[i].bytes, REFUSED[i].len, CODEC_LIMIT, &parsed);
-    assert(got == REFUSED[i].result && parsed.payload == NULL);
+    expect_parse_result(REFUSED[i].bytes, REFUSED[i].len, REFUSED[i].result);
   }
   // The limit is inclusive: 100 bytes are taken at a limit of 100, 101 are not.
   char zeros[101] = {0};
