@@ -41,14 +41,14 @@ effect Trace
 traced2 a b =
     x = perform Trace.step a
     y = perform Trace.step b
-    x + y 
+    add x y 
 
 (** Three whitespace parameters curry the same way. *)
 traced3 a b c =
     x = perform Trace.step a
     y = perform Trace.step b
     z = perform Trace.step c
-    (x + y ) + z 
+    addThree x y z 
 
 (** Four whitespace parameters — the exact shape [FLAVOR-ML-CURRY] warns about
     in issue #184, where an operation performed through the body is silently
@@ -58,7 +58,7 @@ traced4 a b c d =
     x = perform Trace.step b
     y = perform Trace.step c
     z = perform Trace.step d
-    ((w + x ) + y ) + z 
+    sum4 w x y z 
 
 (** Five whitespace parameters: one nesting level past the reported shape. *)
 traced5 a b c d e =
@@ -67,7 +67,7 @@ traced5 a b c d e =
     x = perform Trace.step c
     y = perform Trace.step d
     z = perform Trace.step e
-    (((v + w ) + x ) + y ) + z 
+    sum5 v w x y z 
 
 (** Parenthesised comma-separated parameters are explicitly flat, and the spec
     names this the form that works today — so both forms must agree. *)
@@ -76,7 +76,7 @@ tracedFlat (a, b, c, d) =
     x = perform Trace.step b
     y = perform Trace.step c
     z = perform Trace.step d
-    ((w + x ) + y ) + z 
+    sum4 w x y z 
 
 (** Curried and flat bodies perform through the same handler, so the operation
     indices they receive form one unbroken 1..18 sequence. A skipped operation
