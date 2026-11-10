@@ -76,29 +76,17 @@ fn singleByte(s, byte) = structuralEquals([length(s) == 1, (byteAt(s, 0) ?: 0) =
 /// `indexOf(s, needle)` succeeds with byte index `wanted` ([BUILTIN-STRING-INDEXOF]).
 fn indexOfIs(s, needle, wanted) = (indexOf(s, needle) ?: (0 - 1)) == wanted
 
-/// `substring(s, from, to)` succeeds with exactly `wanted` ([BUILTIN-STRING-SUBSTRING]).
-fn substringIs(s, from, to, wanted) = (substring(s, from, to) ?: "missing") == wanted
-
-/// `replace(s, needle, replacement)` succeeds with exactly `wanted` ([BUILTIN-STRING-REPLACE]).
-fn replaceIs(s, needle, replacement, wanted) = (replace(s, needle, replacement) ?: "missing") == wanted
-
-/// `repeat(s, n)` succeeds with exactly `wanted` ([BUILTIN-STRING-REPEAT]).
-fn repeatIs(s, n, wanted) = (repeat(s, n) ?: "missing") == wanted
-
-/// `padStart(s, width, fill)` succeeds with exactly `wanted` ([BUILTIN-STRING-PADSTART]).
-fn padStartIs(s, width, fill, wanted) = (padStart(s, width, fill) ?: "missing") == wanted
-
-/// `padEnd(s, width, fill)` succeeds with exactly `wanted` ([BUILTIN-STRING-PADEND]).
-fn padEndIs(s, width, fill, wanted) = (padEnd(s, width, fill) ?: "missing") == wanted
+/// `outcome` succeeds with exactly `wanted` ([BUILTIN-STRING-SUBSTRING],
+/// [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT], [BUILTIN-STRING-PADSTART],
+/// [BUILTIN-STRING-PADEND]).
+fn succeedsWith(outcome, wanted) = (outcome ?: "missing") == wanted
 
 /// `take(s, n)` and `drop(s, n)` reassemble `s` exactly at the cut `n`.
 fn partitionsAt(s, n) = take(s, n) + drop(s, n) == s
 
-/// The hole for `v` and `toString(v)` both render exactly `text` ([BUILTIN-TOSTRING]).
-fn holeAndToString(v, text) = structuralEquals(["${v}" == text, toString(v) == text], [true, true])
-
-/// The hole for `v`, `toString(v)` and their agreement all render `text`.
-fn holeToStringAgree(v, text) =
+/// The hole for `v`, `toString(v)` and their agreement all render `text`
+/// ([BUILTIN-TOSTRING]).
+fn holeRenders(v, text) =
     structuralEquals(["${v}" == text, toString(v) == text, "${v}" == toString(v)], [true, true, true])
 
 /// `toString(v)` and the interpolation hole for `v` render identically.
@@ -205,27 +193,6 @@ exactArithmetic(fn() => printRejection("div-msg", divideResult(10, 0)))
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {
     let negativeOne = (0 - 1) 
-    let substringNegative = rejectedNonEmpty(substring("hi", negativeOne, 2))
-    let substringOverrun = rejectedNonEmpty(substring("hi", 0, 99))
-    let substringInverted = rejectedNonEmpty(substring("hi", 2, 0))
-    let indexMissing = rejectedNonEmpty(indexOf("hello", "xyz"))
-    let replaceEmpty = rejectedNonEmpty(replace("hello", "", "x"))
-    let repeatNegative = rejectedNonEmpty(repeat("ab", negativeOne))
-    let padStartEmpty = rejectedNonEmpty(padStart("hi", 5, ""))
-    let padEndEmpty = rejectedNonEmpty(padEnd("hi", 5, ""))
-    let emptyFloat = rejectedNonEmpty(parseFloat(""))
-    let trailingFloat = rejectedNonEmpty(parseFloat("3.14x"))
-    let spacedFloat = rejectedNonEmpty(parseFloat(" 3.14"))
-    let nanFloat = rejectedNonEmpty(parseFloat("nan"))
-    let hexFloat = rejectedNonEmpty(parseFloat("0x1p2"))
-    let infiniteFloat = rejectedNonEmpty(parseFloat("1e9999"))
-    let integerOverflow = rejectedNonEmpty(parseInt("99999999999999999999"))
-    let integerLeadingSpace = rejectedNonEmpty(parseInt(" 42"))
-    let byteOutOfBounds = rejectedNonEmpty(byteAt("héllo", 99))
-    let codePointMidSequence = rejectedNonEmpty(codePointAt("héllo", 2))
-    let surrogateRejected = rejectedNonEmpty(codePointWidth(55296))
-    let invalidCodePoint = rejectedNonEmpty(fromCodePoint(2000000))
-    let nulCodePoint = rejectedNonEmpty(fromCodePoint(0))
     let roundTrip = match fromCodePoint(233) {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
         Error => false
@@ -234,7 +201,6 @@ fn stringEdgeCase() = {
         Success => false
         Error { message } => message == "custom boom"
     }
-    let divisionRejected = rejectedNonEmpty(divideResult(10, 0))
 
     checkAll("total string boundary values", [
         isEmpty(""),
@@ -249,47 +215,47 @@ fn stringEdgeCase() = {
         drop("hi", 99) == "",
         trim("   ") == "",
         trim("") == "",
-        substringIs("hi", 0, 0, ""),
-        substringIs("hi", 0, 2, "hi"),
+        succeedsWith(substring("hi", 0, 0), ""),
+        succeedsWith(substring("hi", 0, 2), "hi"),
         indexOfIs("hello", "", 0),
-        replaceIs("hello", "l", "", "heo"),
-        repeatIs("ab", 0, ""),
-        padStartIs("hi", 1, "x", "hi"),
-        padStartIs("42", 5, "ab", "aba42")
+        succeedsWith(replace("hello", "l", ""), "heo"),
+        succeedsWith(repeat("ab", 0), ""),
+        succeedsWith(padStart("hi", 1, "x"), "hi"),
+        succeedsWith(padStart("42", 5, "ab"), "aba42")
     ])
     checkAll("rejected string inputs", [
-        substringNegative,
-        substringOverrun,
-        substringInverted,
-        indexMissing,
-        replaceEmpty,
-        repeatNegative,
-        padStartEmpty,
-        padEndEmpty,
-        emptyFloat,
-        trailingFloat,
-        spacedFloat,
-        nanFloat,
-        hexFloat,
-        infiniteFloat,
-        integerOverflow,
-        integerLeadingSpace
+        rejectedNonEmpty(substring("hi", negativeOne, 2)),
+        rejectedNonEmpty(substring("hi", 0, 99)),
+        rejectedNonEmpty(substring("hi", 2, 0)),
+        rejectedNonEmpty(indexOf("hello", "xyz")),
+        rejectedNonEmpty(replace("hello", "", "x")),
+        rejectedNonEmpty(repeat("ab", negativeOne)),
+        rejectedNonEmpty(padStart("hi", 5, "")),
+        rejectedNonEmpty(padEnd("hi", 5, "")),
+        rejectedNonEmpty(parseFloat("")),
+        rejectedNonEmpty(parseFloat("3.14x")),
+        rejectedNonEmpty(parseFloat(" 3.14")),
+        rejectedNonEmpty(parseFloat("nan")),
+        rejectedNonEmpty(parseFloat("0x1p2")),
+        rejectedNonEmpty(parseFloat("1e9999")),
+        rejectedNonEmpty(parseInt("99999999999999999999")),
+        rejectedNonEmpty(parseInt(" 42"))
     ])
     checkAll("cursor values and error payloads", [
         byteLength("héllo") == 6,
         (byteAt("héllo", 1) ?: 0) == 195,
-        byteOutOfBounds,
+        rejectedNonEmpty(byteAt("héllo", 99)),
         (codePointAt("héllo", 1) ?: 0) == 233,
-        codePointMidSequence,
+        rejectedNonEmpty(codePointAt("héllo", 2)),
         (codePointWidth(128512) ?: 0) == 4,
-        surrogateRejected,
+        rejectedNonEmpty(codePointWidth(55296)),
         (fromCodePoint(128512) ?: "missing") == "😀",
-        invalidCodePoint,
-        nulCodePoint,
+        rejectedNonEmpty(fromCodePoint(2000000)),
+        rejectedNonEmpty(fromCodePoint(0)),
         roundTrip,
         (parseInt("-9223372036854775808") ?: 0) == (((0 - 9223372036854775807) - 1) ),
         customPayload,
-        divisionRejected
+        rejectedNonEmpty(divideResult(10, 0))
     ])
 }
 
@@ -310,14 +276,14 @@ fn interpolationScalarCase() = {
     // Integers: no thousands separator, no sign for a positive, an explicit
     // "-" for a negative, and the two 64-bit extremes spelled in full.
     checkAll("integers render identically in a hole and in toString", [
-        holeToStringAgree(0, "0"),
+        holeRenders(0, "0"),
         "${1}" == "1",
-        holeAndToString(42, "42"),
-        holeToStringAgree(negativeSeven, "-7"),
+        holeRenders(42, "42"),
+        holeRenders(negativeSeven, "-7"),
         length("${0}") == 1,
-        holeToStringAgree(intMax, "9223372036854775807"),
+        holeRenders(intMax, "9223372036854775807"),
         length("${negativeSeven}") == 2,
-        holeToStringAgree(intMin, "-9223372036854775808"),
+        holeRenders(intMin, "-9223372036854775808"),
         length("${intMin}") == 20,
         "${0}" != "0.0",
         "${1}" != "true"
@@ -327,9 +293,9 @@ fn interpolationScalarCase() = {
     // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat(7) == 7.0 and
     // toFloat(-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll("floats and booleans render with their scalar spelling", [
-        holeAndToString(0.0, "0.0"),
+        holeRenders(0.0, "0.0"),
         "${1.5}" == "1.5",
-        holeAndToString(3.5, "3.5"),
+        holeRenders(3.5, "3.5"),
         "${2.0}" == "2.0",
         "${100000.0}" == "100000.0",
         "${0.0 - 0.25}" == "-0.25",
@@ -339,8 +305,8 @@ fn interpolationScalarCase() = {
         "${toFloat(7)}" == "7.0",
         "${toFloat(0)}" == "0.0",
         "${toFloat(negativeSeven)}" == "-7.0",
-        holeAndToString(true, "true"),
-        holeAndToString(false, "false"),
+        holeRenders(true, "true"),
+        holeRenders(false, "false"),
         "${1 == 1}" == "true",
         "${1 != 1}" == "false",
         "${!(1 == 2)}" == "true",
@@ -355,7 +321,7 @@ fn interpolationScalarCase() = {
         "${"x"}" == "x",
         "${"a b"}" == "a b",
         "${"  padded  "}" == "  padded  ",
-        holeAndToString("abc", "abc"),
+        holeRenders("abc", "abc"),
         length("${emptyText}") == 0,
         length("${spaceText}") == 1,
         length("${"  padded  "}") == 10,
@@ -556,11 +522,11 @@ fn substringPositionCase() = {
         indexOfIs("a", "a", 0),
         indexAbsent,
         indexEmptySubject,
-        substringIs(subject, 1, 4, "ana"),
-        substringIs(subject, 2, 4, "na"),
-        substringIs(subject, 0, 6, subject),
-        substringIs(subject, 6, 6, ""),
-        substringIs(subject, 3, 3, ""),
+        succeedsWith(substring(subject, 1, 4), "ana"),
+        succeedsWith(substring(subject, 2, 4), "na"),
+        succeedsWith(substring(subject, 0, 6), subject),
+        succeedsWith(substring(subject, 6, 6), ""),
+        succeedsWith(substring(subject, 3, 3), ""),
         take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
         drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
         startsWith(drop(subject, (indexOf(subject, "ana") ?: missing)), "ana"),
@@ -630,11 +596,11 @@ fn caseFoldingCase() = {
         indexOfIs(toLowerCase("BANANA"), "na", 2),
         toUpperCase(take("hello", 3)) == take(toUpperCase("hello"), 3),
         toLowerCase(drop("HELLO", 3)) == drop(toLowerCase("HELLO"), 3),
-        replaceIs(toLowerCase("A-B"), "-", "+", "a+b"),
-        repeatIs(toUpperCase("ab"), 2, "ABAB"),
-        padStartIs(toUpperCase("z"), 3, "y", "yyZ"),
-        padEndIs(toLowerCase("Z"), 3, "y", "zyy"),
-        substringIs(toUpperCase("banana"), 0, 3, "BAN"),
+        succeedsWith(replace(toLowerCase("A-B"), "-", "+"), "a+b"),
+        succeedsWith(repeat(toUpperCase("ab"), 2), "ABAB"),
+        succeedsWith(padStart(toUpperCase("z"), 3, "y"), "yyZ"),
+        succeedsWith(padEnd(toLowerCase("Z"), 3, "y"), "zyy"),
+        succeedsWith(substring(toUpperCase("banana"), 0, 3), "BAN"),
         trim(toUpperCase("  a  ")) == "A",
         toUpperCase(trim("  a  ")) == "A",
         join([toUpperCase("a"), toLowerCase("B")], "-") == "A-b",
@@ -702,18 +668,18 @@ fn concatLengthCase() = {
         ((length(take(joined, 2)) + length(drop(joined, 2))) ) == length(joined),
         take(joined, 3) == (substring(joined, 0, 3) ?: "missing"),
         drop(joined, 3) == (substring(joined, 3, 6) ?: "missing"),
-        substringIs(joined, 0, 0, ""),
-        substringIs(joined, 6, 6, ""),
-        substringIs(joined, 0, 6, joined)
+        succeedsWith(substring(joined, 0, 0), ""),
+        succeedsWith(substring(joined, 6, 6), ""),
+        succeedsWith(substring(joined, 0, 6), joined)
     ])
 
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
     checkAll("repeat, reverse, padding and join keep their length contracts", [
-        repeatIs(left, 0, ""),
-        repeatIs(left, 1, left),
-        repeatIs(left, 3, "ababab"),
+        succeedsWith(repeat(left, 0), ""),
+        succeedsWith(repeat(left, 1), left),
+        succeedsWith(repeat(left, 3), "ababab"),
         length(repeat(left, 5) ?: "") == 10,
-        repeatIs("", 5, ""),
+        succeedsWith(repeat("", 5), ""),
         length(repeat("", 5) ?: "x") == 0,
         reverse("") == "",
         reverse("a") == "a",
@@ -725,12 +691,12 @@ fn concatLengthCase() = {
         reverse(left + middle) == reverse(middle) + reverse(left),
         length(padStart("7", 5, "0") ?: "") == 5,
         length(padEnd("7", 5, "0") ?: "") == 5,
-        padStartIs("7", 5, "0", "00007"),
-        padEndIs("7", 5, "0", "70000"),
-        padStartIs("x", 6, "ab", "ababax"),
-        padEndIs("x", 6, "ab", "xababa"),
-        padStartIs("hello", 3, "0", "hello"),
-        padEndIs("hello", 3, "0", "hello"),
+        succeedsWith(padStart("7", 5, "0"), "00007"),
+        succeedsWith(padEnd("7", 5, "0"), "70000"),
+        succeedsWith(padStart("x", 6, "ab"), "ababax"),
+        succeedsWith(padEnd("x", 6, "ab"), "xababa"),
+        succeedsWith(padStart("hello", 3, "0"), "hello"),
+        succeedsWith(padEnd("hello", 3, "0"), "hello"),
         join(["a", "b", "c"], "") == "abc",
         join(["a"], "-") == "a",
         join(["", ""], "-") == "-",
@@ -849,8 +815,8 @@ fn utf8CutCase() = {
         partitionsAt(eagle, 3)
     ])
     checkAll("utf-8 substring bounds", [
-        substringIs(quote, 0, 3, "“"),
-        substringIs(quote, 3, 5, "ok"),
+        succeedsWith(substring(quote, 0, 3), "“"),
+        succeedsWith(substring(quote, 3, 5), "ok"),
         byteLength(substring(quote, 1, 3) ?: "") == 2,
         byteLength(substring(quote, 0, 1) ?: "") == 1
     ])
