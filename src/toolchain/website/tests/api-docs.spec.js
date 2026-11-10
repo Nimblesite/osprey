@@ -188,17 +188,25 @@ test("API docs: without JavaScript every navigation group stays reachable", asyn
   } finally { await context.close(); }
 });
 
+// Every link and asset URL in each generated page, read by the browser's own
+// HTML parser and resolved against that page's file URL. Every link is in the
+// generated HTML: the pages' scripts only highlight and search. One parse per
+// page instead of one navigation keeps the walk inside its time budget under
+// four workers.
+const pageLinks = (page, pages) => page.evaluate((pages) => pages.flatMap(({ file, url, html }) => {
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const base = parsed.createElement("base");
+  base.href = url;
+  parsed.head.prepend(base);
+  return [...parsed.querySelectorAll("a[href],link[href],script[src]")].map((node) => [file, node.href || node.src]);
+}), pages);
+
 test("API docs: every generated internal link and local asset exists", async ({ page, docs }) => {
   const files = fs.readdirSync(`${docs.root}/osprey`, { recursive: true }).filter((file) => file.endsWith(".html"));
   expect(files.length).toBeGreaterThan(130);
   expect(files).not.toContain("api/a-privatedetail.html");
-  const missing = [];
-  for (const file of files) {
-    await page.goto(docs.file("osprey", file));
-    const urls = await page.locator("a[href],link[href],script[src]").evaluateAll((nodes) => nodes.map((node) => node.href || node.src));
-    for (const url of urls.filter((url) => url.startsWith("file:"))) {
-      if (!fs.existsSync(fileURLToPath(new URL(url)))) missing.push(`${file} -> ${url}`);
-    }
-  }
-  expect(missing).toEqual([]);
+  const pages = files.map((file) => ({ file, url: docs.file("osprey", file), html: fs.readFileSync(path.join(docs.root, "osprey", file), "utf8") }));
+  const local = (await pageLinks(page, pages)).filter(([, url]) => url.startsWith("file:"));
+  expect(local.length).toBeGreaterThan(files.length);
+  expect(local.filter(([, url]) => !fs.existsSync(fileURLToPath(new URL(url)))).map(([file, url]) => `${file} -> ${url}`)).toEqual([]);
 });

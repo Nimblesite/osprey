@@ -7,7 +7,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
 
-const SITE = path.resolve(__dirname, "../_site");
+const { SITE, builtPages } = require("./helpers");
 const ORIGIN = "https://www.ospreylang.dev";
 const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
@@ -82,7 +82,7 @@ test("the watch page's breadcrumb follows the docs sections", () => {
 });
 
 test("only the watch page carries the video's markup", () => {
-  const pages = fs.readdirSync(SITE, { recursive: true }).filter((file) => file.endsWith(".html"));
+  const pages = builtPages();
   const watchPages = pages.filter((file) => read(file).includes('"@type": "VideoObject"'));
   expect(watchPages.sort()).toEqual(WATCH_PAGES.map((watch) => `${watch.slice(1)}index.html`).sort());
 });
