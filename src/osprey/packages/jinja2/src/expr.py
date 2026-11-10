@@ -336,16 +336,17 @@ def compare_op(t, a, b):
         return V.bool_(V.equal(a, b))
     elif is_op(t, "!="):
         return V.bool_(not V.equal(a, b))
-    elif is_op(t, "<"):
-        return V.bool_(V.less(a, b))
-    elif is_op(t, "<="):
-        return V.bool_(le(a, b))
-    elif is_op(t, ">"):
-        return V.bool_(V.less(b, a))
-    elif is_op(t, ">="):
-        return V.bool_(le(b, a))
+    elif is_op(t, ">") or is_op(t, ">="):
+        return ordered(t, b, a)
+    elif is_op(t, "<") or is_op(t, "<="):
+        return ordered(t, a, b)
     else:
         return V.bool_(V.contains(b, a))
+
+
+def ordered(t, low, high):
+    """`low < high`, or `<=` when `t` is spelled with `=`."""
+    return V.bool_(le(low, high) if is_op(t, "<=") or is_op(t, ">=") else V.less(low, high))
 
 
 def eval_math1(toks, i, env):
@@ -441,10 +442,8 @@ def eval_primary(toks, i, env):
     elif t.kind == "string":
         return P(value=V.text(t.sval), next=i + 1)
     elif t.kind == "name":
-        if t.sval == "true" or t.sval == "True":
-            return P(value=V.bool_(True), next=i + 1)
-        elif t.sval == "false" or t.sval == "False":
-            return P(value=V.bool_(False), next=i + 1)
+        if t.sval == "true" or t.sval == "True" or t.sval == "false" or t.sval == "False":
+            return P(value=V.bool_(t.sval == "true" or t.sval == "True"), next=i + 1)
         elif t.sval == "none" or t.sval == "None":
             return P(value=V.none(), next=i + 1)
         elif is_global(t.sval):
@@ -569,8 +568,14 @@ def eval_postfix(toks, i, env, obj):
 
     elif is_op(t, "["):
         return eval_subscript(toks, i + 1, env, obj)
-    elif is_op(t, "("):
-        return call_then(toks, i, env, obj, eval_postfix)
+    else:
+        return call_or(toks, i, env, obj, eval_postfix)
+
+
+def call_or(toks, i, env, obj, cont):
+    """`obj(...)` continuing with `cont`, or `obj` when no `(` follows."""
+    if is_op(tok(toks, i), "("):
+        return call_then(toks, i, env, obj, cont)
     else:
         return P(value=obj, next=i)
 
@@ -616,10 +621,8 @@ def slice_rest(toks, i, env, obj, sl):
         sl2 = V.Slice(start=sl.start, stop=int_of(p.value), step=sl.step, has_start=sl.has_start, has_stop=True, has_step=sl.has_step)
         if is_op(tok(toks, p.next), ":"):
             return slice_step(toks, p.next + 1, env, obj, sl2)
-        elif is_op(tok(toks, p.next), "]"):
-            return eval_postfix(toks, p.next + 1, env, apply_slice(obj, sl2))
         else:
-            return P(value=halt("expected ':' or ']' in slice"), next=p.next)
+            return close_slice(toks, p.next, env, obj, sl2, "expected ':' or ']' in slice")
 
 
 
@@ -630,10 +633,15 @@ def slice_step(toks, i, env, obj, sl):
     else:
         p = eval_condexpr(toks, i, env)
         sl2 = V.Slice(start=sl.start, stop=sl.stop, step=int_of(p.value), has_start=sl.has_start, has_stop=sl.has_stop, has_step=True)
-        if is_op(tok(toks, p.next), "]"):
-            return eval_postfix(toks, p.next + 1, env, apply_slice(obj, sl2))
-        else:
-            return P(value=halt("expected ']' after slice step"), next=p.next)
+        return close_slice(toks, p.next, env, obj, sl2, "expected ']' after slice step")
+
+
+def close_slice(toks, i, env, obj, sl, missing):
+    """Apply `sl` at the `]` closing a slice, or fail with `missing`."""
+    if is_op(tok(toks, i), "]"):
+        return eval_postfix(toks, i + 1, env, apply_slice(obj, sl))
+    else:
+        return P(value=halt(missing), next=i)
 
 
 
@@ -698,10 +706,8 @@ def eval_filter(toks, i, env, obj):
 
     elif is_name(t, "is"):
         return eval_test(toks, i + 1, env, obj)
-    elif is_op(t, "("):
-        return call_then(toks, i, env, obj, eval_filter)
     else:
-        return P(value=obj, next=i)
+        return call_or(toks, i, env, obj, eval_filter)
 
 
 def parse_filter_args(toks, j, env):
@@ -956,10 +962,15 @@ def arg0(args):
     return unwrap_or(listGet(args, 0), V.none())
 
 
+def kwarg_at(kwargs, i):
+    """Keyword argument `i`, or an empty one past the end."""
+    return unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none()))
+
+
 def kwargs_dict(kwargs):
     """A dict Value from keyword arguments."""
-    keys = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name)
-    vals = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value)
+    keys = map_indexed(kwargs, lambda i: kwarg_at(kwargs, i).name)
+    vals = map_indexed(kwargs, lambda i: kwarg_at(kwargs, i).value)
     return V.dict_(keys, vals)
 
 
