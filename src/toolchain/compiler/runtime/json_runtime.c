@@ -196,15 +196,23 @@ static bool another(Cursor *c, char close, const char *why) {
   return false;
 }
 
-static size_t parse_array(Parser *ps) {
-  ps->c.p++; // consume '['
-  size_t id = new_node(ps, J_ARR);
-  size_t base = ps->npending;
+// Consumes a container's opening bracket and allocates its node; answers
+// whether an item follows, having consumed the close of an empty container.
+static bool open_container(Parser *ps, JType kind, char close, size_t *id) {
+  ps->c.p++; // consume the opening bracket
+  *id = new_node(ps, kind);
   skip_ws(&ps->c);
-  bool more = id != JSON_NO_NODE && *ps->c.p != ']';
-  if (!more && id != JSON_NO_NODE) {
+  bool more = *id != JSON_NO_NODE && *ps->c.p != close;
+  if (!more && *id != JSON_NO_NODE) {
     ps->c.p++;
   }
+  return more;
+}
+
+static size_t parse_array(Parser *ps) {
+  size_t base = ps->npending;
+  size_t id;
+  bool more = open_container(ps, J_ARR, ']', &id);
   while (more) {
     size_t item = parse_value(ps);
     more = item != JSON_NO_NODE && push_pending(ps, item) &&
@@ -302,14 +310,9 @@ static size_t parse_member(Parser *ps) {
 
 static size_t parse_object(Parser *ps) {
   const char *open = ps->c.p;
-  ps->c.p++; // consume '{'
-  size_t id = new_node(ps, J_OBJ);
   size_t base = ps->npending;
-  skip_ws(&ps->c);
-  bool more = id != JSON_NO_NODE && *ps->c.p != '}';
-  if (!more && id != JSON_NO_NODE) {
-    ps->c.p++;
-  }
+  size_t id;
+  bool more = open_container(ps, J_OBJ, '}', &id);
   while (more) {
     size_t member = parse_member(ps);
     more = member != JSON_NO_NODE && push_pending(ps, member) &&

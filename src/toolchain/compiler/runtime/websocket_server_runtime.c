@@ -291,15 +291,21 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   return id;
 }
 
-// Start WebSocket server listening - returns 0 on success
-int64_t websocket_server_listen(int64_t server_id) {
+// The server registered under `server_id`, or NULL for an id out of range or
+// a slot that holds none.
+static WebSocketServer *registered_server(int64_t server_id) {
   if (!valid_websocket_server_id(server_id)) {
-    return -1;
+    return NULL;
   }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
   pthread_mutex_unlock(&runtime_mutex);
+  return server;
+}
 
+// Start WebSocket server listening - returns 0 on success
+int64_t websocket_server_listen(int64_t server_id) {
+  WebSocketServer *server = registered_server(server_id);
   if (!server) {
     return -1;
   }
@@ -358,14 +364,7 @@ int64_t websocket_server_broadcast(int64_t server_id, char *message) {
   if (!message) {
     return -1;
   }
-  if (!valid_websocket_server_id(server_id)) {
-    return -2;
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  WebSocketServer *server = websocket_servers[server_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
+  WebSocketServer *server = registered_server(server_id);
   if (!server) {
     return -2;
   }
