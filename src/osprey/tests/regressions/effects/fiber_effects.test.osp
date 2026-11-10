@@ -81,18 +81,6 @@ fn readsAs(value, blocks, top) = spells(value, blocks) && intDiv(value, 1000000)
 /// Spawn `weight`'s job and await it, so the pair reads as one step.
 fn spawnedScore(weight) = await(spawn runJob(priWeight(weight)))
 
-/// True when `haystack` contains every fragment in `wanted`.
-fn carriesAll(haystack, wanted) = match wanted {
-    [] => true
-    [head, ...tail] => contains(haystack, head) && carriesAll(haystack, tail)
-}
-
-/// True when `haystack` contains none of the fragments in `banned`.
-fn carriesNone(haystack, banned) = match banned {
-    [] => true
-    [head, ...tail] => !contains(haystack, head) && carriesNone(haystack, tail)
-}
-
 print("=== mixup: fibers + effects + records ===")
 
 fn mixupDemo() = {
@@ -204,6 +192,9 @@ effect Tally {
 /// One perform per run.
 fn tallyJob(amount) !Tally = perform Tally.add(amount)
 
+/// Spawn one tally job and await it, so one run reads as one step.
+fn runOnce(amount) = await(spawn tallyJob(amount))
+
 /// Two performs in ONE fiber body: the second suspension installs its own
 /// mailbox instead of overwriting one still in use ([EFFECTS-OPERATION-MAILBOX]).
 fn tallyTwice(a, b) ![Tally, Arith] = {
@@ -236,7 +227,7 @@ fn quadWeighted(a, b, c, d) ![Gift, Arith] = {
 /// Sum one spawned `tallyJob` per amount, awaiting each in list order.
 fn sumFibers(amounts) ![Tally, Arith] = match amounts {
     [] => 0
-    [head, ...tail] => await(spawn tallyJob(head)) + sumFibers(tail)
+    [head, ...tail] => runOnce(head) + sumFibers(tail)
 }
 
 /// Sum `amounts`' spawned jobs under a Tally region, answering the summed holds
@@ -321,16 +312,16 @@ fn awaitReplaysOneEffectfulRunCase() = {
     })
 
     /// A negative amount walks the shared cell back. 7 -> 2.
-    let negRun = underTally(fn() => await(spawn tallyJob(0 - 5 )))
+    let negRun = underTally(fn() => runOnce(0 - 5 ))
 
     /// Three spawn SITES, each awaited before the next is spawned, so arrival is
     /// program order. "Each spawn site allocates a distinct capture cell", so the
     /// captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
     let stepped = underTally(fn() => {
         let base = 4
-        let s1 = await(spawn tallyJob(base))
-        let s2 = await(spawn tallyJob(base + 1 ))
-        let s3 = await(spawn tallyJob(base + 2 ))
+        let s1 = runOnce(base)
+        let s2 = runOnce(base + 1 )
+        let s3 = runOnce(base + 2 )
         s1 * 10000 + s2 * 100 + s3 
     })
 
@@ -568,15 +559,15 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     /// and each perform's own answer is kept in its own positional field.
     let mixed = traced(fn() => {
         let m1 = tallyJob(3)
-        let f1 = await(spawn tallyJob(4))
+        let f1 = runOnce(4)
         let m2 = tallyJob(5)
-        let f2 = await(spawn tallyJob(6))
+        let f2 = runOnce(6)
         m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 
     })
 
     /// A SECOND region over the same captured binding: promotion is to one heap
     /// location, not one per region. 18 -> 22.
-    let carried = traced(fn() => await(spawn tallyJob(4)))
+    let carried = traced(fn() => runOnce(4))
 
     /// Four fibers in flight into ONE resuming region: a turn is atomic end to
     /// end, so four increments of one cannot collapse into fewer.
@@ -593,7 +584,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 
     /// A third region reads the cell back through the identity amount and never
     /// touches the trail: "code after the region observes the same location".
-    let readBack = untraced(fn() => await(spawn tallyJob(0)))
+    let readBack = untraced(fn() => runOnce(0))
 
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
@@ -618,8 +609,8 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         length(trail) == 23,
         startsWith(trail, "3:3|"),
         endsWith(trail, "4:22|"),
-        carriesAll(trail, ["4:7|", "5:12|", "6:18|", "|4:22|"]),
-        carriesNone(trail, ["3:4|", "4:11|", "6:14|"]),
+        containsAll(trail, ["4:7|", "5:12|", "6:18|", "|4:22|"]),
+        containsNone(trail, ["3:4|", "4:11|", "6:14|"]),
         !startsWith(trail, "4:7|"),
         !endsWith(trail, "6:18|"),
         trail != ""
@@ -764,8 +755,8 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         sent != 0,
         sent != 11,
         trail != "",
-        carriesAll(trail, ["22,", "33,"]),
-        carriesNone(trail, ["55,", ",0,"]),
+        containsAll(trail, ["22,", "33,"]),
+        containsNone(trail, ["55,", ",0,"]),
         length(trail) == 12,
         length(trail) != 0,
         (intDiv(sent, 11) ) == 10,
@@ -944,10 +935,10 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
                 running
             }
         }
-        let a = await(spawn tallyJob(1))
-        let b = await(spawn tallyJob(a + 1 ))
-        let c = await(spawn tallyJob(b + 1 ))
-        let d = await(spawn tallyJob(c + 1 ))
+        let a = runOnce(1)
+        let b = runOnce(a + 1 )
+        let c = runOnce(b + 1 )
+        let d = runOnce(c + 1 )
         let y = await(spawn yieldedJob(5))
         let f = spawn tallyJob(0 - 35 )
         let v = await(f)
@@ -991,8 +982,8 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         length(script) == 38,
         startsWith(script, "s1=1;"),
         endsWith(script, "s7=5;"),
-        carriesAll(script, ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"]),
-        carriesNone(script, ["s8=", "s1=2;", "s4=14;"]),
+        containsAll(script, ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"]),
+        containsNone(script, ["s8=", "s1=2;", "s4=14;"]),
         !endsWith(script, "s6=40;"),
         !startsWith(script, "s2="),
         script != ""
