@@ -106,6 +106,23 @@ lettered (texts) = forEachList (texts, \text => expect (letters text, true))
 
 offereds (labels) = forEachList (labels, offered)
 
+// A run of checks, in the order given.
+eachOf (steps) = forEachList (steps, \step => step ())
+
+// The folder the machine file's document sits in, for each document path.
+folders (cases) = forEachList (cases, \c => expect (MachineDocs::folder c.path, c.want))
+
+// A node's bypass press, with the bypass its switch must then record.
+bypassing (label, role) =
+    tap label
+    bypassed role
+
+// A node's enable press: its switch on, and the health its report must show.
+enabled (label, onRole, healthRole) =
+    tap label
+    flag ("${onRole}On", true)
+    knobText ("${healthRole}Health", "Healthy")
+
 // The knobs a move leaves behind, with the lettering it must show.
 knobsShow (cases, text) =
     reads (knobNumber, cases)
@@ -171,9 +188,7 @@ topologyInitial () =
     expect (labels (), "Skin: Topology|Bypass Policy|Bypass Client|Bypass Gateway|Bypass Service|Bypass Telemetry|Policy Threshold|Gateway Rate limit|Inspector: Bypass Gateway|Inspector: Rate limit|Select Policy|Select Client|Select Gateway|Select Service|Select Telemetry")
     lettered (["70%", "490 r/s", "Healthy", "Gateway", "Connections (4)"])
     skinned ("topology", [{ at = "control", want = 0.7 }, { at = "process", want = 0.7 }, { at = "level", want = 0.49 }])
-    expect (MachineDocs::folder "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", "C:/Program Files/Osprey/app")
-    expect (MachineDocs::folder "/opt/osprey/signal_flow.machine.json", "/opt/osprey")
-    expect (MachineDocs::folder "signal_flow.machine.json", "")
+    folders ([{ path = "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", want = "C:/Program Files/Osprey/app" }, { path = "/opt/osprey/signal_flow.machine.json", want = "/opt/osprey" }, { path = "signal_flow.machine.json", want = "" }])
 
 topologyBypass () =
     tap "Bypass Gateway"
@@ -209,13 +224,10 @@ topologySelection () =
 
 topologySignal () =
     slid ("Inspector: Threshold", 0.5, [{ at = "control", want = 0.5 }, { at = "level", want = 0.35 }], ["350 r/s"])
-    tap "Bypass Client"
-    bypassed "source"
+    bypassing ("Bypass Client", "source")
     reads (knobText, [{ at = "processHealth", want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
     knobsShow ([{ at = "level", want = 0.0 }], "0 r/s")
-    tap "Enable Client"
-    flag ("sourceOn", true)
-    knobText ("processHealth", "Healthy")
+    enabled ("Enable Client", "source", "process")
     tapAt ("Gateway Rate limit", 0.2)
     reads (knobNumber, [{ at = "process", want = 0.2 }, { at = "level", want = 0.1 }])
     knobText ("processHealth", "Degraded")
@@ -265,12 +277,10 @@ exercise (name, role) =
     tapAt ("Select ${name}", 0.1)
     knobText ("selected", role)
     offered "Inspector: Bypass ${name}"
-    tap "Bypass ${name}"
-    bypassed role
+    bypassing ("Bypass ${name}", role)
     offered "Enable ${name}"
     offered "Inspector: Enable ${name}"
-    tap "Enable ${name}"
-    healthy role
+    enabled ("Enable ${name}", role, role)
     offered "Inspector: Bypass ${name}"
 
 skinJourney (skin, control, source, process, output, monitor) =
@@ -296,16 +306,14 @@ restored (enableLabel, sliderLabel) =
 notationInspector () =
     inspectorSkin ("notation", "Inspector enabled: Bypass H(s)")
     offered "Inspector: Cutoff  ωc"
-    tap "Inspector enabled: Bypass H(s)"
-    bypassed "process"
+    bypassing ("Inspector enabled: Bypass H(s)", "process")
     offered "Inspector enabled: Enable H(s)"
     restored ("Inspector enabled: Enable H(s)", "Inspector: Cutoff  ωc")
     knobsShow ([{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }], "0.50")
 
 prismInspector () =
     inspectorSkin ("prism", "Inspector bypass: Bypass Filter")
-    tap "Inspector bypass: Bypass Filter"
-    bypassed "process"
+    bypassing ("Inspector bypass: Bypass Filter", "process")
     offered "Inspector bypass: Enable Filter"
     missing "Inspector bypass: Bypass Filter"
     offered "Inspector: Enable Filter"
@@ -369,8 +377,7 @@ prismWaves () =
 prismLevels () =
     slid ("Master Level", 1.0, [{ at = "volume", want = 1.0 }, { at = "delivered", want = 0.49 }], ["0.0 dB", "-12.2"])
     slid ("Master Level", 0.0, [{ at = "volume", want = 0.0 }, { at = "delivered", want = 0.0 }], ["-24.0 dB"])
-    tap "Select Master"
-    knobText ("selected", "output")
+    selected ("Select Master", "output")
     offered "Inspector: Level"
     missing "Inspector: Cutoff"
     expect (letters "Level", true)
@@ -391,48 +398,18 @@ prismParameters () =
     forEachList (["Oscillator", "Scope"], bare)
     missing "Inspector: Level"
 
-test ("topology: pointer editing, history, inspectors and signal health", \() => bench (\() =>
-    begun "topology"
-    topologyInitial ()
-    topologyBypass ()
-    topologyHistory ()
-    topologySelection ()
-    topologySignal ()))
+// The suite: each case names itself and, in order, the checks it drives.
+suites () = [
+    { name = "topology: pointer editing, history, inspectors and signal health", steps = [\() => begun "topology", topologyInitial, topologyBypass, topologyHistory, topologySelection, topologySignal] },
+    { name = "the skin menu dismisses, switches skins and preserves the session", steps = [menuOpened, menuChoice, menuCycle] },
+    { name = "every skin: every node selects, bypasses, enables and tracks its inspector", steps = [\() => skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry"), \() => skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope"), \() => skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor"), \() => skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")] },
+    { name = "notation and prism inspector switches and parameter lettering", steps = [notationInspector, prismInspector] },
+    { name = "prism: every chooser, slider, switch and the history drive the patch", steps = [prismInitial, prismRates, prismWaves, prismLevels, prismParameters] },
+    { name = "prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", steps = [\() => begun "prism", hovering, filterDrag, movedControls, scopeDrag, sliderDrag] },
+    { name = "prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none", steps = [grown, grownControls, shrunk] }
+]
 
-test ("the skin menu dismisses, switches skins and preserves the session", \() => bench (\() =>
-    menuOpened ()
-    menuChoice ()
-    menuCycle ()))
-
-test ("every skin: every node selects, bypasses, enables and tracks its inspector", \() => bench (\() =>
-    skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry")
-    skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope")
-    skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor")
-    skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")))
-
-test ("notation and prism inspector switches and parameter lettering", \() => bench (\() =>
-    notationInspector ()
-    prismInspector ()))
-
-test ("prism: every chooser, slider, switch and the history drive the patch", \() => bench (\() =>
-    prismInitial ()
-    prismRates ()
-    prismWaves ()
-    prismLevels ()
-    prismParameters ()))
-
-test ("prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", \() => bench (\() =>
-    begun "prism"
-    hovering ()
-    filterDrag ()
-    movedControls ()
-    scopeDrag ()
-    sliderDrag ()))
-
-test ("prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none", \() => bench (\() =>
-    grown ()
-    grownControls ()
-    shrunk ()))
+runSuites () = forEachList (suites (), \s => test (s.name, \() => bench (\() => eachOf (s.steps))))
 
 clearly skin =
     begun skin
