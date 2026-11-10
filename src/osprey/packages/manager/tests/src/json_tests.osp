@@ -14,6 +14,15 @@ module JsonTests {
         Error { message } => message
     }
 
+    /// `text` as a quoted JSON string body.
+    fn quoted(text) = "\"" + text + "\""
+
+    /// Every text in `texts` parses to `code@offset` for the matching offset.
+    fn problemsAt(texts, code, offsets) = structuralEquals(mapList(texts, fn(t) => problem(t)), mapList(offsets, fn(o) => "${code}@${o}"))
+
+    /// A member holding an integer `n`.
+    fn member(key, n) = Json::Member { key: key, value: Json::Num { value: n } }
+
     /// Canonical serialization of the parse, or the described problem.
     fn canon(text) = match Json::parse(text) {
         Success { value } => Canonical::serialize(value) ?: "?"
@@ -43,8 +52,8 @@ module JsonTests {
     }
 
     fn dupMembers() = [
-        Json::Member { key: "a", value: Json::Num { value: 1 } },
-        Json::Member { key: "a", value: Json::Num { value: 2 } }
+        member("a", 1),
+        member("a", 2)
     ]
 
     fn values() = checkAll("scalars, containers, whitespace and escapes decode", [
@@ -61,30 +70,18 @@ module JsonTests {
     fn integers() = checkAll("64-bit integer edges stay in range", [
         structuralEquals([canon("0"), canon("9223372036854775807")], ["0", "9223372036854775807"]),
         canon("-9223372036854775808") == "-9223372036854775808",
-        problem("9223372036854775808") == "json.integer-range@0",
-        problem("-9223372036854775809") == "json.integer-range@0",
-        problem("99999999999999999999") == "json.integer-range@0"
+        problemsAt(["9223372036854775808", "-9223372036854775809", "99999999999999999999"], "json.integer-range", [0, 0, 0])
     ])
 
     fn shapes() = checkAll("non-integer numbers report at the number start", [
-        structuralEquals([problem("1.5"), problem("1e3")], ["json.non-integer@0", "json.non-integer@0"]),
-        structuralEquals([problem("1E3"), problem("01")], ["json.non-integer@0", "json.non-integer@0"]),
-        structuralEquals([problem("-0"), problem("-01")], ["json.non-integer@0", "json.non-integer@0"]),
-        structuralEquals([problem("[1.0]"), problem("0.0")], ["json.non-integer@1", "json.non-integer@0"])
+        problemsAt(["1.5", "1e3", "1E3", "01", "-0", "-01"], "json.non-integer", [0, 0, 0, 0, 0, 0]),
+        problemsAt(["[1.0]", "0.0"], "json.non-integer", [1, 0])
     ])
 
     fn problems() = checkAll("structural problems carry exact byte offsets", [
-        structuralEquals([problem(""), problem("   ")], ["json.unexpected-end@0", "json.unexpected-end@3"]),
-        structuralEquals([problem("[1,"), problem("{\"a\"")], ["json.unexpected-end@3", "json.unexpected-end@4"]),
-        structuralEquals([problem("\"abc"), problem("\"ab\\uD8")], ["json.unexpected-end@4", "json.unexpected-end@7"]),
-        structuralEquals([problem("tru"), problem("-")], ["json.unexpected-end@3", "json.unexpected-end@1"]),
-        structuralEquals([problem("x"), problem("{1:2}")], ["json.unexpected-token@0", "json.unexpected-token@1"]),
-        problem("[1 2]") == "json.unexpected-token@3",
-        problem("{\"a\" 1}") == "json.unexpected-token@5",
-        problem("[1,]") == "json.unexpected-token@3",
-        problem("{\"a\":1,}") == "json.unexpected-token@7",
-        structuralEquals([problem("nullx"), problem("1 x")], ["json.trailing-text@4", "json.trailing-text@2"]),
-        problem("{}[]") == "json.trailing-text@2",
+        problemsAt(["", "   ", "[1,", "{\"a\"", "\"abc", "\"ab\\uD8", "tru", "-"], "json.unexpected-end", [0, 3, 3, 4, 4, 7, 3, 1]),
+        problemsAt(["x", "{1:2}", "[1 2]", "{\"a\" 1}", "[1,]", "{\"a\":1,}"], "json.unexpected-token", [0, 1, 3, 5, 3, 7]),
+        problemsAt(["nullx", "1 x", "{}[]"], "json.trailing-text", [4, 2, 2]),
         problem("{\"a\":1,\"a\":2}") == "json.duplicate-key@7"
     ])
 
@@ -94,17 +91,10 @@ module JsonTests {
     ])
 
     fn strings() = checkAll("string content problems carry exact offsets", [
-        problem("\"a" + cp(1) + "b\"") == "json.control-character@2",
-        problem("\"\\u0000\"") == "json.control-character@1",
-        structuralEquals([problem("\"a\\qb\""), problem("\"a\\u12x4\"")], ["json.bad-escape@2", "json.bad-escape@2"]),
-        problem("\"a\\uzz\"") == "json.bad-escape@2",
-        problem("\"\\uD800\"") == "json.bad-surrogate@1",
-        problem("\"\\uDC00\"") == "json.bad-surrogate@1",
-        problem("\"\\uDC00\\uD800\"") == "json.bad-surrogate@1",
-        problem("\"\\uD800x\"") == "json.bad-surrogate@1",
-        problem("\"\\uD800\\u0041\"") == "json.bad-surrogate@1",
-        problem("\"\\uD800\\uD800\"") == "json.bad-surrogate@1",
-        structuralEquals([problem("\"\\uD800\\uD\""), problem("\"\\ud83d\\ude00\"")], ["json.bad-escape@1", "ok"])
+        problemsAt([quoted("a" + cp(1) + "b"), quoted("\\u0000")], "json.control-character", [2, 1]),
+        problemsAt([quoted("a\\qb"), quoted("a\\u12x4"), quoted("a\\uzz")], "json.bad-escape", [2, 2, 2]),
+        problemsAt([quoted("\\uD800"), quoted("\\uDC00"), quoted("\\uDC00\\uD800"), quoted("\\uD800x"), quoted("\\uD800\\u0041"), quoted("\\uD800\\uD800")], "json.bad-surrogate", [1, 1, 1, 1, 1, 1]),
+        structuralEquals([problem(quoted("\\uD800\\uD")), problem(quoted("\\ud83d\\ude00"))], ["json.bad-escape@1", "ok"])
     ])
 
     /// `substring` slices bytes, so mid-codepoint cuts are raw invalid UTF-8.
@@ -112,9 +102,8 @@ module JsonTests {
         let lone = substring("é", 1, 2) ?: ""
         let truncated = substring("é", 0, 1) ?: ""
         checkAll("invalid UTF-8 in string content", [
-            problem("\"" + lone + "\"") == "json.utf8@1",
-            problem("\"" + truncated + "\"") == "json.utf8@1",
-            problem("\"ok" + lone + "\"") == "json.utf8@3"
+            problemsAt([quoted(lone), quoted(truncated)], "json.utf8", [1, 1]),
+            problem(quoted("ok" + lone)) == "json.utf8@3"
         ])
     }
 
@@ -135,17 +124,9 @@ module JsonTests {
         // astral key U+10300 widens to units U+D800,U+DF00 and U+D800 is a
         // single unit below U+FF5E, so it sorts BEFORE the fullwidth tilde.
         let members = [
-            Json::Member { key: cp(65374), value: Json::Num { value: 11 } },
-            Json::Member { key: "a", value: Json::Num { value: 7 } },
-            Json::Member { key: cp(8364), value: Json::Num { value: 9 } },
-            Json::Member { key: "1", value: Json::Num { value: 3 } },
-            Json::Member { key: cp(66304), value: Json::Num { value: 10 } },
-            Json::Member { key: cp(1), value: Json::Num { value: 2 } },
-            Json::Member { key: "", value: Json::Num { value: 1 } },
-            Json::Member { key: "10", value: Json::Num { value: 4 } },
-            Json::Member { key: "2", value: Json::Num { value: 5 } },
-            Json::Member { key: "A", value: Json::Num { value: 6 } },
-            Json::Member { key: cp(128), value: Json::Num { value: 8 } }
+            member(cp(65374), 11), member("a", 7), member(cp(8364), 9), member("1", 3),
+            member(cp(66304), 10), member(cp(1), 2), member("", 1), member("10", 4),
+            member("2", 5), member("A", 6), member(cp(128), 8)
         ]
         let expected = "{\"\":1,\"\\u0001\":2,\"1\":3,\"10\":4,\"2\":5,\"A\":6,\"a\":7,\"" + cp(128) + "\":8,\"" + cp(8364) + "\":9,\"" + cp(66304) + "\":10,\"" + cp(65374) + "\":11}"
         check("RFC 8785 Appendix B key ordering", expected, ser(Json::Obj { members: members }))
@@ -185,6 +166,8 @@ module JsonTests {
 
     fn longText() = repeat("a", longRun) ?: ""
 
+    fn repeated(text) = repeat(text, longRun) ?: ""
+
     fn parsedLength(text) = match Json::parse(text) {
         Success { value } => match value {
             Json::Str { text } => byteLength(text)
@@ -198,15 +181,13 @@ module JsonTests {
     /// Strings and whitespace far longer than one stack frame per byte
     /// allows: a scanner that recursed per byte overflowed near 6,000 bytes.
     fn longInputs() = checkAll("long strings parse and render", [
-        parsedLength("\"" + longText() + "\"") == longRun,
-        parsedLength((repeat(" ", longRun) ?: "") + "\"x\"" + (repeat("\n", longRun) ?: "")) == 1,
-        parsedLength("\"" + longText() + "\\n" + longText() + "\"") == 2 * longRun + 1,
-        parsedLength("\"" + (repeat("é", longRun) ?: "") + "\"") == 2 * longRun,
-        parsedLength("\"" + (repeat("\\n", longRun) ?: "") + "\"") == longRun,
-        problem("\"" + (repeat("\\n", longRun) ?: "") + "\\q\"") == "json.bad-escape@${2 * longRun + 1}",
+        structuralEquals([parsedLength(quoted(longText())), parsedLength(quoted(repeated("\\n")))], [longRun, longRun]),
+        parsedLength(repeated(" ") + quoted("x") + repeated("\n")) == 1,
+        parsedLength(quoted(longText() + "\\n" + longText())) == 2 * longRun + 1,
+        parsedLength(quoted(repeated("é"))) == 2 * longRun,
+        problem(quoted(repeated("\\n") + "\\q")) == "json.bad-escape@${2 * longRun + 1}",
         canonicalLength(longText()) == longRun + 2,
-        canonicalLength(repeat("\n", longRun) ?: "") == 2 * longRun + 2,
-        canonicalLength(repeat("é", longRun) ?: "") == 2 * longRun + 2,
+        structuralEquals([canonicalLength(repeated("\n")), canonicalLength(repeated("é"))], [2 * longRun + 2, 2 * longRun + 2]),
         canonicalLength(longText() + "\n" + longText()) == 2 * longRun + 4
     ])
 
