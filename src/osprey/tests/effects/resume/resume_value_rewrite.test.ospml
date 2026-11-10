@@ -1,5 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-
 (** Supply lets a handler choose each integer observed by the performer. *)
 effect Supply
     (** Request the next scripted value for `label`. *)
