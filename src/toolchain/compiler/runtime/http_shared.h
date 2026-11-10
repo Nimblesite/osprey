@@ -162,4 +162,15 @@ WsEvent ws_stream_next(WsStream *stream);
 void ws_stream_release(WsStream *stream);
 char *create_websocket_handshake_response(const char *key);
 
+// The value of one hexadecimal digit, either case, or -1 for any other byte.
+static inline int hex_digit_value(char c) {
+  if (c >= '0' && c <= '9') {
+    return c - '0';
+  }
+  if (c >= 'a' && c <= 'f') {
+    return c - 'a' + 10;
+  }
+  return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
 #endif // HTTP_SHARED_H

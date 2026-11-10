@@ -29,16 +29,6 @@ bool http_has_control_byte(const char *p, const char *end) {
   return false;
 }
 
-static int hex_digit(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  return c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
-}
-
 // Parses "<hex-size>[ws][;ext]\r\n" at *cursor and moves past it. Returns NULL,
 // or why the line is malformed. A size that overflows is malformed, so it can
 // never wrap round to a small value that passes the caller's bound.
@@ -47,11 +37,11 @@ static const char *parse_chunk_size(const char **cursor, const char *end,
   const char *p = *cursor;
   const char *digits = p;
   *size = 0;
-  for (; p < end && hex_digit(*p) >= 0; p++) {
+  for (; p < end && hex_digit_value(*p) >= 0; p++) {
     if (*size > SIZE_MAX / 16) {
       return CHUNK_BAD_SIZE;
     }
-    *size = *size * 16 + (size_t)hex_digit(*p);
+    *size = *size * 16 + (size_t)hex_digit_value(*p);
   }
   if (p == end) {
     return CHUNK_CUT_SHORT;
