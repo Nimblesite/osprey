@@ -45,12 +45,11 @@ atIs (values, i, want) = exact (at (values, i), want)
 nearAt (values, i, want) = near (at (values, i), want)
 (** atsFrom and nearsFrom are atIs and nearAt over a run: `values` from `index`
     on hold `wants`, in order. *)
-atsFrom (values, index, wants) = match wants
+fromsBy (one, values, index, wants) = match wants
     [] => true
-    [want, ...rest] => atIs (values, index, want) && atsFrom (values, (index + 1), rest)
-nearsFrom (values, index, wants) = match wants
-    [] => true
-    [want, ...rest] => nearAt (values, index, want) && nearsFrom (values, (index + 1), rest)
+    [want, ...rest] => one (values, index, want) && fromsBy (one, values, (index + 1), rest)
+atsFrom (values, index, wants) = fromsBy (atIs, values, index, wants)
+nearsFrom (values, index, wants) = fromsBy (nearAt, values, index, wants)
 gelu x = toFloat32 0.5 * x * (toFloat32 1.0 + tanh (geluScale * (x + geluCubic * x * x * x)))
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (step, modulus, shift, scale, grid0) = gpuMap (grid0, \i => toFloat32 ((i * step) % modulus - shift) / scale)
@@ -171,20 +170,20 @@ written (path, content) =
         Error _ => false
 loadFailure (path, offset, count) = failureOf (gpuLoad (path, offset, count))
 tensorFailure (path, name) = failureOf (gpuLoadTensor (path, name))
-matMulExactCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), \left => withBuffer(floats ([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), \right => matMulExactCaseUploaded(left, right)))
+(** Two uploaded float buffers in sequence: the entry shape the buffer cases share. *)
+twoFloats (xs, ys, next) = withBuffer (floats (xs), \a => withBuffer (floats (ys), \b => next (a, b)))
+matMulExactCase () = twoFloats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
 matMulExactCaseUploaded (left, right) =
     withBuffer (product (left, right, 2, 3, 2),
-        \square => withBuffer (floats ([2.0, 3.0]),
-        \uploaded27 => withBuffer (floats ([5.0, 7.0]),
-        \uploaded28 => withBuffer (product (uploaded27, uploaded28, 2, 1, 2),
-        \outer => withBuffer (floats ([]),
-        \uploaded29 => withBuffer (floats ([]),
-        \uploaded30 => withBuffer (product (uploaded29, uploaded30, 2, 0, 2),
+        \square => twoFloats ([2.0, 3.0], [5.0, 7.0],
+        \(uploaded27, uploaded28) => withBuffer (product (uploaded27, uploaded28, 2, 1, 2),
+        \outer => twoFloats ([], [],
+        \(uploaded29, uploaded30) => withBuffer (product (uploaded29, uploaded30, 2, 0, 2),
         \hollow => checkAll "gpuMatMul forms the row-major product of the stated shapes" [
             gpuLength square == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
             gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
             gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
-        ])))))))
+        ])))))
 (** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
     added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
@@ -201,7 +200,7 @@ matMulOrderCase () =
         \unfused => checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
             atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at (unfused, 0) == 3.0 * ulp
         ]))))))))
-matMulShapeCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0]), \four => withBuffer(floats ([1.0, 2.0, 3.0]), \three => matMulShapeCaseUploaded(four, three)))
+matMulShapeCase () = twoFloats([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], matMulShapeCaseUploaded)
 matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
         matMulFailure (three, four, 2, 2, 2) == "gpuMatMul: left operand: has 3 elements, the stated shape needs 4",
@@ -277,12 +276,16 @@ attentionExactWith (grid0, grid1, grid2) =
         gpuLength(single) == 4, atsFrom(single, 0, [8.0, 9.0, 10.0, 11.0]),
         gpuLength(pair) == 8, atsFrom(pair, 0, [1.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 6.0])
     ])))))
-embedCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => embedWith (grid0, grid1, grid2))))
+(** The index grids every embedded-pair case allocates, innermost last: the attention cases extend them to grid6, the block cases to grid8. *)
+withEmbedGrids (next) = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => next (grid0, grid1, grid2))))
+withPairGrids (next) = withEmbedGrids (\(grid0, grid1, grid2) => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => next (grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))
+withBlockGrids (next) = withPairGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, grid6) => withIndices (16, \grid7 => withIndices (32, \grid8 => next (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))
+embedCase () = withEmbedGrids (embedWith)
 embedWith (grid0, grid1, grid2) =
     withBuffer(miniTokens(), \uploaded10 => withBuffer(embedOf(grid0, grid1, uploaded10, grid2), \x => checkAll("embed gathers each token's row and adds its position's row", [
         gpuLength(x) == 8, atsFrom(x, 0, [-1.0, 1.75, 0.25, 1.875, -1.125, 0.5, -1.0, 0.625])
     ])))
-attentionCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))))
+attentionCase () = withPairGrids (attentionWith)
 (** The embedded pair through its qkv product: the prefix the full pass and the cached step share. *)
 withEmbeddedQkv (grid0, grid1, grid2, grid3, grid4, grid5, grid6, next) =
     withBuffer(miniTokens(), \tokens => withBuffer(embedOf(grid0, grid1, tokens, grid2), \x => withBuffer(lnParams(grid3), \ln => withBuffer(qkvParams(grid5, grid1), \qkvW1 => withBuffer(layerNorm(x, ln.gain, ln.bias, grid4, grid2), \normed => withBuffer(linear(normed, 2, width, qkvWidth, qkvW1.weight, qkvW1.bias, grid6), \qkv => next(x, ln, qkvW1, normed, qkv)))))))
@@ -294,15 +297,7 @@ attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
     ])))
 (** The KV-cached step: the newest position attends through the earlier rows with the full pass's arithmetic, and LayerNorm and linear are row-wise, so one row's pass
     equals that row of the two-row pass bit for bit — which is why src/osprey/examples/llms/gpt2's generate can grow a cache instead of recomputing. *)
-cachedStepCase () = withIndices (20,
-    \grid0 => withIndices (12,
-    \grid1 => withIndices (8,
-    \grid2 => withIndices (4,
-    \grid3 => withIndices (2,
-    \grid4 => withIndices (48,
-    \grid5 => withIndices (24,
-    \grid6 => withIndices (1,
-    \grid7 => cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))))))))
+cachedStepCase () = withPairGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, grid6) => withIndices (1, \grid7 => cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))
 (** Row r of a [rows, n] buffer, and whether a [1, n] buffer equals that row exactly. *)
 rowOf (x, r, n, grid0) = grid0 |> gpuMap (\c => at (x, r * n + c))
 sameRow (single, rows, r, n) = range (0, n) |> fold true (\(ok, c) => ok && at (single, c) == at (rows, r * n + c))
@@ -322,15 +317,7 @@ cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
         sameRow(rowNormed, normed, 1, width),
         sameRow(oneRow, qkv, 1, qkvWidth)
     ]))))))))))
-blockCase () = withIndices (20,
-    \grid0 => withIndices (12,
-    \grid1 => withIndices (8,
-    \grid2 => withIndices (4,
-    \grid3 => withIndices (2,
-    \grid4 => withIndices (48,
-    \grid5 => withIndices (24,
-    \grid6 => withIndices (16,
-    \grid7 => withIndices (32, \grid8 => blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))))))))
+blockCase () = withBlockGrids (blockWith)
 (** The embedded pair through one pre-norm block: the prefix blockCase and nextTokenCase share. *)
 withBlockedPair (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, next) =
     withBuffer(miniTokens(), \tokens => withBuffer(embedOf(grid0, grid1, tokens, grid2), \x => withBuffer(block(x, 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7), \y => next(y))))
@@ -341,16 +328,7 @@ blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
         nearsFrom(y, 0, [-1.6005736589431763, 1.6570606231689453, 0.7819118499755859, 2.600027084350586, -1.487461805343628, 0.04813048243522644, -0.6083625555038452, 1.421419620513916]),
         near(total, 2.8121519088745117)
     ])))
-nextTokenCase () = withIndices (20,
-    \grid0 => withIndices (12,
-    \grid1 => withIndices (8,
-    \grid2 => withIndices (4,
-    \grid3 => withIndices (2,
-    \grid4 => withIndices (48,
-    \grid5 => withIndices (24,
-    \grid6 => withIndices (16,
-    \grid7 => withIndices (32,
-    \grid8 => withIndices (5, \grid9 => nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))))))))))
+nextTokenCase () = withBlockGrids (\(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) => withIndices (5, \grid9 => nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))
 nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, \y => withBuffer(lnParams(grid3),
         \ln => withBuffer(layerNorm(y, ln.gain, ln.bias, grid4, grid2),
