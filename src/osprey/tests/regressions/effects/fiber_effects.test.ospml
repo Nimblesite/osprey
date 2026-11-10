@@ -51,6 +51,11 @@ classify score = match score
     0 => Failed(code = (0 - 1) )
     _ => Done(score = score)
 
+(** Print the union a fiber result classified into. *)
+showOutcome o = match o
+    Done score  => print ("outcome done " + toString score)
+    Failed code => print ("outcome failed " + toString code)
+
 (** (1) Effect inside a fiber-run worker. *)
 runJob weight =
     perform Logger.log ("weight " + toString weight)
@@ -98,14 +103,8 @@ mixupDemo () =
     print ("job " + toString top.id + " score " + toString top.score)
 
     (** classify a fiber result into a union, then pattern-match it inline *)
-    oTop = classify sHigh
-    match oTop
-        Done score  => print ("outcome done " + toString score)
-        Failed code => print ("outcome failed " + toString code)
-    oZero = classify 0
-    match oZero
-        Done score  => print ("outcome done " + toString score)
-        Failed code => print ("outcome failed " + toString code)
+    showOutcome (classify sHigh)
+    showOutcome (classify 0)
 
     (** results into a persistent list, walked with functional builtins *)
     scores = listAppend (listAppend (listAppend (List ()) sHigh) sMed) sLow
@@ -149,11 +148,14 @@ pairSum (a, b) =
     f2 = spawn (ask b)
     (await f1) + (await f2) 
 
+(** The two-fiber resuming interaction under a Gift region answering `tag * 10`. *)
+giftPairSum () =
+    handle Gift
+        get tag => resume ((tag * 10) )
+    pairSum (1, 2)
+
 raceSum =
-    exactArithmetic (\() =>
-        handle Gift
-            get tag => resume ((tag * 10) )
-        pairSum (1, 2))
+    exactArithmetic (\() => giftPairSum ())
 print ("race-free sum " + toString raceSum)
 print "=== done ==="
 
@@ -164,10 +166,7 @@ highScoreForTest () =
     await (spawn (runJob (priWeight High)))
 
 (** Repeats the two-fiber resuming interaction for assertion use. *)
-pairedScoreForTest () =
-    handle Gift
-        get tag => resume ((tag * 10) )
-    pairSum (1, 2)
+pairedScoreForTest () = giftPairSum ()
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
