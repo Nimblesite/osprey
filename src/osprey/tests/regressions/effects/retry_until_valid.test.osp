@@ -590,7 +590,7 @@ fn retryPayloadChannelMatrixCase() = {
         }
         comboBody()
     }
-    // One transcript entry per handler operation, so the count is the trail's.
+    /// One transcript entry per handler operation, so the count is the trail's.
     let comboCalls = barCount(comboTrail)
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
