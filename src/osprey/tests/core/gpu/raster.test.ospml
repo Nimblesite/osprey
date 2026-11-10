@@ -133,6 +133,15 @@ litCountOf (pixels, predicate) = gpuSatisfies(gpuFilter (pixels, litPixel), \lit
 grandIs (result, want) = gpuSatisfies(result, \pixels => gpuSatisfies(total(pixels), \grand => grand == want))
 litIs (result, want) = gpuSatisfies(result, \pixels => litCountOf(pixels, \lit => lit == want))
 texelIs (result, index, want) = gpuSatisfies(result, \pixels => texel (pixels, index) == want)
+(** texelRun is whether [pixels] holds [want] in order from index [start] — the run form of texel, so a contiguous band of pixels is one assertion. A gather that
+    errored reads the impossible level, so a broken run can never pass. *)
+texelRun (pixels, start, want) = match want
+    [] => true
+    [v, ...rest] => texel (pixels, start) == v && texelRun (pixels, ((start + 1) ), rest)
+(** texelRunOf is texelRun over a dispatched buffer, so a run of texelIs assertions is one line. *)
+texelRunOf (result, start, want) = match want
+    [] => true
+    [v, ...rest] => texelIs(result, start, v) && texelRunOf (result, ((start + 1) ), rest)
 overLayer (bg, fg) = match fg > 0
     true => fg
     false => bg
@@ -261,9 +270,7 @@ edgeCase () = checkAll "edge function" [
 triangleCase () = withIndices (8, \indices8 => withIndices (64, \indices64 => triangleWith (indices8, indices64)))
 triangleWith (indices8, indices64) =
     withBuffer(triCover(indices64), \cover => withBuffer(rowSums(cover, tileEdge(), indices8), \sums => checkAll("triangle", [
-        grandIs (cover, 21), litIs (cover, 21), texel(sums, 0) == 0, texel(sums, 1) == 6,
-        texel(sums, 2) == 5, texel(sums, 3) == 4, texel(sums, 4) == 3, texel(sums, 5) == 2,
-        texel(sums, 6) == 1, texel(sums, 7) == 0,
+        grandIs (cover, 21), litIs (cover, 21), texelRun (sums, 0, [0, 6, 5, 4, 3, 2, 1, 0]),
         grandIs (sums, 21), spanStart(cover, tileEdge(), 0, 0) == 8,
         spanStart(cover, tileEdge(), 1, 0) == 1, spanStart(cover, tileEdge(), 6, 0) == 1,
         texel(cover, flatIndex(6, 1, tileEdge())) == 1, texel(cover, flatIndex(7, 1, tileEdge())) == 0,
@@ -330,10 +337,7 @@ samplingWith (indices0, indices4, indices16) =
         gpuSatisfies(toGpu([7]), \uploaded7 => sampleClamped(uploaded7, 1, 1, 5, 5) == 7),
         gpuSatisfies(toGpu([5, 6, 7]), \uploaded6 => sampleClamped(uploaded6, 3, 1, 2, 4) == 7),
         gpuSatisfies(toGpu([5, 6, 7]), \uploaded5 => sampleClamped(uploaded5, 1, 3, 4, 2) == 7), gpuLength(big) == 16,
-        texel(big, 0) == 1, texel(big, 1) == 1, texel(big, 2) == 2, texel(big, 3) == 2,
-        texel(big, 4) == 1, texel(big, 5) == 1, texel(big, 6) == 2, texel(big, 7) == 2,
-        texel(big, 8) == 3, texel(big, 9) == 3, texel(big, 10) == 4, texel(big, 11) == 4,
-        texel(big, 12) == 3, texel(big, 13) == 3, texel(big, 14) == 4, texel(big, 15) == 4,
+        texelRun (big, 0, [1, 1, 2, 2, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 4, 4]),
         grandIs (big, 40),
         gpuSatisfies(toGpu([7]), \uploaded4 => gpuLengthIs(upscale2(uploaded4, 1, 1, indices4), 4)),
         gpuSatisfies(toGpu([7]), \uploaded3 => grandIs(upscale2(uploaded3, 1, 1, indices4), 28)),
@@ -344,12 +348,10 @@ samplingWith (indices0, indices4, indices16) =
 gatherCase () = withIndices (1, \indices1 => withIndices (2, \indices2 => withIndices (3, \indices3 => withIndices (6, \indices6 => withIndices (64, \indices64 => gatherWith (indices1, indices2, indices3, indices6, indices64))))))
 gatherWith (indices1, indices2, indices3, indices6, indices64) =
     withBuffer(toGpu([1, 2, 3, 4, 5, 6]), \src => withBuffer(transposeOf(src, 3, 2, indices6), \flipped => withBuffer(triCover(indices64), \cover => withBuffer(gpuScan(cover, 0, addLevels), \running => checkAll("gather", [
-        gpuLength(flipped) == 6, texel(flipped, 0) == 1, texel(flipped, 1) == 4,
-        texel(flipped, 2) == 2, texel(flipped, 3) == 5, texel(flipped, 4) == 3, texel(flipped, 5) == 6,
+        gpuLength(flipped) == 6, texelRun (flipped, 0, [1, 4, 2, 5, 3, 6]),
         gpuSatisfies(transposeOf(flipped, 2, 3, indices6), \restored => grandIs(gpuZipWith(restored, src, channelSub), 0)),
-        texelIs(rowSums(src, 3, indices2), 0, 6), texelIs(rowSums(src, 3, indices2), 1, 15),
-        texelIs(rowSums(flipped, 2, indices3), 0, 5), texelIs(rowSums(flipped, 2, indices3), 1, 7),
-        texelIs(rowSums(flipped, 2, indices3), 2, 9),
+        texelRunOf(rowSums(src, 3, indices2), 0, [6, 15]),
+        texelRunOf(rowSums(flipped, 2, indices3), 0, [5, 7, 9]),
         rowTotal(src, 3, 0, 0) == 6, rowTotal(src, 6, 0, 0) == 21, rowTotal(src, 1, 4, 0) == 5,
         gpuSatisfies(toGpu([9]), \uploaded1 => texelIs(transposeOf(uploaded1, 1, 1, indices1), 0, 9)),
         texel(running, 7) == 0, texel(running, 15) == 6, texel(running, 23) == 11, texel(running, 63) == 21
@@ -358,11 +360,7 @@ gatherWith (indices1, indices2, indices3, indices6, indices64) =
     nothing here is a spot check. *)
 quadCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => quadWith (indices0, indices16)))
 quadWith (indices0, indices16) = quadEach (indices16, \quad => checkAll "quad pipeline" [
-        gpuLength quad == 16, texel (quad, 0) == 9, texel (quad, 1) == 9,
-        texel (quad, 2) == 9, texel (quad, 3) == 9, texel (quad, 4) == 9, texel (quad, 5) == 9,
-        texel (quad, 6) == 9, texel (quad, 7) == 6, texel (quad, 8) == 9, texel (quad, 9) == 9,
-        texel (quad, 10) == 4, texel (quad, 11) == 6, texel (quad, 12) == 9, texel (quad, 13) == 2,
-        texel (quad, 14) == 4, texel (quad, 15) == 6,
+        gpuLength quad == 16, texelRun (quad, 0, [9, 9, 9, 9, 9, 9, 9, 6, 9, 9, 4, 6, 9, 2, 4, 6]),
         grandIs (quad, 118), gpuLengthIs(gpuFilter (quad, interiorPixel), 10),
         litIs (quad, 16),
         rowText (quad, quadEdge (), 0) == "@@@@", rowText (quad, quadEdge (), 1) == "@@@*",
