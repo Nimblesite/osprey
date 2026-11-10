@@ -124,11 +124,10 @@ fn channelMul(a, b) = clampRange(intDiv((a * b) , channelMax()) , 0, channelMax(
 fn texel(pixels, i) = gpuGet(pixels, i) ?: outOfFrame()
 fn total(pixels) = gpuFold(pixels, 0, addLevels)
 fn litCountOf(pixels, predicate) = gpuSatisfies(gpuFilter(pixels, litPixel), fn(lit) => predicate(gpuLength(lit)))
-/// grandIs is whether the pixels a dispatch produced total [want]; litIs is whether exactly [want] of them are lit, texelIs whether pixel [index] is [want], and lengthIs whether the dispatch produced [want] pixels. Every scene assertion below is one of those four.
+/// grandIs is whether the pixels a dispatch produced total [want]; litIs is whether exactly [want] of them are lit, texelIs whether pixel [index] is [want], and gpuLengthIs whether the dispatch produced [want] pixels. Every scene assertion below is one of those four.
 fn grandIs(result, want) = gpuSatisfies(result, fn(pixels) => gpuSatisfies(total(pixels), fn(grand) => grand == want))
 fn litIs(result, want) = gpuSatisfies(result, fn(pixels) => litCountOf(pixels, fn(lit) => lit == want))
 fn texelIs(result, index, want) = gpuSatisfies(result, fn(pixels) => texel(pixels, index) == want)
-fn lengthIs(result, want) = gpuSatisfies(result, fn(pixels) => gpuLength(pixels) == want)
 fn overLayer(bg, fg) = match fg > 0 { true => fg false => bg }
 fn addLevels(a, b) = (a + b)
 fn litPixel(level) = level > 0
@@ -195,12 +194,12 @@ fn gallery(indices1536, indices64, indices16, texels) =
 /// entirely.
 fn dispatchCase() = withIndices(0, fn(indices0) => withIndices(8, fn(indices8) => withIndices(16, fn(indices16) => withIndices(64, fn(indices64) => withIndices(1536, fn(indices1536) => dispatchWith(indices0, indices8, indices16, indices64, indices1536))))))
 fn dispatchWith(indices0, indices8, indices16, indices64, indices1536) = checkAll("dispatch", [
-        gpuLength(indices1536) == 1536, lengthIs(mandelFrame(indices1536), 1536),
-        lengthIs(sphereFrame(indices1536), 1536), gpuLength(indices64) == 64,
-        lengthIs(triCover(indices64), 64),
-        gpuSatisfies(gpuMap(indices16, gradientPixel), fn(gradient) => gpuSatisfies(gpuMap(indices16, wedgePixel), fn(wedge) => lengthIs(gpuZipWith(gradient, wedge, overLayer), 16))),
-        gpuSatisfies(triCover(indices64), fn(cover) => lengthIs(rowSums(cover, tileEdge(), indices8), 8)),
-        gpuLength(indices0) == 0, lengthIs(gpuMap(indices0, residual), 0),
+        gpuLength(indices1536) == 1536, gpuLengthIs(mandelFrame(indices1536), 1536),
+        gpuLengthIs(sphereFrame(indices1536), 1536), gpuLength(indices64) == 64,
+        gpuLengthIs(triCover(indices64), 64),
+        gpuSatisfies(gpuMap(indices16, gradientPixel), fn(gradient) => gpuSatisfies(gpuMap(indices16, wedgePixel), fn(wedge) => gpuLengthIs(gpuZipWith(gradient, wedge, overLayer), 16))),
+        gpuSatisfies(triCover(indices64), fn(cover) => gpuLengthIs(rowSums(cover, tileEdge(), indices8), 8)),
+        gpuLength(indices0) == 0, gpuLengthIs(gpuMap(indices0, residual), 0),
         litIs(indices0, 0), grandIs(indices0, 0), texel(indices0, 0) == outOfFrame(),
         gpuSatisfies(triCover(indices64), fn(cover) => texel(cover, 64) == outOfFrame()),
         gpuSatisfies(triCover(indices64), fn(cover) => texel(cover, (0 - 1) ) == outOfFrame()), gpuDevice() == "host"
@@ -226,7 +225,7 @@ fn decomposeWith(indices1536) = {
                 grandIs(gpuMap(indices1536, residual), 0),
                 litIs(gpuMap(indices1536, residual), 0),
                 grandIs(cols, 48384), grandIs(rows, 17664), grandIs(indices1536, 1178880),
-                lengthIs(gpuFilter(cols, lastColumn), 24), litIs(cols, 1512), litIs(rows, 1472),
+                gpuLengthIs(gpuFilter(cols, lastColumn), 24), litIs(cols, 1512), litIs(rows, 1472),
                 texel(cols, 0) == 0, texel(rows, 0) == 0, texel(cols, 63) == 63, texel(rows, 63) == 0,
                 texel(cols, 64) == 0, texel(rows, 64) == 1, texel(cols, 1535) == 63, texel(rows, 1535) == 23,
                 flatIndex(0, 0, frameWidth()) == 0, flatIndex(63, 23, frameWidth()) == 1535,
@@ -329,9 +328,9 @@ fn samplingWith(indices0, indices4, indices16) = withBuffer(toGpu([1, 2, 3, 4]),
             texel(big, 8) == 3, texel(big, 9) == 3, texel(big, 10) == 4, texel(big, 11) == 4,
             texel(big, 12) == 3, texel(big, 13) == 3, texel(big, 14) == 4, texel(big, 15) == 4,
             grandIs(big, 40),
-            gpuSatisfies(toGpu([7]), fn(uploaded4) => lengthIs(upscale2(uploaded4, 1, 1, indices4), 4)),
+            gpuSatisfies(toGpu([7]), fn(uploaded4) => gpuLengthIs(upscale2(uploaded4, 1, 1, indices4), 4)),
             gpuSatisfies(toGpu([7]), fn(uploaded3) => grandIs(upscale2(uploaded3, 1, 1, indices4), 28)),
-            lengthIs(upscale2(indices0, 0, 0, indices0), 0)
+            gpuLengthIs(upscale2(indices0, 0, 0, indices0), 0)
     ])))
 /// gatherCase pins row and column addressing over a non-square raster: transpose by gather alone, its involution, the reductions it turns into each other, and a prefix
 /// scan read at each scanline boundary.
@@ -362,7 +361,7 @@ fn quadWith(indices0, indices16) = quadEach(indices16, fn(quad) =>
             texel(quad, 6) == 9, texel(quad, 7) == 6, texel(quad, 8) == 9, texel(quad, 9) == 9,
             texel(quad, 10) == 4, texel(quad, 11) == 6, texel(quad, 12) == 9, texel(quad, 13) == 2,
             texel(quad, 14) == 4, texel(quad, 15) == 6,
-            grandIs(quad, 118), lengthIs(gpuFilter(quad, interiorPixel), 10),
+            grandIs(quad, 118), gpuLengthIs(gpuFilter(quad, interiorPixel), 10),
             litIs(quad, 16),
             rowText(quad, quadEdge(), 0) == "@@@@", rowText(quad, quadEdge(), 1) == "@@@*",
             rowText(quad, quadEdge(), 2) == "@@=*", rowText(quad, quadEdge(), 3) == "@:=*",
@@ -418,8 +417,8 @@ fn compositeWith(indices0, indices16, indices1536) =
                         gpuSatisfies(gpuFilter(composite, litPixel), fn(compositeLit) => litCountOf(mandel, fn(mandelLit) => gpuLength(compositeLit) == mandelLit)),
                         grandIs(composite, 3860),
                         overLayer(3, 0) == 3, overLayer(0, 7) == 7, overLayer(0, 0) == 0, overLayer(4, 4) == 4,
-                        lengthIs(gpuZipWith(mandel, indices0, overLayer), 0),
-                        lengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
+                        gpuLengthIs(gpuZipWith(mandel, indices0, overLayer), 0),
+                        gpuLengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
                 ]))))
 exactArithmetic(fn() => withBuffer(toGpu([1, 4, 7, 9]), fn(texels) => withIndices(1536, fn(indices1536) => withIndices(64, fn(indices64) => withIndices(16, fn(indices16) => gallery(indices1536, indices64, indices16, texels))))))
 test("one kernel dispatch covers the whole pixel grid", exactly(dispatchCase))

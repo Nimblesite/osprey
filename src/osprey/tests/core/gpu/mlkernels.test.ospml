@@ -44,10 +44,6 @@ dotIs (a, b, expected) = dotOf(a, b, \total => total == expected)
 meanIs (b, expected) = meanOf(b, \mean => mean == expected)
 (** varianceIs is the two-pass variance of `b`, which must be `expected`. *)
 varianceIs (b, expected) = varianceOf(b, \spread => spread == expected)
-(** elementIs is one [GPU-GET] read, or `fallback` when `index` misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet(b, index) ?: fallback) == expected
-(** lengthIs is [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength(b) == expected
 (** Empty statistics and zero-spread normalisation choose an explicit boundary value. *)
 degenerate (value, work) =
     handle Arith
