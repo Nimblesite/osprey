@@ -33,7 +33,6 @@ framingHeaders path = match path
     "/length-junk" => "Content-Length: x\r\n"
     "/length-negative" => "Content-Length: -1\r\n"
     _ => "Transfer-Encoding: chunked\r\n"
-
 statusFor path = match path
     "/204" => 204
     "/304" => 304
@@ -43,20 +42,16 @@ statusFor path = match path
     "/negative" => (0 - 14)
     "/404-plain" => 404
     _ => 200
-
 doubled (text, times) = match times
     0 => text
     _ => doubled ("${text}${text}", wrapSub times 1)
-
 sixteenKib () = doubled ("x", 14)
-
 framingFor (path, requested) = match path
     "/get-oversized" => "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
     "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
     "/big" => "4000\r\n${sixteenKib ()}\r\n0\r\n\r\n"
     "/big-then-lie" => "4000\r\n${sixteenKib ()}\r\n7FFFFFFF\r\nhi\r\n"
     _ => requested
-
 hostileOrigin (_method, path, _headers, requested) = HttpResponse(
     status = statusFor path,
     headers = framingHeaders path,
@@ -65,23 +60,17 @@ hostileOrigin (_method, path, _headers, requested) = HttpResponse(
     isComplete = true,
     partialBody = framingFor (path, requested)
 )
-
 released (responseId, outcome) = match httpResponseFree responseId
     Success _value => outcome
     Error message => "free-failed=${message}"
-
 bodyOf responseId = match httpResponseBody responseId
     Success value => released (responseId, "status=${httpResponseStatus responseId} body=${value}")
     Error message => released (responseId, "body-failed=${message}")
-
 outcomeOf response = match response
     Success value => bodyOf value
     Error message => "error=${message}"
-
 posted (client, path, framing) = outcomeOf (httpPostResponse client path framing "")
-
 fetched (client, path) = outcomeOf (httpGetResponse client path "")
-
 withHostileOrigin (port, scenario) =
     server = httpCreateServer port "127.0.0.1" ?: -1
     _listening = httpListen server hostileOrigin ?: -1
@@ -90,24 +79,15 @@ withHostileOrigin (port, scenario) =
     _closed = httpCloseClient client ?: -1
     _stopped = httpStopServer server ?: -1
     "done"
-
-accepts (client, framing, body) =
-    check "accepts ${framing}" "status=200 body=${body}" (posted (client, "/chunked", framing))
-
-refuses (client, framing, reason) =
-    check "refuses ${framing}" "error=http response: chunked body: ${reason}" (posted (client, "/chunked", framing))
-
-rejectsEach (client, reason, framings) = forEachList framings (\framing => refuses (client, framing, reason))
-
-acceptsEach (client, body, framings) = forEachList framings (\framing => accepts (client, framing, body))
-
+acceptsEach (client, body, framings) = forEachList framings (\framing => check "accepts ${framing}" "status=200 body=${body}" (posted (client, "/chunked", framing)))
+rejectsEach (client, reason, framings) = forEachList framings (\framing => check "refuses ${framing}" "error=http response: chunked body: ${reason}" (posted (client, "/chunked", framing)))
+postedEach (client, cases) = forEachList cases (\c => check c.name c.want (posted (client, c.path, c.framing)))
+fetchedEach (client, cases) = forEachList cases (\c => check c.name c.want (fetched (client, c.path)))
+row (name, want, path, framing) = { name = name, want = want, path = path, framing = framing }
 askedEach (client, want, framing, cases) = forEachList cases (\c => check c.name want (posted (client, c.path, framing)))
-
 gotEach (client, want, cases) = forEachList cases (\c => check c.name want (fetched (client, c.path)))
-
 chunkTooBig () =
     "error=http response: chunked body: chunk size exceeds the remaining body"
-
 sizesBeyondTheBody client =
     rejectsEach (client, "chunk size exceeds the remaining body", [
         "10\r\nhi\r\n0\r\n\r\n", "3\r\nhi", "6\r\nhello",
@@ -118,7 +98,6 @@ sizesBeyondTheBody client =
         "3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n", "3\r\nabc\r\n7FFFFFFF\r\nhi\r\n0\r\n\r\n", "1;ext=1\r\n",
         "FFFFFFFF;ext=1\r\nhi\r\n0\r\n\r\n"
     ])
-
 sizesThatAreNotSizes client =
     rejectsEach (client, "invalid chunk size", [
         "10000000000000000\r\n\r\n", "10000000000000005\r\nhello\r\n0\r\n\r\n", "FFFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n",
@@ -132,14 +111,12 @@ sizesThatAreNotSizes client =
         "5;a\nb\r\nhello\r\n0\r\n\r\n", "5;a\rb\r\nhello\r\n0\r\n\r\n", "5;\n\r\nhello\r\n0\r\n\r\n",
         "0;a\nb\r\n\r\n"
     ])
-
 dataWithoutItsCrlf client =
     rejectsEach (client, "chunk data not followed by CRLF", [
         "5\r\nhelloXX0\r\n\r\n", "5\r\nhello0\r\n\r\n", "5\r\nhello\n0\r\n\r\n",
         "5\r\nhello\rX0\r\n\r\n", "5\r\nhello\n\r0\r\n\r\n", "4\r\nhello\r\n0\r\n\r\n",
         "6\r\nhello\r\n0\r\n\r\n", "3\r\nabc\r\n2\r\nhiXX0\r\n\r\n"
     ])
-
 framingCutShort client =
     rejectsEach (client, "truncated", [
         "", "5", "5\r",
@@ -149,26 +126,22 @@ framingCutShort client =
         "0", "0\r\n", "0\r\nX-Trailer: yes",
         "0\r\nX-Trailer: yes\r\n", "0\r\nX-One: 1\r\nX-Two: 2\r\n"
     ])
-
 wellFormedBodies client =
     acceptsEach (client, "", ["0\r\n\r\n", "00000\r\n\r\n"])
-    accepts (client, "5\r\nhello\r\n0\r\n\r\n", "hello")
-    accepts (client, "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", "hello world")
-    accepts (client, "1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n", "abcd")
-    acceptsEach (client, "0123456789", ["a\r\n0123456789\r\n0\r\n\r\n", "A\r\n0123456789\r\n0\r\n\r\n"])
     acceptsEach (client, "hello", [
-        "0005\r\nhello\r\n000\r\n\r\n", "00000000000000000000005\r\nhello\r\n0\r\n\r\n",
-        "5;name=value\r\nhello\r\n0;last\r\n\r\n", "5 ;name\r\nhello\r\n0\t;last\r\n\r\n",
+        "5\r\nhello\r\n0\r\n\r\n", "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n", "0005\r\nhello\r\n000\r\n\r\n",
+        "00000000000000000000005\r\nhello\r\n0\r\n\r\n", "5;name=value\r\nhello\r\n0;last\r\n\r\n", "5 ;name\r\nhello\r\n0\t;last\r\n\r\n",
         "5  \r\nhello\r\n0 \r\n\r\n", "5;a\tb\r\nhello\r\n0\r\n\r\n"
     ])
+    acceptsEach (client, "0123456789", ["a\r\n0123456789\r\n0\r\n\r\n", "A\r\n0123456789\r\n0\r\n\r\n"])
     acceptsEach (client, "abc", [
-        "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n"
+        "3\r\nabc\r\n0\r\nX-Trailer: yes\r\n\r\n", "3\r\nabc\r\n0\r\nX-One: 1\r\nX-Two: 2\r\n\r\n",
+        "3\r\nabc\r\n0\r\n\r\nleft over"
     ])
-    accepts (client, "8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n", "a\r\n0\r\n\r\n")
-    accepts (client, "2\r\n\r\n\r\n0\r\n\r\n", "\r\n")
-    accepts (client, "2\r\né\r\n0\r\n\r\n", "é")
-    accepts (client, "3\r\nabc\r\n0\r\n\r\nleft over", "abc")
-
+    acceptsEach (client, "abcd", ["1\r\na\r\n1\r\nb\r\n1\r\nc\r\n1\r\nd\r\n0\r\n\r\n"])
+    acceptsEach (client, "a\r\n0\r\n\r\n", ["8\r\na\r\n0\r\n\r\n\r\n0\r\n\r\n"])
+    acceptsEach (client, "\r\n", ["2\r\n\r\n\r\n0\r\n\r\n"])
+    acceptsEach (client, "é", ["2\r\né\r\n0\r\n\r\n"])
 whichResponsesAreChunked client =
     framing = "2\r\nhi\r\n0\r\n\r\n"
     hostile = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
@@ -182,68 +155,59 @@ whichResponsesAreChunked client =
         { name = "another header's value", path = "/note" }, { name = "chunked not last", path = "/chunked-gzip" },
         { name = "a longer word", path = "/notchunked" }, { name = "no header", path = "/plain" }
     ])
-
 hostileThenValid client =
     _refused = posted (client, "/chunked", "FFFFFFFF\r\nhi\r\n0\r\n\r\n")
     posted (client, "/chunked", "2\r\nok\r\n0\r\n\r\n")
-
 getAndPostAgree client =
     check "GET hostile" (chunkTooBig ()) (fetched (client, "/get-oversized"))
     check "GET valid" "status=200 body=hello world" (fetched (client, "/get-valid"))
     check "POST hostile then valid" "status=200 body=ok" (hostileThenValid client)
-
 hammer (client, remaining) = match remaining
     0 => "status=200 body=survived"
     _ => match posted (client, "/chunked", "7FFFFFFF\r\nhi\r\n0\r\n\r\n")
         "error=http response: chunked body: chunk size exceeds the remaining body" => hammer (client, wrapSub remaining 1)
         other => other
-
 survivesRepeatedAttacks client =
     check "200 attacks in a row" "status=200 body=survived" (hammer (client, 200))
     check "still serving" "status=200 body=alive" (posted (client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
-
 statusesWithoutABody client =
     lie = "7FFFFFFF\r\nhi\r\n"
-    check "304, nothing sent" "status=304 body=" (fetched (client, "/304"))
-    check "204, nothing sent" "status=204 body=" (fetched (client, "/204"))
-    check "304, a lie sent" "status=304 body=" (posted (client, "/304", lie))
-    check "204, a lie sent" "status=204 body=" (posted (client, "/204", lie))
-    check "204, a body sent" "status=204 body=" (posted (client, "/204", "2\r\nhi\r\n0\r\n\r\n"))
-    check "500 keeps its body" "status=500 body=no" (posted (client, "/500", "2\r\nno\r\n0\r\n\r\n"))
-    check "500 with a lie" (chunkTooBig ()) (posted (client, "/500", lie))
-    check "200 needs its framing" "error=http response: chunked body: truncated" (fetched (client, "/empty"))
-
+    postedEach (client, [
+        row ("304, a lie sent", "status=304 body=", "/304", lie), row ("204, a lie sent", "status=204 body=", "/204", lie),
+        row ("204, a body sent", "status=204 body=", "/204", "2\r\nhi\r\n0\r\n\r\n"), row ("500 keeps its body", "status=500 body=no", "/500", "2\r\nno\r\n0\r\n\r\n"),
+        row ("500 with a lie", chunkTooBig (), "/500", lie)
+    ])
+    fetchedEach (client, [
+        row ("304, nothing sent", "status=304 body=", "/304", ""), row ("204, nothing sent", "status=204 body=", "/204", ""),
+        row ("200 needs its framing", "error=http response: chunked body: truncated", "/empty", "")
+    ])
 repeatedHeaderLines client =
     framing = "2\r\nhi\r\n0\r\n\r\n"
     hostile = "7FFFFFFF\r\nhi\r\n"
     askedEach (client, "status=200 body=hi", framing, [
         { name = "two lines decode", path = "/two-lines" }, { name = "two lines apart decode", path = "/two-apart" }
     ])
-    check "two lines still refuse" (chunkTooBig ()) (posted (client, "/two-lines", hostile))
-    check "gzip last means raw" "status=200 body=${hostile}" (posted (client, "/chunked-then-gzip", hostile))
-
-bodiesPastTheBuffer client =
-    check "16 KiB decodes" "status=200 body=${sixteenKib ()}" (fetched (client, "/big"))
-    check "a lie after 16 KiB" (chunkTooBig ()) (fetched (client, "/big-then-lie"))
-
+    postedEach (client, [
+        row ("two lines still refuse", chunkTooBig (), "/two-lines", hostile), row ("gzip last means raw", "status=200 body=${hostile}", "/chunked-then-gzip", hostile)
+    ])
+bodiesPastTheBuffer client = fetchedEach (client, [
+    row ("16 KiB decodes", "status=200 body=${sixteenKib ()}", "/big", ""), row ("a lie after 16 KiB", chunkTooBig (), "/big-then-lie", "")
+])
 headsThatHideFraming client =
     malformed = "error=http response: head: malformed"
     hostile = "7FFFFFFF\r\nhi\r\n"
-    check "bare LF in a value" malformed (posted (client, "/bare-lf", hostile))
-    check "bare CR in a value" malformed (posted (client, "/bare-cr", "hello"))
-    check "space before the colon" malformed (posted (client, "/spaced-name", hostile))
-    check "a folded line" malformed (posted (client, "/folded", "2\r\nhi\r\n0\r\n\r\n"))
-    check "a line with no colon" malformed (posted (client, "/no-colon", "hello"))
-    check "a line with no name" malformed (posted (client, "/no-name", "hello"))
-    check "still serving" "status=200 body=alive" (posted (client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
-
+    postedEach (client, [
+        row ("bare LF in a value", malformed, "/bare-lf", hostile), row ("bare CR in a value", malformed, "/bare-cr", "hello"),
+        row ("space before the colon", malformed, "/spaced-name", hostile), row ("a folded line", malformed, "/folded", "2\r\nhi\r\n0\r\n\r\n"),
+        row ("a line with no colon", malformed, "/no-colon", "hello"), row ("a line with no name", malformed, "/no-name", "hello"),
+        row ("still serving", "status=200 body=alive", "/chunked", "5\r\nalive\r\n0\r\n\r\n")
+    ])
 statusesThatAreNotStatuses client =
     gotEach (client, "error=http response: status line: not HTTP/1.x", [
         { name = "four digits", path = "/four-digits" }, { name = "two digits", path = "/two-digits" },
         { name = "our own negative code", path = "/negative" }
     ])
     check "a real 404" "status=404 body=gone" (posted (client, "/404-plain", "gone"))
-
 lengthsThatLie client =
     askedEach (client, "error=http response: body: invalid Content-Length", "hello", [
         { name = "a second, different length", path = "/length-lie" },
@@ -251,9 +215,7 @@ lengthsThatLie client =
         { name = "a negative length", path = "/length-negative" }
     ])
     check "chunked ignores a lie" "status=200 body=hi" (posted (client, "/two-lines", "2\r\nhi\r\n0\r\n\r\n"))
-
 originCase (port, work) = \() => withHostileOrigin (port, work)
-
 testCases [
     { name = "chunk sizes beyond the body are refused", work = originCase (18110, sizesBeyondTheBody) },
     { name = "chunk sizes that do not parse are refused", work = originCase (18111, sizesThatAreNotSizes) },
