@@ -41,6 +41,20 @@ static void register_all(void) {
     }
 }
 
+// Appends `suffix` to `path` (the staging and sentinel names) into `out`.
+static void sibling_path(const char *path, const char *suffix, char *out,
+                         size_t out_size) {
+    int n = snprintf(out, out_size, "%s%s", path, suffix);
+    assert(n > 0 && (size_t)n < out_size);
+}
+
+// Clears the dump at `path` and its staging file, handing the staging path back.
+static void clear_dump(const char *path, char *staging, size_t staging_size) {
+    sibling_path(path, COV_PARTIAL_SUFFIX, staging, staging_size);
+    (void)remove(path);
+    (void)remove(staging);
+}
+
 // The child registers with OSPREY_COVERAGE set, bumps counters the way
 // instrumented IR does (plain in-place adds), and exits normally so the
 // atexit-armed dump runs [TESTING-COVERAGE-ENV].
@@ -96,39 +110,9 @@ static void verify_dump(const char *path) {
     assert(fclose(in) == 0);
     assert(remove(path) == 0);
     char staging[COV_PATH_MAX];
-    written = snprintf(staging, sizeof(staging), "%s%s", path,
-                       COV_PARTIAL_SUFFIX);
-    assert(written > 0 && (size_t)written < sizeof(staging));
+    sibling_path(path, COV_PARTIAL_SUFFIX, staging, sizeof(staging));
     assert(access(staging, F_OK) != 0 &&
            "publishing by rename leaves no staging file behind");
-}
-
-// Without OSPREY_COVERAGE, registration stays inert: no dump file appears.
-static void test_inert_without_env(const char *path) {
-    assert(unsetenv("OSPREY_COVERAGE") == 0);
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0) {
-        register_all();
-        exit(0);
-    }
-    int status = 0;
-    assert(waitpid(pid, &status, 0) == pid);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-    FILE *in = fopen(path, "r");
-    assert(in == NULL);
-}
-
-static void test_dump_written_on_exit(const char *path) {
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0) {
-        run_child(path);
-    }
-    int status = 0;
-    assert(waitpid(pid, &status, 0) == pid);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-    verify_dump(path);
 }
 
 // Drains `fd` into `out` as a NUL-terminated string.
@@ -178,6 +162,50 @@ static void diagnostic_from_child(void (*body)(const char *), const char *arg,
     assert_child_exited_cleanly(pid);
 }
 
+// Runs `body` in a child and requires it to exit normally with status 0.
+static void run_body_in_child(void (*body)(const char *), const char *arg) {
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        body(arg);
+        exit(0);
+    }
+    assert_child_exited_cleanly(pid);
+}
+
+// A refusal must say what failed and name the dump it is about.
+static void assert_refusal_names(const char *diag, const char *reason,
+                                 const char *reason_message, const char *path,
+                                 const char *path_message) {
+    assert(strstr(diag, reason) != NULL && reason_message);
+    assert(strstr(diag, path) != NULL && path_message);
+}
+
+// Runs `child` against a dump path nothing occupies, collecting its diagnostic.
+static void diagnose_fresh(const char *path, void (*child)(const char *),
+                           char *diag, size_t diag_size) {
+    (void)remove(path);
+    diagnostic_from_child(child, path, diag, diag_size);
+}
+
+// Without OSPREY_COVERAGE, registration stays inert: no dump file appears.
+static void child_registers_uninstrumented(const char *path) {
+    (void)path; // nothing is keyed to the dump path while coverage is off
+    register_all();
+}
+
+static void test_inert_without_env(const char *path) {
+    assert(unsetenv("OSPREY_COVERAGE") == 0);
+    run_body_in_child(child_registers_uninstrumented, path);
+    FILE *in = fopen(path, "r");
+    assert(in == NULL);
+}
+
+static void test_dump_written_on_exit(const char *path) {
+    run_body_in_child(run_child, path);
+    verify_dump(path);
+}
+
 // A dump destination the process cannot open is REPORTED. Coverage that could
 // not be written must never be indistinguishable from coverage that found
 // nothing [TESTING-COVERAGE-DUMP].
@@ -185,10 +213,9 @@ static void test_unwritable_dump_is_reported(void) {
     const char *unwritable = "/osprey-coverage-no-such-directory/dump.txt";
     char diag[COV_DIAG_MAX];
     diagnostic_from_child(child_registers_to, unwritable, diag, sizeof(diag));
-    assert(strstr(diag, "osprey coverage: cannot write") != NULL &&
-           "an unopenable dump path must be diagnosed");
-    assert(strstr(diag, unwritable) != NULL &&
-           "the diagnostic must name the path that failed");
+    assert_refusal_names(diag, "osprey coverage: cannot write",
+                         "an unopenable dump path must be diagnosed", unwritable,
+                         "the diagnostic must name the path that failed");
     assert(strstr(diag, "cannot finish") == NULL &&
            "a dump that never opened cannot also report a close failure");
     FILE *in = fopen(unwritable, "r");
@@ -202,20 +229,16 @@ static void test_unwritable_dump_is_reported(void) {
 // [TESTING-COVERAGE-DUMP].
 static void test_unpublishable_dump_is_reported(const char *path) {
     char staging[COV_PATH_MAX];
-    int n = snprintf(staging, sizeof(staging), "%s%s", path,
-                     COV_PARTIAL_SUFFIX);
-    assert(n > 0 && (size_t)n < sizeof(staging));
-    (void)remove(path);
-    (void)remove(staging);
+    clear_dump(path, staging, sizeof(staging));
     // A file can never be renamed over a directory, so every write and the
     // close succeed and the flush fails at exactly the publishing step.
     assert(mkdir(path, S_IRWXU) == 0);
     char diag[COV_DIAG_MAX];
     diagnostic_from_child(child_registers_to, path, diag, sizeof(diag));
-    assert(strstr(diag, "osprey coverage: cannot finish") != NULL &&
-           "a dump that could not be published must be diagnosed");
-    assert(strstr(diag, path) != NULL &&
-           "the diagnostic must name the dump the reader was promised");
+    assert_refusal_names(diag, "osprey coverage: cannot finish",
+                         "a dump that could not be published must be diagnosed",
+                         path,
+                         "the diagnostic must name the dump the reader was promised");
     // The point of publishing by rename: a reader finds NOTHING, never the
     // valid prefix of a dump whose writer died.
     struct stat published;
@@ -259,34 +282,29 @@ static void child_loses_its_first_line_to_memory(const char *path) {
 // looking perfectly well-formed — a lower percentage no reader can tell from
 // honestly-uncovered code. It must be diagnosed and it must not be published
 // at all [TESTING-COVERAGE-RUNTIME].
-static void test_incomplete_table_is_never_published(const char *path) {
+static void assert_lost_line_refused(void (*child)(const char *),
+                                     const char *path,
+                                     const char *incomplete_message) {
     char diag[COV_DIAG_MAX];
-    (void)remove(path);
-    diagnostic_from_child(child_loses_a_line_to_memory, path, diag,
-                          sizeof(diag));
+    diagnose_fresh(path, child, diag, sizeof(diag));
     assert(strstr(diag, "osprey coverage: out of memory") != NULL &&
            "a line the table could not hold must be reported when it is lost");
-    assert(strstr(diag, "line table incomplete") != NULL &&
-           "and reported again when the dump is refused");
-    assert(strstr(diag, path) != NULL &&
-           "the refusal names the dump that will not appear");
+    assert_refusal_names(diag, "line table incomplete", incomplete_message,
+                         path,
+                         "the refusal names the dump that will not appear");
     assert(access(path, F_OK) != 0 &&
            "an under-reporting dump must not be published");
 }
 
-// Losing the first line means losing the table, and a refusal that names no
-// dump is a refusal no reader can act on [TESTING-COVERAGE-RUNTIME].
-static void test_a_table_that_never_grew_is_refused_by_name(const char *path) {
-    char diag[COV_DIAG_MAX];
-    (void)remove(path);
-    diagnostic_from_child(child_loses_its_first_line_to_memory, path, diag,
-                          sizeof(diag));
-    assert(strstr(diag, "osprey coverage: out of memory") != NULL);
-    assert(strstr(diag, "line table incomplete") != NULL &&
-           "an empty table is still an INCOMPLETE one, and says so");
-    assert(strstr(diag, path) != NULL &&
-           "the refusal names the dump that will not appear");
-    assert(access(path, F_OK) != 0);
+// A full table whose next growth fails, and a table that never grew at all:
+// losing the first line must not buy silence, the refusal still names its dump
+// [TESTING-COVERAGE-RUNTIME].
+static void test_lost_lines_are_never_published(const char *path) {
+    assert_lost_line_refused(child_loses_a_line_to_memory, path,
+                             "and reported again when the dump is refused");
+    assert_lost_line_refused(child_loses_its_first_line_to_memory, path,
+                             "an empty table is still an INCOMPLETE one, and "
+                             "says so");
 }
 
 static void child_cannot_name_its_staging_file(const char *path) {
@@ -302,9 +320,8 @@ static void child_cannot_name_its_staging_file(const char *path) {
 // other: diagnosed, and nothing published [TESTING-COVERAGE-DUMP].
 static void test_unnameable_staging_path_is_reported(const char *path) {
     char diag[COV_DIAG_MAX];
-    (void)remove(path);
-    diagnostic_from_child(child_cannot_name_its_staging_file, path, diag,
-                          sizeof(diag));
+    diagnose_fresh(path, child_cannot_name_its_staging_file, diag,
+                   sizeof(diag));
     assert(strstr(diag, "osprey coverage: cannot write") != NULL &&
            "a staging path that cannot be formed is a write failure");
     assert(strstr(diag, path) != NULL);
@@ -335,8 +352,7 @@ int remove(const char *path) {
 #define COV_SENTINEL_SUFFIX ".sentinel"
 
 static void child_flushes_onto_a_replanted_symlink(const char *path) {
-    assert(setenv("OSPREY_COVERAGE", path, 1) == 0);
-    register_all();
+    child_registers_to(path);
     cov_remove_disabled = 1;
 }
 
@@ -349,14 +365,8 @@ static void child_flushes_onto_a_replanted_symlink(const char *path) {
 static void test_a_symlink_at_the_staging_path_is_not_followed(const char *path) {
     char staging[COV_PATH_MAX];
     char sentinel[COV_PATH_MAX];
-    int n = snprintf(staging, sizeof(staging), "%s%s", path,
-                     COV_PARTIAL_SUFFIX);
-    assert(n > 0 && (size_t)n < sizeof(staging));
-    n = snprintf(sentinel, sizeof(sentinel), "%s%s", path,
-                 COV_SENTINEL_SUFFIX);
-    assert(n > 0 && (size_t)n < sizeof(sentinel));
-    (void)remove(path);
-    (void)remove(staging);
+    clear_dump(path, staging, sizeof(staging));
+    sibling_path(path, COV_SENTINEL_SUFFIX, sentinel, sizeof(sentinel));
     (void)remove(sentinel);
 
     FILE *planted = fopen(sentinel, "w");
@@ -368,10 +378,10 @@ static void test_a_symlink_at_the_staging_path_is_not_followed(const char *path)
     char diag[COV_DIAG_MAX];
     diagnostic_from_child(child_flushes_onto_a_replanted_symlink, path, diag,
                           sizeof(diag));
-    assert(strstr(diag, "osprey coverage: cannot write") != NULL &&
-           "a staging name that is already taken must be refused, not opened");
-    assert(strstr(diag, path) != NULL &&
-           "and the refusal names the dump the reader was promised");
+    assert_refusal_names(diag, "osprey coverage: cannot write",
+                         "a staging name that is already taken must be refused, not opened",
+                         path,
+                         "and the refusal names the dump the reader was promised");
     assert(access(path, F_OK) != 0 &&
            "nothing is published: not the dump, and not the link either");
 
@@ -399,23 +409,13 @@ static void test_a_symlink_at_the_staging_path_is_not_followed(const char *path)
 static void test_a_leftover_staging_file_does_not_disable_coverage(
     const char *path) {
     char staging[COV_PATH_MAX];
-    int n = snprintf(staging, sizeof(staging), "%s%s", path,
-                     COV_PARTIAL_SUFFIX);
-    assert(n > 0 && (size_t)n < sizeof(staging));
-    (void)remove(path);
+    clear_dump(path, staging, sizeof(staging));
     FILE *corpse = fopen(staging, "w");
     assert(corpse != NULL);
     assert(fputs("the remains of a run that was killed mid-dump\n", corpse) >= 0);
     assert(fclose(corpse) == 0);
 
-    pid_t pid = fork();
-    assert(pid >= 0);
-    if (pid == 0) {
-        run_child(path);
-    }
-    int status = 0;
-    assert(waitpid(pid, &status, 0) == pid);
-    assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    run_body_in_child(run_child, path);
     // Same oracle as the ordinary case: a complete dump, and no staging file.
     verify_dump(path);
 }
@@ -432,8 +432,7 @@ int main(void) {
     test_a_leftover_staging_file_does_not_disable_coverage(path);
     test_unwritable_dump_is_reported();
     test_unpublishable_dump_is_reported(path);
-    test_incomplete_table_is_never_published(path);
-    test_a_table_that_never_grew_is_refused_by_name(path);
+    test_lost_lines_are_never_published(path);
     test_unnameable_staging_path_is_reported(path);
     test_a_symlink_at_the_staging_path_is_not_followed(path);
     printf("coverage_runtime_tests: OK\n");
