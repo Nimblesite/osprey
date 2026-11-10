@@ -1,12 +1,11 @@
 // lib/sqlite — the SQLite LIBRARY. [MODULES-MODULE]
 //
-// A reusable database layer built from nothing but Osprey's generic C FFI:
-// every call is a plain `extern` bound to the SQLite C API, linked by the
-// `// @link:` directive below. The module exports a small typed surface
-// (open/run/queryInt/queryText/…) and keeps the raw pointer choreography
-// (out-param cells, bind/step/finalize) private behind the module boundary.
-// Values are always BOUND (`?`), never interpolated — injection is
-// structurally impossible.
+// A reusable database layer built from nothing but Osprey's generic C FFI: every
+// call is a plain `extern` bound to the SQLite C API, linked by the `// @link:`
+// directive below. The module exports a small typed surface (open/run/query*…)
+// and keeps the raw pointer choreography (out-param cells, bind/step/finalize)
+// private behind the module boundary. Values are always BOUND (`?`), never
+// interpolated — injection is structurally impossible.
 //
 // @link: sqlite3
 
@@ -41,19 +40,21 @@ module Sqlite
         _freed = osprey_ffi_free cell
         p
 
-    // prepare is PRIVATE: callers never see statement pointers, only values.
-    prepare db sql = outCell (\cell => sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ()))
+    // `query` prepares `sql` and hands back a live statement; callers walk it
+    // with `step` (SQLITE_ROW = 100 means a row landed), read typed columns, and
+    // MUST `closeQuery` when done — statement pointers never leave this module.
+    export query : Ptr -> string -> Ptr
+    query db sql = outCell (\cell => sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ()))
 
     // Step `stmt` once, hand `(code, stmt)` to `read`, then finalize; yield its value.
     stepped stmt read =
-        code = sqlite3_step stmt
-        v = read (code, stmt)
+        v = read (sqlite3_step stmt, stmt)
         _fin = sqlite3_finalize stmt
         v
 
     // A statement of `sql` with every key bound, in order, from parameter 1.
     bindInts db sql keys =
-        stmt = prepare db sql
+        stmt = query db sql
         _next = foldList (keys, 1, \(pos, key) => bindAt (stmt, pos, key))
         stmt
 
@@ -62,11 +63,20 @@ module Sqlite
         _b = sqlite3_bind_int stmt pos key
         pos + 1
 
-    // bind positional (int, text) then run to completion — private plumbing.
-    runBound db sql i t =
-        stmt = bindInts db sql [i]
-        _b2 = sqlite3_bind_text stmt 2 t (-1) (osprey_ffi_transient ())
-        stepped stmt (\(code, _s) => code)
+    // Bind text `val` at parameter `pos`; SQLite copies it (transient).
+    export bindTextAt : Ptr -> int -> string -> int
+    bindTextAt cursor idx val = sqlite3_bind_text cursor idx val (-1) (osprey_ffi_transient ())
+
+    // Readers over a landed `(step code, stmt)`: its column `col` copied into a
+    // fresh Osprey string (the C pointer dies at the next step/finalize), its
+    // int column 0, its text column 0, or the step code itself.
+    columnText s col = "${sqlite3_column_text s col}"
+    rowInt (_code, s) = sqlite3_column_int s 0
+    rowText (_code, s) = columnText s 0
+    rowCode (code, _s) = code
+
+    // Prepare `sql`, bind every key in order, step once and read the row.
+    firstRow db sql keys read = stepped (bindInts db sql keys) read
 
     export openAt : string -> Ptr
     openAt path = outCell (\cell => sqlite3_open path cell)
@@ -78,42 +88,30 @@ module Sqlite
     // INSERT with one bound int and one bound text; returns the new rowid.
     export insertIntText : Ptr -> string -> int -> string -> int
     insertIntText db sql i t =
-        _rc = runBound db sql i t
+        stmt = bindInts db sql [i]
+        _b = bindTextAt stmt 2 t
+        _rc = stepped stmt rowCode
         sqlite3_last_insert_rowid db
 
     // UPDATE with two bound ints; returns the step result code.
     export updateIntInt : Ptr -> string -> int -> int -> int
-    updateIntInt db sql a b = stepped (bindInts db sql [a, b]) (\(code, _s) => code)
-
-    // One statement stepped once: its first column as an int, and the statement finalized.
-    intColumn stmt = stepped stmt (\(_code, s) => sqlite3_column_int s 0)
-
-    // SELECT one int scalar with one bound int (first row, first column).
-    export queryInt : Ptr -> string -> int -> int
-    queryInt db sql key = intColumn (bindInts db sql [key])
-
-    // SELECT one text scalar with one bound int. The column pointer is only
-    // valid until finalize, so the text is copied into a fresh Osprey string
-    // (via interpolation) BEFORE the statement is finalized.
-    export queryText : Ptr -> string -> int -> string
-    queryText db sql key = stepped (bindInts db sql [key]) (\(_code, s) => "${sqlite3_column_text s 0}")
+    updateIntInt db sql a b = firstRow db sql [a, b] rowCode
 
     // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
     export queryScalar : Ptr -> string -> int
-    queryScalar db sql = intColumn (prepare db sql)
+    queryScalar db sql = stepped (query db sql) rowInt
 
-    // --- cursor API: multi-row reads without exposing pointer plumbing ---
-    // `query` hands back a live statement; callers walk it with `step`
-    // (SQLITE_ROW = 100 means a row landed), read typed columns, and MUST
-    // `closeQuery` when done.
-    export query : Ptr -> string -> Ptr
-    query db sql = prepare db sql
+    // SELECT one int scalar with one bound int (first row, first column).
+    export queryInt : Ptr -> string -> int -> int
+    queryInt db sql key = firstRow db sql [key] rowInt
 
+    // SELECT one text scalar with one bound int; copied before finalize.
+    export queryText : Ptr -> string -> int -> string
+    queryText db sql key = firstRow db sql [key] rowText
+
+    // --- cursor API: multi-row reads over a statement from `query` ---
     export bindIntAt : Ptr -> int -> int -> int
     bindIntAt cursor idx val = sqlite3_bind_int cursor idx val
-
-    export bindTextAt : Ptr -> int -> string -> int
-    bindTextAt cursor idx val = sqlite3_bind_text cursor idx val (-1) (osprey_ffi_transient ())
 
     export step : Ptr -> int
     step cursor = sqlite3_step cursor
@@ -121,10 +119,9 @@ module Sqlite
     export intAt : Ptr -> int -> int
     intAt cursor col = sqlite3_column_int cursor col
 
-    // Copied into a fresh Osprey string immediately: the column pointer dies
-    // with the next step/finalize.
+    // Column `col` of the current row, copied out immediately.
     export textAt : Ptr -> int -> string
-    textAt cursor col = "${sqlite3_column_text cursor col}"
+    textAt cursor col = columnText cursor col
 
     export closeQuery : Ptr -> int
     closeQuery cursor = sqlite3_finalize cursor
