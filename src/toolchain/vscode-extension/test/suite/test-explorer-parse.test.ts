@@ -6,15 +6,12 @@
 import * as assert from "assert";
 import {
   compileFailureMessage,
-  coverageCounts,
-  coverageRunArgs,
   discoveryOutcome,
   excludedIdSet,
   fileTestId,
   isCompileFailure,
   leafTestId,
   outcomeForLeaf,
-  parseCoverageJson,
   parseTapOutput,
   parseTapStream,
   parseTestList,
@@ -25,6 +22,7 @@ import {
   toTerminalOutput,
   type TestItemLike,
 } from "../../client/src/test-explorer-parse";
+import { coverageCounts, coverageRunArgs, parseCoverageJson } from "../../client/src/test-explorer-runs";
 
 suite("Test Explorer parsing", () => {
   suite("parseTapOutput", () => {

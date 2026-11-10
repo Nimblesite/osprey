@@ -8,12 +8,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as sinon from "sinon";
 import * as vscode from "vscode";
-import {
-  COVERAGE_RUN,
-  fileTestId,
-  leafTestId,
-  PLAIN_RUN,
-} from "../../client/src/test-explorer-parse";
+import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
+import { COVERAGE_RUN, PLAIN_RUN } from "../../client/src/test-explorer-runs";
 import { executeRunRequest, makeRunHandler } from "../../client/src/test-explorer";
 import { coverageSink, detailedCoverageFor } from "../../client/src/test-explorer-report";
 import {

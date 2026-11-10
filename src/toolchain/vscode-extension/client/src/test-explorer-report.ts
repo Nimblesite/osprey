@@ -7,7 +7,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { coverageFiles } from "./coverage-files";
-import { coverageCounts, parseCoverageJson, type LineHits } from "./test-explorer-parse";
+import { coverageCounts, parseCoverageJson, type LineHits } from "./test-explorer-runs";
 
 /** Where one file's coverage report lands (unique per file, per session). */
 export function coverageJsonPath(uri: vscode.Uri): string {

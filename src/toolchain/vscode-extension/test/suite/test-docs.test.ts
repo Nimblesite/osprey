@@ -14,11 +14,8 @@ import * as vscode from "vscode";
 import { executeRunRequest } from "../../client/src/test-explorer";
 import { type TestRunSink } from "../../client/src/test-explorer-report";
 import { documentedTestIds, refreshTestFile, testDocFor } from "../../client/src/test-explorer-items";
-import {
-  leafTestId,
-  PLAIN_RUN,
-  type RunMode,
-} from "../../client/src/test-explorer-parse";
+import { leafTestId } from "../../client/src/test-explorer-parse";
+import { PLAIN_RUN, type RunMode } from "../../client/src/test-explorer-runs";
 import { testDocMarkdown } from "../../client/src/test-explorer-docs";
 import {
   NO_TEST_MESSAGE,

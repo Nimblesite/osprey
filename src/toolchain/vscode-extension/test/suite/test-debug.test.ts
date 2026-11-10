@@ -18,10 +18,7 @@ import {
   type StartDebugging,
 } from "../../client/src/test-debug";
 import { refreshTestFile } from "../../client/src/test-explorer-items";
-import {
-  leafTestId,
-  type ExecResult,
-} from "../../client/src/test-explorer-parse";
+import { leafTestId, type ExecResult } from "../../client/src/test-explorer-parse";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
   assertVerdicts,
