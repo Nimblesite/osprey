@@ -70,6 +70,7 @@ fn bufferHornerTo(buf, expected) = gpuSatisfies(buf, fn(b) => hornerTo(b, 0, exp
 fn zipLeftIs(b, values, expected) = gpuSatisfies(toGpu(values), fn(other) => gpuLengthIs(gpuZipWith(b, other, sumI), expected))
 /// zippedProductLengthIs and mixedZipLengthIs zip two uploads and keep `expected` elements; their kernels differ in type, and gpuZipWith only accepts a named function, so each names its own.
 fn zippedProductLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mulI), expected)))
+/// mixedZipLengthIs zips an int upload with a float one through mixAdd, the type-changing slot.
 fn mixedZipLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mixAdd), expected)))
 /// floatBufferSumsTo reads any float buffer already in hand — widened by [GPU-CONVERT], halved or scanned — through the float fold at seed 0.0, and evenFlagRuns counts the isEven flags a compaction keeps; the widened-type and bool-buffer cases all read through them.
 fn floatBufferSumsTo(buf, expected) = gpuSatisfies(buf, fn(widened) => floatSumsTo(widened, 0.0, expected))

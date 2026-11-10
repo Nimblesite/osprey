@@ -10,6 +10,7 @@ import uitest::Semantics
 
 near (actual, expected) = expect (actual - expected < 0.01 && expected - actual < 0.01, true)
 
+// The four cables as rendered, each x1, y1, x2, y2: oscillator→filter, filter→master, LFO→filter, filter→scope.
 cable index = listGet driven.drivenSeen.renderedCurves index ?: []
 
 cableIs (index, expected) =
@@ -27,6 +28,7 @@ spriteAt index =
     drawn = filterList (sprites, \s => (listGet s 0 ?: 0.0) == toFloat index)
     listGet drawn (satSub (length drawn) 1) ?: []
 
+// A node's sprite: atlas entries 6 to 10 after the backdrop and the five inspector icons.
 nodeSprite role = spriteAt (6 + (ui::Lists::position (["control", "source", "process", "output", "monitor"], \r => r == role)))
 
 spriteMoved (before, after, dx, dy) =

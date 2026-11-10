@@ -92,6 +92,7 @@ fn partitionsAt(s, n) = take(s, n) + drop(s, n) == s
 fn holeRenders(v, text) =
     structuralEquals(["${v}" == text, toString(v) == text, "${v}" == toString(v)], [true, true, true])
 
+/// `toString(v)` and the interpolation hole for `v` render identically.
 fn holeIsToString(v) = toString(v) == "${v}"
 
 /// Number of parts `split` produced, or -1 when it was rejected ([](BUILTIN-STRING-SPLIT)).

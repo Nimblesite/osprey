@@ -403,6 +403,8 @@ fn finish(clientId: int, resp: int) = {
     body
 }
 
+/// Release the response handle, then hand back the body already read from it.
+/// The release is best-effort — a failed free must not mask the body's result.
 fn freeAfter(value: int, result: Result<string, Error>) = {
     let _ = httpResponseFree(value) ?: 0
     result
