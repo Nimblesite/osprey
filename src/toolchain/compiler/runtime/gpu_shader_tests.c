@@ -21,32 +21,13 @@
 #include "gpu_math64.metal"
 #include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
+#include "gpu_test_words.h"
 
 #define TRIALS 400000
 #define SPECIALS 12
 #define SOFT_BINARY_MAX_ULPS 64
 
-static uint64_t state = 0x9e3779b97f4a7c15;
 static unsigned long checks;
-
-static uint64_t random_word(void) {
-  state ^= state << 13;
-  state ^= state >> 7;
-  state ^= state << 17;
-  return state;
-}
-
-static double of(uint64_t word) {
-  double d;
-  memcpy(&d, &word, sizeof d);
-  return d;
-}
-
-static uint64_t bits(double d) {
-  uint64_t word;
-  memcpy(&word, &d, sizeof word);
-  return word;
-}
 
 static int same(uint64_t a, uint64_t b) { return a == b || (isnan(of(a)) && isnan(of(b))); }
 static uint64_t word_of(long v) { return (uint64_t)v; }
