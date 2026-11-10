@@ -102,12 +102,8 @@ module Surface
         "λ" => quantified (rest, satAdd position 1, names, true)
         other => arrow (rest, position, names)
 
-    quantified (rest, position, names, lambda) = chained (binders (rest, position, names), \opened => quantifiedBody (rest, opened, names, lambda))
+    quantified (rest, position, names, lambda) = Terms::upon (binders (rest, position, names), \opened => quantifiedBody (rest, opened, names, lambda))
 
-    (** The parser `outcome`'s value handed to `next`, or its refusal as it is. *)
-    chained (outcome, next) = match outcome
-        Success value => next value
-        Error message => Error(message = message)
 
     quantifiedBody (rest, opened, names, lambda) = match at (rest, opened.next) == separator lambda
         false => Error(message = "expected `${separator lambda}` after the binders")
@@ -121,7 +117,7 @@ module Surface
         true => "=>"
         false => ","
 
-    arrow (rest, position, names) = chained (application (rest, position, names), \head => arrowTail (rest, head, names))
+    arrow (rest, position, names) = Terms::upon (application (rest, position, names), \head => arrowTail (rest, head, names))
 
     arrowTail (rest, head, names) = continued (head, isArrow (at (rest, head.next)), \() => arrowBody (rest, head, names))
 
@@ -137,7 +133,7 @@ module Surface
     isArrow token = token == "→" || token == "->"
 
     (** Juxtaposed atoms are left-nested application. *)
-    application (rest, position, names) = chained (atom (rest, position, names), \head => applied (rest, head, names))
+    application (rest, position, names) = Terms::upon (atom (rest, position, names), \head => applied (rest, head, names))
 
     applied (rest, head, names) = continued (head, startsAtom (at (rest, head.next)), \() => appliedTo (rest, head, names))
 
@@ -163,7 +159,7 @@ module Surface
         "" => Error(message = "unexpected end of input")
         name => Success(value = Parsed(term = variable (name, names, 0), next = satAdd position 1))
 
-    parenthesised (rest, position, names) = chained (expr (rest, position, names), \inner => parenthesisedClose (rest, inner))
+    parenthesised (rest, position, names) = Terms::upon (expr (rest, position, names), \inner => parenthesisedClose (rest, inner))
 
     parenthesisedClose (rest, inner) = match at (rest, inner.next) == ")"
         false => Error(message = "expected `)`")

@@ -92,14 +92,11 @@ type Lowered =
     for, so the derived recursors can be compared with what an export
     claims. *)
 module Nesting
-    upon (outcome, next) = match outcome
-        Success value => next value
-        Error message => Error(message = message)
 
     (** Lower the declaration `formers`/`ctors` with `params` shared
         parameters: a declaration with no nested occurrence lowers to
         itself with no nests. *)
-    export lower (env, formers, ctors, params) = upon (declared (env, formers, params), \known => upon (rewrittenCtors (started (formers, ctors), env, known, ctors, []), \lowering => upon (auxed (lowering, env, known, 0), \finished => Success(value = lowered finished))))
+    export lower (env, formers, ctors, params) = Terms::upon (declared (env, formers, params), \known => Terms::upon (rewrittenCtors (started (formers, ctors), env, known, ctors, []), \lowering => Terms::upon (auxed (lowering, env, known, 0), \finished => Success(value = lowered finished))))
 
     (** What the lowering needs to know about the declaration. *)
     declared (env, formers, params) = match formers
@@ -117,7 +114,7 @@ module Nesting
         `lowerAux`. *)
     rewrittenCtors (lowering, env, known, remaining, done) = match remaining
         [] => Success(value = withCtors (lowering, done))
-        [first, ...rest] => upon (rewrite (lowering, env, known, first.ty, 0), \next => rewrittenCtors (next.rewrittenLowering, env, known, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body))))
+        [first, ...rest] => Terms::upon (rewrite (lowering, env, known, first.ty, 0), \next => rewrittenCtors (next.rewrittenLowering, env, known, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body))))
 
     withCtors (lowering, ctors) = Lowering(lowerOriginal = lowering.lowerOriginal, lowerCtors = ctors, lowerAux = lowering.lowerAux, lowerNests = lowering.lowerNests, lowerNext = lowering.lowerNext)
 
@@ -125,11 +122,11 @@ module Nesting
         created the families; rewriting them can create more. *)
     auxed (lowering, env, known, at) = match listGet (lowering.lowerAux, at)
         Error _ => Success(value = lowering)
-        Success family => upon (auxRewritten (lowering, env, known, family, family.membersCtors, [], at), \next => auxed (next, env, known, satAdd at 1))
+        Success family => Terms::upon (auxRewritten (lowering, env, known, family, family.membersCtors, [], at), \next => auxed (next, env, known, satAdd at 1))
 
     auxRewritten (lowering, env, known, family, remaining, done, at) = match remaining
         [] => Success(value = withAux (lowering, at, Members(membersFormer = family.membersFormer, membersCtors = done)))
-        [first, ...rest] => upon (rewrite (lowering, env, known, first.ty, 0), \next => auxRewritten (next.rewrittenLowering, env, known, family, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body)), at))
+        [first, ...rest] => Terms::upon (rewrite (lowering, env, known, first.ty, 0), \next => auxRewritten (next.rewrittenLowering, env, known, family, rest, listAppend (done, Decl(name = first.name, params = first.params, ty = next.rewrittenTerm, body = first.body)), at))
 
     (** The lowering with auxiliary family `at`'s constructors rewritten. *)
     withAux (lowering, at, family) = Lowering(lowerOriginal = lowering.lowerOriginal, lowerCtors = lowering.lowerCtors, lowerAux = replacedAt (lowering.lowerAux, at, family), lowerNests = lowering.lowerNests, lowerNext = lowering.lowerNext)
@@ -164,16 +161,16 @@ module Nesting
         other => Error(message = "internal: nested occurrence")
 
     rewriteInside (lowering, env, known, term, depth) = match term
-        App head arg => upon (rewrite (lowering, env, known, head, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, arg, depth), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = App first.rewrittenTerm second.rewrittenTerm))))
+        App head arg => Terms::upon (rewrite (lowering, env, known, head, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, arg, depth), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = App first.rewrittenTerm second.rewrittenTerm))))
         Lam name domain body => rewriteBound (lowering, env, known, term, name, domain, body, depth, true)
         Pi name domain body => rewriteBound (lowering, env, known, term, name, domain, body, depth, false)
-        Proj family index target => upon (rewrite (lowering, env, known, target, depth), \first => Success(value = Rewritten(rewrittenLowering = first.rewrittenLowering, rewrittenTerm = Proj family index first.rewrittenTerm)))
+        Proj family index target => Terms::upon (rewrite (lowering, env, known, target, depth), \first => Success(value = Rewritten(rewrittenLowering = first.rewrittenLowering, rewrittenTerm = Proj family index first.rewrittenTerm)))
         Let name ty value body => rewriteLet (lowering, env, known, name, ty, value, body, depth)
         other => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = term))
 
-    rewriteLet (lowering, env, known, name, ty, value, body, depth) = upon (rewrite (lowering, env, known, ty, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, value, depth), \second => upon (rewrite (second.rewrittenLowering, env, known, body, satAdd depth 1), \third => Success(value = Rewritten(rewrittenLowering = third.rewrittenLowering, rewrittenTerm = Let name first.rewrittenTerm second.rewrittenTerm third.rewrittenTerm)))))
+    rewriteLet (lowering, env, known, name, ty, value, body, depth) = Terms::upon (rewrite (lowering, env, known, ty, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, value, depth), \second => Terms::upon (rewrite (second.rewrittenLowering, env, known, body, satAdd depth 1), \third => Success(value = Rewritten(rewrittenLowering = third.rewrittenLowering, rewrittenTerm = Let name first.rewrittenTerm second.rewrittenTerm third.rewrittenTerm)))))
 
-    rewriteBound (lowering, env, known, term, name, domain, body, depth, lambda) = upon (rewrite (lowering, env, known, domain, depth), \first => upon (rewrite (first.rewrittenLowering, env, known, body, satAdd depth 1), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = boundForm (lambda, name, first.rewrittenTerm, second.rewrittenTerm)))))
+    rewriteBound (lowering, env, known, term, name, domain, body, depth, lambda) = Terms::upon (rewrite (lowering, env, known, domain, depth), \first => Terms::upon (rewrite (first.rewrittenLowering, env, known, body, satAdd depth 1), \second => Success(value = Rewritten(rewrittenLowering = second.rewrittenLowering, rewrittenTerm = boundForm (lambda, name, first.rewrittenTerm, second.rewrittenTerm)))))
 
     boundForm (lambda, name, domain, body) = match lambda
         true => Lam name domain body
@@ -204,7 +201,7 @@ module Nesting
     (** A fresh copy of the container's whole mutual group, appended to
         the internal group; the occurrence's replacement is the copy of
         the container itself. *)
-    copied (lowering, env, known, occurrence, depth) = upon (containerGroup (env, occurrence.occurHead), \group => upon (copiedGroup (lowering, env, known, occurrence, group, mainName (known)), \copiedState => copyDone (copiedState, known, occurrence, depth)))
+    copied (lowering, env, known, occurrence, depth) = Terms::upon (containerGroup (env, occurrence.occurHead), \group => Terms::upon (copiedGroup (lowering, env, known, occurrence, group, mainName (known)), \copiedState => copyDone (copiedState, known, occurrence, depth)))
 
     copyDone (lowering, known, occurrence, depth) = match nestFor (lowering, occurrence)
         Success nest => Success(value = Rewritten(rewrittenLowering = lowering, rewrittenTerm = auxApplied (nest, known, depth, occurrence.occurIndices)))
@@ -222,7 +219,7 @@ module Nesting
 
     memberDecls (env, names, done) = match names
         [] => Success(value = done)
-        [first, ...rest] => upon (Environment::find (env, first), \decl => memberDecls (env, rest, listAppend (done, decl)))
+        [first, ...rest] => Terms::upon (Environment::find (env, first), \decl => memberDecls (env, rest, listAppend (done, decl)))
 
     (** Every member of the container's group copied, one auxiliary
         family each; the nest's recursor takes the restored name
@@ -230,7 +227,7 @@ module Nesting
         group, which installation uses too. *)
     copiedGroup (lowering, env, known, occurrence, group, main) = match group
         [] => Success(value = lowering)
-        [first, ...rest] => upon (memberCopied (env, known, occurrence, first, lowering.lowerNext), \copy => copiedGroup (appended (lowering, copy, main), env, known, occurrence, rest, main))
+        [first, ...rest] => Terms::upon (memberCopied (env, known, occurrence, first, lowering.lowerNext), \copy => copiedGroup (appended (lowering, copy, main), env, known, occurrence, rest, main))
 
     (** The lowering with one copied member's family, constructors and
         nest added. *)
@@ -246,21 +243,21 @@ module Nesting
     (** One member of the container's group copied as an auxiliary family:
         its type and every constructor instantiated at the occurrence and
         abstracted over the declaration's shared parameters. *)
-    memberCopied (env, known, occurrence, former, next) = upon (memberFamily (former), \family => memberBuilt (env, known, occurrence, former, family, auxName (env, former.name, next)))
+    memberCopied (env, known, occurrence, former, next) = Terms::upon (memberFamily (former), \family => memberBuilt (env, known, occurrence, former, family, auxName (env, former.name, next)))
 
     memberFamily (former) = match former.body
         TypeFormer family => Success(value = family)
         other => Error(message = "`${former.name}` is not an inductive family")
 
-    memberBuilt (env, known, occurrence, former, family, aux) = upon (memberCtors (env, known, occurrence, family, aux, 0, []), \ctors => upon (memberType (known, occurrence, former), \ty => Success(value = Copied(copiedMembers = Members(membersFormer = Decl(name = aux, params = known.declaredLevels, ty = ty, body = Axiom), membersCtors = ctors), copiedNest = Nest(nestAux = aux, nestContainer = former.name, nestLevels = occurrence.occurLevels, nestArgs = occurrence.occurArgs, nestRec = "", nestCtors = mapped (family.familyCtors, aux, 0, []), nestParamCount = listLength known.declaredParams)))))
+    memberBuilt (env, known, occurrence, former, family, aux) = Terms::upon (memberCtors (env, known, occurrence, family, aux, 0, []), \ctors => Terms::upon (memberType (known, occurrence, former), \ty => Success(value = Copied(copiedMembers = Members(membersFormer = Decl(name = aux, params = known.declaredLevels, ty = ty, body = Axiom), membersCtors = ctors), copiedNest = Nest(nestAux = aux, nestContainer = former.name, nestLevels = occurrence.occurLevels, nestArgs = occurrence.occurArgs, nestRec = "", nestCtors = mapped (family.familyCtors, aux, 0, []), nestParamCount = listLength known.declaredParams)))))
 
-    memberType (known, occurrence, former) = upon (Telescope::applied (Terms::instantiateLevels (former.ty, former.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
+    memberType (known, occurrence, former) = Terms::upon (Telescope::applied (Terms::instantiateLevels (former.ty, former.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
 
     memberCtors (env, known, occurrence, family, aux, at, done) = match listGet (family.familyCtors, at)
         Error _ => Success(value = done)
-        Success name => upon (Environment::find (env, name), \decl => upon (memberCtorType (known, occurrence, decl), \ty => memberCtors (env, known, occurrence, family, aux, satAdd at 1, listAppend (done, Decl(name = "${aux}.${toString at}", params = known.declaredLevels, ty = ty, body = Axiom)))))
+        Success name => Terms::upon (Environment::find (env, name), \decl => Terms::upon (memberCtorType (known, occurrence, decl), \ty => memberCtors (env, known, occurrence, family, aux, satAdd at 1, listAppend (done, Decl(name = "${aux}.${toString at}", params = known.declaredLevels, ty = ty, body = Axiom)))))
 
-    memberCtorType (known, occurrence, decl) = upon (Telescope::applied (Terms::instantiateLevels (decl.ty, decl.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
+    memberCtorType (known, occurrence, decl) = Terms::upon (Telescope::applied (Terms::instantiateLevels (decl.ty, decl.params, occurrence.occurLevels), occurrence.occurArgs), \ty => Success(value = Telescope::piOver (known.declaredParams, ty)))
 
     (** The auxiliary constructors of one family, paired with the
         container constructors they restore to. *)
@@ -321,11 +318,11 @@ module Nesting
         refusal, as it is in Lean's kernel. *)
     rebased (term, inner, depth, params) = match term
         BVar index => rebasedVar (index, inner, depth, params)
-        App head arg => upon (rebased (head, inner, depth, params), \left => upon (rebased (arg, inner, depth, params), \right => Success(value = App left right)))
-        Lam name domain body => upon (rebased (domain, inner, depth, params), \dom => upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Lam name dom bod)))
-        Pi name domain body => upon (rebased (domain, inner, depth, params), \dom => upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Pi name dom bod)))
-        Proj family index target => upon (rebased (target, inner, depth, params), \one => Success(value = Proj family index one))
-        Let name ty value body => upon (rebased (ty, inner, depth, params), \first => upon (rebased (value, inner, depth, params), \second => upon (rebased (body, satAdd inner 1, depth, params), \third => Success(value = Let name first second third))))
+        App head arg => Terms::upon (rebased (head, inner, depth, params), \left => Terms::upon (rebased (arg, inner, depth, params), \right => Success(value = App left right)))
+        Lam name domain body => Terms::upon (rebased (domain, inner, depth, params), \dom => Terms::upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Lam name dom bod)))
+        Pi name domain body => Terms::upon (rebased (domain, inner, depth, params), \dom => Terms::upon (rebased (body, satAdd inner 1, depth, params), \bod => Success(value = Pi name dom bod)))
+        Proj family index target => Terms::upon (rebased (target, inner, depth, params), \one => Success(value = Proj family index one))
+        Let name ty value body => Terms::upon (rebased (ty, inner, depth, params), \first => Terms::upon (rebased (value, inner, depth, params), \second => Terms::upon (rebased (body, satAdd inner 1, depth, params), \third => Success(value = Let name first second third))))
         other => Success(value = term)
 
     rebasedVar (index, inner, depth, params) = match index < inner
@@ -445,9 +442,9 @@ module Nesting
 
     restoredRules (nests, rules, done) = match rules
         [] => Success(value = done)
-        [first, ...rest] => upon (restoreRule (nests, first), \rule => restoredRules (nests, rest, listAppend (done, rule)))
+        [first, ...rest] => Terms::upon (restoreRule (nests, first), \rule => restoredRules (nests, rest, listAppend (done, rule)))
 
-    restoreRule (nests, rule) = upon (restore (nests, rule.ruleRhs), \rhs => restoredRule (nests, rule, rhs, restoredCtorName (nests, rule.ruleCtor)))
+    restoreRule (nests, rule) = Terms::upon (restore (nests, rule.ruleRhs), \rhs => restoredRule (nests, rule, rhs, restoredCtorName (nests, rule.ruleCtor)))
 
     restoredRule (nests, rule, rhs, name) = match auxCtor (nests, name)
         true => Error(message = "a derived rule still names an auxiliary constructor")

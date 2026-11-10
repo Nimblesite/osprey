@@ -17,10 +17,6 @@ type Tables =
     resolved through the table that owns it, so a reference to an index the
     file never defined is refused rather than guessed. *)
 module ExportJson
-    (** `next` applied to the value, or the error passed through. *)
-    export upon (outcome, next) = match outcome
-        Success value => next value
-        Error message => Error(message = message)
 
     (** The member `name`, which must be present. *)
     export fieldIn (json, name) = match jsonField (json, name)
@@ -35,7 +31,7 @@ module ExportJson
     export textIn (json, name) = asIn (json, name, textAs)
 
     // The member `name`, read by `read`.
-    asIn (json, name, read) = upon (fieldIn (json, name), \value => read (value, name))
+    asIn (json, name, read) = Terms::upon (fieldIn (json, name), \value => read (value, name))
 
     textAs (value, name) = match jsonText value
         Success text => Success(value = text)
@@ -79,21 +75,21 @@ module ExportJson
     export exprOf (tables, index) = entryOf (tables.exprs, "expr", index)
 
     (** A declaration's name, through the name table. *)
-    export declName (tables, json) = upon (intIn (json, "name"), \ref => declarationName (tables, ref))
+    export declName (tables, json) = Terms::upon (intIn (json, "name"), \ref => declarationName (tables, ref))
 
     declarationName (tables, index) = match index == 0
         true => Error(message = "name 0 is the anonymous root, not a declaration name")
         false => nameOf (tables, index)
 
     (** Legacy flagless declarations remain readable; any supplied safety metadata must be safe. *)
-    export safeField (json, key) = upon (fieldIn (json, key), \raw => upon (safeFlag raw, \safe => safeMode safe))
+    export safeField (json, key) = Terms::upon (fieldIn (json, key), \raw => Terms::upon (safeFlag raw, \safe => safeMode safe))
 
     safeFlag raw = match hasField (raw, "isUnsafe")
-        true => upon (boolIn (raw, "isUnsafe"), \unsafe => safeDeclaration (raw, !unsafe))
+        true => Terms::upon (boolIn (raw, "isUnsafe"), \unsafe => safeDeclaration (raw, !unsafe))
         false => Success(value = raw)
 
     safeMode raw = match hasField (raw, "safety")
-        true => upon (textIn (raw, "safety"), \mode => safeDeclaration (raw, mode == "safe"))
+        true => Terms::upon (textIn (raw, "safety"), \mode => safeDeclaration (raw, mode == "safe"))
         false => Success(value = raw)
 
     safeDeclaration (raw, safe) = match safe
@@ -101,14 +97,14 @@ module ExportJson
         false => Error(message = "unsafe declarations are refused")
 
     (** A declaration's statement, through the expression table. *)
-    export typedOf (tables, json) = upon (intIn (json, "type"), \ref => exprOf (tables, ref))
+    export typedOf (tables, json) = Terms::upon (intIn (json, "type"), \ref => exprOf (tables, ref))
 
     (** The universe parameters of a declaration, in file order: an array
         of name-table indices. *)
-    export paramsOf (tables, json) = upon (arrayIn (json, "levelParams"), \items => nameList (tables, items, "level parameter"))
+    export paramsOf (tables, json) = Terms::upon (arrayIn (json, "levelParams"), \items => nameList (tables, items, "level parameter"))
 
     (** Every element of a name-index list, in order; `label` names an
         element that is not an index. *)
     export nameList (tables, items, label) = match items
         [] => Success(value = [])
-        [first, ...rest] => upon (intAs (first, label), \index => upon (nameOf (tables, index), \name => upon (nameList (tables, rest, label), \names => Success(value = listPrepend (names, name)))))
+        [first, ...rest] => Terms::upon (intAs (first, label), \index => Terms::upon (nameOf (tables, index), \name => Terms::upon (nameList (tables, rest, label), \names => Success(value = listPrepend (names, name)))))

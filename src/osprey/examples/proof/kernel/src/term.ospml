@@ -17,6 +17,11 @@ type Spine =
     printing of terms. *)
 module Terms
     (** `head` applied to `args`, first argument first. *)
+    (** `next` applied to the value, or the error passed through. *)
+    export upon (outcome, next) = match outcome
+        Success value => next value
+        Error message => Error(message = message)
+
     export apps (head, args) = foldList (args, head, \(applied, arg) => App applied arg)
 
     (** The variables of `count` binders, outermost first, seen from under
