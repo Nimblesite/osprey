@@ -793,14 +793,11 @@ fn nestedRetryRegionsCase() = {
     mut charged = 0
     mut chargeCalls = 0
     mut chargeTrail = ""
-    mut outerCalls = 0
-    mut outerTrail = ""
-    mut outerSettled = ""
     mut innerCalls = 0
     mut innerTrail = ""
     mut innerSettled = ""
 
-    let total = {
+    let outer = {
         handle Budget {
             charge weight => {
                 chargeCalls = chargeCalls + 1 
@@ -809,35 +806,30 @@ fn nestedRetryRegionsCase() = {
                 charged
             }
         }
-        handle Retry {
-            supply n => {
-                outerCalls = outerCalls + 1 
-                let candidate = candidateOver(2, n, 50)
-                outerTrail = "${outerTrail}${tagEntry("o", outerCalls, n, candidate)}"
-                let _ = perform Budget.charge(10)
-                let answer = resume(candidate)
-                outerSettled = "${outerSettled}${settleEntry("o", outerCalls, answer)}"
-                answer
-            }
-        }
-        let before = acceptPositive(1)
-        let inside = {
-            handle Retry {
-                supply n => {
-                    innerCalls = innerCalls + 1 
-                    let candidate = candidateOver(1, n, 700)
-                    innerTrail = "${innerTrail}${tagEntry("i", innerCalls, n, candidate)}"
-                    let _ = perform Budget.charge(1)
-                    let answer = resume(candidate)
-                    innerSettled = "${innerSettled}${settleEntry("i", innerCalls, answer)}"
-                    answer
+        chargeRetry("o", 2, 50, 10, fn() => {
+            let before = acceptPositive(1)
+            let inside = {
+                handle Retry {
+                    supply n => {
+                        innerCalls = innerCalls + 1 
+                        let candidate = candidateOver(1, n, 700)
+                        innerTrail = "${innerTrail}${tagEntry("i", innerCalls, n, candidate)}"
+                        let _ = perform Budget.charge(1)
+                        let answer = resume(candidate)
+                        innerSettled = "${innerSettled}${settleEntry("i", innerCalls, answer)}"
+                        answer
+                    }
                 }
+                acceptPositive(1)
             }
-            acceptPositive(1)
-        }
-        let after = acceptPositive(1)
-        before + inside + after 
+            let after = acceptPositive(1)
+            before + inside + after 
+        })
     }
+    let total = outer.out
+    let outerCalls = outer.calls
+    let outerTrail = outer.trail
+    let outerSettled = outer.settled
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll("nested retry regions each accept their own value", [

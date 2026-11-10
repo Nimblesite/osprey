@@ -776,49 +776,39 @@ nestedRetryRegionsCase () =
     mut charged = 0
     mut chargeCalls = 0
     mut chargeTrail = ""
-    mut outerCalls = 0
-    mut outerTrail = ""
-    mut outerSettled = ""
     mut innerCalls = 0
     mut innerTrail = ""
     mut innerSettled = ""
 
-    total =
+    outer =
         handle Budget
             charge weight =>
                 chargeCalls := chargeCalls + 1 
                 charged := charged + weight 
                 chargeTrail := "${chargeTrail}${toString weight}@${toString charged}|"
                 charged
-        handle Retry
-            supply n =>
-                outerCalls := outerCalls + 1 
-                tag = outerCalls
-                candidate = match n > 2
-                    true => 50
-                    false => 0
-                outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
-                _ = perform Budget.charge 10
-                answer = resume candidate
-                outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
-                answer
-        before = acceptPositive 1
-        inside =
-            handle Retry
-                supply n =>
-                    innerCalls := innerCalls + 1 
-                    tag = innerCalls
-                    candidate = match n > 1
-                        true => 700
-                        false => 0
-                    innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
-                    _ = perform Budget.charge 1
-                    answer = resume candidate
-                    innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
-                    answer
-            acceptPositive 1
-        after = acceptPositive 1
-        before + inside + after 
+        chargeRetry ("o", 2, 50, 10, \() =>
+            before = acceptPositive 1
+            inside =
+                handle Retry
+                    supply n =>
+                        innerCalls := innerCalls + 1 
+                        tag = innerCalls
+                        candidate = match n > 1
+                            true => 700
+                            false => 0
+                        innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
+                        _ = perform Budget.charge 1
+                        answer = resume candidate
+                        innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
+                        answer
+                acceptPositive 1
+            after = acceptPositive 1
+            before + inside + after )
+    total = outer.out
+    outerCalls = outer.calls
+    outerTrail = outer.trail
+    outerSettled = outer.settled
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll "nested retry regions each accept their own value" [
