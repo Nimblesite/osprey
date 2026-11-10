@@ -23,8 +23,6 @@ countOdd (acc, flag) = match flag
     false => acc
 (** The identity kernel: every scalar word must come back out unchanged, at the element type its source buffer was tagged with. *)
 same x = x
-(** The exact payload [GPU-GET] contracts for a read outside the buffer, so a wrong gather is a visible failure and never a sentinel element. *)
-oobMessage () = "gpuGet: index out of bounds"
 (** Render one gpuGet outcome as text — the element for a hit, the error payload for a miss. Being polymorphic over the element type, it is itself the assertion that gpuGet recovers int, float and bool alike. *)
 readback (b, i) = match gpuGet (b, i)
     Success value => toString value
@@ -41,16 +39,12 @@ scaledFloats b =gpuMap(b, scale)
 chooseBuffer (flag, a, b) = match flag
     true => a
     false => b
-(** One typed read: [GPU-GET] at `index` yields `expected`, or `fallback` when it misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet (b, index) ?: fallback) == expected
 (** The read that sits on the in-bounds boundary: the final element, or `fallback` for an empty buffer. *)
 lastIs (b, fallback, expected) = (lastOf b ?: fallback) == expected
 (** The read [GPU-GET] must refuse: its payload is exactly the contracted message, never a sentinel element. *)
 misses (b, index) = readback (b, index) == oobMessage ()
 (** One gpuGet outcome as text, so an element's own scalar type stays visible. *)
 rendersAs (b, index, text) = readback (b, index) == text
-(** [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength b == expected
 (** The length of a materialized list. *)
 listLengthIs (values, expected) = listLength values == expected
 (** One list read, or `fallback` past either end. *)
@@ -75,8 +69,6 @@ widened (b, check) = gpuSatisfies(gpuMap(b, toFloat), check)
 oddFlags (b, check) = gpuSatisfies(gpuMap(b, isOdd), check)
 (** uploaded uploads `values` and checks the dense buffer it produces. *)
 uploaded (values, check) = gpuSatisfies(toGpu (values), check)
-(** Pin the zero-element literal the element type cannot infer. *)
-emptyUploads () = gpuSatisfies(toGpu ([]), \(empty: GpuBuffer<int>) => lengthIs (empty, 0))
 (** [GPU-BUFFER-TO-LIST]: `b` materializes as `expected` list elements. *)
 readsBack (b, expected) = gpuSatisfies(fromGpu (b), \values => listLengthIs (values, expected))
 (** [GPU-BUFFER-TO-LIST] read at one index. *)

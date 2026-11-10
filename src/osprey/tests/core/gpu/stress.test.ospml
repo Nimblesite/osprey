@@ -100,10 +100,6 @@ rebuild (buf, n) = match n
                 Error message => Error(message = message)
             Error message => Error(message = message)
         Error message => Error(message = message)
-(** [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength b == expected
-(** One [GPU-GET] read, or `fallback` when `index` misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet (b, index) ?: fallback) == expected
 (** The length of a materialized list. *)
 listLengthIs (values, expected) = listLength values == expected
 (** One list read, or `fallback` past either end. *)
@@ -124,8 +120,6 @@ uploadSumIs (values, expected) = gpuSatisfies(toGpu (values), \uploaded => sumIs
 uploadAddOrIs (values, expected) = gpuSatisfies(toGpu (values), \uploaded => gpuSatisfies(gpuFold(uploaded, 0, addOr), \total => total == expected))
 (** Fold the upload of `values` with addF from `seed` to `expected`. *)
 uploadFloatSumsTo (values, seed, expected) = gpuSatisfies(toGpu (values), \uploaded => floatSumsTo (uploaded, seed, expected))
-(** Pin the zero-element literal the element type cannot infer. *)
-emptyUploads () = gpuSatisfies(toGpu ([]), \(empty: GpuBuffer<int>) => lengthIs (empty, 0))
 (** Run a million elements through map, fold, filter and scan. *)
 megaPipelineCase () = withIndices (1000000, \idx => megaPipelineWith (idx))
 megaPipelineWith (idx) = withBuffer(gpuMap(idx, square), \squares => withBuffer(gpuFilter(idx, isEven), \evens => withBuffer(gpuScan(idx, 0, tally), \running => checkAll("million-element pipeline", [

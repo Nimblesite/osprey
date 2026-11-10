@@ -17,7 +17,7 @@ fn subI(a, b) = (a - b)
 fn horner(a, d) = (((a * 10) ) + d)
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
 fn maxI(a, b: int) = match a > b { true => a false => b }
-fn addF(a: float, x: float) = a + x
+fn addF(a, x) = a + x
 fn orB(a, b) = a || b
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
@@ -54,10 +54,6 @@ fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }
-/// lengthIs is [GPU-BUFFER-LENGTH] on one buffer.
-fn lengthIs(b, expected) = gpuLength(b) == expected
-/// elementIs is one [GPU-GET] read, or `fallback` when `index` misses.
-fn elementIs(b, index, fallback, expected) = (gpuGet(b, index) ?: fallback) == expected
 /// rendersAs is one gpuGet outcome as text, so an element's own type stays visible.
 fn rendersAs(b, index, text) = oobMessage(b, index) == text
 /// sumsTo is [GPU-FOLD] with sumI: `b` from `seed` totals `expected`.

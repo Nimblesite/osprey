@@ -39,3 +39,16 @@ fn iotaError(n) = match gpuIota(n) {
     Success { value } => "unexpected success ${gpuLength(value)}"
     Error { message } => toString(message)
 }
+
+/// Whether `buffer` holds `expected` elements.
+fn lengthIs(buffer, expected) = gpuLength(buffer) == expected
+
+/// Whether element `index` of `buffer` is `expected`; an out-of-bounds read
+/// compares `fallback` instead, so a missing element fails unless it is meant to.
+fn elementIs(buffer, index, fallback, expected) = (gpuGet(buffer, index) ?: fallback) == expected
+
+/// Whether uploading an empty list yields an empty buffer.
+fn emptyUploads() = gpuSatisfies(toGpu([]), fn(empty: GpuBuffer<int>) => lengthIs(empty, 0))
+
+/// The reason a bounds-checked GPU read reports for an index past the end.
+fn oobMessage() = "gpuGet: index out of bounds"

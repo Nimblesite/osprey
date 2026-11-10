@@ -67,10 +67,6 @@ oobMessage : (GpuBuffer<int>, int) -> string
 oobMessage (buf, i) = match gpuGet (buf, i)
     Success value => "value ${value}"
     Error message => message
-(** [GPU-BUFFER-LENGTH] on one buffer. *)
-lengthIs (b, expected) = gpuLength b == expected
-(** One [GPU-GET] read, or `fallback` when `index` misses. *)
-elementIs (b, index, fallback, expected) = (gpuGet (b, index) ?: fallback) == expected
 (** One gpuGet outcome as text, so an element's own type stays visible. *)
 rendersAs (b, index, text) = oobMessage (b, index) == text
 (** [GPU-FOLD] with sumI: `b` from `seed` totals `expected`. *)

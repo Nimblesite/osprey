@@ -222,9 +222,13 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
                 "test(\"s\", fn() => checkTrue(gpuSatisfies(toGpu([3]), fn(b) => gpuLength(b) == 1)))\n",
                 "test(\"i\", fn() => withIndices(4, fn(b) => expect(gpuLength(b), 4)))\n",
                 "print(iotaError(0 - 1))\n",
+                "test(\"e\", fn() => withIndices(2, fn(b) => checkTrue(elementIs(b, 1, 0, 1))))\n",
+                "test(\"l\", fn() => withIndices(2, fn(b) => checkTrue(lengthIs(b, 2))))\n",
+                "test(\"u\", fn() => checkTrue(emptyUploads()))\n",
+                "print(oobMessage())\n",
             ][..],
             "withBuffer gpuSatisfies withIndices iotaError",
-            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\"]))))\n"),
+            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\"]))))\n"),
         ),
         (
             &[
