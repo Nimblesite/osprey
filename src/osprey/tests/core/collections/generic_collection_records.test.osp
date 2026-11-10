@@ -26,7 +26,7 @@ fn matricesHold(matrices, wants) = eachHolds(wants, fn(i) => rowsHold(listGet(ma
 
 fn groupsHold(payload, keys, wants) = eachHolds(keys, fn(i) => groupIs(payload, listGet(keys, i) ?: "", ["row"], "item", listGet(wants, i) ?: []) && listLength(mapGet(payload, listGet(keys, i) ?: "") ?: ["missing"]) == listLength(listGet(wants, i) ?: []))
 
-fn mapHolds(groups, size, wants, absent) = listLength(mapKeys(groups)) == size && allListed(mapKeys(groups), wants) && noneListed(mapKeys(groups), absent)
+fn mapHolds(groups, wants, absent) = listLength(mapKeys(groups)) == listLength(wants) && allListed(mapKeys(groups), wants) && noneListed(mapKeys(groups), absent)
 
 fn cellOf(envelope, fallbackRow, fallback) = nestedAt(envelope.payload, 0, 0, fallbackRow, fallback)
 /// neighboursDiffer holds when no two neighbours of `values` are equal.
@@ -42,6 +42,9 @@ fn auditEnvelopeMetadata(envelopes) = {
     forEachList(envelopes, fn(envelope) => perform RecordAudit.note(envelope.metadata))
     transcript
 }
+
+/// auditsHold holds the transcribed audit of every list in `cases`.
+fn auditsHold(cases, empty, wants) = eachHolds(wants, fn(i) => auditEnvelopeMetadata(listGet(cases, i) ?: empty) == (listGet(wants, i) ?: ""))
 
 /// The same two-parameter record crosses an effectful callback, List and Map storage,
 /// Result fallbacks, field recovery, and persistent descendants. Implements
@@ -65,26 +68,20 @@ fn genericRecordCollectionEffectCase() = {
             envelopesHold([firstBack, secondBack, thirdBack], fallback, ["int-matrix", "second", "third"], [10, 6, 5]),
             matricesHold([firstBack.payload, secondBack.payload, thirdBack.payload], [[[1, 2], [3, 4, 5]], [[6, 7], [8, 9, 10]], [[11, 12]]]),
             absent.metadata == "fallback" && cellOf(absent, [91], 98) == 99,
-            storedSizes(envelopes, grown),
             firstBack.metadata == "int-matrix",
-            auditEnvelopeMetadata(envelopes) == "int-matrix/second/",
-            auditEnvelopeMetadata(grown) == "int-matrix/second/third/"
+            auditsHold([envelopes, grown], [fallback], ["int-matrix/second/", "int-matrix/second/third/"])
     ])
 
     checkAll("Envelope<Map<string,List<string>>,int> survives map storage and lookup", [
-            mapHolds(envelopeMap, 1, ["primary"], ["missing"]),
-            stringBack.metadata == 17,
-            groupsHold(stringBack.payload, ["short", "long"], [["a", "bb"], ["three", "seven"]]),
+            mapHolds(envelopeMap, ["primary"], ["missing"]),
+            stringBack.metadata == 17 && groupsHold(stringBack.payload, ["short", "long"], [["a", "bb"], ["three", "seven"]]),
             length(groupAt(stringBack.payload, "long", 1, ["row"], "item")) == 5 && groupAt(missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
-            missingBack.metadata == 99 && mapLength(missingBack.payload) == 1,
-            mapHolds(stringBack.payload, 2, ["short", "long"], ["missing"])
+            missingBack.metadata == 99 && mapLength(missingBack.payload) == 1 && mapHolds(stringBack.payload, ["short", "long"], ["missing"])
     ])
 
     checkAll("different T and U argument lists remain isolated", [
-            neighboursDiffer([firstBack.metadata, secondBack.metadata, thirdBack.metadata], ""),
-            neighboursDiffer([cellOf(firstBack, [99], 99), cellOf(secondBack, [99], 99), cellOf(thirdBack, [99], 99)], 0),
-            stringBack.metadata != missingBack.metadata,
-            groupAt(stringBack.payload, "short", 0, ["row"], "item") != groupAt(missingBack.payload, "missing", 0, ["row"], "item"),
+            neighboursDiffer([firstBack.metadata, secondBack.metadata, thirdBack.metadata], "") && neighboursDiffer([cellOf(firstBack, [99], 99), cellOf(secondBack, [99], 99), cellOf(thirdBack, [99], 99)], 0),
+            stringBack.metadata != missingBack.metadata && groupAt(stringBack.payload, "short", 0, ["row"], "item") != groupAt(missingBack.payload, "missing", 0, ["row"], "item"),
             mapLength(envelopeMap) == 1 && storedSizes(envelopes, grown)
     ])
 }
