@@ -9,6 +9,7 @@
 // once. Escape decoding — including \uXXXX and surrogate pairs — must produce
 // exact UTF-8 bytes.
 #include <assert.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -340,12 +341,75 @@ static void t_json_rejects_raw_nul(void) {
   osp_release(suffix);
 }
 
+// [BUILTIN-JSON-TYPED] Python's decoder accepts the three non-finite float
+// spellings -- NaN, Infinity and -Infinity -- wherever a value may appear.
+// JSON has no such number, so a plain decode rejects all three. A near miss
+// must not be mistaken for one: the word is compared in full, and anything
+// left over is trailing text.
+static void t_python_json_non_finite_numbers(void) {
+  const char *words[] = {"NaN", "Infinity", "-Infinity"};
+  const char *bad[] = {"Nab", "Infinit", "-Inf", "N", "I", "-I", "nan", "infinity"};
+  int64_t h = json_decode_python_open("[1.5]");
+  CHECK(h > 0);
+  const int64_t float_kind = json_node_kind(h, 1);
+  CHECK(json_decode_close(h) == 0);
+  for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+    h = json_decode_python_open((char *)(uintptr_t)words[i]);
+    CHECK(h > 0 && json_node_kind(h, 0) == float_kind);
+    double v = json_node_float(h, 0);
+    bool matches = i == 0   ? isnan(v)
+                   : i == 1 ? (isinf(v) && v > 0)
+                            : (isinf(v) && v < 0);
+    CHECK(matches && json_node_int(h, 0) == 0); // never an integer
+    CHECK(json_decode_close(h) == 0);
+  }
+  // The same spellings as array elements and as object values, mixed with a
+  // finite number so the surrounding grammar is exercised too.
+  h = json_decode_python_open("[NaN, Infinity, -Infinity, 1.5]");
+  CHECK(h > 0 && json_node_first(h, 0) == 1 && json_node_end(h, 0) == 5);
+  CHECK(isnan(json_node_float(h, 1)));
+  CHECK(isinf(json_node_float(h, 2)) && json_node_float(h, 2) > 0);
+  CHECK(isinf(json_node_float(h, 3)) && json_node_float(h, 3) < 0);
+  CHECK(json_node_float(h, 4) == 1.5 && json_node_kind(h, 4) == float_kind);
+  CHECK(json_decode_close(h) == 0);
+  h = json_decode_python_open("{\"a\":NaN,\"b\":Infinity,\"c\":-Infinity,\"d\":1.5}");
+  CHECK(h > 0 && json_node_first(h, 0) == 1 && json_node_end(h, 0) == 5);
+  const char *keys[] = {"a", "b", "c", "d"};
+  for (size_t i = 0; i < 4; i++) check_text(json_node_key(h, (int64_t)i + 1), keys[i], 1);
+  CHECK(isnan(json_node_float(h, 1)));
+  CHECK(isinf(json_node_float(h, 2)) && json_node_float(h, 2) > 0);
+  CHECK(isinf(json_node_float(h, 3)) && json_node_float(h, 3) < 0);
+  CHECK(json_node_float(h, 4) == 1.5);
+  CHECK(json_decode_close(h) == 0);
+  // Near misses: a truncated word is malformed, and a word with text after it
+  // is a complete value followed by trailing garbage.
+  for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+    CHECK(json_decode_python_open((char *)(uintptr_t)bad[i]) == ERR_MALFORMED);
+  }
+  CHECK(strcmp(osp_io_error(), "jsonDecode: byte 0: unexpected character") == 0);
+  CHECK(json_decode_python_open("[Nab]") == ERR_MALFORMED);
+  CHECK(json_decode_python_open("{\"a\":Infinit}") == ERR_MALFORMED);
+  CHECK(json_decode_python_open("[NaNx]") == ERR_MALFORMED);
+  const char *trailing[] = {"NaNx", "Infinityy", "-Infinityy"};
+  for (size_t i = 0; i < sizeof(trailing) / sizeof(trailing[0]); i++) {
+    CHECK(json_decode_python_open((char *)(uintptr_t)trailing[i]) == ERR_TRAILING);
+  }
+  // Without Python mode the words are not numbers at all.
+  for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+    CHECK(json_decode_open((char *)(uintptr_t)words[i]) == ERR_MALFORMED);
+    CHECK(json_parse((char *)(uintptr_t)words[i]) == ERR_MALFORMED);
+  }
+  CHECK(json_decode_open("[NaN, Infinity, -Infinity]") == ERR_MALFORMED);
+  CHECK(json_parse("{\"a\":-Infinity}") == ERR_MALFORMED);
+}
+
 // A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
 int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "--python-json-nul") == 0) {
     t_python_json_nul_round_trip();
+    t_python_json_non_finite_numbers();
     t_json_rejects_raw_nul();
     return 0;
   }
@@ -372,6 +436,7 @@ int main(int argc, char **argv) {
   }
   CHECK(argc == 1);
   t_python_json_nul_round_trip();
+  t_python_json_non_finite_numbers();
   t_json_rejects_raw_nul();
   t_owned_text_preserves_nul_cursor_bounds();
   t_owned_text_survives_collection_and_growth();
