@@ -142,13 +142,7 @@ blockStatementsCase () =
     ]
 
     checkAll "block results retain element types in nested lists" [
-        listLength results == 6,
-        (listGet results 0 ?: 99) == 42,
-        (listGet results 1 ?: 99) == 20,
-        (listGet results 2 ?: 99) == 85,
-        (listGet results 3 ?: 99) == 30,
-        (listGet results 4 ?: 99) == 20,
-        (listGet results 5 ?: 99) == 94,
+        structuralEquals (results, [42, 20, 85, 30, 20, 94]),
         (listGet results 9 ?: 99) == 99,
         listLength nestedResults == 3,
         listLength (listGet nestedResults 0 ?: [99]) == 6,

@@ -186,14 +186,8 @@ fn typedErrorChannelCase() = {
     ])
 
     checkAll("nested handlers restore outer policies around collection values", [
-            listLength(trace) == 3,
-            (trace.listGet(0) ?: 99) == 10,
-            (trace.listGet(1) ?: 99) == 1,
-            (trace.listGet(2) ?: 99) == 10,
-            listLength(healthyTrace) == 3,
-            (healthyTrace.listGet(0) ?: 99) == 5,
-            (healthyTrace.listGet(1) ?: 99) == 1,
-            (healthyTrace.listGet(2) ?: 99) == 5,
+            structuralEquals(trace, [10, 1, 10]),
+            structuralEquals(healthyTrace, [5, 1, 5]),
             traceShape([]) == "empty",
             traceShape([7]) == "one:7",
             traceShape([7, 8]) == "two:7/8",

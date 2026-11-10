@@ -132,21 +132,9 @@ fn resultAndEffectsCase() = {
     ])
 
     checkAll("each Rescue policy replaces only failing collection elements", [
-            listLength(hundreds) == 6,
-            (hundreds.listGet(0) ?: 99) == 100,
-            (hundreds.listGet(1) ?: 99) == 5,
-            (hundreds.listGet(2) ?: 99) == 100,
-            (hundreds.listGet(3) ?: 99) == 2,
-            (hundreds.listGet(4) ?: 99) == 100,
-            (hundreds.listGet(5) ?: 99) == 123,
+            structuralEquals(hundreds, [100, 5, 100, 2, 100, 123]),
             (hundreds.listGet(9) ?: 99) == 99,
-            listLength(sevens) == 6,
-            (sevens.listGet(0) ?: 99) == 7,
-            (sevens.listGet(1) ?: 99) == 5,
-            (sevens.listGet(2) ?: 99) == 7,
-            (sevens.listGet(3) ?: 99) == 2,
-            (sevens.listGet(4) ?: 99) == 7,
-            (sevens.listGet(5) ?: 99) == 123,
+            structuralEquals(sevens, [7, 5, 7, 2, 7, 123]),
             (negatives.listGet(0) ?: 99) == ((0 - 1) ),
             (negatives.listGet(4) ?: 99) == ((0 - 1) )
     ])
