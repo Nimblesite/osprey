@@ -6,6 +6,15 @@ use std::path::Path;
 /// means.
 pub(super) use crate::common::{repo_root, sources};
 
+const NO_DIAGNOSTIC: &str = "assembly failed with no diagnostic";
+
+/// The one-line reason the golden prints when the project layer rejects a
+/// source: its first diagnostic, or a note when it recorded none.
+fn project_reason(errors: Vec<osprey_project::ProjectError>) -> String {
+    let first = errors.first().map_or(NO_DIAGNOSTIC, |error| error.message.as_str());
+    format!("project: {first}")
+}
+
 /// Compile one source the way `osprey --run` does: resolve the flavor from the
 /// path and any `// osprey: flavor=…` marker, parse, gate on type errors, then
 /// lower to IR. `Ok(ir_len)` on success, else the failing stage + reason.
@@ -25,13 +34,7 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
         return Err(format!("parse: {}", messages.join("; ")));
     }
     let (program, backend) =
-        assemble_if_needed(path, source, parsed.program).map_err(|errors| {
-            let first = errors.first().map(|error| error.message.as_str());
-            format!(
-                "project: {}",
-                first.unwrap_or("assembly failed with no diagnostic")
-            )
-        })?;
+        assemble_if_needed(path, source, parsed.program).map_err(project_reason)?;
     lower(&program, backend.as_ref())
 }
 
@@ -39,13 +42,7 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
 /// load its manifest and sources, assemble the module graph, then gate and
 /// lower exactly as [`compile`] does for one source.
 pub(super) fn compile_project(root: &Path) -> Result<usize, String> {
-    let assembled = osprey_project::load_and_assemble(root).map_err(|errors| {
-        let first = errors.first().map(|error| error.message.as_str());
-        format!(
-            "project: {}",
-            first.unwrap_or("assembly failed with no diagnostic")
-        )
-    })?;
+    let assembled = osprey_project::load_and_assemble(root).map_err(project_reason)?;
     lower(&assembled.program, assembled.backend.as_ref())
 }
 
