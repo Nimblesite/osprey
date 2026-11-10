@@ -122,17 +122,15 @@ nestedInterleavedDepthTwoCase () =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls * 10 
-                log := noteEnter (log, "a", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "a", label, label, alphaCalls * 10)
+                answer = resume (alphaCalls * 10)
                 log := noteExit log "a" label label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 100 
-                log := noteEnter (log, "b", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "b", label, label, betaCalls * 100)
+                answer = resume (betaCalls * 100)
                 log := noteExit log "b" label label answer
                 answer * 2 
         p = perform Alpha.alpha "a1"
@@ -193,25 +191,22 @@ nestedDepthThreeRotationCase () =
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                supplied = gammaCalls * 1000 
-                log := noteEnter (log, "d1", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "d1", label, label, gammaCalls * 1000)
+                answer = resume (gammaCalls * 1000)
                 log := noteExit log "d1" label label answer
                 answer * 2 
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls * 10 
-                log := noteEnter (log, "d2", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "d2", label, label, alphaCalls * 10)
+                answer = resume (alphaCalls * 10)
                 log := noteExit log "d2" label label answer
                 answer + 7 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 100 
-                log := noteEnter (log, "d3", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "d3", label, label, betaCalls * 100)
+                answer = resume (betaCalls * 100)
                 log := noteExit log "d3" label label answer
                 answer * 3 
         g0 = perform Gamma.gamma "g0"
@@ -277,33 +272,29 @@ nestedDepthFourStaircaseCase () =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls
-                log := noteEnter (log, "1", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "1", label, label, alphaCalls)
+                answer = resume alphaCalls
                 log := noteExit log "1" label label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 10 
-                log := noteEnter (log, "2", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "2", label, label, betaCalls * 10)
+                answer = resume (betaCalls * 10)
                 log := noteExit log "2" label label answer
                 answer + 10 
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                supplied = gammaCalls * 100 
-                log := noteEnter (log, "3", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "3", label, label, gammaCalls * 100)
+                answer = resume (gammaCalls * 100)
                 log := noteExit log "3" label label answer
                 answer + 100 
         handle Delta
             delta label =>
                 deltaCalls := deltaCalls + 1 
-                supplied = deltaCalls * 1000 
-                log := noteEnter (log, "4", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "4", label, label, deltaCalls * 1000)
+                answer = resume (deltaCalls * 1000)
                 log := noteExit log "4" label label answer
                 answer + 1000 
         a1 = perform Alpha.alpha "a1"
@@ -382,24 +373,21 @@ nestedPartialInnerResumeCase () =
         handle Twin
             near amount =>
                 outerNear := outerNear + 1 
-                supplied = amount * 1000000 
-                log := noteEnter (log, "OUTERnear", "N${toString amount}", toString amount, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "OUTERnear", "N${toString amount}", toString amount, amount * 1000000)
+                answer = resume (amount * 1000000)
                 log := noteExit log "OUTERnear" (toString amount) "OUTERnear" answer
                 answer
             far amount =>
                 outerFar := outerFar + 1 
-                supplied = amount * 1000 
-                log := noteEnter (log, "far", "f${toString amount}", toString amount, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "far", "f${toString amount}", toString amount, amount * 1000)
+                answer = resume (amount * 1000)
                 log := noteExit log "far" (toString amount) "far" answer
                 answer * 2 
         handle Twin
             near amount =>
                 innerNear := innerNear + 1 
-                supplied = amount * 10 
-                log := noteEnter (log, "near", "n${toString amount}", toString amount, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "near", "n${toString amount}", toString amount, amount * 10)
+                answer = resume (amount * 10)
                 log := noteExit log "near" (toString amount) "near" answer
                 answer + 5 
         p = perform Twin.near 1
@@ -460,9 +448,8 @@ sameEffectTwoDepthsCase () =
         handle Layer
             pick label =>
                 outerCalls := outerCalls + 1 
-                supplied = outerCalls * 1000 
-                log := noteEnter (log, "out", label, label, supplied)
-                answer = resume supplied
+                log := noteEnter (log, "out", label, label, outerCalls * 1000)
+                answer = resume (outerCalls * 1000)
                 log := noteExit log "out" label label answer
                 answer * 2 
         before = perform Layer.pick "before"
@@ -470,9 +457,8 @@ sameEffectTwoDepthsCase () =
             handle Layer
                 pick label =>
                     innerCalls := innerCalls + 1 
-                    supplied = innerCalls * 10 
-                    log := noteEnter (log, "in", label, label, supplied)
-                    answer = resume supplied
+                    log := noteEnter (log, "in", label, label, innerCalls * 10)
+                    answer = resume (innerCalls * 10)
                     log := noteExit log "in" label label answer
                     answer + 3 
             m1 = perform Layer.pick "in1"

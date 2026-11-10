@@ -130,9 +130,8 @@ fn nestedInterleavedDepthTwoCase() = {
         handle Alpha {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
-                let supplied = alphaCalls * 10 
-                log = noteEnter(log, "a", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "a", label, label, alphaCalls * 10)
+                let answer = resume(alphaCalls * 10)
                 log = noteExit(log, "a", label, label, answer)
                 answer + 1 
             }
@@ -140,9 +139,8 @@ fn nestedInterleavedDepthTwoCase() = {
         handle Beta {
             beta label => {
                 betaCalls = betaCalls + 1 
-                let supplied = betaCalls * 100 
-                log = noteEnter(log, "b", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "b", label, label, betaCalls * 100)
+                let answer = resume(betaCalls * 100)
                 log = noteExit(log, "b", label, label, answer)
                 answer * 2 
             }
@@ -207,9 +205,8 @@ fn nestedDepthThreeRotationCase() = {
         handle Gamma {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
-                let supplied = gammaCalls * 1000 
-                log = noteEnter(log, "d1", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "d1", label, label, gammaCalls * 1000)
+                let answer = resume(gammaCalls * 1000)
                 log = noteExit(log, "d1", label, label, answer)
                 answer * 2 
             }
@@ -217,9 +214,8 @@ fn nestedDepthThreeRotationCase() = {
         handle Alpha {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
-                let supplied = alphaCalls * 10 
-                log = noteEnter(log, "d2", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "d2", label, label, alphaCalls * 10)
+                let answer = resume(alphaCalls * 10)
                 log = noteExit(log, "d2", label, label, answer)
                 answer + 7 
             }
@@ -227,9 +223,8 @@ fn nestedDepthThreeRotationCase() = {
         handle Beta {
             beta label => {
                 betaCalls = betaCalls + 1 
-                let supplied = betaCalls * 100 
-                log = noteEnter(log, "d3", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "d3", label, label, betaCalls * 100)
+                let answer = resume(betaCalls * 100)
                 log = noteExit(log, "d3", label, label, answer)
                 answer * 3 
             }
@@ -299,9 +294,8 @@ fn nestedDepthFourStaircaseCase() = {
         handle Alpha {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
-                let supplied = alphaCalls
-                log = noteEnter(log, "1", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "1", label, label, alphaCalls)
+                let answer = resume(alphaCalls)
                 log = noteExit(log, "1", label, label, answer)
                 answer + 1 
             }
@@ -309,9 +303,8 @@ fn nestedDepthFourStaircaseCase() = {
         handle Beta {
             beta label => {
                 betaCalls = betaCalls + 1 
-                let supplied = betaCalls * 10 
-                log = noteEnter(log, "2", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "2", label, label, betaCalls * 10)
+                let answer = resume(betaCalls * 10)
                 log = noteExit(log, "2", label, label, answer)
                 answer + 10 
             }
@@ -319,9 +312,8 @@ fn nestedDepthFourStaircaseCase() = {
         handle Gamma {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
-                let supplied = gammaCalls * 100 
-                log = noteEnter(log, "3", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "3", label, label, gammaCalls * 100)
+                let answer = resume(gammaCalls * 100)
                 log = noteExit(log, "3", label, label, answer)
                 answer + 100 
             }
@@ -329,9 +321,8 @@ fn nestedDepthFourStaircaseCase() = {
         handle Delta {
             delta label => {
                 deltaCalls = deltaCalls + 1 
-                let supplied = deltaCalls * 1000 
-                log = noteEnter(log, "4", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "4", label, label, deltaCalls * 1000)
+                let answer = resume(deltaCalls * 1000)
                 log = noteExit(log, "4", label, label, answer)
                 answer + 1000 
             }
@@ -415,17 +406,15 @@ fn nestedPartialInnerResumeCase() = {
         handle Twin {
             near amount => {
                 outerNear = outerNear + 1 
-                let supplied = amount * 1000000 
-                log = noteEnter(log, "OUTERnear", "N${toString(amount)}", toString(amount), supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "OUTERnear", "N${toString(amount)}", toString(amount), amount * 1000000)
+                let answer = resume(amount * 1000000)
                 log = noteExit(log, "OUTERnear", toString(amount), "OUTERnear", answer)
                 answer
             }
             far amount => {
                 outerFar = outerFar + 1 
-                let supplied = amount * 1000 
-                log = noteEnter(log, "far", "f${toString(amount)}", toString(amount), supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "far", "f${toString(amount)}", toString(amount), amount * 1000)
+                let answer = resume(amount * 1000)
                 log = noteExit(log, "far", toString(amount), "far", answer)
                 answer * 2 
             }
@@ -433,9 +422,8 @@ fn nestedPartialInnerResumeCase() = {
         handle Twin {
             near amount => {
                 innerNear = innerNear + 1 
-                let supplied = amount * 10 
-                log = noteEnter(log, "near", "n${toString(amount)}", toString(amount), supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "near", "n${toString(amount)}", toString(amount), amount * 10)
+                let answer = resume(amount * 10)
                 log = noteExit(log, "near", toString(amount), "near", answer)
                 answer + 5 
             }
@@ -501,9 +489,8 @@ fn sameEffectTwoDepthsCase() = {
         handle Layer {
             pick label => {
                 outerCalls = outerCalls + 1 
-                let supplied = outerCalls * 1000 
-                log = noteEnter(log, "out", label, label, supplied)
-                let answer = resume(supplied)
+                log = noteEnter(log, "out", label, label, outerCalls * 1000)
+                let answer = resume(outerCalls * 1000)
                 log = noteExit(log, "out", label, label, answer)
                 answer * 2 
             }
@@ -513,9 +500,8 @@ fn sameEffectTwoDepthsCase() = {
             handle Layer {
                 pick label => {
                     innerCalls = innerCalls + 1 
-                    let supplied = innerCalls * 10 
-                    log = noteEnter(log, "in", label, label, supplied)
-                    let answer = resume(supplied)
+                    log = noteEnter(log, "in", label, label, innerCalls * 10)
+                    let answer = resume(innerCalls * 10)
                     log = noteExit(log, "in", label, label, answer)
                     answer + 3 
                 }
