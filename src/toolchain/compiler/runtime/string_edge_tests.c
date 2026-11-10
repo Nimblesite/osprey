@@ -142,42 +142,20 @@ void test_repeated_replace(void) {
 }
 
 void test_split_pathological(void) {
-    osp_string_list *list;
-
     /* separator at very start */
-    list = osp_string_split(",a,b", ",");
-    assert(list->length == 3);
-    assert(strcmp(list->items[0], "") == 0);
-    assert(strcmp(list->items[1], "a") == 0);
-    assert(strcmp(list->items[2], "b") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split(",a,b", ","), (const char *[]){"", "a", "b", NULL});
 
     /* separator at very end */
-    list = osp_string_split("a,b,", ",");
-    assert(list->length == 3);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    assert(strcmp(list->items[2], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("a,b,", ","), (const char *[]){"a", "b", "", NULL});
 
     /* separator IS the whole string */
-    list = osp_string_split(",", ",");
-    assert(list->length == 2);
-    assert(strcmp(list->items[0], "") == 0);
-    assert(strcmp(list->items[1], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split(",", ","), (const char *[]){"", "", NULL});
 
     /* empty input */
-    list = osp_string_split("", ",");
-    assert(list->length == 1);
-    assert(strcmp(list->items[0], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("", ","), (const char *[]){"", NULL});
 
     /* sep longer than input */
-    list = osp_string_split("ab", "abcdef");
-    assert(list->length == 1);
-    assert(strcmp(list->items[0], "ab") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("ab", "abcdef"), (const char *[]){"ab", NULL});
 
     printf("  ok  split_pathological\n");
 }

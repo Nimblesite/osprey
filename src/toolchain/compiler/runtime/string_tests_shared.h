@@ -18,6 +18,17 @@
 #include "string_runtime.h"
 #include "memory_hooks.h"
 
+// Asserts `list` holds exactly `items` (NULL-terminated), in order, then frees it.
+static inline void list_is(osp_string_list *list, const char *const *items) {
+    assert(list != NULL);
+    size_t n = 0;
+    for (; items[n] != NULL; n++) {
+        assert(n < (size_t)list->length && strcmp(list->items[n], items[n]) == 0);
+    }
+    assert((size_t)list->length == n);
+    osp_string_list_free(list);
+}
+
 // Releases runtime-produced text through its manager and fixture text through libc.
 void release_test_buffer(void *p);
 
