@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 import subprocess
 import tempfile
@@ -27,6 +28,13 @@ def windows_checkout_bytes(relative):
 
 PROOF = load_script("proof_openai", Path(__file__).with_name("proof-openai.py"))
 BUILDER = load_script("core_builder", PROOF.CORE / "tools/build_corpus.py")
+
+
+@contextmanager
+def staging_workspace():
+    assets = load_script("proof_assets", PROOF.ROOT / "scripts/proof/workbench-proof-assets.py")
+    with tempfile.TemporaryDirectory() as directory:
+        yield assets, Path(directory)
 
 
 class CorpusTests(unittest.TestCase):
@@ -85,24 +93,23 @@ class CorpusTests(unittest.TestCase):
             self.assertGreater(len(rows), 100)
             self.assertTrue(set(group["theorems"]) <= theorems.keys())
 
-    def test_workbench_custom_operator_fixtures_match_pinned_lean_sources(self):
-        path = PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/notation_cases.json"
-        controls = json.loads(path.read_text())
-        self.assertEqual(controls["toolchain"], "leanprover/lean4:v4.25.0")
-        tests = (PROOF.ROOT / "src/osprey/workbench/tests/imported.ospml").read_text()
-        for group in controls["groups"]:
+    def assert_embedded_twins(self, groups, tests_path):
+        tests = (PROOF.ROOT / tests_path).read_text()
+        for group in groups:
             PROOF.check_files(group)
-            found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
+            found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$",
+                              tests, re.MULTILINE)
             self.assertIsNotNone(found, group["id"])
             self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
 
+    def test_workbench_custom_operator_fixtures_match_pinned_lean_sources(self):
+        controls = json.loads((PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/notation_cases.json").read_text())
+        self.assertEqual(controls["toolchain"], "leanprover/lean4:v4.25.0")
+        self.assert_embedded_twins(controls["groups"], "src/osprey/workbench/tests/imported.ospml")
+
     def test_kernel_export_fixture_twin_is_byte_identical_to_the_pinned_export(self):
         group = json.loads((PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/recursor_cases.json").read_text())
-        PROOF.check_files(group)
-        tests = (PROOF.ROOT / "src/osprey/examples/proof/kernel/tests/export.ospml").read_text()
-        found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
-        self.assertIsNotNone(found, group["id"])
-        self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
+        self.assert_embedded_twins([group], "src/osprey/examples/proof/kernel/tests/export.ospml")
 
     def test_number_theory_port_preserves_five_original_statements(self):
         groups = {group["id"]: group for group in self.groups}
@@ -141,9 +148,11 @@ class CorpusTests(unittest.TestCase):
              mock.patch.object(PROOF, "rejected"), mock.patch("builtins.print"):
             PROOF.verify_group(["checker"], group, "gc")
 
+    def rejected_wrong_statement(self, changer):
+        self.rejected_axiom(changer("type", next(row["ie"] for row in self.rows if row.get("sort") == 0)))
+
     def test_axiom_cannot_be_given_the_wrong_statement(self):
-        prop = next(row["ie"] for row in self.rows if row.get("sort") == 0)
-        self.rejected_axiom(self.changed_axiom("type", prop))
+        self.rejected_wrong_statement(self.changed_axiom)
 
     def test_unsafe_axiom_is_not_trusted(self):
         self.rejected_axiom(self.changed_axiom("isUnsafe", True))
@@ -152,8 +161,7 @@ class CorpusTests(unittest.TestCase):
         return self.changed_axiom(key, value, "Quot.sound")
 
     def test_quotient_soundness_cannot_be_replaced_by_an_arbitrary_statement(self):
-        prop = next(row["ie"] for row in self.rows if row.get("sort") == 0)
-        self.rejected_axiom(self.changed_quotient_axiom("type", prop))
+        self.rejected_wrong_statement(self.changed_quotient_axiom)
 
     def test_quotient_soundness_requires_its_universe_parameter(self):
         self.rejected_axiom(self.changed_quotient_axiom("levelParams", []))
@@ -200,34 +208,30 @@ class CorpusTests(unittest.TestCase):
     def test_core_exports_use_the_same_structural_axiom_guard(self):
         self.assert_exports(PROOF.core_groups())
 
-    def test_core_frontier_cannot_silently_drop_a_selected_root(self):
+    def rejects_core_groups(self, reason, corrupt):
         corpus, frontier = PROOF.core_inventory()
         broken = copy.deepcopy(frontier)
-        broken["groups"][0]["blocked"].pop()
-        with self.assertRaisesRegex(ValueError, "partition"):
+        corrupt(corpus, broken)
+        with self.assertRaisesRegex(ValueError, reason):
             PROOF.core_groups(corpus, broken)
+
+    def test_core_frontier_cannot_silently_drop_a_selected_root(self):
+        self.rejects_core_groups("partition", lambda corpus, frontier: frontier["groups"][0]["blocked"].pop())
 
     def test_core_frontier_cannot_promote_a_blocked_root_without_an_export(self):
-        corpus, frontier = PROOF.core_inventory()
-        broken = copy.deepcopy(frontier)
-        group = next(group for group in broken["groups"] if group["blocked"])
-        group["accepted"].append(group["blocked"].pop())
-        with self.assertRaisesRegex(ValueError, "consolidation"):
-            PROOF.core_groups(corpus, broken)
+        def promote(corpus, frontier):
+            group = next(group for group in frontier["groups"] if group["blocked"])
+            group["accepted"].append(group["blocked"].pop())
+        self.rejects_core_groups("consolidation", promote)
 
     def test_core_toolchain_cannot_disagree_with_the_pinned_source_root(self):
-        corpus, frontier = PROOF.core_inventory()
-        corpus["toolchain"] = "leanprover/lean4:unknown"
-        with self.assertRaisesRegex(ValueError, "toolchain"):
-            PROOF.core_groups(corpus, frontier)
+        self.rejects_core_groups("toolchain", lambda corpus, frontier: corpus.update(toolchain="leanprover/lean4:unknown"))
 
     def test_core_unknown_frontier_group_cannot_be_ignored(self):
-        corpus, frontier = PROOF.core_inventory()
-        extra = copy.deepcopy(frontier["groups"][0])
-        extra["id"] = "unknown-group"
-        frontier["groups"].append(extra)
-        with self.assertRaisesRegex(ValueError, "group"):
-            PROOF.core_groups(corpus, frontier)
+        def ignore_group(corpus, frontier):
+            extra = {**copy.deepcopy(frontier["groups"][0]), "id": "unknown-group"}
+            frontier["groups"].append(extra)
+        self.rejects_core_groups("group", ignore_group)
 
     def test_core_probe_requires_the_exact_requested_name_and_one_clean_receipt(self):
         cases = [("PASS Nat.add_comm | axioms: none", 0, "accepted"),
@@ -268,9 +272,7 @@ class CorpusTests(unittest.TestCase):
                 PROOF.check_files(group)
 
     def test_bundled_proofs_reject_stale_exports_missing_licenses_and_unlisted_files(self):
-        assets = load_script("proof_assets", PROOF.ROOT / "scripts/proof/workbench-proof-assets.py")
-        with tempfile.TemporaryDirectory() as directory:
-            destination = Path(directory)
+        with staging_workspace() as (assets, destination):
             for relative, value in (("proof-libraries/stacks.ndjson", b"corrupt"),
                                     ("proof-libraries/LICENSE.lean4", None),
                                     ("proof-libraries/unlisted.ndjson", b"unexpected")):
@@ -295,9 +297,7 @@ class CorpusTests(unittest.TestCase):
             self.assertEqual(PROOF.digest(checked_out), group["export_sha256"], relative)
 
     def test_proof_staging_refuses_a_symlink_without_touching_its_destination(self):
-        assets = load_script("proof_assets", PROOF.ROOT / "scripts/proof/workbench-proof-assets.py")
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+        with staging_workspace() as (assets, root):
             bundle, outside = root / "bundle", root / "outside"
             bundle.mkdir()
             outside.mkdir()
@@ -309,9 +309,7 @@ class CorpusTests(unittest.TestCase):
             self.assertEqual(sentinel.read_text(), "untouched")
 
     def test_packaging_committed_proofs_does_not_require_a_lean_installation(self):
-        assets = load_script("proof_assets", PROOF.ROOT / "scripts/proof/workbench-proof-assets.py")
-        with tempfile.TemporaryDirectory() as directory:
-            destination = Path(directory)
+        with staging_workspace() as (assets, destination):
             with mock.patch.object(Path, "home", return_value=destination / "absent-home"):
                 assets.stage(destination)
                 assets.stage(destination, check=True)
@@ -330,6 +328,10 @@ class ClassicalChoiceTests(unittest.TestCase):
 
     def check_basis(self):
         PROOF.check_axioms(self.rows, self.names, self.expected)
+
+    def rejects_basis(self, reason):
+        with self.assertRaisesRegex(ValueError, reason):
+            self.check_basis()
 
     def test_actual_choice_oracle_and_embedded_twin_remain_pinned(self):
         base = PROOF.ROOT / "src/osprey/examples/proof/kernel/exports/choice_cases"
@@ -350,35 +352,29 @@ class ClassicalChoiceTests(unittest.TestCase):
     def test_choice_cannot_drop_its_nonempty_hypothesis(self):
         root = self.expressions[self.axiom["type"]]
         root["forallE"]["body"] = next(row["ie"] for row in self.rows if row.get("bvar") == 0)
-        with self.assertRaisesRegex(ValueError, "axiom"):
-            self.check_basis()
+        self.rejects_basis("axiom")
 
     def test_choice_cannot_change_its_universe_parameters(self):
         self.axiom["levelParams"] = []
-        with self.assertRaisesRegex(ValueError, "axiom"):
-            self.check_basis()
+        self.rejects_basis("axiom")
 
     def test_choice_cannot_be_unsafe(self):
         self.axiom["isUnsafe"] = True
-        with self.assertRaisesRegex(ValueError, "axiom"):
-            self.check_basis()
+        self.rejects_basis("axiom")
 
     def test_choice_nonempty_uses_the_same_universe(self):
         root = self.expressions[self.axiom["type"]]
         hypothesis = self.expressions[self.expressions[root["forallE"]["body"]]["forallE"]["type"]]
         self.expressions[hypothesis["app"]["fn"]]["const"]["us"] = []
-        with self.assertRaisesRegex(ValueError, "axiom"):
-            self.check_basis()
+        self.rejects_basis("axiom")
 
     def test_choice_nonempty_cannot_use_a_different_predicate(self):
         self.names[next(index for index, name in self.names.items() if name == "Nonempty")] = "False"
-        with self.assertRaisesRegex(ValueError, "axiom"):
-            self.check_basis()
+        self.rejects_basis("axiom")
 
     def test_choice_cannot_be_omitted_from_the_declared_ledger(self):
         self.expected.remove("Classical.choice")
-        with self.assertRaisesRegex(ValueError, "ledger"):
-            self.check_basis()
+        self.rejects_basis("ledger")
 
 
 if __name__ == "__main__":
