@@ -11,7 +11,9 @@ const NO_DIAGNOSTIC: &str = "assembly failed with no diagnostic";
 /// The one-line reason the golden prints when the project layer rejects a
 /// source: its first diagnostic, or a note when it recorded none.
 fn project_reason(errors: Vec<osprey_project::ProjectError>) -> String {
-    let first = errors.first().map_or(NO_DIAGNOSTIC, |error| error.message.as_str());
+    let first = errors
+        .first()
+        .map_or(NO_DIAGNOSTIC, |error| error.message.as_str());
     format!("project: {first}")
 }
 

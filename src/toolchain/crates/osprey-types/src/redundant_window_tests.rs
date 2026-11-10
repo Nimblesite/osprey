@@ -37,7 +37,11 @@ fn assert_strict_subset(subject: &[usize], written: usize, what: &str) {
 fn every_window_keeps_the_greedy_set() {
     let program = parse_program_with_flavor(MIXED, Flavor::Default).program;
     let (baseline, written, greedy) = fixture(&program);
-    assert_strict_subset(&greedy, written.len(), "fixture must mix kept and dropped sites");
+    assert_strict_subset(
+        &greedy,
+        written.len(),
+        "fixture must mix kept and dropped sites",
+    );
     for window in [2, 3, 64] {
         let found = accumulate(&program, &baseline, &written, window);
         assert_eq!(found, greedy, "window {window}");
@@ -49,7 +53,11 @@ fn singleton_prefilter_keeps_the_greedy_set() {
     let program = parse_program_with_flavor(MIXED, Flavor::Default).program;
     let (baseline, written, greedy) = fixture(&program);
     let candidates = individually_removable(&program, &baseline, &written);
-    assert_strict_subset(&candidates, written.len(), "prefilter must drop a load-bearing site");
+    assert_strict_subset(
+        &candidates,
+        written.len(),
+        "prefilter must drop a load-bearing site",
+    );
     let found = accumulate_candidates(&program, &baseline, &written, &candidates, 1);
     assert_eq!(found, greedy, "singleton prefilter changed the greedy set");
 }
