@@ -497,6 +497,24 @@ fn descendSum(depth) ![StepError, Arith] = match depth {
     }
 }
 
+/// A counted run: the total the caller saw and the arm's entry count.
+type StepRun = { total: int, visits: int }
+
+/// Run `descendSum(depth)` under a `contribute` arm counting entries and answering `answer`.
+fn countedSum(depth, answer) = {
+    mut visits = 0
+    let total = {
+        handle StepError {
+            contribute level => {
+                visits = visits + 1 
+                answer(level)
+            }
+        }
+        descendSum(depth)
+    }
+    StepRun { total: total, visits: visits }
+}
+
 /// Cross four effects in one body so a stack of regions has to cooperate.
 fn crossEffectBody() ![RecoveryError, AuditError, StockError, PolicyError] = {
     let filled = perform RecoveryError.missingInt("qty")
@@ -891,9 +909,6 @@ fn recursiveAccumulationCase() = {
     mut visits = 0
     mut lastDepth = 0
     mut trail = ""
-    mut zeroVisits = 0
-    mut oneVisits = 0
-    mut deepVisits = 0
     let total = {
         handle StepError {
             contribute depth => {
@@ -905,33 +920,9 @@ fn recursiveAccumulationCase() = {
         }
         descendSum(8)
     }
-    let zeroTotal = {
-        handle StepError {
-            contribute _depth => {
-                zeroVisits = zeroVisits + 1 
-                99
-            }
-        }
-        descendSum(0)
-    }
-    let oneTotal = {
-        handle StepError {
-            contribute depth => {
-                oneVisits = oneVisits + 1 
-                depth * 3 
-            }
-        }
-        descendSum(1)
-    }
-    let deepTotal = {
-        handle StepError {
-            contribute depth => {
-                deepVisits = deepVisits + 1 
-                depth
-            }
-        }
-        descendSum(33)
-    }
+    let zeroRun = countedSum(0, fn(_depth) => 99)
+    let oneRun = countedSum(1, fn(depth) => depth * 3)
+    let deepRun = countedSum(33, fn(depth) => depth)
     let doubled = {
         handle StepError {
             contribute depth => depth * 2 
@@ -955,43 +946,43 @@ fn recursiveAccumulationCase() = {
     // Depth zero performs nothing at all, so an installed arm stays untouched;
     // depth one performs exactly once and answers 1 * 3.
     checkAll("zero and one level recursions", [
-        structuralEquals([zeroTotal, zeroVisits, oneTotal, oneVisits], [0, 0, 3, 1]),
-        zeroVisits < oneVisits,
-        zeroTotal != oneTotal,
-        zeroTotal < oneTotal,
-        (oneTotal - zeroTotal ) == 3,
-        oneTotal != 99,
-        zeroTotal != 99,
-        (zeroVisits + oneVisits ) == 1,
-        oneVisits != visits
+        structuralEquals([zeroRun.total, zeroRun.visits, oneRun.total, oneRun.visits], [0, 0, 3, 1]),
+        zeroRun.visits < oneRun.visits,
+        zeroRun.total != oneRun.total,
+        zeroRun.total < oneRun.total,
+        (oneRun.total - zeroRun.total ) == 3,
+        oneRun.total != 99,
+        zeroRun.total != 99,
+        (zeroRun.visits + oneRun.visits ) == 1,
+        oneRun.visits != visits
     ])
 
     // 33 levels echoing their own depth sum to 33 * 34 / 2 == 561, and the
     // doubling policy over the same body yields exactly twice that.
     checkAll("recursion past the thirty-two level boundary", [
-        deepTotal == 561,
+        deepRun.total == 561,
         // `/` is always float division [ARITH-CHECKED], so the integer
         // half-sum goes through `intDiv`.
-        deepTotal == (intDiv(33 * 34 , 2) ),
-        deepVisits == 33,
-        deepVisits > 32,
+        deepRun.total == (intDiv(33 * 34 , 2) ),
+        deepRun.visits == 33,
+        deepRun.visits > 32,
         doubled == 1122,
-        doubled == (deepTotal * 2 ),
-        doubled != deepTotal,
-        (doubled - deepTotal ) == 561,
-        deepTotal > total,
-        deepVisits > visits,
-        (deepVisits - visits ) == 25,
-        deepTotal != 528
+        doubled == (deepRun.total * 2 ),
+        doubled != deepRun.total,
+        (doubled - deepRun.total ) == 561,
+        deepRun.total > total,
+        deepRun.visits > visits,
+        (deepRun.visits - visits ) == 25,
+        deepRun.total != 528
     ])
 
     // Across all four runs 8 + 0 + 1 + 33 == 42 arm entries happened, and each
     // run's own answer is still readable after the later regions have closed.
     checkAll("every level of every run entered its own handler", [
-        (visits + zeroVisits + oneVisits + deepVisits ) == 42,
-        structuralEquals([visits, deepVisits, total, deepTotal, doubled, oneTotal, zeroTotal], [8, 33, 360, 561, 1122, 3, 0]),
-        (total + oneTotal + zeroTotal ) == 363,
-        (deepTotal + doubled ) == 1683
+        (visits + zeroRun.visits + oneRun.visits + deepRun.visits ) == 42,
+        structuralEquals([visits, deepRun.visits, total, deepRun.total, doubled, oneRun.total, zeroRun.total], [8, 33, 360, 561, 1122, 3, 0]),
+        (total + oneRun.total + zeroRun.total ) == 363,
+        (deepRun.total + doubled ) == 1683
     ])
 }
 
