@@ -438,4 +438,3 @@ export function watchCompiler(
     new vscode.Disposable(() => clearTimeout(timer)),
   );
 }
-
