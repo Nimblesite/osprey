@@ -13,8 +13,6 @@
 #include "json_internal.h"
 #include "memory_hooks.h"
 
-#include <errno.h>
-#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -103,75 +101,6 @@ static size_t parse_string(Parser *ps) {
   }
   return id;
 }
-// One or more digits; false when there were none.
-static bool scan_digits(Cursor *c) {
-  const char *start = c->p;
-  while (*c->p >= '0' && *c->p <= '9') {
-    c->p++;
-  }
-  return c->p != start;
-}
-// RFC 8259's number grammar exactly: an optional minus, an integer part whose
-// leading zero stands alone, an optional fraction of at least one digit, and
-// an optional exponent of at least one digit. `*integer` says whether the
-// fraction and exponent were both absent.
-//
-// The scanner this replaces took any run of [0-9.eE+-], so `-`, `1.`, `1e`,
-// `1+2`, `--1` and `1e+` all parsed -- and since a number is STORED as its
-// source text, every one of them came straight back out of jsonGet as a
-// "number" no other reader would ever produce [BUILTIN-JSON-NUMBER].
-static bool scan_number(Cursor *c, bool *integer) {
-  if (*c->p == '-') {
-    c->p++;
-  }
-  if (*c->p == '0') {
-    c->p++; // a leading zero is the entire integer part
-  } else if (!scan_digits(c)) {
-    return false;
-  }
-  *integer = *c->p != '.' && *c->p != 'e' && *c->p != 'E';
-  if (*c->p == '.') {
-    c->p++;
-    if (!scan_digits(c)) {
-      return false;
-    }
-  }
-  if (*c->p != 'e' && *c->p != 'E') {
-    return true;
-  }
-  c->p++;
-  if (*c->p == '+' || *c->p == '-') {
-    c->p++;
-  }
-  return scan_digits(c);
-}
-// Up to 18 digits cannot overflow int64, so the common integer is read in
-// one pass; a longer one goes through strtoll for its exact range check.
-static const char *read_integer(const char *lexeme, size_t len, int64_t *out) {
-  bool negative = lexeme[0] == '-';
-  size_t digits = len - (negative ? 1 : 0);
-  if (digits > 18) {
-    errno = 0;
-    *out = strtoll(lexeme, NULL, 10);
-    return errno == ERANGE ? "integer outside the 64-bit range" : NULL;
-  }
-  int64_t value = 0;
-  for (const char *d = lexeme + (negative ? 1 : 0); d < lexeme + len; d++) {
-    value = value * 10 + (*d - '0');
-  }
-  *out = negative ? -value : value;
-  return NULL;
-}
-// Typed numbers fit int64 or double; the default policy rejects non-finite
-// doubles, while the explicit Python policy retains NaN and infinities.
-static const char *read_number(JNode *n, const char *lexeme, size_t len, bool python) {
-  if (n->flag) {
-    return read_integer(lexeme, len, &n->number.i);
-  }
-  n->number.f = strtod(lexeme, NULL);
-  return python || isfinite(n->number.f) ? NULL : "number outside the float range";
-}
-
 static size_t number_node(Parser *ps, const char *start, bool integer) {
   size_t len = (size_t)(ps->c.p - start);
   size_t at = ps->doc->text.len;
@@ -186,7 +115,7 @@ static size_t number_node(Parser *ps, const char *start, bool integer) {
   JNode *n = &ps->doc->nodes[id];
   n->at = at;
   n->flag = integer;
-  const char *bad = ps->typed ? read_number(n, ps->doc->text.data + at, len, ps->c.python)
+  const char *bad = ps->typed ? json_read_number(n, ps->doc->text.data + at, len, ps->c.python)
                               : NULL;
   if (bad) {
     ps->c.p = start; // name the number, not the byte after it
@@ -199,7 +128,7 @@ static size_t number_node(Parser *ps, const char *start, bool integer) {
 static size_t parse_number(Parser *ps) {
   const char *start = ps->c.p;
   bool integer = true;
-  if (!scan_number(&ps->c, &integer)) {
+  if (!json_scan_number(&ps->c, &integer)) {
     ps->c.p = start; // name the number, not the byte the scan stopped on
     json_reject(&ps->c, "invalid number");
     return JSON_NO_NODE;
