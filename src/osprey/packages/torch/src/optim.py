@@ -79,6 +79,16 @@ def decayed(g, p, weight_decay):
     """The gradient with torch's L2 weight decay added, `g += wd * p`."""
     return Array.add(g, Tensor.scale(p, weight_decay)) if weight_decay != 0.0 else g
 
+class ParamGrad[B]:
+    """One parameter paired with the gradient its update consumes."""
+    param: Array.NDArray[B]
+    grad: Array.NDArray[B]
+
+def grad_at(params, grads, i, weight_decay):
+    """The `i`th parameter and its gradient with torch's L2 weight decay."""
+    p = param_at(params, i)
+    return ParamGrad(param=p, grad=decayed(param_at(grads, i), p, weight_decay))
+
 def moment(values, p, i):
     """One per-parameter optimizer buffer: zero before the first step, when the
     state list is still empty."""
@@ -100,26 +110,25 @@ def sgd(params, grads, state, lr, momentum, dampening, nesterov, weight_decay):
     """torch.optim.SGD.step: weight decay is L2 (`grad += wd * p`), momentum
     updates a buffer `buf = momentum * buf + (1 - dampening) * grad`, Nesterov
     adds `momentum * buf` on top, and `p -= lr * d`."""
-    acc = fold(range(len(params)), SgdWork(params=[], buffers=[]), lambda a, i: sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, weight_decay))
-    return SgdResult(params=acc.params, state=SgdState(buffers=acc.buffers))
+    acc = fold(range(len(params)), Work(params=[], state=[]), lambda a, i: sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, weight_decay))
+    return SgdResult(params=acc.params, state=SgdState(buffers=acc.state))
 
-class SgdWork[B]:
-    """SGD's fold accumulator: parameters and buffers built up in order."""
+class Work[B]:
+    """A fold accumulator for optimizers with one per-parameter buffer list
+    (SGD's momentum buffers, Adagrad's square sums)."""
     params: list[Array.NDArray[B]]
-    buffers: list[Array.NDArray[B]]
+    state: list[Array.NDArray[B]]
 
 def sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, weight_decay):
     """One SGD parameter update, in torch's element order. torch keeps no
     momentum buffer when momentum is 0."""
-    p = param_at(params, i)
-    d = param_at(grads, i)
-    d2 = decayed(d, p, weight_decay)
+    pg = grad_at(params, grads, i, weight_decay)
     if momentum == 0.0:
-        return SgdWork(params=listAppend(a.params, descend(p, d2, lr)), buffers=a.buffers)
+        return Work(params=listAppend(a.params, descend(pg.param, pg.grad, lr)), state=a.state)
     else:
-        buf = d2 if len(state.buffers) == 0 else Array.add(Tensor.scale(unwrap_or(listGet(state.buffers, i), d2), momentum), Tensor.scale(d2, Tensor.one_minus(dampening)))
-        d3 = Array.add(d2, Tensor.scale(buf, momentum)) if nesterov else buf
-        return SgdWork(params=listAppend(a.params, descend(p, d3, lr)), buffers=listAppend(a.buffers, buf))
+        buf = pg.grad if len(state.buffers) == 0 else Array.add(Tensor.scale(unwrap_or(listGet(state.buffers, i), pg.grad), momentum), Tensor.scale(pg.grad, Tensor.one_minus(dampening)))
+        d3 = Array.add(pg.grad, Tensor.scale(buf, momentum)) if nesterov else buf
+        return Work(params=listAppend(a.params, descend(pg.param, d3, lr)), state=listAppend(a.state, buf))
 
 def adam(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
     """torch.optim.Adam.step: L2 weight decay on the gradient, moment decay,
@@ -144,17 +153,16 @@ class AdamWork[B]:
 
 def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2, lr, decoupled):
     """One Adam/AdamW update, retaining each algorithm's decay placement."""
-    p = param_at(params, i)
-    g0 = param_at(grads, i)
-    g = g0 if decoupled else decayed(g0, p, weight_decay)
-    e0 = moment(state.exp_avg, p, i)
-    s0 = moment(state.exp_avg_sq, p, i)
-    m0 = moment(state.max_exp_avg_sq, p, i)
+    pg = grad_at(params, grads, i, 0.0 if decoupled else weight_decay)
+    g = pg.grad
+    e0 = moment(state.exp_avg, pg.param, i)
+    s0 = moment(state.exp_avg_sq, pg.param, i)
+    m0 = moment(state.max_exp_avg_sq, pg.param, i)
     m = blend(e0, g, beta1)
     s = blend(s0, Array.multiply(g, g), beta2)
     mx = Array.maximum(m0, s) if amsgrad else s
     denom = Tensor.add_scalar(Tensor.div_scalar(Array.sqrt(mx), sqrt(bc2)), eps)
-    base = Tensor.scale(p, 1.0 - lr * weight_decay) if decoupled else p
+    base = Tensor.scale(pg.param, 1.0 - lr * weight_decay) if decoupled else pg.param
     p2 = descend(base, Array.divide(m, denom), step_size)
     return AdamWork(params=listAppend(a.params, p2), exp_avg=listAppend(a.exp_avg, m), exp_avg_sq=listAppend(a.exp_avg_sq, s), max_exp_avg_sq=append_if(amsgrad, a.max_exp_avg_sq, mx))
 
@@ -178,17 +186,15 @@ class RmspropWork[B]:
 
 def rmsprop_param(a, i, params, grads, state, lr, alpha, eps, weight_decay, momentum, centered):
     """One RMSprop parameter update, in torch's element order."""
-    p = param_at(params, i)
-    g0 = param_at(grads, i)
-    g = decayed(g0, p, weight_decay)
-    sq0 = moment(state.square_avg, p, i)
-    sq = blend(sq0, Array.multiply(g, g), alpha)
-    ga0 = moment(state.grad_avg, p, i)
-    ga = blend(ga0, g, alpha) if centered else ga0
+    pg = grad_at(params, grads, i, weight_decay)
+    sq0 = moment(state.square_avg, pg.param, i)
+    sq = blend(sq0, Array.multiply(pg.grad, pg.grad), alpha)
+    ga0 = moment(state.grad_avg, pg.param, i)
+    ga = blend(ga0, pg.grad, alpha) if centered else ga0
     avg = Tensor.add_scalar(Array.sqrt(Array.subtract(sq, Array.multiply(ga, ga))), eps) if centered else Tensor.add_scalar(Array.sqrt(sq), eps)
-    buf0 = moment(state.buffers, p, i)
-    buf = Array.add(Tensor.scale(buf0, momentum), Array.divide(g, avg)) if momentum > 0.0 else buf0
-    p2 = descend(p, buf, lr) if momentum > 0.0 else descend(p, Array.divide(g, avg), lr)
+    buf0 = moment(state.buffers, pg.param, i)
+    buf = Array.add(Tensor.scale(buf0, momentum), Array.divide(pg.grad, avg)) if momentum > 0.0 else buf0
+    p2 = descend(pg.param, buf, lr) if momentum > 0.0 else descend(pg.param, Array.divide(pg.grad, avg), lr)
     return RmspropWork(params=listAppend(a.params, p2), square_avg=listAppend(a.square_avg, sq), grad_avg=append_if(centered, a.grad_avg, ga), buffers=append_if(momentum > 0.0, a.buffers, buf))
 
 def adagrad(params, grads, state, lr, lr_decay, weight_decay, eps):
@@ -196,24 +202,17 @@ def adagrad(params, grads, state, lr, lr_decay, weight_decay, eps):
     `p -= (lr / (1 + (step - 1) * lr_decay)) * (g / (sqrt(sum) + eps))`."""
     t = state.step + 1
     clr = lr / (1.0 + toFloat(t - 1) * lr_decay)
-    acc = fold(range(len(params)), AdagradWork(params=[], sum=[]), lambda a, i: adagrad_param(a, i, params, grads, state, clr, weight_decay, eps))
-    return AdagradResult(params=acc.params, state=AdagradState(sum=acc.sum, step=t))
-
-class AdagradWork[B]:
-    """Adagrad's fold accumulator over the per-parameter lists."""
-    params: list[Array.NDArray[B]]
-    sum: list[Array.NDArray[B]]
+    acc = fold(range(len(params)), Work(params=[], state=[]), lambda a, i: adagrad_param(a, i, params, grads, state, clr, weight_decay, eps))
+    return AdagradResult(params=acc.params, state=AdagradState(sum=acc.state, step=t))
 
 def adagrad_param(a, i, params, grads, state, clr, weight_decay, eps):
     """One Adagrad parameter update, in torch's element order."""
-    p = param_at(params, i)
-    g0 = param_at(grads, i)
-    g = decayed(g0, p, weight_decay)
-    s0 = moment(state.sum, p, i)
-    s = Array.add(s0, Array.multiply(g, g))
+    pg = grad_at(params, grads, i, weight_decay)
+    s0 = moment(state.sum, pg.param, i)
+    s = Array.add(s0, Array.multiply(pg.grad, pg.grad))
     std = Tensor.add_scalar(Array.sqrt(s), eps)
-    p2 = descend(p, Array.divide(g, std), clr)
-    return AdagradWork(params=listAppend(a.params, p2), sum=listAppend(a.sum, s))
+    p2 = descend(pg.param, Array.divide(pg.grad, std), clr)
+    return Work(params=listAppend(a.params, p2), state=listAppend(a.state, s))
 
 def clip_grad_norm_(grads, max_norm, norm_type):
     """torch.nn.utils.clip_grad_norm_: scale every gradient by
