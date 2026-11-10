@@ -109,6 +109,53 @@ def canon_at(xs, i):
     return canon(unwrap_or(listGet(xs, i), JsonNull()))
 
 
+def outcome_of(outcome, on_ok, on_error):
+    """`on_ok` applied to an `Ok` value, `on_error` to a `Failed` outcome's error."""
+    match outcome:
+        case E.Ok(value=value):
+            return on_ok(value)
+        case E.Failed(error=error):
+            return on_error(error)
+
+
+def result_of(result, on_ok, on_error):
+    """`on_ok` applied to a `Success` value, `on_error` to an `Error`'s message."""
+    match result:
+        case Success(value=value):
+            return on_ok(value)
+        case Error(message=message):
+            return on_error(message)
+
+
+def session_of(result, on_ok, on_error):
+    """`on_ok` applied to an `Ok` session, `on_error` to a `Failed` initialize outcome's message."""
+    match result:
+        case Mcp.Ok(session=session):
+            return on_ok(session)
+        case Mcp.Failed(error=error):
+            return on_error(Mcp.message_of(error))
+
+
+def owed(want):
+    """A want's exact text: an `exact:` marker belongs to the decoder, not to the text."""
+    return drop(want, length("exact:")) if startsWith(want, "exact:") else want
+
+
+def matched(tag, got, want):
+    """`got` against the oracle's text: a `prefix:` want only has to be contained, any
+    other must match exactly, its own marker removed."""
+    if startsWith(want, "prefix:"):
+        return Check.truth(tag, contains(got, drop(want, length("prefix:"))), got)
+    else:
+        return Check.equal(tag, got, owed(want))
+
+
+def table_checks(table, i, got_of):
+    """Row i's check: `got_of` on the row's input text against the row's want."""
+    row = atl(table, i)
+    return matched(ats(row, 0), got_of(ats(row, 1)), ats(row, 2))
+
+
 # Fixtures mirroring the oracle
 
 def schema(text):
@@ -294,19 +341,11 @@ def validate_error_cases():
 
 
 def ok_value(result, fallback):
-    match result:
-        case Success(value=value):
-            return value
-        case Error(message=_m):
-            return fallback
+    return result_of(result, lambda value: value, lambda _message: fallback)
 
 
 def error_text(result):
-    match result:
-        case Success(value=_v):
-            return ""
-        case Error(message=message):
-            return message
+    return result_of(result, lambda _value: "", lambda message: message)
 
 
 # TestModel
@@ -342,20 +381,12 @@ def dumped_messages(messages):
 
 def run_ok(tag, agent, prompt, on_ok):
     """A synchronous agent run as checks: `on_ok` maps a good run's result, a failed run is one failed check."""
-    match Agent.run_sync(agent, prompt, []):
-        case E.Ok(value=result):
-            return on_ok(result)
-        case E.Failed(error=error):
-            return [Check.failed(tag, E.message_of(error))]
+    return outcome_of(Agent.run_sync(agent, prompt, []), on_ok, lambda error: [Check.failed(tag, E.message_of(error))])
 
 
 def run_expect_error(tag, agent, prompt, why, on_error):
     """A synchronous agent run that must fail: `why` names the expected error, `on_error` checks the one raised."""
-    match Agent.run_sync(agent, prompt, []):
-        case E.Ok(value=_result):
-            return [Check.failed(tag, why)]
-        case E.Failed(error=error):
-            return on_error(error)
+    return outcome_of(Agent.run_sync(agent, prompt, []), lambda _result: [Check.failed(tag, why)], on_error)
 
 
 def run_head(tag, result, output_want, messages):
@@ -421,11 +452,7 @@ def status_error_cases():
 
 def transport_error_case():
     provider = Providers.Provider(name="openai", base_url="x", api_key="", post=lambda _path, _body, _headers: Error(message="connection refused"))
-    match Direct.model_request(ModelsOpenai.OpenAIChatModel("gpt-4o", provider, {}), plain(), {}, Models.model_request_parameters()):
-        case E.Ok(value=_response):
-            return Check.failed("transport_error", "expected ModelAPIError")
-        case E.Failed(error=error):
-            return Check.equal("transport_error", f"{E.message_of(error)}/{E.status_code_of(error)}", "connection refused/0")
+    return outcome_of(Direct.model_request(ModelsOpenai.OpenAIChatModel("gpt-4o", provider, {}), plain(), {}, Models.model_request_parameters()), lambda _response: Check.failed("transport_error", "expected ModelAPIError"), lambda error: Check.equal("transport_error", f"{E.message_of(error)}/{E.status_code_of(error)}", "connection refused/0"))
 
 
 HTTP_TEXTS = ["{\"ok\":1}", ""]
@@ -434,11 +461,7 @@ HTTP_CLOSE_OUTCOMES = ["reply 200 kept", "error httpCloseClient returned -1", "e
 
 
 def http_outcome(result):
-    match result:
-        case Success(value=reply):
-            return f"reply {reply.status} {reply.body}"
-        case Error(message=message):
-            return f"error {message}"
+    return result_of(result, lambda reply: f"reply {reply.status} {reply.body}", lambda message: f"error {message}")
 
 
 def http_code(k, missing):
@@ -760,11 +783,7 @@ def session_checks_of(result):
 
 def initialize_error_text(result):
     """The message of a failed `initialize_result`, empty on success."""
-    match result:
-        case Mcp.Ok(session=_s):
-            return ""
-        case Mcp.Failed(error=error):
-            return Mcp.message_of(error)
+    return session_of(result, lambda _session: "", lambda message: message)
 
 
 def mcp_tool_checks():
@@ -791,8 +810,7 @@ INCOMING_MESSAGES = [
 
 def incoming_case(i):
     """One recorded wire message read through `read_message`."""
-    row = atl(INCOMING_MESSAGES, i)
-    return Check.equal(ats(row, 0), incoming_text(Mcp.read_message(ats(row, 1))), ats(row, 2))
+    return table_checks(INCOMING_MESSAGES, i, lambda text: incoming_text(Mcp.read_message(text)))
 
 
 CALL_REPLIES = [
@@ -816,8 +834,7 @@ def call_text(body):
 
 def call_text_case(i):
     """The text one recorded tool-call reply carries."""
-    row = atl(CALL_REPLIES, i)
-    return Check.equal(ats(row, 0), call_text(ats(row, 1)), ats(row, 2))
+    return table_checks(CALL_REPLIES, i, lambda text: call_text(text))
 
 
 CALL_ERRORS = [
@@ -830,8 +847,7 @@ CALL_ERRORS = [
 
 def call_error_case(i):
     """The message one error tool-call reply carries."""
-    row = atl(CALL_ERRORS, i)
-    return Check.equal(ats(row, 0), error_text(Mcp.call_result("t", decode(ats(row, 1)))), ats(row, 2))
+    return table_checks(CALL_ERRORS, i, lambda text: error_text(Mcp.call_result("t", decode(text))))
 
 
 def mcp_session_cases():
@@ -878,19 +894,14 @@ MALFORMED_MESSAGES = [
 """Texts read through `read_message`: an exact want, or a prefix the decoder's own words finish."""
 
 
-def matched(tag, got, want, exact):
-    """`got` against the oracle's text: a `prefix:` want only has to be contained, any
-    other must match exactly — `exact` is the text with its marker already removed."""
-    if startsWith(want, "prefix:"):
-        return Check.truth(tag, contains(got, drop(want, length("prefix:"))), got)
-    else:
-        return Check.equal(tag, got, exact)
-
-
 def mcp_malformed_case(i):
-    want = ats(atl(MALFORMED_MESSAGES, i), 1)
-    text = ats(atl(MALFORMED_MESSAGES, i), 0)
-    return matched(f"mcp.malformed[{i}]", incoming_text(Mcp.read_message(text)), want, drop(want, length("exact:")))
+    row = atl(MALFORMED_MESSAGES, i)
+    return matched(f"mcp.malformed[{i}]", incoming_text(Mcp.read_message(ats(row, 0))), ats(row, 1))
+
+
+def framing_splits(name, text):
+    """Every cut point of `text`: each one yields the same two complete lines."""
+    return cases(length(text) + 1, lambda i: framing_case(name, text, i, [MCP_LINE_ONE, MCP_LINE_TWO]))
 
 
 def framing_case(name, text, i, wants):
@@ -912,8 +923,8 @@ def mcp_framing_cases():
     opened = Mcp.lines_of(Mcp.LineBuffer(pending=""), open_ended)
     last = Mcp.lines_of(opened.buffer, "")
     return concat([
-        cases(length(text) + 1, lambda i: framing_case("mcp.framing", text, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
-        cases(length(crlf) + 1, lambda i: framing_case("mcp.framing_crlf", crlf, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
+        framing_splits("mcp.framing", text),
+        framing_splits("mcp.framing_crlf", crlf),
         [
             Check.truth("mcp.framing_open", structuralEquals(opened.lines, [MCP_LINE_ONE]), open_ended),
             Check.equal("mcp.framing_pending", last.buffer.pending, MCP_LINE_TWO),
@@ -941,9 +952,8 @@ SSE_FORMS = [
 
 def mcp_sse_case(i):
     body = ats(atl(SSE_FORMS, i), 0)
-    want = ats(atl(SSE_FORMS, i), 1)
     got = join(mapList(Mcp.reply_messages("text/event-stream", body), incoming_text), ";")
-    return matched(f"mcp.sse[{i}]", got, want, want)
+    return matched(f"mcp.sse[{i}]", got, ats(atl(SSE_FORMS, i), 1))
 
 
 def mcp_sse_broken_case():
@@ -1074,8 +1084,7 @@ def atd(xs, i):
 
 def mcp_config_case(i):
     load = Mcp.parse_config(ats(CONFIG_TEXTS, i), atd(CONFIG_ENVIRONMENTS, i))
-    want = ats(CONFIG_WANTS, i)
-    return matched(f"mcp.config[{i}]", config_load_text(load), want, want)
+    return matched(f"mcp.config[{i}]", config_load_text(load), ats(CONFIG_WANTS, i))
 
 
 def mcp_merge_cases():
@@ -1090,11 +1099,7 @@ def mcp_merge_cases():
 
 def initialized_version(result: Mcp.InitializeResult) -> str:
     """The protocol version of a successful `initialize_result`, empty on failure."""
-    match result:
-        case Mcp.Ok(session=session):
-            return session.protocol_version
-        case Mcp.Failed(error=_e):
-            return ""
+    return session_of(result, lambda session: session.protocol_version, lambda _message: "")
 
 
 def completed_lines(chunk: Mcp.Lines) -> str:
@@ -1106,11 +1111,7 @@ def listed_names(listing: Mcp.ToolList) -> str:
 
 
 def server_names(load: Mcp.ConfigLoad) -> str:
-    return join(mapList(load.servers, server_name), ",")
-
-
-def server_name(server: Mcp.MCPServerConfig) -> str:
-    return Mcp.name_of(server)
+    return join(mapList(load.servers, lambda server: Mcp.name_of(server)), ",")
 
 
 def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:
@@ -1118,11 +1119,7 @@ def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:
 
 
 def collected_text(result) -> str:
-    match result:
-        case Success(value=items):
-            return join(mapList(items, toString), ",")
-        case Error(message=message):
-            return f"error:{message}"
+    return result_of(result, lambda items: join(mapList(items, toString), ","), lambda message: f"error:{message}")
 
 
 def positive(value):
@@ -1184,11 +1181,7 @@ def direct_cases():
 
 
 def direct_text(model, parameters):
-    match Direct.model_request(model, plain(), {}, parameters):
-        case E.Ok(value=response):
-            return M.text(response)
-        case E.Failed(error=error):
-            return E.message_of(error)
+    return outcome_of(Direct.model_request(model, plain(), {}, parameters), lambda response: M.text(response), lambda error: E.message_of(error))
 
 
 def event_text(event):
@@ -1335,28 +1328,16 @@ def export_cases():
 
 def chat_request_case(profile):
     provider = Providers.scripted("openai", replies(["{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"done\"}}]}"], 200))
-    match ModelsOpenai.chat_request("gpt-4o", provider, profile, plain(), {}, Models.model_request_parameters()):
-        case E.Ok(value=response):
-            return Check.equal("export.chat_request", M.text(response), "done")
-        case E.Failed(error=error):
-            return Check.failed("export.chat_request", E.message_of(error))
+    return outcome_of(ModelsOpenai.chat_request("gpt-4o", provider, profile, plain(), {}, Models.model_request_parameters()), lambda response: Check.equal("export.chat_request", M.text(response), "done"), lambda error: Check.failed("export.chat_request", E.message_of(error)))
 
 
 def post_json_case():
     """A real request to a port nothing listens on: a refused connection is an error, never a reply."""
-    match ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""):
-        case Success(value=reply):
-            return Check.failed("export.post_json_refused", f"got status {reply.status}")
-        case Error(message=message):
-            return Check.truth("export.post_json_refused", message != "", "no reason given")
+    return result_of(ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""), lambda reply: Check.failed("export.post_json_refused", f"got status {reply.status}"), lambda message: Check.truth("export.post_json_refused", message != "", "no reason given"))
 
 
 def typed_output(outcome: E.Outcome[Agent.AgentRunResult]) -> str:
-    match outcome:
-        case E.Ok(value=result):
-            return f"{result.output}:{len(Agent.all_messages(result))}"
-        case E.Failed(error=error):
-            return E.message_of(error)
+    return outcome_of(outcome, lambda result: f"{result.output}:{len(Agent.all_messages(result))}", lambda error: E.message_of(error))
 
 
 def typed_error(error: E.ModelError) -> str:
