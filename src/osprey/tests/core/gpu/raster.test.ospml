@@ -63,11 +63,12 @@ escape (zr, zi, cr, ci, i) = match i >= 24
                 ((zr2 - zi2) ) + cr ,
                 (intDiv ((2 * zr * zi) , scale ()) ) + ci ,
                 cr, ci, (i + 1) )
+(** sampleX/sampleY are a pixel's offsets from the frame centre in cell units — every full-size fragment kernel recovers them the same way. *)
+sampleX idx = ((2 * colOf (idx, frameWidth ())) ) + 1 - frameWidth ()
+sampleY idx = ((2 * rowOf (idx, frameWidth ())) ) + 1 - frameHeight ()
 mandelPixel idx =
-    sx = ((2 * colOf (idx, frameWidth ())) ) + 1 - frameWidth ()
-    sy = ((2 * rowOf (idx, frameWidth ())) ) + 1 - frameHeight ()
-    cr = (intDiv ((sx * 12288) , (2 * frameWidth ()) ) ) - 3072
-    ci = intDiv ((sy * 10240) , (2 * frameHeight ()) )
+    cr = (intDiv (((sampleX (idx)) * 12288) , (2 * frameWidth ()) ) ) - 3072
+    ci = intDiv (((sampleY (idx)) * 10240) , (2 * frameHeight ()) )
     clampLevel (intDiv ((escape (0, 0, cr, ci, 0) * 10) , 24) , 0)
 (** The silhouette radii are in half-cells — the 2:1 ratio corrects for cells being twice as tall as wide — and lightAxis is one axis of the unit light direction,
     1/sqrt(3) in fixed-point. lambert is the diffuse term for a surface point, in the same units, and spherePixel shades a unit sphere one ray per cell: the normal is
@@ -80,10 +81,8 @@ lambert (nx, ny, dd) =
     axis = (0 - lightAxis ())
     intDiv (((nx * axis) ) + ((ny * axis) ) + ((nz * lightAxis ()) ) , scale ())
 spherePixel idx =
-    sx = ((2 * colOf (idx, frameWidth ())) ) + 1 - frameWidth ()
-    sy = ((2 * rowOf (idx, frameWidth ())) ) + 1 - frameHeight ()
-    nx = intDiv ((sx * scale ()) , sphereRadiusX ())
-    ny = intDiv ((sy * scale ()) , sphereRadiusY ())
+    nx = intDiv (((sampleX (idx)) * scale ()) , sphereRadiusX ())
+    ny = intDiv (((sampleY (idx)) * scale ()) , sphereRadiusY ())
     dd = intDiv (((nx * nx) ) + ((ny * ny) ) , scale ())
     match dd > scale ()
         true => 0
@@ -142,6 +141,9 @@ texelRun (pixels, start, want) = match want
 texelRunOf (result, start, want) = match want
     [] => true
     [v, ...rest] => texelIs(result, start, v) && texelRunOf (result, ((start + 1) ), rest)
+(** tileTexelIs and frameTexelIs are that same assertion at tile and frame coordinates, so a coverage case names its pixel (x, y) rather than a flat index. *)
+tileTexelIs (pixels, x, y, want) = texel (pixels, flatIndex (x, y, tileEdge ())) == want
+frameTexelIs (pixels, x, y, want) = texel (pixels, flatIndex (x, y, frameWidth ())) == want
 overLayer (bg, fg) = match fg > 0
     true => fg
     false => bg
@@ -273,9 +275,8 @@ triangleWith (indices8, indices64) =
         grandIs (cover, 21), litIs (cover, 21), texelRun (sums, 0, [0, 6, 5, 4, 3, 2, 1, 0]),
         grandIs (sums, 21), spanStart(cover, tileEdge(), 0, 0) == 8,
         spanStart(cover, tileEdge(), 1, 0) == 1, spanStart(cover, tileEdge(), 6, 0) == 1,
-        texel(cover, flatIndex(6, 1, tileEdge())) == 1, texel(cover, flatIndex(7, 1, tileEdge())) == 0,
-        texel(cover, flatIndex(1, 6, tileEdge())) == 1, texel(cover, flatIndex(0, 1, tileEdge())) == 0,
-        texel(cover, flatIndex(4, 4, tileEdge())) == 0, texel(cover, flatIndex(3, 3, tileEdge())) == 1,
+        tileTexelIs(cover, 6, 1, 1), tileTexelIs(cover, 7, 1, 0), tileTexelIs(cover, 1, 6, 1), tileTexelIs(cover, 0, 1, 0),
+        tileTexelIs(cover, 4, 4, 0), tileTexelIs(cover, 3, 3, 1),
         grandIs(coverBuf(1, 6, 6, 1, 1, 1, indices64), 0),
         grandIs(coverBuf(2, 2, 2, 2, 2, 2, indices64), 64),
         grandIs(coverBuf(0, 0, 3, 0, 6, 0, indices64), 8),
@@ -289,9 +290,8 @@ spanCase () = withIndices (64, \indices64 => spanWith (indices64))
 spanWith (indices64) =
     withBuffer(spanBuf(3, 2, 5, indices64), \mid => checkAll("span fill", [
         grandIs (mid, 4), spanStart(mid, tileEdge(), 3, 0) == 2,
-        texel(mid, flatIndex(2, 3, tileEdge())) == 1, texel(mid, flatIndex(5, 3, tileEdge())) == 1,
-        texel(mid, flatIndex(1, 3, tileEdge())) == 0, texel(mid, flatIndex(6, 3, tileEdge())) == 0,
-        texel(mid, flatIndex(2, 2, tileEdge())) == 0, texel(mid, flatIndex(2, 4, tileEdge())) == 0,
+        tileTexelIs(mid, 2, 3, 1), tileTexelIs(mid, 5, 3, 1), tileTexelIs(mid, 1, 3, 0), tileTexelIs(mid, 6, 3, 0),
+        tileTexelIs(mid, 2, 2, 0), tileTexelIs(mid, 2, 4, 0),
         grandIs(spanBuf(0, 0, 0, indices64), 1),
         grandIs(spanBuf(7, 7, 7, indices64), 1),
         grandIs(spanBuf(0, 0, 7, indices64), 8),
@@ -387,9 +387,8 @@ symmetryWith (indices24, indices1536) =
 shadingCase () = withIndices (24, \indices24 => withIndices (1536, \indices1536 => shadingWith (indices24, indices1536)))
 shadingWith (indices24, indices1536) =
     withBuffer(sphereFrame(indices1536), \sphere => withBuffer(rowSums(sphere, frameWidth(), indices24), \sums => withBuffer(gpuFilter(sphere, interiorPixel), \interior => checkAll("shading", [
-        texel(sphere, 0) == 0, texel(sphere, 1535) == 0, texel(sphere, flatIndex(19, 5, frameWidth())) == 9,
-        texel(sphere, flatIndex(31, 0, frameWidth())) == 0,
-        texel(sphere, flatIndex(63, 12, frameWidth())) == 0, litIs (sphere, 764),
+        texel(sphere, 0) == 0, texel(sphere, 1535) == 0, frameTexelIs(sphere, 19, 5, 9),
+        frameTexelIs(sphere, 31, 0, 0), frameTexelIs(sphere, 63, 12, 0), litIs (sphere, 764),
         gpuLength(interior) == 1, grandIs (sphere, 2928),
         texel(sums, 0) == 0, texel(sums, 23) == 0,
         spanStart(sphere, frameWidth(), 0, 0) == 64, spanStart(sphere, frameWidth(), 12, 0) == 10,
@@ -402,7 +401,7 @@ compositeCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => w
 compositeWith (indices0, indices16, indices1536) =
     withBuffer(mandelFrame(indices1536), \mandel => withBuffer(sphereFrame(indices1536), \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer), \composite => checkAll("composite", [
         gpuLength(composite) == 1536, texel(composite, 0) == texel(mandel, 0),
-        texel(composite, flatIndex(19, 5, frameWidth())) == 9, litIs (composite, 1212),
+        frameTexelIs(composite, 19, 5, 9), litIs (composite, 1212),
         gpuSatisfies(gpuFilter(composite, litPixel), \compositeLit => litCountOf(mandel, \mandelLit => gpuLength(compositeLit) == mandelLit)),
         grandIs (composite, 3860),
         overLayer(3, 0) == 3, overLayer(0, 7) == 7, overLayer(0, 0) == 0, overLayer(4, 4) == 4,
