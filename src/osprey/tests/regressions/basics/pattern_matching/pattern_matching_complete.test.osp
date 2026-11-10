@@ -1,18 +1,3 @@
-/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
-fn divideResult(a, b) = {
-    mut failed = false
-    handle Arith { divideByZero op _ => {
-        expect(op, "/")
-        failed = true
-        0.0
-    } }
-    let value = a / b
-    match failed {
-        true => Error { message: "division by zero" }
-        false => Success { value: value }
-    }
-}
-
 // Pattern matching across every shape Osprey supports:
 // literal, wildcard, nested match, named ADT field destructuring (both
 // orders), multi-variant union, type-annotation pattern, dynamic union

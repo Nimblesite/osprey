@@ -1,0 +1,19 @@
+//! A Result-returning division the error-path test programs share. Its own
+//! unit, so a program that declares its own `Success` still gets the testing
+//! policy without it. Implements [FAILURE-EXPLICIT].
+
+/// A Result API over `/` that deliberately converts a recorded zero-divisor
+/// fault at its boundary into `Error { message: "division by zero" }`.
+fn divideResult(a, b) = {
+    mut failed = false
+    handle Arith { divideByZero op _ => {
+        expect(op, "/")
+        failed = true
+        0.0
+    } }
+    let value = a / b
+    match failed {
+        true => Error { message: "division by zero" }
+        false => Success { value: value }
+    }
+}

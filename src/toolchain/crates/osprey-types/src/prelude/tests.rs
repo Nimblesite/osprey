@@ -153,6 +153,7 @@ fn later_prelude_units_rebase_cleanly_into_ranges_past_every_earlier_unit() {
         (1, SIGNALS, signals(), &[json()][..]),
         (2, TESTING, testing(), &[signals()][..]),
         (3, TESTING_GPU, testing_gpu(), &[]),
+        (4, TESTING_RESULT, testing_result(), &[]),
     ] {
         let base = PRELUDE_LINE_BASE + index * PRELUDE_UNIT_STRIDE;
         assert_in_range(source, unit, base, |line| line >= base, earlier);
@@ -233,6 +234,11 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
             ][..],
             "containsAll containsNone exactArithmetic",
             Some("test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", [])]))\n"),
+        ),
+        (
+            &["test(\"d\", fn() => checkTrue((divideResult(6.0, 2.0) ?: 0.0) == 3.0))\n"][..],
+            "divideResult",
+            Some("test(\"div\", fn() => checkAll(\"division\", [(divideResult(1.0, 4.0) ?: 0.0) == 0.25, (divideResult(1.0, 0.0) ?: -1.0) == -1.0]))\n"),
         ),
     ] {
         assert_offers_attach_once(sources, offered);

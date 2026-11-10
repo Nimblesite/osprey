@@ -14,6 +14,7 @@ const JSON: &str = include_str!("prelude/json.osp");
 const SIGNALS: &str = include_str!("prelude/signals.osp");
 const TESTING: &str = include_str!("prelude/testing.osp");
 const TESTING_GPU: &str = include_str!("prelude/testing_gpu.osp");
+const TESTING_RESULT: &str = include_str!("prelude/testing_result.osp");
 
 /// Prelude positions start here, past any assembled project, so no prelude
 /// inference site shares a key with a source one and coverage can leave the
@@ -70,6 +71,12 @@ fn testing_gpu() -> &'static Loaded {
     UNIT.get_or_init(|| loaded(TESTING_GPU, PRELUDE_LINE_BASE + 3 * PRELUDE_UNIT_STRIDE))
 }
 
+/// The Result division unit, rebased past the GPU testing unit's lines.
+fn testing_result() -> &'static Loaded {
+    static UNIT: OnceLock<Loaded> = OnceLock::new();
+    UNIT.get_or_init(|| loaded(TESTING_RESULT, PRELUDE_LINE_BASE + 4 * PRELUDE_UNIT_STRIDE))
+}
+
 /// The program with the prelude units it needs in front of it. A unit
 /// attaches when the program names one of its declarations and declares none
 /// of its data names; `signals` is written against `json`, so it attaches
@@ -96,6 +103,7 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
         (signals_wanted, signals),
         (wanted(&testing.names, &own, &uses), testing),
         (wanted(&testing_gpu.names, &own, &uses), testing_gpu),
+        (wanted(&testing_result().names, &own, &uses), testing_result()),
     ]
     .into_iter()
     .filter_map(|(want, unit)| want.then_some(unit))

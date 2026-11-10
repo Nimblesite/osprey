@@ -1,16 +1,3 @@
-(** This Result API deliberately converts a recorded arithmetic fault at its boundary. *)
-divideResult (a, b) =
-    mut failed = false
-    handle Arith
-        divideByZero op _ =>
-            expect op "/"
-            failed := true
-            0.0
-    value = a / b
-    match failed
-        true => Error(message = "division by zero")
-        false => Success(value = value)
-
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 
 // ML-flavor twin of string_edge_cases.osp. Layout `match` arms, whitespace

@@ -1,18 +1,3 @@
-/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
-fn divideResult(a, b) = {
-    mut failed = false
-    handle Arith { divideByZero op _ => {
-        expect(op, "/")
-        failed = true
-        0.0
-    } }
-    let value = a / b
-    match failed {
-        true => Error { message: "division by zero" }
-        false => Success { value: value }
-    }
-}
-
 // [STRING-INTERPOLATION] also covers escapes and embedded expression rendering.
 // Edge-case verification for the string builtins: every error path and
 // boundary documented in spec/0012-Built-InFunctions.md. The integration

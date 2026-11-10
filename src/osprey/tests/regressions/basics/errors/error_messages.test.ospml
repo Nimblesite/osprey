@@ -1,16 +1,3 @@
-(** This Result API deliberately converts a recorded arithmetic fault at its boundary. *)
-divideResult (a, b) =
-    mut failed = false
-    handle Arith
-        divideByZero op _ =>
-            expect op "/"
-            failed := true
-            0.0
-    value = a / b
-    match failed
-        true => Error(message = "division by zero")
-        false => Success(value = value)
-
 // ML-flavor twin of error_messages.osp — byte-identical IR.
 // Error-message catalogue: the ERROR path of every fallible builtin, with the
 // real reason threaded through the `Error message` arm — never a placeholder.
