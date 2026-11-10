@@ -34,4 +34,15 @@ void t_entropy_source(void);
 // against a pseudo-terminal [BUILTIN-TERM].
 void t_term_tty(void);
 
+// The pipe half: soft failures off a terminal, the exact ANSI sequences and
+// the key decoder over fed bytes [BUILTIN-TERM].
+void t_term(void);
+
+// Run `fn` in a forked child with stdin fed `input` and stdout captured; assert
+// its exit code and, when `want_out` is non-NULL, its exact output.
+void run_child_expect(int (*fn)(void), const char *input, const char *want_out, int want_exit);
+
+// The TAP half: what test_runtime.c prints for every kind of run [TESTING-TAP].
+void t_tap(void);
+
 #endif // OSPREY_BUILTINS_TESTS_SHARED_H

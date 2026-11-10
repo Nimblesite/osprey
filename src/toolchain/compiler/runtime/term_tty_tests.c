@@ -1,13 +1,14 @@
-// term_runtime.c against a REAL terminal [BUILTIN-TERM]. Third translation unit
-// of the builtins suite; see builtins_tests_shared.h.
+// term_runtime.c [BUILTIN-TERM], against a pipe and against a REAL terminal.
+// A translation unit of the builtins suite; see builtins_tests_shared.h.
 //
-// The behaviour half drives term_runtime with stdout a pipe, which proves the
-// soft failures and the key decoder but never reaches what the functions exist
-// for: raw mode entering and leaving, the window size of a terminal that has
-// one, and the atexit handler that puts a wedged terminal back. Each scenario
-// here runs in a forked child whose stdin and stdout are the slave side of a
-// fresh pseudo-terminal; the child reads the master side to see the exact
-// bytes written and asks the slave for its line discipline afterwards.
+// The pipe half (t_term, at the bottom) drives term_runtime with stdout a
+// pipe, which proves the soft failures and the key decoder but never reaches
+// what the functions exist for: raw mode entering and leaving, the window size
+// of a terminal that has one, and the atexit handler that puts a wedged
+// terminal back. Each tty scenario runs in a forked child whose stdin and
+// stdout are the slave side of a fresh pseudo-terminal; the child reads the
+// master side to see the exact bytes written and asks the slave for its line
+// discipline afterwards.
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,10 @@ int64_t term_raw_mode(int64_t on);
 int64_t term_cols(void);
 int64_t term_rows(void);
 char *term_read_key(void);
+int64_t term_clear(void);
+int64_t term_hide_cursor(void);
+int64_t term_show_cursor(void);
+int64_t term_move_cursor(int64_t row, int64_t col);
 
 #define ENTER_RAW "\x1b[?1049h\x1b[2J\x1b[H"
 #define LEAVE_RAW "\x1b[?1049l"
@@ -197,4 +202,53 @@ void t_term_tty(void) {
             WEXITSTATUS(status));
   }
   CHECK(WEXITSTATUS(status) == 0);
+}
+
+// --- term_runtime ------------------------------------------------------------
+
+// With stdout a pipe (not a tty), size queries and raw mode must fail SOFTLY
+// with their documented codes and print nothing.
+static int child_term_not_a_tty(void) {
+  int ok = term_cols() == -1 && term_rows() == -1 && term_raw_mode(1) == -1 &&
+           term_raw_mode(0) == 0;
+  return ok ? 0 : 1;
+}
+
+// The ANSI writers emit EXACTLY their sequences (clear+home, hide, show,
+// move, and the move clamp to 1-based coordinates) and all report success.
+static int child_term_ansi(void) {
+  int ok = term_clear() == 0 && term_hide_cursor() == 0 &&
+           term_show_cursor() == 0 && term_move_cursor(5, 7) == 0 &&
+           term_move_cursor(0, -3) == 0;
+  return ok ? 0 : 1;
+}
+
+// Decodes the whole keymap from fed bytes: control keys, a literal char,
+// arrow/nav CSI sequences, tilde sequences, SS3 arrows, a bare Esc at EOF,
+// then NULL on exhausted input.
+static int child_term_keys(void) {
+  for (;;) {
+    char *key = term_read_key();
+    if (key == NULL) {
+      printf("NULL");
+      return 0;
+    }
+    printf("%s;", key);
+    free(key);
+  }
+}
+
+void t_term(void) {
+  run_child_expect(child_term_not_a_tty, "", "", 0);
+  run_child_expect(child_term_ansi, "",
+                   "\x1b[2J\x1b[H" "\x1b[?25l" "\x1b[?25h" "\x1b[5;7H"
+                   "\x1b[1;1H",
+                   0);
+  run_child_expect(child_term_keys,
+                   "\r\n\t\x7f\x08\x03x\x1b[A\x1b[B\x1b[C\x1b[D\x1b[H\x1b[F"
+                   "\x1b[3~\x1b[5~\x1b[6~\x1bOA\x1b[Z\x1b[2~\x1b",
+                   "Enter;Enter;Tab;Backspace;Backspace;Ctrl-C;x;Up;Down;"
+                   "Right;Left;Home;End;Delete;PageUp;PageDown;Up;Esc;Esc;Esc;"
+                   "NULL",
+                   0);
 }
