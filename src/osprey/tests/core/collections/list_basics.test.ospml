@@ -99,8 +99,11 @@ sumBy (xs, weight) = match xs
     [] => 0
     [head, ...tail] => weight head + sumBy (tail, weight)
 
+(** identity weighs an element as itself, so both sums share one callback. *)
+identity x = x
+
 (** sumList weighs every int element as itself. *)
-sumList xs = sumBy (xs, \x => x)
+sumList xs = sumBy (xs, identity)
 
 (** restLen exercises a wildcard prefix followed by a captured list tail. *)
 restLen : List int -> int
@@ -473,7 +476,7 @@ sumFloatBy (xs, weight) = match xs
     [head, ...tail] => weight head + sumFloatBy (tail, weight)
 
 (** sumFloats weighs every float element as itself. *)
-sumFloats xs = sumFloatBy (xs, \x => x)
+sumFloats xs = sumFloatBy (xs, identity)
 
 (** countTrue counts the `true` elements of a bool list through list patterns. *)
 countTrue xs = sumBy (xs, boolWeight)
