@@ -101,6 +101,12 @@
       "gpu_runtime": {
         "language": "c"
       },
+      "gpu_map_file": {
+        "language": "c"
+      },
+      "gpu_elements": {
+        "language": "c"
+      },
       "gpu_host": {
         "language": "c"
       },

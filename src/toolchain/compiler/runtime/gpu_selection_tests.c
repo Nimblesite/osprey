@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 void *osprey_gpu_data(void *buffer);
@@ -20,6 +21,7 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count);
 int32_t osprey_gpu_declined(const char *what);
 void osprey_gpu_finalize(void *buffer);
+void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes);
 int osprey_gpu_buffer_tests(int argc, char **argv);
 
 static int device_error;
@@ -29,6 +31,7 @@ static uint64_t last_threads;
 
 #if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
 static int64_t injected_fault;
+static char last_kernel[64];
 // The mock device holds a buffer as a copy of its words.
 typedef struct {
   uint64_t count;
@@ -57,6 +60,7 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
   assert(d->kernel && d->count >= 1 && d->threads >= 1);
   dispatches++;
   last_args = d->count;
+  (void)snprintf(last_kernel, sizeof last_kernel, "%s", d->kernel);
   last_threads = d->threads;
   for (unsigned i = 0; i < d->count; i++) {
     const OspreyGpuArg *arg = &d->args[i];
@@ -399,6 +403,44 @@ static int32_t declined_on_device(void) {
   return osprey_gpu_declined("gpuScan over a kernel the device cannot run");
 }
 #if defined(OSPREY_GPU_METAL)
+// [LLM-MATMUL-QUANT] On Metal a prompt-chunk product (QUANT_MM_ROWS rows or
+// more) runs the kernel's `_mm` form with the many-row thread count and a
+// shorter one the exact form; either leaves its result resident.
+static void quant_product_forms(void) {
+  void *x = osprey_gpu_alloc(QUANT_MM_ROWS, 4), *w = osprey_gpu_alloc(1, 4);
+  const uint64_t threads[2] = {3, 5};
+  for (int64_t rows = QUANT_MM_ROWS - 1; rows <= QUANT_MM_ROWS; rows++) {
+    void *out = osprey_gpu_alloc(rows, 4);
+    unsigned before = dispatches;
+    assert(osprey_gpu_device_matmul_quant("osprey_q8_0", x, w, out, rows, 1, 1, threads) == 1);
+    int many = rows >= QUANT_MM_ROWS;
+    assert(dispatches == before + 1 && last_args == 6 && last_threads == threads[many]);
+    assert(strcmp(last_kernel, many ? "osprey_q8_0_mm" : "osprey_q8_0") == 0);
+    assert(osprey_gpu_get(out, 0) == 42);
+  }
+}
+
+// [LLM-WEIGHTS-MAPPED] [GPU-BUFFER-RESIDENT-OWNER] A mapped weight binds to the
+// device like any input; finalizing it lets the queued batch finish, releases
+// its device object through Metal and unmaps its pages, so no word stays
+// reachable. A product without a float result is refused before any dispatch.
+static void mapped_input_and_refused_product(void) {
+  char path[] = "/tmp/osprey-gpu-mapped-XXXXXX";
+  int fd = mkstemp(path);
+  const float words[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+  assert(fd >= 0 && write(fd, words, sizeof words) == (ssize_t)sizeof words && close(fd) == 0);
+  void *mapped = osprey_gpu_map_file(path, 16, 4, 4), *out = osprey_gpu_alloc(4, 4);
+  assert(mapped && unlink(path) == 0 && memcmp(osprey_gpu_data(mapped), words + 4, 16) == 0);
+  unsigned owned = releases_by_adapter[2], down = downloads, before = dispatches;
+  assert(osprey_gpu_device_sigmoid(mapped, out, 4) == 1 && dispatches == before + 1);
+  osprey_gpu_finalize(mapped);
+  assert(releases_by_adapter[2] == owned + 1 && downloads == down + 1 && !osprey_gpu_data(mapped));
+  osp_io_error_clear();
+  assert(osprey_gpu_device_matmul(out, out, osprey_gpu_alloc(1, 1), 1, 1, 1) == -1 && dispatches == before + 1);
+  assert(strcmp(osp_io_error(), "gpuMatMul: result: missing float or float32 output buffer") == 0);
+  osp_io_error_clear();
+}
+
 static int32_t faulting_launch(void) {
   select_mode("auto");
   injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
@@ -495,6 +537,9 @@ int main(void) {
   device_case("auto", 1, "metal:mock"); device_case("metal", 1, "metal:mock");
   handled_launch_failure();
   handled_readback_failure(42);
+  select_mode("metal");
+  quant_product_forms();
+  mapped_input_and_refused_product();
   fails(faulting_launch(), "kernel: osprey_kernel_1: integer overflow");
   fails(declined_on_device(), "gpuScan over a kernel the device cannot run; a selected device cannot run it");
   fails(too_many_uniforms(), "too many kernel arguments");

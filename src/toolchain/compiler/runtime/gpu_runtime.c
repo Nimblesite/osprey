@@ -12,13 +12,13 @@
 // backend, native and wasm alike.
 
 #include "memory_hooks.h"
+#include "gpu_buffer.h"
 #include "gpu_device.h"
 #include "io_error.h"
 #if defined(OSPREY_GPU_OPENCL)
 #include "gpu_opencl_api.h"
 #endif
 
-#include <errno.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -27,35 +27,8 @@
 #include <stdlib.h>
 #include <string.h>
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
-#include <fcntl.h>
-#include <pthread.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #endif
-
-typedef struct OspreyGpuBuffer {
-  int64_t length;
-  uint8_t *data;
-  // A shared mapping borrows its file's slot; an ordinary buffer owns its slot.
-  union { void *device; void **map_slot; };
-  uint8_t stale;
-  uint8_t adapter; // Owning SDK; fits the existing header padding.
-  uint8_t shared_mapping; // Discriminates the exclusive slots without growing the header.
-  uint8_t mapped;
-  int64_t elem_bytes;
-} OspreyGpuBuffer;
-
-// [LLM-WEIGHTS-MAPPED] Only mapped allocations carry the page extent.
-typedef struct OspreyMappedGpuBuffer {
-  OspreyGpuBuffer buffer;
-  void *map_base;
-  size_t map_bytes;
-} OspreyMappedGpuBuffer;
-
-int64_t osprey_gpu_len(void *buffer);
-int64_t osprey_gpu_elem_bytes(void *buffer);
-void osprey_gpu_finalize(void *buffer);
 
 #if defined(OSPREY_GPU_METAL)
 #define GPU_AUTO_ADAPTER 2
@@ -128,12 +101,6 @@ int osprey_gpu_device_download(void *object, void *out, uint64_t count) {
   return no_adapter("gpu", "device readback");
 }
 
-// The stored words of a buffer with any: NULL for an empty, failed or NULL
-// buffer, whose length is 0.
-static uint8_t *stored(const OspreyGpuBuffer *b) {
-  return b && b->length > 0 ? b->data : NULL;
-}
-
 static void scalar_argument(OspreyGpuDispatch *dispatch, int64_t word) {
   osprey_gpu_arg(dispatch, OSPREY_GPU_SCALAR, NULL, NULL, (uint64_t)word, 8);
 }
@@ -145,7 +112,7 @@ static void scalar_argument(OspreyGpuDispatch *dispatch, int64_t word) {
 // thread from reading.
 static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, void *handle) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)handle;
-  uint8_t *words = stored(b);
+  uint8_t *words = osp_gpu_stored(b);
   void **slot = words ? (b->shared_mapping ? b->map_slot : &b->device) : NULL;
   if (slot && !*slot) {
     int selected = device_selection();
@@ -396,7 +363,7 @@ static uint8_t *zeroed_words(int64_t length, int64_t elem_bytes) {
 // byte-overflowing length and a failed allocation are NULL with the reason on
 // the io_error channel, never a fabricated empty buffer ([FAILURE-EXPLICIT]);
 // a zero length is the one valid empty buffer.
-static void *alloc_buffer(int64_t length, int64_t elem_bytes, size_t header_bytes) {
+void *osp_gpu_alloc_buffer(int64_t length, int64_t elem_bytes, size_t header_bytes) {
   if (elem_bytes != 1 && elem_bytes != 2 && elem_bytes != 4 && elem_bytes != 8) {
     osp_io_error_text("gpu", "buffer allocation", "element width must be 1, 2, 4 or 8 bytes");
     return NULL;
@@ -434,242 +401,5 @@ static void *alloc_buffer(int64_t length, int64_t elem_bytes, size_t header_byte
 }
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
-  return alloc_buffer(length, elem_bytes, sizeof(OspreyGpuBuffer));
-}
-
-#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
-// The reason a region cannot be mapped, or NULL when it can.
-static const char *unmappable(int64_t offset, int64_t count, int64_t elem_bytes, int64_t file_bytes) {
-  if (offset < 0) return "a negative offset";
-  if (count < 0) return "a negative element count";
-  if (elem_bytes != 1 && elem_bytes != 2 && elem_bytes != 4 && elem_bytes != 8) return "element width must be 1, 2, 4 or 8 bytes";
-  if (offset % elem_bytes != 0) return "offset is not a multiple of the element width";
-  if (offset > file_bytes || count > (file_bytes - offset) / elem_bytes) return "the file ends before the region does";
-  return NULL;
-}
-
-// A weights file is mapped whole, once, and every region of it shares one device
-// object: the driver wires each buffer a command buffer binds on every
-// submission, and a model's 700 tensors as 700 objects cost seconds per token.
-// The table holds a process's few large files and is never freed, so a region
-// outlives any buffer; smaller files keep a mapping of their own, which
-// releases with its buffer.
-#define GPU_MAPPED_FILES 4
-#define GPU_MAPPED_WHOLE ((off_t)1 << 30)
-typedef struct {
-  dev_t device;
-  ino_t inode;
-  off_t size;
-  void *base;
-  size_t bytes;
-  void *slot;
-} MappedFile;
-static MappedFile mapped_files[GPU_MAPPED_FILES];
-static pthread_mutex_t mapped_lock = PTHREAD_MUTEX_INITIALIZER;
-
-static const MappedFile *mapped_whole(int fd, const struct stat *status) {
-  if (status->st_size < GPU_MAPPED_WHOLE) return NULL;
-  const MappedFile *found = NULL;
-  (void)pthread_mutex_lock(&mapped_lock);
-  for (unsigned i = 0; i < GPU_MAPPED_FILES && !found; i++) {
-    MappedFile *entry = &mapped_files[i];
-    if (entry->base && entry->device == status->st_dev && entry->inode == status->st_ino && entry->size == status->st_size) {
-      found = entry;
-    } else if (!entry->base) {
-      size_t page = (size_t)sysconf(_SC_PAGESIZE);
-      size_t bytes = ((size_t)status->st_size + page - 1) / page * page;
-      void *base = mmap(NULL, bytes, PROT_READ, MAP_SHARED, fd, 0);
-      if (base != MAP_FAILED) {
-        *entry = (MappedFile){status->st_dev, status->st_ino, status->st_size, base, bytes, NULL};
-        found = entry;
-      }
-      break;
-    }
-  }
-  (void)pthread_mutex_unlock(&mapped_lock);
-  return found;
-}
-
-// [LLM-WEIGHTS-MAPPED] `count` elements of `path` from byte `offset` as an
-// immutable buffer over a read-only mapping: pages load on first touch and the
-// file stays the only copy. Only input arguments can name it, so no kernel
-// writes it. A file shortened while mapped is outside this contract.
-void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes) {
-  static const char OP[] = "gpuMapFile";
-  if (path == NULL) {
-    osp_io_error_text(OP, NULL, "no path");
-    return NULL;
-  }
-  struct stat status;
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0 || fstat(fd, &status) != 0) {
-    osp_io_error_set(OP, path, errno);
-    if (fd >= 0) (void)close(fd);
-    return NULL;
-  }
-  const char *reason = S_ISREG(status.st_mode) ? unmappable(offset, count, elem_bytes, status.st_size) : "not a regular file";
-  if (reason != NULL) {
-    osp_io_error_text(OP, path, reason);
-    (void)close(fd);
-    return NULL;
-  }
-  void *b = alloc_buffer(0, elem_bytes, count == 0 ? sizeof(OspreyGpuBuffer) : sizeof(OspreyMappedGpuBuffer));
-  if (b == NULL || count == 0) {
-    (void)close(fd);
-    return b;
-  }
-  OspreyMappedGpuBuffer *mapping = (OspreyMappedGpuBuffer *)b;
-  OspreyGpuBuffer *buffer = &mapping->buffer;
-  const MappedFile *shared = mapped_whole(fd, &status);
-  if (shared) {
-    (void)close(fd);
-    osp_release(buffer->data);
-    buffer->data = (uint8_t *)shared->base + offset;
-    mapping->map_base = shared->base;
-    mapping->map_bytes = shared->bytes;
-    buffer->map_slot = &((MappedFile *)(uintptr_t)shared)->slot;
-    buffer->shared_mapping = 1;
-    buffer->mapped = 1;
-    buffer->length = count;
-    return b;
-  }
-  int64_t page = sysconf(_SC_PAGESIZE);
-  int64_t skip = offset % page;
-  size_t mapped = (size_t)(((skip + count * elem_bytes - 1) / page + 1) * page);
-  void *base = mmap(NULL, mapped, PROT_READ, MAP_SHARED, fd, (off_t)(offset - skip));
-  int failure = errno;
-  (void)close(fd);
-  if (base == MAP_FAILED) {
-    osp_release(b);
-    osp_io_error_set(OP, path, failure);
-    return NULL;
-  }
-  osp_release(buffer->data);
-  buffer->data = (uint8_t *)base + skip;
-  mapping->map_base = base;
-  mapping->map_bytes = mapped;
-  buffer->mapped = 1;
-  buffer->length = count;
-  return b;
-}
-#else
-void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes) {
-  (void)offset;
-  (void)count;
-  (void)elem_bytes;
-  osp_io_error_text("gpuMapFile", path, "memory-mapped files are not available on this target");
-  return NULL;
-}
-#endif
-
-// The element count. Empty/NULL-safe [GPU-BUFFER-LENGTH].
-int64_t osprey_gpu_len(void *buffer) {
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  return b ? b->length : 0;
-}
-
-// [GPU-BUFFER-ELEM]: allocation and file/product operations share this width.
-int64_t osprey_gpu_elem_bytes(void *buffer) {
-  const OspreyGpuBuffer *b = buffer;
-  return b ? b->elem_bytes : 0;
-}
-
-// The buffer with its host words current [GPU-BUFFER-RESIDENT]: a result the
-// device holds and the host has not read yet is downloaded first, once. A
-// download that fails keeps the buffer stale and records its reason. Language
-// gpuGet checks this status before loading; other raw callers still quarantine
-// failures until their Result migration is complete [FAILURE-EXPLICIT].
-static int synchronize(OspreyGpuBuffer *b) {
-  if (b && !b->shared_mapping && b->stale && b->device) {
-    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) return -1;
-    b->stale = 0;
-  }
-  return 1;
-}
-
-static OspreyGpuBuffer *current(void *buffer) {
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  if (synchronize(b) < 0) return NULL;
-  return b;
-}
-
-// The current words themselves, for the host-backend operations in gpu_host.c
-// that walk whole buffers (the dense product, the file loaders) and read-outs;
-// NULL for an empty buffer or failed synchronization. Read-status gates must
-// precede non-empty access; failed readback retains length and stale state for
-// retry. Only a buffer no kernel has used yet is written through this pointer.
-void *osprey_gpu_data(void *buffer) {
-  return stored(current(buffer));
-}
-
-// Whether `index` names a stored word: the ONE bounds predicate every accessor
-// below shares, so a read, a write and the Result gate can never disagree
-// about which indices exist. NULL, a data-less (failed) allocation and the
-// published-length tail are all out of bounds.
-static int addressable(const OspreyGpuBuffer *b, int64_t index) {
-  return b && b->data && index >= 0 && index < b->length;
-}
-
-// [FAILURE-EXPLICIT] The Result-returning language read checks this before
-// loading any word: 0 is out of bounds, -1 carries a download error, 1 is ready.
-int32_t osprey_gpu_readable(void *buffer, int64_t index) {
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  return addressable(b, index) ? synchronize(b) : 0;
-}
-
-// The raw word at `index`, or 0 out of bounds. Codegen's counted loops stay
-// in bounds by construction; the guard is the no-trap backstop.
-int64_t osprey_gpu_get(void *buffer, int64_t index) {
-  const OspreyGpuBuffer *b = current(buffer);
-  uint64_t word = 0;
-  if (addressable(b, index)) memcpy(&word, b->data + index * b->elem_bytes, (size_t)b->elem_bytes);
-  return (int64_t)word;
-}
-
-// Store the raw word at `index`; out-of-bounds stores are ignored. Buffers
-// are immutable at the language surface — only the combinator loops filling
-// a freshly allocated buffer call this — so a device copy, if any, is forgotten.
-void osprey_gpu_set(void *buffer, int64_t index, int64_t word) {
-  OspreyGpuBuffer *b = current(buffer);
-  if (addressable(b, index)) {
-    memcpy(b->data + index * b->elem_bytes, &word, (size_t)b->elem_bytes);
-    osprey_gpu_finalize(b);
-  }
-}
-
-// [GPU-IOTA] Every element its own index, in one pass: an index grid of millions
-// of cells (a prompt chunk's attention scores) costs one synchronize and one
-// finalize, not one of each per element. Stores the low elem_bytes of each index,
-// as osprey_gpu_set does.
-void osprey_gpu_iota_fill(void *buffer) {
-  OspreyGpuBuffer *b = current(buffer);
-  if (!b || !b->data) return;
-  for (int64_t i = 0; i < b->length; i++) {
-    memcpy(b->data + i * b->elem_bytes, &i, (size_t)b->elem_bytes);
-  }
-  osprey_gpu_finalize(b);
-}
-
-// The gate osprey_gpu_get's Result form branches on, so a gather reports
-// out-of-bounds instead of reading 0 [GPU-GET].
-int32_t osprey_gpu_in_bounds(void *buffer, int64_t index) {
-  return addressable((const OspreyGpuBuffer *)buffer, index) ? 1 : 0;
-}
-
-// Shrink a compaction scratch buffer to its first `count` elements in place.
-// Stream compaction [GPU-FILTER] cannot know its output length before running
-// the predicate, so it over-allocates to the source length, fills a prefix,
-// then publishes the exact length here. The surplus tail stays allocated
-// until the buffer dies — no reallocation, no copy.
-void osprey_gpu_take(void *buffer, int64_t count) {
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  if (!b) {
-    return;
-  }
-  if (count < 0) {
-    count = 0;
-  }
-  if (count < b->length) {
-    b->length = count;
-  }
+  return osp_gpu_alloc_buffer(length, elem_bytes, sizeof(OspreyGpuBuffer));
 }

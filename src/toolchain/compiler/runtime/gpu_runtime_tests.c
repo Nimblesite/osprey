@@ -36,6 +36,7 @@ void osprey_gpu_take(void *buffer, int64_t count);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 void *osprey_gpu_load_f32(const char *path, int64_t offset, int64_t count);
 void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes);
+void osprey_gpu_finalize(void *buffer);
 void *osprey_gpu_load_tensor(const char *path, const char *name, int64_t elem_bytes);
 int64_t osprey_gpu_elem_bytes(void *buffer);
 const char *osp_io_error(void);
@@ -398,6 +399,8 @@ static void t_map_file(void) {
     CHECK(b != NULL && osp_io_error() == NULL);
     CHECK(osprey_gpu_len(b) == spans[s].count && osprey_gpu_elem_bytes(b) == spans[s].width);
     CHECK(memcmp(osprey_gpu_data(b), bytes + spans[s].offset, (size_t)(spans[s].count * spans[s].width)) == 0);
+    osprey_gpu_finalize(b); // unmaps: no word stays reachable once it is dropped
+    CHECK(osprey_gpu_data(b) == NULL);
     osp_release(b);
   }
   void *empty = osprey_gpu_map_file(path, 4, 0, 4);
@@ -436,6 +439,8 @@ static void t_map_file(void) {
     CHECK(memcmp(osprey_gpu_data(first), bytes, 8) == 0);
     osp_release(first);
     CHECK(memcmp(osprey_gpu_data(second), bytes + 8, 8) == 0);
+    osprey_gpu_finalize(second); // a shared region gives back its slot, never the file's mapping
+    CHECK(osprey_gpu_data(second) == NULL);
     osp_release(second);
   }
   (void)unlink(path);

@@ -113,14 +113,14 @@ C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 # Every tensor-reader suite shares the numeric binary16 conversion.
 TENSOR_READER_SRC = runtime/tensor_file.c runtime/float_spelling.c
-C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC)
 C_LIBS_memory_golden_tests = -pthread
 C_FLAGS_memory_golden_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_memory_golden_tests += $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_runtime_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
@@ -130,7 +130,7 @@ C_FLAGS_gpu_float_tests = -ffp-contract=off
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
-C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c runtime/gpu_host.c $(TENSOR_READER_SRC) $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_selection_tests = -DOSPREY_GPU_BUFFER_SUITE=1 -DOSPREY_GPU_METAL=1 -DOSPREY_GPU_OPENCL=1
 C_SRC_gpu_no_device_tests = $(C_SRC_gpu_selection_tests)
 C_FLAGS_gpu_no_device_tests = -DOSPREY_GPU_BUFFER_SUITE=1
@@ -148,7 +148,7 @@ C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
 C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c
 C_LIBS_json_runtime_tests = -pthread
-C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_map_file.c runtime/gpu_elements.c $(FILE_RUNTIME_SRC) $(PROF_SRC)
 C_LIBS_effects_runtime_tests = -pthread
 C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_entropy_tests.c runtime/term_tty_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
 C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c $(FILE_RUNTIME_SRC) $(C_TEST_MEMORY_SRC)
