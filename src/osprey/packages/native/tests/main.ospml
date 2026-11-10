@@ -82,6 +82,15 @@ refusedClean (envelope, reason) =
 
 // Posting `event` to `session` is refused for `reason` and changes nothing.
 refusedEvent (session, event, reason) = refusedClean (Probes::post (session, event), reason)
+
+// The `key` text of the first child of the node of `session`'s first patch.
+patchedText (session, key) = Doc::text (firstOf (Doc::field (firstOf (session, "patches"), "node"), "children"), key)
+
+// Posting to `session` an edit of `value` whose original control is recovered from `prior`'s saved state.
+editFrom (session, prior, region, revision, ordinal, value) = Probes::post (session, Probes::edit (Probes::saved (prior), region, revision, ordinal, value))
+
+// An edit posted to `session` against `prior`'s saved state is refused for `reason` and changes nothing.
+refusedEdit (session, prior, region, revision, ordinal, value, reason) = refusedClean (editFrom (session, prior, region, revision, ordinal, value), reason)
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
 revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
 test ("a disclosure takes its ordinal before the controls it reveals", \() =>
@@ -147,9 +156,7 @@ test ("a tap refreshes only the region whose signal changed", \() =>
     second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
     expect (Probes::keys second, "root")
     expect (Probes::problems second, "")
-    root = Doc::field (firstOf (second, "patches"), "node")
-    label = Doc::text (firstOf (root, "children"), "text")
-    expect (label, "Count 1"))
+    expect (patchedText (second, "text"), "Count 1"))
 test ("text input reaches update through its binding and patches its own region", \() =>
     second = Probes::post (Probes::started (), Probes::typed (1, "hello"))
     expect (Probes::keys second, "note")
@@ -171,27 +178,26 @@ test ("stale, unknown and mismatched events are rejected without change", \() =>
 test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
-    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    counted = editFrom (first, first, "root", 1, 0, "null")
     expect (Probes::problems counted, "")
     expect (Probes::keys counted, "root")
-    expect (Doc::text (firstOf (Doc::field (firstOf (counted, "patches"), "node"), "children"), "text"), "Count 1")
+    expect (patchedText (counted, "text"), "Count 1")
     // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
-    shifted = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    shifted = editFrom (counted, first, "root", 1, 0, "null")
     expect (Probes::keys shifted, "")
     expect (Doc::number (Probes::stored counted, "tally"), 1)
     // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
-    loaded = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 1, "null"))
+    loaded = editFrom (counted, first, "root", 1, 1, "null")
     expect (Probes::problems loaded, "")
     expect (Doc::text (firstOf (loaded, "requests"), "ticket"), "load:1"))
 // [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
     first = Probes::started ()
     // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
-    duped = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 1, "null"))
-    refusedClean (duped, "More than one")
+    refusedEdit (first, first, "note", 1, 1, "null", "More than one")
     // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
-    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
-    gone = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    counted = editFrom (first, first, "root", 1, 0, "null")
+    gone = editFrom (counted, first, "root", 1, 0, "null")
     refusedClean (gone, "no longer exists")
     // The refusal changed nothing: the current session still answers its own controls.
     intact = Probes::post (gone, Probes::tap ("root", 2, 0))
@@ -207,9 +213,9 @@ editedAt () = [
 ]
 test ("an edit with an impossible original refuses without change", \() =>
     first = Probes::started ()
-    forEachList (editedAt (), \probe => refusedEvent (first, Probes::edit (Probes::saved (first), probe.region, probe.revision, probe.ordinal, probe.value), probe.reason))
+    forEachList (editedAt (), \probe => refusedEdit (first, first, probe.region, probe.revision, probe.ordinal, probe.value, probe.reason))
     refusedEvent (first, Probes::edit ("\"not a session\"", "root", 1, 0, "null"), "Stale control")
-    wrongKind = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 0, "7"))
+    wrongKind = editFrom (first, first, "note", 1, 0, "7")
     refusedClean (wrongKind, "wrong kind")
     expect (countOf (wrongKind, "requests"), 0)
     // Every refusal left the session whole.
@@ -221,7 +227,7 @@ test ("a resolved edit updates the current state", \() =>
     first = Probes::started ()
     typed = Probes::post (first, Probes::typed (1, "hello"))
     counted = Probes::post (typed, Probes::tap ("root", 1, 0))
-    edited = Probes::post (counted, Probes::edit (Probes::saved (first), "note", 1, 0, "\"world\""))
+    edited = editFrom (counted, first, "note", 1, 0, "\"world\"")
     expect (Probes::problems edited, "")
     expect (Doc::text (Probes::stored edited, "memo"), "world")
     expect (Doc::text (Probes::stored typed, "memo"), "hello")
@@ -232,7 +238,7 @@ test ("capability requests carry tickets and completions return to update", \() 
     expectTexts (firstOf (asked, "requests"), [{ name = "ticket", value = "load:1" }, { name = "kind", value = "store-read" }])
     done = Probes::post (asked, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"from disk\",\"now\":9}")
     expect (Probes::keys done, "note")
-    expect (Doc::text (firstOf (Doc::field (firstOf (done, "patches"), "node"), "children"), "value"), "from disk"))
+    expect (patchedText (done, "value"), "from disk"))
 test ("malformed events are diagnosed, never guessed", \() =>
     bad = Probes::post (Probes::started (), "{not json")
     expect (Probes::problems bad, "The host sent an event that is not JSON")
@@ -438,7 +444,7 @@ test ("presentation frames explicitly disable viewport sizing by default", \() =
 test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
     style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
     walked = Encode::walk ([], Ui::framed (style, Ui::button ("Continue", "", Increment)))
-    encoded = listGet walked.nodes 0 ?: JsonNull
+    encoded = firstNode walked
     geometry = Doc::field (encoded, "style")
     expect (Doc::text (encoded, "kind"), "framed")
     expectNumbers (geometry, [{ name = "width", value = 430 }, { name = "height", value = 440 }, { name = "viewportHeightInset", value = 270 }, { name = "left", value = 30 }, { name = "gap", value = 24 }, { name = "symbolSize", value = 13 }])
@@ -452,7 +458,7 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
 test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() =>
     theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
     walked = Encode::walk ([], Ui::themed (theme, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load)))
-    scoped = listGet walked.nodes 0 ?: JsonNull
+    scoped = firstNode walked
     dialog = Doc::field (scoped, "body")
     expect (Doc::text (scoped, "kind"), "themed")
     expectTexts (dialog, [{ name = "kind", value = "dialog" }, { name = "title", value = "Review transcription" }])
