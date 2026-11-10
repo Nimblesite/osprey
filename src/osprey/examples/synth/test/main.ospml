@@ -89,7 +89,6 @@ letters text = match Views::letters (sight.sightSeen, text)
         false
 
 flag (name, expected) = expect (Machines::flag (machine (), name), expected)
-
 knobText (name, expected) = expect (Machines::text (machine (), name), expected)
 
 knobNumber (name, expected) =
@@ -116,8 +115,7 @@ nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - e
 
 played expectedPeak =
     expect (runCount (), 1)
-    expect (Doc::text (request (), "ticket"), "play")
-    expect (Doc::text (request (), "executable"), "/usr/bin/perl")
+    forEachList ([("ticket", "play"), ("executable", "/usr/bin/perl")], \(field, want) => expect (Doc::text (request (), field), want))
     expect (length (arguments ()), 4)
     expect (argument 0, "-e")
     expect (argument 2, currentWav ())
@@ -171,6 +169,25 @@ picked (label, wave) =
     knobText ("wave", wave)
     quietKey 17
 
+rateChosen label =
+    tap label
+    knobText ("rate", "1/16")
+lfoAt (hertz, peak) =
+    near ((currentPatch ()).lfo, hertz)
+    quietKey peak
+
+volumeAt (level, peak) =
+    knobNumber ("volume", level)
+    quietKey peak
+
+heldAt (point, down, level) =
+    quietPointer (point, down)
+    knobNumber ("volume", level)
+
+stillPointer (x, y, down, before) =
+    pointer (x, y, down)
+    quietPatch before
+
 undone name =
     tap "Undo"
     flag (name, true)
@@ -181,7 +198,7 @@ struck (name, hertz) =
     knobText ("note", name)
     near ((currentPatch ()).pitch, hertz)
     knobNumber ("hertz", (currentPatch ()).pitch)
-    expect (letters name, true)
+    lettered name
     expect (runCount (), 1)
     expect (argument 2, currentWav ())
 
@@ -189,31 +206,39 @@ sounds (name, expectedPeak) =
     struck (name, Synth::frequency name)
     played expectedPeak
 
+lettered text = expect (letters text, true)
+differs previous = expect (argument 2 == previous, false)
+
+// A different clip, then the chooser `menu` reopened for the next choice.
+retuned (menu, previous) =
+    differs previous
+    tap menu
+
+hear (text, peak) =
+    lettered text
+    sounds ("A3", peak)
+
+editingAfter text =
+    lettered text
+    described ()
+
 // ---- launch, editing and history through the Prism skin ----
 
 launchAndCutoff () =
     begun ()
     offered "Skin: Prism"
-    knobText ("selected", "process")
-    knobText ("wave", "Sine")
-    knobText ("rate", "1/4")
-    knobNumber ("volume", 0.75)
-    knobNumber ("keys", 1.0)
+    forEachList ([("selected", "process"), ("wave", "Sine"), ("rate", "1/4")], \(name, value) => knobText (name, value))
+    forEachList ([("volume", 0.75), ("keys", 1.0)], \(name, value) => knobNumber (name, value))
     knobText ("note", "A3")
     silent ()
-    expect (letters "Click a key to play the patch.", true)
-    expect (letters "220.0 Hz", true)
-    offered "Play C3"
-    offered "Play C#3"
-    offered "Play B4"
+    forEachList (["Click a key to play the patch.", "220.0 Hz"], \text => lettered text)
+    forEachList (["Play C3", "Play C#3", "Play B4"], \label => offered label)
     sounds ("A3", 75)
-    expect (letters "220.0 Hz", true)
-    before = described ()
+    before = editingAfter "220.0 Hz"
     tapAt ("Filter Cutoff", 0.1)
     knobNumber ("process", 0.1)
     quietEdit before
-    expect (letters "0.0 kHz", true)
-    sounds ("A3", 17)
+    hear ("0.0 kHz", 17)
 
 filterHistory () =
     tap "Bypass LFO"
@@ -230,22 +255,16 @@ filterHistory () =
 
 // Every key of both octaves plays at its own pitch, the same key twice plays twice, and the readout follows.
 keyboard () =
-    tap "Bypass Filter"
-    tap "Bypass LFO"
-    sounds ("A3", 75)
-    sounds ("A3", 75)
+    forEachList (["Bypass Filter", "Bypass LFO"], \label => tap label)
+    forEachList ([75, 75], \peak => sounds ("A3", peak))
     a3 = argument 2
     sounds ("A4", 75)
-    expect (argument 2 == a3, false)
-    expect (letters "440.0 Hz", true)
-    struck ("C3", 130.8128)
-    struck ("C#3", 138.5913)
-    struck ("F#3", 184.9972)
-    struck ("C4", 261.6256)
-    expect (letters "261.6 Hz", true)
-    struck ("D#4", 311.127)
-    struck ("B4", 493.8833)
-    expect (letters "493.9 Hz", true)
+    differs a3
+    lettered "440.0 Hz"
+    forEachList ([("C3", 130.8128), ("C#3", 138.5913), ("F#3", 184.9972), ("C4", 261.6256)], \(name, hertz) => struck (name, hertz))
+    lettered "261.6 Hz"
+    forEachList ([("D#4", 311.127), ("B4", 493.8833)], \(name, hertz) => struck (name, hertz))
+    hear ("493.9 Hz", 75)
     sounds ("A3", 75)
     expect (argument 2, a3)
     tap "Undo"
@@ -259,33 +278,26 @@ waves () =
     silent ()
     picked ("Square", "Square")
     square = argument 2
-    expect (square == sine, false)
-    tap "Oscillator Wave: Square"
+    retuned ("Oscillator Wave: Square", sine)
     picked ("Saw", "Saw")
-    expect (argument 2 == square, false)
-    tap "Oscillator Wave: Saw"
+    retuned ("Oscillator Wave: Saw", square)
     tap "Triangle"
     knobText ("wave", "Triangle")
     silent ()
     picked ("Undo", "Saw")
-    expect (letters "Saw", true)
+    lettered "Saw"
 
 // Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
 rates () =
     clip = firstClip ("LFO Rate: 1/4", "rates")
-    tap "1/16"
-    knobText ("rate", "1/16")
-    near ((currentPatch ()).lfo, 8.0)
-    quietKey 17
+    rateChosen "1/16"
+    lfoAt (8.0, 17)
     fast = argument 2
-    expect (fast == clip, false)
-    tap "LFO Rate: 1/16"
+    retuned ("LFO Rate: 1/16", clip)
     tap "1/1"
-    near ((currentPatch ()).lfo, 0.5)
-    quietKey 17
-    expect (argument 2 == fast, false)
-    tap "Undo"
-    knobText ("rate", "1/16")
+    lfoAt (0.5, 17)
+    differs fast
+    rateChosen "Undo"
     quietKey 17
     expect (argument 2, fast)
 
@@ -294,16 +306,13 @@ levels () =
     tapAt ("Filter Cutoff", 0.7)
     quietKey 75
     tapAt ("Master Level", 1.0)
-    knobNumber ("volume", 1.0)
-    quietKey 100
-    expect (letters "0.0 dB", true)
+    volumeAt (1.0, 100)
+    lettered "0.0 dB"
     tap "Select Master"
     silent ()
     tapAt ("Inspector: Level", 0.5)
-    knobNumber ("volume", 0.5)
-    quietKey 50
-    expect (letters "-12.0 dB", true)
-    before = described ()
+    volumeAt (0.5, 50)
+    before = editingAfter "-12.0 dB"
     tapAt ("Master Level", 0.0)
     knobNumber ("volume", 0.0)
     quietEdit before
@@ -311,8 +320,7 @@ levels () =
     silent ()
     knobText ("note", "A3")
     tap "Undo"
-    knobNumber ("volume", 0.5)
-    quietKey 50
+    volumeAt (0.5, 50)
 
 muteHistory () =
     before = described ()
@@ -357,25 +365,16 @@ quietSelection (name, role, before) =
     knobText ("selected", role)
     offered "Inspector: Bypass ${name}"
 
-quietSelections before =
-    quietSelection ("LFO", "control", before)
-    quietSelection ("Oscillator", "source", before)
-    quietSelection ("Filter", "process", before)
-    quietSelection ("Master", "output", before)
-    quietSelection ("Scope", "monitor", before)
+quietSelections before = forEachList ([("LFO", "control"), ("Oscillator", "source"), ("Filter", "process"), ("Master", "output"), ("Scope", "monitor")], \(name, role) => quietSelection (name, role, before))
 
 // Pressing, dragging, dropping and hovering over a node move it and stay silent.
 quietDrag before =
     body = Semantics::point (element "Select Oscillator", 0.5)
-    pointer (body.pointX, body.pointY, true)
-    quietPatch before
-    pointer (body.pointX + 80.0, body.pointY + 30.0, true)
-    quietPatch before
+    stillPointer (body.pointX, body.pointY, true, before)
+    stillPointer (body.pointX + 80.0, body.pointY + 30.0, true, before)
     knobNumber ("sourceX", 80.0)
-    pointer (body.pointX + 80.0, body.pointY + 30.0, false)
-    quietPatch before
-    pointer (body.pointX, body.pointY, false)
-    quietPatch before
+    stillPointer (body.pointX + 80.0, body.pointY + 30.0, false, before)
+    stillPointer (body.pointX, body.pointY, false, before)
     knobNumber ("sourceY", 30.0)
 
 // A slider dragged across and let go is silent throughout; the next key plays its final level.
@@ -383,10 +382,8 @@ slidQuietly () =
     low = Semantics::point (element "Master Level", 0.2)
     high = Semantics::point (element "Master Level", 0.6)
     quietPointer (low, true)
-    quietPointer (high, true)
-    knobNumber ("volume", 0.6)
-    quietPointer (high, false)
-    knobNumber ("volume", 0.6)
+    heldAt (high, true, 0.6)
+    heldAt (high, false, 0.6)
     sounds ("A3", 60)
 
 // A key is struck on release: pressing it, or hovering over it, plays nothing.
