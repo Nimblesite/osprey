@@ -101,9 +101,9 @@ fn acceptPositive(attempt) ![Retry, Arith] = {
 type Attempt = { accepted: int, calls: int, issued: string, settled: string }
 
 /// Runs `acceptPositive(1)` under a Retry handler feeding `candidate(n)` per
-/// attempt, rendering every issued candidate and every settled answer through
-/// `render` ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]).
-fn attemptRun(candidate, render) = {
+/// attempt, recording every issued candidate and every settled answer
+/// ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]).
+fn retryRun(candidate) = {
     mut calls = 0
     mut issued = ""
     mut settled = ""
@@ -112,9 +112,9 @@ fn attemptRun(candidate, render) = {
             supply n => {
                 calls = calls + 1 
                 let value = candidate(n)
-                issued = "${issued}${render(n, value)}|"
+                issued = "${issued}${toString(n)}:${toString(value)}|"
                 let answer = resume(value)
-                settled = "${settled}${render(n, answer)}|"
+                settled = "${settled}${toString(n)}:${toString(answer)}|"
                 answer
             }
         }
@@ -122,12 +122,6 @@ fn attemptRun(candidate, render) = {
     }
     Attempt { accepted: accepted, calls: calls, issued: issued, settled: settled }
 }
-
-/// The default rendering of one transcript entry: attempt `n`, then value `v`.
-fn tagged(n, v) = "${toString(n)}:${toString(v)}"
-
-/// One retry run whose transcripts use the default `tagged` rendering.
-fn retryRun(candidate) = attemptRun(candidate, fn(n, v) => tagged(n, v))
 
 /// True when `haystack` contains every fragment in `wanted`.
 fn carriesAll(haystack, wanted) = match wanted {
@@ -149,9 +143,6 @@ fn edges(text, head, tail) = [startsWith(text, head), endsWith(text, tail)]
 
 /// True when a row of three bounded transcripts all open and close as expected.
 fn edgesHold(flags) = structuralEquals(flags, [true, true, true, true, true, true])
-
-/// True when `first`, `second` and `third` transcript edge pairs all hold.
-fn edgesHold3(first, second, third) = edgesHold(listConcat(listConcat(first, second), third))
 
 /// [EFFECTS-RESUME] The handler alone decides how many rejections precede
 /// success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each run
@@ -192,8 +183,9 @@ fn retryAttemptMatrixCase() = {
     checkAll("issue transcripts record every attempt in order", [
         structuralEquals([r0.issued, r1.issued, r2.issued, r8.issued],
             ["1:100|", "1:0|2:200|", "1:0|2:-5|3:300|", "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"]),
-        edgesHold3(edges(r1.issued, "1:0|", "2:200|"), edges(r2.issued, "1:0|2:-5|", "3:300|"),
-            edges(r8.issued, "1:-1|", "9:900|")),
+        edgesHold(listConcat(listConcat(
+            edges(r1.issued, "1:0|", "2:200|"), edges(r2.issued, "1:0|2:-5|", "3:300|")),
+            edges(r8.issued, "1:-1|", "9:900|"))),
         contains(r8.issued, "5:-5|"),
         contains(r2.issued, "2:-5|"),
         structuralEquals([contains(r0.issued, "2:"), contains(r1.issued, "3:"),
@@ -209,8 +201,9 @@ fn retryAttemptMatrixCase() = {
         r0.settled == r0.issued,
         structuralEquals([r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued],
             [true, true, true]),
-        edgesHold3(edges(r1.settled, "2:200|", "1:200|"), edges(r2.settled, "3:300|", "1:300|"),
-            edges(r8.settled, "9:900|", "1:900|")),
+        edgesHold(listConcat(listConcat(
+            edges(r1.settled, "2:200|", "1:200|"), edges(r2.settled, "3:300|", "1:300|")),
+            edges(r8.settled, "9:900|", "1:900|"))),
         structuralEquals([contains(r1.settled, "1:0|"), contains(r2.settled, "2:-5|")], [false, false])
     ])
 
@@ -232,6 +225,41 @@ fn retryAttemptMatrixCase() = {
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
 test("retry loops accept after zero one two and eight rejections", exactly(retryAttemptMatrixCase))
 
+type Exhaustion = { out: int, calls: int, trail: string, settled: string }
+
+/// One retry loop whose handler refuses every attempt past `limit` by
+/// answering `sentinel` without resuming; it records the attempts, the trail
+/// of tries and refusals, and the frames the abandoned continuation settles.
+fn exhausted(limit, sentinel) = {
+    mut calls = 0
+    mut trail = ""
+    mut settled = ""
+    let out = {
+        handle Retry {
+            supply n => {
+                calls = calls + 1 
+                match n > limit {
+                    true => {
+                        trail = "${trail}giveup:${toString(n)}|"
+                        sentinel
+                    }
+                    false => {
+                        trail = "${trail}try:${toString(n)}|"
+                        let answer = resume((0 - n) )
+                        settled = "${settled}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
+                }
+            }
+        }
+        acceptPositive(1)
+    }
+    Exhaustion { out: out, calls: calls, trail: trail, settled: settled }
+}
+
+/// One observed budget run: the region's answer, its refusal count, the trail
+/// of tries and giveups, and the settlement every resumed frame saw.
+type BudgetRun = { out: int, calls: int, trail: string, settled: string }
 
 /// The number of `|`-terminated entries `trail` carries: one per operation.
 fn barCount(trail) = length(trail) - length(replace(trail, "|", "") ?: trail)
@@ -266,7 +294,7 @@ fn budgetRun(budget, jackpot, prize) = {
         }
         acceptPositive(1)
     }
-    Region { out: out, calls: barCount(trail), trail: trail, settled: settled }
+    BudgetRun { out: out, calls: barCount(trail), trail: trail, settled: settled }
 }
 
 /// [EFFECTS-RESUME] "returning from the selected branch without resuming stops
@@ -618,8 +646,20 @@ type Sourced = { accepted: int, calls: int, trail: string }
 /// Runs `acceptPositive(1)` under a Retry handler drawing `candidate(n)` and
 /// appending `render(n, candidate)` to the trail per attempt.
 fn scriptedRun(candidate, render) = {
-    let run = attemptRun(candidate, render)
-    Sourced { accepted: run.accepted, calls: run.calls, trail: run.issued }
+    mut calls = 0
+    mut trail = ""
+    let accepted = {
+        handle Retry {
+            supply n => {
+                calls = calls + 1 
+                let value = candidate(n)
+                trail = "${trail}${render(n, value)}|"
+                resume(value)
+            }
+        }
+        acceptPositive(1)
+    }
+    Sourced { accepted: accepted, calls: calls, trail: trail }
 }
 
 /// [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
@@ -748,15 +788,6 @@ effect Budget {
 /// and tagged settlement.
 type Region = { out: int, calls: int, trail: string, settled: string }
 
-/// The candidate one attempt supplies: `accept` once `n` passes `limit`, else 0.
-fn candidateOver(limit, n, accept) = match n > limit { true => accept  false => 0 }
-
-/// The trail entry one attempt appends: its `prefix`, tag, attempt and candidate.
-fn tagEntry(prefix, tag, n, candidate) = "${prefix}${toString(tag)}=${toString(n)}:${toString(candidate)}|"
-
-/// The settlement entry one resumed frame appends: its `prefix`, tag and answer.
-fn settleEntry(prefix, tag, answer) = "${prefix}${toString(tag)}:${toString(answer)}|"
-
 /// Runs `body()` under a Retry region that charges `weight` per attempt,
 /// accepts `accept` only once `n` passes `limit`, and tags both transcripts
 /// `prefix` ([EFFECTS-HANDLER-STATE]: the cells stay inside the region).
@@ -768,11 +799,11 @@ fn chargeRetry(prefix, limit, accept, weight, body) = {
         handle Retry {
             supply n => {
                 calls = calls + 1 
-                let candidate = candidateOver(limit, n, accept)
-                trail = "${trail}${tagEntry(prefix, calls, n, candidate)}"
+                let candidate = match n > limit { true => accept  false => 0 }
+                trail = "${trail}${prefix}${toString(calls)}=${toString(n)}:${toString(candidate)}|"
                 let _ = perform Budget.charge(weight)
                 let answer = resume(candidate)
-                settled = "${settled}${settleEntry(prefix, calls, answer)}"
+                settled = "${settled}${prefix}${toString(calls)}:${toString(answer)}|"
                 answer
             }
         }
@@ -787,11 +818,14 @@ fn nestedRetryRegionsCase() = {
     mut charged = 0
     mut chargeCalls = 0
     mut chargeTrail = ""
+    mut outerCalls = 0
+    mut outerTrail = ""
+    mut outerSettled = ""
     mut innerCalls = 0
     mut innerTrail = ""
     mut innerSettled = ""
 
-    let outer = {
+    let total = {
         handle Budget {
             charge weight => {
                 chargeCalls = chargeCalls + 1 
@@ -800,30 +834,37 @@ fn nestedRetryRegionsCase() = {
                 charged
             }
         }
-        chargeRetry("o", 2, 50, 10, fn() => {
-            let before = acceptPositive(1)
-            let inside = {
-                handle Retry {
-                    supply n => {
-                        innerCalls = innerCalls + 1 
-                        let candidate = candidateOver(1, n, 700)
-                        innerTrail = "${innerTrail}${tagEntry("i", innerCalls, n, candidate)}"
-                        let _ = perform Budget.charge(1)
-                        let answer = resume(candidate)
-                        innerSettled = "${innerSettled}${settleEntry("i", innerCalls, answer)}"
-                        answer
-                    }
-                }
-                acceptPositive(1)
+        handle Retry {
+            supply n => {
+                outerCalls = outerCalls + 1 
+                let tag = outerCalls
+                let candidate = match n > 2 { true => 50  false => 0 }
+                outerTrail = "${outerTrail}o${toString(tag)}=${toString(n)}:${toString(candidate)}|"
+                let _ = perform Budget.charge(10)
+                let answer = resume(candidate)
+                outerSettled = "${outerSettled}o${toString(tag)}:${toString(answer)}|"
+                answer
             }
-            let after = acceptPositive(1)
-            before + inside + after 
-        })
+        }
+        let before = acceptPositive(1)
+        let inside = {
+            handle Retry {
+                supply n => {
+                    innerCalls = innerCalls + 1 
+                    let tag = innerCalls
+                    let candidate = match n > 1 { true => 700  false => 0 }
+                    innerTrail = "${innerTrail}i${toString(tag)}=${toString(n)}:${toString(candidate)}|"
+                    let _ = perform Budget.charge(1)
+                    let answer = resume(candidate)
+                    innerSettled = "${innerSettled}i${toString(tag)}:${toString(answer)}|"
+                    answer
+                }
+            }
+            acceptPositive(1)
+        }
+        let after = acceptPositive(1)
+        before + inside + after 
     }
-    let total = outer.out
-    let outerCalls = outer.calls
-    let outerTrail = outer.trail
-    let outerSettled = outer.settled
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll("nested retry regions each accept their own value", [
