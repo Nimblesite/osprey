@@ -52,3 +52,10 @@ fn emptyUploads() = gpuSatisfies(toGpu([]), fn(empty: GpuBuffer<int>) => lengthI
 
 /// The reason a bounds-checked GPU read reports for an index past the end.
 fn oobMessage() = "gpuGet: index out of bounds"
+
+/// Whether `buffer` holds `expected` from `index` on, element by element, each
+/// read compared as `elementIs` compares it.
+fn elementsFrom(buffer, index, fallback, expected) = match expected {
+    [] => true
+    [head, ...tail] => elementIs(buffer, index, fallback, head) && elementsFrom(buffer, index + 1, fallback, tail)
+}
