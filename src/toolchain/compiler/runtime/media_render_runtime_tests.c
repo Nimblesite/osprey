@@ -140,11 +140,24 @@ static void assert_no_render_folders(void) {
   assert(closedir(dir) == 0);
 }
 
-static void assert_render_fails(void) {
-  char *folder = osprey_media_render(AUDIO);
+// A refused render answers an empty name and leaves no folder of its own.
+static void assert_render_refused(char *audio) {
+  char *folder = osprey_media_render(audio);
   assert(folder != NULL && strcmp(folder, "") == 0);
   free(folder);
+}
+
+static void assert_render_fails(void) {
+  assert_render_refused(AUDIO);
   assert_no_render_folders();
+}
+
+// An accepted render's folder goes away and its child stops with it.
+static void assert_render_stopped(char *folder, long pid) {
+  assert(osprey_media_unrender(folder) == 0);
+  assert(!exists(folder));
+  errno = 0;
+  assert(kill((pid_t)pid, 0) == -1 && errno == ESRCH);
 }
 
 static void assert_arguments(const char *folder) {
@@ -177,10 +190,7 @@ static void render_succeeds(const char *duration, const char *playlist) {
   assert(folder != NULL && folder[0] != '\0');
   assert_live_render(folder, playlist);
   long pid = renderer_pid(folder);
-  assert(osprey_media_unrender(folder) == 0);
-  assert(!exists(folder));
-  errno = 0;
-  assert(kill((pid_t)pid, 0) == -1 && errno == ESRCH);
+  assert_render_stopped(folder, pid);
   free(folder);
   assert_no_render_folders();
 }
@@ -199,18 +209,12 @@ static void test_successful_playlists(void) {
                            "#EXT-X-ENDLIST\n");
 }
 
-static void assert_blank_render(char *audio) {
-  char *folder = osprey_media_render(audio);
-  assert(folder != NULL && strcmp(folder, "") == 0);
-  free(folder);
-}
-
 static void test_bad_inputs_and_temp_folder(void) {
-  assert_blank_render(NULL);
+  assert_render_refused(NULL);
   char empty[] = "";
-  assert_blank_render(empty);
+  assert_render_refused(empty);
   char missing[] = "/definitely/not/an/audio/file";
-  assert_blank_render(missing);
+  assert_render_refused(missing);
   assert_no_render_folders();
   char absent[1120];
   path(absent, sizeof absent, ROOT, "missing-tmp");
@@ -257,9 +261,7 @@ static void find_render_folder(char *folder, size_t size) {
 
 static void test_unwritable_playlist_folder(void) {
   assert(setenv("FAKE_FFPROBE_MODE", "unwritable", 1) == 0);
-  char *result = osprey_media_render(AUDIO);
-  assert(result != NULL && strcmp(result, "") == 0);
-  free(result);
+  assert_render_refused(AUDIO);
   char folder[1120];
   find_render_folder(folder, sizeof folder);
   char playlist[1120];
@@ -346,10 +348,7 @@ static void test_unrender_trusts_only_its_own_record(void) {
   assert(snprintf(alias, sizeof alias, "%s/.%s", ROOT, base) > 0);
   assert(osprey_media_unrender(alias) == -1);
   assert(exists(folder) && kill((pid_t)renderer, 0) == 0);
-  assert(osprey_media_unrender(folder) == 0);
-  assert(!exists(folder));
-  errno = 0;
-  assert(kill((pid_t)renderer, 0) == -1 && errno == ESRCH);
+  assert_render_stopped(folder, renderer);
   assert_alive_then_stop(victim);
   assert(osprey_media_unrender(folder) == -1);
   free(folder);
