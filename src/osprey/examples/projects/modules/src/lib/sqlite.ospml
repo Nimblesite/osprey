@@ -1,11 +1,12 @@
 // lib/sqlite — the SQLite LIBRARY. [MODULES-MODULE]
 //
-// A reusable database layer built from nothing but Osprey's generic C FFI: every
-// call is a plain `extern` bound to the SQLite C API, linked by the `// @link:`
-// directive below. The module exports a small typed surface (open/run/query*…)
-// and keeps the raw pointer choreography (out-param cells, bind/step/finalize)
-// private behind the module boundary. Values are always BOUND (`?`), never
-// interpolated — injection is structurally impossible.
+// A reusable database layer built from nothing but Osprey's generic C FFI:
+// every call is a plain `extern` bound to the SQLite C API, linked by the
+// `// @link:` directive below. The module exports a small typed surface
+// (open/run/queryInt/queryText/…) and keeps the raw pointer choreography
+// (out-param cells, bind/step/finalize) private behind the module boundary.
+// Values are always BOUND (`?`), never interpolated — injection is
+// structurally impossible.
 //
 // @link: sqlite3
 
@@ -32,77 +33,111 @@ extern osprey_ffi_null -> Ptr
 extern osprey_ffi_transient -> Ptr
 
 module Sqlite
-    // --- one wrapper per C entry point: no C call appears twice below ---
-    export bindIntAt cursor idx val = sqlite3_bind_int cursor idx val
-    // Bind text `val` at parameter `pos`; SQLite copies it (transient).
-    export bindTextAt cursor idx val = sqlite3_bind_text cursor idx val (-1) (osprey_ffi_transient ())
-    export step cursor = sqlite3_step cursor
-    export intAt cursor col = sqlite3_column_int cursor col
-    // Column `col` of the current row, copied out immediately.
-    export textAt cursor col = "${sqlite3_column_text cursor col}"
-    export closeQuery cursor = sqlite3_finalize cursor
-    export shutdown db = sqlite3_close db
-
-    // `fill` is handed a fresh out-param cell; yield the pointer it wrote there.
-    outCell fill =
+    // prepare is PRIVATE: callers never see statement pointers, only values.
+    prepare : Ptr -> string -> Ptr
+    prepare db sql =
         cell = osprey_ffi_cell ()
-        _rc = fill cell
-        p = osprey_ffi_deref cell
+        _rc = sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ())
+        stmt = osprey_ffi_deref cell
         _freed = osprey_ffi_free cell
-        p
-
-    // Bind `key` at parameter `pos`; hand back the next free position.
-    bindAt (stmt, pos, key) =
-        _b = bindIntAt stmt pos key
-        pos + 1
-
-    // Step `stmt` once, hand `(code, stmt)` to `read`, then close; yield its value.
-    stepped stmt read =
-        v = read (step stmt, stmt)
-        _fin = closeQuery stmt
-        v
-
-    // `query` prepares `sql` and hands back a live statement; callers walk it
-    // with `step` (SQLITE_ROW = 100 means a row landed), read typed columns, and
-    // MUST `closeQuery` when done — statement pointers never leave this module.
-    export query db sql = outCell (\cell => sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ()))
-
-    // A statement of `sql` with every key bound, in order, from parameter 1.
-    bindInts db sql keys =
-        stmt = query db sql
-        _next = foldList (keys, 1, \(pos, key) => bindAt (stmt, pos, key))
         stmt
 
-    // Readers over a landed `(step code, stmt)` (the C pointer dies at the next
-    // step/finalize, so text is copied): int column 0, text column 0, or the code.
-    rowInt (_code, s) = intAt s 0
-    rowText (_code, s) = textAt s 0
-    rowCode (code, _s) = code
+    // bind positional (int, text) then run to completion — private plumbing.
+    runBound : Ptr -> string -> int -> string -> int
+    runBound db sql i t =
+        stmt = prepare db sql
+        _b1 = sqlite3_bind_int stmt 1 i
+        _b2 = sqlite3_bind_text stmt 2 t (-1) (osprey_ffi_transient ())
+        rc = sqlite3_step stmt
+        _fin = sqlite3_finalize stmt
+        rc
 
-    // Prepare `sql`, bind every key in order, step once and read the row.
-    firstRow db sql keys read = stepped (bindInts db sql keys) read
-
-    export openAt path = outCell (\cell => sqlite3_open path cell)
+    export openAt : string -> Ptr
+    openAt path =
+        cell = osprey_ffi_cell ()
+        _rc = sqlite3_open path cell
+        db = osprey_ffi_deref cell
+        _freed = osprey_ffi_free cell
+        db
 
     // Run one statement with no result rows (DDL, DELETE, BEGIN/COMMIT).
-    export run db sql =
-        sqlite3_exec db sql (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
+    export run : Ptr -> string -> int
+    run db sql = sqlite3_exec db sql (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
 
     // INSERT with one bound int and one bound text; returns the new rowid.
-    export insertIntText db sql i t =
-        stmt = bindInts db sql [i]
-        _b = bindTextAt stmt 2 t
-        _rc = stepped stmt rowCode
+    export insertIntText : Ptr -> string -> int -> string -> int
+    insertIntText db sql i t =
+        _rc = runBound db sql i t
         sqlite3_last_insert_rowid db
 
     // UPDATE with two bound ints; returns the step result code.
-    export updateIntInt db sql a b = firstRow db sql [a, b] rowCode
+    export updateIntInt : Ptr -> string -> int -> int -> int
+    updateIntInt db sql a b =
+        stmt = prepare db sql
+        _b1 = sqlite3_bind_int stmt 1 a
+        _b2 = sqlite3_bind_int stmt 2 b
+        rc = sqlite3_step stmt
+        _fin = sqlite3_finalize stmt
+        rc
 
-    // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
-    export queryScalar db sql = stepped (query db sql) rowInt
+    // A statement of `sql` with `key` bound as its first parameter.
+    bindInt db sql key =
+        stmt = prepare db sql
+        _b1 = sqlite3_bind_int stmt 1 key
+        stmt
+
+    // One statement stepped once: its first column as an int, and the statement finalized.
+    intColumn stmt =
+        _rc = sqlite3_step stmt
+        v = sqlite3_column_int stmt 0
+        _fin = sqlite3_finalize stmt
+        v
 
     // SELECT one int scalar with one bound int (first row, first column).
-    export queryInt db sql key = firstRow db sql [key] rowInt
+    export queryInt : Ptr -> string -> int -> int
+    queryInt db sql key = intColumn (bindInt db sql key)
 
-    // SELECT one text scalar with one bound int; copied before finalize.
-    export queryText db sql key = firstRow db sql [key] rowText
+    // SELECT one text scalar with one bound int. The column pointer is only
+    // valid until finalize, so the text is copied into a fresh Osprey string
+    // (via interpolation) BEFORE the statement is finalized.
+    export queryText : Ptr -> string -> int -> string
+    queryText db sql key =
+        stmt = bindInt db sql key
+        _rc = sqlite3_step stmt
+        v = "${sqlite3_column_text stmt 0}"
+        _fin = sqlite3_finalize stmt
+        v
+
+    // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
+    export queryScalar : Ptr -> string -> int
+    queryScalar db sql = intColumn (prepare db sql)
+
+    // --- cursor API: multi-row reads without exposing pointer plumbing ---
+    // `query` hands back a live statement; callers walk it with `step`
+    // (SQLITE_ROW = 100 means a row landed), read typed columns, and MUST
+    // `closeQuery` when done.
+    export query : Ptr -> string -> Ptr
+    query db sql = prepare db sql
+
+    export bindIntAt : Ptr -> int -> int -> int
+    bindIntAt cursor idx val = sqlite3_bind_int cursor idx val
+
+    export bindTextAt : Ptr -> int -> string -> int
+    bindTextAt cursor idx val = sqlite3_bind_text cursor idx val (-1) (osprey_ffi_transient ())
+
+    export step : Ptr -> int
+    step cursor = sqlite3_step cursor
+
+    export intAt : Ptr -> int -> int
+    intAt cursor col = sqlite3_column_int cursor col
+
+    // Copied into a fresh Osprey string immediately: the column pointer dies
+    // with the next step/finalize.
+    export textAt : Ptr -> int -> string
+    textAt cursor col = "${sqlite3_column_text cursor col}"
+
+    export closeQuery : Ptr -> int
+    closeQuery cursor = sqlite3_finalize cursor
+
+    export shutdown : Ptr -> int
+    shutdown db = sqlite3_close db

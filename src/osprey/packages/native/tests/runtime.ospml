@@ -28,25 +28,32 @@ type Act = Increment | Typed | Load
 // Field checks shared by every case file: one assertion per `{ name = …, value = … }`, in order.
 expectRead (read, fields) = forEachList (fields, \field => expect (read field.name, field.value))
 
-expectFields (extract, doc, fields) = expectRead (\name => extract (doc, name), fields)
+expectNumbers (doc, fields) = expectRead (\name => Doc::number (doc, name), fields)
 
-expectNumbers (doc, fields) = expectFields (Doc::number, doc, fields)
-expectTexts (doc, fields) = expectFields (Doc::text, doc, fields)
-expectFlags (doc, fields) = expectFields (Doc::flag, doc, fields)
-expectDecimals (doc, fields) = expectFields (Doc::decimal, doc, fields)
-expectPresence (doc, fields) = expectFields (Doc::has, doc, fields)
-expectFloats (doc, fields) = expectFields (\(target, name) => jsonFloat (Doc::field (target, name)) ?: 0.0, doc, fields)
+expectTexts (doc, fields) = expectRead (\name => Doc::text (doc, name), fields)
+
+expectFlags (doc, fields) = expectRead (\name => Doc::flag (doc, name), fields)
+
+expectFloats (doc, fields) = expectRead (\name => jsonFloat (Doc::field (doc, name)) ?: 0.0, fields)
+
+expectDecimals (doc, fields) = expectRead (\name => Doc::decimal (doc, name), fields)
+
+expectPresence (doc, fields) = expectRead (\name => Doc::has (doc, name), fields)
+
+tallied () = (perform Signal<Tally>.read ()).tally
+
+memoed () = (perform Signal<Memo>.read ()).memo
 
 // The Go buttons deliberately look identical while changing meaning with the
 // count: at 0 the first tap increments, at 1 the increment is withdrawn and
 // Load shifts to the first ordinal.
-goButtons () = match (perform Signal<Tally>.read ()).tally
+goButtons () = match tallied ()
     1 => [Ui::button ("Go", "play", Load)]
     _ => [Ui::button ("Go", "play", Increment), Ui::button ("Go", "play", Load)]
 
-rootView () = Ui::column (listConcat [Ui::text "Count ${(perform Signal<Tally>.read ()).tally}"] (goButtons ()))
+rootView () = Ui::column (listConcat [Ui::text "Count ${tallied ()}"] (goButtons ()))
 
-noteView () = Ui::column [ui::Field(label = "Note", value = (perform Signal<Memo>.read ()).memo, prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load), Ui::button ("Load", "tray", Load)]
+noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load), Ui::button ("Load", "tray", Load)]
 
 tallySlice () = perform Signal<Tally>.read ()
 
@@ -57,7 +64,7 @@ regions (before, store, frames, _) =
         read => store.counter
     handle static Signal<Memo>
         read => store.note
-    changed = listConcat (signalChanges before.counter store.counter (\value => JsonInt value.tally) (signalDependencies tallySlice)) (signalChanges before.note store.note (\value => JsonString value.memo) (signalDependencies memoSlice))
+    changed = listConcat (signalChanges before.counter store.counter countJson (signalDependencies tallySlice)) (signalChanges before.note store.note memoJson (signalDependencies memoSlice))
     [Keyed::region (frames, "root", changed, rootView), Keyed::region (frames, "note", changed, noteView)]
 
 probe count text = Probe(counter = Tally(tally = count), note = Memo(memo = text))
@@ -81,6 +88,10 @@ update (_, store, message) = Messages::route (message, \action => tapped (store,
 save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
 
 restore doc = probe (Doc::number (doc, "tally")) (Doc::text (doc, "memo"))
+
+countJson value = JsonInt value.tally
+
+memoJson value = JsonString value.memo
 
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
 

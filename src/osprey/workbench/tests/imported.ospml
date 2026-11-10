@@ -25,22 +25,20 @@ module ImportedCases
         test ("an empty export is not an empty successful proof catalogue", empty)
         test ("oversized proof exports are refused before parsing", oversized)
 
-    checked (source, name) = described (ImportedProofs::check (source, name))
-
     export valid () =
-        expect (checked (Fixtures::idImp (), "id_imp"), "id_imp | (∀ (p : Prop), (p → p)) | none")
+        expect (described (ImportedProofs::check (Fixtures::idImp (), "id_imp")), "id_imp | (∀ (p : Prop), (p → p)) | none")
         ProofTermCases::run ()
 
-    export corrupted () = expect (startsWith (checked (Fixtures::idImpBad (), "id_imp"), "error: type mismatch:"), true)
+    export corrupted () = expect (startsWith (described (ImportedProofs::check (Fixtures::idImpBad (), "id_imp")), "error: type mismatch:"), true)
 
-    export missing () = expect (checked (Fixtures::idImp (), "missing"), "error: the export declares no `missing`")
+    export missing () = expect (described (ImportedProofs::check (Fixtures::idImp (), "missing")), "error: the export declares no `missing`")
 
     export assumption () =
-        expect (checked (withUnused (), "unusedAssumption"), "error: `unusedAssumption` is not a theorem")
+        expect (described (ImportedProofs::check (withUnused (), "unusedAssumption")), "error: `unusedAssumption` is not a theorem")
         definition = replace (Fixtures::idImp (), "\"thm\":", "\"def\":") ?: ""
-        expect (checked (definition, "id_imp"), "error: `id_imp` is not a theorem")
+        expect (described (ImportedProofs::check (definition, "id_imp")), "error: `id_imp` is not a theorem")
 
-    export unused () = expect (checked (withUnused (), "id_imp"), "id_imp | (∀ (p : Prop), (p → p)) | none")
+    export unused () = expect (described (ImportedProofs::check (withUnused (), "id_imp")), "id_imp | (∀ (p : Prop), (p → p)) | none")
 
     export catalogue () =
         sameSyntax ()
@@ -54,11 +52,9 @@ module ImportedCases
     sameSyntax () = match FixtureFiles::read "../../examples/proof/kernel/exports/same_syntax.ndjson"
         Error problem => expect (problem, "the same_syntax export")
         Success source =>
-            expectAxioms (source, "SameSyntax.same_syntax", "Classical.choice,Quot.sound")
-            expectAxioms (source, "SameSyntax.lump_eq_of_tree_eq", "Quot.sound")
-            expect (startsWith (checked (swappedProof source, "SameSyntax.same_syntax"), "error: type mismatch:"), true)
-
-    expectAxioms (source, name, wanted) = expect (axiomsOf (ImportedProofs::check (source, name)), wanted)
+            expect (axiomsOf (ImportedProofs::check (source, "SameSyntax.same_syntax")), "Classical.choice,Quot.sound")
+            expect (axiomsOf (ImportedProofs::check (source, "SameSyntax.lump_eq_of_tree_eq")), "Quot.sound")
+            expect (startsWith (described (ImportedProofs::check (swappedProof source, "SameSyntax.same_syntax")), "error: type mismatch:"), true)
 
     axiomsOf outcome = match outcome
         Success entry => join (entry.importedAxioms, ",")
@@ -69,15 +65,12 @@ module ImportedCases
 
     export empty () = expect (catalogueError (ImportedProofs::catalogue ""), "the export declares no theorems")
 
-    export oversized () = padded ("x", 8388609, "an allocated oversized input", \text =>
-        expect (byteLength text, 8388609)
-        expect (checked (text, "id_imp"), "error: the proof export exceeds 8 MiB")
-        expect (catalogueError (ImportedProofs::catalogue text), "the proof export exceeds 8 MiB"))
-
-    /// `count` copies of `fill` handed to `work`, or the refusal reported when the allocation fails.
-    export padded (fill, count, refused, work) = match repeat (fill, count)
-        Error message => expect (message, refused)
-        Success text => work text
+    export oversized () = match repeat ("x", 8388609)
+        Error message => expect (message, "an allocated oversized input")
+        Success text =>
+            expect (byteLength text, 8388609)
+            expect (described (ImportedProofs::check (text, "id_imp")), "error: the proof export exceeds 8 MiB")
+            expect (catalogueError (ImportedProofs::catalogue text), "the proof export exceeds 8 MiB")
 
     catalogueError outcome = match outcome
         Success entries => "unexpected success"
@@ -116,15 +109,9 @@ module ImportedFlowCases
         shows (envelope, [reason])
         hides (envelope, ["Checked theorem"])
 
-    chosenFrom (source, name) = picked (loaded (ask (), source), name)
+    readsSelection (envelope, name) = expect (Doc::text (current envelope, "selected"), name)
 
-    picks (after, name, parts) = shows (picked (after, name), parts)
-
-    refusesPick (after, name, reason) = refusedWith (picked (after, name), reason)
-
-    expectKind (envelope, name, kind) = expect (AppCases::namedKind (Drive::node (envelope, "root"), name), kind)
-
-    reads (envelope, field, wanted) = expect (Doc::text (current envelope, field), wanted)
+    readsSource (envelope, source) = expect (Doc::text (current envelope, "source"), source)
 
     ask () =
         first = Drive::started ()
@@ -150,59 +137,69 @@ module ImportedFlowCases
     edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Current proof export", Drive::quoted source))
 
     export ledgerBoundaries () =
-        selected = chosenFrom (receiptSource (), "root")
-        reads (selected, "selected", "root")
+        selected = picked (loaded (ask (), receiptSource ()), "root")
+        readsSelection (selected, "root")
         shows (selected, ["Axioms: \"none\""])
 
     receiptSource () = (replace (ImportedCases::withUnused (), "unusedAssumption", "none") ?: "") + "{\"ie\":1000,\"const\":{\"name\":16,\"us\":[]}}\n{\"ie\":1001,\"forallE\":{\"name\":0,\"type\":1000,\"body\":1000,\"binderInfo\":\"default\"}}\n{\"ie\":1002,\"lam\":{\"name\":0,\"type\":1000,\"body\":1,\"binderInfo\":\"default\"}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"root\"}}\n{\"thm\":{\"name\":17,\"levelParams\":[],\"type\":1001,\"value\":1002,\"all\":[]}}\n"
 
     export fileImport () =
-        after = loaded (ask (), Fixtures::idImp ())
-        reads (after, "source", Fixtures::idImp ())
-        reads (after, "selected", "id_imp")
+        source = Fixtures::idImp ()
+        after = loaded (ask (), source)
+        readsSource (after, source)
+        readsSelection (after, "id_imp")
         shows (after, ["Checked theorem", "(∀ (p : Prop), (p → p))", "Axioms: none"])
         expect (Doc::text (selectedMath after, "kind"), "math")
         AppCases::kept (after, "")
-        forEachList ([arithmetic, customEquality, customAddition], \probe => probe ())
+        arithmetic ()
+        customEquality ()
+        customAddition ()
         bundled ()
 
     export inspectionLayout () =
         initial = Drive::started ()
         before = asked (AppCases::reopened (AppCases::typed (initial, "Keep this free-form argument.")), initial)
-        expectKind (before, "proof-library-inspection", "")
+        expect (AppCases::namedKind (Drive::node (before, "root"), "proof-library-inspection"), "")
         after = loaded (before, Fixtures::idImp ())
-        expectKind (after, "proof-library-inspection", "framed")
-        expect (Doc::text (Drive::findNode ("aside", Drive::node (after, "root")), "kind"), "")
+        root = Drive::node (after, "root")
+        expect (AppCases::namedKind (root, "proof-library-inspection"), "framed")
+        expect (Doc::text (Drive::findNode ("aside", root), "kind"), "")
         closed = Drive::press (after, "root", "Close proof library")
         expect (Doc::text (Drive::kindedIn ("aside", closed, "root"), "kind"), "aside")
         expect (Doc::write (current closed), Doc::write (current after))
         AppCases::kept (closed, "Keep this free-form argument.")
         WorkspaceCases::withoutDrawing (Drive::stored closed)
         reopened = Drive::press (closed, "root", "Notation")
-        expectKind (reopened, "proof-library-inspection", "framed")
+        expect (AppCases::namedKind (Drive::node (reopened, "root"), "proof-library-inspection"), "framed")
         AppCases::agrees (Drive::stored reopened, Drive::stored before, ["text"])
 
     export exampleAfterImport () =
         initial = Drive::started ()
-        ready = Drive::completed (Drive::completed (initial, "lessons:catalogue", "{}"), "lessons:texts", "{}")
-        started = Drive::press (Drive::press (loaded (asked (ready, initial), Fixtures::idImp ()), "root", "Examples"), "catalogue", "Open conjunction example")
-        expectKind (started, "proof-library-inspection", "")
-        expectKind (started, "example-context", "framed")
+        catalogue = Drive::completed (initial, "lessons:catalogue", "{}")
+        ready = Drive::completed (catalogue, "lessons:texts", "{}")
+        imported = loaded (asked (ready, initial), Fixtures::idImp ())
+        opened = Drive::press (imported, "root", "Examples")
+        started = Drive::press (opened, "catalogue", "Open conjunction example")
+        root = Drive::node (started, "root")
+        expect (AppCases::namedKind (root, "proof-library-inspection"), "")
+        expect (AppCases::namedKind (root, "example-context"), "framed")
         AppCases::present (Doc::text (Drive::stored started, "text"), ["Theorem and_swap"])
-        reads (started, "selected", "id_imp")
+        readsSelection (started, "id_imp")
 
     customEquality () = forEachList ([counterfeitEquality (), counterfeitEqualityRenamed ()], \source => customRelation (source, "claimed_equality", "Eq", "="))
 
     customAddition () = customRelation (counterfeitAddition (), "claimed_left", "HAdd.hAdd", "+")
 
     customRelation (source, name, head, symbol) =
-        chosen = chosenFrom (source, name)
+        imported = loaded (ask (), source)
+        chosen = picked (imported, name)
         shows (chosen, ["Checked theorem"])
         AppCases::present (Doc::text (selectedMath chosen, "spoken"), [head])
         AppCases::absent (Doc::write (Doc::field (selectedMath chosen, "math")), ["\"symbol\":\"${symbol}\""])
 
     arithmetic () =
-        chosen = chosenFrom (Fixtures::natAddComm (), "Nat.add_comm")
+        imported = loaded (ask (), Fixtures::natAddComm ())
+        chosen = picked (imported, "Nat.add_comm")
         typeset = selectedMath chosen
         expect (Doc::write (Doc::field (typeset, "math")), Doc::write (Maths::encode (arithmeticTree ())))
         AppCases::present (Doc::text (typeset, "spoken"), ["HAdd.hAdd"])
@@ -212,96 +209,107 @@ module ImportedFlowCases
 
     selectedMath envelope = Drive::findNode ("math", Drive::findNamed ("proof-library-result", pane envelope))
 
-    binder (name, body) = ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym name) (ui::Sym "Nat"))] body
-
-    sum (left, right) = ui::Op "+" (ui::Sym left) (ui::Sym right)
-
-    arithmeticTree () = binder ("n", binder ("m", ui::Op "=" (sum ("n", "m")) (sum ("m", "n"))))
+    arithmeticTree () = ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "n") (ui::Sym "Nat"))] (ui::Binder "∀" [ui::Paren (ui::Op ":" (ui::Sym "m") (ui::Sym "Nat"))] (ui::Op "=" (ui::Op "+" (ui::Sym "n") (ui::Sym "m")) (ui::Op "+" (ui::Sym "m") (ui::Sym "n"))))
 
     export selection () =
         after = loaded (ask (), ImportedCases::withUnused ())
-        picks (after, "id_imp", ["Axioms: none"])
-        refusesPick (after, "not_present", "Import refused")
-        refusesPick (after, "unusedAssumption", "not a theorem")
-        AppCases::kept (picked (after, "unusedAssumption"), "")
+        chosen = picked (after, "id_imp")
+        shows (chosen, ["Axioms: none"])
+        missing = picked (after, "not_present")
+        refusedWith (missing, "Import refused")
+        axiom = picked (after, "unusedAssumption")
+        refusedWith (axiom, "not a theorem")
+        AppCases::kept (axiom, "")
 
     export currentSource () =
         after = expanded (loaded (ask (), Fixtures::idImp ()))
         broken = edited (after, Fixtures::idImpBad ())
-        reads (broken, "source", Fixtures::idImpBad ())
+        readsSource (broken, Fixtures::idImpBad ())
         refusedWith (broken, "Import refused")
         repaired = edited (broken, Fixtures::idImp ())
         shows (repaired, ["Checked theorem"])
-        reads (repaired, "selected", "id_imp")
-        refusedWith (edited (repaired, ""), "Import refused")
+        readsSelection (repaired, "id_imp")
+        empty = edited (repaired, "")
+        refusedWith (empty, "Import refused")
 
     export refusals () =
         pendingFile ()
         requested = ask ()
         cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
-        reads (cancelled, "source", "")
-        refusedWith (loaded (requested, "not NDJSON"), "Import refused")
-        AppCases::flagged (Drive::stored (Drive::completed (requested, "proof:opened", "{}")), ["noticeBad"])
-        AppCases::present (Doc::text (Drive::stored (Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))), "notice"), ["Permission denied"])
+        readsSource (cancelled, "")
+        malformed = loaded (requested, "not NDJSON")
+        refusedWith (malformed, "Import refused")
+        missing = Drive::completed (requested, "proof:opened", "{}")
+        AppCases::flagged (Drive::stored missing, ["noticeBad"])
+        failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
+        AppCases::present (Doc::text (Drive::stored failed, "notice"), ["Permission denied"])
 
     pendingFile () =
-        requested = Drive::press (loaded (ask (), Fixtures::idImp ()), "library-actions", "Open proof library")
+        previous = loaded (ask (), Fixtures::idImp ())
+        requested = Drive::press (previous, "library-actions", "Open proof library")
         shows (requested, ["Reading the selected proof library…"])
         hides (requested, ["Checked theorem"])
-        keptChecked (Drive::completed (requested, "proof:opened", "{\"cancelled\":true}"))
-        keptChecked (Drive::post (requested, Drive::failed ("proof:opened", "Permission denied")))
-
-    keptChecked envelope =
-        shows (envelope, ["Checked theorem"])
-        reads (envelope, "source", Fixtures::idImp ())
+        cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
+        shows (cancelled, ["Checked theorem"])
+        readsSource (cancelled, Fixtures::idImp ())
+        failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
+        shows (failed, ["Checked theorem"])
+        readsSource (failed, Fixtures::idImp ())
 
     withUsed () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"trusted_assumption\"}}\n{\"axiom\":{\"levelParams\":[],\"name\":16,\"type\":4}}\n{\"ie\":7,\"const\":{\"name\":16,\"us\":[]}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"uses_assumption\"}}\n{\"thm\":{\"levelParams\":[],\"name\":17,\"type\":4,\"value\":7}}\n"
 
     export axioms () =
         after = loaded (ask (), withUsed ())
-        picks (after, "id_imp", ["Axioms: none"])
+        clean = picked (after, "id_imp")
+        shows (clean, ["Axioms: none"])
         assumed = picked (after, "uses_assumption")
         shows (assumed, ["Checked theorem", "Axioms: trusted_assumption"])
-        reads (assumed, "selected", "uses_assumption")
+        readsSelection (assumed, "uses_assumption")
 
-    export largeSource () = ImportedCases::padded ("\n", 1048577, "allocated fixture padding", \padding =>
-        after = loaded (ask (), Fixtures::idImp () + padding)
-        AppCases::flagged (current after, ["large"])
-        reads (after, "source", "")
-        shows (after, ["Checked theorem"])
-        lost = picked (after, "id_imp")
-        hides (lost, ["Checked theorem"])
-        shows (lost, ["Import refused", "The imported source is unavailable. Open the proof export again."]))
+    export largeSource () = match repeat ("\n", 1048577)
+        Error problem => expect (problem, "allocated fixture padding")
+        Success padding =>
+            source = Fixtures::idImp () + padding
+            after = loaded (ask (), source)
+            AppCases::flagged (current after, ["large"])
+            readsSource (after, "")
+            shows (after, ["Checked theorem"])
+            lost = picked (after, "id_imp")
+            hides (lost, ["Checked theorem"])
+            shows (lost, ["Import refused", "The imported source is unavailable. Open the proof export again."])
 
     bundled () =
-        requested = Drive::press (Drive::started (), "root", "Notation")
+        first = Drive::started ()
+        requested = Drive::press (first, "root", "Notation")
         expect (Drive::tickets requested, "proof:catalogue")
-        listed = readCompleted (requested, "proof:catalogue", "proof-libraries.json", "{\"libraries\":[{\"title\":\"Identity fixture\",\"path\":\"proof-libraries/identity.ndjson\"}]}")
+        manifest = "{\"libraries\":[{\"title\":\"Identity fixture\",\"path\":\"proof-libraries/identity.ndjson\"}]}"
+        listed = readCompleted (requested, "proof:catalogue", "proof-libraries.json", manifest)
         AppCases::holds (Drive::findLabel ("Identity fixture", actions listed), ["event"])
         hides (listed, ["Checked theorem"])
-        selected = bundledOpen (listed, "proof:bundled:2")
-        shows (bundledAt (selected, "proof:bundled:2", Fixtures::idImp ()), ["Checked theorem", "Axioms: none"])
-        forEachList ([bundledLarge, bundledRefused, bundledRaces], \probe => probe selected)
+        selected = Drive::press (listed, "library-actions", "Identity fixture")
+        expect (Drive::tickets selected, "proof:bundled:2")
+        checked = bundledAt (selected, "proof:bundled:2", Fixtures::idImp ())
+        shows (checked, ["Checked theorem", "Axioms: none"])
+        bundledLarge selected
+        bundledRefused selected
+        bundledRaces selected
         catalogueRefusals requested
         restoredCatalogue ()
 
-    bundledLarge selected = ImportedCases::padded (" ", 1048577, "allocated large valid JSON fixture", \pad =>
-        retainedBundled (selected, pad + Fixtures::idImp (), pad + Fixtures::idImpBad ()))
-
-    bundledOpen (envelope, ticket) =
-        opened = Drive::press (envelope, "library-actions", "Identity fixture")
-        expect (Drive::tickets opened, ticket)
-        opened
+    bundledLarge selected = match repeat (" ", 1048577)
+        Error message => expect (message, "allocated large valid JSON fixture")
+        Success padding => retainedBundled (selected, padding + Fixtures::idImp (), padding + Fixtures::idImpBad ())
 
     retainedBundled (selected, source, corrupted) =
         large = bundledAt (selected, "proof:bundled:2", source)
         held = Drive::hostSlices [large]
         AppCases::flagged (current large, ["large"])
-        reads (large, "selected", "id_imp")
+        readsSelection (large, "id_imp")
         expect (Doc::text (held, "proof:import"), source)
         shows (large, ["Checked theorem"])
         event = Drive::labelled (large, large, "library", "Theorem", Drive::quoted "id_imp")
-        shows (Drive::postHeld (large, event, held), ["Checked theorem"])
+        retained = Drive::postHeld (large, event, held)
+        shows (retained, ["Checked theorem"])
         damaged = Drive::postHeld (large, event, JsonObject [Doc::str ("proof:import", corrupted)])
         hides (damaged, ["Checked theorem"])
         shows (damaged, ["type mismatch"])
@@ -311,26 +319,32 @@ module ImportedFlowCases
 
     readCompleted (before, ticket, path, source) =
         file = JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", source)]
-        Drive::completedHeld (before, ticket, "{}", JsonObject [Doc::str (ticket, savedDoc ("files", file))])
+        held = JsonObject [Doc::str (ticket, Doc::write (JsonObject [JsonMember "files" (JsonArray [file])]))]
+        Drive::completedHeld (before, ticket, "{}", held)
 
-    savedDoc (key, item) = Doc::write (JsonObject [JsonMember key (JsonArray [item])])
-    bundledRefused selected = forEachList ([Fixtures::idImpBad (), ""], \source =>
-        refusedWith (bundledAt (selected, "proof:bundled:2", source), "Import refused"))
+    bundledRefused selected =
+        invalid = bundledAt (selected, "proof:bundled:2", Fixtures::idImpBad ())
+        refusedWith (invalid, "Import refused")
+        missing = bundledAt (selected, "proof:bundled:2", "")
+        refusedWith (missing, "Import refused")
 
     bundledRaces selected =
         choice = Drive::findTitle ("Bundled proof libraries", actions selected)
         reopened = Drive::controlOf (selected, "library-actions", Doc::number (choice, "event"), "true")
-        stale = undrawnBundle (bundledOpen (reopened, "proof:bundled:3"))
-        shows (bundledAt (stale, "proof:bundled:3", Fixtures::idImp ()), ["Checked theorem"])
-        manual = loaded (Drive::press (selected, "library-actions", "Open proof library"), Fixtures::idImp ())
-        shows (undrawnBundle manual, ["Checked theorem"])
-        refusedWith (readCompleted (selected, "proof:bundled:2", "proof-libraries/wrong.ndjson", Fixtures::idImp ()), "Import refused")
-        shows (Drive::post (selected, Drive::failed ("proof:bundled:2", "file unavailable")), ["Import refused"])
-
-    undrawnBundle envelope =
-        stale = bundledAt (envelope, "proof:bundled:2", Fixtures::idImpBad ())
+        newer = Drive::press (reopened, "library-actions", "Identity fixture")
+        expect (Drive::tickets newer, "proof:bundled:3")
+        stale = bundledAt (newer, "proof:bundled:2", Fixtures::idImpBad ())
         AppCases::undrawn stale
-        stale
+        checked = bundledAt (stale, "proof:bundled:3", Fixtures::idImp ())
+        shows (checked, ["Checked theorem"])
+        manual = loaded (Drive::press (selected, "library-actions", "Open proof library"), Fixtures::idImp ())
+        late = bundledAt (manual, "proof:bundled:2", Fixtures::idImpBad ())
+        AppCases::undrawn late
+        shows (manual, ["Checked theorem"])
+        wrong = readCompleted (selected, "proof:bundled:2", "proof-libraries/wrong.ndjson", Fixtures::idImp ())
+        refusedWith (wrong, "Import refused")
+        failed = Drive::post (selected, Drive::failed ("proof:bundled:2", "file unavailable"))
+        shows (failed, ["Import refused"])
 
     catalogueRefusals requested =
         sources = ["{", "{}", "{\"libraries\":[]}", "{\"libraries\":[{\"title\":\"Escape\",\"path\":\"proof-libraries/../secret.ndjson\"}]}"]
@@ -340,13 +354,16 @@ module ImportedFlowCases
             hides (refused, ["Checked theorem"]))
         wrong = readCompleted (requested, "proof:catalogue", "wrong.json", "{}")
         told (wrong, ["different library catalogue"])
-        told (Drive::completedHeld (requested, "proof:catalogue", "{}", JsonObject []), ["library read result is invalid"])
+        absent = Drive::completedHeld (requested, "proof:catalogue", "{}", JsonObject [])
+        told (absent, ["library read result is invalid"])
 
     restoredCatalogue () =
         path = "proof-libraries/../../secrets.ndjson"
-        catalogue = savedDoc ("libraries", JsonObject [Doc::str ("title", "Forged restored entry"), Doc::str ("path", path)])
+        entry = JsonObject [Doc::str ("title", "Forged restored entry"), Doc::str ("path", path)]
+        catalogue = Doc::write (JsonObject [JsonMember "libraries" (JsonArray [entry])])
         saved = JsonObject [JsonMember "imports" (JsonObject [Doc::str ("catalogue", catalogue)])]
-        asked = BundledLibraries::open (Benches::restore saved, path)
+        restored = Benches::restore saved
+        asked = BundledLibraries::open (restored, path)
         expect (length asked.requests, 0)
         expect (isEmpty asked.stepStore.imports.exportProblem, false)
 
@@ -378,18 +395,14 @@ module ImportMemoCases
         perform MemoCount.counted ()
         ImportedProofs::catalogue source
 
-    one () = accepts (Fixtures::idImp ())
+    one () = expect (accepted (CachedImports::check (Fixtures::idImp (), "id_imp")), true)
 
     probes () =
-        accepts (Fixtures::idImp ())
-        accepts (Fixtures::idImp ())
-        accepts (Fixtures::idImp () + "\n")
-        refuses (Fixtures::idImpBad ())
-        refuses (Fixtures::idImpBad ())
-
-    accepts source = expect (accepted (CachedImports::check (source, "id_imp")), true)
-
-    refuses source = expect (refused (CachedImports::check (source, "id_imp")), true)
+        one ()
+        one ()
+        expect (accepted (CachedImports::check (Fixtures::idImp () + "\n", "id_imp")), true)
+        expect (refused (CachedImports::check (Fixtures::idImpBad (), "id_imp")), true)
+        expect (refused (CachedImports::check (Fixtures::idImpBad (), "id_imp")), true)
 
     accepted outcome = match outcome
         Success entry => entry.importedName == "id_imp" && isEmpty entry.importedAxioms
