@@ -67,6 +67,18 @@ static void t_alloc_zero_filled(void) {
   CHECK(osprey_gpu_in_bounds(b, -1) == 0);
 }
 
+// A store outside a buffer's published range lands nowhere: the read stays 0.
+static void store_ignored(void *b, int64_t index, int64_t word) {
+  osprey_gpu_set(b, index, word);
+  CHECK(osprey_gpu_get(b, index) == 0);
+}
+
+// take publishes exactly `expected` elements, whatever `count` asked.
+static void take_publishes(void *b, int64_t count, int64_t expected) {
+  osprey_gpu_take(b, count);
+  CHECK(osprey_gpu_len(b) == expected);
+}
+
 // Invalid allocation requests fail; every raw accessor remains NULL-safe.
 static void t_alloc_refuses_invalid(void) {
   int64_t bad[] = {-1, INT64_MIN, GPU_MAX_LEN + 1, INT64_MAX};
@@ -78,8 +90,7 @@ static void t_alloc_refuses_invalid(void) {
     CHECK(osprey_gpu_len(b) == 0);
     CHECK(osprey_gpu_in_bounds(b, 0) == 0);
     CHECK(osprey_gpu_get(b, 0) == 0);
-    osprey_gpu_set(b, 0, 99); // ignored, not a wild store
-    CHECK(osprey_gpu_get(b, 0) == 0);
+    store_ignored(b, 0, 99); // ignored, not a wild store
   }
   osp_io_error_clear();
   void *zero = osprey_gpu_alloc(0, 8);
@@ -95,8 +106,7 @@ static void t_alloc_failure_is_error(void) {
   CHECK(strstr(osp_io_error(), "out of memory") != NULL);
   CHECK(osprey_gpu_len(b) == 0);
   CHECK(osprey_gpu_in_bounds(b, 0) == 0);
-  osprey_gpu_set(b, 0, 7);
-  CHECK(osprey_gpu_get(b, 0) == 0);
+  store_ignored(b, 0, 7);
 }
 
 // Every accessor tolerates NULL — the empty-buffer degenerate case.
@@ -105,8 +115,7 @@ static void t_null_safety(void) {
   CHECK(osprey_gpu_get(NULL, 0) == 0);
   CHECK(osprey_gpu_in_bounds(NULL, 0) == 0);
   osprey_gpu_set(NULL, 0, 1);
-  osprey_gpu_take(NULL, 3);
-  CHECK(osprey_gpu_len(NULL) == 0);
+  take_publishes(NULL, 3, 0);
 }
 
 // Full write/read round trip, and out-of-bounds stores land NOWHERE: after
@@ -164,20 +173,16 @@ static void t_take_shrinks_only(void) {
   for (int64_t i = 0; i < 10; i++) {
     osprey_gpu_set(b, i, 100 + i);
   }
-  osprey_gpu_take(b, 20); // larger than length: no growth
-  CHECK(osprey_gpu_len(b) == 10);
-  osprey_gpu_take(b, 7);
-  CHECK(osprey_gpu_len(b) == 7);
+  take_publishes(b, 20, 10); // larger than length: no growth
+  take_publishes(b, 7, 7);
   for (int64_t i = 0; i < 7; i++) {
     CHECK(osprey_gpu_get(b, i) == 100 + i);
   }
   CHECK(osprey_gpu_in_bounds(b, 7) == 0);
   CHECK(osprey_gpu_get(b, 7) == 0);
   osprey_gpu_set(b, 7, 55); // past the published length: ignored
-  osprey_gpu_take(b, 7);    // idempotent at the same count
-  CHECK(osprey_gpu_len(b) == 7);
-  osprey_gpu_take(b, -3);   // negative clamps to zero: fully compacted away
-  CHECK(osprey_gpu_len(b) == 0);
+  take_publishes(b, 7, 7);  // idempotent at the same count
+  take_publishes(b, -3, 0); // negative clamps to zero: fully compacted away
   CHECK(osprey_gpu_in_bounds(b, 0) == 0);
 }
 
@@ -207,16 +212,43 @@ static void *floats(const double *xs, int64_t n) {
   return b;
 }
 
+// A float32 buffer holding `xs` verbatim.
+static void *singles(const float *xs, int64_t n) {
+  void *buffer = osprey_gpu_alloc(n, 4);
+  memcpy(osprey_gpu_data(buffer), xs, (size_t)n * sizeof(float));
+  return buffer;
+}
+
 // --- the dense product ---------------------------------------------------------
+
+// The 2×3 · 3×2 reference product, run at `elem_bytes` (8 or 4).
+static void *exact_product(int64_t elem_bytes) {
+  double l[] = {1, 2, 3, 4, 5, 6}, r[] = {7, 8, 9, 10, 11, 12};
+  float lf[6], rf[6];
+  for (int i = 0; i < 6; i++) {
+    lf[i] = (float)l[i];
+    rf[i] = (float)r[i];
+  }
+  int wide = elem_bytes == 8;
+  osp_io_error_clear();
+  void *out = osprey_gpu_matmul(wide ? floats(l, 6) : singles(lf, 6), wide ? floats(r, 6) : singles(rf, 6),
+                                2, 3, 2, elem_bytes);
+  CHECK(out != NULL && osp_io_error() == NULL);
+  return out;
+}
+
+// One refused product: NULL out, and the recorded reason is `text` verbatim.
+static void refuse_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols,
+                          int64_t elem_bytes, const char *text) {
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(left, right, rows, inner, cols, elem_bytes) == NULL);
+  expect_text(text);
+}
 
 // A 2×3 · 3×2 product lands exactly, row-major, at rows × cols.
 static void t_matmul_exact(void) {
-  double l[] = {1, 2, 3, 4, 5, 6};
-  double r[] = {7, 8, 9, 10, 11, 12};
+  void *out = exact_product(8);
   double expected[] = {58, 64, 139, 154};
-  osp_io_error_clear();
-  void *out = osprey_gpu_matmul(floats(l, 6), floats(r, 6), 2, 3, 2, 8);
-  CHECK(out != NULL && osp_io_error() == NULL);
   CHECK(osprey_gpu_len(out) == 4);
   for (int64_t i = 0; i < 4; i++) {
     CHECK(at(out, i) == expected[i]);
@@ -318,21 +350,11 @@ static void t_matmul_shape_errors(void) {
   double six[] = {1, 2, 3, 4, 5, 6};
   void *l = floats(six, 6);
   void *r = floats(six, 6);
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, -1, 3, 2, 8) == NULL);
-  expect_text("gpuMatMul: result: rows * cols is negative or overflows");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, GPU_MAX_LEN, 1, 2, 8) == NULL);
-  expect_text("gpuMatMul: result: rows * cols is negative or overflows");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, 2, 4, 2, 8) == NULL);
-  expect_text("gpuMatMul: left operand: has 6 elements, the stated shape needs 8");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, 2, 3, 3, 8) == NULL);
-  expect_text("gpuMatMul: right operand: has 6 elements, the stated shape needs 9");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(NULL, r, 1, 1, 6, 8) == NULL);
-  expect_text("gpuMatMul: left operand: has 0 elements, the stated shape needs 1");
+  refuse_matmul(l, r, -1, 3, 2, 8, "gpuMatMul: result: rows * cols is negative or overflows");
+  refuse_matmul(l, r, GPU_MAX_LEN, 1, 2, 8, "gpuMatMul: result: rows * cols is negative or overflows");
+  refuse_matmul(l, r, 2, 4, 2, 8, "gpuMatMul: left operand: has 6 elements, the stated shape needs 8");
+  refuse_matmul(l, r, 2, 3, 3, 8, "gpuMatMul: right operand: has 6 elements, the stated shape needs 9");
+  refuse_matmul(NULL, r, 1, 1, 6, 8, "gpuMatMul: left operand: has 0 elements, the stated shape needs 1");
   osp_io_error_clear();
   CHECK(osprey_gpu_matmul(l, r, 2, -3, 2, 8) == NULL);
   CHECK(strncmp(osp_io_error(), "gpuMatMul: left operand:", 24) == 0);
@@ -341,21 +363,11 @@ static void t_matmul_shape_errors(void) {
   expect_errno("gpuMatMul: result: ", ENOMEM);
 }
 
-static void *singles(const float *xs, int64_t n) {
-  void *buffer = osprey_gpu_alloc(n, 4);
-  memcpy(osprey_gpu_data(buffer), xs, (size_t)n * sizeof(float));
-  return buffer;
-}
-
 // [GPU-MATMUL]: a float32 product rounds at binary32 after every operation, so
 // 2^24 + 1 - 2^24 is 0 here and 1 at binary64.
 static void t_matmul_float32_rounds_at_its_width(void) {
-  float l[] = {1, 2, 3, 4, 5, 6};
-  float r[] = {7, 8, 9, 10, 11, 12};
+  void *out = exact_product(4);
   float expected[] = {58, 64, 139, 154};
-  osp_io_error_clear();
-  void *out = osprey_gpu_matmul(singles(l, 6), singles(r, 6), 2, 3, 2, 4);
-  CHECK(out != NULL && osp_io_error() == NULL);
   CHECK(osprey_gpu_len(out) == 4 && osprey_gpu_elem_bytes(out) == 4);
   CHECK(memcmp(osprey_gpu_data(out), expected, sizeof expected) == 0);
   float big[] = {16777216.0f, 1.0f, -16777216.0f};
@@ -369,15 +381,12 @@ static void t_matmul_float32_rounds_at_its_width(void) {
 static void t_matmul_element_type_errors(void) {
   double six[] = {1, 2, 3, 4, 5, 6};
   float singles_six[] = {1, 2, 3, 4, 5, 6};
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(floats(six, 6), floats(six, 6), 2, 3, 2, 2) == NULL);
-  expect_text("gpuMatMul: result: must hold float or float32 elements");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(floats(six, 6), singles(singles_six, 6), 2, 3, 2, 8) == NULL);
-  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
-  osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(singles(singles_six, 6), floats(six, 6), 2, 3, 2, 4) == NULL);
-  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
+  refuse_matmul(floats(six, 6), floats(six, 6), 2, 3, 2, 2,
+                "gpuMatMul: result: must hold float or float32 elements");
+  refuse_matmul(floats(six, 6), singles(singles_six, 6), 2, 3, 2, 8,
+                "gpuMatMul: operands: must hold the same float or float32 element type");
+  refuse_matmul(singles(singles_six, 6), floats(six, 6), 2, 3, 2, 4,
+                "gpuMatMul: operands: must hold the same float or float32 element type");
 }
 
 #include "gpu_file_tests.h"
