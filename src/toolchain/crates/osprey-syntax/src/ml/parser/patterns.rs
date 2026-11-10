@@ -228,6 +228,21 @@ impl Parser<'_> {
         })
     }
 
+    /// A run of bare `name` tokens, each a binder with its position: a
+    /// constructor's payload fields or a handle arm's parameters
+    /// ([FLAVOR-ML-MATCH]).
+    pub(in crate::ml) fn binder_run(&mut self) -> Vec<MlBinder> {
+        let mut binders = Vec::new();
+        while let TokKind::Ident(name) = self.peek() {
+            binders.push(MlBinder {
+                name: name.clone(),
+                pos: Some(self.pos()),
+            });
+            self.advance();
+        }
+        binders
+    }
+
     /// `_` → wildcard; `Ctor a b` → constructor binding payload fields; a bare
     /// lowercase name → a binding ([FLAVOR-ML-MATCH]).
     pub(in crate::ml) fn ident_pattern(&mut self, name: String, pos: Position) -> MlPattern {
@@ -236,14 +251,7 @@ impl Parser<'_> {
             return MlPattern::Wildcard;
         }
         if is_constructor(&name) {
-            let mut fields = Vec::new();
-            while let TokKind::Ident(field) = self.peek() {
-                fields.push(MlBinder {
-                    name: field.clone(),
-                    pos: Some(self.pos()),
-                });
-                self.advance();
-            }
+            let fields = self.binder_run();
             if matches!(self.peek(), TokKind::LParen) {
                 self.error(
                     "nested constructor patterns are not supported; \

@@ -4,6 +4,19 @@ use osprey_ast::{Expr, Pattern, Stmt, TypeExpr};
 
 use super::{assert_ml_error, let_value, ml_ok, ml_one};
 
+/// The constructor pattern's name and payload field, or a failing panic.
+fn assert_ctor(pattern: &Pattern, name: &str, field: &str) {
+    match pattern {
+        Pattern::Constructor {
+            name: got, fields, ..
+        } => {
+            assert_eq!(got, name, "constructor name for `{name}`");
+            assert_eq!(fields, &vec![field.to_owned()], "payload field of `{name}`");
+        }
+        other => panic!("expected a constructor pattern for `{name}`, got {other:?}"),
+    }
+}
+
 #[test]
 fn pipe_into_bare_callee_and_into_a_call() {
     // `x |> f` wraps a bare callee; `x |> f a` prepends to an existing call.
@@ -66,20 +79,8 @@ fn constructor_pattern_with_payload_fields_lowers() {
         "r =\n    match res\n        Success value => value\n        Error message => message\n",
     ) {
         Expr::Match { arms, .. } => {
-            match &arms[0].pattern {
-                Pattern::Constructor { name, fields, .. } => {
-                    assert_eq!(name, "Success");
-                    assert_eq!(fields, &vec!["value".to_owned()]);
-                }
-                other => panic!("expected a constructor pattern, got {other:?}"),
-            }
-            match &arms[1].pattern {
-                Pattern::Constructor { name, fields, .. } => {
-                    assert_eq!(name, "Error");
-                    assert_eq!(fields, &vec!["message".to_owned()]);
-                }
-                other => panic!("expected a constructor pattern, got {other:?}"),
-            }
+            assert_ctor(&arms[0].pattern, "Success", "value");
+            assert_ctor(&arms[1].pattern, "Error", "message");
         }
         other => panic!("expected a match, got {other:?}"),
     }

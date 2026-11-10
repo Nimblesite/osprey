@@ -277,29 +277,30 @@ fn inner_doc_records_inner_scope_and_leaves_outer_alone() {
     assert!(program("let x = 1\n").doc.is_none());
 }
 
+/// The `file_scoped` flag and outer-doc summary of a documented namespace
+/// declaration.
+fn namespace_flag_and_doc(src: &str) -> (bool, Option<String>) {
+    match one_stmt(src) {
+        Stmt::Namespace {
+            doc, file_scoped, ..
+        } => (file_scoped, summary_of(doc.as_ref()).map(str::to_owned)),
+        s => panic!("expected namespace, got {s:?}"),
+    }
+}
+
 #[test]
 fn namespace_keeps_the_outer_doc_the_grammar_already_accepted() {
     // `namespace_declaration` accepted `optional($.doc_comment)` and threw
     // it away at lowering: the doc parsed, then vanished. Both namespace
     // spellings must keep it.
-    match one_stmt("/// File-scoped namespace.\nnamespace billing;\nlet x = 1\n") {
-        Stmt::Namespace {
-            doc, file_scoped, ..
-        } => {
-            assert!(file_scoped);
-            assert_eq!(summary_of(doc.as_ref()), Some("File-scoped namespace."));
-        }
-        s => panic!("expected namespace, got {s:?}"),
-    }
-    match one_stmt("/// Braced namespace.\nnamespace billing { let x = 1 }\n") {
-        Stmt::Namespace {
-            doc, file_scoped, ..
-        } => {
-            assert!(!file_scoped);
-            assert_eq!(summary_of(doc.as_ref()), Some("Braced namespace."));
-        }
-        s => panic!("expected namespace, got {s:?}"),
-    }
+    let (semi_scoped, doc) =
+        namespace_flag_and_doc("/// File-scoped namespace.\nnamespace billing;\nlet x = 1\n");
+    assert!(semi_scoped);
+    assert_eq!(doc.as_deref(), Some("File-scoped namespace."));
+    let (braced_scoped, doc) =
+        namespace_flag_and_doc("/// Braced namespace.\nnamespace billing { let x = 1 }\n");
+    assert!(!braced_scoped);
+    assert_eq!(doc.as_deref(), Some("Braced namespace."));
 }
 
 #[test]
