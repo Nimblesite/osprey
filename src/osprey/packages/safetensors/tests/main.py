@@ -26,6 +26,16 @@ def concat_all(xs):
     return fold(range(len(xs)), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(xs, i), [])))
 
 
+def slot(xs, i, fallback):
+    """`xs`'s i-th item, or `fallback` when it is missing."""
+    return unwrap_or(listGet(xs, i), fallback)
+
+
+def json_value(kind, i):
+    """A parsed JSON value of `kind` holding int `i` and nothing else."""
+    return JsonParser.JsonValue(kind=kind, b=False, i=i, f=0.0, s="", items=[], members=[])
+
+
 def file_of(data):
     """The loaded file, or the empty fallback that fails every assertion for it."""
     return unwrap_or(SafeTensors.load(data), empty_file())
@@ -41,21 +51,31 @@ def slice_of(file, name, start, stop):
     return unwrap_or(SafeTensors.get_slice(file, name, start, stop), empty_tensor())
 
 
+def floats_close(tag, got, want):
+    """A tensor's decoded floats against `want`, at the suite's tolerances."""
+    return Check.close_all(tag, got.floats, want, RTOL, ATOL)
+
+
+def ints_match(tag, got, want):
+    """A tensor's decoded ints against `want`."""
+    return Check.ints_equal(tag, got.ints, want)
+
+
+def kind_truth(name, got, kind):
+    """One tensor's kind, naming the kind it actually was."""
+    return Check.truth(name + ".kind", got.kind == kind, "kind " + got.kind)
+
+
 def float_case(name, data, want):
     """One float tensor: its kind and its decoded values."""
     got = tensor_of(file_of(data), name)
-    return [Check.truth(name + ".kind", got.kind == "floats", "kind " + got.kind), Check.close_all(name + ".values", got.floats, want, RTOL, ATOL)]
+    return [kind_truth(name, got, "floats"), floats_close(name + ".values", got, want)]
 
 
 def int_case(name, data, want):
     """One int tensor: its kind and its decoded values."""
     got = tensor_of(file_of(data), name)
-    return [Check.truth(name + ".kind", got.kind == "ints", "kind " + got.kind), Check.ints_equal(name + ".values", got.ints, want)]
-
-
-def err_case(tag, data, want):
-    """One malformed file: load must fail with exactly `want`."""
-    return [rejection_check(tag, SafeTensors.load(data), want, "load succeeded")]
+    return [kind_truth(name, got, "ints"), ints_match(name + ".values", got, want)]
 
 
 def dtype_table(names, files, values, case):
@@ -101,15 +121,12 @@ def dtype_cases():
 def multi_cases():
     """A multi-tensor file: keys in offset order and each tensor's values."""
     file = file_of(Expected.MULTI_BYTES)
-    a = tensor_of(file, "a")
-    b = tensor_of(file, "b")
-    c = tensor_of(file, "c")
     return [
         str_list_equal("multi.keys", SafeTensors.keys(file), Expected.MULTI_KEYS),
         str_list_equal("multi.offset_keys", SafeTensors.offset_keys(file), Expected.MULTI_OFFSET_KEYS),
-        Check.close_all("multi.a", a.floats, Expected.MULTI_A, RTOL, ATOL),
-        Check.close_all("multi.b", b.floats, Expected.MULTI_B, RTOL, ATOL),
-        Check.ints_equal("multi.c", c.ints, Expected.MULTI_C),
+        floats_close("multi.a", tensor_of(file, "a"), Expected.MULTI_A),
+        floats_close("multi.b", tensor_of(file, "b"), Expected.MULTI_B),
+        ints_match("multi.c", tensor_of(file, "c"), Expected.MULTI_C),
     ]
 
 
@@ -150,8 +167,8 @@ def slice_cases():
     rows = slice_of(file, "m", 1, 3)
     whole = tensor_of(file, "m")
     return [
-        Check.close_all("slice.rows", rows.floats, Expected.SLICE_ROWS, RTOL, ATOL),
-        Check.close_all("slice.whole", whole.floats, Expected.SLICE_WHOLE, RTOL, ATOL),
+        floats_close("slice.rows", rows, Expected.SLICE_ROWS),
+        floats_close("slice.whole", whole, Expected.SLICE_WHOLE),
     ]
 
 
@@ -164,8 +181,8 @@ def special_cases():
 
 
 def err_table(tags, files, wants):
-    """One failed-load check per index of parallel tag, file and message lists."""
-    return concat_all(toList(map(range(len(tags)), lambda i: err_case(unwrap_or(listGet(tags, i), ""), unwrap_or(listGet(files, i), []), unwrap_or(listGet(wants, i), "")))))
+    """One malformed file per index of parallel tag, file and message lists: load must fail with exactly `want`."""
+    return concat_all(toList(map(range(len(tags)), lambda i: [rejection_check(unwrap_or(listGet(tags, i), ""), SafeTensors.load(unwrap_or(listGet(files, i), [])), unwrap_or(listGet(wants, i), ""), "load succeeded")])))
 
 
 def error_cases():
@@ -175,11 +192,6 @@ def error_cases():
         header_prefix_case("err.json", Expected.ERR_JSON_BYTES, "invalid JSON in header:"),
         err_table(["err.info", "err.offset", "err.overflow", "err.meta"], [Expected.ERR_INFO_BYTES, Expected.ERR_OFFSET_BYTES, Expected.ERR_OVERFLOW_BYTES, Expected.ERR_META_BYTES], [Expected.ERR_INFO, Expected.ERR_OFFSET, Expected.ERR_OVERFLOW, Expected.ERR_META]),
     ])
-
-
-def notfound_cases():
-    """A missing tensor name reports the wrapper's not-found message."""
-    return [rejection_check("notfound", SafeTensors.get_tensor(file_of(Expected.ERR_NOTFOUND_BYTES), "missing"), Expected.ERR_NOTFOUND, "get_tensor succeeded")]
 
 
 def dtype_helper_cases():
@@ -245,15 +257,10 @@ def parsed_checks(tag, text, checks_of):
 
 def json_member_checks(value):
     """The single member is a `value` int of 7 inside an object."""
-    number = JsonParser.JsonValue(kind="int", b=False, i=7, f=0.0, s="", items=[], members=[])
+    number = json_value("int", 7)
     member = JsonParser.JsonMember(name="value", value=number)
     got = unwrap_or(listGet(value.members, 0), member)
     return [Check.equal("json.kind", value.kind, "obj"), Check.equal("json.members", len(value.members), 1), Check.equal("json.member", got.name, member.name), Check.equal("json.number", got.value.i, number.i)]
-
-
-def json_helper_cases():
-    """A one-member object parses with its kind and value intact."""
-    return parsed_checks("json.parse", "{\"value\":7}", json_member_checks)
 
 
 def tensor_info_case():
@@ -268,11 +275,6 @@ def json_array_checks(value):
     return [Check.equal("json.array_count", len(items), 5), Check.equal("json.true", unwrap_or(listGet(items, 0), fallback).b, True), Check.equal("json.false", unwrap_or(listGet(items, 1), fallback).b, False), Check.equal("json.null", unwrap_or(listGet(items, 2), fallback).kind, JsonParser.jnull().kind), Check.equal("json.exponent", unwrap_or(listGet(items, 3), fallback).f, 125.0), Check.equal("json.escaped_unicode", unwrap_or(listGet(items, 4), fallback).s, "中\n\t\b\f\r/\\\"")]
 
 
-def json_value_cases():
-    """RFC 8259 literals, exponent numbers and escaped Unicode are header values."""
-    return parsed_checks("json.values", '[true,false,null,1.25e2,"\\u4e2d\\n\\t\\b\\f\\r\\/\\\\\\\""]', json_array_checks)
-
-
 def binary_edge_cases():
     """IEEE little-endian signed zero and smallest subnormals; a UTF-8 BMP word."""
     return [
@@ -284,7 +286,7 @@ def binary_edge_cases():
 
 
 def helper_cases():
-    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), json_value_cases(), binary_edge_cases(), byte_guard_cases(), utf8_cases(), f64_encode_cases(), f16_encode_cases(), bf16_encode_cases(), f32_encode_cases(), int_encode_cases(), json_hex_case(), json_empty_case(), json_number_case(), json_reject_cases(), [tensor_info_case()]])
+    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), parsed_checks("json.parse", "{\"value\":7}", json_member_checks), parsed_checks("json.values", '[true,false,null,1.25e2,"\\u4e2d\\n\\t\\b\\f\\r\\/\\\\\\\""]', json_array_checks), binary_edge_cases(), byte_guard_cases(), utf8_cases(), encode_table(Bytes.f64_bytes, ["bytes.f64_nan", "bytes.f64_inf", "bytes.f64_neg_inf"], [Check.float_of("nan"), Check.float_of("inf"), Check.float_of("-inf")], [Expected.F64_NAN_BYTES, Expected.F64_INF_BYTES, Expected.F64_NEG_INF_BYTES]), f16_encode_cases(), bf16_encode_cases(), encode_table(Bytes.f32_bytes, ["bytes.f32_zero", "bytes.f32_max", "bytes.f32_overflow"], [0.0, Check.float_of("3.4028234663852886e38"), Check.float_of("1e39")], [Expected.F32_ZERO_BYTES, Expected.F32_MAX_BYTES, Expected.F32_OVERFLOW_BYTES]), [Check.ints_equal("bytes.int_positive", Bytes.int_bytes(1000, 3), Expected.INT_TRUNCATE_BYTES)], parsed_checks("json.hex", Expected.JSON_HEX_TEXT, json_hex_checks), parsed_checks("json.empty", Expected.JSON_EMPTY_TEXT, json_empty_checks), parsed_checks("json.numbers", Expected.JSON_NUMBER_TEXT, json_number_checks), json_reject_cases(), [tensor_info_case()]])
 
 
 def header_prefix_case(tag, data, prefix):
@@ -322,11 +324,11 @@ def slice_edge_cases():
     part = slice_of(v, "v", 1, 3)
     whole = tensor_of(s, "x")
     return [
-        Check.close_all("slice.one_row", row.floats, Expected.SLICE_ONE_ROW, RTOL, ATOL),
-        Check.close_all("slice.empty_rows", none.floats, Expected.SLICE_EMPTY_ROWS, RTOL, ATOL),
-        Check.close_all("slice.vector", part.floats, Expected.VECTOR_SLICE, RTOL, ATOL),
+        floats_close("slice.one_row", row, Expected.SLICE_ONE_ROW),
+        floats_close("slice.empty_rows", none, Expected.SLICE_EMPTY_ROWS),
+        floats_close("slice.vector", part, Expected.VECTOR_SLICE),
         rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR, "operation succeeded instead of rejecting invalid input"),
-        Check.close_all("slice.scalar_whole", whole.floats, Expected.SCALAR_VALUE, RTOL, ATOL),
+        floats_close("slice.scalar_whole", whole, Expected.SCALAR_VALUE),
     ]
 
 
@@ -360,11 +362,6 @@ def zero_shape_cases():
     ]
 
 
-def slice_notfound_cases():
-    """get_slice on an absent tensor reports the crate's not-found message."""
-    return [rejection_check("slice.notfound", SafeTensors.get_slice(file_of(Expected.ERR_NOTFOUND_BYTES), "missing", 0, 1), Expected.SLICE_NOTFOUND, "get_slice succeeded")]
-
-
 def byte_error(tag, result):
     """A byte read that must fail instead of inventing bytes."""
     return rejection(tag, result, lambda _value: "read succeeded")
@@ -395,11 +392,6 @@ def encode_table(encode, tags, values, wants):
     return toList(map(range(len(tags)), lambda i: Check.ints_equal(unwrap_or(listGet(tags, i), ""), encode(unwrap_or(listGet(values, i), 0.0)), unwrap_or(listGet(wants, i), []))))
 
 
-def f64_encode_cases():
-    """struct.pack's bytes for NaN and both infinities."""
-    return encode_table(Bytes.f64_bytes, ["bytes.f64_nan", "bytes.f64_inf", "bytes.f64_neg_inf"], [Check.float_of("nan"), Check.float_of("inf"), Check.float_of("-inf")], [Expected.F64_NAN_BYTES, Expected.F64_INF_BYTES, Expected.F64_NEG_INF_BYTES])
-
-
 def f16_encode_cases():
     """numpy binary16 bytes: signed zero, NaN, infinities, overflow, rounding."""
     return encode_table(Bytes.f16_bytes, ["bytes.f16_zero", "bytes.f16_neg_zero", "bytes.f16_nan", "bytes.f16_inf", "bytes.f16_neg_inf", "bytes.f16_overflow", "bytes.f16_tiny", "bytes.f16_boundary", "bytes.f16_round", "bytes.f16_min_subnormal"], [0.0, -0.0, Check.float_of("nan"), Check.float_of("inf"), Check.float_of("-inf"), 65520.0, Bytes.pow2(-40), Check.float_of("6.103e-05"), 2047.5, Bytes.pow2(-24)], [Expected.F16_ZERO_BYTES, Expected.F16_NEG_ZERO_BYTES, Expected.F16_NAN_BYTES, Expected.F16_INF_BYTES, Expected.F16_NEG_INF_BYTES, Expected.F16_OVERFLOW_BYTES, Expected.F16_TINY_BYTES, Expected.F16_BOUNDARY_BYTES, Expected.F16_ROUND_BYTES, Expected.F16_MIN_SUBNORMAL_BYTES])
@@ -413,18 +405,8 @@ def bf16_encode_cases():
     ])
 
 
-def f32_encode_cases():
-    """numpy binary32 bytes: zero, the largest finite value and overflow."""
-    return encode_table(Bytes.f32_bytes, ["bytes.f32_zero", "bytes.f32_max", "bytes.f32_overflow"], [0.0, Check.float_of("3.4028234663852886e38"), Check.float_of("1e39")], [Expected.F32_ZERO_BYTES, Expected.F32_MAX_BYTES, Expected.F32_OVERFLOW_BYTES])
-
-
-def int_encode_cases():
-    """int_bytes writes struct.pack's low bytes for a positive value."""
-    return [Check.ints_equal("bytes.int_positive", Bytes.int_bytes(1000, 3), Expected.INT_TRUNCATE_BYTES)]
-
-
 def empty_json_value():
-    return JsonParser.JsonValue(kind="missing", b=False, i=0, f=0.0, s="", items=[], members=[])
+    return json_value("missing", 0)
 
 
 def empty_json_member():
@@ -434,46 +416,40 @@ def empty_json_member():
 def json_hex_checks(value):
     """Each parsed item's string equals the oracle's expected characters."""
     want = Expected.JSON_HEX_VALUES
-    return toList(map(range(len(want)), lambda i: Check.equal("json.hex_" + toString(i), unwrap_or(listGet(value.items, i), empty_json_value()).s, unwrap_or(listGet(want, i), ""))))
+    return toList(map(range(len(want)), lambda i: Check.equal("json.hex_" + toString(i), slot(value.items, i, empty_json_value()).s, unwrap_or(listGet(want, i), ""))))
 
 
-def json_hex_case():
-    """Uppercase unicode escapes decode to the three characters CPython's json gives."""
-    return parsed_checks("json.hex", Expected.JSON_HEX_TEXT, json_hex_checks)
+def empty_member_checks(label, index, member, size_of):
+    """One empty member's kind and element count, against the oracle's lists."""
+    return [
+        Check.equal("json.empty_" + label, member.value.kind, unwrap_or(listGet(Expected.JSON_EMPTY_KINDS, index), "")),
+        Check.equal("json.empty_" + label + "_size", size_of(member.value), unwrap_or(listGet(Expected.JSON_EMPTY_SIZES, index), -1)),
+    ]
+
+
+def items_size(value):
+    return len(value.items)
+
+
+def members_size(value):
+    return len(value.members)
 
 
 def json_empty_checks(value):
     """The two members' kinds and sizes match the oracle's lists."""
-    a = unwrap_or(listGet(value.members, 0), empty_json_member())
-    b = unwrap_or(listGet(value.members, 1), empty_json_member())
-    return [
-        Check.equal("json.empty_a", a.value.kind, unwrap_or(listGet(Expected.JSON_EMPTY_KINDS, 0), "")),
-        Check.equal("json.empty_a_size", len(a.value.items), unwrap_or(listGet(Expected.JSON_EMPTY_SIZES, 0), -1)),
-        Check.equal("json.empty_b", b.value.kind, unwrap_or(listGet(Expected.JSON_EMPTY_KINDS, 1), "")),
-        Check.equal("json.empty_b_size", len(b.value.members), unwrap_or(listGet(Expected.JSON_EMPTY_SIZES, 1), -1)),
-    ]
-
-
-def json_empty_case():
-    """An empty array and an empty object hold nothing, as CPython's json agrees."""
-    return parsed_checks("json.empty", Expected.JSON_EMPTY_TEXT, json_empty_checks)
+    array_member = slot(value.members, 0, empty_json_member())
+    object_member = slot(value.members, 1, empty_json_member())
+    return concat_all([empty_member_checks("a", 0, array_member, items_size), empty_member_checks("b", 1, object_member, members_size)])
 
 
 def json_number_checks(value):
     """The parsed int and float items match the oracle's kinds and values."""
-    a = unwrap_or(listGet(value.items, 0), empty_json_value())
-    b = unwrap_or(listGet(value.items, 1), empty_json_value())
     return [
-        Check.equal("json.number_int_kind", a.kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 0), "")),
-        Check.equal("json.number_int", a.i, Expected.JSON_NUMBER_INT),
-        Check.equal("json.number_float_kind", b.kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 1), "")),
-        Check.close("json.number_float", b.f, Expected.JSON_NUMBER_FLOAT, RTOL, ATOL),
+        Check.equal("json.number_int_kind", slot(value.items, 0, empty_json_value()).kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 0), "")),
+        Check.equal("json.number_int", slot(value.items, 0, empty_json_value()).i, Expected.JSON_NUMBER_INT),
+        Check.equal("json.number_float_kind", slot(value.items, 1, empty_json_value()).kind, unwrap_or(listGet(Expected.JSON_NUMBER_KINDS, 1), "")),
+        Check.close("json.number_float", slot(value.items, 1, empty_json_value()).f, Expected.JSON_NUMBER_FLOAT, RTOL, ATOL),
     ]
-
-
-def json_number_case():
-    """A negative integer and an exponent float parse to CPython json's values."""
-    return parsed_checks("json.numbers", Expected.JSON_NUMBER_TEXT, json_number_checks)
 
 
 def json_reject(tag, text):
@@ -491,7 +467,7 @@ def json_reject_cases():
 
 def all_cases():
     """Every case of the suite."""
-    return concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), header_edge_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
+    return concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), [rejection_check("notfound", SafeTensors.get_tensor(file_of(Expected.ERR_NOTFOUND_BYTES), "missing"), Expected.ERR_NOTFOUND, "get_tensor succeeded")], header_json_cases(), header_size_cases(), header_edge_cases(), slice_edge_cases(), zero_shape_cases(), [rejection_check("slice.notfound", SafeTensors.get_slice(file_of(Expected.ERR_NOTFOUND_BYTES), "missing", 0, 1), Expected.SLICE_NOTFOUND, "get_slice succeeded")], helper_cases()])
 
 
 def long_text_bytes():
