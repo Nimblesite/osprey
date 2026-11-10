@@ -35,12 +35,8 @@ void transport_close(const Transport *t) {
     SSL_shutdown(t->ssl);
     SSL_free(t->ssl);
   }
-  if (t->ctx) {
-    SSL_CTX_free(t->ctx);
-  }
-  if (t->sock < 0) {
-    return;
-  }
+  if (t->ctx) SSL_CTX_free(t->ctx);
+  if (t->sock < 0) return;
 #ifdef _WIN32
   closesocket(t->sock);
 #else
@@ -59,19 +55,12 @@ static int64_t transport_overdue(const char *stage) {
 TurnWait transport_wait(const Transport *t, short events) {
   for (;;) {
     int64_t left = t->deadline_ms - (int64_t)osp_monotonic_ms();
-    if (left <= 0) {
-      return TURN_OVERDUE;
-    }
+    if (left <= 0) return TURN_OVERDUE;
     bool bound_by_deadline = t->timeout_ms <= 0 || left <= t->timeout_ms;
     int wait_ms = !bound_by_deadline ? t->timeout_ms : left > INT_MAX ? INT_MAX : (int)left;
-    struct pollfd watch = {.fd = t->sock, .events = events};
-    int ready = osp_poll(&watch, 1, wait_ms);
-    if (ready > 0) {
-      return TURN_READY;
-    }
-    if (ready < 0 ? errno != EINTR : !bound_by_deadline) {
-      return TURN_TIMED_OUT;
-    }
+    int ready = osp_poll(&(struct pollfd){.fd = t->sock, .events = events}, 1, wait_ms);
+    if (ready > 0) return TURN_READY;
+    if (ready < 0 ? errno != EINTR : !bound_by_deadline) return TURN_TIMED_OUT;
   }
 }
 
@@ -99,24 +88,24 @@ static bool transport_without_blocking(int sock) {
 #endif
 }
 
+// Waits out a short or stalled attempt; 0 once the socket is ready again, else
+// the code that ends the request: `fail`, or -16 past the deadline.
+static int64_t transport_await(const Transport *t, ssize_t n, short events, const char *stage,
+                               int64_t fail) {
+  short wanted = transport_wants(t, n, events);
+  TurnWait waited = wanted ? transport_wait(t, wanted) : TURN_TIMED_OUT;
+  return waited == TURN_READY ? 0 : waited == TURN_OVERDUE ? transport_overdue(stage) : fail;
+}
+
 // Connects a socket to `host`. Returns 0, or a negative code.
 int64_t transport_connect(Transport *t, const char *host, int port) {
   t->sock = socket(AF_INET, SOCK_STREAM, 0);
-  if (t->sock < 0) {
-    return -3;
-  }
+  if (t->sock < 0) return -3;
   osp_socket_deadline(t->sock, t->timeout_ms);
   (void)osp_socket_configure_no_sigpipe(t->sock); // TLS writes reach the socket too
-  struct sockaddr_in server_addr;
-  memset(&server_addr, 0, sizeof(server_addr));
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons((uint16_t)port);
-  if (!osp_socket_resolve_ipv4(host, &server_addr.sin_addr)) {
-    return -4;
-  }
-  if (connect(t->sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-    return -5;
-  }
+  struct sockaddr_in server_addr = {.sin_family = AF_INET, .sin_port = htons((uint16_t)port)};
+  if (!osp_socket_resolve_ipv4(host, &server_addr.sin_addr)) return -4;
+  if (connect(t->sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) return -5;
   return transport_without_blocking(t->sock) ? 0 : -3;
 }
 
@@ -126,9 +115,7 @@ int64_t transport_connect(Transport *t, const char *host, int port) {
 // error, never a silent downgrade to unauthenticated TLS. NULL when any fails.
 static SSL_CTX *tls_client_ctx(void) {
   SSL_CTX *ctx = SSL_CTX_new(TLS_client_method());
-  if (!ctx) {
-    return NULL;
-  }
+  if (!ctx) return NULL;
   SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, NULL);
   SSL_CTX_set_verify_depth(ctx, 9);
   // The protocol floor is load-bearing: continuing without it would let a
@@ -160,11 +147,8 @@ static int64_t transport_handshake(const Transport *t) {
     if (done == 1) {
       return SSL_get_verify_result(t->ssl) == X509_V_OK ? 0 : -12;
     }
-    short wanted = transport_wants(t, done, POLLIN);
-    TurnWait waited = wanted ? transport_wait(t, wanted) : TURN_TIMED_OUT;
-    if (waited != TURN_READY) {
-      return waited == TURN_OVERDUE ? transport_overdue("handshake") : -12;
-    }
+    int64_t stalled = transport_await(t, done, POLLIN, "handshake", -12);
+    if (stalled != 0) return stalled;
   }
 }
 
@@ -175,13 +159,9 @@ static int64_t transport_handshake(const Transport *t) {
 // takes it as void *. Returns 0, or a negative code.
 int64_t transport_secure(Transport *t, char *host) {
   t->ctx = tls_client_ctx();
-  if (!t->ctx) {
-    return -13; // trust store/verification prerequisites unavailable
-  }
+  if (!t->ctx) return -13; // trust store/verification prerequisites unavailable
   t->ssl = SSL_new(t->ctx);
-  if (!t->ssl) {
-    return -11;
-  }
+  if (!t->ssl) return -11;
   SSL_set_fd(t->ssl, t->sock);
   SSL_set_tlsext_host_name(t->ssl, host);
   return tls_expect_peer(t->ssl, host) == 1 ? transport_handshake(t) : -11;
@@ -201,11 +181,8 @@ int64_t transport_send_all(const Transport *t, const char *buf, size_t len) {
       sent += (size_t)n;
       continue;
     }
-    short wanted = transport_wants(t, n, POLLOUT);
-    TurnWait waited = wanted ? transport_wait(t, wanted) : TURN_TIMED_OUT;
-    if (waited != TURN_READY) {
-      return waited == TURN_OVERDUE ? transport_overdue("send") : -6;
-    }
+    int64_t stalled = transport_await(t, n, POLLOUT, "send", -6);
+    if (stalled != 0) return stalled;
   }
   return 0;
 }
