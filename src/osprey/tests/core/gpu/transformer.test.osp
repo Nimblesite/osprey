@@ -166,6 +166,8 @@ fn written(path, content) = match writeFile(path, content) { Success _ => true E
 fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
 fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
 fn twoFloats(xs, ys, next) = withBuffer(floats(xs), fn(a) => withBuffer(floats(ys), fn(b) => next(a, b)))
+/// An uploaded left operand times the fixed right one, then the product.
+fn productOf(xs, right, rows, inner, cols, next) = withBuffer(toGpu(xs), fn(left) => withBuffer(product(left, right, rows, inner, cols), next))
 fn matMulExactCase() = twoFloats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
 fn matMulExactCaseUploaded(left, right) =
     withBuffer(product(left, right, 2, 3, 2),
@@ -185,25 +187,14 @@ fn matMulExactCaseUploaded(left, right) =
 fn matMulOrderCase() = {
     let big = toFloat32(16777216.0)
     let ulp = toFloat32(1.0) / toFloat32(8388608.0)
-    withBuffer(floats([1.0, 1.0, 1.0]), fn(ones) => {
-            withBuffer(toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]), fn(uploaded22) => {
-                    withBuffer(product(uploaded22, ones, 1, 3, 1), fn(forward) => {
-                            withBuffer(toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]), fn(uploaded23) => {
-                                    withBuffer(product(uploaded23, ones, 1, 3, 1), fn(backward) => {
-                                            withBuffer(toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]), fn(uploaded24) => {
-                                                    withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]), fn(uploaded25) => {
-                                                            withBuffer(product(uploaded24, uploaded25, 1, 2, 1), fn(unfused) => {
-                                                                    checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
-                                                                            atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at(unfused, 0) == 3.0 * ulp
-                                                                    ])
-                                                                })
-                                                        })
-                                                })
-                                        })
-                                })
-                        })
-                })
-        })
+    withBuffer(floats([1.0, 1.0, 1.0]), fn(ones) =>
+        productOf([big, toFloat32(1.0), toFloat32(0.0) - big], ones, 1, 3, 1, fn(forward) =>
+            productOf([toFloat32(0.0) - big, toFloat32(1.0), big], ones, 1, 3, 1, fn(backward) =>
+                withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]), fn(uploaded25) =>
+                    productOf([toFloat32(-1.0), toFloat32(1.0) + ulp], uploaded25, 1, 2, 1, fn(unfused) =>
+                        checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
+                                atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at(unfused, 0) == 3.0 * ulp
+                        ]))))))
 }
 fn matMulShapeCase() = twoFloats([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], matMulShapeCaseUploaded)
 fn matMulShapeCaseUploaded(four, three) = {

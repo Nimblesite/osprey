@@ -168,6 +168,8 @@ loadFailure (path, offset, count) = failureOf (gpuLoad (path, offset, count))
 tensorFailure (path, name) = failureOf (gpuLoadTensor (path, name))
 (** Two uploaded float buffers in sequence: the entry shape the buffer cases share. *)
 twoFloats (xs, ys, next) = withBuffer (floats (xs), \a => withBuffer (floats (ys), \b => next (a, b)))
+(** An uploaded left operand times the fixed right one, then the product. *)
+productOf (xs, right, rows, inner, cols, next) = withBuffer (toGpu (xs), \left => withBuffer (product (left, right, rows, inner, cols), next))
 matMulExactCase () = twoFloats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [7.0, 8.0, 9.0, 10.0, 11.0, 12.0], matMulExactCaseUploaded)
 matMulExactCaseUploaded (left, right) =
     withBuffer (product (left, right, 2, 3, 2),
@@ -186,16 +188,13 @@ matMulOrderCase () =
     big = toFloat32 16777216.0
     ulp = toFloat32 1.0 / toFloat32 8388608.0
     withBuffer (floats ([1.0, 1.0, 1.0]),
-        \ones => withBuffer (toGpu ([big, toFloat32 1.0, toFloat32 0.0 - big]),
-        \uploaded22 => withBuffer (product (uploaded22, ones, 1, 3, 1),
-        \forward => withBuffer (toGpu ([toFloat32 0.0 - big, toFloat32 1.0, big]),
-        \uploaded23 => withBuffer (product (uploaded23, ones, 1, 3, 1),
-        \backward => withBuffer (toGpu ([toFloat32 (-1.0), toFloat32 1.0 + ulp]),
-        \uploaded24 => withBuffer (toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp]),
-        \uploaded25 => withBuffer (product (uploaded24, uploaded25, 1, 2, 1),
+        \ones => productOf ([big, toFloat32 1.0, toFloat32 0.0 - big], ones, 1, 3, 1,
+        \forward => productOf ([toFloat32 0.0 - big, toFloat32 1.0, big], ones, 1, 3, 1,
+        \backward => withBuffer (toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp]),
+        \uploaded25 => productOf ([toFloat32 (-1.0), toFloat32 1.0 + ulp], uploaded25, 1, 2, 1,
         \unfused => checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
             atIs(forward,  0,  0.0), atIs(backward,  0,  1.0), at (unfused, 0) == 3.0 * ulp
-        ]))))))))
+        ])))))
 matMulShapeCase () = twoFloats([1.0, 2.0, 3.0, 4.0], [1.0, 2.0, 3.0], matMulShapeCaseUploaded)
 matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
