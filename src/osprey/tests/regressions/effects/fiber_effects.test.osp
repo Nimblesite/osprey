@@ -545,30 +545,27 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     mut turns = 0
     mut answered = 0
 
-    /// The tracing arm: count the hop, fold the amount in, answer the new total.
-    let traced = fn(work) => {
+    /// Both arms are this region: `trace` 1 records the transcript, `trace` 0
+    /// leaves it alone; either way it counts the hop, folds the amount in and
+    /// answers the new total.
+    let regionFor = fn(trace, work) => {
         handle Tally {
             add amount => {
                 hops = hops + 1 
                 cell = cell + amount 
-                trail = "${trail}${amount}:${cell}|"
+                trail = match trace {
+                    1 => "${trail}${amount}:${cell}|"
+                    _ => trail
+                }
                 cell
             }
         }
         work()
     }
 
-    /// The identity arm: the same without the transcript.
-    let untraced = fn(work) => {
-        handle Tally {
-            add amount => {
-                hops = hops + 1 
-                cell = cell + amount 
-                cell
-            }
-        }
-        work()
-    }
+    /// The tracing arm writes the transcript; the untraced arm writes nothing.
+    let traced = fn(work) => regionFor(1, work)
+    let untraced = fn(work) => regionFor(0, work)
 
     /// main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
     /// and each perform's own answer is kept in its own positional field.
