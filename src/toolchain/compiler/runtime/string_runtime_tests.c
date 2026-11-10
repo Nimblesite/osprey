@@ -33,40 +33,55 @@ static void test_is_empty(void) {
     printf("  ok  is_empty\n");
 }
 
+/* One row of a scalar-predicate table: fn(s, arg) must return want. */
+typedef struct {
+    const char *s;
+    const char *arg;
+    int64_t want;
+} pred_row;
+
+/* Drives every row through fn ([BUILTIN-STRING-INSPECTION],
+   [BUILTIN-STRING-SEARCH]); the first failing row aborts the suite. */
+static void check_pred(int64_t (*fn)(const char *, const char *),
+                       const pred_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        assert(fn(rows[i].s, rows[i].arg) == rows[i].want);
+    }
+}
+
 static void test_starts_with(void) {
-    assert(osp_string_starts_with("hello world", "hello") == 1);
-    assert(osp_string_starts_with("hello world", "world") == 0);
-    assert(osp_string_starts_with("hello world", "") == 1);
-    assert(osp_string_starts_with("", "") == 1);
-    assert(osp_string_starts_with("", "x") == 0);
-    assert(osp_string_starts_with("hi", "hello") == 0); /* prefix longer than s */
-    assert(osp_string_starts_with("GET /api", "GET ") == 1);
-    assert(osp_string_starts_with(NULL, "x") == 0);
-    assert(osp_string_starts_with("x", NULL) == 0);
+    const pred_row rows[] = {
+        {"hello world", "hello", 1}, {"hello world", "world", 0},
+        {"hello world", "", 1},      {"", "", 1}, {"", "x", 0},
+        {"hi", "hello", 0}, /* prefix longer than s */
+        {"GET /api", "GET ", 1},
+        {NULL, "x", 0}, {"x", NULL, 0},
+    };
+    check_pred(osp_string_starts_with, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  starts_with\n");
 }
 
 static void test_ends_with(void) {
-    assert(osp_string_ends_with("hello world", "world") == 1);
-    assert(osp_string_ends_with("hello world", "hello") == 0);
-    assert(osp_string_ends_with("hello world", "") == 1);
-    assert(osp_string_ends_with("", "") == 1);
-    assert(osp_string_ends_with("", "x") == 0);
-    assert(osp_string_ends_with("hi", "hello") == 0); /* suffix longer than s */
-    assert(osp_string_ends_with("image.png", ".png") == 1);
-    assert(osp_string_ends_with("image.PNG", ".png") == 0); /* case-sensitive */
+    const pred_row rows[] = {
+        {"hello world", "world", 1}, {"hello world", "hello", 0},
+        {"hello world", "", 1},      {"", "", 1}, {"", "x", 0},
+        {"hi", "hello", 0}, /* suffix longer than s */
+        {"image.png", ".png", 1},
+        {"image.PNG", ".png", 0}, /* case-sensitive */
+    };
+    check_pred(osp_string_ends_with, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  ends_with\n");
 }
 
 static void test_index_of(void) {
-    assert(osp_string_index_of("hello", "ell") == 1);
-    assert(osp_string_index_of("hello", "h") == 0);
-    assert(osp_string_index_of("hello", "o") == 4);
-    assert(osp_string_index_of("hello", "xyz") == -1);     /* not found */
-    assert(osp_string_index_of("hello", "") == 0);          /* empty needle */
-    assert(osp_string_index_of("foo=bar=baz", "=") == 3);   /* first occurrence */
-    assert(osp_string_index_of(NULL, "x") == -1);
-    assert(osp_string_index_of("x", NULL) == -1);
+    const pred_row rows[] = {
+        {"hello", "ell", 1}, {"hello", "h", 0}, {"hello", "o", 4},
+        {"hello", "xyz", -1}, /* not found */
+        {"hello", "", 0},    /* empty needle */
+        {"foo=bar=baz", "=", 3}, /* first occurrence */
+        {NULL, "x", -1}, {"x", NULL, -1},
+    };
+    check_pred(osp_string_index_of, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  index_of\n");
 }
 
@@ -128,34 +143,57 @@ static void test_substring(void) {
 
 /* ---------- transformation ---------- */
 
-static void test_to_upper_lower(void) {
-    text_is(osp_string_to_upper("hello"), "HELLO");
-    text_is(osp_string_to_upper(""), "");
-    text_is(osp_string_to_upper("AbC"), "ABC");
-    text_is(osp_string_to_upper("1!@a"), "1!@A");
-    text_is(osp_string_to_upper(NULL), "");
+/* One row of a text-transform table: fn(in) must produce want. */
+typedef struct {
+    const char *in;
+    const char *want;
+} text_row;
 
-    text_is(osp_string_to_lower("HELLO"), "hello");
-    text_is(osp_string_to_lower(""), "");
-    text_is(osp_string_to_lower("AbC"), "abc");
+/* Drives every row through fn, asserting and releasing each result
+   ([BUILTIN-STRING-TRANSFORM], [BUILTIN-STRING-TOUPPERCASE]). */
+static void check_text(char *(*fn)(const char *), const text_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) text_is(fn(rows[i].in), rows[i].want);
+}
+
+static void test_to_upper_lower(void) {
+    const text_row upper[] = {
+        {"hello", "HELLO"}, {"", ""}, {"AbC", "ABC"},
+        {"1!@a", "1!@A"}, {NULL, ""},
+    };
+    const text_row lower[] = {{"HELLO", "hello"}, {"", ""}, {"AbC", "abc"}};
+    check_text(osp_string_to_upper, upper, sizeof upper / sizeof upper[0]);
+    check_text(osp_string_to_lower, lower, sizeof lower / sizeof lower[0]);
     printf("  ok  to_upper/to_lower\n");
 }
 
+/* One row for trim_start/trim_end, which share their inputs: each row pins
+   both trimmed sides of `in` ([BUILTIN-STRING-TRIMSTART],
+   [BUILTIN-STRING-TRIMEND]). */
+typedef struct {
+    const char *in;
+    const char *start;
+    const char *end;
+} trim_row;
+
+static void check_trim_sides(const trim_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        text_is(osp_string_trim_start(rows[i].in), rows[i].start);
+        text_is(osp_string_trim_end(rows[i].in), rows[i].end);
+    }
+}
+
 static void test_trim(void) {
-    text_is(osp_string_trim("  hello  "), "hello");
-    text_is(osp_string_trim("\t\n hi \r\n"), "hi");
-    text_is(osp_string_trim("hello"), "hello");
-    text_is(osp_string_trim(""), "");
-    text_is(osp_string_trim("   "), ""); /* all ws */
-    text_is(osp_string_trim(NULL), "");
-
-    text_is(osp_string_trim_start("  hello  "), "hello  ");
-    text_is(osp_string_trim_start("hello"), "hello");
-    text_is(osp_string_trim_start("   "), "");
-
-    text_is(osp_string_trim_end("  hello  "), "  hello");
-    text_is(osp_string_trim_end("hello"), "hello");
-    text_is(osp_string_trim_end("   "), "");
+    const text_row trim[] = {
+        {"  hello  ", "hello"}, {"\t\n hi \r\n", "hi"}, {"hello", "hello"},
+        {"", ""}, {"   ", ""}, /* all ws */ {NULL, ""},
+    };
+    const trim_row sides[] = {
+        {"  hello  ", "hello  ", "  hello"},
+        {"hello", "hello", "hello"},
+        {"   ", "", ""},
+    };
+    check_text(osp_string_trim, trim, sizeof trim / sizeof trim[0]);
+    check_trim_sides(sides, sizeof sides / sizeof sides[0]);
     printf("  ok  trim/trim_start/trim_end\n");
 }
 
@@ -194,16 +232,34 @@ static void test_repeat(void) {
     printf("  ok  repeat\n");
 }
 
-static void test_pad(void) {
-    text_is(osp_string_pad_start("7",   3, "0"), "007");
-    text_is(osp_string_pad_start("42",  5, "ab"), "aba42");
-    text_is(osp_string_pad_start("hi",  2, "x"), "hi"); /* no pad needed */
-    text_is(osp_string_pad_start("hi",  1, "x"), "hi"); /* target < len */
-    text_is(osp_string_pad_start("",    3, "0"), "000");
+/* One row of a padding table: fn(in, target_length, fill) must produce want. */
+typedef struct {
+    const char *in;
+    int64_t target_length;
+    const char *fill;
+    const char *want;
+} pad_row;
 
-    text_is(osp_string_pad_end  ("7",   3, "."), "7..");
-    text_is(osp_string_pad_end  ("42",  5, "ab"), "42aba");
-    text_is(osp_string_pad_end  ("hi",  2, "x"), "hi");
+static void check_pad(char *(*fn)(const char *, int64_t, const char *),
+                      const pad_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        text_is(fn(rows[i].in, rows[i].target_length, rows[i].fill), rows[i].want);
+    }
+}
+
+static void test_pad(void) {
+    const pad_row start[] = {
+        {"7", 3, "0", "007"}, {"42", 5, "ab", "aba42"},
+        {"hi", 2, "x", "hi"}, /* no pad needed */
+        {"hi", 1, "x", "hi"}, /* target < len */
+        {"", 3, "0", "000"},
+    };
+    const pad_row end[] = {
+        {"7", 3, ".", "7.."}, {"42", 5, "ab", "42aba"},
+        {"hi", 2, "x", "hi"},
+    };
+    check_pad(osp_string_pad_start, start, sizeof start / sizeof start[0]);
+    check_pad(osp_string_pad_end, end, sizeof end / sizeof end[0]);
 
     /* error: empty fill */
     assert(osp_string_pad_start("hi", 5, "") == NULL);
