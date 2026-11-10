@@ -508,29 +508,15 @@ def pair(a, b, op):
     plan = binary_layout(a, b)
     return built_like(plan.shape, lambda i: pair_op(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)), op))
 
-def add(a, b):
-    """np.add, broadcast."""
-    return pair(a, b, ADD_OP)
+def add(a, b): return pair(a, b, ADD_OP)
 
-def subtract(a, b):
-    """np.subtract, broadcast."""
-    return pair(a, b, SUBTRACT_OP)
-
-def multiply(a, b):
-    """np.multiply, broadcast."""
-    return pair(a, b, MULTIPLY_OP)
-
-def divide(a, b):
-    """np.divide, broadcast. A zero divisor performs Arith.divideByZero."""
-    return pair(a, b, DIVIDE_OP)
-
-def maximum(a, b):
-    """np.maximum, broadcast: NaN wins, else the larger."""
-    return pair(a, b, MAXIMUM_OP)
-
-def minimum(a, b):
-    """np.minimum, broadcast: NaN wins, else the smaller."""
-    return pair(a, b, MINIMUM_OP)
+# Each binary ufunc is `pair` (broadcast, then the tagged kernel) under its own
+# tag; the ufunc's numpy name is the whole of what differs between them.
+def subtract(a, b): return pair(a, b, SUBTRACT_OP)
+def multiply(a, b): return pair(a, b, MULTIPLY_OP)
+def divide(a, b): return pair(a, b, DIVIDE_OP)  # zero divisor: Arith.divideByZero
+def maximum(a, b): return pair(a, b, MAXIMUM_OP)  # NaN wins, else the larger
+def minimum(a, b): return pair(a, b, MINIMUM_OP)  # NaN wins, else the smaller
 
 def where(cond, a, b):
     """np.where(cond, a, b): `a` where cond is nonzero, else `b`, all
@@ -541,29 +527,13 @@ def where(cond, a, b):
     sb = Layout.broadcast_strides(b.shape, out)
     return built_like(out, lambda i: Storage.at(a.data, Layout.offset_of(i, out, sa)) if Storage.at(cond.data, Layout.offset_of(i, out, sc)) != 0.0 else Storage.at(b.data, Layout.offset_of(i, out, sb)))
 
-def equal(a, b):
-    """np.equal as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, EQUAL_OP)
-
-def not_equal(a, b):
-    """np.not_equal as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, NOT_EQUAL_OP)
-
-def less(a, b):
-    """np.less as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, LESS_OP)
-
-def less_equal(a, b):
-    """np.less_equal as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, LESS_EQUAL_OP)
-
-def greater(a, b):
-    """np.greater as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, GREATER_OP)
-
-def greater_equal(a, b):
-    """np.greater_equal as 0.0/1.0 floats, broadcast."""
-    return pair(a, b, GREATER_EQUAL_OP)
+# The comparison ufuncs are 0.0/1.0 floats from the same broadcast kernel.
+def equal(a, b): return pair(a, b, EQUAL_OP)
+def not_equal(a, b): return pair(a, b, NOT_EQUAL_OP)
+def less(a, b): return pair(a, b, LESS_OP)
+def less_equal(a, b): return pair(a, b, LESS_EQUAL_OP)
+def greater(a, b): return pair(a, b, GREATER_OP)
+def greater_equal(a, b): return pair(a, b, GREATER_EQUAL_OP)
 
 def clip(a, lo, hi):
     """np.clip with scalar bounds."""
@@ -604,41 +574,18 @@ def unary(a, op):
     names."""
     return built_like(a.shape, lambda i: unary_op(Storage.at(a.data, i), op))
 
-def negative(a):
-    """np.negative."""
-    return unary(a, NEGATE_OP)
-
-def absolute(a):
-    """np.absolute."""
-    return unary(a, ABSOLUTE_OP)
-
-def exp(a):
-    """np.exp (elementwise natural exponential)."""
-    return unary(a, EXP_OP)
-
-def log(a):
-    """np.log (elementwise natural logarithm)."""
-    return unary(a, LOG_OP)
-
-def sqrt(a):
-    """np.sqrt."""
-    return unary(a, SQRT_OP)
-
-def tanh(a):
-    """np.tanh."""
-    return unary(a, TANH_OP)
-
-def square(a):
-    """np.square."""
-    return unary(a, SQUARE_OP)
-
-def reciprocal(a):
-    """np.reciprocal. A zero element performs Arith.divideByZero."""
-    return unary(a, RECIPROCAL_OP)
-
-def sign(a):
-    """np.sign: -1.0, 0.0, 1.0, or NaN for NaN."""
-    return unary(a, SIGN_OP)
+# Each unary ufunc is `unary` (an elementwise read through its tagged kernel)
+# under its own tag; exp/log/sqrt/tanh are the transcendentals, the rest the
+# algebraic kernels.
+def negative(a): return unary(a, NEGATE_OP)
+def absolute(a): return unary(a, ABSOLUTE_OP)
+def exp(a): return unary(a, EXP_OP)  # natural exponential
+def log(a): return unary(a, LOG_OP)  # natural logarithm
+def sqrt(a): return unary(a, SQRT_OP)
+def tanh(a): return unary(a, TANH_OP)
+def square(a): return unary(a, SQUARE_OP)
+def reciprocal(a): return unary(a, RECIPROCAL_OP)  # zero: Arith.divideByZero
+def sign(a): return unary(a, SIGN_OP)  # -1.0, 0.0, 1.0, or NaN for NaN
 
 # Reductions --------------------------------------------------------------
 
@@ -712,13 +659,10 @@ def axis_size(a, axis):
     """The size of a normalised axis of `a`."""
     return unwrap_or(listGet(a.shape, Layout.axis_of(a.shape, axis)), 1)
 
-def sum(a):
-    """np.sum over all elements."""
-    return reduce_all(a, 0.0, SUM_OP)
-
-def sum_axis(a, axis, keepdims):
-    """np.sum along `axis`."""
-    return reduce_axis(a, axis, keepdims, 0.0, SUM_OP)
+# A whole-array reduction folds every element from its seed under its tag; the
+# `_axis` twin reduces one axis into a new array from the same seed and tag.
+def sum(a): return reduce_all(a, 0.0, SUM_OP)
+def sum_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, 0.0, SUM_OP)
 
 def mean(a):
     """np.mean over all elements."""
@@ -734,29 +678,13 @@ def scale(a, factor):
     """An elementwise scale of `a` by a scalar."""
     return built_like(a.shape, lambda i: Storage.at(a.data, i) * factor)
 
-def max(a):
-    """np.max over all elements (NaN wins)."""
-    return reduce_all(a, 0.0 - Storage.infinity(), MAX_OP)
+def max(a): return reduce_all(a, 0.0 - Storage.infinity(), MAX_OP)  # NaN wins
+def max_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, 0.0 - Storage.infinity(), MAX_OP)
+def min(a): return reduce_all(a, Storage.infinity(), MIN_OP)  # NaN wins
+def min_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, Storage.infinity(), MIN_OP)
 
-def max_axis(a, axis, keepdims):
-    """np.max along `axis` (NaN wins)."""
-    return reduce_axis(a, axis, keepdims, 0.0 - Storage.infinity(), MAX_OP)
-
-def min(a):
-    """np.min over all elements (NaN wins)."""
-    return reduce_all(a, Storage.infinity(), MIN_OP)
-
-def min_axis(a, axis, keepdims):
-    """np.min along `axis` (NaN wins)."""
-    return reduce_axis(a, axis, keepdims, Storage.infinity(), MIN_OP)
-
-def prod(a):
-    """np.prod over all elements."""
-    return reduce_all(a, 1.0, PROD_OP)
-
-def prod_axis(a, axis, keepdims):
-    """np.prod along `axis`."""
-    return reduce_axis(a, axis, keepdims, 1.0, PROD_OP)
+def prod(a): return reduce_all(a, 1.0, PROD_OP)
+def prod_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, 1.0, PROD_OP)
 
 def var(a, ddof):
     """np.var over all elements with `ddof` degrees of freedom."""
@@ -838,21 +766,13 @@ def or_kernel(acc, x):
     """Logical OR as 0.0/1.0 (nonzero is true, NaN is true)."""
     return 1.0 if acc != 0.0 or x != 0.0 else 0.0
 
-def all(a):
-    """np.all over all elements (bool)."""
-    return reduce_all(a, 1.0, AND_OP) != 0.0
+# `all`/`any` reduce to 0.0/1.0 floats, so the whole-array form reads the
+# single reduced element back as a bool.
+def all(a): return reduce_all(a, 1.0, AND_OP) != 0.0
+def all_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, 1.0, AND_OP)
 
-def all_axis(a, axis, keepdims):
-    """np.all along `axis`, as 0.0/1.0 floats."""
-    return reduce_axis(a, axis, keepdims, 1.0, AND_OP)
-
-def any(a):
-    """np.any over all elements (bool)."""
-    return reduce_all(a, 0.0, OR_OP) != 0.0
-
-def any_axis(a, axis, keepdims):
-    """np.any along `axis`, as 0.0/1.0 floats."""
-    return reduce_axis(a, axis, keepdims, 0.0, OR_OP)
+def any(a): return reduce_all(a, 0.0, OR_OP) != 0.0
+def any_axis(a, axis, keepdims): return reduce_axis(a, axis, keepdims, 0.0, OR_OP)
 
 def cum(a, axis, op):
     """A cumulative combine along `axis` under the kernel `op` names."""
