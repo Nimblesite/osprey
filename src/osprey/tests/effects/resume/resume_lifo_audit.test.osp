@@ -11,6 +11,15 @@ fn pipeline() = {
     a + b 
 }
 
+/// Append `${key}:${label}|` to a transcript; entry and settle share this shape.
+fn tag(cell, key, label) = "${cell}${key}:${label}|"
+
+/// Append `${label}=${toString(value)}|`, recording the value an arm supplied.
+fn supply(cell, label, value) = "${cell}${label}=${toString(value)}|"
+
+/// Append `${label}:${toString(value)}|`, recording the answer an arm saw.
+fn saw(cell, label, value) = "${cell}${label}:${toString(value)}|"
+
 /// This case proves operations enter FIFO and post-resume code exits LIFO.
 fn resumeLifoAuditCase() = {
     mut n = 0
@@ -22,9 +31,9 @@ fn resumeLifoAuditCase() = {
         handle Audit {
             step label => {
                 n = n + 1 
-                issued = "${issued}${label}:${toString(n)}|"
+                issued = saw(issued, label, n)
                 let answer = resume(n)
-                settled = "${settled}${label}:${toString(answer)}|"
+                settled = saw(settled, label, answer)
                 transcript = "${transcript}after ${label}: answer=${toString(answer)}\n"
                 answer
             }
@@ -103,11 +112,11 @@ fn nestedInterleavedDepthTwoCase() = {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls * 10 
-                entered = "${entered}a:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "a", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}a:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "a", label)
+                answers = saw(answers, label, answer)
                 answer + 1 
             }
         }
@@ -115,11 +124,11 @@ fn nestedInterleavedDepthTwoCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 100 
-                entered = "${entered}b:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "b", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}b:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "b", label)
+                answers = saw(answers, label, answer)
                 answer * 2 
             }
         }
@@ -186,10 +195,10 @@ fn nestedDepthThreeRotationCase() = {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
                 let supplied = gammaCalls * 1000 
-                entered = "${entered}d1:${label}|"
+                entered = tag(entered, "d1", label)
                 let answer = resume(supplied)
-                settled = "${settled}d1:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "d1", label)
+                answers = saw(answers, label, answer)
                 answer * 2 
             }
         }
@@ -197,10 +206,10 @@ fn nestedDepthThreeRotationCase() = {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls * 10 
-                entered = "${entered}d2:${label}|"
+                entered = tag(entered, "d2", label)
                 let answer = resume(supplied)
-                settled = "${settled}d2:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "d2", label)
+                answers = saw(answers, label, answer)
                 answer + 7 
             }
         }
@@ -208,10 +217,10 @@ fn nestedDepthThreeRotationCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 100 
-                entered = "${entered}d3:${label}|"
+                entered = tag(entered, "d3", label)
                 let answer = resume(supplied)
-                settled = "${settled}d3:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "d3", label)
+                answers = saw(answers, label, answer)
                 answer * 3 
             }
         }
@@ -284,11 +293,11 @@ fn nestedDepthFourStaircaseCase() = {
             alpha label => {
                 alphaCalls = alphaCalls + 1 
                 let supplied = alphaCalls
-                entered = "${entered}1:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "1", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}1:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "1", label)
+                answers = saw(answers, label, answer)
                 answer + 1 
             }
         }
@@ -296,11 +305,11 @@ fn nestedDepthFourStaircaseCase() = {
             beta label => {
                 betaCalls = betaCalls + 1 
                 let supplied = betaCalls * 10 
-                entered = "${entered}2:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "2", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}2:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "2", label)
+                answers = saw(answers, label, answer)
                 answer + 10 
             }
         }
@@ -308,11 +317,11 @@ fn nestedDepthFourStaircaseCase() = {
             gamma label => {
                 gammaCalls = gammaCalls + 1 
                 let supplied = gammaCalls * 100 
-                entered = "${entered}3:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "3", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}3:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "3", label)
+                answers = saw(answers, label, answer)
                 answer + 100 
             }
         }
@@ -320,11 +329,11 @@ fn nestedDepthFourStaircaseCase() = {
             delta label => {
                 deltaCalls = deltaCalls + 1 
                 let supplied = deltaCalls * 1000 
-                entered = "${entered}4:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "4", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}4:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "4", label)
+                answers = saw(answers, label, answer)
                 answer + 1000 
             }
         }
@@ -411,21 +420,21 @@ fn nestedPartialInnerResumeCase() = {
             near amount => {
                 outerNear = outerNear + 1 
                 let supplied = amount * 1000000 
-                entered = "${entered}OUTERnear:${toString(amount)}|"
-                supplies = "${supplies}N${toString(amount)}=${toString(supplied)}|"
+                entered = tag(entered, "OUTERnear", toString(amount))
+                supplies = supply(supplies, "N${toString(amount)}", supplied)
                 let answer = resume(supplied)
-                settled = "${settled}OUTERnear:${toString(amount)}|"
-                answers = "${answers}OUTERnear:${toString(answer)}|"
+                settled = tag(settled, "OUTERnear", toString(amount))
+                answers = saw(answers, "OUTERnear", answer)
                 answer
             }
             far amount => {
                 outerFar = outerFar + 1 
                 let supplied = amount * 1000 
-                entered = "${entered}far:${toString(amount)}|"
-                supplies = "${supplies}f${toString(amount)}=${toString(supplied)}|"
+                entered = tag(entered, "far", toString(amount))
+                supplies = supply(supplies, "f${toString(amount)}", supplied)
                 let answer = resume(supplied)
-                settled = "${settled}far:${toString(amount)}|"
-                answers = "${answers}far:${toString(answer)}|"
+                settled = tag(settled, "far", toString(amount))
+                answers = saw(answers, "far", answer)
                 answer * 2 
             }
         }
@@ -433,11 +442,11 @@ fn nestedPartialInnerResumeCase() = {
             near amount => {
                 innerNear = innerNear + 1 
                 let supplied = amount * 10 
-                entered = "${entered}near:${toString(amount)}|"
-                supplies = "${supplies}n${toString(amount)}=${toString(supplied)}|"
+                entered = tag(entered, "near", toString(amount))
+                supplies = supply(supplies, "n${toString(amount)}", supplied)
                 let answer = resume(supplied)
-                settled = "${settled}near:${toString(amount)}|"
-                answers = "${answers}near:${toString(answer)}|"
+                settled = tag(settled, "near", toString(amount))
+                answers = saw(answers, "near", answer)
                 answer + 5 
             }
         }
@@ -506,11 +515,11 @@ fn sameEffectTwoDepthsCase() = {
             pick label => {
                 outerCalls = outerCalls + 1 
                 let supplied = outerCalls * 1000 
-                entered = "${entered}out:${label}|"
-                supplies = "${supplies}${label}=${toString(supplied)}|"
+                entered = tag(entered, "out", label)
+                supplies = supply(supplies, label, supplied)
                 let answer = resume(supplied)
-                settled = "${settled}out:${label}|"
-                answers = "${answers}${label}:${toString(answer)}|"
+                settled = tag(settled, "out", label)
+                answers = saw(answers, label, answer)
                 answer * 2 
             }
         }
@@ -520,11 +529,11 @@ fn sameEffectTwoDepthsCase() = {
                 pick label => {
                     innerCalls = innerCalls + 1 
                     let supplied = innerCalls * 10 
-                    entered = "${entered}in:${label}|"
-                    supplies = "${supplies}${label}=${toString(supplied)}|"
+                    entered = tag(entered, "in", label)
+                    supplies = supply(supplies, label, supplied)
                     let answer = resume(supplied)
-                    settled = "${settled}in:${label}|"
-                    answers = "${answers}${label}:${toString(answer)}|"
+                    settled = tag(settled, "in", label)
+                    answers = saw(answers, label, answer)
                     answer + 3 
                 }
             }
