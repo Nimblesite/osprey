@@ -55,10 +55,11 @@ post event = hosted (\() => kept (Runtime::proceed (live, event, Studio::update,
 
 pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
 
+pressAt (x, y) = forEachList ([true, false], \down => pointer (x, y, down))
+
 tapAt (label, fraction) =
     at = Semantics::point (element label, fraction)
-    pointer (at.pointX, at.pointY, true)
-    pointer (at.pointX, at.pointY, false)
+    pressAt (at.pointX, at.pointY)
 
 tap label = tapAt (label, 0.5)
 
@@ -74,19 +75,18 @@ labels () = Semantics::labels (elements ())
 
 element label = Semantics::element (elements (), label)
 
-offers label = match Semantics::offered (elements (), label)
+// A failed lookup says what was wanted and what the tree actually held.
+reported (found, message) = match found
     true => true
     false =>
-        print "# not offered: ${label}; the tree offers ${labels ()}"
+        print message
         false
+
+offers label = reported (Semantics::offered (elements (), label), "# not offered: ${label}; the tree offers ${labels ()}")
 
 offered label = expect (offers label, true)
 
-letters text = match Views::letters (sight.sightSeen, text)
-    true => true
-    false =>
-        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
-        false
+letters text = reported (Views::letters (sight.sightSeen, text), "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}")
 
 flag (name, expected) = expect (Machines::flag (machine (), name), expected)
 knobText (name, expected) = expect (Machines::text (machine (), name), expected)
@@ -111,8 +111,6 @@ argument index = listGet (arguments ()) index ?: ""
 
 currentWav () = Synth::wav (Synth::samples (currentPatch ()))
 
-nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - expected) <= 1, true)
-
 played expectedPeak =
     expect (runCount (), 1)
     forEachList ([("ticket", "play"), ("executable", "/usr/bin/perl")], \(field, want) => expect (Doc::text (request (), field), want))
@@ -120,7 +118,7 @@ played expectedPeak =
     expect (argument 0, "-e")
     expect (argument 2, currentWav ())
     expect (argument 3, Synth::clipPath)
-    nearPeak (currentPatch (), expectedPeak)
+    expect (abs (Synth::peak (Synth::samples (currentPatch ())) - expectedPeak) <= 1, true)
 
 // Nothing reached the host, so the patch it would have played is untouched.
 silent () = expect (runCount (), 0)
@@ -130,14 +128,20 @@ quietKey peak =
     silent ()
     sounds ("A3", peak)
 
-quietPatch before =
+// A control pressed on its own: it plays nothing.
+pressKey label =
+    tap label
     silent ()
-    expect (described (), before)
+
+quietly (before, same) =
+    silent ()
+    expect (described () == before, same)
+
+// An edit that leaves the patch as it was, and plays nothing.
+quietPatch before = quietly (before, true)
 
 // An edit that changes the patch and plays nothing.
-quietEdit before =
-    silent ()
-    expect (described () == before, false)
+quietEdit before = quietly (before, false)
 
 // A press or release on a control: it moves nothing and it plays nothing.
 quietPointer (point, down) =
@@ -150,8 +154,7 @@ quietClick (before, label) =
 
 // A press, its release and the menu it closed, all silent.
 pressedAt (before, x, y) =
-    pointer (x, y, true)
-    pointer (x, y, false)
+    pressAt (x, y)
     quietPatch before
     layer ("menu", "closed")
 
@@ -163,11 +166,16 @@ firstClip (menu, name) =
     layer ("menu", name)
     pressed
 
-// A menu entry picked, the readout it set and the silent key that follows.
-picked (label, wave) =
+// A menu entry picked, the readout it set and the silence it left.
+chosenQuietly (label, wave) =
     tap label
     knobText ("wave", wave)
-    quietKey 17
+    silent ()
+
+// A menu entry picked, the readout it set and the silent key that follows.
+picked (label, wave) =
+    chosenQuietly (label, wave)
+    sounds ("A3", 17)
 
 rateChosen label =
     tap label
@@ -180,6 +188,10 @@ volumeAt (level, peak) =
     knobNumber ("volume", level)
     quietKey peak
 
+slidAt (label, level, peak) =
+    tapAt (label, level)
+    volumeAt (level, peak)
+
 heldAt (point, down, level) =
     quietPointer (point, down)
     knobNumber ("volume", level)
@@ -188,9 +200,20 @@ stillPointer (x, y, down, before) =
     pointer (x, y, down)
     quietPatch before
 
-undone name =
-    tap "Undo"
-    flag (name, true)
+undone name = flipTo ("Undo", name, true)
+
+flipTo (label, name, on) =
+    tap label
+    flag (name, on)
+    silent ()
+
+toggled (label, name, on, peak) =
+    flipTo (label, name, on)
+    quietKey peak
+
+restored (name, peak) =
+    undone name
+    quietKey peak
 
 // A key struck: it lights, the readout shows it, and the patch plays at its pitch.
 struck (name, hertz) =
@@ -214,9 +237,16 @@ retuned (menu, previous) =
     differs previous
     tap menu
 
+// A wave picked, the clip it made and the chooser reopened for the next choice.
+switched (menu, wave, previous) =
+    picked (wave, wave)
+    clip = argument 2
+    retuned (menu, previous)
+    clip
+
 hear (text, peak) =
     lettered text
-    sounds ("A3", peak)
+    quietKey peak
 
 editingAfter text =
     lettered text
@@ -241,16 +271,10 @@ launchAndCutoff () =
     hear ("0.0 kHz", 17)
 
 filterHistory () =
-    tap "Bypass LFO"
-    flag ("controlOn", false)
-    quietKey 2
-    tap "Bypass Filter"
-    flag ("processOn", false)
-    quietKey 75
-    undone "processOn"
-    quietKey 2
-    undone "controlOn"
-    quietKey 17
+    toggled ("Bypass LFO", "controlOn", false, 2)
+    toggled ("Bypass Filter", "processOn", false, 75)
+    restored ("processOn", 2)
+    restored ("controlOn", 17)
     knobText ("note", "A3")
 
 // Every key of both octaves plays at its own pitch, the same key twice plays twice, and the readout follows.
@@ -267,28 +291,18 @@ keyboard () =
     hear ("493.9 Hz", 75)
     sounds ("A3", 75)
     expect (argument 2, a3)
-    tap "Undo"
+    undone "controlOn"
     knobText ("note", "A3")
-    flag ("controlOn", true)
-    silent ()
 
-// Each wave from the Oscillator's chooser plays its own clip at the filtered peak.
-waves () =
+// Each wave and LFO rate chooser sweeps its own control, and each clip differs.
+choosers () =
     sine = firstClip ("Oscillator Wave: Sine", "waves")
     silent ()
-    picked ("Square", "Square")
-    square = argument 2
-    retuned ("Oscillator Wave: Square", sine)
-    picked ("Saw", "Saw")
-    retuned ("Oscillator Wave: Saw", square)
-    tap "Triangle"
-    knobText ("wave", "Triangle")
-    silent ()
+    switched ("Oscillator Wave: Square", "Square", sine)
+    switched ("Oscillator Wave: Saw", "Saw", argument 2)
+    chosenQuietly ("Triangle", "Triangle")
     picked ("Undo", "Saw")
     lettered "Saw"
-
-// Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
-rates () =
     clip = firstClip ("LFO Rate: 1/4", "rates")
     rateChosen "1/16"
     lfoAt (8.0, 17)
@@ -305,63 +319,51 @@ rates () =
 levels () =
     tapAt ("Filter Cutoff", 0.7)
     quietKey 75
-    tapAt ("Master Level", 1.0)
-    volumeAt (1.0, 100)
+    slidAt ("Master Level", 1.0, 100)
     lettered "0.0 dB"
-    tap "Select Master"
-    silent ()
-    tapAt ("Inspector: Level", 0.5)
-    volumeAt (0.5, 50)
+    pressKey "Select Master"
+    slidAt ("Inspector: Level", 0.5, 50)
     before = editingAfter "-12.0 dB"
     tapAt ("Master Level", 0.0)
     knobNumber ("volume", 0.0)
     quietEdit before
-    tap "Play A3"
-    silent ()
+    pressKey "Play A3"
     knobText ("note", "A3")
     tap "Undo"
     volumeAt (0.5, 50)
 
 muteHistory () =
     before = described ()
-    tap "Bypass Oscillator"
-    muted (before, "sourceOn")
-    tap "Play C4"
-    silent ()
-    tap "Enable Oscillator"
-    flag ("sourceOn", true)
-    quietKey 50
-    tap "Bypass Master"
-    silent ()
-    flag ("outputOn", false)
-    tap "Play A3"
-    silent ()
-    undone "outputOn"
-    quietKey 50
-
-muted (before, name) =
-    silent ()
-    flag (name, false)
+    flipTo ("Bypass Oscillator", "sourceOn", false)
     expect (described () == before, false)
+    pressKey "Play C4"
+    toggled ("Enable Oscillator", "sourceOn", true, 50)
+    flipTo ("Bypass Master", "outputOn", false)
+    pressKey "Play A3"
+    restored ("outputOn", 50)
 
-// ---- menus, skins and selection never ask the voice to play ----
+// ---- menus, skins, selections and drags never ask the voice to play ----
 
-quietMenu before =
+// A chooser opened and closed, a skin picked: none of it plays.
+quietChrome before =
     quietClick (before, "Skin: Prism")
     layer ("menu", "skins")
     pressedAt (before, 1400.0, 700.0)
     quietClick (before, "Skin: Prism")
-    quietClick (before, "Topology")
-    knobText ("skin", "topology")
+    skinPicked (before, "Topology")
     quietClick (before, "Skin: Topology")
-    quietClick (before, "Prism")
-    knobText ("skin", "prism")
+    skinPicked (before, "Prism")
     quietClick (before, "Oscillator Wave: Sine")
     pressedAt (before, 900.0, 700.0)
+    quietSelections before
+    quietDrag before
+
+skinPicked (before, skin) =
+    quietClick (before, skin)
+    knobText ("skin", skin)
 
 quietSelection (name, role, before) =
-    tap "Select ${name}"
-    quietPatch before
+    quietClick (before, "Select ${name}")
     knobText ("selected", role)
     offered "Inspector: Bypass ${name}"
 
@@ -377,25 +379,22 @@ quietDrag before =
     stillPointer (body.pointX, body.pointY, false, before)
     knobNumber ("sourceY", 30.0)
 
-// A slider dragged across and let go is silent throughout; the next key plays its final level.
-slidQuietly () =
+// A slider dragged and let go, a key struck on release: only the key's release plays.
+pointerWork () =
     low = Semantics::point (element "Master Level", 0.2)
     high = Semantics::point (element "Master Level", 0.6)
     quietPointer (low, true)
-    heldAt (high, true, 0.6)
-    heldAt (high, false, 0.6)
+    forEachList ([true, false], \down => heldAt (high, down, 0.6))
     sounds ("A3", 60)
-
-// A key is struck on release: pressing it, or hovering over it, plays nothing.
-keyPress () =
     at = Semantics::point (element "Play E3", 0.5)
-    quietPointer (at, false)
-    quietPointer (at, true)
+    forEachList ([false, true], \down => quietPointer (at, down))
     knobText ("note", "A3")
     pointer (at.pointX, at.pointY, false)
     expect (runCount (), 1)
     knobText ("note", "E3")
     quietPointer (at, false)
+
+suite (name, work) = test (name, \() => bench work)
 
 test ("the voice renders each wave, rate and level, exact silence and a PCM WAV header", \() => Runtime::guarded (\() =>
     shapes ()
@@ -408,29 +407,25 @@ windowBackground () = match ui::Themes::named (App::theme "prism", "background")
     Success token => expect (token.tokenDark, "#100D21")
     Error _ => expect ("no background token", "#100D21")
 
-test ("launch is silent; bypasses and undo are silent; each key plays exactly the current patch at its pitch", \() => bench (\() =>
+suite ("launch is silent; bypasses and undo are silent; each key plays exactly the current patch at its pitch", \() =>
     windowBackground ()
     launchAndCutoff ()
     filterHistory ()
-    keyboard ()))
+    keyboard ())
 
-test ("every wave, LFO rate and master level is silent, then a key plays its own clip, and undoes", \() => bench (\() =>
+suite ("every wave, LFO rate and master level is silent, then a key plays its own clip, and undoes", \() =>
     begun ()
     tapAt ("Filter Cutoff", 0.1)
-    waves ()
-    rates ()
+    choosers ()
     levels ()
-    muteHistory ()))
+    muteHistory ())
 
-test ("menus, skin changes, node selections, node and slider drags stay quiet; a key plays on release", \() => bench (\() =>
+suite ("menus, skin changes, node selections, node and slider drags stay quiet; a key plays on release", \() =>
     begun ()
     silent ()
     before = described ()
-    quietMenu before
-    quietSelections before
-    quietDrag before
-    slidQuietly ()
-    keyPress ()))
+    quietChrome before
+    pointerWork ())
 
-test ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() => bench (\() =>
-    roomyKeys ()))
+suite ("a larger window drops the keyboard and moves the inspector at their size, and the keys still play", \() =>
+    roomyKeys ())
