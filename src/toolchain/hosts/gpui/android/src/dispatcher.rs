@@ -16,6 +16,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::slot::locked;
+
 /// The worker pool size floor, mirroring gpui's own threaded dispatcher.
 const MIN_THREADS: usize = 4;
 
@@ -237,11 +239,6 @@ fn timer_loop(timers: Arc<Timers>, waker: AndroidAppWaker) {
             waiting = locked(&timers.waiting);
         }
     }
-}
-
-/// Locks without panicking on a poisoned mutex.
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Waits on a condvar with a queue guard, poison-tolerant.

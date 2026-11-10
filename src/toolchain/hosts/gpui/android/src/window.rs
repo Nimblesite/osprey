@@ -16,9 +16,9 @@ use raw_window_handle::{
 };
 use std::ffi::c_void;
 use std::ptr::NonNull;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 
-use crate::slot::Slot;
+use crate::slot::{locked, Slot};
 
 mod input;
 mod platform_window;
@@ -407,9 +407,4 @@ impl HasDisplayHandle for SurfaceSource {
         let handle = AndroidDisplayHandle::new();
         Ok(unsafe { raw_window_handle::DisplayHandle::borrow_raw(handle.into()) })
     }
-}
-
-/// Locks without panicking on a poisoned mutex.
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

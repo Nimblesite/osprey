@@ -44,8 +44,8 @@ impl<T: ?Sized> Slot<T> {
     }
 }
 
-/// Locks without panicking on a poisoned mutex: the callback state stays usable
-/// after a handler panicked, which is the only way to see the next frame's diagnostics.
-fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+/// Locks without panicking on a poisoned mutex: the state stays usable after a
+/// handler panicked, which is the only way to see the next frame's diagnostics.
+pub(crate) fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }

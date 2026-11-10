@@ -2,7 +2,7 @@
 //! window, pixel density from the activity configuration.
 
 use android_activity::AndroidApp;
-use gpui::{DevicePixels, DisplayId, Pixels, PlatformDisplay, Size, px, size, Bounds};
+use gpui::{px, size, Bounds, DevicePixels, DisplayId, Pixels, PlatformDisplay, Size};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -71,9 +71,7 @@ impl PlatformDisplay for AndroidDisplay {
             &Uuid::NAMESPACE_OID,
             format!(
                 "android-display-{}-{}-{}",
-                self.id,
-                self.size.width.0,
-                self.size.height.0
+                self.id, self.size.width.0, self.size.height.0
             )
             .as_bytes(),
         ))

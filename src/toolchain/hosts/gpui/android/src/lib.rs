@@ -30,4 +30,4 @@ mod slot;
 mod window;
 
 #[cfg(target_os = "android")]
-pub use platform::{AndroidPlatform, current_platform};
+pub use platform::{current_platform, AndroidPlatform};
