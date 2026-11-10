@@ -44,11 +44,13 @@ type Claim =
     claimLabel : string
     claimWords : string
 
-claims (text, rows) = forEachList (rows, \row => checkTrue row.claimLabel (contains text row.claimWords))
-
-refutes (text, rows) = forEachList (rows, \row => checkFalse row.claimLabel (contains text row.claimWords))
+settles (text, held, rows) = forEachList (rows, \row => checkTrue row.claimLabel ((contains text row.claimWords) == held))
 
 walkOf commands = Json::getOr commands "[0].kind" "" + " " + Json::getOr commands "[0].path" "" + " graft=" + Json::getOr commands "[0].graft" ""
+
+entered model wire = (Browse::dispatch model wire).model
+
+requestsFrom model wire = (Browse::dispatch model wire).commands
 
 screen model =
     handle Disk::Facts
@@ -69,16 +71,10 @@ phoneAt path photos =
     View::render model
 
 formatCase () =
-    check "bytes" "999 B" (Disk::formatBytes 999)
-    check "rounds across a unit" "1.0 MB" (Disk::formatBytes 999960)
-    check "gigabytes" "4.1 GB" (Disk::formatBytes 4143181824)
-    check "host failure" "unknown" (Disk::formatBytes (0 - 1))
-    check "small count" "999" (Disk::formatCount 999)
-    check "grouped count" "1,234,005" (Disk::formatCount 1234005)
-    check "share" 60 (Disk::percent (450, 750))
-    check "unknown whole" 0 (Disk::percent (5, 0 - 1))
-    check "sliver" "< 1%" (Disk::shareText (1, 1000))
-    check "nothing" "0%" (Disk::shareText (0, 1000))
+    checkTrue "sizes read as Finder writes them" (answersHold (\bytes => Disk::formatBytes bytes) [999, 999960, 4143181824, 0 - 1] ["999 B", "1.0 MB", "4.1 GB", "unknown"])
+    checkTrue "counts group thousands and stay bare below them" (answersHold (\count => Disk::formatCount count) [999, 1234005] ["999", "1,234,005"])
+    checkTrue "shares, unknown wholes, slivers and thousandths" (answersHold (\whole => Disk::percent (450, whole)) [750, 0 - 1] [60, 0])
+    checkTrue "shares under a percent and none at all" (answersHold (\part => Disk::shareText (part, 1000)) [1, 0] ["< 1%", "0%"])
     check "thousandths" 375 (Disk::permille (3, 8))
 
 rankCase () =
@@ -99,10 +95,8 @@ pathCase () =
     check "parent of a top folder" "/" (Disk::parent "/Users")
     check "trail" "/Users/ada|/Users/ada/Code|/Users/ada/Code/app" (join (Disk::trail home "/Users/ada/Code/app") "|")
     check "trail at the root" "/Users/ada" (join (Disk::trail home home) "|")
-    check "app" "app.fill" (Disk::look (entry "/Applications/Xcode.app" 1 1 false true)).symbol
-    check "Finder folder" "arrow.down.circle.fill" (Disk::look (entry "/Users/ada/Downloads" 1 1 false true)).symbol
-    check "movie" "purple" (Disk::look (entry "/a/Trip.MOV" 1 1 false false)).tint
-    check "unknown file" "doc.fill" (Disk::look (entry "/a/README" 1 1 false false)).symbol
+    checkTrue "an app and a Finder folder name their symbols" (answersHold (\disk => (Disk::look disk).symbol) [entry "/Applications/Xcode.app" 1 1 false true, entry "/Users/ada/Downloads" 1 1 false true] ["app.fill", "arrow.down.circle.fill"])
+    checkTrue "a movie's tint and an unknown file's symbol" (answersHold (\disk => (Disk::look disk).tint) [entry "/a/Trip.MOV" 1 1 false false] ["purple"] && answersHold (\disk => (Disk::look disk).symbol) [entry "/Users/ada/README" 1 1 false false] ["doc.fill"])
 
 browseCase () =
     started = Browse::start home "macos" false
@@ -114,22 +108,22 @@ browseCase () =
     check "an iPhone measures the app's own folder" "measure /var/app graft=false" (walkOf phone.commands)
     check "whose folders are never guarded" "none" (Json::getOr phone.commands "[0].apps[0]" "none")
     check "and asks for the photo library" "photos" (Json::getOr phone.commands "[1].kind" "")
-    check "again when allowed later" "[{\"kind\":\"photos\",\"path\":\"/var/app\"}]" (Browse::dispatch phone.model "{\"type\":\"allow\"}").commands
+    check "again when allowed later" "[{\"kind\":\"photos\",\"path\":\"/var/app\"}]" (requestsFrom phone.model "{\"type\":\"allow\"}")
     checkTrue "hidden files shown by default" started.model.hidden
     chosen = Browse::dispatch started.model "{\"type\":\"picked\",\"value\":\"/Users/ada\"}"
     check "a chosen folder starts its own walk" "measure /Users/ada graft=false" (walkOf chosen.commands)
-    ready = (Browse::dispatch chosen.model "{\"type\":\"measured\",\"path\":\"/Users/ada\"}").model
+    ready = entered chosen.model "{\"type\":\"measured\",\"path\":\"/Users/ada\"}"
     check "walk finished" "ready" ready.stage
     stale = Browse::dispatch chosen.model "{\"type\":\"measured\",\"path\":\"/Volumes/Old\"}"
     check "a stale walk is ignored" "measuring" stale.model.stage
-    inside = (Browse::dispatch ready "{\"type\":\"open\",\"value\":\"/Users/ada/Code\"}").model
+    inside = entered ready "{\"type\":\"open\",\"value\":\"/Users/ada/Code\"}"
     check "opens a folder" "/Users/ada/Code" inside.path
-    check "never leaves the measured folder" home (Browse::dispatch ready "{\"type\":\"open\",\"value\":\"/Users/adam\"}").model.path
-    check "up" home (Browse::dispatch inside "{\"type\":\"up\"}").model.path
-    check "up stops at the root" home (Browse::dispatch ready "{\"type\":\"up\"}").model.path
-    checkFalse "hides hidden files" (Browse::dispatch ready "{\"type\":\"hidden\",\"value\":\"false\"}").model.hidden
-    check "asks for a folder" "[{\"kind\":\"pick\",\"path\":\"/Users/ada\"}]" (Browse::dispatch ready "{\"type\":\"choose\"}").commands
-    check "opens the platform's privacy settings" "[{\"kind\":\"settings\",\"path\":\"\"}]" (Browse::dispatch ready "{\"type\":\"settings\"}").commands
+    check "never leaves the measured folder" home (entered ready "{\"type\":\"open\",\"value\":\"/Users/adam\"}").path
+    check "up" home (entered inside "{\"type\":\"up\"}").path
+    check "up stops at the root" home (entered ready "{\"type\":\"up\"}").path
+    checkFalse "hides hidden files" (entered ready "{\"type\":\"hidden\",\"value\":\"false\"}").hidden
+    check "asks for a folder" "[{\"kind\":\"pick\",\"path\":\"/Users/ada\"}]" (requestsFrom ready "{\"type\":\"choose\"}")
+    check "opens the platform's privacy settings" "[{\"kind\":\"settings\",\"path\":\"\"}]" (requestsFrom ready "{\"type\":\"settings\"}")
     moved = Browse::dispatch ready "{\"type\":\"picked\",\"value\":\"/Volumes/Archive\"}"
     check "measures the chosen folder" "/Volumes/Archive" moved.model.root
     check "and requests its walk" "measure /Volumes/Archive graft=false" (walkOf moved.commands)
@@ -137,13 +131,13 @@ browseCase () =
     check "an app's data chosen inside joins the walk" "measure ${mail} graft=true" (walkOf granted.commands)
     check "and keeps the measured folder" home granted.model.root
     check "and opens the chosen one" mail granted.model.path
-    check "its walk reports by its own path" "ready" (Browse::dispatch granted.model "{\"type\":\"measured\",\"path\":\"${mail}\"}").model.stage
-    check "a folder opens in Finder" "[{\"kind\":\"reveal\",\"path\":\"/Users/ada/Code\"}]" (Browse::dispatch ready "{\"type\":\"reveal\",\"value\":\"/Users/ada/Code\"}").commands
-    check "but only inside the measured folder" "[]" (Browse::dispatch ready "{\"type\":\"reveal\",\"value\":\"/Users/adam\"}").commands
-    check "an app's data is chosen in the picker" "[{\"kind\":\"pick\",\"path\":\"${mail}\"}]" (Browse::dispatch ready "{\"type\":\"grant\",\"value\":\"${mail}\"}").commands
-    counted = (Browse::dispatch chosen.model "{\"type\":\"progress\",\"path\":\"/Users/ada\",\"items\":1200,\"bytes\":5000}").model
+    check "its walk reports by its own path" "ready" (entered granted.model "{\"type\":\"measured\",\"path\":\"${mail}\"}").stage
+    check "a folder opens in Finder" "[{\"kind\":\"reveal\",\"path\":\"/Users/ada/Code\"}]" (requestsFrom ready "{\"type\":\"reveal\",\"value\":\"/Users/ada/Code\"}")
+    check "but only inside the measured folder" "[]" (requestsFrom ready "{\"type\":\"reveal\",\"value\":\"/Users/adam\"}")
+    check "an app's data is chosen in the picker" "[{\"kind\":\"pick\",\"path\":\"${mail}\"}]" (requestsFrom ready "{\"type\":\"grant\",\"value\":\"${mail}\"}")
+    counted = entered chosen.model "{\"type\":\"progress\",\"path\":\"/Users/ada\",\"items\":1200,\"bytes\":5000}"
     check "progress" 1200 counted.items
-    check "progress of a folder since left" 0 (Browse::dispatch chosen.model "{\"type\":\"progress\",\"path\":\"/Volumes/Old\",\"items\":9,\"bytes\":9}").model.items
+    check "progress of a folder since left" 0 (entered chosen.model "{\"type\":\"progress\",\"path\":\"/Volumes/Old\",\"items\":9,\"bytes\":9}").items
     check "round trip" (Browse::encode inside) (Browse::encode (Browse::decode (Browse::encode inside)))
 
 linkCase () =
@@ -164,7 +158,7 @@ screenCase () =
     deeper = screen (browser "/Users/ada/Code" false "ready")
     plain = browser home true "ready"
     walking = screen (Browse::dispatch (Browse::start home "macos" false).model "{\"type\":\"progress\",\"path\":\"/\",\"items\":1200,\"bytes\":5000}").model
-    claims (shown, [
+    settles (shown, true, [
         Claim(claimLabel = "folder totals identify measured bytes", claimWords = "699.0 GB measured · 5 items"),
         Claim(claimLabel = "the open folder names the screen", claimWords = "\"kind\":\"navigation\",\"id\":\"/Users/ada\",\"text\":\"Home\""),
         Claim(claimLabel = "purgeable space counts as available, as in Settings", claimWords = "700.0 GB of 1.0 TB used"),
@@ -176,56 +170,37 @@ screenCase () =
         Claim(claimLabel = "offers Full Disk Access", claimWords = "\"text\":\"Allow Full Disk Access…\",\"event\":{\"type\":\"settings\""),
         Claim(claimLabel = "folders open", claimWords = "\"event\":{\"type\":\"open\",\"value\":\"/Users/ada/Code\"}"),
         Claim(claimLabel = "a folder's context menu opens it in Finder", claimWords = "\"menu\":[{\"kind\":\"button\",\"symbol\":\"folder\",\"text\":\"Open in Finder\",\"event\":{\"type\":\"reveal\",\"value\":\"/Users/ada/Code\"}}]"),
-        Claim(claimLabel = "toggle reflects the setting", claimWords = "\"text\":\"Hidden Files\",\"value\":\"true\"")
-    ])
-    claims (screen (disk(root = "/")), [
-        Claim(claimLabel = "disk title uses the same used space as its gauge", claimWords = "700.0 GB used")
-    ])
-    claims (containers, [
+        Claim(claimLabel = "toggle reflects the setting", claimWords = "\"text\":\"Hidden Files\",\"value\":\"true\"")])
+    settles (screen (disk(root = "/")), true, [Claim(claimLabel = "disk title uses the same used space as its gauge", claimWords = "700.0 GB used")])
+    settles (containers, true, [
         Claim(claimLabel = "other apps' data listed apart", claimWords = "Other apps' data"),
         Claim(claimLabel = "and chosen to measure", claimWords = "\"event\":{\"type\":\"grant\",\"value\":\"${mail}\"}"),
-        Claim(claimLabel = "an app's data opens in Finder too", claimWords = "\"event\":{\"type\":\"reveal\",\"value\":\"${mail}\"}")
-    ])
-    claims (sighted, [
-        Claim(claimLabel = "visible size only", claimWords = "\"text\":\"Code\",\"symbol\":\"folder.fill\",\"tint\":\"blue\",\"accent\":\"purple\",\"style\":\"\",\"detail\":\"20.0 GB\"")
-    ])
-    claims (deeper, [
+        Claim(claimLabel = "an app's data opens in Finder too", claimWords = "\"event\":{\"type\":\"reveal\",\"value\":\"${mail}\"}")])
+    settles (sighted, true, [Claim(claimLabel = "visible size only", claimWords = "\"text\":\"Code\",\"symbol\":\"folder.fill\",\"tint\":\"blue\",\"accent\":\"purple\",\"style\":\"\",\"detail\":\"20.0 GB\"")])
+    settles (deeper, true, [
         Claim(claimLabel = "everything inside is hidden", claimWords = "Everything here is hidden"),
         Claim(claimLabel = "path bar starts at Home", claimWords = "\"kind\":\"pathbar\",\"children\":[{\"kind\":\"button\",\"symbol\":\"house.fill\",\"text\":\"Home\""),
         Claim(claimLabel = "a folder below Home goes by its name", claimWords = "\"kind\":\"navigation\",\"id\":\"/Users/ada/Code\",\"text\":\"Code\""),
-        Claim(claimLabel = "way up", claimWords = "Enclosing Folder")
-    ])
-    claims (walking, [
+        Claim(claimLabel = "way up", claimWords = "Enclosing Folder")])
+    settles (walking, true, [
         Claim(claimLabel = "progress", claimWords = "Measuring Macintosh HD…"),
         Claim(claimLabel = "counts so far", claimWords = "1,200 items · 5.0 KB so far"),
-        Claim(claimLabel = "and says macOS asks once for Documents", claimWords = "macOS asks once before the app reads Desktop, Documents")
-    ])
-    claims (screen (browser home true "failed"), [
-        Claim(claimLabel = "failure", claimWords = "Cannot measure Home")
-    ])
-    claims (screen (browser "/Users/ada/Downloads" true "ready"), [
-        Claim(claimLabel = "unmeasured folder", claimWords = "Not measured yet")
-    ])
-    refutes (screen (plain(full = true)), [
-        Claim(claimLabel = "until it is granted", claimWords = "Allow Full Disk Access")
-    ])
-    refutes (shown, [
+        Claim(claimLabel = "and says macOS asks once for Documents", claimWords = "macOS asks once before the app reads Desktop, Documents")])
+    settles (screen (browser home true "failed"), true, [Claim(claimLabel = "failure", claimWords = "Cannot measure Home")])
+    settles (screen (browser "/Users/ada/Downloads" true "ready"), true, [Claim(claimLabel = "unmeasured folder", claimWords = "Not measured yet")])
+    settles (screen (plain(full = true)), false, [Claim(claimLabel = "until it is granted", claimWords = "Allow Full Disk Access")])
+    settles (shown, false, [
         Claim(claimLabel = "a file has no Finder item", claimWords = "\"value\":\"/Users/ada/notes.txt\""),
-        Claim(claimLabel = "no way up from the root", claimWords = "Enclosing Folder")
-    ])
-    refutes (sighted, [
-        Claim(claimLabel = "hidden folder gone", claimWords = "\"text\":\".cache\"")
-    ])
-    refutes (phone, [
-        Claim(claimLabel = "an iPhone has no Finder", claimWords = "Open in Finder")
-    ])
+        Claim(claimLabel = "no way up from the root", claimWords = "Enclosing Folder")])
+    settles (sighted, false, [Claim(claimLabel = "hidden folder gone", claimWords = "\"text\":\".cache\"")])
+    settles (phone, false, [Claim(claimLabel = "an iPhone has no Finder", claimWords = "Open in Finder")])
 
 phoneCase () =
     shown = phoneScreen (pictures "ready" 40000000000)
     crowded = phoneScreen (pictures "ready" 900000000000)
     denied = phoneScreen (pictures "denied" 0)
     small = phoneAt "/var/app/Library" (pictures "ready" 0)
-    claims (shown, [
+    settles (shown, true, [
         Claim(claimLabel = "the app's own folder is the phone's storage", claimWords = "\"kind\":\"navigation\",\"id\":\"/var/app\",\"text\":\"Storage\""),
         Claim(claimLabel = "what uses the device", claimWords = "On this Macintosh HD"),
         Claim(claimLabel = "photos measured", claimWords = "\"text\":\"Photos & Videos\",\"symbol\":\"photo.on.rectangle.angled\",\"tint\":\"orange\",\"accent\":\"orange\",\"detail\":\"40.0 GB\""),
@@ -236,36 +211,21 @@ phoneCase () =
         Claim(claimLabel = "the library by kind, with counts", claimWords = "\"text\":\"Videos · 400\",\"symbol\":\"video.fill\",\"tint\":\"purple\",\"accent\":\"purple\",\"detail\":\"30.0 GB\",\"caption\":\"75%\""),
         Claim(claimLabel = "screenshots apart", claimWords = "\"text\":\"Screenshots · 600\""),
         Claim(claimLabel = "what only iCloud holds", claimWords = "\"text\":\"Only in iCloud\",\"symbol\":\"icloud.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"60.0 GB\""),
-        Claim(claimLabel = "and why it takes no space here", claimWords = "9,000 items, hidden ones included")
-    ])
-    claims (crowded, [
-        Claim(claimLabel = "the rest never goes below nothing", claimWords = "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"0 B\",\"caption\":\"0%\"")
-    ])
-    claims (denied, [
+        Claim(claimLabel = "and why it takes no space here", claimWords = "9,000 items, hidden ones included")])
+    settles (crowded, true, [Claim(claimLabel = "the rest never goes below nothing", claimWords = "\"text\":\"Other apps & iOS\",\"symbol\":\"square.stack.3d.up.fill\",\"tint\":\"gray\",\"accent\":\"gray\",\"detail\":\"0 B\",\"caption\":\"0%\"")])
+    settles (denied, true, [
         Claim(claimLabel = "denied photos lead to Settings", claimWords = "\"detail\":\"Allow in Settings\",\"caption\":\"\",\"value\":\"0\",\"event\":{\"type\":\"settings\""),
-        Claim(claimLabel = "and count toward the rest", claimWords = "\"detail\":\"695.0 GB\"")
-    ])
-    claims (small, [
-        Claim(claimLabel = "unreadable folders explained for iOS", claimWords = "iOS keeps them from the app.")
-    ])
-    claims (phoneScreen (pictures "unasked" 0), [
-        Claim(claimLabel = "unasked photos can be allowed", claimWords = "\"event\":{\"type\":\"allow\"")
-    ])
-    claims (phoneScreen (pictures "limited" 40000000000), [
-        Claim(claimLabel = "a partial library says so", claimWords = "only some photos")
-    ])
-    refutes (shown, [
+        Claim(claimLabel = "and count toward the rest", claimWords = "\"detail\":\"695.0 GB\"")])
+    settles (small, true, [Claim(claimLabel = "unreadable folders explained for iOS", claimWords = "iOS keeps them from the app.")])
+    settles (phoneScreen (pictures "unasked" 0), true, [Claim(claimLabel = "unasked photos can be allowed", claimWords = "\"event\":{\"type\":\"allow\"")])
+    settles (phoneScreen (pictures "limited" 40000000000), true, [Claim(claimLabel = "a partial library says so", claimWords = "only some photos")])
+    settles (shown, false, [
         Claim(claimLabel = "no bar of a folder that holds little", claimWords = "measured here"),
         Claim(claimLabel = "nor the app's own files", claimWords = "Largest items"),
         Claim(claimLabel = "a kind with nothing is left out", claimWords = "Live Photos"),
-        Claim(claimLabel = "no Full Disk Access on iPhone", claimWords = "Full Disk Access")
-    ])
-    refutes (small, [
-        Claim(claimLabel = "and the device story stays at the top", claimWords = "Other apps & iOS")
-    ])
-    refutes (denied, [
-        Claim(claimLabel = "with no breakdown", claimWords = "Only in iCloud")
-    ])
+        Claim(claimLabel = "no Full Disk Access on iPhone", claimWords = "Full Disk Access")])
+    settles (small, false, [Claim(claimLabel = "and the device story stays at the top", claimWords = "Other apps & iOS")])
+    settles (denied, false, [Claim(claimLabel = "with no breakdown", claimWords = "Only in iCloud")])
 
 testCases [
     { name = "sizes, counts and shares read as Finder writes them", work = formatCase },
