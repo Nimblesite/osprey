@@ -42,15 +42,11 @@ effect Log {
     info: fn(string) -> Unit
 }
 
-// ---- ANSI pizazz (pure string wrappers) ------------------------------------
+// ---- ANSI pizazz -----------------------------------------------------------
+// One wrapper, two spellings: plain SGR codes and 256-color foregrounds, so
+// every call site is `esc("<code>", text)` with no per-color boilerplate.
 fn esc(code: string, s: string) = "\e[${code}m${s}\e[0m"
-fn c256(n: string, s: string) = "\e[38;5;${n}m${s}\e[0m"   // 256-color foreground
-fn bold(s: string) = esc("1", s)
-fn dim(s: string) = esc("2", s)
-fn cyan(s: string) = esc("36", s)
-fn green(s: string) = esc("92", s)
-fn yellow(s: string) = esc("93", s)
-fn magenta(s: string) = esc("95", s)
+fn c256(n: string, s: string) = esc("38;5;${n}", s)
 // Counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = satAdd(x, 1)
 fn mn(a, b) = match a < b { true => a  false => b }
@@ -83,13 +79,20 @@ fn art() =
 // The whole startup banner as one string (one print, no consecutive prints).
 fn banner() =
     "\n" + art() + "\n\n  " +
-    c256("46", "●") + dim(" live  ") + bold(c256("159", "http://127.0.0.1:8080")) +
-    dim("   ·   state lives in algebraic-effect handlers") + "\n" +
+    c256("46", "●") + esc("2", " live  ") + esc("1", c256("159", "http://127.0.0.1:8080")) +
+    esc("2", "   ·   state lives in algebraic-effect handlers") + "\n" +
     divider() + "\n  " +
-    badge("GET") + "  " + dim("/") + "         list tasks\n  " +
-    badge("GET") + "  " + dim("/stats") + "    server metrics\n  " +
-    badge("POST") + " " + dim("/tasks") + "    add a task " + dim("(body = task text)") + "\n" +
+    badge("GET") + "  " + esc("2", "/") + "         list tasks\n  " +
+    badge("GET") + "  " + esc("2", "/stats") + "    server metrics\n  " +
+    badge("POST") + " " + esc("2", "/tasks") + "    add a task " + esc("2", "(body = task text)") + "\n" +
     divider()
+
+// The one place that touches the disk: every layer that snapshots text (the
+// Persist effect and the access log) writes through it and reads the outcome.
+fn saveFile(path: string, contents: string) = match writeFile(path, contents) {
+    Success => length(contents)
+    Error => -1
+}
 
 fn textResp(status: int, bodyText: string) = HttpResponse {
     status: status,
@@ -107,12 +110,12 @@ fn onPost(body: string) = {
     let id = perform Db.add(body)
     let snap = perform Db.list()
     let written = perform Persist.flush(snap)
-    perform Log.info(badge("POST") + "  " + green("✚") + " " + bold(yellow("\"${body}\"")) + "  " + cyan("#${toString(id)}") + "  " + gauge(id) + dim("  ${toString(written)}B"))
+    perform Log.info(badge("POST") + "  " + esc("92", "✚") + " " + esc("1", esc("93", "\"${body}\"")) + "  " + esc("36", "#${toString(id)}") + "  " + gauge(id) + esc("2", "  ${toString(written)}B"))
     textResp(201, "created task #${toString(id)}\n")
 }
 
 fn onGet(path: string) = {
-    perform Log.info(badge("GET") + " " + dim(path) + dim("  ·  ${toString(perform Metrics.served())} served"))
+    perform Log.info(badge("GET") + " " + esc("2", path) + esc("2", "  ·  ${toString(perform Metrics.served())} served"))
     match path {
         "/stats" => textResp(200, "requests=${toString(perform Metrics.served())} tasks=${toString(perform Db.count())}\n")
         _        => textResp(200, perform Db.list())
@@ -143,11 +146,7 @@ fn main() -> int {
 
     handle Persist {
         flush snap => {
-            let saved = writeFile("/tmp/osprey_tasks.db", snap)
-            diskBytes = match saved {
-                Success => length(snap)
-                Error => -1
-            }
+            diskBytes = saveFile("/tmp/osprey_tasks.db", snap)
             diskBytes
         }
     }
@@ -167,14 +166,11 @@ fn main() -> int {
     handle Log {
         info m => {
             logBuf = "${logBuf}${m}\n"
-            let _w = writeFile("/tmp/osprey_server.log", logBuf)
+            let _w = saveFile("/tmp/osprey_server.log", logBuf)
             print("  ${m}")
         }
     }
-    let listening = match httpCreateServer(8080, "127.0.0.1") {
-        Success { value } => httpListen(value, handleReq)
-        Error { message } => Error { message: message }
-    }
+    let listening = andThen(httpCreateServer(8080, "127.0.0.1"), |srv| => httpListen(srv, handleReq))
     match listening {
         Success => {
             print(banner())
