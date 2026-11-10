@@ -17,7 +17,6 @@ fn subI(a, b) = (a - b)
 fn horner(a, d) = (((a * 10) ) + d)
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
 fn maxI(a, b: int) = match a > b { true => a false => b }
-fn addF(a, x) = a + x
 fn orB(a, b) = a || b
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
@@ -64,8 +63,6 @@ fn productsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, mulI), fn(total
 fn differencesTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, subI), fn(total) => total == expected)
 /// hornerTo is [GPU-FOLD] with horner, the decimal-composing non-commutative combine.
 fn hornerTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, horner), fn(total) => total == expected)
-/// floatSumsTo is [GPU-FOLD] with addF: `b` from `seed` totals `expected`.
-fn floatSumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addF), fn(total) => total == expected)
 /// trueCountIs is [GPU-FOLD] with countTrue: `b` holds `expected` true elements.
 fn trueCountIs(b, expected) = gpuSatisfies(gpuFold(b, 0, countTrue), fn(count) => count == expected)
 /// zipLeftIs zips `b` with the upload of `values` and keeps `expected` elements — the shorter operand wins.

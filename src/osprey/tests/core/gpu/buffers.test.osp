@@ -10,8 +10,6 @@ fn square(x) = (x * x)
 fn addInts(acc, x) = (acc + x)
 /// scale is a pure float kernel; the buffer's element tag types x as float.
 fn scale(x) = x * 1.5
-/// addFloats is the float reduction kernel for gpuFold's combine slot.
-fn addFloats(a, x) = a + x
 /// isOdd maps an int element to a bool element, changing the buffer's type.
 fn isOdd(x) = (x % 2 ) == 1
 /// countOdd counts the true elements of a bool buffer.
@@ -45,16 +43,10 @@ fn lastIs(b, fallback, expected) = (lastOf(b) ?: fallback) == expected
 fn misses(b, index) = readback(b, index) == oobMessage()
 /// rendersAs is one gpuGet outcome as text, so an element's own scalar type stays visible.
 fn rendersAs(b, index, text) = readback(b, index) == text
-/// listLengthIs is the length of a materialized list.
-fn listLengthIs(values, expected) = listLength(values) == expected
-/// listHolds is one list read, or `fallback` past either end.
-fn listHolds(values, index, fallback, expected) = (listGet(values, index) ?: fallback) == expected
 /// sumsTo is [GPU-FOLD] over int elements: `b` from `seed` totals `expected`.
 fn sumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addInts), fn(total) => total == expected)
 /// sumIs is sumsTo from the zero seed.
 fn sumIs(b, expected) = sumsTo(b, 0, expected)
-/// floatSumsTo is [GPU-FOLD] over float elements: `b` from `seed` totals `expected`.
-fn floatSumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addFloats), fn(total) => total == expected)
 /// oddCountIs is [GPU-FOLD] over bool elements: `b` holds `expected` true flags.
 fn oddCountIs(b, expected) = gpuSatisfies(gpuFold(b, 0, countOdd), fn(count) => count == expected)
 /// copied runs the identity kernel and checks its output: every scalar word must come back unchanged.
@@ -159,7 +151,7 @@ fn intKernelWith(indices0) = withBuffer(toGpu([1, 2, 3, 4]), fn(value) => withBu
 ])))))))))
 /// floatKernelCase proves float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer.
 fn floatKernelCase() = withIndices(0, fn(indices0) => withIndices(4, fn(indices4) => floatKernelWith(indices0, indices4)))
-fn floatKernelWith(indices0, indices4) = withBuffer(toGpu([1.0, 2.0, 3.0]), fn(value) => withBuffer(gpuMap(value, scale), fn(scaledCopy) => withBuffer(gpuFold(scaledCopy, 0.0, addFloats), fn(sum) => withBuffer(toGpu([0.5, 0.25, 0.125]), fn(halves) => checkAll("float kernels", [
+fn floatKernelWith(indices0, indices4) = withBuffer(toGpu([1.0, 2.0, 3.0]), fn(value) => withBuffer(gpuMap(value, scale), fn(scaledCopy) => withBuffer(gpuFold(scaledCopy, 0.0, addF), fn(sum) => withBuffer(toGpu([0.5, 0.25, 0.125]), fn(halves) => checkAll("float kernels", [
     sum == 9.0, floatSumsTo(halves, 0.0, 0.875), scaled(halves, fn(mapped) => floatSumsTo(mapped, 0.0, 1.3125)), scaled(halves, fn(mapped) => elementIs(mapped, 2, 9.5, 0.1875)), scaled(halves, fn(mapped) => lengthIs(mapped, 3)), uploaded([0.5, 0.25], fn(up) => floatSumsTo(up, 0.0, 0.75)), widened(indices4, fn(mapped) => floatSumsTo(mapped, 0.0, 6.0)), widened(indices4, fn(mapped) => elementIs(mapped, 3, 9.5, 3.0)), widened(indices0, fn(mapped) => floatSumsTo(mapped, 2.5, 2.5))
 ])))))
 /// boolKernelCase maps int elements to bool elements and counts the odd ones, covering the all-true and all-false buffers beside the mixed one.

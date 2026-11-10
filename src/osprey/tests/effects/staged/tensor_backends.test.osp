@@ -101,7 +101,6 @@ fn vector(xs) = perform Backends::Tensor.fromList(xs)
 fn device() = perform Backends::Tensor.device()
 fn product(a, b, rows, inner, cols) = perform Backends::Tensor.matMul(a, b, rows, inner, cols)
 fn total(b) = perform Backends::Tensor.reduce(b, 0.0, addF)
-fn addF(a, x) = a + x
 fn maxF(a, x) = match x > a { true => x  false => a }
 fn near(actual, expected) = abs(actual - expected) < tolerance
 fn gelu(x) = 0.5 * x * (1.0 + tanh(geluScale * (x + geluCubic * x * x * x)))

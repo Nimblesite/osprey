@@ -103,7 +103,10 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
         (signals_wanted, signals),
         (wanted(&testing.names, &own, &uses), testing),
         (wanted(&testing_gpu.names, &own, &uses), testing_gpu),
-        (wanted(&testing_result().names, &own, &uses), testing_result()),
+        (
+            wanted(&testing_result().names, &own, &uses),
+            testing_result(),
+        ),
     ]
     .into_iter()
     .filter_map(|(want, unit)| want.then_some(unit))

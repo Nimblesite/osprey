@@ -228,9 +228,13 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
                 "test(\"u\", fn() => checkTrue(emptyUploads()))\n",
                 "print(oobMessage())\n",
                 "test(\"f\", fn() => withIndices(3, fn(b) => checkTrue(elementsFrom(b, 1, 0, [1, 2]))))\n",
+                "test(\"a\", fn() => checkTrue(addF(1, 2) == 3))\n",
+                "test(\"n\", fn() => checkTrue(listLengthIs([4, 5], 2)))\n",
+                "test(\"h\", fn() => checkTrue(listHolds([4, 5], 1, 0, 5)))\n",
+                "test(\"s\", fn() => withIndices(3, fn(b) => checkTrue(floatSumsTo(b, 0, 3))))\n",
             ][..],
             "withBuffer gpuSatisfies withIndices iotaError",
-            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2])]))))\n"),
+            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2]), floatSumsTo(b, 10, 13), listLengthIs([], 0), listHolds([7], 3, 9, 9), gpuSatisfies(gpuFold(b, 0, addF), fn(total) => total == 3)]))))\n"),
         ),
         (
             &[

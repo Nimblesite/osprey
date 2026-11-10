@@ -59,3 +59,17 @@ fn elementsFrom(buffer, index, fallback, expected) = match expected {
     [] => true
     [head, ...tail] => elementIs(buffer, index, fallback, head) && elementsFrom(buffer, index + 1, fallback, tail)
 }
+
+/// The sum step GPU folds and scans share: `a + x` over whatever numeric width
+/// the buffer carries.
+fn addF(a, x) = a + x
+
+/// Whether a host list holds `expected` elements.
+fn listLengthIs(values, expected) = listLength(values) == expected
+
+/// Whether element `index` of a host list is `expected`, comparing `fallback`
+/// when the index misses.
+fn listHolds(values, index, fallback, expected) = (listGet(values, index) ?: fallback) == expected
+
+/// Whether folding `buffer` from `seed` with `addF` totals `expected`.
+fn floatSumsTo(buffer, seed, expected) = gpuSatisfies(gpuFold(buffer, seed, addF), fn(total) => total == expected)

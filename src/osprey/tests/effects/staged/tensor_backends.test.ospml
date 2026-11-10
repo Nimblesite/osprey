@@ -92,7 +92,6 @@ vector xs = perform Backends::Tensor.fromList xs
 device () = perform Backends::Tensor.device ()
 product (a, b, rows, inner, cols) = perform Backends::Tensor.matMul a b rows inner cols
 total b = perform Backends::Tensor.reduce b 0.0 addF
-addF (a, x) = a + x
 maxF (a, x) = match x > a
     true => x
     false => a

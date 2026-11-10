@@ -1,7 +1,6 @@
 (** Kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
     [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below
     exercises the ML spelling of Default block bodies. *)
-addFloats (a, x) = a + x
 plus (a, x) = a + x
 atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
 (** Deliberately unannotated: the concrete GpuBuffer<float> specialization and recursive self-call must be emitted from the call site. *)
@@ -12,7 +11,7 @@ rowDot (matrix, vector, cols, row, col) = match col == cols
 multiplicationOrderCase () =
     t = 2.0
     withBuffer(toGpu ([1.0, 2.0]), \xs => withBuffer(toGpu ([3.0, 4.0]), \ys => withBuffer(gpuZipWith (xs, ys, \(x, y) => t * x * y), \captureFirst => withBuffer(gpuZipWith (xs, ys, \(x, y) => x * y * t), \captureLast => checkAll "buffer slots type every multiplication order" [
-        gpuSatisfies(gpuFold(captureFirst, 0.0, addFloats), \uploaded31 => (uploaded31) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addFloats), \uploaded30 => (uploaded30) == 22.0), (gpuGet (captureFirst, 0) ?: 0.0) == 6.0, (gpuGet (captureLast, 1) ?: 0.0) == 16.0
+        gpuSatisfies(gpuFold(captureFirst, 0.0, addF), \uploaded31 => (uploaded31) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addF), \uploaded30 => (uploaded30) == 22.0), (gpuGet (captureFirst, 0) ?: 0.0) == 6.0, (gpuGet (captureLast, 1) ?: 0.0) == 16.0
     ]))))
 genericCombineCase () =
     withBuffer(toGpu ([1.0, 2.0, 3.0]), \xs => checkAll "named generic float combines specialize from buffer slots" [
@@ -21,14 +20,14 @@ genericCombineCase () =
 recursiveHelperCase () = withBuffer(gpuIota 2, recursiveHelperWith)
 recursiveHelperWith indices =
     withBuffer(toGpu ([1.0, 2.0, 3.0, 4.0]), \matrix => withBuffer(toGpu ([10.0, 20.0]), \vector => withBuffer(gpuMap(indices, (\row => rowDot (matrix, vector, 2, row, 0))), \rows => checkAll "recursive GPU helpers monomorphize from their call site" [
-        gpuLength rows == 2, (gpuGet (rows, 0) ?: 0.0) == 50.0, (gpuGet (rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, addFloats), \uploaded26 => (uploaded26) == 160.0)
+        gpuLength rows == 2, (gpuGet (rows, 0) ?: 0.0) == 50.0, (gpuGet (rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, addF), \uploaded26 => (uploaded26) == 160.0)
     ])))
 blockBodyCase () =
     t = 2.0
     withBuffer(toGpu ([1.0, 2.0, 3.0]), \xs => withBuffer(gpuMap(xs, (\x =>
         y = t * x
         y + t)), \mapped => checkAll "block-bodied kernels preserve local bindings" [
-        gpuLength mapped == 3, (gpuGet (mapped, 0) ?: 0.0) == 4.0, (gpuGet (mapped, 1) ?: 0.0) == 6.0, (gpuGet (mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addFloats), \uploaded24 => (uploaded24) == 18.0)
+        gpuLength mapped == 3, (gpuGet (mapped, 0) ?: 0.0) == 4.0, (gpuGet (mapped, 1) ?: 0.0) == 6.0, (gpuGet (mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addF), \uploaded24 => (uploaded24) == 18.0)
     ]))
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 test ("float kernel slots type both multiplication orders", exactly multiplicationOrderCase)
@@ -141,7 +140,7 @@ mathTotalityCase () =
     nan = sqrt (-1.0)
     withBuffer(toGpu ([0.0, 1.0]), \value => withBuffer(gpuMap(value, exp), \probabilities => checkAll "float math builtins are total over IEEE doubles" [
         sqrt 4.0 == 2.0, nan != nan, ln 0.0 < -1000.0, ln 0.0 == ln 0.0 * 2.0, exp 1000.0 == exp 2000.0, exp 1000.0 > 1.0, tanh 1000000.0 == 1.0, tanh (-1000000.0) == -1.0, (gpuGet (probabilities, 0) ?: 0.0) == 1.0,
-        gpuSatisfies (toGpu ([1.0, 4.0, 9.0]), \uploaded1 => gpuSatisfies(gpuMap(uploaded1, sqrt), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addFloats), \uploaded34 => (uploaded34) == 6.0)))
+        gpuSatisfies (toGpu ([1.0, 4.0, 9.0]), \uploaded1 => gpuSatisfies(gpuMap(uploaded1, sqrt), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), \uploaded34 => (uploaded34) == 6.0)))
     ]))
 test "declined GPU extraction preserves managed captures" managedKernelCase
 test "captured GPU kernels preserve arithmetic policy" capturedArithmeticCase

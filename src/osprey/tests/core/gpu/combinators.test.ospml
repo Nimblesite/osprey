@@ -26,7 +26,6 @@ maxI : (int, int) -> int
 maxI (a, b) = match a > b
     true => a
     false => b
-addF (a, x) = a + x
 orB (a, b) = a || b
 (** The population count that turns a bool buffer into a scalar. *)
 countTrue (a, flag) = match flag
@@ -77,8 +76,6 @@ productsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, mulI), \total => 
 differencesTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, subI), \total => total == expected)
 (** [GPU-FOLD] with horner, the decimal-composing non-commutative combine. *)
 hornerTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, horner), \total => total == expected)
-(** [GPU-FOLD] with addF: `b` from `seed` totals `expected`. *)
-floatSumsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addF), \total => total == expected)
 (** [GPU-FOLD] with countTrue: `b` holds `expected` true elements. *)
 trueCountIs (b, expected) = gpuSatisfies(gpuFold(b, 0, countTrue), \count => count == expected)
 (** Zip `b` with the upload of `values`; the shorter operand wins at `expected` elements. *)

@@ -68,10 +68,6 @@ fn doubleUp(a, _x) = match a == overflowMark() {
 fn addOr(a, x) = marked(fn() => (a + x))
 fn clampAdd(a, x) = satAdd(a, x)
 fn hugeScale(x) = satMul(x, 100000000000000000)
-/// The float kernels: reduction, scaling, negation, a checked reciprocal whose fallback fires on zero, a constant tenth that also widens int to float, a positivity
-/// predicate, and a mixer with several ops per element. headBig and tailBig plant one enormous value at opposite ends of an otherwise all-ones buffer, so one fold absorbs
-/// every small term after it and the other does not.
-fn addF(a, x) = a + x
 fn half(x) = x * 0.5
 fn negF(x) = 0.0 - x
 fn recip(x) = zeroReciprocal(fn() => 1.0 / x)
@@ -103,16 +99,10 @@ fn rebuild(buf, n) = match n {
         Error { message } => Error { message: message }
     }
 }
-/// listLengthIs is the length of a materialized list.
-fn listLengthIs(values, expected) = listLength(values) == expected
-/// listHolds is one list read, or `fallback` past either end.
-fn listHolds(values, index, fallback, expected) = (listGet(values, index) ?: fallback) == expected
 /// sumsTo is [GPU-FOLD] with tally: `b` from `seed` totals `expected`.
 fn sumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, tally), fn(total) => total == expected)
 /// sumIs is sumsTo from the zero seed.
 fn sumIs(b, expected) = sumsTo(b, 0, expected)
-/// floatSumsTo is [GPU-FOLD] with addF: `b` from `seed` totals `expected`.
-fn floatSumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addF), fn(total) => total == expected)
 /// zippedSumsTo folds the zip of `a` and `b` with tally to `expected`.
 fn zippedSumsTo(a, b, expected) = gpuSatisfies(gpuZipWith(a, b, tally), fn(zipped) => sumIs(zipped, expected))
 /// zippedProductSumsTo folds the elementwise product of `a` and `b` with tally to `expected`.

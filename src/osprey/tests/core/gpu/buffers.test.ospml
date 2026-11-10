@@ -13,8 +13,6 @@ square x = (x * x)
 addInts (acc, x) = (acc + x)
 (** Pure float kernel; the buffer's element tag types x as float. *)
 scale x = x * 1.5
-(** Float reduction kernel for gpuFold's uncurried combine slot. *)
-addFloats (a, x) = a + x
 (** Map an int element to a bool element, changing the buffer's type. *)
 isOdd x = (x % 2 ) == 1
 (** Count the true elements of a bool buffer. *)
@@ -45,16 +43,10 @@ lastIs (b, fallback, expected) = (lastOf b ?: fallback) == expected
 misses (b, index) = readback (b, index) == oobMessage ()
 (** One gpuGet outcome as text, so an element's own scalar type stays visible. *)
 rendersAs (b, index, text) = readback (b, index) == text
-(** The length of a materialized list. *)
-listLengthIs (values, expected) = listLength values == expected
-(** One list read, or `fallback` past either end. *)
-listHolds (values, index, fallback, expected) = (listGet (values, index) ?: fallback) == expected
 (** [GPU-FOLD] over int elements: `b` from `seed` totals `expected`. *)
 sumsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addInts), \total => total == expected)
 (** sumsTo from the zero seed. *)
 sumIs (b, expected) = sumsTo (b, 0, expected)
-(** [GPU-FOLD] over float elements: `b` from `seed` totals `expected`. *)
-floatSumsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addFloats), \total => total == expected)
 (** [GPU-FOLD] over bool elements: `b` holds `expected` true flags. *)
 oddCountIs (b, expected) = gpuSatisfies(gpuFold(b, 0, countOdd), \count => count == expected)
 (** copied runs the identity kernel and checks its output: every scalar word must come back unchanged. *)
@@ -155,7 +147,7 @@ intKernelWith (indices0) = withBuffer(toGpu ([1, 2, 3, 4]), \value => withBuffer
 ])))))))))
 (** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
-floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, addFloats), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
+floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, addF), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
     sum == 9.0, floatSumsTo (halves, 0.0, 0.875), scaled (halves, \mapped => floatSumsTo (mapped, 0.0, 1.3125)), scaled (halves, \mapped => elementIs (mapped, 2, 9.5, 0.1875)), scaled (halves, \mapped => lengthIs (mapped, 3)), uploaded ([0.5, 0.25], \up => floatSumsTo (up, 0.0, 0.75)), widened (indices4, \mapped => floatSumsTo (mapped, 0.0, 6.0)), widened (indices4, \mapped => elementIs (mapped, 3, 9.5, 3.0)), widened (indices0, \mapped => floatSumsTo (mapped, 2.5, 2.5))
 ])))))
 (** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)

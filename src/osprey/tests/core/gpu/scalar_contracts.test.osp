@@ -3,7 +3,6 @@ let emptyRead: List<int> = []
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
 
-fn addFloats(a, x) = a + x
 fn countTrue(a, x) = match x {
     true => (a + 1)
     false => a
@@ -13,7 +12,7 @@ fn countTrue(a, x) = match x {
 fn floatListValue() = listReverse([2.5, 1.5])
 fn boolListValue() = listReverse([true, false, false])
 fn listValueTagsCase() = withBuffer(toGpu(floatListValue()), fn(floats) => withBuffer(toGpu(boolListValue()), fn(flags) => checkAll("runtime list values keep GPU scalar tags", [
-            gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded15) => (uploaded15) == 4.0), gpuLength(flags) == 3, (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
+            gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addF), fn(uploaded15) => (uploaded15) == 4.0), gpuLength(flags) == 3, (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
             gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded14) => (uploaded14) == 1)
     ])))
 fn fromGpuScalarCase() = withBuffer(toGpu([1.25, 2.5, 5.0]), fn(uploaded17) => withBuffer(fromGpu(uploaded17), fn(read0) => {
@@ -29,7 +28,7 @@ fn repeatedCrossingCase() = withBuffer(toGpu(floatListValue()), fn(uploaded15) =
                                 let floatsBack = read2
                                 let flagsBack = read3
                                 checkAll("repeated host and GPU crossings retain scalar types", [
-                                        gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded13) => (uploaded13) == 4.0), (listGet(floatsBack, 0) ?: 99.0) == 1.5, (listGet(floatsBack, 1) ?: 99.0) == 2.5,
+                                        gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addF), fn(uploaded13) => (uploaded13) == 4.0), (listGet(floatsBack, 0) ?: 99.0) == 1.5, (listGet(floatsBack, 1) ?: 99.0) == 2.5,
                                         gpuLength(flags) == 3, gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded12) => (uploaded12) == 1), (listGet(flagsBack, 0) ?: true) == false, (listGet(flagsBack, 2) ?: false) == true
                                 ])
                         }))))))))
@@ -55,7 +54,7 @@ fn gpuIeeeCase() = withBuffer(toGpu([10000000000000000.0]), fn(seed) => withBuff
                             withBuffer(gpuMap(infinityBuffer, subtractSelf), fn(nanBuffer) => {
                                     let nan = gpuGet(nanBuffer, 0) ?: 0.0
                                     withBuffer(toGpu([infinity, nan, -0.0]), fn(uploaded7) => withBuffer(fromGpu(uploaded7), fn(read0) => withBuffer(toGpu(listReverse(read0)), fn(roundTrip) => checkAll("host GPU kernels preserve non-finite values and signed zero", [
-                                            infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0), toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
+                                            infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addF), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0), toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
                                     ]))))
                                 })
                     }))))))
@@ -73,8 +72,8 @@ fn gpuFloatZeroCase() = {
             let remainders = gpuMap(input, remainderZero)
             match gpuDevice() == "host" {
                 true => checkAll("host GPU zero divisors use the enclosing policy", [
-                        gpuSatisfies(quotients, fn(q) => gpuSatisfies(gpuFold(q, 0.0, addFloats), fn(total) => total == 0.75)),
-                        gpuSatisfies(remainders, fn(r) => gpuSatisfies(gpuFold(r, 0.0, addFloats), fn(total) => total == 0.75)),
+                        gpuSatisfies(quotients, fn(q) => gpuSatisfies(gpuFold(q, 0.0, addF), fn(total) => total == 0.75)),
+                        gpuSatisfies(remainders, fn(r) => gpuSatisfies(gpuFold(r, 0.0, addF), fn(total) => total == 0.75)),
                         faults == "///%%%"
                 ])
                 false => checkAll("host GPU zero divisors use the enclosing policy", [
