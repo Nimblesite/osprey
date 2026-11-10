@@ -43,6 +43,14 @@ near (actual, expected) = abs (actual - toFloat32 expected) < tolerance
 (** One element of [values] equals [want], exactly or within [tolerance]: the two shapes every value assertion below states. *)
 atIs (values, i, want) = exact (at (values, i), want)
 nearAt (values, i, want) = near (at (values, i), want)
+(** atsFrom and nearsFrom are atIs and nearAt over a run: `values` from `index`
+    on hold `wants`, in order. *)
+atsFrom (values, index, wants) = match wants
+    [] => true
+    [want, ...rest] => atIs (values, index, want) && atsFrom (values, (index + 1), rest)
+nearsFrom (values, index, wants) = match wants
+    [] => true
+    [want, ...rest] => nearAt (values, index, want) && nearsFrom (values, (index + 1), rest)
 gelu x = toFloat32 0.5 * x * (toFloat32 1.0 + tanh (geluScale * (x + geluCubic * x * x * x)))
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (step, modulus, shift, scale, grid0) = gpuMap (grid0, \i => toFloat32 ((i * step) % modulus - shift) / scale)
@@ -173,9 +181,7 @@ matMulExactCaseUploaded (left, right) =
         \uploaded29 => withBuffer (floats ([]),
         \uploaded30 => withBuffer (product (uploaded29, uploaded30, 2, 0, 2),
         \hollow => checkAll "gpuMatMul forms the row-major product of the stated shapes" [
-            gpuLength square == 4, atIs(square,  0,  58.0), atIs(square,  1,  64.0),
-            atIs(square,  2,  139.0), atIs(square,  3,  154.0), atIs(outer,  0,  10.0),
-            atIs(outer,  1,  14.0), atIs(outer,  2,  15.0), atIs(outer,  3,  21.0),
+            gpuLength square == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
             gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
             gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
         ])))))))
@@ -216,18 +222,16 @@ mathKernelsCase () =
         \grown => withBuffer(gpuMap(lnInputs, ln),
         \logs => withBuffer(gpuMap(tanhInputs, tanh),
         \squashed => checkAll("sqrt, exp, ln and tanh are total kernels over IEEE binary32 values", [
-        atIs(roots,  0,  0.0), atIs(roots,  1,  1.0), atIs(roots,  2,  1.5), atIs(roots,  3,  0.25),
-        atIs(roots,  4,  100000000.0), at(roots, 5) != at(roots, 5),
+        atsFrom(roots, 0, [0.0, 1.0, 1.5, 0.25, 100000000.0]), at(roots, 5) != at(roots, 5),
         atIs(grown,  0,  1.0), nearAt(grown,  1,  2.718281828459045), atIs(grown,  2,  0.0), at(grown, 3) > toFloat32(1000000000000000000.0),
         atIs(logs,  0,  0.0), at(logs, 1) < toFloat32(-1000000000000000000.0), nearAt(logs,  2,  2.302585092994046), at(logs, 3) != at(logs, 3),
-        atIs(squashed,  0,  0.0), atIs(squashed,  1,  1.0), atIs(squashed,  2,  -1.0), nearAt(squashed,  3,  0.46211715726000974),
+        atsFrom(squashed, 0, [0.0, 1.0, -1.0]), nearAt(squashed,  3,  0.46211715726000974),
         near(ln(exp(toFloat32(2.0))), 2.0), exact(sqrt(toFloat32(2.0)) * sqrt(toFloat32(2.0)), 1.9999998807907104)
     ])))))))))
 (** gelu(x) - gelu(-x) is x: the tanh term cancels. *)
 geluCase () =
     withBuffer(floats([0.0, 1.0, -1.0, 2.0, -3.0]), \inputs => withBuffer(gpuMap(inputs, gelu), \outputs => withBuffer(gpuMap(inputs, \x => gelu(toFloat32(0.0) - x)), \negated => withBuffer(gpuZipWith(outputs, negated, subF), \odd => checkAll("gelu is the tanh approximation GPT-2 was trained with", [
-        atIs(outputs,  0,  0.0), nearAt(outputs,  1,  0.8411920070648193), nearAt(outputs,  2,  -0.15880799293518066),
-        nearAt(outputs,  3,  1.9545977115631104), nearAt(outputs,  4,  -0.0036374330520629883),
+        atIs(outputs,  0,  0.0), nearsFrom(outputs, 1, [0.8411920070648193, -0.15880799293518066, 1.9545977115631104, -0.0036374330520629883]),
         nearAt(odd,  1,  1.0), nearAt(odd,  3,  2.0), nearAt(odd,  4,  -3.0)
     ])))))
 (** Only the four operations and sqrt are involved, so every digit is pinned. *)
@@ -240,11 +244,8 @@ layerNormWithUploaded (grid0, grid1, grid2, grid3, gain, bias) =
         \uploaded15 => withBuffer(layerNorm(uploaded15, gain, bias, grid2, grid3),
         \flat => checkAll("layerNorm normalises each row and applies the column gain and bias", [
         gpuLength(rows) == 8,
-        atIs(rows,  0,  -2.1832709312438965), atIs(rows,  1,  -0.4472118318080902),
-        atIs(rows,  2,  -0.2763940691947937), atIs(rows,  3,  1.3416354656219482),
-        atIs(rows,  4,  -1.499998927116394), atIs(rows,  5,  -0.999999463558197),
-        atIs(rows,  6,  -0.0000002682209014892578), atIs(rows,  7,  0.999999463558197),
-        atIs(flat,  0,  0.5), atIs(flat,  1,  0.0), atIs(flat,  2,  -0.5), atIs(flat,  3,  0.0)
+        atsFrom(rows, 0, [-2.1832709312438965, -0.4472118318080902, -0.2763940691947937, 1.3416354656219482, -1.499998927116394, -0.999999463558197, -0.0000002682209014892578, 0.999999463558197]),
+        atsFrom(flat, 0, [0.5, 0.0, -0.5, 0.0])
     ])))))
 (** Two heads, three positions: a lone score is certain, equal scores split evenly, [1, 2, 3] and its reverse are the textbook row, masked columns are 0. *)
 softmaxCase () = withIndices (6, \grid0 => withIndices (18, \grid1 => softmaxWith (grid0, grid1)))
@@ -254,11 +255,10 @@ softmaxWith (grid0, grid1) =
         -2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 3.0, 2.0, 1.0
     ]), \scores => withBuffer(probsOf(scores, 3, 3, 0, grid0, grid1), \probs => checkAll("softmax normalises every causal row, shifted by its peak", [
         gpuLength(probs) == 18,
-        atIs(probs,  0,  1.0), atIs(probs,  1,  0.0), atIs(probs,  2,  0.0),
-        atIs(probs,  3,  0.5), atIs(probs,  4,  0.5), atIs(probs,  5,  0.0),
-        nearAt(probs,  6,  0.09003057317038046), nearAt(probs,  7,  0.24472847105479764), nearAt(probs,  8,  0.6652409557748218),
-        atIs(probs,  9,  1.0), atIs(probs,  12,  0.5), atIs(probs,  13,  0.5), atIs(probs,  14,  0.0),
-        nearAt(probs,  15,  0.6652409557748218), nearAt(probs,  16,  0.24472847105479764), nearAt(probs,  17,  0.09003057317038046),
+        atsFrom(probs, 0, [1.0, 0.0, 0.0, 0.5, 0.5, 0.0]),
+        nearsFrom(probs, 6, [0.09003057317038046, 0.24472847105479764, 0.6652409557748218]),
+        atIs(probs,  9,  1.0), atsFrom(probs, 12, [0.5, 0.5, 0.0]),
+        nearsFrom(probs, 15, [0.6652409557748218, 0.24472847105479764, 0.09003057317038046]),
         near(sumRange(probs, 6, 3), 1.0), near(sumRange(probs, 15, 3), 1.0)
     ])))
 (** Two positions whose keys are equal, so the second attends half to each value. *)
@@ -274,15 +274,13 @@ attentionExactWith (grid0, grid1, grid2) =
         \single => withBuffer(pairQkv(),
         \uploaded12 => withBuffer(attention(uploaded12, 2, grid2, grid1, grid2),
         \pair => checkAll("attention returns a lone token's value and averages equal keys", [
-        gpuLength(single) == 4, atIs(single,  0,  8.0), atIs(single,  1,  9.0), atIs(single,  2,  10.0), atIs(single,  3,  11.0),
-        gpuLength(pair) == 8, atIs(pair,  0,  1.0), atIs(pair,  1,  2.0), atIs(pair,  2,  3.0), atIs(pair,  3,  4.0),
-        atIs(pair,  4,  3.0), atIs(pair,  5,  4.0), atIs(pair,  6,  5.0), atIs(pair,  7,  6.0)
+        gpuLength(single) == 4, atsFrom(single, 0, [8.0, 9.0, 10.0, 11.0]),
+        gpuLength(pair) == 8, atsFrom(pair, 0, [1.0, 2.0, 3.0, 4.0, 3.0, 4.0, 5.0, 6.0])
     ])))))
 embedCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => embedWith (grid0, grid1, grid2))))
 embedWith (grid0, grid1, grid2) =
     withBuffer(miniTokens(), \uploaded10 => withBuffer(embedOf(grid0, grid1, uploaded10, grid2), \x => checkAll("embed gathers each token's row and adds its position's row", [
-        gpuLength(x) == 8, atIs(x,  0,  -1.0), atIs(x,  1,  1.75), atIs(x,  2,  0.25), atIs(x,  3,  1.875),
-        atIs(x,  4,  -1.125), atIs(x,  5,  0.5), atIs(x,  6,  -1.0), atIs(x,  7,  0.625)
+        gpuLength(x) == 8, atsFrom(x, 0, [-1.0, 1.75, 0.25, 1.875, -1.125, 0.5, -1.0, 0.625])
     ])))
 attentionCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))))
 (** The embedded pair through its qkv product: the prefix the full pass and the cached step share. *)
@@ -292,10 +290,7 @@ attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
     withEmbeddedQkv(grid0, grid1, grid2, grid3, grid4, grid5, grid6, \(_x, _ln, _qkvW1, _normed, qkv) => withBuffer(attention(qkv, 2, grid2, grid3, grid2),
         \a => checkAll("attention over the embedded pair matches the reference pass", [
         gpuLength(a) == 8,
-        nearAt(a,  0,  -0.07964593172073364), nearAt(a,  1,  0.43734419345855713),
-        nearAt(a,  2,  -1.2230308055877686), nearAt(a,  3,  1.212903618812561),
-        nearAt(a,  4,  -0.06741555035114288), nearAt(a,  5,  0.41647619009017944),
-        nearAt(a,  6,  -1.243087649345398), nearAt(a,  7,  1.3210810422897339)
+        nearsFrom(a, 0, [-0.07964593172073364, 0.43734419345855713, -1.2230308055877686, 1.212903618812561, -0.06741555035114288, 0.41647619009017944, -1.243087649345398, 1.3210810422897339])
     ])))
 (** The KV-cached step: the newest position attends through the earlier rows with the full pass's arithmetic, and LayerNorm and linear are row-wise, so one row's pass
     equals that row of the two-row pass bit for bit — which is why src/osprey/examples/llms/gpt2's generate can grow a cache instead of recomputing. *)
@@ -323,7 +318,7 @@ cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
         \oneRow => checkAll("the newest position attends through the cache exactly as the full pass does", [
         gpuLength(newest) == width, sameRow(newest, full, 1, width),
         nearAt(newest,  0,  -0.06741555035114288), nearAt(newest,  3,  1.3210810422897339),
-        gpuLength(pairStep) == width, atIs(pairStep,  0,  3.0), atIs(pairStep,  1,  4.0), atIs(pairStep,  2,  5.0), atIs(pairStep,  3,  6.0),
+        gpuLength(pairStep) == width, atsFrom(pairStep, 0, [3.0, 4.0, 5.0, 6.0]),
         sameRow(rowNormed, normed, 1, width),
         sameRow(oneRow, qkv, 1, qkvWidth)
     ]))))))))))
@@ -343,10 +338,7 @@ blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, \y => withBuffer(gpuFold(y, 0.0, addF),
         \total => checkAll("one pre-norm block matches the reference pass", [
         gpuLength(y) == 8,
-        nearAt(y,  0,  -1.6005736589431763), nearAt(y,  1,  1.6570606231689453),
-        nearAt(y,  2,  0.7819118499755859), nearAt(y,  3,  2.600027084350586),
-        nearAt(y,  4,  -1.487461805343628), nearAt(y,  5,  0.04813048243522644),
-        nearAt(y,  6,  -0.6083625555038452), nearAt(y,  7,  1.421419620513916),
+        nearsFrom(y, 0, [-1.6005736589431763, 1.6570606231689453, 0.7819118499755859, 2.600027084350586, -1.487461805343628, 0.04813048243522644, -0.6083625555038452, 1.421419620513916]),
         near(total, 2.8121519088745117)
     ])))
 nextTokenCase () = withIndices (20,
@@ -367,9 +359,7 @@ nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, gr
         \logits => withBuffer(argmax(logits, grid9),
         \token => checkAll("the tied readout scores every token row and argmax picks the first peak", [
         gpuLength(logits) == vocab,
-        nearAt(logits,  0,  1.2843501567840576), nearAt(logits,  1,  2.434096336364746),
-        nearAt(logits,  2,  3.5838427543640137), nearAt(logits,  3,  4.733589172363281),
-        nearAt(logits,  4,  -4.4127888679504395),
+        nearsFrom(logits, 0, [1.2843501567840576, 2.434096336364746, 3.5838427543640137, 4.733589172363281, -4.4127888679504395]),
         token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuSatisfies(argmax(uploaded4, grid3), \peak => peak == 1))
     ])))))))
 (** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names the operation, the path and the reason. *)
@@ -380,7 +370,7 @@ loadCase () =
     withBuffer (gpuLoad (raw, 0, 3),
         \words => withBuffer (gpuLoad (raw, 4, 2),
         \tail => checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
-                        ready, gpuLength words == 3, atIs(words,  0,  781.0352172851562), atIs(words,  1,  204057.078125), atIs(words,  2,  53291300.0),
+                        ready, gpuLength words == 3, atsFrom(words, 0, [781.0352172851562, 204057.078125, 53291300.0]),
                         gpuLength tail == 2, atIs(tail,  0,  204057.078125), atIs(tail,  1,  53291300.0),
                         gpuSatisfies (gpuLoad (raw, 12, 0), \uploaded1 => gpuLength (uploaded1) == 0),
                         loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
