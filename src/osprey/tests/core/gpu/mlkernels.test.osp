@@ -42,7 +42,14 @@ fn degenerate(value, work) = {
     handle Arith { divideByZero _ _ => value }
     work()
 }
-fn meanOf(xs, predicate) = sumOf(xs, fn(total) => predicate(degenerate(0.0, fn() => total / toFloat32(gpuLength(xs)))))
+/// withValue runs work on a successful GPU scalar (a fold's total); a failed one
+/// fails the case with its reason. The buffer flavour is the prelude's withBuffer.
+fn withValue(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => gpuFailed(message)
+}
+fn meanValue(xs, total) = degenerate(0.0, fn() => total / toFloat32(gpuLength(xs)))
+fn meanOf(xs, predicate) = sumOf(xs, fn(total) => predicate(meanValue(xs, total)))
 /// dotOf is BLAS level 1: fuse an elementwise product into a reduction, which is
 /// the shape varianceOf reuses twice — fold a mean, then capture it inside the
 /// kernel measuring squared deviation from it.
@@ -54,16 +61,10 @@ fn saxpy(x, y) = toFloat32(2.0) * x + y
 fn softWeight(d) = (toFloat32(1.0) / (toFloat32(1.0) + d + d * d))
 /// softmaxEach is four stages, two of them captures: fold the maximum, spend it in
 /// the shift, fold the partition function, spend that in the divide.
-fn softmaxEach(scores, work) = match gpuFold(scores, gpuGet(scores, 0) ?: toFloat32(0.0), maxF) {
-    Success { peak } => match gpuMap(scores, fn(s) => softWeight(peak - s)) {
-        Success { weights } => match gpuFold(weights, toFloat32(0.0), addF) {
-            Success { partition } => withBuffer(gpuMap(weights, fn(w) => (w / partition) ), work)
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
-    Error { message } => gpuFailed(message)
-}
+fn softmaxEach(scores, work) = withValue(gpuFold(scores, gpuGet(scores, 0) ?: toFloat32(0.0), maxF), fn(peak) =>
+    withBuffer(gpuMap(scores, fn(s) => softWeight(peak - s)), fn(weights) =>
+        withValue(gpuFold(weights, toFloat32(0.0), addF), fn(partition) =>
+            withBuffer(gpuMap(weights, fn(w) => (w / partition) ), work))))
 /// rowDot walks one row of a flat row-major matrix against a vector. The
 /// recursion carries the same captured buffers through every column.
 fn rowDot(m, v, cols, r, c) = match c == cols {
@@ -81,14 +82,9 @@ fn denseOf(m, v, cols, indices, bias, predicate) = matVecOf(m, v, cols, indices,
 fn mseOf(w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith(xs, ys, fn(x, y) => (w * x - y) * (w * x - y)), fn(residuals) => meanOf(residuals, predicate))
 /// gradStepEach is one epoch of least-squares descent on y = w * x; its
 /// kernel captures the current weight.
-fn gradStepEach(w, xs: GpuBuffer<float32>, ys, work) = match gpuZipWith(xs, ys,
-    fn(x, y) => toFloat32(2.0) * (w * x - y) * x) {
-    Success { residuals } => match gpuFold(residuals, toFloat32(0.0), addF) {
-        Success { total } => work(w - toFloat32(0.05) * (total / toFloat32(3.0)))
-        Error { message } => gpuFailed(message)
-    }
-    Error { message } => gpuFailed(message)
-}
+fn gradStepEach(w, xs: GpuBuffer<float32>, ys, work) = withBuffer(gpuZipWith(xs, ys,
+    fn(x, y) => toFloat32(2.0) * (w * x - y) * x), fn(residuals) =>
+    withValue(gpuFold(residuals, toFloat32(0.0), addF), fn(total) => work(w - toFloat32(0.05) * (total / toFloat32(3.0)))))
 fn gradStepOf(w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith(xs, ys,
     fn(x, y) => toFloat32(2.0) * (w * x - y) * x), fn(residuals) => sumOf(residuals, fn(total) => predicate(w - toFloat32(0.05) * (total / toFloat32(3.0)))))
 /// trainEach iterates gradStepEach n times, keeping the loop on buffers.
@@ -169,15 +165,11 @@ fn captureFoldedCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(3.0), toFlo
 fn captureFoldedCaseUploaded(input0, input1, input2) = {
     let ws = input0
     let xs = input1
-    match gpuFold(ws, toFloat32(0.0), addF) {
-        Success { total } => match gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), maxF) {
-            Success { peak } => checkAll("capture folded from another buffer", [
+    withValue(gpuFold(ws, toFloat32(0.0), addF), fn(total) =>
+        withValue(gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), maxF), fn(peak) =>
+            checkAll("capture folded from another buffer", [
     total == toFloat32(16.0), peak == toFloat32(8.0), gpuSatisfies(gpuMap(xs, fn(x) => (x / total) ), fn(share) => sumOf(share, fn(normalised) => normalised == toFloat32(0.375))), gpuSatisfies(gpuMap(xs, fn(x) => (x / total) ), fn(share) => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), gpuSatisfies(gpuMap(xs, fn(x) => x - peak), fn(centred) => sumIs(centred, toFloat32(0.0) - toFloat32(10.0))), gpuSatisfies(gpuMap(xs, fn(x) => peak * x), fn(amplified) => sumIs(amplified, toFloat32(48.0))), gpuEquals(gpuFold(ws, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), minF), toFloat32(1.0)), gpuSatisfies(gpuMap(ws, fn(w) => (w / total) ), fn(share) => sumOf(share, fn(unity) => unity == toFloat32(1.0))), gpuSatisfies(gpuFilter(ws, fn(w) => w * toFloat32(4.0) >= total), fn(heavy) => lengthIs(heavy, 2)), gpuSatisfies(gpuZipWith(xs, xs, mulF), fn(products) => gpuSatisfies(gpuMap(products, fn(p) => (p / total) ), fn(share) => sumOf(share, fn(part) => part == toFloat32(1.25)))), gpuEquals(gpuFold(input2, total, addF), toFloat32(16.0))
-])
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+])))
 }
 /// captureShapeCase pushes on the form a capture arrives in: a buffer captured
 /// for gather (out-of-range reads padding to zero), a capture read from a nested
@@ -213,15 +205,11 @@ fn weightedSumCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat
 fn weightedSumCaseUploaded(input0, input1, input2, input3, input4, input5) = {
     let vals = input0
     let ws = input1
-    match gpuFold(ws, toFloat32(0.0), addF) {
-        Success { wtot } => match gpuMap(ws, fn(w) => (w / wtot) ) {
-            Success { normw } => checkAll("weighted sums", [
+    withValue(gpuFold(ws, toFloat32(0.0), addF), fn(wtot) =>
+        withBuffer(gpuMap(ws, fn(w) => (w / wtot) ), fn(normw) =>
+            checkAll("weighted sums", [
     wtot == toFloat32(8.0), dotIs(vals, ws, toFloat32(21.0)), dotOf(vals, ws, fn(total) => ((total / wtot) ) == toFloat32(2.625)), sumIs(normw, toFloat32(1.0)), elementsAt(normw, toFloat32(0.0), [2, 0], [toFloat32(0.5), toFloat32(0.125)]), dotIs(vals, normw, toFloat32(2.625)), dotIs(input2, input3, toFloat32(5.0)), dotIs(vals, input4, toFloat32(0.0)), dotOf(vals, input5, fn(total) => sumOf(vals, fn(plain) => total == plain)), gpuSatisfies(gpuZipWith(vals, ws, fn(v, w) => wtot * v * w), fn(weighted) => sumIs(weighted, toFloat32(168.0))), gpuSatisfies(gpuMap(vals, fn(v) => (v / wtot) ), fn(share) => sumIs(share, toFloat32(1.25)))
-])
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+])))
 }
 /// meanCase centers a feature column: the folded mean is captured by the
 /// centering kernel, and the centered column's own mean vanishes.
@@ -229,18 +217,11 @@ fn meanCase() = withIndices(9, fn(indices9) => meanWith(indices9))
 fn meanWith(indices9) = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)]), fn(input0) => withBuffer(toGpu([]), fn(input1) => withBuffer(toGpu([toFloat32(5.0)]), fn(input2) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)]), fn(input3) => meanWithUploaded(indices9, input0, input1, input2, input3)))))
 fn meanWithUploaded(indices9, input0, input1, input2, input3) = {
     let xs = input0
-    match gpuFold(xs, toFloat32(0.0), addF) {
-        Success { folded } => {
-            let mean = degenerate(0.0, fn() => folded / toFloat32(gpuLength(xs)))
-            match gpuMap(xs, fn(v) => v - mean) {
-                Success { centered } => checkAll("mean centering", [
-    mean == toFloat32(3.0), sumIs(centered, toFloat32(0.0)), elementIs(centered, 0, toFloat32(9.9), toFloat32(0.0) - toFloat32(2.0)), elementIs(centered, 3, toFloat32(0.0), toFloat32(3.0)), lengthIs(centered, 4), meanIs(centered, toFloat32(0.0)), meanIs(input1, toFloat32(0.0)), meanIs(input2, toFloat32(5.0)), meanIs(input3, toFloat32(5.0)), gpuSatisfies(gpuMap(xs, fn(v) => mean + v), fn(shifted) => meanIs(shifted, toFloat32(6.0))), gpuSatisfies(gpuMap(indices9, toFloat32), fn(asFloats) => meanIs(asFloats, toFloat32(4.0))), gpuSatisfies(gpuFilter(xs, fn(v) => v > mean), fn(above) => lengthIs(above, 1))
-])
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withValue(gpuFold(xs, toFloat32(0.0), addF), fn(folded) =>
+        withBuffer(gpuMap(xs, fn(v) => v - meanValue(xs, folded)), fn(centered) =>
+            checkAll("mean centering", [
+    meanValue(xs, folded) == toFloat32(3.0), sumIs(centered, toFloat32(0.0)), elementIs(centered, 0, toFloat32(9.9), toFloat32(0.0) - toFloat32(2.0)), elementIs(centered, 3, toFloat32(0.0), toFloat32(3.0)), lengthIs(centered, 4), meanIs(centered, toFloat32(0.0)), meanIs(input1, toFloat32(0.0)), meanIs(input2, toFloat32(5.0)), meanIs(input3, toFloat32(5.0)), gpuSatisfies(gpuMap(xs, fn(v) => meanValue(xs, folded) + v), fn(shifted) => meanIs(shifted, toFloat32(6.0))), gpuSatisfies(gpuMap(indices9, toFloat32), fn(asFloats) => meanIs(asFloats, toFloat32(4.0))), gpuSatisfies(gpuFilter(xs, fn(v) => v > meanValue(xs, folded)), fn(above) => lengthIs(above, 1))
+])))
 }
 /// varianceCase pins two-pass variance and the z-scores built on it: a
 /// normalised column has mean zero and variance one, and a constant column's
@@ -249,36 +230,23 @@ fn varianceCase() = withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(
 fn varianceCaseUploaded(input0, input1, input2, input3) = {
     let xs = input0
     let sd = toFloat32(2.0)
-    match gpuFold(xs, toFloat32(0.0), addF) {
-        Success { folded } => {
-            let mean = degenerate(0.0, fn() => folded / toFloat32(gpuLength(xs)))
-            match gpuMap(xs, fn(v) => ((v - mean) / sd) ) {
-                Success { z } => checkAll("variance and z-scores", [
-    mean == toFloat32(5.0), varianceIs(xs, toFloat32(4.0)), sd * sd == toFloat32(4.0), sumIs(z, toFloat32(0.0)), elementsAt(z, toFloat32(9.9), [0, 4], [toFloat32(0.0) - toFloat32(1.5), toFloat32(0.0)]), elementIs(z, 7, toFloat32(0.0), toFloat32(2.0)), meanIs(z, toFloat32(0.0)), varianceIs(z, toFloat32(1.0)), varianceIs(input1, toFloat32(0.0)), varianceIs(input2, toFloat32(0.0)), degenerate(0.0, fn() => gpuSatisfies(gpuMap(input3, fn(v) => (v - toFloat32(3.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(0.0))))
-])
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withValue(gpuFold(xs, toFloat32(0.0), addF), fn(folded) =>
+        withBuffer(gpuMap(xs, fn(v) => ((v - meanValue(xs, folded)) / sd) ), fn(z) =>
+            checkAll("variance and z-scores", [
+    meanValue(xs, folded) == toFloat32(5.0), varianceIs(xs, toFloat32(4.0)), sd * sd == toFloat32(4.0), sumIs(z, toFloat32(0.0)), elementsAt(z, toFloat32(9.9), [0, 4], [toFloat32(0.0) - toFloat32(1.5), toFloat32(0.0)]), elementIs(z, 7, toFloat32(0.0), toFloat32(2.0)), meanIs(z, toFloat32(0.0)), varianceIs(z, toFloat32(1.0)), varianceIs(input1, toFloat32(0.0)), varianceIs(input2, toFloat32(0.0)), degenerate(0.0, fn() => gpuSatisfies(gpuMap(input3, fn(v) => (v - toFloat32(3.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(0.0))))
+])))
 }
 /// normalizeCase pins the min-max rescale: both extremes are folded out and
 /// captured, and a constant column's zero range falls back instead of dividing.
 fn normalizeCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)]), fn(input0) => withBuffer(toGpu([toFloat32(4.0), toFloat32(4.0)]), fn(input1) => normalizeCaseUploaded(input0, input1)))
 fn normalizeCaseUploaded(input0, input1) = {
     let xs = input0
-    match gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), minF) {
-        Success { lo } => match gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), maxF) {
-            Success { hi } => match gpuMap(xs, fn(v) => ((v - lo) / (hi - lo)) ) {
-                Success { scaled } => checkAll("normalisation", [
+    withValue(gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), minF), fn(lo) =>
+        withValue(gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), maxF), fn(hi) =>
+            withBuffer(gpuMap(xs, fn(v) => ((v - lo) / (hi - lo)) ), fn(scaled) =>
+                checkAll("normalisation", [
     lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementsFrom(scaled, 1, toFloat32(0.0), [toFloat32(0.25), toFloat32(0.5), toFloat32(1.0)]), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), gpuSatisfies(gpuMap(xs, fn(v) => ((hi - v) / (hi - lo)) ), fn(inverted) => sumIs(inverted, toFloat32(2.25))), gpuEquals(gpuFold(xs, hi, minF), toFloat32(1.0)), gpuSatisfies(gpuFilter(xs, fn(v) => v > lo), fn(above) => lengthIs(above, 3)), degenerate(0.5, fn() => gpuSatisfies(gpuMap(input1, fn(v) => (v - toFloat32(4.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(1.0))))
-])
-                Error { message } => gpuFailed(message)
-            }
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+]))))
 }
 /// Compare clamping and active-unit counts with captured slopes and reflected inputs.
 fn reluCase() = withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.5), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.5), toFloat32(1.0)]), fn(input0) => withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0)]), fn(input2) => reluCaseUploaded(input0, input1, input2))))
