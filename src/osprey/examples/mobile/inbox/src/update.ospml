@@ -20,6 +20,17 @@ module Update
 
     failure model message = unchanged (Model::set model "error" message)
 
+    storageProblem model message = unchanged (Model::set model "storageError" message)
+
+    // Run `step` only when `allowed`, otherwise report `message`.
+    guarded model allowed message step = match allowed
+        true => step
+        false => failure model message
+
+    pick allowed step fallback = match allowed
+        true => step
+        false => fallback
+
     nextSequence model = parseInt model.seq ?: 0
 
     // A host event's string field, empty when the host left it out.
@@ -35,9 +46,9 @@ module Update
             result pending (perform Storage::Requests.http (Storage::fetch pending))
 
     persist model = match model.dbReady == "true"
-        false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
+        false => storageProblem model "SQLite is unavailable; these changes are only in memory."
         true => match checkedAdd (nextSequence model) 1
-            Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
+            Error why => storageProblem model "Request counter exhausted; changes were not saved. Close and reopen the app."
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
                 result pending (perform Storage::Requests.sql (Storage::save pending))
@@ -46,11 +57,13 @@ module Update
 
     storageError model event = Model::set model "storageError" ("SQLite failed: " + Json::getOr event "error" "unknown database error")
 
-    storageFailure model event = unchanged (storageError (ready model) event)
+    whenStorageOk model event next = match eventValue event "ok" == "true"
+        false => unchanged (storageError (ready model) event)
+        true => next model event
 
-    schema model event = match eventValue event "ok" == "true"
-        false => storageFailure model event
-        true => result (Model::set (Model::set (Model::set model "stage" "load") "dbReady" "true") "status" "Reading the SQLite cache…") (perform Storage::Requests.sql (Storage::load ()))
+    schemaDone model _ = result (Model::set (Model::set (Model::set model "stage" "load") "dbReady" "true") "status" "Reading the SQLite cache…") (perform Storage::Requests.sql (Storage::load ()))
+
+    schema model event = whenStorageOk model event schemaDone
 
     restore model source =
         cached = Storage::restore (ready model) source
@@ -58,16 +71,16 @@ module Update
             false => failure (Model::set (ready model) "status" "Cache needs a refresh") cached.error
             true => unchanged (Model::set cached.model "status" "Loaded from SQLite · refresh when ready")
 
-    loaded model event = match eventValue event "ok" == "true"
-        false => storageFailure model event
-        true =>
-            doc = jsonParse event ?: 0
-            count = jsonLength doc "rows"
-            freed = jsonFree doc ?: 0
-            match count
-                0 => fetch (ready model)
-                1 => restore model (eventValue event "rows[0].value")
-                _ => failure (ready model) "SQLite returned an invalid cache result. Refresh to replace it."
+    loadedDone model event =
+        doc = jsonParse event ?: 0
+        count = jsonLength doc "rows"
+        freed = jsonFree doc ?: 0
+        match count
+            0 => fetch (ready model)
+            1 => restore model (eventValue event "rows[0].value")
+            _ => failure (ready model) "SQLite returned an invalid cache result. Refresh to replace it."
+
+    loaded model event = whenStorageOk model event loadedDone
 
     savedResult model event = match eventValue event "ok" == "true"
         false => unchanged (storageError (Model::set model "write" "") event)
@@ -75,17 +88,10 @@ module Update
 
     sql model event =
         id = eventValue event "id"
-        match id == "schema" && model.stage == "schema"
-            true => schema model event
-            false => match id == "load" && model.stage == "load"
-                true => loaded model event
-                false => match length model.write > 0 && id == model.write
-                    true => savedResult model event
-                    false => unchanged model
+        idle = pick (length model.write > 0 && id == model.write) (savedResult model event) (unchanged model)
+        pick (id == "load" && model.stage == "load") (loaded model event) (pick (id == "schema" && model.stage == "schema") (schema model event) idle)
 
-    validSelection model = match length model.selected == 0 || View::exists model model.selected
-        true => model
-        false => Model::set model "selected" ""
+    validSelection model = pick (length model.selected == 0 || View::exists model model.selected) model (Model::set model "selected" "")
 
     httpSuccess model event = match Github::parse (eventValue event "body")
         Error why => failure (Model::set model "status" "Refresh failed · cached issues retained") why
@@ -116,33 +122,23 @@ module Update
                 false => model.saved + id + "|"
             persist (Model::set model "saved" marks)
 
-    filter model value = match value == "all" || value == "saved"
-        true => unchanged (Model::set model "filter" value)
-        false => failure model "Unknown inbox filter. Choose All or Saved."
+    filter model value = guarded model (value == "all" || value == "saved") "Unknown inbox filter. Choose All or Saved." (unchanged (Model::set model "filter" value))
 
-    annotate model id note priority = match View::exists model id && Annotations::capacity model.annotations id
-        false => failure model "Cannot annotate this issue: it is missing or the 200-issue local note limit is reached."
-        true => persist (Model::set model "annotations" (Annotations::set model.annotations id note priority))
+    annotate model id note priority = guarded model (View::exists model id && Annotations::capacity model.annotations id) "Cannot annotate this issue: it is missing or the 200-issue local note limit is reached." (persist (Model::set model "annotations" (Annotations::set model.annotations id note priority)))
 
-    note model event =
+    annotationEdit model event allowed message priorityEdit =
         id = eventValue event "id"
         value = eventValue event "value"
         current = Annotations::get model.annotations id
-        match !Text::within value 2000
-            true => failure model "Keep local notes within 2000 characters."
-            false => annotate model id value current.priority
+        match priorityEdit
+            true => guarded model allowed message (annotate model id current.note value)
+            false => guarded model allowed message (annotate model id value current.priority)
 
-    priority model event =
-        id = eventValue event "id"
-        value = eventValue event "value"
-        current = Annotations::get model.annotations id
-        match value == "normal" || value == "high"
-            true => annotate model id current.note value
-            false => failure model "Choose Normal or High priority."
+    note model event = annotationEdit model event (Text::within (eventValue event "value") 2000) "Keep local notes within 2000 characters." false
 
-    openIssue model id = match View::exists model id
-        true => unchanged (Model::set model "selected" id)
-        false => failure model "This issue is no longer in the inbox. Refresh to find current issues."
+    priority model event = annotationEdit model event ((eventValue event "value") == "normal" || (eventValue event "value") == "high") "Choose Normal or High priority." true
+
+    openIssue model id = guarded model (View::exists model id) "This issue is no longer in the inbox. Refresh to find current issues." (unchanged (Model::set model "selected" id))
 
     detailEvent model event = match eventValue event "type"
         "open" => openIssue model (eventValue event "id")
