@@ -18,11 +18,8 @@ import type { HeatDecorationManager } from "./profiler/heat-decorations";
 import { showFlamePanel } from "./profiler/profiler-panel";
 import { formatSummaryHeader } from "./profiler/summary";
 import { profileRunHeader } from "./test-explorer-docs";
-import {
-  executeRunRequest,
-  verdictSink,
-  type TestRunSink,
-} from "./test-explorer";
+import { executeRunRequest } from "./test-explorer";
+import { verdictSink, type TestRunSink } from "./test-explorer-report";
 import type { RunMode } from "./test-explorer-parse";
 
 /** Prefix of the per-request profile artifact root, under the OS temp dir. */

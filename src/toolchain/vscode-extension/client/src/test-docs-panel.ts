@@ -14,7 +14,7 @@
 // cursor line decides. Every step is a pure exported helper.
 
 import * as vscode from "vscode";
-import { documentedTestIds, testDocFor } from "./test-explorer";
+import { documentedTestIds, testDocFor } from "./test-explorer-items";
 import { leafTestId } from "./test-explorer-parse";
 import { testDocMarkdown, type TestDoc } from "./test-explorer-docs";
 

@@ -11,13 +11,9 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import {
-  documentedTestIds,
-  executeRunRequest,
-  refreshTestFile,
-  testDocFor,
-  type TestRunSink,
-} from "../../client/src/test-explorer";
+import { executeRunRequest } from "../../client/src/test-explorer";
+import { type TestRunSink } from "../../client/src/test-explorer-report";
+import { documentedTestIds, refreshTestFile, testDocFor } from "../../client/src/test-explorer-items";
 import {
   leafTestId,
   PLAIN_RUN,

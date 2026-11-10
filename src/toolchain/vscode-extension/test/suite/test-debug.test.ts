@@ -17,7 +17,7 @@ import {
   registerTestDebugProfile,
   type StartDebugging,
 } from "../../client/src/test-debug";
-import { refreshTestFile } from "../../client/src/test-explorer";
+import { refreshTestFile } from "../../client/src/test-explorer-items";
 import {
   leafTestId,
   type ExecResult,

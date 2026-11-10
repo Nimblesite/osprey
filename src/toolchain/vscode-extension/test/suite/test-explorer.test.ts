@@ -14,11 +14,9 @@ import {
   leafTestId,
   PLAIN_RUN,
 } from "../../client/src/test-explorer-parse";
+import { executeRunRequest, makeRunHandler } from "../../client/src/test-explorer";
+import { coverageSink, detailedCoverageFor } from "../../client/src/test-explorer-report";
 import {
-  coverageSink,
-  detailedCoverageFor,
-  executeRunRequest,
-  makeRunHandler,
   makeDiscovery,
   makeDiscoveryQueue,
   fileItems,
@@ -27,10 +25,10 @@ import {
   projectRootOf,
   refreshTestFile,
   removeTestFile,
-  runCompiler,
   requestedItems,
   testFileLabel,
-} from "../../client/src/test-explorer";
+} from "../../client/src/test-explorer-items";
+import { runCompiler } from "../../client/src/test-explorer-process";
 import {
   oneSkipWarning,
   resolveBuiltOsprey,
