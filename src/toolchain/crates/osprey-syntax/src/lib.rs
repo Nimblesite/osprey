@@ -60,6 +60,41 @@ pub struct SyntaxError {
     pub position: Position,
 }
 
+/// Bound recursive frontend work before lowering. Implements [FAILURE-EXPLICIT].
+pub(crate) const MAX_SYNTAX_DEPTH: usize = 512;
+
+pub(crate) fn nesting_error(position: Position) -> SyntaxError {
+    SyntaxError {
+        message: "syntax nesting limit exceeded".to_owned(),
+        position,
+    }
+}
+
+/// Walk the CST without consuming the Rust stack, including unnamed grouping nodes.
+pub(crate) fn check_tree_depth(root: tree_sitter::Node<'_>) -> Result<(), SyntaxError> {
+    let mut cursor = root.walk();
+    let mut depth = 0;
+    loop {
+        if depth > MAX_SYNTAX_DEPTH {
+            let point = cursor.node().start_position();
+            return Err(nesting_error(Position {
+                line: u32::try_from(point.row + 1).unwrap_or(u32::MAX),
+                column: u32::try_from(point.column).unwrap_or(u32::MAX),
+            }));
+        }
+        if cursor.goto_first_child() {
+            depth += 1;
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return Ok(());
+            }
+            depth -= 1;
+        }
+    }
+}
+
 /// A source **flavor**: a parser-and-lowering profile over the one shared
 /// language core. Every flavor converges on the same canonical [`Program`]
 /// before any semantic analysis runs, so nothing past lowering may inspect

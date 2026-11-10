@@ -5,7 +5,7 @@ const { pathToFileURL } = require("node:url");
 const { execFileSync } = require("node:child_process");
 
 const REPO = path.resolve(__dirname, "../../../..");
-const SITE = path.resolve(__dirname, "../_site");
+const { SITE, DOCS_FIXTURE_PREFIX } = require("./helpers");
 const THEMES = {
   osprey: ["rgb(245, 248, 252)", "#0a58ca"],
   midnight: ["rgb(7, 13, 31)", "#77d7f4"],
@@ -75,7 +75,7 @@ function generate(root, name, theme, styles = []) {
 
 function fixture() {
   fs.mkdirSync(SITE, { recursive: true });
-  const root = fs.mkdtempSync(path.join(SITE, "docs-contract-"));
+  const root = fs.mkdtempSync(path.join(SITE, DOCS_FIXTURE_PREFIX));
   write(path.join(root, "source.osp"), SOURCE);
   write(path.join(root, "guides/Introduction.md"), "~~~~osprey\n# Not the guide title\n~~~~\n\n# Introduction\n\n[Examples](deep/Get%20Started.md#examples)\n");
   const samples = Object.entries(CODE_SAMPLES).map(([language, source]) => `\n\`\`\`${language}\n${source}\`\`\`\n`).join("");

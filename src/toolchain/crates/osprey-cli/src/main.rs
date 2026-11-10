@@ -75,7 +75,30 @@ pub(crate) fn usage_error(message: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
+/// Stack for every compiler thread: the command itself and each language-server
+/// thread. Lowering recurses once per nesting level up to the syntax limit (512,
+/// #362), and the deepest accepted source needs 4 to 6 MiB in a debug build:
+/// more than Windows gives a main thread (1 MiB) or Tokio a worker (2 MiB). A
+/// stack the compiler sizes itself makes the limit a diagnostic everywhere
+/// instead of an abort that depends on the platform [FAILURE-EXPLICIT].
+const COMPILER_STACK_BYTES: usize = 16 * 1024 * 1024;
+
 fn main() -> ExitCode {
+    let command = std::thread::Builder::new()
+        .name("osprey".into())
+        .stack_size(COMPILER_STACK_BYTES)
+        .spawn(run_command);
+    match command.map(std::thread::JoinHandle::join) {
+        Ok(Ok(code)) => code,
+        Ok(Err(_panic)) => ExitCode::FAILURE,
+        Err(error) => {
+            eprintln!("osprey: cannot start the compiler thread: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_command() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args
         .split_first()
@@ -168,7 +191,11 @@ fn report_syntax_errors(path: &str, errors: &[osprey_syntax::SyntaxError]) -> bo
 
 /// Run the stdio language server to completion on a fresh Tokio runtime.
 fn run_lsp() -> ExitCode {
-    let runtime = match tokio::runtime::Runtime::new() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(COMPILER_STACK_BYTES)
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(e) => {
             eprintln!("osprey lsp: cannot start async runtime: {e}");

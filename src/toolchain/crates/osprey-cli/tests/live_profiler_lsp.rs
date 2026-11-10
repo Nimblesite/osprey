@@ -18,11 +18,14 @@ use serde_json::{json, Value};
 
 #[path = "cases/live_fixture.rs"]
 mod live_fixture;
+#[path = "cases/nesting.rs"]
+mod nesting;
 
 use live_fixture::{
     listed_samples, listed_session, Fixture, Flavor, HOT_FUNCTION, POLL, RATE_HZ,
     RECORDING_DEADLINE,
 };
+use nesting::{nested_source, DEPTH_BOUNDARIES};
 
 /// `osprey lsp` with its stdio, killed on drop.
 struct Server {
@@ -304,5 +307,61 @@ fn lists_and_profiles(flavor: Flavor, name: &str) {
         "a hot line inside {HOT_FUNCTION}: {report}"
     );
     let shutdown = timely_shutdown(server, 5).expect("the server shuts down promptly");
+    assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
+}
+
+/// Open `text` as `uri` and return the diagnostics published for it.
+fn published_diagnostics(server: &mut Server, uri: &str, text: &str) -> Vec<Value> {
+    server.send(
+        &json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
+            "textDocument": { "uri": uri, "languageId": "osprey", "version": 1, "text": text }
+        }}),
+    );
+    loop {
+        let message = server.read();
+        if message.get("method") == Some(&json!("textDocument/publishDiagnostics"))
+            && message.pointer("/params/uri") == Some(&json!(uri))
+        {
+            return message
+                .pointer("/params/diagnostics")
+                .and_then(Value::as_array)
+                .cloned()
+                .expect("diagnostics");
+        }
+    }
+}
+
+/// Exactly one diagnostic, the nesting limit, on the source's first line.
+fn refused_for_nesting(diagnostics: &[Value]) -> bool {
+    let [only] = diagnostics else { return false };
+    only.pointer("/range/start/line") == Some(&json!(0))
+        && only
+            .get("message")
+            .and_then(Value::as_str)
+            .is_some_and(|text| text.contains("nesting limit"))
+}
+
+/// [FAILURE-EXPLICIT]: the deepest source the syntax guard accepts fits the
+/// editor's analysis worker, and one level deeper is a positioned diagnostic.
+#[test]
+fn editor_handles_depth_boundaries_without_aborting() {
+    let mut server = Server::start_in(&std::env::temp_dir());
+    let initialized = server.request(1, "initialize", &json!({}));
+    assert!(initialized.get("result").is_some(), "{initialized}");
+    for (shape, (extension, binding, open, close, deepest)) in DEPTH_BOUNDARIES.iter().enumerate() {
+        for depth in [*deepest, deepest + 1] {
+            let uri = format!("file:///depth_boundary_{shape}_{depth}.{extension}");
+            let text = nested_source(binding, open, close, depth);
+            let diagnostics = published_diagnostics(&mut server, &uri, &text);
+            let refused = depth > *deepest;
+            assert_eq!(
+                refused_for_nesting(&diagnostics),
+                refused,
+                "{uri}: {diagnostics:?}"
+            );
+            assert_eq!(diagnostics.is_empty(), !refused, "{uri}: {diagnostics:?}");
+        }
+    }
+    let shutdown = timely_shutdown(server, 2).expect("the server shuts down promptly");
     assert_eq!(shutdown.get("result"), Some(&Value::Null), "{shutdown}");
 }

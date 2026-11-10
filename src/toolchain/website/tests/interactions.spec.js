@@ -489,7 +489,8 @@ test.describe("diagrams", () => {
     await page.goto("/spec/0029-packagemanagement/", { waitUntil: "networkidle" });
     const blocks = page.locator("figure.diagram pre.mermaid");
     await expect(blocks.first().locator("svg")).toBeVisible();
-    expect(await blocks.count()).toBe(await page.locator("pre.mermaid svg").count());
+    // Mermaid renders the blocks one at a time, so wait until every block has its SVG.
+    await expect(page.locator("pre.mermaid svg")).toHaveCount(await blocks.count());
     // Mermaid's own dark palette, not the light default on a dark page.
     const fill = await page
       .locator("pre.mermaid svg .node rect, pre.mermaid svg rect.actor")

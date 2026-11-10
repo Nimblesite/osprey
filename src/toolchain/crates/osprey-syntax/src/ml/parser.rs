@@ -83,6 +83,10 @@ pub(super) fn parse_annotations(
     source: &str,
 ) -> (Vec<MlItem>, Vec<SyntaxError>, Vec<crate::AnnotationEdit>) {
     let (tokens, mut errors) = lex(source);
+    if let Some(error) = delimiter_depth_error(&tokens) {
+        errors.push(error);
+        return (Vec::new(), errors, Vec::new());
+    }
     let mut annotations = Vec::new();
     let items = {
         let mut parser = Parser {
@@ -91,11 +95,30 @@ pub(super) fn parse_annotations(
             errors: &mut errors,
             annotations: &mut annotations,
             source,
+            expression_depth: 0,
         };
         parser.program()
     };
     super::modules::validate(&items, &mut errors);
     (items, errors, annotations)
+}
+
+/// Reject deep grouping before recursive descent builds a CST.
+fn delimiter_depth_error(tokens: &[Token]) -> Option<SyntaxError> {
+    let mut depth: usize = 0;
+    for token in tokens {
+        match token.kind {
+            TokKind::LParen | TokKind::LBracket | TokKind::LBrace | TokKind::Indent => depth += 1,
+            TokKind::RParen | TokKind::RBracket | TokKind::RBrace | TokKind::Dedent => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+        if depth > crate::MAX_SYNTAX_DEPTH {
+            return Some(crate::nesting_error(token.pos));
+        }
+    }
+    None
 }
 
 /// The `-` operator lexeme — used as both a binary subtraction operator and the
@@ -134,6 +157,7 @@ pub(super) struct Parser<'t> {
     errors: &'t mut Vec<SyntaxError>,
     annotations: &'t mut Vec<crate::AnnotationEdit>,
     source: &'t str,
+    expression_depth: usize,
 }
 
 impl Parser<'_> {

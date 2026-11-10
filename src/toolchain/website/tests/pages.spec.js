@@ -4,9 +4,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
-const { PAGES, VIEWPORTS, collectProblems, paintedColours } = require("./helpers");
+const { SITE, builtPages, PAGES, VIEWPORTS, collectProblems, paintedColours } = require("./helpers");
 
-const SITE = path.resolve(__dirname, "../_site");
 const OSPREY_CODE = /<code([^>]*)class="language-(?:osprey(?:-ml)?|ospml|osp)"[^>]*>([\s\S]*?)<\/code>/g;
 const COMMENT_TOKEN = /<span class="token comment">[\s\S]*?<\/span>/g;
 const OSPREY_BLOCKS = "pre > code.language-osprey, pre > code.language-osprey-ml";
@@ -75,7 +74,7 @@ const unhighlightedBlocks = (file) =>
     .map(([, , body]) => `${file}: ${body.slice(0, 60)}`);
 
 test("every built page ships its Osprey code highlighted", () => {
-  const pages = fs.readdirSync(SITE, { recursive: true }).filter((file) => file.endsWith(".html"));
+  const pages = builtPages();
   expect(pages).toContain("index.html");
   expect(pages.flatMap(unhighlightedBlocks)).toEqual([]);
 });

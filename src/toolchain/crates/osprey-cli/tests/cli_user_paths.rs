@@ -5,6 +5,10 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+#[cfg(unix)]
+#[path = "cases/nesting.rs"]
+mod nesting;
+
 /// A directory of its own, removed when the test ends.
 struct Scratch(PathBuf);
 
@@ -30,9 +34,24 @@ impl Drop for Scratch {
 }
 
 fn osprey() -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    in_repository(Command::new(env!("CARGO_BIN_EXE_osprey")))
+}
+
+fn in_repository(mut command: Command) -> Command {
     let _ = command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../.."));
     command
+}
+
+/// `osprey` with a 1 MiB main-thread stack, the Windows default.
+#[cfg(unix)]
+fn osprey_on_small_stack() -> Command {
+    let mut command = Command::new("sh");
+    let _ = command.args([
+        "-c",
+        r#"ulimit -s 1024 && exec "$0" "$@""#,
+        env!("CARGO_BIN_EXE_osprey"),
+    ]);
+    in_repository(command)
 }
 
 fn finished(command: &mut Command) -> (Option<i32>, String, String) {
@@ -52,6 +71,118 @@ fn assert_refused(command: &mut Command, code: i32, words: &str) {
     let (got, stdout, stderr) = finished(command);
     assert_eq!(got, Some(code), "stdout: {stdout}\nstderr: {stderr}");
     assert!(stderr.contains(words), "wanted {words:?} in: {stderr}");
+}
+
+/// [FAILURE-EXPLICIT]: the depth guard preserves the existing arithmetic corpus.
+#[test]
+fn existing_deep_arithmetic_programs_remain_valid() {
+    for extension in ["osp", "ospml"] {
+        let path =
+            format!("src/osprey/tests/core/arithmetic/deep_integer_expressions.test.{extension}");
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(&path));
+        assert_eq!(code, Some(0), "{path}: {stdout} {stderr}");
+    }
+}
+
+/// [FAILURE-EXPLICIT]: hostile source must produce a diagnostic, including #362.
+#[test]
+fn deep_expressions_report_positioned_errors_without_aborting() {
+    let scratch = Scratch::new("expression_depth");
+    for (name, prefix) in [("control.osp", "let "), ("control.ospml", "")] {
+        let source = format!(
+            r#"{prefix}value = {}1{}
+{prefix}values = [{}]
+{prefix}text = "{}"
+"#,
+            "(".repeat(20),
+            ")".repeat(20),
+            vec!["1"; 200].join(", "),
+            "(".repeat(500)
+        );
+        let path = scratch.write(name, &source);
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(path));
+        assert_eq!(code, Some(0), "{name}: {stdout} {stderr}");
+    }
+    let cases = [
+        (
+            "defaults.ospml",
+            format!("value = {}", vec!["1"; 5_000].join(" ?: ")),
+        ),
+        (
+            "group.ospml",
+            format!("value = {}1{}", "(".repeat(50_000), ")".repeat(50_000)),
+        ),
+        (
+            "chain.ospml",
+            format!("value = {}", vec!["1"; 50_000].join(" + ")),
+        ),
+        (
+            "list.osp",
+            format!("let value = {}1{}", "[".repeat(5_000), "]".repeat(5_000)),
+        ),
+        (
+            "group.osp",
+            format!("let value = {}1{}", "(".repeat(50_000), ")".repeat(50_000)),
+        ),
+        (
+            "chain.osp",
+            format!("let value = {}", vec!["1"; 50_000].join(" + ")),
+        ),
+        (
+            "list.ospml",
+            format!("value = {}1{}", "[".repeat(5_000), "]".repeat(5_000)),
+        ),
+    ];
+    let mut failures = Vec::new();
+    for (name, source) in cases {
+        let path = scratch.write(name, &format!("// source starts below\n{source}\n"));
+        let (code, stdout, stderr) = finished(osprey().arg("--check").arg(&path));
+        if code != Some(1) || !stderr.contains(":2:") || !stderr.contains("nesting limit") {
+            failures.push(format!("{name}: {code:?}\n{stdout}\n{stderr}"));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// [FAILURE-EXPLICIT]: the compiler sizes its own stack, so the deepest source
+/// it accepts checks and runs on any main-thread stack, and one level deeper is
+/// a diagnostic rather than an abort.
+#[cfg(unix)]
+#[test]
+fn deepest_accepted_nesting_needs_no_large_main_stack() {
+    let scratch = Scratch::new("small_main_stack");
+    for (shape, boundary) in nesting::DEPTH_BOUNDARIES.iter().enumerate() {
+        check_boundary_on_small_stack(&scratch, shape, *boundary);
+    }
+    let source = nesting::nested_source("value = ", "(", ")", 512) + "print(\"deep ${value}\")\n";
+    let path = scratch.write("deepest_run.ospml", &source);
+    let (code, stdout, stderr) = finished(osprey_on_small_stack().arg(&path).arg("--run"));
+    assert_eq!((code, stdout.as_str()), (Some(0), "deep 1\n"), "{stderr}");
+}
+
+/// The deepest accepted nesting checks clean and one level deeper is refused.
+#[cfg(unix)]
+fn check_boundary_on_small_stack(
+    scratch: &Scratch,
+    shape: usize,
+    (extension, binding, open, close, deepest): (&str, &str, &str, &str, usize),
+) {
+    for depth in [deepest, deepest + 1] {
+        let source = nesting::nested_source(binding, open, close, depth);
+        let path = scratch.write(&format!("depth_{shape}_{depth}.{extension}"), &source);
+        let (code, stdout, stderr) = finished(osprey_on_small_stack().arg("--check").arg(&path));
+        let refused = depth > deepest;
+        assert_eq!(
+            code,
+            Some(i32::from(refused)),
+            "{shape}/{depth}: {stdout} {stderr}"
+        );
+        assert_eq!(
+            stderr.contains("nesting limit"),
+            refused,
+            "{shape}/{depth}: {stderr}"
+        );
+    }
 }
 
 const CONTRACTS: &str = "/// A cell.

@@ -1,7 +1,23 @@
 // Shared fixtures/data for the Osprey website e2e tests.
+const fs = require("node:fs");
 const { mkdir, writeFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
+
+// The built site. api-docs.spec.js generates its fixture inside it, under
+// DOCS_FIXTURE_PREFIX, so the docs can be served under a URL prefix.
+const SITE = path.resolve(__dirname, "../_site");
+const DOCS_FIXTURE_PREFIX = "docs-contract-";
+
+// Every HTML page the site build produced. A docs fixture is test output that
+// another worker creates and deletes at any moment, so the walk never enters it.
+const builtPages = () =>
+  fs.readdirSync(SITE, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith(DOCS_FIXTURE_PREFIX))
+    .flatMap((entry) => entry.isDirectory()
+      ? fs.readdirSync(path.join(SITE, entry.name), { recursive: true }).map((file) => path.join(entry.name, file))
+      : [entry.name])
+    .filter((file) => file.endsWith(".html"));
 
 // Every distinct page template the site renders.
 const PAGES = [
@@ -105,4 +121,4 @@ async function exampleResult(source, file) {
   }
 }
 
-module.exports = { PAGES, VIEWPORTS, collectProblems, paintedColours, executeExample, exampleResult };
+module.exports = { SITE, DOCS_FIXTURE_PREFIX, builtPages, PAGES, VIEWPORTS, collectProblems, paintedColours, executeExample, exampleResult };
