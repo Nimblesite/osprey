@@ -70,35 +70,36 @@ captioned (machine, shown, gone) =
 // An event as the host's wire carries it, for checking the encoder's contract.
 wire event = Doc::parse event
 
+// A canvas whose menu is shut: its labels, and no dismissal on offer.
+shut (machine, names) =
+    expect (labels machine, names)
+    expect (offered (machine, "Dismiss"), false)
+
+// Wire fields, one assertion per `{ name = …, value = … }`, read as the encoder writes them.
+readFields (read, wired, fields) = forEachList (fields, \field => expect (read (wired, field.name), field.value))
+
 test ("the canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => withFixture (\fresh =>
-    expect (labels fresh, "Menu|Press|Level")
     expect (offered (fresh, "Menu"), true)
-    expect (offered (fresh, "Dismiss"), false)
-    expect (role (fresh, "Menu"), "popup")
-    expect (role (fresh, "Press"), "button")
-    expect (role (fresh, "Level"), "slider")
-    expect (role (fresh, "Missing"), "none")
+    shut (fresh, "Menu|Press|Level")
+    forEachList ([{ named = "Menu", played = "popup" }, { named = "Press", played = "button" }, { named = "Level", played = "slider" }, { named = "Missing", played = "none" }], \spot => expect (role (fresh, spot.named), spot.played))
     expect (value fresh, 0.25)
     expect (letters (fresh, "Hello"), true)
     slider = element (fresh, "Level")
     forEachList ([{ fraction = 0.0, x = 20.0 }, { fraction = 0.5, x = 120.0 }, { fraction = 1.0, x = 220.0 }], \spot => tracked (slider, spot))
     pressed = Canvases::act (fresh, "Press", 0.5)
     lettering (pressed, "Pressed", "Hello")
-    zero = slidTo (pressed, 0.0)
-    half = slidTo (zero, 0.5)
-    full = slidTo (half, 1.0)
+    full = slidTo (slidTo (slidTo (pressed, 0.0), 0.5), 1.0)
     released = releasedAt (full, "Level", 0.75)
     expect (value released, 0.75)
     opened = Canvases::act (released, "Menu", 0.5)
-    expect (labels opened, "One|Two|Three|Menu|Press|Level")
-    expect (offered (opened, "Dismiss"), false)
+    shut (opened, "One|Two|Three|Menu|Press|Level")
     expect (role (opened, "One"), "menuitem")
     forEachList (["One", "Two", "Three"], \text => expect (letters (opened, text), true))
     dismissed = Canvases::released (opened, 5.0, 5.0)
-    expect (labels dismissed, "Menu|Press|Level")
+    shut (dismissed, "Menu|Press|Level")
     reopened = Canvases::act (dismissed, "Menu", 0.5)
     chosen = Canvases::act (reopened, "Two", 0.5)
-    expect (labels chosen, "Menu|Press|Level")
+    shut (chosen, "Menu|Press|Level")
     expect (letters (chosen, "Choice two"), true)
     updated = captioned (chosen, "Updated", "Pressed")
     again = captioned (updated, "Second input", "Updated")
@@ -109,39 +110,31 @@ test ("native views are found by what they say, and every host event keeps its w
     shown = seen native
     expect (length shown.renderedControls > 1, true)
     expect (length (Views::labelled (shown, "Native")), 1)
-    expect (Views::shows (shown, "Native action"), true)
-    expect ((Views::control (shown, "Native action")).controlKind, "button")
-    expect ((Views::control (shown, "Missing")).controlKind, "")
-    expect (Views::shows (shown, "Missing"), false)
+    forEachList ([{ named = "Native action", shown = true }, { named = "Missing", shown = false }], \row => expect (Views::shows (shown, row.named), row.shown))
+    forEachList ([{ named = "Native action", kind = "button" }, { named = "Missing", kind = "" }], \row => expect ((Views::control (shown, row.named)).controlKind, row.kind))
     expect (Views::texts shown, "Native|Native action|two|Pick|One|Two|Three")
     expect (Views::lettered shown, "")
     asked = Read::envelope (Read::blank (), "{\"requests\":[{\"kind\":\"run\"},{\"kind\":\"animate\"}]}")
-    expect (Views::requested (asked, "run"), true)
-    expect (Views::requested (asked, "animate"), true)
-    expect (Views::requested (asked, "choose-file"), false)
+    reading (["run", "animate"], \kind => Views::requested (asked, kind), true)
+    reading (["choose-file"], \kind => Views::requested (asked, kind), false)
     expect (asked.renderedRevision, 0)
     press = wire (Events::press (4, 2, 10))
-    expect (Doc::text (press, "kind"), "ui")
-    expect (Doc::text (press, "region"), "root")
-    expect (Doc::number (press, "revision"), 4)
-    expect (Doc::number (press, "ordinal"), 2)
+    readFields (Doc::text, press, [{ name = "kind", value = "ui" }, { name = "region", value = "root" }])
+    readFields (Doc::number, press, [{ name = "revision", value = 4 }, { name = "ordinal", value = 2 }, { name = "now", value = 10 }])
     expect (Doc::kind (Doc::field (press, "value")), "null")
-    expect (Doc::number (press, "now"), 10)
     choose = wire (Events::choose (5, 3, "two \"quoted\"", 11))
-    expect (Doc::text (choose, "value"), "two \"quoted\"")
+    readFields (Doc::text, choose, [{ name = "value", value = "two \"quoted\"" }])
     pointer = Doc::field (wire (Events::pointer (6, 4, 12.5, 20.0, true, 12)), "value")
-    expect (Doc::decimal (pointer, "x"), 12.5)
-    expect (Doc::decimal (pointer, "y"), 20.0)
-    expect (Doc::flag (pointer, "down"), true)
+    readFields (Doc::decimal, pointer, [{ name = "x", value = 12.5 }, { name = "y", value = 20.0 }])
+    readFields (Doc::flag, pointer, [{ name = "down", value = true }])
     chosen = wire (Events::chosen ("choose", "/music/a \"b\".mp3", 13))
-    expect (Doc::text (chosen, "kind"), "completed")
-    expect (Doc::text (chosen, "ticket"), "choose")
-    expect (Doc::flag (chosen, "ok"), true)
+    readFields (Doc::text, chosen, [{ name = "kind", value = "completed" }, { name = "ticket", value = "choose" }])
+    readFields (Doc::flag, chosen, [{ name = "ok", value = true }])
     expect (Doc::text (Doc::field (chosen, "result"), "path"), "/music/a \"b\".mp3")
     expect (Doc::flag (Doc::field (wire (Events::cancelled ("choose", 14)), "result"), "cancelled"), true)
     ran = Doc::field (wire (Events::ran ("discover", 2, "no route", 15)), "result")
-    expect (Doc::number (ran, "status"), 2)
-    expect (Doc::text (ran, "stderr"), "no route")
+    readFields (Doc::number, ran, [{ name = "status", value = 2 }])
+    readFields (Doc::text, ran, [{ name = "stderr", value = "no route" }])
     expect (Doc::decimal (wire (Events::frame (0.25, 16)), "elapsed"), 0.25)
     expect (Doc::text (wire (Events::lifecycle ("resume", 17)), "phase"), "resume")
     expect (Doc::text (wire (Events::open ("/tmp/example.mp3", 18)), "phase"), "open:/tmp/example.mp3")))
@@ -223,24 +216,35 @@ elementAt label = Semantics::element (elements (), label)
 
 tapAt (label, fraction) =
     p = Semantics::point (elementAt label, fraction)
-    pointer (p.pointX, p.pointY, true)
-    pointer (p.pointX, p.pointY, false)
+    clickAt (p.pointX, p.pointY)
+
+clickAt (x, y) =
+    pointer (x, y, true)
+    pointer (x, y, false)
 
 tap label = tapAt (label, 0.5)
 
 level () = Semantics::value (elements (), "Level")
 
-// Runs of readings that only their label distinguishes.
-lettered (texts) = forEachList (texts, \text => expect (Drive::letters (driven, text), true))
+// Runs of readings that only their label distinguishes: `read` answers for one label.
+reading (labels, read, want) = forEachList (labels, \label => expect (read label, want))
 
-covering (labels) = forEachList (labels, \label => expect (Drive::offers (elements (), label), true))
+lettered (texts, want) = reading (texts, \text => Drive::letters (driven, text), want)
+
+// Lettering that has arrived, and lettering that has gone.
+inLetters (shown, hidden) =
+    lettered (shown, true)
+    lettered (hidden, false)
+
+// A menu item that has been chosen: no longer offered, its lettering on show.
+retiredItem (label) =
+    reading ([label], \label => Drive::offers (elements (), label), false)
+    lettered (["Choice two"], true)
 
 // Dragging the slider to `fraction` of its width leaves it reading `want`.
 levelAt (fraction, want) =
     tapAt ("Level", fraction)
     expect (level (), want)
-
-shownAll (labels) = forEachList (labels, \label => expect (Drive::shows (driven, label), true))
 
 selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
 
@@ -248,87 +252,84 @@ selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
 pickedKey (key) =
     choose ("Pick", key)
     expect (selected (), key)
-    expect (Drive::shows (driven, key), true)
+    reading ([key], \label => Drive::shows (driven, label), true)
 
 // A control that is on show and one that has gone.
 shownNow (shown, gone) =
     expect (Drive::shows (driven, shown), true)
     expect (Drive::shows (driven, gone), false)
 
-test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
-    begun "tiny"
+// A freshly begun session reads its first frame on the second tick.
+restarted skin =
+    begun skin
     expect (driven.drivenNow, 2)
+
+// A completion the host finishes with a chosen path.
+completed path = post (Drive::chosen (driven, "choose", path))
+
+test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
+    restarted "tiny"
     expect (driven.drivenSeen.renderedRevision, 1)
     expect (length driven.drivenSeen.renderedCurves, 1)
     curve = listGet driven.drivenSeen.renderedCurves 0 ?: []
-    expect (listGet curve 0 ?: 0.0, 10.0)
-    expect (listGet curve 1 ?: 0.0, 20.0)
-    expect (listGet curve 2 ?: 0.0, 110.0)
-    expect (listGet curve 3 ?: 0.0, 80.0)
-    lettered (["Hello"])
-    lettered (["Choice "])
-    expect (Drive::letters (driven, "Missing lettering"), false)
-    covering (["Menu", "Level"])
-    expect (Drive::offers (elements (), "Dismiss"), false)
+    forEachList ([{ at = 0, want = 10.0 }, { at = 1, want = 20.0 }, { at = 2, want = 110.0 }, { at = 3, want = 80.0 }], \reading => expect (listGet curve reading.at ?: 0.0, reading.want))
+    inLetters (["Hello", "Choice "], ["Missing lettering"])
+    reading (["Menu", "Level"], \label => Drive::offers (elements (), label), true)
+    reading (["Dismiss"], \label => Drive::offers (elements (), label), false)
     tap "Press"
-    lettered (["Pressed"])
-    expect (Drive::letters (driven, "Hello"), false)
+    inLetters (["Pressed"], ["Hello"])
     levelAt (0.0, 0.0)
-    levelAt (0.5, 0.5)
-    levelAt (1.0, 1.0)
-    levelAt (0.75, 0.75)
+    forEachList ([{ fraction = 0.5, want = 0.5 }, { fraction = 1.0, want = 1.0 }, { fraction = 0.75, want = 0.75 }], \row => levelAt (row.fraction, row.want))
     tap "Menu"
-    covering (["One", "Two", "Three"])
-    lettered (["One", "Two", "Three"])
+    reading (["One", "Two", "Three"], \label => Drive::offers (elements (), label), true)
+    lettered (["One", "Two", "Three"], true)
     tap "Two"
-    expect (Drive::offers (elements (), "One"), false)
-    lettered (["Choice two"])
+    retiredItem "One"
     expect (level (), 0.75)
     tap "Menu"
-    pointer (5.0, 5.0, true)
-    pointer (5.0, 5.0, false)
-    expect (Drive::offers (elements (), "Three"), false)
-    lettered (["Choice two"])
-    viewed (400.0, 400.0)
-    viewed (800.0, 600.0)
-    lettered (["Choice two"])
+    clickAt (5.0, 5.0)
+    retiredItem "Three"
+    forEachList ([{ width = 400.0, height = 400.0 }, { width = 800.0, height = 600.0 }], \size => viewed (size.width, size.height))
+    lettered (["Choice two"], true)
     post (Drive::frame (driven, 0.25))
     expect (driven.drivenSession.sessionStore.machineFault, "")
-    post (Drive::chosen (driven, "choose", "/music/a \"b\".mp3"))
-    lettered (["Choice two"])
-    post (Drive::chosen (driven, "choose", "/music/second.mp3"))
+    completed "/music/a \"b\".mp3"
+    lettered (["Choice two"], true)
+    completed "/music/second.mp3"
     post (Drive::ran (driven, "discover", 0, ""))
     post (Drive::ran (driven, "discover", 2, "no route"))
     expect (level (), 0.75)
     post (Drive::opened (driven, "/music/opened.mp3"))
-    lettered (["Choice two"])
+    lettered (["Choice two"], true)
     expect (driven.drivenNow > 20, true)
     expect (driven.drivenSession.sessionContext.platform, "macos")))
 
 test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
-    begun "plain"
-    shownAll (["Native", "Native action", "Pick"])
-    expect (Drive::shows (driven, "Missing control"), false)
+    restarted "plain"
+    reading (["Native", "Native action", "Pick"], \label => Drive::shows (driven, label), true)
+    reading (["Missing control"], \label => Drive::shows (driven, label), false)
     expect (selected (), "")
     press "Native action"
     shownNow ("Pressed", "Native")
     pickedKey "one"
     pickedKey "three"
-    expect (Drive::shows (driven, "one"), false)
+    reading (["one"], \label => Drive::shows (driven, label), false)
     pickedKey "two"
-    shownAll (["two", "Pressed"])
+    reading (["two", "Pressed"], \label => Drive::shows (driven, label), true)
     post (Drive::frame (driven, 0.5))
     post (Drive::opened (driven, "/tmp/native.mp3"))
-    post (Drive::chosen (driven, "choose", "/tmp/chosen.mp3"))
+    completed "/tmp/chosen.mp3"
     post (Drive::ran (driven, "run", 1, "failed"))
     expect (selected (), "two")
-    expect (Drive::shows (driven, "Pressed"), true)
-    begun "plain"
-    expect (driven.drivenNow, 2)
+    reading (["Pressed"], \label => Drive::shows (driven, label), true)
+    restarted "plain"
     expect (selected (), "")
     shownNow ("Native", "Pressed")))
 
 spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessSelected = false, accessMovable = false)
+
+// Where an activation a quarter across each named control lands, horizontally.
+landed (nodes, spots) = forEachList (spots, \spot => expect ((Semantics::spot (nodes, spot.named, 0.25)).pointX, spot.lands))
 
 test ("the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear", \() =>
     play = spotted (ui::Pressable, "Play", 0.0)
@@ -338,21 +339,9 @@ test ("the accessibility tree reads clearly to an agent: roles, values and range
     node = play(accessLabel = "Select Filter", accessMovable = true)
     picked = item(accessSelected = true)
     clear = [play, volume, menu, item, node]
-    expect (Semantics::announced play, "button \"Play\"")
-    expect (Semantics::announced volume, "slider \"Volume\" value 0.5 of 0.0 to 1.0")
-    expect (Semantics::announced menu, "popup \"Speed: 1x\"")
-    expect (Semantics::announced item, "menuitem \"Kitchen\"")
-    expect (Semantics::announced picked, "menuitem \"Kitchen\" selected")
-    expect (Semantics::selected ([play, item, picked], "Kitchen"), true)
-    expect (Semantics::selected (clear, "Kitchen"), false)
-    expect (Semantics::selected ([play], "Missing"), false)
-    expect (Semantics::announced node, "button \"Select Filter\" movable")
+    forEachList ([{ node = play, words = "button \"Play\"" }, { node = volume, words = "slider \"Volume\" value 0.5 of 0.0 to 1.0" }, { node = menu, words = "popup \"Speed: 1x\"" }, { node = item, words = "menuitem \"Kitchen\"" }, { node = picked, words = "menuitem \"Kitchen\" selected" }, { node = node, words = "button \"Select Filter\" movable" }], \one => expect (Semantics::announced one.node, one.words))
+    forEachList ([{ nodes = [play, item, picked], named = "Kitchen", found = true }, { nodes = clear, named = "Kitchen", found = false }, { nodes = [play], named = "Missing", found = false }], \one => expect (Semantics::selected (one.nodes, one.named), one.found))
     expect (Semantics::outline [play, picked], "button \"Play\"\nmenuitem \"Kitchen\" selected")
-    expect (Semantics::unclear clear, "")
-    expect (Semantics::unclear [play, play], "twice: \"Play\"|twice: \"Play\"")
-    expect (Semantics::unclear [spotted (ui::Pressable, "", 0.0)], "unnamed: \"\"")
-    expect (Semantics::unclear [spotted (ui::Popup, "Receiver: ", 0.0)], "unnamed: \"Receiver: \"")
-    expect ((Semantics::spot (clear, "Volume", 0.25)).pointX, 125.0)
-    expect ((Semantics::spot (clear, "Volume", 0.25)).pointY, 20.0)
-    expect ((Semantics::spot (clear, "Play", 0.25)).pointX, 50.0)
-    expect ((Semantics::spot (clear, "Nope", 0.25)).pointX, 0.0))
+    forEachList ([{ nodes = clear, said = "" }, { nodes = [play, play], said = "twice: \"Play\"|twice: \"Play\"" }, { nodes = [spotted (ui::Pressable, "", 0.0)], said = "unnamed: \"\"" }, { nodes = [spotted (ui::Popup, "Receiver: ", 0.0)], said = "unnamed: \"Receiver: \"" }], \one => expect (Semantics::unclear one.nodes, one.said))
+    landed (clear, [{ named = "Volume", lands = 125.0 }, { named = "Play", lands = 50.0 }, { named = "Nope", lands = 0.0 }])
+    expect ((Semantics::spot (clear, "Volume", 0.25)).pointY, 20.0))
