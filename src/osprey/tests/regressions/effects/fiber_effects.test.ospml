@@ -176,14 +176,11 @@ highScoreForTest () =
         log _msg => 0
     await (spawn (runJob (priWeight High)))
 
-(** Repeats the two-fiber resuming interaction for assertion use. *)
-pairedScoreForTest () = giftPairSum ()
-
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
 test "fiber results remain deterministic across effect handlers" (\() => exactArithmetic ((\() => checkAll "fiber and effect results" [
         highScoreForTest () == 81,
-        pairedScoreForTest () == 30,
+        giftPairSum () == 30,
         prodR == 10,
         silentR == 0,
         raceSum == 30,
@@ -506,24 +503,24 @@ handlerCellCrossesTheFiberBoundaryCase () =
     mut turns = 0
     mut answered = 0
 
-    (** The tracing arm: count the hop, fold the amount in, answer the new total. *)
-    traced = \work =>
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                trail := "${trail}${amount}:${cell}|"
-                cell
-        work ()
+    (** One arm serves both uses: `trace` 1 records the transcript, `trace` 0
+        leaves it alone; either way it counts the hop, folds the amount in and
+        answers the new total. *)
+    regionFor = \trace =>
+        \work =>
+            handle Tally
+                add amount =>
+                    hops := hops + 1 
+                    cell := cell + amount 
+                    trail := match trace
+                        1 => "${trail}${amount}:${cell}|"
+                        _ => trail
+                    cell
+            work ()
 
-    (** The identity arm: the same without the transcript. *)
-    untraced = \work =>
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                cell
-        work ()
+    (** The tracing arm writes the transcript; the untraced arm writes nothing. *)
+    traced = regionFor 1
+    untraced = regionFor 0
 
     (** main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
         and each perform's own answer is kept in its own positional field. *)
@@ -618,6 +615,16 @@ handlerCellCrossesTheFiberBoundaryCase () =
 // Register the shared-cell rule the spec names this file for.
 test "handler state is one promoted cell across the fiber boundary" (exactly handlerCellCrossesTheFiberBoundaryCase)
 
+(** Send `value` on `ch` and read the oldest value straight back. *)
+pingRound (ch, value) =
+    send ch value
+    recv ch
+
+(** Drain one value per weight in `weights` from `ch`, oldest first. *)
+drainWeights (ch, weights) = match weights
+    [] => 0
+    [head, ...tail] => recv ch * head + drainWeights (ch, tail)
+
 (** [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
     "appends `value`" and whose `recv` "removes its oldest value". Fibers are
     isolated and exchange only through it, while the effect the producer fires
@@ -642,11 +649,7 @@ channelHandoffKeepsFibersIsolatedCase () =
             send ch (tallyJob 33)
             send ch (tallyJob 44)
         await producer
-        r1 = recv ch
-        r2 = recv ch
-        r3 = recv ch
-        r4 = recv ch
-        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 
+        drainWeights (ch, [1000000, 10000, 100, 1])
 
     (** Two fibers, no shared memory: every digit the consumer answers arrived
         through the buffer. *)
@@ -656,21 +659,15 @@ channelHandoffKeepsFibersIsolatedCase () =
         send ch2 7
         send ch2 9
     cons2 = spawn
-        c1 = recv ch2
-        c2 = recv ch2
-        c3 = recv ch2
-        c1 * 100 + c2 * 10 + c3 
+        drainWeights (ch2, [100, 10, 1])
     await prod2
     consumed = await cons2
 
     (** A ONE-slot buffer reused three times, including a negative payload. *)
     ping = Channel 1
-    send ping 1
-    p1 = recv ping
-    send ping 2
-    p2 = recv ping
-    send ping (0 - 3 )
-    p3 = recv ping
+    p1 = pingRound (ping, 1)
+    p2 = pingRound (ping, 2)
+    p3 = pingRound (ping, (0 - 3 ))
 
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll "a channel hands values over oldest first" [

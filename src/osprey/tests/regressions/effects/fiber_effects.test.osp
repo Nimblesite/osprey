@@ -182,14 +182,11 @@ fn highScoreForTest() = {
     await(spawn runJob(priWeight(High)))
 }
 
-/// Repeats the two-fiber resuming interaction for assertion use.
-fn pairedScoreForTest() = giftPairSum()
-
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
 test("fiber results remain deterministic across effect handlers", fn() => exactArithmetic(fn() => checkAll("fiber and effect results", [
         highScoreForTest() == 81,
-        pairedScoreForTest() == 30,
+        giftPairSum() == 30,
         prodR == 10,
         silentR == 0,
         raceSum == 30,
@@ -665,6 +662,18 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 // Register the shared-cell rule the spec names this file for.
 test("handler state is one promoted cell across the fiber boundary", exactly(handlerCellCrossesTheFiberBoundaryCase))
 
+/// Send `value` on `ch` and read the oldest value straight back.
+fn pingRound(ch, value) = {
+    send(ch, value)
+    recv(ch)
+}
+
+/// Drain one value per weight in `weights` from `ch`, oldest first.
+fn drainWeights(ch, weights) = match weights {
+    [] => 0
+    [head, ...tail] => recv(ch) * head + drainWeights(ch, tail)
+}
+
 /// [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
 /// "appends `value`" and whose `recv` "removes its oldest value". Fibers are
 /// isolated and exchange only through it, while the effect the producer fires
@@ -692,11 +701,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
             send(ch, tallyJob(44))
         }
         await(producer)
-        let r1 = recv(ch)
-        let r2 = recv(ch)
-        let r3 = recv(ch)
-        let r4 = recv(ch)
-        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 
+        drainWeights(ch, [1000000, 10000, 100, 1])
     }
 
     /// Two fibers, no shared memory: every digit the consumer answers arrived
@@ -708,22 +713,16 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         send(ch2, 9)
     }
     let cons2 = spawn {
-        let c1 = recv(ch2)
-        let c2 = recv(ch2)
-        let c3 = recv(ch2)
-        c1 * 100 + c2 * 10 + c3 
+        drainWeights(ch2, [100, 10, 1])
     }
     await(prod2)
     let consumed = await(cons2)
 
     /// A ONE-slot buffer reused three times, including a negative payload.
     let ping = Channel(1)
-    send(ping, 1)
-    let p1 = recv(ping)
-    send(ping, 2)
-    let p2 = recv(ping)
-    send(ping, 0 - 3 )
-    let p3 = recv(ping)
+    let p1 = pingRound(ping, 1)
+    let p2 = pingRound(ping, 2)
+    let p3 = pingRound(ping, 0 - 3 )
 
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll("a channel hands values over oldest first", [
