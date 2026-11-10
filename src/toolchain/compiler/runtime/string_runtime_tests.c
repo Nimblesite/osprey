@@ -73,34 +73,32 @@ static void test_index_of(void) {
 /* ---------- substring helpers ---------- */
 
 static void test_take(void) {
-    char *out;
-    out = osp_string_take("hello", 3);  assert(strcmp(out, "hel") == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", 0);  assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", -5); assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", 5);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_take("hello", 99); assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* clamp */
-    out = osp_string_take("", 3);       assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take(NULL, 3);     assert(strcmp(out, "")    == 0);   release_test_buffer(out);
+    text_is(osp_string_take("hello", 3), "hel");
+    text_is(osp_string_take("hello", 0), "");
+    text_is(osp_string_take("hello", -5), "");
+    text_is(osp_string_take("hello", 5), "hello");
+    text_is(osp_string_take("hello", 99), "hello"); /* clamp */
+    text_is(osp_string_take("", 3), "");
+    text_is(osp_string_take(NULL, 3), "");
     /* [BUILTIN-STRING-TAKE]: a cut inside a character moves past it. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D"; /* 8 bytes */
     for (int64_t n = 1; n <= 3; n++) {
-        out = osp_string_take(quote, n); assert(strcmp(out, "\xE2\x80\x9C") == 0); release_test_buffer(out);
+        text_is(osp_string_take(quote, n), "\xE2\x80\x9C");
     }
-    out = osp_string_take(quote, 4); assert(strcmp(out, "\xE2\x80\x9Co") == 0); release_test_buffer(out);
-    out = osp_string_take(quote, 6); assert(strcmp(out, quote) == 0); release_test_buffer(out);
-    out = osp_string_take("\xF0\x9F\xA6\x85x", 2); assert(strcmp(out, "\xF0\x9F\xA6\x85") == 0); release_test_buffer(out);
+    text_is(osp_string_take(quote, 4), "\xE2\x80\x9Co");
+    text_is(osp_string_take(quote, 6), quote);
+    text_is(osp_string_take("\xF0\x9F\xA6\x85x", 2), "\xF0\x9F\xA6\x85");
     printf("  ok  take\n");
 }
 
 static void test_drop(void) {
-    char *out;
-    out = osp_string_drop("hello", 3);  assert(strcmp(out, "lo")   == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", 0);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", -5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", 5);  assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* exact */
-    out = osp_string_drop("hello", 99); assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* clamp */
-    out = osp_string_drop("", 3);       assert(strcmp(out, "")    == 0);  release_test_buffer(out);
-    out = osp_string_drop(NULL, 3);     assert(strcmp(out, "")    == 0);  release_test_buffer(out);
+    text_is(osp_string_drop("hello", 3), "lo");
+    text_is(osp_string_drop("hello", 0), "hello");
+    text_is(osp_string_drop("hello", -5), "hello");
+    text_is(osp_string_drop("hello", 5), ""); /* exact */
+    text_is(osp_string_drop("hello", 99), ""); /* clamp */
+    text_is(osp_string_drop("", 3), "");
+    text_is(osp_string_drop(NULL, 3), "");
     printf("  ok  drop\n");
     /* [BUILTIN-STRING-DROP]: the complement of take at every byte count. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D";
@@ -116,11 +114,10 @@ static void test_drop(void) {
 }
 
 static void test_substring(void) {
-    char *out;
-    out = osp_string_substring("hello", 1, 4); assert(strcmp(out, "ell") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 0, 5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 0, 0); assert(strcmp(out, "") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 5, 5); assert(strcmp(out, "") == 0); release_test_buffer(out);
+    text_is(osp_string_substring("hello", 1, 4), "ell");
+    text_is(osp_string_substring("hello", 0, 5), "hello");
+    text_is(osp_string_substring("hello", 0, 0), "");
+    text_is(osp_string_substring("hello", 5, 5), "");
     /* error cases: must return NULL */
     assert(osp_string_substring("hello", -1, 3) == NULL); /* start < 0 */
     assert(osp_string_substring("hello", 0, 99) == NULL); /* end > len */
@@ -132,55 +129,51 @@ static void test_substring(void) {
 /* ---------- transformation ---------- */
 
 static void test_to_upper_lower(void) {
-    char *out;
-    out = osp_string_to_upper("hello"); assert(strcmp(out, "HELLO") == 0); release_test_buffer(out);
-    out = osp_string_to_upper("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_to_upper("AbC");   assert(strcmp(out, "ABC")   == 0); release_test_buffer(out);
-    out = osp_string_to_upper("1!@a");  assert(strcmp(out, "1!@A")  == 0); release_test_buffer(out);
-    out = osp_string_to_upper(NULL);    assert(strcmp(out, "")      == 0); release_test_buffer(out);
+    text_is(osp_string_to_upper("hello"), "HELLO");
+    text_is(osp_string_to_upper(""), "");
+    text_is(osp_string_to_upper("AbC"), "ABC");
+    text_is(osp_string_to_upper("1!@a"), "1!@A");
+    text_is(osp_string_to_upper(NULL), "");
 
-    out = osp_string_to_lower("HELLO"); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_to_lower("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_to_lower("AbC");   assert(strcmp(out, "abc")   == 0); release_test_buffer(out);
+    text_is(osp_string_to_lower("HELLO"), "hello");
+    text_is(osp_string_to_lower(""), "");
+    text_is(osp_string_to_lower("AbC"), "abc");
     printf("  ok  to_upper/to_lower\n");
 }
 
 static void test_trim(void) {
-    char *out;
-    out = osp_string_trim("  hello  ");      assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_trim("\t\n hi \r\n");   assert(strcmp(out, "hi")    == 0); release_test_buffer(out);
-    out = osp_string_trim("hello");          assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_trim("");               assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_trim("   ");            assert(strcmp(out, "")      == 0); release_test_buffer(out); /* all ws */
-    out = osp_string_trim(NULL);             assert(strcmp(out, "")      == 0); release_test_buffer(out);
+    text_is(osp_string_trim("  hello  "), "hello");
+    text_is(osp_string_trim("\t\n hi \r\n"), "hi");
+    text_is(osp_string_trim("hello"), "hello");
+    text_is(osp_string_trim(""), "");
+    text_is(osp_string_trim("   "), ""); /* all ws */
+    text_is(osp_string_trim(NULL), "");
 
-    out = osp_string_trim_start("  hello  "); assert(strcmp(out, "hello  ") == 0); release_test_buffer(out);
-    out = osp_string_trim_start("hello");     assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
-    out = osp_string_trim_start("   ");       assert(strcmp(out, "")        == 0); release_test_buffer(out);
+    text_is(osp_string_trim_start("  hello  "), "hello  ");
+    text_is(osp_string_trim_start("hello"), "hello");
+    text_is(osp_string_trim_start("   "), "");
 
-    out = osp_string_trim_end("  hello  ");   assert(strcmp(out, "  hello") == 0); release_test_buffer(out);
-    out = osp_string_trim_end("hello");       assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
-    out = osp_string_trim_end("   ");         assert(strcmp(out, "")        == 0); release_test_buffer(out);
+    text_is(osp_string_trim_end("  hello  "), "  hello");
+    text_is(osp_string_trim_end("hello"), "hello");
+    text_is(osp_string_trim_end("   "), "");
     printf("  ok  trim/trim_start/trim_end\n");
 }
 
 static void test_reverse(void) {
-    char *out;
-    out = osp_string_reverse("abc");   assert(strcmp(out, "cba")    == 0); release_test_buffer(out);
-    out = osp_string_reverse("a");     assert(strcmp(out, "a")      == 0); release_test_buffer(out);
-    out = osp_string_reverse("");      assert(strcmp(out, "")       == 0); release_test_buffer(out);
-    out = osp_string_reverse("12345"); assert(strcmp(out, "54321")  == 0); release_test_buffer(out);
-    out = osp_string_reverse(NULL);    assert(strcmp(out, "")       == 0); release_test_buffer(out);
+    text_is(osp_string_reverse("abc"), "cba");
+    text_is(osp_string_reverse("a"), "a");
+    text_is(osp_string_reverse(""), "");
+    text_is(osp_string_reverse("12345"), "54321");
+    text_is(osp_string_reverse(NULL), "");
     printf("  ok  reverse\n");
 }
 
 static void test_replace(void) {
-    char *out;
-    out = osp_string_replace("a-b-c", "-", "_");        assert(strcmp(out, "a_b_c") == 0); release_test_buffer(out);
-    out = osp_string_replace("aaa", "a", "bb");         assert(strcmp(out, "bbbbbb") == 0); release_test_buffer(out);
-    out = osp_string_replace("hello", "xyz", "Q");      assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* no match */
-    out = osp_string_replace("hello", "l", "");         assert(strcmp(out, "heo") == 0); release_test_buffer(out); /* shrink */
-    out = osp_string_replace("", "x", "y");             assert(strcmp(out, "") == 0); release_test_buffer(out);
+    text_is(osp_string_replace("a-b-c", "-", "_"), "a_b_c");
+    text_is(osp_string_replace("aaa", "a", "bb"), "bbbbbb");
+    text_is(osp_string_replace("hello", "xyz", "Q"), "hello"); /* no match */
+    text_is(osp_string_replace("hello", "l", ""), "heo"); /* shrink */
+    text_is(osp_string_replace("", "x", "y"), "");
     /* error cases */
     assert(osp_string_replace("hello", "", "x")    == NULL); /* empty needle */
     assert(osp_string_replace(NULL,    "x", "y")   == NULL);
@@ -190,12 +183,11 @@ static void test_replace(void) {
 }
 
 static void test_repeat(void) {
-    char *out;
-    out = osp_string_repeat("ab", 3);   assert(strcmp(out, "ababab") == 0); release_test_buffer(out);
-    out = osp_string_repeat("x", 5);    assert(strcmp(out, "xxxxx") == 0); release_test_buffer(out);
-    out = osp_string_repeat("ab", 0);   assert(strcmp(out, "") == 0); release_test_buffer(out); /* n=0 -> empty */
-    out = osp_string_repeat("ab", 1);   assert(strcmp(out, "ab") == 0); release_test_buffer(out);
-    out = osp_string_repeat("", 99);    assert(strcmp(out, "") == 0); release_test_buffer(out); /* empty source */
+    text_is(osp_string_repeat("ab", 3), "ababab");
+    text_is(osp_string_repeat("x", 5), "xxxxx");
+    text_is(osp_string_repeat("ab", 0), ""); /* n=0 -> empty */
+    text_is(osp_string_repeat("ab", 1), "ab");
+    text_is(osp_string_repeat("", 99), ""); /* empty source */
     /* error cases */
     assert(osp_string_repeat("ab", -1) == NULL);
     assert(osp_string_repeat(NULL,  3) == NULL);
@@ -203,16 +195,15 @@ static void test_repeat(void) {
 }
 
 static void test_pad(void) {
-    char *out;
-    out = osp_string_pad_start("7",   3, "0");  assert(strcmp(out, "007") == 0); release_test_buffer(out);
-    out = osp_string_pad_start("42",  5, "ab"); assert(strcmp(out, "aba42") == 0); release_test_buffer(out);
-    out = osp_string_pad_start("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* no pad needed */
-    out = osp_string_pad_start("hi",  1, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* target < len */
-    out = osp_string_pad_start("",    3, "0");  assert(strcmp(out, "000") == 0); release_test_buffer(out);
+    text_is(osp_string_pad_start("7",   3, "0"), "007");
+    text_is(osp_string_pad_start("42",  5, "ab"), "aba42");
+    text_is(osp_string_pad_start("hi",  2, "x"), "hi"); /* no pad needed */
+    text_is(osp_string_pad_start("hi",  1, "x"), "hi"); /* target < len */
+    text_is(osp_string_pad_start("",    3, "0"), "000");
 
-    out = osp_string_pad_end  ("7",   3, ".");  assert(strcmp(out, "7..") == 0); release_test_buffer(out);
-    out = osp_string_pad_end  ("42",  5, "ab"); assert(strcmp(out, "42aba") == 0); release_test_buffer(out);
-    out = osp_string_pad_end  ("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out);
+    text_is(osp_string_pad_end  ("7",   3, "."), "7..");
+    text_is(osp_string_pad_end  ("42",  5, "ab"), "42aba");
+    text_is(osp_string_pad_end  ("hi",  2, "x"), "hi");
 
     /* error: empty fill */
     assert(osp_string_pad_start("hi", 5, "") == NULL);

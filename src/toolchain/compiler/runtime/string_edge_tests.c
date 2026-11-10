@@ -120,24 +120,16 @@ void test_unicode_bytes(void) {
 void test_repeated_replace(void) {
     /* replace many times, growing or shrinking */
     char *out;
-    out = osp_string_replace("xxxxxxxxxx", "x", "ab");
-    assert(strcmp(out, "abababababababababab") == 0);
-    release_test_buffer(out);
-    out = osp_string_replace("xxxxxxxxxx", "x", "");
-    assert(strcmp(out, "") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("xxxxxxxxxx", "x", "ab"), "abababababababababab");
+    text_is(osp_string_replace("xxxxxxxxxx", "x", ""), "");
     /* needle longer than replacement, exactly N matches */
-    out = osp_string_replace("xyxyxyxy", "xy", "z");
-    assert(strcmp(out, "zzzz") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("xyxyxyxy", "xy", "z"), "zzzz");
     /* overlapping-ish needles */
     out = osp_string_replace("aaaa", "aa", "b");
     assert(strcmp(out, "bb") == 0);  /* non-overlapping leftmost */
     release_test_buffer(out);
     /* multi-char replacement that contains the needle (no infinite recursion) */
-    out = osp_string_replace("aaa", "a", "aa");
-    assert(strcmp(out, "aaaaaa") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("aaa", "a", "aa"), "aaaaaa");
     printf("  ok  repeated_replace\n");
 }
 
@@ -184,8 +176,6 @@ void test_pad_overflow_guards(void) {
     release_test_buffer(out);
 
     /* exact-match target_length == strlen(s) returns dup of s */
-    out = osp_string_pad_start("abc", 3, "x");
-    assert(strcmp(out, "abc") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_pad_start("abc", 3, "x"), "abc");
     printf("  ok  pad_overflow_guards\n");
 }

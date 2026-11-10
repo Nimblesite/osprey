@@ -107,23 +107,17 @@ void test_words(void) {
 void test_join(void) {
     /* Build a list manually and join it. */
     osp_string_list *list = osp_string_split("a,b,c", ",");
-    char *out = osp_string_join(list, "-");
-    assert(strcmp(out, "a-b-c") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join(list, "-"), "a-b-c");
     osp_string_list_free(list);
 
     /* join round-trips split */
     list = osp_string_split("foo::bar::baz", "::");
-    out = osp_string_join(list, "::");
-    assert(strcmp(out, "foo::bar::baz") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join(list, "::"), "foo::bar::baz");
     osp_string_list_free(list);
 
     /* empty list → "" */
     list = osp_string_split("", ",");
-    out = osp_string_join(list, "x");
-    assert(strcmp(out, "") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join(list, "x"), "");
     osp_string_list_free(list);
 
     printf("  ok  join\n");
@@ -148,9 +142,7 @@ void test_join_runtime_list(void) {
 
     /* one word: the separator is never applied */
     list = push_word(list, "solo");
-    out = osp_string_join_list(list, "-");
-    assert(strcmp(out, "solo") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join_list(list, "-"), "solo");
 
     /* two words with a separator */
     const char second[] = "duo";
