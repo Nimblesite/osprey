@@ -14,18 +14,7 @@ impl Resolver<'_> {
         context: &Context,
         locals: &mut Locals,
     ) {
-        for parameter in &mut ty.generic_params {
-            self.rewrite_type(parameter, context, locals);
-        }
-        if let Some(element) = &mut ty.array_element {
-            self.rewrite_type(element, context, locals);
-        }
-        for parameter in &mut ty.parameter_types {
-            self.rewrite_type(parameter, context, locals);
-        }
-        if let Some(result) = &mut ty.return_type {
-            self.rewrite_type(result, context, locals);
-        }
+        each_direct_child(ty, |child| self.rewrite_type(child, context, locals));
         if ty.name.is_empty() || locals.types.contains(&ty.name) {
             return;
         }
@@ -227,23 +216,29 @@ impl Resolver<'_> {
     }
 }
 
+/// Visit every type nested directly inside `ty` — generic arguments, an array
+/// element, parameters and a result — in source order.
+fn each_direct_child(ty: &mut TypeExpr, mut visit: impl FnMut(&mut TypeExpr)) {
+    for parameter in &mut ty.generic_params {
+        visit(parameter);
+    }
+    if let Some(element) = &mut ty.array_element {
+        visit(element);
+    }
+    for parameter in &mut ty.parameter_types {
+        visit(parameter);
+    }
+    if let Some(result) = &mut ty.return_type {
+        visit(result);
+    }
+}
+
 fn substitute(ty: &mut TypeExpr, substitutions: &BTreeMap<String, TypeExpr>) {
     if let Some(replacement) = substitutions.get(&ty.name) {
         *ty = replacement.clone();
         return;
     }
-    for parameter in &mut ty.generic_params {
-        substitute(parameter, substitutions);
-    }
-    if let Some(element) = &mut ty.array_element {
-        substitute(element, substitutions);
-    }
-    for parameter in &mut ty.parameter_types {
-        substitute(parameter, substitutions);
-    }
-    if let Some(result) = &mut ty.return_type {
-        substitute(result, substitutions);
-    }
+    each_direct_child(ty, |child| substitute(child, substitutions));
 }
 
 /// Render a comma-separated list of types — the shared shape of a function
