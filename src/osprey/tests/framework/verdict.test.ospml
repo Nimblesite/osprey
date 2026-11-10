@@ -178,6 +178,20 @@ verdictLabel (Skip why) = "skip(${why})"
 (** Whether regrouping an `andThen` chain leaves the same reported outcome. *)
 associates left right = verdictLabel left == verdictLabel right
 
+(** Whether combining two verdicts renders exactly `renders`. *)
+thenRenders left right renders = verdictLabel (andThen left right) == renders
+
+(** Whether `Pass` leaves `v` unchanged on each side of `andThen`. *)
+identityOnLeft v = verdictLabel (andThen Pass v) == verdictLabel v
+identityOnRight v = verdictLabel (andThen v Pass) == verdictLabel v
+
+(** Whether the labeled comparison renders exactly `renders`. *)
+labeledRenders label expected actual renders =
+    verdictLabel (checkVerdict label expected actual) == renders
+
+(** Whether the precondition gate renders exactly `renders`. *)
+gateRenders condition renders = verdictLabel (assume condition) == renders
+
 (** [TESTING-VERDICT] fixes three contracts at once: `assume` turns a false
     condition into `Skip` and a true one into `Pass`; the labeled comparison
     yields `Pass` on equality and otherwise a `Fail` carrying the labeled
@@ -199,13 +213,10 @@ verdictAlgebraCase () =
     // the second operand's payload must never surface when it does.
     checkAll "andThen retains the first non-Pass verdict" [
         structuralEquals [verdictLabel (andThen Pass Pass), verdictLabel (andThen Pass fail2)] ["pass", "fail(two)"],
-        verdictLabel (andThen Pass skip2) == "skip(second)",
-        verdictLabel (andThen fail1 Pass) == "fail(one)",
-        verdictLabel (andThen fail1 fail2) == "fail(one)",
-        verdictLabel (andThen fail1 skip2) == "fail(one)",
-        verdictLabel (andThen skip1 Pass) == "skip(first)",
-        verdictLabel (andThen skip1 fail2) == "skip(first)",
-        verdictLabel (andThen skip1 skip2) == "skip(first)",
+        thenRenders Pass skip2 "skip(second)",
+        thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)",
+        thenRenders fail1 skip2 "fail(one)", thenRenders skip1 Pass "skip(first)",
+        thenRenders skip1 fail2 "skip(first)", thenRenders skip1 skip2 "skip(first)",
         verdictLabel (andThen fail1 fail2) != verdictLabel fail2,
         verdictLabel (andThen skip1 skip2) != verdictLabel skip2,
         startsWith (verdictLabel (andThen fail1 skip2)) "fail(",
@@ -218,35 +229,29 @@ verdictAlgebraCase () =
     // Monoid laws: Pass is a two-sided identity and andThen associates, so a
     // regrouped fold cannot change the reported outcome.
     checkAll "Pass is the identity of andThen and andThen associates" [
-        verdictLabel (andThen Pass Pass) == verdictLabel Pass,
-        verdictLabel (andThen Pass fail1) == verdictLabel fail1,
-        verdictLabel (andThen Pass skip1) == verdictLabel skip1,
-        verdictLabel (andThen fail1 Pass) == verdictLabel fail1,
-        verdictLabel (andThen skip1 Pass) == verdictLabel skip1,
+        identityOnLeft Pass, identityOnLeft fail1, identityOnLeft skip1,
+        identityOnRight fail1, identityOnRight skip1,
         associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)),
         associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)),
         associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
-        verdictLabel (andThen (andThen Pass Pass) fail2) == "fail(two)",
-        verdictLabel (andThen Pass (andThen Pass fail2)) == "fail(two)",
-        verdictLabel (andThen (andThen Pass Pass) Pass) == "pass",
-        verdictLabel (andThen (andThen fail1 fail2) skip1) == "fail(one)",
-        verdictLabel (andThen fail1 (andThen fail2 skip1)) == "fail(one)",
-        verdictLabel (andThen (andThen Pass Pass) (andThen Pass skip2)) == "skip(second)",
-        verdictLabel (andThen (andThen Pass skip2) (andThen Pass fail1)) == "skip(second)",
-        verdictLabel (andThen (andThen Pass fail1) (andThen Pass skip2)) == "fail(one)"
+        thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)",
+        thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)",
+        thenRenders fail1 (andThen fail2 skip1) "fail(one)",
+        thenRenders (andThen Pass Pass) (andThen Pass skip2) "skip(second)",
+        thenRenders (andThen Pass skip2) (andThen Pass fail1) "skip(second)",
+        thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)"
     ]
 
     // The Fail payload is the whole labeled mismatch, verbatim. Its rendered
     // length is fixed: "fail(" + "sum: expected 5, got 6" (22) + ")" = 28.
     checkAll "the labeled mismatch is carried verbatim" [
         structuralEquals [verdictLabel (checkVerdict "sum" "5" "5"), mismatch] ["pass", "fail(sum: expected 5, got 6)"],
-        verdictLabel (checkVerdict "empty" "" "") == "pass",
-        verdictLabel (checkVerdict "empty" "" "x") == "fail(empty: expected , got x)",
-        verdictLabel (checkVerdict "case" "A" "a") == "fail(case: expected A, got a)",
-        verdictLabel (checkVerdict "space" " " " ") == "pass",
-        verdictLabel (checkVerdict "space" "a b" "ab") == "fail(space: expected a b, got ab)",
-        verdictLabel (checkVerdict "digits" (toString (add 2 3)) "5") == "pass",
-        verdictLabel (checkVerdict "bool" (toString (3 < 5)) "true") == "pass",
+        labeledRenders "empty" "" "" "pass", labeledRenders "empty" "" "x" "fail(empty: expected , got x)",
+        labeledRenders "case" "A" "a" "fail(case: expected A, got a)",
+        labeledRenders "space" " " " " "pass",
+        labeledRenders "space" "a b" "ab" "fail(space: expected a b, got ab)",
+        labeledRenders "digits" (toString (add 2 3)) "5" "pass",
+        labeledRenders "bool" (toString (3 < 5)) "true" "pass",
         verdictLabel (sumCheck "5" "5") == "pass",
         verdictLabel (sumCheck "5" "6") == "fail(sum: expected 5, got 6)",
         verdictLabel ((checkVerdict "sum" "5") "7") == "fail(sum: expected 5, got 7)",
@@ -261,18 +266,16 @@ verdictAlgebraCase () =
     // assume is the precondition gate: "skip(" + "precondition not met" (20)
     // + ")" is 26 characters, and a Skip absorbs everything after it.
     checkAll "assume converts a precondition into Pass or Skip" [
-        verdictLabel (assume true) == "pass",
-        verdictLabel (assume false) == "skip(precondition not met)",
-        verdictLabel (assume (2 > 3)) == "skip(precondition not met)",
+        gateRenders true "pass", gateRenders false "skip(precondition not met)",
+        gateRenders (2 > 3) "skip(precondition not met)",
         structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"],
-        verdictLabel (assume ("a" == "b")) == "skip(precondition not met)",
-        verdictLabel (assume (5 >= 5)) == "pass",
-        verdictLabel (assume (5 > 5)) == "skip(precondition not met)",
-        verdictLabel (andThen (assume true) fail1) == "fail(one)",
-        verdictLabel (andThen (assume false) fail1) == "skip(precondition not met)",
-        verdictLabel (andThen fail1 (assume false)) == "fail(one)",
-        verdictLabel (andThen (assume true) (assume false)) == "skip(precondition not met)",
-        verdictLabel (andThen (assume true) (assume true)) == "pass",
+        gateRenders ("a" == "b") "skip(precondition not met)",
+        gateRenders (5 >= 5) "pass", gateRenders (5 > 5) "skip(precondition not met)",
+        thenRenders (assume true) fail1 "fail(one)",
+        thenRenders (assume false) fail1 "skip(precondition not met)",
+        thenRenders fail1 (assume false) "fail(one)",
+        thenRenders (assume true) (assume false) "skip(precondition not met)",
+        thenRenders (assume true) (assume true) "pass",
         startsWith (verdictLabel (assume false)) "skip(",
         length (verdictLabel (assume false)) == 26,
         !(contains (verdictLabel (assume true)) "skip")
@@ -587,6 +590,9 @@ swappedLevel v =
         Shallow rank => "${rank}"
         Flat => "-"
 
+(** Both renderers must reach their Deep clause for any payload spelling. *)
+deepRenders f marker rank renders = f (Deep(marker = marker, rank = rank)) == renders
+
 (** Integer literal clauses with a trailing wildcard [FLAVOR-ML-CLAUSES]. *)
 band 0 = "zero"
 band 1 = "one"
@@ -636,8 +642,7 @@ matchLayoutAndClausesCase () =
         structuralEquals [describeLevel deep, describeLevel shallow] ["deep:north:7", "shallow:south"],
         structuralEquals [describeLevel Flat, describeLevel (Deep(marker = "", rank = 0))] ["flat", "deep::0"],
         describeLevel (Shallow(marker = "")) == "shallow:",
-        describeLevel (Deep(marker = "a b", rank = 12)) == "deep:a b:12",
-        describeLevel (Deep(marker = "12", rank = 12)) == "deep:12:12",
+        deepRenders describeLevel "a b" 12 "deep:a b:12", deepRenders describeLevel "12" 12 "deep:12:12",
         describeLevel deep != describeLevel shallow,
         structuralEquals [startsWith (describeLevel deep) "deep:", endsWith (describeLevel deep) ":7"] [true, true],
         contains (describeLevel deep) "north",
@@ -653,7 +658,7 @@ matchLayoutAndClausesCase () =
         structuralEquals [swappedLevel deep, swappedLevel shallow] ["north/7", "south"],
         structuralEquals [swappedLevel Flat, swappedLevel (Deep(marker = "x", rank = 1))] ["-", "x/1"],
         structuralEquals [swappedLevel (Deep(marker = "", rank = 0)), swappedLevel (Shallow(marker = ""))] ["/0", ""],
-        swappedLevel (Deep(marker = "7", rank = 7)) == "7/7",
+        deepRenders swappedLevel "7" 7 "7/7",
         swappedLevel deep != describeLevel deep,
         structuralEquals [contains (swappedLevel deep) "/", startsWith (swappedLevel deep) "north"] [true, true],
         endsWith (swappedLevel deep) "7",
