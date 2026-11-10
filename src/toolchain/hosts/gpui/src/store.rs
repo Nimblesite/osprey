@@ -170,7 +170,10 @@ fn root_from(
     linux_root(home, data_home, app)
 }
 
-/// Returns the platform's application store root ([GPUI-HOST-CAPABILITIES]).
+/// Returns the platform's application store root ([GPUI-HOST-CAPABILITIES]):
+/// macOS `~/Library/Application Support/Osprey/<app>`, Linux
+/// `$XDG_DATA_HOME/osprey/<app>` (or `~/.local/share/osprey/<app>`), Windows
+/// `%APPDATA%\\Osprey\\<app>`.
 fn root() -> Result<PathBuf, String> {
     let app = std::env::var("OSPREY_GPUI_APP_NAME").unwrap_or_else(|_| "osprey".to_owned());
     root_from(

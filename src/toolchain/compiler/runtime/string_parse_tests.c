@@ -24,6 +24,11 @@ static void float_between(const char *text, double lo, double hi) {
     assert(osp_parse_float_strict(text, &out) == 0); assert(out > lo && out < hi);
 }
 
+static void float_rejects(const char *text) {
+    double out;
+    assert(osp_parse_float_strict(text, &out) != 0);
+}
+
 /* Every NULL-terminated entry is rejected. */
 static void all_int_rejected(const char *const *texts) {
     for (size_t i = 0; texts[i] != NULL; i++) int_rejects(texts[i]);
@@ -57,6 +62,7 @@ void test_parse_int(void) {
         NULL,
     };
     all_int_rejected(rejected);
+    int_rejects(NULL); /* NULL text is rejected, output untouched */
     printf("  ok  parse_int_strict\n");
 }
 
@@ -88,6 +94,7 @@ void test_parse_float(void) {
         NULL,
     };
     all_float_rejected(rejected);
+    float_rejects(NULL);
     assert(osp_parse_float_strict("1.0",     NULL) != 0);
     printf("  ok  parse_float_strict\n");
 }

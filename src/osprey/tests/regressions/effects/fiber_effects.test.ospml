@@ -270,8 +270,8 @@ awaitReplaysOneEffectfulRunCase () =
     underTally = \work =>
         handle Tally
             add amount =>
-                performs := performs + 1 
-                total := total + amount 
+                performs := performs + 1
+                total := total + amount
                 lastAmount := amount
                 total
         work ()
@@ -737,10 +737,10 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     outerRegion = \work =>
         handle Relay
             fetch tag =>
-                outerHits := outerHits + 1 
-                tag * 2 
+                outerHits := outerHits + 1
+                tag * 2
             stamp tag =>
-                stampHits := stampHits + 1 
+                stampHits := stampHits + 1
                 "outer${tag}"
         work ()
 
