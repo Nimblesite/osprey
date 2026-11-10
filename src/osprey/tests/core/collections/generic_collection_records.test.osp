@@ -9,9 +9,15 @@ effect RecordAudit {
 
 fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
 listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
+/// rowIs reads row `row` of `matrix` cell by cell through nestedAt and holds
+/// when the cells are `wants`, in order.
+fn rowIs(matrix, row, fallbackRow, fallback, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, c) => ok && nestedAt(matrix, row, c, fallbackRow, fallback) == (listGet(wants, c) ?: fallback))
 
 fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
 listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
+/// groupIs reads group `key` of `groups` item by item through groupAt and
+/// holds when the items are `wants`, in order.
+fn groupIs(groups, key, fallbackList, fallback, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, i) => ok && groupAt(groups, key, i, fallbackList, fallback) == (listGet(wants, i) ?: fallback))
 
 fn auditEnvelopeMetadata(envelopes) = {
     mut transcript = ""
@@ -56,16 +62,13 @@ fn genericRecordCollectionEffectCase() = {
             length(firstBack.metadata) == 10,
             length(secondBack.metadata) == 6,
             length(thirdBack.metadata) == 5,
-            nestedAt(firstBack.payload, 0, 0, [99], 99) == 1,
-            nestedAt(firstBack.payload, 0, 1, [99], 99) == 2,
+            rowIs(firstBack.payload, 0, [99], 99, [1, 2]),
             nestedAt(firstBack.payload, 1, 0, [99], 99) == 3,
             nestedAt(firstBack.payload, 1, 2, [99], 99) == 5,
-            nestedAt(secondBack.payload, 0, 0, [99], 99) == 6,
-            nestedAt(secondBack.payload, 0, 1, [99], 99) == 7,
+            rowIs(secondBack.payload, 0, [99], 99, [6, 7]),
             nestedAt(secondBack.payload, 1, 0, [99], 99) == 8,
             nestedAt(secondBack.payload, 1, 2, [99], 99) == 10,
-            nestedAt(thirdBack.payload, 0, 0, [99], 99) == 11,
-            nestedAt(thirdBack.payload, 0, 1, [99], 99) == 12,
+            rowIs(thirdBack.payload, 0, [99], 99, [11, 12]),
             (listGet(envelopes, 8) ?: fallback).metadata == "fallback",
             nestedAt((listGet(envelopes, 8) ?: fallback).payload, 0, 0, [91], 98) == 99,
             listLength(envelopes) == 2,
@@ -79,10 +82,8 @@ fn genericRecordCollectionEffectCase() = {
             mapContains(envelopeMap, "primary"),
             !mapContains(envelopeMap, "missing"),
             stringBack.metadata == 17,
-            groupAt(stringBack.payload, "short", 0, ["row"], "item") == "a",
-            groupAt(stringBack.payload, "short", 1, ["row"], "item") == "bb",
-            groupAt(stringBack.payload, "long", 0, ["row"], "item") == "three",
-            groupAt(stringBack.payload, "long", 1, ["row"], "item") == "seven",
+            groupIs(stringBack.payload, "short", ["row"], "item", ["a", "bb"]),
+            groupIs(stringBack.payload, "long", ["row"], "item", ["three", "seven"]),
             length(groupAt(stringBack.payload, "long", 1, ["row"], "item")) == 5,
             listLength(mapGet(stringBack.payload, "short") ?: ["missing"]) == 2,
             listLength(mapGet(stringBack.payload, "long") ?: ["missing"]) == 2,
