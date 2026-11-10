@@ -17,11 +17,12 @@ import uitest::Events
 import uitest::Read
 import uitest::Semantics
 import uitest::Views
-loaded work = match MachineDocs::load (readFile "src/osprey/packages/uitest/tests/fixture.machine.json" ?: "")
+// The fixture document, handed to `work`, or `refused` when it will not load.
+loaded (work, refused) = match MachineDocs::load (readFile "src/osprey/packages/uitest/tests/fixture.machine.json" ?: "")
     Success machine => work machine
-    Error problem => expect ("fixture loads: ${problem}", "fixture loads")
+    Error problem => refused problem
 
-withFixture work = Runtime::guarded (\() => loaded work)
+withFixture work = Runtime::guarded (\() => loaded (work, \problem => expect ("fixture loads: ${problem}", "fixture loads")))
 seen machine = Read::tree (Runtime::tree (Templates::view machine))
 
 // The machine's canvas, and what a test reads off it.
@@ -29,9 +30,11 @@ canvas machine = Canvases::semantics machine
 value machine = Semantics::value (canvas machine, "Level")
 letters (machine, text) = Views::letters (seen machine, text)
 feed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
+// `act` at the point `fraction` across `node`, where a pointer or a release lands.
+crossed (node, fraction, act) = act (Semantics::point (node, fraction))
+
 releasedAt (machine, label, fraction) =
-    p = Semantics::point (Semantics::element (canvas machine, label), fraction)
-    Canvases::released (machine, p.pointX, p.pointY)
+    crossed (Semantics::element (canvas machine, label), fraction, \p => Canvases::released (machine, p.pointX, p.pointY))
 
 // Acting on the slider at `fraction` of its width leaves it reading `fraction`.
 slidTo (machine, fraction) =
@@ -148,9 +151,7 @@ effect Bench
 mut driven = Drive::idle (Runtime::idle (MachineDocs::faulty ""))
 
 kept (resident : ui::Resident<ui::Machine>) = perform Bench.drive (Drive::moved (driven, resident))
-fixture () = match MachineDocs::load (readFile "src/osprey/packages/uitest/tests/fixture.machine.json" ?: "")
-    Success machine => machine
-    Error problem => MachineDocs::faulty problem
+fixture () = loaded (\machine => machine, MachineDocs::faulty)
 
 initial context =
     skin = listGet context.arguments 1 ?: "tiny"
@@ -193,9 +194,7 @@ pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
 viewed (width, height) = post (Drive::viewed (driven, width, height))
 elements () = driven.drivenSeen.renderedAccess
 elementAt label = Semantics::element (elements (), label)
-tapAt (label, fraction) =
-    p = Semantics::point (elementAt label, fraction)
-    clickAt (p.pointX, p.pointY)
+tapAt (label, fraction) = crossed (elementAt label, fraction, \p => clickAt (p.pointX, p.pointY))
 
 clickAt (x, y) =
     pointer (x, y, true)
@@ -272,8 +271,7 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     completed "/music/a \"b\".mp3"
     choiceShown ()
     completed "/music/second.mp3"
-    post (Drive::ran (driven, "discover", 0, ""))
-    post (Drive::ran (driven, "discover", 2, "no route"))
+    forEachList ([{ status = 0, said = "" }, { status = 2, said = "no route" }], \row => post (Drive::ran (driven, "discover", row.status, row.said)))
     expect (level (), 0.75)
     post (Drive::opened (driven, "/music/opened.mp3"))
     choiceShown ()
@@ -286,8 +284,7 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     expect (selected (), "")
     press "Native action"
     shownNow ("Pressed", "Native")
-    pickedKey "one"
-    pickedKey "three"
+    forEachList (["one", "three"], pickedKey)
     showing (["one"], false)
     pickedKey "two"
     showing (["two", "Pressed"], true)
