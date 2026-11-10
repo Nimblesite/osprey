@@ -56,12 +56,12 @@ fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
 /// rendersAs is one gpuGet outcome as text, so an element's own type stays visible.
 fn rendersAs(b, index, text) = oobMessage(b, index) == text
 /// sumsTo, productsTo, differencesTo and hornerTo are [GPU-FOLD] with this file's int combines; subI and horner are non-commutative, so their `expected` also pins the traversal order.
-fn sumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, sumI), fn(total) => total == expected)
-fn productsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, mulI), fn(total) => total == expected)
-fn differencesTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, subI), fn(total) => total == expected)
-fn hornerTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, horner), fn(total) => total == expected)
+fn sumsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, sumI), expected)
+fn productsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, mulI), expected)
+fn differencesTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, subI), expected)
+fn hornerTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, horner), expected)
 /// trueCountIs is [GPU-FOLD] with countTrue: `b` holds `expected` true elements.
-fn trueCountIs(b, expected) = gpuSatisfies(gpuFold(b, 0, countTrue), fn(count) => count == expected)
+fn trueCountIs(b, expected) = gpuEquals(gpuFold(b, 0, countTrue), expected)
 /// foldedFrom reads a buffer already in hand through sumI from `foldSeed`: every filtered, scanned and zipped buffer below reads back through it, so bufferSumsTo and scanSumsTo are the same read at seed 0 and at a scan's own seed.
 fn foldedFrom(buf, foldSeed, expected) = gpuSatisfies(buf, fn(s) => sumsTo(s, foldSeed, expected))
 fn bufferSumsTo(buf, expected) = foldedFrom(buf, 0, expected)
@@ -88,8 +88,8 @@ fn emptyFoldCase() = withIndices(0, fn(indices0) => emptyFoldWith(indices0))
 fn emptyFoldWith(indices0) = withBuffer(emptyInts(), fn(intEmpty) => withBuffer(emptyFloats(), fn(floatEmpty) => emptyFoldOn(indices0, intEmpty, floatEmpty)))
 fn emptyFoldOn(indices0, intEmpty, floatEmpty) = withBuffer(toGpu([1, 3, 5]), fn(value) => withBuffer(gpuFilter(value, keepNone), fn(drained) => checkAll("empty folds", [
     sumsTo(intEmpty, 0, 0), sumsTo(intEmpty, 7, 7), productsTo(intEmpty, 1, 1), differencesTo(intEmpty, 100, 100),
-    hornerTo(intEmpty, 9, 9), gpuSatisfies(gpuFold(intEmpty, 3, maxI), fn(total) => total == 3),
-    floatSumsTo(floatEmpty, 0.0, 0.0), floatSumsTo(floatEmpty, 2.5, 2.5), gpuSatisfies(gpuMap(intEmpty, isEven), fn(flags) => gpuSatisfies(gpuFold(flags, 4, countTrue), fn(count) => count == 4)),
+    hornerTo(intEmpty, 9, 9), gpuEquals(gpuFold(intEmpty, 3, maxI), 3),
+    floatSumsTo(floatEmpty, 0.0, 0.0), floatSumsTo(floatEmpty, 2.5, 2.5), gpuSatisfies(gpuMap(intEmpty, isEven), fn(flags) => gpuEquals(gpuFold(flags, 4, countTrue), 4)),
     lengthIs(drained, 0), sumsTo(drained, 11, 11), scanSumsTo(gpuScan(drained, 0, sumI), 13, 13),
     productsTo(indices0, 5, 5), gpuSatisfies(gpuZipWith(intEmpty, intEmpty, sumI), fn(zipped) => sumsTo(zipped, 6, 6))
 ])))

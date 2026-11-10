@@ -100,7 +100,7 @@ fn rebuild(buf, n) = match n {
     }
 }
 /// sumsTo is [GPU-FOLD] with tally: `b` from `seed` totals `expected`.
-fn sumsTo(b, seed, expected) = gpuSatisfies(gpuFold(b, seed, tally), fn(total) => total == expected)
+fn sumsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, tally), expected)
 /// sumIs is sumsTo from the zero seed.
 fn sumIs(b, expected) = sumsTo(b, 0, expected)
 /// zippedSumsTo folds the zip of `a` and `b` with tally to `expected`.
@@ -110,7 +110,7 @@ fn zippedProductSumsTo(a, b, expected) = gpuSatisfies(gpuZipWith(a, b, product),
 /// uploadSumIs folds the upload of `values` with tally to `expected`.
 fn uploadSumIs(values, expected) = gpuSatisfies(toGpu(values), fn(uploaded) => sumIs(uploaded, expected))
 /// uploadAddOrIs folds the upload of `values` with addOr to `expected`, so an overflow shows as the mark.
-fn uploadAddOrIs(values, expected) = gpuSatisfies(toGpu(values), fn(uploaded) => gpuSatisfies(gpuFold(uploaded, 0, addOr), fn(total) => total == expected))
+fn uploadAddOrIs(values, expected) = gpuSatisfies(toGpu(values), fn(uploaded) => gpuEquals(gpuFold(uploaded, 0, addOr), expected))
 /// uploadFloatSumsTo folds the upload of `values` with addF from `seed` to `expected`.
 fn uploadFloatSumsTo(values, seed, expected) = gpuSatisfies(toGpu(values), fn(uploaded) => floatSumsTo(uploaded, seed, expected))
 /// megaPipelineCase runs a million elements through map, fold, filter and scan.
@@ -121,7 +121,7 @@ fn megaPipelineWith(idx) = withBuffer(gpuMap(idx, square), fn(squares) => withBu
 /// scanScaleCase reads a 100k prefix sum, a seeded scan and a scan of a scan.
 fn scanScaleCase() = withIndices(100000, fn(indices100000) => scanScaleWith(indices100000))
 fn scanScaleWith(indices100000) = withBuffer(gpuScan(indices100000, 0, tally), fn(running) => withBuffer(gpuScan(indices100000, 1000, tally), fn(seeded) => withBuffer(gpuScan(running, 0, tally), fn(twice) => checkAll("100k prefix scan", [
-    elementsFrom(running, 0, -1, [0, 1, 3]), elementIs(running, 99999, -1, 4999950000), lengthIs(running, 100000), elementIs(seeded, 0, -1, 1000), elementIs(seeded, 99999, -1, 4999951000), lengthIs(seeded, 100000), elementIs(twice, 0, -1, 0), elementIs(twice, 2, -1, 4), elementIs(twice, 99999, -1, 166666666650000), gpuSatisfies(gpuFold(running, 0, minI), fn(low) => low == 0)
+    elementsFrom(running, 0, -1, [0, 1, 3]), elementIs(running, 99999, -1, 4999950000), lengthIs(running, 100000), elementIs(seeded, 0, -1, 1000), elementIs(seeded, 99999, -1, 4999951000), lengthIs(seeded, 100000), elementIs(twice, 0, -1, 0), elementIs(twice, 2, -1, 4), elementIs(twice, 99999, -1, 166666666650000), gpuEquals(gpuFold(running, 0, minI), 0)
 ]))))
 /// longChainCase runs sixteen climbs then sixteen descents, back to back.
 fn longChainCase() = withIndices(100000, fn(indices100000) => longChainWith(indices100000))
@@ -152,12 +152,12 @@ fn simulationWith(indices10000, indices0, indices1) = withBuffer(simulate(indice
 /// successor does not, and minInt cannot negate.
 fn overflowBoundaryCase() = withIndices(20, fn(indices20) => withIndices(21, fn(indices21) => withIndices(62, fn(indices62) => withIndices(63, fn(indices63) => overflowBoundaryWith(indices20, indices21, indices62, indices63)))))
 fn overflowBoundaryWith(indices20, indices21, indices62, indices63) = withBuffer(gpuMap(indices20, bump), fn(counted) => withBuffer(gpuFold(counted, 1, prodSat), fn(fits) => withBuffer(gpuMap(indices21, bump), fn(overCounted) => withBuffer(gpuFold(overCounted, 1, prodSat), fn(spills) => withBuffer(toGpu([3037000499, 3037000500]), fn(rootsSource) => withBuffer(gpuMap(rootsSource, sqSat), fn(roots) => withBuffer(toGpu([minInt(), -1, 0, 1, maxInt()]), fn(edgesSource) => withBuffer(gpuMap(edgesSource, negSat), fn(edges) => checkAll("checked overflow boundaries", [
-    fits == 2432902008176640000, spills == overflowMark(), gpuSatisfies(gpuFold(indices62, 1, doubleUp), fn(doubled) => doubled == 4611686018427387904), gpuSatisfies(gpuFold(indices63, 1, doubleUp), fn(doubled) => doubled == overflowMark()), elementIs(roots, 0, 0, 9223372030926249001), elementIs(roots, 1, 0, overflowMark()), elementsFrom(edges, 0, 0, [overflowMark(), 1, 0, -1, -9223372036854775807]), uploadSumIs([maxInt()], maxInt()), uploadAddOrIs([maxInt()], maxInt()), uploadAddOrIs([maxInt(), 1], overflowMark()), uploadSumIs([maxInt(), 1], maxInt()), gpuSatisfies(toGpu([minInt()]), fn(edges2) => gpuSatisfies(gpuMap(edges2, lowerSat), fn(stepped) => gpuSatisfies(gpuFold(stepped, 0, addOr), fn(total) => total == overflowMark()))), gpuSatisfies(toGpu([maxInt(), 1]), fn(pair) => gpuLengthIs(gpuFilter(pair, isMax), 1))
+    fits == 2432902008176640000, spills == overflowMark(), gpuEquals(gpuFold(indices62, 1, doubleUp), 4611686018427387904), gpuEquals(gpuFold(indices63, 1, doubleUp), overflowMark()), elementIs(roots, 0, 0, 9223372030926249001), elementIs(roots, 1, 0, overflowMark()), elementsFrom(edges, 0, 0, [overflowMark(), 1, 0, -1, -9223372036854775807]), uploadSumIs([maxInt()], maxInt()), uploadAddOrIs([maxInt()], maxInt()), uploadAddOrIs([maxInt(), 1], overflowMark()), uploadSumIs([maxInt(), 1], maxInt()), gpuSatisfies(toGpu([minInt()]), fn(edges2) => gpuSatisfies(gpuMap(edges2, lowerSat), fn(stepped) => gpuEquals(gpuFold(stepped, 0, addOr), overflowMark()))), gpuSatisfies(toGpu([maxInt(), 1]), fn(pair) => gpuLengthIs(gpuFilter(pair, isMax), 1))
 ])))))))))
 /// saturationCase crosses the int edge part way through two thousand elements.
 fn saturationCase() = withIndices(2000, fn(indices2000) => saturationWith(indices2000))
 fn saturationWith(indices2000) = withBuffer(gpuMap(indices2000, hugeScale), fn(bigs) => withBuffer(gpuFilter(bigs, isMax), fn(saturated) => checkAll("saturating accumulation", [
-    lengthIs(bigs, 2000), elementIs(bigs, 0, -1, 0), elementIs(bigs, 92, -1, 9200000000000000000), elementIs(bigs, 93, -1, maxInt()), elementIs(bigs, 1999, -1, maxInt()), lengthIs(saturated, 1907), elementIs(saturated, 0, -1, maxInt()), gpuSatisfies(gpuFold(bigs, 0, clampAdd), fn(clamped) => clamped == maxInt()), sumIs(bigs, 9100000000000000000), gpuLengthIs(gpuFilter(bigs, isNeg), 0), gpuLengthIs(gpuMap(bigs, isMax), 2000)
+    lengthIs(bigs, 2000), elementIs(bigs, 0, -1, 0), elementIs(bigs, 92, -1, 9200000000000000000), elementIs(bigs, 93, -1, maxInt()), elementIs(bigs, 1999, -1, maxInt()), lengthIs(saturated, 1907), elementIs(saturated, 0, -1, maxInt()), gpuEquals(gpuFold(bigs, 0, clampAdd), maxInt()), sumIs(bigs, 9100000000000000000), gpuLengthIs(gpuFilter(bigs, isNeg), 0), gpuLengthIs(gpuMap(bigs, isMax), 2000)
 ])))
 /// negativeCase carries a wholly negative buffer through every combinator.
 fn negativeCase() = withIndices(100000, fn(indices100000) => negativeWith(indices100000))

@@ -129,7 +129,7 @@ texel (pixels, i) = gpuGet (pixels, i) ?: outOfFrame ()
 total pixels = gpuFold (pixels, 0, addLevels)
 litCountOf (pixels, predicate) = gpuSatisfies(gpuFilter (pixels, litPixel), \lit => predicate (gpuLength lit))
 (** Whether the pixels a dispatch produced total [want]; exactly [want] of them are lit; pixel [index] is [want]; or the dispatch produced [want] pixels. Every scene assertion below is one of those four. *)
-grandIs (result, want) = gpuSatisfies(result, \pixels => gpuSatisfies(total(pixels), \grand => grand == want))
+grandIs (result, want) = gpuSatisfies(result, \pixels => gpuEquals(total(pixels), want))
 litIs (result, want) = gpuSatisfies(result, \pixels => litCountOf(pixels, \lit => lit == want))
 texelIs (result, index, want) = gpuSatisfies(result, \pixels => texel (pixels, index) == want)
 (** texelRun is whether [pixels] holds [want] in order from index [start] — the run form of texel, so a contiguous band of pixels is one assertion. A gather that

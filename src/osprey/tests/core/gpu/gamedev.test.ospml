@@ -137,10 +137,10 @@ fixedPointCaseUploaded (input0, input1) =
         fpMul(unit(), unit()) == unit(), fpMul(unit(), 0) == 0, fpMul(0, unit()) == 0, fpMul(512, 512) == 256, fpMul(negFp(512), 512) == negFp(256),
         fpMul(negFp(512), negFp(512)) == 256, fpMul(1, 1) == 0, fpMul(negFp(1), 1) == 0, fpDiv(unit(), (2 * unit()) ) == 512, fpDiv(768, 256) == 3072,
         fpDiv(unit(), 0) == 0, fpDiv(0, unit()) == 0, fpDiv(negFp(512), 512) == negFp(1024), fpAbs(negFp(7)) == 7, fpAbs(0) == 0, fpAbs(7) == 7, negFp(negFp(9)) == 9,
-        at(scaled, 0, 0) == 2048, at(scaled, 1, 0) == 1024, at(scaled, 2, 1) == 0, at(scaled, 3, 0) == negFp(512), gpuSatisfies(gpuFold(scaled, 0, sumInts), \total => total == 2560),
-        gpuSatisfies(gpuFold(scaled, 0, speedOf), \total => total == 3584),
-        gpuSatisfies(gpuMap(scaled, halveFp), \half => gpuSatisfies(gpuFold(half, 0, sumInts), \total => total == 1280)),
-        gpuSatisfies(gpuMap(scaled, halveFp), \half => gpuSatisfies(gpuMap(half, halveFp), \quarter => gpuSatisfies(gpuFold(quarter, 0, sumInts), \total => total == 640))),
+        at(scaled, 0, 0) == 2048, at(scaled, 1, 0) == 1024, at(scaled, 2, 1) == 0, at(scaled, 3, 0) == negFp(512), gpuEquals(gpuFold(scaled, 0, sumInts), 2560),
+        gpuEquals(gpuFold(scaled, 0, speedOf), 3584),
+        gpuSatisfies(gpuMap(scaled, halveFp), \half => gpuEquals(gpuFold(half, 0, sumInts), 1280)),
+        gpuSatisfies(gpuMap(scaled, halveFp), \half => gpuSatisfies(gpuMap(half, halveFp), \quarter => gpuEquals(gpuFold(quarter, 0, sumInts), 640))),
         gpuLength(scaled) == 4, gpuSatisfies(gpuMap(input1, doubleFp), \empty => gpuLength(empty) == 0)
     ]))
 (** vectorCase does 2D algebra across four parallel component buffers; dot and cross each combine two zipped products, and a . perp a and a x a vanish. *)
@@ -164,16 +164,16 @@ vectorCaseUploaded (input0, input1, input2, input3) =
         \axay => withBuffer(gpuZipWith(axay, ayax, subInts),
         \selfCross => checkAll("fixed-point vector algebra", [
         at(dots, 0, 0) == 1024, at(dots, 1, 0) == 1024, at(dots, 2, 0) == 3072, at(dots, 3, 0) == 2048, at(cross, 0, 1) == 0, at(cross, 1, 0) == 2048,
-        at(cross, 2, 1) == 0, at(cross, 3, 0) == 2048, gpuSatisfies(gpuFold(dots, 0, sumInts), \total => total == 7168), gpuSatisfies(gpuFold(cross, 0, sumInts), \total => total == 4096),
-        gpuSatisfies(gpuFold(perp, 0, speedOf), \total => total == 0),
-        at(perp, 3, 1) == 0, gpuSatisfies(gpuFold(selfCross, 0, speedOf), \total => total == 0), gpuLength(dots) == 4, gpuLength(cross) == 4
+        at(cross, 2, 1) == 0, at(cross, 3, 0) == 2048, gpuEquals(gpuFold(dots, 0, sumInts), 7168), gpuEquals(gpuFold(cross, 0, sumInts), 4096),
+        gpuEquals(gpuFold(perp, 0, speedOf), 0),
+        at(perp, 3, 1) == 0, gpuEquals(gpuFold(selfCross, 0, speedOf), 0), gpuLength(dots) == 4, gpuLength(cross) == 4
     ])))))))))))))
 (** magnitudeCase pins the octagonal estimate: exact on the axes, a slight undershoot on the diagonal, symmetric in both signs and in x/y. *)
 magnitudeCase () = withBuffer(toGpu ([1024, 0, 3072, negFp 1024, 0]), \input0 => withBuffer(toGpu ([0, 2048, 4096, negFp 1024, 0]), \input1 => magnitudeCaseUploaded(input0, input1)))
 magnitudeCaseUploaded (input0, input1) =
     withBuffer(gpuZipWith(input0, input1, octagonal), \dist => checkAll("octagonal distance", [
-        at(dist, 0, 0) == 1024, at(dist, 1, 0) == 2048, at(dist, 2, 0) == 5248, at(dist, 3, 0) == 1408, at(dist, 4, 1) == 0, gpuSatisfies(gpuFold(dist, 0, sumInts), \total => total == 9728),
-        gpuSatisfies(gpuFold(dist, 0, boundMax), \total => total == 5248), gpuSatisfies(gpuFold(dist, 99999, boundMin), \total => total == 0),
+        at(dist, 0, 0) == 1024, at(dist, 1, 0) == 2048, at(dist, 2, 0) == 5248, at(dist, 3, 0) == 1408, at(dist, 4, 1) == 0, gpuEquals(gpuFold(dist, 0, sumInts), 9728),
+        gpuEquals(gpuFold(dist, 0, boundMax), 5248), gpuEquals(gpuFold(dist, 99999, boundMin), 0),
         gpuSatisfies(gpuFilter(dist, \d => d <= 2048), \kept => gpuLength(kept) == 4), octagonal(0, 0) == 0,
         octagonal(negFp(1024), 0) == 1024, octagonal(1024, 1024) == 1408, octagonal(3072, 4096) == 5248, octagonal(4096, 3072) == 5248,
         octagonal(negFp(4096), negFp(3072)) == 5248
@@ -185,8 +185,8 @@ integrationCaseUploaded (input0, input1) =
     withBuffer(gpuZipWith(input1, vel, integrate), \tick1 => withBuffer(gpuZipWith(tick1, vel, integrate), \tick2 => withBuffer(gpuZipWith(tick2, vel, integrate), \tick3 => withBuffer(gpuZipWith(tick3, vel, integrate), \tick4 => checkAll("particle integration", [
         at(tick1, 0, 0.0) == 1.0, at(tick1, 1, 0.0) == 98.0, at(tick1, 2, 0.0) == 3.0, at(tick1, 3, 0.0) == 42.0, at(tick2, 0, 0.0) == 2.0, at(tick2, 1, 0.0) == 96.0,
         at(tick2, 2, 0.0) == 3.5, at(tick4, 0, 0.0) == 4.0, at(tick4, 1, 0.0) == 92.0, at(tick4, 2, 0.0) == 4.5, at(tick4, 3, 0.0) == 42.0,
-        gpuSatisfies(gpuFold(tick1, 0.0, sumF), \total => total == 144.0), gpuSatisfies(gpuFold(tick4, 0.0, sumF), \total => total == 142.5),
-        gpuSatisfies(gpuFold(vel, 0.0, sumF), \total => total == 0.0 - 5.0), gpuLength(tick4) == 4
+        gpuEquals(gpuFold(tick1, 0.0, sumF), 144.0), gpuEquals(gpuFold(tick4, 0.0, sumF), 142.5),
+        gpuEquals(gpuFold(vel, 0.0, sumF), 0.0 - 5.0), gpuLength(tick4) == 4
     ])))))
 (** eulerCase advances position, velocity and acceleration together, matching the closed forms v(n) = v0 + n*a and p(n) = p0 + n*v0 + a*n*(n+1)/2. *)
 eulerCase () = withBuffer(toGpu ([0, 100, negFp 50]), \input0 => withBuffer(toGpu ([10, 0, 20]), \input1 => withBuffer(toGpu ([negFp 2, 3, 0]), \input2 => eulerCaseUploaded(input0, input1, input2))))
@@ -196,18 +196,18 @@ eulerCaseUploaded (input0, input1, input2) =
     acc = input2
     velAfter(vel, acc, 4, \v4 => posAfter(pos, vel, acc, 4, \p4 => posAfter(pos, vel, acc, 1, \p1 => velAfter(vel, acc, 0, \v0 => posAfter(pos, vel, acc, 0, \p0 => checkAll("semi-implicit euler", [
         at(v4, 0, 0) == 2, at(v4, 1, 0) == 12, at(v4, 2, 0) == 20, at(p1, 0, 0) == 8, at(p1, 1, 0) == 103, at(p1, 2, 0) == negFp(30), at(p4, 0, 0) == 20,
-        at(p4, 1, 0) == 130, at(p4, 2, 0) == 30, gpuSatisfies(gpuFold(v4, 0, sumInts), \total => total == 34), gpuSatisfies(gpuFold(p4, 0, sumInts), \total => total == 180),
-        gpuSatisfies(gpuFold(v0, 0, sumInts), \total => total == 30), gpuSatisfies(gpuFold(p0, 0, sumInts), \total => total == 50), gpuLength(p4) == 3, gpuLength(v4) == 3
+        at(p4, 1, 0) == 130, at(p4, 2, 0) == 30, gpuEquals(gpuFold(v4, 0, sumInts), 34), gpuEquals(gpuFold(p4, 0, sumInts), 180),
+        gpuEquals(gpuFold(v0, 0, sumInts), 30), gpuEquals(gpuFold(p0, 0, sumInts), 50), gpuLength(p4) == 3, gpuLength(v4) == 3
     ]))))))
 (** dragCase damps velocity by a Q10 coefficient every tick: total speed falls monotonically, drag 1.0 is the identity and drag 0 stops the world. *)
 dragCase () = withBuffer(toGpu ([4096, negFp 2048, 1024, 0]), \input0 => dragCaseUploaded(input0))
 dragCaseUploaded (input0) =
     vel = input0
     damp(vel, 768, 3, \three => damp(vel, 768, 1, \once => damp(vel, 768, 2, \twice => damp(vel, unit(), 5, \identity => damp(vel, 0, 1, \stopped => damp(vel, 768, 0, \unmoved => checkAll("velocity damping", [
-        gpuSatisfies(gpuFold(vel, 0, speedOf), \total => total == 7168), gpuSatisfies(gpuFold(three, 0, speedOf), \total => total == 3024), gpuSatisfies(gpuFold(once, 0, speedOf), \total => total == 5376),
-        gpuSatisfies(gpuFold(twice, 0, speedOf), \total => total == 4032), at(three, 0, 0) == 1728, at(three, 1, 0) == negFp(864), at(three, 2, 0) == 432, at(three, 3, 1) == 0,
-        gpuSatisfies(gpuFold(identity, 0, speedOf), \total => total == 7168), gpuSatisfies(gpuFold(stopped, 0, speedOf), \total => total == 0),
-        gpuSatisfies(gpuFold(unmoved, 0, speedOf), \total => total == 7168),
+        gpuEquals(gpuFold(vel, 0, speedOf), 7168), gpuEquals(gpuFold(three, 0, speedOf), 3024), gpuEquals(gpuFold(once, 0, speedOf), 5376),
+        gpuEquals(gpuFold(twice, 0, speedOf), 4032), at(three, 0, 0) == 1728, at(three, 1, 0) == negFp(864), at(three, 2, 0) == 432, at(three, 3, 1) == 0,
+        gpuEquals(gpuFold(identity, 0, speedOf), 7168), gpuEquals(gpuFold(stopped, 0, speedOf), 0),
+        gpuEquals(gpuFold(unmoved, 0, speedOf), 7168),
         gpuLength(three) == 4
     ])))))))
 (** aabbCase builds a box from four folds. The sentinel seeds are the empty-world contract: [GPU-FOLD] returns the seed, so the box comes back inverted. *)
@@ -240,8 +240,8 @@ overlapCaseUploaded (input0, input1, input2, input3) =
     aHi = input1
     withBuffer(gpuZipWith(aLo, input2, leqI), \started => withBuffer(gpuZipWith(input3, aHi, leqI), \ended => withBuffer(gpuZipWith(started, ended, bothOf), \hit => withBuffer(gpuZipWith(aLo, aHi, leqI), \ordered => withBuffer(gpuZipWith(ordered, ordered, bothOf), \selfHit => checkAll("aabb overlap", [
         at(hit, 0, false) == true, at(hit, 1, true) == false, at(hit, 2, true) == false, at(hit, 3, false) == true,
-        gpuSatisfies(gpuMap(hit, hitCost), \costs => gpuSatisfies(gpuFold(costs, 0, sumInts), \total => total == 2)),
-        gpuSatisfies(gpuMap(selfHit, hitCost), \costs => gpuSatisfies(gpuFold(costs, 0, sumInts), \total => total == 4)),
+        gpuSatisfies(gpuMap(hit, hitCost), \costs => gpuEquals(gpuFold(costs, 0, sumInts), 2)),
+        gpuSatisfies(gpuMap(selfHit, hitCost), \costs => gpuEquals(gpuFold(costs, 0, sumInts), 4)),
         gpuSatisfies(gpuFilter(hit, isHit), \kept => gpuLength(kept) == 2), gpuSatisfies(gpuFilter(hit, isMiss), \kept => gpuLength(kept) == 2), gpuLength(hit) == 4,
         leqI(3, 3) == true, leqI(4, 3) == false, bothOf(true, false) == false, bothOf(true, true) == true
     ]))))))
@@ -261,9 +261,9 @@ circleCaseUploaded (input0, input1, input2, input3, input4, input5) =
         \thresh => withBuffer(gpuZipWith(dist2, thresh, leqI),
         \hit => checkAll("circle broadphase", [
         at(dist2, 0, 1) == 0, at(dist2, 1, 0) == 25000000, at(dist2, 2, 0) == 25000000, at(dist2, 3, 0) == 100000000,
-        gpuSatisfies(gpuFold(dist2, 0, sumInts), \total => total == 150000000),
+        gpuEquals(gpuFold(dist2, 0, sumInts), 150000000),
         at(thresh, 0, 0) == 40000, at(thresh, 1, 0) == 25000000, at(hit, 0, false) == true, at(hit, 1, false) == true, at(hit, 2, false) == true,
-        at(hit, 3, true) == false, gpuLength(hit) == 4, gpuSatisfies(gpuMap(hit, hitCost), \costs => gpuSatisfies(gpuFold(costs, 0, sumInts), \total => total == 3)),
+        at(hit, 3, true) == false, gpuLength(hit) == 4, gpuSatisfies(gpuMap(hit, hitCost), \costs => gpuEquals(gpuFold(costs, 0, sumInts), 3)),
         addSquares(3, 4) == 25, addSquares(0, 0) == 0
     ])))))))
 (** cullCase draws only entities inside the view distance, in draw order, and pins that compaction publishes exactly the kept prefix. *)
@@ -272,7 +272,7 @@ cullCaseUploaded (input0, input1, input2, input3) =
     dists = input0
     withBuffer(gpuFilter(dists, visible), \drawn => withBuffer(gpuFilter(input1, visible), \far => withBuffer(gpuFilter(input2, visible), \close => withBuffer(gpuFilter(input3, visible), \edge => checkAll("distance culling", [
         gpuLength(drawn) == 4, gpuLength(dists) == 6, at(drawn, 0, 0.0) == 12.5, at(drawn, 1, 0.0) == 99.9, at(drawn, 2, 0.0) == 3.0, at(drawn, 3, 9.5) == 0.0,
-        at(drawn, 4, 7.5) == 7.5, gpuSatisfies(gpuFold(drawn, 0.0, sumF), \total => total == 115.4), gpuLength(far) == 0, gpuLength(close) == 2,
+        at(drawn, 4, 7.5) == 7.5, gpuEquals(gpuFold(drawn, 0.0, sumF), 115.4), gpuLength(far) == 0, gpuLength(close) == 2,
         gpuLength(edge) == 0
     ])))))
 (** damageCase resolves an attack wave: overkill floors at zero, zero damage is a no-op, and the survivors compact in place. *)
@@ -281,9 +281,9 @@ damageCaseUploaded (input0, input1) =
     health = input0
     withBuffer(gpuZipWith(health, input1, applyDamage), \after => withBuffer(gpuFilter(after, alive), \survivors => withBuffer(gpuZipWith(health, health, applyDamage), \wiped => withBuffer(gpuFilter(wiped, alive), \cleared => checkAll("damage resolution", [
         at(after, 0, 0) == 70, at(after, 1, 9) == 0, at(after, 2, 0) == 75, at(after, 3, 9) == 0, at(after, 4, 9) == 0, gpuLength(survivors) == 2,
-        at(survivors, 0, 0) == 70, at(survivors, 1, 0) == 75, gpuSatisfies(gpuFold(survivors, 0, sumInts), \total => total == 145),
-        gpuSatisfies(gpuFold(after, 0, sumInts), \total => total == 145),
-        gpuLength(cleared) == 0, gpuSatisfies(gpuFold(wiped, 0, sumInts), \total => total == 0), gpuLength(wiped) == 5
+        at(survivors, 0, 0) == 70, at(survivors, 1, 0) == 75, gpuEquals(gpuFold(survivors, 0, sumInts), 145),
+        gpuEquals(gpuFold(after, 0, sumInts), 145),
+        gpuLength(cleared) == 0, gpuEquals(gpuFold(wiped, 0, sumInts), 0), gpuLength(wiped) == 5
     ])))))
 (** easingCase eases a camera rig toward its targets and normalizes a channel buffer; a value already at its target is a fixed point of the ease. *)
 easingCase () = withBuffer(toGpu ([4.0, 0.0, 1.0, 1.0]), \input0 => withBuffer(toGpu ([0.0, 8.0, 1.0, 0.0]), \input1 => withBuffer(toGpu ([0.0 - 0.5, 0.25, 1.75, 1.0, 0.0]), \input2 => easingCaseUploaded(input0, input1, input2))))
@@ -291,7 +291,7 @@ easingCaseUploaded (input0, input1, input2) =
     target = input0
     withBuffer(gpuZipWith(input1, target, lerpQuarter), \eased => withBuffer(gpuZipWith(eased, target, lerpQuarter), \twice => withBuffer(gpuMap(input2, clamp01), \safe => checkAll("easing and clamping", [
         at(eased, 0, 0.0) == 1.0, at(eased, 1, 0.0) == 6.0, at(eased, 2, 0.0) == 1.0, at(eased, 3, 0.0) == 0.25, at(twice, 0, 0.0) == 1.75, at(twice, 2, 0.0) == 1.0,
-        gpuSatisfies(gpuFold(safe, 0.0, sumF), \total => total == 2.25), at(safe, 0, 9.9) == 0.0, at(safe, 1, 0.0) == 0.25, at(safe, 2, 0.0) == 1.0, at(safe, 3, 0.0) == 1.0,
+        gpuEquals(gpuFold(safe, 0.0, sumF), 2.25), at(safe, 0, 9.9) == 0.0, at(safe, 1, 0.0) == 0.25, at(safe, 2, 0.0) == 1.0, at(safe, 3, 0.0) == 1.0,
         at(safe, 4, 9.9) == 0.0, gpuLength(safe) == 5
     ]))))
 (** packCase meets three channel buffers in two passes and unpacks them again; an out-of-range channel clamps rather than bleeding into its neighbour. *)
@@ -299,10 +299,10 @@ packCase () = withBuffer(toGpu ([255, 0, 18, 300]), \input0 => withBuffer(toGpu 
 packCaseUploaded (input0, input1, input2) =
     withBuffer(gpuZipWith(input0, input1, packRG), \rg => withBuffer(gpuZipWith(rg, input2, packRGB), \packed => checkAll("colour packing", [
         at(packed, 0, 0) == red(), at(packed, 1, 0) == green(), at(packed, 2, 0) == 1193046, at(packed, 3, 0) == 16744448,
-        gpuSatisfies(gpuMap(packed, redOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 528)),
-        gpuSatisfies(gpuMap(packed, greenOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 435)),
-        gpuSatisfies(gpuMap(packed, blueOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 86)),
-        gpuSatisfies(gpuMap(packed, luminance), \levels => gpuSatisfies(gpuFold(levels, 0, sumInts), \total => total == 423)), gpuLength(packed) == 4,
+        gpuSatisfies(gpuMap(packed, redOf), \channels => gpuEquals(gpuFold(channels, 0, sumInts), 528)),
+        gpuSatisfies(gpuMap(packed, greenOf), \channels => gpuEquals(gpuFold(channels, 0, sumInts), 435)),
+        gpuSatisfies(gpuMap(packed, blueOf), \channels => gpuEquals(gpuFold(channels, 0, sumInts), 86)),
+        gpuSatisfies(gpuMap(packed, luminance), \levels => gpuEquals(gpuFold(levels, 0, sumInts), 423)), gpuLength(packed) == 4,
         packRGB(packRG(0, 0), 0) == black(), packRGB(packRG(255, 255), 255) == white(), packRGB(packRG(255, 0), 0) == red(), packRGB(packRG(0, 255), 0) == green(),
         redOf(white()) == 255, greenOf(white()) == 255, blueOf(white()) == 255, redOf(black()) == 0, greenOf(green()) == 255, redOf(green()) == 0,
         redOf(packRGB(packRG(300, 0), 0)) == 255, blueOf(packRGB(packRG(0, 0), negFp(20))) == 0, clampChannel(255) == 255, clampChannel(256) == 255,
@@ -315,7 +315,7 @@ blendCaseUploaded (input0, input1, input2) =
     withBuffer(gpuMap(alpha, invAlpha), \inverse => withBuffer(gpuZipWith(input1, inverse, scaleColor), \base => withBuffer(gpuZipWith(input2, alpha, scaleColor), \layer => withBuffer(gpuZipWith(base, layer, sumInts), \blended => checkAll("alpha blending", [
         at(blended, 0, 0) == white(), at(blended, 2, 0) == white(), redOf(at(blended, 1, 0)) == 127, greenOf(at(blended, 1, 0)) == 127, blueOf(at(blended, 1, 0)) == 0,
         redOf(at(blended, 3, 0)) == 63, greenOf(at(blended, 3, 0)) == 191, blueOf(at(blended, 3, 0)) == 0,
-        gpuSatisfies(gpuMap(blended, luminance), \levels => gpuSatisfies(gpuFold(levels, 0, sumInts), \total => total == 754)),
+        gpuSatisfies(gpuMap(blended, luminance), \levels => gpuEquals(gpuFold(levels, 0, sumInts), 754)),
         scaleColor(white(), 256) == white(), scaleColor(white(), 0) == black(), invAlpha(0) == 256, invAlpha(256) == 0, gpuLength(blended) == 4
     ])))))
 (** paletteCase gathers through an index buffer: a wrapped index tiles the palette, and one off the end becomes magenta rather than a silent black. *)
@@ -326,7 +326,7 @@ paletteWithUploaded (indices8, indices0, input0) =
     withBuffer(gpuMap(indices8, \i => at(pal, (i % 5) , missingColor())), \tiled => withBuffer(gpuMap(indices8, \i => at(pal, i, missingColor())), \raw => withBuffer(gpuMap(indices0, \i => at(pal, i, missingColor())), \empty => checkAll("palette gather", [
         gpuLength(tiled) == 8, gpuLength(raw) == 8, at(tiled, 0, 1) == black(), at(tiled, 4, 0) == white(), at(tiled, 5, 1) == black(), at(tiled, 6, 0) == red(),
         at(raw, 4, 0) == white(), at(raw, 5, 0) == missingColor(), at(raw, 7, 0) == missingColor(),
-        gpuSatisfies(gpuMap(tiled, redOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 765)),
+        gpuSatisfies(gpuMap(tiled, redOf), \channels => gpuEquals(gpuFold(channels, 0, sumInts), 765)),
         gpuSatisfies(gpuFilter(raw, \c => c == missingColor()), \kept => gpuLength(kept) == 3), at(pal, negFp(1), missingColor()) == missingColor(), at(pal, 0, missingColor()) == black(),
         gpuLength(empty) == 0
     ]))))
@@ -341,9 +341,9 @@ gatherWithUploaded (indices4, indices5, input0) =
         \zs => withBuffer(gpuMap(indices4, \i => at(xs, (3 - i) , 0)),
         \flipped => withBuffer(gpuMap(indices5, \i => at(flat, (3 * i) , negFp(1))),
         \over => checkAll("aos to soa gather", [
-        gpuSatisfies(gpuFold(xs, 0, sumInts), \total => total == 22), gpuSatisfies(gpuFold(ys, 0, sumInts), \total => total == 26),
-        gpuSatisfies(gpuFold(zs, 0, sumInts), \total => total == 30), gpuSatisfies(gpuFold(flat, 0, sumInts), \total => total == 78), at(xs, 0, 0) == 1,
-        at(xs, 3, 0) == 10, at(ys, 2, 0) == 8, at(zs, 1, 0) == 6, at(flipped, 0, 0) == 10, at(flipped, 3, 0) == 1, gpuSatisfies(gpuFold(flipped, 0, sumInts), \total => total == 22),
+        gpuEquals(gpuFold(xs, 0, sumInts), 22), gpuEquals(gpuFold(ys, 0, sumInts), 26),
+        gpuEquals(gpuFold(zs, 0, sumInts), 30), gpuEquals(gpuFold(flat, 0, sumInts), 78), at(xs, 0, 0) == 1,
+        at(xs, 3, 0) == 10, at(ys, 2, 0) == 8, at(zs, 1, 0) == 6, at(flipped, 0, 0) == 10, at(flipped, 3, 0) == 1, gpuEquals(gpuFold(flipped, 0, sumInts), 22),
         at(over, 4, 0) == negFp(1), gpuLength(over) == 5, gpuLength(xs) == 4
     ]))))))
 (** transposeCase gathers a tile grid column-major. A transpose permutes, so the total is invariant and transposing twice must differ from the source by 0. *)
@@ -352,9 +352,9 @@ transposeWith (indices12, indices1) =
     tiles = indices12
     tileTranspose(tiles, 4, 3, indices12, \flip => tileTranspose(flip, 3, 4, indices12, \back => tileTranspose(indices1, 1, 1, indices1, \single => checkAll("tile transpose", [
         gpuLength(flip) == 12, gpuLength(back) == 12, at(flip, 0, 1) == 0, at(flip, 1, 0) == 4, at(flip, 2, 0) == 8, at(flip, 3, 0) == 1, at(flip, 11, 0) == 11,
-        gpuSatisfies(gpuFold(flip, 0, sumInts), \total => total == 66), gpuSatisfies(gpuZipWith(back, tiles, subInts), \diffs => gpuSatisfies(gpuFold(diffs, 0, speedOf), \total => total == 0)),
-        gpuSatisfies(gpuFold(flip, negFp(1), boundMax), \total => total == 11),
-        gpuLength(single) == 1, gpuSatisfies(gpuFold(single, 9, boundMin), \total => total == 0)
+        gpuEquals(gpuFold(flip, 0, sumInts), 66), gpuSatisfies(gpuZipWith(back, tiles, subInts), \diffs => gpuEquals(gpuFold(diffs, 0, speedOf), 0)),
+        gpuEquals(gpuFold(flip, negFp(1), boundMax), 11),
+        gpuLength(single) == 1, gpuEquals(gpuFold(single, 9, boundMin), 0)
     ]))))
 (** stencilCase runs an edge-clamped three-tap blur over a heightfield. A spike spreads and flattens while its total survives; a plateau is a fixed point. *)
 stencilCase () = withIndices (5, \indices5 => stencilWith (indices5))
@@ -363,8 +363,8 @@ stencilWithUploaded (indices5, input0, input1) =
     spike = input0
     withBuffer(gpuMap(indices5, \i => blurAt(spike, 5, i)), \smoothed => withBuffer(gpuMap(indices5, \i => blurAt(input1, 5, i)), \plateau => checkAll("edge-clamped stencil", [
         at(smoothed, 0, 1) == 0, at(smoothed, 1, 0) == 30, at(smoothed, 2, 0) == 30, at(smoothed, 3, 0) == 30, at(smoothed, 4, 1) == 0,
-        gpuSatisfies(gpuFold(smoothed, 0, sumInts), \total => total == 90), gpuSatisfies(gpuFold(smoothed, 0, boundMax), \total => total == 30),
-        gpuSatisfies(gpuFold(spike, 0, boundMax), \total => total == 90), gpuSatisfies(gpuFold(plateau, 0, sumInts), \total => total == 35),
+        gpuEquals(gpuFold(smoothed, 0, sumInts), 90), gpuEquals(gpuFold(smoothed, 0, boundMax), 30),
+        gpuEquals(gpuFold(spike, 0, boundMax), 90), gpuEquals(gpuFold(plateau, 0, sumInts), 35),
         at(plateau, 0, 0) == 7, at(plateau, 4, 0) == 7, clampIdx(negFp(9), 5) == 0, clampIdx(99, 5) == 4, clampIdx(2, 5) == 2
     ])))
 (** budgetCase pins [GPU-SCAN] as an inclusive seeded prefix: the last element equals the fold, a carried budget shifts every prefix, max gives the peak. *)
@@ -413,8 +413,8 @@ raggedCaseUploaded (input0, input1, input2, input3) =
         \doubled => withBuffer(gpuZipWith(input3, pos, subInts),
         \shortest => checkAll("ragged streams truncate", [
         gpuLength(change) == 2, gpuLength(stepped) == 2, at(stepped, 0, 0) == 111, at(stepped, 1, 0) == 222,
-        gpuSatisfies(gpuFold(stepped, 0, sumInts), \total => total == 333), at(stepped, 2, negFp(1)) == negFp(1), gpuLength(swapped) == 2,
-        gpuSatisfies(gpuFold(swapped, 0, sumInts), \total => total == 333),
+        gpuEquals(gpuFold(stepped, 0, sumInts), 333), at(stepped, 2, negFp(1)) == negFp(1), gpuLength(swapped) == 2,
+        gpuEquals(gpuFold(swapped, 0, sumInts), 333),
         gpuLength(doubled) == 5, gpuLength(shortest) == 1
     ]))))))
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)

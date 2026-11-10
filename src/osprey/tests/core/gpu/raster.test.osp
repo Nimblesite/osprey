@@ -124,7 +124,7 @@ fn texel(pixels, i) = gpuGet(pixels, i) ?: outOfFrame()
 fn total(pixels) = gpuFold(pixels, 0, addLevels)
 fn litCountOf(pixels, predicate) = gpuSatisfies(gpuFilter(pixels, litPixel), fn(lit) => predicate(gpuLength(lit)))
 /// grandIs is whether the pixels a dispatch produced total [want]; litIs is whether exactly [want] of them are lit, texelIs whether pixel [index] is [want], and gpuLengthIs whether the dispatch produced [want] pixels. Every scene assertion below is one of those four.
-fn grandIs(result, want) = gpuSatisfies(result, fn(pixels) => gpuSatisfies(total(pixels), fn(grand) => grand == want))
+fn grandIs(result, want) = gpuSatisfies(result, fn(pixels) => gpuEquals(total(pixels), want))
 fn litIs(result, want) = gpuSatisfies(result, fn(pixels) => litCountOf(pixels, fn(lit) => lit == want))
 fn texelIs(result, index, want) = gpuSatisfies(result, fn(pixels) => texel(pixels, index) == want)
 /// texelRun is whether [pixels] holds [want] in order from index [start] — the run form of texel, so a contiguous band of pixels is one assertion. A gather that

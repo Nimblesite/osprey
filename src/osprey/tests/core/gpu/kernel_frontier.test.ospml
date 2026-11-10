@@ -48,7 +48,7 @@ builtinZipCaseUploaded (left, right) =
     ]))))
 builtinFoldCase () =
     withBuffer(toGpu ([1, 1]), \source => withBuffer(gpuScan (source, -9223372036854775808, satSub), \lower => withBuffer(gpuScan (source, 9223372036854775807, satAdd), \upper => checkAll "builtin folds and scans preserve accumulator policy" [
-        gpuSatisfies(gpuFold (source, 9223372036854775807, wrapAdd), \uploaded14 => uploaded14 == -9223372036854775807), gpuSatisfies(gpuFold (source, 9223372036854775807, satAdd), \uploaded13 => uploaded13 == 9223372036854775807), (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
+        gpuEquals(gpuFold (source, 9223372036854775807, wrapAdd), -9223372036854775807), gpuEquals(gpuFold (source, 9223372036854775807, satAdd), 9223372036854775807), (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
         (gpuGet (upper, 1) ?: 0) == 9223372036854775807
     ])))
 builtinPolicyCase () =
@@ -96,7 +96,7 @@ lexicalKernelCase () =
     enabled = false
     withBuffer(toGpu ([1.0, 2.0]), \source => withBuffer(toGpu ([30.0, 40.0]), \uploaded7 => withBuffer(gpuZipWith (source, uploaded7, choose), \zipped => withBuffer(gpuScan (source, 42.0, choose), \scanned => checkAll "closed kernels keep their definition environment" [
         enabled == false, gpuSatisfies(gpuFilter source keep, \uploaded8 => gpuLength (uploaded8) == 2), gpuSatisfies(gpuMap source identity, \uploaded7 => (gpuGet (uploaded7, 1) ?: 0.0) == 2.0), (gpuGet (zipped, 1) ?: 0.0) == 2.0,
-        gpuSatisfies(gpuFold (source, 42.0, choose), \uploaded6 => uploaded6 == 42.0), (gpuGet (scanned, 0) ?: 0.0) == 42.0, (gpuGet (scanned, 1) ?: 0.0) == 42.0
+        gpuEquals(gpuFold (source, 42.0, choose), 42.0), (gpuGet (scanned, 0) ?: 0.0) == 42.0, (gpuGet (scanned, 1) ?: 0.0) == 42.0
     ]))))
 effect KernelSwitch
     disable : Unit => int
