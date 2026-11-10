@@ -1,5 +1,5 @@
-const BIG_MOD: i64 = 1000000007;
 include!("../../shared/seed.rs");
+include!("../../shared/sorted.rs");
 
 fn merge(left: &[i64], right: &[i64]) -> Vec<i64> {
     let mut merged = Vec::with_capacity(left.len() + right.len());
@@ -30,19 +30,5 @@ fn merge_sort(xs: &[i64]) -> Vec<i64> {
 }
 
 fn main() {
-    let seed = read_seed();
-
-    let mut acc: i64 = 0;
-    for t in 0..8 {
-        let s = seed + t * 131;
-        let xs: Vec<i64> = (0..2000).map(|i| hash_at(s, i) % 100000).collect();
-        let sorted = merge_sort(&xs);
-        let weight = sorted
-            .iter()
-            .zip(1..)
-            .fold(0, |total, (&x, rank)| (total + x * rank) % BIG_MOD);
-        acc = (acc + weight) % BIG_MOD;
-    }
-
-    println!("{}", acc);
+    println!("{}", sorted_checksum(read_seed(), merge_sort));
 }

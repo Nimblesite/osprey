@@ -23,3 +23,20 @@ int readSeed() {
   final val = (rng.nextInt(1 << 31) << 31) | rng.nextInt(1 << 31);
   return (val % 2147483646) + 1;
 }
+
+// The sort cases' shared run: eight seeded runs of 2000 values below 100000,
+// each sorted by `sort` and folded into one rank-weighted checksum.
+int sortedChecksum(int seed, List<int> Function(List<int>) sort) {
+  const bigMod = 1000000007;
+  int acc = 0;
+  for (int t = 0; t < 8; t++) {
+    final s = seed + t * 131;
+    final sorted = sort(List<int>.generate(2000, (i) => hashAt(s, i) % 100000));
+    int weight = 0;
+    for (int i = 0; i < sorted.length; i++) {
+      weight = (weight + sorted[i] * (i + 1)) % bigMod;
+    }
+    acc = (acc + weight) % bigMod;
+  }
+  return acc;
+}

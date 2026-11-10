@@ -48,4 +48,25 @@ static inline int64_t *alloc_run(int64_t count) {
     return run;
 }
 
+/* The sort cases' shared run: eight seeded runs of 2000 values below 100000,
+   each sorted in place by `sort` and folded into one rank-weighted checksum. */
+static inline int64_t sorted_checksum(int64_t seed, void (*sort)(int64_t *, int64_t)) {
+    enum { RUN = 2000 };
+    const int64_t big_mod = 1000000007;
+    int64_t acc = 0;
+    for (int64_t t = 0; t < 8; t++) {
+        int64_t xs[RUN];
+        for (int64_t i = 0; i < RUN; i++) {
+            xs[i] = hash_at(seed + t * 131, i) % 100000;
+        }
+        sort(xs, RUN);
+        int64_t weight = 0;
+        for (int64_t i = 0; i < RUN; i++) {
+            weight = (weight + xs[i] * (i + 1)) % big_mod;
+        }
+        acc = (acc + weight) % big_mod;
+    }
+    return acc;
+}
+
 #endif
