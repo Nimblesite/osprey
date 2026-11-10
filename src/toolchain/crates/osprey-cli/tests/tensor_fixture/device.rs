@@ -23,11 +23,7 @@ fn main() = match toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777
 }
 "#;
     let path = program("reduction32", "osp", source).expect("write reduction fixture");
-    assert!(
-        !llvm(&path).contains(GPU_DECLINED),
-        "binary32 reduction must have a device form"
-    );
-    assert_stdout(&path, "host", "0.0 16777216.0\n");
+    assert_device_form(&path, "host", "0.0 16777216.0\n");
     std::fs::remove_file(path).expect("remove reduction fixture");
 }
 /// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
@@ -61,11 +57,7 @@ fn main() = match toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)]) {
 }
 "#;
     let path = program("sequence32", "osp", source).expect("write sequence fixture");
-    assert!(
-        !llvm(&path).contains(GPU_DECLINED),
-        "scan and filter must have device forms"
-    );
-    assert_stdout(&path, &preferred_backend(), "2 1.0 3.0 2.0\n");
+    assert_device_form(&path, &preferred_backend(), "2 1.0 3.0 2.0\n");
     std::fs::remove_file(path).expect("remove sequence fixture");
 }
 /// `directory` holding `config` and the entry `entry`, whose `@FIXTURE@` names
@@ -114,6 +106,25 @@ fn llvm(path: &Path) -> String {
         .output()
         .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
         .unwrap_or_default()
+}
+/// The temp fixture `path` has a device form and prints `expected` on
+/// `backend`: none of the kernels it names is declined.
+fn assert_device_form(path: &Path, backend: &str, expected: &str) {
+    let ir = llvm(path);
+    let named = path.display();
+    assert!(!ir.contains(GPU_DECLINED), "{named}: no device form");
+    assert_stdout(path, backend, expected);
+}
+/// The `label`'s finished run: its output, stdout and stderr, once it ran.
+fn finished(
+    run: std::io::Result<std::process::Output>,
+    label: &str,
+) -> Result<(std::process::Output, String, String), Box<dyn std::error::Error>> {
+    assert!(run.is_ok(), "{label}: not run");
+    let output = run?;
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    Ok((output, stdout, stderr))
 }
 /// One handler loads the fixture's `w`, squares it and names itself.
 const DEFAULT_SQUARE: &str = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::@MODULE@\n\
@@ -189,11 +200,7 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
         &["host", "auto"]
     };
     for &gpu in devices {
-        let output = run_plain(&program, Some(gpu));
-        assert!(output.is_ok(), "{gpu}: not run");
-        let output = output?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let (output, stdout, stderr) = finished(run_plain(&program, Some(gpu)), gpu)?;
         assert!(output.status.success(), "{gpu}: {stderr}");
         let unavailable = if cfg!(target_os = "linux") && gpu == "auto" {
             let errors = [
@@ -261,10 +268,7 @@ fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std:
         let path = program("read_bytes", ext, &source).expect("write read bytes fixture");
         let output = run_plain(&path, None);
         let _ = std::fs::remove_file(&path);
-        assert!(output.is_ok(), "{ext}: not run");
-        let output = output?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let (_, stdout, stderr) = finished(output, ext)?;
         assert_eq!(stdout, expected, "{ext}: {stderr}");
     }
     Ok(())
