@@ -151,17 +151,7 @@ static int unsigned_digits(unsigned long long value, unsigned base, int upper, c
   return length;
 }
 
-static long long signed_argument(const spec *s, va_list *arguments) {
-  switch (s->length) {
-  case LENGTH_LONG: return va_arg(*arguments, long);
-  case LENGTH_LONG_LONG: return va_arg(*arguments, long long);
-  case LENGTH_SIZE: return (long long)va_arg(*arguments, size_t);
-  case LENGTH_SHORT: return (short)va_arg(*arguments, int);
-  case LENGTH_CHAR: return (signed char)va_arg(*arguments, int);
-  default: return va_arg(*arguments, int);
-  }
-}
-
+// The one read of a `d i u o x X` argument: the unsigned width of its length.
 static unsigned long long unsigned_argument(const spec *s, va_list *arguments) {
   switch (s->length) {
   case LENGTH_LONG: return va_arg(*arguments, unsigned long);
@@ -170,6 +160,16 @@ static unsigned long long unsigned_argument(const spec *s, va_list *arguments) {
   case LENGTH_SHORT: return (unsigned short)va_arg(*arguments, unsigned);
   case LENGTH_CHAR: return (unsigned char)va_arg(*arguments, unsigned);
   default: return va_arg(*arguments, unsigned);
+  }
+}
+
+// Sign-extends that read back to the width `%d` and friends asked for.
+static long long signed_argument(const spec *s, va_list *arguments) {
+  unsigned long long raw = unsigned_argument(s, arguments);
+  switch (s->length) {
+  case LENGTH_SHORT: return (short)raw;
+  case LENGTH_CHAR: return (signed char)raw;
+  default: return (long long)raw;
   }
 }
 
@@ -339,8 +339,7 @@ static int float_body(const spec *s, double magnitude, int precision, int upper,
   return general_body(&d, precision, s->alt, upper, body);
 }
 
-static void emit_nonfinite(sink *out, const spec *s, double value, const char *sign) {
-  int upper = s->conversion == 'F' || s->conversion == 'E' || s->conversion == 'G';
+static void emit_nonfinite(sink *out, const spec *s, double value, const char *sign, int upper) {
   const char *body = isnan(value) ? (upper ? "NAN" : "nan") : (upper ? "INF" : "inf");
   emit_field(out, s, sign, body, 3, 0);
 }
@@ -348,15 +347,15 @@ static void emit_nonfinite(sink *out, const spec *s, double value, const char *s
 static void emit_float(sink *out, const spec *s, va_list *arguments) {
   double value = va_arg(*arguments, double);
   const char *sign = signbit(value) ? "-" : s->plus ? "+" : s->space ? " " : "";
+  int upper = s->conversion == 'F' || s->conversion == 'E' || s->conversion == 'G';
   if (!isfinite(value)) {
-    emit_nonfinite(out, s, value, sign);
+    emit_nonfinite(out, s, value, sign, upper);
     return;
   }
   int precision = s->precision < 0 ? 6 : s->precision;
   if (precision > FLOAT_PRECISION_MAX) {
     precision = FLOAT_PRECISION_MAX;
   }
-  int upper = s->conversion == 'F' || s->conversion == 'E' || s->conversion == 'G';
   char body[FLOAT_BODY_MAX];
   int length = float_body(s, fabs(value), precision, upper, body);
   emit_field(out, s, sign, body, length, s->zero);
