@@ -171,23 +171,19 @@ def op_backward(tape, node, g):
             mask = Array.where(Tensor.gt_zero(x), Array.full(x.shape, 1.0), Array.full(x.shape, node.param))
             return [Grad(pos=input0(node), value=Array.multiply(g, mask))]
         case "gelu":
-            return [Grad(pos=input0(node), value=Array.multiply(g, gelu_deriv(saved(node, 0))))]
+            return deriv_grad(node, g, gelu_deriv)
         case "silu":
-            return [Grad(pos=input0(node), value=Array.multiply(g, silu_deriv(saved(node, 0))))]
+            return deriv_grad(node, g, silu_deriv)
         case "sum_all":
             return [Grad(pos=input0(node), value=Tensor.broadcast_to(g, in_shape(tape, node, 0)))]
         case "sum_axis":
-            xshape = in_shape(tape, node, 0)
-            gg = Array.expand_dims(g, node.axis) if not node.keep else g
-            return [Grad(pos=input0(node), value=Tensor.broadcast_to(gg, xshape))]
+            return [Grad(pos=input0(node), value=reduce_grad(tape, node, g))]
         case "mean_all":
             xshape = in_shape(tape, node, 0)
             return [Grad(pos=input0(node), value=Tensor.broadcast_to(Tensor.scale(g, 1.0 / toFloat(Tensor.flat(xshape))), xshape))]
         case "mean_axis":
-            xshape = in_shape(tape, node, 0)
-            scaled = Tensor.scale(g, 1.0 / toFloat(unwrap_or(listGet(xshape, node.axis), 1)))
-            gg = Array.expand_dims(scaled, node.axis) if not node.keep else scaled
-            return [Grad(pos=input0(node), value=Tensor.broadcast_to(gg, xshape))]
+            scaled = Tensor.scale(g, 1.0 / toFloat(unwrap_or(listGet(in_shape(tape, node, 0), node.axis), 1)))
+            return [Grad(pos=input0(node), value=reduce_grad(tape, node, scaled))]
         case "matmul":
             a = saved(node, 0)
             b = saved(node, 1)
@@ -213,6 +209,17 @@ def input1(node):
     return unwrap_or(listGet(node.inputs, 1), 0)
 
 
+def deriv_grad(node, g, deriv):
+    """An activation's backward: `g` times `deriv` of the saved input."""
+    return [Grad(pos=input0(node), value=Array.multiply(g, deriv(saved(node, 0))))]
+
+
+def reduce_grad(tape, node, gg):
+    """A reduction's backward: drop kept axes and broadcast to the input's
+    shape."""
+    return Tensor.broadcast_to(Array.expand_dims(gg, node.axis) if not node.keep else gg, in_shape(tape, node, 0))
+
+
 def grad(f, x):
     """torch.func.grad: the gradient of a tape-style function `f` at `x`,
     seeded with a ones cotangent."""
@@ -232,28 +239,32 @@ def vjp(f, x, v):
 
 # Forward ops ------------------------------------------------------------
 
+def binary(tape, a, b, name, kernel, save):
+    """Tape one binary op, saving both operands when the backward formula
+    needs them."""
+    av = value_of(tape, a)
+    bv = value_of(tape, b)
+    return record_value(tape, kernel(av, bv), name, [a, b], [av, bv] if save else [])
+
+
 def add(tape, a, b):
     """Tape add (torch's `+`): broadcasts, backward passes the gradient."""
-    return record_value(tape, Array.add(value_of(tape, a), value_of(tape, b)), "add", [a, b], [])
+    return binary(tape, a, b, "add", Array.add, False)
 
 
 def sub(tape, a, b):
     """Tape subtract (torch's `-`)."""
-    return record_value(tape, Array.subtract(value_of(tape, a), value_of(tape, b)), "sub", [a, b], [])
+    return binary(tape, a, b, "sub", Array.subtract, False)
 
 
 def mul(tape, a, b):
     """Tape multiply (torch's `*`): backward is `g * other`."""
-    av = value_of(tape, a)
-    bv = value_of(tape, b)
-    return record_value(tape, Array.multiply(av, bv), "mul", [a, b], [av, bv])
+    return binary(tape, a, b, "mul", Array.multiply, True)
 
 
 def div(tape, a, b):
     """Tape divide (torch's `/`): backward `g / b` and `-g * a / b^2`."""
-    av = value_of(tape, a)
-    bv = value_of(tape, b)
-    return record_value(tape, Array.divide(av, bv), "div", [a, b], [av, bv])
+    return binary(tape, a, b, "div", Array.divide, True)
 
 
 def unary(tape, a, name, kernel, save):
@@ -358,30 +369,29 @@ def mean_axis(tape, a, axis, keepdims):
 def matmul(tape, a, b):
     """Tape matrix product (torch's `@`): backward is `g @ b^T` and `a^T @ g`
     for 2-D operands."""
+    return binary(tape, a, b, "matmul", Linalg.matmul, True)
+
+
+def softmax_family(tape, a, dim, name, finish):
+    """The shared core of softmax and log_softmax along `dim`: max-subtract,
+    exponentiate and sum, then `finish(shifted, e, s)` picks the output."""
     av = value_of(tape, a)
-    bv = value_of(tape, b)
-    return record_value(tape, Linalg.matmul(av, bv), "matmul", [a, b], [av, bv])
+    ax = norm_axis(dim, len(av.shape))
+    shifted = Tensor.bsub(av, Array.max_axis(av, ax, True))
+    e = Array.exp(shifted)
+    out = finish(shifted, e, Array.sum_axis(e, ax, True))
+    return append(tape, Node(op=name, inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=False))
 
 
 def softmax(tape, a, dim):
     """Tape softmax along `dim`: torch's max-subtracted form, backward
     `out * (g - sum(g * out, dim, keepdim))`."""
-    av = value_of(tape, a)
-    ax = norm_axis(dim, len(av.shape))
-    m = Array.max_axis(av, ax, True)
-    e = Array.exp(Tensor.bsub(av, m))
-    out = Tensor.bdiv(e, Array.sum_axis(e, ax, True))
-    return append(tape, Node(op="softmax", inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=False))
+    return softmax_family(tape, a, dim, "softmax", lambda shifted, e, s: Tensor.bdiv(e, s))
 
 
 def log_softmax(tape, a, dim):
     """Tape log-softmax along `dim`: backward `g - exp(out) * sum(g, dim)`."""
-    av = value_of(tape, a)
-    ax = norm_axis(dim, len(av.shape))
-    m = Array.max_axis(av, ax, True)
-    e = Array.exp(Tensor.bsub(av, m))
-    out = Tensor.bsub(Tensor.bsub(av, m), Array.log(Array.sum_axis(e, ax, True)))
-    return append(tape, Node(op="log_softmax", inputs=[a], saved=[], shape=out.shape, value=out, axis=ax, param=0.0, keep=False))
+    return softmax_family(tape, a, dim, "log_softmax", lambda shifted, e, s: Tensor.bsub(shifted, Array.log(s)))
 
 
 # Activation math ----------------------------------------------------------
