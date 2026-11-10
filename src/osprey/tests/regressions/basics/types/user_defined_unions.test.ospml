@@ -47,10 +47,20 @@ valueOr (items, key, fallback) = mapGet items key ?: fallback
 listValueAt<T> : (Map<string, List<T>>, string, int, T) -> T
 listValueAt (items, key, index, fallback) = listGet (valueOr (items, key, [fallback])) index ?: fallback
 
+(** Reads through a list of maps, falling back to a one-key map of `[fallback]`. *)
+nestedValueAt (maps, index, key, at, fallback) =
+    listValueAt (listGet maps index ?: ["fallback" => [fallback]], key, at, fallback)
+
 describe o =
     match o
         Ok value => "ok: " + value
         Err message => "err: " + message
+
+(** Renders the outcome recovered from a list slot, or the fallback when absent. *)
+describeAt (outcomes, index, fallback) = describe (listGet outcomes index ?: fallback)
+
+(** Renders the outcome recovered from a map key, or the fallback when absent. *)
+describeKey (byKey, key, fallback) = describe (mapGet byKey key ?: fallback)
 
 classify points =
     match points
@@ -131,6 +141,7 @@ userDefinedUnionCase () =
     withoutFailure = updated |> mapRemove "failure"
     merged = byName |> mapMerge ["primary" => cached, "offline" => Err(message = "offline")]
     fallback = Err(message = "fallback")
+    listsChoice = chooseOutcome (loaded, [[1], [2, 3]], [[9]])
 
     checkAll "union tags and payloads survive direct construction" [
         describe loaded == "ok: loaded",
@@ -147,13 +158,13 @@ userDefinedUnionCase () =
         listLength grown == 3,
         listLength prefixed == 4,
         listLength reversed == 4,
-        describe (listGet outcomes 0 ?: fallback) == "ok: loaded",
-        describe (listGet outcomes 1 ?: fallback) == "err: missing",
-        describe (listGet grown 2 ?: fallback) == "ok: cached",
-        describe (listGet prefixed 0 ?: fallback) == "err: offline",
-        describe (listGet reversed 0 ?: fallback) == "ok: cached",
-        describe (listGet reversed 3 ?: fallback) == "err: offline",
-        describe (listGet outcomes 9 ?: fallback) == "err: fallback",
+        describeAt (outcomes, 0, fallback) == "ok: loaded",
+        describeAt (outcomes, 1, fallback) == "err: missing",
+        describeAt (grown, 2, fallback) == "ok: cached",
+        describeAt (prefixed, 0, fallback) == "err: offline",
+        describeAt (reversed, 0, fallback) == "ok: cached",
+        describeAt (reversed, 3, fallback) == "err: offline",
+        describeAt (outcomes, 9, fallback) == "err: fallback",
         listLength outcomes == 2,
         outcomeShape [] == "empty",
         outcomeShape [loaded] == "one:ok: loaded",
@@ -168,12 +179,12 @@ userDefinedUnionCase () =
         mapLength updated == 3,
         mapLength withoutFailure == 2,
         mapLength merged == 3,
-        describe (mapGet byName "primary" ?: fallback) == "ok: loaded",
-        describe (mapGet byName "failure" ?: fallback) == "err: missing",
-        describe (mapGet updated "cached" ?: fallback) == "ok: cached",
-        describe (mapGet withoutFailure "failure" ?: fallback) == "err: fallback",
-        describe (mapGet merged "primary" ?: fallback) == "ok: cached",
-        describe (mapGet merged "offline" ?: fallback) == "err: offline",
+        describeKey (byName, "primary", fallback) == "ok: loaded",
+        describeKey (byName, "failure", fallback) == "err: missing",
+        describeKey (updated, "cached", fallback) == "ok: cached",
+        describeKey (withoutFailure, "failure", fallback) == "err: fallback",
+        describeKey (merged, "primary", fallback) == "ok: cached",
+        describeKey (merged, "offline", fallback) == "err: offline",
         mapContains byName "primary",
         mapContains updated "cached",
         !(mapContains withoutFailure "failure"),
@@ -182,8 +193,8 @@ userDefinedUnionCase () =
         chooseOutcome (loaded, 41, 99) == 41,
         chooseOutcome (missing, "accepted", "rejected") == "rejected",
         chooseOutcome (cached, true, false),
-        listLength (chooseOutcome (loaded, [[1], [2, 3]], [[9]])) == 2,
-        listLength (listGet (chooseOutcome (loaded, [[1], [2, 3]], [[9]])) 1 ?: [99]) == 2
+        listLength listsChoice == 2,
+        listLength (listGet listsChoice 1 ?: [99]) == 2
     ]
 
     checkAll "returned union values stay valid call arguments" [
@@ -268,7 +279,7 @@ builtMapIndexCase () =
         listValueAt (stringBuckets, "long", 0, "missing") == "three",
         listValueAt (stringBuckets, "long", 1, "missing") == "seven",
         listLength nestedMaps == 2,
-        listValueAt (listGet nestedMaps 0 ?: ["fallback" => [99]], "odd", 2, 99) == 5,
-        listValueAt (listGet nestedMaps 1 ?: ["fallback" => [99]], "prime", 3, 99) == 7
+        nestedValueAt (nestedMaps, 0, "odd", 2, 99) == 5,
+        nestedValueAt (nestedMaps, 1, "prime", 3, 99) == 7
     ]
 test "built maps support indexed lookup" (exactly builtMapIndexCase)
