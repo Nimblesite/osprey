@@ -23,30 +23,18 @@ fn requestStringGroups() -> Map<string, List<string>> = perform MapDepot.fetch("
 fn requestFloatGroups() -> Map<string, List<float>> = perform MapDepot.fetch("floats")
 fn requestBoolGroups() -> Map<string, List<bool>> = perform MapDepot.fetch("bools")
 
-fn effectIntGroups() = {
+/// withDepot answers every MapDepot.fetch with `groups`, then runs the
+/// effect body `request` under that handler.
+fn withDepot<T>(groups: Map<string, List<T>>, request: fn() -> Map<string, List<T>>) = {
     handle MapDepot {
-        fetch _key => intGroups()
+        fetch _key => groups
     }
-    requestIntGroups()
+    request()
 }
-fn effectStringGroups() = {
-    handle MapDepot {
-        fetch _key => stringGroups()
-    }
-    requestStringGroups()
-}
-fn effectFloatGroups() = {
-    handle MapDepot {
-        fetch _key => floatGroups()
-    }
-    requestFloatGroups()
-}
-fn effectBoolGroups() = {
-    handle MapDepot {
-        fetch _key => boolGroups()
-    }
-    requestBoolGroups()
-}
+fn effectIntGroups() = withDepot(intGroups(), requestIntGroups)
+fn effectStringGroups() = withDepot(stringGroups(), requestStringGroups)
+fn effectFloatGroups() = withDepot(floatGroups(), requestFloatGroups)
+fn effectBoolGroups() = withDepot(boolGroups(), requestBoolGroups)
 
 fn mapListShape<T>(groups: Map<string, List<T>>) = match mapLength(groups) {
     0 => "empty"

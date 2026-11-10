@@ -28,25 +28,18 @@ requestFloatGroups () = perform MapDepot.fetch "floats"
 requestBoolGroups : Unit -> Map string (List bool)
 requestBoolGroups () = perform MapDepot.fetch "bools"
 
-effectIntGroups () =
+(** withDepot answers every MapDepot.fetch with `groups`, then runs the
+    effect body `request` under that handler. *)
+withDepot<T> : (Map string (List T), Unit -> Map string (List T)) -> Map string (List T)
+withDepot (groups, request) =
     handle MapDepot
-        fetch _key => intGroups ()
-    requestIntGroups ()
+        fetch _key => groups
+    request ()
 
-effectStringGroups () =
-    handle MapDepot
-        fetch _key => stringGroups ()
-    requestStringGroups ()
-
-effectFloatGroups () =
-    handle MapDepot
-        fetch _key => floatGroups ()
-    requestFloatGroups ()
-
-effectBoolGroups () =
-    handle MapDepot
-        fetch _key => boolGroups ()
-    requestBoolGroups ()
+effectIntGroups () = withDepot (intGroups (), requestIntGroups)
+effectStringGroups () = withDepot (stringGroups (), requestStringGroups)
+effectFloatGroups () = withDepot (floatGroups (), requestFloatGroups)
+effectBoolGroups () = withDepot (boolGroups (), requestBoolGroups)
 
 mapListShape<T> : Map string (List T) -> string
 mapListShape groups = match mapLength groups
