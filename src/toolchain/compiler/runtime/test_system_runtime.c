@@ -79,139 +79,43 @@ static void test_event_handler(int64_t process_id, int64_t event_type,
   pthread_mutex_unlock(&test_data.mutex);
 }
 
-void test_basic_process_spawn(void) {
-  printf("=== Testing Basic Process Spawn ===\n");
+// Each command runs to completion and reports its documented exit code: a
+// plain echo, `false`, stderr-only output, a streamed sleeper, and a missing
+// command (127, the failure surfaces in the child).
+static const struct {
+  const char *command;
+  int64_t exit_code;
+} EXIT_CASES[] = {
+    {"echo 'Hello from test process'", 0},
+    {"false", 1},
+    {"sh -c 'echo \"error message\" >&2'", 0},
+    {"sh -c 'for i in 1 2 3; do echo \"Line $i\"; sleep 0.1; done'", 0},
+    {"nonexistent_command_12345", 127},
+};
 
-  int64_t process_id = spawn_process_with_handler(
-      "echo 'Hello from test process'", test_event_handler);
-
-  assert(process_id > 0);
-  printf("Process spawned with ID: %lld\n", (long long)process_id);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-  printf("Process completed with exit code: %lld\n", (long long)exit_code);
-
-  assert(exit_code == 0);
-
-  // Clean up
-  cleanup_process(process_id);
-  printf("Process cleaned up\n");
-
-  printf("=== Basic Process Spawn Test PASSED ===\n\n");
+void test_exit_codes(void) {
+  for (size_t i = 0; i < sizeof EXIT_CASES / sizeof EXIT_CASES[0]; i++) {
+    int64_t process_id =
+        spawn_process_with_handler(EXIT_CASES[i].command, test_event_handler);
+    assert(process_id > 0);
+    assert(await_process(process_id) == EXIT_CASES[i].exit_code);
+    cleanup_process(process_id);
+  }
 }
 
+// Three processes run at once under distinct ids and all succeed.
 void test_multiple_processes(void) {
-  printf("=== Testing Multiple Processes ===\n");
-
-  int64_t pid1 =
-      spawn_process_with_handler("echo 'Process 1'", test_event_handler);
-  int64_t pid2 =
-      spawn_process_with_handler("echo 'Process 2'", test_event_handler);
-  int64_t pid3 =
-      spawn_process_with_handler("echo 'Process 3'", test_event_handler);
-
-  assert(pid1 > 0);
-  assert(pid2 > 0);
-  assert(pid3 > 0);
-  assert(pid1 != pid2);
-  assert(pid2 != pid3);
-
-  printf("Spawned processes: %lld, %lld, %lld\n", (long long)pid1,
-         (long long)pid2, (long long)pid3);
-
-  // Wait for all to complete
-  int64_t exit1 = await_process(pid1);
-  int64_t exit2 = await_process(pid2);
-  int64_t exit3 = await_process(pid3);
-
-  assert(exit1 == 0);
-  assert(exit2 == 0);
-  assert(exit3 == 0);
-
-  // Clean up all
-  cleanup_process(pid1);
-  cleanup_process(pid2);
-  cleanup_process(pid3);
-
-  printf("=== Multiple Processes Test PASSED ===\n\n");
-}
-
-void test_process_with_error(void) {
-  printf("=== Testing Process With Error ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "false", test_event_handler); // 'false' command returns exit code 1
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-  printf("Error process completed with exit code: %lld\n",
-         (long long)exit_code);
-
-  assert(exit_code == 1); // false command should return 1
-
-  cleanup_process(process_id);
-
-  printf("=== Process With Error Test PASSED ===\n\n");
-}
-
-void test_process_with_stderr(void) {
-  printf("=== Testing Process With Stderr ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "sh -c 'echo \"error message\" >&2'", test_event_handler);
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-
-  assert(exit_code == 0);
-
-  cleanup_process(process_id);
-
-  printf("=== Process With Stderr Test PASSED ===\n\n");
-}
-
-void test_long_running_process(void) {
-  printf("=== Testing Long Running Process ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "sh -c 'for i in 1 2 3; do echo \"Line $i\"; sleep 0.1; done'",
-      test_event_handler);
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-
-  assert(exit_code == 0);
-
-  cleanup_process(process_id);
-
-  printf("=== Long Running Process Test PASSED ===\n\n");
-}
-
-void test_invalid_command(void) {
-  printf("=== Testing Invalid Command ===\n");
-
-  int64_t process_id = spawn_process_with_handler("nonexistent_command_12345",
-                                                  test_event_handler);
-
-  // Should still get a process ID (the failure happens in the child process)
-  assert(process_id > 0);
-
-  // Wait for completion - should get exit code 127 (command not found)
-  int64_t exit_code = await_process(process_id);
-  printf("Invalid command exit code: %lld\n", (long long)exit_code);
-
-  assert(exit_code == 127); // Standard exit code for command not found
-
-  cleanup_process(process_id);
-
-  printf("=== Invalid Command Test PASSED ===\n\n");
+  int64_t pids[3];
+  char command[32];
+  for (int i = 0; i < 3; i++) {
+    snprintf(command, sizeof command, "echo 'Process %d'", i + 1);
+    pids[i] = spawn_process_with_handler(command, test_event_handler);
+    assert(pids[i] > 0 && (i == 0 || pids[i] != pids[i - 1]));
+  }
+  for (int i = 0; i < 3; i++) {
+    assert(await_process(pids[i]) == 0);
+    cleanup_process(pids[i]);
+  }
 }
 
 // --- content-exact event capture ---------------------------------------------
@@ -392,12 +296,8 @@ int main(int argc, char **argv) {
   // and no children of its own.
   run_spawn_failure_tests();
 
-  test_basic_process_spawn();
+  test_exit_codes();
   test_multiple_processes();
-  test_process_with_error();
-  test_process_with_stderr();
-  test_long_running_process();
-  test_invalid_command();
   test_captured_stdout_and_exit();
   test_captured_stderr_and_exact_code();
   test_process_argument_rejection();
