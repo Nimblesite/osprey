@@ -33,32 +33,43 @@ extern osprey_ffi_null -> Ptr
 extern osprey_ffi_transient -> Ptr
 
 module Sqlite
-    // prepare is PRIVATE: callers never see statement pointers, only values.
-    prepare : Ptr -> string -> Ptr
-    prepare db sql =
+    // `fill` is handed a fresh out-param cell; yield the pointer it wrote there.
+    outCell fill =
         cell = osprey_ffi_cell ()
-        _rc = sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ())
-        stmt = osprey_ffi_deref cell
+        _rc = fill cell
+        p = osprey_ffi_deref cell
         _freed = osprey_ffi_free cell
+        p
+
+    // prepare is PRIVATE: callers never see statement pointers, only values.
+    prepare db sql = outCell (\cell => sqlite3_prepare_v2 db sql (-1) cell (osprey_ffi_null ()))
+
+    // Step `stmt` once, hand `(code, stmt)` to `read`, then finalize; yield its value.
+    stepped stmt read =
+        code = sqlite3_step stmt
+        v = read (code, stmt)
+        _fin = sqlite3_finalize stmt
+        v
+
+    // A statement of `sql` with every key bound, in order, from parameter 1.
+    bindInts db sql keys =
+        stmt = prepare db sql
+        _next = foldList (keys, 1, \(pos, key) => bindAt (stmt, pos, key))
         stmt
 
+    // Bind `key` at parameter `pos`; hand back the next free position.
+    bindAt (stmt, pos, key) =
+        _b = sqlite3_bind_int stmt pos key
+        pos + 1
+
     // bind positional (int, text) then run to completion — private plumbing.
-    runBound : Ptr -> string -> int -> string -> int
     runBound db sql i t =
-        stmt = prepare db sql
-        _b1 = sqlite3_bind_int stmt 1 i
+        stmt = bindInts db sql [i]
         _b2 = sqlite3_bind_text stmt 2 t (-1) (osprey_ffi_transient ())
-        rc = sqlite3_step stmt
-        _fin = sqlite3_finalize stmt
-        rc
+        stepped stmt (\(code, _s) => code)
 
     export openAt : string -> Ptr
-    openAt path =
-        cell = osprey_ffi_cell ()
-        _rc = sqlite3_open path cell
-        db = osprey_ffi_deref cell
-        _freed = osprey_ffi_free cell
-        db
+    openAt path = outCell (\cell => sqlite3_open path cell)
 
     // Run one statement with no result rows (DDL, DELETE, BEGIN/COMMIT).
     export run : Ptr -> string -> int
@@ -72,41 +83,20 @@ module Sqlite
 
     // UPDATE with two bound ints; returns the step result code.
     export updateIntInt : Ptr -> string -> int -> int -> int
-    updateIntInt db sql a b =
-        stmt = prepare db sql
-        _b1 = sqlite3_bind_int stmt 1 a
-        _b2 = sqlite3_bind_int stmt 2 b
-        rc = sqlite3_step stmt
-        _fin = sqlite3_finalize stmt
-        rc
-
-    // A statement of `sql` with `key` bound as its first parameter.
-    bindInt db sql key =
-        stmt = prepare db sql
-        _b1 = sqlite3_bind_int stmt 1 key
-        stmt
+    updateIntInt db sql a b = stepped (bindInts db sql [a, b]) (\(code, _s) => code)
 
     // One statement stepped once: its first column as an int, and the statement finalized.
-    intColumn stmt =
-        _rc = sqlite3_step stmt
-        v = sqlite3_column_int stmt 0
-        _fin = sqlite3_finalize stmt
-        v
+    intColumn stmt = stepped stmt (\(_code, s) => sqlite3_column_int s 0)
 
     // SELECT one int scalar with one bound int (first row, first column).
     export queryInt : Ptr -> string -> int -> int
-    queryInt db sql key = intColumn (bindInt db sql key)
+    queryInt db sql key = intColumn (bindInts db sql [key])
 
     // SELECT one text scalar with one bound int. The column pointer is only
     // valid until finalize, so the text is copied into a fresh Osprey string
     // (via interpolation) BEFORE the statement is finalized.
     export queryText : Ptr -> string -> int -> string
-    queryText db sql key =
-        stmt = bindInt db sql key
-        _rc = sqlite3_step stmt
-        v = "${sqlite3_column_text stmt 0}"
-        _fin = sqlite3_finalize stmt
-        v
+    queryText db sql key = stepped (bindInts db sql [key]) (\(_code, s) => "${sqlite3_column_text s 0}")
 
     // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
     export queryScalar : Ptr -> string -> int
