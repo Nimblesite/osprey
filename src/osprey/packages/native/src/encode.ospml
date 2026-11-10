@@ -79,7 +79,7 @@ module Encode
 
     (** Encodes `children` in order; their bindings continue after `bindings`, so ordinals follow drawing order. *)
     export all<A> : (List<Binding<A>>, List<Node<A>>) -> Walked<A>
-    all (bindings, children) = range (0, length children) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => childAt (walked, children, index))
+    all (bindings, children) = entryWalked (bindings, children, \(walked, index) => childAt (walked, children, index))
 
     // A container: its children continue the parent's ordinals.
     nested<A> : (List<Binding<A>>, string, List<JsonMember>, List<Node<A>>) -> Walked<A>
@@ -132,10 +132,7 @@ module Encode
         one (body.bindings, kind "screen" [str "title" title, str "subtitle" subtitle, JsonMember "toolbar" (JsonArray tools.nodes), JsonMember "children" (JsonArray body.nodes)])
 
     // A control with content: its binding takes the next ordinal, then its children continue.
-    disclosure<A> : (List<Binding<A>>, string, bool, A, List<Node<A>>) -> Walked<A>
-    disclosure (bindings, title, expanded, action, children) =
-        inner = all (listAppend bindings (FlagInput(action = action)), children)
-        one (inner.bindings, kind "disclosure" [str "title" title, bit "expanded" expanded, num "event" (length bindings), JsonMember "children" (JsonArray inner.nodes)])
+    disclosure (bindings, title, expanded, action, children) = nested (listAppend bindings (FlagInput(action = action)), "disclosure", [str "title" title, bit "expanded" expanded, num "event" (length bindings)], children)
 
     // Two columns: the pane's controls take ordinals before the aside's, and the splitter between them takes the next.
     aside<A> : (List<Binding<A>>, Side, Node<A>, Node<A>, int, int, int, int, A) -> Walked<A>
@@ -201,19 +198,16 @@ module Encode
     // A frame's control metrics.
     frameControls style = [num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, bit "selectionGroup" style.frameSelectionGroup]
 
-    framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
-    framed (bindings, style, content) =
+    // A node of `name`'s kind whose `members` are followed by its content's encoding as `body`.
+    wrapped (bindings, name, members, content) =
         inner = walk (bindings, content)
-        one (inner.bindings, kind "framed" [JsonMember "style" (frameJson style), JsonMember "body" (first inner)])
+        one (inner.bindings, kind name (listAppend members (JsonMember "body" (first inner))))
 
-    dialog (bindings, title, content, action) =
-        dismissing = listAppend bindings (Tap(action = action))
-        inner = walk (dismissing, content)
-        one (inner.bindings, kind "dialog" [str "title" title, num "event" (length bindings), JsonMember "body" (first inner)])
+    framed (bindings, style, content) = wrapped (bindings, "framed", [JsonMember "style" (frameJson style)], content)
 
-    themed (bindings, theme, content) =
-        inner = walk (bindings, content)
-        one (inner.bindings, kind "themed" [JsonMember "theme" (Themes::encode theme), JsonMember "body" (first inner)])
+    dialog (bindings, title, content, action) = wrapped (listAppend bindings (Tap(action = action)), "dialog", [str "title" title, num "event" (length bindings)], content)
+
+    themed (bindings, theme, content) = wrapped (bindings, "themed", [JsonMember "theme" (Themes::encode theme)], content)
 
     real value = JsonFloat value
 

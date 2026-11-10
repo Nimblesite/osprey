@@ -282,7 +282,7 @@ module Ui
     // for every caller in a later file (Nimblesite/osprey#277).
     (** Body text in the primary tone. *)
     export text<A> : string -> Node<A>
-    text content = styled (content, Body, Primary)
+    text content = Text(content = content, role = Body, tone = Primary)
 
     (** Text with an explicit role and tone. *)
     export styled<A> : (string, TextRole, Tone) -> Node<A>
@@ -290,7 +290,7 @@ module Ui
 
     (** Caption text in the secondary tone. *)
     export caption<A> : string -> Node<A>
-    caption content = styled (content, Caption, Secondary)
+    caption content = Text(content = content, role = Caption, tone = Secondary)
 
     (** Children stacked vertically. *)
     export column<A> : List<Node<A>> -> Node<A>
@@ -306,7 +306,7 @@ module Ui
 
     (** A plain, enabled button with a label and symbol that delivers `action` when pressed. *)
     export button<A> : (string, string, A) -> Node<A>
-    button (label, symbol, act) = action (label, symbol, Plain, true, act)
+    button (label, symbol, action) = Button(label = label, symbol = symbol, role = Plain, enabled = true, action = action)
 
     (** A button with an explicit role and enabled state that delivers `act` when pressed. *)
     export action<A> : (string, string, ButtonRole, bool, A) -> Node<A>
@@ -372,12 +372,9 @@ module Ui
     export rows<A> : (List<Row<A>>, string, A) -> Node<A>
     rows (items, selected, bind) = Rows(rows = items, selected = selected, bind = bind)
 
-    (** A field that commits every edit; `multi` spans several lines. *)
-    committedField (label, value, prompt, multi, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = multi, commit = OnEdit, bind = bind)
-
     (** A text field that commits every edit. *)
     export field<A> : (string, string, string, A) -> Node<A>
-    field (label, value, prompt, bind) = committedField (label, value, prompt, false, bind)
+    field (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = false, commit = OnEdit, bind = bind)
 
     (** A switch; turning it delivers the new state to `bind`. *)
     export toggle<A> : (string, bool, A) -> Node<A>
@@ -396,7 +393,7 @@ module Ui
 
     (** A row with no symbol or group. *)
     export item<A> : (string, Node<A>) -> Row<A>
-    item (key, cell) = entry (key, "", "", cell)
+    item (key, cell) = Row(rowKey = key, rowSymbol = "", rowGroup = "", cell = cell)
 
     (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
     export entry<A> : (string, string, string, Node<A>) -> Row<A>
@@ -408,7 +405,7 @@ module Ui
 
     (** A multiline free-form field; editing reports the complete text. *)
     export multiline<A> : (string, string, string, A) -> Node<A>
-    multiline (label, value, prompt, bind) = committedField (label, value, prompt, true, bind)
+    multiline (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = OnEdit, bind = bind)
 
     (** `aside` with its splitter limits authored by the application rather than taken from `Splitters`. *)
     export boundedAside<A> : (Node<A>, Side, Node<A>, int, int, int, int, A) -> Node<A>
