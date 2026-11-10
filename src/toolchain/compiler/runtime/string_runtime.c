@@ -152,29 +152,19 @@ static char *string_case(const char *s, int (*convert)(int)) {
 char *osp_string_to_upper(const char *s) { return string_case(s, toupper); }
 char *osp_string_to_lower(const char *s) { return string_case(s, tolower); }
 
-/* One-sided ASCII trimming [BUILTIN-STRING-TRIMSTART]. */
-char *osp_string_trim_start(const char *s) {
-    if (!s) return osp_string_empty_internal();
-    size_t n = (size_t)osp_strlen(s), start = 0;
-    while (start < n && osp_is_ws_internal((unsigned char)s[start])) start++;
-    return osp_string_dup_internal(s + start, n - start);
-}
-
-/* One-sided ASCII trimming [BUILTIN-STRING-TRIMEND]. */
-char *osp_string_trim_end(const char *s) {
-    if (!s) return osp_string_empty_internal();
-    size_t len = (size_t)osp_strlen(s);
-    while (len > 0 && osp_is_ws_internal((unsigned char)s[len - 1])) len--;
-    return osp_string_dup_internal(s, len);
-}
-
-char *osp_string_trim(const char *s) {
+/* ASCII trimming [BUILTIN-STRING-TRIMSTART] [BUILTIN-STRING-TRIMEND]: each
+ * requested side is cut at its outermost non-whitespace byte. */
+static char *string_trim(const char *s, int at_start, int at_end) {
     if (!s) return osp_string_empty_internal();
     size_t end = (size_t)osp_strlen(s), start = 0;
-    while (start < end && osp_is_ws_internal((unsigned char)s[start])) start++;
-    while (end > start && osp_is_ws_internal((unsigned char)s[end - 1])) end--;
+    if (at_start) while (start < end && osp_is_ws_internal((unsigned char)s[start])) start++;
+    if (at_end) while (end > start && osp_is_ws_internal((unsigned char)s[end - 1])) end--;
     return osp_string_dup_internal(s + start, end - start);
 }
+
+char *osp_string_trim_start(const char *s) { return string_trim(s, 1, 0); }
+char *osp_string_trim_end(const char *s) { return string_trim(s, 0, 1); }
+char *osp_string_trim(const char *s) { return string_trim(s, 1, 1); }
 
 char *osp_string_reverse(const char *s) {
     if (!s) return osp_string_empty_internal();
@@ -350,10 +340,18 @@ int64_t osp_string_byte_length(const char *s) {
     return osp_strlen(s);
 }
 
+/* Shared cursor prologue: answers the caller's static message for a null
+ * operand or an out-of-range index, NULL when the read may proceed. */
+static const char *cursor_error(const char *s, const int64_t *out, int64_t i,
+                                const char *null_msg, const char *range_msg) {
+    if (!s || !out) return null_msg;
+    if (i < 0 || i >= osp_strlen(s)) return range_msg;
+    return NULL;
+}
+
 const char *osp_string_byte_at(const char *s, int64_t i, int64_t *out) {
-    if (!s || !out) return "byteAt: null string";
-    int64_t len = osp_strlen(s);
-    if (i < 0 || i >= len) return "byteAt: index out of range";
+    const char *err = cursor_error(s, out, i, "byteAt: null string", "byteAt: index out of range");
+    if (err) return err;
     *out = (int64_t)(unsigned char)s[i];
     return NULL;
 }
@@ -368,9 +366,9 @@ static int osp_utf8_lead_width(unsigned char b) {
 }
 
 const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *out) {
-    if (!s || !out) return "codePointAt: null string";
+    const char *err = cursor_error(s, out, byte_index, "codePointAt: null string", "codePointAt: index out of range");
+    if (err) return err;
     int64_t len = osp_strlen(s);
-    if (byte_index < 0 || byte_index >= len) return "codePointAt: index out of range";
     const unsigned char *p = (const unsigned char *)s + byte_index;
     int width = osp_utf8_lead_width(p[0]);
     if (width == 0) return "codePointAt: invalid UTF-8 lead byte";
