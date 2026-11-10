@@ -65,13 +65,15 @@ static const uint64_t specials[SPECIALS] = {0, UINT64_C(0x8000000000000000), 1, 
     UINT64_C(0xbff0000000000000), UINT64_C(0x7fefffffffffffff), UINT64_C(0x7ff0000000000000),
     UINT64_C(0xfff0000000000000), UINT64_C(0x7ff8000000000000)};
 
+static void mismatch(const char *what, uint64_t a, uint64_t b, uint64_t device, uint64_t host) {
+  fprintf(stderr, "%s(%016llx, %016llx): device %016llx host %016llx\n", what,
+      (unsigned long long)a, (unsigned long long)b, (unsigned long long)device, (unsigned long long)host);
+  abort();
+}
+
 static void expect(const char *what, uint64_t a, uint64_t b, uint64_t device, uint64_t host) {
   checks++;
-  if (!same(device, host)) {
-    fprintf(stderr, "%s(%016llx, %016llx): device %016llx host %016llx\n", what,
-        (unsigned long long)a, (unsigned long long)b, (unsigned long long)device, (unsigned long long)host);
-    abort();
-  }
+  if (!same(device, host)) mismatch(what, a, b, device, host);
 }
 
 typedef ulong (*device_binary)(ulong, ulong);
@@ -123,15 +125,17 @@ typedef long double (*host_unary)(long double);
 // sign, binary32 narrowing and the total shifts — must agree with the
 // host bit for bit on every word [BUILTIN-MATH-ROUNDING] [GPU-DEVICE-NATIVE]
 // [BUILTIN-BITWISE].
+static void sampled_case(const char *what, device_unary device, double (*host)(double), int low, int range) {
+  uint64_t x = word_in(low, range);
+  expect(what, x, 0, device(x), bits(host(of(x))));
+}
+
 static void check_exact_unary(const char *what, device_unary device, double (*host)(double)) {
   for (unsigned i = 0; i < SPECIALS; i++) expect(what, specials[i], 0, device(specials[i]), bits(host(of(specials[i]))));
   for (unsigned i = 0; i < TRIALS; i++) {
-    uint64_t x = word_in(0, 2047);
-    expect(what, x, 0, device(x), bits(host(of(x))));
-    uint64_t integral = word_in(1030, 100);
-    expect(what, integral, 0, device(integral), bits(host(of(integral))));
-    uint64_t tiny = word_in(990, 40);
-    expect(what, tiny, 0, device(tiny), bits(host(of(tiny))));
+    sampled_case(what, device, host, 0, 2047);
+    sampled_case(what, device, host, 1030, 100);
+    sampled_case(what, device, host, 990, 40);
   }
 }
 
@@ -176,13 +180,17 @@ static long ref_shr(long a, long n) {
   return (long)(a < 0 ? ~shifted : shifted);
 }
 
+static int shifts_match(long a, long n) {
+  return shl64(a, n) == ref_shl(a, n) && shru64(a, n) == ref_shru(a, n) && shr64(a, n) == ref_shr(a, n);
+}
+
 static void check_total_shifts(void) {
   const long edges[] = {0, -1, 1, -2, 63, -64, 9223372036854775807L, INT64_MIN, -9223372036854775807L};
   for (unsigned i = 0; i < sizeof edges / sizeof *edges; i++)
     for (long n = -3; n <= 67; n++) {
       long a = edges[i];
       checks++;
-      if (shl64(a, n) != ref_shl(a, n) || shru64(a, n) != ref_shru(a, n) || shr64(a, n) != ref_shr(a, n)) {
+      if (!shifts_match(a, n)) {
         fprintf(stderr, "shift(%ld, %ld): shl %ld/%ld shru %ld/%ld shr %ld/%ld\n", a, n,
             shl64(a, n), ref_shl(a, n), shru64(a, n), ref_shru(a, n), shr64(a, n), ref_shr(a, n));
         abort();
@@ -192,7 +200,7 @@ static void check_total_shifts(void) {
     long a = (long)random_word();
     long n = (long)(random_word() % 80) - 8;
     checks++;
-    if (shl64(a, n) != ref_shl(a, n) || shru64(a, n) != ref_shru(a, n) || shr64(a, n) != ref_shr(a, n)) abort();
+    if (!shifts_match(a, n)) abort();
   }
 }
 
@@ -215,42 +223,45 @@ static uint64_t reference(host_unary host, uint64_t x) {
 // Distance in ulps between two finite words of the same sign.
 static uint64_t ulps(uint64_t a, uint64_t b) { return a > b ? a - b : b - a; }
 
+// Samples count words from [low, low + range) (dropping the sign bit when
+// asked), counts the bit-exact matches, tracks the worst distance in ulps,
+// aborts past limit and prints the tally.
+static unsigned long soft_trials(const char *what, device_unary device, host_unary host, int low, int range,
+    unsigned long count, uint64_t limit, int drop_sign) {
+  unsigned long exact = 0;
+  uint64_t worst = 0;
+  for (unsigned long i = 0; i < count; i++) {
+    uint64_t x = word_in(low, range);
+    if (drop_sign) x &= ~UINT64_C(0x8000000000000000);
+    uint64_t got = device(x), want = reference(host, x);
+    checks++;
+    if (same(got, want)) { exact++; continue; }
+    uint64_t distance = ulps(got, want);
+    if (distance > worst) worst = distance;
+    if (distance > limit) {
+      fprintf(stderr, "%s(%016llx): device %016llx host %016llx\n", what, (unsigned long long)x,
+          (unsigned long long)got, (unsigned long long)want);
+      abort();
+    }
+  }
+  printf("[ok] %s: %lu of %lu match the host long double libm bit for bit, worst distance %llu ulp\n", what, exact, count,
+      (unsigned long long)worst);
+  return exact;
+}
+
 static void check_soft(const char *what, device_unary device, host_unary host, int low, int range) {
   // Exact specials every composed function handles: 0, ±0, ±inf, NaN.
   const uint64_t exact_specials[] = {0, UINT64_C(0x8000000000000000), UINT64_C(0x7ff0000000000000),
       UINT64_C(0xfff0000000000000), UINT64_C(0x7ff8000000000000)};
   for (unsigned i = 0; i < sizeof exact_specials / sizeof *exact_specials; i++)
     expect(what, exact_specials[i], 0, device(exact_specials[i]), reference(host, exact_specials[i]));
-  unsigned long exact = 0, trials = 0;
-  uint64_t worst = 0;
-  for (unsigned i = 0; i < TRIALS; i++) {
-    uint64_t x = word_in(low, range);
-    uint64_t got = device(x), want = reference(host, x);
-    trials++;
-    checks++;
-    if (same(got, want)) { exact++; continue; }
-    uint64_t distance = ulps(got, want);
-    if (distance > worst) worst = distance;
-    if (distance > 16) {
-      fprintf(stderr, "%s(%016llx): device %016llx host %016llx\n", what, (unsigned long long)x,
-          (unsigned long long)got, (unsigned long long)want);
-      abort();
-    }
-  }
-  printf("[ok] %s: %lu of %lu match the host long double libm bit for bit, worst distance %llu ulp\n", what, exact, trials,
-      (unsigned long long)worst);
+  soft_trials(what, device, host, low, range, TRIALS, 16, 0);
 }
 
 static void soft_binary_case(const char *what, device_binary device, host_binary host, uint64_t a, uint64_t b) {
   uint64_t got = device(a, b), want = bits(host(of(a), of(b)));
   checks++;
-  if (same(got, want)) return;
-  uint64_t distance = ulps(got, want);
-  if (distance > SOFT_BINARY_MAX_ULPS) {
-    fprintf(stderr, "%s(%016llx, %016llx): device %016llx host %016llx\n", what,
-        (unsigned long long)a, (unsigned long long)b, (unsigned long long)got, (unsigned long long)want);
-    abort();
-  }
+  if (!same(got, want) && ulps(got, want) > SOFT_BINARY_MAX_ULPS) mismatch(what, a, b, got, want);
 }
 
 static void check_soft_binary(const char *what, device_binary device, host_binary host, int xlow, int xrange, int ylow, int yrange) {
@@ -271,27 +282,9 @@ static void check_binary_specials(void) {
 }
 
 static void check_transcendental(const char *what, device_unary device, host_unary host, int low, int range) {
-  unsigned long exact = 0, trials = 0;
-  uint64_t worst = 0;
   for (unsigned i = 0; i < SPECIALS; i++) expect(what, specials[i], 0, device(specials[i]), reference(host, specials[i]));
-  for (unsigned i = 0; i < TRIALS * 2; i++) {
-    uint64_t x = word_in(low, range);
-    if (what[0] == 'l') x &= ~UINT64_C(0x8000000000000000);
-    uint64_t got = device(x), want = reference(host, x);
-    trials++;
-    checks++;
-    if (same(got, want)) { exact++; continue; }
-    uint64_t distance = ulps(got, want);
-    if (distance > worst) worst = distance;
-    if (distance > 1) {
-      fprintf(stderr, "%s(%016llx): device %016llx host %016llx\n", what, (unsigned long long)x,
-          (unsigned long long)got, (unsigned long long)want);
-      abort();
-    }
-  }
-  printf("[ok] %s: %lu of %lu match the host long double libm bit for bit, worst distance %llu ulp\n", what, exact, trials,
-      (unsigned long long)worst);
-  assert(trials - exact <= trials / 100);
+  unsigned long exact = soft_trials(what, device, host, low, range, TRIALS * 2, 1, what[0] == 'l');
+  assert(TRIALS * 2 - exact <= TRIALS * 2 / 100);
 }
 
 // [GPU-DEVICE-NATIVE] Independent wide host arithmetic, never the shader's
@@ -389,17 +382,21 @@ static void check_matmul_kernel(void) {
   checks += 4;
 }
 
+// [GPU-MATMUL]: a cancelling dot product must round to +0 for every k-order.
+static void zero_dot32(const float *a, const float *b, float *out, int inner) {
+  osprey_matmul32(a, b, out, 1, inner, 1, 0);
+  assert(out[0] == 0.0f && !signbit(out[0]));
+}
+
 // [GPU-MATMUL]: binary32 product shape, bounds, k-order and separate rounding.
 static void check_matmul32_kernel(void) {
   float square[] = {0.5f, -1.0f, 2.0f, 3.0f}, out[] = {99, 99, 99, 99, 123};
   for (ulong i = 0; i <= 4; i++) osprey_matmul32(square, square, out, 2, 2, 2, i);
   assert(out[0] == -1.75f && out[1] == -3.5f && out[2] == 7.0f && out[3] == 7.0f && out[4] == 123);
   float ordered[] = {0x1p24f, 1.0f, -0x1p24f}, ones[] = {1, 1, 1};
-  osprey_matmul32(ordered, ones, out, 1, 3, 1, 0);
-  assert(out[0] == 0.0f && !signbit(out[0]));
+  zero_dot32(ordered, ones, out, 3);
   float a[] = {0x1.000002p0f, -1.0f}, b[] = {0x1.fffffcp-1f, 1.0f};
-  osprey_matmul32(a, b, out, 1, 2, 1, 0);
-  assert(out[0] == 0.0f && !signbit(out[0]));
+  zero_dot32(a, b, out, 2);
   checks += 7;
 }
 
