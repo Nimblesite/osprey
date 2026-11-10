@@ -206,19 +206,23 @@ static void test_handle_validation(void) {
   assert(websocket_stop_server(server_id) == 0); // already gone: still a no-op
 }
 
+// Creates a server on WS_LIVE_PORT with `host`/`path`, asserting the handle
+// is valid and that listen() returns `expected` (0 serves, -4 is refused).
+static int64_t ws_serve(char *host, char *path, int expected) {
+  int64_t server_id = websocket_create_server(WS_LIVE_PORT, host, path);
+  assert(server_id > 0);
+  assert(websocket_server_listen(server_id) == expected);
+  return server_id;
+}
+
 // A port that is bound twice cannot listen twice.
 static void test_listen_bind_conflict(void) {
-  int64_t first = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  int64_t second = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  assert(first > 0 && second > 0);
-  assert(websocket_server_listen(first) == 0);
-  assert(websocket_server_listen(second) == -4); // bind() rejects the reuse
+  int64_t first = ws_serve("127.0.0.1", "/chat", 0);
+  int64_t second = ws_serve("127.0.0.1", "/chat", -4); // bind() rejects the reuse
   assert(websocket_stop_server(second) == 0);
   assert(websocket_stop_server(first) == 0);
   // An address the host cannot bind fails the same way.
-  int64_t unroutable = websocket_create_server(WS_LIVE_PORT, "203.0.113.1", "/");
-  assert(unroutable > 0);
-  assert(websocket_server_listen(unroutable) == -4);
+  int64_t unroutable = ws_serve("203.0.113.1", "/", -4);
   assert(websocket_stop_server(unroutable) == 0);
 }
 
@@ -246,34 +250,42 @@ static void ws_expect_echo_on(int fd, const char *original) {
   assert(0 && "the server never echoed the client's message");
 }
 
-static void test_live_loopback_exchange(void) {
-  int64_t server_id = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  assert(server_id > 0);
-  assert(websocket_server_listen(server_id) == 0);
-
+// Connects to the live server, upgrades with the sample key, and asserts the
+// response is a valid upgrade acceptance; returns the upgraded socket.
+static int ws_upgrade_handshake(void) {
   int fd = ws_raw_connect(WS_LIVE_PORT);
   char key_header[64];
   snprintf(key_header, sizeof(key_header), "Sec-WebSocket-Key: %s\r\n",
            WS_SAMPLE_KEY);
   ws_send_upgrade(fd, key_header);
-
   char headers[1024];
   ws_read_headers(fd, headers, sizeof(headers));
   assert(strstr(headers, "HTTP/1.1 101 Switching Protocols\r\n") == headers);
   assert(strstr(headers, "Upgrade: websocket") != NULL);
   assert(strstr(headers, WS_SAMPLE_ACCEPT) != NULL);
+  return fd;
+}
 
-  char *welcome = ws_read_text_frame(fd);
-  assert(strstr(welcome, "\"type\":\"welcome\"") != NULL);
-  assert(strstr(welcome, "Osprey WebSocket Server") != NULL);
-  free(welcome);
+// Reads a text frame, asserts it holds every non-NULL needle, and frees it.
+static void ws_expect_text(int fd, const char *a, const char *b, const char *c) {
+  char *text = ws_read_text_frame(fd);
+  const char *const needles[] = {a, b, c};
+  for (size_t i = 0; i < 3; i++) {
+    assert(needles[i] == NULL || strstr(text, needles[i]) != NULL);
+  }
+  free(text);
+}
+
+static void test_live_loopback_exchange(void) {
+  int64_t server_id = ws_serve("127.0.0.1", "/chat", 0);
+
+  int fd = ws_upgrade_handshake();
+
+  ws_expect_text(fd, "\"type\":\"welcome\"", "Osprey WebSocket Server", NULL);
 
   ws_send_masked_text(fd, "hello");
-  char *echo = ws_read_text_frame(fd);
-  assert(strstr(echo, "\"type\":\"echo\"") != NULL);
-  assert(strstr(echo, "\"original\":\"hello\"") != NULL);
-  assert(strstr(echo, "Server received: hello") != NULL);
-  free(echo);
+  ws_expect_text(fd, "\"type\":\"echo\"", "\"original\":\"hello\"",
+                 "Server received: hello");
 
   // Broadcast reaches exactly the registered connection and arrives verbatim.
   assert(websocket_server_broadcast(server_id, "broadcast-one") == 1);
@@ -310,9 +322,7 @@ static void test_live_loopback_exchange(void) {
 // Connections the server must refuse: one that says nothing, one that is not
 // an upgrade, and one that upgrades without a key. Each is closed, not served.
 static void test_non_websocket_connections(void) {
-  int64_t server_id = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  assert(server_id > 0);
-  assert(websocket_server_listen(server_id) == 0);
+  int64_t server_id = ws_serve("127.0.0.1", "/chat", 0);
 
   int silent = ws_raw_connect(WS_LIVE_PORT);
   close(silent); // no bytes at all: the handler sees recv() <= 0
@@ -328,17 +338,8 @@ static void test_non_websocket_connections(void) {
   close(keyless);
 
   // The server survives all three and still serves a real client.
-  int good = ws_raw_connect(WS_LIVE_PORT);
-  char key_header[64];
-  snprintf(key_header, sizeof(key_header), "Sec-WebSocket-Key: %s\r\n",
-           WS_SAMPLE_KEY);
-  ws_send_upgrade(good, key_header);
-  char headers[1024];
-  ws_read_headers(good, headers, sizeof(headers));
-  assert(strstr(headers, WS_SAMPLE_ACCEPT) != NULL);
-  char *welcome = ws_read_text_frame(good);
-  assert(strstr(welcome, "welcome") != NULL);
-  free(welcome);
+  int good = ws_upgrade_handshake();
+  ws_expect_text(good, "welcome", NULL, NULL);
   close(good);
   assert(websocket_stop_server(server_id) == 0);
 }
@@ -413,9 +414,7 @@ static void *ws_shutdown_signaller(void *arg) {
 // websocketKeepAlive blocks until SIGINT or SIGTERM, then stops every server
 // [BUILTIN-WEBSOCKET-LIFECYCLE]. Runs LAST: it latches the shutdown flag.
 static void test_keep_alive_until_signal(void) {
-  int64_t server_id = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  assert(server_id > 0);
-  assert(websocket_server_listen(server_id) == 0);
+  int64_t server_id = ws_serve("127.0.0.1", "/chat", 0);
   pthread_t thread;
   assert(pthread_create(&thread, NULL, ws_shutdown_signaller, NULL) == 0);
   websocket_keep_alive();
@@ -423,9 +422,7 @@ static void test_keep_alive_until_signal(void) {
   // keep_alive stopped every server, so the handle is already released.
   assert(websocket_stop_server(server_id) == 0);
   // ...and the port is free again.
-  int64_t reborn = websocket_create_server(WS_LIVE_PORT, "127.0.0.1", "/chat");
-  assert(reborn > 0);
-  assert(websocket_server_listen(reborn) == 0);
+  int64_t reborn = ws_serve("127.0.0.1", "/chat", 0);
   assert(websocket_stop_server(reborn) == 0);
 }
 
