@@ -64,11 +64,14 @@ fn allHold(wanted) = match wanted {
     [head, ...tail] => head && allHold(tail)
 }
 
-/// True when `outcome` is an `Error` carrying a non-empty message.
-fn rejectedNonEmpty(outcome) = match outcome {
+/// True when `outcome` is an `Error` whose message is exactly `wanted`.
+fn rejectsWith(outcome, wanted) = match outcome {
     Success => false
-    Error { message } => message != ""
+    Error { message } => message == wanted
 }
+
+/// True when `outcome` is an `Error` carrying a non-empty message.
+fn rejectedNonEmpty(outcome) = !rejectsWith(outcome, "")
 
 /// `s` is a single byte whose value is exactly `byte` ([BUILTIN-STRING-CURSOR]).
 fn singleByte(s, byte) = structuralEquals([length(s) == 1, (byteAt(s, 0) ?: 0) == byte], [true, true])
@@ -84,12 +87,11 @@ fn succeedsWith(outcome, wanted) = (outcome ?: "missing") == wanted
 /// `take(s, n)` and `drop(s, n)` reassemble `s` exactly at the cut `n`.
 fn partitionsAt(s, n) = take(s, n) + drop(s, n) == s
 
-/// The hole for `v`, `toString(v)` and their agreement all render `text`
-/// ([BUILTIN-TOSTRING]).
+/// The hole for `v`, `toString(v)` and their agreement all render `text`, and
+/// `toString(v)` and the hole render identically ([BUILTIN-TOSTRING]).
 fn holeRenders(v, text) =
     structuralEquals(["${v}" == text, toString(v) == text, "${v}" == toString(v)], [true, true, true])
 
-/// `toString(v)` and the interpolation hole for `v` render identically.
 fn holeIsToString(v) = toString(v) == "${v}"
 
 /// Number of parts `split` produced, or -1 when it was rejected ([](BUILTIN-STRING-SPLIT)).
@@ -197,10 +199,7 @@ fn stringEdgeCase() = {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
         Error => false
     }
-    let customPayload = match failWith("custom boom") {
-        Success => false
-        Error { message } => message == "custom boom"
-    }
+    let customPayload = rejectsWith(failWith("custom boom"), "custom boom")
 
     checkAll("total string boundary values", [
         isEmpty(""),
@@ -473,14 +472,8 @@ fn escapeSequenceCase() = {
 fn substringPositionCase() = {
     let subject = "banana"
     let missing = (0 - 1) 
-    let indexAbsent = match indexOf(subject, "xyz") {
-        Success => false
-        Error { message } => message == "indexOf: substring not found"
-    }
-    let indexEmptySubject = match indexOf("", "a") {
-        Success => false
-        Error { message } => message != ""
-    }
+    let indexAbsent = rejectsWith(indexOf(subject, "xyz"), "indexOf: substring not found")
+    let indexEmptySubject = rejectedNonEmpty(indexOf("", "a"))
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [

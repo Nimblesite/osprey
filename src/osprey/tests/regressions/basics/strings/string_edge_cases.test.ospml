@@ -69,11 +69,14 @@ allHold wanted =
         [] => true
         [head, ...tail] => head && allHold tail
 
-(** True when `outcome` is an `Error` carrying a non-empty message. *)
-rejectedNonEmpty outcome =
+(** True when `outcome` is an `Error` whose message is exactly `wanted`. *)
+rejectsWith (outcome, wanted) =
     match outcome
         Success _value => false
-        Error message => message != ""
+        Error message => message == wanted
+
+(** True when `outcome` is an `Error` carrying a non-empty message. *)
+rejectedNonEmpty outcome = !(rejectsWith (outcome, ""))
 
 (** `s` is a single byte whose value is exactly `byte` ([BUILTIN-STRING-CURSOR]). *)
 singleByte (s, byte) =
@@ -200,9 +203,7 @@ stringEdgeCase () =
     roundTrip = match fromCodePoint 233
         Success value => (codePointAt value 0 ?: 0) == 233
         Error _message => false
-    customPayload = match failWith "custom boom"
-        Success _value => false
-        Error message => message == "custom boom"
+    customPayload = rejectsWith (failWith "custom boom", "custom boom")
 
     checkAll "total string boundary values" [
         isEmpty "",
@@ -471,12 +472,8 @@ escapeSequenceCase () =
 substringPositionCase () =
     subject = "banana"
     missing = (0 - 1) 
-    indexAbsent = match indexOf subject "xyz"
-        Success _value => false
-        Error message => message == "indexOf: substring not found"
-    indexEmptySubject = match indexOf "" "a"
-        Success _value => false
-        Error message => message != ""
+    indexAbsent = rejectsWith (indexOf subject "xyz", "indexOf: substring not found")
+    indexEmptySubject = rejectedNonEmpty (indexOf "" "a")
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll "contains finds a needle at the start, middle, end and nowhere" [
