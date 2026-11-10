@@ -9,6 +9,10 @@ effect LeafAudit T
 nestedAt<T> : (List (List T), int, int, List T, T) -> T
 nestedAt (matrix, row, column, fallbackRow, fallback) =
     listGet (listGet matrix row ?: fallbackRow) column ?: fallback
+
+(** cellReader binds `fallbackRow` and `fallback` once so a case walks a matrix
+    by row and column without repeating its recovery arguments. *)
+cellReader (matrix, fallbackRow, fallback) = \(row, column) => nestedAt (matrix, row, column, fallbackRow, fallback)
 (** rowIs reads row `row` of `matrix` cell by cell through nestedAt and holds
     when the cells are `wants`, in order. *)
 rowIs (matrix, row, fallbackRow, fallback, wants) = range (0, listLength wants) |> fold true (\(ok, c) => ok && nestedAt (matrix, row, c, fallbackRow, fallback) == (listGet wants c ?: fallback))
@@ -28,21 +32,19 @@ matrixShape matrix = match matrix
     [first, second] => "two:${listLength first}/${listLength second}"
     [head, ...tail] => "many:${listLength head}+${listLength tail}"
 
-auditInts rows =
-    mut encoded = 0
+(** auditLeaves folds every leaf of `rows` through one LeafAudit handler that
+    combines the running `initial` accumulator with each observed leaf. *)
+auditLeaves (rows, initial, combine) =
+    mut encoded = initial
     handle LeafAudit
         observe value =>
-            encoded := encoded * 10 + value 
+            encoded := combine (encoded, value)
     forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
     encoded
 
-auditStrings rows =
-    mut encoded = ""
-    handle LeafAudit
-        observe value =>
-            encoded := encoded + value + "/"
-    forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
-    encoded
+auditInts rows = auditLeaves (rows, 0, \(acc, value) => acc * 10 + value)
+
+auditStrings rows = auditLeaves (rows, "", \(acc, value) => acc + value + "/")
 
 (** One flow crosses generic instantiation, three list layers, `Result<T, Error>`
     recovery, persistent producers, nested patterns, callbacks, and generic
@@ -60,6 +62,13 @@ nestedListEffectPatternCase () =
     stringPlane = listGet stringCube 1 ?: [["missing"]]
     grownInts = ints |> listAppend [6, 7] |> listPrepend [8, 9] |> listReverse
     grownStrings = strings |> listAppend ["fox", "gnu"] |> listReverse
+    stringCell = cellReader (strings, ["row"], "item")
+    grownStringCell = cellReader (grownStrings, ["row"], "item")
+    floatCell = cellReader (floats, [9.0], 9.5)
+    grownCell = cellReader (grownInts, [99], 99)
+    boolCell = cellReader (bools, [false], false)
+    hitCell = cellReader (bools, [true], true)
+    missCell = cellReader (bools, [true], false)
 
     checkAll "four leaf arguments survive nested Result extraction" [
         listLength ints == 2,
@@ -74,21 +83,21 @@ nestedListEffectPatternCase () =
         nestedAt (ints, 0, 8, [91], 99) == 99,
         rowIs (strings, 0, ["row"], "item", ["ant", "bee"]),
         rowIs (strings, 1, ["row"], "item", ["cat", "dog", "eel"]),
-        nestedAt (strings, 8, 0, ["row"], "item") == "row",
-        nestedAt (strings, 0, 8, ["row"], "item") == "item",
-        length (nestedAt (strings, 1, 0, ["row"], "item")) == 3,
+        stringCell (8, 0) == "row",
+        stringCell (0, 8) == "item",
+        length (stringCell (1, 0)) == 3,
         rowIs (floats, 0, [9.0], 9.5, [1.25, 2.5]),
         rowIs (floats, 1, [9.0], 9.5, [3.75, 4.5, 5.25]),
-        nestedAt (floats, 0, 0, [9.0], 9.5) + nestedAt (floats, 0, 1, [9.0], 9.5) == 3.75,
-        nestedAt (floats, 9, 0, [9.0], 9.5) == 9.0,
-        nestedAt (floats, 0, 9, [9.0], 9.5) == 9.5,
-        nestedAt (bools, 0, 0, [false], false),
-        !(nestedAt (bools, 0, 1, [true], true)),
-        !(nestedAt (bools, 1, 0, [true], true)),
-        nestedAt (bools, 1, 1, [false], false),
-        nestedAt (bools, 1, 2, [false], false),
-        nestedAt (bools, 9, 0, [true], false),
-        !(nestedAt (bools, 0, 9, [true], false))
+        floatCell (0, 0) + floatCell (0, 1) == 3.75,
+        floatCell (9, 0) == 9.0,
+        floatCell (0, 9) == 9.5,
+        boolCell (0, 0),
+        !(hitCell (0, 1)),
+        !(hitCell (1, 0)),
+        boolCell (1, 1),
+        boolCell (1, 2),
+        missCell (9, 0),
+        !(missCell (0, 9))
     ]
 
     checkAll "deep persistence patterns and generic effects stay coherent" [
@@ -110,12 +119,12 @@ nestedListEffectPatternCase () =
         auditStrings [["fox"], ["gnu", "hare"]] == "fox/gnu/hare/",
         listLength grownInts == 4,
         rowIs (grownInts, 0, [99], 99, [6, 7]),
-        nestedAt (grownInts, 1, 0, [99], 99) == 3,
-        nestedAt (grownInts, 2, 0, [99], 99) == 1,
+        grownCell (1, 0) == 3,
+        grownCell (2, 0) == 1,
         rowIs (grownInts, 3, [99], 99, [8, 9]),
         listLength grownStrings == 3,
-        nestedAt (grownStrings, 0, 0, ["row"], "item") == "fox",
-        nestedAt (grownStrings, 2, 1, ["row"], "item") == "bee",
+        grownStringCell (0, 0) == "fox",
+        grownStringCell (2, 1) == "bee",
         chooseByCollection (listGet ints 0 ?: [99], "present", "empty") == "present",
         chooseByCollection (listGet strings 0 ?: ["x"], 41, 99) == 41,
         chooseByCollection (List (), true, false) == false,
