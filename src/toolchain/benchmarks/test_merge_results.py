@@ -15,23 +15,44 @@ from merge_results import atomic_write, merge, valid_timing
 from test_report import TIMING, HeadlineTests, RunProvenanceTests, UpdateReadmeTests  # the report suites run with this one in both modes
 from report import load, present_langs
 
+FIB_CELL = {"status": "ok", "rss": 10, **TIMING}
+"""The durable published cell for the fib/osprey-gc measurement."""
 
-class LspFixtureTests(unittest.TestCase):
+
+def write_export(root: Path, case: str, result: dict) -> None:
+    """Write the hyperfine export a rerun leaves behind for `case`."""
+    (root / "hf" / f"{case}.json").write_text(json.dumps({"results": [result]}))
+
+
+def snapshot(root: Path) -> dict[str, bytes]:
+    """Every file under `root`, keyed by relative path, for byte-exact comparison."""
+    return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+
+
+class TempDirs:
+    """Temporary directories that live until the test ends, so bodies stay flat."""
+
+    def temp_dir(self) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        return Path(directory.name)
+
+
+class LspFixtureTests(TempDirs, unittest.TestCase):
     """LSP timings must analyze a valid project under [ARITH-EFFECT]."""
 
     def test_synthetic_project_compiles_and_runs_with_an_explicit_arithmetic_policy(self):
         repo = Path(__file__).resolve().parent.parent.parent.parent
         compiler = os.environ.get("OSPREY_BIN", str(repo / "target/release/osprey"))
         generate = runpy.run_path(str(repo / "scripts/tests/benchmark-lsp.py"))["synthetic_project"]
-        with tempfile.TemporaryDirectory() as directory:
-            root = generate(Path(directory))
-            self.assertEqual(len(list((root / "src").glob("*.ospml"))), 10)
-            for argument, expected in [(41, "42\n"), (9223372036854775807, "-9223372036854775808\n")]:
-                (root / "src/main.ospml").write_text(f'print (helper1 {argument})\n')
-                result = subprocess.run([compiler, str(root), "--run", "--quiet"],
-                                        cwd=repo, capture_output=True, text=True, timeout=30)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout, expected)
+        root = generate(self.temp_dir())
+        self.assertEqual(len(list((root / "src").glob("*.ospml"))), 10)
+        for argument, expected in [(41, "42\n"), (9223372036854775807, "-9223372036854775808\n")]:
+            (root / "src/main.ospml").write_text(f'print (helper1 {argument})\n')
+            result = subprocess.run([compiler, str(root), "--run", "--quiet"],
+                                    cwd=repo, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, expected)
 
 
 class PublishedMeasurementsTests(unittest.TestCase):
@@ -45,82 +66,76 @@ class PublishedMeasurementsTests(unittest.TestCase):
         self.assertEqual(load(out), data, "regeneration must preserve the published measurements")
 
 
-class MergeResultsTests(unittest.TestCase):
+class MergeResultsTests(TempDirs, unittest.TestCase):
     def test_interrupted_atomic_write_keeps_the_original_file(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "results.json"
-            path.write_text("original")
-            with patch("merge_results.os.replace", side_effect=OSError("interrupted")):
-                with self.assertRaisesRegex(OSError, "interrupted"):
-                    atomic_write(path, "replacement")
-            self.assertEqual(path.read_text(), "original")
-            self.assertEqual(list(path.parent.iterdir()), [path])
+        path = self.temp_dir() / "results.json"
+        path.write_text("original")
+        with patch("merge_results.os.replace", side_effect=OSError("interrupted")):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                atomic_write(path, "replacement")
+        self.assertEqual(path.read_text(), "original")
+        self.assertEqual(list(path.parent.iterdir()), [path])
 
     def fixture(self, root: Path, status: str = "ok") -> tuple[Path, Path]:
+        """A published results tree plus a partial rerun of the same fib case."""
         destination, update = root / "published", root / "partial"
-        for out in (destination, update):
+        for out, row in ((destination, {"status": "ok", "rss": 10}),
+                         (update, {"status": status, "rss": 20})):
             (out / "hf").mkdir(parents=True)
-            (out / "raw.jsonl").write_text(json.dumps({
-                "case": "fib", "lang": "osprey-gc", "status": "ok", "rss": 10,
-            }) + "\n")
-        (destination / "hf/fib.json").write_text(json.dumps({"results": [{
-            "command": "osprey-gc", **TIMING,
-        }]}))
-        (update / "raw.jsonl").write_text(json.dumps({
-            "case": "fib", "lang": "osprey-gc", "status": status, "rss": 20,
-        }) + "\n")
+            (out / "raw.jsonl").write_text(json.dumps({"case": "fib", "lang": "osprey-gc", **row}) + "\n")
+        write_export(destination, "fib", {"command": "osprey-gc", **TIMING})
         return destination, update
 
-    def snapshot(self, root: Path) -> dict[str, bytes]:
-        return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    def fixture_pair(self, status: str = "ok") -> tuple[Path, Path]:
+        """A published/partial fixture pair in its own temporary root."""
+        return self.fixture(self.temp_dir(), status)
 
-    def assert_merge_refused(self, destination: Path, update: Path) -> None:
+    def resumed_pair(self, status: str = "ok") -> tuple[Path, Path]:
+        """A fixture whose partial run already carries the published fib export."""
+        destination, update = self.fixture_pair(status)
+        shutil.copy(destination / "hf/fib.json", update / "hf/fib.json")
+        return destination, update
+
+    def assert_merge_refused(self, destination: Path, update: Path, reason: str = "") -> None:
         """A refused merge must leave every published file untouched."""
-        before = self.snapshot(destination)
-        with self.assertRaises(ValueError):
+        before = snapshot(destination)
+        with (self.assertRaisesRegex(ValueError, reason) if reason else self.assertRaises(ValueError)):
             merge(destination, update, {"osprey-gc"})
-        self.assertEqual(self.snapshot(destination), before)
+        self.assertEqual(snapshot(destination), before)
+
+    def assert_merge_publishes_nothing(self, destination: Path, update: Path) -> None:
+        """A skipped merge must leave every published file untouched."""
+        before = snapshot(destination)
+        merge(destination, update, {"osprey-gc"})
+        self.assertEqual(snapshot(destination), before)
 
     def test_missing_or_invalid_timing_refuses_the_merge_before_any_write(self) -> None:
         for result in (None, {}, {"command": "osprey-gc", "mean": 0},
                        {"command": "osprey-gc", **TIMING, "mean": float("nan")}):
-            with self.subTest(result=result), tempfile.TemporaryDirectory() as directory:
-                destination, update = self.fixture(Path(directory))
+            with self.subTest(result=result):
+                destination, update = self.fixture_pair()
                 if result is not None:
                     (update / "hf/fib.json").write_text(json.dumps({"results": [result]}))
                 self.assert_merge_refused(destination, update)
 
     def test_incompatible_skip_cannot_replace_a_published_measurement(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            destination, update = self.fixture(Path(directory), "wasm_incompatible")
-            before = self.snapshot(destination)
-            merge(destination, update, {"osprey-gc"})
-            self.assertEqual(self.snapshot(destination), before)
+        self.assert_merge_publishes_nothing(*self.fixture_pair("wasm_incompatible"))
 
     def test_malformed_later_case_does_not_partially_publish(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            destination, update = self.fixture(Path(directory))
-            shutil.copy(destination / "hf/fib.json", update / "hf/fib.json")
-            with (update / "raw.jsonl").open("a") as raw:
-                raw.write('{"case":"sort","lang":"osprey-gc","status":"ok","rss":20}\n')
-            (update / "hf/sort.json").write_text("{broken")
-            self.assert_merge_refused(destination, update)
+        destination, update = self.resumed_pair()
+        with (update / "raw.jsonl").open("a") as raw:
+            raw.write('{"case":"sort","lang":"osprey-gc","status":"ok","rss":20}\n')
+        (update / "hf/sort.json").write_text("{broken")
+        self.assert_merge_refused(destination, update)
 
     def test_unmeasured_rss_keeps_the_last_peak_when_timing_is_replaced(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            destination, update = self.fixture(Path(directory))
-            shutil.copy(destination / "hf/fib.json", update / "hf/fib.json")
-            (update / "raw.jsonl").write_text('{"case":"fib","lang":"osprey-gc","status":"ok","rss":0}\n')
-            merge(destination, update, {"osprey-gc"})
-            self.assertEqual(json.loads((destination / "raw.jsonl").read_text())["rss"], 10)
+        destination, update = self.resumed_pair()
+        (update / "raw.jsonl").write_text('{"case":"fib","lang":"osprey-gc","status":"ok","rss":0}\n')
+        merge(destination, update, {"osprey-gc"})
+        self.assertEqual(json.loads((destination / "raw.jsonl").read_text())["rss"], 10)
 
     def test_failed_partial_run_does_not_modify_published_results(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            destination, update = self.fixture(Path(directory), "build_failed")
-            before = self.snapshot(destination)
-            with self.assertRaisesRegex(ValueError, "partial benchmark failed"):
-                merge(destination, update, {"osprey-gc"})
-            self.assertEqual(self.snapshot(destination), before)
+        self.assert_merge_refused(*self.fixture_pair("build_failed"), "partial benchmark failed")
 
     def add_baselines(self, destination: Path) -> None:
         with (destination / "raw.jsonl").open("a") as raw:
@@ -133,109 +148,104 @@ class MergeResultsTests(unittest.TestCase):
         path.write_text(json.dumps(data))
 
     def test_language_the_rerun_never_measured_keeps_its_published_row(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            destination, update = self.fixture(Path(directory))
-            self.add_baselines(destination)
-            (update / "hf/fib.json").write_text(json.dumps({"results": [
-                {"command": "osprey-gc", **TIMING, "mean": 0.9},
-            ]}))
-            merge(destination, update, {"osprey-gc", "osprey-wasm"})
-            rows = {r["lang"]: r for r in map(json.loads, (destination / "raw.jsonl").read_text().splitlines())}
-            self.assertEqual({l: r["rss"] for l, r in rows.items()}, {"osprey-gc": 20, "osprey-wasm": 0, "rust": 20})
-            means = {r["command"]: r["mean"]
-                     for r in json.loads((destination / "hf/fib.json").read_text())["results"]}
-            self.assertEqual(means, {"osprey-gc": 0.9, "osprey-wasm": 9.0, "rust": 0.5})
+        destination, update = self.fixture_pair()
+        self.add_baselines(destination)
+        (update / "hf/fib.json").write_text(json.dumps({"results": [
+            {"command": "osprey-gc", **TIMING, "mean": 0.9},
+        ]}))
+        merge(destination, update, {"osprey-gc", "osprey-wasm"})
+        rows = {r["lang"]: r for r in map(json.loads, (destination / "raw.jsonl").read_text().splitlines())}
+        self.assertEqual({l: r["rss"] for l, r in rows.items()}, {"osprey-gc": 20, "osprey-wasm": 0, "rust": 20})
+        means = {r["command"]: r["mean"]
+                 for r in json.loads((destination / "hf/fib.json").read_text())["results"]}
+        self.assertEqual(means, {"osprey-gc": 0.9, "osprey-wasm": 9.0, "rust": 0.5})
 
 
-class RecordedTimingTests(unittest.TestCase):
+class RecordedTimingTests(TempDirs, unittest.TestCase):
     """The hyperfine exports are untracked, so results.json is the only durable
     record of a timing. A run that measures some cases must not erase the rest."""
 
-    def published(self, out: Path, status: str) -> None:
+    def published_dir(self, status: str = "ok") -> Path:
+        """A published results directory whose fib row carries `status`."""
+        out = self.temp_dir()
         (out / "hf").mkdir()
         (out / "raw.jsonl").write_text(
             f'{{"case":"fib","lang":"osprey-gc","status":"{status}","rss":10}}\n'
             '{"case":"sort","lang":"osprey-gc","status":"ok","rss":20}\n'
         )
-        cell = {"status": "ok", "rss": 10, **TIMING}
         (out / "results.json").write_text(
-            json.dumps({"languages": ["osprey-gc"], "cases": {"fib": {"osprey-gc": cell}}})
+            json.dumps({"languages": ["osprey-gc"], "cases": {"fib": {"osprey-gc": FIB_CELL}}})
         )
+        return out
 
     def export(self, out: Path, case: str, mean: float) -> None:
-        result = {"command": "osprey-gc", "mean": mean, "stddev": 0.2, "min": 1.8, "max": 2.4}
-        (out / "hf" / f"{case}.json").write_text(json.dumps({"results": [result]}))
+        write_export(out, case, {"command": "osprey-gc", "mean": mean,
+                                 "stddev": 0.2, "min": 1.8, "max": 2.4})
+
+    def assert_fib_keeps_its_published_cell(self, out: Path) -> None:
+        """A rerun that measured nothing valid must not overwrite the durable cell."""
+        self.assertEqual(load(out)["fib"]["osprey-gc"], FIB_CELL)
 
     def test_a_case_with_no_hyperfine_export_keeps_its_published_timing(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "ok")
-            self.export(out, "sort", 2.0)
-
-            data = load(out)
-
-            self.assertEqual(data["fib"]["osprey-gc"], {"status": "ok", "rss": 10, **TIMING})
-            self.assertEqual(data["sort"]["osprey-gc"]["mean"], 2.0)
+        out = self.published_dir()
+        self.export(out, "sort", 2.0)
+        data = load(out)
+        self.assertEqual(data["fib"]["osprey-gc"], FIB_CELL)
+        self.assertEqual(data["sort"]["osprey-gc"]["mean"], 2.0)
 
     def test_a_fresh_export_replaces_the_published_timing(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "ok")
-            self.export(out, "fib", 3.0)
-
-            self.assertEqual(load(out)["fib"]["osprey-gc"]["mean"], 3.0)
+        out = self.published_dir()
+        self.export(out, "fib", 3.0)
+        self.assertEqual(load(out)["fib"]["osprey-gc"]["mean"], 3.0)
 
     def test_a_failed_rerun_keeps_the_last_published_measurement(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "wrong_output")
-
-            self.assertEqual(load(out)["fib"]["osprey-gc"], {"status": "ok", "rss": 10, **TIMING})
+        self.assert_fib_keeps_its_published_cell(self.published_dir("wrong_output"))
 
     def test_missing_raw_rows_keep_entire_published_cells(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "ok")
-            (out / "raw.jsonl").write_text("")
-            self.assertEqual(load(out)["fib"]["osprey-gc"], {"status": "ok", "rss": 10, **TIMING})
+        out = self.published_dir()
+        (out / "raw.jsonl").write_text("")
+        self.assert_fib_keeps_its_published_cell(out)
 
     def test_zero_rss_and_invalid_timing_cannot_erase_published_values(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "ok")
-            (out / "raw.jsonl").write_text('{"case":"fib","lang":"osprey-gc","status":"ok","rss":0}\n')
-            for mean in (0, -1, float("nan"), float("inf"), None):
+        out = self.published_dir()
+        (out / "raw.jsonl").write_text('{"case":"fib","lang":"osprey-gc","status":"ok","rss":0}\n')
+        for mean in (0, -1, float("nan"), float("inf"), None):
+            with self.subTest(mean=mean):
                 self.export(out, "fib", mean)
-                with self.subTest(mean=mean):
-                    self.assertEqual(load(out)["fib"]["osprey-gc"], {"status": "ok", "rss": 10, **TIMING})
+                self.assert_fib_keeps_its_published_cell(out)
 
     def test_a_partial_timing_export_cannot_erase_published_values(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            self.published(out, "ok")
-            (out / "hf/fib.json").write_text(json.dumps({"results": [{"command": "osprey-gc", "mean": 2}]}))
-            self.assertEqual(load(out)["fib"]["osprey-gc"]["mean"], TIMING["mean"])
+        out = self.published_dir()
+        (out / "hf/fib.json").write_text(json.dumps({"results": [{"command": "osprey-gc", "mean": 2}]}))
+        self.assertEqual(load(out)["fib"]["osprey-gc"]["mean"], TIMING["mean"])
 
 
-class HarnessPublicationTests(unittest.TestCase):
+class HarnessPublicationTests(TempDirs, unittest.TestCase):
     def fixture(self, root: Path) -> Path:
+        """A benchmark checkout whose one published fib/rust measurement is recorded."""
         bench = root / "src" / "toolchain" / "benchmarks"
-        bench.mkdir(parents=True)
-        source = Path(__file__).resolve().parent
+        files = {
+            "README.md": f"{UpdateReadmeTests.START}\n{UpdateReadmeTests.END}\n",
+            "cases/fib/fib.osp": "print(42)\n",
+            "cases/fib/expected.txt": "42\n",
+            "results/raw.jsonl": '{"case":"fib","lang":"rust","status":"ok","rss":10}\n',
+            "results/results.json": json.dumps({"cases": {"fib": {"rust": FIB_CELL}}}),
+        }
+        for name, text in files.items():
+            (bench / name).parent.mkdir(parents=True, exist_ok=True)
+            (bench / name).write_text(text)
         for name in ("run.sh", "merge_results.py", "report.py"):
-            shutil.copy(source / name, bench / name)
-        (bench / "README.md").write_text(f"{UpdateReadmeTests.START}\n{UpdateReadmeTests.END}\n")
-        (bench / "cases/fib").mkdir(parents=True)
-        (bench / "cases/fib/fib.osp").write_text("print(42)\n")
-        (bench / "cases/fib/expected.txt").write_text("42\n")
+            shutil.copy(Path(__file__).resolve().parent / name, bench / name)
         (root / "target/release").mkdir(parents=True)
         (root / "src/toolchain/website/src/_includes").mkdir(parents=True)
-        (bench / "results").mkdir()
-        (bench / "results/raw.jsonl").write_text('{"case":"fib","lang":"rust","status":"ok","rss":10}\n')
-        (bench / "results/results.json").write_text(json.dumps({"cases": {
-            "fib": {"rust": {"status": "ok", "rss": 10, **TIMING}},
-        }}))
         return bench
+
+    def prepared(self) -> tuple[Path, Path]:
+        """A fixture in its own root, with the compiler the harness expects."""
+        root = self.temp_dir()
+        bench = self.fixture(root)
+        self.compiler(root)
+        return root, bench
 
     @staticmethod
     def page(root: Path) -> str:
@@ -250,13 +260,22 @@ class HarnessPublicationTests(unittest.TestCase):
                               env={**os.environ, "BENCH_NO_BUILD": "1", "BENCH_PARTIAL": "0",
                                    "BENCH_MEMRUNS": "1", **(extra or {})}, timeout=30)
 
+    def assert_nothing_published(self, bench: Path,
+                                 extra: Optional[dict[str, str]] = None) -> subprocess.CompletedProcess:
+        """A run that must not publish leaves every published file byte-identical."""
+        before = snapshot(bench / "results")
+        result = self.run_harness(bench, extra)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(snapshot(bench / "results"), before)
+        return result
+
+    def run_partial_harness(self, root: Path, bench: Path) -> None:
+        """A partial rerun that must succeed, measured by the stand-in hyperfine."""
+        result = self.run_harness(bench, {**self.timing_tools(root), "BENCH_PARTIAL": "1"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_full_run_with_missing_compiler_preserves_every_published_file(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            bench = self.fixture(Path(directory))
-            before = MergeResultsTests().snapshot(bench / "results")
-            result = self.run_harness(bench)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertEqual(MergeResultsTests().snapshot(bench / "results"), before)
+        self.assert_nothing_published(self.fixture(self.temp_dir()))
 
     def compiler(self, root: Path) -> None:
         self.executable(root / "target/release/osprey",
@@ -265,17 +284,12 @@ class HarnessPublicationTests(unittest.TestCase):
     def test_failed_malformed_or_interrupted_timing_preserves_every_published_file(self) -> None:
         for command in ("exit 1", 'kill -TERM "$PPID"; exit 0',
                         'while [ "$1" != "--export-json" ]; do shift; done; shift; echo "{broken" > "$1"'):
-            with self.subTest(command=command), tempfile.TemporaryDirectory() as directory:
-              root = Path(directory)
-              bench = self.fixture(root)
-              self.compiler(root)
-              tools = root / "tools"
-              tools.mkdir()
-              self.executable(tools / "hyperfine", f"#!/bin/sh\n{command}\n")
-              before = MergeResultsTests().snapshot(bench / "results")
-              result = self.run_harness(bench, {"PATH": f"{tools}:{os.environ['PATH']}"})
-              self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-              self.assertEqual(MergeResultsTests().snapshot(bench / "results"), before)
+            with self.subTest(command=command):
+                root, bench = self.prepared()
+                tools = root / "tools"
+                tools.mkdir()
+                self.executable(tools / "hyperfine", f"#!/bin/sh\n{command}\n")
+                self.assert_nothing_published(bench, {"PATH": f"{tools}:{os.environ['PATH']}"})
 
     def timing_tools(self, root: Path) -> dict[str, str]:
         """A stand-in hyperfine that exports TIMING for every `-n` language."""
@@ -290,112 +304,91 @@ class HarnessPublicationTests(unittest.TestCase):
         return {"PATH": f"{tools}:{os.environ['PATH']}"}
 
     def test_successful_full_run_preserves_absent_language_timings(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bench = self.fixture(root)
-            self.compiler(root)
-            result = self.run_harness(bench, self.timing_tools(root))
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            cells = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]
-            self.assertEqual(cells["rust"], {"status": "ok", "rss": 10, **TIMING})
-            self.assertEqual(cells["osprey-gc"]["mean"], 1.0)
+        root, bench = self.prepared()
+        result = self.run_harness(bench, self.timing_tools(root))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        cells = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]
+        self.assertEqual(cells["rust"], FIB_CELL)
+        self.assertEqual(cells["osprey-gc"]["mean"], 1.0)
 
     def test_every_osprey_column_names_its_memory_backend_and_none_is_unlabelled(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bench = self.fixture(root)
-            log = root / "compiles.log"
-            self.executable(root / "target/release/osprey",
-                            f'#!/bin/sh\necho "$*" >> "{log}"\nprintf "#!/bin/sh\\nprintf 42" > fib\nchmod +x fib\n')
-            result = self.run_harness(bench, {**self.timing_tools(root), "BENCH_PARTIAL": "1"})
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            compiles = log.read_text().splitlines()
-            self.assertEqual(len(compiles), 2)
-            self.assertEqual(sum("--memory=arc" in c for c in compiles), 1)
-            self.assertEqual(sum("--memory=gc" in c for c in compiles), 1)
-            published = json.loads((bench / "results/results.json").read_text())
-            self.assertEqual(set(published["cases"]["fib"]), {"rust", "osprey-arc", "osprey-gc"})
-            self.assertEqual(published["languages"], ["osprey-arc", "osprey-gc", "rust"])
-            page = self.page(root)
-            self.assertFalse((bench / "results/results.html").exists(), "the website page is the only report")
-            self.assertNotIn(">Osprey</th>", page)
-            self.assertIn(">Osprey (ARC)</th>", page)
-            self.assertIn(">Osprey (GC)</th>", page)
+        root, bench = self.prepared()
+        log = root / "compiles.log"
+        self.executable(root / "target/release/osprey",
+                        f'#!/bin/sh\necho "$*" >> "{log}"\nprintf "#!/bin/sh\\nprintf 42" > fib\nchmod +x fib\n')
+        self.run_partial_harness(root, bench)
+        compiles = log.read_text().splitlines()
+        self.assertEqual(len(compiles), 2)
+        self.assertEqual(sum("--memory=arc" in c for c in compiles), 1)
+        self.assertEqual(sum("--memory=gc" in c for c in compiles), 1)
+        published = json.loads((bench / "results/results.json").read_text())
+        self.assertEqual(set(published["cases"]["fib"]), {"rust", "osprey-arc", "osprey-gc"})
+        self.assertEqual(published["languages"], ["osprey-arc", "osprey-gc", "rust"])
+        page = self.page(root)
+        self.assertFalse((bench / "results/results.html").exists(), "the website page is the only report")
+        self.assertNotIn(">Osprey</th>", page)
+        self.assertIn(">Osprey (ARC)</th>", page)
+        self.assertIn(">Osprey (GC)</th>", page)
 
     def test_a_recorded_backendless_cell_is_never_published_again(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            cell = {"status": "ok", "rss": 10, **TIMING}
-            (out / "hf").mkdir()
-            (out / "raw.jsonl").write_text('{"case":"fib","lang":"osprey","status":"ok","rss":10}\n')
-            (out / "results.json").write_text(json.dumps({"cases": {"fib": {"osprey": cell, "rust": cell}}}))
-            data = load(out)
-            self.assertNotIn("osprey", data["fib"])
-            self.assertEqual(present_langs(data), ["rust"])
+        out = self.temp_dir()
+        (out / "hf").mkdir()
+        (out / "raw.jsonl").write_text('{"case":"fib","lang":"osprey","status":"ok","rss":10}\n')
+        (out / "results.json").write_text(json.dumps({"cases": {"fib": {"osprey": FIB_CELL, "rust": FIB_CELL}}}))
+        data = load(out)
+        self.assertNotIn("osprey", data["fib"])
+        self.assertEqual(present_langs(data), ["rust"])
 
-    def codon_fixture(self, root: Path, value: int) -> tuple[Path, dict[str, str]]:
+    def codon_fixture(self, value: int) -> tuple[Path, Path, dict[str, str]]:
         """Benchmark fixture whose codon case runs `value`, with a codon that prints it."""
-        bench = self.fixture(root)
-        self.compiler(root)
+        root, bench = self.prepared()
         (bench / "cases/fib/fib.codon").write_text(f"print({value})\n")
         tools = self.timing_tools(root)
         self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
                         f'printf "#!/bin/sh\\nprintf {value}" > "$2"\nchmod +x "$2"\n')
-        return bench, tools
+        return root, bench, tools
 
     def test_selected_column_is_timed_and_every_other_column_keeps_its_record(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bench, tools = self.codon_fixture(root, 42)
-            before = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]["rust"]
-            result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            self.assertIn("codon", result.stdout)
-            self.assertNotIn("osprey-arc", result.stdout)
-            published = json.loads((bench / "results/results.json").read_text())
-            cells = published["cases"]["fib"]
-            self.assertEqual(cells["rust"], before)
-            self.assertEqual(cells["codon"]["mean"], TIMING["mean"])
-            self.assertEqual(cells["codon"]["status"], "ok")
-            self.assertEqual(set(cells), {"rust", "codon"})
-            self.assertIn("Codon", self.page(root))
-            self.assertIn(cells["codon"]["run"], published["runs"])
-            self.assertNotIn("run", cells["rust"])
+        root, bench, tools = self.codon_fixture(42)
+        before = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]["rust"]
+        result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("codon", result.stdout)
+        self.assertNotIn("osprey-arc", result.stdout)
+        published = json.loads((bench / "results/results.json").read_text())
+        cells = published["cases"]["fib"]
+        self.assertEqual(cells["rust"], before)
+        self.assertEqual(cells["codon"]["mean"], TIMING["mean"])
+        self.assertEqual(cells["codon"]["status"], "ok")
+        self.assertEqual(set(cells), {"rust", "codon"})
+        self.assertIn("Codon", self.page(root))
+        self.assertIn(cells["codon"]["run"], published["runs"])
+        self.assertNotIn("run", cells["rust"])
 
     def test_wrong_codon_output_publishes_nothing(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bench, tools = self.codon_fixture(root, 41)
-            before = MergeResultsTests().snapshot(bench / "results")
-            result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("WRONG OUTPUT", result.stdout)
-            self.assertEqual(MergeResultsTests().snapshot(bench / "results"), before)
+        _, bench, tools = self.codon_fixture(41)
+        result = self.assert_nothing_published(bench, {**tools, "BENCH_LANGS": "codon"})
+        self.assertIn("WRONG OUTPUT", result.stdout)
 
     def test_osprey_only_run_never_republishes_an_older_runs_export(self) -> None:
         # `results/hf/` is untracked, so it outlives the results.json it was
         # merged into. A newer results.json (another machine, a merged branch)
         # must survive `make -C src/toolchain/benchmarks bench-osprey`, whether or not the run re-measures
         # the case whose stale export is lying around.
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            bench = self.fixture(root)
-            self.compiler(root)
-            results = bench / "results"
-            recorded = {"status": "ok", "rss": 10, **TIMING}
-            (results / "results.json").write_text(json.dumps({"cases": {
-                "fib": {"rust": recorded}, "sort": {"rust": recorded},
-            }}))
-            stale = {"command": "rust", "mean": 5.0, "stddev": 0.5, "min": 4.5, "max": 5.5}
-            (results / "hf").mkdir()
-            for case in ("fib", "sort"):
-                (results / "hf" / f"{case}.json").write_text(json.dumps({"results": [stale]}))
-            result = self.run_harness(bench, {**self.timing_tools(root), "BENCH_PARTIAL": "1"})
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            cases = json.loads((results / "results.json").read_text())["cases"]
-            self.assertEqual({case: cases[case]["rust"] for case in ("fib", "sort")},
-                             {"fib": recorded, "sort": recorded})
-            self.assertEqual(cases["fib"]["osprey-gc"]["mean"], 1.0)
+        root, bench = self.prepared()
+        results = bench / "results"
+        (results / "results.json").write_text(json.dumps({"cases": {
+            "fib": {"rust": FIB_CELL}, "sort": {"rust": FIB_CELL},
+        }}))
+        stale = {"command": "rust", "mean": 5.0, "stddev": 0.5, "min": 4.5, "max": 5.5}
+        (results / "hf").mkdir()
+        for case in ("fib", "sort"):
+            write_export(results, case, stale)
+        self.run_partial_harness(root, bench)
+        cases = json.loads((results / "results.json").read_text())["cases"]
+        self.assertEqual({case: cases[case]["rust"] for case in ("fib", "sort")},
+                         {"fib": FIB_CELL, "sort": FIB_CELL})
+        self.assertEqual(cases["fib"]["osprey-gc"]["mean"], 1.0)
 
 
 if __name__ == "__main__":
