@@ -726,7 +726,7 @@ def mean(a):
 
 def mean_axis(a, axis, keepdims):
     """np.mean along `axis`."""
-    s = reduce_axis(a, axis, keepdims, 0.0, SUM_OP)
+    s = sum_axis(a, axis, keepdims)
     n = axis_size(a, axis)
     return scale(s, 1.0 / toFloat(n))
 
