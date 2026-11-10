@@ -29,7 +29,18 @@ numberAt (entries, index, at) = jsonInt (cell (listGet entries index ?: JsonNull
 // An entry's type code.
 codeAt (shapes, index) = numberAt (shapes, index, 0)
 
-arityAt (shapes, index) = length (Doc::items (listGet shapes index ?: JsonNull))
+// The `key` entries of `doc`, its shapes, and the `key` text of the `index`th of `parts`.
+itemsOf (doc, key) = Doc::items (Doc::field (doc, key))
+
+shapesOf scene = itemsOf (scene, "shapes")
+
+fieldAt (parts, index, key) = Doc::text (listGet parts index ?: JsonNull, key)
+
+// The type codes of the first `count` of `shapes`, joined with a comma, and one write assertion per
+// `{ at = …, want = … }` of `entry`.
+codesOf (shapes, count) = join (mapList (indices count, \index => "${codeAt (shapes, index)}")) ","
+
+expectWrites (entry, wanted) = forEachList (wanted, \one => expect (Doc::write (cell (entry, one.at)), one.want))
 
 // [UI-SCENE]: a scene encodes flat: one small array per primitive, a type code first, sprites by
 // atlas index, glyph text inline, and one input binding.
@@ -42,29 +53,26 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     walked = Encode::walk ([], Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
     doc = listGet walked.nodes 0 ?: JsonNull
     scene = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::text (scene, "kind"), "scene")
+    shapes = shapesOf scene
+    expect ("${Doc::text (scene, "kind")} ${join (Doc::texts (scene, "atlas")) ","}", "scene bird,hawk")
     expectDecimals (scene, [{ name = "width", value = 320.0 }, { name = "height", value = 200.0 }, { name = "zoom", value = 1.0 }])
-    expect (join (Doc::texts (scene, "atlas")) ",", "bird,hawk")
     zoomed = firstNode (Encode::walk ([], Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)))
     expectDecimals (zoomed, [{ name = "zoom", value = 0.75 }, { name = "width", value = 1536.0 }])
     expect (length shapes, 5)
-    forEachList (indices (length shapes), \index => expect (codeAt (shapes, index), index))
-    arities = [8, 6, 9, 9, 7]
-    forEachList (indices (length arities), \index => expect (arityAt (shapes, index), listGet arities index ?: 0 - 1))
-    expect (numberAt (shapes, 0, 6), Scenes::rgb (255, 0, 0))
-    expect (numberAt (shapes, 2, 1), 2)
-    expect (numberAt (shapes, 3, 1), 1)
+    expect (codesOf (shapes, length shapes), "0,1,2,3,4")
+    expect (join (mapList (shapes, \shape => "${length (Doc::items shape)}")) ",", "8,6,9,9,7")
+    forEachList ([{ index = 0, at = 6, want = Scenes::rgb (255, 0, 0) }, { index = 2, at = 1, want = 2 }, { index = 3, at = 1, want = 1 }], \one => expect (numberAt (shapes, one.index, one.at), one.want))
     expect (jsonText (jsonIndex (listGet shapes 4 ?: JsonNull) 1 ?: JsonNull) ?: "", "Score 3")
-    expect (Doc::number (scene, "event"), 1)
-    expect (length walked.bindings, 2)
+    expect ("${Doc::number (scene, "event")} ${length walked.bindings}", "1 2")
 
 (** colours pack as RRGGBBAA. *)
 sceneCaseColoursPackAsRrggbbaa () =
-    expect (Scenes::rgba (1, 2, 3, 4), 16909060)
-    expect (Scenes::rgb (255, 255, 255), 4294967295)
+    expect (join (mapList ([Scenes::rgba (1, 2, 3, 4), Scenes::rgb (255, 255, 255)], \shade => "${shade}")) ",", "16909060,4294967295")
 
-controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
+// `message` routed arm by arm: every arm but the scene input spells its own marker.
+sceneRouted (message, input) = Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", input)
+
+controlled value = sceneRouted (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
 
 // [UI-SCENE]: a scene's binding delivers keys and pointer positions and refuses anything else.
 
@@ -77,33 +85,23 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
     drawn = [Scenes::path (steps, ui::Fill, gradient, 0), Scenes::moved ([ui::MoveTo(toX = 0.0, toY = 0.0)], ui::Line(width = 1.0, dashes = [4.0, 2.0], bevel = true), ui::Solid(tint = Scenes::hex (16711680, 0.5)), 10.0, 200.0, 0.9, 1)]
     walked = Encode::walk ([], Ui::canvas (drawn, Typed))
     scene = listGet walked.nodes 0 ?: JsonNull
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::decimal (scene, "width"), 0.0)
+    shapes = shapesOf scene
     filled = listGet shapes 0 ?: JsonNull
-    expect (codeAt (shapes, 0), 5)
+    expect ("${Doc::decimal (scene, "width")} ${codeAt (shapes, 0)}", "0.0 5")
     encodedSteps = Doc::items (jsonIndex filled 1 ?: JsonNull)
-    expect (join (mapList (indices 7, \i => "${codeAt (encodedSteps, i)}")) ",", "0,1,2,3,4,5,6")
+    expect (codesOf (encodedSteps, 7), "0,1,2,3,4,5,6")
     expect (Doc::write (listGet encodedSteps 4 ?: JsonNull), "[4,30.0,30.0,0.0,0,1,9.0,9.0]")
-    expect (Doc::write (cell (filled, 2)), "[0]")
-    expect (Doc::write (cell (filled, 4)), "[]")
+    expectWrites (filled, [{ at = 2, want = "[0]" }, { at = 4, want = "[]" }])
     paint = cell (filled, 3)
-    expect (jsonInt (jsonIndex paint 0 ?: JsonNull) ?: 0, 1)
-    expect (Doc::write (cell (paint, 4)), "[1,0.0,1.0,0.5,1.0]")
+    expect (jsonInt (cell (paint, 0)) ?: 0, 1)
+    expectWrites (paint, [{ at = 4, want = "[1,0.0,1.0,0.5,1.0]" }])
     stroked = listGet shapes 1 ?: JsonNull
-    expect (Doc::write (cell (stroked, 2)), "[1,1.0,1,4.0,2.0]")
-    expect (Doc::write (cell (stroked, 3)), "[0,[0,1.0,0.0,0.0,0.5]]")
-    expect (Doc::write (cell (stroked, 4)), "[10.0,200.0,0.9]")
+    expectWrites (stroked, [{ at = 2, want = "[1,1.0,1,4.0,2.0]" }, { at = 3, want = "[0,[0,1.0,0.0,0.0,0.5]]" }, { at = 4, want = "[10.0,200.0,0.9]" }])
 
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
-    expect (controlled (JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)]), "key ArrowLeft true")
-    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false false")
-    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 1.0), JsonMember "y" (JsonFloat 2.0), Doc::bit ("down", true), Doc::bit ("shift", true)]), "pointer 1.0 2.0 true true")
-    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 1536.0), JsonMember "height" (JsonInt 1008)]), "viewed 1536.0 1008.0")
-    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 0.5), JsonMember "height" (JsonFloat 2.25), Doc::bit ("down", true)]), "viewed 0.5 2.25")
-    expect (controlled (JsonString "left"), "tap")
-    forEachList ([JsonObject [], JsonObject [Doc::str ("key", "ArrowLeft")], JsonObject [Doc::num ("key", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::str ("down", "false")], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::bit ("down", true), Doc::str ("shift", "false")], JsonObject [Doc::num ("width", 4)], JsonObject [Doc::str ("width", "wide"), Doc::num ("height", 2)]], \value =>
-        expect (boundAs (ui::SceneInput(action = Typed), value), "A scene control sent a value of the wrong kind"))
+    expect (answersHold (controlled, [JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)], JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)], JsonObject [JsonMember "x" (JsonFloat 1.0), JsonMember "y" (JsonFloat 2.0), Doc::bit ("down", true), Doc::bit ("shift", true)], JsonObject [JsonMember "width" (JsonFloat 1536.0), JsonMember "height" (JsonInt 1008)], JsonObject [JsonMember "width" (JsonFloat 0.5), JsonMember "height" (JsonFloat 2.25), Doc::bit ("down", true)], JsonString "left"], ["key ArrowLeft true", "pointer 12.5 3.0 false false", "pointer 1.0 2.0 true true", "viewed 1536.0 1008.0", "viewed 0.5 2.25", "tap"]), true)
+    expect (answersHold (\value => boundAs (ui::SceneInput(action = Typed), value), [JsonObject [], JsonObject [Doc::str ("key", "ArrowLeft")], JsonObject [Doc::num ("key", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::str ("down", "false")], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::bit ("down", true), Doc::str ("shift", "false")], JsonObject [Doc::num ("width", 4)], JsonObject [Doc::str ("width", "wide"), Doc::num ("height", 2)]], ["A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind", "A scene control sent a value of the wrong kind"]), true)
 
 framed : ui::Message<Act> -> float
 framed message = Messages::route (message, \_ => 0.0 - 1.0, \(_, _) => 0.0 - 2.0, \(_, _) => 0.0 - 3.0, \(_, _) => 0.0 - 4.0, \(_, _) => 0.0 - 5.0, \_ => 0.0 - 6.0, \(_, _) => 0.0 - 7.0, \(_, _) => 0.0 - 8.0, \elapsed => elapsed, \(_, _) => 0.0 - 9.0)
@@ -133,8 +131,6 @@ sceneCaseAnAnimateRequestCarriesItsOnFlag () =
 
 occurrences (names, name) = length (range (0, length names) |> fold [] (\(found, index) => Pick::either ((listGet names index ?: "") == name, listAppend found index, found)))
 
-symbolAt (parts, index) = Doc::text (listGet parts index ?: JsonNull, "symbol")
-
 symbols () = [ui::NoSymbol, ui::Add, ui::Delete, ui::Dismiss, ui::Check, ui::Warning, ui::Info, ui::Question, ui::Search, ui::Settings, ui::Star, ui::Play, ui::Pause, ui::Stop, ui::Refresh, ui::Folder, ui::Document, ui::Package, ui::Inbox, ui::Globe, ui::External, ui::Lock, ui::Shield, ui::Branch, ui::Tag, ui::Clock, ui::Person, ui::Cursor, ui::Chevron]
 
 // [UI-COMPONENTS-SYMBOLS]: every symbol has its own lowercase wire name, and only `NoSymbol` is empty.
@@ -147,40 +143,32 @@ sceneCaseEverySymbolEncodesAsADistinctHost () =
 // [UI-COMPONENTS-SYMBOLS]: every node that shows a symbol sends its name, and a row without one sends none.
 (** labels, icons, badges, empty states, buttons, tabs and rows send their symbol names. *)
 sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
-    parts = Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)])), "children"))
-    expect (join (mapList ([0, 1, 2, 3, 4], \index => symbolAt (parts, index))) ",", "folder,globe,shield,search,refresh")
-    expect (Doc::text (listGet (Doc::items (Doc::field (listGet parts 5 ?: JsonNull, "tabs"))) 0 ?: JsonNull, "symbol"), "clock")
-    rows = Doc::items (Doc::field (listGet parts 6 ?: JsonNull, "rows"))
-    expect (join (mapList (rows, \row => Doc::text (row, "symbol"))) ",", ",person")
+    parts = itemsOf (firstNode (Encode::walk ([], Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)])), "children")
+    expect (join (mapList ([0, 1, 2, 3, 4], \index => fieldAt (parts, index, "symbol"))) ",", "folder,globe,shield,search,refresh")
+    expect (fieldAt (itemsOf (listGet parts 5 ?: JsonNull, "tabs"), 0, "symbol"), "clock")
+    expect (join (mapList (itemsOf (listGet parts 6 ?: JsonNull, "rows"), \row => Doc::text (row, "symbol"))) ",", ",person")
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
 (** a pair encodes its label and value without a binding. *)
 sceneCaseAPairEncodesItsLabelAndValue () =
     walked = Encode::walk ([], Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)])
-    parts = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
+    parts = itemsOf (listGet walked.nodes 0 ?: JsonNull, "children")
     doc = listGet parts 0 ?: JsonNull
     expect ("${Doc::text (doc, "kind")} ${Doc::text (doc, "label")}=${Doc::text (doc, "value")}", "pair Digest=sha256:ab")
     expect (Doc::has (doc, "event"), false)
-    expect (Doc::number (listGet parts 1 ?: JsonNull, "event"), 0)
-    expect (length walked.bindings, 1)
+    expect ("${Doc::number (listGet parts 1 ?: JsonNull, "event")} ${length walked.bindings}", "0 1")
 
-isLinux platform = match platform
-    ui::Linux => true
-    _ => false
-
-otherName platform = match platform
-    ui::OtherPlatform name => name
-    _ => ""
-
-platformRound text = Symbols::platformText (Symbols::platform text)
+// A platform's `linux` marker and the host name it carries, when it knows another.
+platformPair text = match Symbols::platform text
+    ui::Linux => "true "
+    ui::OtherPlatform name => "false ${name}"
+    _ => "false "
 
 // [UI-CONTEXT-PLATFORM]: every known platform round-trips, and an unknown host name survives as `OtherPlatform`.
 (** platforms decode to the union and encode back to their names. *)
 sceneCasePlatformsDecodeToTheUnionAndEncode () =
-    expect (join (mapList (["macos", "ios", "linux", "windows", "android", "web", "vscode", ""], platformRound)) ",", "macos,ios,linux,windows,android,web,vscode,")
-    expect (isLinux (Symbols::platform "linux"), true)
-    expect (otherName (Symbols::platform "haiku"), "haiku")
-    expect (otherName (Symbols::platform "windows"), "")
+    expect (join (mapList (["macos", "ios", "linux", "windows", "android", "web", "vscode", ""], \text => Symbols::platformText (Symbols::platform text))) ",", "macos,ios,linux,windows,android,web,vscode,")
+    expect (join (mapList (["linux", "haiku", "windows"], platformPair)) ",", "true ,false haiku,false ")
 
 // [UI-CONTEXT-PLATFORM]: the start context decodes its platform into the union and echoes it unchanged.
 (** a start context carries a linux or windows platform. *)
@@ -192,69 +180,74 @@ sceneCaseAStartContextCarriesALinuxOr () =
 sceneCaseProductSpecificWorkIsAHostCall () =
     expect (requestText (ui::HostCall(hostNamespace = "probe", hostOperation = "read-config", hostArguments = JsonObject [JsonMember "paths" (Doc::strings ["app.toml"])], hostTimeout = 500, hostLimit = 128, hostSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"host-call\",\"namespace\":\"probe\",\"operation\":\"read-config\",\"arguments\":{\"paths\":[\"app.toml\"]},\"timeout\":500,\"limit\":128,\"slice\":\"prefs\"}")
 
-// [UI-SCENE-STREAM] A file-scope cell of the suite's entry, written only by the stream handler's arm.
-
-
-// [UI-RESIDENT] The probe application's first resident envelope and the session it leaves, and the
-// step after `event`; the probe draws no scene, so its stream stays empty.
-
-
 streamScene () = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird"], [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgb (0, 0, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.25, Scenes::rgb (255, 255, 255), 4)], Typed)]
 
 // [UI-SCENE-STREAM]: rects, discs and sprites leave the envelope in drawing order; strips and glyphs stay, and the scene counts what it streamed.
 (** a split scene streams its fixed-size primitives in order and keeps the rest. *)
 sceneCaseASplitSceneStreamsItsFixedSize () =
-    walked = Encode::walk ([], streamedFrom (streamScene ()))
+    walked = walkStreamed (streamScene ())
     expect (streamedTrace, "0@1;1@2;3@4;")
     scene = itemAt (listGet walked.nodes 0 ?: JsonNull, "children", 1)
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::number (scene, "streamed"), 3)
-    expect (join (mapList (shapes, \shape => "${jsonInt (jsonIndex shape 0 ?: JsonNull) ?: 0 - 1}")) ",", "2,4")
-    expect (Doc::number (scene, "event"), 1)
-    expect (length walked.bindings, 2)
+    shapes = shapesOf scene
+    expect ("${Doc::number (scene, "streamed")} ${Doc::number (scene, "event")} ${length walked.bindings}", "3 1 2")
+    expect (codesOf (shapes, length shapes), "2,4")
 
 // [UI-SCENE-STREAM]: an unsplit scene streams nothing and says so.
 (** an enveloped scene reports nothing streamed. *)
 sceneCaseAnEnvelopedSceneReportsNothingStreamed () =
     scene = itemAt (firstNode (Encode::walk ([], streamScene ())), "children", 1)
-    expect (Doc::number (scene, "streamed"), 0)
-    expect (length (Doc::items (Doc::field (scene, "shapes"))), 5)
+    expect ("${Doc::number (scene, "streamed")} ${length (shapesOf scene)}", "0 5")
 
-streamedFields primitive = "${Streams::code primitive} ${Streams::index primitive} ${Streams::value (primitive, 0)} ${Streams::value (primitive, 1)} ${Streams::value (primitive, 2)} ${Streams::value (primitive, 3)} ${Streams::value (primitive, 4)} ${Streams::colour primitive} ${Streams::depth primitive}"
+// The nodes `container` walks to with its primitives streamed out, and a primitive's values as host text.
+walkStreamed container = Encode::walk ([], streamedFrom container)
+
+valuesOf (primitive, count) = join (mapList (indices count, \index => "${Streams::value (primitive, index)}")) " "
+
+streamedFields primitive = "${Streams::code primitive} ${Streams::index primitive} ${valuesOf (primitive, 5)} ${Streams::colour primitive} ${Streams::depth primitive}"
+
+// The keys, problems and state a session's envelope carries, and its store's tally and note.
+keysOf session = Probes::keys (Doc::parse session.residentEnvelope)
+
+problemsOf session = Probes::problems (Doc::parse session.residentEnvelope)
+
+stateOf session = Doc::text (Doc::parse session.residentEnvelope, "state")
+
+tallyOf envelope = envelope.residentSession.sessionStore.counter.tally
+
+memoOf envelope = envelope.residentSession.sessionStore.note.memo
+
+// The session a tap on the probe's `root` control delivers.
+afterTap session = proceeded (session, Probes::tap ("root", 1, 0))
+
+// Asserts `session` refused a change: its envelope names `problem`, its tally stands at one.
+expectKept (session, problem) =
+    expect (contains (problemsOf session) problem, true)
+    expect (tallyOf session, 1)
 
 // [UI-SCENE-STREAM]: the accessors a host import reads give each kind's code, atlas index, floats, colour and depth.
 (** streamed primitives read back every field a host import takes. *)
 sceneCaseStreamedPrimitivesReadBackEveryFieldA () =
-    expect (streamedFields (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1)), "0 0 1.0 2.0 3.0 4.0 0.5 7 1")
-    expect (streamedFields (Scenes::disc (5.0, 6.0, 7.0, 8, 2)), "1 0 5.0 6.0 7.0 0.0 0.0 8 2")
-    expect (streamedFields (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)), "3 3 8.0 9.0 2.0 1.0 0.25 9 4")
+    expect (answersHold (streamedFields, [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1), Scenes::disc (5.0, 6.0, 7.0, 8, 2), Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)], ["0 0 1.0 2.0 3.0 4.0 0.5 7 1", "1 0 5.0 6.0 7.0 0.0 0.0 8 2", "3 3 8.0 9.0 2.0 1.0 0.25 9 4"]), true)
     expect (Streams::streamed (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0)), false)
 
 // [UI-RESIDENT]: a resident session's envelope carries a marker, never the store, and the session itself moves on.
 (** a resident session keeps its store out of the envelope. *)
 sceneCaseAResidentSessionKeepsItsStoreOut () =
     first = begun ()
-    doc = Doc::parse first.residentEnvelope
-    expect (Doc::text (doc, "state"), "resident")
-    expect (Probes::keys doc, "root,note")
-    expect (first.residentSession.sessionContext.platform, "linux")
-    tapped = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
-    expect (Probes::keys (Doc::parse tapped.residentEnvelope), "root")
-    expect (tapped.residentSession.sessionStore.counter.tally, 1)
-    expect (Doc::text (Doc::parse tapped.residentEnvelope, "state"), "resident")
+    tapped = afterTap first.residentSession
+    expect (join ([stateOf first, keysOf first, first.residentSession.sessionContext.platform]) ",", "resident,root,note,linux")
+    expect (join ([keysOf tapped, "${tallyOf tapped}", stateOf tapped]) ",", "root,1,resident")
 
 // [UI-RESIDENT]: stale controls are refused as in a saved session, and an edit against a prior state cannot be recovered.
 (** a resident session refuses stale controls and prior-state edits without change. *)
 sceneCaseAResidentSessionRefusesStaleControlsAnd () =
     first = begun ()
-    moved = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
-    stale = proceeded (moved.residentSession, Probes::tap ("root", 1, 0))
-    expect (Probes::keys (Doc::parse stale.residentEnvelope), "")
-    expect (contains (Probes::problems (Doc::parse stale.residentEnvelope)) "Stale control", true)
-    expect (stale.residentSession.sessionStore.counter.tally, 1)
+    moved = afterTap first.residentSession
+    stale = afterTap moved.residentSession
+    expect (keysOf stale, "")
+    expectKept (stale, "Stale control")
     edited = proceeded (moved.residentSession, Probes::edit ("\"resident\"", "root", 1, 0, "null"))
-    expect (contains (Probes::problems (Doc::parse edited.residentEnvelope)) "keeps no prior state", true)
-    expect (edited.residentSession.sessionStore.counter.tally, 1)
+    expectKept (edited, "keeps no prior state")
 
 // One scene holding a single disc at `layer`, so the stream's order names the container it was found in.
 dot layer = Ui::scene (10.0, 10.0, [], [Scenes::disc (1.0, 1.0, 1.0, 0, layer)], Typed)
@@ -271,7 +264,7 @@ everyContainer () = Ui::split [
 // children, a context menu's body before its actions, an aside's pane before its column.
 (** a split streams scenes from every container in the encoder's order. *)
 sceneCaseASplitStreamsScenesFromEveryContainer () =
-    walked = Encode::walk ([], streamedFrom (everyContainer ()))
+    walked = walkStreamed (everyContainer ())
     expect (length walked.nodes, 1)
     expect (contains streamedTrace "1@1;1@2;1@3;1@4;1@5;1@6;1@7;1@8;1@9;", true)
 
@@ -279,10 +272,8 @@ sceneCaseASplitStreamsScenesFromEveryContainer () =
 (** primitives that do not stream read back zero fields. *)
 sceneCasePrimitivesThatDoNotStreamReadBack () =
     strip = Scenes::strip ([0.0, 0.0, 1.0, 1.0], 9, 1.0, 4)
-    expect ("${Streams::value (strip, 0)} ${Streams::colour strip} ${Streams::depth strip} ${Streams::index strip}", "0.0 0 0 0")
+    expect ("${valuesOf (strip, 1)} ${Streams::colour strip} ${Streams::depth strip} ${Streams::index strip}", "0.0 0 0 0")
     expect (Streams::streamed strip, false)
-
-frameEvent = "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.5}"
 
 // [UI-RESIDENT]: completions, lifecycle phases and frames reach `update` in a resident session, and text
 // that is not an event is refused without change.
@@ -290,14 +281,14 @@ frameEvent = "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.5}"
 sceneCaseAResidentSessionDeliversCompletionsPhasesAnd () =
     first = begun ()
     done = proceeded (first.residentSession, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"saved\",\"now\":7}")
-    expect (done.residentSession.sessionStore.note.memo, "saved")
+    expect (memoOf done, "saved")
     phased = proceeded (done.residentSession, "{\"kind\":\"lifecycle\",\"phase\":\"active\",\"now\":8}")
-    expect (Probes::problems (Doc::parse phased.residentEnvelope), "")
-    framed = proceeded (phased.residentSession, frameEvent)
+    expect (problemsOf phased, "")
+    framed = proceeded (phased.residentSession, "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.5}")
     expect (framed.residentSession.sessionContext.now, 9)
     broken = proceeded (framed.residentSession, "not json")
-    expect (contains (Probes::problems (Doc::parse broken.residentEnvelope)) "not JSON", true)
-    expect (broken.residentSession.sessionStore.note.memo, "saved")
+    expect (contains (problemsOf broken) "not JSON", true)
+    expect (memoOf broken, "saved")
 
 // [UI-RESIDENT]: an idle session holds the store with no host facts and no regions yet.
 (** an idle session holds only its store. *)
@@ -315,19 +306,15 @@ boundAs (binding, value) = match Events::bind (binding, value)
 // [UI-EVENTS]: toggles deliver flags, pickers deliver keys, and a value of the wrong kind is refused.
 (** toggles and pickers deliver their own value kinds and refuse others. *)
 sceneCaseTogglesAndPickersDeliverTheirOwnValue () =
-    expect (boundAs (ui::FlagInput(action = Typed), JsonBool true), "flag true")
-    expect (boundAs (ui::FlagInput(action = Typed), JsonString "on"), "A toggle control sent a value of the wrong kind")
-    expect (boundAs (ui::ChoiceInput(action = Load), JsonString "b"), "text b")
-    expect (boundAs (ui::ChoiceInput(action = Load), JsonInt 1), "A choice control sent a value of the wrong kind")
+    expect (forEachList ([{ binding = ui::FlagInput(action = Typed), value = JsonBool true, want = "flag true" }, { binding = ui::FlagInput(action = Typed), value = JsonString "on", want = "A toggle control sent a value of the wrong kind" }, { binding = ui::ChoiceInput(action = Load), value = JsonString "b", want = "text b" }, { binding = ui::ChoiceInput(action = Load), value = JsonInt 1, want = "A choice control sent a value of the wrong kind" }], \probe => expect (boundAs (probe.binding, probe.value), probe.want)), true)
     expect (routed (ui::Phase(phase = "active")), "phase active")
 
 // [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep their protocol spellings.
 (** progress, swatches, alerts, prominent buttons and leading asides encode. *)
 sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
-    parts = Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])), "children"))
+    parts = itemsOf (firstNode (Encode::walk ([], Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])), "children")
     expect (join (mapList (parts, \part => Doc::text (part, "kind"))) ",", "progress,swatch,alert,button,aside")
-    expect (Doc::text (listGet parts 3 ?: JsonNull, "role"), "prominent")
-    expect (Doc::text (listGet parts 4 ?: JsonNull, "side"), "leading")
+    forEachList ([{ at = 3, name = "role", want = "prominent" }, { at = 4, name = "side", want = "leading" }], \one => expect (fieldAt (parts, one.at, one.name), one.want))
 
 // Pinned to the suite's action union: the encoder is instantiated at one action type (#278).
 meterAt (amount, total) =
@@ -337,7 +324,4 @@ meterAt (amount, total) =
 // [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below 1.
 (** a meter sends its amount clamped into a total of at least one. *)
 sceneCaseAMeterSendsItsAmountClampedInto () =
-    expect (meterAt (30, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":30,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (500, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":120,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (0 - 4, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":0,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (3, 0), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":1,\"total\":1,\"tone\":\"caution\"}")
+    forEachList ([{ amount = 30, total = 120, want = "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":30,\"total\":120,\"tone\":\"caution\"}" }, { amount = 500, total = 120, want = "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":120,\"total\":120,\"tone\":\"caution\"}" }, { amount = 0 - 4, total = 120, want = "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":0,\"total\":120,\"tone\":\"caution\"}" }, { amount = 3, total = 0, want = "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":1,\"total\":1,\"tone\":\"caution\"}" }], \probe => expect (meterAt (probe.amount, probe.total), probe.want))
