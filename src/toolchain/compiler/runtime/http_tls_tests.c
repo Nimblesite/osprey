@@ -1,6 +1,7 @@
 // TLS origin tests, split from http_runtime_tests.c: a real OpenSSL server
 // presenting test-generated certificate chains, so peer verification is
 // asserted end to end [HTTP-STATUS-CLIENT].
+#include "test_loopback.h"
 #include "http_client_internal.h"
 #include "http_runtime_tests.h"
 #include "io_error.h"
@@ -124,18 +125,7 @@ static void tls_origin_start(TlsOrigin *origin, X509 *leaf, EVP_PKEY *leaf_key,
   assert(origin->ctx != NULL);
   assert(SSL_CTX_use_certificate(origin->ctx, leaf) == 1);
   assert(SSL_CTX_use_PrivateKey(origin->ctx, leaf_key) == 1);
-  origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin->listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(TLS_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin->listen_fd, 1) == 0);
+  origin->listen_fd = test_loopback_listen(TLS_PORT);
   assert(pthread_create(&origin->thread, NULL, tls_origin_thread, origin) == 0);
 }
 

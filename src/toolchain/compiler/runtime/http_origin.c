@@ -1,5 +1,6 @@
 // The scripted origin the HTTP client suites share, split from the tests themselves
 // so each test TU stays under the repo size budget.
+#include "test_loopback.h"
 #include "http_runtime_tests.h"
 #include "http_shared.h"
 #include "io_error.h"
@@ -123,18 +124,7 @@ void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len) {
   memset(origin, 0, sizeof(*origin));
   origin->reply = reply;
   origin->reply_len = len;
-  origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin->listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin->listen_fd, 1) == 0);
+  origin->listen_fd = test_loopback_listen(ORIGIN_PORT);
   assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
 }
 

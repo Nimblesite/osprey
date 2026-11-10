@@ -3,6 +3,7 @@
 // answering with EXACT bytes, so the client is asserted against wire
 // responses the Osprey server would never produce [HTTP-STATUS-CLIENT],
 // [HTTP-RESPONSE-HANDLE].
+#include "test_loopback.h"
 #include "http_runtime_tests.h"
 #include "http_shared.h"
 #include "io_error.h"
@@ -137,18 +138,7 @@ void test_client_peer_closes_during_body(void) {
   assert(body != NULL);
   memset(body, 'x', size);
   body[size] = '\0';
-  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
-                    sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(listen_fd, 1) == 0);
+  int listen_fd = test_loopback_listen(ORIGIN_PORT);
   pthread_t thread;
   assert(pthread_create(&thread, NULL, closing_origin_thread, &listen_fd) == 0);
   int64_t client_id = origin_client();
@@ -173,18 +163,7 @@ void test_client_large_request_body(void) {
   origin.capacity = LARGE_REQUEST_BODY + MAX_HTTP_BUFFER;
   origin.request = calloc(origin.capacity, 1);
   assert(origin.request != NULL);
-  origin.listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin.listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin.listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin.listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin.listen_fd, 1) == 0);
+  origin.listen_fd = test_loopback_listen(ORIGIN_PORT);
   pthread_t thread;
   assert(pthread_create(&thread, NULL, large_origin_thread, &origin) == 0);
 

@@ -1,6 +1,7 @@
 // Live-server tests, split from http_runtime_tests.c: raw clients against a
 // REAL listener, so the reject path, the self-stop path and the listen/stop
 // state machine are asserted end to end [HTTP-SERVER].
+#include "test_loopback.h"
 #include "http_runtime_tests.h"
 #include "http_server_internal.h"
 #include "http_shared.h"
@@ -26,11 +27,7 @@ static int64_t g_self_stop_server = -1;
 // retrying while the listener fiber binds; every reply sets Connection: close,
 // so read-to-EOF is the whole reply.
 int server_test_connect(int port) {
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  struct sockaddr_in addr = test_loopback_addr(port);
   int fd = -1;
   for (int i = 0; i < 100 && fd < 0; i++) {
     fd = socket(AF_INET, SOCK_STREAM, 0);

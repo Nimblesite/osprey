@@ -9,6 +9,7 @@
 //   [BUILTIN-WEBSOCKET-CLIENT]    client handles, ws:// only, wss:// rejected
 //   [BUILTIN-WEBSOCKET-SERVER]    upgrade, welcome frame, echo, broadcast
 //   [BUILTIN-WEBSOCKET-LIFECYCLE] keep-alive blocks until SIGINT/SIGTERM
+#include "test_loopback.h"
 #include "http_shared.h"
 #include "websocket_test_helpers.h"
 #include <assert.h>
@@ -36,11 +37,7 @@ static const char *const WS_SAMPLE_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 // Loopback TCP connect with a bounded retry: the server's accept thread may
 // still be binding when the first attempt runs.
 int ws_raw_connect(int port) {
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons((uint16_t)port);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  struct sockaddr_in addr = test_loopback_addr(port);
   for (int i = 0; i < WS_TRIES; i++) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     assert(fd >= 0);
@@ -370,18 +367,7 @@ static void test_client_connect_failures(void) {
   memcpy(long_host + sizeof(long_host) - 3, "/x", 3);
   assert(websocket_connect(long_host) == -5);
 
-  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
-                    sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(WS_DEAD_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(listen_fd, 1) == 0);
+  int listen_fd = test_loopback_listen(WS_DEAD_PORT);
   pthread_t thread;
   assert(pthread_create(&thread, NULL, ws_rude_listener, &listen_fd) == 0);
   char url[64];
