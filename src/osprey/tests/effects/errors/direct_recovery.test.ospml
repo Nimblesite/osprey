@@ -192,7 +192,7 @@ repeatedRecoveryStateCase () =
     total =
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1 
+                recoveries := bumped recoveries
                 reasons := "${reasons}${reason}|"
                 recoveries * 10 
         recoverThree ()
@@ -292,7 +292,7 @@ outerEffectCompositionCase () =
         handle AuditError
             note message =>
                 noteCount := noteCount + 1 
-                notes := "${notes}${message}|"
+                notes := marked (notes, message)
         handle RecoveryError
             missingInt reason =>
                 perform AuditError.note "handler saw ${reason}"
@@ -497,53 +497,50 @@ fillAll () =
     c = perform TextError.fill "b"
     "${a}/${b}/${c}"
 
-(** One `fill` request for `field` answered with `text`. *)
 fillWith (text, field) =
     handle TextError
         fill _blank => text
     perform TextError.fill field
 
-(** One `number` request for `field` answered with `amount`. *)
 numberWith (amount, field) =
     handle TextError
         number _zero => amount
     perform TextError.number field
 
-(** One `asInt` request for `field` answered with `count`. *)
 intWith (count, field) =
     handle ValueError
         asInt _zero => count
     perform ValueError.asInt field
-(** One `asFloat` request for `field` answered with `ratio`. *)
 floatWith (ratio, field) =
     handle ValueError
         asFloat _ratio => ratio
     perform ValueError.asFloat field
-(** One `asBool` request for `field` answered with `decision`. *)
 boolWith (decision, field) =
     handle ValueError
         asBool _blocked => decision
     perform ValueError.asBool field
-(** One `asText` request for `field` answered with `name`. *)
 textWith (name, field) =
     handle ValueError
         asText _empty => name
     perform ValueError.asText field
-(** One `asSpare` request for `field` answered with `spare`. *)
 spareWith (spare, field) =
     handle ValueError
         asSpare _left => spare
     perform ValueError.asSpare field
-(** One `asGrade` request for `field` answered with `grade`. *)
 gradeWith (grade, field) =
     handle ValueError
         asGrade _score => grade
     perform ValueError.asGrade field
-(** One `asResult` request for `field` answered with `outcome`. *)
 resultWith (outcome, field) =
     handle ValueError
         asResult _lookup => outcome
     perform ValueError.asResult field
+
+(** Append one recorded mark to a `trail` transcript. *)
+marked (trail, mark) = "${trail}${mark}|"
+
+(** Count one more recorded decision. *)
+bumped count = count + 1
 
 (** Verify every declared operation result type survives direct substitution.
 
@@ -559,29 +556,29 @@ everyResultTypeCase () =
     rendered =
         handle ValueError
             asInt field =>
-                trail := "${trail}i:${field}|"
+                trail := marked (trail, "i:${field}")
                 12
             asFloat field =>
-                trail := "${trail}f:${field}|"
+                trail := marked (trail, "f:${field}")
                 2.5
             asBool field =>
-                trail := "${trail}b:${field}|"
+                trail := marked (trail, "b:${field}")
                 true
             asText field =>
-                trail := "${trail}t:${field}|"
+                trail := marked (trail, "t:${field}")
                 "fallback"
             asSpare field =>
-                trail := "${trail}s:${field}|"
+                trail := marked (trail, "s:${field}")
                 Spare(tag = "spare", weight = 1.5, ready = true)
             asGrade field =>
-                trail := "${trail}g:${field}|"
+                trail := marked (trail, "g:${field}")
                 Granted(score = 30)
             asResult field =>
-                trail := "${trail}r:${field}|"
+                trail := marked (trail, "r:${field}")
                 Success(value = 9)
             mark field =>
-                marks := marks + 1 
-                trail := "${trail}m:${field}|"
+                marks := bumped marks
+                trail := marked (trail, "m:${field}")
         everyValue ()
     intValue = intWith (0, "zero")
     floatValue = floatWith (2.5, "ratio")
@@ -675,16 +672,16 @@ partialOverrideLatticeCase () =
     flat =
         handle TierError
             base label =>
-                flatCalls := flatCalls + 1 
-                flatTrail := "${flatTrail}base:${label}|"
+                flatCalls := bumped flatCalls
+                flatTrail := marked (flatTrail, "base:${label}")
                 100
             bonus label =>
-                flatCalls := flatCalls + 1 
-                flatTrail := "${flatTrail}bonus:${label}|"
+                flatCalls := bumped flatCalls
+                flatTrail := marked (flatTrail, "bonus:${label}")
                 5
             tier label =>
-                flatCalls := flatCalls + 1 
-                flatTrail := "${flatTrail}tier:${label}|"
+                flatCalls := bumped flatCalls
+                flatTrail := marked (flatTrail, "tier:${label}")
                 "gold"
         first = tierQuote "a"
         second = tierQuote "b"
@@ -692,7 +689,7 @@ partialOverrideLatticeCase () =
     overridden =
         handle TierError
             base _label =>
-                outerBaseCalls := outerBaseCalls + 1 
+                outerBaseCalls := bumped outerBaseCalls
                 100
             bonus _label => 5
             tier _label => "gold"
@@ -700,7 +697,7 @@ partialOverrideLatticeCase () =
         inside =
             handle TierError
                 base _label =>
-                    innerBaseCalls := innerBaseCalls + 1 
+                    innerBaseCalls := bumped innerBaseCalls
                     200
             tierQuote "in"
         afterwards = tierQuote "post"
@@ -975,26 +972,26 @@ multiEffectRegionCase () =
     rendered =
         handle AuditError
             note message =>
-                notes := notes + 1 
-                trail := "${trail}A(${message})|"
+                notes := bumped notes
+                trail := marked (trail, "A(${message})")
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1 
-                trail := "${trail}R(${reason})|"
+                recoveries := bumped recoveries
+                trail := marked (trail, "R(${reason})")
                 6
         handle StockError
             shortage requested available =>
-                shortages := shortages + 1 
-                trail := "${trail}S(${toString requested},${toString available})|"
+                shortages := bumped shortages
+                trail := marked (trail, "S(${toString requested},${toString available})")
                 available
         handle PolicyError
             score key =>
-                policies := policies + 1 
-                trail := "${trail}P(${key})|"
+                policies := bumped policies
+                trail := marked (trail, "P(${key})")
                 25
             label key =>
-                policies := policies + 1 
-                trail := "${trail}L(${key})|"
+                policies := bumped policies
+                trail := marked (trail, "L(${key})")
                 "priority"
         crossEffectBody ()
     reordered =
@@ -1012,7 +1009,7 @@ multiEffectRegionCase () =
     generous =
         handle AuditError
             note _message =>
-                generousAudits := generousAudits + 1 
+                generousAudits := bumped generousAudits
         handle RecoveryError
             missingInt _reason => 2
         handle StockError
@@ -1082,8 +1079,8 @@ boundaryValueRecoveryCase () =
     joined =
         handle TextError
             fill field =>
-                fills := fills + 1 
-                seen := "${seen}${field}${toString fills}|"
+                fills := bumped fills
+                seen := marked (seen, "${field}${toString fills}")
                 match fills
                     1 => ""
                     2 => "x"
