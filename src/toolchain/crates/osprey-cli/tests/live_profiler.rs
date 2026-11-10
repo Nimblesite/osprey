@@ -230,17 +230,27 @@ async fn the_program_is_listed_as_an_attachable_osprey_process() {
     service.shutdown().await;
 }
 
+/// Each check runs as both twins: the Default flavor on `<base>`, the ML
+/// flavor on `<base>-ml`.
+async fn both_twins<F, Fut>(base: &str, check: F)
+where
+    F: Fn(Flavor, String) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    for (flavor, suffix) in [(Flavor::Default, ""), (Flavor::Ml, "-ml")] {
+        check(flavor, format!("{base}{suffix}")).await;
+    }
+}
+
 /// Both twins find their hot function and its lines; the ML twin is attributed
 /// to its own .ospml source, line for line.
 #[tokio::test(flavor = "multi_thread")]
 async fn cpu_profiling_finds_the_hot_function_and_its_lines() {
-    for (flavor, name) in [(Flavor::Default, "lp-cpu"), (Flavor::Ml, "lp-cpu-ml")] {
-        finds_the_hot_function_and_its_lines(flavor, name).await;
-    }
+    both_twins("lp-cpu", finds_the_hot_function_and_its_lines).await;
 }
 
-async fn finds_the_hot_function_and_its_lines(flavor: Flavor, name: &str) {
-    let (fixture, service) = running(name, flavor);
+async fn finds_the_hot_function_and_its_lines(flavor: Flavor, name: String) {
+    let (fixture, service) = running(&name, flavor);
     let report = profile(&service, &fixture, json!({}), 3 * RATE_HZ).await;
     assert!(samples(&report) > 100, "{report}");
     let spin = hot_functions(&report)
@@ -285,13 +295,11 @@ async fn finds_the_hot_function_and_its_lines(flavor: Flavor, name: &str) {
 /// Both twins' native frames appear only on request.
 #[tokio::test(flavor = "multi_thread")]
 async fn native_frames_appear_only_on_request() {
-    for (flavor, name) in [(Flavor::Default, "lp-native"), (Flavor::Ml, "lp-native-ml")] {
-        native_frames_only_on_request(flavor, name).await;
-    }
+    both_twins("lp-native", native_frames_only_on_request).await;
 }
 
-async fn native_frames_only_on_request(flavor: Flavor, name: &str) {
-    let (fixture, service) = running(name, flavor);
+async fn native_frames_only_on_request(flavor: Flavor, name: String) {
+    let (fixture, service) = running(&name, flavor);
     // A native frame is any frame outside Osprey source (.osp or .ospml):
     // unlocated on a host without system debug info, located in libc
     // (`./stdio-common/...`) on one with it, as on the Linux runners.
