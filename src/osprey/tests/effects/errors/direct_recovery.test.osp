@@ -439,13 +439,8 @@ fn tierQuote(label) ![TierError, Arith] = {
     "${name}:${toString(combined)}"
 }
 
-/// Run `work` with the base amount answered by `replacement`.
 fn withBase(replacement, work) = { handle TierError { base _label => replacement } work() }
-
-/// Run `work` with the bonus amount answered by `replacement`.
 fn withBonus(replacement, work) = { handle TierError { bonus _label => replacement } work() }
-
-/// Run `work` with the tier name answered by `replacement`.
 fn withTier(replacement, work) = { handle TierError { tier _label => replacement } work() }
 
 /// Run `work` under a whole TierError policy answering `base`, `bonus` and `tier`.
@@ -530,31 +525,15 @@ fn fillAll() !TextError = {
     "${a}/${b}/${c}"
 }
 
-/// One `fill` request for `field` answered with `text`.
 fn fillWith(text, field) = { handle TextError { fill _f => text } perform TextError.fill(field) }
-
-/// One `number` request for `field` answered with `amount`.
 fn numberWith(amount, field) = { handle TextError { number _f => amount } perform TextError.number(field) }
 
-/// One `asInt` request for `field` answered with `replacement`.
 fn intWith(count, field) = { handle ValueError { asInt _f => count } perform ValueError.asInt(field) }
-
-/// One `asFloat` request for `field` answered with `ratio`.
 fn floatWith(ratio, field) = { handle ValueError { asFloat _f => ratio } perform ValueError.asFloat(field) }
-
-/// One `asBool` request for `field` answered with `decision`.
 fn boolWith(decision, field) = { handle ValueError { asBool _f => decision } perform ValueError.asBool(field) }
-
-/// One `asText` request for `field` answered with `name`.
 fn textWith(name, field) = { handle ValueError { asText _f => name } perform ValueError.asText(field) }
-
-/// One `asSpare` request for `field` answered with `spare`.
 fn spareWith(spare, field) = { handle ValueError { asSpare _f => spare } perform ValueError.asSpare(field) }
-
-/// One `asGrade` request for `field` answered with `grade`.
 fn gradeWith(grade, field) = { handle ValueError { asGrade _f => grade } perform ValueError.asGrade(field) }
-
-/// One `asResult` request for `field` answered with `outcome`.
 fn resultWith(outcome, field) = { handle ValueError { asResult _f => outcome } perform ValueError.asResult(field) }
 
 /// Verify every declared operation result type survives direct substitution.
@@ -1128,8 +1107,7 @@ fn multiEffectRegionCase() = {
     checkAll("reordering independent handler regions preserves every value", [
         reordered == rendered,
         reordered == "priority:6:4:25",
-        sealed(auditTrail, "filled 6|allowed 4|scored 25|", 29, "filled 6|", "scored 25|"),
-        mentions(auditTrail, ["|allowed 4|"], ["qty"]),
+        sealedMentions(auditTrail, "filled 6|allowed 4|scored 25|", 29, "filled 6|", "scored 25|", ["|allowed 4|"], ["qty"]),
         notes == 3,
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         recoveries == 1,
@@ -1204,8 +1182,7 @@ fn boundaryValueRecoveryCase() = {
     // bytes rather than being normalised on the way out of the arm.
     checkAll("empty, single-character and digit-bearing replacements", [
         blank == "" && isEmpty(blank) && length(blank) == 0 && single == "z" && length(single) == 1 && !isEmpty(single) && single != blank,
-        sealed(digits, "007", 3, "0", "7"),
-        mentions(digits, ["07"], ["70"]),
+        sealedMentions(digits, "007", 3, "0", "7", ["07"], ["70"]),
         digits != "7"
     ])
 

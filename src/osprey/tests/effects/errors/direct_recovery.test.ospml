@@ -409,17 +409,14 @@ tierQuote label =
     combined = amount + extra 
     "${name}:${toString combined}"
 
-(** Run `work` with the base amount answered by `replacement`. *)
 withBase (replacement, work) =
     handle TierError
         base _label => replacement
     work ()
-(** Run `work` with the bonus amount answered by `replacement`. *)
 withBonus (replacement, work) =
     handle TierError
         bonus _label => replacement
     work ()
-(** Run `work` with the tier name answered by `replacement`. *)
 withTier (replacement, work) =
     handle TierError
         tier _label => replacement
@@ -1051,8 +1048,7 @@ multiEffectRegionCase () =
     checkAll "reordering independent handler regions preserves every value" [
         reordered == rendered,
         reordered == "priority:6:4:25",
-        sealed (auditTrail, "filled 6|allowed 4|scored 25|", 29, "filled 6|", "scored 25|"),
-        mentions (auditTrail, ["|allowed 4|"], ["qty"]),
+        sealedMentions (auditTrail, "filled 6|allowed 4|scored 25|", 29, "filled 6|", "scored 25|", ["|allowed 4|"], ["qty"]),
         notes == 3,
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         recoveries == 1,
@@ -1122,8 +1118,7 @@ boundaryValueRecoveryCase () =
     // bytes rather than being normalised on the way out of the arm.
     checkAll "empty, single-character and digit-bearing replacements" [
         blank == "" && isEmpty blank && length blank == 0 && single == "z" && length single == 1 && !(isEmpty single) && single != blank,
-        sealed (digits, "007", 3, "0", "7"),
-        mentions (digits, ["07"], ["70"]),
+        sealedMentions (digits, "007", 3, "0", "7", ["07"], ["70"]),
         digits != "7"
     ]
 
