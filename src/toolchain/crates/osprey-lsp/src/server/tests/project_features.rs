@@ -64,6 +64,47 @@ fn set_flavor(fixture: &ProjectFixture, flavor: &str) -> Result<String, Failure>
     Ok(config)
 }
 
+/// A new `extension` fixture with `main` written, as `(fixture, uri)`.
+fn fixture_with_main(extension: &str, main: &str) -> Result<(ProjectFixture, String), Failure> {
+    let fixture = ProjectFixture::new(extension)?;
+    let uri = fixture.write("main", main)?;
+    Ok((fixture, uri))
+}
+
+/// A harness with `main` open at `uri` and `text` open at `sibling`.
+async fn start_with_sibling(uri: &str, main: &str, sibling: &str, text: &str) -> Harness {
+    let mut h = Harness::start_with_progress().await;
+    let _ = h.open_at(uri, main).await;
+    let _ = h.open_at(sibling, text).await;
+    h
+}
+
+/// A harness whose first report for `main` at `uri` is a type error.
+async fn start_with_type_error(uri: &str, main: &str) -> Harness {
+    let mut h = Harness::start_with_progress().await;
+    let initial = h.open_at(uri, main).await;
+    assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
+    h
+}
+
+/// Close `sibling`, then request `feature` at line 0 / `column` of `uri`.
+async fn closed_request(
+    h: &mut Harness,
+    sibling: &str,
+    id: i64,
+    feature: &str,
+    uri: &str,
+    column: u32,
+) -> Message {
+    h.notify("textDocument/didClose", text_doc(sibling)).await;
+    h.request(
+        id,
+        &format!("textDocument/{feature}"),
+        position_params(uri, 0, column),
+    )
+    .await
+}
+
 /// Send a watched-file change for `changed` and return the settled reports.
 async fn watch_event(h: &mut Harness, changed: &str, kind: u8) -> Vec<Value> {
     h.notify(
@@ -87,20 +128,14 @@ async fn assert_watch_mentions(h: &mut Harness, changed: &str, kind: u8, needles
 #[tokio::test]
 async fn project_features_follow_unsaved_siblings_in_both_flavors() -> Fallible {
     for (extension, disk, live, main) in SIBLING_SOURCES {
-        let fixture = ProjectFixture::new(extension)?;
-        let uri = fixture.write("main", main)?;
+        let (fixture, uri) = fixture_with_main(extension, main)?;
         let sibling = fixture.write("helper", disk)?;
-        let mut h = Harness::start_with_progress().await;
-        let _ = h.open_at(&uri, main).await;
-        let _ = h.open_at(&sibling, live).await;
+        let mut h = start_with_sibling(&uri, main, &sibling, live).await;
         let parses = h.engine.project_cache.parses();
         assert_live_features(&mut h, &uri, &sibling, main).await;
         let reused = h.engine.project_cache.parses();
         assert_eq!(reused, parses, "requests must reuse unchanged syntax");
-        h.notify("textDocument/didClose", text_doc(&sibling)).await;
-        let completion = h
-            .request(906, "textDocument/completion", position_params(&uri, 0, 0))
-            .await;
+        let completion = closed_request(&mut h, &sibling, 906, "completion", &uri, 0).await;
         let items = format!("{:?}", completion.result);
         assert!(!items.contains("fresh"), "{completion:?}");
         h.shutdown_and_exit().await;
@@ -110,44 +145,36 @@ async fn project_features_follow_unsaved_siblings_in_both_flavors() -> Fallible 
 
 async fn assert_live_features(h: &mut Harness, uri: &str, sibling: &str, main: &str) {
     let column = crate::test_support::col_of(main, 0, "fresh");
-    for (index, method) in [
-        "hover",
-        "signatureHelp",
-        "definition",
-        "references",
-        "completion",
-    ]
-    .iter()
-    .enumerate()
-    {
+    for (id, method) in [
+        (900, "hover"),
+        (901, "signatureHelp"),
+        (902, "definition"),
+        (903, "references"),
+        (904, "completion"),
+    ] {
         let params = json!({"textDocument":{"uri":uri},"position":{"line":0,"character":column},"context":{"includeDeclaration":true}});
         let reply = h
-            .request(
-                i64::try_from(index).map_or(900, |index| 900 + index),
-                &format!("textDocument/{method}"),
-                params,
-            )
+            .request(id, &format!("textDocument/{method}"), params)
             .await;
         let text = format!("{:?}", reply.result);
         let fresh = text.contains("fresh") && text.contains("string");
-        match *method {
+        match method {
             "definition" | "references" => assert!(text.contains(sibling), "{method}: {reply:?}"),
             _ => assert!(fresh, "{method}: {reply:?}"),
         }
-        let stale = text.contains("saved");
-        assert!(!stale, "stale disk symbol in {method}: {reply:?}");
+        assert!(
+            !text.contains("saved"),
+            "stale disk symbol in {method}: {reply:?}"
+        );
     }
 }
 
 #[tokio::test]
 async fn live_effect_declarations_and_handler_locations_follow_both_flavors() -> Fallible {
     for (extension, main, live) in EFFECT_SOURCES {
-        let fixture = ProjectFixture::new(extension)?;
-        let uri = fixture.write("main", main)?;
+        let (fixture, uri) = fixture_with_main(extension, main)?;
         let sibling = fixture.write("helper", "// saved file has no handler\n")?;
-        let mut h = Harness::start_with_progress().await;
-        let _ = h.open_at(&uri, main).await;
-        let _ = h.open_at(&sibling, live).await;
+        let mut h = start_with_sibling(&uri, main, &sibling, live).await;
         assert_effect_features(&mut h, &uri, &sibling, main).await;
         h.shutdown_and_exit().await;
     }
@@ -178,11 +205,8 @@ async fn assert_effect_features(h: &mut Harness, uri: &str, sibling: &str, main:
 #[tokio::test]
 async fn watched_sources_and_manifest_refresh_the_live_project() -> Fallible {
     for (extension, main, helper) in WATCHED_SOURCES {
-        let fixture = ProjectFixture::new(extension)?;
-        let uri = fixture.write("main", main)?;
-        let mut h = Harness::start_with_progress().await;
-        let initial = h.open_at(&uri, main).await;
-        assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
+        let (fixture, uri) = fixture_with_main(extension, main)?;
+        let mut h = start_with_type_error(&uri, main).await;
         let sibling = fixture.write("helper", helper)?;
         assert_watched(&mut h, &uri, &sibling, 1, false).await;
         let parses = h.engine.project_cache.parses();
@@ -235,18 +259,12 @@ async fn assert_watched(h: &mut Harness, uri: &str, changed: &str, kind: u8, err
 
 #[tokio::test]
 async fn unsaved_mixed_flavor_files_join_and_leave_the_project() -> Fallible {
-    let fixture = ProjectFixture::new("osp")?;
     let main = "fn main() = print(fresh(\"x\"))\n";
-    let uri = fixture.write("main", main)?;
+    let (fixture, uri) = fixture_with_main("osp", main)?;
     let sibling = path_uri(&fixture.root.join("src/helper.ospml"))?;
-    let mut h = Harness::start_with_progress().await;
-    let _ = h.open_at(&uri, main).await;
-    let _ = h.open_at(&sibling, "\nfresh text = text + \"!\"\n").await;
+    let mut h = start_with_sibling(&uri, main, &sibling, "\nfresh text = text + \"!\"\n").await;
     assert_live_features(&mut h, &uri, &sibling, main).await;
-    h.notify("textDocument/didClose", text_doc(&sibling)).await;
-    let definition = h
-        .request(930, "textDocument/definition", position_params(&uri, 0, 20))
-        .await;
+    let definition = closed_request(&mut h, &sibling, 930, "definition", &uri, 20).await;
     let closed = format!("closed unsaved definition: {definition:?}");
     assert_eq!(definition.result, Some(json!([])), "{closed}");
     h.shutdown_and_exit().await;
@@ -255,13 +273,10 @@ async fn unsaved_mixed_flavor_files_join_and_leave_the_project() -> Fallible {
 
 #[tokio::test]
 async fn unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis() -> Fallible {
-    let fixture = ProjectFixture::new("ospml")?;
     let main = "decorate : string -> string\ndecorate text = suffix text\nmain () = print (decorate \"x\")\n";
-    let uri = fixture.write("main", main)?;
+    let (fixture, uri) = fixture_with_main("ospml", main)?;
     let sibling = fixture.write("helper", "suffix text = (\n")?;
-    let mut h = Harness::start_with_progress().await;
-    let _ = h.open_at(&uri, main).await;
-    let _ = h.open_at(&sibling, "suffix text = text + \"!\"\n").await;
+    let mut h = start_with_sibling(&uri, main, &sibling, "suffix text = text + \"!\"\n").await;
     let _ = settled(&mut h, 990).await;
     let before = h.engine.project_cache.analyses();
     let actions = h.request(931, "textDocument/codeAction", json!({"textDocument":{"uri":uri},"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":20}},"context":{"only":["quickfix"]}})).await;
@@ -275,9 +290,8 @@ async fn unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis() 
 
 #[tokio::test]
 async fn watched_invalid_project_inputs_report_their_source() -> Fallible {
-    let fixture = ProjectFixture::new("osp")?;
     let ready = "fn main() = print(\"ready\")\n";
-    let uri = fixture.write("main", ready)?;
+    let (fixture, uri) = fixture_with_main("osp", ready)?;
     let mut h = Harness::start_with_progress().await;
     let _ = h.open_at(&uri, ready).await;
     let helper = fixture.write("helper", "fn helper(\n")?;
@@ -327,8 +341,7 @@ async fn manifest_flavor_controls_diagnostics_and_features_together() -> Fallibl
 
 #[tokio::test]
 async fn files_outside_source_roots_keep_standalone_flavor_and_symbols() -> Fallible {
-    let fixture = ProjectFixture::new("osp")?;
-    let _ = fixture.write("main", "main () = print \"project\"\n")?;
+    let (fixture, _) = fixture_with_main("osp", "main () = print \"project\"\n")?;
     let _ = fixture.write("helper", "projectOnly x = x\n")?;
     let _ = set_flavor(&fixture, "ml")?;
     let uri = path_uri(&fixture.root.join("scratch.osp"))?;
@@ -346,18 +359,15 @@ async fn files_outside_source_roots_keep_standalone_flavor_and_symbols() -> Fall
 
 #[tokio::test]
 async fn nested_project_edits_refresh_every_project_that_includes_the_source() -> Fallible {
-    let fixture = ProjectFixture::new("osp")?;
     let main = "fn main() = print(fresh(\"x\"))\n";
-    let uri = fixture.write("main", main)?;
+    let (fixture, uri) = fixture_with_main("osp", main)?;
     let nested = fixture.root.join("src/nested");
     std::fs::create_dir_all(nested.join("src"))?;
     std::fs::write(nested.join("osprey.toml"), "[project]\nsource_roots = [\"src\"]\ndefault_namespace = \"nested\"\nentry = \"src/helper.osp\"\n")?;
     let helper = nested.join("src/helper.osp");
     std::fs::write(&helper, "fn saved(x) = x\n")?;
     let sibling = path_uri(&helper)?;
-    let mut h = Harness::start_with_progress().await;
-    let initial = h.open_at(&uri, main).await;
-    assert!(format!("{initial:?}").contains("type-error"), "{initial:?}");
+    let mut h = start_with_type_error(&uri, main).await;
     let _ = h.open_at(&sibling, "fn fresh(x) = x + \"!\"\n").await;
     let reports = settled(&mut h, 990).await;
     let drift = json!([{
