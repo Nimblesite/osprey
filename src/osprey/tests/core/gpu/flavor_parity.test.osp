@@ -5,13 +5,11 @@ fn iotaOutcome(result) = match result { Success { value } => "unexpected success
 
 fn minimumIntCase() = {
     let minimum = -9223372036854775808
-    match toGpu([minimum]) { Success { value } => { let buf = value
-            checkAll("minimum int literal crosses the GPU boundary", [
-                    gpuLength(buf) == 1,
-                    (gpuGet(buf, 0) ?: 0) == minimum,
-                    gpuSatisfies(fromGpu(buf), fn(checked0) => (listGet(checked0, 0) ?: 0) == minimum)
-            ])
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+    withBuffer(toGpu([minimum]), fn(buf) => checkAll("minimum int literal crosses the GPU boundary", [
+        gpuLength(buf) == 1,
+        (gpuGet(buf, 0) ?: 0) == minimum,
+        gpuSatisfies(fromGpu(buf), fn(checked) => (listGet(checked, 0) ?: 0) == minimum)
+    ]))
 }
 fn negativeIotaCase() = {
     let direct = gpuIota(-3)
@@ -27,25 +25,14 @@ test("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase
 test("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
 fn denseFloatCombinatorsCase() = {
     let values: List<float32> = [0.5, 1.0, 1.5]
-    match toGpu(values) { Success { value } => { let buffer = value
-            match gpuScan(buffer, toFloat32(0.0), fn(acc, value) => acc + value) { Success { value } => { let uploaded2 = value
-                    let scan = uploaded2
-                    match gpuFilter(buffer, fn(value) => value > toFloat32(0.5)) { Success { value } => { let uploaded3 = value
-                            let kept = uploaded3
-                            match gpuZipWith(buffer, buffer, fn(a, b) => a + b) { Success { value } => { let uploaded4 = value
-                                    let zipped = uploaded4
-                                    checkAll("dense float32 combinators", [
-                                            gpuSatisfies(gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value), fn(uploaded1) => uploaded1 == toFloat32(3.0)),
-                                            gpuSatisfies(fromGpu(scan), fn(checked0) => join(mapList(checked0, toString), ",") == "0.5,1.5,3.0"),
-                                            gpuSatisfies(fromGpu(kept), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,1.5"),
-                                            gpuSatisfies(fromGpu(zipped), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,2.0,3.0")
-                                    ])
-
-                                } Error { message } => check("GPU operation", "success", toString(message)) }
-
-                        } Error { message } => check("GPU operation", "success", toString(message)) }
-
-                } Error { message } => check("GPU operation", "success", toString(message)) }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+    withBuffer(toGpu(values), fn(buffer) =>
+        withBuffer(gpuScan(buffer, toFloat32(0.0), fn(acc, value) => acc + value), fn(scan) =>
+            withBuffer(gpuFilter(buffer, fn(value) => value > toFloat32(0.5)), fn(kept) =>
+                withBuffer(gpuZipWith(buffer, buffer, fn(a, b) => a + b), fn(zipped) => checkAll("dense float32 combinators", [
+                    gpuEquals(gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value), toFloat32(3.0)),
+                    gpuSatisfies(fromGpu(scan), fn(listed) => join(mapList(listed, toString), ",") == "0.5,1.5,3.0"),
+                    gpuSatisfies(fromGpu(kept), fn(listed) => join(mapList(listed, toString), ",") == "1.0,1.5"),
+                    gpuSatisfies(fromGpu(zipped), fn(listed) => join(mapList(listed, toString), ",") == "1.0,2.0,3.0")
+                ])))))
 }
 test("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)
