@@ -153,16 +153,21 @@ fn rowText(doc: int, i: int, sel: int) = rowLine(
     starP: pad(s: field(doc: doc, path: "[${i}].stargazers_count"), n: 7),
     lang: field(doc: doc, path: "[${i}].language"))
 
-fn rowsText(doc: int, i: int, sel: int, n: int) = match i < n {
-    true  => rowText(doc: doc, i: i, sel: sel) + "\n" + rowsText(doc: doc, i: inc(i), sel: sel, n: n)
-    false => ""
-}
+// Every list screen is the same fold: render rows `first`..`last`, one per line.
+fn rowFold(render, first, last, sel) =
+    fold(range(first, last), "", fn(acc, i) => acc + render(i, sel) + "\n")
+
+fn rowsText(doc: int, sel: int, n: int) = rowFold(
+    fn(i, s) => rowText(doc: doc, i: i, sel: s), 0, n, sel)
+
+// Every full-screen paint starts by clearing and homing the cursor.
+fn clearTop() = "\e[?25l\e[2J\e[H\n  "
 
 fn screenText(doc: int, sel: int, n: int) =
     "\n" +
     bold(cyan("  OSPREY  -  GitHub Repos: ${githubUser()}  (live API)")) + "\n" +
     rule() + "\n\n" +
-    rowsText(doc: doc, i: 0, sel: sel, n: n) + "\n" +
+    rowsText(doc: doc, sel: sel, n: n) + "\n" +
     rule() + "\n" +
     dim("  up/down or j/k move    enter details    q quit")
 
@@ -200,23 +205,21 @@ fn winStart(sel: int, n: int) = match n < 23 {
     true  => 0
     false => match sel < 11 { true => 0 false => min(a: satSub(sel, 11) , b: satSub(n, 22) ) }
 }
-fn treeRows(tree: int, i: int, last: int, sel: int) = match i < last {
-    true  => treeRow(tree: tree, i: i, sel: sel) + "\n" + treeRows(tree: tree, i: inc(i), last: last, sel: sel)
-    false => ""
-}
+fn treeRows(tree: int, first: int, last: int, sel: int) = rowFold(
+    fn(i, s) => treeRow(tree: tree, i: i, sel: s), first, last, sel)
 
 fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) =
-    "\e[?25l\e[2J\e[H\n  " +
+    clearTop() +
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
-    treeRows(tree: tree, i: winStart(sel: sel, n: n),
+    treeRows(tree: tree, first: winStart(sel: sel, n: n),
              last: min(a: satAdd(winStart(sel: sel, n: n), 22) , b: n), sel: sel) + "\n" +
     rule() + "\n" +
     dim("  up/down move    enter open dir/file    esc back")
 
 // The code viewer: the file's raw source, downloaded live, with a header.
 fn codeScreen(file: string, code: string) =
-    "\e[?25l\e[2J\e[H\n  " +
+    clearTop() +
     bold(magenta("CODE  ")) + green(file) + dim("   (${length(code)} bytes, live raw)") + "\n" +
     rule() + "\n\n" +
     take(code, 2400) + "\n\n" +
@@ -288,18 +291,12 @@ fn browseKey(repo: string, path: string, tree: int, sel: int, n: int, key: strin
 
 // Enter on a dir descends (recursion); Enter on a file views its source. Either
 // way, control flows back here afterwards to re-display this directory level.
-fn openEntry(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = match entField(tree: tree, i: sel, key: "type") {
-    "dir" => descend(repo: repo, path: path, tree: tree, sel: sel, n: n)
-    _     => openFile(repo: repo, path: path, tree: tree, sel: sel, n: n)
-}
-
-fn descend(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
-    browseDir(repo: repo, path: entField(tree: tree, i: sel, key: "path"))
-    browseLoop(repo: repo, path: path, tree: tree, sel: sel, n: n)
-}
-
-fn openFile(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
-    viewFile(repo: repo, file: entField(tree: tree, i: sel, key: "path"))
+fn openEntry(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
+    let entry = entField(tree: tree, i: sel, key: "path")
+    match entField(tree: tree, i: sel, key: "type") {
+        "dir" => browseDir(repo: repo, path: entry)
+        _     => viewFile(repo: repo, file: entry)
+    }
     browseLoop(repo: repo, path: path, tree: tree, sel: sel, n: n)
 }
 
@@ -315,7 +312,7 @@ fn showCode(file: string, code: string) -> Unit ![Console, Terminal] = {
 }
 
 fn waitMessage(msg: string) -> Unit ![Console, Terminal] = {
-    perform Console.print("\e[?25l\e[2J\e[H\n  " + magenta(msg))
+    perform Console.print(clearTop() + magenta(msg))
     match perform Terminal.readKey() { _ => perform Console.print("") }
 }
 
@@ -394,20 +391,20 @@ fn collect(clientId: int, path: string, headers: string) =
     finish(clientId: clientId,
            resp: awaitSpinning(fib: spawn rawGet(clientId: clientId, path: path, headers: headers), frame: 0))
 
-fn finish(clientId: int, resp: int) = match resp > 0 {
-    true  => closeAfter(clientId: clientId, result: freeAfter(value: resp, result: httpResponseBody(resp)))
-    false => closeAfter(clientId: clientId, result: Error { message: "request failed" })
+/// Read the body, then release the response handle and close the client on
+/// every path. Both releases are best-effort — a failed free or close must not
+/// mask the body's result.
+fn finish(clientId: int, resp: int) = {
+    let body = match resp > 0 {
+        true  => freeAfter(value: resp, result: httpResponseBody(resp))
+        false => Error { message: "request failed" }
+    }
+    let _ = httpCloseClient(clientId) ?: 0
+    body
 }
 
-/// Release the response handle, then hand back the body already read from it.
-/// The release is best-effort — a failed free must not mask the body's result.
 fn freeAfter(value: int, result: Result<string, Error>) = {
     let _ = httpResponseFree(value) ?: 0
-    result
-}
-
-fn closeAfter(clientId: int, result: Result<string, Error>) = {
-    let _ = httpCloseClient(clientId) ?: 0
     result
 }
 
