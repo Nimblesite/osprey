@@ -140,7 +140,7 @@ C_SRC_gpu_metal_tests = runtime/gpu_metal_tests.m runtime/gpu_metal.m $(FILE_RUN
 C_FLAGS_gpu_metal_tests = -fobjc-arc -DOSPREY_GPU_METAL=1
 C_LIBS_gpu_metal_tests = -framework Foundation -framework Metal -pthread
 endif
-C_SRC_list_tests = runtime/list_tests.c runtime/list_sort_tests.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
+C_SRC_list_tests = runtime/list_tests.c runtime/list_persistence_tests.c runtime/list_sort_tests.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c $(C_TEST_MEMORY_SRC)
 C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_parse_tests.c runtime/string_edge_tests.c runtime/string_cursor_tests.c runtime/string_float_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c runtime/list_rebuild.c $(C_TEST_MEMORY_SRC)
 # The same suite on the portable float-spelling path wasm32 uses.
@@ -202,7 +202,7 @@ C_SRC_coverage_runtime_tests = runtime/coverage_runtime_tests.c runtime/coverage
 C_SUITE_GC = $(if $(filter-out memory_gc_tests memory_gc_stack_root_tests,$(1)),$(filter $(C_TEST_MEMORY_SRC),$(C_SRC_$(1))))
 C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
-C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_sort_tests.c runtime/map_tests.c
+C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_persistence_tests.c runtime/list_sort_tests.c runtime/map_tests.c
 C_SUITE_BUILD = $(foreach src,$(sort $(C_SRC_$(1))),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(sort $(C_SRC_$(1))),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
