@@ -147,7 +147,7 @@ int main(void) {
   t_registry_churn(); t_slot_reuse(); t_diagnostic_counters();
   t_allocator_refusal();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
-  // re-exercises the whole ABI down the arc_lock mutex branch.
+  // re-exercises the whole ABI down the heap_lock mutex branch.
   t_multithreaded(); t_owned_text_lifetime(); t_shim_malloc_calloc_free();
   t_shim_realloc_grow(); t_shim_realloc_edges();
   t_shim_strdup(); t_leak_report_fixtures();

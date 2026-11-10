@@ -8,9 +8,9 @@
 #define OSPREY_GC_LIBC_H
 
 void *osp_gc_malloc(size_t size) {
-  gc_lock();
+  heap_lock();
   void *p = gc_managed_alloc(size);
-  gc_unlock();
+  heap_unlock();
   return p;
 }
 
@@ -19,9 +19,9 @@ void *osp_gc_calloc(size_t n, size_t size) {
   if (n != 0 && total / n != size) {
     return NULL; // overflow
   }
-  gc_lock();
+  heap_lock();
   void *p = gc_managed_alloc(total);
-  gc_unlock();
+  heap_unlock();
   if (p) {
     memset(p, 0, total);
   }
@@ -32,11 +32,11 @@ void *osp_gc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_gc_malloc(size);
   }
-  gc_lock();
+  heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)old);
   size_t oldsize = e ? e->size : 0;
   void *p = gc_managed_alloc(size); // `old` stays reachable on the caller frame
-  gc_unlock();
+  heap_unlock();
   if (p && oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);
   }

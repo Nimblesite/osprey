@@ -75,33 +75,10 @@ typedef struct {
 #define GC_PINNED 8u // osp_mem_immortal: a root of every collection, never swept
 #define GC_PERSISTENT (GC_FINAL | GC_STRING | GC_PINNED)
 
-static _Thread_local int g_lock_owned;
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+#include "heap_lock.h"
 
-// Adaptive locking, identical in spirit to the ARC backend: the heap starts
-// single-threaded, where the sole allocator already serializes every op and the
-// mutex is pure overhead. osp_mem_notify_multithreaded() (memory_hooks.h) trips
-// this flag from the fiber/websocket/process runtimes *before* the pthread_create
-// that first lets a second thread reach the heap; pthread_create is a full
-// barrier, so no unlocked op can race a locked one. The flag is monotonic and
-// only ever transitions single-threaded, so lock and unlock observe it equal
-// within one op. Orthogonal to g_off: the flag governs mutual exclusion, g_off
-// governs whether collection may run once a second allocator is seen.
-static atomic_int g_gc_mt = 0;
-
-static inline void gc_lock(void) {
-  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
-    pthread_mutex_lock(&g_lock);
-    g_lock_owned = 1;
-  }
-}
-
-static inline void gc_unlock(void) {
-  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
-    g_lock_owned = 0;
-    pthread_mutex_unlock(&g_lock);
-  }
-}
+// heap_lock.h governs mutual exclusion; g_off below governs whether collection
+// may run once a second allocator is seen. The two are orthogonal.
 
 static int g_init = 0;     // first allocation has run (main thread + base known)
 static int g_off = 0;      // collection permanently disabled (saw a 2nd thread)
@@ -369,22 +346,22 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   bool text = (meta & 0xFF) == OSP_MEM_STRING;
   if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
       (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
-  gc_lock();
+  heap_lock();
   size_t bytes = size > 0 ? (size_t)size : 0;
   void *p = gc_managed_alloc(bytes);
   OspGcEnt *e = p ? gc_lookup((uintptr_t)p) : NULL;
   if (text && p && !e) { free(p); g_bytes -= bytes; p = NULL; }
   if (e) e->mark |= text ? GC_STRING : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
-  gc_unlock();
+  heap_unlock();
   return p;
 }
 
 int64_t osp_mem_string_length(const void *p) {
   int held = g_lock_owned;
-  if (!held) gc_lock();
+  if (!held) heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
   int64_t length = e && (e->mark & GC_STRING) && e->size ? (int64_t)e->size - 1 : -1;
-  if (!held) gc_unlock();
+  if (!held) heap_unlock();
   return length;
 }
 
@@ -412,33 +389,33 @@ void osp_mem_immortal(void *p) {
     return;
   }
   int held = g_lock_owned;
-  if (!held) gc_lock();
+  if (!held) heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
   if (e) e->mark |= GC_PINNED;
-  if (!held) gc_unlock();
+  if (!held) heap_unlock();
 }
 // Multithreaded-heap trip (memory_hooks.h): a second thread is about to touch
-// the heap — switch every op from lock-free to mutex-guarded (see g_gc_mt).
+// the heap — switch every op from lock-free to mutex-guarded (see g_heap_mt).
 void osp_mem_notify_multithreaded(void) {
-  atomic_store_explicit(&g_gc_mt, 1, memory_order_release);
+  atomic_store_explicit(&g_heap_mt, 1, memory_order_release);
 }
 #include "memory_gc_batons.h"
 
 // Lifetime flags mirror the layout kinds without enlarging the GC entry.
 void osp_mem_set_layout(void *p, int64_t meta) {
-  gc_lock();
+  heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
   uint32_t flags = (meta & 0xFF) == OSP_MEM_STRING ? GC_STRING : 0;
   if (e) e->mark = (e->mark & ~GC_STRING) | flags; // Existing finalizer ownership is unchanged.
-  gc_unlock();
+  heap_unlock();
 }
 
 void osp_collect(void) {
-  gc_lock();
+  heap_lock();
   if (g_init && gc_may_collect()) {
     gc_collect_locked();
   }
-  gc_unlock();
+  heap_unlock();
 }
 
 // --- diagnostics (read-only snapshots; not on any hot path) ------------------
@@ -446,18 +423,18 @@ void osp_collect(void) {
 // returns on the main thread this equals the reachable (live) set, so tooling
 // and the conformance tests can assert that unreachable churn was reclaimed.
 size_t osp_gc_live_objects(void) {
-  gc_lock();
+  heap_lock();
   size_t n = g_count;
-  gc_unlock();
+  heap_unlock();
   return n;
 }
 
 // Collections run since start. Lets a test confirm a collection actually fired
 // (or, after the multithread latch, that collection stopped firing).
 size_t osp_gc_collections(void) {
-  gc_lock();
+  heap_lock();
   size_t n = g_ncollect;
-  gc_unlock();
+  heap_unlock();
   return n;
 }
 
