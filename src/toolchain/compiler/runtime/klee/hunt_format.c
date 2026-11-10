@@ -169,7 +169,9 @@ static long long signed_argument(const spec *s, va_list *arguments) {
   switch (s->length) {
   case LENGTH_SHORT: return (short)raw;
   case LENGTH_CHAR: return (signed char)raw;
-  default: return (long long)raw;
+  case LENGTH_LONG: return (long)raw;
+  case LENGTH_LONG_LONG: case LENGTH_SIZE: return (long long)raw;
+  default: return (int)raw;
   }
 }
 

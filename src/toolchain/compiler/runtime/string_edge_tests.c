@@ -18,14 +18,14 @@ static void assert_filled(const char *out, size_t n, char want) {
     for (size_t i = 0; i < n; i++) assert(out[i] == want);
 }
 
-/* Asserts pad output is `width` bytes: a `fill` cycle starting at `at`, plus
+/* Asserts pad output is `width` bytes: `width - 1` bytes of `fill` cycling from `at`, plus
  * `base` at `base_at`. Stronger than spot checks: every byte is verified. */
 static void assert_padded(char *out, size_t width, size_t at, const char *fill,
                           size_t base_at, char base) {
     assert(out != NULL);
     assert(strlen(out) == width);
     size_t cycle = strlen(fill);
-    for (size_t i = at; i < width; i++) assert(out[i] == fill[(i - at) % cycle]);
+    for (size_t i = 0; i + 1 < width; i++) assert(out[at + i] == fill[i % cycle]);
     assert(out[base_at] == base);
     release_test_buffer(out);
 }

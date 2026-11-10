@@ -102,16 +102,16 @@ class MergeResultsTests(TempDirs, unittest.TestCase):
         """A published/partial fixture pair in its own root, already resumed when asked."""
         root = self.temp_dir()
         destination, update = root / "published", root / "partial"
-        for out, rss in ((destination, 10), (update, 20)):
-            published_tree(out, [raw_row("fib", "osprey-gc", status, rss)])
+        for out, row_status, rss in ((destination, "ok", 10), (update, status, 20)):
+            published_tree(out, [raw_row("fib", "osprey-gc", row_status, rss)])
         write_export(destination, "fib", {"command": "osprey-gc", **TIMING})
         if resumed:
             shutil.copy(destination / "hf/fib.json", update / "hf/fib.json")
         return destination, update
 
-    def assert_merge_untouched(self, destination: Path, update: Path, reason: str = "") -> None:
-        """A refused or skipped merge must leave every published file untouched."""
-        refuses = self.assertRaisesRegex(ValueError, reason) if reason else nullcontext()
+    def assert_merge_untouched(self, destination: Path, update: Path, reason: Optional[str] = None) -> None:
+        """A merge refused for `reason` (or skipped, when None) leaves every published file untouched."""
+        refuses = nullcontext() if reason is None else self.assertRaisesRegex(ValueError, reason)
         before = snapshot(destination)
         with refuses:
             merge(destination, update, {"osprey-gc"})
@@ -124,7 +124,7 @@ class MergeResultsTests(TempDirs, unittest.TestCase):
                 destination, update = self.fixture_pair()
                 if result is not None:
                     write_export(update, "fib", result)
-                self.assert_merge_untouched(destination, update)
+                self.assert_merge_untouched(destination, update, "")
 
     def test_incompatible_skip_cannot_replace_a_published_measurement(self) -> None:
         self.assert_merge_untouched(*self.fixture_pair("wasm_incompatible"))
@@ -134,7 +134,7 @@ class MergeResultsTests(TempDirs, unittest.TestCase):
         with (update / "raw.jsonl").open("a") as raw:
             raw.write(raw_row("sort", "osprey-gc", rss=20) + "\n")
         (update / "hf/sort.json").write_text("{broken")
-        self.assert_merge_untouched(destination, update)
+        self.assert_merge_untouched(destination, update, "")
 
     def test_unmeasured_rss_keeps_the_last_peak_when_timing_is_replaced(self) -> None:
         destination, update = self.fixture_pair(resumed=True)

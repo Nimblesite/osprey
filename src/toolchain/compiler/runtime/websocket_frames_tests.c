@@ -226,7 +226,7 @@ static void check_unacceptable_data(void) {
   assert(big != NULL);
   memset(big, 'z', OVER_THE_LIMIT);
   expect_length_refusal(OVER_THE_LIMIT, 2, 1009);
-  expect_length_refusal(0x1170, 8, 1009);
+  expect_length_refusal(0x11170, 8, 1009);
   int fd = frames_client();
   send_frame(fd, OP_TEXT, big, OVER_THE_LIMIT / 2, true);
   send_frame(fd, FIN | OP_CONT, big, OVER_THE_LIMIT / 2 + 1, true);
