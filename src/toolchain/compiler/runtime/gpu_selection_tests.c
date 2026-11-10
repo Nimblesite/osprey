@@ -337,12 +337,12 @@ static int32_t faulting_launch(void) {
   injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
   return launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
+// One more scalar uniform than the device accepts, so the launch is refused.
 static int32_t too_many_uniforms(void) {
   select_mode("auto");
   int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
-  char kinds[OSPREY_GPU_MAX_ARGS + 1];
+  char kinds[OSPREY_GPU_MAX_ARGS + 1] = "";
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
-  kinds[OSPREY_GPU_MAX_ARGS] = '\0';
   return launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
 }
 static int32_t device_failure_on_launch(void) {
@@ -379,12 +379,8 @@ static void handled_device_faults(void) {
 static void handled_launch_failure(void) {
   select_mode("auto");
   handled_device_faults();
-  int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
-  char kinds[OSPREY_GPU_MAX_ARGS + 1];
-  memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
-  kinds[OSPREY_GPU_MAX_ARGS] = '\0';
   osp_io_error_clear();
-  assert(launch(osprey_gpu_alloc(1, 8), kinds, uniforms) == -1);
+  assert(too_many_uniforms() == -1);
   assert(strstr(osp_io_error(), "too many kernel arguments") != NULL);
   device_error = 1;
   osp_io_error_clear();
