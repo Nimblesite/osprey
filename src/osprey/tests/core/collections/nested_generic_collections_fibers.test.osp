@@ -33,15 +33,50 @@ fn boolCell(groups, key, index, expected) = groupAt(groups, key, index, [!expect
 /// The whole bool group contract in one line, instead of four copies of it.
 fn boolCells(groups) = boolCell(groups, "left", 0, true) && boolCell(groups, "left", 1, false) && boolCell(groups, "right", 0, false) && boolCell(groups, "right", 1, true)
 
-/// The surviving original cells every matrix crossing a boundary must answer,
-/// in one line instead of a copy per crossing.
-fn keptCells(matrix) = intCell(matrix, 0, 0, 1) && intCell(matrix, 0, 1, 2) && intCell(matrix, 1, 2, 5)
+/// The cells each matrix crossing must answer, folded so a crossing names one
+/// predicate per matrix instead of a copy of the probes.
+fn edgeCells(matrix) = intCell(matrix, 0, 0, 1) && intCell(matrix, 1, 2, 5)
+fn keptCells(matrix) = edgeCells(matrix) && intCell(matrix, 0, 1, 2)
+fn importedCells(matrix) = keptCells(matrix) && intCell(matrix, 1, 0, 3)
+fn tailCells(matrix) = edgeCells(matrix) && intCell(matrix, 2, 0, 6) && intCell(matrix, 2, 1, 7)
+fn fieldCells(matrix) = keptCells(matrix) && intCell(matrix, 2, 1, 7)
+fn rebuiltCells(matrix) = intCell(matrix, 0, 0, 6) && intCell(matrix, 0, 1, 7) && intCell(matrix, 2, 0, 1)
 
 /// The original head plus the appended tail a grown matrix must answer.
 fn grownCells(matrix) = intCell(matrix, 0, 0, 1) && intCell(matrix, 2, 0, 6) && intCell(matrix, 2, 1, 7)
 
+/// One drawn `small` cell, shared by every map that must still answer it.
+fn smallCell(groups) = floatCell(groups, "small", 0, 0.5)
+
 /// The `small` and `large` cells a group map must answer after crossing.
-fn smallLargeCells(groups) = floatCell(groups, "small", 0, 0.5) && floatCell(groups, "large", 1, 9.75)
+fn smallLargeCells(groups) = smallCell(groups) && floatCell(groups, "large", 1, 9.75)
+
+/// The `small` and appended `extra` cells one map answers after crossing.
+fn smallExtraCells(groups) = smallCell(groups) && extraCells(groups)
+
+/// A drawn row's width, falling back off the expected value.
+fn rowLengthIs(matrix, row, want) = listLength(listGet(matrix, row) ?: [99]) == want
+
+/// A matrix crossing answers its drawn row count and its cells through ONE
+/// gate, so a case names a shape instead of copying a length line per value.
+fn matrixIs(matrix, rows, cells) = listLength(matrix) == rows && cells(matrix)
+
+/// The group-map twin of `matrixIs`: drawn key count plus the cells behind it.
+fn groupIs(groups, keys, cells) = mapLength(groups) == keys && cells(groups)
+
+/// What a rebuilt bool map must hold: the appended keys kept, the removed one
+/// gone, and never a spare key.
+fn grownBoolMap(groups) = mapLength(groups) == 2 && mapContains(groups, "right") && mapContains(groups, "extra") && !mapContains(groups, "left")
+
+/// The spawned bool map still holds the drawn key and never gained the appended one.
+fn spawnedBoolMap(groups) = mapContains(groups, "left") && !mapContains(groups, "extra")
+
+/// Every spawned fiber is still readable exactly once, long after its await.
+fn allFibersDone(matrix, texts, floats, bools) = fiberDone(matrix) == 1 && fiberDone(texts) == 1 && fiberDone(floats) == 1 && fiberDone(bools) == 1
+
+/// Every drawn cell of a string matrix and of a float group map.
+fn textCells(matrix) = textCell(matrix, 0, 0, "ant") && textCell(matrix, 0, 1, "bee") && textCell(matrix, 1, 0, "cat") && textCell(matrix, 1, 2, "eel")
+fn floatCells(groups) = smallCell(groups) && floatCell(groups, "small", 1, 1.25) && floatCell(groups, "large", 1, 9.75)
 
 /// The appended `extra` group's cells, in one line instead of a copy per map.
 fn extraCells(groups) = floatCell(groups, "extra", 0, 6.25) && floatCell(groups, "extra", 1, 7.5)
@@ -113,55 +148,24 @@ fn fiberChannelCollectionCase() = {
     send(abandonedGroups, mapSet(floats, "orphan", [1.5]))
 
     checkAll("spawn and out-of-order await reconstruct nested collection owners", [
-            intCell(ints, 0, 0, 1),
-            intCell(ints, 0, 1, 2),
-            intCell(ints, 1, 0, 3),
-            intCell(ints, 1, 2, 5),
-            textCell(strings, 0, 0, "ant"),
-            textCell(strings, 0, 1, "bee"),
-            textCell(strings, 1, 0, "cat"),
-            textCell(strings, 1, 2, "eel"),
-            floatCell(floats, "small", 0, 0.5),
-            floatCell(floats, "small", 1, 1.25),
-            floatCell(floats, "large", 1, 9.75),
-            boolCells(bools),
-            listLength(ints) == 2,
-            listLength(strings) == 2,
-            mapLength(floats) == 2,
-            mapLength(bools) == 2,
-            fiberDone(intFiber) == 1,
-            fiberDone(stringFiber) == 1,
-            fiberDone(floatFiber) == 1,
-            fiberDone(boolFiber) == 1
+            matrixIs(ints, 2, importedCells),
+            matrixIs(strings, 2, textCells),
+            groupIs(floats, 2, floatCells),
+            groupIs(bools, 2, boolCells),
+            allFibersDone(intFiber, stringFiber, floatFiber, boolFiber)
     ])
 
     checkAll("Channel<collection> round trips full nested descriptors in FIFO order", [
-            listLength(firstMatrix) == 2,
-            listLength(secondMatrix) == 3,
-            intCell(firstMatrix, 0, 0, 1),
-            intCell(firstMatrix, 1, 2, 5),
-            grownCells(secondMatrix),
-            mapLength(firstGroups) == 2,
-            mapLength(secondGroups) == 3,
-            smallLargeCells(firstGroups),
+            matrixIs(firstMatrix, 2, edgeCells),
+            matrixIs(secondMatrix, 3, grownCells),
+            groupIs(firstGroups, 2, smallLargeCells),
+            groupIs(secondGroups, 3, extraCells),
             floatCell(secondGroups, "small", 1, 1.25),
-            extraCells(secondGroups),
-            intCell(ints, 1, 2, 5),
-            floatCell(floats, "small", 0, 0.5),
-            listLength(ints) == 2,
-            mapLength(floats) == 2,
-            listLength(matrixViaParameter) == 3,
-            intCell(matrixViaParameter, 0, 0, 1),
-            intCell(matrixViaParameter, 1, 2, 5),
-            intCell(matrixViaParameter, 2, 0, 6),
-            intCell(matrixViaParameter, 2, 1, 7),
-            mapLength(groupsViaParameter) == 3,
-            floatCell(groupsViaParameter, "small", 0, 0.5),
-            extraCells(groupsViaParameter),
-            listLength(matrixViaField) == 3,
-            intCell(matrixViaField, 0, 1, 2),
-            intCell(matrixViaField, 1, 2, 5),
-            intCell(matrixViaField, 2, 1, 7)
+            matrixIs(ints, 2, |m| => intCell(m, 1, 2, 5)),
+            groupIs(floats, 2, smallCell),
+            matrixIs(matrixViaParameter, 3, tailCells),
+            groupIs(groupsViaParameter, 3, smallExtraCells),
+            matrixIs(matrixViaField, 3, fieldCells)
     ])
 }
 
@@ -176,23 +180,14 @@ fn fiberEffectCollectionCase() = {
     let grownBools = mapRemove(mapSet(bools, "extra", [true, false]), "left")
 
     checkAll("inherited generic handlers preserve collection results from fibers", [
-            listLength(ints) == 2,
-            mapLength(bools) == 2,
-            keptCells(ints),
-            boolCells(bools),
-            listLength(grownInts) == 3,
-            intCell(grownInts, 0, 0, 6),
-            intCell(grownInts, 0, 1, 7),
-            intCell(grownInts, 2, 0, 1),
-            mapLength(grownBools) == 2,
-            !mapContains(grownBools, "left"),
-            mapContains(grownBools, "right"),
-            mapContains(grownBools, "extra"),
+            matrixIs(ints, 2, keptCells),
+            groupIs(bools, 2, boolCells),
+            matrixIs(grownInts, 3, rebuiltCells),
+            grownBoolMap(grownBools),
             boolCell(grownBools, "extra", 0, true),
             boolCell(grownBools, "extra", 1, false),
             listLength(ints) == 2,
-            mapContains(bools, "left"),
-            !mapContains(bools, "extra")
+            spawnedBoolMap(bools)
     ])
 }
 
@@ -226,14 +221,11 @@ fn channelThroughClosureCase() = {
     let groupsViaLambdaParameter = drainVia(|c| => recv(c), groups)
 
     checkAll("a channel reached through a closure keeps its element descriptor", [
-            listLength(viaLambdaParameter) == 2,
-            keptCells(viaLambdaParameter),
-            listLength(listGet(viaLambdaParameter, 1) ?: [99]) == 3,
-            listLength(viaCapture) == 3,
-            grownCells(viaCapture),
-            listLength(listGet(viaCapture, 2) ?: [99]) == 2,
-            mapLength(groupsViaLambdaParameter) == 2,
-            smallLargeCells(groupsViaLambdaParameter)
+            matrixIs(viaLambdaParameter, 2, keptCells),
+            rowLengthIs(viaLambdaParameter, 1, 3),
+            matrixIs(viaCapture, 3, grownCells),
+            rowLengthIs(viaCapture, 2, 2),
+            groupIs(groupsViaLambdaParameter, 2, smallLargeCells)
     ])
 }
 
