@@ -787,56 +787,44 @@ nestedRun body bump =
     the first continuation resumed. Supplying 3 then 4 gives (3+4)*2 + 5 = 19. *)
 resumeFromNestedHelpersCase () =
     deepRun = nestedRun depth0 2
-    deepResult = deepRun.result
-    depthCalls = deepRun.calls
-    depthSeed = deepRun.seed
-    depthTags = deepRun.tags
-    depthSettled = deepRun.settled
-    depthAnswers = deepRun.seen
 
     spanRun = nestedRun spanBody 0
-    spanResult = spanRun.result
-    spanCalls = spanRun.calls
-    spanSeed = spanRun.seed
-    spanTags = spanRun.tags
-    spanSettled = spanRun.settled
-    spanSeen = spanRun.seen
 
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)
     checkAll "a perform four frames deep reaches the region's arm" [
-        deepResult == 19, depthCalls == 2, depthSeed == 2,
-        depthTags == "deep.a|deep.b|", depthSettled == "deep.b|deep.a|",
-        depthTags != depthSettled, depthAnswers == "19|19|",
-        deepResult == ((14 + 5) ), ((3 + 4) ) == 7,
+        deepRun.result == 19, deepRun.calls == 2, deepRun.seed == 2,
+        deepRun.tags == "deep.a|deep.b|", deepRun.settled == "deep.b|deep.a|",
+        deepRun.tags != deepRun.settled, deepRun.seen == "19|19|",
+        deepRun.result == ((14 + 5) ), ((3 + 4) ) == 7,
         ((7 * 2) ) == 14,
-        deepResult != 7, deepResult != 14, deepResult != 24,
-        deepResult > 14, deepResult < 24
+        deepRun.result != 7, deepRun.result != 14, deepRun.result != 24,
+        deepRun.result > 14, deepRun.result < 24
     ]
 
     (* The same handler serves a perform before the nested chain, two inside it,
         and one after it returned: 1 + ((2+3)*2) + 4 = 15. *)
     checkAll "the deep handler stays installed across the continuation" [
-        spanResult == 15, spanCalls == 4,
-        spanTags == "shallow|nested.a|nested.b|tail|",
-        spanSettled == "tail|nested.b|nested.a|shallow|",
-        startsWith spanTags "shallow|", endsWith spanTags "tail|",
-        startsWith spanSettled "tail|", endsWith spanSettled "shallow|",
-        spanTags != spanSettled, length spanTags == 31,
-        length spanSettled == 31, spanResult == ((11 + 4) ),
-        (((2 + 3) ) * 2 ) == 10, spanResult != 10, spanResult != 5
+        spanRun.result == 15, spanRun.calls == 4,
+        spanRun.tags == "shallow|nested.a|nested.b|tail|",
+        spanRun.settled == "tail|nested.b|nested.a|shallow|",
+        startsWith spanRun.tags "shallow|", endsWith spanRun.tags "tail|",
+        startsWith spanRun.settled "tail|", endsWith spanRun.settled "shallow|",
+        spanRun.tags != spanRun.settled, length spanRun.tags == 31,
+        length spanRun.settled == 31, spanRun.result == ((11 + 4) ),
+        (((2 + 3) ) * 2 ) == 10, spanRun.result != 10, spanRun.result != 5
     ]
 
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
     checkAll "both deep regions keep their own transcripts" [
-        contains spanTags "nested.a|nested.b|",
-        contains spanTags "|tail|",
-        !(contains spanSettled "shallow|tail"),
-        spanSeen == "15|15|15|15|", length spanSeen == 12,
-        spanCalls == 4, spanSeed == 4,
-        depthCalls == 2, depthSeed == 2, deepResult == 19,
-        deepResult != spanResult, depthTags != spanTags
+        contains spanRun.tags "nested.a|nested.b|",
+        contains spanRun.tags "|tail|",
+        !(contains spanRun.settled "shallow|tail"),
+        spanRun.seen == "15|15|15|15|", length spanRun.seen == 12,
+        spanRun.calls == 4, spanRun.seed == 4,
+        deepRun.calls == 2, deepRun.seed == 2, deepRun.result == 19,
+        deepRun.result != spanRun.result, deepRun.tags != spanRun.tags
     ]
 
 (* Register a perform reached through four frames of helpers. *)
@@ -850,6 +838,9 @@ effect Ticker
 (** The script, read by index inside the arm: zero, positive, negative, a
     duplicate, a large value, adjacent duplicates and a trailing zero. *)
 scriptValues () = [0, 7, -4, 7, 100, 0, -1, 12, 12, 3, 0, 25]
+
+(** The scripted value at `index`, falling back when the index is out of range. *)
+scriptAt index = (listGet (scriptValues ()) index ?: 99)
 
 (** Twelve sequential performs in one region, folded on the way back out. *)
 drain i = match i < 12
@@ -885,11 +876,11 @@ manyPerformsOneRegionCase () =
     checkAll "twelve sequential suspensions each settle exactly once" [
         drained == 161, tickEntered == 12, tickSettled == 12,
         tickEntered == tickSettled, listLength (scriptValues ()) == 12,
-        (listGet (scriptValues ()) 0 ?: 99) == 0,
-        (listGet (scriptValues ()) 11 ?: 99) == 25,
-        (listGet (scriptValues ()) 12 ?: 99) == 99,
-        (listGet (scriptValues ()) (-1) ?: 99) == 99,
-        (listGet (scriptValues ()) 1000 ?: 99) == 99,
+        scriptAt (0) == 0,
+        scriptAt (11) == 25,
+        scriptAt (12) == 99,
+        scriptAt (-1) == 99,
+        scriptAt (1000) == 99,
         drained != 0, drained > 100, drained < 200
     ]
 
