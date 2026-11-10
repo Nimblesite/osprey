@@ -35,6 +35,16 @@ typedef struct {
   pthread_mutex_t mutex;
 } TestEventData;
 
+// Counts one streamed payload of the given kind and remembers its bytes.
+static void record_stream(int *count, char *last, size_t cap, const char *kind,
+                          int64_t process_id, const char *data) {
+  (*count)++;
+  strncpy(last, data, cap - 1);
+  last[cap - 1] = '\0';
+  printf("TEST: Got %s from process %lld: %s", kind, (long long)process_id,
+         data);
+}
+
 // Test event handler
 static void test_event_handler(int64_t process_id, int64_t event_type,
                                char *data) {
@@ -51,18 +61,12 @@ static void test_event_handler(int64_t process_id, int64_t event_type,
 
   switch (event_type) {
   case 1: // PROCESS_STDOUT_DATA
-    test_data.stdout_count++;
-    strncpy(test_data.last_stdout, data, sizeof(test_data.last_stdout) - 1);
-    test_data.last_stdout[sizeof(test_data.last_stdout) - 1] = '\0';
-    printf("TEST: Got stdout from process %lld: %s", (long long)process_id,
-           data);
+    record_stream(&test_data.stdout_count, test_data.last_stdout,
+                  sizeof test_data.last_stdout, "stdout", process_id, data);
     break;
   case 2: // PROCESS_STDERR_DATA
-    test_data.stderr_count++;
-    strncpy(test_data.last_stderr, data, sizeof(test_data.last_stderr) - 1);
-    test_data.last_stderr[sizeof(test_data.last_stderr) - 1] = '\0';
-    printf("TEST: Got stderr from process %lld: %s", (long long)process_id,
-           data);
+    record_stream(&test_data.stderr_count, test_data.last_stderr,
+                  sizeof test_data.last_stderr, "stderr", process_id, data);
     break;
   case 3: // PROCESS_EXIT
     test_data.exit_count++;
@@ -141,17 +145,20 @@ static void capture_reset(void) {
   pthread_mutex_unlock(&g_capture.mutex);
 }
 
+// Appends one streamed payload without overflowing the accumulated buffer.
+static void append_stream(char *sink, const char *data, size_t cap) {
+  strncat(sink, data, cap - strlen(sink) - 1);
+}
+
 void capture_handler(int64_t process_id, int64_t event_type, char *data) {
   (void)process_id;
   pthread_mutex_lock(&g_capture.mutex);
   switch (event_type) {
   case 1: // PROCESS_STDOUT_DATA
-    strncat(g_capture.out, data,
-            sizeof(g_capture.out) - strlen(g_capture.out) - 1);
+    append_stream(g_capture.out, data, sizeof g_capture.out);
     break;
   case 2: // PROCESS_STDERR_DATA
-    strncat(g_capture.err, data,
-            sizeof(g_capture.err) - strlen(g_capture.err) - 1);
+    append_stream(g_capture.err, data, sizeof g_capture.err);
     break;
   case 3: // PROCESS_EXIT
     g_capture.exit_events++;
@@ -163,38 +170,35 @@ void capture_handler(int64_t process_id, int64_t event_type, char *data) {
   pthread_mutex_unlock(&g_capture.mutex);
 }
 
+// Runs one command to completion under capture_handler and asserts the full
+// contract: await's result, the exact captured bytes on both streams, a
+// single exit event, and the handler-observed exit code.
+static void assert_captured_run(const char *command, int64_t awaited,
+                                int64_t exit_code, const char *out,
+                                const char *err) {
+  capture_reset();
+  int64_t pid = spawn_process_with_handler(command, capture_handler);
+  assert(pid > 0);
+  assert(await_process(pid) == awaited);
+  pthread_mutex_lock(&g_capture.mutex);
+  assert(strcmp(g_capture.out, out) == 0);
+  assert(strcmp(g_capture.err, err) == 0);
+  assert(g_capture.exit_events == 1);
+  assert(g_capture.exit_code == exit_code);
+  pthread_mutex_unlock(&g_capture.mutex);
+  cleanup_process(pid);
+}
+
 // The streamed stdout payload arrives byte-exact, the exit event fires exactly
 // once, and its code matches the handler-observed value AND await's result.
 void test_captured_stdout_and_exit(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("printf 'abc'", capture_handler);
-  assert(pid > 0);
-  int64_t exit_code = await_process(pid);
-  assert(exit_code == 0);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(strcmp(g_capture.out, "abc") == 0); // exact bytes, no newline added
-  assert(g_capture.err[0] == '\0');
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == 0);
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  assert_captured_run("printf 'abc'", 0, 0, "abc", "");
 }
 
 // Stderr streams on its own event type, and a nonzero exit code is reported
 // EXACTLY (both through await and through the exit event).
 void test_captured_stderr_and_exact_code(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("sh -c 'printf err >&2; exit 7'",
-                                           capture_handler);
-  assert(pid > 0);
-  assert(await_process(pid) == 7);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(strcmp(g_capture.err, "err") == 0);
-  assert(g_capture.out[0] == '\0');
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == 7);
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  assert_captured_run("sh -c 'printf err >&2; exit 7'", 7, 7, "", "err");
 }
 
 // Invalid arguments and unknown ids are rejected with exact codes; cleanup
@@ -229,15 +233,9 @@ void test_process_argument_rejection(void) {
 // inner one — bash does, dash does not, so on Linux the tracked shell would
 // survive its child and exit NORMALLY with 137.
 static void test_signalled_child_reports_minus_one(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("kill -9 $$", capture_handler);
-  assert(pid > 0);
-  assert(await_process(pid) == -1);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == -1); // not the signal number, not 0
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  // No output events fire, so both captured streams stay empty; the code is
+  // not the signal number, not 0.
+  assert_captured_run("kill -9 $$", -1, -1, "", "");
 }
 
 static bool buffered_child_finished;
