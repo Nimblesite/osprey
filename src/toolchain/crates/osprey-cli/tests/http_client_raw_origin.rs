@@ -9,8 +9,12 @@
 
 #![cfg(unix)]
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -215,11 +219,6 @@ fn expected_line(index: usize, expect: &Expected) -> String {
         Expected::Response(status, Body::Len(len)) => format!("{index} {status} len={len}"),
         Expected::Refused(message) => format!("{index} Error {message}"),
     }
-}
-
-/// Repo root: `src/toolchain/crates/osprey-cli` -> `../../../..`, where the C runtime archives live.
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
 
 /// Write the client to a unique temp dir; the extension carries the flavor.

@@ -16,19 +16,15 @@
     reason = "fixture setup and subprocess failures must fail these tests immediately"
 )]
 
-use std::path::{Path, PathBuf};
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+#[path = "common/write_file.rs"]
+mod write_file;
+use write_file::write;
+
+use std::path::Path;
 use std::process::Command;
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
-
-fn write(path: &Path, text: &str) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("create project directory");
-    }
-    std::fs::write(path, text).expect("write project source");
-}
 
 fn write_project(root: &Path, ui: &str, vigil: &str, main: &str) {
     write(

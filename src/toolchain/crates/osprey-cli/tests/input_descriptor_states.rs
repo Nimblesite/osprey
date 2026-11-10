@@ -30,8 +30,12 @@
 //! of ours now close it (`src/toolchain/vscode-extension/client/src/extension.ts`, and
 //! `Stdio::null` in `src/toolchain/crates/osprey-cli/src/test_cmd.rs`).
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -65,10 +69,6 @@ const READY_MARKER: &str = "ready";
 /// line and an absent line are three visibly different results rather than one
 /// ambiguous empty string.
 const ECHO_SOURCE: &str = "print(\"ready\")\nprint(\"got[${input()}]\")\n";
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// The echo program, compiled once for the whole test binary.
 ///

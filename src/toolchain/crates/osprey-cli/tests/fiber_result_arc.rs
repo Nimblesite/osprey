@@ -7,8 +7,11 @@
 //! assertion over output can see it, and a golden cannot either. Only the
 //! count of objects still alive when the process ends can.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::io::{self, Read, Write};
-use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -22,10 +25,6 @@ use std::time::{Duration, Instant};
 /// named — which reads as flaky infrastructure, not as the regression it is.
 const RUN_BUDGET: Duration = Duration::from_mins(1);
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// A pipe being copied into a shared buffer on its own thread, so a child that
 /// fills a pipe while the poll loop waits cannot deadlock the two together.

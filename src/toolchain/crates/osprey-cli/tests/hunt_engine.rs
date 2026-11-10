@@ -7,9 +7,13 @@
 //! or holds the single word `none`; blank lines and `#` comments are ignored.
 //! Only the crash gate compares replay verdicts: it is the one that replays.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use serde_json::Value;
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -21,10 +25,6 @@ const BACKENDS: [&str; 2] = ["gc", "arc"];
 const KNOWN_BUGS: [&str; 1] = ["clean"];
 /// The pinned deterministic settings: the default 64-byte input, 30 seconds.
 const PINNED: [&str; 3] = ["--no-replay", "--max-time", "30"];
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// The exit code and stdout of `osprey <args>` run from the repo root with
 /// `stdin` fed in; a run that outlives `deadline` is killed and an Error.

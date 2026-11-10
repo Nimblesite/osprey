@@ -5,6 +5,13 @@
     reason = "fixture setup and subprocess failures must fail these tests immediately"
 )]
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+#[path = "common/write_file.rs"]
+mod write_file;
+use write_file::write;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -16,17 +23,6 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// A covered run's process output together with the report it wrote.
 type CoveredRun = Result<(std::process::Output, serde_json::Value), Box<dyn std::error::Error>>;
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
-
-fn write(path: &Path, text: &str) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("create project directory");
-    }
-    std::fs::write(path, text).expect("write project source");
-}
 
 const MANIFEST: &str = "[project]\nname = \"covered\"\nsource_roots = [\"framework/src\", \"tests\"]\ndefault_namespace = \"app\"\nentry = \"tests/main.ospml\"\n";
 

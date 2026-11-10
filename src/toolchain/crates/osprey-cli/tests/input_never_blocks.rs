@@ -25,6 +25,10 @@
 //! waiting, and no assertion over a value can observe a process that never
 //! produces one.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -37,10 +41,6 @@ const RUN_BUDGET: Duration = Duration::from_mins(2);
 
 /// How often the poll loop re-checks a child that has not exited yet.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// A committed program that calls `input()` — twice, and once inside an
 /// assertion — so a launcher that leaves stdin unwritable parks on it.

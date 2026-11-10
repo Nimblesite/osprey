@@ -4,6 +4,10 @@
     reason = "subprocess and fixture setup failures must fail these end-to-end tests immediately"
 )]
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -12,10 +16,6 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// A rewritten fixture copy: its directory, the original text and the new text.
 type Rewritten = (PathBuf, String, String);
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 fn fixture() -> PathBuf {
     repo_root().join("src/osprey/examples/projects/modules")

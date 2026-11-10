@@ -16,17 +16,17 @@
 //! The uniform-ABI checks live in `graphics_scenes/abi.rs`; the frame-path
 //! execution in `graphics_scenes/frame.rs`.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A scene entry is an import, a comment, and one call. Anything longer means
 /// the shared host has started leaking back into the scenes.
 const MAX_SCENE_SOURCE_LINES: usize = 3;
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// Read a file that the layout requires to exist. A missing or unreadable file
 /// is a failed assertion with the path in it, never a panic.
