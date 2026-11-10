@@ -75,20 +75,21 @@ module Model {
     /// The largest element of a nonempty tensor, or a fault from the backend.
     export fn peak(b) = orStop(perform Backends::Tensor.reduce(b, at(b, 0), maxF), fn() => at(b, 0))
     export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
-    export fn gelus(f) = orStop(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), empty)
+    export fn gelus(f) = built(size(f), fn(i) => gelu(at(f, i)))
 
     /// A tensor operation's value, or a fault that stops the run with the
     /// reason ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is
     /// never called; it only gives the stopped arm the result type.
     export fn orStop(result, abandoned) = match result {
         Success { value } => value
-        Error { message } => stopped(message, abandoned)
+        Error { message } => {
+            let _ = Backends::stop(message)
+            abandoned()
+        }
     }
 
-    fn stopped(message, abandoned) = {
-        let _ = Backends::stop(message)
-        abandoned()
-    }
+    /// The tensor of `n` elements `work` computes: the one shape every kernel here is built with.
+    fn built(n, work) = orStop(perform Backends::Tensor.build(n, work), empty)
 
     /// Build failures leave the surrounding strictly region before any model work.
     export fn indexOf(buffer, value) = orStop(perform Backends::Tensor.indexOf(buffer, value), fn() => size(buffer))
@@ -130,7 +131,7 @@ module Model {
 
     /// m [rows, cols] as [cols, rows]: tensors are rank-1, so a product against a
     /// transposed operand is a gather followed by `matMul`.
-    export fn transpose(m, rows, cols) = orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows))), empty)
+    export fn transpose(m, rows, cols) = built(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows)))
 
     /// a [rows, inner] times b [inner, cols]; operands that disagree with the
     /// stated shape stop the run.
@@ -141,8 +142,8 @@ module Model {
     export fn squaredDeviation(x, start, n, mean) = range(start, start + n) |> fold(0.0, fn(a, i) => a + (at(x, i) - mean) * (at(x, i) - mean))
 
     /// Per-row mean and variance of x [t, width], the LayerNorm statistics.
-    export fn rowMeans(x, t) = orStop(perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF), empty)
-    export fn rowVariances(x, t, means) = orStop(perform Backends::Tensor.build(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF), empty)
+    export fn rowMeans(x, t) = built(t, fn(r) => sumRange(x, r * width, width) / widthF)
+    export fn rowVariances(x, t, means) = built(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF)
 
     fn normalised(x, means, variances, g, b, i) = {
         let r = intDiv(i, width)
@@ -154,13 +155,13 @@ module Model {
     export fn layerNorm(x, t, g, b) = {
         let means = rowMeans(x, t)
         let variances = rowVariances(x, t, means)
-        orStop(perform Backends::Tensor.build(t * width, fn(i) => normalised(x, means, variances, g, b, i)), empty)
+        built(t * width, fn(i) => normalised(x, means, variances, g, b, i))
     }
 
     /// x [rows, inner] times w [inner, cols], plus the bias on every row.
     export fn linear(x, rows, inner, cols, w, bias) = {
         let value = product(x, w, rows, inner, cols)
-        orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols)), empty)
+        built(rows * cols, fn(i) => at(value, i) + at(bias, i % cols))
     }
 
     /// qkv is [t, 2304]: the query, key and value of head h occupy 64 columns each.
@@ -189,10 +190,10 @@ module Model {
     /// Softmax of each causal row of scores [heads, n, t], where row r of a head
     /// is position first + r and attends to columns c <= first + r only.
     fn probsOf(scores, t, n, first) = {
-        let peaks = orStop(perform Backends::Tensor.build(heads * n, fn(row) => rowMax(scores, row, t, first + row % n)), empty)
-        let weights = orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => causalWeight(scores, peaks, t, n, first, i)), empty)
-        let sums = orStop(perform Backends::Tensor.build(heads * n, fn(row) => sumRange(weights, row * t, t)), empty)
-        orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t))), empty)
+        let peaks = built(heads * n, fn(row) => rowMax(scores, row, t, first + row % n))
+        let weights = built(heads * n * t, fn(i) => causalWeight(scores, peaks, t, n, first, i))
+        let sums = built(heads * n, fn(row) => sumRange(weights, row * t, t))
+        built(heads * n * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t)))
     }
 
     /// Element i of the attention output [n, width].
@@ -209,36 +210,44 @@ module Model {
     /// Scores and probabilities are [heads, t - first, t].
     export fn attentionFrom(qkv, t, first) = {
         let n = t - first
-        let probs = probsOf(orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => causalScore(qkv, t, n, first, i)), empty), t, n, first)
-        Attn { probs: probs, out: orStop(perform Backends::Tensor.build(n * width, fn(i) => attended(probs, qkv, t, n, first, i)), empty) }
+        let probs = probsOf(built(heads * n * t, fn(i) => causalScore(qkv, t, n, first, i)), t, n, first)
+        Attn { probs: probs, out: built(n * width, fn(i) => attended(probs, qkv, t, n, first, i)) }
     }
 
     /// Every position of qkv [t, 2304] at once, as [t, width].
     export fn attention(qkv, t) = attentionFrom(qkv, t, 0)
 
+    /// `cached` followed by the fresh rows unless `first` is 0: the KV cache a step grows.
+    fn grown(cached, first, fresh) = match first == 0 { true => fresh  false => appended(cached, fresh) }
+
+    /// `x` plus a linear map of `u`: one branch of a residual pair.
+    fn residual(x, u, rows, inner, w, bias) = plus(x, linear(u, rows, inner, width, w, bias))
+
     /// A block over `rows` rows of x: pre-norm attention and MLP with residuals,
     /// `first` the first row's position and `cached` its earlier qkv rows.
     fn blockRows(x, rows, t, l, cached, first) = {
         let h1 = layerNorm(x, rows, l.ln1g, l.ln1b)
-        let qkvNew = linear(h1, rows, width, qkvWidth, l.qkvW, l.qkvB)
-        let qkv = match first == 0 { true => qkvNew  false => appended(cached, qkvNew) }
+        let qkv = grown(cached, first, linear(h1, rows, width, qkvWidth, l.qkvW, l.qkvB))
         let attn = attentionFrom(qkv, t, first)
-        let x2 = plus(x, linear(attn.out, rows, width, width, l.projW, l.projB))
+        let x2 = residual(x, attn.out, rows, width, l.projW, l.projB)
         let h2 = layerNorm(x2, rows, l.ln2g, l.ln2b)
         let f = linear(h2, rows, width, mlpWidth, l.fcW, l.fcB)
         let u = gelus(f)
-        let y = plus(x2, linear(u, rows, mlpWidth, width, l.outW, l.outB))
+        let y = residual(x2, u, rows, mlpWidth, l.outW, l.outB)
         Acts { x: x, h1: h1, qkv: qkv, probs: attn.probs, a: attn.out, x2: x2, h2: h2, f: f, u: u, y: y }
     }
 
     /// One transformer block: pre-norm attention and MLP, each with a residual.
     export fn block(x, t, l) = blockRows(x, t, t, l, empty(), 0)
 
-    fn blocks(w, x, t, i, acc) = match i == layerCount {
+    /// Every block over `rows` rows of x from position `first` on, each step's KV
+    /// cache read from `caches`: one loop serves the full pass and the cached step.
+    fn blockPass(w, x, rows, t, i, caches, first, acc) = match i == layerCount {
         true => Trace { acts: acc, x: x }
         false => {
-            let acts = block(x, t, layer(w, i))
-            blocks(w, acts.y, t, i + 1, listAppend(acc, acts))
+            let cache = match first == 0 { true => empty()  false => listGet(caches, i) ?: empty() }
+            let acts = blockRows(x, rows, t, layer(w, i), cache, first)
+            blockPass(w, acts.y, rows, t, i + 1, caches, first, listAppend(acc, acts))
         }
     }
 
@@ -247,35 +256,23 @@ module Model {
     export fn embed(w, ids, t) = range(0, t) |> fold(empty(), fn(rows, p) => appended(rows, embedOne(w, listGet(ids, p) ?: 0, p)))
 
     /// The twelve blocks over the embedded tokens [t, width].
-    export fn forward(w, ids, t) = blocks(w, embed(w, ids, t), t, 0, [])
+    export fn forward(w, ids, t) = blockPass(w, embed(w, ids, t), t, t, 0, [], 0, [])
 
     /// `rows` followed by `more`: a cache growing by one position.
     fn appended(rows, more) = {
         let n = size(rows)
-        orStop(perform Backends::Tensor.build(n + size(more), fn(i) => match i < n { true => at(rows, i)  false => at(more, i - n) }), empty)
-    }
-
-    /// One block for the newest position t - 1 alone: its row y [1, width] and the
-    /// qkv rows for the earlier positions [t - 1, 2304], the cached ones first.
-    export fn blockStep(x, t, l, cached) = {
-        let acts = blockRows(x, 1, t, l, cached, t - 1)
-        BlockStep { y: acts.y, qkv: acts.qkv }
-    }
-
-    fn stepBlocks(w, x, t, i, caches, acc) = match i == layerCount {
-        true => Stepped { x: x, caches: acc }
-        false => {
-            let s = blockStep(x, t, layer(w, i), listGet(caches, i) ?: empty())
-            stepBlocks(w, s.y, t, i + 1, caches, listAppend(acc, s.qkv))
-        }
+        built(n + size(more), fn(i) => match i < n { true => at(rows, i)  false => at(more, i - n) })
     }
 
     /// The embedding of one token at position p, [1, width].
-    export fn embedOne(w, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(w.wte, token * width + c) + at(w.wpe, p * width + c)), empty)
+    export fn embedOne(w, token, p) = built(width, fn(c) => at(w.wte, token * width + c) + at(w.wpe, p * width + c))
 
     /// The newest position, token at index t - 1, through the twelve blocks over
     /// their caches of the t - 1 earlier positions.
-    export fn forwardStep(w, token, t, caches) = stepBlocks(w, embedOne(w, token, t - 1), t, 0, caches, [])
+    export fn forwardStep(w, token, t, caches) = {
+        let trace = blockPass(w, embedOne(w, token, t - 1), 1, t, 0, caches, t - 1, [])
+        Stepped { x: trace.x, caches: qkvCaches(trace) }
+    }
 
     /// Each block's qkv rows from a full pass: the caches a first forwardStep grows.
     export fn qkvCaches(trace) = range(0, layerCount) |> fold([], fn(acc, i) => listAppend(acc, match listGet(trace.acts, i) { Success { value } => value.qkv  Error _ => empty() }))
