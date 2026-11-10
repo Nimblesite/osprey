@@ -12,8 +12,9 @@ const NO_DIAGNOSTIC: &str = "assembly failed with no diagnostic";
 /// source: its first diagnostic, or a note when it recorded none.
 fn project_reason(errors: Vec<osprey_project::ProjectError>) -> String {
     let first = errors
-        .first()
-        .map_or(NO_DIAGNOSTIC, |error| error.message.as_str());
+        .into_iter()
+        .next()
+        .map_or_else(|| NO_DIAGNOSTIC.to_owned(), |error| error.message);
     format!("project: {first}")
 }
 
