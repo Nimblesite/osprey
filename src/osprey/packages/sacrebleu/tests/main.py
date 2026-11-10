@@ -9,24 +9,6 @@ EXP = 1e-9
 DIV = 1e-12
 
 
-class BleuCfg:
-    smooth: str
-    sv: float
-    max_order: int
-    eff: bool
-    lc: bool
-    tok: str
-
-
-class ChrfCfg:
-    co: int
-    wo: int
-    beta: int
-    rw: bool
-    eps: bool
-    lc: bool
-
-
 def str_at(xs, i):
     return unwrap_or(listGet(xs, i), "")
 
@@ -77,9 +59,14 @@ def ngram_cases():
     ]
 
 
+def one_each(rows, build):
+    """One check per expected row, `build(i)` the check for row `i`."""
+    return toList(map(range(len(rows)), build))
+
+
 def tok_checks(label, fn, want):
     """Every tokenizer case's text under one tokenizer, `fn` applied to each case."""
-    return toList(map(range(len(want)), lambda i: Check.equal(f"tok.{label}[{i}]", fn(str_at(Expected.TOK_CASES, i)), str_at(want, i))))
+    return one_each(want, lambda i: Check.equal(f"tok.{label}[{i}]", fn(str_at(Expected.TOK_CASES, i)), str_at(want, i)))
 
 
 def tokenizer_cases():
@@ -89,21 +76,17 @@ def tokenizer_cases():
                                             tok_checks("dispatch", lambda text: Tokenizer.tokenize(text, "13a"), Expected.TOK_13A))))
 
 
-def bleu_config(i):
-    return BleuCfg(smooth=str_at(Expected.BLEU_SMOOTH, i), sv=float_at(Expected.BLEU_SMOOTH_VALUE, i),
-                   max_order=int_at(Expected.BLEU_MAX_ORDER, i), eff=bool_at(Expected.BLEU_EFF, i),
-                   lc=bool_at(Expected.BLEU_LOWERCASE, i), tok=str_at(Expected.BLEU_TOKENIZE, i))
-
-
 def bleu_score_of(i):
-    cfg = bleu_config(i)
     hyp = str_at(Expected.BLEU_HYP, i)
     refs = strlist_at(Expected.BLEU_REFS, i)
-    if cfg.max_order == 4:
-        return Bleu.sentence_bleu(hyp, refs, cfg.smooth, cfg.sv, cfg.lc, cfg.tok, cfg.eff)
+    lc = bool_at(Expected.BLEU_LOWERCASE, i)
+    smoother = str_at(Expected.BLEU_SMOOTH, i)
+    sv = float_at(Expected.BLEU_SMOOTH_VALUE, i)
+    if int_at(Expected.BLEU_MAX_ORDER, i) == 4:
+        return Bleu.sentence_bleu(hyp, refs, smoother, sv, lc, str_at(Expected.BLEU_TOKENIZE, i), bool_at(Expected.BLEU_EFF, i))
     else:
-        metric = Bleu.BLEU(lowercase=cfg.lc, force=False, tokenize=cfg.tok, smooth_method=cfg.smooth,
-                           smooth_value=cfg.sv, max_ngram_order=cfg.max_order, effective_order=cfg.eff)
+        metric = Bleu.BLEU(lowercase=lc, force=False, tokenize=str_at(Expected.BLEU_TOKENIZE, i), smooth_method=smoother,
+                           smooth_value=sv, max_ngram_order=int_at(Expected.BLEU_MAX_ORDER, i), effective_order=bool_at(Expected.BLEU_EFF, i))
         return Bleu.score_sentence(metric, hyp, refs)
 
 
@@ -120,21 +103,20 @@ def score_fields(prefix, i, sc, score, bp, sys_len, ref_len, prec, counts, total
 
 
 def bleu_checks(i, sc):
-    return score_fields("bleu", i, sc, float_at(Expected.BLEU_SCORE, i), float_at(Expected.BLEU_BP, i),
-                        int_at(Expected.BLEU_SYS_LEN, i), int_at(Expected.BLEU_REF_LEN, i),
-                        floatlist_at(Expected.BLEU_PREC, i), floatlist_at(Expected.BLEU_COUNTS, i),
-                        floatlist_at(Expected.BLEU_TOTALS, i))
+    return score_fields("bleu", i, sc, float_at(Expected.BLEU_SCORE, i), float_at(Expected.BLEU_BP, i), int_at(Expected.BLEU_SYS_LEN, i), int_at(Expected.BLEU_REF_LEN, i), floatlist_at(Expected.BLEU_PREC, i), floatlist_at(Expected.BLEU_COUNTS, i), floatlist_at(Expected.BLEU_TOTALS, i))
 
 
 def corpus_checks(i, sc):
-    return score_fields("corpus", i, sc, float_at(Expected.CORPUS_SCORE, i), float_at(Expected.CORPUS_BP, i),
-                        int_at(Expected.CORPUS_SYS_LEN, i), int_at(Expected.CORPUS_REF_LEN, i),
-                        floatlist_at(Expected.CORPUS_PREC, i), floatlist_at(Expected.CORPUS_COUNTS, i),
-                        floatlist_at(Expected.CORPUS_TOTALS, i))
+    return score_fields("corpus", i, sc, float_at(Expected.CORPUS_SCORE, i), float_at(Expected.CORPUS_BP, i), int_at(Expected.CORPUS_SYS_LEN, i), int_at(Expected.CORPUS_REF_LEN, i), floatlist_at(Expected.CORPUS_PREC, i), floatlist_at(Expected.CORPUS_COUNTS, i), floatlist_at(Expected.CORPUS_TOTALS, i))
+
+
+def metric_cases(count, checks_of):
+    """Every metric row's checks, `checks_of(i)` the checks for row `i`."""
+    return fold(range(count), [], lambda acc, i: listConcat(acc, checks_of(i)))
 
 
 def bleu_cases():
-    return fold(range(len(Expected.BLEU_SCORE)), [], lambda acc, i: listConcat(acc, bleu_checks(i, bleu_score_of(i))))
+    return metric_cases(len(Expected.BLEU_SCORE), lambda i: bleu_checks(i, bleu_score_of(i)))
 
 
 def corpus_bleu_of(i):
@@ -145,23 +127,17 @@ def corpus_bleu_of(i):
                             bool_at(Expected.CORPUS_EFF, i))
 
 
-def corpus_case(i):
-    return corpus_checks(i, corpus_bleu_of(i))
-
-
 def corpus_cases():
-    return fold(range(len(Expected.CORPUS_SCORE)), [], lambda acc, i: listConcat(acc, corpus_case(i)))
+    return metric_cases(len(Expected.CORPUS_SCORE), lambda i: corpus_checks(i, corpus_bleu_of(i)))
 
 
 def raw_cases():
-    return [
-        Check.close("raw.score", Bleu.raw_corpus_bleu(["the cat"], [["the cat"]], 0.1).score, 100.0, EXP, EXP),
-        Check.close("raw.score2", Bleu.raw_corpus_bleu(["a"], [["the cat"]], 0.1).score, 0.0, EXP, EXP),
-    ]
+    return toList(map(range(2), lambda i: Check.close(str_at(["raw.score", "raw.score2"], i),
+        Bleu.raw_corpus_bleu([str_at(["the cat", "a"], i)], [["the cat"]], 0.1).score, float_at([100.0, 0.0], i), EXP, EXP)))
 
 
 def compute_bleu_cases():
-    return foldList(toList(map(range(len(Expected.CBL_SCORE)), compute_bleu_case)), [], listConcat)
+    return metric_cases(len(Expected.CBL_SCORE), compute_bleu_case)
 
 
 def compute_bleu_case(i):
@@ -174,27 +150,24 @@ def compute_bleu_case(i):
     ]
 
 
-def chrf_config(i):
-    return ChrfCfg(co=int_at(Expected.CHRF_CHAR_ORDER, i), wo=int_at(Expected.CHRF_WORD_ORDER, i),
-                   beta=int_at(Expected.CHRF_BETA, i), rw=bool_at(Expected.CHRF_REMOVE_WS, i),
-                   eps=bool_at(Expected.CHRF_EPS, i), lc=bool_at(Expected.CHRF_LOWERCASE, i))
-
-
 def chrf_of(i):
-    cfg = chrf_config(i)
     hyp = str_at(Expected.CHRF_HYP, i)
     refs = strlist_at(Expected.CHRF_REFS, i)
-    if cfg.lc:
-        metric = Chrf.CHRF(char_order=cfg.co, word_order=cfg.wo, beta=cfg.beta, lowercase=True,
-                           whitespace=not cfg.rw, eps_smoothing=cfg.eps)
+    co = int_at(Expected.CHRF_CHAR_ORDER, i)
+    wo = int_at(Expected.CHRF_WORD_ORDER, i)
+    beta = int_at(Expected.CHRF_BETA, i)
+    rw = bool_at(Expected.CHRF_REMOVE_WS, i)
+    if bool_at(Expected.CHRF_LOWERCASE, i):
+        metric = Chrf.CHRF(char_order=co, word_order=wo, beta=beta, lowercase=True,
+                           whitespace=not rw, eps_smoothing=bool_at(Expected.CHRF_EPS, i))
         return Chrf.score_sentence(metric, hyp, refs)
     else:
-        return Chrf.sentence_chrf(hyp, refs, cfg.co, cfg.wo, cfg.beta, cfg.rw, cfg.eps)
+        return Chrf.sentence_chrf(hyp, refs, co, wo, beta, rw, bool_at(Expected.CHRF_EPS, i))
 
 
 def chrf_scores(label, compute, want):
     """Each CHRF case's score, `compute(i)` naming the call and `label` the metric."""
-    return toList(map(range(len(want)), lambda i: Check.close(f"chrf.{label}[{i}]", compute(i).score, float_at(want, i), DIV, DIV)))
+    return one_each(want, lambda i: Check.close(f"chrf.{label}[{i}]", compute(i).score, float_at(want, i), DIV, DIV))
 
 
 def chrf_cases():
@@ -202,11 +175,9 @@ def chrf_cases():
 
 
 def chrf_corpus_of(i):
-    hyps = strlist_at(Expected.CHRF_CORPUS_HYP, i)
-    refs = strlist_at(Expected.CHRF_CORPUS_REFS, i)
-    return Chrf.corpus_chrf(hyps, refs, int_at(Expected.CHRF_CORPUS_CHAR_ORDER, i),
-                            int_at(Expected.CHRF_CORPUS_WORD_ORDER, i), int_at(Expected.CHRF_CORPUS_BETA, i),
-                            bool_at(Expected.CHRF_CORPUS_REMOVE_WS, i), bool_at(Expected.CHRF_CORPUS_EPS, i))
+    return Chrf.corpus_chrf(strlist_at(Expected.CHRF_CORPUS_HYP, i), strlist_at(Expected.CHRF_CORPUS_REFS, i),
+                            int_at(Expected.CHRF_CORPUS_CHAR_ORDER, i), int_at(Expected.CHRF_CORPUS_WORD_ORDER, i),
+                            int_at(Expected.CHRF_CORPUS_BETA, i), bool_at(Expected.CHRF_CORPUS_REMOVE_WS, i), bool_at(Expected.CHRF_CORPUS_EPS, i))
 
 
 def chrf_corpus_cases():
@@ -236,11 +207,10 @@ def record_cases():
 
 
 def all_cases():
-    base = listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(
-        text_cases(), ngram_cases()), tokenizer_cases()), bleu_cases()), corpus_cases()),
-        raw_cases()), compute_bleu_cases())
-    return listConcat(base, listConcat(listConcat(listConcat(chrf_cases(), chrf_corpus_cases()),
-        score_corpus_cases()), record_cases()))
+    """Every group of checks, concatenated in the order the suite runs them."""
+    return foldList([text_cases(), ngram_cases(), tokenizer_cases(), bleu_cases(), corpus_cases(), raw_cases(),
+                     compute_bleu_cases(), chrf_cases(), chrf_corpus_cases(), score_corpus_cases(), record_cases()],
+                    [], listConcat)
 
 
 def main():
