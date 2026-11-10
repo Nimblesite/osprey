@@ -24,10 +24,14 @@ module Workspaces
 
     messaged (layout, text, bad) = layout(noticeText = text, noticeBad = bad)
 
+    reported (bench, problem) = Runtime::step (notice (bench, problem, true))
+
+    exported (bench, text) = Runtime::step (notice (bench, text, false))
+
     export encode bench = jsonEncode (JsonObject [Doc::num ("version", 2), Doc::str ("title", bench.draft.draftTitle), Doc::str ("text", bench.draft.draftText)])
 
     export save bench = match encode bench
-        Error problem => Runtime::step (notice (bench, problem, true))
+        Error problem => reported (bench, problem)
         Success source => saving (bench, "workspace:saved", "solution.proof.json", source)
 
     saving (bench, ticket, name, source) = ui::Step(stepStore = bench, requests = [Requests::ask (ticket, ui::SaveFile(suggested = name, exportSlice = ticket))], writes = [Requests::write (ticket, source)])
@@ -37,7 +41,7 @@ module Workspaces
     export source bench =
         declarations = filterList (Statements::document bench.draft.draftText, \found => isEmpty found.problems)
         match isEmpty declarations
-            true => Runtime::step (notice (bench, "No supported statement is available to export.", true))
+            true => reported (bench, "No supported statement is available to export.")
             false => saving (bench, "workspace:source", "proof.ospml", Emit::document (mapList (declarations, \found => Proof(statement = found.statement, steps = Steps::readAll found.proof))))
 
     export decode source = match jsonDecode source
@@ -50,20 +54,22 @@ module Workspaces
         JsonInt version => version == 2
         _ => false
 
-    validated doc = match jsonText (Doc::field (doc, "text"))
-        Error _ => Error(message = "The workspace is missing its written working.")
-        Success source => match supportedVersion doc && length source <= 1048576
-            false => Error(message = "The workspace version or document size is unsupported.")
-            true => match jsonText (Doc::field (doc, "title"))
-                Error _ => Error(message = "The workspace is missing its title.")
-                Success title => Success(value = { title = title, source = source })
+    requiredText (doc, name, missing, continue) = match jsonText (Doc::field (doc, name))
+        Error _ => Error(message = missing)
+        Success text => continue text
+
+    sized (doc, source) = match supportedVersion doc && length source <= 1048576
+        false => Error(message = "The workspace version or document size is unsupported.")
+        true => requiredText (doc, "title", "The workspace is missing its title.", \title => Success(value = { title = title, source = source }))
+
+    validated doc = requiredText (doc, "text", "The workspace is missing its written working.", \source => sized (doc, source))
 
     restoredLayout layout = layout(guided = false, mode = Working, noticeText = "Workspace opened. Supported statements have been checked again.", noticeBad = false)
 
     restored (bench, saved) = bench(draft = Draft(draftTitle = saved.title, draftText = saved.source, caret = length saved.source, selectedStep = -1), verdicts = Reviewed(checks = Reviews::review saved.source), layout = restoredLayout bench.layout)
 
     export opened bench = match decode (perform ui::Slices.fetch "workspace:import")
-        Error problem => Runtime::step (notice (bench, problem, true))
+        Error problem => reported (bench, problem)
         Success saved => Runtime::step (restored (bench, saved))
 
     export completed (bench, ticket, result) = match Doc::flag (result, "cancelled")
@@ -71,11 +77,11 @@ module Workspaces
         false => received (bench, ticket, result)
 
     received (bench, ticket, result) = match isEmpty (Doc::text (result, "path"))
-        true => Runtime::step (notice (bench, "The host returned no file receipt.", true))
+        true => reported (bench, "The host returned no file receipt.")
         false => match ticket
             "workspace:opened" => opened bench
-            "workspace:source" => Runtime::step (notice (bench, "Generated source exported.", false))
-            "workspace:saved" => Runtime::step (notice (bench, "Workspace saved.", false))
+            "workspace:source" => exported (bench, "Generated source exported.")
+            "workspace:saved" => exported (bench, "Workspace saved.")
             _ => Runtime::step bench
 
 (** [WORKBENCH-VERDICT] Shared file import and current-source checking for every host. *)
@@ -96,13 +102,18 @@ module ProofLibraries
         false => CachedImports::check (source current, name)
 
     export open bench =
-        current = bench.imports
-        ready = bench(imports = current(libraryPending = fileKey, libraryTicket = "proof:opened"))
+        ready = withImports (bench, \current => current(libraryPending = fileKey, libraryTicket = "proof:opened"))
         Runtime::asking (ready, [Requests::ask ("proof:opened", ui::ChooseFile(types = ["json", "ndjson", "jsonl"], chosenLimit = 8388608, chosenSlice = fileKey))])
 
     export imported (bench, content) = ui::Step(stepStore = bench(imports = replaced (bench.imports, content)), requests = [], writes = [ui::SliceWrite(sliceKey = fileKey, sliceText = content)])
 
     revised current = current(exportRevision = satAdd current.exportRevision 1)
+
+    export withImports (bench, change) = bench(imports = change bench.imports)
+
+    export whenReady (bench, ready, work) = match ready
+        false => Runtime::step bench
+        true => work bench
 
     replaced (current, content) =
         changed = revised current
@@ -121,9 +132,7 @@ module ProofLibraries
             Success first => current(exportSelected = first.importedName)
             Error _ => current(exportProblem = "The export contains no theorem entries.")
 
-    export completed (bench, result) = match bench.imports.libraryTicket == "proof:opened"
-        false => Runtime::step bench
-        true => receivedFile (bench, result)
+    export completed (bench, result) = whenReady (bench, bench.imports.libraryTicket == "proof:opened", \_ => receivedFile (bench, result))
 
     receivedFile (bench, result) = match Doc::flag (result, "cancelled")
         true => Runtime::step (settled bench)
@@ -131,9 +140,7 @@ module ProofLibraries
             true => failed (bench, "The host returned no file receipt.")
             false => Runtime::step (bench(imports = replaced (bench.imports, perform ui::Slices.fetch fileKey)))
 
-    settled bench =
-        current = bench.imports
-        bench(imports = current(libraryPending = "", libraryTicket = ""))
+    settled bench = withImports (bench, \current => current(libraryPending = "", libraryTicket = ""))
 
     export failed (bench, problem) = Runtime::step (Workspaces::notice (settled bench, "The proof library could not be opened: " + problem, true))
 
@@ -150,9 +157,7 @@ module ProofLibraries
             Success _ => bench(imports = next(exportProblem = ""))
             Error problem => bench(imports = next(exportProblem = problem))
 
-    export expanded (bench, open) =
-        current = bench.imports
-        bench(imports = current(exportExpanded = open))
+    export expanded (bench, open) = withImports (bench, \current => current(exportExpanded = open))
 
     (** Results are derived from the current source, never restored from saved acceptance flags. *)
     export pane current = Ui::framed (plain(frameName = "proof-library", frameGap = 16), Ui::column [Ui::slot "library-actions", content current, Ui::disclosure ("Imported source", current.exportExpanded, ToggleProofSource, sourceFields current)])
@@ -231,9 +236,7 @@ module BundledLibraries
 
     export pane current = Ui::disclosure ("Bundled proof libraries", current.libraryExpanded, ToggleProofLibraries, catalogueContent current)
 
-    export expanded (bench, open) =
-        current = bench.imports
-        bench(imports = current(libraryExpanded = open))
+    export expanded (bench, open) = ProofLibraries::withImports (bench, \current => current(libraryExpanded = open))
 
     catalogueContent current = match current.libraryExpanded
         false => []
@@ -247,9 +250,7 @@ module BundledLibraries
                 Error problem => [Ui::caption ("Bundled libraries could not be loaded: " + problem)]
                 Success _ => mapList (entries current, \entry => Ui::button (Doc::text (entry, "title"), "book", OpenBundledProof (Doc::text (entry, "path"))))
 
-    export completed (bench, ticket) = match currentTicket (bench.imports, ticket)
-        false => Runtime::step bench
-        true => received (bench, ticket)
+    export completed (bench, ticket) = ProofLibraries::whenReady (bench, currentTicket (bench.imports, ticket), \_ => received (bench, ticket))
 
     currentTicket (current, ticket) = ticket == "proof:catalogue" || (!isEmpty current.libraryTicket && ticket == current.libraryTicket)
 
@@ -283,19 +284,13 @@ module BundledLibraries
         false => failed (bench, "proof:catalogue", "The host returned a different library catalogue.")
         true => match catalogue (Doc::text (file, "text"))
             Error problem => failed (bench, "proof:catalogue", problem)
-            Success source =>
-                current = bench.imports
-                Runtime::step (bench(imports = current(libraryCatalogue = source, libraryProblem = "", exportRevision = satAdd current.exportRevision 1)))
+            Success source => Runtime::step (ProofLibraries::withImports (bench, \current => current(libraryCatalogue = source, libraryProblem = "", exportRevision = satAdd current.exportRevision 1)))
 
     imported (bench, file) = match !isEmpty bench.imports.libraryPending && Doc::text (file, "path") == bench.imports.libraryPending
         false => failed (bench, bench.imports.libraryTicket, "The host returned a different proof library.")
-        true =>
-            current = bench.imports
-            ProofLibraries::imported (bench(imports = current(libraryPending = "")), Doc::text (file, "text"))
+        true => ProofLibraries::imported (ProofLibraries::withImports (bench, \current => current(libraryPending = "")), Doc::text (file, "text"))
 
-    export failed (bench, ticket, problem) = match currentTicket (bench.imports, ticket)
-        false => Runtime::step bench
-        true => failure (bench, ticket, problem)
+    export failed (bench, ticket, problem) = ProofLibraries::whenReady (bench, currentTicket (bench.imports, ticket), \_ => failure (bench, ticket, problem))
 
     failure (bench, ticket, problem) =
         current = bench.imports
