@@ -48,22 +48,20 @@ traced2 a b = add (stepOf a) (stepOf b)
 (** Three whitespace parameters curry the same way. *)
 traced3 a b c = addThree (stepOf a) (stepOf b) (stepOf c)
 
-(** Four whitespace parameters — the exact shape [FLAVOR-ML-CURRY] warns about
-    in issue #184, where an operation performed through the body is silently
-    skipped. Every step below must reach the handler. *)
+(** Four whitespace parameters — the shape [#184](issue) reports as silently
+    skipping an operation. Every step below must reach the handler [FLAVOR-ML-CURRY]. *)
 traced4 a b c d = sum4 (stepOf a) (stepOf b) (stepOf c) (stepOf d)
 
 (** Five whitespace parameters: one nesting level past the reported shape. *)
 traced5 a b c d e = sum5 (stepOf a) (stepOf b) (stepOf c) (stepOf d) (stepOf e)
 
 (** Parenthesised comma-separated parameters are explicitly flat, and the spec
-    names this the form that works today — so both forms must agree. *)
+    names this the working form — so both forms must agree. *)
 tracedFlat (a, b, c, d) = traced4 a b c d
 
-(** Curried and flat bodies perform through the same handler, so the operation
-    indices they receive form one unbroken 1..18 sequence. A skipped operation
-    shows up three ways at once: a short transcript, a low count, and a sum that
-    no longer matches the indices its own arity should have consumed. *)
+(** Curried and flat bodies perform through one handler, so their indices form
+    an unbroken 1..18 sequence: a skip shortens the transcript, lowers the count
+    and breaks the sum its arity should have consumed. *)
 curriedEffectsReachTheHandlerCase () =
     mut seen = ""
     mut steps = 0
@@ -99,12 +97,11 @@ curriedEffectsReachTheHandlerCase () =
         steps != 9
     ]
 
-    // The arity-4 curried body and its flat twin must agree operation for
-    // operation: 6+7+8+9 == 30 and 15+16+17+18 == 66, four steps each.
+    // The arity-4 curried body and its flat twin agree step for step:
+    // 6+7+8+9 == 30 and 15+16+17+18 == 66.
     checkAll "curried and flat four-parameter bodies agree" [
-        // `?:` is the LOWEST precedence and right-associative, so every sum
-        // that ends in one needs its own parentheses to sit under the `==`
-        // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
+        // `?:` is lowest and right-associative, so each sum needs its own
+        // parentheses to sit under `==` [SYNTAX].
         ((6 + 7 ) + (8 + 9 ) ) == 30,
         structuralEquals [((15 + 16 ) + (17 + 18 ) ), (1 + 2 ), ((3 + 4 ) + 5 )] [66, 3, 12],
         structuralEquals [(((10 + 11 ) + (12 + 13 ) ) + 14 ), steps] [60, 18],
@@ -176,15 +173,13 @@ labeledRenders label expected actual renders =
 (** Whether the precondition gate renders exactly `renders`. *)
 gateRenders condition renders = verdictLabel (assume condition) == renders
 
-(** [TESTING-VERDICT] fixes three contracts at once: `assume` turns a false
-    condition into `Skip` and a true one into `Pass`; the labeled comparison
-    yields `Pass` on equality and otherwise a `Fail` carrying the labeled
-    mismatch; and `andThen first rest` yields `rest` when `first` is `Pass`
-    while retaining a first `Fail` or `Skip`. "Keep the first non-Pass" makes
-    `andThen` a monoid whose identity is `Pass`, so every fold below is checked
-    against the identity and associativity laws as well as its point value — a
-    fold that merely returned its last argument would satisfy the point values
-    alone. *)
+(** [TESTING-VERDICT] fixes three contracts: `assume` maps a false precondition
+    to `Skip` and a true one to `Pass`; the labeled comparison yields `Pass` on
+    equality and otherwise a `Fail` carrying the labeled mismatch; `andThen first
+    rest` yields `rest` when `first` is `Pass` and keeps a first `Fail` or `Skip`.
+    "Keep the first non-Pass" makes `andThen` a monoid whose identity is `Pass`,
+    so each fold below is checked against the identity and associativity laws too
+    — a fold returning its last argument would satisfy the point values alone. *)
 verdictAlgebraCase () =
     fail1 = Fail "one"
     fail2 = Fail "two"
@@ -333,8 +328,7 @@ curriedArityLadderCase () =
         structuralEquals [(sum6 1 2 3 4 5) 6, (((((sum6 1) 2) 3) 4) 5) 6, (sum6 1 2 3 4 5 6)] [21, 21, 21]
     ]
 
-    // Each prefix partial of sum6 carries the arguments already supplied:
-    // p1 holds 1, p2 holds 3, p3 holds 6, p4 holds 10, p5 holds 15.
+    // Each prefix partial of sum6 holds what it was given: 1, 3, 6, 10, 15.
     checkAll "prefix partials are reusable independent values" [
         structuralEquals [inc 41, inc 0, inc ((0 - 1) ), p1 2 3 4 5 6, p2 3 4 5 6] [42, 1, 0, 21, 21],
         structuralEquals [p3 4 5 6, p4 5 6, p5 6, p5 0, p5 100] [21, 21, 21, 15, 115],
@@ -347,19 +341,16 @@ curriedArityLadderCase () =
         p1 2 3 4 5 6 == p5 6
     ]
 
-    // The same ladder over strings, booleans and floats. blend3 a b c = a*b+c,
-    // so blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps the 2.0 factor.
+    // The same ladder over strings, booleans and floats: blend3 a b c = a*b+c, so
+    // blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps its 2.0 factor.
     checkAll "currying is not integer-specific" [
         structuralEquals [tag3 "a" "b" "c", (tag3 "a") "b" "c", (tag3 "a" "b") "c"] ["abc", "abc", "abc"],
         structuralEquals [openTag "x" ">", openTag "" ">", openTag "abc" "", tag3 "" "" ""] ["<x>", "<>", "<abc", ""],
         length (openTag "x" ">") == 3,
-        all3 true true true,
-        !(all3 true true false),
-        !(all3 false true true),
-        !(all3 true false true),
-        bothTrue true true,
-        !(bothTrue true false),
-        !(bothTrue false false),
+        answersHold (\c => all3 true true c) [true, false] [true, false],
+        answersHold (\a => all3 a false true) [true, false] [false, false],
+        answersHold (\a => bothTrue a true) [true] [true],
+        answersHold (\a => bothTrue a false) [true, false] [false, false],
         structuralEquals [blend3 2.0 3.0 1.0, blend3 2.0 0.0 1.0, blend3 0.0 9.0 4.5] [7.0, 1.0, 4.5],
         structuralEquals [scaled 3.0 1.0, scaled 0.5 0.0] [7.0, 1.0],
         scaled 3.0 1.0 != blend3 2.0 3.0 2.0
@@ -373,12 +364,10 @@ applyCurried f a b = f a b
     comma list on both the head and the call site [FLAVOR-ML-TUPLE]. *)
 applyFlat (f, a, b) = f (a, b)
 
-(** [FLAVOR-ML-FN]: "Lambdas follow the same split: `\x y => body` is curried and
-    `\(x, y) => body` is flat." Nothing in the corpus exercised the curried
-    lambda head, so this case pins it: a curried lambda must behave exactly like
-    the explicit nested form `\x => \y => body`, must partially apply, and must
-    stay distinguishable from the flat head, which takes one tuple and does not
-    partially apply. *)
+(** [FLAVOR-ML-FN]: "`\x y => body` is curried and `\(x, y) => body` is flat."
+    A curried lambda must behave exactly like the nested form `\x => \y => body`,
+    partially apply, and stay distinguishable from the flat head, which takes one
+    tuple and does not partially apply. *)
 lambdaCurryingCase () =
     curriedAdd = \x y => x + y 
     flatAdd = \(x, y) => x + y 
@@ -392,8 +381,7 @@ lambdaCurryingCase () =
     offset = 100
     shifted = \x => x + offset 
 
-    // Curried and flat heads compute the same sums from the same arguments;
-    // only their application shape differs.
+    // Curried and flat heads compute the same sums; only application differs.
     checkAll "curried and flat lambda heads split as specified" [
         structuralEquals [curriedAdd 3 4, (curriedAdd 3) 4, curriedAdd 0 0, curriedAdd 0 9] [7, 7, 0, 9],
         structuralEquals [curriedAdd 9 0, curriedAdd 5 ((0 - 5) ), flatAdd (3, 4), flatAdd (0, 0)] [9, 0, 7, 0],
@@ -470,13 +458,12 @@ holdsFields record sensor value depth valid =
     record.sensor == sensor && record.value == value && record.depth == depth && record.valid == valid
 
 (** [FLAVOR-ML-RECORD]: an uppercase head is construction and lowers to
-    `Expr::TypeConstructor`; a lowercase inline head is a non-destructive record
-    update and lowers to `Expr::Update`. "Non-destructive" is the load-bearing
-    word, so every derived record below is checked field by field AND the source
-    is re-read afterwards — a destructive update would pass the derived checks
-    and only fail the source ones. The headless brace literal
-    [FLAVOR-ML-RECORD-ANON] is deliberately absent: the spec marks it not
-    implemented and pins its rejection in src/osprey/examples/failscompilation/. *)
+    `Expr::TypeConstructor`; a lowercase inline head is a non-destructive update
+    lowering to `Expr::Update`. "Non-destructive" is load-bearing, so every
+    derived record is checked field by field AND its source re-read — a
+    destructive update would pass the derived checks and fail the source ones.
+    The headless brace literal [FLAVOR-ML-RECORD-ANON] is absent by design: the
+    spec marks it unimplemented and pins its rejection in failscompilation/. *)
 recordLayoutAndUpdateCase () =
     inlineBuilt = Reading(sensor = "north", value = 1.5, depth = 3, valid = true)
     renamed = inlineBuilt(sensor = "south")
@@ -557,9 +544,9 @@ type Level =
         marker : string
     Flat
 
-(** Adjacent clauses whose first column is refutable form one function by cases
-    [FLAVOR-ML-CLAUSES]; the parenthesised constructor pattern is the clause-head
-    spelling [FLAVOR-ML-PATTERN-GROUP]. *)
+(** Adjacent refutable-first-column clauses form one function by cases
+    [FLAVOR-ML-CLAUSES], with the parenthesised constructor pattern as the
+    clause-head spelling [FLAVOR-ML-PATTERN-GROUP]. *)
 describeLevel (Deep marker rank) = "deep:${marker}:${rank}"
 describeLevel (Shallow marker) = "shallow:${marker}"
 describeLevel (Flat) = "flat"
@@ -608,13 +595,12 @@ readAt xs i =
         Success value => "at ${i} = ${value}"
         Error _message => "miss ${i}"
 
-(** ML's selection forms all lower to `Expr::Match` — indented match arms,
-    adjacent equational clauses, and list patterns alike [FLAVOR-ML-MATCH],
-    [FLAVOR-ML-CLAUSES]. This case drives each of them across its own boundary
-    inputs: every variant of a three-way union, a payload binder set against its
-    like-named field, every literal clause plus the wildcard that follows them,
-    and the empty / singleton / pair / longer list shapes on both sides of the
-    32-element-free head-tail split. *)
+(** ML's selection forms all lower to `Expr::Match` — indented arms, adjacent
+    equational clauses and list patterns alike [FLAVOR-ML-MATCH],
+    [FLAVOR-ML-CLAUSES]. This case drives each over its boundary inputs: every
+    variant of a three-way union, a binder set against its like-named field,
+    every literal clause plus the wildcard after them, and the empty / singleton
+    / pair / longer list shapes. *)
 matchLayoutAndClausesCase () =
     deep = Deep(marker = "north", rank = 7)
     shallow = Shallow(marker = "south")
@@ -680,10 +666,9 @@ matchLayoutAndClausesCase () =
         !(contains (readAt nums 3) "=")
     ]
 
-(** An indented body is a block whose preceding lines are statements and whose
-    last line is its value [FLAVOR-ML-BLOCK]. Blank and comment-only lines do not
-    affect layout [FLAVOR-ML-LAYOUT], and block comments nest
-    [FLAVOR-ML-COMMENTS]. The result is 3n + 1. *)
+(** An indented body is a block of statements whose last line is its value
+    [FLAVOR-ML-BLOCK]; blank and comment-only lines do not affect layout
+    [FLAVOR-ML-LAYOUT] and block comments nest [FLAVOR-ML-COMMENTS]. 3n + 1. *)
 staged n =
     doubled = n + n 
 
@@ -698,14 +683,13 @@ spread a b = (a
     + b
     )
 
-(** Layout and interpolation are the two places where ML's surface differs from
-    Default without any AST difference to show for it [FLAVOR-BOUNDARY]. This
-    case pins both: an indented block evaluates to its last line, a
-    parenthesised expression survives being split across lines, an interpolation
-    hole holds a juxtaposed call, and a checked integer operation left inside a
-    hole renders arithmetic directly — `${3 + 5}` is `8`
-    ([ARITH-CHECKED]). Collection literals and indexing round out the boundary
-    inputs: first index, last index, one past the end, and a missing key. *)
+(** Layout and interpolation are where ML's surface differs from Default with
+    no AST difference to show for it [FLAVOR-BOUNDARY]. This case pins both: an
+    indented block evaluates to its last line, a parenthesised expression
+    survives a line split, an interpolation hole holds a juxtaposed call, and a
+    checked operation inside a hole renders directly — `${3 + 5}` is `8`
+    ([ARITH-CHECKED]). Indexing rounds out the inputs: first, last, past the end,
+    and a missing key. *)
 layoutAndInterpolationCase () =
     xs = [3, 5, 8, 13]
     prices = ["apple" => 2, "banana" => 3]
