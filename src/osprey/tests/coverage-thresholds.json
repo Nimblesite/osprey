@@ -199,6 +199,12 @@
       "fiber_runtime": {
         "language": "c"
       },
+      "fiber_channels": {
+        "language": "c"
+      },
+      "fiber_waits": {
+        "language": "c"
+      },
       "coverage_runtime": {
         "language": "c"
       },
