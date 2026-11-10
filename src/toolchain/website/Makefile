@@ -61,11 +61,8 @@ wasm: build _runtime_wasm
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
 ##      wasm binaries. Requires clang, wasm-ld, a WASI sysroot, and node.
 wasm-site: _runtime_wasm
-ifeq ($(WEBSITE_PREBUILT_COMPILER),1)
-	test -x "$(BIN)"
-else
+	@echo "==> building osprey compiler for the website wasm demo"
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-endif
 	@echo "==> compiling Osprey Data Studio website assets -> src/osprey/examples/wasm/build/"
 	@$(MKDIR) src/osprey/examples/wasm/build
 	$(wasm_studio)

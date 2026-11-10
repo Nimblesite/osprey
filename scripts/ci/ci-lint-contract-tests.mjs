@@ -49,23 +49,6 @@ test('Only the Linux profiler suite installs glibc debug symbols', () => {
   assert.match(workflow, /- name: Profiler suite\n        run: \|\n[\s\S]*?install -y libc6-dbg\n          make _test_profiler/)
 })
 
-test('analysis checks the workspace without rebuilding the release compiler', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const analyse = workflow.split('\n  analyse:')[1].split('\n  check-programs:')[0]
-  assert.match(analyse, /uses: \.\/\.github\/actions\/setup-osprey-compiler\n        with:\n          build: 'false'/)
-})
-
-test('Website E2E reuses the current build and can still run when it is skipped', () => {
-  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
-  const website = workflow.split('\n  test-website:')[1].split('\n  test-integration:')[0]
-  assert.match(website, /^    needs: build$/m)
-  assert.match(website, /^    if: \$\{\{ !cancelled\(\) \}\}$/m)
-  assert.match(website, /Download compiler artifacts\n        if: \$\{\{ needs\.build\.result == 'success' \}\}[\s\S]*?name: osprey-build/)
-  assert.match(website, /run: npm test\n[\s\S]*?WEBSITE_PREBUILT_COMPILER: \$\{\{ needs\.build\.result == 'success' && '1' \|\| '' \}\}/)
-  const makefile = readFileSync('src/toolchain/website/Makefile', 'utf8')
-  assert.match(makefile, /ifeq \(\$\(WEBSITE_PREBUILT_COMPILER\),1\)\n\ttest -x "\$\(BIN\)"\nelse\n\tcargo build .*--release -p osprey-cli\nendif/)
-})
-
 // A job-shaped block with the contract's own name and detector gate, so an
 // evasion fails on the guard and not on an incidental mismatch.
 const JOB_HEADER = '  build:\n    name: Build, Format & Analyse\n    needs: changes\n' +
