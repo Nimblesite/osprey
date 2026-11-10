@@ -258,35 +258,30 @@ int64_t osp_parse_int_strict(const char *s, int64_t *out) {
  *   sign? (digits ('.' digits?)? | '.' digits) exponent?
  * where exponent is [eE] sign? digits. Validate before strtod so its
  * whitespace, infinity/NaN, and hexadecimal extensions are not exposed. */
+/* Advances *p past a run of ASCII digits and answers how many it skipped. */
+static int skip_digits(const unsigned char **p) {
+    int n = 0;
+    while (**p >= '0' && **p <= '9') {
+        n++;
+        (*p)++;
+    }
+    return n;
+}
+
 static int osp_is_decimal_float(const char *s) {
     const unsigned char *p = (const unsigned char *)s;
     if (*p == '+' || *p == '-') p++;
-
-    int whole_digits = 0;
-    while (*p >= '0' && *p <= '9') {
-        whole_digits++;
-        p++;
-    }
-
+    int whole_digits = skip_digits(&p);
     int fractional_digits = 0;
     if (*p == '.') {
         p++;
-        while (*p >= '0' && *p <= '9') {
-            fractional_digits++;
-            p++;
-        }
+        fractional_digits = skip_digits(&p);
     }
     if (whole_digits == 0 && fractional_digits == 0) return 0;
-
     if (*p == 'e' || *p == 'E') {
         p++;
         if (*p == '+' || *p == '-') p++;
-        int exponent_digits = 0;
-        while (*p >= '0' && *p <= '9') {
-            exponent_digits++;
-            p++;
-        }
-        if (exponent_digits == 0) return 0;
+        if (skip_digits(&p) == 0) return 0;
     }
     return *p == '\0';
 }

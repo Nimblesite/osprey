@@ -149,13 +149,29 @@ static Channel *channel_of(int64_t channel_id) {
   return channel;
 }
 
-// Run a fiber on this thread's stack, holding no lock: its body can use the runtime.
-static void execute_fiber_directly(Fiber *fiber) {
+// Takes a completed fiber's still-owned result for release, at most once.
+static bool take_owned_result(Fiber *fiber, int64_t *result) {
+  if (!fiber->completed || !fiber->result_owned) {
+    return false;
+  }
+  *result = fiber->result;
+  fiber->result_owned = false;
+  return true;
+}
+
+// Restores the parent's effect handlers so perform calls work inside the
+// fiber, then runs its body.
+static void run_with_parent_handlers(Fiber *fiber) {
   if (fiber->handler_snapshot != NULL) {
     __osprey_handler_restore(fiber->handler_snapshot);
     fiber->handler_snapshot = NULL;
   }
   fiber->result = run_fiber_fn(fiber);
+}
+
+// Run a fiber on this thread's stack, holding no lock: its body can use the runtime.
+static void execute_fiber_directly(Fiber *fiber) {
+  run_with_parent_handlers(fiber);
   fiber->result_owned = true;
   fiber->completed = true;
 }
@@ -171,14 +187,7 @@ static void *fiber_thread_func(void *arg) {
   // per-fiber sample attribution [PROF-COLLECT-REGISTRY]. No-op when inactive.
   osp_prof_thread_register(fiber->id, "fiber");
 
-  // Restore parent's effect handlers so perform calls work inside the fiber
-  if (fiber->handler_snapshot != NULL) {
-    __osprey_handler_restore(fiber->handler_snapshot);
-    fiber->handler_snapshot = NULL;
-  }
-
-  // Execute the fiber function
-  fiber->result = run_fiber_fn(fiber);
+  run_with_parent_handlers(fiber);
   osp_prof_thread_unregister();
   osp_mem_baton_thread_exit();
 
@@ -384,16 +393,10 @@ void fiber_cleanup_results(void) {
     bool release_result = false;
     if (fiber->uses_thread) {
       pthread_mutex_lock(&fiber->mutex);
-      if (fiber->completed && fiber->result_owned) {
-        result = fiber->result;
-        fiber->result_owned = false;
-        release_result = true;
-      }
+      release_result = take_owned_result(fiber, &result);
       pthread_mutex_unlock(&fiber->mutex);
-    } else if (fiber->completed && fiber->result_owned) {
-      result = fiber->result;
-      fiber->result_owned = false;
-      release_result = true;
+    } else {
+      release_result = take_owned_result(fiber, &result);
     }
 
     if (release_result && fiber->result_managed) {
