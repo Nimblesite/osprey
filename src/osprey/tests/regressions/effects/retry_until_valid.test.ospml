@@ -91,9 +91,9 @@ type Attempt =
     settled : string
 
 (** Runs `acceptPositive 1` under a Retry handler feeding `candidate n` per
-    attempt, recording every issued candidate and every settled answer
-    ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]). *)
-retryRun candidate =
+    attempt, rendering every issued candidate and every settled answer through
+    `render` ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]). *)
+attemptRun (candidate, render) =
     mut calls = 0
     mut issued = ""
     mut settled = ""
@@ -102,12 +102,18 @@ retryRun candidate =
             supply n =>
                 calls := calls + 1 
                 value = candidate n
-                issued := "${issued}${toString n}:${toString value}|"
+                issued := "${issued}${render (n, value)}|"
                 answer = resume value
-                settled := "${settled}${toString n}:${toString answer}|"
+                settled := "${settled}${render (n, answer)}|"
                 answer
         acceptPositive 1
     Attempt (accepted = accepted, calls = calls, issued = issued, settled = settled)
+
+(** The default rendering of one transcript entry: attempt `n`, then value `v`. *)
+tagged (n, v) = "${toString n}:${toString v}"
+
+(** One retry run whose transcripts use the default `tagged` rendering. *)
+retryRun candidate = attemptRun (candidate, (\(n, v) => tagged (n, v)))
 
 (** True when `haystack` contains every fragment in `wanted`. *)
 carriesAll (haystack, wanted) = match wanted
@@ -607,17 +613,8 @@ type Sourced =
 (** Runs `acceptPositive 1` under a Retry handler drawing `candidate n` and
     appending `render (n, candidate)` to the trail per attempt. *)
 scriptedRun (candidate, render) =
-    mut calls = 0
-    mut trail = ""
-    accepted =
-        handle Retry
-            supply n =>
-                calls := calls + 1 
-                value = candidate n
-                trail := "${trail}${render (n, value)}|"
-                resume value
-        acceptPositive 1
-    Sourced (accepted = accepted, calls = calls, trail = trail)
+    run = attemptRun (candidate, render)
+    Sourced (accepted = run.accepted, calls = run.calls, trail = run.issued)
 
 (** [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
     only the handler's own cursor cell advances, so a lost, repeated or

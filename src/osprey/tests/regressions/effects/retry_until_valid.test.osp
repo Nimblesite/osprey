@@ -101,9 +101,9 @@ fn acceptPositive(attempt) ![Retry, Arith] = {
 type Attempt = { accepted: int, calls: int, issued: string, settled: string }
 
 /// Runs `acceptPositive(1)` under a Retry handler feeding `candidate(n)` per
-/// attempt, recording every issued candidate and every settled answer
-/// ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]).
-fn retryRun(candidate) = {
+/// attempt, rendering every issued candidate and every settled answer through
+/// `render` ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]).
+fn attemptRun(candidate, render) = {
     mut calls = 0
     mut issued = ""
     mut settled = ""
@@ -112,9 +112,9 @@ fn retryRun(candidate) = {
             supply n => {
                 calls = calls + 1 
                 let value = candidate(n)
-                issued = "${issued}${toString(n)}:${toString(value)}|"
+                issued = "${issued}${render(n, value)}|"
                 let answer = resume(value)
-                settled = "${settled}${toString(n)}:${toString(answer)}|"
+                settled = "${settled}${render(n, answer)}|"
                 answer
             }
         }
@@ -122,6 +122,12 @@ fn retryRun(candidate) = {
     }
     Attempt { accepted: accepted, calls: calls, issued: issued, settled: settled }
 }
+
+/// The default rendering of one transcript entry: attempt `n`, then value `v`.
+fn tagged(n, v) = "${toString(n)}:${toString(v)}"
+
+/// One retry run whose transcripts use the default `tagged` rendering.
+fn retryRun(candidate) = attemptRun(candidate, fn(n, v) => tagged(n, v))
 
 /// True when `haystack` contains every fragment in `wanted`.
 fn carriesAll(haystack, wanted) = match wanted {
@@ -612,20 +618,8 @@ type Sourced = { accepted: int, calls: int, trail: string }
 /// Runs `acceptPositive(1)` under a Retry handler drawing `candidate(n)` and
 /// appending `render(n, candidate)` to the trail per attempt.
 fn scriptedRun(candidate, render) = {
-    mut calls = 0
-    mut trail = ""
-    let accepted = {
-        handle Retry {
-            supply n => {
-                calls = calls + 1 
-                let value = candidate(n)
-                trail = "${trail}${render(n, value)}|"
-                resume(value)
-            }
-        }
-        acceptPositive(1)
-    }
-    Sourced { accepted: accepted, calls: calls, trail: trail }
+    let run = attemptRun(candidate, render)
+    Sourced { accepted: run.accepted, calls: run.calls, trail: run.issued }
 }
 
 /// [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
