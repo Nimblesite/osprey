@@ -390,12 +390,12 @@ impl fmt::Display for Type {
             Type::Con { name, args } if args.is_empty() => write!(f, "{name}"),
             Type::Con { name, args } => {
                 write!(f, "{name}<")?;
-                write_seq(f, args)?;
+                write_separated(f, args)?;
                 write!(f, ">")
             }
             Type::Fun { params, ret } => {
                 write!(f, "(")?;
-                write_seq(f, params)?;
+                write_separated(f, params)?;
                 write!(f, ") -> {ret}")
             }
             // A record renders STRUCTURALLY here, name or no name. This is the
@@ -406,12 +406,7 @@ impl fmt::Display for Type {
             // wants is [`render_with_holes`]'s job, not this one.
             Type::Record { fields, .. } => {
                 write!(f, "{{ ")?;
-                for (i, (k, v)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{k}: {v}")?;
-                }
+                write_separated(f, fields.iter().map(|(k, v)| format!("{k}: {v}")))?;
                 write!(f, " }}")
             }
             Type::Union { name, .. } => write!(f, "{name}"),
@@ -419,12 +414,16 @@ impl fmt::Display for Type {
     }
 }
 
-fn write_seq(f: &mut fmt::Formatter<'_>, items: &[Type]) -> fmt::Result {
-    for (i, t) in items.iter().enumerate() {
+/// Writes `items` to `f`, separated by `", "`.
+fn write_separated<T: fmt::Display>(
+    f: &mut fmt::Formatter<'_>,
+    items: impl IntoIterator<Item = T>,
+) -> fmt::Result {
+    for (i, item) in items.into_iter().enumerate() {
         if i > 0 {
             write!(f, ", ")?;
         }
-        write!(f, "{t}")?;
+        write!(f, "{item}")?;
     }
     Ok(())
 }
