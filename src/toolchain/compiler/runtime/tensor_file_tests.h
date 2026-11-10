@@ -184,25 +184,22 @@ static void t_tensor_entry_errors(const TensorLoader *t, const char *path) {
 // A file that is not a safetensors file is refused at the first byte that
 // proves it: too short for the prefix, an implausible header length, or a
 // header the file ends inside of.
+// `bytes` written to a temporary file is refused with `reason`; the file goes.
+static void refuses_file(const TensorLoader *t, const unsigned char *bytes, size_t n, const char *reason) {
+  const char *path = temp_file(bytes, n);
+  osp_io_error_clear();
+  CHECK(t->load(path, "a", 4) == NULL);
+  CHECK(strstr(osp_io_error(), reason) != NULL);
+  (void)unlink(path);
+}
+
 static void t_tensor_malformed_files(const TensorLoader *t) {
   unsigned char stub[16] = {0};
-  const char *tiny = temp_file(stub, 4);
-  osp_io_error_clear();
-  CHECK(t->load(tiny, "a", 4) == NULL);
-  CHECK(strstr(osp_io_error(), "shorter than a safetensors header prefix") != NULL);
-  (void)unlink(tiny);
+  refuses_file(t, stub, 4, "shorter than a safetensors header prefix");
   put_u64(stub, (uint64_t)200 * 1024 * 1024);
-  const char *huge = temp_file(stub, 16);
-  osp_io_error_clear();
-  CHECK(t->load(huge, "a", 4) == NULL);
-  CHECK(strstr(osp_io_error(), "header length is not plausible for safetensors") != NULL);
-  (void)unlink(huge);
+  refuses_file(t, stub, 16, "header length is not plausible for safetensors");
   put_u64(stub, 100);
-  const char *cut = temp_file(stub, 16);
-  osp_io_error_clear();
-  CHECK(t->load(cut, "a", 4) == NULL);
-  CHECK(strstr(osp_io_error(), "file ends inside the header") != NULL);
-  (void)unlink(cut);
+  refuses_file(t, stub, 16, "file ends inside the header");
   char prefix[96];
   (void)snprintf(prefix, sizeof prefix, "%s: /nonexistent/osprey/model.safetensors: ", t->op);
   osp_io_error_clear();
