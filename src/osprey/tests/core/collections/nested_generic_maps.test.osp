@@ -18,10 +18,9 @@ fn stringGroups() = mapSet(mapSet(Map(), "short", ["a", "bb"]), "long", ["three"
 fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
 fn boolGroups() = mapSet(mapSet(Map(), "left", [true, false]), "right", [false, true])
 
-fn requestIntGroups() -> Map<string, List<int>> = perform MapDepot.fetch("ints")
-fn requestStringGroups() -> Map<string, List<string>> = perform MapDepot.fetch("strings")
-fn requestFloatGroups() -> Map<string, List<float>> = perform MapDepot.fetch("floats")
-fn requestBoolGroups() -> Map<string, List<bool>> = perform MapDepot.fetch("bools")
+/// requestGroups performs one MapDepot.fetch; the leaf type T is pinned by the
+/// caller's expected map value.
+fn requestGroups<T>(key) -> Map<string, List<T>> = perform MapDepot.fetch(key)
 
 /// withDepot answers every MapDepot.fetch with `groups`, then runs the
 /// effect body `request` under that handler.
@@ -31,11 +30,6 @@ fn withDepot<T>(groups: Map<string, List<T>>, request: fn() -> Map<string, List<
     }
     request()
 }
-fn effectIntGroups() = withDepot(intGroups(), requestIntGroups)
-fn effectStringGroups() = withDepot(stringGroups(), requestStringGroups)
-fn effectFloatGroups() = withDepot(floatGroups(), requestFloatGroups)
-fn effectBoolGroups() = withDepot(boolGroups(), requestBoolGroups)
-
 fn mapListShape<T>(groups: Map<string, List<T>>) = match mapLength(groups) {
     0 => "empty"
     1 => "one:${listLength(mapValues(groups))}"
@@ -47,10 +41,10 @@ fn mapListShape<T>(groups: Map<string, List<T>>) = match mapLength(groups) {
 /// Implements [EFFECTS-GENERIC-RUNTIME], [TYPE-MAP-LOOKUP],
 /// [BUILTIN-MAP-VALUES], and [BUILTIN-LIST-GET].
 fn nestedMapEffectPipelineCase() = {
-    let ints = effectIntGroups()
-    let strings = effectStringGroups()
-    let floats = effectFloatGroups()
-    let bools = effectBoolGroups()
+    let ints = withDepot(intGroups(), fn() => requestGroups("ints"))
+    let strings = withDepot(stringGroups(), fn() => requestGroups("strings"))
+    let floats = withDepot(floatGroups(), fn() => requestGroups("floats"))
+    let bools = withDepot(boolGroups(), fn() => requestGroups("bools"))
     let listOfMaps = [ints, mapSet(ints, "high", [60, 70]), mapSet(Map(), "only", [80, 90])]
     let mapOfListsOfMaps = mapSet(Map(), "generations", listOfMaps)
     let generations = mapGet(mapOfListsOfMaps, "generations") ?: [intGroups()]
@@ -95,10 +89,7 @@ fn nestedMapEffectPipelineCase() = {
             groupIs(third, "only", [91], 99, [80, 90]),
             mapListShape(Map()) == "empty",
             mapListShape(mapSet(Map(), "one", [1])) == "one:1",
-            mapListShape(ints) == "many:2/2",
-            mapListShape(strings) == "many:2/2",
-            mapListShape(floats) == "many:2/2",
-            mapListShape(bools) == "many:2/2"
+            structuralEquals([mapListShape(ints), mapListShape(strings), mapListShape(floats), mapListShape(bools)], ["many:2/2", "many:2/2", "many:2/2", "many:2/2"])
     ])
 
     checkAll("persistent map pipelines preserve descendants and source generations", [
@@ -118,8 +109,7 @@ fn nestedMapEffectPipelineCase() = {
             listContains(mapKeys(ints), "low"),
             listContains(mapKeys(ints), "high"),
             !listContains(mapKeys(ints), "extra"),
-            listLength(listGet(mapValues(ints), 0) ?: [99]) >= 2,
-            listLength(listGet(mapValues(ints), 1) ?: [99]) >= 2
+            structuralEquals(mapList(mapValues(ints), fn(items) => listLength(items) >= 2), [true, true])
     ])
 }
 
