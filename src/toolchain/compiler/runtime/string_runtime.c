@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 #include "float_spelling.h"
+#include "utf8_encode.h"
 #include "string_runtime.h"
 #include "memory_hooks.h"
 #include "string_search.h"
@@ -407,28 +408,9 @@ char *osp_string_from_codepoint(int64_t cp) {
     if (cp <= 0 || cp > 0x10FFFF) return NULL;
     if (cp >= 0xD800 && cp <= 0xDFFF) return NULL;
     char buf[5];
-    int n;
-    if (cp <= 0x7F) {
-        buf[0] = (char)cp;
-        n = 1;
-    } else if (cp <= 0x7FF) {
-        buf[0] = (char)(0xC0 | (cp >> 6));
-        buf[1] = (char)(0x80 | (cp & 0x3F));
-        n = 2;
-    } else if (cp <= 0xFFFF) {
-        buf[0] = (char)(0xE0 | (cp >> 12));
-        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[2] = (char)(0x80 | (cp & 0x3F));
-        n = 3;
-    } else {
-        buf[0] = (char)(0xF0 | (cp >> 18));
-        buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[3] = (char)(0x80 | (cp & 0x3F));
-        n = 4;
-    }
+    size_t n = utf8_encode((unsigned long)cp, buf);
     buf[n] = '\0';
-    return osp_string_dup_internal(buf, (size_t)n);
+    return osp_string_dup_internal(buf, n);
 }
 
 /* Interpolation formatting (see string_runtime.h for why these exist). The
