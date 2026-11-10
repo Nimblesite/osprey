@@ -19,6 +19,21 @@ listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
 /// holds when the items are `wants`, in order.
 fn groupIs(groups, key, fallbackList, fallback, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, i) => ok && groupAt(groups, key, i, fallbackList, fallback) == (listGet(wants, i) ?: fallback))
 
+/// envelopesHold holds each envelope of `envelopes` beside `wants`, at `sizes`.
+fn envelopesHold(envelopes, fallback, wants, sizes) = range(0, listLength(wants)) |> fold(true, fn(ok, i) => ok && (listGet(envelopes, i) ?: fallback).metadata == (listGet(wants, i) ?: "") && length((listGet(envelopes, i) ?: fallback).metadata) == (listGet(sizes, i) ?: 0))
+
+/// rowsHold holds when every row of `matrix` reads as the row wanted for it.
+fn rowsHold(matrix, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, r) => ok && rowIs(matrix, r, [99], 99, listGet(wants, r) ?: []))
+/// matricesHold folds rowsHold over each matrix and the rows wanted for it.
+fn matricesHold(matrices, wants) = range(0, listLength(wants)) |> fold(true, fn(ok, i) => ok && rowsHold(listGet(matrices, i) ?: [], listGet(wants, i) ?: []))
+
+/// groupsHold holds each group of `payload` beside `wants`, item by item, and
+/// its stored size.
+fn groupsHold(payload, keys, wants) = range(0, listLength(keys)) |> fold(true, fn(ok, i) => ok && groupIs(payload, listGet(keys, i) ?: "", ["row"], "item", listGet(wants, i) ?: []) && listLength(mapGet(payload, listGet(keys, i) ?: "") ?: ["missing"]) == listLength(listGet(wants, i) ?: []))
+
+/// mapHolds holds when `groups` has `size` keys, all of `wants`, none `absent`.
+fn mapHolds(groups, size, wants, absent) = listLength(mapKeys(groups)) == size && allListed(mapKeys(groups), wants) && noneListed(mapKeys(groups), absent)
+
 fn auditEnvelopeMetadata(envelopes) = {
     mut transcript = ""
     handle RecordAudit {
@@ -56,19 +71,8 @@ fn genericRecordCollectionEffectCase() = {
     checkAll("Envelope<List<List<int>>,string> survives list storage and persistence", [
             listLength(envelopes) == 2,
             listLength(grown) == 3,
-            firstBack.metadata == "int-matrix",
-            secondBack.metadata == "second",
-            thirdBack.metadata == "third",
-            length(firstBack.metadata) == 10,
-            length(secondBack.metadata) == 6,
-            length(thirdBack.metadata) == 5,
-            rowIs(firstBack.payload, 0, [99], 99, [1, 2]),
-            nestedAt(firstBack.payload, 1, 0, [99], 99) == 3,
-            nestedAt(firstBack.payload, 1, 2, [99], 99) == 5,
-            rowIs(secondBack.payload, 0, [99], 99, [6, 7]),
-            nestedAt(secondBack.payload, 1, 0, [99], 99) == 8,
-            nestedAt(secondBack.payload, 1, 2, [99], 99) == 10,
-            rowIs(thirdBack.payload, 0, [99], 99, [11, 12]),
+            envelopesHold([firstBack, secondBack, thirdBack], fallback, ["int-matrix", "second", "third"], [10, 6, 5]),
+            matricesHold([firstBack.payload, secondBack.payload, thirdBack.payload], [[[1, 2], [3, 4, 5]], [[6, 7], [8, 9, 10]], [[11, 12]]]),
             (listGet(envelopes, 8) ?: fallback).metadata == "fallback",
             nestedAt((listGet(envelopes, 8) ?: fallback).payload, 0, 0, [91], 98) == 99,
             listLength(envelopes) == 2,
@@ -78,23 +82,14 @@ fn genericRecordCollectionEffectCase() = {
     ])
 
     checkAll("Envelope<Map<string,List<string>>,int> survives map storage and lookup", [
-            mapLength(envelopeMap) == 1,
-            mapContains(envelopeMap, "primary"),
-            !mapContains(envelopeMap, "missing"),
+            mapHolds(envelopeMap, 1, ["primary"], ["missing"]),
             stringBack.metadata == 17,
-            groupIs(stringBack.payload, "short", ["row"], "item", ["a", "bb"]),
-            groupIs(stringBack.payload, "long", ["row"], "item", ["three", "seven"]),
+            groupsHold(stringBack.payload, ["short", "long"], [["a", "bb"], ["three", "seven"]]),
             length(groupAt(stringBack.payload, "long", 1, ["row"], "item")) == 5,
-            listLength(mapGet(stringBack.payload, "short") ?: ["missing"]) == 2,
-            listLength(mapGet(stringBack.payload, "long") ?: ["missing"]) == 2,
             missingBack.metadata == 99,
             groupAt(missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
-            mapLength(stringBack.payload) == 2,
             mapLength(missingBack.payload) == 1,
-            listLength(mapKeys(stringBack.payload)) == 2,
-            listContains(mapKeys(stringBack.payload), "short"),
-            listContains(mapKeys(stringBack.payload), "long"),
-            !listContains(mapKeys(stringBack.payload), "missing")
+            mapHolds(stringBack.payload, 2, ["short", "long"], ["missing"])
     ])
 
     checkAll("different T and U argument lists remain isolated", [
