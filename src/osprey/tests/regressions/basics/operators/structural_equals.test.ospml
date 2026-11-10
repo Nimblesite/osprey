@@ -57,79 +57,67 @@ tree size =
 same (a, b) = structuralEquals(a, b)
 differ (a, b) = !(structuralEquals(a, b))
 
+(** One printed verdict, so a print line is a list of pairs, not boilerplate. *)
+verdict (a, b) = toString (same (a, b))
+
+(** The operands the rows build more than once. *)
+node (left, right, size) = Node(left = left, right = right, size = size)
+card (k, v) = Map() |> mapSet(k, v)
+box content = Box(content = content)
+filled act = Filled(label = "a", act = act)
+
+(** A row is only its data; the driver names it, runs it and asserts every check. *)
+row (r) = test(r.name, \() => checkAll(r.name, r.work ()))
+
 scalarsRow () =
-    print "scalars ${toString (same (3, 3))} ${toString (same (3, 4))} ${toString (same ("osprey", "osprey"))} ${toString (same (true, false))}"
-    checkAll "scalars compare by value" [
-        same (3, 3), differ (3, 4),
-        same ("osprey", "osprey"), differ ("osprey", "Osprey"),
-        same (true, true), differ (true, false),
-    ]
+    print "scalars ${verdict (3, 3)} ${verdict (3, 4)} ${verdict ("osprey", "osprey")} ${verdict (true, false)}"
+    [same (3, 3), differ (3, 4), same ("osprey", "osprey"), differ ("osprey", "Osprey"), same (true, true), differ (true, false)]
 
 floatsRow () =
-    print "float ${toString (same (0.5, 0.5))} ${toString (same (0.5, 0.25))} nan ${toString (same (sqrt (-1.0), sqrt (-1.0)))}"
-    checkAll "floats compare by value, so NaN is unequal to itself" [
-        same (0.5, 0.5), differ (0.5, 0.25), differ (sqrt (-1.0), sqrt (-1.0)),
-    ]
+    nan = sqrt (-1.0)
+    print "float ${verdict (0.5, 0.5)} ${verdict (0.5, 0.25)} nan ${verdict (nan, nan)}"
+    [same (0.5, 0.5), differ (0.5, 0.25), differ (nan, nan)]
 
 recordsRow () =
-    print "records ${toString (same (route ("home", 1), route ("home", 1)))} ${toString (same (route ("home", 1), route ("home", 2)))} pair ${toString (same (pair (1, "a"), pair (1, "a")))} ${toString (same (pair (1, "a"), pair (2, "a")))}"
-    checkAll "records compare every field; a tuple is a row" [
-        same (route ("home", 1), route ("home", 1)), differ (route ("home", 1), route ("home", 2)), differ (route ("home", 1), route ("away", 1)),
-        same (pair (1, "a"), pair (1, "a")), differ (pair (1, "a"), pair (2, "a")), differ (pair (1, "a"), pair (1, "b")),
-    ]
+    home = route ("home", 1)
+    print "records ${verdict (home, home)} ${verdict (home, route ("home", 2))} pair ${verdict (pair (1, "a"), pair (1, "a"))} ${verdict (pair (1, "a"), pair (2, "a"))}"
+    [same (home, home), differ (home, route ("home", 2)), differ (home, route ("away", 1)), same (pair (1, "a"), pair (1, "a")), differ (pair (1, "a"), pair (2, "a")), differ (pair (1, "a"), pair (1, "b"))]
 
 unionsRow () =
-    print "unions ${toString (same (Circle(r = 1.0), Circle(r = 1.0)))} ${toString (same (Circle(r = 1.0), Circle(r = 2.0)))} ${toString (same (Dot, Dot))} ${toString (same (Dot, Rect(w = 1, h = 1)))}"
-    checkAll "unions compare variant then payload" [
-        same (Circle(r = 1.0), Circle(r = 1.0)), differ (Circle(r = 1.0), Circle(r = 2.0)), differ (Circle(r = 1.0), Rect(w = 1, h = 1)),
-        same (Dot, Dot), differ (Dot, Rect(w = 1, h = 1)), same (Rect(w = 1, h = 2), Rect(w = 1, h = 2)),
-    ]
+    circle = Circle(r = 1.0)
+    print "unions ${verdict (circle, circle)} ${verdict (circle, Circle(r = 2.0))} ${verdict (Dot, Dot)} ${verdict (Dot, Rect(w = 1, h = 1))}"
+    [same (circle, circle), differ (circle, Circle(r = 2.0)), differ (circle, Rect(w = 1, h = 1)), same (Dot, Dot), differ (Dot, Rect(w = 1, h = 1)), same (Rect(w = 1, h = 2), Rect(w = 1, h = 2))]
 
 listsRow () =
-    checkAll "lists compare length then elements in order" [
-        same ([1, 2], [1, 2]), differ ([1, 2], [1, 2, 3]), differ ([1, 2], [2, 1]),
-        same ([route ("a", 1)], [route ("a", 1)]), differ ([route ("a", 1)], [route ("a", 2)]),
-        same ([[1], [2]], [[1], [2]]), differ ([[1], [2]], [[1], [3]]),
-    ]
+    [same ([1, 2], [1, 2]), differ ([1, 2], [1, 2, 3]), differ ([1, 2], [2, 1]), same ([route ("a", 1)], [route ("a", 1)]), differ ([route ("a", 1)], [route ("a", 2)]), same ([[1], [2]], [[1], [2]]), differ ([[1], [2]], [[1], [3]])]
+
 mapsRow () =
-    checkAll "maps compare keys then values" [
-        same (Map() |> mapSet("a", 1) |> mapSet("b", 2), Map() |> mapSet("a", 1) |> mapSet("b", 2)),
-        differ (Map() |> mapSet("a", 1), Map() |> mapSet("a", 2)), differ (Map() |> mapSet("a", 1), Map() |> mapSet("b", 1)),
-        differ (Map() |> mapSet("a", 1), Map() |> mapSet("a", 1) |> mapSet("b", 2)),
-    ]
+    [same (card ("a", 1) |> mapSet("b", 2), card ("a", 1) |> mapSet("b", 2)), differ (card ("a", 1), card ("a", 2)), differ (card ("a", 1), card ("b", 1)), differ (card ("a", 1), card ("a", 1) |> mapSet("b", 2))]
 
 treesRow () =
-    leftHeavy = Node(left = tree 1, right = Leaf, size = 3)
-    rightHeavy = Node(left = Leaf, right = tree 1, size = 3)
-    print "tree ${toString (same (tree 2, tree 2))} ${toString (same (tree 2, tree 3))} deep ${toString (same (leftHeavy, rightHeavy))} ${toString (same (leftHeavy, Node(left = tree 1, right = Leaf, size = 3)))}"
-    checkAll "a recursive tree compares through its own comparator" [
-        same (tree 2, tree 2), differ (tree 2, tree 3), differ (leftHeavy, rightHeavy),
-        same (leftHeavy, Node(left = tree 1, right = Leaf, size = 3)),
-    ]
+    leftHeavy = node (tree 1, Leaf, 3)
+    rightHeavy = node (Leaf, tree 1, 3)
+    print "tree ${verdict (tree 2, tree 2)} ${verdict (tree 2, tree 3)} deep ${verdict (leftHeavy, rightHeavy)} ${verdict (leftHeavy, node (tree 1, Leaf, 3))}"
+    [same (tree 2, tree 2), differ (tree 2, tree 3), differ (leftHeavy, rightHeavy), same (leftHeavy, node (tree 1, Leaf, 3))]
 
 nanRow () =
-    print "nan-in-record ${toString (same (reading ("noon", sqrt (-1.0)), reading ("noon", sqrt (-1.0))))} ${toString (same (reading ("noon", 1.0), reading ("noon", 1.0)))}"
-    checkAll "a value holding NaN is unequal to itself" [differ (reading ("noon", sqrt (-1.0)), reading ("noon", sqrt (-1.0))), same (reading ("noon", 1.0), reading ("noon", 1.0))]
+    noon = reading ("noon", sqrt (-1.0))
+    print "nan-in-record ${verdict (noon, noon)} ${verdict (reading ("noon", 1.0), reading ("noon", 1.0))}"
+    [differ (noon, noon), same (reading ("noon", 1.0), reading ("noon", 1.0))]
 
 (** A generic caller is instantiated at each call site. *)
 genericCallerRow () =
-    checkAll "a generic caller is checked at each call site" [
-        same (1, 1), differ (1, 2),
-        same (route ("a", 1), route ("a", 1)), differ (route ("a", 1), route ("a", 2)),
-    ]
+    [same (1, 1), differ (1, 2), same (route ("a", 1), route ("a", 1)), differ (route ("a", 1), route ("a", 2))]
 
 (** A constructor written straight into the call carries no published type of
     its own; its generic fields are instantiated from what is written into them. *)
 constructorOperandsRow () =
-    boxes = same (Box(content = 1), Box(content = 1))
-    slots = same (Filled(label = "a", act = Go), Filled(label = "a", act = Stop))
+    boxes = same (box 1, box 1)
+    slots = same (filled Go, filled Stop)
     print "constructors ${toString boxes} ${toString slots}"
-    checkAll "constructor operands instantiate their generic fields" [
-        same (Box(content = 1), Box(content = 1)), differ (Box(content = [1, 2]), Box(content = [2, 1])),
-        same (Filled(label = "a", act = Go), Filled(label = "a", act = Go)), differ (Filled(label = "a", act = Go), Filled(label = "a", act = Stop)),
-    ]
+    [same (box 1, box 1), differ (box [1, 2], box [2, 1]), same (filled Go, filled Go), differ (filled Go, filled Stop)]
 
-testCases [
+forEachList ([
     { name = "scalars compare by value", work = scalarsRow },
     { name = "floats compare by value, so NaN is unequal to itself", work = floatsRow },
     { name = "records compare every field; a tuple is a row", work = recordsRow },
@@ -140,4 +128,4 @@ testCases [
     { name = "a value holding NaN is unequal to itself", work = nanRow },
     { name = "a generic caller is checked at each call site", work = genericCallerRow },
     { name = "constructor operands instantiate their generic fields", work = constructorOperandsRow }
-]
+], row)
