@@ -25,12 +25,73 @@ fn exactArithmetic(work) = {
     work()
 }
 
+/// Prints `work`'s report, or `REJECTED:` and the last arithmetic fault it
+/// raised, so a whole report is published exactly or not at all.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => {
+            fault = "overflow in ${op}"
+            lhs
+        }
+        divideByZero op lhs => {
+            fault = "zero divisor in ${op}"
+            lhs
+        }
+        remainderByZero lhs => {
+            fault = "zero remainder divisor"
+            lhs
+        }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 /// The test body that runs `work` under [`exactArithmetic`], so a test case
 /// registers as `test("name", exactly(work))`.
 fn exactly(work) = fn() => exactArithmetic(work)
+
+/// Registers each `{ name, work }` case, in order, as `test(name, work)`.
+fn testCases(cases) = forEachList(cases, fn(c) => test(c.name, c.work))
+
+/// Registers each `{ name, work }` case, in order, as `test(name, exactly(work))`.
+fn exactTests(cases) = forEachList(cases, fn(c) => test(c.name, exactly(c.work)))
 
 /// Whether `text` contains every one of `parts`; true for no parts.
 fn containsAll(text, parts) = foldList(parts, true, fn(found, part) => found && contains(text, part))
 
 /// Whether `text` contains none of `parts`; true for no parts.
 fn containsNone(text, parts) = foldList(parts, true, fn(absent, part) => absent && !contains(text, part))
+
+/// Whether every item of `wanted` is an element of `xs` ([BUILTIN-LIST-CONTAINS]);
+/// true for none wanted.
+fn allListed(xs, wanted) = foldList(wanted, true, fn(found, item) => found && listContains(xs, item))
+
+/// Whether no item of `absent` is an element of `xs`; true for none absent.
+fn noneListed(xs, absent) = foldList(absent, true, fn(clear, item) => clear && !listContains(xs, item))
+
+/// Whether `f` maps `inputs` onto exactly `wants`, pair by pair.
+fn answersHold(f, inputs, wants) = structuralEquals(mapList(inputs, f), wants)
+
+/// Runs `work` under a recording Arith policy, then checks its value is
+/// `expected` and that the faults it raised, in order, spell `wantedFaults`
+/// (`overflow(op,lhs,rhs,wrapped);`, `zero(op,lhs);`, `remainder(lhs);`).
+fn faultsAre(work, expected, wantedFaults) = {
+    mut faults = ""
+    handle Arith {
+        overflow op lhs rhs wrapped => {
+            faults = faults + "overflow(${op},${lhs},${rhs},${wrapped});"
+            wrapped
+        }
+        divideByZero op lhs => {
+            faults = faults + "zero(${op},${lhs});"
+            -0.5
+        }
+        remainderByZero lhs => {
+            faults = faults + "remainder(${lhs});"
+            0
+        }
+    }
+    expect(work(), expected)
+    expect(faults, wantedFaults)
+}

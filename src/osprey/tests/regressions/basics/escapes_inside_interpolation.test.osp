@@ -21,5 +21,7 @@ fn controls() = {
     check("tab in nested text", "a\tb", "${pick("a\tb", fn(n) => n)}")
 }
 
-test("escaped quotes stay in their string", quotes)
-test("control escapes stay in their string", controls)
+testCases([
+    { name: "escaped quotes stay in their string", work: quotes },
+    { name: "control escapes stay in their string", work: controls }
+])

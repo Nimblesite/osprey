@@ -87,6 +87,8 @@ fn transcript() = "${feeding(7, Source::pair)} ${feeding(3, fn() => Stage::run(f
 
 exactArithmetic(fn() => print(transcript()))
 
-test("effects cross module boundaries to caller handlers", exactly(crossBoundaryCase))
-test("effect rows survive higher-order module calls", exactly(higherOrderCase))
-test("effects from separate modules nest independently", exactly(nestedHandlerCase))
+exactTests([
+    { name: "effects cross module boundaries to caller handlers", work: crossBoundaryCase },
+    { name: "effect rows survive higher-order module calls", work: higherOrderCase },
+    { name: "effects from separate modules nest independently", work: nestedHandlerCase }
+])

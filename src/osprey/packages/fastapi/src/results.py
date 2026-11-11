@@ -7,11 +7,7 @@ __all__ = ["bind", "mapped"]
 
 def bind(result, next):
     """Continue a successful boundary operation; propagate an error unchanged."""
-    match result:
-        case Success(value=item):
-            return next(item)
-        case Error(message=message):
-            return Error(message=message)
+    return resultAndThen(result, next)
 
 
 def mapped(result, transform):

@@ -8,13 +8,9 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// The repository root, from this crate's manifest directory.
-///
-/// Left un-canonicalized on purpose: there is no fallible call to unwrap, and
-/// the `..` components resolve the same way for every consumer here.
-pub(crate) fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
+#[path = "repo_root.rs"]
+mod repo_root_file;
+pub(crate) use repo_root_file::repo_root;
 
 /// Every file with extension `ext` under `dir`, recursively, sorted so a
 /// failure names the same program on every machine.

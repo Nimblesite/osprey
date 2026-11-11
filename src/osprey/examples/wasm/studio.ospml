@@ -1,22 +1,3 @@
-// Record faults for the entire report and reject it at the publication boundary.
-printExact work =
-    mut fault = ""
-    handle Arith
-        overflow op lhs _ _ =>
-            fault := "overflow in ${op}"
-            lhs
-        divideByZero op lhs =>
-            fault := "zero divisor in ${op}"
-            lhs
-        remainderByZero lhs =>
-            fault := "zero remainder divisor"
-            lhs
-    report = work ()
-    output = match fault
-        "" => report
-        _ => "REJECTED: ${fault}"
-    print output
-
 // Osprey Data Studio — the program behind the /wasm/ browser demo.
 // [WASM-TARGET] ML (layout) flavor. studio.osp is the Default twin; both emit
 // a byte-identical manifest (proven by the wasm differential harness).

@@ -16,6 +16,24 @@
 #define JSON_DEL_CHAR 0x7f
 #define JSON_CONTROL_ESCAPE_MAX 32
 
+// The accept-decode-release line that pins every string boundary: parse `doc`,
+// demand the string at `path` reads back as exactly `want`, free the handle.
+static void expect_string(const char *doc, const char *path, const char *want) {
+  int64_t h = parse_ok(doc);
+  expect_get(h, path, want);
+  CHECK(json_free(h) == 0);
+}
+
+// Inside a container a number the scanner cannot finish leaves the whole
+// container unparseable: wrap `src` with `fmt` (one %s), demand the snprintf
+// fits, then demand the rejection.
+static void reject_wrapped(const char *fmt, const char *src) {
+  char wrapped[32];
+  int n = snprintf(wrapped, sizeof(wrapped), fmt, src);
+  CHECK(n > 0 && (size_t)n < sizeof(wrapped));
+  CHECK(json_parse(wrapped) == ERR_MALFORMED);
+}
+
 void t_string_grammar_rejects_everything_outside_it(void) {
   static const char *const malformed[] = {
       // \u spellings that are not four hex digits.
@@ -67,11 +85,9 @@ void t_string_grammar_rejects_everything_outside_it(void) {
     char escaped[JSON_CONTROL_ESCAPE_MAX];
     int n = snprintf(escaped, sizeof(escaped), "{\"k\":\"\\u%04x\"}", ch);
     CHECK(n > 0 && (size_t)n < sizeof(escaped));
-    int64_t accepted = parse_ok(escaped);
     char want[] = "?";
     want[0] = (char)ch;
-    expect_get(accepted, "k", want);
-    CHECK(json_free(accepted) == 0);
+    expect_string(escaped, "k", want);
   }
   // The first character taken literally is the space immediately past them,
   // and DEL is not a control character to JSON at all.
@@ -81,32 +97,21 @@ void t_string_grammar_rejects_everything_outside_it(void) {
     raw[6] = literal[i];
     char want[] = "?";
     want[0] = literal[i];
-    int64_t accepted = parse_ok(raw);
-    expect_get(accepted, "k", want);
-    CHECK(json_free(accepted) == 0);
+    expect_string(raw, "k", want);
   }
 
   // Just outside the surrogate block on both sides: ordinary characters.
-  int64_t below = parse_ok("\"\\ud7ff\"");
-  expect_get(below, "", "\xed\x9f\xbf"); // U+D7FF
-  CHECK(json_free(below) == 0);
-  int64_t above = parse_ok("\"\\ue000\"");
-  expect_get(above, "", "\xee\x80\x80"); // U+E000
-  CHECK(json_free(above) == 0);
+  expect_string("\"\\ud7ff\"", "", "\xed\x9f\xbf"); // U+D7FF
+  expect_string("\"\\ue000\"", "", "\xee\x80\x80"); // U+E000
   // Both extremes of the pair range decode to both extremes of the
   // supplementary planes -- the arithmetic, not just the acceptance.
-  int64_t lowest = parse_ok("\"\\ud800\\udc00\"");
-  expect_get(lowest, "", "\xf0\x90\x80\x80"); // U+10000
-  CHECK(json_free(lowest) == 0);
-  int64_t highest = parse_ok("\"\\udbff\\udfff\"");
-  expect_get(highest, "", "\xf4\x8f\xbf\xbf"); // U+10FFFF
-  CHECK(json_free(highest) == 0);
+  expect_string("\"\\ud800\\udc00\"", "", "\xf0\x90\x80\x80"); // U+10000
+  expect_string("\"\\udbff\\udfff\"", "", "\xf4\x8f\xbf\xbf"); // U+10FFFF
 
   // The whole escape alphabet, and nothing but: each one decodes to its own
   // byte, in a KEY as well as a value.
-  int64_t alphabet = parse_ok("{\"a\\\"b\\\\c\\/d\\bE\\fF\\nG\\rH\\tI\":1}");
-  expect_get(alphabet, "a\"b\\c/d\bE\fF\nG\rH\tI", "1");
-  CHECK(json_free(alphabet) == 0);
+  expect_string("{\"a\\\"b\\\\c\\/d\\bE\\fF\\nG\\rH\\tI\":1}",
+                "a\"b\\c/d\bE\fF\nG\rH\tI", "1");
 
   // The LITERAL path holds the same line as the escape path. JSON text is
   // UTF-8, so a raw byte sequence that is not valid UTF-8 is not a character
@@ -124,13 +129,9 @@ void t_string_grammar_rejects_everything_outside_it(void) {
                                              "\xf0\x9f\x98\x80",
                                              "\xf4\x8f\xbf\xbf"};
   for (size_t i = 0; i < sizeof(literal_want) / sizeof(literal_want[0]); i++) {
-    int64_t good = parse_ok(literal_utf8[i]);
-    expect_get(good, "k", literal_want[i]);
-    CHECK(json_free(good) == 0);
+    expect_string(literal_utf8[i], "k", literal_want[i]);
   }
-  int64_t keyed = parse_ok(literal_utf8[4]);
-  expect_get(keyed, "\xc3\xa9", "1");
-  CHECK(json_free(keyed) == 0);
+  expect_string(literal_utf8[4], "\xc3\xa9", "1");
 
   static const char *const literal_garbage[] = {
       "{\"k\":\"\x80\"}",             // a continuation byte with no lead
@@ -155,12 +156,8 @@ void t_string_grammar_rejects_everything_outside_it(void) {
   }
   // The boundary the other way: U+D7FF and U+E000 spelled literally are
   // ordinary characters, one byte either side of the surrogate block.
-  int64_t raw_below = parse_ok("{\"k\":\"\xed\x9f\xbf\"}");
-  expect_get(raw_below, "k", "\xed\x9f\xbf");
-  CHECK(json_free(raw_below) == 0);
-  int64_t raw_above = parse_ok("{\"k\":\"\xee\x80\x80\"}");
-  expect_get(raw_above, "k", "\xee\x80\x80");
-  CHECK(json_free(raw_above) == 0);
+  expect_string("{\"k\":\"\xed\x9f\xbf\"}", "k", "\xed\x9f\xbf");
+  expect_string("{\"k\":\"\xee\x80\x80\"}", "k", "\xee\x80\x80");
 
   // U+0000 is the one escape in range that is REFUSED rather than decoded.
   // Every scalar leaves this unit as a NUL-terminated C string, so accepting
@@ -176,15 +173,12 @@ void t_string_grammar_rejects_everything_outside_it(void) {
        i++) {
     CHECK(json_parse((char *)(uintptr_t)embedded_nul[i]) == ERR_MALFORMED);
   }
-  int64_t pair = parse_ok(embedded_nul[3]);
-  expect_get(pair, "", "\xf0\x90\x80\x80");
-  CHECK(json_free(pair) == 0);
+  expect_string(embedded_nul[3], "", "\xf0\x90\x80\x80");
 
   // ...and every well-formed spelling still decodes to exact UTF-8: one byte,
   // two, three, and a surrogate pair to four.
-  int64_t handle = parse_ok("{\"k\":\"\\u0041\\u00e9\\u20ac\\ud83d\\ude00\"}");
-  expect_get(handle, "k", "A\xc3\xa9\xe2\x82\xac\xf0\x9f\x98\x80");
-  CHECK(json_free(handle) == 0);
+  expect_string("{\"k\":\"\\u0041\\u00e9\\u20ac\\ud83d\\ude00\"}", "k",
+                "A\xc3\xa9\xe2\x82\xac\xf0\x9f\x98\x80");
 }
 
 // [BUILTIN-JSON-NUMBER]. A number is stored as its SOURCE TEXT and handed
@@ -200,9 +194,8 @@ void t_number_grammar(void) {
       "1e-5",   "1E-5",     "-1.5e-10", "0.0e0", "10",   "100",
       "0e00",   "1.000",    "-0.0e-0"};
   for (size_t i = 0; i < sizeof(accepted) / sizeof(accepted[0]); i++) {
-    int64_t root = parse_ok(accepted[i]);
-    expect_get(root, "", accepted[i]); // the exact source text, unrewritten
-    CHECK(json_free(root) == 0);
+    // the exact source text, unrewritten
+    expect_string(accepted[i], "", accepted[i]);
   }
 
   // Inside a container there is no trailing-garbage outcome: whatever the
@@ -211,14 +204,9 @@ void t_number_grammar(void) {
       "-",     "+1",  ".5",    "1.",   "1.e5", "1e",   "1E",
       "1e+",   "1e-", "--1",   "-.5",  "-",    "1..2", "1e5e5",
       "01",    "00",  "-01",   "1+2",  "0x10", "1_000"};
-  char wrapped[32];
   for (size_t i = 0; i < sizeof(rejected) / sizeof(rejected[0]); i++) {
-    int n = snprintf(wrapped, sizeof(wrapped), "[%s]", rejected[i]);
-    CHECK(n > 0 && (size_t)n < sizeof(wrapped));
-    CHECK(json_parse(wrapped) == ERR_MALFORMED);
-    n = snprintf(wrapped, sizeof(wrapped), "{\"k\":%s}", rejected[i]);
-    CHECK(n > 0 && (size_t)n < sizeof(wrapped));
-    CHECK(json_parse(wrapped) == ERR_MALFORMED);
+    reject_wrapped("[%s]", rejected[i]);
+    reject_wrapped("{\"k\":%s}", rejected[i]);
   }
 
   // At the ROOT the answer separates two different faults. A number that

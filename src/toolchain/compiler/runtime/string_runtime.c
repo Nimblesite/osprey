@@ -20,6 +20,7 @@
 #include <stdio.h>
 
 #include "float_spelling.h"
+#include "utf8_encode.h"
 #include "string_runtime.h"
 #include "memory_hooks.h"
 #include "string_search.h"
@@ -151,29 +152,19 @@ static char *string_case(const char *s, int (*convert)(int)) {
 char *osp_string_to_upper(const char *s) { return string_case(s, toupper); }
 char *osp_string_to_lower(const char *s) { return string_case(s, tolower); }
 
-/* One-sided ASCII trimming [BUILTIN-STRING-TRIMSTART]. */
-char *osp_string_trim_start(const char *s) {
-    if (!s) return osp_string_empty_internal();
-    size_t n = (size_t)osp_strlen(s), start = 0;
-    while (start < n && osp_is_ws_internal((unsigned char)s[start])) start++;
-    return osp_string_dup_internal(s + start, n - start);
-}
-
-/* One-sided ASCII trimming [BUILTIN-STRING-TRIMEND]. */
-char *osp_string_trim_end(const char *s) {
-    if (!s) return osp_string_empty_internal();
-    size_t len = (size_t)osp_strlen(s);
-    while (len > 0 && osp_is_ws_internal((unsigned char)s[len - 1])) len--;
-    return osp_string_dup_internal(s, len);
-}
-
-char *osp_string_trim(const char *s) {
+/* ASCII trimming [BUILTIN-STRING-TRIMSTART] [BUILTIN-STRING-TRIMEND]: each
+ * requested side is cut at its outermost non-whitespace byte. */
+static char *string_trim(const char *s, int at_start, int at_end) {
     if (!s) return osp_string_empty_internal();
     size_t end = (size_t)osp_strlen(s), start = 0;
-    while (start < end && osp_is_ws_internal((unsigned char)s[start])) start++;
-    while (end > start && osp_is_ws_internal((unsigned char)s[end - 1])) end--;
+    if (at_start) while (start < end && osp_is_ws_internal((unsigned char)s[start])) start++;
+    if (at_end) while (end > start && osp_is_ws_internal((unsigned char)s[end - 1])) end--;
     return osp_string_dup_internal(s + start, end - start);
 }
+
+char *osp_string_trim_start(const char *s) { return string_trim(s, 1, 0); }
+char *osp_string_trim_end(const char *s) { return string_trim(s, 0, 1); }
+char *osp_string_trim(const char *s) { return string_trim(s, 1, 1); }
 
 char *osp_string_reverse(const char *s) {
     if (!s) return osp_string_empty_internal();
@@ -257,35 +248,30 @@ int64_t osp_parse_int_strict(const char *s, int64_t *out) {
  *   sign? (digits ('.' digits?)? | '.' digits) exponent?
  * where exponent is [eE] sign? digits. Validate before strtod so its
  * whitespace, infinity/NaN, and hexadecimal extensions are not exposed. */
+/* Advances *p past a run of ASCII digits and answers how many it skipped. */
+static int skip_digits(const unsigned char **p) {
+    int n = 0;
+    while (**p >= '0' && **p <= '9') {
+        n++;
+        (*p)++;
+    }
+    return n;
+}
+
 static int osp_is_decimal_float(const char *s) {
     const unsigned char *p = (const unsigned char *)s;
     if (*p == '+' || *p == '-') p++;
-
-    int whole_digits = 0;
-    while (*p >= '0' && *p <= '9') {
-        whole_digits++;
-        p++;
-    }
-
+    int whole_digits = skip_digits(&p);
     int fractional_digits = 0;
     if (*p == '.') {
         p++;
-        while (*p >= '0' && *p <= '9') {
-            fractional_digits++;
-            p++;
-        }
+        fractional_digits = skip_digits(&p);
     }
     if (whole_digits == 0 && fractional_digits == 0) return 0;
-
     if (*p == 'e' || *p == 'E') {
         p++;
         if (*p == '+' || *p == '-') p++;
-        int exponent_digits = 0;
-        while (*p >= '0' && *p <= '9') {
-            exponent_digits++;
-            p++;
-        }
-        if (exponent_digits == 0) return 0;
+        if (skip_digits(&p) == 0) return 0;
     }
     return *p == '\0';
 }
@@ -354,10 +340,18 @@ int64_t osp_string_byte_length(const char *s) {
     return osp_strlen(s);
 }
 
+/* Shared cursor prologue: answers the caller's static message for a null
+ * operand or an out-of-range index, NULL when the read may proceed. */
+static const char *cursor_error(const char *s, const int64_t *out, int64_t i,
+                                const char *null_msg, const char *range_msg) {
+    if (!s || !out) return null_msg;
+    if (i < 0 || i >= osp_strlen(s)) return range_msg;
+    return NULL;
+}
+
 const char *osp_string_byte_at(const char *s, int64_t i, int64_t *out) {
-    if (!s || !out) return "byteAt: null string";
-    int64_t len = osp_strlen(s);
-    if (i < 0 || i >= len) return "byteAt: index out of range";
+    const char *err = cursor_error(s, out, i, "byteAt: null string", "byteAt: index out of range");
+    if (err) return err;
     *out = (int64_t)(unsigned char)s[i];
     return NULL;
 }
@@ -372,9 +366,9 @@ static int osp_utf8_lead_width(unsigned char b) {
 }
 
 const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *out) {
-    if (!s || !out) return "codePointAt: null string";
+    const char *err = cursor_error(s, out, byte_index, "codePointAt: null string", "codePointAt: index out of range");
+    if (err) return err;
     int64_t len = osp_strlen(s);
-    if (byte_index < 0 || byte_index >= len) return "codePointAt: index out of range";
     const unsigned char *p = (const unsigned char *)s + byte_index;
     int width = osp_utf8_lead_width(p[0]);
     if (width == 0) return "codePointAt: invalid UTF-8 lead byte";
@@ -407,28 +401,9 @@ char *osp_string_from_codepoint(int64_t cp) {
     if (cp <= 0 || cp > 0x10FFFF) return NULL;
     if (cp >= 0xD800 && cp <= 0xDFFF) return NULL;
     char buf[5];
-    int n;
-    if (cp <= 0x7F) {
-        buf[0] = (char)cp;
-        n = 1;
-    } else if (cp <= 0x7FF) {
-        buf[0] = (char)(0xC0 | (cp >> 6));
-        buf[1] = (char)(0x80 | (cp & 0x3F));
-        n = 2;
-    } else if (cp <= 0xFFFF) {
-        buf[0] = (char)(0xE0 | (cp >> 12));
-        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[2] = (char)(0x80 | (cp & 0x3F));
-        n = 3;
-    } else {
-        buf[0] = (char)(0xF0 | (cp >> 18));
-        buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[3] = (char)(0x80 | (cp & 0x3F));
-        n = 4;
-    }
+    size_t n = utf8_encode((unsigned long)cp, buf);
     buf[n] = '\0';
-    return osp_string_dup_internal(buf, (size_t)n);
+    return osp_string_dup_internal(buf, n);
 }
 
 /* Interpolation formatting (see string_runtime.h for why these exist). The

@@ -54,171 +54,53 @@ type LetteringCase =
     anchor : int
     weight : float
 
-rectCase (c) =
-    match Scenes::rect (c.x, c.y, c.w, c.h, c.angle, c.color, c.depth)
-        ui::Rect x y w h angle color depth =>
-            expect (x, c.x)
-            expect (y, c.y)
-            expect (w, c.w)
-            expect (h, c.h)
-            expect (angle, c.angle)
-            expect (color, c.color)
-            expect (depth, c.depth)
-        _ => expect (false, true)
+// One soft assertion per field a case lists: the round trip must hand every one back,
+// so a builder's whole value must equal the value its arguments spell out.
+sameShape (built, want) = expect (structuralEquals (built, want), true)
 
-discCase (c) =
-    match Scenes::disc (c.x, c.y, c.radius, c.color, c.depth)
-        ui::Disc x y radius color depth =>
-            expect (x, c.x)
-            expect (y, c.y)
-            expect (radius, c.radius)
-            expect (color, c.color)
-            expect (depth, c.depth)
-        _ => expect (false, true)
+// A built value and the record it must equal, so no case checks fewer fields than it lists.
+rectCase (c) = sameShape (Scenes::rect (c.x, c.y, c.w, c.h, c.angle, c.color, c.depth), ui::Rect(x = c.x, y = c.y, w = c.w, h = c.h, angle = c.angle, color = c.color, depth = c.depth))
 
-stripCase (c) =
-    match Scenes::strip (c.points, c.color, c.stroke, c.depth)
-        ui::Strip actual color stroke depth =>
-            expect (length actual, length c.points)
-            forEachList (range (0, length c.points) |> toList, \i =>
-                expect (listGet actual i ?: 999.0, listGet c.points i ?: 999.0))
-            expect (color, c.color)
-            expect (stroke, c.stroke)
-            expect (depth, c.depth)
-        _ => expect (false, true)
+discCase (c) = sameShape (Scenes::disc (c.x, c.y, c.radius, c.color, c.depth), ui::Disc(x = c.x, y = c.y, radius = c.radius, color = c.color, depth = c.depth))
 
-spriteCase (c) =
-    match Scenes::sprite (c.sprite, c.x, c.y, c.w, c.h, c.angle, c.color, c.depth)
-        ui::Sprite sprite x y w h angle color depth =>
-            expect (sprite, c.sprite)
-            expect (x, c.x)
-            expect (y, c.y)
-            expect (w, c.w)
-            expect (h, c.h)
-            expect (angle, c.angle)
-            expect (color, c.color)
-            expect (depth, c.depth)
-        _ => expect (false, true)
+stripCase (c) = sameShape (Scenes::strip (c.points, c.color, c.stroke, c.depth), ui::Strip(points = c.points, color = c.color, stroke = c.stroke, depth = c.depth))
 
-glyphsCase (c) =
-    match Scenes::glyphs (c.text, c.x, c.y, c.size, c.color, c.depth)
-        ui::Glyphs text x y size color depth =>
-            expect (text, c.text)
-            expect (x, c.x)
-            expect (y, c.y)
-            expect (size, c.size)
-            expect (color, c.color)
-            expect (depth, c.depth)
-        _ => expect (false, true)
+spriteCase (c) = sameShape (Scenes::sprite (c.sprite, c.x, c.y, c.w, c.h, c.angle, c.color, c.depth), ui::Sprite(sprite = c.sprite, x = c.x, y = c.y, w = c.w, h = c.h, angle = c.angle, color = c.color, depth = c.depth))
 
-letteringCase (c) =
-    match Scenes::lettering (c.text, c.x, c.y, c.size, c.color, c.anchor, c.weight, c.depth)
-        ui::Lettering text x y size color depth anchor weight =>
-            expect (text, c.text)
-            expect (x, c.x)
-            expect (y, c.y)
-            expect (size, c.size)
-            expect (color, c.color)
-            expect (depth, c.depth)
-            expect (anchor, c.anchor)
-            expect (weight, c.weight)
-        _ => expect (false, true)
+glyphsCase (c) = sameShape (Scenes::glyphs (c.text, c.x, c.y, c.size, c.color, c.depth), ui::Glyphs(glyphs = c.text, x = c.x, y = c.y, size = c.size, color = c.color, depth = c.depth))
+
+letteringCase (c) = sameShape (Scenes::lettering (c.text, c.x, c.y, c.size, c.color, c.anchor, c.weight, c.depth), ui::Lettering(letters = c.text, x = c.x, y = c.y, size = c.size, color = c.color, depth = c.depth, anchor = c.anchor, weight = c.weight))
 
 // A paint's channels, and the two shapes they arrive in.
-rgbCase (paint, r, g, b, a) =
-    match paint
-        ui::Rgb red green blue alpha =>
-            expect (red, r)
-            expect (green, g)
-            expect (blue, b)
-            expect (alpha, a)
-        _ => expect (false, true)
+rgbCase (paint, r, g, b, a) = sameShape (paint, ui::Rgb(red = r, green = g, blue = b, alpha = a))
 
-hslCase (paint, hue, saturation, lightness, opacity) =
-    match paint
-        ui::Hsl hueAt saturationAt lightnessAt opacityAt =>
-            expect (hueAt, hue)
-            expect (saturationAt, saturation)
-            expect (lightnessAt, lightness)
-            expect (opacityAt, opacity)
-        _ => expect (false, true)
+hslCase (paint, hue, saturation, lightness, opacity) = sameShape (paint, ui::Hsl(hue = hue, saturation = saturation, lightness = lightness, opacity = opacity))
 
-// The fields a composed scene leaves untouched, read off a shape taken from its list.
-rectShape (shape, w, h, color, depth) =
-    match shape
-        ui::Rect _ _ wide high _ tint layer =>
-            expect (wide, w)
-            expect (high, h)
-            expect (tint, color)
-            expect (layer, depth)
-        _ => expect (false, true)
-
-spriteShape (shape, index, color, depth) =
-    match shape
-        ui::Sprite sprite _ _ _ _ _ tint layer =>
-            expect (sprite, index)
-            expect (tint, color)
-            expect (layer, depth)
-        _ => expect (false, true)
+// A shape taken from a composed scene's list, with the stand-in a miss falls back to.
+shapeAt (shapes, index) = listGet shapes index ?: Scenes::disc (0.0, 0.0, 0.0, 0, 0)
 
 pathShape (shape, steps, moveX, moveY, scale, depth) =
     match shape
         ui::Path actual _ _ movedX movedY scaled layer =>
-            expect (length actual, steps)
-            expect (movedX, moveX)
-            expect (movedY, moveY)
-            expect (scaled, scale)
-            expect (layer, depth)
+            expectAll [length actual == steps, movedX == moveX, movedY == moveY, scaled == scale, layer == depth]
         _ => expect (false, true)
 
-test ("rect preserves geometry rotation colour and depth including negative and zero values", \() =>
-    forEachList ([RectCase(x = 1.25, y = 0.0 - 2.5, w = 30.0, h = 40.5, angle = 0.75, color = 16909060, depth = 0 - 3), RectCase(x = 0.0, y = 0.0, w = 0.0, h = 0.0 - 10.0, angle = 0.0 - 1.5, color = 0, depth = 99)], rectCase))
-
-test ("disc preserves centres arbitrary radii colours and layer order", \() =>
-    forEachList ([DiscCase(x = 5.0, y = 6.5, radius = 7.25, color = 4278190335, depth = 2), DiscCase(x = 0.0 - 1.0, y = 0.0, radius = 0.0, color = 0, depth = 0 - 8)], discCase)
-    third = Scenes::disc (1.0, 2.0, 0.0 - 3.0, 9, 0)
-    match third
-        ui::Disc _ _ radius _ _ => expect (radius, 0.0 - 3.0)
-        _ => expect (false, true))
-
-test ("strip retains every point verbatim even for empty odd and negative coordinate lists", \() =>
-    forEachList ([StripCase(points = [0.0, 0.0, 10.5, 0.0 - 4.25, 0.0 - 2.0, 8.0], color = 16711808, stroke = 2.75, depth = 4), StripCase(points = [], color = 0, stroke = 0.0, depth = 0 - 1), StripCase(points = [1.0, 0.0 - 2.0, 3.0], color = 7, stroke = 0.0 - 0.5, depth = 8)], stripCase))
-
-test ("sprite preserves atlas indices transforms dimensions tints and negative layers", \() =>
-    forEachList ([SpriteCase(sprite = 3, x = 8.0, y = 9.0, w = 2.0, h = 1.0, angle = 0.25, color = 4294967295, depth = 4), SpriteCase(sprite = 0 - 1, x = 0.0 - 8.5, y = 0.0, w = 0.0, h = 0.0 - 2.0, angle = 0.0 - 3.5, color = 0, depth = 0 - 7)], spriteCase))
-
-test ("glyphs keeps empty and Unicode text baseline size colour and depth unchanged", \() =>
-    forEachList ([GlyphsCase(text = "Score λ\n3", x = 1.5, y = 0.0 - 2.0, size = 12.25, color = 255, depth = 3), GlyphsCase(text = "", x = 0.0, y = 0.0, size = 0.0, color = 0, depth = 0 - 2)], glyphsCase)
-    negative = Scenes::glyphs ("backwards", 1.0, 2.0, 0.0 - 12.0, 9, 0)
-    match negative
-        ui::Glyphs _ _ _ size _ _ => expect (size, 0.0 - 12.0)
-        _ => expect (false, true))
-
-test ("lettering preserves text metrics anchors weights colour and depth for all anchoring modes", \() =>
-    forEachList ([LetteringCase(text = "Heading", x = 10.0, y = 20.0, size = 18.0, color = 16711680, depth = 1, anchor = 0, weight = 400.0), LetteringCase(text = " centred ", x = 0.0 - 1.0, y = 2.5, size = 0.0, color = 0, depth = 0 - 4, anchor = 1, weight = 600.0)], letteringCase)
-    right = Scenes::lettering ("", 0.0, 0.0, 0.0 - 1.0, 9, 2, 0.0 - 100.0, 8)
-    match right
-        ui::Lettering text _ _ size _ depth anchor weight =>
-            expect (text, "")
-            expect (size, 0.0 - 1.0)
-            expect (depth, 8)
-            expect (anchor, 2)
-            expect (weight, 0.0 - 100.0)
-        _ => expect (false, true))
+testCases [
+    { name = "rect preserves geometry rotation colour and depth including negative and zero values", work = \() => forEachList ([RectCase(x = 1.25, y = 0.0 - 2.5, w = 30.0, h = 40.5, angle = 0.75, color = 16909060, depth = 0 - 3), RectCase(x = 0.0, y = 0.0, w = 0.0, h = 0.0 - 10.0, angle = 0.0 - 1.5, color = 0, depth = 99)], rectCase) },
+    { name = "disc preserves centres arbitrary radii colours and layer order", work = \() => forEachList ([DiscCase(x = 5.0, y = 6.5, radius = 7.25, color = 4278190335, depth = 2), DiscCase(x = 0.0 - 1.0, y = 0.0, radius = 0.0, color = 0, depth = 0 - 8), DiscCase(x = 1.0, y = 2.0, radius = 0.0 - 3.0, color = 9, depth = 0)], discCase) },
+    { name = "strip retains every point verbatim even for empty odd and negative coordinate lists", work = \() => forEachList ([StripCase(points = [0.0, 0.0, 10.5, 0.0 - 4.25, 0.0 - 2.0, 8.0], color = 16711808, stroke = 2.75, depth = 4), StripCase(points = [], color = 0, stroke = 0.0, depth = 0 - 1), StripCase(points = [1.0, 0.0 - 2.0, 3.0], color = 7, stroke = 0.0 - 0.5, depth = 8)], stripCase) },
+    { name = "sprite preserves atlas indices transforms dimensions tints and negative layers", work = \() => forEachList ([SpriteCase(sprite = 3, x = 8.0, y = 9.0, w = 2.0, h = 1.0, angle = 0.25, color = 4294967295, depth = 4), SpriteCase(sprite = 0 - 1, x = 0.0 - 8.5, y = 0.0, w = 0.0, h = 0.0 - 2.0, angle = 0.0 - 3.5, color = 0, depth = 0 - 7)], spriteCase) },
+    { name = "glyphs keeps empty and Unicode text baseline size colour and depth unchanged", work = \() => forEachList ([GlyphsCase(text = "Score λ\n3", x = 1.5, y = 0.0 - 2.0, size = 12.25, color = 255, depth = 3), GlyphsCase(text = "", x = 0.0, y = 0.0, size = 0.0, color = 0, depth = 0 - 2), GlyphsCase(text = "backwards", x = 1.0, y = 2.0, size = 0.0 - 12.0, color = 9, depth = 0)], glyphsCase) },
+    { name = "lettering preserves text metrics anchors weights colour and depth for all anchoring modes", work = \() => forEachList ([LetteringCase(text = "Heading", x = 10.0, y = 20.0, size = 18.0, color = 16711680, depth = 1, anchor = 0, weight = 400.0), LetteringCase(text = " centred ", x = 0.0 - 1.0, y = 2.5, size = 0.0, color = 0, depth = 0 - 4, anchor = 1, weight = 600.0), LetteringCase(text = "", x = 0.0, y = 0.0, size = 0.0 - 1.0, color = 9, depth = 8, anchor = 2, weight = 0.0 - 100.0)], letteringCase) }
+]
 
 test ("path builds an untransformed filled path and preserves empty steps solid paint and depth", \() =>
     tint = Scenes::hex (16711680, 0.5)
     shape = Scenes::path ([], ui::Fill, ui::Solid(tint = tint), 0 - 6)
+    pathShape (shape, 0, 0.0, 0.0, 1.0, 0 - 6)
     match shape
-        ui::Path steps outline paint moveX moveY scale depth =>
-            expect (length steps, 0)
-            expect (moveX, 0.0)
-            expect (moveY, 0.0)
-            expect (scale, 1.0)
-            expect (depth, 0 - 6)
-            match outline
-                ui::Fill => expect (true, true)
-                _ => expect (false, true)
+        ui::Path _ outline paint _ _ _ _ =>
+            expect (outline == ui::Fill, true)
             match paint
                 ui::Solid actual => rgbCase (actual, 1.0, 0.0, 0.0, 0.5)
                 _ => expect (false, true)
@@ -233,7 +115,7 @@ test ("moved retains every path command line style gradient stop and explicit tr
     shape = Scenes::moved (steps, outline, gradient, 10.0, 0.0 - 200.0, 0.9, 7)
     match shape
         ui::Path actual actualOutline paint moveX moveY scale depth =>
-            expect (length actual, 7)
+            expectAll [length actual == 7, moveX == 10.0, moveY == 0.0 - 200.0, scale == 0.9, depth == 7]
             match listGet actual 0 ?: ui::Close
                 ui::MoveTo toX toY =>
                     expect (toX, 1.0)
@@ -241,47 +123,23 @@ test ("moved retains every path command line style gradient stop and explicit tr
                 _ => expect (false, true)
             match listGet actual 4 ?: ui::Close
                 ui::ArcTo radiusX radiusY rotation large sweep toX toY =>
-                    expect (radiusX, 30.0)
-                    expect (radiusY, 20.0)
-                    expect (rotation, 45.0)
-                    expect (large, false)
-                    expect (sweep, true)
-                    expect (toX, 9.0)
-                    expect (toY, 9.0)
+                    expectAll [radiusX == 30.0, radiusY == 20.0, rotation == 45.0, !large, sweep, toX == 9.0, toY == 9.0]
                 _ => expect (false, true)
-            match listGet actual 6 ?: ui::MoveTo(toX = 999.0, toY = 999.0)
-                ui::Close => expect (true, true)
-                _ => expect (false, true)
-            expect (moveX, 10.0)
-            expect (moveY, 0.0 - 200.0)
-            expect (scale, 0.9)
-            expect (depth, 7)
+            expect ((listGet actual 6 ?: ui::MoveTo(toX = 999.0, toY = 999.0)) == ui::Close, true)
             match actualOutline
                 ui::Line width dashes bevel =>
-                    expect (width, 1.5)
-                    expect (length dashes, 3)
+                    expectAll [width == 1.5, length dashes == 3, bevel]
                     forEachList ([{ at = 0, want = 4.0 }, { at = 1, want = 0.0 }, { at = 2, want = 0.0 - 2.0 }], \c => expect (listGet dashes c.at ?: 999.0, c.want))
-                    expect (bevel, true)
                 _ => expect (false, true)
             match paint
                 ui::Linear angle actualFrom fromAt actualTo toAt oklab =>
-                    expect (angle, 0.0 - 180.0)
-                    expect (fromAt, 0.0)
-                    expect (toAt, 1.0)
-                    expect (oklab, true)
+                    expectAll [angle == 0.0 - 180.0, fromAt == 0.0, toAt == 1.0, oklab]
                     rgbCase (actualFrom, 0.0, 1.0, 0.0, 1.0)
                     hslCase (actualTo, 180.0, 0.5, 0.25, 0.75)
                 _ => expect (false, true)
         _ => expect (false, true)
     empty = Scenes::moved ([], ui::Fill, ui::Solid(tint = Scenes::hex (0, 0.0)), 0.0, 0.0, 0.0, 0)
-    match empty
-        ui::Path steps _ _ moveX moveY scale depth =>
-            expect (length steps, 0)
-            expect (moveX, 0.0)
-            expect (moveY, 0.0)
-            expect (scale, 0.0)
-            expect (depth, 0)
-        _ => expect (false, true))
+    pathShape (empty, 0, 0.0, 0.0, 0.0, 0))
 
 test ("rgba and rgb pack channels as RRGGBBAA including boundaries and signed inputs", \() =>
     forEachList ([{ r = 1, g = 2, b = 3, a = 4, want = 16909060 }, { r = 0, g = 0, b = 0, a = 0, want = 0 }, { r = 255, g = 255, b = 255, a = 255, want = 4294967295 }, { r = 255, g = 0, b = 0, a = 255, want = 4278190335 }, { r = 0, g = 255, b = 0, a = 128, want = 16711808 }, { r = 0, g = 0, b = 255, a = 1, want = 65281 }, { r = 0 - 1, g = 0, b = 0, a = 0, want = 0 - 16777216 }, { r = 0, g = 0, b = 0, a = 0 - 1, want = 0 - 1 }], \c => expect (Scenes::rgba (c.r, c.g, c.b, c.a), c.want))
@@ -291,13 +149,7 @@ test ("hex splits packed RGB into exact endpoint channels and retains every alph
     forEachList ([{ color = 16711680, alpha = 0.5, red = 1.0, green = 0.0, blue = 0.0 }, { color = 65280, alpha = 1.0, red = 0.0, green = 1.0, blue = 0.0 }, { color = 255, alpha = 0.0, red = 0.0, green = 0.0, blue = 1.0 }, { color = 16777215, alpha = 0.0 - 0.25, red = 1.0, green = 1.0, blue = 1.0 }, { color = 0, alpha = 2.0, red = 0.0, green = 0.0, blue = 0.0 }], \c => rgbCase (Scenes::hex (c.color, c.alpha), c.red, c.green, c.blue, c.alpha))
     match Scenes::hex (3368601, 0.75)
         ui::Rgb r g b a =>
-            expect (r > 0.19, true)
-            expect (r < 0.21, true)
-            expect (g > 0.39, true)
-            expect (g < 0.41, true)
-            expect (b > 0.59, true)
-            expect (b < 0.61, true)
-            expect (a, 0.75)
+            expectAll [r > 0.19, r < 0.21, g > 0.39, g < 0.41, b > 0.59, b < 0.61, a == 0.75]
         _ => expect (false, true))
 
 test ("a complete layered scene composes every primitive and colour builder without rewriting data", \() =>
@@ -308,6 +160,6 @@ test ("a complete layered scene composes every primitive and colour builder with
     expect (length shapes, 7)
     expect (background, 255)
     expect (foreground, 4294967168)
-    rectShape (listGet shapes 0 ?: Scenes::disc (0.0, 0.0, 0.0, 0, 0), 100.0, 100.0, background, 0)
-    spriteShape (listGet shapes 3 ?: Scenes::disc (0.0, 0.0, 0.0, 0, 0), 0, foreground, 3)
-    pathShape (listGet shapes 6 ?: Scenes::disc (0.0, 0.0, 0.0, 0, 0), 2, 0.0, 0.0, 1.0, 6))
+    sameShape (shapeAt (shapes, 0), ui::Rect(x = 0.0, y = 0.0, w = 100.0, h = 100.0, angle = 0.0, color = background, depth = 0))
+    sameShape (shapeAt (shapes, 3), ui::Sprite(sprite = 0, x = 25.0, y = 25.0, w = 10.0, h = 10.0, angle = 0.0, color = foreground, depth = 3))
+    sameShape (shapeAt (shapes, 6), ui::Path(steps = [ui::MoveTo(toX = 0.0, toY = 0.0), ui::Close], outline = ui::Fill, paint = paint, moveX = 0.0, moveY = 0.0, scale = 1.0, depth = 6)))

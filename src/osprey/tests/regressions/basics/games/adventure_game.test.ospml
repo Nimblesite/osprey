@@ -3,9 +3,7 @@
 // 🎮 Epic Text Adventure Game Engine (Fixed)
 // Showcasing Osprey's pattern matching, safe arithmetic, and storytelling capabilities
 
-print "🏰 Welcome to the Mystical Castle Adventure! 🏰"
-print "You stand before an ancient castle shrouded in mystery..."
-print ""
+print "🏰 Welcome to the Mystical Castle Adventure! 🏰\nYou stand before an ancient castle shrouded in mystery...\n"
 
 (** Game state and inventory system *)
 playerHealth = 100
@@ -90,14 +88,11 @@ hasRoomKey roomNumber =
         _ => 0  // No key in other rooms
 
 // Game progression and storytelling
-print "⚔️  Your Quest Begins! ⚔️"
-print ""
+print "⚔️  Your Quest Begins! ⚔️\n"
 
 currentLevel = calculatePlayerLevel monstersDefeated
 playerTitle = getPlayerTitle currentLevel
-print "You are ${playerTitle} (Level ${currentLevel})"
-print "Health: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰"
-print ""
+print "You are ${playerTitle} (Level ${currentLevel})\nHealth: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰\n"
 
 // Explore multiple rooms
 print "🚪 Room 1: You enter ${exploreRoom 1}"
@@ -105,8 +100,7 @@ room1Gold = getRoomTreasure 1
 newGold1 =
     exactArithmetic (\() =>
         goldCoins + room1Gold)
-print "You find ${room1Gold} gold coins! Total: ${newGold1} 💰"
-print ""
+print "You find ${room1Gold} gold coins! Total: ${newGold1} 💰\n"
 
 print "📚 Room 2: You discover ${exploreRoom 2}"
 room2Gold = getRoomTreasure 2
@@ -114,20 +108,14 @@ newGold2 =
     exactArithmetic (\() =>
         newGold1 + room2Gold)
 foundKey = hasRoomKey 2
-print "You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️"
-print "Total gold: ${newGold2} 💰"
-print ""
+print "You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️\nTotal gold: ${newGold2} 💰\n"
 
 print "⚔️  Room 3: You enter ${exploreRoom 3}"
 foundSword = hasRoomWeapon 3
-print "You acquire a gleaming sword! ⚔️"
-print "Your combat prowess has increased dramatically!"
-print ""
+print "You acquire a gleaming sword! ⚔️\nYour combat prowess has increased dramatically!\n"
 
 // Epic battle sequence
-print "🐉 BOSS BATTLE: Ancient Dragon Appears! 🐉"
-print "The ground trembles as a massive dragon blocks your path!"
-print ""
+print "🐉 BOSS BATTLE: Ancient Dragon Appears! 🐉\nThe ground trembles as a massive dragon blocks your path!\n"
 
 enemyType = 3  // Dragon
 enemyName = getEnemyName enemyType
@@ -141,39 +129,31 @@ playerDamage =
         1 => weaponDamage
         _ => barehandDamage
 
-print "Enemy: ${enemyName}"
-print "Enemy Health: ${enemyHealth} ❤️"
-print "Your attack power: ${playerDamage} ⚔️"
-print ""
+print "Enemy: ${enemyName}\nEnemy Health: ${enemyHealth} ❤️\nYour attack power: ${playerDamage} ⚔️\n"
 
 (** Battle calculation *)
 totalDamageNeeded = enemyHealth
 attacksNeeded = exactArithmetic (\() =>
     totalDamageNeeded / playerDamage)
 
-print "⚡ BATTLE COMMENCES! ⚡"
-print "You need ${attacksNeeded} successful attacks to defeat the ${enemyName}!"
-print ""
+print "⚡ BATTLE COMMENCES! ⚡\nYou need ${attacksNeeded} successful attacks to defeat the ${enemyName}!\n"
 
 // Simulate battle rounds
 print "🥊 Round 1: You strike for ${playerDamage} damage!"
 remainingHealth1 =
     exactArithmetic (\() =>
         enemyHealth - playerDamage)
-print "Dragon health remaining: ${remainingHealth1}"
-print ""
+print "Dragon health remaining: ${remainingHealth1}\n"
 
 print "🥊 Round 2: Another powerful blow for ${playerDamage} damage!"
 remainingHealth2 =
     exactArithmetic (\() =>
         remainingHealth1 - playerDamage)
-print "Dragon health remaining: ${remainingHealth2}"
-print ""
+print "Dragon health remaining: ${remainingHealth2}\n"
 
 print "🥊 FINAL ROUND: You deliver the finishing blow!"
 finalDamage = remainingHealth2
-print "Critical hit for ${finalDamage} damage!"
-print ""
+print "Critical hit for ${finalDamage} damage!\n"
 
 (** Victory and level progression *)
 newMonstersDefeated =
@@ -186,16 +166,9 @@ finalGold =
     exactArithmetic (\() =>
         newGold2 + victoryGold)
 
-print "🎉 VICTORY! 🎉"
-print "The ${enemyName} has been defeated!"
-print "You gain ${victoryGold} gold coins as reward!"
-print "Total gold: ${finalGold} 💰"
-print ""
+print "🎉 VICTORY! 🎉\nThe ${enemyName} has been defeated!\nYou gain ${victoryGold} gold coins as reward!\nTotal gold: ${finalGold} 💰\n"
 
-print "📈 LEVEL UP! 📈"
-print "Previous: ${playerTitle} (Level ${currentLevel})"
-print "New: ${newTitle} (Level ${newLevel})"
-print ""
+print "📈 LEVEL UP! 📈\nPrevious: ${playerTitle} (Level ${currentLevel})\nNew: ${newTitle} (Level ${newLevel})\n"
 
 // Final treasure room
 print "🏆 Room 4: You enter ${exploreRoom 4}"
@@ -203,23 +176,10 @@ treasureGold = getRoomTreasure 4
 ultimateGold =
     exactArithmetic (\() =>
         finalGold + treasureGold)
-print "You discover the legendary treasure chest!"
-print "Inside: ${treasureGold} gold coins! 💎"
-print "Your final wealth: ${ultimateGold} 💰"
-print ""
+print "You discover the legendary treasure chest!\nInside: ${treasureGold} gold coins! 💎\nYour final wealth: ${ultimateGold} 💰\n"
 
 // Epic conclusion
-print "🎭 QUEST COMPLETE! 🎭"
-print "Congratulations, ${newTitle}!"
-print "You have conquered the Mystical Castle!"
-print "Final Stats:"
-print "  - Level: ${newLevel}"
-print "  - Monsters Defeated: ${newMonstersDefeated}"
-print "  - Gold Collected: ${ultimateGold} 💰"
-print "  - Artifacts: Sword ⚔️ & Key 🗝️"
-print ""
-print "🌟 Your legend will be remembered forever! 🌟"
-print "Thanks for playing the Osprey Adventure Game!"
+print "🎭 QUEST COMPLETE! 🎭\nCongratulations, ${newTitle}!\nYou have conquered the Mystical Castle!\nFinal Stats:\n  - Level: ${newLevel}\n  - Monsters Defeated: ${newMonstersDefeated}\n  - Gold Collected: ${ultimateGold} 💰\n  - Artifacts: Sword ⚔️ & Key 🗝️\n\n🌟 Your legend will be remembered forever! 🌟\nThanks for playing the Osprey Adventure Game!"
 
 (** Replay the quest calculations and check every helper's branch table. *)
 adventureGameCase () =
@@ -233,46 +193,16 @@ adventureGameCase () =
     questBalance = (rewardBalance + getRoomTreasure 4) 
 
     checkAll "adventure branch tables" [
-        calculatePlayerLevel 0 == 1,
-        calculatePlayerLevel 1 == 2,
-        calculatePlayerLevel 2 == 3,
-        calculatePlayerLevel 3 == 4,
-        calculatePlayerLevel 9 == 5,
-        getPlayerTitle 1 == "Novice Adventurer",
-        getPlayerTitle 2 == "Brave Explorer",
-        getPlayerTitle 3 == "Seasoned Warrior",
-        getPlayerTitle 4 == "Legendary Hero",
-        getPlayerTitle 5 == "Master of the Realm",
-        calculateWeaponDamage 1 == 25,
-        calculateWeaponDamage 2 == 40,
-        calculateWeaponDamage 3 == 60,
-        calculateWeaponDamage 9 == 15,
-        calculateBarehandDamage 1 == 10,
-        calculateBarehandDamage 2 == 15,
-        calculateBarehandDamage 3 == 20,
-        calculateBarehandDamage 9 == 5,
-        getEnemyName 1 == "Sneaky Goblin",
-        getEnemyName 2 == "Fierce Orc",
-        getEnemyName 3 == "Ancient Dragon",
-        getEnemyName 9 == "Mysterious Shadow",
-        getEnemyHealth 1 == 30,
-        getEnemyHealth 2 == 60,
-        getEnemyHealth 3 == 120,
-        getEnemyHealth 9 == 25
+        answersHold (calculatePlayerLevel, [0, 1, 2, 3, 9], [1, 2, 3, 4, 5]),
+        answersHold (getPlayerTitle, [1, 2, 3, 4, 5], ["Novice Adventurer", "Brave Explorer", "Seasoned Warrior", "Legendary Hero", "Master of the Realm"]),
+        answersHold (calculateWeaponDamage, [1, 2, 3, 9], [25, 40, 60, 15]),
+        answersHold (calculateBarehandDamage, [1, 2, 3, 9], [10, 15, 20, 5]),
+        answersHold (getEnemyName, [1, 2, 3, 9], ["Sneaky Goblin", "Fierce Orc", "Ancient Dragon", "Mysterious Shadow"]),
+        answersHold (getEnemyHealth, [1, 2, 3, 9], [30, 60, 120, 25])
     ]
     checkAll "adventure room and quest state" [
-        exploreRoom 1 == "the Grand Entrance Hall with marble columns",
-        exploreRoom 2 == "a dusty Library filled with ancient tomes",
-        exploreRoom 3 == "the Armory containing gleaming weapons",
-        exploreRoom 4 == "the Treasure Chamber sparkling with gold",
-        exploreRoom 5 == "the Throne Room where shadows dance",
-        exploreRoom 9 == "a mysterious room filled with swirling mist",
-        getRoomTreasure 1 == 10,
-        getRoomTreasure 2 == 25,
-        getRoomTreasure 3 == 0,
-        getRoomTreasure 4 == 100,
-        getRoomTreasure 5 == 50,
-        getRoomTreasure 9 == 5,
+        answersHold (exploreRoom, [1, 2, 3, 4, 5, 9], ["the Grand Entrance Hall with marble columns", "a dusty Library filled with ancient tomes", "the Armory containing gleaming weapons", "the Treasure Chamber sparkling with gold", "the Throne Room where shadows dance", "a mysterious room filled with swirling mist"]),
+        answersHold (getRoomTreasure, [1, 2, 3, 4, 5, 9], [10, 25, 0, 100, 50, 5]),
         hasRoomWeapon 3 == 1,
         hasRoomWeapon 2 == 0,
         hasRoomKey 2 == 1,

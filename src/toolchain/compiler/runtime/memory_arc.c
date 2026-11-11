@@ -71,41 +71,7 @@ static OspArcHdr *arc_hdr(void *body) {
 #endif
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
-static _Thread_local int g_lock_owned;
-#ifndef __wasi__
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
-
-// Adaptive locking. The heap starts single-threaded, where the sole thread
-// already serializes every ARC op and the mutex is pure overhead — binarytrees
-// alone runs ~19.6M locked allocs, and pthread_mutex_* was ~17% of its wall.
-// osp_mem_notify_multithreaded() (memory_hooks.h) trips this flag from the
-// fiber runtime *before* the pthread_create that first lets a second thread
-// reach the heap. pthread_create is a full barrier, so that write
-// happens-before the child's first ARC op: no unlocked op can ever race a
-// locked one. The flag is monotonic (fibers never un-share the heap), and it
-// only ever transitions in a single-threaded context, so within one ARC op
-// arc_lock and arc_unlock always observe the same value.
-static atomic_int g_arc_mt = 0;
-
-static inline void arc_lock(void) {
-  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
-    pthread_mutex_lock(&g_lock);
-    g_lock_owned = 1;
-  }
-}
-
-static inline void arc_unlock(void) {
-  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
-    g_lock_owned = 0;
-    pthread_mutex_unlock(&g_lock);
-  }
-}
-
-#else
-// WASI preview1 has one execution thread; thread creation is rejected upstream.
-static inline void arc_lock(void) {}
-static inline void arc_unlock(void) {}
-#endif
+#include "heap_lock.h"
 
 #include "memory_arc_registry.h"
 
@@ -179,7 +145,7 @@ static void arc_dump_object(const void *body, const OspArcHdr *h) {
 static void arc_report_leaks(void) {
   const char *level = getenv("OSPREY_ARC_DEBUG");
   int dump = (level != NULL && level[0] >= '2');
-  arc_lock();
+  heap_lock();
   size_t count[OSP_ARC_NKINDS] = {0};
   size_t bytes[OSP_ARC_NKINDS] = {0};
   // Immortals (rc<0 — the empty-list singleton and friends) are excluded from
@@ -215,7 +181,7 @@ static void arc_report_leaks(void) {
               count[k], bytes[k]);
     }
   }
-  arc_unlock();
+  heap_unlock();
 }
 
 static void arc_arm_debug(void) {
@@ -246,18 +212,18 @@ void osp_mem_set_finalizer(void (*finalize)(void *body)) {
 // lazy arming on first alloc left an allocation-free program with no report,
 // which the corpus harness cannot tell apart from a crashed exit path.
 void osp_mem_boot(void) {
-  arc_lock();
+  heap_lock();
   arc_arm_debug();
-  arc_unlock();
+  heap_unlock();
 }
 
 // [FAILURE-EXPLICIT] Validate the ABI's i64 size before a 32-bit size_t cast.
 static void *arc_request(int64_t size, int64_t meta, int zero) {
   if (OSP_ARC_KIND(meta) == OSP_MEM_STRING && size < 1) return NULL;
-  arc_lock();
+  heap_lock();
   void *p = size > 0 && (uint64_t)size > OSP_ARC_MAX_BODY
       ? NULL : arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, zero);
-  arc_unlock();
+  heap_unlock();
   return p;
 }
 
@@ -267,11 +233,11 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 // [PORT-STRING-NUL-OWNERSHIP] The live allocation header owns the exact length.
 int64_t osp_mem_string_length(const void *p) {
   int held = g_lock_owned;
-  if (!held) arc_lock();
+  if (!held) heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)p);
   int64_t length = h && h->rc != 0 && OSP_ARC_KIND(h->meta) == OSP_MEM_STRING && h->size
                        ? (int64_t)h->size - 1 : -1;
-  if (!held) arc_unlock();
+  if (!held) heap_unlock();
   return length;
 }
 
@@ -288,14 +254,14 @@ void osp_retain(void *o) {
   if (!o) {
     return;
   }
-  arc_lock();
+  heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)o);
   if (h) {
     if (h->rc >= 0) {
       h->rc++;
     }
   }
-  arc_unlock();
+  heap_unlock();
 }
 
 // drop — probe first; on rc==0 run the kind/mask worklist drop.
@@ -303,14 +269,14 @@ void osp_release(void *o) {
   if (!o) {
     return;
   }
-  arc_lock();
+  heap_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)o);
   if (h) {
     if (h->rc > 0 && --h->rc == 0) {
       arc_release_zero_locked((uintptr_t)o);
     }
   }
-  arc_unlock();
+  heap_unlock();
 }
 
 // Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
@@ -332,7 +298,7 @@ void osp_mem_notify_multithreaded(void) {
   fputs("FATAL: WASI ARC cannot activate multiple threads\n", stderr);
   abort();
 #else
-  atomic_store_explicit(&g_arc_mt, 1, memory_order_release);
+  atomic_store_explicit(&g_heap_mt, 1, memory_order_release);
 #endif
 }
 
@@ -343,12 +309,12 @@ void osp_mem_immortal(void *p) {
   if (!p) {
     return;
   }
-  arc_lock();
+  heap_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     arc_hdr((void *)*slot)->rc = -1;
   }
-  arc_unlock();
+  heap_unlock();
 }
 
 // Stamp a shim-allocated object with its layout word (memory_hooks.h): the
@@ -358,12 +324,12 @@ void osp_mem_set_layout(void *p, int64_t meta) {
   if (!p) {
     return;
   }
-  arc_lock();
+  heap_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     arc_hdr((void *)*slot)->meta = meta;
   }
-  arc_unlock();
+  heap_unlock();
 }
 
 // --- diagnostics (read-only snapshots; not on any hot path) ------------------
@@ -374,16 +340,16 @@ void osp_mem_set_layout(void *p, int64_t meta) {
 // unarmed they read 0 — callers must arm before allocating. [GC-ARC-PERCEUS]
 
 size_t osp_arc_live_objects(void) {
-  arc_lock();
+  heap_lock();
   size_t n = g_live;
-  arc_unlock();
+  heap_unlock();
   return n;
 }
 
 size_t osp_arc_live_bytes(void) {
-  arc_lock();
+  heap_lock();
   size_t n = g_live_bytes;
-  arc_unlock();
+  heap_unlock();
   return n;
 }
 
@@ -391,18 +357,18 @@ size_t osp_arc_live_bytes(void) {
 // spike between two checkpoints is visible here even when the live set has
 // already returned to baseline — the property RSS assertions cannot give.
 size_t osp_arc_peak_bytes(void) {
-  arc_lock();
+  heap_lock();
   size_t n = g_peak_bytes;
-  arc_unlock();
+  heap_unlock();
   return n;
 }
 
 // Restart the high-water mark at the current live level, so a test can bound
 // one workload's transient footprint in isolation.
 void osp_arc_peak_reset(void) {
-  arc_lock();
+  heap_lock();
   g_peak_bytes = g_live_bytes;
-  arc_unlock();
+  heap_unlock();
 }
 
 // --- allocation shim for the C runtime units (osp_arc_shim.h)
@@ -413,9 +379,9 @@ void osp_arc_peak_reset(void) {
 // dup/drop).
 
 void *osp_arc_malloc(size_t size) {
-  arc_lock();
+  heap_lock();
   void *p = arc_alloc_locked(size, OSP_MEM_RAW, 1);
-  arc_unlock();
+  heap_unlock();
   return p;
 }
 
@@ -439,7 +405,7 @@ void osp_arc_free(void *p) {
   if (!p) {
     return;
   }
-  arc_lock();
+  heap_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     // Immortals (rc < 0 — the empty-list singleton and friends) are returned
@@ -448,10 +414,10 @@ void osp_arc_free(void *p) {
     if (arc_hdr((void *)*slot)->rc >= 0) {
       arc_release_zero_locked(*slot);
     }
-    arc_unlock();
+    heap_unlock();
     return;
   }
-  arc_unlock();
+  heap_unlock();
   free(p);
 }
 
@@ -459,11 +425,11 @@ void *osp_arc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_arc_malloc(size);
   }
-  arc_lock();
+  heap_lock();
   uintptr_t *slot = arc_find((uintptr_t)old);
   size_t oldsize = slot ? arc_hdr((void *)*slot)->size : 0;
   int64_t oldmeta = slot ? arc_hdr((void *)*slot)->meta : (int64_t)OSP_MEM_RAW;
-  arc_unlock();
+  heap_unlock();
   if (!slot) {
     return realloc(old, size); // foreign block: libc owns it
   }
@@ -478,12 +444,12 @@ void *osp_arc_realloc(void *old, size_t size) {
   // block takes the layout word, and old's is stripped to RAW before it dies —
   // otherwise its drop walk would decrement children the copy never dup'd.
   osp_mem_set_layout(p, oldmeta);
-  arc_lock();
+  heap_lock();
   uintptr_t *dead = arc_find((uintptr_t)old);
   if (dead) {
     arc_hdr((void *)*dead)->meta = (int64_t)OSP_MEM_RAW;
   }
-  arc_unlock();
+  heap_unlock();
   osp_arc_free(old);
   return p;
 }

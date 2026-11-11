@@ -27,16 +27,11 @@ void run_file_server_tests(void); // file_server_tests.c
 enum { ECHO_PORT = 18092, ECHO_CLOSE_PORT = 18093 };
 
 static char LOOPBACK[] = "127.0.0.1";
+static char NOWHERE[] = "no-such-host.invalid";
 
 // ---------------------------------------------------------------------------
 // A self-signed certificate, generated in memory, so the suite needs no files.
 // ---------------------------------------------------------------------------
-
-static EVP_PKEY *test_key(void) {
-  EVP_PKEY *key = EVP_RSA_gen(2048);
-  assert(key != NULL);
-  return key;
-}
 
 static X509 *self_signed(EVP_PKEY *key) {
   X509 *x = X509_new();
@@ -166,61 +161,59 @@ static void echo_stop(EchoServer *server) {
 // TLS session tests [FFI-TLS-CLIENT]
 // ---------------------------------------------------------------------------
 
-static void test_tls_echo_round_trip(void) {
-  int64_t h = osprey_tls_connect(LOOPBACK, ECHO_PORT, 2000);
+static int64_t session(int port) {
+  int64_t h = osprey_tls_connect(LOOPBACK, port, 2000);
   assert(h >= 1);
-  char hello[] = "48656c6c6f"; // "Hello"
-  assert(osprey_tls_send_hex(h, hello) == 0);
+  return h;
+}
+
+static void close_session(int64_t h) { assert(osprey_tls_close(h) == 0); }
+
+// One hex write (skipped when `sent` is NULL) and one exact-count hex read,
+// both asserted; returns the status the read left behind.
+static int64_t exchange(int64_t h, char *sent, int64_t count, int64_t timeout_ms, char *want) {
+  if (sent != NULL) {
+    assert(osprey_tls_send_hex(h, sent) == 0);
+  }
+  char *got = osprey_tls_recv_hex(h, count, timeout_ms);
+  assert(strcmp(got, want) == 0);
+  return osprey_tls_status(h);
+}
+
+static void test_tls_echo_round_trip(void) {
+  int64_t h = session(ECHO_PORT);
+  assert(osprey_tls_send_hex(h, "48656c6c6f") == 0); // "Hello"
   assert(osprey_tls_status(h) == 0);
-  char *back = osprey_tls_recv_hex(h, 5, 2000);
-  assert(strcmp(back, hello) == 0);
-  assert(osprey_tls_status(h) == 0);
+  assert(exchange(h, NULL, 5, 2000, "48656c6c6f") == 0);
   // Upper-case hex is accepted on the way in and comes back lower-case.
-  char upper[] = "00FF10";
-  assert(osprey_tls_send_hex(h, upper) == 0);
-  char *lower = osprey_tls_recv_hex(h, 3, 2000);
-  assert(strcmp(lower, "00ff10") == 0);
-  assert(osprey_tls_close(h) == 0);
+  exchange(h, "00FF10", 3, 2000, "00ff10");
+  close_session(h);
   assert(osprey_tls_close(h) == -1);
   assert(osprey_tls_status(h) == -1);
 }
 
 static void test_tls_timeout_keeps_partial_bytes(void) {
-  int64_t h = osprey_tls_connect(LOOPBACK, ECHO_PORT, 2000);
-  assert(h >= 1);
-  char three[] = "010203";
-  assert(osprey_tls_send_hex(h, three) == 0);
+  int64_t h = session(ECHO_PORT);
   // Only three of five bytes can arrive: the read times out and keeps them.
-  char *partial = osprey_tls_recv_hex(h, 5, 200);
-  assert(strcmp(partial, "") == 0);
-  assert(osprey_tls_status(h) == 1);
-  char two[] = "0405";
-  assert(osprey_tls_send_hex(h, two) == 0);
-  char *whole = osprey_tls_recv_hex(h, 5, 2000);
-  assert(strcmp(whole, "0102030405") == 0);
-  assert(osprey_tls_status(h) == 0);
+  assert(exchange(h, "010203", 5, 200, "") == 1);
+  assert(exchange(h, "0405", 5, 2000, "0102030405") == 0);
   // A nothing-pending timeout is still a timeout, not a failure.
-  assert(strcmp(osprey_tls_recv_hex(h, 1, 100), "") == 0);
-  assert(osprey_tls_status(h) == 1);
-  assert(osprey_tls_close(h) == 0);
+  assert(exchange(h, NULL, 1, 100, "") == 1);
+  close_session(h);
 }
 
 static void test_tls_argument_rejections(void) {
-  int64_t h = osprey_tls_connect(LOOPBACK, ECHO_PORT, 2000);
-  assert(h >= 1);
-  char odd[] = "abc";
-  char bad[] = "zz";
-  char ok[] = "ab";
-  assert(osprey_tls_send_hex(h, odd) == -2);
-  assert(osprey_tls_send_hex(h, bad) == -2);
+  int64_t h = session(ECHO_PORT);
+  assert(osprey_tls_send_hex(h, "abc") == -2);  // odd length
+  assert(osprey_tls_send_hex(h, "zz") == -2);   // not hex
   assert(osprey_tls_send_hex(h, NULL) == -1);
-  assert(osprey_tls_send_hex(999, ok) == -1);
-  assert(osprey_tls_send_hex(0, ok) == -1);
-  assert(strcmp(osprey_tls_recv_hex(999, 1, 100), "") == 0);
-  assert(strcmp(osprey_tls_recv_hex(h, 0, 100), "") == 0);
+  assert(osprey_tls_send_hex(999, "ab") == -1); // no such session
+  assert(osprey_tls_send_hex(0, "ab") == -1);
+  exchange(999, NULL, 1, 100, "");
+  exchange(h, NULL, 0, 100, "");
   assert(osprey_tls_status(h) == 3);
-  assert(strcmp(osprey_tls_recv_hex(h, 1 << 30, 100), "") == 0);
-  assert(osprey_tls_close(h) == 0);
+  exchange(h, NULL, 1 << 30, 100, "");
+  close_session(h);
   assert(osprey_tls_connect(NULL, ECHO_PORT, 100) == -1);
   assert(osprey_tls_connect("", ECHO_PORT, 100) == -1);
   assert(osprey_tls_connect(LOOPBACK, 65536, 100) == -1);
@@ -228,19 +221,15 @@ static void test_tls_argument_rejections(void) {
   assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, -1) == -1);
   assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 60001) == -1);
   assert(osprey_tls_connect(LOOPBACK, 0, 100) == -1);
-  char nowhere[] = "no-such-host.invalid";
-  assert(osprey_tls_connect(nowhere, ECHO_PORT, 100) == -2);
+  assert(osprey_tls_connect(NOWHERE, ECHO_PORT, 100) == -2);
   // Nothing listens on this port: the dial is refused.
   assert(osprey_tls_connect(LOOPBACK, 18099, 500) == -4);
 }
 
 static void test_tls_peer_close_is_reported(void) {
-  int64_t h = osprey_tls_connect(LOOPBACK, ECHO_CLOSE_PORT, 2000);
-  assert(h >= 1);
-  char *none = osprey_tls_recv_hex(h, 4, 2000);
-  assert(strcmp(none, "") == 0);
-  assert(osprey_tls_status(h) == 2);
-  assert(osprey_tls_close(h) == 0);
+  int64_t h = session(ECHO_CLOSE_PORT);
+  assert(exchange(h, NULL, 4, 2000, "") == 2);
+  close_session(h);
 }
 
 static void test_tls_plain_listener_fails_handshake(void) {
@@ -264,15 +253,15 @@ static void test_tls_slots_are_bounded(void) {
 static void test_local_address(void) {
   char *address = osprey_net_local_address(LOOPBACK, 9);
   assert(strcmp(address, LOOPBACK) == 0);
-  char nowhere[] = "no-such-host.invalid";
-  assert(strcmp(osprey_net_local_address(nowhere, 9), "") == 0);
+  assert(strcmp(osprey_net_local_address(NOWHERE, 9), "") == 0);
   assert(strcmp(osprey_net_local_address(NULL, 9), "") == 0);
   assert(strcmp(osprey_net_local_address(LOOPBACK, 0), "") == 0);
 }
 
 int main(void) {
   signal(SIGPIPE, SIG_IGN);
-  EVP_PKEY *key = test_key();
+  EVP_PKEY *key = EVP_RSA_gen(2048);
+  assert(key != NULL);
   X509 *cert = self_signed(key);
   EchoServer echo;
   EchoServer closer;

@@ -78,6 +78,8 @@ exactArithmetic = handler Arith
         check "unexpected arithmetic overflow" "none" op
         wrapped
 
-test "arithmetic composes across calls" (exactly additionCase)
-test "pipes and lambdas compose" (exactly pipelineCase)
-test "matching, interpolation and calls interact" (exactly patternCase)
+exactTests [
+    { name = "arithmetic composes across calls", work = additionCase },
+    { name = "pipes and lambdas compose", work = pipelineCase },
+    { name = "matching, interpolation and calls interact", work = patternCase }
+]

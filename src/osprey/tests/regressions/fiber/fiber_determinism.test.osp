@@ -45,10 +45,7 @@ fn determinismDemo() = {
     handle Logger {
         info msg => print("ℹ️  " + msg)
     }
-    print("=== Fiber Determinism Test ===")
-    print("This test executes tasks in spawn order 1, 2, 3")
-    print("The deterministic run scheduler preserves that order")
-    print("")
+    print("=== Fiber Determinism Test ===\nThis test executes tasks in spawn order 1, 2, 3\nThe deterministic run scheduler preserves that order\n")
 
     /// Spawn all three fibers, then await in spawn order.
     let fiber1 = spawn processTask1()

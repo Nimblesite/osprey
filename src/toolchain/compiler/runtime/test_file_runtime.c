@@ -25,6 +25,13 @@ extern char *read_file(char *filename);
 
 #define FILE_ROUNDTRIP_PATH "/tmp/osprey_file_runtime_test.txt"
 
+// A file that was written must read back byte for byte as the same text.
+static void assert_file_holds(const char *path, const char *want) {
+  char *back = read_file((char *)(uintptr_t)path);
+  assert(back != NULL && strcmp(back, want) == 0);
+  free(back);
+}
+
 // write_file returns the byte count written; read_file returns the exact
 // content; NULLs and missing files are rejected; rewrites truncate.
 void test_file_roundtrip(void) {
@@ -36,17 +43,11 @@ void test_file_roundtrip(void) {
   const char *content = "line one\nline two\n";
   assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t)content) ==
          (int64_t)strlen(content));
-  char *back = read_file(FILE_ROUNDTRIP_PATH);
-  assert(back != NULL && strcmp(back, content) == 0);
-  free(back);
+  assert_file_holds(FILE_ROUNDTRIP_PATH, content);
   assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t) "short") == 5);
-  char *truncated = read_file(FILE_ROUNDTRIP_PATH);
-  assert(truncated != NULL && strcmp(truncated, "short") == 0); // truncated
-  free(truncated);
+  assert_file_holds(FILE_ROUNDTRIP_PATH, "short"); // truncated
   assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t) "") == 0);
-  char *emptied = read_file(FILE_ROUNDTRIP_PATH);
-  assert(emptied != NULL && emptied[0] == '\0');
-  free(emptied);
+  assert_file_holds(FILE_ROUNDTRIP_PATH, ""); // emptied
   assert(remove(FILE_ROUNDTRIP_PATH) == 0);
 }
 
@@ -142,6 +143,29 @@ static void test_write_file_reports_a_failed_flush(void) {
 #endif
 }
 
+// The reason must name the operation AND the exact path that failed, not just
+// carry the right sentence for some other file.
+// A NULL op or subject is named, never dereferenced.
+static void assert_reason_names(const char *op, const char *path,
+                                const char *why) {
+  char prefix[256];
+  (void)snprintf(prefix, sizeof prefix, "%s: %s: ", op == NULL ? "io" : op,
+                 path == NULL ? "<null path>" : path);
+  const char *reason = osp_io_error();
+  assert(reason != NULL && "a failure owes a reason");
+  assert(strncmp(reason, prefix, strlen(prefix)) == 0 &&
+         "the reason is op, then subject, then why");
+  assert(strstr(reason, why) != NULL &&
+         "the reason spells out the cause instead of printing an errno number");
+}
+
+// Set a failure and check the sentence it left behind in one step.
+static void assert_reason_is(const char *op, const char *path, int err,
+                             const char *why) {
+  osp_io_error_set(op, path, err);
+  assert_reason_names(op, path, why);
+}
+
 // Every failure carries WHY it failed, and every success retires the previous
 // reason so a later failure cannot inherit a stale one. Without this the
 // Osprey-level `Error { message }` reads the placeholder word "Error" and a
@@ -150,16 +174,10 @@ static void test_write_file_reports_a_failed_flush(void) {
 static void test_io_failures_report_a_truthful_reason(void) {
   const char *missing = "/nonexistent_osprey_dir/nope.txt";
   assert(read_file((char *)(uintptr_t)missing) == NULL);
-  const char *read_reason = osp_io_error();
-  assert(read_reason != NULL);
-  assert(strstr(read_reason, missing) != NULL);
-  assert(strstr(read_reason, strerror(ENOENT)) != NULL);
+  assert_reason_names("readFile", missing, strerror(ENOENT));
 
   assert(write_file((char *)(uintptr_t)missing, (char *)(uintptr_t) "x") == -2);
-  const char *write_reason = osp_io_error();
-  assert(write_reason != NULL);
-  assert(strstr(write_reason, missing) != NULL);
-  assert(strstr(write_reason, strerror(ENOENT)) != NULL);
+  assert_reason_names("writeFile", missing, strerror(ENOENT));
 
   // A success must leave nothing behind for the next failure to borrow.
   assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t) "ok") == 2);
@@ -213,12 +231,8 @@ static void test_error_channel_shapes(void) {
          "take on a cleared channel yields nothing to own");
 
   osp_io_error_set("readFile", subject, ENOENT);
+  assert_reason_names("readFile", subject, strerror(ENOENT));
   const char *reason = osp_io_error();
-  assert(reason != NULL);
-  assert(strncmp(reason, read_prefix, strlen(read_prefix)) == 0 &&
-         "the sentence is op, then subject, then reason");
-  assert(strstr(reason, strerror(ENOENT)) != NULL &&
-         "a real errno is spelled out, not printed as a number");
 
   // A reason must OUTLIVE the channel: `take` hands back an owned copy, so a
   // Result carrying it cannot later read whatever failed most recently.
@@ -229,8 +243,7 @@ static void test_error_channel_shapes(void) {
          "the taken copy is independent of the channel buffer");
   assert(strstr(owned, "readFile") != NULL &&
          "the taken copy still reads the failure it was taken from");
-  assert(strstr(osp_io_error(), "writeFile: /other: ") == osp_io_error());
-  assert(strstr(osp_io_error(), strerror(EACCES)) != NULL);
+  assert_reason_names("writeFile", "/other", strerror(EACCES));
   free(owned);
 
   // An errno the C library cannot name still yields text — never an empty or
@@ -253,10 +266,8 @@ static void test_error_channel_shapes(void) {
          "a cause that is not an errno is stated plainly");
 
   // NULL op and NULL subject are documented inputs, not crashes.
-  osp_io_error_set("readFile", NULL, EINVAL);
-  assert(strstr(osp_io_error(), "readFile: <null path>: ") == osp_io_error());
-  osp_io_error_set(NULL, subject, EINVAL);
-  assert(strstr(osp_io_error(), "io: /some/path: ") == osp_io_error());
+  assert_reason_is("readFile", NULL, EINVAL, strerror(EINVAL));
+  assert_reason_is(NULL, subject, EINVAL, strerror(EINVAL));
   osp_io_error_set(NULL, NULL, 0);
   assert(strcmp(osp_io_error(), "io: <null path>: unspecified failure") == 0);
 
@@ -335,14 +346,6 @@ static void nul_assert_bytes(const char *path, const char *want, size_t len) {
   assert(fclose(in) == 0);
 }
 
-// The reason must name the operation AND the exact path that failed, not just
-// carry the right sentence for some other file.
-static int nul_reason_names(const char *path, const char *reason) {
-  char prefix[256];
-  (void)snprintf(prefix, sizeof prefix, "readFile: %s: ", path);
-  return strncmp(reason, prefix, strlen(prefix)) == 0;
-}
-
 // A same-length ASCII rewrite must read back COMPLETE — the guard refuses a NUL
 // stream, but the file it refused is not poisoned, and the buffer handed back
 // is the whole text, never a prefix cut at some earlier boundary.
@@ -374,11 +377,8 @@ static void nul_assert_fixture(const char *path, const char *bytes, size_t len) 
   assert(old != NULL && strcmp(old, expected_old) == 0);
   assert(read_file((char *)(uintptr_t)path) == NULL &&
          "text containing a NUL is refused, not returned as its prefix");
+  assert_reason_names("readFile", path, NUL_SENTENCE);
   const char *reason = osp_io_error();
-  assert(reason != NULL && nul_reason_names(path, reason) &&
-         "the reason names the operation and the exact path");
-  assert(strstr(reason, NUL_SENTENCE) != NULL &&
-         "and says the text holds a NUL");
   char *owned = osp_io_error_take();
   assert(owned != NULL && strcmp(owned, reason) == 0);
   assert(strcmp(owned, expected_nul) == 0);

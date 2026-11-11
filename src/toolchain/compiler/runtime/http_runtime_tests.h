@@ -61,6 +61,8 @@ typedef struct {
   pthread_t thread;
 } ScriptedOrigin;
 
+typedef long (*origin_receive)(void *conn, char *out, size_t capacity);
+void origin_read_request_via(void *conn, origin_receive receive, char *out, size_t capacity);
 void origin_read_request(int fd, char *out, size_t capacity);
 void origin_start(ScriptedOrigin *origin, const char *reply);
 void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len);

@@ -23,16 +23,11 @@ print("Testing validation functions:")
 print(toString(notEmpty("")))
 print(toString(notEmpty("test")))
 
-print(toString(isPositive(0)))
-print(toString(isPositive(10)))
-print(toString(isValidAge(25)))
-print(toString(isValidAge(200)))
+print("${toString(isPositive(0))}\n${toString(isPositive(10))}\n${toString(isValidAge(25))}\n${toString(isValidAge(200))}")
 print(toString(isValidEmail("")))
 print(toString(isValidEmail("alice@example.com")))
 
-print(toString(isPositive(5)))
-print(toString(isPositive((0 - 5) )))
-print(toString(isPositive(0)))
+print("${toString(isPositive(5))}\n${toString(isPositive((0 - 5) ))}\n${toString(isPositive(0))}")
 
 /// Verifies every validator at its accepted values and rejected sentinels.
 fn validationPredicatesCase() = checkAll("validation predicate boundaries", [

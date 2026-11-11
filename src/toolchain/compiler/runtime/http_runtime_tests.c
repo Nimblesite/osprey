@@ -13,6 +13,24 @@
 // Port burned by test_server_handle_exhaustion (see http_server_live_tests.c).
 #define SERVER_TEST_PORT 18089
 
+// Creates a loopback server on `port` and asserts the table took it.
+static int64_t create_test_server(int64_t port) {
+  int64_t server_id = http_create_server(port, (char *)(uintptr_t) "127.0.0.1");
+  assert(server_id > 0 && "a valid loopback port must yield a server");
+  return server_id;
+}
+
+// Brings up a loopback server plus a client aimed at it, ready for requests.
+static void start_loopback(int64_t port, HttpRequestHandler handler,
+                           int64_t *server_id, int64_t *client_id) {
+  *server_id = create_test_server(port);
+  assert(http_listen(*server_id, handler) == 0 && "the server must listen");
+  char url[64];
+  snprintf(url, sizeof(url), "http://127.0.0.1:%" PRId64, port);
+  *client_id = http_create_client(url, 5000);
+  assert(*client_id > 0 && "a valid loopback URL must yield a client");
+}
+
 void test_http_create_client(void) {
   printf("Testing http_create_client...\n");
 
@@ -40,8 +58,7 @@ void test_http_create_server(void) {
   printf("Testing http_create_server...\n");
 
   // Test valid server creation
-  int64_t server_id = http_create_server(8080, "127.0.0.1");
-  assert(server_id > 0);
+  int64_t server_id = create_test_server(8080);
   printf("✅ Created server with ID: %" PRId64 "\n", server_id);
 
   // Test invalid port
@@ -63,8 +80,7 @@ void test_http_server_lifecycle(void) {
   printf("Testing HTTP server lifecycle...\n");
 
   // Create server
-  int64_t server_id = http_create_server(8082, "127.0.0.1");
-  assert(server_id > 0);
+  int64_t server_id = create_test_server(8082);
   printf("✅ Server created: %" PRId64 "\n", server_id);
 
   // Start listening
@@ -143,10 +159,35 @@ void test_response_handle_rejection(void) {
          0); // invalid client id
 }
 
+// Asserts the handle's status, body and its `name: value` header, releasing
+// the two borrowed views. The caller still owns the handle.
+static void check_response(int64_t handle, int64_t status, const char *body,
+                           const char *name, const char *value) {
+  assert(http_response_status(handle) == status);
+  char *seen_body = http_response_body(handle);
+  assert(seen_body != NULL && strcmp(seen_body, body) == 0);
+  osp_release(seen_body);
+  char *seen_header = http_response_header(handle, (char *)(uintptr_t) name);
+  assert(seen_header != NULL && strcmp(seen_header, value) == 0);
+  free(seen_header);
+}
+
 // In-process loopback exchange: a REAL server thread, a REAL client request,
 // and byte-exact status/body/header assertions through the response handle
 // accessors. Runs LAST: it exercises the full request path end to end.
 static HttpResponse g_live_response;
+
+// Fills the shared response stub that the live handlers hand back.
+static HttpResponse *live_response(int64_t status, const char *headers,
+                                   const char *partial_body) {
+  g_live_response.status = status;
+  g_live_response.headers = (char *)(uintptr_t) headers;
+  g_live_response.contentType = (char *)(uintptr_t) "text/plain";
+  g_live_response.streamFd = -1;
+  g_live_response.isComplete = true;
+  g_live_response.partialBody = (char *)(uintptr_t) partial_body;
+  return &g_live_response;
+}
 
 static HttpResponse *live_handler(char *method, char *path, char *headers,
                                   char *body) {
@@ -154,13 +195,7 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
   (void)body;
   assert(strcmp(method, "GET") == 0);
   assert(strcmp(path, "/ping") == 0);
-  g_live_response.status = 200;
-  g_live_response.headers = (char *)(uintptr_t) "X-Test: yes\r\n";
-  g_live_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_live_response.streamFd = -1;
-  g_live_response.isComplete = true;
-  g_live_response.partialBody = (char *)(uintptr_t) "pong";
-  return &g_live_response;
+  return live_response(200, "X-Test: yes\r\n", "pong");
 }
 
 #define LIVE_PORT 18085
@@ -195,12 +230,8 @@ static void check_http_creation_allocation_failures(void) {
 void test_live_loopback_exchange(void) {
   check_http_creation_allocation_failures();
   printf("Testing live loopback HTTP exchange...\n");
-  int64_t server_id = http_create_server(LIVE_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, live_handler) == 0);
-  int64_t client_id =
-      http_create_client((char *)(uintptr_t) "http://127.0.0.1:18085", 5000);
-  assert(client_id > 0);
+  int64_t server_id = 0, client_id = 0;
+  start_loopback(LIVE_PORT, live_handler, &server_id, &client_id);
   int64_t handle = -1;
   for (int i = 0; i < LIVE_TRIES && handle < 0; i++) {
     handle = http_get_response(client_id, (char *)(uintptr_t) "/ping",
@@ -210,15 +241,9 @@ void test_live_loopback_exchange(void) {
     }
   }
   assert(handle >= 0);
-  assert(http_response_status(handle) == 200);
-  char *body = http_response_body(handle);
-  assert(body != NULL && strcmp(body, "pong") == 0);
-  osp_release(body);
-  char *header = http_response_header(handle, (char *)(uintptr_t) "X-Test");
-  assert(header != NULL && strcmp(header, "yes") == 0);
-  free(header);
+  check_response(handle, 200, "pong", "X-Test", "yes");
   char *missing = http_response_header(handle, (char *)(uintptr_t) "X-Absent");
-  assert(missing == NULL);
+  assert(missing == NULL && "an absent header must not be invented");
   assert(http_response_free(handle) == 0);
   assert(http_response_free(handle) == -1); // double free rejected
   assert(http_response_body(handle) == NULL);
@@ -239,27 +264,15 @@ static HttpResponse *post_handler(char *method, char *path, char *headers,
   (void)headers;
   snprintf(g_post_seen_method, sizeof(g_post_seen_method), "%s", method);
   snprintf(g_post_seen_body, sizeof(g_post_seen_body), "%s", body ? body : "");
-  g_live_response.status = 201;
-  g_live_response.headers =
-      (char *)(uintptr_t) "X-Echo: posted\r\n";
-  g_live_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_live_response.streamFd = -1;
-  g_live_response.isComplete = true;
-  g_live_response.partialBody = (char *)(uintptr_t) "created";
-  return &g_live_response;
+  return live_response(201, "X-Echo: posted\r\n", "created");
 }
 
 #define POST_PORT 18091
 
 void test_post_response_loopback(void) {
   printf("Testing http_post_response loopback...\n");
-  int64_t server_id =
-      http_create_server(POST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, post_handler) == 0);
-  int64_t client_id =
-      http_create_client((char *)(uintptr_t) "http://127.0.0.1:18091", 5000);
-  assert(client_id > 0);
+  int64_t server_id = 0, client_id = 0;
+  start_loopback(POST_PORT, post_handler, &server_id, &client_id);
   int64_t handle = -1;
   for (int i = 0; i < LIVE_TRIES && handle < 0; i++) {
     handle = http_post_response(client_id, (char *)(uintptr_t) "/submit",
@@ -272,13 +285,7 @@ void test_post_response_loopback(void) {
   assert(handle >= 1);
   assert(strcmp(g_post_seen_method, "POST") == 0);
   assert(strcmp(g_post_seen_body, "payload-42") == 0);
-  assert(http_response_status(handle) == 201);
-  char *body = http_response_body(handle);
-  assert(body != NULL && strcmp(body, "created") == 0);
-  osp_release(body);
-  char *header = http_response_header(handle, (char *)(uintptr_t) "X-Echo");
-  assert(header != NULL && strcmp(header, "posted") == 0);
-  free(header);
+  check_response(handle, 201, "created", "X-Echo", "posted");
   assert(http_response_free(handle) == 0);
   http_close_client(client_id);
   http_stop_server(server_id);

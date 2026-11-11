@@ -107,7 +107,7 @@ def metadata_document(request, path, pairs):
 
 
 def request_metadata(request):
-    decoded = B.bind(Urls.decode(Routing.path_of(request.url), False), lambda path: B.mapped(P.query_pairs(request), lambda pairs: metadata_document(request, path, pairs)))
+    decoded = resultAndThen(Urls.decode(Routing.path_of(request.url), False), lambda path: B.mapped(P.query_pairs(request), lambda pairs: metadata_document(request, path, pairs)))
     match decoded:
         case Success(value=document):
             return E.json_response(200, document, "")
@@ -281,8 +281,8 @@ def lifespan_status(port):
 
 
 def lifespan_step(path, step, result):
-    written = B.bind(readFile(path), lambda previous: writeFile(path, previous + step + "\n"))
-    return B.bind(written, lambda _written: result)
+    written = resultAndThen(readFile(path), lambda previous: writeFile(path, previous + step + "\n"))
+    return resultAndThen(written, lambda _written: result)
 
 
 def lifespan_start(path, port, mode):
@@ -355,10 +355,10 @@ def main():
 
 
 def scenario(document):
-    path = B.bind(jsonField(document, "path"), lambda item: jsonText(item))
-    status = B.bind(jsonField(document, "status"), lambda item: jsonInt(item))
-    body = B.bind(jsonField(document, "body_text"), lambda item: jsonText(item))
-    return B.bind(path, lambda url: B.bind(status, lambda code: B.mapped(body, lambda expected: M.Pair(first=url, second=M.Pair(first=code, second=expected)))))
+    path = resultAndThen(jsonField(document, "path"), lambda item: jsonText(item))
+    status = resultAndThen(jsonField(document, "status"), lambda item: jsonInt(item))
+    body = resultAndThen(jsonField(document, "body_text"), lambda item: jsonText(item))
+    return resultAndThen(path, lambda url: resultAndThen(status, lambda code: B.mapped(body, lambda expected: M.Pair(first=url, second=M.Pair(first=code, second=expected)))))
 
 
 def oracle_response(response, expected):
@@ -404,15 +404,15 @@ def oracle_document(client, document, headers):
 
 
 def wire_record(client, document, headers):
-    return attempt(B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire))),
+    return attempt(resultAndThen(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire))),
                    "oracle wire record", "present JSON case and Latin-1 headers",
                    lambda pair: wire_case(client, pair.first, pair.second))
 
 
 def parameter_cases(client):
     document = jsonDecode(Expected.CASES_JSON)
-    headers = B.bind(readFile("src/osprey/packages/fastapi/tests/parameters.headers.bin"), lambda text: split(text, "\x1e"))
-    source = B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire)))
+    headers = resultAndThen(readFile("src/osprey/packages/fastapi/tests/parameters.headers.bin"), lambda text: split(text, "\x1e"))
+    source = resultAndThen(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire)))
     return attempt(source, "oracle corpus", "readable JSON and Latin-1 wire fixtures",
                    lambda pair: oracle_document(client, pair.first, pair.second))
 

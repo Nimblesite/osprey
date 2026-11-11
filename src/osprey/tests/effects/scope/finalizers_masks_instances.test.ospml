@@ -133,6 +133,8 @@ instanceCase () =
         leftAnswers (\() => defaultAnswers mixed) == 51
     ]
 
-test "a finalizer runs exactly once when its activation ends" finalizerCase
-test "mask skips exactly one enclosing activation" maskCase
-test "an instance is a capability only its own handlers answer" instanceCase
+testCases [
+    { name = "a finalizer runs exactly once when its activation ends", work = finalizerCase },
+    { name = "mask skips exactly one enclosing activation", work = maskCase },
+    { name = "an instance is a capability only its own handlers answer", work = instanceCase }
+]

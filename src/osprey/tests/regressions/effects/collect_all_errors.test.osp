@@ -74,21 +74,14 @@ fn collectAllErrorsCase() = {
     }
 
     checkAll("multi-error validation preserves exact order and count", [
-            contains(nadia, "#1 name is empty"),
-            contains(nadia, "#2 age is negative (-3)"),
-            contains(nadia, "#3 score above 100 (250)"),
-            contains(nadia, "#4 email is missing '@'"),
-            contains(nadia, "REJECTED (4 errors"),
+            containsAll(nadia, ["#1 name is empty", "#2 age is negative (-3)", "#3 score above 100 (250)", "#4 email is missing '@'", "REJECTED (4 errors"]),
             !contains(nadia, "score below 0"),
             !contains(nadia, "email is empty"),
             (indexOf(nadia, "#1 name") ?: 999) < (indexOf(nadia, "#2 age") ?: 999),
             (indexOf(nadia, "#2 age") ?: 999) < (indexOf(nadia, "#3 score") ?: 999),
             (indexOf(nadia, "#3 score") ?: 999) < (indexOf(nadia, "#4 email") ?: 999),
             contains(owen, "ACCEPTED (0 errors)"),
-            contains(blank, "#1 name is empty"),
-            contains(blank, "#2 email is empty"),
-            contains(blank, "#3 email is missing '@'"),
-            contains(blank, "REJECTED (3 errors"),
+            containsAll(blank, ["#1 name is empty", "#2 email is empty", "#3 email is missing '@'", "REJECTED (3 errors"]),
             (indexOf(blank, "#1 name") ?: 999) < (indexOf(blank, "#2 email") ?: 999),
             (indexOf(blank, "#2 email") ?: 999) < (indexOf(blank, "#3 email") ?: 999)
     ])

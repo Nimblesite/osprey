@@ -1,0 +1,27 @@
+//! The Result helpers programs share: `resultAndThen` chaining and a
+//! Result-returning division. Its own unit, so a program that declares its
+//! own `Success` still gets the testing policy without it. Implements
+//! [FAILURE-EXPLICIT].
+
+/// `next` applied to `result`'s value, or `result`'s error passed through
+/// unchanged.
+fn resultAndThen(result, next) = match result {
+    Success { value } => next(value)
+    Error { message } => Error { message: message }
+}
+
+/// A Result API over `/` that deliberately converts a recorded zero-divisor
+/// fault at its boundary into `Error { message: "division by zero" }`.
+fn divideResult(a, b) = {
+    mut failed = false
+    handle Arith { divideByZero op _ => {
+        expect(op, "/")
+        failed = true
+        0.0
+    } }
+    let value = a / b
+    match failed {
+        true => Error { message: "division by zero" }
+        false => Success { value: value }
+    }
+}

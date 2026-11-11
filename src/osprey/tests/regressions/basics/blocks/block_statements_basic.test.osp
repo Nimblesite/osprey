@@ -8,10 +8,7 @@ print("=== Block Statements ===")
 /// --- 1. Block with list access (single statement) ---
 fn listHeadBlock() = {
     let nums = [42, 84, 126]
-    match nums[0] {
-        Success { value } => value
-        Error => 0
-    }
+    nums[0] ?: 0
 }
 let r1 = listHeadBlock()
 print("1 list head: ${r1}")
@@ -19,8 +16,8 @@ print("1 list head: ${r1}")
 /// --- 2. Block with map access + multiplication ---
 fn mapProductBlock() = {
     let config = { "factor": 2, "base": 10 }
-    let x = match config["base"] { Success { value } => value Error => 0 }
-    let factor = match config["factor"] { Success { value } => value Error => 1 }
+    let x = config["base"] ?: 0
+    let factor = config["factor"] ?: 1
     let m = x * factor
     m
 }
@@ -31,16 +28,10 @@ print("2 map factor*base: ${r2}")
 let outer = 100
 fn shadowedBlock() = {
     let config = { "multiplier": 2, "offset": 25 }
-    let outer = match config["offset"] {
-        Success { value } => value
-        Error => 50
-    }
+    let outer = config["offset"] ?: 50
     let inner = {
         let listData = [10, 20, 30]
-        let outer = match listData[2] {
-            Success { value } => value
-            Error => 25
-        }
+        let outer = listData[2] ?: 25
         let m = outer * 2
         m
     }
@@ -53,10 +44,7 @@ print("3 shadowed inner+outer: ${r3}")
 /// --- 4. Block inside a function ---
 fn compute() = {
     let numbers = [5, 10, 15]
-    let base = match numbers[1] {
-        Success { value } => value
-        Error => 10
-    }
+    let base = numbers[1] ?: 10
     let multiplier = 3
     let r = base * multiplier
     r
@@ -66,18 +54,11 @@ exactArithmetic(fn() => print("4 fn block: ${compute()}"))
 /// --- 5. 2D list inside a block ---
 fn matrixBlock() = {
     let matrix = [[1, 2], [3, 4]]
-    let firstRow = match matrix[0] {
-        Success { value } => value
-        Error => [0]
-    }
-    match firstRow[1] {
-        Success { value } => {
-            let m = value * 10
-            match m {
-                Success { result } => result
-                Error => 0
-            }
-        }
+    let firstRow = matrix[0] ?: [0]
+    let cell = firstRow[1] ?: 0
+    let m = cell * 10
+    match m {
+        Success { result } => result
         Error => 0
     }
 }
@@ -91,15 +72,12 @@ fn conditionalBlock(value) = {
     let doubled = value * 2
     match doubled {
         Success { dValue } => match dValue {
-            84 => match scoreMap["test1"] {
-                Success { sValue } => {
-                    let added = sValue + 10
-                    match added {
-                        Success { value } => value
-                        Error => 0
-                    }
+            84 => {
+                let added = (scoreMap["test1"] ?: 0) + 10
+                match added {
+                    Success { value } => value
+                    Error => 0
                 }
-                Error => 0
             }
             _ => 0
         }
@@ -151,13 +129,7 @@ fn blockStatementsCase() = {
     ])
 
     checkAll("block results retain element types in nested lists", [
-            listLength(results) == 6,
-            (results.listGet(0) ?: 99) == 42,
-            (results.listGet(1) ?: 99) == 20,
-            (results.listGet(2) ?: 99) == 85,
-            (results.listGet(3) ?: 99) == 30,
-            (results.listGet(4) ?: 99) == 20,
-            (results.listGet(5) ?: 99) == 94,
+            structuralEquals(results, [42, 20, 85, 30, 20, 94]),
             (results.listGet(9) ?: 99) == 99,
             listLength(nestedResults) == 3,
             listLength(nestedResults.listGet(0) ?: [99]) == 6,

@@ -27,8 +27,8 @@ fn validate_items(items: &[MlItem], module_ascribed: Option<bool>, errors: &mut 
                 *pos,
                 "an opaque representation requires exactly one 'export opaque type' declaration",
             ),
-            MlItem::ValueSignature { name, pos, .. } => {
-                validate_signature_follower(items, index, name, false, *pos, errors);
+            MlItem::ValueSignature(sig) => {
+                validate_signature_follower(items, index, &sig.name, false, sig.position, errors);
             }
             _ => {}
         }
@@ -47,8 +47,8 @@ fn validate_export(
     if matches!(exported, MlItem::Binding { mutable: true, .. }) {
         push_error(errors, pos, "mutable cells cannot be exported");
     }
-    if let MlItem::ValueSignature { name, .. } = exported {
-        validate_signature_follower(items, index, name, true, pos, errors);
+    if let MlItem::ValueSignature(sig) = exported {
+        validate_signature_follower(items, index, &sig.name, true, pos, errors);
     }
     if let MlItem::Opaque { item, .. } = exported {
         if !matches!(item.as_ref(), MlItem::Type { .. }) {
@@ -133,7 +133,7 @@ pub(super) fn is_exportable(item: &MlItem) -> bool {
     matches!(
         item,
         MlItem::Binding { .. }
-            | MlItem::ValueSignature { .. }
+            | MlItem::ValueSignature(_)
             | MlItem::Type { .. }
             | MlItem::Effect { .. }
             | MlItem::Extern { .. }

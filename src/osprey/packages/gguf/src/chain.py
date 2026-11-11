@@ -10,11 +10,7 @@ __all__ = ["then", "first_or_error", "walk_checked"]
 
 def then(result, continue_with):
     """`continue_with` applied to `result`'s value, or `result`'s error unchanged."""
-    match result:
-        case Success(value=value):
-            return continue_with(value)
-        case Error(message=message):
-            return Error(message=message)
+    return resultAndThen(result, continue_with)
 
 
 def first_or_error(found, failure):

@@ -53,9 +53,33 @@ fn emptyUploads() = gpuSatisfies(toGpu([]), fn(empty: GpuBuffer<int>) => lengthI
 /// The reason a bounds-checked GPU read reports for an index past the end.
 fn oobMessage() = "gpuGet: index out of bounds"
 
+/// Whether element `indices[k]` of `buffer` is `expected[k]` for every k, each
+/// read compared as `elementIs` compares it.
+fn elementsAt(buffer, fallback, indices, expected) = match indices {
+    [] => true
+    [index, ...rest] => match expected {
+        [] => false
+        [head, ...tail] => elementIs(buffer, index, fallback, head) && elementsAt(buffer, fallback, rest, tail)
+    }
+}
+
 /// Whether `buffer` holds `expected` from `index` on, element by element, each
 /// read compared as `elementIs` compares it.
 fn elementsFrom(buffer, index, fallback, expected) = match expected {
     [] => true
     [head, ...tail] => elementIs(buffer, index, fallback, head) && elementsFrom(buffer, index + 1, fallback, tail)
 }
+
+/// The sum step GPU folds and scans share: `a + x` over whatever numeric width
+/// the buffer carries.
+fn gpuTestAdd(a, x) = a + x
+
+/// Whether a host list holds `expected` elements.
+fn listLengthIs(values, expected) = listLength(values) == expected
+
+/// Whether element `index` of a host list is `expected`, comparing `fallback`
+/// when the index misses.
+fn listHolds(values, index, fallback, expected) = (listGet(values, index) ?: fallback) == expected
+
+/// Whether folding `buffer` from `seed` with `gpuTestAdd` totals `expected`.
+fn floatSumsTo(buffer, seed, expected) = gpuSatisfies(gpuFold(buffer, seed, gpuTestAdd), fn(total) => total == expected)

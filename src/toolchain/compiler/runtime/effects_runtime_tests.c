@@ -75,24 +75,33 @@ static int env_a, env_b;
 #include "effects_scope_tests.h"
 #include "effects_finally_tests.h"
 
+// Every handler test pushes at the CURRENT depth and expects it to land.
+static void push_ok(int op, void (*fn)(void), void *env) {
+  CHECK(__osprey_handler_push_scoped(op, (void *)fn, env, __osprey_handler_depth()) == 0);
+}
+
+// The top of `op`'s evidence is exactly (fn, env): the fnptr and its env
+// always come back from the SAME entry.
+static void check_top(int op, void (*fn)(void), void *env) {
+  CHECK(__osprey_handler_lookup(op) == (void *)fn);
+  CHECK(__osprey_handler_lookup_env(op) == env);
+}
+
 // Push/lookup/pop with exact depths; the INNERMOST matching handler wins and
 // its fnptr and env always come from the SAME entry.
 static void t_stack_shadowing(void) {
   CHECK(__osprey_handler_depth() == 0);
   CHECK(__osprey_handler_lookup(OP_STATE_GET) == NULL);
-  CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
+  push_ok(OP_STATE_GET, fn_a, &env_a);
   CHECK(__osprey_handler_depth() == 1);
-  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_a);
-  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_a);
+  check_top(OP_STATE_GET, fn_a, &env_a);
   CHECK(__osprey_handler_lookup(OP_STATE_PUT) == NULL); // op must match too
   CHECK(__osprey_handler_lookup(OP_LOG_GET) == NULL);
-  CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
-  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_b);
-  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_b);
+  push_ok(OP_STATE_GET, fn_b, &env_b);
+  check_top(OP_STATE_GET, fn_b, &env_b);
   CHECK(__osprey_handler_depth() == 2);
   CHECK(__osprey_handler_pop() == 0);
-  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_a);
-  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_a);
+  check_top(OP_STATE_GET, fn_a, &env_a);
   CHECK(__osprey_handler_pop() == 0);
   CHECK(__osprey_handler_depth() == 0);
   CHECK(__osprey_handler_pop() == -1); // underflow is rejected, not UB
@@ -103,15 +112,13 @@ static void t_stack_shadowing(void) {
 // entries of ITS operation, and popping it uncovers exactly the one it hid,
 // however the two operations interleave on the stack.
 static void t_evidence_shadows_by_operation(void) {
-  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
-  CHECK(__osprey_handler_push_scoped(OP_B, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
-  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_b, NULL, __osprey_handler_depth()) == 0);
-  CHECK(__osprey_handler_lookup(OP_A) == (void *)fn_b);
-  CHECK(__osprey_handler_lookup_env(OP_A) == NULL);
+  push_ok(OP_A, fn_a, &env_a);
+  push_ok(OP_B, fn_b, &env_b);
+  push_ok(OP_A, fn_b, NULL);
+  check_top(OP_A, fn_b, NULL);
   CHECK(__osprey_handler_lookup(OP_B) == (void *)fn_b);
   CHECK(__osprey_handler_pop() == 0);
-  CHECK(__osprey_handler_lookup(OP_A) == (void *)fn_a);
-  CHECK(__osprey_handler_lookup_env(OP_A) == &env_a);
+  check_top(OP_A, fn_a, &env_a);
   CHECK(__osprey_handler_lookup(OP_B) == (void *)fn_b);
   CHECK(__osprey_handler_pop() == 0 && __osprey_handler_pop() == 0);
   CHECK(__osprey_handler_lookup(OP_A) == NULL && __osprey_handler_lookup(OP_B) == NULL);
@@ -121,7 +128,7 @@ static void t_evidence_shadows_by_operation(void) {
 // id past the bound is rejected by push and misses on lookup instead of
 // indexing off the end of the evidence table.
 static void t_operation_id_bound(void) {
-  CHECK(__osprey_handler_push_scoped(OP_LAST_VALID, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  push_ok(OP_LAST_VALID, fn_a, NULL);
   CHECK(__osprey_handler_lookup(OP_LAST_VALID) == (void *)fn_a);
   CHECK(__osprey_handler_push_scoped(OP_OUT_OF_RANGE, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
   CHECK(__osprey_handler_push_scoped(-1, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
@@ -135,7 +142,7 @@ static void t_operation_id_bound(void) {
 // leaves the depth unchanged, and every entry pops back off cleanly.
 static void t_overflow_exact(void) {
   for (int i = 0; i < MAX_DEPTH; i++) {
-    CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+    push_ok(OP_DEEP, fn_a, NULL);
   }
   CHECK(__osprey_handler_depth() == MAX_DEPTH);
   CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
@@ -149,11 +156,11 @@ static void t_overflow_exact(void) {
 // Snapshot freezes the stack; restore replaces the CURRENT stack with the
 // frozen one (entries pushed after the snapshot disappear).
 static void t_snapshot_restore(void) {
-  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
-  CHECK(__osprey_handler_push_scoped(OP_B, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
+  push_ok(OP_A, fn_a, &env_a);
+  push_ok(OP_B, fn_b, &env_b);
   void *snap = __osprey_handler_snapshot();
   CHECK(snap != NULL);
-  CHECK(__osprey_handler_push_scoped(OP_C, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  push_ok(OP_C, fn_a, NULL);
   CHECK(__osprey_handler_depth() == 3);
   __osprey_handler_restore(snap); // frees snap
   CHECK(__osprey_handler_depth() == 2);
@@ -168,7 +175,7 @@ static void t_snapshot_restore(void) {
 static void t_cleanup_reinit(void) {
   __osprey_handler_stack_cleanup();
   CHECK(__osprey_handler_depth() == 0);
-  CHECK(__osprey_handler_push_scoped(OP_RE, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  push_ok(OP_RE, fn_a, NULL);
   CHECK(__osprey_handler_lookup(OP_RE) == (void *)fn_a);
   CHECK(__osprey_handler_pop() == 0);
 }
@@ -207,14 +214,20 @@ static int64_t body_two_performs(void *raw) {
   return e->base + r1 * r2;
 }
 
+// Taking a mailbox TRANSFERS it, so its operation id is pinned while ours.
+static void *take_mail(void *coro, int64_t op) {
+  void *mail = __osprey_coro_take_args(coro);
+  CHECK(__osprey_coro_mail_op(mail) == op);
+  return mail;
+}
+
 static void t_coro_ping_pong(void) {
   CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = CORO_BASE};
   CHECK(env.coro != NULL);
   __osprey_coro_start(env.coro, body_two_performs, &env, NULL);
   CHECK(__osprey_coro_done(env.coro) == 0);
 
-  void *mail = __osprey_coro_take_args(env.coro);
-  CHECK(__osprey_coro_mail_op(mail) == OP_FIRST);
+  void *mail = take_mail(env.coro, OP_FIRST);
   for (int i = 0; i < WIDE_ARITY; i++) {
     CHECK(__osprey_coro_mail_arg(mail, i) == SLOT_VALUE(i));
   }
@@ -224,8 +237,7 @@ static void t_coro_ping_pong(void) {
 
   CHECK(__osprey_coro_resume(env.coro, RESUME_FIRST) == 0); // re-suspended
   CHECK(__osprey_coro_done(env.coro) == 0);
-  void *empty = __osprey_coro_take_args(env.coro);
-  CHECK(__osprey_coro_mail_op(empty) == OP_SECOND); // zero-arg perform
+  void *empty = take_mail(env.coro, OP_SECOND); // zero-arg perform
   __osprey_coro_mail_free(empty);
 
   int64_t want = CORO_BASE + RESUME_FIRST * RESUME_SECOND;
@@ -287,7 +299,7 @@ static int64_t body_sees_handlers(void *raw) {
 }
 
 static void t_coro_snapshot_transfer(void) {
-  CHECK(__osprey_handler_push_scoped(OP_XFER, (void *)fn_b, NULL, __osprey_handler_depth()) == 0);
+  push_ok(OP_XFER, fn_b, NULL);
   void *coro = __osprey_coro_new(NULL);
   __osprey_coro_start(coro, body_sees_handlers, NULL, __osprey_handler_snapshot());
   CHECK(__osprey_coro_done(coro) == 1);   // never performed: ran straight through
@@ -303,12 +315,19 @@ static int64_t body_one_perform(void *raw) {
   return 99;
 }
 
-// Aborting a suspended continuation terminates its thread without running the
-// rest of the body; the coro lands done with a zero result.
-static void t_coro_abort(void) {
+// Starts a continuation whose body parks inside its one perform: not done,
+// and it never finishes unless resumed, aborted or freed.
+static CoroEnv started_one_perform(void) {
   CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = 0};
   __osprey_coro_start(env.coro, body_one_perform, &env, NULL);
   CHECK(__osprey_coro_done(env.coro) == 0);
+  return env;
+}
+
+// Aborting a suspended continuation terminates its thread without running the
+// rest of the body; the coro lands done with a zero result.
+static void t_coro_abort(void) {
+  CoroEnv env = started_one_perform();
   __osprey_coro_abort(env.coro);
   CHECK(__osprey_coro_done(env.coro) == 1);
   CHECK(__osprey_coro_result(env.coro) == 0); // body never completed
@@ -351,9 +370,7 @@ static void t_aborted_queued_perform_releases_its_operands(void) {
   g_queued_operand = osp_alloc_tagged(16, OSP_MEM_RAW);
   g_queued_entered = 0;
 
-  CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = 0};
-  __osprey_coro_start(env.coro, body_one_perform, &env, NULL); // claims the channel
-  CHECK(__osprey_coro_done(env.coro) == 0);
+  CoroEnv env = started_one_perform(); // claims the channel
 
   pthread_t queued;
   CHECK(pthread_create(&queued, NULL, queued_performer, env.coro) == 0);
@@ -373,9 +390,7 @@ static void t_aborted_queued_perform_releases_its_operands(void) {
 // Freeing a still-suspended continuation aborts it internally — no hang, no
 // leak of the parked thread.
 static void t_coro_free_while_suspended(void) {
-  CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = 0};
-  __osprey_coro_start(env.coro, body_one_perform, &env, NULL);
-  CHECK(__osprey_coro_done(env.coro) == 0);
+  CoroEnv env = started_one_perform();
   __osprey_coro_free(env.coro);
   CHECK(1); // reaching here means the free did not deadlock
 }

@@ -50,37 +50,33 @@ pub fn completion(request: &Request) -> String {
     }
 }
 
+/// The one shape of every missing-or-mistyped verbatim field error.
+fn message(request: &Request, name: &str) -> String {
+    format!("{} has no valid {name}", request.kind)
+}
+
+/// Reads a required verbatim field, converted by `f`.
+fn get<'a, T>(req: &'a Request, name: &str, f: fn(&'a Value) -> Option<T>) -> Result<T, String> {
+    let invalid = || message(req, name);
+    let value = req.fields.get(name).ok_or_else(invalid)?;
+    f(value).ok_or_else(invalid)
+}
+
 /// Reads a required string argument from the verbatim request fields.
 fn field<'a>(request: &'a Request, name: &str) -> Result<&'a str, String> {
-    request
-        .fields
-        .get(name)
-        .and_then(Value::as_str)
-        .ok_or_else(|| format!("{} has no valid {name}", request.kind))
+    get(request, name, Value::as_str)
 }
 
 /// Reads a required nonnegative integer argument.
 fn number(request: &Request, name: &str) -> Result<u64, String> {
-    request
-        .fields
-        .get(name)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| format!("{} has no valid {name}", request.kind))
+    get(request, name, Value::as_u64)
 }
 
 /// Reads a required array containing only strings.
 fn strings<'a>(request: &'a Request, name: &str) -> Result<Vec<&'a str>, String> {
-    request
-        .fields
-        .get(name)
-        .and_then(Value::as_array)
-        .ok_or_else(|| format!("{} has no valid {name}", request.kind))?
+    get(request, name, Value::as_array)?
         .iter()
-        .map(|value| {
-            value
-                .as_str()
-                .ok_or_else(|| format!("{} has no valid {name}", request.kind))
-        })
+        .map(|value| value.as_str().ok_or_else(|| message(request, name)))
         .collect()
 }
 

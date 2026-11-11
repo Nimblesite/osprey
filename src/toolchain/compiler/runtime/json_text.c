@@ -3,36 +3,13 @@
 // UTF-8 validator and the same escape alphabet serve both. Numbers are scanned
 // and read here too. Implements [BUILTIN-JSON-STRING] and [BUILTIN-JSON-NUMBER].
 #include "json_internal.h"
+#include "utf8_encode.h"
 
 #include <errno.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
-// Encodes a Unicode code point as UTF-8 into out (up to 4 bytes); returns count.
-static size_t utf8_encode(unsigned long cp, char *out) {
-  if (cp <= 0x7F) {
-    out[0] = (char)cp;
-    return 1;
-  }
-  if (cp <= 0x7FF) {
-    out[0] = (char)(0xC0 | (cp >> 6));
-    out[1] = (char)(0x80 | (cp & 0x3F));
-    return 2;
-  }
-  if (cp <= 0xFFFF) {
-    out[0] = (char)(0xE0 | (cp >> 12));
-    out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[2] = (char)(0x80 | (cp & 0x3F));
-    return 3;
-  }
-  out[0] = (char)(0xF0 | (cp >> 18));
-  out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-  out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-  out[3] = (char)(0x80 | (cp & 0x3F));
-  return 4;
-}
 
 // Out of band for a 4-bit value, so a non-hex character is reported rather
 // than folded into the digit set. Returning 0 for one silently decoded

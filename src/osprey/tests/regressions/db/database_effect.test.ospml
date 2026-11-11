@@ -71,8 +71,16 @@ execReal (db, sql) =
     sqlite3_exec db sql nullptr nullptr nullptr
 
 prepareReal (db, sql) =
-    prepared = withCell (\cell => sqlite3_prepare_v2 db sql ((0 - 1) ) cell (osprey_ffi_null ()))
+    prepared = withCell (\cell => sqlite3_prepare_v2 db sql (0 - 1) cell (osprey_ffi_null ()))
     prepared.value
+
+(** `${label} ok` when status code `rc` is zero, `${label} err` otherwise. *)
+statusLine (label, rc) = match rc
+    0 => "${label} ok"
+    _ => "${label} err"
+
+createUsersTable db = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
+readRow stmt = { id = perform Database.columnInt stmt 0, name = "${perform Database.columnText stmt 1}" }
 
 (** --- application logic: effect-typed, knows nothing about SQLite or FFI --- *)
 seedUser (db, uid, uname) =
@@ -88,23 +96,18 @@ seedDemoUsers db = "inserted ${seedUser (db, 1, "Ada")} ${seedUser (db, 2, "Linu
 
 showUser stmt =
     rc = perform Database.step stmt
-    print "user ${perform Database.columnInt stmt 0} = ${perform Database.columnText stmt 1}"
+    row = readRow stmt
+    print "user ${row.id} = ${row.name}"
     rc
 
 runApp db =
-    createrc = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
-    match createrc
-        0 => print "create ok"
-        _ => print "create err"
+    print (statusLine ("create", createUsersTable db))
     print (seedDemoUsers db)
     q = perform Database.prepare db "SELECT id, name FROM users ORDER BY id"
     _r1 = showUser q
     _r2 = showUser q
     _qfin = perform Database.finalize q
-    closed = perform Database.close db
-    match closed
-        0 => print "closed ok"
-        _ => print "closed err"
+    print (statusLine ("closed", perform Database.close db))
 
 (** Install the real SQLite handler around `work`. *)
 withDatabase work =
@@ -113,7 +116,7 @@ withDatabase work =
         exec db sql => execReal (db, sql)
         prepare db sql => prepareReal (db, sql)
         bindInt stmt idx val => sqlite3_bind_int stmt idx val
-        bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ) (osprey_ffi_transient ())
+        bindText stmt idx val => sqlite3_bind_text stmt idx val (0 - 1) (osprey_ffi_transient ())
         step stmt => sqlite3_step stmt
         columnInt stmt col => sqlite3_column_int stmt col
         columnText stmt col => sqlite3_column_text stmt col
@@ -121,77 +124,59 @@ withDatabase work =
         close db => sqlite3_close db
     work ()
 
-(** Run `work` against a fresh in-memory database inside the real handler. *)
-withMemoryDatabase work =
-    withDatabase (\() =>
-        match perform Database.open ":memory:"
-            Success value => work value
-            Error message => Error(message = message))
+(** Runs `work` against a fresh in-memory database inside the real handler. *)
+withMemoryDatabase work = withDatabase (\() => resultAndThen (perform Database.open ":memory:", work))
 
-(** Report an open failure, otherwise yield whatever the run produced. *)
-reportOpened result =
-    match result
-        Success value => value
-        Error message => print "open ${message}"
+(** Reports an open failure, otherwise yields whatever the run produced. *)
+reportOpened result = match result
+    Success value => value
+    Error message => print "open ${message}"
 
 databaseDemo () = reportOpened (withMemoryDatabase runApp)
 databaseDemo ()
 
 (** Capture every externally visible result of one handled database interaction. *)
 type DatabaseObservation =
-    createStatus : int
-    insertStatus : int
-    rowStatus : int
-    selectedId : int
+    createStatuses : List<int>
+    rowStatuses : List<int>
+    finishStatuses : List<int>
     selectedName : string
-    doneStatus : int
-    finalizeStatus : int
-    closeStatus : int
 
 (** Run application helpers through Database and return immutable evidence. *)
 observeDatabase db =
-    createStatus = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
-    insertStatus = seedUser (db, 7, "Grace")
+    created = createUsersTable db
+    inserted = seedUser (db, 7, "Grace")
     query = perform Database.prepare db "SELECT id, name FROM users WHERE id = 7"
-    rowStatus = perform Database.step query
-    selectedId = perform Database.columnInt query 0
-    selectedName = "${perform Database.columnText query 1}"
-    doneStatus = perform Database.step query
-    finalizeStatus = perform Database.finalize query
-    closeStatus = perform Database.close db
+    stepped = perform Database.step query
+    row = readRow query
+    done = perform Database.step query
+    finalized = perform Database.finalize query
+    closed = perform Database.close db
     DatabaseObservation(
-        createStatus = createStatus,
-        insertStatus = insertStatus,
-        rowStatus = rowStatus,
-        selectedId = selectedId,
-        selectedName = selectedName,
-        doneStatus = doneStatus,
-        finalizeStatus = finalizeStatus,
-        closeStatus = closeStatus
+        createStatuses = [created, inserted, stepped],
+        rowStatuses = [row.id, done],
+        finishStatuses = [finalized, closed],
+        selectedName = row.name
     )
 
-(** Install the real handler and preserve an open failure in the Result channel. *)
-runDatabaseProbe () = withMemoryDatabase observeDatabase
-
-(** Report whether the real handler produced an observation instead of an error. *)
-databaseOpened result =
-    match result
-        Success _value => true
-        Error _message => false
+(** Reports whether the real handler produced an observation instead of an error. *)
+databaseOpened result = match result
+    Success => true
+    Error => false
 
 (** Verify the Database capability performs a complete typed SQLite round trip. *)
 databaseEffectCase () =
-    result = runDatabaseProbe ()
+    result = withMemoryDatabase observeDatabase
     match result
-        Success value => checkAll "Database effect round trip" [
+        Success value => checkAll ("Database effect round trip", [
             databaseOpened result,
-            structuralEquals [value.createStatus, value.insertStatus, value.rowStatus] [0, 101, 100],
-            structuralEquals [value.selectedId, value.doneStatus] [7, 101],
-            structuralEquals [value.finalizeStatus, value.closeStatus] [0, 0],
+            structuralEquals (value.createStatuses, [0, 101, 100]),
+            structuralEquals (value.rowStatuses, [7, 101]),
+            structuralEquals (value.finishStatuses, [0, 0]),
             value.selectedName == "Grace"
-        ]
-        Error message => checkAll "Database effect open result" [
+        ])
+        Error message => checkAll ("Database effect open result", [
             databaseOpened result,
             message == ""
-        ]
+        ])
 test "Database capability binds, queries, and closes through its handler" databaseEffectCase

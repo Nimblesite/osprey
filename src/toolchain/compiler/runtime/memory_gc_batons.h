@@ -13,13 +13,13 @@ void *osp_mem_scanned_alloc(size_t size) {
   }
   memset(s, 0, sizeof(OspGcScanned) + size);
   s->size = size;
-  gc_lock();
+  heap_lock();
   s->next = g_scanned;
   if (g_scanned) {
     g_scanned->prev = s;
   }
   g_scanned = s;
-  gc_unlock();
+  heap_unlock();
   return s + 1;
 }
 
@@ -28,7 +28,7 @@ void osp_mem_scanned_free(void *block) {
     return;
   }
   OspGcScanned *s = (OspGcScanned *)block - 1;
-  gc_lock();
+  heap_lock();
   if (s->prev) {
     s->prev->next = s->next;
   } else {
@@ -37,7 +37,7 @@ void osp_mem_scanned_free(void *block) {
   if (s->next) {
     s->next->prev = s->prev;
   }
-  gc_unlock();
+  heap_unlock();
   free(s);
 }
 
@@ -53,11 +53,11 @@ void *osp_mem_scanned_realloc(void *block, size_t size) {
 
 // The host fixes the initial thread before any body thread can allocate first.
 void osp_mem_baton_prepare(void) {
-  gc_lock();
+  heap_lock();
   if (!g_init) {
     gc_init_main();
   }
-  gc_unlock();
+  heap_unlock();
 }
 
 void osp_mem_baton_thread_enter(void) {
@@ -69,11 +69,11 @@ void osp_mem_baton_thread_enter(void) {
 #ifndef OSP_SYMBOLIC
   self->base = gc_stack_base();
 #endif
-  gc_lock();
+  heap_lock();
   self->next = g_batons;
   g_batons = self;
   g_self_baton = self;
-  gc_unlock();
+  heap_unlock();
 #endif
   // Elsewhere its stack bounds can't be read, so it stays unregistered: its first
   // allocation turns collection off, which is safe.
@@ -84,7 +84,7 @@ void osp_mem_baton_thread_exit(void) {
   if (self == NULL) {
     return;
   }
-  gc_lock();
+  heap_lock();
   for (OspGcBaton **link = &g_batons; *link; link = &(*link)->next) {
     if (*link == self) {
       *link = self->next;
@@ -93,27 +93,27 @@ void osp_mem_baton_thread_exit(void) {
   }
   g_self_baton = NULL;
   gc_wake_safepoint();
-  gc_unlock();
+  heap_unlock();
   free(self);
 }
 
 void osp_mem_baton_park(const void *lowest) {
-  gc_lock();
+  heap_lock();
   OspGcBaton *self = gc_my_baton();
   if (self != NULL) {
     self->parked_at = (uintptr_t)lowest;
   }
   gc_wake_safepoint();
-  gc_unlock();
+  heap_unlock();
 }
 
 void osp_mem_baton_unpark(void) {
-  gc_lock();
+  heap_lock();
   OspGcBaton *self = gc_my_baton();
   if (self != NULL) {
     self->parked_at = 0;
   }
-  gc_unlock();
+  heap_unlock();
 }
 
 #endif

@@ -7,6 +7,10 @@
 //! too, each child's coverage is merged back into the report — so these tests
 //! count toward the per-crate gate.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -19,14 +23,6 @@ mod memory_backend;
 
 #[path = "cases/suite_scratch.rs"]
 mod suite_scratch;
-
-/// Repo root: `src/toolchain/crates/osprey-cli` -> `../../../..`. The C runtime archives `osprey`
-/// links at `--run`/`--compile` time live under `src/toolchain/compiler/bin/` there, and
-/// `find_runtime_lib` resolves them relative to the process cwd — so every
-/// child runs from here.
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 /// A `Command` for the built `osprey`, rooted at the repo so the runtime
 /// archives resolve.

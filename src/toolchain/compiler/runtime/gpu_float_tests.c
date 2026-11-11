@@ -17,28 +17,9 @@
 #include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
 #include "float_spelling.h"
+#include "gpu_test_words.h"
 
-static uint64_t state = 0x9e3779b97f4a7c15;
 static unsigned long checks;
-
-static uint64_t random_word(void) {
-  state ^= state << 13;
-  state ^= state >> 7;
-  state ^= state << 17;
-  return state;
-}
-
-static uint64_t bits(double d) {
-  uint64_t w;
-  memcpy(&w, &d, sizeof w);
-  return w;
-}
-
-static double of(uint64_t w) {
-  double d;
-  memcpy(&d, &w, sizeof d);
-  return d;
-}
 
 static float f32_value(uint32_t w) {
   float f;

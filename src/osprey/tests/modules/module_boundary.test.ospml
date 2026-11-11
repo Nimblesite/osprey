@@ -62,6 +62,8 @@ crossModuleCase () = checkAll ("cross-module consumption", [
 exactArithmetic (\() =>
     print "${Tax::add 100} ${Tax::Rounding::down 13} ${Tax::addRounded 37} ${Ledger::label 200}")
 
-test ("module exports expose only marked items", exactly exportedSurfaceCase)
-test ("nested plain modules nest their boundaries", exactly nestedModuleCase)
-test ("modules consume each other through exports", exactly crossModuleCase)
+exactTests [
+    { name = "module exports expose only marked items", work = exportedSurfaceCase },
+    { name = "nested plain modules nest their boundaries", work = nestedModuleCase },
+    { name = "modules consume each other through exports", work = crossModuleCase }
+]

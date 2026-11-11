@@ -98,19 +98,9 @@ def run(start, sampling, limit):
             return Error(message=message)
 
 
-def continued(result, step):
-    """The next step's answer on success, or the reason this step already
-    ended the turn."""
-    match result:
-        case Success(value=value):
-            return step(value)
-        case Error(message=message):
-            return Error(message=message)
-
-
 def next_step(result, sampling):
     """One step of the fold, or the failure that already ended the turn."""
-    return continued(result, lambda draft: Success(value=draft) if draft.done else attended(draft, sampling))
+    return resultAndThen(result, lambda draft: Success(value=draft) if draft.done else attended(draft, sampling))
 
 
 def attended(draft, sampling):
@@ -124,17 +114,17 @@ def attended(draft, sampling):
 
 def one_step(draft, sampling):
     """Sample one token, keep the handle it leaves, and add the token to the turn."""
-    return continued(perform(Inference.Generator.step(draft.model, draft.history, sampling)), lambda stepped: consumed(update(draft, model=stepped.model), stepped.token))
+    return resultAndThen(perform(Inference.Generator.step(draft.model, draft.history, sampling)), lambda stepped: consumed(update(draft, model=stepped.model), stepped.token))
 
 
 def consumed(draft, token):
     """A turn that ends at the model's end-of-turn token, or one that keeps going."""
-    return continued(perform(Inference.Generator.eos(draft.model)), lambda eos: Success(value=update(draft, done=True)) if token == eos else decoded(draft, token))
+    return resultAndThen(perform(Inference.Generator.eos(draft.model)), lambda eos: Success(value=update(draft, done=True)) if token == eos else decoded(draft, token))
 
 
 def decoded(draft, token):
     """Feed one decoded token into the tool parser."""
-    return continued(perform(Inference.Generator.decode(draft.model, token)), lambda piece: fed(draft, token, piece))
+    return resultAndThen(perform(Inference.Generator.decode(draft.model, token)), lambda piece: fed(draft, token, piece))
 
 
 def parses(tools):
@@ -157,7 +147,7 @@ def fed(draft, token, piece):
 
 def fed_parsed(draft):
     """The draft over the parser's newest read of its whole text."""
-    return continued(ToolParser.feed(ToolParser.start(draft.tools), draft.raw), lambda step: grown_pieces(draft, step))
+    return resultAndThen(ToolParser.feed(ToolParser.start(draft.tools), draft.raw), lambda step: grown_pieces(draft, step))
 
 
 def grown_pieces(draft, step):
@@ -165,7 +155,7 @@ def grown_pieces(draft, step):
     earlier replays already emitted, so a closed parse adds nothing twice."""
     text = drop(step.text, draft.text_length)
     think = drop(step.think, draft.think_length)
-    return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: Success(value=update(
+    return resultAndThen(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: Success(value=update(
         draft,
         pieces=listConcat(draft.pieces, listConcat(kept(think, THINKING), kept(text, TEXT))),
         calls=listConcat(draft.calls, fresh),
@@ -211,7 +201,7 @@ def finished_turn(draft):
 
 def closed(draft):
     """The turn over the parser's closed read of the turn's whole text."""
-    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: continued(grown_pieces(draft, step), calls_checked))
+    return resultAndThen(ToolParser.parse(draft.tools, draft.raw), lambda step: resultAndThen(grown_pieces(draft, step), calls_checked))
 
 
 def calls_checked(draft):

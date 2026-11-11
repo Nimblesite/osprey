@@ -16,29 +16,3 @@ for (long k = 0; k < 8; k++)
 }
 
 System.Console.WriteLine(result);
-
-static long ReadSeed()
-{
-    string line = System.Console.ReadLine();
-    long m = 0;
-    if (line != null)
-    {
-        int end = 0;
-        while (end < line.Length && (line[end] == ' ' || line[end] == '\t')) end++;
-        int start = end;
-        if (end < line.Length && (line[end] == '+' || line[end] == '-')) end++;
-        while (end < line.Length && line[end] >= '0' && line[end] <= '9') end++;
-        if (end > start)
-        {
-            long.TryParse(line.Substring(start, end - start), out m);
-        }
-    }
-    if (m == 0)
-    {
-        return 1;
-    }
-    byte[] buf = new byte[8];
-    System.Security.Cryptography.RandomNumberGenerator.Fill(buf);
-    ulong val = System.BitConverter.ToUInt64(buf, 0);
-    return (long)(val % 2147483646UL) + 1;
-}

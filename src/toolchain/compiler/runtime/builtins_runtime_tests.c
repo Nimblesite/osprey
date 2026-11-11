@@ -44,11 +44,16 @@ long g_checks = 0;
 // reading leaves no other reader, and a write to a readerless pipe raises
 // SIGPIPE -- on macOS even for zero bytes -- which killed the whole suite with
 // status 141 whenever such a child won the race.
-static void feed_child_stdin(int in_pipe[2], const char *input) {
-  if (input != NULL) {
-    size_t len = strlen(input);
-    CHECK(write(in_pipe[1], input, len) == (ssize_t)len);
+// Write the whole of `bytes` to `fd`; a NULL writes nothing at all.
+static void write_bytes(int fd, const char *bytes) {
+  if (bytes != NULL) {
+    size_t len = strlen(bytes);
+    CHECK(write(fd, bytes, len) == (ssize_t)len);
   }
+}
+
+static void feed_child_stdin(int in_pipe[2], const char *input) {
+  write_bytes(in_pipe[1], input);
   close(in_pipe[0]);
   close(in_pipe[1]);
 }
@@ -214,6 +219,34 @@ static void stdin_restore(int saved) {
   close(saved);
 }
 
+// A line of LONG_LINE 'z' bytes ended by a newline: longer than the initial
+// input buffer, so reading it takes the realloc growth path.
+static const char *long_z_line(void) {
+  static char big[LONG_LINE + 2];
+  memset(big, 'z', LONG_LINE);
+  big[LONG_LINE] = '\n';
+  big[LONG_LINE + 1] = '\0';
+  return big;
+}
+
+// Answer a pipe read end whose writer already delivered `bytes` (NULL for an
+// empty feed) and closed, so the descriptor sits at end-of-file once drained.
+static int fed_pipe(const char *bytes) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  write_bytes(pipe_fds[1], bytes);
+  close(pipe_fds[1]);
+  return pipe_fds[0];
+}
+
+// Read one line through `osp_input` with STDIN redirected to `read_fd`.
+static char *input_from_fd(int read_fd) {
+  int saved = stdin_redirect(read_fd);
+  char *line = osp_input();
+  stdin_restore(saved);
+  return line;
+}
+
 // Read one line through `osp_input` with STDIN redirected IN THIS PROCESS, and
 // answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
 // gcov counters are actually flushed at exit -- a forked child `_exit`s, so the
@@ -221,17 +254,7 @@ static void stdin_restore(int saved) {
 // zero for exactly that reason). The write end is closed before the read, so
 // the descriptor is at end-of-file the moment `feed` runs out.
 static char *input_through_pipe(const char *feed) {
-  int pipe_fds[2];
-  CHECK(pipe(pipe_fds) == 0);
-  if (feed != NULL) {
-    size_t len = strlen(feed);
-    CHECK(write(pipe_fds[1], feed, len) == (ssize_t)len);
-  }
-  close(pipe_fds[1]);
-  int saved = stdin_redirect(pipe_fds[0]);
-  char *line = osp_input();
-  stdin_restore(saved);
-  return line;
+  return input_from_fd(fed_pipe(feed));
 }
 
 // Read one line while a FORKED writer stays SILENT for a while and only then
@@ -258,13 +281,27 @@ static char *input_from_delayed_writer(const char *before, const char *after) {
     _exit(ok ? 0 : 1);
   }
   close(pipe_fds[1]);
-  int saved = stdin_redirect(pipe_fds[0]);
-  char *line = osp_input();
-  stdin_restore(saved);
+  char *line = input_from_fd(pipe_fds[0]);
   int status = 0;
   CHECK(waitpid(writer, &status, 0) == writer);
   CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
   return line;
+}
+
+// One fed-pipe scenario: `osp_input` must answer exactly `want` ("" for EOF).
+static void pipe_read_expect(const char *feed, const char *want) {
+  char *line = input_through_pipe(feed);
+  CHECK(line != NULL && strcmp(line, want) == 0);
+  free(line);
+}
+
+// One delayed-writer scenario: whatever the producer eventually sends must
+// arrive whole; a writer that closes in silence answers "".
+static void delayed_writer_expect(const char *before, const char *after,
+                                  const char *want) {
+  char *line = input_from_delayed_writer(before, after);
+  CHECK(line != NULL && strcmp(line, want) == 0);
+  free(line);
 }
 
 // [BUILTIN-INPUT] end to end, in-process. Seven descriptor states: a short
@@ -278,35 +315,21 @@ static char *input_from_delayed_writer(const char *before, const char *after) {
 // for the mid-line pause: a value the program then computes with. Only a real
 // end-of-file ends a line.
 static void t_input_descriptor_states(void) {
-  char *line = input_through_pipe("alpha\n");
-  CHECK(line != NULL && strcmp(line, "alpha") == 0);
-  free(line);
+  pipe_read_expect("alpha\n", "alpha");
 
-  static char big[LONG_LINE + 2];
-  memset(big, 'z', LONG_LINE);
-  big[LONG_LINE] = '\n';
-  big[LONG_LINE + 1] = '\0';
-  line = input_through_pipe(big);
+  char *line = input_through_pipe(long_z_line());
   CHECK(line != NULL && strlen(line) == LONG_LINE);
   free(line);
 
   // EOF: the documented empty string, never NULL.
-  line = input_through_pipe(NULL);
-  CHECK(line != NULL && line[0] == '\0');
-  free(line);
+  pipe_read_expect(NULL, "");
 
   // End-of-file terminates a line just as a newline would.
-  line = input_through_pipe("no-newline");
-  CHECK(line != NULL && strcmp(line, "no-newline") == 0);
-  free(line);
+  pipe_read_expect("no-newline", "no-newline");
 
   // Only the second line's worth is consumed per call: the reader stops at the
   // newline and leaves the rest of the descriptor alone.
-  int pipe_fds[2];
-  CHECK(pipe(pipe_fds) == 0);
-  CHECK(write(pipe_fds[1], "one\ntwo\n", 8) == 8);
-  close(pipe_fds[1]);
-  int saved = stdin_redirect(pipe_fds[0]);
+  int saved = stdin_redirect(fed_pipe("one\ntwo\n"));
   char *first = osp_input();
   char *second = osp_input();
   char *third = osp_input();
@@ -320,19 +343,13 @@ static void t_input_descriptor_states(void) {
 
   // A producer silent well past any plausible grace, then speaking, is NOT
   // end-of-file: its whole line arrives.
-  line = input_from_delayed_writer(NULL, "late\n");
-  CHECK(line != NULL && strcmp(line, "late") == 0);
-  free(line);
+  delayed_writer_expect(NULL, "late\n", "late");
 
   // The same producer pausing MID-LINE must not truncate it either.
-  line = input_from_delayed_writer("he", "llo\n");
-  CHECK(line != NULL && strcmp(line, "hello") == 0);
-  free(line);
+  delayed_writer_expect("he", "llo\n", "hello");
 
   // A writer that closes in silence IS end-of-file, and answers "".
-  line = input_from_delayed_writer(NULL, NULL);
-  CHECK(line != NULL && line[0] == '\0');
-  free(line);
+  delayed_writer_expect(NULL, NULL, "");
 }
 
 // [BUILTIN-INPUT]: a read that cannot allocate reports NULL and OWNS NOTHING.
@@ -350,11 +367,7 @@ static void t_input_allocation_failure(void) {
 
   // Arm 1: the initial line buffer. Nothing has been allocated yet, so nothing
   // may be retained.
-  int pipe_fds[2];
-  CHECK(pipe(pipe_fds) == 0);
-  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
-  close(pipe_fds[1]);
-  int saved = stdin_redirect(pipe_fds[0]);
+  int saved = stdin_redirect(fed_pipe("alpha\n"));
   osp_alloc_fail_next();
   char *line = osp_input();
   stdin_restore(saved);
@@ -364,14 +377,7 @@ static void t_input_allocation_failure(void) {
   // Arm 2: the growth realloc, reached only by a line longer than the initial
   // buffer. The buffer EXISTS by then, so returning NULL without freeing it is
   // a leak the return value cannot show.
-  static char big[LONG_LINE + 2];
-  memset(big, 'z', LONG_LINE);
-  big[LONG_LINE] = '\n';
-  big[LONG_LINE + 1] = '\0';
-  CHECK(pipe(pipe_fds) == 0);
-  CHECK(write(pipe_fds[1], big, LONG_LINE + 1) == (ssize_t)(LONG_LINE + 1));
-  close(pipe_fds[1]);
-  saved = stdin_redirect(pipe_fds[0]);
+  saved = stdin_redirect(fed_pipe(long_z_line()));
   osp_alloc_fail_after(1); // the initial malloc succeeds; the growth does not
   line = osp_input();
   stdin_restore(saved);
@@ -381,14 +387,7 @@ static void t_input_allocation_failure(void) {
   // Disarmed again, the very same read succeeds: the injector under test is
   // the injector, not a permanent change to the allocator.
   osp_alloc_fail_off();
-  CHECK(pipe(pipe_fds) == 0);
-  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
-  close(pipe_fds[1]);
-  saved = stdin_redirect(pipe_fds[0]);
-  line = osp_input();
-  stdin_restore(saved);
-  CHECK(line != NULL && strcmp(line, "alpha") == 0);
-  free(line);
+  pipe_read_expect("alpha\n", "alpha");
   CHECK(osp_alloc_live() == live);
 }
 

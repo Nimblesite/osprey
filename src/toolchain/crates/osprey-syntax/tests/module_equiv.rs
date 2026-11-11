@@ -1,16 +1,9 @@
 //! Cross-flavor canonical-AST contracts for [MODULES-FLAVOR-PROJECTION].
 
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+mod common;
 
-fn canonical(source: &str, flavor: Flavor) -> String {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(
-        parsed.errors.is_empty(),
-        "{flavor} syntax errors: {:?}",
-        parsed.errors
-    );
-    osprey_ast::canonical::without_positions(&parsed.program)
-}
+use common::canonical;
+use osprey_syntax::Flavor;
 
 fn assert_equivalent(default: &str, ml: &str) {
     assert_eq!(

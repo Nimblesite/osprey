@@ -16,7 +16,7 @@ def server_application(port, mode):
 
 
 def serve_on(port, mode):
-    match B.bind(server_application(port, mode), lambda app: A.serve(port, "127.0.0.1", app)):
+    match resultAndThen(server_application(port, mode), lambda app: A.serve(port, "127.0.0.1", app)):
         case Success(value=server):
             sleep(60000)
             match httpStopServer(server):

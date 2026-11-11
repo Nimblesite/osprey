@@ -1,18 +1,3 @@
-/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
-fn divideResult(a, b) = {
-    mut failed = false
-    handle Arith { divideByZero op _ => {
-        expect(op, "/")
-        failed = true
-        0.0
-    } }
-    let value = a / b
-    match failed {
-        true => Error { message: "division by zero" }
-        false => Success { value: value }
-    }
-}
-
 // Error-message catalogue: the ERROR path of every fallible builtin, with the
 // real reason threaded through the `Error { message }` arm — never a
 // placeholder. Each line prints "<name>: <message>". Also proves the other half
@@ -215,8 +200,10 @@ fn oversizedPayloadCase() = {
     ])
 }
 
-test("numeric failures retain their reasons", exactly(numericErrorCase))
-test("string failures retain their reasons", exactly(stringErrorCase))
-test("cursor failures retain their reasons", exactly(cursorErrorCase))
-test("collections fail safely and valid Results succeed", exactly(collectionAndSuccessCase))
-test("toString sizes its buffer for the payload", exactly(oversizedPayloadCase))
+exactTests([
+    { name: "numeric failures retain their reasons", work: numericErrorCase },
+    { name: "string failures retain their reasons", work: stringErrorCase },
+    { name: "cursor failures retain their reasons", work: cursorErrorCase },
+    { name: "collections fail safely and valid Results succeed", work: collectionAndSuccessCase },
+    { name: "toString sizes its buffer for the payload", work: oversizedPayloadCase }
+])

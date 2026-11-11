@@ -8,8 +8,7 @@ fn double(n) = n * 2
 
 let x = 42
 let name = "Alice"
-print("x = ${x}")
-print("name = ${name}")
+print("x = ${x}\nname = ${name}")
 
 let result = match x {
     42 => "The answer!"
@@ -33,16 +32,12 @@ fn analyzeNumber(n) = match n {
     _ => "Something else"
 }
 fn square(v) = v * v 
-print("Testing functions:")
-print(analyzeNumber(0))
-print(analyzeNumber(42))
-print(analyzeNumber(5))
+print("Testing functions:\n${analyzeNumber(0)}\n${analyzeNumber(42)}\n${analyzeNumber(5)}")
 
 let xx = 5
 let doubled = exactArithmetic(fn() => double(xx))
 let squared = exactArithmetic(fn() => square(doubled))
-print("${xx} doubled is ${doubled}")
-print("${doubled} squared is ${squared}")
+print("${xx} doubled is ${doubled}\n${doubled} squared is ${squared}")
 
 /// --- Grade pattern matching ---
 fn getGrade(s) = match s {
@@ -52,11 +47,7 @@ fn getGrade(s) = match s {
     75 => "Good"
     _ => "Needs Improvement"
 }
-print("Grade for 100: ${getGrade(100)}")
-print("Grade for 95: ${getGrade(95)}")
-print("Grade for 85: ${getGrade(85)}")
-print("Grade for 75: ${getGrade(75)}")
-print("Grade for 50: ${getGrade(50)}")
+print("Grade for 100: ${getGrade(100)}\nGrade for 95: ${getGrade(95)}\nGrade for 85: ${getGrade(85)}\nGrade for 75: ${getGrade(75)}\nGrade for 50: ${getGrade(50)}")
 
 // --- Functional pipe ---
 exactArithmetic(fn() => 5 |> double |> square |> print)
@@ -67,11 +58,9 @@ range(1, 10) |> forEach(print)
 fn compute(value) = value * 2 
 let fiber1 = exactArithmetic(fn() => spawn compute(5))
 let fiber2 = exactArithmetic(fn() => spawn compute(10))
-print("Fiber 1 result: ${fiber1}")
-print("Fiber 2 result: ${fiber2}")
+print("Fiber 1 result: ${fiber1}\nFiber 2 result: ${fiber2}")
 let job1 = yield 10
-print("Processed ${job1} items")
-print("=== Fiber Example Complete ===")
+print("Processed ${job1} items\n=== Fiber Example Complete ===")
 
 /// Verifies the website helpers, pipelines, matches, and fiber result end to end.
 fn websiteExamplesCase() = {
@@ -85,11 +74,7 @@ fn websiteExamplesCase() = {
         analyzeNumber(0) == "Zero",
         analyzeNumber(42) == "The answer!",
         analyzeNumber(5) == "Something else",
-        getGrade(100) == "Perfect!",
-        getGrade(95) == "Excellent",
-        getGrade(85) == "Very Good",
-        getGrade(75) == "Good",
-        getGrade(50) == "Needs Improvement",
+        answersHold(getGrade, [100, 95, 85, 75, 50], ["Perfect!", "Excellent", "Very Good", "Good", "Needs Improvement"]),
         compute(11) == 22,
         fiberValue == 14
     ])

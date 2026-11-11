@@ -21,6 +21,24 @@
 // Releases runtime-produced text through its manager and fixture text through libc.
 void release_test_buffer(void *p);
 
+// Asserts runtime-produced `out` is exactly `want`, then releases it.
+static inline void text_is(char *out, const char *want) {
+    assert(out != NULL && strcmp(out, want) == 0);
+    release_test_buffer(out);
+}
+
+// Asserts `list` holds exactly `items` (NULL-terminated), in order, then frees it.
+static inline void list_is(osp_string_list *list, const char *const *items) {
+    assert(list != NULL);
+    size_t n = 0;
+    for (; items[n] != NULL; n++) {
+        assert(n < (size_t)list->length && strcmp(list->items[n], items[n]) == 0);
+    }
+    assert((size_t)list->length == n);
+    osp_string_list_free(list);
+}
+
+
 // string_parse_tests.c
 void test_parse_int(void);
 void test_parse_float(void);

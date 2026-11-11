@@ -73,8 +73,10 @@ fn receiptInteraction() = {
 
 // Register the catalog lookup interaction.
 
-test("catalogue lookup drives prices and fallbacks", exactly(catalogueInteraction))
-// Register the pricing-policy interaction.
-test("pricing combines maps, matches, Results and arithmetic", exactly(pricingInteraction))
-// Register the complete receipt workflow.
-test("receipts compose normalization, totals and pipelines", exactly(receiptInteraction))
+exactTests([
+    { name: "catalogue lookup drives prices and fallbacks", work: catalogueInteraction },
+    // Register the pricing-policy interaction.
+    { name: "pricing combines maps, matches, Results and arithmetic", work: pricingInteraction },
+    // Register the complete receipt workflow.
+    { name: "receipts compose normalization, totals and pipelines", work: receiptInteraction }
+])

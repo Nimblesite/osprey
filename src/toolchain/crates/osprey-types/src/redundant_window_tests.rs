@@ -1,8 +1,9 @@
 //! The parallel search reports exactly the set the one-at-a-time greedy search
 //! does, whatever the window ([TYPE-ANNOTATION-REDUNDANT]).
 
+use crate::redundant::Snapshot;
 use crate::redundant::{accumulate, accumulate_candidates, individually_removable, published};
-use crate::redundant_sites::sites;
+use crate::redundant_sites::{sites, Site};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Removable, load-bearing and mutually pinning annotations, interleaved.
@@ -16,43 +17,49 @@ pub(crate) const MIXED: &str = "type Point = { x: int, y: int }\n\
     let i = identity(42)\n\
     let chosen = pick(1, 2)\n";
 
+/// A fixture program's published baseline, its written sites and their greedy set.
+fn fixture(program: &osprey_ast::Program) -> (Snapshot, Vec<Site>, Vec<usize>) {
+    let baseline = published(program).expect("fixture checks");
+    let written = sites(program);
+    let greedy = accumulate(program, &baseline, &written, 1);
+    (baseline, written, greedy)
+}
+
+/// A reported set the tests pin: non-empty and strictly narrower than the sites written.
+fn assert_strict_subset(subject: &[usize], written: usize, what: &str) {
+    assert!(
+        !subject.is_empty() && subject.len() < written,
+        "{what}: {subject:?} of {written}"
+    );
+}
+
 #[test]
 fn every_window_keeps_the_greedy_set() {
     let program = parse_program_with_flavor(MIXED, Flavor::Default).program;
-    let baseline = published(&program).expect("fixture checks");
-    let written = sites(&program);
-    let greedy = accumulate(&program, &baseline, &written, 1);
-    assert!(
-        !greedy.is_empty() && greedy.len() < written.len(),
-        "fixture must mix kept and dropped sites: {greedy:?} of {}",
-        written.len()
+    let (baseline, written, greedy) = fixture(&program);
+    assert_strict_subset(
+        &greedy,
+        written.len(),
+        "fixture must mix kept and dropped sites",
     );
     for window in [2, 3, 64] {
-        assert_eq!(
-            accumulate(&program, &baseline, &written, window),
-            greedy,
-            "window {window}"
-        );
+        let found = accumulate(&program, &baseline, &written, window);
+        assert_eq!(found, greedy, "window {window}");
     }
 }
 
 #[test]
 fn singleton_prefilter_keeps_the_greedy_set() {
     let program = parse_program_with_flavor(MIXED, Flavor::Default).program;
-    let baseline = published(&program).expect("fixture checks");
-    let written = sites(&program);
-    let greedy = accumulate(&program, &baseline, &written, 1);
+    let (baseline, written, greedy) = fixture(&program);
     let candidates = individually_removable(&program, &baseline, &written);
-    assert!(
-        !candidates.is_empty() && candidates.len() < written.len(),
-        "prefilter must drop a load-bearing site: {candidates:?} of {}",
-        written.len()
+    assert_strict_subset(
+        &candidates,
+        written.len(),
+        "prefilter must drop a load-bearing site",
     );
-    assert_eq!(
-        accumulate_candidates(&program, &baseline, &written, &candidates, 1),
-        greedy,
-        "singleton prefilter changed the greedy set"
-    );
+    let found = accumulate_candidates(&program, &baseline, &written, &candidates, 1);
+    assert_eq!(found, greedy, "singleton prefilter changed the greedy set");
 }
 
 /// [TYPE-ANNOTATION-REDUNDANT] Blame only steers the search, so the default path
@@ -97,10 +104,9 @@ fn the_directed_search_keeps_the_source_order_set() {
     for (flavor, source) in cases {
         let parsed = parse_program_with_flavor(source, flavor);
         assert_eq!(parsed.errors, Vec::new(), "{source}");
-        let baseline = published(&parsed.program).expect("fixture checks");
-        let written = sites(&parsed.program);
+        let (_, written, greedy) = fixture(&parsed.program);
         assert!(!written.is_empty(), "{source}");
-        let greedy: Vec<_> = accumulate(&parsed.program, &baseline, &written, 1)
+        let greedy: Vec<_> = greedy
             .into_iter()
             .filter_map(|index| written.get(index))
             .map(|site| site.source)

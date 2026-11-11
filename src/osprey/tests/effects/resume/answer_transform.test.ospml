@@ -205,7 +205,9 @@ compositionCase () =
         plain buildsButNeverInstalls == 42
     ]
 
-test "a return clause converts the body's normal completion" returnClauseCase
-test "control arms answer without the return clause" controlAnswerCase
-test "handler factories share state per call and isolate it across calls" factoryStateCase
-test "nested handlers compose answers innermost first" compositionCase
+testCases [
+    { name = "a return clause converts the body's normal completion", work = returnClauseCase },
+    { name = "control arms answer without the return clause", work = controlAnswerCase },
+    { name = "handler factories share state per call and isolate it across calls", work = factoryStateCase },
+    { name = "nested handlers compose answers innermost first", work = compositionCase }
+]

@@ -45,19 +45,19 @@ static void arc_wl_push(uintptr_t body) {
   g_wl[g_wl_top++] = body;
 }
 
-// Decrement a candidate child; queue it for freeing when it hits zero.
-// A probe miss (foreign/rodata/NULL) or an immortal (rc<0) is a no-op.
-static void arc_drop_child(void *child) {
-  OspArcHdr *h = arc_lookup_body((uintptr_t)child);
-  if (!h) {
-    return;
-  }
-  if (h->rc < 0) {
-    return;
-  }
-  if (--h->rc == 0) {
+// Decrement a resolved managed header; queue the body at rc==0, immortal: no-op.
+// A NULL header (an unresolved child: foreign, rodata or NULL) is a no-op too.
+static void arc_drop_hdr(void *child, OspArcHdr *h) {
+  if (h && h->rc >= 0 && --h->rc == 0) {
     arc_wl_push((uintptr_t)child);
   }
+}
+
+// The two drops differ only in how the child's header is resolved, so both hand
+// it to arc_drop_hdr: a probe miss (foreign/rodata/NULL) resolves to NULL and
+// is a no-op.
+static void arc_drop_child(void *child) {
+  arc_drop_hdr(child, arc_lookup_body((uintptr_t)child));
 }
 
 // MASK_DIRECT child drop: codegen proved every masked word of the parent is
@@ -67,16 +67,7 @@ static void arc_drop_child(void *child) {
 // deep-structure drops at ~52% of binarytrees' CPU — collapses to a direct
 // header read. NULL (a zeroed never-stored slot) and immortals stay no-ops.
 static void arc_drop_child_direct(void *child) {
-  if (!child) {
-    return;
-  }
-  OspArcHdr *h = arc_hdr(child);
-  if (h->rc < 0) {
-    return;
-  }
-  if (--h->rc == 0) {
-    arc_wl_push((uintptr_t)child);
-  }
+  arc_drop_hdr(child, child ? arc_hdr(child) : NULL);
 }
 
 // Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
@@ -87,17 +78,15 @@ static void arc_drop_child_direct(void *child) {
 //
 // Layout masks address exact pointer-sized slots on each target. Never scan
 // neighboring scalar bytes: an integer may equal an unrelated live address.
-#if UINTPTR_MAX == UINT32_MAX
 static inline void *arc_load_child(const char *at) {
+#if UINTPTR_MAX == UINT32_MAX
   uint32_t bits;
   memcpy(&bits, at, sizeof bits);
   return (void *)(uintptr_t)bits;
-}
 #else
-static inline void *arc_load_child(const char *at) {
   return *(void *const *)(const void *)at;
-}
 #endif
+}
 
 static void arc_drop_masked(char *body, uint32_t size, uint64_t mask,
                             int direct) {

@@ -28,15 +28,27 @@ char *osprey_kind_of(const char *path);
 // with the reason recorded.
 static char dir_fixture[128];
 
+// A one-byte fixture file at `path`.
+static void write_x(const char *path) {
+  FILE *file = fopen(path, "wb");
+  CHECK(file != NULL);
+  fputs("x", file);
+  (void)fclose(file);
+}
+
+// The call just refused recorded a reason naming `reason`; the channel is
+// cleared again so the next refusal cannot pass on this one's text.
+static void reason_is(const char *reason) {
+  CHECK(osp_io_error() != NULL && strstr(osp_io_error(), reason) != NULL);
+  osp_io_error_clear();
+}
+
 static void make_dir_fixture(void) {
   snprintf(dir_fixture, sizeof dir_fixture, "/tmp/osprey_dir_tests_%ld", (long)getpid());
   CHECK(mkdir(dir_fixture, 0755) == 0 || errno == EEXIST);
   char child[160];
   snprintf(child, sizeof child, "%s/leaf.bin", dir_fixture);
-  FILE *file = fopen(child, "wb");
-  CHECK(file != NULL);
-  fputs("x", file);
-  (void)fclose(file);
+  write_x(child);
   snprintf(child, sizeof child, "%s/nested", dir_fixture);
   CHECK(mkdir(child, 0755) == 0 || errno == EEXIST);
 }
@@ -60,13 +72,11 @@ static void t_list_dir(void) {
   char leaf[160];
   snprintf(leaf, sizeof leaf, "%s/leaf.bin", dir_fixture);
   CHECK(osprey_list_dir(leaf) == NULL);
-  CHECK(strstr(osp_io_error(), "listDir") != NULL);
-  osp_io_error_clear();
+  reason_is("listDir");
   CHECK(osprey_list_dir("/nonexistent/osprey/dir") == NULL);
-  CHECK(strstr(osp_io_error(), "listDir: /nonexistent/osprey/dir: ") != NULL);
-  osp_io_error_clear();
+  reason_is("listDir: /nonexistent/osprey/dir: ");
   CHECK(osprey_list_dir(NULL) == NULL);
-  CHECK(strstr(osp_io_error(), "listDir") != NULL);
+  reason_is("listDir");
   (void)unlink(leaf);
   char nested[160];
   snprintf(nested, sizeof nested, "%s/nested", dir_fixture);
@@ -80,10 +90,7 @@ static void t_kind_of(void) {
   make_dir_fixture();
   char leaf[160];
   snprintf(leaf, sizeof leaf, "%s/leaf.bin", dir_fixture);
-  FILE *file = fopen(leaf, "wb");
-  CHECK(file != NULL);
-  fputs("x", file);
-  (void)fclose(file);
+  write_x(leaf);
   char nested[160];
   snprintf(nested, sizeof nested, "%s/nested", dir_fixture);
   CHECK(mkdir(nested, 0755) == 0 || errno == EEXIST);
@@ -97,10 +104,9 @@ static void t_kind_of(void) {
   osp_release(kind);
   osp_io_error_clear();
   CHECK(osprey_kind_of("/nonexistent/osprey/path") == NULL);
-  CHECK(strstr(osp_io_error(), "kindOf: /nonexistent/osprey/path: ") != NULL);
-  osp_io_error_clear();
+  reason_is("kindOf: /nonexistent/osprey/path: ");
   CHECK(osprey_kind_of(NULL) == NULL);
-  CHECK(strstr(osp_io_error(), "kindOf") != NULL);
+  reason_is("kindOf");
   (void)unlink(leaf);
   (void)rmdir(nested);
   (void)rmdir(dir_fixture);
@@ -117,18 +123,14 @@ static void t_make_dir(void) {
   CHECK(osprey_make_dir(fixture) == 0);
   char blocker[160];
   snprintf(blocker, sizeof blocker, "%s/file", fixture);
-  FILE *file = fopen(blocker, "wb");
-  CHECK(file != NULL);
-  fputs("x", file);
-  (void)fclose(file);
+  write_x(blocker);
   char under[192];
   snprintf(under, sizeof under, "%s/file/under", fixture);
   osp_io_error_clear();
   CHECK(osprey_make_dir(under) == -1);
-  CHECK(strstr(osp_io_error(), "makeDir") != NULL);
-  osp_io_error_clear();
+  reason_is("makeDir");
   CHECK(osprey_make_dir(NULL) == -1);
-  CHECK(strstr(osp_io_error(), "makeDir") != NULL);
+  reason_is("makeDir");
   (void)unlink(blocker);
   (void)rmdir(fixture);
 }
@@ -185,9 +187,8 @@ static void t_kind_other_and_missing_parent(void) {
   CHECK(kind != NULL && strcmp(kind, "other") == 0 && osp_io_error() == NULL);
   osp_release(kind);
   (void)unlink(fifo);
-  osp_io_error_clear();
   CHECK(osprey_make_dir("/nonexistent/osprey/parent/child") == -1);
-  CHECK(strstr(osp_io_error(), "makeDir: /nonexistent/osprey/parent/child: ") != NULL);
+  reason_is("makeDir: /nonexistent/osprey/parent/child: ");
 }
 
 // Out-of-memory arms, forced through test_alloc.h's injector: every one is NULL

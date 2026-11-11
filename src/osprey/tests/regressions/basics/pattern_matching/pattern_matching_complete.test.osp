@@ -1,18 +1,3 @@
-/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
-fn divideResult(a, b) = {
-    mut failed = false
-    handle Arith { divideByZero op _ => {
-        expect(op, "/")
-        failed = true
-        0.0
-    } }
-    let value = a / b
-    match failed {
-        true => Error { message: "division by zero" }
-        false => Success { value: value }
-    }
-}
-
 // Pattern matching across every shape Osprey supports:
 // literal, wildcard, nested match, named ADT field destructuring (both
 // orders), multi-variant union, type-annotation pattern, dynamic union
@@ -83,6 +68,11 @@ fn erasedResultReturn() -> Result<List<any>, string> = [NestedBox { held: "retur
 fn concreteCallback() = [NestedBox { held: "named callback", tag: 10 }]
 fn useErasedList(work) = nestedErased(work())
 fn useErasedResult(work) = nestedErasedResult(work())
+fn held(items, want) = toString(nestedErased(items)) == want
+fn textIs(actual, want) = toString(actual) == want
+fn heldResult(items, want) = toString(nestedErasedResult(items)) == want
+fn deeplyHolds(items, want) = toString(deeplyErased(items)) == want
+fn deeplyHoldsResult(items, want) = toString(deeplyErasedResult(items)) == want
 
 fn readErasedRow(value: any) = match value {
     { held, .. } => toString(held)
@@ -113,22 +103,18 @@ fn genericWholeResult() = {
 
 effect PatternRows { get: fn() -> List<any> }
 effect PatternResultRows { get: fn() -> Result<List<any>, string> }
-fn effectRows() = {
-    let rows = handler PatternRows { get => concreteCallback() }
+fn rowsHandled(handled) = {
+    let rows = handler PatternRows { get => handled() }
     rows(fn() => nestedErased(perform PatternRows.get()))
 }
-fn effectResultRows() = {
-    let rows = handler PatternResultRows { get => concreteCallback() }
+fn resultRowsHandled(handled) = {
+    let rows = handler PatternResultRows { get => handled() }
     rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
 }
-fn effectWrappedRows() = {
-    let rows = handler PatternResultRows { get => Success { value: concreteCallback() } }
-    rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
-}
-fn effectErrorRows() = {
-    let rows = handler PatternResultRows { get => Error { message: "effect ${toString(42)}" } }
-    rows(fn() => nestedErasedResult(perform PatternResultRows.get()))
-}
+fn effectRows() = rowsHandled(concreteCallback)
+fn effectResultRows() = resultRowsHandled(concreteCallback)
+fn effectWrappedRows() = resultRowsHandled(fn() => Success { value: concreteCallback() })
+fn effectErrorRows() = resultRowsHandled(fn() => Error { message: "effect ${toString(42)}" })
 
 fn analyze(n) = match n {
     0  => "Zero"
@@ -170,29 +156,18 @@ fn shapeKind(s) = match s {
     Square(_x, _y)   => "dyn square"
 }
 
+fn sampleCircle() = Circle { radius: 5 }
+fn sampleSquare() = Square { x: 3, y: 7 }
+
 // --- Literal matching ---
-print("Number analysis:")
-print("0 is ${analyze(0)}")
-print("42 is ${analyze(42)}")
-print("7 is ${analyze(7)}")
-print("")
+print("Number analysis:\n0 is ${analyze(0)}\n42 is ${analyze(42)}\n7 is ${analyze(7)}\n")
 
-print("Even check (1=yes, 0=no):")
-print("42 is even: ${isEven(42)}")
-print("7  is even: ${isEven(7)}")
-print("2  is even: ${isEven(2)}")
-print("")
+print("Even check (1=yes, 0=no):\n42 is even: ${isEven(42)}\n7  is even: ${isEven(7)}\n2  is even: ${isEven(2)}\n")
 
-print("Score categories:")
-print("Score 100: ${category(100)}")
-print("Score 85: ${category(85)}")
-print("Score 50: ${category(50)}")
+print("Score categories:\nScore 100: ${category(100)}\nScore 85: ${category(85)}\nScore 50: ${category(50)}")
 
 // --- Nested match ---
-print("Nested 0,0: ${nested(x: 0, y: 0)}")
-print("Nested 0,3: ${nested(x: 0, y: 3)}")
-print("Nested 4,0: ${nested(x: 4, y: 0)}")
-print("Nested 4,5: ${nested(x: 4, y: 5)}")
+print("Nested 0,0: ${nested(x: 0, y: 0)}\nNested 0,3: ${nested(x: 0, y: 3)}\nNested 4,0: ${nested(x: 4, y: 0)}\nNested 4,5: ${nested(x: 4, y: 5)}")
 
 /// --- ADT field destructuring (both orders + type annotation pattern) ---
 let alice = PersonData { name: "Alice", age: 30 }
@@ -202,12 +177,7 @@ print(match bob   { PersonData { age, name } => "Reordered: ${name}/${toString(a
 print(match alice { _p: PersonData => "Got PersonData type" _ => "Other" })
 
 /// --- Multi-variant + dynamic via function return ---
-let c = Circle { radius: 5 }
-let s = Square { x: 3, y: 7 }
-print(describe(c))
-print(describe(s))
-print(shapeKind(c))
-print(shapeKind(s))
+print("${describe(sampleCircle())}\n${describe(sampleSquare())}\n${shapeKind(sampleCircle())}\n${shapeKind(sampleSquare())}")
 
 /// --- Bool ternary + structural ternary on anonymous record ---
 let flag = { a: true }
@@ -223,16 +193,13 @@ let okElvis = okCalc ?: ((0 - 1) )
 print("ok elvis = ${toString(okElvis)}")
 
 fn divide(a, b) = divideResult(a, b)
-let badDiv  = divide(a: 10, b: 0)
-let badElv = badDiv ?: 0.0
-print("bad elvis = ${toString(badElv)}")
-let goodDiv = divide(a: 10, b: 2)
-let goodElv = goodDiv ?: 0.0
-print("good elvis = ${toString(goodElv)}")
+fn showElvis(label, result) = print("${label} = ${toString(result ?: 0.0)}")
+let badDiv = divide(a: 10, b: 0)
+showElvis("bad elvis", badDiv)
+showElvis("good elvis", divide(a: 10, b: 2))
 
 // --- Result<T,E> toString ---
-print("ok toString  = ${toString(okCalc)}")
-print("bad toString = ${toString(badDiv)}")
+print("ok toString  = ${toString(okCalc)}\nbad toString = ${toString(badDiv)}")
 
 /// Replays every meaningful branch with value-level assertions.
 fn patternMatchingCase() = {
@@ -246,8 +213,8 @@ fn patternMatchingCase() = {
     let erasedResultBinding: Result<List<any>, string> = [NestedBox { held: "bound result", tag: 6 }]
     let deepBinding: List<List<any>> = [[NestedBox { held: "deep binding", tag: 22 }]]
     let localAlice = PersonData { name: "Alice", age: 30 }
-    let localCircle = Circle { radius: 5 }
-    let localSquare = Square { x: 3, y: 7 }
+    let localCircle = sampleCircle()
+    let localSquare = sampleSquare()
     let personText = match localAlice {
         PersonData { name, age } => "${name}/${toString(age)}"
     }
@@ -259,47 +226,44 @@ fn patternMatchingCase() = {
     }
     checkAll("literal, union, structural, and Result patterns", [
         analyze(0) == "Zero",
-        toString(nestedErased([NestedBox { held: "boxed", tag: 1 }])) == "boxed",
-        toString(deeplyErased([[NestedBox { held: "deep list", tag: 19 }]])) == "deep list",
-        toString(deeplyErasedResult([[NestedBox { held: "deep promoted", tag: 20 }]])) == "deep promoted",
-        toString(deeplyErasedResult(Success { value: [[NestedBox { held: "deep success", tag: 21 }]] })) == "deep success",
-        toString(deeplyErasedResult(Error { message: "deep error" })) == "deep error",
+        held([NestedBox { held: "boxed", tag: 1 }], "boxed"),
+        deeplyHolds([[NestedBox { held: "deep list", tag: 19 }]], "deep list"),
+        deeplyHoldsResult([[NestedBox { held: "deep promoted", tag: 20 }]], "deep promoted"),
+        deeplyHoldsResult(Success { value: [[NestedBox { held: "deep success", tag: 21 }]] }, "deep success"),
+        deeplyHoldsResult(Error { message: "deep error" }, "deep error"),
         structuralEquals([toString(deeplyErased([])), toString(deeplyErased([[]]))], ["other", "other"]),
-        toString(deeplyErased(deepBinding)) == "deep binding",
-        toString(deeplyErased(deepBinding)) == "deep binding",
+        deeplyHolds(deepBinding, "deep binding"),
+        deeplyHolds(deepBinding, "deep binding"),
         toString(threeLevelsErased([[[NestedBox { held: "three levels", tag: 23 }]]])) == "three levels",
         toString(erasedResultRows([Success { value: [NestedBox { held: "result row", tag: 24 }] }])) == "result row",
         toString(erasedResultRows([Error { message: "row error" }])) == "row error",
-        toString(nestedErasedResult([NestedBox { held: "promoted", tag: 1 }])) == "promoted",
-        toString(nestedErasedResult(Success { value: [NestedBox { held: "success", tag: 2 }] })) == "success",
-        toString(nestedErasedResult(Error { message: "retained error" })) == "retained error",
-        toString(nestedErased(erasedListReturn())) == "returned list",
-        toString(nestedErasedResult(erasedResultReturn())) == "returned result",
-        toString(nestedErased(erasedBinding)) == "bound list",
-        toString(nestedErasedResult(erasedResultBinding)) == "bound result",
-        toString(useErasedList(fn() => [NestedBox { held: "callback list", tag: 7 }])) == "callback list",
-        toString(useErasedResult(fn() => [NestedBox { held: "callback result", tag: 8 }])) == "callback result",
-        toString(useErasedResult(fn() => Success { value: [NestedBox { held: "callback success", tag: 9 }] })) == "callback success",
-        toString(useErasedResult(fn() => Error { message: "callback error" })) == "callback error",
-        toString(nestedErased(concreteCallback())) == "named callback",
-        toString(useErasedList(concreteCallback)) == "named callback",
-        toString(useErasedResult(concreteCallback)) == "named callback",
-        toString(useErasedList(fn() => [])) == "other",
-        toString(useErasedResult(fn() => [7])) == "other",
-        toString(nestedErased(loader.load())) == "field",
-        toString(nestedErasedResult(resultLoader.load())) == "result field",
-        toString(nestedErased(callback())) == "typed callback",
-        toString(nestedErasedResult(resultCallback())) == "typed result callback",
-        toString(nestedErased(escaped.plain.load())) == "escaped!",
-        toString(nestedErased(escaped.plain.load())) == "escaped!",
-        toString(nestedErasedResult(escaped.wrapped.load())) == "escaped!",
-        toString(nestedErasedResult(escaped.wrapped.load())) == "escaped!",
+        heldResult([NestedBox { held: "promoted", tag: 1 }], "promoted"),
+        heldResult(Success { value: [NestedBox { held: "success", tag: 2 }] }, "success"),
+        heldResult(Error { message: "retained error" }, "retained error"),
+        held(erasedListReturn(), "returned list"),
+        heldResult(erasedResultReturn(), "returned result"),
+        held(erasedBinding, "bound list"),
+        heldResult(erasedResultBinding, "bound result"),
+        textIs(useErasedList(fn() => [NestedBox { held: "callback list", tag: 7 }]), "callback list"),
+        textIs(useErasedResult(fn() => [NestedBox { held: "callback result", tag: 8 }]), "callback result"),
+        textIs(useErasedResult(fn() => Success { value: [NestedBox { held: "callback success", tag: 9 }] }), "callback success"),
+        textIs(useErasedResult(fn() => Error { message: "callback error" }), "callback error"),
+        held(concreteCallback(), "named callback"),
+        textIs(useErasedList(concreteCallback), "named callback"),
+        textIs(useErasedResult(concreteCallback), "named callback"),
+        textIs(useErasedList(fn() => []), "other"),
+        textIs(useErasedResult(fn() => [7]), "other"),
+        held(loader.load(), "field"),
+        heldResult(resultLoader.load(), "result field"),
+        held(callback(), "typed callback"),
+        heldResult(resultCallback(), "typed result callback"),
+        structuralEquals([toString(nestedErased(escaped.plain.load())), toString(nestedErased(escaped.plain.load())), toString(nestedErasedResult(escaped.wrapped.load())), toString(nestedErasedResult(escaped.wrapped.load()))], ["escaped!", "escaped!", "escaped!", "escaped!"]),
         toString(genericRows()) == "named callback",
         toString(genericResultRows()) == "named callback",
         toString(genericWholeResult()) == "Error(generic error)",
         structuralEquals([toString(effectRows()), toString(effectResultRows())], ["named callback", "named callback"]),
         structuralEquals([toString(effectWrappedRows()), toString(effectErrorRows())], ["named callback", "effect 42"]),
-        toString(nestedErased([7])) == "other",
+        held([7], "other"),
         structuralEquals([nestedTuple([NestedPair(3, "q"), NestedPair(4, "r")]), nestedTuple([])], ["3:q:1", "other"]),
         nestedHead([NestedWord { text: "u" }, NestedEmpty]) == "u:1",
         structuralEquals([nestedHead([NestedEmpty]), nestedHead([])], ["other", "other"]),
@@ -309,11 +273,9 @@ fn patternMatchingCase() = {
         structuralEquals([category(50), nested(x: 0, y: 0)], ["Needs Improvement", "Both zero"]),
         structuralEquals([nested(x: 0, y: 3), nested(x: 4, y: 0)], ["X zero", "Y zero"]),
         structuralEquals([nested(x: 4, y: 5), personText], ["Both other", "Alice/30"]),
-        structuralEquals([describe(localCircle), describe(localSquare)], ["circle r=5", "square (3,7)"]),
-        structuralEquals([shapeKind(localCircle), shapeKind(localSquare)], ["dyn circle", "dyn square"]),
+        structuralEquals([describe(localCircle), describe(localSquare), shapeKind(localCircle), shapeKind(localSquare)], ["circle r=5", "square (3,7)", "dyn circle", "dyn square"]),
         extracted == "It worked",
-        toString(useErasedList(fn() => [NestedBox { held: capturedText, tag: 11 }])) == capturedText,
-        toString(useErasedResult(fn() => [NestedBox { held: capturedText, tag: 12 }])) == capturedText,
+        structuralEquals([toString(useErasedList(fn() => [NestedBox { held: capturedText, tag: 11 }])), toString(useErasedResult(fn() => [NestedBox { held: capturedText, tag: 12 }]))], [capturedText, capturedText]),
         concreteRowCallback(readErasedRow),
         structuralEquals([literalHead([7, 8]), isEven(0), isEven(2)], [1, 1, 1]),
         structuralEquals([isEven(4), isEven(42), intDiv(10, 5)], [1, 0, 2]),

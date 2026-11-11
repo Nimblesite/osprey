@@ -14,43 +14,24 @@ fn twoDigits(n) = if n < 10 { "0${toString(n)}" } else { toString(n) }
 fn caseSuffix(n) = "0${twoDigits(n)}"
 
 /// A checked row for one plain negation, which never faults.
-fn negated(x, want) = verify(fn() => -(x), want, "")
+fn negated(x, want) = faultsAre(fn() => -(x), want, "")
 
 /// A checked row for one doubled negation, which never faults.
-fn doubleNegated(x, want) = verify(fn() => -(-(x)), want, "")
+fn doubleNegated(x, want) = faultsAre(fn() => -(-(x)), want, "")
 
 /// A checked row for the magnitude of a plain literal, which never faults.
-fn magnitude(x, want) = verify(fn() => abs(x), want, "")
+fn magnitude(x, want) = faultsAre(fn() => abs(x), want, "")
 
 /// A checked row for the magnitude of a negated literal, which never faults.
-fn magnitudeOfNegated(x, want) = verify(fn() => abs(-(x)), want, "")
+fn magnitudeOfNegated(x, want) = faultsAre(fn() => abs(-(x)), want, "")
 
 /// The ordered two-fault paths, one helper per repeated fault pair.
-fn overflowThenDivision(delta) = verify(fn() => (maxValue() + delta) + (delta / 0), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
-fn remainderThenOverflow(delta) = verify(fn() => (delta % 0) * (maxValue() + delta), 0, "remainder(${delta});overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});")
-fn multiplyThenRemainder() = verify(fn() => (maxValue() * 2) % 0, 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);")
-fn divisionThenMultiply(delta) = verify(fn() => (delta / 0) + (maxValue() * 2), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
-fn lateOverflowThenRemainder(delta) = verify(fn() => (((maxValue() - delta) + delta) + 1) * (delta % 0), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
+fn overflowThenDivision(delta) = faultsAre(fn() => (maxValue() + delta) + (delta / 0), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
+fn remainderThenOverflow(delta) = faultsAre(fn() => (delta % 0) * (maxValue() + delta), 0, "remainder(${delta});overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});")
+fn multiplyThenRemainder() = faultsAre(fn() => (maxValue() * 2) % 0, 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);")
+fn divisionThenMultiply(delta) = faultsAre(fn() => (delta / 0) + (maxValue() * 2), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
+fn lateOverflowThenRemainder(delta) = faultsAre(fn() => (((maxValue() - delta) + delta) + 1) * (delta % 0), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
 
-fn verify(work, expected, wantedFaults) = {
-    mut faults = ""
-    handle Arith {
-        overflow op lhs rhs wrapped => {
-            faults = faults + "overflow(${op},${lhs},${rhs},${wrapped});"
-            wrapped
-        }
-        divideByZero op lhs => {
-            faults = faults + "zero(${op},${lhs});"
-            -0.5
-        }
-        remainderByZero lhs => {
-            faults = faults + "remainder(${lhs});"
-            0
-        }
-    }
-    expect(work(), expected)
-    expect(faults, wantedFaults)
-}
 
 fn choose(work, replacement) = {
     handle Arith {
@@ -82,8 +63,8 @@ fn policySweep() = {
         let rightOperand = satAdd(k, 2)
         let sum = satAdd(leftOperand, rightOperand)
         let replacement = satAdd(k, 900)
-        test("healthy arithmetic bypasses nested policy ${suffix}", fn() => verify(fn() => choose(fn() => leftOperand + rightOperand, sum), sum, ""))
-        test("nested overflow policy ${suffix}", fn() => verify(fn() => choose(fn() => maxValue() + k, replacement), replacement, "overflow(+,9223372036854775807,${k},${wrapAdd(9223372036854775807, k)});"))
+        test("healthy arithmetic bypasses nested policy ${suffix}", fn() => faultsAre(fn() => choose(fn() => leftOperand + rightOperand, sum), sum, ""))
+        test("nested overflow policy ${suffix}", fn() => faultsAre(fn() => choose(fn() => maxValue() + k, replacement), replacement, "overflow(+,9223372036854775807,${k},${wrapAdd(9223372036854775807, k)});"))
     })
 }
 
@@ -127,40 +108,40 @@ test("absolute positive 009", fn() => magnitude(9, 9))
 test("absolute negative 009", fn() => magnitudeOfNegated(9, 9))
 test("absolute positive 010", fn() => magnitude(10, 10))
 test("absolute negative 010", fn() => magnitudeOfNegated(10, 10))
-test("mixed integer value chain 001", fn() => verify(fn() => (((((11 + 3) * 4) - 1) % 6) + 8), 9, ""))
-test("mixed integer value chain 002", fn() => verify(fn() => (((((12 + 4) * 5) - 2) % 7) + 9), 10, ""))
-test("mixed integer value chain 003", fn() => verify(fn() => (((((13 + 5) * 6) - 3) % 8) + 10), 11, ""))
-test("mixed integer value chain 004", fn() => verify(fn() => (((((14 + 2) * 7) - 4) % 9) + 11), 11, ""))
-test("mixed integer value chain 005", fn() => verify(fn() => (((((15 + 3) * 3) - 5) % 10) + 12), 21, ""))
-test("mixed integer value chain 006", fn() => verify(fn() => (((((16 + 4) * 4) - 6) % 11) + 13), 21, ""))
-test("mixed integer value chain 007", fn() => verify(fn() => (((((17 + 5) * 5) - 7) % 5) + 14), 17, ""))
-test("mixed integer value chain 008", fn() => verify(fn() => (((((18 + 2) * 6) - 8) % 6) + 15), 19, ""))
-test("mixed integer value chain 009", fn() => verify(fn() => (((((19 + 3) * 7) - 9) % 7) + 16), 21, ""))
-test("mixed integer value chain 010", fn() => verify(fn() => (((((20 + 4) * 3) - 10) % 8) + 17), 23, ""))
-test("mixed float value chain 001", fn() => verify(fn() => ((6 / 2) + 5.0), 8.0, ""))
-test("mixed float value chain 002", fn() => verify(fn() => ((12 / 3) + 6.0), 10.0, ""))
-test("mixed float value chain 003", fn() => verify(fn() => ((20 / 4) + 7.0), 12.0, ""))
-test("mixed float value chain 004", fn() => verify(fn() => ((30 / 5) + 8.0), 14.0, ""))
-test("mixed float value chain 005", fn() => verify(fn() => ((42 / 6) + 9.0), 16.0, ""))
-test("mixed float value chain 006", fn() => verify(fn() => ((56 / 7) + 10.0), 18.0, ""))
-test("mixed float value chain 007", fn() => verify(fn() => ((72 / 8) + 11.0), 20.0, ""))
-test("mixed float value chain 008", fn() => verify(fn() => ((90 / 9) + 12.0), 22.0, ""))
-test("mixed float value chain 009", fn() => verify(fn() => ((110 / 10) + 13.0), 24.0, ""))
-test("mixed float value chain 010", fn() => verify(fn() => ((132 / 11) + 14.0), 26.0, ""))
+test("mixed integer value chain 001", fn() => faultsAre(fn() => (((((11 + 3) * 4) - 1) % 6) + 8), 9, ""))
+test("mixed integer value chain 002", fn() => faultsAre(fn() => (((((12 + 4) * 5) - 2) % 7) + 9), 10, ""))
+test("mixed integer value chain 003", fn() => faultsAre(fn() => (((((13 + 5) * 6) - 3) % 8) + 10), 11, ""))
+test("mixed integer value chain 004", fn() => faultsAre(fn() => (((((14 + 2) * 7) - 4) % 9) + 11), 11, ""))
+test("mixed integer value chain 005", fn() => faultsAre(fn() => (((((15 + 3) * 3) - 5) % 10) + 12), 21, ""))
+test("mixed integer value chain 006", fn() => faultsAre(fn() => (((((16 + 4) * 4) - 6) % 11) + 13), 21, ""))
+test("mixed integer value chain 007", fn() => faultsAre(fn() => (((((17 + 5) * 5) - 7) % 5) + 14), 17, ""))
+test("mixed integer value chain 008", fn() => faultsAre(fn() => (((((18 + 2) * 6) - 8) % 6) + 15), 19, ""))
+test("mixed integer value chain 009", fn() => faultsAre(fn() => (((((19 + 3) * 7) - 9) % 7) + 16), 21, ""))
+test("mixed integer value chain 010", fn() => faultsAre(fn() => (((((20 + 4) * 3) - 10) % 8) + 17), 23, ""))
+test("mixed float value chain 001", fn() => faultsAre(fn() => ((6 / 2) + 5.0), 8.0, ""))
+test("mixed float value chain 002", fn() => faultsAre(fn() => ((12 / 3) + 6.0), 10.0, ""))
+test("mixed float value chain 003", fn() => faultsAre(fn() => ((20 / 4) + 7.0), 12.0, ""))
+test("mixed float value chain 004", fn() => faultsAre(fn() => ((30 / 5) + 8.0), 14.0, ""))
+test("mixed float value chain 005", fn() => faultsAre(fn() => ((42 / 6) + 9.0), 16.0, ""))
+test("mixed float value chain 006", fn() => faultsAre(fn() => ((56 / 7) + 10.0), 18.0, ""))
+test("mixed float value chain 007", fn() => faultsAre(fn() => ((72 / 8) + 11.0), 20.0, ""))
+test("mixed float value chain 008", fn() => faultsAre(fn() => ((90 / 9) + 12.0), 22.0, ""))
+test("mixed float value chain 009", fn() => faultsAre(fn() => ((110 / 10) + 13.0), 24.0, ""))
+test("mixed float value chain 010", fn() => faultsAre(fn() => ((132 / 11) + 14.0), 26.0, ""))
 
 twoFaultSweep()
 policySweep()
 
-test("policy observes arithmetic value and faults 001", fn() => verify(fn() => (10 + 3), 13, ""))
-test("policy observes arithmetic value and faults 002", fn() => verify(fn() => (20 + 4), 24, ""))
-test("policy observes arithmetic value and faults 003", fn() => verify(fn() => (30 + 5), 35, ""))
-test("policy observes arithmetic value and faults 004", fn() => verify(fn() => (40 + 6), 46, ""))
-test("policy observes arithmetic value and faults 005", fn() => verify(fn() => (50 + 7), 57, ""))
-test("policy observes arithmetic value and faults 006", fn() => verify(fn() => (6 / 0), -0.5, "zero(/,6.0);"))
-test("policy observes arithmetic value and faults 007", fn() => verify(fn() => (runtimeValue(9223372036854775807) + 7), -9223372036854775802, "overflow(+,9223372036854775807,7,-9223372036854775802);"))
-test("policy observes arithmetic value and faults 008", fn() => verify(fn() => (8 / 0), -0.5, "zero(/,8.0);"))
-test("policy observes arithmetic value and faults 009", fn() => verify(fn() => (runtimeValue(9223372036854775807) + 9), -9223372036854775800, "overflow(+,9223372036854775807,9,-9223372036854775800);"))
-test("policy observes arithmetic value and faults 010", fn() => verify(fn() => (10 / 0), -0.5, "zero(/,10.0);"))
-test("literal negation is a plain int", fn() => verify(fn() => -(7), -7, ""))
-test("runtime negation is a plain int", fn() => verify(fn() => negateValue(7), -7, ""))
+test("policy observes arithmetic value and faults 001", fn() => faultsAre(fn() => (10 + 3), 13, ""))
+test("policy observes arithmetic value and faults 002", fn() => faultsAre(fn() => (20 + 4), 24, ""))
+test("policy observes arithmetic value and faults 003", fn() => faultsAre(fn() => (30 + 5), 35, ""))
+test("policy observes arithmetic value and faults 004", fn() => faultsAre(fn() => (40 + 6), 46, ""))
+test("policy observes arithmetic value and faults 005", fn() => faultsAre(fn() => (50 + 7), 57, ""))
+test("policy observes arithmetic value and faults 006", fn() => faultsAre(fn() => (6 / 0), -0.5, "zero(/,6.0);"))
+test("policy observes arithmetic value and faults 007", fn() => faultsAre(fn() => (runtimeValue(9223372036854775807) + 7), -9223372036854775802, "overflow(+,9223372036854775807,7,-9223372036854775802);"))
+test("policy observes arithmetic value and faults 008", fn() => faultsAre(fn() => (8 / 0), -0.5, "zero(/,8.0);"))
+test("policy observes arithmetic value and faults 009", fn() => faultsAre(fn() => (runtimeValue(9223372036854775807) + 9), -9223372036854775800, "overflow(+,9223372036854775807,9,-9223372036854775800);"))
+test("policy observes arithmetic value and faults 010", fn() => faultsAre(fn() => (10 / 0), -0.5, "zero(/,10.0);"))
+test("literal negation is a plain int", fn() => faultsAre(fn() => -(7), -7, ""))
+test("runtime negation is a plain int", fn() => faultsAre(fn() => negateValue(7), -7, ""))
 

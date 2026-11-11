@@ -80,6 +80,8 @@ fn deepEffectCase() = checkAll("an effect four segments deep still propagates", 
 
 exactArithmetic(fn() => print("${Twig::scaled(3)} ${boost(2)} ${tapping(2, fn() => Bud::drink(5))} ${depth::Trunk::Branch::pick()}"))
 
-test("layout nesting keeps every level addressable", exactly(nestingDepthCase))
-test("an indented import selection binds every member", exactly(layoutImportCase))
-test("an effect declared four segments deep propagates", exactly(deepEffectCase))
+exactTests([
+    { name: "layout nesting keeps every level addressable", work: nestingDepthCase },
+    { name: "an indented import selection binds every member", work: layoutImportCase },
+    { name: "an effect declared four segments deep propagates", work: deepEffectCase }
+])

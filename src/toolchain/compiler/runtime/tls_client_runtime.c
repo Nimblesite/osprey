@@ -152,19 +152,6 @@ int64_t osprey_tls_connect(char *host, int64_t port, int64_t timeout_ms) {
   return slot + 1;
 }
 
-static int hex_nibble(char c) {
-  if (c >= '0' && c <= '9') {
-    return c - '0';
-  }
-  if (c >= 'a' && c <= 'f') {
-    return c - 'a' + 10;
-  }
-  if (c >= 'A' && c <= 'F') {
-    return c - 'A' + 10;
-  }
-  return -1;
-}
-
 // The bytes a hex text spells, or NULL for odd length or a non-hex character.
 static unsigned char *hex_bytes(const char *hex, size_t *length) {
   size_t chars = strlen(hex);
@@ -176,8 +163,8 @@ static unsigned char *hex_bytes(const char *hex, size_t *length) {
     return NULL;
   }
   for (size_t i = 0; i < chars; i += 2) {
-    int high = hex_nibble(hex[i]);
-    int low = hex_nibble(hex[i + 1]);
+    int high = hex_digit_value(hex[i]);
+    int low = hex_digit_value(hex[i + 1]);
     if (high < 0 || low < 0) {
       free(bytes);
       return NULL;

@@ -49,8 +49,8 @@ mod types;
 
 use super::cst::{
     MlArm, MlBinder, MlClauses, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField,
-    MlHandleArm, MlItem, MlModuleKind, MlParam, MlPattern, MlSymbolPath, MlType, MlTypeField,
-    MlTypeParam, MlVariance, MlVariant,
+    MlHandleArm, MlItem, MlModuleKind, MlParam, MlPattern, MlSig, MlSymbolPath, MlType,
+    MlTypeField, MlTypeParam, MlVariance, MlVariant,
 };
 use super::lexer::lex;
 use super::token::{keyword_spelling, TokKind, Token};

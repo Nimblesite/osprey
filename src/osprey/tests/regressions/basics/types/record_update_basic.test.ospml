@@ -4,9 +4,7 @@ print "=== RECORD UPDATE BASIC TESTS ==="
 
 (** Print a label followed by the two field values it describes. *)
 showFields (label, first, second) =
-    print label
-    print first
-    print second
+    print "${label}\n${first}\n${second}"
 
 
 (** Test 1: Simple record type *)
@@ -278,6 +276,8 @@ flowUpdateCase () =
 erasedCell = erase (Cell(v = "s"))
 walkedTwice = walk (Point(x = 1, y = 1), 2)
 print "${erasedCell.v} ${describe walkedTwice}"
-test "record updates through generic functions" genericUpdateCase
-test "record updates of nested and generic records" nestedUpdateCase
-test "record updates in control flow" flowUpdateCase
+testCases [
+    { name = "record updates through generic functions", work = genericUpdateCase },
+    { name = "record updates of nested and generic records", work = nestedUpdateCase },
+    { name = "record updates in control flow", work = flowUpdateCase }
+]

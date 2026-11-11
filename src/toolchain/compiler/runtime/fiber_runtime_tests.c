@@ -140,18 +140,32 @@ void test_fiber_yield_passthrough(void) {
 
 static int64_t env_doubler(void *env) { return *(int64_t *)env * 2; }
 
+// env_doubler turns the 21 an env spawn hands it into 42 on every form.
+static void await_env_doubled(int64_t fiber) {
+  assert(fiber > 0 && fiber_await(fiber) == 42 &&
+         "an env fiber should double the environment value");
+}
+
 // The env-carrying spawn forms deliver the environment pointer to the thunk
 // and reject a NULL function like the plain form.
 void test_fiber_spawn_env_forms(void) {
   int64_t twenty_one = 21;
-  int64_t f = fiber_spawn_env(env_doubler, &twenty_one);
-  assert(f > 0 && fiber_await(f) == 42);
+  await_env_doubled(fiber_spawn_env(env_doubler, &twenty_one));
   int64_t scalar = fiber_spawn_env_owned(env_doubler, &twenty_one, 0);
   int64_t managed = fiber_spawn_env_owned(env_doubler, &twenty_one, 1);
   assert(scalar > 0 && managed > 0);
-  assert(fiber_await(scalar) == 42 && fiber_await(managed) == 42);
+  await_env_doubled(scalar);
+  await_env_doubled(managed);
   assert(fiber_spawn_env(NULL, &twenty_one) == -1);
   assert(fiber_spawn_env_owned(NULL, &twenty_one, 0) == -1);
+}
+
+// [CONCURRENCY-SPAWN-AWAIT]: a reusable fiber answers every await.
+static void await_repeatedly(int64_t fiber, int64_t expected, int times) {
+  for (int i = 0; i < times; i++) {
+    assert(fiber_await(fiber) == expected &&
+           "[CONCURRENCY-SPAWN-AWAIT] every await should return the value");
+  }
 }
 
 // Deterministic mode executes fibers immediately with identical observable
@@ -168,20 +182,17 @@ void test_deterministic_mode(void) {
   assert(fiber_done(a) == 1);
   assert(fiber_await(b) == 100); // executes the queue IN ORDER up to b
   assert(fiber_done(a) == 1);    // ...so a completed on the way
-  assert(fiber_await(a) == 42);
-  assert(fiber_await(a) == 42); // repeated await still answers
-  assert(fiber_yield(9) == 9);  // yield stays a passthrough here too
+  await_repeatedly(a, 42, 2);    // repeated await still answers
+  assert(fiber_yield(9) == 9);   // yield stays a passthrough here too
   int64_t env_val = 21;
   int64_t c = fiber_spawn_env(env_doubler, &env_val);
-  assert(c > 0 && fiber_await(c) == 42);
+  await_env_doubled(c);
   // [CONCURRENCY-SPAWN-AWAIT]: "for a managed T, every await produces an
   // independently owned reference". Queued fibers take that +1 on the
   // deterministic path too, so a second await is never a use-after-release.
   int64_t owned = fiber_spawn_env_owned(env_doubler, &env_val, 1);
   assert(owned > 0 && owned != c);
-  assert(fiber_await(owned) == 42);
-  assert(fiber_await(owned) == 42);
-  assert(fiber_await(owned) == 42);
+  await_repeatedly(owned, 42, 3);
   assert(fiber_done(owned) == 1);
   assert(fiber_set_deterministic_mode(false) == 0);
   int64_t d = fiber_spawn(test_function_1); // threaded mode works again
@@ -212,6 +223,23 @@ static void fiber_proc_stdout_cb(char *data) {
   stdout_cb_calls++;
 }
 
+// Spawn under the event sink and check the exit code comes back.
+static int64_t await_exit_code(const char *command, int64_t expected) {
+  int64_t pid = spawn_process_with_handler(command, fiber_proc_event_sink);
+  assert(pid > 0 && fiber_await_process(pid) == expected &&
+         "the process bridge should report the process's exit code");
+  fiber_cleanup_process(pid);
+  return pid;
+}
+
+// The callback form answers the exit code too, with or without a callback.
+static void await_with_callback(void (*callback)(char *)) {
+  int64_t pid = spawn_process_with_handler("true", fiber_proc_event_sink);
+  assert(pid > 0 && fiber_await_process_with_callback(pid, callback) == 0 &&
+         "the callback await form should report the exit code");
+  fiber_cleanup_process(pid);
+}
+
 // The fiber-side process bridge forwards to the process runtime: exact exit
 // codes come back through both await forms, invalid ids are rejected, and
 // cleanup makes an id unknown.
@@ -219,22 +247,11 @@ void test_fiber_process_bridge(void) {
   assert(fiber_await_process(-1) == -1);
   assert(fiber_await_process(0) == -1);
   assert(fiber_await_process(999999) == -1);
-  int64_t ok = spawn_process_with_handler("true", fiber_proc_event_sink);
-  assert(ok > 0 && fiber_await_process(ok) == 0);
-  fiber_cleanup_process(ok);
+  int64_t ok = await_exit_code("true", 0);
   assert(fiber_await_process(ok) == -1); // cleaned up: id no longer resolves
-  int64_t code = spawn_process_with_handler("sh -c 'exit 5'",
-                                            fiber_proc_event_sink);
-  assert(code > 0 && fiber_await_process(code) == 5);
-  fiber_cleanup_process(code);
-  int64_t cb = spawn_process_with_handler("true", fiber_proc_event_sink);
-  assert(cb > 0);
-  assert(fiber_await_process_with_callback(cb, fiber_proc_stdout_cb) == 0);
-  fiber_cleanup_process(cb);
-  int64_t no_cb = spawn_process_with_handler("true", fiber_proc_event_sink);
-  assert(no_cb > 0);
-  assert(fiber_await_process_with_callback(no_cb, NULL) == 0); // NULL: plain await
-  fiber_cleanup_process(no_cb);
+  (void)await_exit_code("sh -c 'exit 5'", 5);
+  await_with_callback(fiber_proc_stdout_cb);
+  await_with_callback(NULL); // NULL: plain await
 }
 
 void run_all_fiber_tests(void) {

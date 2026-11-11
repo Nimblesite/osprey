@@ -54,6 +54,8 @@ fn builtinsByName() = {
     ])
 }
 
-test("forwarded by any name", forwardedByAnyName)
-test("forwarded into a staged render", forwardedIntoStagedRender)
-test("a built-in passed by name", builtinsByName)
+testCases([
+    { name: "forwarded by any name", work: forwardedByAnyName },
+    { name: "forwarded into a staged render", work: forwardedIntoStagedRender },
+    { name: "a built-in passed by name", work: builtinsByName }
+])

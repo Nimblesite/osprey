@@ -119,9 +119,7 @@ let aliveResult = request(clientId, "GET", "/alive", "")
 print("=== Testing Error Cases ===")
 let notFoundResult = request(clientId, "GET", "/nonexistent", "")
 
-print("=== Server Shutdown Test ===")
-print("✅ All HTTP operations completed successfully")
-print("🛑 Initiating immediate graceful server shutdown...")
+print("=== Server Shutdown Test ===\n✅ All HTTP operations completed successfully\n🛑 Initiating immediate graceful server shutdown...")
 
 /// Clean up server resources
 let stopResult = (httpStopServer(serverId) ?: -1)

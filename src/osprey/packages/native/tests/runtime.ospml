@@ -28,17 +28,14 @@ type Act = Increment | Typed | Load
 // Field checks shared by every case file: one assertion per `{ name = …, value = … }`, in order.
 expectRead (read, fields) = forEachList (fields, \field => expect (read field.name, field.value))
 
-expectNumbers (doc, fields) = expectRead (\name => Doc::number (doc, name), fields)
-
-expectTexts (doc, fields) = expectRead (\name => Doc::text (doc, name), fields)
-
-expectFlags (doc, fields) = expectRead (\name => Doc::flag (doc, name), fields)
-
-expectFloats (doc, fields) = expectRead (\name => jsonFloat (Doc::field (doc, name)) ?: 0.0, fields)
-
-expectDecimals (doc, fields) = expectRead (\name => Doc::decimal (doc, name), fields)
-
-expectPresence (doc, fields) = expectRead (\name => Doc::has (doc, name), fields)
+// Each field check is the same read of `doc` at each `name`, so name the reader once.
+expectVia (read, doc, fields) = expectRead (\name => read (doc, name), fields)
+expectNumbers (doc, fields) = expectVia (Doc::number, doc, fields)
+expectTexts (doc, fields) = expectVia (Doc::text, doc, fields)
+expectFlags (doc, fields) = expectVia (Doc::flag, doc, fields)
+expectFloats (doc, fields) = expectVia (\(doc, name) => jsonFloat (Doc::field (doc, name)) ?: 0.0, doc, fields)
+expectDecimals (doc, fields) = expectVia (Doc::decimal, doc, fields)
+expectPresence (doc, fields) = expectVia (Doc::has, doc, fields)
 
 tallied () = (perform Signal<Tally>.read ()).tally
 

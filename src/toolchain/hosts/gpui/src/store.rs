@@ -24,10 +24,10 @@ pub fn answer(request: &Request) -> Result<Value, String> {
 
 /// Wraps a store result in the completion event carrying the original ticket.
 pub fn completion(request: &Request) -> String {
-    match answer(request) {
-        Ok(result) => events::completed_ok(now(), &request.ticket, result),
-        Err(problem) => events::completed_err(now(), &request.ticket, &problem),
-    }
+    answer(request).map_or_else(
+        |problem| events::completed_err(now(), &request.ticket, &problem),
+        |result| events::completed_ok(now(), &request.ticket, result),
+    )
 }
 
 /// Reads a bounded UTF-8 entry into the requested host-held slice.
@@ -124,11 +124,14 @@ fn entry(name: &str) -> Result<PathBuf, String> {
     Ok(root()?.join(relative))
 }
 
+/// Joins one vendor folder and the app name beneath a platform base directory.
+fn under(base: &Path, vendor: &str, app: &str) -> PathBuf {
+    base.join(vendor).join(app)
+}
+
 /// Returns the macOS store root: `$HOME/Library/Application Support/Osprey/<app>`.
 fn macos_root(home: &str, app: &str) -> PathBuf {
-    Path::new(home)
-        .join("Library/Application Support/Osprey")
-        .join(app)
+    under(Path::new(home), "Library/Application Support/Osprey", app)
 }
 
 /// Returns the Linux store root: `$XDG_DATA_HOME/osprey/<app>`, falling back to
@@ -142,14 +145,13 @@ fn linux_root(home: Option<&str>, data_home: Option<&str>, app: &str) -> Result<
                 .map(|home| Path::new(home).join(".local/share"))
         })
         .ok_or_else(|| "HOME is not set".to_owned())?;
-    Ok(base.join("osprey").join(app))
+    Ok(under(&base, "osprey", app))
 }
 
 /// Returns the Windows store root: `%APPDATA%\\Osprey\\<app>`.
 fn windows_root(app_data: Option<&str>, app: &str) -> Result<PathBuf, String> {
-    Ok(Path::new(app_data.ok_or("APPDATA is not set")?)
-        .join("Osprey")
-        .join(app))
+    let base = Path::new(app_data.ok_or("APPDATA is not set")?);
+    Ok(under(base, "Osprey", app))
 }
 
 /// Selects the current platform's store root from environment values.
@@ -199,6 +201,9 @@ mod tests {
     use super::{linux_root, macos_root, root_from, windows_root};
     use std::path::Path;
 
+    /// The Windows roaming profile the store root tests resolve against.
+    const ROAMING: &str = r"C:\Users\a\AppData\Roaming";
+
     #[test]
     /// Selects each platform's root from environment values alone, never the disk.
     fn root_selection_is_pure_over_environment_values() {
@@ -206,33 +211,26 @@ mod tests {
             macos_root("/Users/a", "app"),
             Path::new("/Users/a/Library/Application Support/Osprey/app")
         );
+        for (data_home, expected) in [
+            (Some("/data"), "/data/osprey/app"),
+            (Some(""), "/home/a/.local/share/osprey/app"),
+            (None, "/home/a/.local/share/osprey/app"),
+        ] {
+            assert_eq!(
+                linux_root(Some("/home/a"), data_home, "app").as_deref(),
+                Ok(Path::new(expected))
+            );
+        }
         assert_eq!(
-            linux_root(Some("/home/a"), Some("/data"), "app").as_deref(),
-            Ok(Path::new("/data/osprey/app"))
+            windows_root(Some(ROAMING), "app").as_deref(),
+            Ok(Path::new(ROAMING).join("Osprey").join("app").as_path())
         );
-        assert_eq!(
-            linux_root(Some("/home/a"), Some(""), "app").as_deref(),
-            Ok(Path::new("/home/a/.local/share/osprey/app"))
-        );
-        assert_eq!(
-            linux_root(Some("/home/a"), None, "app").as_deref(),
-            Ok(Path::new("/home/a/.local/share/osprey/app"))
-        );
-        assert_eq!(
-            linux_root(None, None, "app").err().as_deref(),
-            Some("HOME is not set")
-        );
-        assert_eq!(
-            windows_root(Some(r"C:\Users\a\AppData\Roaming"), "app").as_deref(),
-            Ok(Path::new(r"C:\Users\a\AppData\Roaming")
-                .join("Osprey")
-                .join("app")
-                .as_path())
-        );
-        assert_eq!(
-            windows_root(None, "app").err().as_deref(),
-            Some("APPDATA is not set")
-        );
+        for (missing, message) in [
+            (linux_root(None, None, "app"), "HOME is not set"),
+            (windows_root(None, "app"), "APPDATA is not set"),
+        ] {
+            assert_eq!(missing.err().as_deref(), Some(message));
+        }
     }
 
     #[test]
@@ -240,14 +238,12 @@ mod tests {
     fn root_from_uses_the_current_platform() {
         let selected = root_from(Some("/h"), Some("/d"), Some("C:/ad"), "app");
         #[cfg(target_os = "macos")]
-        assert_eq!(
-            selected.as_deref(),
-            Ok(Path::new("/h/Library/Application Support/Osprey/app"))
-        );
+        let expected = "/h/Library/Application Support/Osprey/app";
         #[cfg(all(unix, not(target_os = "macos")))]
-        assert_eq!(selected.as_deref(), Ok(Path::new("/d/osprey/app")));
+        let expected = "/d/osprey/app";
         #[cfg(windows)]
-        assert_eq!(selected.as_deref(), Ok(Path::new("C:/ad/Osprey/app")));
+        let expected = "C:/ad/Osprey/app";
+        assert_eq!(selected.as_deref(), Ok(Path::new(expected)));
         #[cfg(target_os = "macos")]
         assert_eq!(
             root_from(None, None, None, "app").err().as_deref(),

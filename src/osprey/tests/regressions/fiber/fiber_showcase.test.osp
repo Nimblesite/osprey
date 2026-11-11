@@ -45,11 +45,7 @@ let f1 = exactArithmetic(fn() => spawn simpleTask(1))
 let f2 = exactArithmetic(fn() => spawn simpleTask(2))
 let f3 = exactArithmetic(fn() => spawn simpleTask(3))
 let f4 = exactArithmetic(fn() => spawn simpleTask(4))
-print("ids ${f1} ${f2} ${f3} ${f4}")
-print("await f3 = ${await(f3)}")
-print("await f1 = ${await(f1)}")
-print("await f4 = ${await(f4)}")
-print("await f2 = ${await(f2)}")
+print("ids ${f1} ${f2} ${f3} ${f4}\nawait f3 = ${await(f3)}\nawait f1 = ${await(f1)}\nawait f4 = ${await(f4)}\nawait f2 = ${await(f2)}")
 
 /// --- Map-Reduce ---
 let m1 = exactArithmetic(fn() => spawn mapPhase(10))

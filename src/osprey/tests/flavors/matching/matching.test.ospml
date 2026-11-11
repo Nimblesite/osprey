@@ -76,10 +76,7 @@ matchIntegerCase () =
     ]
     // Check each label independently.
     checkAll "integer match legacy constituent values" [
-        matchLabel 0 == "none",
-        matchLabel 1 == "single",
-        matchLabel 2 == "pair",
-        matchLabel 7 == "many"
+        answersHold (matchLabel, [0, 1, 2, 7], ["none", "single", "pair", "many"])
     ]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
@@ -88,9 +85,11 @@ matchIntegerCase () =
         matchLabel 100 == "many"
     ]
 
-test "literal matching retains every printed arm" matchTourCase
-test "boolean matching covers thresholds and parity" matchBooleanCase
-test "integer matching covers literals and wildcard" matchIntegerCase
+testCases [
+    { name = "literal matching retains every printed arm", work = matchTourCase },
+    { name = "boolean matching covers thresholds and parity", work = matchBooleanCase },
+    { name = "integer matching covers literals and wildcard", work = matchIntegerCase }
+]
 
 (** [PATTERN-BINDING-SCOPE] Every pattern introduces names in its own arm. *)
 type Choice = Pick int | Other
@@ -168,9 +167,11 @@ capturedPatternCase () = checkAll ("closures retain the selected arm's binding",
     capturedPattern Other == "100:100"
 ])
 
-test ("catch-all bindings remain inside their arm", bindingScope)
-test ("pattern arms retain their own lexical bindings", siblingScopeCase)
-test ("escaping closures retain pattern bindings", capturedPatternCase)
+testCases [
+    { name = "catch-all bindings remain inside their arm", work = bindingScope },
+    { name = "pattern arms retain their own lexical bindings", work = siblingScopeCase },
+    { name = "escaping closures retain pattern bindings", work = capturedPatternCase }
+]
 
 nestedPatternCase () =
     value = 100
@@ -201,8 +202,10 @@ mutablePatternCase () =
         selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101
     ])
 
-test ("nested matches restore enclosing pattern bindings", nestedPatternCase)
-test ("pattern bindings shadow captured mutable cells", mutablePatternCase)
+testCases [
+    { name = "nested matches restore enclosing pattern bindings", work = nestedPatternCase },
+    { name = "pattern bindings shadow captured mutable cells", work = mutablePatternCase }
+]
 
 type CallChoice = Apply (int -> int) | Absent
 type IntOperation =

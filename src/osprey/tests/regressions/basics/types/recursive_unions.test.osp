@@ -35,9 +35,7 @@ let jBool = JBool { v: true }
 let inner = List() |> listAppend(jNum) |> listAppend(jStr) |> listAppend(jBool)
 let arr   = JArr { items: inner }
 
-print(describe(arr))
-print(describe(jNum))
-print(describe(JNull))
+print("${describe(arr)}\n${describe(jNum)}\n${describe(JNull)}")
 match arr {
     JArr { items } => print(toString(listLength(items)))
     _              => print("not arr")
@@ -125,14 +123,7 @@ let n2 = Node { value: 2, left: n1, right: n3 }
 let n6 = Node { value: 6, left: n5, right: n7 }
 let root = Node { value: 4, left: n2, right: n6 }
 
-print(label(root))
-print(label(Leaf))
-print(toString(rootVal(root)))
-print(leftLabel(root))
-print(leftLabel(n1))
-print(toString(rightRootVal(root)))
-print(toString(rightRightVal(root)))
-print(toString(leftRightVal(root)))
+print("${label(root)}\n${label(Leaf)}\n${toString(rootVal(root))}\n${leftLabel(root)}\n${leftLabel(n1)}\n${toString(rightRootVal(root))}\n${toString(rightRightVal(root))}\n${toString(leftRightVal(root))}")
 
 /// ---------- 4: Mutually recursive (Expr <-> Stmt) ----------
 type Expr =
@@ -180,16 +171,12 @@ let sum   = EAdd { args: List() |> listAppend(two) |> listAppend(three) }
 let stmt  = SRet { value: sum }
 let outer = EBlk { body: stmt }
 
-print(descExpr(two))
-print(descExpr(sum))
-print(descExpr(outer))
-print(descStmt(stmt))
+print("${descExpr(two)}\n${descExpr(sum)}\n${descExpr(outer)}\n${descStmt(stmt)}")
 
 let s1 = unwrapBlk(outer)
 print(descStmt(s1))
 let e1 = unwrapRet(s1)
-print(descExpr(e1))
-print(toString(unwrapAddLen(e1)))
+print("${descExpr(e1)}\n${toString(unwrapAddLen(e1))}")
 
 match e1 {
     EAdd { args } => {

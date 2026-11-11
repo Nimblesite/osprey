@@ -26,8 +26,7 @@ fn forward(x: any) -> any = x
 
 fn forwardedHeap() = processAny(forward("dyn" + "amic"))
 
-print("Explicit any return type works")
-print("getDynamicValue() = ${getDynamicValue()}")
+print("Explicit any return type works\ngetDynamicValue() = ${getDynamicValue()}")
 exactArithmetic(fn() => print("processAnyValue(5) = ${processAnyValue(5)}"))
 
 /// Test storing any values without auto-conversion
@@ -51,9 +50,7 @@ let anyProcessed1 = processAny(42)
 let anyProcessed2 = processAny("hello")
 let anyProcessed3 = processAny(true)
 
-print("processAny(42): Processed any")
-print("processAny(\"hello\"): Processed any")
-print("processAny(true): Processed any")
+print("processAny(42): Processed any\nprocessAny(\"hello\"): Processed any\nprocessAny(true): Processed any")
 
 /// Test String() and Category() methods coverage with various types
 type TestType = { value: string }
@@ -71,10 +68,7 @@ let extracted1 = getAnyField(testObj)
 let extracted2 = getAnyField(testObj2)
 let extracted3 = getAnyField(testObj3)
 
-print("Extracted any values:")
-print("test data")
-print("123")
-print("false")
+print("Extracted any values:\ntest data\n123\nfalse")
 
 /// Test type comparison workaround since any comparison is complex
 fn compareTypes(_a: any, _b: any) = "Type comparison tested"
@@ -83,10 +77,7 @@ let comp1 = compareTypes(a: 42, b: 42)
 let comp2 = compareTypes(a: 42, b: "42")
 let comp3 = compareTypes(a: "test", b: "test")
 
-print("Type comparisons:")
-print("Type comparison tested")
-print("Type comparison tested")
-print("Type comparison tested")
+print("Type comparisons:\nType comparison tested\nType comparison tested\nType comparison tested")
 
 /// Test union type basic functionality
 type Status = Active | Inactive
@@ -102,9 +93,7 @@ fn getStatusString(s) = match s {
 let statusStr1 = getStatusString(status1)
 let statusStr2 = getStatusString(status2)
 
-print("Status types:")
-print("${statusStr1}")
-print("${statusStr2}")
+print("Status types:\n${statusStr1}\n${statusStr2}")
 
 /// Test basic union types for coverage - exercises NewUnionType, String(), Category(), Equals()
 type SimpleUnion = A | B | C
@@ -119,10 +108,7 @@ fn processSimple(u) = match u {
 let simple1 = A
 let simple2 = B
 let simple3 = C
-print("Simple union:")
-print(processSimple(simple1))
-print(processSimple(simple2))
-print(processSimple(simple3))
+print("Simple union:\n${processSimple(simple1)}\n${processSimple(simple2)}\n${processSimple(simple3)}")
 
 /// Test union type equality
 type Color = Red | Green | Blue
@@ -146,9 +132,7 @@ fn compareColors(c1, c2) = match c1 {
     }
 }
 
-print("Union equality tests:")
-print(compareColors(c1: color1, c2: color2))
-print(compareColors(c1: color1, c2: color3))
+print("Union equality tests:\n${compareColors(c1: color1, c2: color2)}\n${compareColors(c1: color1, c2: color3)}")
 
 /// --- Structural narrowing [PATTERN-STRUCTURAL] [PATTERN-TUPLE] ---
 /// The ONLY read through an erased value is a structural match: arms select

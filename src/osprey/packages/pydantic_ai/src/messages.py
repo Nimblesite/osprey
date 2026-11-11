@@ -198,9 +198,14 @@ def response_parts(message) -> list[ModelResponsePart]:
             return response.parts
 
 
+def picked_messages(messages, step):
+    """The history messages `step` keeps, in order."""
+    return foldList(messages, [], lambda acc, m: step(acc, m))
+
+
 def responses(messages) -> list[ModelResponse]:
     """Every `ModelResponse` in the history, in order."""
-    return foldList(messages, [], lambda acc, m: response_step(acc, m))
+    return picked_messages(messages, response_step)
 
 
 def response_step(acc, message):
@@ -213,7 +218,7 @@ def response_step(acc, message):
 
 def requests(messages) -> list[ModelRequest]:
     """Every `ModelRequest` in the history, in order."""
-    return foldList(messages, [], lambda acc, m: request_step(acc, m))
+    return picked_messages(messages, request_step)
 
 
 def request_step(acc, message):
@@ -371,59 +376,55 @@ def content_part(content, kind):
     return part_json([J.member("content", JsonString(content))], kind)
 
 
+def tool_part(kind, tool_name, middle_name, middle, tool_call_id):
+    """A part's JSON form: its `tool_name`, its `middle_name` member and its `tool_call_id`."""
+    return part_json([J.member("tool_name", JsonString(tool_name)), J.member(middle_name, JsonString(middle)), J.member("tool_call_id", JsonString(tool_call_id))], kind)
+
+
 def dump_request_part(part):
+    """A request part in the `ModelMessagesTypeAdapter` JSON form."""
     match part:
-        case SystemPromptPart(content=content):
-            return content_part(content, "system-prompt")
-        case UserPromptPart(content=content):
-            return content_part(content, "user-prompt")
-        case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id):
-            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("content", JsonString(content)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-return")
-        case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id):
-            return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member("tool_call_id", JsonString(tool_call_id))], "retry-prompt")
-        case InstructionPart(content=content):
-            return content_part(content, "instruction")
+        case SystemPromptPart(content=content): return content_part(content, "system-prompt")
+        case UserPromptPart(content=content): return content_part(content, "user-prompt")
+        case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id): return tool_part("tool-return", tool_name, "content", content, tool_call_id)
+        case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id): return part_json([J.member("content", JsonString(content)), J.member("tool_name", null_if_empty(tool_name)), J.member("tool_call_id", JsonString(tool_call_id))], "retry-prompt")
+        case InstructionPart(content=content): return content_part(content, "instruction")
 
 
 def dump_response_part(part):
+    """A response part in the `ModelMessagesTypeAdapter` JSON form."""
     match part:
-        case TextPart(content=content):
-            return content_part(content, "text")
-        case ThinkingPart(content=content):
-            return content_part(content, "thinking")
-        case ToolCallPart(tool_name=tool_name, args=args, tool_call_id=tool_call_id):
-            return part_json([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id))], "tool-call")
+        case TextPart(content=content): return content_part(content, "text")
+        case ThinkingPart(content=content): return content_part(content, "thinking")
+        case ToolCallPart(tool_name=tool_name, args=args, tool_call_id=tool_call_id): return tool_part("tool-call", tool_name, "args", args, tool_call_id)
 
 
 def dump_usage(usage):
-    return J.obj([
-        J.member("input_tokens", JsonInt(usage.input_tokens)),
-        J.member("cache_write_tokens", JsonInt(usage.cache_write_tokens)),
-        J.member("cache_read_tokens", JsonInt(usage.cache_read_tokens)),
-        J.member("output_tokens", JsonInt(usage.output_tokens)),
-        J.member("input_audio_tokens", JsonInt(usage.input_audio_tokens)),
-        J.member("cache_audio_read_tokens", JsonInt(usage.cache_audio_read_tokens)),
+    """A `Usage` in the `ModelMessagesTypeAdapter` JSON form."""
+    token_members = [
+        J.member("input_tokens", JsonInt(usage.input_tokens)), J.member("cache_write_tokens", JsonInt(usage.cache_write_tokens)),
+        J.member("cache_read_tokens", JsonInt(usage.cache_read_tokens)), J.member("output_tokens", JsonInt(usage.output_tokens)),
+        J.member("input_audio_tokens", JsonInt(usage.input_audio_tokens)), J.member("cache_audio_read_tokens", JsonInt(usage.cache_audio_read_tokens)),
         J.member("output_audio_tokens", JsonInt(usage.output_audio_tokens)),
-        J.member("details", JsonObject(mapList(mapKeys(usage.details), lambda key: JsonMember(key, JsonInt(unwrap_or(mapGet(usage.details, key), 0)))))),
-    ])
+    ]
+    details = JsonObject(mapList(mapKeys(usage.details), lambda key: JsonMember(key, JsonInt(unwrap_or(mapGet(usage.details, key), 0)))))
+    return J.obj(listAppend(token_members, J.member("details", details)))
+
+
+def message_json(parts, dump_part, members):
+    """A message's JSON form: its `parts` followed by its `members`."""
+    return J.obj(listConcat([J.member("parts", JsonArray(mapList(parts, dump_part)))], members))
 
 
 def dump_request(request) -> Json:
     """A `ModelRequest` in the `ModelMessagesTypeAdapter` JSON form."""
-    return J.obj([J.member("parts", JsonArray(mapList(request.parts, dump_request_part))), J.member("instructions", null_if_empty(request.instructions)), J.member("kind", JsonString("request"))])
+    return message_json(request.parts, dump_request_part, [J.member("instructions", null_if_empty(request.instructions)), J.member("kind", JsonString("request"))])
 
 
 def dump_response(response) -> Json:
     """A `ModelResponse` in the `ModelMessagesTypeAdapter` JSON form."""
-    return J.obj([
-        J.member("parts", JsonArray(mapList(response.parts, dump_response_part))),
-        J.member("usage", dump_usage(response.usage)),
-        J.member("model_name", null_if_empty(response.model_name)),
-        J.member("kind", JsonString("response")),
-        J.member("provider_name", null_if_empty(response.provider_name)),
-        J.member("provider_response_id", null_if_empty(response.provider_response_id)),
-        J.member("finish_reason", null_if_empty(response.finish_reason)),
-    ])
+    named = [J.member("usage", dump_usage(response.usage)), J.member("model_name", null_if_empty(response.model_name)), J.member("kind", JsonString("response"))]
+    return message_json(response.parts, dump_response_part, listConcat(named, [J.member("provider_name", null_if_empty(response.provider_name)), J.member("provider_response_id", null_if_empty(response.provider_response_id)), J.member("finish_reason", null_if_empty(response.finish_reason))]))
 
 
 def dump_message(message) -> Json:
@@ -441,20 +442,16 @@ def dump_messages(messages) -> Json:
 
 
 def validate_request_part(value) -> Result[ModelRequestPart, str]:
-    kind = J.text_at(value, "part_kind", "")
-    content = J.text_at(value, "content", "")
-    if kind == "system-prompt":
-        return Success(value=SystemPromptPart(content=content))
-    elif kind == "user-prompt":
-        return Success(value=UserPromptPart(content=content))
-    elif kind == "tool-return":
-        return Success(value=ToolReturnPart(tool_name=J.text_at(value, "tool_name", ""), content=content_text(J.object_at(value, "content")), tool_call_id=J.text_at(value, "tool_call_id", "")))
-    elif kind == "retry-prompt":
-        return Success(value=RetryPromptPart(content=content, tool_name=J.text_at(value, "tool_name", ""), tool_call_id=J.text_at(value, "tool_call_id", "")))
-    elif kind == "instruction":
-        return Success(value=InstructionPart(content=content))
-    else:
-        return Error(message=f"unknown request part_kind: {kind}")
+    """A request part from its `ModelMessagesTypeAdapter` JSON form."""
+    kind = field_at(value, "part_kind")
+    content = field_at(value, "content")
+    tool_call_id = field_at(value, "tool_call_id")
+    if kind == "system-prompt": return Success(value=SystemPromptPart(content=content))
+    elif kind == "user-prompt": return Success(value=UserPromptPart(content=content))
+    elif kind == "tool-return": return Success(value=ToolReturnPart(tool_name=field_at(value, "tool_name"), content=object_text(value, "content"), tool_call_id=tool_call_id))
+    elif kind == "retry-prompt": return Success(value=RetryPromptPart(content=content, tool_name=field_at(value, "tool_name"), tool_call_id=tool_call_id))
+    elif kind == "instruction": return Success(value=InstructionPart(content=content))
+    else: return Error(message=f"unknown request part_kind: {kind}")
 
 
 def content_text(value):
@@ -468,17 +465,24 @@ def content_text(value):
             return J.encode(value)
 
 
+def field_at(value, key):
+    """An optional string field of a JSON object, empty when absent."""
+    return J.text_at(value, key, "")
+
+
+def object_text(value, key):
+    """A nested JSON object's text: verbatim when a string, its JSON text otherwise."""
+    return content_text(J.object_at(value, key))
+
+
 def validate_response_part(value) -> Result[ModelResponsePart, str]:
-    kind = J.text_at(value, "part_kind", "")
-    content = J.text_at(value, "content", "")
-    if kind == "text":
-        return Success(value=TextPart(content=content))
-    elif kind == "thinking":
-        return Success(value=ThinkingPart(content=content))
-    elif kind == "tool-call":
-        return Success(value=ToolCallPart(tool_name=J.text_at(value, "tool_name", ""), args=content_text(J.object_at(value, "args")), tool_call_id=J.text_at(value, "tool_call_id", "")))
-    else:
-        return Error(message=f"unknown response part_kind: {kind}")
+    """A response part from its `ModelMessagesTypeAdapter` JSON form."""
+    kind = field_at(value, "part_kind")
+    content = field_at(value, "content")
+    if kind == "text": return Success(value=TextPart(content=content))
+    elif kind == "thinking": return Success(value=ThinkingPart(content=content))
+    elif kind == "tool-call": return Success(value=ToolCallPart(tool_name=field_at(value, "tool_name"), args=object_text(value, "args"), tool_call_id=field_at(value, "tool_call_id")))
+    else: return Error(message=f"unknown response part_kind: {kind}")
 
 
 def validate_usage(value) -> Usage.RequestUsage:

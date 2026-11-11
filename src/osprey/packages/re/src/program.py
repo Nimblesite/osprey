@@ -97,11 +97,7 @@ def pair_next(pair, fallback):
 
 def then(result, next):
     """`next` applied to a `Success` value; an `Error` propagates unchanged."""
-    match result:
-        case Success(value=value):
-            return next(value)
-        case Error(message=message):
-            return Error(message=message)
+    return resultAndThen(result, next)
 
 
 def fail(msg, pos):

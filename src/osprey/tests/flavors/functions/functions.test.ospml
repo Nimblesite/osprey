@@ -161,11 +161,13 @@ recursionCase () =
         recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 
-test "closures retain independent captured state" (exactly closuresCase)
-test "partial application retains every curried golden" (exactly curryPartialCase)
-test "higher-order functions retain every application golden" (exactly higherOrderCase)
-test "nested calls retain evaluation structure" (exactly nestedCallsCase)
-test "recursion retains base and recursive branches" (exactly recursionCase)
+exactTests [
+    { name = "closures retain independent captured state", work = closuresCase },
+    { name = "partial application retains every curried golden", work = curryPartialCase },
+    { name = "higher-order functions retain every application golden", work = higherOrderCase },
+    { name = "nested calls retain evaluation structure", work = nestedCallsCase },
+    { name = "recursion retains base and recursive branches", work = recursionCase }
+]
 
 (** Identity as a GENERIC definition — no single concrete ABI, so it exists
     only as a body its call sites specialise ([TYPE-GENERICS-FN]). *)

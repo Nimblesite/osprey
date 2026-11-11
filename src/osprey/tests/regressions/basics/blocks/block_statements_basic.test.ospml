@@ -10,21 +10,15 @@ print "=== Block Statements ==="
 (** --- 1. Block with list access (single statement) --- *)
 listHeadBlock () =
     nums = [42, 84, 126]
-    match nums[0]
-        Success value => value
-        Error _message => 0
+    (nums[0] ?: 0)
 r1 = listHeadBlock ()
 print "1 list head: ${r1}"
 
 (** --- 2. Block with map access + multiplication --- *)
 mapProductBlock () =
     config = ["factor" => 2, "base" => 10]
-    x = match config["base"]
-        Success value => value
-        Error _message => 0
-    factor = match config["factor"]
-        Success value => value
-        Error _message => 1
+    x = (config["base"] ?: 0)
+    factor = (config["factor"] ?: 1)
     m = x * factor
     m
 r2 = exactArithmetic (\() =>
@@ -35,14 +29,10 @@ print "2 map factor*base: ${r2}"
 outer = 100
 shadowedBlock () =
     config = ["multiplier" => 2, "offset" => 25]
-    outer = match config["offset"]
-        Success value => value
-        Error _message => 50
+    outer = (config["offset"] ?: 50)
     inner =
         listData = [10, 20, 30]
-        outer = match listData[2]
-            Success value => value
-            Error _message => 25
+        outer = (listData[2] ?: 25)
         m = outer * 2
         m
     s = outer + inner
@@ -54,9 +44,7 @@ print "3 shadowed inner+outer: ${r3}"
 (** --- 4. Block inside a function --- *)
 compute () =
     numbers = [5, 10, 15]
-    base = match numbers[1]
-        Success value => value
-        Error _message => 10
+    base = (numbers[1] ?: 10)
     multiplier = 3
     r = base * multiplier
     r
@@ -66,15 +54,11 @@ exactArithmetic (\() =>
 (** --- 5. 2D list inside a block --- *)
 matrixBlock () =
     matrix = [[1, 2], [3, 4]]
-    firstRow = match matrix[0]
-        Success value => value
-        Error _message => [0]
-    match firstRow[1]
-        Success value =>
-            m = value * 10
-            match m
-                Success result => result
-                Error _message => 0
+    firstRow = (matrix[0] ?: [0])
+    cell = (firstRow[1] ?: 0)
+    m = cell * 10
+    match m
+        Success result => result
         Error _message => 0
 r5 = exactArithmetic (\() =>
     matrixBlock ())
@@ -87,13 +71,11 @@ conditionalBlock value =
     doubled = value * 2
     match doubled
         Success dValue => match dValue
-            84 => match scoreMap["test1"]
-                Success sValue =>
-                    added = sValue + 10
-                    match added
-                        Success value => value
-                        Error _message => 0
-                Error _message => 0
+            84 =>
+                added = (scoreMap["test1"] ?: 0) + 10
+                match added
+                    Success value => value
+                    Error _message => 0
             _ => 0
         Error _message => 0
 r6 = exactArithmetic (\() =>
@@ -142,13 +124,7 @@ blockStatementsCase () =
     ]
 
     checkAll "block results retain element types in nested lists" [
-        listLength results == 6,
-        (listGet results 0 ?: 99) == 42,
-        (listGet results 1 ?: 99) == 20,
-        (listGet results 2 ?: 99) == 85,
-        (listGet results 3 ?: 99) == 30,
-        (listGet results 4 ?: 99) == 20,
-        (listGet results 5 ?: 99) == 94,
+        structuralEquals (results, [42, 20, 85, 30, 20, 94]),
         (listGet results 9 ?: 99) == 99,
         listLength nestedResults == 3,
         listLength (listGet nestedResults 0 ?: [99]) == 6,

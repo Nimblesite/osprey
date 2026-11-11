@@ -12,20 +12,36 @@ static char *make_repeat_a(size_t n) {
     return s;
 }
 
+/* Asserts `out` is non-NULL and holds `n` copies of `want`. Caller releases. */
+static void assert_filled(const char *out, size_t n, char want) {
+    assert(out != NULL);
+    for (size_t i = 0; i < n; i++) assert(out[i] == want);
+}
+
+/* Asserts pad output is `width` bytes: `width - 1` bytes of `fill` cycling from `at`, plus
+ * `base` at `base_at`. Stronger than spot checks: every byte is verified. */
+static void assert_padded(char *out, size_t width, size_t at, const char *fill,
+                          size_t base_at, char base) {
+    assert(out != NULL);
+    assert(strlen(out) == width);
+    size_t cycle = strlen(fill);
+    for (size_t i = 0; i + 1 < width; i++) assert(out[at + i] == fill[i % cycle]);
+    assert(out[base_at] == base);
+    release_test_buffer(out);
+}
+
 void test_long_strings(void) {
     /* length 10000: ensure no stack/buffer assumption breaks */
     const size_t big = 10000;
     char *s = make_repeat_a(big);
 
     char *out = osp_string_to_upper(s);
-    assert(out != NULL);
-    for (size_t i = 0; i < big; i++) assert(out[i] == 'A');
+    assert_filled(out, big, 'A');
     assert(out[big] == '\0');
     release_test_buffer(out);
 
     out = osp_string_reverse(s);
-    assert(out != NULL);
-    for (size_t i = 0; i < big; i++) assert(out[i] == 'a');
+    assert_filled(out, big, 'a');
     release_test_buffer(out);
 
     out = osp_string_take(s, 1000);
@@ -120,94 +136,44 @@ void test_unicode_bytes(void) {
 void test_repeated_replace(void) {
     /* replace many times, growing or shrinking */
     char *out;
-    out = osp_string_replace("xxxxxxxxxx", "x", "ab");
-    assert(strcmp(out, "abababababababababab") == 0);
-    release_test_buffer(out);
-    out = osp_string_replace("xxxxxxxxxx", "x", "");
-    assert(strcmp(out, "") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("xxxxxxxxxx", "x", "ab"), "abababababababababab");
+    text_is(osp_string_replace("xxxxxxxxxx", "x", ""), "");
     /* needle longer than replacement, exactly N matches */
-    out = osp_string_replace("xyxyxyxy", "xy", "z");
-    assert(strcmp(out, "zzzz") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("xyxyxyxy", "xy", "z"), "zzzz");
     /* overlapping-ish needles */
     out = osp_string_replace("aaaa", "aa", "b");
     assert(strcmp(out, "bb") == 0);  /* non-overlapping leftmost */
     release_test_buffer(out);
     /* multi-char replacement that contains the needle (no infinite recursion) */
-    out = osp_string_replace("aaa", "a", "aa");
-    assert(strcmp(out, "aaaaaa") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_replace("aaa", "a", "aa"), "aaaaaa");
     printf("  ok  repeated_replace\n");
 }
 
 void test_split_pathological(void) {
-    osp_string_list *list;
-
     /* separator at very start */
-    list = osp_string_split(",a,b", ",");
-    assert(list->length == 3);
-    assert(strcmp(list->items[0], "") == 0);
-    assert(strcmp(list->items[1], "a") == 0);
-    assert(strcmp(list->items[2], "b") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split(",a,b", ","), (const char *[]){"", "a", "b", NULL});
 
     /* separator at very end */
-    list = osp_string_split("a,b,", ",");
-    assert(list->length == 3);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    assert(strcmp(list->items[2], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("a,b,", ","), (const char *[]){"a", "b", "", NULL});
 
     /* separator IS the whole string */
-    list = osp_string_split(",", ",");
-    assert(list->length == 2);
-    assert(strcmp(list->items[0], "") == 0);
-    assert(strcmp(list->items[1], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split(",", ","), (const char *[]){"", "", NULL});
 
     /* empty input */
-    list = osp_string_split("", ",");
-    assert(list->length == 1);
-    assert(strcmp(list->items[0], "") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("", ","), (const char *[]){"", NULL});
 
     /* sep longer than input */
-    list = osp_string_split("ab", "abcdef");
-    assert(list->length == 1);
-    assert(strcmp(list->items[0], "ab") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("ab", "abcdef"), (const char *[]){"ab", NULL});
 
     printf("  ok  split_pathological\n");
 }
 
 void test_pad_overflow_guards(void) {
-    char *out;
-    /* huge target_length but reasonable */
-    out = osp_string_pad_start("x", 100, "ab");
-    assert(out != NULL);
-    assert(strlen(out) == 100);
-    assert(out[99] == 'x');
-    /* fill cycle covers exactly */
-    assert(out[0] == 'a');
-    assert(out[1] == 'b');
-    assert(out[2] == 'a');
-    release_test_buffer(out);
-
-    out = osp_string_pad_end("x", 100, "abc");
-    assert(out != NULL);
-    assert(strlen(out) == 100);
-    assert(out[0] == 'x');
-    assert(out[1] == 'a');
-    assert(out[2] == 'b');
-    assert(out[3] == 'c');
-    assert(out[4] == 'a');
-    release_test_buffer(out);
+    /* huge target_length but reasonable: fill cycle covers exactly */
+    assert_padded(osp_string_pad_start("x", 100, "ab"), 100, 0, "ab", 99, 'x');
+    assert_padded(osp_string_pad_end("x", 100, "abc"), 100, 1, "abc", 0, 'x');
 
     /* exact-match target_length == strlen(s) returns dup of s */
-    out = osp_string_pad_start("abc", 3, "x");
-    assert(strcmp(out, "abc") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_pad_start("abc", 3, "x"), "abc");
     printf("  ok  pad_overflow_guards\n");
 }

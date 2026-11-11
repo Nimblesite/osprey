@@ -23,7 +23,7 @@ size each end the load as the named `Error`, before any token runs
 [LLM-MODEL-ORACLE].
 """
 
-from gguf import Chain, Quant, Reader, Tensors
+from gguf import Quant, Reader, Tensors
 from qwen import Qwen3_5Attention as Attn
 from qwen import Qwen3_5Config as C
 from qwen import Qwen3_5DeltaNet as DeltaNet
@@ -93,12 +93,12 @@ def parsed(path, read) -> Result[Source, str]:
         case Error(message=message):
             return Error(message=f"qwen gguf: {path}: {message}")
         case Success(value=file):
-            return Chain.then(architecture(file), lambda _name: Success(value=Source(path=path, file=file)))
+            return resultAndThen(architecture(file), lambda _name: Success(value=Source(path=path, file=file)))
 
 
 def architecture(file) -> Result[str, str]:
     """The file's architecture when it is `qwen35`."""
-    match Chain.then(Reader.field(file, "general.architecture"), Reader.field_string):
+    match resultAndThen(Reader.field(file, "general.architecture"), Reader.field_string):
         case Error(message=message):
             return Error(message=f"qwen gguf: {message}")
         case Success(value=name):
@@ -117,7 +117,7 @@ def int_of(read):
 
 def key_int(file, key):
     """The integer under `key`, or the refusal naming what is missing or mistyped."""
-    return int_of(Chain.then(Reader.field(file, key), Reader.field_int))
+    return int_of(resultAndThen(Reader.field(file, key), Reader.field_int))
 
 
 def key_int_or(file, key, fallback):
@@ -130,7 +130,7 @@ def key_int_or(file, key, fallback):
 
 
 def key_float(file, key):
-    match Chain.then(Reader.field(file, key), Reader.field_float):
+    match resultAndThen(Reader.field(file, key), Reader.field_float):
         case Success(value=value):
             return value
         case Error(message=message):
@@ -358,4 +358,4 @@ def load(source) -> Result[Model.Model, str]:
 
 def load_path(path) -> Result[Model.Model, str]:
     """`open_file` then `load`."""
-    return Chain.then(open_file(path), load)
+    return resultAndThen(open_file(path), load)

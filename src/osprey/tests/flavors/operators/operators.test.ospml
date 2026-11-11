@@ -56,8 +56,10 @@ booleanOperatorsCase () =
         (t && !f) == true
     ]
 
-test "operator precedence retains every arithmetic golden" (exactly arithmeticOperatorsCase)
-test "boolean composition retains every logical golden" (exactly booleanOperatorsCase)
+exactTests [
+    { name = "operator precedence retains every arithmetic golden", work = arithmeticOperatorsCase },
+    { name = "boolean composition retains every logical golden", work = booleanOperatorsCase }
+]
 
 (** [FLOAT-OPERANDS] One constrained helper accepts int and float callers. *)
 numericScale x = x * 1.5

@@ -78,6 +78,8 @@ fn resultChannelCase() = checkAll("module Results keep both branches", [
 
 exactArithmetic(fn() => print("${compute::Adder::apply(1)} ${compute::Scaler::Inner::apply(2)} ${report::Adder::apply("x")} ${compute::Runner::spawned(4)} ${rendered(compute::Runner::checkedSum(compute::Runner::halve(10), 0))}"))
 
-test("identical simple names keep distinct identities", exactly(linkageIdentityCase))
-test("modules compose with fibers and iterators", exactly(concurrencyAndIterationCase))
-test("module results keep their error channel", exactly(resultChannelCase))
+exactTests([
+    { name: "identical simple names keep distinct identities", work: linkageIdentityCase },
+    { name: "modules compose with fibers and iterators", work: concurrencyAndIterationCase },
+    { name: "module results keep their error channel", work: resultChannelCase }
+])

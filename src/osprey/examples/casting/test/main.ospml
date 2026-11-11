@@ -47,16 +47,15 @@ becomes (f, next) =
     moved = f(fakePlaying = next)
     queued (moved, framed ("media", mediaStatus moved))
 said hex = Doc::parse (Protocol::parse (drop hex 8)).payload
+receiverReply f = queued (f, framed ("receiver", receiverStatus f))
 answer (f, message) = match Doc::text (message, "type")
-    "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
+    "LAUNCH" => receiverReply f
     "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (message, "media"), "contentType")), "BUFFERING"), "PLAYING")
     "PAUSE" => becomes (f, "PAUSED")
     "PLAY" => becomes (f, "PLAYING")
     "SEEK" => becomes (f(fakePosition = Doc::decimal (message, "currentTime")), f.fakePlaying)
     "SET_PLAYBACK_RATE" => becomes (f(fakeRate = Doc::decimal (message, "playbackRate")), f.fakePlaying)
-    "SET_VOLUME" =>
-        turned = f(fakeVolume = Doc::decimal (Doc::field (message, "volume"), "level"))
-        queued (turned, framed ("receiver", receiverStatus turned))
+    "SET_VOLUME" => receiverReply (f(fakeVolume = Doc::decimal (Doc::field (message, "volume"), "level")))
     "STOP" => becomes (f(fakeReason = "CANCELLED"), "IDLE")
     "PING" => queued (f, framed ("tp.heartbeat", "{\"type\":\"PONG\"}"))
     _ => f
@@ -139,10 +138,8 @@ completedIn (saved, ticket, ok, problem) =
 slicesHere () = Doc::items (Doc::field (Doc::parse envelope, "slices"))
 requestsHere () = Doc::items (Doc::field (Doc::parse envelope, "requests"))
 ask ticket = listGet (filterList (requestsHere (), \r => Doc::text (r, "ticket") == ticket)) 0 ?: JsonNull
-askedKind ticket = Doc::text (ask ticket, "kind")
-askedName ticket = Doc::text (ask ticket, "name")
+asked (ticket, field) = Doc::text (ask ticket, field)
 askedLimit ticket = Doc::number (ask ticket, "limit")
-askedSlice ticket = Doc::text (ask ticket, "slice")
 staged key = Doc::text ((listGet (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) 0 ?: JsonNull), "text")
 hasSlice key = length (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) > 0
 skinNow () = ui::Machines::text (driven.drivenSession.sessionStore.screen.screenMachine, "skin")
@@ -196,7 +193,7 @@ offersAll labels = expects (offers, labels, true)
 stagedSlices keys = expects (hasSlice, keys, true)
 absentSlices keys = expects (hasSlice, keys, false)
 skinStaged key = expect (staged "casting.selected-skin", key)
-unwritten ticket = expect (askedKind ticket, "")
+unwritten ticket = expect (asked (ticket, "kind"), "")
 clearTree () = expect (Semantics::unclear (elements ()), "")
 skinPhase (phase, now) = post "{\"kind\":\"lifecycle\",\"phase\":\"${phase}\",\"now\":${toString now}}"
 skinShown (phase, now, key) =
@@ -210,39 +207,65 @@ ready title =
     expect (enabledOf "Play", true)
 discoverFailed (reason, now) = post "{\"kind\":\"completed\",\"ticket\":\"discover\",\"ok\":false,\"error\":\"${reason}\",\"now\":${toString now}}"
 readBack where = completedIn (where, "appearance:read", true, "")
+readAs skin =
+    readBack "poolside"
+    expect (skinNow (), skin)
+chosenSkin key =
+    skinStaged key
+    readAs key
 viewedAs (width, height) = post (Drive::viewed (driven, width, height))
 // A closed native shell releases its connection and media server exactly once ([CAST-MOBILE-DELIVERY]).
 closedAt now =
     post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":${toString now}}"
-    expect (fake.fakeClosed, 1)
-    expect (fake.fakeStopped, 1)
+    services (1, 1)
+services (closed, stopped) =
+    expect (fake.fakeClosed, closed)
+    expect (fake.fakeStopped, stopped)
 // The TV found, a file picked and the play the host was asked for.
 playing file =
     started ()
     discovered ()
     picked file
     press "Play"
+choseFile activate =
+    activate "Open file…"
+    asks ["choose-file"]
+    picked "/music/Sunroom.mp3"
+castBegun (activate, read, text) =
+    activate "Play"
+    expect (heardTypes (), "CONNECT LAUNCH ")
+    expect (read text, true)
+    frame 0.2
+again () =
+    press "Search again"
+    shown ["Looking for TVs…"]
+noTVsFound relaunch =
+    relaunch ()
+    browsing ""
+    discovered ()
+noTVsLetters finish =
+    unlettered ["Looking for TVs…"]
+    letteredIn ["No TVs found"]
+    finish ()
+sherbetArt () =
+    drawn ()
+    expect (token "background", "#FFF8EF")
 test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
     started ()
     shown ["Looking for TVs…", "Choose an audio file"]
     asks ["run", "animate"]
     discovered ()
-    expect (shows "Receiver", true)
+    shown ["Receiver"]
     expect (selected "Receiver", "living-room.local:8009")
     expect (length (control "Receiver").controlChoices, 2)
     expect (enabledOf "Play", false)
-    press "Open file…"
-    asks ["choose-file"]
-    picked "/music/Sunroom.mp3"
+    choseFile press
     ready "Sunroom"
     opened "/music/Bullshit Jobs - Track 003.mp3"
     ready "Bullshit Jobs - Track 003"
     opened "/music/Sunroom.mp3"
-    expect (shows "Sunroom", true)
-    press "Play"
-    expect (heardTypes (), "CONNECT LAUNCH ")
-    expect (shows "Connecting to Living Room TV…", true)
-    frame 0.2
+    shown ["Sunroom"]
+    castBegun (press, shows, "Connecting to Living Room TV…")
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD ")
     expect (fake.fakeLoaded, "audio/mpeg")
     settled "Playing on Living Room TV"
@@ -251,7 +274,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (enabledOf "Back 10 seconds", true)
     press "Pause"
     settled "Paused"
-    expect (shows "Resume", true)
+    shown ["Resume"]
     press "Resume"
     settled "Playing on Living Room TV"
     press "Forward 10 seconds"
@@ -264,7 +287,7 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SEEK SET_VOLUME SET_PLAYBACK_RATE ")
     press "Stop"
     settled "Finished"
-    expect (shows "Play", true)
+    shown ["Play"]
     press "Play"
     frame 0.2
     settled "Playing on Living Room TV"
@@ -280,19 +303,18 @@ test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac la
     expect (length (control "Receiver").controlChoices, 2)
     started ()
     expect (browser (), "/usr/bin/perl -e alarm 3; exec @ARGV /usr/bin/dns-sd -Z _googlecast._tcp local")))
+tone (theme, key, name, work) = match ui::Themes::named (theme, name)
+    Error _ => expect (key + " " + name, "present")
+    Success fill => work fill
 skinContrast key = match readFile "src/osprey/examples/casting/player.machine.json"
     Error problem => expect (problem, "readable casting machine")
     Success source =>
         base = App::loaded source
         machine = ui::Machines::feed (base.screen.screenMachine, [ui::Fact(factName = "skin", factValue = ui::Values::text key)])
         theme = ui::Templates::theme machine
-        match ui::Themes::named (theme, "accent")
-            Error _ => expect (key + " accent", "present")
-            Success fill => match ui::Themes::named (theme, "onAccent")
-                Error _ => expect (key + " onAccent", "present")
-                Success ink =>
-                    expect (ui::Contrast::ratio (fill.tokenLight, ink.tokenLight) >= 4.5, true)
-                    expect (ui::Contrast::ratio (fill.tokenDark, ink.tokenDark) >= 4.5, true)
+        tone (theme, key, "accent", \fill => tone (theme, key, "onAccent", \ink =>
+            expect (ui::Contrast::ratio (fill.tokenLight, ink.tokenLight) >= 4.5, true)
+            expect (ui::Contrast::ratio (fill.tokenDark, ink.tokenDark) >= 4.5, true)))
 test ("skins change the palette, never the controls", \() => bench (\() =>
     started ()
     expect (token "background", "#10192B")
@@ -300,14 +322,13 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     discovered ()
     choose ("Skin", "midnight")
     expect (selected "Skin", "midnight")
-    expect (shows "Open file…", true)
+    shown ["Open file…"]
     skinShown ("skin:poolside", 2, "poolside")
     skinShown ("skin:unknown", 3, "poolside")
     forEachList (["sherbet", "midnight", "poolside"], skinContrast)
     began launch
     expect (token "background", "#FFF8EF")
-    drawn ()
-    expect (token "background", "#FFF8EF")
+    sherbetArt ()
     offersAll ["Appearance: Sherbet Signal"]
     tap "Appearance: Sherbet Signal"
     expect (labels (), "Sherbet Signal|Midnight Mint|Poolside Pop|Receiver: none|Play|Open file…")
@@ -315,19 +336,18 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     expect (token "background", "#10192B")))
 test ("the appearance the host keeps is read, restored, repaired and never overwritten by a stale read", \() => bench (\() =>
     beganIn "" launch
-    expect (askedKind "appearance:read", "store-read")
-    expect (askedName "appearance:read", "casting-appearance.txt")
+    expect (asked ("appearance:read", "kind"), "store-read")
+    expect (asked ("appearance:read", "name"), "casting-appearance.txt")
     expect (askedLimit "appearance:read", 128)
-    expect (askedSlice "appearance:read", "casting.saved-skin")
+    expect (asked ("appearance:read", "slice"), "casting.saved-skin")
     completedIn ("", "appearance:read", false, "no such store entry casting-appearance.txt")
     skinStaged "sherbet"
     absentSlices ["casting.appearance-warning"]
     beganIn "poolside" launch
-    readBack "poolside"
-    expect (skinNow (), "poolside")
-    expect (askedKind "appearance:write", "store-write")
-    expect (askedName "appearance:write", "casting-appearance.txt")
-    expect (askedSlice "appearance:write", "casting.selected-skin")
+    readAs "poolside"
+    expect (asked ("appearance:write", "kind"), "store-write")
+    expect (asked ("appearance:write", "name"), "casting-appearance.txt")
+    expect (asked ("appearance:write", "slice"), "casting.selected-skin")
     skinStaged "poolside"
     absentSlices ["casting.appearance-warning"]
     completedIn ("poolside", "appearance:write", false, "permission denied")
@@ -337,7 +357,7 @@ test ("the appearance the host keeps is read, restored, repaired and never overw
     beganIn "neon" launch
     readBack "neon"
     skinKept ("sherbet", true)
-    expect (askedKind "appearance:notice", "host-call")
+    expect (asked ("appearance:notice", "kind"), "host-call")
     expect (Doc::text (ask "appearance:notice", "namespace"), "ui")
     expect (Doc::text (ask "appearance:notice", "operation"), "notice")
     expect (Doc::text (Doc::field (ask "appearance:notice", "arguments"), "title"), "Appearance restored")
@@ -354,41 +374,32 @@ test ("the appearance the host keeps is read, restored, repaired and never overw
     unwritten "appearance:write"
     beganIn "poolside" midnightSkin
     unwritten "appearance:read"
-    skinStaged "midnight"
-    readBack "poolside"
-    expect (skinNow (), "midnight")
+    chosenSkin "midnight"
     absentSlices ["casting.appearance-warning"]
     began launch
     tap "Appearance: Sherbet Signal"
     tap "Sherbet Signal"
-    skinStaged "sherbet"
-    readBack "poolside"
-    expect (skinNow (), "sherbet")
+    chosenSkin "sherbet"
     unwritten "appearance:write"))
 test ("no TVs found offers another search, and an unreachable TV shows why", \() => bench (\() =>
-    started ()
-    browsing ""
-    discovered ()
-    expect (shows "No TVs found", true)
+    noTVsFound started
+    shown ["No TVs found"]
     browsing browse
-    press "Search again"
-    expect (shows "Looking for TVs…", true)
+    again ()
     discoverFailed ("browse ran past its deadline", 2)
-    expect (shows "browse ran past its deadline", true)
+    shown ["browse ran past its deadline"]
     unshown ["Looking for TVs…"]
-    expect (shows "No TVs found", true)
-    press "Search again"
-    expect (shows "Looking for TVs…", true)
+    shown ["No TVs found"]
+    again ()
     discovered ()
     picked "/music/Sunroom.mp3"
     unplug ()
     press "Play"
-    expect (shows "living-room.local:8009: connection refused or timed out", true)
-    expect (shows "Play", true)
+    shown ["living-room.local:8009: connection refused or timed out"]
+    shown ["Play"]
     expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)))
 test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
-    drawn ()
-    expect (token "background", "#FFF8EF")
+    sherbetArt ()
     letteredIn ["Looking for TVs…"]
     expect (labels (), "Appearance: Sherbet Signal|Receiver: none|Play|Open file…")
     discovered ()
@@ -399,15 +410,10 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (heardTypes (), "")
     hover "Open file…"
     expect (requested "choose-file", false)
-    tap "Open file…"
-    asks ["choose-file"]
-    picked "/music/Sunroom.mp3"
+    choseFile tap
     letteredIn ["Sunroom", "Ready"]
     rendering "/tmp/osprey-cast.test"
-    tap "Play"
-    expect (heardTypes (), "CONNECT LAUNCH ")
-    expect (letters "Connecting…", true)
-    frame 0.2
+    castBegun (tap, letters, "Connecting…")
     frame 0.2
     expect (fake.fakeLoaded, "application/x-mpegURL")
     letteredIn ["Playing"]
@@ -446,7 +452,7 @@ test ("the canvas: every control is reached by its accessible label, through poi
     letteredIn ["1.5×"]
     tap "Receiver: Living Room TV"
     expect (labels (), "Living Room TV|Kitchen|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
-    expect (letters "✓", true)
+    letteredIn ["✓"]
     pointer (10.0, 10.0, true)
     pointer (10.0, 10.0, false)
     expect (labels (), "Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
@@ -470,15 +476,9 @@ test ("the player's accessibility tree reads clearly to an agent while it search
     letteredIn ["Looking for TVs…"]
     unlettered ["No TVs found"]
     discoverFailed ("the browse failed", 2)
-    unlettered ["Looking for TVs…"]
-    letteredIn ["No TVs found"]
-    clearTree ()
-    drawn ()
-    browsing ""
-    discovered ()
-    unlettered ["Looking for TVs…"]
-    letteredIn ["No TVs found"]
-    drawn ()
+    noTVsLetters clearTree
+    noTVsFound drawn
+    noTVsLetters drawn
     browsing browse
     discovered ()
     unlettered ["Looking for TVs…", "No TVs found"]
@@ -486,8 +486,7 @@ test ("the player's accessibility tree reads clearly to an agent while it search
     clearTree ()))
 test ("closing the native shell releases its connection and media server exactly once", \() => bench (\() =>
     playing "/music/Sunroom.mp3"
-    expect (fake.fakeClosed, 0)
-    expect (fake.fakeStopped, 0)
+    services (0, 0)
     closedAt 3
     closedAt 4
     playing "/music/Sunroom.mp3"
@@ -495,5 +494,5 @@ test ("closing the native shell releases its connection and media server exactly
     settled "Playing on Living Room TV"
     perform Bench.rig (fake(fakeCloseCode = 0 - 1))
     closedAt 5
-    expect (shows "Cannot close cast services (-1)", true)
+    shown ["Cannot close cast services (-1)"]
     closedAt 6))

@@ -13,8 +13,6 @@ square x = (x * x)
 addInts (acc, x) = (acc + x)
 (** Pure float kernel; the buffer's element tag types x as float. *)
 scale x = x * 1.5
-(** Float reduction kernel for gpuFold's uncurried combine slot. *)
-addFloats (a, x) = a + x
 (** Map an int element to a bool element, changing the buffer's type. *)
 isOdd x = (x % 2 ) == 1
 (** Count the true elements of a bool buffer. *)
@@ -45,47 +43,35 @@ lastIs (b, fallback, expected) = (lastOf b ?: fallback) == expected
 misses (b, index) = readback (b, index) == oobMessage ()
 (** One gpuGet outcome as text, so an element's own scalar type stays visible. *)
 rendersAs (b, index, text) = readback (b, index) == text
-(** The length of a materialized list. *)
-listLengthIs (values, expected) = listLength values == expected
-(** One list read, or `fallback` past either end. *)
-listHolds (values, index, fallback, expected) = (listGet (values, index) ?: fallback) == expected
 (** [GPU-FOLD] over int elements: `b` from `seed` totals `expected`. *)
-sumsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addInts), \total => total == expected)
+sumsTo (b, seed, expected) = gpuEquals(gpuFold(b, seed, addInts), expected)
 (** sumsTo from the zero seed. *)
 sumIs (b, expected) = sumsTo (b, 0, expected)
-(** [GPU-FOLD] over float elements: `b` from `seed` totals `expected`. *)
-floatSumsTo (b, seed, expected) = gpuSatisfies(gpuFold(b, seed, addFloats), \total => total == expected)
 (** [GPU-FOLD] over bool elements: `b` holds `expected` true flags. *)
-oddCountIs (b, expected) = gpuSatisfies(gpuFold(b, 0, countOdd), \count => count == expected)
-(** copied runs the identity kernel and checks its output: every scalar word must come back unchanged. *)
-copied (b, check) = gpuSatisfies(gpuMap(b, same), check)
-(** squared maps square over `b` and checks the result. *)
-squared (b, check) = gpuSatisfies(gpuMap(b, square), check)
-(** scaled maps scale over `b` and checks the float result. *)
-scaled (b, check) = gpuSatisfies(gpuMap(b, scale), check)
-(** widened widens `b` to float and checks the result ([GPU-CONVERT]). *)
-widened (b, check) = gpuSatisfies(gpuMap(b, toFloat), check)
-(** oddFlags maps isOdd over `b` and checks the bool buffer it publishes. *)
-oddFlags (b, check) = gpuSatisfies(gpuMap(b, isOdd), check)
+oddCountIs (b, expected) = gpuEquals(gpuFold(b, 0, countOdd), expected)
 (** uploaded uploads `values` and checks the dense buffer it produces. *)
 uploaded (values, check) = gpuSatisfies(toGpu (values), check)
+(** Materialize `b` and hand its list to `check` — the [GPU-BUFFER-TO-LIST] scaffolding every read-back shares. *)
+fromList (b, check) = gpuSatisfies(fromGpu (b), check)
+(** Materialize `b`, upload its list again and hand the rebuilt buffer to `check`. *)
+roundTripIs (b, check) = fromList (b, \values => gpuSatisfies(toGpu (values), check))
 (** [GPU-BUFFER-TO-LIST]: `b` materializes as `expected` list elements. *)
-readsBack (b, expected) = gpuSatisfies(fromGpu (b), \values => listLengthIs (values, expected))
+readsBack (b, expected) = fromList (b, \values => listLengthIs (values, expected))
 (** [GPU-BUFFER-TO-LIST] read at one index. *)
-readsBackAt (b, index, fallback, expected) = gpuSatisfies(fromGpu (b), \values => listHolds (values, index, fallback, expected))
+readsBackAt (b, index, fallback, expected) = fromList (b, \values => listHolds (values, index, fallback, expected))
 (** The exact dense copy [GPU-BUFFER-TO-LIST] promises. *)
-materializesAs (b, values) = gpuSatisfies(fromGpu (b), \back => structuralEquals (back, values))
+materializesAs (b, values) = fromList (b, \back => structuralEquals (back, values))
 (** Send `b` through list and buffer again at `expected` elements. *)
-survivesRoundTrip (b, expected) = gpuSatisfies(fromGpu (b), \values => gpuSatisfies(toGpu (values), \again => lengthIs (again, expected)))
+survivesRoundTrip (b, expected) = roundTripIs (b, \again => lengthIs (again, expected))
 (** Fold the buffer rebuilt from `b`'s own materialized list. *)
-roundTripSumsTo (b, expected) = gpuSatisfies(fromGpu (b), \values => gpuSatisfies(toGpu (values), \again => sumIs (again, expected)))
+roundTripSumsTo (b, expected) = roundTripIs (b, \again => sumIs (again, expected))
 (** Read the buffer rebuilt from `b`'s own materialized list. *)
-roundTripReads (b, index, fallback, expected) = gpuSatisfies(fromGpu (b), \values => gpuSatisfies(toGpu (values), \again => elementIs (again, index, fallback, expected)))
+roundTripReads (b, index, fallback, expected) = roundTripIs (b, \again => elementIs (again, index, fallback, expected))
 (** Pin [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold. *)
 literalCase () = withBuffer(toGpu ([3, 1, 4, 1, 5]), \ints => withBuffer(toGpu ([0.25, 0.5, 0.75, 1.0]), \floats => withBuffer(toGpu ([true, false, true]), \flags => withBuffer(toGpu ([-3, 0, 7, -1]), \signed => withBuffer(toGpu ([4611686018427387904, -4611686018427387904]), \wide => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 literalCaseUploaded (ints, floats, flags, signed, wide) =
     checkAll("buffer literals", [
-        lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploaded ([9], \up => lengthIs (up, 1)), emptyUploads (), widthOf ints == 5, elementsFrom (ints, 0, 0, [3, 1, 4, 1, 5]), lastIs (ints, 0, 5), elementsFrom (floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), elementIs (signed, 0, 0, (-3)), elementIs (signed, 1, 9, 0), elementIs (signed, 2, 0, 7), elementIs (signed, 3, 0, (-1)), elementIs (wide, 0, 0, 4611686018427387904), elementIs (wide, 1, 0, -4611686018427387904), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumsTo (floats, 0.0, 2.5), oddCountIs (flags, 2)
+        lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploaded ([9], \up => lengthIs (up, 1)), emptyUploads (), widthOf ints == 5, elementsFrom (ints, 0, 0, [3, 1, 4, 1, 5]), lastIs (ints, 0, 5), elementsFrom (floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), elementIs (signed, 0, 0, (-3)), elementIs (signed, 1, 9, 0), elementsFrom (signed, 2, 0, [7, (-1)]), elementsFrom (wide, 0, 0, [4611686018427387904, -4611686018427387904]), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumsTo (floats, 0.0, 2.5), oddCountIs (flags, 2)
     ])
 (** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists. *)
 listCopyCase () = withIndices (0, \indices0 => listCopyWith (indices0))
@@ -98,47 +84,43 @@ listCopyWith (indices0) =
 (** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () = withIndices (0, \indices0 => withIndices (6, \indices6 => roundTripWith (indices0, indices6)))
 roundTripWith (indices0, indices6) = withBuffer(toGpu ([3, 1, 4, 1, 5]), \buf => withBuffer(fromGpu (buf), \back => withBuffer(toGpu (back), \viaList => withBuffer(fromGpu (viaList), \twice => checkAll("round trip", [
-    lengthIs (buf, 5), listLengthIs (back, 5), listHolds (back, 0, 0, 3), listHolds (back, 1, 0, 1), listHolds (back, 2, 0, 4), listHolds (back, 3, 0, 1), listHolds (back, 4, 0, 5), listHolds (back, 5, 99, 99), listHolds (back, (-1), 99, 99), lengthIs (viaList, 5), elementIs (viaList, 0, 0, 3), elementIs (viaList, 2, 0, 4), elementIs (viaList, 4, 0, 5), misses (viaList, 5), sumIs (viaList, 14), listLengthIs (twice, 5), listHolds (twice, 4, 0, 5), uploaded (twice, \up => sumsTo (up, 0, 14)), readsBack (indices0, 0), survivesRoundTrip (indices6, 6), roundTripSumsTo (indices6, 15), roundTripReads (indices6, 5, 0, 5)
+    lengthIs (buf, 5), listLengthIs (back, 5), listHolds (back, 0, 0, 3), listHolds (back, 1, 0, 1), listHolds (back, 2, 0, 4), listHolds (back, 3, 0, 1), listHolds (back, 4, 0, 5), listHolds (back, 5, 99, 99), listHolds (back, (-1), 99, 99), lengthIs (viaList, 5), elementsAt (viaList, 0, [0, 2, 4], [3, 4, 5]), misses (viaList, 5), sumIs (viaList, 14), listLengthIs (twice, 5), listHolds (twice, 4, 0, 5), uploaded (twice, \up => sumsTo (up, 0, 14)), readsBack (indices0, 0), survivesRoundTrip (indices6, 6), roundTripSumsTo (indices6, 15), roundTripReads (indices6, 5, 0, 5)
 ])))))
 (** Pin the zero-element buffer through every builtin that takes one: no element is readable at any index, it materializes as an empty list, maps to another empty buffer, and folds to its seed untouched. *)
 emptyCase () = withIndices (0, \indices0 => emptyWith (indices0))
 emptyWith (indices0) = withBuffer(gpuMap(indices0, square), \mapped => withBuffer(gpuMap(indices0, isOdd), \flags => withBuffer(gpuMap(indices0, toFloat), \widenedEmpty => checkAll("empty buffers", [
-    lengthIs (indices0, 0), lengthIs (mapped, 0), lengthIs (flags, 0), lengthIs (widenedEmpty, 0), emptyUploads (), widthOf indices0 == 0, readsBack (indices0, 0), readsBack (mapped, 0), sumIs (indices0, 0), sumsTo (indices0, (-7), (-7)), sumsTo (mapped, 3, 3), oddCountIs (flags, 0), floatSumsTo (widenedEmpty, 2.5, 2.5), elementIs (indices0, 0, 42, 42), elementIs (indices0, 1, 42, 42), elementIs (indices0, (-1), 42, 42), elementIs (indices0, 1000000, 42, 42), lastIs (indices0, 42, 42), misses (indices0, 0), misses (indices0, (-1)), misses (mapped, 0), misses (flags, 0), misses (widenedEmpty, 0)
+    lengthIs (indices0, 0), lengthIs (mapped, 0), lengthIs (flags, 0), lengthIs (widenedEmpty, 0), emptyUploads (), widthOf indices0 == 0, readsBack (indices0, 0), readsBack (mapped, 0), sumIs (indices0, 0), sumsTo (indices0, (-7), (-7)), sumsTo (mapped, 3, 3), oddCountIs (flags, 0), floatSumsTo (widenedEmpty, 2.5, 2.5), elementsAt (indices0, 42, [0, 1, (-1), 1000000], [42, 42, 42, 42]), lastIs (indices0, 42, 42), misses (indices0, 0), misses (indices0, (-1)), misses (mapped, 0), misses (flags, 0), misses (widenedEmpty, 0)
 ]))))
 (** Pin the one-element buffer: index 0 is the only address in bounds, so both 1 and -1 fail, and a fold sees exactly one element. *)
 singletonCase () = withIndices (1, \indices1 => singletonWith (indices1))
 singletonWith (indices1) = withBuffer(toGpu ([42]), \lone => withBuffer(toGpu ([2.5]), \loneF => withBuffer(toGpu ([false]), \loneB => singletonWithUploaded(indices1, lone, loneF, loneB))))
 singletonWithUploaded (indices1, lone, loneF, loneB) =
     withBuffer(doubledInts(lone), \doubled => checkAll("single-element buffers", [
-        lengthIs (lone, 1), lengthIs (loneF, 1), lengthIs (loneB, 1), lengthIs (indices1, 1), elementIs (indices1, 0, 9, 0), elementIs (lone, 0, 0, 42), elementIs (loneF, 0, 9.5, 2.5), elementIs (loneB, 0, true, false), elementIs (lone, 1, 9, 9), elementIs (lone, (-1), 9, 9), elementIs (loneF, 1, 9.5, 9.5), elementIs (loneB, 1, true, true), misses (lone, 1), misses (loneF, (-1)), misses (loneB, 2), rendersAs (lone, 0, "42"), lastIs (lone, 0, 42), lastIs (loneF, 9.5, 2.5), lastIs (loneB, true, false), sumIs (lone, 42), floatSumsTo (loneF, 0.0, 2.5), oddCountIs (loneB, 0), lengthIs (doubled, 1), elementIs (doubled, 0, 0, 84), readsBack (lone, 1), readsBackAt (lone, 0, 0, 42), survivesRoundTrip (lone, 1)
+        lengthIs (lone, 1), lengthIs (loneF, 1), lengthIs (loneB, 1), lengthIs (indices1, 1), elementIs (indices1, 0, 9, 0), elementIs (lone, 0, 0, 42), elementIs (loneF, 0, 9.5, 2.5), elementIs (loneB, 0, true, false), elementsAt (lone, 9, [1, (-1)], [9, 9]), elementIs (loneF, 1, 9.5, 9.5), elementIs (loneB, 1, true, true), misses (lone, 1), misses (loneF, (-1)), misses (loneB, 2), rendersAs (lone, 0, "42"), lastIs (lone, 0, 42), lastIs (loneF, 9.5, 2.5), lastIs (loneB, true, false), sumIs (lone, 42), floatSumsTo (loneF, 0.0, 2.5), oddCountIs (loneB, 0), lengthIs (doubled, 1), elementIs (doubled, 0, 0, 84), readsBack (lone, 1), readsBackAt (lone, 0, 0, 42), survivesRoundTrip (lone, 1)
     ]))
 (** Pin [GPU-GET] at both ends and far outside them for every element type: an in-bounds read returns the element at the buffer's own scalar type, and index == length, index == -1 and indices a million past either edge all return the identical Error payload. *)
 boundsCase () = withBuffer(toGpu ([10, 20, 30]), \ints => withBuffer(toGpu ([1.25, 2.5]), \floats => withBuffer(toGpu ([true, false]), \flags => boundsCaseUploaded(ints, floats, flags))))
 boundsCaseUploaded (ints, floats, flags) =
     checkAll("bounds", [
-        elementIs (ints, 0, 0, 10), elementIs (ints, 2, 0, 30), elementIs (ints, (gpuLength ints - 1), 0, 30), rendersAs (ints, 0, "10"), rendersAs (ints, 2, "30"), rendersAs (floats, 0, "1.25"), rendersAs (floats, 1, "2.5"), rendersAs (flags, 0, "true"), rendersAs (flags, 1, "false"), misses (ints, 3), misses (ints, 4), misses (ints, 1000000), misses (ints, (-1)), misses (ints, (-1000000)), misses (floats, 2), misses (floats, (-1)), misses (flags, 2), misses (flags, (-1)), elementIs (ints, gpuLength ints, (-1), (-1)), elementIs (ints, 3, (-1), (-1)), elementIs (ints, (-1), (-1), (-1)), elementIs (floats, 2, 9.5, 9.5), elementIs (floats, (-1), 9.5, 9.5), elementIs (flags, 2, true, true), elementIs (flags, (-1), false, false), lastIs (ints, 0, 30), lastIs (floats, 9.5, 2.5), lastIs (flags, true, false)
+        elementsAt (ints, 0, [0, 2, (gpuLength ints - 1)], [10, 30, 30]), rendersAs (ints, 0, "10"), rendersAs (ints, 2, "30"), rendersAs (floats, 0, "1.25"), rendersAs (floats, 1, "2.5"), rendersAs (flags, 0, "true"), rendersAs (flags, 1, "false"), misses (ints, 3), misses (ints, 4), misses (ints, 1000000), misses (ints, (-1)), misses (ints, (-1000000)), misses (floats, 2), misses (floats, (-1)), misses (flags, 2), misses (flags, (-1)), elementsAt (ints, (-1), [gpuLength ints, 3, (-1)], [(-1), (-1), (-1)]), elementsAt (floats, 9.5, [2, (-1)], [9.5, 9.5]), elementIs (flags, 2, true, true), elementIs (flags, (-1), false, false), lastIs (ints, 0, 30), lastIs (floats, 9.5, 2.5), lastIs (flags, true, false)
     ])
 (** Pin [GPU-IOTA] across its domain: the empty, one- and two-element index buffers, a large one whose closed-form sum a miscounted loop cannot match, and negative counts, which report allocation errors rather than successful empty buffers. *)
 iotaCase () = withIndices (0, \indices0 => withIndices (1, \indices1 => withIndices (2, \indices2 => withIndices (7, \indices7 => withIndices (200000, \indicesWide => iotaWith (indices0, indices1, indices2, indices7, indicesWide))))))
 iotaWith (indices0, indices1, indices2, indices7, indicesWide) =
-    one = indices1
-    pair = indices2
-    seven = indices7
-    wide = indicesWide
     checkAll("iota", [
-        lengthIs (indices0, 0), lengthIs (one, 1), lengthIs (pair, 2), lengthIs (seven, 7), lengthIs (wide, 200000), iotaError (-1) == "gpu: buffer allocation: a negative element count", iotaError (-200000) == "gpu: buffer allocation: a negative element count", widthOf seven == 7, iotaError 9223372036854775807 == "gpu: buffer allocation: element count overflows the byte size", iotaError 1152921504606846975 == "gpu: buffer allocation: out of memory", elementIs (one, 0, 9, 0), elementIs (pair, 0, 9, 0), elementIs (pair, 1, 0, 1), elementIs (seven, 0, 9, 0), elementIs (seven, 6, 0, 6), lastIs (seven, 0, 6), lastIs (wide, 0, 199999), elementIs (wide, 0, 9, 0), elementIs (wide, 100000, 0, 100000), misses (seven, 7), misses (one, 1), misses (wide, 200000), iotaError (-1) == "gpu: buffer allocation: a negative element count", sumIs (seven, 21), sumIs (pair, 1), sumIs (one, 0), sumIs (wide, 19999900000), squared (seven, \squares => sumIs (squares, 91)), readsBack (seven, 7), readsBackAt (seven, 3, 0, 3)
+        lengthIs (indices0, 0), lengthIs (indices1, 1), lengthIs (indices2, 2), lengthIs (indices7, 7), lengthIs (indicesWide, 200000), iotaError (-1) == "gpu: buffer allocation: a negative element count", iotaError (-200000) == "gpu: buffer allocation: a negative element count", widthOf indices7 == 7, iotaError 9223372036854775807 == "gpu: buffer allocation: element count overflows the byte size", iotaError 1152921504606846975 == "gpu: buffer allocation: out of memory", elementIs (indices1, 0, 9, 0), elementIs (indices2, 0, 9, 0), elementIs (indices2, 1, 0, 1), elementIs (indices7, 0, 9, 0), elementIs (indices7, 6, 0, 6), lastIs (indices7, 0, 6), lastIs (indicesWide, 0, 199999), elementIs (indicesWide, 0, 9, 0), elementIs (indicesWide, 100000, 0, 100000), misses (indices7, 7), misses (indices1, 1), misses (indicesWide, 200000), iotaError (-1) == "gpu: buffer allocation: a negative element count", sumIs (indices7, 21), sumIs (indices2, 1), sumIs (indices1, 0), sumIs (indicesWide, 19999900000), gpuSatisfies(gpuMap(indices7, square), \squares => sumIs (squares, 91)), readsBack (indices7, 7), readsBackAt (indices7, 3, 0, 3)
     ])
 (** Pin [GPU-BUFFER-ELEM]: int, float and bool words go through the identity kernel and come back bit-for-bit at their own type — a float buffer must never read back as the integer its bits spell. *)
 elementCase () = withBuffer(toGpu ([-9, 0, 9]), \ints => withBuffer(toGpu ([-0.5, 0.0, 0.125]), \floats => withBuffer(toGpu ([false, true]), \flags => elementCaseUploaded(ints, floats, flags))))
 elementCaseUploaded (ints, floats, flags) =
     checkAll("scalar element words survive identity", [
-        copied (ints, \copy => elementIs (copy, 0, 0, (-9))), copied (ints, \copy => elementIs (copy, 1, 9, 0)), copied (ints, \copy => elementIs (copy, 2, 0, 9)), copied (floats, \copy => elementIs (copy, 0, 9.5, (-0.5))), copied (floats, \copy => elementIs (copy, 1, 9.5, 0.0)), copied (floats, \copy => elementIs (copy, 2, 9.5, 0.125)), copied (flags, \copy => elementIs (copy, 0, true, false)), copied (flags, \copy => elementIs (copy, 1, false, true)), rendersAs (ints, 0, "-9"), rendersAs (ints, 1, "0"), rendersAs (floats, 0, "-0.5"), rendersAs (floats, 1, "0.0"), rendersAs (floats, 2, "0.125"), rendersAs (flags, 0, "false"), sumIs (ints, 0), floatSumsTo (floats, 0.0, (-0.375)), oddCountIs (flags, 1), copied (floats, \copy => lengthIs (copy, 3)), copied (flags, \copy => widthOf copy == 2), copied (ints, \copy => readsBack (copy, 3)), uploaded ([2.0], \up => floatSumsTo (up, 0.0, 2.0)), copied (floats, \copy => lastIs (copy, 9.5, 0.125))
+        gpuSatisfies(gpuMap(ints, same), \copy => elementIs (copy, 0, 0, (-9))), gpuSatisfies(gpuMap(ints, same), \copy => elementIs (copy, 1, 9, 0)), gpuSatisfies(gpuMap(ints, same), \copy => elementIs (copy, 2, 0, 9)), gpuSatisfies(gpuMap(floats, same), \copy => elementIs (copy, 0, 9.5, (-0.5))), gpuSatisfies(gpuMap(floats, same), \copy => elementIs (copy, 1, 9.5, 0.0)), gpuSatisfies(gpuMap(floats, same), \copy => elementIs (copy, 2, 9.5, 0.125)), gpuSatisfies(gpuMap(flags, same), \copy => elementIs (copy, 0, true, false)), gpuSatisfies(gpuMap(flags, same), \copy => elementIs (copy, 1, false, true)), rendersAs (ints, 0, "-9"), rendersAs (ints, 1, "0"), rendersAs (floats, 0, "-0.5"), rendersAs (floats, 1, "0.0"), rendersAs (floats, 2, "0.125"), rendersAs (flags, 0, "false"), sumIs (ints, 0), floatSumsTo (floats, 0.0, (-0.375)), oddCountIs (flags, 1), gpuSatisfies(gpuMap(floats, same), \copy => lengthIs (copy, 3)), gpuSatisfies(gpuMap(flags, same), \copy => widthOf copy == 2), gpuSatisfies(gpuMap(ints, same), \copy => readsBack (copy, 3)), uploaded ([2.0], \up => floatSumsTo (up, 0.0, 2.0)), gpuSatisfies(gpuMap(floats, same), \copy => lastIs (copy, 9.5, 0.125))
     ])
 (** Pin the handle and its element tag through all four binding forms a value takes — a let, a pipe, a function parameter and a function return — plus a match arm and a lambda parameter. A float buffer that lost its tag anywhere along the way would read back as raw bits. *)
 flowCase () = withBuffer(toGpu([1.5, 2.5, 3.5]), \held => withBuffer(gpuMap(held, scale), \piped => withBuffer(scaledFloats(held), \returned => withBuffer(scaledFloats(returned), \twice => 
     chosen = chooseBuffer(true, held, piped)
     lamLength = \b => gpuLength(b)
-    checkAll("buffers flow through every binding form", [elementIs(held, 0, 9.5, 1.5), elementIs(piped, 0, 9.5, 2.25), elementIs(piped, 2, 9.5, 5.25), elementIs(returned, 0, 9.5, 2.25), elementIs(returned, 2, 9.5, 5.25), lastIs(returned, 9.5, 5.25), elementIs(chosen, 1, 9.5, 2.5), lastIs(chosen, 9.5, 3.5), elementIs(chooseBuffer(false, held, piped), 1, 9.5, 3.75), elementIs(twice, 0, 9.5, 3.375), lastIs(twice, 9.5, 7.875), widthOf(held) == 3, widthOf(piped) == 3, widthOf(returned) == 3, widthOf(chosen) == 3, lamLength(held) == 3, lamLength(twice) == 3, floatSumsTo(held, 0.0, 7.5), floatSumsTo(piped, 0.0, 11.25), floatSumsTo(returned, 0.0, 11.25), floatSumsTo(twice, 0.0, 16.875), rendersAs(held, 0, "1.5"), rendersAs(returned, 0, "2.25"), misses(returned, 3), misses(twice, -1), readsBack(held, 3)])))))
+    checkAll("buffers flow through every binding form", [elementIs(held, 0, 9.5, 1.5), elementsAt (piped, 9.5, [0, 2], [2.25, 5.25]), elementsAt (returned, 9.5, [0, 2], [2.25, 5.25]), lastIs(returned, 9.5, 5.25), elementIs(chosen, 1, 9.5, 2.5), lastIs(chosen, 9.5, 3.5), elementIs(chooseBuffer(false, held, piped), 1, 9.5, 3.75), elementIs(twice, 0, 9.5, 3.375), lastIs(twice, 9.5, 7.875), widthOf(held) == 3, widthOf(piped) == 3, widthOf(returned) == 3, widthOf(chosen) == 3, lamLength(held) == 3, lamLength(twice) == 3, floatSumsTo(held, 0.0, 7.5), floatSumsTo(piped, 0.0, 11.25), floatSumsTo(returned, 0.0, 11.25), floatSumsTo(twice, 0.0, 16.875), rendersAs(held, 0, "1.5"), rendersAs(returned, 0, "2.25"), misses(returned, 3), misses(twice, -1), readsBack(held, 3)])))))
 (** Pin two bindings onto one buffer. Buffers are immutable values [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and leaves every alias of the source reading what it read before. *)
 aliasCase () = withBuffer(toGpu([1, 2, 3, 4]), \source => withBuffer(doubledInts(source), \derived => 
     alias = source
@@ -151,17 +133,17 @@ fusionCase () = withBuffer(toGpu (range (0, 6)), \straight => withBuffer(toGpu (
 (** Pipe a buffer through a named kernel and fold it away, including over negative elements and over no elements at all. *)
 intKernelCase () = withIndices (0, \indices0 => intKernelWith (indices0))
 intKernelWith (indices0) = withBuffer(toGpu ([1, 2, 3, 4]), \value => withBuffer(gpuMap(value, square), \squaredCopy => withBuffer(gpuFold(squaredCopy, 0, addInts), \total => withBuffer(toGpu ([1, 2, 3]), \small => withBuffer(gpuMap(small, (\x => (x * x) )), \mapped => withBuffer(fromGpu (mapped), \squares => withBuffer(toGpu ([-1, -2, -3]), \signed => withBuffer(gpuMap(signed, square), \negatives => checkAll("int kernels", [
-    total == 30, listLengthIs (squares, 3), listHolds (squares, 0, 0, 1), listHolds (squares, 2, 0, 9), uploaded ([10, 20], \up => sumsTo (up, 5, 35)), lengthIs (negatives, 3), elementIs (negatives, 0, 0, 1), elementIs (negatives, 2, 0, 9), sumIs (negatives, 14), uploaded ([7], \up => squared (up, \squares => sumIs (squares, 49))), squared (indices0, \squares => sumIs (squares, 0))
+    total == 30, listLengthIs (squares, 3), listHolds (squares, 0, 0, 1), listHolds (squares, 2, 0, 9), uploaded ([10, 20], \up => sumsTo (up, 5, 35)), lengthIs (negatives, 3), elementsAt (negatives, 0, [0, 2], [1, 9]), sumIs (negatives, 14), uploaded ([7], \up => gpuSatisfies(gpuMap(up, square), \squares => sumIs (squares, 49))), gpuSatisfies(gpuMap(indices0, square), \squares => sumIs (squares, 0))
 ])))))))))
 (** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
-floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, addFloats), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
-    sum == 9.0, floatSumsTo (halves, 0.0, 0.875), scaled (halves, \mapped => floatSumsTo (mapped, 0.0, 1.3125)), scaled (halves, \mapped => elementIs (mapped, 2, 9.5, 0.1875)), scaled (halves, \mapped => lengthIs (mapped, 3)), uploaded ([0.5, 0.25], \up => floatSumsTo (up, 0.0, 0.75)), widened (indices4, \mapped => floatSumsTo (mapped, 0.0, 6.0)), widened (indices4, \mapped => elementIs (mapped, 3, 9.5, 3.0)), widened (indices0, \mapped => floatSumsTo (mapped, 2.5, 2.5))
+floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, gpuTestAdd), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
+    sum == 9.0, floatSumsTo (halves, 0.0, 0.875), gpuSatisfies(gpuMap(halves, scale), \mapped => floatSumsTo (mapped, 0.0, 1.3125)), gpuSatisfies(gpuMap(halves, scale), \mapped => elementIs (mapped, 2, 9.5, 0.1875)), gpuSatisfies(gpuMap(halves, scale), \mapped => lengthIs (mapped, 3)), uploaded ([0.5, 0.25], \up => floatSumsTo (up, 0.0, 0.75)), gpuSatisfies(gpuMap(indices4, toFloat), \mapped => floatSumsTo (mapped, 0.0, 6.0)), gpuSatisfies(gpuMap(indices4, toFloat), \mapped => elementIs (mapped, 3, 9.5, 3.0)), gpuSatisfies(gpuMap(indices0, toFloat), \mapped => floatSumsTo (mapped, 2.5, 2.5))
 ])))))
 (** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)
 boolKernelCase () = withIndices (0, \indices0 => boolKernelWith (indices0))
 boolKernelWith (indices0) = withBuffer(toGpu ([1, 2, 3, 4, 5]), \value => withBuffer(gpuMap(value, isOdd), \odds => withBuffer(toGpu ([1, 3]), \value => withBuffer(gpuMap(value, isOdd), \allTrue => withBuffer(toGpu ([2, 4]), \value => withBuffer(gpuMap(value, isOdd), \allFalse => checkAll("bool kernels", [
-    lengthIs (odds, 5), oddCountIs (odds, 3), elementIs (odds, 0, false, true), elementIs (odds, 1, true, false), elementIs (odds, 4, false, true), lastIs (odds, false, true), rendersAs (odds, 1, "false"), misses (odds, 5), lengthIs (allTrue, 2), oddCountIs (allTrue, 2), oddCountIs (allFalse, 0), uploaded ([true, true, false], \up => oddCountIs (up, 2)), oddFlags (indices0, \flags => lengthIs (flags, 0))
+    lengthIs (odds, 5), oddCountIs (odds, 3), elementIs (odds, 0, false, true), elementIs (odds, 1, true, false), elementIs (odds, 4, false, true), lastIs (odds, false, true), rendersAs (odds, 1, "false"), misses (odds, 5), lengthIs (allTrue, 2), oddCountIs (allTrue, 2), oddCountIs (allFalse, 0), uploaded ([true, true, false], \up => oddCountIs (up, 2)), gpuSatisfies(gpuMap(indices0, isOdd), \flags => lengthIs (flags, 0))
 ])))))))
 (** Push the copy path itself to scale: a hundred thousand elements out to a list and back into a buffer, boundary indices and closed-form sums checked on every hop. *)
 bigCase () = withIndices (100000, \indicesWide => bigWith (indicesWide))
@@ -180,7 +162,7 @@ blockBodiedKernelWith (indices4, indices3) = withBuffer(gpuMap(indices4,
         \r =>
             asFloat = toFloat r
             asFloat * 0.5), \widened => checkAll("a block-bodied kernel keeps its internal let bindings", [
-    lengthIs (fromFn, 4), elementIs (fromFn, 0, 99, 1), elementIs (fromFn, 1, 99, 4), elementIs (fromFn, 3, 99, 10), lengthIs (fromLambda, 4), elementIs (fromLambda, 0, 99, 1), elementIs (fromLambda, 3, 99, 10), sumIs (fromFn, 22), lengthIs (widened, 3), elementIs (widened, 0, 9.5, 0.0), elementIs (widened, 2, 9.5, 1.0)
+    lengthIs (fromFn, 4), elementsAt (fromFn, 99, [0, 1, 3], [1, 4, 10]), lengthIs (fromLambda, 4), elementsAt (fromLambda, 99, [0, 3], [1, 10]), sumIs (fromFn, 22), lengthIs (widened, 3), elementsAt (widened, 9.5, [0, 2], [0.0, 1.0])
 ]))))
 (** [GPU-BUFFER-ELEM]: one index read back through gpuGet equals the source. *)
 denseRead (buffer, values, i) = match gpuGet (buffer, i)
@@ -242,23 +224,25 @@ quantMessage (result) = match result
 quantRejection (x, w, kind, inner, cols) = quantMessage (gpuMatMulQuant (x, w, kind, 1, inner, cols))
 quantCase () = withBuffer(toGpu(range(0, 256)), \ints => withBuffer(gpuMap(ints, \i => toFloat32(i)), \x => withBuffer(quantWeights(), \w => quantWith(x, w))))
 quantWith (x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), \out => checkAll("quantized product", [
-    lengthIs (out, 2), elementIs (out, 0, toFloat32(0.0), toFloat32(496.0)), elementIs (out, 1, toFloat32(0.0), toFloat32(992.0)), quantRejection (x, w, "Q2_K", 256, 2) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S", quantRejection (x, w, "Q4_K", 200, 2) == "gpuMatMulQuant: inner: must be a positive multiple of 256", quantRejection (x, w, "Q4_K", 256, 3) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432", quantMessage (gpuMatMulQuant (x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
+    lengthIs (out, 2), elementsFrom (out, 0, toFloat32(0.0), [toFloat32(496.0), toFloat32(992.0)]), quantRejection (x, w, "Q2_K", 256, 2) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S", quantRejection (x, w, "Q4_K", 200, 2) == "gpuMatMulQuant: inner: must be a positive multiple of 256", quantRejection (x, w, "Q4_K", 256, 3) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432", quantMessage (gpuMatMulQuant (x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
 ]))
-test ("buffer literals store elements densely at constant indices", \() => exactArithmetic (literalCase))
-test ("a list value copies into a buffer element for element", \() => exactArithmetic (listCopyCase))
-test ("gpu buffers round-trip lists densely", \() => exactArithmetic (roundTripCase))
-test ("the empty buffer answers every builtin without elements", \() => exactArithmetic (emptyCase))
-test ("a one-element buffer bounds gpuGet to index zero", \() => exactArithmetic (singletonCase))
-test ("gpuGet errors identically at both ends of every buffer", \() => exactArithmetic (boundsCase))
-test ("gpuIota spans zero, one and two hundred thousand indices", \() => exactArithmetic (iotaCase))
-test ("int, float and bool words survive the identity kernel", \() => exactArithmetic (elementCase))
-test ("buffers keep their tag through lets, pipes, params and returns", \() => exactArithmetic (flowCase))
-test ("aliased bindings observe one immutable buffer", \() => exactArithmetic (aliasCase))
-test ("a fused iterator buffer is addressable element by element", \() => exactArithmetic (fusionCase))
-test ("pure int kernels map and fold on buffers", \() => exactArithmetic (intKernelCase))
-test ("float kernels keep element bits through map and fold", \() => exactArithmetic (floatKernelCase))
-test ("kernels may change the element scalar type", \() => exactArithmetic (boolKernelCase))
-test ("the copy path stays exact at a hundred thousand elements", \() => exactArithmetic (bigCase))
-test ("a block-bodied kernel keeps its internal let bindings", \() => exactArithmetic (blockBodiedKernelCase))
-test ("every scalar width survives dense storage and round-trips through gpuGet", \() => exactArithmetic (denseWidthsCase))
-test ("the quantized product decodes Q4_K blocks in place on every backend", \() => exactArithmetic (quantCase))
+exactTests [
+    { name = "buffer literals store elements densely at constant indices", work = literalCase },
+    { name = "a list value copies into a buffer element for element", work = listCopyCase },
+    { name = "gpu buffers round-trip lists densely", work = roundTripCase },
+    { name = "the empty buffer answers every builtin without elements", work = emptyCase },
+    { name = "a one-element buffer bounds gpuGet to index zero", work = singletonCase },
+    { name = "gpuGet errors identically at both ends of every buffer", work = boundsCase },
+    { name = "gpuIota spans zero, one and two hundred thousand indices", work = iotaCase },
+    { name = "int, float and bool words survive the identity kernel", work = elementCase },
+    { name = "buffers keep their tag through lets, pipes, params and returns", work = flowCase },
+    { name = "aliased bindings observe one immutable buffer", work = aliasCase },
+    { name = "a fused iterator buffer is addressable element by element", work = fusionCase },
+    { name = "pure int kernels map and fold on buffers", work = intKernelCase },
+    { name = "float kernels keep element bits through map and fold", work = floatKernelCase },
+    { name = "kernels may change the element scalar type", work = boolKernelCase },
+    { name = "the copy path stays exact at a hundred thousand elements", work = bigCase },
+    { name = "a block-bodied kernel keeps its internal let bindings", work = blockBodiedKernelCase },
+    { name = "every scalar width survives dense storage and round-trips through gpuGet", work = denseWidthsCase },
+    { name = "the quantized product decodes Q4_K blocks in place on every backend", work = quantCase }
+]

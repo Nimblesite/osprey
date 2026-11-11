@@ -24,6 +24,23 @@ fn usage_project(inputs: &[(&str, String)]) -> Result<CompilationInput, Vec<Proj
     CompilationInput::documentation_project(".", &ProjectConfig::for_root(Path::new(".")), &sources)
 }
 
+/// The checked dependency graph's JSON plus the source symbols it declares.
+fn dependency_graph(input: &CompilationInput) -> (String, Vec<String>) {
+    let graph = input
+        .dependency_graph_json()
+        .expect("checked dependency graph");
+    let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
+    let symbols = value
+        .get("dependencies")
+        .and_then(serde_json::Value::as_array)
+        .expect("dependencies")
+        .iter()
+        .filter_map(|edge| edge.get("symbol").and_then(serde_json::Value::as_str))
+        .map(str::to_owned)
+        .collect();
+    (graph, symbols)
+}
+
 #[test]
 fn checked_source_graph_uses_inferred_method_dispatch() {
     for (body, required) in [
@@ -35,17 +52,9 @@ fn checked_source_graph_uses_inferred_method_dispatch() {
         ("fn main() = run(42)", true),
     ] {
         let input = usage_input(body).expect("assembled usage fixture");
-        let graph = input.dependency_graph_json().expect("checked source graph");
-        let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
-        let edges = value
-            .get("dependencies")
-            .expect("dependencies")
-            .as_array()
-            .expect("dependency array");
+        let (_, symbols) = dependency_graph(&input);
         assert_eq!(
-            edges.iter().any(
-                |edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")
-            ),
+            symbols.iter().any(|symbol| symbol.as_str() == "app::run"),
             required
         );
     }
@@ -79,16 +88,9 @@ fn checked_source_graph_preserves_inlined_method_dependency() {
         ),
     ])
     .expect("assembled inline fixture");
-    let graph = input.dependency_graph_json().expect("checked inline graph");
-    let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
-    let edges = value
-        .get("dependencies")
-        .and_then(serde_json::Value::as_array)
-        .expect("dependencies");
+    let (graph, symbols) = dependency_graph(&input);
     assert!(
-        edges
-            .iter()
-            .any(|edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")),
+        symbols.iter().any(|symbol| symbol.as_str() == "app::run"),
         "inlined UFCS target must remain required: {graph}"
     );
 }
@@ -168,23 +170,8 @@ fn aggregate_sources_keeps_link_directives_from_every_file() {
             discipline: None,
         })
         .collect();
-    let project = AssembledProject {
-        source_dependencies: Vec::new(),
-        method_candidates: Vec::new(),
-        warnings: Vec::new(),
-        state_boundaries: Vec::new(),
-        program: Program {
-            statements: Vec::new(),
-            doc: None,
-        },
-        backend: None,
-        entry_prologue: Vec::new(),
-        entry_source: 0,
-        sources,
-        source_name_by_mangled: std::collections::BTreeMap::new(),
-        public_api: std::collections::BTreeMap::new(),
-        documentation_bindings: Vec::new(),
-    };
+    let mut project = empty_project(std::collections::BTreeMap::new());
+    project.sources = sources;
     let aggregated = aggregate_sources(&project);
     crate::testkit::shows(&aggregated, &["// @link: sqlite3", "// @linkdir: /opt/lib"]);
 
@@ -223,18 +210,10 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
     let mut source_names = std::collections::BTreeMap::new();
     let _ = source_names.insert("main".to_string(), "app::main".to_string());
     let project = AssembledProject {
-        source_dependencies: Vec::new(),
-        method_candidates: Vec::new(),
-        warnings: Vec::new(),
-        state_boundaries: Vec::new(),
         program,
-        backend: None,
-        entry_prologue: Vec::new(),
-        entry_source: 0,
         sources: vec![source],
         source_name_by_mangled: source_names,
-        public_api: std::collections::BTreeMap::new(),
-        documentation_bindings: Vec::new(),
+        ..empty_project(std::collections::BTreeMap::new())
     };
     let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
     crate::testkit::contents(

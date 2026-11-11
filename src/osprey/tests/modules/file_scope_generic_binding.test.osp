@@ -147,11 +147,13 @@ fn mutableScopeCase() = {
 }
 
 print("${roundTo(1)} ${label("s")} ${flag(true)} ${tagged("n", 1)}")
-test("one generic binding specialises at every call site", independentSpecialisationCase)
-test("a generic binding resolves to the named body", bindingEqualsNameCase)
-test("generic bindings specialise independently of each other", secondBindingCase)
-test("generic calls preserve lexical bindings", lexicalCallCase)
-test("generic values preserve lexical bindings", lexicalValueCase)
-test("curried arguments preserve caller bindings", lexicalCurryCase)
-test("curried effects preserve application order", applicationOrderCase)
-test("generic values preserve live global storage", mutableScopeCase)
+testCases([
+    { name: "one generic binding specialises at every call site", work: independentSpecialisationCase },
+    { name: "a generic binding resolves to the named body", work: bindingEqualsNameCase },
+    { name: "generic bindings specialise independently of each other", work: secondBindingCase },
+    { name: "generic calls preserve lexical bindings", work: lexicalCallCase },
+    { name: "generic values preserve lexical bindings", work: lexicalValueCase },
+    { name: "curried arguments preserve caller bindings", work: lexicalCurryCase },
+    { name: "curried effects preserve application order", work: applicationOrderCase },
+    { name: "generic values preserve live global storage", work: mutableScopeCase }
+])

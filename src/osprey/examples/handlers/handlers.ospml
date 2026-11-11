@@ -1,22 +1,3 @@
-// Record faults for the entire report and reject it at the publication boundary.
-printExact work =
-    mut fault = ""
-    handle Arith
-        overflow op lhs _ _ =>
-            fault := "overflow in ${op}"
-            lhs
-        divideByZero op lhs =>
-            fault := "zero divisor in ${op}"
-            lhs
-        remainderByZero lhs =>
-            fault := "zero remainder divisor"
-            lhs
-    report = work ()
-    output = match fault
-        "" => report
-        _ => "REJECTED: ${fault}"
-    print output
-
 // Same handlers and work in Osprey's ML flavor.
 effect Ask
     value : Unit => int

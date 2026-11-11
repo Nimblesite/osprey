@@ -161,14 +161,8 @@ typedErrorChannelCase () =
     ]
 
     checkAll "nested handlers restore outer policies around collection values" [
-        listLength trace == 3,
-        (listGet trace 0 ?: 99) == 10,
-        (listGet trace 1 ?: 99) == 1,
-        (listGet trace 2 ?: 99) == 10,
-        listLength healthyTrace == 3,
-        (listGet healthyTrace 0 ?: 99) == 5,
-        (listGet healthyTrace 1 ?: 99) == 1,
-        (listGet healthyTrace 2 ?: 99) == 5,
+        structuralEquals (trace, [10, 1, 10]),
+        structuralEquals (healthyTrace, [5, 1, 5]),
         traceShape [] == "empty",
         traceShape [7] == "one:7",
         traceShape [7, 8] == "two:7/8",

@@ -23,119 +23,101 @@ fn tree(size) = match size {
     1 => Node { left: Leaf, right: Leaf, size: 1 }
     _ => Node { left: tree(0), right: tree(1), size: size }
 }
-fn deepSame(a, b) = structuralEquals(a, b)
+
+/// The two outcomes every row asserts, so a row is a table of pairs.
+fn same(a, b) = structuralEquals(a, b)
+fn differ(a, b) = !structuralEquals(a, b)
 
 fn scalarsRow() = {
-    print("scalars ${toString(structuralEquals(3, 3))} ${toString(structuralEquals(3, 4))} ${toString(structuralEquals("osprey", "osprey"))} ${toString(structuralEquals(true, false))}")
+    print("scalars ${toString(same(3, 3))} ${toString(same(3, 4))} ${toString(same("osprey", "osprey"))} ${toString(same(true, false))}")
     checkAll("scalars compare by value", [
-        structuralEquals(3, 3), !structuralEquals(3, 4),
-        structuralEquals("osprey", "osprey"), !structuralEquals("osprey", "Osprey"),
-        structuralEquals(true, true), !structuralEquals(true, false)
+        same(3, 3), differ(3, 4),
+        same("osprey", "osprey"), differ("osprey", "Osprey"),
+        same(true, true), differ(true, false)
     ])
 }
 
 fn floatsRow() = {
-    print("float ${toString(structuralEquals(0.5, 0.5))} ${toString(structuralEquals(0.5, 0.25))} nan ${toString(structuralEquals(sqrt(-1.0), sqrt(-1.0)))}")
+    print("float ${toString(same(0.5, 0.5))} ${toString(same(0.5, 0.25))} nan ${toString(same(sqrt(-1.0), sqrt(-1.0)))}")
     checkAll("floats compare by value, so NaN is unequal to itself", [
-        structuralEquals(0.5, 0.5), !structuralEquals(0.5, 0.25),
-        !structuralEquals(sqrt(-1.0), sqrt(-1.0))
+        same(0.5, 0.5), differ(0.5, 0.25), differ(sqrt(-1.0), sqrt(-1.0))
     ])
 }
 
 fn recordsRow() = {
-    print("records ${toString(structuralEquals(route("home", 1), route("home", 1)))} ${toString(structuralEquals(route("home", 1), route("home", 2)))} pair ${toString(structuralEquals(pair(1, "a"), pair(1, "a")))} ${toString(structuralEquals(pair(1, "a"), pair(2, "a")))}")
+    print("records ${toString(same(route("home", 1), route("home", 1)))} ${toString(same(route("home", 1), route("home", 2)))} pair ${toString(same(pair(1, "a"), pair(1, "a")))} ${toString(same(pair(1, "a"), pair(2, "a")))}")
     checkAll("records compare every field; a tuple is a row", [
-        structuralEquals(route("home", 1), route("home", 1)),
-        !structuralEquals(route("home", 1), route("home", 2)),
-        !structuralEquals(route("home", 1), route("away", 1)),
-        structuralEquals(pair(1, "a"), pair(1, "a")),
-        !structuralEquals(pair(1, "a"), pair(2, "a")),
-        !structuralEquals(pair(1, "a"), pair(1, "b"))
+        same(route("home", 1), route("home", 1)), differ(route("home", 1), route("home", 2)), differ(route("home", 1), route("away", 1)),
+        same(pair(1, "a"), pair(1, "a")), differ(pair(1, "a"), pair(2, "a")), differ(pair(1, "a"), pair(1, "b"))
     ])
 }
 
 fn unionsRow() = {
-    print("unions ${toString(structuralEquals(Circle { r: 1.0 }, Circle { r: 1.0 }))} ${toString(structuralEquals(Circle { r: 1.0 }, Circle { r: 2.0 }))} ${toString(structuralEquals(Dot, Dot))} ${toString(structuralEquals(Dot, Rect { w: 1, h: 1 }))}")
+    print("unions ${toString(same(Circle { r: 1.0 }, Circle { r: 1.0 }))} ${toString(same(Circle { r: 1.0 }, Circle { r: 2.0 }))} ${toString(same(Dot, Dot))} ${toString(same(Dot, Rect { w: 1, h: 1 }))}")
     checkAll("unions compare variant then payload", [
-        structuralEquals(Circle { r: 1.0 }, Circle { r: 1.0 }),
-        !structuralEquals(Circle { r: 1.0 }, Circle { r: 2.0 }),
-        !structuralEquals(Circle { r: 1.0 }, Rect { w: 1, h: 1 }),
-        structuralEquals(Dot, Dot),
-        !structuralEquals(Dot, Rect { w: 1, h: 1 }),
-        structuralEquals(Rect { w: 1, h: 2 }, Rect { w: 1, h: 2 })
+        same(Circle { r: 1.0 }, Circle { r: 1.0 }), differ(Circle { r: 1.0 }, Circle { r: 2.0 }), differ(Circle { r: 1.0 }, Rect { w: 1, h: 1 }),
+        same(Dot, Dot), differ(Dot, Rect { w: 1, h: 1 }), same(Rect { w: 1, h: 2 }, Rect { w: 1, h: 2 })
     ])
 }
 
-fn listsRow() = {
-    checkAll("lists compare length then elements in order", [
-        structuralEquals([1, 2], [1, 2]),
-        !structuralEquals([1, 2], [1, 2, 3]),
-        !structuralEquals([1, 2], [2, 1]),
-        structuralEquals([route("a", 1)], [route("a", 1)]),
-        !structuralEquals([route("a", 1)], [route("a", 2)]),
-        structuralEquals([[1], [2]], [[1], [2]]),
-        !structuralEquals([[1], [2]], [[1], [3]])
-    ])
-}
+fn listsRow() = checkAll("lists compare length then elements in order", [
+    same([1, 2], [1, 2]), differ([1, 2], [1, 2, 3]), differ([1, 2], [2, 1]),
+    same([route("a", 1)], [route("a", 1)]), differ([route("a", 1)], [route("a", 2)]),
+    same([[1], [2]], [[1], [2]]), differ([[1], [2]], [[1], [3]])
+])
 
 fn mapsRow() = {
     checkAll("maps compare keys then values", [
-        structuralEquals(Map() |> mapSet("a", 1) |> mapSet("b", 2), Map() |> mapSet("a", 1) |> mapSet("b", 2)),
-        !structuralEquals(Map() |> mapSet("a", 1), Map() |> mapSet("a", 2)),
-        !structuralEquals(Map() |> mapSet("a", 1), Map() |> mapSet("b", 1)),
-        !structuralEquals(Map() |> mapSet("a", 1), Map() |> mapSet("a", 1) |> mapSet("b", 2))
+        same(Map() |> mapSet("a", 1) |> mapSet("b", 2), Map() |> mapSet("a", 1) |> mapSet("b", 2)),
+        differ(Map() |> mapSet("a", 1), Map() |> mapSet("a", 2)), differ(Map() |> mapSet("a", 1), Map() |> mapSet("b", 1)),
+        differ(Map() |> mapSet("a", 1), Map() |> mapSet("a", 1) |> mapSet("b", 2))
     ])
 }
 
 fn treesRow() = {
     let leftHeavy = Node { left: tree(1), right: Leaf, size: 3 }
     let rightHeavy = Node { left: Leaf, right: tree(1), size: 3 }
-    print("tree ${toString(structuralEquals(tree(2), tree(2)))} ${toString(structuralEquals(tree(2), tree(3)))} deep ${toString(structuralEquals(leftHeavy, rightHeavy))} ${toString(structuralEquals(leftHeavy, Node { left: tree(1), right: Leaf, size: 3 }))}")
+    print("tree ${toString(same(tree(2), tree(2)))} ${toString(same(tree(2), tree(3)))} deep ${toString(same(leftHeavy, rightHeavy))} ${toString(same(leftHeavy, Node { left: tree(1), right: Leaf, size: 3 }))}")
     checkAll("a recursive tree compares through its own comparator", [
-        structuralEquals(tree(2), tree(2)),
-        !structuralEquals(tree(2), tree(3)),
-        !structuralEquals(leftHeavy, rightHeavy),
-        structuralEquals(leftHeavy, Node { left: tree(1), right: Leaf, size: 3 })
+        same(tree(2), tree(2)), differ(tree(2), tree(3)), differ(leftHeavy, rightHeavy),
+        same(leftHeavy, Node { left: tree(1), right: Leaf, size: 3 })
     ])
 }
 
 fn nanRow() = {
-    print("nan-in-record ${toString(structuralEquals(reading("noon", sqrt(-1.0)), reading("noon", sqrt(-1.0))))} ${toString(structuralEquals(reading("noon", 1.0), reading("noon", 1.0)))}")
-    checkAll("a value holding NaN is unequal to itself", [
-        !structuralEquals(reading("noon", sqrt(-1.0)), reading("noon", sqrt(-1.0))),
-        structuralEquals(reading("noon", 1.0), reading("noon", 1.0))
-    ])
+    print("nan-in-record ${toString(same(reading("noon", sqrt(-1.0)), reading("noon", sqrt(-1.0))))} ${toString(same(reading("noon", 1.0), reading("noon", 1.0)))}")
+    checkAll("a value holding NaN is unequal to itself", [differ(reading("noon", sqrt(-1.0)), reading("noon", sqrt(-1.0))), same(reading("noon", 1.0), reading("noon", 1.0))])
 }
 
+/// A generic caller is instantiated at each call site.
 fn genericCallerRow() = {
     checkAll("a generic caller is checked at each call site", [
-        deepSame(1, 1), !deepSame(1, 2),
-        deepSame(route("a", 1), route("a", 1)),
-        !deepSame(route("a", 1), route("a", 2))
+        same(1, 1), differ(1, 2),
+        same(route("a", 1), route("a", 1)), differ(route("a", 1), route("a", 2))
     ])
 }
 
 /// A constructor written straight into the call carries no published type of
 /// its own; its generic fields are instantiated from what is written into them.
 fn constructorOperandsRow() = {
-    let boxes = structuralEquals(Box { content: 1 }, Box { content: 1 })
-    let slots = structuralEquals(Filled { label: "a", act: Go }, Filled { label: "a", act: Stop })
+    let boxes = same(Box { content: 1 }, Box { content: 1 })
+    let slots = same(Filled { label: "a", act: Go }, Filled { label: "a", act: Stop })
     print("constructors ${toString(boxes)} ${toString(slots)}")
     checkAll("constructor operands instantiate their generic fields", [
-        structuralEquals(Box { content: 1 }, Box { content: 1 }),
-        !structuralEquals(Box { content: [1, 2] }, Box { content: [2, 1] }),
-        structuralEquals(Filled { label: "a", act: Go }, Filled { label: "a", act: Go }),
-        !structuralEquals(Filled { label: "a", act: Go }, Filled { label: "a", act: Stop })
+        same(Box { content: 1 }, Box { content: 1 }), differ(Box { content: [1, 2] }, Box { content: [2, 1] }),
+        same(Filled { label: "a", act: Go }, Filled { label: "a", act: Go }), differ(Filled { label: "a", act: Go }, Filled { label: "a", act: Stop })
     ])
 }
 
-test("scalars compare by value", scalarsRow)
-test("floats compare by value, so NaN is unequal to itself", floatsRow)
-test("records compare every field; a tuple is a row", recordsRow)
-test("unions compare variant then payload", unionsRow)
-test("lists compare length then elements in order", listsRow)
-test("maps compare keys then values", mapsRow)
-test("a recursive tree compares through its own comparator", treesRow)
-test("a value holding NaN is unequal to itself", nanRow)
-test("a generic caller is checked at each call site", genericCallerRow)
-test("constructor operands instantiate their generic fields", constructorOperandsRow)
+testCases([
+    { name: "scalars compare by value", work: scalarsRow },
+    { name: "floats compare by value, so NaN is unequal to itself", work: floatsRow },
+    { name: "records compare every field; a tuple is a row", work: recordsRow },
+    { name: "unions compare variant then payload", work: unionsRow },
+    { name: "lists compare length then elements in order", work: listsRow },
+    { name: "maps compare keys then values", work: mapsRow },
+    { name: "a recursive tree compares through its own comparator", work: treesRow },
+    { name: "a value holding NaN is unequal to itself", work: nanRow },
+    { name: "a generic caller is checked at each call site", work: genericCallerRow },
+    { name: "constructor operands instantiate their generic fields", work: constructorOperandsRow }
+])

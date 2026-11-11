@@ -1,18 +1,3 @@
-// Record faults for the entire report and reject it at the publication boundary.
-fn printExact(work) = {
-    mut fault = ""
-    handle Arith {
-        overflow op lhs _ _ => { fault = "overflow in ${op}"
-            lhs }
-        divideByZero op lhs => { fault = "zero divisor in ${op}"
-            lhs }
-        remainderByZero lhs => { fault = "zero remainder divisor"
-            lhs }
-    }
-    let report = work()
-    print(match fault { "" => report _ => "REJECTED: ${fault}" })
-}
-
 // Osprey -> WebAssembly demo. [WASM-TARGET]
 //
 // Build:  osprey src/osprey/examples/wasm/hello.osp --target=wasm32 --compile

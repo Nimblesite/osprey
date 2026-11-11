@@ -1,5 +1,6 @@
 // The scripted origin the HTTP client suites share, split from the tests themselves
 // so each test TU stays under the repo size budget.
+#include "test_loopback.h"
 #include "http_runtime_tests.h"
 #include "http_shared.h"
 #include "io_error.h"
@@ -15,12 +16,13 @@
 // records the request the client actually sent [HTTP-STATUS-CLIENT].
 // ---------------------------------------------------------------------------
 
-// Reads one whole HTTP request: headers, then Content-Length bytes of body.
-void origin_read_request(int fd, char *out, size_t capacity) {
+// Reads one whole HTTP request through `receive`: headers, then
+// Content-Length bytes of body. Plain and TLS origins share it.
+void origin_read_request_via(void *conn, origin_receive receive, char *out, size_t capacity) {
   size_t len = 0;
   char *blank = NULL;
   while (len + 1 < capacity && blank == NULL) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
+    long n = receive(conn, out + len, capacity - 1 - len);
     if (n <= 0) {
       break;
     }
@@ -35,7 +37,7 @@ void origin_read_request(int fd, char *out, size_t capacity) {
   size_t want = marker ? (size_t)atoi(marker + 16) : 0;
   size_t have = len - (size_t)(blank + 4 - out);
   while (have < want && len + 1 < capacity) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
+    long n = receive(conn, out + len, capacity - 1 - len);
     if (n <= 0) {
       break;
     }
@@ -43,6 +45,14 @@ void origin_read_request(int fd, char *out, size_t capacity) {
     have += (size_t)n;
     out[len] = '\0';
   }
+}
+
+static long socket_receive(void *conn, char *out, size_t capacity) {
+  return (long)recv(*(int *)conn, out, capacity, 0);
+}
+
+void origin_read_request(int fd, char *out, size_t capacity) {
+  origin_read_request_via(&fd, socket_receive, out, capacity);
 }
 
 // A reader slow enough to keep a sender's every wait inside its timeout, until
@@ -114,18 +124,7 @@ void origin_start_bytes(ScriptedOrigin *origin, const char *reply, size_t len) {
   memset(origin, 0, sizeof(*origin));
   origin->reply = reply;
   origin->reply_len = len;
-  origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin->listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin->listen_fd, 1) == 0);
+  origin->listen_fd = test_loopback_listen(ORIGIN_PORT);
   assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
 }
 

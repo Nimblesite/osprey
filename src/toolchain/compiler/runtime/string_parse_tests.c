@@ -3,91 +3,107 @@
 
 #include "string_tests_shared.h"
 
+/* One strict-parse verdict per call. 71 is the untouched-output sentinel. */
+static void int_is(const char *text, int64_t want) {
+    int64_t v = 71;
+    assert(osp_parse_int_strict(text, &v) == 0); assert(v == want);
+}
+
+static void int_rejects(const char *text) {
+    int64_t v = 71;
+    assert(osp_parse_int_strict(text, &v) != 0); assert(v == 71);
+}
+
+static void float_is(const char *text, double want) {
+    double out;
+    assert(osp_parse_float_strict(text, &out) == 0); assert(out == want);
+}
+
+static void float_between(const char *text, double lo, double hi) {
+    double out;
+    assert(osp_parse_float_strict(text, &out) == 0); assert(out > lo && out < hi);
+}
+
+static void float_rejects(const char *text) {
+    double out;
+    assert(osp_parse_float_strict(text, &out) != 0);
+}
+
+/* Every NULL-terminated entry is rejected. */
+static void all_int_rejected(const char *const *texts) {
+    for (size_t i = 0; texts[i] != NULL; i++) int_rejects(texts[i]);
+}
+
+static void all_float_rejected(const char *const *texts) {
+    double out;
+    for (size_t i = 0; texts[i] != NULL; i++) assert(osp_parse_float_strict(texts[i], &out) != 0);
+}
+
 void test_parse_int(void) {
-    int64_t out;
-    assert(osp_parse_int_strict("42", &out) == 0);     assert(out == 42);
-    assert(osp_parse_int_strict("-42", &out) == 0);    assert(out == -42);
-    assert(osp_parse_int_strict("+42", &out) == 0);    assert(out == 42);
-    assert(osp_parse_int_strict("0", &out) == 0);      assert(out == 0);
-    assert(osp_parse_int_strict("9223372036854775807", &out) == 0); /* INT64_MAX */
-    assert(out == 9223372036854775807LL);
-    assert(osp_parse_int_strict("-9223372036854775808", &out) == 0); /* INT64_MIN */
-    assert(out == (-9223372036854775807LL - 1));
+    int_is("42", 42);
+    int_is("-42", -42);
+    int_is("+42", 42);
+    int_is("0", 0);
+    int_is("9223372036854775807", INT64_MAX);
+    int_is("-9223372036854775808", INT64_MIN);
 
     /* rejections */
-    assert(osp_parse_int_strict("",        &out) != 0);
-    assert(osp_parse_int_strict("abc",     &out) != 0);
-    assert(osp_parse_int_strict("12abc",   &out) != 0);
-    assert(osp_parse_int_strict("abc12",   &out) != 0);
-    assert(osp_parse_int_strict(" 42",     &out) != 0); /* leading space */
-    assert(osp_parse_int_strict("42 ",     &out) != 0); /* trailing space */
-    assert(osp_parse_int_strict("-",       &out) != 0); /* sign with no digits */
-    assert(osp_parse_int_strict("+",       &out) != 0);
-    assert(osp_parse_int_strict("9223372036854775808",  &out) != 0); /* overflow */
-    assert(osp_parse_int_strict("-9223372036854775809", &out) != 0); /* underflow */
-    assert(osp_parse_int_strict(NULL,      &out) != 0);
+    static const char *const rejected[] = {
+        "",
+        "abc",
+        "12abc",
+        "abc12",
+        " 42", /* leading space */
+        "42 ", /* trailing space */
+        "-", /* sign with no digits */
+        "+",
+        "9223372036854775808", /* overflow */
+        "-9223372036854775809", /* underflow */
+        NULL,
+    };
+    all_int_rejected(rejected);
+    int_rejects(NULL); /* NULL text is rejected, output untouched */
     printf("  ok  parse_int_strict\n");
 }
 
 void test_parse_float(void) {
-    double out;
-    assert(osp_parse_float_strict("3.14", &out) == 0);   assert(out > 3.13 && out < 3.15);
-    assert(osp_parse_float_strict("0", &out) == 0);      assert(out == 0.0);
-    assert(osp_parse_float_strict("-2.5", &out) == 0);   assert(out > -2.51 && out < -2.49);
-    assert(osp_parse_float_strict("1e3", &out) == 0);    assert(out > 999.9 && out < 1000.1);
-    assert(osp_parse_float_strict(".5", &out) == 0);     assert(out == 0.5);
-    assert(osp_parse_float_strict("5.", &out) == 0);     assert(out == 5.0);
-    assert(osp_parse_float_strict("+1.25E-2", &out) == 0);
-    assert(out > 0.0124 && out < 0.0126);
+    float_between("3.14", 3.13, 3.15);
+    float_is("0", 0.0);
+    float_between("-2.5", -2.51, -2.49);
+    float_between("1e3", 999.9, 1000.1);
+    float_is(".5", 0.5);
+    float_is("5.", 5.0);
+    float_between("+1.25E-2", 0.0124, 0.0126);
 
     /* rejections */
-    assert(osp_parse_float_strict("",        &out) != 0);
-    assert(osp_parse_float_strict("abc",     &out) != 0);
-    assert(osp_parse_float_strict("3.14x",   &out) != 0); /* trailing junk */
-    assert(osp_parse_float_strict(" 3.14",   &out) != 0); /* surrounding whitespace */
-    assert(osp_parse_float_strict("3.14 ",   &out) != 0);
-    assert(osp_parse_float_strict("nan",     &out) != 0); /* non-decimal spellings */
-    assert(osp_parse_float_strict("NaN",     &out) != 0);
-    assert(osp_parse_float_strict("inf",     &out) != 0);
-    assert(osp_parse_float_strict("-Infinity", &out) != 0);
-    assert(osp_parse_float_strict("0x1p2",   &out) != 0); /* hexadecimal float */
-    assert(osp_parse_float_strict("1e9999",  &out) != 0); /* non-finite result */
-    assert(osp_parse_float_strict(".",       &out) != 0);
-    assert(osp_parse_float_strict("1e",      &out) != 0);
-    assert(osp_parse_float_strict("1e+",     &out) != 0);
-    assert(osp_parse_float_strict(NULL,       &out) != 0);
+    static const char *const rejected[] = {
+        "",
+        "abc",
+        "3.14x", /* trailing junk */
+        " 3.14", /* surrounding whitespace */
+        "3.14 ",
+        "nan", /* non-decimal spellings */
+        "NaN",
+        "inf",
+        "-Infinity",
+        "0x1p2", /* hexadecimal float */
+        "1e9999", /* non-finite result */
+        ".",
+        "1e",
+        "1e+",
+        NULL,
+    };
+    all_float_rejected(rejected);
+    float_rejects(NULL);
     assert(osp_parse_float_strict("1.0",     NULL) != 0);
     printf("  ok  parse_float_strict\n");
 }
 
 void test_split(void) {
-    osp_string_list *list;
-
-    list = osp_string_split("a,b,c", ",");
-    assert(list != NULL); assert(list->length == 3);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    assert(strcmp(list->items[2], "c") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_split("hello", ",");
-    assert(list != NULL); assert(list->length == 1);
-    assert(strcmp(list->items[0], "hello") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_split(",,", ",");
-    assert(list != NULL); assert(list->length == 3); /* "", "", "" */
-    assert(strcmp(list->items[0], "") == 0);
-    assert(strcmp(list->items[1], "") == 0);
-    assert(strcmp(list->items[2], "") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_split("foo::bar::baz", "::");
-    assert(list != NULL); assert(list->length == 3);
-    assert(strcmp(list->items[0], "foo") == 0);
-    assert(strcmp(list->items[1], "bar") == 0);
-    assert(strcmp(list->items[2], "baz") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_split("a,b,c", ","), (const char *[]){"a", "b", "c", NULL});
+    list_is(osp_string_split("hello", ","), (const char *[]){"hello", NULL});
+    list_is(osp_string_split(",,", ","), (const char *[]){"", "", "", NULL});
+    list_is(osp_string_split("foo::bar::baz", "::"), (const char *[]){"foo", "bar", "baz", NULL});
 
     /* error: empty separator */
     assert(osp_string_split("hello", "") == NULL);
@@ -96,90 +112,43 @@ void test_split(void) {
 }
 
 void test_lines(void) {
-    osp_string_list *list;
-
-    list = osp_string_lines("a\nb\nc");
-    assert(list != NULL); assert(list->length == 3);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    assert(strcmp(list->items[2], "c") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_lines("a\nb\nc"), (const char *[]){"a", "b", "c", NULL});
 
     /* trailing newline does NOT produce an empty final entry */
-    list = osp_string_lines("a\nb\n");
-    assert(list != NULL); assert(list->length == 2);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_lines("");
-    assert(list != NULL); assert(list->length == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_lines("single");
-    assert(list != NULL); assert(list->length == 1);
-    assert(strcmp(list->items[0], "single") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_lines(NULL);
-    assert(list != NULL); assert(list->length == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_lines("a\nb\n"), (const char *[]){"a", "b", NULL});
+    list_is(osp_string_lines(""), (const char *[]){NULL});
+    list_is(osp_string_lines("single"), (const char *[]){"single", NULL});
+    list_is(osp_string_lines(NULL), (const char *[]){NULL});
     printf("  ok  lines\n");
 }
 
 void test_words(void) {
-    osp_string_list *list;
-
-    list = osp_string_words("a b c");
-    assert(list != NULL); assert(list->length == 3);
-    assert(strcmp(list->items[0], "a") == 0);
-    assert(strcmp(list->items[1], "b") == 0);
-    assert(strcmp(list->items[2], "c") == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_words("a b c"), (const char *[]){"a", "b", "c", NULL});
 
     /* runs of whitespace collapse; empties dropped */
-    list = osp_string_words("  hello\t\tworld  \n  goodbye  ");
-    assert(list != NULL); assert(list->length == 3);
-    assert(strcmp(list->items[0], "hello") == 0);
-    assert(strcmp(list->items[1], "world") == 0);
-    assert(strcmp(list->items[2], "goodbye") == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_words("");
-    assert(list != NULL); assert(list->length == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_words("   \t\n\r   ");
-    assert(list != NULL); assert(list->length == 0);
-    osp_string_list_free(list);
-
-    list = osp_string_words(NULL);
-    assert(list != NULL); assert(list->length == 0);
-    osp_string_list_free(list);
+    list_is(osp_string_words("  hello\t\tworld  \n  goodbye  "), (const char *[]){"hello", "world", "goodbye", NULL});
+    list_is(osp_string_words(""), (const char *[]){NULL});
+    list_is(osp_string_words("   \t\n\r   "), (const char *[]){NULL});
+    list_is(osp_string_words(NULL), (const char *[]){NULL});
     printf("  ok  words\n");
+}
+
+/* Splits `text` on `sep`, joins with `glue`, expects `want`. */
+static void join_round_trip(const char *text, const char *sep, const char *glue, const char *want) {
+    osp_string_list *list = osp_string_split(text, sep);
+    text_is(osp_string_join(list, glue), want);
+    osp_string_list_free(list);
 }
 
 void test_join(void) {
     /* Build a list manually and join it. */
-    osp_string_list *list = osp_string_split("a,b,c", ",");
-    char *out = osp_string_join(list, "-");
-    assert(strcmp(out, "a-b-c") == 0);
-    release_test_buffer(out);
-    osp_string_list_free(list);
+    join_round_trip("a,b,c", ",", "-", "a-b-c");
 
     /* join round-trips split */
-    list = osp_string_split("foo::bar::baz", "::");
-    out = osp_string_join(list, "::");
-    assert(strcmp(out, "foo::bar::baz") == 0);
-    release_test_buffer(out);
-    osp_string_list_free(list);
+    join_round_trip("foo::bar::baz", "::", "::", "foo::bar::baz");
 
     /* empty list → "" */
-    list = osp_string_split("", ",");
-    out = osp_string_join(list, "x");
-    assert(strcmp(out, "") == 0);
-    release_test_buffer(out);
-    osp_string_list_free(list);
+    join_round_trip("", ",", "x", "");
 
     printf("  ok  join\n");
 }
@@ -191,26 +160,20 @@ static OspreyList *push_word(OspreyList *list, const char *word) {
 
 void test_join_runtime_list(void) {
     /* NULL list → "" */
-    char *out = osp_string_join_list(NULL, ", ");
-    assert(out != NULL && strcmp(out, "") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join_list(NULL, ", "), "");
 
     /* empty runtime list → "" */
     OspreyList *list = osprey_list_empty();
-    out = osp_string_join_list(list, ", ");
-    assert(out != NULL && strcmp(out, "") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join_list(list, ", "), "");
 
     /* one word: the separator is never applied */
     list = push_word(list, "solo");
-    out = osp_string_join_list(list, "-");
-    assert(strcmp(out, "solo") == 0);
-    release_test_buffer(out);
+    text_is(osp_string_join_list(list, "-"), "solo");
 
     /* two words with a separator */
     const char second[] = "duo";
     list = push_word(list, second);
-    out = osp_string_join_list(list, "-");
+    char *out = osp_string_join_list(list, "-");
     assert(strcmp(out, "solo-duo") == 0);
     /* the result is a fresh allocation the caller owns, never an element */
     assert(out != second && out != (char *)(intptr_t)osprey_list_get(list, 0));
@@ -222,39 +185,28 @@ void test_join_runtime_list(void) {
 }
 
 void test_parse_int_signs(void) {
-    int64_t v;
     /* every legal digit pair */
-    assert(osp_parse_int_strict("000", &v) == 0); assert(v == 0);
-    assert(osp_parse_int_strict("-000", &v) == 0); assert(v == 0);
-    assert(osp_parse_int_strict("+000", &v) == 0); assert(v == 0);
-    assert(osp_parse_int_strict("1", &v) == 0); assert(v == 1);
-    assert(osp_parse_int_strict("-1", &v) == 0); assert(v == -1);
+    int_is("000", 0);
+    int_is("-000", 0);
+    int_is("+000", 0);
+    int_is("1", 1);
+    int_is("-1", -1);
     /* boundary at INT64_MAX one-off */
-    assert(osp_parse_int_strict("9223372036854775806", &v) == 0); /* MAX-1 */
-    assert(v == 9223372036854775806LL);
-    assert(osp_parse_int_strict("9223372036854775807", &v) == 0); /* MAX */
-    assert(v == 9223372036854775807LL);
+    int_is("9223372036854775806", 9223372036854775806LL); /* MAX-1 */
+    int_is("9223372036854775807", INT64_MAX); /* MAX */
     /* one digit past MAX still rejects */
-    assert(osp_parse_int_strict("9223372036854775808", &v) != 0);
+    int_rejects("9223372036854775808");
     /* INT64_MIN */
-    assert(osp_parse_int_strict("-9223372036854775808", &v) == 0);
-    assert(v == (-9223372036854775807LL - 1));
+    int_is("-9223372036854775808", INT64_MIN);
     /* one digit past MIN rejects */
-    assert(osp_parse_int_strict("-9223372036854775809", &v) != 0);
+    int_rejects("-9223372036854775809");
     /* leading zeros are OK */
-    assert(osp_parse_int_strict("00042", &v) == 0); assert(v == 42);
-    assert(osp_parse_int_strict("-00042", &v) == 0); assert(v == -42);
-    /* lone sign rejected */
-    assert(osp_parse_int_strict("-", &v) != 0);
-    assert(osp_parse_int_strict("+", &v) != 0);
-    /* sign followed by non-digit rejected */
-    assert(osp_parse_int_strict("-x", &v) != 0);
-    /* embedded sign rejected */
-    assert(osp_parse_int_strict("1-2", &v) != 0);
-    /* hex rejected */
-    assert(osp_parse_int_strict("0x10", &v) != 0);
-    /* unicode digit rejected (we accept ASCII 0-9 only) */
-    assert(osp_parse_int_strict("\xef\xbc\x91", &v) != 0); /* full-width '1' */
+    int_is("00042", 42);
+    int_is("-00042", -42);
+    /* lone sign, sign + non-digit, embedded sign, hex, unicode digit rejected */
+    static const char *const rejected[] = {"-", "+", "-x", "1-2", "0x10",
+        "\xef\xbc\x91", /* full-width '1' */ NULL};
+    all_int_rejected(rejected);
     printf("  ok  parse_int_signs (boundary + sign + leading zeros + rejection)\n");
 }
 
@@ -265,20 +217,12 @@ void test_parse_int_long_prefixes(void) {
         "1000000001", "999999999999999999", "1000000000000000000"};
     const int64_t expected[] = {0, INT64_MAX, INT64_MIN, 999999999, 1000000000,
         1000000001, 999999999999999999LL, 1000000000000000000LL};
-    const char *rejected[] = {"000000000000000000009223372036854775808",
+    const char *const rejected[] = {"000000000000000000009223372036854775808",
         "-000000000000000000009223372036854775809",
         "10000000000000000000", "-10000000000000000000",
-        "00000000000000000000x", "123456789012345678x", "-000+1"};
-    int64_t value = 0;
-    for (size_t i = 0; i < sizeof(accepted) / sizeof(*accepted); i++) {
-        assert(osp_parse_int_strict(accepted[i], &value) == 0);
-        assert(value == expected[i]);
-    }
-    for (size_t i = 0; i < sizeof(rejected) / sizeof(*rejected); i++) {
-        value = 71;
-        assert(osp_parse_int_strict(rejected[i], &value) != 0);
-        assert(value == 71);
-    }
+        "00000000000000000000x", "123456789012345678x", "-000+1", NULL};
+    for (size_t i = 0; i < sizeof(accepted) / sizeof(*accepted); i++) int_is(accepted[i], expected[i]);
+    all_int_rejected(rejected);
 }
 
 /* libc supplies the independent value/range oracle; Osprey rejects whitespace. */

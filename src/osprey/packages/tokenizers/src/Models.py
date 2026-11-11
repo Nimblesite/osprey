@@ -374,7 +374,7 @@ def merge_step(state, i, left, right, id):
 def bpe_tokenize(m, text) -> Result[list[Token], str]:
     """Byte-pair encode one byte-level piece: tiktoken's merge loop over the piece's
     bytes, then each id read back as its token's text and byte span."""
-    return continued(bytelevel_raw(text), lambda octets: continued(Bpe.bpe_encode(m.ranks, octets), lambda ids: tokens_by_id(m, ids)))
+    return resultAndThen(bytelevel_raw(text), lambda octets: resultAndThen(Bpe.bpe_encode(m.ranks, octets), lambda ids: tokens_by_id(m, ids)))
 
 
 class Spans:
@@ -383,15 +383,6 @@ class Spans:
     tokens: list[Token]
     offset: int
     bad: int
-
-
-def continued(result, step):
-    """The next step's answer on success, or the reason it already failed."""
-    match result:
-        case Success(value=value):
-            return step(value)
-        case Error(message=message):
-            return Error(message=message)
 
 
 def tokens_by_id(m, ids) -> Result[list[Token], str]:

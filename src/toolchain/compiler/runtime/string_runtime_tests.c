@@ -33,74 +33,87 @@ static void test_is_empty(void) {
     printf("  ok  is_empty\n");
 }
 
+/* One row of a scalar-predicate table: fn(s, arg) must return want. */
+typedef struct {
+    const char *s;
+    const char *arg;
+    int64_t want;
+} pred_row;
+
+/* Drives every row through fn ([BUILTIN-STRING-INSPECTION],
+   [BUILTIN-STRING-SEARCH]); the first failing row aborts the suite. */
+static void check_pred(int64_t (*fn)(const char *, const char *),
+                       const pred_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        assert(fn(rows[i].s, rows[i].arg) == rows[i].want);
+    }
+}
+
 static void test_starts_with(void) {
-    assert(osp_string_starts_with("hello world", "hello") == 1);
-    assert(osp_string_starts_with("hello world", "world") == 0);
-    assert(osp_string_starts_with("hello world", "") == 1);
-    assert(osp_string_starts_with("", "") == 1);
-    assert(osp_string_starts_with("", "x") == 0);
-    assert(osp_string_starts_with("hi", "hello") == 0); /* prefix longer than s */
-    assert(osp_string_starts_with("GET /api", "GET ") == 1);
-    assert(osp_string_starts_with(NULL, "x") == 0);
-    assert(osp_string_starts_with("x", NULL) == 0);
+    const pred_row rows[] = {
+        {"hello world", "hello", 1}, {"hello world", "world", 0},
+        {"hello world", "", 1},      {"", "", 1}, {"", "x", 0},
+        {"hi", "hello", 0}, /* prefix longer than s */
+        {"GET /api", "GET ", 1},
+        {NULL, "x", 0}, {"x", NULL, 0},
+    };
+    check_pred(osp_string_starts_with, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  starts_with\n");
 }
 
 static void test_ends_with(void) {
-    assert(osp_string_ends_with("hello world", "world") == 1);
-    assert(osp_string_ends_with("hello world", "hello") == 0);
-    assert(osp_string_ends_with("hello world", "") == 1);
-    assert(osp_string_ends_with("", "") == 1);
-    assert(osp_string_ends_with("", "x") == 0);
-    assert(osp_string_ends_with("hi", "hello") == 0); /* suffix longer than s */
-    assert(osp_string_ends_with("image.png", ".png") == 1);
-    assert(osp_string_ends_with("image.PNG", ".png") == 0); /* case-sensitive */
+    const pred_row rows[] = {
+        {"hello world", "world", 1}, {"hello world", "hello", 0},
+        {"hello world", "", 1},      {"", "", 1}, {"", "x", 0},
+        {"hi", "hello", 0}, /* suffix longer than s */
+        {"image.png", ".png", 1},
+        {"image.PNG", ".png", 0}, /* case-sensitive */
+    };
+    check_pred(osp_string_ends_with, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  ends_with\n");
 }
 
 static void test_index_of(void) {
-    assert(osp_string_index_of("hello", "ell") == 1);
-    assert(osp_string_index_of("hello", "h") == 0);
-    assert(osp_string_index_of("hello", "o") == 4);
-    assert(osp_string_index_of("hello", "xyz") == -1);     /* not found */
-    assert(osp_string_index_of("hello", "") == 0);          /* empty needle */
-    assert(osp_string_index_of("foo=bar=baz", "=") == 3);   /* first occurrence */
-    assert(osp_string_index_of(NULL, "x") == -1);
-    assert(osp_string_index_of("x", NULL) == -1);
+    const pred_row rows[] = {
+        {"hello", "ell", 1}, {"hello", "h", 0}, {"hello", "o", 4},
+        {"hello", "xyz", -1}, /* not found */
+        {"hello", "", 0},    /* empty needle */
+        {"foo=bar=baz", "=", 3}, /* first occurrence */
+        {NULL, "x", -1}, {"x", NULL, -1},
+    };
+    check_pred(osp_string_index_of, rows, sizeof rows / sizeof rows[0]);
     printf("  ok  index_of\n");
 }
 
 /* ---------- substring helpers ---------- */
 
 static void test_take(void) {
-    char *out;
-    out = osp_string_take("hello", 3);  assert(strcmp(out, "hel") == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", 0);  assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", -5); assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take("hello", 5);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_take("hello", 99); assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* clamp */
-    out = osp_string_take("", 3);       assert(strcmp(out, "")    == 0);   release_test_buffer(out);
-    out = osp_string_take(NULL, 3);     assert(strcmp(out, "")    == 0);   release_test_buffer(out);
+    text_is(osp_string_take("hello", 3), "hel");
+    text_is(osp_string_take("hello", 0), "");
+    text_is(osp_string_take("hello", -5), "");
+    text_is(osp_string_take("hello", 5), "hello");
+    text_is(osp_string_take("hello", 99), "hello"); /* clamp */
+    text_is(osp_string_take("", 3), "");
+    text_is(osp_string_take(NULL, 3), "");
     /* [BUILTIN-STRING-TAKE]: a cut inside a character moves past it. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D"; /* 8 bytes */
     for (int64_t n = 1; n <= 3; n++) {
-        out = osp_string_take(quote, n); assert(strcmp(out, "\xE2\x80\x9C") == 0); release_test_buffer(out);
+        text_is(osp_string_take(quote, n), "\xE2\x80\x9C");
     }
-    out = osp_string_take(quote, 4); assert(strcmp(out, "\xE2\x80\x9Co") == 0); release_test_buffer(out);
-    out = osp_string_take(quote, 6); assert(strcmp(out, quote) == 0); release_test_buffer(out);
-    out = osp_string_take("\xF0\x9F\xA6\x85x", 2); assert(strcmp(out, "\xF0\x9F\xA6\x85") == 0); release_test_buffer(out);
+    text_is(osp_string_take(quote, 4), "\xE2\x80\x9Co");
+    text_is(osp_string_take(quote, 6), quote);
+    text_is(osp_string_take("\xF0\x9F\xA6\x85x", 2), "\xF0\x9F\xA6\x85");
     printf("  ok  take\n");
 }
 
 static void test_drop(void) {
-    char *out;
-    out = osp_string_drop("hello", 3);  assert(strcmp(out, "lo")   == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", 0);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", -5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_drop("hello", 5);  assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* exact */
-    out = osp_string_drop("hello", 99); assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* clamp */
-    out = osp_string_drop("", 3);       assert(strcmp(out, "")    == 0);  release_test_buffer(out);
-    out = osp_string_drop(NULL, 3);     assert(strcmp(out, "")    == 0);  release_test_buffer(out);
+    text_is(osp_string_drop("hello", 3), "lo");
+    text_is(osp_string_drop("hello", 0), "hello");
+    text_is(osp_string_drop("hello", -5), "hello");
+    text_is(osp_string_drop("hello", 5), ""); /* exact */
+    text_is(osp_string_drop("hello", 99), ""); /* clamp */
+    text_is(osp_string_drop("", 3), "");
+    text_is(osp_string_drop(NULL, 3), "");
     printf("  ok  drop\n");
     /* [BUILTIN-STRING-DROP]: the complement of take at every byte count. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D";
@@ -116,11 +129,10 @@ static void test_drop(void) {
 }
 
 static void test_substring(void) {
-    char *out;
-    out = osp_string_substring("hello", 1, 4); assert(strcmp(out, "ell") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 0, 5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 0, 0); assert(strcmp(out, "") == 0); release_test_buffer(out);
-    out = osp_string_substring("hello", 5, 5); assert(strcmp(out, "") == 0); release_test_buffer(out);
+    text_is(osp_string_substring("hello", 1, 4), "ell");
+    text_is(osp_string_substring("hello", 0, 5), "hello");
+    text_is(osp_string_substring("hello", 0, 0), "");
+    text_is(osp_string_substring("hello", 5, 5), "");
     /* error cases: must return NULL */
     assert(osp_string_substring("hello", -1, 3) == NULL); /* start < 0 */
     assert(osp_string_substring("hello", 0, 99) == NULL); /* end > len */
@@ -131,56 +143,75 @@ static void test_substring(void) {
 
 /* ---------- transformation ---------- */
 
-static void test_to_upper_lower(void) {
-    char *out;
-    out = osp_string_to_upper("hello"); assert(strcmp(out, "HELLO") == 0); release_test_buffer(out);
-    out = osp_string_to_upper("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_to_upper("AbC");   assert(strcmp(out, "ABC")   == 0); release_test_buffer(out);
-    out = osp_string_to_upper("1!@a");  assert(strcmp(out, "1!@A")  == 0); release_test_buffer(out);
-    out = osp_string_to_upper(NULL);    assert(strcmp(out, "")      == 0); release_test_buffer(out);
+/* One row of a text-transform table: fn(in) must produce want. */
+typedef struct {
+    const char *in;
+    const char *want;
+} text_row;
 
-    out = osp_string_to_lower("HELLO"); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_to_lower("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_to_lower("AbC");   assert(strcmp(out, "abc")   == 0); release_test_buffer(out);
+/* Drives every row through fn, asserting and releasing each result
+   ([BUILTIN-STRING-TRANSFORM], [BUILTIN-STRING-TOUPPERCASE]). */
+static void check_text(char *(*fn)(const char *), const text_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) text_is(fn(rows[i].in), rows[i].want);
+}
+
+static void test_to_upper_lower(void) {
+    const text_row upper[] = {
+        {"hello", "HELLO"}, {"", ""}, {"AbC", "ABC"},
+        {"1!@a", "1!@A"}, {NULL, ""},
+    };
+    const text_row lower[] = {{"HELLO", "hello"}, {"", ""}, {"AbC", "abc"}};
+    check_text(osp_string_to_upper, upper, sizeof upper / sizeof upper[0]);
+    check_text(osp_string_to_lower, lower, sizeof lower / sizeof lower[0]);
     printf("  ok  to_upper/to_lower\n");
 }
 
+/* One row for trim_start/trim_end, which share their inputs: each row pins
+   both trimmed sides of `in` ([BUILTIN-STRING-TRIMSTART],
+   [BUILTIN-STRING-TRIMEND]). */
+typedef struct {
+    const char *in;
+    const char *start;
+    const char *end;
+} trim_row;
+
+static void check_trim_sides(const trim_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        text_is(osp_string_trim_start(rows[i].in), rows[i].start);
+        text_is(osp_string_trim_end(rows[i].in), rows[i].end);
+    }
+}
+
 static void test_trim(void) {
-    char *out;
-    out = osp_string_trim("  hello  ");      assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_trim("\t\n hi \r\n");   assert(strcmp(out, "hi")    == 0); release_test_buffer(out);
-    out = osp_string_trim("hello");          assert(strcmp(out, "hello") == 0); release_test_buffer(out);
-    out = osp_string_trim("");               assert(strcmp(out, "")      == 0); release_test_buffer(out);
-    out = osp_string_trim("   ");            assert(strcmp(out, "")      == 0); release_test_buffer(out); /* all ws */
-    out = osp_string_trim(NULL);             assert(strcmp(out, "")      == 0); release_test_buffer(out);
-
-    out = osp_string_trim_start("  hello  "); assert(strcmp(out, "hello  ") == 0); release_test_buffer(out);
-    out = osp_string_trim_start("hello");     assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
-    out = osp_string_trim_start("   ");       assert(strcmp(out, "")        == 0); release_test_buffer(out);
-
-    out = osp_string_trim_end("  hello  ");   assert(strcmp(out, "  hello") == 0); release_test_buffer(out);
-    out = osp_string_trim_end("hello");       assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
-    out = osp_string_trim_end("   ");         assert(strcmp(out, "")        == 0); release_test_buffer(out);
+    const text_row trim[] = {
+        {"  hello  ", "hello"}, {"\t\n hi \r\n", "hi"}, {"hello", "hello"},
+        {"", ""}, {"   ", ""}, /* all ws */ {NULL, ""},
+    };
+    const trim_row sides[] = {
+        {"  hello  ", "hello  ", "  hello"},
+        {"hello", "hello", "hello"},
+        {"   ", "", ""},
+    };
+    check_text(osp_string_trim, trim, sizeof trim / sizeof trim[0]);
+    check_trim_sides(sides, sizeof sides / sizeof sides[0]);
     printf("  ok  trim/trim_start/trim_end\n");
 }
 
 static void test_reverse(void) {
-    char *out;
-    out = osp_string_reverse("abc");   assert(strcmp(out, "cba")    == 0); release_test_buffer(out);
-    out = osp_string_reverse("a");     assert(strcmp(out, "a")      == 0); release_test_buffer(out);
-    out = osp_string_reverse("");      assert(strcmp(out, "")       == 0); release_test_buffer(out);
-    out = osp_string_reverse("12345"); assert(strcmp(out, "54321")  == 0); release_test_buffer(out);
-    out = osp_string_reverse(NULL);    assert(strcmp(out, "")       == 0); release_test_buffer(out);
+    text_is(osp_string_reverse("abc"), "cba");
+    text_is(osp_string_reverse("a"), "a");
+    text_is(osp_string_reverse(""), "");
+    text_is(osp_string_reverse("12345"), "54321");
+    text_is(osp_string_reverse(NULL), "");
     printf("  ok  reverse\n");
 }
 
 static void test_replace(void) {
-    char *out;
-    out = osp_string_replace("a-b-c", "-", "_");        assert(strcmp(out, "a_b_c") == 0); release_test_buffer(out);
-    out = osp_string_replace("aaa", "a", "bb");         assert(strcmp(out, "bbbbbb") == 0); release_test_buffer(out);
-    out = osp_string_replace("hello", "xyz", "Q");      assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* no match */
-    out = osp_string_replace("hello", "l", "");         assert(strcmp(out, "heo") == 0); release_test_buffer(out); /* shrink */
-    out = osp_string_replace("", "x", "y");             assert(strcmp(out, "") == 0); release_test_buffer(out);
+    text_is(osp_string_replace("a-b-c", "-", "_"), "a_b_c");
+    text_is(osp_string_replace("aaa", "a", "bb"), "bbbbbb");
+    text_is(osp_string_replace("hello", "xyz", "Q"), "hello"); /* no match */
+    text_is(osp_string_replace("hello", "l", ""), "heo"); /* shrink */
+    text_is(osp_string_replace("", "x", "y"), "");
     /* error cases */
     assert(osp_string_replace("hello", "", "x")    == NULL); /* empty needle */
     assert(osp_string_replace(NULL,    "x", "y")   == NULL);
@@ -190,29 +221,45 @@ static void test_replace(void) {
 }
 
 static void test_repeat(void) {
-    char *out;
-    out = osp_string_repeat("ab", 3);   assert(strcmp(out, "ababab") == 0); release_test_buffer(out);
-    out = osp_string_repeat("x", 5);    assert(strcmp(out, "xxxxx") == 0); release_test_buffer(out);
-    out = osp_string_repeat("ab", 0);   assert(strcmp(out, "") == 0); release_test_buffer(out); /* n=0 -> empty */
-    out = osp_string_repeat("ab", 1);   assert(strcmp(out, "ab") == 0); release_test_buffer(out);
-    out = osp_string_repeat("", 99);    assert(strcmp(out, "") == 0); release_test_buffer(out); /* empty source */
+    text_is(osp_string_repeat("ab", 3), "ababab");
+    text_is(osp_string_repeat("x", 5), "xxxxx");
+    text_is(osp_string_repeat("ab", 0), ""); /* n=0 -> empty */
+    text_is(osp_string_repeat("ab", 1), "ab");
+    text_is(osp_string_repeat("", 99), ""); /* empty source */
     /* error cases */
     assert(osp_string_repeat("ab", -1) == NULL);
     assert(osp_string_repeat(NULL,  3) == NULL);
     printf("  ok  repeat\n");
 }
 
-static void test_pad(void) {
-    char *out;
-    out = osp_string_pad_start("7",   3, "0");  assert(strcmp(out, "007") == 0); release_test_buffer(out);
-    out = osp_string_pad_start("42",  5, "ab"); assert(strcmp(out, "aba42") == 0); release_test_buffer(out);
-    out = osp_string_pad_start("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* no pad needed */
-    out = osp_string_pad_start("hi",  1, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* target < len */
-    out = osp_string_pad_start("",    3, "0");  assert(strcmp(out, "000") == 0); release_test_buffer(out);
+/* One row of a padding table: fn(in, target_length, fill) must produce want. */
+typedef struct {
+    const char *in;
+    int64_t target_length;
+    const char *fill;
+    const char *want;
+} pad_row;
 
-    out = osp_string_pad_end  ("7",   3, ".");  assert(strcmp(out, "7..") == 0); release_test_buffer(out);
-    out = osp_string_pad_end  ("42",  5, "ab"); assert(strcmp(out, "42aba") == 0); release_test_buffer(out);
-    out = osp_string_pad_end  ("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out);
+static void check_pad(char *(*fn)(const char *, int64_t, const char *),
+                      const pad_row *rows, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        text_is(fn(rows[i].in, rows[i].target_length, rows[i].fill), rows[i].want);
+    }
+}
+
+static void test_pad(void) {
+    const pad_row start[] = {
+        {"7", 3, "0", "007"}, {"42", 5, "ab", "aba42"},
+        {"hi", 2, "x", "hi"}, /* no pad needed */
+        {"hi", 1, "x", "hi"}, /* target < len */
+        {"", 3, "0", "000"},
+    };
+    const pad_row end[] = {
+        {"7", 3, ".", "7.."}, {"42", 5, "ab", "42aba"},
+        {"hi", 2, "x", "hi"},
+    };
+    check_pad(osp_string_pad_start, start, sizeof start / sizeof start[0]);
+    check_pad(osp_string_pad_end, end, sizeof end / sizeof end[0]);
 
     /* error: empty fill */
     assert(osp_string_pad_start("hi", 5, "") == NULL);

@@ -188,7 +188,7 @@ def prefix_refusal_cases():
     return [
         error_case("header_only.prefix_inside_metadata", Reader.read_header(prefix_of(Expected.BASE_BYTES, 40), size)),
         error_case("header_only.file_shorter_than_tensors", Reader.read_header(prefix_of(Expected.BASE_BYTES, start), start + 1)),
-        error_case("header_only.bytes_past_prefix", Chain.then(Reader.read_header(prefix_of(Expected.BASE_BYTES, start), size), lambda file: Reader.tensor_bytes(file, ats(Expected.BASE_TENSORS, 0)))),
+        error_case("header_only.bytes_past_prefix", resultAndThen(Reader.read_header(prefix_of(Expected.BASE_BYTES, start), size), lambda file: Reader.tensor_bytes(file, ats(Expected.BASE_TENSORS, 0)))),
         error_case("read_path.absent_file", Reader.read_path("/nonexistent/weights.gguf", size, 16)),
     ]
 

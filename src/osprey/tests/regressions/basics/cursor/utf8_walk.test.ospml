@@ -29,9 +29,7 @@ walk (s, byteIndex, count) =
 
 s = sample ()
 bytes = byteLength s
-print "=== UTF-8 codepoint walk ==="
-print "string    = ${s}"
-print "byteLength = ${toString bytes}"
+print "=== UTF-8 codepoint walk ===\nstring    = ${s}\nbyteLength = ${toString bytes}"
 total = exactArithmetic (\() =>
     walk (s, 0, 0))
 print "codepoints = ${toString total}"
@@ -49,8 +47,7 @@ mid =
     match codePointAt s 7
         Success value => "mid-sequence unexpectedly decoded ${toString value}"
         Error message => "mid-sequence rejected: ${message}"
-print mid
-print "=== walk complete ==="
+print "${mid}\n=== walk complete ==="
 
 (** Check a decoded scalar at a known byte boundary. *)
 codepointIs (s, index, expected) =

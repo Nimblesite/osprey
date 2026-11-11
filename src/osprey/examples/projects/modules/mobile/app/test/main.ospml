@@ -68,31 +68,30 @@ modalCase () =
     closed = Support::click opened "close-modal"
     Support::each [Support::it "modal opened" "open" (Support::model opened).modal, Support::it "owner field receives focus" "new-owner" (Support::projected opened "commands[0].id"), Support::it "focus command kind" "focus" (Support::projected opened "commands[0].kind"), Support::it "accessible dialog" "true" (toString (contains opened (Json::strField "role" "dialog"))), Support::it "cancel dismisses" "closed" (Support::model cancelled).modal, Support::it "close dismisses" "closed" (Support::model closed).modal]
 
-test "native startup returns shared view and hydration commands" startupCase
-test "HTTP completions hydrate both resources in either order" hydrationCase
-test "callable effect handlers return and forward native envelopes" handlerCase
-test "native lifecycle restores the exact shared state and view" restoreCase
-test "all five screens use the same route transitions and headings" routesCase
-test "native and browser locations normalize and never loop" locationCase
-test "mobile drawer toggles and closes after navigation" menuCase
-test "account selection and quick actions preserve shared form defaults" selectionCase
-test "account modal exposes focus and accessible dismiss actions" modalCase
-
-test "activity filters share exact credit debit and refused semantics" filtersCase
-test "search matches owner and note without network access" searchCase
-test "search and filter intersect while totals remain complete" combinedFilterCase
-test "failed hydration remains visible and refresh retries both resources" failedLoadCase
-test "offline HTTP and ledger errors become actionable notices" transportErrorsCase
-test "empty accounts and journal render usable shared empty states" emptyCase
-test "unknown native events preserve model and view without commands" unknownEventCase
-
-test "deposit emits exact cents and preserves escaped Unicode notes" depositCase
-test "withdraw emits the shared protected ledger request" withdrawCase
-test "transfer emits exact source destination and integer amount" transferCase
-test "invalid forms reject before any native network request" invalidFormsCase
-test "money validation rejects precision grouping signs and overflow" moneyCase
-test "account creation trims names and closes modal after success" openAccountCase
-test "all successful mutations show matching notices and refresh" successesCase
-test "overdraft refusal preserves balances and refreshes the audit trail" refusalCase
-
-test "pending movement cannot be submitted twice before completion" pendingSubmissionCase
+testCases [
+    { name = "native startup returns shared view and hydration commands", work = startupCase },
+    { name = "HTTP completions hydrate both resources in either order", work = hydrationCase },
+    { name = "callable effect handlers return and forward native envelopes", work = handlerCase },
+    { name = "native lifecycle restores the exact shared state and view", work = restoreCase },
+    { name = "all five screens use the same route transitions and headings", work = routesCase },
+    { name = "native and browser locations normalize and never loop", work = locationCase },
+    { name = "mobile drawer toggles and closes after navigation", work = menuCase },
+    { name = "account selection and quick actions preserve shared form defaults", work = selectionCase },
+    { name = "account modal exposes focus and accessible dismiss actions", work = modalCase },
+    { name = "activity filters share exact credit debit and refused semantics", work = filtersCase },
+    { name = "search matches owner and note without network access", work = searchCase },
+    { name = "search and filter intersect while totals remain complete", work = combinedFilterCase },
+    { name = "failed hydration remains visible and refresh retries both resources", work = failedLoadCase },
+    { name = "offline HTTP and ledger errors become actionable notices", work = transportErrorsCase },
+    { name = "empty accounts and journal render usable shared empty states", work = emptyCase },
+    { name = "unknown native events preserve model and view without commands", work = unknownEventCase },
+    { name = "deposit emits exact cents and preserves escaped Unicode notes", work = depositCase },
+    { name = "withdraw emits the shared protected ledger request", work = withdrawCase },
+    { name = "transfer emits exact source destination and integer amount", work = transferCase },
+    { name = "invalid forms reject before any native network request", work = invalidFormsCase },
+    { name = "money validation rejects precision grouping signs and overflow", work = moneyCase },
+    { name = "account creation trims names and closes modal after success", work = openAccountCase },
+    { name = "all successful mutations show matching notices and refresh", work = successesCase },
+    { name = "overdraft refusal preserves balances and refreshes the audit trail", work = refusalCase },
+    { name = "pending movement cannot be submitted twice before completion", work = pendingSubmissionCase }
+]

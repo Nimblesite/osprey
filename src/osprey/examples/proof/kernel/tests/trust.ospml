@@ -34,8 +34,10 @@ module TrustTests
 
     namedAssumption name = theorem (axiomAt (Environment::empty (), name), "root", arrow name, identity name)
 
-    (** `shown (env, name)` of each `(name, expected)` pair, in order. *)
-    shownEach (env, cases) = forEachList (cases, \pair => expect (shown (env, listGet pair 0 ?: ""), listGet pair 1 ?: ""))
+    (** `expect (look name, expected)` of each `(name, expected)` pair, in order. *)
+    casesEach (look, cases) = forEachList (cases, \pair => expect (look (listGet pair 0 ?: ""), listGet pair 1 ?: ""))
+
+    shownEach (env, cases) = casesEach (\name => shown (env, name), cases)
 
     (** The all-root ledger of every `env` in `envs` agrees with the oracle. *)
     allAgree (envs) = forEachList (envs, \env => expect (agrees env, "ok"))
@@ -43,7 +45,7 @@ module TrustTests
     (** The all-root ledger agrees with the oracle and each `(name, expected)` pair holds. *)
     batchEach (env, cases) =
         expect (agrees env, "ok")
-        forEachList (cases, \pair => expect (batchAt (env, listGet pair 0 ?: ""), listGet pair 1 ?: ""))
+        casesEach (\name => batchAt (env, name), cases)
 
     reporting () =
         test ("an unused axiom in the checked file is not a dependency of the theorem", \() => shownEach (idImpEnv (), [["id_imp", "ok: none"], ["unusedAssumption", "ok: unusedAssumption"]]))
@@ -100,7 +102,7 @@ module TrustTests
         test ("the all-root query keeps deep dependency traversal iterative", \() => batchEach (deepEnv (), [["root", "ok: Ax"]]))
 
     traversal () =
-        test ("constants reports every term variant's symbols in traversal order", \() => expectAll [listed (Terms::constants (Sort Zero)) == "none", listed (Terms::constants (BVar 0)) == "none", listed (Terms::constants (Const "c" [Zero])) == "c", listed (Terms::constants (App (Const "f" []) (Const "a" []))) == "f, a", listed (Terms::constants (Lam "x" (Const "d" []) (Const "b" []))) == "d, b", listed (Terms::constants (Pi "x" (Const "d" []) (Const "b" []))) == "d, b", listed (Terms::constants (Let "x" (Const "t" []) (Const "v" []) (Const "u" []))) == "t, v, u", listed (Terms::constants (Proj "Family" 0 (Const "target" []))) == "Family, target", listed (Terms::constants (NatLit (literal "2"))) == "Nat, Nat.zero, Nat.succ", listed (Terms::constants (App (Const "c" []) (Const "c" []))) == "c, c"])
+        test ("constants reports every term variant's symbols in traversal order", \() => expect (answersHold (\term => listed (Terms::constants term), [Sort Zero, BVar 0, Const "c" [Zero], App (Const "f" []) (Const "a" []), Lam "x" (Const "d" []) (Const "b" []), Pi "x" (Const "d" []) (Const "b" []), Let "x" (Const "t" []) (Const "v" []) (Const "u" []), Proj "Family" 0 (Const "target" []), NatLit (literal "2"), App (Const "c" []) (Const "c" [])], ["none", "none", "c", "f, a", "d, b", "d, b", "t, v, u", "Family, target", "Nat, Nat.zero, Nat.succ", "c, c"]), true))
 
     (** The recorded `id_imp` export plus one axiom the theorem never touches:
         the shape whose old report was `axioms: unusedAssumption`. *)
@@ -108,102 +110,73 @@ module TrustTests
 
     unusedAxiomExport () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"unusedAssumption\"}}\n{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[],\"name\":16,\"type\":0}}\n"
 
-    usesAxiomEnv () = theorem (axiomAt (Environment::empty (), "Ax"), "usesAx", arrow "Ax", identity "Ax")
+    usesAxiomEnv () = theorem (axEnv (), "usesAx", arrow "Ax", identity "Ax")
+
+    (** The environment holding the one axiom `Ax`. *)
+    axEnv () = axiomAt (Environment::empty (), "Ax")
 
     (** Two roots that share a file and share nothing else: `AxProof` rests on
         `Ax` through its own statement, and `rootA` rests on `AxProof`. *)
-    twoRootsEnv () = otherRoot (axiomRoot ())
+    twoRootsEnv () = rooted (assuming (axiomAt (axiomRoot (), "Other"), "Other"), "rootB", "Other")
 
-    axiomRoot () = rootA (axiomProof (axiomAt (Environment::empty (), "Ax")))
-
-    axiomProof (env) = assuming (env, "Ax")
-
-    rootA (env) = rooted (env, "rootA", "Ax")
-
-    otherRoot (env) = rootB (otherProof (axiomAt (env, "Other")))
-
-    otherProof (env) = assuming (env, "Other")
-
-    rootB (env) = rooted (env, "rootB", "Other")
+    axiomRoot () = rooted (assuming (axEnv (), "Ax"), "rootA", "Ax")
     (** `familyProof : family` declared as an assumption. *)
     assuming (env, family) = assumedAt (env, "${family}Proof", Const family [])
     (** A theorem named `name` whose statement is `family` and whose proof is
         `familyProof`. *)
     rooted (env, name, family) = theorem (env, name, Const family [], Const "${family}Proof" [])
 
-    transitiveEnv () = opaqueBridge (definitionBridge (axiomAt (Environment::empty (), "Ax")))
+    transitiveEnv () = arrowTheorem (opaqueBridge (definitionBridge (axEnv ())), "viaDef", "bridge")
 
     definitionBridge (env) = definition (env, "bridge", arrow "Ax", identity "Ax")
 
-    opaqueBridge (env) = viaOpaque (opaqueAt (env, "bridgeOpaque", arrow "Ax", identity "Ax"))
+    opaqueBridge (env) = arrowTheorem (opaqueAt (env, "bridgeOpaque", arrow "Ax", identity "Ax"), "viaOpaque", "bridgeOpaque")
 
-    viaOpaque (env) = definedVia (theorem (env, "viaOpaque", arrow "Ax", Const "bridgeOpaque" []))
-
-    definedVia (env) = theorem (env, "viaDef", arrow "Ax", Const "bridge" [])
+    (** A theorem named `name`, stated and proved by the constant `target`. *)
+    arrowTheorem (env, name, target) = theorem (env, name, arrow "Ax", Const target [])
 
     (** `Triv` is a `Prop` family, `Constant` ignores its argument and returns
         it, so `hidden : Constant Ax` is proved by `Triv.mk`: the axiom appears
         in the root's statement and nowhere in its proof term. *)
-    hiddenTypeEnv () = hidden (constantAlias (trivial (axiomAt (Environment::empty (), "Ax"))))
+    hiddenTypeEnv () = theorem (definition (family (axEnv (), "the trivial family checks", Decl(name = "Triv", params = [], ty = Sort Zero, body = Axiom), [Decl(name = "Triv.mk", params = [], ty = Const "Triv" [], body = Axiom)]), "Constant", Pi "p" (Sort Zero) (Sort Zero), Lam "p" (Sort Zero) (Const "Triv" [])), "hidden", App (Const "Constant" []) (Const "Ax" []), Const "Triv.mk" [])
 
-    trivial (env) = verified ("the trivial family checks", Inductive::declare (env, Decl(name = "Triv", params = [], ty = Sort Zero, body = Axiom), [Decl(name = "Triv.mk", params = [], ty = Const "Triv" [], body = Axiom)], 0))
+    holderEnv () = holder (axEnv ())
 
-    constantAlias (env) = definition (env, "Constant", Pi "p" (Sort Zero) (Sort Zero), Lam "p" (Sort Zero) (Const "Triv" []))
+    holder (env) = family (env, "the field-bearing family checks", Decl(name = "Holder", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "Holder.mk", params = [], ty = Pi "proof" (Const "Ax" []) (Const "Holder" []), body = Axiom)])
 
-    holderEnv () = holder (axiomAt (Environment::empty (), "Ax"))
+    (** A checked inductive block: one family declaration plus its constructors. *)
+    family (env, label, decl, constructors) = verified (label, Inductive::declare (env, decl, constructors, 0))
 
-    holder env = verified ("the field-bearing family checks", Inductive::declare (env, Decl(name = "Holder", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "Holder.mk", params = [], ty = Pi "proof" (Const "Ax" []) (Const "Holder" []), body = Axiom)], 0))
+    deepEnv () = arrowTheorem (deepLinks (), "root", "link1199")
 
-    hidden (env) = theorem (env, "hidden", App (Const "Constant" []) (Const "Ax" []), Const "Triv.mk" [])
-
-    deepEnv () = deepRoot (foldList (toList (range (0, 1200)), axiomAt (Environment::empty (), "Ax"), \(env, index) => definition (env, "link${index}", arrow "Ax", preceding index)))
+    deepLinks () = foldList (toList (range (0, 1200)), axEnv (), \(env, index) => definition (env, "link${index}", arrow "Ax", preceding index))
 
     preceding index = match index == 0
         true => identity "Ax"
         false => Const "link${satSub index 1}" []
 
-    deepRoot env = theorem (env, "root", arrow "Ax", Const "link1199" [])
-
     (** Declarations the kernel would reject, added by `Environment::add` so
         the traversal itself is observable: each case expects the explicit
         unresolved-dependency error, never a pass. *)
-    unresolvedEnv () = literalRoot (familyRoot (attached (Environment::empty (), "broken", Theorem (Const "missing" []))))
-
-    familyRoot (env) = attached (env, "picks", Theorem (Proj "Absent" 0 (Const "x" [])))
-
-    literalRoot (env) = attached (env, "two", Theorem (NatLit (literal "2")))
+    unresolvedEnv () = attached (attached (attached (Environment::empty (), "broken", Theorem (Const "missing" [])), "picks", Theorem (Proj "Absent" 0 (Const "x" []))), "two", Theorem (NatLit (literal "2")))
 
     // Synthetic reference graphs test traversal, not proof acceptance.
-    dualCycleEnv () = attached (cycleA1 (twoCycleAxioms ()), "cycleA2", Definition (App (Const "cycleA1" []) (Const "AxB" [])))
+    dualCycleEnv () = cycleStart (fullCycle (), "cycleA2", "cycleA1", "AxB")
 
-    cyclicGroupsEnv () = cycleB2 (cycleB1 (cycleA2 (cycleA1 (twoCycleAxioms ()))))
+    cyclicGroupsEnv () = cycleLink (cycleLink (cycleStart (fullCycle (), "cycleB1", "cycleB2", "AxB"), "cycleB2", "cycleB1"), "cycleA2", "cycleA1")
+
+    (** The `cycleA1`/`cycleA2` pair over the axioms `AxA` and `AxB`. *)
+    fullCycle () = cycleStart (twoCycleAxioms (), "cycleA1", "cycleA2", "AxA")
 
     twoCycleAxioms () = axiomAt (axiomAt (Environment::empty (), "AxA"), "AxB")
 
-    cycleA1 (env) = cycleStart (env, "cycleA1", "cycleA2", "AxA")
-
-    cycleA2 (env) = cycleLink (env, "cycleA2", "cycleA1")
-
-    cycleB1 (env) = cycleStart (env, "cycleB1", "cycleB2", "AxB")
-
-    cycleB2 (env) = cycleLink (env, "cycleB2", "cycleB1")
     (** One member of a two-cycle, resting on the axiom `axiom` through its
         reference to `next`. *)
     cycleStart (env, name, next, axiom) = attached (env, name, Definition (App (Const next []) (Const axiom [])))
     (** One member of a two-cycle that references `next` and nothing else. *)
     cycleLink (env, name, next) = attached (env, name, Definition (Const next []))
 
-    cyclicEnv () = axiomLoop (pairLoop (selfLoop (Environment::empty ())))
-
-    selfLoop (env) = attached (env, "selfLoop", Definition (App (Const "selfLoop" []) (Const "selfLoop" [])))
-
-    pairLoop (env) = loopB (attached (env, "loopA", Definition (Const "loopB" [])))
-
-    loopB (env) = cycleLink (env, "loopB", "loopA")
-
-    axiomLoop (env) = loopy (attached (env, "cycAxiom", Axiom))
-
-    loopy (env) = attached (env, "loopy", Definition (App (Const "loopA" []) (Const "cycAxiom" [])))
+    cyclicEnv () = cycleStart (cycleLink (cycleLink (cycleStart (attached (Environment::empty (), "cycAxiom", Axiom), "selfLoop", "selfLoop", "selfLoop"), "loopA", "loopB"), "loopB", "loopA"), "loopy", "loopA", "cycAxiom")
 
     andEnv () = exported (Fixtures::andSwap (), "and_swap")
 

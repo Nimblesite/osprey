@@ -161,15 +161,17 @@ fn callableSnapshotsKeepTheirCapturedValues() = {
     checkAll("callable snapshots own their captured values", [first.value() == "count=2", idle.value() == "count=2", next.value() == "count=4", first.revision == 1, idle.revision == 1, next.revision == 2])
 }
 
-test("reactive views rebuild selectively through helpers", selectiveRebuild)
-test("inactive branches remain possible dependencies", conservativeBranches)
-test("changing a callback updates its dependency set", callbackReplacementAndUnknown)
-test("unknown rows rebuild rather than miss a change", unresolvedCallbacksRebuild)
-test("old and new snapshots keep their managed values", managedValues)
-test("arguments run once while clean computations stay cached", evaluationAndNoOp)
-test("unknown changes cannot retain a stale snapshot", unresolvedChangesRebuild)
-test("cached results retain whole variants across rebuilds", cachedResultsKeepBothVariants)
-test("cached callables retain their captured values across rebuilds", callableSnapshotsKeepTheirCapturedValues)
+testCases([
+    { name: "reactive views rebuild selectively through helpers", work: selectiveRebuild },
+    { name: "inactive branches remain possible dependencies", work: conservativeBranches },
+    { name: "changing a callback updates its dependency set", work: callbackReplacementAndUnknown },
+    { name: "unknown rows rebuild rather than miss a change", work: unresolvedCallbacksRebuild },
+    { name: "old and new snapshots keep their managed values", work: managedValues },
+    { name: "arguments run once while clean computations stay cached", work: evaluationAndNoOp },
+    { name: "unknown changes cannot retain a stale snapshot", work: unresolvedChangesRebuild },
+    { name: "cached results retain whole variants across rebuilds", work: cachedResultsKeepBothVariants },
+    { name: "cached callables retain their captured values across rebuilds", work: callableSnapshotsKeepTheirCapturedValues }
+])
 
 /// A rebuild is an ordinary record wherever it flows: passed into a call, from
 /// either arm of a match, it keeps its layout (#272).

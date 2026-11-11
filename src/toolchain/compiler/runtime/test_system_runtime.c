@@ -37,6 +37,16 @@ typedef struct {
   pthread_mutex_t mutex;
 } TestEventData;
 
+// Counts one streamed payload of the given kind and remembers its bytes.
+static void record_stream(int *count, char *last, size_t cap, const char *kind,
+                          int64_t process_id, const char *data) {
+  (*count)++;
+  strncpy(last, data, cap - 1);
+  last[cap - 1] = '\0';
+  printf("TEST: Got %s from process %lld: %s", kind, (long long)process_id,
+         data);
+}
+
 // Test event handler
 static void test_event_handler(int64_t process_id, int64_t event_type,
                                char *data) {
@@ -53,18 +63,12 @@ static void test_event_handler(int64_t process_id, int64_t event_type,
 
   switch (event_type) {
   case 1: // PROCESS_STDOUT_DATA
-    test_data.stdout_count++;
-    strncpy(test_data.last_stdout, data, sizeof(test_data.last_stdout) - 1);
-    test_data.last_stdout[sizeof(test_data.last_stdout) - 1] = '\0';
-    printf("TEST: Got stdout from process %lld: %s", (long long)process_id,
-           data);
+    record_stream(&test_data.stdout_count, test_data.last_stdout,
+                  sizeof test_data.last_stdout, "stdout", process_id, data);
     break;
   case 2: // PROCESS_STDERR_DATA
-    test_data.stderr_count++;
-    strncpy(test_data.last_stderr, data, sizeof(test_data.last_stderr) - 1);
-    test_data.last_stderr[sizeof(test_data.last_stderr) - 1] = '\0';
-    printf("TEST: Got stderr from process %lld: %s", (long long)process_id,
-           data);
+    record_stream(&test_data.stderr_count, test_data.last_stderr,
+                  sizeof test_data.last_stderr, "stderr", process_id, data);
     break;
   case 3: // PROCESS_EXIT
     test_data.exit_count++;
@@ -81,139 +85,43 @@ static void test_event_handler(int64_t process_id, int64_t event_type,
   pthread_mutex_unlock(&test_data.mutex);
 }
 
-void test_basic_process_spawn(void) {
-  printf("=== Testing Basic Process Spawn ===\n");
+// Each command runs to completion and reports its documented exit code: a
+// plain echo, `false`, stderr-only output, a streamed sleeper, and a missing
+// command (127, the failure surfaces in the child).
+static const struct {
+  const char *command;
+  int64_t exit_code;
+} EXIT_CASES[] = {
+    {"echo 'Hello from test process'", 0},
+    {"false", 1},
+    {"sh -c 'echo \"error message\" >&2'", 0},
+    {"sh -c 'for i in 1 2 3; do echo \"Line $i\"; sleep 0.1; done'", 0},
+    {"nonexistent_command_12345", 127},
+};
 
-  int64_t process_id = spawn_process_with_handler(
-      "echo 'Hello from test process'", test_event_handler);
-
-  assert(process_id > 0);
-  printf("Process spawned with ID: %lld\n", (long long)process_id);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-  printf("Process completed with exit code: %lld\n", (long long)exit_code);
-
-  assert(exit_code == 0);
-
-  // Clean up
-  cleanup_process(process_id);
-  printf("Process cleaned up\n");
-
-  printf("=== Basic Process Spawn Test PASSED ===\n\n");
+void test_exit_codes(void) {
+  for (size_t i = 0; i < sizeof EXIT_CASES / sizeof EXIT_CASES[0]; i++) {
+    int64_t process_id =
+        spawn_process_with_handler(EXIT_CASES[i].command, test_event_handler);
+    assert(process_id > 0);
+    assert(await_process(process_id) == EXIT_CASES[i].exit_code);
+    cleanup_process(process_id);
+  }
 }
 
+// Three processes run at once under distinct ids and all succeed.
 void test_multiple_processes(void) {
-  printf("=== Testing Multiple Processes ===\n");
-
-  int64_t pid1 =
-      spawn_process_with_handler("echo 'Process 1'", test_event_handler);
-  int64_t pid2 =
-      spawn_process_with_handler("echo 'Process 2'", test_event_handler);
-  int64_t pid3 =
-      spawn_process_with_handler("echo 'Process 3'", test_event_handler);
-
-  assert(pid1 > 0);
-  assert(pid2 > 0);
-  assert(pid3 > 0);
-  assert(pid1 != pid2);
-  assert(pid2 != pid3);
-
-  printf("Spawned processes: %lld, %lld, %lld\n", (long long)pid1,
-         (long long)pid2, (long long)pid3);
-
-  // Wait for all to complete
-  int64_t exit1 = await_process(pid1);
-  int64_t exit2 = await_process(pid2);
-  int64_t exit3 = await_process(pid3);
-
-  assert(exit1 == 0);
-  assert(exit2 == 0);
-  assert(exit3 == 0);
-
-  // Clean up all
-  cleanup_process(pid1);
-  cleanup_process(pid2);
-  cleanup_process(pid3);
-
-  printf("=== Multiple Processes Test PASSED ===\n\n");
-}
-
-void test_process_with_error(void) {
-  printf("=== Testing Process With Error ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "false", test_event_handler); // 'false' command returns exit code 1
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-  printf("Error process completed with exit code: %lld\n",
-         (long long)exit_code);
-
-  assert(exit_code == 1); // false command should return 1
-
-  cleanup_process(process_id);
-
-  printf("=== Process With Error Test PASSED ===\n\n");
-}
-
-void test_process_with_stderr(void) {
-  printf("=== Testing Process With Stderr ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "sh -c 'echo \"error message\" >&2'", test_event_handler);
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-
-  assert(exit_code == 0);
-
-  cleanup_process(process_id);
-
-  printf("=== Process With Stderr Test PASSED ===\n\n");
-}
-
-void test_long_running_process(void) {
-  printf("=== Testing Long Running Process ===\n");
-
-  int64_t process_id = spawn_process_with_handler(
-      "sh -c 'for i in 1 2 3; do echo \"Line $i\"; sleep 0.1; done'",
-      test_event_handler);
-
-  assert(process_id > 0);
-
-  // Wait for completion
-  int64_t exit_code = await_process(process_id);
-
-  assert(exit_code == 0);
-
-  cleanup_process(process_id);
-
-  printf("=== Long Running Process Test PASSED ===\n\n");
-}
-
-void test_invalid_command(void) {
-  printf("=== Testing Invalid Command ===\n");
-
-  int64_t process_id = spawn_process_with_handler("nonexistent_command_12345",
-                                                  test_event_handler);
-
-  // Should still get a process ID (the failure happens in the child process)
-  assert(process_id > 0);
-
-  // Wait for completion - should get exit code 127 (command not found)
-  int64_t exit_code = await_process(process_id);
-  printf("Invalid command exit code: %lld\n", (long long)exit_code);
-
-  assert(exit_code == 127); // Standard exit code for command not found
-
-  cleanup_process(process_id);
-
-  printf("=== Invalid Command Test PASSED ===\n\n");
+  int64_t pids[3];
+  char command[32];
+  for (int i = 0; i < 3; i++) {
+    snprintf(command, sizeof command, "echo 'Process %d'", i + 1);
+    pids[i] = spawn_process_with_handler(command, test_event_handler);
+    assert(pids[i] > 0 && (i == 0 || pids[i] != pids[i - 1]));
+  }
+  for (int i = 0; i < 3; i++) {
+    assert(await_process(pids[i]) == 0);
+    cleanup_process(pids[i]);
+  }
 }
 
 // --- content-exact event capture ---------------------------------------------
@@ -239,17 +147,20 @@ static void capture_reset(void) {
   pthread_mutex_unlock(&g_capture.mutex);
 }
 
+// Appends one streamed payload without overflowing the accumulated buffer.
+static void append_stream(char *sink, const char *data, size_t cap) {
+  strncat(sink, data, cap - strlen(sink) - 1);
+}
+
 void capture_handler(int64_t process_id, int64_t event_type, char *data) {
   (void)process_id;
   pthread_mutex_lock(&g_capture.mutex);
   switch (event_type) {
   case 1: // PROCESS_STDOUT_DATA
-    strncat(g_capture.out, data,
-            sizeof(g_capture.out) - strlen(g_capture.out) - 1);
+    append_stream(g_capture.out, data, sizeof g_capture.out);
     break;
   case 2: // PROCESS_STDERR_DATA
-    strncat(g_capture.err, data,
-            sizeof(g_capture.err) - strlen(g_capture.err) - 1);
+    append_stream(g_capture.err, data, sizeof g_capture.err);
     break;
   case 3: // PROCESS_EXIT
     g_capture.exit_events++;
@@ -261,38 +172,35 @@ void capture_handler(int64_t process_id, int64_t event_type, char *data) {
   pthread_mutex_unlock(&g_capture.mutex);
 }
 
+// Runs one command to completion under capture_handler and asserts the full
+// contract: await's result, the exact captured bytes on both streams, a
+// single exit event, and the handler-observed exit code.
+static void assert_captured_run(const char *command, int64_t awaited,
+                                int64_t exit_code, const char *out,
+                                const char *err) {
+  capture_reset();
+  int64_t pid = spawn_process_with_handler(command, capture_handler);
+  assert(pid > 0);
+  assert(await_process(pid) == awaited);
+  pthread_mutex_lock(&g_capture.mutex);
+  assert(strcmp(g_capture.out, out) == 0);
+  assert(strcmp(g_capture.err, err) == 0);
+  assert(g_capture.exit_events == 1);
+  assert(g_capture.exit_code == exit_code);
+  pthread_mutex_unlock(&g_capture.mutex);
+  cleanup_process(pid);
+}
+
 // The streamed stdout payload arrives byte-exact, the exit event fires exactly
 // once, and its code matches the handler-observed value AND await's result.
 void test_captured_stdout_and_exit(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("printf 'abc'", capture_handler);
-  assert(pid > 0);
-  int64_t exit_code = await_process(pid);
-  assert(exit_code == 0);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(strcmp(g_capture.out, "abc") == 0); // exact bytes, no newline added
-  assert(g_capture.err[0] == '\0');
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == 0);
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  assert_captured_run("printf 'abc'", 0, 0, "abc", "");
 }
 
 // Stderr streams on its own event type, and a nonzero exit code is reported
 // EXACTLY (both through await and through the exit event).
 void test_captured_stderr_and_exact_code(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("sh -c 'printf err >&2; exit 7'",
-                                           capture_handler);
-  assert(pid > 0);
-  assert(await_process(pid) == 7);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(strcmp(g_capture.err, "err") == 0);
-  assert(g_capture.out[0] == '\0');
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == 7);
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  assert_captured_run("sh -c 'printf err >&2; exit 7'", 7, 7, "", "err");
 }
 
 // Invalid arguments and unknown ids are rejected with exact codes; cleanup
@@ -346,15 +254,9 @@ void test_legacy_spawn_process(void) {
 // inner one — bash does, dash does not, so on Linux the tracked shell would
 // survive its child and exit NORMALLY with 137.
 static void test_signalled_child_reports_minus_one(void) {
-  capture_reset();
-  int64_t pid = spawn_process_with_handler("kill -9 $$", capture_handler);
-  assert(pid > 0);
-  assert(await_process(pid) == -1);
-  pthread_mutex_lock(&g_capture.mutex);
-  assert(g_capture.exit_events == 1);
-  assert(g_capture.exit_code == -1); // not the signal number, not 0
-  pthread_mutex_unlock(&g_capture.mutex);
-  cleanup_process(pid);
+  // No output events fire, so both captured streams stay empty; the code is
+  // not the signal number, not 0.
+  assert_captured_run("kill -9 $$", -1, -1, "", "");
 }
 
 static bool buffered_child_finished;
@@ -413,12 +315,8 @@ int main(int argc, char **argv) {
   // and no children of its own.
   run_spawn_failure_tests();
 
-  test_basic_process_spawn();
+  test_exit_codes();
   test_multiple_processes();
-  test_process_with_error();
-  test_process_with_stderr();
-  test_long_running_process();
-  test_invalid_command();
   test_captured_stdout_and_exit();
   test_captured_stderr_and_exact_code();
   test_process_argument_rejection();

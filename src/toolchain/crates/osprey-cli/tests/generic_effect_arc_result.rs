@@ -1,5 +1,9 @@
 //! Focused ownership regressions for generic values under ARC.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -358,10 +362,6 @@ fn dynamically_read_port_manifests_keep_their_publication_keys_under_arc() -> io
         assert_clean_arc(memory, &output);
     }
     Ok(())
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
 
 #[test]

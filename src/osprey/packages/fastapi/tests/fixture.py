@@ -141,7 +141,7 @@ def logged(path, message, result):
             return refused(500, error)
 
 def trace_lines(path):
-    return B.bind(readFile(path), lambda text: split(text, "\n"))
+    return resultAndThen(readFile(path), lambda text: split(text, "\n"))
 
 def open_session(path, _request, _children):
     match trace_lines(path):
@@ -388,19 +388,19 @@ def decode_bundle(document):
     return Body.object_body(document, lambda doc: B.mapped(Body.text(doc, "content"), lambda value: V.mapped(value, lambda content: FixtureBundle(content=content))))
 
 def decode_key(document):
-    return Body.object_body(document, lambda doc: B.bind(Body.optional_text(doc, "label"), lambda label: B.mapped(Body.uuid(doc, "user_id"), lambda identity: V.mapped(V.combine(label, identity), lambda pair: FixtureKey(label=pair.first, user_id=pair.second)))))
+    return Body.object_body(document, lambda doc: resultAndThen(Body.optional_text(doc, "label"), lambda label: B.mapped(Body.uuid(doc, "user_id"), lambda identity: V.mapped(V.combine(label, identity), lambda pair: FixtureKey(label=pair.first, user_id=pair.second)))))
 
 def decode_context(document):
-    return Body.object_body(document, lambda doc: B.bind(Body.uuid(doc, "tenant_id"), lambda tenant: B.bind(Body.text(doc, "provider_user_id"), lambda user: Body.extras(doc, ["tenant_id", "provider_user_id"], V.mapped(V.combine(tenant, user), lambda pair: FixtureContext(tenant_id=pair.first, provider_user_id=pair.second))))))
+    return Body.object_body(document, lambda doc: resultAndThen(Body.uuid(doc, "tenant_id"), lambda tenant: resultAndThen(Body.text(doc, "provider_user_id"), lambda user: Body.extras(doc, ["tenant_id", "provider_user_id"], V.mapped(V.combine(tenant, user), lambda pair: FixtureContext(tenant_id=pair.first, provider_user_id=pair.second))))))
 
 def resource_first(doc):
-    return B.bind(Body.text(doc, "uri"), lambda uri: B.mapped(Body.optional_alias(doc, "mimeType", "mime_type"), lambda mime: V.combine(uri, mime)))
+    return resultAndThen(Body.text(doc, "uri"), lambda uri: B.mapped(Body.optional_alias(doc, "mimeType", "mime_type"), lambda mime: V.combine(uri, mime)))
 
 def resource_second(doc):
-    return B.bind(Body.optional_text(doc, "text"), lambda text: B.mapped(Body.optional_text(doc, "blob"), lambda blob: V.combine(text, blob)))
+    return resultAndThen(Body.optional_text(doc, "text"), lambda text: B.mapped(Body.optional_text(doc, "blob"), lambda blob: V.combine(text, blob)))
 
 def decode_resource(document):
-    return Body.object_body(document, lambda doc: B.bind(resource_first(doc), lambda first: B.mapped(resource_second(doc), lambda second: V.mapped(V.combine(first, second), lambda pair: FixtureResource(uri=pair.first.first, mime_type=pair.first.second, text=pair.second.first, blob=pair.second.second)))))
+    return Body.object_body(document, lambda doc: resultAndThen(resource_first(doc), lambda first: B.mapped(resource_second(doc), lambda second: V.mapped(V.combine(first, second), lambda pair: FixtureResource(uri=pair.first.first, mime_type=pair.first.second, text=pair.second.first, blob=pair.second.second)))))
 
 def body_response(fields, allowed):
     return Body.filtered_response(200, JsonObject(listConcat(fields, [JsonMember("_secret", JsonString("never expose"))])), allowed)
@@ -421,15 +421,15 @@ def decode_idp(document):
     return Body.object_body(document, idp_fields)
 
 def idp_fields(doc):
-    first = B.bind(Body.array(doc, "allowed_algs", Body.string), lambda algorithms: B.mapped(Body.text(doc, "audience"), lambda audience: V.combine(algorithms, audience)))
-    second = B.bind(Body.text(doc, "issuer"), lambda issuer: B.mapped(Body.text(doc, "jwks_uri"), lambda uri: V.combine(issuer, uri)))
-    return B.bind(first, lambda left: B.mapped(second, lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureIdp(allowed_algs=pair.first.first, audience=pair.first.second, issuer=pair.second.first, jwks_uri=pair.second.second))))
+    first = resultAndThen(Body.array(doc, "allowed_algs", Body.string), lambda algorithms: B.mapped(Body.text(doc, "audience"), lambda audience: V.combine(algorithms, audience)))
+    second = resultAndThen(Body.text(doc, "issuer"), lambda issuer: B.mapped(Body.text(doc, "jwks_uri"), lambda uri: V.combine(issuer, uri)))
+    return resultAndThen(first, lambda left: B.mapped(second, lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureIdp(allowed_algs=pair.first.first, audience=pair.first.second, issuer=pair.second.first, jwks_uri=pair.second.second))))
 
 def idp_response(value):
     return body_response([JsonMember("allowed_algs", JsonArray(mapList(value.allowed_algs, lambda algorithm: JsonString(algorithm)))), JsonMember("audience", JsonString(value.audience)), JsonMember("issuer", JsonString(value.issuer)), JsonMember("jwks_uri", JsonString(value.jwks_uri))], ["allowed_algs", "audience", "issuer", "jwks_uri"])
 
 def string_pair(document, path, left, right, make):
-    return B.bind(Body.text_at(document, left, path), lambda first: B.mapped(Body.text_at(document, right, path), lambda second: V.mapped(V.combine(first, second), lambda pair: make(pair.first, pair.second))))
+    return resultAndThen(Body.text_at(document, left, path), lambda first: B.mapped(Body.text_at(document, right, path), lambda second: V.mapped(V.combine(first, second), lambda pair: make(pair.first, pair.second))))
 
 def provider_detail(document, path):
     return string_pair(document, path, "code", "message", lambda code, message: FixtureProviderDetail(code=code, message=message))
@@ -446,7 +446,7 @@ def model_option(document, path):
 
 def model_list_fields(doc):
     models = Body.array_at(doc, "models", [M.Field(name="body")], model_option)
-    return B.bind(models, lambda left: B.mapped(Body.text(doc, "provider"), lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureModelList(models=pair.first, provider=pair.second))))
+    return resultAndThen(models, lambda left: B.mapped(Body.text(doc, "provider"), lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureModelList(models=pair.first, provider=pair.second))))
 
 def decode_model_list(document):
     return Body.object_body(document, model_list_fields)

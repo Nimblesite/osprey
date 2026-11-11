@@ -12,7 +12,14 @@
     reason = "fixture setup and subprocess failures must fail these tests immediately"
 )]
 
-use std::path::{Path, PathBuf};
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+#[path = "common/write_file.rs"]
+mod write_file;
+use write_file::write;
+
+use std::path::Path;
 use std::process::Command;
 
 const LATER: &str = "later";
@@ -46,17 +53,6 @@ fn module_record_updates_keep_the_original_and_apply_the_new_fields() {
             "ospml",
         );
     });
-}
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
-
-fn write(path: &Path, text: &str) {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).expect("create project directory");
-    }
-    std::fs::write(path, text).expect("write project source");
 }
 
 /// The shared project skeleton: `early` calls a generic `apply` declared in

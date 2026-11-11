@@ -4,12 +4,11 @@
 //! The original failures are fixed; the exact transcripts remain regression gates.
 //! See `src/osprey/tests/modules/README.md` for current coverage.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
 
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
+use std::process::Command;
 
 /// Write `body` to a uniquely-named temp source and run it through `--run`,
 /// answering the exit code and the merged transcript.

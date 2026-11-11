@@ -29,6 +29,9 @@ EXTRA_VARIANTS = [[3.0, 2.0], [-3.0, 2.0], [3.0, -2.0], [-3.0, -2.0], [0.0, 2.0]
 OP_COUNT = 147
 """Every op case: the 37 originals plus 110 extra permutations."""
 
+POW_EXPONENTS = [2, 3, 1, 0, -1, -2]
+"""Op cases 6..11's exponents."""
+
 
 def op_name(i):
     """Case i's assertion label: `op.<original>` or `op.<shape>.<variant>`."""
@@ -49,18 +52,16 @@ def op_inputs(i):
 
 def list_cases(name, got, want, rtol):
     """One `close` per element plus a length check, so a wrong node is named."""
-    elems = fold(range(len(want)), [], lambda acc, i: listAppend(acc, Check.close(name + "." + toString(i), unwrap_or(listGet(got, i), 0.0), unwrap_or(listGet(want, i), 0.0), rtol, 0.0)))
-    return listAppend(elems, Check.truth(name + ".length", len(got) == len(want), "length mismatch"))
+    return listAppend(fold(range(len(want)), [], lambda acc, i: listAppend(acc, Check.close(name + "." + toString(i), unwrap_or(listGet(got, i), 0.0), unwrap_or(listGet(want, i), 0.0), rtol, 0.0))), Check.truth(name + ".length", len(got) == len(want), "length mismatch"))
 
 
 def nested_cases(name, got, want, rtol):
     """One `list_cases` per row and a row-count check."""
-    elems = fold(range(len(want)), [], lambda acc, i: listConcat(acc, list_cases(name + "." + toString(i), unwrap_or(listGet(got, i), []), unwrap_or(listGet(want, i), []), rtol)))
-    return listAppend(elems, Check.truth(name + ".rows", len(got) == len(want), "row count mismatch"))
+    return listAppend(fold(range(len(want)), [], lambda acc, i: listConcat(acc, list_cases(name + "." + toString(i), unwrap_or(listGet(got, i), []), unwrap_or(listGet(want, i), []), rtol))), Check.truth(name + ".rows", len(got) == len(want), "row count mismatch"))
 
 
 def build_add_mul(i, g, a, b):
-    """Op cases 0..5: add/mul over two ids or a constant."""
+    """Op cases 0..5: add/mul over two ids or the constant 2.0."""
     if i == 0:
         return Engine.add(g, a, b)
     elif i == 1 or i == 2:
@@ -72,19 +73,8 @@ def build_add_mul(i, g, a, b):
 
 
 def build_pow(i, g, a):
-    """Op cases 6..11: integer powers."""
-    if i == 6:
-        return Engine.pow_const(g, a, 2)
-    elif i == 7:
-        return Engine.pow_const(g, a, 3)
-    elif i == 8:
-        return Engine.pow_const(g, a, 1)
-    elif i == 9:
-        return Engine.pow_const(g, a, 0)
-    elif i == 10:
-        return Engine.pow_const(g, a, -1)
-    else:
-        return Engine.pow_const(g, a, -2)
+    """Op cases 6..11: integer powers, each raising `a` to its table exponent."""
+    return Engine.pow_const(g, a, unwrap_or(listGet(POW_EXPONENTS, i - 6), 0))
 
 
 def build_relu_neg(i, g, a):
@@ -149,31 +139,45 @@ def build_math(i, g, a, b):
         return Engine.add(e, a, Engine.top(e))
 
 
+def sub_mul(node, a, b):
+    d = Engine.sub(node, a, b)
+    return Engine.mul(d, Engine.top(node), Engine.top(d))
+
+def leaf_mul_sum(node, leaf, other):
+    m = Engine.mul(node, Engine.top(node), leaf)
+    return Engine.add(m, Engine.top(other), Engine.top(m))
+
+def reuse_sum(node, x, leaf):
+    m = Engine.mul(node, Engine.top(x), leaf)
+    return Engine.add(m, Engine.top(node), Engine.top(m))
+
+def relu_diamond(g, a, b):
+    s = Engine.add(g, a, b)
+    r1 = Engine.relu(s, Engine.top(s))
+    d = Engine.sub(r1, a, b)
+    r2 = Engine.relu(d, Engine.top(d))
+    return Engine.mul(r2, Engine.top(r1), Engine.top(r2))
+
+
 def build_extra(k, g, a, b):
     """Extra case k's expression over node ids a and b, mirrored shape for shape
     from the oracle's `extra_ref`."""
     shape = k // 10
-    if shape == 0:
+    if shape == 0 or shape == 1:
         r1 = Engine.relu(g, a)
         r2 = Engine.relu(r1, b)
-        return Engine.add(r2, Engine.top(r1), Engine.top(r2))
-    elif shape == 1:
-        r1 = Engine.relu(g, a)
-        r2 = Engine.relu(r1, b)
-        m = Engine.mul(r2, Engine.top(r1), Engine.top(r2))
-        s = Engine.add(m, Engine.top(m), a)
-        return Engine.sub(s, Engine.top(s), b)
+        if shape == 1:
+            m = Engine.mul(r2, Engine.top(r1), Engine.top(r2))
+            s = Engine.add(m, Engine.top(m), a)
+            return Engine.sub(s, Engine.top(s), b)
+        else:
+            return Engine.add(r2, Engine.top(r1), Engine.top(r2))
     elif shape == 2:
-        s = Engine.add(g, a, b)
-        r1 = Engine.relu(s, Engine.top(s))
-        d = Engine.sub(r1, a, b)
-        r2 = Engine.relu(d, Engine.top(d))
-        return Engine.mul(r2, Engine.top(r1), Engine.top(r2))
+        return relu_diamond(g, a, b)
     elif shape == 3:
         a3 = Engine.pow_const(g, a, 3)
         a2 = Engine.pow_const(a3, a, 2)
-        a2b = Engine.mul(a2, Engine.top(a2), b)
-        s1 = Engine.add(a2b, Engine.top(a3), Engine.top(a2b))
+        s1 = leaf_mul_sum(a2, b, a3)
         b2 = Engine.pow_const(s1, b, 2)
         ab2 = Engine.mul(b2, a, Engine.top(b2))
         s2 = Engine.sub(ab2, Engine.top(s1), Engine.top(ab2))
@@ -182,8 +186,7 @@ def build_extra(k, g, a, b):
     elif shape == 4:
         s = Engine.add(g, a, b)
         p = Engine.pow_const(s, Engine.top(s), 2)
-        d = Engine.sub(p, a, b)
-        m = Engine.mul(d, Engine.top(p), Engine.top(d))
+        m = sub_mul(p, a, b)
         prod = Engine.mul(m, a, b)
         pp = Engine.pow_const(prod, Engine.top(prod), 2)
         return Engine.add(pp, Engine.top(m), Engine.top(pp))
@@ -194,18 +197,15 @@ def build_extra(k, g, a, b):
     elif shape == 7:
         t = Engine.tanh(g, a)
         tt = Engine.mul(t, Engine.top(t), Engine.top(t))
-        tb = Engine.mul(tt, Engine.top(t), b)
-        return Engine.add(tb, Engine.top(tt), Engine.top(tb))
+        return reuse_sum(tt, t, b)
     elif shape == 8:
         e = Engine.exp(g, b)
         eb = Engine.mul(e, Engine.top(e), b)
-        ea = Engine.mul(eb, Engine.top(e), a)
-        return Engine.add(ea, Engine.top(eb), Engine.top(ea))
+        return reuse_sum(eb, e, a)
     elif shape == 9:
         m0 = Engine.mul(g, a, b)
         s0 = Engine.add(m0, Engine.top(m0), a)
-        d0 = Engine.sub(s0, a, b)
-        m1 = Engine.mul(d0, Engine.top(s0), Engine.top(d0))
+        m1 = sub_mul(s0, a, b)
         sb = Engine.add(m1, a, b)
         r = Engine.relu(sb, Engine.top(sb))
         s1 = Engine.add(r, Engine.top(m1), Engine.top(r))
@@ -246,22 +246,23 @@ def build_op(i, g, a, b):
         return build_extra(i - 37, g, a, b)
 
 
+def leaves(xs):
+    g = Engine.empty()
+    a = Engine.value(g, unwrap_or(listGet(xs, 0), 0.0))
+    b = Engine.value(a, unwrap_or(listGet(xs, 1), 0.0))
+    return Leaves(node=b, a=Engine.top(a), b=Engine.top(b))
+
+
 def op_case(i):
     """One op case: build the expression, backward, compare data and input grads."""
     xs = op_inputs(i)
-    g = Engine.empty()
-    g1 = Engine.value(g, unwrap_or(listGet(xs, 0), 0.0))
-    a = Engine.top(g1)
-    g2 = Engine.value(g1, unwrap_or(listGet(xs, 1), 0.0))
-    b = Engine.top(g2)
-    g3 = build_op(i, g2, a, b)
+    lp = leaves(xs)
+    g3 = build_op(i, lp.node, lp.a, lp.b)
     root = Engine.top(g3)
     grads = Engine.backward(g3, root)
-    want = unwrap_or(listGet(Expected.OP_WANT, i), [])
-    rtol = unwrap_or(listGet(Expected.OP_RTOL, i), 1e-12)
-    base = [Engine.data(g3, root), unwrap_or(listGet(grads, a), 0.0)]
-    got = listAppend(base, unwrap_or(listGet(grads, b), 0.0)) if len(xs) > 1 else base
-    return Check.close_all(op_name(i), got, want, rtol, 0.0)
+    base = [Engine.data(g3, root), unwrap_or(listGet(grads, lp.a), 0.0)]
+    got = listAppend(base, unwrap_or(listGet(grads, lp.b), 0.0)) if len(xs) > 1 else base
+    return Check.close_all(op_name(i), got, unwrap_or(listGet(Expected.OP_WANT, i), []), unwrap_or(listGet(Expected.OP_RTOL, i), 1e-12), 0.0)
 
 
 class RepeatState:
@@ -277,27 +278,32 @@ class RepeatPlan:
     calls: list[int]
 
 
+class Leaves:
+    node: Engine.Graph
+    a: int
+    b: int
+
+
+def single(graph, calls):
+    return RepeatPlan(graph=graph, roots=[Engine.top(graph)], calls=calls)
+
+
 def repeat_plan(i, g, a, b):
     """Repeated-backward case i's graph and the roots each call descends from."""
     if i == 0:
         m = Engine.mul(g, a, b)
-        y = Engine.add(m, Engine.top(m), a)
-        return RepeatPlan(graph=y, roots=[Engine.top(y)], calls=[0, 0, 0])
+        return single(Engine.add(m, Engine.top(m), a), [0, 0, 0])
     elif i == 1:
         s = Engine.add(g, a, b)
-        y = Engine.mul(s, Engine.top(s), Engine.top(s))
-        return RepeatPlan(graph=y, roots=[Engine.top(y)], calls=[0, 0])
+        return single(Engine.mul(s, Engine.top(s), Engine.top(s)), [0, 0])
     elif i == 2:
         s = Engine.add(g, a, b)
         r = Engine.relu(s, Engine.top(s))
         d = Engine.sub(r, a, b)
-        y = Engine.mul(d, Engine.top(r), Engine.top(d))
-        return RepeatPlan(graph=y, roots=[Engine.top(y)], calls=[0, 0])
+        return single(Engine.mul(d, Engine.top(r), Engine.top(d)), [0, 0])
     elif i == 3:
         t = Engine.tanh(g, a)
-        tb = Engine.mul(t, Engine.top(t), b)
-        y = Engine.add(tb, Engine.top(tb), Engine.top(t))
-        return RepeatPlan(graph=y, roots=[Engine.top(y)], calls=[0, 0])
+        return single(reuse_sum(t, t, b), [0, 0])
     elif i == 4:
         u = Engine.mul(g, a, b)
         v = Engine.add(u, Engine.top(u), a)
@@ -316,25 +322,18 @@ def repeat_plan(i, g, a, b):
 
 def repeat_next(st, j, plan, aid, bid):
     """One more backward call, accumulating into the live gradients."""
-    root = unwrap_or(listGet(plan.roots, unwrap_or(listGet(plan.calls, j), 0)), 0)
-    grads = Engine.backward_into(plan.graph, root, st.grads)
+    grads = Engine.backward_into(plan.graph, unwrap_or(listGet(plan.roots, unwrap_or(listGet(plan.calls, j), 0)), 0), st.grads)
     row = listAppend(listAppend([], unwrap_or(listGet(grads, aid), 0.0)), unwrap_or(listGet(grads, bid), 0.0))
     return RepeatState(grads=grads, rows=listAppend(st.rows, row))
 
 
 def repeat_case(i):
     """One repeated-backward permutation: every call's input gradients."""
-    xs = unwrap_or(listGet(Expected.REPEAT_INPUTS, i), [])
-    g = Engine.empty()
-    a = Engine.value(g, unwrap_or(listGet(xs, 0), 0.0))
-    aid = Engine.top(a)
-    b = Engine.value(a, unwrap_or(listGet(xs, 1), 0.0))
-    bid = Engine.top(b)
-    plan = repeat_plan(i, b, aid, bid)
-    first = unwrap_or(listGet(plan.calls, 0), 0)
-    grads = Engine.backward(plan.graph, unwrap_or(listGet(plan.roots, first), 0))
-    first_row = listAppend(listAppend([], unwrap_or(listGet(grads, aid), 0.0)), unwrap_or(listGet(grads, bid), 0.0))
-    st = fold(range(1, len(plan.calls)), RepeatState(grads=grads, rows=listAppend([], first_row)), lambda s, j: repeat_next(s, j, plan, aid, bid))
+    lp = leaves(unwrap_or(listGet(Expected.REPEAT_INPUTS, i), []))
+    plan = repeat_plan(i, lp.node, lp.a, lp.b)
+    grads = Engine.backward(plan.graph, unwrap_or(listGet(plan.roots, unwrap_or(listGet(plan.calls, 0), 0)), 0))
+    row = listAppend(listAppend([], unwrap_or(listGet(grads, lp.a), 0.0)), unwrap_or(listGet(grads, lp.b), 0.0))
+    st = fold(range(1, len(plan.calls)), RepeatState(grads=grads, rows=listAppend([], row)), lambda s, j: repeat_next(s, j, plan, lp.a, lp.b))
     rtol = 1e-9 if i == 3 or i == 5 else 1e-12
     return nested_cases("repeat." + toString(i), st.rows, unwrap_or(listGet(Expected.REPEAT_WANT, i), []), rtol)
 

@@ -25,7 +25,6 @@ Every integer operation here is one of the total helpers
 wrapped hash or a clamped count is the definition rather than a fault.
 """
 
-from gguf import Chain
 from qwen_server import Inference
 from qwen_server import Lists
 from qwen_server import Sampler
@@ -182,7 +181,7 @@ class Table:
         return model.eos
 
     def step(model, history, sampling):
-        return Chain.then(Sampler.one_token(logits(model, history, sampling), history, sampling, model.eos), lambda token: Success(value=Inference.Stepped(token=token, model=model)))
+        return resultAndThen(Sampler.one_token(logits(model, history, sampling), history, sampling, model.eos), lambda token: Success(value=Inference.Stepped(token=token, model=model)))
 
 
 # --- the vocabulary -------------------------------------------------------

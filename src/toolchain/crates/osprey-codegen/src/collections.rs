@@ -64,10 +64,16 @@ pub(crate) fn map_owner(elem: Option<&str>) -> String {
     crate::llty::elem_tagged_owner(MAP_TAG, MAP_OWNER, elem)
 }
 
+/// Whether `owner` is `bare` itself or a `tag`-prefixed handle of the same
+/// family — the one shape every `is_*_owner` check shares.
+fn is_tagged_owner(owner: &str, bare: &str, tag: &str) -> bool {
+    owner == bare || owner.starts_with(tag)
+}
+
 /// Whether an owner tag names a runtime map handle — value-typed (`Map#i8*`)
 /// or bare.
 pub(crate) fn is_map_owner(owner: &str) -> bool {
-    owner == MAP_OWNER || owner.starts_with(MAP_TAG)
+    is_tagged_owner(owner, MAP_OWNER, MAP_TAG)
 }
 
 /// The value descriptor recorded on a map handle's owner tag, if any.
@@ -78,7 +84,7 @@ pub(crate) fn tagged_map_elem(v: &Value) -> Option<String> {
 /// Whether an owner tag names a runtime list handle — element-typed
 /// (`List#double`) or bare.
 pub(crate) fn is_list_owner(owner: &str) -> bool {
-    owner == LIST_OWNER || owner.starts_with(LIST_TAG)
+    is_tagged_owner(owner, LIST_OWNER, LIST_TAG)
 }
 
 /// The element descriptor recorded on a list handle's owner tag, if any.

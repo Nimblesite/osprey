@@ -63,5 +63,7 @@ fn theHelperTracksWhatTheDirectFormTracks() = {
     ])
 }
 
-test("one helper serves every value type", oneHelperServesEveryValueType)
-test("the helper tracks what the direct form tracks", theHelperTracksWhatTheDirectFormTracks)
+testCases([
+    { name: "one helper serves every value type", work: oneHelperServesEveryValueType },
+    { name: "the helper tracks what the direct form tracks", work: theHelperTracksWhatTheDirectFormTracks }
+])

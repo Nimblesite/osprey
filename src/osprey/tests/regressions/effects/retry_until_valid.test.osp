@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            let _ = check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            let _ = check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            let _ = expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // `readPositive` validates values supplied by Prompt. One handler keeps
 // resuming with scripted values; another returns without resume to stop.
 
@@ -160,6 +141,9 @@ fn channelTag(trail, letter, n) = "${trail}${letter}${toString(n)}|"
 /// The two flags a bounded transcript must satisfy: `head` opens it, `tail` closes it.
 fn edges(text, head, tail) = [startsWith(text, head), endsWith(text, tail)]
 
+/// True when a row of three bounded transcripts all open and close as expected.
+fn edgesHold(flags) = structuralEquals(flags, [true, true, true, true, true, true])
+
 /// [EFFECTS-RESUME] The handler alone decides how many rejections precede
 /// success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each run
 /// records what it issued before `resume` and what the resumed computation
@@ -199,9 +183,9 @@ fn retryAttemptMatrixCase() = {
     checkAll("issue transcripts record every attempt in order", [
         structuralEquals([r0.issued, r1.issued, r2.issued, r8.issued],
             ["1:100|", "1:0|2:200|", "1:0|2:-5|3:300|", "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"]),
-        structuralEquals(listConcat(listConcat(
+        edgesHold(listConcat(listConcat(
             edges(r1.issued, "1:0|", "2:200|"), edges(r2.issued, "1:0|2:-5|", "3:300|")),
-            edges(r8.issued, "1:-1|", "9:900|")), [true, true, true, true, true, true]),
+            edges(r8.issued, "1:-1|", "9:900|"))),
         contains(r8.issued, "5:-5|"),
         contains(r2.issued, "2:-5|"),
         structuralEquals([contains(r0.issued, "2:"), contains(r1.issued, "3:"),
@@ -217,9 +201,9 @@ fn retryAttemptMatrixCase() = {
         r0.settled == r0.issued,
         structuralEquals([r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued],
             [true, true, true]),
-        structuralEquals(listConcat(listConcat(
+        edgesHold(listConcat(listConcat(
             edges(r1.settled, "2:200|", "1:200|"), edges(r2.settled, "3:300|", "1:300|")),
-            edges(r8.settled, "9:900|", "1:900|")), [true, true, true, true, true, true]),
+            edges(r8.settled, "9:900|", "1:900|"))),
         structuralEquals([contains(r1.settled, "1:0|"), contains(r2.settled, "2:-5|")], [false, false])
     ])
 

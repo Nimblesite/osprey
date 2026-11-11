@@ -4,6 +4,10 @@
     reason = "subprocess and fixture setup failures must fail these end-to-end tests immediately"
 )]
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -12,10 +16,6 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 /// A rewritten fixture copy: its directory, the original text and the new text.
 type Rewritten = (PathBuf, String, String);
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 fn fixture() -> PathBuf {
     repo_root().join("src/osprey/examples/projects/modules")
@@ -60,6 +60,19 @@ fn arg(path: &Path) -> String {
 fn checked(output: Output) -> Output {
     assert_eq!(output.code, Some(0), "stderr={}", output.stderr);
     output
+}
+
+/// Asserts the `flag` pipeline stage on `path` succeeded, its stdout
+/// containing every `wanted` and no `banned` fragment.
+fn flag_stdout(path: &Path, flag: &str, wanted: &[&str], banned: &[&str]) -> String {
+    let stdout = checked(run(&[arg(path), flag.to_string()])).stdout;
+    for fragment in wanted {
+        assert!(stdout.contains(fragment), "{stdout}");
+    }
+    for fragment in banned {
+        assert!(!stdout.contains(fragment), "{stdout}");
+    }
+    stdout
 }
 
 /// Checks `project` quietly, asserting the flat project pipeline accepted it.
@@ -176,17 +189,21 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
         check_passes(path);
     }
 
-    let ast = checked(run(&[arg(&project), "--ast".to_string()])).stdout;
-    assert!(!ast.contains("Import("), "{ast}");
-    assert!(!ast.contains("Namespace {"), "{ast}");
-    assert!(!ast.contains("Module {"), "{ast}");
+    let _ = flag_stdout(
+        &project,
+        "--ast",
+        &[],
+        &["Import(", "Namespace {", "Module {"],
+    );
 
-    let llvm = checked(run(&[arg(&project), "--llvm".to_string()])).stdout;
-    assert!(llvm.contains("define"), "{llvm}");
+    let _ = flag_stdout(&project, "--llvm", &["define"], &[]);
 
-    let symbols = checked(run(&[arg(&project), "--symbols".to_string()])).stdout;
-    assert!(symbols.contains("bank/web::Pages::render"), "{symbols}");
-    assert!(!symbols.contains("__osp_"), "{symbols}");
+    let symbols = flag_stdout(
+        &project,
+        "--symbols",
+        &["bank/web::Pages::render"],
+        &["__osp_"],
+    );
     assert_project_main_symbol_is_local(&symbols, &project.join("src/main.ospml"));
 
     // An ordinary script keeps its own names: no project name mangling.
@@ -196,9 +213,7 @@ fn flat_project_pipeline_covers_scripts_directories_and_manifests() {
         "fn historicalName(value: int) -> int = value\nprint(historicalName(7))\n",
     )
     .expect("write ordinary script");
-    let llvm = checked(run(&[arg(&source), "--llvm".to_string()])).stdout;
-    assert!(llvm.contains("@historicalName("), "{llvm}");
-    assert!(!llvm.contains("__osp_"), "{llvm}");
+    let _ = flag_stdout(&source, "--llvm", &["@historicalName("], &["__osp_"]);
     let _ = std::fs::remove_file(source);
 }
 

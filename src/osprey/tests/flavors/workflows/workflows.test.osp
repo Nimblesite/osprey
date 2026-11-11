@@ -130,8 +130,10 @@ fn resultsStateHigherOrderCase() = {
 
 // Register the broad curry-tour interaction scenario.
 
-test("curry tour retains all closure match and pipe outputs", exactly(curryTourCase))
-// Register the concise mixed-feature interaction scenario.
-test("mixed workflow composes closure match pipe and interpolation", exactly(mixedFeaturesCase))
-// Register the Result and higher-order interaction scenario.
-test("Result workflow covers success error HOF and partial application", exactly(resultsStateHigherOrderCase))
+exactTests([
+    { name: "curry tour retains all closure match and pipe outputs", work: curryTourCase },
+    // Register the concise mixed-feature interaction scenario.
+    { name: "mixed workflow composes closure match pipe and interpolation", work: mixedFeaturesCase },
+    // Register the Result and higher-order interaction scenario.
+    { name: "Result workflow covers success error HOF and partial application", work: resultsStateHigherOrderCase }
+])

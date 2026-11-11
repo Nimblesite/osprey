@@ -8,33 +8,30 @@ import { escapeHtml } from "./html";
 const CSS_PATH = "@vscode/codicons/dist/codicon.css";
 const FONT_PATH = "@vscode/codicons/dist/codicon.ttf";
 
-const NAMES: Readonly<Record<string, string>> = {
-  add: "add",
+// Symbols that draw the official Codicon of the same name; every other known
+// symbol needs an explicit alias row below.
+const PLAIN = (
+  "add check warning info question search play refresh folder book pencil gear " +
+  "package inbox globe lock shield tag person terminal edit sparkle"
+).split(" ").map((name): [string, string] => [name, name]);
+
+const ALIASES: Readonly<Record<string, string>> = {
   delete: "trash",
   dismiss: "close",
-  check: "check",
-  warning: "warning",
-  info: "info",
-  question: "question",
-  search: "search",
   settings: "gear",
   star: "star-full",
-  play: "play",
   pause: "debug-pause",
   stop: "debug-stop",
-  refresh: "refresh",
-  folder: "folder",
   document: "symbol-file",
   link: "link-external",
+  external: "link-external",
   "play.fill": "play",
   "circle.lefthalf.filled": "color-mode",
   "square.and.arrow.down": "save",
   "rectangle.and.pencil.and.ellipsis": "preview",
-  book: "book",
   textformat: "symbol-text",
   magnifyingglass: "search",
   "chevron.left.forwardslash.chevron.right": "code",
-  pencil: "pencil",
   "hand.draw": "move",
   "arrow.uturn.backward": "discard",
   "square.and.pencil": "edit",
@@ -44,39 +41,26 @@ const NAMES: Readonly<Record<string, string>> = {
   "arrow.right": "arrow-right",
   minus: "remove",
   "chevron.left": "chevron-left",
-  gear: "gear",
   network: "type-hierarchy",
-  cube: "package",
-  package: "package",
-  inbox: "inbox",
-  globe: "globe",
-  external: "link-external",
-  lock: "lock",
-  shield: "shield",
   branch: "type-hierarchy",
-  tag: "tag",
+  cube: "package",
   clock: "history",
-  person: "person",
   cursor: "debug-step-into",
   chevron: "chevron-right",
   send: "arrow-up",
-  terminal: "terminal",
-  edit: "edit",
   panel: "layout-sidebar-right",
-  sparkle: "sparkle",
 };
 
-const FALLBACK = "info";
+/** Symbol name to Codicon for every symbol this renderer knows. */
+const SYMBOLS: ReadonlyMap<string, string> = new Map([...PLAIN, ...Object.entries(ALIASES)]);
 
-function codicon(name: string): string {
-  return Object.prototype.hasOwnProperty.call(NAMES, name) ? NAMES[name] ?? FALLBACK : FALLBACK;
-}
+const FALLBACK = "info";
 
 /** Official Codicon markup for `name`; never includes the raw symbol string. */
 export function symbolIcon(name: string, asset?: string): string {
   if (name === "") return "";
   if (asset !== undefined) return `<span class="osp-symbol" aria-hidden="true" data-symbol="${escapeHtml(name)}" style="--osp-symbol-image:url(${escapeHtml(JSON.stringify(asset))})"></span>`;
-  return `<span class="codicon codicon-${codicon(name)}" aria-hidden="true"></span>`;
+  return `<span class="codicon codicon-${SYMBOLS.get(name) ?? FALLBACK}" aria-hidden="true"></span>`;
 }
 
 let stylesheet = "";
@@ -97,7 +81,7 @@ export function codiconStyle(): string {
   if (stylesheet !== "") return stylesheet;
   const css = readFileSync(require.resolve(CSS_PATH), "utf8");
   const font = readFileSync(require.resolve(FONT_PATH)).toString("base64");
-  const wanted = [...new Set([FALLBACK, ...Object.values(NAMES)])].map((name) => rule(css, `.codicon-${name}`));
+  const wanted = [...new Set([FALLBACK, ...SYMBOLS.values()])].map((name) => rule(css, `.codicon-${name}`));
   stylesheet = [
     `@font-face{font-family:"codicon";font-display:block;src:url(data:font/ttf;base64,${font}) format("truetype");}`,
     rule(css, ".codicon"),

@@ -153,6 +153,7 @@ fn later_prelude_units_rebase_cleanly_into_ranges_past_every_earlier_unit() {
         (1, SIGNALS, signals(), &[json()][..]),
         (2, TESTING, testing(), &[signals()][..]),
         (3, TESTING_GPU, testing_gpu(), &[]),
+        (4, TESTING_RESULT, testing_result(), &[]),
     ] {
         let base = PRELUDE_LINE_BASE + index * PRELUDE_UNIT_STRIDE;
         assert_in_range(source, unit, base, |line| line >= base, earlier);
@@ -227,17 +228,30 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
                 "test(\"u\", fn() => checkTrue(emptyUploads()))\n",
                 "print(oobMessage())\n",
                 "test(\"f\", fn() => withIndices(3, fn(b) => checkTrue(elementsFrom(b, 1, 0, [1, 2]))))\n",
+                "test(\"a\", fn() => checkTrue(gpuTestAdd(1, 2) == 3))\n",
+                "test(\"n\", fn() => checkTrue(listLengthIs([4, 5], 2)))\n",
+                "test(\"h\", fn() => checkTrue(listHolds([4, 5], 1, 0, 5)))\n",
+                "test(\"s\", fn() => withIndices(3, fn(b) => checkTrue(floatSumsTo(b, 0, 3))))\n",
             ][..],
             "withBuffer gpuSatisfies withIndices iotaError",
-            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2])]))))\n"),
+            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2]), floatSumsTo(b, 10, 13), listLengthIs([], 0), listHolds([7], 3, 9, 9), gpuSatisfies(gpuFold(b, 0, gpuTestAdd), fn(total) => total == 3)]))))\n"),
         ),
         (
             &[
                 "test(\"a\", fn() => checkTrue(containsAll(\"alpha|beta\", [\"alpha\", \"beta\"])))\n",
                 "test(\"n\", fn() => checkTrue(containsNone(\"alpha|beta\", [\"gamma\"])))\n",
+                "test(\"l\", fn() => checkTrue(allListed([1, 2], [2])))\n",
+                "test(\"o\", fn() => checkTrue(noneListed([1, 2], [3])))\n",
+                "test(\"h\", fn() => checkTrue(answersHold(fn(x) => x * 2, [1, 2], [2, 4])))\n",
+                "test(\"f\", fn() => faultsAre(fn() => 2 + 3, 5, \"\"))\n",
             ][..],
-            "containsAll containsNone exactArithmetic",
-            Some("test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", [])]))\n"),
+            "containsAll containsNone allListed noneListed answersHold faultsAre exactArithmetic",
+            Some("test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", []), allListed([3, 1, 2], [1, 3]), !allListed([1], [1, 4]), noneListed([1, 2], []), !noneListed([1, 2], [2]), answersHold(fn(s) => length(s), [\"ab\", \"\"], [2, 0]), !answersHold(fn(x) => x, [1], [2])]))\n"),
+        ),
+        (
+            &["test(\"d\", fn() => checkTrue((divideResult(6.0, 2.0) ?: 0.0) == 3.0))\n"][..],
+            "divideResult",
+            Some("test(\"div\", fn() => checkAll(\"division\", [(divideResult(1.0, 4.0) ?: 0.0) == 0.25, (divideResult(1.0, 0.0) ?: -1.0) == -1.0]))\n"),
         ),
     ] {
         assert_offers_attach_once(sources, offered);
@@ -350,4 +364,25 @@ fn a_program_with_its_own_success_variant_gets_only_the_testing_unit_it_names() 
         gpu.contains(&"withBuffer".to_string()) && gpu.contains(&"withIndices".to_string()),
         "{gpu:?}"
     );
+}
+
+#[test]
+fn local_add_f_does_not_pull_in_the_shared_gpu_test_helpers() {
+    let names = attached_names(
+        "fn addF(a, x) = a + x\nfn at(m, i) = gpuGet(m, i) ?: 0.0\nprint(\"${addF(1.0, 2.0)}\")\n",
+    );
+    assert_eq!(
+        count_named(&names, "addF"),
+        1,
+        "only the program's own addF"
+    );
+    assert_none_attached(&names, &["withBuffer", "gpuSatisfies", "floatSumsTo"]);
+}
+
+#[test]
+fn naming_result_and_then_attaches_the_result_unit_once() {
+    let names = attached_names(
+        "fn half(n) = if n % 2 == 0 { Success { value: n / 2 } } else { Error { message: \"odd\" } }\nprint(\"${resultAndThen(half(8), half)}\")\n",
+    );
+    assert_eq!(count_named(&names, "resultAndThen"), 1);
 }

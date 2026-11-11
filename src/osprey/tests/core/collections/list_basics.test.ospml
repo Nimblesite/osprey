@@ -28,16 +28,22 @@ allOob (xs, indices) = match indices
     [] => true
     [index, ...rest] => oobAt (xs, index) && allOob (xs, rest)
 
-(** Every item of `wanted` is an element of `xs` ([BUILTIN-LIST-CONTAINS]). *)
-allListed (xs, wanted) = foldList wanted true (\(found, item) => found && listContains xs item)
-
-(** No item of `absent` is an element of `xs`. *)
-noneListed (xs, absent) = foldList absent true (\(clear, item) => clear && !(listContains xs item))
-
 (** grownBy extends `xs` by listAppend with each element of `values`, in order. *)
 grownBy (xs, values) = match values
     [] => xs
     [head, ...tail] => grownBy ((listAppend xs head), tail)
+
+(** aListFixture is the [1, 2, 3] int list every construction case starts from. *)
+aListFixture () = grownBy ((List ()), [1, 2, 3])
+
+(** bListFixture is the [10, 20] int list every concatenation case starts from. *)
+bListFixture () = grownBy ((List ()), [10, 20])
+
+(** wordTriple is the three-word string fixture the typed cases index and rebuild. *)
+wordTriple () = ["alpha", "beta", "gamma"]
+
+(** ratioTriple is the exact-binary three-float fixture the typed cases sum. *)
+ratioTriple () = [0.5, 1.25, 2.75]
 
 (** Every element of `xs` equals its partner want in `wants`, index by index,
     every row through the Result path of [BUILTIN-LIST-GET]. *)
@@ -52,9 +58,6 @@ elementsFrom (xs, wants, fallback, index) = match wants
     the Result path of [BUILTIN-LIST-GET]. *)
 rowsHold (xs, indices, wants, fallback) =
     range (0, listLength indices) |> fold true (\(hold, i) => hold && elementOr (xs, (intAt (indices, i)), fallback) == elementOr (wants, i, fallback))
-
-(** Every listed input answers its partner want through `f`, pair by pair. *)
-answersHold (f, inputs, wants) = structuralEquals (mapList inputs f) wants
 
 (** listLength as a first-class value, so answersHold can fold length rows. *)
 lengthOf xs = listLength xs
@@ -84,6 +87,12 @@ slotReads (slot, label, weight, ready) = slot.label == label && slot.weight == w
 transcriptSealed (log, expected, size, tail, reversed, seam) =
     log == expected && length log == size && endsWith log tail && !(endsWith log reversed) && contains log seam
 
+(** noteEach visits `xs` in index order, asking `spell` for each element's text. *)
+noteEach (xs, spell) = forEachList xs (\item => perform TranscriptProbe.note (spell item))
+
+(** sealedRow checks the log the last traversal left against `title`'s row. *)
+sealedRow (log, title, expected, size, tail, reversed, seam) = checkAll title [transcriptSealed (log, expected, size, tail, reversed, seam)]
+
 (** appendThrough builds inclusive integer ranges while preserving every prior list version. *)
 appendThrough xs next last = match next > last
     true => xs
@@ -102,8 +111,11 @@ sumBy (xs, weight) = match xs
     [] => 0
     [head, ...tail] => weight head + sumBy (tail, weight)
 
+(** identity weighs an element as itself, so both sums share one callback. *)
+identity x = x
+
 (** sumList weighs every int element as itself. *)
-sumList xs = sumBy (xs, \x => x)
+sumList xs = sumBy (xs, identity)
 
 (** restLen exercises a wildcard prefix followed by a captured list tail. *)
 restLen : List int -> int
@@ -123,8 +135,8 @@ encodeIteration xs =
 (** constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations. *)
 constructionAndIdentityCase () =
     empty = List ()
-    a = grownBy ((List ()), [1, 2, 3])
-    b = grownBy ((List ()), [10, 20])
+    a = aListFixture ()
+    b = bListFixture ()
     reversed = listReverse a
     restored = listReverse reversed
     prepended = listPrepend a 0
@@ -135,14 +147,10 @@ constructionAndIdentityCase () =
     abPlusA = a + b + a
 
     // Every legacy length observation remains an independent assertion.
-    checkAll "legacy construction and operation lengths" [
-        answersHold (lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat empty a, listConcat a empty, a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3])
-    ]
+    checkAll "legacy construction and operation lengths" [ answersHold (lengthOf, [empty, a, b, reversed, restored, concatenated, listConcat empty a, listConcat a empty, a + a, a + b + a, prepended, a], [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3]) ]
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
-    checkAll "construction and reverse contents" [
-        allElementsAre ([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]], (0 - 999))
-    ]
+    checkAll "construction and reverse contents" [ allElementsAre ([a, b, reversed, restored, prepended], [[1, 2, 3], [10, 20], [3, 2, 1], [1, 2, 3], [0, 1, 2, 3]], (0 - 999)) ]
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll "concat identities and boundaries" [
@@ -164,9 +172,9 @@ constructionAndIdentityCase () =
 
 (** iterationAndPersistenceCase preserves callback order plus every generation and branch observation. *)
 iterationAndPersistenceCase () =
-    a = grownBy ((List ()), [1, 2, 3])
+    a = aListFixture ()
     reversed = listReverse a
-    b = grownBy ((List ()), [10, 20])
+    b = bListFixture ()
     combined = a + b
     g0 = List ()
     g1 = listAppend g0 10
@@ -186,14 +194,10 @@ iterationAndPersistenceCase () =
     ]
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
-    checkAll "iteration constituent values" [
-        allElementsAre ([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]], (0 - 999))
-    ]
+    checkAll "iteration constituent values" [ allElementsAre ([a, reversed, combined], [[1, 2, 3], [3, 2, 1], [1, 2, 3, 10, 20]], (0 - 999)) ]
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
-    checkAll "persistent generation and branch lengths" [
-        answersHold (lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3])
-    ]
+    checkAll "persistent generation and branch lengths" [ answersHold (lengthOf, [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3], [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3]) ]
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll "persistent generation and branch contents" [
@@ -224,9 +228,7 @@ tailBoundaryCase () =
     doubled = listConcat t4 t4
 
     // All six legacy tail-boundary length observations remain independent.
-    checkAll "tail boundary legacy lengths" [
-        answersHold (lengthOf, [t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70])
-    ]
+    checkAll "tail boundary legacy lengths" [ answersHold (lengthOf, [t, t2, t3, t4, reversed, doubled], [10, 20, 30, 35, 35, 70]) ]
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll "tail boundary contents" [
@@ -242,8 +244,8 @@ indexingPatternsAndDispatchCase () =
     commands = ["echo hello", "echo world", "echo test"]
     empty : List<string>
     empty = []
-    a = grownBy ((List ()), [1, 2, 3])
-    b = grownBy ((List ()), [10, 20])
+    a = aListFixture ()
+    b = bListFixture ()
     singleton = listAppend (List ()) 7
     short = listAppend (List ()) 9
     pair = listAppend short 8
@@ -289,14 +291,10 @@ indexingPatternsAndDispatchCase () =
     // A flat list literal is its own layout, distinct from both an OspreyList
     // handle and a string: it used to reach `osp_strlen`, which counted the
     // length word's bytes and answered 1 for any list of 1..=255 elements.
-    checkAll "receiver-directed length dispatch" [
-        structuralEquals [length a, length dispatchThirtyFive, length "abcd", length empty, length "", length commands, length (lines "a\nb\nc")] [3, 35, 4, 0, 0, 3, 3]
-    ]
+    checkAll "receiver-directed length dispatch" [ structuralEquals [length a, length dispatchThirtyFive, length "abcd", length empty, length "", length commands, length (lines "a\nb\nc")] [3, 35, 4, 0, 0, 3, 3] ]
 
     // The old composite bare-isEmpty row is split and extended across derived lists.
-    checkAll "receiver-directed isEmpty dispatch" [
-        structuralEquals [isEmpty empty, isEmpty a, isEmpty "", isEmpty "abcd", isEmpty (listReverse a), isEmpty (listConcat empty empty), isEmpty commands] [true, false, true, false, false, true, false]
-    ]
+    checkAll "receiver-directed isEmpty dispatch" [ structuralEquals [isEmpty empty, isEmpty a, isEmpty "", isEmpty "abcd", isEmpty (listReverse a), isEmpty (listConcat empty empty), isEmpty commands] [true, false, true, false, false, true, false] ]
 
     // A flat list literal is a third layout, distinct from both an OspreyList
     // handle and a string. `+` used to hand `osprey_list_concat` the literal's
@@ -318,13 +316,13 @@ indexingPatternsAndDispatchCase () =
 test "lists construct, reverse, prepend, concatenate, and retain contents" (\() => exactArithmetic (constructionAndIdentityCase))
 
 // Register the traversal, persistence, and branching scenario.
-test "list iteration and persistent branches retain order and isolation" (exactly iterationAndPersistenceCase)
-
-// Register the 32-element structural boundary scenario.
-test "lists preserve content across the 32-element tail boundary" (exactly tailBoundaryCase)
-
-// Register Result indexing, patterns, recursion, and builtin dispatch together.
-test "list indexing, patterns, recursion, and receiver dispatch compose" (exactly indexingPatternsAndDispatchCase)
+exactTests [
+    { name = "list iteration and persistent branches retain order and isolation", work = iterationAndPersistenceCase },
+    // Register the 32-element structural boundary scenario.
+    { name = "lists preserve content across the 32-element tail boundary", work = tailBoundaryCase },
+    // Register Result indexing, patterns, recursion, and builtin dispatch together.
+    { name = "list indexing, patterns, recursion, and receiver dispatch compose", work = indexingPatternsAndDispatchCase }
+]
 
 (** [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
     and says it is "equivalent to `list[index]`", with an out-of-range index
@@ -334,8 +332,8 @@ test "list indexing, patterns, recursion, and receiver dispatch compose" (exactl
     above indexes an `int` list, where a word and a value are indistinguishable,
     which is exactly how issue #211 survived. *)
 typedElementRetrievalCase () =
-    words = ["alpha", "beta", "gamma"]
-    ratios = [0.5, 1.25, 2.75]
+    words = wordTriple ()
+    ratios = ratioTriple ()
     flags = [true, false, true]
     slots = leftRightSlots ()
     missingSlot = sentinelSlot ()
@@ -476,7 +474,7 @@ sumFloatBy (xs, weight) = match xs
     [head, ...tail] => weight head + sumFloatBy (tail, weight)
 
 (** sumFloats weighs every float element as itself. *)
-sumFloats xs = sumFloatBy (xs, \x => x)
+sumFloats xs = sumFloatBy (xs, identity)
 
 (** countTrue counts the `true` elements of a bool list through list patterns. *)
 countTrue xs = sumBy (xs, boolWeight)
@@ -535,7 +533,7 @@ stringListPatternCase () =
     noWords = []
     solo = ["solo"]
     duo = ["left", "right"]
-    words = ["alpha", "beta", "gamma"]
+    words = wordTriple ()
     quad = ["a", "bb", "ccc", "dddd"]
     odd = ["", " ", "a", "12", "a,b", "ab ab"]
     dup = ["same", "same", "other", "same"]
@@ -574,10 +572,10 @@ stringListPatternCase () =
         structuralEquals [elementOr (odd, 0, "x"), elementOr (odd, 1, "x")] ["", " "],
         structuralEquals [length (elementOr (odd, 0, "x")), length (elementOr (odd, 1, "x"))] [0, 1],
         elementOr (odd, 3, "x") == "12",
-        contains (elementOr (odd, 4, "x")) ",",
+        containsAll (elementOr (odd, 4, "x"), [","]),
         startsWith (elementOr (odd, 5, "x")) "ab",
         endsWith (elementOr (odd, 5, "x")) "ab",
-        contains (elementOr (odd, 5, "x")) " ",
+        containsAll (elementOr (odd, 5, "x"), [" "]),
         toUpperCase (elementOr (words, 1, "x")) == "BETA",
         toLowerCase (toUpperCase (elementOr (words, 2, "x"))) == "gamma",
         allListed (odd, ["", " "]),
@@ -604,7 +602,7 @@ floatAndBoolListPatternCase () =
     noFloats = []
     oneFloat = [1.5]
     twoFloats = [0.25, 0.75]
-    ratios = [0.5, 1.25, 2.75]
+    ratios = ratioTriple ()
     quarters = [0.0, 0.25, 0.5, 0.75]
     dupFloats = [2.0, 2.0, 1.0]
     noFlags : List<bool>
@@ -711,12 +709,11 @@ recordListPatternCase () =
         slotLabels slots == "left>right>",
         readySlots slots == 1,
         totalWeight slots == 4.0,
-        contains (slotLabels oneSlot) "${soloSlot.label}>",
-        contains (slotLabels (listPrepend slots soloSlot)) "${soloSlot.label}>",
-        !(contains (slotLabels slots) "${soloSlot.label}>"),
-        !(contains (slotLabels slots) "${missingSlot.label}>"),
-        contains (slotLabels slots) "left>",
-        !(contains (slotLabels noSlots) "${missingSlot.label}>"),
+        containsAll (slotLabels oneSlot, ["${soloSlot.label}>"]),
+        containsAll (slotLabels (listPrepend slots soloSlot), ["${soloSlot.label}>"]),
+        containsAll (slotLabels slots, ["left>"]),
+        containsNone (slotLabels slots, ["${soloSlot.label}>", "${missingSlot.label}>"]),
+        containsNone (slotLabels noSlots, ["${missingSlot.label}>"]),
         (elementOr (trio, 2, missingSlot)).label == "extra",
         (elementOr (trio, 2, missingSlot)).weight == 4.0,
         (elementOr (trio, 2, missingSlot)).ready,
@@ -808,10 +805,10 @@ test "nested lists index, destructure, and stay isolated" (exactly nestedListCas
 typedIterationOrderCase () =
     noWords : List<string>
     noWords = []
-    words = ["alpha", "beta", "gamma"]
+    words = wordTriple ()
     flags = [true, false]
     counts = [7, 8, 9]
-    ratios = [0.5, 1.25, 2.75]
+    ratios = ratioTriple ()
     missingSlot = sentinelSlot ()
     slots = leftRightSlots ()
     mut log = ""
@@ -819,7 +816,7 @@ typedIterationOrderCase () =
     handle TranscriptProbe
         note text =>
             log := "${log}${text}|"
-    forEachList noWords (\word => perform TranscriptProbe.note word)
+    noteEach (noWords, \word => word)
 
     // "Once per element" over zero elements is zero calls.
     checkAll "forEachList over an empty list records nothing" [
@@ -832,7 +829,7 @@ typedIterationOrderCase () =
         tailLength noWords == ((0 - 1) )
     ]
 
-    forEachList words (\word => perform TranscriptProbe.note word)
+    noteEach (words, \word => word)
 
     // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
     checkAll "forEachList visits string elements in index order" [
@@ -840,33 +837,27 @@ typedIterationOrderCase () =
         length log == 17,
         startsWith log "alpha|",
         endsWith log "gamma|",
-        contains log "|beta|",
-        !(contains log "gamma|beta|"),
+        containsAll (log, ["|beta|"]),
+        containsNone (log, ["gamma|beta|"]),
         log == joinWords words
     ]
 
-    forEachList flags (\flag => perform TranscriptProbe.note "${flag}")
+    noteEach (flags, \flag => "${flag}")
 
     // 17 + "true|" (5) + "false|" (6) = 28.
-    checkAll "forEachList visits bool elements in index order" [
-        transcriptSealed (log, "alpha|beta|gamma|true|false|", 28, "true|false|", "false|true|", "gamma|true|")
-    ]
+    sealedRow (log, "forEachList visits bool elements in index order", "alpha|beta|gamma|true|false|", 28, "true|false|", "false|true|", "gamma|true|")
 
-    forEachList counts (\count => perform TranscriptProbe.note "${count}")
+    noteEach (counts, \count => "${count}")
 
     // 28 + "7|8|9|" (6) = 34.
-    checkAll "forEachList visits int elements in index order" [
-        transcriptSealed (log, "alpha|beta|gamma|true|false|7|8|9|", 34, "7|8|9|", "9|8|7|", "false|7|")
-    ]
+    sealedRow (log, "forEachList visits int elements in index order", "alpha|beta|gamma|true|false|7|8|9|", 34, "7|8|9|", "9|8|7|", "false|7|")
 
-    forEachList slots (\slot => perform TranscriptProbe.note slot.label)
+    noteEach (slots, \slot => slot.label)
 
     // 34 + "left|" (5) + "right|" (6) = 45.
-    checkAll "forEachList visits record elements in index order" [
-        transcriptSealed (log, "alpha|beta|gamma|true|false|7|8|9|left|right|", 45, "left|right|", "right|left|", "9|left|")
-    ]
+    sealedRow (log, "forEachList visits record elements in index order", "alpha|beta|gamma|true|false|7|8|9|left|right|", 45, "left|right|", "right|left|", "9|left|")
 
-    forEachList (listReverse words) (\word => perform TranscriptProbe.note word)
+    noteEach (listReverse words, \word => word)
 
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll "forEachList follows the derived list, not its source" [
@@ -874,7 +865,7 @@ typedIterationOrderCase () =
         length log == 62,
         endsWith log "gamma|beta|alpha|",
         startsWith log "alpha|beta|gamma|",
-        contains log "right|gamma|",
+        containsAll (log, ["right|gamma|"]),
         joinWords words == "alpha|beta|gamma|",
         joinWords (listReverse words) == "gamma|beta|alpha|"
     ]
@@ -939,8 +930,8 @@ boundaryIndexCase () =
     forty = twenty + twenty
     noWords : List<string>
     noWords = []
-    words = ["alpha", "beta", "gamma"]
-    ratios = [0.5, 1.25, 2.75]
+    words = wordTriple ()
+    ratios = ratioTriple ()
     marks = [true, false]
     missingSlot = sentinelSlot ()
     slots = leftRightSlots ()
@@ -1028,9 +1019,9 @@ linesIndexCase () =
     text = range (0, 2000) |> fold "" lineAfter
     rows = lines text
     total = range (0, 10000) |> fold 0 (\(acc, i) => acc + byteLength (elementOr (rows, (i % 2000), "")))
-    checkAll "a bound string list is read by index in constant time" [
-        listLength rows == 2000, elementOr (rows, 1999, "?") == "line 1999", total == 84450
-    ]
+    checkAll "a bound string list is read by index in constant time" [ listLength rows == 2000, elementOr (rows, 1999, "?") == "line 1999", total == 84450 ]
 
-test "fold rebuilds a list-literal seed once before the loop" (exactly foldSeedCase)
-test "a bound string list is read by index in constant time" (exactly linesIndexCase)
+exactTests [
+    { name = "fold rebuilds a list-literal seed once before the loop", work = foldSeedCase },
+    { name = "a bound string list is read by index in constant time", work = linesIndexCase }
+]

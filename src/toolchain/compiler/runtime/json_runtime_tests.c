@@ -406,47 +406,45 @@ static void t_python_json_non_finite_numbers(void) {
 // A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
+typedef struct {
+  const char *flag;
+  void (*run)(void);
+} suite_entry;
+
+// argv[1] runs exactly the entries its flag tags, in table order; a NULL
+// flag runs every entry, before this file's own suites below.
+static const suite_entry suites[] = {
+    {"--python-json-nul", t_python_json_nul_round_trip},
+    {"--python-json-nul", t_python_json_non_finite_numbers},
+    {"--python-json-nul", t_json_rejects_raw_nul},
+    {"--owned-text", t_owned_text_preserves_nul_cursor_bounds},
+    {"--owned-text", t_owned_text_survives_collection_and_growth},
+    {"--owned-finalizer", t_owned_text_finalizer_reads_do_not_deadlock},
+    {"--nul-arena", t_nul_arena_keys_keep_identity},
+    {"--owned-operations", t_owned_text_search_and_slices},
+    {"--owned-operations", t_owned_text_trim_and_lists},
+    {"--owned-operations", t_bounded_search_exhaustive},
+    {"--owned-operations", t_bounded_search_permutations},
+    {"--owned-operations", t_bounded_search_long_repetitions},
+};
+#define SUITE_COUNT (sizeof(suites) / sizeof(suites[0]))
+
+static void run_suites(const char *flag) {
+  for (size_t i = 0; i < SUITE_COUNT; i++) {
+    if (flag == NULL || strcmp(suites[i].flag, flag) == 0)
+      suites[i].run();
+  }
+}
+
 int main(int argc, char **argv) {
-  if (argc == 2 && strcmp(argv[1], "--python-json-nul") == 0) {
-    t_python_json_nul_round_trip();
-    t_python_json_non_finite_numbers();
-    t_json_rejects_raw_nul();
-    return 0;
-  }
-  if (argc == 2 && strcmp(argv[1], "--owned-operations") == 0) {
-    t_owned_text_search_and_slices();
-    t_owned_text_trim_and_lists();
-    t_bounded_search_exhaustive();
-    t_bounded_search_permutations();
-    t_bounded_search_long_repetitions();
-    return 0;
-  }
-  if (argc == 2 && strcmp(argv[1], "--owned-finalizer") == 0) {
-    t_owned_text_finalizer_reads_do_not_deadlock();
-    return 0;
-  }
-  if (argc == 2 && strcmp(argv[1], "--owned-text") == 0) {
-    t_owned_text_preserves_nul_cursor_bounds();
-    t_owned_text_survives_collection_and_growth();
-    return 0;
-  }
-  if (argc == 2 && strcmp(argv[1], "--nul-arena") == 0) {
-    t_nul_arena_keys_keep_identity();
-    return 0;
+  for (size_t i = 0; argc == 2 && i < SUITE_COUNT; i++) {
+    if (strcmp(suites[i].flag, argv[1]) == 0) {
+      run_suites(argv[1]);
+      return 0;
+    }
   }
   CHECK(argc == 1);
-  t_python_json_nul_round_trip();
-  t_python_json_non_finite_numbers();
-  t_json_rejects_raw_nul();
-  t_owned_text_preserves_nul_cursor_bounds();
-  t_owned_text_survives_collection_and_growth();
-  t_owned_text_finalizer_reads_do_not_deadlock();
-  t_nul_arena_keys_keep_identity();
-  t_owned_text_search_and_slices();
-  t_owned_text_trim_and_lists();
-  t_bounded_search_exhaustive();
-  t_bounded_search_permutations();
-  t_bounded_search_long_repetitions();
+  run_suites(NULL);
   t_scalars();
   t_string_escapes();
   t_paths_and_lengths();

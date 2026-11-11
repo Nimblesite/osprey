@@ -1,6 +1,7 @@
 // Live-server tests, split from http_runtime_tests.c: raw clients against a
 // REAL listener, so the reject path, the self-stop path and the listen/stop
 // state machine are asserted end to end [HTTP-SERVER].
+#include "test_loopback.h"
 #include "http_runtime_tests.h"
 #include "http_server_internal.h"
 #include "http_shared.h"
@@ -26,11 +27,7 @@ static int64_t g_self_stop_server = -1;
 // retrying while the listener fiber binds; every reply sets Connection: close,
 // so read-to-EOF is the whole reply.
 int server_test_connect(int port) {
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  struct sockaddr_in addr = test_loopback_addr(port);
   int fd = -1;
   for (int i = 0; i < 100 && fd < 0; i++) {
     fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -81,64 +78,84 @@ static void server_exchange(const char *request, char *reply,
   server_test_exchange(SERVER_TEST_PORT, request, reply, capacity);
 }
 
+// One exchange with the shared server: reply opens with `status`, holds `body`.
+static void exchange_assert(const char *request, const char *status,
+                            const char *body) {
+  char reply[2048];
+  server_exchange(request, reply, sizeof(reply));
+  assert(strstr(reply, status) == reply);
+  assert(strstr(reply, body) != NULL);
+}
+
+// A server on the shared test port, bound to loopback.
+static int64_t create_test_server(void) {
+  int64_t server_id =
+      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
+  assert(server_id > 0);
+  return server_id;
+}
+
+// Create a server on the shared port and start it listening on `handler`.
+static int64_t start_listening_server(HttpRequestHandler handler) {
+  int64_t server_id = create_test_server();
+  assert(http_listen(server_id, handler) == 0);
+  return server_id;
+}
+
+// A second server on the shared port: listened per the bind race's outcome,
+// then stopped, leaving the port free again.
+static void second_server_binds(int64_t listen_result) {
+  int64_t server = create_test_server();
+  assert(http_listen(server, http_test_server_handler) == listen_result);
+  assert(http_stop_server(server) == 0);
+}
+
 static HttpResponse g_server_test_response;
+
+// The canned reply every handler here returns: complete plain text, no stream.
+static HttpResponse *plain_text_reply(const char *body) {
+  g_server_test_response.status = 200;
+  g_server_test_response.headers =
+      (char *)(uintptr_t) "Content-Type: text/plain\r\n";
+  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
+  g_server_test_response.streamFd = -1;
+  g_server_test_response.isComplete = true;
+  g_server_test_response.partialBody = (char *)(uintptr_t) body;
+  return &g_server_test_response;
+}
 
 HttpResponse *http_test_server_handler(char *method, char *path,
                                           char *headers, char *body) {
   (void)headers;
   (void)body;
-  g_server_test_response.status = 200;
-  g_server_test_response.headers = (char *)(uintptr_t) "Content-Type: text/plain\r\n";
-  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_server_test_response.streamFd = -1;
-  g_server_test_response.isComplete = true;
-  g_server_test_response.partialBody =
-      strcmp(method, "GET") == 0 && strcmp(path, "/stop") == 0
-          ? (char *)(uintptr_t) "stopping"
-          : (char *)(uintptr_t) "served";
-  return &g_server_test_response;
+  return plain_text_reply(strcmp(method, "GET") == 0 &&
+                                  strcmp(path, "/stop") == 0
+                              ? "stopping"
+                              : "served");
 }
 
 // A request the reader refuses never reaches the handler: it is answered with
 // the rejection status and its JSON body, and the exchange is still logged
 // with a labelled method and path [HTTP-SERVER].
 void test_server_rejects_bad_requests(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, http_test_server_handler) == 0);
+  int64_t server_id = start_listening_server(http_test_server_handler);
   // Listening twice on one server is refused, and so is a second bind of the
   // same port by another server.
   assert(http_listen(server_id, http_test_server_handler) == -7);
-  int64_t rival =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(rival > 0);
-  assert(http_listen(rival, http_test_server_handler) == -4); // port already bound
-  assert(http_stop_server(rival) == 0);
+  second_server_binds(-4); // port already bound
 
-  char reply[2048];
-  server_exchange("GET /ok HTTP/1.1\r\nHost: x\r\n\r\n", reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 200") == reply);
-  assert(strstr(reply, "served") != NULL);
-
-  server_exchange("GET /chunk HTTP/1.1\r\nHost: x\r\n"
+  exchange_assert("GET /ok HTTP/1.1\r\nHost: x\r\n\r\n",
+                  "HTTP/1.1 200", "served");
+  exchange_assert("GET /chunk HTTP/1.1\r\nHost: x\r\n"
                   "Transfer-Encoding: chunked\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 400") == reply);
-  assert(strstr(reply, "unsupported HTTP transfer encoding") != NULL);
-
-  server_exchange("GET /bad HTTP/1.1\r\nHost: x\r\n"
+                  "HTTP/1.1 400", "unsupported HTTP transfer encoding");
+  exchange_assert("GET /bad HTTP/1.1\r\nHost: x\r\n"
                   "Content-Length: not-a-number\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 400") == reply);
-  assert(strstr(reply, "malformed HTTP request") != NULL);
-
+                  "HTTP/1.1 400", "malformed HTTP request");
   // A declared body far past the cap is refused before a byte of it is read.
-  server_exchange("POST /huge HTTP/1.1\r\nHost: x\r\n"
+  exchange_assert("POST /huge HTTP/1.1\r\nHost: x\r\n"
                   "Content-Length: 99999999\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 413") == reply);
-  assert(strstr(reply, "HTTP request too large") != NULL);
+                  "HTTP/1.1 413", "HTTP request too large");
 
   assert(http_stop_server(server_id) == 0);
 }
@@ -152,33 +169,17 @@ static HttpResponse *self_stopping_handler(char *method, char *path,
   (void)headers;
   (void)body;
   assert(http_stop_server(g_self_stop_server) == 0);
-  g_server_test_response.status = 200;
-  g_server_test_response.headers = (char *)(uintptr_t) "Content-Type: text/plain\r\n";
-  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_server_test_response.streamFd = -1;
-  g_server_test_response.isComplete = true;
-  g_server_test_response.partialBody = (char *)(uintptr_t) "self-stopped";
-  return &g_server_test_response;
+  return plain_text_reply("self-stopped");
 }
 
 void test_server_self_stop_from_handler(void) {
-  g_self_stop_server =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(g_self_stop_server > 0);
-  assert(http_listen(g_self_stop_server, self_stopping_handler) == 0);
-  char reply[1024];
-  server_exchange("GET /stop HTTP/1.1\r\nHost: x\r\n\r\n", reply,
-                  sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 200") == reply);
-  assert(strstr(reply, "self-stopped") != NULL);
+  g_self_stop_server = start_listening_server(self_stopping_handler);
+  exchange_assert("GET /stop HTTP/1.1\r\nHost: x\r\n\r\n",
+                  "HTTP/1.1 200", "self-stopped");
   // The handle is already gone: stopping it again is a no-op, not a double
   // free, and the port comes back.
   assert(http_stop_server(g_self_stop_server) == 0);
-  int64_t reborn =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(reborn > 0);
-  assert(http_listen(reborn, http_test_server_handler) == 0);
-  assert(http_stop_server(reborn) == 0);
+  second_server_binds(0);
 }
 
 // Server handles outside the table are rejected; one inside it that names no
@@ -227,10 +228,7 @@ static void exchange_capturing_log(const char *request, char *reply,
 }
 
 void test_server_labels_an_unparseable_request(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, http_test_server_handler) == 0);
+  int64_t server_id = start_listening_server(http_test_server_handler);
 
   // A header block with no request line at all: `sscanf` finds neither token.
   char reply[1024];
@@ -305,9 +303,7 @@ static size_t fiber_record_bytes(void) {
 }
 
 void test_listener_spawn_failure_is_reported(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
+  int64_t server_id = create_test_server();
 
   // The one way left for a spawn to fail: no memory for the fiber's record.
   size_t record = fiber_record_bytes();

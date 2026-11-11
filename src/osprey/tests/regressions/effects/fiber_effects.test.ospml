@@ -19,6 +19,7 @@ type Priority =
     Low
     Med
     High
+
 priWeight p = match p
     Low  => 1
     Med  => 5
@@ -28,6 +29,17 @@ priWeight p = match p
 type Job =
     id : int
     score : int
+
+(** Two positional answers harvested from one handler region. *)
+type PairAnswers =
+    first : int
+    second : int
+
+(** Three positional answers harvested from one handler region. *)
+type TripleAnswers =
+    first : int
+    second : int
+    third : int
 
 (** Union with int payloads; both variants exercised + matched. *)
 type Outcome =
@@ -39,6 +51,11 @@ type Outcome =
 classify score = match score
     0 => Failed(code = (0 - 1) )
     _ => Done(score = score)
+
+(** Print the union a fiber result classified into. *)
+showOutcome o = match o
+    Done score   => print ("outcome done " + toString score)
+    Failed code  => print ("outcome failed " + toString code)
 
 (** (1) Effect inside a fiber-run worker. *)
 runJob weight =
@@ -57,15 +74,20 @@ block (value, place) = intDiv (value, place) % 100
 (** The decimal digit of `value` `place` places from the right. *)
 digitAt (value, place) = intDiv (value, place) % 10
 
-(** True when `haystack` contains every fragment in `wanted`. *)
-carriesAll (haystack, wanted) = match wanted
+(** Whether every two-digit block of `value`, from the last pair outwards,
+    matches the corresponding field of `wants`. *)
+spellsAt (value, wants, place) = match wants
     [] => true
-    [head, ...tail] => contains (haystack, head) && carriesAll (haystack, tail)
+    [head, ...tail] => block (value, place) == head && spellsAt (value, tail, place * 100)
 
-(** True when `haystack` contains none of the fragments in `banned`. *)
-carriesNone (haystack, banned) = match banned
-    [] => true
-    [head, ...tail] => !(contains (haystack, head)) && carriesNone (haystack, tail)
+(** Whether `value` spells `wants` as consecutive two-digit blocks from the right. *)
+spells (value, wants) = spellsAt (value, wants, 1)
+
+(** Whether `value` spells `blocks` two digits at a time and its top block is `top`. *)
+readsAs (value, blocks, top) = spells (value, blocks) && intDiv (value, 1000000) == top
+
+(** Spawn `weight`'s job and await it, so the pair reads as one step. *)
+spawnedScore weight = await (spawn (runJob (priWeight weight)))
 
 print "=== mixup: fibers + effects + records ==="
 
@@ -73,41 +95,31 @@ mixupDemo () =
     handle Logger
         log msg => print ("[LOG] " + msg)
     (** priorities -> effectful fibers *)
-    fHigh = spawn (runJob (priWeight High))
-    sHigh = await fHigh
+    sHigh = spawnedScore High
 
-    fMed  = spawn (runJob (priWeight Med))
-    sMed  = await fMed
+    sMed  = spawnedScore Med
 
-    fLow  = spawn (runJob (priWeight Low))
-    sLow  = await fLow
-
+    sLow  = spawnedScore Low
     (** record from a fiber result, fields read back *)
     top = Job(id = 1, score = sHigh)
     print ("job " + toString top.id + " score " + toString top.score)
 
     (** classify a fiber result into a union, then pattern-match it inline *)
-    oTop = classify sHigh
-    match oTop
-        Done score  => print ("outcome done " + toString score)
-        Failed code => print ("outcome failed " + toString code)
-    oZero = classify 0
-    match oZero
-        Done score  => print ("outcome done " + toString score)
-        Failed code => print ("outcome failed " + toString code)
+    showOutcome (classify sHigh)
+    showOutcome (classify 0)
 
     (** results into a persistent list, walked with functional builtins *)
     scores = listAppend (listAppend (listAppend (List ()) sHigh) sMed) sLow
     print ("list len " + toString (listLength scores))
-    print ("has 81 " + toString (listContains scores 81))
-    forEachList scores show
+    print ("has 81 " + toString (listContains (scores, 81)))
+    forEachList (scores, show)
     report scores
 
     (** results into a map keyed by name, walked the same way *)
     m = mapSet (mapSet (mapSet (Map ()) "high" sHigh) "med" sMed) "low" sLow
     print ("map len " + toString (mapLength m))
-    print ("has high " + toString (mapContains m "high"))
-    forEachList (mapValues m) show
+    print ("has high " + toString (mapContains (m, "high")))
+    forEachList (mapValues m, show)
 exactArithmetic (\() =>
     mixupDemo ())
 
@@ -138,11 +150,14 @@ pairSum (a, b) =
     f2 = spawn (ask b)
     (await f1) + (await f2) 
 
+(** The two-fiber resuming interaction under a Gift region answering `tag * 10`. *)
+giftPairSum () =
+    handle Gift
+        get tag => resume ((tag * 10) )
+    pairSum (1, 2)
+
 raceSum =
-    exactArithmetic (\() =>
-        handle Gift
-            get tag => resume ((tag * 10) )
-        pairSum (1, 2))
+    exactArithmetic (\() => giftPairSum ())
 print ("race-free sum " + toString raceSum)
 print "=== done ==="
 
@@ -152,22 +167,16 @@ highScoreForTest () =
         log _msg => 0
     await (spawn (runJob (priWeight High)))
 
-(** Repeats the two-fiber resuming interaction for assertion use. *)
-pairedScoreForTest () =
-    handle Gift
-        get tag => resume ((tag * 10) )
-    pairSum (1, 2)
-
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
-test "fiber results remain deterministic across effect handlers" (\() => exactArithmetic ((\() => checkAll "fiber and effect results" [
+test "fiber results remain deterministic across effect handlers" (\() => exactArithmetic (\() => checkAll "fiber and effect results" [
         highScoreForTest () == 81,
-        pairedScoreForTest () == 30,
+        giftPairSum () == 30,
         prodR == 10,
         silentR == 0,
         raceSum == 30,
         priWeight Low == 1
-])))
+]))
 
 (** Handler-owned tally. `add` is the ONLY operation a job performs, so the arm's
     own counter is exactly the number of fiber bodies that ran — the detector for
@@ -178,6 +187,9 @@ effect Tally
 
 (** One perform per run. *)
 tallyJob amount = perform Tally.add amount
+
+(** Spawn one tally job and await it, so one run reads as one step. *)
+runOnce amount = await (spawn (tallyJob amount))
 
 (** Two performs in ONE fiber body: the second suspension installs its own
     mailbox instead of overwriting one still in use ([EFFECTS-OPERATION-MAILBOX]). *)
@@ -204,6 +216,21 @@ quadWeighted (a, b, c, d) =
     f3 = spawn (ask c)
     f4 = spawn (ask d)
     (await f1) + (await f2) * 100 + (await f3) * 10000 + (await f4) * 1000000 
+
+(** Sum one spawned `tallyJob` per amount, awaiting each in list order. *)
+sumFibers amounts = match amounts
+    [] => 0
+    [head, ...tail] => runOnce head + sumFibers tail
+
+(** Sum `amounts`' spawned jobs under a Tally region, answering the summed holds
+    and the handler's final running total. *)
+tallySums amounts =
+    mut total = 0
+    handle Tally
+        add amount =>
+            total := total + amount
+            total
+    PairAnswers(first = sumFibers amounts, second = total)
 
 (** A spawned fiber that itself spawns: the innermost performs sit two fiber hops
     from the region that installed the handler. The fiber that awaits never
@@ -240,7 +267,8 @@ awaitReplaysOneEffectfulRunCase () =
     mut performs = 0
     mut lastAmount = 0
 
-    (** Every region installs the same tally arm. *)
+    (** Every region in this case installs the same tally arm: it counts the run,
+        folds the amount into the shared cell and answers the new total. *)
     underTally = \work =>
         handle Tally
             add amount =>
@@ -265,21 +293,21 @@ awaitReplaysOneEffectfulRunCase () =
         (await fz) + (await fz))
 
     (** A negative amount walks the shared cell back. 7 -> 2. *)
-    negRun = underTally (\() => await (spawn (tallyJob (0 - 5))))
+    negRun = underTally (\() => runOnce (0 - 5 ))
 
     (** Three spawn SITES, each awaited before the next is spawned, so arrival is
         program order. "Each spawn site allocates a distinct capture cell", so the
         captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17. *)
     stepped = underTally (\() =>
         base = 4
-        s1 = await (spawn (tallyJob base))
-        s2 = await (spawn (tallyJob (base + 1 )))
-        s3 = await (spawn (tallyJob (base + 2 )))
+        s1 = runOnce base
+        s2 = runOnce (base + 1 )
+        s3 = runOnce (base + 2 )
         s1 * 10000 + s2 * 100 + s3)
 
     (** ONE fiber body performing twice, the second nested inside the first arm's
         round trip. 17 -> 18 -> 17, and the body answers 18 + 17. *)
-    twice = underTally (\() => await (spawn (tallyTwice (1, 0 - 1))))
+    twice = underTally (\() => await (spawn (tallyTwice (1, 0 - 1 ))))
 
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll "one body run answers every await" [
@@ -311,9 +339,8 @@ awaitReplaysOneEffectfulRunCase () =
         (17 + 1 ) == 18,
         (18 - 1 ) == 17,
         negRun == (7 - 5 ),
-        (intDiv stepped 10000 ) == 6,
-        block (stepped, 100) == 11,
-        block (stepped, 1) == 17,
+        intDiv (stepped, 10000) == 6,
+        spells (stepped, [17, 11]),
         twice == (18 + 17 ),
         total == 17
     ]
@@ -354,70 +381,50 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
     mut edgeTurns = 0
     mut edgeSum = 0
 
-    (** Four DISTINCT tags in flight at once; answers 10, 20, 30, 40. *)
-    weighted =
+    (** Four DISTINCT tags in flight at once; answers 10, 20, 30, 40. DUPLICATE
+        tags follow: four performers ask the same question and each still gets its
+        own round trip, so the turn count sees all four. *)
+    tagged =
         handle Gift
             get tag =>
                 turns := turns + 1 
                 tagSum := tagSum + tag 
                 tagProduct := tagProduct * tag 
                 resume ((tag * 10) )
-        quadWeighted (1, 2, 3, 4)
-
-    (** DUPLICATE tags: four performers ask the same question and each still gets
-        its own round trip, so the turn count sees all four. *)
-    duplicated =
-        handle Gift
-            get tag =>
-                turns := turns + 1 
-                tagSum := tagSum + tag 
-                tagProduct := tagProduct * tag 
-                resume ((tag * 10) )
-        quadWeighted (2, 2, 2, 2)
+        PairAnswers(
+            first = quadWeighted (1, 2, 3, 4),
+            second = quadWeighted (2, 2, 2, 2)
+        )
+    weighted = tagged.first
+    duplicated = tagged.second
 
     (** Zero and a negative operand: identity and sign cross the mailbox unchanged.
-        0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000. *)
-    signed =
+        0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000. Then two
+        performers with the identity tag (70 + 0), then a fiber that spawns fibers:
+        (30 + 40) from the inner pair, 70 from the side fiber whose tag is 3 + 4. *)
+    edges =
         handle Gift
             get tag =>
                 edgeTurns := edgeTurns + 1 
                 edgeSum := edgeSum + tag 
                 resume ((tag * 10) )
-        quadWeighted (0, 0 - 1 , 5, 0)
-
-    (** Two performers, one of them the identity tag: 70 + 0. *)
-    pairEdge =
-        handle Gift
-            get tag =>
-                edgeTurns := edgeTurns + 1 
-                edgeSum := edgeSum + tag 
-                resume ((tag * 10) )
-        pairSum (7, 0)
-
-    (** A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
-        side fiber whose tag is 3 + 4. *)
-    deepFan =
-        handle Gift
-            get tag =>
-                edgeTurns := edgeTurns + 1 
-                edgeSum := edgeSum + tag 
-                resume ((tag * 10) )
-        nestedFan (3, 4)
+        TripleAnswers(
+            first = quadWeighted (0, 0 - 1 , 5, 0),
+            second = pairSum (7, 0),
+            third = nestedFan (3, 4)
+        )
+    signed = edges.first
+    pairEdge = edges.second
+    deepFan = edges.third
 
     // Each positional field holds the answer to that fiber's OWN tag. 40301020
     // is what a swap between the first two performers would print, 40302040 what
     // the fourth performer's answer landing on the first would print.
     checkAll "each performer keeps its own answer" [
         weighted == 40302010,
-        block (weighted, 1) == 10,
-        block (weighted, 100) == 20,
-        block (weighted, 10000) == 30,
-        (intDiv weighted 1000000 ) == 40,
+        readsAs (weighted, [10, 20, 30], 40),
         duplicated == 20202020,
-        block (duplicated, 1) == 20,
-        block (duplicated, 100) == 20,
-        block (duplicated, 10000) == 20,
-        (intDiv duplicated 1000000 ) == 20,
+        readsAs (duplicated, [20, 20, 20], 20),
         weighted != duplicated,
         weighted != 40301020,
         weighted != 40302040,
@@ -449,7 +456,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
     checkAll "zero and negative operands cross the mailbox unchanged" [
         signed == 499000,
         (signed + 1000 ) == 500000,
-        (intDiv (signed + 1000 ) 10000 ) == 50,
+        intDiv (signed + 1000 , 10000) == 50,
         signed != 500000,
         signed != 501000,
         signed < 500000,
@@ -468,7 +475,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
     checkAll "a fiber that spawns fibers still reaches the installing region" [
         deepFan == 140,
         deepFan == (70 + 70 ),
-        (intDiv deepFan 2 ) == 70,
+        intDiv (deepFan, 2) == 70,
         deepFan == (pairEdge * 2 ),
         deepFan > pairEdge,
         deepFan != 70,
@@ -498,31 +505,36 @@ handlerCellCrossesTheFiberBoundaryCase () =
     mut turns = 0
     mut answered = 0
 
-    (** main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
-        and each perform's own answer is kept in its own positional field. *)
-    mixed =
+    (** Both arms are this region: `trace` 1 records the transcript, `trace` 0
+        leaves it alone; either way it counts the hop, folds the amount in and
+        answers the new total. *)
+    regionFor = \(trace, work) =>
         handle Tally
             add amount =>
                 hops := hops + 1 
                 cell := cell + amount 
-                trail := "${trail}${amount}:${cell}|"
+                trail := match trace
+                    1 => "${trail}${amount}:${cell}|"
+                    _ => trail
                 cell
+        work ()
+
+    (** The tracing arm writes the transcript; the untraced arm writes nothing. *)
+    traced = \work => regionFor (1, work)
+    untraced = \work => regionFor (0, work)
+
+    (** main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
+        and each perform's own answer is kept in its own positional field. *)
+    mixed = traced (\() =>
         m1 = tallyJob 3
-        f1 = await (spawn (tallyJob 4))
+        f1 = runOnce 4
         m2 = tallyJob 5
-        f2 = await (spawn (tallyJob 6))
-        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 
+        f2 = runOnce 6
+        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2)
 
     (** A SECOND region over the same captured binding: promotion is to one heap
         location, not one per region. 18 -> 22. *)
-    carried =
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                trail := "${trail}${amount}:${cell}|"
-                cell
-        await (spawn (tallyJob 4))
+    carried = traced (\() => runOnce 4)
 
     (** Four fibers in flight into ONE resuming region: a turn is atomic end to
         end, so four increments of one cannot collapse into fewer. *)
@@ -536,22 +548,13 @@ handlerCellCrossesTheFiberBoundaryCase () =
 
     (** A third region reads the cell back through the identity amount and never
         touches the trail: "code after the region observes the same location". *)
-    readBack =
-        handle Tally
-            add amount =>
-                hops := hops + 1 
-                cell := cell + amount 
-                cell
-        await (spawn (tallyJob 0))
+    readBack = untraced (\() => runOnce 0)
 
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
     checkAll "one promoted cell serves main-fiber and fiber performs" [
         mixed == 3071218,
-        (intDiv mixed 1000000 ) == 3,
-        block (mixed, 10000) == 7,
-        block (mixed, 100) == 12,
-        block (mixed, 1) == 18,
+        readsAs (mixed, [18, 12, 7], 3),
         carried == 22,
         cell == 22,
         hops == 6,
@@ -568,22 +571,19 @@ handlerCellCrossesTheFiberBoundaryCase () =
     checkAll "the transcript records every hop in body order" [
         trail == "3:3|4:7|5:12|6:18|4:22|",
         length trail == 23,
-        startsWith trail "3:3|",
-        endsWith trail "4:22|",
-        carriesAll (trail, ["4:7|", "5:12|", "6:18|", "|4:22|"]),
-        carriesNone (trail, ["3:4|", "4:11|", "6:14|"]),
-        !(startsWith trail "4:7|"),
-        !(endsWith trail "6:18|"),
+        startsWith (trail, "3:3|"),
+        endsWith (trail, "4:22|"),
+        containsAll (trail, ["4:7|", "5:12|", "6:18|", "|4:22|"]),
+        containsNone (trail, ["3:4|", "4:11|", "6:14|"]),
+        !(startsWith (trail, "4:7|")),
+        !(endsWith (trail, "6:18|")),
         trail != ""
     ]
 
     // 305020 is what crossing the second and third performers' answers prints.
     checkAll "a resuming region totals across four concurrent fibers" [
         raced == 503020,
-        block (raced, 1) == 20,
-        block (raced, 100) == 30,
-        block (raced, 10000) == 50,
-        (intDiv raced 1000000 ) == 0,
+        readsAs (raced, [20, 30, 50], 0),
         turns == 4,
         answered == 10,
         answered == (2 + 3 + 5 + 0 ),
@@ -605,7 +605,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
         (0 + 22 ) == 22,
         readBack != 0,
         readBack != 18,
-        !(contains trail "0:22|"),
+        !(contains (trail, "0:22|")),
         hops != turns,
         mixed != carried,
         (cell - carried ) == 0,
@@ -615,6 +615,16 @@ handlerCellCrossesTheFiberBoundaryCase () =
 
 // Register the shared-cell rule the spec names this file for.
 test "handler state is one promoted cell across the fiber boundary" (exactly handlerCellCrossesTheFiberBoundaryCase)
+
+(** Send `value` on `ch` and read the oldest value straight back. *)
+pingRound (ch, value) =
+    send ch value
+    recv ch
+
+(** Drain one value per weight in `weights` from `ch`, oldest first. *)
+drainWeights (ch, weights) = match weights
+    [] => 0
+    [head, ...tail] => recv ch * head + drainWeights (ch, tail)
 
 (** [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
     "appends `value`" and whose `recv` "removes its oldest value". Fibers are
@@ -640,11 +650,7 @@ channelHandoffKeepsFibersIsolatedCase () =
             send ch (tallyJob 33)
             send ch (tallyJob 44)
         await producer
-        r1 = recv ch
-        r2 = recv ch
-        r3 = recv ch
-        r4 = recv ch
-        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 
+        drainWeights (ch, [1000000, 10000, 100, 1])
 
     (** Two fibers, no shared memory: every digit the consumer answers arrived
         through the buffer. *)
@@ -654,44 +660,35 @@ channelHandoffKeepsFibersIsolatedCase () =
         send ch2 7
         send ch2 9
     cons2 = spawn
-        c1 = recv ch2
-        c2 = recv ch2
-        c3 = recv ch2
-        c1 * 100 + c2 * 10 + c3 
+        drainWeights (ch2, [100, 10, 1])
     await prod2
     consumed = await cons2
 
     (** A ONE-slot buffer reused three times, including a negative payload. *)
     ping = Channel 1
-    send ping 1
-    p1 = recv ping
-    send ping 2
-    p2 = recv ping
-    send ping (0 - 3 )
-    p3 = recv ping
+    p1 = pingRound (ping, 1)
+    p2 = pingRound (ping, 2)
+    p3 = pingRound (ping, (0 - 3 ))
 
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll "a channel hands values over oldest first" [
         drained == 11223344,
-        (intDiv drained 1000000 ) == 11,
-        block (drained, 10000) == 22,
-        block (drained, 100) == 33,
-        block (drained, 1) == 44,
+        readsAs (drained, [44, 33, 22], 11),
         drained != 44332211,
         drained != 0,
         sent == 110,
         sent == (11 + 22 + 33 + 44 ),
         trail == "11,22,33,44,",
         length trail == 12,
-        startsWith trail "11,",
-        endsWith trail "44,",
-        !(contains trail "44,11,")
+        startsWith (trail, "11,"),
+        endsWith (trail, "44,"),
+        !(contains (trail, "44,11,"))
     ]
 
     // 975 is what a reversed drain would print; 1 + 2 - 3 balances to zero.
     checkAll "two fibers exchange only through the buffer" [
         consumed == 579,
-        (intDiv consumed 100 ) == 5,
+        intDiv (consumed, 100) == 5,
         digitAt (consumed, 10) == 7,
         digitAt (consumed, 1) == 9,
         consumed != 975,
@@ -713,12 +710,12 @@ channelHandoffKeepsFibersIsolatedCase () =
         sent != 0,
         sent != 11,
         trail != "",
-        carriesAll (trail, ["22,", "33,"]),
-        carriesNone (trail, ["55,", ",0,"]),
+        containsAll (trail, ["22,", "33,"]),
+        containsNone (trail, ["55,", ",0,"]),
         length trail == 12,
         length trail != 0,
-        (intDiv sent 11 ) == 10,
-        (sent % 11 ) == 0,
+        intDiv (sent, 11) == 10,
+        sent % 11 == 0,
         drained != sent,
         sent > p1
     ]
@@ -737,7 +734,8 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     mut innerHits = 0
     mut stampHits = 0
 
-    (** The enclosing region handles both operations. *)
+    (** The enclosing region: `fetch` doubles the tag, `stamp` labels it, and
+        both arms count their own hits. *)
     outerRegion = \work =>
         handle Relay
             fetch tag =>
@@ -748,7 +746,8 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
                 "outer${tag}"
         work ()
 
-    (** The partial inner region handles fetch and lets stamp fall through. *)
+    (** The partial inner region: it supplies `fetch` only, so `stamp` must reach
+        the enclosing arm. *)
     innerFetch = \work =>
         handle Relay
             fetch tag =>
@@ -756,7 +755,8 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
                 tag * 100
         work ()
 
-    (** The inner region answers 300 and the outer region labels it "outer3". *)
+    (** Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
+        enclosing one. tag 3 => "outer3" and 300. *)
     inner = outerRegion (\() => innerFetch (\() => await (spawn (relayBoth 3))))
 
     (** The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6. *)
@@ -783,13 +783,13 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
         inner != "outer3=6",
         outerOnly == "outer3=6",
         inner != outerOnly,
-        contains inner "=300",
-        contains outerOnly "=6",
-        startsWith inner "outer3",
-        startsWith outerOnly "outer3",
-        !(contains inner "=6"),
-        endsWith inner "300",
-        endsWith outerOnly "6",
+        contains (inner, "=300"),
+        contains (outerOnly, "=6"),
+        startsWith (inner, "outer3"),
+        startsWith (outerOnly, "outer3"),
+        !(contains (inner, "=6")),
+        endsWith (inner, "300"),
+        endsWith (outerOnly, "6"),
         length inner == 10,
         length outerOnly == 8,
         inner != ""
@@ -803,13 +803,13 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
         outerHits == 2,
         (stampHits - innerHits ) == 2,
         stampHits == (innerHits + outerHits ),
-        startsWith inner "outer",
+        startsWith (inner, "outer"),
         restored == "outer4=400/outer4=8",
-        contains restored "outer4=400",
-        contains restored "outer4=8",
+        contains (restored, "outer4=400"),
+        contains (restored, "outer4=8"),
         length restored == 19,
-        contains restored "400/outer4",
-        !(contains restored "outer4=800"),
+        contains (restored, "400/outer4"),
+        !(contains (restored, "outer4=800")),
         outerHits != innerHits,
         outerHits < innerHits
     ]
@@ -818,18 +818,18 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     // inner arm would print.
     checkAll "each fiber's own tag threads to its own arm" [
         paired == "outer0=0+outer-2=-200",
-        contains paired "outer0=0",
-        contains paired "outer-2=-200",
-        startsWith paired "outer0=0+",
-        endsWith paired "-200",
-        !(contains paired "outer-2=200"),
-        !(contains paired "outer2="),
+        contains (paired, "outer0=0"),
+        contains (paired, "outer-2=-200"),
+        startsWith (paired, "outer0=0+"),
+        endsWith (paired, "-200"),
+        !(contains (paired, "outer-2=200")),
+        !(contains (paired, "outer2=")),
         length paired == 21,
         paired != inner,
         paired != restored,
         innerHits == 4,
-        !(contains paired "=0+outer-2=200"),
-        contains paired "=-200",
+        !(contains (paired, "=0+outer-2=200")),
+        contains (paired, "=-200"),
         stampHits == 6
     ]
 
@@ -837,18 +837,18 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     // closes, so the second half of the pair is 8 and not 400.
     checkAll "the enclosing region is restored after the inner one ends" [
         restored == "outer4=400/outer4=8",
-        contains restored "/",
-        !(endsWith restored "400"),
-        endsWith restored "=8",
-        startsWith restored "outer4=400",
+        contains (restored, "/"),
+        !(endsWith (restored, "400")),
+        endsWith (restored, "=8"),
+        startsWith (restored, "outer4=400"),
         length restored == 19,
         outerHits == 2,
         innerHits == 4,
         (outerHits * 2 ) == innerHits,
         restored != paired,
         restored != inner,
-        !(contains restored "outer4=80"),
-        contains restored "0/o",
+        !(contains (restored, "outer4=80")),
+        contains (restored, "0/o"),
         stampHits > innerHits
     ]
 
@@ -864,76 +864,47 @@ fiberPipelineTranscriptIsDeterministicCase () =
     mut running = 0
     mut steps = 0
     mut script = ""
-    mut forwardTotal = 0
-    mut reverseTotal = 0
 
     (** Each stage's amount is the previous stage's answer plus one, so the cell
-        walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it. *)
-    piped =
+        walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it. A
+        yield BETWEEN two performs follows (the parked value is handed straight
+        back, so the second perform adds 20 to the 20 the first answered), then the
+        completion probe, which must read 1 once the await returned. *)
+    staged =
         handle Tally
             add amount =>
                 steps := steps + 1 
                 running := running + amount 
                 script := "${script}s${steps}=${running};"
                 running
-        a = await (spawn (tallyJob 1))
-        b = await (spawn (tallyJob (a + 1 )))
-        c = await (spawn (tallyJob (b + 1 )))
-        d = await (spawn (tallyJob (c + 1 )))
-        a * 1000000 + b * 10000 + c * 100 + d 
-
-    (** A yield BETWEEN two performs in one fiber body: the parked value is handed
-        straight back, so the second perform adds 20 to the 20 the first answered. *)
-    yielded =
-        handle Tally
-            add amount =>
-                steps := steps + 1 
-                running := running + amount 
-                script := "${script}s${steps}=${running};"
-                running
-        await (spawn (yieldedJob 5))
-
-    (** 40 - 35 = 5, and the completion probe must read 1 once the await returned. *)
-    probe =
-        handle Tally
-            add amount =>
-                steps := steps + 1 
-                running := running + amount 
-                script := "${script}s${steps}=${running};"
-                running
+        a = runOnce 1
+        b = runOnce (a + 1 )
+        c = runOnce (b + 1 )
+        d = runOnce (c + 1 )
+        y = await (spawn (yieldedJob 5))
         f = spawn (tallyJob (0 - 35 ))
         v = await f
-        v * 10 + fiberDone f 
+        TripleAnswers(
+            first = a * 1000000 + b * 10000 + c * 100 + d,
+            second = y,
+            third = v * 10 + fiberDone f
+        )
+    piped = staged.first
+    yielded = staged.second
+    probe = staged.third
 
     (** The same three amounts forwards: prefix sums 2, 6, 12 => 20. *)
-    fwd =
-        handle Tally
-            add amount =>
-                forwardTotal := forwardTotal + amount 
-                forwardTotal
-        x1 = await (spawn (tallyJob 2))
-        x2 = await (spawn (tallyJob 4))
-        x3 = await (spawn (tallyJob 6))
-        x1 + x2 + x3 
+    forwards = tallySums [2, 4, 6]
 
     (** ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
         the prefix sums are not, which is exactly why a sum alone proves nothing. *)
-    rev =
-        handle Tally
-            add amount =>
-                reverseTotal := reverseTotal + amount 
-                reverseTotal
-        y1 = await (spawn (tallyJob 6))
-        y2 = await (spawn (tallyJob 4))
-        y3 = await (spawn (tallyJob 2))
-        y1 + y2 + y3 
+    backwards = tallySums [6, 4, 2]
+    fwd = forwards.first
+    rev = backwards.first
 
     checkAll "a data-dependent pipeline fixes a total order" [
         piped == 1030715,
-        (intDiv piped 1000000 ) == 1,
-        block (piped, 10000) == 3,
-        block (piped, 100) == 7,
-        block (piped, 1) == 15,
+        readsAs (piped, [15, 7, 3], 1),
         piped != 0,
         (1 * 2 + 1 ) == 3,
         (3 * 2 + 1 ) == 7,
@@ -950,12 +921,12 @@ fiberPipelineTranscriptIsDeterministicCase () =
     checkAll "the handler transcript records every stage exactly once" [
         script == "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;",
         length script == 38,
-        startsWith script "s1=1;",
-        endsWith script "s7=5;",
-        carriesAll (script, ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"]),
-        carriesNone (script, ["s8=", "s1=2;", "s4=14;"]),
-        !(endsWith script "s6=40;"),
-        !(startsWith script "s2="),
+        startsWith (script, "s1=1;"),
+        endsWith (script, "s7=5;"),
+        containsAll (script, ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"]),
+        containsNone (script, ["s8=", "s1=2;", "s4=14;"]),
+        !(endsWith (script, "s6=40;")),
+        !(startsWith (script, "s2=")),
         script != ""
     ]
 
@@ -965,7 +936,7 @@ fiberPipelineTranscriptIsDeterministicCase () =
         yielded != 20,
         probe == 51,
         digitAt (probe, 1) == 1,
-        (intDiv probe 10 ) == 5,
+        intDiv (probe, 10) == 5,
         running == 5,
         running == (40 - 35 ),
         steps == 7,
@@ -980,16 +951,16 @@ fiberPipelineTranscriptIsDeterministicCase () =
         fwd == 20,
         rev == 28,
         fwd != rev,
-        forwardTotal == 12,
-        reverseTotal == 12,
-        forwardTotal == reverseTotal,
-        forwardTotal == (2 + 4 + 6 ),
+        forwards.second == 12,
+        backwards.second == 12,
+        forwards.second == backwards.second,
+        forwards.second == (2 + 4 + 6 ),
         fwd == (2 + 6 + 12 ),
         rev == (6 + 10 + 12 ),
         rev > fwd,
         (rev - fwd ) == 8,
-        forwardTotal != fwd,
-        reverseTotal != rev,
+        forwards.second != fwd,
+        backwards.second != rev,
         (fwd + rev ) == 48
     ]
 
@@ -1014,7 +985,7 @@ arithmeticFiberRoundTrip () =
         remainderByZero lhs =>
             transcript := "${transcript}%:${lhs};"
             3
-    answer = await (spawn arithmeticFiberJob (9223372036854775807, 0))
+    answer = await (spawn (arithmeticFiberJob (9223372036854775807, 0)))
     check "fiber recovery values" "-9223372036854775808:2.5:3" answer
     check "fiber fault order and payloads" "+:9223372036854775807:1:-9223372036854775808;/:12.0;%:17;" transcript
-test ("arithmetic faults serialize payloads and substitute fiber values", arithmeticFiberRoundTrip)
+test "arithmetic faults serialize payloads and substitute fiber values" arithmeticFiberRoundTrip

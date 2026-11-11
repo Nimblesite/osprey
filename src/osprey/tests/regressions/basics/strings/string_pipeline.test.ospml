@@ -42,8 +42,7 @@ print "=== String Pipeline ===\n"
 
 (** ----- Inspection / search (total, no Result wrap) ----- *)
 raw = "  GET /api/users?name=alice&age=30  "
-print "raw=\"${raw}\" len=${raw |> length}\n"
-print "isEmpty=${raw |> isEmpty}\n"
+print "raw=\"${raw}\" len=${raw |> length}\n\nisEmpty=${raw |> isEmpty}\n"
 print "contains 'GET'=${raw |> contains "GET"}\n"
 print "startsWith '  '=${raw |> startsWith "  "}\n"
 print "endsWith '  '=${raw |> endsWith "  "}\n"
@@ -88,8 +87,7 @@ match padEnd "42" 5 "0"
 
 (** ----- take/drop/reverse (UFCS form) ----- *)
 hello = "hello"
-print "take ufcs=\"${take hello 3}\"\n"
-print "drop ufcs=\"${drop hello 3}\"\n"
+print "take ufcs=\"${take hello 3}\"\n\ndrop ufcs=\"${drop hello 3}\"\n"
 print "reverse=\"${reverse "abc"}\"\n"
 
 // ----- Parsing -----
@@ -106,8 +104,7 @@ match parseFloat "3.14"
 (** ----- Split/lines/words → List<string> ----- *)
 multi  = "a\nb\nc"
 spaced = "  hello   world  "
-print "lines count=${listLength (lines multi)}\n"
-print "words count=${listLength (words spaced)}\n"
+print "lines count=${listLength (lines multi)}\n\nwords count=${listLength (words spaced)}\n"
 match split "a,b,c" ","
     Success value => print "split count=${listLength value}\n"
     Error _message => print "split err\n"

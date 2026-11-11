@@ -48,21 +48,18 @@ uint32_t osp_prof_rate_hz(void) { return g_rate_hz; }
 uint64_t osp_prof_session_start_unix_ns(void) { return g_start_unix_ns; }
 void osp_prof_registry_enable(void) { g_registry_on = true; }
 
-uint64_t osp_prof_mono_ns(void) {
+// One clock read in nanoseconds; 0 when the clock is unavailable.
+static uint64_t now_ns(clockid_t clock) {
   struct timespec ts;
-  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+  if (clock_gettime(clock, &ts) != 0) {
     return 0;
   }
   return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-uint64_t osp_prof_unix_ns(void) {
-  struct timespec ts;
-  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-    return 0;
-  }
-  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
+uint64_t osp_prof_mono_ns(void) { return now_ns(CLOCK_MONOTONIC); }
+
+uint64_t osp_prof_unix_ns(void) { return now_ns(CLOCK_REALTIME); }
 
 // ---- thread registry [PROF-COLLECT-REGISTRY] --------------------------------
 

@@ -53,6 +53,16 @@ def same(name, got, want):
     return Check.truth(name, structuralEquals(got, want), "values differ")
 
 
+def flags(profile, fields, fallbacks):
+    """The bool `profile` reports for each field, with that field's fallback beside it."""
+    return cases(len(fields), lambda i: Profiles.profile_bool(profile, ats(fields, i), atb(fallbacks, i)))
+
+
+def texts(profile, fields, fallbacks):
+    """The text `profile` reports for each field, with that field's fallback beside it."""
+    return cases(len(fields), lambda i: Profiles.profile_text(profile, ats(fields, i), ats(fallbacks, i)))
+
+
 def cases(n, f):
     """The outcomes of f(i) for i in 0..n-1."""
     return toList(map(range(n), f))
@@ -97,6 +107,53 @@ def canon(value):
 def canon_at(xs, i):
     """The canonical JSON of a list element at i, `null` past the end."""
     return canon(unwrap_or(listGet(xs, i), JsonNull()))
+
+
+def outcome_of(outcome, on_ok, on_error):
+    """`on_ok` applied to an `Ok` value, `on_error` to a `Failed` outcome's error."""
+    match outcome:
+        case E.Ok(value=value):
+            return on_ok(value)
+        case E.Failed(error=error):
+            return on_error(error)
+
+
+def result_of(result, on_ok, on_error):
+    """`on_ok` applied to a `Success` value, `on_error` to an `Error`'s message."""
+    match result:
+        case Success(value=value):
+            return on_ok(value)
+        case Error(message=message):
+            return on_error(message)
+
+
+def session_of(result, on_ok, on_error):
+    """`on_ok` applied to an `Ok` session, `on_error` to a `Failed` initialize outcome's message."""
+    match result:
+        case Mcp.Ok(session=session):
+            return on_ok(session)
+        case Mcp.Failed(error=error):
+            return on_error(Mcp.message_of(error))
+
+
+def owed(want):
+    """A want's exact text: an `exact:` marker belongs to the decoder, not to the text."""
+    return drop(want, length("exact:")) if startsWith(want, "exact:") else want
+
+
+def matched(tag, got, want):
+    """`got` against the oracle's text: a `prefix:` want only has to be contained, any
+    other must match exactly, its own marker removed."""
+    if startsWith(want, "prefix:"):
+        return Check.truth(tag, contains(got, drop(want, length("prefix:"))), got)
+    else:
+        return Check.equal(tag, got, owed(want))
+
+
+def table_checks(table, i, got_of):
+    """Row i's check: `got_of` on the row's input text against the row's want."""
+    row = atl(table, i)
+    return matched(ats(row, 0), got_of(ats(row, 1)), ats(row, 2))
 
 
 # Fixtures mirroring the oracle
@@ -284,19 +341,11 @@ def validate_error_cases():
 
 
 def ok_value(result, fallback):
-    match result:
-        case Success(value=value):
-            return value
-        case Error(message=_m):
-            return fallback
+    return result_of(result, lambda value: value, lambda _message: fallback)
 
 
 def error_text(result):
-    match result:
-        case Success(value=_v):
-            return ""
-        case Error(message=message):
-            return message
+    return result_of(result, lambda _value: "", lambda message: message)
 
 
 # TestModel
@@ -332,29 +381,29 @@ def dumped_messages(messages):
 
 def run_ok(tag, agent, prompt, on_ok):
     """A synchronous agent run as checks: `on_ok` maps a good run's result, a failed run is one failed check."""
-    match Agent.run_sync(agent, prompt, []):
-        case E.Ok(value=result):
-            return on_ok(result)
-        case E.Failed(error=error):
-            return [Check.failed(tag, E.message_of(error))]
+    return outcome_of(Agent.run_sync(agent, prompt, []), on_ok, lambda error: [Check.failed(tag, E.message_of(error))])
 
 
 def run_expect_error(tag, agent, prompt, why, on_error):
     """A synchronous agent run that must fail: `why` names the expected error, `on_error` checks the one raised."""
-    match Agent.run_sync(agent, prompt, []):
-        case E.Ok(value=_result):
-            return [Check.failed(tag, why)]
-        case E.Failed(error=error):
-            return on_error(error)
+    return outcome_of(Agent.run_sync(agent, prompt, []), lambda _result: [Check.failed(tag, why)], on_error)
+
+
+def run_head(tag, result, output_want, messages):
+    """A run's output and history length against the expected output and message list."""
+    return [Check.equal(f"{tag}.output", result.output, output_want), Check.equal(f"{tag}.message_count", len(result.messages), len(messages))]
+
+
+def message_checks(tag, result, messages):
+    """Every dumped message of a run against the expected list."""
+    return cases(len(messages), lambda i: Check.equal(f"{tag}.messages[{i}]", ats(dumped_messages(result.messages), i), ats(messages, i)))
 
 
 def test_agent_cases():
-    return run_ok("test_agent", build(ModelsTest.TestModel("", ["all"]), False), "go", lambda result: listConcat([
-        Check.equal("test_agent.output", result.output, Expected.TEST_AGENT_OUTPUT),
-        Check.equal("test_agent.message_count", len(result.messages), len(Expected.TEST_AGENT_MESSAGES)),
+    return run_ok("test_agent", build(ModelsTest.TestModel("", ["all"]), False), "go", lambda result: listConcat(listConcat(run_head("test_agent", result, Expected.TEST_AGENT_OUTPUT, Expected.TEST_AGENT_MESSAGES), [
         Check.ints_equal("test_agent.usage", [result.usage.requests, result.usage.tool_calls], Expected.TEST_AGENT_USAGE),
         Check.equal("test_agent.new_messages", len(Agent.new_messages(result)), len(result.messages)),
-    ], cases(len(Expected.TEST_AGENT_MESSAGES), lambda i: Check.equal(f"test_agent.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.TEST_AGENT_MESSAGES, i)))))
+    ]), message_checks("test_agent", result, Expected.TEST_AGENT_MESSAGES)))
 
 
 def test_agent_custom_cases():
@@ -387,12 +436,10 @@ def prefix(messages, n):
 def scripted_cases():
     model = scripted_model(Expected.SCRIPTED_REPLIES, 200)
     agent = build(model, True)
-    return run_ok("scripted", agent, "What is the temperature in Paris plus 10?", lambda result: concat([[
-        Check.equal("scripted.output", result.output, Expected.SCRIPTED_OUTPUT),
-        Check.equal("scripted.message_count", len(result.messages), len(Expected.SCRIPTED_MESSAGES)),
+    return run_ok("scripted", agent, "What is the temperature in Paris plus 10?", lambda result: concat([listConcat(run_head("scripted", result, Expected.SCRIPTED_OUTPUT, Expected.SCRIPTED_MESSAGES), [
         Check.ints_equal("scripted.usage", [result.usage.requests, result.usage.tool_calls, result.usage.input_tokens, result.usage.output_tokens], Expected.SCRIPTED_USAGE),
         Check.equal("scripted.total_tokens", Usage.run_total_tokens(result.usage), ati(Expected.SCRIPTED_USAGE, 2) + ati(Expected.SCRIPTED_USAGE, 3)),
-    ], cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, Models.with_tools(mapList(agent.tools, Tools.tool_definition_of)))), ats(Expected.SCRIPTED_BODIES, i))), cases(len(Expected.SCRIPTED_MESSAGES), lambda i: Check.equal(f"scripted.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.SCRIPTED_MESSAGES, i)))]))
+    ]), cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, Models.with_tools(mapList(agent.tools, Tools.tool_definition_of)))), ats(Expected.SCRIPTED_BODIES, i))), message_checks("scripted", result, Expected.SCRIPTED_MESSAGES)]))
 
 
 def status_error_cases():
@@ -405,11 +452,7 @@ def status_error_cases():
 
 def transport_error_case():
     provider = Providers.Provider(name="openai", base_url="x", api_key="", post=lambda _path, _body, _headers: Error(message="connection refused"))
-    match Direct.model_request(ModelsOpenai.OpenAIChatModel("gpt-4o", provider, {}), plain(), {}, Models.model_request_parameters()):
-        case E.Ok(value=_response):
-            return Check.failed("transport_error", "expected ModelAPIError")
-        case E.Failed(error=error):
-            return Check.equal("transport_error", f"{E.message_of(error)}/{E.status_code_of(error)}", "connection refused/0")
+    return outcome_of(Direct.model_request(ModelsOpenai.OpenAIChatModel("gpt-4o", provider, {}), plain(), {}, Models.model_request_parameters()), lambda _response: Check.failed("transport_error", "expected ModelAPIError"), lambda error: Check.equal("transport_error", f"{E.message_of(error)}/{E.status_code_of(error)}", "connection refused/0"))
 
 
 HTTP_TEXTS = ["{\"ok\":1}", ""]
@@ -418,11 +461,7 @@ HTTP_CLOSE_OUTCOMES = ["reply 200 kept", "error httpCloseClient returned -1", "e
 
 
 def http_outcome(result):
-    match result:
-        case Success(value=reply):
-            return f"reply {reply.status} {reply.body}"
-        case Error(message=message):
-            return f"error {message}"
+    return result_of(result, lambda reply: f"reply {reply.status} {reply.body}", lambda message: f"error {message}")
 
 
 def http_code(k, missing):
@@ -472,18 +511,13 @@ def usage_limit_case():
 def profile_cases():
     deepseek = Profiles.deepseek_model_profile("deepseek-reasoner")
     return [
-        same("profile.flags", [
-            Profiles.profile_bool(deepseek, "supports_thinking", False),
-            Profiles.profile_bool(deepseek, "thinking_always_enabled", False),
-            Profiles.profile_bool(deepseek, "openai_supports_tool_choice_required", True),
+        same("profile.flags", listConcat(flags(deepseek, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [False, False, True]), [
             Profiles.profile_bool(Profiles.ollama_model_profile("llama3"), "openai_supports_strict_tool_definition", True),
             Profiles.profile_bool(Profiles.openai_model_profile_with({"openai_chat_supports_max_completion_tokens": JsonBool(False)}), "openai_chat_supports_max_completion_tokens", True),
-        ], Expected.PROFILE_FLAGS),
-        same("profile.texts", [
-            Profiles.profile_text(deepseek, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(deepseek, "openai_chat_send_back_thinking_parts", ""),
+        ]), Expected.PROFILE_FLAGS),
+        same("profile.texts", listConcat(texts(deepseek, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), [
             Profiles.profile_text(Profiles.model_profile(), "openai_system_prompt_role", ""),
-        ], Expected.PROFILE_TEXTS),
+        ]), Expected.PROFILE_TEXTS),
         Check.equal("profile.merge", Profiles.profile_bool(Profiles.merge_profile(Profiles.openai_model_profile("gpt-4o"), {"supports_tools": JsonBool(False)}), "supports_tools", True), False),
         Check.equal("profile.o1_mini_role", Profiles.profile_text(Profiles.openai_model_profile("o1-mini"), "openai_system_prompt_role", "system"), "user"),
     ]
@@ -624,46 +658,19 @@ def provider_flag_cases():
     reasoner = Profiles.deepseek_model_profile("deepseek-reasoner")
     kimi_model = Profiles.moonshotai_model_profile("kimi-k3")
     return [
-        same("providers.kimi_flags", [
-            Profiles.profile_bool(kimi, "openai_supports_tool_choice_required", True),
-            Profiles.profile_bool(kimi, "thinking_always_enabled", False),
-            Profiles.profile_bool(kimi, "supports_thinking", False),
-            Profiles.profile_bool(kimi, "supports_json_object_output", False),
-            Profiles.profile_bool(kimi_model, "supports_thinking", False),
-            Profiles.profile_bool(kimi_model, "ignore_streamed_leading_whitespace", False),
+        same("providers.kimi_flags", listConcat(listConcat(flags(kimi, ["openai_supports_tool_choice_required", "thinking_always_enabled", "supports_thinking", "supports_json_object_output"], [True, False, False, False]), flags(kimi_model, ["supports_thinking", "ignore_streamed_leading_whitespace"], [False, False])), [
             Profiles.profile_bool(Profiles.moonshotai_model_profile("moonshot-v1-8k"), "supports_thinking", True),
-        ], [False, True, True, True, True, True, False]),
-        same("providers.kimi_texts", [
-            Profiles.profile_text(kimi, "json_schema_transformer", ""),
-            Profiles.profile_text(kimi, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(kimi, "openai_chat_send_back_thinking_parts", ""),
-        ], ["openai", "reasoning_content", "field"]),
-        same("providers.kimi_v1", [Profiles.profile_bool(v1, "supports_thinking", True), Profiles.profile_bool(v1, "thinking_always_enabled", True), Profiles.profile_bool(v1, "openai_supports_tool_choice_required", True)], [False, False, False]),
-        same("providers.zai_glm-5.3", [
-            Profiles.profile_bool(glm53, "supports_thinking", False),
-            Profiles.profile_bool(glm53, "thinking_always_enabled", False),
-            Profiles.profile_bool(glm53, "zai_supports_reasoning_effort", False),
-            Profiles.profile_bool(glm53, "zai_thinking_body", False),
-        ], [True, True, True, True]),
+        ]), [False, True, True, True, True, True, False]),
+        same("providers.kimi_texts", texts(kimi, ["json_schema_transformer", "openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", "", ""]), ["openai", "reasoning_content", "field"]),
+        same("providers.kimi_v1", flags(v1, ["supports_thinking", "thinking_always_enabled", "openai_supports_tool_choice_required"], [True, True, True]), [False, False, False]),
+        same("providers.zai_glm-5.3", flags(glm53, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort", "zai_thinking_body"], [False, False, False, False]), [True, True, True, True]),
         Check.equal("providers.zai_mapping", canon(unwrap_or(mapGet(glm53, "zai_reasoning_effort_mapping"), JsonNull())), "{\"high\":\"high\",\"low\":\"low\",\"medium\":\"high\",\"minimal\":\"low\",\"xhigh\":\"max\"}"),
-        same("providers.zai_glm-4.7_texts", [
-            Profiles.profile_text(glm47, "openai_chat_thinking_field", ""),
-            Profiles.profile_text(glm47, "openai_chat_send_back_thinking_parts", ""),
-        ], ["reasoning_content", "field"]),
-        same("providers.zai_glm-4.7_flags", [
-            Profiles.profile_bool(glm47, "supports_thinking", False),
-            Profiles.profile_bool(glm47, "thinking_always_enabled", True),
-            Profiles.profile_bool(glm47, "zai_supports_reasoning_effort", True),
+        same("providers.zai_glm-4.7_texts", texts(glm47, ["openai_chat_thinking_field", "openai_chat_send_back_thinking_parts"], ["", ""]), ["reasoning_content", "field"]),
+        same("providers.zai_glm-4.7_flags", listConcat(flags(glm47, ["supports_thinking", "thinking_always_enabled", "zai_supports_reasoning_effort"], [False, True, True]), [
             len(J.members_of(unwrap_or(mapGet(glm47, "zai_reasoning_effort_mapping"), JsonNull()))) == 0,
-        ], [True, False, False, True]),
-        same("providers.zai_glm-3-turbo", [Profiles.profile_bool(glm3, "supports_thinking", True), Profiles.profile_bool(glm3, "zai_thinking_body", False), Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)], [False, True, False]),
-        same("providers.deepseek_defaults", [
-            Profiles.profile_bool(v4, "openai_reasoning_enabled_by_default", True),
-            Profiles.profile_bool(v4, "openai_supports_forced_tool_choice_with_thinking", True),
-            Profiles.profile_bool(reasoner, "openai_reasoning_enabled_by_default", True),
-            Profiles.profile_bool(reasoner, "openai_supports_forced_tool_choice_with_thinking", True),
-            Profiles.profile_bool(reasoner, "openai_supports_tool_choice_required", True),
-        ], [True, False, True, True, False]),
+        ]), [True, False, False, True]),
+        same("providers.zai_glm-3-turbo", listConcat(flags(glm3, ["supports_thinking", "zai_thinking_body"], [True, False]), [Profiles.profile_bool(Profiles.zai_model_profile("glm-3-turbo"), "supports_thinking", True)]), [False, True, False]),
+        same("providers.deepseek_defaults", listConcat(flags(v4, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking"], [True, True]), flags(reasoner, ["openai_reasoning_enabled_by_default", "openai_supports_forced_tool_choice_with_thinking", "openai_supports_tool_choice_required"], [True, True, True])), [True, False, True, True, False]),
         Check.equal("providers.dispatch", Profiles.profile_text(ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile, "json_schema_transformer", ""), "openai"),
         Check.equal("providers.moonshotai_url", ProvidersHttp.MoonshotAIProvider("k").base_url, "https://api.moonshot.ai/v1"),
         Check.equal("providers.zai_url", ProvidersHttp.ZaiProvider("k").base_url, "https://api.z.ai/api/paas/v4"),
@@ -679,7 +686,7 @@ def coding_plan_model():
 def provider_reuse_cases():
     model = coding_plan_model()
     return [
-        same("providers.reuse_flags", [Profiles.profile_bool(model.profile, "zai_thinking_body", False), Profiles.profile_bool(model.profile, "thinking_always_enabled", False)], [True, True]),
+        same("providers.reuse_flags", flags(model.profile, ["zai_thinking_body", "thinking_always_enabled"], [False, False]), [True, True]),
         Check.equal("providers.reuse_body", body_projection(ModelsOpenai.completions_body("glm-5.3", model.profile, plain(), {"thinking": JsonString("minimal")}, forced_tools())), 'low|{"clear_thinking":false,"type":"enabled"}|required'),
     ]
 
@@ -776,11 +783,7 @@ def session_checks_of(result):
 
 def initialize_error_text(result):
     """The message of a failed `initialize_result`, empty on success."""
-    match result:
-        case Mcp.Ok(session=_s):
-            return ""
-        case Mcp.Failed(error=error):
-            return Mcp.message_of(error)
+    return session_of(result, lambda _session: "", lambda message: message)
 
 
 def mcp_tool_checks():
@@ -807,8 +810,7 @@ INCOMING_MESSAGES = [
 
 def incoming_case(i):
     """One recorded wire message read through `read_message`."""
-    row = atl(INCOMING_MESSAGES, i)
-    return Check.equal(ats(row, 0), incoming_text(Mcp.read_message(ats(row, 1))), ats(row, 2))
+    return table_checks(INCOMING_MESSAGES, i, lambda text: incoming_text(Mcp.read_message(text)))
 
 
 CALL_REPLIES = [
@@ -832,8 +834,7 @@ def call_text(body):
 
 def call_text_case(i):
     """The text one recorded tool-call reply carries."""
-    row = atl(CALL_REPLIES, i)
-    return Check.equal(ats(row, 0), call_text(ats(row, 1)), ats(row, 2))
+    return table_checks(CALL_REPLIES, i, lambda text: call_text(text))
 
 
 CALL_ERRORS = [
@@ -846,8 +847,7 @@ CALL_ERRORS = [
 
 def call_error_case(i):
     """The message one error tool-call reply carries."""
-    row = atl(CALL_ERRORS, i)
-    return Check.equal(ats(row, 0), error_text(Mcp.call_result("t", decode(ats(row, 1)))), ats(row, 2))
+    return table_checks(CALL_ERRORS, i, lambda text: error_text(Mcp.call_result("t", decode(text))))
 
 
 def mcp_session_cases():
@@ -894,19 +894,14 @@ MALFORMED_MESSAGES = [
 """Texts read through `read_message`: an exact want, or a prefix the decoder's own words finish."""
 
 
-def matched(tag, got, want, exact):
-    """`got` against the oracle's text: a `prefix:` want only has to be contained, any
-    other must match exactly — `exact` is the text with its marker already removed."""
-    if startsWith(want, "prefix:"):
-        return Check.truth(tag, contains(got, drop(want, length("prefix:"))), got)
-    else:
-        return Check.equal(tag, got, exact)
-
-
 def mcp_malformed_case(i):
-    want = ats(atl(MALFORMED_MESSAGES, i), 1)
-    text = ats(atl(MALFORMED_MESSAGES, i), 0)
-    return matched(f"mcp.malformed[{i}]", incoming_text(Mcp.read_message(text)), want, drop(want, length("exact:")))
+    row = atl(MALFORMED_MESSAGES, i)
+    return matched(f"mcp.malformed[{i}]", incoming_text(Mcp.read_message(ats(row, 0))), ats(row, 1))
+
+
+def framing_splits(name, text):
+    """Every cut point of `text`: each one yields the same two complete lines."""
+    return cases(length(text) + 1, lambda i: framing_case(name, text, i, [MCP_LINE_ONE, MCP_LINE_TWO]))
 
 
 def framing_case(name, text, i, wants):
@@ -928,8 +923,8 @@ def mcp_framing_cases():
     opened = Mcp.lines_of(Mcp.LineBuffer(pending=""), open_ended)
     last = Mcp.lines_of(opened.buffer, "")
     return concat([
-        cases(length(text) + 1, lambda i: framing_case("mcp.framing", text, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
-        cases(length(crlf) + 1, lambda i: framing_case("mcp.framing_crlf", crlf, i, [MCP_LINE_ONE, MCP_LINE_TWO])),
+        framing_splits("mcp.framing", text),
+        framing_splits("mcp.framing_crlf", crlf),
         [
             Check.truth("mcp.framing_open", structuralEquals(opened.lines, [MCP_LINE_ONE]), open_ended),
             Check.equal("mcp.framing_pending", last.buffer.pending, MCP_LINE_TWO),
@@ -957,9 +952,8 @@ SSE_FORMS = [
 
 def mcp_sse_case(i):
     body = ats(atl(SSE_FORMS, i), 0)
-    want = ats(atl(SSE_FORMS, i), 1)
     got = join(mapList(Mcp.reply_messages("text/event-stream", body), incoming_text), ";")
-    return matched(f"mcp.sse[{i}]", got, want, want)
+    return matched(f"mcp.sse[{i}]", got, ats(atl(SSE_FORMS, i), 1))
 
 
 def mcp_sse_broken_case():
@@ -1090,8 +1084,7 @@ def atd(xs, i):
 
 def mcp_config_case(i):
     load = Mcp.parse_config(ats(CONFIG_TEXTS, i), atd(CONFIG_ENVIRONMENTS, i))
-    want = ats(CONFIG_WANTS, i)
-    return matched(f"mcp.config[{i}]", config_load_text(load), want, want)
+    return matched(f"mcp.config[{i}]", config_load_text(load), ats(CONFIG_WANTS, i))
 
 
 def mcp_merge_cases():
@@ -1106,11 +1099,7 @@ def mcp_merge_cases():
 
 def initialized_version(result: Mcp.InitializeResult) -> str:
     """The protocol version of a successful `initialize_result`, empty on failure."""
-    match result:
-        case Mcp.Ok(session=session):
-            return session.protocol_version
-        case Mcp.Failed(error=_e):
-            return ""
+    return session_of(result, lambda session: session.protocol_version, lambda _message: "")
 
 
 def completed_lines(chunk: Mcp.Lines) -> str:
@@ -1134,11 +1123,7 @@ def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:
 
 
 def collected_text(result) -> str:
-    match result:
-        case Success(value=items):
-            return join(mapList(items, toString), ",")
-        case Error(message=message):
-            return f"error:{message}"
+    return result_of(result, lambda items: join(mapList(items, toString), ","), lambda message: f"error:{message}")
 
 
 def positive(value):
@@ -1200,11 +1185,7 @@ def direct_cases():
 
 
 def direct_text(model, parameters):
-    match Direct.model_request(model, plain(), {}, parameters):
-        case E.Ok(value=response):
-            return M.text(response)
-        case E.Failed(error=error):
-            return E.message_of(error)
+    return outcome_of(Direct.model_request(model, plain(), {}, parameters), lambda response: M.text(response), lambda error: E.message_of(error))
 
 
 def event_text(event):
@@ -1288,6 +1269,12 @@ def accessor_cases():
     ]
 
 
+def walked(name, schema, marker):
+    """The check that a walked schema keeps `marker` and has dropped every title."""
+    text = canon(schema.schema)
+    return Check.truth(name, contains(text, marker) and not contains(text, "\"title\""), text)
+
+
 def schema_walk_cases():
     defs = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{\"a\":{\"$ref\":\"#/$defs/A\"}},\"required\":[\"a\"],\"$defs\":{\"A\":{\"type\":\"object\",\"title\":\"A\",\"properties\":{},\"required\":[]}}}"))
     union = JsonSchema.transform(decode("{\"anyOf\":[{\"type\":\"string\",\"title\":\"S\"},{\"type\":\"integer\"}]}"))
@@ -1295,10 +1282,10 @@ def schema_walk_cases():
     additional = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":{\"type\":\"string\",\"title\":\"V\"}}"))
     return [
         Check.truth("walk.defs_kept_and_walked", contains(canon(defs.schema), "\"$defs\":{\"A\"") and not contains(canon(defs.schema), "\"title\":\"A\""), canon(defs.schema)),
-        Check.truth("walk.union_members", contains(canon(union.schema), "anyOf") and not contains(canon(union.schema), "\"title\""), canon(union.schema)),
-        Check.truth("walk.prefix_items", contains(canon(prefix.schema), "prefixItems") and not contains(canon(prefix.schema), "\"title\""), canon(prefix.schema)),
+        walked("walk.union_members", union, "anyOf"),
+        walked("walk.prefix_items", prefix, "prefixItems"),
         Check.equal("walk.additional_not_strict", additional.is_strict_compatible, False),
-        Check.truth("walk.additional_walked", not contains(canon(additional.schema), "\"title\""), canon(additional.schema)),
+        walked("walk.additional_walked", additional, "additionalProperties"),
     ]
 
 
@@ -1345,28 +1332,16 @@ def export_cases():
 
 def chat_request_case(profile):
     provider = Providers.scripted("openai", replies(["{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"done\"}}]}"], 200))
-    match ModelsOpenai.chat_request("gpt-4o", provider, profile, plain(), {}, Models.model_request_parameters()):
-        case E.Ok(value=response):
-            return Check.equal("export.chat_request", M.text(response), "done")
-        case E.Failed(error=error):
-            return Check.failed("export.chat_request", E.message_of(error))
+    return outcome_of(ModelsOpenai.chat_request("gpt-4o", provider, profile, plain(), {}, Models.model_request_parameters()), lambda response: Check.equal("export.chat_request", M.text(response), "done"), lambda error: Check.failed("export.chat_request", E.message_of(error)))
 
 
 def post_json_case():
     """A real request to a port nothing listens on: a refused connection is an error, never a reply."""
-    match ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""):
-        case Success(value=reply):
-            return Check.failed("export.post_json_refused", f"got status {reply.status}")
-        case Error(message=message):
-            return Check.truth("export.post_json_refused", message != "", "no reason given")
+    return result_of(ProvidersHttp.post_json("http://127.0.0.1:1", "/", "{}", ""), lambda reply: Check.failed("export.post_json_refused", f"got status {reply.status}"), lambda message: Check.truth("export.post_json_refused", message != "", "no reason given"))
 
 
 def typed_output(outcome: E.Outcome[Agent.AgentRunResult]) -> str:
-    match outcome:
-        case E.Ok(value=result):
-            return f"{result.output}:{len(Agent.all_messages(result))}"
-        case E.Failed(error=error):
-            return E.message_of(error)
+    return outcome_of(outcome, lambda result: f"{result.output}:{len(Agent.all_messages(result))}", lambda error: E.message_of(error))
 
 
 def typed_error(error: E.ModelError) -> str:

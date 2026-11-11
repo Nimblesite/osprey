@@ -28,11 +28,7 @@ pairIS1 = makePair (1, "test")
 pairIS2 = makePair (2, "hello")
 tIBI = makeTriple (1, "test", 42)
 
-print "C<int>:  ${cInt1.value}, ${cInt2.value}"
-print "C<str>:  ${cStr.value}"
-print "P<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.second}"
-print "T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}"
-print ""
+print "C<int>:  ${cInt1.value}, ${cInt2.value}\nC<str>:  ${cStr.value}\nP<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.second}\nT<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}\n"
 
 (** --- Function type equality via HOFs ---
     Inference keeps the function values concrete; threeArgAdd alone needs its
@@ -65,8 +61,7 @@ print "=== Same (string)->string passed via HOF ==="
 print (applyStr (excl, "hi"))
 print (applyStr (ques, "hi"))
 
-print "=== Different shapes ==="
-print (applyToStr (intToString, 42))
+print "=== Different shapes ===\n${(applyToStr (intToString, 42))}"
 exactArithmetic (\() =>
     print (toString (applyTwo (twoArgAdd, 5, 7))))
 exactArithmetic (\() =>
@@ -76,8 +71,7 @@ print ""
 (** --- Generic monomorphization via identity-like functions --- *)
 identity x = x
 duplicate x = x
-print (toString (identity 42))
-print (toString (duplicate 99))
+print "${(toString (identity 42))}\n${(toString (duplicate 99))}"
 print (identity "a")
 print (duplicate "b")
 
@@ -108,9 +102,7 @@ sameColor (a, b) =
 c1 = Red
 c2 = Red
 c3 = Blue
-print "color1=${colorName c1} color3=${colorName c3}"
-print "sameRR=${toString (sameColor (c1, c2))}"
-print "sameRB=${toString (sameColor (c1, c3))}"
+print "color1=${colorName c1} color3=${colorName c3}\nsameRR=${toString (sameColor (c1, c2))}\nsameRB=${toString (sameColor (c1, c3))}"
 
 (** --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
     Variance is position-checked: `out T` may appear only where the payload
@@ -239,8 +231,7 @@ describe g = match g
 mkGate : Unit -> Gate<(int) -> Result<int, string>>
 mkGate () = Gate(admit = \_f => true)
 
-print "fn-payload feed accepted: ${label (mkFeed ())}"
-print "fn-payload gate accepted: ${describe (mkGate ())}"
+print "fn-payload feed accepted: ${label (mkFeed ())}\nfn-payload gate accepted: ${describe (mkGate ())}"
 
 (** --- Variance positions: every legal shape, exercised end to end ---
     `out T` sits in a field, a function RESULT and a covariant built-in;

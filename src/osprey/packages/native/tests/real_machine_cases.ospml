@@ -27,6 +27,26 @@ realPointer (machine, point, down) = Canvases::pointer (machine, point.nativeX, 
 
 realTap (machine, label) = Canvases::act (machine, label, 0.5)
 
+// `machine`'s volume reads `wanted` within float tolerance.
+volumeIs (machine, wanted) = expect (abs (Machines::number (machine, "volume") - wanted) < 0.000001, true)
+
+// `machine` with the pointer down (or up) at `body` moved by `dx`, `dy`.
+pressedFrom (machine, body, dx, dy, down) = realPointer (machine, NativePoint(nativeX = body.nativeX + dx, nativeY = body.nativeY + dy), down)
+
+// Dragging `label`'s slider from `from` to `to`: it slides while held, stops on release and reads `to` throughout.
+dragSlider (machine, label, from, to) =
+    pressed = realPointer (machine, nativePoint (nativeElement (machine, label), from), true)
+    expect (Canvases::sliding pressed, true)
+    high = nativePoint (nativeElement (pressed, label), to)
+    sliding = realPointer (pressed, high, true)
+    volumeIs (sliding, to)
+    released = realPointer (sliding, high, false)
+    expect (Canvases::sliding released, false)
+    volumeIs (released, to)
+
+// Each probe reads its `key` of its `at` and must equal its `value`.
+probesHold (read, probes) = forEachList (probes, \probe => expect (read (probe.at, probe.key), probe.value))
+
 realDocumentSkins () =
     initial = signalMachine ()
     expect (Machines::text (initial, "skin"), "topology")
@@ -40,39 +60,30 @@ realDocumentSkins () =
     forEachList ([topology, notation, paper, prism], \machine =>
         expectRendered machine
         expect (length (Canvases::semantics machine) > 10, true))
-    forEachList ([{ at = notation, text = "0.70" }, { at = paper, text = "Transform" }, { at = prism, text = "2.5 kHz" }, { at = prism, text = "-24.0" }], \probe => expect (nativeLetters (probe.at, probe.text), true))
+    probesHold (nativeLetters, [{ at = notation, key = "0.70", value = true }, { at = paper, key = "Transform", value = true }, { at = prism, key = "2.5 kHz", value = true }, { at = prism, key = "-24.0", value = true }])
 
 realCanvasEdits () =
     prism = realSkinned (signalMachine (), "prism")
     bypassed = realTap (prism, "Bypass Filter")
     enabled = realTap (bypassed, "Enable Filter")
-    expectRead (\machine => Machines::flag (machine, "processOn"), [{ name = bypassed, value = false }, { name = enabled, value = true }])
     lowered = Canvases::act (enabled, "Filter Cutoff", 0.25)
-    expect (Machines::number (lowered, "process"), 0.25)
-    expect (nativeValue (lowered, "Filter Cutoff"), 0.25)
     opened = realTap (lowered, "LFO Rate: 1/4")
-    expect (Machines::current (opened, "menu"), "rates")
-    expect (nativeRole (opened, "1/16"), "menuitem")
     chosen = realTap (opened, "1/16")
-    expect (Machines::current (chosen, "menu"), "closed")
-    expect (Machines::text (chosen, "rate"), "1/16")
-    dismissed = realTap (chosen, "Oscillator Wave: Sine")
-    outside = Canvases::released (dismissed, 1400.0, 700.0)
-    expect (Machines::current (outside, "menu"), "closed")
-    expect (Machines::text (outside, "wave"), "Sine")
+    outside = Canvases::released (realTap (chosen, "Oscillator Wave: Sine"), 1400.0, 700.0)
     body = nativePoint (nativeElement (outside, "Select Filter"), 0.5)
-    pressed = realPointer (outside, body, true)
-    expect (Canvases::holding pressed, true)
-    expect (Canvases::sliding pressed, false)
-    near = realPointer (pressed, NativePoint(nativeX = body.nativeX + 2.0, nativeY = body.nativeY + 1.0), true)
-    expect (Machines::number (near, "processX"), 0.0)
-    movedPoint = NativePoint(nativeX = body.nativeX + 100.0, nativeY = body.nativeY + 50.0)
-    moved = realPointer (near, movedPoint, true)
-    expectRead (\name => Machines::number (moved, name), [{ name = "processX", value = 100.0 }, { name = "processY", value = 50.0 }])
-    dropped = realPointer (moved, movedPoint, false)
-    expect (Canvases::holding dropped, false)
-    expect (Machines::text (dropped, "selected"), "process")
+    pressed = pressedFrom (outside, body, 0.0, 0.0, true)
+    near = pressedFrom (pressed, body, 2.0, 1.0, true)
+    moved = pressedFrom (near, body, 100.0, 50.0, true)
+    dropped = pressedFrom (moved, body, 100.0, 50.0, false)
     hovered = realPointer (dropped, body, false)
+    probesHold (Machines::flag, [{ at = bypassed, key = "processOn", value = false }, { at = enabled, key = "processOn", value = true }])
+    probesHold (Machines::number, [{ at = lowered, key = "process", value = 0.25 }, { at = near, key = "processX", value = 0.0 }, { at = moved, key = "processX", value = 100.0 }, { at = moved, key = "processY", value = 50.0 }])
+    expect (nativeValue (lowered, "Filter Cutoff"), 0.25)
+    probesHold (Machines::current, [{ at = opened, key = "menu", value = "rates" }, { at = chosen, key = "menu", value = "closed" }, { at = outside, key = "menu", value = "closed" }])
+    probesHold (Machines::text, [{ at = chosen, key = "rate", value = "1/16" }, { at = outside, key = "wave", value = "Sine" }, { at = dropped, key = "selected", value = "process" }])
+    expect (nativeRole (opened, "1/16"), "menuitem")
+    expectRead (\machine => Canvases::holding machine, [{ name = pressed, value = true }, { name = dropped, value = false }])
+    expect (Canvases::sliding pressed, false)
     expect (Doc::write (MachineDocs::snapshot hovered), Doc::write (MachineDocs::snapshot dropped))
 
 sceneSize machine = take (jsonEncode (nativeTree machine) ?: "", 45)
@@ -80,22 +91,13 @@ sceneSize machine = take (jsonEncode (nativeTree machine) ?: "", 45)
 realCanvasRoomAndSliders () =
     prism = realSkinned (signalMachine (), "prism")
     grown = Canvases::viewed (prism, 1936.0, 1128.0)
-    expectRead (\name => Machines::number (grown, name), [{ name = "viewWidth", value = 1936.0 }, { name = "viewHeight", value = 1128.0 }, { name = "spareWidth", value = 400.0 }, { name = "spareHeight", value = 300.0 }])
+    shrunk = Canvases::viewed (grown, 1000.0, 600.0)
+    probesHold (Machines::number, [{ at = grown, key = "viewWidth", value = 1936.0 }, { at = grown, key = "viewHeight", value = 1128.0 }, { at = grown, key = "spareWidth", value = 400.0 }, { at = grown, key = "spareHeight", value = 300.0 }, { at = shrunk, key = "spareWidth", value = 0.0 }, { at = shrunk, key = "spareHeight", value = 0.0 }])
     // A host fits the scene's own size into its region, so room spared must not grow it: a window that
     // later got shorter would fit the grown size and be told the same spare room for ever.
     expect (sceneSize grown, "{\"kind\":\"scene\",\"width\":1536.0,\"height\":828.0")
     expect (sceneSize (prism), sceneSize grown)
-    shrunk = Canvases::viewed (grown, 1000.0, 600.0)
-    expectRead (\name => Machines::number (shrunk, name), [{ name = "spareWidth", value = 0.0 }, { name = "spareHeight", value = 0.0 }])
-    slider = nativePoint (nativeElement (shrunk, "Master Level"), 0.1)
-    pressed = realPointer (shrunk, slider, true)
-    expect (Canvases::sliding pressed, true)
-    high = nativePoint (nativeElement (pressed, "Master Level"), 0.9)
-    sliding = realPointer (pressed, high, true)
-    expect (abs (Machines::number (sliding, "volume") - 0.9) < 0.000001, true)
-    released = realPointer (sliding, high, false)
-    expect (Canvases::sliding released, false)
-    expect (abs (Machines::number (released, "volume") - 0.9) < 0.000001, true)
+    dragSlider (shrunk, "Master Level", 0.1, 0.9)
 
 realPlayerJourney () =
     player = playerMachine ()
@@ -105,31 +107,23 @@ realPlayerJourney () =
     native = realSkinned (player, "midnight")
     expectRead (\name => nativeShows (native, name), [{ name = "Looking for TVs…", value = true }, { name = "Choose an audio file", value = true }])
     ready = Machines::feed (native, [
-        Machines::fact ("receiver", Values::text "192.168.1.20:8009"),
-        Machines::fact ("receiverName", Values::text "Living Room TV"),
-        Machines::fact ("file", Values::text "/music/demo.mp3"),
-        Machines::fact ("title", Values::text "A very long track name that will not fit on one line at all.mp3"),
+        Machines::fact ("receiver", Values::text "192.168.1.20:8009"), Machines::fact ("receiverName", Values::text "Living Room TV"),
+        Machines::fact ("file", Values::text "/music/demo.mp3"), Machines::fact ("title", Values::text "A very long track name that will not fit on one line at all.mp3"),
     ])
-    expect (Machines::current (ready, "receivers"), "found")
     connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
-    expect (Machines::current (connecting, "playback"), "connecting")
-    expect (length (Machines::requests connecting) > 0, true)
     fed = Machines::feed (Machines::taken connecting, [
-        Machines::fact ("player", Values::text "PLAYING"),
-        Machines::fact ("position", Values::number 50.0),
-        Machines::fact ("duration", Values::number 200.0),
-        Machines::fact ("volume", Values::number 0.5),
-        Machines::fact ("rate", Values::number 1.5),
+        Machines::fact ("player", Values::text "PLAYING"), Machines::fact ("position", Values::number 50.0),
+        Machines::fact ("duration", Values::number 200.0), Machines::fact ("volume", Values::number 0.5), Machines::fact ("rate", Values::number 1.5),
     ])
-    expect (Machines::current (fed, "playback"), "playing")
-    expect (length (Machines::requests fed), 0)
-    forEachList (["00:50", "03:20", "Volume 50%", "1.5×", "A very long track name that will not fit on one line at all.mp3"], \text => expect (nativeShows (fed, text), true))
     canvas = realSkinned (fed, "sherbet")
-    forEachList (["A very long track name that w…", "00:50", "03:20"], \text => expect (nativeLetters (canvas, text), true))
     rates = realTap (canvas, "Speed: 1.5×")
-    expect (nativeLabels rates, "0.75×|1×|1.25×|1.5×|2×|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
     receivers = realTap (canvas, "Receiver: Living Room TV")
-    expect (Machines::current (receivers, "menu"), "receivers")
+    probesHold (Machines::current, [{ at = ready, key = "receivers", value = "found" }, { at = connecting, key = "playback", value = "connecting" }, { at = fed, key = "playback", value = "playing" }, { at = receivers, key = "menu", value = "receivers" }])
+    expect (length (Machines::requests connecting) > 0, true)
+    expect (length (Machines::requests fed), 0)
+    expect (nativeLabels rates, "0.75×|1×|1.25×|1.5×|2×|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    probesHold (nativeShows, [{ at = fed, key = "00:50", value = true }, { at = fed, key = "03:20", value = true }, { at = fed, key = "Volume 50%", value = true }, { at = fed, key = "1.5×", value = true }, { at = fed, key = "A very long track name that will not fit on one line at all.mp3", value = true }])
+    probesHold (nativeLetters, [{ at = canvas, key = "A very long track name that w…", value = true }, { at = canvas, key = "00:50", value = true }, { at = canvas, key = "03:20", value = true }])
 
 realDocumentCases () = Runtime::guarded (\() =>
     realDocumentSkins ()

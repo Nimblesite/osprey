@@ -5,99 +5,101 @@
 
 // ---- osp_prof_walk unit tests [PROF-COLLECT-UNWIND] --------------------------
 
+// A zeroed synthetic stack, its half-open [lo, hi) bounds, and room for the
+// frames one walk recovers.
+typedef struct {
+  uint64_t mem[FAKE_STACK_WORDS];
+  uintptr_t lo, hi;
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+} FakeStack;
+
+static void fake_stack(FakeStack *s) {
+  memset(s, 0, sizeof(*s));
+  s->lo = (uintptr_t)s->mem;
+  s->hi = (uintptr_t)(s->mem + FAKE_STACK_WORDS);
+}
+
+// Walks `s` from a sampled pc, frame pointer and link register.
+static int walk(FakeStack *s, uint64_t pc, uint64_t fp, uint64_t lr) {
+  return osp_prof_walk(pc, fp, lr, s->lo, s->hi, s->out, OSP_PROF_MAX_FRAMES);
+}
+
+// Plants the frame record at word `at`: the next frame pointer `fp` and the
+// return address `ret` that sits beside it.
+static void raw_frame(FakeStack *s, size_t at, uint64_t fp, uint64_t ret) {
+  s->mem[at] = fp;
+  s->mem[at + 1] = ret;
+}
+
+// Chains the frame record at word `at` to the one at word `next`.
+static void link_frame(FakeStack *s, size_t at, size_t next, uint64_t ret) {
+  raw_frame(s, at, (uint64_t)(uintptr_t)&s->mem[next], ret);
+}
+
+// A fake stack whose chain ends at once, holding a single return address.
+static void terminal_stack(FakeStack *s, uint64_t ret) {
+  fake_stack(s);
+  raw_frame(s, 0, 0, ret);
+}
+
 // Build a fake AAPCS64-style frame chain inside `mem` and verify the walk
 // recovers exactly the planted return addresses, in leaf-first order.
 static void test_walk_recovers_planted_chain(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  FakeStack s;
+  fake_stack(&s);
   // Frame records at word 0 -> word 8 -> word 16: [next_fp, return_addr].
-  mem[0] = (uint64_t)(uintptr_t)&mem[8];
-  mem[1] = 0x100000AAAA;
-  mem[8] = (uint64_t)(uintptr_t)&mem[16];
-  mem[9] = 0x100000BBBB;
-  mem[16] = 0; // chain terminator (fails the bounds check)
-  mem[17] = 0x100000CCCC;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(0x100000F000, (uint64_t)lo, 0x100000E000, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
+  link_frame(&s, 0, 8, 0x100000AAAA);
+  link_frame(&s, 8, 16, 0x100000BBBB);
+  raw_frame(&s, 16, 0, 0x100000CCCC); // chain terminator (fails the bounds check)
+  int n = walk(&s, 0x100000F000, (uint64_t)s.lo, 0x100000E000);
   assert(n == 5);
-  assert(out[0] == 0x100000F000); // precise pc first
-  assert(out[1] == 0x100000E000); // lr (differs from first chained ret)
-  assert(out[2] == 0x100000AAAA);
-  assert(out[3] == 0x100000BBBB);
-  assert(out[4] == 0x100000CCCC);
+  assert(s.out[0] == 0x100000F000); // precise pc first
+  assert(s.out[1] == 0x100000E000); // lr (differs from first chained ret)
+  assert(s.out[2] == 0x100000AAAA);
+  assert(s.out[3] == 0x100000BBBB);
+  assert(s.out[4] == 0x100000CCCC);
 }
 
 // The lr must be deduplicated when it equals the first chained return address.
 static void test_walk_dedupes_lr(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0;
-  mem[1] = 0x100000AAAA;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(0x100000F000, (uint64_t)lo, 0x100000AAAA, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAA);
+  int n = walk(&s, 0x100000F000, (uint64_t)s.lo, 0x100000AAAA);
   assert(n == 2);
-  assert(out[0] == 0x100000F000 && out[1] == 0x100000AAAA);
+  assert(s.out[0] == 0x100000F000 && s.out[1] == 0x100000AAAA);
 }
 
 // Out-of-bounds, misaligned, or non-monotonic frame pointers end the walk
 // instead of being dereferenced.
 static void test_walk_rejects_invalid_fp(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  assert(osp_prof_walk(0x100000F000, (uint64_t)(hi + 64), 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 1); // fp above hi: pc only
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo + 3, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 1); // misaligned fp: pc only
-  mem[0] = (uint64_t)lo; // self-referencing fp must not loop forever
-  mem[1] = 0x100000AAAA;
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 2);
+  FakeStack s;
+  fake_stack(&s);
+  assert(walk(&s, 0x100000F000, (uint64_t)(s.hi + 64), 0) == 1); // fp above s.hi: pc only
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo + 3, 0) == 1); // misaligned fp: pc only
+  raw_frame(&s, 0, (uint64_t)s.lo, 0x100000AAAA); // self-referencing fp must not loop forever
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo, 0) == 2);
 }
 
 // [PROF-COLLECT-UNWIND] "inside the thread's `[lo, hi)` stack bounds captured
 // at registration". Half-open: `lo` is in bounds, `hi` is NOT.
 static void test_walk_stack_bounds_are_half_open(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  mem[0] = 0;
-  mem[1] = 0x100000AAAA;
-  // fp == lo is inside [lo, hi): the chained return address is recovered.
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 2);
-  // fp == hi is outside [lo, hi): nothing may be dereferenced there.
-  assert(osp_prof_walk(0x100000F000, (uint64_t)hi, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 1);
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAA);
+  // fp == s.lo is inside [s.lo, s.hi): the chained return address is recovered.
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo, 0) == 2);
+  // fp == s.hi is outside [s.lo, s.hi): nothing may be dereferenced there.
+  assert(walk(&s, 0x100000F000, (uint64_t)s.hi, 0) == 1);
 }
 
 // [PROF-COLLECT-UNWIND] "strict monotonic growth". Equal is not growth.
 static void test_walk_requires_strict_monotonic_growth(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  mem[0] = (uint64_t)lo;      // next == fp: not STRICTLY greater
-  mem[1] = 0x100000AAAA;
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 2); // pc + one ret, then stop
-  mem[0] = (uint64_t)(uintptr_t)&mem[8];
-  mem[1] = 0x100000AAAA;
-  mem[8] = (uint64_t)lo;      // backwards: also not growth
-  mem[9] = 0x100000BBBB;
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 3);
+  FakeStack s;
+  fake_stack(&s);
+  raw_frame(&s, 0, (uint64_t)s.lo, 0x100000AAAA); // next == fp: not STRICTLY greater
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo, 0) == 2); // pc + one ret, then stop
+  link_frame(&s, 0, 8, 0x100000AAAA);
+  raw_frame(&s, 8, (uint64_t)s.lo, 0x100000BBBB); // backwards: also not growth
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo, 0) == 3);
 }
 
 // [PROF-COLLECT-UNWIND] "bounded frame size" — an absurd frame ends the walk.
@@ -144,59 +146,39 @@ static void test_walk_enforces_depth_cap_128(void) {
 // fit in 47 bits, so a signed pointer's high bits must not survive into a frame.
 static void test_walk_strips_pac_bits(void) {
   const uint64_t PAC = 0x00FF000000000000ULL;
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0;
-  mem[1] = 0x100000AAAAULL | PAC;   // a signed return address
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(0x100000F000ULL | PAC, (uint64_t)lo,
-                        0x100000BBBBULL | PAC, lo, hi, out, OSP_PROF_MAX_FRAMES);
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAAULL | PAC); // a signed return address
+  int n = walk(&s, 0x100000F000ULL | PAC, (uint64_t)s.lo, 0x100000BBBBULL | PAC);
   assert(n == 3);
-  assert(out[0] == 0x100000F000ULL); // pc stripped
-  assert(out[1] == 0x100000BBBBULL); // lr stripped
-  assert(out[2] == 0x100000AAAAULL); // chained ret stripped
+  assert(s.out[0] == 0x100000F000ULL); // pc stripped
+  assert(s.out[1] == 0x100000BBBBULL); // lr stripped
+  assert(s.out[2] == 0x100000AAAAULL); // chained ret stripped
 }
 #endif
 
 // [PROF-COLLECT-UNWIND] "8-byte alignment" — every misaligned offset is
 // rejected, not merely the one odd value the older test happened to pick.
 static void test_walk_rejects_every_misalignment(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  mem[0] = 0;
-  mem[1] = 0x100000AAAA;
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAA);
   for (unsigned off = 1; off < 8; off++) {
-    assert(osp_prof_walk(0x100000F000, (uint64_t)lo + off, 0, lo, hi, out,
-                         OSP_PROF_MAX_FRAMES) == 1); // pc only: nothing walked
+    assert(walk(&s, 0x100000F000, (uint64_t)s.lo + off, 0) == 1); // pc only: nothing walked
   }
-  assert(osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                       OSP_PROF_MAX_FRAMES) == 2);   // aligned still works
+  assert(walk(&s, 0x100000F000, (uint64_t)s.lo, 0) == 2);   // aligned still works
 }
 
 // [PROF-COLLECT-UNWIND] "Any failed check ends the walk." Ending is not
 // skipping: frames beyond the bad record must NOT appear.
 static void test_walk_failed_check_ends_rather_than_skips(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = (uint64_t)(uintptr_t)&mem[8];
-  mem[1] = 0x100000AAAA;
-  mem[8] = (uint64_t)lo + 3;   // misaligned: this check fails
-  mem[9] = 0x100000BBBB;
-  mem[16] = 0;
-  mem[17] = 0x100000CCCC;      // must never be reached
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(0x100000F000, (uint64_t)lo, 0, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
+  FakeStack s;
+  fake_stack(&s);
+  link_frame(&s, 0, 8, 0x100000AAAA);
+  raw_frame(&s, 8, (uint64_t)s.lo + 3, 0x100000BBBB); // misaligned: this check fails
+  raw_frame(&s, 16, 0, 0x100000CCCC);                // must never be reached
+  int n = walk(&s, 0x100000F000, (uint64_t)s.lo, 0);
   assert(n == 3);
   for (int i = 0; i < n; i++) {
-    assert(out[i] != 0x100000CCCC); // nothing past the failed check
+    assert(s.out[i] != 0x100000CCCC); // nothing past the failed check
   }
 }
 
@@ -237,35 +219,23 @@ static void test_walk_failed_check_ends_rather_than_skips(void) {
 // recorded, so frame 0 of a RECORDED sample is still the precise interrupted pc
 // as [PROF-SYMBOLIZE-OFFLINE] requires.
 static void test_walk_rejects_pc_below_min_code_addr(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0; // terminate the chain immediately
-  mem[1] = 0x100000AAAA;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAA); // terminate the chain immediately
   // A null pc is not an instruction. It must not become the leaf frame.
-  int n = osp_prof_walk(0, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
+  int n = walk(&s, 0, (uint64_t)s.lo, 0x100000BBBB);
   assert(n > 0);
-  assert(out[0] != 0);
+  assert(s.out[0] != 0);
 }
 
 // (a, cont.) The same floor `lr` gets. 42 is not a code address.
 static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0;
-  mem[1] = 0x100000AAAA;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
+  FakeStack s;
+  terminal_stack(&s, 0x100000AAAA);
   for (uint64_t bogus = 0; bogus < 4096; bogus += 1021) {
-    int n = osp_prof_walk(bogus, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
-                          OSP_PROF_MAX_FRAMES);
+    int n = walk(&s, bogus, (uint64_t)s.lo, 0x100000BBBB);
     assert(n > 0);
     // An lr of `bogus` would be dropped here. A pc of `bogus` is kept.
-    assert(out[0] != bogus);
+    assert(s.out[0] != bogus);
   }
 }
 
@@ -287,22 +257,16 @@ static void test_frame_zero_is_the_precise_pc(void) {
   // pc it was handed and never substitutes a chain frame for it, or self-time
   // would be attributed to the caller of whatever the thread was really in.
   const uint64_t allocator_leaf = 0x18030F483ULL;
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = (uint64_t)(uintptr_t)&mem[8];
-  mem[1] = CODE_LO + 0x2000; // `sub`
-  mem[8] = 0;
-  mem[9] = CODE_LO + 0x1000; // `fib`
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(allocator_leaf, (uint64_t)lo, 0, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
+  FakeStack s;
+  fake_stack(&s);
+  link_frame(&s, 0, 8, CODE_LO + 0x2000); // `sub`
+  raw_frame(&s, 8, 0, CODE_LO + 0x1000);  // `fib`
+  int n = walk(&s, allocator_leaf, (uint64_t)s.lo, 0);
   assert(n >= 2);
-  assert(out[0] == allocator_leaf); // frame 0 is the pc, verbatim
+  assert(s.out[0] == allocator_leaf); // frame 0 is the pc, verbatim
   bool chain_in_code = true;
   for (int i = 1; i < n; i++) {
-    chain_in_code &= out[i] >= CODE_LO && out[i] < CODE_HI;
+    chain_in_code &= s.out[i] >= CODE_LO && s.out[i] < CODE_HI;
   }
   assert(chain_in_code); // the fp chain still walks the program's own frames
 }

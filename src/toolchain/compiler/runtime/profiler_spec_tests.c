@@ -20,30 +20,24 @@ static void body_inactive_without_env(void) {
 }
 
 // [PROF-ACTIVATE-ENV] "`OSPREY_PROFILE_HZ=<n>` overrides the sampling rate
-// (clamped to 10..10000, default 997)."
-static void body_rate_default_997(void) {
-  char path[] = "/tmp/osprey-prof-rate-XXXXXX";
-  int fd = mkstemp(path);
-  assert(fd >= 0);
-  (void)close(fd);
-  setenv("OSPREY_PROFILE", path, 1);
-  unsetenv("OSPREY_PROFILE_HZ");
-  osp_prof_boot();
-  assert(osp_prof_rate_hz() == 997); // the spec's stated default
-  (void)unlink(path);
-}
-
+// (clamped to 10..10000, default 997)." `hz == NULL` boots with the variable
+// unset: the spec's stated default 997.
 static void rate_env_yields(const char *hz, uint32_t expect) {
   char path[] = "/tmp/osprey-prof-rate-XXXXXX";
   int fd = mkstemp(path);
   assert(fd >= 0);
   (void)close(fd);
   setenv("OSPREY_PROFILE", path, 1);
-  setenv("OSPREY_PROFILE_HZ", hz, 1);
+  if (hz != NULL) {
+    setenv("OSPREY_PROFILE_HZ", hz, 1);
+  } else {
+    unsetenv("OSPREY_PROFILE_HZ");
+  }
   osp_prof_boot();
   assert(osp_prof_rate_hz() == expect);
   (void)unlink(path);
 }
+static void body_rate_default_997(void) { rate_env_yields(NULL, 997); }
 static void body_rate_clamped_low(void) { rate_env_yields("5", 10); }
 static void body_rate_clamped_high(void) { rate_env_yields("99999", 10000); }
 static void body_rate_passthrough(void) { rate_env_yields("2000", 2000); }
@@ -71,6 +65,51 @@ static void test_activation_and_registry_conform_to_spec(void) {
   assert(osp_death_signal(body_registry_noop_when_inactive) == 0);
 }
 
+// ---- shared session drivers [PROF-RAW-FORMAT] -----------------------------
+// Every body below dumps to a fresh output path — a stale dump from an
+// earlier run must never be read as this run's [PROF-ACTIVATE-ENV] — then
+// reads the dump back and releases it; must_find asserts a named key exists.
+static void start_fresh(const char *out) {
+  (void)unlink(out);
+  assert(osp_prof_start(out, TEST_RATE_HZ));
+}
+
+// A live session [PROF-COLLECT-SAMPLER]: `main` registered and burning CPU.
+static char *capture_dump(const char *out) {
+  start_fresh(out);
+  osp_prof_thread_register(0, "main");
+  g_sink += busy_work(20000000);
+  osp_prof_thread_unregister();
+  osp_prof_stop_and_dump();
+  return slurp(out);
+}
+
+// An idle session: nothing registered, so only header keys [PROF-RAW-FORMAT].
+static char *idle_dump(const char *out) {
+  start_fresh(out);
+  osp_prof_stop_and_dump();
+  return slurp(out);
+}
+
+static const char *must_find(const char *json, const char *key) {
+  const char *p = strstr(json, key);
+  assert(p != NULL);
+  return p;
+}
+
+// Drives must_find over a NULL-terminated table of one clause's keys.
+static void keys_present(const char *json, const char *const *keys) {
+  for (size_t i = 0; keys[i] != NULL; i++) {
+    must_find(json, keys[i]);
+  }
+}
+
+// Releases the JSON a *_dump above handed back.
+static void release_dump(const char *out, char *json) {
+  free(json);
+  (void)unlink(out);
+}
+
 // [PROF-RAW-FORMAT] The dumped JSON carries every key the spec names, and
 // [PROF-COLLECT-REGISTRY] the label of the registering call site.
 // [PROF-COLLECT-SAMPLER] "State is on-CPU or waiting"; [PROF-RAW-FORMAT]
@@ -82,39 +121,20 @@ static void test_activation_and_registry_conform_to_spec(void) {
 // is trustworthy, which is precisely the point of keeping it here.
 static void body_raw_format_conforms(void) {
   const char *out = "/tmp/osprey_rawformat_spec.json";
-  unlink(out);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
-  osp_prof_thread_register(0, "main");
-  g_sink += busy_work(20000000);
-  osp_prof_thread_unregister();
-  osp_prof_stop_and_dump();
-  char *json = slurp(out);
-  assert(strstr(json, "\"version\":1") != NULL);
-  assert(strstr(json, "\"pid\":") != NULL);
-  assert(strstr(json, "\"rate_hz\":2000") != NULL);
-  assert(strstr(json, "\"platform\":") != NULL);
-  assert(strstr(json, "\"images\":") != NULL);
-  assert(strstr(json, "\"threads\":") != NULL);
-  assert(strstr(json, "\"stacks\":") != NULL);
-  assert(strstr(json, "\"samples\":") != NULL);
-  assert(strstr(json, "\"dropped\":") != NULL);
-  assert(strstr(json, "\"label\":\"main\"") != NULL); // [PROF-COLLECT-REGISTRY]
-  free(json);
-  (void)unlink(out);
+  char *json = capture_dump(out);
+  const char *const keys[] = {"\"version\":1",  "\"pid\":",     "\"rate_hz\":2000",
+                              "\"platform\":",  "\"images\":",   "\"threads\":",
+                              "\"stacks\":",    "\"samples\":",  "\"dropped\":",
+                              NULL};
+  keys_present(json, keys);
+  must_find(json, "\"label\":\"main\""); // [PROF-COLLECT-REGISTRY]
+  release_dump(out, json);
 }
 
 static void body_sample_rows_conform(void) {
   const char *out = "/tmp/osprey_samplerows_spec.json";
-  unlink(out);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
-  osp_prof_thread_register(0, "main");
-  g_sink += busy_work(20000000);
-  osp_prof_thread_unregister();
-  osp_prof_stop_and_dump();
-  char *json = slurp(out);
-  const char *p = strstr(json, "\"samples\":[");
-  assert(p != NULL);
-  p += strlen("\"samples\":[");
+  char *json = capture_dump(out);
+  const char *p = must_find(json, "\"samples\":[") + strlen("\"samples\":[");
   long rows = 0;
   while (*p && *p != ']') {
     if (*p == '[') {
@@ -129,8 +149,7 @@ static void body_sample_rows_conform(void) {
     p++;
   }
   assert(rows > 0);
-  free(json);
-  (void)unlink(out);
+  release_dump(out, json);
 }
 
 static void test_raw_format_conforms_to_spec(void) {
@@ -145,9 +164,8 @@ static void test_raw_format_conforms_to_spec(void) {
 // [PROF-ACTIVATE-ENV] "the raw profile is written to `<path>` at normal exit".
 static void body_stacks_are_leaf_first(void) {
   const char *out = "/tmp/osprey_leaffirst_spec.json";
-  unlink(out);
   // No thread is registered, so the sampler has nothing to suspend.
-  assert(osp_prof_start(out, TEST_RATE_HZ));
+  start_fresh(out);
   const uint64_t frames[3] = {0x100000AAAA, 0x100000BBBB, 0x100000CCCC};
   assert(osp_prof_record_sample(1000, 0, frames, 3, OSP_PROF_STATE_ONCPU) !=
          OSP_PROF_STACK_NONE);
@@ -162,8 +180,7 @@ static void body_stacks_are_leaf_first(void) {
   const char *root = strstr(json, d2);
   assert(leaf && mid && root);
   assert(leaf < mid && mid < root); // leaf-first, exactly as the clause says
-  free(json);
-  (void)unlink(out);
+  release_dump(out, json);
 }
 
 // [PROF-RAW-FORMAT] The `images` entries carry `path`, `base` and `slide`; the
@@ -171,22 +188,14 @@ static void body_stacks_are_leaf_first(void) {
 // there is "A single top-level `dropped` counter".
 static void body_raw_header_fields(void) {
   const char *out = "/tmp/osprey_rawheader_spec.json";
-  unlink(out);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
-  osp_prof_stop_and_dump();
-  char *json = slurp(out);
-  assert(strstr(json, "\"exe\":") != NULL);
-  assert(strstr(json, "\"start_unix_ns\":") != NULL);
-  assert(strstr(json, "\"end_unix_ns\":") != NULL);
-  assert(strstr(json, "\"images\":") != NULL);
-  assert(strstr(json, "\"path\":") != NULL);
-  assert(strstr(json, "\"base\":") != NULL);
-  assert(strstr(json, "\"slide\":") != NULL);
-  const char *d = strstr(json, "\"dropped\":");
-  assert(d != NULL);
+  char *json = idle_dump(out);
+  const char *const keys[] = {"\"exe\":",     "\"start_unix_ns\":", "\"end_unix_ns\":",
+                              "\"images\":",   "\"path\":",         "\"base\":",
+                              "\"slide\":",    NULL};
+  keys_present(json, keys);
+  const char *d = must_find(json, "\"dropped\":");
   assert(strstr(d + 1, "\"dropped\":") == NULL); // "A single top-level" counter
-  free(json);
-  (void)unlink(out);
+  release_dump(out, json);
 }
 
 // [PROF-RAW-FORMAT] "`text`/`text_size` are the start and byte length of the
@@ -202,12 +211,8 @@ static void body_raw_header_fields(void) {
 // range must contain the address of a function compiled into this very binary.
 static void body_image_ranges_locate_this_program_code(void) {
   const char *out = "/tmp/osprey_imagerange_spec.json";
-  unlink(out);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
-  osp_prof_stop_and_dump();
-  char *json = slurp(out);
-  const char *p = strstr(json, "\"text\":");
-  assert(p != NULL);
+  char *json = idle_dump(out);
+  const char *p = must_find(json, "\"text\":");
   uint64_t text = 0;
   uint64_t size = 0;
   assert(sscanf(p, "\"text\":%" SCNu64 ",\"text_size\":%" SCNu64, &text,
@@ -218,8 +223,7 @@ static void body_image_ranges_locate_this_program_code(void) {
       (uint64_t)(uintptr_t)&body_image_ranges_locate_this_program_code;
   assert(here >= text);
   assert(here - text < size);
-  free(json);
-  (void)unlink(out);
+  release_dump(out, json);
 }
 
 // [PROF-COLLECT-REGISTRY] "Call sites: the main thread (label `main`, fiber 0),
@@ -228,8 +232,7 @@ static void body_image_ranges_locate_this_program_code(void) {
 // [PROF-RAW-FORMAT] `threads` rows are `{"fiber":N,"label":"..."}`.
 static void body_registry_labels_round_trip(void) {
   const char *out = "/tmp/osprey_labels_spec.json";
-  unlink(out);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
+  start_fresh(out);
   osp_prof_thread_register(0, "main");
   osp_prof_thread_unregister();
   osp_prof_thread_register(1, "fiber");
@@ -238,13 +241,12 @@ static void body_registry_labels_round_trip(void) {
   osp_prof_thread_unregister();
   osp_prof_stop_and_dump();
   char *json = slurp(out);
-  assert(strstr(json, "\"label\":\"main\"") != NULL);
-  assert(strstr(json, "\"label\":\"fiber\"") != NULL);
-  assert(strstr(json, "\"label\":\"effect\"") != NULL);
-  assert(strstr(json, "\"fiber\":0") != NULL);   // main
-  assert(strstr(json, "\"fiber\":-1") != NULL);  // effect continuation
-  free(json);
-  (void)unlink(out);
+  must_find(json, "\"label\":\"main\"");
+  must_find(json, "\"label\":\"fiber\"");
+  must_find(json, "\"label\":\"effect\"");
+  must_find(json, "\"fiber\":0");   // main
+  must_find(json, "\"fiber\":-1");  // effect continuation
+  release_dump(out, json);
 }
 
 // [PROF-COLLECT-REGISTRY] slot capacity, and the label field width the header
@@ -252,21 +254,18 @@ static void body_registry_labels_round_trip(void) {
 // overflowed, so the raw JSON stays well-formed [PROF-RAW-FORMAT].
 static void body_label_is_bounded(void) {
   const char *out = "/tmp/osprey_labelmax_spec.json";
-  unlink(out);
   assert(OSP_PROF_MAX_THREADS == 1024);
   assert(OSP_PROF_LABEL_MAX == 15);
-  assert(osp_prof_start(out, TEST_RATE_HZ));
+  start_fresh(out);
   osp_prof_thread_register(7, "an-extremely-long-label-beyond-the-cap");
   osp_prof_thread_unregister();
   osp_prof_stop_and_dump();
   char *json = slurp(out);
-  const char *l = strstr(json, "\"label\":\"an-extremely");
-  assert(l != NULL);
+  const char *l = must_find(json, "\"label\":\"an-extremely");
   const char *close = strchr(l + strlen("\"label\":\""), '"');
   assert(close != NULL);
   assert((size_t)(close - (l + strlen("\"label\":\""))) <= OSP_PROF_LABEL_MAX);
-  free(json);
-  (void)unlink(out);
+  release_dump(out, json);
 }
 
 // [PROF-COLLECT-SAMPLER] "Samples record `(t_ns, thread, stack, state)`. State
@@ -335,8 +334,8 @@ static void assert_capture_dump_has_samples(void) {
   (void)fclose(dump);
   (void)unlink(path);
   (void)unlink(OSP_CAPTURE_PATH_HANDOFF);
-  assert(strstr(body, "\"stacks\":[[") != NULL);
-  assert(strstr(body, "\"samples\":[[") != NULL);
+  must_find(body, "\"stacks\":[[");
+  must_find(body, "\"samples\":[[");
 }
 
 static void macos_capture_body(void) {

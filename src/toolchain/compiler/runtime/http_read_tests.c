@@ -22,6 +22,17 @@ static int64_t elapsed_ms_since(uint64_t started) {
   return (int64_t)(osp_monotonic_ms() - started);
 }
 
+// The call ended at the whole read's bound, with -16 and `text`, not before it or later.
+static void expect_bounded_failure(int64_t code, uint64_t started, int64_t timeout_ms,
+                                   const char *text) {
+  assert(code == -16);
+  int64_t took = elapsed_ms_since(started);
+  assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
+  assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
+  assert(strcmp(osp_io_error(), text) == 0);
+  osp_io_error_clear();
+}
+
 static void use_client_with_timeout(int64_t timeout_ms) {
   shared_origin_client =
       http_create_client((char *)(uintptr_t) "http://127.0.0.1:18088", timeout_ms);
@@ -179,14 +190,8 @@ static void expect_cut_off(const char *reply, int64_t timeout_ms) {
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   osp_io_error_clear();
-  int64_t code = origin_exchange(reply, strlen(reply));
-  assert(code == -16);
-  int64_t took = elapsed_ms_since(started);
-  assert(took >= timeout_ms * HTTP_READ_BOUND_FACTOR - 100);
-  assert(took < timeout_ms * (HTTP_READ_BOUND_FACTOR + 5));
-  assert(strcmp(osp_io_error(), OVER_TIME) == 0);
+  expect_bounded_failure(origin_exchange(reply, strlen(reply)), started, timeout_ms, OVER_TIME);
   assert(test_alloc_live() == live);
-  osp_io_error_clear();
 }
 
 // A server sending just often enough to beat the timeout is cut off at the bound,
@@ -408,16 +413,6 @@ static void check_scan_costs_stay_linear(void) {
 
 enum { BOUND_TIMEOUT_MS = 300, BOUND_DRIP_US = 40000, TRICKLE_BYTES = 2 << 20, TRICKLE_US = 100000 };
 
-// The call ended at the whole request's bound, with -16 and `text`, not later.
-static void expect_bounded_failure(int64_t code, uint64_t started, const char *text) {
-  assert(code == -16);
-  int64_t took = elapsed_ms_since(started);
-  assert(took >= BOUND_TIMEOUT_MS * HTTP_READ_BOUND_FACTOR - 100);
-  assert(took < BOUND_TIMEOUT_MS * (HTTP_READ_BOUND_FACTOR + 5));
-  assert(strcmp(osp_io_error(), text) == 0);
-  osp_io_error_clear();
-}
-
 // A TLS handshake dripped a byte at a time, each inside the timeout: a record
 // header announcing 16 KiB, then filler. Unbounded, the drip lasts 11 minutes.
 // The 300 ms timeout leaves a loaded machine room to schedule the origin.
@@ -432,7 +427,7 @@ static void check_handshake_bound(void) {
   assert(client > 0);
   uint64_t started = osp_monotonic_ms();
   int64_t code = http_get_response(client, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "");
-  expect_bounded_failure(code, started, HANDSHAKE_OVER_TIME);
+  expect_bounded_failure(code, started, BOUND_TIMEOUT_MS, HANDSHAKE_OVER_TIME);
   origin_stop(&origin);
   assert(origin.request[0] == 0x16); // what it dripped at was a TLS ClientHello
   http_close_client(client);
@@ -457,7 +452,7 @@ static void check_send_bound(void) {
   long live = test_alloc_live();
   uint64_t started = osp_monotonic_ms();
   expect_bounded_failure(http_post(client, (char *)(uintptr_t) "/up", body, (char *)(uintptr_t) ""), started,
-                         SEND_OVER_TIME);
+                         BOUND_TIMEOUT_MS, SEND_OVER_TIME);
   assert(test_alloc_live() == live);
   origin_stop(&origin);
   http_close_client(client);

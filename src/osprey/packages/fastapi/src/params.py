@@ -19,14 +19,14 @@ def query_pair(text):
             return decode_pair(text, '')
 
 def decode_pair(name, encoded):
-    return B.bind(Urls.decode(name, True), lambda key: B.bind(Urls.decode(encoded, True), lambda decoded: Success(value=M.Parameter(name=key, value=decoded))))
+    return resultAndThen(Urls.decode(name, True), lambda key: resultAndThen(Urls.decode(encoded, True), lambda decoded: Success(value=M.Parameter(name=key, value=decoded))))
 
 def collect_pairs(parts):
     match parts:
         case []:
             return Success(value=[])
         case [head, *tail]:
-            return B.bind(query_pair(head), lambda pair: B.bind(collect_pairs(tail), lambda pairs: Success(value=listConcat([pair], pairs))))
+            return resultAndThen(query_pair(head), lambda pair: resultAndThen(collect_pairs(tail), lambda pairs: Success(value=listConcat([pair], pairs))))
 
 def query_pairs(request):
     """Decode ordered query name/value pairs, preserving repeated and empty values."""
@@ -37,11 +37,11 @@ def query_pairs(request):
         return nonempty_pairs(text)
 
 def nonempty_pairs(text):
-    return B.bind(split(text, '&'), lambda parts: collect_pairs(filterList(parts, lambda part: part != '')))
+    return resultAndThen(split(text, '&'), lambda parts: collect_pairs(filterList(parts, lambda part: part != '')))
 
 def query_all(request, name):
     """Return every decoded query value for a name, in request order."""
-    return B.bind(query_pairs(request), lambda pairs: Success(value=mapList(filterList(pairs, lambda pair: pair.name == name), lambda pair: pair.value)))
+    return resultAndThen(query_pairs(request), lambda pairs: Success(value=mapList(filterList(pairs, lambda pair: pair.name == name), lambda pair: pair.value)))
 
 def first(values):
     match values:
@@ -52,7 +52,7 @@ def first(values):
 
 def query(request, name):
     """Return the last query value, or a missing/decoding error."""
-    return B.bind(query_all(request, name), lambda values: first(listReverse(values)))
+    return resultAndThen(query_all(request, name), lambda values: first(listReverse(values)))
 
 def header_line(line):
     match indexOf(line, '\r'):

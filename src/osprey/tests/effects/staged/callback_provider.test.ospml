@@ -48,7 +48,9 @@ forwardedCallbackCase () =
     print label
     checkAll "a forwarded callback reaches the provider's region" [label == "shelf:tin"]
 
-test "a provider discharges a snapshot callback" signalProviderCase
-test "a non-generic provider works the same way" staticMonoCase
-test "an inline lambda callback is discharged too" lambdaCallbackCase
-test "a forwarded callback reaches the provider's region" forwardedCallbackCase
+testCases [
+    { name = "a provider discharges a snapshot callback", work = signalProviderCase },
+    { name = "a non-generic provider works the same way", work = staticMonoCase },
+    { name = "an inline lambda callback is discharged too", work = lambdaCallbackCase },
+    { name = "a forwarded callback reaches the provider's region", work = forwardedCallbackCase }
+]

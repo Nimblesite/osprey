@@ -4,6 +4,10 @@
 //! KLEE, so it is ignored by default and run by `make _test_hunt_crashes`,
 //! which passes `OSPREY_KLEE_LLVM` (LLVM's bin directory) and `OSPREY_KLEE`.
 
+#[path = "common/repo_root.rs"]
+mod repo_root;
+use repo_root::repo_root;
+
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -54,10 +58,6 @@ char *osp_input(void);
 int64_t osp_parse_int_strict(const char *, int64_t *);
 int main(void) { char *s = osp_input(); for (int i = 0; i < 3; i++) s[i] = 49; int64_t value = 0; return (int)osp_parse_int_strict(s, &value); }
 ";
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
 
 fn tool(var: &str) -> Checked<PathBuf> {
     Ok(PathBuf::from(std::env::var(var).map_err(|error| {

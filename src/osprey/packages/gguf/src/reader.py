@@ -80,7 +80,7 @@ def read_header(prefix, file_size):
 def read_path(path, file_size, count):
     """Parse the header of the file at `path`, reading `count` bytes and doubling that
     until the metadata and tensor infos all fit, or until the whole file has been read."""
-    return Chain.then(readFileBytes(path, 0, count), lambda prefix: read_prefix(path, file_size, count, prefix))
+    return resultAndThen(readFileBytes(path, 0, count), lambda prefix: read_prefix(path, file_size, count, prefix))
 
 
 def read_prefix(path, file_size, count, prefix):
@@ -112,7 +112,7 @@ def checked_walk(data, head):
     """The metadata walk, once its count is known to fit inside the buffer."""
     step = lambda acc, _i: field_step(data, acc, head.swapped)
     walk = Chain.walk_checked(head.kv_count, FieldWalk(offs=head.offs, items=header_fields(head), problem=""), step)
-    return Chain.then(walk, lambda done: Success(value=Section(offs=done.offs, fields=done.items)))
+    return resultAndThen(walk, lambda done: Success(value=Section(offs=done.offs, fields=done.items)))
 
 
 def header_fields(head):
@@ -161,17 +161,17 @@ def duplicate_key(entry):
 
 def field_at(data, off, swapped):
     """One metadata entry at `off`: its key string, value type and value."""
-    return Chain.then(Values.string_at(data, off, swapped), lambda key: field_value(data, off, key, swapped))
+    return resultAndThen(Values.string_at(data, off, swapped), lambda key: field_value(data, off, key, swapped))
 
 
 def field_value(data, off, key, swapped):
     """The entry's value type, which follows its key."""
-    return Chain.then(Values.kind_at(data, off + key.size, swapped), lambda kind: entry_at(data, off, key, kind, swapped))
+    return resultAndThen(Values.kind_at(data, off + key.size, swapped), lambda kind: entry_at(data, off, key, kind, swapped))
 
 
 def entry_at(data, off, key, kind, swapped):
     """The entry's value, once its type is known."""
-    return Chain.then(Values.value_at(data, off + key.size + 4, kind, swapped), lambda value: Success(value=field_sized(off, key, value)))
+    return resultAndThen(Values.value_at(data, off + key.size + 4, kind, swapped), lambda value: Success(value=field_sized(off, key, value)))
 
 
 def field_sized(off, key, value):
@@ -181,12 +181,12 @@ def field_sized(off, key, value):
 
 def tensors_of(data, head, section, file_size):
     """The tensor section placed against the file, and where its data starts."""
-    return Chain.then(Tensors.alignment_of(section.fields), lambda alignment: Tensors.of(data, section.offs, head.tensor_count, head.swapped, alignment, file_size))
+    return resultAndThen(Tensors.alignment_of(section.fields), lambda alignment: Tensors.of(data, section.offs, head.tensor_count, head.swapped, alignment, file_size))
 
 
 def assemble(data, head, section, file_size):
     """The parsed file, once every tensor's type, size and byte range check out."""
-    return Chain.then(tensors_of(data, head, section, file_size), lambda placed: Success(value=make_file(data, head, section, placed)))
+    return resultAndThen(tensors_of(data, head, section, file_size), lambda placed: Success(value=make_file(data, head, section, placed)))
 
 
 def make_file(data, head, section, placed):
@@ -246,22 +246,12 @@ def no_tensor(index):
 
 def tensor_names(file):
     """Every tensor name, in file order."""
-    return mapList(file.tensors, tensor_name)
-
-
-def tensor_name(info):
-    """A tensor's name."""
-    return info.name
+    return mapList(file.tensors, lambda info: info.name)
 
 
 def tensor_types(file):
     """Every tensor's ggml type name, in file order."""
-    return mapList(file.tensors, tensor_type_name)
-
-
-def tensor_type_name(info):
-    """A tensor's ggml type name."""
-    return info.type
+    return mapList(file.tensors, lambda info: info.type)
 
 
 def distinct_tensor_types(file):
@@ -285,7 +275,7 @@ def keep_new(acc, item):
 
 def tensor_bytes(file, name):
     """The tensor's stored bytes, before any block decoding."""
-    return Chain.then(named_tensor(file.tensors, name), lambda value: Values.bytes_at(file.data, value.data_offset, value.n_bytes))
+    return resultAndThen(named_tensor(file.tensors, name), lambda value: Values.bytes_at(file.data, value.data_offset, value.n_bytes))
 
 
 def named_tensor(tensors, name):

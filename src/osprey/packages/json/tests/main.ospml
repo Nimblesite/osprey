@@ -8,18 +8,15 @@ sample () = Doc::parse "{\"text\":\"hello\\n\\\"world\\\"\",\"empty\":\"\",\"int
 // case names the value it must answer with.
 checked (read, cases) = forEachList (cases, \c => expect (read c.at, c.want))
 
+// The same table for cases that already hold the value they were read into.
+same (cases) = checked (\value => value, cases)
+
 test ("parse reads complete documents and falls back to null for malformed input", \() =>
     doc = sample ()
-    expect (Doc::kind doc, "object")
-    expect (Doc::text (doc, "text"), "hello\n\"world\"")
-    expect (Doc::number (doc, "integer"), 0 - 42)
+    same ([{ at = Doc::kind doc, want = "object" }, { at = Doc::text (doc, "text"), want = "hello\n\"world\"" }, { at = Doc::kind (Doc::field (doc, "nothing")), want = "null" }, { at = join (Doc::keys (Doc::field (doc, "object"))) ",", want = "first,second" }, { at = Doc::write (Doc::parse "{not json"), want = "null" }])
+    same ([{ at = Doc::number (doc, "integer"), want = 0 - 42 }, { at = length (Doc::items (Doc::field (doc, "list"))), want = 7 }])
     expect (Doc::decimal (doc, "decimal"), 2.5)
-    expect (Doc::flag (doc, "yes"), true)
-    expect (Doc::flag (doc, "no"), false)
-    expect (Doc::kind (Doc::field (doc, "nothing")), "null")
-    expect (length (Doc::items (Doc::field (doc, "list"))), 7)
-    expect (join (Doc::keys (Doc::field (doc, "object"))) ",", "first,second")
-    expect (Doc::write (Doc::parse "{not json"), "null")
+    same ([{ at = Doc::flag (doc, "yes"), want = true }, { at = Doc::flag (doc, "no"), want = false }])
     forEachList ([{ text = "{not json", want = "null" }, { text = "", want = "null" }, { text = "[]", want = "list" }, { text = "{}", want = "object" }], \c => expect (Doc::kind (Doc::parse c.text), c.want)))
 
 test ("field and has distinguish absent members from present null and reject non-objects", \() =>
@@ -45,45 +42,34 @@ test ("kind and real and string handle every JSON variant including numeric wide
 
 test ("items and at traverse arrays totally across empty negative and out-of-range cases", \() =>
     doc = Doc::field (sample (), "list")
-    values = Doc::items doc
-    expect (length values, 7)
-    expect (Doc::kind (Doc::at (doc, 0)), "null")
+    expect (length (Doc::items doc), 7)
+    same ([{ at = Doc::kind (Doc::at (doc, 0)), want = "null" }, { at = Doc::string (Doc::at (doc, 4)), want = "x" }])
     expect (Doc::flag (Doc::parse "{\"v\":${Doc::write (Doc::at (doc, 1))}}", "v"), true)
-    expect (Doc::real (Doc::at (doc, 2)), 1.0)
-    expect (Doc::real (Doc::at (doc, 3)), 1.5)
-    expect (Doc::string (Doc::at (doc, 4)), "x")
+    checked (\at => Doc::real (Doc::at (doc, at)), [{ at = 2, want = 1.0 }, { at = 3, want = 1.5 }])
     checked (\at => Doc::kind (Doc::at (doc, at)), [{ at = 5, want = "list" }, { at = 6, want = "object" }, { at = 7, want = "null" }, { at = 0 - 1, want = "null" }])
     checked (\at => Doc::kind (Doc::at (at, 0)), [{ at = JsonArray [], want = "null" }, { at = JsonObject [], want = "null" }, { at = JsonString "x", want = "null" }])
     checked (\at => length (Doc::items at), [{ at = JsonArray [], want = 0 }, { at = JsonNull, want = 0 }, { at = JsonObject [], want = 0 }, { at = JsonString "abc", want = 0 }]))
 
 test ("members and keys preserve object order and return none for other kinds", \() =>
     doc = Doc::parse "{\"z\":null,\"a\":1,\"middle\":2,\"nested\":{\"k\":true}}"
-    members = Doc::members doc
-    expect (length members, 4)
-    expect (join (Doc::keys doc) ",", "z,a,middle,nested")
-    expect (Doc::number (doc, "a"), 1)
+    same ([{ at = length (Doc::members doc), want = 4 }, { at = Doc::number (doc, "a"), want = 1 }])
     expect (Doc::flag (Doc::field (doc, "nested"), "k"), true)
-    expect (join (Doc::keys (JsonObject [])) ",", "")
-    checked (\at => length (Doc::members at), [{ at = JsonObject [], want = 0 }, { at = JsonArray [JsonInt 1], want = 0 }, { at = JsonNull, want = 0 }, { at = JsonString "{}", want = 0 }])
-    expect (join (Doc::keys (JsonArray [JsonInt 1])) ",", ""))
+    same ([{ at = join (Doc::keys doc) ",", want = "z,a,middle,nested" }, { at = join (Doc::keys (JsonObject [])) ",", want = "" }, { at = join (Doc::keys (JsonArray [JsonInt 1])) ",", want = "" }])
+    checked (\at => length (Doc::members at), [{ at = JsonObject [], want = 0 }, { at = JsonArray [JsonInt 1], want = 0 }, { at = JsonNull, want = 0 }, { at = JsonString "{}", want = 0 }]))
 
 test ("texts maps arrays member-wise and substitutes empty strings for wrong element kinds", \() =>
     doc = Doc::parse "{\"mixed\":[\"a\",1,null,true,2.5,{},\"b\"],\"empty\":[],\"wrong\":\"ab\"}"
     mixed = Doc::texts (doc, "mixed")
     expect (length mixed, 7)
-    expect (join mixed ",", "a,,,,,,b")
-    expect (join (Doc::texts (doc, "empty")) ",", "")
-    forEachList ([{ holder = doc, key = "empty" }, { holder = doc, key = "wrong" }, { holder = doc, key = "missing" }, { holder = JsonNull, key = "mixed" }], \c => expect (length (Doc::texts (c.holder, c.key)), 0))
-    expect (join (Doc::texts (Doc::parse "{\"v\":[\"\",\"x\\ny\",\"λ\"]}", "v")) "|", "|x\ny|λ"))
+    same ([{ at = join mixed ",", want = "a,,,,,,b" }, { at = join (Doc::texts (doc, "empty")) ",", want = "" }, { at = join (Doc::texts (Doc::parse "{\"v\":[\"\",\"x\\ny\",\"λ\"]}", "v")) "|", want = "|x\ny|λ" }])
+    forEachList ([{ holder = doc, key = "empty" }, { holder = doc, key = "wrong" }, { holder = doc, key = "missing" }, { holder = JsonNull, key = "mixed" }], \c => expect (length (Doc::texts (c.holder, c.key)), 0)))
 
 test ("member and array builders compose into exact compact JSON", \() =>
     doc = JsonObject [Doc::str ("s", "x\n\""), Doc::num ("n", 0 - 7), Doc::dec ("d", 0.0 - 0.25), Doc::bit ("b", false), JsonMember "items" (Doc::strings ["a", "", "λ"])]
-    expect (Doc::write doc, "{\"s\":\"x\\n\\\"\",\"n\":-7,\"d\":-0.25,\"b\":false,\"items\":[\"a\",\"\",\"λ\"]}")
-    expect (Doc::text (doc, "s"), "x\n\"")
+    same ([{ at = Doc::write doc, want = "{\"s\":\"x\\n\\\"\",\"n\":-7,\"d\":-0.25,\"b\":false,\"items\":[\"a\",\"\",\"λ\"]}" }, { at = Doc::text (doc, "s"), want = "x\n\"" }, { at = join (Doc::texts (doc, "items")) ",", want = "a,,λ" }])
     expect (Doc::number (doc, "n"), 0 - 7)
     expect (Doc::decimal (doc, "d"), 0.0 - 0.25)
     expect (Doc::flag (doc, "b"), false)
-    expect (join (Doc::texts (doc, "items")) ",", "a,,λ")
     checked (Doc::write, [{ at = Doc::strings [], want = "[]" }, { at = Doc::strings ["\"", "\\", "\n"], want = "[\"\\\"\",\"\\\\\",\"\\n\"]" }, { at = JsonObject [], want = "{}" }, { at = JsonArray [], want = "[]" }, { at = JsonNull, want = "null" }, { at = JsonBool true, want = "true" }, { at = JsonInt (0 - 1), want = "-1" }, { at = JsonFloat 0.5, want = "0.5" }, { at = JsonString "ok", want = "\"ok\"" }]))
 
 test ("a realistic nested document survives reading rebuilding and writing without losing types", \() =>
@@ -91,13 +77,8 @@ test ("a realistic nested document survives reading rebuilding and writing witho
     doc = Doc::parse source
     user = Doc::field (doc, "user")
     rebuilt = JsonObject [Doc::str ("name", Doc::text (user, "name")), Doc::bit ("active", Doc::flag (user, "active")), Doc::num ("score", Doc::number (user, "score")), Doc::dec ("ratio", Doc::decimal (user, "ratio")), JsonMember "tags" (Doc::field (doc, "tags")), Doc::num ("attempts", Doc::number (doc, "attempts")), JsonMember "note" (Doc::field (doc, "note"))]
-    expect (Doc::text (user, "name"), "Ada")
+    same ([{ at = Doc::text (user, "name"), want = "Ada" }, { at = join (Doc::texts (doc, "tags")) "+", want = "admin+ops" }, { at = Doc::kind (Doc::field (doc, "note")), want = "null" }, { at = Doc::write rebuilt, want = "{\"name\":\"Ada\",\"active\":true,\"score\":9,\"ratio\":0.5,\"tags\":[\"admin\",\"ops\"],\"attempts\":-2,\"note\":null}" }, { at = join (Doc::keys rebuilt) ",", want = "name,active,score,ratio,tags,attempts,note" }])
+    same ([{ at = Doc::number (user, "score"), want = 9 }, { at = Doc::number (doc, "attempts"), want = 0 - 2 }])
     expect (Doc::flag (user, "active"), true)
-    expect (Doc::number (user, "score"), 9)
     expect (Doc::decimal (user, "ratio"), 0.5)
-    expect (join (Doc::texts (doc, "tags")) "+", "admin+ops")
-    expect (Doc::number (doc, "attempts"), 0 - 2)
-    expect (Doc::has (doc, "note"), true)
-    expect (Doc::kind (Doc::field (doc, "note")), "null")
-    expect (Doc::write rebuilt, "{\"name\":\"Ada\",\"active\":true,\"score\":9,\"ratio\":0.5,\"tags\":[\"admin\",\"ops\"],\"attempts\":-2,\"note\":null}")
-    expect (join (Doc::keys rebuilt) ",", "name,active,score,ratio,tags,attempts,note"))
+    expect (Doc::has (doc, "note"), true))

@@ -25,6 +25,7 @@ mod platform_window;
 pub(crate) use platform_window::AndroidPlatformWindow;
 
 /// Every callback GPUI registers on the window after `open_window`.
+#[derive(Default)]
 pub(crate) struct Callbacks {
     pub request_frame: Slot<dyn FnMut(RequestFrameOptions)>,
     pub input: Slot<dyn FnMut(PlatformInput) -> DispatchEventResult>,
@@ -39,26 +40,6 @@ pub(crate) struct Callbacks {
     pub close: Slot<dyn FnOnce()>,
     pub appearance_changed: Slot<dyn FnMut()>,
     pub insets_changed: Slot<dyn FnMut(WindowInsets)>,
-}
-
-impl Default for Callbacks {
-    fn default() -> Self {
-        Self {
-            request_frame: Slot::default(),
-            input: Slot::default(),
-            active_status_change: Slot::default(),
-            visibility_change: Slot::default(),
-            hover_status_change: Slot::default(),
-            resize: Slot::default(),
-            moved: Slot::default(),
-            display_changed: Slot::default(),
-            should_close: Slot::default(),
-            hit_test: Slot::default(),
-            close: Slot::default(),
-            appearance_changed: Slot::default(),
-            insets_changed: Slot::default(),
-        }
-    }
 }
 
 /// The window's mutable state, shared between the event loop and the boxed
@@ -104,6 +85,24 @@ impl accesskit::ActionHandler for Action {
     fn do_action(&mut self, request: accesskit::ActionRequest) {
         (self.0)(request);
     }
+}
+
+/// The JNI name and signature of one method that returns an object.
+type ObjectCall = (&'static str, &'static str);
+
+/// The activity methods the accessibility bridge calls.
+const SYSTEM_SERVICE: ObjectCall = ("getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;");
+const WINDOW: ObjectCall = ("getWindow", "()Landroid/view/Window;");
+const DECOR_VIEW: ObjectCall = ("getDecorView", "()Landroid/view/View;");
+
+/// Calls the method `call` on `object`, handing back the object it returns.
+fn call_object<'a>(
+    env: &mut jni::JNIEnv<'a>,
+    object: &jni::objects::JObject,
+    (name, signature): ObjectCall,
+    args: &[jni::objects::JValue],
+) -> jni::errors::Result<jni::objects::JObject<'a>> {
+    Ok(env.call_method(object, name, signature, args)?.l()?)
 }
 
 impl AndroidWindow {
@@ -295,44 +294,20 @@ impl AndroidWindow {
 
     /// Whether any accessibility service is connected right now.
     fn accessibility_enabled(&self) -> jni::errors::Result<bool> {
-        // SAFETY: as in `open_accessibility`.
-        let (vm, activity) = unsafe {
-            (
-                jni::JavaVM::from_raw(self.app.vm_as_ptr().cast())?,
-                jni::objects::JObject::from_raw(self.app.activity_as_ptr().cast()),
-            )
-        };
+        let (vm, activity) = self.jni()?;
         let mut env = vm.attach_current_thread()?;
         let service = env.new_string("accessibility")?;
-        let manager = env
-            .call_method(
-                &activity,
-                "getSystemService",
-                "(Ljava/lang/String;)Ljava/lang/Object;",
-                &[(&service).into()],
-            )?
-            .l()?;
+        let manager = call_object(&mut env, &activity, SYSTEM_SERVICE, &[(&service).into()])?;
         env.call_method(&manager, "isEnabled", "()Z", &[])?.z()
     }
 
     /// Hands TalkBack the activity's decor view, which covers the same pixels as the surface,
     /// so the tree's window coordinates are its own.
     fn open_accessibility(&self, callbacks: gpui::A11yCallbacks) -> jni::errors::Result<()> {
-        // SAFETY: the VM and activity pointers stay valid for the process, and the activity is
-        // a global reference this borrow never deletes.
-        let (vm, activity) = unsafe {
-            (
-                jni::JavaVM::from_raw(self.app.vm_as_ptr().cast())?,
-                jni::objects::JObject::from_raw(self.app.activity_as_ptr().cast()),
-            )
-        };
+        let (vm, activity) = self.jni()?;
         let mut env = vm.attach_current_thread()?;
-        let window = env
-            .call_method(&activity, "getWindow", "()Landroid/view/Window;", &[])?
-            .l()?;
-        let host = env
-            .call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?
-            .l()?;
+        let window = call_object(&mut env, &activity, WINDOW, &[])?;
+        let host = call_object(&mut env, &window, DECOR_VIEW, &[])?;
         let adapter = accesskit_android::InjectingAdapter::new(
             &mut env,
             &host,
@@ -341,6 +316,18 @@ impl AndroidWindow {
         );
         *locked(&self.accessibility) = Some(adapter);
         Ok(())
+    }
+
+    /// The activity as a global JNI reference, with the VM the process runs on.
+    fn jni(&self) -> jni::errors::Result<(jni::JavaVM, jni::objects::JObject<'static>)> {
+        // SAFETY: both pointers stay valid for the process, and the activity is a global
+        // reference this borrow never deletes.
+        unsafe {
+            Ok((
+                jni::JavaVM::from_raw(self.app.vm_as_ptr().cast())?,
+                jni::objects::JObject::from_raw(self.app.activity_as_ptr().cast()),
+            ))
+        }
     }
 
     /// Delivers one input event; the return value tells Android whether the

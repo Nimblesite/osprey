@@ -74,27 +74,33 @@ pub(crate) enum MlModuleKind {
     State,
 }
 
+/// A value signature, `name<T, U> : ty ! effects`: a standalone signature in
+/// a module body awaiting its binding, or one requirement of a named module
+/// signature ([MODULES-SIGNATURE], [FLAVOR-ML-GENERICS], [FLAVOR-ML-EFFECT]).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MlSig {
+    /// The signed name. In a module signature, this is a required export.
+    pub(crate) name: String,
+    /// Declared type parameters from a `name<T, U> :` binder, in order ([TYPE-GENERICS-FN]).
+    pub(crate) type_params: Vec<MlTypeParam>,
+    /// The declared value/function type.
+    pub(crate) ty: MlType,
+    /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`), empty if omitted.
+    pub(crate) effects: Vec<MlEffectRef>,
+    /// Optional open remainder (`![Log | e]`).
+    pub(crate) effect_tail: Option<String>,
+    /// Whether `!` was written, including `![]`.
+    pub(crate) effect_row_present: bool,
+    /// Source position of the signed name.
+    pub(crate) position: Position,
+}
+
 /// One public requirement in a named module signature
 /// ([MODULES-SIGNATURE]).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum MlSignatureItem {
     /// A value/function type and optional effect row.
-    Value {
-        /// Required exported name.
-        name: String,
-        /// Declared generic binders.
-        type_params: Vec<MlTypeParam>,
-        /// Required value/function type.
-        ty: MlType,
-        /// Required effect row.
-        effects: Vec<MlEffectRef>,
-        /// Optional open remainder (`![Log | e]`).
-        effect_tail: Option<String>,
-        /// Whether `!` was written, including `![]`.
-        effect_row_present: bool,
-        /// Source position of the name.
-        pos: Position,
-    },
+    Value(MlSig),
     /// An abstract (`type T`) or manifest (`type T = R`) type requirement.
     Type {
         /// Required type name.
@@ -220,24 +226,7 @@ pub(crate) enum MlItem {
     /// the same name that follows it. Kept in the CST so the lowerer can apply
     /// concrete parameter/return types (which the type checker and codegen rely
     /// on for curried closures and exact `Result` preservation).
-    ValueSignature {
-        /// The signed name.
-        name: String,
-        /// Declared type parameters from a `name<T, U> :` binder, in order
-        /// ([FLAVOR-ML-GENERICS], [TYPE-GENERICS-FN]).
-        type_params: Vec<MlTypeParam>,
-        /// The declared type.
-        ty: MlType,
-        /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`),
-        /// empty when the signature declares no effects ([FLAVOR-ML-EFFECT]).
-        effects: Vec<MlEffectRef>,
-        /// Optional open remainder (`![Log | e]`).
-        effect_tail: Option<String>,
-        /// Whether `!` was written, including `![]`.
-        effect_row_present: bool,
-        /// Source position of the signed name.
-        pos: Position,
-    },
+    ValueSignature(MlSig),
     /// `type Name param* =` + an indented layout block of variants
     /// ([FLAVOR-ML-TYPE]). A union/enum lists uppercase constructor variants
     /// (each with an optional indented `field : type` block); a record is the
