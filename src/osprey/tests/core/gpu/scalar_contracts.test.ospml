@@ -4,6 +4,7 @@ emptyRead = []
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
 
+addFloats (a, x) = a + x
 countTrue (a, x) = match x
     true => (a + 1)
     false => a
@@ -11,7 +12,7 @@ countTrue (a, x) = match x
 floatListValue () = listReverse [2.5, 1.5]
 boolListValue () = listReverse [true, false, false]
 listValueTagsCase () = withBuffer(toGpu (floatListValue ()), \floats => withBuffer(toGpu (boolListValue ()), \flags => checkAll "runtime list values keep GPU scalar tags" [
-            gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addF), \uploaded15 => (uploaded15) == 4.0), gpuLength flags == 3, (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
+            gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded15 => (uploaded15) == 4.0), gpuLength flags == 3, (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
             gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded14 => (uploaded14) == 1)
         ]))
 fromGpuScalarCase () = withBuffer(toGpu ([1.25, 2.5, 5.0]), \uploaded17 => withBuffer(fromGpu (uploaded17), fromGpuScalarFloats))
@@ -29,7 +30,7 @@ repeatedCrossingWith (floats, flags, read2, read3) =
     floatsBack = read2
     flagsBack = read3
     checkAll "repeated host and GPU crossings retain scalar types" [
-        gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addF), \uploaded13 => (uploaded13) == 4.0), (listGet (floatsBack, 0) ?: 99.0) == 1.5, (listGet (floatsBack, 1) ?: 99.0) == 2.5,
+        gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded13 => (uploaded13) == 4.0), (listGet (floatsBack, 0) ?: 99.0) == 1.5, (listGet (floatsBack, 1) ?: 99.0) == 2.5,
         gpuLength flags == 3, gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded12 => (uploaded12) == 1), (listGet (flagsBack, 0) ?: true) == false, (listGet (flagsBack, 2) ?: false) == true
     ]
 (** With no first element to inspect, lowering must use the inferred result type. *)
@@ -39,12 +40,10 @@ emptyTypedLiteralCase () =
         gpuSatisfies (toGpu (emptyRead), \uploaded8 => gpuSatisfies (fromGpu (uploaded8), \checked0 => listLength (checked0) == 0))
     ]
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactTests [
-    { name = "runtime list values retain float and bool GPU element tags", work = listValueTagsCase },
-    { name = "fromGpu reads float and bool elements at their source types", work = fromGpuScalarCase },
-    { name = "repeated List and GpuBuffer crossings preserve scalar types", work = repeatedCrossingCase },
-    { name = "empty GPU literals retain contextual scalar types", work = emptyTypedLiteralCase }
-]
+test ("runtime list values retain float and bool GPU element tags", exactly listValueTagsCase)
+test ("fromGpu reads float and bool elements at their source types", exactly fromGpuScalarCase)
+test ("repeated List and GpuBuffer crossings preserve scalar types", exactly repeatedCrossingCase)
+test ("empty GPU literals retain contextual scalar types", exactly emptyTypedLiteralCase)
 (** [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract. *)
 squareScalar value = value * value
 subtractSelf value = value - value
@@ -57,7 +56,7 @@ gpuIeeeInfinity infinityBuffer =
 gpuIeeeNaN (infinityBuffer, infinity, nanBuffer) =
     nan = gpuGet (nanBuffer, 0) ?: 0.0
     withBuffer(toGpu ([infinity, nan, -0.0]), \uploaded7 => withBuffer(fromGpu (uploaded7), \read0 => withBuffer(toGpu (listReverse (read0)), \roundTrip => checkAll "host GPU kernels preserve non-finite values and signed zero" [
-                        infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addF), \uploaded8 => (uploaded8) == infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
+                        infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), \uploaded8 => (uploaded8) == infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
                         toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
                     ])))
 (** [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery. *)
@@ -76,8 +75,8 @@ gpuFloatZeroCase () =
             remainders = gpuMap(input, remainderZero)
             match gpuDevice () == "host"
                 true => checkAll "host GPU zero divisors use the enclosing policy" [
-                    gpuSatisfies(quotients, \q => gpuEquals(gpuFold(q, 0.0, addF), 0.75)),
-                    gpuSatisfies(remainders, \r => gpuEquals(gpuFold(r, 0.0, addF), 0.75)),
+                    gpuSatisfies(quotients, \q => gpuSatisfies(gpuFold(q, 0.0, addFloats), \total => total == 0.75)),
+                    gpuSatisfies(remainders, \r => gpuSatisfies(gpuFold(r, 0.0, addFloats), \total => total == 0.75)),
                     faults == "///%%%"
                 ]
                 false => checkAll "host GPU zero divisors use the enclosing policy" [
@@ -85,10 +84,8 @@ gpuFloatZeroCase () =
                 ]
         Error message => check ("GPU operation", "success", toString message)
 
-testCases [
-    { name = "host GPU arithmetic preserves IEEE non-finite values", work = gpuIeeeCase },
-    { name = "host GPU float zero divisors use explicit recovery", work = gpuFloatZeroCase }
-]
+test "host GPU arithmetic preserves IEEE non-finite values" gpuIeeeCase
+test "host GPU float zero divisors use explicit recovery" gpuFloatZeroCase
 (** [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy. *)
 gpuAbsoluteCase () =
     match toGpu ([-2.5, -0.0, 3.5])
@@ -124,11 +121,11 @@ remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 32. *)
 remainder32Case () = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat32(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => float32Bits(x) == 1069547520) && gpuSatisfies(gpuGet(output, 1), \x => float32Bits(x) == -1077936128) && gpuSatisfies(gpuGet(output, 2), \x => float32Bits(x) == -2147483648) && gpuSatisfies(gpuGet(output, 3), \x => float32Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
 (** [BUILTIN-MATH-FLOATDIV] floatDiv is the IEEE quotient at width 64 on the host and in a kernel: a zero divisor answers an infinity of the right sign or NaN, never an Arith operation. *)
-floatDiv64Case () = gpuSatisfies(toGpu([toFloat(1.0), toFloat(-1.0), toFloat(0.0), toFloat(6.0), toFloat(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat(0.0), toFloat(0.0), toFloat(0.0), toFloat(4.0), toFloat(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => floatBits(x) == 9218868437227405312) && gpuSatisfies(gpuGet(q, 1), \x => floatBits(x) == -4503599627370496) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => floatBits(x) == -4503599627370496) && floatBits(floatDiv(toFloat(1.0), toFloat(0.0))) == 9218868437227405312 && floatDiv(toFloat(6.0), toFloat(4.0)) == toFloat(1.5))))
+floatDiv64Case () = gpuSatisfies(toGpu([toFloat(1.0), toFloat(-1.0), toFloat(0.0), toFloat(6.0), toFloat(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat(0.0), toFloat(0.0), toFloat(0.0), toFloat(4.0), toFloat(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => floatBits(x) == 9218868437227405312) && gpuSatisfies(gpuGet(q, 1), \x => floatBits(x) == -4503599627370496) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuSatisfies(gpuGet(q, 3), \x => x == toFloat(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => floatBits(x) == -4503599627370496) && floatBits(floatDiv(toFloat(1.0), toFloat(0.0))) == 9218868437227405312 && floatDiv(toFloat(6.0), toFloat(4.0)) == toFloat(1.5))))
 (** [BUILTIN-MATH-FLOATDIV] The same quotients at width 32, the width the Qwen kernels compute in. *)
-floatDiv32Case () = gpuSatisfies(toGpu([toFloat32(1.0), toFloat32(-1.0), toFloat32(0.0), toFloat32(6.0), toFloat32(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(4.0), toFloat32(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => float32Bits(x) == 2139095040) && gpuSatisfies(gpuGet(q, 1), \x => float32Bits(x) == -8388608) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat32(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => float32Bits(x) == -8388608) && float32Bits(floatDiv(toFloat32(1.0), toFloat32(0.0))) == 2139095040 && floatDiv(toFloat32(6.0), toFloat32(4.0)) == toFloat32(1.5))))
+floatDiv32Case () = gpuSatisfies(toGpu([toFloat32(1.0), toFloat32(-1.0), toFloat32(0.0), toFloat32(6.0), toFloat32(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(4.0), toFloat32(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => float32Bits(x) == 2139095040) && gpuSatisfies(gpuGet(q, 1), \x => float32Bits(x) == -8388608) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuSatisfies(gpuGet(q, 3), \x => x == toFloat32(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => float32Bits(x) == -8388608) && float32Bits(floatDiv(toFloat32(1.0), toFloat32(0.0))) == 2139095040 && floatDiv(toFloat32(6.0), toFloat32(4.0)) == toFloat32(1.5))))
 (** [BUILTIN-MATH-FLOATDIV] The same quotients at width 16, which a kernel computes in binary32 and rounds back. *)
-floatDiv16Case () = gpuSatisfies(toGpu([toFloat16(1.0), toFloat16(-1.0), toFloat16(0.0), toFloat16(6.0), toFloat16(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat16(0.0), toFloat16(0.0), toFloat16(0.0), toFloat16(4.0), toFloat16(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => float16Bits(x) == 31744) && gpuSatisfies(gpuGet(q, 1), \x => float16Bits(x) == -1024) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuEquals(gpuGet(q, 3), toFloat16(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => float16Bits(x) == -1024) && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744 && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5))))
+floatDiv16Case () = gpuSatisfies(toGpu([toFloat16(1.0), toFloat16(-1.0), toFloat16(0.0), toFloat16(6.0), toFloat16(1.0)]), \numerators => gpuSatisfies(toGpu([toFloat16(0.0), toFloat16(0.0), toFloat16(0.0), toFloat16(4.0), toFloat16(-0.0)]), \divisors => gpuSatisfies(gpuZipWith(numerators, divisors, \(n, d) => floatDiv(n, d)), \q => gpuLength(q) == 5 && gpuSatisfies(gpuGet(q, 0), \x => float16Bits(x) == 31744) && gpuSatisfies(gpuGet(q, 1), \x => float16Bits(x) == -1024) && gpuSatisfies(gpuGet(q, 2), \x => x != x) && gpuSatisfies(gpuGet(q, 3), \x => x == toFloat16(1.5)) && gpuSatisfies(gpuGet(q, 4), \x => float16Bits(x) == -1024) && float16Bits(floatDiv(toFloat16(1.0), toFloat16(0.0))) == 31744 && floatDiv(toFloat16(6.0), toFloat16(4.0)) == toFloat16(1.5))))
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16. *)
 remainder16Case () = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat16(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => float16Bits(x) == 15872) && gpuSatisfies(gpuGet(output, 1), \x => float16Bits(x) == -16896) && gpuSatisfies(gpuGet(output, 2), \x => float16Bits(x) == -32768) && gpuSatisfies(gpuGet(output, 3), \x => float16Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
 (** The sized bit views run as kernels too: binary32 words through
