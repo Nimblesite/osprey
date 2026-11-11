@@ -25,9 +25,12 @@ type Combine = Callable[[float32, float32], float32]
 
 @static_effect
 class Tensor[B]:
-    """The operations a model needs, `B` being the representation the handler
-    picks: build, read, measure, combine, reduce, find, multiply, lift, load and
-    name the device. One that cannot be done answers `Error` with the reason
+    """The operations a model needs: build a buffer from an index function, read
+    and measure one, combine two, reduce one, find the first index holding a
+    value, multiply two matrices, lift a host list, load a tensor from a
+    safetensors file, and say which interpretation is answering. `B` is the
+    representation the handler picks. A build, zip, reduction, index search,
+    product, upload or load that cannot be done answers `Error` with the reason
     ([FAILURE-EXPLICIT])."""
     def build(size: int, kernel: Kernel) -> Result[B, str]: ...
     def get(buffer: B, index: int) -> float32: ...
@@ -42,19 +45,21 @@ class Tensor[B]:
 
 
 def hit(v, x, i, n):
-    """`index_of`'s first step: element i names itself when it holds x, else n."""
+    """`index_of`'s first step under both handlers: element i names itself when it
+    holds x and the length n otherwise."""
     return i if v == x else n
 
 
 def min_i(a, i):
-    """`index_of`'s second step: the smallest name wins, so the first holder wins."""
+    """`index_of`'s second step: the smallest name wins, so the answer is the first
+    index holding x or n when none does."""
     return i if i < a else a
 
 
 @effect
 class Fault:
-    """A fault ends the run: its arm answers the whole region for an arithmetic,
-    product or load fault."""
+    """A fault ends the run: its arm answers the whole region. Arithmetic
+    faults, failed products and failed weight loads all stop here."""
     @control
     def halt(message: str) -> int: ...
 
@@ -65,42 +70,47 @@ class halting:
         return Error(message=fault)
 
 
-def stop(reason):
-    """Stops the run with `reason`: the surrounding `strictly` answers Error
-    naming it. Every arithmetic arm is one call here, so they all stop alike."""
-    return perform(Fault.halt(reason))
-
-
 @handler(Arith)
 class arithmetic:
     def overflow(op, l, r, _):
-        return stop(f"integer overflow: {l} {op} {r}")
+        return perform(Fault.halt(f"integer overflow: {l} {op} {r}"))
 
     def divideByZero(op, l):
-        return stop(f"division by zero: {l} {op} 0")
+        match perform(Fault.halt(f"division by zero: {l} {op} 0")):
+            case _:
+                return l
 
     def remainderByZero(l):
-        return stop(f"remainder by zero: {l} % 0")
+        return perform(Fault.halt(f"remainder by zero: {l} % 0"))
+
+
+def stop(reason):
+    """Stops the run with `reason`: the surrounding `strictly` answers Error
+    naming it. The operation never resumes."""
+    return perform(Fault.halt(reason))
 
 
 def product_lengths(side, has, needs):
-    """The reason a product refuses operands whose element count disagrees with the
-    stated shape: the GPU runtime's own `gpuMatMul` text, so both agree."""
+    """The reason a product refuses operands whose element count disagrees with
+    the stated shape: the GPU runtime's own `gpuMatMul` text, so both
+    interpretations stop alike."""
     return f"gpuMatMul: {side} operand: has {has} elements, the stated shape needs {needs}"
 
 
 def strictly(work) -> Result[None, str]:
     """Runs `work` under GPT-2's arithmetic policy: Success with its value, or Error
-    naming the first fault, since a fault is a model bug and never a value to
-    substitute [GPU-DEVICE-FAULT]. The annotation pins each `with` closure's
-    Result type, which inference leaves open."""
+    naming the first fault. A fault is a bug in the model, never a value to
+    substitute (a fabricated 0.0 is indistinguishable from a real logit), so it
+    stops the run, as a device kernel's fault does [GPU-DEVICE-FAULT]. The
+    annotation pins what inference leaves open: each `with` suite is a closure
+    whose Result type must be concrete to compile."""
     with halting:
         with arithmetic:
             return Success(value=work())
 
 
 def under(name, work):
-    """Runs `work` under the handler `name` selects; an unknown name runs nothing,
+    """Runs `work` under the handler `name` selects. An unknown name runs nothing,
     so a mistyped backend never silently lands on the GPU surface."""
     match name:
         case "gpu":

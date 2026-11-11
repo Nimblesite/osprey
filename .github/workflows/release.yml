@@ -510,7 +510,7 @@ jobs:
       # editor GIFs must be real bytes for verify-readme.mjs.
       - name: Fetch extension icon, README media and workbench assets
         shell: bash
-        run: git lfs install --local && git lfs pull --include="src/toolchain/website/src/assets/images/logo.png,src/toolchain/vscode-extension/media/**,src/osprey/workbench/assets/**,src/osprey/workbench/lessons/media/**"
+        run: git lfs install --local && git lfs pull --include="src/toolchain/website/src/assets/images/logo.png,src/toolchain/vscode-extension/media/package-tour.gif,src/toolchain/vscode-extension/media/showcase.gif,src/osprey/workbench/assets/**,src/osprey/workbench/lessons/media/**"
       - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - uses: actions/download-artifact@v8
