@@ -80,92 +80,37 @@ knobNumber (name, expected) =
 
 layer (name, expected) = expect (Machines::current (machine (), name), expected)
 
-// A pointer press and release at (x, y), which closes the menu.
-pressed (x, y) =
-    pointer (x, y, true)
-    pointer (x, y, false)
-    layer ("menu", "closed")
-
-// A press opening a chooser, without choosing.
-opened (label, menu) =
-    tap label
-    layer ("menu", menu)
-
-// The skins menu opened from `from`, choosing `choice`, which the `skin` knob must record.
-skinChosen (from, choice, skin) =
-    tap "Skin: ${from}"
-    tap choice
-    knobText ("skin", skin)
-    layer ("menu", "closed")
-
 // Runs of reads that only their literals distinguish are tables: each case names the
 // control and the value it must read.
-reads (reader, cases) = forEachList (cases, \c => reader (c.at, c.want))
+knobs (cases) = forEachList (cases, \c => knobNumber (c.at, c.want))
+
+knobTexts (cases) = forEachList (cases, \c => knobText (c.at, c.want))
+
+flags (cases) = forEachList (cases, \c => flag (c.at, c.want))
+
+layers (cases) = forEachList (cases, \c => layer (c.at, c.want))
 
 lettered (texts) = forEachList (texts, \text => expect (letters text, true))
 
 offereds (labels) = forEachList (labels, offered)
 
-// A run of checks, in the order given.
-eachOf (steps) = forEachList (steps, \step => step ())
-
-// The folder the machine file's document sits in, for each document path.
-folders (cases) = forEachList (cases, \c => expect (MachineDocs::folder c.path, c.want))
-
-// A node's bypass press, with the bypass its switch must then record.
-bypassing (label, role) =
-    tap label
-    bypassed role
-
-// A node's enable press: its switch on, and the health its report must show.
-enabled (label, onRole, healthRole) =
-    tap label
-    flag ("${onRole}On", true)
-    knobText ("${healthRole}Health", "Healthy")
-
-// The knobs a move leaves behind, with the lettering it must show.
-knobsShow (cases, text) =
-    reads (knobNumber, cases)
-    expect (letters text, true)
-
-// A slider pressed at `fraction` across `label`, the knobs it must move and the lettering it must show.
-slid (label, fraction, cases, texts) =
-    tapAt (label, fraction)
-    reads (knobNumber, cases)
-    lettered texts
+missings (labels) = forEachList (labels, missing)
 
 // A press on a control that selects, and the selection it must leave behind.
 selected (label, role) =
     tap label
     knobText ("selected", role)
 
-// A selection across the tree, the lettering its inspector shows and the controls it offers.
-inspected (label, role, texts, offers) =
-    selected (label, role)
-    lettered texts
-    offereds offers
-
-// The nodes a run of selections leaves selected.
 selects (cases) = forEachList (cases, \c => selected (c.label, c.role))
 
-// A history button pressed, then the reads its press must leave behind.
-historyPress (button, check) =
-    tap button
-    check ()
-
-// A node selected by label, whose inspector shows no parameters.
-bare name =
-    tap "Select ${name}"
-    expect (letters "No parameters", true)
-
 // A node's switch after the pointer pressed it, with the health it reports: off is bypassed, on healthy.
-health (on, report, role) =
-    flag ("${role}On", on)
-    knobText ("${role}Health", report)
+bypassed role =
+    flag ("${role}On", false)
+    knobText ("${role}Health", "Bypassed")
 
-bypassed role = health (false, "Bypassed", role)
-
-healthy role = health (true, "Healthy", role)
+healthy role =
+    flag ("${role}On", true)
+    knobText ("${role}Health", "Healthy")
 
 // A switch flipped off and back on, in the two presses its labels name.
 switched (offLabel, onLabel, role) =
@@ -178,58 +123,79 @@ history (undo, redo) =
     flag ("canUndo", undo)
     flag ("canRedo", redo)
 
-// A slider's edit kept across skin switches: its knobs, its selection and its undo.
-editedSession () =
-    reads (knobNumber, [{ at = "control", want = 0.6 }, { at = "process", want = 0.7 }])
-    knobText ("selected", "source")
-    flag ("canUndo", true)
-
 topologyInitial () =
     expect (labels (), "Skin: Topology|Bypass Policy|Bypass Client|Bypass Gateway|Bypass Service|Bypass Telemetry|Policy Threshold|Gateway Rate limit|Inspector: Bypass Gateway|Inspector: Rate limit|Select Policy|Select Client|Select Gateway|Select Service|Select Telemetry")
     lettered (["70%", "490 r/s", "Healthy", "Gateway", "Connections (4)"])
-    skinned ("topology", [{ at = "control", want = 0.7 }, { at = "process", want = 0.7 }, { at = "level", want = 0.49 }])
-    folders ([{ path = "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", want = "C:/Program Files/Osprey/app" }, { path = "/opt/osprey/signal_flow.machine.json", want = "/opt/osprey" }, { path = "signal_flow.machine.json", want = "" }])
+    knobTexts ([{ at = "skin", want = "topology" }, { at = "selected", want = "process" }])
+    knobs ([{ at = "control", want = 0.7 }, { at = "process", want = 0.7 }, { at = "level", want = 0.49 }])
+    layers ([{ at = "commands", want = "idle" }, { at = "menu", want = "closed" }])
+    history (false, false)
+    expect (MachineDocs::folder "C:\\Program Files\\Osprey\\app\\signal_flow.machine.json", "C:/Program Files/Osprey/app")
+    expect (MachineDocs::folder "/opt/osprey/signal_flow.machine.json", "/opt/osprey")
+    expect (MachineDocs::folder "signal_flow.machine.json", "")
 
 topologyBypass () =
     tap "Bypass Gateway"
     bypassed "process"
-    knobsShow ([{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }], "1000 r/s")
+    knobs ([{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }])
+    expect (letters "1000 r/s", true)
     offered "Undo"
     tapAt ("Gateway Rate limit", 0.25)
     knobNumber ("process", 0.25)
     bypassed "process"
-    knobsShow ([{ at = "level", want = 1.0 }], "25%")
+    knobNumber ("level", 1.0)
+    expect (letters "25%", true)
     expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
 
-topologyHistory () =
-    historyPress ("Undo", \() => knobNumber ("process", 0.7))
+topologyUndo () =
+    tap "Undo"
+    knobNumber ("process", 0.7)
     flag ("processOn", false)
     expect (letters "70%", true)
-    historyPress ("Undo", \() => knobNumber ("process", 0.7))
+    tap "Undo"
+    knobNumber ("process", 0.7)
     healthy "process"
     knobNumber ("level", 0.49)
     history (false, true)
-    historyPress ("Redo", \() => flag ("processOn", false))
-    reads (knobNumber, [{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }])
+
+topologyRedo () =
+    tap "Redo"
+    flag ("processOn", false)
+    knobs ([{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }])
     offered "Enable Gateway"
     tap "Enable Gateway"
     flag ("processOn", true)
     knobNumber ("level", 0.49)
 
 topologySelection () =
-    inspected ("Select Client", "source", ["Client", "Connections (1)", "No parameters"], ["Inspector: Bypass Client"])
+    tap "Select Client"
+    knobText ("selected", "source")
+    lettered (["Client", "Connections (1)", "No parameters"])
+    offered "Inspector: Bypass Client"
     missing "Inspector: Rate limit"
-    inspected ("Select Telemetry", "monitor", ["Telemetry", "Connections (1)", "No parameters"], ["Inspector: Bypass Telemetry"])
-    inspected ("Select Policy", "control", ["Policy", "Connections (1)"], ["Inspector: Threshold", "Inspector: Bypass Policy"])
+    tap "Select Telemetry"
+    knobText ("selected", "monitor")
+    lettered (["Telemetry", "Connections (1)", "No parameters"])
+    offered "Inspector: Bypass Telemetry"
+    tap "Select Policy"
+    knobText ("selected", "control")
+    lettered (["Policy", "Connections (1)"])
+    offereds (["Inspector: Threshold", "Inspector: Bypass Policy"])
 
 topologySignal () =
-    slid ("Inspector: Threshold", 0.5, [{ at = "control", want = 0.5 }, { at = "level", want = 0.35 }], ["350 r/s"])
-    bypassing ("Bypass Client", "source")
-    reads (knobText, [{ at = "processHealth", want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
-    knobsShow ([{ at = "level", want = 0.0 }], "0 r/s")
-    enabled ("Enable Client", "source", "process")
+    tapAt ("Inspector: Threshold", 0.5)
+    knobs ([{ at = "control", want = 0.5 }, { at = "level", want = 0.35 }])
+    expect (letters "350 r/s", true)
+    tap "Bypass Client"
+    bypassed "source"
+    knobTexts ([{ at = "processHealth", want = "Offline" }, { at = "outputHealth", want = "Offline" }, { at = "monitorHealth", want = "Offline" }])
+    knobNumber ("level", 0.0)
+    expect (letters "0 r/s", true)
+    tap "Enable Client"
+    flag ("sourceOn", true)
+    knobText ("processHealth", "Healthy")
     tapAt ("Gateway Rate limit", 0.2)
-    reads (knobNumber, [{ at = "process", want = 0.2 }, { at = "level", want = 0.1 }])
+    knobs ([{ at = "process", want = 0.2 }, { at = "level", want = 0.1 }])
     knobText ("processHealth", "Degraded")
     expect (letters "100 r/s", true)
 
@@ -237,50 +203,61 @@ menuOpened () =
     begun "topology"
     tapAt ("Policy Threshold", 0.6)
     tap "Select Client"
-    editedSession ()
-    opened ("Skin: Topology", "skins")
+    knobs ([{ at = "control", want = 0.6 }, { at = "process", want = 0.7 }])
+    knobText ("selected", "source")
+    flag ("canUndo", true)
+    tap "Skin: Topology"
+    layer ("menu", "skins")
     expect (take (labels ()) 29, "Topology|Notation|Paper|Prism")
     offereds (["Topology", "Notation", "Paper", "Prism"])
 
 menuChoice () =
-    pressed (1400.0, 700.0)
+    pointer (1400.0, 700.0, true)
+    pointer (1400.0, 700.0, false)
+    layer ("menu", "closed")
     missing "Topology"
     tap "Skin: Topology"
     tap "Prism"
     knobText ("skin", "prism")
-    reads (layer, [{ at = "menu", want = "closed" }, { at = "commands", want = "idle" }])
+    layers ([{ at = "menu", want = "closed" }, { at = "commands", want = "idle" }])
     expect (take (labels ()) 11, "Skin: Prism")
-    editedSession ()
-    flag ("canRedo", false)
+    knobs ([{ at = "control", want = 0.6 }, { at = "process", want = 0.7 }])
+    knobText ("selected", "source")
+    history (true, false)
     lettered (["+60%", "2.5 kHz"])
 
 menuCycle () =
-    skinChosen ("Prism", "Notation", "notation")
+    tap "Skin: Prism"
+    tap "Notation"
+    knobText ("skin", "notation")
+    layer ("menu", "closed")
     lettered (["0.60", "H(s)"])
-    skinChosen ("Notation", "Paper", "paper")
+    tap "Skin: Notation"
+    tap "Paper"
+    knobText ("skin", "paper")
+    layer ("menu", "closed")
     lettered (["0.60", "Transform.in"])
-    editedSession ()
+    knobs ([{ at = "control", want = 0.6 }, { at = "process", want = 0.7 }])
+    knobText ("selected", "source")
+    flag ("canUndo", true)
 
 freshSkin skin =
     begun skin
-    skinned (skin, [{ at = "control", want = 0.7 }, { at = "process", want = 0.7 }])
-
-// The reads any freshly opened skin must leave: its skin and selection, its idle commands and
-// menu, the knobs it leaves where they were and a history with nothing to undo or redo.
-skinned (skin, knobs) =
-    reads (knobText, [{ at = "skin", want = skin }, { at = "selected", want = "process" }])
-    reads (knobNumber, knobs)
-    reads (layer, [{ at = "commands", want = "idle" }, { at = "menu", want = "closed" }])
+    knobTexts ([{ at = "skin", want = skin }, { at = "selected", want = "process" }])
+    layers ([{ at = "commands", want = "idle" }, { at = "menu", want = "closed" }])
+    knobs ([{ at = "control", want = 0.7 }, { at = "process", want = 0.7 }])
     history (false, false)
 
 exercise (name, role) =
     tapAt ("Select ${name}", 0.1)
     knobText ("selected", role)
     offered "Inspector: Bypass ${name}"
-    bypassing ("Bypass ${name}", role)
+    tap "Bypass ${name}"
+    bypassed role
     offered "Enable ${name}"
     offered "Inspector: Enable ${name}"
-    enabled ("Enable ${name}", role, role)
+    tap "Enable ${name}"
+    healthy role
     offered "Inspector: Bypass ${name}"
 
 skinJourney (skin, control, source, process, output, monitor) =
@@ -291,49 +268,51 @@ skinJourney (skin, control, source, process, output, monitor) =
     exercise (output, "output")
     exercise (monitor, "monitor")
 
-// A skin opened on `process`, whose inspector offers its bypass switch.
-inspectorSkin (skin, bypassOffer) =
-    begun skin
-    knobText ("selected", "process")
-    offered bypassOffer
-
-// The inspector's enable press restoring the node, then the cutoff slider it offers.
-restored (enableLabel, sliderLabel) =
-    tap enableLabel
-    healthy "process"
-    tapAt (sliderLabel, 0.5)
-
 notationInspector () =
-    inspectorSkin ("notation", "Inspector enabled: Bypass H(s)")
+    begun "notation"
+    knobText ("selected", "process")
+    offered "Inspector enabled: Bypass H(s)"
     offered "Inspector: Cutoff  ωc"
-    bypassing ("Inspector enabled: Bypass H(s)", "process")
+    tap "Inspector enabled: Bypass H(s)"
+    bypassed "process"
     offered "Inspector enabled: Enable H(s)"
-    restored ("Inspector enabled: Enable H(s)", "Inspector: Cutoff  ωc")
-    knobsShow ([{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }], "0.50")
+    tap "Inspector enabled: Enable H(s)"
+    healthy "process"
+    tapAt ("Inspector: Cutoff  ωc", 0.5)
+    knobs ([{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }])
+    expect (letters "0.50", true)
 
 prismInspector () =
-    inspectorSkin ("prism", "Inspector bypass: Bypass Filter")
-    bypassing ("Inspector bypass: Bypass Filter", "process")
+    begun "prism"
+    knobText ("selected", "process")
+    offered "Inspector bypass: Bypass Filter"
+    tap "Inspector bypass: Bypass Filter"
+    bypassed "process"
     offered "Inspector bypass: Enable Filter"
     missing "Inspector bypass: Bypass Filter"
     offered "Inspector: Enable Filter"
-    restored ("Inspector bypass: Enable Filter", "Filter Cutoff")
-    reads (knobNumber, [{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }, { at = "delivered", want = 0.2625 }])
+    tap "Inspector bypass: Enable Filter"
+    healthy "process"
+    tapAt ("Filter Cutoff", 0.5)
+    knobs ([{ at = "process", want = 0.5 }, { at = "level", want = 0.35 }, { at = "delivered", want = 0.2625 }])
     lettered (["0.6 kHz", "+70%", "-6.0 dB", "-17.7"])
     tap "Bypass Master"
     knobText ("outputHealth", "Bypassed")
-    knobsShow ([{ at = "delivered", want = 0.0 }], "-24.0")
-    historyPress ("Undo", \() => flag ("outputOn", true))
+    knobNumber ("delivered", 0.0)
+    expect (letters "-24.0", true)
+    tap "Undo"
+    flag ("outputOn", true)
     expect (letters "-17.7", true)
     offered "Redo"
-    historyPress ("Redo", \() => flag ("outputOn", false))
+    tap "Redo"
+    flag ("outputOn", false)
     missing "Redo"
 
 prismInitial () =
     begun "prism"
     expect (labels (), "Skin: Prism|LFO Rate: 1/4|Oscillator Wave: Sine|Bypass LFO|Bypass Oscillator|Bypass Filter|Bypass Master|Bypass Scope|Filter Cutoff|Master Level|Inspector: Bypass Filter|Inspector bypass: Bypass Filter|Inspector: Cutoff|Select LFO|Select Oscillator|Select Filter|Select Master|Select Scope")
-    reads (knobText, [{ at = "rate", want = "1/4" }, { at = "wave", want = "Sine" }])
-    reads (knobNumber, [{ at = "volume", want = 0.75 }, { at = "delivered", want = 0.3675 }])
+    knobTexts ([{ at = "rate", want = "1/4" }, { at = "wave", want = "Sine" }])
+    knobs ([{ at = "volume", want = 0.75 }, { at = "delivered", want = 0.3675 }])
     lettered (["1/4", "Sine", "-6.0 dB", "2.5 kHz", "-15.2"])
     layer ("menu", "closed")
 
@@ -353,11 +332,16 @@ prismRates () =
     chosen ("LFO Rate: 1/4", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/16", "LFO Rate: 1/16")
     chosen ("LFO Rate: 1/16", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/1", "LFO Rate: 1/1")
     chosen ("LFO Rate: 1/1", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/8", "LFO Rate: 1/8")
-    historyPress ("Undo", \() => knobText ("rate", "1/1"))
+    tap "Undo"
+    knobText ("rate", "1/1")
     offered "LFO Rate: 1/1"
-    historyPress ("Redo", \() => knobText ("rate", "1/8"))
-    opened ("LFO Rate: 1/8", "rates")
-    pressed (900.0, 700.0)
+    tap "Redo"
+    knobText ("rate", "1/8")
+    tap "LFO Rate: 1/8"
+    layer ("menu", "rates")
+    pointer (900.0, 700.0, true)
+    pointer (900.0, 700.0, false)
+    layer ("menu", "closed")
     knobText ("rate", "1/8")
     missing "1/16"
 
@@ -365,51 +349,101 @@ prismWaves () =
     chosen ("Oscillator Wave: Sine", "waves", "wave", "Sine|Triangle|Saw|Square", "Triangle", "Oscillator Wave: Triangle")
     chosen ("Oscillator Wave: Triangle", "waves", "wave", "Sine|Triangle|Saw|Square", "Saw", "Oscillator Wave: Saw")
     chosen ("Oscillator Wave: Saw", "waves", "wave", "Sine|Triangle|Saw|Square", "Square", "Oscillator Wave: Square")
-    opened ("Oscillator Wave: Square", "waves")
-    opened ("LFO Rate: 1/8", "rates")
+    tap "Oscillator Wave: Square"
+    layer ("menu", "waves")
+    tap "LFO Rate: 1/8"
+    layer ("menu", "rates")
     offered "1/2"
     missing "Triangle"
-    opened ("LFO Rate: 1/8", "closed")
+    tap "LFO Rate: 1/8"
+    layer ("menu", "closed")
     knobText ("wave", "Square")
-    historyPress ("Undo", \() => knobText ("wave", "Saw"))
+    tap "Undo"
+    knobText ("wave", "Saw")
     expect (letters "Saw", true)
 
 prismLevels () =
-    slid ("Master Level", 1.0, [{ at = "volume", want = 1.0 }, { at = "delivered", want = 0.49 }], ["0.0 dB", "-12.2"])
-    slid ("Master Level", 0.0, [{ at = "volume", want = 0.0 }, { at = "delivered", want = 0.0 }], ["-24.0 dB"])
-    selected ("Select Master", "output")
+    tapAt ("Master Level", 1.0)
+    knobs ([{ at = "volume", want = 1.0 }, { at = "delivered", want = 0.49 }])
+    lettered (["0.0 dB", "-12.2"])
+    tapAt ("Master Level", 0.0)
+    knobs ([{ at = "volume", want = 0.0 }, { at = "delivered", want = 0.0 }])
+    expect (letters "-24.0 dB", true)
+    tap "Select Master"
+    knobText ("selected", "output")
     offered "Inspector: Level"
     missing "Inspector: Cutoff"
     expect (letters "Level", true)
-    slid ("Inspector: Level", 0.5, [{ at = "volume", want = 0.5 }, { at = "delivered", want = 0.245 }], ["-12.0 dB"])
-    historyPress ("Undo", \() => knobNumber ("volume", 0.0))
-    historyPress ("Redo", \() => knobNumber ("volume", 0.5))
+    tapAt ("Inspector: Level", 0.5)
+    knobs ([{ at = "volume", want = 0.5 }, { at = "delivered", want = 0.245 }])
+    expect (letters "-12.0 dB", true)
+    tap "Undo"
+    knobNumber ("volume", 0.0)
+    tap "Redo"
+    knobNumber ("volume", 0.5)
 
 prismParameters () =
     selected ("Select LFO", "control")
     offered "Inspector: Depth"
-    slid ("Inspector: Depth", 0.3, [{ at = "control", want = 0.3 }, { at = "level", want = 0.21 }], ["+30%"])
+    tapAt ("Inspector: Depth", 0.3)
+    knobs ([{ at = "control", want = 0.3 }, { at = "level", want = 0.21 }])
+    expect (letters "+30%", true)
     tap "Select Filter"
     tapAt ("Inspector: Cutoff", 1.0)
-    knobsShow ([{ at = "process", want = 1.0 }], "20.0 kHz")
+    knobNumber ("process", 1.0)
+    expect (letters "20.0 kHz", true)
     tapAt ("Filter Cutoff", 0.0)
-    reads (knobNumber, [{ at = "process", want = 0.0 }])
+    knobNumber ("process", 0.0)
     knobText ("processHealth", "Degraded")
-    forEachList (["Oscillator", "Scope"], bare)
+    tap "Select Oscillator"
+    expect (letters "No parameters", true)
+    tap "Select Scope"
+    expect (letters "No parameters", true)
     missing "Inspector: Level"
 
-// The suite: each case names itself and, in order, the checks it drives.
-suites () = [
-    { name = "topology: pointer editing, history, inspectors and signal health", steps = [\() => begun "topology", topologyInitial, topologyBypass, topologyHistory, topologySelection, topologySignal] },
-    { name = "the skin menu dismisses, switches skins and preserves the session", steps = [menuOpened, menuChoice, menuCycle] },
-    { name = "every skin: every node selects, bypasses, enables and tracks its inspector", steps = [\() => skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry"), \() => skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope"), \() => skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor"), \() => skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")] },
-    { name = "notation and prism inspector switches and parameter lettering", steps = [notationInspector, prismInspector] },
-    { name = "prism: every chooser, slider, switch and the history drive the patch", steps = [prismInitial, prismRates, prismWaves, prismLevels, prismParameters] },
-    { name = "prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", steps = [\() => begun "prism", hovering, filterDrag, movedControls, scopeDrag, sliderDrag] },
-    { name = "prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none", steps = [grown, grownControls, shrunk] }
-]
+test ("topology: pointer editing, history, inspectors and signal health", \() => bench (\() =>
+    begun "topology"
+    topologyInitial ()
+    topologyBypass ()
+    topologyUndo ()
+    topologyRedo ()
+    topologySelection ()
+    topologySignal ()))
 
-runSuites () = forEachList (suites (), \s => test (s.name, \() => bench (\() => eachOf (s.steps))))
+test ("the skin menu dismisses, switches skins and preserves the session", \() => bench (\() =>
+    menuOpened ()
+    menuChoice ()
+    menuCycle ()))
+
+test ("every skin: every node selects, bypasses, enables and tracks its inspector", \() => bench (\() =>
+    skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry")
+    skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope")
+    skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor")
+    skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")))
+
+test ("notation and prism inspector switches and parameter lettering", \() => bench (\() =>
+    notationInspector ()
+    prismInspector ()))
+
+test ("prism: every chooser, slider, switch and the history drive the patch", \() => bench (\() =>
+    prismInitial ()
+    prismRates ()
+    prismWaves ()
+    prismLevels ()
+    prismParameters ()))
+
+test ("prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", \() => bench (\() =>
+    begun "prism"
+    hovering ()
+    filterDrag ()
+    movedControls ()
+    scopeDrag ()
+    sliderDrag ()))
+
+test ("prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none", \() => bench (\() =>
+    grown ()
+    grownControls ()
+    shrunk ()))
 
 clearly skin =
     begun skin

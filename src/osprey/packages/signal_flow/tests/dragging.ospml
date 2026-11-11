@@ -18,12 +18,6 @@ cableIs (index, expected) =
     expect (length actual, 4)
     forEachList ([0, 1, 2, 3], \i => near (listGet actual i ?: 0.0, listGet expected i ?: 1.0))
 
-// Each cable at the points it renders to, one { index, points } reading at a time.
-cables (rendered) = forEachList (rendered, \c => cableIs (c.index, c.points))
-
-// Each control at the number it must report, one { name, value } reading at a time.
-knobs (readings) = forEachList (readings, \r => knobNumber (r.name, r.value))
-
 // Where the host was last told to draw the sprite at atlas `index`.
 spriteAt index =
     drawn = filterList (sprites, \s => (listGet s 0 ?: 0.0) == toFloat index)
@@ -40,42 +34,51 @@ leftOf label = (element label).accessLeft
 
 topOf label = (element label).accessTop
 
-holding expected = expect (Canvases::holding (machine ()), expected)
-
-sliding expected = expect (Canvases::sliding (machine ()), expected)
-
-// A pointer step to `at` moved by dx, dy, held or lifted, then the checks it must leave behind.
-step (at, dx, dy, down, checks) =
-    pointer (at.pointX + dx, at.pointY + dy, down)
-    forEachList (checks, \check => check ())
-
 // A press at x, y, then each step of the way to x + dx, y + dy, then the release there.
 drag (x, y, dx, dy) =
     pointer (x, y, true)
-    forEachList ([0.25, 0.5, 1.0], \f => pointer (x + dx * f, y + dy * f, true))
+    pointer (x + dx / 4.0, y + dy / 4.0, true)
+    pointer (x + dx / 2.0, y + dy / 2.0, true)
+    pointer (x + dx, y + dy, true)
     pointer (x + dx, y + dy, false)
 
 // Hovering over a switch, a slider and a node's body, with no button down, changes nothing at all.
 hovering () =
     at = Semantics::point (element "Bypass Oscillator", 0.5)
-    step (at, 0.0, 0.0, false, [])
-    step (at, 1.0, 0.0, false, [])
-    step (at, 0.0, 0.0, false, [\() => flag ("sourceOn", true)])
-    step (Semantics::point (element "Filter Cutoff", 0.9), 0.0, 0.0, false, [\() => knobNumber ("process", 0.7)])
+    pointer (at.pointX, at.pointY, false)
+    pointer (at.pointX + 1.0, at.pointY, false)
+    pointer (at.pointX, at.pointY, false)
+    flag ("sourceOn", true)
+    slider = Semantics::point (element "Filter Cutoff", 0.9)
+    pointer (slider.pointX, slider.pointY, false)
+    knobNumber ("process", 0.7)
     pointer (300.0, 600.0, false)
     knobText ("selected", "process")
     flag ("canUndo", false)
-    holding false
+    expect (Canvases::holding (machine ()), false)
 
 filterDrag () =
-    cables ([{ index = 0, points = [314.0, 438.0, 461.0, 438.0] }, { index = 1, points = [753.0, 438.0, 894.0, 438.0] }, { index = 2, points = [606.0, 239.0, 606.0, 345.0] }, { index = 3, points = [607.0, 521.0, 607.0, 614.0] }])
+    cableIs (0, [314.0, 438.0, 461.0, 438.0])
+    cableIs (1, [753.0, 438.0, 894.0, 438.0])
+    cableIs (2, [606.0, 239.0, 606.0, 345.0])
+    cableIs (3, [607.0, 521.0, 607.0, 614.0])
     sprite = nodeSprite "process"
     bypass = leftOf "Bypass Filter"
     body = Semantics::point (element "Select Filter", 0.5)
-    step (body, 0.0, 0.0, true, [\() => holding true])
-    step (body, 2.0, 1.0, true, [\() => knobs ([{ name = "processX", value = 0.0 }])])
-    step (body, 100.0, 50.0, true, [\() => knobs ([{ name = "processX", value = 100.0 }, { name = "processY", value = 50.0 }]), \() => cables ([{ index = 0, points = [314.0, 438.0, 561.0, 488.0] }])])
-    step (body, 100.0, 50.0, false, [\() => holding false, \() => knobText ("selected", "process"), \() => cables ([{ index = 1, points = [853.0, 488.0, 894.0, 438.0] }, { index = 2, points = [606.0, 239.0, 706.0, 395.0] }, { index = 3, points = [707.0, 571.0, 607.0, 614.0] }])])
+    pointer (body.pointX, body.pointY, true)
+    expect (Canvases::holding (machine ()), true)
+    pointer (body.pointX + 2.0, body.pointY + 1.0, true)
+    knobNumber ("processX", 0.0)
+    pointer (body.pointX + 100.0, body.pointY + 50.0, true)
+    knobNumber ("processX", 100.0)
+    knobNumber ("processY", 50.0)
+    cableIs (0, [314.0, 438.0, 561.0, 488.0])
+    pointer (body.pointX + 100.0, body.pointY + 50.0, false)
+    expect (Canvases::holding (machine ()), false)
+    knobText ("selected", "process")
+    cableIs (1, [853.0, 488.0, 894.0, 438.0])
+    cableIs (2, [606.0, 239.0, 706.0, 395.0])
+    cableIs (3, [707.0, 571.0, 607.0, 614.0])
     spriteMoved (sprite, nodeSprite "process", 100.0, 50.0)
     near (leftOf "Bypass Filter" - bypass, 100.0)
     expect (letters "+70%", true)
@@ -94,24 +97,28 @@ scopeDrag () =
     top = topOf "Bypass Scope"
     body = Semantics::point (element "Select Scope", 0.5)
     drag (body.pointX, body.pointY, -150.0, 40.0)
-    knobs ([{ name = "monitorX", value = -150.0 }, { name = "monitorY", value = 40.0 }])
-    cables ([{ index = 3, points = [707.0, 571.0, 457.0, 654.0] }])
+    knobNumber ("monitorX", -150.0)
+    knobNumber ("monitorY", 40.0)
+    cableIs (3, [707.0, 571.0, 457.0, 654.0])
     spriteMoved (scope, nodeSprite "monitor", -150.0, 40.0)
     near (topOf "Bypass Scope" - top, 40.0)
     knobText ("selected", "source")
     drag (body.pointX - 150.0, body.pointY + 40.0, 150.0, -40.0)
     knobNumber ("monitorX", 0.0)
-    cables ([{ index = 3, points = [707.0, 571.0, 607.0, 614.0] }])
+    cableIs (3, [707.0, 571.0, 607.0, 614.0])
 
 // The master's level follows the pointer while held without recording, then the release records it once.
 sliderDrag () =
     low = Semantics::point (element "Master Level", 0.1)
     high = Semantics::point (element "Master Level", 0.9)
-    step (low, 0.0, 0.0, true, [\() => sliding true])
+    pointer (low.pointX, low.pointY, true)
+    expect (Canvases::sliding (machine ()), true)
     pointer ((low.pointX + high.pointX) / 2.0, low.pointY, true)
-    knobs ([{ name = "volume", value = 0.5 }])
-    step (high, 0.0, 0.0, true, [\() => knobs ([{ name = "volume", value = 0.9 }])])
-    step (high, 0.0, 0.0, false, [\() => sliding false])
+    knobNumber ("volume", 0.5)
+    pointer (high.pointX, high.pointY, true)
+    knobNumber ("volume", 0.9)
+    pointer (high.pointX, high.pointY, false)
+    expect (Canvases::sliding (machine ()), false)
     knobNumber ("volume", 0.9)
     tap "Undo"
     knobNumber ("volume", 0.75)
