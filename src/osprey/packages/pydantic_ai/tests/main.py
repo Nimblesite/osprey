@@ -1111,7 +1111,11 @@ def listed_names(listing: Mcp.ToolList) -> str:
 
 
 def server_names(load: Mcp.ConfigLoad) -> str:
-    return join(mapList(load.servers, lambda server: Mcp.name_of(server)), ",")
+    return join(mapList(load.servers, server_name), ",")
+
+
+def server_name(server: Mcp.MCPServerConfig) -> str:
+    return Mcp.name_of(server)
 
 
 def capability_flags(found: Mcp.ServerCapabilities) -> list[bool]:

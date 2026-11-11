@@ -411,6 +411,8 @@ suites () = [
 
 runSuites () = forEachList (suites (), \s => test (s.name, \() => bench (\() => eachOf (s.steps))))
 
+runSuites ()
+
 clearly skin =
     begun skin
     expect (Semantics::unclear (elements ()), "")
