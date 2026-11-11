@@ -130,7 +130,7 @@ fn filterPredicateWith(indices10, indices6) = withBuffer(toGpu([0.0 - 1.5, 0.0, 
     gpuLengthIs(gpuFilter(indices10, isBig), 5), foldedFrom(gpuFilter(indices10, isBig), 0, 35), gpuLengthIs(gpuFilter(indices10, bigEven), 2), foldedFrom(gpuFilter(indices10, bigEven), 0, 14),
     gpuLengthIs(gpuFilter(indices10, atEdge), 4), bufferHornerTo(gpuFilter(indices10, atEdge), 189), foldedFrom(gpuFilter(indices10, isOddP), 0, 25), gpuLengthIs(gpuFilter(indices10, inBand), 4),
     gpuLengthIs(gpuFilter(indices10, notBand), 6), foldedFrom(gpuFilter(indices10, notBand), 0, 27),
-    gpuLengthIs(gpuFilter(signed, isPositive), 2), floatBufferSumsTo(gpuFilter(signed, isPositive), 6.5), evenFlagRuns(indices6, 3)
+    gpuLengthIs(gpuFilter(signed, isPositive), 2), floatBufferSumsTo(gpuFilter(signed, isPositive), 6.5), evenFlagRuns(indices6, 3), gpuSatisfies(gpuMap(indices6, isOddP), fn(flags) => gpuLengthIs(gpuFilter(flags, truthy), 3))
 ]))
 /// scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the
 /// whole-buffer fold and index n is out of bounds.
