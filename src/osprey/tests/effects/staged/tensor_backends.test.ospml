@@ -88,7 +88,7 @@ size m = perform Backends::Tensor.length m
 vector xs = perform Backends::Tensor.fromList xs
 device () = perform Backends::Tensor.device ()
 product (a, b, rows, inner, cols) = perform Backends::Tensor.matMul a b rows inner cols
-total b = perform Backends::Tensor.reduce b 0.0 addF
+total b = perform Backends::Tensor.reduce b 0.0 gpuTestAdd
 maxF (a, x) = match x > a
     true => x
     false => a
@@ -156,7 +156,7 @@ attention (qkv, t) =
 subLayer (x, gain, bias, body, t) =
     Backends::andThen(layerNorm(x, t, gain, bias),
         \normed => Backends::andThen(body (normed, t),
-            \out => perform Backends::Tensor.zipWith (x) (out) (addF)))
+            \out => perform Backends::Tensor.zipWith (x) (out) (gpuTestAdd)))
 attended (x, w, t) = Backends::andThen(linear(x, t, width, qkvWidth, w.qkvWeight, w.qkvBias), \qkv => Backends::andThen(attention(qkv, t), \mixed => linear(mixed, t, width, width, w.projWeight, w.projBias)))
 feedForward (x, w, t) = Backends::andThen(linear(x, t, width, mlpWidth, w.fcWeight, w.fcBias), \grown => Backends::andThen(smoothed grown, \hidden => linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias)))
 (** One pre-norm block: attention and MLP, each with a residual. *)

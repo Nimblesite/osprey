@@ -24,28 +24,28 @@ class Tables:
 
 
 def strings(file, key):
-    return andThen(Reader.field(file, key), lambda field: Reader.field_strings(field))
+    return resultAndThen(Reader.field(file, key), lambda field: Reader.field_strings(field))
 
 
 def ints(file, key):
-    return andThen(Reader.field(file, key), lambda field: Reader.field_ints(field))
+    return resultAndThen(Reader.field(file, key), lambda field: Reader.field_ints(field))
 
 
 def tables(file):
     """`tokenizer.ggml.tokens`, `token_type` and `merges`, or the first one missing."""
-    return andThen(strings(file, "tokenizer.ggml.tokens"), lambda tokens: andThen(ints(file, "tokenizer.ggml.token_type"), lambda types: andThen(strings(file, "tokenizer.ggml.merges"), lambda merges: Success(value=Tables(tokens=tokens, types=types, merges=merges)))))
+    return resultAndThen(strings(file, "tokenizer.ggml.tokens"), lambda tokens: resultAndThen(ints(file, "tokenizer.ggml.token_type"), lambda types: resultAndThen(strings(file, "tokenizer.ggml.merges"), lambda merges: Success(value=Tables(tokens=tokens, types=types, merges=merges)))))
 
 
 def tokenizer(file):
     """The file's tokenizer, from its own tables."""
-    return andThen(tables(file), lambda t: GgufVocab.qwen_from_vocabulary(t.tokens, t.types, t.merges))
+    return resultAndThen(tables(file), lambda t: GgufVocab.qwen_from_vocabulary(t.tokens, t.types, t.merges))
 
 
 def eos_of(file):
     """`tokenizer.ggml.eos_token_id`: the end-of-turn token the file declares."""
-    return andThen(Reader.field(file, "tokenizer.ggml.eos_token_id"), lambda field: Reader.field_int(field))
+    return resultAndThen(Reader.field(file, "tokenizer.ggml.eos_token_id"), lambda field: Reader.field_int(field))
 
 
 def ids_of(tok, text):
     """The token ids of `text`."""
-    return andThen(qwen_encode(tok, text), lambda encoding: Success(value=encoding.ids))
+    return resultAndThen(qwen_encode(tok, text), lambda encoding: Success(value=encoding.ids))

@@ -17,7 +17,7 @@ from re import Unicode
 __all__ = [
     "Ins", "Program", "GState", "PRes", "ins", "ins_a", "ins_ab", "ins_class",
     "ins_lit", "shift", "append_match", "groups_len", "range_piece", "cat_piece",
-    "at", "pair_value", "pair_next", "fail", "has", "concat", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead", "read_name",
+    "at", "pair_value", "pair_next", "fail", "has", "concat", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead", "then", "read_name",
 ]
 
 I_BIT = 2
@@ -93,6 +93,11 @@ def pair_value(pair):
 def pair_next(pair, fallback):
     """Where a `[value, next]` parse pair stopped, or `fallback` past the end."""
     return unwrap_or(listGet(pair, 1), fallback)
+
+
+def then(result, next):
+    """`next` applied to a `Success` value; an `Error` propagates unchanged."""
+    return resultAndThen(result, next)
 
 
 def fail(msg, pos):

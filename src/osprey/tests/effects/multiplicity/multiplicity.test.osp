@@ -81,7 +81,7 @@ fn runChargedOrder(amount, limit, verify) = {
                         }
                         _ => {
                             perform Audit.line("declined: ${message}; retrying\n")
-                            attempts = attempts + 1 
+                            attempts = attempts + 1
                             match settle(asked, attempts) {
                                 Success { value } => resume(value)
                                 Error { message } => "declined: ${message}"

@@ -63,12 +63,12 @@ class Counts:
 
 def header_at(data):
     """The magic, the version and the two counts, in the file's own byte order."""
-    return andThen(require_magic(data), lambda _: version_at(data))
+    return resultAndThen(require_magic(data), lambda _: version_at(data))
 
 
 def require_magic(data):
     """The file's magic, or gguf's rejection when the first four bytes differ."""
-    return andThen(unsigned_at(data, 0, 4, False), checked_magic)
+    return resultAndThen(unsigned_at(data, 0, 4, False), checked_magic)
 
 
 def checked_magic(magic):
@@ -81,7 +81,7 @@ def checked_magic(magic):
 
 def version_at(data):
     """The version word, which also says whether the file is byte-swapped."""
-    return andThen(bytes_at(data, 4, 4), lambda word: checked_version(data, word))
+    return resultAndThen(bytes_at(data, 4, 4), lambda word: checked_version(data, word))
 
 
 def checked_version(data, word):
@@ -91,7 +91,7 @@ def checked_version(data, word):
     if not listContains(Constants.SUPPORTED_VERSIONS, version):
         return Error(message="Sorry, file appears to be version " + toString(version) + " which we cannot handle")
     else:
-        return andThen(counts_at(data, swapped), lambda counts: Success(value=header_of(version, counts, swapped)))
+        return resultAndThen(counts_at(data, swapped), lambda counts: Success(value=header_of(version, counts, swapped)))
 
 
 def header_of(version, counts, swapped):
@@ -101,7 +101,7 @@ def header_of(version, counts, swapped):
 
 def counts_at(data, swapped):
     """The tensor and metadata counts that follow the version word."""
-    return andThen(u64_at(data, 8, swapped), lambda tensor_count: andThen(u64_at(data, 16, swapped), lambda kv_count: Success(value=Counts(tensor_count=tensor_count, kv_count=kv_count))))
+    return resultAndThen(u64_at(data, 8, swapped), lambda tensor_count: resultAndThen(u64_at(data, 16, swapped), lambda kv_count: Success(value=Counts(tensor_count=tensor_count, kv_count=kv_count))))
 
 
 def value_at(data, off, kind, swapped):
@@ -116,12 +116,12 @@ def value_at(data, off, kind, swapped):
 
 def kind_at(data, off, swapped):
     """The name of the metadata value type the 4-byte id at `off` names."""
-    return andThen(unsigned_at(data, off, 4, swapped), kind_name)
+    return resultAndThen(unsigned_at(data, off, 4, swapped), kind_name)
 
 
 def kind_name(id):
     """A value type's name, or gguf's enum error for an id that has no member."""
-    return andThen(Constants.value_type(id), name_of_type)
+    return resultAndThen(Constants.value_type(id), name_of_type)
 
 
 def name_of_type(kind):
@@ -131,7 +131,7 @@ def name_of_type(kind):
 
 def scalar_at(data, off, kind, swapped):
     """A fixed-width scalar of `kind` at `off`, with the bytes it occupies."""
-    return andThen(word_at(data, off, width_of(kind), swapped), lambda word: decode_word(word, kind, off))
+    return resultAndThen(word_at(data, off, width_of(kind), swapped), lambda word: decode_word(word, kind, off))
 
 
 def decode_word(word, kind, off):
@@ -143,9 +143,9 @@ def decode_word(word, kind, off):
     elif kind == "bool":
         return Success(value=Sized(value=bool_value(unwrap_or(listGet(word, 0), 0)), size=1))
     elif kind == "uint64":
-        return andThen(u64_of(word, off), lambda number: Success(value=Sized(value=int_value(kind, number), size=8)))
+        return resultAndThen(u64_of(word, off), lambda number: Success(value=Sized(value=int_value(kind, number), size=8)))
     elif kind == "int64":
-        return andThen(int64_of(word), lambda number: Success(value=Sized(value=int_value(kind, number), size=8)))
+        return resultAndThen(int64_of(word), lambda number: Success(value=Sized(value=int_value(kind, number), size=8)))
     else:
         return Success(value=Sized(value=int_value(kind, integer_of(word, kind)), size=width_of(kind)))
 
@@ -223,17 +223,17 @@ def bool_value(byte):
 
 def string_at(data, off, swapped):
     """A GGUF string at `off`: a uint64 byte count, then that many UTF-8 bytes."""
-    return andThen(u64_at(data, off, swapped), lambda count: string_body(data, off + 8, count))
+    return resultAndThen(u64_at(data, off, swapped), lambda count: string_body(data, off + 8, count))
 
 
 def string_body(data, off, count):
     """The UTF-8 text of `count` bytes at `off`, with the entry's whole byte size."""
-    return andThen(text_at(data, off, count), lambda text: Success(value=Sized(value=string_value(text), size=8 + count)))
+    return resultAndThen(text_at(data, off, count), lambda text: Success(value=Sized(value=string_value(text), size=8 + count)))
 
 
 def text_at(data, off, count):
     """`count` bytes at `off` as text, or Error when they are not valid UTF-8."""
-    return andThen(bytes_at(data, off, count), Bytes.bytes_to_string)
+    return resultAndThen(bytes_at(data, off, count), Bytes.bytes_to_string)
 
 
 def string_value(text):
@@ -243,17 +243,17 @@ def string_value(text):
 
 def array_at(data, off, swapped):
     """An array at `off`: an element type id, a uint64 count, then the elements."""
-    return andThen(kind_at(data, off, swapped), lambda kind: array_body(data, off, kind, swapped))
+    return resultAndThen(kind_at(data, off, swapped), lambda kind: array_body(data, off, kind, swapped))
 
 
 def array_body(data, off, kind, swapped):
     """The element count of the array whose element type is `kind`."""
-    return andThen(u64_at(data, off + 4, swapped), lambda count: array_values(data, off, kind, count, swapped))
+    return resultAndThen(u64_at(data, off + 4, swapped), lambda count: array_values(data, off, kind, count, swapped))
 
 
 def array_values(data, off, kind, count, swapped):
     """The array's elements, with the whole entry's byte size."""
-    return andThen(values_at(data, off + 12, count, kind, swapped), lambda value: Success(value=Sized(value=value.value, size=12 + value.size)))
+    return resultAndThen(values_at(data, off + 12, count, kind, swapped), lambda value: Success(value=Sized(value=value.value, size=12 + value.size)))
 
 
 def array_value(kind, count, items):
@@ -276,7 +276,7 @@ def walked(data, off, count, kind, swapped):
     """The fold that reads `count` values from `off` without recursing per element."""
     step = lambda acc, _i: value_step(data, acc, kind, swapped)
     walk = Chain.walk_checked(count, ArrayWalk(offs=off, items=[], problem=""), step)
-    return andThen(walk, lambda done: Success(value=Sized(value=array_value(kind, count, mapList(done.items, item_value)), size=done.offs - off)))
+    return resultAndThen(walk, lambda done: Success(value=Sized(value=array_value(kind, count, mapList(done.items, item_value)), size=done.offs - off)))
 
 
 def item_value(sized):
@@ -317,7 +317,7 @@ def truncated(off):
 
 def word_at(data, off, n, swapped):
     """The `n` bytes at `off`, reversed when the file's words are byte-swapped."""
-    return andThen(bytes_at(data, off, n), lambda word: Success(value=ordered_word(word, swapped)))
+    return resultAndThen(bytes_at(data, off, n), lambda word: Success(value=ordered_word(word, swapped)))
 
 
 def ordered_word(word, swapped):
@@ -335,9 +335,9 @@ def number_of(word):
 
 def unsigned_at(data, off, n, swapped):
     """The unsigned `n`-byte word at `off`, n at most 7 so it cannot overflow."""
-    return andThen(word_at(data, off, n, swapped), lambda word: Success(value=number_of(word)))
+    return resultAndThen(word_at(data, off, n, swapped), lambda word: Success(value=number_of(word)))
 
 
 def u64_at(data, off, swapped):
     """The uint64 at `off`, or Error when it exceeds the int64 range."""
-    return andThen(word_at(data, off, 8, swapped), lambda word: u64_of(word, off))
+    return resultAndThen(word_at(data, off, 8, swapped), lambda word: u64_of(word, off))

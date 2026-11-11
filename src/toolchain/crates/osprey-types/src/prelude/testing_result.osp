@@ -1,11 +1,11 @@
-//! The Result helpers programs share: `andThen` chaining and a
+//! The Result helpers programs share: `resultAndThen` chaining and a
 //! Result-returning division. Its own unit, so a program that declares its
 //! own `Success` still gets the testing policy without it. Implements
 //! [FAILURE-EXPLICIT].
 
 /// `next` applied to `result`'s value, or `result`'s error passed through
 /// unchanged.
-fn andThen(result, next) = match result {
+fn resultAndThen(result, next) = match result {
     Success { value } => next(value)
     Error { message } => Error { message: message }
 }

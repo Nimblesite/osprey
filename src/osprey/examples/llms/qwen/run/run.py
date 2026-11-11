@@ -46,7 +46,7 @@ def stepped(model, state, token, pos):
 def generated(model, prompt, count):
     """`count` greedy tokens after `prompt`, the prompt taken in by one prefill
     ([LLM-PREFILL]), or the step that failed."""
-    match andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Qwen3_5Model.prefill(model, cache, prompt)):
+    match resultAndThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Qwen3_5Model.prefill(model, cache, prompt)):
         case Error(message=message):
             return Error(message=message)
         case Success(value=next):
@@ -57,7 +57,7 @@ def generated(model, prompt, count):
 
 def probed(model, prompt, ids):
     """The prompt's next-token argmax and its raw logits at `ids`, after one prefill."""
-    match andThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Qwen3_5Model.prefill(model, cache, prompt)):
+    match resultAndThen(Qwen3_5Cache.empty(model.config, model.shapes), lambda cache: Qwen3_5Model.prefill(model, cache, prompt)):
         case Error(message=message):
             return Error(message=message)
         case Success(value=next):
@@ -76,7 +76,7 @@ def spelled(ids):
 def numbers(text):
     """The integers of a space-separated line, or the first word that is not one."""
     found = words(text)
-    return fold(range(0, len(found)), Success(value=[]), lambda acc, i: andThen(acc, lambda got: andThen(nth_count(found, i), lambda n: Success(value=listAppend(got, n)))))
+    return fold(range(0, len(found)), Success(value=[]), lambda acc, i: resultAndThen(acc, lambda got: resultAndThen(nth_count(found, i), lambda n: Success(value=listAppend(got, n)))))
 
 
 def nth_count(found, i):
@@ -117,17 +117,17 @@ class Wanted:
 
 def asked(count):
     """`logits: …` as the ids to probe with nothing added, else a token count and no probe."""
-    return andThen(numbers(drop(count, 7)), lambda ids: Success(value=Wanted(count=0, probe=ids))) if startsWith(count, "logits:") else andThen(count_of(count), lambda n: Success(value=Wanted(count=n, probe=[])))
+    return resultAndThen(numbers(drop(count, 7)), lambda ids: Success(value=Wanted(count=0, probe=ids))) if startsWith(count, "logits:") else resultAndThen(count_of(count), lambda n: Success(value=Wanted(count=n, probe=[])))
 
 
 def job(path, text, count):
-    return andThen(Qwen3_5Gguf.open_file(path), lambda source: andThen(Qwen3_5Vocab.tokenizer(source.file), lambda tok: andThen(prompt_of(tok, text), lambda prompt: andThen(asked(count), lambda wanted: Success(value=Job(source=source, tok=tok, prompt=prompt, count=wanted.count, probe=wanted.probe))))))
+    return resultAndThen(Qwen3_5Gguf.open_file(path), lambda source: resultAndThen(Qwen3_5Vocab.tokenizer(source.file), lambda tok: resultAndThen(prompt_of(tok, text), lambda prompt: resultAndThen(asked(count), lambda wanted: Success(value=Job(source=source, tok=tok, prompt=prompt, count=wanted.count, probe=wanted.probe))))))
 
 
 def answered(j):
     """Load, generate, decode: the text the model added."""
     print(f"prompt ids {spelled(j.prompt)}")
-    return andThen(Qwen3_5Gguf.load(j.source), lambda model: andThen(loaded(model, j), lambda added: andThen(qwen_decode(j.tok, added, False), lambda text: Success(value=f"added ids {spelled(added)}\ntext <<<{text}>>>"))))
+    return resultAndThen(Qwen3_5Gguf.load(j.source), lambda model: resultAndThen(loaded(model, j), lambda added: resultAndThen(qwen_decode(j.tok, added, False), lambda text: Success(value=f"added ids {spelled(added)}\ntext <<<{text}>>>"))))
 
 
 def loaded(model, j):
@@ -137,7 +137,7 @@ def loaded(model, j):
 
 def run():
     with Qwen3_5Device.wrapping:
-        return andThen(job(input(), input(), input()), lambda j: answered(j))
+        return resultAndThen(job(input(), input(), input()), lambda j: answered(j))
 
 
 def main():

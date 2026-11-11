@@ -125,7 +125,7 @@ withDatabase work =
     work ()
 
 (** Runs `work` against a fresh in-memory database inside the real handler. *)
-withMemoryDatabase work = withDatabase (\() => andThen (perform Database.open ":memory:", work))
+withMemoryDatabase work = withDatabase (\() => resultAndThen (perform Database.open ":memory:", work))
 
 (** Reports an open failure, otherwise yields whatever the run produced. *)
 reportOpened result = match result

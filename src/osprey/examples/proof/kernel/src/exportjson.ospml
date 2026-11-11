@@ -17,6 +17,9 @@ type Tables =
     resolved through the table that owns it, so a reference to an index the
     file never defined is refused rather than guessed. *)
 module ExportJson
+    (** `next` applied to the value, or the error passed through. *)
+    export upon (outcome, next) = Terms::upon (outcome, next)
+
 
     (** The member `name`, which must be present. *)
     export fieldIn (json, name) = match jsonField (json, name)

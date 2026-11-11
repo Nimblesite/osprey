@@ -69,7 +69,7 @@ requirePositive value = match value > 0
 
 (** Continue ordinary arithmetic after a handler substitutes a missing integer. *)
 continuedValue : int -> int ![RecoveryError, Arith]
-continuedValue value = requirePositive(value) + 2 
+continuedValue value = requirePositive(value) + 2
 
 (** Request three replacements so handler state and substitution order are visible. *)
 recoverThree : Unit -> int ![RecoveryError, Arith]
@@ -125,7 +125,7 @@ bottomValue () = perform RecoveryError.missingInt("bottom")
 descend : int -> int ![RecoveryError, Arith]
 descend depth = match depth
     0 => bottomValue()
-    _ => 1 + descend((depth - 1) ) 
+    _ => 1 + descend((depth - 1) )
 
 (** Default the complete Result returned by the effect operation. *)
 lookupValue : string -> int !LookupError
@@ -133,7 +133,7 @@ lookupValue key = perform LookupError.find(key) ?: ((0 - 1) )
 
 (** Combine both Result branches after one handler supplies their whole values. *)
 combineLookups : Unit -> int ![LookupError, Arith]
-combineLookups () = lookupValue("known") * 10 + lookupValue("missing") 
+combineLookups () = lookupValue("known") * 10 + lookupValue("missing")
 
 (** Verify that successful code never enters an installed recovery arm. *)
 (** A counted recovery run: the value the caller saw and the arm's entry count. *)
@@ -362,7 +362,7 @@ effect ValueError
 (** Fold both Grade constructors into one integer so the payload is observable. *)
 gradeScore grade = match grade
     Granted score => score
-    Refused reason => 0 - length(reason) 
+    Refused reason => 0 - length(reason)
 
 (** Fold both Result constructors into one integer so the payload is observable. *)
 resultScore outcome = match outcome
@@ -462,7 +462,7 @@ descendSum depth = match depth
     0 => 0
     _ =>
         here = perform StepError.contribute(depth)
-        here + descendSum((depth - 1) ) 
+        here + descendSum((depth - 1) )
 
 (** A counted run: the total the caller saw and the arm's entry count. *)
 type StepRun =
@@ -475,7 +475,7 @@ countedSum (depth, answer) =
     total =
         handle StepError
             contribute level =>
-                visits := visits + 1 
+                visits := visits + 1
                 answer(level)
         descendSum(depth)
     StepRun(total = total, visits = visits)
@@ -870,7 +870,7 @@ recursiveAccumulationCase () =
     total =
         handle StepError
             contribute depth =>
-                visits := visits + 1 
+                visits := visits + 1
                 lastDepth := depth
                 trail := "${trail}${toString(depth)}:${toString(visits)}|"
                 visits * 10 

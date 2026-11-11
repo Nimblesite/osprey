@@ -2,9 +2,14 @@
 # osprey: namespace=fastapi
 # osprey: module=Results
 """Compose fallible boundary operations without losing errors. [FAILURE-EXPLICIT]"""
-__all__ = ["mapped"]
+__all__ = ["bind", "mapped"]
+
+
+def bind(result, next):
+    """Continue a successful boundary operation; propagate an error unchanged."""
+    return resultAndThen(result, next)
 
 
 def mapped(result, transform):
     """Transform only the successful value of a boundary operation."""
-    return andThen(result, lambda item: Success(value=transform(item)))
+    return resultAndThen(result, lambda item: Success(value=transform(item)))

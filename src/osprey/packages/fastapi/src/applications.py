@@ -98,7 +98,7 @@ def after_cleanup(result, cleanup, phase):
 
 def latin1(text):
     """ASGI/FastAPI decodes each HTTP header byte as Latin-1, including obs-text."""
-    pieces = fold(range(len(text)), Success(value=[]), lambda result, index: andThen(result, lambda previous: B.mapped(andThen(byteAt(text, index), lambda byte: fromCodePoint(byte)), lambda current: listConcat([current], previous))))
+    pieces = fold(range(len(text)), Success(value=[]), lambda result, index: resultAndThen(result, lambda previous: B.mapped(resultAndThen(byteAt(text, index), lambda byte: fromCodePoint(byte)), lambda current: listConcat([current], previous))))
     return B.mapped(pieces, lambda parts: join(listReverse(parts), ""))
 
 

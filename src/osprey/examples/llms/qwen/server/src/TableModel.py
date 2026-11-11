@@ -181,7 +181,7 @@ class Table:
         return model.eos
 
     def step(model, history, sampling):
-        return andThen(Sampler.one_token(logits(model, history, sampling), history, sampling, model.eos), lambda token: Success(value=Inference.Stepped(token=token, model=model)))
+        return resultAndThen(Sampler.one_token(logits(model, history, sampling), history, sampling, model.eos), lambda token: Success(value=Inference.Stepped(token=token, model=model)))
 
 
 # --- the vocabulary -------------------------------------------------------

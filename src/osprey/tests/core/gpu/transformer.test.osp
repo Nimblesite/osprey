@@ -65,25 +65,25 @@ fn miniTokens() = toGpu([3, 1])
 fn noBias() = floats([0.0, 0.0, 0.0, 0.0, 0.0])
 /// Every block parameter in GPT-2's checkpoint order, unwrapped once per case.
 fn blockParams(grid0, grid3, grid4, grid8, grid9, grid10) =
-    andThen(param(0, grid0), fn(ln1gain) =>
-        andThen(param(1, grid0), fn(ln1bias) =>
-            andThen(param(2, grid3), fn(qkvWeight) =>
-                andThen(param(3, grid4), fn(qkvBias) =>
-                    andThen(param(4, grid8), fn(projWeight) =>
-                        andThen(param(5, grid0), fn(projBias) =>
-                            andThen(param(6, grid0), fn(ln2gain) =>
-                                andThen(param(7, grid0), fn(ln2bias) =>
-                                    andThen(param(8, grid9), fn(fcWeight) =>
-                                        andThen(param(9, grid10), fn(fcBias) =>
-                                            andThen(param(10, grid9), fn(outWeight) =>
-                                                andThen(param(11, grid0), fn(outBias) => Success { value: { ln1gain: ln1gain, ln1bias: ln1bias, qkvWeight: qkvWeight, qkvBias: qkvBias, projWeight: projWeight, projBias: projBias, ln2gain: ln2gain, ln2bias: ln2bias, fcWeight: fcWeight, fcBias: fcBias, outWeight: outWeight, outBias: outBias } }))))))))))))
+    resultAndThen(param(0, grid0), fn(ln1gain) =>
+        resultAndThen(param(1, grid0), fn(ln1bias) =>
+            resultAndThen(param(2, grid3), fn(qkvWeight) =>
+                resultAndThen(param(3, grid4), fn(qkvBias) =>
+                    resultAndThen(param(4, grid8), fn(projWeight) =>
+                        resultAndThen(param(5, grid0), fn(projBias) =>
+                            resultAndThen(param(6, grid0), fn(ln2gain) =>
+                                resultAndThen(param(7, grid0), fn(ln2bias) =>
+                                    resultAndThen(param(8, grid9), fn(fcWeight) =>
+                                        resultAndThen(param(9, grid10), fn(fcBias) =>
+                                            resultAndThen(param(10, grid9), fn(outWeight) =>
+                                                resultAndThen(param(11, grid0), fn(outBias) => Success { value: { ln1gain: ln1gain, ln1bias: ln1bias, qkvWeight: qkvWeight, qkvBias: qkvBias, projWeight: projWeight, projBias: projBias, ln2gain: ln2gain, ln2bias: ln2bias, fcWeight: fcWeight, fcBias: fcBias, outWeight: outWeight, outBias: outBias } }))))))))))))
 /// A LayerNorm's gain and bias, unwrapped together.
-fn lnParams(gainGrid) = andThen(param(0, gainGrid), fn(gain) => andThen(param(1, gainGrid), fn(bias) => Success { value: { gain: gain, bias: bias } }))
+fn lnParams(gainGrid) = resultAndThen(param(0, gainGrid), fn(gain) => resultAndThen(param(1, gainGrid), fn(bias) => Success { value: { gain: gain, bias: bias } }))
 /// A product's weight and bias kernels, unwrapped together.
-fn qkvParams(weightGrid, biasGrid) = andThen(param(2, weightGrid), fn(weight) => andThen(param(3, biasGrid), fn(bias) => Success { value: { weight: weight, bias: bias } }))
+fn qkvParams(weightGrid, biasGrid) = resultAndThen(param(2, weightGrid), fn(weight) => resultAndThen(param(3, biasGrid), fn(bias) => Success { value: { weight: weight, bias: bias } }))
 /// The embeddings for a token list, preserving both table allocations.
 fn embedOf(tokensGrid, positionsGrid, ids, grid0) =
-    andThen(param(12, tokensGrid), fn(tokens) => andThen(param(13, positionsGrid), fn(positions) => embed(tokens, positions, ids, grid0)))
+    resultAndThen(param(12, tokensGrid), fn(tokens) => resultAndThen(param(13, positionsGrid), fn(positions) => embed(tokens, positions, ids, grid0)))
 /// The product, preserving allocation and shape failures.
 fn product(l, r, rows, inner, cols) = gpuMatMul(l, r, rows, inner, cols)
 /// The reason a kernel failed, or "no error" when it succeeded.
@@ -99,10 +99,10 @@ fn rowMeans(x, grid0) = gpuMap(grid0, fn(r) => sumRange(x, r * width, width) / w
 fn rowVariances(x, means, grid0) = gpuMap(grid0, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF)
 fn normalised(x, means, variances, g, b, i) = (at(x, i) - at(means, intDiv(i, width))) / sqrt(at(variances, intDiv(i, width)) + epsilon) * at(g, i % width) + at(b, i % width)
 /// LayerNorm over each of the t rows of x [t, width], with gain g and bias b.
-fn layerNorm(x, g, b, grid0, grid1) = andThen(rowMeans(x, grid0), fn(means) =>
-    andThen(rowVariances(x, means, grid0), fn(variances) => gpuMap(grid1, fn(i) => normalised(x, means, variances, g, b, i))))
+fn layerNorm(x, g, b, grid0, grid1) = resultAndThen(rowMeans(x, grid0), fn(means) =>
+    resultAndThen(rowVariances(x, means, grid0), fn(variances) => gpuMap(grid1, fn(i) => normalised(x, means, variances, g, b, i))))
 /// x [rows, inner] times w [inner, cols], plus the bias on every row.
-fn linear(x, rows, inner, cols, w, bias, grid0) = andThen(product(x, w, rows, inner, cols), fn(value) =>
+fn linear(x, rows, inner, cols, w, bias, grid0) = resultAndThen(product(x, w, rows, inner, cols), fn(value) =>
     gpuMap(grid0, fn(i) => at(value, i) + at(bias, i % cols)))
 /// qkv is [t, qkvWidth]: the query, key and value of head h occupy headWidth columns each.
 fn qAt(qkv, r, h, d) = at(qkv, r * qkvWidth + h * headWidth + d)
@@ -123,43 +123,43 @@ fn scoresFrom(qkv, t, first, grid0) = {
 /// Softmax of every causal row: fold its peak, spend it in the shift, fold the
 /// partition sum, spend that in the divide.
 fn probsOf(scores, t, n, first, grid0, grid1) =
-    andThen(gpuMap(grid0, fn(row) => rowMax(scores, row, t, first + row % n)), fn(peaks) =>
-        andThen(gpuMap(grid1, fn(i) => causalWeight(scores, peaks, t, n, first, i)), fn(weights) =>
-            andThen(gpuMap(grid0, fn(row) => sumRange(weights, row * t, t)), fn(sums) =>
+    resultAndThen(gpuMap(grid0, fn(row) => rowMax(scores, row, t, first + row % n)), fn(peaks) =>
+        resultAndThen(gpuMap(grid1, fn(i) => causalWeight(scores, peaks, t, n, first, i)), fn(weights) =>
+            resultAndThen(gpuMap(grid0, fn(row) => sumRange(weights, row * t, t)), fn(sums) =>
                 gpuMap(grid1, fn(i) => at(weights, i) / at(sums, intDiv(i, t))))))
 /// Causal multi-head self-attention for positions first..t-1 of qkv [t, qkvWidth],
 /// as [t - first, width]: the whole sequence from 0, the newest position alone
 /// from t - 1 — the KV-cached step, reading the earlier rows' keys and values.
 fn attentionFrom(qkv, t, first, grid0, grid1, grid2) =
-    andThen(scoresFrom(qkv, t, first, grid0), fn(scores) =>
-        andThen(probsOf(scores, t, t - first, first, grid1, grid0), fn(probs) =>
+    resultAndThen(scoresFrom(qkv, t, first, grid0), fn(scores) =>
+        resultAndThen(probsOf(scores, t, t - first, first, grid1, grid0), fn(probs) =>
             gpuMap(grid2, fn(i) => weighted(probs, qkv, t, t - first, first, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
 fn attention(qkv, t, grid0, grid1, grid2) = attentionFrom(qkv, t, 0, grid0, grid1, grid2)
 /// One pre-norm block: attention and MLP, each with a residual.
 fn block(x, t, grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9, grid10, grid11) =
-andThen(blockParams(grid0, grid3, grid4, grid8, grid9, grid10), fn(w) =>
-    andThen(layerNorm(x, w.ln1gain, w.ln1bias, grid1, grid2), fn(normed) =>
-        andThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias, grid5), fn(qkv) =>
-            andThen(attention(qkv, t, grid6, grid7, grid2), fn(attended) =>
-                andThen(linear(attended, t, width, width, w.projWeight, w.projBias, grid2), fn(projected) => blockAfterAttention(x, projected, t, w, grid1, grid2, grid11))))))
+resultAndThen(blockParams(grid0, grid3, grid4, grid8, grid9, grid10), fn(w) =>
+    resultAndThen(layerNorm(x, w.ln1gain, w.ln1bias, grid1, grid2), fn(normed) =>
+        resultAndThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias, grid5), fn(qkv) =>
+            resultAndThen(attention(qkv, t, grid6, grid7, grid2), fn(attended) =>
+                resultAndThen(linear(attended, t, width, width, w.projWeight, w.projBias, grid2), fn(projected) => blockAfterAttention(x, projected, t, w, grid1, grid2, grid11))))))
 /// Complete the residual and MLP only after both attention products succeeded.
-fn blockAfterAttention(x, attended, t, w, grid1, grid2, grid11) = andThen(gpuZipWith(x, attended, addF), fn(x2) =>
-    andThen(layerNorm(x2, w.ln2gain, w.ln2bias, grid1, grid2), fn(normed) =>
-        andThen(linear(normed, t, width, mlpWidth, w.fcWeight, w.fcBias, grid11), fn(projected) =>
-            andThen(gpuMap(projected, gelu), fn(activated) =>
-                andThen(linear(activated, t, mlpWidth, width, w.outWeight, w.outBias, grid2), fn(output) => gpuZipWith(x2, output, addF))))))
+fn blockAfterAttention(x, attended, t, w, grid1, grid2, grid11) = resultAndThen(gpuZipWith(x, attended, gpuTestAdd), fn(x2) =>
+    resultAndThen(layerNorm(x2, w.ln2gain, w.ln2bias, grid1, grid2), fn(normed) =>
+        resultAndThen(linear(normed, t, width, mlpWidth, w.fcWeight, w.fcBias, grid11), fn(projected) =>
+            resultAndThen(gpuMap(projected, gelu), fn(activated) =>
+                resultAndThen(linear(activated, t, mlpWidth, width, w.outWeight, w.outBias, grid2), fn(output) => gpuZipWith(x2, output, gpuTestAdd))))))
 /// Token plus position embeddings, [t, width].
 fn embed(tokens, positions, ids, grid0) = gpuMap(grid0, fn(i) => at(tokens, (gpuGet(ids, intDiv(i, width)) ?: 0) * width + i % width) + at(positions, i))
 /// The token table transposed to [width, vocab], so the tied readout is one product.
 fn transposed(table, grid0) = gpuMap(grid0, fn(i) => at(table, (i % vocab) * width + intDiv(i, vocab)))
 /// The final position's normalised state against every token row.
 fn logitsOf(x, t, table, grid0, grid1, grid2) =
-    andThen(gpuMap(grid0, fn(c) => at(x, (t - 1) * width + c)), fn(last) =>
-        andThen(transposed(table, grid1), fn(readout) =>
-            andThen(noBias(), fn(bias) => linear(last, 1, width, vocab, readout, bias, grid2))))
+    resultAndThen(gpuMap(grid0, fn(c) => at(x, (t - 1) * width + c)), fn(last) =>
+        resultAndThen(transposed(table, grid1), fn(readout) =>
+            resultAndThen(noBias(), fn(bias) => linear(last, 1, width, vocab, readout, bias, grid2))))
 /// The first index holding the peak: a fold for the peak, a filter for its index.
-fn argmax(logits, grid0) = andThen(gpuFold(logits, at(logits, 0), maxF), fn(peak) =>
-    andThen(gpuFilter(grid0, fn(v) => at(logits, v) == peak), fn(indices) => Success { value: gpuGet(indices, 0) ?: -1 }))
+fn argmax(logits, grid0) = resultAndThen(gpuFold(logits, at(logits, 0), maxF), fn(peak) =>
+    resultAndThen(gpuFilter(grid0, fn(v) => at(logits, v) == peak), fn(indices) => Success { value: gpuGet(indices, 0) ?: -1 }))
 fn written(path, content) = match writeFile(path, content) { Success _ => true Error _ => false }
 fn loadFailure(path, offset, count) = failureOf(gpuLoad(path, offset, count))
 fn tensorFailure(path, name) = failureOf(gpuLoadTensor(path, name))
@@ -173,7 +173,7 @@ fn matMulExactCaseUploaded(left, right) =
         fn(uploaded29, uploaded30) => withBuffer(product(uploaded29, uploaded30, 2, 0, 2),
         fn(hollow) => checkAll("gpuMatMul forms the row-major product of the stated shapes", [
             gpuLength(square) == 4, atsFrom(square, 0, [58.0, 64.0, 139.0, 154.0]), atsFrom(outer, 0, [10.0, 14.0, 15.0, 21.0]),
-            gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
+            gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, gpuTestAdd), fn(total) => exact(total, 0.0)),
             gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
         ]))))))
 /// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
@@ -349,7 +349,7 @@ fn withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8
                 next(y))))
 fn blockWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
     withBlockedPair(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, fn(y) =>
-        withBuffer(gpuFold(y, 0.0, addF), fn(total) =>
+        withBuffer(gpuFold(y, 0.0, gpuTestAdd), fn(total) =>
             checkAll("one pre-norm block matches the reference pass", [
                             gpuLength(y) == 8,
                             nearsFrom(y, 0, [-1.6005736589431763, 1.6570606231689453, 0.7819118499755859, 2.600027084350586, -1.487461805343628, 0.04813048243522644, -0.6083625555038452, 1.421419620513916]),

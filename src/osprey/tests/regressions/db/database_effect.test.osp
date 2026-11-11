@@ -137,7 +137,7 @@ fn withDatabase(work) = {
 }
 
 /// Runs `work` against a fresh in-memory database inside the real handler.
-fn withMemoryDatabase(work) = withDatabase(fn() => andThen(perform Database.open(":memory:"), work))
+fn withMemoryDatabase(work) = withDatabase(fn() => resultAndThen(perform Database.open(":memory:"), work))
 
 /// Reports an open failure, otherwise yields whatever the run produced.
 fn reportOpened(result) = match result {

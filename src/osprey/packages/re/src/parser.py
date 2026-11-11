@@ -93,7 +93,7 @@ def is_stop(cp):
 
 def parse_alt(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse `seq (| seq)*`."""
-    return andThen(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
+    return resultAndThen(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
 
 def alt_after(cps, value, n, flags):
     """The `|` continuation of a parsed sequence, or the sequence itself."""
@@ -104,7 +104,7 @@ def alt_after(cps, value, n, flags):
 
 def parse_alt_rest(cps, first, n, flags):
     """Parse the right side of `|` and join with the left fragment."""
-    return andThen(parse_alt(cps, first.next + 1, n, flags, first.gs), lambda value: Success(value=Program.PRes(frag=Builder.alt_frag(first.frag, value.frag), next=value.next, gs=value.gs)))
+    return resultAndThen(parse_alt(cps, first.next + 1, n, flags, first.gs), lambda value: Success(value=Program.PRes(frag=Builder.alt_frag(first.frag, value.frag), next=value.next, gs=value.gs)))
 
 def parse_seq(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse a run of quantified atoms."""
@@ -116,15 +116,15 @@ def parse_seq(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
 
 def parse_seq_rest(cps, i, n, flags, gs):
     """Parse one atom, then the rest of the sequence."""
-    return andThen(parse_quantified(cps, i, n, flags, gs), lambda value: seq_after(cps, value, n, flags))
+    return resultAndThen(parse_quantified(cps, i, n, flags, gs), lambda value: seq_after(cps, value, n, flags))
 
 def seq_after(cps, atom, n, flags):
     """Append the rest of the sequence after one atom."""
-    return andThen(parse_seq(cps, atom.next, n, flags, atom.gs), lambda value: Success(value=Program.PRes(frag=Program.concat(atom.frag, value.frag), next=value.next, gs=value.gs)))
+    return resultAndThen(parse_seq(cps, atom.next, n, flags, atom.gs), lambda value: Success(value=Program.PRes(frag=Program.concat(atom.frag, value.frag), next=value.next, gs=value.gs)))
 
 def parse_quantified(cps, i, n, flags, gs):
     """Parse an atom and any quantifier that follows it."""
-    return andThen(parse_atom(cps, i, n, flags, gs), lambda value: add_quantifier(cps, value, n, flags))
+    return resultAndThen(parse_atom(cps, i, n, flags, gs), lambda value: add_quantifier(cps, value, n, flags))
 
 def parse_braces(cps, j, n):
     """Parse `{m}`, `{m,}` or `{m,n}` at `j`; a [mn, mx, next] triple, or [] when `{` is a literal."""
@@ -242,7 +242,7 @@ def parse_atom(cps, i, n, flags, gs):
 
 def parse_class_atom(cps, i, n, flags, gs):
     """A `[...]` atom via `Charset.parse_class`."""
-    return andThen(Charset.parse_class(cps, i, n, 1 if Program.has(flags, Program.I_BIT) else 0), lambda value: Success(value=Program.PRes(frag=[value.ins], next=value.next, gs=gs)))
+    return resultAndThen(Charset.parse_class(cps, i, n, 1 if Program.has(flags, Program.I_BIT) else 0), lambda value: Success(value=Program.PRes(frag=[value.ins], next=value.next, gs=gs)))
 
 def parse_group(cps, i, n, flags, gs):
     """A `(` group: capturing, or an extended `(?...)` form."""
@@ -300,7 +300,7 @@ def parse_plain(cps, i, j, n, flags, gs):
 
 def parse_inline(cps, i, n, flags, gs):
     """An inline flag group: global flags are an error mid-pattern."""
-    return andThen(Flags.parse_flag_group(cps, i, n), lambda value: inline_group(cps, i, n, flags, gs, value))
+    return resultAndThen(Flags.parse_flag_group(cps, i, n), lambda value: inline_group(cps, i, n, flags, gs, value))
 
 def inline_group(cps, i, n, flags, gs, value):
     """Apply one parsed inline flag group to the following group."""

@@ -17,7 +17,7 @@ fn square(x) = x * x
 fn applyFunction(value, func: (int) -> int) = func(value)
 
 /// Curried composition: apply `h`, then add one (the middleware shape).
-fn wrap(h) = fn(b) => h(b) + 1 
+fn wrap(h) = fn(b) => h(b) + 1
 
 /// Nested closure: `base` is captured at every curried level.
 fn nestAdder(base) = fn(x) => fn(y) => x + y + base
@@ -119,7 +119,7 @@ print(toString(-2.5))
 /// === Closures: escaping capture [TYPE-FN-CLOSURE] ===
 /// A returned lambda keeps its maker's state alive (heap closure cell); each
 /// instance owns its own cell, and an annotated or inferred maker works alike.
-fn makeAdder(n) = fn(x) => x + n 
+fn makeAdder(n) = fn(x) => x + n
 fn makeScaler(k) = fn(v) => v * k
 let plus5 = makeAdder(5)
 let plus10 = makeAdder(10)

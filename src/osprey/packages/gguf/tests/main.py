@@ -210,12 +210,12 @@ def refusing_step(walk, i):
 
 def chain_cases():
     """`then` continues a Success and keeps an Error; the picker takes the head."""
-    continued = andThen(Constants.value_type(ati(Expected.VALUE_TYPE_IDS, 2)), lambda kind: Success(value=kind.name))
+    continued = resultAndThen(Constants.value_type(ati(Expected.VALUE_TYPE_IDS, 2)), lambda kind: Success(value=kind.name))
     return [equal_case("chain.then", continued, ats(Expected.VALUE_TYPE_NAMES, 2)),
-            error_case("chain.then_error", andThen(Constants.value_type(Expected.UNKNOWN_VALUE_TYPE), lambda kind: Success(value=kind.name))),
+            error_case("chain.then_error", resultAndThen(Constants.value_type(Expected.UNKNOWN_VALUE_TYPE), lambda kind: Success(value=kind.name))),
             equal_case("chain.first", Chain.first_or_error(Expected.BASE_FIELD_OFFSETS, ""), ati(Expected.BASE_FIELD_OFFSETS, 0)),
             error_case("chain.first_empty", Chain.first_or_error([], "the selection is empty")),
-            equal_case("chain.walk_checked", andThen(Chain.walk_checked(4, Tally(total=0, problem=""), tally_step), lambda walk: Success(value=walk.total)), 6),
+            equal_case("chain.walk_checked", resultAndThen(Chain.walk_checked(4, Tally(total=0, problem=""), tally_step), lambda walk: Success(value=walk.total)), 6),
             error_case("chain.walk_checked_problem", Chain.walk_checked(4, Tally(total=0, problem=""), refusing_step))]
 
 

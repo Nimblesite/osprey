@@ -26,7 +26,7 @@ def answered(result):
 class on_gpu:
     """GPU buffers, and `device` reports which backend executes them."""
     def build(n, f):
-        return answered(andThen(gpuIota(n), lambda v: gpuMap(v, f)))
+        return answered(resultAndThen(gpuIota(n), lambda v: gpuMap(v, f)))
 
     def get(b, i):
         return unwrap_or(gpuGet(b, i), 0.0)

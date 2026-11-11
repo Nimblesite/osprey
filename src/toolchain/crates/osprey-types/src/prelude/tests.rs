@@ -228,13 +228,13 @@ fn naming_any_offered_declaration_attaches_units_once_and_the_examples_type_chec
                 "test(\"u\", fn() => checkTrue(emptyUploads()))\n",
                 "print(oobMessage())\n",
                 "test(\"f\", fn() => withIndices(3, fn(b) => checkTrue(elementsFrom(b, 1, 0, [1, 2]))))\n",
-                "test(\"a\", fn() => checkTrue(addF(1, 2) == 3))\n",
+                "test(\"a\", fn() => checkTrue(gpuTestAdd(1, 2) == 3))\n",
                 "test(\"n\", fn() => checkTrue(listLengthIs([4, 5], 2)))\n",
                 "test(\"h\", fn() => checkTrue(listHolds([4, 5], 1, 0, 5)))\n",
                 "test(\"s\", fn() => withIndices(3, fn(b) => checkTrue(floatSumsTo(b, 0, 3))))\n",
             ][..],
             "withBuffer gpuSatisfies withIndices iotaError",
-            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2]), floatSumsTo(b, 10, 13), listLengthIs([], 0), listHolds([7], 3, 9, 9), gpuSatisfies(gpuFold(b, 0, addF), fn(total) => total == 3)]))))\n"),
+            Some("test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\", elementIs(b, 2, 0, 2), elementIs(b, 9, 7, 7), lengthIs(b, 3), emptyUploads(), oobMessage() != \"\", elementsFrom(b, 0, 0, [0, 1, 2]), !elementsFrom(b, 1, 0, [2]), floatSumsTo(b, 10, 13), listLengthIs([], 0), listHolds([7], 3, 9, 9), gpuSatisfies(gpuFold(b, 0, gpuTestAdd), fn(total) => total == 3)]))))\n"),
         ),
         (
             &[
@@ -367,7 +367,7 @@ fn a_program_with_its_own_success_variant_gets_only_the_testing_unit_it_names() 
 }
 
 #[test]
-fn a_program_naming_only_its_own_copies_of_unit_functions_gets_no_unit() {
+fn local_add_f_does_not_pull_in_the_shared_gpu_test_helpers() {
     let names = attached_names(
         "fn addF(a, x) = a + x\nfn at(m, i) = gpuGet(m, i) ?: 0.0\nprint(\"${addF(1.0, 2.0)}\")\n",
     );
@@ -380,9 +380,9 @@ fn a_program_naming_only_its_own_copies_of_unit_functions_gets_no_unit() {
 }
 
 #[test]
-fn naming_and_then_attaches_the_result_unit_once() {
+fn naming_result_and_then_attaches_the_result_unit_once() {
     let names = attached_names(
-        "fn half(n) = if n % 2 == 0 { Success { value: n / 2 } } else { Error { message: \"odd\" } }\nprint(\"${andThen(half(8), half)}\")\n",
+        "fn half(n) = if n % 2 == 0 { Success { value: n / 2 } } else { Error { message: \"odd\" } }\nprint(\"${resultAndThen(half(8), half)}\")\n",
     );
-    assert_eq!(count_named(&names, "andThen"), 1);
+    assert_eq!(count_named(&names, "resultAndThen"), 1);
 }

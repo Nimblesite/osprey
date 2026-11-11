@@ -511,7 +511,7 @@ fn countedSum(depth, answer) = {
     let total = {
         handle StepError {
             contribute level => {
-                visits = visits + 1 
+                visits = visits + 1
                 answer(level)
             }
         }
@@ -933,7 +933,7 @@ fn recursiveAccumulationCase() = {
     let total = {
         handle StepError {
             contribute depth => {
-                visits = visits + 1 
+                visits = visits + 1
                 lastDepth = depth
                 trail = "${trail}${toString(depth)}:${toString(visits)}|"
                 visits * 10 

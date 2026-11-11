@@ -79,13 +79,13 @@ pub(crate) enum MlModuleKind {
 /// signature ([MODULES-SIGNATURE], [FLAVOR-ML-GENERICS], [FLAVOR-ML-EFFECT]).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MlSig {
-    /// The signed name.
+    /// The signed name. In a module signature, this is a required export.
     pub(crate) name: String,
-    /// Declared type parameters from a `name<T, U> :` binder, in order.
+    /// Declared type parameters from a `name<T, U> :` binder, in order ([TYPE-GENERICS-FN]).
     pub(crate) type_params: Vec<MlTypeParam>,
     /// The declared value/function type.
     pub(crate) ty: MlType,
-    /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`).
+    /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`), empty if omitted.
     pub(crate) effects: Vec<MlEffectRef>,
     /// Optional open remainder (`![Log | e]`).
     pub(crate) effect_tail: Option<String>,

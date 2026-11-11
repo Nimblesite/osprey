@@ -482,4 +482,3 @@ def last_token(xs):
 
 def set_neg_inf(scores, i):
     return map_indexed(scores, lambda j: neg_inf() if j == i else score_at(scores, j))
-

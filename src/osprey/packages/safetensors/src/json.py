@@ -211,7 +211,7 @@ def escape_char(text, pos, c, pieces):
 
 def simple_escape(text, pos, c, pieces):
     """Handle a simple backslash escape letter `c`."""
-    return andThen(escaped_char(c), lambda value: string_body(text, pos + 2, listAppend(pieces, value)))
+    return resultAndThen(escaped_char(c), lambda value: string_body(text, pos + 2, listAppend(pieces, value)))
 
 
 def unicode_escape(text, pos, pieces):
@@ -241,7 +241,7 @@ def array_items(text, pos, items) -> Result[Parsed, str]:
 
 def array_item(text, p, items):
     """Parse one array item at `p` and continue the array."""
-    return andThen(skip_value(text, p), lambda value: array_continue(text, value.next, listAppend(items, value.value)))
+    return resultAndThen(skip_value(text, p), lambda value: array_continue(text, value.next, listAppend(items, value.value)))
 
 
 def array_continue(text, pos, items):
@@ -275,7 +275,7 @@ def object_members(text, pos, members) -> Result[Parsed, str]:
 
 def object_key(text, p, members):
     """Parse the member name whose opening quote is at `p`, then its value."""
-    return andThen(parse_string(text, p), lambda value: member_value(text, value.value.s, value.next, members))
+    return resultAndThen(parse_string(text, p), lambda value: member_value(text, value.value.s, value.next, members))
 
 
 def member_value(text, name, pos, members):
@@ -289,7 +289,7 @@ def member_value(text, name, pos, members):
 
 def member_body(text, name, pos, members):
     """Parse the member's value at `pos` and continue the object."""
-    return andThen(skip_value(text, pos), lambda value: object_after(text, value.next, listAppend(members, JsonMember(name=name, value=value.value))))
+    return resultAndThen(skip_value(text, pos), lambda value: object_after(text, value.next, listAppend(members, JsonMember(name=name, value=value.value))))
 
 
 def object_after(text, pos, members):
@@ -376,4 +376,4 @@ def ensure_end(text, p):
 
 def parse(text):
     """Parse `text` as one complete JSON value, or Error with a reason."""
-    return andThen(skip_value(text, 0), lambda value: ensure_end(text, value))
+    return resultAndThen(skip_value(text, 0), lambda value: ensure_end(text, value))

@@ -45,14 +45,14 @@ effect Trace
 (** One operation through the handler; every arity below shares this body. *)
 stepOf label = perform Trace.step label
 
-(** Each declared arity records every parameter through the handler; arity four
-    is the shape [#184](issue) reports as silently skipping one [FLAVOR-ML-CURRY]. *)
+(** Two and three whitespace parameters curry. Issue #184 reports that four silently skipped an
+    operation, and five is one nesting level further. Every step must reach the handler [FLAVOR-ML-CURRY]. *)
 traced2 a b = add (stepOf a) (stepOf b)
 traced3 a b c = addThree (stepOf a) (stepOf b) (stepOf c)
 traced4 a b c d = sum4 (stepOf a) (stepOf b) (stepOf c) (stepOf d)
 traced5 a b c d e = sum5 (stepOf a) (stepOf b) (stepOf c) (stepOf d) (stepOf e)
 
-(** Parenthesised comma parameters are flat, the form the spec names working. *)
+(** Parenthesised comma parameters are flat; this working form and the curried form must agree. *)
 tracedFlat (a, b, c, d) = traced4 a b c d
 
 (** Curried and flat bodies perform through one handler, so their indices form
@@ -180,7 +180,7 @@ verdictAlgebraCase () =
         structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"], all [startsWith (verdictLabel (assume false)) "skip(", length (verdictLabel (assume false)) == 26, !(contains (verdictLabel (assume true)) "skip")]
     ]
 
-(** Four whitespace parameters, built on `addThree` so no arithmetic repeats [FLAVOR-ML-CURRY]. *)
+(** Four whitespace parameters build on curried `addThree` so only declared arity differs [FLAVOR-ML-CURRY]. *)
 sum4 a b c d = addThree a b c + d 
 
 (** Five whitespace parameters. *)
@@ -191,7 +191,7 @@ sum6 a b c d e f = sum5 a b c d e + f
 
 (** The explicitly flat twin of `sum6`: a flat comma list does not partially
     apply, so the two agree on every saturated call [FLAVOR-ML-CURRY], [FLAVOR-ML-TUPLE]. *)
-sumFlat6 (a, b, c, d, e, f) = sum6 a b c d e f 
+sumFlat6 (a, b, c, d, e, f) = sum6 a b c d e f
 
 (** The same three whitespace parameters over strings, booleans and floats; float
     arithmetic is unchecked, so only integers need `?:` [ARITH-CHECKED]. *)
@@ -202,7 +202,7 @@ all3 a b c = a && b && c
 blend3 a b c = a * b + c
 
 (** [FLAVOR-ML-CURRY]/[FLAVOR-ML-CALL]: `add x y = body` lowers to a one-parameter
-    function returning a one-parameter lambda, and `f a b` is `Call(Call(f, [a]),
+    function returning a one-parameter lambda; application is left-associative, so `f a b` is `Call(Call(f, [a]),
     [b])`, so every parenthesisation of one argument sequence is one call and
     every prefix a value. This case walks arities two to six, then repeats the
     ladder over strings, booleans and floats. *)
@@ -431,7 +431,7 @@ matchLayoutAndClausesCase () =
         all [shape single != shape nums, readAt nums 0 != readAt nums 1, contains (readAt nums 1) "20", !(contains (readAt nums 3) "=")]
     ]
 
-(** An indented body is a block whose last line is its value [FLAVOR-ML-BLOCK];
+(** An indented body is a block of statements whose last line is its value [FLAVOR-ML-BLOCK];
     blank and comment-only lines keep layout [FLAVOR-ML-LAYOUT], comments nest [FLAVOR-ML-COMMENTS]. 3n + 1. *)
 staged n =
     doubled = n + n 

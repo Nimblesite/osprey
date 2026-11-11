@@ -228,7 +228,7 @@ tallySums amounts =
     mut total = 0
     handle Tally
         add amount =>
-            total := total + amount 
+            total := total + amount
             total
     PairAnswers(first = sumFibers amounts, second = total)
 
@@ -751,8 +751,8 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     innerFetch = \work =>
         handle Relay
             fetch tag =>
-                innerHits := innerHits + 1 
-                tag * 100 
+                innerHits := innerHits + 1
+                tag * 100
         work ()
 
     (** Inner region supplies `fetch` (tag * 100); `stamp` falls through to the

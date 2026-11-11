@@ -118,15 +118,12 @@ pub(crate) fn with_prelude(program: &Program) -> Cow<'_, Program> {
 }
 
 /// Whether `unit` attaches: the program names one of its declarations — a
-/// type, constructor, effect or public function it does not define itself —
-/// and declares none of its data names.
+/// type, constructor, effect or public function — and declares none of its
+/// data names.
 fn wanted(unit: &Names, own: &Names, uses: &Uses) -> bool {
     own.data.is_disjoint(&unit.data)
         && uses.names.iter().any(|name| {
-            unit.data.contains(name)
-                || (unit.functions.contains(name)
-                    && !own.functions.contains(name)
-                    && !name.starts_with("__"))
+            unit.data.contains(name) || (unit.functions.contains(name) && !name.starts_with("__"))
         })
 }
 

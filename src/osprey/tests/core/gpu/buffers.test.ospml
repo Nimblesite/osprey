@@ -137,7 +137,7 @@ intKernelWith (indices0) = withBuffer(toGpu ([1, 2, 3, 4]), \value => withBuffer
 ])))))))))
 (** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
-floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, addF), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
+floatKernelWith (indices0, indices4) = withBuffer(toGpu ([1.0, 2.0, 3.0]), \value => withBuffer(gpuMap(value, scale), \scaledCopy => withBuffer(gpuFold(scaledCopy, 0.0, gpuTestAdd), \sum => withBuffer(toGpu ([0.5, 0.25, 0.125]), \halves => checkAll("float kernels", [
     sum == 9.0, floatSumsTo (halves, 0.0, 0.875), gpuSatisfies(gpuMap(halves, scale), \mapped => floatSumsTo (mapped, 0.0, 1.3125)), gpuSatisfies(gpuMap(halves, scale), \mapped => elementIs (mapped, 2, 9.5, 0.1875)), gpuSatisfies(gpuMap(halves, scale), \mapped => lengthIs (mapped, 3)), uploaded ([0.5, 0.25], \up => floatSumsTo (up, 0.0, 0.75)), gpuSatisfies(gpuMap(indices4, toFloat), \mapped => floatSumsTo (mapped, 0.0, 6.0)), gpuSatisfies(gpuMap(indices4, toFloat), \mapped => elementIs (mapped, 3, 9.5, 3.0)), gpuSatisfies(gpuMap(indices0, toFloat), \mapped => floatSumsTo (mapped, 2.5, 2.5))
 ])))))
 (** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)
