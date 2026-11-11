@@ -40,7 +40,7 @@ print("Starting value: ${testValue}")
 reportApplication("After double", testValue, double)
 reportApplication("After triple", testValue, triple)
 reportApplication("After add5", testValue, add5)
-reportApplication("square(5)", 5, square)
+print("square(5) = ${exactArithmetic(fn() => applyFunction(value: 5, func: square))}")
 
 print("Function composition working correctly!")
 
@@ -168,11 +168,11 @@ let chk = vchk.check
 print("field: ${chk(50)} ${chk(5)}")
 
 /// Sums a list of ints.
-fn total(xs) = fold(xs, 0, fn(a, b) => a + b )
+fn add(a, b) = a + b
 /// Sums the even numbers below ten, folded from a filtered range.
-fn evenSumOfRange() = total(filter(range(1, 10), fn(x) => (x % 2 ) == 0))
+fn evenSumOfRange() = fold(filter(range(1, 10), fn(x) => (x % 2 ) == 0), 0, add)
 /// Sums ten-plus additions over a mapped range.
-fn computedSum() = total(map(range(1, 4), makeAdder(10)))
+fn computedSum() = fold(map(range(1, 4), makeAdder(10)), 0, add)
 
 /// Capturing lambdas as iterator callbacks: fused range pipeline and list walk.
 let factor2 = 3
@@ -186,7 +186,7 @@ exactArithmetic(fn() => forEachList(listAppend(listAppend(List(), 4), 5), fn(x) 
 /// callback that is a computed call result (`makeAdder(10)`), and a filter keyed
 /// on a function read from a record field (`vchk.check`).
 let tri3 = fn(a) => fn(b) => fn(c) => a + b + c
-exactArithmetic(fn() => print("chain3: ${tri3(1)(2)(3)} computed: ${computedSum()} fieldcb: ${total(filter(range(8, 13), vchk.check))}"))
+exactArithmetic(fn() => print("chain3: ${tri3(1)(2)(3)} computed: ${computedSum()} fieldcb: ${fold(filter(range(8, 13), vchk.check), 0, add)}"))
 
 /// === Generic functions as first-class values [TYPE-GENERICS-FN] ===
 /// A generic function specialises into a concrete function-typed slot, a
@@ -226,7 +226,7 @@ fn closureCompositionCase() = {
 
 /// Verifies capturing callbacks through map, filter, fold, and chained calls.
 fn iteratorCompositionCase() = checkAll("capturing iterator callbacks", [
-    structuralEquals([evenSumOfRange(), total(map(range(1, 4), fn(x) => x * 10 + 3 )), computedSum(), total(filter(range(8, 13), vchk.check)), (tri3(1)(2)(3) )], [20, 69, 36, 23, 6])
+    structuralEquals([evenSumOfRange(), fold(map(range(1, 4), fn(x) => x * 10 + 3 ), 0, add), computedSum(), fold(filter(range(8, 13), vchk.check), 0, add), (tri3(1)(2)(3) )], [20, 69, 36, 23, 6])
 ])
 
 /// Verifies handler-owned mutation and closure rebinding inside the test body.
