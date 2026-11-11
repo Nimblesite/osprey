@@ -12,4 +12,4 @@ def bind(result, next):
 
 def mapped(result, transform):
     """Transform only the successful value of a boundary operation."""
-    return resultAndThen(result, lambda item: Success(value=transform(item)))
+    return bind(result, lambda item: Success(value=transform(item)))

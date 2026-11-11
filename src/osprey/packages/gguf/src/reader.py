@@ -74,7 +74,7 @@ def read_header(prefix, file_size):
 
     Every tensor's range is checked against `file_size`, so weights too large to hold
     in a list stay on disk; `tensor_bytes` refuses a tensor past the prefix."""
-    return resultAndThen(Values.header_at(prefix), lambda head: resultAndThen(fields_of(prefix, head), lambda section: assemble(prefix, head, section, file_size)))
+    return Chain.then(Values.header_at(prefix), lambda head: Chain.then(fields_of(prefix, head), lambda section: assemble(prefix, head, section, file_size)))
 
 
 def read_path(path, file_size, count):

@@ -93,7 +93,7 @@ def is_stop(cp):
 
 def parse_alt(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse `seq (| seq)*`."""
-    return resultAndThen(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
+    return Program.then(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
 
 def alt_after(cps, value, n, flags):
     """The `|` continuation of a parsed sequence, or the sequence itself."""
