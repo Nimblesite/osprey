@@ -226,7 +226,7 @@ def json_reason(reason):
 
 
 def json_location(source, position):
-    return fold(range(position if position < len(source) else len(source)), Success(value=0), lambda result, index: resultAndThen(result, lambda previous: B.mapped(byteAt(source, index), lambda byte: satAdd(previous, 1) if byte < 128 or byte >= 192 else previous)))
+    return fold(range(position if position < len(source) else len(source)), Success(value=0), lambda result, index: andThen(result, lambda previous: B.mapped(byteAt(source, index), lambda byte: satAdd(previous, 1) if byte < 128 or byte >= 192 else previous)))
 
 
 def json_error(source, message):
@@ -244,7 +244,7 @@ def json_error_response(source, number, reason):
     if reason == "truncated wide JSON encoding":
         return E.exception_response(E.exception(400, "There was an error parsing the body", ""))
     else:
-        return json_error_location(resultAndThen(number, lambda offset: json_location(source, offset)), json_reason(reason))
+        return json_error_location(andThen(number, lambda offset: json_location(source, offset)), json_reason(reason))
 
 
 def json_error_location(position, reason):
@@ -280,7 +280,7 @@ def array_items(items, path, decoder, index):
             return Success(value=M.Valid(value=[]))
         case [item, *tail]:
             first = decoder(item, listConcat(path, [M.Index(value=index)]))
-            return resultAndThen(first, lambda value: B.mapped(array_items(tail, path, decoder, satAdd(index, 1)), lambda rest: V.mapped(V.combine(value, rest), lambda pair: listConcat([pair.first], pair.second))))
+            return andThen(first, lambda value: B.mapped(array_items(tail, path, decoder, satAdd(index, 1)), lambda rest: V.mapped(V.combine(value, rest), lambda pair: listConcat([pair.first], pair.second))))
 
 
 def string(value, path):

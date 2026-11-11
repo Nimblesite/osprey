@@ -154,7 +154,7 @@ fn constantScript(value) = {
     let answer = {
         handle Script {
             read _slot => {
-                calls = calls + 1
+                calls = calls + 1 
                 resume(value)
             }
         }
@@ -543,7 +543,7 @@ fn flagged(body) = {
     let text = {
         handle Scalar {
             flag step => {
-                calls = calls + 1
+                calls = calls + 1 
                 let value = match step {
                     2 => false
                     _ => true
@@ -846,8 +846,8 @@ fn nestedRun(body, bump) = {
     let result = {
         handle Depth {
             supply tag => {
-                calls = calls + 1
-                seed = seed + 1
+                calls = calls + 1 
+                seed = seed + 1 
                 tags = "${tags}${tag}|"
                 let answer = resume(seed + bump)
                 settled = "${settled}${tag}|"

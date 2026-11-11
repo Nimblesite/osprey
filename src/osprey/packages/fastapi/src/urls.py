@@ -24,7 +24,7 @@ def hex_byte(text):
         return complete_hex(text)
 
 def complete_hex(text):
-    return resultAndThen(indexOf('0123456789abcdef', toLowerCase(take(text, 1))), lambda high: resultAndThen(indexOf('0123456789abcdef', toLowerCase(take(drop(text, 1), 1))), lambda low: Success(value=bitOr(shiftLeft(high, 4), low))))
+    return andThen(indexOf('0123456789abcdef', toLowerCase(take(text, 1))), lambda high: andThen(indexOf('0123456789abcdef', toLowerCase(take(drop(text, 1), 1))), lambda low: Success(value=bitOr(shiftLeft(high, 4), low))))
 
 def piece(value, rest):
     return Decoded(value=value, rest=rest)
@@ -39,11 +39,11 @@ def continuation(text):
         return continuation_byte(text)
 
 def continuation_byte(text):
-    return resultAndThen(hex_byte(drop(text, 1)), lambda byte: Success(value=byte) if byte >= 128 and byte <= 191 else Error(message='Invalid UTF-8 continuation'))
+    return andThen(hex_byte(drop(text, 1)), lambda byte: Success(value=byte) if byte >= 128 and byte <= 191 else Error(message='Invalid UTF-8 continuation'))
 
 def utf8(text, remaining, scalar, minimum, maximum):
     if remaining == 0:
-        return resultAndThen(fromCodePoint(scalar), lambda value: Success(value=piece(value, text)))
+        return andThen(fromCodePoint(scalar), lambda value: Success(value=piece(value, text)))
     else:
         return extend_utf8(text, remaining, scalar, minimum, maximum)
 
@@ -62,7 +62,7 @@ def encoded_byte(byte, rest):
     if byte == 0:
         return Error(message='NUL is not representable in the native HTTP string boundary')
     elif byte < 128:
-        return resultAndThen(fromCodePoint(byte), lambda value: Success(value=piece(value, rest)))
+        return andThen(fromCodePoint(byte), lambda value: Success(value=piece(value, rest)))
     elif byte >= 194 and byte <= 223:
         return utf8(rest, 1, bitAnd(byte, 31), 128, 191)
     elif byte >= 224 and byte <= 239:
@@ -97,7 +97,7 @@ def decode(text, plus):
         return nonempty(text, plus)
 
 def nonempty(text, plus):
-    return resultAndThen(next_piece(text, plus), lambda part: resultAndThen(decode(part.rest, plus), lambda rest: Success(value=part.value + rest)))
+    return andThen(next_piece(text, plus), lambda part: andThen(decode(part.rest, plus), lambda rest: Success(value=part.value + rest)))
 
 # Generated private models from models.td
 

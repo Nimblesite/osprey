@@ -83,12 +83,12 @@ def utf8_of(bs):
 
 def load(data):
     """Parse and validate a safetensors file, or Error naming the failure."""
-    return resultAndThen(header_length(data), lambda value: header_of(data, value))
+    return andThen(header_length(data), lambda value: header_of(data, value))
 
 
 def header_of(data, n):
     """Read the header text of length `n` and parse it."""
-    return resultAndThen(header_string(data, n), lambda value: json_of(data, n, value))
+    return andThen(header_string(data, n), lambda value: json_of(data, n, value))
 
 
 def json_of(data, n, text):
@@ -116,7 +116,7 @@ def build_file(data, n, root):
 
 def collected_of(data, n, root):
     """Collect the header members and finish the file."""
-    return resultAndThen(collect_all(root), lambda value: finish_file(data, n, value))
+    return andThen(collect_all(root), lambda value: finish_file(data, n, value))
 
 
 def collect_all(root):
@@ -138,12 +138,12 @@ def collect_members(members, i, meta, infos) -> Result[Collected, str]:
 
 def add_metadata(members, i, meta, infos, m):
     """Parse member `m` as the `__metadata__` string map and continue."""
-    return resultAndThen(string_map(m.value), lambda value: collect_members(members, i + 1, value, infos))
+    return andThen(string_map(m.value), lambda value: collect_members(members, i + 1, value, infos))
 
 
 def add_tensor(members, i, meta, infos, m):
     """Parse member `m` as a tensor entry and continue."""
-    return resultAndThen(tensor_of(m), lambda value: collect_members(members, i + 1, meta, listAppend(infos, value)))
+    return andThen(tensor_of(m), lambda value: collect_members(members, i + 1, meta, listAppend(infos, value)))
 
 
 def tensor_of(m):
@@ -156,17 +156,17 @@ def tensor_of(m):
 
 def dtype_of(m):
     """Extract the `dtype` string, then the shape."""
-    return resultAndThen(field_str(m.value, "dtype"), lambda value: shape_of(m, value))
+    return andThen(field_str(m.value, "dtype"), lambda value: shape_of(m, value))
 
 
 def shape_of(m, dtype):
     """Extract the `shape` int list, then the offsets."""
-    return resultAndThen(field_ints(m.value, "shape"), lambda value: offsets_of(m, dtype, value))
+    return andThen(field_ints(m.value, "shape"), lambda value: offsets_of(m, dtype, value))
 
 
 def offsets_of(m, dtype, shape):
     """Extract the `data_offsets` pair and build the TensorInfo."""
-    return resultAndThen(field_ints(m.value, "data_offsets"), lambda value: make_info(m.name, dtype, shape, value))
+    return andThen(field_ints(m.value, "data_offsets"), lambda value: make_info(m.name, dtype, shape, value))
 
 
 def make_info(name, dtype, shape, offsets):
@@ -182,7 +182,7 @@ def make_info(name, dtype, shape, offsets):
 
 def field_str(v, name):
     """The string value of member `name` of object `v`."""
-    return resultAndThen(find_member(v.members, name), lambda value: member_str(value, name))
+    return andThen(find_member(v.members, name), lambda value: member_str(value, name))
 
 
 def member_str(m, name):
@@ -212,7 +212,7 @@ def find_at(members, i, name) -> Result[JsonParser.JsonMember, str]:
 
 def field_ints(v, name):
     """The int-list value of member `name` of object `v`."""
-    return resultAndThen(find_member(v.members, name), lambda value: ints_of(value.value, name))
+    return andThen(find_member(v.members, name), lambda value: ints_of(value.value, name))
 
 
 def ints_of(value, name):
@@ -258,7 +258,7 @@ def collect_metadata(members, i, acc) -> Result[dict[str, str], str]:
 def finish_file(data, n, collected):
     """Sort tensors by offset, validate them, and check the buffer is covered."""
     sorted_infos = listSortBy(collected.infos, info_cmp)
-    return resultAndThen(validate(data, sorted_infos, 0), lambda value: buffer_check(data, n, collected, sorted_infos, value))
+    return andThen(validate(data, sorted_infos, 0), lambda value: buffer_check(data, n, collected, sorted_infos, value))
 
 
 def buffer_check(data, n, collected, sorted_infos, end):
@@ -360,7 +360,7 @@ def metadata(file):
 
 def get_tensor(file, name):
     """Decode the tensor named `name`, or Error when absent."""
-    return resultAndThen(find_tensor(file.tensors, name), lambda value: Success(value=decode_range(file, value, 0, element_count(value))))
+    return andThen(find_tensor(file.tensors, name), lambda value: Success(value=decode_range(file, value, 0, element_count(value))))
 
 
 def find_tensor(tensors, name):
@@ -457,7 +457,7 @@ def decode_i64(data, off):
 
 def get_slice(file, name, first, last):
     """Decode rows `first`..`last` of the first dimension of `name`."""
-    return resultAndThen(find_tensor(file.tensors, name), lambda value: slice_of(file, value, first, last))
+    return andThen(find_tensor(file.tensors, name), lambda value: slice_of(file, value, first, last))
 
 
 def slice_of(file, info, first, last):

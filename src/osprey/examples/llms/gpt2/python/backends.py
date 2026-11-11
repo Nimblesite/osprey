@@ -70,24 +70,24 @@ class halting:
         return Error(message=fault)
 
 
-@handler(Arith)
-class arithmetic:
-    def overflow(op, l, r, _):
-        return perform(Fault.halt(f"integer overflow: {l} {op} {r}"))
-
-    def divideByZero(op, l):
-        match perform(Fault.halt(f"division by zero: {l} {op} 0")):
-            case _:
-                return l
-
-    def remainderByZero(l):
-        return perform(Fault.halt(f"remainder by zero: {l} % 0"))
-
-
 def stop(reason):
     """Stops the run with `reason`: the surrounding `strictly` answers Error
     naming it. The operation never resumes."""
     return perform(Fault.halt(reason))
+
+
+@handler(Arith)
+class arithmetic:
+    def overflow(op, l, r, _):
+        return stop(f"integer overflow: {l} {op} {r}")
+
+    def divideByZero(op, l):
+        match stop(f"division by zero: {l} {op} 0"):
+            case _:
+                return l
+
+    def remainderByZero(l):
+        return stop(f"remainder by zero: {l} % 0")
 
 
 def product_lengths(side, has, needs):

@@ -63,7 +63,7 @@ def issue_fields(error, input):
 
 def validation(issues):
     """Render all collected validation issues as the standard HTTP 422 detail array."""
-    collected = foldList(issues, Success(value=[]), lambda result, item: resultAndThen(result, lambda previous: B.mapped(issue_json(item), lambda encoded: listConcat(previous, [encoded]))))
+    collected = foldList(issues, Success(value=[]), lambda result, item: andThen(result, lambda previous: B.mapped(issue_json(item), lambda encoded: listConcat(previous, [encoded]))))
     match collected:
         case Success(value=encoded):
             return json_response(422, JsonObject([JsonMember("detail", JsonArray(encoded))]), "")

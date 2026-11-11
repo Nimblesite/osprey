@@ -1,13 +1,6 @@
 namespace registry_editor
 import ui::Doc
 
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-    work ()
-
 reportStatus result = match result
     Success report => report.reportStatus
     Error _ => -1

@@ -1,3 +1,5 @@
+// #275: closures stored in a recursive union stay invocable once recovered.
+
 type Node A =
     Label
         content : string

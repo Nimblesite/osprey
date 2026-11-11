@@ -96,7 +96,7 @@ fn size(m) = perform Backends::Tensor.length(m)
 fn vector(xs) = perform Backends::Tensor.fromList(xs)
 fn device() = perform Backends::Tensor.device()
 fn product(a, b, rows, inner, cols) = perform Backends::Tensor.matMul(a, b, rows, inner, cols)
-fn total(b) = perform Backends::Tensor.reduce(b, 0.0, gpuTestAdd)
+fn total(b) = perform Backends::Tensor.reduce(b, 0.0, addF)
 fn maxF(a, x) = match x > a { true => x  false => a }
 fn near(actual, expected) = abs(actual - expected) < tolerance
 fn gelu(x) = 0.5 * x * (1.0 + tanh(geluScale * (x + geluCubic * x * x * x)))
@@ -159,7 +159,7 @@ fn attention(qkv, t) =
 /// A pre-norm sub-layer: normalise `x`, run `body`, then add the residual back.
 fn subLayer(x, gain, bias, body, t) =
     Backends::andThen(layerNorm(x, t, gain, bias), fn(normed) =>
-        Backends::andThen(body(normed, t), fn(out) => perform Backends::Tensor.zipWith(x, out, gpuTestAdd)))
+        Backends::andThen(body(normed, t), fn(out) => perform Backends::Tensor.zipWith(x, out, addF)))
 fn attended(x, w, t) = Backends::andThen(linear(x, t, width, qkvWidth, w.qkvWeight, w.qkvBias), fn(qkv) => Backends::andThen(attention(qkv, t), fn(mixed) => linear(mixed, t, width, width, w.projWeight, w.projBias)))
 fn feedForward(x, w, t) = Backends::andThen(linear(x, t, width, mlpWidth, w.fcWeight, w.fcBias), fn(grown) => Backends::andThen(smoothed(grown), fn(hidden) => linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias)))
 /// One pre-norm block: attention and MLP, each with a residual.

@@ -42,9 +42,11 @@ effect Log {
     info: fn(string) -> Unit
 }
 
-// ---- ANSI pizazz (pure string wrappers) ------------------------------------
+// ---- ANSI pizazz -----------------------------------------------------------
+// One wrapper, two spellings: plain SGR codes and 256-color foregrounds, so
+// every call site is `esc("<code>", text)` with no per-color boilerplate.
 fn esc(code: string, s: string) = "\e[${code}m${s}\e[0m"
-fn c256(n: string, s: string) = esc("38;5;${n}", s)   // 256-color foreground
+fn c256(n: string, s: string) = esc("38;5;${n}", s)
 // Counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = satAdd(x, 1)
 fn mn(a, b) = match a < b { true => a  false => b }
@@ -168,7 +170,7 @@ fn main() -> int {
             print("  ${m}")
         }
     }
-    let listening = resultAndThen(httpCreateServer(8080, "127.0.0.1"), |srv| => httpListen(srv, handleReq))
+    let listening = andThen(httpCreateServer(8080, "127.0.0.1"), |srv| => httpListen(srv, handleReq))
     match listening {
         Success => {
             print(banner())

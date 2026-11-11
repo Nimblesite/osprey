@@ -181,8 +181,8 @@ fn spaceTraderCase() = {
     let buyTwo = buyLeg(15, getResourcePrice(2), saleOne.credits, saleOne.cargo)
     let fuelTwo = (fuelOne - calculateTravelCost(3)) 
     let saleTwo = sellLeg(15, getResourcePrice(2), 30, buyTwo.credits, buyTwo.cargo)
-    let profit = (saleTwo.credits - 1000)
-    let projected = (saleTwo.credits * 2)
+    let profit = (saleTwo.credits - 1000) 
+    let projected = (saleTwo.credits * 2) 
 
     checkAll("space trader branch tables", [
         answersHold(getResourcePrice, [1, 2, 3, 4, 5, 9], [50, 25, 75, 100, 30, 10]),

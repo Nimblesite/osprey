@@ -16,7 +16,7 @@ fn rowDot(matrix, vector, cols, row, col) = match col == cols {
 fn multiplicationOrderCase() = {
     let t = 2.0
     withBuffer(toGpu([1.0, 2.0]), fn(xs) => withBuffer(toGpu([3.0, 4.0]), fn(ys) => withBuffer(gpuZipWith(xs, ys, fn(x, y) => t * x * y), fn(captureFirst) => withBuffer(gpuZipWith(xs, ys, fn(x, y) => x * y * t), fn(captureLast) => checkAll("buffer slots type every multiplication order", [
-        gpuSatisfies(gpuFold(captureFirst, 0.0, gpuTestAdd), fn(uploaded203) => (uploaded203) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, gpuTestAdd), fn(uploaded202) => (uploaded202) == 22.0), (gpuGet(captureFirst, 0) ?: 0.0) == 6.0, (gpuGet(captureLast, 1) ?: 0.0) == 16.0
+        gpuSatisfies(gpuFold(captureFirst, 0.0, addF), fn(uploaded203) => (uploaded203) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addF), fn(uploaded202) => (uploaded202) == 22.0), (gpuGet(captureFirst, 0) ?: 0.0) == 6.0, (gpuGet(captureLast, 1) ?: 0.0) == 16.0
     ])))))
 }
 fn genericCombineCase() = {
@@ -27,7 +27,7 @@ fn genericCombineCase() = {
 fn recursiveHelperCase() = withBuffer(gpuIota(2), recursiveHelperWith)
 fn recursiveHelperWith(indices) = {
     withBuffer(toGpu([1.0, 2.0, 3.0, 4.0]), fn(matrix) => withBuffer(toGpu([10.0, 20.0]), fn(vector) => withBuffer(gpuMap(indices, fn(row) => rowDot(matrix, vector, 2, row, 0)), fn(rows) => checkAll("recursive GPU helpers monomorphize from their call site", [
-        gpuLength(rows) == 2, (gpuGet(rows, 0) ?: 0.0) == 50.0, (gpuGet(rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, gpuTestAdd), fn(uploaded1) => (uploaded1) == 160.0)
+        gpuLength(rows) == 2, (gpuGet(rows, 0) ?: 0.0) == 50.0, (gpuGet(rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, addF), fn(uploaded1) => (uploaded1) == 160.0)
     ]))))
 }
 fn blockBodyCase() = {
@@ -36,7 +36,7 @@ fn blockBodyCase() = {
         let y = t * x
         y + t
     }), fn(mapped) => checkAll("block-bodied kernels preserve local bindings", [
-        gpuLength(mapped) == 3, (gpuGet(mapped, 0) ?: 0.0) == 4.0, (gpuGet(mapped, 1) ?: 0.0) == 6.0, (gpuGet(mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, gpuTestAdd), fn(uploaded198) => (uploaded198) == 18.0)
+        gpuLength(mapped) == 3, (gpuGet(mapped, 0) ?: 0.0) == 4.0, (gpuGet(mapped, 1) ?: 0.0) == 6.0, (gpuGet(mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addF), fn(uploaded198) => (uploaded198) == 18.0)
     ])))
 }
 exactTests([
@@ -168,7 +168,7 @@ fn mathTotalityCase() = {
     let nan = sqrt(-1.0)
     withBuffer(toGpu([0.0, 1.0]), fn(value) => withBuffer(gpuMap(value, exp), fn(probabilities) => checkAll("float math builtins are total over IEEE doubles", [
         sqrt(4.0) == 2.0, nan != nan, ln(0.0) < -1000.0, ln(0.0) == ln(0.0) * 2.0, exp(1000.0) == exp(2000.0), exp(1000.0) > 1.0, tanh(1000000.0) == 1.0, tanh(-1000000.0) == -1.0, (gpuGet(probabilities, 0) ?: 0.0) == 1.0,
-        gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuSatisfies(gpuFold(uploaded175, 0.0, gpuTestAdd), fn(uploaded206) => (uploaded206) == 6.0)))
+        gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuSatisfies(gpuFold(uploaded175, 0.0, addF), fn(uploaded206) => (uploaded206) == 6.0)))
     ])))
 }
 testCases([

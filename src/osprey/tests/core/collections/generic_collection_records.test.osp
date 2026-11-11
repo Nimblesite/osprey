@@ -1,6 +1,6 @@
-/// Cross-contract Default twin for [TYPE-GENERICS-DECL], [TYPE-LIST],
-/// [TYPE-MAP], [TYPE-MAP-LOOKUP], [BUILTIN-LIST-GET], [BUILTIN-MAP-GET],
-/// [BUILTIN-LIST-APPEND], [BUILTIN-MAP-SET], and [BUILTIN-LIST-FOREACH].
+/// Cross-contract Default twin for [TYPE-GENERICS-DECL], [TYPE-LIST], [TYPE-MAP],
+/// [TYPE-MAP-LOOKUP], [BUILTIN-LIST-GET], [BUILTIN-MAP-GET], [BUILTIN-LIST-APPEND],
+/// [BUILTIN-MAP-SET], and [BUILTIN-LIST-FOREACH].
 type Envelope<T, U> = { payload: T, metadata: U }
 
 effect RecordAudit {

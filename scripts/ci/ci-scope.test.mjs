@@ -104,11 +104,11 @@ test('extension source fixtures have the WASI linker and sysroot before coverage
 // The bundle stages src/osprey/workbench/assets/. and src/osprey/workbench/lessons/media/.
 // Their *.png, *.gif and *.mp4 are LFS-stored, so a fetch that omits either path
 // stages a pointer and the packaged extension ships bytes the Marketplace (and
-// the client verifier) reject. The logo and both README editor GIFs are
-// LFS-stored too, so each job fetches exactly the paths its bundle stages.
+// the client verifier) reject. The logo and every GIF the VSIX bundles from
+// media/ are LFS-stored too, so each job fetches exactly the paths its bundle stages.
 test('LFS fetches cover every workbench source asset the bundle stages', () => {
-  const required = ['src/toolchain/website/src/assets/images/logo.png', 'src/toolchain/vscode-extension/media/package-tour.gif',
-    'src/toolchain/vscode-extension/media/showcase.gif', 'src/osprey/workbench/assets/**', 'src/osprey/workbench/lessons/media/**']
+  const required = ['src/toolchain/website/src/assets/images/logo.png', 'src/toolchain/vscode-extension/media/**',
+    'src/osprey/workbench/assets/**', 'src/osprey/workbench/lessons/media/**']
   for (const [name, file] of [['test-extension', '.github/workflows/ci.yml'], ['vsix', '.github/workflows/release.yml']]) {
     const include = job(name, file).match(/git lfs pull --include="([^"]+)"/)?.[1] ?? ''
     for (const path of required) assert.ok(include.split(',').includes(path), `${name}: LFS fetch omits ${path}`)

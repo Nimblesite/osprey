@@ -1132,15 +1132,16 @@ suite("Osprey Language Features Tests", () => {
     );
   }
 
-  /** Update `lines` in place before publishing the next editor state. */
+  /** Rewrite `lines` with `index` replaced by `text`, and push it to `doc`. */
   async function rewriteLine(
     doc: vscode.TextDocument,
     lines: string[],
     index: number,
     text: string,
   ): Promise<void> {
-    lines[index] = text;
-    await rewrite(doc, lines.join("\n") + "\n");
+    const next = [...lines];
+    next[index] = text;
+    await rewrite(doc, next.join("\n") + "\n");
   }
 
   /** `uri` ends up with no diagnostics at all, once the server retracts them. */

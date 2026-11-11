@@ -9,6 +9,45 @@ pipeline () =
     b = perform Audit.step "parse"
     a + b 
 
+(** Append `${key}:${label}|` to a transcript; entry and settle share this shape. *)
+tag (cell, key, label) = "${cell}${key}:${label}|"
+
+(** Append `${label}=${toString value}|`, recording the value an arm supplied. *)
+supply (cell, label, value) = "${cell}${label}=${toString value}|"
+
+(** Append `${label}:${toString value}|`, recording the answer an arm saw. *)
+saw cell label value = "${cell}${label}:${toString value}|"
+
+(** One audit's four transcripts: entries, supplies, settles and answers. *)
+type Ledger =
+    entered : string
+    supplies : string
+    settled : string
+    answers : string
+
+(** The ledger every audited region starts from: four empty transcripts. *)
+blankLedger () = Ledger(entered = "", supplies = "", settled = "", answers = "")
+
+(** Record an arm's entry; its supply label is the label it displays. *)
+enter (log, key, label, supplied) = noteEnter (log, key, label, label, supplied)
+
+(** Record an arm's settle; the label it saw is the label it displays. *)
+leave log key label answer = noteExit log key label label answer
+
+(** Record one operation's entry and the value its region supplied. *)
+noteEnter (log, key, supplyLabel, label, supplied) =
+    Ledger(entered = tag (log.entered, key, label),
+      supplies = supply (log.supplies, supplyLabel, supplied),
+      settled = log.settled,
+      answers = log.answers)
+
+(** Record one operation's settle and the answer its arm saw. *)
+noteExit log key label sawLabel answer =
+    Ledger(entered = log.entered,
+      supplies = log.supplies,
+      settled = tag (log.settled, key, label),
+      answers = saw log.answers sawLabel answer)
+
 (** This case proves operations enter FIFO and post-resume code exits LIFO. *)
 resumeLifoAuditCase () =
     mut n = 0
@@ -20,31 +59,25 @@ resumeLifoAuditCase () =
         handle Audit
             step label =>
                 n := n + 1 
-                issued := "${issued}${label}:${toString n}|"
+                issued := saw issued label n
                 answer = resume n
-                settled := "${settled}${label}:${toString answer}|"
+                settled := saw settled label answer
                 transcript := "${transcript}after ${label}: answer=${toString answer}\n"
                 answer
         pipeline ()
     legacyTranscript = "${transcript}total=${toString total}\n"
 
     (* Preserve all three legacy lines and their exact unwind ordering. *)
-    checkAll "LIFO legacy observations" [
-        legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n"
-    ]
+    checkAll "LIFO legacy observations" [legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n"]
 
     (* Assert issue order, settle order, operation count, and combined answer. *)
-    checkAll "LIFO internal state" [
-        structuralEquals [total, n] [3, 2],
-        structuralEquals [issued, settled] ["load:1|parse:2|", "parse:3|load:3|"]
-    ]
+    checkAll "LIFO internal state" [structuralEquals [total, n] [3, 2], structuralEquals [issued, settled] ["load:1|parse:2|", "parse:3|load:3|"]]
 
 (* Register the post-resume LIFO regression. *)
 
 test "post-resume code unwinds in reverse operation order" (exactly resumeLifoAuditCase)
 
 (** Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
-    depth, so every transcript entry names both the region that answered an
     operation and the position at which it did so. *)
 effect Alpha
     (** Supply Alpha's numbered value for `label`. *)
@@ -67,47 +100,26 @@ effect Delta
 
 (** Two regions, two effects, four operations performed a-b-a-b. Spec 0017
     [EFFECTS-RESUME] says `resume` "runs the rest of the handled computation" and
-    "evaluates to that computation's answer", so an arm's post-resume code only
-    runs once the computation it resumed has produced one.
-    [EFFECTS-RESUME-NESTING] settles which computation that is: a continuation
-    reaches out to the handler that ANSWERS the operation, so `a2` — which
-    crosses the Beta region to reach Alpha — has its arm installed OUTSIDE the
-    still-live `b1` arm, and `resume` puts `b1` back inside it. Settlement
-    therefore follows the live arm nesting, `b2 b1 a2 a1`, and NOT the plain
-    reverse of the entry order, `b2 a2 b1 a1`. The inner arm doubles its answer
-    and the outer arm increments its own, so the final number is reachable
-    through exactly one settlement order. Per [EFFECTS-OPERATION-MAILBOX] a
-    resumed body may perform again while an arm is still live, which is exactly
-    the interleaving below. [EFFECTS-HANDLER-STATE]: both arms write the same
     four cells, so the transcripts are one shared ordering, not two private ones. *)
 nestedInterleavedDepthTwoCase () =
     mut alphaCalls = 0
     mut betaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger ()
 
     total =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls * 10 
-                entered := "${entered}a:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}a:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "a", label, alphaCalls * 10)
+                answer = resume (alphaCalls * 10)
+                log := leave log "a" label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 100 
-                entered := "${entered}b:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}b:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "b", label, betaCalls * 100)
+                answer = resume (betaCalls * 100)
+                log := leave log "b" label answer
                 answer * 2 
         p = perform Alpha.alpha "a1"
         q = perform Beta.beta "b1"
@@ -117,81 +129,56 @@ nestedInterleavedDepthTwoCase () =
 
     (* Operations enter in the order the body performs them, whichever depth
        answers them: the outer region answers first and third. *)
-    checkAll "two nested depths enter in perform order" [
-        entered == "a:a1|b:b1|a:a2|b:b2|",
-        structuralEquals [alphaCalls, betaCalls] [2, 2]
-    ]
+    checkAll "two nested depths enter in perform order" [log.entered == "a:a1|b:b1|a:a2|b:b2|", structuralEquals [alphaCalls, betaCalls] [2, 2]]
 
     (* Settlement follows the live arm nesting: `a2` crossed the Beta region on
        its way out, so its arm sits OUTSIDE `b1`'s and settles after it. A plain
        reverse of `entered` would predict `b:b2|a:a2|b:b1|a:a1|`, which is not
        what this transcript says [EFFECTS-RESUME-NESTING]. *)
-    checkAll "two nested depths settle innermost suspension first" [
-        settled == "b:b2|b:b1|a:a2|a:a1|"
-    ]
+    checkAll "two nested depths settle innermost suspension first" [log.settled == "b:b2|b:b1|a:a2|a:a1|"]
 
     (* Each region supplies its own magnitude — tens from Alpha, hundreds from
        Beta — so a value handed to the wrong performer changes the body's sum. *)
-    checkAll "each nested depth supplies its own magnitude" [
-        supplies == "a1=10|b1=100|a2=20|b2=200|"
-    ]
+    checkAll "each nested depth supplies its own magnitude" [log.supplies == "a1=10|b1=100|a2=20|b2=200|"]
 
     (* The first arm to settle sees the body's own answer, 330. Every later arm
        sees what the arm below it returned. Both Beta arms double, then both
        Alpha arms increment: 330 -> 660 -> 1320 -> 1321 -> 1322. *)
-    checkAll "nested settled answers chain through the arms" [
-        answers == "b2:330|b1:660|a2:1320|a1:1321|",
-        total == 1322
-    ]
+    checkAll "nested settled answers chain through the arms" [log.answers == "b2:330|b1:660|a2:1320|a1:1321|", total == 1322]
 
 (* Register the two-depth interleaved settlement audit. *)
 test "interleaved performs across two nested regions settle innermost first" (exactly nestedInterleavedDepthTwoCase)
 
 (** Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
-    Alpha and the innermost one Beta, while the body performs them in a third
     order entirely. Spec 0017 [EFFECTS-RESUME-NESTING] ties settlement to the
-    LIVE ARM NESTING, not to the entry order: every operation that crosses
-    outward installs its arm outside the arms it crossed, so both Beta
-    suspensions settle first, then both Alpha, then both Gamma — the rotation in
-    the body's perform order leaves no trace in the settle order. Each depth
-    applies a different, non-commutative transform to the answer it receives
-    ([EFFECTS-HANDLER-ARMS]: the arm's value is what it supplies to the
     suspension below it), so 119936 is reachable through exactly one order. *)
 nestedDepthThreeRotationCase () =
     mut gammaCalls = 0
     mut alphaCalls = 0
     mut betaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut answers = ""
+    mut log = blankLedger ()
 
     total =
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                supplied = gammaCalls * 1000 
-                entered := "${entered}d1:${label}|"
-                answer = resume supplied
-                settled := "${settled}d1:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "d1", label, gammaCalls * 1000)
+                answer = resume (gammaCalls * 1000)
+                log := leave log "d1" label answer
                 answer * 2 
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls * 10 
-                entered := "${entered}d2:${label}|"
-                answer = resume supplied
-                settled := "${settled}d2:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "d2", label, alphaCalls * 10)
+                answer = resume (alphaCalls * 10)
+                log := leave log "d2" label answer
                 answer + 7 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 100 
-                entered := "${entered}d3:${label}|"
-                answer = resume supplied
-                settled := "${settled}d3:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "d3", label, betaCalls * 100)
+                answer = resume (betaCalls * 100)
+                log := leave log "d3" label answer
                 answer * 3 
         g0 = perform Gamma.gamma "g0"
         a1 = perform Alpha.alpha "a1"
@@ -202,99 +189,64 @@ nestedDepthThreeRotationCase () =
         (g0 + a1 ) + (b1 + g1 ) + (b2 + a2 ) 
 
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
-    checkAll "three rotated depths enter in perform order" [
-        entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
-        structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]
-    ]
+    checkAll "three rotated depths enter in perform order" [log.entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|", structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]]
 
     (* Settlement does NOT reverse that sequence: each crossing operation put
        its arm outside the arms it crossed, so the deepest live arms settle
        first and each region's later suspension settles before its earlier one.
        Reversing `entered` would predict `d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|`. *)
-    checkAll "three rotated depths settle by live arm nesting" [
-        settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"
-    ]
+    checkAll "three rotated depths settle by live arm nesting" [log.settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"]
 
     (* Body sum: 1000 + 10 + 100 + 2000 + 200 + 20 = 3330. Each arm then folds
        its own transform over the answer below it, deepest live arm first. *)
-    checkAll "three rotated depths chain their answers" [
-        answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"
-    ]
+    checkAll "three rotated depths chain their answers" [log.answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"]
 
     (* 3330 *3 -> 9990 *3 -> 29970 +7 -> 29977 +7 -> 29984 *2 -> 59968 *2. The
        reverse-entry order would fold +7 *3 *2 *3 +7 *2 over the same body sum
        and reach 120146, so the total alone separates the two orders. *)
-    checkAll "three rotated depths fold in exactly one order" [
-        total == 119936
-    ]
+    checkAll "three rotated depths fold in exactly one order" [total == 119936]
 
 (* Register the three-depth rotated settlement audit. *)
 test "three rotated regions settle by live arm nesting, not by perform order" (exactly nestedDepthThreeRotationCase)
 
 (** Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
     pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
-    makes each `resume` return only after the whole remaining computation —
-    including every suspension opened inside it — has produced an answer, and
-    [EFFECTS-RESUME-NESTING] puts an outward-crossing operation's arm outside
-    every arm it crossed. The eight arms therefore settle deepest region first,
-    each region's later suspension before its earlier one — NOT in reverse entry
-    order. Every arm adds its own power of ten to the answer it received, which
-    makes the digits of the answer each arm SAW a staircase that names the
-    settling depth; the total alone cannot detect a reordering, which is why
-    each step is pinned individually.
-    [EFFECTS-OPERATION-MAILBOX] covers the four live suspensions at once: a
-    nested suspension installs its own mailbox rather than overwriting one still
     in use. *)
 nestedDepthFourStaircaseCase () =
     mut alphaCalls = 0
     mut betaCalls = 0
     mut gammaCalls = 0
     mut deltaCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger ()
 
     total =
         handle Alpha
             alpha label =>
                 alphaCalls := alphaCalls + 1 
-                supplied = alphaCalls
-                entered := "${entered}1:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}1:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "1", label, alphaCalls)
+                answer = resume alphaCalls
+                log := leave log "1" label answer
                 answer + 1 
         handle Beta
             beta label =>
                 betaCalls := betaCalls + 1 
-                supplied = betaCalls * 10 
-                entered := "${entered}2:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}2:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "2", label, betaCalls * 10)
+                answer = resume (betaCalls * 10)
+                log := leave log "2" label answer
                 answer + 10 
         handle Gamma
             gamma label =>
                 gammaCalls := gammaCalls + 1 
-                supplied = gammaCalls * 100 
-                entered := "${entered}3:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}3:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "3", label, gammaCalls * 100)
+                answer = resume (gammaCalls * 100)
+                log := leave log "3" label answer
                 answer + 100 
         handle Delta
             delta label =>
                 deltaCalls := deltaCalls + 1 
-                supplied = deltaCalls * 1000 
-                entered := "${entered}4:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}4:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "4", label, deltaCalls * 1000)
+                answer = resume (deltaCalls * 1000)
+                log := leave log "4" label answer
                 answer + 1000 
         a1 = perform Alpha.alpha "a1"
         b1 = perform Beta.beta "b1"
@@ -309,37 +261,26 @@ nestedDepthFourStaircaseCase () =
         firstHalf + secondHalf 
 
     (* Eight operations descend the four depths and climb back out. *)
-    checkAll "four nested depths enter in perform order" [
-        entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
-        structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]
-    ]
+    checkAll "four nested depths enter in perform order" [log.entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|", structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]]
 
     (* Deepest live arm first: both Delta suspensions, then both Gamma, then
        both Beta, then both Alpha. The second Alpha suspension was opened LAST
        and settles seventh, because every operation it crossed put its arm
        inside it. Reversing `entered` would instead predict
        `1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|`. *)
-    checkAll "four nested depths settle deepest live arm first" [
-        settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"
-    ]
+    checkAll "four nested depths settle deepest live arm first" [log.settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"]
 
     (* Each depth supplies its own power of ten, twice, so a value crossing to a
        neighbouring region would move the body's sum by a whole digit. *)
-    checkAll "four nested depths supply distinct magnitudes" [
-        supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"
-    ]
+    checkAll "four nested depths supply distinct magnitudes" [log.supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"]
 
     (* The staircase: 3333 -> 4333 -> 5333 -> 5433 -> 5533 -> 5543 -> 5553 ->
        5554, one digit per settling depth, in the order the arms unwound — the
        thousands digit first because the Delta arms settle first. *)
-    checkAll "four nested depths climb a digit staircase" [
-        answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"
-    ]
+    checkAll "four nested depths climb a digit staircase" [log.answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"]
 
     (* Body sum 1111 + 2222 = 3333; the arms then add 2 * (1 + 10 + 100 + 1000). *)
-    checkAll "four nested depths total their halves and transforms" [
-        total == 5555
-    ]
+    checkAll "four nested depths total their halves and transforms" [total == 5555]
 
 (* Register the four-depth nested settlement audit. *)
 test "four nested regions settle by live arm nesting, deepest arm first" (exactly nestedDepthFourStaircaseCase)
@@ -352,54 +293,34 @@ effect Twin
     control far : int => int
 
 (** One effect, two depths, one partial inner region. Spec 0017's Handlers
-    section says "the innermost matching arm wins and an outer arm remains
-    available for operations not handled by the inner region", and
     [EFFECTS-STATIC-DISCHARGE] adds that "complementary nested partial handlers
-    may each discharge the operation they cover". So `near` is answered by the
-    inner region and `far` reaches the outer one while inner suspensions are
-    still live — and by [EFFECTS-RESUME-NESTING] each crossing `far` installs
-    its arm OUTSIDE the live `near` arms it crossed, so both `near` arms settle
-    before either `far` arm does. Settlement is therefore not the reverse of the
-    entry order. The unused outer `near` arm supplies a millionfold value, so
     any leak past the inner region is visible. *)
 nestedPartialInnerResumeCase () =
     mut outerNear = 0
     mut outerFar = 0
     mut innerNear = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger ()
 
     total =
         handle Twin
             near amount =>
                 outerNear := outerNear + 1 
-                supplied = amount * 1000000 
-                entered := "${entered}OUTERnear:${toString amount}|"
-                supplies := "${supplies}N${toString amount}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}OUTERnear:${toString amount}|"
-                answers := "${answers}OUTERnear:${toString answer}|"
+                log := noteEnter (log, "OUTERnear", "N${toString amount}", toString amount, amount * 1000000)
+                answer = resume (amount * 1000000)
+                log := noteExit log "OUTERnear" (toString amount) "OUTERnear" answer
                 answer
             far amount =>
                 outerFar := outerFar + 1 
-                supplied = amount * 1000 
-                entered := "${entered}far:${toString amount}|"
-                supplies := "${supplies}f${toString amount}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}far:${toString amount}|"
-                answers := "${answers}far:${toString answer}|"
+                log := noteEnter (log, "far", "f${toString amount}", toString amount, amount * 1000)
+                answer = resume (amount * 1000)
+                log := noteExit log "far" (toString amount) "far" answer
                 answer * 2 
         handle Twin
             near amount =>
                 innerNear := innerNear + 1 
-                supplied = amount * 10 
-                entered := "${entered}near:${toString amount}|"
-                supplies := "${supplies}n${toString amount}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}near:${toString amount}|"
-                answers := "${answers}near:${toString answer}|"
+                log := noteEnter (log, "near", "n${toString amount}", toString amount, amount * 10)
+                answer = resume (amount * 10)
+                log := noteExit log "near" (toString amount) "near" answer
                 answer + 5 
         p = perform Twin.near 1
         q = perform Twin.far 2
@@ -409,28 +330,19 @@ nestedPartialInnerResumeCase () =
 
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)
-    checkAll "a partial inner region keeps only its own operation" [
-        structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]
-    ]
+    checkAll "a partial inner region keeps only its own operation" [structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]]
 
     (* Entry order is the body's order, alternating between the two depths. *)
-    checkAll "a crossing operation enters between inner suspensions" [
-        structuralEquals [entered, supplies] ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"]
-    ]
+    checkAll "a crossing operation enters between inner suspensions" [structuralEquals [log.entered, log.supplies] ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"]]
 
     (* Both inner `near` arms settle first: each `far` crossed them on its way
        out, so its arm sits outside theirs. Reversing `entered` would predict
        `far:4|near:3|far:2|near:1|` [EFFECTS-RESUME-NESTING]. *)
-    checkAll "partial nesting settles its live inner arms first" [
-        settled == "near:3|near:1|far:4|far:2|"
-    ]
+    checkAll "partial nesting settles its live inner arms first" [log.settled == "near:3|near:1|far:4|far:2|"]
 
     (* Body sum 10 + 2000 + 30 + 4000 = 6040, then both `near` arms add five and
        both `far` arms double: 6040 -> 6045 -> 6050 -> 12100 -> 24200. *)
-    checkAll "partial nesting chains answers across both depths" [
-        answers == "near:6040|near:6045|far:6050|far:12100|",
-        total == 24200
-    ]
+    checkAll "partial nesting chains answers across both depths" [log.answers == "near:6040|near:6045|far:6050|far:12100|", total == 24200]
 
 (* Register the partial-inner-region settlement audit. *)
 test "a partial inner region resumes while its uncovered operation crosses outward" (exactly nestedPartialInnerResumeCase)
@@ -443,43 +355,28 @@ effect Layer
 
 (** The inner region wraps only the middle of the outer body, so it must produce
     a value before the outer body can perform again. Spec 0017 [EFFECTS-RESUME]:
-    `resume` "evaluates to that computation's answer", and the answer of the
-    inner `handle` expression is a value the outer body consumes — so both inner
-    suspensions settle BEFORE the outer region's later operation is even
-    performed. Settlement is therefore not the plain reverse of the entry
-    transcript: it is reverse order of the live suspension stack. The Handlers
-    section supplies the other half: the inner arm shadows the outer one only
     inside its lexical region, and the outer arm is restored after it. *)
 sameEffectTwoDepthsCase () =
     mut outerCalls = 0
     mut innerCalls = 0
-    mut entered = ""
-    mut settled = ""
-    mut supplies = ""
-    mut answers = ""
+    mut log = blankLedger ()
 
     total =
         handle Layer
             pick label =>
                 outerCalls := outerCalls + 1 
-                supplied = outerCalls * 1000 
-                entered := "${entered}out:${label}|"
-                supplies := "${supplies}${label}=${toString supplied}|"
-                answer = resume supplied
-                settled := "${settled}out:${label}|"
-                answers := "${answers}${label}:${toString answer}|"
+                log := enter (log, "out", label, outerCalls * 1000)
+                answer = resume (outerCalls * 1000)
+                log := leave log "out" label answer
                 answer * 2 
         before = perform Layer.pick "before"
         middle =
             handle Layer
                 pick label =>
                     innerCalls := innerCalls + 1 
-                    supplied = innerCalls * 10 
-                    entered := "${entered}in:${label}|"
-                    supplies := "${supplies}${label}=${toString supplied}|"
-                    answer = resume supplied
-                    settled := "${settled}in:${label}|"
-                    answers := "${answers}${label}:${toString answer}|"
+                    log := enter (log, "in", label, innerCalls * 10)
+                    answer = resume (innerCalls * 10)
+                    log := leave log "in" label answer
                     answer + 3 
             m1 = perform Layer.pick "in1"
             m2 = perform Layer.pick "in2"
@@ -489,29 +386,19 @@ sameEffectTwoDepthsCase () =
 
     (* Shadow and restore: the inner arm answered exactly the two operations
        inside its region, the outer arm the one before it and the one after it. *)
-    checkAll "an inner region shadows only its own lexical region" [
-        structuralEquals [outerCalls, innerCalls] [2, 2],
-        entered == "out:before|in:in1|in:in2|out:after|"
-    ]
+    checkAll "an inner region shadows only its own lexical region" [structuralEquals [outerCalls, innerCalls] [2, 2], log.entered == "out:before|in:in1|in:in2|out:after|"]
 
     (* Each depth kept its own magnitude. Had the inner region failed to shadow,
        the outer counter would have supplied 2000 and 3000 to in1 and in2. *)
-    checkAll "two depths of one effect supply their own values" [
-        supplies == "before=1000|in1=10|in2=20|after=2000|"
-    ]
+    checkAll "two depths of one effect supply their own values" [log.supplies == "before=1000|in1=10|in2=20|after=2000|"]
 
     (* The inner region settles completely before `after` is performed, so the
        settle transcript is NOT the reverse of the entry transcript. *)
-    checkAll "the inner region settles before the outer body continues" [
-        settled == "in:in2|in:in1|out:after|out:before|"
-    ]
+    checkAll "the inner region settles before the outer body continues" [log.settled == "in:in2|in:in1|out:after|out:before|"]
 
     (* 10 + 20 = 30 is the inner body's answer; the inner arms add three each,
        so the inner region evaluates to 36 and the outer body sums to 3036. *)
-    checkAll "the inner region's answer feeds the outer body" [
-        answers == "in2:30|in1:33|after:3036|before:6072|",
-        total == 12144
-    ]
+    checkAll "the inner region's answer feeds the outer body" [log.answers == "in2:30|in1:33|after:3036|before:6072|", total == 12144]
 
 (* Register the same-effect two-depth settlement audit. *)
 test "an inner region settles fully before the outer region's later operation" (exactly sameEffectTwoDepthsCase)

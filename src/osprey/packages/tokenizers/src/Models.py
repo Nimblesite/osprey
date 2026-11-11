@@ -374,7 +374,7 @@ def merge_step(state, i, left, right, id):
 def bpe_tokenize(m, text) -> Result[list[Token], str]:
     """Byte-pair encode one byte-level piece: tiktoken's merge loop over the piece's
     bytes, then each id read back as its token's text and byte span."""
-    return resultAndThen(bytelevel_raw(text), lambda octets: resultAndThen(Bpe.bpe_encode(m.ranks, octets), lambda ids: tokens_by_id(m, ids)))
+    return andThen(bytelevel_raw(text), lambda octets: andThen(Bpe.bpe_encode(m.ranks, octets), lambda ids: tokens_by_id(m, ids)))
 
 
 class Spans:

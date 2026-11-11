@@ -82,7 +82,7 @@ def separators(text, previous_digit):
 
 def whole_number(text):
     spelling = trim(text)
-    return resultAndThen(replace(spelling, "_", ""), decimal_number) if separators(spelling, False) else Error(message="Not an integer")
+    return andThen(replace(spelling, "_", ""), decimal_number) if separators(spelling, False) else Error(message="Not an integer")
 
 
 def decimal_number(text):
@@ -91,7 +91,7 @@ def decimal_number(text):
             return parseInt(text)
         case Success(value=index):
             fraction = drop(drop(text, index), 1)
-            return resultAndThen(replace(fraction, "0", ""), lambda rest: parseInt(take(text, index)) if fraction != "" and rest == "" else Error(message="Not an integer"))
+            return andThen(replace(fraction, "0", ""), lambda rest: parseInt(take(text, index)) if fraction != "" and rest == "" else Error(message="Not an integer"))
 
 
 def bound(location, text, number, minimum, maximum):
