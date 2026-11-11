@@ -68,7 +68,7 @@ fn foldedFrom(buf, foldSeed, expected) = gpuSatisfies(buf, fn(s) => sumsTo(s, fo
 fn bufferHornerTo(buf, expected) = gpuSatisfies(buf, fn(b) => hornerTo(b, 0, expected))
 /// zipLeftIs zips `b` with the upload of `values` and keeps `expected` elements — the shorter operand wins.
 fn zipLeftIs(b, values, expected) = gpuSatisfies(toGpu(values), fn(other) => gpuLengthIs(gpuZipWith(b, other, sumI), expected))
-/// zippedProductLengthIs and mixedZipLengthIs zip two uploads and keep `expected` elements; their kernels differ in type, and gpuZipWith only accepts a named function, so each names its own.
+/// zippedProductLengthIs zips the two uploads with mulI and keeps `expected` elements.
 fn zippedProductLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mulI), expected)))
 /// mixedZipLengthIs zips an int upload with a float one through mixAdd, the type-changing slot.
 fn mixedZipLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mixAdd), expected)))

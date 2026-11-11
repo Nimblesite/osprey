@@ -42,9 +42,7 @@ effect Log {
     info: fn(string) -> Unit
 }
 
-// ---- ANSI pizazz -----------------------------------------------------------
-// One wrapper, two spellings: plain SGR codes and 256-color foregrounds, so
-// every call site is `esc("<code>", text)` with no per-color boilerplate.
+// ---- ANSI pizazz (pure string wrappers) ------------------------------------
 fn esc(code: string, s: string) = "\e[${code}m${s}\e[0m"
 fn c256(n: string, s: string) = esc("38;5;${n}", s)
 // Counters explicitly keep their previous value on arithmetic overflow.

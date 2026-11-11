@@ -52,7 +52,7 @@ effect Database
     close : Ptr => int
 
 (** --- real SQLite handler implementations (top-level, no captures) --- *)
-(** Runs `call` against a fresh out-parameter cell, yielding its status code and pointer. *)
+(** Run `call` against a fresh out-parameter cell, yielding its status code and pointer. *)
 withCell call =
     cell = osprey_ffi_cell ()
     rc = call cell
@@ -91,7 +91,7 @@ seedUser (db, uid, uname) =
     _fin = perform Database.finalize stmt
     rc
 
-(** Seeds the two demo users, yielding the line that reports their status codes. *)
+(** Seed the two demo users, yielding the line that reports their status codes. *)
 seedDemoUsers db = "inserted ${seedUser (db, 1, "Ada")} ${seedUser (db, 2, "Linus")}"
 
 showUser stmt =
@@ -109,7 +109,7 @@ runApp db =
     _qfin = perform Database.finalize q
     print (statusLine ("closed", perform Database.close db))
 
-(** Installs the real SQLite handler around `work`. *)
+(** Install the real SQLite handler around `work`. *)
 withDatabase work =
     handle Database
         open path => openReal path
@@ -135,14 +135,14 @@ reportOpened result = match result
 databaseDemo () = reportOpened (withMemoryDatabase runApp)
 databaseDemo ()
 
-(** Captures every externally visible result of one handled database interaction. *)
+(** Capture every externally visible result of one handled database interaction. *)
 type DatabaseObservation =
     createStatuses : List<int>
     rowStatuses : List<int>
     finishStatuses : List<int>
     selectedName : string
 
-(** Runs application helpers through Database and returns immutable evidence. *)
+(** Run application helpers through Database and return immutable evidence. *)
 observeDatabase db =
     created = createUsersTable db
     inserted = seedUser (db, 7, "Grace")
@@ -164,7 +164,7 @@ databaseOpened result = match result
     Success => true
     Error => false
 
-(** Verifies the Database capability performs a complete typed SQLite round trip. *)
+(** Verify the Database capability performs a complete typed SQLite round trip. *)
 databaseEffectCase () =
     result = withMemoryDatabase observeDatabase
     match result

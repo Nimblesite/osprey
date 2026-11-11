@@ -162,7 +162,7 @@ void test_buffer_overflow_protection(void) {
     int parsed = sscanf("GET /test HTTP/1.1", "%15s %255s", method_buffer, path_buffer);
     TEST_ASSERT_EQUALS(parsed, 2, "Normal parsing should work");
     
-    // Test 1: oversized method string, truncated safely by the parser
+    // Test with oversized input - should truncate safely
     char oversized_input[2000];
     compose_oversized_request(oversized_input, sizeof(oversized_input), "", " /test HTTP/1.1");
     check_truncating_parse(oversized_input, method_buffer, path_buffer, method_buffer, 15,

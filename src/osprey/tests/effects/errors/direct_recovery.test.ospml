@@ -135,6 +135,7 @@ lookupValue key = perform LookupError.find(key) ?: ((0 - 1) )
 combineLookups : Unit -> int ![LookupError, Arith]
 combineLookups () = lookupValue("known") * 10 + lookupValue("missing") 
 
+(** Verify that successful code never enters an installed recovery arm. *)
 (** A counted recovery run: the value the caller saw and the arm's entry count. *)
 type RecoveryRun =
     value : int
@@ -233,6 +234,7 @@ multipleResultTypesCase () =
         endsWith(rendered, "|true")
     ]
 
+(** Verify the same effectful function can run under two local recovery policies. *)
 (** Run `work` under a `shortage` arm whose answer `answer` computes from the request. *)
 withShortage (answer, work) =
     handle StockError
@@ -401,6 +403,7 @@ tierQuote label =
     combined = amount + extra 
     "${name}:${toString(combined)}"
 
+(** Run `work` with the base amount answered by `replacement`. *)
 withBase (replacement, work) =
     handle TierError
         base _label => replacement
@@ -504,6 +507,7 @@ fillAll () =
     c = perform TextError.fill("b")
     "${a}/${b}/${c}"
 
+(** One `fill` request for `field` answered with `text`. *)
 fillWith (text, field) =
     handle TextError
         fill _f => text
@@ -513,6 +517,7 @@ numberWith (amount, field) =
         number _f => amount
     perform TextError.number(field)
 
+(** One `asInt` request for `field` answered with `count`. *)
 intWith (count, field) =
     handle ValueError
         asInt _f => count

@@ -1,9 +1,9 @@
 /// `structuralEquals` [BUILTIN-STRUCTURAL-EQUALS]: every row of the spec
 /// table, true and false — scalars by value (float NaN unequal to itself),
-/// records field by field, unions by variant then payload, lists by length
-/// then elements, maps by keys then values, a recursive tree differing deep
-/// inside, and NaN inside a record keeping it unequal to itself. The rejected
-/// operand types are pinned by
+/// records field by field (nested, positional), unions by variant then
+/// payload, lists by length then elements, maps by keys then values — plus a
+/// recursive tree equal and differing deep inside, and NaN inside a record
+/// keeping it unequal to itself. The rejected operand types are pinned by
 /// src/osprey/examples/failscompilation/structural_equals_*.ospo.
 
 type Route = { tab: string, depth: int }

@@ -1,13 +1,19 @@
 // ============================================================================
-//  REGRESSION — STATE AT EVERY LEVEL OF AN HTTP API, with algebraic effects.
-//  A live server keeps ALL of its state inside effect handlers, one per layer:
+//  Osprey reference app — STATE AT EVERY LEVEL OF AN HTTP API, with algebraic
+//  effects. A live HTTP server keeps ALL of its state inside effect handlers:
+//  the request handler is pure (it only `perform`s), and each architectural
+//  layer owns its mutable state in the handler installed at that layer.
+//
 //      Persist  (infrastructure)  owns the on-disk snapshot   — writes a file
 //      Metrics  (server runtime)  owns the request counter     — bumped per call
 //      Db       (application)     owns the task table           — the domain data
-//  Handler-owned state is just a `mut` the handler closes over, so the effects
-//  cross the C HTTP callback boundary AND fiber boundaries (tasks are posted on
-//  their own fibers). Swap the handlers in `main` and the same server logic runs
-//  against a mock — nothing else changes.
+//
+//  Handler-owned state is just a `mut` the handler closes over: `perform`
+//  threads a value through it and the performer resumes, so the State effect is
+//  real — not a value-substitution stub. The effects even cross the C HTTP
+//  callback boundary (the server runs the pure handler) AND fiber boundaries
+//  (each task is posted on its own fiber, below). Swap the handlers in `main`
+//  and the same server logic runs against a mock — nothing else changes.
 // ============================================================================
 
 /// ---- the three state layers, one effect each (+ logging) -------------------

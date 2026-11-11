@@ -1,10 +1,15 @@
 // withBuffer, gpuSatisfies, withIndices, iotaError and exactArithmetic are the
 // testing prelude's [TESTING-ARITH-POLICY] GPU helpers: naming one attaches the
 // one shared copy, so this file declares none of its own.
-// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and
-// one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to
-// reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-
-// FUSE], [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md).
+// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and
+// gpuFold behave alone, at their degenerate edges, and composed into deep
+// chains — the empty and one-element buffer, ragged truncation to the shorter
+// operand, order-preserving compaction, the inclusive-prefix seed, the initial
+// value a fold returns with nothing to reduce, and the left-to-right traversal
+// the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH],
+// [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-FUSE],
+// [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] —
+// docs/specs/runtime/0034-GPUComputation.md).
 (** The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot. *)
 emptyInts : Unit -> Result<GpuBuffer<int>, Error>
 emptyInts () = toGpu([])
@@ -13,7 +18,7 @@ emptyFloats () = toGpu([])
 (** sumI and mulI are the associative int combines fold and scan share. *)
 sumI (a, b) = (a + b)
 mulI (a, b) = (a * b)
-(** subI and horner are deliberately non-commutative. Left-to-right is the only traversal that reproduces their results, so every assertion on them pins the order [GPU-BACKEND-HOST] rather than merely the element set. *)
+(** subI and horner are deliberately non-commutative. Left-to-right is the only traversal that reproduces their results, so every assertion on them pins the order [GPU- BACKEND-HOST] rather than merely the element set. *)
 subI (a, b) = (a - b)
 horner (a, d) = (((a * 10) ) + d)
 (** maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element. *)
@@ -22,7 +27,7 @@ maxI (a, b) = match a > b
     true => a
     false => b
 orB (a, b) = a || b
-(** countTrue is the population count that turns a bool buffer into a scalar. *)
+(** The population count that turns a bool buffer into a scalar. *)
 countTrue (a, flag) = match flag
     true => (a + 1)
     false => a
@@ -206,7 +211,7 @@ getWith (indices3) = withBuffer(toGpu([7, 8, 9]), \ints => withBuffer(toGpu([1.5
     elementsFrom(ints, 0, 0, [7, 8, 9]), elementsFrom(floats, 0, 0.0, [1.5, 2.5]), elementsAt(ints, 999, [3, (0 - 1)], [999, 999]), elementIs(floats, 2, 9.5, 9.5), rendersAs(ints, 0, "value 7"),
     rendersAs(ints, 3, "gpuGet: index out of bounds"), elementIs(reversed, 0, 0, 9), hornerTo(reversed, 0, 987)
 ]))))
-(** deviceCase pins backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE]. *)
+(** Pin backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE]. *)
 deviceCase () = checkAll("device", [
         gpuDevice() == "host", length(gpuDevice()) == 4, gpuDevice() != "cuda:0"
 ])

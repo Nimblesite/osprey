@@ -81,10 +81,12 @@ static void fifo_write_payload(void) {
   }
 }
 
-// read_file must survive a NON-SEEKABLE stream: fseek/ftell both fail on a FIFO
-// and ftell reports -1, so sizing the destination from it allocated zero bytes
-// and then fread overflowed the heap. The length must come from what was
-// actually read. Implements [BUILTIN-FILE].
+// read_file must survive a NON-SEEKABLE stream. fseek/ftell both fail on a
+// FIFO and ftell reports -1; sizing the destination from it allocated
+// malloc((size_t)-1 + 1) — ZERO bytes — and then fread((size_t)-1) into it,
+// overflowing the heap by however many bytes the writer chose to send. The
+// length must come from what was actually read, never from a seek that a
+// stream is entitled to refuse. Implements [BUILTIN-FILE].
 static void test_read_file_non_seekable(void) {
   pid_t writer = fork_fifo_peer(fifo_write_payload);
   char *content = read_file(FIFO_PATH);
@@ -107,10 +109,12 @@ static void fifo_reader_hangs_up(void) {
   }
 }
 
-// A write that does not reach its destination must NOT report success: stdio
-// buffers, so a write_file that trusts fwrite's count and ignores fclose's
-// status reports a successful write of data that was never stored.
-// Implements [BUILTIN-FILE].
+// A write that does not reach its destination must NOT report success. stdio
+// buffers, so the bytes leave for the file at flush time — which is fclose —
+// and a write_file that returns fwrite's count without checking it against the
+// requested length, and drops fclose's status entirely, reports a successful
+// write of data that was never stored. Silent data loss. Implements
+// [BUILTIN-FILE].
 static void test_write_file_reports_a_failed_flush(void) {
   void (*previous)(int) = signal(SIGPIPE, SIG_IGN);
   pid_t reader = fork_fifo_peer(fifo_reader_hangs_up);
@@ -139,8 +143,9 @@ static void test_write_file_reports_a_failed_flush(void) {
 #endif
 }
 
-// A failure owes a sentence naming the operation, the exact subject and why;
-// a NULL op or subject is named, never dereferenced.
+// The reason must name the operation AND the exact path that failed, not just
+// carry the right sentence for some other file.
+// A NULL op or subject is named, never dereferenced.
 static void assert_reason_names(const char *op, const char *path,
                                 const char *why) {
   char prefix[256];
@@ -150,7 +155,8 @@ static void assert_reason_names(const char *op, const char *path,
   assert(reason != NULL && "a failure owes a reason");
   assert(strncmp(reason, prefix, strlen(prefix)) == 0 &&
          "the reason is op, then subject, then why");
-  assert(strstr(reason, why) != NULL && "the reason spells out the cause");
+  assert(strstr(reason, why) != NULL &&
+         "the reason spells out the cause instead of printing an errno number");
 }
 
 // Set a failure and check the sentence it left behind in one step.
@@ -161,8 +167,10 @@ static void assert_reason_is(const char *op, const char *path, int err,
 }
 
 // Every failure carries WHY it failed, and every success retires the previous
-// reason, so a later failure cannot inherit a stale one.
-// Implements [BUILTIN-FILE-ERRMSG].
+// reason so a later failure cannot inherit a stale one. Without this the
+// Osprey-level `Error { message }` reads the placeholder word "Error" and a
+// missing directory is indistinguishable from a permissions denial or a full
+// disk. Implements [BUILTIN-FILE-ERRMSG].
 static void test_io_failures_report_a_truthful_reason(void) {
   const char *missing = "/nonexistent_osprey_dir/nope.txt";
   assert(read_file((char *)(uintptr_t)missing) == NULL);
@@ -210,8 +218,10 @@ static void test_read_file_reports_a_stream_error(void) {
 }
 
 // The reason channel is the only thing between an Osprey `Error { message }`
-// and the placeholder word "Error", so every shape it can be handed must yield
-// a truthful sentence. Implements [BUILTIN-FILE-ERRMSG].
+// and the placeholder word "Error", so every shape it can be handed must
+// produce a truthful sentence: a real errno, an errno the C library cannot
+// name, a failure with no errno at all, and the NULL op/subject the header
+// documents. Implements [BUILTIN-FILE-ERRMSG].
 static void test_error_channel_shapes(void) {
   const char *subject = "/some/path";
   const char *read_prefix = "readFile: /some/path: ";
@@ -269,10 +279,12 @@ static void test_error_channel_shapes(void) {
 // --- [PORT-STRING-NUL] embedded-NUL guard, on real files ---------------------
 //
 // read_stream refuses a stream whose bytes hold a NUL, because a char* cannot
-// carry one. These cases drive that guard through real files of a real size,
-// holding a real NUL at a position that matters: the fixture really was `len`
-// bytes on disk, the guard fired with the operation and path that failed, and
-// the same file reads back whole once the NUL is gone.
+// carry one. These cases drive that guard through the filesystem: a real file
+// of a real size, holding a real NUL, at a position that matters. Each one
+// proves three things that a hand-built in-memory fixture cannot: the fixture
+// really was `len` bytes on disk, the guard really fired with the operation and
+// path that failed, and the same file still reads back whole once the NUL is
+// gone. The guard itself is unchanged; these are its witnesses.
 #define NUL_TEMPLATE "/tmp/osprey_nul_XXXXXX"
 #define NUL_OLD_OP "writeFile"
 #define NUL_OLD_PATH "/tmp/osprey_nul_seeded_reason"
