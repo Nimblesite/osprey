@@ -22,6 +22,7 @@ extern int64_t spawn_process_with_handler(const char *command,
                                                           char *));
 extern int64_t await_process(int64_t process_id);
 extern void cleanup_process(int64_t process_id);
+extern char *spawn_process(char *command);
 
 // system_runtime.c caps concurrently tracked processes at MAX_PROCESSES and
 // never recycles an id. The probe below must be free to burn every one of
@@ -79,6 +80,12 @@ static void with_descriptor_budget(int spare, void (*probe)(void)) {
   probe();
 
   assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
+}
+
+// popen cannot get a descriptor, so the legacy blocking spawn reports failure
+// rather than reading from a pipe it never opened.
+static void probe_legacy_spawn_without_descriptors(void) {
+  assert(spawn_process("echo unreachable") == NULL);
 }
 
 // Every id burned here is burned for the rest of the process, so this runs
@@ -267,6 +274,23 @@ static void test_thread_failure_reaps_the_child_it_started(void) {
   assert(lowest_free_descriptor() == before);
 }
 
+static void test_legacy_allocation_failures_release_output(void) {
+  char *warm = spawn_process("printf warm");
+  assert(warm != NULL);
+  free(warm);
+  for (size_t size = 4096; size <= 8192; size *= 2) {
+    long before = osp_alloc_live();
+    int descriptors = lowest_free_descriptor();
+    osp_alloc_fail_size(size);
+    char *output = spawn_process("awk 'BEGIN{for(i=0;i<5000;i++)printf \"x\"}'");
+    assert(atomic_load(&osp_alloc_successes_left) == -1 && "failure was exercised");
+    osp_alloc_fail_off();
+    assert(output == NULL && "failed initial allocation or growth reports NULL");
+    assert(osp_alloc_live() == before && "failed growth must free the original buffer");
+    assert(lowest_free_descriptor() == descriptors && "failure closes the pipe");
+  }
+}
+
 static int unknown_exit_events;
 
 static void capture_unknown_exit(int64_t process_id, int64_t event_type, char *data) {
@@ -293,6 +317,7 @@ static void test_auto_reaped_child_reports_unknown_exit(void) {
 }
 
 void run_spawn_failure_tests(void) {
+  test_legacy_allocation_failures_release_output();
   test_auto_reaped_child_reports_unknown_exit();
   test_record_allocation_failures_are_reported();
   test_mutex_initialisation_failure_is_reported();
@@ -302,5 +327,6 @@ void run_spawn_failure_tests(void) {
 }
 
 void run_descriptor_exhaustion_tests(void) {
+  with_descriptor_budget(0, probe_legacy_spawn_without_descriptors);
   with_descriptor_budget(0, probe_spawn_exhausts_descriptors_then_ids);
 }
