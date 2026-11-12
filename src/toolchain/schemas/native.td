@@ -86,7 +86,7 @@ union SemanticText { NoText {} PublicText { text: String selection: Option<TextS
 type TextSelection { anchor: Int focus: Int }
 type SemanticRange { current: Float minimum: Float maximum: Float step: Option<Float> }
 type SemanticState {
-  enabled: Bool selected: Bool expanded: Option<Bool> checked: Option<SemanticCheck>
+  enabled: Bool selected: Bool expanded: Option<Bool> checkState: Option<SemanticCheck>
   busy: Bool required: Bool invalid: Bool readOnly: Bool
 }
 union SemanticRelationKind { LabelledBy {} DescribedBy {} Controls {} Details {} ErrorMessage {} }
@@ -128,3 +128,34 @@ union SemanticActionValue {
 type SemanticInvocation {
   target: SemanticId sourceRevision: SnapshotRevision binding: Int value: SemanticActionValue
 }
+
+# [NATIVE-SHM-DELIVERY] Typed control payloads replace Incoming.eventValue.
+# Accepted sequence identifies delivery, NOT the binding: a button can be used repeatedly.
+# The executor validates instance/revision/region/ordinal and the issued binding kind.
+# No application action, previous serialized state or generic value map crosses this boundary.
+type ControlEvent {
+  identity: RecordIdentity sourceRevision: SnapshotRevision region: String ordinal: Int
+  now: Int value: ControlValue
+}
+union ControlValue {
+  Tapped {}
+  TextEntered { text: String }
+  FlagSet { flag: Bool }
+  ChoiceChosen { choice: String }
+  SplitterResized { points: Int }
+  CursorPlaced { offset: Int }
+  StrokeFinished { stroke: BoardStroke }
+  LassoClosed { enclosed: List<Int> }
+  SceneControlled { input: SceneInput }
+}
+type BoardPoint { x: Int y: Int }
+type BoardStroke { points: List<BoardPoint> width: Int endedAt: Int }
+union SceneInput {
+  Keyed { keyName: String down: Bool }
+  Pointed { pointerId: Int x: Float y: Float down: Bool shift: Bool }
+  Viewed { width: Float height: Float }
+}
+# Float inputs must be finite; stroke points are nonnegative, width >= 1 and points nonempty.
+# Enclosed indices, ordinals and pointer IDs are nonnegative; ranges are checked by the executor.
+# Signed resize/cursor inputs retain the existing bind-time clamp; time is signed Unix seconds.
+# Shift is explicit (legacy missing shift means false); no inferred/default payload fields.
