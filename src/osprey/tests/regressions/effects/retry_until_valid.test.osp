@@ -1106,6 +1106,8 @@ test("every perform site reaches the same retry handler", exactly(retryPerformSi
 
 // [MODULES-FILE-SCOPE-BINDING] A handler inside a function replaces a file-scope list with a
 // fresh literal; the next arm, and every later reader, must find a real list there.
+
+/// Clears or extends the taped list, which a handler owns.
 effect Tape {
     wipe: fn(int) -> Unit
     push: fn(int) -> Unit
