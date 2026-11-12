@@ -115,7 +115,9 @@ module Disk
     export formatBytes (system, bytes) = Pick::either (bytes < 0, "unknown", scaled (base system, satMul bytes 10, "B", ["KB", "MB", "GB", "TB"]))
 
     (** A count with thousands separators. *)
-    export formatCount count = Pick::either (count < 1000, toString count, formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: ""))
+    export formatCount count = match count < 1000
+        true => toString count
+        false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
 
     ratio scale part whole = match whole > 0
         false => 0

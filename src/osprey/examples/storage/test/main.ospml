@@ -1,6 +1,7 @@
-// Osprey Storage driven through the real start and dispatch path with fixture
-// walks, so its rules and screens are checked on every operating system with
-// no disk and no window ([NATIVE-APPS-ALL], [UI-EFFECTS-MEASURE]).
+// Osprey Storage driven through the framework's resident start and dispatch
+// path with fixture walks, so its rules and screens are checked on every
+// operating system with no disk and no window ([NATIVE-APPS-ALL],
+// [UI-EFFECTS-MEASURE], [UI-RESIDENT]).
 namespace storagetests
 
 import ui::Doc
@@ -9,6 +10,11 @@ import ui::Runtime
 import storage::App
 import storage::Disk
 import storagetests::Probes
+
+(** One driven step: the resident session the test keeps and the envelope that step produced, so any step can be continued from. *)
+type Held =
+    heldSession : ui::Session<storage::Store>
+    heldEnvelope : Json
 
 home = "C:\\Users\\ada"
 
@@ -31,30 +37,35 @@ chosenFolder (path, cancelled) = JsonObject [Doc::str ("path", path), Doc::bit (
 
 // The walk's completion, and what an envelope's words, requests, keys and diagnostics say.
 walkDone = Probes::done ("walk:1", JsonNull)
-wordsIn (envelope, key, words) = expect (contains (Probes::text (envelope, key)) words, true)
-askedNothing envelope = expect (Probes::asked envelope, "")
-keyless envelope = expect (Probes::keys envelope, "")
-noProblems envelope = expect (Probes::problems envelope, "")
-pressIn (envelope, label) = Probes::post (envelope, Probes::tap ("folder", 1, Probes::labelled (envelope, "folder", label)), "")
+wordsIn (held, key, words) = expect (contains (Probes::text (held, key)) words, true)
+askedNothing held = expect (Probes::asked held, "")
+keyless held = expect (Probes::keys held, "")
+noProblems held = expect (Probes::problems held, "")
+pressIn (held, label) = Probes::post (held, Probes::tap ("folder", 1, Probes::labelled (held, "folder", label)), "")
 
-(** Starts and drives Osprey Storage through the framework's serialized runtime, with the host's measured slice as a fixture. *)
+(** Starts and drives Osprey Storage through the framework's resident runtime, keeping the session between events, with the host's measured slice as a fixture. *)
 module Probes
     context (platform, folder, arguments) = Doc::write (JsonObject [Doc::num ("now", 1), Doc::num ("offset", 0), Doc::str ("platform", platform), Doc::str ("home", folder), JsonMember "arguments" (Doc::strings arguments)])
 
-    (** Storage's first envelope on `platform` for a person whose home is `folder`, launched with `arguments`. *)
-    export launchedWith (platform, folder, arguments) =
+    // The host the resident runtime needs: the measured slice answered and streamed scenes ignored, as Storage draws none.
+    hosted (measured, work) =
         handle ui::Slices
-            fetch _ => ""
-        Doc::parse (Runtime::start (context (platform, folder, arguments), App::initial, App::regions, App::save, App::theme ()))
+            fetch _ => measured
+        handle ui::SceneStream
+            shape _ => 0
+        work ()
+
+    (** The driven step `resident` leaves: its kept session and its envelope. *)
+    held resident = Held(heldSession = resident.residentSession, heldEnvelope = Doc::parse resident.residentEnvelope)
+
+    (** Storage's first envelope on `platform` for a person whose home is `folder`, launched with `arguments`. *)
+    export launchedWith (platform, folder, arguments) = held (hosted ("", \() => Runtime::begin (context (platform, folder, arguments), App::initial, App::regions, App::theme ())))
 
     (** Storage's first envelope on `platform` for a person whose home is `folder`. *)
     export started (platform, folder) = launchedWith (platform, folder, [])
 
     (** The envelope after `event`, with the host holding `measured` as the walk's slice. *)
-    export post (envelope, event, measured) =
-        handle ui::Slices
-            fetch _ => measured
-        Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, App::update, App::regions, App::save, App::restore))
+    export post (before, event, measured) = held (hosted (measured, \() => Runtime::proceed (before.heldSession, event, App::update, App::regions)))
 
     written members = Doc::write (JsonObject members)
 
@@ -76,36 +87,36 @@ module Probes
     export failed (ticket, problem) = written [Doc::str ("kind", "completed"), Doc::str ("ticket", ticket), Doc::bit ("ok", false), Doc::str ("error", problem), Doc::num ("now", 6)]
 
     (** The keys of the regions an envelope patched, in order. *)
-    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key"))) ","
+    export keys held = join (mapList (Doc::items (Doc::field (held.heldEnvelope, "patches")), \item => Doc::text (item, "key"))) ","
 
-    patch (envelope, key) = Lists::find (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key") == key)
+    patch (held, key) = Lists::find (Doc::items (Doc::field (held.heldEnvelope, "patches")), \item => Doc::text (item, "key") == key)
 
-    (** The node of region `key` in `envelope`'s patches, or null when it was not patched. *)
-    export region (envelope, key) = match patch (envelope, key)
+    (** The node of region `key` in `held`'s patches, or null when it was not patched. *)
+    export region (held, key) = match patch (held, key)
         Success item => Doc::field (item, "node")
         Error _ => JsonNull
 
-    (** The revision region `key` was drawn at in `envelope`, or 0 when it was not patched. *)
-    export revision (envelope, key) = match patch (envelope, key)
+    (** The revision region `key` was drawn at in `held`, or 0 when it was not patched. *)
+    export revision (held, key) = match patch (held, key)
         Success item => Doc::number (item, "revision")
         Error _ => 0
 
     (** Region `key`'s node as JSON text, for finding its words. *)
-    export text (envelope, key) = Doc::write (region (envelope, key))
+    export text (held, key) = Doc::write (region (held, key))
 
     (** The requests of an envelope as `kind ticket`, in order. *)
-    export asked envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "kind") + " " + Doc::text (item, "ticket"))) ";"
+    export asked held = join (mapList (Doc::items (Doc::field (held.heldEnvelope, "requests")), \item => Doc::text (item, "kind") + " " + Doc::text (item, "ticket"))) ";"
 
     (** The folders the envelope's measure request names. *)
-    export measuring envelope = match Lists::find (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "kind") == "measure-folders")
+    export measuring held = match Lists::find (Doc::items (Doc::field (held.heldEnvelope, "requests")), \item => Doc::text (item, "kind") == "measure-folders")
         Success item => join (Doc::texts (item, "folders")) ","
         Error _ => ""
 
     (** An envelope's diagnostics, joined by `;`. *)
-    export problems envelope = join (Doc::texts (envelope, "diagnostics")) ";"
+    export problems held = join (Doc::texts (held.heldEnvelope, "diagnostics")) ";"
 
-    (** The saved store of `envelope`'s session. *)
-    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+    (** The store of the session `held` keeps, in the session document's shape. *)
+    export stored held = App::save held.heldSession.sessionStore
 
     bodyOf node = match Doc::has (node, "body")
         true => [Doc::field (node, "body")]
@@ -122,8 +133,8 @@ module Probes
         true => Doc::number (node, "event")
         false => foldList (inside node, 0 - 1, \(found, next) => deeper (found, next, label))
 
-    (** The ordinal of the control labelled `label` in region `key` of `envelope`, or -1. *)
-    export labelled (envelope, key, label) = seek (region (envelope, key), label)
+    (** The ordinal of the control labelled `label` in region `key` of `held`, or -1. *)
+    export labelled (held, key, label) = seek (region (held, key), label)
 
     further (found, next) = match length found > 0
         true => found
@@ -133,22 +144,22 @@ module Probes
         true => [node]
         false => foldList (inside node, [], \(found, next) => further (found, next))
 
-    firstRows (envelope, key) = listGet (rowsIn (region (envelope, key))) 0 ?: JsonNull
+    firstRows (held, key) = listGet (rowsIn (region (held, key))) 0 ?: JsonNull
 
-    (** The ordinal of the first rows in region `key` of `envelope`. *)
-    export listed (envelope, key) = Doc::number (firstRows (envelope, key), "event")
+    (** The ordinal of the first rows in region `key` of `held`. *)
+    export listed (held, key) = Doc::number (firstRows (held, key), "event")
 
-    (** The last names of the first rows' keys in region `key` of `envelope`, in order. *)
-    export rowNames (envelope, key) = join (mapList (Doc::items (Doc::field (firstRows (envelope, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")))) ","
+    (** The last names of the first rows' keys in region `key` of `held`, in order. *)
+    export rowNames (held, key) = join (mapList (Doc::items (Doc::field (firstRows (held, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")))) ","
 
-    (** The symbol leading the row named `name` in region `key` of `envelope`. *)
-    export rowSymbol (envelope, key, name) = match Lists::find (Doc::items (Doc::field (firstRows (envelope, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")) == name)
+    (** The symbol leading the row named `name` in region `key` of `held`. *)
+    export rowSymbol (held, key, name) = match Lists::find (Doc::items (Doc::field (firstRows (held, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")) == name)
         Success row => Doc::text (row, "symbol")
         Error _ => ""
 
 test ("launch opens home and asks the host to measure it", \() =>
     first = launch ()
-    request = listGet (Doc::items (Doc::field (first, "requests"))) 0 ?: JsonNull
+    request = listGet (Doc::items (Doc::field (first.heldEnvelope, "requests"))) 0 ?: JsonNull
     expect (Probes::keys first, "root,places,folder,listing")
     expect (Probes::asked first, "measure-folders walk:1")
     expect (Probes::measuring first, home)

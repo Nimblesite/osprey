@@ -1,20 +1,35 @@
-// Osprey Storage's C boundary, exported as `osprey_app_start` and
-// `osprey_app_dispatch` for any Osprey Native host ([NATIVE-HOSTS-NEUTRAL]).
-// Strings the host passes in are borrowed for the call; `native_slice`
+// [UI-RESIDENT] Keep the Storage session inside the application: `osprey_app_start`
+// and `osprey_app_dispatch` for any Osprey Native host ([NATIVE-HOSTS-NEUTRAL]).
+// Events and render envelopes still use JSON; the saved store no longer crosses
+// the host. Strings the host passes in are borrowed for the call; `native_slice`
 // answers host-held slices, such as the walk the host measured into `measured`.
 namespace app
 
 import ui::Runtime
+import ui::Streams
 import storage::App
+import storage::Browse
 
 extern native_slice (key : string) -> string
 
-start source =
-    handle ui::Slices
-        fetch key => native_slice key
-    Runtime::start (source, App::initial, App::regions, App::save, App::theme ())
+(** Retain the next application session after the framework completes a step. *)
+effect Keep
+    keep : ui::Session<storage::Store> => Unit
 
-dispatch (saved, event) =
+// The session `begin` replaces at launch; until then no store has been measured.
+mut live = Runtime::idle (Browse::launched ("", ""))
+
+keeping done =
+    perform Keep.keep done.residentSession
+    done.residentEnvelope
+
+hosted work =
+    handle Keep
+        keep session => live := session
     handle ui::Slices
         fetch key => native_slice key
-    Runtime::dispatch (saved, event, App::update, App::regions, App::save, App::restore)
+    keeping (Streams::shared work)
+
+start source = hosted (\() => Runtime::begin (source, App::initial, App::regions, App::theme ()))
+
+dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, App::update, App::regions))
