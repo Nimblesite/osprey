@@ -27,6 +27,21 @@ flowchart LR
     H -->|events with framework IDs| D
 ```
 
+## Shared-memory migration baseline
+
+Initial isolated framework measurement for [NATIVE-SHM-VERIFY], collected 2026-11-12 at source revision `55e0aeceb` on Apple M4 Max, 36 GiB RAM, macOS 26.7.1 (25G241). This is the existing `src/toolchain/hosts/gpui/bench` program under ARC, **not a windowed app or the required four-app baseline**. Scratch copies changed only its mode constant and source-root paths; each mode ran three separate processes, in mode order 2, 0, 1, 3, without cache flushing or exclusive machine access. Reported instruction counts are medians; RSS is the maximum of the three runs.
+
+| Existing path | Work | Retired instructions | Maximum RSS (bytes) |
+| --- | --- | ---: | ---: |
+| Mode 0 | Start and extract saved state | 323,616,267 | 18,857,984 |
+| Mode 1 | Start plus 120 serialized dispatches, 5,000 birds | 48,343,985,525 | 34,603,008 |
+| Mode 2 | Start plus 120 parses of the same envelope | 8,939,178,315 | 25,886,720 |
+| Mode 3 | Start plus resident begin and 120 streamed frames | 1,940,114,925 | 14,188,544 |
+
+All twelve runs exited zero. Each initial envelope was 437,527 bytes; deterministic results were respectively 128691, 234995, 15442920 and 610000 for modes 0–3. These paths perform different work: their ratios are not a measured speedup of the proposed bridge. Mode 3 still constructs the initial JSON envelope and uses the existing stream implementation; it does not prove shared-memory publication, accessibility or host rendering.
+
+Built with `target/release/osprey <scratch-project> --compile --quiet --memory=arc -o <binary>` and measured with `/usr/bin/time -l <binary>`, both at reduced priority and with a 60-second limit per invocation. Compiler SHA-256: `be7e23c5a154e56938f06d7343949ed1bf0f4885a6d33a6059a99f323bcc6c8f`. Local raw receipts are `target/logs/native-shm/mode-{0,1,2,3}/run-{0,1,2}.log` and `framework-modes.json`; mode sources and build logs are alongside them. Allocation counts, exact copy totals, per-frame p50/p99 and controlled cold/warm whole-app measurements remain outstanding; process timings are not frame timings.
+
 ## Origin and license
 
 Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
