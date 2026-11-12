@@ -37,6 +37,40 @@ fn imports_become_slots_the_host_binds() {
     );
 }
 
+/// [NATIVE-SHM-OWNERSHIP] The DLL exports one table naming every bridge entry a host calls, which
+/// also links those entries in; the header declares it in the same order.
+#[test]
+fn the_bridge_reaches_the_host_through_one_exported_table() {
+    let (dll, slotted, abi) = adapted(SOURCE);
+    let table = dll
+        .lines()
+        .find(|line| line.starts_with("@osprey_native_bridge = dllexport constant [12 x ptr] ["))
+        .unwrap_or_else(|| panic!("no bridge table in:\n{dll}"));
+    let mut last = 0;
+    for entry in BRIDGE_ENTRIES {
+        assert!(
+            dll.contains(&format!("declare void @{entry}()\n")),
+            "{entry} undeclared"
+        );
+        let at = table
+            .find(&format!("ptr @{entry}"))
+            .unwrap_or_else(|| panic!("{entry} not in table"));
+        assert!(at >= last, "{entry} is out of order");
+        last = at;
+    }
+    assert!(table.starts_with("@osprey_native_bridge = dllexport constant [12 x ptr] [ptr @osp_native_open, ptr @osp_native_frame_commit, "));
+    assert!(table.ends_with("ptr @osp_native_usage]"));
+    let text = header(&abi.exports, &slotted, "app.osp", "windows-x64");
+    assert!(
+        text.contains("extern const void *const osprey_native_bridge[12];"),
+        "{text}"
+    );
+    assert!(
+        text.contains("// osp_native_open, osp_native_frame_commit, osp_native_frame_discard, "),
+        "{text}"
+    );
+}
+
 /// [WINUI-HOST-IMPORTS] An import the DLL's own runtime archive defines, such as the TLS session
 /// or the file server [FFI-TLS-CLIENT] [FFI-FILE-SERVER], stays a link-time declaration: the
 /// archive is linked into the DLL, and no host answers it.
@@ -94,15 +128,22 @@ fn the_entry_checks_every_slot_before_running_the_program() {
     assert!(dll.contains("define i32 @__osprey_dll_entry() {"), "{dll}");
 }
 
-/// Only the entry, the C exports and the binders are exported from the DLL.
+/// Only the entry, the C exports, the binders and the bridge table are exported from the DLL.
 #[test]
 fn only_the_boundary_is_dllexported() {
     let (dll, slotted, abi) = adapted(SOURCE);
     let exported: Vec<&str> = dll.lines().filter(|l| l.contains("dllexport")).collect();
     assert_eq!(
         exported.len(),
-        1 + abi.exports.len() + slotted.len(),
+        2 + abi.exports.len() + slotted.len(),
         "{exported:#?}"
+    );
+    assert_eq!(
+        exported
+            .iter()
+            .filter(|line| line.starts_with("@osprey_native_bridge = "))
+            .count(),
+        1
     );
     for export in &abi.exports {
         let needle = format!(" @{}(", export.c_name);
