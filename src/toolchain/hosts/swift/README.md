@@ -37,3 +37,14 @@ The application needs nothing changed. [`src/toolchain/hosts/winui`](../winui) a
 | A split's first pane | Mica or Acrylic in place of the sidebar material, tinted by the theme's `sidebar` token |
 
 The new symbols `send`, `terminal`, `edit`, `panel` and `sparkle` are already in `Glyphs.cs`. `Engine.tool_command` already has PowerShell forms of every tool, but none of this has run on Windows yet.
+
+## The shared-memory view host
+
+`view.sh` compiles a native-view application ([NATIVE-SHM-VIEW](../../../../docs/specs/applications/0047-OspreyNativeHosts.md)) into `build/view/libOspreyViewApp.a` and runs `OspreyViewHost`, which draws the rows the application writes into shared memory and reads them in place: no JSON, no parse, no copy, and no colour, font or padding of its own.
+
+```sh
+src/toolchain/hosts/swift/view.sh              # Tally, in a window
+src/toolchain/hosts/swift/view.sh --self-test  # the same journey, headless
+```
+
+`--self-test` taps "Add one" three times, renames the tally to "Zoë" and restyles it, checking each view's texts, colours and counts by reading the rows; it prints `PASSED`, or `FAILED: <why>` and exits 1. `OSPREY_SWIFT_APP` names another application folder.
