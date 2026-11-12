@@ -66,6 +66,10 @@ struct Step {
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Expect {
+    /// Exact session marker; resident applications must not serialize their store.
+    state: Option<String>,
+    /// Total drawn primitives by scene region, including the direct native stream.
+    primitives: Option<std::collections::BTreeMap<String, usize>>,
     /// Region keys that must exist after applying the envelope.
     regions: Option<Vec<String>>,
     /// Region keys that must occur among this envelope's patches.

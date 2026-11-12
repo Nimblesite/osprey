@@ -12,6 +12,8 @@ mobile-bridge-tests = []
 
 [dependencies]
 gpui-kit = "0.8.1"
+# Enable real-window frame readback on the selected renderer only.
+gpui-platform = { package = "gpui-pre-platform", version = "=0.3.10", features = ["test-support"] }
 # Decodes and turns scene sprite images; the same release GPUI decodes images with.
 image = { version = "0.25", default-features = false, features = ["png"] }
 # The same lyon GPUI tessellates with; only its stroke join type is named here.

@@ -6,6 +6,13 @@
     { "shot": "1-painting" },
     { "invoke": "Dashed" },
     { "wait": "Solid" },
-    { "shot": "2-dashed-chosen" }
+    { "gone": "Dashed" },
+    { "shot": "2-dashed-chosen" },
+    { "invoke": "Solid" },
+    { "wait": "Dashed" },
+    { "gone": "Solid" },
+    { "invoke": "Clear" },
+    { "wait": "Clear" },
+    { "wait": "Dashed" }
   ]
 }

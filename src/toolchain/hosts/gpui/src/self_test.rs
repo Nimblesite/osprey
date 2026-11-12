@@ -4,6 +4,8 @@
 //! tree, and every `shot` keeps it beside the run, so an agent reads what it may act on.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
@@ -259,6 +261,36 @@ fn record(shots: &Path, name: &str, regions: &Regions) -> Result<(), String> {
         .map_err(|problem| format!("could not write {}: {problem}", path.display()))
 }
 
+/// Saves what the window shows beside the run, and refuses a blank picture: the shot must
+/// have size and at least two different pixels, or the step fails saying why.
+fn capture(shots: &Path, name: &str, window: &mut Window) -> Result<(), String> {
+    let path = shots.join(format!("{name}.png"));
+    window
+        .render_to_image()
+        .map_err(|problem| format!("could not render {}: {problem:?}", path.display()))?
+        .save(&path)
+        .map_err(|problem| format!("could not save {}: {problem}", path.display()))?;
+    let shot = image::open(&path)
+        .map_err(|problem| format!("could not read back {}: {problem}", path.display()))?
+        .to_rgba8();
+    let (width, height) = shot.dimensions();
+    if width == 0 || height == 0 {
+        return Err(format!(
+            "the shot {} is empty: {width} by {height}",
+            path.display()
+        ));
+    }
+    let first = shot.get_pixel(0, 0);
+    if shot.pixels().all(|pixel| pixel == first) {
+        return Err(format!(
+            "the shot {} is blank: every one of its {} pixels is the same",
+            path.display(),
+            width * height
+        ));
+    }
+    Ok(())
+}
+
 /// A failure, with what the app offers, so an agent can see what it may act on instead.
 fn failed(index: usize, verb: &str, words: &[String], why: &str, regions: &Regions) -> String {
     format!(
@@ -358,6 +390,9 @@ async fn drive(
     cx: &mut AsyncWindowContext,
 ) -> Result<(), String> {
     for (index, (verb, words)) in run.steps.iter().enumerate() {
+        if verb == "shot" {
+            rendered(cx).await?;
+        }
         let began = Instant::now();
         loop {
             let done = view
@@ -377,6 +412,26 @@ async fn drive(
     }
     view.update_in(cx, |view, _, _| clean(&view.regions, view.messages.clone()))
         .map_err(gone)?
+}
+
+/// A state assertion may pass before its redraw. Capture only after a real frame,
+/// bounded by the same deadline as every other windowed observation.
+async fn rendered(cx: &mut AsyncWindowContext) -> Result<(), String> {
+    let ready = Arc::new(AtomicBool::new(false));
+    let completed = Arc::clone(&ready);
+    cx.update(move |window, _| {
+        window.refresh();
+        window.on_next_frame(move |_, _| completed.store(true, Ordering::Release));
+    })
+    .map_err(gone)?;
+    let began = Instant::now();
+    while !ready.load(Ordering::Acquire) {
+        if began.elapsed() > PATIENCE {
+            return Err("the window did not render the requested screenshot frame".to_owned());
+        }
+        cx.background_executor().timer(POLL).await;
+    }
+    Ok(())
 }
 
 /// One look at a step: `None` to look again, or how long to let the display run once it is done.
@@ -402,6 +457,7 @@ fn step(
         Attempt::Framing(count) => Ok(Some(Duration::from_secs_f64(count as f64 * FRAME_SECONDS))),
         Attempt::Recording(name) => {
             record(&run.shots, &name, &view.regions)?;
+            capture(&run.shots, &name, window)?;
             Ok(Some(Duration::ZERO))
         }
     }

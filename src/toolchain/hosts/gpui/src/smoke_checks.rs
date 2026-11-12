@@ -7,6 +7,14 @@ use crate::regions::Regions;
 
 /// Checks patch membership and the ordered capability request list.
 pub(super) fn check_envelope(envelope: &Envelope, expect: &Expect) -> Result<(), String> {
+    if let Some(expected) = &expect.state {
+        if &envelope.state != expected {
+            return Err(format!(
+                "session state was {:?}, expected {expected:?}",
+                envelope.state
+            ));
+        }
+    }
     let patches: Vec<&str> = envelope
         .patches
         .iter()
@@ -51,8 +59,37 @@ pub(super) fn check_regions(regions: &Regions, expect: &Expect) -> Result<(), St
             }
         }
     }
+    if let Some(expected) = &expect.primitives {
+        for (key, count) in expected {
+            check_primitives(regions, key, *count)?;
+        }
+    }
     check_text(regions, expect.text.as_ref())?;
     check_diagnostics(regions, expect.diagnostics)
+}
+
+/// Count both transports so moving a primitive out of JSON cannot hide its loss.
+fn check_primitives(regions: &Regions, key: &str, expected: usize) -> Result<(), String> {
+    let region = regions
+        .get(key)
+        .ok_or_else(|| format!("scene region {key} is absent"))?;
+    let shapes = region
+        .node
+        .get("shapes")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| format!("region {key} has no scene primitives"))?;
+    let actual = shapes.len()
+        + region
+            .streams
+            .iter()
+            .map(|stream| stream.len())
+            .sum::<usize>();
+    if actual != expected {
+        return Err(format!(
+            "scene {key} has {actual} primitives, expected {expected}"
+        ));
+    }
+    Ok(())
 }
 
 /// Checks one substring against all strings in the selected current region.

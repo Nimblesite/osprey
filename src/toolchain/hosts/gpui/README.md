@@ -22,6 +22,10 @@ src/toolchain/hosts/gpui/run.sh --smoke       # start, tap Add, assert "Count 1"
 
 `python3 src/toolchain/hosts/gpui/dependencies_test.py` checks the staging and refusal contracts, including concurrent staging and verification of the winning source tree. `make _gpui-test` and `make audit` run these guards before building or scanning; `run.sh` only stages the sources, so running an app runs no tests. Dependency repairs must also pass the unchanged repository audit and host/rendering checks; staging verifies source identity, while the two workspace lockfiles describe the dependencies scanned by `make audit`.
 
+Run `make -C src/toolchain/targets/macos/tests painting` or `flock` for the corresponding full windowed script. Each `shot` waits for a rendered frame and writes a PNG plus an accessibility text snapshot under `target/gpui-self-test/`. The desktop must be unlocked and rendering: a stale initial picture or text assertions alone do not verify the window. Headless runs retain accessibility snapshots only. PNG capture does not yet compare against committed pixel goldens.
+
+Painting now retains its session in application memory, as Flock already does, and streams supported scene primitives through `native_shape`. Its linked smoke journey checks the resident marker and actual primitive counts while drawing, restyling and clearing. Event and render envelopes still use JSON; neither application has completed the shared-memory bridge cutover.
+
 ## Layout
 
 | Path | Contents |
@@ -51,4 +55,4 @@ cd src/toolchain/hosts/gpui/bench && ../../../../target/release/osprey . --run -
 
 ## Status
 
-Plan 0037 are built: the window, renderer, scene painter, frame clock, capabilities and two examples, Flock and a pixel-identical port of GPUI's painting example. Phase 4 CI runs every native, UI and example suite on Linux, where a separate host job runs the host tests, clippy and every app's headless smoke and self-test. The Mac runs every scripted app in a real window, clippy, and its archive and string-ownership tests. Windows runs the probe smoke and opens Flock and Painting in real windows on the runner's desktop. Measurements are in the plan and in [Flock's README](../../../osprey/examples/gpui/flock/README.md).
+The original host phases of plan 0037 provide the window, renderer, scene painter, frame clock, capabilities and the Flock and Painting examples. Section 11's JSON bridge removal remains incomplete. Phase 4 CI runs the native, UI and example suites on Linux, with a separate host job for host tests, clippy and app smoke/self-tests. macOS and Windows also have windowed app scripts; their successful execution requires an interactive desktop. The latest local macOS run was blocked by a locked desktop after the screenshot check was strengthened to require a fresh frame. Measurements are in the plan and in [Flock's README](../../../osprey/examples/gpui/flock/README.md).

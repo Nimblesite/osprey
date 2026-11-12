@@ -1,17 +1,39 @@
-// The painting port's C boundary for the GPUI host ([GPUI-HOST-BOUNDARY], [UI-SCENE]).
+// [UI-RESIDENT] Keep the painting session inside the application. Events and
+// render envelopes still use JSON; the saved store no longer crosses the host.
 namespace app
 
 import ui::Runtime
+import ui::Streams
 import painting::App
+import painting::Drawing
 
 extern native_slice (key : string) -> string
 
-start source =
-    handle ui::Slices
-        fetch key => native_slice key
-    Runtime::start (source, App::initial, App::regions, App::save, App::theme ())
+extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
 
-dispatch (saved, event) =
+(** Retain the next application session after the framework completes a step. *)
+effect Keep
+    keep : ui::Session<painting::Store> => Unit
+
+mut live = Runtime::idle (Drawing::initialStore ())
+
+mut streamed = 0
+
+shipped primitive = Streams::transmit (primitive, native_shape)
+
+keeping (done : ui::Resident<painting::Store>) =
+    perform Keep.keep done.residentSession
+    done.residentEnvelope
+
+hosted work =
+    handle Keep
+        keep session => live := session
+    handle ui::SceneStream
+        shape primitive => streamed := shipped primitive
     handle ui::Slices
         fetch key => native_slice key
-    Runtime::dispatch (saved, event, App::update, App::regions, App::save, App::restore)
+    keeping (work ())
+
+start source = hosted (\() => Runtime::begin (source, App::initial, App::regions, App::theme ()))
+
+dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, App::update, App::regions))

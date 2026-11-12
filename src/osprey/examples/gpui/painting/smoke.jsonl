@@ -1,3 +1,8 @@
-// A null send observes the start envelope; then the header's Dashed button switches the stroke.
-{"send":null,"expect":{"regions":["root","header","canvas"],"text":{"region":"header","contains":"Dashed"},"diagnostics":0}}
-{"send":{"control":{"region":"header","label":"Dashed"},"value":null},"expect":{"text":{"region":"header","contains":"Solid"},"diagnostics":0}}
+// Drive the linked application: resident state, direct primitives, a stroke, restyling and clearing.
+{"send":null,"expect":{"state":"resident","regions":["root","header","canvas"],"text":{"region":"header","contains":"Dashed"},"diagnostics":0,"primitives":{"canvas":21}}}
+{"send":{"control":{"region":"header","label":"Dashed"},"value":null},"expect":{"state":"resident","text":{"region":"header","contains":"Solid"},"diagnostics":0,"primitives":{"canvas":21}}}
+{"send":{"control":{"region":"canvas"},"value":{"x":100.0,"y":500.0,"down":true,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":21},"diagnostics":0}}
+{"send":{"control":{"region":"canvas"},"value":{"x":150.0,"y":550.0,"down":true,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":22},"diagnostics":0}}
+{"send":{"control":{"region":"canvas"},"value":{"x":150.0,"y":550.0,"down":false,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":22},"diagnostics":0}}
+{"send":{"control":{"region":"header","label":"Solid"},"value":null},"expect":{"state":"resident","text":{"region":"header","contains":"Dashed"},"primitives":{"canvas":22},"diagnostics":0}}
+{"send":{"control":{"region":"header","label":"Clear"},"value":null},"expect":{"state":"resident","primitives":{"canvas":21},"diagnostics":0}}
