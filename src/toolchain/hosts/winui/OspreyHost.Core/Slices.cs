@@ -72,26 +72,3 @@ public readonly unsafe struct Utf8Text : IDisposable
     /// <summary>Frees the copy.</summary>
     public void Dispose() => NativeMemory.Free(Pointer);
 }
-
-/// <summary>One rect, disc or sprite a resident scene streamed during a call [UI-SCENE-STREAM].</summary>
-public readonly record struct Streamed(long Code, long Index, double A, double B, double C, double D, double E, long Colour, long Depth);
-
-/// <summary>The <c>native_shape</c> import [UI-SCENE-STREAM]: the shapes streamed during the current call.</summary>
-public static class Shapes
-{
-    static readonly List<Streamed> Stream = [];
-
-    /// <summary>The shapes streamed since the last call began.</summary>
-    public static IReadOnlyList<Streamed> Taken => Stream;
-
-    /// <summary>Empties the stream before a call into the application.</summary>
-    public static void Clear() => Stream.Clear();
-
-    /// <summary>Appends one primitive and answers 0.</summary>
-    [UnmanagedCallersOnly]
-    public static long Answer(long code, long index, double a, double b, double c, double d, double e, long colour, long depth)
-    {
-        Stream.Add(new Streamed(code, index, a, b, c, d, e, colour, depth));
-        return 0;
-    }
-}

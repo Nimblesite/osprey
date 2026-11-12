@@ -4,8 +4,8 @@
 
 | Project | Holds |
 | --- | --- |
-| `OspreyHost.Core` | The DLL boundary and import slots, envelopes, the region store, events, the scene decoder, the capability adapters, the Windows folder walk and the store; nothing here needs a window |
-| `OspreyHost` | The window, the code-only renderer and scene painter, the frame clock, the folder picker and `--self-test`; Native AOT |
+| `OspreyHost.Core` | The DLL boundary and import slots, the shared-memory bridge, envelopes, the region store, events, the scene decoder, the capability adapters, the Windows folder walk and the store; nothing here needs a window |
+| `OspreyHost` | The window, the code-only renderer and scene painter, the shared view page, the frame clock, the folder picker and `--self-test`; Native AOT |
 | `OspreyHost.Tests` | xUnit v3 on Microsoft.Testing.Platform |
 
 ## Run
@@ -16,8 +16,15 @@ From the repository root on Windows, with MSYS2 UCRT64's clang and llvm-ar as `O
 ./target/release/osprey build src/osprey/examples/storage --target=windows-x64 -o src/osprey/examples/storage/build/storage.dll
 ./target/release/osprey build src/osprey/examples/gpui/flock --target=windows-x64 -o src/osprey/examples/gpui/flock/build/flock.dll
 ./target/release/osprey build src/osprey/examples/gpui/painting --target=windows-x64 -o src/osprey/examples/gpui/painting/build/painting.dll
+./target/release/osprey build src/osprey/examples/tally --target=windows-x64 -o src/osprey/examples/tally/build/tally.dll
 dotnet run --project src/toolchain/hosts/winui/OspreyHost -c Release -- src/osprey/examples/gpui/flock/build/flock.dll
 ```
+
+## The shared view
+
+A DLL that exports `osprey_app_event` and no `osprey_app_dispatch` is a shared-view application [NATIVE-SHM-VIEW]: the host opens the `osprey_native_bridge` table it exports before its entry runs, seals a frame after every export — committed when the call answered, discarded when it failed — and leases the view rows and their text to draw real WinUI controls, updating them in place by row index so an entry keeps its focus and caret. Streamed scene shapes travel the same frame: after each envelope call the host leases child 0 and the scene decoder reads it in place [NATIVE-SHM-SCENE]. Every colour, size, weight and space comes from the rows; the host holds no style of its own. Tally (`make -C src/toolchain/targets/windows tally`) is the smallest such application, and `OspreyHost.Tests` drives it exactly as its C reference host does.
+
+Every row kind the contract names is drawn — column, line, label, press, entry, gap, scroll, layer, toggle, picker, option, rule, image, canvas, editor, menu and sheet, the last floating over the view in the page's overlay — with each control's fixed extents, flex share, border colour and state flags applied from its row. The page never reads a row itself: [`Rows`](OspreyHost.Core/Rows.cs) in `OspreyHost.Core` is the one reader, and it makes every row safe [NATIVE-SHM-SAFETY] — a parent that is not an earlier row, an unknown kind, text or hint outside the text run, invalid UTF-8 and unusable numbers each read as nothing or zero, and a row run that is not whole 152-byte rows is refused whole. `RowReaderTests` checks all of it over hand-built buffers that mirror native_abi.h's offsets, and `NativeAbiTests` reads that header from the repository so the bridge's fingerprint literal and row width can never drift from it silently.
 
 ## Sandboxed apps
 
@@ -30,7 +37,7 @@ Each app ships as its own MSIX package that runs in an AppContainer ([WINUI-HOST
 From PowerShell in `src/toolchain/hosts/winui`, after building the DLLs as above:
 
 ```powershell
-dotnet test --project OspreyHost.Tests     # 83 tests: boundary, protocol, scenes, capabilities, walk, store, guards
+dotnet test --project OspreyHost.Tests     # 103 tests: boundary, protocol, scenes, capabilities, walk, store, guards, shared views, safe rows, the abi header
 dotnet publish OspreyHost -c Release       # Native AOT; trim and AOT warnings fail the build
 ./self-test.ps1 -Exe OspreyHost/bin/Release/net10.0-windows10.0.26100.0/win-x64/publish/OspreyHost.exe `
     -Dll ../../examples/gpui/flock/build/flock.dll -Script ../../../osprey/examples/gpui/flock/self-test.json -Shots shots

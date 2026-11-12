@@ -6,7 +6,7 @@ namespace Osprey.Host.Tests;
 /// <summary>[UI-SCENE] Scene nodes decode as the encoder wrote them, in a stable depth order, with streamed shapes after the node's own [UI-SCENE-STREAM].</summary>
 public sealed class SceneTests
 {
-    static Scene Decode(string node, params Streamed[] streamed) => SceneDecoder.Decode(JsonDocument.Parse(node).RootElement.Clone(), streamed);
+    static Scene Decode(string node, params NativeShape[] streamed) => SceneDecoder.Decode(JsonDocument.Parse(node).RootElement.Clone(), streamed);
 
     /// <summary>[UI-MACHINE-A11Y] What a scene announces reaches the host whole; a hit area, or an element with no name, is not announced.</summary>
     [Fact]
@@ -58,8 +58,8 @@ public sealed class SceneTests
     public void StreamedShapesFollowTheNodesOwnAtEqualDepth()
     {
         var scene = Decode("""{"width":10,"height":10,"shapes":[[1,9,9,1,65535,4]],"streamed":2}""",
-            new Streamed(1, 0, 1, 2, 3, 0, 0, 255, 4),
-            new Streamed(0, 0, 4, 5, 6, 7, 0, 511, 0));
+            new NativeShape(1, 0, 1, 2, 3, 0, 0, 255, 4),
+            new NativeShape(0, 0, 4, 5, 6, 7, 0, 511, 0));
         Assert.Equal([0.0, 4, 4], scene.Shapes.Select(shape => shape.Depth));
         Assert.Equal(new RectShape(4, 5, 6, 7, 0, 511, 0), scene.Shapes[0]);
         Assert.Equal(new DiscShape(9, 9, 1, 65535, 4), scene.Shapes[1]);
@@ -103,7 +103,7 @@ public sealed class SceneTests
 
     [Fact]
     public void AStreamedCodeOutsideRectDiscAndSpriteIsRefused() =>
-        Assert.Throws<HostException>(() => Decode("""{"width":10,"height":10,"shapes":[],"streamed":1}""", new Streamed(2, 0, 0, 0, 0, 0, 0, 0, 0)));
+        Assert.Throws<HostException>(() => Decode("""{"width":10,"height":10,"shapes":[],"streamed":1}""", new NativeShape(2, 0, 0, 0, 0, 0, 0, 0, 0)));
 
     // Records holding lists compare their lists by reference, so the strip's points are compared by value here.
     sealed class ShapeComparer : IEqualityComparer<Shape>

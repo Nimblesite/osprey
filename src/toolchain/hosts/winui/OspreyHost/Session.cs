@@ -124,7 +124,7 @@ sealed class Session
             Slices.Put(write.Key, write.Text);
         }
         renderer.Themed(envelope.Theme);
-        renderer.Refresh(regions, regions.Apply(envelope), [.. Shapes.Taken]);
+        renderer.Refresh(regions, regions.Apply(envelope), library.Shapes);
         report(envelope.Diagnostics);
         foreach (var request in envelope.Requests)
         {

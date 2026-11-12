@@ -20,7 +20,7 @@ sealed partial class Renderer
     readonly Dictionary<string, Action<object>> clicks = [];
     readonly Dictionary<string, SceneView> scenes = [];
     readonly Dictionary<string, RowDefinition> rooms = [];
-    IReadOnlyList<Streamed> stream = [];
+    Run<NativeShape>? stream;
     int streamTaken;
     readonly Action<string, long, long, object?> control;
     readonly Action<IReadOnlyList<string>> report;
@@ -57,7 +57,7 @@ sealed partial class Renderer
     }
 
     /// <summary>Redraws every region an envelope patched or removed, in the order it listed them.</summary>
-    public void Refresh(RegionStore store, IReadOnlyList<string> changed, IReadOnlyList<Streamed> streamed)
+    public void Refresh(RegionStore store, IReadOnlyList<string> changed, Run<NativeShape>? streamed)
     {
         regions = store;
         (stream, streamTaken) = (streamed, 0);
@@ -65,9 +65,9 @@ sealed partial class Renderer
         {
             Redraw(key);
         }
-        if (streamTaken != stream.Count)
+        if (stream is { } run && streamTaken != run.Rows.Length)
         {
-            report([$"The application streamed {stream.Count} shapes and its scenes took {streamTaken}"]);
+            report([$"The application streamed {run.Rows.Length} shapes and its scenes took {streamTaken}"]);
         }
     }
 
@@ -77,17 +77,18 @@ sealed partial class Renderer
     /// </summary>
     UIElement Scene(Scope scope, JsonElement node)
     {
+        var mine = stream is null ? default : stream.Rows;
         var count = (int)Math.Clamp(Envelopes.Number(node, "streamed"), 0, int.MaxValue);
-        if (count > stream.Count - streamTaken)
+        if (count > mine.Length - streamTaken)
         {
-            return Refused($"A scene expected {count} streamed shapes and {stream.Count - streamTaken} arrived");
+            return Refused($"A scene expected {count} streamed shapes and {mine.Length - streamTaken} arrived");
         }
-        var mine = stream.Skip(streamTaken).Take(count).ToList();
+        var from = streamTaken;
         streamTaken += count;
         Scenes.Scene scene;
         try
         {
-            scene = SceneDecoder.Decode(node, mine);
+            scene = SceneDecoder.Decode(node, mine.Slice(from, count));
         }
         catch (HostException problem)
         {

@@ -20,6 +20,7 @@ sealed partial class HostWindow : Window
     readonly InfoBar problems = new() { Severity = InfoBarSeverity.Error, IsOpen = false, Title = "Osprey" };
     readonly List<string> reported = [];
     readonly Session? session;
+    SharedViewPage? view;
 
     public HostWindow(string library, string[] arguments, bool steady)
     {
@@ -39,7 +40,7 @@ sealed partial class HostWindow : Window
         {
             Fit(canvas.Width, canvas.Height);
         }
-        Progress.Note(session is null ? "application not started" : "application started");
+        Progress.Note(session is null && view is null ? "application not started" : "application started");
     }
 
     /// <summary>Every diagnostic shown since the window opened.</summary>
@@ -111,15 +112,30 @@ sealed partial class HostWindow : Window
     {
         try
         {
-            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile)) { Steady = steady };
-            opened.Begin(arguments);
-            return opened;
+            var opened = Library.Open(library);
+            return opened.Shared ? Shared(opened, root) : Enveloped(opened, library, arguments, root, steady);
         }
         catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException)
         {
             Report([problem.Message]);
             return null;
         }
+    }
+
+    // A shared-view application [NATIVE-SHM-VIEW] draws through its page, not the envelope session.
+    Session? Shared(Library opened, Border root)
+    {
+        var drawn = new SharedViewPage(opened, root, Report);
+        drawn.Begin();
+        view = drawn;
+        return null;
+    }
+
+    Session? Enveloped(Library opened, string library, string[] arguments, Border root, bool steady)
+    {
+        var begun = new Session(opened, Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile)) { Steady = steady };
+        begun.Begin(arguments);
+        return begun;
     }
 
     /// <summary>Shows diagnostics in the info bar; an envelope without any leaves the last ones showing.</summary>

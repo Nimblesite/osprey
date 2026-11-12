@@ -87,7 +87,7 @@ public sealed record Scene(double Width, double Height, double Zoom, IReadOnlyLi
 public static class SceneDecoder
 {
     /// <summary>The scene <paramref name="node"/> describes, with <paramref name="streamed"/> after its own shapes at equal depth.</summary>
-    public static Scene Decode(JsonElement node, IReadOnlyList<Streamed> streamed)
+    public static Scene Decode(JsonElement node, ReadOnlySpan<NativeShape> streamed)
     {
         var width = Real(Envelopes.Member(node, "width"), "width");
         var height = Real(Envelopes.Member(node, "height"), "height");
@@ -100,7 +100,11 @@ public static class SceneDecoder
         {
             throw new HostException("A scene's zoom must be zero or positive");
         }
-        var shapes = Envelopes.Items(node, "shapes", Shape).Concat(streamed.Select(Stream));
+        var shapes = new List<Shape>(Envelopes.Items(node, "shapes", Shape));
+        foreach (var shape in streamed)
+        {
+            shapes.Add(Stream(shape));
+        }
         return new Scene(width, height, zoom, Envelopes.Items(node, "atlas", item => item.GetString() ?? ""), [.. shapes.OrderBy(shape => shape.Depth)], [.. Envelopes.Items(node, "access", Announced).Where(item => item.Role != "none" && item.Label != "")]);
     }
 
@@ -127,11 +131,11 @@ public static class SceneDecoder
         }
     }
 
-    static Shape Stream(Streamed item) => item.Code switch
+    static Shape Stream(NativeShape item) => item.Code switch
     {
-        0 => new RectShape(item.A, item.B, item.C, item.D, item.E, Colour(item.Colour), item.Depth),
-        1 => new DiscShape(item.A, item.B, item.C, Colour(item.Colour), item.Depth),
-        3 => new SpriteShape(checked((int)item.Index), item.A, item.B, item.C, item.D, item.E, Colour(item.Colour), item.Depth),
+        0 => new RectShape(item.X, item.Y, item.Width, item.Height, item.Angle, Colour(item.Colour), item.Depth),
+        1 => new DiscShape(item.X, item.Y, item.Width, Colour(item.Colour), item.Depth),
+        3 => new SpriteShape(checked((int)item.Index), item.X, item.Y, item.Width, item.Height, item.Angle, Colour(item.Colour), item.Depth),
         var code => throw new HostException($"Unknown streamed shape code {code}"),
     };
 
