@@ -95,8 +95,7 @@ impl Analyzer<'_> {
             .index
             .functions
             .get(id)
-            .map(|function| function.parameters.clone())
-            .unwrap_or_default();
+            .map_or_default(|function| function.parameters.clone());
         Value::from_callable(Callable::Known(Box::new(KnownCallable {
             parameters,
             summary: self.rows.get(id).cloned().unwrap_or_default(),

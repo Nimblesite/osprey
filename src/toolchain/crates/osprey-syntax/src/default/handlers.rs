@@ -14,8 +14,7 @@ impl Lowerer<'_> {
             operation: self.field_text(arm, "operation"),
             params: self
                 .first_child_of_kind(arm, "handler_params")
-                .map(|hp| self.texts_of_kind(hp, "identifier"))
-                .unwrap_or_default(),
+                .map_or_default(|hp| self.texts_of_kind(hp, "identifier")),
             body: self.lower_expr_field(arm, "body"),
             position: Some(self.pos(arm)),
         }

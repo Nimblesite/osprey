@@ -268,10 +268,7 @@ fn assemble_for(
             "{}: the export signature of `{}` could not be inferred for an importing checker: {}",
             super::ERROR_PREFIX,
             source.path.display(),
-            errors
-                .first()
-                .map(|error| error.message.clone())
-                .unwrap_or_default()
+            errors.first().map_or_default(|error| error.message.clone())
         ),
         path: Some(source.path.clone()),
         line: None,

@@ -25,8 +25,8 @@ const images = [...readme.matchAll(/<img\b[^>]*src="([^"]+)"/g)].map(match => ma
 assert.ok(images.some(source => source.endsWith(".gif")), "README must show the editor GIF");
 for (const source of images) {
   assert.ok(source.startsWith("https://"), `Marketplace images require HTTPS: ${source}`);
-  const bundled = source === "https://ospreylang.dev/assets/images/logo.png" ? "icon.png" :
-    source.replace("https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/", "");
+  const bundled = source === "https://www.ospreylang.dev/assets/images/logo.png" ? "icon.png" :
+    source.replace("https://media.githubusercontent.com/media/Nimblesite/osprey/main/src/toolchain/vscode-extension/", "");
   assert.ok(!bundled.includes(":"), `Unknown README image host: ${source}`);
   const bytes = files.get(path.posix.join("extension", bundled));
   assert.ok(bytes, `README image missing from VSIX: ${source}`);

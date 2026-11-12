@@ -28,8 +28,7 @@ impl Lowerer<'_> {
                 replayable: op.child_by_field_name("replayable").is_some(),
                 ty: op
                     .child_by_field_name("type")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default(),
+                    .map_or_default(|n| self.text(n)),
                 parameters: Vec::new(),
                 return_type: String::new(),
                 doc: self.doc_text(*op),
@@ -133,11 +132,9 @@ impl Lowerer<'_> {
     /// Lower a `_type` node (function/generic/array/identifier).
     pub(crate) fn lower_type(&self, node: Node<'_>) -> TypeExpr {
         match node.kind() {
-            "type_identifier" => TypeExpr::named(
-                self.first_named(node)
-                    .map(|n| self.text(n))
-                    .unwrap_or_default(),
-            ),
+            "type_identifier" => {
+                TypeExpr::named(self.first_named(node).map_or_default(|n| self.text(n)))
+            }
             "generic_type" => {
                 let mut t = TypeExpr::named(self.field_text(node, "name"));
                 if let Some(list) = self.first_child_of_kind(node, "type_list") {
@@ -154,8 +151,7 @@ impl Lowerer<'_> {
             "function_type" => {
                 let types = self
                     .first_child_of_kind(node, "type_list")
-                    .map(|l| self.lower_type_list(l))
-                    .unwrap_or_default();
+                    .map_or_default(|l| self.lower_type_list(l));
                 // last bare type child is the return type
                 let ret = self.last_type_child(node);
                 TypeExpr {
