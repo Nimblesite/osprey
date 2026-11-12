@@ -6,7 +6,7 @@ typeDiagram
 # Instance UUIDs are checked against live instances; lease serials never wrap.
 # Instance IDs are fresh per startup; owner tokens are unique and consumed once.
 alias ApplicationInstance = Uuid
-type OwnerToken { instance: ApplicationInstance serial: Int }
+type OwnerToken { appInstance: ApplicationInstance serial: Int }
 alias AllocationId = Int
 alias ReuseGeneration = Int
 alias SnapshotRevision = Int
@@ -17,14 +17,14 @@ alias RecordCount = Int
 alias SchemaFingerprint = String
 
 type AllocationReference {
-  instance: ApplicationInstance
+  appInstance: ApplicationInstance
   allocation: AllocationId
   generation: ReuseGeneration
   offset: ByteCount
 }
 type OwnedLease { token: OwnerToken reference: AllocationReference }
 type BorrowedRange { owner: OwnerToken offset: ByteCount length: ByteCount }
-type SnapshotLease { instance: ApplicationInstance revision: SnapshotRevision root: OwnedLease }
+type SnapshotLease { appInstance: ApplicationInstance revision: SnapshotRevision root: OwnedLease }
 
 # These shared-process descriptors are never serialized into persistent/wire frames.
 type BridgeLimits {
@@ -39,8 +39,8 @@ type BridgeLimits {
 }
 type BridgeStartup { sharedAbiFingerprint: SchemaFingerprint limits: BridgeLimits }
 union BridgeDirection { ToApplication {} ToHost {} }
-type RecordIdentity { instance: ApplicationInstance direction: BridgeDirection sequence: AcceptedSequence }
-type TicketIdentity { instance: ApplicationInstance ticket: CommandTicket }
+type RecordIdentity { appInstance: ApplicationInstance direction: BridgeDirection sequence: AcceptedSequence }
+type TicketIdentity { appInstance: ApplicationInstance ticket: CommandTicket }
 union BridgePhase { Open {} Closing {} Closed {} Faulted {} }
 union ResourceKind {
   ChunkStorage {} PayloadStorage {} OrdinaryQueue {} TerminalReservations {}
@@ -56,8 +56,8 @@ union BridgeError {
   InvalidRange { offset: ByteCount length: ByteCount available: ByteCount }
   InvalidLayout { expected: SchemaFingerprint actual: SchemaFingerprint }
   CounterExhausted {}
-  Closing {}
-  Closed {}
+  BridgeClosing {}
+  BridgeClosed {}
   AllocationFailed { requested: ByteCount }
   SynchronizationFailed {}
 }
@@ -71,11 +71,11 @@ union CloseResult { Drained {} Busy { outstanding: OutstandingOwners } CloseFail
 
 # [NATIVE-SHM-ACCESSIBILITY] Logical contract only; host adapters remain unimplemented.
 # Node serials never reuse within an instance; actions also validate source revision.
-type SemanticId { instance: ApplicationInstance serial: Int }
+type SemanticId { appInstance: ApplicationInstance serial: Int }
 type SemanticBounds { left: Float top: Float width: Float height: Float }
 union SemanticRole {
   Group {} Text {} Heading {} Button {} Link {} TextField {} CheckBox {} Radio {}
-  Switch {} Slider {} ComboBox {} List {} ListItem {} Table {} Row {} Cell {}
+  Switch {} Slider {} ComboBox {} ListRole {} ListItem {} Table {} Row {} Cell {}
   Dialog {} Menu {} MenuItem {} Tab {} TabList {} Image {} Progress {} Status {}
 }
 union SemanticCheck { Unchecked {} Checked {} Mixed {} }
@@ -100,14 +100,14 @@ type SemanticBinding { action: SemanticAction serial: Int }
 type VirtualPosition { index: Int total: Int }
 type SemanticNode {
   id: SemanticId role: SemanticRole name: String description: String
-  bounds: SemanticBounds state: SemanticState text: SemanticText range: Option<SemanticRange>
+  bounds: SemanticBounds semanticState: SemanticState text: SemanticText range: Option<SemanticRange>
   children: List<SemanticId> relations: List<SemanticRelation> actions: List<SemanticBinding>
   virtualPosition: Option<VirtualPosition> headingLevel: Option<Int>
 }
 # Children define reading order. Decorative nodes are omitted; roots/IDs are unique.
 # Modal background exclusion, acyclicity and target existence require validation.
 type SemanticSnapshot {
-  instance: ApplicationInstance revision: SnapshotRevision roots: List<SemanticId>
+  appInstance: ApplicationInstance revision: SnapshotRevision roots: List<SemanticId>
   nodes: List<SemanticNode> keyboardFocus: Option<SemanticId>
   accessibilityFocus: Option<SemanticId> modalRoot: Option<SemanticId>
 }
