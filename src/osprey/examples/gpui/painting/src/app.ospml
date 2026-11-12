@@ -27,11 +27,5 @@ module App
     (** Refreshes the canvas, header and root regions. *)
     export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)
 
-    (** Serializes the store. *)
-    export save store = Drawing::save store
-
-    (** Restores the store. *)
-    export restore doc = Drawing::restore doc
-
     (** The white theme. *)
     export theme () = View::theme ()

@@ -1,8 +1,7 @@
 // Symbolic-input harness for `osprey hunt`: stdin chooses one host input and drives Flock's real
-// start and dispatch boundary with it ([UI-SCENE], [GPUI-HOST-SCENE]).
+// resident begin and proceed boundary with it ([UI-SCENE], [GPUI-HOST-SCENE], [UI-RESIDENT]).
 namespace flockhunt
 
-import ui::Doc
 import ui::Runtime
 import flock::App
 
@@ -32,16 +31,16 @@ event (line, revision) = match kindOf line
 
 small () = flock::Store(world = flock::World(birds = [flock::Bird(birdX = 40.0, birdY = 40.0, birdVx = 0.5, birdVy = 0.1), flock::Bird(birdX = 45.0, birdY = 42.0, birdVx = 0.4, birdVy = 0.2)], hawks = [flock::Hawk(hawkX = 60.0, hawkY = 40.0)], player = flock::Player(playerX = 160.0, playerY = 100.0), held = flock::Held(heldLeft = false, heldRight = false, heldUp = false, heldDown = false), targetX = 0.0, targetY = 0.0, targetActive = false, roundNumber = 1, scoreValue = 0, elapsedTotal = 0.0, frameCount = 0, fps = 0), settings = flock::Settings(flockSize = 2, soundOn = true, paused = false), scores = flock::Scores(best = [], loaded = false))
 
-session envelope =
-    saved = Doc::parse (Doc::text (envelope, "state"))
-    Doc::write (JsonObject [JsonMember "context" (Doc::field (saved, "context")), JsonMember "store" (App::save (small ())), JsonMember "frames" (Doc::field (saved, "frames"))])
-
 main () =
     handle ui::Slices
         fetch _ => "[]"
+    handle ui::SceneStream
+        shape _ => 0
     line = input ()
-    started = Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::save, App::theme ()))
-    after = Doc::parse (Runtime::dispatch (session started, event (line, 1), App::update, App::regions, App::save, App::restore))
-    framed = Runtime::dispatch (Doc::text (after, "state"), "{\"kind\":\"frame\",\"now\":3,\"elapsed\":0.016}", App::update, App::regions, App::save, App::restore)
-    print "dispatched ${length framed}"
+    begun = Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::theme ())
+    current = begun.residentSession
+    placed = current(sessionStore = small ())
+    after = Runtime::proceed (placed, event (line, 1), App::update, App::regions)
+    framed = Runtime::proceed (after.residentSession, "{\"kind\":\"frame\",\"now\":3,\"elapsed\":0.016}", App::update, App::regions)
+    print "dispatched ${length framed.residentEnvelope}"
     0
