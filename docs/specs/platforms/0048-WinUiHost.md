@@ -23,6 +23,8 @@ The host references `Microsoft.WindowsAppSDK.WinUI`, which brings the Foundation
 
 ## The application DLL [WINUI-HOST-DLL]
 
+**Migration contract:** the signatures below describe the current JSON implementation. Its replacement is [NATIVE-SHM](../applications/0047-OspreyNativeHosts.md#shared-memory-replacement-native-shm): generated typed events, opaque application handles and leased immutable snapshots; in-process access never serializes. Publication, command delivery, shutdown and ownership follow that contract on this host without host-specific exceptions. No legacy dual-mode bridge remains after cutover.
+
 `osprey build <project> --target=windows-x64 -o app.dll` links the application, `@osprey/native` and the ARC runtime into one DLL with MinGW clang, with winpthreads linked statically. Only the boundary is exported:
 
 | Export | Meaning |

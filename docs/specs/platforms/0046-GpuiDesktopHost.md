@@ -20,6 +20,8 @@ The crate contains no application logic. It never decides what a tap means, what
 
 ## Boundary [GPUI-HOST-BOUNDARY]
 
+**Migration contract:** the signatures below describe the current JSON implementation. Its replacement is [NATIVE-SHM](../applications/0047-OspreyNativeHosts.md#shared-memory-replacement-native-shm): generated typed events, opaque application handles and leased immutable snapshots; in-process access never serializes. Publication, command delivery, shutdown and ownership follow that contract on this host without host-specific exceptions. No legacy dual-mode bridge remains after cutover.
+
 The host builds the application with `--target=macos` (later `linux-x64` and `windows-x64`, [GPUI-HOST-TARGETS]) and links the archive. The exports are the ones the SwiftUI host already calls:
 
 ```c
