@@ -293,7 +293,15 @@ effect Twin
     control far : int => int
 
 (** One effect, two depths, one partial inner region. Spec 0017's Handlers
+    section says "the innermost matching arm wins and an outer arm remains
+    available for operations not handled by the inner region", and
     [EFFECTS-STATIC-DISCHARGE] adds that "complementary nested partial handlers
+    may each discharge the operation they cover". So `near` is answered by the
+    inner region and `far` reaches the outer one while inner suspensions are
+    still live — and by [EFFECTS-RESUME-NESTING] each crossing `far` installs
+    its arm OUTSIDE the live `near` arms it crossed, so both `near` arms settle
+    before either `far` arm does. Settlement is therefore not the reverse of the
+    entry order. The unused outer `near` arm supplies a millionfold value, so
     any leak past the inner region is visible. *)
 nestedPartialInnerResumeCase () =
     mut outerNear = 0

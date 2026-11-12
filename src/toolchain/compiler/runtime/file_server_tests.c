@@ -40,10 +40,8 @@ static int64_t start_server(char *path, char *type) {
   return port;
 }
 
-// An unconnected socket dialled at the server on `port`.
-static int dial_loopback(int64_t port) {
-  int fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(fd >= 0);
+// Connects the socket `fd` to the server on `port`.
+static int connect_loopback(int fd, int64_t port) {
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof addr);
   addr.sin_family = AF_INET;
@@ -53,15 +51,29 @@ static int dial_loopback(int64_t port) {
   return fd;
 }
 
+// A fresh socket, not yet connected.
+static int open_socket(void) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  assert(fd >= 0);
+  return fd;
+}
+
+// A plain connection to the server on `port`.
+static int dial_loopback(int64_t port) {
+  return connect_loopback(open_socket(), port);
+}
+
 // A connection with `receive_buffer` bytes of socket buffer and a 5s deadline.
+// Both options go on before `connect`: Linux fixes the receive window at the
+// handshake, so a buffer shrunk afterwards never makes the server's send block.
 static int dial_with_deadline(int64_t port, int receive_buffer) {
-  int fd = dial_loopback(port);
+  int fd = open_socket();
   struct timeval deadline = {5, 0};
   assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &deadline, sizeof deadline) == 0);
   if (receive_buffer > 0) {
     assert(setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &receive_buffer, sizeof receive_buffer) == 0);
   }
-  return fd;
+  return connect_loopback(fd, port);
 }
 
 typedef struct {
