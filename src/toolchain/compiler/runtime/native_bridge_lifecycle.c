@@ -122,13 +122,11 @@ int osp_native_length(OspNativeBridge *b, const td_OwnedLease *lease,
   return native_unlock(b, status);
 }
 
-// Seals one pending run as a leaf chunk, in place. The run is always taken,
-// so a failed call leaves none behind.
-static int native_seal_run(OspNativeBridge *b, int64_t run,
+// Seals one taken run as a leaf chunk, in place. The storage is always
+// consumed, so a failed call leaves none behind.
+static int native_seal_run(OspNativeBridge *b, bool complete, int64_t run,
+                           void *data, int64_t length, int64_t capacity,
                            td_OwnedLease *out) {
-  int64_t length, capacity;
-  bool complete;
-  void *data = osp_native_run_take(run, &length, &capacity, &complete);
   if (!data && complete && (data = calloc(1, 8)))
     capacity = 8;
   if (data && complete && b)
@@ -139,11 +137,17 @@ static int native_seal_run(OspNativeBridge *b, int64_t run,
 
 // [NATIVE-SHM-SCENE] [NATIVE-SHM-VIEW] Every run is taken whatever happens.
 int osp_native_frame_commit(OspNativeBridge *b, int64_t *revision) {
+  void *data[OSP_NATIVE_RUNS];
+  int64_t length[OSP_NATIVE_RUNS], capacity[OSP_NATIVE_RUNS];
   td_OwnedLease runs[OSP_NATIVE_RUNS], frame;
   int sealed[OSP_NATIVE_RUNS], status = 0;
-  for (int64_t run = 0; run < OSP_NATIVE_RUNS; run++)
-    if ((sealed[run] = native_seal_run(b, run, &runs[run])) && !status)
+  bool complete = osp_native_runs_take(data, length, capacity);
+  for (int64_t run = 0; run < OSP_NATIVE_RUNS; run++) {
+    sealed[run] = native_seal_run(b, complete, run, data[run], length[run],
+                                  capacity[run], &runs[run]);
+    if (sealed[run] && !status)
       status = sealed[run];
+  }
   if (!status)
     status = osp_native_create(b, OSP_NATIVE_FRAME, false, NULL, 0, runs,
                                OSP_NATIVE_RUNS, &frame);

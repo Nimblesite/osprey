@@ -5,6 +5,7 @@
 #include "string_runtime.h"
 #include "test_alloc.h"
 #include <assert.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -529,6 +530,83 @@ static void check_native_view_frames(void) {
   assert(osp_native_release(b, &rows) == 0 && osp_native_destroy(b) == 0);
 }
 
+// [NATIVE-SHM-SAFETY] Fibers are OS threads, so safe Osprey code can write
+// rows from several at once: every row must still land whole, with its own
+// text, and never corrupt the run.
+enum { VIEW_WRITERS = 4, VIEW_WRITES = 2000 };
+static void *view_writer(void *context) {
+  char words[24];
+  for (int64_t i = 0; i < VIEW_WRITES; i++) {
+    int64_t action = (int64_t)(intptr_t)context * VIEW_WRITES + i;
+    snprintf(words, sizeof words, "%lld", (long long)action);
+    assert(osp_native_view_row(2, -1, action, words, 0, 0, 0, 0, 0, 0, 0) >= 0);
+  }
+  return NULL;
+}
+static void check_view_writers_from_many_threads(OspNativeBridge *b) {
+  pthread_t writers[VIEW_WRITERS];
+  int64_t revision, bytes, count = VIEW_WRITERS * VIEW_WRITES;
+  td_OwnedLease rows, text;
+  char words[24];
+  bool seen[VIEW_WRITERS * VIEW_WRITES] = {false};
+  for (intptr_t i = 0; i < VIEW_WRITERS; i++)
+    assert(pthread_create(&writers[i], NULL, view_writer, (void *)i) == 0);
+  for (int i = 0; i < VIEW_WRITERS; i++)
+    assert(pthread_join(writers[i], NULL) == 0);
+  assert(osp_native_frame_commit(b, &revision) == 0);
+  leased_run(b, OSP_NATIVE_VIEWS, revision, &rows);
+  leased_run(b, OSP_NATIVE_TEXT, revision, &text);
+  assert(osp_native_length(b, &text, &bytes) == 0);
+  const OspNativeView *held = run_bytes(
+      b, &rows, OSP_NATIVE_VIEWS, count * (int64_t)sizeof(OspNativeView));
+  const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  for (int64_t i = 0; i < count; i++) {
+    int length = snprintf(words, sizeof words, "%lld", (long long)held[i].action);
+    assert(held[i].action >= 0 && held[i].action < count &&
+           !seen[held[i].action] && held[i].text_length == length &&
+           held[i].text_offset + length <= bytes &&
+           memcmp(chars + held[i].text_offset, words, (size_t)length) == 0);
+    seen[held[i].action] = true;
+  }
+  assert(osp_native_release(b, &rows) == 0 && osp_native_release(b, &text) == 0);
+}
+
+// [NATIVE-SHM-SAFETY] A host lays out what it reads, so a number no layout can
+// use (not finite, or a negative extent) refuses the frame at the writer.
+static void check_unusable_numbers_are_refused(OspNativeBridge *b) {
+  const double bad[] = {NAN, INFINITY, -INFINITY, -1};
+  int64_t revision = 7;
+  for (int field = 0; field < 4; field++)
+    for (int i = 0; i < 4; i++) {
+      double v[4] = {1, 1, 1, 1};
+      v[field] = bad[i];
+      assert(osp_native_view_row(2, -1, -1, "x", 0, 0, v[0], v[1], v[2], v[3],
+                                 400) == -1);
+      assert(osp_native_frame_commit(b, &revision) ==
+                 OSP_NATIVE_ERROR(AllocationFailed) &&
+             revision == 7);
+    }
+  for (int field = 0; field < 5; field++)
+    for (int i = 0; i < 3; i++) {
+      double v[5] = {1, 1, 1, 1, 1};
+      v[field] = bad[i];
+      assert(osp_native_scene_shape(0, 0, v[0], v[1], v[2], v[3], v[4], 0, 0) ==
+             1);
+      assert(osp_native_frame_commit(b, &revision) ==
+                 OSP_NATIVE_ERROR(AllocationFailed) &&
+             revision == 7);
+    }
+  assert(osp_native_scene_shape(0, 0, -5, -6, 1, 1, -3, 0, 0) == 0);
+  osp_native_frame_discard();
+}
+
+static void check_native_view_safety(void) {
+  OspNativeBridge *b = native_fixture(1 << 22, 16, 16);
+  check_unusable_numbers_are_refused(b);
+  check_view_writers_from_many_threads(b);
+  assert(osp_native_destroy(b) == 0);
+}
+
 #ifdef OSP_NATIVE_TEST
 static void check_native_sync_failure(void) {
   for (int failed_unlock = 0; failed_unlock < 2; failed_unlock++) {
@@ -579,6 +657,7 @@ int main(void) {
   check_native_scene_frames();
   check_native_scene_refusals();
   check_native_view_frames();
+  check_native_view_safety();
 #ifdef OSP_NATIVE_TEST
   check_native_sync_failure();
 #endif

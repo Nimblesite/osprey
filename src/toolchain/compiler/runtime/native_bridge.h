@@ -85,8 +85,11 @@ enum { OSP_NATIVE_SHAPES, OSP_NATIVE_VIEWS, OSP_NATIVE_TEXT, OSP_NATIVE_RUNS };
 #define OSP_NATIVE_SCENE_ROWS (1 << 20) // The most shapes one call may send.
 #define OSP_NATIVE_VIEW_LIMIT (1 << 16) // The most controls in one view.
 #define OSP_NATIVE_TEXT_LIMIT (1 << 24) // The most text bytes in one view.
-// Appends one shape to the pending run; the application executor calls this
-// in drawing order. Nonzero once the run cannot grow: it is then refused whole.
+// [NATIVE-SHM-SAFETY] The writers below may be called from any thread: each
+// row lands whole. A number that is not finite, or a negative extent, refuses
+// the frame, so a host never lays out a value it cannot use.
+// Appends one shape to the pending run, in drawing order. Nonzero once the run
+// is refused: it is then refused whole.
 int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
                                double width, double height, double angle,
                                int64_t colour, int64_t depth);
@@ -97,16 +100,18 @@ int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
                             const char *text, int64_t colour,
                             int64_t background, double size, double padding,
                             double spacing, double radius, int64_t weight);
-// Hands one pending run's storage to the caller and starts an empty run.
-// `complete` is false when a write was refused. Executor thread only.
-void *osp_native_run_take(int64_t run, int64_t *length, int64_t *capacity,
-                          bool *complete);
+// Hands every pending run's storage to the caller in one step and starts
+// three empty runs, so no row can land half in one frame and half in the next.
+// False when a write was refused.
+bool osp_native_runs_take(void *data[OSP_NATIVE_RUNS],
+                          int64_t length[OSP_NATIVE_RUNS],
+                          int64_t capacity[OSP_NATIVE_RUNS]);
 // Seals the three pending runs in place and publishes them as one frame; a
 // refused run publishes nothing. Call on the executor thread after each
 // application export returns.
 int osp_native_frame_commit(OspNativeBridge *bridge, int64_t *revision);
 // Drops the three pending runs: for a call that failed, whose partial frame
-// belongs to nothing. Executor thread only.
+// belongs to nothing.
 void osp_native_frame_discard(void);
 // A new owner of the `index`th child of a branch chunk.
 int osp_native_child(OspNativeBridge *bridge, const td_OwnedLease *lease,
