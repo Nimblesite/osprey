@@ -26,8 +26,6 @@ const REFUSED: &[&str] = &[
     "rich-text",
     "framed",
     "dialog",
-    "evidence",
-    "brand",
     "math",
     "image",
     "video",

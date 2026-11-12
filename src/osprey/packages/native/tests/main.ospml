@@ -301,14 +301,14 @@ test ("tabs carry their pages and bind after the pages' controls, and segments c
     expect (join (Doc::texts (segments, "tones")) ",", "good,danger")
     expect (Doc::text (segments, "label"), "2 states"))
 // [UI-COMPONENTS]: every constructor encodes as the component it names, with its role, tone, axis and enabled state.
-built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::evidence ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
+built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 test ("every constructor encodes as the component it names", \() =>
     doc = firstNode (Encode::walk ([], built ()))
     row = itemAt (doc, "children", 0)
     parts = Doc::items (Doc::field (row, "children"))
     expect (Doc::text (doc, "kind"), "split")
     expect (Doc::text (row, "axis"), "horizontal")
-    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,evidence,badge,empty,button,toggle,picker,rows")
+    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,pair,badge,empty,button,toggle,picker,rows")
     expectTexts (partOf (parts, 0), [{ name = "role", value = "heading" }, { name = "tone", value = "accent" }])
     expect (Doc::text (partOf (parts, 2), "tone"), "caution")
     expect (Doc::text (partOf (parts, 3), "detail"), "Why")
@@ -506,8 +506,10 @@ test ("inline text retains mathematical emphasis and semantic source colours wit
     expectTexts (variable, [{ name = "text", value = "p" }, { name = "ink", value = "sourceType" }])
     expect (Doc::flag (variable, "italic"), true)
     binds (walked, 0)
-    branded = firstNode (Encode::walk ([], Ui::column [ui::Brand, Ui::button ("Continue", "", Increment)]))
-    expect (Doc::text (firstOf (branded, "children"), "kind"), "brand"))
+    spaced = Encode::walk ([], Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)])
+    expect (Doc::text (firstOf ((firstNode spaced), "children"), "kind"), "spacer")
+    expect (length (Doc::items (Doc::field ((firstNode spaced), "children"))), 2)
+    binds (spaced, 1))
 
 test ("machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => machineCaseCanvasUseCase ())
 test ("native machine views render ordinary controls and preserve every host value kind", \() => machineCaseNativeViews ())

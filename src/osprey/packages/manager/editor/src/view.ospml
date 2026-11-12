@@ -105,11 +105,11 @@ module View
         "" => snapshot.packageWorkspace
         uri => uri
 
-    projectNode snapshot = Ui::evidence ("Project", projectOf snapshot)
+    projectNode snapshot = Ui::pair ("Project", projectOf snapshot)
 
     installedFacts item = Ui::column [
         Ui::row (installedBadges item),
-        Ui::evidence ("Digest", item.entryIdentity.entryDigest),
+        Ui::pair ("Digest", item.entryIdentity.entryDigest),
     ]
 
     installedBody (snapshot, item) = [
@@ -142,8 +142,8 @@ module View
 
     catalogFacts (snapshot, item) = Ui::column [
         catalogBadges item,
-        Ui::evidence ("Releases", join item.catalogVersions ", "),
-        Ui::evidence ("Registry", snapshot.packageRegistry),
+        Ui::pair ("Releases", join item.catalogVersions ", "),
+        Ui::pair ("Registry", snapshot.packageRegistry),
     ]
 
     catalogBody (snapshot, item) = [
@@ -202,11 +202,11 @@ module View
             false => Ui::badge (snapshot.packageNotice, "checkmark.circle", ui::Secondary)
 
     metrics snapshot = Ui::row [
-        Ui::evidence ("Installed", "${installedCount snapshot}"),
-        Ui::evidence ("Direct", "${directCount snapshot}"),
-        Ui::evidence ("Missing", "${length (missingItems snapshot)}"),
-        Ui::evidence ("Findings", "${findingsCount snapshot}"),
-        Ui::evidence ("Catalog", "${length snapshot.packageCatalog}"),
+        Ui::pair ("Installed", "${installedCount snapshot}"),
+        Ui::pair ("Direct", "${directCount snapshot}"),
+        Ui::pair ("Missing", "${length (missingItems snapshot)}"),
+        Ui::pair ("Findings", "${findingsCount snapshot}"),
+        Ui::pair ("Catalog", "${length snapshot.packageCatalog}"),
     ]
 
     missingBadge item = Ui::badge ("${installedKey item} · missing from disk", "questionmark.folder", ui::Caution)

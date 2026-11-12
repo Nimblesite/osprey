@@ -81,9 +81,6 @@ type Node A =
         bind : A
     Slot
         key : string
-    Evidence
-        label : string
-        value : string
     Pair
         label : string
         value : string
@@ -116,7 +113,6 @@ type Node A =
         amount : int
         total : int
         tone : Tone
-    Brand
     Swatch
         name : string
         light : string
@@ -311,10 +307,6 @@ module Ui
     (** A button with an explicit role and enabled state that delivers `act` when pressed. *)
     export action<A> : (string, string, ButtonRole, bool, A) -> Node<A>
     action (label, symbol, role, enabled, act) = Button(label = label, symbol = symbol, role = role, enabled = enabled, action = act)
-
-    (** A label and its value on one line, such as an observed fact. *)
-    export evidence<A> : (string, string) -> Node<A>
-    evidence (label, value) = Evidence(label = label, value = value)
 
     (** A label and its value on one line, such as a setting and its current value. *)
     export pair<A> : (string, string) -> Node<A>

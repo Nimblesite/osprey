@@ -72,7 +72,7 @@ buttonEnabled (envelope, region, label) = match controlOf (envelope, region, "bu
 
 badgeTone (envelope, region, label) = fieldOf (controlOf (envelope, region, "badge", label), "tone")
 
-evidenceValue (envelope, region, label) = fieldOf (controlOf (envelope, region, "evidence", label), "value")
+evidenceValue (envelope, region, label) = fieldOf (controlOf (envelope, region, "pair", label), "value")
 
 hasTone (envelope, region, tone) = match controlAt (envelope, region, \doc => Doc::text (doc, "tone") == tone)
     Success _ => true

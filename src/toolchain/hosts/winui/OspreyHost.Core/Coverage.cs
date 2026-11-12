@@ -23,7 +23,7 @@ public static class Coverage
     /// </summary>
     public static IReadOnlyList<string> Refused { get; } =
     [
-        "rich-text", "framed", "dialog", "evidence", "brand", "math", "image", "video",
+        "rich-text", "framed", "dialog", "math", "image", "video",
         "editor", "board",
     ];
 

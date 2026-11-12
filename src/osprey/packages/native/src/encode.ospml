@@ -273,7 +273,6 @@ module Encode
     walk (bindings, node) = match node
         RichText runs textRole => leaf (bindings, "rich-text", [JsonMember "runs" (JsonArray (mapList (runs, runJson))), str "role" (role textRole)])
         Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
-        Evidence label value => pairLeaf (bindings, "evidence", "label", label, "value", value)
         Pair label value => pairLeaf (bindings, "pair", "label", label, "value", value)
         Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
         Label label symbol => pairLeaf (bindings, "label", "label", label, "symbol", symbol)
@@ -287,7 +286,6 @@ module Encode
         Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
         Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
         Slot key => leaf (bindings, "slot", [str "key" key])
-        Brand => leaf (bindings, "brand", [])
         Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
         Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
         Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
