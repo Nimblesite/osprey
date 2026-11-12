@@ -664,6 +664,20 @@
           "default": true,
           "description": "Enable/disable diagnostic messages"
         },
+        "osprey.analysis.scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "file"
+          ],
+          "enumDescriptions": [
+            "Infer the types shown by hover, signature help, completion and the outline from the whole project, including the packages it uses.",
+            "Infer them from each file alone. Faster on a very large project, but a type that only another file or package fixes is shown as `_`."
+          ],
+          "default": "project",
+          "scope": "window",
+          "description": "Choose how much code the editor checks to work out the types it shows."
+        },
         "osprey.diagnostics.scope": {
           "type": "string",
           "enum": [

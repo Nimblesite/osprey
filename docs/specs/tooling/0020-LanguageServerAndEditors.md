@@ -282,6 +282,24 @@ line space, and respells every linkage name in a rendered type as its source
 name (`ui::PathStep`). A document outside any project, or in a project that
 does not assemble, is checked on its own.
 
+### Inference scope `[LSP-ANALYSIS-SCOPE]`
+
+By default the editor analyses everything it can see: diagnostics cover every
+Osprey source in the folder's repository (`[LSP-DIAGNOSTICS-SCOPE]`), and
+displayed types are inferred from the whole project and the packages it uses
+(`[LSP-HOVER-PROJECT]`). Each half has its own switch:
+
+| Setting | Values | Effect |
+|---------|--------|--------|
+| `osprey.analysis.scope` | `project` (default), `file` | `file` infers the types shown by hover, signature help, completion details and the outline from each file alone. A type that only another file or package fixes is then shown as `_`. |
+| `osprey.diagnostics.scope` | `repository` (default), `roots`, `openFiles` | `openFiles` performs no background scan of the folder. |
+
+Both are read from `initializationOptions` at startup and from
+`workspace/didChangeConfiguration` afterwards, so a change takes effect on the
+next request without a restart. `file` exists for a project so large that
+inferring it after each edit is too slow; it never changes what the compiler
+accepts.
+
 ### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
 
 Hovering a **function declaration** shows the signature with every slot the

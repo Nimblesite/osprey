@@ -16,6 +16,8 @@ use std::sync::{MutexGuard, PoisonError};
 pub(crate) struct Scope {
     folders: Vec<PathBuf>,
     diagnostics: Value,
+    /// The `osprey.analysis` settings ([LSP-ANALYSIS-SCOPE]).
+    analysis: Value,
     open: BTreeSet<String>,
     published: BTreeSet<String>,
     /// Edited documents (checked with their siblings) and those siblings,
@@ -102,12 +104,17 @@ impl Scope {
     }
 
     pub(super) fn configure(&mut self, settings: &Value) {
-        self.diagnostics = settings
-            .get("osprey")
-            .unwrap_or(settings)
-            .get("diagnostics")
-            .cloned()
-            .unwrap_or(Value::Null);
+        let osprey = settings.get("osprey").unwrap_or(settings);
+        let section = |name: &str| osprey.get(name).cloned().unwrap_or(Value::Null);
+        self.diagnostics = section("diagnostics");
+        self.analysis = section("analysis");
+    }
+
+    /// Whether displayed types are inferred from the whole project and its
+    /// packages (the default) or from each file alone
+    /// (`osprey.analysis.scope = "file"`). Implements [LSP-ANALYSIS-SCOPE].
+    pub(crate) fn whole_project(&self) -> bool {
+        self.analysis.get("scope").and_then(Value::as_str) != Some("file")
     }
 
     pub(super) fn folders_changed(&mut self, event: &Value) {
