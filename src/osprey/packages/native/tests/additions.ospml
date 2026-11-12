@@ -17,6 +17,10 @@ import ui::Requests
 import ui::Strokes
 import ui::Themes
 import ui::Maths
+import ui::Views
+import ui::Lower
+import ui::LowerLeaves
+import ui::Keyed
 
 module AdditionCases
     actionName action = match action
@@ -245,3 +249,637 @@ module AdditionCases
         expect (Doc::flag (node, "inline"), true)
         expectNumbers (node, [{ name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
         expect (length walked.bindings, 2)
+
+
+    // [NATIVE-SHM-LOWER] The theme the lowering tests draw from: distinct tokens so light and dark resolve differently.
+    lowerTokens () = [
+        ui::Token(tokenName = "text", tokenLight = "#1A2B3C", tokenDark = "#C9D8E7"),
+        ui::Token(tokenName = "primary", tokenLight = "#123456", tokenDark = "#654321"),
+        ui::Token(tokenName = "secondary", tokenLight = "#445566", tokenDark = "#99AABB"),
+        ui::Token(tokenName = "accent", tokenLight = "#0066AA", tokenDark = "#66CCFF"),
+        ui::Token(tokenName = "onAccent", tokenLight = "#FFFFFF", tokenDark = "#002233"),
+        ui::Token(tokenName = "danger", tokenLight = "#CC2222", tokenDark = "#FF6666"),
+        ui::Token(tokenName = "background", tokenLight = "#F0F0F0", tokenDark = "#101010"),
+        ui::Token(tokenName = "chalk", tokenLight = "#223344", tokenDark = "#DDEEFF")]
+
+    // The test theme the lowering cases draw from.
+    lowerTheme () = ui::Theme(tokens = lowerTokens (), spacing = [4, 10, 16], feedback = 140, settle = 240)
+
+    // Styling for `dark` over the test theme, with no regions; its action union is the suite's own `Act`.
+    styled : bool -> ui::Styling<Act>
+    styled dark = ui::Styling(styleTheme = lowerTheme (), styleDark = dark, styleRegions = [])
+
+    // A stand-in view for list lookups that miss.
+    nothingView () = ui::Column(columnLook = Views::plain, columnItems = [])
+
+    // The kind name of a lowered view.
+    kindOf view = match view
+        ui::Column _ _ => "column"
+        ui::Across _ _ => "across"
+        ui::Wording _ _ => "wording"
+        ui::Press _ _ _ => "press"
+        ui::Typing _ _ _ => "typing"
+        ui::Gap => "gap"
+        ui::Fitted _ _ => "fitted"
+        ui::Scrolling _ _ => "scrolling"
+        ui::Layered _ _ => "layered"
+        ui::Switch _ _ _ _ => "switch"
+        ui::Choosing _ _ _ _ => "choosing"
+        ui::Option _ _ _ _ => "option"
+        ui::Rule _ => "rule"
+        ui::Picture _ _ => "picture"
+        ui::Canvas _ _ => "canvas"
+        ui::Writing _ _ _ => "writing"
+        ui::Menu _ _ => "menu"
+        ui::Sheet _ _ _ => "sheet"
+
+    // The text a control carries, or "" when it carries none.
+    textOf view = match view
+        ui::Wording _ words => words
+        ui::Press _ words _ => words
+        ui::Typing _ words _ => words
+        ui::Switch _ words _ _ => words
+        ui::Choosing _ words _ _ => words
+        ui::Option _ words _ _ => words
+        ui::Picture _ source => source
+        ui::Writing _ words _ => words
+        _ => ""
+
+    // The look of a control, reaching through wrappers, or the plain look when it has none.
+    lookOf view = match view
+        ui::Column look _ => look
+        ui::Across look _ => look
+        ui::Wording look _ => look
+        ui::Press look _ _ => look
+        ui::Typing look _ _ => look
+        ui::Fitted _ inner => lookOf inner
+        ui::Scrolling look _ => look
+        ui::Layered look _ => look
+        ui::Switch look _ _ _ => look
+        ui::Choosing look _ _ _ => look
+        ui::Option look _ _ _ => look
+        ui::Rule look => look
+        ui::Picture look _ => look
+        ui::Canvas look _ => look
+        ui::Writing look _ _ => look
+        ui::Menu look _ => look
+        ui::Sheet look _ _ => look
+        ui::Gap => Views::plain
+
+    // The fit a wrapper applies; the sentinel fit matches nothing the lowering produces.
+    fitOf view = match view
+        ui::Fitted fit _ => fit
+        _ => ui::Fit(wide = -1.0, tall = -1.0, share = -1.0, traits = -1, edge = -1, hint = "?")
+
+    // The single child a wrapper carries, or nothing.
+    innerOf view = match view
+        ui::Fitted _ inner => inner
+        _ => nothingView ()
+
+    // The `index`th child of a container or a choice's options, or nothing.
+    itemOf (view, index) = match view
+        ui::Column _ items => listGet items index ?: nothingView ()
+        ui::Across _ items => listGet items index ?: nothingView ()
+        ui::Scrolling _ items => listGet items index ?: nothingView ()
+        ui::Layered _ items => listGet items index ?: nothingView ()
+        ui::Menu _ items => listGet items index ?: nothingView ()
+        ui::Sheet _ items _ => listGet items index ?: nothingView ()
+        ui::Choosing _ _ options _ => listGet options index ?: nothingView ()
+        _ => nothingView ()
+
+    // How many children a container or a choice holds.
+    countOf view = match view
+        ui::Column _ items => length items
+        ui::Across _ items => length items
+        ui::Scrolling _ items => length items
+        ui::Layered _ items => length items
+        ui::Menu _ items => length items
+        ui::Sheet _ items _ => length items
+        ui::Choosing _ _ options _ => length options
+        _ => 0
+
+    // The binding a control delivers; each sentinel differs from every binding its case expects.
+    pressAction view = match view
+        ui::Press _ _ action => action
+        _ => ui::Tap(action = Load)
+
+    typingAction view = match view
+        ui::Typing _ _ action => action
+        ui::Writing _ _ action => action
+        _ => ui::TextInput(action = Load)
+
+    switchWordsOf view = match view
+        ui::Switch _ words _ _ => words
+        _ => "?"
+
+    switchOnOf view = match view
+        ui::Switch _ _ on _ => on
+        _ => false
+
+    switchFlagOf view = match view
+        ui::Switch _ _ _ action => action
+        _ => ui::FlagInput(action = Increment)
+
+    choosingAction view = match view
+        ui::Choosing _ _ _ action => action
+        _ => ui::ChoiceInput(action = Increment)
+
+    canvasAction view = match view
+        ui::Canvas _ action => action
+        _ => ui::SceneInput(action = Increment)
+
+    sheetDismissOf view = match view
+        ui::Sheet _ _ dismiss => dismiss
+        _ => ui::Tap(action = Increment)
+
+    optionKeyOf view = match view
+        ui::Option _ _ key _ => key
+        _ => "?"
+
+    optionChosenOf view = match view
+        ui::Option _ _ _ chosen => chosen
+        _ => false
+
+    (** [NATIVE-SHM-LOWER] Text lowers to a wording in its role's size and heft and its tone's resolved ink. *)
+    export lowerTextCase () =
+        light = Lower::view (styled false, Ui::styled ("Read me", ui::Display, ui::Danger))
+        expect (kindOf light, "wording")
+        expect (textOf light, "Read me")
+        expect ((lookOf light).points, 34.0)
+        expect ((lookOf light).heft, 600)
+        expect ((lookOf light).ink, 3424789247)
+        dark = Lower::view (styled true, Ui::styled ("Read me", ui::Display, ui::Danger))
+        expect ((lookOf dark).ink, 4284901119)
+        mono = Lower::view (styled false, Ui::styled ("x = 2", ui::Mono, ui::Primary))
+        expect (kindOf mono, "fitted")
+        expect ((fitOf mono).traits, Views::fixedWidth)
+        expect (kindOf (innerOf mono), "wording")
+        expect (textOf (innerOf mono), "x = 2")
+        expect ((lookOf (innerOf mono)).points, 12.0)
+        expect ((lookOf (innerOf mono)).heft, 400)
+        expect ((lookOf (innerOf mono)).ink, 439041279)
+        brow = Lower::view (styled false, Ui::styled ("chapter", ui::Eyebrow, ui::Secondary))
+        expect (textOf brow, "CHAPTER")
+        expect ((lookOf brow).points, 11.0)
+        expect ((lookOf brow).heft, 600)
+        expect ((lookOf brow).ink, 1146447615)
+        missing = Lower::view (styled false, Ui::styled ("Fine", ui::Body, ui::Good))
+        expect ((lookOf missing).ink, 305420031)
+
+    (** [NATIVE-SHM-LOWER] Rich text lowers to a line of wordings, each run with its own ink, emphasis, slant and size. *)
+    richSample () = Ui::rich ([Ui::run ("For all ", "", false), Ui::emphasised ("p", "accent", "strong"), Ui::run ("q", "text", true)], ui::Lead)
+
+    (** [NATIVE-SHM-LOWER] Rich text lowers to a line of wordings, each run with its own ink, emphasis, slant and size. *)
+    export lowerRichCase () =
+        line = Lower::view (styled false, richSample ())
+        expect (kindOf line, "across")
+        expect ((lookOf line).gap, 0.0)
+        expect (countOf line, 3)
+        plain = itemOf (line, 0)
+        expect (kindOf plain, "fitted")
+        expect (textOf (innerOf plain), "For all ")
+        expect ((lookOf plain).points, 15.0)
+        expect ((lookOf plain).heft, 400)
+        expect ((lookOf plain).ink, 439041279)
+        strong = itemOf (line, 1)
+        expect ((fitOf strong).traits, 0)
+        expect (textOf (innerOf strong), "p")
+        expect ((lookOf strong).ink, 6728447)
+        expect ((lookOf strong).heft, 600)
+        slanted = itemOf (line, 2)
+        expect ((fitOf slanted).traits, Views::slanted)
+        expect ((lookOf slanted).ink, 439041279)
+        darkLine = Lower::view (styled true, richSample ())
+        expect ((lookOf (itemOf (darkLine, 1))).ink, 1724710911)
+
+    (** [NATIVE-SHM-LOWER] Stacks, splits and layers lower to their containers with the theme's spacing gap. *)
+    export lowerStacksCase () =
+        column = Lower::view (styled false, Ui::column [Ui::text "One", Ui::text "Two"])
+        expect (kindOf column, "column")
+        expect ((lookOf column).gap, 10.0)
+        expect (countOf column, 2)
+        expect (textOf (itemOf (column, 1)), "Two")
+        row = Lower::view (styled false, Ui::row [Ui::text "A", Ui::text "B"])
+        expect (kindOf row, "across")
+        expect ((lookOf row).gap, 10.0)
+        expect (countOf row, 2)
+        split = Lower::view (styled false, Ui::split [Ui::text "List", Ui::text "Detail"])
+        expect (kindOf split, "across")
+        expect (countOf split, 2)
+        expect ((fitOf (itemOf (split, 1))).share, 1.0)
+        layered = Lower::view (styled false, Ui::layer [Ui::text "Back", Ui::text "Front"])
+        expect (kindOf layered, "layered")
+        expect (countOf layered, 2)
+
+    (** [NATIVE-SHM-LOWER] Sections card on the background token; screens stack a titled toolbar over scrolling children. *)
+    export lowerSurfacesCase () =
+        section = Lower::view (styled false, Ui::section ("Sides", "Feeds four", [Ui::text "Batter"]))
+        expect (kindOf section, "column")
+        expect ((lookOf section).fill, 4042322175)
+        expect ((lookOf section).corner, 8.0)
+        expect ((lookOf section).inset, 8.0)
+        expect ((lookOf section).gap, 8.0)
+        expect (countOf section, 3)
+        expect (textOf (itemOf (section, 0)), "Sides")
+        expect ((lookOf (itemOf (section, 0))).points, 11.0)
+        expect ((lookOf (itemOf (section, 0))).heft, 600)
+        expect ((lookOf (itemOf (section, 0))).ink, 1146447615)
+        expect (textOf (itemOf (section, 2)), "Feeds four")
+        expect ((lookOf (itemOf (section, 2))).ink, 1146447615)
+        screen = Lower::view (styled false, Ui::screen ("Kitchen", "Spring", [Ui::button ("Bake", "", Increment)], [Ui::text "Steps"]))
+        expect ((lookOf screen).gap, 12.0)
+        expect (countOf screen, 2)
+        bar = itemOf (screen, 0)
+        expect (kindOf bar, "across")
+        expect ((lookOf bar).gap, 6.0)
+        expect (countOf bar, 3)
+        heading = itemOf (bar, 0)
+        expect (kindOf heading, "column")
+        expect ((lookOf heading).gap, 2.0)
+        expect (textOf (itemOf (heading, 0)), "Kitchen")
+        expect ((lookOf (itemOf (heading, 0))).points, 20.0)
+        expect ((lookOf (itemOf (heading, 0))).heft, 600)
+        expect ((lookOf (itemOf (heading, 0))).ink, 439041279)
+        expect (textOf (itemOf (heading, 1)), "Spring")
+        expect ((lookOf (itemOf (heading, 1))).ink, 1146447615)
+        body = itemOf (screen, 1)
+        expect (kindOf body, "scrolling")
+        expect ((lookOf body).gap, 10.0)
+        expect (countOf body, 1)
+
+    (** [NATIVE-SHM-LOWER] Frames lower with their authored size, surface and line; scoped themes re-ink their subtree. *)
+    export lowerFramesCase () =
+        base = ui::Frames::plain
+        style = base(frameWidth = 430, frameHeight = 240, frameTop = 14, frameRadius = 12, frameGap = 6, frameFill = "background", frameLine = "secondary", frameGrow = true, frameFont = "mono", frameTextSize = 20)
+        framed = Lower::view (styled true, Ui::framed (style, Ui::text "Inner"))
+        expect (kindOf framed, "fitted")
+        expect ((fitOf framed).wide, 430.0)
+        expect ((fitOf framed).tall, 240.0)
+        expect ((fitOf framed).share, 1.0)
+        expect ((fitOf framed).traits, Views::fixedWidth)
+        expect ((fitOf framed).edge, 2578103295)
+        card = innerOf framed
+        expect (kindOf card, "column")
+        expect ((lookOf card).fill, 269488383)
+        expect ((lookOf card).corner, 12.0)
+        expect ((lookOf card).gap, 6.0)
+        expect ((lookOf card).inset, 14.0)
+        expect ((lookOf card).points, 20.0)
+        expect (countOf card, 1)
+        local = ui::Theme(tokens = [ui::Token(tokenName = "text", tokenLight = "#000000", tokenDark = "#FFFFFF")], spacing = [4, 10, 16], feedback = 140, settle = 240)
+        scoped = Lower::view (styled true, Ui::themed (local, Ui::text "Scoped"))
+        expect (kindOf scoped, "wording")
+        expect (textOf scoped, "Scoped")
+        expect ((lookOf scoped).ink, 4294967295)
+
+    (** [NATIVE-SHM-LOWER] Dialogs and alerts lower to sheets that dismiss with a tap; menus show their body first. *)
+    export lowerOverlaysCase () =
+        dialog = Lower::view (styled false, Ui::dialog ("Review", Ui::button ("Insert", "", Increment), Load))
+        expect (kindOf dialog, "sheet")
+        expect ((lookOf dialog).fill, 4042322175)
+        expect ((lookOf dialog).corner, 12.0)
+        expect ((lookOf dialog).inset, 16.0)
+        expect (countOf dialog, 2)
+        expect (structuralEquals (sheetDismissOf dialog) (ui::Tap(action = Load)), true)
+        expect (textOf (itemOf (dialog, 0)), "Review")
+        expect ((lookOf (itemOf (dialog, 0))).points, 20.0)
+        insert = itemOf (dialog, 1)
+        expect (kindOf insert, "fitted")
+        expect (textOf (innerOf insert), "Insert")
+        expect (structuralEquals (pressAction (innerOf insert)) (ui::Tap(action = Increment)), true)
+        shown = Lower::view (styled false, ui::Alert(title = "Empty", message = "Nothing left", visible = true, dismiss = Typed))
+        expect (countOf shown, 2)
+        expect (structuralEquals (sheetDismissOf shown) (ui::Tap(action = Typed)), true)
+        hidden = Lower::view (styled false, ui::Alert(title = "Empty", message = "Nothing left", visible = false, dismiss = Typed))
+        expect (countOf hidden, 0)
+        expect (structuralEquals (sheetDismissOf hidden) (ui::Tap(action = Typed)), true)
+        menu = Lower::view (styled false, Ui::contextMenu (Ui::text "Body", [Ui::button ("Copy", "", Increment)]))
+        expect (kindOf menu, "menu")
+        expect (countOf menu, 2)
+        expect (textOf (itemOf (menu, 0)), "Body")
+
+    (** [NATIVE-SHM-LOWER] Asides order by side, fix their column's width and drag through a size input on a rule. *)
+    export lowerAsideCase () =
+        trailing = Lower::view (styled false, Ui::aside (Ui::text "Pane", ui::Trailing, Ui::text "Column", 420, Typed))
+        expect (kindOf trailing, "across")
+        expect (countOf trailing, 3)
+        expect ((fitOf (itemOf (trailing, 0))).share, 1.0)
+        splitter = itemOf (trailing, 1)
+        expect ((fitOf splitter).wide, 6.0)
+        rule = itemOf (innerOf splitter, 0)
+        expect (kindOf rule, "rule")
+        expect ((lookOf rule).points, 1.0)
+        drag = itemOf (innerOf splitter, 1)
+        expect (kindOf drag, "canvas")
+        expect (structuralEquals (canvasAction drag) (ui::SizeInput(action = Typed)), true)
+        expect ((fitOf (itemOf (trailing, 2))).wide, 420.0)
+        expect (textOf (innerOf (itemOf (trailing, 2))), "Column")
+        leading = Lower::view (styled false, Ui::aside (Ui::text "Pane", ui::Leading, Ui::text "Column", 300, Typed))
+        expect ((fitOf (itemOf (leading, 0))).wide, 300.0)
+        expect (textOf (innerOf (itemOf (leading, 0))), "Column")
+
+    (** [NATIVE-SHM-LOWER] Tabs lower to presses that deliver choices; the chosen tab is filled, heavier and shows its page. *)
+    tabsSample () = [Ui::tab ("one", "First", "star", Ui::text "Page one"), Ui::tab ("two", "Second", "", Ui::button ("Go", "", Increment))]
+
+    (** [NATIVE-SHM-LOWER] Tabs lower to presses that deliver choices; the chosen tab is filled, heavier and shows its page. *)
+    export lowerTabsCase () =
+        lowered = Lower::view (styled false, ui::Tabs(tabs = tabsSample (), selected = "two", bind = Typed))
+        expect (kindOf lowered, "column")
+        expect (countOf lowered, 2)
+        bar = itemOf (lowered, 0)
+        expect (kindOf bar, "across")
+        expect (countOf bar, 2)
+        first = itemOf (bar, 0)
+        expect ((fitOf first).hint, "one")
+        expect ((fitOf first).traits, 0)
+        expect (textOf (innerOf first), "star First")
+        expect ((lookOf (innerOf first)).fill, 0)
+        expect ((lookOf (innerOf first)).heft, 400)
+        expect (structuralEquals (pressAction (innerOf first)) (ui::ChoiceInput(action = Typed)), true)
+        chosen = itemOf (bar, 1)
+        expect ((fitOf chosen).hint, "two")
+        expect ((fitOf chosen).traits, Views::chosen)
+        expect (textOf (innerOf chosen), "Second")
+        expect ((lookOf (innerOf chosen)).heft, 600)
+        expect ((lookOf (innerOf chosen)).fill, 439041050)
+        expect (structuralEquals (pressAction (innerOf chosen)) (ui::ChoiceInput(action = Typed)), true)
+        page = itemOf (lowered, 1)
+        expect (kindOf page, "fitted")
+        expect (textOf (innerOf page), "Go")
+        unknown = Lower::view (styled false, ui::Tabs(tabs = tabsSample (), selected = "nine", bind = Typed))
+        expect (countOf unknown, 1)
+
+    (** [NATIVE-SHM-LOWER] Rows lower to presses that deliver choices; groups gain headings and the selected row is washed. *)
+    rowsSample () = [Ui::entry ("a", "star", "Recent", Ui::text "Alpha"), Ui::entry ("b", "", "Recent", Ui::text "Beta"), Ui::item ("c", Ui::text "Gamma")]
+
+    (** [NATIVE-SHM-LOWER] Rows lower to presses that deliver choices; groups gain headings and the selected row is washed. *)
+    export lowerRowsCase () =
+        lowered = Lower::view (styled true, ui::Rows(rows = rowsSample (), selected = "b", bind = Load))
+        expect (kindOf lowered, "column")
+        expect ((lookOf lowered).gap, 2.0)
+        expect (countOf lowered, 4)
+        expect (textOf (itemOf (lowered, 0)), "Recent")
+        expect ((lookOf (itemOf (lowered, 0))).heft, 600)
+        first = itemOf (lowered, 1)
+        expect ((fitOf first).hint, "a")
+        expect ((fitOf first).traits, 0)
+        stack = innerOf first
+        expect (kindOf stack, "layered")
+        expect (countOf stack, 2)
+        cell = itemOf (stack, 0)
+        expect (kindOf cell, "across")
+        expect (countOf cell, 2)
+        expect (textOf (itemOf (cell, 0)), "star")
+        expect ((lookOf (itemOf (cell, 0))).points, 12.0)
+        rest = itemOf (stack, 1)
+        expect (kindOf rest, "press")
+        expect ((lookOf rest).fill, 0)
+        expect (structuralEquals (pressAction rest) (ui::ChoiceInput(action = Load)), true)
+        picked = itemOf (lowered, 2)
+        expect ((fitOf picked).traits, Views::chosen)
+        pickedPress = itemOf (innerOf picked, 1)
+        expect ((lookOf pickedPress).fill, 3386435354)
+        expect (structuralEquals (pressAction pickedPress) (ui::ChoiceInput(action = Load)), true)
+        last = itemOf (lowered, 3)
+        expect ((fitOf last).hint, "c")
+        expect (textOf (itemOf (innerOf last, 0)), "Gamma")
+
+    (** [NATIVE-SHM-LOWER] Slots lower the region they name; an unknown key lowers to an empty column. *)
+    export lowerSlotCase () =
+        region = Keyed::region ([], "side", [], \() => Ui::styled ("Region text", ui::Title, ui::Good))
+        light = styled false
+        withRegions = light(styleRegions = [region])
+        filled = Lower::view (withRegions, Ui::slot "side")
+        expect (kindOf filled, "wording")
+        expect (textOf filled, "Region text")
+        expect ((lookOf filled).points, 20.0)
+        expect ((lookOf filled).ink, 305420031)
+        missing = Lower::view (withRegions, Ui::slot "missing")
+        expect (kindOf missing, "column")
+        expect (countOf missing, 0)
+
+    (** [NATIVE-SHM-LOWER] Buttons take their role's ink and fill, keep the host's metrics and disable through their fit. *)
+    export lowerButtonsCase () =
+        prominent = Lower::view (styled false, Ui::action ("Bake", "play", ui::Prominent, true, Increment))
+        expect (kindOf prominent, "fitted")
+        expect ((fitOf prominent).tall, 28.0)
+        expect ((fitOf prominent).traits, 0)
+        expect (textOf (innerOf prominent), "play Bake")
+        expect ((lookOf (innerOf prominent)).ink, 4294967295)
+        expect ((lookOf (innerOf prominent)).fill, 6728447)
+        expect ((lookOf (innerOf prominent)).inset, 12.0)
+        expect ((lookOf (innerOf prominent)).corner, 8.0)
+        expect ((lookOf (innerOf prominent)).points, 13.0)
+        expect (structuralEquals (pressAction (innerOf prominent)) (ui::Tap(action = Increment)), true)
+        dark = Lower::view (styled true, Ui::action ("Bake", "play", ui::Prominent, true, Increment))
+        expect ((lookOf (innerOf dark)).ink, 2241535)
+        expect ((lookOf (innerOf dark)).fill, 1724710911)
+        plain = Lower::view (styled false, Ui::button ("Keep", "", Increment))
+        expect ((lookOf (innerOf plain)).ink, 439041279)
+        expect ((lookOf (innerOf plain)).fill, 439041042)
+        destructive = Lower::view (styled false, Ui::action ("Remove", "", ui::Destructive, true, Load))
+        expect ((lookOf (innerOf destructive)).ink, 3424789247)
+        expect ((lookOf (innerOf destructive)).fill, 439041042)
+        disabled = Lower::view (styled false, Ui::action ("Stop", "", ui::Plain, false, Load))
+        expect ((fitOf disabled).traits, Views::disabled)
+        expect (textOf (innerOf disabled), "Stop")
+        expect ((lookOf (innerOf disabled)).heft, 400)
+
+    (** [NATIVE-SHM-LOWER] Fields lower to typing or writing with prompt hints, secret and submit traits and their label above. *)
+    export lowerFieldsCase () =
+        field = Lower::view (styled false, ui::Field(label = "Name", value = "Ada", prompt = "Your name", secure = true, multiline = false, commit = ui::OnSubmit, bind = Typed))
+        expect (kindOf field, "column")
+        expect ((lookOf field).gap, 4.0)
+        expect (countOf field, 2)
+        expect (textOf (itemOf (field, 0)), "Name")
+        expect ((lookOf (itemOf (field, 0))).points, 11.0)
+        expect ((lookOf (itemOf (field, 0))).ink, 1146447615)
+        entry = itemOf (field, 1)
+        expect ((fitOf entry).hint, "Your name")
+        expect ((fitOf entry).traits, 68)
+        expect (kindOf (innerOf entry), "typing")
+        expect (textOf (innerOf entry), "Ada")
+        expect ((lookOf (innerOf entry)).points, 13.0)
+        expect ((lookOf (innerOf entry)).corner, 6.0)
+        expect (structuralEquals (typingAction (innerOf entry)) (ui::TextInput(action = Typed)), true)
+        notes = Lower::view (styled false, Ui::multiline ("Notes", "Two lines", "Add", Typed))
+        expect (kindOf notes, "fitted")
+        expect ((fitOf notes).traits, 0)
+        expect ((fitOf notes).hint, "Add")
+        expect (kindOf (innerOf notes), "writing")
+        expect (textOf (innerOf notes), "Two lines")
+        expect (structuralEquals (typingAction (innerOf notes)) (ui::TextInput(action = Typed)), true)
+        toggle = Lower::view (styled false, Ui::toggle ("Nightly", true, Load))
+        expect (kindOf toggle, "switch")
+        expect (switchWordsOf toggle, "Nightly")
+        expect (switchOnOf toggle, true)
+        expect ((lookOf toggle).points, 13.0)
+        expect (structuralEquals (switchFlagOf toggle) (ui::FlagInput(action = Load)), true)
+
+    (** [NATIVE-SHM-LOWER] Pickers choose through options; disclosures deliver their flag and reveal their children when open. *)
+    export lowerPickersCase () =
+        choices = [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")]
+        picker = Lower::view (styled false, ui::Picker(label = "Sort", choices = choices, selected = "b", bind = Load))
+        expect (kindOf picker, "fitted")
+        expect ((fitOf picker).hint, "Sort")
+        menu = innerOf picker
+        expect (kindOf menu, "choosing")
+        expect (textOf menu, "Beta")
+        expect ((lookOf menu).ink, 1146447615)
+        expect (countOf menu, 2)
+        expect (structuralEquals (choosingAction menu) (ui::ChoiceInput(action = Load)), true)
+        beta = itemOf (menu, 1)
+        expect (kindOf beta, "option")
+        expect (textOf beta, "Beta")
+        expect (optionKeyOf beta, "b")
+        expect (optionChosenOf beta, true)
+        expect ((lookOf beta).points, 13.0)
+        alpha = itemOf (menu, 0)
+        expect (optionKeyOf alpha, "a")
+        expect (optionChosenOf alpha, false)
+        closed = Lower::view (styled false, Ui::disclosure ("Limits", false, Load, [Ui::text "Scope"]))
+        expect (kindOf closed, "column")
+        expect (countOf closed, 1)
+        title = innerOf (itemOf (closed, 0))
+        expect (textOf title, "Limits")
+        expect ((lookOf title).ink, 1146447615)
+        expect (structuralEquals (pressAction title) (ui::FlagInput(action = Load)), true)
+        open = Lower::view (styled false, Ui::disclosure ("Limits", true, Load, [Ui::text "Scope"]))
+        expect (countOf open, 2)
+        expect (textOf (itemOf (open, 1)), "Scope")
+
+    (** [NATIVE-SHM-LOWER] Pairs, badges, labels, icons, links, spacers and dividers lower as quiet leaves with concrete colour. *)
+    export lowerLeavesCase () =
+        expect (structuralEquals (Lower::view (styled false, ui::Spacer)) ui::Gap, true)
+        pair = Lower::view (styled false, ui::Pair(label = "Size", value = "3"))
+        expect (kindOf pair, "across")
+        expect ((lookOf pair).gap, 8.0)
+        expect (countOf pair, 3)
+        expect (textOf (itemOf (pair, 0)), "Size")
+        expect ((lookOf (itemOf (pair, 0))).ink, 1146447615)
+        expect (structuralEquals (itemOf (pair, 1)) ui::Gap, true)
+        expect (textOf (itemOf (pair, 2)), "3")
+        expect ((lookOf (itemOf (pair, 2))).ink, 439041279)
+        badge = Lower::view (styled true, Ui::badge ("Live", "play", ui::Danger))
+        expect (kindOf badge, "wording")
+        expect (textOf badge, "play Live")
+        expect ((lookOf badge).ink, 4284901119)
+        expect ((lookOf badge).fill, 4284900900)
+        expect ((lookOf badge).points, 11.0)
+        expect ((lookOf badge).heft, 500)
+        expect ((lookOf badge).corner, 999.0)
+        labelled = Lower::view (styled false, Ui::label ("Scope", "info"))
+        expect (textOf labelled, "info Scope")
+        expect ((lookOf labelled).ink, 439041279)
+        expect ((lookOf labelled).points, 13.0)
+        icon = Lower::view (styled false, Ui::icon "star")
+        expect (textOf icon, "star")
+        expect ((lookOf icon).points, 14.0)
+        link = Lower::view (styled false, Ui::link ("Guide", "https://example.test"))
+        expect (kindOf link, "fitted")
+        expect ((fitOf link).hint, "https://example.test")
+        expect (textOf (innerOf link), "Guide")
+        expect ((lookOf (innerOf link)).ink, 6728447)
+        divider = Lower::view (styled false, ui::Divider)
+        expect (kindOf divider, "rule")
+        expect ((lookOf divider).points, 1.0)
+        expect ((lookOf divider).ink, 1146447615)
+
+    (** [NATIVE-SHM-LOWER] Segments, empty states, progress, meters and swatches draw their tones as concrete boxes and words. *)
+    export lowerStatusCase () =
+        segments = Lower::view (styled false, ui::Segments(tones = [ui::Good, ui::Danger], label = ""))
+        expect (kindOf segments, "across")
+        expect (countOf segments, 2)
+        first = itemOf (segments, 0)
+        expect ((fitOf first).share, 1.0)
+        expect ((fitOf first).tall, 4.0)
+        expect ((lookOf (innerOf first)).fill, 305420031)
+        expect ((lookOf (innerOf (itemOf (segments, 1)))).fill, 3424789247)
+        empty = Lower::view (styled false, Ui::empty ("tray", "Nothing here", "Add something first"))
+        expect ((fitOf empty).traits, Views::centred)
+        list = innerOf empty
+        expect ((lookOf list).gap, 8.0)
+        expect (countOf list, 3)
+        expect (textOf (itemOf (list, 0)), "tray")
+        expect ((lookOf (itemOf (list, 0))).points, 28.0)
+        expect (textOf (itemOf (list, 1)), "Nothing here")
+        expect ((lookOf (itemOf (list, 1))).points, 20.0)
+        expect ((lookOf (itemOf (list, 1))).heft, 600)
+        expect (textOf (itemOf (list, 2)), "Add something first")
+        expect ((lookOf (itemOf (list, 2))).ink, 1146447615)
+        progress = Lower::view (styled false, ui::Progress(label = "Loading", detail = "3 of 9"))
+        expect (kindOf progress, "column")
+        expect (countOf progress, 2)
+        expect (textOf (itemOf (progress, 1)), "3 of 9")
+        expect ((lookOf (itemOf (progress, 1))).points, 12.0)
+        meter = Lower::view (styled false, Ui::meter ("Disk", 3, 4, ui::Accent))
+        expect (countOf meter, 2)
+        expect (textOf (itemOf (meter, 0)), "Disk")
+        expect ((lookOf (itemOf (meter, 0))).ink, 1146447615)
+        bars = itemOf (meter, 1)
+        expect (countOf bars, 2)
+        filled = itemOf (bars, 0)
+        expect ((fitOf filled).share, 3.0)
+        expect ((fitOf filled).tall, 4.0)
+        expect ((lookOf (innerOf filled)).fill, 6728447)
+        expect ((lookOf (innerOf filled)).corner, 999.0)
+        track = itemOf (bars, 1)
+        expect ((fitOf track).share, 1.0)
+        expect ((lookOf (innerOf track)).fill, 6728233)
+        swatch = Lower::view (styled false, ui::Swatch(name = "Ink", light = "#101010", dark = "#EFEFEF"))
+        expect (kindOf swatch, "across")
+        expect (countOf swatch, 2)
+        chip = itemOf (swatch, 0)
+        expect ((fitOf chip).wide, 16.0)
+        expect ((fitOf chip).tall, 16.0)
+        expect ((lookOf (innerOf chip)).fill, 269488383)
+        expect (textOf (itemOf (swatch, 1)), "Ink")
+        nightSwatch = Lower::view (styled true, ui::Swatch(name = "Ink", light = "#101010", dark = "#EFEFEF"))
+        expect ((lookOf (innerOf (itemOf (nightSwatch, 0)))).fill, 4025479167)
+
+    (** [NATIVE-SHM-LOWER] Media, editors, boards and scenes lower fitted and bind in the JSON encoder's order. *)
+    export lowerMediaCase () =
+        image = Lower::view (styled false, ui::Image(imageSource = "a.png", imageAlt = "A map", imageWidth = 320, imageHeight = 200))
+        expect (kindOf image, "fitted")
+        expect ((fitOf image).wide, 320.0)
+        expect ((fitOf image).tall, 200.0)
+        expect ((fitOf image).hint, "A map")
+        expect (textOf (innerOf image), "a.png")
+        video = Lower::view (styled false, ui::Video(videoSource = "v.mp4", videoPoster = "p.png", videoCaptions = "", videoAlt = "A talk", videoSeconds = 90))
+        expect ((fitOf video).hint, "A talk")
+        expect (textOf (innerOf video), "p.png")
+        spoken = Lower::view (styled false, ui::Typeset(math = ui::Sym "x", spoken = "x equals two"))
+        expect (kindOf spoken, "wording")
+        expect (textOf spoken, "x equals two")
+        expect ((lookOf spoken).points, 13.0)
+        editor = Lower::view (styled false, Editors::editor ("Proof", "one", 3, [], Typed, Load))
+        expect (kindOf editor, "fitted")
+        expect ((fitOf editor).hint, "Proof")
+        stack = innerOf editor
+        expect (kindOf stack, "layered")
+        expect (countOf stack, 2)
+        writing = itemOf (stack, 0)
+        expect (kindOf writing, "writing")
+        expect (textOf writing, "one")
+        expect (structuralEquals (typingAction writing) (ui::TextInput(action = Typed)), true)
+        caret = itemOf (stack, 1)
+        expect (kindOf caret, "canvas")
+        expect (structuralEquals (canvasAction caret) (ui::PlaceInput(action = Load)), true)
+        board = Lower::view (styled false, Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load))
+        expect (kindOf board, "layered")
+        expect (countOf board, 3)
+        expect ((lookOf board).fill, 4042322175)
+        expect ((lookOf board).ink, 573785343)
+        expect (structuralEquals (canvasAction (itemOf (board, 0))) (ui::StrokeInput(action = Increment)), true)
+        expect (structuralEquals (canvasAction (itemOf (board, 1))) (ui::LassoInput(action = Typed)), true)
+        expect (structuralEquals (canvasAction (itemOf (board, 2))) (ui::TextInput(action = Load)), true)
+        still = Lower::view (styled false, Boards::board ("board", 2, true, Increment, Typed))
+        expect (countOf still, 2)
+        zoomed = Lower::view (styled false, Ui::zoomed (2.0, 100.0, 50.0, [], [], Typed))
+        expect (kindOf zoomed, "fitted")
+        expect ((fitOf zoomed).wide, 200.0)
+        expect ((fitOf zoomed).tall, 100.0)
+        expect (structuralEquals (canvasAction (innerOf zoomed)) (ui::SceneInput(action = Typed)), true)
+        fitted = Lower::view (styled false, Ui::zoomed (0.0, 100.0, 50.0, [], [], Typed))
+        expect ((fitOf fitted).share, 1.0)
+        expect ((fitOf fitted).wide, 0.0)

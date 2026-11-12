@@ -76,5 +76,21 @@ ok 75 - native machine views render ordinary controls and preserve every host va
 ok 76 - broken machine documents name every JSON path and faulty machines remain renderable
 ok 77 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering
 ok 78 - machine edge cases cover every template variant fault cycle request payload and pointer state
-1..78
-# tests=78 passed=78 failed=0 skipped=0
+ok 79 - lowering reads text roles and tones from the theme in both appearances
+ok 80 - lowering builds rich text runs with emphasis, slant and their own inks
+ok 81 - lowering stacks, splits and layers take the theme's spacing gap
+ok 82 - lowering sections card on the background token and screens stack a titled toolbar
+ok 83 - lowering frames apply their authored size, surface and line, and scoped themes re-ink
+ok 84 - lowering dialogs and alerts dismiss with taps and menus show their body first
+ok 85 - lowering asides order by side and drag through a size input on a rule
+ok 86 - lowering tabs deliver choices with the chosen tab filled and its page shown
+ok 87 - lowering rows deliver choices with group headings and the selected row washed
+ok 88 - lowering slots lower the region they name or draw an empty column
+ok 89 - lowering buttons take their role's ink and fill and disable through their fit
+ok 90 - lowering fields prompt, hide and commit through their fit and carry text input
+ok 91 - lowering pickers choose through options and disclosures deliver their flag
+ok 92 - lowering pairs, badges, labels, icons, links and dividers draw quiet leaves
+ok 93 - lowering segments, empties, progress, meters and swatches draw their tones
+ok 94 - lowering media, editors, boards and scenes bind in the encoder's order
+1..94
+# tests=94 passed=94 failed=0 skipped=0
