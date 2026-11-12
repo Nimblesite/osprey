@@ -311,3 +311,42 @@ fn combinators_reject_missing_buffers_but_accept_empty_buffers() {
         }
     }
 }
+
+/// [GPU-KERNEL-EXTRACT] A depth cap is not proof of recursion; keep causes concise.
+#[test]
+fn device_inline_depth_diagnostics_preserve_distinct_helpers_without_repetition() {
+    let chain = (1..27).fold("fn step0(x) = x\n".to_owned(), |source, i| {
+        format!("{source}fn step{i}(x) = step{}(x)\n", i - 1)
+    });
+    for (helpers, entry) in [
+        (
+            "fn descend(x) = match x == 0 { true => x false => descend(wrapAdd(x, -1)) }\n"
+                .to_owned(),
+            "descend",
+        ),
+        (chain, "step26"),
+    ] {
+        let source = format!("{helpers}match toGpu([1]) {{ Success {{ value }} => match gpuMap(value, {entry}) {{ Success {{ value }} => print(gpuLength(value)) Error {{ message }} => print(message) }} Error {{ message }} => print(message) }}\n");
+        let path = program("inline_depth", "osp", &source).expect("write depth fixture");
+        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+            .arg(&path)
+            .args(["--llvm", "--quiet"])
+            .output()
+            .expect("compile depth fixture");
+        std::fs::remove_file(path).expect("remove depth fixture");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let ir = String::from_utf8_lossy(&output.stdout);
+        assert!(ir.contains("call i32 @osprey_gpu_declined("), "{ir}");
+        assert!(ir.contains("device inline depth limit"), "{ir}");
+        assert!(!ir.contains("recurses"), "{ir}");
+        if entry == "descend" {
+            assert_eq!(ir.matches("descend: ").count(), 1, "{ir}");
+        } else {
+            assert!(ir.contains("step25: step24: "), "{ir}");
+        }
+    }
+}

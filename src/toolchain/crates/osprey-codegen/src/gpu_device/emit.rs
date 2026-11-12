@@ -50,7 +50,7 @@ pub(super) struct Emitter<'a> {
     pub(super) default_float: Ty,
 }
 
-/// Helper inlining deeper than this is treated as recursion.
+/// Bound helper expansion, including recursive and deep acyclic call chains.
 pub(super) const MAX_INLINE_DEPTH: usize = 24;
 
 /// Compile `body` with the kernel's parameters bound to `p0`, `p1`, … and
@@ -326,7 +326,14 @@ impl Emitter<'_> {
             scopes: Vec::new(),
         };
         self.with_float_context(target, |emitter| emitter.closed(&closure, bindings))
-            .map_err(|reason| format!("{name}: {reason}"))
+            .map_err(|reason| {
+                let prefix = format!("{name}: ");
+                if reason.starts_with(&prefix) {
+                    reason
+                } else {
+                    format!("{prefix}{reason}")
+                }
+            })
     }
 
     /// Inline a function argument the way a helper is inlined, in its own
@@ -359,7 +366,9 @@ impl Emitter<'_> {
             ));
         }
         if self.depth >= MAX_INLINE_DEPTH {
-            return Err(format!("`{name}` recurses, which a device kernel cannot"));
+            return Err(format!(
+                "device inline depth limit ({MAX_INLINE_DEPTH}) reached at `{name}`"
+            ));
         }
         parameters
             .iter()

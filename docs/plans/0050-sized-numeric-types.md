@@ -186,10 +186,13 @@ Re-measured 2026-11-05 17:14 with `OSPREY_GPU=metal` under gc; the gate is still
 | Default | 12 of 17 | 8, 11, 12 (division by zero on the device), 15, 16 (`rowDot` kernel decline) |
 | ML | 11 of 17 | 8, 12 (division by zero), 10, 11 (`degenerate` kernel decline), 15, 16 (`rowDot` kernel decline) |
 
+Current forced-Metal ARC verification (2026-11-12) returns failure in both flavors: each passes 12/17 and fails cases 8, 11, 12, 15 and 16, with real Apple M4 Max dispatches and zero live ARC objects. The earlier ML-only decline is absent in this run; complete twin IR parity remains a separate requirement. Receipts: `target/logs/goal-plan-audit/mlkernels-metal-results.json` and `mlkernels-metal-{osp,ospml}.{out,err}`.
+
 Checks this adds:
 
 - [ ] Device division by zero in cases 8, 11 and 12: make the device match the host's total result or change the case's documented contract with the reason, under [ARITH-DEVICE-RECOVERY] in plan 0023.
-- [ ] `rowDot` declines in cases 15 and 16: give the kernel a device form. Its decline message repeats `rowDot:` many times; fix that with a test that pins the message.
+- [ ] `rowDot` declines in cases 15 and 16: give the kernel a device form.
+- [x] Correct the repeated kernel-decline diagnostic. An E2E compiler regression reproduces 24 repeated helper prefixes and an acyclic chain falsely labelled recursive; the fix reports the unchanged inline-depth limit, collapses adjacent identical helper contexts, and preserves distinct contexts. RED/GREEN receipts: `target/logs/goal-plan-audit/diagnostic-{red,green}.log` (2026-11-12). This does not make recursive kernels executable.
 - [ ] Twin parity on the device: the ML twin declines `degenerate` in cases 10 and 11 where the Default twin compiles it. Twins must emit identical IR, so find out why they diverge, and add a regression.
 - [ ] After those, run the gate in both flavors under gc and arc on Metal, and record the GPT-2 token time the gate requires. Neither is recorded yet.
 
