@@ -164,6 +164,9 @@ module Model {
 
     /// qkv is [t, 2304]: query, key and value start at columns 0, `width` and 2 * `width`.
     fn qkvPart(qkv, column, r, h, d) = at(qkv, r * qkvWidth + column + h * headWidth + d)
+    export fn qAt(qkv, r, h, d) = qkvPart(qkv, 0, r, h, d)
+    export fn kAt(qkv, r, h, d) = qkvPart(qkv, width, r, h, d)
+    export fn vAt(qkv, r, h, d) = qkvPart(qkv, 2 * width, r, h, d)
     fn score(qkv, h, r, c) = (range(0, headWidth) |> fold(0.0, fn(a, d) => a + qkvPart(qkv, 0, r, h, d) * qkvPart(qkv, width, c, h, d))) * scoreScale
     /// Row r of n attended rows is position first + r; probs are [heads, n, t].
     fn weighted(probs, qkv, t, n, first, r, h, d) = range(0, first + r + 1) |> fold(0.0, fn(a, c) => a + at(probs, (h * n + r) * t + c) * qkvPart(qkv, 2 * width, c, h, d))
@@ -253,7 +256,8 @@ module Model {
     }
 
     /// The embedding of one token at position p, [1, width].
-    export fn embedOne(w, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(w.wte, token * width + c) + at(w.wpe, p * width + c)), empty)
+    export fn embedOne(w, token, p) = embedRow(w.wte, w.wpe, token, p)
+    fn embedRow(wte, wpe, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(wte, token * width + c) + at(wpe, p * width + c)), empty)
 
     /// The newest position, token at index t - 1, through the twelve blocks over
     /// their caches of the t - 1 earlier positions.
