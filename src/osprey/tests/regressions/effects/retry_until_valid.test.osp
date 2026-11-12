@@ -1103,3 +1103,38 @@ fn retryPerformSiteMatrixCase() = {
 
 // Crosses the perform-site axis against operation arities zero through four.
 test("every perform site reaches the same retry handler", exactly(retryPerformSiteMatrixCase))
+
+// [MODULES-FILE-SCOPE-BINDING] A handler inside a function replaces a file-scope list with a
+// fresh literal; the next arm, and every later reader, must find a real list there.
+effect Tape {
+    wipe: fn(int) -> Unit
+    push: fn(int) -> Unit
+}
+
+mut taped = [0]
+
+fn taping(work) = {
+    handle Tape {
+        wipe _ => { taped = [0] }
+        push value => { taped = listConcat(taped, [value]) }
+    }
+    work()
+}
+
+fn tapedSum() = {
+    perform Tape.wipe(0)
+    range(1, 40) |> fold(0, fn(total, value) => {
+        perform Tape.push(value)
+        total + value
+    })
+}
+
+test("a file-scope list replaced by a literal inside a handler stays a real list", fn() => exactArithmetic(fn() => checkAll("taped list", [
+    taping(tapedSum) == 780,
+    length(taped) == 40,
+    taping(fn() => tapedSum() + tapedSum()) == 1560,
+    length(taped) == 40,
+    (listGet(taped, 0) ?: 9) == 0,
+    (listGet(taped, 39) ?: 0) == 39,
+    (listGet(taped, 40) ?: 0 - 1) == 0 - 1
+])))

@@ -313,6 +313,9 @@ pub(crate) fn assign(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
     };
     let (target, held) = destination(cg, &slot);
     let ty = held.as_str();
+    // As in [`publish`]: the slot is read back as a runtime List handle, so a
+    // flat literal must be materialized before it is stored, never after.
+    let value = crate::listlit::escaping(cg, value);
     let incoming = if slot.cell {
         crate::cast::coerce_to(cg, value, held)?
     } else {
