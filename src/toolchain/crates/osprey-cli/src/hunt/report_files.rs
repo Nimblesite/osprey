@@ -89,8 +89,7 @@ fn diagnostics(directory: &Path) -> Result<Value, String> {
         let path = entry.map_err(|e| e.to_string())?.path();
         let name = path
             .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+            .map_or_default(|n| n.to_string_lossy().into_owned());
         if path.is_file()
             && (path
                 .extension()

@@ -121,8 +121,7 @@ impl Codegen {
             debug_local_ids: self
                 .debug
                 .as_ref()
-                .map(|d| d.current_local_ids.clone())
-                .unwrap_or_default(),
+                .map_or_default(|d| d.current_local_ids.clone()),
         };
         if let Some(debug) = self.debug.as_mut() {
             debug.clear_function();

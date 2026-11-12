@@ -218,15 +218,11 @@ fn ordered_args(
     // function-typed), so an inline-lambda argument is lowered to that slot's
     // ABI rather than evaluated as a value. An EXTERN callee crosses the C
     // boundary: its function-typed slots take raw code pointers, not cells.
-    let sigs: Vec<Option<FnSig>> = cg
-        .prog
-        .param_types(name)
-        .map(|ts| {
-            ts.iter()
-                .map(|t| Codegen::fn_value_sig(&cg.prog, t))
-                .collect()
-        })
-        .unwrap_or_default();
+    let sigs: Vec<Option<FnSig>> = cg.prog.param_types(name).map_or_default(|ts| {
+        ts.iter()
+            .map(|t| Codegen::fn_value_sig(&cg.prog, t))
+            .collect()
+    });
     let ffi = !cg.fn_params.contains_key(name) && cg.prog.functions.contains_key(name);
     if !named.is_empty() {
         if let Some(pnames) = cg

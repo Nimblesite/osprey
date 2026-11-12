@@ -20,7 +20,8 @@ static void assert_value(const char *err, int64_t got, int64_t want) {
 static void assert_cursor_probes(cursor_at_fn at, const cursor_probe *probes, size_t n) {
     for (size_t i = 0; i < n; i++) {
         int64_t out = 0;
-        assert_value(at(probes[i].s, probes[i].index, &out), out, probes[i].want);
+        const char *err = at(probes[i].s, probes[i].index, &out);
+        assert_value(err, out, probes[i].want);
     }
 }
 
@@ -108,7 +109,8 @@ void test_cursor_codepoint_width(void) {
     };
     for (size_t i = 0; i < sizeof widths / sizeof widths[0]; i++) {
         int64_t out = 0;
-        assert_value(osp_string_codepoint_width(widths[i].cp, &out), out, widths[i].want);
+        const char *err = osp_string_codepoint_width(widths[i].cp, &out);
+        assert_value(err, out, widths[i].want);
     }
     printf("  ok  cursor.codePointWidth\n");
 }

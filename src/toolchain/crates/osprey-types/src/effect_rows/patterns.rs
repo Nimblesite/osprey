@@ -122,8 +122,6 @@ fn pattern_owner(name: &str, value: Option<&Value>, owner: &FieldOwner) -> Field
         });
     FieldInstance {
         name: name.to_owned(),
-        arguments: matched
-            .map(|owner| owner.arguments.clone())
-            .unwrap_or_default(),
+        arguments: matched.map_or_default(|owner| owner.arguments.clone()),
     }
 }

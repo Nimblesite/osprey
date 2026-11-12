@@ -19,8 +19,7 @@ use std::process::ExitCode;
 fn keys(value: &serde_json::Value) -> BTreeSet<String> {
     value
         .as_object()
-        .map(|object| object.keys().cloned().collect())
-        .unwrap_or_default()
+        .map_or_default(|object| object.keys().cloned().collect())
 }
 
 fn set(names: &[&str]) -> BTreeSet<String> {

@@ -92,8 +92,7 @@ pub(crate) fn content_changes(params: &Value) -> Vec<Result<TextEdit, String>> {
     params
         .get("contentChanges")
         .and_then(Value::as_array)
-        .map(|items| items.iter().map(change_event).collect())
-        .unwrap_or_default()
+        .map_or_default(|items| items.iter().map(change_event).collect())
 }
 
 fn change_event(change: &Value) -> Result<TextEdit, String> {
@@ -134,14 +133,13 @@ pub(crate) fn action_range(params: &Value) -> Option<Span> {
 pub(crate) fn action_kinds(params: &Value) -> Vec<String> {
     nested(params, "context", "only")
         .and_then(Value::as_array)
-        .map(|kinds| {
+        .map_or_default(|kinds| {
             kinds
                 .iter()
                 .filter_map(Value::as_str)
                 .map(str::to_string)
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 pub(crate) fn code_actions_result(actions: &[crate::model::CodeAction]) -> Value {

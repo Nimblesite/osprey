@@ -130,8 +130,7 @@ pub(super) fn rejection_diagnostics(path: &Path, source: &str) -> String {
     // whose signature never became concrete enough to emit.
     osprey_codegen::compile_program(backend.as_ref().unwrap_or(&program))
         .err()
-        .map(|e| format!("{e}\n"))
-        .unwrap_or_default()
+        .map_or_default(|e| format!("{e}\n"))
 }
 
 /// One golden line: `line:column: message`, or the bare message when the

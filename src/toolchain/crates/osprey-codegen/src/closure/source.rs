@@ -64,11 +64,8 @@ fn lambda_site(cg: &Codegen, position: Option<Position>) -> String {
     let function = cg
         .source_function
         .as_deref()
-        .map(|name| format!(" in `{name}`"))
-        .unwrap_or_default();
-    let site = position
-        .map(|at| format!(" at {}:{}", at.line, at.column))
-        .unwrap_or_default();
+        .map_or_default(|name| format!(" in `{name}`"));
+    let site = position.map_or_default(|at| format!(" at {}:{}", at.line, at.column));
     format!("{function}{site}")
 }
 

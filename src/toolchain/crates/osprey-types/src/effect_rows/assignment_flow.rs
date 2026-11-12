@@ -154,8 +154,7 @@ impl Analyzer<'_> {
     ) {
         let sites = self
             .value(channel, scope, env)
-            .map(|channel| channel.channel_sites)
-            .unwrap_or_default();
+            .map_or_default(|channel| channel.channel_sites);
         let payload = self
             .value(value, scope, env)
             .unwrap_or_else(Value::unknown_value);

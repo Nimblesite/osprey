@@ -146,8 +146,7 @@ impl Codegen {
         self.prog
             .ctors
             .get(name)
-            .map(|c| c.type_params.clone())
-            .unwrap_or_default()
+            .map_or_default(|c| c.type_params.clone())
     }
 
     /// The lowered [`FnSig`] of a function-typed value `ty`, for the closure

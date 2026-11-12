@@ -56,7 +56,7 @@ impl ProfilerEvents for Recorder {
 impl Recorder {
     /// The `top_function` of every progress notification sent so far.
     fn tops(&self) -> Vec<String> {
-        let sent = self.0.lock().map(|sent| sent.clone()).unwrap_or_default();
+        let sent = self.0.lock().map_or_default(|sent| sent.clone());
         sent.iter()
             .filter(|(method, _)| *method == methods::CPU_PROGRESS)
             .filter_map(|(_, params)| {
@@ -70,7 +70,7 @@ impl Recorder {
 
     /// The `sample_count` of the latest progress notification; 0 before the first.
     fn progress_samples(&self) -> i64 {
-        let sent = self.0.lock().map(|sent| sent.clone()).unwrap_or_default();
+        let sent = self.0.lock().map_or_default(|sent| sent.clone());
         sent.iter()
             .rev()
             .find(|(method, _)| *method == methods::CPU_PROGRESS)
