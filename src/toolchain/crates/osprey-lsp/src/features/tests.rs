@@ -416,3 +416,72 @@ fn position_of(text: &str, needle: &str) -> (u32, u32) {
 }
 
 mod union_variants;
+
+#[test]
+fn hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types() {
+    // A match-arm binder and a lambda parameter are bindings without a `let`,
+    // so neither reached the binding table and hovering one returned nothing —
+    // in the pattern that binds it and in the body that reads it alike.
+    // Implements [LSP-HOVER-BINDERS].
+    let ml = "segment row = match row\n    [x, y, ctrlAX, ..._rest] => x + y + ctrlAX\n    [x, ...tail] => x\n    _ => 0.0\n\nlet s = segment [1.0, 2.0, 3.0]\n";
+    for (line, needle, expected) in [
+        (1, "x, y", "x : float"),
+        (1, "y, ctrlAX", "y : float"),
+        (1, "ctrlAX, ...", "ctrlAX : float"),
+        (1, "ctrlAX\n", "ctrlAX : float"),
+        (1, "_rest", "_rest : List<float>"),
+        (2, "tail", "tail : List<float>"),
+        (2, "x\n", "x : float"),
+    ] {
+        let md = binder_hover(ml, "file:///logo.ospml", line, needle);
+        crate::testkit::shows(&md, &[expected, "```osprey-ml"]);
+    }
+
+    // A tuple-style ML parameter list is a pattern over one argument, so its
+    // names are binders too (#372).
+    let tupled = "total (left, right) = satAdd (left, right)\n\nlet t = total (1, 2)\n";
+    for (needle, expected) in [
+        ("left, right) =", "left : int"),
+        ("right)\n", "right : int"),
+    ] {
+        let md = binder_hover(tupled, "file:///total.ospml", 0, needle);
+        crate::testkit::shows(&md, &[expected, "```osprey-ml"]);
+    }
+
+    // Constructor fields, structural rows and tuple slots bind the same way,
+    // and a name bound in two arms answers with the arm under the cursor.
+    let default = "type Shape = Circle { radius: float } | Named { label: string }\ntype Pair = Pair(int, int)\nfn describe(shape, pair: Pair) = match shape {\n  Circle { radius } => toString(radius)\n  Named { label } => match pair {\n    (label, count) => \"${label}${count}\"\n  }\n}\nfn apply(f, v) = f(v)\nlet d = describe(Circle { radius: 1.0 }, Pair(2, 3))\nlet kept = apply(|item| => [item], 2)\nlet joined = |left, right| => left + right + \"!\"\nlet j = joined(\"a\", \"b\")\n";
+    for (line, needle, expected) in [
+        (3, "radius }", "radius: float"),
+        (3, "radius)", "radius: float"),
+        (4, "label }", "label: string"),
+        (5, "label, count", "label: int"),
+        (5, "count)", "count: int"),
+        (5, "label}", "label: int"),
+        (5, "count}", "count: int"),
+        (10, "item|", "item: int"),
+        (10, "item]", "item: int"),
+        (11, "left,", "left: string"),
+        (11, "right|", "right: string"),
+        (11, "left +", "left: string"),
+        (11, "right +", "right: string"),
+    ] {
+        let md = binder_hover(default, "file:///shapes.osp", line, needle);
+        crate::testkit::shows(&md, &[expected, "```osprey"]);
+    }
+
+    // A binder is in scope only inside its own arm: `head` must not answer
+    // for the same word written after the match.
+    let stray = "fn pick(xs) = match xs {\n  [head, ...tail] => head\n  _ => 0\n}\nlet n = pick([1])\n// head\n";
+    assert!(hover(stray, "file:///a.osp", 5, 4, U16).is_none());
+}
+
+/// Hover over the LAST `needle` on 0-based `line`; a needle ending in a
+/// newline anchors on the end of the line.
+fn binder_hover(src: &str, uri: &str, line: usize, needle: &str) -> String {
+    let needle = needle.trim_end_matches('\n');
+    let at = src.lines().nth(line).and_then(|text| text.rfind(needle));
+    let col = u32::try_from(at.expect("needle on line")).expect("column fits") + 1;
+    hover(src, uri, u32::try_from(line).expect("line fits"), col, U16)
+        .unwrap_or_else(|| panic!("no hover for `{needle}` on line {line} of {uri}"))
+}

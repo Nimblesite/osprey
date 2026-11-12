@@ -19,6 +19,7 @@ impl Checker {
             fn_sigs: HashMap::new(),
             handler_factories: HashSet::new(),
             lambda_tys: Vec::new(),
+            binder_tys: crate::binders::Binders::default(),
             let_tys: Vec::new(),
             list_tys: Vec::new(),
             instantiations: HashMap::new(),

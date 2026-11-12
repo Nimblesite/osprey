@@ -103,6 +103,8 @@ pub struct ProgramTypes {
     pub(crate) lets: SiteTable,
     /// Original binding types, shared unchanged by backend specialization and layout conversion.
     pub(crate) source_lets: Arc<SiteTable>,
+    /// Pattern binder and lambda parameter types. Implements [LSP-HOVER-BINDERS].
+    pub(crate) binders: Arc<crate::binders::Binders>,
     /// Each list literal's resolved `List<T>`, keyed by its source position.
     /// The backend reads it when the literal itself cannot supply an element
     /// representation — i.e. when it is empty.

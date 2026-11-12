@@ -90,6 +90,11 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 - [ ] Add source-level dynamic call-tree validation for representative programs. Check: optimized-vs-unoptimized call-tree diff classifies each divergence.
 - [ ] Enable `--debug-opt=limited`, then `--debug-opt=optimized`, only after the tests define the contract [DEBUGGER-BUILD-OPTIONS]. Check: flags accepted only with the validation suite green; unavailable variables reported honestly.
 
+## Hover [LSP-HOVER]
+
+- [x] Hover match-arm pattern binders and lambda parameters with their inferred types, at the binding and at every use [LSP-HOVER-BINDERS] ([#390](https://github.com/Nimblesite/osprey/issues/390)). Check: `hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types` in `src/toolchain/crates/osprey-lsp/src/features/tests.rs` passes for list, constructor, tuple and lambda binders in the ML and Default flavors.
+- [ ] Hover a binder whose type is fixed only by another package (`ui::CubicTo(toX = x)`) with that type; per-file inference shows it as a hole today ([#391](https://github.com/Nimblesite/osprey/issues/391)). Check: hovering `x` in `src/osprey/examples/gpui/painting/src/logo.ospml` shows `x : float`.
+
 ## Module explorer
 
 - [ ] Add an automated keyboard test for the module explorer; the view is VS Code's native tree, whose keyboard operation is not separately exercised today [EDITOR-MODULE-EXPLORER]. Check: `src/toolchain/vscode-extension/test/suite/module-explorer.test.ts` exercises keyboard navigation and passes.

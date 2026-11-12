@@ -49,6 +49,9 @@ impl Checker {
                 None => wanted.get(i).cloned().unwrap_or_else(|| self.ctx.fresh()),
             };
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
+            if let Some(at) = position {
+                self.binder_tys.record(at, &p.name, &ty);
+            }
             ptys.push(ty);
         }
         // A lambda body runs when *called*, not where it is written: the

@@ -192,6 +192,9 @@ pub(crate) struct Checker {
     /// Every lambda's inferred function type, keyed by its source position —
     /// resolved and published to the backend by [`infer_program`].
     pub(crate) lambda_tys: Vec<(Site, Type)>,
+    /// Every match-arm pattern binder's and lambda parameter's inferred type.
+    /// Implements [LSP-HOVER-BINDERS]
+    pub(crate) binder_tys: crate::binders::Binders,
     /// Every `let` binding's inferred type, keyed by its source position, so
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]

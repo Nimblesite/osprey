@@ -68,6 +68,9 @@ pub(crate) fn hover(
     {
         return Some(hov);
     }
+    if let Some(hov) = binder_hover(text, &program, flavor, &word, (line, character), enc) {
+        return Some(hov);
+    }
     match best_match(&symbols, &word, line) {
         Some(sym) => Some(symbol_hover(sym, &program, flavor)),
         None => crate::features::variants::hover(&program.statements, &word, flavor)
@@ -77,6 +80,27 @@ pub(crate) fn hover(
             .or_else(|| project_variant_hover(siblings, &word, flavor))
             .or_else(|| keyword_hover(&word, flavor)),
     }
+}
+
+/// A match-arm pattern binder or lambda parameter, where it is bound and where
+/// it is read. Neither is a `let` nor a declaration's parameter, so the checker
+/// publishes its type under the arm or lambda that introduces it, which opens
+/// the binder's lexical region. Resolved before any declaration:
+/// the binder shadows a same-named one. Implements [LSP-HOVER-BINDERS].
+fn binder_hover(
+    text: &str,
+    program: &Program,
+    flavor: Flavor,
+    word: &str,
+    cursor: (u32, u32),
+    enc: PositionEncoding,
+) -> Option<String> {
+    let binding = crate::features::scope::binding(text, program, flavor, word, cursor, enc);
+    let binding = binding?;
+    let (region, declared) = binding.introduced?;
+    let types = osprey_types::infer_program(program);
+    let ty = osprey_types::render_with_holes(types.binder_type(word, region, declared)?);
+    Some(mlrender::fenced(flavor, &format!("{word}: {ty}")))
 }
 
 /// A symbol declared in a sibling file of the same project. The open buffer is
