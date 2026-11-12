@@ -268,3 +268,46 @@ fn assert_dense_fixture(path: &Path, mode: &str) {
 
 #[path = "tensor_fixture/device.rs"]
 mod device;
+
+/// [FAILURE-EXPLICIT] A missing raw-ABI buffer is an error, not a valid empty.
+#[test]
+fn combinators_reject_missing_buffers_but_accept_empty_buffers() {
+    for (ext, source, declaration, uploaded, missing) in [
+        (
+            "osp",
+            DISPATCH_SOURCE,
+            "extern fn osprey_gpu_alloc(count: int, bytes: int) -> GpuBuffer<int>\n",
+            "toGpu([1, 2])",
+            "Success { value: osprey_gpu_alloc(-1, 8) }",
+        ),
+        (
+            "ospml",
+            DISPATCH_ML,
+            "extern osprey_gpu_alloc (count: int) (bytes: int) -> GpuBuffer<int>\n",
+            "toGpu [1, 2]",
+            "Success(value = osprey_gpu_alloc (-1) 8)",
+        ),
+    ] {
+        for absent in [true, false] {
+            let replacement = if absent {
+                missing
+            } else if ext == "osp" {
+                "toGpu([])"
+            } else {
+                "toGpu []"
+            };
+            let fixture = format!("{declaration}{}", source.replace(uploaded, replacement));
+            let path =
+                program("missing_combinator", ext, &fixture).expect("write missing buffer fixture");
+            for_each_launch(&path, &["host"], |_, memory, stdout, _| {
+                let expected = if absent {
+                    "GPU operation failed\n"
+                } else {
+                    "ok\n"
+                };
+                assert_eq!(stdout, expected.repeat(5), "{ext} {memory} absent={absent}");
+            });
+            std::fs::remove_file(path).expect("remove missing buffer fixture");
+        }
+    }
+}

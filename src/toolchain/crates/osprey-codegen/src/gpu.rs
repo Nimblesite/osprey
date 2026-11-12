@@ -239,6 +239,9 @@ fn map_into(
     let pending = allocation::Pending::new(cg, len);
     let out = &pending.value;
     operation.allocated(cg, out);
+    for source in sources {
+        operation.allocated(cg, source);
+    }
     let done = launch(cg, out)?;
     operation.status(cg, &done);
     let join = host_fallback(cg, &done);
@@ -385,6 +388,7 @@ fn step(cg: &mut Codegen, r: &Reduction, arg: Value) -> Result<()> {
 fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let r = reduction(cg, args, "gpuFold")?;
     let operation = Operation::new(cg);
+    operation.allocated(cg, &r.src);
     let done = launch_fold(
         cg,
         &r.combine,
@@ -431,6 +435,7 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let operation = Operation::new(cg);
     let out = buffer_alloc(cg, &r.len, elem_owner(Some(r.tmpl.ty)));
     operation.allocated(cg, &out);
+    operation.allocated(cg, &r.src);
     let done = launch_sequence(
         cg,
         &r.combine,
@@ -465,6 +470,7 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let out = buffer_alloc(cg, &len, elem_owner(elem));
     operation.allocated(cg, &out);
     let kept = kept_counter(cg);
+    operation.allocated(cg, &src);
     let done = launch_sequence(
         cg,
         &predicate,
