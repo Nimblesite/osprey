@@ -513,6 +513,9 @@ static void check_native_view_frames(void) {
   check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));
   check_shape_rows(leased_shapes(b, &shapes, 1, 2), 4, 2);
   check_view_refusals(b);
+  push_view();
+  push_shapes(0, 9);
+  osp_native_frame_discard();
   assert(osp_native_view_row(1, -1, 4, NULL, 0, 0, 0, 0, 0, 0, 0) == 0);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));

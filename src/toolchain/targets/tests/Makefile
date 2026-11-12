@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-mobile casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth workbench workbench-proof-assets
+.PHONY: agent bank bank-mobile casting flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -81,6 +81,10 @@ signal-flow:
 ## storage: Osprey Storage's domain.
 storage:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/storage/test
+
+## tally: Tally's views and updates, drawn through the shared-memory view stream. [NATIVE-SHM-VIEW]
+tally:
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/tally/test
 
 ## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
 synth:

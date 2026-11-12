@@ -20,7 +20,12 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless workbench
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally-headless workbench
+
+## tally-headless: Tally as a C library under its reference host, which seals each frame and reads
+##                 every control in place from shared memory. [NATIVE-SHM-VIEW]
+tally-headless:
+	$(MAKE) -C $(ROOT) _tally-reference
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.

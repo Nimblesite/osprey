@@ -86,3 +86,10 @@ void *osp_native_run_take(int64_t which, int64_t *length, int64_t *bytes,
   *run = (NativeRun){.limit = taken.limit};
   return taken.data;
 }
+
+void osp_native_frame_discard(void) {
+  int64_t length, bytes;
+  bool complete;
+  for (int64_t run = 0; run < OSP_NATIVE_RUNS; run++)
+    free(osp_native_run_take(run, &length, &bytes, &complete));
+}

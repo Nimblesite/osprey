@@ -105,6 +105,9 @@ void *osp_native_run_take(int64_t run, int64_t *length, int64_t *capacity,
 // refused run publishes nothing. Call on the executor thread after each
 // application export returns.
 int osp_native_frame_commit(OspNativeBridge *bridge, int64_t *revision);
+// Drops the three pending runs: for a call that failed, whose partial frame
+// belongs to nothing. Executor thread only.
+void osp_native_frame_discard(void);
 // A new owner of the `index`th child of a branch chunk.
 int osp_native_child(OspNativeBridge *bridge, const td_OwnedLease *lease,
                      int64_t index, td_OwnedLease *out);

@@ -1,0 +1,42 @@
+// Tally's C boundary for any Osprey Native host ([NATIVE-SHM-VIEW]): `osprey_app_start` draws the
+// first view and `osprey_app_event` delivers one tap or edit and draws the next. Nothing is
+// encoded in either direction: an event is an integer and borrowed text, and the view is rows in
+// the shared frame the host seals when the call returns. The store never leaves this library.
+namespace app
+
+import ui::Views
+import ui::Runtime
+import tally::Screen
+
+(** The store and the actions its drawn controls deliver, in control order. *)
+type Live =
+    store : tally::Counted
+    bound : List<tally::Act>
+
+(** Hands the next store and bindings to the cell below. *)
+effect Keep
+    keep : Live => Unit
+
+mut live = Live(store = Screen::first, bound = [])
+
+// Draws `store` into the shared frame and keeps it with the actions its controls deliver.
+shown store =
+    next = Live(store = store, bound = Views::render (Screen::view store))
+    perform Keep.keep next
+    0
+
+// `held`'s control numbered `ordinal`, delivered with its edited `words`.
+delivered (held, ordinal, words) = match listGet held.bound ordinal
+    Error _ => 1
+    Success action => shown (Screen::update (held.store, action, words))
+
+hosted work =
+    handle Keep
+        keep next => live := next
+    Runtime::guarded (\() => Views::shared work)
+
+(** Draws the first view; zero when it was written. *)
+start () = hosted (\() => shown Screen::first)
+
+(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero when no such control was drawn, which changes nothing. *)
+event (ordinal, words) = hosted (\() => delivered (live, ordinal, words))
