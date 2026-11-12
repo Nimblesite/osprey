@@ -13,11 +13,20 @@ The smallest Osprey Native application with no JSON bridge. Its whole interface 
 
 ```sh
 make -C src/toolchain/targets/tests tally                  # the application's tests
-make -C src/toolchain/targets/macos/tests tally-headless   # the reference host, end to end
+make -C src/toolchain/targets/macos/tests tally-headless   # the reference C host, end to end
+make -C src/toolchain/targets/macos/tests tally            # the SwiftUI host, checked with no window
+make -C src/toolchain/targets/macos tally                  # open it in a SwiftUI window
+make -C src/toolchain/targets/windows tally                # open it in a WinUI window (on Windows)
 ```
 
-The second command ends with `[ok] tally reference host: 9 views read in place from shared memory`.
+The reference host ends with `[ok] tally reference host: 9 views read in place from shared memory`; the SwiftUI check prints `PASSED`.
 
 ## Hosts
 
-The reference host is the only host today. The SwiftUI and WinUI view hosts that draw these rows as native controls are in progress ([plan 0037, section 11](../../../../docs/plans/0037-osprey-native.md)); neither holds any style, so Tally is restyled by editing `src/app.ospml` alone.
+| Host | Where | State |
+| --- | --- | --- |
+| Reference (C) | [`host/reference.c`](host/reference.c) | Runs end to end on macOS. |
+| SwiftUI | [`hosts/swift/Sources/OspreyShared`](../../../toolchain/hosts/swift/Sources/OspreyShared) | Headless check passes on macOS; the window has not been verified by a test yet. |
+| WinUI | [`hosts/winui/OspreyHost/SharedViewPage.cs`](../../../toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) | Compiles and its row-reader tests pass; not yet run on Windows. |
+
+No host holds any style, so Tally is restyled by editing `src/app.ospml` alone.

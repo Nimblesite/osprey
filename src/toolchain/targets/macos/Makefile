@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage probe workbench-render-review
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe workbench-render-review
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -17,6 +17,11 @@ PROJECT ?= $(CURDIR)
 agent:
 	$(MAKE) -C $(ROOT) build _runtime_macos
 	bash $(ROOT)/src/osprey/examples/agent/run.sh "$(PROJECT)"
+
+## tally: Open Tally, the counter whose whole interface crosses the bridge as shared memory, in a
+##        SwiftUI window. Its look is decided in Osprey; the host holds no style. [NATIVE-SHM-VIEW]
+tally:
+	$(MAKE) -C $(ROOT) _tally-swift
 
 ## casting: Open the casting player: pick a file or stream and cast it to a TV
 ##          found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]

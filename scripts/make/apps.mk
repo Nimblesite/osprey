@@ -191,6 +191,13 @@ _tally-reference: _runtime _runtime_macos
 	$(CC) -Wall -Wextra -Werror -Isrc/toolchain/compiler/runtime -Itarget/tally src/osprey/examples/tally/host/reference.c target/tally/libTally.a -o target/tally/reference
 	target/tally/reference
 
+## _tally-swift: Build Tally under the SwiftUI view host and run it; VIEW_ARGS=--self-test checks it
+##               with no window.
+.PHONY: _tally-swift
+_tally-swift: _runtime _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_SWIFT_APP=src/osprey/examples/tally bash src/toolchain/hosts/swift/view.sh $(VIEW_ARGS)
+
 ## _qwen-serve: Compile the Qwen server and serve the GGUF pull.sh names (pulled first if missing,
 ##              QWEN_QUANT picks the quant) on Metal at QWEN_PORT. Uses the compiler and runtime as built.
 ## _qwen-suite: The Qwen model suite under MEMORY, on the device QWEN_GPU names (the host when empty),
