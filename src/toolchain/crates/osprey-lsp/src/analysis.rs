@@ -108,8 +108,17 @@ pub fn collect_symbols(program: &Program) -> Vec<SymbolInfo> {
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
 #[must_use]
 pub fn collect_inferred_symbols(program: &Program) -> Vec<SymbolInfo> {
-    let types = osprey_types::infer_program(program);
-    let mut symbols = collect_symbols(program);
+    inferred_symbols(&crate::inferred::Typed {
+        program,
+        project: None,
+    })
+}
+
+/// [`collect_inferred_symbols`] answered by the document's project when it has
+/// one ([LSP-HOVER-PROJECT]).
+pub(crate) fn inferred_symbols(doc: &crate::inferred::Typed<'_>) -> Vec<SymbolInfo> {
+    let types = doc.inferred();
+    let mut symbols = collect_symbols(doc.program);
     for sym in &mut symbols {
         fill_inferred(sym, &types);
     }

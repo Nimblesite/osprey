@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::inferred::Typed;
 use osprey_ast::Program;
 
 /// A project file other than the one under the cursor.
@@ -205,6 +206,8 @@ pub(crate) struct View {
     pub(crate) siblings: Vec<Sibling>,
     pub(crate) current: Option<osprey_project::SourceFile>,
     pub(crate) configured: Option<osprey_syntax::Flavor>,
+    /// The project's analysis, when the feature displays checked types.
+    pub(crate) checked: Option<std::sync::Arc<crate::project_cache::Checked>>,
 }
 
 impl View {
@@ -213,6 +216,28 @@ impl View {
             Ok(flavor) => flavor,
             Err(_) => osprey_syntax::Flavor::Default,
         }
+    }
+
+    /// `program` — the open document with `text` — with the project's types
+    /// when `text` is what the project was checked with ([LSP-HOVER-PROJECT]).
+    pub(crate) fn typed<'a>(&self, text: &str, program: &'a Program) -> Typed<'a> {
+        let current = self.current.as_ref().filter(|file| file.source == text);
+        Typed {
+            program,
+            project: current.and_then(|file| self.placed(&file.path)),
+        }
+    }
+
+    /// A sibling's program with the project's types.
+    pub(crate) fn typed_sibling<'a>(&self, sibling: &'a Sibling) -> Typed<'a> {
+        Typed {
+            program: &sibling.program,
+            project: file_path(&sibling.uri).and_then(|path| self.placed(&path)),
+        }
+    }
+
+    fn placed(&self, path: &Path) -> Option<crate::inferred::Inferred> {
+        self.checked.as_ref()?.inferred(path)
     }
 
     pub(crate) fn program(&self, path: &str, text: &str) -> Program {

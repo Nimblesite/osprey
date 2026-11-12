@@ -264,6 +264,24 @@ recorded between the start of that region and the binder itself. A name bound
 in two arms therefore answers with the arm under the cursor, and the same word
 written outside the arm answers nothing.
 
+### Project inference `[LSP-HOVER-PROJECT]`
+
+Every view that displays a checked type — hover, signature help, completion
+details and the document outline — answers from the **assembled project**, as
+the compiler does, when the document belongs to one. A file checked alone
+cannot see another package, so a type that only another file fixes
+(`ui::LineTo(toX = x)` makes `x` a `float`) would be shown as a hole.
+
+The project's types are inferred once per analysis and shared with
+diagnostics through `[LSP-PROJECT-BATCH]`, so an unsaved edit to any buffer is
+reflected and repeated requests cost a lookup. The assembled program names
+declarations by linkage name and numbers lines across all files, so
+[`inferred.rs`](../../../src/toolchain/crates/osprey-lsp/src/inferred.rs)
+finds a function by where it is declared, shifts positions into the project's
+line space, and respells every linkage name in a rendered type as its source
+name (`ui::PathStep`). A document outside any project, or in a project that
+does not assemble, is checked on its own.
+
 ### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
 
 Hovering a **function declaration** shows the signature with every slot the

@@ -222,15 +222,12 @@ fn record_name(ty: &Type, layout: &CtorLayout, name: &str) -> String {
 /// rule unenforceable from tooling — obeying it downgraded every outline entry
 /// — so both hover and `--symbols` answer from inference through here.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &ProgramTypes) {
+pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &crate::inferred::Inferred) {
     if sym.kind == SymbolKind::Function {
-        sym.effect_requirements = types.function_effects.get(&sym.name).cloned();
+        sym.effect_requirements = types.effects(sym);
     }
     if sym.kind == SymbolKind::Variable && sym.ty.is_empty() {
-        if let Some(inferred) = types
-            .source_let_type(None, sym.position)
-            .and_then(|ty| shown(ty, types))
-        {
+        if let Some(inferred) = types.let_type(sym.position).and_then(|ty| types.shown(ty)) {
             sym.ty = inferred;
         }
     }
@@ -239,10 +236,10 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &ProgramTypes) {
     {
         return;
     }
-    let inferred = types.param_types(&sym.name).unwrap_or_default();
+    let inferred = types.param_types(sym).unwrap_or_default().to_vec();
     for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
         if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
-            if let Some(rendered) = shown(found, types) {
+            if let Some(rendered) = types.shown(found) {
                 *written = rendered;
             }
         }
@@ -250,7 +247,7 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &ProgramTypes) {
     sym.return_type = sym
         .return_type
         .take()
-        .or_else(|| types.return_type(&sym.name).and_then(|ty| shown(ty, types)));
+        .or_else(|| types.return_type(sym).and_then(|ty| types.shown(ty)));
     let signature = render_signature(
         &sym.name,
         &sym.binder,

@@ -9,7 +9,7 @@ use lspkit::vfs::PositionEncoding;
 
 use osprey_ast::Program;
 
-use crate::analysis::{collect_inferred_symbols, collect_symbols, SymbolInfo, SymbolKind};
+use crate::analysis::{collect_symbols, SymbolInfo, SymbolKind};
 use crate::mlrender;
 use crate::model::{Location, SignatureInfo, Span};
 use crate::text::{occurrences, path_at, prefix_to, Occurrence};
@@ -264,11 +264,11 @@ pub(crate) fn signature_help(
     enc: PositionEncoding,
     project: &workspace::View,
 ) -> Option<SignatureInfo> {
-    let siblings = &project.siblings;
     let flavor = project.flavor(path, text);
     let program = project.program(path, text);
+    let doc = project.typed(text, &program);
     let lookup =
-        |name: &str| function_named(&program, name).or_else(|| project_function(siblings, name));
+        |name: &str| function_named(&doc, name).or_else(|| project_function(project, name));
     let pointed = word_under(text, line, character, enc)
         .and_then(|name| lookup(&name))
         .map(|symbol| (symbol, 0));
@@ -304,17 +304,18 @@ fn call_target(
 
 /// The function `name` refers to, carrying the types the checker proved — this
 /// answers signature help, which SHOWS those types ([`collect_inferred_symbols`]).
-fn function_named(program: &Program, name: &str) -> Option<SymbolInfo> {
-    collect_inferred_symbols(program)
+fn function_named(doc: &crate::inferred::Typed<'_>, name: &str) -> Option<SymbolInfo> {
+    crate::analysis::inferred_symbols(doc)
         .into_iter()
         .find(|s| symbol_matches(s, name) && s.kind == SymbolKind::Function)
 }
 
 /// A function declared in a sibling file. Implements [LSP-WORKSPACE].
-fn project_function(siblings: &[workspace::Sibling], name: &str) -> Option<SymbolInfo> {
-    siblings
+fn project_function(project: &workspace::View, name: &str) -> Option<SymbolInfo> {
+    project
+        .siblings
         .iter()
-        .find_map(|sibling| function_named(&sibling.program, name))
+        .find_map(|sibling| function_named(&project.typed_sibling(sibling), name))
 }
 
 pub(crate) fn word_under(

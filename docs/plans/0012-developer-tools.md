@@ -93,7 +93,8 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 ## Hover [LSP-HOVER]
 
 - [x] Hover match-arm pattern binders and lambda parameters with their inferred types, at the binding and at every use [LSP-HOVER-BINDERS] ([#390](https://github.com/Nimblesite/osprey/issues/390)). Check: `hover_on_pattern_binders_and_lambda_parameters_shows_their_inferred_types` in `src/toolchain/crates/osprey-lsp/src/features/tests.rs` passes for list, constructor, tuple and lambda binders in the ML and Default flavors.
-- [ ] Hover a binder whose type is fixed only by another package (`ui::CubicTo(toX = x)`) with that type; per-file inference shows it as a hole today ([#391](https://github.com/Nimblesite/osprey/issues/391)). Check: hovering `x` in `src/osprey/examples/gpui/painting/src/logo.ospml` shows `x : float`.
+- [x] Answer hover, signature help, completion details and the outline from the assembled project, so a type fixed only by another package (`ui::CubicTo(toX = x)`) is shown and not a hole [LSP-HOVER-PROJECT] ([#391](https://github.com/Nimblesite/osprey/issues/391)). Check: `hover_infers_from_the_whole_project` in `src/toolchain/crates/osprey-lsp/src/project_cache.rs` passes; hovering `x` in `src/osprey/examples/gpui/painting/src/logo.ospml` shows `x : float` and `segment` shows `List<float> -> ui::PathStep`.
+- [ ] Answer member completion (`receiver.`) and pattern-constructor completion from the assembled project too; both still check the open file alone. Check: `origin.` completes the fields of a record declared in another package.
 
 ## Module explorer
 
