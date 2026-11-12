@@ -159,3 +159,13 @@ union SceneInput {
 # Enclosed indices, ordinals and pointer IDs are nonnegative; ranges are checked by the executor.
 # Signed resize/cursor inputs retain the existing bind-time clamp; time is signed Unix seconds.
 # Shift is explicit (legacy missing shift means false); no inferred/default payload fields.
+
+# [NATIVE-SHM-SCENE] One streamed rect, disc or sprite, shared as fixed 72-byte rows in a single
+# sealed leaf chunk. `code` is the scene encoding's (0 rect, 1 disc, 3 sprite); `index` is a
+# sprite's atlas entry; a disc's `width` is its radius. Hosts refuse non-finite floats and codes
+# they cannot draw. The rows are process-local and never written to a wire or to disk.
+type SceneShape {
+  code: Int index: Int
+  x: Float y: Float width: Float height: Float angle: Float
+  colour: Int depth: Int
+}

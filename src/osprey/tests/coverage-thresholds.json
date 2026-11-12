@@ -205,6 +205,9 @@
       "native_bridge_internal": {
         "language": "c"
       },
+      "native_scene": {
+        "language": "c"
+      },
       "fiber_runtime": {
         "language": "c"
       },

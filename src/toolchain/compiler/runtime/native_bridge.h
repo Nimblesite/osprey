@@ -43,4 +43,38 @@ int osp_native_close(OspNativeBridge *bridge);
 int osp_native_destroy(OspNativeBridge *bridge);
 int osp_native_usage(OspNativeBridge *bridge, size_t *bytes, size_t *chunks,
                      size_t *owners);
+// Takes ownership of `data` (from malloc, `capacity` bytes) whatever the
+// result, and seals its first `length` bytes as a leaf chunk without copying.
+int osp_native_adopt(OspNativeBridge *bridge, int64_t type, void *data,
+                     int64_t length, int64_t capacity, td_OwnedLease *out);
+int osp_native_length(OspNativeBridge *bridge, const td_OwnedLease *lease,
+                      int64_t *length);
+
+// [NATIVE-SHM-SCENE] One streamed shape, laid out as the generated SceneShape.
+typedef struct {
+  int64_t code, index;
+  double values[5]; // x, y, width (a disc's radius), height, angle
+  int64_t colour, depth;
+} OspNativeShape;
+_Static_assert(sizeof(OspNativeShape) == sizeof(td_SceneShape) &&
+                   offsetof(OspNativeShape, values) == TD_SceneShape_x_OFFSET &&
+                   offsetof(OspNativeShape, colour) ==
+                       TD_SceneShape_colour_OFFSET &&
+                   offsetof(OspNativeShape, depth) == TD_SceneShape_depth_OFFSET,
+               "OspNativeShape matches the generated SceneShape layout");
+#define OSP_NATIVE_SCENE_SHAPES 1          // The chunk type of a sealed run.
+#define OSP_NATIVE_SCENE_ROWS (1 << 20)    // The most shapes one call may send.
+// Appends one shape to the pending run; the application executor calls this
+// in drawing order. Nonzero once the run cannot grow: it is then refused whole.
+int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
+                               double width, double height, double angle,
+                               int64_t colour, int64_t depth);
+// Hands the pending run's storage to the caller and starts an empty run.
+// `complete` is false when a shape was refused. Executor thread only.
+void *osp_native_scene_take(int64_t *length, int64_t *capacity,
+                            bool *complete);
+// Seals the pending run as one leaf chunk, in place, and publishes it as the
+// root; a refused run publishes nothing. Call on the executor thread after
+// each application export returns.
+int osp_native_scene_commit(OspNativeBridge *bridge, int64_t *revision);
 #endif

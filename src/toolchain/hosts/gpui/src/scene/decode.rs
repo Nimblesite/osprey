@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint};
-use crate::ffi::Streamed;
+use crate::frame::Streamed;
 use crate::render;
 
 /// Decodes and stably depth-sorts every shape in one scene patch: the node's own shapes, then the

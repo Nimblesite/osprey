@@ -292,6 +292,104 @@ static void check_native_publication(void) {
   assert(osp_native_destroy(b) == 0);
 }
 
+static void push_shapes(int64_t first, int64_t count) {
+  for (int64_t i = first; i < first + count; i++)
+    assert(osp_native_scene_shape(i % 2, i, (double)i, 0.5, 2, 3, 4, i * 7,
+                                  -i) == 0);
+}
+
+static const OspNativeShape *leased_shapes(OspNativeBridge *b,
+                                           td_OwnedLease *lease,
+                                           int64_t expected, int64_t count) {
+  int64_t revision, length;
+  const void *view = NULL;
+  assert(osp_native_acquire(b, lease, &revision) == 0 && revision == expected);
+  assert(osp_native_length(b, lease, &length) == 0 &&
+         length == count * (int64_t)sizeof(OspNativeShape));
+  assert(osp_native_view(b, lease, 11, 0, length, &view) ==
+             OSP_NATIVE_ERROR(InvalidLayout) &&
+         !view);
+  assert(osp_native_view(b, lease, OSP_NATIVE_SCENE_SHAPES, 0, length + 1,
+                         &view) == OSP_NATIVE_ERROR(InvalidRange));
+  assert(osp_native_view(b, lease, OSP_NATIVE_SCENE_SHAPES, 0, length,
+                         &view) == 0);
+  return view;
+}
+
+static void check_shape_rows(const OspNativeShape *rows, int64_t first,
+                             int64_t count) {
+  for (int64_t i = 0; i < count; i++) {
+    int64_t n = first + i;
+    assert(rows[i].code == n % 2 && rows[i].index == n &&
+           rows[i].values[0] == (double)n && rows[i].values[1] == 0.5 &&
+           rows[i].values[2] == 2 && rows[i].values[3] == 3 &&
+           rows[i].values[4] == 4 && rows[i].colour == n * 7 &&
+           rows[i].depth == -n);
+  }
+}
+
+// [NATIVE-SHM-SCENE] A frame's shapes are sealed where they were built and
+// read in place; a host-held frame survives its replacement.
+static void check_native_scene_frames(void) {
+  OspNativeBridge *b = native_fixture(1 << 20, 8, 8);
+  size_t bytes, chunks, owners, idle;
+  int64_t revision;
+  td_OwnedLease first, second, empty;
+  assert(osp_native_usage(b, &idle, &chunks, &owners) == 0 && chunks == 0);
+  push_shapes(0, 3);
+  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 1);
+  const OspNativeShape *held = leased_shapes(b, &first, 1, 3);
+  check_shape_rows(held, 0, 3);
+  push_shapes(100, 5000);
+  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 2);
+  check_shape_rows(held, 0, 3);
+  check_shape_rows(leased_shapes(b, &second, 2, 5000), 100, 5000);
+  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 2 &&
+         owners == 2);
+  assert(osp_native_release(b, &first) == 0);
+  assert(osp_native_release(b, &first) == OSP_NATIVE_ERROR(InvalidOwner));
+  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 1);
+  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 3);
+  (void)leased_shapes(b, &empty, 3, 0);
+  assert(osp_native_release(b, &second) == 0 &&
+         osp_native_release(b, &empty) == 0);
+  assert(osp_native_destroy(b) == 0);
+}
+
+// A run the budget or the row limit refuses is dropped whole: the published
+// frame, the accounting and the next run are untouched.
+static void check_native_scene_refusals(void) {
+  OspNativeBridge *b = native_fixture(65536, 8, 8);
+  size_t before, after, chunks, owners;
+  int64_t revision = 0;
+  td_OwnedLease lease;
+  push_shapes(0, 2);
+  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 1);
+  assert(osp_native_usage(b, &before, &chunks, &owners) == 0);
+  push_shapes(0, 4096);
+  assert(osp_native_scene_commit(b, &revision) ==
+             OSP_NATIVE_ERROR(LimitExceeded) &&
+         revision == 1);
+  for (int64_t i = 0; i < OSP_NATIVE_SCENE_ROWS; i++)
+    assert(osp_native_scene_shape(0, i, 0, 0, 0, 0, 0, 0, 0) == 0);
+  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
+  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
+  assert(osp_native_scene_commit(b, &revision) ==
+             OSP_NATIVE_ERROR(AllocationFailed) &&
+         revision == 1);
+  assert(osp_native_scene_commit(NULL, &revision) ==
+         OSP_NATIVE_ERROR(BridgeClosed));
+  assert(osp_native_usage(b, &after, &chunks, &owners) == 0 &&
+         after == before && chunks == 1 && owners == 0);
+  check_shape_rows(leased_shapes(b, &lease, 1, 2), 0, 2);
+  assert(osp_native_length(b, &lease, NULL) == OSP_NATIVE_ERROR(InvalidRange));
+  assert(osp_native_release(b, &lease) == 0);
+  push_shapes(7, 1);
+  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 2);
+  check_shape_rows(leased_shapes(b, &lease, 2, 1), 7, 1);
+  assert(osp_native_release(b, &lease) == 0 && osp_native_destroy(b) == 0);
+}
+
 // Isolation is necessary for unreachable-in-practice signed-64 exhaustion and
 // OS mutex failure. These controls never exist in the shipping runtime API.
 static void check_native_exhaustion(void) {
@@ -378,6 +476,8 @@ int main(void) {
   check_native_dag();
   check_native_publication();
   check_native_exhaustion();
+  check_native_scene_frames();
+  check_native_scene_refusals();
 #ifdef OSP_NATIVE_TEST
   check_native_sync_failure();
 #endif

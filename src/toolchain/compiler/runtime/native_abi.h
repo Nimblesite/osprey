@@ -2,7 +2,7 @@
 #ifndef TD_SHARED_H
 #define TD_SHARED_H
 #include <stddef.h>
-#define TD_SHARED_FINGERPRINT "214a5675c7b8160030f710cca2ffea3fea89706f383cdc59b8e6e0e464e97de8"
+#define TD_SHARED_FINGERPRINT "76e53b7181e067d0bac7878ef8548c601f331d23bb486fb5af88da74bc1ae150"
 #define TD_SHARED_POINTER_BYTES 8
 #define TD_SHARED_ABI_MAJOR 1
 #define TD_SHARED_STORAGE(name, byte_count) \
@@ -72,6 +72,25 @@ TD_SHARED_STORAGE(OwnerToken, 24);
 #define TD_OwnerToken_appInstance_BYTES 16
 #define TD_OwnerToken_serial_OFFSET 16
 #define TD_OwnerToken_serial_BYTES 8
+TD_SHARED_STORAGE(SceneShape, 72);
+#define TD_SceneShape_code_OFFSET 0
+#define TD_SceneShape_code_BYTES 8
+#define TD_SceneShape_index_OFFSET 8
+#define TD_SceneShape_index_BYTES 8
+#define TD_SceneShape_x_OFFSET 16
+#define TD_SceneShape_x_BYTES 8
+#define TD_SceneShape_y_OFFSET 24
+#define TD_SceneShape_y_BYTES 8
+#define TD_SceneShape_width_OFFSET 32
+#define TD_SceneShape_width_BYTES 8
+#define TD_SceneShape_height_OFFSET 40
+#define TD_SceneShape_height_BYTES 8
+#define TD_SceneShape_angle_OFFSET 48
+#define TD_SceneShape_angle_BYTES 8
+#define TD_SceneShape_colour_OFFSET 56
+#define TD_SceneShape_colour_BYTES 8
+#define TD_SceneShape_depth_OFFSET 64
+#define TD_SceneShape_depth_BYTES 8
 
 #undef TD_SHARED_STORAGE
 #endif

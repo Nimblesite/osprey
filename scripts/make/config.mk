@@ -147,7 +147,7 @@ T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c1
 # [PROF-ACTIVATE-ENV] [PROF-ATTACH-ENDPOINT].
 PROF_OBJ = bin/profiler_runtime.o bin/profiler_store.o bin/profiler_dump.o bin/profiler_sampler.o bin/profiler_stream.o bin/profiler_endpoint.o
 # One shared allocator implementation in both GC and ARC runtime archives.
-NATIVE_BRIDGE_OBJ := bin/native_bridge.o bin/native_bridge_lifecycle.o
+NATIVE_BRIDGE_OBJ := bin/native_bridge.o bin/native_bridge_lifecycle.o bin/native_scene.o
 FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/gpu_map_file.o bin/gpu_elements.o bin/gpu_host.o bin/tensor_file.o bin/tensor_list.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/float_spelling.o bin/list_runtime.o bin/list_rebuild.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/json_text.o bin/json_codec.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o $(NATIVE_BRIDGE_OBJ) $(PROF_OBJ)
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_transport.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/websocket_frames.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
@@ -238,7 +238,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= native_scene memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc

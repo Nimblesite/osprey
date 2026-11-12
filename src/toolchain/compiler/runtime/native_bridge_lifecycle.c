@@ -108,6 +108,40 @@ int osp_native_acquire(OspNativeBridge *b, td_OwnedLease *out,
   return native_unlock(b, status);
 }
 
+int osp_native_length(OspNativeBridge *b, const td_OwnedLease *lease,
+                      int64_t *length) {
+  if (!length)
+    return OSP_NATIVE_ERROR(InvalidRange);
+  int status = native_lock(b);
+  if (status)
+    return status;
+  size_t owner, chunk;
+  status = native_lookup_locked(b, lease, &owner, &chunk);
+  if (!status)
+    *length = (int64_t)b->chunks[chunk].length;
+  return native_unlock(b, status);
+}
+
+// [NATIVE-SHM-SCENE] The run is always taken, so a failed call leaves none.
+int osp_native_scene_commit(OspNativeBridge *b, int64_t *revision) {
+  int64_t length, capacity;
+  bool complete;
+  void *rows = osp_native_scene_take(&length, &capacity, &complete);
+  if (!rows && complete && (rows = calloc(1, 8)))
+    capacity = 8;
+  if (!rows || !complete) {
+    free(rows);
+    return b ? OSP_NATIVE_ERROR(AllocationFailed)
+             : OSP_NATIVE_ERROR(BridgeClosed);
+  }
+  td_OwnedLease lease;
+  int status = osp_native_adopt(b, OSP_NATIVE_SCENE_SHAPES, rows, length,
+                                capacity, &lease);
+  if (!status && (status = osp_native_publish(b, &lease, revision)))
+    (void)osp_native_release(b, &lease);
+  return status;
+}
+
 int osp_native_usage(OspNativeBridge *b, size_t *bytes, size_t *chunks,
                      size_t *owners) {
   if (!bytes || !chunks || !owners)

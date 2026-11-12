@@ -45,6 +45,7 @@ pub(crate) fn adapt(
 fn in_runtime(import: &Import) -> bool {
     crate::linking::HTTP_RUNTIME_EXTERNS
         .iter()
+        .chain(&[crate::linking::BRIDGE_RUNTIME_EXTERN])
         .any(|prefix| import.symbol.starts_with(prefix))
 }
 

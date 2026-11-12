@@ -264,6 +264,31 @@ int osp_native_create(OspNativeBridge *b, int64_t type, bool leaf,
   return native_finish(b, slot, status, out);
 }
 
+int osp_native_adopt(OspNativeBridge *b, int64_t type, void *data,
+                     int64_t length, int64_t capacity, td_OwnedLease *out) {
+  size_t slot = 0;
+  int status = !out || !data || type < 0 || length < 0 || capacity < 8 ||
+                       length > capacity || (uint64_t)capacity > SIZE_MAX
+                   ? OSP_NATIVE_ERROR(InvalidRange)
+                   : native_lock(b);
+  if (status) {
+    free(data);
+    return status;
+  }
+  status = native_unlock(b, native_reserve_locked(b, (size_t)capacity, &slot));
+  if (status) {
+    free(data);
+    return status;
+  }
+  status = native_attach(b, slot, data, (size_t)capacity, NULL, 0);
+  if (!status) {
+    b->chunks[slot].length = (size_t)length;
+    b->chunks[slot].type = type;
+    b->chunks[slot].leaf = true;
+  }
+  return native_finish(b, slot, status, out);
+}
+
 int native_reclaim(OspNativeBridge *b, size_t first) {
   size_t pending = first;
   while (pending != NATIVE_NO_SLOT) {

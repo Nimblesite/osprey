@@ -264,7 +264,7 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
 #[cfg(test)]
 mod tests {
     use super::{decode, Shape, Transform};
-    use crate::ffi::Streamed;
+    use crate::frame::Streamed;
     use gpui_kit::{bounds, point, px, size};
     use serde_json::Value;
 

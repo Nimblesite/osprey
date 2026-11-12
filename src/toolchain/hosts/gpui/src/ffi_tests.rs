@@ -1,5 +1,6 @@
 use super::test_support::{isolated_test, poison, serial, LIVE_BUFFERS, TEXT_BYTES};
 use super::*;
+use crate::frame::{self, Streamed};
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::AtomicIsize;
 use std::sync::atomic::AtomicUsize;
@@ -38,7 +39,7 @@ fn output() -> *const c_char {
         7 => nested_dispatch_output(),
         8 => poisoned_callback_output(),
         9 => poisoned_callback_output(),
-        10..=12 => poisoned_stream_output(),
+        10 | 12 => refused_frame_output(),
         mode => unreachable!("unknown test output mode {mode}"),
     }
 }
@@ -348,18 +349,13 @@ fn a_rust_unwind_releases_the_import_scope() {
 
 fn nested_dispatch_output() -> *const c_char {
     let observations = [("event", 1), ("bad\0event", 1), ("event", 2)].map(|(event, abi)| {
-        native_shape(934, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0);
+        assert!(frame::stream(marker()));
         ABI.store(abi, Ordering::SeqCst);
         MODE.store(0, Ordering::SeqCst);
         let refused = Library::dispatch("nested", event).is_err();
         MODE.store(7, Ordering::SeqCst);
         ABI.store(1, Ordering::SeqCst);
-        let shapes = take_stream()
-            .expect("healthy outer scene stream")
-            .into_iter()
-            .filter(|shape| shape.code == 934)
-            .count();
-        format!("{refused}|{shapes}")
+        refused.to_string()
     });
     owned(observations.join(",").as_bytes())
 }
@@ -368,10 +364,9 @@ fn nested_dispatch_output() -> *const c_char {
 fn refused_nested_dispatch_preserves_the_outer_calls_streamed_shapes() {
     let _serial = serial();
     reset(7);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("true|1,true|1,true|1")
-    );
+    assert_eq!(Library::start("context").as_deref(), Ok("true,true,true"));
+    let frame = frame::take().expect("the outer call's frame");
+    assert_eq!(frame.shapes(), [marker(); 3]);
 }
 
 #[test]
@@ -424,7 +419,6 @@ fn assert_import_failure(mode: usize) -> std::sync::MutexGuard<'static, ()> {
     reset(mode);
     let result = Library::start("context");
     slices().clear_poison();
-    STREAM.clear_poison();
     assert!(
         result.is_err(),
         "import failure {mode} became a successful envelope"
@@ -437,36 +431,47 @@ fn assert_import_failure(mode: usize) -> std::sync::MutexGuard<'static, ()> {
     guard
 }
 
-fn poisoned_stream_output() -> *const c_char {
-    poison(&STREAM);
-    if MODE.load(Ordering::SeqCst) == 10 {
-        native_shape(934, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0);
-    } else if MODE.load(Ordering::SeqCst) == 11 {
-        drop(take_stream());
+fn marker() -> Streamed {
+    Streamed {
+        code: 934,
+        index: 0,
+        values: [0.; 5],
+        colour: 0,
+        depth: 0,
     }
+}
+
+/// Mode 10 streams one shape more than a frame may hold; mode 12 streams two and returns nothing.
+fn refused_frame_output() -> *const c_char {
+    if MODE.load(Ordering::SeqCst) == 12 {
+        assert!(frame::stream(marker()) && frame::stream(marker()));
+        return std::ptr::null();
+    }
+    let accepted = (0..=1 << 20).filter(|_| frame::stream(marker())).count();
+    assert_eq!(accepted, 1 << 20, "the frame's shape limit moved");
     owned(b"fake successful envelope")
 }
 
+/// The next export after a failed one succeeds and its frame holds none of the failed call's shapes.
+fn assert_clean_frame() {
+    assert!(frame::take().is_none(), "a failed export left a frame");
+    MODE.store(1, Ordering::SeqCst);
+    assert_eq!(Library::start("context").as_deref(), Ok("copied envelope"));
+    let frame = frame::take().expect("the healthy call's frame");
+    assert!(frame.shapes().is_empty(), "{frame:?}");
+}
+
 #[test]
-fn a_failed_shape_write_cannot_become_a_successful_envelope() {
-    if isolated_test() {
-        return;
-    }
+fn a_refused_frame_cannot_become_a_successful_envelope() {
     let _serial = assert_import_failure(10);
+    assert_clean_frame();
 }
 
 #[test]
-fn a_failed_stream_read_cannot_become_a_successful_envelope() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(11);
-}
-
-#[test]
-fn stream_poison_without_a_later_callback_still_rejects_the_export() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(12);
+fn shapes_streamed_by_a_failed_export_do_not_leak_into_the_next_frame() {
+    let _serial = serial();
+    reset(12);
+    assert!(Library::start("context").is_err());
+    assert_eq!(RELEASES.load(Ordering::SeqCst), 0);
+    assert_clean_frame();
 }

@@ -9,17 +9,11 @@ import painting::Drawing
 
 extern native_slice (key : string) -> string
 
-extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
-
 (** Retain the next application session after the framework completes a step. *)
 effect Keep
     keep : ui::Session<painting::Store> => Unit
 
 mut live = Runtime::idle (Drawing::initialStore ())
-
-mut streamed = 0
-
-shipped primitive = Streams::transmit (primitive, native_shape)
 
 keeping done =
     perform Keep.keep done.residentSession
@@ -28,11 +22,9 @@ keeping done =
 hosted work =
     handle Keep
         keep session => live := session
-    handle ui::SceneStream
-        shape primitive => streamed := shipped primitive
     handle ui::Slices
         fetch key => native_slice key
-    keeping (work ())
+    keeping (Streams::shared work)
 
 start source = hosted (\() => Runtime::begin (source, App::initial, App::regions, App::theme ()))
 

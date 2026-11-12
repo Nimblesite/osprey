@@ -2,6 +2,7 @@
 //! runtime reads back ([GPUI-HOST-BOUNDARY]). Every export is called from one
 //! thread: `init`, `start` and `dispatch` are serialized on the GPUI main
 //! thread, and `native_slice` is answered on that same thread during a call.
+//! Streamed shapes do not cross here: the host leases them from the bridge (`frame.rs`).
 
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
@@ -32,8 +33,6 @@ static SLICES: OnceLock<Mutex<SliceStore>> = OnceLock::new();
 const NO_CALLBACK_FAULT: u8 = 0;
 const OUTSIDE_CALL: u8 = 1;
 const POISONED_STORE: u8 = 2;
-const POISONED_STREAM: u8 = 3;
-const STREAM_FAILURE: &str = "The scene stream storage was poisoned";
 static CALLBACK_FAULT: AtomicU8 = AtomicU8::new(NO_CALLBACK_FAULT);
 
 fn slices() -> &'static Mutex<SliceStore> {
@@ -75,13 +74,11 @@ impl Drop for ImportSnapshot {
 
 fn callback_result<T>(result: Result<T, String>) -> Result<T, String> {
     match CALLBACK_FAULT.swap(NO_CALLBACK_FAULT, Ordering::SeqCst) {
-        NO_CALLBACK_FAULT if STREAM.is_poisoned() => Err(STREAM_FAILURE.to_owned()),
         NO_CALLBACK_FAULT => result,
         OUTSIDE_CALL => Err("Osprey requested an import outside a native call".to_owned()),
         POISONED_STORE => {
             Err("The host slice store was poisoned during an Osprey import".to_owned())
         }
-        POISONED_STREAM => Err(STREAM_FAILURE.to_owned()),
         _ => Err("Unknown Osprey import callback failure".to_owned()),
     }
 }
@@ -158,65 +155,6 @@ pub extern "C" fn native_slice(key: *const c_char) -> *const c_char {
     }
 }
 
-/// One rect, disc or sprite a resident application streamed during the current call: the scene
-/// encoding's code, a sprite's atlas index, five floats, the packed colour and the depth ([UI-SCENE-STREAM]).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Streamed {
-    pub code: i64,
-    pub index: i64,
-    pub values: [f64; 5],
-    pub colour: i64,
-    pub depth: i64,
-}
-
-/// The shapes streamed since the last `start` or `dispatch` began, in the order they arrived.
-static STREAM: Mutex<Vec<Streamed>> = Mutex::new(Vec::new());
-
-/// The runtime's scene-stream import ([UI-SCENE-STREAM]): appends one primitive and answers 0.
-#[no_mangle]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the import's C signature is one scalar per primitive field"
-)]
-pub extern "C" fn native_shape(
-    code: i64,
-    index: i64,
-    a: f64,
-    b: f64,
-    c: f64,
-    d: f64,
-    e: f64,
-    colour: i64,
-    depth: i64,
-) -> i64 {
-    push_shape(Streamed {
-        code,
-        index,
-        values: [a, b, c, d, e],
-        colour,
-        depth,
-    });
-    0
-}
-
-fn push_shape(shape: Streamed) {
-    match STREAM.lock() {
-        Ok(mut stream) => stream.push(shape),
-        Err(_) => record_callback_fault(POISONED_STREAM),
-    }
-}
-
-/// Takes every shape streamed during the last call, leaving the stream empty.
-pub fn take_stream() -> Result<Vec<Streamed>, String> {
-    STREAM
-        .lock()
-        .map(|mut stream| std::mem::take(&mut *stream))
-        .map_err(|_| {
-            record_callback_fault(POISONED_STREAM);
-            STREAM_FAILURE.to_owned()
-        })
-}
-
 static INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// The linked Osprey application: one archive, one calling thread.
@@ -231,7 +169,7 @@ impl Library {
         }
         // SAFETY: `osprey_main` takes no arguments and is called before any other export.
         let status = unsafe { osprey_main() };
-        callback_result(Ok(()))?;
+        sealed(callback_result(Ok(())))?;
         if status != 0 {
             return Err(format!("osprey_main returned {status}"));
         }
@@ -243,9 +181,8 @@ impl Library {
     pub fn start(context: &str) -> Result<String, String> {
         let source = held(context)?;
         let _snapshot = ImportSnapshot::begin()?;
-        let _ = take_stream()?;
         // SAFETY: the argument outlives the call and the result is copied at once.
-        unsafe { callback_result(copied(osprey_app_start(source.as_ptr()))) }
+        sealed(unsafe { callback_result(copied(osprey_app_start(source.as_ptr()))) })
     }
 
     /// The next envelope for the stored `state` and one event.
@@ -253,15 +190,25 @@ impl Library {
         let saved = held(state)?;
         let message = held(event)?;
         let _snapshot = ImportSnapshot::begin()?;
-        let _ = take_stream()?;
         // SAFETY: both arguments outlive the call and the result is copied at once.
-        unsafe {
+        sealed(unsafe {
             callback_result(copied(osprey_app_dispatch(
                 saved.as_ptr(),
                 message.as_ptr(),
             )))
-        }
+        })
     }
+}
+
+/// Seals the shapes an export streamed once it has returned ([NATIVE-SHM-SCENE]). The run is
+/// consumed even when the export failed, and a refused run fails an export that succeeded.
+fn sealed<T>(result: Result<T, String>) -> Result<T, String> {
+    let frame = crate::frame::seal();
+    if result.is_err() {
+        // A failed export's shapes belong to no envelope: release them now.
+        drop(crate::frame::take());
+    }
+    result.and_then(|value| frame.map(|()| value))
 }
 
 /// Copies and releases one owned string returned by an application export ([IOS-HOST-ABI]).

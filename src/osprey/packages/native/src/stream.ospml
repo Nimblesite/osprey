@@ -1,8 +1,12 @@
-// Implements [UI-SCENE-STREAM]: in a resident session the fixed-size primitives of a changed scene
-// (rects, discs and sprites) leave the envelope and go to the host one call at a time, so a frame of
-// thousands of shapes is neither built as JSON nor spelled as text nor parsed by the host. Strips,
+// Implements [UI-SCENE-STREAM] and [NATIVE-SHM-SCENE]: in a resident session the fixed-size
+// primitives of a changed scene (rects, discs and sprites) leave the envelope. Compiled Osprey
+// writes each one once, as nine machine words, into bridge storage that the host then leases and
+// draws from in place: no text, no parse, no host call, no lock and no copy per shape. Strips,
 // glyphs and paths, whose sizes vary, stay in the envelope.
 namespace ui
+
+// The Osprey runtime's own entry: appends one shape to the frame the host seals after this call.
+extern osp_native_scene_shape (code : int) (index : int) (x : float) (y : float) (width : float) (height : float) (angle : float) (tint : int) (layer : int) -> int
 
 (** A changed scene's rects, discs and sprites, sent to the host in drawing order outside the envelope ([UI-SCENE-STREAM]). The resident runtime performs it; the application's boundary answers it with a host import, using the `Streams` accessors. *)
 effect SceneStream
@@ -10,8 +14,11 @@ effect SceneStream
 
 (** Splits a region's scenes into streamed and enveloped primitives, and reads a streamed primitive's fields for the host import ([UI-SCENE-STREAM]). *)
 module Streams
-    (** [UI-SCENE-STREAM] Sends the fixed-size host fields of `primitive` through the boundary import. *)
-    export transmit (primitive, write) = write (code primitive, index primitive, value (primitive, 0), value (primitive, 1), value (primitive, 2), value (primitive, 3), value (primitive, 4), colour primitive, depth primitive)
+    (** [NATIVE-SHM-SCENE] Runs `work` with every streamed shape written straight into the shared frame the host reads in place. An application's boundary wraps its `start` and `dispatch` in it. A frame that cannot take another shape is refused whole by the host that seals it. *)
+    export shared work =
+        handle SceneStream
+            shape primitive => osp_native_scene_shape (code primitive, index primitive, value (primitive, 0), value (primitive, 1), value (primitive, 2), value (primitive, 3), value (primitive, 4), colour primitive, depth primitive)
+        work ()
 
     (** Whether `primitive` has a fixed size and so travels in the stream: a rect, a disc or a sprite. *)
     export streamed : Primitive -> bool

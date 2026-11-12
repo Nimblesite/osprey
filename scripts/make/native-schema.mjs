@@ -17,5 +17,5 @@ const unwrap = result => {
 const source = await readFile(new URL('../../src/toolchain/schemas/native.td', import.meta.url), 'utf8')
 const model = unwrap(buildModel(unwrap(parse(source))))
 const header = unwrap(await generateSharedC(model, 8,
-  ['ApplicationInstance', 'OwnerToken', 'AllocationReference', 'OwnedLease', 'BridgeError']))
+  ['ApplicationInstance', 'OwnerToken', 'AllocationReference', 'OwnedLease', 'BridgeError', 'SceneShape']))
 await writeFile(destination, header + '\n')

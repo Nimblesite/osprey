@@ -13,6 +13,7 @@ mod coverage;
 mod envelope;
 mod events;
 mod ffi;
+mod frame;
 mod host;
 mod launch;
 mod regions;
