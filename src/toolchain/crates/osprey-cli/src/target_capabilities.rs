@@ -27,6 +27,14 @@ const TERMINAL_FNS: &[&str] = &[
 ];
 const WEB_IMPORTS: &[&str] = &["osprey_web_render", "osprey_web_command"];
 const WASI_LIBC_IMPORTS: &[&str] = &["perror", "abort"];
+// The shared frame writers live in `native_scene.c`, which the wasm runtime
+// carries too, so every `@osprey/native` application still builds for wasm32.
+// [NATIVE-SHM-VIEW] [NATIVE-SHM-SCENE]
+const WASM_RUNTIME_IMPORTS: &[&str] = &[
+    "osp_native_scene_shape",
+    "osp_native_view_row",
+    "osp_native_view_extend",
+];
 
 pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
     if !matches!(target, "wasm32" | "python") && !crate::toolchain::host_archive_target(target) {
@@ -352,6 +360,7 @@ impl AstVisitor for Capabilities<'_> {
             if self.target == "wasm32"
                 && !WEB_IMPORTS.contains(&name.as_str())
                 && !WASI_LIBC_IMPORTS.contains(&name.as_str())
+                && !WASM_RUNTIME_IMPORTS.contains(&name.as_str())
             {
                 self.reject(&format!("foreign C import `{name}`"));
             }

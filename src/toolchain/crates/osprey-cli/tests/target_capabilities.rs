@@ -202,6 +202,28 @@ fn wasm_accepts_wasi_libc_perror_and_abort() -> std::io::Result<()> {
     Ok(())
 }
 
+/// The wasm runtime carries the shared frame writers (`native_scene.c`), so a
+/// wasm32 build of any `@osprey/native` application may import them: the VS Code
+/// host compiles the package editor and the Workbench this way. Each writer is
+/// declared once and called. [NATIVE-SHM-VIEW] [NATIVE-SHM-SCENE]
+#[test]
+fn wasm_accepts_the_shared_frame_writers_its_runtime_carries() -> std::io::Result<()> {
+    let source = "extern fn osp_native_scene_shape(code: int, index: int, x: float, y: float, width: float, height: float, angle: float, colour: int, depth: int) -> int\n\
+                  extern fn osp_native_view_row(kind: int, parent: int, action: int, words: string, ink: int, fill: int, points: float, inset: float, gap: float, corner: float, heft: int) -> int\n\
+                  extern fn osp_native_view_extend(row: int, wide: float, tall: float, share: float, traits: int, edge: int, hint: string) -> int\n\
+                  fn main() = print(toString(osp_native_scene_shape(0, 0, 1.0, 2.0, 3.0, 4.0, 0.0, 255, 0)) + toString(osp_native_view_extend(osp_native_view_row(2, -1, -1, \"hi\", 255, 0, 12.0, 0.0, 0.0, 0.0, 400), 10.0, 0.0, 0.0, 0, 0, \"\")))\n";
+    let ir = accepts(source, "wasm32")?;
+    for writer in ["osp_native_scene_shape", "osp_native_view_row", "osp_native_view_extend"] {
+        assert_eq!(
+            ir.lines().filter(|line| line.starts_with("declare ") && line.contains(&format!("@{writer}("))).count(),
+            1,
+            "{writer} must be declared once:\n{ir}"
+        );
+        assert!(ir.contains(&format!("@{writer}(")), "{writer} is never called");
+    }
+    Ok(())
+}
+
 /// A first-class import goes through the named function's environment-dropping
 /// forwarder: the wrapper returns the `i64` Unit zero, only the wrapped C callee
 /// is `void`, and the forwarder body makes the single call. [WASI-LIBC-ABI]
