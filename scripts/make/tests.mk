@@ -106,9 +106,10 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
-C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
+C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
 C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
-C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC
+C_FLAGS_host_import_gc_tests = -DOSP_NATIVE_TEST
+C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC -DOSP_NATIVE_TEST
 C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 # Every tensor-reader suite shares the numeric binary16 conversion.

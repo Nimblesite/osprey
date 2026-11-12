@@ -196,6 +196,15 @@
       "map_runtime_hamt": {
         "language": "c"
       },
+      "native_bridge": {
+        "language": "c"
+      },
+      "native_bridge_lifecycle": {
+        "language": "c"
+      },
+      "native_bridge_internal": {
+        "language": "c"
+      },
       "fiber_runtime": {
         "language": "c"
       },
