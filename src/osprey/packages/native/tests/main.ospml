@@ -92,17 +92,17 @@ refusedEvent (session, event, reason) = refusedClean (Probes::post (session, eve
 // The `key` text of the first child of the node of `session`'s first patch.
 patchedText (session, key) = Doc::text (firstOf (Doc::field (firstOf (session, "patches"), "node"), "children"), key)
 
-// Posting to `session` an edit of `value` whose original control is recovered from `prior`'s saved state.
-editFrom (session, prior, region, revision, ordinal, value) = Probes::post (session, Probes::edit (Probes::saved (prior), region, revision, ordinal, value))
+// Posting to `session` an edit of `value` to the control `region` drew at `revision`, which the session recalls.
+editFrom (session, region, revision, ordinal, value) = Probes::post (session, Probes::edit (region, revision, ordinal, value))
 
-// An edit posted to `session` against `prior`'s saved state is refused for `reason` and changes nothing.
-refusedEdit (session, prior, region, revision, ordinal, value, reason) = refusedClean (editFrom (session, prior, region, revision, ordinal, value), reason)
+// An edit posted to `session` against an earlier revision is refused for `reason` and changes nothing.
+refusedEdit (session, region, revision, ordinal, value, reason) = refusedClean (editFrom (session, region, revision, ordinal, value), reason)
 
 // A host tap of `region`'s `ordinal` control at `revision`, posted to `session`.
 postedTap (session, region, revision, ordinal) = Probes::post (session, Probes::tap (region, revision, ordinal))
 
-// A settled root edit posted to `session` against `prior`'s saved state.
-rootEdit (session, prior, ordinal) = editFrom (session, prior, "root", 1, ordinal, "null")
+// A settled edit of the root as first drawn, posted to `session`.
+rootEdit (session, ordinal) = editFrom (session, "root", 1, ordinal, "null")
 
 // `envelope` reports no problem.
 problemFree envelope = expect (Probes::problems envelope, "")
@@ -212,22 +212,22 @@ test ("stale, unknown and mismatched events are rejected without change", \() =>
 test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
-    counted = rootEdit (first, first, 0)
+    counted = rootEdit (first, 0)
     problemFree counted
     refreshedTo (counted, "root", "text", "Count 1")
     // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
-    shifted = rootEdit (counted, first, 0)
+    shifted = rootEdit (counted, 0)
     expect (Probes::keys shifted, "")
     tallyOne counted
     // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
-    servedLoad (rootEdit (counted, first, 1)))
+    servedLoad (rootEdit (counted, 1)))
 // [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
     first = Probes::started ()
     // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
-    refusedEdit (first, first, "note", 1, 1, "null", "More than one")
+    refusedEdit (first, "note", 1, 1, "null", "More than one")
     // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
-    gone = rootEdit (rootEdit (first, first, 0), first, 0)
+    gone = rootEdit (rootEdit (first, 0), 0)
     refusedClean (gone, "no longer exists")
     // The refusal changed nothing: the current session still answers its own controls.
     intact = postedTap (gone, "root", 2, 0)
@@ -242,9 +242,9 @@ editedAt () = [
 ]
 test ("an edit with an impossible original refuses without change", \() =>
     first = Probes::started ()
-    forEachList (editedAt (), \probe => refusedEdit (first, first, probe.region, probe.revision, probe.ordinal, probe.value, probe.reason))
-    refusedEvent (first, Probes::edit ("\"not a session\"", "root", 1, 0, "null"), "Stale control")
-    wrongKind = editFrom (first, first, "note", 1, 0, "7")
+    forEachList (editedAt (), \probe => refusedEdit (first, probe.region, probe.revision, probe.ordinal, probe.value, probe.reason))
+    refusedEvent (first, Probes::edit ("root", 0, 0, "null"), "Stale control")
+    wrongKind = editFrom (first, "note", 1, 0, "7")
     refusedClean (wrongKind, "wrong kind")
     expect (countOf (wrongKind, "requests"), 0)
     // Every refusal left the session whole.
@@ -256,7 +256,7 @@ test ("a resolved edit updates the current state", \() =>
     first = Probes::started ()
     typed = Probes::post (first, Probes::typed (1, "hello"))
     counted = postedTap (typed, "root", 1, 0)
-    edited = editFrom (counted, first, "note", 1, 0, "\"world\"")
+    edited = editFrom (counted, "note", 1, 0, "\"world\"")
     problemFree edited
     expect (Doc::text (Probes::stored edited, "memo"), "world")
     expect (Doc::text (Probes::stored typed, "memo"), "hello")
@@ -412,6 +412,29 @@ test ("context menus bind actions after their content controls", \() =>
 
 mut streamedTrace = ""
 
+(** Hands each session the framework returns to the list below. *)
+effect Hold
+    hold : ui::Session<Probe> => Unit
+
+// Every session a test has reached, so an envelope can name the one it left by position.
+mut sessions = [Runtime::idle (Probe(counter = Tally(tally = 0), note = Memo(memo = "")))]
+
+// The envelope of `done`, tagged with where its session is held.
+tagged done =
+    place = length sessions
+    perform Hold.hold done.residentSession
+    Doc::parse "{\"session\":${place},${substring (done.residentEnvelope, 1, length done.residentEnvelope) ?: ""}"
+
+held work =
+    handle Hold
+        hold session => sessions := listConcat sessions [session]
+    handle ui::SceneStream
+        shape _ => 0
+    tagged (work ())
+
+// The session `envelope` left.
+sessionOf envelope = listGet sessions (Doc::number (envelope, "session")) ?: Runtime::idle (Probe(counter = Tally(tally = 0), note = Memo(memo = "")))
+
 streamedFrom node =
     handle ui::SceneStream
         shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive}@${Streams::depth primitive};"
@@ -444,7 +467,7 @@ testCases [
     { name = "an enveloped scene reports nothing streamed", work = sceneCaseAnEnvelopedSceneReportsNothingStreamed },
     { name = "streamed primitives read back every field a host import takes", work = sceneCaseStreamedPrimitivesReadBackEveryFieldA },
     { name = "a resident session keeps its store out of the envelope", work = sceneCaseAResidentSessionKeepsItsStoreOut },
-    { name = "a resident session refuses stale controls and prior-state edits without change", work = sceneCaseAResidentSessionRefusesStaleControlsAnd },
+    { name = "a resident session refuses stale taps and recalls earlier edits", work = sceneCaseAResidentSessionRefusesStaleControlsAnd },
     { name = "a split streams scenes from every container in the encoder's order", work = sceneCaseASplitStreamsScenesFromEveryContainer },
     { name = "primitives that do not stream read back zero fields", work = sceneCasePrimitivesThatDoNotStreamReadBack },
     { name = "a resident session delivers completions, phases and frames and refuses malformed text", work = sceneCaseAResidentSessionDeliversCompletionsPhasesAnd },

@@ -47,7 +47,7 @@ ok 46 - a split scene streams its fixed-size primitives in order and keeps the r
 ok 47 - an enveloped scene reports nothing streamed
 ok 48 - streamed primitives read back every field a host import takes
 ok 49 - a resident session keeps its store out of the envelope
-ok 50 - a resident session refuses stale controls and prior-state edits without change
+ok 50 - a resident session refuses stale taps and recalls earlier edits
 ok 51 - a split streams scenes from every container in the encoder's order
 ok 52 - primitives that do not stream read back zero fields
 ok 53 - a resident session delivers completions, phases and frames and refuses malformed text

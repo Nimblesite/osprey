@@ -243,8 +243,8 @@ sceneCaseAResidentSessionKeepsItsStoreOut () =
     expect (tapped.residentSession.sessionStore.counter.tally, 1)
     expect (Doc::text (Doc::parse tapped.residentEnvelope, "state"), "resident")
 
-// [UI-RESIDENT]: stale controls are refused as in a saved session, and an edit against a prior state cannot be recovered.
-(** a resident session refuses stale controls and prior-state edits without change. *)
+// [UI-RESIDENT]: a stale tap is refused; an edit of an earlier revision is recalled from memory and keeps its typed meaning.
+(** a resident session refuses stale taps and recalls earlier edits. *)
 sceneCaseAResidentSessionRefusesStaleControlsAnd () =
     first = begun ()
     moved = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
@@ -252,9 +252,15 @@ sceneCaseAResidentSessionRefusesStaleControlsAnd () =
     expect (Probes::keys (Doc::parse stale.residentEnvelope), "")
     expect (contains (Probes::problems (Doc::parse stale.residentEnvelope)) "Stale control", true)
     expect (stale.residentSession.sessionStore.counter.tally, 1)
-    edited = proceeded (moved.residentSession, Probes::edit ("\"resident\"", "root", 1, 0, "null"))
-    expect (contains (Probes::problems (Doc::parse edited.residentEnvelope)) "keeps no prior state", true)
-    expect (edited.residentSession.sessionStore.counter.tally, 1)
+    withdrawn = proceeded (moved.residentSession, Probes::edit ("root", 1, 0, "null"))
+    expect (contains (Probes::problems (Doc::parse withdrawn.residentEnvelope)) "no longer exists", true)
+    expect (withdrawn.residentSession.sessionStore.counter.tally, 1)
+    loaded = proceeded (moved.residentSession, Probes::edit ("root", 1, 1, "null"))
+    expect (Probes::problems (Doc::parse loaded.residentEnvelope), "")
+    expect (Doc::text (firstOf (Doc::parse loaded.residentEnvelope, "requests"), "ticket"), "load:1")
+    unknown = proceeded (moved.residentSession, Probes::edit ("root", 7, 0, "null"))
+    expect (contains (Probes::problems (Doc::parse unknown.residentEnvelope)) "Stale control", true)
+    expect (length moved.residentSession.sessionPast, 1)
 
 // One scene holding a single disc at `layer`, so the stream's order names the container it was found in.
 dot layer = Ui::scene (10.0, 10.0, [], [Scenes::disc (1.0, 1.0, 1.0, 0, layer)], Typed)

@@ -17,6 +17,12 @@ type Session S =
     sessionContext : Context
     sessionStore : S
     sessionFrames : List<SignalFrame>
+    sessionPast : List<Past<S>>
+
+(** [UI-RESIDENT] A store the session held earlier and the frames it was drawn with, kept in memory so an edit begun against an older revision still finds the control it meant. *)
+type Past S =
+    pastStore : S
+    pastFrames : List<SignalFrame>
 
 (** [UI-RESIDENT] One envelope and the session it leaves, for a host whose library keeps the session between calls. *)
 type Resident S =
@@ -57,7 +63,7 @@ module Runtime
     loadSession<S> : (string, (Json) -> S) -> Session<S> !e
     loadSession (saved, decodeStore) =
         doc = Doc::parse saved
-        Session(sessionContext = context (Doc::field (doc, "context")), sessionStore = decodeStore (Doc::field (doc, "store")), sessionFrames = signalFramesFromJson (Doc::field (doc, "frames")))
+        Session(sessionContext = context (Doc::field (doc, "context")), sessionStore = decodeStore (Doc::field (doc, "store")), sessionFrames = signalFramesFromJson (Doc::field (doc, "frames")), sessionPast = [])
 
     (** The signal frames of rendered regions, which the next update compares against. *)
     export frames<A> : List<KeyedSnapshot<Node<A>>> -> List<SignalFrame>
@@ -107,7 +113,7 @@ module Runtime
         host = context (Doc::parse source)
         first = init host
         regions = render (first.stepStore, first.stepStore, [], first.writes)
-        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
+        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions, sessionPast = [])
         Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme)
 
     // A rejected event alters nothing and says why.
@@ -174,6 +180,12 @@ module Runtime
         Lifecycle phase => Success(value = Phase(phase = phase))
         Tick elapsed => Success(value = Frame(elapsed = elapsed))
 
+    // How many stores a session remembers, the current one included: an edit begun before that is refused as stale.
+    remembered = 16
+
+    past<S> : Session<S> -> List<Past<S>>
+    past session = Lists::slice (listConcat [Past(pastStore = session.sessionStore, pastFrames = session.sessionFrames)] session.sessionPast, 0, remembered)
+
     advance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
     advance (session, now, delivered, update, render, save) =
         emit (advanced (session, now, delivered, update, render), save)
@@ -182,7 +194,7 @@ module Runtime
     advanced (session, now, delivered, update, render) =
         next = update (now, session.sessionStore, delivered)
         regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
-        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
+        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions, sessionPast = past session)
         Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull)
 
     deliver<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e
@@ -213,18 +225,39 @@ module Runtime
 
     (** [UI-RESIDENT] A session holding `store` before `begin` has run, for the cell an application keeps its live session in. *)
     export idle<S> : S -> Session<S>
-    idle store = Session(sessionContext = context JsonNull, sessionStore = store, sessionFrames = [])
+    idle store = Session(sessionContext = context JsonNull, sessionStore = store, sessionFrames = [], sessionPast = [])
 
     (** [UI-RESIDENT] `start` for a library that keeps the session itself: the first envelope, whose state is only a marker, and the session to keep. *)
     export begin<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Theme) -> Resident<S> ![SceneStream | e]
     begin (source, init, render, theme) =
         resident (initial (source, init, render, theme))
 
-    // A resident session has no saved prior state, so an edit made against an older revision cannot be recovered.
+    // [UI-EVENTS] The session as it stood when `key` was drawn at `revision`, straight from memory.
+    recalled<S> : (Session<S>, string, int) -> Result<Session<S>, Error>
+    recalled (session, key, revision) = match Lists::find (past session, \earlier => revision > 0 && signalRevisionOf earlier.pastFrames key == revision)
+        Error _ => Error(message = "Stale control: region ${key} revision ${revision} is not current in the prior state")
+        Success earlier => Success(value = Session(sessionContext = session.sessionContext, sessionStore = earlier.pastStore, sessionFrames = earlier.pastFrames, sessionPast = []))
+
+    residentOriginal<S, A> : (Session<S>, string, int, int, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Binding<A>, Error> !e
+    residentOriginal (session, key, revision, ordinal, render) = match recalled (session, key, revision)
+        Error problem => Error(message = problem)
+        Success earlier => match drawn (earlier, key, render)
+            Error problem => Error(message = problem)
+            Success region => issued ([region], key, ordinal)
+
+    // [UI-EVENTS]: an edit names the revision its control was drawn at; the original binding must
+    // survive, by its typed action, exactly once among the region's current controls.
+    residentEdit<S, A> : (Session<S>, string, int, int, Json, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
+    residentEdit (session, key, revision, ordinal, value, render) = match residentOriginal (session, key, revision, ordinal, render)
+        Error problem => Error(message = problem)
+        Success before => match drawn (session, key, render)
+            Error problem => Error(message = problem)
+            Success region => redeliver (region, before, value)
+
     residentMessage<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
     residentMessage (session, body, render) = match body
         Control key revision ordinal value => resolve (session, key, revision, ordinal, value, render)
-        PreviousControl _ key _ _ _ => Error(message = "Stale control: region ${key} changed and a resident session keeps no prior state")
+        PreviousControl _ key revision ordinal value => residentEdit (session, key, revision, ordinal, value, render)
         Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
         Lifecycle phase => Success(value = Phase(phase = phase))
         Tick elapsed => Success(value = Frame(elapsed = elapsed))

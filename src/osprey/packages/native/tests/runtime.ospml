@@ -1,6 +1,6 @@
 // A minimal consumer of the framework: two slices, two regions. Verifies
 // [UI-SIGNALS], [UI-REGIONS], [UI-EVENTS] and [UI-PROTOCOL] through the real
-// start/dispatch path.
+// resident begin/proceed path ([UI-RESIDENT]).
 namespace uitests
 
 import ui::Ui
@@ -84,21 +84,19 @@ update (_, store, message) = Messages::route (message, \action => tapped (store,
 
 save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
 
-restore doc = probe (Doc::number (doc, "tally")) (Doc::text (doc, "memo"))
-
 countJson value = JsonInt value.tally
 
 memoJson value = JsonString value.memo
 
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
 
-(** Drives the probe application through the real start and dispatch path, and reads its envelopes. *)
+(** Drives the probe application through the real resident begin and proceed path, and reads its envelopes. *)
 module Probes
     (** The probe application's first envelope. *)
-    export started () = Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", initial, regions, save, theme))
+    export started () = held (\() => Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", initial, regions, theme))
 
     (** The envelope after delivering `event` to the session `envelope` left. *)
-    export post (envelope, event) = Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, update, regions, save, restore))
+    export post (envelope, event) = held (\() => Runtime::proceed (sessionOf envelope, event, update, regions))
 
     (** The keys of the regions an envelope patched, in order. *)
     export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key"))) ","
@@ -109,14 +107,11 @@ module Probes
     (** Text typed into the note field as drawn at `revision`. *)
     export typed (revision, text) = "{\"kind\":\"ui\",\"region\":\"note\",\"revision\":${revision},\"ordinal\":0,\"value\":${jsonQuote text ?: "null"},\"now\":6}"
 
-    (** The opaque state of `envelope`, quoted for embedding in an event document. *)
-    export saved envelope = jsonQuote (Doc::text (envelope, "state")) ?: "\"\""
+    (** A trusted-host edit of the control `ordinal` as `region` drew it at `revision`, with `value` as JSON text. *)
+    export edit (region, revision, ordinal, value) = "{\"kind\":\"ui-edit\",\"region\":\"${region}\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
 
-    (** A trusted-host edit of the control `ordinal` as it was drawn in `prior` at `revision`, with `value` as JSON text. *)
-    export edit (prior, region, revision, ordinal, value) = "{\"kind\":\"ui-edit\",\"prior\":${prior},\"region\":\"${region}\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
-
-    (** The restored store of `envelope`'s session. *)
-    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+    (** The store of `envelope`'s session. *)
+    export stored envelope = save (sessionOf envelope).sessionStore
 
     (** An envelope's diagnostics, joined by `;`. *)
     export problems envelope = join (Doc::texts (envelope, "diagnostics")) ";"
