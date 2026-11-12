@@ -448,33 +448,25 @@ void osp_collect(void) {
 }
 
 // --- diagnostics (read-only snapshots; not on any hot path) ------------------
+static size_t gc_snapshot(const size_t *counter) {
+  heap_lock();
+  size_t n = *counter;
+  heap_unlock();
+  return n;
+}
+
 // Objects currently tracked by the collector. Immediately after osp_collect()
 // returns on the main thread this equals the reachable (live) set, so tooling
 // and the conformance tests can assert that unreachable churn was reclaimed.
-size_t osp_gc_live_objects(void) {
-  heap_lock();
-  size_t n = g_count;
-  heap_unlock();
-  return n;
-}
+size_t osp_gc_live_objects(void) { return gc_snapshot(&g_count); }
 
 // Slots in the heap table. Lets a test confirm the table keeps the capacity a
 // steady workload needs across collections, and gives it back once unused.
-size_t osp_gc_table_capacity(void) {
-  heap_lock();
-  size_t n = g_cap;
-  heap_unlock();
-  return n;
-}
+size_t osp_gc_table_capacity(void) { return gc_snapshot(&g_cap); }
 
 // Collections run since start. Lets a test confirm a collection actually fired
 // (or, after the multithread latch, that collection stopped firing).
-size_t osp_gc_collections(void) {
-  heap_lock();
-  size_t n = g_ncollect;
-  heap_unlock();
-  return n;
-}
+size_t osp_gc_collections(void) { return gc_snapshot(&g_ncollect); }
 
 #include "memory_gc_libc.h"
 
