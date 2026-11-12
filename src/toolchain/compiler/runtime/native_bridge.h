@@ -62,19 +62,50 @@ _Static_assert(sizeof(OspNativeShape) == sizeof(td_SceneShape) &&
                        TD_SceneShape_colour_OFFSET &&
                    offsetof(OspNativeShape, depth) == TD_SceneShape_depth_OFFSET,
                "OspNativeShape matches the generated SceneShape layout");
-#define OSP_NATIVE_SCENE_SHAPES 1          // The chunk type of a sealed run.
-#define OSP_NATIVE_SCENE_ROWS (1 << 20)    // The most shapes one call may send.
+// [NATIVE-SHM-VIEW] One native control, laid out as the generated ViewRow.
+typedef struct {
+  int64_t kind, parent, action, text_offset, text_length, colour, background;
+  double size, padding, spacing, radius;
+  int64_t weight;
+} OspNativeView;
+_Static_assert(sizeof(OspNativeView) == sizeof(td_ViewRow) &&
+                   offsetof(OspNativeView, text_offset) ==
+                       TD_ViewRow_textOffset_OFFSET &&
+                   offsetof(OspNativeView, size) == TD_ViewRow_size_OFFSET &&
+                   offsetof(OspNativeView, weight) == TD_ViewRow_weight_OFFSET,
+               "OspNativeView matches the generated ViewRow layout");
+// A published frame is one branch chunk whose children are its three sealed
+// runs, in this order; the value is both the child index and, plus one, the
+// chunk type.
+enum { OSP_NATIVE_SHAPES, OSP_NATIVE_VIEWS, OSP_NATIVE_TEXT, OSP_NATIVE_RUNS };
+#define OSP_NATIVE_SCENE_SHAPES (OSP_NATIVE_SHAPES + 1)
+#define OSP_NATIVE_VIEW_ROWS (OSP_NATIVE_VIEWS + 1)
+#define OSP_NATIVE_VIEW_TEXT (OSP_NATIVE_TEXT + 1)
+#define OSP_NATIVE_FRAME (OSP_NATIVE_RUNS + 1)
+#define OSP_NATIVE_SCENE_ROWS (1 << 20) // The most shapes one call may send.
+#define OSP_NATIVE_VIEW_LIMIT (1 << 16) // The most controls in one view.
+#define OSP_NATIVE_TEXT_LIMIT (1 << 24) // The most text bytes in one view.
 // Appends one shape to the pending run; the application executor calls this
 // in drawing order. Nonzero once the run cannot grow: it is then refused whole.
 int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
                                double width, double height, double angle,
                                int64_t colour, int64_t depth);
-// Hands the pending run's storage to the caller and starts an empty run.
-// `complete` is false when a shape was refused. Executor thread only.
-void *osp_native_scene_take(int64_t *length, int64_t *capacity,
-                            bool *complete);
-// Seals the pending run as one leaf chunk, in place, and publishes it as the
-// root; a refused run publishes nothing. Call on the executor thread after
-// each application export returns.
-int osp_native_scene_commit(OspNativeBridge *bridge, int64_t *revision);
+// Appends one control and copies its text once into the text run. Returns the
+// row's index for its children to name as `parent`, or -1 once the view is
+// refused: a parent that is not an earlier row, or a run that cannot grow.
+int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
+                            const char *text, int64_t colour,
+                            int64_t background, double size, double padding,
+                            double spacing, double radius, int64_t weight);
+// Hands one pending run's storage to the caller and starts an empty run.
+// `complete` is false when a write was refused. Executor thread only.
+void *osp_native_run_take(int64_t run, int64_t *length, int64_t *capacity,
+                          bool *complete);
+// Seals the three pending runs in place and publishes them as one frame; a
+// refused run publishes nothing. Call on the executor thread after each
+// application export returns.
+int osp_native_frame_commit(OspNativeBridge *bridge, int64_t *revision);
+// A new owner of the `index`th child of a branch chunk.
+int osp_native_child(OspNativeBridge *bridge, const td_OwnedLease *lease,
+                     int64_t index, td_OwnedLease *out);
 #endif

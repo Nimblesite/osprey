@@ -298,22 +298,44 @@ static void push_shapes(int64_t first, int64_t count) {
                                   -i) == 0);
 }
 
-static const OspNativeShape *leased_shapes(OspNativeBridge *b,
-                                           td_OwnedLease *lease,
-                                           int64_t expected, int64_t count) {
-  int64_t revision, length;
+// A new owner of one run of the published frame, which must be `expected`.
+static void leased_run(OspNativeBridge *b, int64_t run, int64_t expected,
+                       td_OwnedLease *lease) {
+  int64_t revision;
+  td_OwnedLease frame;
+  assert(osp_native_acquire(b, &frame, &revision) == 0 && revision == expected);
+  assert(osp_native_child(b, &frame, run, lease) == 0);
+  assert(osp_native_child(b, &frame, OSP_NATIVE_RUNS, lease) ==
+             OSP_NATIVE_ERROR(InvalidRange) &&
+         osp_native_child(b, &frame, -1, lease) ==
+             OSP_NATIVE_ERROR(InvalidRange) &&
+         osp_native_child(b, &frame, run, NULL) ==
+             OSP_NATIVE_ERROR(InvalidRange) &&
+         osp_native_child(b, lease, 0, &frame) ==
+             OSP_NATIVE_ERROR(InvalidRange));
+  assert(osp_native_release(b, &frame) == 0);
+}
+
+static const void *run_bytes(OspNativeBridge *b, const td_OwnedLease *lease,
+                             int64_t run, int64_t bytes) {
+  int64_t length;
   const void *view = NULL;
-  assert(osp_native_acquire(b, lease, &revision) == 0 && revision == expected);
-  assert(osp_native_length(b, lease, &length) == 0 &&
-         length == count * (int64_t)sizeof(OspNativeShape));
+  assert(osp_native_length(b, lease, &length) == 0 && length == bytes);
   assert(osp_native_view(b, lease, 11, 0, length, &view) ==
              OSP_NATIVE_ERROR(InvalidLayout) &&
          !view);
-  assert(osp_native_view(b, lease, OSP_NATIVE_SCENE_SHAPES, 0, length + 1,
-                         &view) == OSP_NATIVE_ERROR(InvalidRange));
-  assert(osp_native_view(b, lease, OSP_NATIVE_SCENE_SHAPES, 0, length,
-                         &view) == 0);
+  assert(osp_native_view(b, lease, run + 1, 0, length + 1, &view) ==
+         OSP_NATIVE_ERROR(InvalidRange));
+  assert(osp_native_view(b, lease, run + 1, 0, length, &view) == 0);
   return view;
+}
+
+static const OspNativeShape *leased_shapes(OspNativeBridge *b,
+                                           td_OwnedLease *lease,
+                                           int64_t expected, int64_t count) {
+  leased_run(b, OSP_NATIVE_SHAPES, expected, lease);
+  return run_bytes(b, lease, OSP_NATIVE_SHAPES,
+                   count * (int64_t)sizeof(OspNativeShape));
 }
 
 static void check_shape_rows(const OspNativeShape *rows, int64_t first,
@@ -337,19 +359,19 @@ static void check_native_scene_frames(void) {
   td_OwnedLease first, second, empty;
   assert(osp_native_usage(b, &idle, &chunks, &owners) == 0 && chunks == 0);
   push_shapes(0, 3);
-  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 1);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
   const OspNativeShape *held = leased_shapes(b, &first, 1, 3);
   check_shape_rows(held, 0, 3);
   push_shapes(100, 5000);
-  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 2);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_shape_rows(held, 0, 3);
   check_shape_rows(leased_shapes(b, &second, 2, 5000), 100, 5000);
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 2 &&
+  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 5 &&
          owners == 2);
   assert(osp_native_release(b, &first) == 0);
   assert(osp_native_release(b, &first) == OSP_NATIVE_ERROR(InvalidOwner));
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 1);
-  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 3);
+  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 4);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 3);
   (void)leased_shapes(b, &empty, 3, 0);
   assert(osp_native_release(b, &second) == 0 &&
          osp_native_release(b, &empty) == 0);
@@ -364,28 +386,28 @@ static void check_native_scene_refusals(void) {
   int64_t revision = 0;
   td_OwnedLease lease;
   push_shapes(0, 2);
-  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 1);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
   assert(osp_native_usage(b, &before, &chunks, &owners) == 0);
   push_shapes(0, 4096);
-  assert(osp_native_scene_commit(b, &revision) ==
+  assert(osp_native_frame_commit(b, &revision) ==
              OSP_NATIVE_ERROR(LimitExceeded) &&
          revision == 1);
   for (int64_t i = 0; i < OSP_NATIVE_SCENE_ROWS; i++)
     assert(osp_native_scene_shape(0, i, 0, 0, 0, 0, 0, 0, 0) == 0);
   assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
   assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
-  assert(osp_native_scene_commit(b, &revision) ==
+  assert(osp_native_frame_commit(b, &revision) ==
              OSP_NATIVE_ERROR(AllocationFailed) &&
          revision == 1);
-  assert(osp_native_scene_commit(NULL, &revision) ==
+  assert(osp_native_frame_commit(NULL, &revision) ==
          OSP_NATIVE_ERROR(BridgeClosed));
   assert(osp_native_usage(b, &after, &chunks, &owners) == 0 &&
-         after == before && chunks == 1 && owners == 0);
+         after == before && chunks == 4 && owners == 0);
   check_shape_rows(leased_shapes(b, &lease, 1, 2), 0, 2);
   assert(osp_native_length(b, &lease, NULL) == OSP_NATIVE_ERROR(InvalidRange));
   assert(osp_native_release(b, &lease) == 0);
   push_shapes(7, 1);
-  assert(osp_native_scene_commit(b, &revision) == 0 && revision == 2);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_shape_rows(leased_shapes(b, &lease, 2, 1), 7, 1);
   assert(osp_native_release(b, &lease) == 0 && osp_native_destroy(b) == 0);
 }
@@ -427,6 +449,81 @@ static void check_native_exhaustion(void) {
   assert(osp_native_create(b, 1, true, "", 1, NULL, 0, &a) ==
          OSP_NATIVE_ERROR(WouldBlock));
   assert(osp_native_destroy(b) == 0);
+}
+
+// A view of three controls: a column holding a label and a button.
+static void push_view(void) {
+  assert(osp_native_view_row(0, -1, -1, "", 1, 2, 3, 4, 5, 6, 7) == 0);
+  assert(osp_native_view_row(2, 0, -1, "Count 3", 0xff, 0, 17, 0, 0, 0, 400) ==
+         1);
+  assert(osp_native_view_row(3, 0, 0, "A\xc3\xb1" "adir", 0, 0xff00, 15, 8, 0,
+                             6, 600) == 2);
+}
+
+static void check_view_rows(const OspNativeView *rows, const char *text) {
+  assert(rows[0].kind == 0 && rows[0].parent == -1 && rows[0].action == -1 &&
+         rows[0].text_length == 0 && rows[0].colour == 1 &&
+         rows[0].background == 2 && rows[0].size == 3 &&
+         rows[0].padding == 4 && rows[0].spacing == 5 && rows[0].radius == 6 &&
+         rows[0].weight == 7);
+  assert(rows[1].kind == 2 && rows[1].parent == 0 && rows[1].action == -1 &&
+         rows[1].text_offset == 0 && rows[1].text_length == 7 &&
+         rows[1].colour == 0xff && rows[1].size == 17 &&
+         rows[1].weight == 400);
+  assert(rows[2].kind == 3 && rows[2].parent == 0 && rows[2].action == 0 &&
+         rows[2].text_offset == 7 && rows[2].text_length == 7 &&
+         rows[2].background == 0xff00 && rows[2].radius == 6);
+  assert(memcmp(text, "Count 3A\xc3\xb1" "adir", 14) == 0);
+}
+
+// Each refused view publishes nothing and leaves the next one clean.
+static void check_view_refusals(OspNativeBridge *b) {
+  int64_t revision = 1;
+  assert(osp_native_view_row(0, 0, -1, "x", 0, 0, 0, 0, 0, 0, 0) == -1);
+  assert(osp_native_view_row(0, -1, -1, "x", 0, 0, 0, 0, 0, 0, 0) == -1);
+  assert(osp_native_frame_commit(b, &revision) ==
+             OSP_NATIVE_ERROR(AllocationFailed) &&
+         revision == 1);
+  assert(osp_native_view_row(0, -2, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == -1);
+  assert(osp_native_frame_commit(b, &revision) ==
+             OSP_NATIVE_ERROR(AllocationFailed) &&
+         revision == 1);
+  for (int64_t i = 0; i < OSP_NATIVE_VIEW_LIMIT; i++)
+    assert(osp_native_view_row(5, i - 1, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == i);
+  assert(osp_native_view_row(5, 0, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == -1);
+  assert(osp_native_frame_commit(b, &revision) ==
+             OSP_NATIVE_ERROR(AllocationFailed) &&
+         revision == 1);
+}
+
+// [NATIVE-SHM-VIEW] A view's controls and text are sealed where they were
+// written and read in place beside the frame's shapes.
+static void check_native_view_frames(void) {
+  OspNativeBridge *b = native_fixture(1 << 20, 8, 8);
+  int64_t revision;
+  size_t bytes, chunks, owners;
+  td_OwnedLease rows, text, shapes;
+  push_view();
+  push_shapes(4, 2);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
+  leased_run(b, OSP_NATIVE_VIEWS, 1, &rows);
+  leased_run(b, OSP_NATIVE_TEXT, 1, &text);
+  const OspNativeView *held = run_bytes(b, &rows, OSP_NATIVE_VIEWS,
+                                        3 * (int64_t)sizeof(OspNativeView));
+  check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));
+  check_shape_rows(leased_shapes(b, &shapes, 1, 2), 4, 2);
+  check_view_refusals(b);
+  assert(osp_native_view_row(1, -1, 4, NULL, 0, 0, 0, 0, 0, 0, 0) == 0);
+  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
+  check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));
+  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 7 &&
+         owners == 3);
+  assert(osp_native_release(b, &rows) == 0 && osp_native_release(b, &text) == 0 &&
+         osp_native_release(b, &shapes) == 0);
+  leased_run(b, OSP_NATIVE_VIEWS, 2, &rows);
+  held = run_bytes(b, &rows, OSP_NATIVE_VIEWS, sizeof(OspNativeView));
+  assert(held[0].kind == 1 && held[0].action == 4 && held[0].text_length == 0);
+  assert(osp_native_release(b, &rows) == 0 && osp_native_destroy(b) == 0);
 }
 
 #ifdef OSP_NATIVE_TEST
@@ -478,6 +575,7 @@ int main(void) {
   check_native_exhaustion();
   check_native_scene_frames();
   check_native_scene_refusals();
+  check_native_view_frames();
 #ifdef OSP_NATIVE_TEST
   check_native_sync_failure();
 #endif

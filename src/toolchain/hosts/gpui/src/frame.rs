@@ -69,8 +69,14 @@ extern "C" {
         owners: i64,
         out: *mut *mut Bridge,
     ) -> i32;
-    fn osp_native_scene_commit(bridge: *mut Bridge, revision: *mut i64) -> i32;
+    fn osp_native_frame_commit(bridge: *mut Bridge, revision: *mut i64) -> i32;
     fn osp_native_acquire(bridge: *mut Bridge, out: *mut Lease, revision: *mut i64) -> i32;
+    fn osp_native_child(
+        bridge: *mut Bridge,
+        lease: *const Lease,
+        index: i64,
+        out: *mut Lease,
+    ) -> i32;
     fn osp_native_length(bridge: *mut Bridge, lease: *const Lease, length: *mut i64) -> i32;
     fn osp_native_view(
         bridge: *mut Bridge,
@@ -170,9 +176,15 @@ impl Frame {
             owned: false,
         };
         let (mut revision, mut length, mut view) = (0, 0, std::ptr::null());
-        // SAFETY: the out-pointers are live locals; on success the lease is owned by `frame`.
-        checked(unsafe { osp_native_acquire(bridge, &mut frame.lease, &mut revision) })?;
-        frame.owned = true;
+        let mut root = Lease([0; 64]);
+        // SAFETY: the out-pointers are live locals; on success `root` owns the published frame.
+        checked(unsafe { osp_native_acquire(bridge, &mut root, &mut revision) })?;
+        // SAFETY: `root` is the live owner acquired above; the shape run is its first child.
+        let shapes = unsafe { osp_native_child(bridge, &root, 0, &mut frame.lease) };
+        frame.owned = shapes == 0;
+        // SAFETY: `root` is released exactly once; the run's own lease keeps its rows alive.
+        checked(unsafe { osp_native_release(bridge, &root) })?;
+        checked(shapes)?;
         // SAFETY: `frame.lease` is the live owner acquired above.
         checked(unsafe { osp_native_length(bridge, &frame.lease, &mut length) })?;
         // SAFETY: the view borrows from `frame.lease`, which `frame` keeps until it drops.
@@ -220,7 +232,7 @@ pub fn seal() -> Result<(), String> {
     let bridge = bridge()?;
     let mut revision = 0;
     // SAFETY: called on the application's executor thread, after its export returned.
-    checked(unsafe { osp_native_scene_commit(bridge, &mut revision) })?;
+    checked(unsafe { osp_native_frame_commit(bridge, &mut revision) })?;
     *pending() = Some(Arc::new(Frame::leased(bridge)?));
     Ok(())
 }

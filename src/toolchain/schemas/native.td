@@ -169,3 +169,16 @@ type SceneShape {
   x: Float y: Float width: Float height: Float angle: Float
   colour: Int depth: Int
 }
+
+# [NATIVE-SHM-VIEW] One native control of a published view, written by compiled
+# Osprey and read in place by the host. Rows are in drawing order; `parent` is an
+# earlier row or -1; `action` is the binding a tap or edit delivers, or -1. Every
+# style value is resolved in Osprey: the host only applies it. `textOffset` and
+# `textLength` name UTF-8 bytes in the frame's text run.
+type ViewRow {
+  kind: Int parent: Int action: Int
+  textOffset: Int textLength: Int
+  colour: Int background: Int
+  size: Float padding: Float spacing: Float radius: Float
+  weight: Int
+}
