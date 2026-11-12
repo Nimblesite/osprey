@@ -48,13 +48,18 @@ test ("tree walks real directories, nested ones included", \() =>
     expect (walked "${FIXTURE}/nested", "${FIXTURE}/nested/inner.txt"))
 
 test ("tree reports an unreadable directory as an Error, never an empty walk", \() =>
+    // A nested directory nobody may read: the walk fails at it, and every
+    // entry after it keeps the Error instead of reading as more files.
+    // Each invocation owns its directory: parallel GC/ARC cannot change its permissions.
+    locked = "target/fs-tests/locked-${random ()}"
     expect (walked "src/osprey/packages/fs/no-such-dir", "error")
     expect (walked "src/osprey/packages/fs/osprey.toml", "error")
-    expect (shell "mkdir -p ${LOCKED}/a ${LOCKED}/c && touch ${LOCKED}/b.txt ${LOCKED}/c/d.txt && chmod 000 ${LOCKED}/a", 0)
-    expect (walked LOCKED, "error")
-    expect (walked "${LOCKED}/c", "${LOCKED}/c/d.txt")
-    expect (shell "chmod 755 ${LOCKED}/a", 0)
-    expect (walked LOCKED, "${LOCKED}/b.txt,${LOCKED}/c/d.txt"))
+    expect (shell "mkdir -p target/fs-tests && mkdir ${locked} && mkdir ${locked}/a ${locked}/c && touch ${locked}/b.txt ${locked}/c/d.txt && chmod 000 ${locked}/a", 0)
+    expect (walked locked, "error")
+    expect (walked "${locked}/c", "${locked}/c/d.txt")
+    expect (shell "chmod 755 ${locked}/a", 0)
+    expect (walked locked, "${locked}/b.txt,${locked}/c/d.txt")
+    expect (shell "rm ${locked}/b.txt ${locked}/c/d.txt && rmdir ${locked}/a ${locked}/c ${locked}", 0))
 
 test ("nameOf and dirOf agree on every shape of path", \() =>
     forEachList (["a/b/c.osp", "leaf.osp", "a/b/", "/abs/x", "a//b", ""], \p => expect ("${Path::dirOf p}|${Path::nameOf p}", shapeOf p)))
@@ -66,10 +71,6 @@ shapeOf p = match p
     "/abs/x" => "/abs|x"
     "a//b" => "a/|b"
     _ => "|"
-
-// A nested directory nobody may read: the walk fails at it, and every
-// entry after it keeps the Error instead of reading as more files.
-LOCKED = "target/fs-tests/locked"
 
 shell command = match spawnProcess (command) quiet
     Success pid => awaitProcess pid
