@@ -92,5 +92,6 @@ ok 91 - lowering pickers choose through options and disclosures deliver their fl
 ok 92 - lowering pairs, badges, labels, icons, links and dividers draw quiet leaves
 ok 93 - lowering segments, empties, progress, meters and swatches draw their tones
 ok 94 - lowering media, editors, boards and scenes bind in the encoder's order
-1..94
-# tests=94 passed=94 failed=0 skipped=0
+ok 95 - a surface draws view rows and takes typed events with no envelope
+1..95
+# tests=95 passed=95 failed=0 skipped=0

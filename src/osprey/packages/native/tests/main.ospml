@@ -10,6 +10,7 @@ import ui::Messages
 import ui::Requests
 import ui::Streams
 import ui::Runtime
+import ui::Surfaces
 import ui::Signals
 import ui::Splitters
 import ui::Frames
@@ -557,3 +558,70 @@ test ("lowering pickers choose through options and disclosures deliver their fla
 test ("lowering pairs, badges, labels, icons, links and dividers draw quiet leaves", \() => AdditionCases::lowerLeavesCase ())
 test ("lowering segments, empties, progress, meters and swatches draw their tones", \() => AdditionCases::lowerStatusCase ())
 test ("lowering media, editors, boards and scenes bind in the encoder's order", \() => AdditionCases::lowerMediaCase ())
+
+// [NATIVE-SHM-BOUNDARY]: the probe application crosses the bridge as view rows and typed events, with no envelope and no event document.
+mut surfaceRows = ""
+
+// Runs `work` and records every control it writes as `kind<parent@action:words|`, in drawing order.
+surfaced work =
+    handle ui::ViewStream
+        place seat => surfaceRows := "${surfaceRows}${seat.placedKind}<${seat.placedParent}@${seat.placedAction}:${seat.placedWords}|"
+        size _ => 0
+    handle ui::SceneStream
+        shape _ => 0
+    work ()
+
+plainDress = ui::Dress(dressTheme = theme, dressDark = false)
+
+// `held` after the control numbered `ordinal` delivers `words`; an unknown control leaves it as it was.
+surfaceAfter (held, ordinal, words) = match Surfaces::meant (held, ordinal, words)
+    Error _ => held
+    Success message => surfaced (\() => Surfaces::deliver (held, 5, message, update, regions, plainDress))
+
+problemOf outcome = match outcome
+    Error problem => problem
+    Success _ => ""
+
+// What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
+said (binding, words) = match Surfaces::told (binding, words)
+    Error problem => problem
+    Success message => match message
+        ui::Act _ => "act"
+        ui::Entered _ text => "entered:${text}"
+        ui::Switched _ flag => "switched:${flag}"
+        ui::Chose _ key => "chose:${key}"
+        ui::Resized _ points => "resized:${points}"
+        ui::Placed _ offset => "placed:${offset}"
+        _ => "another message"
+
+surfaceCase () =
+    first = surfaced (\() => Surfaces::open (ui::Context(now = 1, offset = 0, platform = "linux", home = "", arguments = []), initial, regions, plainDress))
+    expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:play Go|3<0@1:play Go|")
+    expect (length first.surfaceBound, 2)
+    second = surfaceAfter (first, 0, "")
+    expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:play Go|3<0@1:play Go|0<-1@-1:|2<0@-1:Count 1|3<0@0:play Go|")
+    expect (second.surfaceSession.sessionStore.counter.tally, 1)
+    expect (second.surfaceSession.sessionContext.now, 5)
+    expect (length second.surfaceBound, 1)
+    expect (length second.surfaceAsked, 0)
+    third = surfaceAfter (second, 0, "")
+    expect (length third.surfaceAsked, 1)
+    expect (third.surfaceSession.sessionStore.counter.tally, 1)
+    refused = surfaceAfter (third, 9, "")
+    expect (refused.surfaceSession.sessionStore.counter.tally, 1)
+    expect (problemOf (Surfaces::meant (third, 9, "")), "Unknown control 9")
+    expect (problemOf (Surfaces::meant (third, 0 - 1, "")), "Unknown control -1")
+    expect (said (ui::StrokeInput(action = Load), "1,2"), "A stroke does not arrive as text")
+    expect (said (ui::LassoInput(action = Load), ""), "A lasso does not arrive as text")
+    expect (said (ui::SceneInput(action = Load), ""), "Scene input does not arrive as text")
+    expect (said (ui::Tap(action = Load), "ignored"), "act")
+    expect (said (ui::FlagInput(action = Load), "true"), "switched:true")
+    expect (said (ui::FlagInput(action = Load), "yes"), "switched:false")
+    expect (said (ui::ChoiceInput(action = Load), "b"), "chose:b")
+    expect (said (ui::TextInput(action = Typed), "Zoë"), "entered:Zoë")
+    expect (said (ui::SizeInput(action = Load), "junk"), "resized:${Splitters::least}")
+    expect (said (ui::SizeInput(action = Load), "99999"), "resized:${Splitters::most}")
+    expect (said (ui::PlaceInput(action = Load), "-4"), "placed:0")
+    expect (said (ui::PlaceInput(action = Load), "12"), "placed:12")
+
+test ("a surface draws view rows and takes typed events with no envelope", \() => surfaceCase ())
