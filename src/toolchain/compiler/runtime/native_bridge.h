@@ -67,12 +67,18 @@ typedef struct {
   int64_t kind, parent, action, text_offset, text_length, colour, background;
   double size, padding, spacing, radius;
   int64_t weight;
+  double width, height, grow; // Fixed extents (0 = natural) and flex share.
+  int64_t flags, border, hint_offset, hint_length;
 } OspNativeView;
 _Static_assert(sizeof(OspNativeView) == sizeof(td_ViewRow) &&
                    offsetof(OspNativeView, text_offset) ==
                        TD_ViewRow_textOffset_OFFSET &&
                    offsetof(OspNativeView, size) == TD_ViewRow_size_OFFSET &&
-                   offsetof(OspNativeView, weight) == TD_ViewRow_weight_OFFSET,
+                   offsetof(OspNativeView, weight) == TD_ViewRow_weight_OFFSET &&
+                   offsetof(OspNativeView, width) == TD_ViewRow_width_OFFSET &&
+                   offsetof(OspNativeView, flags) == TD_ViewRow_flags_OFFSET &&
+                   offsetof(OspNativeView, hint_length) ==
+                       TD_ViewRow_hintLength_OFFSET,
                "OspNativeView matches the generated ViewRow layout");
 // A published frame is one branch chunk whose children are its three sealed
 // runs, in this order; the value is both the child index and, plus one, the
@@ -100,6 +106,12 @@ int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
                             const char *text, int64_t colour,
                             int64_t background, double size, double padding,
                             double spacing, double radius, int64_t weight);
+// Gives the pending control `row` its fixed extents, flex share, state flags,
+// border colour and second text (a prompt, or an option's key). Rows that never
+// call it keep zeros; a second call adds its flags and replaces what it sets. -1 refuses the view: no such row, or an unusable number.
+int64_t osp_native_view_extend(int64_t row, double width, double height,
+                               double grow, int64_t flags, int64_t border,
+                               const char *hint);
 // Hands every pending run's storage to the caller in one step and starts
 // three empty runs, so no row can land half in one frame and half in the next.
 // False when a write was refused.

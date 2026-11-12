@@ -108,11 +108,50 @@ int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
     return run_refuse(views, -1);
   if (bytes)
     memcpy(copy, text, bytes);
-  *row = (OspNativeView){kind,    parent,  action,  (int64_t)offset,
-                         (int64_t)bytes, colour, background, size,
-                         padding, spacing, radius,  weight};
+  *row = (OspNativeView){.kind = kind,
+                         .parent = parent,
+                         .action = action,
+                         .text_offset = (int64_t)offset,
+                         .text_length = (int64_t)bytes,
+                         .colour = colour,
+                         .background = background,
+                         .size = size,
+                         .padding = padding,
+                         .spacing = spacing,
+                         .radius = radius,
+                         .weight = weight};
   runs_leave();
   return index;
+}
+
+int64_t osp_native_view_extend(int64_t row, double width, double height,
+                               double grow, int64_t flags, int64_t border,
+                               const char *hint) {
+  const double extents[] = {width, height, grow};
+  size_t bytes = hint ? strlen(hint) : 0;
+  bool usable = finite(extents, 3) && width >= 0 && height >= 0 && grow >= 0;
+  runs_enter();
+  NativeRun *views = &runs[OSP_NATIVE_VIEWS], *chars = &runs[OSP_NATIVE_TEXT];
+  size_t offset = chars->length;
+  bool known = usable && !views->refused && row >= 0 &&
+               (size_t)row < views->length / sizeof(OspNativeView);
+  char *copy = known ? run_reserve(chars, bytes) : NULL;
+  if (!copy)
+    return run_refuse(views, -1);
+  if (bytes)
+    memcpy(copy, hint, bytes);
+  // A control may be fitted twice (its own state, then its wrapper's): flags
+  // add up and every other value that is set replaces the one before.
+  OspNativeView *view = (OspNativeView *)(void *)views->data + row;
+  view->width = width > 0 ? width : view->width;
+  view->height = height > 0 ? height : view->height;
+  view->grow = grow > 0 ? grow : view->grow;
+  view->flags |= flags;
+  view->border = border ? border : view->border;
+  view->hint_offset = bytes ? (int64_t)offset : view->hint_offset;
+  view->hint_length = bytes ? (int64_t)bytes : view->hint_length;
+  runs_leave();
+  return 0;
 }
 
 bool osp_native_runs_take(void *data[OSP_NATIVE_RUNS],

@@ -600,9 +600,48 @@ static void check_unusable_numbers_are_refused(OspNativeBridge *b) {
   osp_native_frame_discard();
 }
 
+// [NATIVE-SHM-VIEW] A control's extents, flags, border and second text land on
+// its own row; a row that does not exist, or an unusable number, refuses.
+static void check_view_extension(OspNativeBridge *b) {
+  int64_t revision = 0, bytes;
+  td_OwnedLease rows, text;
+  push_view();
+  assert(osp_native_view_extend(2, 90, 44, 0, 4, 0, "Old") == 0 &&
+         osp_native_view_extend(2, 120, 0, 1, 1, 0x112233ff, "Name") == 0 &&
+         osp_native_view_extend(0, 0, 0, 2, 0, 0, NULL) == 0);
+  assert(osp_native_frame_commit(b, &revision) == 0);
+  leased_run(b, OSP_NATIVE_VIEWS, revision, &rows);
+  leased_run(b, OSP_NATIVE_TEXT, revision, &text);
+  assert(osp_native_length(b, &text, &bytes) == 0 && bytes == 21);
+  const OspNativeView *held = run_bytes(b, &rows, OSP_NATIVE_VIEWS,
+                                        3 * (int64_t)sizeof(OspNativeView));
+  const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  check_view_rows(held, chars);
+  assert(held[2].width == 120 && held[2].height == 44 && held[2].grow == 1 &&
+         held[2].flags == 5 && held[2].border == 0x112233ff &&
+         held[2].hint_length == 4 &&
+         memcmp(chars + held[2].hint_offset, "Name", 4) == 0);
+  assert(held[0].grow == 2 && held[0].hint_length == 0 && held[1].grow == 0 &&
+         held[1].flags == 0 && held[1].hint_length == 0);
+  assert(osp_native_release(b, &rows) == 0 && osp_native_release(b, &text) == 0);
+  const double bad[] = {NAN, INFINITY, -1};
+  for (int64_t row = -1; row < 2; row += 2)
+    for (int field = 0; field < 3; field++)
+      for (int i = 0; i < 3; i++) {
+        double v[3] = {0, 0, 0};
+        v[field] = row < 0 ? 0 : bad[i];
+        push_view();
+        assert(osp_native_view_extend(row < 0 ? (i ? 3 : -1) : row, v[0], v[1],
+                                      v[2], 0, 0, "h") == -1);
+        assert(osp_native_frame_commit(b, &revision) ==
+               OSP_NATIVE_ERROR(AllocationFailed));
+      }
+}
+
 static void check_native_view_safety(void) {
   OspNativeBridge *b = native_fixture(1 << 22, 16, 16);
   check_unusable_numbers_are_refused(b);
+  check_view_extension(b);
   check_view_writers_from_many_threads(b);
   assert(osp_native_destroy(b) == 0);
 }

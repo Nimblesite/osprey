@@ -181,4 +181,7 @@ type ViewRow {
   colour: Int background: Int
   size: Float padding: Float spacing: Float radius: Float
   weight: Int
+  width: Float height: Float grow: Float
+  flags: Int border: Int
+  hintOffset: Int hintLength: Int
 }

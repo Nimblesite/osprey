@@ -9,6 +9,9 @@ namespace ui
 // It answers the control's row, or -1 once the view is refused; the host then refuses the frame.
 extern osp_native_view_row (kind : int) (parent : int) (action : int) (words : string) (ink : int) (fill : int) (points : float) (inset : float) (gap : float) (corner : float) (heft : int) -> int
 
+// Gives the row it names its extents, flex share, state, border colour and second text; -1 refuses the view.
+extern osp_native_view_extend (row : int) (wide : float) (tall : float) (share : float) (traits : int) (edge : int) (hint : string) -> int
+
 (** How one control looks: `ink` and `fill` are `0xRRGGBBAA` text and background colours (a zero fill draws none), `points` the text size, `inset` the padding, `gap` the space between children, `corner` the corner radius and `heft` the font weight from 100 to 900 ([NATIVE-SHM-VIEW]). *)
 type Look =
     ink : int
@@ -18,6 +21,15 @@ type Look =
     gap : float
     corner : float
     heft : int
+
+(** How one control sits and behaves: `wide` and `tall` fix its extent in points (zero keeps its natural one), `share` is its part of the free space beside its siblings, `traits` adds up `Views` flags, `edge` is a `0xRRGGBBAA` border (zero draws none) and `hint` a second text: a field's prompt or an option's key. *)
+type Fit =
+    wide : float
+    tall : float
+    share : float
+    traits : int
+    edge : int
+    hint : string
 
 (** A native control tree; `A` is the application's action union. A `Press` delivers its action when tapped and an `Typing` delivers it with the edited text ([NATIVE-SHM-VIEW]). *)
 type View A =
@@ -39,6 +51,49 @@ type View A =
         typingText : string
         typingAction : A
     Gap
+    Fitted
+        fit : Fit
+        fitted : View<A>
+    Scrolling
+        scrollLook : Look
+        scrollItems : List<View<A>>
+    Layered
+        layeredLook : Look
+        layeredItems : List<View<A>>
+    Switch
+        switchLook : Look
+        switchWords : string
+        switchOn : bool
+        switchAction : A
+    Choosing
+        choosingLook : Look
+        choosingWords : string
+        choosingOptions : List<View<A>>
+        choosingAction : A
+    Option
+        optionLook : Look
+        optionWords : string
+        optionKey : string
+        optionChosen : bool
+    Rule
+        ruleLook : Look
+    Picture
+        pictureLook : Look
+        pictureSource : string
+    Canvas
+        canvasLook : Look
+        canvasAction : A
+    Writing
+        writingLook : Look
+        writingText : string
+        writingAction : A
+    Menu
+        menuLook : Look
+        menuItems : List<View<A>>
+    Sheet
+        sheetLook : Look
+        sheetItems : List<View<A>>
+        sheetDismiss : A
 
 (** One control on its way to the shared frame: its kind, the row it sits in, the binding it delivers and how it looks. *)
 type Seated =
@@ -48,9 +103,15 @@ type Seated =
     placedWords : string
     placedLook : Look
 
+(** The fit a control already placed at `fittedRow` takes. *)
+type Fitting =
+    fittedRow : int
+    fittedAs : Fit
+
 (** A view's controls, performed in drawing order: a control's row is its position in that order, and a child names its parent's row ([NATIVE-SHM-VIEW]). *)
 effect ViewStream
     place : Seated => Unit
+    size : Fitting => Unit
 
 (** A walk in progress: the actions bound so far and the row the next control takes. *)
 type Walk A =
@@ -77,6 +138,63 @@ module Views
     (** The row `kind` of a `Gap`: flexible empty space. *)
     export gap = 5
 
+    (** The row `kind` of a `Scrolling`: a column that scrolls when its children outgrow it. *)
+    export scroll = 6
+
+    (** The row `kind` of a `Layered`: its children lie on top of each other, the last in front. *)
+    export layer = 7
+
+    (** The row `kind` of a `Switch`: an on/off control that delivers `true` or `false`. *)
+    export toggle = 8
+
+    (** The row `kind` of a `Choosing`: a menu of its `option` children that delivers the chosen key. *)
+    export picker = 9
+
+    (** The row `kind` of an `Option`: its text is the label and its hint the key. *)
+    export option = 10
+
+    (** The row `kind` of a `Rule`: a hairline in its ink, `points` thick. *)
+    export rule = 11
+
+    (** The row `kind` of a `Picture`: the image its text names. *)
+    export image = 12
+
+    (** The row `kind` of a `Canvas`: the frame's shapes, drawn here; a pointer delivers `x,y`. *)
+    export canvas = 13
+
+    (** The row `kind` of a `Writing`: a text field of many lines. *)
+    export editor = 14
+
+    (** The row `kind` of a `Menu`: its first child is shown and the rest open as a context menu. *)
+    export menu = 15
+
+    (** The row `kind` of a `Sheet`: its children float over the view; dismissing it delivers its action. *)
+    export sheet = 16
+
+    (** The `traits` flag of a control that takes no input. *)
+    export disabled = 1
+
+    (** The `traits` flag of a chosen option, an on switch or a selected row. *)
+    export chosen = 2
+
+    (** The `traits` flag of a field whose text is hidden. *)
+    export secret = 4
+
+    (** The `traits` flag of text set in a fixed-width face. *)
+    export fixedWidth = 8
+
+    (** The `traits` flag of text set in italics. *)
+    export slanted = 16
+
+    (** The `traits` flag of a control centred in its row. *)
+    export centred = 32
+
+    (** The `traits` flag of a field that delivers its text when committed, not on every edit. *)
+    export onCommit = 64
+
+    (** A fit that changes nothing. *)
+    export natural = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = "")
+
     (** The row of a control with no parent, and the action of a control that delivers none. *)
     export none = 0 - 1
 
@@ -90,6 +208,7 @@ module Views
     export shared work =
         handle ViewStream
             place drawn => osp_native_view_row (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
+            size fitting => osp_native_view_extend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
         work ()
 
     // Sends one control and moves the walk to the next row.
@@ -116,6 +235,29 @@ module Views
         Press look words action => acting (walk, press, parent, action, words, look)
         Typing look words action => acting (walk, entry, parent, action, words, look)
         Gap => seat (walk, gap, parent, none, "", plain)
+        Fitted fit inner => sized (draw (walk, parent, inner), walk.walkNext, fit)
+        Scrolling look items => each (seat (walk, scroll, parent, none, "", look), walk.walkNext, items, 0)
+        Layered look items => each (seat (walk, layer, parent, none, "", look), walk.walkNext, items, 0)
+        Switch look words on action => sized (acting (walk, toggle, parent, action, words, look), walk.walkNext, flagged (on, chosen, ""))
+        Choosing look words options action => each (acting (walk, picker, parent, action, words, look), walk.walkNext, options, 0)
+        Option look words key picked => sized (seat (walk, option, parent, none, words, look), walk.walkNext, flagged (picked, chosen, key))
+        Rule look => seat (walk, rule, parent, none, "", look)
+        Picture look source => seat (walk, image, parent, none, source, look)
+        Canvas look action => acting (walk, canvas, parent, action, "", look)
+        Writing look words action => acting (walk, editor, parent, action, words, look)
+        Menu look items => each (seat (walk, menu, parent, none, "", look), walk.walkNext, items, 0)
+        Sheet look items dismiss => each (acting (walk, sheet, parent, dismiss, "", look), walk.walkNext, items, 0)
+
+    flagged (on, flag, hint) = match on
+        true => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = flag, edge = 0, hint = hint)
+        false => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = hint)
+
+    // Gives the control at `row` its fit; the walk is unchanged.
+    sized<A> : (Walk<A>, int, Fit) -> Walk<A> ![ViewStream | e]
+    sized (walk, row, fit) =
+        fitting = Fitting(fittedRow = row, fittedAs = fit)
+        perform ViewStream.size fitting
+        walk
 
     (** Draws `view` and answers the actions its controls deliver, in order: a host event names one by its position. *)
     export render<A> : View<A> -> List<A> ![ViewStream | e]
