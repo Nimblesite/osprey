@@ -1,20 +1,37 @@
 // Osprey Agent's C boundary, exported as `osprey_app_start` and
-// `osprey_app_dispatch` for any Osprey Native host ([NATIVE-HOSTS-NEUTRAL]).
-// Strings the host passes in are borrowed for the call; `native_slice` answers
-// host-held slices, such as a model's reply.
+// `osprey_app_dispatch` for any Osprey Native host ([NATIVE-HOSTS-NEUTRAL],
+// [UI-RESIDENT]). The session stays in this library between calls, so a frame
+// costs only `update`, the changed regions and the envelope. Strings the host
+// passes in are borrowed for the call; `native_slice` answers host-held slices,
+// such as a model's reply.
 namespace app
 
 import ui::Runtime
 import agentapp::App
+import agentapp::Model
 
 extern native_slice (key : string) -> string
 
-start source =
-    handle ui::Slices
-        fetch key => native_slice key
-    Runtime::guarded (\() => Runtime::start (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, App::theme ()))
+(** Hands the session the framework returned to the cell below. *)
+effect Keep
+    keep : ui::Session<agentapp::Store> => Unit
 
-dispatch (saved, event) =
+mut live = Runtime::idle (Model::launched ("", "", "", 0))
+
+keeping done =
+    perform Keep.keep done.residentSession
+    done.residentEnvelope
+
+hosted work =
+    handle Keep
+        keep session => live := session
     handle ui::Slices
         fetch key => native_slice key
-    Runtime::guarded (\() => Runtime::dispatch (saved, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, \doc => App::restore doc))
+    // The agent draws no canvas, so no scene primitive is ever streamed.
+    handle ui::SceneStream
+        shape _ => 0
+    Runtime::guarded (\() => keeping (work ()))
+
+start source = hosted (\() => Runtime::begin (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), App::theme ()))
+
+dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes)))
