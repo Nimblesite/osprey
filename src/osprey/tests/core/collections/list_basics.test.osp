@@ -458,6 +458,12 @@ fn secondOr(xs, fallback) = match xs {
     _ => fallback
 }
 
+/// headOrWith pre-applies headOr's fallback, so answersHold can fold head rows.
+fn headOrWith(fallback) = fn(xs) => headOr(xs, fallback)
+
+/// secondOrWith pre-applies secondOr's fallback, so answersHold can fold second rows.
+fn secondOrWith(fallback) = fn(xs) => secondOr(xs, fallback)
+
 /// tailLength reports the rest binder's own length, distinguishing the empty
 /// list (-1) from a singleton whose tail is empty (0).
 fn tailLength(xs) = match xs {
@@ -547,6 +553,18 @@ fn twice(n) = n * 2
 
 fn isEvenValue(n) = (n % 2 ) == 0
 
+/// foldRow checks one `range` fold: `step` folds every visited index into `base`.
+fn foldRow(start, stop, base, step, want) = (range(start, stop) |> fold(base, step)) == want
+
+/// weaveEach checks the base-10 encoding of `xs`'s elements read over [start, stop).
+fn weaveEach(xs, fallback, start, stop, want) = foldRow(start, stop, 0, fn(acc, i) => weave(acc, elementOr(xs, i, fallback)), want)
+
+/// weaveRange checks the encoding of the visited indices themselves.
+fn weaveRange(start, stop, base, want) = foldRow(start, stop, base, weave, want)
+
+/// weaveMapped checks the encoding of `range(start, stop)` mapped through `twice` ([BUILTIN-ITER-MAP]).
+fn weaveMapped(start, stop, base, want) = (range(start, stop) |> map(twice) |> fold(base, weave)) == want
+
 /// [TYPE-LIST-PATTERNS] states a list pattern "matches exactly the listed length
 /// unless its final element is a rest binder" and that "the rest binder receives
 /// the remaining `List<T>`" — a rule about SHAPE that must hold for every `T`.
@@ -573,8 +591,8 @@ fn stringListPatternCase() = {
     // Each binder carries its OWN element: head, second and the fallback are
     // three distinct strings, so a binder reading the wrong slot is visible.
     checkAll("string binders carry their own element", [
-        answersHold(fn(xs) => headOr(xs, "empty"), [noWords, solo, duo, words, odd, dup, listReverse(words), listPrepend(words, "zero"), listAppend(words, "delta"), noWords + words, words + noWords, ["only"]], ["empty", "solo", "left", "alpha", "", "same", "gamma", "zero", "alpha", "alpha", "alpha", "only"]),
-        answersHold(fn(xs) => secondOr(xs, "none"), [noWords, solo, duo, words, odd, dup, listReverse(words), listReverse(quad), ["x", "y", "z"]], ["none", "none", "right", "beta", " ", "same", "beta", "ccc", "y"])
+        answersHold(headOrWith("empty"), [noWords, solo, duo, words, odd, dup, listReverse(words), listPrepend(words, "zero"), listAppend(words, "delta"), noWords + words, words + noWords, ["only"]], ["empty", "solo", "left", "alpha", "", "same", "gamma", "zero", "alpha", "alpha", "alpha", "only"]),
+        answersHold(secondOrWith("none"), [noWords, solo, duo, words, odd, dup, listReverse(words), listReverse(quad), ["x", "y", "z"]], ["none", "none", "right", "beta", " ", "same", "beta", "ccc", "y"])
     ])
 
     // Recursive head/tail traversal keeps every element, in index order, once.
@@ -639,8 +657,8 @@ fn floatAndBoolListPatternCase() = {
     // Arm selection and binder identity for float elements.
     checkAll("float list patterns select arms and bind elements", [
         answersHold(shapeOf, [noFloats, oneFloat, twoFloats, ratios, quarters, dupFloats], ["none", "single", "pair", "long+2", "long+3", "long+2"]),
-        answersHold(fn(xs) => headOr(xs, 9.5), [noFloats, oneFloat, twoFloats, ratios, quarters, listReverse(ratios)], [9.5, 1.5, 0.25, 0.5, 0.0, 2.75]),
-        answersHold(fn(xs) => secondOr(xs, 9.5), [noFloats, oneFloat, twoFloats, ratios, quarters], [9.5, 9.5, 0.75, 1.25, 0.25]),
+        answersHold(headOrWith(9.5), [noFloats, oneFloat, twoFloats, ratios, quarters, listReverse(ratios)], [9.5, 1.5, 0.25, 0.5, 0.0, 2.75]),
+        answersHold(secondOrWith(9.5), [noFloats, oneFloat, twoFloats, ratios, quarters], [9.5, 9.5, 0.75, 1.25, 0.25]),
         answersHold(tailLength, [noFloats, oneFloat, ratios, quarters], [(0 - 1), 0, 2, 3])
     ])
 
@@ -898,19 +916,19 @@ fn typedIterationOrderCase() = {
     // forEachList, so the two mechanisms cross-check each other.
     // weave(0,7)=7, weave(7,8)=78, weave(78,9)=789.
     checkAll("range folds reproduce list order for every element type", [
-        (range(0, 3) |> fold("", fn(acc, i) => "${acc}${elementOr(words, i, "?")}|")) == "alpha|beta|gamma|",
-        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 789,
-        (range(0, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(listReverse(counts), i, 0)))) == 987,
-        (range(1, 3) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 89,
-        (range(0, 0) |> fold(0, fn(acc, i) => weave(acc, elementOr(counts, i, 0)))) == 0,
-        (range(0, 2) |> fold(0, fn(acc, i) => acc + boolWeight(elementOr(flags, i, false)) )) == 1,
-        (range(0, 2) |> fold(0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0))) == 1.75,
-        (range(0, 3) |> fold(0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0))) == 4.5,
-        (range(0, 2) |> fold("", fn(acc, i) => "${acc}${elementOr(slots, i, missingSlot).label}>")) == "left>right>",
-        (range(0, 5) |> fold(0, fn(acc, i) => acc + i )) == 10,
-        (range(5, 5) |> fold(99, weave)) == 99,
-        (range(1, 6) |> fold(0, weave)) == 12345,
-        (range(0, 3) |> fold("", fn(acc, i) => "${acc}${i};")) == "0;1;2;"
+        foldRow(0, 3, "", fn(acc, i) => "${acc}${elementOr(words, i, "?")}|", "alpha|beta|gamma|"),
+        weaveEach(counts, 0, 0, 3, 789),
+        weaveEach(listReverse(counts), 0, 0, 3, 987),
+        weaveEach(counts, 0, 1, 3, 89),
+        weaveEach(counts, 0, 0, 0, 0),
+        foldRow(0, 2, 0, fn(acc, i) => acc + boolWeight(elementOr(flags, i, false)), 1),
+        foldRow(0, 2, 0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0), 1.75),
+        foldRow(0, 3, 0.0, fn(acc, i) => acc + elementOr(ratios, i, 0.0), 4.5),
+        foldRow(0, 2, "", fn(acc, i) => "${acc}${elementOr(slots, i, missingSlot).label}>", "left>right>"),
+        foldRow(0, 5, 0, fn(acc, i) => acc + i, 10),
+        weaveRange(5, 5, 99, 99),
+        weaveRange(1, 6, 0, 12345),
+        foldRow(0, 3, "", fn(acc, i) => "${acc}${i};", "0;1;2;")
     ])
 
     // map/filter/fold chains over a range fuse into one loop
@@ -918,17 +936,17 @@ fn typedIterationOrderCase() = {
     // 1..5 doubled is 2,4,6,8,10 -> 24690; evens of 1..9 doubled are 4,8,12,16
     // -> 4, 48, 492, 4936.
     checkAll("map, filter and fold pipelines keep the documented order", [
-        (range(1, 6) |> map(twice) |> fold(0, weave)) == 24690,
+        weaveMapped(1, 6, 0, 24690),
         (range(1, 6) |> filter(isEvenValue) |> fold(0, weave)) == 24,
         (range(1, 10) |> filter(isEvenValue) |> map(twice) |> fold(0, weave)) == 4936,
         (range(1, 6) |> map(twice) |> filter(isEvenValue) |> fold(0, weave)) == 24690,
-        (range(1, 6) |> map(twice) |> fold(0, fn(a, b) => a + b )) == 30,
-        (range(1, 6) |> filter(isEvenValue) |> fold(0, fn(a, b) => a + b )) == 6,
-        (range(0, 4) |> map(twice) |> fold(0, weave)) == 246,
-        (range(0, 1) |> map(twice) |> fold(7, weave)) == 70,
-        (range(2, 2) |> map(twice) |> fold(5, weave)) == 5,
+        (range(1, 6) |> map(twice) |> fold(0, fn(a, b) => a + b)) == 30,
+        (range(1, 6) |> filter(isEvenValue) |> fold(0, fn(a, b) => a + b)) == 6,
+        weaveMapped(0, 4, 0, 246),
+        weaveMapped(0, 1, 7, 70),
+        weaveMapped(2, 2, 5, 5),
         (range(1, 4) |> map(twice) |> fold("", fn(acc, v) => "${acc}${v},")) == "2,4,6,",
-        (range(1, 4) |> fold("", fn(acc, v) => "${acc}${v},")) == "1,2,3,",
+        foldRow(1, 4, "", fn(acc, v) => "${acc}${v},", "1,2,3,"),
         twice(0) == 0,
         twice(21) == 42,
         isEvenValue(0),
@@ -1019,11 +1037,15 @@ test("list index boundaries are checked on every element type", exactly(boundary
 /// representation once, before the loop, so every iteration's listAppend and
 /// listConcat reads a runtime list. Left flat, the second iteration read the
 /// literal's header as a trie and crashed.
+/// grownFrom folds listAppend over `range(start, stop)` into `seed`, so a
+/// list-literal seed is settled once before the loop ([BUILTIN-ITER-FOLD]).
+fn grownFrom(start, stop, seed, f) = range(start, stop) |> fold(seed, fn(acc, i) => listAppend(acc, f(i)))
+
 fn foldSeedCase() = {
-    let squares = range(1, 5) |> fold([], fn(acc, i) => listAppend(acc, i * i))
-    let words = range(0, 3) |> fold([], fn(acc, i) => listAppend(acc, "w${i}"))
+    let squares = grownFrom(1, 5, [], fn(i) => i * i)
+    let words = grownFrom(0, 3, [], fn(i) => "w${i}")
     let doubled = range(0, 3) |> fold([], fn(acc, i) => listConcat(acc, [i, i]))
-    let seeded = range(3, 6) |> fold([1, 2], fn(acc, i) => listAppend(acc, i))
+    let seeded = grownFrom(3, 6, [1, 2], identity)
     checkAll("fold over a list-literal seed", [
         listLength(squares) == 4, intAt(squares, 3) == 16, sumList(squares) == 30,
         listLength(words) == 3, elementOr(words, 2, "?") == "w2", joinWords(words) == "w0|w1|w2|",

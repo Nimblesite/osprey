@@ -104,6 +104,18 @@ fn splitPartCount(outcome) = match outcome {
 /// `toUpperCase(s)` folds to `upper` and `toLowerCase(s)` folds to `lower`.
 fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) == lower])
 
+/// The bytes of `s` from `first` onwards are exactly `wanted` ([BUILTIN-STRING-BYTEAT]).
+fn bytesAreFrom(s, first, wanted) = match wanted {
+    [] => true
+    [head, ...tail] => (byteAt(s, first) ?: (0 - 1)) == head && bytesAreFrom(s, (first + 1), tail)
+}
+
+/// The bytes of `s` from byte 0 onwards are exactly `wanted`.
+fn bytesAre(s, wanted) = bytesAreFrom(s, 0, wanted)
+
+/// Every needle of `held` satisfies `found`, and no needle of `absent` does.
+fn needlesHold(found, held, absent) = allHold(mapList(held, found)) && allHold(mapList(absent, fn(needle) => !found(needle)))
+
   // ---- isEmpty edges ----
   printValue("empty-emp", "" |> isEmpty)
   printValue("empty-x", "x" |> isEmpty)
@@ -403,27 +415,23 @@ fn escapeSequenceCase() = {
         singleByte("\"", 34),
         singleByte("\\", 92),
         byteLength("\n\r\t\e") == 4,
-        (byteAt("\n\r\t\e", 0) ?: 0) == 10,
-        (byteAt("\n\r\t\e", 3) ?: 0) == 27,
+        bytesAre("\n\r\t\e", [10, 13, 9, 27]),
         length("a\nb") == 3,
-        (byteAt("a\nb", 0) ?: 0) == 97,
-        (byteAt("a\nb", 1) ?: 0) == 10,
-        (byteAt("a\nb", 2) ?: 0) == 98,
+        bytesAre("a\nb", [97, 10, 98]),
         "\n" != "n",
         "\\n" != "\n",
         length("\\n") == 2,
         length("a\"b") == 3,
-        (byteAt("a\"b", 1) ?: 0) == 34
+        bytesAreFrom("a\"b", 1, [34])
     ])
 
     // An unrecognised escape keeps BOTH bytes: 'q' is 113, 'd' is 100, 'x' 120.
     checkAll("an unknown escape keeps its backslash verbatim", [
         length("\q") == 2,
-        (byteAt("\q", 0) ?: 0) == 92,
-        (byteAt("\q", 1) ?: 0) == 113,
+        bytesAre("\q", [92, 113]),
         "\q" == "\\q",
         length("\d") == 2,
-        (byteAt("\d", 1) ?: 0) == 100,
+        bytesAreFrom("\d", 1, [100]),
         length("\s\q") == 4,
         contains("\q", "\\"),
         startsWith("\q", "\\"),
@@ -434,10 +442,9 @@ fn escapeSequenceCase() = {
         toLowerCase("\Q") == "\q",
         reverse("\q") == "q\\",
         length("path\to") == 6,
-        (byteAt("path\to", 4) ?: 0) == 9,
+        bytesAreFrom("path\to", 4, [9]),
         length("path\xo") == 7,
-        (byteAt("path\xo", 4) ?: 0) == 92,
-        (byteAt("path\xo", 5) ?: 0) == 120
+        bytesAreFrom("path\xo", 4, [92, 120])
     ])
 
     // ASCII whitespace for trim/words is space, TAB, LF, CR, VT and FF; ESC is
@@ -452,9 +459,7 @@ fn escapeSequenceCase() = {
         length(trim("\e hi ")) == 4,
         answersHold(fn(x) => listLength(lines(x)), ["a\nb\nc", "a\n", "a\n\nb", "solo"], [3, 1, 3, 1]),
         answersHold(fn(x) => listLength(words(x)), ["a\tb\nc", "   ", "", " a ", "a\r\nb"], [3, 0, 0, 1, 2]),
-        (listGet(lines("a\nb"), 1) ?: "missing") == "b",
-        (listGet(lines("a\nb"), 0) ?: "missing") == "a",
-        (listGet(words("a\tb"), 1) ?: "missing") == "b",
+        structuralEquals([lines("a\nb"), words("a\tb")], [["a", "b"], ["a", "b"]]),
         join(lines("a\nb\nc"), "-") == "a-b-c",
         join(words("  x  y  "), "+") == "x+y",
         tabSplitCount == 2,
@@ -478,8 +483,7 @@ fn substringPositionCase() = {
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
-        allHold([contains(subject, "ban"), contains(subject, "nan"), contains(subject, "ana"), contains(subject, "banana"), contains(subject, "b"), contains(subject, "a"), contains(subject, "n"), contains(subject, "")]),
-        allHold([!contains(subject, "bananas"), !contains(subject, "xyz"), !contains(subject, "BAN"), !contains(subject, "bn"), !contains(subject, " ")]),
+        needlesHold(fn(needle) => contains(subject, needle), ["ban", "nan", "ana", "banana", "b", "a", "n", ""], ["bananas", "xyz", "BAN", "bn", " "]),
         contains("", ""),
         !contains("", "a"),
         contains("a", "a"),
@@ -490,17 +494,15 @@ fn substringPositionCase() = {
     ])
 
     checkAll("startsWith and endsWith agree with contains at both ends", [
-        allHold([startsWith(subject, ""), startsWith(subject, "b"), startsWith(subject, "ba"), startsWith(subject, "banana")]),
-        allHold([!startsWith(subject, "banana!"), !startsWith(subject, "anana"), !startsWith(subject, "B")]),
-        allHold([endsWith(subject, ""), endsWith(subject, "a"), endsWith(subject, "na"), endsWith(subject, "ana"), endsWith(subject, "banana")]),
-        allHold([!endsWith(subject, "!banana"), !endsWith(subject, "banan"), !endsWith(subject, "A")]),
+        needlesHold(fn(prefix) => startsWith(subject, prefix), ["", "b", "ba", "banana"], ["banana!", "anana", "B"]),
+        needlesHold(fn(suffix) => endsWith(subject, suffix), ["", "a", "na", "ana", "banana"], ["!banana", "banan", "A"]),
         startsWith("", ""),
         !startsWith("", "a"),
         endsWith("", ""),
         !endsWith("", "a"),
         startsWith("a", "a"),
         endsWith("a", "a"),
-        allHold([contains(subject, "ba"), contains(subject, "na")])
+        needlesHold(fn(needle) => contains(subject, needle), ["ba", "na"], [])
     ])
 
     // The reported index must reconstruct the needle through substring/take/drop.
@@ -511,11 +513,7 @@ fn substringPositionCase() = {
         indexOfIs("a", "a", 0),
         indexAbsent,
         indexEmptySubject,
-        succeedsWith(substring(subject, 1, 4), "ana"),
-        succeedsWith(substring(subject, 2, 4), "na"),
-        succeedsWith(substring(subject, 0, 6), subject),
-        succeedsWith(substring(subject, 6, 6), ""),
-        succeedsWith(substring(subject, 3, 3), ""),
+        structuralEquals([substring(subject, 1, 4) ?: "missing", substring(subject, 2, 4) ?: "missing", substring(subject, 0, 6) ?: "missing", substring(subject, 6, 6) ?: "missing", substring(subject, 3, 3) ?: "missing"], ["ana", "na", subject, "", ""]),
         take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
         drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
         startsWith(drop(subject, (indexOf(subject, "ana") ?: missing)), "ana"),
@@ -544,7 +542,7 @@ fn caseFoldingCase() = {
         toLowerCase("HÉLLO") == "hÉllo",
         length(toUpperCase(accented)) == 6,
         byteLength(toLowerCase(accented)) == 6,
-        allHold([(byteAt(toUpperCase(accented), 0) ?: 0) == 72, (byteAt(toUpperCase(accented), 1) ?: 0) == 195, (byteAt(toUpperCase(accented), 2) ?: 0) == 169, (byteAt(toUpperCase(accented), 3) ?: 0) == 76])
+        bytesAre(toUpperCase(accented), [72, 195, 169, 76])
     ])
 
     // Idempotent, length preserving, and a lower/upper round trip that survives
@@ -646,9 +644,7 @@ fn concatLengthCase() = {
         ((length(take(joined, 2)) + length(drop(joined, 2))) ) == length(joined),
         take(joined, 3) == (substring(joined, 0, 3) ?: "missing"),
         drop(joined, 3) == (substring(joined, 3, 6) ?: "missing"),
-        succeedsWith(substring(joined, 0, 0), ""),
-        succeedsWith(substring(joined, 6, 6), ""),
-        succeedsWith(substring(joined, 0, 6), joined)
+        structuralEquals([substring(joined, 0, 0) ?: "missing", substring(joined, 6, 6) ?: "missing", substring(joined, 0, 6) ?: "missing"], ["", "", joined])
     ])
 
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
@@ -790,8 +786,7 @@ fn utf8CutCase() = {
         partitionsAt(eagle, 3)
     ])
     checkAll("utf-8 substring bounds", [
-        succeedsWith(substring(quote, 0, 3), "“"),
-        succeedsWith(substring(quote, 3, 5), "ok"),
+        structuralEquals([substring(quote, 0, 3) ?: "missing", substring(quote, 3, 5) ?: "missing"], ["“", "ok"]),
         byteLength(substring(quote, 1, 3) ?: "") == 2,
         byteLength(substring(quote, 0, 1) ?: "") == 1
     ])
