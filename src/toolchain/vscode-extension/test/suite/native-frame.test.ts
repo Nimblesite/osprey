@@ -4,9 +4,11 @@
 import * as assert from "node:assert/strict";
 import { readAsks } from "../../client/src/osprey-ui/asks";
 import { keyName, scenePoint, sceneTransform } from "../../client/src/osprey-ui/webview/events";
+import { sameTree, toldFrame } from "../../client/src/osprey-ui/nodes";
+import { wordsOf } from "../../client/src/osprey-ui/webview/events";
 import { renderShown } from "../../client/src/osprey-ui/webview/render";
 import { FLAGS, readFrame, textAt, type Shown } from "../../client/src/osprey-ui/webview/rows";
-import { frame, TextRun, viewRows } from "./native-rows-kit";
+import { frame, TextRun, viewRows, type ControlSpec } from "./native-rows-kit";
 
 function shown(options: Parameters<typeof frame>[0]): Shown {
   return readFrame(frame(options));
@@ -38,7 +40,7 @@ suite("native shared rows", () => {
     const layer = html({ views: [{ kind: 7 }, { kind: 2, parent: 0, words: "under" }, { kind: 2, parent: 0, words: "over" }] });
     assert.ok(layer.includes("position:relative"), layer);
     assert.strictEqual((layer.match(/position:absolute;inset:0/g) ?? []).length, 1, "only later layers sit over the first");
-    assert.ok(layer.indexOf("under") < layer.indexOf("osp-layer-slot"), "the first child stays in the flow");
+    assert.ok(layer.indexOf("under") < layer.indexOf("osp-view-layer-slot"), "the first child stays in the flow");
     assert.ok(html({ views: [{ kind: 5 }] }).includes("flex-grow:1"));
   });
 
@@ -57,7 +59,7 @@ suite("native shared rows", () => {
     assert.ok(page.includes('data-ordinal="6" data-words="small"'), page);
     assert.ok(page.includes('data-ordinal="6" data-words="large"'), page);
     assert.ok(page.includes('data-ordinal="7" data-words=""'), page);
-    assert.ok(page.includes("osp-symbol"), page);
+    assert.ok(page.includes("osp-view-symbol"), page);
   });
 
   test("fields apply secret, on-commit and disabled flags from the row", () => {
@@ -87,7 +89,7 @@ suite("native shared rows", () => {
     assert.ok(page.includes("font-size:14px"), page);
     assert.ok(page.includes("height:3px"), page);
     assert.strictEqual(page.match(/width:100%/g)?.length, 1);
-    assert.ok(page.includes("osp-image-missing"), "an unresolved image is a placeholder, never a raw path URL");
+    assert.ok(page.includes("osp-view-image-missing"), "an unresolved image is a placeholder, never a raw path URL");
     assert.ok(page.includes("media/logo.png"), page);
   });
 
@@ -122,6 +124,93 @@ suite("native shared rows", () => {
     bad({ kind: 0, size: Number.NaN }, /extent/);
     bad({ kind: 0, parent: 0 }, /earlier row/);
     assert.throws(() => shown({ views: [{ kind: 0 }, { kind: 0, parent: 5 }] }), /earlier row/);
+  });
+
+  test("told rows become the component tree a host draws ([NATIVE-SHM-NODES])", () => {
+    const views: readonly ControlSpec[] = [
+      // theme: record { tokens: list of {name, light, dark}, spacing: list, feedback, settle }
+      { kind: 34, hint: "theme" },
+      { kind: 35, parent: 0, hint: "tokens" },
+      { kind: 34, parent: 1 },
+      { kind: 33, parent: 2, hint: "name", words: "accent" },
+      { kind: 33, parent: 2, hint: "light", words: "#006B86" },
+      { kind: 33, parent: 2, hint: "dark", words: "#77D7F4" },
+      { kind: 35, parent: 0, hint: "spacing" },
+      { kind: 33, parent: 6, weight: 1, ink: 8 },
+      { kind: 33, parent: 0, hint: "feedback", weight: 1, ink: 140 },
+      { kind: 33, parent: 0, hint: "settle", weight: 1, ink: 240 },
+      // region: record { key: "root", node: button {kind,label,symbol,role,enabled,event} }
+      { kind: 34, hint: "region" },
+      { kind: 33, parent: 10, hint: "key", words: "root" },
+      { kind: 34, parent: 10, hint: "node" },
+      { kind: 33, parent: 12, hint: "kind", words: "button" },
+      { kind: 33, parent: 12, hint: "label", words: "Save" },
+      { kind: 33, parent: 12, hint: "symbol", words: "check" },
+      { kind: 33, parent: 12, hint: "role", words: "prominent" },
+      { kind: 33, parent: 12, hint: "enabled", weight: 3, ink: 1 },
+      { kind: 33, parent: 12, hint: "event", weight: 1, ink: 3 },
+    ];
+    const told = toldFrame(shown({ views }));
+    assert.ok(told);
+    // Told records are null-prototype objects; compared through their JSON shape.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(told.theme)), { tokens: [{ name: "accent", light: "#006B86", dark: "#77D7F4" }],
+      spacing: [8], feedback: 140, settle: 240 });
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(told.regions)), [{ key: "root", node: {
+      kind: "button", label: "Save", symbol: "check", role: "prominent", enabled: true, event: 3 } }]);
+    // A frame of plain rows tells nothing.
+    assert.strictEqual(toldFrame(shown({ views: [{ kind: 0 }] })), undefined);
+  });
+
+  test("told reals carry their sign, words carry values, and a member with no name is ignored", () => {
+    const views: readonly ControlSpec[] = [
+      { kind: 34, hint: "region" },
+      { kind: 33, parent: 0, hint: "key", words: "root" },
+      { kind: 34, parent: 0, hint: "node" },
+      { kind: 33, parent: 2, hint: "kind", words: "scene" },
+      { kind: 33, parent: 2, hint: "real", weight: 2, size: 12.5 },
+      { kind: 33, parent: 2, hint: "negative", weight: 4, size: 3.25 },
+      { kind: 33, parent: 2, words: "unnamed" },
+    ];
+    const told = toldFrame(shown({ views }));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(told?.regions[0]?.node)), { kind: "scene", real: 12.5, negative: -3.25 });
+    assert.strictEqual(wordsOf("k"), "k");
+    assert.strictEqual(wordsOf(true), "true");
+    assert.strictEqual(wordsOf(12), "12");
+    assert.strictEqual(wordsOf(null), "");
+  });
+
+  test("a told row of an unknown type or a told parent that is not earlier refuses the frame", () => {
+    assert.throws(() => shown({ views: [{ kind: 33, weight: 5 }] }), /unknown type 5/);
+    assert.throws(() => shown({ views: [{ kind: 34 }, { kind: 33, parent: 5, hint: "key" }] }), /earlier row/);
+    // A negative whole number is a value, not a colour; a told row carries no flags or extents.
+    const views = shown({ views: [{ kind: 34, hint: "theme" }, { kind: 33, parent: 0, hint: "feedback", weight: 1, ink: -9007199254740991 }] });
+    assert.strictEqual(views.controls[1]?.value, Number.MIN_SAFE_INTEGER);
+  });
+
+  test("a scene marker names the record row of a scene component", () => {
+    const checked = shown({
+      views: [{ kind: 34, hint: "region" }, { kind: 33, parent: 0, hint: "key", words: "root" },
+        { kind: 34, parent: 0, hint: "node" }, { kind: 33, parent: 2, hint: "kind", words: "scene" }],
+      scenes: [{ code: 20, index: 2, x: 640, y: 480, width: 1 }],
+    });
+    const told = toldFrame(checked);
+    assert.ok(told);
+    assert.strictEqual((told.regions[0]?.node as Record<string, unknown>).sceneRow, 2);
+    assert.strictEqual(checked.scenes.get(2)?.width, 640);
+    assert.throws(() => shown({ views: [{ kind: 34 }], scenes: [{ code: 20, index: 1 }] }), /names no canvas/);
+  });
+
+  test("trees compare structurally so an unchanged region keeps its revision", () => {
+    const views: readonly ControlSpec[] = [
+      { kind: 34, hint: "region" },
+      { kind: 33, parent: 0, hint: "key", words: "root" },
+      { kind: 34, parent: 0, hint: "node" },
+      { kind: 33, parent: 2, hint: "kind", words: "text" },
+    ];
+    const first = toldFrame(shown({ views }))!;
+    const again = toldFrame(shown({ views: [...views] }))!;
+    assert.ok(sameTree(first.regions[0]?.node, again.regions[0]?.node));
+    assert.ok(!sameTree(first.regions[0]?.node, toldFrame(shown({ views: [...views.slice(0, 3), { kind: 33, parent: 2, hint: "kind", words: "pair" }] }))!.regions[0]?.node));
   });
 
   test("a text range outside the run or not UTF-8 refuses the frame", () => {

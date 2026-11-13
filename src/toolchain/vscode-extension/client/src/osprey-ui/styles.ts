@@ -281,8 +281,7 @@ body.vscode-high-contrast .osp-row.osp-selected { outline: 1px solid var(--osp-a
 // arrives as an inline declaration its row carries. The scene canvas rules serve both paths.
 
 export const VIEW_STYLES = `
-#osprey-root.osp-view-root { overflow: auto; }
-.osp-view { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; }
+.osp-view { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; overflow: auto; }
 .osp-view-control { min-width: 0; }
 .osp-view-control.osp-view-press, .osp-view-control.osp-view-toggle, .osp-view-control.osp-view-option { font: inherit; color: inherit; border: 0; }
 .osp-view-control.osp-view-entry, .osp-view-control.osp-view-editor { outline: none; }

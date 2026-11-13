@@ -40,6 +40,16 @@ function relativeAsset(source) {
     && source.split("/").every(part => part !== ".." && part !== "." && part !== "");
 }
 for (const source of ["osprey-logo.png", "chalk-study.png", "fonts/Geist-LICENSE.txt", "fonts/STIX-Two-Text-LICENSE.txt", "fonts/STIX-Two-Math-LICENSE.txt"]) bundledFile(source);
+for (const source of ["workbench.css", "workbench-fonts.css"]) {
+  const css = bundledFile(source).toString("utf8");
+  for (const match of css.matchAll(/url\(["']?([^\s)"']+)["']?\)/g)) {
+    const file = match[1];
+    if (!relativeAsset(file)) {
+      throw new Error(`Invalid workbench stylesheet asset: ${file}`);
+    }
+    bundledFile(file);
+  }
+}
 function verifyProofLibraries() {
   const catalogue = JSON.parse(bundledFile("proof-libraries.json").toString("utf8"));
   if (!Array.isArray(catalogue.libraries) || catalogue.libraries.length === 0) throw new Error("Invalid workbench proof library inventory");

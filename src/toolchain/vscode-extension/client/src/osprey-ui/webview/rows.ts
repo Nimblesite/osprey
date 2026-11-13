@@ -30,11 +30,13 @@ export type Kind =
   | "record"
   | "list";
 
-const KINDS: readonly Kind[] = [
-  "column", "line", "label", "press", "entry", "gap", "scroll", "layer", "toggle",
-  "picker", "choice", "rule", "image", "canvas", "editor", "menu", "sheet",
-  "field", "record", "list",
-];
+/** Each `kind` number the frame may carry, by the number `native.td` and `view.ospml` give it. */
+const KINDS: ReadonlyMap<number, Kind> = new Map([
+  [0, "column"], [1, "line"], [2, "label"], [3, "press"], [4, "entry"], [5, "gap"], [6, "scroll"],
+  [7, "layer"], [8, "toggle"], [9, "picker"], [10, "choice"], [11, "rule"], [12, "image"],
+  [13, "canvas"], [14, "editor"], [15, "menu"], [16, "sheet"],
+  [33, "field"], [34, "record"], [35, "list"],
+]);
 
 /** Whether a row tells a component rather than draws a control ([NATIVE-SHM-NODES]). */
 export function told(kind: Kind): boolean {
@@ -220,8 +222,9 @@ function toldRow(kind: Kind, row: DataView, at: number, index: number, run: Uint
 }
 
 function control(row: DataView, at: number, index: number, run: Uint8Array): Control {
-  const kind = KINDS[whole(row, at + VIEW_ROW.kind)];
-  if (kind === undefined) throw new Error(`row ${index} has an unknown kind ${whole(row, at + VIEW_ROW.kind)}`);
+  const code = whole(row, at + VIEW_ROW.kind);
+  const kind = KINDS.get(code);
+  if (kind === undefined) throw new Error(`row ${index} has an unknown kind ${code}`);
   if (told(kind)) return toldRow(kind, row, at, index, run);
   const flags = whole(row, at + VIEW_ROW.flags);
   if (flags < 0 || flags > 0xffffffff || (flags & ~FLAGS.all) !== 0) throw new Error(`row ${index} has unknown flags ${flags}`);

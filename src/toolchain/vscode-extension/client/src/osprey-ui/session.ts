@@ -4,6 +4,7 @@
 // returns as event kind 8 and draws the application's next frame.
 
 import { diagnostics, readAsks, requests, sliceWrites, type Ask, type Completion } from "./asks";
+import { RegionStore, sourcesOf, toldFrame, type Regions, type ToldFrame } from "./nodes";
 import { readFrame, type Shown } from "./webview/rows";
 import { EVENT } from "./webview/events";
 import type { FrameResult, NativeRuntime, NativeTouch, OpenOptions } from "./wasi-runner";
@@ -15,6 +16,12 @@ export interface FrameMessage {
   readonly text: ArrayBuffer;
   readonly assets: Readonly<Record<string, string>>;
   readonly diagnostics: readonly string[];
+}
+
+/** A frame the Node renderer told as component markup; the runs ride along for its scenes. */
+export interface RenderMessage extends Omit<FrameMessage, "type"> {
+  readonly type: "render";
+  readonly html: string;
 }
 
 export interface BusyMessage {
@@ -29,9 +36,12 @@ export interface FatalMessage {
 
 export interface SessionDeps {
   readonly runtime: NativeRuntime;
-  send(message: FrameMessage | BusyMessage | FatalMessage): void;
+  send(message: RenderMessage | FrameMessage | BusyMessage | FatalMessage): void;
   execute(ask: Ask, slices: ReadonlyMap<string, string>): Promise<Completion>;
-  assets?(shown: Shown): Readonly<Record<string, string>>;
+  /** Draws a told frame's regions and theme as the markup the webview shows. */
+  draw(frame: ToldFrame, regions: Regions, slices: ReadonlyMap<string, string>): string;
+  /** Resolves the asset sources a frame names inside the host's approved root. */
+  assets?(sources: readonly string[]): Readonly<Record<string, string>>;
   report(error: Error): void;
 }
 
@@ -74,6 +84,7 @@ function messageOf(error: unknown): string {
 /** Create the generic host loop around one live Osprey application. */
 export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   let slices = new Map<string, string>();
+  const regions = new RegionStore();
   let chain: Promise<void> = Promise.resolve();
   let queued = 0;
   let disposed = false;
@@ -105,21 +116,52 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     return chain;
   };
 
-  const assetsOf = (runs: FrameResult["runs"]): Readonly<Record<string, string>> => {
+  /** The asset sources a frame names: a told frame's media and boards, or a view row's images,
+   * and every scene's atlas entries. The resolver skips a source outside the approved root. */
+  const assetsOf = (shown: Shown, frame: ToldFrame | undefined): Readonly<Record<string, string>> => {
     if (deps.assets === undefined) return {};
+    const sources = new Set<string>(frame === undefined
+      ? shown.controls.flatMap((control) => (control.kind === "image" && control.words !== "" ? [control.words] : []))
+      : sourcesOf(frame));
+    for (const scene of shown.scenes.values()) {
+      for (const source of scene.atlas) if (source !== "") sources.add(source);
+    }
     try {
-      return deps.assets(readFrame({ shapes: runs.shapes, views: runs.views, text: runs.text }));
+      return deps.assets([...sources]);
     } catch {
       return {};
     }
   };
 
+  /** Publish one call's frame: a told frame as renderer markup with its runs beside it, and a
+   * frame of plain view rows for the webview's row view ([NATIVE-SHM-NODES]). */
   const publish = (result: FrameResult, expected: number): void => {
     if (!current(expected)) return;
     const asked = readAsks(result.runs.asks, result.runs.text);
     for (const write of sliceWrites(asked)) keep(write.key, write.text);
-    deps.send({ type: "frame", shapes: result.runs.shapes, views: result.runs.views, text: result.runs.text,
-      assets: assetsOf(result.runs), diagnostics: diagnostics(asked) });
+    let shown: Shown;
+    try {
+      shown = readFrame({ shapes: result.runs.shapes, views: result.runs.views, text: result.runs.text });
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    const notice = diagnostics(asked);
+    const told = toldFrame(shown);
+    const assets = assetsOf(shown, told);
+    try {
+      if (told === undefined) {
+        deps.send({ type: "frame", shapes: result.runs.shapes, views: result.runs.views,
+          text: result.runs.text, assets, diagnostics: notice });
+      } else {
+        const html = deps.draw(told, regions.adopt(told), slices);
+        deps.send({ type: "render", html, shapes: result.runs.shapes, views: result.runs.views,
+          text: result.runs.text, assets, diagnostics: notice });
+      }
+    } catch (error) {
+      fail(error);
+      return;
+    }
     for (const ask of requests(asked)) void complete(ask, expected);
   };
 
@@ -151,6 +193,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     started = true;
     generation += 1;
     slices = new Map();
+    regions.clear();
     await enqueue(() => deps.runtime.open(options), generation);
   };
 
@@ -174,6 +217,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
     disposed = true;
     generation += 1;
     slices = new Map();
+    regions.clear();
     deps.runtime.dispose();
   };
 

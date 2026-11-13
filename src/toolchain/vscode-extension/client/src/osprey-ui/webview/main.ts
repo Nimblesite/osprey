@@ -1,10 +1,13 @@
-// The webview's whole program: decode each sealed frame's rows, check them as the host does,
-// draw the checked controls as DOM and their canvases as scenes, and post typed events back.
-// It holds no application state and sends no capability request.
+// The webview's whole program: route the host's messages, draw each sealed frame's rows or the
+// component markup the Node renderer told, paint scene canvases and drawing boards, and post
+// typed events back. It holds no application state and sends no capability request.
 
-import { controlEvent, keyEvent, pointerEvent, scenePoint, sceneTransform, toggledWords, viewedEvent } from "./events.js";
-import { renderShown } from "./render.js";
+import { applyRender, clientDiagnostics, clientNotice, installClient, ordinalOf, type Client } from "./client.js";
+import { installEditors, refreshEditors, type Caret } from "./editor-client.js";
+import { refreshBoards } from "./board-client.js";
+import { keyEvent, pointerEvent, scenePoint, sceneTransform, viewedEvent } from "./events.js";
 import { readFrame, type Scene, type Shown } from "./rows.js";
+import { renderShown } from "./render.js";
 import { accessBounds, paintScene } from "./scene.js";
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
@@ -18,62 +21,38 @@ interface FrameMessage {
   readonly diagnostics: readonly string[];
 }
 
+interface RenderMessage extends Omit<FrameMessage, "type"> {
+  readonly type: "render";
+  readonly html: string;
+}
+
 interface BusyMessage { readonly type: "busy"; readonly active: boolean }
 interface FatalMessage { readonly type: "fatal"; readonly message: string }
-type HostMessage = FrameMessage | BusyMessage | FatalMessage;
+type HostMessage = RenderMessage | FrameMessage | BusyMessage | FatalMessage;
 
 const vscode = acquireVsCodeApi();
-const root = document.getElementById("osprey-root");
-const status = document.getElementById("osprey-runtime-status");
-const diagnostics = document.getElementById("osprey-diagnostics");
+const client: Client = {
+  action: { pressed: null, pressedPointerId: null, cancelled: null, pendingPatch: null },
+  edits: new Map(),
+  timers: new Map(),
+  savedFocus: null,
+  hostDiagnostics: [],
+  pendingLoss: undefined,
+  runtimeBusy: false,
+  runtimeTracked: false,
+  post: {
+    control: (ordinal, words) => vscode.postMessage({ type: "event", kind: 0, ordinal, words }),
+    event: (event) => vscode.postMessage(event),
+    external: (url) => vscode.postMessage({ type: "external", url }),
+  },
+};
 
 let shown: Shown | undefined;
 let assetMap: Readonly<Record<string, string>> = {};
 let cleanup: (() => void) | undefined;
-let runtimeBusy = false;
-let pendingLoss: string | undefined;
-let hostDiagnostics: readonly string[] = [];
-let savedFocus: string | undefined;
-let savedField: { ordinal: string; value: string } | undefined;
 
 /** Sprites are loaded once per approved URI and every scene is repainted when one arrives. */
 const sprites = new Map<string, HTMLImageElement>();
-
-function notice(): void {
-  const combined = pendingLoss === undefined ? [...hostDiagnostics] : [...hostDiagnostics, pendingLoss];
-  if (diagnostics) {
-    diagnostics.textContent = [...new Set(combined)].join("\n");
-    diagnostics.hidden = combined.length === 0;
-  }
-  if (status) status.hidden = !runtimeBusy;
-  if (root) root.setAttribute("aria-busy", String(runtimeBusy));
-}
-
-function saveFocus(): void {
-  const name = document.hasFocus() ? document.activeElement?.getAttribute("data-focus") : undefined;
-  savedFocus = name === null || name === undefined ? undefined : name;
-  const active = document.activeElement;
-  savedField = active instanceof HTMLInputElement && active.dataset.ordinal !== undefined && document.hasFocus()
-    ? { ordinal: active.dataset.ordinal, value: active.value } : undefined;
-}
-
-/** A focused field keeps what the person typed while its frame is re-drawn. */
-function restoreField(): void {
-  const field = savedField;
-  savedField = undefined;
-  if (field === undefined) return;
-  const element = Array.from(document.querySelectorAll("input[data-ordinal]"))
-    .find((candidate) => candidate.getAttribute("data-ordinal") === field.ordinal);
-  if (element instanceof HTMLInputElement && element.value !== field.value) element.value = field.value;
-}
-
-function restoreFocus(): void {
-  if (savedFocus === undefined) return;
-  const element = Array.from(document.querySelectorAll("[data-focus]"))
-    .find((candidate) => candidate.getAttribute("data-focus") === savedFocus);
-  if (element instanceof HTMLElement) element.focus();
-  savedFocus = undefined;
-}
 
 function loadImage(uri: string): HTMLImageElement | undefined {
   const held = sprites.get(uri);
@@ -107,8 +86,8 @@ function redraw(): void {
 }
 
 /** Paint one canvas, describe its scene to assistive technology, and report its region. */
-function prepare(canvas: HTMLCanvasElement, frame: Shown): () => void {
-  const scene = frame.scenes.get(Number(canvas.dataset.scene));
+function prepare(canvas: HTMLCanvasElement): () => void {
+  const scene = shown?.scenes.get(Number(canvas.dataset.scene));
   if (scene === undefined) return () => undefined;
   draw(canvas);
   const parent = canvas.parentElement;
@@ -126,11 +105,12 @@ function prepare(canvas: HTMLCanvasElement, frame: Shown): () => void {
       Object.assign(node.style, { position: "absolute", left: `${box.x}px`, top: `${box.y}px`,
         width: `${Math.max(box.w, 1)}px`, height: `${Math.max(box.h, 1)}px`, opacity: "0", cursor: "pointer" });
       node.addEventListener("click", () => {
-        const ordinal = Number(canvas.dataset.ordinal ?? "-1");
-        if (ordinal < 0) return;
-        const x = access.x + access.w / 2, y = access.y + access.h / 2;
-        vscode.postMessage(pointerEvent(ordinal, x, y, true, false));
-        vscode.postMessage(pointerEvent(ordinal, x, y, false, false));
+        const ordinal = ordinalOf(canvas);
+        if (ordinal === null) return;
+        const x = access.x + access.w / 2;
+        const y = access.y + access.h / 2;
+        client.post.event(pointerEvent(ordinal, x, y, true, false));
+        client.post.event(pointerEvent(ordinal, x, y, false, false));
       });
       parent.appendChild(node);
       overlay.push(node);
@@ -139,10 +119,10 @@ function prepare(canvas: HTMLCanvasElement, frame: Shown): () => void {
   let viewed = { width: -1, height: -1 };
   const observer = new ResizeObserver(() => {
     const measured = sceneTransform(scene, canvas.clientWidth, canvas.clientHeight);
-    const ordinal = Number(canvas.dataset.ordinal ?? "-1");
-    if (ordinal >= 0 && scene.width > 0 && (measured.viewedWidth !== viewed.width || measured.viewedHeight !== viewed.height)) {
+    const ordinal = ordinalOf(canvas);
+    if (ordinal !== null && scene.width > 0 && (measured.viewedWidth !== viewed.width || measured.viewedHeight !== viewed.height)) {
       viewed = { width: measured.viewedWidth, height: measured.viewedHeight };
-      vscode.postMessage(viewedEvent(ordinal, measured.viewedWidth, measured.viewedHeight));
+      client.post.event(viewedEvent(ordinal, measured.viewedWidth, measured.viewedHeight));
     }
     draw(canvas);
   });
@@ -153,162 +133,129 @@ function prepare(canvas: HTMLCanvasElement, frame: Shown): () => void {
   };
 }
 
-function render(message: FrameMessage): void {
-  let checked: Shown;
-  try {
-    checked = readFrame({ shapes: message.shapes, views: message.views, text: message.text });
-  } catch (error) {
-    pendingLoss = `The frame was refused: ${error instanceof Error ? error.message : String(error)}`;
-    notice();
-    return;
-  }
-  saveFocus();
-  shown = checked;
-  assetMap = message.assets;
-  hostDiagnostics = message.diagnostics;
-  pendingLoss = undefined;
+/** Scenes, boards and editors after either kind of frame has replaced the markup. */
+function rendered(): void {
+  const stops = Array.from(document.querySelectorAll("canvas.osp-canvas"))
+    .flatMap((canvas) => (canvas instanceof HTMLCanvasElement ? [prepare(canvas)] : []));
   cleanup?.();
-  cleanup = undefined;
-  if (root !== null) {
-    root.innerHTML = renderShown(checked, { assets: new Map(Object.entries(assetMap)) });
-    const stops = Array.from(root.querySelectorAll("canvas.osp-canvas"))
-      .flatMap((canvas) => (canvas instanceof HTMLCanvasElement ? [prepare(canvas, checked)] : []));
-    cleanup = () => stops.forEach((stop) => stop());
+  cleanup = () => stops.forEach((stop) => stop());
+  refreshBoards(client);
+  refreshEditors(caret);
+}
+
+const caret: Caret = { post: client.post, edits: client.edits };
+client.rendered = rendered;
+
+/** Read one frame's runs, keeping the last good view when a frame is refused. */
+function readRuns(message: FrameMessage | RenderMessage): boolean {
+  try {
+    shown = readFrame({ shapes: message.shapes, views: message.views, text: message.text });
+  } catch (error) {
+    client.pendingLoss = `The frame was refused: ${error instanceof Error ? error.message : String(error)}`;
+    return false;
   }
-  restoreField();
-  restoreFocus();
-  notice();
+  assetMap = message.assets;
+  client.pendingLoss = undefined;
+  return true;
+}
+
+function render(message: RenderMessage | FrameMessage): void {
+  const ready = readRuns(message);
+  clientDiagnostics(client, message.diagnostics);
+  if (!ready && message.type === "frame") return;
+  applyRender(client, message.type === "render" ? message.html
+    : renderShown(shown ?? { controls: [], roots: [], scenes: new Map() }, { assets: new Map(Object.entries(assetMap)) }));
 }
 
 function closest(target: EventTarget | null, selector: string): Element | null {
   return target instanceof Element ? target.closest(selector) : null;
 }
 
-document.addEventListener("click", (event) => {
-  const control = closest(event.target, "[data-ordinal]");
-  if (control === null || control instanceof HTMLInputElement || control instanceof HTMLCanvasElement) return;
-  const ordinal = Number(control.getAttribute("data-ordinal"));
-  if (!Number.isSafeInteger(ordinal) || ordinal < 0) return;
-  const words = control.getAttribute("role") === "switch"
-    ? toggledWords(control.getAttribute("aria-checked") === "true")
-    : control.getAttribute("data-words") ?? "";
-  vscode.postMessage(controlEvent(ordinal, words));
-});
-
-/** A field that delivers as it changes posts its text once the typist pauses. */
-const pendingFields = new WeakMap<HTMLInputElement, number>();
-
-function postField(field: HTMLInputElement): void {
-  const ordinal = Number(field.dataset.ordinal ?? "-1");
-  if (Number.isSafeInteger(ordinal) && ordinal >= 0) vscode.postMessage(controlEvent(ordinal, field.value));
-}
-
-document.addEventListener("input", (event) => {
-  const field = event.target;
-  if (!(field instanceof HTMLInputElement) || field.dataset.commit !== "change") return;
-  const previous = pendingFields.get(field);
-  if (previous !== undefined) window.clearTimeout(previous);
-  pendingFields.set(field, window.setTimeout(() => {
-    pendingFields.delete(field);
-    postField(field);
-  }, 160));
-});
-
-document.addEventListener("change", (event) => {
-  const field = event.target;
-  if (!(field instanceof HTMLInputElement) || field.dataset.commit !== "change") return;
-  const previous = pendingFields.get(field);
-  if (previous !== undefined) {
-    window.clearTimeout(previous);
-    pendingFields.delete(field);
-  }
-  postField(field);
-});
-
-document.addEventListener("keydown", (event) => {
-  const field = event.target;
-  if (field instanceof HTMLInputElement && field.dataset.commit === "enter" && event.key === "Enter") {
-    const ordinal = Number(field.dataset.ordinal ?? "-1");
-    if (Number.isSafeInteger(ordinal) && ordinal >= 0) vscode.postMessage(controlEvent(ordinal, field.value));
-    event.preventDefault();
-    return;
-  }
-  const canvas = closest(event.target, "canvas.osp-canvas");
-  if (canvas === null) return;
-  const key = keyEvent(Number(canvas.getAttribute("data-ordinal") ?? "-1"), event.key, true);
-  if (key === undefined) return;
-  if (event.key === " " || event.key.startsWith("Arrow") || event.key === "Tab") event.preventDefault();
-  vscode.postMessage(key);
-});
-
-document.addEventListener("keyup", (event) => {
-  const canvas = closest(event.target, "canvas.osp-canvas");
-  if (canvas === null) return;
-  const key = keyEvent(Number(canvas.getAttribute("data-ordinal") ?? "-1"), event.key, false);
-  if (key !== undefined) vscode.postMessage(key);
-});
-
-let pressing: { canvas: HTMLCanvasElement; pointer: number; ordinal: number } | undefined;
-let hoverQueued = false;
-
 function pointerAt(canvas: HTMLCanvasElement, clientX: number, clientY: number): { ordinal: number; x: number; y: number } | undefined {
   const scene = shown?.scenes.get(Number(canvas.dataset.scene));
   if (scene === undefined) return undefined;
   const box = canvas.getBoundingClientRect();
   const point = scenePoint(sceneTransform(scene, canvas.clientWidth, canvas.clientHeight), clientX - box.left, clientY - box.top);
-  return { ordinal: Number(canvas.dataset.ordinal ?? "-1"), x: point.x, y: point.y };
+  return { ordinal: ordinalOf(canvas) ?? -1, x: point.x, y: point.y };
 }
 
-document.addEventListener("pointerdown", (event) => {
-  const canvas = closest(event.target, "canvas.osp-canvas");
-  if (!(canvas instanceof HTMLCanvasElement) || event.button !== 0 || !event.isPrimary) return;
-  event.preventDefault();
-  canvas.focus();
-  const at = pointerAt(canvas, event.clientX, event.clientY);
-  if (at === undefined) return;
-  pressing = { canvas, pointer: event.pointerId, ordinal: at.ordinal };
-  canvas.setPointerCapture(event.pointerId);
-  vscode.postMessage(pointerEvent(at.ordinal, at.x, at.y, true, event.shiftKey));
-});
-
-document.addEventListener("pointermove", (event) => {
-  const canvas = closest(event.target, "canvas.osp-canvas");
-  if (!(canvas instanceof HTMLCanvasElement)) return;
-  if (pressing !== undefined && pressing.canvas !== canvas) return;
-  const dragging = pressing !== undefined && pressing.pointer === event.pointerId;
-  if (!dragging && hoverQueued) return;
-  if (!dragging) hoverQueued = true;
-  requestAnimationFrame(() => {
-    hoverQueued = false;
-    const at = pointerAt(canvas, event.clientX, event.clientY);
-    if (at !== undefined) vscode.postMessage(pointerEvent(at.ordinal, at.x, at.y, dragging, event.shiftKey));
+function installSceneInput(): void {
+  document.addEventListener("keydown", (event) => {
+    const field = event.target;
+    const commit = field instanceof Element ? field.getAttribute("data-commit") : null;
+    if (field instanceof HTMLInputElement && (commit === "submit" || commit === "enter") && event.key === "Enter") {
+      event.preventDefault();
+      return;
+    }
+    const canvas = closest(event.target, "canvas.osp-canvas");
+    if (canvas === null) return;
+    const key = keyEvent(ordinalOf(canvas) ?? -1, event.key, true);
+    if (key === undefined) return;
+    if (event.key === " " || event.key.startsWith("Arrow") || event.key === "Tab") event.preventDefault();
+    client.post.event(key);
   });
-});
+  document.addEventListener("keyup", (event) => {
+    const canvas = closest(event.target, "canvas.osp-canvas");
+    if (canvas === null) return;
+    const key = keyEvent(ordinalOf(canvas) ?? -1, event.key, false);
+    if (key !== undefined) client.post.event(key);
+  });
+}
 
-document.addEventListener("pointerup", (event) => {
-  const finished = pressing;
-  if (finished === undefined || finished.pointer !== event.pointerId) return;
-  pressing = undefined;
-  const at = pointerAt(finished.canvas, event.clientX, event.clientY);
-  if (at !== undefined) vscode.postMessage(pointerEvent(finished.ordinal, at.x, at.y, false, event.shiftKey));
-});
+let pressing: { canvas: HTMLCanvasElement; pointer: number } | undefined;
+let hoverQueued = false;
+
+function installScenePointer(): void {
+  document.addEventListener("pointerdown", (event) => {
+    const canvas = closest(event.target, "canvas.osp-canvas");
+    if (!(canvas instanceof HTMLCanvasElement) || event.button !== 0 || !event.isPrimary) return;
+    if (canvas.hasAttribute("data-board-slice")) return;
+    event.preventDefault();
+    canvas.focus();
+    const at = pointerAt(canvas, event.clientX, event.clientY);
+    if (at === undefined) return;
+    pressing = { canvas, pointer: event.pointerId };
+    canvas.setPointerCapture(event.pointerId);
+    client.post.event(pointerEvent(at.ordinal, at.x, at.y, true, event.shiftKey));
+  });
+  document.addEventListener("pointermove", (event) => {
+    const canvas = closest(event.target, "canvas.osp-canvas");
+    if (!(canvas instanceof HTMLCanvasElement) || canvas.hasAttribute("data-board-slice")) return;
+    if (pressing !== undefined && pressing.canvas !== canvas) return;
+    const dragging = pressing !== undefined && pressing.pointer === event.pointerId;
+    if (!dragging && hoverQueued) return;
+    if (!dragging) hoverQueued = true;
+    requestAnimationFrame(() => {
+      hoverQueued = false;
+      const at = pointerAt(canvas, event.clientX, event.clientY);
+      if (at !== undefined) client.post.event(pointerEvent(at.ordinal, at.x, at.y, dragging, event.shiftKey));
+    });
+  });
+  document.addEventListener("pointerup", (event) => {
+    const finished = pressing;
+    if (finished === undefined || finished.pointer !== event.pointerId) return;
+    pressing = undefined;
+    const at = pointerAt(finished.canvas, event.clientX, event.clientY);
+    if (at !== undefined) client.post.event(pointerEvent(at.ordinal, at.x, at.y, false, event.shiftKey));
+  });
+}
 
 window.addEventListener("message", (event: MessageEvent<HostMessage>) => {
   const message = event.data;
   if (message === null || typeof message !== "object") return;
   if (message.type === "busy") {
-    runtimeBusy = message.active;
-    notice();
+    clientNotice(client, "busy", message.active);
     return;
   }
-  if (message.type === "frame") {
-    runtimeBusy = false;
-    render(message);
+  if (message.type === "fatal") {
+    clientNotice(client, "fatal", message.message);
     return;
   }
-  pendingLoss = message.message;
-  runtimeBusy = false;
-  notice();
+  render(message);
 });
 
+installClient(client);
+installEditors(caret);
+installSceneInput();
+installScenePointer();
 vscode.postMessage({ type: "ready" });

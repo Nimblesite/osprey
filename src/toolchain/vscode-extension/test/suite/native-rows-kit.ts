@@ -32,6 +32,7 @@ export interface ControlSpec {
   readonly padding?: number;
   readonly spacing?: number;
   readonly radius?: number;
+  /** A view row's font weight; a told row's value type, 0 to 4 ([NATIVE-SHM-NODES]). */
   readonly weight?: number;
   readonly width?: number;
   readonly height?: number;
@@ -59,7 +60,7 @@ export function viewRows(specs: readonly ControlSpec[], run: TextRun): ArrayBuff
     view.setFloat64(at + VIEW_ROW.padding, spec.padding ?? 0, true);
     view.setFloat64(at + VIEW_ROW.spacing, spec.spacing ?? 0, true);
     view.setFloat64(at + VIEW_ROW.radius, spec.radius ?? 0, true);
-    view.setBigInt64(at + VIEW_ROW.weight, BigInt(spec.weight ?? 400), true);
+    view.setBigInt64(at + VIEW_ROW.weight, BigInt(spec.weight ?? (spec.kind >= 33 ? 0 : 400)), true);
     view.setFloat64(at + VIEW_ROW.width, spec.width ?? 0, true);
     view.setFloat64(at + VIEW_ROW.height, spec.height ?? 0, true);
     view.setFloat64(at + VIEW_ROW.grow, spec.grow ?? 0, true);

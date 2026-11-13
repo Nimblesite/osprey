@@ -31,14 +31,6 @@ export interface ToldFrame {
   readonly regions: readonly { readonly key: string; readonly node: unknown }[];
 }
 
-/** The words a control event carries for this value: nothing, text, a flag or a number. */
-export function wordsOf(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number" && Number.isFinite(value)) return String(value);
-  return "";
-}
-
 /** Structural equality of two told trees, so a region whose tree did not change keeps its
  * revision (mirrors the Swift `Tree`'s value equality). */
 export function sameTree(left: unknown, right: unknown): boolean {
@@ -127,6 +119,30 @@ export function toldFrame(shown: Shown): ToldFrame | undefined {
   return { theme, regions };
 }
 
+/** Every approved asset source a told frame names: media sources, posters, captions, video
+ * tracks and board backdrops. Scene atlases arrive in the scene run and are collected beside
+ * these by the session. */
+export function sourcesOf(frame: ToldFrame): string[] {
+  const sources = new Set<string>();
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!record(value)) return;
+    if (value.kind === "image" || value.kind === "video") {
+      for (const key of ["source", "poster", "captions"]) {
+        if (typeof value[key] === "string" && value[key] !== "") sources.add(value[key] as string);
+      }
+    }
+    if (value.kind === "board" && typeof value.backdrop === "string" && value.backdrop !== "") sources.add(value.backdrop);
+    for (const child of Object.values(value)) visit(child);
+  };
+  visit(frame.theme);
+  for (const region of frame.regions) visit(region.node);
+  return [...sources];
+}
+
 /** Keeps the regions of a frame: a region whose tree did not change keeps its revision, so its
  * controls stay stable while other regions move ([UI-REGIONS]). */
 export class RegionStore {
@@ -144,5 +160,10 @@ export class RegionStore {
     for (const key of [...next.keys()]) if (!live.has(key)) next.delete(key);
     this.cells = next;
     return next;
+  }
+
+  /** Forget every region, when the session reopens or closes. */
+  clear(): void {
+    this.cells = new Map();
   }
 }

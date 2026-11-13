@@ -67,11 +67,6 @@ export function lassoEvent(ordinal: number): HostEvent {
   return { ...event(EVENT.lasso), ordinal };
 }
 
-/** The next value a switch delivers when it is toggled. */
-export function toggledWords(current: boolean): string {
-  return current ? "false" : "true";
-}
-
 /** A key going down or up over the scene numbered `ordinal`. */
 export function keyEvent(ordinal: number, name: string, down: boolean): HostEvent | undefined {
   const admitted = keyName(name);

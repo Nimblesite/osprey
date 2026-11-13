@@ -56,7 +56,7 @@ function patchBranch(current: Node, next: Node, state: ActionState): void {
     state.pendingPatch = next instanceof HTMLButtonElement ? next : null;
     return;
   }
-  if (current.nodeType === 1 && next.nodeType === 1) copyAttributes(current, next);
+  if (current instanceof Element && next instanceof Element) copyAttributes(current, next);
   const children = Array.from(current.childNodes);
   const replacements = Array.from(next.childNodes);
   children.forEach((child, index) => {

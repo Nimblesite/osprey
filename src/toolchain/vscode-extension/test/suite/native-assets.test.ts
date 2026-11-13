@@ -129,9 +129,9 @@ suite("workbench bundle completeness", () => {
     }
   });
 
-  test("packaging rejects missing workbench fonts licences and logo", () => {
+  test("packaging rejects missing workbench styles fonts licences and logo", () => {
     assert.equal(verify().status, 0, "complete bundle must pass");
-    for (const name of ["fonts/STIXTwoMath-400-normal-0.woff2", "fonts/Geist-LICENSE.txt", "osprey-logo.png", "chalk-study.png", "proof-libraries.json", "proof-libraries/fixture.ndjson", "proof-libraries/LICENSE.lean4", "proof-libraries/LICENSE.openai-math"]) {
+    for (const name of ["symbols.json", "icons/moon.svg", "icons/LICENSE.txt", "workbench.css", "workbench-fonts.css", "fonts/STIXTwoMath-400-normal-0.woff2", "fonts/Geist-LICENSE.txt", "osprey-logo.png", "chalk-study.png", "proof-libraries.json", "proof-libraries/fixture.ndjson", "proof-libraries/LICENSE.lean4", "proof-libraries/LICENSE.openai-math"]) {
       const file = path.join(assets, name), original = fs.readFileSync(file);
       try {
         fs.rmSync(file);
@@ -142,7 +142,7 @@ suite("workbench bundle completeness", () => {
     }
   });
 
-  test("packaging rejects empty or LFS-pointer assets", () => {
+  test("packaging rejects empty or LFS-pointer assets and stylesheet traversal", () => {
     const file = path.join(assets, "fonts/STIXTwoMath-400-normal-0.woff2");
     const original = fs.readFileSync(file);
     for (const content of ["", "version https://git-lfs.github.com/spec/v1\noid sha256:unavailable\n"]) {
@@ -153,6 +153,10 @@ suite("workbench bundle completeness", () => {
         assert.ok(result.stderr.includes("STIXTwoMath-400-normal-0.woff2"), result.stderr);
       } finally { fs.writeFileSync(file, original); }
     }
+    fs.appendFileSync(path.join(assets, "workbench.css"), '\n@import url("../private.css");');
+    const refused = verify();
+    assert.notEqual(refused.status, 0);
+    assert.ok(refused.stderr.includes("Invalid workbench stylesheet asset"), refused.stderr);
   });
 
   test("packaging rejects a valid WASM module without a WASI application entry", () => {

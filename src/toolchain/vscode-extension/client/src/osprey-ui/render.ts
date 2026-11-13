@@ -67,7 +67,7 @@ function oneOf(value: string, allowed: Set<string>, fallback: string): string {
 
 /** [NATIVE-SHM-EVENT] A control carries only the ordinal the frame issued; the webview sends it
  * with the control's value as words. */
-function eventAttrs(ctx: Context, node: Record<string, unknown>): string {
+function eventAttrs(node: Record<string, unknown>): string {
   if (typeof node.event !== "number" || !Number.isSafeInteger(node.event) || node.event < 0) return "";
   return ` data-event-ordinal="${node.event}"`;
 }
@@ -81,7 +81,7 @@ function valueAttrs(kind: "string" | "bool" | "number" | "null", value: unknown)
 }
 
 function control(ctx: Context, node: Record<string, unknown>, kind: "string" | "bool" | "number" | "null", value: unknown): string {
-  return eventAttrs(ctx, node) + valueAttrs(kind, value) + focusAttr(ctx, node);
+  return eventAttrs(node) + valueAttrs(kind, value) + focusAttr(ctx, node);
 }
 
 function child(value: unknown, ctx: Context): string {
@@ -119,7 +119,7 @@ function editor(node: Record<string, unknown>, ctx: Context): string {
 }
 
 function board(node: Record<string, unknown>, ctx: Context): string {
-  return renderBoard(node, eventAttrs(ctx, node), ctx.slices, ctx.resolveAsset);
+  return renderBoard(node, eventAttrs(node), ctx.slices, ctx.resolveAsset);
 }
 
 /** [NATIVE-SHM-SCENE] A scene component: the canvas whose scene rows the frame carries, named by
@@ -130,8 +130,8 @@ function scene(node: Record<string, unknown>, ctx: Context): string {
   return `<div class="osp-canvas-frame" style="position:relative;display:flex;min-height:320px"><canvas class="osp-canvas" tabindex="0" role="img" aria-label="Scene" data-scene="${row}" data-ordinal="${ordinal}"${focusAttr(ctx, node)} style="width:100%;height:100%;display:block"></canvas></div>`;
 }
 
-function labelValue(node: Record<string, unknown>, kind: "evidence" | "pair"): string {
-  return `<div class="osp-${kind}"><span class="osp-${kind}-label">${escapeHtml(text(node, "label"))}</span><span class="osp-${kind}-value">${escapeHtml(text(node, "value"))}</span></div>`;
+function labelValue(node: Record<string, unknown>): string {
+  return `<div class="osp-pair"><span class="osp-pair-label">${escapeHtml(text(node, "label"))}</span><span class="osp-pair-value">${escapeHtml(text(node, "value"))}</span></div>`;
 }
 
 function badge(node: Record<string, unknown>, ctx: Context): string {
@@ -252,11 +252,11 @@ function contextMenu(node: Record<string, unknown>, ctx: Context): string {
   return `<div class="osp-context-host" data-context-host><div class="osp-context-body">${child(node.body, ctx)}</div><div class="osp-menu" role="menu" hidden>${actions}</div></div>`;
 }
 
-function splitter(node: Record<string, unknown>, ctx: Context): string {
+function splitter(node: Record<string, unknown>): string {
   const least = number(node, "least") || 240;
   const most = number(node, "most") || 720;
   const width = Math.min(Math.max(number(node, "width"), least), Math.max(least, most));
-  return `<div class="osp-splitter" role="separator" aria-orientation="vertical" tabindex="0" data-splitter="true" data-side="${escapeHtml(text(node, "side"))}" data-min="${least}" data-max="${most}"${eventAttrs(ctx, node)}${valueAttrs("number", width)}><span></span></div>`;
+  return `<div class="osp-splitter" role="separator" aria-orientation="vertical" tabindex="0" data-splitter="true" data-side="${escapeHtml(text(node, "side"))}" data-min="${least}" data-max="${most}"${eventAttrs(node)}${valueAttrs("number", width)}><span></span></div>`;
 }
 
 function aside(node: Record<string, unknown>, ctx: Context): string {
@@ -266,7 +266,7 @@ function aside(node: Record<string, unknown>, ctx: Context): string {
   const width = Math.min(Math.max(number(node, "width"), least), most);
   const pane = `<div class="osp-aside-pane">${child(node.pane, ctx)}</div>`;
   const column = `<div class="osp-aside-column">${child(node.aside, ctx)}</div>`;
-  const dividerNode = splitter(node, ctx);
+  const dividerNode = splitter(node);
   const content = side === "leading" ? `${column}${dividerNode}${pane}` : `${pane}${dividerNode}${column}`;
   return `<div class="osp-aside osp-side-${side}" style="--osp-aside-width:${width}px">${content}</div>`;
 }
@@ -365,9 +365,7 @@ const RENDERERS: Readonly<Record<string, (node: Record<string, unknown>, ctx: Co
   scene,
   image: (node, ctx) => renderImage(node, ctx.resolveAsset),
   video: (node, ctx) => renderVideo(node, ctx.resolveAsset),
-  evidence: node => labelValue(node, "evidence"),
-  pair: node => labelValue(node, "pair"),
-  brand: (_node, ctx) => brand(ctx),
+  pair: labelValue,
   badge,
   label,
   icon,

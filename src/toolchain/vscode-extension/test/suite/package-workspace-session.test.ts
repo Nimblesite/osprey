@@ -2,9 +2,9 @@
 // every call's frame before answering its asks, and returns each completion as event kind 8.
 import * as assert from "assert";
 import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
-import { createWorkspaceSession, parseTouch, type FrameMessage, type SessionDeps } from "../../client/src/osprey-ui/session";
+import { createWorkspaceSession, parseTouch, type FrameMessage, type RenderMessage, type SessionDeps } from "../../client/src/osprey-ui/session";
 import type { FrameResult, NativeRuntime, NativeTouch, OpenOptions } from "../../client/src/osprey-ui/wasi-runner";
-import { frame, type AskSpec } from "./native-rows-kit";
+import { frame, type AskSpec, type ControlSpec } from "./native-rows-kit";
 
 const runs = (asks: readonly AskSpec[], words = "Ready"): FrameResult["runs"] => {
   const built = frame({ views: [{ kind: 2, words }], asks });
@@ -13,17 +13,17 @@ const runs = (asks: readonly AskSpec[], words = "Ready"): FrameResult["runs"] =>
 
 const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
-function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResult["runs"]; readonly answer?: (ask: Ask) => Promise<Completion> } = {}) {
+function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResult["runs"]; readonly reply?: FrameResult["runs"]; readonly answer?: (ask: Ask) => Promise<Completion> } = {}) {
   const events: NativeTouch[] = [];
   const opens: OpenOptions[] = [];
-  const sent: (FrameMessage | { type: "busy"; active: boolean } | { type: "fatal"; message: string })[] = [];
+  const sent: (FrameMessage | RenderMessage | { type: "busy"; active: boolean } | { type: "fatal"; message: string })[] = [];
   const executed: Ask[] = [];
   const held: ReadonlyMap<string, string>[] = [];
   const holds: [string, string][] = [];
   let calls = 0;
   const runtime: NativeRuntime = {
     async open(request) { opens.push(request); return { status: 0, revision: 1, runs: options.open ?? runs(options.asks ?? []) }; },
-    async event(touch) { events.push(touch); calls += 1; return { status: 0, revision: calls + 1, runs: runs([]) }; },
+    async event(touch) { events.push(touch); calls += 1; return { status: 0, revision: calls + 1, runs: options.reply ?? runs([]) }; },
     hold(key, text) { holds.push([key, text]); },
     dispose() { events.push({ kind: -1, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false }); },
   };
@@ -35,13 +35,26 @@ function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResu
       held.push(slices);
       return options.answer === undefined ? { detail: JSON.stringify({ ok: ask.ticket }) } : options.answer(ask);
     },
-    assets: (shown) => Object.fromEntries(shown.controls.filter((control) => control.kind === "image").map((control) => [control.words, `asset:${control.words}`])),
+    draw: () => '<div class="osp-root"></div>',
+    assets: (sources) => Object.fromEntries(sources.map((source) => [source, `asset:${source}`])),
     report: () => undefined,
   };
   return { session: createWorkspaceSession(deps), events, opens, sent, executed, held, holds };
 }
 
 const open: OpenOptions = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: true, arguments: ["a", "b"] };
+
+/** A frame that tells one region: theme record, region record with key and a text node. */
+const toldViews: readonly ControlSpec[] = [
+  { kind: 34, hint: "theme" },
+  { kind: 35, parent: 0, hint: "tokens" },
+  { kind: 33, parent: 0, hint: "feedback", weight: 1, ink: 160 },
+  { kind: 33, parent: 0, hint: "settle", weight: 1, ink: 240 },
+  { kind: 34, hint: "region" },
+  { kind: 33, parent: 4, hint: "key", words: "root" },
+  { kind: 34, parent: 4, hint: "node" },
+  { kind: 33, parent: 6, hint: "kind", words: "text" },
+];
 
 suite("native session", () => {
   test("start runs the live instance once with its typed context and publishes the frame", async () => {
@@ -116,6 +129,23 @@ suite("native session", () => {
     await session.start(open);
     const published = sent.find((message): message is FrameMessage => message.type === "frame");
     assert.deepStrictEqual(published?.assets, { "media/logo.png": "asset:media/logo.png" });
+  });
+
+  test("a told frame is drawn by the renderer and published with its runs for scenes", async () => {
+    const built = frame({ views: toldViews });
+    const reply = { shapes: built.shapes, views: built.views, text: built.text, asks: built.asks };
+    const { session, sent } = harness({ open: reply, reply });
+    await session.start(open);
+    const published = sent.find((message): message is RenderMessage => message.type === "render");
+    assert.ok(published, JSON.stringify(sent.map((message) => message.type)));
+    assert.strictEqual(published.html, '<div class="osp-root"></div>');
+    assert.ok(published.views.byteLength > 0 && published.text.byteLength > 0);
+    // An unchanged region keeps its revision across redraws.
+    session.message({ type: "event", kind: 0, ordinal: 0, words: "" });
+    await settle();
+    await settle();
+    const redrawn = sent.filter((message): message is RenderMessage => message.type === "render");
+    assert.strictEqual(redrawn.length, 2);
   });
 
   test("typed events are delivered in order and malformed events never reach the instance", async () => {
