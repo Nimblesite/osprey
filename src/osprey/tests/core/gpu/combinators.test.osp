@@ -10,7 +10,7 @@ fn mulI(a, b) = (a * b)
 fn subI(a, b) = (a - b)
 fn horner(a, d) = (((a * 10) ) + d)
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
-fn maxI(a, b: int) = match a > b { true => a false => b }
+fn maxI(a, b) = match a > b { true => a false => b }
 fn orB(a, b) = a || b
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
@@ -20,7 +20,7 @@ fn countTrue(a, flag) = match flag {
 /// dbl, inc and half are the one-line stages the deep chains are built from.
 fn dbl(x) = (x * 2)
 fn inc(x) = (x + 1)
-fn half(x: float) = x * 0.5
+fn half(x) = x * 0.5
 /// toBit widens a bool element back to an int one, closing the type cycle int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow.
 fn toBit(b) = match b { true => 1 false => 0 }
 /// isEven and isOddP are each other's negation; isOddP is spelled with `!` so the predicate slot is fed by a boolean operator, not just a comparison.
@@ -39,11 +39,11 @@ fn isPositive(x) = x > 0.0
 fn truthy(b) = b
 /// The zip kernels below all return an element type neither operand has, so gpuZipWith is exercised as a type-changing combinator too.
 fn sameParity(a, b) = isEven(a) == isEven(b)
-fn lessF(a, b: float) = a < b
+fn lessF(a, b) = a < b
 fn meanF(a, b) = (toFloat(a) + toFloat(b)) * 0.5
-fn mixAdd(i, x: float) = toFloat(i) + x
+fn mixAdd(i, x) = toFloat(i) + x
 /// oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns is visible in an assertion instead of being swallowed by a `?:` default.
-fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
+fn oobMessage(buf, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }
