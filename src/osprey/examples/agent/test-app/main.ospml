@@ -6,9 +6,10 @@ namespace agentapptests
 
 import ui::Doc
 import ui::Lists
-import ui::Encode
 import ui::Requests
 import ui::Runtime
+import uitest::Read
+import uitest::Views
 import agent::Engine
 import agentapp::App
 import agentapp::Model
@@ -39,7 +40,7 @@ callsTool (callId, tool) = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index
 // The step after the model's reply in `store` asked the demo server for a tool and its input went out.
 mcpAsked (store, reply, bytes) = mcpWrote ((answered (store, reply)).stepStore, bytes)
 
-ok status = okJson [Doc::num ("status", status)]
+ok status = okDone (Doc::write (JsonObject [Doc::num ("status", status)]))
 
 // Each test runs under the arithmetic policy the application's C boundary uses.
 testing (name, body) = test (name, \() => Runtime::guarded body)
@@ -68,7 +69,7 @@ module Drive
     (** The completion of what the open conversation waits on. *)
     export answering (store, outcome, slice) = deliver (store, ui::Completed(ticket = (Model::active store).chatTicket, outcome = outcome), slice)
 
-    (** A region's encoded controls and text, with the store answering its signals. *)
+    (** A region's controls and text, with the store answering its signals. *)
     export showing (store, view) =
         handle static Signal<agentapp::Chats>
             read => agentapp::Chats(chatList = store.chats)
@@ -80,22 +81,89 @@ module Drive
             read => store.settings
         handle static Signal<agentapp::McpSignal>
             read => agentapp::McpSignal(signalState = store.mcp)
-        jsonEncode (listGet (Encode::walk ([], view ())).nodes 0 ?: JsonNull) ?: ""
-
-    (** A step's requests as the host receives them. *)
-    export asked step = mapList (step.requests, \request => Requests::encode request)
+        Read::seen (ui::Views::drawn (ui::Lower::view (ui::Styling(styleTheme = App::theme (), styleDark = false, styleRegions = []), view ())), [])
 
     (** The kinds of a step's requests, joined. *)
-    export kinds step = join (mapList (asked step, \request => Doc::text (request, "kind")), ",")
+    export kinds step = join (mapList (step.requests, \request => Requests::kind request.capability), ",")
 
     (** The saved key for `provider` in a store. *)
     export keyOf (store, provider) = Model::keyOf (store.settings, provider)
 
-// The request a step made at `index`, as the host receives it.
-askedAt (step, index) = listGet (Drive::asked step) index ?: JsonNull
+// The request a step made at `index`, or a cancel of nothing when it made none.
+askedAt (step, index) = listGet step.requests index ?: Requests::ask ("none", ui::Cancel(cancelled = ""))
+
+// A field of a request: its ticket, its kind, or one of its capability's own.
+requestField (request, key) = match key
+    "ticket" => request.ticket
+    "kind" => Requests::kind request.capability
+    _ => capabilityField (request.capability, key)
+
+capabilityField (capability, key) = match capability
+    ui::Run executable arguments timeout limit _ slice => match key
+        "executable" => executable
+        "arguments" => join arguments " "
+        "timeout" => toString timeout
+        "limit" => toString limit
+        "slice" => slice
+        _ => ""
+    ui::StoreRead name limit slice => match key
+        "name" => name
+        "limit" => toString limit
+        "slice" => slice
+        _ => ""
+    ui::StoreWrite name slice => match key
+        "name" => name
+        "slice" => slice
+        _ => ""
+    ui::Http method url headers body limit deadline slice => match key
+        "method" => method
+        "url" => url
+        "headers" => join (mapList (headers, \one => "${one.headerName}: ${one.headerValue}")) "\n"
+        "body" => body
+        "limit" => toString limit
+        "deadline" => toString deadline
+        "slice" => slice
+        _ => ""
+    ui::ProcessStart command arguments env name => match key
+        "command" => command
+        "arguments" => join arguments " "
+        "env" => join (mapList (env, \one => "${one.envName}=${one.envValue}")) "\n"
+        "name" => name
+        _ => ""
+    ui::ProcessWrite name input => match key
+        "name" => name
+        "input" => input
+        _ => ""
+    ui::ProcessRead name limit deadline => match key
+        "name" => name
+        "limit" => toString limit
+        "deadline" => toString deadline
+        _ => ""
+    ui::ProcessStop name => match key
+        "name" => name
+        _ => ""
+    ui::ChooseFile _ _ slice => match key
+        "slice" => slice
+        _ => ""
+    _ => ""
+
+// The value of the header `name` on a step's request.
+headerOf (request, name) = match request.capability
+    ui::Http _ _ headers _ _ _ _ => (Lists::find (headers, \one => one.headerName == name) ?: ui::Header(headerName = "", headerValue = "")).headerValue
+    _ => ""
+
+// The value of the environment variable `name` a step's process starts with.
+envOf (request, name) = match request.capability
+    ui::ProcessStart _ _ env _ => (Lists::find (env, \one => one.envName == name) ?: ui::EnvVar(envName = "", envValue = "")).envValue
+    _ => ""
+
+// The body of the HTTP request a step made, empty when it made none.
+httpBody step = match Lists::find (step.requests, \request => Requests::kind request.capability == "http")
+    Success request => capabilityField (request.capability, "body")
+    Error _ => ""
 
 // A field of the request a step made at `index`.
-askedField (step, index, key) = Doc::text (askedAt (step, index), key)
+askedField (step, index, key) = requestField (askedAt (step, index), key)
 
 // The text of the only file a step wrote.
 written step = (listGet step.writes 0 ?: Requests::write ("", "")).sliceText
@@ -147,8 +215,14 @@ settledWith (store, ticket, outcome, slice) = settledBy (store, ticket, outcome,
 // The same, with each host-held slice answered by name.
 settledBy (store, ticket, outcome, of) = Drive::deliverWhere (store, ui::Completed(ticket = ticket, outcome = outcome), of)
 
-// Whether `view` of `store`, encoded, holds `text`.
-shows (store, view, text) = contains (Drive::showing (store, view)) text
+// Whether `view` of `store` draws the control labelled `text`.
+shows (store, view, text) = Views::shows (Drive::showing (store, view), text)
+
+// Whether any control drawn by `seen` has words or a second text holding `text`.
+mentions (seen, text) = Lists::any (seen.renderedControls, \one => contains one.controlText text || contains one.controlHint text)
+
+// The control labelled `label` that `view` of `store` draws.
+controlOf (store, view, label) = Views::control (Drive::showing (store, view), label)
 
 // A relaunch of the app in the same folder at time `now`.
 relaunch now = (App::initial (contextAt (now, ["/work/project"]))).stepStore
@@ -156,8 +230,8 @@ relaunch now = (App::initial (contextAt (now, ["/work/project"]))).stepStore
 // The store at a bare launch, before any file read is answered.
 launchedStore () = (App::initial (context 100)).stepStore
 
-// Expect `doc`'s `key` field to be `value`.
-expectDoc (doc, key, value) = expect (Doc::text (doc, key), value)
+// Expect `request`'s `key` field to be `value`.
+expectField (request, key, value) = expect (requestField (request, key), value)
 
 // Expect the request at `index` of `step` to have `key` set to `value`.
 expectAsked (step, index, key, value) = expect (askedField (step, index, key), value)
@@ -196,7 +270,7 @@ kindsAre (step, kinds, work) =
 // Expect `step`'s request at `index` to have `key` set to `value`, handing the request back.
 askedHolding (step, index, key, value) =
     doc = askedAt (step, index)
-    expectDoc (doc, key, value)
+    expectField (doc, key, value)
     doc
 
 // Expect `step`'s requests to be `kinds`, and the request at `index` to carry `text` under `key`.
@@ -223,7 +297,7 @@ expectDefaultOn (store, model, default) =
     expect (store.settings.defaultModel, default)
 
 // Expect `step`'s requests to be `kinds`, and the request at `index` to have `key` set to `value`.
-expectAskedKinds (step, kinds, index, key, value) = kindsAre (step, kinds, \s => expectDoc (askedAt (s, index), key, value))
+expectAskedKinds (step, kinds, index, key, value) = kindsAre (step, kinds, \s => expectField (askedAt (s, index), key, value))
 
 // The field `key` of `step`'s request at `index`, with its requests expected to be `kinds`.
 askedIn (step, index, key, kinds) = kindsAre (step, kinds, \s => askedField (s, index, key))
@@ -234,8 +308,27 @@ expectWrote (step, kinds, text) = kindsAre (step, kinds, \s => expectHas (writte
 // Expect `text` to hold each of `parts`.
 showsAll (text, parts) = forEachList (parts, \part => expectHas (text, part))
 
-// Expect `text` to hold none of `parts`.
-lacksAll (text, parts) = forEachList (parts, \part => expectLacks (text, part))
+// Expect `seen` to draw every one of `labels` as a control's words.
+labelsShown (seen, labels) = forEachList (labels, \label => expectTrue (Views::shows (seen, label)))
+
+// Expect `seen` to draw none of `labels`, in words or in a second text.
+labelsAbsent (seen, labels) = forEachList (labels, \label => expectFalse (mentions (seen, label)))
+
+// The ink the theme gives the token `name` in the light appearance the suite draws.
+inkOf name = ui::LowerLeaves::inkNamed (App::theme (), false, name)
+
+// Whether some control `seen` draws is inked with the token `name`.
+drawsInk (seen, name) = Lists::any (seen.renderedControls, \one => one.controlInk == inkOf name)
+
+// Whether `seen` draws a bare glyph: a press or a label carrying a symbol and no words.
+loneGlyph seen = Lists::any (seen.renderedControls, \one => (one.controlKind == "press" || one.controlKind == "label") && one.controlText == "" && one.controlHint != "")
+
+// Expect `view` of `store` to draw a plain folder press labelled `label`, enabled or not.
+expectFolder (store, view, label, enabled) =
+    control = controlOf (store, view, label)
+    expect (control.controlKind, "press")
+    expect (control.controlHint, "folder")
+    expect (control.controlEnabled, enabled)
 
 // Expect `store`'s active conversation to be at `stage`.
 expectChatStage (store, stage) = expect ((Model::active store).chatStage, stage)
@@ -287,8 +380,10 @@ expectHas (text, part) = expectTrue (contains text part)
 // Expect `part` nowhere in `text`.
 expectLacks (text, part) = expectFalse (contains text part)
 
-// The outcome of a store read: `found` is whether its file was there.
-readOutcome found = okJson [Doc::bit ("found", found)]
+// The outcome of a store read: `found` is whether its file was there, which a refused read says.
+readOutcome found = match found
+    true => okDone ""
+    false => Error(message = "no such store entry")
 
 // The step after the person typed `value` into `entry` of `store` and pressed `act`.
 typedThenActed (store, entry, value, act) = acted ((typedInto (store, entry, value)).stepStore, act)
@@ -309,8 +404,8 @@ expectFormCleared step =
     expect (step.stepStore.mcp.stateForm.formEnvironment, "")
     expect (step.stepStore.mcp.stateForm.formName, "")
 
-// The step after the folder chooser settled on `path`.
-folderChosen (store, path) = completed (store, "folder", okJson [Doc::str ("path", path)])
+// The step after the folder chooser settled on `path`, or on none when it was cancelled.
+folderChosen (store, path) = completed (store, "folder", okDone path)
 
 // Expect a folder change from `step` settled with `outcome` to leave its saved conversations alone.
 expectFolderKept (step, outcome) =
@@ -377,10 +472,10 @@ testing ("Return sends the words to the model with the key, and clears the compo
     chat = Model::active step.stepStore
     request = askedAt (step, 0)
     expectKinds (step, "http")
-    expect (Doc::text (request, "url"), Engine::url "deepseek/deepseek-chat")
-    expectDoc (request, "method", "POST")
-    expectHas ((Doc::text (request, "body")), "Fix the bug")
-    expectHas ((Doc::write request), "Bearer sk-test")
+    expect (requestField (request, "url"), Engine::url "deepseek/deepseek-chat")
+    expectField (request, "method", "POST")
+    expectHas ((requestField (request, "body")), "Fix the bug")
+    expect (headerOf (request, "Authorization"), "Bearer sk-test")
     expect (chat.chatStage, "thinking")
     expect (chat.chatTitle, "Fix the bug")
     expect (step.stepStore.draft.draftText, ""))
@@ -419,7 +514,10 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
 
 testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
     replied = answeredTurn ("Show the code\n", 200, codeReply)
-    showsAll (Drive::showing (replied.stepStore, View::transcript), ["\"kind\":\"rich-text\"", "\"ink\":\"codeKeyword\"", "\"ink\":\"codeString\"", "\"ink\":\"codeComment\"", "\"ink\":\"codeNumber\"", "\"text\":\"def\"", "\\n"]))
+    code = Drive::showing (replied.stepStore, View::transcript)
+    expectTrue (Views::shows (code, "def"))
+    expectTrue (mentions (code, "\n"))
+    forEachList (["codeKeyword", "codeString", "codeComment", "codeNumber"], \name => expectTrue (drawsInk (code, name))))
 
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     calling = callingAfter "Go\n"
@@ -445,7 +543,7 @@ testing ("a blank reply fails in words and leaves no gap", \() =>
     chat = Model::active blank.stepStore
     expect (chat.chatStage, "failed")
     expectHas (chat.chatProblem, "no answer")
-    showsAll (Drive::showing (blank.stepStore, View::transcript), ["The model returned no answer.", "Try again"]))
+    labelsShown (Drive::showing (blank.stepStore, View::transcript), ["The model returned no answer.", "Try again"]))
 
 testing ("each refusal status says what to do in words, with Open Settings", \() =>
     opened = goTurn ()
@@ -485,32 +583,33 @@ testing ("the settings pane opens in place of the conversation and closes", \() 
     opened = settingsOpened ()
     expect (opened.settings.settingsOpen, true)
     sendsNothing (acted (opened, agentapp::OpenSettings))
-    showsAll (Drive::showing (opened, View::settings), ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
+    labelsShown (Drive::showing (opened, View::settings), ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
     closed = (acted (opened, agentapp::CloseSettings)).stepStore
     expect (closed.settings.settingsOpen, false))
 
 testing ("the provider's own API names the models, the pickers cascade and every picker says what it is", \() =>
     launched = settledWith (launchedStore (), "env", ok 0, "DEEPSEEKKEY=sk-test\n")
     asked = checkedAsked (launched, 0, "method", "GET", "http")
-    expectDoc (asked, "url", "https://api.deepseek.com/models")
-    expectHas ((Doc::write asked), "Bearer sk-test")
-    expectSays (Drive::showing (launched.stepStore, View::composer), "DeepSeek Reasoner", "DeepSeek V9")
+    expectField (asked, "url", "https://api.deepseek.com/models")
+    expect (headerOf (asked, "Authorization"), "Bearer sk-test")
+    expectTrue (mentions (Drive::showing (launched.stepStore, View::composer), "DeepSeek Reasoner"))
+    expectFalse (mentions (Drive::showing (launched.stepStore, View::composer), "DeepSeek V9"))
     answer = "{\"data\":[{\"id\":\"deepseek-v9\"},{\"id\":\"deepseek-v4-pro\"},{\"id\":\"deepseek-flash\"}]}"
     listed = (settledWith (launched.stepStore, "models:deepseek", ok 200, answer)).stepStore
     // The default model is gone from the provider, so the empty chat and the default both move to one it names.
     expectDefaultOn (listed, "deepseek/deepseek-flash", "deepseek/deepseek-flash")
     shown = Drive::showing (listed, View::composer)
-    expectHas (shown, "deepseek-v9")
-    expectHas ((Drive::showing (App::restore (App::save listed), View::composer)), "deepseek-v9")
-    lacksAll (shown, ["DeepSeek Reasoner", "DeepSeek Chat"])
+    expectTrue (mentions (shown, "deepseek-v9"))
+    expectTrue (mentions (Drive::showing (App::restore (App::save listed), View::composer), "deepseek-v9"))
+    labelsAbsent (shown, ["DeepSeek Reasoner", "DeepSeek Chat"])
     // Effort always names itself, from the first moment, and offers only what this model has.
-    showsAll (shown, ["Effort: Default", "Effort: High", "Effort: Max", "Effort: Low"])
+    labelsShown (shown, ["Effort: Default", "Effort: High", "Effort: Max", "Effort: Low"])
     low = expectPicked (listed, agentapp::PickEffort, "low", \p => (Model::active p).chatEffort, "low")
     pro = expectPicked (low, agentapp::PickModel, "deepseek/deepseek-v4-pro", \p => (Model::active p).chatEffort, "")
-    expectFalse (shows (pro, View::composer, "Effort: Low"))
+    expectFalse (mentions (Drive::showing (pro, View::composer), "Effort: Low"))
     // A model only the provider knows has no effort picker, and can be sent to with the provider's wire.
     live = (chose (pro, agentapp::PickModel, "deepseek/deepseek-v9")).stepStore
-    expectFalse (shows (live, View::composer, "Effort:"))
+    expectFalse (mentions (Drive::showing (live, View::composer), "Effort:"))
     sent = Drive::typing (live, "Hello\n")
     expectSent (sent, "http", 0, "body", "\"model\":\"deepseek-v9\"")
     expectAsked (sent, 0, "url", "https://api.deepseek.com/chat/completions")
@@ -519,7 +618,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     expectDefaultOn (relisted, "deepseek/deepseek-v9", "deepseek/deepseek-flash")
     refused = (settledWith (listed, "models:deepseek", ok 401, "{\"error\":\"no\"}")).stepStore
     failed = (completed (listed, "models:deepseek", Error(message = "offline"))).stepStore
-    forEachList ([refused, failed], \store => expectTrue (shows (store, View::composer, "deepseek-v9")))
+    forEachList ([refused, failed], \store => expectTrue (mentions (Drive::showing (store, View::composer), "deepseek-v9")))
     // Saving a key asks that provider; its list then offers its models, and removing the key forgets them.
     typedKey = (typedInto (listed, agentapp::TypedKey(keyProvider = "zai"), "sk-zai")).stepStore
     savedKey = acted (typedKey, agentapp::SaveKey(keyProvider = "zai"))
@@ -531,7 +630,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     picked = expectPicked (settingsOpen, agentapp::PickProvider, "zai", \p => p.settings.defaultModel, "zai/glm-9")
     expect (picked.settings.defaultEffort, "")
     removed = (acted (zai, agentapp::RemoveKey(keyProvider = "zai"))).stepStore
-    expectFalse (shows (removed, View::composer, "glm-9")))
+    expectFalse (mentions (Drive::showing (removed, View::composer), "glm-9")))
 
 travelsAsWords words = expectSent (typingAtLaunch "${words}\n", "http", 0, "body", words)
 
@@ -539,8 +638,8 @@ testing ("a pasted image reaches the model as image data, a typed path never lea
     name = "0c1d2e3f.png"
     asked = typingAtLaunch "What is in [image: ${name}] please\n"
     reading = checkedAsked (asked, 0, "executable", "/bin/sh", "run")
-    expectHas ((Doc::write reading), "/home/ada/Library/Application Support/Osprey/pasted")
-    expectHas ((Doc::write reading), name)
+    expectHas ((requestField (reading, "arguments")), "/home/ada/Library/Application Support/Osprey/pasted")
+    expectHas ((requestField (reading, "arguments")), name)
     expectChatStage (asked.stepStore, "thinking")
     sent = Drive::answering (asked.stepStore, ok 0, "QUJD\n")
     body = askedIn (sent, 0, "body", "http")
@@ -630,14 +729,21 @@ testing ("the conversation a launch opens takes the saved default model, and a c
     expect ((Model::active after).chatModel, keptModel))
 
 testing ("the composer lists keyed providers' models and an Add an API key button with none", \() =>
-    expectSays (Drive::showing (launchedStore (), View::composer), "\"label\":\"Add an API key\"", "\"label\":\"Send\"")
-    showsAll (Drive::showing (Drive::started (), View::composer), ["\"label\":\"Send\"", "\"label\":\"Model\""]))
+    noKey = Drive::showing (launchedStore (), View::composer)
+    expectTrue (Views::shows (noKey, "Add an API key"))
+    expectFalse (Views::shows (noKey, "Send"))
+    labelsShown (Drive::showing (Drive::started (), View::composer), ["Send", "Model"]))
 
 testing ("no key says what is wrong in words, never as a lone lock", \() =>
     noKey = Drive::showing (launchedStore (), View::composer)
-    lacksAll (noKey, ["\"symbol\":\"lock\"", "\"iconOnly\":true"])
-    expectHas (noKey, "No API key for DeepSeek. Add one to send.")
-    expectSays (Drive::showing (Drive::started (), View::composer), "\"iconOnly\":true", "No API key for"))
+    // A lock symbol, and a bare symbol with no words beside it, are what the composer never falls back to.
+    labelsAbsent (noKey, ["lock"])
+    expectFalse (loneGlyph noKey)
+    expectTrue (Views::shows (noKey, "No API key for DeepSeek. Add one to send."))
+    // With a key the one action is Send, its symbol carried as the hint the host draws, and no missing-key words.
+    keyed = Drive::showing (Drive::started (), View::composer)
+    expect ((Views::control (keyed, "Send")).controlHint, "send")
+    expectFalse (mentions (keyed, "No API key for")))
 
 testing ("a launch with no key file argument finds the key file kept in the app's own store", \() =>
     first = App::initial (contextAt (100, []))
@@ -649,21 +755,26 @@ recoversFrom status =
     opened = goTurn ()
     failed = (Drive::answering (opened, ok status, "{}")).stepStore
     expectChatStage (failed, "failed")
-    shown = Drive::showing ((Drive::typing (failed, "Again")).stepStore, View::composer)
-    expectHas (shown, "\"label\":\"Send\"")
-    lacksAll (shown, ["\"enabled\":false", "\"symbol\":\"lock\""])
+    typed = (Drive::typing (failed, "Again")).stepStore
+    shown = Drive::showing (typed, View::composer)
+    expectTrue (Views::shows (shown, "Send"))
+    expect ((Views::control (shown, "Send")).controlEnabled, true)
+    labelsAbsent (shown, ["lock"])
     again = Drive::typing (failed, "Again\n")
     expectStage (again, "http", "thinking")
     expect ((Model::active again.stepStore).chatProblem, "")
     recovered = answeredTo (again.stepStore, textReply, "idle")
-    expectSays (Drive::showing (recovered.stepStore, View::transcript), "Done.", "The request failed")
+    expectTrue (shows (recovered.stepStore, View::transcript, "Done."))
+    expectFalse (shows (recovered.stepStore, View::transcript, "The request failed"))
 
 testing ("no credit, a refused key, a rate limit and a server fault never stop the next send", \() =>
     forEachList ([402, 401, 403, 429, 500], recoversFrom))
 
 testing ("the sidebar shows a Settings button with a warning when the open provider has no key", \() =>
-    showsAll (Drive::showing (launchedStore (), View::sidebar), ["\"label\":\"Settings\"", "\"symbol\":\"warning\""])
-    expectHas ((Drive::showing (Drive::started (), View::sidebar)), "\"symbol\":\"settings\""))
+    noKey = Drive::showing (launchedStore (), View::sidebar)
+    expectTrue (Views::shows (noKey, "Settings"))
+    expect ((Views::control (noKey, "Settings")).controlHint, "warning")
+    expect ((Views::control (Drive::showing (Drive::started (), View::sidebar), "Settings")).controlHint, "settings"))
 
 testing ("changing folder keeps the active history, saves it and leaves every other chat alone", \() =>
     first = (oneTurn ()).stepStore
@@ -685,9 +796,9 @@ testing ("changing folder keeps the active history, saves it and leaves every ot
     resaved = completed (moved.stepStore, "save:0", okJson [])
     expectWrote (resaved, "store-write", "/work/other")
     movedComposer = Drive::showing (moved.stepStore, View::composer)
-    expectHas (movedComposer, chip ("other", true))
-    expectLacks (movedComposer, "\"label\":\"project\"")
-    forEachList ([okJson [Doc::str ("path", "")], Error(message = "denied")], \outcome => expectFolderKept (moved, outcome))
+    expectFolder (moved.stepStore, View::composer, "other", true)
+    expectFalse (Views::shows (movedComposer, "project"))
+    forEachList ([okDone "", Error(message = "denied")], \outcome => expectFolderKept (moved, outcome))
     inherited = (acted (moved.stepStore, agentapp::NewChat)).stepStore
     expect ((Model::active inherited).chatFolder, "/work/other"))
 
@@ -699,14 +810,12 @@ testing ("the folder chip follows busy state, the old sidebar action is gone and
     failedStore = (Drive::answering (busyStore, ok 429, busyReply)).stepStore
     failed = Drive::showing (failedStore, View::composer)
     sidebar = Drive::showing (started, View::sidebar)
-    enabledChip = chip ("project", true)
-    disabledChip = chip ("project", false)
     warning = "Not sandboxed: the agent can run any command and change any file your account can."
-    expectHas (idle, enabledChip)
-    expectHas (busy, disabledChip)
-    expectLacks (sidebar, "Open folder")
-    forEachList ([idle, busy, failed], \view => expectHas (view, warning))
-    expectHas (idle, "\"symbol\":\"warning\""))
+    expectFolder (started, View::composer, "project", true)
+    expectFolder (busyStore, View::composer, "project", false)
+    expectFalse (Views::shows (sidebar, "Open folder"))
+    forEachList ([idle, busy, failed], \seen => expectTrue (Views::shows (seen, warning)))
+    expect ((Views::control (idle, warning)).controlHint, "warning"))
 
 testing ("a restart restores conversations with distinct identities and fresh tickets", \() =>
     first = oneTurn ()
@@ -741,10 +850,10 @@ testing ("a key file arriving late never replaces a key the person pasted", \() 
 
 testing ("a failed save is shown and the next good save clears it", \() =>
     done = oneTurn ()
-    ticket = (askedAt (done, 0))
-    failed = completed (done.stepStore, Doc::text (ticket, "ticket"), Error(message = "disk full"))
+    ticket = (askedAt (done, 0)).ticket
+    failed = completed (done.stepStore, ticket, Error(message = "disk full"))
     expectHas (failed.stepStore.settings.saveProblem, "disk full")
-    cleared = completed (failed.stepStore, Doc::text (ticket, "ticket"), ok 0)
+    cleared = completed (failed.stepStore, ticket, ok 0)
     expect (cleared.stepStore.settings.saveProblem, ""))
 
 testing ("saves run one at a time and the newest state is written last", \() =>
@@ -775,11 +884,11 @@ callReply (id, text, failed) = replyLine (JsonInt id, JsonObject [JsonMember "co
 
 serverPing () = "{\"jsonrpc\":\"2.0\",\"id\":\"server-ping-1\",\"method\":\"ping\"}\n"
 
-readDone (output, exited) = JsonObject [Doc::str ("output", output), Doc::str ("stderr", ""), Doc::bit ("exited", exited), Doc::num ("status", 0)]
+readDone (output, exited) = Doc::write (JsonObject [Doc::str ("output", output), Doc::str ("stderr", ""), Doc::bit ("exited", exited), Doc::num ("status", 0)])
 
-okJson members = okDone (JsonObject members)
+okJson members = okDone (Doc::write (JsonObject members))
 
-okDone result = Success(value = result)
+okDone text = Success(value = text)
 
 // The standard project document this suite loads: one command server, off until switched on.
 projectDoc = "{\"mcpServers\":{\"local\":{\"command\":\"node\",\"args\":[\"local.js\"]}}}"
@@ -795,9 +904,6 @@ mcpSlice key =
         "env" => "DEEPSEEKKEY=sk-test\n"
         "mcp-file" => mcpDoc ()
         _ => ""
-
-// The composer's folder chip for `label`, `enabled` or not.
-chip (label, enabled) = "\"kind\":\"button\",\"label\":\"${label}\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":${toString enabled}"
 
 // The step after the person typed `words` into a connected demo server.
 connectedTyping words = Drive::typing (mcpConnected (), words)
@@ -828,7 +934,7 @@ projectRead store = settledBy (store, "mcp-project", ok 0, projectOnly (projectD
 // The store after the save in flight completed, so the next queued document can be written.
 saveDone step = saveTicket (step, ticketOf (step.requests))
 
-ticketOf requests = Doc::text (Requests::encode (listGet (filterList (requests, \r => Doc::text (Requests::encode r, "kind") == "store-write")) 0 ?: Requests::ask ("none", ui::Cancel(cancelled = ""))), "ticket")
+ticketOf requests = (listGet (filterList (requests, \r => Requests::kind r.capability == "store-write")) 0 ?: Requests::ask ("none", ui::Cancel(cancelled = ""))).ticket
 
 saveTicket (step, ticket) = settledBy (step.stepStore, ticket, okJson [], mcpSlice)
 
@@ -843,10 +949,10 @@ testing ("launch asks for the MCP documents, connects enabled servers and keeps 
     started = mcpLaunched ()
     // The demo stdio server starts with its configured environment.
     request = askedAt (started, 0)
-    expectDoc (request, "kind", "process-start")
-    expectDoc (request, "command", "python3")
-    expectDoc (request, "name", "mcp:demo")
-    showsAll (Doc::write request, ["MCP_TEST_WORD", "zephyr-secret"])
+    expectField (request, "kind", "process-start")
+    expectField (request, "command", "python3")
+    expectField (request, "name", "mcp:demo")
+    expect (envOf (request, "MCP_TEST_WORD"), "zephyr-secret")
     expectPhase (started, "connecting")
     // A project server from .mcp.json stays off until the person turns it on.
     reopened = projectRead started.stepStore
@@ -864,7 +970,7 @@ testing ("no MCP documents at all is no problem and no servers", \() =>
     // The first server has to be addable: the form shows with no servers and no problems.
     launched = launchedStore ()
     onTab = acted (launched, agentapp::ShowSettingsTab(tabKey = "mcp"))
-    showsAll (Drive::showing (onTab.stepStore, View::settings), ["No MCP servers yet", "Add server", "Paste JSON"]))
+    labelsShown (Drive::showing (onTab.stepStore, View::settings), ["No MCP servers yet", "ADD SERVER", "Paste JSON"]))
 
 // The demo server's whole connect handshake, every request checked, ending on the connected read.
 mcpHandshake () =
@@ -909,7 +1015,8 @@ testing ("a prefixed tool call goes through its server, the answer reaches the n
     expectHas ((askedField (failedRead, 1, "body")), "this tool always fails")
     done = answeredTo (failedRead.stepStore, textReply, "idle")
     // A tool step names its server.
-    expectSays (Drive::showing (done.stepStore, View::transcript), "Used 2 tools", "Read 2 files"))
+    expectTrue (shows (done.stepStore, View::transcript, "Used 2 tools"))
+    expectFalse (shows (done.stepStore, View::transcript, "Read 2 files")))
 
 testing ("a dead server fails its call in words, Reconnect restarts it, and a slow server times out its own call", \() =>
     opened = connectedTyping "Go\n"
@@ -929,7 +1036,7 @@ testing ("a dead server fails its call in words, Reconnect restarts it, and a sl
     expectChatStage (stillWaiting.stepStore, "tools")
     timedOut = Drive::deliverAt (100000, stillWaiting.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), \_ => "")
     expectPhase (timedOut, "connected")
-    expectHas ((Doc::text (listGet (filterList (Drive::asked timedOut, \asked => Doc::text (asked, "kind") == "http")) 0 ?: JsonNull, "body")), "did not answer within"))
+    expectHas (httpBody timedOut, "did not answer within"))
 
 testing ("remove stops the process, rewrites mcp.json and takes the tools out of the next request; the switch is remembered per folder", \() =>
     removed = acted (mcpConnected (), agentapp::RemoveMcp(mcpActionName = "demo"))
@@ -954,7 +1061,7 @@ testing ("remove stops the process, rewrites mcp.json and takes the tools out of
 testing ("the add form validates in words, paste is atomic, broken files report words and secrets stay in mcp.json", \() =>
     started = mcpLaunched ()
     named = typedInto (started.stepStore, agentapp::McpName, "demo")
-    expectMcpTab (named.stepStore, "Add server")
+    expectMcpTab (named.stepStore, "ADD SERVER")
     named2 = typedInto (named.stepStore, agentapp::McpName, "weather")
     commanded = typedInto (named2.stepStore, agentapp::McpCommand, "python3")
     added = typedAdded ((typedInto (commanded.stepStore, agentapp::McpArguments, "server.py")).stepStore, agentapp::McpEnvironment, "KEY=mcp-env-secret")
@@ -989,3 +1096,22 @@ testing ("the add form validates in words, paste is atomic, broken files report 
     forEachList ([Doc::write (App::save final), Doc::write (Model::saveDoc (final, "mcp.json"))], \doc => expectLacks (doc, "zephyr-secret"))
     expectHas ((Doc::write (Model::saveDoc ((mcpLaunched ()).stepStore, "mcp.json"))), "zephyr-secret")
     expectRoundTrips final)
+
+// `work` with every host-held slice answered empty, as this suite's scripted host does.
+withSlices work =
+    handle ui::Slices
+        fetch _ => ""
+    work ()
+
+testing ("the boundary opens the window, draws the regions a host reads and delivers a typed host event", \() =>
+    opened = withSlices (\() => uitest::Drive::launched (uitest::Drive::idle (App::program (), Drive::started ()), "macos", []))
+    expectTrue (uitest::Views::shows (opened.drivenSeen, "Add an API key"))
+    expectTrue (uitest::Views::shows (opened.drivenSeen, "Model"))
+    // A press draws the next frame: the settings pane replaces the conversation column.
+    onSettings = withSlices (\() => uitest::Drive::press (opened, "Settings"))
+    expect (onSettings.drivenSurface.surfaceSession.sessionStore.settings.settingsOpen, true)
+    expectTrue (uitest::Views::shows (onSettings.drivenSeen, "Providers"))
+    // An event naming no control the application issued is refused, and the store is untouched.
+    refused = withSlices (\() => uitest::Drive::press (onSettings, "No such control"))
+    expectFalse (refused.drivenSurface.surfaceProblem == "")
+    expect (refused.drivenSurface.surfaceSession.sessionStore.settings.settingsOpen, true))
