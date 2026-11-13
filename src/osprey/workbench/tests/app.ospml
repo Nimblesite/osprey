@@ -186,7 +186,23 @@ module Drive
     export began (theme) = openedOn ("vscode", theme == "dark")
 
     (** A press of the control labelled `label`; `region` is named by call sites that keep it. *)
-    export press (case, _region, label) = step (case, \d => uitest::Drive::press (d, label))
+    export press (case, key, label) = match region (case, key)
+        Success found => pressedIn (case, buttonIn (label, found.snapshotValue), label)
+        Error _ => step (case, \d => uitest::Drive::press (d, label))
+
+    // A host press on the binding of the button the region drew, or the first control `label` names when it drew none.
+    pressedIn (case, found, label) = match found
+        Success act => step (case, \d => uitest::Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = Lists::position (d.drivenSurface.surfaceBound, \bound => structuralEquals bound (ui::Tap(action = act))), touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)))
+        Error _ => step (case, \d => uitest::Drive::press (d, label))
+
+    labelledAct (named, act) = match named
+        true => Success(value = act)
+        false => Error(message = "another button")
+
+    buttonIn : (string, ui::Node<workbench::Act>) -> Result<workbench::Act, Error>
+    buttonIn (label, node) = match node
+        ui::Button text _ _ _ act => labelledAct (text == label, act)
+        _ => searchChildren (node, \child => buttonIn (label, child))
 
     (** `words` typed into, or a key chosen on, the control labelled `label`. *)
     export choose (case, _region, label, words) = step (case, \d => uitest::Drive::choose (d, label, words))
@@ -281,6 +297,9 @@ module Drive
     (** A completion whose step also leaves `extras` as host-held slices. *)
     export postHeld (case, gesture, extras) = step (case(caseHeld = JsonObject (listConcat (Doc::members case.caseHeld) (Doc::members extras))), gesture)
 
+    (** This session after the host lets go of the slice `key`. *)
+    export forgetting (case, key) = case(caseHeld = JsonObject (filterList (Doc::members case.caseHeld, \member => memberKey member != key)))
+
     (** A completion of `ticket` with `result` that also delivers the host slices it read. *)
     export completedHeld (case, ticket, result, extras) = postHeld (case, \d => uitest::Drive::completed (d, ticket, true, result), extras)
 
@@ -288,16 +307,31 @@ module Drive
     export quoted text = text
 
     (** Two real lesson files deliberately share a challenge id; the host supplies this slice on every event. *)
-    export sharedPress (case, label) =
+    export shared case =
         current = Doc::text (case.caseHeld, "lessons:texts")
         changed = replace current "write-identity" "state-swapped-goal" ?: current
-        pressIn (case, JsonObject [JsonMember "lessons:texts" (JsonString changed)], label)
+        case(caseHeld = JsonObject [JsonMember "lessons:texts" (JsonString changed)])
 
-    (** `words` to the control labelled `label` while the shared challenge slice is held. *)
-    export sharedChoose (case, label, words) =
-        current = Doc::text (case.caseHeld, "lessons:texts")
-        changed = replace current "write-identity" "state-swapped-goal" ?: current
-        chooseIn (case, JsonObject [JsonMember "lessons:texts" (JsonString changed)], label, words)
+    (** A press of `label` while the shared challenge slice is held. *)
+    export sharedPress (case, label) = press (shared case, "", label)
+
+    (** Whether `region` of this session drew a button labelled `label`. *)
+    export draws (case, key, label) = match region (case, key)
+        Success found => isSuccess (buttonIn (label, found.snapshotValue))
+        Error _ => false
+
+    isSuccess found = match found
+        Success _ => true
+        Error _ => false
+
+    (** The action of the `label` button `issued` drew in `region`, delivered to this session as a host still holding that old frame would. *)
+    export stale (case, issued, key, label) = match region (issued, key)
+        Success found => staleAct (case, buttonIn (label, found.snapshotValue))
+        Error _ => case
+
+    staleAct (case, found) = match found
+        Success act => exported (case, ui::Act(act = act))
+        Error _ => case
 
     (** A session with the catalogue and every lesson loaded. *)
     export loaded () = completed (completed (started (), "lessons:catalogue", "{}"), "lessons:texts", "{}")
@@ -318,6 +352,12 @@ module Drive
     export findTitle (title, node) = matching (titleOf, title, node)
 
     (** A control printed `label`. *)
+    roleName role = match role
+        ui::Prominent => "prominent"
+        ui::Plain => "plain"
+        ui::Destructive => "destructive"
+        ui::Filled => "filled"
+
     export findLabel (label, node) = matching (labelOf, label, node)
 
     export namedIn (name, case, key) = findNamed (name, node (case, key))
@@ -436,7 +476,7 @@ module Drive
         _ => JsonNull
 
     controlTree node = match node
-        ui::Button label symbol _ enabled _ => JsonObject [text ("kind", "button"), text ("label", label), text ("symbol", symbol), flag ("enabled", enabled), whole ("event", 0)]
+        ui::Button label symbol role enabled _ => JsonObject [text ("kind", "button"), text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), whole ("event", 0)]
         ui::Field label value prompt _ _ _ _ => JsonObject [text ("kind", "field"), text ("label", label), text ("value", value), text ("prompt", prompt), whole ("event", 0)]
         ui::Toggle label on _ => JsonObject [text ("kind", "toggle"), text ("label", label), flag ("on", on), whole ("event", 0)]
         ui::Picker label choices selected _ => JsonObject [text ("kind", "picker"), text ("label", label), text ("selected", selected), whole ("event", 0), member ("children", JsonArray (mapList (choices, \choice => JsonObject [text ("kind", "option"), text ("label", choice.choiceLabel), text ("key", choice.choiceKey)])))]

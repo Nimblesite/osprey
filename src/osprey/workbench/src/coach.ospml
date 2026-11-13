@@ -23,6 +23,13 @@ module Coach
 
     keyed (bench, id) = Tutors::keyOf (bench.shelf.openSlug, id)
 
+    (** The challenge id the lesson-qualified `ref` names, when its lesson is the open one. *)
+    export local (bench, ref) =
+        prefix = keyed (bench, "")
+        match startsWith ref prefix
+            true => Success(value = drop ref (length prefix))
+            false => Error(message = "A challenge of another lesson")
+
     focus (shelf, id) = shelf(focused = id)
 
     focused (bench, id, tutor) = bench(tutor = tutor, shelf = focus (bench.shelf, id))

@@ -173,10 +173,11 @@ module LessonCases
         region = "challenge:what-is-a-proof/state-swapped-goal"
         epochIs (opened, region, 0)
         expect (Doc::text (editorOf (opened, region), "kind"), "editor")
-        Drive::after (Drive::sharedChoose (opened, "p", ""), \next =>
+        Drive::after (Drive::press (Drive::shared opened, region, "p"), \next =>
             epochIs (next, region, 1)
             expect (Doc::text (editorOf (next, region), "value"), "p")
-            Drive::after (Drive::sharedChoose (next, "p", ""), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
+            expect (Drive::draws (first, previousRegion, "p"), true)
+            Drive::after (Drive::stale (Drive::shared next, first, previousRegion, "p"), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
 
     judgeTask steps = workbench::Judging(judgedHeading = swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
 

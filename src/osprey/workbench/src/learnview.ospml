@@ -84,7 +84,7 @@ module LearnViews
         Error said => MissingChallenge said
         Success item => ReadyChallenge item (Tutors::attempt (bench.tutor, Tutors::keyOf (bench.shelf.openSlug, id)))
 
-    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (FormulaKeys::pad (item.challengeTask, item.challengeId), listConcat (Feedback::marks work, Feedback::controls (item, work))))))
+    posed (item, work) = Ui::section (titleOf item.challengeTask, "", listConcat (listConcat ([Ui::text item.challengePrompt], given item.challengeTask), listConcat ([answered (item, work)], listConcat (FormulaKeys::pad (item.challengeTask, work.attemptKey), listConcat (Feedback::marks work, Feedback::controls (item, work))))))
 
     titleOf task = match task
         ProveTask _ => "Prove it"
@@ -98,9 +98,9 @@ module LearnViews
 
     // A prove answer is an editor, so the kernel's refusal can underline the step it refused.
     answered (item, work) = match item.challengeTask
-        ProveTask _ => Editors::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer item.challengeId, Answer item.challengeId)
-        StateTask _ => Ui::column [Ui::caption "Your formula", Editors::focused ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer item.challengeId, FormulaPlace item.challengeId)]
-        JudgeTask _ => Ui::picker ("Does the kernel accept this proof?", [Ui::choice ("checks", "It checks"), Ui::choice ("fails", "It fails")], Feedback::chosen work.attemptRuling, Pick item.challengeId)
+        ProveTask _ => Editors::editor ("Your steps", work.attemptAnswer, length work.attemptAnswer, Feedback::underline work, Answer work.attemptKey, Answer work.attemptKey)
+        StateTask _ => Ui::column [Ui::caption "Your formula", Editors::focused ("Your formula", work.attemptAnswer, Tutors::cursorOf work, Tutors::focusOf work, Answer work.attemptKey, FormulaPlace work.attemptKey)]
+        JudgeTask _ => Ui::picker ("Does the kernel accept this proof?", [Ui::choice ("checks", "It checks"), Ui::choice ("fails", "It fails")], Feedback::chosen work.attemptRuling, Pick work.attemptKey)
 
 (** [LESSONS-STATE] The formula keypad: the challenge's permitted variables and the parser's supported symbols, each inserted at the answer's caret. *)
 module FormulaKeys
@@ -176,4 +176,4 @@ module Feedback
     (** The hints shown so far, then Submit, Hint, Show solution and Open in the workbench. *)
     export controls (item, work) =
         hints = Lists::slice (item.challengeHints, 0, work.attemptHints)
-        listAppend (mapList (hints, \hint => Ui::label (hint, "lightbulb")), Ui::row [Ui::action ("Submit", "paperplane", ui::Prominent, Tutors::readyAttempt (work, item), Submit item.challengeId), Ui::action ("Hint", "lightbulb", ui::Plain, work.attemptHints < length item.challengeHints, Hint item.challengeId), Ui::action ("Show solution", "eye", ui::Plain, Tutors::revealableAttempt (work, item), Reveal item.challengeId), Ui::action ("Open in the workbench", "arrow.up.forward.square", ui::Plain, true, Carry item.challengeId)])
+        listAppend (mapList (hints, \hint => Ui::label (hint, "lightbulb")), Ui::row [Ui::action ("Submit", "paperplane", ui::Prominent, Tutors::readyAttempt (work, item), Submit work.attemptKey), Ui::action ("Hint", "lightbulb", ui::Plain, work.attemptHints < length item.challengeHints, Hint work.attemptKey), Ui::action ("Show solution", "eye", ui::Plain, Tutors::revealableAttempt (work, item), Reveal work.attemptKey), Ui::action ("Open in the workbench", "arrow.up.forward.square", ui::Plain, true, Carry work.attemptKey)])

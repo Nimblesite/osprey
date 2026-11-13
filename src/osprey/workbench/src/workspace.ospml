@@ -127,7 +127,12 @@ module ProofLibraries
     // The chooser completes with the chosen path, or with nothing when the person cancelled.
     receivedFile (bench, path) = match isEmpty path
         true => Runtime::step (settled bench)
-        false => Runtime::step (bench(imports = replaced (bench.imports, perform ui::Slices.fetch fileKey)))
+        false => fetched (bench, path, perform ui::Slices.fetch fileKey)
+
+    // A chosen file the host kept no bytes for is a host fault, said rather than read as an empty library.
+    fetched (bench, path, content) = match isEmpty content
+        true => failed (bench, "the host kept no data for " + path)
+        false => Runtime::step (bench(imports = replaced (bench.imports, content)))
 
     settled bench =
         current = bench.imports

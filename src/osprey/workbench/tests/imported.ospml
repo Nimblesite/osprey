@@ -271,7 +271,7 @@ module ImportedFlowCases
             AppCases::flagged (current after, ["large"])
             readsSource (after, "")
             shows (after, ["Checked theorem"])
-            lost = picked (after, "id_imp")
+            lost = picked (Drive::forgetting (after, "proof:import"), "id_imp")
             hides (lost, ["Checked theorem"])
             shows (lost, ["Import refused", "The imported source is unavailable. Open the proof export again."])
 
