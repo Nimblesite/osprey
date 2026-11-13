@@ -9,7 +9,7 @@
 // value means, so a host can only reach actions the application issued ([UI-EVENTS]).
 namespace ui
 
-(** A session drawn as shared rows: the session itself, the bindings its controls deliver in control order, whether the dark appearance is showing, the launch arguments gathered before it opened, the points of a stroke and the strokes of a lasso still arriving, and why the last event was refused (empty when it was not). *)
+(** A session drawn as shared rows: the session itself, the bindings its controls deliver in control order, whether the dark appearance is showing, the launch arguments gathered before it opened, the points of a stroke and the strokes of a lasso still arriving, why the last event was refused (empty when it was not), and the requests and slice writes the last step sent. *)
 type Surface S A =
     surfaceSession : Session<S>
     surfaceBound : List<Binding<A>>
@@ -18,6 +18,8 @@ type Surface S A =
     surfacePoints : List<Point>
     surfaceEnclosed : List<int>
     surfaceProblem : string
+    surfaceAsked : List<Request>
+    surfaceWritten : List<SliceWrite>
 
 (** An application as its boundary runs it: its `init`, `update` and `render`, and the theme its store is drawn with. *)
 type Program S A =
@@ -31,16 +33,22 @@ module Surfaces
     (** The region every surface draws; other regions appear where it names them with a `Slot`. *)
     export rootKey = "root"
 
-    // Draws the root region and answers the bindings its controls deliver. Every region is rebuilt
-    // for each view, so a `Slot` always finds the node it names.
-    draw<A> : (Theme, bool, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream | e]
-    draw (theme, dark, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
-        Error _ => []
-        Success root => Views::render (Lower::view (Styling(styleTheme = theme, styleDark = dark, styleRegions = regions), root.snapshotValue))
+    // The root region lowered to a view. Every region is rebuilt for each view, so a `Slot` always
+    // finds the node it names; with no root there is nothing to draw.
+    lowered<A> : (Theme, bool, List<KeyedSnapshot<Node<A>>>) -> View<Binding<A>>
+    lowered (theme, dark, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
+        Error _ => Column(columnLook = Views::plain, columnItems = [])
+        Success root => Lower::view (Styling(styleTheme = theme, styleDark = dark, styleRegions = regions), root.snapshotValue)
+
+    (** The view `held` shows, as the rows, fits and scenes its host was sent: what a test reads. *)
+    export seen<S, A> : (Surface<S, A>, Program<S, A>) -> Walk<Binding<A>>
+    seen (held, program) =
+        store = held.surfaceSession.sessionStore
+        Views::drawn (lowered (program.programTheme store, held.surfaceDark, program.programRender (store, store, [], [])))
 
     (** A surface holding `store` before the host has opened it. *)
     export idle<S, A> : S -> Surface<S, A>
-    idle store = Surface(surfaceSession = Session(sessionContext = Runtime::host (0, 0, "", "", []), sessionStore = store), surfaceBound = [], surfaceDark = false, surfaceArguments = [], surfacePoints = [], surfaceEnclosed = [], surfaceProblem = "")
+    idle store = Surface(surfaceSession = Session(sessionContext = Runtime::host (0, 0, "", "", []), sessionStore = store), surfaceBound = [], surfaceDark = false, surfaceArguments = [], surfacePoints = [], surfaceEnclosed = [], surfaceProblem = "", surfaceAsked = [], surfaceWritten = [])
 
     (** `held` with one more launch argument, in order, for `open` to pass to `init`. *)
     export argued<S, A> : (Surface<S, A>, string) -> Surface<S, A>
@@ -49,9 +57,9 @@ module Surfaces
     // Draws `step`'s store with the context `host`, sends what the step asks of the host and keeps the result.
     shown<S, A> : (Surface<S, A>, Program<S, A>, Context, S, Step<S>) -> Surface<S, A> ![ViewStream | e]
     shown (held, program, host, before, step) =
-        bound = draw (program.programTheme step.stepStore, held.surfaceDark, program.programRender (before, step.stepStore, [], step.writes))
+        bound = Views::render (lowered (program.programTheme step.stepStore, held.surfaceDark, program.programRender (before, step.stepStore, [], step.writes)))
         Requests::post (step.requests, step.writes)
-        held(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound, surfaceProblem = "")
+        held(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound, surfaceProblem = "", surfaceAsked = step.requests, surfaceWritten = step.writes)
 
     (** The first view for the host facts given here and the gathered launch arguments: runs `init`, draws the root region into the shared frame and answers the surface to keep. *)
     export open<S, A> : (Surface<S, A>, Program<S, A>, Context, bool) -> Surface<S, A> ![ViewStream | e]

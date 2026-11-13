@@ -127,10 +127,13 @@ effect ViewStream
     sketch : Sketched => Unit
     ask : Asked => Unit
 
-(** A walk in progress: the actions bound so far and the row the next control takes. *)
+(** A view walked into rows, as the host will read them: the actions bound so far, the row the next control takes, and the controls, fits and scenes in drawing order. *)
 type Walk A =
     walkBound : List<A>
     walkNext : int
+    walkRows : List<Seated>
+    walkFits : List<Fitting>
+    walkSketches : List<Sketched>
 
 (** Draws a `View` into the shared frame and collects the actions its controls deliver ([NATIVE-SHM-VIEW]). *)
 module Views
@@ -212,6 +215,9 @@ module Views
     (** The row of a control with no parent, and the action of a control that delivers none. *)
     export none = 0 - 1
 
+    (** A row that draws nothing and delivers nothing: what a reader finds past the last row. *)
+    export blank = Seated(placedKind = 5, placedParent = 0 - 1, placedAction = 0 - 1, placedWords = "", placedLook = Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400))
+
     (** A look that draws nothing of its own: a container's or a gap's. *)
     export plain = Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
 
@@ -227,23 +233,20 @@ module Views
             ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
         work ()
 
-    // Sends one control and moves the walk to the next row.
-    seat<A> : (Walk<A>, int, int, int, string, Look) -> Walk<A> ![ViewStream | e]
-    seat (walk, kind, parent, action, words, look) =
-        seated = Seated(placedKind = kind, placedParent = parent, placedAction = action, placedWords = words, placedLook = look)
-        perform ViewStream.place seated
-        Walk(walkBound = walk.walkBound, walkNext = satAdd walk.walkNext 1)
+    // Adds one control and moves the walk to the next row.
+    seat<A> : (Walk<A>, int, int, int, string, Look) -> Walk<A>
+    seat (walk, kind, parent, action, words, look) = walk(walkNext = satAdd walk.walkNext 1, walkRows = listAppend walk.walkRows (Seated(placedKind = kind, placedParent = parent, placedAction = action, placedWords = words, placedLook = look)))
 
     // A control that delivers `action` is numbered by how many were bound before it.
-    acting<A> : (Walk<A>, int, int, A, string, Look) -> Walk<A> ![ViewStream | e]
-    acting (walk, kind, parent, action, words, look) = seat (Walk(walkBound = listConcat walk.walkBound [action], walkNext = walk.walkNext), kind, parent, length walk.walkBound, words, look)
+    acting<A> : (Walk<A>, int, int, A, string, Look) -> Walk<A>
+    acting (walk, kind, parent, action, words, look) = seat (walk(walkBound = listAppend walk.walkBound action), kind, parent, length walk.walkBound, words, look)
 
-    each<A> : (Walk<A>, int, List<View<A>>, int) -> Walk<A> ![ViewStream | e]
+    each<A> : (Walk<A>, int, List<View<A>>, int) -> Walk<A>
     each (walk, parent, items, index) = match listGet items index
         Error _ => walk
         Success item => each (draw (walk, parent, item), parent, items, satAdd index 1)
 
-    draw<A> : (Walk<A>, int, View<A>) -> Walk<A> ![ViewStream | e]
+    draw<A> : (Walk<A>, int, View<A>) -> Walk<A>
     draw (walk, parent, view) = match view
         Column look items => each (seat (walk, column, parent, none, "", look), walk.walkNext, items, 0)
         Across look items => each (seat (walk, line, parent, none, "", look), walk.walkNext, items, 0)
@@ -269,20 +272,23 @@ module Views
         true => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = flag, edge = 0, hint = hint)
         false => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = hint)
 
-    // Gives the control at `row` its fit; the walk is unchanged.
-    sized<A> : (Walk<A>, int, Fit) -> Walk<A> ![ViewStream | e]
-    sized (walk, row, fit) =
-        fitting = Fitting(fittedRow = row, fittedAs = fit)
-        perform ViewStream.size fitting
-        walk
+    // Gives the control at `row` its fit.
+    sized<A> : (Walk<A>, int, Fit) -> Walk<A>
+    sized (walk, row, fit) = walk(walkFits = listAppend walk.walkFits (Fitting(fittedRow = row, fittedAs = fit)))
 
-    // Streams `content` after the canvas at `row`; the walk is unchanged.
-    sketched<A> : (Walk<A>, int, Sketch) -> Walk<A> ![ViewStream | e]
-    sketched (walk, row, content) =
-        drawn = Sketched(sketchedRow = row, sketchedAs = content)
-        perform ViewStream.sketch drawn
-        walk
+    // Gives the canvas at `row` its scene.
+    sketched<A> : (Walk<A>, int, Sketch) -> Walk<A>
+    sketched (walk, row, content) = walk(walkSketches = listAppend walk.walkSketches (Sketched(sketchedRow = row, sketchedAs = content)))
 
-    (** Draws `view` and answers the actions its controls deliver, in order: a host event names one by its position. *)
+    (** `view` walked into the rows, fits and scenes a host reads, with the actions its controls deliver in control order. Pure: a test reads exactly what a host is sent. *)
+    export drawn<A> : View<A> -> Walk<A>
+    drawn view = draw (Walk(walkBound = [], walkNext = 0, walkRows = [], walkFits = [], walkSketches = []), none, view)
+
+    (** Draws `view` into the shared frame and answers the actions its controls deliver, in order: a host event names one by its position. *)
     export render<A> : View<A> -> List<A> ![ViewStream | e]
-    render view = (draw (Walk(walkBound = [], walkNext = 0), none, view)).walkBound
+    render view =
+        walked = drawn view
+        forEachList (walked.walkRows, \row => perform ViewStream.place row)
+        forEachList (walked.walkFits, \fit => perform ViewStream.size fit)
+        forEachList (walked.walkSketches, \content => perform ViewStream.sketch content)
+        walked.walkBound
