@@ -43,7 +43,7 @@ test ("mathematics keeps accessibility text and consumes no control ordinal", \(
     binds (walked, 2)
     expect (kindAt (walked, 2), Views::label)
     expect (wordsAt (walked, 2), "α < 2 \"quoted\"\n")
-    expect (actionAt (walked, 2), Views::none)
+    unbound (walked, 2)
     expect (actionAt (walked, 1), 0)
     expect (actionAt (walked, 3), 1)))
 
@@ -57,19 +57,73 @@ tree () = Ui::column [
 // `walked` binds exactly `count` controls.
 binds (walked, count) = expect (length walked.walkBound, count)
 
+// The press rows of `walked`, each written by `shown`, in drawing order.
+pressed (walked, shown) = join (mapList (filterList (walked.walkRows, \r => r.placedKind == Views::press), shown)) ","
+
 // The control numbers of every press row, in drawing order.
-pressActions walked = join (mapList (filterList (walked.walkRows, \r => r.placedKind == Views::press), \r => "${r.placedAction}")) ","
+pressActions walked = pressed (walked, \r => "${r.placedAction}")
+
+// The words of every press row, in drawing order.
+pressWords walked = pressed (walked, \r => r.placedWords)
+
+// The press rows of `walked`: their words and their control numbers.
+pressRows (walked, words, actions) =
+    expect (pressWords walked, words)
+    expect (pressActions walked, actions)
 
 // Every row that delivers a binding, as `kind@control number`, in drawing order.
 acting walked = join (mapList (filterList (walked.walkRows, \r => r.placedAction >= 0), \r => "${r.placedKind}@${r.placedAction}")) ","
-
-// The words of every press row, in drawing order.
-pressWords walked = join (mapList (filterList (walked.walkRows, \r => r.placedKind == Views::press), \r => r.placedWords)) ","
 
 // What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
 said (binding, words) = match Surfaces::told (binding, words)
     Error problem => problem
     Success message => routed message
+
+// Every binding in `cases`, each beside the words it is sent and the message that routes or the refusal it names.
+expectSaid cases = forEachList (cases, \probe => expect (said (probe.binding, probe.words), probe.expected))
+
+// The value kinds that accept no words, each beside the refusal it names; a lasso is sent `lassoWords`.
+wrongKindCases lassoWords = [
+    { binding = ui::StrokeInput(action = Load), words = "1,2", expected = "A board control was sent a value of the wrong kind" },
+    { binding = ui::LassoInput(action = Load), words = lassoWords, expected = "A lasso control was sent a value of the wrong kind" },
+    { binding = ui::SceneInput(action = Load), words = "", expected = "A scene control was sent a value of the wrong kind" },
+]
+
+// The value kinds that carry words, each beside the message those words route.
+saidValueCases () = [
+    { binding = ui::Tap(action = Load), words = "ignored", expected = "tap load" },
+    { binding = ui::FlagInput(action = Load), words = "true", expected = "flag load:true" },
+    { binding = ui::FlagInput(action = Load), words = "yes", expected = "flag load:false" },
+    { binding = ui::ChoiceInput(action = Load), words = "b", expected = "text load:b" },
+    { binding = ui::TextInput(action = Typed), words = "Zoë", expected = "text typed:Zoë" },
+    { binding = ui::SizeInput(action = Load), words = "junk", expected = "integer load:${Splitters::least}" },
+    { binding = ui::SizeInput(action = Load), words = "99999", expected = "integer load:${Splitters::most}" },
+    { binding = ui::PlaceInput(action = Load), words = "-4", expected = "integer load:0" },
+    { binding = ui::PlaceInput(action = Load), words = "12", expected = "integer load:12" },
+]
+
+// `held` reports no problem.
+expectNoProblem held = expect (Probes::problem held, "")
+
+// `held` reports no problem, and its store's counter holds `tally`.
+expectClean (held, tally) =
+    expectNoProblem held
+    expect ((Probes::stored held).counter.tally, tally)
+
+// The memo `held`'s note store carries after an edit arrives.
+expectMemo (held, memo) = expect ((Probes::stored held).note.memo, memo)
+
+// `held` binds exactly `count` controls in its surface.
+surfaceBinds (held, count) = expect (length held.surfaceBound, count)
+
+// The counter `held`'s surface store carries.
+surfaceTally (held, tally) = expect (held.surfaceSession.sessionStore.counter.tally, tally)
+
+// The words of every row `held` draws, `|`-separated.
+walkedWords held = join (mapList ((Probes::seen held).walkRows, \r => r.placedWords)) "|"
+
+// The row `index` of `walked` takes no binding.
+unbound (walked, index) = expect (actionAt (walked, index), Views::none)
 
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
 revealed () = Ui::layer [Ui::disclosure ("Limits", true, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
@@ -77,8 +131,7 @@ test ("a disclosure takes its ordinal before the controls it reveals", \() => ui
     walked = drawnOf (revealed ())
     binds (walked, 2)
     expect (kindAt (walked, 1), Views::column)
-    expect (pressWords walked, "Limits,Go")
-    expect (pressActions walked, "0,1")))
+    pressRows (walked, "Limits,Go", "0,1")))
 test ("a screen's toolbar controls take ordinals before its children", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
     binds (walked, 2)
@@ -116,20 +169,21 @@ resized value =
         Success message => message
         Error _ => ui::Act(act = Load)
     routed delivered
+// A dragged width, beside the clamped width the splitter delivers for it.
+resizeCases () = [
+    { dragged = "420", delivered = "integer typed:420" }, { dragged = "9000", delivered = "integer typed:640" },
+    { dragged = "10", delivered = "integer typed:260" }, { dragged = "-50", delivered = "integer typed:260" },
+    { dragged = "wide", delivered = "integer typed:260" }, { dragged = "", delivered = "integer typed:260" },
+]
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
 test ("a splitter delivers its dragged width clamped to its limits", \() => ui::Runtime::guarded (\() =>
-    expect (resized "420", "integer typed:420")
-    expect (resized "9000", "integer typed:640")
-    expect (resized "10", "integer typed:260")
-    expect (resized "-50", "integer typed:260")
-    expect (resized "wide", "integer typed:260")
-    expect (resized "", "integer typed:260")))
+    forEachList (resizeCases (), \probe => expect (resized probe.dragged, probe.delivered))))
 // [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
 test ("a link carries its label and web address and takes no ordinal", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)])
     expect (wordsAt (walked, 1), "Osprey guide")
     expect (hintAt (walked, 1), "https://example.test/guide")
-    expect (actionAt (walked, 1), Views::none)
+    unbound (walked, 1)
     binds (walked, 1)
     expect (actionAt (walked, 2), 0)))
 test ("controls take depth-first ordinals in drawing order", \() => ui::Runtime::guarded (\() =>
@@ -148,34 +202,31 @@ test ("a drawn region keeps its components and text intact", \() => ui::Runtime:
 test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (tree ())
     expect (actionAt (walked, 2), 0)
-    expect (actionAt (walked, 6), Views::none)
+    unbound (walked, 6)
     expect (rowsRead (walked, "action", [7, 8]), "1|2")
-    expect (actionAt (walked, 9), Views::none)))
+    unbound (walked, 9)))
 test ("opening draws every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    expect (length first.surfaceBound, 5)
+    surfaceBinds (first, 5)
     expect (join (mapList ((Probes::palette ()).spacing, \s => "${s}")) ",", "4,8")
     expect ((Probes::palette ()).feedback, 120)
     expect ((Probes::palette ()).settle, 220)
     expect (named "canvas", "#FFFFFF")
     expect (nightNamed "canvas", "#000000")
     expect (first.surfaceSession.sessionContext.platform, "linux")
-    seen = Probes::seen first
-    expect (join (mapList (seen.walkRows, \r => r.placedWords)) "|", "|Count 0|Go|Go|||Note|linux|Load|Load")))
+    expect (walkedWords first, "|Count 0|Go|Go|||Note|linux|Load|Load")))
 test ("a tap delivers and the next frame shows the changed count", \() => ui::Runtime::guarded (\() =>
     second = Probes::tapped (Probes::started (), 0)
-    expect (Probes::problem second, "")
-    expect ((Probes::stored second).counter.tally, 1)
-    seen = Probes::seen second
-    expect (join (mapList (seen.walkRows, \r => r.placedWords)) "|", "|Count 1|Go|||Note|linux|Load|Load")))
+    expectClean (second, 1)
+    expect (walkedWords second, "|Count 1|Go|||Note|linux|Load|Load")))
 test ("text input reaches update through its binding and sends its slice", \() => ui::Runtime::guarded (\() =>
     second = Probes::posted (Probes::started (), 2, "hello")
-    expect (Probes::problem second, "")
-    expect ((Probes::stored second).note.memo, "hello")
+    expectNoProblem second
+    expectMemo (second, "hello")
     expect (Probes::written second, "echo=hello")
     expect (wordsAt (Probes::seen second, 7), "hello")
     third = Probes::tapped (second, 0)
-    expect (Probes::problem third, "")))
+    expectNoProblem third))
 // The typed host events a host sends that must all be refused, with the reason each is given.
 refusalHeld () = Probes::tapped (Probes::started (), 0)
 refusalCases () = [
@@ -184,50 +235,48 @@ refusalCases () = [
     { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
     { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
 ]
+// The `kind` event for control `ordinal` carrying `words`, at clock `now`, `detail` and the pointer at (`x`, `y`).
+touchAt (now, kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
 // A display frame `elapsed` seconds after the last, at clock 5.
-framedAfter elapsed = ui::Touch(touchNow = 5, touchKind = Hosting::frame, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = elapsed, touchY = 0.0, touchDown = false, touchShift = false)
+framedAfter elapsed = touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
 // A host event of `kind` for control `ordinal` carrying `words`, at clock 5.
-touchOf (kind, ordinal, words, down) = ui::Touch(touchNow = 5, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = down, touchShift = false)
+touchOf (kind, ordinal, words, down) = touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
 // [UI-EVENTS]: unknown and mismatched events change no store and leave no request behind.
 // A refused event: it names its reason, asks nothing and changes no store.
-refusedClean (held, touch, reason) =
-    refused = Probes::sent (held, touch)
+refusedJust (refused, reason) =
     expect (Probes::problem refused, reason)
     expect (Probes::asked refused, "")
     expect ((Probes::stored refused).counter.tally, 1)
 
+// The event `touch` refused on `held`, with the reason it names.
+refusedClean (held, touch, reason) = refusedJust (Probes::sent (held, touch), reason)
+
 test ("unknown and mismatched events are rejected without change", \() => ui::Runtime::guarded (\() =>
     held = refusalHeld ()
     forEachList (refusalCases (), \probe => refusedClean (held, probe.touch, probe.reason))
-    expect (said (ui::StrokeInput(action = Load), "1,2"), "A board control was sent a value of the wrong kind")
-    expect (said (ui::LassoInput(action = Load), "0"), "A lasso control was sent a value of the wrong kind")
-    expect (said (ui::SceneInput(action = Load), ""), "A scene control was sent a value of the wrong kind")))
+    expectSaid (wrongKindCases "0")))
 // [UI-EVENTS]: a control's number follows the frame that drew it, so a withdrawn control is never delivered by its old number.
 test ("a control keeps its meaning while ordinals shift across frames", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps control 0.
     counted = Probes::tapped (first, 0)
-    expect (Probes::problem counted, "")
-    expect ((Probes::stored counted).counter.tally, 1)
-    expect (length counted.surfaceBound, 4)
+    expectClean (counted, 1)
+    surfaceBinds (counted, 4)
     // At count 1 only [Load] is drawn, so control 0 now means Load and asks the host.
     loaded = Probes::tapped (counted, 0)
-    expect (Probes::problem loaded, "")
     expect (Probes::tickets loaded, "load:1")
-    expect ((Probes::stored loaded).counter.tally, 1)
+    expectClean (loaded, 1)
     // The note field shifted from control 2 to control 1, and its edits still arrive.
     noted = Probes::posted (counted, 1, "hello")
-    expect ((Probes::stored noted).note.memo, "hello")))
+    expectMemo (noted, "hello")))
 // [UI-EVENTS]: a control that no frame drew refuses without change, and the session still answers its own controls.
 test ("a control that is gone refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     gone = Probes::tapped (Probes::tapped (first, 0), 0)
     refused = Probes::posted (gone, 9, "")
-    expect (Probes::problem refused, "Unknown control 9")
-    expect (Probes::asked refused, "")
-    expect ((Probes::stored refused).counter.tally, 1)
+    refusedJust (refused, "Unknown control 9")
     intact = Probes::tapped (refused, 0)
-    expect (Probes::problem intact, "")
+    expectNoProblem intact
     expect (Probes::asked intact, "store-read")
     expect ((Probes::stored intact).counter.tally, 1)))
 // [UI-EVENTS]: a refused event leaves the store whole and still answering.
@@ -236,33 +285,31 @@ test ("every refusal leaves the session whole", \() => ui::Runtime::guarded (\()
     forEachList ([9, 0 - 1, 9], \ordinal => expect (Probes::problem (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}"))
     expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), "Invalid frame elapsed time")
     after = Probes::tapped (first, 0)
-    expect (Probes::problem after, "")
-    expect ((Probes::stored after).counter.tally, 1)))
+    expectClean (after, 1)))
 // [UI-EVENTS]: a delivered edit runs update on the current session, never on an earlier frame's.
 test ("a delivered edit updates the current state", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     typedIn = Probes::posted (first, 2, "hello")
     counted = Probes::tapped (typedIn, 0)
     edited = Probes::posted (counted, 1, "world")
-    expect (Probes::problem edited, "")
-    expect ((Probes::stored edited).note.memo, "world")
-    expect (Probes::written edited, "echo=world")
     // The carried-over tally proves the earlier frame was not restored.
-    expect ((Probes::stored edited).counter.tally, 1)))
+    expectClean (edited, 1)
+    expectMemo (edited, "world")
+    expect (Probes::written edited, "echo=world")))
 test ("capability requests carry tickets and completions return to update", \() => ui::Runtime::guarded (\() =>
     asked = Probes::tapped (Probes::started (), 3)
     expect (Probes::asked asked, "store-read")
     expect (Probes::tickets asked, "load:1")
     done = Probes::finished (asked, "load:1", true, "from disk")
-    expect (Probes::problem done, "")
-    expect ((Probes::stored done).note.memo, "from disk")))
+    expectNoProblem done
+    expectMemo (done, "from disk")))
 test ("malformed events are diagnosed, never guessed", \() => ui::Runtime::guarded (\() =>
     odd = Probes::sent (Probes::started (), touchOf (99, 0, "", false))
     expect (Probes::problem odd, "Unknown event kind 99")
     bad = Probes::framed (Probes::started (), 0.0 - 1.0)
     expect (Probes::problem bad, "Invalid frame elapsed time")
     // An appearance change redraws the same store in the other appearance.
-    night = Probes::sent (Probes::started (), ui::Touch(touchNow = 5, touchKind = Hosting::appearance, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = true, touchShift = false))
+    night = Probes::sent (Probes::started (), touchOf (Hosting::appearance, 0, "", true))
     expect (Probes::problem night, "")
     expect (night.surfaceDark, true)))
 test ("contrast follows WCAG relative luminance", \() => ui::Runtime::guarded (\() =>
@@ -283,8 +330,7 @@ tabbed () = Ui::column [
 test ("tabs bind before the page they show, and segments carry their tones", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (tabbed ())
     binds (walked, 2)
-    expect (pressWords walked, "One,Two")
-    expect (pressActions walked, "0,1")
+    pressRows (walked, "One,Two", "0,1")
     expect (rowsRead (walked, "hint", [3, 4]), "one|two")
     expect (traitsAt (walked, 3), 0)
     expect (traitsAt (walked, 4), Views::chosen)
@@ -327,27 +373,30 @@ test ("every constructor lowers as the component it names", \() => ui::Runtime::
     expect ((AdditionCases::fitOf (AdditionCases::itemOf (rows, 0))).hint, "k")
     binds (walked, 4)))
 
-// The walked rows as the view tree they came from, for the case helpers to read.
-walkedAsView () = ui::Column(columnLook = Views::plain, columnItems = [])
-
 // [UI-EFFECTS]: a run and an HTTP request send their bounds, headers and the slices their output lands in.
 runRequest plist = Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run"))
+// The `plist` flag beside the ask rows a run request sends for it.
+runPlistCases () = [
+    { plist = false, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/0/;6/0/work/run" },
+    { plist = true, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run" },
+]
 test ("run and http requests send their bounds, headers and slices", \() => ui::Runtime::guarded (\() =>
-    expect (rowsOf (runRequest false), "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/0/;6/0/work/run")
-    expect (rowsOf (runRequest true), "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run")
+    forEachList (runPlistCases (), \probe => expect (rowsOf (runRequest probe.plist), probe.encoded))
     http = Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http"))
     expect (rowsOf http, "0/10/kev;1/0/GET;2/0/https://example.test/feed;3/0/Accept;3/0/application/json;4/0/;5/1000/;6/30000/;7/0/work/http")
     write = Requests::write ("echo", "text")
     expect ("${write.sliceKey}=${write.sliceText}", "echo=text")))
 
-named key = match Themes::named (Probes::palette (), key)
-    Success token => token.tokenLight
+// The palette token `key` names, read off it by `value`, or `none` when the theme names none.
+tokenNamed (key, value) = match Themes::named (Probes::palette (), key)
+    Success token => value token
     Error _ => "none"
 
-// The dark value the palette's `key` token carries, or `none` when the theme names none.
-nightNamed key = match Themes::named (Probes::palette (), key)
-    Success token => token.tokenDark
-    Error _ => "none"
+// The light value the palette's `key` token carries.
+named key = tokenNamed (key, \token => token.tokenLight)
+
+// The dark value the palette's `key` token carries.
+nightNamed key = tokenNamed (key, \token => token.tokenDark)
 // [UI-SIGNALS] [UI-THEME]: documents, lists and themes read totally, and a host-held slice counts as changed only when written.
 test ("documents, lists, themes and slice writes are read totally", \() => ui::Runtime::guarded (\() =>
     doc = Doc::parse "{\"a\":1,\"b\":null}"
@@ -392,14 +441,11 @@ processRequestCases () = [
 ]
 
 // [UI-EFFECTS]: the complete ask rows retain the ticket and every requested argument.
-test ("filesystem and store requests preserve paths bounds and slices", \() => ui::Runtime::guarded (\() =>
-    expectRequests (filesystemRequestCases ())))
-// [UI-EFFECTS]: the complete ask rows retain the ticket and every requested argument.
-test ("desktop requests preserve picker export and cancellation payloads", \() => ui::Runtime::guarded (\() =>
-    expectRequests (desktopRequestCases ())))
-// [UI-EFFECTS-PROCESS]: the four long-lived process capabilities send their handles, bounds, arguments and merged environment.
-test ("process capabilities send their handles bounds arguments and environment", \() => ui::Runtime::guarded (\() =>
-    expectRequests (processRequestCases ())))
+testCases [
+    { name = "filesystem and store requests preserve paths bounds and slices", work = protected (\() => expectRequests (filesystemRequestCases ())) },
+    { name = "desktop requests preserve picker export and cancellation payloads", work = protected (\() => expectRequests (desktopRequestCases ())) },
+    { name = "process capabilities send their handles bounds arguments and environment", work = protected (\() => expectRequests (processRequestCases ())) },
+]
 
 // One role's wording over the probe theme, checked against the role's own scale and weight.
 roleDrawn role =
@@ -422,8 +468,7 @@ test ("context menus bind actions after their content controls", \() => ui::Runt
     built = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
     walked = drawnOf built
     binds (walked, 2)
-    expect (pressWords walked, "Select,Remove")
-    expect (pressActions walked, "0,1")))
+    pressRows (walked, "Select,Remove", "0,1")))
 
 // Runs a registered case's body with integer faults resolved, so arithmetic in a view or a package helper never escapes it.
 protected work = \() => ui::Runtime::guarded work
@@ -498,18 +543,20 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     binds (walked, 1)
     expect (actionAt (walked, 1), 0)))
 
+// A theme scoped to the single token `name`, its spacing and timing the probe's.
+scopedTheme name = ui::Theme(tokens = [ui::Token(tokenName = name, tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
+
 test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() => ui::Runtime::guarded (\() =>
-    local = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
+    local = scopedTheme "canvas"
     walked = drawnOf (Ui::themed (local, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load)))
     binds (walked, 2)
     expect (kindAt (walked, 0), Views::sheet)
     expect (wordsAt (walked, 1), "Review transcription")
-    expect (pressWords walked, "Insert")
-    expect (pressActions walked, "1")
+    pressRows (walked, "Insert", "1")
     // The dismissal binds before the body the dialog shows.
     expect (actionAt (walked, 0), 0)
     // A scoped theme's own text ink is the ink its subtree is drawn in.
-    inked = ui::Theme(tokens = [ui::Token(tokenName = "text", tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
+    inked = scopedTheme "text"
     scoped = Lower::view (paletteStyling (), Ui::themed (inked, Ui::text "Scoped"))
     expect ((AdditionCases::lookOf scoped).ink, Views::colour "#202723")))
 
@@ -520,7 +567,7 @@ paletteStyling () = ui::Styling(styleTheme = Probes::palette (), styleDark = fal
 richDocument : ui::Node<Act>
 richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
 test ("inline text keeps its emphasis and source colours without bindings", \() => ui::Runtime::guarded (\() =>
-    line = Lower::view (ui::Styling(styleTheme = Probes::palette (), styleDark = false, styleRegions = []), richDocument)
+    line = Lower::view (paletteStyling (), richDocument)
     expect (AdditionCases::kindOf line, "across")
     expect (AdditionCases::countOf line, 2)
     plain = AdditionCases::itemOf (line, 0)
@@ -592,32 +639,22 @@ surfaceCase () =
     opening = probe (0, "")
     first = surfaced (\() => Hosting::opened (Surfaces::idle opening, program (), 1, 0, "linux", "", false))
     expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:Go|3<0@1:Go|0<0@-1:|0<4@-1:|2<5@-1:Note|4<5@2:linux|3<4@3:Load|3<4@4:Load|")
-    expect (length first.surfaceBound, 5)
+    surfaceBinds (first, 5)
     second = surfaceAfter (first, 0, "")
     expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:Go|3<0@1:Go|0<0@-1:|0<4@-1:|2<5@-1:Note|4<5@2:linux|3<4@3:Load|3<4@4:Load|0<-1@-1:|2<0@-1:Count 1|3<0@0:Go|0<0@-1:|0<3@-1:|2<4@-1:Note|4<4@1:linux|3<3@2:Load|3<3@3:Load|")
-    expect (second.surfaceSession.sessionStore.counter.tally, 1)
+    surfaceTally (second, 1)
     expect (second.surfaceSession.sessionContext.now, 5)
-    expect (length second.surfaceBound, 4)
+    surfaceBinds (second, 4)
     expect (length second.surfaceAsked, 0)
     third = surfaceAfter (second, 0, "")
     expect (length third.surfaceAsked, 1)
-    expect (third.surfaceSession.sessionStore.counter.tally, 1)
+    surfaceTally (third, 1)
     refused = surfaceAfter (third, 9, "")
-    expect (refused.surfaceSession.sessionStore.counter.tally, 1)
+    surfaceTally (refused, 1)
     expect (problemOf (Surfaces::meant (third, 9, "")), "Unknown control 9")
     expect (problemOf (Surfaces::meant (third, 0 - 1, "")), "Unknown control -1")
-    expect (said (ui::StrokeInput(action = Load), "1,2"), "A board control was sent a value of the wrong kind")
-    expect (said (ui::LassoInput(action = Load), ""), "A lasso control was sent a value of the wrong kind")
-    expect (said (ui::SceneInput(action = Load), ""), "A scene control was sent a value of the wrong kind")
-    expect (said (ui::Tap(action = Load), "ignored"), "tap load")
-    expect (said (ui::FlagInput(action = Load), "true"), "flag load:true")
-    expect (said (ui::FlagInput(action = Load), "yes"), "flag load:false")
-    expect (said (ui::ChoiceInput(action = Load), "b"), "text load:b")
-    expect (said (ui::TextInput(action = Typed), "Zoë"), "text typed:Zoë")
-    expect (said (ui::SizeInput(action = Load), "junk"), "integer load:${Splitters::least}")
-    expect (said (ui::SizeInput(action = Load), "99999"), "integer load:${Splitters::most}")
-    expect (said (ui::PlaceInput(action = Load), "-4"), "integer load:0")
-    expect (said (ui::PlaceInput(action = Load), "12"), "integer load:12")
+    expectSaid (wrongKindCases "")
+    expectSaid (saidValueCases ())
 
 test ("a surface draws view rows and takes typed events with no envelope", \() => ui::Runtime::guarded (\() => surfaceCase ()))
 
@@ -627,14 +664,21 @@ test ("a surface draws view rows and takes typed events with no envelope", \() =
 journeyNode : Unit -> ui::Node<Act>
 journeyNode () = Ui::column [
     Boards::board ("strokes", 0, true, Increment, Typed),
-    Ui::described (Ui::scene (40.0, 20.0, ["bird"], [Scenes::disc (5.0, 5.0, 2.0, Scenes::rgb (0, 0, 255), 0), Scenes::sprite (0, 9.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 1)], Load), [
-        ui::Accessible(accessRole = ui::Pressable, accessLabel = "Play", accessLeft = 0.0, accessTop = 0.0, accessWidth = 4.0, accessHeight = 4.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = false),
-        ui::Accessible(accessRole = ui::Slidable, accessLabel = "Volume", accessLeft = 0.0, accessTop = 5.0, accessWidth = 10.0, accessHeight = 2.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessMovable = true, accessSelected = false),
-        ui::Accessible(accessRole = ui::Popup, accessLabel = "Speed", accessLeft = 0.0, accessTop = 8.0, accessWidth = 4.0, accessHeight = 2.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = false),
-        ui::Accessible(accessRole = ui::MenuItem, accessLabel = "Kitchen", accessLeft = 0.0, accessTop = 11.0, accessWidth = 4.0, accessHeight = 2.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = true),
-        ui::Accessible(accessRole = ui::Unannounced, accessLabel = "Backdrop", accessLeft = 0.0, accessTop = 0.0, accessWidth = 40.0, accessHeight = 20.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false, accessSelected = false)]),
+    Ui::described (Ui::scene (40.0, 20.0, ["bird"], [Scenes::disc (5.0, 5.0, 2.0, Scenes::rgb (0, 0, 255), 0), Scenes::sprite (0, 9.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 1)], Load), mapList (sceneElements (), accessibleOf)),
     Ui::button ("Go", "play", Increment),
 ]
+
+// The scene's accessible elements: role, spoken label, box, value, bounds and whether each is movable or chosen.
+sceneElements () = [
+    { role = ui::Pressable, label = "Play", left = 0.0, top = 0.0, wide = 4.0, tall = 4.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+    { role = ui::Slidable, label = "Volume", left = 0.0, top = 5.0, wide = 10.0, tall = 2.0, value = 0.5, least = 0.0, most = 1.0, movable = true, chosen = false },
+    { role = ui::Popup, label = "Speed", left = 0.0, top = 8.0, wide = 4.0, tall = 2.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+    { role = ui::MenuItem, label = "Kitchen", left = 0.0, top = 11.0, wide = 4.0, tall = 2.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = true },
+    { role = ui::Unannounced, label = "Backdrop", left = 0.0, top = 0.0, wide = 40.0, tall = 20.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+]
+
+// The host element `item` describes.
+accessibleOf item = ui::Accessible(accessRole = item.role, accessLabel = item.label, accessLeft = item.left, accessTop = item.top, accessWidth = item.wide, accessHeight = item.tall, accessValue = item.value, accessMin = item.least, accessMax = item.most, accessMovable = item.movable, accessSelected = item.chosen)
 
 journeyRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => journeyNode ())]
 
@@ -662,6 +706,9 @@ numbered (held, pick) = Lists::position (held.surfaceBound, pick)
 // One host event of `kind`, sent through the real shared-frame writer.
 journeyTouch (kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
 
+// One host event of `kind` for control `ordinal` carrying `words` at the origin, with the pointer `down`.
+journeyAt (kind, ordinal, words, down) = journeyTouch (kind, ordinal, words, "", 0.0, 0.0, down)
+
 journeyStep (held, touch) = Views::shared (\() => Hosting::event (held, journeyProgram (), touch))
 
 // Why the shared frame refuses `touch` on `held`.
@@ -671,7 +718,7 @@ heardAll held = join held.surfaceSession.sessionStore "|"
 
 journeyCase () =
     opened = Views::shared (\() => Hosting::opened (Surfaces::idle [], journeyProgram (), 1, 0, "macos", "", false))
-    expect (length opened.surfaceBound, 4)
+    surfaceBinds (opened, 4)
     board = numbered (opened, strokes)
     lasso = numbered (opened, lassos)
     scene = numbered (opened, scenes)
@@ -691,16 +738,16 @@ journeyCase () =
     expect (Hosting::answer empty, 1)
     expect (refusedBy (pointed, journeyTouch (Hosting::stroke, go, "", "", 3.0, 78.0, false)), "A non-board control was sent a value of the wrong kind")
     // A lasso arrives as the strokes it encloses, then its close.
-    enclosed = journeyStep (journeyStep (stroked, journeyTouch (Hosting::enclose, 0, "", "", 0.0, 0.0, false)), journeyTouch (Hosting::enclose, 2, "", "", 0.0, 0.0, false))
+    enclosed = journeyStep (journeyStep (stroked, journeyAt (Hosting::enclose, 0, "", false)), journeyAt (Hosting::enclose, 2, "", false))
     expect (join (mapList (enclosed.surfaceEnclosed, \i => "${i}")) ",", "0,2")
-    lassoed = journeyStep (enclosed, journeyTouch (Hosting::lasso, lasso, "", "", 0.0, 0.0, false))
+    lassoed = journeyStep (enclosed, journeyAt (Hosting::lasso, lasso, "", false))
     expect (heardAll lassoed, "stroke increment:2/3/77|lasso typed:0,2")
     expect (length lassoed.surfaceEnclosed, 0)
-    expect (refusedBy (enclosed, journeyTouch (Hosting::lasso, board, "", "", 0.0, 0.0, false)), "A non-lasso control was sent a value of the wrong kind")
-    expect (refusedBy (enclosed, journeyTouch (Hosting::lasso, 40, "", "", 0.0, 0.0, false)), "Unknown control 40")
+    expect (refusedBy (enclosed, journeyAt (Hosting::lasso, board, "", false)), "A non-lasso control was sent a value of the wrong kind")
+    expect (refusedBy (enclosed, journeyAt (Hosting::lasso, 40, "", false)), "Unknown control 40")
     expect (refusedBy (pointed, journeyTouch (Hosting::stroke, 40, "", "", 3.0, 1.0, false)), "Unknown control 40")
     // The scene takes keys, the pointer and its measured size; a number that is not finite is refused.
-    keyed = journeyStep (lassoed, journeyTouch (Hosting::key, scene, "space", "", 0.0, 0.0, true))
+    keyed = journeyStep (lassoed, journeyAt (Hosting::key, scene, "space", true))
     pressedScene = journeyStep (keyed, journeyTouch (Hosting::pointer, scene, "", "", 5.0, 5.0, true))
     measured = journeyStep (pressedScene, journeyTouch (Hosting::viewed, scene, "", "", 40.0, 20.0, false))
     expect (heardAll measured, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled")
@@ -708,16 +755,16 @@ journeyCase () =
     expect (blown.surfaceProblem, "A scene was sent a number that is not finite")
     // Completions, phases and frames reach `update`; an unknown kind and a negative frame are refused.
     done = journeyStep (measured, journeyTouch (Hosting::completed, 0, "job:1", "result", 0.0, 0.0, true))
-    phased = journeyStep (done, journeyTouch (Hosting::phase, 0, "active", "", 0.0, 0.0, false))
+    phased = journeyStep (done, journeyAt (Hosting::phase, 0, "active", false))
     framed = journeyStep (phased, journeyTouch (Hosting::frame, 0, "", "", 0.016, 0.0, false))
     expect (heardAll framed, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled|completed job:1|phase active|frame")
-    expect (refusedBy (framed, journeyTouch (42, 0, "", "", 0.0, 0.0, false)), "Unknown event kind 42")
+    expect (refusedBy (framed, journeyAt (42, 0, "", false)), "Unknown event kind 42")
     expect (refusedBy (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false)), "Invalid frame elapsed time")
     // A change of appearance redraws dark and delivers nothing; the button still taps.
-    dark = journeyStep (framed, journeyTouch (Hosting::appearance, 0, "", "", 0.0, 0.0, true))
+    dark = journeyStep (framed, journeyAt (Hosting::appearance, 0, "", true))
     expect (dark.surfaceDark, true)
     expect (heardAll dark, heardAll framed)
-    tapped = journeyStep (dark, journeyTouch (Hosting::control, go, "", "", 0.0, 0.0, false))
+    tapped = journeyStep (dark, journeyAt (Hosting::control, go, "", false))
     expect (length tapped.surfaceSession.sessionStore, 9)
     // Every scene row the frame was sent, as a reader reads them: marker, atlas, two shapes and the five elements' roles.
     drawn = Surfaces::seen (tapped, journeyProgram ())
