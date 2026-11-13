@@ -5,11 +5,7 @@ effect Audit {
 }
 
 /// This helper performs two ordered steps and combines their supplied values.
-fn pipeline() = {
-    let a = perform Audit.step("load")
-    let b = perform Audit.step("parse")
-    a + b 
-}
+fn pipeline() = perform Audit.step("load") + perform Audit.step("parse")
 
 /// Append `${key}:${label}|` to a transcript; entry and settle share this shape.
 fn tag(cell, key, label) = "${cell}${key}:${label}|"
@@ -33,20 +29,12 @@ fn enter(log, key, label, supplied) = noteEnter(log, key, label, label, supplied
 fn leave(log, key, label, answer) = noteExit(log, key, label, label, answer)
 
 /// Record one operation's entry and the value its region supplied.
-fn noteEnter(log, key, supplyLabel, label, supplied) = Ledger {
-    entered: tag(log.entered, key, label),
-    supplies: supply(log.supplies, supplyLabel, supplied),
-    settled: log.settled,
-    answers: log.answers
-}
+fn noteEnter(log, key, supplyLabel, label, supplied) =
+    log { entered: tag(log.entered, key, label), supplies: supply(log.supplies, supplyLabel, supplied) }
 
 /// Record one operation's settle and the answer its arm saw.
-fn noteExit(log, key, label, sawLabel, answer) = Ledger {
-    entered: log.entered,
-    supplies: log.supplies,
-    settled: tag(log.settled, key, label),
-    answers: saw(log.answers, sawLabel, answer)
-}
+fn noteExit(log, key, label, sawLabel, answer) =
+    log { settled: tag(log.settled, key, label), answers: saw(log.answers, sawLabel, answer) }
 
 /// This case proves operations enter FIFO and post-resume code exits LIFO.
 fn resumeLifoAuditCase() = {
@@ -146,11 +134,7 @@ fn nestedInterleavedDepthTwoCase() = {
                 answer * 2 
             }
         }
-        let p = perform Alpha.alpha("a1")
-        let q = perform Beta.beta("b1")
-        let r = perform Alpha.alpha("a2")
-        let s = perform Beta.beta("b2")
-        (p + q ) + (r + s ) 
+        (perform Alpha.alpha("a1") + perform Beta.beta("b1")) + (perform Alpha.alpha("a2") + perform Beta.beta("b2"))
     }
 
     // Operations enter in the order the body performs them, whichever depth
@@ -220,13 +204,7 @@ fn nestedDepthThreeRotationCase() = {
                 answer * 3 
             }
         }
-        let g0 = perform Gamma.gamma("g0")
-        let a1 = perform Alpha.alpha("a1")
-        let b1 = perform Beta.beta("b1")
-        let g1 = perform Gamma.gamma("g1")
-        let b2 = perform Beta.beta("b2")
-        let a2 = perform Alpha.alpha("a2")
-        (g0 + a1 ) + (b1 + g1 ) + (b2 + a2 ) 
+        ((perform Gamma.gamma("g0") + perform Alpha.alpha("a1")) + (perform Beta.beta("b1") + perform Gamma.gamma("g1"))) + (perform Beta.beta("b2") + perform Alpha.alpha("a2"))
     }
 
     // Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2.
@@ -309,17 +287,9 @@ fn nestedDepthFourStaircaseCase() = {
                 answer + 1000 
             }
         }
-        let a1 = perform Alpha.alpha("a1")
-        let b1 = perform Beta.beta("b1")
-        let g1 = perform Gamma.gamma("g1")
-        let x1 = perform Delta.delta("x1")
-        let x2 = perform Delta.delta("x2")
-        let g2 = perform Gamma.gamma("g2")
-        let b2 = perform Beta.beta("b2")
-        let a2 = perform Alpha.alpha("a2")
-        let firstHalf = (a1 + b1 ) + (g1 + x1 ) 
-        let secondHalf = (x2 + g2 ) + (b2 + a2 ) 
-        firstHalf + secondHalf 
+        let firstHalf = (perform Alpha.alpha("a1") + perform Beta.beta("b1")) + (perform Gamma.gamma("g1") + perform Delta.delta("x1"))
+        let secondHalf = (perform Delta.delta("x2") + perform Gamma.gamma("g2")) + (perform Beta.beta("b2") + perform Alpha.alpha("a2"))
+        firstHalf + secondHalf
     }
 
     // Eight operations descend the four depths and climb back out.
@@ -399,11 +369,7 @@ fn nestedPartialInnerResumeCase() = {
                 answer + 5 
             }
         }
-        let p = perform Twin.near(1)
-        let q = perform Twin.far(2)
-        let r = perform Twin.near(3)
-        let s = perform Twin.far(4)
-        (p + q ) + (r + s ) 
+        (perform Twin.near(1) + perform Twin.far(2)) + (perform Twin.near(3) + perform Twin.far(4))
     }
 
     // The inner region answered both `near` operations; the outer one answered
@@ -473,7 +439,7 @@ fn sameEffectTwoDepthsCase() = {
             m1 + m2 
         }
         let after = perform Layer.pick("after")
-        (before + middle ) + after 
+        (before + middle) + after
     }
 
     // Shadow and restore: the inner arm answered exactly the two operations

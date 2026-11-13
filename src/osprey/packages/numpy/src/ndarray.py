@@ -120,13 +120,17 @@ def ones_like(a):
     """An array shaped like `a` filled with 1.0."""
     return full_like(a, 1.0)
 
+def ramp(n, start, delta):
+    """A rank-1 array of `n` values `start + i*delta`: the element rule arange
+    and linspace share."""
+    return over([n], perform(Storage.Buffer.build(Layout.flat_size([n]), lambda i: start + toFloat(i) * delta)))
+
 def arange(start, stop, step):
     """np.arange: `start + i*step` for `i` below `ceil((stop-start)/step)`,
     matching numpy's element count and values."""
     g = Errors.require(step != 0.0, "division by zero")
     n = Math.ceil_int((stop - start) / step)
-    nn = n if n > 0 else 0
-    return over([nn], perform(Storage.Buffer.build(Layout.flat_size([nn]), lambda i: start + toFloat(i) * step)))
+    return ramp(n if n > 0 else 0, start, step)
 
 def linspace(start, stop, num):
     """np.linspace: `num` evenly spaced values including `stop`."""
@@ -136,8 +140,7 @@ def linspace(start, stop, num):
     elif num == 1:
         return array([start], [1])
     else:
-        delta = (stop - start) / toFloat(num - 1)
-        return over([num], perform(Storage.Buffer.build(Layout.flat_size([num]), lambda i: start + delta * toFloat(i))))
+        return ramp(num, start, (stop - start) / toFloat(num - 1))
 
 def eye(n):
     """The `n` by `n` identity matrix."""
@@ -288,40 +291,52 @@ def read_at_axis(data, shape, coords, ax, k):
     by `k`: the shared read of every gather that rewrites one axis."""
     return Storage.at(data, Layout.ravel_index(Layout.set_at(coords, ax, k), shape))
 
+def dim_of(shape, d):
+    """The `d`-th dimension of `shape`, 0 when it has none."""
+    return unwrap_or(listGet(shape, d), 0)
+
+def input_rank(inputs, t):
+    """The number of dimensions input `t` of `inputs` has."""
+    return len(unwrap_or(listGet(inputs.shapes, t), []))
+
 def concatenate(arrays, axis):
     """np.concatenate: join arrays along `axis`, which must match elsewhere."""
     inputs = checked_inputs("concatenate", arrays)
     nd = len(inputs.first)
-    j = fold(range(len(inputs.shapes)), -1, lambda bad, t: t if bad < 0 and len(unwrap_or(listGet(inputs.shapes, t), [])) != nd else bad)
-    g2 = Errors.require(j < 0, Errors.concat_dims_failed(0, nd, j, len(unwrap_or(listGet(inputs.shapes, j), []))))
+    j = fold(range(len(inputs.shapes)), -1, lambda bad, t: t if bad < 0 and input_rank(inputs, t) != nd else bad)
+    g2 = Errors.require(j < 0, Errors.concat_dims_failed(0, nd, j, input_rank(inputs, j)))
     ax = Layout.normalize_axis(axis, nd, "")
     bad_d = fold(range(nd), -1, lambda bad, d: d if bad < 0 and d != ax and any_concat_row_differs(inputs.shapes, inputs.first, d) else bad)
     bad_j = concat_first_row_differs(inputs.shapes, inputs.first, bad_d)
-    g3 = Errors.require(bad_d < 0, Errors.concat_size_failed(bad_d, 0, unwrap_or(listGet(inputs.first, bad_d), 0), bad_j, unwrap_or(listGet(unwrap_or(listGet(inputs.shapes, bad_j), []), bad_d), 0)))
-    axis_sizes = mapList(inputs.shapes, lambda s: unwrap_or(listGet(s, ax), 0))
-    out_shape = Layout.set_at(inputs.first, ax, fold(range(len(axis_sizes)), 0, lambda acc, t: acc + unwrap_or(listGet(axis_sizes, t), 0)))
+    g3 = Errors.require(bad_d < 0, Errors.concat_size_failed(bad_d, 0, dim_of(inputs.first, bad_d), bad_j, dim_of(unwrap_or(listGet(inputs.shapes, bad_j), []), bad_d)))
+    axis_sizes = mapList(inputs.shapes, lambda s: dim_of(s, ax))
+    out_shape = Layout.set_at(inputs.first, ax, total_ints(axis_sizes, len(axis_sizes)))
     return over(out_shape, perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: concat_read(i, out_shape, inputs, ax, axis_sizes))))
 
 def any_concat_row_differs(shapes, first, d):
     """Whether any input's size at dimension `d` differs from `first`'s."""
-    return fold(range(len(shapes)), False, lambda any_bad, t: any_bad or unwrap_or(listGet(unwrap_or(listGet(shapes, t), []), d), 0) != unwrap_or(listGet(first, d), 0))
+    return concat_first_row_differs(shapes, first, d) >= 0
 
 def concat_first_row_differs(shapes, first, d):
     """The first input (after index 0) whose size at `d` differs."""
-    return fold(range(len(shapes)), -1, lambda bad, t: t if bad < 0 and unwrap_or(listGet(unwrap_or(listGet(shapes, t), []), d), 0) != unwrap_or(listGet(first, d), 0) else bad)
+    return fold(range(len(shapes)), -1, lambda bad, t: t if bad < 0 and dim_of(unwrap_or(listGet(shapes, t), []), d) != dim_of(first, d) else bad)
+
+def total_ints(xs, count):
+    """The sum of the first `count` ints in `xs`."""
+    return fold(range(count), 0, lambda acc, t: acc + unwrap_or(listGet(xs, t), 0))
 
 def concat_input_index(k, axis_sizes):
     """The input holding the `k`-th element along the concatenation axis."""
-    return fold(range(len(axis_sizes)), -1, lambda found, t: t if found < 0 and k < concat_cum_before(t, axis_sizes) + unwrap_or(listGet(axis_sizes, t), 0) else found)
+    return fold(range(len(axis_sizes)), -1, lambda found, t: t if found < 0 and k < concat_cum_before(t, axis_sizes) + dim_of(axis_sizes, t) else found)
 
 def concat_cum_before(j, axis_sizes):
     """The element count before input `j` along the concatenation axis."""
-    return fold(range(j), 0, lambda acc, t: acc + unwrap_or(listGet(axis_sizes, t), 0))
+    return total_ints(axis_sizes, j)
 
 def concat_read(i, out_shape, inputs, ax, axis_sizes):
     """One concatenate output element: locate the input, then read it."""
     coords = Layout.coords_of(i, out_shape)
-    k = unwrap_or(listGet(coords, ax), 0)
+    k = axis_coord(coords, ax)
     j = concat_input_index(k, axis_sizes)
     return read_at_axis(unwrap_or(listGet(inputs.datas, j), inputs.fallback), unwrap_or(listGet(inputs.shapes, j), []), coords, ax, k - concat_cum_before(j, axis_sizes))
 
@@ -357,7 +372,7 @@ def take(a, indices, axis):
 def take_read(i, out_shape, data, shape, normed, ax):
     """One take output element."""
     coords = Layout.coords_of(i, out_shape)
-    k = unwrap_or(listGet(coords, ax), 0)
+    k = axis_coord(coords, ax)
     idx = unwrap_or(listGet(normed, k), 0)
     return read_at_axis(data, shape, coords, ax, idx)
 
@@ -379,21 +394,28 @@ def axis_read(i, a, ax, op, arg):
     """The axis-rewriting kernel selected by an int tag."""
     match op:
         case 0:
-            return flip_read(i, a, ax)
+            return moved_read(i, a, ax, FLIP_OP, arg)
         case 1:
-            return roll_read(i, a, ax, arg)
+            return moved_read(i, a, ax, ROLL_OP, arg)
         case _:
             return cum_read(i, a, ax, arg)
+
+def axis_coord(coords, ax):
+    """The coordinate along `ax` of one element's coordinates."""
+    return unwrap_or(listGet(coords, ax), 0)
+
+def moved_read(i, a, ax, op, arg):
+    """One flip or roll output element: the axis coordinate is mirrored
+    (FLIP_OP) or shifted by `arg` modulo the axis size (ROLL_OP)."""
+    coords = Layout.coords_of(i, a.shape)
+    n = unwrap_or(listGet(a.shape, ax), 0)
+    c = axis_coord(coords, ax)
+    moved = n - 1 - c if op == FLIP_OP else (((c - arg) % n) + n) % n
+    return read_at_axis(a.data, a.shape, coords, ax, moved)
 
 def flip(a, axis):
     """np.flip along one axis."""
     return axis_gather(a, axis, FLIP_OP, 0)
-
-def flip_read(i, a, ax):
-    """One flip output element: the axis coordinate is mirrored."""
-    coords = Layout.coords_of(i, a.shape)
-    n = unwrap_or(listGet(a.shape, ax), 0)
-    return read_at_axis(a.data, a.shape, coords, ax, n - 1 - unwrap_or(listGet(coords, ax), 0))
 
 def flip_all(a):
     """np.flip with no axis: every dimension reversed."""
@@ -409,14 +431,6 @@ def roll(a, shift, axis):
     """np.roll along one axis."""
     return axis_gather(a, axis, ROLL_OP, shift)
 
-def roll_read(i, a, ax, shift):
-    """One roll output element: the axis coordinate is shifted modulo its
-    size."""
-    coords = Layout.coords_of(i, a.shape)
-    n = unwrap_or(listGet(a.shape, ax), 0)
-    moved = (((unwrap_or(listGet(coords, ax), 0) - shift) % n) + n) % n
-    return read_at_axis(a.data, a.shape, coords, ax, moved)
-
 def repeat(a, repeats, axis):
     """np.repeat with a scalar count along one axis."""
     ax = along(a, axis)
@@ -428,7 +442,7 @@ def repeat_read(i, out_shape, a, ax, repeats):
     """One repeat output element: the axis coordinate is its source's
     `coord // repeats`."""
     coords = Layout.coords_of(i, out_shape)
-    return read_at_axis(a.data, a.shape, coords, ax, unwrap_or(listGet(coords, ax), 0) // repeats)
+    return read_at_axis(a.data, a.shape, coords, ax, axis_coord(coords, ax) // repeats)
 
 def tile(a, reps):
     """np.tile: repeat `a` `reps[d]` times along each dimension."""
@@ -520,11 +534,16 @@ def compare_op(x, y, op):
         case _:
             return 1.0 if x >= y else 0.0
 
+def element_at(a, shape, strides, i):
+    """The element of `a` at output index `i`, read through `strides` over
+    `shape`: 0 strides repeat a broadcast element."""
+    return Storage.at(a.data, Layout.offset_of(i, shape, strides))
+
 def pair(a, b, op):
     """An elementwise binary result over the broadcast shape, under the kernel
     `op` names."""
     plan = binary_layout(a, b)
-    return over(plan.shape, perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: pair_op(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)), op))))
+    return over(plan.shape, perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: pair_op(element_at(a, plan.shape, plan.left, i), element_at(b, plan.shape, plan.right, i), op))))
 
 def add(a, b):
     """np.add, broadcast."""
@@ -557,7 +576,7 @@ def where(cond, a, b):
     sc = Layout.broadcast_strides(cond.shape, out)
     sa = Layout.broadcast_strides(a.shape, out)
     sb = Layout.broadcast_strides(b.shape, out)
-    return over(out, perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.at(a.data, Layout.offset_of(i, out, sa)) if Storage.at(cond.data, Layout.offset_of(i, out, sc)) != 0.0 else Storage.at(b.data, Layout.offset_of(i, out, sb)))))
+    return over(out, perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: element_at(a, out, sa, i) if element_at(cond, out, sc, i) != 0.0 else element_at(b, out, sb, i))))
 
 def equal(a, b):
     """np.equal as 0.0/1.0 floats, broadcast."""
@@ -708,18 +727,28 @@ def reduced_coords(out_coords, ax, k, keepdims):
     coordinates."""
     return Layout.set_at(out_coords, ax, k) if keepdims else Layout.insert_at(out_coords, ax, k)
 
+class AxisPlan:
+    """A reduction's normalised axis, its size, and the shape its result takes."""
+    ax: int
+    n: int
+    out_shape: list[int]
+
+def axis_plan(shape, axis, keepdims):
+    """The normalised axis `axis` names over `shape`, its size, and the reduced
+    shape (the axis set to 1 when kept)."""
+    ax = Layout.normalize_axis(axis, len(shape), "")
+    out_shape = Layout.set_at(shape, ax, 1) if keepdims else Layout.drop_at(shape, ax)
+    return AxisPlan(ax=ax, n=unwrap_or(listGet(shape, ax), 1), out_shape=out_shape)
+
 def reduce_axis(a, axis, keepdims, seed, op):
     """Reduce along one axis into an NDArray, optionally keeping the axis."""
     shape = a.shape
-    nd = len(shape)
-    if nd == 0:
+    if len(shape) == 0:
         total = reduce_all(a, seed, op)
         return over([], perform(Storage.Buffer.build(Layout.flat_size([]), lambda i: total)))
     else:
-        ax = Layout.normalize_axis(axis, nd, "")
-        n = unwrap_or(listGet(shape, ax), 1)
-        out_shape = Layout.drop_at(shape, ax) if not keepdims else Layout.set_at(shape, ax, 1)
-        return over(out_shape, perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: reduce_axis_element(i, out_shape, a, shape, ax, n, keepdims, seed, op))))
+        plan = axis_plan(shape, axis, keepdims)
+        return over(plan.out_shape, perform(Storage.Buffer.build(Layout.flat_size(plan.out_shape), lambda i: reduce_axis_element(i, plan.out_shape, a, shape, plan.ax, plan.n, keepdims, seed, op))))
 
 def reduce_axis_element(i, out_shape, a, shape, ax, n, keepdims, seed, op):
     """One reduce_axis output element: fold over the reduced axis."""
@@ -828,14 +857,11 @@ def arg_reduce_axis(a, axis, want_max):
     """The per-position extremum index along `axis`, as a flat int list over
     the reduced shape."""
     shape = a.shape
-    nd = len(shape)
-    if nd == 0:
+    if len(shape) == 0:
         return [0]
     else:
-        ax = Layout.normalize_axis(axis, nd, "")
-        n = unwrap_or(listGet(shape, ax), 1)
-        out_shape = Layout.drop_at(shape, ax)
-        return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, want_max)))
+        plan = axis_plan(shape, axis, False)
+        return toList(map(range(Layout.flat_size(plan.out_shape)), lambda i: argreduce_at(i, plan.out_shape, a, shape, plan.ax, plan.n, want_max)))
 
 def argreduce_at(i, out_shape, a, shape, ax, n, want_max):
     """One argmax/argmin output: the index along `ax` of the extremum."""
@@ -844,9 +870,11 @@ def argreduce_at(i, out_shape, a, shape, ax, n, want_max):
 
 def arg_better(k, best, coords, a, shape, ax, want_max):
     """Whether reduction index `k` beats `best` at this position."""
-    x = Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, k), shape))
-    y = Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, best), shape))
-    return better_of(x, y, want_max)
+    return better_of(axis_element(a, coords, shape, ax, k), axis_element(a, coords, shape, ax, best), want_max)
+
+def axis_element(a, coords, shape, ax, k):
+    """The element at `coords` with the coordinate at `ax` replaced by `k`."""
+    return Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, k), shape))
 
 def and_kernel(acc, x):
     """Logical AND as 0.0/1.0 (nonzero is true, NaN is true)."""
@@ -888,6 +916,6 @@ def cum_read(i, a, ax, op):
     """One cumsum/cumprod output: the prefix over the axis up to this
     coordinate."""
     coords = Layout.coords_of(i, a.shape)
-    k = unwrap_or(listGet(coords, ax), 0)
+    k = axis_coord(coords, ax)
     seed = 0.0 if op == SUM_OP else 1.0
     return fold(range(k + 1), seed, lambda acc, t: combine_op(acc, read_at_axis(a.data, a.shape, coords, ax, t), op))
