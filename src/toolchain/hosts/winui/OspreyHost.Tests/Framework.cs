@@ -14,9 +14,6 @@ static partial class Framework
     /// <summary>The WinUI host's folder.</summary>
     public static string Host => Path.Combine(Root, "src", "toolchain", "hosts", "winui");
 
-    /// <summary>Every node kind the framework encodes, as it travels on the wire.</summary>
-    public static IReadOnlyList<string> NodeKinds => [.. Variants(Source("node.ospml"), "type Node A =").Select(Wire)];
-
     /// <summary>Every capability kind the framework requests, as it travels on the wire.</summary>
     public static IReadOnlyList<string> CapabilityKinds => [.. Variants(Source("capability.ospml"), "type Capability =").Select(Wire)];
 
@@ -62,10 +59,9 @@ static partial class Framework
     /// <summary>A constructor's wire name: <c>ContextMenu</c> travels as <c>context-menu</c>.</summary>
     public static string Kebab(string name) => Capital().Replace(name, "-$1").ToLowerInvariant();
 
-    // The encoder's aliases are shared by node and capability inventories.
+    // The capability encoder's aliases.
     static string Wire(string name) => name switch
     {
-        "Typeset" => "math",
         "ReadPropertyLists" => "read-plists",
         _ => Kebab(name),
     };

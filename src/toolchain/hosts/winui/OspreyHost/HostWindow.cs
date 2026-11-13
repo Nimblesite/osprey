@@ -8,8 +8,8 @@ using Windows.Graphics;
 namespace Osprey.Host.WinUI;
 
 /// <summary>
-/// The one window [WINUI-HOST-THIN]: Mica behind the application's root region, and an info bar
-/// that shows every diagnostic the framework or this host reports, so nothing fails silently.
+/// The one window [WINUI-HOST-THIN]: Mica behind the application's shared view, and an info bar
+/// that shows every diagnostic the host reports, so nothing fails silently.
 /// </summary>
 sealed partial class HostWindow : Window
 {
@@ -19,8 +19,7 @@ sealed partial class HostWindow : Window
 
     readonly InfoBar problems = new() { Severity = InfoBarSeverity.Error, IsOpen = false, Title = "Osprey" };
     readonly List<string> reported = [];
-    readonly Session? session;
-    SharedViewPage? view;
+    readonly SharedViewPage? view;
 
     public HostWindow(string library, string[] arguments, bool steady)
     {
@@ -35,12 +34,12 @@ sealed partial class HostWindow : Window
         var root = new Border { IsHitTestVisible = !steady };
         Content = Layout(root);
         Progress.Note("content set");
-        session = Started(library, arguments, root, steady);
-        if (session?.CanvasSize() is { } canvas)
+        view = Started(library, arguments, root, steady);
+        if (view?.CanvasSize() is { } canvas)
         {
             Fit(canvas.Width, canvas.Height);
         }
-        Progress.Note(session is null && view is null ? "application not started" : "application started");
+        Progress.Note(view is null ? "application not started" : "application started");
     }
 
     /// <summary>Every diagnostic shown since the window opened.</summary>
@@ -52,20 +51,17 @@ sealed partial class HostWindow : Window
     /// <summary>The window's handle, for capturing what it shows.</summary>
     public nint Handle => Win32Interop.GetWindowFromWindowId(AppWindow.Id);
 
-    /// <summary>Chooses <paramref name="row"/> as a click on it would; false when its list takes no choice.</summary>
-    public bool Choose(ListViewItem row) => session?.Choose(row) ?? false;
-
     /// <summary>Lets the steady clock send <paramref name="frames"/> more frames; false when nothing animates.</summary>
-    public bool Grant(long frames) => session?.Grant(frames) ?? false;
+    public bool Grant(long frames) => view?.Grant(frames) ?? false;
 
     /// <summary>The frames granted and not yet sent.</summary>
-    public long Owed => session?.Owed ?? 0;
+    public long Owed => view?.Owed ?? 0;
 
     /// <summary>Presses and releases a key in the scene on screen; false when no scene is drawn.</summary>
-    public bool Press(string key) => session?.Press(key) ?? false;
+    public bool Press(string key) => view?.Press(key) ?? false;
 
     /// <summary>Drags the scene element announced as <paramref name="label"/> by a distance in scene units; false when no scene is drawn.</summary>
-    public bool Drag(string label, double dx, double dy) => session?.Drag(label, dx, dy) ?? false;
+    public bool Drag(string label, double dx, double dy) => view?.Drag(label, dx, dy) ?? false;
 
     /// <summary>
     /// Shows the window at its own size beyond every screen, without activating it and out of the
@@ -100,20 +96,15 @@ sealed partial class HostWindow : Window
     [System.Runtime.InteropServices.LibraryImport("user32.dll")]
     private static partial uint GetDpiForWindow(nint window);
 
-    Grid Layout(Border root)
-    {
-        var grid = new Grid();
-        Renderer.Place(grid, problems, across: false, GridLength.Auto);
-        Renderer.Place(grid, root, across: false, Renderer.Rest);
-        return grid;
-    }
-
-    Session? Started(string library, string[] arguments, Border root, bool steady)
+    SharedViewPage? Started(string library, string[] arguments, Border root, bool steady)
     {
         try
         {
             var opened = Library.Open(library);
-            return opened.Shared ? Shared(opened, root) : Enveloped(opened, library, arguments, root, steady);
+            var view = new SharedViewPage(opened, Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile, Save), steady);
+            root.ActualThemeChanged += (_, _) => view.Appear(Dark(root));
+            view.Begin(arguments, Dark(root));
+            return view;
         }
         catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException)
         {
@@ -122,23 +113,23 @@ sealed partial class HostWindow : Window
         }
     }
 
-    // A shared-view application [NATIVE-SHM-VIEW] draws through its page, not the envelope session.
-    Session? Shared(Library opened, Border root)
+    static bool Dark(FrameworkElement element) =>
+        element.ActualTheme == ElementTheme.Dark
+        || (element.ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
+
+    Grid Layout(Border root)
     {
-        var drawn = new SharedViewPage(opened, root, Report);
-        drawn.Begin();
-        view = drawn;
-        return null;
+        var grid = new Grid();
+        grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        Grid.SetRow(problems, 0);
+        grid.Children.Add(problems);
+        Grid.SetRow(root, 1);
+        grid.Children.Add(root);
+        return grid;
     }
 
-    Session? Enveloped(Library opened, string library, string[] arguments, Border root, bool steady)
-    {
-        var begun = new Session(opened, Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile)) { Steady = steady };
-        begun.Begin(arguments);
-        return begun;
-    }
-
-    /// <summary>Shows diagnostics in the info bar; an envelope without any leaves the last ones showing.</summary>
+    /// <summary>Shows diagnostics in the info bar; an empty list leaves the last ones showing.</summary>
     void Report(IReadOnlyList<string> diagnostics)
     {
         if (diagnostics.Count == 0)
@@ -178,6 +169,18 @@ sealed partial class HostWindow : Window
     {
         var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(AppWindow.Id);
         var picked = await picker.PickSingleFolderAsync();
+        return picked?.Path;
+    }
+
+    async Task<string?> Save(string suggested)
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, Handle);
+        var name = Path.GetFileName(suggested);
+        picker.SuggestedFileName = name.Length == 0 ? "export" : name;
+        var extension = Path.GetExtension(suggested);
+        picker.FileTypeChoices.Add("File", [string.IsNullOrEmpty(extension) ? ".txt" : extension]);
+        var picked = await picker.PickSaveFileAsync();
         return picked?.Path;
     }
 }

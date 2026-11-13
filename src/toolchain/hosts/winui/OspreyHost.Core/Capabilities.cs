@@ -1,8 +1,10 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
 using Osprey.Host.Measure;
 
 namespace Osprey.Host;
+
+/// <summary>A host-held slice the application wrote in this update [UI-STORE].</summary>
+public sealed record SliceWrite(string Key, string Text);
 
 /// <summary>A capability's outcome under its ticket, and the slices its adapter wrote [UI-EFFECTS].</summary>
 public sealed record Completion(string Ticket, bool Ok, string Result, string Error, IReadOnlyList<SliceWrite> Writes)
@@ -14,8 +16,8 @@ public sealed record Completion(string Ticket, bool Ok, string Result, string Er
     public static Completion Failed(string ticket, string error) => new(ticket, false, "null", error, []);
 }
 
-/// <summary>The system pickers: a folder, or a file of one of the given extensions; null when the user cancels.</summary>
-public sealed record Pickers(Func<Task<string?>> Folder, Func<IReadOnlyList<string>, Task<string?>> File);
+/// <summary>The system pickers: a folder, a file of one of the given extensions, or a save destination; null when the user cancels.</summary>
+public sealed record Pickers(Func<Task<string?>> Folder, Func<IReadOnlyList<string>, Task<string?>> File, Func<string, Task<string?>> Save);
 
 /// <summary>
 /// The capability adapters [WINUI-HOST-CAPABILITIES]: each does what Osprey asked within the bounds
@@ -31,33 +33,34 @@ public sealed class Capabilities(Pickers pickers, Store store)
     public const long MaxDeadline = 10 * 60 * 1000;
 
     /// <summary>Every capability kind this host answers, for its coverage declaration [NATIVE-HOSTS-COVERAGE].</summary>
-    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete"];
+    public static IReadOnlyList<string> Answered { get; } = ["measure-folders", "reveal", "choose-folder", "choose-file", "save-file", "run", "cancel", "store-read", "store-write", "store-list", "store-delete"];
 
     readonly ConcurrentDictionary<string, CancellationTokenSource> running = new();
 
     /// <summary>Starts one request; the task completes off the UI thread.</summary>
-    public Task<Completion> Answer(JsonElement request)
+    public Task<Completion> Answer(Ask ask)
     {
-        var ticket = Envelopes.Text(request, "ticket");
-        return Envelopes.Text(request, "kind") switch
+        var ticket = ask.Ticket;
+        return ask.Kind() switch
         {
-            "measure-folders" => Measure(ticket, request),
-            "reveal" => Task.FromResult(Reveal(ticket, request)),
+            "measure-folders" => Measure(ticket, ask),
+            "reveal" => Task.FromResult(Reveal(ticket, ask)),
             "choose-folder" => Chosen(ticket, pickers.Folder()),
-            "choose-file" => Chosen(ticket, pickers.File(Envelopes.Items(request, "types", item => item.GetString() ?? ""))),
-            "run" => Processes.Run(ticket, request),
-            "cancel" => Task.FromResult(Cancel(ticket, request)),
-            "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ticket, request)),
+            "choose-file" => Chosen(ticket, pickers.File(ask.Texts(1))),
+            "save-file" => Save(ticket, ask),
+            "run" => Processes.Run(ticket, ask),
+            "cancel" => Task.FromResult(Cancel(ticket, ask)),
+            "store-read" or "store-write" or "store-list" or "store-delete" => Task.FromResult(store.Answer(ask)),
             var kind => Task.FromResult(Completion.Failed(ticket, $"The Windows host does not answer {kind} requests")),
         };
     }
 
-    Task<Completion> Measure(string ticket, JsonElement request)
+    Task<Completion> Measure(string ticket, Ask ask)
     {
-        var folders = Envelopes.Items(request, "folders", item => item.GetString() ?? "");
-        var limit = (int)Math.Clamp(Envelopes.Number(request, "limit"), 0, MaxEntries);
-        var deadline = TimeSpan.FromMilliseconds(Math.Clamp(Envelopes.Number(request, "timeout"), 0, MaxDeadline));
-        var slice = Envelopes.Text(request, "slice");
+        var folders = ask.Texts(1);
+        var limit = (int)Math.Clamp(ask.Number(2), 0, MaxEntries);
+        var deadline = TimeSpan.FromMilliseconds(Math.Clamp(ask.Number(3), 0, MaxDeadline));
+        var slice = ask.Text(4);
         var source = new CancellationTokenSource();
         running[ticket] = source;
         return Task.Run(() => Walked(ticket, slice, () => FolderWalk.Measure(folders, limit, deadline, source.Token)))
@@ -89,27 +92,44 @@ public sealed class Capabilities(Pickers pickers, Store store)
         return completion;
     }
 
-    Completion Cancel(string ticket, JsonElement request)
+    Completion Cancel(string ticket, Ask ask)
     {
-        if (running.TryGetValue(Envelopes.Text(request, "target"), out var source))
+        if (running.TryGetValue(ask.Text(1), out var source))
         {
             source.Cancel();
         }
         return Completion.Done(ticket, "null");
     }
 
-    static Completion Reveal(string ticket, JsonElement request) =>
-        Explorer.Reveal(Envelopes.Text(request, "path")) is { } problem
+    static Completion Reveal(string ticket, Ask ask) =>
+        Explorer.Reveal(ask.Text(1)) is { } problem
             ? Completion.Failed(ticket, problem)
             : Completion.Done(ticket, "{}");
 
-    static async Task<Completion> Chosen(string ticket, Task<string?> picking)
+    // A chooser completes with the bare path, and with the empty string when it was cancelled.
+    static async Task<Completion> Chosen(string ticket, Task<string?> picking) =>
+        Completion.Done(ticket, await picking ?? "");
+
+    // A save writes the text the application staged under the request's slice, then answers with the path.
+    async Task<Completion> Save(string ticket, Ask ask)
     {
-        var path = await picking;
-        return Completion.Done(ticket, Json.Object(writer =>
+        if (Slices.Get(ask.Text(2)) is not { } staged)
         {
-            writer.WriteString("path", path ?? "");
-            writer.WriteBoolean("cancelled", path is null);
-        }));
+            return Completion.Failed(ticket, "save-file slice is missing");
+        }
+        var path = await pickers.Save(ask.Text(1));
+        if (path is null)
+        {
+            return Completion.Done(ticket, "");
+        }
+        try
+        {
+            await File.WriteAllTextAsync(path, staged);
+            return Completion.Done(ticket, path);
+        }
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
+            return Completion.Failed(ticket, problem.Message);
+        }
     }
 }

@@ -144,13 +144,13 @@ static class Paths
         {
             case MoveTo move:
                 return Begin(geometry, move.X, move.Y);
-            case Polygon polygon:
+            case PolygonStep polygon:
                 Outlined(geometry, polygon);
                 return null;
-            case Close when figure is not null:
+            case CloseStep when figure is not null:
                 figure.IsClosed = true;
                 return Begin(geometry, figure.StartPoint.X, figure.StartPoint.Y);
-            case Close:
+            case CloseStep:
                 return null;
             default:
                 figure ??= Begin(geometry, 0, 0);
@@ -182,7 +182,7 @@ static class Paths
         _ => throw new HostException($"This host cannot draw a {step.GetType().Name} step"),
     };
 
-    static void Outlined(PathGeometry geometry, Polygon polygon)
+    static void Outlined(PathGeometry geometry, PolygonStep polygon)
     {
         if (polygon.Corners.Count == 0)
         {

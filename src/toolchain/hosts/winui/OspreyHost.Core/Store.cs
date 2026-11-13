@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
 
 namespace Osprey.Host;
@@ -22,21 +21,26 @@ public sealed partial class Store(string root)
 
     /// <summary>The store folder for the application compiled into <paramref name="library"/>.</summary>
     public static string RootFor(string library) =>
+#if WINDOWS
         Sandbox.Packaged()
             ? Path.Combine(Windows.Storage.ApplicationData.Current.LocalFolder.Path, "store")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Osprey", Path.GetFileNameWithoutExtension(library));
+#else
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Osprey", Path.GetFileNameWithoutExtension(library));
+#endif
 
     /// <summary>Answers one store request; anything outside the store or the protocol fails with a reason.</summary>
-    public Completion Answer(string ticket, JsonElement request)
+    public Completion Answer(Ask ask)
     {
+        var ticket = ask.Ticket;
         try
         {
-            return Envelopes.Text(request, "kind") switch
+            return ask.Kind() switch
             {
-                "store-read" => Read(ticket, request),
-                "store-write" => Write(ticket, request),
-                "store-list" => List(ticket, request),
-                "store-delete" => Delete(ticket, request),
+                "store-read" => Read(ask),
+                "store-write" => Write(ask),
+                "store-list" => List(ask),
+                "store-delete" => Delete(ask),
                 var kind => Completion.Failed(ticket, $"{kind} is not a store request"),
             };
         }
@@ -46,22 +50,22 @@ public sealed partial class Store(string root)
         }
     }
 
-    Completion Read(string ticket, JsonElement request) => Existing(ticket, request, (name, path) =>
+    Completion Read(Ask ask) => Existing(ask, (name, path) =>
     {
-        var limit = Envelopes.Number(request, "limit");
+        var limit = ask.Number(2);
         return new FileInfo(path).Length > limit
-            ? Completion.Failed(ticket, $"store entry {name} exceeds limit {limit}")
-            : Completion.Done(ticket, "null", new SliceWrite(Envelopes.Text(request, "slice"), Strict.GetString(File.ReadAllBytes(path))));
+            ? Completion.Failed(ask.Ticket, $"store entry {name} exceeds limit {limit}")
+            : Completion.Done(ask.Ticket, "null", new SliceWrite(ask.Text(3), Strict.GetString(File.ReadAllBytes(path))));
     });
 
-    Completion Write(string ticket, JsonElement request) => Named(ticket, request, (name, _) =>
+    Completion Write(Ask ask) => Named(ask, (name, _) =>
     {
-        if (Slices.Get(Envelopes.Text(request, "slice")) is not { } text)
+        if (Slices.Get(ask.Text(2)) is not { } text)
         {
-            return Completion.Failed(ticket, "store-write slice is missing");
+            return Completion.Failed(ask.Ticket, "store-write slice is missing");
         }
         WriteEntry(name, text);
-        return Completion.Done(ticket, "null");
+        return Completion.Done(ask.Ticket, "null");
     });
 
     void WriteEntry(string name, string text)
@@ -130,26 +134,26 @@ public sealed partial class Store(string root)
     private static partial SafeFileHandle CreateFileFromAppW(
         string path, uint access, FileShare share, nint security, uint creation, uint flags, nint template);
 
-    Completion List(string ticket, JsonElement request) => Named(ticket, request, (_, folder) => Directory.Exists(folder)
-        ? Completion.Done(ticket, Json.Array(Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal)!))
-        : Completion.Done(ticket, "[]"), folder: true);
+    Completion List(Ask ask) => Named(ask, (_, folder) => Directory.Exists(folder)
+        ? Completion.Done(ask.Ticket, Docs.Array(Directory.EnumerateFileSystemEntries(folder).Select(path => Path.GetFileName(path) ?? "").Order(StringComparer.Ordinal)))
+        : Completion.Done(ask.Ticket, "[]"), folder: true);
 
-    Completion Delete(string ticket, JsonElement request) => Existing(ticket, request, (_, path) =>
+    Completion Delete(Ask ask) => Existing(ask, (_, path) =>
     {
         File.Delete(path);
-        return Completion.Done(ticket, "null");
+        return Completion.Done(ask.Ticket, "null");
     });
 
     // Answers with `act` on the requested name and its path when the name stays inside the store.
-    Completion Named(string ticket, JsonElement request, Func<string, string, Completion> act, bool folder = false)
+    Completion Named(Ask ask, Func<string, string, Completion> act, bool folder = false)
     {
-        var name = Envelopes.Text(request, "name");
-        return Entry(name, folder) is { } path ? act(name, path) : Completion.Failed(ticket, $"invalid store entry {name}");
+        var name = ask.Text(1);
+        return Entry(name, folder) is { } path ? act(name, path) : Completion.Failed(ask.Ticket, $"invalid store entry {name}");
     }
 
     // As Named, for an entry that must already be in the store.
-    Completion Existing(string ticket, JsonElement request, Func<string, string, Completion> act) => Named(ticket, request, (name, path) =>
-        File.Exists(path) ? act(name, path) : Completion.Failed(ticket, $"no such store entry {name}"));
+    Completion Existing(Ask ask, Func<string, string, Completion> act) => Named(ask, (name, path) =>
+        File.Exists(path) ? act(name, path) : Completion.Failed(ask.Ticket, $"no such store entry {name}"));
 
     // A name inside the store: relative, with no drive, root or parent folder in it. Only a
     // listing may name the store itself, with the empty name.

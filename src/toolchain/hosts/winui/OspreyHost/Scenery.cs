@@ -16,9 +16,10 @@ using ShapePath = Microsoft.UI.Xaml.Shapes.Path;
 namespace Osprey.Host.WinUI;
 
 /// <summary>
-/// One scene on screen [WINUI-HOST-SCENE]: its shapes drawn with WinUI's own shapes on a canvas in
-/// the scene's unit space at its fixed zoom from the region's top left. The elements live between frames and are reused, so a frame that moves a
-/// thousand discs only moves them. Keys and the pointer reach the scene's binding in scene units.
+/// One canvas row's scene on screen [WINUI-HOST-SCENE]: its shapes drawn with WinUI's own shapes on
+/// a canvas in the scene's unit space at its fixed zoom from the region's top left. The elements
+/// live between frames and are reused, so a frame that moves a thousand discs only moves them. Keys
+/// and the pointer reach the canvas's binding in scene units.
 /// </summary>
 sealed class SceneView
 {
@@ -34,7 +35,6 @@ sealed class SceneView
     readonly Dictionary<uint, SolidColorBrush> brushes = [];
     readonly Dictionary<string, ImageBrush?> atlas = [];
     readonly Action<string> report;
-    IReadOnlyList<string> sources = [];
     readonly Pool<Rectangle> rects;
     readonly Pool<Ellipse> discs;
     readonly Pool<Polyline> strips;
@@ -43,9 +43,10 @@ sealed class SceneView
     // The highest ZIndex XAML accepts; it refuses anything above it.
     const int TopmostZ = 1000000;
     readonly List<FrameworkElement> elements = [];
+    IReadOnlyList<string> sources = [];
     IReadOnlyList<Accessible> announced = [];
-    Action<object?> emit = _ => { };
-    Scene? shown;
+    Action<Touch> emit = _ => { };
+    long ordinal = -1;
     (double, double) viewed;
     bool hovered;
 
@@ -67,28 +68,50 @@ sealed class SceneView
         CompositionTarget.Rendering += (_, _) => hovered = false;
     }
 
+    Scene? shown;
+
     /// <summary>The element that holds the scene in the page.</summary>
     public FrameworkElement Element => holder;
 
-    /// <summary>Draws <paramref name="scene"/>, reusing the shapes already on screen, and sends input to <paramref name="send"/>.</summary>
-    public void Show(Scene scene, Action<object?> send)
+    /// <summary>Draws <paramref name="scene"/>, reusing the shapes already on screen, and sends input to the binding numbered <paramref name="action"/>.</summary>
+    public void Show(Scene scene, long action, Action<Touch> send)
     {
-        emit = send;
+        (emit, ordinal) = (send, action);
         sources = scene.Atlas;
         Fitted(scene);
         foreach (var pool in new IPool[] { rects, discs, strips, glyphs, paths })
         {
             pool.Begin();
         }
-        for (var order = 0; order < scene.Shapes.Count; order++)
+        var order = 0;
+        foreach (var shape in scene.Shapes.OrderBy(shape => shape.Depth))
         {
-            Canvas.SetZIndex(Draw(scene.Shapes[order]), order);
+            Canvas.SetZIndex(Draw(shape), order++);
         }
         foreach (var pool in new IPool[] { rects, discs, strips, glyphs, paths })
         {
             pool.End();
         }
         Announce(scene.Access);
+    }
+
+    /// <summary>Draws nothing: a canvas the application no longer gives a scene.</summary>
+    public void Clear()
+    {
+        shown = null;
+        viewed = default;
+        sources = [];
+        foreach (var pool in new IPool[] { rects, discs, strips, glyphs, paths })
+        {
+            pool.Begin();
+            pool.End();
+        }
+        foreach (var old in elements)
+        {
+            canvas.Children.Remove(old);
+        }
+        elements.Clear();
+        announced = [];
     }
 
     // A scene's accessibility tree [UI-MACHINE-A11Y] as real, invisible controls at each element's
@@ -138,31 +161,38 @@ sealed class SceneView
         return slider;
     }
 
-    // After this event, since the envelope it brings can rebuild the control that raised it.
+    // After this event, since the frame it draws can rebuild the control that raised it.
     void Later(Action act) => holder.DispatcherQueue.TryEnqueue(() => act());
 
     // A scene with a size is drawn at its fixed zoom from the region's top left and clipped to itself,
-    // so a larger window shows more canvas and resizes nothing, or with zoom 0 as large as fits the
-    // region whole; one without a size is in window pixels.
+    // so a larger window shows more canvas and resizes nothing, and never magnified past what the
+    // region fits whole; one without a size is in window pixels.
     void Fitted(Scene scene)
     {
         shown = scene;
-        var sized = scene.Width > 0;
-        var scale = scene.Zoom > 0 ? scene.Zoom : Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
-        canvas.Clip = sized ? new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) } : null;
-        canvas.RenderTransform = sized ? new ScaleTransform { ScaleX = scale, ScaleY = scale } : null;
-        Viewed(sized ? (holder.ActualWidth / scale, holder.ActualHeight / scale) : viewed);
+        if (scene.Width <= 0 || scene.Height <= 0)
+        {
+            canvas.Clip = null;
+            canvas.RenderTransform = null;
+            Viewed((holder.ActualWidth, holder.ActualHeight));
+            return;
+        }
+        var whole = Math.Min(holder.ActualWidth / scene.Width, holder.ActualHeight / scene.Height);
+        var scale = scene.Zoom > 0 ? Math.Min(scene.Zoom, whole) : whole;
+        canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, scene.Width, scene.Height) };
+        canvas.RenderTransform = new ScaleTransform { ScaleX = scale, ScaleY = scale };
+        Viewed((holder.ActualWidth / scale, holder.ActualHeight / scale));
     }
 
     // Tells the application its region's size in scene units when it changes, after this frame's drawing.
     void Viewed((double Width, double Height) size)
     {
-        if (size == viewed || !double.IsFinite(size.Width) || size.Width <= 0)
+        if (size == viewed || !double.IsFinite(size.Width) || size.Width <= 0 || !double.IsFinite(size.Height) || size.Height <= 0)
         {
             return;
         }
         viewed = size;
-        holder.DispatcherQueue.TryEnqueue(() => emit(new ViewInput(size.Width, size.Height)));
+        holder.DispatcherQueue.TryEnqueue(() => emit(Touch.Viewed(ordinal, size.Width, size.Height)));
     }
 
     UIElement Draw(SceneShape shape) => shape switch
@@ -216,7 +246,7 @@ sealed class SceneView
             }
             return atlas[path] = new ImageBrush { ImageSource = picture, Stretch = Stretch.Fill };
         }
-        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException)
+        catch (Exception problem) when (problem is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             report($"The sprite image {path} could not be read: {problem.Message}");
             return atlas[path] = null;
@@ -250,7 +280,7 @@ sealed class SceneView
         }
         line.Points = points;
         line.Stroke = Brush(strip.Colour);
-        line.StrokeThickness = strip.Stroke;
+        line.StrokeThickness = Math.Max(0, strip.Stroke);
         return line;
     }
 
@@ -284,7 +314,7 @@ sealed class SceneView
         shape.Data = Paths.Geometry(path);
         shape.Fill = path.Outline.Stroked ? null : paint;
         shape.Stroke = path.Outline.Stroked ? paint : null;
-        shape.StrokeThickness = path.Outline.Stroked ? path.Outline.Width : 0;
+        shape.StrokeThickness = path.Outline.Stroked ? Math.Max(0, path.Outline.Width) : 0;
         shape.StrokeLineJoin = path.Outline.Bevel ? PenLineJoin.Bevel : PenLineJoin.Miter;
         shape.StrokeDashArray = Dashes(path.Outline);
         return shape;
@@ -333,7 +363,7 @@ sealed class SceneView
     void Pointed(PointerRoutedEventArgs args, bool down)
     {
         var at = args.GetCurrentPoint(canvas).Position;
-        emit(new PointerInput(at.X, at.Y, down, args.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift)));
+        emit(Touch.Pointer(ordinal, at.X, at.Y, down, args.KeyModifiers.HasFlag(VirtualKeyModifiers.Shift)));
         if (!down)
         {
             canvas.ReleasePointerCapture(args.Pointer);
@@ -344,15 +374,15 @@ sealed class SceneView
     /// <summary>Sends a key going down and up, as the keyboard does for one press.</summary>
     public void Press(string key)
     {
-        emit(new KeyInput(key, true));
-        emit(new KeyInput(key, false));
+        emit(Touch.Key(ordinal, key, true));
+        emit(Touch.Key(ordinal, key, false));
     }
 
     // The pointer going down and up at a point in scene units, as one click there does.
     void Tap(double x, double y)
     {
-        emit(new PointerInput(x, y, true, false));
-        emit(new PointerInput(x, y, false, false));
+        emit(Touch.Pointer(ordinal, x, y, true, false));
+        emit(Touch.Pointer(ordinal, x, y, false, false));
     }
 
     /// <summary>Presses the element announced as <paramref name="label"/>, moves it by a distance in scene units and releases it, as a hand's drag does.</summary>
@@ -361,9 +391,9 @@ sealed class SceneView
         if (announced.FirstOrDefault(item => item.Label == label) is { } item)
         {
             var (x, y) = (item.X + (item.W / 2), item.Y + (item.H / 2));
-            emit(new PointerInput(x, y, true, false));
-            emit(new PointerInput(x + dx, y + dy, true, false));
-            emit(new PointerInput(x + dx, y + dy, false, false));
+            emit(Touch.Pointer(ordinal, x, y, true, false));
+            emit(Touch.Pointer(ordinal, x + dx, y + dy, true, false));
+            emit(Touch.Pointer(ordinal, x + dx, y + dy, false, false));
         }
     }
 
@@ -371,7 +401,7 @@ sealed class SceneView
     {
         if (Keys.Name(args.Key) is { } name)
         {
-            emit(new KeyInput(name, down));
+            emit(Touch.Key(ordinal, name, down));
             args.Handled = true;
         }
     }

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
@@ -12,6 +13,7 @@ namespace Osprey.Host.Tests.Measure;
 /// links never followed, hard links counted once, unreadable folders, the entry limit, the
 /// deadline, cancellation and the slice's shape.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed partial class FolderWalkTests : IDisposable
 {
     readonly DirectoryInfo root = Directory.CreateTempSubdirectory("osprey-measure-");
@@ -21,14 +23,14 @@ public sealed partial class FolderWalkTests : IDisposable
     static JsonElement Walk(string folder, int limit = 1000, TimeSpan? deadline = null)
     {
         using var slice = JsonDocument.Parse(FolderWalk.Measure([folder], limit, deadline ?? TimeSpan.FromMinutes(1), CancellationToken.None));
-        return Assert.Single(Envelopes.Items(slice.RootElement, "folders", item => item.Clone()));
+        return Assert.Single(Docs.Items(slice.RootElement, "folders", item => item.Clone()));
     }
 
-    static IReadOnlyList<JsonElement> Entries(JsonElement folder) => Envelopes.Items(folder, "entries", item => item);
+    static IReadOnlyList<JsonElement> Entries(JsonElement folder) => Docs.Items(folder, "entries", item => item);
 
-    static JsonElement Entry(JsonElement folder, string name) => Entries(folder).Single(item => Envelopes.Text(item, "name") == name);
+    static JsonElement Entry(JsonElement folder, string name) => Entries(folder).Single(item => Docs.Text(item, "name") == name);
 
-    static long Number(JsonElement item, string name) => Envelopes.Number(item, name);
+    static long Number(JsonElement item, string name) => Docs.Number(item, name);
 
     string Folder(params string[] names) => Directory.CreateDirectory(Path.Combine([root.FullName, .. names])).FullName;
 
@@ -48,6 +50,7 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void AFolderCountsTheAllocatedBytesAndItemsOfEverythingBelowIt()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         Write(root.FullName, "big.bin", 100 * 1024);
         var three = Folder("three");
         Write(three, "a.bin", 8 * 1024);
@@ -65,20 +68,22 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void HiddenMeansTheHiddenAttributeAndALeadingDotDoesNot()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         File.SetAttributes(Write(root.FullName, "secret.bin", 16 * 1024), FileAttributes.Hidden);
         Write(root.FullName, ".dotfile", 16 * 1024);
         var walked = Walk(root.FullName);
         var secret = Entry(walked, "secret.bin");
-        Assert.True(Envelopes.Flag(secret, "hidden"));
+        Assert.True(Docs.Flag(secret, "hidden"));
         Assert.Equal(0, Number(secret, "visible"));
         Assert.True(Number(secret, "bytes") > 0);
-        Assert.False(Envelopes.Flag(Entry(walked, ".dotfile"), "hidden"));
+        Assert.False(Docs.Flag(Entry(walked, ".dotfile"), "hidden"));
         Assert.Equal(Number(walked, "bytes") - Number(secret, "bytes"), Number(walked, "visible"));
     }
 
     [Fact]
     public void EverythingBelowAHiddenFolderIsOutOfSight()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var project = Folder("project");
         Write(project, "notes.bin", 8 * 1024);
         var git = Directory.CreateDirectory(Path.Combine(project, ".git"));
@@ -93,10 +98,11 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void AJunctionIsReportedAndNeverFollowed()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var target = Folder("target");
         Write(target, "data.bin", 64 * 1024);
         var link = Path.Combine(root.FullName, "link");
-        using (var mklink = Process.Start(new ProcessStartInfo("cmd.exe") { ArgumentList = { "/c", "mklink", "/J", link, target }, CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true })!)
+        using (var mklink = Process.Start(new ProcessStartInfo("cmd.exe") { ArgumentList = { "/c", "mklink", "/J", link, target }, CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true }) ?? throw new InvalidOperationException("mklink did not start"))
         {
             mklink.WaitForExit();
             Assert.Equal(0, mklink.ExitCode);
@@ -105,7 +111,7 @@ public sealed partial class FolderWalkTests : IDisposable
         {
             var walked = Walk(root.FullName);
             var junction = Entry(walked, "link");
-            Assert.Equal((true, false, 0L, 0L), (Envelopes.Flag(junction, "link"), Envelopes.Flag(junction, "folder"), Number(junction, "bytes"), Number(junction, "items")));
+            Assert.Equal((true, false, 0L, 0L), (Docs.Flag(junction, "link"), Docs.Flag(junction, "folder"), Number(junction, "bytes"), Number(junction, "items")));
             Assert.Equal(Number(Entry(walked, "target"), "bytes"), Number(walked, "bytes"));
         }
         finally
@@ -118,6 +124,7 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void AHardLinkedFileCountsOnce()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var first = Write(root.FullName, "one.bin", 64 * 1024);
         Assert.True(CreateHardLink(Path.Combine(root.FullName, "two.bin"), first, 0), $"CreateHardLinkW failed with {Marshal.GetLastPInvokeError()}");
         var walked = Walk(root.FullName);
@@ -131,6 +138,7 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void AFolderThatCannotBeReadIsGuardedAndCountedAsUnreadableAtAnyDepth()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var locked = new DirectoryInfo(Folder("locked"));
         var deep = new DirectoryInfo(Folder("open", "deeper"));
         Write(locked.FullName, "inside.bin", 8 * 1024);
@@ -142,8 +150,8 @@ public sealed partial class FolderWalkTests : IDisposable
             Assert.SkipWhen(Readable(locked), "This process reads folders their ACLs deny: its token has the backup privilege enabled, as Git Bash's runtime enables it. Run the tests from PowerShell.");
             var walked = Walk(root.FullName);
             var entry = Entry(walked, "locked");
-            Assert.Equal((true, true, 0L), (Envelopes.Flag(entry, "guarded"), Envelopes.Flag(entry, "folder"), Number(entry, "bytes")));
-            Assert.False(Envelopes.Flag(Entry(walked, "open"), "guarded"));
+            Assert.Equal((true, true, 0L), (Docs.Flag(entry, "guarded"), Docs.Flag(entry, "folder"), Number(entry, "bytes")));
+            Assert.False(Docs.Flag(Entry(walked, "open"), "guarded"));
             Assert.Equal(2, Number(walked, "unreadable"));
         }
         finally
@@ -183,31 +191,37 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void AMissingFolderSaysSoAndListsNothing()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var walked = Walk(Path.Combine(root.FullName, "gone"));
-        Assert.Equal((true, ""), (Envelopes.Flag(walked, "missing"), Envelopes.Text(walked, "error")));
+        Assert.Equal((true, ""), (Docs.Flag(walked, "missing"), Docs.Text(walked, "error")));
         Assert.Empty(Entries(walked));
     }
 
     [Fact]
     public void TheEntryLimitListsFewerChildrenButCountsThemAll()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         for (var index = 0; index < 5; index++)
         {
             Write(root.FullName, $"f{index}.bin", 8 * 1024);
         }
         var all = Walk(root.FullName);
         var two = Walk(root.FullName, limit: 2);
-        Assert.Equal((2, true, false), (Entries(two).Count, Envelopes.Flag(two, "truncated"), Envelopes.Flag(all, "truncated")));
+        Assert.Equal((2, true, false), (Entries(two).Count, Docs.Flag(two, "truncated"), Docs.Flag(all, "truncated")));
         Assert.Equal((5L, Number(all, "bytes")), (Number(two, "items"), Number(two, "bytes")));
     }
 
     [Fact]
-    public void ADeadlineThatHasPassedReportsTruncated() =>
-        Assert.True(Envelopes.Flag(Walk(root.FullName, deadline: TimeSpan.Zero), "truncated"));
+    public void ADeadlineThatHasPassedReportsTruncated()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
+        Assert.True(Docs.Flag(Walk(root.FullName, deadline: TimeSpan.Zero), "truncated"));
+    }
 
     [Fact]
     public void ACancelledWalkThrows()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         using var cancel = new CancellationTokenSource();
         cancel.Cancel();
         Assert.Throws<OperationCanceledException>(() => FolderWalk.Measure([root.FullName], 10, TimeSpan.FromMinutes(1), cancel.Token));
@@ -216,6 +230,7 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void ATreeDeeperThanAnyPathLimitIsWalkedWithoutRecursion()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var deepest = Folder([.. Enumerable.Repeat("level", 120)]);
         Write(deepest, "bottom.bin", 8 * 1024);
         Assert.True(deepest.Length > 260);
@@ -225,20 +240,22 @@ public sealed partial class FolderWalkTests : IDisposable
     [Fact]
     public void NamesKeepTheirCharactersAndTheVolumeIsReported()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         Write(root.FullName, "Zoë – café.txt", 10);
         var walked = Walk(root.FullName);
-        Assert.Equal(Path.Combine(root.FullName, "Zoë – café.txt"), Envelopes.Text(Entry(walked, "Zoë – café.txt"), "path"));
-        var volume = Envelopes.Member(walked, "volume");
-        Assert.True(Number(volume, "total") > 0 && Number(volume, "available") > 0 && Envelopes.Text(volume, "name").Length > 0);
+        Assert.Equal(Path.Combine(root.FullName, "Zoë – café.txt"), Docs.Text(Entry(walked, "Zoë – café.txt"), "path"));
+        var volume = Docs.Member(walked, "volume");
+        Assert.True(Number(volume, "total") > 0 && Number(volume, "available") > 0 && Docs.Text(volume, "name").Length > 0);
     }
 
     [Fact]
     public void TheKeysComeInTheDocumentedOrder()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         Write(root.FullName, "a.bin", 10);
         var walked = Walk(root.FullName);
         Assert.Equal(["path", "error", "missing", "truncated", "unreadable", "bytes", "visible", "items", "volume", "entries"], walked.EnumerateObject().Select(member => member.Name));
-        Assert.Equal(["name", "total", "available"], Envelopes.Member(walked, "volume").EnumerateObject().Select(member => member.Name));
+        Assert.Equal(["name", "total", "available"], Docs.Member(walked, "volume").EnumerateObject().Select(member => member.Name));
         Assert.Equal(["name", "path", "bytes", "visible", "items", "hidden", "folder", "link", "guarded"], Entries(walked)[0].EnumerateObject().Select(member => member.Name));
     }
 

@@ -3,49 +3,36 @@ using System.Runtime.InteropServices;
 namespace Osprey.Host;
 
 /// <summary>
-/// The Osprey application DLL [WINUI-HOST-DLL]: its entry, its exports, the import slots it calls
-/// back through [WINUI-HOST-IMPORTS] and the shared-memory bridge it carries
-/// [NATIVE-SHM-OWNERSHIP]. Every call is made on the UI thread [WINUI-HOST-THREAD], and a
-/// returned string is copied before the next call, because it belongs to Osprey. The frame each
-/// export writes is sealed here: committed when the call succeeded, discarded when it failed, so
-/// no half-written view is ever published [NATIVE-SHM-VIEW].
+/// The Osprey application DLL [WINUI-HOST-DLL]: its entry, its three exports, the import slots it
+/// calls back through [WINUI-HOST-IMPORTS] and the shared-memory bridge it carries
+/// [NATIVE-SHM-OWNERSHIP]. Every call is made on the UI thread [WINUI-HOST-THREAD]. Every call
+/// writes one whole frame, and the host commits it whether the call answered or refused; the frame
+/// is then leased whole and checked [NATIVE-SHM-VIEW], so a refused event still shows the view it
+/// drew, with the application's reason in a diagnostic ask.
 /// </summary>
 public sealed unsafe class Library
 {
     const string Entry = "osprey_main";
-    const string StartExport = "osprey_app_start";
-    const string DispatchExport = "osprey_app_dispatch";
+    const string ArgumentExport = "osprey_app_argument";
+    const string OpenExport = "osprey_app_open";
     const string EventExport = "osprey_app_event";
     const string BinderPrefix = "osprey_import_";
     const int Unbound = -2;
 
-    readonly delegate* unmanaged<byte*, byte*> started;
-    readonly delegate* unmanaged<byte*, byte*, byte*> dispatched;
-    readonly delegate* unmanaged<long> began;
-    readonly delegate* unmanaged<long, byte*, long> delivered;
+    readonly delegate* unmanaged<byte*, long> argued;
+    readonly delegate* unmanaged<long, long, byte*, byte*, byte, long> opened;
+    readonly delegate* unmanaged<long, long, long, byte*, byte*, double, double, byte, byte, long> sent;
 
-    Library(Bridge bridge, bool shared, nint start, nint dispatch, nint sent)
+    Library(Bridge bridge, nint argument, nint open, nint sent)
     {
         Bridge = bridge;
-        Shared = shared;
-        if (shared)
-        {
-            began = (delegate* unmanaged<long>)(void*)start;
-            delivered = (delegate* unmanaged<long, byte*, long>)(void*)sent;
-            return;
-        }
-        started = (delegate* unmanaged<byte*, byte*>)(void*)start;
-        dispatched = (delegate* unmanaged<byte*, byte*, byte*>)(void*)dispatch;
+        argued = (delegate* unmanaged<byte*, long>)(void*)argument;
+        opened = (delegate* unmanaged<long, long, byte*, byte*, byte, long>)(void*)open;
+        this.sent = (delegate* unmanaged<long, long, long, byte*, byte*, double, double, byte, byte, long>)(void*)sent;
     }
 
     /// <summary>The shared-memory bridge this DLL carries, opened once before its entry ran.</summary>
     public Bridge Bridge { get; }
-
-    /// <summary>Whether this application draws the shared view [NATIVE-SHM-VIEW]: it exports <c>osprey_app_event</c> and no <c>osprey_app_dispatch</c>.</summary>
-    public bool Shared { get; }
-
-    /// <summary>The streamed shapes of the frame the last envelope call wrote, leased in place until the next call replaces them.</summary>
-    public Run<NativeShape>? Shapes { get; private set; }
 
     /// <summary>The imports this host answers, by the name an application declares them with.</summary>
     public static IReadOnlyDictionary<string, nint> Imports { get; } = new Dictionary<string, nint>
@@ -62,9 +49,8 @@ public sealed unsafe class Library
             Bind(handle, name, function);
         }
         var bridge = Bridge.Open(handle);
-        Enter(Export(handle, Entry), path);
-        var shared = NativeLibrary.TryGetExport(handle, EventExport, out var sent) && !NativeLibrary.TryGetExport(handle, DispatchExport, out _);
-        return new Library(bridge, shared, Export(handle, StartExport), shared ? 0 : Export(handle, DispatchExport), shared ? sent : 0);
+        Enter(bridge, Export(handle, Entry), path);
+        return new Library(bridge, Export(handle, ArgumentExport), Export(handle, OpenExport), Export(handle, EventExport));
     }
 
     static void Bind(nint handle, string name, nint function)
@@ -75,9 +61,11 @@ public sealed unsafe class Library
         }
     }
 
-    static void Enter(nint entry, string path)
+    static void Enter(Bridge bridge, nint entry, string path)
     {
         var status = ((delegate* unmanaged<int>)entry)();
+        // The entry's rows belong to no frame: drop them before the first call publishes one.
+        bridge.Discard();
         if (status == Unbound)
         {
             throw new HostException($"{path} imports a function this host does not answer; it answers {string.Join(", ", Imports.Keys)}");
@@ -93,93 +81,56 @@ public sealed unsafe class Library
             ? address
             : throw new HostException($"The application exports no {name}; build it with `osprey <project> --compile --target=windows-x64 -o app.dll`");
 
-    /// <summary>The start envelope for the launch <paramref name="context"/>, with the frame the call wrote sealed and its shapes leased.</summary>
-    public string Start(string context)
+    /// <summary>One launch argument, in order, before the first view [NATIVE-SHM-EVENT].</summary>
+    public Sealed Argument(string text)
     {
-        Requires(shared: false);
-        using var source = new Utf8Text(context);
-        return Sealed(() => Copied(started(source.Pointer)));
+        using var copy = new Utf8Text(text);
+        return Sealed.At(Bridge, argued(copy.Pointer));
     }
 
-    /// <summary>The next envelope for the opaque <paramref name="state"/> and one <paramref name="eventText"/>, with the frame the call wrote sealed and its shapes leased.</summary>
-    public string Dispatch(string state, string eventText)
+    /// <summary>Draws the first frame for the host's clock, zone offset, platform, home folder and appearance.</summary>
+    public Sealed Open(long now, long offset, string platform, string home, bool dark)
     {
-        Requires(shared: false);
-        using var saved = new Utf8Text(state);
-        using var message = new Utf8Text(eventText);
-        return Sealed(() => Copied(dispatched(saved.Pointer, message.Pointer)));
+        using var system = new Utf8Text(platform);
+        using var folder = new Utf8Text(home);
+        return Sealed.At(Bridge, opened(now, offset, system.Pointer, folder.Pointer, dark ? (byte)1 : (byte)0));
     }
 
-    /// <summary>Draws the first shared view; zero when it was written [NATIVE-SHM-VIEW].</summary>
-    public long StartView()
+    /// <summary>Delivers one event and draws the next frame; a refused event still answers with a whole frame.</summary>
+    public Sealed Event(long now, Touch touch)
     {
-        Requires(shared: true);
-        var status = began();
-        Sealed(status);
-        return status;
+        using var words = new Utf8Text(touch.Words);
+        using var detail = new Utf8Text(touch.Detail);
+        return Sealed.At(Bridge, sent(now, touch.Kind, touch.Ordinal, words.Pointer, detail.Pointer, touch.X, touch.Y, touch.Down ? (byte)1 : (byte)0, touch.Shift ? (byte)1 : (byte)0));
+    }
+}
+
+/// <summary>
+/// One call's answer and the frame it wrote, committed and leased whole. It is disposed once the
+/// frame has been checked and drawn, releasing all four runs.
+/// </summary>
+public sealed class Sealed : IDisposable
+{
+    Sealed(long status, Frame frame)
+    {
+        Status = status;
+        Frame = frame;
     }
 
-    /// <summary>Delivers the control numbered <paramref name="ordinal"/> with its edited <paramref name="words"/> and draws the next view; nonzero when the application refused, which changes nothing.</summary>
-    public long EventView(long ordinal, string words)
+    /// <summary>The export's answer: 0 when it accepted the call, 1 or another error when it refused.</summary>
+    public long Status { get; }
+
+    /// <summary>The frame every call writes, committed and leased whole.</summary>
+    public Frame Frame { get; }
+
+    internal static Sealed At(Bridge bridge, long status)
     {
-        Requires(shared: true);
-        using var text = new Utf8Text(words);
-        var status = delivered(ordinal, text.Pointer);
-        Sealed(status);
-        return status;
+        bridge.Commit();
+        return new Sealed(status, Frame.Lease(bridge));
     }
 
-    // One call path per application shape: envelopes for scene applications, events for shared views.
-    void Requires(bool shared)
-    {
-        if (shared != Shared)
-        {
-            throw new HostException(shared
-                ? "A shared-view application takes events, not envelopes"
-                : "An envelope application takes envelopes, not events");
-        }
-    }
-
-    // Seals the frame the call wrote: committed when it answered, discarded when it failed.
-    string Sealed(Func<string> call)
-    {
-        string envelope;
-        try
-        {
-            envelope = call();
-        }
-        catch
-        {
-            Bridge.Discard();
-            throw;
-        }
-        Bridge.Commit();
-        Shapes = Leased(Shapes);
-        return envelope;
-    }
-
-    void Sealed(long status)
-    {
-        if (status != 0)
-        {
-            Bridge.Discard();
-            return;
-        }
-        Bridge.Commit();
-    }
-
-    // The new frame's shapes are leased before the previous lease is released, so the shapes being drawn stay pinned.
-    Run<NativeShape> Leased(Run<NativeShape>? previous)
-    {
-        var next = Bridge.Take<NativeShape>(Bridge.ShapesRun);
-        previous?.Dispose();
-        return next;
-    }
-
-    static string Copied(byte* value) =>
-        value is null
-            ? throw new HostException("The Osprey application returned no envelope")
-            : Marshal.PtrToStringUTF8((nint)value) ?? "";
+    /// <summary>Releases the frame's four runs.</summary>
+    public void Dispose() => Frame.Dispose();
 }
 
 /// <summary>A protocol or boundary failure, shown to the person rather than hidden.</summary>

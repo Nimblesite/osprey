@@ -1,6 +1,5 @@
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
+using Osprey.Host.Scenes;
 
 namespace Osprey.Host;
 
@@ -46,7 +45,7 @@ public enum RowKind
     /// <summary>The image its text names.</summary>
     Image,
 
-    /// <summary>A reserved blank that draws nothing yet.</summary>
+    /// <summary>A canvas, whose scene rows name it.</summary>
     Canvas,
 
     /// <summary>A text field of many lines.</summary>
@@ -59,182 +58,308 @@ public enum RowKind
     Sheet,
 }
 
-/// <summary>
-/// One control row with every value a host may safely use [NATIVE-SHM-SAFETY]: a parent that is
-/// neither -1 nor an earlier row reads as none, text and hint outside the text run read as empty,
-/// a number that is not finite or is negative reads as zero, and the font weight is clamped into
-/// its 100..900 range. Only <see cref="Rows"/> builds one, so no reader ever trusts a raw row.
-/// </summary>
-public readonly struct SafeRow
+/// <summary>The <c>traits</c> flags a row's fit carries [NATIVE-SHM-VIEW]: every bit outside <see cref="All"/> is refused.</summary>
+public static class RowFlags
 {
-    internal SafeRow(int index, in NativeView row, string text, string hint)
-    {
-        Kind = (RowKind)row.Kind;
-        Parent = row.Parent == -1 || row.Parent >= 0 && row.Parent < index ? (int)row.Parent : Rows.None;
-        Action = row.Action;
-        (Text, Hint) = (text, hint);
-        (Colour, Background) = (row.Colour, row.Background);
-        (Size, Padding) = (Clean(row.Size), Clean(row.Padding));
-        (Spacing, Radius) = (Clean(row.Spacing), Clean(row.Radius));
-        Weight = (int)Math.Clamp(row.Weight, 100, 900);
-        (Width, Height, Grow) = (Clean(row.Width), Clean(row.Height), Clean(row.Grow));
-        (Flags, Border) = (row.Flags, row.Border);
-    }
+    /// <summary>The control takes no input.</summary>
+    public const long Disabled = 1;
 
-    // Only a number a host can lay out survives: the rest reads as zero.
-    static double Clean(double value) => double.IsFinite(value) && value > 0 ? value : 0;
+    /// <summary>It is on, chosen or selected.</summary>
+    public const long Chosen = 2;
 
-    /// <summary>The control's kind.</summary>
-    public RowKind Kind { get; }
+    /// <summary>A field hides its text.</summary>
+    public const long Secret = 4;
 
-    /// <summary>The row it sits in, or <see cref="Rows.None"/> for a root.</summary>
-    public int Parent { get; }
+    /// <summary>Text is set in a fixed-width face.</summary>
+    public const long FixedWidth = 8;
 
-    /// <summary>The event it delivers, or a negative number when it delivers none.</summary>
-    public long Action { get; }
+    /// <summary>Text is slanted.</summary>
+    public const long Slanted = 16;
 
-    /// <summary>Its text, decoded as UTF-8 with invalid bytes replaced.</summary>
-    public string Text { get; }
+    /// <summary>It is centred in its row.</summary>
+    public const long Centred = 32;
 
-    /// <summary>Its second text: a field's prompt or an option's key.</summary>
-    public string Hint { get; }
+    /// <summary>A field delivers only when committed.</summary>
+    public const long OnCommit = 64;
 
-    /// <summary>Its ink as 0xRRGGBBAA; zero draws nothing.</summary>
-    public long Colour { get; }
+    /// <summary>Every flag this host knows; a row with another bit is refused whole.</summary>
+    public const long All = Disabled | Chosen | Secret | FixedWidth | Slanted | Centred | OnCommit;
+}
 
-    /// <summary>Its fill as 0xRRGGBBAA; zero draws none.</summary>
-    public long Background { get; }
+/// <summary>How one control looks, every value decided in Osprey: <c>0xRRGGBBAA</c> ink and fill, sizes in points.</summary>
+public readonly record struct Look(uint Ink, uint Fill, double Size, double Padding, double Spacing, double Radius, double Weight);
 
-    /// <summary>Its text size in points; zero keeps the control's natural one.</summary>
-    public double Size { get; }
-
-    /// <summary>Its inner padding in points.</summary>
-    public double Padding { get; }
-
-    /// <summary>The gap between a container's children in points.</summary>
-    public double Spacing { get; }
-
-    /// <summary>Its corner radius in points.</summary>
-    public double Radius { get; }
-
-    /// <summary>Its font weight, from 100 to 900.</summary>
-    public int Weight { get; }
-
-    /// <summary>Its fixed width in points; zero is natural.</summary>
-    public double Width { get; }
-
-    /// <summary>Its fixed height in points; zero is natural.</summary>
-    public double Height { get; }
-
-    /// <summary>Its share of the free space beside its siblings; zero is natural.</summary>
-    public double Grow { get; }
-
-    /// <summary>Its state flags; unknown bits are ignored.</summary>
-    public long Flags { get; }
-
-    /// <summary>Its border colour as 0xRRGGBBAA; zero draws none.</summary>
-    public long Border { get; }
-
-    /// <summary>Whether it takes no input.</summary>
-    public bool Disabled => (Flags & 1) != 0;
+/// <summary>How one control sits: fixed extents (0 = natural), its share of free space, flags and border.</summary>
+public readonly record struct Fit(double Width, double Height, double Grow, long Flags, uint Border)
+{
+    /// <summary>Whether the control takes no input.</summary>
+    public bool Disabled => (Flags & RowFlags.Disabled) != 0;
 
     /// <summary>Whether it is on, chosen or selected.</summary>
-    public bool On => (Flags & 2) != 0;
+    public bool On => (Flags & RowFlags.Chosen) != 0;
 
     /// <summary>Whether a field hides its text.</summary>
-    public bool Secure => (Flags & 4) != 0;
+    public bool Secure => (Flags & RowFlags.Secret) != 0;
 
     /// <summary>Whether its text is set in a fixed-width face.</summary>
-    public bool Monospaced => (Flags & 8) != 0;
+    public bool Monospaced => (Flags & RowFlags.FixedWidth) != 0;
 
     /// <summary>Whether its text is slanted.</summary>
-    public bool Slanted => (Flags & 16) != 0;
+    public bool Slanted => (Flags & RowFlags.Slanted) != 0;
 
     /// <summary>Whether it is centred in its row.</summary>
-    public bool Centred => (Flags & 32) != 0;
+    public bool Centred => (Flags & RowFlags.Centred) != 0;
 
     /// <summary>Whether a field delivers only when committed.</summary>
-    public bool OnCommit => (Flags & 64) != 0;
+    public bool OnCommit => (Flags & RowFlags.OnCommit) != 0;
+}
+
+/// <summary>One checked control and the rows drawn inside it [NATIVE-SHM-VIEW].</summary>
+public sealed record Control(RowKind Kind, long? Action, string Words, string Hint, Look Look, Fit Fit, int Parent, IReadOnlyList<int> Children);
+
+/// <summary>One field of an ask: its argument position, its whole number and its text [NATIVE-SHM-ASK].</summary>
+public readonly record struct AskField(long Position, long Number, string Text);
+
+/// <summary>A capability request or a slice write: its code, its ticket (a slice write's key) and its fields.</summary>
+public sealed record Ask(long Code, string Ticket, IReadOnlyList<AskField> Fields)
+{
+    /// <summary>The capability code of a slice write.</summary>
+    public const long SliceWrite = 100;
+
+    /// <summary>The capability code of a refused event's diagnostic.</summary>
+    public const long Diagnostic = 101;
+
+    /// <summary>Every capability name, by code from 1, as the application's <c>Requests::kind</c> spells them.</summary>
+    public static IReadOnlyList<string> Kinds { get; } =
+    [
+        "run", "list-directories", "read-plists", "read-texts", "fingerprint", "store-read",
+        "store-write", "store-list", "store-delete", "http", "host-call", "running-applications",
+        "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "open-settings",
+        "cancel", "recognise", "animate", "process-start", "process-write", "process-read",
+        "process-stop",
+    ];
+
+    /// <summary>The capability's name, or empty for a code this host does not know.</summary>
+    public string Kind() => Code >= 1 && Code <= Kinds.Count ? Kinds[(int)Code - 1] : "";
+
+    /// <summary>Every text at argument <paramref name="field"/>, in order: a list's items or a pair's halves.</summary>
+    public IReadOnlyList<string> Texts(long field) => [.. Fields.Where(item => item.Position == field).Select(item => item.Text)];
+
+    /// <summary>The first text at argument <paramref name="field"/>, or empty.</summary>
+    public string Text(long field) => Texts(field).FirstOrDefault() ?? "";
+
+    /// <summary>The whole number at argument <paramref name="field"/>, or 0.</summary>
+    public long Number(long field) => Fields.FirstOrDefault(item => item.Position == field).Number;
+
+    /// <summary>The flag at argument <paramref name="field"/>.</summary>
+    public bool Flag(long field) => Number(field) != 0;
+
+    /// <summary>The name/value pairs at argument <paramref name="field"/> (headers or environment variables).</summary>
+    public IReadOnlyList<(string Name, string Value)> Pairs(long field)
+    {
+        var texts = Texts(field);
+        var pairs = new List<(string, string)>((texts.Count + 1) / 2);
+        for (var at = 0; at < texts.Count; at += 2)
+        {
+            pairs.Add((texts[at], at + 1 < texts.Count ? texts[at + 1] : ""));
+        }
+        return pairs;
+    }
 }
 
 /// <summary>
-/// [NATIVE-SHM-SAFETY] The one reader of a leased view: it walks the row run in place and hands
-/// out rows a host may draw. It is a ref struct, so it exists only while the runs' leases are
-/// held and nothing can read a run after its lease is released. A row run that is not whole rows
-/// is refused; a row of unknown kind, or whose parent is neither -1 nor an earlier row, draws
-/// nothing, and so does every row below it; text and hint are read as UTF-8 with invalid bytes
-/// replaced, or as empty when they lie outside the text run.
+/// [NATIVE-SHM-SAFETY] A sealed frame checked and read as typed values. Nothing from the application
+/// is trusted: every kind, flag and code must be known, every parent must be an earlier row, every
+/// text range must lie inside the text run on UTF-8 boundaries, every float must be finite and every
+/// count must stay inside the rows that follow it. A frame that fails any check is refused whole and
+/// the host keeps the last good view.
 /// </summary>
-public ref struct Rows
+public sealed class Shown
 {
-    /// <summary>The parent of a root row, and the action of a control that delivers none.</summary>
-    public const int None = -1;
-
-    // Invalid bytes become U+FFFD, exactly as String(decoding:as:) does.
-    static readonly UTF8Encoding Decoding = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
-
-    readonly ReadOnlySpan<NativeView> rows;
-    readonly ReadOnlySpan<byte> text;
-
-    /// <summary>Reads a leased view's rows and the text run they name; the row bytes must be whole rows.</summary>
-    public Rows(ReadOnlySpan<byte> rowBytes, ReadOnlySpan<byte> text)
+    internal Shown(IReadOnlyList<Control> controls, IReadOnlyList<int> roots, IReadOnlyDictionary<int, Scene> scenes, IReadOnlyList<Ask> asks)
     {
-        if (rowBytes.Length % Unsafe.SizeOf<NativeView>() != 0)
-        {
-            throw new HostException($"The view holds {rowBytes.Length} bytes, which is not whole rows of {Unsafe.SizeOf<NativeView>()}");
-        }
-        rows = MemoryMarshal.Cast<byte, NativeView>(rowBytes);
-        this.text = text;
+        Controls = controls;
+        Roots = roots;
+        Scenes = scenes;
+        Asks = asks;
     }
 
-    /// <summary>The view's control count.</summary>
-    public int Count => rows.Length;
+    /// <summary>Every control, by row index, in drawing order.</summary>
+    public IReadOnlyList<Control> Controls { get; }
 
-    /// <summary>Whether the row at <paramref name="index"/> may be drawn: a kind the host knows, seated in a row that draws, or a root.</summary>
-    public bool Draws(int index)
+    /// <summary>The rows with no parent, in drawing order.</summary>
+    public IReadOnlyList<int> Roots { get; }
+
+    /// <summary>Each canvas's scene, by its view row.</summary>
+    public IReadOnlyDictionary<int, Scene> Scenes { get; }
+
+    /// <summary>Every ask, in the order the application wrote it.</summary>
+    public IReadOnlyList<Ask> Asks { get; }
+
+    /// <summary>The capability requests to answer, in order.</summary>
+    public IEnumerable<Ask> Requests => Asks.Where(ask => ask.Code is >= 1 and <= 25);
+
+    /// <summary>The slice writes, as key and text.</summary>
+    public IEnumerable<(string Key, string Text)> Slices =>
+        Asks.Where(ask => ask.Code == Ask.SliceWrite)
+            .Select(ask => (ask.Ticket, ask.Fields.Count > 0 ? ask.Fields[0].Text : ""));
+
+    /// <summary>Why the application refused the event this frame answers, if it did.</summary>
+    public IEnumerable<string> Diagnostics => Asks.Where(ask => ask.Code == Ask.Diagnostic).Select(ask => ask.Ticket);
+}
+
+/// <summary>Checks and reads a whole frame's four runs, exactly as the reference host's rows reader does.</summary>
+public static class FrameReader
+{
+    // The row kinds view.ospml numbers: a column is 0 and a sheet is 16.
+    const int KindCount = 17;
+
+    // Invalid bytes refuse the frame: the application wrote text that is not UTF-8.
+    static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    /// <summary>Checks and reads the frame's runs; a frame that fails any check is refused whole.</summary>
+    public static Shown Read(Frame frame) =>
+        Read(frame.Shapes.Rows, frame.Views.Rows, frame.Text.Bytes, frame.Asks.Rows);
+
+    /// <summary>Checks and reads four runs of rows.</summary>
+    public static Shown Read(ReadOnlySpan<NativeShape> shapes, ReadOnlySpan<NativeView> views, ReadOnlySpan<byte> text, ReadOnlySpan<NativeAsk> asks)
     {
-        // A loop, not recursion: a chain of 65,536 nested rows must not exhaust the stack.
-        if (index < 0)
+        var (controls, roots) = Controls(views, text);
+        var canvases = new List<int>();
+        for (var index = 0; index < controls.Count; index++)
         {
-            return false;
-        }
-
-        for (long row = index; row != None; row = rows[(int)row].Parent)
-        {
-            if (!Sound((int)row))
+            if (controls[index].Kind == RowKind.Canvas)
             {
-                return false;
+                canvases.Add(index);
             }
         }
-        return true;
+        return new Shown(controls, roots, SceneReader.Read(shapes, text, canvases), Asked(asks, text));
     }
 
-    // A row this host knows how to draw whose parent, if any, is an earlier row.
-    bool Sound(int index) =>
-        index >= 0 && index < rows.Length
-        && rows[index].Kind >= 0 && rows[index].Kind <= (long)RowKind.Sheet
-        && rows[index].Parent >= None && rows[index].Parent < index;
-
-    /// <summary>The row at <paramref name="index"/> with every value made safe.</summary>
-    public SafeRow At(int index) => new(index, rows[index], Words(rows[index].TextOffset, rows[index].TextLength), Words(rows[index].HintOffset, rows[index].HintLength));
-
-    /// <summary>The rows seated in the row at <paramref name="index"/>, in drawing order.</summary>
-    public List<int> Children(int index)
+    static (List<Control>, List<int>) Controls(ReadOnlySpan<NativeView> rows, ReadOnlySpan<byte> run)
     {
-        var seated = new List<int>();
-        for (var row = index + 1; row < rows.Length; row++)
+        var all = new List<Control>(rows.Length);
+        var seated = new List<List<int>>(rows.Length);
+        var roots = new List<int>();
+        for (var index = 0; index < rows.Length; index++)
         {
-            if (rows[row].Parent == index && Draws(row))
+            var row = rows[index];
+            var children = new List<int>();
+            all.Add(Control(row, index, run, children));
+            seated.Add(children);
+            if (row.Parent == -1)
             {
-                seated.Add(row);
+                roots.Add(index);
+            }
+            else if (row.Parent < 0 || row.Parent >= index)
+            {
+                throw new HostException($"Row {index} names a parent that is not an earlier row");
+            }
+            else
+            {
+                seated[(int)row.Parent].Add(index);
             }
         }
-        return seated;
+        return (all, roots);
     }
 
-    // The words a row names, or empty once they lie outside the text run: nothing reads past it.
-    string Words(long offset, long length) =>
-        offset >= 0 && length >= 0 && offset <= text.Length && length <= text.Length - offset
-            ? Decoding.GetString(text.Slice((int)offset, (int)length))
-            : "";
+    static Control Control(NativeView row, int index, ReadOnlySpan<byte> run, List<int> children)
+    {
+        if (row.Kind < 0 || row.Kind >= KindCount)
+        {
+            throw new HostException($"Row {index} has an unknown kind {row.Kind}");
+        }
+        if ((row.Flags & ~RowFlags.All) != 0)
+        {
+            throw new HostException($"Row {index} has unknown flags {row.Flags}");
+        }
+        if (row.Weight is < 100 or > 900)
+        {
+            throw new HostException($"Row {index} has a font weight outside 100 to 900");
+        }
+        return new Control(
+            (RowKind)row.Kind,
+            row.Action >= 0 ? row.Action : null,
+            Text(run, row.TextOffset, row.TextLength, index),
+            Text(run, row.HintOffset, row.HintLength, index),
+            new Look(Colour(row.Colour, index), Colour(row.Background, index), Extent(row.Size, index), Extent(row.Padding, index),
+                Extent(row.Spacing, index), Extent(row.Radius, index), row.Weight),
+            new Fit(Extent(row.Width, index), Extent(row.Height, index), Extent(row.Grow, index), row.Flags, Colour(row.Border, index)),
+            row.Parent == -1 ? -1 : (int)row.Parent,
+            children);
+    }
+
+    static List<Ask> Asked(ReadOnlySpan<NativeAsk> rows, ReadOnlySpan<byte> run)
+    {
+        var pending = new List<(long Code, string Ticket, List<AskField> Fields)>();
+        for (var index = 0; index < rows.Length; index++)
+        {
+            var row = rows[index];
+            var field = new AskField(row.Field, row.Number, Text(run, row.TextOffset, row.TextLength, index));
+            if (row.Field == 0)
+            {
+                pending.Add((row.Number, field.Text, []));
+            }
+            else if (row.Field > 0 && pending.Count > 0)
+            {
+                pending[^1].Fields.Add(field);
+            }
+            else
+            {
+                throw new HostException("Ask row before any ask, or with a field below zero");
+            }
+        }
+        var all = pending.Select(ask => new Ask(ask.Code, ask.Ticket, ask.Fields)).ToList();
+        if (all.Any(ask => ask.Code is < 1 or > 25 and not Ask.SliceWrite and not Ask.Diagnostic))
+        {
+            throw new HostException("An ask with an unknown capability code");
+        }
+        return all;
+    }
+
+    /// <summary>Text bytes <paramref name="offset"/>..<paramref name="offset"/> + <paramref name="length"/> of the run, checked as UTF-8.</summary>
+    internal static string Text(ReadOnlySpan<byte> run, long offset, long length, int row)
+    {
+        if (offset < 0)
+        {
+            throw new HostException($"Row {row} has a text offset below zero");
+        }
+        if (length < 0)
+        {
+            throw new HostException($"Row {row} has a text length below zero");
+        }
+        if (offset > run.Length || length > run.Length - offset)
+        {
+            throw new HostException($"Row {row} names a text range outside the frame");
+        }
+        try
+        {
+            return Strict.GetString(run.Slice((int)offset, (int)length));
+        }
+        catch (DecoderFallbackException)
+        {
+            throw new HostException($"Row {row} names text that is not UTF-8");
+        }
+    }
+
+    /// <summary>A number a host can lay out: finite and zero or positive, or the frame is refused.</summary>
+    internal static double Extent(double value, int row) =>
+        double.IsFinite(value) && value >= 0
+            ? value
+            : throw new HostException($"Row {row} has an extent that is negative or not finite");
+
+    /// <summary>A packed <c>0xRRGGBBAA</c> colour, or the frame is refused.</summary>
+    internal static uint Colour(long value, int row) =>
+        value is >= 0 and <= uint.MaxValue
+            ? (uint)value
+            : throw new HostException($"Row {row} has a colour outside 0xRRGGBBAA");
+
+    /// <summary>Refuses the frame when any of a scene row's five floating values is not finite.</summary>
+    internal static void Finite(NativeShape row, int at)
+    {
+        if (!double.IsFinite(row.X) || !double.IsFinite(row.Y) || !double.IsFinite(row.Width) || !double.IsFinite(row.Height) || !double.IsFinite(row.Angle))
+        {
+            throw new HostException($"Scene row {at} has a number that is not finite");
+        }
+    }
 }

@@ -17,13 +17,18 @@ public static partial class Sandbox
     /// <summary>Whether this process has a package identity.</summary>
     public static bool Packaged()
     {
+#if WINDOWS
         uint length = 0;
         return GetCurrentPackageFullName(ref length, 0) != NoPackage;
+#else
+        return false;
+#endif
     }
 
     /// <summary>Whether this process runs in an AppContainer.</summary>
     public static bool InAppContainer()
     {
+#if WINDOWS
         if (!OpenProcessToken(GetCurrentProcess(), TokenQuery, out var token))
         {
             return false;
@@ -31,11 +36,18 @@ public static partial class Sandbox
         var contained = GetTokenInformation(token, TokenIsAppContainer, out var answer, sizeof(uint), out _) && answer != 0;
         CloseHandle(token);
         return contained;
+#else
+        return false;
+#endif
     }
 
     /// <summary>The application's name: its package's display name, or its DLL's file name unpackaged.</summary>
     public static string Name(string library) =>
+#if WINDOWS
         Packaged() ? Windows.ApplicationModel.Package.Current.DisplayName : Path.GetFileNameWithoutExtension(library);
+#else
+        Path.GetFileNameWithoutExtension(library);
+#endif
 
     /// <summary>One line naming where the host runs, for the self-test's trail.</summary>
     public static string Describe() =>

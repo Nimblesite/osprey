@@ -82,7 +82,7 @@ internal static unsafe class Volumes
 internal static class Report
 {
     /// <summary><c>{"folders":[...]}</c> for the measured folders, in order.</summary>
-    public static string Write(IReadOnlyList<Measured> folders) => Json.Object(writer =>
+    public static string Write(IReadOnlyList<Measured> folders) => Docs.Object(writer =>
     {
         writer.WriteStartArray("folders");
         foreach (var folder in folders)

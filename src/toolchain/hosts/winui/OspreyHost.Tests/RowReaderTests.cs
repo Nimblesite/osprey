@@ -1,154 +1,227 @@
-using System.Buffers.Binary;
+using System.Text;
+using Osprey.Host.Scenes;
 
 namespace Osprey.Host.Tests;
 
 /// <summary>
-/// [NATIVE-SHM-SAFETY] The safe reader over hand-built byte buffers laid out exactly as
-/// native_abi.h shapes its rows: everything a misbehaving DLL could write must read as something
-/// the host can draw, never as a crash or a read past a run. These tests need no DLL and run
-/// anywhere the tests do.
+/// [NATIVE-SHM-SAFETY] The one frame reader over hand-built rows laid out exactly as native_abi.h
+/// shapes them: nothing a misbehaving DLL could write may reach the host as a wrong value, and a
+/// frame that fails any check is refused whole, exactly as the reference host's rows reader refuses
+/// it. These tests need no DLL and run anywhere the tests do.
 /// </summary>
 public sealed class RowReaderTests
 {
-    const int Width = 152; // native_abi.h's TD_SHARED_STORAGE(ViewRow, ...)
-
-    // The header's offsets: seven leading words, four fractions, the weight, three fractions, four trailing words.
-    static readonly int[] Whole = [0, 8, 16, 24, 32, 40, 48, 88, 120, 128, 136, 144];
-    static readonly int[] Part = [56, 64, 72, 80, 96, 104, 112];
-
-    static byte[] Row(long kind = 2, long parent = Rows.None, long action = -1, long textOffset = 0, long textLength = 0,
+    static NativeView View(long kind = 2, long parent = -1, long action = -1, long textOffset = 0, long textLength = 0,
         long colour = 0, long background = 0, double size = 0, double padding = 0, double spacing = 0, double radius = 0,
         long weight = 400, double width = 0, double height = 0, double grow = 0, long flags = 0, long border = 0,
-        long hintOffset = 0, long hintLength = 0)
+        long hintOffset = 0, long hintLength = 0) =>
+        new(kind, parent, action, textOffset, textLength, colour, background, size, padding, spacing, radius, weight,
+            width, height, grow, flags, border, hintOffset, hintLength);
+
+    static NativeAsk Asked(long field, long number = 0, long textOffset = 0, long textLength = 0) =>
+        new(field, number, textOffset, textLength);
+
+    static byte[] Utf8(string text) => Encoding.UTF8.GetBytes(text);
+
+    static Shown Read(NativeView[] views, NativeShape[]? shapes = null, NativeAsk[]? asks = null, byte[]? text = null) =>
+        FrameReader.Read(shapes ?? [], views, text ?? [], asks ?? []);
+
+    [Fact]
+    public void AFrameReadsItsControlsAndText()
     {
-        var row = new byte[Width];
-        var whole = new[] { kind, parent, action, textOffset, textLength, colour, background, weight, flags, border, hintOffset, hintLength };
-        var part = new[] { Bits(size), Bits(padding), Bits(spacing), Bits(radius), Bits(width), Bits(height), Bits(grow) };
-        foreach (var (value, at) in whole.Zip(Whole))
+        var words = Utf8("Zoë");
+        var shown = Read([View(kind: 0), View(kind: 2, parent: 0, action: 4, textOffset: 0, textLength: words.Length, colour: 0x11223344, size: 30, weight: 700)], text: words);
+        Assert.Equal(2, shown.Controls.Count);
+        Assert.Equal([0], shown.Roots);
+        Assert.Equal((RowKind.Column, (long?)null, 0L), (shown.Controls[0].Kind, shown.Controls[0].Action, shown.Controls[0].Fit.Flags));
+        var label = shown.Controls[1];
+        Assert.Equal(("Zoë", RowKind.Label, 4L, 30.0, 700.0, 0x11223344u), (label.Words, label.Kind, label.Action, label.Look.Size, label.Look.Weight, label.Look.Ink));
+    }
+
+    [Fact]
+    public void EveryRootIsListedAndChildrenComeInDrawingOrder()
+    {
+        var shown = Read([View(kind: 0), View(kind: 2, parent: 0), View(kind: 2, parent: 0), View(kind: 7), View(kind: 2, parent: 3)]);
+        Assert.Equal([0, 3], shown.Roots);
+        Assert.Equal([1, 2], shown.Controls[0].Children);
+        Assert.Equal([4], shown.Controls[3].Children);
+    }
+
+    [Fact]
+    public void AParentThatIsNotAnEarlierRowIsRefused()
+    {
+        foreach (var parent in new[] { -2L, 0L, 1L, 2L, 99L, long.MaxValue })
         {
-            BinaryPrimitives.WriteInt64LittleEndian(row.AsSpan(at, 8), value);
+            Assert.Throws<HostException>(() => Read([View(kind: 2, parent: parent), View(kind: 2)]));
         }
-        foreach (var (value, at) in part.Zip(Part))
+    }
+
+    [Fact]
+    public void AnUnknownKindIsRefused()
+    {
+        foreach (var kind in new[] { -1L, 17L, 1000L, long.MinValue })
         {
-            BinaryPrimitives.WriteInt64LittleEndian(row.AsSpan(at, 8), value);
+            Assert.Throws<HostException>(() => Read([View(kind: kind)]));
         }
-        return row;
-    }
-
-    static long Bits(double value) => BitConverter.DoubleToInt64Bits(value);
-
-    static byte[] Together(params byte[][] rows) => [.. rows.SelectMany(row => row)];
-
-    [Fact]
-    public void ARowIsReadAsItWasWritten()
-    {
-        var words = "Zoë"u8.ToArray();
-        var view = new Rows(Together(Row(kind: 0), Row(kind: 2, parent: 0, textOffset: 0, textLength: words.Length, colour: 0x11223344, size: 30, weight: 700, hintOffset: 0, hintLength: 0)), words);
-        Assert.Equal(2, view.Count);
-        Assert.True(view.Draws(0) && view.Draws(1));
-        Assert.Equal((RowKind.Column, Rows.None), (view.At(0).Kind, view.At(0).Parent));
-        var label = view.At(1);
-        Assert.Equal(("Zoë", RowKind.Label, 0, 30.0, 700, 0x11223344L), (label.Text, label.Kind, label.Parent, label.Size, label.Weight, label.Colour));
     }
 
     [Fact]
-    public void AParentThatIsNotAnEarlierRowDrawsNothing()
+    public void AnUnknownFlagIsRefused()
     {
-        var view = new Rows(Together(Row(kind: 2, parent: -2), Row(kind: 2, parent: 1), Row(kind: 2, parent: 2), Row(kind: 2, parent: 99)), []);
-        Assert.False(view.Draws(0)); // a parent below none
-        Assert.False(view.Draws(1)); // a row cannot seat itself
-        Assert.False(view.Draws(2)); // a parent is always an earlier row
-        Assert.False(view.Draws(3)); // a parent beyond the view
-        Assert.Equal(Rows.None, view.At(1).Parent); // an unusable parent reads as none
-    }
-
-    [Fact]
-    public void AChildOfARowThatDrawsNothingDrawsNothing()
-    {
-        var view = new Rows(Together(Row(kind: 2, parent: 7), Row(kind: 0, parent: 0), Row(kind: 2, parent: 1)), []);
-        Assert.False(view.Draws(0));
-        Assert.False(view.Draws(1)); // its parent draws nothing
-        Assert.False(view.Draws(2)); // and so its parent's parent does neither
-    }
-
-    [Fact]
-    public void TextOutsideTheTextRunReadsAsEmpty()
-    {
-        var words = "Hi"u8.ToArray();
-        foreach (var (offset, length) in new[] { (2L, 5L), (-1L, 1L), (1L, -3L), (3L, 0L), (long.MaxValue, 2L) })
+        foreach (var flags in new[] { 128L, 256L, 1L << 20, long.MaxValue })
         {
-            Assert.Equal("", new Rows(Row(textOffset: offset, textLength: length), words).At(0).Text);
+            Assert.Throws<HostException>(() => Read([View(flags: flags)]));
         }
-        Assert.Equal("Hi", new Rows(Row(textOffset: 0, textLength: 2), words).At(0).Text);
     }
 
     [Fact]
-    public void AHintOutsideTheTextRunReadsAsEmpty()
+    public void TextOutsideTheTextRunIsRefused()
     {
-        var view = new Rows(Row(kind: 4, hintOffset: 4, hintLength: 2), "Hi"u8.ToArray());
-        Assert.Equal("", view.At(0).Hint);
-        var inside = new Rows(Row(kind: 4, hintOffset: 1, hintLength: 1), "Hi"u8.ToArray());
-        Assert.Equal("i", inside.At(0).Hint);
-    }
-
-    [Fact]
-    public void InvalidUtf8IsDecodedWithReplacement()
-    {
-        var broken = new byte[] { 0x41, 0xC3, 0x28, 0x42 }; // 0xC3 0x28 is not a whole character
-        var view = new Rows(Row(textOffset: 0, textLength: broken.Length), broken);
-        Assert.Equal("A\uFFFD(B", view.At(0).Text);
-    }
-
-    [Fact]
-    public void NumbersAHostCannotLayOutReadAsZero()
-    {
-        var view = new Rows(Row(size: double.NaN, padding: -4, spacing: double.PositiveInfinity, radius: double.NegativeInfinity, width: -1, height: double.NaN, grow: -0.5), []);
-        var row = view.At(0);
-        Assert.All(new[] { row.Size, row.Padding, row.Spacing, row.Radius, row.Width, row.Height, row.Grow }, value => Assert.Equal(0.0, value));
-    }
-
-    [Fact]
-    public void AWeightOutsideItsRangeIsClampedIntoIt()
-    {
-        var view = new Rows(Together(Row(weight: -50), Row(weight: 0), Row(weight: 400), Row(weight: 5000)), []);
-        var weights = new int[view.Count];
-        for (var row = 0; row < view.Count; row++)
+        var words = Utf8("Hi");
+        foreach (var (offset, length) in new[] { (2L, 5L), (-1L, 1L), (1L, -3L), (long.MaxValue, 2L) })
         {
-            weights[row] = view.At(row).Weight;
+            Assert.Throws<HostException>(() => Read([View(textOffset: offset, textLength: length)], text: words));
         }
-        Assert.Equal([100, 100, 400, 900], weights);
+        Assert.Equal("Hi", Read([View(textOffset: 0, textLength: 2)], text: words).Controls[0].Words);
+        Assert.Equal("i", Read([View(kind: 4, hintOffset: 1, hintLength: 1)], text: words).Controls[0].Hint);
+        Assert.Throws<HostException>(() => Read([View(kind: 4, hintOffset: 4, hintLength: 2)], text: words));
+        Assert.Equal("", Read([View(kind: 4, textOffset: 2, textLength: 0)], text: words).Controls[0].Words);
     }
 
     [Fact]
-    public void AKindTheHostDoesNotKnowDrawsNothing()
+    public void InvalidUtf8IsRefused()
     {
-        var view = new Rows(Together(Row(kind: 17), Row(kind: -1), Row(kind: 16)), []);
-        Assert.False(view.Draws(0));
-        Assert.False(view.Draws(1));
-        Assert.True(view.Draws(2)); // a sheet is the last kind the host draws
+        byte[] broken = [0x41, 0xC3, 0x28, 0x42]; // 0xC3 0x28 is not a whole character
+        Assert.Throws<HostException>(() => Read([View(textOffset: 0, textLength: broken.Length)], text: broken));
     }
 
     [Fact]
-    public void ARunThatIsNotWholeRowsIsRefused()
+    public void NumbersAHostCannotLayOutAreRefused()
     {
-        Assert.Throws<HostException>(() => new Rows(new byte[100], []));
+        Assert.Throws<HostException>(() => Read([View(size: double.NaN)]));
+        Assert.Throws<HostException>(() => Read([View(padding: -4)]));
+        Assert.Throws<HostException>(() => Read([View(spacing: double.PositiveInfinity)]));
+        Assert.Throws<HostException>(() => Read([View(radius: double.NegativeInfinity)]));
+        Assert.Throws<HostException>(() => Read([View(width: -1)]));
+        Assert.Throws<HostException>(() => Read([View(height: double.NaN)]));
+        Assert.Throws<HostException>(() => Read([View(grow: -0.5)]));
+        Assert.Equal(0.0, Read([View(width: 0)]).Controls[0].Fit.Width);
     }
 
     [Fact]
-    public void ChildrenAreNamedInDrawingOrder()
+    public void AWeightOutsideItsRangeIsRefused()
     {
-        var view = new Rows(Together(Row(kind: 0), Row(kind: 2, parent: 0), Row(kind: 2, parent: 0), Row(kind: 2, parent: 3), Row(kind: 2, parent: 3)), []);
-        Assert.Equal([1, 2], view.Children(0));
-        Assert.Empty(view.Children(3)); // row 4 names it, but draws nothing
-        Assert.Empty(view.Children(4));
+        foreach (var weight in new[] { 99L, 0L, 901L, long.MinValue })
+        {
+            Assert.Throws<HostException>(() => Read([View(weight: weight)]));
+        }
+        Assert.Equal(400.0, Read([View(weight: 400)]).Controls[0].Look.Weight);
+    }
+
+    [Fact]
+    public void AColourOutsidePackedRgbaIsRefused()
+    {
+        foreach (var colour in new[] { -1L, (long)uint.MaxValue + 1, long.MaxValue })
+        {
+            Assert.Throws<HostException>(() => Read([View(colour: colour)]));
+            Assert.Throws<HostException>(() => Read([View(background: colour)]));
+            Assert.Throws<HostException>(() => Read([View(border: colour)]));
+        }
+        Assert.Equal(uint.MaxValue, Read([View(colour: uint.MaxValue)]).Controls[0].Look.Ink);
     }
 
     [Fact]
     public void FlagsReadAsTheStateTheyName()
     {
-        var view = new Rows(Row(flags: 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128), []);
-        var row = view.At(0);
-        Assert.True(row.Disabled && row.On && row.Secure && row.Monospaced && row.Slanted && row.Centred && row.OnCommit);
-        Assert.Equal(1 | 2 | 4 | 8 | 16 | 32 | 64 | 128, row.Flags); // an unknown bit is kept, not read
+        var control = Read([View(flags: RowFlags.All)]).Controls[0];
+        Assert.True(control.Fit.Disabled && control.Fit.On && control.Fit.Secure && control.Fit.Monospaced && control.Fit.Slanted && control.Fit.Centred && control.Fit.OnCommit);
+        Assert.Equal(RowFlags.All, control.Fit.Flags);
+    }
+
+    [Fact]
+    public void AFrameWithNoRowsReadsNothing()
+    {
+        var shown = Read([]);
+        Assert.Empty(shown.Controls);
+        Assert.Empty(shown.Roots);
+        Assert.Empty(shown.Asks);
+        Assert.Empty(shown.Scenes);
+    }
+
+    [Fact]
+    public void AskRowsStartAtFieldZeroAndGatherTheirArguments()
+    {
+        var words = Utf8("t1foldersecond");
+        var shown = Read([View(kind: 0)], asks:
+        [
+            Asked(0, number: 2, textOffset: 0, textLength: 2),
+            Asked(1, textOffset: 2, textLength: 6),
+            Asked(1, textOffset: 8, textLength: 6),
+            Asked(2, number: 100),
+        ], text: words);
+        var ask = Assert.Single(shown.Asks);
+        Assert.Equal((2L, "t1", "list-directories"), (ask.Code, ask.Ticket, ask.Kind()));
+        Assert.Equal(["folder", "second"], ask.Texts(1));
+        Assert.Equal(("folder", 100L), (ask.Text(1), ask.Number(2)));
+        Assert.True(ask.Flag(2));
+        Assert.Equal(["t1"], shown.Requests.Select(request => request.Ticket));
+        Assert.Empty(shown.Slices);
+        Assert.Empty(shown.Diagnostics);
+    }
+
+    [Fact]
+    public void AnAskFieldBeforeAnyAskOrBelowZeroIsRefused()
+    {
+        Assert.Throws<HostException>(() => Read([View(kind: 0)], asks: [Asked(1)]));
+        Assert.Throws<HostException>(() => Read([View(kind: 0)], asks: [Asked(0, 1), Asked(-1)]));
+    }
+
+    [Fact]
+    public void AnAskWithAnUnknownCodeIsRefused()
+    {
+        foreach (var code in new[] { 0L, 26L, 99L, 102L, -1L })
+        {
+            Assert.Throws<HostException>(() => Read([View(kind: 0)], asks: [Asked(0, number: code)]));
+        }
+    }
+
+    [Fact]
+    public void SliceWritesAndDiagnosticsAreReadByCode()
+    {
+        var words = Utf8("keytextwhy");
+        var shown = Read([View(kind: 0)], asks:
+        [
+            Asked(0, number: Ask.SliceWrite, textOffset: 0, textLength: 3),
+            Asked(1, textOffset: 3, textLength: 4),
+            Asked(0, number: Ask.Diagnostic, textOffset: 7, textLength: 3),
+        ], text: words);
+        Assert.Equal([("key", "text")], shown.Slices);
+        Assert.Equal(["why"], shown.Diagnostics);
+        Assert.Empty(shown.Requests);
+    }
+
+    [Fact]
+    public void PairArgumentsAreReadTwoRowsAtATime()
+    {
+        var words = Utf8("Accepttext/plainZoe");
+        var shown = Read([View(kind: 0)], asks:
+        [
+            Asked(0, number: 10),
+            Asked(3, textOffset: 0, textLength: 6),
+            Asked(3, textOffset: 6, textLength: 10),
+            Asked(3, textOffset: 16, textLength: 3),
+        ], text: words);
+        Assert.Equal([("Accept", "text/plain"), ("Zoe", "")], shown.Asks[0].Pairs(3));
+    }
+
+    [Fact]
+    public void ACapabilityNameIsKnownOnlyForItsCode()
+    {
+        Assert.Equal("run", new Ask(1, "", []).Kind());
+        Assert.Equal("process-stop", new Ask(25, "", []).Kind());
+        Assert.Equal("", new Ask(Ask.SliceWrite, "", []).Kind());
+        Assert.Equal("", new Ask(Ask.Diagnostic, "", []).Kind());
+        Assert.Equal("", new Ask(0, "", []).Kind());
+        Assert.Equal(25, Ask.Kinds.Count);
     }
 }
