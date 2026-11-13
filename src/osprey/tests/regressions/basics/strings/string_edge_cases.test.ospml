@@ -63,14 +63,11 @@ printRejected (label, outcome) =
         Success _value => printUnexpected label
         Error _message => print "${label} rejected\n"
 
-(** Prints `label` quoted as "hi" cut to its first `n` bytes. *)
-printTakeCut (label, n) = printQuoted (label, take ("hi", n))
-
 (** Prints one labelled clamping cut of "hi": `take` keeps the front bytes,
     `drop` skips them. *)
 printClamp c =
     match c.front
-        true => printTakeCut (c.label, c.at)
+        true => printQuoted (c.label, take ("hi", c.at))
         false => printQuoted (c.label, drop ("hi", c.at))
 
 (** Prints one labelled `substring ("hi", c.from, c.to)` boundary: the quoted
@@ -94,8 +91,8 @@ cursorReading row =
 printCursorReading row =
     reading = cursorReading row
     match row.ok
-        false => printRejection (row.label, reading)
         true => printOutcome (row.label, reading)
+        false => printRejection (row.label, reading)
 
 (** True when every condition listed in `wanted` holds. *)
 allHold wanted =

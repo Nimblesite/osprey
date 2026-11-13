@@ -60,13 +60,19 @@ fn printRejected(label, outcome) = match outcome {
 
 /// Prints one labelled clamping cut of "hi": `take` keeps the front bytes,
 /// `drop` skips them.
-fn printClamp(c) = printQuoted(c.label, c.front ? take("hi", c.at) : drop("hi", c.at))
+fn printClamp(c) = match c.front {
+    true => printQuoted(c.label, take("hi", c.at))
+    false => printQuoted(c.label, drop("hi", c.at))
+}
 
 /// Prints one labelled `substring("hi", c.from, c.to)` boundary: the quoted
 /// success when `c.ok` holds, its rejection otherwise.
 fn printBoundary(c) = {
     let edge = substring("hi", c.from, c.to)
-    c.ok ? printOutcomeQuoted(c.label, edge) : printRejected(c.label, edge)
+    match c.ok {
+        true => printOutcomeQuoted(c.label, edge)
+        false => printRejected(c.label, edge)
+    }
 }
 
 /// The cursor reading `row` names: its probe builtin applied to "héllo" at
@@ -81,7 +87,10 @@ fn cursorReading(row) = match row.probe {
 /// rejection message otherwise.
 fn printCursorReading(row) = {
     let reading = cursorReading(row)
-    row.ok ? printOutcome(row.label, reading) : printRejection(row.label, reading)
+    match row.ok {
+        true => printOutcome(row.label, reading)
+        false => printRejection(row.label, reading)
+    }
 }
 
 /// True when every condition listed in `wanted` holds.
