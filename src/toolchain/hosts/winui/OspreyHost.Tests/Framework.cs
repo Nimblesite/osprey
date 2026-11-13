@@ -14,6 +14,12 @@ static partial class Framework
     /// <summary>The WinUI host's folder.</summary>
     public static string Host => Path.Combine(Root, "src", "toolchain", "hosts", "winui");
 
+    /// <summary>Every node the framework defines, as its constructor is spelled.</summary>
+    public static IReadOnlyList<string> NodeVariants => [.. Variants(Source("node.ospml"), "type Node A =")];
+
+    /// <summary>Every component kind the framework tells, as it travels in the frame [NATIVE-SHM-NODES].</summary>
+    public static IReadOnlyList<string> NodeKinds => [.. NodeVariants.Select(Told)];
+
     /// <summary>Every capability kind the framework requests, as it travels on the wire.</summary>
     public static IReadOnlyList<string> CapabilityKinds => [.. Variants(Source("capability.ospml"), "type Capability =").Select(Wire)];
 
@@ -58,6 +64,9 @@ static partial class Framework
 
     /// <summary>A constructor's wire name: <c>ContextMenu</c> travels as <c>context-menu</c>.</summary>
     public static string Kebab(string name) => Capital().Replace(name, "-$1").ToLowerInvariant();
+
+    // The one node that travels under another name: a typeset tree is told as `math`, the kind its renderer draws.
+    static string Told(string variant) => variant == "Typeset" ? "math" : Kebab(variant);
 
     // The capability encoder's aliases.
     static string Wire(string name) => name switch

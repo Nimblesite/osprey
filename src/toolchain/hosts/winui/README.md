@@ -2,12 +2,12 @@
 
 `OspreyHost.exe <app.dll> [arguments]` opens one window and draws the [Osprey Native](../../../osprey/packages/native/README.md) application compiled into `app.dll` with WinUI, the native UI framework of the Windows App SDK. It uses Mica and Segoe Fluent Icons, with no XAML anywhere. The host is generic: every application decision, word and screen is Osprey. The contract is [spec 0048](../../../../docs/specs/platforms/0048-WinUiHost.md) [WINUI-HOST]; delivery is [plan 0037](../../../../docs/plans/0037-osprey-native.md).
 
-There is one host path: the shared-memory bridge and its typed frame. There is no JSON envelope, event, region, or scene decoder.
+There is one host path: the shared-memory bridge and its typed frame. There is no JSON envelope, event, region, or scene decoder. The application tells its component tree into that frame as typed rows [NATIVE-SHM-NODES], and the host draws it with main's WinUI renderer.
 
 | Project | Holds |
 | --- | --- |
 | `OspreyHost.Core` | The DLL boundary and import slots, the shared-memory bridge and whole-frame leases, the one checked row reader, the scene row reader, the typed host events, the capability adapters, the Windows folder walk and the store; nothing here needs a window |
-| `OspreyHost` | The window, the shared view page, the scene painter, the frame clock, the pickers and `--self-test`; Native AOT |
+| `OspreyHost` | The window, the component renderer, the row view, the scene painter, the frame clock, the pickers and `--self-test`; Native AOT |
 | `OspreyHost.Tests` | xUnit v3 on Microsoft.Testing.Platform |
 
 ## Run
@@ -39,7 +39,9 @@ The host opens the `osprey_native_bridge` table the DLL exports before its entry
 
 Asks answer through the existing adapters with a typed [`Ask`](OspreyHost.Core/Rows.cs) instead of JSON: a field-0 row starts a request (codes 1 to 25, 100 for a slice write, 101 for a refused event's diagnostic), and the rows after it are its arguments by position. A chooser completes with the bare path, empty when cancelled; every other completion carries the same result document its adapter produced.
 
-[`SharedViewPage`](OspreyHost/SharedViewPage.cs) draws every row kind with real WinUI controls — column, line, label, press, entry, gap, scroll, layer, toggle, picker, option, rule, image, canvas, editor, menu and sheet, the last floating in the page's overlay — and restyles them in place so an entry keeps its focus and caret. Every colour, size, weight and space comes from the rows; the host holds no style of its own. A press or label hint names its icon, a field's hint is its prompt and an option's hint its key. A canvas row draws its scene through [`Scenery.cs`](OspreyHost/Scenery.cs) and paints it through [`ScenePaint.cs`](OspreyHost/ScenePaint.cs).
+[`Told`](OspreyHost.Core/Nodes.cs) reads a checked frame's `field`, `record` and `list` rows into the component tree main's renderer drew: a record is a component with a `kind` and the members the application told, a list its children. [`RegionStore`](OspreyHost.Core/Regions.cs) keeps each region as its own tree and leaves a region whose tree did not change untouched, so only what moved is drawn again. [`Renderer`](OspreyHost/Renderer.cs), [`Containers`](OspreyHost/Containers.cs), [`Content`](OspreyHost/Content.cs), [`Controls`](OspreyHost/Controls.cs), [`Panels`](OspreyHost/Panels.cs) and [`Styles`](OspreyHost/Styles.cs) are main's renderer, drawing each component kind with WinUI's own controls and the system's theme resources; a kind this host does not draw is a visible diagnostic, never a guess. A scene component names the scene rows the frame gave its record, drawn and painted through [`Scenery.cs`](OspreyHost/Scenery.cs) and [`ScenePaint.cs`](OspreyHost/ScenePaint.cs).
+
+[`SharedViewPage`](OspreyHost/SharedViewPage.cs) still draws a frame of plain view rows — column, line, label, press, entry, gap, scroll, layer, toggle, picker, option, rule, image, canvas, editor, menu and sheet, the last floating in the page's overlay — restyling them in place so an entry keeps its focus and caret. Every colour, size, weight and space comes from the rows; the host holds no style of its own. A press or label hint names its icon, a field's hint is its prompt and an option's hint its key.
 
 Events are typed all the way down: control events, key, pointer, viewed, completed, phase `active`, appearance, and frames while an `animate` ask keeps the clock on. Under `--self-test` the clock is steady, so a script's `frames` step sends exactly that many 1/60 s frames and the window stands still between steps.
 
@@ -68,4 +70,4 @@ The Core and test projects also build and run on macOS (`dotnet test OspreyHost.
 
 ## Coverage
 
-[`Coverage.cs`](OspreyHost.Core/Coverage.cs) is this host's column of the [coverage matrix](../../../../docs/specs/applications/0047-OspreyNativeHosts.md): every row kind view.ospml numbers is drawn here, and every capability kind is answered or refused by name. It answers `measure-folders`, `reveal`, `choose-file`, `choose-folder`, `save-file`, `run`, `cancel`, the four store kinds and `animate`; every other capability completes with an error naming it. The tests read the framework's sources, so a capability added to `@osprey/native` fails them until this host answers or refuses it.
+[`Coverage.cs`](OspreyHost.Core/Coverage.cs) is this host's column of the [coverage matrix](../../../../docs/specs/applications/0047-OspreyNativeHosts.md): every row kind view.ospml numbers and every told row told.ospml numbers is read here, every component kind is drawn or refused by name, and every capability kind is answered or refused by name. It answers `measure-folders`, `reveal`, `choose-file`, `choose-folder`, `save-file`, `run`, `cancel`, the four store kinds and `animate`; every other capability completes with an error naming it. The tests read the framework's sources, so a capability added to `@osprey/native` fails them until this host answers or refuses it.

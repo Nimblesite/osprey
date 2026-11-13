@@ -4,8 +4,8 @@ namespace Osprey.Host.Tests;
 
 /// <summary>
 /// The host's standing rules: code-only WinUI with no XAML [WINUI-HOST-NO-XAML], no UI framework
-/// beyond the Windows App SDK, one typed host path with no JSON envelope, and no application's name,
-/// words or slices in its source [NATIVE-HOSTS-NEUTRAL].
+/// beyond the Windows App SDK, one typed host path with no JSON envelope [NATIVE-SHM-VIEW], and no
+/// application's name, words or slices in its source [NATIVE-HOSTS-NEUTRAL].
 /// </summary>
 public sealed class GuardTests
 {
@@ -37,10 +37,15 @@ public sealed class GuardTests
     [Fact]
     public void TheJsonHostIsGone()
     {
-        string[] gone = ["Envelope", "RegionStore", "SceneDecoder", "Viewports", "osprey_app_start", "osprey_app_dispatch"];
+        // The envelope, its JSON document and the scene decoder it fed are gone; the region store and
+        // the viewport check stay, reading the told rows [NATIVE-SHM-NODES] instead of decoded JSON.
+        string[] gone = ["Envelope", "SceneDecoder", "osprey_app_start", "osprey_app_dispatch"];
         var sources = HostFiles().Where(path => path.EndsWith(".cs", StringComparison.Ordinal)).ToList();
         Assert.NotEmpty(sources);
         Assert.All(gone, word => Assert.DoesNotContain(sources, path => File.ReadAllText(path).Contains(word, StringComparison.Ordinal)));
+        // Nothing an application sends is JSON: the frame's own readers and types hold no JSON at all.
+        string[] boundary = ["Bridge.cs", "Library.cs", "Nodes.cs", "Regions.cs", "Rows.cs", "SceneRows.cs", "Touch.cs"];
+        Assert.All(boundary, name => Assert.DoesNotContain("Json", File.ReadAllText(Path.Combine(Framework.Host, "OspreyHost.Core", name)), StringComparison.Ordinal));
     }
 
     [Fact]

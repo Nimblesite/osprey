@@ -117,7 +117,7 @@ sealed partial class SharedViewPage
         var seat = new Seat(button, RowKind.Press);
         seat.Restyle = (next, at) => Pressed(button, next.Controls[at]);
         seat.Restyle(shown, index);
-        button.Click += (_, _) => Send(seat.Action, "");
+        button.Click += (_, _) => control(seat.Action, "");
         return seat;
     }
 
@@ -145,10 +145,10 @@ sealed partial class SharedViewPage
         var seat = new Seat(box, RowKind.Entry);
         seat.Restyle = (next, at) => Entered(box, seat, next.Controls[at]);
         seat.Restyle(shown, index);
-        box.TextChanged += (_, _) => { if (!applying && !seat.Commit) Send(seat.Action, box.Text); };
+        box.TextChanged += (_, _) => { if (!applying && !seat.Commit) control(seat.Action, box.Text); };
         box.KeyDown += (_, args) =>
         {
-            if (args.Key == Windows.System.VirtualKey.Enter && !applying) Send(seat.Action, box.Text);
+            if (args.Key == Windows.System.VirtualKey.Enter && !applying) control(seat.Action, box.Text);
         };
         return seat;
     }
@@ -171,7 +171,7 @@ sealed partial class SharedViewPage
         var seat = new Seat(box, RowKind.Entry) { Secure = true };
         seat.Restyle = (next, at) => Secured(box, next.Controls[at]);
         seat.Restyle(shown, index);
-        box.PasswordChanged += (_, _) => { if (!applying) Send(seat.Action, box.Password); };
+        box.PasswordChanged += (_, _) => { if (!applying) control(seat.Action, box.Password); };
         return seat;
     }
 
@@ -192,7 +192,7 @@ sealed partial class SharedViewPage
         var seat = new Seat(box, RowKind.Editor);
         seat.Restyle = (next, at) => Wrote(box, next.Controls[at]);
         seat.Restyle(shown, index);
-        box.TextChanged += (_, _) => { if (!applying) Send(seat.Action, box.Text); };
+        box.TextChanged += (_, _) => { if (!applying) control(seat.Action, box.Text); };
         return seat;
     }
 
@@ -211,7 +211,7 @@ sealed partial class SharedViewPage
         var seat = new Seat(flip, RowKind.Toggle);
         seat.Restyle = (next, at) => Switched(flip, next.Controls[at]);
         seat.Restyle(shown, index);
-        flip.Toggled += (_, _) => { if (!applying) Send(seat.Action, flip.IsOn ? "true" : "false"); };
+        flip.Toggled += (_, _) => { if (!applying) control(seat.Action, flip.IsOn ? "true" : "false"); };
         return seat;
     }
 
@@ -233,7 +233,7 @@ sealed partial class SharedViewPage
         seat.Restyle(shown, index);
         menu.SelectionChanged += (_, _) =>
         {
-            if (!applying && menu.SelectedItem is ComboBoxItem picked) Send(seat.Action, picked.Tag as string ?? "");
+            if (!applying && menu.SelectedItem is ComboBoxItem picked) control(seat.Action, picked.Tag as string ?? "");
         };
         return seat;
     }
@@ -324,7 +324,7 @@ sealed partial class SharedViewPage
     {
         if (shown.Scenes.TryGetValue(index, out var scene))
         {
-            view.Show(scene, shown.Controls[index].Action ?? RowsNone, Send);
+            view.Show(scene, shown.Controls[index].Action ?? RowsNone, send);
         }
         else
         {
@@ -356,7 +356,7 @@ sealed partial class SharedViewPage
         {
             var item = shown.Controls[child];
             var entry = new MenuFlyoutItem { Text = item.Words, IsEnabled = !item.Fit.Disabled };
-            entry.Click += (_, _) => Send(item.Action ?? RowsNone, "");
+            entry.Click += (_, _) => control(item.Action ?? RowsNone, "");
             items.Items.Add(entry);
         }
     }
@@ -382,11 +382,11 @@ sealed partial class SharedViewPage
             Content = new FontIcon { Glyph = Glyphs.For("dismiss") ?? "" },
         };
         AutomationProperties.SetName(close, "dismiss");
-        close.Click += (_, _) => { if (!applying) Send(seat.Action, ""); };
+        close.Click += (_, _) => { if (!applying) control(seat.Action, ""); };
         Grid.SetRow(close, 0);
         pile.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         pile.Children.Add(close);
-        veil.Tapped += (_, _) => { if (!applying) Send(seat.Action, ""); };
+        veil.Tapped += (_, _) => { if (!applying) control(seat.Action, ""); };
         card.Tapped += (_, args) => args.Handled = true; // the sheet itself is not its dismissal
         overlay.Children.Add(veil);
         return seat;

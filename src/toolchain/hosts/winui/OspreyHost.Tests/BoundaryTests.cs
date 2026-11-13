@@ -54,7 +54,7 @@ public sealed class BoundaryTests
         var library = Library.Open(path);
         var shown = Received(library.Open(Now(), 0, "windows", Path.GetTempPath(), false));
         var canvas = shown.Scenes.Single();
-        var ordinal = shown.Controls[canvas.Key].Action ?? -1;
+        var ordinal = SceneOrdinal(shown, canvas.Key);
         var before = canvas.Value.Shapes.OfType<PathShape>().Count();
         foreach (var (x, y, down) in new[] { (100.0, 400.0, true), (180.0, 430.0, true), (260.0, 420.0, false) })
         {
@@ -63,6 +63,30 @@ public sealed class BoundaryTests
         var after = shown.Scenes[canvas.Key].Shapes.OfType<PathShape>().Count();
         Assert.True(after > before, $"{before} paths before the stroke, {after} after");
     }
+
+    // [NATIVE-SHM-NODES] The ordinal the told scene record carries, found by the row its scene rows name.
+    static long SceneOrdinal(Shown shown, int row) =>
+        Records(Assert.IsType<ToldFrame>(Told.Frame(shown)).Regions.Select(region => region.Node).SelectMany(Every))
+            .First(node => node.Number("sceneRow") == row)
+            .Number("event");
+
+    // Every record a told tree holds, depth first, so a scene anywhere is found.
+    static IEnumerable<Node> Every(Node node)
+    {
+        if (node.IsRecord)
+        {
+            yield return node;
+        }
+        foreach (var child in node.Record.Values.SelectMany(member => member.IsList ? member.List : [member]))
+        {
+            foreach (var found in Every(child))
+            {
+                yield return found;
+            }
+        }
+    }
+
+    static IEnumerable<Node> Records(IEnumerable<Node> nodes) => nodes.Where(node => node.Has("sceneRow"));
 
     /// <summary>
     /// [NATIVE-SHM-VIEW] Tally driven exactly as its reference host drives it: open, three adds, a

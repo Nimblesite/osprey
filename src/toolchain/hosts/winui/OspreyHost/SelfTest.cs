@@ -15,8 +15,8 @@ namespace Osprey.Host.WinUI;
 /// the application, through the controls' own automation peers, and saves what the window shows.
 /// A script names only what a person sees: words on screen, a button's label, a row's text. Steps:
 /// <c>wait</c> and <c>gone</c> for words, <c>invoke</c> a button, <c>toggle</c> a switch,
-/// <c>choose</c> a row or picker item, <c>type</c> into a field, <c>set</c> a scene's slider,
-/// <c>drag</c> a scene element by a distance in its units, <c>key</c> to press a key in a scene,
+/// <c>choose</c> a row, <c>type</c> into a field, <c>set</c> a slider to a value, <c>drag</c> a scene
+/// element by a distance in its units, <c>key</c> to press a key in a scene,
 /// <c>frames</c> to let the steady clock run that many 1/60 s frames, <c>sleep</c> for seconds,
 /// and <c>shot</c> to save the window as a PNG; on screen, <c>shot</c> also saves the window's client
 /// area as the screen shows it, which the goldens check too, and <c>&lt;name&gt;.access.txt</c>, the
@@ -136,13 +136,9 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             return missing;
         }
-        if (Find(words) is not { } element)
-        {
-            return $"nothing shows \"{words}\"";
-        }
         try
         {
-            return act(element);
+            return act(Find(words)!);
         }
         catch (Exception problem) when (problem is ElementNotEnabledException or InvalidOperationException)
         {
@@ -152,6 +148,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
 
     static string? Invoke(FrameworkElement element) => Up<ButtonBase>(element) switch
     {
+        AppBarButton bar => Invoked(() => new AppBarButtonAutomationPeer(bar).Invoke()),
+        HyperlinkButton link => Invoked(() => new HyperlinkButtonAutomationPeer(link).Invoke()),
         Button button => Invoked(() => new ButtonAutomationPeer(button).Invoke()),
         _ => "it is not a button",
     };
@@ -172,18 +170,22 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         {
             Slider slider => $"slider \"{name}\" value {slider.Value} of {slider.Minimum} to {slider.Maximum}",
             ToggleSwitch toggle => $"toggle \"{toggle.Header ?? name}\"",
-            TextBox box => $"field \"{(name == "" ? box.PlaceholderText : name)}\"",
-            PasswordBox box => $"field \"{name}\"",
+            TextBox box => $"field \"{(name == "" ? box.Header : name)}\"",
+            PasswordBox secure => $"field \"{name}\"",
             ComboBox menu when name != "" => $"picker \"{name}\"",
+            AppBarButton bar => $"button \"{bar.Label}\"",
+            AppBarToggleButton bar => $"toggle \"{bar.Label}\"",
             ButtonBase button when name != "" => $"button \"{name}\"",
             ButtonBase { Content: string words } => $"button \"{words}\"",
+            ListViewItem row => $"row \"{string.Join(" ", Tree(row).OfType<TextBlock>().Select(text => text.Text))}\"",
             _ => null,
         };
     }
 
-    static string? Toggle(FrameworkElement element) => Up<ToggleSwitch>(element) switch
+    static string? Toggle(FrameworkElement element) => (Up<ToggleSwitch>(element), Up<AppBarToggleButton>(element)) switch
     {
-        { } toggle => Invoked(() => new ToggleSwitchAutomationPeer(toggle).Toggle()),
+        ({ } toggle, _) => Invoked(() => new ToggleSwitchAutomationPeer(toggle).Toggle()),
+        (_, { } bar) => Invoked(() => new AppBarToggleButtonAutomationPeer(bar).Toggle()),
         _ => "it is not a switch",
     };
 
@@ -197,11 +199,12 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         return null;
     }
 
-    // A choice is a picker's item when the words name one; otherwise it is a row's own press, which
-    // the words are drawn inside, so clicking it delivers the row's key exactly as a hand would.
+    // A row a person would scroll to: when nothing on screen shows `words`, the list holding such a
+    // row scrolls it into view, since a list makes rows only as they come into view. A picker's item
+    // is chosen through its picker, as a person's click on it would.
     async Task<string?> Chosen(string words)
     {
-        if (await Until(() => Find(words) is not null || Picked(words) is not null, $"no row or picker shows \"{words}\"") is { } missing)
+        if (await Until(() => Find(words) is not null || Listed(words) is not null || Picked(words) is not null, $"no row or picker shows \"{words}\"") is { } missing)
         {
             return missing;
         }
@@ -212,27 +215,12 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
             picker.Menu.SelectedIndex = picker.Index;
             return null;
         }
-        return Find(words) is { } element && PressOver(element) is { } press
-            ? Invoked(() => new ButtonAutomationPeer(press).Invoke())
-            : $"nothing presses \"{words}\"";
-    }
-
-    // The press that covers the element: a button it sits in, or the sibling button a row draws over
-    // its body, so choosing a row delivers the row's key as a hand's click does.
-    static Button? PressOver(FrameworkElement element)
-    {
-        for (DependencyObject? node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+        if (Find(words) is null && Listed(words) is { } listed)
         {
-            if (node is Button button)
-            {
-                return button;
-            }
-            if (node is Panel panel && panel.Children.OfType<Button>().FirstOrDefault(child => child.Visibility == Visibility.Visible) is { } over)
-            {
-                return over;
-            }
+            listed.List.ScrollIntoView(listed.Row);
+            await Task.Delay(Settle);
         }
-        return null;
+        return await Act(words, Choose);
     }
 
     // A picker whose item shows `words`, whether or not its flyout has made the item yet.
@@ -253,17 +241,45 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
         return null;
     }
 
-    // Whether a picker item's content holds text showing `words`: its panels and borders exist as
-    // soon as the item is built, before the flyout makes a visual tree for it.
+    // The list and row whose content shows `words`, whether or not the list has made the row yet.
+    (ListView List, ListViewItem Row)? Listed(string words)
+    {
+        var lists = window.Content is { } root ? Tree(root).OfType<ListView>() : Enumerable.Empty<ListView>();
+        foreach (var list in lists)
+        {
+            if (list.Items.OfType<ListViewItem>().FirstOrDefault(row => Holds(row.Content, words)) is { } row)
+            {
+                return (list, row);
+            }
+        }
+        return null;
+    }
+
+    // Whether a row's content holds text showing `words`: its panels, borders and content controls
+    // exist as soon as the row is built, before the list makes a visual tree for it.
     static bool Holds(object? content, string words) => content switch
     {
         string text => text == words,
-        TextBlock text => text.Text == words,
+        TextBlock block => block.Text == words,
         Panel panel => panel.Children.Any(child => Holds(child, words)),
         Border border => Holds(border.Child, words),
         ContentControl control => Holds(control.Content, words),
         _ => false,
     };
+
+    // A full collection first, so a row is chosen as it would be long after it was drawn, when the
+    // managed wrappers of its list may have been collected and remade.
+    string? Choose(FrameworkElement element)
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        return Up<ListViewItem>(element) switch
+        {
+            null => "it is not in a row",
+            { } row when window.Choose(row) => null,
+            _ => "its row's list takes no choice",
+        };
+    }
 
     static string? Invoked(Action action)
     {
@@ -292,7 +308,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     static bool Says(FrameworkElement element, string words) => element switch
     {
         TextBlock text => text.Text == words,
-        ButtonBase { Content: string label } => label == words,
+        AppBarButton bar => bar.Label == words,
+        AppBarToggleButton bar => bar.Label == words,
         _ => AutomationProperties.GetName(element) == words,
     };
 

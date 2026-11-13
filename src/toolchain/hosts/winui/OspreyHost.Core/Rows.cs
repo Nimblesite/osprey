@@ -3,7 +3,7 @@ using Osprey.Host.Scenes;
 
 namespace Osprey.Host;
 
-/// <summary>The kinds of control a row can name [NATIVE-SHM-VIEW], numbered as view.ospml numbers them: a column is 0 and a sheet is 16.</summary>
+/// <summary>The kinds of control a row can name [NATIVE-SHM-VIEW], numbered as view.ospml numbers them: a column is 0 and a sheet is 16; the told rows of [NATIVE-SHM-NODES] follow at 33.</summary>
 public enum RowKind
 {
     /// <summary>Children top to bottom.</summary>
@@ -56,6 +56,34 @@ public enum RowKind
 
     /// <summary>Children floating above the view as a modal sheet.</summary>
     Sheet,
+
+    /// <summary>[NATIVE-SHM-NODES] One told value: its name is its hint and its type its weight.</summary>
+    Field = 33,
+
+    /// <summary>A told record: the rows that name it as their parent are its members.</summary>
+    Record = 34,
+
+    /// <summary>A told list: the rows that name it as their parent are its items, in order.</summary>
+    List = 35,
+}
+
+/// <summary>The told rows' <c>weight</c> [NATIVE-SHM-NODES]: which typed value a <c>field</c> row carries.</summary>
+public static class RowValue
+{
+    /// <summary>The value is the row's text.</summary>
+    public const long Text = 0;
+
+    /// <summary>The value is the row's ink read as a signed whole number.</summary>
+    public const long Whole = 1;
+
+    /// <summary>The value is the row's size.</summary>
+    public const long Real = 2;
+
+    /// <summary>The value is the row's ink, zero or not.</summary>
+    public const long Flag = 3;
+
+    /// <summary>The value is the row's size, negated.</summary>
+    public const long NegativeReal = 4;
 }
 
 /// <summary>The <c>traits</c> flags a row's fit carries [NATIVE-SHM-VIEW]: every bit outside <see cref="All"/> is refused.</summary>
@@ -114,8 +142,8 @@ public readonly record struct Fit(double Width, double Height, double Grow, long
     public bool OnCommit => (Flags & RowFlags.OnCommit) != 0;
 }
 
-/// <summary>One checked control and the rows drawn inside it [NATIVE-SHM-VIEW].</summary>
-public sealed record Control(RowKind Kind, long? Action, string Words, string Hint, Look Look, Fit Fit, int Parent, IReadOnlyList<int> Children);
+/// <summary>One checked control and the rows drawn inside it [NATIVE-SHM-VIEW], with the value a told field carries [NATIVE-SHM-NODES].</summary>
+public sealed record Control(RowKind Kind, long? Action, string Words, string Hint, Look Look, Fit Fit, int Parent, IReadOnlyList<int> Children, long Value = 0);
 
 /// <summary>One field of an ask: its argument position, its whole number and its text [NATIVE-SHM-ASK].</summary>
 public readonly record struct AskField(long Position, long Number, string Text);
@@ -211,8 +239,12 @@ public sealed class Shown
 /// <summary>Checks and reads a whole frame's four runs, exactly as the reference host's rows reader does.</summary>
 public static class FrameReader
 {
-    // The row kinds view.ospml numbers: a column is 0 and a sheet is 16.
+    // The row kinds view.ospml numbers: a column is 0 and a sheet is 16; told.ospml numbers the
+    // three told kinds that follow at 33.
     const int KindCount = 17;
+
+    /// <summary>Whether a row tells a component rather than draws a control [NATIVE-SHM-NODES].</summary>
+    public static bool Tells(RowKind kind) => kind is RowKind.Field or RowKind.Record or RowKind.List;
 
     // Invalid bytes refuse the frame: the application wrote text that is not UTF-8.
     static readonly UTF8Encoding Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -228,7 +260,8 @@ public static class FrameReader
         var canvases = new List<int>();
         for (var index = 0; index < controls.Count; index++)
         {
-            if (controls[index].Kind == RowKind.Canvas)
+            // A scene is a canvas row, or the told record its scene rows name [NATIVE-SHM-NODES].
+            if (controls[index].Kind is RowKind.Canvas or RowKind.Record)
             {
                 canvases.Add(index);
             }
@@ -265,9 +298,13 @@ public static class FrameReader
 
     static Control Control(NativeView row, int index, ReadOnlySpan<byte> run, List<int> children)
     {
-        if (row.Kind < 0 || row.Kind >= KindCount)
+        if (row.Kind < 0 || (row.Kind >= KindCount && row.Kind is not ((long)RowKind.Field or (long)RowKind.Record or (long)RowKind.List)))
         {
             throw new HostException($"Row {index} has an unknown kind {row.Kind}");
+        }
+        if (row.Kind >= KindCount)
+        {
+            return Told((RowKind)row.Kind, row, index, run, children);
         }
         if ((row.Flags & ~RowFlags.All) != 0)
         {
@@ -287,6 +324,22 @@ public static class FrameReader
             new Fit(Extent(row.Width, index), Extent(row.Height, index), Extent(row.Grow, index), row.Flags, Colour(row.Border, index)),
             row.Parent == -1 ? -1 : (int)row.Parent,
             children);
+    }
+
+    /// <summary>
+    /// One told row [NATIVE-SHM-NODES]: its name is its hint, a field's value is its words, its whole
+    /// number or its real, and its weight says which (0 to 4). Its ink is a value, not a colour, so the
+    /// usual checks for a drawn row do not apply; a weight outside 0 to 4 refuses the frame.
+    /// </summary>
+    static Control Told(RowKind kind, NativeView row, int index, ReadOnlySpan<byte> run, List<int> children)
+    {
+        if (row.Weight is < RowValue.Text or > RowValue.NegativeReal)
+        {
+            throw new HostException($"Row {index} has a told value of an unknown type {row.Weight}");
+        }
+        return new Control(kind, null, Text(run, row.TextOffset, row.TextLength, index), Text(run, row.HintOffset, row.HintLength, index),
+            new Look(0, 0, Extent(row.Size, index), 0, 0, 0, row.Weight), new Fit(0, 0, 0, 0, 0),
+            row.Parent == -1 ? -1 : (int)row.Parent, children, row.Colour);
     }
 
     static List<Ask> Asked(ReadOnlySpan<NativeAsk> rows, ReadOnlySpan<byte> run)

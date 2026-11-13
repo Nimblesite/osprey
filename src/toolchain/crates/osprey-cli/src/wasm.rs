@@ -168,7 +168,12 @@ fn names_boundary(program: &osprey_ast::Program) -> bool {
 }
 
 fn hex(text: &str) -> String {
-    text.bytes().map(|byte| format!("{byte:02x}")).collect()
+    use std::fmt::Write as _;
+    text.bytes().fold(String::new(), |mut out, byte| {
+        // Writing to a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
 }
 
 /// The boundary and bridge symbols a shared-boundary module exports.

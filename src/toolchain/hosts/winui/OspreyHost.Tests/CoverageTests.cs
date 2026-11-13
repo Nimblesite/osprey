@@ -21,6 +21,36 @@ public sealed class CoverageTests
     }
 
     [Fact]
+    public void EveryToldKindIsTheOneTheFrameworkWrites()
+    {
+        Assert.Equal([RowKind.Field, RowKind.Record, RowKind.List], Coverage.ToldKinds);
+        var told = Framework.Source("told.ospml");
+        Assert.Contains("export field = 33", told, StringComparison.Ordinal);
+        Assert.Contains("export record = 34", told, StringComparison.Ordinal);
+        Assert.Contains("export list = 35", told, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryNodeKindIsDrawnOrRefusedExactlyOnce()
+    {
+        Assert.Equal(Framework.NodeKinds.Order(), Coverage.Drawn.Concat(Coverage.Refused).Order());
+        Assert.Empty(Coverage.Drawn.Intersect(Coverage.Refused));
+    }
+
+    [Fact]
+    public void EveryNodeKindIsTheOneTheFrameworkTells()
+    {
+        var told = Framework.Source("told.ospml");
+        Assert.All(Framework.NodeKinds, kind => Assert.Contains($"\"{kind}\"", told, StringComparison.Ordinal));
+        Assert.Contains("math", Framework.NodeKinds);
+        Assert.DoesNotContain("typeset", Framework.NodeKinds);
+    }
+
+    [Fact]
+    public void EveryRefusedKindIsShownAsAVisibleDiagnosticNamingIt() =>
+        Assert.All(Coverage.Refused, kind => Assert.Contains(kind, Coverage.Refusal(kind), StringComparison.Ordinal));
+
+    [Fact]
     public void EveryCapabilityKindIsAnsweredOrRefusedExactlyOnce()
     {
         Assert.Equal(Framework.CapabilityKinds.Order(), Coverage.Answered.Concat(Coverage.Unanswered).Order());
@@ -63,6 +93,8 @@ public sealed class CoverageTests
     [Fact]
     public void TheVocabularyIsReadFromTheFramework()
     {
+        Assert.Contains("meter", Framework.NodeKinds);
+        Assert.Contains("context-menu", Framework.NodeKinds);
         Assert.Contains("measure-folders", Framework.CapabilityKinds);
         Assert.Contains("save-file", Coverage.Answered);
         Assert.Contains("animate", Coverage.Answered);

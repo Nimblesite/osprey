@@ -8,6 +8,21 @@ public sealed record Touch(long Kind, long Ordinal, string Words, string Detail,
     /// <summary>The control numbered <paramref name="ordinal"/> delivering <paramref name="words"/>: empty for a tap, <c>true</c>/<c>false</c> for a switch, a key for a picker, text for a field, a whole number for a splitter or caret.</summary>
     public static Touch Control(long ordinal, string words) => Of(TouchKind.Control) with { Ordinal = ordinal, Words = words };
 
+    /// <summary>
+    /// The words a control's value carries [UI-EVENTS]: nothing for a tap, the text for a field,
+    /// <c>true</c>/<c>false</c> for a switch or disclosure, the chosen key for a picker, and a whole
+    /// number in decimal for a splitter's width or an editor's caret. Anything else is refused.
+    /// </summary>
+    public static string WordsOf(object? value) => value switch
+    {
+        null => "",
+        string text => text,
+        bool flag => flag ? "true" : "false",
+        long whole => whole.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        int whole => whole.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => throw new HostException($"A control cannot deliver a {value.GetType().Name}"),
+    };
+
     /// <summary>A key going down or up over the scene numbered <paramref name="ordinal"/>.</summary>
     public static Touch Key(long ordinal, string name, bool down) => Of(TouchKind.Key) with { Ordinal = ordinal, Words = name, Down = down };
 
