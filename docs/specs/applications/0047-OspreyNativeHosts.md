@@ -133,6 +133,20 @@ One host event is one typed call: a kind, the control it names, two texts, two n
 
 The framework numbers each control that delivers a binding in drawing order and keeps the bindings in the surface. To resolve an event it looks the number up, checks the value kind and produces the typed message; an unknown number or a mismatched value kind is refused, the same store is drawn again and the reason arrives as a diagnostic ask. The host cannot construct an arbitrary action, and a control number is never an authorization token.
 
+### Component rows [NATIVE-SHM-NODES]
+
+An application built from the component vocabulary ([UI-COMPONENTS]) sends its component tree, not pixels and not lowered controls. Each host rebuilds the tree from the frame and draws it with its own native components, so the same application looks native on every host and a host's look never depends on how the tree crossed. The tree is told as view rows of three kinds; a row's name is its hint and its parent is the record or list it belongs to.
+
+| Kind | Row | Reads as |
+| --- | --- | --- |
+| 33 | `field` | One named value. Its weight says which: 0 text (the row's text), 1 a whole number (the colour column, read as a signed 64-bit value), 2 a real (the size column), 3 a flag (the colour column is not zero), 4 a negative real (minus the size column). |
+| 34 | `record` | A record. The rows that name it as their parent are its members; a member with no name is ignored. |
+| 35 | `list` | A list. The rows that name it as their parent are its items, in order, and carry no name. |
+
+The top-level rows are one `theme` record (its `tokens`, each a `name` with `light` and `dark` colours, its `spacing` scale, and its `feedback` and `settle` durations) and one `region` record per region, with its `key` and its `node`. A component is a record with a `kind` and the members that kind declares; [`told.ospml`](../../../src/osprey/packages/native/src/told.ospml) is the one definition of them. A control's `event` is its ordinal: the number a control event names. A `slot` names another region by its key, and the root region's key is `root`. A `scene` record carries its size and its `event`; its shapes, atlas and accessible elements arrive in the scene run, whose marker names the record's row.
+
+A host refuses a frame whose told row has a weight outside 0 to 4, a parent that is not an earlier row or text outside the text run. A frame with no told rows is a frame of plain view rows ([NATIVE-SHM-VIEW]), which a host draws as before.
+
 ### Ask rows [NATIVE-SHM-ASK]
 
 Each step's capability requests and slice writes ride beside the view as ask rows ([`capability.ospml`](../../../src/osprey/packages/native/src/capability.ospml)). A row whose `field` is 0 starts an ask: its `number` is the capability's code — its position in `Capability`, counted from 1 — and its text the ticket. The rows after it are that ask's arguments by position: a list repeats its field once per item, a pair (a header or an environment variable) is two rows in order, whole numbers and flags are in `number` and text is in the frame's text run. Code 100 is a slice write (its text the key, then the text to hold) and 101 a diagnostic. The host completes each request with one `completed` event carrying the ticket and its result text; bulk results land in host-held slices, which the application fetches through the `native_slice` import the host answers. Hosts refuse codes they do not know, fields out of range and text ranges outside the run.

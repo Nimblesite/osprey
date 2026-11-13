@@ -44,7 +44,7 @@ module Drive
     export choose (d, label, words) = sent (d, touch (d, Hosting::control, valued (d, label), words, "", 0.0, 0.0, false, false))
 
     // The control `label` names that takes a value, ahead of a heading or press with the same words.
-    valued (d, label) = match Lists::find (Views::labelled (d.drivenSeen, label), \c => Lists::any (["entry", "editor", "picker", "toggle"], \kind => kind == c.controlKind))
+    valued (d, label) = match Lists::find (Views::labelled (d.drivenSeen, label), \c => Lists::any (["field", "editor", "picker", "toggle", "rows", "tabs", "disclosure", "aside"], \kind => kind == c.controlKind))
         Success found => found.controlOrdinal
         Error _ => numbered (d, label)
 

@@ -1,6 +1,6 @@
-// What a host is sent, read back as typed records ([UI-MACHINE-TEST], [NATIVE-SHM-VIEW]): the
-// rows, fits and scenes `ui::Surfaces::seen` walks, and the requests the last step sent. Nothing
-// is decoded: a test reads the very rows a host lays out.
+// What a host is sent, read back as typed records ([UI-MACHINE-TEST], [NATIVE-SHM-NODES]): the
+// told rows and scenes `ui::Surfaces::seen` walks, rebuilt into the component trees a host draws,
+// and the requests the last step sent. A test reads the very rows a host reads.
 namespace uitest
 
 import ui::Lists
@@ -8,16 +8,27 @@ import ui::Pick
 import ui::Views
 import ui::Requests
 
-(** One drawn control: its kind, its words, its second text (a prompt, a picker's name or an icon), the control number its events name (-1 for none), its ink, whether it takes input, the key of its chosen option and its options' keys. *)
+(** One told component: its kind, its words (a label, text or title), its second text (a prompt or a symbol), its value, its tone or its frame's ink token, the control number its events name (-1 for none), whether it takes input, the key it has selected and the keys it offers. *)
 type Control =
     controlKind : string
     controlText : string
     controlHint : string
+    controlValue : string
+    controlTone : string
     controlOrdinal : int
-    controlInk : int
     controlEnabled : bool
     controlSelected : string
     controlChoices : List<string>
+
+(** Told trees rebuilt from rows so far, and the next row to read. *)
+type Rebuilt =
+    rebuilt : List<ui::Told>
+    rebuiltNext : int
+
+(** The names of the rows read so far, and the next fit to read. *)
+type Named =
+    namedRows : List<string>
+    namedFit : int
 
 (** What a host last saw: the controls, the canvas's lettering, curves and accessibility tree, the kinds of the requests the last step made and the control number of the first scene. *)
 type Rendered =
@@ -33,27 +44,106 @@ module Read
     (** Nothing seen yet. *)
     export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedOrdinal = 0 - 1)
 
-    kinds = ["column", "line", "label", "press", "entry", "gap", "scroll", "layer", "toggle", "picker", "option", "rule", "image", "canvas", "editor", "menu", "sheet"]
+    rowAt (walk, index) = listGet walk.walkRows index ?: Views::blank
 
-    kindName kind = listGet kinds kind ?: "unknown"
+    // The name of every row, in row order: a row's name is its fit's hint, and fits arrive in row order.
+    named (walk, so, index) = match listGet walk.walkFits so.namedFit
+        Success fit => match fit.fittedRow == index
+            true => Named(namedRows = listAppend so.namedRows fit.fittedAs.hint, namedFit = satAdd so.namedFit 1)
+            false => so(namedRows = listAppend so.namedRows "")
+        Error _ => so(namedRows = listAppend so.namedRows "")
 
-    // Every fit of the row at `index`, its flags added up.
-    flags (walk, index) = foldList (filterList (walk.walkFits, \f => f.fittedRow == index), 0, \(all, f) => bitOr all f.fittedAs.traits)
+    names walk = (foldList (toList (range (0, length walk.walkRows)), Named(namedRows = [], namedFit = 0), \(so, index) => named (walk, so, index))).namedRows
 
-    hints (walk, index) = mapList (filterList (walk.walkFits, \f => f.fittedRow == index && f.fittedAs.hint != ""), \f => f.fittedAs.hint)
+    // A field row's typed value ([NATIVE-SHM-NODES]): its heft says which of its columns holds it.
+    valued (row, name) = match row.placedLook.heft
+        1 => ui::ToldCount(countName = name, count = row.placedLook.ink)
+        2 => ui::ToldReal(realName = name, real = row.placedLook.points)
+        3 => ui::ToldFlag(flagName = name, on = row.placedLook.ink != 0)
+        4 => ui::ToldReal(realName = name, real = 0.0 - row.placedLook.points)
+        _ => ui::ToldText(wordsName = name, wordsText = row.placedWords)
 
-    hint (walk, index) = listGet (hints (walk, index)) 0 ?: ""
+    // A record's row with the members gathered under it; a scene's record carries its sketch.
+    grouped (walk, index, name, members) = match (rowAt (walk, index)).placedKind == ui::Tellings::list
+        true => ui::ToldList(listName = name, items = members)
+        false => match Lists::find (walk.walkSketches, \s => s.sketchedRow == index)
+            Success drawn => ui::ToldScene(sketchName = name, sketchMembers = members, sketching = drawn.sketchedAs)
+            Error _ => ui::ToldRecord(recordName = name, members = members)
 
-    // The rows whose parent is `index`, by their own indices.
-    children (walk, index) = filterList (toList (range (0, length walk.walkRows)), \i => (listGet walk.walkRows i ?: Views::blank).placedParent == index)
+    // The told value the row at `index` starts, and the row after it.
+    parsed (walk, all, index) = match (rowAt (walk, index)).placedKind == ui::Tellings::field
+        true => Rebuilt(rebuilt = [valued (rowAt (walk, index), listGet all index ?: "")], rebuiltNext = satAdd index 1)
+        false =>
+            inner = gathered (walk, all, index, satAdd index 1, [])
+            Rebuilt(rebuilt = [grouped (walk, index, listGet all index ?: "", inner.rebuilt)], rebuiltNext = inner.rebuiltNext)
 
-    options (walk, index) = filterList (children (walk, index), \i => (listGet walk.walkRows i ?: Views::blank).placedKind == Views::option)
+    // The rows from `index` that name `parent`, each with everything under it: rows are depth first, so they are consecutive.
+    gathered (walk, all, parent, index, so) = match index < length walk.walkRows && (rowAt (walk, index)).placedParent == parent
+        false => Rebuilt(rebuilt = so, rebuiltNext = index)
+        true =>
+            one = parsed (walk, all, index)
+            gathered (walk, all, parent, one.rebuiltNext, listConcat so one.rebuilt)
 
-    chosenKey (walk, index) = listGet (mapList (filterList (options (walk, index), \i => bitAnd (flags (walk, i)) Views::chosen != 0), \i => hint (walk, i))) 0 ?: ""
+    (** The told trees of a frame's rows: what a host rebuilds before it draws ([NATIVE-SHM-NODES]). *)
+    export trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
-    control (walk, index) =
-        row = listGet walk.walkRows index ?: Views::blank
-        Control(controlKind = kindName row.placedKind, controlText = row.placedWords, controlHint = hint (walk, index), controlOrdinal = row.placedAction, controlInk = row.placedLook.ink, controlEnabled = bitAnd (flags (walk, index)) Views::disabled == 0, controlSelected = chosenKey (walk, index), controlChoices = mapList (options (walk, index), \i => hint (walk, i)))
+    inside told = match told
+        ui::ToldRecord _ members => members
+        ui::ToldScene _ members _ => members
+        ui::ToldList _ items => items
+        _ => []
+
+    textNamed (name, found, member) = match member
+        ui::ToldText key text => Pick::either (key == name && found == "", text, found)
+        _ => found
+
+    words (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
+
+    countNamed (name, found, member) = match member
+        ui::ToldCount key value => Pick::either (key == name, value, found)
+        _ => found
+
+    whole (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
+
+    flagNamed (name, found, member) = match member
+        ui::ToldFlag key value => Pick::either (key == name, value, found)
+        _ => found
+
+    flagged (members, name, absent) = foldList (members, absent, \(found, member) => flagNamed (name, found, member))
+
+    listNamed (name, member) = match member
+        ui::ToldList key items => Pick::either (key == name, items, [])
+        _ => []
+
+    listed (members, name) = Lists::flatten (mapList (members, \member => listNamed (name, member)))
+
+    recordNamed (name, member) = match member
+        ui::ToldRecord key members => Pick::either (key == name, members, [])
+        _ => []
+
+    // The members of the record member called `name`, or none.
+    recorded (members, name) = Lists::flatten (mapList (members, \member => recordNamed (name, member)))
+
+    firstOf texts = listGet (filterList (texts, \text => text != "")) 0 ?: ""
+
+    keys (members, name) = mapList (listed (members, name), \entry => words (inside entry, "key"))
+
+    runs members = join (mapList (listed (members, "runs"), \run => words (inside run, "text"))) ""
+
+    control members = Control(controlKind = words (members, "kind"), controlText = firstOf [words (members, "label"), words (members, "text"), words (members, "title"), runs members], controlHint = firstOf [words (members, "prompt"), words (members, "symbol")], controlValue = words (members, "value"), controlTone = firstOf [words (members, "tone"), words (recorded (members, "style"), "ink")], controlOrdinal = whole (members, "event", 0 - 1), controlEnabled = flagged (members, "enabled", true), controlSelected = words (members, "selected"), controlChoices = listConcat (keys (members, "choices")) (listConcat (keys (members, "rows")) (keys (members, "tabs"))))
+
+    own members = match words (members, "kind") == ""
+        true => []
+        false => [control members]
+
+    // Every component in a told tree, depth first: a record with a kind is one, and so is each inside it.
+    controls told = match told
+        ui::ToldText _ _ => []
+        ui::ToldCount _ _ => []
+        ui::ToldReal _ _ => []
+        ui::ToldFlag _ _ => []
+        ui::ToldList _ items => Lists::flatten (mapList (items, controls))
+        _ => listConcat (own (inside told)) (Lists::flatten (mapList (inside told, controls)))
 
     lettered shape = match shape
         ui::Lettering text _ _ _ _ _ _ _ => [text]
@@ -79,9 +169,10 @@ module Read
 
     shapes walk = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchShapes))
 
-    sceneOrdinal walk = match listGet walk.walkSketches 0
-        Success first => (listGet walk.walkRows first.sketchedRow ?: Views::blank).placedAction
+    // The control number of the first scene: the `event` of the record its sketch names.
+    sceneOrdinal (walk, all) = match listGet walk.walkSketches 0
+        Success first => whole ((gathered (walk, all, first.sketchedRow, satAdd first.sketchedRow 1, [])).rebuilt, "event", 0 - 1)
         Error _ => 0 - 1
 
     (** A walked view and the requests its step sent, as a host reads them. *)
-    export seen (walk, asked) = Rendered(renderedControls = mapList (toList (range (0, length walk.walkRows)), \i => control (walk, i)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal walk)
+    export seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk))

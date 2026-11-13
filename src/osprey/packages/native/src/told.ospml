@@ -170,6 +170,7 @@ module Tell
         one (body.bindings, kind "screen" [str "title" title, str "subtitle" subtitle, many "toolbar" tools.nodes, many "children" body.nodes])
 
     // A control with content: its binding takes the next ordinal, then its children continue.
+    disclosure<A> : (List<Binding<A>>, string, bool, A, List<Node<A>>) -> Walked<A>
     disclosure (bindings, title, expanded, action, children) = nested (listAppend bindings (FlagInput(action = action)), "disclosure", [str "title" title, bit "expanded" expanded, num "event" (length bindings)], children)
 
     // Two columns: the pane's controls take ordinals before the aside's, and the splitter between them takes the next.
@@ -237,12 +238,15 @@ module Tell
     frameControls style = [num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, bit "selectionGroup" style.frameSelectionGroup]
 
     // A component of `name`'s kind whose `members` are followed by its content as `body`.
+    wrapped<A> : (List<Binding<A>>, string, List<Told>, Node<A>) -> Walked<A>
     wrapped (bindings, name, members, content) =
         inner = walk (bindings, content)
         one (inner.bindings, kind name (listAppend members (named ("body", first inner))))
 
+    framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
     framed (bindings, style, content) = wrapped (bindings, "framed", [frameTold style], content)
 
+    dialog<A> : (List<Binding<A>>, string, Node<A>, A) -> Walked<A>
     dialog (bindings, title, content, action) = wrapped (listAppend bindings (Tap(action = action)), "dialog", [str "title" title, num "event" (length bindings)], content)
 
     tokenTold item = ToldRecord(recordName = "", members = [str "name" item.tokenName, str "light" item.tokenLight, str "dark" item.tokenDark])
@@ -250,6 +254,7 @@ module Tell
     (** `theme` told under the member name `key`: every token's light and dark colours, the spacing scale and the motion durations ([UI-THEME]). *)
     export themeTold (key, theme) = ToldRecord(recordName = key, members = [many "tokens" (mapList (theme.tokens, \item => tokenTold item)), many "spacing" (mapList (theme.spacing, \value => num "" value)), num "feedback" theme.feedback, num "settle" theme.settle])
 
+    themed<A> : (List<Binding<A>>, Theme, Node<A>) -> Walked<A>
     themed (bindings, theme, content) = wrapped (bindings, "themed", [themeTold ("theme", theme)], content)
 
     mathPair (name, first, firstKey, second, secondKey) = kind name [named (firstKey, math first), named (secondKey, math second)]
@@ -367,10 +372,21 @@ module Tellings
         inner = Tell::walk (walked.bindings, region.snapshotValue)
         Walked(bindings = inner.bindings, nodes = listAppend walked.nodes (ToldRecord(recordName = "region", members = [ToldText(wordsName = "key", wordsText = region.snapshotKey), Tell::named ("node", Tell::first inner)])))
 
+    (** Every region told under its key, with the bindings their controls deliver in ordinal order: the trees a host rebuilds from the frame's rows. *)
+    export regions<A> : List<KeyedSnapshot<Node<A>>> -> Walked<A>
+    regions snapshots = foldList (snapshots, Walked(bindings = [], nodes = []), regionTold)
+
+    (** One node told as the root region with no theme tokens: the frame a test reads a single component from. *)
+    export alone<A> : Node<A> -> Walk<Binding<A>>
+    alone node =
+        inner = Tell::walk ([], node)
+        told = ToldRecord(recordName = "region", members = [ToldText(wordsName = "key", wordsText = "root"), Tell::named ("node", Tell::first inner)])
+        each (Walk(walkBound = inner.bindings, walkNext = 0, walkRows = [], walkFits = [], walkSketches = []), Views::none, [told], 0)
+
     (** The frame of `regions` under `theme`: the theme first, then every region with the key a `slot` names it by, and the bindings their controls deliver in ordinal order. Pure: a test reads exactly what a host is sent. *)
     export drawn<A> : (Theme, List<KeyedSnapshot<Node<A>>>) -> Walk<Binding<A>>
     drawn (theme, regions) =
-        walked = foldList (regions, Walked(bindings = [], nodes = []), regionTold)
+        walked = Tellings::regions regions
         start = Walk(walkBound = walked.bindings, walkNext = 0, walkRows = [], walkFits = [], walkSketches = [])
         each (told (start, Views::none, Tell::themeTold ("theme", theme)), Views::none, walked.nodes, 0)
 
