@@ -29,6 +29,8 @@ drawn store =
     handle ui::ViewStream
         place seat => seats := framed (seats, seat)
         size _ => 0
+        sketch _ => 0
+        ask _ => 0
     rendered store
 
 // The drawn control at `row`.

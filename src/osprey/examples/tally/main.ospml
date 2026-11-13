@@ -1,11 +1,13 @@
-// Tally's C boundary for any Osprey Native host ([NATIVE-SHM-VIEW]): `osprey_app_start` draws the
-// first view and `osprey_app_event` delivers one tap or edit and draws the next. Nothing is
-// encoded in either direction: an event is an integer and borrowed text, and the view is rows in
-// the shared frame the host seals when the call returns. The store never leaves this library.
+// Tally's C boundary for any Osprey Native host ([NATIVE-SHM-VIEW], [NATIVE-SHM-EVENT]): the same
+// three exports every application has. `open` draws the first view and `event` delivers one tap
+// or edit and draws the next. Nothing is encoded in either direction: an event is numbers and
+// borrowed text, and the view is rows in the shared frame the host seals when the call returns.
+// The store never leaves this library.
 namespace app
 
 import ui::Views
 import ui::Runtime
+import ui::Hosting
 import tally::Screen
 
 (** The store and the actions its drawn controls deliver, in control order. *)
@@ -25,18 +27,30 @@ shown store =
     perform Keep.keep next
     0
 
-// `held`'s control numbered `ordinal`, delivered with its edited `words`.
+// `held`'s control numbered `ordinal`, delivered with its edited `words`; anything else is drawn again and refused.
 delivered (held, ordinal, words) = match listGet held.bound ordinal
-    Error _ => 1
+    Error _ => refused held
     Success action => shown (Screen::update (held.store, action, words))
+
+refused held =
+    let _ = shown held.store
+    1
+
+// Tally draws only controls, so only a control's value reaches it.
+touched (held, kind, ordinal, words) = match kind == Hosting::control
+    true => delivered (held, ordinal, words)
+    false => refused held
 
 hosted work =
     handle Keep
         keep next => live := next
     Runtime::guarded (\() => Views::shared work)
 
-(** Draws the first view; zero when it was written. *)
-start () = hosted (\() => shown Screen::first)
+(** Tally takes no launch arguments. *)
+argument (_ : string) = 0
 
-(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero when no such control was drawn, which changes nothing. *)
-event (ordinal, words) = hosted (\() => delivered (live, ordinal, words))
+(** Draws the first view; zero when it was written. *)
+open (_ : int, _ : int, _ : string, _ : string, _ : bool) = hosted (\() => shown Screen::first)
+
+(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero for an event Tally does not take or a control it did not draw, which changes nothing. *)
+event (_ : int, kind, ordinal, words, _ : string, _ : float, _ : float, _ : bool, _ : bool) = hosted (\() => touched (live, kind, ordinal, words))

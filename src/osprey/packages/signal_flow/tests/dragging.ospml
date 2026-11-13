@@ -26,7 +26,7 @@ knobs (readings) = forEachList (readings, \r => knobNumber (r.name, r.value))
 
 // Where the host was last told to draw the sprite at atlas `index`.
 spriteAt index =
-    drawn = filterList (sprites, \s => (listGet s 0 ?: 0.0) == toFloat index)
+    drawn = filterList (sprites (), \s => (listGet s 0 ?: 0.0) == toFloat index)
     listGet drawn (satSub (length drawn) 1) ?: []
 
 // A node's sprite: atlas entries 6 to 10 after the backdrop and the five inspector icons.

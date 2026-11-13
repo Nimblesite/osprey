@@ -5,6 +5,7 @@ namespace synth
 
 import ui::Runtime
 import ui::Machines
+import ui::Templates
 import ui::Values
 import synth::Synth
 
@@ -36,3 +37,6 @@ module Studio
 
     (** The editor's update; a struck key plays the patch at its pitch. *)
     export update (context, store, message) = voiced (signalflow::App::update (context, store, message))
+
+    (** The synth as its boundary runs it: the store drawn with its machine's live skin's theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = signalflow::App::regions, programTheme = \store => Templates::theme (machineOf store))

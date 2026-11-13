@@ -1,59 +1,47 @@
 // The Prism synth end to end ([UI-MACHINE-FLOW-SYNTH]): its voice is checked
-// directly, then the real editor is driven by pointer events aimed through each
+// directly, then the real editor is driven through the typed host event boundary
+// every host calls ([NATIVE-SHM-EVENT]), by pointer events aimed through each
 // control's accessible label. Every control is silent; every struck key's host
 // playback request is compared with the patch, at the key's pitch, that made it.
 
-import ui::Doc
 import ui::Runtime
 import ui::Canvases
 import ui::MachineDocs
 import ui::Machines
-import uitest::Events
-import uitest::Read
+import ui::Requests
+import uitest::Drive
 import uitest::Semantics
 import uitest::Views
 import signalflow::App
 import synth::Studio
 import synth::Synth
 
-(** The decoded view, the latest envelope's text and the clock used for host events. *)
-type Sight =
-    sightSeen : uitest::Rendered
-    sightEnvelope : string
-    sightNow : int
-
-(** The bench's only writes: retain the live session and the latest rendered sight. *)
+(** The bench's only write: the driven surface. *)
 effect Bench
-    keep : ui::Session<signalflow::Store> => Unit
-    see : Sight => Unit
+    drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
 
-mut sight = Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1)
-mut live = Runtime::idle (signalflow::Flow::store (MachineDocs::faulty ""))
+mut driven = Drive::idle (Studio::program (), signalflow::Flow::store (MachineDocs::faulty ""))
 
-kept (resident : ui::Resident<signalflow::Store>) =
-    perform Bench.keep resident.residentSession
-    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightEnvelope = resident.residentEnvelope, sightNow = sight.sightNow + 1))
+kept next = perform Bench.drive next
 
 hosted work =
     handle ui::Slices
         fetch _ => ""
-    handle ui::SceneStream
-        shape _ => 0
-    work ()
+    Drive::quiet work
 
 bench work =
     handle Bench
-        keep session => live := session
-        see s => sight := s
+        drive d => driven := d
     Runtime::guarded work
 
 begun () =
-    perform Bench.see (Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1))
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}", Studio::initial, App::regions, App::theme "prism")))
+    perform Bench.drive (Drive::idle (Studio::program (), signalflow::Flow::store (MachineDocs::faulty "")))
+    hosted (\() => kept (Drive::launched (driven, "macos", [])))
 
-post event = hosted (\() => kept (Runtime::proceed (live, event, Studio::update, App::regions)))
+// One typed host event, sent the way a host sends it.
+post step = hosted (\() => kept (step driven))
 
-pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
+pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
 tapAt (label, fraction) =
     at = Semantics::point (element label, fraction)
@@ -62,7 +50,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = live.sessionStore.screen.screenMachine
+machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
 
 currentPatch () = Synth::patch (machine ())
 
@@ -82,10 +70,10 @@ offers label = match Semantics::offered (elements (), label)
 
 offered label = expect (offers label, true)
 
-letters text = match Views::letters (sight.sightSeen, text)
+letters text = match Views::letters (driven.drivenSeen, text)
     true => true
     false =>
-        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
+        print "# not lettered: ${text}; the artboard letters ${Views::lettered driven.drivenSeen}"
         false
 
 flag (name, expected) = expect (Machines::flag (machine (), name), expected)
@@ -98,17 +86,23 @@ knobNumber (name, expected) =
 
 layer (name, expected) = expect (Machines::current (machine (), name), expected)
 
-// ---- the host requests in the latest envelope, read at the boundary ----
+// ---- the host requests of the last step, read as the typed asks they are ----
 
-runRequests () = filterList (Doc::items (Doc::field (Doc::parse sight.sightEnvelope, "requests")), \request => Doc::text (request, "kind") == "run")
+runRequests () = filterList (driven.drivenSurface.surfaceAsked, \r => Requests::kind r.capability == "run")
 
 runCount () = length (runRequests ())
 
-request () = listGet (runRequests ()) 0 ?: JsonNull
+request () = listGet (runRequests ()) 0 ?: Requests::ask ("", ui::Run(executable = "", arguments = [], timeout = 0, outputLimit = 0, plist = false, runSlice = ""))
 
-arguments () = Doc::texts (request (), "arguments")
+runArguments () = match (request ()).capability
+    ui::Run _ arguments _ _ _ _ => arguments
+    _ => []
 
-argument index = listGet (arguments ()) index ?: ""
+runExecutable () = match (request ()).capability
+    ui::Run executable _ _ _ _ _ => executable
+    _ => ""
+
+argument index = listGet (runArguments ()) index ?: ""
 
 currentWav () = Synth::wav (Synth::samples (currentPatch ()))
 
@@ -116,9 +110,9 @@ nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - e
 
 played expectedPeak =
     expect (runCount (), 1)
-    expect (Doc::text (request (), "ticket"), "play")
-    expect (Doc::text (request (), "executable"), "/usr/bin/perl")
-    expect (length (arguments ()), 4)
+    expect ((request ()).ticket, "play")
+    expect (runExecutable (), "/usr/bin/perl")
+    expect (length (runArguments ()), 4)
     expect (argument 0, "-e")
     expect (argument 2, currentWav ())
     expect (argument 3, Synth::clipPath)

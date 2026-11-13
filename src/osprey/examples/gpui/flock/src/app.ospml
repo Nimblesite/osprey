@@ -41,3 +41,6 @@ module App
 
     (** Supplies Flock's semantic theme to the host. *)
     export theme () = View::theme ()
+
+    (** Flock as its boundary runs it: the store drawn with its semantic theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
