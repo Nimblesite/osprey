@@ -1,34 +1,43 @@
 // @osprey/uitest end to end ([UI-MACHINE-CANVAS], [UI-MACHINE-EACH],
 // [UI-MACHINE-MENU], [UI-MACHINE-A11Y], [UI-MACHINE-TEST]): a real machine
-// document driven without an application, session, host or window.
+// document driven without an application, session, host or window. Host events
+// cross as the typed calls every host makes ([NATIVE-SHM-EVENT]): a `Touch`
+// read through `ui::Hosting`, a binding's meaning read through `ui::Surfaces`,
+// and the ask rows a request crosses as read back through `ui::Requests::rows`.
 
 import ui::Canvases
 import ui::Doc
 import ui::Inputs
 import ui::Keyed
+import ui::Lower
 import ui::MachineDocs
 import ui::Machines
 import ui::Messages
+import ui::Requests
 import ui::Runtime
+import ui::Surfaces
 import ui::Templates
 import ui::Values
+import ui::Views
 import uitest::Drive
-import uitest::Events
 import uitest::Read
 import uitest::Semantics
-import uitest::Views
+import uitest::Views as Seen
+
 // The fixture document, handed to `work`, or `refused` when it will not load.
 loaded (work, refused) = match MachineDocs::load (readFile "src/osprey/packages/uitest/tests/fixture.machine.json" ?: "")
     Success machine => work machine
     Error problem => refused problem
 
 withFixture work = Runtime::guarded (\() => loaded (work, \problem => expect ("fixture loads: ${problem}", "fixture loads")))
-seen machine = Read::tree (Runtime::tree (Templates::view machine))
+
+// The machine's view lowered and drawn: the rows, fits and scenes a host reads ([NATIVE-SHM-VIEW]).
+seen machine = Read::seen (Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine)), [])
 
 // The machine's canvas, and what a test reads off it.
 canvas machine = Canvases::semantics machine
 value machine = Semantics::value (canvas machine, "Level")
-letters (machine, text) = Views::letters (seen machine, text)
+letters (machine, text) = Seen::letters (seen machine, text)
 feed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
 // `act` at the point `fraction` across `node`, where a pointer or a release lands.
 crossed (node, fraction, act) = act (Semantics::point (node, fraction))
@@ -61,16 +70,50 @@ captioned (machine, shown, gone) =
     lettering (fed, shown, gone)
     fed
 
-// An event as the host's wire carries it, for checking the encoder's contract.
-wire event = Doc::parse event
-
 // A canvas whose menu is shut: its labels, and no dismissal on offer.
 shut (machine, names) =
     expect (Semantics::labels (canvas machine), names)
     expect (Semantics::offered (canvas machine, "Dismiss"), false)
 
-// Wire fields, one assertion per `{ name = …, value = … }`, read as the encoder writes them.
-readFields (read, wired, fields) = forEachList (fields, \field => expect (read (wired, field.name), field.value))
+// Runs of readings that only their label distinguishes: `read` answers for one label.
+reading (labels, read, want) = forEachList (labels, \label => expect (read label, want))
+
+// A frame's elapsed seconds as a message, or the refusal it earned.
+framedAs elapsed = match Surfaces::framed elapsed
+    Success message => spelled message
+    Error problem => problem
+
+// A machine's view drawn with the requests its step sent, as a host reads their kinds back.
+asking (machine, requests) = Read::seen (Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine)), requests)
+
+// One message spelt as its kind and value, or the refusal a binding gave.
+meant (binding, words) = match Surfaces::told (binding, words)
+    Error problem => problem
+    Success message => spelled message
+
+// One scene input spelt as its kind and numbers, or the refusal the scene gave.
+scened (binding, input) = match Surfaces::scene (heldOf (binding), 0, input)
+    Error problem => problem
+    Success message => spelled message
+
+// One lasso's stroke indices spelt as their message, or the refusal it earned.
+lassoedAs (binding, indices) = match Surfaces::lasso (heldOf (binding), 0, indices)
+    Error problem => problem
+    Success message => spelled message
+
+// A surface whose only bound control is `binding`, as a scene's events need.
+heldOf binding =
+    blank = Surfaces::idle 0
+    blank(surfaceBound = [binding])
+
+// A completion's outcome as its text or its reason.
+finishedAs (ticket, outcome) = match outcome
+    Success text => "completed:${ticket}:${text}"
+    Error problem => "failed:${ticket}:${problem}"
+
+// One message as a short string, so a table of expectations can hold it. Pinned to `int` actions until Nimblesite/osprey#278 generalizes the router.
+spelled : ui::Message<int> -> string
+spelled message = Messages::route (message, \_ => "act", \(_, text) => "entered:${text}", \(_, on) => "switched:${on}", \(_, points) => "sized:${points}", \(ticket, outcome) => finishedAs (ticket, outcome), \phase => "phase:${phase}", \(_, _) => "stroked", \(_, _) => "lassoed", \elapsed => "frame:${elapsed}", \(_, input) => Inputs::route (input, \(name, down) => "key:${name}:${down}", \(x, y, down, shift) => "pointer:${x}:${y}:${down}:${shift}", \(w, h) => "viewed:${w}:${h}"))
 
 test ("the canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => withFixture (\fresh =>
     expect (Semantics::offered (canvas fresh, "Menu"), true)
@@ -99,38 +142,49 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     again = captioned (updated, "Second input", "Updated")
     expect (value again, 0.75)))
 
-test ("native views are found by what they say, and every host event keeps its wire contract", \() => withFixture (\fresh =>
+test ("native views are found by what they say, and every host event keeps its typed meaning", \() => withFixture (\fresh =>
     native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
     shown = seen native
     expect (length shown.renderedControls > 1, true)
-    expect (length (Views::labelled (shown, "Native")), 1)
-    forEachList ([{ named = "Native action", shown = true }, { named = "Missing", shown = false }], \row => expect (Views::shows (shown, row.named), row.shown))
-    forEachList ([{ named = "Native action", kind = "button" }, { named = "Missing", kind = "" }], \row => expect ((Views::control (shown, row.named)).controlKind, row.kind))
-    expect (Views::texts shown, "Native|Native action|two|Pick|One|Two|Three")
-    expect (Views::lettered shown, "")
-    asked = Read::envelope (Read::blank (), "{\"requests\":[{\"kind\":\"run\"},{\"kind\":\"animate\"}]}")
-    forEachList ([{ kinds = ["run", "animate"], want = true }, { kinds = ["choose-file"], want = false }], \row => reading (row.kinds, \kind => Views::requested (asked, kind), row.want))
-    expect (asked.renderedRevision, 0)
-    press = wire (Events::press (4, 2, 10))
-    readFields (Doc::text, press, [{ name = "kind", value = "ui" }, { name = "region", value = "root" }])
-    readFields (Doc::number, press, [{ name = "revision", value = 4 }, { name = "ordinal", value = 2 }, { name = "now", value = 10 }])
-    expect (Doc::kind (Doc::field (press, "value")), "null")
-    choose = wire (Events::choose (5, 3, "two \"quoted\"", 11))
-    readFields (Doc::text, choose, [{ name = "value", value = "two \"quoted\"" }])
-    pointer = Doc::field (wire (Events::pointer (6, 4, 12.5, 20.0, true, 12)), "value")
-    readFields (Doc::decimal, pointer, [{ name = "x", value = 12.5 }, { name = "y", value = 20.0 }])
-    readFields (Doc::flag, pointer, [{ name = "down", value = true }])
-    chosen = wire (Events::chosen ("choose", "/music/a \"b\".mp3", 13))
-    readFields (Doc::text, chosen, [{ name = "kind", value = "completed" }, { name = "ticket", value = "choose" }])
-    readFields (Doc::flag, chosen, [{ name = "ok", value = true }])
-    expect (Doc::text (Doc::field (chosen, "result"), "path"), "/music/a \"b\".mp3")
-    expect (Doc::flag (Doc::field (wire (Events::cancelled ("choose", 14)), "result"), "cancelled"), true)
-    ran = Doc::field (wire (Events::ran ("discover", 2, "no route", 15)), "result")
-    readFields (Doc::number, ran, [{ name = "status", value = 2 }])
-    readFields (Doc::text, ran, [{ name = "stderr", value = "no route" }])
-    expect (Doc::decimal (wire (Events::frame (0.25, 16)), "elapsed"), 0.25)
-    expect (Doc::text (wire (Events::lifecycle ("resume", 17)), "phase"), "resume")
-    expect (Doc::text (wire (Events::open ("/tmp/example.mp3", 18)), "phase"), "open:/tmp/example.mp3")))
+    expect (length (Seen::labelled (shown, "Native")), 1)
+    forEachList ([{ named = "Native action", shown = true }, { named = "Missing", shown = false }], \row => expect (Seen::shows (shown, row.named), row.shown))
+    forEachList ([{ named = "Native action", kind = "press" }, { named = "Missing", kind = "" }], \row => expect ((Seen::control (shown, row.named)).controlKind, row.kind))
+    expect (Seen::texts shown, "Native|Native action|two|Two|One|Two|Three")
+    expect (Seen::lettered shown, "")
+    // The ask rows of a step's requests, as a host reads their kinds back ([NATIVE-SHM-ASK]).
+    asked = asking (native, [Requests::ask ("run:1", ui::Run(executable = "/bin/ps", arguments = [], timeout = 10, outputLimit = 64, plist = false, runSlice = "")), Requests::ask ("clock:1", ui::Animate(animated = true))])
+    forEachList ([{ kinds = ["run", "animate"], want = true }, { kinds = ["choose-file"], want = false }], \row => reading (row.kinds, \kind => Seen::requested (asked, kind), row.want))
+    expect ((Read::blank ()).renderedOrdinal, 0 - 1)
+    // A control's value crosses as its words through the binding the view issued ([UI-EVENTS]).
+    expect (meant (ui::Tap(action = 1), "ignored"), "act")
+    expect (meant (ui::FlagInput(action = 1), "true"), "switched:true")
+    expect (meant (ui::FlagInput(action = 1), "yes"), "switched:false")
+    expect (meant (ui::ChoiceInput(action = 1), "two \"quoted\""), "entered:two \"quoted\"")
+    expect (meant (ui::TextInput(action = 1), "Zoë"), "entered:Zoë")
+    expect (meant (ui::SizeInput(action = 1), "junk"), "sized:260")
+    expect (meant (ui::SizeInput(action = 1), "99999"), "sized:640")
+    expect (meant (ui::PlaceInput(action = 1), "-4"), "sized:0")
+    expect (meant (ui::PlaceInput(action = 1), "12"), "sized:12")
+    expect (meant (ui::StrokeInput(action = 1), "1,2"), "A board control was sent a value of the wrong kind")
+    expect (meant (ui::LassoInput(action = 1), "0,2"), "A lasso control was sent a value of the wrong kind")
+    expect (meant (ui::SceneInput(action = 1), ""), "A scene control was sent a value of the wrong kind")
+    // A scene's input crosses as typed numbers in scene units, never as text.
+    expect (scened (ui::SceneInput(action = 1), ui::Key(keyName = "ArrowLeft", keyDown = true)), "key:ArrowLeft:true")
+    expect (scened (ui::SceneInput(action = 1), ui::Pointer(pointerX = 12.5, pointerY = 20.0, pointerDown = false, pointerShift = false)), "pointer:12.5:20.0:false:false")
+    expect (scened (ui::SceneInput(action = 1), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer:1.0:2.0:true:true")
+    expect (scened (ui::SceneInput(action = 1), ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed:1536.0:1008.0")
+    expect (scened (ui::Tap(action = 1), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
+    expect (lassoedAs (ui::LassoInput(action = 1), [0, 2]), "lassoed")
+    expect (lassoedAs (ui::LassoInput(action = 1), [0, -1]), "A board control sent a lasso that is not a list of strokes")
+    // Completions, lifecycle phases and frames cross as typed calls.
+    expect (spelled (Surfaces::completed ("choose", true, "/music/a \"b\".mp3")), "completed:choose:/music/a \"b\".mp3")
+    expect (spelled (Surfaces::completed ("discover", false, "no route")), "failed:discover:no route")
+    expect (spelled (Surfaces::phased "resume"), "phase:resume")
+    expect (spelled (Surfaces::phased "open:/tmp/example.mp3"), "phase:open:/tmp/example.mp3")
+    expect (framedAs 0.25, "frame:0.25")
+    expect (framedAs (0.0 - 1.0), "Invalid frame elapsed time")
+    // The host event kinds, as the `Hosting` constants a host names them by.
+    expect (join (mapList ([ui::Hosting::control, ui::Hosting::key, ui::Hosting::pointer, ui::Hosting::viewed, ui::Hosting::point, ui::Hosting::stroke, ui::Hosting::enclose, ui::Hosting::lasso, ui::Hosting::completed, ui::Hosting::phase, ui::Hosting::frame, ui::Hosting::appearance], \kind => "${kind}")) ",", "0,1,2,3,4,5,6,7,8,9,10,11")))
 
 test ("a broken document is refused with every problem named by its path", \() => Runtime::guarded (\() =>
     refused = match MachineDocs::load "not json"
@@ -141,16 +195,16 @@ test ("a broken document is refused with every problem named by its path", \() =
     expect (join (MachineDocs::problems (Doc::parse broken)) "\n", join ["schema: expected 1", "inputs.a.type: expected one of bool, number, text, trigger, list", "inputs.b.value: not a number", "layers[0].initial: no state named \"gone\"", "layers[0].transitions[0].from: no state named \"q\"", "view.colour: not a member of button", "view.on: no input named \"nope\"", "view.children[0].kind: no node kind \"widget\""] "\n")
     faulty = MachineDocs::faulty "boom"
     expect (faulty.machineFault, "boom")
-    expect (Views::texts (seen faulty), "This interface could not load")))
+    expect (Seen::texts (seen faulty), "warning|This interface could not load|boom")))
 
-// The same fixture as a resident application: its machine is the store, its
+// The same fixture as a driven surface: its machine is the store, its
 // ordinary template is the root region and every host event comes from Drive.
 effect Bench
-    drive : uitest::Driven<ui::Machine> => Unit
+    drive : uitest::Driven<ui::Machine, ui::Lever> => Unit
 
-mut driven = Drive::idle (Runtime::idle (MachineDocs::faulty ""))
+mut driven = Drive::idle (program (), MachineDocs::faulty "")
 
-kept (resident : ui::Resident<ui::Machine>) = perform Bench.drive (Drive::moved (driven, resident))
+kept next = perform Bench.drive next
 fixture () = loaded (\machine => machine, MachineDocs::faulty)
 
 initial context =
@@ -169,11 +223,11 @@ regions (before, after, frames, _) =
     changed = signalChanges before after MachineDocs::snapshot (signalDependencies machineSlice)
     [Keyed::region (frames, "root", changed, root)]
 
+program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => Templates::theme (fixture ()))
+
 hosted work =
     handle ui::Slices
         fetch _ => ""
-    handle ui::SceneStream
-        shape _ => 0
     work ()
 
 bench work =
@@ -182,16 +236,16 @@ bench work =
     Runtime::guarded work
 
 begun skin =
-    perform Bench.drive (Drive::idle driven.drivenSession)
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", initial, regions, Templates::theme (fixture ()))))
+    perform Bench.drive (Drive::idle (program (), MachineDocs::faulty ""))
+    hosted (\() => kept (Drive::launched (driven, "macos", ["--skin", skin])))
 
-post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, update, regions)))
+post step = hosted (\() => kept (step driven))
 
 // Host events, each as the driver carries it.
-press label = post (Drive::press (driven, label))
-choose (label, key) = post (Drive::choose (driven, label, key))
-pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
-viewed (width, height) = post (Drive::viewed (driven, width, height))
+press label = post (\d => Drive::press (d, label))
+choose (label, key) = post (\d => Drive::choose (d, label, key))
+pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
+viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 elements () = driven.drivenSeen.renderedAccess
 elementAt label = Semantics::element (elements (), label)
 tapAt (label, fraction) = crossed (elementAt label, fraction, \p => clickAt (p.pointX, p.pointY))
@@ -203,8 +257,6 @@ clickAt (x, y) =
 tap label = tapAt (label, 0.5)
 level () = Semantics::value (elements (), "Level")
 
-// Runs of readings that only their label distinguishes: `read` answers for one label.
-reading (labels, read, want) = forEachList (labels, \label => expect (read label, want))
 lettered (texts, want) = reading (texts, \text => Drive::letters (driven, text), want)
 
 // Which of `names` the driver offers, and which it shows.
@@ -225,7 +277,7 @@ levelAt (fraction, want) =
     tapAt ("Level", fraction)
     expect (level (), want)
 
-selected () = (Views::control (driven.drivenSeen, "Pick")).controlSelected
+selected () = (Seen::control (driven.drivenSeen, "Pick")).controlSelected
 
 // Choosing `key` from the picker leaves it selected and on show.
 pickedKey (key) =
@@ -242,11 +294,11 @@ restarted skin =
     expect (driven.drivenNow, 2)
 
 // A completion the host finishes with a chosen path.
-completed path = post (Drive::chosen (driven, "choose", path))
+completed path = post (\d => Drive::chosen (d, "choose", path))
 
-test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
+test ("a driven fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
     restarted "tiny"
-    expect (driven.drivenSeen.renderedRevision, 1)
+    expect (length driven.drivenSurface.surfaceBound > 0, true)
     expect (length driven.drivenSeen.renderedCurves, 1)
     curve = listGet driven.drivenSeen.renderedCurves 0 ?: []
     forEachList ([{ at = 0, want = 10.0 }, { at = 1, want = 20.0 }, { at = 2, want = 110.0 }, { at = 3, want = 80.0 }], \reading => expect (listGet curve reading.at ?: 0.0, reading.want))
@@ -266,17 +318,17 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     retiredItem "Three"
     forEachList ([{ width = 400.0, height = 400.0 }, { width = 800.0, height = 600.0 }], \size => viewed (size.width, size.height))
     choiceShown ()
-    post (Drive::frame (driven, 0.25))
-    expect (driven.drivenSession.sessionStore.machineFault, "")
+    post (\d => Drive::frame (d, 0.25))
+    expect (driven.drivenSurface.surfaceSession.sessionStore.machineFault, "")
     completed "/music/a \"b\".mp3"
     choiceShown ()
     completed "/music/second.mp3"
-    forEachList ([{ status = 0, said = "" }, { status = 2, said = "no route" }], \row => post (Drive::ran (driven, "discover", row.status, row.said)))
+    forEachList ([{ status = 0, said = "" }, { status = 2, said = "no route" }], \row => post (\d => Drive::ran (d, "discover", row.status, row.said)))
     expect (level (), 0.75)
-    post (Drive::opened (driven, "/music/opened.mp3"))
+    post (\d => Drive::opened (d, "/music/opened.mp3"))
     choiceShown ()
     expect (driven.drivenNow > 20, true)
-    expect (driven.drivenSession.sessionContext.platform, "macos")))
+    expect (driven.drivenSurface.surfaceSession.sessionContext.platform, "macos")))
 
 test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
     restarted "plain"
@@ -285,13 +337,14 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     press "Native action"
     shownNow ("Pressed", "Native")
     forEachList (["one", "three"], pickedKey)
-    showing (["one"], false)
+    // An option's key stays on show while the options are drawn, so a choice is read off the picker's own words.
+    expect ((Seen::control (driven.drivenSeen, "Pick")).controlText, "Three")
     pickedKey "two"
     showing (["two", "Pressed"], true)
-    post (Drive::frame (driven, 0.5))
-    post (Drive::opened (driven, "/tmp/native.mp3"))
+    post (\d => Drive::frame (d, 0.5))
+    post (\d => Drive::opened (d, "/tmp/native.mp3"))
     completed "/tmp/chosen.mp3"
-    post (Drive::ran (driven, "run", 1, "failed"))
+    post (\d => Drive::ran (d, "run", 1, "failed"))
     expect (selected (), "two")
     showing (["Pressed"], true)
     restarted "plain"
