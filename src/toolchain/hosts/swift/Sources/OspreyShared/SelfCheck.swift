@@ -1,12 +1,11 @@
 import Foundation
-import OspreyShared
 
 /// Implements [NATIVE-SHM-VIEW]'s headless check: Tally's journey, played exactly as the C
 /// reference host plays it, with every fact read back out of the checked frame the application
 /// drew — its controls, its ask rows, its scene rows and a refused event's frame. No window, no
-/// copy, no JSON.
+/// copy, no JSON. Both hosts run it: macOS's `--view-check` and iOS's view check.
 @MainActor
-enum SelfCheck {
+public enum SelfCheck {
     /// One fact that did not hold, in the words a person reads.
     struct Problem: Error {
         let why: String
@@ -14,7 +13,7 @@ enum SelfCheck {
 
     /// Any application's launch, with no window: it opens, draws a checked frame with controls and
     /// says nothing is wrong. Its own asks stay unanswered, as no adapter is installed.
-    static func opened() -> Int32 {
+    public static func opened() -> Int32 {
         let store = SharedStore(adapters: [])
         store.start(arguments: [], dark: false)
         let problem = store.failure ?? (store.count == 0 ? "the first frame drew no controls" : nil)
@@ -26,7 +25,7 @@ enum SelfCheck {
         return 0
     }
 
-    static func run() -> Int32 {
+    public static func run() -> Int32 {
         let store = SharedStore(adapters: [])
         do {
             try checked(store)

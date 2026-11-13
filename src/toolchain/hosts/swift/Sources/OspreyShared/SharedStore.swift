@@ -175,5 +175,12 @@ public final class SharedStore: ObservableObject {
         #endif
     }
 
-    private var home: String { NSHomeDirectory() }
+    private var home: String {
+        #if os(iOS)
+        // The launch context's home is the app's Documents folder, the one folder a person sees.
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.path ?? NSHomeDirectory()
+        #else
+        return NSHomeDirectory()
+        #endif
+    }
 }

@@ -34,12 +34,11 @@ final class SharedClock: @unchecked Sendable {
         running = true
         last = 0
         #if os(macOS)
-        let made = NSScreen.main?.displayLink(target: ClockProxy(self), selector: #selector(ClockProxy.tick))
+        link = NSScreen.main?.displayLink(target: ClockProxy(self), selector: #selector(ClockProxy.tick))
         #else
-        let made = CADisplayLink(target: ClockProxy(self), selector: #selector(ClockProxy.tick))
+        link = CADisplayLink(target: ClockProxy(self), selector: #selector(ClockProxy.tick))
         #endif
-        made?.add(to: .main, forMode: .common)
-        link = made
+        link?.add(to: .main, forMode: .common)
     }
 
     @MainActor

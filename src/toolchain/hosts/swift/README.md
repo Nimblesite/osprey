@@ -11,6 +11,19 @@ OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent src/toolchain/hosts/swift/run.sh -- 
 
 `view.sh` compiles the application with `--target=macos --memory=arc`, builds the Swift package and runs `OspreyViewHost` directly. `run.sh` compiles the same archive, links the same host and assembles an ad-hoc signed development bundle, which it opens with the arguments after `--`; those arguments reach the application, in order, through `osprey_app_argument` before it opens. An application's `icon.png`, 1024 pixels square, becomes the bundle's icon. `--build` stops after assembling the bundle and prints its path.
 
+## iOS
+
+The same one library hosts iOS — no second package, no copied files:
+
+```sh
+src/toolchain/hosts/swift/ios.sh                                                       # Tally, built for the simulator
+src/toolchain/hosts/swift/ios.sh ios-sim --view-check                                 # the same journey, headless
+OSPREY_SWIFT_APP=$PWD/src/osprey/examples/storage OSPREY_IOS_NAME=Storage \
+  OSPREY_IOS_ID=org.ospreylang.storage src/toolchain/hosts/swift/ios.sh ios-sim        # another application
+```
+
+`ios.sh` compiles the application for `ios-sim` (or `ios`, unsigned) against the ARC runtime, links the same `OspreyShared` library through the `OspreyViewHostIOS` entry and assembles `<Name>.app`. What differs on iOS: the launch context carries platform `ios` and the app's Documents folder as home; process execution, folder choosing, saving, property-list reads, fingerprints and text recognition are compiled out — the frame's asks for them complete with the same typed error an unknown capability gets; `choose-file` opens the system document picker instead of a panel; and `--view-check` boots the simulator, runs the journey with no person present and prints `OSPREY_IOS_VIEW_OK`, writing the verdict to the app's `Documents/view-check.txt` too.
+
 ## The boundary the application exports
 
 Every application exports exactly three calls beside `osprey_main` ([NATIVE-SHM-EVENT]):

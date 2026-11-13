@@ -14,6 +14,7 @@ let package = Package(
     products: [
         .library(name: "OspreyShared", targets: ["OspreyShared"]),
         .executable(name: "OspreyViewHost", targets: ["OspreyViewHost"]),
+        .executable(name: "OspreyViewHostIOS", targets: ["OspreyViewHostIOS"]),
     ],
     targets: [
         .target(
@@ -23,6 +24,7 @@ let package = Package(
         ),
         .target(name: "OspreyShared", dependencies: ["OspreyViewApp"]),
         .executableTarget(name: "OspreyViewHost", dependencies: ["OspreyShared", "OspreyViewApp"]),
+        .executableTarget(name: "OspreyViewHostIOS", dependencies: ["OspreyShared", "OspreyViewApp"]),
         .testTarget(
             name: "OspreySharedTests",
             dependencies: ["OspreyShared"],
