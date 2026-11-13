@@ -135,7 +135,7 @@ captureScalarCaseUploaded (input0, input1) =
     k = toFloat32(3.0)
     xs = input0
     withBuffer(gpuMap(xs, \x => k * x), \scaled => withBuffer(gpuMap(xs, \x => k * x + k), \twice => checkAll("captured scalar", [
-    sumIs(scaled, toFloat32(18.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(6.0)), lengthIs(scaled, 3), sumIs(twice, toFloat32(27.0)), elementIs(twice, 2, toFloat32(0.0), toFloat32(12.0)), sumsTo(gpuMap(scaled, \y => k * y), toFloat32(54.0)), sumsTo(gpuMap(xs, \x => k + x), toFloat32(15.0)), gpuLengthIs(gpuFilter(xs, \x => x > k), 0), gpuLengthIs(gpuFilter(xs, \x => k > x), 2), gpuLengthIs(gpuMap(input1, \x => k * x), 0), gpuEquals(gpuFold(xs, toFloat32(0.0), \(a, x) => a + k * x), toFloat32(18.0)), gpuSatisfies(gpuScan(xs, toFloat32(0.0), \(a, x) => a + k * x), \prefix => elementIs(prefix, 2, toFloat32(0.0), toFloat32(18.0)))
+    sumIs(scaled, toFloat32(18.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(6.0)), lengthIs(scaled, 3), sumIs(twice, toFloat32(27.0)), elementIs(twice, 2, toFloat32(0.0), toFloat32(12.0)), sumsTo(gpuMap(scaled, \y => k * y), toFloat32(54.0)), sumsTo(gpuMap(xs, \x => k * x - k), toFloat32(9.0)), sumsTo(gpuMap(xs, \x => k + x), toFloat32(15.0)), gpuLengthIs(gpuFilter(xs, \x => x > k), 0), gpuLengthIs(gpuFilter(xs, \x => k > x), 2), gpuLengthIs(gpuMap(input1, \x => k * x), 0), gpuEquals(gpuFold(xs, toFloat32(0.0), \(a, x) => a + k * x), toFloat32(18.0)), gpuSatisfies(gpuScan(xs, toFloat32(0.0), \(a, x) => a + k * x), \prefix => elementIs(prefix, 2, toFloat32(0.0), toFloat32(18.0)))
     ])))
 (** captureManyCase puts several distinct captures inside one kernel, in *)
 (** different orders and arities, so no single-capture shortcut can pass it. *)
