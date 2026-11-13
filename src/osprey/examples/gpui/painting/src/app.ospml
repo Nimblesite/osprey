@@ -29,3 +29,6 @@ module App
 
     (** The white theme. *)
     export theme () = View::theme ()
+
+    (** The port as its boundary runs it: an empty sketch drawn with the white theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())

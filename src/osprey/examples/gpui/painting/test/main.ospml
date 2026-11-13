@@ -1,126 +1,134 @@
-// Runtime-driven regressions for the painting port: drawing, Shift straightening, dashes and
-// clearing through the resident begin and proceed boundary the app ships ([UI-SCENE],
-// [GPUI-HOST-SCENE], [UI-RESIDENT]).
+// The painting port end to end ([UI-SCENE], [NATIVE-SHM-EVENT]): the canvas, the two buttons and
+// the sketch they drive, through the typed host event boundary every host calls, with every
+// assertion read from the rows and scenes the surface was handed.
 namespace paintingtests
 
-import ui::Doc
+import ui::Hosting
+import ui::Lists
 import ui::Runtime
+import ui::Surfaces
+import uitest::Drive
+import uitest::Views
 import painting::App
+import painting::Drawing
 
-(** One driven step of the resident boundary: the session to keep, its envelope and the scene shapes that step streamed outside it ([UI-RESIDENT], [UI-SCENE-STREAM]). *)
-type Ran =
-    ranSession : ui::Session<painting::Store>
-    ranEnvelope : Json
-    ranStreamed : int
+(** Keeps the surface the step just produced, so the next step starts from it. *)
+effect Bench
+    drive : uitest::Driven<painting::Store, painting::Act> => Unit
 
-mut streamed = 0
+mut driven = Drive::idle (App::program (), Drawing::initialStore ())
 
-hosted work =
-    handle ui::SceneStream
-        shape _ => streamed := satAdd streamed 1
-    work ()
+bench work =
+    handle Bench
+        drive next => driven := next
+    handle ui::ViewStream
+        place _ => 0
+        size _ => 0
+        sketch _ => 0
+        ask _ => 0
+    Runtime::guarded work
 
-kept (before, resident) = Ran(ranSession = resident.residentSession, ranEnvelope = Doc::parse resident.residentEnvelope, ranStreamed = satSub streamed before)
+step move = bench (\() =>
+    next = move driven
+    perform Bench.drive next)
 
-started () =
-    before = streamed
-    kept (before, hosted (\() => Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", App::initial, App::regions, App::theme ())))
+// ---- what the host is sent, read back as typed rows and scenes ----
+walked () = Surfaces::seen (driven.drivenSurface, driven.drivenProgram)
 
-post (ran, event) =
-    before = streamed
-    kept (before, hosted (\() => Runtime::proceed (ran.ranSession, event, App::update, App::regions)))
+shapes () = Lists::flatten (mapList ((walked ()).walkSketches, \scene => scene.sketchedAs.sketchShapes))
 
-latest (key, found, patch) = match Doc::text (patch, "key") == key
-    true => Doc::number (patch, "revision")
-    false => found
+// The canvas scene's whole drawing: the fixed primitives plus one path per freehand line.
+shapeCount () = length (shapes ())
 
-// Each region re-renders when its slice changes, so an event names the region's latest revision.
-revision (ran, key, fallback) = foldList (Doc::items (Doc::field (ran.ranEnvelope, "patches")), fallback, \(found, patch) => latest (key, found, patch))
+sketch () = driven.drivenSurface.surfaceSession.sessionStore.sketch
 
-pointer (ran, rev, x, y, down, shift) = post (ran, "{\"kind\":\"ui\",\"region\":\"canvas\",\"revision\":${rev},\"ordinal\":0,\"value\":{\"x\":${x},\"y\":${y},\"down\":${down},\"shift\":${shift}},\"now\":2}")
+lines () = (sketch ()).lines
 
-nextPointer (ran, rev, x, y, down, shift) = pointer (ran, revision (ran, "canvas", rev), x, y, down, shift)
+lineText index = "[${join (mapList (listGet (lines ()) index ?: []) toString) ","}]"
 
-sketch ran = ran.ranSession.sessionStore.sketch
+lastShape () = listGet (shapes ()) (satSub (length (shapes ())) 1)
 
-lines ran = (sketch ran).lines
+outlineOf shape = match shape
+    ui::Path _ outline _ _ _ _ _ => outline
+    _ => ui::Fill
 
-lineText (ran, index) = Doc::write (JsonArray (mapList (listGet (lines ran) index ?: [], \point => JsonFloat point)))
+// The outline of the last freehand line drawn: a fill when there is none.
+stroke () = match lastShape ()
+    Success shape => outlineOf shape
+    Error _ => ui::Fill
 
-patched (ran, key) = foldList (Doc::items (Doc::field (ran.ranEnvelope, "patches")), JsonNull, \(found, patch) => nodeOf (key, found, patch))
+dashText () = match stroke ()
+    ui::Line width dashes bevel => "Line ${toString width} bevel=${toString bevel} dashes=${join (mapList dashes toString) ","}"
+    ui::Fill => "Fill"
 
-nodeOf (key, found, patch) = match Doc::text (patch, "key") == key
-    true => Doc::field (patch, "node")
-    false => found
+// ---- one typed host event at a time ----
+started () = step (\d => Drive::launched (d, "macos", []))
 
-canvasShapes ran = Doc::items (Doc::field (patched (ran, "canvas"), "shapes"))
+pointer (x, y, down) = step (\d => Drive::pointer (d, x, y, down))
 
-// The canvas scene's whole drawing: the paths its patch carries plus the rects the stream carried ([UI-SCENE-STREAM]).
-shapeCount ran = satAdd (length (canvasShapes ran)) ran.ranStreamed
+// A pointer with Shift held, as a person drawing a straight line sends it.
+shiftPointer (x, y, down) = step (\d => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::pointer, touchOrdinal = d.drivenSeen.renderedOrdinal, touchWords = "", touchDetail = "", touchX = x, touchY = y, touchDown = down, touchShift = true)))
 
-header ran = patched (ran, "header")
+tap label = step (\d => Drive::press (d, label))
 
-// Ordinals are read from the header as it was last patched (`shown`); the revision is the latest.
-tap (ran, shown, label) = post (ran, "{\"kind\":\"ui\",\"region\":\"header\",\"revision\":${revision (shown, "header", 1)},\"ordinal\":${ordinalOf (header shown, label)},\"value\":null,\"now\":2}")
-
-ordinalOf (node, label) = foldList (Doc::items (Doc::field (node, "children")), 0 - 1, \(found, child) => labelled (found, child, label))
-
-labelled (found, child, label) = match Doc::text (child, "label") == label
-    true => Doc::number (child, "event")
-    false => found
-
-// Strokes and dashes: the second path of a freehand line is its outline array.
-strokeOf ran = Doc::write (jsonIndex (listGet (canvasShapes ran) (satSub (length (canvasShapes ran)) 1) ?: JsonNull) 2 ?: JsonNull)
+shown label = Views::shows (driven.drivenSeen, label)
 
 // A freehand press at (100, 500).
-pressLine ran = pointer (ran, 1, "100.0", "500.0", "true", "false")
+pressLine () = pointer (100.0, 500.0, true)
 
 // A press at (100, 500) then a second point at (150, 550): one two-point line.
-twoPointLine ran = nextPointer (pressLine ran, 1, "150.0", "550.0", "true", "false")
+twoPointLine () =
+    pressLine ()
+    pointer (150.0, 550.0, true)
 
 // A start, one two-point line, and the header tap that names `label`.
 tapOnDrawn label =
-    first = started ()
-    tap (twoPointLine first, first, label)
+    started ()
+    twoPointLine ()
+    tap label
 
 // A Shift-held drag from (100, 500) to (x, y), read back as the line's points.
 shiftDrag (x, y) =
-    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
-    lineText (nextPointer (pressed, 1, x, y, "true", "true"), 0)
+    started ()
+    shiftPointer (100.0, 500.0, true)
+    shiftPointer (x, y, true)
+    lineText 0
 
 test ("start draws the five quads and sixteen paths of the original", \() =>
-    first = started ()
-    expect (shapeCount first, 21))
+    started ()
+    expect (shapeCount (), 21))
 
 test ("a press, two drags and a release draw one three-point line", \() =>
-    first = started ()
-    pressed = pressLine first
-    dragged = nextPointer (nextPointer (pressed, 1, "120.0", "510.0", "true", "false"), 1, "140.0", "530.0", "true", "false")
-    released = nextPointer (dragged, 1, "140.0", "530.0", "false", "false")
-    expect (length (lines released), 1)
-    expect (lineText (released, 0), "[100.0,500.0,120.0,510.0,140.0,530.0]")
-    expect ((sketch released).painting, false)
-    expect (shapeCount dragged, 22))
+    started ()
+    pressLine ()
+    pointer (120.0, 510.0, true)
+    pointer (140.0, 530.0, true)
+    expect (shapeCount (), 22)
+    pointer (140.0, 530.0, false)
+    expect (length (lines ()), 1)
+    expect (lineText 0, "[100.0,500.0,120.0,510.0,140.0,530.0]")
+    expect ((sketch ()).painting, false))
 
 test ("a single press draws nothing until the line has two points", \() =>
-    pressed = pointer (started (), 1, "10.0", "600.0", "true", "false")
-    expect (length (lines pressed), 1)
-    expect (shapeCount pressed, 21))
+    started ()
+    pointer (10.0, 600.0, true)
+    expect (length (lines ()), 1)
+    expect (shapeCount (), 21))
 
 test ("Shift keeps the start's y when the drag moved more across than down", \() =>
-    expect (shiftDrag ("200.0", "520.0"), "[100.0,500.0,200.0,500.0]"))
+    expect (shiftDrag (200.0, 520.0), "[100.0,500.0,200.0,500.0]"))
 
 test ("Shift keeps the start's x when the drag moved more down than across", \() =>
-    expect (shiftDrag ("110.0", "600.0"), "[100.0,500.0,100.0,600.0]"))
+    expect (shiftDrag (110.0, 600.0), "[100.0,500.0,100.0,600.0]"))
 
 test ("Dashed restrokes every line four on two off and relabels itself Solid", \() =>
-    dashed = tapOnDrawn "Dashed"
-    expect (strokeOf dashed, "[1,1.0,0,4.0,2.0]")
-    expect (ordinalOf (header dashed, "Solid") >= 0, true)
-    solid = tap (dashed, dashed, "Solid")
-    expect (strokeOf solid, "[1,1.0,0]"))
+    tapOnDrawn "Dashed"
+    expect (dashText (), "Line 1.0 bevel=false dashes=4.0,2.0")
+    expect (shown "Solid", true)
+    tap "Solid"
+    expect (dashText (), "Line 1.0 bevel=false dashes="))
 
 test ("Clear removes every line and keeps the original drawing", \() =>
-    cleared = tapOnDrawn "Clear"
-    expect (length (lines cleared), 0)
-    expect (shapeCount cleared, 21))
+    tapOnDrawn "Clear"
+    expect (length (lines ()), 0)
+    expect (shapeCount (), 21))
