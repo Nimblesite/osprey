@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-WRAPPER = ROOT / "src/osprey/examples/mobile/android/gradlew"
+WRAPPER = ROOT / "scripts/mobile/gradlew"
 BANK_RUN = "src/osprey/examples/projects/modules/mobile/android/run.sh"
 ANDROID_ENV = "scripts/mobile/android-env.sh"
 # What every runner has: no Homebrew, no cargo bin, no developer extras.

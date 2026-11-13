@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank casting casting-build inbox
+.PHONY: bank casting casting-build inbox tally
 
 ## bank: Build Talon Bank for Android.
 bank: _android-bank
@@ -22,4 +22,8 @@ casting-build:
 
 ## inbox: Build the inbox app for Android.
 inbox: _android-inbox
+
+## tally: Build and open Tally on the Android device named by OSPREY_ANDROID_SERIAL.
+tally:
+	bash src/toolchain/hosts/android/run.sh
 endif

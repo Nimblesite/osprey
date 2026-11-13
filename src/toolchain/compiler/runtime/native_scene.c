@@ -36,7 +36,8 @@ static void runs_leave(void) {
   atomic_flag_clear_explicit(&writing, memory_order_release);
 }
 // A host lays these out: a value that is not finite is never published.
-static bool finite(const double *values, int count) {
+// Bionic's math.h declares `finite`, so this helper carries its own name.
+static bool all_finite(const double *values, int count) {
   for (int i = 0; i < count; i++)
     if (!isfinite(values[i]))
       return false;
@@ -82,7 +83,7 @@ int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
   runs_enter();
   NativeRun *shapes = &runs[OSP_NATIVE_SHAPES], *chars = &runs[OSP_NATIVE_TEXT];
   size_t offset = chars->length;
-  char *copy = finite(values, 5) ? run_reserve(chars, bytes) : NULL;
+  char *copy = all_finite(values, 5) ? run_reserve(chars, bytes) : NULL;
   OspNativeShape *row = copy ? run_reserve(shapes, sizeof *row) : NULL;
   if (!row)
     return run_refuse(shapes, 1);
@@ -105,7 +106,7 @@ int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
                             double spacing, double radius, int64_t weight) {
   const double extents[] = {size, padding, spacing, radius};
   size_t bytes = text ? strlen(text) : 0;
-  bool usable = finite(extents, 4) && size >= 0 && padding >= 0 &&
+  bool usable = all_finite(extents, 4) && size >= 0 && padding >= 0 &&
                 spacing >= 0 && radius >= 0;
   runs_enter();
   NativeRun *views = &runs[OSP_NATIVE_VIEWS], *chars = &runs[OSP_NATIVE_TEXT];
@@ -140,7 +141,7 @@ int64_t osp_native_view_extend(int64_t row, double width, double height,
                                const char *hint) {
   const double extents[] = {width, height, grow};
   size_t bytes = hint ? strlen(hint) : 0;
-  bool usable = finite(extents, 3) && width >= 0 && height >= 0 && grow >= 0;
+  bool usable = all_finite(extents, 3) && width >= 0 && height >= 0 && grow >= 0;
   runs_enter();
   NativeRun *views = &runs[OSP_NATIVE_VIEWS], *chars = &runs[OSP_NATIVE_TEXT];
   size_t offset = chars->length;

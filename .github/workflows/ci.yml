@@ -1164,8 +1164,8 @@ jobs:
             mkdir -p src/osprey/examples/projects/modules/mobile/android/build
             adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
             make -C src/toolchain/targets/android/tests bank
-            src/osprey/examples/projects/modules/mobile/android/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
-            cd src/osprey/examples/mobile/android && ./gradlew --console=plain :app:lintDebug
+            scripts/mobile/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
+            scripts/mobile/gradlew -p src/osprey/examples/mobile/android --console=plain :app:lintDebug
 
       - name: Native bank Android results
         if: always()

@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank casting casting-headless casting-update inbox
+.PHONY: bank casting casting-headless casting-update inbox tally tally-headless
 
 ## bank: Talon Bank against its live API on Android.
 bank: _android-bank _runtime
@@ -33,4 +33,11 @@ inbox: _android-inbox
 	$(MAKE) _test_android_goldens
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-android.sh
 	OSPREY_ANDROID_SKIP_BUILD=1 bash src/osprey/examples/mobile/android/run.sh --smoke
+
+## tally: Tally's headless view check on the selected Android device.
+tally:
+	bash src/toolchain/hosts/android/run.sh --view-check
+
+## tally-headless: Run that view check on a headless emulator selected by OSPREY_ANDROID_SERIAL.
+tally-headless: tally
 endif
