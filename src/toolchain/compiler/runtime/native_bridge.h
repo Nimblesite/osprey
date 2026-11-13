@@ -80,17 +80,37 @@ _Static_assert(sizeof(OspNativeView) == sizeof(td_ViewRow) &&
                    offsetof(OspNativeView, hint_length) ==
                        TD_ViewRow_hintLength_OFFSET,
                "OspNativeView matches the generated ViewRow layout");
-// A published frame is one branch chunk whose children are its three sealed
+// [NATIVE-SHM-ASK] One field of a capability request or slice write, laid out
+// as the generated AskRow.
+typedef struct {
+  int64_t field, number, text_offset, text_length;
+} OspNativeAsk;
+_Static_assert(sizeof(OspNativeAsk) == sizeof(td_AskRow) &&
+                   offsetof(OspNativeAsk, number) == TD_AskRow_number_OFFSET &&
+                   offsetof(OspNativeAsk, text_offset) ==
+                       TD_AskRow_textOffset_OFFSET &&
+                   offsetof(OspNativeAsk, text_length) ==
+                       TD_AskRow_textLength_OFFSET,
+               "OspNativeAsk matches the generated AskRow layout");
+// A published frame is one branch chunk whose children are its four sealed
 // runs, in this order; the value is both the child index and, plus one, the
 // chunk type.
-enum { OSP_NATIVE_SHAPES, OSP_NATIVE_VIEWS, OSP_NATIVE_TEXT, OSP_NATIVE_RUNS };
+enum {
+  OSP_NATIVE_SHAPES,
+  OSP_NATIVE_VIEWS,
+  OSP_NATIVE_TEXT,
+  OSP_NATIVE_ASKS,
+  OSP_NATIVE_RUNS
+};
 #define OSP_NATIVE_SCENE_SHAPES (OSP_NATIVE_SHAPES + 1)
 #define OSP_NATIVE_VIEW_ROWS (OSP_NATIVE_VIEWS + 1)
 #define OSP_NATIVE_VIEW_TEXT (OSP_NATIVE_TEXT + 1)
+#define OSP_NATIVE_ASK_ROWS (OSP_NATIVE_ASKS + 1)
 #define OSP_NATIVE_FRAME (OSP_NATIVE_RUNS + 1)
 #define OSP_NATIVE_SCENE_ROWS (1 << 20) // The most shapes one call may send.
 #define OSP_NATIVE_VIEW_LIMIT (1 << 16) // The most controls in one view.
 #define OSP_NATIVE_TEXT_LIMIT (1 << 24) // The most text bytes in one view.
+#define OSP_NATIVE_ASK_LIMIT (1 << 16)  // The most ask fields in one frame.
 // [NATIVE-SHM-SAFETY] The writers below may be called from any thread: each
 // row lands whole. A number that is not finite, or a negative extent, refuses
 // the frame, so a host never lays out a value it cannot use.
@@ -112,17 +132,20 @@ int64_t osp_native_view_row(int64_t kind, int64_t parent, int64_t action,
 int64_t osp_native_view_extend(int64_t row, double width, double height,
                                double grow, int64_t flags, int64_t border,
                                const char *hint);
+// Appends one ask field and copies its text once into the text run. A field
+// below 0 refuses the frame. Returns 0, or 1 once the frame is refused.
+int64_t osp_native_ask(int64_t field, int64_t number, const char *text);
 // Hands every pending run's storage to the caller in one step and starts
-// three empty runs, so no row can land half in one frame and half in the next.
+// empty runs, so no row can land half in one frame and half in the next.
 // False when a write was refused.
 bool osp_native_runs_take(void *data[OSP_NATIVE_RUNS],
                           int64_t length[OSP_NATIVE_RUNS],
                           int64_t capacity[OSP_NATIVE_RUNS]);
-// Seals the three pending runs in place and publishes them as one frame; a
+// Seals the pending runs in place and publishes them as one frame; a
 // refused run publishes nothing. Call on the executor thread after each
 // application export returns.
 int osp_native_frame_commit(OspNativeBridge *bridge, int64_t *revision);
-// Drops the three pending runs: for a call that failed, whose partial frame
+// Drops the pending runs: for a call that failed, whose partial frame
 // belongs to nothing.
 void osp_native_frame_discard(void);
 // A new owner of the `index`th child of a branch chunk.

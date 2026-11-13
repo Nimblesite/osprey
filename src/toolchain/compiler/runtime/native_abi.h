@@ -2,7 +2,7 @@
 #ifndef TD_SHARED_H
 #define TD_SHARED_H
 #include <stddef.h>
-#define TD_SHARED_FINGERPRINT "33856a05f72962856b37399492572d6d96aa8ea0a252d011802a10d24c0d45be"
+#define TD_SHARED_FINGERPRINT "b315dff76fbcbfb1fd304c32427bb3d3c5044afaee5cb988be07ba4a809e2d30"
 #define TD_SHARED_POINTER_BYTES 8
 #define TD_SHARED_ABI_MAJOR 1
 #define TD_SHARED_STORAGE(name, byte_count) \
@@ -18,6 +18,15 @@ TD_SHARED_STORAGE(AllocationReference, 40);
 #define TD_AllocationReference_offset_OFFSET 32
 #define TD_AllocationReference_offset_BYTES 8
 TD_SHARED_STORAGE(ApplicationInstance, 16);
+TD_SHARED_STORAGE(AskRow, 32);
+#define TD_AskRow_field_OFFSET 0
+#define TD_AskRow_field_BYTES 8
+#define TD_AskRow_number_OFFSET 8
+#define TD_AskRow_number_BYTES 8
+#define TD_AskRow_textOffset_OFFSET 16
+#define TD_AskRow_textOffset_BYTES 8
+#define TD_AskRow_textLength_OFFSET 24
+#define TD_AskRow_textLength_BYTES 8
 TD_SHARED_STORAGE(BridgeError, 104);
 #define TD_BridgeError_InvalidLimit_TAG 0
 #define TD_BridgeError_InvalidLimit_resource_OFFSET 8

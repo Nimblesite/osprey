@@ -34,6 +34,7 @@ const WASM_RUNTIME_IMPORTS: &[&str] = &[
     "osp_native_scene_shape",
     "osp_native_view_row",
     "osp_native_view_extend",
+    "osp_native_ask",
 ];
 
 pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {

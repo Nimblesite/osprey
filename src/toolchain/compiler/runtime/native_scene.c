@@ -1,5 +1,6 @@
-// [NATIVE-SHM-SCENE] [NATIVE-SHM-VIEW] The pending runs of the one application
-// executor: streamed shapes, native controls and their text. Each value is
+// [NATIVE-SHM-SCENE] [NATIVE-SHM-VIEW] [NATIVE-SHM-ASK] The pending runs of the
+// one application executor: streamed shapes, native controls, the requests and
+// slice writes they ask of the host, and their text. Each value is
 // written once, here, into the storage a host later reads in place: no host
 // call and no encoding per value. Portable C only, so the wasm runtime carries
 // it too.
@@ -20,6 +21,7 @@ static NativeRun runs[OSP_NATIVE_RUNS] = {
                                     sizeof(OspNativeShape)},
     [OSP_NATIVE_VIEWS] = {.limit = OSP_NATIVE_VIEW_LIMIT * sizeof(OspNativeView)},
     [OSP_NATIVE_TEXT] = {.limit = OSP_NATIVE_TEXT_LIMIT},
+    [OSP_NATIVE_ASKS] = {.limit = OSP_NATIVE_ASK_LIMIT * sizeof(OspNativeAsk)},
 };
 
 // [NATIVE-SHM-SAFETY] Fibers are OS threads, so two may write at once. One
@@ -150,6 +152,25 @@ int64_t osp_native_view_extend(int64_t row, double width, double height,
   view->border = border ? border : view->border;
   view->hint_offset = bytes ? (int64_t)offset : view->hint_offset;
   view->hint_length = bytes ? (int64_t)bytes : view->hint_length;
+  runs_leave();
+  return 0;
+}
+
+int64_t osp_native_ask(int64_t field, int64_t number, const char *text) {
+  size_t bytes = text ? strlen(text) : 0;
+  runs_enter();
+  NativeRun *asks = &runs[OSP_NATIVE_ASKS], *chars = &runs[OSP_NATIVE_TEXT];
+  size_t offset = chars->length;
+  char *copy = field < 0 ? NULL : run_reserve(chars, bytes);
+  OspNativeAsk *row = copy ? run_reserve(asks, sizeof *row) : NULL;
+  if (!row)
+    return run_refuse(asks, 1);
+  if (bytes)
+    memcpy(copy, text, bytes);
+  *row = (OspNativeAsk){.field = field,
+                        .number = number,
+                        .text_offset = (int64_t)offset,
+                        .text_length = (int64_t)bytes};
   runs_leave();
   return 0;
 }

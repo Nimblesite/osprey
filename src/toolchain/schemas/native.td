@@ -185,3 +185,13 @@ type ViewRow {
   flags: Int border: Int
   hintOffset: Int hintLength: Int
 }
+
+# [NATIVE-SHM-ASK] One field of a capability request or a slice write in the published frame,
+# replacing the JSON request list. A row whose `field` is 0 starts an ask: its `number` is the
+# capability's code and its text the ticket (a slice write's text is its key). The rows after it,
+# until the next field-0 row, are that ask's arguments: `field` is the argument's position in the
+# capability's declaration, counted from 1; a list repeats its field once per item, a pair (a header
+# or an environment variable) is two rows in order; whole numbers and flags are in `number`, text in
+# `textOffset` and `textLength` (UTF-8 bytes of the frame's text run). Hosts refuse codes they do not
+# know, fields out of range and text ranges outside the run.
+type AskRow { field: Int number: Int textOffset: Int textLength: Int }
