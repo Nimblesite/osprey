@@ -24,12 +24,22 @@ export type Kind =
   | "canvas"
   | "editor"
   | "menu"
-  | "sheet";
+  | "sheet"
+  /** [NATIVE-SHM-NODES] One told value, a record of members and a list of items. */
+  | "field"
+  | "record"
+  | "list";
 
 const KINDS: readonly Kind[] = [
   "column", "line", "label", "press", "entry", "gap", "scroll", "layer", "toggle",
   "picker", "choice", "rule", "image", "canvas", "editor", "menu", "sheet",
+  "field", "record", "list",
 ];
+
+/** Whether a row tells a component rather than draws a control ([NATIVE-SHM-NODES]). */
+export function told(kind: Kind): boolean {
+  return kind === "field" || kind === "record" || kind === "list";
+}
 
 /** The `traits` flags a row's fit adds up ([NATIVE-SHM-VIEW]). */
 export const FLAGS = {
@@ -73,6 +83,8 @@ export interface Control {
   readonly hint: string;
   readonly look: Look;
   readonly fit: Fit;
+  /** A told field's whole number or flag; 0 for every other row ([NATIVE-SHM-NODES]). */
+  readonly value: number;
   children: number[];
 }
 
@@ -189,9 +201,28 @@ function extent(view: DataView, offset: number): number {
   return value;
 }
 
+/** One told row ([NATIVE-SHM-NODES]): its name is its hint, a field's value is its words, its
+ * whole number (its `colour`, which is not a colour here) or its real, and its weight says
+ * which type it is: 0 text, 1 whole number, 2 real, 3 flag, 4 a negative real. */
+function toldRow(kind: Kind, row: DataView, at: number, index: number, run: Uint8Array): Control {
+  const weight = whole(row, at + VIEW_ROW.weight);
+  if (weight < 0 || weight > 4) throw new Error(`row ${index} has a told value of an unknown type ${weight}`);
+  return {
+    kind,
+    action: null,
+    words: textAt(run, whole(row, at + VIEW_ROW.textOffset), whole(row, at + VIEW_ROW.textLength)),
+    hint: textAt(run, whole(row, at + VIEW_ROW.hintOffset), whole(row, at + VIEW_ROW.hintLength)),
+    look: { ink: 0, fill: 0, size: extent(row, at + VIEW_ROW.size), padding: 0, spacing: 0, radius: 0, weight },
+    fit: { width: 0, height: 0, grow: 0, flags: 0, border: 0 },
+    value: whole(row, at + VIEW_ROW.colour),
+    children: [],
+  };
+}
+
 function control(row: DataView, at: number, index: number, run: Uint8Array): Control {
   const kind = KINDS[whole(row, at + VIEW_ROW.kind)];
   if (kind === undefined) throw new Error(`row ${index} has an unknown kind ${whole(row, at + VIEW_ROW.kind)}`);
+  if (told(kind)) return toldRow(kind, row, at, index, run);
   const flags = whole(row, at + VIEW_ROW.flags);
   if (flags < 0 || flags > 0xffffffff || (flags & ~FLAGS.all) !== 0) throw new Error(`row ${index} has unknown flags ${flags}`);
   const weight = whole(row, at + VIEW_ROW.weight);
@@ -218,6 +249,7 @@ function control(row: DataView, at: number, index: number, run: Uint8Array): Con
       flags,
       border: colour(row, at + VIEW_ROW.border),
     },
+    value: 0,
     children: [],
   };
 }
@@ -463,10 +495,11 @@ function scenes(run: ArrayBuffer, textRun: Uint8Array, canvases: readonly number
   return all;
 }
 
-/** Checks and reads one sealed frame; a bad row refuses the whole frame. */
+/** Checks and reads one sealed frame; a bad row refuses the whole frame. A scene marker may
+ * name a canvas row or the record row of a scene component ([NATIVE-SHM-NODES]). */
 export function readFrame(runs: FrameRuns): Shown {
   const textRun = new Uint8Array(runs.text);
   const read = controls(runs.views, textRun);
-  const canvases = read.controls.flatMap((control, index) => (control.kind === "canvas" ? [index] : []));
+  const canvases = read.controls.flatMap((control, index) => (control.kind === "canvas" || control.kind === "record" ? [index] : []));
   return { controls: read.controls, roots: read.roots, scenes: scenes(runs.shapes, textRun, canvases) };
 }

@@ -81,8 +81,8 @@ storage-headless: _runtime_macos
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 agent-headless: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	swift test --package-path src/toolchain/hosts/swift/Tests
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
+	swift test --package-path src/toolchain/hosts/swift
 
 ## agent-live: Osprey Agent in a real window with real DeepSeek calls, checked by acceptance tests the
 ##             agent never sees and an LLM judge. Spends tokens; the key is DEEPSEEKKEY in .env.

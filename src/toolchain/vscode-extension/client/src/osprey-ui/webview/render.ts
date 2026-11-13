@@ -71,16 +71,16 @@ const SYMBOLS: Readonly<Record<string, string>> = {
 function symbol(name: string): string {
   if (name === "") return "";
   const glyph = SYMBOLS[name] ?? "▢";
-  return `<span class="osp-symbol" aria-hidden="true"${name in SYMBOLS ? "" : ` data-unknown-symbol="${escapeHtml(name)}"`}>${escapeHtml(glyph)}</span>`;
+  return `<span class="osp-view-symbol" aria-hidden="true"${name in SYMBOLS ? "" : ` data-unknown-symbol="${escapeHtml(name)}"`}>${escapeHtml(glyph)}</span>`;
 }
 
 function led(control: Control, body: string): string {
   return control.hint === "" ? body
-    : `<span class="osp-led">${symbol(control.hint)}${body}</span>`;
+    : `<span class="osp-view-led">${symbol(control.hint)}${body}</span>`;
 }
 
 function words(control: Control): string {
-  return `<span class="osp-words">${escapeHtml(control.words)}</span>`;
+  return `<span class="osp-view-words">${escapeHtml(control.words)}</span>`;
 }
 
 function children(shown: Shown, control: Control, options: RenderOptions): string {
@@ -88,7 +88,7 @@ function children(shown: Shown, control: Control, options: RenderOptions): strin
 }
 
 function container(shown: Shown, control: Control, index: number, direction: string, options: RenderOptions): string {
-  return `<div class="osp-control osp-${control.kind}" style="${style([...fixed(control), "display:flex", `flex-direction:${direction}`,
+  return `<div class="osp-view-control osp-view-${control.kind}" style="${style([...fixed(control), "display:flex", `flex-direction:${direction}`,
     ...(control.kind === "line" ? ["align-items:center"] : []),
     ...(control.kind === "scroll" ? ["overflow-y:auto", "min-height:0"] : [])])}"${focus(index)}>${children(shown, control, options)}</div>`;
 }
@@ -96,32 +96,32 @@ function container(shown: Shown, control: Control, index: number, direction: str
 function layered(shown: Shown, control: Control, index: number, options: RenderOptions): string {
   const inside = control.children.map((row, at) => {
     const body = draw(shown, row, options);
-    return at === 0 ? body : `<div class="osp-layer-slot" style="position:absolute;inset:0">${body}</div>`;
+    return at === 0 ? body : `<div class="osp-view-layer-slot" style="position:absolute;inset:0">${body}</div>`;
   }).join("");
-  return `<div class="osp-control osp-layer" style="${style([...fixed(control), "display:flex", "flex-direction:column", "position:relative"])}"${focus(index)}>${inside}</div>`;
+  return `<div class="osp-view-control osp-view-layer" style="${style([...fixed(control), "display:flex", "flex-direction:column", "position:relative"])}"${focus(index)}>${inside}</div>`;
 }
 
 function label(control: Control, index: number): string {
-  return `<span class="osp-control osp-label" style="${style([...fixed(control), "display:inline-flex", "align-items:center"])}"${focus(index)}>${led(control, words(control))}</span>`;
+  return `<span class="osp-view-control osp-view-label" style="${style([...fixed(control), "display:inline-flex", "align-items:center"])}"${focus(index)}>${led(control, words(control))}</span>`;
 }
 
 function press(control: Control, index: number): string {
   const disabled = (control.fit.flags & FLAGS.disabled) !== 0;
-  return `<button type="button" class="osp-control osp-press" style="${style([...fixed(control), "display:inline-flex", "align-items:center", "justify-content:center", "cursor:pointer"])}"${provenance(control, index, "")}${disabled ? " disabled" : ""}>${led(control, words(control))}</button>`;
+  return `<button type="button" class="osp-view-control osp-view-press" style="${style([...fixed(control), "display:inline-flex", "align-items:center", "justify-content:center", "cursor:pointer"])}"${provenance(control, index, "")}${disabled ? " disabled" : ""}>${led(control, words(control))}</button>`;
 }
 
 function field(control: Control, index: number): string {
   const flags = control.fit.flags;
-  const kind = control.kind === "editor" ? "osp-editor" : "osp-entry";
+  const kind = control.kind === "editor" ? "osp-view-editor" : "osp-view-entry";
   const type = flags & FLAGS.secret ? "password" : "text";
   const commit = flags & FLAGS.onCommit ? "enter" : "change";
-  return `<input class="osp-control ${kind}" type="${type}" value="${escapeHtml(control.words)}" placeholder="${escapeHtml(control.hint)}" autocomplete="off" spellcheck="false" data-commit="${commit}" style="${style([...fixed(control), "font:inherit"])}"${provenance(control, index, "")}${flags & FLAGS.disabled ? " disabled readonly" : ""} />`;
+  return `<input class="osp-view-control ${kind}" type="${type}" value="${escapeHtml(control.words)}" placeholder="${escapeHtml(control.hint)}" autocomplete="off" spellcheck="false" data-commit="${commit}" style="${style([...fixed(control), "font:inherit"])}"${provenance(control, index, "")}${flags & FLAGS.disabled ? " disabled readonly" : ""} />`;
 }
 
 function toggle(control: Control, index: number): string {
   const chosen = (control.fit.flags & FLAGS.chosen) !== 0;
   const disabled = (control.fit.flags & FLAGS.disabled) !== 0;
-  return `<button type="button" role="switch" aria-checked="${chosen}" class="osp-control osp-toggle" style="${style([...fixed(control), "display:inline-flex", "align-items:center", "gap:8px", "cursor:pointer"])}"${provenance(control, index, chosen ? "false" : "true")}${disabled ? " disabled" : ""}><span class="osp-switch" aria-hidden="true" data-chosen="${chosen}">${chosen ? "✓" : ""}</span>${words(control)}</button>`;
+  return `<button type="button" role="switch" aria-checked="${chosen}" class="osp-view-control osp-view-toggle" style="${style([...fixed(control), "display:inline-flex", "align-items:center", "gap:8px", "cursor:pointer"])}"${provenance(control, index, chosen ? "false" : "true")}${disabled ? " disabled" : ""}><span class="osp-view-switch" aria-hidden="true" data-chosen="${chosen}">${chosen ? "✓" : ""}</span>${words(control)}</button>`;
 }
 
 function picker(shown: Shown, control: Control, index: number): string {
@@ -129,22 +129,22 @@ function picker(shown: Shown, control: Control, index: number): string {
     const option = shown.controls[row];
     if (option === undefined) return "";
     const chosen = (option.fit.flags & FLAGS.chosen) !== 0;
-    return `<button type="button" class="osp-control osp-option" style="${style([...fixed(option), "display:inline-flex", "align-items:center", "cursor:pointer",
+    return `<button type="button" class="osp-view-control osp-view-option" style="${style([...fixed(option), "display:inline-flex", "align-items:center", "cursor:pointer",
       ...(chosen ? ["outline:1px solid currentColor"] : [])])}"${provenance(control, row, option.hint)}>${words(option)}</button>`;
   }).join("");
-  return `<div class="osp-control osp-picker" style="${style([...fixed(control), "display:flex", "flex-wrap:wrap", "align-items:center"])}"${focus(index)}>${words(control)}${choices}</div>`;
+  return `<div class="osp-view-control osp-view-picker" style="${style([...fixed(control), "display:flex", "flex-wrap:wrap", "align-items:center"])}"${focus(index)}>${words(control)}${choices}</div>`;
 }
 
 function rule(control: Control, index: number): string {
-  return `<div class="osp-control osp-rule" role="separator" style="${style([...fixed(control), "height:" + pixels(Math.max(control.look.size, 1)), "width:100%", `background:${ink(control.look.ink)}`])}"${focus(index)}></div>`;
+  return `<div class="osp-view-control osp-view-rule" role="separator" style="${style([...fixed(control), "height:" + pixels(Math.max(control.look.size, 1)), "width:100%", `background:${ink(control.look.ink)}`])}"${focus(index)}></div>`;
 }
 
 function image(control: Control, index: number, options: RenderOptions): string {
   const source = options.assets?.get(control.words);
   if (source === undefined) {
-    return `<div class="osp-control osp-image-missing" role="img" aria-label="${escapeHtml(control.words)}" style="${style([...fixed(control), "display:flex", "align-items:center", "justify-content:center", "font-size:12px", "opacity:0.6"])}"${focus(index)}>${escapeHtml(control.words)}</div>`;
+    return `<div class="osp-view-control osp-view-image-missing" role="img" aria-label="${escapeHtml(control.words)}" style="${style([...fixed(control), "display:flex", "align-items:center", "justify-content:center", "font-size:12px", "opacity:0.6"])}"${focus(index)}>${escapeHtml(control.words)}</div>`;
   }
-  return `<img class="osp-control osp-image" src="${escapeHtml(source)}" alt="${escapeHtml(control.words)}" loading="lazy" decoding="async" style="${style([...fixed(control), "object-fit:contain"])}"${focus(index)} />`;
+  return `<img class="osp-view-control osp-view-image" src="${escapeHtml(source)}" alt="${escapeHtml(control.words)}" loading="lazy" decoding="async" style="${style([...fixed(control), "object-fit:contain"])}"${focus(index)} />`;
 }
 
 function canvas(control: Control, index: number): string {
@@ -154,8 +154,8 @@ function canvas(control: Control, index: number): string {
 
 function sheet(shown: Shown, control: Control, index: number, options: RenderOptions): string {
   const dismiss = control.action === null ? "" :
-    `<button type="button" class="osp-dismiss" style="align-self:flex-end;cursor:pointer;background:transparent;border:0;color:inherit" data-ordinal="${control.action}" data-words="" aria-label="Dismiss">${symbol("dismiss")}</button>`;
-  return `<div class="osp-control osp-sheet" style="${style([...fixed(control), "display:flex", "flex-direction:column", "position:relative"])}"${focus(index)}>${dismiss}${children(shown, control, options)}</div>`;
+    `<button type="button" class="osp-view-dismiss" style="align-self:flex-end;cursor:pointer;background:transparent;border:0;color:inherit" data-ordinal="${control.action}" data-words="" aria-label="Dismiss">${symbol("dismiss")}</button>`;
+  return `<div class="osp-view-control osp-view-sheet" style="${style([...fixed(control), "display:flex", "flex-direction:column", "position:relative"])}"${focus(index)}>${dismiss}${children(shown, control, options)}</div>`;
 }
 
 function draw(shown: Shown, index: number, options: RenderOptions): string {
@@ -179,7 +179,7 @@ function draw(shown: Shown, index: number, options: RenderOptions): string {
     case "editor":
       return field(control, index);
     case "gap":
-      return `<div class="osp-control osp-gap" style="flex-grow:1"${focus(index)}></div>`;
+      return `<div class="osp-view-control osp-view-gap" style="flex-grow:1"${focus(index)}></div>`;
     case "toggle":
       return toggle(control, index);
     case "picker":
@@ -201,5 +201,5 @@ function draw(shown: Shown, index: number, options: RenderOptions): string {
 
 /** Draws every root row top to bottom. */
 export function renderShown(shown: Shown, options: RenderOptions = {}): string {
-  return `<div class="osp-rows">${shown.roots.map((root) => draw(shown, root, options)).join("")}</div>`;
+  return `<div class="osp-view">${shown.roots.map((root) => draw(shown, root, options)).join("")}</div>`;
 }

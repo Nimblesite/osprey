@@ -113,14 +113,14 @@ func missing(_ ask: Ask, _ name: String) -> CapabilityError {
 }
 
 /// A required text at argument `field`, refusing an ask that carries none.
-func required(_ ask: Ask, text field: Int64, _ name: String) throws -> String {
+public func required(_ ask: Ask, text field: Int64, _ name: String) throws -> String {
     guard ask.fields.contains(where: { $0.field == field }) else { throw missing(ask, name) }
     return ask.text(field)
 }
 
 /// A required whole number at argument `field`, refusing an ask that carries none; the adapter
 /// checks its range.
-func required(_ ask: Ask, whole field: Int64, _ name: String) throws -> Int {
+public func required(_ ask: Ask, whole field: Int64, _ name: String) throws -> Int {
     guard let held = ask.fields.first(where: { $0.field == field }) else { throw missing(ask, name) }
     return Int(held.number)
 }
@@ -176,9 +176,9 @@ public final class CapabilityRunner {
     }
 }
 
-enum Bounded {
+public enum Bounded {
     /// Reads a regular file of at most `limit` bytes without following a symbolic link.
-    static func read(_ path: String, limit: Int) throws -> Data {
+    public static func read(_ path: String, limit: Int) throws -> Data {
         try snapshot(path, limit: limit).data
     }
 
@@ -204,7 +204,7 @@ enum Bounded {
     }
 
     /// Mechanical facts from the same open file; pathname replacement invalidates the read.
-    static func snapshot(_ path: String, limit: Int) throws -> (data: Data, identity: stat) {
+    public static func snapshot(_ path: String, limit: Int) throws -> (data: Data, identity: stat) {
         guard limit >= 0, limit < Int.max else { throw CapabilityError.invalidArgument("Invalid file byte limit") }
         try Task.checkCancellation()
         // [UI-EFFECTS]: opening a FIFO must not wait before fstat rejects it.
@@ -249,7 +249,7 @@ enum Bounded {
         }
     }
 
-    static func text(_ data: Data) throws -> String {
+    public static func text(_ data: Data) throws -> String {
         guard let text = String(data: data, encoding: .utf8) else { throw CapabilityError.invalidArgument("Not UTF-8 text") }
         return text
     }

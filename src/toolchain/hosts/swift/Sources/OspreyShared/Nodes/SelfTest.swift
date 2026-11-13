@@ -657,7 +657,7 @@ public final class SelfTestRun {
 // crosses between the application and the host.
 extension Tree {
     /// A script or double file read from disk.
-    static func fixture(_ data: Data) -> Tree? {
+    public static func fixture(_ data: Data) -> Tree? {
         (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])).flatMap(Tree.init(file:))
     }
 

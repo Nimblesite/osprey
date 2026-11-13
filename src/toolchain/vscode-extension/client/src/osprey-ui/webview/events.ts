@@ -8,6 +8,10 @@ export const EVENT = {
   key: 1,
   pointer: 2,
   viewed: 3,
+  point: 4,
+  stroke: 5,
+  enclose: 6,
+  lasso: 7,
   completed: 8,
   phase: 9,
   frame: 10,
@@ -33,6 +37,34 @@ function event(kind: number): HostEvent {
 /** The control numbered `ordinal` delivering `words`. */
 export function controlEvent(ordinal: number, words: string): HostEvent {
   return { ...event(EVENT.control), ordinal, words };
+}
+
+/** The words a control value carries: nothing, text, a flag or a whole number. */
+export function wordsOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
+}
+
+/** One more point, in whole board points, of the stroke being drawn ([NATIVE-SHM-EVENT]). */
+export function pointEvent(x: number, y: number): HostEvent {
+  return { ...event(EVENT.point), x, y };
+}
+
+/** The stroke on board `ordinal` finished: `width` points wide at `at` milliseconds. */
+export function strokeEvent(ordinal: number, width: number, at: number): HostEvent {
+  return { ...event(EVENT.stroke), ordinal, x: width, y: at };
+}
+
+/** One more stroke, numbered `ordinal`, inside the lasso being drawn. */
+export function encloseEvent(ordinal: number): HostEvent {
+  return { ...event(EVENT.enclose), ordinal };
+}
+
+/** The lasso on board `ordinal` closed. */
+export function lassoEvent(ordinal: number): HostEvent {
+  return { ...event(EVENT.lasso), ordinal };
 }
 
 /** The next value a switch delivers when it is toggled. */

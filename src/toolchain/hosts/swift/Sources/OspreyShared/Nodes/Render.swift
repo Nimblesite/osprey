@@ -15,11 +15,11 @@ public struct Drawing {
 }
 
 extension Tree {
-    subscript(_ key: String) -> Tree? { object?[key] }
-    func text(_ key: String) -> String { self[key]?.string ?? "" }
-    func flag(_ key: String) -> Bool { self[key]?.bool ?? false }
-    func count(_ key: String) -> Int { self[key]?.int ?? 0 }
-    func list(_ key: String) -> [Tree] { self[key]?.array ?? [] }
+    public subscript(_ key: String) -> Tree? { object?[key] }
+    public func text(_ key: String) -> String { self[key]?.string ?? "" }
+    public func flag(_ key: String) -> Bool { self[key]?.bool ?? false }
+    public func count(_ key: String) -> Int { self[key]?.int ?? 0 }
+    public func list(_ key: String) -> [Tree] { self[key]?.array ?? [] }
 }
 
 public struct NodeView: View {
