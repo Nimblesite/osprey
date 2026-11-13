@@ -83,14 +83,14 @@ tailBig x = atFloat (1000.0, x)
 (** The checked one-buffer GPU step `step` applied to `buf` `times` times, retaining the first failure. *)
 repeatStep (buf, times, step) = match times
     0 => Success(value = buf)
-    _ => resultAndThen (step (buf), \next => repeatStep (next, times - 1, step))
+    _ => andThen (step (buf), \next => repeatStep (next, times - 1, step))
 (** simulate and mix rerun a kernel over the whole buffer n times — the allocation churn a profiler should see — while rebuild sends the buffer back to the host and in again every pass, so each round trip is a fresh dense copy of its own output. lowerTimes is the inverse walk a climb cancels against. *)
 simulate (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, bump)))
 mix (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, stir)))
 lowerTimes (buf, n) = repeatStep (buf, n, (\b => gpuMap(b, lower)))
 rebuild (buf, n) = match n
     0 => Success(value = buf)
-    _ => resultAndThen (gpuMap (buf, bump), \mapped => resultAndThen (fromGpu (mapped), \back => resultAndThen (toGpu (back), \again => rebuild (again, n - 1))))
+    _ => andThen (gpuMap (buf, bump), \mapped => andThen (fromGpu (mapped), \back => andThen (toGpu (back), \again => rebuild (again, n - 1))))
 (** [GPU-FOLD] with tally: `b` from `seed` totals `expected`. *)
 sumsTo (b, seed, expected) = gpuEquals(gpuFold(b, seed, tally), expected)
 (** sumsTo from the zero seed. *)
@@ -103,7 +103,7 @@ zippedProductSumsTo (a, b, expected) = gpuSatisfies(gpuZipWith(a, b, product), \
 uploadSumIs (values, expected) = gpuSatisfies(toGpu (values), \uploaded => sumIs (uploaded, expected))
 (** Fold the upload of `values` with addOr to `expected`, so an overflow shows as the mark. *)
 uploadAddOrIs (values, expected) = gpuSatisfies(toGpu (values), \uploaded => gpuEquals(gpuFold(uploaded, 0, addOr), expected))
-(** Fold the upload of `values` with gpuTestAdd from `seed` to `expected`. *)
+(** Fold the upload of `values` with addF from `seed` to `expected`. *)
 uploadFloatSumsTo (values, seed, expected) = gpuSatisfies(toGpu (values), \uploaded => floatSumsTo (uploaded, seed, expected))
 (** Run a million elements through map, fold, filter and scan. *)
 megaPipelineCase () = iota1 (1000000, \(idx) => withBuffer(gpuMap(idx, square), \squares => withBuffer(gpuFilter(idx, isEven), \evens => withBuffer(gpuScan(idx, 0, tally), \running => checkAll("million-element pipeline", [
@@ -159,18 +159,18 @@ gatherBoundaryCase () = iota1 (100000, \(src) => withBuffer(gpuMap(src, \i => gp
 ])))))
 (** Widen a 100k index buffer through the float combinators. *)
 floatScaleCase () = iota1 (100000, \(indices100000) => withBuffer(gpuMap(indices100000, toFloat), \xs => withBuffer(gpuMap(xs, half), \halves => withBuffer(gpuMap(xs, negF), \flipped => withBuffer(gpuMap(xs, recip), \recips => checkAll("float buffers at scale", [
-    floatSumsTo (xs, 0.0, 4999950000.0), lengthIs (xs, 100000), elementsAt (xs, (-1.0), [0, 99999], [0.0, 99999.0]), floatSumsTo (halves, 0.0, 2499975000.0), elementIs (halves, 3, (-1.0), 1.5), floatSumsTo (flipped, 0.0, -4999950000.0), elementIs (flipped, 99999, 0.0, -99999.0), elementsAt (recips, (-1.0), [0, 1, 4], [0.0, 1.0, 0.25]), gpuSatisfies(gpuScan(xs, 0.0, gpuTestAdd), \scanned => elementIs (scanned, 99999, (-1.0), 4999950000.0)), gpuSatisfies(gpuZipWith (xs, flipped, gpuTestAdd), \zipped => floatSumsTo (zipped, 0.0, 0.0)), gpuLengthIs(gpuFilter(xs, isPositiveF), 99999), toFloat (9007199254740992) == 9007199254740992.0, toFloat (9007199254740993) == toFloat (9007199254740992), toFloat (9007199254740991) < toFloat (9007199254740992), toFloat (-9007199254740992) == -9007199254740992.0
+    floatSumsTo (xs, 0.0, 4999950000.0), lengthIs (xs, 100000), elementsAt (xs, (-1.0), [0, 99999], [0.0, 99999.0]), floatSumsTo (halves, 0.0, 2499975000.0), elementIs (halves, 3, (-1.0), 1.5), floatSumsTo (flipped, 0.0, -4999950000.0), elementIs (flipped, 99999, 0.0, -99999.0), elementsAt (recips, (-1.0), [0, 1, 4], [0.0, 1.0, 0.25]), gpuSatisfies(gpuScan(xs, 0.0, addF), \scanned => elementIs (scanned, 99999, (-1.0), 4999950000.0)), gpuSatisfies(gpuZipWith (xs, flipped, addF), \zipped => floatSumsTo (zipped, 0.0, 0.0)), gpuLengthIs(gpuFilter(xs, isPositiveF), 99999), toFloat (9007199254740992) == 9007199254740992.0, toFloat (9007199254740993) == toFloat (9007199254740992), toFloat (9007199254740991) < toFloat (9007199254740992), toFloat (-9007199254740992) == -9007199254740992.0
 ]))))))
 (** Make accumulation order observable: [GPU-FOLD] contracts the host backend to combine left-to-right, so a huge leading term absorbs every small one after it while the same terms reversed all survive — why the spec calls a non-associative combine backend-dependent. *)
-floatOrderCase () = iota2 (1001, 100000, \(indices1001, indices100000) => withBuffer(gpuMap(indices1001, toFloat), \xs => withBuffer(gpuMap(xs, headBig), \leading => withBuffer(gpuMap(xs, tailBig), \trailing => withBuffer(gpuFold(leading, 0.0, gpuTestAdd), \absorbed => withBuffer(gpuFold(trailing, 0.0, gpuTestAdd), \survived => withBuffer(gpuMap(indices100000, tenthOf), \tenthSources => withBuffer(gpuFold(tenthSources, 0.0, gpuTestAdd), \tenths =>
+floatOrderCase () = iota2 (1001, 100000, \(indices1001, indices100000) => withBuffer(gpuMap(indices1001, toFloat), \xs => withBuffer(gpuMap(xs, headBig), \leading => withBuffer(gpuMap(xs, tailBig), \trailing => withBuffer(gpuFold(leading, 0.0, addF), \absorbed => withBuffer(gpuFold(trailing, 0.0, addF), \survived => withBuffer(gpuMap(indices100000, tenthOf), \tenthSources => withBuffer(gpuFold(tenthSources, 0.0, addF), \tenths =>
     handle Arith
         divideByZero op lhs =>
             checkAll("zero divisor payload", [op == "/", lhs == 1.0])
             -1.0
-    checkAll("float accumulation order is observable", [absorbed == hugeFloat (), survived == hugeFloat () + 1000.0, survived > absorbed, survived - absorbed == 1000.0, uploadFloatSumsTo ([hugeFloat (), 1.0, 1.0, 1.0], 0.0, hugeFloat ()), gpuSatisfies(toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \ascending => gpuSatisfies(gpuFold(ascending, 0.0, gpuTestAdd), \total => total > hugeFloat ())), gpuSatisfies(toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \ascending => gpuSatisfies(gpuFold(ascending, 0.0, gpuTestAdd), \total => total - hugeFloat () == 4.0)), elementsAt (leading, 0.0, [0, 1000], [hugeFloat (), 1.0]), elementIs (trailing, 1000, 0.0, hugeFloat ()), gpuSatisfies(gpuScan(leading, 0.0, gpuTestAdd), \scanned => elementIs (scanned, 1000, 0.0, hugeFloat ())), tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0]))))))))
+    checkAll("float accumulation order is observable", [absorbed == hugeFloat (), survived == hugeFloat () + 1000.0, survived > absorbed, survived - absorbed == 1000.0, uploadFloatSumsTo ([hugeFloat (), 1.0, 1.0, 1.0], 0.0, hugeFloat ()), gpuSatisfies(toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \ascending => gpuSatisfies(gpuFold(ascending, 0.0, addF), \total => total > hugeFloat ())), gpuSatisfies(toGpu ([1.0, 1.0, 1.0, hugeFloat ()]), \ascending => gpuSatisfies(gpuFold(ascending, 0.0, addF), \total => total - hugeFloat () == 4.0)), elementsAt (leading, 0.0, [0, 1000], [hugeFloat (), 1.0]), elementIs (trailing, 1000, 0.0, hugeFloat ()), gpuSatisfies(gpuScan(leading, 0.0, addF), \scanned => elementIs (scanned, 1000, 0.0, hugeFloat ())), tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0]))))))))
 )
 (** Run 400 float passes over the canonical [GPU-CONVERT] seed. *)
-floatChurnCase () = iota2 (8, 0, \(indices8, indices0) => withBuffer(gpuMap(indices8, toFloat), \xs => withBuffer(mix (xs, 400), \mixed => withBuffer(gpuFold(mixed, 0.0, gpuTestAdd), \total => checkAll("400-pass float churn", [
+floatChurnCase () = iota2 (8, 0, \(indices8, indices0) => withBuffer(gpuMap(indices8, toFloat), \xs => withBuffer(mix (xs, 400), \mixed => withBuffer(gpuFold(mixed, 0.0, addF), \total => checkAll("400-pass float churn", [
     total > 1627.8, total < 1627.9, lengthIs (mixed, 8), (gpuGet (mixed, 0) ?: 0.0) > 0.0, (gpuGet (mixed, 7) ?: 0.0) > (gpuGet (mixed, 0) ?: 0.0), gpuLengthIs(gpuFilter(mixed, isPositiveF), 8), gpuSatisfies(gpuMap(indices0, toFloat), \emptyFloat => gpuLengthIs(mix (emptyFloat, 50), 0)), gpuSatisfies(gpuMap(indices8, toFloat), \canonical => gpuSatisfies(mix (canonical, 0), \same => floatSumsTo (same, 0.0, 28.0)))
 ])))))
 exactTests [

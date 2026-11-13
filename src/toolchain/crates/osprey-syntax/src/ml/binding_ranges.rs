@@ -179,8 +179,7 @@ fn take_recorded<T: Default>(get: impl for<'b> FnOnce(&'b mut Recorder) -> &'b m
     RECORDER.with(|cell| {
         cell.borrow_mut()
             .as_mut()
-            .map(|recorder| std::mem::take(get(recorder)))
-            .unwrap_or_default()
+            .map_or_default(|recorder| std::mem::take(get(recorder)))
     })
 }
 

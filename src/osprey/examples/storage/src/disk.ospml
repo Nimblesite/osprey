@@ -39,24 +39,26 @@ module Disk
 
     nonEmpty (kept, piece) = Pick::either (length piece > 0, listAppend kept piece, kept)
 
+    // The pieces of `text` split on `at`, or none when it cannot be split.
+    splitOn (text, at) = split text at ?: []
+
     (** A path's folder names, outermost first, without separators. *)
-    export segments (system, path) = foldList (split path (separator system) ?: [], [], \(kept, piece) => nonEmpty (kept, piece))
+    export segments (system, path) = foldList (splitOn (path, separator system), [], \(kept, piece) => nonEmpty (kept, piece))
 
     // A drive root: a letter and a colon, with or without the separator after it.
     drive path = (length path == 2 || (length path == 3 && endsWith path "\\")) && (substring path 1 2 ?: "") == ":"
 
+    // Whether `path` names a network share, written `\\\\server\\share`.
+    network path = startsWith path "\\\\"
+
     // A network share's root: the server and the share, with nothing below them.
-    share (system, path) = startsWith path "\\\\" && length (segments (system, path)) <= 2
+    share (system, path) = network path && length (segments (system, path)) <= 2
 
     (** Whether `path` is the top of its volume on `system`, where Up goes nowhere. *)
-    export isRoot (system, path) = match windows system
-        true => drive path || share (system, path)
-        false => path == "/" || path == ""
+    export isRoot (system, path) = Pick::either (windows system, drive path || share (system, path), path == "/" || path == "")
 
     // How many of a path's names make up its root: the drive, or the server and share.
-    depth (system, path) = match windows system
-        false => 0
-        true => Pick::either (startsWith path "\\\\", 2, 1)
+    depth (system, path) = Pick::either (windows system, Pick::either (network path, 2, 1), 0)
 
     (** The first `count` of `items`. *)
     export top count items = match items
@@ -70,51 +72,38 @@ module Disk
         Lists::slice (pieces, depth (system, path), length pieces)
 
     (** The top of the volume holding `path`: its drive or share on Windows, `/` elsewhere. *)
-    export rootOf (system, path) = match windows system
-        false => "/"
-        true => match startsWith path "\\\\"
-            true => "\\\\" + join (top 2 (segments (system, path))) "\\" + "\\"
-            false => take path 2 + "\\"
+    export rootOf (system, path) = Pick::either (windows system, Pick::either (network path, "\\\\" + join (top 2 (segments (system, path))) "\\" + "\\", take path 2 + "\\"), "/")
 
-    joined (system, root, pieces) = match length pieces > 0
-        false => root
-        true => match endsWith root (separator system)
-            true => root + join pieces (separator system)
-            false => root + separator system + join pieces (separator system)
+    joined (system, root, pieces) =
+        sep = separator system
+        Pick::either (length pieces > 0, Pick::either (endsWith root sep, root + join pieces sep, root + sep + join pieces sep), root)
+
+    // The volume top of `path` with the first `count` of `below` joined onto it.
+    level (system, path, below, count) = joined (system, rootOf (system, path), top count below)
+
+    // A volume's top encloses itself; anything below hands `work` its folder names.
+    belowOf (system, path, work) = Pick::either (isRoot (system, path), path, work (names (system, path)))
 
     (** The folder enclosing `path`; the top of a volume encloses itself. *)
-    export parent (system, path) = match isRoot (system, path)
-        true => path
-        false =>
-            below = names (system, path)
-            joined (system, rootOf (system, path), top (satSub (length below) 1) below)
+    export parent (system, path) = belowOf (system, path, \below => level (system, path, below, satSub (length below) 1))
 
     (** The folders from the top of `path`'s volume down to `path`, outermost first. *)
     export trail (system, path) =
-        root = rootOf (system, path)
         below = names (system, path)
-        range (0, length below) |> fold [root] (\(folders, index) => listAppend folders (joined (system, root, top (satAdd index 1) below)))
+        range (0, length below) |> fold [rootOf (system, path)] (\(folders, index) => listAppend folders (level (system, path, below, satAdd index 1)))
 
-    last items fallback = match items
-        [] => fallback
-        [first, ...rest] => last rest first
+    last items fallback = foldList (items, fallback, \(_, item) => item)
 
     (** The last folder name of `path`; the top of a volume goes by the path itself. *)
-    export name (system, path) = match isRoot (system, path)
-        true => path
-        false => last (segments (system, path)) path
+    export name (system, path) = belowOf (system, path, \below => last below path)
 
     // Windows counts in powers of 1,024 as File Explorer does; other systems count in powers of 1,000.
     base system = Pick::either (windows system, 1024, 1000)
 
-    shown (tenths, unit) = match unit
-        "B" => "${intDiv tenths 10} B"
-        _ => "${intDiv tenths 10}.${tenths % 10} ${unit}"
+    shown (tenths, unit) = Pick::either (unit == "B", "${intDiv tenths 10} B", "${intDiv tenths 10}.${tenths % 10} ${unit}")
 
     // Rounded to the nearest unit; each division is by a literal, so it can neither overflow nor divide by zero.
-    divided (step, tenths) = match step == 1024
-        true => intDiv (satAdd tenths 512) 1024
-        false => intDiv (satAdd tenths 500) 1000
+    divided (step, tenths) = Pick::either (step == 1024, intDiv (satAdd tenths 512) 1024, intDiv (satAdd tenths 500) 1000)
 
     scaled (step, tenths, unit, larger) = match larger
         [] => shown (tenths, unit)
@@ -123,11 +112,11 @@ module Disk
             false => shown (tenths, unit)
 
     (** `bytes` with one rounded decimal in the units `system` shows: powers of 1,024 on Windows, as File Explorer counts, and powers of 1,000 elsewhere. *)
-    export formatBytes (system, bytes) = match bytes < 0
-        true => "unknown"
-        false => scaled (base system, satMul bytes 10, "B", ["KB", "MB", "GB", "TB"])
+    export formatBytes (system, bytes) = Pick::either (bytes < 0, "unknown", scaled (base system, satMul bytes 10, "B", ["KB", "MB", "GB", "TB"]))
 
-    (** A count with thousands separators. *)
+    (** A count with thousands separators. `match`, not `Pick::either`, so the
+    untaken arm never runs: the recursive call must not fire once `count` is
+    below 1,000, or no call ever terminates. *)
     export formatCount count = match count < 1000
         true => toString count
         false => formatCount (intDiv count 1000) + "," + (padStart (toString (count % 1000)) 3 "0" ?: "")
@@ -185,18 +174,13 @@ module Disk
     export rank (hidden, limit, items) = foldList (items, Ranking(rankTop = [], rankKept = 0, rankFloor = 0, rankBytes = 0, rankCount = 0), \(ranking, item) => step (hidden, limit, ranking, item))
 
     extension itemName =
-        pieces = split itemName "." ?: []
-        match length pieces > 1
-            true => toLowerCase (last pieces "")
-            false => ""
+        parts = splitOn (itemName, ".")
+        Pick::either (length parts > 1, toLowerCase (last parts ""), "")
 
     archives () = ["zip", "7z", "rar", "gz", "tgz", "tar", "xz", "bz2", "iso", "img", "vhd", "vhdx", "vmdk", "qcow2", "msi", "msix", "cab", "dmg", "pkg"]
 
+    // A row's leading mark, first flag standing: a link, an unreadable folder, a folder, an archive, then any file.
+    markOf item = Pick::either (item.itemLink, ui::External, Pick::either (item.itemGuarded, ui::Lock, Pick::either (item.itemFolder, ui::Folder, Pick::either (listContains (archives ()) (extension item.itemName), ui::Package, ui::Document))))
+
     (** The symbol leading an item's row: a link, a folder the walk could not read, a folder, an archive or any other file. *)
-    export look item = match item.itemLink
-        true => (ui::Symbols::name ui::External)
-        false => match item.itemGuarded
-            true => (ui::Symbols::name ui::Lock)
-            false => match item.itemFolder
-                true => (ui::Symbols::name ui::Folder)
-                false => Pick::either (listContains (archives ()) (extension item.itemName), (ui::Symbols::name ui::Package), (ui::Symbols::name ui::Document))
+    export look item = ui::Symbols::name (markOf item)

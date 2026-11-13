@@ -5,12 +5,7 @@
 of a `Success`, and take the first element of a selection or the error naming it.
 """
 
-__all__ = ["then", "first_or_error", "walk_checked"]
-
-
-def then(result, continue_with):
-    """`continue_with` applied to `result`'s value, or `result`'s error unchanged."""
-    return resultAndThen(result, continue_with)
+__all__ = ["first_or_error", "walk_checked"]
 
 
 def first_or_error(found, failure):

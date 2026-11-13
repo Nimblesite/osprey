@@ -104,8 +104,7 @@ fn llvm(path: &Path) -> String {
         .arg(path)
         .arg("--llvm")
         .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
-        .unwrap_or_default()
+        .map_or_default(|out| String::from_utf8_lossy(&out.stdout).into_owned())
 }
 /// The temp fixture `path` has a device form and prints `expected` on
 /// `backend`: none of the kernels it names is declined.

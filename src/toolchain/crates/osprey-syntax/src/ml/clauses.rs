@@ -181,7 +181,7 @@ fn refutable_column(clauses: &[Clause], errors: &mut Vec<SyntaxError>) -> Option
                     "a clause set may select on one column; this one selects on \
                      columns {first} and {column} — bind the second and match it in the body"
                 ),
-                position: clauses.last().map(|c| c.pos).unwrap_or_default(),
+                position: clauses.last().map_or_default(|c| c.pos),
             });
             return None;
         }

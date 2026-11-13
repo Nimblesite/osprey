@@ -258,7 +258,7 @@ pub(crate) fn finding(
         stdin: inputs
             .and_then(|ktest| ktest.stream("stdin"))
             .unwrap_or_default(),
-        files: inputs.map(Ktest::files).unwrap_or_default(),
+        files: inputs.map_or_default(Ktest::files),
         replay: Replay::NotRun,
     }
 }

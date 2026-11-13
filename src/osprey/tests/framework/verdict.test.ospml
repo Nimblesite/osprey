@@ -45,14 +45,14 @@ effect Trace
 (** One operation through the handler; every arity below shares this body. *)
 stepOf label = perform Trace.step label
 
-(** Two and three whitespace parameters curry. Issue #184 reports that four silently skipped an
-    operation, and five is one nesting level further. Every step must reach the handler [FLAVOR-ML-CURRY]. *)
+(** Each declared arity records every parameter through the handler; arity four
+    is the shape [#184](issue) reports as silently skipping one [FLAVOR-ML-CURRY]. *)
 traced2 a b = add (stepOf a) (stepOf b)
 traced3 a b c = addThree (stepOf a) (stepOf b) (stepOf c)
 traced4 a b c d = sum4 (stepOf a) (stepOf b) (stepOf c) (stepOf d)
 traced5 a b c d e = sum5 (stepOf a) (stepOf b) (stepOf c) (stepOf d) (stepOf e)
 
-(** Parenthesised comma parameters are flat; this working form and the curried form must agree. *)
+(** Parenthesised comma parameters are flat, the form the spec names working. *)
 tracedFlat (a, b, c, d) = traced4 a b c d
 
 (** Curried and flat bodies perform through one handler, so their indices form
@@ -72,24 +72,25 @@ curriedEffectsReachTheHandlerCase () =
         r5 = traced5 "j" "k" "l" "m" "n"
         rf = tracedFlat ("o", "p", "q", "r")
         "${r2}/${r3}/${r4}/${r5}/${rf}"
+
     // Each arity consumes consecutive indices: 1-2, 3-5, 6-9, 10-14, 15-18.
     checkAll "curried arities consume every operation index" [
         all [traceReport == "3/12/30/60/66", startsWith traceReport "3/", endsWith traceReport "/66", containsAll traceReport ["/12/", "/30/", "/60/"], containsNone traceReport ["/0/", "//"]]
     ]
+
     // The handler saw eighteen distinct labels, in source order, once each.
     checkAll "every performed label reached the handler" [
         structuralEquals [steps, length seen, steps] [18, 36, 18], all [seen == "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|", startsWith seen "a|b|", endsWith seen "q|r|", containsAll seen ["e|f|", "i|j|", "n|o|"], steps > 14, steps != 14, steps != 9]
     ]
-    // The arity-4 curried body and its flat twin must agree operation for
-    // operation: 6+7+8+9 == 30 and 15+16+17+18 == 66, four steps each.
-    // `?:` is the LOWEST precedence and right-associative, so every sum
-    // that ends in one needs its own parentheses to sit under the `==`
-    // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
+
+    // Arity-4 curried and flat agree step for step: 6+7+8+9 == 30 and
+    // 15+16+17+18 == 66. `?:` is lowest and right-associative, so each sum needs
+    // its own parentheses under `==` [SYNTAX].
     checkAll "curried and flat four-parameter bodies agree" [
         all [((6 + 7 ) + (8 + 9 ) ) == 30, containsAll traceReport ["30", "66"]], structuralEquals [((15 + 16 ) + (17 + 18 ) ), (1 + 2 ), ((3 + 4 ) + 5 ), (((10 + 11 ) + (12 + 13 ) ) + 14 ), steps] [66, 3, 12, 60, 18]
     ]
 
-(** Add three integers through whitespace parameters. *)
+(** The curried integer sum, and its explicitly flat parenthesised twin. *)
 addThree a b c = (a + b ) + c 
 addFlat (a, b, c) = addThree a b c
 
@@ -102,10 +103,12 @@ partialApplicationCase () =
     twoPart = addThree 1 2
     otherPart = addThree 10
     reused = onePart 2
+
     // Every grouping of the same three arguments is the same call.
     checkAll "curried application groups freely" [
         structuralEquals [addThree 1 2 3, (addThree 1) 2 3, (addThree 1 2) 3, ((addThree 1) 2) 3] [6, 6, 6, 6], structuralEquals [onePart 2 3, twoPart 3, reused 3, addFlat (1, 2, 3)] [6, 6, 6, 6], addThree 1 2 3 == addFlat (1, 2, 3)
     ]
+
     // A partial application is a value: reusing one does not consume it, and
     // two partials of the same function stay independent.
     checkAll "partial applications are independent reusable values" [
@@ -154,55 +157,53 @@ verdictAlgebraCase () =
     skip2 = Skip "second"
     sumCheck = checkVerdict "sum"
     mismatch = verdictLabel (checkVerdict "sum" "5" "6")
+
     // Nine ordered pairs over {Pass, Fail, Skip}: the first non-Pass wins, and
     // the second operand's payload must never surface when it does.
     checkAll "andThen retains the first non-Pass verdict" [
         thenRenders Pass Pass "pass", thenRenders Pass fail2 "fail(two)", thenRenders Pass skip2 "skip(second)", thenRenders fail1 Pass "fail(one)", thenRenders fail1 fail2 "fail(one)", thenRenders fail1 skip2 "fail(one)", thenRenders skip1 Pass "skip(first)", thenRenders skip1 fail2 "skip(first)", thenRenders skip1 skip2 "skip(first)",
         all [verdictLabel (andThen fail1 fail2) != verdictLabel fail2, verdictLabel (andThen skip1 skip2) != verdictLabel skip2, startsWith (verdictLabel (andThen fail1 skip2)) "fail(", endsWith (verdictLabel (andThen skip1 fail2)) ")", contains (verdictLabel (andThen fail1 fail2)) "one", !(contains (verdictLabel (andThen fail1 fail2)) "two"), !(contains (verdictLabel (andThen skip1 fail2)) "two")]
     ]
+
     // Monoid laws: Pass is a two-sided identity and andThen associates, so a
     // regrouped fold cannot change the reported outcome.
     checkAll "Pass is the identity of andThen and andThen associates" [
         identityAround Pass, identityAround fail1, identityAround skip1, associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)), associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)), associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
         all [thenRenders (andThen Pass Pass) fail2 "fail(two)", thenRenders Pass (andThen Pass fail2) "fail(two)", thenRenders (andThen Pass Pass) Pass "pass", thenRenders (andThen fail1 fail2) skip1 "fail(one)", thenRenders fail1 (andThen fail2 skip1) "fail(one)", thenRenders (andThen Pass Pass) (andThen Pass skip2) "skip(second)", thenRenders (andThen Pass skip2) (andThen Pass fail1) "skip(second)", thenRenders (andThen Pass fail1) (andThen Pass skip2) "fail(one)"]
     ]
-    // The Fail payload is the whole labeled mismatch, verbatim. Its rendered
-    // length is fixed: "fail(" + "sum: expected 5, got 6" (22) + ")" = 28.
+
+    // The Fail payload is the whole labeled mismatch, verbatim: 28 chars rendered.
     checkAll "the labeled mismatch is carried verbatim" [
         structuralEquals [verdictLabel (checkVerdict "sum" "5" "5"), mismatch, verdictLabel (sumCheck "5" "5"), verdictLabel (sumCheck "5" "6")] ["pass", "fail(sum: expected 5, got 6)", "pass", "fail(sum: expected 5, got 6)"],
         labeledRenders "empty" "" "" "pass", labeledRenders "empty" "" "x" "fail(empty: expected , got x)", labeledRenders "case" "A" "a" "fail(case: expected A, got a)", labeledRenders "space" " " " " "pass", labeledRenders "space" "a b" "ab" "fail(space: expected a b, got ab)", labeledRenders "digits" (toString (add 2 3)) "5" "pass", labeledRenders "bool" (toString (3 < 5)) "true" "pass", labeledRenders "sum" "5" "7" "fail(sum: expected 5, got 7)", labeledRenders "bool" (toString (5 < 3)) "true" "fail(bool: expected false, got true)",
         all [containsAll mismatch ["expected 5", "got 6"], startsWith mismatch "fail(sum:", length mismatch == 28, !(contains (verdictLabel (checkVerdict "sum" "5" "5")) "expected")]
     ]
-    // assume is the precondition gate: "skip(" + "precondition not met" (20)
-    // + ")" is 26 characters, and a Skip absorbs everything after it.
+
+    // assume is the precondition gate: 26 rendered characters, and a Skip absorbs what follows.
     checkAll "assume converts a precondition into Pass or Skip" [
         gateRenders true "pass", gateRenders false "skip(precondition not met)", gateRenders (2 > 3) "skip(precondition not met)", gateRenders ("a" == "b") "skip(precondition not met)", gateRenders (5 >= 5) "pass", gateRenders (5 > 5) "skip(precondition not met)", all [thenRenders (assume true) fail1 "fail(one)", thenRenders (assume false) fail1 "skip(precondition not met)", thenRenders fail1 (assume false) "fail(one)", thenRenders (assume true) (assume false) "skip(precondition not met)", thenRenders (assume true) (assume true) "pass"],
         structuralEquals [verdictLabel (assume (3 > 2)), verdictLabel (assume (0 == 0))] ["pass", "pass"], all [startsWith (verdictLabel (assume false)) "skip(", length (verdictLabel (assume false)) == 26, !(contains (verdictLabel (assume true)) "skip")]
     ]
 
-(** Four whitespace parameters build on curried `addThree` so only declared arity differs [FLAVOR-ML-CURRY]. *)
+(** Four whitespace parameters, built on `addThree` so no arithmetic repeats [FLAVOR-ML-CURRY]. *)
 sum4 a b c d = addThree a b c + d 
 
-(** Five whitespace parameters. *)
+(** Five and six whitespace parameters — two arities past the shape #184 reports. *)
 sum5 a b c d e = sum4 a b c d + e 
-
-(** Six whitespace parameters — two arities past the shape issue #184 reports. *)
 sum6 a b c d e f = sum5 a b c d e + f 
 
 (** The explicitly flat twin of `sum6`: a flat comma list does not partially
     apply, so the two agree on every saturated call [FLAVOR-ML-CURRY], [FLAVOR-ML-TUPLE]. *)
-sumFlat6 (a, b, c, d, e, f) = sum6 a b c d e f
+sumFlat6 (a, b, c, d, e, f) = sum6 a b c d e f 
 
 (** The same three whitespace parameters over strings, booleans and floats; float
     arithmetic is unchecked, so only integers need `?:` [ARITH-CHECKED]. *)
 tag3 a b c = a + b + c
-
-(** Three whitespace parameters over booleans. *)
 all3 a b c = a && b && c
 blend3 a b c = a * b + c
 
 (** [FLAVOR-ML-CURRY]/[FLAVOR-ML-CALL]: `add x y = body` lowers to a one-parameter
-    function returning a one-parameter lambda; application is left-associative, so `f a b` is `Call(Call(f, [a]),
+    function returning a one-parameter lambda, and `f a b` is `Call(Call(f, [a]),
     [b])`, so every parenthesisation of one argument sequence is one call and
     every prefix a value. This case walks arities two to six, then repeats the
     ladder over strings, booleans and floats. *)
@@ -216,21 +217,24 @@ curriedArityLadderCase () =
     openTag = tag3 "<"
     bothTrue = all3 true
     scaled = blend3 2.0
+
     // 1+2 = 3, 1+2+3+4 = 10, 1+..+5 = 15, 1+..+6 = 21.
     checkAll "every curried arity answers its own sum" [
         structuralEquals [add 1 2, add 0 0, add 0 7, add 7 0, add 5 ((0 - 5) ), addThree 1 2 3, sum4 1 2 3 4, sum4 0 0 0 0] [3, 0, 7, 7, 0, 6, 10, 0], structuralEquals [sum4 4 3 2 1, sum5 1 2 3 4 5, sum5 0 0 0 0 5, sum6 1 2 3 4 5 6, sum6 6 5 4 3 2 1, sum6 0 0 0 0 0 0, sumFlat6 (1, 2, 3, 4, 5, 6)] [10, 15, 5, 21, 21, 0, 21], all [add 3 4 == add 4 3, sum6 1 2 3 4 5 6 == sumFlat6 (1, 2, 3, 4, 5, 6), sum6 1 2 3 4 5 6 != 20, sum5 1 2 3 4 5 != sum6 1 2 3 4 5 6]
     ]
+
     // Left-associative application: the parentheses are noise, not structure.
     checkAll "every grouping of one curried call agrees" [
         structuralEquals [(add 1) 2, (addThree 1) 2 3, (addThree 1 2) 3, (sum4 1) 2 3 4, (sum4 1 2) 3 4, (sum4 1 2 3) 4, ((sum4 1) 2) 3 4] [3, 6, 6, 10, 10, 10, 10], structuralEquals [((sum4 1) 2 3) 4, (((sum4 1) 2) 3) 4, (sum5 1) 2 3 4 5, (sum5 1 2) 3 4 5, (sum5 1 2 3) 4 5, (sum5 1 2 3 4) 5] [10, 10, 15, 15, 15, 15], structuralEquals [((((sum5 1) 2) 3) 4) 5, (sum6 1) 2 3 4 5 6, (sum6 1 2 3) 4 5 6, (sum6 1 2 3 4 5) 6, (((((sum6 1) 2) 3) 4) 5) 6, (sum6 1 2 3 4 5 6)] [15, 21, 21, 21, 21, 21]
     ]
-    // Each prefix partial of sum6 carries the arguments already supplied:
-    // p1 holds 1, p2 holds 3, p3 holds 6, p4 holds 10, p5 holds 15.
+
+    // Each prefix partial of sum6 holds what it was given: 1, 3, 6, 10, 15.
     checkAll "prefix partials are reusable independent values" [
         structuralEquals [inc 41, inc 0, inc ((0 - 1) ), p1 2 3 4 5 6, p2 3 4 5 6, p3 4 5 6, p4 5 6, p5 6, p5 0, p5 100] [42, 1, 0, 21, 21, 21, 21, 21, 15, 115], structuralEquals [p4 0 0, p3 0 0 0, p2 0 0 0 0, p1 0 0 0 0 0] [10, 6, 3, 1], all [inc 41 == inc 41, p5 6 != p5 7, p5 6 == p4 5 6, p3 4 5 6 == p2 3 4 5 6, p5 6 == sumFlat6 (1, 2, 3, 4, 5, 6), p1 2 3 4 5 6 == p5 6]
     ]
-    // The same ladder over strings, booleans and floats. blend3 a b c = a*b+c,
-    // so blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps the 2.0 factor.
+
+    // The same ladder over strings, booleans and floats: blend3 a b c = a*b+c, so
+    // blend3 2.0 3.0 1.0 = 7.0 and scaled = blend3 2.0 keeps its 2.0 factor.
     checkAll "currying is not integer-specific" [
         structuralEquals [tag3 "a" "b" "c", (tag3 "a") "b" "c", (tag3 "a" "b") "c", openTag "x" ">", openTag "" ">", openTag "abc" "", tag3 "" "" ""] ["abc", "abc", "abc", "<x>", "<>", "<abc", ""], all [length (openTag "x" ">") == 3, answersHold (\c => all3 true true c) [true, false] [true, false], answersHold (\a => all3 a false true) [true, false] [false, false], answersHold (\a => bothTrue a true) [true] [true], answersHold (\a => bothTrue a false) [true, false] [false, false]],
         structuralEquals [blend3 2.0 3.0 1.0, blend3 2.0 0.0 1.0, blend3 0.0 9.0 4.5, scaled 3.0 1.0, scaled 0.5 0.0] [7.0, 1.0, 4.5, 7.0, 1.0], scaled 3.0 1.0 != blend3 2.0 3.0 2.0
@@ -258,21 +262,24 @@ lambdaCurryingCase () =
     andBoth = \a b => a && b
     offset = 100
     shifted = \x => x + offset 
-    // Curried and flat heads compute the same sums from the same arguments;
-    // only their application shape differs.
+
+    // Curried and flat heads compute the same sums; only application differs.
     checkAll "curried and flat lambda heads split as specified" [
         structuralEquals [curriedAdd 3 4, (curriedAdd 3) 4, curriedAdd 0 0, curriedAdd 0 9, curriedAdd 9 0, curriedAdd 5 ((0 - 5) ), flatAdd (3, 4), flatAdd (0, 0)] [7, 7, 0, 9, 9, 0, 7, 0], structuralEquals [flatAdd (0, 9), flatAdd (9, 0), flatAdd (5, ((0 - 5) )), bump 5, bump 0, bump ((0 - 10) )] [9, 9, 0, 15, 10, 0], all [curriedAdd 3 4 == curriedAdd 4 3, flatAdd (3, 4) == curriedAdd 3 4, bump 5 != curriedAdd 5 5, bump 5 == curriedAdd 10 5]
     ]
+
     // `\x y => e` and `\x => \y => e` are the same value by [FLAVOR-ML-CURRY].
     checkAll "a curried lambda head is nested one-parameter lambdas" [
         structuralEquals [nestedAdd 3 4, (nestedAdd 3) 4, nestedAdd 12 30, curriedTri 1 2 3, (curriedTri 1) 2 3, (curriedTri 1 2) 3, ((curriedTri 1) 2) 3, curriedTri 0 0 0] [7, 7, 42, 6, 6, 6, 6, 0], structuralEquals [tri1 2 3, tri2 3, tri1 0 0, tri2 0, tri1 2 4] [6, 6, 1, 3, 7], all [nestedAdd 3 4 == curriedAdd 3 4, nestedAdd 0 0 == curriedAdd 0 0, tri1 2 3 == tri2 3, tri1 2 3 != tri1 2 4]
     ]
+
     // A lambda keeps its arity shape when it is passed as an argument, piped
     // into, or closed over an outer binding.
     checkAll "lambdas keep their arity shape through higher-order calls" [
         structuralEquals [applyCurried curriedAdd 3 4, applyCurried nestedAdd 3 4, applyCurried curriedAdd 0 0, applyCurried (\x y => x + y ) 20 22] [7, 7, 0, 42], structuralEquals [applyCurried (\x y => (x + y ) + 1 ) 20 21, (applyCurried curriedAdd 3) 4, applyFlat (flatAdd, 3, 4), applyFlat (flatAdd, 0, 0)] [42, 7, 7, 0], structuralEquals [applyFlat (flatAdd, 5, ((0 - 5) )), (5 |> \x => x + 100 ), (5 |> (\x => x + 100 ) |> (\x => x * 2 )), shifted 5, shifted 0] [0, 105, 210, 105, 100],
         all [applyCurried curriedAdd 3 4 != applyCurried curriedAdd 3 5, applyFlat (flatAdd, 3, 4) == applyCurried curriedAdd 3 4, shifted 5 == curriedAdd 100 5]
     ]
+
     // The same lambda forms over strings and booleans.
     checkAll "curried lambdas over strings and booleans" [
         structuralEquals [joinTwo "a" "b", (joinTwo "a") "b", joinTwo "" "", joinTwo "" "b", joinTwo "a" ""] ["ab", "ab", "", "b", "a"], structuralEquals [toUpperCase (joinTwo "ab" "cd"), toLowerCase (joinTwo "AB" "CD")] ["ABCD", "abcd"], length (joinTwo "ab" "cde") == 5, all [startsWith (joinTwo "ab" "cde") "ab", endsWith (joinTwo "ab" "cde") "cde"],
@@ -318,6 +325,7 @@ recordLayoutAndUpdateCase () =
     computed = inlineBuilt(value = doubledValue, depth = nextDepth)
     chained = renamed(depth = 4)
     reverted = renamed(sensor = inlineBuilt.sensor)
+
     // The layout head and the inline head must agree on all four fields.
     checkAll "layout and inline record heads build the same value" [
         all [holdsFields layoutBuilt "north" 1.5 3 true, holdsFields inlineBuilt "north" 1.5 3 true], all [layoutBuilt.sensor == inlineBuilt.sensor, layoutBuilt.value == inlineBuilt.value, layoutBuilt.depth == inlineBuilt.depth, layoutBuilt.valid == inlineBuilt.valid], all [length layoutBuilt.sensor == 5, startsWith layoutBuilt.sensor "no", !(layoutBuilt.value == 2.5), "${layoutBuilt.sensor}@${layoutBuilt.depth}" == "north@3"]
@@ -328,14 +336,12 @@ recordLayoutAndUpdateCase () =
         all [holdsFields renamed "south" 1.5 3 true, holdsFields revalued "north" 2.5 3 true, holdsFields deepened "north" 1.5 30 true, !invalidated.valid, holdsFields invalidated "north" 1.5 3 false, holdsFields twoFields "south" 1.5 30 true, holdsFields everything "east" 0.0 0 false]
     ]
 
-    // Every derived record leaves its source untouched, including a second
-    // update derived from an already-derived record.
+    // Every derived record leaves its source untouched, even a derived-derived one.
     checkAll "every derived record leaves its source untouched" [
         all [holdsFields inlineBuilt "north" 1.5 3 true, holdsFields chained "south" 1.5 4 true, everything.depth != inlineBuilt.depth], all [renamed.sensor != inlineBuilt.sensor, revalued.value != inlineBuilt.value, deepened.depth != inlineBuilt.depth, invalidated.valid != inlineBuilt.valid], structuralEquals [renamed.depth, reverted.depth] [3, 3], all [reverted.sensor == "north", reverted.sensor == inlineBuilt.sensor, reverted.valid == inlineBuilt.valid, reverted.sensor != renamed.sensor]
     ]
 
-    // An update expression may read the source's own fields: 1.5 * 2.0 = 3.0
-    // and 3 + 1 = 4, with the source still reading 1.5 and 3 afterwards.
+    // Updates may read the source's own fields: 1.5 * 2.0 = 3.0, 3 + 1 = 4.
     checkAll "computed updates read the source's own fields" [
         structuralEquals [doubledValue, inlineBuilt.value] [3.0, 1.5], structuralEquals [nextDepth, inlineBuilt.depth] [4, 3], holdsFields computed "north" 3.0 4 true, all [computed.value == inlineBuilt.value * 2.0, computed.depth == (inlineBuilt.depth + 1 ), computed.value > inlineBuilt.value, computed.depth > inlineBuilt.depth], all [computed.value != inlineBuilt.value, toString computed.value == "3.0", "${computed.sensor}:${computed.depth}" == "north:4", "${computed.value}" == "3.0"]
     ]
@@ -431,7 +437,7 @@ matchLayoutAndClausesCase () =
         all [shape single != shape nums, readAt nums 0 != readAt nums 1, contains (readAt nums 1) "20", !(contains (readAt nums 3) "=")]
     ]
 
-(** An indented body is a block of statements whose last line is its value [FLAVOR-ML-BLOCK];
+(** An indented body is a block whose last line is its value [FLAVOR-ML-BLOCK];
     blank and comment-only lines keep layout [FLAVOR-ML-LAYOUT], comments nest [FLAVOR-ML-COMMENTS]. 3n + 1. *)
 staged n =
     doubled = n + n 
@@ -482,8 +488,7 @@ layoutAndInterpolationCase () =
         all [listContains xs 8, !(listContains xs 4), !(isEmpty xs), mapContains prices "apple", !(mapContains prices "pear")]
     ]
 
-    // Text boundaries: empty needle, prefix, suffix, an absent reversal, a
-    // repeated substring, digits inside a string, and case folding.
+    // Text boundaries: empty needle, prefix, suffix, absent reversal, repeated substring, case folding.
     checkAll "string builtins over the boundary shapes" [
         structuralEquals [length text, length ""] [10, 0], all [!(isEmpty text), isEmpty "", containsNone text ["ba", "AB"], !(startsWith text "b"), !(endsWith text "1")], all [toUpperCase text == "AB, AB, 12", toLowerCase "AB, AB, 12" == text, toUpperCase (toLowerCase text) == toUpperCase text, toLowerCase text == text], all [length (toUpperCase text) == length text, contains (toUpperCase text) "AB"]
     ]

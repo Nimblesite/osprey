@@ -95,9 +95,7 @@ fn constructors(
 }
 
 fn declared_variances(ctx: &InferCtx, name: &str) -> Vec<Variance> {
-    ctx.variance_of(name)
-        .map(<[Variance]>::to_vec)
-        .unwrap_or_default()
+    ctx.variance_of(name).map_or_default(<[Variance]>::to_vec)
 }
 
 fn variant(

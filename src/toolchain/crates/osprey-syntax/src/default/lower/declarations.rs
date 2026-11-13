@@ -98,9 +98,7 @@ impl Lowerer<'_> {
         let body = node.child_by_field_name("body");
         Stmt::Namespace {
             name: self.lower_namespace_name(node.child_by_field_name("name")),
-            body: body
-                .map(|b| self.lower_statement_children(b))
-                .unwrap_or_default(),
+            body: body.map_or_default(|b| self.lower_statement_children(b)),
             file_scoped: body.is_none(),
             doc: self.doc_text(node),
             inner_doc: body.and_then(|b| self.inner_doc_text(b)),
@@ -263,8 +261,7 @@ impl Lowerer<'_> {
             None => node
                 .child(node.child_count().saturating_sub(1))
                 .filter(|_| node.child_count() > 1)
-                .map(|_| self.lower_field_decls(node))
-                .unwrap_or_default(),
+                .map_or_default(|_| self.lower_field_decls(node)),
         };
         TypeVariant {
             name: self.field_text(node, "name"),
@@ -308,8 +305,7 @@ impl Lowerer<'_> {
                 // type to `fn` and a generic to its constructor.
                 ty: fd
                     .child_by_field_name("type")
-                    .map(|n| self.text(n))
-                    .unwrap_or_default(),
+                    .map_or_default(|n| self.text(n)),
                 constraint: None,
                 // A field's row is always closed: the grammar admits no tail.
                 effects: fd.child_by_field_name("effects").map(|row| {

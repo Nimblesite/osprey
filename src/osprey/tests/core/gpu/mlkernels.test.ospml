@@ -14,7 +14,7 @@
 // centering pass, a maximum into a softmax shift, a weight total into a
 // normalising divide — values staged beside the buffer, never shared state.
 (** mulF is the elementwise product behind every dot product; sums use the *)
-(** prelude's gpuTestAdd. *)
+(** prelude's addF. *)
 mulF (x, y) = x * y
 (** maxF and minF fold a buffer to its extremes: the seeds a softmax shift and *)
 (** a min-max rescale capture. *)
@@ -34,7 +34,7 @@ isActive (x) = x > toFloat32(0.0)
 (** meanOf are the folded statistics the kernels capture, and meanOf's checked *)
 (** division is what keeps an empty buffer total instead of partial. *)
 at (m, i) = gpuGet(m, i) ?: toFloat32(0.0)
-sumOf (xs, predicate) = gpuSatisfies(gpuFold(xs, toFloat32(0.0), gpuTestAdd), predicate)
+sumOf (xs, predicate) = gpuSatisfies(gpuFold(xs, toFloat32(0.0), addF), predicate)
 (** sumIs is the float reduction of `b`, which must total `expected`. *)
 sumIs (b, expected) = sumOf(b, \total => total == expected)
 (** dotIs is the fused product-and-reduce of `a` and `b`, which must total `expected`. *)
@@ -62,7 +62,7 @@ softWeight (d) = (toFloat32(1.0) / (toFloat32(1.0) + d + d * d))
 (** the shift, fold the partition function, spend that in the divide. *)
 softmaxEach (scores, work) = match gpuFold(scores, gpuGet(scores, 0) ?: toFloat32(0.0), maxF)
     Success peak => match gpuMap(scores, \s => softWeight(peak - s))
-        Success weights => match gpuFold(weights, toFloat32(0.0), gpuTestAdd)
+        Success weights => match gpuFold(weights, toFloat32(0.0), addF)
             Success partition => withBuffer(gpuMap(weights, \w => (w / partition) ), work)
             Error message => gpuFailed(message)
 
@@ -78,15 +78,15 @@ rowDot (m, v, cols, r, c) = match c == cols
 matVecEach (m, v, cols, indices, work) = withBuffer(gpuMap(indices, \r => rowDot(m, v, cols, r, 0)), work)
 matVecOf (m, v, cols, indices, predicate) = gpuSatisfies(gpuMap(indices, \r => rowDot(m, v, cols, r, 0)), predicate)
 (** denseEach is one MLP layer: gather rows, add bias elementwise, then activate. *)
-denseEach (m, v, cols, indices, bias, work) = matVecEach(m, v, cols, indices, \rows => withBuffer(gpuZipWith(rows, bias, gpuTestAdd), \biased => withBuffer(gpuMap(biased, relu), work)))
-denseOf (m, v, cols, indices, bias, predicate) = matVecOf(m, v, cols, indices, \rows => gpuSatisfies(gpuZipWith(rows, bias, gpuTestAdd), \biased => gpuSatisfies(gpuMap(biased, relu), predicate)))
+denseEach (m, v, cols, indices, bias, work) = matVecEach(m, v, cols, indices, \rows => withBuffer(gpuZipWith(rows, bias, addF), \biased => withBuffer(gpuMap(biased, relu), work)))
+denseOf (m, v, cols, indices, bias, predicate) = matVecOf(m, v, cols, indices, \rows => gpuSatisfies(gpuZipWith(rows, bias, addF), \biased => gpuSatisfies(gpuMap(biased, relu), predicate)))
 (** mseOf is the loss the training loop descends; w is captured by the residual. *)
 mseOf (w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith(xs, ys, \(x, y) => (w * x - y) * (w * x - y)), \residuals => meanOf(residuals, predicate))
 (** gradStepEach is one epoch of least-squares descent on y = w * x; its *)
 (** kernel captures the current weight. *)
 gradStepEach (w, xs: GpuBuffer<float32>, ys, work) = match gpuZipWith(xs, ys,
     \(x, y) => toFloat32(2.0) * (w * x - y) * x)
-    Success residuals => match gpuFold(residuals, toFloat32(0.0), gpuTestAdd)
+    Success residuals => match gpuFold(residuals, toFloat32(0.0), addF)
         Success total => work(w - toFloat32(0.05) * (total / toFloat32(3.0)))
         Error message => gpuFailed(message)
 
@@ -157,10 +157,10 @@ captureFoldedCase () = withBuffer(toGpu([toFloat32(1.0), toFloat32(3.0), toFloat
 captureFoldedCaseUploaded (input0, input1, input2) =
     ws = input0
     xs = input1
-    match gpuFold(ws, toFloat32(0.0), gpuTestAdd)
+    match gpuFold(ws, toFloat32(0.0), addF)
         Success total => match gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), maxF)
             Success peak => checkAll("capture folded from another buffer", [
-                total == toFloat32(16.0), peak == toFloat32(8.0), gpuSatisfies(gpuMap(xs, \x => (x / total) ), \share => sumOf(share, \normalised => normalised == toFloat32(0.375))), gpuSatisfies(gpuMap(xs, \x => (x / total) ), \share => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), gpuSatisfies(gpuMap(xs, \x => x - peak), \centred => sumIs(centred, toFloat32(0.0) - toFloat32(10.0))), gpuSatisfies(gpuMap(xs, \x => peak * x), \amplified => sumIs(amplified, toFloat32(48.0))), gpuEquals(gpuFold(ws, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), minF), toFloat32(1.0)), gpuSatisfies(gpuMap(ws, \w => (w / total) ), \share => sumOf(share, \unity => unity == toFloat32(1.0))), gpuSatisfies(gpuFilter(ws, \w => w * toFloat32(4.0) >= total), \heavy => lengthIs(heavy, 2)), gpuSatisfies(gpuZipWith(xs, xs, mulF), \products => gpuSatisfies(gpuMap(products, \p => (p / total) ), \share => sumOf(share, \part => part == toFloat32(1.25)))), gpuEquals(gpuFold(input2, total, gpuTestAdd), toFloat32(16.0))
+                total == toFloat32(16.0), peak == toFloat32(8.0), gpuSatisfies(gpuMap(xs, \x => (x / total) ), \share => sumOf(share, \normalised => normalised == toFloat32(0.375))), gpuSatisfies(gpuMap(xs, \x => (x / total) ), \share => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), gpuSatisfies(gpuMap(xs, \x => x - peak), \centred => sumIs(centred, toFloat32(0.0) - toFloat32(10.0))), gpuSatisfies(gpuMap(xs, \x => peak * x), \amplified => sumIs(amplified, toFloat32(48.0))), gpuEquals(gpuFold(ws, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), minF), toFloat32(1.0)), gpuSatisfies(gpuMap(ws, \w => (w / total) ), \share => sumOf(share, \unity => unity == toFloat32(1.0))), gpuSatisfies(gpuFilter(ws, \w => w * toFloat32(4.0) >= total), \heavy => lengthIs(heavy, 2)), gpuSatisfies(gpuZipWith(xs, xs, mulF), \products => gpuSatisfies(gpuMap(products, \p => (p / total) ), \share => sumOf(share, \part => part == toFloat32(1.25)))), gpuEquals(gpuFold(input2, total, addF), toFloat32(16.0))
             ])
             Error message => gpuFailed(message)
 
@@ -198,7 +198,7 @@ weightedSumCase () = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32
 weightedSumCaseUploaded (input0, input1, input2, input3, input4, input5) =
     vals = input0
     ws = input1
-    match gpuFold(ws, toFloat32(0.0), gpuTestAdd)
+    match gpuFold(ws, toFloat32(0.0), addF)
         Success wtot => match gpuMap(ws, \w => (w / wtot) )
             Success normw => checkAll("weighted sums", [
                 wtot == toFloat32(8.0), dotIs(vals, ws, toFloat32(21.0)), dotOf(vals, ws, \total => ((total / wtot) ) == toFloat32(2.625)), sumIs(normw, toFloat32(1.0)), elementsAt (normw, toFloat32(0.0), [2, 0], [toFloat32(0.5), toFloat32(0.125)]), dotIs(vals, normw, toFloat32(2.625)), dotIs(input2, input3, toFloat32(5.0)), dotIs(vals, input4, toFloat32(0.0)), dotOf(vals, input5, \total => sumOf(vals, \plain => total == plain)), gpuSatisfies(gpuZipWith(vals, ws, \(v, w) => wtot * v * w), \weighted => sumIs(weighted, toFloat32(168.0))), gpuSatisfies(gpuMap(vals, \v => (v / wtot) ), \share => sumIs(share, toFloat32(1.25)))
@@ -213,7 +213,7 @@ meanCase () = withIndices(9, \indices9 => meanWith(indices9))
 meanWith (indices9) = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)]), \input0 => withBuffer(toGpu([]), \input1 => withBuffer(toGpu([toFloat32(5.0)]), \input2 => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)]), \input3 => meanWithUploaded(indices9, input0, input1, input2, input3)))))
 meanWithUploaded (indices9, input0, input1, input2, input3) =
     xs = input0
-    match gpuFold(xs, toFloat32(0.0), gpuTestAdd)
+    match gpuFold(xs, toFloat32(0.0), addF)
         Success folded =>
             mean = degenerate(0.0, \() => folded / toFloat32(gpuLength(xs)))
             match gpuMap(xs, \v => v - mean)
@@ -231,7 +231,7 @@ varianceCase () = withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(4.
 varianceCaseUploaded (input0, input1, input2, input3) =
     xs = input0
     sd = toFloat32(2.0)
-    match gpuFold(xs, toFloat32(0.0), gpuTestAdd)
+    match gpuFold(xs, toFloat32(0.0), addF)
         Success folded =>
             mean = degenerate(0.0, \() => folded / toFloat32(gpuLength(xs)))
             match gpuMap(xs, \v => ((v - mean) / sd) )
@@ -277,7 +277,7 @@ softmaxCase () = withBuffer(xs3(), \input0 => withBuffer(toGpu([toFloat32(5.0), 
 softmaxCaseUploaded (input0, input1) =
     scores = input0
     softmaxEach(scores, \probs => withBuffer(gpuMap(scores, \s => toFloat32(10.0) + s), \raised => softmaxEach(raised, \shifted => softmaxEach(input1, \flat => checkAll("softmax pipeline", [
-        lengthIs(probs, 3), gpuSatisfies(gpuFold(probs, toFloat32(0.0), gpuTestAdd), \total => total > toFloat32(0.9999999)), gpuSatisfies(gpuFold(probs, toFloat32(0.0), gpuTestAdd), \total => total < toFloat32(1.0000001)), (gpuGet(probs, 0) ?: toFloat32(0.0)) > toFloat32(0.0), (gpuGet(probs, 2) ?: toFloat32(0.0)) < toFloat32(1.0), (gpuGet(probs, 1) ?: toFloat32(0.0)) > (gpuGet(probs, 0) ?: toFloat32(0.0)), (gpuGet(probs, 2) ?: toFloat32(0.0)) > (gpuGet(probs, 1) ?: toFloat32(0.0)), elementIs(probs, 0, toFloat32(0.0), (gpuGet(shifted, 0) ?: toFloat32(9.9))), elementIs(probs, 2, toFloat32(0.0), (gpuGet(shifted, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFilter(probs, \p => p > toFloat32(0.5)), \peaked => lengthIs(peaked, 1)), elementIs(flat, 0, toFloat32(0.0), (gpuGet(flat, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFold(flat, toFloat32(0.0), gpuTestAdd), \total => total > toFloat32(0.9999999))
+        lengthIs(probs, 3), gpuSatisfies(gpuFold(probs, toFloat32(0.0), addF), \total => total > toFloat32(0.9999999)), gpuSatisfies(gpuFold(probs, toFloat32(0.0), addF), \total => total < toFloat32(1.0000001)), (gpuGet(probs, 0) ?: toFloat32(0.0)) > toFloat32(0.0), (gpuGet(probs, 2) ?: toFloat32(0.0)) < toFloat32(1.0), (gpuGet(probs, 1) ?: toFloat32(0.0)) > (gpuGet(probs, 0) ?: toFloat32(0.0)), (gpuGet(probs, 2) ?: toFloat32(0.0)) > (gpuGet(probs, 1) ?: toFloat32(0.0)), elementIs(probs, 0, toFloat32(0.0), (gpuGet(shifted, 0) ?: toFloat32(9.9))), elementIs(probs, 2, toFloat32(0.0), (gpuGet(shifted, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFilter(probs, \p => p > toFloat32(0.5)), \peaked => lengthIs(peaked, 1)), elementIs(flat, 0, toFloat32(0.0), (gpuGet(flat, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFold(flat, toFloat32(0.0), addF), \total => total > toFloat32(0.9999999))
     ])))))
 (** matVecCase multiplies through iota + gather: identity, zero matrix, 1x1, a *)
 (** zero-column walk, and a row past the end, which pads to zero. *)

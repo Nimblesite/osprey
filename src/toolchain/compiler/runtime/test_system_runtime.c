@@ -1,7 +1,6 @@
 // Lifecycle regressions implement [BUILTIN-PROCESS-FAILURE] on the shared await path.
 // Assertion-driven tests for system_runtime.c — the process runtime
-// (spawn/await/cleanup with streamed callbacks) and the legacy blocking
-// spawn_process. The read_file/write_file pair moved to
+// (spawn/await/cleanup with streamed callbacks). The read_file/write_file pair moved to
 // test_file_runtime.c with the source it covers. Linked with memory_runtime.c
 // by the Makefile's _test_c_runtime; POSIX-only harness.
 #include <assert.h>
@@ -24,7 +23,6 @@ extern int64_t spawn_process_with_handler(const char *command,
                                                           char *));
 extern int64_t await_process(int64_t process_id);
 extern void cleanup_process(int64_t process_id);
-extern char *spawn_process(char *command);
 
 // Test event handler data
 typedef struct {
@@ -223,25 +221,6 @@ void test_process_argument_rejection(void) {
   assert(await_process(pid) == -1); // the slot is gone after cleanup
 }
 
-// Legacy blocking spawn: exact captured output, NULL rejection, and the
-// realloc growth path past the 4096-byte initial buffer.
-void test_legacy_spawn_process(void) {
-  assert(spawn_process(NULL) == NULL);
-  char *out = spawn_process("printf 'hello'");
-  assert(out != NULL && strcmp(out, "hello") == 0);
-  free(out);
-  char *empty = spawn_process("true");
-  assert(empty != NULL && empty[0] == '\0');
-  free(empty);
-  char *big = spawn_process("awk 'BEGIN{for(i=0;i<5000;i++)printf \"x\"}'");
-  assert(big != NULL);
-  assert(strlen(big) == 5000);
-  for (size_t i = 0; i < 5000; i++) {
-    assert(big[i] == 'x');
-  }
-  free(big);
-}
-
 // A child killed by a SIGNAL never carries an exit status, so WIFEXITED is
 // false and the status word holds the signal number rather than a code. The
 // runtime must report the documented -1 for it — reading WEXITSTATUS of a
@@ -320,7 +299,6 @@ int main(int argc, char **argv) {
   test_captured_stdout_and_exit();
   test_captured_stderr_and_exact_code();
   test_process_argument_rejection();
-  test_legacy_spawn_process();
   test_signalled_child_reports_minus_one();
   test_exit_drains_buffered_output();
   // LAST: exhausts the process-id space for the rest of this process.

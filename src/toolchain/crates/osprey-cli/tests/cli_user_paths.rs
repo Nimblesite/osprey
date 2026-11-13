@@ -401,14 +401,12 @@ fn wasm32_builds_leave_no_scratch_files_behind() {
     );
     assert_eq!(compile.0, Some(0), "{}", compile.2);
     assert!(out.is_file(), "{}", out.display());
-    let left: Vec<String> = std::fs::read_dir(&temp)
-        .map(|entries| {
-            entries
-                .flatten()
-                .map(|e| e.file_name().to_string_lossy().into_owned())
-                .collect()
-        })
-        .unwrap_or_default();
+    let left: Vec<String> = std::fs::read_dir(&temp).map_or_default(|entries| {
+        entries
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect()
+    });
     assert_eq!(
         left,
         Vec::<String>::new(),

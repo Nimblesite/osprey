@@ -52,8 +52,7 @@ fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String
                         .iter()
                         .position(|field| field == label)
                         .and_then(|index| sub_patterns.get(index))
-                        .map(binder_name)
-                        .unwrap_or_default()
+                        .map_or_default(binder_name)
                 })
                 .collect();
             Some((name, binders, BindMode::BySlot))
