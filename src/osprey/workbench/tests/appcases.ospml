@@ -23,6 +23,9 @@ module AppCases
 
     export typed (envelope, text) = Drive::choose (envelope, "document", "Argument & calculations", Drive::quoted text)
 
+    (** A fresh session with `text` typed into its document. *)
+    export freshTyped text = typed (Drive::started (), text)
+
     export check envelope = match listGet (itemsOf (envelope, "checks")) 0
         Success found => Doc::text (found, "tone") + " at ${Doc::number (found, "line")}"
         Error _ => "none"
@@ -57,12 +60,12 @@ module AppCases
         expect (has (regionJson (first, "root"), "\"key\":\"document\""), true)
 
     (** [WORKBENCH-REGIONS] A keystroke in the document re-sends `document`, `goal` and `generated` and nothing else. *)
-    export keystroke () = expect (Drive::keys (typed (Drive::started (), tautology ())), "heading,document,goal,generated")
+    export keystroke () = expect (Drive::keys (freshTyped (tautology ())), "heading,document,goal,generated")
 
     (** [WORKBENCH-VERDICT] The kernel refuses the swapped proof at its sixth row, where the refused step was written. *)
     export underline () =
-        expect (check (typed (Drive::started (), swapped ())), "rejected at 5")
-        expect (check (typed (Drive::started (), swapProof ("From hq.", "From hp."))), "checked at -1")
+        expect (check (freshTyped (swapped ())), "rejected at 5")
+        expect (check (freshTyped (swapProof ("From hq.", "From hp."))), "checked at -1")
 
     (** The control number the retired board's host still names: no binding this app issues carries it. *)
     retired () = 9998
@@ -73,7 +76,7 @@ module AppCases
 
     (** [WORKBENCH-BOARD] An unregistered drawing control writes no slice, draws nothing and changes no document. *)
     export absentControls () =
-        loaded = reopened (typed (Drive::started (), tautology ()))
+        loaded = reopened (freshTyped (tautology ()))
         unwritten loaded
         intact (loaded, tautology ())
         refused = Drive::stray (loaded, retired (), stroke ())
@@ -89,7 +92,7 @@ module AppCases
 
     (** [UI-EFFECTS-RECOGNISE] The retired board asks for no recognition, offers no review control, and a stray ink completion changes no document and no verdict. *)
     export lasso () =
-        written = typed (Drive::started (), tautology ())
+        written = freshTyped (tautology ())
         asked = lassoed written
         unasked asked
         unwritten asked
@@ -252,7 +255,7 @@ module AppCases
     (** [WORKBENCH-GOALS] Unsupported wording stays verbatim and unchecked at the real host boundary, without an invented proposition. *)
     export unsupportedFeedback () =
         source = "Theorem t. For all p, p → p.\nProof.\nAssume h : p.\nUse symmetry here."
-        written = typed (Drive::started (), source)
+        written = freshTyped source
         editor = Drive::kindedIn ("editor", written, "document")
         expect (Doc::text (editor, "kind"), "editor")
         placed = Drive::placed (written, "document", satSub (length (Drafts::pending source)) 1)
@@ -288,10 +291,8 @@ module AppCases
     (** [WORKBENCH-STORE] Returning from an example restores the complete working through serialized host frames. *)
     export exampleRoundTrip () =
         source = "Theorem mine. For all p, p → p.\nProof.\nAssume mine : p.\nFrom mine.\n"
-        catalogued = Drive::loaded ()
-        before = personalWorking (catalogued, source)
-        learning = Drive::press (before, "root", "Examples")
-        example = Drive::press (learning, "catalogue", "Open conjunction example")
+        before = personalWorking (Drive::loaded (), source)
+        example = WorkflowCases::openExample before
         AppCases::flagged (Drive::stored example, ["guided"])
         expect (Doc::text (Drive::stored example, "text") == source, false)
         button = Drive::labelledIn ("Return to working", example, "root")
@@ -341,6 +342,11 @@ module WorkflowCases
 
     askingWorkspace () = Drive::press (Drive::started (), "heading", "Open workspace")
 
+    // The source panel's own region: `drawn` says whether the host must be showing it.
+    sourcePanel (envelope, drawn) = match drawn
+        true => AppCases::present (AppCases::regionJson (envelope, "root"), ["source-panel"])
+        false => AppCases::absent (AppCases::regionJson (envelope, "root"), ["source-panel"])
+
     bodyChildren doc = Doc::fieldItems (Doc::field (doc, "body"), "children")
     childAt (doc, index) = listGet (bodyChildren doc) index ?: JsonNull
     bodyStyle doc = Doc::field (Doc::field (doc, "body"), "style")
@@ -351,7 +357,8 @@ module WorkflowCases
     export example () =
         openExample (AppCases::reopened (Drive::loaded ()))
 
-    openExample working =
+    (** The guided conjunction example opened from `working`, through its two real host presses. *)
+    export openExample working =
         learning = Drive::press (working, "root", "Examples")
         Drive::press (learning, "catalogue", "Open conjunction example")
 
@@ -365,7 +372,7 @@ module WorkflowCases
         savedWorking ()
 
     savedWorking () =
-        restored = AppCases::reopened (AppCases::typed (Drive::started (), "Keep this calculation."))
+        restored = AppCases::reopened (AppCases::freshTyped ("Keep this calculation."))
         WorkspaceCases::withoutDrawing (stored restored)
         AppCases::kept (restored, "Keep this calculation.")
 
@@ -382,7 +389,7 @@ module WorkflowCases
         expect (text, Drafts::prefix (Doc::text (stored before, "text")) + step)
         expect (Drafts::pending text, step)
         AppCases::absent (text, [step + "\n"])
-        expect (Doc::number (stored after, "selectedStep"), Doc::number (stored before, "selectedStep"))
+        AppCases::counts (stored after, stored before, ["selectedStep"])
         expect (startsWith (AppCases::check after, "checked"), false)
 
     expectProofLeading (envelope, leading) =
@@ -431,10 +438,10 @@ module WorkflowCases
         opened = moved (guide, "root", "Source", ["paper"], true)
         expectProofLeading (opened, 35.0)
         expect (Doc::text (Drive::labelledIn ("Source", opened, "root"), "role"), "prominent")
-        AppCases::present (AppCases::regionJson (opened, "root"), ["source-panel"])
+        sourcePanel (opened, true)
         AppCases::lacks (Drive::labelledIn ("Board", opened, "root"), ["event"])
         closed = moved (opened, "root", "Close source", ["generated"], false)
-        AppCases::absent (AppCases::regionJson (closed, "root"), ["source-panel"])
+        sourcePanel (closed, false)
         read = moved (closed, "root", "Read", ["reading"], true)
         AppCases::absent (AppCases::regionJson (read, "document"), ["inline"])
         AppCases::present (Drive::visibleText (Drive::node (read, "document")), ["From hp."])
@@ -443,7 +450,7 @@ module WorkflowCases
     proofMode read =
         proof = moved (read, "root", "Proof", ["reading"], false)
         AppCases::flagged (stored proof, ["paper"])
-        expect (Doc::text (stored proof, "text"), Doc::text (stored read, "text"))
+        AppCases::agrees (stored proof, stored read, ["text"])
 
     (** [WORKBENCH-BOARD] The real mathematical walkthrough carries the working into its guided example, restarts it to a zero-step statement, inserts its own step without a verdict, and returns the working unchanged; the source panel's own close control keeps its authored bounds. *)
     export sampleReview () =
@@ -456,9 +463,9 @@ module WorkflowCases
         expect (startsWith (AppCases::check restarted, "checked"), false)
         source = Drive::press (restarted, "root", "Source")
         Drive::expectControlFrame (Drive::node (source, "root"), "Close source", 32, 5)
-        AppCases::present (AppCases::regionJson (source, "root"), ["source-panel"])
+        sourcePanel (source, true)
         closed = Drive::press (source, "root", "Close source")
-        AppCases::absent (AppCases::regionJson (closed, "root"), ["source-panel"])
+        sourcePanel (closed, false)
         AppCases::present (AppCases::regionJson (closed, "goal"), ["Propositions"])
         accepted = insertedExample closed
         expectStepInserted (closed, accepted, "Assume h : p ∧ q.")
@@ -497,9 +504,9 @@ module WorkflowCases
         AppCases::spelled (saved, [{ key = "title", value = "My argument" }, { key = "text", value = savedSource () }])
         AppCases::lacks (saved, ["checks", "board"])
         AppCases::sized (saved, [{ key = "version", value = 2 }])
-        cancelled = Drive::completed (requested, "workspace:saved", "")
+        cancelled = Drive::cancelled (requested, "workspace:saved")
         expect (Doc::text (stored requested, "notice"), "Workspace opened. Supported statements have been checked again.")
-        expect (Doc::text (stored cancelled, "notice"), Doc::text (stored requested, "notice"))
+        AppCases::agrees (stored cancelled, stored requested, ["notice"])
         expect (Doc::write (stored cancelled), Doc::write (stored requested))
         noticeAfter (requested, "workspace:saved", "working.json", "Workspace saved.")
         loaded = reopened source
@@ -515,8 +522,7 @@ module WorkflowCases
 
     exported loaded =
         opened = Drive::press (loaded, "root", "Source")
-        asked = Drive::press (opened, "root", "Export generated source")
-        expect (Drive::tickets asked, "workspace:source")
+        asked = Drive::requested (opened, "root", "Export generated source", "workspace:source")
         match FixtureFiles::read "../tests/golden/and_swap.ospml.expected"
             Success expected => expect (Doc::text (Drive::hostSlices [asked], "workspace:source"), expected)
             Error problem => FixtureFiles::report problem
@@ -529,7 +535,7 @@ module WorkflowCases
         broken = Drive::completedHeld (asked, "workspace:opened", "broken.json", JsonObject [Doc::str ("workspace:import", "not JSON")])
         badNotice (broken, ["JSON"])
         // A chooser that completes with no path was cancelled: the store keeps its notice.
-        missing = Drive::completed (asked, "workspace:opened", "")
-        expect (Doc::text (stored missing, "notice"), Doc::text (stored asked, "notice"))
+        missing = Drive::cancelled (asked, "workspace:opened")
+        AppCases::agrees (stored missing, stored asked, ["notice"])
         failed = Drive::failed (asked, "workspace:opened", "Permission denied")
         badNotice (failed, ["Permission denied"])

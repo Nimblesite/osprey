@@ -188,6 +188,12 @@ module Drive
         Success found => pressedIn (case, buttonIn (label, found.snapshotValue), label)
         Error _ => step (case, \d => uitest::Drive::press (d, label))
 
+    (** A press of `label` in `key` that must have requested `ticket`. *)
+    export requested (case, key, label, ticket) =
+        pressed = press (case, key, label)
+        expect (tickets pressed, ticket)
+        pressed
+
     // A host control event at `ordinal` carrying `words`: every other dimension rests.
     controlTouch (d, ordinal, words) = ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
 
@@ -282,6 +288,9 @@ module Drive
 
     (** A failed completion of `ticket` with `error`. *)
     export failed (case, ticket, error) = step (case, \d => uitest::Drive::completed (d, ticket, false, error))
+
+    (** A completion of `ticket` with no path: the chooser was cancelled. *)
+    export cancelled (case, ticket) = completed (case, ticket, "")
 
     (** A completion whose step also leaves `extras` as host-held slices. *)
     export postHeld (case, gesture, extras) = step (case(caseHeld = JsonObject (listConcat (Doc::members case.caseHeld) (Doc::members extras))), gesture)
@@ -419,53 +428,59 @@ module Drive
     // The components `items` lowered, as the children a host lays out.
     childrenJson items = member ("children", JsonArray (mapList (items, tree)))
 
+    // Every component's JSON: its `kind` first, then its own fields.
+    tagged (kind, fields) = JsonObject (listConcat [text ("kind", kind)] fields)
+
+    // The components that carry only a label and a symbol.
+    emblem (kind, label, symbol) = tagged (kind, [text ("label", label), text ("symbol", symbol)])
+
     // A component with no bound event of its own: every control reports zero.
     eventField () = whole ("event", 0)
 
     containerTree node = match node
-        ui::Stack _ items => JsonObject [text ("kind", "stack"), childrenJson items]
-        ui::Section title footer items => JsonObject [text ("kind", "section"), text ("title", title), text ("footer", footer), childrenJson items]
-        ui::Screen title subtitle toolbar items => JsonObject [text ("kind", "screen"), text ("title", title), text ("subtitle", subtitle), childrenJson (listConcat (toolbar, items))]
-        ui::Split panes => JsonObject [text ("kind", "split"), childrenJson panes]
-        ui::Layer items => JsonObject [text ("kind", "layers"), childrenJson items]
-        ui::Framed style content => JsonObject [text ("kind", "framed"), member ("style", styleOf style), member ("body", tree content)]
-        ui::Themed _ content => JsonObject [text ("kind", "themed"), member ("body", tree content)]
-        ui::Dialog title body _ => JsonObject [text ("kind", "dialog"), text ("title", title), member ("body", tree body)]
-        ui::ContextMenu body actions => JsonObject [text ("kind", "context-menu"), childrenJson (listPrepend (actions) body)]
-        ui::Aside _ column pane _ _ _ _ _ => JsonObject [text ("kind", "aside"), member ("aside", tree column), member ("pane", tree pane)]
-        ui::Tabs entries _ _ => JsonObject [text ("kind", "tabs"), childrenJson (mapList (entries, \entry => entry.page))]
-        ui::Rows entries selected _ => JsonObject [text ("kind", "rows"), text ("selected", selected), eventField (), childrenJson (mapList (entries, \entry => entry.cell))]
-        ui::Disclosure title expanded _ items => JsonObject [text ("kind", "disclosure"), text ("title", title), flag ("expanded", expanded), eventField (), childrenJson items]
+        ui::Stack _ items => tagged ("stack", [childrenJson items])
+        ui::Section title footer items => tagged ("section", [text ("title", title), text ("footer", footer), childrenJson items])
+        ui::Screen title subtitle toolbar items => tagged ("screen", [text ("title", title), text ("subtitle", subtitle), childrenJson (listConcat (toolbar, items))])
+        ui::Split panes => tagged ("split", [childrenJson panes])
+        ui::Layer items => tagged ("layers", [childrenJson items])
+        ui::Framed style content => tagged ("framed", [member ("style", styleOf style), member ("body", tree content)])
+        ui::Themed _ content => tagged ("themed", [member ("body", tree content)])
+        ui::Dialog title body _ => tagged ("dialog", [text ("title", title), member ("body", tree body)])
+        ui::ContextMenu body actions => tagged ("context-menu", [childrenJson (listPrepend (actions) body)])
+        ui::Aside _ column pane _ _ _ _ _ => tagged ("aside", [member ("aside", tree column), member ("pane", tree pane)])
+        ui::Tabs entries _ _ => tagged ("tabs", [childrenJson (mapList (entries, \entry => entry.page))])
+        ui::Rows entries selected _ => tagged ("rows", [text ("selected", selected), eventField (), childrenJson (mapList (entries, \entry => entry.cell))])
+        ui::Disclosure title expanded _ items => tagged ("disclosure", [text ("title", title), flag ("expanded", expanded), eventField (), childrenJson items])
         _ => JsonNull
 
     controlTree node = match node
-        ui::Button label symbol role enabled _ => JsonObject [text ("kind", "button"), text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), eventField ()]
-        ui::Field label value prompt _ _ _ _ => JsonObject [text ("kind", "field"), text ("label", label), text ("value", value), text ("prompt", prompt), eventField ()]
-        ui::Toggle label on _ => JsonObject [text ("kind", "toggle"), text ("label", label), flag ("on", on), eventField ()]
-        ui::Picker label choices selected _ => JsonObject [text ("kind", "picker"), text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, \choice => JsonObject [text ("kind", "option"), text ("label", choice.choiceLabel), text ("key", choice.choiceKey)])))]
-        ui::Alert title message _ _ => JsonObject [text ("kind", "alert"), text ("title", title), text ("text", message), eventField ()]
-        ui::Editor label value _ cursor epoch _ _ _ => JsonObject [text ("kind", "editor"), text ("label", label), text ("value", value), whole ("caret", cursor), whole ("focusEpoch", epoch), eventField (), whole ("placeEvent", 0)]
-        ui::Board _ _ _ backdrop _ _ _ _ _ => JsonObject [text ("kind", "board"), text ("backdrop", backdrop), eventField ()]
-        ui::Scene width height _ _ _ _ _ => JsonObject [text ("kind", "scene"), decimal ("width", width), decimal ("height", height), eventField ()]
+        ui::Button label symbol role enabled _ => tagged ("button", [text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), eventField ()])
+        ui::Field label value prompt _ _ _ _ => tagged ("field", [text ("label", label), text ("value", value), text ("prompt", prompt), eventField ()])
+        ui::Toggle label on _ => tagged ("toggle", [text ("label", label), flag ("on", on), eventField ()])
+        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, \choice => tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)]))))])
+        ui::Alert title message _ _ => tagged ("alert", [text ("title", title), text ("text", message), eventField ()])
+        ui::Editor label value _ cursor epoch _ _ _ => tagged ("editor", [text ("label", label), text ("value", value), whole ("caret", cursor), whole ("focusEpoch", epoch), eventField (), whole ("placeEvent", 0)])
+        ui::Board _ _ _ backdrop _ _ _ _ _ => tagged ("board", [text ("backdrop", backdrop), eventField ()])
+        ui::Scene width height _ _ _ _ _ => tagged ("scene", [decimal ("width", width), decimal ("height", height), eventField ()])
         _ => JsonNull
 
     leafTree node = match node
-        ui::Text content _ _ => JsonObject [text ("kind", "text"), text ("text", content)]
-        ui::RichText runs _ => JsonObject [text ("kind", "rich-text"), member ("runs", JsonArray (mapList (runs, runJson)))]
-        ui::Slot key => JsonObject [text ("kind", "slot"), text ("key", key)]
-        ui::Pair label value => JsonObject [text ("kind", "pair"), text ("label", label), text ("value", value)]
-        ui::Badge label symbol _ => JsonObject [text ("kind", "badge"), text ("label", label), text ("symbol", symbol)]
-        ui::Label label symbol => JsonObject [text ("kind", "label"), text ("label", label), text ("symbol", symbol)]
-        ui::Icon symbol => JsonObject [text ("kind", "icon"), text ("symbol", symbol)]
-        ui::Link label address => JsonObject [text ("kind", "link"), text ("label", label), text ("address", address)]
-        ui::Spacer => JsonObject [text ("kind", "spacer")]
-        ui::Divider => JsonObject [text ("kind", "divider")]
-        ui::Segments _ label => JsonObject [text ("kind", "segments"), text ("label", label)]
-        ui::Empty symbol title detail => JsonObject [text ("kind", "empty"), text ("symbol", symbol), text ("title", title), text ("detail", detail)]
-        ui::Progress label detail => JsonObject [text ("kind", "progress"), text ("label", label), text ("detail", detail)]
-        ui::Meter label amount total _ => JsonObject [text ("kind", "meter"), text ("label", label), whole ("amount", amount), whole ("total", total)]
-        ui::Swatch name light dark => JsonObject [text ("kind", "swatch"), text ("label", name), text ("light", light), text ("dark", dark)]
-        ui::Typeset math spoken => JsonObject [text ("kind", "math"), text ("spoken", spoken), member ("math", Maths::encode math)]
-        ui::Image source alt width height => JsonObject [text ("kind", "image"), text ("source", source), text ("alt", alt), whole ("width", width), whole ("height", height)]
-        ui::Video source poster _ alt _ => JsonObject [text ("kind", "video"), text ("source", source), text ("poster", poster), text ("alt", alt)]
+        ui::Text content _ _ => tagged ("text", [text ("text", content)])
+        ui::RichText runs _ => tagged ("rich-text", [member ("runs", JsonArray (mapList (runs, runJson)))])
+        ui::Slot key => tagged ("slot", [text ("key", key)])
+        ui::Pair label value => tagged ("pair", [text ("label", label), text ("value", value)])
+        ui::Badge label symbol _ => emblem ("badge", label, symbol)
+        ui::Label label symbol => emblem ("label", label, symbol)
+        ui::Icon symbol => tagged ("icon", [text ("symbol", symbol)])
+        ui::Link label address => tagged ("link", [text ("label", label), text ("address", address)])
+        ui::Spacer => tagged ("spacer", [])
+        ui::Divider => tagged ("divider", [])
+        ui::Segments _ label => tagged ("segments", [text ("label", label)])
+        ui::Empty symbol title detail => tagged ("empty", [text ("symbol", symbol), text ("title", title), text ("detail", detail)])
+        ui::Progress label detail => tagged ("progress", [text ("label", label), text ("detail", detail)])
+        ui::Meter label amount total _ => tagged ("meter", [text ("label", label), whole ("amount", amount), whole ("total", total)])
+        ui::Swatch name light dark => tagged ("swatch", [text ("label", name), text ("light", light), text ("dark", dark)])
+        ui::Typeset math spoken => tagged ("math", [text ("spoken", spoken), member ("math", Maths::encode math)])
+        ui::Image source alt width height => tagged ("image", [text ("source", source), text ("alt", alt), whole ("width", width), whole ("height", height)])
+        ui::Video source poster _ alt _ => tagged ("video", [text ("source", source), text ("poster", poster), text ("alt", alt)])
         _ => JsonNull
