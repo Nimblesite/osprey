@@ -421,38 +421,12 @@ module Drive
     control (kindName, words) = JsonObject [text ("kind", kindName), text ("label", words), whole ("event", 0)]
 
     // Every component the vocabulary names, so a lookup reads the tree the app drew.
-    tree node = match isContainer node
-        true => containerTree node
-        false => match isControl node
-            true => controlTree node
-            false => leafTree node
+    // Each projection answers JsonNull for a node it does not cover, so the first that answers wins.
+    tree node = orElse (containerTree node, \() => orElse (controlTree node, \() => leafTree node))
 
-    isContainer node = match node
-        ui::Stack _ items => true
-        ui::Section title footer items => true
-        ui::Screen title subtitle toolbar items => true
-        ui::Split panes => true
-        ui::Layer items => true
-        ui::Framed style content => true
-        ui::Themed _ content => true
-        ui::Dialog title body _ => true
-        ui::ContextMenu body actions => true
-        ui::Aside _ column pane _ _ _ _ _ => true
-        ui::Tabs entries _ _ => true
-        ui::Rows entries selected _ => true
-        ui::Disclosure title expanded _ items => true
-        _ => false
-
-    isControl node = match node
-        ui::Button label symbol _ enabled _ => true
-        ui::Field label value prompt _ _ _ _ => true
-        ui::Toggle label on _ => true
-        ui::Picker label choices selected _ => true
-        ui::Alert title message _ _ => true
-        ui::Editor label value _ cursor epoch _ _ _ => true
-        ui::Board _ _ _ backdrop _ _ _ _ _ => true
-        ui::Scene width height _ _ _ _ _ => true
-        _ => false
+    orElse (found, next) = match found
+        JsonNull => next ()
+        _ => found
 
     containerTree node = match node
         ui::Stack _ items => JsonObject [text ("kind", "stack"), member ("children", JsonArray (mapList (items, tree)))]
