@@ -1,4 +1,22 @@
 
+/// `text` both begins with `first` and ends with `last`.
+fn bounded(text, first, last) = startsWith(text, first) && endsWith(text, last)
+
+/// `text` holds every marker in `present` and none of the markers in `absent`.
+fn carries(text, present, absent) = containsAll(text, present) && containsNone(text, absent)
+
+/// `text` is exactly `size` bytes and lies between `first` and `last`.
+fn framed(text, size, first, last) = length(text) == size && bounded(text, first, last)
+
+/// `transcript` with `key:value` and the entry separator appended.
+fn labelled(transcript, key, value) = "${transcript}${key}:${value}|"
+
+/// `transcript` with `entry` and the entry separator appended.
+fn noted(transcript, entry) = "${transcript}${entry}|"
+
+/// `transcript` with `line` and a newline after it.
+fn lined(transcript, line) = "${transcript}${line}\n"
+
 /// Supply lets a handler choose each integer observed by the performer.
 effect Supply {
     /// Request the next scripted value for `label`.
@@ -47,11 +65,11 @@ fn resumeValueRewriteCase() = {
             next label => {
                 supplyCalls = supplyCalls + 1 
                 seed = seed + 5 
-                supplied = "${supplied}${label}:${toString(seed)}|"
-                supplyTranscript = "${supplyTranscript}supply ${label}=${toString(seed)}\n"
+                supplied = labelled(supplied, label, toString(seed))
+                supplyTranscript = lined(supplyTranscript, "supply ${label}=${toString(seed)}")
                 let answer = resume(seed)
-                settled = "${settled}${label}:${toString(answer)}|"
-                supplyTranscript = "${supplyTranscript}seen after ${label}: ${toString(answer)}\n"
+                settled = labelled(settled, label, toString(answer))
+                supplyTranscript = lined(supplyTranscript, "seen after ${label}: ${toString(answer)}")
                 answer
             }
         }
@@ -67,7 +85,7 @@ fn resumeValueRewriteCase() = {
                 wordRelayCalls = wordRelayCalls + 1 
                 let answer = resume("carried")
                 wordSettled = answer
-                relayTranscript = "${relayTranscript}relay answered: ${answer}\n"
+                relayTranscript = lined(relayTranscript, "relay answered: ${answer}")
                 answer
             }
         }
@@ -185,10 +203,10 @@ fn resumeSubstitutesSuppliedValueCase() = {
                     3 => (0 - 4) 
                     _ => 7
                 }
-                asked = "${asked}${toString(slot)}|"
-                gave = "${gave}${toString(value)}|"
+                asked = noted(asked, toString(slot))
+                gave = noted(gave, toString(value))
                 let answer = resume(value)
-                seen = "${seen}${toString(slot)}:${toString(answer)}|"
+                seen = labelled(seen, toString(slot), toString(answer))
                 answer
             }
         }
@@ -219,23 +237,21 @@ fn resumeSubstitutesSuppliedValueCase() = {
     // settle in the reverse order, so `asked` and `seen` must disagree.
     checkAll("reads enter in slot order and settle in reverse", [
         asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
-        startsWith(seen, "4:667|"), endsWith(seen, "1:667|"),
-        contains(seen, "3:667|"), contains(seen, "2:667|"),
+        bounded(seen, "4:667|", "1:667|"),
+        containsAll(seen, ["3:667|", "2:667|"]),
         !startsWith(seen, "1:"), asked != seen,
         length(seen) == 24, reads == 4,
-        !contains(seen, "0:"), !contains(seen, ":660")
+        containsNone(seen, ["0:", ":660"])
     ])
 
     // Every arm's resume returns the one completed answer, never the value that
     // arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
     // supplied value could have been handed back by mistake.
     checkAll("every arm observes the completed computation answer", [
-        contains(seen, "1:667"), contains(seen, "2:667"),
-        contains(seen, "3:667"), contains(seen, "4:667"),
-        !contains(seen, "4:7|"), !contains(seen, "2:7|"),
-        !contains(seen, "3:-4|"), !contains(seen, "1:0|"),
+        containsAll(seen, ["1:667", "2:667", "3:667", "4:667"]),
+        containsNone(seen, ["4:7|", "2:7|", "3:-4|", "1:0|"]),
         contains(seen, toString(picked)),
-        contains(gave, "0|"), contains(gave, "-4|"), !contains(gave, "|4|")
+        carries(gave, ["0|", "-4|"], ["|4|"])
     ])
 
     // The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
@@ -286,11 +302,11 @@ fn resumeAnswerComposesLifoCase() = {
     let layeredResult = {
         handle Layer {
             fetch slot => {
-                entered = "${entered}${toString(slot)}|"
+                entered = noted(entered, toString(slot))
                 let answer = resume(slot)
-                observed = "${observed}${toString(slot)}:${toString(answer)}|"
+                observed = labelled(observed, toString(slot), toString(answer))
                 let adjusted = (answer + slot) 
-                returned = "${returned}${toString(slot)}:${toString(adjusted)}|"
+                returned = labelled(returned, toString(slot), toString(adjusted))
                 adjusted
             }
         }
@@ -330,7 +346,7 @@ fn resumeAnswerComposesLifoCase() = {
         observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
         layeredResult != 123, layeredResult != 126, layeredResult != 124,
         layeredResult == ((123 + 6) ),
-        startsWith(observed, "3:"), endsWith(observed, "1:128|"),
+        bounded(observed, "3:", "1:128|"),
         observed != returned, contains(observed, "3:123|")
     ])
 
@@ -338,10 +354,10 @@ fn resumeAnswerComposesLifoCase() = {
     // observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
     // 128; 1 returns 129, which is the whole handle expression's result.
     checkAll("each arm's value becomes the next-outer arm's answer", [
-        contains(returned, "3:126|"), contains(observed, "2:126|"),
-        contains(returned, "2:128|"), contains(observed, "1:128|"),
-        contains(returned, "1:129|"), !contains(observed, "2:123|"),
-        !contains(observed, "1:123|"), !contains(returned, "3:123|"),
+        containsAll(returned, ["3:126|", "2:128|", "1:129|"]),
+        containsAll(observed, ["2:126|", "1:128|"]),
+        containsNone(observed, ["2:123|", "1:123|"]),
+        !contains(returned, "3:123|"),
         length(observed) == 18, length(returned) == 18,
         layeredResult == 129, endsWith(returned, "1:129|")
     ])
@@ -423,7 +439,7 @@ fn resumeScalarPayloadsCase() = {
                     3 => 1000000
                     _ => (0 - 9) 
                 }
-                countGave = "${countGave}${toString(value)}|"
+                countGave = noted(countGave, toString(value))
                 resume(value)
             }
         }
@@ -449,14 +465,14 @@ fn resumeScalarPayloadsCase() = {
         handle Scalar {
             ratio step => {
                 ratioCalls = ratioCalls + 1 
-                ratioSlots = "${ratioSlots}${toString(step)}|"
+                ratioSlots = noted(ratioSlots, toString(step))
                 let value = match step {
                     1 => 1.25
                     2 => 0.0
                     _ => (0.0 - 0.75)
                 }
                 let answer = resume(value)
-                ratioSettled = "${ratioSettled}${toString(step)}|"
+                ratioSettled = noted(ratioSettled, toString(step))
                 lastRatioAnswer = answer
                 answer
             }
@@ -468,11 +484,10 @@ fn resumeScalarPayloadsCase() = {
     // supply had been dropped, and "|9|" only if a sign had been lost.
     checkAll("integer payloads: zero, negative, large and duplicate", [
         countText == "0/-9/1000000/-9", countCalls == 4,
-        length(countText) == 15,
-        startsWith(countText, "0/-9/"), endsWith(countText, "/-9"),
-        contains(countText, "/1000000/"), !contains(countText, "/0/"),
+        framed(countText, 15, "0/-9/", "/-9"),
+        carries(countText, ["/1000000/"], ["/0/"]),
         countGave == "0|-9|1000000|-9|", length(countGave) == 16,
-        contains(countGave, "|1000000|"), !contains(countGave, "|9|"),
+        carries(countGave, ["|1000000|"], ["|9|"]),
         toString(1000000) == "1000000", countText != countGave
     ])
 
@@ -552,7 +567,7 @@ fn flagged(body) = {
                     true => "T"
                     false => "F"
                 }
-                gave = "${gave}${mark}|"
+                gave = noted(gave, mark)
                 resume(value)
             }
         }
@@ -577,10 +592,10 @@ fn resumeBoolAndUnitPayloadsCase() = {
         handle Scalar {
             beat step => {
                 beats = beats + 1 
-                beatOrder = "${beatOrder}${toString(step)}|"
+                beatOrder = noted(beatOrder, toString(step))
                 let answer = resume()
-                beatAfter = "${beatAfter}${toString(step)}|"
-                beatSeen = "${beatSeen}${answer}|"
+                beatAfter = noted(beatAfter, toString(step))
+                beatSeen = noted(beatSeen, answer)
                 answer
             }
         }
@@ -591,11 +606,11 @@ fn resumeBoolAndUnitPayloadsCase() = {
     // collapsed to an integer would print "1" or "0" instead.
     checkAll("boolean payloads keep both truth values", [
         flag.text == "true|false|true", length(flag.text) == 15,
-        contains(flag.text, "true"), contains(flag.text, "false"),
-        startsWith(flag.text, "true|"), endsWith(flag.text, "|true"),
+        containsAll(flag.text, ["true", "false"]),
+        bounded(flag.text, "true|", "|true"),
         !startsWith(flag.text, "false"), flag.calls == 3,
-        flag.gave == "T|F|T|", !contains(flag.text, "1"),
-        !contains(flag.text, "0"), toString(true) == "true",
+        flag.gave == "T|F|T|", containsNone(flag.text, ["1", "0"]),
+        toString(true) == "true",
         toString(false) == "false"
     ])
 
@@ -603,7 +618,7 @@ fn resumeBoolAndUnitPayloadsCase() = {
     // orders itself by which perform received which value.
     checkAll("a supplied boolean drives the caller's own branch", [
         route.text == "allow/deny", length(route.text) == 10,
-        startsWith(route.text, "allow"), endsWith(route.text, "deny"),
+        bounded(route.text, "allow", "deny"),
         contains(route.text, "/"), route.text != "deny/allow",
         !contains(route.text, "denyallow"), route.calls == 2,
         route.gave == "T|F|", route.text != flag.text,
@@ -703,7 +718,7 @@ fn resumeManagedPayloadsCase() = {
                     "mixed" => "a1, b2!"
                     _ => "abab"
                 }
-                textGave = "${textGave}${key}=${value}|"
+                textGave = noted(textGave, "${key}=${value}")
                 resume(value)
             }
         }
@@ -760,9 +775,9 @@ fn resumeManagedPayloadsCase() = {
     // bytes of payload. The leading "[]" is the empty supply arriving as an
     // empty string rather than as a missing one.
     checkAll("string payloads: empty, one byte, punctuation, repeats", [
-        textResult == "[][x][a1, b2!][abab]", length(textResult) == 20,
-        startsWith(textResult, "[][x]"), endsWith(textResult, "[abab]"),
-        contains(textResult, "[]"), contains(textResult, "a1, b2!"),
+        textResult == "[][x][a1, b2!][abab]",
+        framed(textResult, 20, "[][x]", "[abab]"),
+        containsAll(textResult, ["[]", "a1, b2!"]),
         toUpperCase(textResult) == "[][X][A1, B2!][ABAB]",
         toLowerCase(toUpperCase(textResult)) == "[][x][a1, b2!][abab]",
         textCalls == 4,
@@ -774,10 +789,9 @@ fn resumeManagedPayloadsCase() = {
     // Both records arrive whole: three fields each, the second one carrying an
     // empty label, a zero weight and a false flag.
     checkAll("a whole record crosses one operation intact", [
-        slotText == "left:3:true/:0:false", length(slotText) == 20,
-        startsWith(slotText, "left:3:true"), endsWith(slotText, ":0:false"),
-        contains(slotText, "/:0:"), !contains(slotText, "//"),
-        contains(slotText, "true"), contains(slotText, "false"),
+        slotText == "left:3:true/:0:false",
+        framed(slotText, 20, "left:3:true", ":0:false"),
+        carries(slotText, ["/:0:", "true", "false"], ["//"]),
         slotCalls == 2, doubledWeight == 42, weightCalls == 1,
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
@@ -790,8 +804,8 @@ fn resumeManagedPayloadsCase() = {
         parsedTotal == ((120 - 5) ), length("nope!") == 5,
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
         parseGave == "ok=Success|bad=Error|", length(parseGave) == 21,
-        contains(parseGave, "ok=Success|"), contains(parseGave, "bad=Error|"),
-        startsWith(parseGave, "ok="), endsWith(parseGave, "Error|")
+        containsAll(parseGave, ["ok=Success|", "bad=Error|"]),
+        bounded(parseGave, "ok=", "Error|")
     ])
 
     // Four regions over three managed operations, each with its own counter.
@@ -848,10 +862,10 @@ fn nestedRun(body, bump) = {
             supply tag => {
                 calls = calls + 1 
                 seed = seed + 1 
-                tags = "${tags}${tag}|"
+                tags = noted(tags, tag)
                 let answer = resume(seed + bump)
-                settled = "${settled}${tag}|"
-                seen = "${seen}${toString(answer)}|"
+                settled = noted(settled, tag)
+                seen = noted(seen, toString(answer))
                 answer
             }
         }
@@ -888,8 +902,8 @@ fn resumeFromNestedHelpersCase() = {
         spanRun.result == 15, spanRun.calls == 4,
         spanRun.tags == "shallow|nested.a|nested.b|tail|",
         spanRun.settled == "tail|nested.b|nested.a|shallow|",
-        startsWith(spanRun.tags, "shallow|"), endsWith(spanRun.tags, "tail|"),
-        startsWith(spanRun.settled, "tail|"), endsWith(spanRun.settled, "shallow|"),
+        bounded(spanRun.tags, "shallow|", "tail|"),
+        bounded(spanRun.settled, "tail|", "shallow|"),
         spanRun.tags != spanRun.settled, length(spanRun.tags) == 31,
         length(spanRun.settled) == 31, spanRun.result == ((11 + 4) ),
         (((2 + 3) ) * 2 ) == 10, spanRun.result != 10, spanRun.result != 5
@@ -898,8 +912,7 @@ fn resumeFromNestedHelpersCase() = {
     // Every arm in the span region observed the one completed answer, and the
     // first region's state is untouched by the second.
     checkAll("both deep regions keep their own transcripts", [
-        contains(spanRun.tags, "nested.a|nested.b|"),
-        contains(spanRun.tags, "|tail|"),
+        containsAll(spanRun.tags, ["nested.a|nested.b|", "|tail|"]),
         !contains(spanRun.settled, "shallow|tail"),
         spanRun.seen == "15|15|15|15|", length(spanRun.seen) == 12,
         spanRun.calls == 4, spanRun.seed == 4,
@@ -946,10 +959,10 @@ fn manyPerformsOneRegionCase() = {
             tick i => {
                 tickEntered = (tickEntered + 1) 
                 let value = listGet(scriptValues(), i) ?: 0
-                tickGave = "${tickGave}${toString(value)}|"
+                tickGave = noted(tickGave, toString(value))
                 let answer = resume(value)
                 tickSettled = (tickSettled + 1) 
-                tickOrder = "${tickOrder}${toString(i)}|"
+                tickOrder = noted(tickOrder, toString(i))
                 seenSum = (seenSum + answer) 
                 answer
             }
@@ -973,10 +986,9 @@ fn manyPerformsOneRegionCase() = {
     // Partial sums: 0+7-4+7 = 10, 100+0-1+12 = 111, 12+3+0+25 = 40.
     checkAll("each index receives its own scripted value", [
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
-        length(tickGave) == 31,
-        startsWith(tickGave, "0|7|-4|"), endsWith(tickGave, "|25|"),
-        contains(tickGave, "|100|"), contains(tickGave, "|-1|"),
-        contains(tickGave, "|12|12|"), !contains(tickGave, "|13|"),
+        framed(tickGave, 31, "0|7|-4|", "|25|"),
+        containsAll(tickGave, ["|100|", "|-1|", "|12|12|"]),
+        !contains(tickGave, "|13|"),
         drained == 161, (((10 + 111) ) + 40 ) == 161,
         drained != 10, drained != 40, drained != 111
     ])
@@ -984,8 +996,7 @@ fn manyPerformsOneRegionCase() = {
     // Twelve arms, one completed answer: 161 * 12 = 1932.
     checkAll("the whole region settles in reverse index order", [
         tickOrder == "11|10|9|8|7|6|5|4|3|2|1|0|",
-        length(tickOrder) == 26,
-        startsWith(tickOrder, "11|10|"), endsWith(tickOrder, "|1|0|"),
+        framed(tickOrder, 26, "11|10|", "|1|0|"),
         !startsWith(tickOrder, "0|"), contains(tickOrder, "|5|4|"),
         tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
         seenSum == 1932, seenSum == ((161 * 12) ),
