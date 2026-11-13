@@ -143,11 +143,13 @@ fn acted(
     }
 }
 
+/// Announced scene elements as the tests build them.
 #[cfg(test)]
-mod tests {
-    use super::{actions, target, Access, Action, ActionData, Role};
+pub(crate) mod fixtures {
+    use super::{Access, Role};
 
-    fn element(
+    /// One element at `bounds` (`x, y, w, h`) with its `range` (`value, min, max`).
+    pub(crate) fn element(
         role: Role,
         label: &str,
         bounds: [f64; 4],
@@ -170,43 +172,34 @@ mod tests {
         }
     }
 
+    /// A button at `bounds`.
+    pub(crate) fn button(label: &str, bounds: [f64; 4]) -> Access {
+        element(Role::Button, label, bounds, [0.; 3], false)
+    }
+
+    /// A slider at `bounds` holding `range`.
+    pub(crate) fn slider(label: &str, bounds: [f64; 4], range: [f64; 3]) -> Access {
+        element(Role::Slider, label, bounds, range, false)
+    }
+
+    /// A menu item at `bounds`, the current choice when `selected`.
+    pub(crate) fn menu_item(label: &str, bounds: [f64; 4], selected: bool) -> Access {
+        element(Role::MenuItem, label, bounds, [0.; 3], selected)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fixtures::{button, menu_item, slider};
+    use super::{actions, target, Access, Action, ActionData, Role};
+
     fn tree() -> Vec<Access> {
         vec![
-            element(
-                Role::Button,
-                "Play",
-                [10., 20., 100., 40.],
-                [0., 0., 0.],
-                false,
-            ),
-            element(
-                Role::Slider,
-                "Volume",
-                [99., 1025., 302., 40.],
-                [0.5, 0., 1.],
-                false,
-            ),
-            element(
-                Role::Button,
-                "Speed: 1×",
-                [0., 0., 10., 10.],
-                [0., 0., 0.],
-                false,
-            ),
-            element(
-                Role::MenuItem,
-                "Kitchen",
-                [0., 50., 10., 10.],
-                [0., 0., 0.],
-                true,
-            ),
-            element(
-                Role::MenuItem,
-                "Hallway",
-                [0., 60., 10., 10.],
-                [0., 0., 0.],
-                false,
-            ),
+            button("Play", [10., 20., 100., 40.]),
+            slider("Volume", [99., 1025., 302., 40.], [0.5, 0., 1.]),
+            button("Speed: 1×", [0., 0., 10., 10.]),
+            menu_item("Kitchen", [0., 50., 10., 10.], true),
+            menu_item("Hallway", [0., 60., 10., 10.], false),
         ]
     }
 

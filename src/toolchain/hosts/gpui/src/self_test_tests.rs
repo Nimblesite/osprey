@@ -2,12 +2,10 @@
 
 use std::collections::HashMap;
 
-use gpui_kit::accesskit::Role;
-
 use super::{attempt, parse, tree, Attempt};
 use crate::events::Touch;
 use crate::rows::{flags, Control, Fit, Kind, Look, Scene, Shown};
-use crate::scene::access::Access;
+use crate::scene::access::fixtures::{button, slider};
 
 #[test]
 fn packaged_launch_keeps_overrides_and_rejects_invalid_argument_documents() {
@@ -65,24 +63,6 @@ fn named(
     }
 }
 
-/// One announced scene element.
-fn item(role: Role, label: &str, bounds: [f64; 4], range: [f64; 3], selected: bool) -> Access {
-    let [x, y, w, h] = bounds;
-    let [value, min, max] = range;
-    Access {
-        role,
-        label: label.to_owned(),
-        x,
-        y,
-        w,
-        h,
-        value,
-        min,
-        max,
-        selected,
-    }
-}
-
 fn shown() -> Shown {
     Shown {
         controls: vec![
@@ -106,20 +86,8 @@ fn shown() -> Shown {
                 atlas: vec![],
                 shapes: vec![],
                 access: vec![
-                    item(
-                        Role::Button,
-                        "Play",
-                        [10., 20., 100., 40.],
-                        [0., 0., 0.],
-                        false,
-                    ),
-                    item(
-                        Role::Slider,
-                        "Volume",
-                        [100., 0., 200., 10.],
-                        [0.5, 0., 1.],
-                        false,
-                    ),
+                    button("Play", [10., 20., 100., 40.]),
+                    slider("Volume", [100., 0., 200., 10.], [0.5, 0., 1.]),
                 ],
             },
         )]),
