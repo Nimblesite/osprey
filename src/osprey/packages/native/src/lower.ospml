@@ -241,9 +241,13 @@ module Lower
         Plain => Look(ink = LowerLeaves::inkTone (styling.styleTheme, styling.styleDark, Primary), fill = LowerLeaves::wash (LowerLeaves::inkTone (styling.styleTheme, styling.styleDark, Primary), LowerLeaves::faint), points = LowerLeaves::bodyPoints, inset = pressInset, gap = 0.0, corner = pressCorner, heft = 400)
 
     fieldView<A> : (Styling<A>, string, string, string, bool, bool, Commit, A) -> View<Binding<A>>
-    fieldView (styling, label, value, prompt, secure, multiline, commit, bind) = match multiline
-        true => Fitted(fit = fieldFit (prompt, secure, commit), fitted = Writing(writingLook = fieldLook (styling), writingText = value, writingAction = TextInput(action = bind)))
-        false => Column(columnLook = LowerLeaves::carrier fieldGap, columnItems = headed (label, LowerLeaves::sized (styling.styleTheme, styling.styleDark, LowerLeaves::captionPoints, 400, Secondary), [Fitted(fit = fieldFit (prompt, secure, commit), fitted = Typing(typingLook = fieldLook (styling), typingText = value, typingAction = TextInput(action = bind)))]))
+    // A field: its label as a caption above the entry, whose hint is the prompt.
+    fieldView (styling, label, value, prompt, secure, multiline, commit, bind) = Column(columnLook = LowerLeaves::carrier fieldGap, columnItems = headed (label, LowerLeaves::sized (styling.styleTheme, styling.styleDark, LowerLeaves::captionPoints, 400, Secondary), [Fitted(fit = fieldFit (prompt, secure, commit), fitted = entry (styling, value, multiline, bind))]))
+
+    entry<A> : (Styling<A>, string, bool, A) -> View<Binding<A>>
+    entry (styling, value, multiline, bind) = match multiline
+        true => Writing(writingLook = fieldLook (styling), writingText = value, writingAction = TextInput(action = bind))
+        false => Typing(typingLook = fieldLook (styling), typingText = value, typingAction = TextInput(action = bind))
 
     // A field's fit: its prompt as the hint, secret text hidden, and submitting fields committing on return only.
     fieldFit (prompt, secure, commit) = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = satAdd (Pick::either (secure, Views::secret, 0)) (commitTrait (commit)), edge = 0, hint = prompt)
@@ -272,9 +276,9 @@ module Lower
         false => []
 
     editorView<A> : (Styling<A>, string, string, A, A) -> View<Binding<A>>
-    editorView (styling, label, value, edit, place) = Fitted(fit = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = label), fitted = Layered(layeredLook = LowerLeaves::carrier 0.0, layeredItems = [
-        Writing(writingLook = fieldLook (styling), writingText = value, writingAction = TextInput(action = edit)),
-        Canvas(canvasLook = Views::plain, canvasAction = PlaceInput(action = place))]))
+    editorView (styling, label, value, edit, place) = Layered(layeredLook = LowerLeaves::carrier 0.0, layeredItems = [
+        Fitted(fit = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = label), fitted = Writing(writingLook = fieldLook (styling), writingText = value, writingAction = TextInput(action = edit))),
+        Canvas(canvasLook = Views::plain, canvasAction = PlaceInput(action = place))])
 
     boardView<A> : (Styling<A>, string, bool, A, A, A) -> View<Binding<A>>
     boardView (styling, backdrop, panBound, pan, stroke, lasso) = Layered(layeredLook = boardLook (styling, backdrop), layeredItems = listConcat [

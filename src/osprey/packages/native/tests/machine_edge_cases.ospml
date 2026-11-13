@@ -228,10 +228,12 @@ completeEventAndConvenienceCases () =
         _ => "not a board"
     expect (boardNode, "strokes|2|true|")
     field = drawnOf (Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit")))
-    expect (kindAt (field, 0), Views::editor)
-    expect (wordsAt (field, 0), "one\ntwo")
-    expect (hintAt (field, 0), "write")
-    expect (actionAt (field, 0), 0)
+    // The column, its label caption, then the writing entry the prompt hints.
+    expect (wordsAt (field, 1), "Notes")
+    expect (kindAt (field, 2), Views::editor)
+    expect (wordsAt (field, 2), "one\ntwo")
+    expect (hintAt (field, 2), "write")
+    expect (actionAt (field, 2), 0)
     described = drawnOf (Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), []))
     expect (pressWords described, "plain")
     expect (length (Lists::slice (["a"], 2, 4)), 0)

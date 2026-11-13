@@ -123,18 +123,15 @@ module ImportedFlowCases
         expect (Drive::tickets requested, "proof:opened")
         requested
 
-    loaded (requested, source) = Drive::completedHeld (requested, "proof:opened", "{\"path\":\"proof.ndjson\"}", JsonObject [Doc::str ("proof:import", source)])
+    loaded (requested, source) = Drive::completedHeld (requested, "proof:opened", "proof.ndjson", JsonObject [Doc::str ("proof:import", source)])
 
     picked (before, name) =
-        rows = Drive::findLabel ("Theorem", pane before)
-        expect (Doc::has (rows, "event"), true)
-        Drive::controlOf (before, "library", Doc::number (rows, "event"), Drive::quoted name)
+        expect (Doc::has (Drive::findLabel ("Theorem", pane before), "event"), true)
+        Drive::choose (before, "library", "Theorem", Drive::quoted name)
 
-    expanded before =
-        disclosure = Drive::findTitle ("Imported source", pane before)
-        Drive::controlOf (before, "library", Doc::number (disclosure, "event"), "true")
+    expanded before = Drive::choose (before, "library", "Imported source", "true")
 
-    edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Current proof export", Drive::quoted source))
+    edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Paste an exported proof library", Drive::quoted source))
 
     export ledgerBoundaries () =
         selected = picked (loaded (ask (), receiptSource ()), "root")
@@ -235,13 +232,13 @@ module ImportedFlowCases
     export refusals () =
         pendingFile ()
         requested = ask ()
-        cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
+        cancelled = Drive::completed (requested, "proof:opened", "")
         readsSource (cancelled, "")
         malformed = loaded (requested, "not NDJSON")
         refusedWith (malformed, "Import refused")
         missing = Drive::completed (requested, "proof:opened", "{}")
         AppCases::flagged (Drive::stored missing, ["noticeBad"])
-        failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
+        failed = Drive::failed (requested, "proof:opened", "Permission denied")
         AppCases::present (Doc::text (Drive::stored failed, "notice"), ["Permission denied"])
 
     pendingFile () =
@@ -249,10 +246,10 @@ module ImportedFlowCases
         requested = Drive::press (previous, "library-actions", "Open proof library")
         shows (requested, ["Reading the selected proof library…"])
         hides (requested, ["Checked theorem"])
-        cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
+        cancelled = Drive::completed (requested, "proof:opened", "")
         shows (cancelled, ["Checked theorem"])
         readsSource (cancelled, Fixtures::idImp ())
-        failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
+        failed = Drive::failed (requested, "proof:opened", "Permission denied")
         shows (failed, ["Checked theorem"])
         readsSource (failed, Fixtures::idImp ())
 
@@ -307,10 +304,9 @@ module ImportedFlowCases
         readsSelection (large, "id_imp")
         expect (Doc::text (held, "proof:import"), source)
         shows (large, ["Checked theorem"])
-        event = Drive::labelled (large, large, "library", "Theorem", Drive::quoted "id_imp")
-        retained = Drive::postHeld (large, event, held)
+        retained = Drive::chooseIn (large, held, "Theorem", Drive::quoted "id_imp")
         shows (retained, ["Checked theorem"])
-        damaged = Drive::postHeld (large, event, JsonObject [Doc::str ("proof:import", corrupted)])
+        damaged = Drive::chooseIn (large, JsonObject [Doc::str ("proof:import", corrupted)], "Theorem", Drive::quoted "id_imp")
         hides (damaged, ["Checked theorem"])
         shows (damaged, ["type mismatch"])
 
@@ -329,8 +325,7 @@ module ImportedFlowCases
         refusedWith (missing, "Import refused")
 
     bundledRaces selected =
-        choice = Drive::findTitle ("Bundled proof libraries", actions selected)
-        reopened = Drive::controlOf (selected, "library-actions", Doc::number (choice, "event"), "true")
+        reopened = Drive::choose (selected, "library-actions", "Bundled proof libraries", "true")
         newer = Drive::press (reopened, "library-actions", "Identity fixture")
         expect (Drive::tickets newer, "proof:bundled:3")
         stale = bundledAt (newer, "proof:bundled:2", Fixtures::idImpBad ())
@@ -343,7 +338,7 @@ module ImportedFlowCases
         shows (manual, ["Checked theorem"])
         wrong = readCompleted (selected, "proof:bundled:2", "proof-libraries/wrong.ndjson", Fixtures::idImp ())
         refusedWith (wrong, "Import refused")
-        failed = Drive::post (selected, Drive::failed ("proof:bundled:2", "file unavailable"))
+        failed = Drive::failed (selected, "proof:bundled:2", "file unavailable")
         shows (failed, ["Import refused"])
 
     catalogueRefusals requested =

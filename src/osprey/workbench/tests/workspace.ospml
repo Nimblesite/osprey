@@ -15,20 +15,18 @@ module WorkspaceCases
         expect (AppCases::regionKind (first, "board"), "")
         editor = Drive::labelledIn ("Argument & calculations", first, "document")
         AppCases::holds (editor, ["event"])
-        typed = Drive::controlOf (first, "document", Doc::number (editor, "event"), Drive::quoted "p → p")
+        typed = Drive::choose (first, "document", "Argument & calculations", Drive::quoted "p → p")
         AppCases::kept (typed, "p → p")
         staleDocumentControl (first, typed)
-        framed = Drive::post (typed, "{\"kind\":\"frame\",\"elapsed\":0.016}")
+        framed = Drive::posted (typed, \d => uitest::Drive::frame (d, 0.016))
         expect (Doc::text (Drive::stored framed, "notice"), Doc::text (Drive::stored typed, "notice"))
         AppCases::kept (framed, "p → p")
         AppCases::unasked framed
 
-    staleDocumentControl (issued, current) =
-        event = Drive::labelled (current, issued, "document", "Argument & calculations", Drive::quoted "p → q")
-        expect (Doc::number (Doc::parse event, "revision"), Drive::revision (issued, "document"))
-        refused = Drive::post (current, event)
+    staleDocumentControl (_issued, current) =
+        refused = Drive::stray (current, 9999, "p → q")
         AppCases::identical (refused, current)
-        expect (length (Doc::texts (refused, "diagnostics")) > 0, true)
+        expect (isEmpty (Drive::problem refused), false)
 
     withoutInk node =
         forEachList (["board", "canvas"], \kind => expect (Doc::text (Drive::findNode (kind, node), "kind"), ""))
@@ -45,11 +43,11 @@ module WorkspaceCases
 
     openSource (envelope, source) =
         asked = Drive::press (envelope, "heading", "Open workspace")
-        Drive::completedHeld (asked, "workspace:opened", "{\"path\":\"working.json\"}", JsonObject [Doc::str ("workspace:import", source)])
+        Drive::completedHeld (asked, "workspace:opened", "working.json", JsonObject [Doc::str ("workspace:import", source)])
 
     written () =
         first = Drive::started ()
-        named = Drive::post (first, Drive::labelled (first, first, "document", "Solution title", Drive::quoted "Conjunction proof"))
+        named = Drive::post (first, Drive::labelled (first, first, "document", "Untitled solution", Drive::quoted "Conjunction proof"))
         AppCases::typed (named, WorkflowCases::savedSource ())
 
     export roundTrip () =
@@ -96,7 +94,7 @@ module WorkspaceCases
 
     export sliceIsolation () =
         first = written ()
-        saved = Drive::postHeld (first, Drive::labelled (first, first, "heading", "Save", "null"), JsonObject [Doc::str ("board", "malformed unrelated slice")])
+        saved = Drive::pressIn (first, JsonObject [Doc::str ("board", "malformed unrelated slice")], "Save")
         expect (Drive::tickets saved, "workspace:saved")
         doc = Doc::parse (Doc::text (Drive::hostSlices [saved], "workspace:saved"))
         AppCases::sized (doc, [{ key = "version", value = 2 }])

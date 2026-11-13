@@ -55,7 +55,9 @@ module AdditionCases
         expect (editorSpelled (editorSample ()), "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
         binds (walked, 3)
         expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "0@-1,3@0,7@-1,14@1,13@2")
-        expect (hintAt (walked, 2), "Proof")
+        // The label is the writing row's prompt, so hosts announce the text control by it.
+        expect (hintAt (walked, 3), "Proof")
+        expect (hintAt (walked, 2), "")
 
     focusedEditorEncoding () =
         node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
@@ -63,7 +65,8 @@ module AdditionCases
         walked = drawnOf node
         binds (walked, 2)
         expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "7@-1,14@0,13@1")
-        expect (hintAt (walked, 0), "Formula")
+        expect (hintAt (walked, 1), "Formula")
+        expect (hintAt (walked, 0), "")
 
     placed words = match Surfaces::told (ui::PlaceInput(action = Typed), words)
         Success message => routed message
@@ -756,12 +759,16 @@ module AdditionCases
         expect ((lookOf (innerOf entry)).corner, 6.0)
         expect (structuralEquals (typingAction (innerOf entry)) (ui::TextInput(action = Typed)), true)
         notes = Lower::view (styled false, Ui::multiline ("Notes", "Two lines", "Add", Typed))
-        expect (kindOf notes, "fitted")
-        expect ((fitOf notes).traits, 0)
-        expect ((fitOf notes).hint, "Add")
-        expect (kindOf (innerOf notes), "writing")
-        expect (textOf (innerOf notes), "Two lines")
-        expect (structuralEquals (typingAction (innerOf notes)) (ui::TextInput(action = Typed)), true)
+        expect (kindOf notes, "column")
+        expect (countOf notes, 2)
+        expect (textOf (itemOf (notes, 0)), "Notes")
+        written = itemOf (notes, 1)
+        expect (kindOf written, "fitted")
+        expect ((fitOf written).traits, 0)
+        expect ((fitOf written).hint, "Add")
+        expect (kindOf (innerOf written), "writing")
+        expect (textOf (innerOf written), "Two lines")
+        expect (structuralEquals (typingAction (innerOf written)) (ui::TextInput(action = Typed)), true)
         toggle = Lower::view (styled false, Ui::toggle ("Nightly", true, Load))
         expect (kindOf toggle, "switch")
         expect (switchWordsOf toggle, "Nightly")
@@ -912,12 +919,13 @@ module AdditionCases
         expect (textOf spoken, "x equals two")
         expect ((lookOf spoken).points, 13.0)
         editor = Lower::view (styled false, Editors::editor ("Proof", "one", 3, [], Typed, Load))
-        expect (kindOf editor, "fitted")
-        expect ((fitOf editor).hint, "Proof")
-        stack = innerOf editor
-        expect (kindOf stack, "layered")
+        expect (kindOf editor, "layered")
+        stack = editor
         expect (countOf stack, 2)
-        writing = itemOf (stack, 0)
+        prompted = itemOf (stack, 0)
+        expect (kindOf prompted, "fitted")
+        expect ((fitOf prompted).hint, "Proof")
+        writing = innerOf prompted
         expect (kindOf writing, "writing")
         expect (textOf writing, "one")
         expect (structuralEquals (typingAction writing) (ui::TextInput(action = Typed)), true)
