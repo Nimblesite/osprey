@@ -124,14 +124,21 @@ async function writeAndOpen(
   return document;
 }
 
-/** Write `content` to `name` inside `dir` and make it the active editor. */
+/**
+ * Write `content` to `name` inside `dir` and make it the active editor.
+ * With `note` the activation is asserted, naming that check.
+ */
 async function openActive(
   dir: string,
   name: string,
   content: string,
+  note?: string,
 ): Promise<vscode.TextDocument> {
   const document = await writeAndOpen(dir, name, content);
-  await makeActive(document);
+  const active = await makeActive(document);
+  if (note !== undefined) {
+    assert.ok(active, note);
+  }
   return document;
 }
 
@@ -732,6 +739,19 @@ suite("Osprey Language Features Tests", () => {
       delayMs,
     );
 
+  /** The hover at `line:character`, asserted to equal the declaration's text. */
+  async function assertCallHoverMatches(
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    needle: string,
+    declMd: string,
+    note: string,
+  ): Promise<void> {
+    const call = await hoverPoll(uri, line, character, needle);
+    assert.strictEqual(hoverText(call[0]), declMd, note);
+  }
+
   /**
    * The hover at `line:character`, once it renders `needle`, asserted to stay
    * that way. `describe` names what the check proves, in the hover's own text.
@@ -768,6 +788,28 @@ suite("Osprey Language Features Tests", () => {
       () => refsAt(uri, line, character),
       (r) => Array.isArray(r) && r.length >= min,
     );
+
+  /**
+   * References at `line:character`: exactly `count`, sitting on `lines`. The
+   * poll resolves past `count`, so the length check pins the exactness.
+   */
+  async function assertReferences(
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    count: number,
+    lines: number[],
+    name: string,
+  ): Promise<vscode.Location[]> {
+    const refs = await refsPoll(uri, line, character, count);
+    assert.strictEqual(refs.length, count, `${name}: declaration + calls`);
+    assert.deepStrictEqual(
+      startLines(refs),
+      lines,
+      `${name} references on the decl and call lines`,
+    );
+    return refs;
+  }
 
   /** The document symbols for `uri`, once at least `min` arrive. */
   const symbolsPoll = (uri: vscode.Uri, min = 1) =>
@@ -875,9 +917,11 @@ suite("Osprey Language Features Tests", () => {
       "area decl hover shows the inferred return type, not the Unit fallback",
     );
 
-    const areaCall = await hoverPoll(doc.uri, 4, 9, "area");
-    assert.strictEqual(
-      hoverText(areaCall[0]),
+    await assertCallHoverMatches(
+      doc.uri,
+      4,
+      9,
+      "area",
       areaDeclMd,
       "call-site hover matches the declaration hover",
     );
@@ -956,25 +1000,13 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- FIND REFERENCES: declaration + every call, scoped to the function ---
-    const areaRefs = await refsPoll(doc.uri, 1, 3, 3);
-    assert.strictEqual(areaRefs.length, 3, "area: declaration + two calls");
-    assert.deepStrictEqual(
-      startLines(areaRefs),
-      [1, 4, 5],
-      "area references on the decl and both call lines",
-    );
+    const areaRefs = await assertReferences(doc.uri, 1, 3, 3, [1, 4, 5], "area");
     assert.ok(
       areaRefs.every((r) => r.uri.toString() === doc.uri.toString()),
       "all area references in this document",
     );
 
-    const periRefs = await refsPoll(doc.uri, 2, 3, 2);
-    assert.strictEqual(periRefs.length, 2, "perimeter: declaration + one call");
-    assert.deepStrictEqual(
-      startLines(periRefs),
-      [2, 6],
-      "perimeter references on decl and its call",
-    );
+    await assertReferences(doc.uri, 2, 3, 2, [2, 6], "perimeter");
 
     // --- DOCUMENT SYMBOLS: type, functions and lets with correct kinds ---
     const syms = await symbolsPoll(doc.uri, 10);
@@ -1173,6 +1205,19 @@ suite("Osprey Language Features Tests", () => {
       (found) => found.length === count,
     );
 
+  /** Open `name` from `lines` and poll until exactly `count` skip warnings. */
+  async function openWithSkips(
+    name: string,
+    lines: readonly string[],
+    count: number,
+  ): Promise<{
+    doc: vscode.TextDocument;
+    warnings: vscode.Diagnostic[];
+  }> {
+    const doc = await openDoc(name, lines.join("\n") + "\n");
+    return { doc, warnings: await pollSkips(doc.uri, count) };
+  }
+
   /** Replace a document's whole text (a user editing the buffer). */
   async function rewrite(
     doc: vscode.TextDocument,
@@ -1269,10 +1314,12 @@ suite("Osprey Language Features Tests", () => {
       'test("named function reference", parked)', //               17
       "", //                                                       18
     ];
-    const doc = await openDoc("taxonomy.test.osp", lines.join("\n") + "\n");
-
     // Exactly three cases skip STATICALLY: lines 8, 9, and 10.
-    const warnings = await pollSkips(doc.uri, 3);
+    const { doc, warnings } = await openWithSkips(
+      "taxonomy.test.osp",
+      lines,
+      3,
+    );
     assert.strictEqual(
       warnings.length,
       3,
@@ -1488,8 +1535,7 @@ suite("Osprey Language Features Tests", () => {
       'test("duplicate", fn() => Skip("second"))', //                         6
       "", //                                                                 7
     ];
-    const doc = await openDoc("damage.test.osp", lines.join("\n") + "\n");
-    const warnings = await pollSkips(doc.uri, 4);
+    const { doc, warnings } = await openWithSkips("damage.test.osp", lines, 4);
 
     // --- A PASSING test whose NAME contains `# SKIP` must never be reported
     // as skipped [TESTING-TAP-AMBIGUITY]. Nothing on line 2 may warn.
@@ -1613,8 +1659,11 @@ suite("Osprey Language Features Tests", () => {
       'test "ml dynamic" (\\() => guard 1)', //                 8
       "", //                                                   9
     ];
-    const mlDoc = await openDoc("mlskip.test.ospml", mlLines.join("\n") + "\n");
-    const mlWarnings = await pollSkips(mlDoc.uri, 1);
+    const { doc: mlDoc, warnings: mlWarnings } = await openWithSkips(
+      "mlskip.test.ospml",
+      mlLines,
+      1,
+    );
     assertSkipWarningShape(mlWarnings[0], 6, "ml parked");
     assert.strictEqual(
       mlWarnings[0].message,
@@ -1687,9 +1736,11 @@ suite("Osprey Language Features Tests", () => {
       !/\bt\d/.test(hoverText(decl[0])),
       `an inference artefact must never reach a reader, got: ${hoverText(decl[0])}`,
     );
-    const call = await hoverPoll(doc.uri, 4, 9, "classify");
-    assert.strictEqual(
-      hoverText(call[0]),
+    await assertCallHoverMatches(
+      doc.uri,
+      4,
+      9,
+      "classify",
       hoverText(decl[0]),
       "call hover matches declaration hover",
     );
@@ -1708,13 +1759,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // References include the declaration and both calls.
-    const refs = await refsPoll(doc.uri, 0, 3, 3);
-    assert.strictEqual(refs.length, 3, "classify: declaration + two calls");
-    assert.deepStrictEqual(
-      startLines(refs),
-      [0, 4, 5],
-      "references on the decl and both call lines",
-    );
+    await assertReferences(doc.uri, 0, 3, 3, [0, 4, 5], "classify");
 
     // Symbols: the function plus the two lets, with correct kinds.
     const syms = await symbolsPoll(doc.uri, 3);
@@ -1836,10 +1881,7 @@ suite("Osprey Language Features Tests", () => {
         "u = double base", // 5  second call of double
         'print "d=${d} t=${t} u=${u}"', // 6
       ].join("\n") + "\n";
-    const file = path.join(tempDir, "sweep.ospml");
-    fs.writeFileSync(file, ML);
-    const doc = await vscode.workspace.openTextDocument(file);
-    await vscode.window.showTextDocument(doc);
+    const doc = await writeAndOpen(tempDir, "sweep.ospml", ML);
 
     // The extension must associate .ospml with the ML language id, which is how
     // the LSP client's documentSelector routes it to the server.
@@ -1855,9 +1897,11 @@ suite("Osprey Language Features Tests", () => {
     const declMd = hoverText(declHover[0]);
     assert.ok(declMd.includes("double"), "ML fn hover names the function");
     assertIncludes(declMd, ["->"], "ML fn hover renders a function-type arrow");
-    const callHover = await hoverPoll(doc.uri, 3, 4, "double");
-    assert.strictEqual(
-      hoverText(callHover[0]),
+    await assertCallHoverMatches(
+      doc.uri,
+      3,
+      4,
+      "double",
       declMd,
       "ML call-site hover matches the declaration hover",
     );
@@ -1878,12 +1922,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- FIND REFERENCES: declaration + both call sites of double ---
-    const refs = await refsPoll(doc.uri, 0, 0, 3);
-    assert.deepStrictEqual(
-      startLines(refs),
-      [0, 3, 5],
-      "double is referenced at its declaration and both call sites",
-    );
+    await assertReferences(doc.uri, 0, 0, 3, [0, 3, 5], "double");
 
     // --- DOCUMENT SYMBOLS: both functions and every binding are listed ---
     const syms = await symbolsPoll(doc.uri, 5);
@@ -2013,6 +2052,18 @@ suite("Osprey Language Features Tests", () => {
       !/->\s*Unit\b/.test(text),
       `${where}: Unit is a claim the checker refutes here: ${text}`,
     );
+  };
+
+  /** Apply `edit`, then assert line 0 of `doc` reads `expected`. */
+  const applyAssertLine0 = async (
+    edit: vscode.WorkspaceEdit,
+    doc: vscode.TextDocument,
+    expected: string,
+    appliedNote: string,
+    lineNote: string,
+  ): Promise<void> => {
+    assert.ok(await vscode.workspace.applyEdit(edit), appliedNote);
+    assert.strictEqual(doc.lineAt(0).text, expected, lineNote);
   };
 
   interface ProviderSnapshot {
@@ -2213,10 +2264,11 @@ signatures, in source order`,
       new vscode.Position(doc.lineCount, 0),
       `${SENTINEL_DECL}\n`,
     );
-    assert.ok(await vscode.workspace.applyEdit(edit), "the edit must apply");
-    assert.strictEqual(
-      doc.lineAt(0).text,
+    await applyAssertLine0(
+      edit,
+      doc,
       INFERRED_AREA,
+      "the edit must apply",
       "the buffer must actually hold the unannotated form",
     );
 
@@ -2277,10 +2329,11 @@ signatures, in source order`,
       ),
       `${ANNOTATED_AREA}\n${PROGRAM_TAIL}`,
     );
-    assert.ok(await vscode.workspace.applyEdit(undo), "the undo must apply");
-    assert.strictEqual(
-      doc.lineAt(0).text,
+    await applyAssertLine0(
+      undo,
+      doc,
       ANNOTATED_AREA,
+      "the undo must apply",
       "the buffer must be left as the suite found it",
     );
   });
@@ -2304,9 +2357,10 @@ suite("Osprey Command Handler Coverage", () => {
 
   // makeActive (module scope) shows the document and polls until it is the
   // genuinely active text editor; the compile/run handlers capture
-  // window.activeTextEditor, so every command test goes through it first.
-  const openFile = (name: string, content: string) =>
-    openActive(tempDir, name, content);
+  // window.activeTextEditor, so every command test goes through it first,
+  // asserting the activation with `note`.
+  const openFile = (name: string, content: string, note: string) =>
+    openActive(tempDir, name, content, note);
 
   /** Fire `command` against the active editor and let its handler settle. */
   async function fireCommand(command: string, settleMs: number): Promise<void> {
@@ -2339,15 +2393,17 @@ suite("Osprey Command Handler Coverage", () => {
   test("osprey.compile runs to completion against a valid .osp file", async function () {
     this.timeout(30000);
     const valid = 'fn main() -> Unit = print("compiled ok")\n';
-    const document = await openFile("compile-valid.osp", valid);
+    const document = await openFile(
+      "compile-valid.osp",
+      valid,
+      "the .osp document became the active editor",
+    );
 
     assertOspreyDoc(document, "compile-valid.osp");
 
-    // The handler reads window.activeTextEditor synchronously; make sure our
-    // .osp document is the active editor at the moment the command fires so it
-    // passes both guards and reaches the save->execFile->callback chain.
-    const isActive = await makeActive(document);
-    assert.ok(isActive, "the .osp document became the active editor");
+    // The handler reads window.activeTextEditor synchronously; our .osp
+    // document being that editor lets the command pass both guards and reach
+    // the save->execFile->callback chain.
     assert.ok(
       vscode.window.activeTextEditor?.document.fileName.endsWith(".osp"),
       "the active editor is the .osp document",
@@ -2366,10 +2422,13 @@ suite("Osprey Command Handler Coverage", () => {
     // Invalid Osprey forces the compiler to exit non-zero, exercising the
     // `if (error)` branch of the execFile callback.
     const broken = "fn main( = \n this is not valid osprey @@@ \n";
-    const document = await openFile("compile-broken.osp", broken);
+    const document = await openFile(
+      "compile-broken.osp",
+      broken,
+      "broken doc is active",
+    );
 
     assert.strictEqual(document.languageId, "osprey");
-    assert.ok(await makeActive(document), "broken doc is active");
     await fireCommand("osprey.compile", 4000);
 
     assertExtensionActive("extension survives a failed compile");
@@ -2380,9 +2439,12 @@ suite("Osprey Command Handler Coverage", () => {
   test("osprey.run runs to completion against a valid .osp file", async function () {
     this.timeout(30000);
     const valid = 'fn main() -> Unit = print("ran ok")\n';
-    const document = await openFile("run-valid.osp", valid);
+    const document = await openFile(
+      "run-valid.osp",
+      valid,
+      "valid run doc is active",
+    );
 
-    assert.ok(await makeActive(document), "valid run doc is active");
     await driveTwice("osprey.run", document, 5000);
 
     assertExtensionActive("extension stays active after run");
@@ -2392,9 +2454,12 @@ suite("Osprey Command Handler Coverage", () => {
   test("osprey.run surfaces a failure path for invalid code", async function () {
     this.timeout(30000);
     const broken = "fn main( = @@@ not osprey at all\n";
-    const document = await openFile("run-broken.osp", broken);
+    const document = await openFile(
+      "run-broken.osp",
+      broken,
+      "broken run doc is active",
+    );
 
-    assert.ok(await makeActive(document), "broken run doc is active");
     await fireCommand("osprey.run", 4000);
 
     assertExtensionActive("extension survives a failed run");
@@ -2408,9 +2473,9 @@ suite("Osprey Command Handler Coverage", () => {
       tempDir,
       "notes.txt",
       "just some plain text, not osprey at all",
+      "the .txt document became active",
     );
 
-    assert.ok(await makeActive(document), "the .txt document became active");
     assert.ok(!document.fileName.endsWith(".osp"), "active file is not .osp");
     assert.notStrictEqual(document.languageId, "osprey", "not osprey lang");
 
@@ -2440,12 +2505,12 @@ suite("Osprey Command Handler Coverage", () => {
     // Open a file with a .txt extension so its language starts as plaintext,
     // then force it to osprey through the command. Covers the setLanguage
     // handler body (active editor present).
-    const opened = await openActive(
+    await openActive(
       tempDir,
       "convert-me.txt",
       'fn main() -> Unit = print("convert")\n',
+      "convert doc became active",
     );
-    assert.ok(await makeActive(opened), "convert doc became active");
 
     assert.notStrictEqual(
       vscode.window.activeTextEditor?.document.languageId,
@@ -2500,9 +2565,9 @@ suite("Osprey Command Handler Coverage", () => {
     const document = await openFile(
       "debug-cmd.osp",
       'fn main() -> Unit = print("debug via command")\n',
+      "osprey doc is active for debug",
     );
     assert.strictEqual(document.languageId, "osprey", "doc is osprey");
-    assert.ok(await makeActive(document), "osprey doc is active for debug");
     assert.ok(
       vscode.window.activeTextEditor?.document.fileName.endsWith(".osp"),
       "active editor is the .osp file the command will debug",
@@ -2868,32 +2933,40 @@ suite("Osprey VSIX Debugger E2E", () => {
   test("package manifest exposes a real debugger contribution", () => {
     const pkg = readPackageJson();
 
-    assert.ok(
-      pkg.activationEvents?.includes("onDebugResolve:osprey"),
-      "VSIX activates to resolve osprey debug configs",
-    );
-    assert.ok(
-      pkg.contributes?.commands?.some((cmd) => cmd.command === "osprey.debug"),
-      "VSIX contributes an explicit osprey.debug command",
-    );
-    assert.ok(
-      pkg.contributes?.keybindings?.some(
-        (binding) => binding.command === "osprey.debug" && binding.key === "f5",
-      ),
-      "F5 is bound to the debugger command, not osprey.run",
-    );
-    assert.ok(
-      pkg.contributes?.breakpoints?.some((bp) => bp.language === "osprey"),
-      "VSIX declares Osprey source breakpoints",
-    );
-    assert.ok(
-      pkg.contributes?.debuggers?.some(
-        (debuggerContribution) =>
-          debuggerContribution.type === "osprey" &&
-          debuggerContribution.languages?.includes("osprey"),
-      ),
-      "VSIX contributes the osprey DAP debugger type",
-    );
+    // One row per contribution the manifest must declare: [label, present].
+    const declared: [string, boolean][] = [
+      [
+        "VSIX activates to resolve osprey debug configs",
+        !!pkg.activationEvents?.includes("onDebugResolve:osprey"),
+      ],
+      [
+        "VSIX contributes an explicit osprey.debug command",
+        !!pkg.contributes?.commands?.some(
+          (cmd) => cmd.command === "osprey.debug",
+        ),
+      ],
+      [
+        "F5 is bound to the debugger command, not osprey.run",
+        !!pkg.contributes?.keybindings?.some(
+          (binding) => binding.command === "osprey.debug" && binding.key === "f5",
+        ),
+      ],
+      [
+        "VSIX declares Osprey source breakpoints",
+        !!pkg.contributes?.breakpoints?.some((bp) => bp.language === "osprey"),
+      ],
+      [
+        "VSIX contributes the osprey DAP debugger type",
+        !!pkg.contributes?.debuggers?.some(
+          (debuggerContribution) =>
+            debuggerContribution.type === "osprey" &&
+            debuggerContribution.languages?.includes("osprey"),
+        ),
+      ],
+    ];
+    for (const [message, present] of declared) {
+      assert.ok(present, message);
+    }
   });
 
   // Osprey files are identified by extension alone. A `firstLine` content

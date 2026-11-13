@@ -167,6 +167,29 @@ suite("Osprey Test Explorer", () => {
       return all[0];
     }
 
+    /** Remove `uri` from `controller` and assert the tree emptied. */
+    function removeAndDrain(
+      controller: vscode.TestController,
+      uri: vscode.Uri,
+    ): void {
+      removeTestFile(controller, uri);
+      assert.strictEqual(controller.items.size, 0);
+    }
+
+    /** Assert `predicate` accepts every `yes` uri and rejects every `no` one. */
+    function assertClassified(
+      predicate: (uri: vscode.Uri) => boolean,
+      yes: readonly vscode.Uri[],
+      no: readonly vscode.Uri[],
+    ): void {
+      for (const uri of yes) {
+        assert.ok(predicate(uri));
+      }
+      for (const uri of no) {
+        assert.ok(!predicate(uri));
+      }
+    }
+
     test("registerOspreyTestExplorer wires controller, refresh, and both watchers", () => {
       const controller = newController(() => "/nonexistent/bin/osprey");
       assert.strictEqual(controller.label, "Osprey Tests");
@@ -258,8 +281,7 @@ suite("Osprey Test Explorer", () => {
         );
         assert.strictEqual(controller.items.size, 1);
 
-        removeTestFile(controller, uri);
-        assert.strictEqual(controller.items.size, 0);
+        removeAndDrain(controller, uri);
       } finally {
         workspace.restore();
         fs.rmSync(path.join(fixtures.path, "suites"), {
@@ -304,9 +326,7 @@ suite("Osprey Test Explorer", () => {
       assert.strictEqual(projectRootOf(moduleUri), projectDir);
       assert.strictEqual(projectRootOf(suiteUri), projectDir);
       assert.strictEqual(projectRootOf(outsideUri), fixtures.path);
-      assert.ok(isTestFile(suiteUri));
-      assert.ok(isTestFile(mlUri));
-      assert.ok(!isTestFile(moduleUri));
+      assertClassified(isTestFile, [suiteUri, mlUri], [moduleUri]);
 
       await discovery.changed(suiteUri);
       assert.strictEqual(suiteItem()?.children.size, 2);
@@ -349,10 +369,8 @@ suite("Osprey Test Explorer", () => {
       const controller = newController();
       await refreshTestFile(controller, passUri, "/nonexistent/osprey-xyz");
       assert.strictEqual(fileItems(controller.items).length, 1);
-      removeTestFile(controller, passUri);
-      assert.strictEqual(controller.items.size, 0);
-      removeTestFile(controller, passUri);
-      assert.strictEqual(controller.items.size, 0);
+      removeAndDrain(controller, passUri);
+      removeAndDrain(controller, passUri);
     });
 
     test("the discovery queue coalesces, bounds, and drains", async () => {
@@ -439,9 +457,7 @@ suite("Osprey Test Explorer", () => {
         const copy = vscode.Uri.joinPath(root, "target", "x", "a.test.osp");
         const dep = vscode.Uri.joinPath(root, "node_modules", "a.test.osp");
         const real = vscode.Uri.joinPath(root, "tests", "a.test.osp");
-        assert.ok(isBuildOutput(copy));
-        assert.ok(isBuildOutput(dep));
-        assert.ok(!isBuildOutput(real));
+        assertClassified(isBuildOutput, [copy, dep], [real]);
       }
       assert.ok(!isBuildOutput(passUri));
       const controller = newController();
@@ -502,6 +518,37 @@ suite("Osprey Test Explorer", () => {
       return item;
     }
 
+    /** Budget `budgetMs` of compiler time, then discover `uri` fresh. */
+    async function budgeted(
+      testContext: { timeout(ms: number): unknown },
+      uri: vscode.Uri,
+      budgetMs: number,
+    ): Promise<{
+      osprey: string;
+      controller: vscode.TestController;
+      file: vscode.TestItem;
+    }> {
+      const osprey = requireCompiler(testContext, compiler, budgetMs);
+      const { controller, file } = await discovered(uri);
+      return { osprey, controller, file };
+    }
+
+    /** Budget, stage `content` as fixture `name`, and discover it fresh. */
+    async function staged(
+      testContext: { timeout(ms: number): unknown },
+      name: string,
+      content: string,
+      budgetMs: number,
+    ): Promise<{
+      osprey: string;
+      controller: vscode.TestController;
+      file: vscode.TestItem;
+      uri: vscode.Uri;
+    }> {
+      const uri = fixtures.write(name, content);
+      return { ...(await budgeted(testContext, uri, budgetMs)), uri };
+    }
+
     test("a failed test peek includes complete Context For AI details", async function () {
       requireCompiler(this, compiler, 30000);
       const { sink } = await runFile(failUri);
@@ -534,10 +581,9 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("a single requested leaf runs with OSPREY_TEST_FILTER", async function () {
-      requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(failUri);
+      const { controller, file } = await budgeted(this, failUri, 30000);
       const good = requiredLeaf(file, failUri, "good math");
-      const sink = await runTo(controller, new vscode.TestRunRequest([good]));
+      const sink = await runItems(controller, [good]);
       assert.deepStrictEqual(idsOf(sink, "passed"), [good.id]);
       assert.strictEqual(sink.ofKind("failed").length, 0);
       // The filter skipped "bad math": "good math" is the only executed case.
@@ -559,13 +605,11 @@ suite("Osprey Test Explorer", () => {
       assert.deepStrictEqual(idsOf(sink, "skipped"), [parkedId]);
       // The warning is published through a REAL DiagnosticCollection, so the
       // editor's own diagnostics channel (Problems panel, squiggles) sees it.
-      const published = oneSkipWarning(skipUri);
-      assert.strictEqual(published.severity, vscode.DiagnosticSeverity.Warning);
-      assert.strictEqual(published.source, "osprey tests");
-      assert.strictEqual(
-        published.message,
+      const published = assertWarningMessage(
+        skipUri,
         "Test 'parked case' was skipped: blocked on #123",
       );
+      assert.strictEqual(published.source, "osprey tests");
       assert.strictEqual(
         published.range.start.line,
         2,
@@ -590,12 +634,12 @@ suite("Osprey Test Explorer", () => {
     // warning: the case still reports skipped in the TAP, but the diagnostic
     // it publishes is the strongest one the editor has.
     test("a skip with no reason raises an Error diagnostic", async function () {
-      requireCompiler(this, compiler, 120000);
-      const uri = fixtures.write(
+      const { controller, file, uri } = await staged(
+        this,
         "unexplained.test.osp",
         UNEXPLAINED_SKIP_FIXTURE,
+        120000,
       );
-      const { controller, file } = await discovered(uri);
       await runWholeFile(controller, file);
       const published = oneSkipWarning(uri);
       assert.strictEqual(
@@ -612,10 +656,8 @@ suite("Osprey Test Explorer", () => {
       fs.writeFileSync(uri.fsPath, EXPLAINED_SKIP_FIXTURE);
       const revived = await discoveredFile(controller, uri);
       await runWholeFile(controller, revived);
-      const reasoned = oneSkipWarning(uri);
-      assert.strictEqual(reasoned.severity, vscode.DiagnosticSeverity.Warning);
-      assert.strictEqual(
-        reasoned.message,
+      assertWarningMessage(
+        uri,
         "Test 'unexplained case' was skipped: blocked on #456",
       );
     });
@@ -624,9 +666,12 @@ suite("Osprey Test Explorer", () => {
     // that never appears in its run's TAP at all (ignored) warns too, and
     // deleting the file drops its warnings.
     test("a case missing from the TAP warns as ignored; removal clears warnings", async function () {
-      requireCompiler(this, compiler, 120000);
-      const ghostUri = fixtures.write("ghost.test.osp", PASS_FIXTURE);
-      const { controller, file } = await discovered(ghostUri);
+      const { controller, file, uri: ghostUri } = await staged(
+        this,
+        "ghost.test.osp",
+        PASS_FIXTURE,
+        120000,
+      );
       assert.strictEqual(file.children.size, 2);
       // Drop one discovered case from the file AFTER discovery: the run's TAP
       // never mentions it, which is an ignored test.
@@ -666,13 +711,63 @@ suite("Osprey Test Explorer", () => {
       return sink;
     }
 
+    /** Run exactly `items` through a fresh sink and return it. */
+    function runItems(
+      controller: vscode.TestController,
+      items: vscode.TestItem[],
+      mode = PLAIN_RUN,
+    ): Promise<RecordingSink> {
+      return runTo(controller, new vscode.TestRunRequest(items), mode);
+    }
+
     /** Run every case of `file` through a fresh sink and return it. */
     function runWholeFile(
       controller: vscode.TestController,
       file: vscode.TestItem,
       mode = PLAIN_RUN,
     ): Promise<RecordingSink> {
-      return runTo(controller, new vscode.TestRunRequest([file]), mode);
+      return runItems(controller, [file], mode);
+    }
+
+    /** The one skip warning on `uri`, asserted to warn with `message`. */
+    function assertWarningMessage(
+      uri: vscode.Uri,
+      message: string,
+    ): vscode.Diagnostic {
+      const warning = oneSkipWarning(uri);
+      assert.strictEqual(warning.severity, vscode.DiagnosticSeverity.Warning);
+      assert.strictEqual(warning.message, message);
+      return warning;
+    }
+
+    /** `sink` recorded two passes and no skips. */
+    function assertTwoPassed(sink: RecordingSink): void {
+      assert.strictEqual(sink.ofKind("passed").length, 2);
+      assert.strictEqual(sink.ofKind("skipped").length, 0);
+    }
+
+    /** `sink` ran two passes, no skips, and left no warnings on `uri`. */
+    function assertGreenRun(
+      sink: RecordingSink,
+      uri: vscode.Uri,
+      note: string,
+    ): void {
+      assertTwoPassed(sink);
+      assert.deepStrictEqual(skipWarningsOf(uri), [], note);
+    }
+
+    /** `fc` counts `covered` of `total` coverable lines for `uri`. */
+    function assertCoverageCounts(
+      uri: vscode.Uri,
+      fc: vscode.FileCoverage,
+      covered: number,
+      total: number,
+      coveredNote: string,
+    ): vscode.FileCoverage {
+      assert.strictEqual(fc.uri.fsPath, uri.fsPath);
+      assert.strictEqual(fc.statementCoverage.covered, covered, coveredNote);
+      assert.strictEqual(fc.statementCoverage.total, total, "coverable lines");
+      return fc;
     }
 
     /** Discover `uri` into a fresh controller and run its whole file. */
@@ -737,9 +832,12 @@ suite("Osprey Test Explorer", () => {
     // STATIC skip and a DYNAMIC skip. Exactly the two skips warn — a failure
     // is a failure, not a skip, and a pass warns about nothing.
     test("a mixed suite warns for every skip and for nothing else", async function () {
-      requireCompiler(this, compiler, 120000);
-      const mixedUri = fixtures.write("mixed.test.osp", MIXED_FIXTURE);
-      const { controller, file } = await discovered(mixedUri);
+      const { controller, file, uri: mixedUri } = await staged(
+        this,
+        "mixed.test.osp",
+        MIXED_FIXTURE,
+        120000,
+      );
       assert.strictEqual(file.children.size, 4, "all four cases discovered");
       const sink = await runWholeFile(controller, file);
 
@@ -807,9 +905,12 @@ suite("Osprey Test Explorer", () => {
     // never be reported as skipped. This is the exact line a naive TAP split
     // mangles, and it would have marked a green test as an ignored one.
     test("a passing case whose name contains the SKIP directive is not warned", async function () {
-      requireCompiler(this, compiler, 120000);
-      const uri = fixtures.write("ambiguous.test.osp", AMBIGUOUS_NAME_FIXTURE);
-      const { controller, file } = await discovered(uri);
+      const { controller, file, uri } = await staged(
+        this,
+        "ambiguous.test.osp",
+        AMBIGUOUS_NAME_FIXTURE,
+        120000,
+      );
       const names = [...file.children].map(([, item]) => item.label).sort();
       assert.deepStrictEqual(
         names,
@@ -880,9 +981,7 @@ suite("Osprey Test Explorer", () => {
 
       // (3) Revived: the warning clears and the case reports passed.
       const revivedSink = await rerunFile(controller, uri, SKIP_FIXED_FIXTURE);
-      assert.strictEqual(revivedSink.ofKind("skipped").length, 0);
-      assert.strictEqual(revivedSink.ofKind("passed").length, 2);
-      assert.deepStrictEqual(skipWarningsOf(uri), [], "revived case is clean");
+      assertGreenRun(revivedSink, uri, "revived case is clean");
 
       // (4) Parked AGAIN: the warning comes back rather than staying cleared.
       await rerunFile(controller, uri, SKIP_FIXTURE);
@@ -901,14 +1000,17 @@ suite("Osprey Test Explorer", () => {
     // others unrun — which is exactly an ignored test — so they warn; running
     // the whole file afterwards clears the ones that then execute.
     test("a filtered single-case run warns about the cases it left unrun", async function () {
-      const osprey = requireCompiler(this, compiler, 180000);
-      const uri = fixtures.write("filtered.test.osp", PASS_FIXTURE);
-      const { controller, file } = await discovered(uri);
+      const { osprey, controller, file, uri } = await staged(
+        this,
+        "filtered.test.osp",
+        PASS_FIXTURE,
+        180000,
+      );
       const first = requiredLeaf(file, uri, "addition works");
       const second = requiredLeaf(file, uri, "zero identity");
 
       // Running ONLY the first case: the second never executes.
-      const sink = await runTo(controller, new vscode.TestRunRequest([first]));
+      const sink = await runItems(controller, [first]);
       assert.deepStrictEqual(idsOf(sink, "passed"), [first.id]);
       assert.ok(
         !sink.output.includes("zero identity"),
@@ -945,22 +1047,19 @@ suite("Osprey Test Explorer", () => {
 
       // Finally, running everything clears the slate: both pass, no warnings.
       const fullSink = await runWholeFile(controller, file);
-      assert.strictEqual(fullSink.ofKind("passed").length, 2);
-      assert.strictEqual(fullSink.ofKind("skipped").length, 0);
-      assert.deepStrictEqual(
-        skipWarningsOf(uri),
-        [],
-        "a full green run is silent",
-      );
+      assertGreenRun(fullSink, uri, "a full green run is silent");
     });
 
     // [TESTING-SKIP-WARNING] the ML flavor reaches the same contract through
     // its own frontend, and a COVERAGE run publishes the same warnings as a
     // plain run — the profile must not change what is reported.
     test("ML suites and coverage runs publish the same skip warnings", async function () {
-      requireCompiler(this, compiler, 180000);
-      const mlUri = fixtures.write("mlskip.test.ospml", ML_SKIP_FIXTURE);
-      const { controller, file } = await discovered(mlUri);
+      const { controller, file, uri: mlUri } = await staged(
+        this,
+        "mlskip.test.ospml",
+        ML_SKIP_FIXTURE,
+        180000,
+      );
       assert.strictEqual(file.children.size, 2, "ML cases discovered");
 
       const plain = await runWholeFile(controller, file);
@@ -1001,9 +1100,12 @@ suite("Osprey Test Explorer", () => {
     // [TESTING-SKIP-WARNING] damage case: a suite that does not COMPILE has no
     // verdicts at all. It must error, not manufacture skip warnings.
     test("a compile failure errors without inventing skip warnings", async function () {
-      requireCompiler(this, compiler, 120000);
-      const uri = fixtures.write("breaks.test.osp", SKIP_FIXTURE);
-      const { controller, file } = await discovered(uri);
+      const { controller, file, uri } = await staged(
+        this,
+        "breaks.test.osp",
+        SKIP_FIXTURE,
+        120000,
+      );
       // Park it first so a real warning exists...
       await runWholeFile(controller, file);
       assert.strictEqual(skipWarningsOf(uri).length, 1, "warning is present");
@@ -1030,14 +1132,13 @@ suite("Osprey Test Explorer", () => {
     // [TESTING-COVERAGE-VSCODE]: a coverage run maps TAP as usual AND reports
     // per-line hits — the executed `double` covered, the dead `unused` at 0.
     test("a coverage run reports line hits including uncovered lines", async function () {
-      requireCompiler(this, compiler, 30000);
-      const coverageUri = fixtures.write("covered.test.osp", COVERAGE_FIXTURE);
-      const { controller, file } = await discovered(coverageUri);
-      const sink = await runTo(
-        controller,
-        new vscode.TestRunRequest([file]),
-        COVERAGE_RUN,
+      const { controller, file, uri: coverageUri } = await staged(
+        this,
+        "covered.test.osp",
+        COVERAGE_FIXTURE,
+        30000,
       );
+      const sink = await runItems(controller, [file], COVERAGE_RUN);
       assert.strictEqual(sink.ofKind("passed").length, 1);
       const hits = sink.coverage.get(coverageUri.fsPath);
       assert.ok(hits, "coverage report reached the sink");
@@ -1088,10 +1189,7 @@ suite("Osprey Test Explorer", () => {
         ]),
       );
       assert.strictEqual(received.length, 1);
-      const fc = received[0];
-      assert.strictEqual(fc.uri.fsPath, uri.fsPath);
-      assert.strictEqual(fc.statementCoverage.covered, 2, "covered lines");
-      assert.strictEqual(fc.statementCoverage.total, 3, "coverable lines");
+      const fc = assertCoverageCounts(uri, received[0], 2, 3, "covered lines");
       assert.deepStrictEqual(
         lineHits(fc),
         [
@@ -1116,12 +1214,12 @@ suite("Osprey Test Explorer", () => {
     // function, test registration and assertion (1, 5, 6); unused (3) stays
     // uncovered. Every source line and its hit count must reach the gutter.
     test("the Coverage profile path yields covered=3/total=4 for the fixture", async function () {
-      const osprey = requireCompiler(this, compiler, 30000);
-      const coverageUri = fixtures.write(
+      const { osprey, controller, file, uri: coverageUri } = await staged(
+        this,
         "calc-proof.test.osp",
         COVERAGE_FIXTURE,
+        30000,
       );
-      const { controller, file } = await discovered(coverageUri);
       const received: vscode.FileCoverage[] = [];
       await executeRunRequest(
         controller,
@@ -1132,10 +1230,13 @@ suite("Osprey Test Explorer", () => {
         COVERAGE_RUN,
       );
       assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
-      const fc = received[0];
-      assert.strictEqual(fc.uri.fsPath, coverageUri.fsPath);
-      assert.strictEqual(fc.statementCoverage.covered, 3, "executed lines");
-      assert.strictEqual(fc.statementCoverage.total, 4, "coverable lines");
+      const fc = assertCoverageCounts(
+        coverageUri,
+        received[0],
+        3,
+        4,
+        "executed lines",
+      );
       assert.deepStrictEqual(
         lineHits(fc),
         [
@@ -1153,14 +1254,10 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("several leaves of one file run as sequential filtered invocations", async function () {
-      requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(failUri);
+      const { controller, file } = await budgeted(this, failUri, 30000);
       const bad = requiredLeaf(file, failUri, "bad math");
       const good = requiredLeaf(file, failUri, "good math");
-      const sink = await runTo(
-        controller,
-        new vscode.TestRunRequest([bad, good]),
-      );
+      const sink = await runItems(controller, [bad, good]);
       assert.deepStrictEqual(idsOf(sink, "failed"), [bad.id]);
       assert.deepStrictEqual(idsOf(sink, "passed"), [good.id]);
       const kinds = sink.events.map((e) => `${e.kind}:${e.id ?? ""}`);
@@ -1188,7 +1285,7 @@ suite("Osprey Test Explorer", () => {
         passUri,
       );
       file.children.add(ghost);
-      const sink = await runTo(controller, new vscode.TestRunRequest([ghost]));
+      const sink = await runItems(controller, [ghost]);
       assert.deepStrictEqual(idsOf(sink, "skipped"), [ghost.id]);
     });
 
@@ -1211,14 +1308,13 @@ suite("Osprey Test Explorer", () => {
         passUri,
       );
       controller.items.add(bare);
-      const sink = await runTo(controller, new vscode.TestRunRequest([bare]));
+      const sink = await runItems(controller, [bare]);
       assert.strictEqual(bare.children.size, 2);
       assert.strictEqual(sink.ofKind("passed").length, 2);
     });
 
     test("excluded leaves never execute during a whole-file run", async function () {
-      requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(failUri);
+      const { controller, file } = await budgeted(this, failUri, 30000);
       const bad = requiredLeaf(file, failUri, "bad math");
       const sink = await runTo(
         controller,
@@ -1252,8 +1348,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("an unfiltered run scrubs an inherited OSPREY_TEST_FILTER", async function () {
-      requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(passUri);
+      const { controller, file } = await budgeted(this, passUri, 30000);
       process.env.OSPREY_TEST_FILTER = "zero identity";
       let sink: RecordingSink;
       try {
@@ -1262,13 +1357,11 @@ suite("Osprey Test Explorer", () => {
         delete process.env.OSPREY_TEST_FILTER;
       }
       // Both cases ran despite the stray filter in the editor's environment.
-      assert.strictEqual(sink.ofKind("passed").length, 2);
-      assert.strictEqual(sink.ofKind("skipped").length, 0);
+      assertTwoPassed(sink);
     });
 
     test("a pre-cancelled token produces no results", async function () {
-      const osprey = requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(passUri);
+      const { osprey, controller, file } = await budgeted(this, passUri, 30000);
       const source = new vscode.CancellationTokenSource();
       source.cancel();
       const sink = new RecordingSink();
@@ -1283,8 +1376,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("cancellation mid-run kills the compiler and reports nothing", async function () {
-      const osprey = requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(passUri);
+      const { osprey, controller, file } = await budgeted(this, passUri, 30000);
       const source = new vscode.CancellationTokenSource();
       // Cancel deterministically the instant the run reports `started` — that
       // fires before the compiler is awaited, so the post-run cancellation
@@ -1314,8 +1406,7 @@ suite("Osprey Test Explorer", () => {
     // STILL end the run — an un-ended run spins forever in the Testing view
     // and its Stop button is dead.
     test("a run whose reporting throws still ends (and rethrows)", async function () {
-      const osprey = requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(passUri);
+      const { osprey, controller, file } = await budgeted(this, passUri, 30000);
       const sink = new RecordingSink();
       const boom = new Error("TestRun already ended");
       const throwingSink = overriding(sink, "enqueued", () => () => {
@@ -1350,8 +1441,7 @@ suite("Osprey Test Explorer", () => {
     });
 
     test("makeRunHandler drives a real TestRun end to end", async function () {
-      const osprey = requireCompiler(this, compiler, 30000);
-      const { controller, file } = await discovered(passUri);
+      const { osprey, controller, file } = await budgeted(this, passUri, 30000);
       const good = requiredLeaf(file, passUri, "addition works");
       const handler = makeRunHandler(controller, () => osprey);
       await handler(new vscode.TestRunRequest([good]), token());

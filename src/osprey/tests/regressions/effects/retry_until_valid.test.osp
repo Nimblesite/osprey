@@ -127,22 +127,13 @@ fn tracedRun(candidate, format) = {
 fn retryRun(candidate) = tracedRun(candidate, fn(n, value) => "${toString(n)}:${toString(value)}|")
 
 /// True when `haystack` contains every fragment in `wanted`.
-fn carriesAll(haystack, wanted) = match wanted {
-    [] => true
-    [head, ...tail] => contains(haystack, head) && carriesAll(haystack, tail)
-}
+fn carriesAll(haystack, wanted) = foldList(wanted, true, fn(acc, head) => acc && contains(haystack, head))
 
 /// True when `haystack` contains none of the fragments in `banned`.
-fn carriesNone(haystack, banned) = match banned {
-    [] => true
-    [head, ...tail] => !contains(haystack, head) && carriesNone(haystack, tail)
-}
+fn carriesNone(haystack, banned) = foldList(banned, true, fn(acc, head) => acc && !contains(haystack, head))
 
 /// True when every flag in `flags` holds, so a row of checks needs no expected list.
-fn allTrue(flags) = match flags {
-    [] => true
-    [head, ...tail] => head && allTrue(tail)
-}
+fn allTrue(flags) = foldList(flags, true, fn(acc, head) => acc && head)
 
 /// The transcript that appends one channel entry: `letter` then the attempt `n`.
 fn channelTag(trail, letter, n) = "${trail}${letter}${toString(n)}|"
@@ -235,8 +226,11 @@ test("retry loops accept after zero one two and eight rejections", exactly(retry
 /// operations, and the settlement every resumed frame saw.
 type Region = { out: int, calls: int, trail: string, settled: string }
 
+/// The number of `tag` occurrences `trail` carries: one entry per operation.
+fn countTag(trail, tag) = length(trail) - length(replace(trail, tag, "") ?: trail)
+
 /// The number of `|`-terminated entries `trail` carries: one per operation.
-fn barCount(trail) = length(trail) - length(replace(trail, "|", "") ?: trail)
+fn barCount(trail) = countTag(trail, "|")
 
 /// The sentinel a `budget` refusal answers once `n` has passed it.
 fn owed(budget) = (0 - (budget * 1000) )
@@ -435,12 +429,10 @@ fn comboBody() ![Payload, Arith] = {
 /// its type is the operation's, not the region's. Five partial one-arm regions
 /// cross the payload-type axis; a sixth region supplies all six arms at once.
 fn retryPayloadChannelMatrixCase() = {
-    mut textCalls = 0
     mut textTrail = ""
     let word = {
         handle Payload {
             text n => {
-                textCalls = textCalls + 1 
                 let candidate = match n {
                     1 => "no"
                     2 => "abc"
@@ -453,12 +445,10 @@ fn retryPayloadChannelMatrixCase() = {
         takeText(1)
     }
 
-    mut flagCalls = 0
     mut flagTrail = ""
     let firstTrue = {
         handle Payload {
             flag n => {
-                flagCalls = flagCalls + 1 
                 let ok = n > 3
                 flagTrail = valueTag(flagTrail, "", n, ok)
                 resume(ok)
@@ -467,12 +457,10 @@ fn retryPayloadChannelMatrixCase() = {
         takeFlag(1)
     }
 
-    mut ratioCalls = 0
     mut ratioTrail = ""
     let acceptedRatio = {
         handle Payload {
             ratio n => {
-                ratioCalls = ratioCalls + 1 
                 let candidate = match n {
                     1 => 0.25
                     2 => 1.0
@@ -485,12 +473,10 @@ fn retryPayloadChannelMatrixCase() = {
         takeRatio(1)
     }
 
-    mut checkedCalls = 0
     mut checkedTrail = ""
     let checkedValue = {
         handle Payload {
             checked n => {
-                checkedCalls = checkedCalls + 1 
                 checkedTrail = channelTag(checkedTrail, "", n)
                 match n {
                     1 => resume(Error { message: "cold" })
@@ -502,12 +488,10 @@ fn retryPayloadChannelMatrixCase() = {
         takeChecked(1)
     }
 
-    mut markCalls = 0
     mut markTrail = ""
     let markTotal = {
         handle Payload {
             mark n => {
-                markCalls = markCalls + 1 
                 markTrail = channelTag(markTrail, "", n)
                 resume()
             }
@@ -546,7 +530,12 @@ fn retryPayloadChannelMatrixCase() = {
         }
         comboBody()
     }
-    /// One transcript entry per handler operation, so the count is the trail's.
+    /// One transcript entry per handler operation, so every count is its trail's.
+    let textCalls = barCount(textTrail)
+    let flagCalls = barCount(flagTrail)
+    let ratioCalls = barCount(ratioTrail)
+    let checkedCalls = barCount(checkedTrail)
+    let markCalls = barCount(markTrail)
     let comboCalls = barCount(comboTrail)
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
@@ -925,11 +914,6 @@ fn performSiteBody(xs) ![Arity, Arith] = {
 fn retryPerformSiteMatrixCase() = {
     let probe = [7, 8]
     mut zeroCalls = 0
-    mut oneCalls = 0
-    mut twoCalls = 0
-    mut threeCalls = 0
-    mut fourCalls = 0
-    mut noteCalls = 0
     mut noteTotal = 0
     mut suppliedZero = 0
     mut suppliedOne = 0
@@ -947,31 +931,26 @@ fn retryPerformSiteMatrixCase() = {
                 resume(suppliedZero)
             }
             one a => {
-                oneCalls = oneCalls + 1 
                 trail = "${trail}o${toString(a)}|"
                 suppliedOne = (a * 100) 
                 resume(suppliedOne)
             }
             two a b => {
-                twoCalls = twoCalls + 1 
                 trail = "${trail}t${toString(a)}+${toString(b)}|"
                 suppliedTwo = (a + b) 
                 resume(suppliedTwo)
             }
             three a b c => {
-                threeCalls = threeCalls + 1 
                 trail = "${trail}h${toString(a)}+${toString(b)}+${toString(c)}|"
                 suppliedThree = (a + b + c) 
                 resume(suppliedThree)
             }
             four a b c d => {
-                fourCalls = fourCalls + 1 
                 trail = "${trail}f${toString(a)}${toString(b)}${toString(c)}${toString(d)}|"
                 suppliedFour = (a * 1000 + b * 100 + c * 10 + d) 
                 resume(suppliedFour)
             }
             note v => {
-                noteCalls = noteCalls + 1 
                 noteTotal = noteTotal + v 
                 trail = "${trail}n${toString(v)}|"
                 resume()
@@ -979,6 +958,12 @@ fn retryPerformSiteMatrixCase() = {
         }
         performSiteBody(probe)
     }
+    // One trail entry per operation, so each arm's count is its letter's.
+    let oneCalls = countTag(trail, "o")
+    let twoCalls = countTag(trail, "t")
+    let threeCalls = countTag(trail, "h")
+    let fourCalls = countTag(trail, "f")
+    let noteCalls = countTag(trail, "n")
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll("every perform site reaches the same region", [
