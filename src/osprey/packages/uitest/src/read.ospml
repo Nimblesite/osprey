@@ -44,15 +44,18 @@ module Read
     (** Nothing seen yet. *)
     export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedOrdinal = 0 - 1)
 
+    rowAt<A> : (ui::Walk<A>, int) -> ui::Seated
     rowAt (walk, index) = listGet walk.walkRows index ?: Views::blank
 
     // The name of every row, in row order: a row's name is its fit's hint, and fits arrive in row order.
+    named<A> : (ui::Walk<A>, Named, int) -> Named
     named (walk, so, index) = match listGet walk.walkFits so.namedFit
         Success fit => match fit.fittedRow == index
             true => Named(namedRows = listAppend so.namedRows fit.fittedAs.hint, namedFit = satAdd so.namedFit 1)
             false => so(namedRows = listAppend so.namedRows "")
         Error _ => so(namedRows = listAppend so.namedRows "")
 
+    names<A> : ui::Walk<A> -> List<string>
     names walk = (foldList (toList (range (0, length walk.walkRows)), Named(namedRows = [], namedFit = 0), \(so, index) => named (walk, so, index))).namedRows
 
     // A field row's typed value ([NATIVE-SHM-NODES]): its heft says which of its columns holds it.
@@ -64,6 +67,7 @@ module Read
         _ => ui::ToldText(wordsName = name, wordsText = row.placedWords)
 
     // A record's row with the members gathered under it; a scene's record carries its sketch.
+    grouped<A> : (ui::Walk<A>, int, string, List<ui::Told>) -> ui::Told
     grouped (walk, index, name, members) = match (rowAt (walk, index)).placedKind == ui::Tellings::list
         true => ui::ToldList(listName = name, items = members)
         false => match Lists::find (walk.walkSketches, \s => s.sketchedRow == index)
@@ -71,6 +75,7 @@ module Read
             Error _ => ui::ToldRecord(recordName = name, members = members)
 
     // The told value the row at `index` starts, and the row after it.
+    parsed<A> : (ui::Walk<A>, List<string>, int) -> Rebuilt
     parsed (walk, all, index) = match (rowAt (walk, index)).placedKind == ui::Tellings::field
         true => Rebuilt(rebuilt = [valued (rowAt (walk, index), listGet all index ?: "")], rebuiltNext = satAdd index 1)
         false =>
@@ -78,6 +83,7 @@ module Read
             Rebuilt(rebuilt = [grouped (walk, index, listGet all index ?: "", inner.rebuilt)], rebuiltNext = inner.rebuiltNext)
 
     // The rows from `index` that name `parent`, each with everything under it: rows are depth first, so they are consecutive.
+    gathered<A> : (ui::Walk<A>, List<string>, int, int, List<ui::Told>) -> Rebuilt
     gathered (walk, all, parent, index, so) = match index < length walk.walkRows && (rowAt (walk, index)).placedParent == parent
         false => Rebuilt(rebuilt = so, rebuiltNext = index)
         true =>
@@ -85,7 +91,8 @@ module Read
             gathered (walk, all, parent, one.rebuiltNext, listConcat so one.rebuilt)
 
     (** The told trees of a frame's rows: what a host rebuilds before it draws ([NATIVE-SHM-NODES]). *)
-    export trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
+    export trees<A> : ui::Walk<A> -> List<ui::Told>
+    trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
     inside told = match told
         ui::ToldRecord _ members => members
@@ -167,12 +174,15 @@ module Read
         ui::Path steps _ _ _ _ _ _ => curve steps
         _ => []
 
+    shapes<A> : ui::Walk<A> -> List<ui::Primitive>
     shapes walk = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchShapes))
 
     // The control number of the first scene: the `event` of the record its sketch names.
+    sceneOrdinal<A> : (ui::Walk<A>, List<string>) -> int
     sceneOrdinal (walk, all) = match listGet walk.walkSketches 0
         Success first => whole ((gathered (walk, all, first.sketchedRow, satAdd first.sketchedRow 1, [])).rebuilt, "event", 0 - 1)
         Error _ => 0 - 1
 
     (** A walked view and the requests its step sent, as a host reads them. *)
-    export seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk))
+    export seen<A> : (ui::Walk<A>, List<ui::Request>) -> Rendered
+    seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk))
