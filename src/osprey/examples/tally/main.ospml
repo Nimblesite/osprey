@@ -32,9 +32,7 @@ delivered (held, ordinal, words) = match listGet held.bound ordinal
     Error _ => refused held
     Success action => shown (Screen::update (held.store, action, words))
 
-refused held =
-    let _ = shown held.store
-    1
+refused held = satAdd (shown held.store) 1
 
 // Tally draws only controls, so only a control's value reaches it.
 touched (held, kind, ordinal, words) = match kind == Hosting::control

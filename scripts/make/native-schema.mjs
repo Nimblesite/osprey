@@ -4,8 +4,11 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const [generator, destination] = process.argv.slice(2)
-if (!generator || !destination) throw new Error('usage: native-schema.mjs <typediagram-core/dist> <header>')
+// [NATIVE-SHM-WASM] One header per pointer width: `native_abi.h` for 64-bit hosts and
+// `native_abi_wasm32.h` for wasm32, whose strings (inside `BridgeError`) are half the size. Each
+// carries its own fingerprint, so a host built for one width can never open the other's bridge.
+const [generator, destination, wasm32] = process.argv.slice(2)
+if (!generator || !destination || !wasm32) throw new Error('usage: native-schema.mjs <typediagram-core/dist> <header> <wasm32 header>')
 const upstream = pathToFileURL(resolve(generator) + '/')
 const { parse } = await import(new URL('parser/index.js', upstream))
 const { buildModel } = await import(new URL('model/index.js', upstream))
@@ -16,6 +19,8 @@ const unwrap = result => {
 }
 const source = await readFile(new URL('../../src/toolchain/schemas/native.td', import.meta.url), 'utf8')
 const model = unwrap(buildModel(unwrap(parse(source))))
-const header = unwrap(await generateSharedC(model, 8,
-  ['ApplicationInstance', 'OwnerToken', 'AllocationReference', 'OwnedLease', 'BridgeError', 'SceneShape', 'ViewRow', 'AskRow']))
-await writeFile(destination, header + '\n')
+const shared = ['ApplicationInstance', 'OwnerToken', 'AllocationReference', 'OwnedLease', 'BridgeError', 'SceneShape', 'ViewRow', 'AskRow']
+for (const [width, path] of [[8, destination], [4, wasm32]]) {
+  const header = unwrap(await generateSharedC(model, width, shared))
+  await writeFile(path, header + '\n')
+}

@@ -3,10 +3,15 @@
 // substrate.
 #ifndef OSPREY_NATIVE_BRIDGE_H
 #define OSPREY_NATIVE_BRIDGE_H
-#include "native_abi.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+// [NATIVE-SHM-WASM] The generated layouts for this pointer width, each with its own fingerprint.
+#if UINTPTR_MAX == UINT64_MAX
+#include "native_abi.h"
+#else
+#include "native_abi_wasm32.h"
+#endif
 
 typedef struct OspNativeBridge OspNativeBridge;
 #define OSP_NATIVE_OK 0

@@ -238,7 +238,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= native_scene memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+WASM_RT_SRC  ?= native_scene native_bridge native_bridge_lifecycle memory_runtime gpu_runtime gpu_map_file gpu_elements gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime list_rebuild map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 
 # The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
 # [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc

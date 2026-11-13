@@ -400,6 +400,7 @@ fn build_artifact(
             input.backend_program(),
             out,
             &cli.memory,
+            &input.export_scope(cli.exports.entry_only()),
         );
     }
     if cli.target != "native" {

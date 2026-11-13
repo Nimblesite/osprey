@@ -450,6 +450,26 @@ pub(crate) fn source_with_abi(
     Ok((adapted, abi))
 }
 
+/// The shared native boundary compiled for wasm32 ([NATIVE-SHM-WASM]): the module state stays live
+/// after the WASI entry returns, the entry file's exports get the same C wrappers every native
+/// target gets, and booleans stay unextended, as wasm passes them.
+pub(crate) fn wasm_source(
+    program: &Program,
+    path: &str,
+    scope: &ExportScope,
+) -> Result<(String, HostAbi), String> {
+    crate::target_capabilities::validate(program, "wasm32")?;
+    let abi_error = |error: String| format!("{path}: target `wasm32` C ABI: {error}");
+    let checked = osprey_codegen::retained_check(program)
+        .map_err(|errors| abi_error(selection::joined(&errors)))?;
+    let types = checked.types().clone();
+    let exports = checked.library_exports().clone();
+    osprey_codegen::set_reused_check(Some(checked));
+    let ir = osprey_codegen::compile_wasm_library(program).map_err(|e| format!("{path}: {e}"))?;
+    let abi = host_abi_selected(program, &types, &exports, &ir, scope).map_err(abi_error)?;
+    Ok((with_host_abi_for_target(&ir, &abi, false)?, abi))
+}
+
 #[cfg(test)]
 #[path = "ios_abi_tests.rs"]
 mod tests;
