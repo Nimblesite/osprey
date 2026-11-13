@@ -5,28 +5,29 @@ use std::io::Read;
 
 use serde_json::{json, Value};
 
-use super::{field, number, strings};
-use crate::envelope::Request;
+use super::{number, text};
 use crate::ffi;
+use crate::rows::Ask;
 
 /// Writes immediate-child directory facts to the requested slice.
-pub fn list_directories(request: &Request) -> Result<Value, String> {
-    publish(request, "paths", listing)
+pub fn list_directories(ask: &Ask) -> Result<String, String> {
+    publish(ask, "paths", listing)
 }
 
 /// Answers every requested path within the request's limit and writes the answers to the
 /// requested slice under `key`.
-fn publish(request: &Request, key: &str, answer: fn(&str, u64) -> Value) -> Result<Value, String> {
-    let limit = number(request, "limit")?;
-    let answers = strings(request, "paths")?
-        .into_iter()
+fn publish(ask: &Ask, key: &str, answer: fn(&str, u64) -> Value) -> Result<String, String> {
+    let limit = number(ask, 2, "limit")?;
+    let answers = ask
+        .texts(1)
+        .iter()
         .map(|path| answer(path, limit))
         .collect::<Vec<_>>();
     ffi::put_slice(
-        field(request, "slice")?,
+        &text(ask, 3, "slice")?,
         &json!({ key: answers }).to_string(),
     )?;
-    Ok(Value::Null)
+    Ok(String::new())
 }
 
 /// Reads one directory without descending and records absence separately from errors.
@@ -87,8 +88,8 @@ fn platform_hidden(_: &Metadata) -> bool {
 }
 
 /// Writes bounded UTF-8 file contents to the requested slice.
-pub fn read_texts(request: &Request) -> Result<Value, String> {
-    publish(request, "files", text_result)
+pub fn read_texts(ask: &Ask) -> Result<String, String> {
+    publish(ask, "files", text_result)
 }
 
 /// Converts one text read to a path, error and text triple.
@@ -136,6 +137,7 @@ mod tests {
     use super::read_text;
     use crate::adapters::answer;
     use crate::ffi;
+    use crate::rows::{Ask, Field};
 
     static NEXT: AtomicU64 = AtomicU64::new(0);
 
@@ -176,16 +178,31 @@ mod tests {
         }
     }
 
-    /// Builds a file capability request with a test-specific slice key.
-    fn request(kind: &str, paths: &[&str], limit: u64, slice: &str) -> crate::envelope::Request {
-        crate::adapters::request(
-            kind,
-            &[
-                ("paths", json!(paths)),
-                ("limit", json!(limit)),
-                ("slice", json!(slice)),
-            ],
-        )
+    /// Builds a file capability ask with a test-specific slice key.
+    fn request(code: i64, kind: &str, paths: &[&str], limit: u64, slice: &str) -> Ask {
+        let mut fields = paths
+            .iter()
+            .map(|path| Field {
+                field: 1,
+                number: 0,
+                text: (*path).to_owned(),
+            })
+            .collect::<Vec<_>>();
+        fields.push(Field {
+            field: 2,
+            number: limit as i64,
+            text: String::new(),
+        });
+        fields.push(Field {
+            field: 3,
+            number: 0,
+            text: slice.to_owned(),
+        });
+        Ask {
+            code,
+            ticket: format!("{kind}-test"),
+            fields,
+        }
     }
 
     /// Decodes a published test slice.
@@ -205,8 +222,8 @@ mod tests {
     /// Lists `path` through the capability into the slice `key` and returns its listing.
     fn list(path: &str, limit: u64, key: &str) -> io::Result<Value> {
         assert_eq!(
-            answer(&request("list-directories", &[path], limit, key)),
-            Ok(Value::Null)
+            answer(&request(2, "list-directories", &[path], limit, key)),
+            Ok(String::new())
         );
         Ok(slice(key)?["paths"][0].clone())
     }
@@ -222,8 +239,8 @@ mod tests {
     /// Reads `paths` through the capability into the slice `key` and returns each file's answer.
     fn read(paths: &[&str], limit: u64, key: &str) -> io::Result<Vec<Value>> {
         assert_eq!(
-            answer(&request("read-texts", paths, limit, key)),
-            Ok(Value::Null)
+            answer(&request(4, "read-texts", paths, limit, key)),
+            Ok(String::new())
         );
         slice(key)?["files"]
             .as_array()

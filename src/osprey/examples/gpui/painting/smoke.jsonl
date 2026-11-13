@@ -1,8 +1,8 @@
-// Drive the linked application: resident state, direct primitives, a stroke, restyling and clearing.
-{"send":null,"expect":{"state":"resident","regions":["root","header","canvas"],"text":{"region":"header","contains":"Dashed"},"diagnostics":0,"primitives":{"canvas":21}}}
-{"send":{"control":{"region":"header","label":"Dashed"},"value":null},"expect":{"state":"resident","text":{"region":"header","contains":"Solid"},"diagnostics":0,"primitives":{"canvas":21}}}
-{"send":{"control":{"region":"canvas"},"value":{"x":100.0,"y":500.0,"down":true,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":21},"diagnostics":0}}
-{"send":{"control":{"region":"canvas"},"value":{"x":150.0,"y":550.0,"down":true,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":22},"diagnostics":0}}
-{"send":{"control":{"region":"canvas"},"value":{"x":150.0,"y":550.0,"down":false,"shift":false}},"expect":{"state":"resident","primitives":{"canvas":22},"diagnostics":0}}
-{"send":{"control":{"region":"header","label":"Solid"},"value":null},"expect":{"state":"resident","text":{"region":"header","contains":"Dashed"},"primitives":{"canvas":22},"diagnostics":0}}
-{"send":{"control":{"region":"header","label":"Clear"},"value":null},"expect":{"state":"resident","primitives":{"canvas":21},"diagnostics":0}}
+// Drive the linked application: direct primitives, a stroke, restyling and clearing.
+{"send":null,"expect":{"root":true,"text":{"contains":"Dashed"},"primitives":21,"diagnostics":0}}
+{"send":{"control":{"label":"Dashed"}},"expect":{"text":{"contains":"Solid"},"primitives":21,"diagnostics":0}}
+{"send":{"pointer":{"x":100.0,"y":500.0,"down":true}},"expect":{"primitives":21,"diagnostics":0}}
+{"send":{"pointer":{"x":150.0,"y":550.0,"down":true}},"expect":{"primitives":22,"diagnostics":0}}
+{"send":{"pointer":{"x":150.0,"y":550.0,"down":false}},"expect":{"primitives":22,"diagnostics":0}}
+{"send":{"control":{"label":"Solid"}},"expect":{"text":{"contains":"Dashed"},"primitives":22,"diagnostics":0}}
+{"send":{"control":{"label":"Clear"}},"expect":{"primitives":21,"diagnostics":0}}

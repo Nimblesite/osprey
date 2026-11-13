@@ -4,28 +4,24 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 
 use gpui_kit::{Context, PathPromptOptions, Window};
-use serde_json::{json, Value};
+use serde_json::json;
 
-use super::{field, files, number, strings};
-use crate::envelope::Request;
-use crate::events;
+use super::{files, number, text};
+use crate::events::Touch;
 use crate::ffi;
-use crate::host::{now, HostView};
+use crate::host::HostView;
+use crate::rows::Ask;
 use crate::store;
 
 /// Starts a native panel or answers reveal, returning `None` while a panel runs.
-pub fn dispatch(
-    request: &Request,
-    window: &mut Window,
-    cx: &mut Context<HostView>,
-) -> Option<String> {
-    match request.kind.as_str() {
-        "choose-file" => launch(request, window, cx, choose_file(request, cx)),
-        "choose-folder" => launch(request, window, cx, choose_folder(cx)),
-        "save-file" => launch(request, window, cx, save_file(request, cx)),
-        "reveal" => Some(completion(request, reveal(request, cx))),
+pub fn dispatch(ask: &Ask, window: &mut Window, cx: &mut Context<HostView>) -> Option<Touch> {
+    match ask.kind() {
+        "choose-file" => launch(ask, window, cx, choose_file(ask, cx)),
+        "choose-folder" => launch(ask, window, cx, choose_folder(cx)),
+        "save-file" => launch(ask, window, cx, save_file(ask, cx)),
+        "reveal" => Some(completion(ask, reveal(ask, cx))),
         kind => Some(completion(
-            request,
+            ask,
             Err(format!("unsupported capability {kind}")),
         )),
     }
@@ -34,15 +30,16 @@ pub fn dispatch(
 /// Prepares the single-file prompt and its optional bounded content read. GPUI's prompt offers
 /// no extension filter, so a chosen file outside `types` is refused once chosen.
 fn choose_file<'a>(
-    request: &Request,
+    ask: &Ask,
     cx: &Context<'a, HostView>,
-) -> Result<impl Future<Output = Result<Value, String>>, String> {
-    let types: Vec<String> = strings(request, "types")?
-        .into_iter()
+) -> Result<impl Future<Output = Result<String, String>>, String> {
+    let types: Vec<String> = ask
+        .texts(1)
+        .iter()
         .map(|kind| kind.trim_start_matches('.').to_ascii_lowercase())
         .collect();
-    let limit = number(request, "limit")?;
-    let slice = field(request, "slice")?.to_owned();
+    let limit = number(ask, 2, "limit")?;
+    let slice = text(ask, 3, "slice")?;
     let receiver = cx.prompt_for_paths(options(true, false));
     Ok(async move {
         let paths = receiver
@@ -67,7 +64,7 @@ fn choose_file<'a>(
 /// Prepares the single-folder prompt.
 fn choose_folder<'a>(
     cx: &Context<'a, HostView>,
-) -> Result<impl Future<Output = Result<Value, String>>, String> {
+) -> Result<impl Future<Output = Result<String, String>>, String> {
     let receiver = cx.prompt_for_paths(options(false, true));
     Ok(async move {
         let paths = receiver
@@ -80,22 +77,22 @@ fn choose_folder<'a>(
 
 /// Prepares the save prompt with the staged text captured before the user chooses.
 fn save_file<'a>(
-    request: &Request,
+    ask: &Ask,
     cx: &Context<'a, HostView>,
-) -> Result<impl Future<Output = Result<Value, String>>, String> {
-    let name = field(request, "name")?;
-    let text = ffi::get_slice(field(request, "slice")?).ok_or("save-file slice is missing")?;
+) -> Result<impl Future<Output = Result<String, String>>, String> {
+    let name = text(ask, 1, "name")?;
+    let staged = ffi::get_slice(&text(ask, 2, "slice")?).ok_or("save-file slice is missing")?;
     let directory = crate::home()
         .map(PathBuf::from)
         .or_else(|_| std::env::current_dir().map_err(|problem| problem.to_string()))?;
-    let receiver = cx.prompt_for_new_path(&directory, Some(name));
+    let receiver = cx.prompt_for_new_path(&directory, Some(name.as_str()));
     Ok(async move {
         let path = receiver
             .await
             .map_err(|problem| problem.to_string())?
             .map_err(|problem| problem.to_string())?;
         if let Some(path) = &path {
-            write_chosen(path, &text)?;
+            write_chosen(path, &staged)?;
         }
         Ok(chosen(path))
     })
@@ -110,13 +107,13 @@ fn write_chosen(path: &Path, text: &str) -> Result<(), String> {
 }
 
 /// Validates and reveals one absolute path in the platform file viewer.
-fn reveal(request: &Request, cx: &Context<HostView>) -> Result<Value, String> {
-    let path = field(request, "path")?;
-    if !Path::new(path).is_absolute() {
+fn reveal(ask: &Ask, cx: &Context<HostView>) -> Result<String, String> {
+    let path = text(ask, 1, "path")?;
+    if !Path::new(&path).is_absolute() {
         return Err("Reveal needs an absolute path".to_owned());
     }
-    cx.reveal_path(Path::new(path));
-    Ok(json!({}))
+    cx.reveal_path(Path::new(&path));
+    Ok(json!({}).to_string())
 }
 
 /// Builds GPUI's single-selection path options.
@@ -151,61 +148,53 @@ fn publish_chosen(path: &Path, slice: &str, limit: u64) -> Result<(), String> {
     ffi::put_slice(slice, &text)
 }
 
-/// Converts a native panel selection to the Swift host's path/cancelled shape.
-fn chosen(path: Option<PathBuf>) -> Value {
-    match path {
-        Some(path) => json!({"path": path.to_string_lossy(), "cancelled": false}),
-        None => json!({"path": "", "cancelled": true}),
-    }
+/// Converts a native panel selection to the completion's bare path text.
+fn chosen(path: Option<PathBuf>) -> String {
+    path.map_or_else(String::new, |path| path.to_string_lossy().into_owned())
 }
 
 /// Spawns a prepared panel operation or returns its validation failure immediately.
 fn launch<F>(
-    request: &Request,
+    ask: &Ask,
     window: &mut Window,
     cx: &mut Context<HostView>,
     operation: Result<F, String>,
-) -> Option<String>
+) -> Option<Touch>
 where
-    F: Future<Output = Result<Value, String>> + 'static,
+    F: Future<Output = Result<String, String>> + 'static,
 {
     match operation {
         Ok(operation) => {
-            spawn(request, window, cx, operation);
+            spawn(ask, window, cx, operation);
             None
         }
-        Err(problem) => Some(completion(request, Err(problem))),
+        Err(problem) => Some(completion(ask, Err(problem))),
     }
 }
 
 /// Delivers an asynchronous panel completion through the normal view dispatch seam.
-fn spawn<F>(request: &Request, window: &mut Window, cx: &mut Context<HostView>, operation: F)
+fn spawn<F>(ask: &Ask, window: &mut Window, cx: &mut Context<HostView>, operation: F)
 where
-    F: Future<Output = Result<Value, String>> + 'static,
+    F: Future<Output = Result<String, String>> + 'static,
 {
-    let ticket = request.ticket.clone();
+    let ticket = ask.ticket.clone();
     cx.spawn_in(window, async move |view, cx| {
-        let completion = match operation.await {
-            Ok(result) => events::completed_ok(now(), &ticket, result),
-            Err(problem) => events::completed_err(now(), &ticket, &problem),
-        };
-        let _ = view.update_in(cx, |view, window, cx| view.dispatch(completion, window, cx));
+        let completion = operation.await;
+        let touch = Touch::completed(&ticket, completion);
+        let _ = view.update_in(cx, |view, window, cx| view.send(touch, window, cx));
     })
     .detach();
 }
 
 /// Wraps a synchronous platform result in its ticketed completion.
-fn completion(request: &Request, result: Result<Value, String>) -> String {
-    match result {
-        Ok(result) => events::completed_ok(now(), &request.ticket, result),
-        Err(problem) => events::completed_err(now(), &request.ticket, &problem),
-    }
+fn completion(ask: &Ask, result: Result<String, String>) -> Touch {
+    Touch::completed(&ask.ticket, result)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::accepted;
-    use std::path::Path;
+    use super::{accepted, chosen};
+    use std::path::{Path, PathBuf};
 
     /// A chosen file must carry one of the requested extensions, in any case; none requested accepts all.
     #[test]
@@ -216,5 +205,15 @@ mod tests {
         assert!(!accepted(Path::new("/tmp/photo.png"), &types));
         assert!(!accepted(Path::new("/tmp/Makefile"), &types));
         assert!(accepted(Path::new("/tmp/anything"), &[]));
+    }
+
+    /// A chosen path completes as bare text, and a cancelled prompt as the empty string.
+    #[test]
+    fn chosen_paths_complete_as_bare_text() {
+        assert_eq!(
+            chosen(Some(PathBuf::from("/tmp/notes.txt"))),
+            "/tmp/notes.txt"
+        );
+        assert_eq!(chosen(None), String::new());
     }
 }

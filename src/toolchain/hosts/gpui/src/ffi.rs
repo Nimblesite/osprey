@@ -1,23 +1,45 @@
 //! The C boundary of an Osprey hosted archive and the host-held slices its
-//! runtime reads back ([GPUI-HOST-BOUNDARY]). Every export is called from one
-//! thread: `init`, `start` and `dispatch` are serialized on the GPUI main
-//! thread, and `native_slice` is answered on that same thread during a call.
-//! Streamed shapes do not cross here: the host leases them from the bridge (`frame.rs`).
+//! runtime reads back ([GPUI-HOST-BOUNDARY], [NATIVE-SHM-EVENT]). Every export is
+//! called from one thread: `init`, `argument`, `open` and `event` are serialized
+//! on the GPUI main thread, and `native_slice` is answered on that same thread
+//! during a call. Nothing is encoded in either direction: arguments are scalars
+//! and borrowed strings, and each call's frame is leased from the bridge
+//! (`frame.rs`) and checked (`rows.rs`) when the call returns.
 
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr, CString};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::events::Touch;
+use crate::rows::{self, Shown};
+
 extern "C" {
     /// Runs the application's top-level statements and `fn main`; call first.
     fn osprey_main() -> i32;
-    /// The application's `start` export: one envelope for the launch context.
-    fn osprey_app_start(source: *const c_char) -> *const c_char;
-    /// The application's `dispatch` export: one envelope for the next event.
-    fn osprey_app_dispatch(saved: *const c_char, event: *const c_char) -> *const c_char;
-    /// Releases one owned string returned by an application export.
-    fn osprey_release_string(value: *const c_char);
+    /// The application's `argument` export: one launch argument, in order, before `open`.
+    fn osprey_app_argument(text: *const c_char) -> i64;
+    /// The application's `open` export: draws the first frame.
+    fn osprey_app_open(
+        now: i64,
+        offset: i64,
+        platform: *const c_char,
+        home: *const c_char,
+        dark: bool,
+    ) -> i64;
+    /// The application's `event` export: delivers one host event and draws the next frame.
+    #[allow(clippy::too_many_arguments)]
+    fn osprey_app_event(
+        now: i64,
+        kind: i64,
+        ordinal: i64,
+        words: *const c_char,
+        detail: *const c_char,
+        x: f64,
+        y: f64,
+        down: bool,
+        shift: bool,
+    ) -> i64;
     /// ABI 1 copies borrowed import strings before the import adapter returns.
     fn osprey_host_abi_version() -> i32;
 }
@@ -169,7 +191,8 @@ impl Library {
         }
         // SAFETY: `osprey_main` takes no arguments and is called before any other export.
         let status = unsafe { osprey_main() };
-        sealed(callback_result(Ok(())))?;
+        crate::frame::discard();
+        callback_result(Ok(()))?;
         if status != 0 {
             return Err(format!("osprey_main returned {status}"));
         }
@@ -177,55 +200,67 @@ impl Library {
         Ok(())
     }
 
-    /// The start envelope for `context`; the caller keeps its `state`.
-    pub fn start(context: &str) -> Result<String, String> {
-        let source = held(context)?;
-        let _snapshot = ImportSnapshot::begin()?;
-        // SAFETY: the argument outlives the call and the result is copied at once.
-        sealed(unsafe { callback_result(copied(osprey_app_start(source.as_ptr()))) })
+    /// Hands the application its launch arguments, in order.
+    pub fn arguments(arguments: &[String]) -> Result<(), String> {
+        for argument in arguments {
+            let text = held(argument)?;
+            let _snapshot = ImportSnapshot::begin()?;
+            // SAFETY: the argument outlives the call; the export returns a scalar.
+            let status = unsafe { osprey_app_argument(text.as_ptr()) };
+            sealed(callback_result(Ok(status)))?;
+        }
+        Ok(())
     }
 
-    /// The next envelope for the stored `state` and one event.
-    pub fn dispatch(state: &str, event: &str) -> Result<String, String> {
-        let saved = held(state)?;
-        let message = held(event)?;
+    /// The first frame, for the host's clock, zone offset, platform, home folder and appearance.
+    pub fn open(
+        now: i64,
+        offset: i64,
+        platform: &str,
+        home: &str,
+        dark: bool,
+    ) -> Result<Shown, String> {
+        let (platform, home) = (held(platform)?, held(home)?);
         let _snapshot = ImportSnapshot::begin()?;
-        // SAFETY: both arguments outlive the call and the result is copied at once.
-        sealed(unsafe {
-            callback_result(copied(osprey_app_dispatch(
-                saved.as_ptr(),
-                message.as_ptr(),
-            )))
-        })
+        // SAFETY: both strings outlive the call; the export returns a scalar.
+        let status =
+            unsafe { osprey_app_open(now, offset, platform.as_ptr(), home.as_ptr(), dark) };
+        sealed(callback_result(Ok(status)))
+    }
+
+    /// The frame after one host event at the clock reading `now`. A refused event still draws the
+    /// same view, with the application's reason among the frame's diagnostics.
+    pub fn event(now: i64, touch: &Touch) -> Result<Shown, String> {
+        let (words, detail) = (held(&touch.words)?, held(&touch.detail)?);
+        let _snapshot = ImportSnapshot::begin()?;
+        // SAFETY: both strings outlive the call; the export returns a scalar.
+        let status = unsafe {
+            osprey_app_event(
+                now,
+                touch.kind,
+                touch.ordinal,
+                words.as_ptr(),
+                detail.as_ptr(),
+                touch.x,
+                touch.y,
+                touch.down,
+                touch.shift,
+            )
+        };
+        sealed(callback_result(Ok(status)))
     }
 }
 
-/// Seals the shapes an export streamed once it has returned ([NATIVE-SHM-SCENE]). The run is
-/// consumed even when the export failed, and a refused run fails an export that succeeded.
-fn sealed<T>(result: Result<T, String>) -> Result<T, String> {
+/// Seals the frame an export wrote once it has returned and checks it ([NATIVE-SHM-SAFETY]). The
+/// runs are consumed even when the export failed, and a refused or malformed frame fails the call.
+fn sealed(result: Result<i64, String>) -> Result<Shown, String> {
     let frame = crate::frame::seal();
-    if result.is_err() {
-        // A failed export's shapes belong to no envelope: release them now.
-        drop(crate::frame::take());
-    }
-    result.and_then(|value| frame.map(|()| value))
-}
-
-/// Copies and releases one owned string returned by an application export ([IOS-HOST-ABI]).
-fn copied(value: *const c_char) -> Result<String, String> {
-    if value.is_null() {
-        return Err("The Osprey application returned no envelope".to_owned());
-    }
-    // SAFETY: a non-null result is a NUL-terminated string valid until released.
-    let copied = unsafe { CStr::from_ptr(value) }
-        .to_str()
-        .map(str::to_owned)
-        .map_err(|problem| {
-            format!("The Osprey application returned text that is not UTF-8: {problem}")
-        });
-    // SAFETY: every non-null export result transfers exactly one reference to the host.
-    unsafe { osprey_release_string(value) };
-    copied
+    let taken = crate::frame::take();
+    result?;
+    frame?;
+    taken
+        .ok_or_else(|| "The bridge published no frame".to_owned())
+        .and_then(|frame| rows::read(&frame))
 }
 
 #[cfg(test)]

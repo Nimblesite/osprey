@@ -1,10 +1,13 @@
 //! The self-test's reading of a script and of what the app offers, with every verb and its refusals.
 
-use serde_json::json;
+use std::collections::HashMap;
+
+use gpui_kit::accesskit::Role;
 
 use super::{attempt, parse, tree, Attempt};
-use crate::envelope;
-use crate::regions::Regions;
+use crate::events::Touch;
+use crate::rows::{flags, Control, Fit, Kind, Look, Scene, Shown};
+use crate::scene::access::Access;
 
 #[test]
 fn packaged_launch_keeps_overrides_and_rejects_invalid_argument_documents() {
@@ -39,33 +42,99 @@ fn packaged_launch_keeps_overrides_and_rejects_invalid_argument_documents() {
     }
 }
 
-fn regions() -> Regions {
-    let envelope = json!({"version": envelope::VERSION, "state": "s", "requests": [], "patches": [{"key": "root", "revision": 7, "node": {"kind": "stack", "children": [
-        {"kind": "button", "label": "Add", "event": 1},
-        {"kind": "field", "label": "Note", "event": 2},
-        {"kind": "toggle", "label": "Loud", "on": true, "event": 3},
-        {"kind": "picker", "label": "Rate", "event": 4, "choices": [{"key": "a", "label": "Alpha"}]},
-        {"kind": "text", "text": "Count 0"},
-        {"kind": "scene", "event": 5, "access": [
-            {"role": "button", "label": "Play", "x": 10, "y": 20, "w": 100, "h": 40},
-            {"role": "slider", "label": "Volume", "x": 100, "y": 0, "w": 200, "h": 10, "value": 0.5, "min": 0, "max": 1}
-        ]}
-    ]}}]});
-    let mut regions = Regions::new();
-    regions
-        .apply(envelope::parse(&envelope.to_string()).unwrap())
-        .unwrap();
-    regions
+/// One control as the shared frame carries it.
+fn named(
+    kind: Kind,
+    action: Option<i64>,
+    words: &str,
+    hint: &str,
+    traits: u32,
+    children: Vec<usize>,
+) -> Control {
+    Control {
+        kind,
+        action,
+        words: words.to_owned(),
+        hint: hint.to_owned(),
+        look: Look::default(),
+        fit: Fit {
+            flags: traits,
+            ..Fit::default()
+        },
+        children,
+    }
+}
+
+/// One announced scene element.
+fn item(role: Role, label: &str, bounds: [f64; 4], range: [f64; 3], selected: bool) -> Access {
+    let [x, y, w, h] = bounds;
+    let [value, min, max] = range;
+    Access {
+        role,
+        label: label.to_owned(),
+        x,
+        y,
+        w,
+        h,
+        value,
+        min,
+        max,
+        selected,
+    }
+}
+
+fn shown() -> Shown {
+    Shown {
+        controls: vec![
+            named(Kind::Column, None, "", "", 0, vec![1, 3, 4, 5, 7, 8]),
+            named(Kind::Press, Some(1), "Add", "", 0, vec![]),
+            named(Kind::Label, None, "Note", "", 0, vec![]),
+            named(Kind::Entry, Some(2), "", "Write a note", 0, vec![]),
+            named(Kind::Toggle, Some(3), "Loud", "", flags::CHOSEN, vec![]),
+            named(Kind::Picker, Some(4), "Alpha", "Rate", 0, vec![6]),
+            named(Kind::Choice, None, "Alpha", "a", 0, vec![]),
+            named(Kind::Label, None, "Count 0", "", 0, vec![]),
+            named(Kind::Canvas, Some(5), "", "", 0, vec![]),
+        ],
+        roots: vec![0],
+        scenes: HashMap::from([(
+            8,
+            Scene {
+                width: 400.,
+                height: 300.,
+                zoom: 1.,
+                atlas: vec![],
+                shapes: vec![],
+                access: vec![
+                    item(
+                        Role::Button,
+                        "Play",
+                        [10., 20., 100., 40.],
+                        [0., 0., 0.],
+                        false,
+                    ),
+                    item(
+                        Role::Slider,
+                        "Volume",
+                        [100., 0., 200., 10.],
+                        [0.5, 0., 1.],
+                        false,
+                    ),
+                ],
+            },
+        )]),
+        asks: vec![],
+    }
 }
 
 fn step(verb: &str, words: &[&str]) -> Result<Attempt, String> {
     let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
-    attempt(&regions(), verb, &words)
+    attempt(&shown(), verb, &words)
 }
 
-fn values(attempt: Result<Attempt, String>) -> Vec<(u64, serde_json::Value)> {
+fn values(attempt: Result<Attempt, String>) -> Vec<Touch> {
     match attempt.unwrap() {
-        Attempt::Sending(sends) => sends.into_iter().map(|s| (s.ordinal, s.value)).collect(),
+        Attempt::Sending(sends) => sends,
         other => panic!("not a send: {other:?}"),
     }
 }
@@ -105,27 +174,24 @@ fn invoke_presses_scene_elements_and_controls_by_label() {
     assert_eq!(
         values(step("invoke", &["Play"])),
         vec![
-            (
-                5,
-                json!({"x": 60.0, "y": 40.0, "down": true, "shift": false})
-            ),
-            (
-                5,
-                json!({"x": 60.0, "y": 40.0, "down": false, "shift": false})
-            )
+            Touch::pointer(5, 60., 40., true, false),
+            Touch::pointer(5, 60., 40., false, false)
         ]
     );
-    assert_eq!(values(step("invoke", &["Add"])), vec![(1, json!(null))]);
+    assert_eq!(
+        values(step("invoke", &["Add"])),
+        vec![Touch::control(1, "")]
+    );
     assert!(matches!(step("invoke", &["Nope"]), Ok(Attempt::Waiting(_))));
 }
 
 /// A slider lands at its value, clamped to its range; what has no range refuses it.
 #[test]
 fn set_lands_along_a_slider_and_refuses_anything_else() {
-    let at = |value: &str| values(step("set", &["Volume", value]))[0].1["x"].clone();
-    assert_eq!(at("0.25"), json!(150.0));
-    assert_eq!(at("9"), json!(300.0));
-    assert_eq!(at("-1"), json!(100.0));
+    let at = |value: &str| values(step("set", &["Volume", value]))[0].x;
+    assert_eq!(at("0.25"), 150.);
+    assert_eq!(at("9"), 300.);
+    assert_eq!(at("-1"), 100.);
     assert!(step("set", &["Play", "0.5"])
         .unwrap_err()
         .contains("no range"));
@@ -143,29 +209,29 @@ fn set_lands_along_a_slider_and_refuses_anything_else() {
 #[test]
 fn drag_presses_moves_and_releases() {
     let sent = values(step("drag", &["Play", "5", "-5"]));
-    assert_eq!(sent[0].1["x"], json!(60.0));
-    assert_eq!(
-        (sent[1].1["x"].clone(), sent[1].1["y"].clone()),
-        (json!(65.0), json!(35.0))
-    );
-    assert_eq!(sent[2].1["down"], json!(false));
+    assert_eq!(sent[0].x, 60.);
+    assert_eq!((sent[1].x, sent[1].y), (65., 35.));
+    assert!(!sent[2].down);
 }
 
 /// Switches flip, fields take their words, pickers choose by what a row shows and scenes take keys.
 #[test]
 fn toggle_type_choose_and_key_send_what_the_control_takes() {
-    assert_eq!(values(step("toggle", &["Loud"])), vec![(3, json!(false))]);
+    assert_eq!(
+        values(step("toggle", &["Loud"])),
+        vec![Touch::control(3, "false")]
+    );
     assert_eq!(
         values(step("type", &["Note", "hi"])),
-        vec![(2, json!("hi"))]
+        vec![Touch::control(2, "hi")]
     );
-    assert_eq!(values(step("choose", &["Alpha"])), vec![(4, json!("a"))]);
+    assert_eq!(
+        values(step("choose", &["Alpha"])),
+        vec![Touch::control(4, "a")]
+    );
     assert_eq!(
         values(step("key", &["p"])),
-        vec![
-            (5, json!({"key": "p", "down": true})),
-            (5, json!({"key": "p", "down": false}))
-        ]
+        vec![Touch::key(5, "p", true), Touch::key(5, "p", false)]
     );
     assert!(matches!(step("choose", &["Nope"]), Ok(Attempt::Waiting(_))));
 }
@@ -187,7 +253,7 @@ fn time_shots_and_unknown_verbs() {
 /// What an agent reads: every actionable thing, its role and name, and a slider's value and range.
 #[test]
 fn the_tree_names_every_role_label_value_and_range() {
-    let text = tree(&regions());
+    let text = tree(&shown());
     for line in [
         "button \"Add\"",
         "field \"Note\"",

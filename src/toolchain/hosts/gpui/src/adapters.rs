@@ -15,81 +15,56 @@ mod platform;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod process;
 
-use serde_json::Value;
-
-use crate::envelope::Request;
-use crate::events;
-use crate::host::now;
+use crate::events::Touch;
+use crate::rows::Ask;
 
 pub use platform::dispatch as dispatch_platform;
 
 /// Answers one synchronous non-store capability.
-pub fn answer(request: &Request) -> Result<Value, String> {
-    match request.kind.as_str() {
+pub fn answer(ask: &Ask) -> Result<String, String> {
+    match ask.kind() {
         // [CAST-MOBILE-DELIVERY] iOS launches no process and has no GPUI path
         // prompt: its OS services answer run (discovery) and choose-file across
         // the bridge, on the caller's background executor.
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        "run" | "choose-file" | "host-call" => mobile::answer(request),
+        "run" | "choose-file" | "host-call" => mobile::answer(ask),
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        "run" => process::run(request),
-        "list-directories" => files::list_directories(request),
-        "read-texts" => files::read_texts(request),
+        "run" => process::run(ask),
+        "list-directories" => files::list_directories(ask),
+        "read-texts" => files::read_texts(ask),
         // Cancel arrives only after synchronous adapters already completed, so
-        // nothing is in flight to stop and ok/null acknowledges the ticket.
-        "cancel" => Ok(Value::Null),
+        // nothing is in flight to stop and an empty result acknowledges the ticket.
+        "cancel" => Ok(String::new()),
         kind => Err(format!("unsupported capability {kind}")),
     }
 }
 
 /// Wraps a synchronous capability result in its ticketed completion.
-pub fn completion(request: &Request) -> String {
-    match answer(request) {
-        Ok(result) => events::completed_ok(now(), &request.ticket, result),
-        Err(problem) => events::completed_err(now(), &request.ticket, &problem),
-    }
+pub fn completion(ask: &Ask) -> Touch {
+    Touch::completed(&ask.ticket, answer(ask))
 }
 
-/// The one shape of every missing-or-mistyped verbatim field error.
-fn message(request: &Request, name: &str) -> String {
-    format!("{} has no valid {name}", request.kind)
+/// The one shape of every missing-or-mistyped argument error.
+fn message(ask: &Ask, name: &str) -> String {
+    format!("{} has no valid {name}", ask.kind())
 }
 
-/// Reads a required verbatim field, converted by `f`.
-fn get<'a, T>(req: &'a Request, name: &str, f: fn(&'a Value) -> Option<T>) -> Result<T, String> {
-    let invalid = || message(req, name);
-    let value = req.fields.get(name).ok_or_else(invalid)?;
-    f(value).ok_or_else(invalid)
-}
-
-/// Reads a required string argument from the verbatim request fields.
-fn field<'a>(request: &'a Request, name: &str) -> Result<&'a str, String> {
-    get(request, name, Value::as_str)
-}
-
-/// Reads a required nonnegative integer argument.
-fn number(request: &Request, name: &str) -> Result<u64, String> {
-    get(request, name, Value::as_u64)
-}
-
-/// Reads a required array containing only strings.
-fn strings<'a>(request: &'a Request, name: &str) -> Result<Vec<&'a str>, String> {
-    get(request, name, Value::as_array)?
+/// Reads a required text argument at argument position `field`.
+pub(super) fn text(ask: &Ask, field: i64, name: &str) -> Result<String, String> {
+    ask.fields
         .iter()
-        .map(|value| value.as_str().ok_or_else(|| message(request, name)))
-        .collect()
+        .find(|argument| argument.field == field)
+        .map(|argument| argument.text.clone())
+        .ok_or_else(|| message(ask, name))
 }
 
-/// Builds a request with unique test data without touching environment state.
-#[cfg(test)]
-fn request(kind: &str, fields: &[(&str, Value)]) -> Request {
-    Request {
-        ticket: format!("{kind}-test"),
-        kind: kind.to_owned(),
-        fields: serde_json::Map::from_iter(
-            fields
-                .iter()
-                .map(|(name, value)| ((*name).to_owned(), value.clone())),
-        ),
-    }
+/// Reads a required nonnegative whole-number argument at position `field`.
+pub(super) fn number(ask: &Ask, field: i64, name: &str) -> Result<u64, String> {
+    let whole = ask
+        .fields
+        .iter()
+        .find(|argument| argument.field == field)
+        .map(|argument| argument.number)
+        .ok_or_else(|| message(ask, name))?;
+    u64::try_from(whole).map_err(|_| message(ask, name))
 }
