@@ -10,7 +10,6 @@ namespace registry_editor
 import ui::Doc
 import ui::Hosting
 import ui::Lists
-import ui::LowerLeaves
 import ui::Runtime
 import uitest::Drive
 import uitest::Views
@@ -71,21 +70,42 @@ started registry = Runtime::guarded (\() => Drive::launched (fresh (), "vscode",
 
 walkOf d = Runtime::guarded (\() => ui::Surfaces::seen (d.drivenSurface, d.drivenProgram))
 
-// The regions the program draws, as the boundary lowered them, and one region walked alone.
+// The regions the program draws, as the boundary told them, and one region walked alone.
 regionsOf d = Runtime::guarded (\() => (App::program ()).programRender (storeOf d, storeOf d, [], []))
 
 regionNode (d, key) = match Lists::find (regionsOf d, \region => region.snapshotKey == key)
     Error _ => ui::Spacer
     Success region => region.snapshotValue
 
-regionWalk (d, key) = Runtime::guarded (\() => ui::Views::drawn (ui::Lower::view (ui::Styling(styleTheme = (App::program ()).programTheme (storeOf d), styleDark = false, styleRegions = regionsOf d), regionNode (d, key))))
+// `node` with every `slot` replaced by the region it names, the way the host that rebuilds the frame draws it ([NATIVE-SHM-NODES]).
+resolvedNode (d, node) = match node
+    ui::Slot key => regionNode (d, key)
+    ui::Stack axis children => ui::Stack(axis = axis, children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Section title footer children => ui::Section(title = title, footer = footer, children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Screen title subtitle toolbar children => ui::Screen(title = title, subtitle = subtitle, toolbar = mapList (toolbar, \child => resolvedNode (d, child)), children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Split panes => ui::Split(panes = mapList (panes, \child => resolvedNode (d, child)))
+    ui::Layer children => ui::Layer(children = mapList (children, \child => resolvedNode (d, child)))
+    ui::Framed style content => ui::Framed(frameStyle = style, frameContent = resolvedNode (d, content))
+    ui::Themed theme content => ui::Themed(localTheme = theme, themedContent = resolvedNode (d, content))
+    ui::Dialog title body dismiss => ui::Dialog(dialogTitle = title, dialogBody = resolvedNode (d, body), dialogDismiss = dismiss)
+    ui::ContextMenu body actions => ui::ContextMenu(menuBody = resolvedNode (d, body), menuActions = mapList (actions, \child => resolvedNode (d, child)))
+    ui::Aside place aside pane extent least most keep resize => ui::Aside(side = place, aside = resolvedNode (d, aside), pane = resolvedNode (d, pane), extent = extent, asideLeast = least, asideMost = most, paneKeep = keep, resize = resize)
+    ui::Tabs tabs selected bind => ui::Tabs(tabs = mapList (tabs, \tab => tab(page = resolvedNode (d, tab.page))), selected = selected, bind = bind)
+    ui::Rows rows selected bind => ui::Rows(rows = mapList (rows, \row => row(cell = resolvedNode (d, row.cell))), selected = selected, bind = bind)
+    ui::Disclosure title expanded bind children => ui::Disclosure(title = title, expanded = expanded, bind = bind, children = mapList (children, \child => resolvedNode (d, child)))
+    _ => node
+
+// The region `key`'s tree, with its slots naming the frame's other regions, told as the rows a host reads ([NATIVE-SHM-NODES]).
+regionWalk (d, key) = Runtime::guarded (\() => ui::Tellings::alone (resolvedNode (d, regionNode (d, key))))
 
 styled walk = uitest::Read::seen (walk, [])
 
-// The control of `kind` labelled `label`, as a host reaches it: a button or tab is a press, a field an entry.
-controlOf (walk, kind, label) = match Lists::find (walk.walkRows, \row => row.placedKind == kind && row.placedWords == label)
+// The control number of the button labelled `label`, as a host reaches a press, or -1 when none was drawn ([UI-EVENTS]).
+controlOf (walk, label) = pressed (uitest::Views::labelled (styled walk, label))
+
+pressed controls = match Lists::find (controls, \one => one.controlKind == "button")
+    Success found => found.controlOrdinal
     Error _ => 0 - 1
-    Success row => row.placedAction
 
 deliver (d, found, words) = match found < 0
     true =>
@@ -93,33 +113,77 @@ deliver (d, found, words) = match found < 0
         d
     false => Runtime::guarded (\() => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = found, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)))
 
-press (d, label) = deliver (d, controlOf (walkOf d, ui::Views::press, label), "")
+press (d, label) = deliver (d, controlOf (walkOf d, label), "")
 
-chooseTyped (d, label, words) = deliver (d, controlOf (walkOf d, ui::Views::press, label), words)
+chooseTyped (d, label, words) = deliver (d, chooserOf (frameTrees (walkOf d), "tabs", \told => entriesWith (told, "tabs", "label", label)), words)
 
 completedWith (d, ticket, ok, text) = Runtime::guarded (\() => Drive::completed (d, ticket, ok, text))
 
-// The fit that carries a row's key, and the press layered over that row's cell.
-rowFit (d, key) = Lists::find ((walkOf d).walkFits, \fit => fit.fittedAs.hint == key)
+// ---- the told trees ([NATIVE-SHM-NODES]): what a host rebuilds from the frame's rows before it draws ----
 
-isRowPress (parent, row) = match row.placedParent == parent && row.placedAction >= 0
-    true => Success(value = row)
-    false => Error(message = "no press in the row")
+// A told value's member name, or "" when it carries none.
+toldName told = match told
+    ui::ToldText key _ => key
+    ui::ToldCount key _ => key
+    ui::ToldReal key _ => key
+    ui::ToldFlag key _ => key
+    ui::ToldRecord key _ => key
+    ui::ToldList key _ => key
+    ui::ToldScene key _ _ => key
 
-kept (found, next) = match found
-    Error _ => next
-    Success _ => found
+// Everything a record, list or scene holds, or none.
+inside told = match told
+    ui::ToldRecord _ held => held
+    ui::ToldList _ held => held
+    ui::ToldScene _ held _ => held
+    _ => []
 
-rowPress (d, key) = match rowFit (d, key)
-    Error _ => Error(message = "no row ${key}")
-    Success fit => foldList ((walkOf d).walkRows, Error(message = "no row ${key}"), \(found, row) => kept (found, isRowPress (fit.fittedRow, row)))
+// The text member named `name`, first one wins, or "".
+textNamed (name, found, member) = match member
+    ui::ToldText key words => ui::Pick::either (key == name && found == "", words, found)
+    _ => found
 
-// Choosing a row delivers its key through the press layered over its cell.
-pick (d, key) = match rowPress (d, key)
-    Error problem =>
-        print "# ${problem}"
-        d
-    Success row => deliver (d, row.placedAction, key)
+memberText (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
+
+// The whole-number member named `name`, first one wins, or `absent`.
+countNamed (name, found, member) = match member
+    ui::ToldCount key value => ui::Pick::either (key == name, value, found)
+    _ => found
+
+memberCount (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
+
+// The told member named `name`, or an empty record when none is told.
+memberNamed (members, name) = match Lists::find (members, \member => toldName member == name)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// `told` and everything under it, depth first.
+under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
+
+// The trees of the frame a host was sent, rebuilt the way every host rebuilds them.
+frameTrees walk = uitest::Read::trees walk
+
+// The entries `told` keeps under its `name` member, in drawing order.
+entriesIn (told, name) = inside (memberNamed (inside told, name))
+
+// Whether the entries `told` keeps under `name` carry `wanted` as their `member` text.
+entriesWith (told, name, member, wanted) = Lists::any (entriesIn (told, name), \entry => memberText (inside entry, member) == wanted)
+
+// The component of kind `name` that `sought` accepts, or an empty record when none under `trees` does.
+kindedWhere (trees, name, sought) = matched (Lists::find (Lists::flatten (mapList (trees, under)), \told => memberText (inside told, "kind") == name && sought told))
+
+matched found = match found
+    Success told => told
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// The text the component of kind `name` titled `title` tells under member `member`, read from the region `key`'s tree, or "".
+titledText (d, key, name, title, member) = memberText (inside (kindedWhere (uitest::Read::trees (regionWalk (d, key)), name, \told => memberText (inside told, "title") == title)), member)
+
+// The control number of the component of kind `name` whose entries `sought` accepts, or -1: the entry's key rides in the words ([UI-EVENTS]).
+chooserOf (trees, name, sought) = memberCount (inside (kindedWhere (trees, name, sought)), "event", 0 - 1)
+
+// Choosing a row delivers its key through the rows control that holds it.
+pick (d, key) = deliver (d, chooserOf (frameTrees (walkOf d), "rows", \told => entriesWith (told, "rows", "key", key)), key)
 
 // ---- reading the last step ----
 
@@ -150,29 +214,18 @@ showsIn (d, key, part) = expect (contains (regionTexts (d, key)) part, true)
 
 hidesIn (d, key, part) = expect (contains (regionTexts (d, key)) part, false)
 
-// A pair's value: the wording beside its label inside the pair's line.
-isPairValue (parent, label, row) = match row.placedParent == parent && row.placedKind == ui::Views::label && row.placedWords != "" && row.placedWords != label
-    true => Success(value = row.placedWords)
-    false => Error(message = "not the value")
-
-pairValue (walk, label) = match Lists::find (walk.walkRows, \row => row.placedWords == label)
-    Error _ => ""
-    Success named => match foldList (walk.walkRows, Error(message = "none"), \(found, row) => kept (found, isPairValue (named.placedParent, label, row)))
-        Success value => value
-        Error _ => ""
+// A pair's value: the wording the pair labelled `label` tells, read from the trees a host rebuilds ([NATIVE-SHM-NODES]).
+pairValue (walk, label) = memberText (inside (kindedWhere (uitest::Read::trees walk, "pair", \told => memberText (inside told, "label") == label)), "value")
 
 expectEvidence (d, key, cases) = forEachList (cases, \c => expect (pairValue (regionWalk (d, key), c.label), c.want))
 
-themeOf d = (App::program ()).programTheme (storeOf d)
-
-toneInk (d, name) = LowerLeaves::inkNamed (themeOf d, false, name)
-
-// A control's ink and enabled state, read from the region that drew it.
+// A control's tone name and enabled state, read from the region that drew it.
 regionControl (d, key, label) = uitest::Views::control (styled (regionWalk (d, key)), label)
 
-inkOf (d, key, label) = (regionControl (d, key, label)).controlInk
+toneOf (d, key, label) = (regionControl (d, key, label)).controlTone
 
-hasTone (d, key, name) = Lists::any ((regionWalk (d, key)).walkRows, \row => row.placedLook.ink == toneInk (d, name))
+// Whether some control drawn in the region carries the tone `name`.
+hasTone (d, key, name) = Lists::any ((styled (regionWalk (d, key))).renderedControls, \one => one.controlTone == name)
 
 // ---- control flows ----
 
@@ -210,8 +263,9 @@ confirmRemove (d, key) = oneRequest (press (d, "Confirm remove ${key}"), "remove
 
 missingFooter () =
     after = completeBoth (started loopback, ["tree.no-lock"])
-    hidesIn (after, "packages", "installed ·")
-    showsIn (after, "packages", "Installed counts unavailable")
+    footer = titledText (after, "packages", "section", "Packages", "footer")
+    expect (contains footer "installed ·", false)
+    expect (footer, "Installed counts unavailable")
 
 installedCounts () =
     after = completeBoth (started loopback, [])
@@ -222,12 +276,12 @@ installedCounts () =
     ])
     hidesIn (after, "packages", "@demo/ghost")
     showsIn (after, "root", "@demo/ghost · missing from disk")
-    showsIn (after, "root", workspace)
-    expect (inkOf (after, "root", "Audit unverified"), toneInk (after, "caution"))
+    expect (titledText (after, "root", "screen", "Packages", "subtitle"), workspace)
+    expect (toneOf (after, "root", "Audit unverified"), "caution")
 
 emptyFindings () =
     chosen = catalogDetail (loopback, "@demo/new")
-    expect (inkOf (chosen, "details", unverified), toneInk (chosen, "caution"))
+    expect (toneOf (chosen, "details", unverified), "caution")
     showsIn (chosen, "details", unverified)
     showsIn (chosen, "details", "requires explicit confirmation")
     hidesIn (chosen, "details", "Audited")
@@ -241,14 +295,14 @@ missingDirect () =
     ready = graphIn (first, report)
     chosen = pick (ready, "@demo/ghost")
     showsIn (chosen, "details", "verify.missing")
-    expect (inkOf (chosen, "details", "Missing from disk"), toneInk (chosen, "caution"))
+    expect (toneOf (chosen, "details", "Missing from disk"), "caution")
     expectDetailButton (chosen, "Remove dependency", true)
     confirmRemove (press (chosen, "Remove dependency"), "@demo/ghost")
 
 recordedFindings () =
     chosen = catalogDetail (loopback, "@demo/risky")
     showsIn (chosen, "details", cve)
-    expect (inkOf (chosen, "details", "1 findings"), toneInk (chosen, "danger"))
+    expect (toneOf (chosen, "details", "1 findings"), "danger")
     expectDetailButton (chosen, "Add to project", false)
 
 unverifiedAdd () =
@@ -285,14 +339,15 @@ hostedAdd () =
     expectNoRequest refused
     expect ((storeOf refused).packageFault, true)
     expectNotice (refused, "installation is disabled")
-    showsIn (refused, "root", "installation is disabled")
+    expect (contains (titledText (refused, "root", "empty", "Package data unavailable", "detail")) "installation is disabled", true)
     expect ((storeOf refused).packageConfirming, "")
 
 removeDirect () =
     chosen = pick (completeBoth (started loopback, []), "@demo/report")
     asked = awaitingConfirmation (chosen, "Remove dependency", "remove")
-    showsIn (asked, "details", "Removing @demo/report")
-    showsIn (asked, "details", workspace)
+    message = titledText (asked, "details", "alert", "Confirm remove @demo/report", "message")
+    expect (contains message "Removing @demo/report", true)
+    expect (contains message workspace, true)
     confirmRemove (asked, "@demo/report")
 
 securityFindings () =
@@ -306,11 +361,11 @@ securityFindings () =
 unavailableData () =
     first = started loopback
     expectEvidence (first, "root", [{ label = "Installed", want = "" }])
-    showsIn (first, "root", workspace)
+    expect (titledText (first, "root", "screen", "Packages", "subtitle"), workspace)
     failed = completedWith (first, ticketAt (first, 1), false, "Package executable is missing")
     expectEvidence (failed, "root", [{ label = "Installed", want = "" }, { label = "Catalog", want = "" }])
     showsIn (failed, "root", "Package data unavailable")
-    showsIn (failed, "root", workspace)
+    expect (titledText (failed, "root", "screen", "Packages", "subtitle"), workspace)
 
 verifiedFetch () =
     selected = catalogDetail (loopback, "@demo/new")
@@ -326,7 +381,7 @@ verifiedFetch () =
     expectNoRequest failed
     expect ((storeOf failed).packagePending, false)
     expect ((storeOf failed).packageFault, true)
-    showsIn (failed, "root", "Digest mismatch")
+    expect (contains (titledText (failed, "root", "empty", "Package data unavailable", "detail")) "Digest mismatch", true)
     expect (pairValue (regionWalk (failed, "root"), "Installed"), "")
 
 exactTests [

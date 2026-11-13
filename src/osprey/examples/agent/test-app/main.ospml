@@ -72,8 +72,8 @@ module Drive
     (** The completion of what the open conversation waits on. *)
     export answering (store, outcome, slice) = deliver (store, ui::Completed(ticket = (Model::active store).chatTicket, outcome = outcome), slice)
 
-    (** A region's controls and text, with the store answering its signals. *)
-    export showing (store, view) =
+    (** The told rows a host reads for `view` of `store`, with the store answering its signals ([NATIVE-SHM-NODES]). *)
+    export walked (store, view) =
         handle static Signal<agentapp::Chats>
             read => agentapp::Chats(chatList = store.chats)
         handle static Signal<agentapp::Draft>
@@ -84,7 +84,10 @@ module Drive
             read => store.settings
         handle static Signal<agentapp::McpSignal>
             read => agentapp::McpSignal(signalState = store.mcp)
-        Read::seen (ui::Views::drawn (ui::Lower::view (ui::Styling(styleTheme = App::theme (), styleDark = false, styleRegions = []), view ())), [])
+        ui::Tellings::alone (view ())
+
+    (** A region's controls and text, with the store answering its signals. *)
+    export showing (store, view) = Read::seen (walked (store, view), [])
 
     (** The kinds of a step's requests, joined. *)
     export kinds step = join (mapList (step.requests, \request => Requests::kind request.capability), ",")
@@ -230,14 +233,14 @@ settledBy (store, ticket, outcome, of) = Drive::deliverWhere (store, ui::Complet
 // Whether `view` of `store` draws the control labelled `text`.
 shows (store, view, text) = Views::shows (Drive::showing (store, view), text)
 
-// Whether any control drawn by `seen` has words or a second text holding `text`.
-mentions (seen, text) = Lists::any (seen.renderedControls, \one => contains one.controlText text || contains one.controlHint text)
+// Whether the told rows `walk` was sent, or the choices and rich runs they rebuild, hold `text` in some words.
+mentions (walk, text) = Lists::any ((Read::seen (walk, [])).renderedControls, \one => contains one.controlText text || contains one.controlHint text) || Lists::any (wordsOf walk, \words => contains words text)
 
-// Expect `seen` to hold `text` in some control's words or second text.
-expectMentions (seen, text) = expectTrue (mentions (seen, text))
+// Expect the told rows of `walk` to hold `text` in some control's, choice's or run's words.
+expectMentions (walk, text) = expectTrue (mentions (walk, text))
 
-// Expect `seen` to hold `text` in no control's words or second text.
-expectOmits (seen, text) = expectFalse (mentions (seen, text))
+// Expect the told rows of `walk` to hold `text` in no words.
+expectOmits (walk, text) = expectFalse (mentions (walk, text))
 
 // The control labelled `label` that `view` of `store` draws.
 controlOf (store, view, label) = Views::control (Drive::showing (store, view), label)
@@ -245,11 +248,14 @@ controlOf (store, view, label) = Views::control (Drive::showing (store, view), l
 // The composer's drawn view of `store`.
 composerOf store = Drive::showing (store, View::composer)
 
-// Expect the composer of `store` to hold `text` in words or a second text.
-composerShows (store, text) = expectMentions (composerOf store, text)
+// The told rows of `store`'s composer, for reading its choices as a host rebuilds them.
+composerWalk store = Drive::walked (store, View::composer)
+
+// Expect the composer of `store` to hold `text` in words, a second text, a choice or a run.
+composerShows (store, text) = expectTrue (mentions (composerWalk store, text))
 
 // The same, expecting `text` nowhere.
-composerLacks (store, text) = expectOmits (composerOf store, text)
+composerLacks (store, text) = expectOmits (composerWalk store, text)
 
 // Expect the transcript of `store` to draw `text` as a control's words.
 transcriptShows (store, text) = expectTrue (shows (store, View::transcript, text))
@@ -369,8 +375,8 @@ expectWrote (step, kinds, text) = kindsAre (step, kinds, \s => expectHas (writte
 // Expect `text` to hold each of `parts`.
 showsAll (text, parts) = forEachList (parts, \part => expectHas (text, part))
 
-// Expect `seen` to draw every one of `labels` as a control's words.
-labelsShown (seen, labels) = forEachList (labels, \label => expectTrue (Views::shows (seen, label)))
+// Expect the told rows of `walk` to draw every one of `labels` as a control's words, a choice's key or label, or a run's text ([NATIVE-SHM-NODES]).
+labelsShown (walk, labels) = forEachList (labels, \label => expectTrue (offers (walk, label)))
 
 // Expect `seen` to draw a control labelled `label`.
 expectDraws (seen, label) = expectTrue (Views::shows (seen, label))
@@ -378,22 +384,77 @@ expectDraws (seen, label) = expectTrue (Views::shows (seen, label))
 // Expect `seen` to draw no control labelled `label`.
 expectNotDraws (seen, label) = expectFalse (Views::shows (seen, label))
 
-// Expect `seen` to draw none of `labels`, in words or in a second text.
-labelsAbsent (seen, labels) = forEachList (labels, \label => expectFalse (mentions (seen, label)))
+// Expect the told rows of `walk` to draw none of `labels`, in words or in a second text.
+labelsAbsent (walk, labels) = forEachList (labels, \label => expectFalse (mentions (walk, label)))
 
-// The ink the theme gives the token `name` in the light appearance the suite draws.
-inkOf name = ui::LowerLeaves::inkNamed (App::theme (), false, name)
+// A told value's member name, or "" when it carries none.
+toldName told = match told
+    ui::ToldText key _ => key
+    ui::ToldCount key _ => key
+    ui::ToldReal key _ => key
+    ui::ToldFlag key _ => key
+    ui::ToldRecord key _ => key
+    ui::ToldList key _ => key
+    ui::ToldScene key _ _ => key
 
-// Whether some control `seen` draws is inked with the token `name`.
-drawsInk (seen, name) = Lists::any (seen.renderedControls, \one => one.controlInk == inkOf name)
+// The text member named `name`, first one wins, or "".
+textNamed (name, found, member) = match member
+    ui::ToldText key words => ui::Pick::either (key == name && found == "", words, found)
+    _ => found
 
-// Whether `seen` draws a bare glyph: a press or a label carrying a symbol and no words.
-loneGlyph seen = Lists::any (seen.renderedControls, \one => (one.controlKind == "press" || one.controlKind == "label") && one.controlText == "" && one.controlHint != "")
+memberText (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
 
-// Expect `view` of `store` to draw a plain folder press labelled `label`, enabled or not.
+// The told member named `name`, or an empty record when none is told.
+memberNamed (members, name) = match Lists::find (members, \member => toldName member == name)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// The entries `told` keeps under its `name` member, in drawing order.
+entriesIn (told, name) = inside (memberNamed (inside told, name))
+
+// The key and the label a picker's choice offers.
+choiceWords entry = [memberText (inside entry, "key"), memberText (inside entry, "label")]
+
+// The words `told` offers beyond its own label: a picker's choices, or a rich node's runs.
+wordsTold told = match memberText (inside told, "kind")
+    "picker" => Lists::flatten (mapList (entriesIn (told, "choices"), choiceWords))
+    "rich-text" => mapList (entriesIn (told, "runs"), \run => memberText (inside run, "text"))
+    _ => []
+
+// Whether the told rows `walk` was sent offer `label`: a control named `label`, or a choice or rich run carrying exactly `label` ([NATIVE-SHM-NODES]).
+offers (walk, label) = Views::shows (Read::seen (walk, []), label) || Lists::any (wordsOf walk, \words => words == label)
+
+// Every word the told rows of `walk` offer beyond a control's own words: choices' keys and labels, and rich runs' texts ([NATIVE-SHM-NODES]).
+wordsOf walk = Lists::flatten (mapList (Lists::flatten (mapList (Read::trees walk, under)), wordsTold))
+
+// The members nested in `told`, whatever kind it is.
+inside told = match told
+    ui::ToldRecord _ members => members
+    ui::ToldScene _ members _ => members
+    ui::ToldList _ items => items
+    _ => []
+
+// The text of a member named "ink", keeping `found` when this member is not one.
+inkOf (found, member) = match member
+    ui::ToldText key text => ui::Pick::either (key == "ink" && found == "", text, found)
+    _ => found
+
+// The ink token `told` names, or "" when it names none.
+inked told = foldList (inside told, "", inkOf)
+
+// `told` and everything under it, depth first.
+under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
+
+// Whether the told rows `walk` was sent draw something inked with the token `name`, a rich run or a frame's style ([NATIVE-SHM-NODES]).
+drawsInk (walk, name) = Lists::any (Read::trees walk, \tree => Lists::any (under tree, \told => inked told == name))
+
+// Whether `seen` draws a bare glyph: a button or a label carrying a symbol and no words.
+loneGlyph seen = Lists::any (seen.renderedControls, \one => (one.controlKind == "button" || one.controlKind == "label") && one.controlText == "" && one.controlHint != "")
+
+// Expect `view` of `store` to draw a plain folder button labelled `label`, enabled or not.
 expectFolder (store, view, label, enabled) =
     control = controlOf (store, view, label)
-    expect (control.controlKind, "press")
+    expect (control.controlKind, "button")
     expect (control.controlHint, "folder")
     expect (control.controlEnabled, enabled)
 
@@ -476,7 +537,7 @@ expectLacks (text, part) = expectFalse (contains text part)
 
 // The outcome of a store read: `found` is whether its file was there, which a refused read says.
 readOutcome found = match found
-    true => okDone ""
+    true => okDone (Doc::write (JsonObject [Doc::bit ("found", true)]))
     false => Error(message = "no such store entry")
 
 // The step after the person typed `value` into `entry` of `store` and pressed `act`.
@@ -614,10 +675,10 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
 
 testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
     replied = answeredTurn ("Show the code\n", 200, codeReply)
-    code = Drive::showing (replied.stepStore, View::transcript)
-    expectDraws (code, "def")
-    expectMentions (code, "\n")
-    forEachList (["codeKeyword", "codeString", "codeComment", "codeNumber"], \name => expectTrue (drawsInk (code, name))))
+    walk = Drive::walked (replied.stepStore, View::transcript)
+    expectTrue (Lists::any (wordsOf walk, \words => words == "def"))
+    expectTrue (Lists::any (wordsOf walk, \words => contains words "\n"))
+    forEachList (["codeKeyword", "codeString", "codeComment", "codeNumber"], \name => expectTrue (drawsInk (walk, name))))
 
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     calling = callingAfter "Go\n"
@@ -643,7 +704,7 @@ testing ("a blank reply fails in words and leaves no gap", \() =>
     chat = Model::active blank.stepStore
     expect (chat.chatStage, "failed")
     expectHas (chat.chatProblem, "no answer")
-    labelsShown (Drive::showing (blank.stepStore, View::transcript), ["The model returned no answer.", "Try again"]))
+    labelsShown (Drive::walked (blank.stepStore, View::transcript), ["The model returned no answer.", "Try again"]))
 
 testing ("each refusal status says what to do in words, with Open Settings", \() =>
     opened = goTurn ()
@@ -683,7 +744,7 @@ testing ("the settings pane opens in place of the conversation and closes", \() 
     opened = settingsOpened ()
     expect (opened.settings.settingsOpen, true)
     sendsNothing (acted (opened, agentapp::OpenSettings))
-    labelsShown (Drive::showing (opened, View::settings), ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
+    labelsShown (Drive::walked (opened, View::settings), ["Providers", "MCP servers", "DeepSeek", "GLM (Z.ai API)", "Save DeepSeek key"])
     closed = (acted (opened, agentapp::CloseSettings)).stepStore
     expect (closed.settings.settingsOpen, false))
 
@@ -697,7 +758,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     listed = modelsSettled (launched.stepStore, "deepseek", 200, modelsList ["deepseek-v9", "deepseek-v4-pro", "deepseek-flash"])
     // The default model is gone from the provider, so the empty chat and the default both move to one it names.
     expectDefaultOn (listed, "deepseek/deepseek-flash", "deepseek/deepseek-flash")
-    shown = composerOf listed
+    shown = composerWalk listed
     expectMentions (shown, "deepseek-v9")
     composerShows (App::restore (App::save listed), "deepseek-v9")
     labelsAbsent (shown, ["DeepSeek Reasoner", "DeepSeek Chat"])
@@ -723,7 +784,7 @@ testing ("the provider's own API names the models, the pickers cascade and every
     savedKey = zaiKeySaved listed
     expectAskedKinds (savedKey, "store-write,http", 1, "url", "https://api.z.ai/api/paas/v4/models")
     zai = modelsSettled (savedKey.stepStore, "zai", 200, modelsList ["glm-9"])
-    expectTrue (shows (zai, View::composer, "zai/glm-9"))
+    expectTrue (offers (composerWalk zai, "zai/glm-9"))
     // Settings cascades from the same answer: provider, then its live models, then that model's effort.
     settingsOpen = (acted (zai, agentapp::OpenSettings)).stepStore
     picked = expectDefaultPicked (settingsOpen, agentapp::PickProvider, "zai", "zai/glm-9")
@@ -831,18 +892,18 @@ testing ("the composer lists keyed providers' models and an Add an API key butto
     noKey = composerOf (launchedStore ())
     expectDraws (noKey, "Add an API key")
     expectNotDraws (noKey, "Send")
-    labelsShown (composerOf (Drive::started ()), ["Send", "Model"]))
+    labelsShown (composerWalk (Drive::started ()), ["Send", "Model"]))
 
 testing ("no key says what is wrong in words, never as a lone lock", \() =>
     noKey = composerOf (launchedStore ())
     // A lock symbol, and a bare symbol with no words beside it, are what the composer never falls back to.
-    labelsAbsent (noKey, ["lock"])
+    labelsAbsent (composerWalk (launchedStore ()), ["lock"])
     expectFalse (loneGlyph noKey)
     expectDraws (noKey, "No API key for DeepSeek. Add one to send.")
     // With a key the one action is Send, its symbol carried as the hint the host draws, and no missing-key words.
     keyed = composerOf (Drive::started ())
     expectHint (keyed, "Send", "send")
-    expectOmits (keyed, "No API key for"))
+    expectOmits (composerWalk (Drive::started ()), "No API key for"))
 
 testing ("a launch with no key file argument finds the key file kept in the app's own store", \() =>
     first = App::initial (contextAt (100, []))
@@ -858,7 +919,7 @@ recoversFrom status =
     shown = composerOf typed
     expectDraws (shown, "Send")
     expect ((Views::control (shown, "Send")).controlEnabled, true)
-    labelsAbsent (shown, ["lock"])
+    labelsAbsent (composerWalk typed, ["lock"])
     again = Drive::typing (failed, "Again\n")
     expectStage (again, "http", "thinking")
     expect ((Model::active again.stepStore).chatProblem, "")
@@ -1067,7 +1128,7 @@ testing ("no MCP documents at all is no problem and no servers", \() =>
     // The first server has to be addable: the form shows with no servers and no problems.
     launched = launchedStore ()
     onTab = acted (launched, agentapp::ShowSettingsTab(tabKey = "mcp"))
-    labelsShown (Drive::showing (onTab.stepStore, View::settings), ["No MCP servers yet", "ADD SERVER", "Paste JSON"]))
+    labelsShown (Drive::walked (onTab.stepStore, View::settings), ["No MCP servers yet", "Add server", "Paste JSON"]))
 
 // The demo server's whole connect handshake, every request checked, ending on the connected read.
 mcpHandshake () =
@@ -1155,7 +1216,7 @@ testing ("remove stops the process, rewrites mcp.json and takes the tools out of
 testing ("the add form validates in words, paste is atomic, broken files report words and secrets stay in mcp.json", \() =>
     started = mcpLaunched ()
     named = typedInto (started.stepStore, agentapp::McpName, "demo")
-    expectMcpTab (named.stepStore, "ADD SERVER")
+    expectMcpTab (named.stepStore, "Add server")
     named2 = typedInto (named.stepStore, agentapp::McpName, "weather")
     commanded = typedInto (named2.stepStore, agentapp::McpCommand, "python3")
     added = typedAdded ((typedInto (commanded.stepStore, agentapp::McpArguments, "server.py")).stepStore, agentapp::McpEnvironment, "KEY=mcp-env-secret")
