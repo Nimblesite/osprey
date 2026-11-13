@@ -2,7 +2,7 @@
 layout: page.njk
 title: "Desktop Apps on GPUI, Written in Osprey"
 excerpt: "Osprey Native now has a GPUI host: the application is Osprey, Zed's Rust UI framework draws it with the GPU. A boids game holds 120 fps on an M4 Max, and a port of GPUI's painting example matches the Rust original pixel for pixel."
-description: "How an Osprey application runs in a GPUI window through Osprey Native: the two-function C boundary, scenes and paths as data, the frame clock, measured frame rates, and how this differs from Osprey's GPU compute surface."
+description: "How an Osprey application runs in a GPUI window through Osprey Native: the C boundary, scenes and paths as data, the frame clock, measured frame rates, and how this differs from Osprey's GPU compute surface."
 date: 2026-10-27
 tags: ["blog", "gpui", "osprey-native", "desktop", "rust", "gpu"]
 author: "Christian Findlay"
@@ -23,7 +23,7 @@ Two examples run on it today, on macOS:
 
 ## Two functions across the boundary
 
-The Osprey compiler builds the application as a static library. The Rust host links it and calls two exported functions:
+The Osprey compiler builds the application as a static library. The Rust host links it; when this was written, it called the two exported functions below — an envelope exchange that the shared-memory frame of [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md) has since replaced:
 
 ```c
 const char *start(const char *context);
@@ -46,9 +46,9 @@ dispatch (saved, event) =
     Runtime::dispatch (saved, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, \doc => App::restore doc)
 ```
 
-Each call returns an envelope: an opaque session string for the host to pass back, the regions of the screen whose signals changed, any capability requests (read a file, start the frame clock) and diagnostics. The host draws the regions and sends back events by the ids Osprey issued. A button press reaches `update` as the typed action the button was built with. The host never sees an action, a score or a rule.
+Each call returned an envelope: an opaque session string for the host to pass back, the regions of the screen whose signals changed, any capability requests (read a file, start the frame clock) and diagnostics. The host drew the regions and sent back events by the ids Osprey issued. A button press reaches `update` as the typed action the button was built with. The host never sees an action, a score or a rule.
 
-Because `update` is pure, the tests drive the real `start`/`dispatch` path with fixture events and check the envelopes. Flock has 13 tests and an [`osprey hunt`](/blog/2026-10-25-symbolic-execution-osprey-hunt/) harness over its rules. None of them needs a window.
+Because `update` is pure, the tests drove the real `start`/`dispatch` path with fixture events and checked the envelopes. Flock has 13 tests and an [`osprey hunt`](/blog/2026-10-25-symbolic-execution-osprey-hunt/) harness over its rules. None of them needs a window.
 
 ## Scenes are data
 
@@ -66,8 +66,8 @@ Flock animates by asking for the host's frame clock with an `Animate` capability
 
 Getting to the display rate took profiling. The first version spent 7.3 ms of Osprey time per frame at a thousand birds, and over half of a frame went to copying neighbour lists. `osprey --profile` pointed at the hot spots, and a sorted spatial grid brought a thousand birds to the display rate. Five thousand birds still cost 29 ms of dispatch a frame, for three reasons, each with its own fix:
 
-- **The session round trip.** Every call parsed the opaque state, restored the store, then saved and re-encoded it. A *resident session* keeps the `Session` in a file-scope cell of the application's boundary file, and `Runtime::proceed` takes and returns it as a value; the envelope's state is just the marker `"resident"`.
-- **The scene as JSON.** Five thousand discs became five thousand JSON arrays, every float was spelled as text, and the host parsed 300 KB a frame. The *scene stream* sends each rect, disc and sprite to the host through one `extern` call instead, so the envelope is 1.7 KB.
+- **The session round trip.** Every call parsed the opaque state, restored the store, then saved and re-encoded it. A *resident session* keeps the `Session` in a file-scope cell of the application's boundary file, and `Runtime::proceed` takes and returns it as a value; the envelope's state was just the marker `"resident"`.
+- **The scene as JSON.** Five thousand discs became five thousand JSON arrays, every float was spelled as text, and the host parsed 300 KB a frame. The *scene stream* sends each rect, disc and sprite to the host through one `extern` call instead, so the envelope was 1.7 KB.
 - **Allocation in the inner loop.** Each neighbour visit built a record. Each bird now steers by its first seven flockmates, the rule real starlings follow, in a walk that carries its sums as arguments and allocates once per bird.
 
 The framework's own share of a 5,000-sprite frame went from 14.7 ms to under 1 ms. I also tried moving the steering onto Osprey's GPU compute surface. It was slower, because Metal emulates 64-bit floats, so it stayed on the CPU.

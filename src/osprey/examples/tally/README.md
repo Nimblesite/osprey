@@ -1,6 +1,6 @@
 # Tally
 
-The smallest Osprey Native application with no JSON bridge. Its whole interface (layout, text, both colour schemes) is one pure Osprey function, and it reaches the host as rows in memory the host reads in place. Read [shared-memory views](../../../../docs/specs/applications/0053-NativeSharedViews.md) for how and why.
+The smallest Osprey Native application. Its whole interface (layout, text, both colour schemes) is one pure Osprey function, and it reaches the host as rows in memory the host reads in place. Read [shared-memory views](../../../../docs/specs/applications/0053-NativeSharedViews.md) for how and why.
 
 | File | What it shows |
 | --- | --- |
@@ -19,7 +19,7 @@ make -C src/toolchain/targets/macos tally                  # open it in a SwiftU
 make -C src/toolchain/targets/windows tally                # open it in a WinUI window (on Windows)
 ```
 
-The reference host ends with `[ok] tally reference host: 9 views read in place from shared memory`; the SwiftUI check prints `PASSED`.
+The reference host ends with `[ok] tally reference host: 13 views read in place from shared memory`; the SwiftUI check prints `PASSED`.
 
 ## Hosts
 
@@ -27,6 +27,6 @@ The reference host ends with `[ok] tally reference host: 9 views read in place f
 | --- | --- | --- |
 | Reference (C) | [`host/reference.c`](host/reference.c) | Runs end to end on macOS. |
 | SwiftUI | [`hosts/swift/Sources/OspreyShared`](../../../toolchain/hosts/swift/Sources/OspreyShared) | Headless check passes on macOS; the window has not been verified by a test yet. |
-| WinUI | [`hosts/winui/OspreyHost/SharedViewPage.cs`](../../../toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) | Compiles and its row-reader tests pass; not yet run on Windows. |
+| WinUI | [`hosts/winui/OspreyHost/SharedViewPage.cs`](../../../toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) | Opens on Windows (`make -C src/toolchain/targets/windows tally`); the host's row-reader tests also run on macOS. |
 
 No host holds any style, so Tally is restyled by editing `src/app.ospml` alone.

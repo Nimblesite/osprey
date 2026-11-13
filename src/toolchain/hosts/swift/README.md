@@ -1,6 +1,6 @@
 # SwiftUI host
 
-A macOS host for [Osprey Native](../../../osprey/packages/native/README.md) applications ([NATIVE-HOSTS-FAMILY](../../../../docs/specs/applications/0047-OspreyNativeHosts.md)). It links an application's C ABI archive, leases the frame it writes into shared memory, checks every row and draws it in place — no JSON, no parse, no copy, and no colour, font or padding of its own. It holds no application logic.
+A macOS host for [Osprey Native](../../../osprey/packages/native/README.md) applications ([NATIVE-HOSTS-FAMILY](../../../../docs/specs/applications/0047-OspreyNativeHosts.md)). It links an application's C ABI archive, leases the frame it writes into shared memory, checks every row and draws it in place — no JSON, no parse, no copy, and no colour, font or padding of its own. [Shared-memory views](../../../../docs/specs/applications/0053-NativeSharedViews.md) explains the frame end to end. It holds no application logic.
 
 ```sh
 src/toolchain/hosts/swift/view.sh                                   # Tally, in a window

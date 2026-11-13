@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** four hosts run in this repository, all over the one shared-frame boundary: the GPUI desktop host on macOS and Android ([0046](../platforms/0046-GpuiDesktopHost.md)), the SwiftUI host on macOS ([`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md)), the WinUI host on Windows ([0048](../platforms/0048-WinUiHost.md)) and the VS Code webview host ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). There is no other boundary: the JSON envelopes, event documents and saved session strings of the bridge this replaced are deleted from the code. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
+**Status:** four hosts run in this repository, all over the one shared-frame boundary ([0053](0053-NativeSharedViews.md)): the GPUI desktop host on macOS and Android ([0046](../platforms/0046-GpuiDesktopHost.md)), the SwiftUI host on macOS ([`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md)), the WinUI host on Windows ([0048](../platforms/0048-WinUiHost.md)) and the VS Code webview host ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). There is no other boundary in the code. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -39,6 +39,7 @@ Every host, native or web, drives the same three exports over the shared frame (
 | GPUI | GPU primitives via GPUI | C ABI archive | macOS and Android; Linux and Windows have library targets and CI | [`src/toolchain/hosts/gpui`](../../../src/toolchain/hosts/gpui) | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running |
 | SwiftUI | SwiftUI views, SF Symbols | C ABI archive | macOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running |
 | WinUI | WinUI controls, Segoe Fluent Icons | C ABI DLL | Windows | [`src/toolchain/hosts/winui`](../../../src/toolchain/hosts/winui) | [spec 0048](../platforms/0048-WinUiHost.md), running |
+| Android | — | — | Android | `src/toolchain/hosts/android` | being built |
 | Webview | HTML, CSS, Codicons | WebAssembly | VS Code on every desktop | [`osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WebAssembly in a worker | any browser | planned, extracted from the webview host | not started |
 
@@ -74,7 +75,7 @@ Storage's Apple-only requests are `HostCall`s only the in-repo SwiftUI host answ
 
 ## The shared frame [NATIVE-SHM]
 
-This is the boundary the code has. An application keeps its session in the library, and every call writes one whole frame — view rows, scene rows, one UTF-8 text run and ask rows — into bridge storage, which the host seals, leases and reads in place when the call returns. Nothing crosses as text in a format in either direction: no envelope, no event document and no saved session.
+This is the boundary the code has; [0053](0053-NativeSharedViews.md) explains it end to end. An application keeps its session in the library, and every call writes one whole frame — view rows, scene rows, one UTF-8 text run and ask rows — into bridge storage, which the host seals, leases and reads in place when the call returns. Nothing crosses as text in a format in either direction: no event document and no saved session.
 
 ```mermaid
 sequenceDiagram
