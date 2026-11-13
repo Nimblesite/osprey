@@ -6,6 +6,7 @@ namespace agentapptests
 
 import ui::Doc
 import ui::Lists
+import ui::Themes
 import ui::Requests
 import ui::Runtime
 import uitest::Read
@@ -405,6 +406,18 @@ wordsOf walk = Lists::flatten (mapList (Lists::flatten (mapList (Read::trees wal
 // Whether the told rows `walk` was sent draw something inked with the token `name`, a rich run or a frame's style ([NATIVE-SHM-NODES]).
 drawsInk (walk, name) = Lists::any (Read::trees walk, \tree => Lists::any (Read::under tree, \told => Read::words (Read::inside told, "ink") == name))
 
+// Every ink code is drawn with: the two frames' own, and one per highlight kind.
+codeInks = ["primary", "secondary", "codeKeyword", "codeString", "codeComment", "codeNumber", "codeFunction", "codeType", "codeBuiltin", "codeMeta", "codeInserted", "codeRemoved"]
+
+toned (name, work) = match ui::Themes::named (App::theme (), name)
+    Error _ => expect (name, "a theme token")
+    Success tone => work tone
+
+// Expect the ink `name` to read on the code fill at 4.5:1, in light and in dark ([UI-THEME]).
+readsOnCode name = toned ("codeFill", \fill => toned (name, \ink =>
+    expectTrue (ui::Contrast::ratio (fill.tokenLight, ink.tokenLight) >= 4.5)
+    expectTrue (ui::Contrast::ratio (fill.tokenDark, ink.tokenDark) >= 4.5)))
+
 // Whether `seen` draws a bare glyph: a button or a label carrying a symbol and no words.
 loneGlyph seen = Lists::any (seen.renderedControls, \one => (one.controlKind == "button" || one.controlKind == "label") && one.controlText == "" && one.controlHint != "")
 
@@ -630,12 +643,13 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
     file = written done
     expectSays (file, "Done.", "sk-test"))
 
-testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
+testing ("a fenced python block draws as a rich node of coloured runs, more than one ink, each readable on the code fill", \() =>
     replied = answeredTurn ("Show the code\n", 200, codeReply)
     walk = Drive::walked (replied.stepStore, View::transcript)
     expectTrue (Lists::any (wordsOf walk, \words => words == "def"))
     expectTrue (Lists::any (wordsOf walk, \words => contains words "\n"))
-    forEachList (["codeKeyword", "codeString", "codeComment", "codeNumber"], \name => expectTrue (drawsInk (walk, name))))
+    forEachList (["codeKeyword", "codeString", "codeComment", "codeNumber"], \name => expectTrue (drawsInk (walk, name)))
+    forEachList (codeInks, readsOnCode))
 
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     calling = callingAfter "Go\n"
