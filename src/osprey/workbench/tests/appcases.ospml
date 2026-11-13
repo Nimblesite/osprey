@@ -56,6 +56,8 @@ module AppCases
         expect (check (typed (Drive::started (), swapped ())), "rejected at 5")
         expect (check (typed (Drive::started (), "Theorem and_swap. For all p q, p ∧ q → q ∧ p.\nProof.\nAssume h : p ∧ q.\nBy cases on h, as hp and hq.\nIt suffices to show q and p.\nFrom hq.\nFrom hp.")), "checked at -1")
 
+    (** The control number the retired board's host still names: no binding this app issues carries it. *)
+    retired () = 9998
     (** A stroke value an old board host could still send; the retired region must refuse it. *)
     stroke () = "{\"points\":[[1,2],[30,40]],\"width\":2,\"at\":5}"
     (** [WORKBENCH-DOCUMENT] The current document reopens through the real host file flow. *)
@@ -66,16 +68,16 @@ module AppCases
         loaded = reopened (typed (Drive::started (), "Theorem t. For all p, p → p."))
         unwritten loaded
         intact (loaded, "Theorem t. For all p, p → p.")
-        refused = Drive::stray (loaded, 0, stroke ())
+        refused = Drive::stray (loaded, retired (), stroke ())
         undrawn refused
         unwritten refused
         unasked refused
-        expect (diagnostics refused, "Stale control: region board revision 0 is not current")
+        expect (diagnostics refused, "Unknown control ${retired ()}")
         intact (refused, "Theorem t. For all p, p → p.")
 
     (** The diagnostics a host was told about, so a refusal is visible rather than silent. *)
     diagnostics envelope = Drive::problem envelope
-    export lassoed first = Drive::stray (first, 1, "[0]")
+    export lassoed first = Drive::stray (first, retired (), "[0]")
 
     (** [UI-EFFECTS-RECOGNISE] The retired board asks for no recognition, offers no review control, and a stray ink completion changes no document and no verdict. *)
     export lasso () =
@@ -83,7 +85,7 @@ module AppCases
         asked = lassoed written
         unasked asked
         unwritten asked
-        expect (diagnostics asked, "Stale control: region board revision 0 is not current")
+        expect (diagnostics asked, "Unknown control ${retired ()}")
         absent (regionJson (written, "document"), ["Use this statement"])
         replied = Drive::completed (asked, "ink:1", "{\"text\":\"Theorem t. For all p, p → p.\"}")
         undrawn replied

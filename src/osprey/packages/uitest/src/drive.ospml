@@ -8,6 +8,7 @@ namespace uitest
 import ui::Hosting
 import ui::Surfaces
 import ui::Runtime
+import ui::Lists
 
 (** One live surface as a test drives it: the surface, its program, what it last showed and the host clock. *)
 type Driven S A =
@@ -49,7 +50,12 @@ module Drive
     export press (d, label) = sent (d, touch (d, Hosting::control, numbered (d, label), "", "", 0.0, 0.0, false, false))
 
     (** `words` typed into, or a key chosen on, the control labelled `label`. *)
-    export choose (d, label, words) = sent (d, touch (d, Hosting::control, numbered (d, label), words, "", 0.0, 0.0, false, false))
+    export choose (d, label, words) = sent (d, touch (d, Hosting::control, valued (d, label), words, "", 0.0, 0.0, false, false))
+
+    // The control `label` names that takes a value, ahead of a heading or press with the same words.
+    valued (d, label) = match Lists::find (Views::labelled (d.drivenSeen, label), \c => Lists::any (["entry", "editor", "picker", "toggle"], \kind => kind == c.controlKind))
+        Success found => found.controlOrdinal
+        Error _ => numbered (d, label)
 
     (** A pointer at `x`, `y` on the scene, pressed or released. *)
     export pointer (d, x, y, down) = sent (d, touch (d, Hosting::pointer, d.drivenSeen.renderedOrdinal, "", "", x, y, down, false))

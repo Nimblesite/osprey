@@ -126,8 +126,9 @@ module Drive
         prior = bench before
         next = heldIn (before.caseHeld, \() => gesture before.caseDriven)
         store = next.drivenSurface.surfaceSession.sessionStore
-        regions = heldIn (before.caseHeld, \() => next.drivenProgram.programRender (prior, store, before.caseFrames, next.drivenSurface.surfaceWritten))
-        before(caseDriven = next, caseHeld = merged (before.caseHeld, next.drivenSurface.surfaceWritten), caseFrames = mapList (regions, signalFrame), caseDrawn = mapList (filterList (regions, \region => redrew region.snapshotValue), \region => region.snapshotKey))
+        after = merged (before.caseHeld, next.drivenSurface.surfaceWritten)
+        regions = heldIn (after, \() => next.drivenProgram.programRender (prior, store, before.caseFrames, next.drivenSurface.surfaceWritten))
+        before(caseDriven = next, caseHeld = after, caseFrames = mapList (regions, signalFrame), caseDrawn = mapList (filterList (regions, \region => redrew region.snapshotValue), \region => region.snapshotKey))
 
     // The store the session carries ([WORKBENCH-STORE]), typed.
     export bench case = case.caseDriven.drivenSurface.surfaceSession.sessionStore
