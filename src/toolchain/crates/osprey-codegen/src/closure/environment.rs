@@ -167,8 +167,7 @@ pub(crate) fn within<T>(
     };
     let cells = cg
         .lambda_def(name)
-        .map(|(_, body, _)| crate::effects::captured_mut_vars(body))
-        .unwrap_or_default();
+        .map_or_default(|(_, body, _)| crate::effects::captured_mut_vars(body));
     behind_barrier(cg, &env, cells, emit)
 }
 

@@ -181,7 +181,7 @@ fn verdict_report(state: &str) -> Result<(&'static str, bool)> {
 /// spells it, or `None` when it carries no payload. A state with several fields
 /// has no one reason to report, so say that rather than silently picking one.
 fn verdict_reason(cg: &Codegen, state: &str) -> Result<Option<String>> {
-    let fields = cg.ctor_layout(state).map(|c| c.fields).unwrap_or_default();
+    let fields = cg.ctor_layout(state).map_or_default(|c| c.fields);
     match fields.as_slice() {
         [] => Ok(None),
         [(only, _)] => Ok(Some(only.clone())),

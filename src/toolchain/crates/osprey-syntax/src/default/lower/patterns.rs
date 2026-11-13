@@ -46,8 +46,7 @@ impl Lowerer<'_> {
             "structural_pattern" => Pattern::Structural {
                 fields: self
                     .first_child_of_kind(inner, "field_pattern")
-                    .map(|fp| self.field_pattern_names(fp))
-                    .unwrap_or_default()
+                    .map_or_default(|fp| self.field_pattern_names(fp))
                     .into_iter()
                     .map(|f| (f.clone(), f))
                     .collect(),
@@ -128,8 +127,7 @@ impl Lowerer<'_> {
     // ---- small node helpers ----
     pub(crate) fn field_text(&self, node: Node<'_>, field: &str) -> String {
         node.child_by_field_name(field)
-            .map(|n| self.text(n))
-            .unwrap_or_default()
+            .map_or_default(|n| self.text(n))
     }
 
     #[expect(

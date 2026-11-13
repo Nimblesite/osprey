@@ -186,15 +186,12 @@ fn a_watchdog_kill_at_the_budget_is_a_cut_run_not_a_tool_error() {
     assert_eq!(code, ExitCode::FAILURE, "the finding still counts");
     let value = json(&rendered);
     assert_eq!(value["findings"][0]["class"], "memory");
-    let reasons: Vec<&str> = value["incomplete"]
-        .as_array()
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| item["reason"].as_str())
-                .collect()
-        })
-        .unwrap_or_default();
+    let reasons: Vec<&str> = value["incomplete"].as_array().map_or_default(|items| {
+        items
+            .iter()
+            .filter_map(|item| item["reason"].as_str())
+            .collect()
+    });
     assert!(reasons.contains(&engine::HALTED_REASON), "{reasons:?}");
 }
 

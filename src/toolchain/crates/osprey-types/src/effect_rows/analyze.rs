@@ -274,8 +274,7 @@ impl Analyzer<'_> {
                 None => self.call(function, ExprArgs::new(arguments), named_arguments, scope, env),
             },
             Expr::MethodCall { .. } => crate::methods::parts(expression)
-                .map(|parts| self.method_call(expression, &parts, scope, env))
-                .unwrap_or_default(),
+                .map_or_default(|parts| self.method_call(expression, &parts, scope, env)),
             Expr::Match { value, arms } => {
                 let mut out = self.expression(value, scope, env);
                 let matched = self.value(value, scope, env);

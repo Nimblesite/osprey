@@ -958,7 +958,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         TripleAnswers {
             first: a * 1000000 + b * 10000 + c * 100 + d,
             second: y,
-            third: v * 10 + fiberDone(f)
+            third: v * 10 + fiberDone(f) 
         }
     }
     let piped = staged.first

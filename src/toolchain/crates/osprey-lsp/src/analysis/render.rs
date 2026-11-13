@@ -277,7 +277,7 @@ pub(super) fn let_sym(
         name: name.into(),
         source_name: name.into(),
         kind: SymbolKind::Variable,
-        ty: ty.map(render_type).unwrap_or_default(),
+        ty: ty.map_or_default(render_type),
         position,
         signature: None,
         binder: String::new(),
@@ -309,12 +309,7 @@ pub(super) fn decl_sym(name: &str, ty: &str, position: Option<Position>) -> Symb
 pub(super) fn param_pairs(params: &[Parameter]) -> Vec<(String, String)> {
     params
         .iter()
-        .map(|p| {
-            (
-                p.name.clone(),
-                p.ty.as_ref().map(render_type).unwrap_or_default(),
-            )
-        })
+        .map(|p| (p.name.clone(), p.ty.as_ref().map_or_default(render_type)))
         .collect()
 }
 

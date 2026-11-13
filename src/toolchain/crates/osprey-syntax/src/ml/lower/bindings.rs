@@ -187,7 +187,7 @@ pub(in crate::ml) fn build_function_flat(
     pos: Position,
     signature_position: Option<Position>,
 ) -> (Vec<Parameter>, Expr, Option<TypeExpr>) {
-    let spine = expand_tuple_head(sig.map(arrow_spine).unwrap_or_default(), params.len());
+    let spine = expand_tuple_head(sig.map_or_default(arrow_spine), params.len());
     let consumed = params.len();
     let body = params.iter().enumerate().rev().fold(body, |body, (i, p)| {
         inline_param_constraint(Some(p), i, curry_position(pos, i), sig.is_some(), body)
@@ -239,7 +239,7 @@ pub(in crate::ml) fn build_function(
     pos: Position,
     signature_position: Option<Position>,
 ) -> (Vec<Parameter>, Expr, Option<TypeExpr>) {
-    let spine = sig.map(arrow_spine).unwrap_or_default();
+    let spine = sig.map_or_default(arrow_spine);
     let mut rest = params.into_iter();
     let first = rest.next();
     // `()` (unit marker) or no parameter binds nothing.

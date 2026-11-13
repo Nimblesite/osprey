@@ -376,18 +376,15 @@ fn emit_function_body(
 ) -> Result<()> {
     // Record any function-typed parameters so a call through one lowers to an
     // indirect call (the higher-order `f(x)` in `fn apply(f, x) = f(x)`).
-    let fn_ptr_params: Vec<(String, osprey_types::Type)> = cg
-        .prog
-        .param_types(name)
-        .map(|ptys| {
+    let fn_ptr_params: Vec<(String, osprey_types::Type)> =
+        cg.prog.param_types(name).map_or_default(|ptys| {
             parameters
                 .iter()
                 .zip(ptys)
                 .filter(|(_, t)| matches!(t, osprey_types::Type::Fun { .. }))
                 .map(|(p, t)| (p.name.clone(), t.clone()))
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     for (n, t) in fn_ptr_params {
         cg.bind_fn_local(&n, t);
     }

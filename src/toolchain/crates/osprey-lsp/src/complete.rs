@@ -248,14 +248,13 @@ fn fields_of(types: &ProgramTypes, owner: &str) -> Vec<CompletionItem> {
         .ctors
         .values()
         .find(|layout| layout.owner == owner)
-        .map(|layout| {
+        .map_or_default(|layout| {
             layout
                 .fields
                 .iter()
                 .map(|(name, ty)| field_item(name, ty))
                 .collect()
         })
-        .unwrap_or_default()
 }
 
 /// A type's name without its arguments: the layout table is keyed by the

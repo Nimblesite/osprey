@@ -213,8 +213,7 @@ fn manifest_list(manifest: &str, key: &str) -> Vec<String> {
         .lines()
         .find_map(|line| line.strip_prefix(&format!("{key} = [")))
         .and_then(|rest| rest.strip_suffix(']'))
-        .map(quoted_items)
-        .unwrap_or_default()
+        .map_or_default(quoted_items)
 }
 
 fn exports(source: &str) -> Vec<String> {
@@ -272,9 +271,7 @@ fn unexercised_exports(package: &Path) -> Vec<String> {
 fn every_public_export_of_every_ported_package_is_exercised_by_its_suite() {
     let problems: Vec<String> = suites()
         .iter()
-        .flat_map(|suite| {
-            unexercised_exports(&suite.parent().map(Path::to_path_buf).unwrap_or_default())
-        })
+        .flat_map(|suite| unexercised_exports(&suite.parent().map_or_default(Path::to_path_buf)))
         .collect();
     assert!(
         problems.is_empty(),
@@ -374,7 +371,7 @@ fn assert_python_files_marked(package: &Path) {
 #[test]
 fn every_ported_package_is_a_publishable_python_flavor_package() {
     for suite in suites() {
-        let package = suite.parent().map(Path::to_path_buf).unwrap_or_default();
+        let package = suite.parent().map_or_default(Path::to_path_buf);
         let manifest = std::fs::read_to_string(package.join("osprey.toml")).unwrap_or_default();
         assert!(
             manifest.contains("[package]") && manifest.contains("name = \"@osprey/"),

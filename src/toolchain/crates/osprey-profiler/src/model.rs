@@ -84,8 +84,7 @@ impl Model {
     pub(crate) fn root_first(&self, stack: usize) -> Vec<usize> {
         self.stacks
             .get(stack)
-            .map(|ids| ids.iter().rev().copied().collect())
-            .unwrap_or_default()
+            .map_or_default(|ids| ids.iter().rev().copied().collect())
     }
 }
 

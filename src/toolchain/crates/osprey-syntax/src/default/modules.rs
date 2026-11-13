@@ -31,14 +31,12 @@ impl Lowerer<'_> {
         let target = node.child_by_field_name("target");
         let namespace_node = target.and_then(|target| target.child_by_field_name("namespace"));
         let namespace = self.lower_namespace_name(namespace_node);
-        let all_identifiers: Vec<String> = target
-            .map(|target| {
-                self.descendants_of_kind(target, "identifier")
-                    .into_iter()
-                    .map(|identifier| self.text(identifier))
-                    .collect()
-            })
-            .unwrap_or_default();
+        let all_identifiers: Vec<String> = target.map_or_default(|target| {
+            self.descendants_of_kind(target, "identifier")
+                .into_iter()
+                .map(|identifier| self.text(identifier))
+                .collect()
+        });
         let path = match namespace {
             NamespaceName::Identifier(_) => SymbolPath::new(all_identifiers.into_iter().skip(1)),
             NamespaceName::Quoted(_) => SymbolPath::new(all_identifiers),
@@ -161,16 +159,15 @@ impl Lowerer<'_> {
                 position: Some(self.pos(item)),
             },
             "signature_function" => {
-                let parameters = item
-                    .child_by_field_name("parameters")
-                    .map(|parameters| {
-                        self.named_of_kind(parameters, "extern_parameter")
-                            .into_iter()
-                            .filter_map(|parameter| parameter.child_by_field_name("type"))
-                            .map(|ty| self.lower_type(ty))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let parameters =
+                    item.child_by_field_name("parameters")
+                        .map_or_default(|parameters| {
+                            self.named_of_kind(parameters, "extern_parameter")
+                                .into_iter()
+                                .filter_map(|parameter| parameter.child_by_field_name("type"))
+                                .map(|ty| self.lower_type(ty))
+                                .collect()
+                        });
                 let (effects, effect_tail) =
                     self.lower_effect_row(item.child_by_field_name("effects"));
                 SignatureItem::Function {
