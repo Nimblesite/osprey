@@ -308,10 +308,10 @@ pairDiffers (m, pair) = valueOr (m, (listGet pair 0 ?: ""), (0 - 999)) != valueO
     binding under [BUILTIN-MAP-SET], and [BUILTIN-MAP-KEYS] must report each once. *)
 keyShapeCase () =
     shaped = ["" => 0, "a" => 1, "A" => 2, " " => 3, " a" => 4, "a " => 5, "a b" => 6, "a.b" => 7, "a-b" => 8, "a_b" => 9, "007" => 10, "7" => 11]
+    shapes = ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"]
     longKey = "abcdefghijklmnopqrstuvwxyz0123456789abcd"
     longKeyPrefix = "abcdefghijklmnopqrstuvwxyz0123456789abc"
     shapedLong = mapSet shaped longKey 12
-    shapes = ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"]
     gap = " "
 
     // Twelve literal keys carry values 0..11 in declaration order and the long
