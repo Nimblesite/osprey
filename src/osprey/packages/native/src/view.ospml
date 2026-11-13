@@ -229,7 +229,7 @@ module Views
         handle ViewStream
             place drawn => osp_native_view_row (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
             size fitting => osp_native_view_extend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
-            sketch drawn => Streams::write (Streams::rows (drawn.sketchedRow, drawn.sketchedAs))
+            sketch drawn => Streams::write (drawn.sketchedRow, drawn.sketchedAs)
             ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
         work ()
 

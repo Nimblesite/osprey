@@ -98,14 +98,21 @@ module Streams
 
     announced e = [etch (element, roleCode e.accessRole, e.accessLeft, e.accessTop, e.accessWidth, e.accessHeight, e.accessValue, bit e.accessSelected + 2 * bit e.accessMovable, 0, e.accessLabel), bare (point, 0, e.accessMin, e.accessMax, 0.0, 0.0)]
 
-    (** Every scene row of `sketch` drawn on the canvas at view row `row`: its marker, atlas, shapes and accessible elements. *)
-    export rows : (int, Sketch) -> List<Etch>
-    rows (row, sketch) =
-        marker = bare (scene, row, sketch.sketchWidth, sketch.sketchHeight, sketch.sketchZoom, 0.0)
-        atlas = mapList (sketch.sketchAtlas, \name => etch (atlasEntry, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, name))
-        drawn = Lists::flatten (mapList (sketch.sketchShapes, etches))
-        listConcat [marker] (listConcat atlas (listConcat drawn (Lists::flatten (mapList (sketch.sketchAccess, announced)))))
+    marker (row, sketch) = bare (scene, row, sketch.sketchWidth, sketch.sketchHeight, sketch.sketchZoom, 0.0)
 
-    (** Writes `rows` into the shared frame; nonzero once the frame refused one. *)
-    export write : List<Etch> -> int
-    write rows = foldList (rows, 0, \(refused, e) => satAdd refused (osp_native_scene_shape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText)))
+    named name = etch (atlasEntry, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0, name)
+
+    (** Every scene row of `sketch` drawn on the canvas at view row `row`: its marker, atlas, shapes and accessible elements, as a reader sees them. *)
+    export rows : (int, Sketch) -> List<Etch>
+    rows (row, sketch) = Lists::flatten (listConcat (listConcat [[marker (row, sketch)]] (mapList (sketch.sketchAtlas, \name => [named name]))) (listConcat (mapList (sketch.sketchShapes, etches)) (mapList (sketch.sketchAccess, announced))))
+
+    sent e = osp_native_scene_shape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText)
+
+    each etched = foldList (etched, 0, \(refused, e) => satAdd refused (sent e))
+
+    (** Writes the rows of `sketch` at view row `row` into the shared frame, one shape at a time, in the order `rows` lists them; nonzero once the frame refused one. *)
+    export write : (int, Sketch) -> int
+    write (row, sketch) =
+        head = satAdd (sent (marker (row, sketch))) (each (mapList (sketch.sketchAtlas, named)))
+        drawn = foldList (sketch.sketchShapes, head, \(refused, shape) => satAdd refused (each (etches shape)))
+        foldList (sketch.sketchAccess, drawn, \(refused, e) => satAdd refused (each (announced e)))
