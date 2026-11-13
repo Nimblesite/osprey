@@ -15,8 +15,6 @@ import ui::Maths
 import ui::Views
 import ui::Surfaces
 import ui::Hosting
-import ui::Lower
-import ui::LowerLeaves
 import ui::Keyed
 import ui::Boards
 import ui::Scenes
@@ -41,11 +39,9 @@ test ("mathematics encodes every layout variant without flattening", \() => ui::
 test ("mathematics keeps accessibility text and consumes no control ordinal", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)])
     binds (walked, 2)
-    expect (kindAt (walked, 2), Views::label)
-    expect (wordsAt (walked, 2), "α < 2 \"quoted\"\n")
-    unbound (walked, 2)
-    expect (actionAt (walked, 1), 0)
-    expect (actionAt (walked, 3), 1)))
+    // The typeset node is told as one leaf carrying the whole tree and its spoken text, and takes no ordinal.
+    expect (spelled (toldOf (Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
+    expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
@@ -56,23 +52,6 @@ tree () = Ui::column [
 
 // `walked` binds exactly `count` controls.
 binds (walked, count) = expect (length walked.walkBound, count)
-
-// The press rows of `walked`, each written by `shown`, in drawing order.
-pressed (walked, shown) = join (mapList (filterList (walked.walkRows, \r => r.placedKind == Views::press), shown)) ","
-
-// The control numbers of every press row, in drawing order.
-pressActions walked = pressed (walked, \r => "${r.placedAction}")
-
-// The words of every press row, in drawing order.
-pressWords walked = pressed (walked, \r => r.placedWords)
-
-// The press rows of `walked`: their words and their control numbers.
-pressRows (walked, words, actions) =
-    expect (pressWords walked, words)
-    expect (pressActions walked, actions)
-
-// Every row that delivers a binding, as `kind@control number`, in drawing order.
-acting walked = join (mapList (filterList (walked.walkRows, \r => r.placedAction >= 0), \r => "${r.placedKind}@${r.placedAction}")) ","
 
 // What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
 said (binding, words) = match Surfaces::told (binding, words)
@@ -122,47 +101,52 @@ surfaceTally (held, tally) = expect (held.surfaceSession.sessionStore.counter.ta
 // The words of every row `held` draws, `|`-separated.
 walkedWords held = join (mapList ((Probes::seen held).walkRows, \r => r.placedWords)) "|"
 
-// The row `index` of `walked` takes no binding.
-unbound (walked, index) = expect (actionAt (walked, index), Views::none)
-
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
 revealed () = Ui::layer [Ui::disclosure ("Limits", true, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
 test ("a disclosure takes its ordinal before the controls it reveals", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (revealed ())
     binds (walked, 2)
-    expect (kindAt (walked, 1), Views::column)
-    pressRows (walked, "Limits,Go", "0,1")))
+    expect (spelled (childTold (toldOf (revealed ()), 0)), "{kind=\"disclosure\",title=\"Limits\",expanded=?true,event=#0,children=[{kind=\"label\",label=\"Scope\",symbol=\"info\"},{kind=\"spacer\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (revealed (), 0, ui::FlagInput(action = Load)), true)
+    expect (deliversBinding (revealed (), 1, ui::Tap(action = Increment)), true)))
 test ("a screen's toolbar controls take ordinals before its children", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
+    page = Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)])
+    walked = drawnOf page
     binds (walked, 2)
-    // The toolbar's field is an entry bound first; the child's button is a press bound second.
-    expect (acting walked, "4@0,3@1")
-    expect (pressWords walked, "Go")))
-// [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
+    // The toolbar's field binds first; the child's button second.
+    expect (spelled (toldOf page), "{kind=\"screen\",title=\"T\",subtitle=\"\",toolbar=[{kind=\"field\",label=\"F\",value=\"\",prompt=\"p\",secure=?false,multiline=?false,commit=\"edit\",event=#0}],children=[{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (page, 0, ui::TextInput(action = Typed)), true)
+    expect (deliversBinding (page, 1, ui::Tap(action = Increment)), true)))
+// [UI-COMPONENTS]: an aside's pane takes ordinals before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
+
+// The members of the inspected aside's told record.
+inspectedMembers () = insideTold (toldOf (inspected ()))
+
 test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (inspected ())
-    // The row's selection binds first, the splitter between the columns second, the column's button third.
-    expect (pressActions walked, "0,2")
-    expect (wordsAt (walked, 2), "Recent")
-    expect (hintAt (walked, 5), "star")
-    // The trailing pane draws before the column: its heading sits in the pane, the icon in the column.
-    expect ((rowAt (walked, 2)).placedParent, 1)
-    expect ((rowAt (walked, 12)).placedParent, 11)
-    binds (walked, 3)))
-// [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column is drawn between them, carries the
-// column's width and limits, and binds in drawing order: after the pane's controls, before the column's.
-test ("an aside's splitter carries the column width and its limits and binds between the columns", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (inspected ())
     binds (walked, 3)
-    fitting = filterList (walked.walkFits, \f => f.fittedAs.wide > 0.0)
-    wide = join (mapList (fitting, \f => "${f.fittedRow}:${f.fittedAs.wide}")) ","
-    expect (wide, "8:6.0,11:420.0")
-    expect (kindAt (walked, 10), Views::canvas)
-    expect (actionAt (walked, 10), 1)
+    expect (spelled (toldOf (inspected ())), "{kind=\"aside\",side=\"trailing\",pane={kind=\"rows\",selected=\"a\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"}}],event=#0},aside={kind=\"stack\",axis=\"vertical\",children=[{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]},width=#420,least=#260,most=#640,keep=#340,event=#2}")
+    // The row's selection binds first and the column's button second; the splitter binds after both columns.
+    expect (deliversBinding (inspected (), 0, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (inspected (), 1, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (inspected (), 2, ui::SizeInput(action = Typed)), true)))
+// [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the
+// column's width and limits, and binds in walking order: after the pane's controls, before the column's.
+test ("an aside's splitter carries the column width and its limits and binds after both columns", \() => ui::Runtime::guarded (\() =>
+    binds (drawnOf (inspected ()), 3)
+    members = inspectedMembers ()
+    expect (memberCount (members, "width", 0), 420)
+    expect (memberCount (members, "least", 0), Splitters::least)
+    expect (memberCount (members, "most", 0), Splitters::most)
+    expect (memberCount (members, "keep", 0), Splitters::keep)
     expect (Splitters::least, 260)
     expect (Splitters::most, 640)
-    expect (Splitters::keep, 340)))
+    expect (Splitters::keep, 340)
+    // The pane's rows bind 0, the column's button 1, and the splitter 2 after both columns' controls.
+    expect (memberCount (members, "event", 0 - 1), 2)
+    expect (memberCount (insideTold (memberTold (members, "pane")), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (memberTold (members, "aside"), 2)), "event", 0 - 1), 1)))
 
 resized value =
     delivered = match Surfaces::told (ui::SizeInput(action = Typed), value)
@@ -180,31 +164,28 @@ test ("a splitter delivers its dragged width clamped to its limits", \() => ui::
     forEachList (resizeCases (), \probe => expect (resized probe.dragged, probe.delivered))))
 // [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
 test ("a link carries its label and web address and takes no ordinal", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)])
-    expect (wordsAt (walked, 1), "Osprey guide")
-    expect (hintAt (walked, 1), "https://example.test/guide")
-    unbound (walked, 1)
+    paged = Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)]
+    walked = drawnOf paged
+    expect (spelled (childTold (toldOf paged, 0)), "{kind=\"link\",label=\"Osprey guide\",url=\"https://example.test/guide\"}")
     binds (walked, 1)
-    expect (actionAt (walked, 2), 0)))
+    expect (deliversBinding (paged, 0, ui::Tap(action = Increment)), true)))
 test ("controls take depth-first ordinals in drawing order", \() => ui::Runtime::guarded (\() =>
     expect (length (drawnOf (tree ())).walkBound, 3)))
 test ("a drawn region keeps its components and text intact", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (tree ())
-    expect (wordsAt (walked, 1), "Title \"quoted\"\n")
-    expect (kindAt (walked, 3), Views::column)
-    expect (rowsRead (walked, "words", [4, 6]), "S|Q")
-    expect (kindAt (walked, 7), Views::entry)
-    expect (traitsAt (walked, 7), Views::onCommit)
-    expect (hintAt (walked, 8), "P")
-    expect (kindAt (walked, 8), Views::picker)
-    expect (hintAt (walked, 9), "a")
-    expect (traitsAt (walked, 9), Views::chosen)))
+    binds (drawnOf (tree ()), 3)
+    expect (spelled (toldOf (tree ())), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"Title \"quoted\"\n\",role=\"body\",tone=\"primary\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0},{kind=\"section\",title=\"S\",footer=\"\",children=[{kind=\"field\",label=\"Q\",value=\"\",prompt=\"\",secure=?false,multiline=?false,commit=\"submit\",event=#1}]},{kind=\"picker\",label=\"P\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}]}")))
 test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (tree ())
-    expect (actionAt (walked, 2), 0)
-    unbound (walked, 6)
-    expect (rowsRead (walked, "action", [7, 8]), "1|2")
-    unbound (walked, 9)))
+    walked = tree ()
+    children = memberItems (insideTold (toldOf walked), "children")
+    // The text and its section take no ordinal; the button, the section's field and the picker take 0, 1 and 2.
+    expect (memberCount (insideTold (toldAt (children, 0)), "event", 0 - 1), 0 - 1)
+    expect (memberCount (insideTold (toldAt (children, 1)), "event", 0 - 1), 0)
+    sectionField = childTold (toldAt (children, 2), 0)
+    expect (memberCount (insideTold sectionField, "event", 0 - 1), 1)
+    expect (memberCount (insideTold (toldAt (children, 3)), "event", 0 - 1), 2)
+    expect (deliversBinding (walked, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (walked, 1, ui::TextInput(action = Typed)), true)
+    expect (deliversBinding (walked, 2, ui::ChoiceInput(action = Load)), true)))
 test ("opening draws every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     surfaceBinds (first, 5)
@@ -214,17 +195,20 @@ test ("opening draws every region once with the theme", \() => ui::Runtime::guar
     expect (named "canvas", "#FFFFFF")
     expect (nightNamed "canvas", "#000000")
     expect (first.surfaceSession.sessionContext.platform, "linux")
-    expect (walkedWords first, "|Count 0|Go|Go|||Note|linux|Load|Load")))
+    // Every row of the open frame: the theme record, then the root and note regions as told trees.
+    expect (walkedWords first, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
 test ("a tap delivers and the next frame shows the changed count", \() => ui::Runtime::guarded (\() =>
     second = Probes::tapped (Probes::started (), 0)
     expectClean (second, 1)
-    expect (walkedWords second, "|Count 1|Go|||Note|linux|Load|Load")))
+    // The next frame tells the same theme and note region, and the root with the changed count and one Go button.
+    expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 1|body|primary||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
 test ("text input reaches update through its binding and sends its slice", \() => ui::Runtime::guarded (\() =>
     second = Probes::posted (Probes::started (), 2, "hello")
     expectNoProblem second
     expectMemo (second, "hello")
     expect (Probes::written second, "echo=hello")
-    expect (wordsAt (Probes::seen second, 7), "hello")
+    // The note field's value row carries the edited text into the next frame.
+    expect (wordsAt (Probes::seen second, 48), "hello")
     third = Probes::tapped (second, 0)
     expectNoProblem third))
 // The typed host events a host sends that must all be refused, with the reason each is given.
@@ -330,48 +314,31 @@ tabbed () = Ui::column [
 test ("tabs bind before the page they show, and segments carry their tones", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (tabbed ())
     binds (walked, 2)
-    pressRows (walked, "One,Two", "0,1")
-    expect (rowsRead (walked, "hint", [3, 4]), "one|two")
-    expect (traitsAt (walked, 3), 0)
-    expect (traitsAt (walked, 4), Views::chosen)
-    // The chosen tab's page is the only one drawn.
-    expect (wordsAt (walked, 5), "Second")
-    segments = AdditionCases::segmentsDrawn (ui::Segments(tones = [ui::Good, ui::Danger], label = "2 states"))
-    expect (join (mapList ([AdditionCases::itemOf (segments, 0), AdditionCases::itemOf (segments, 1)], \box => "${(AdditionCases::lookOf (AdditionCases::innerOf box)).fill}")) ",", "305420031,3424789247")))
-// [UI-COMPONENTS]: every constructor lowers as the component it names, with its role, tone, axis and enabled state.
+    // The chosen tab's page control binds first; the tabs' choice binds after every page's controls.
+    expect (spelled (childTold (toldOf (tabbed ()), 0)), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"One\",symbol=\"1.circle\",child={kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0}},{key=\"two\",label=\"Two\",symbol=\"2.circle\",child={kind=\"text\",text=\"Second\",role=\"caption\",tone=\"secondary\"}}],event=#1}")
+    expect (deliversBinding (tabbed (), 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (tabbed (), 1, ui::ChoiceInput(action = Load)), true)
+    expect (spelled (childTold (toldOf (tabbed ()), 1)), "{kind=\"segments\",tones=[\"good\",\"danger\"],label=\"2 states\"}")))
+// [UI-COMPONENTS]: every constructor tells as the component it names, with its role, tone, axis and enabled state.
 built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 
-// The `index`th lowered part of the built row, or nothing.
-partAt (parts, index) = listGet parts index ?: AdditionCases::nothingView ()
-test ("every constructor lowers as the component it names", \() => ui::Runtime::guarded (\() =>
-    walked = drawnOf (built ())
-    styling = ui::Styling(styleTheme = AdditionCases::lowerTheme (), styleDark = false, styleRegions = [])
-    row = AdditionCases::innerOf (AdditionCases::itemOf (Lower::view (styling, built ()), 0))
-    parts = mapList (toList (range (0, 8)), \i => AdditionCases::itemOf (row, i))
-    heading = partAt (parts, 0)
-    pair = partAt (parts, 1)
-    badge = AdditionCases::innerOf (partAt (parts, 2))
-    empty = AdditionCases::innerOf (partAt (parts, 3))
-    stop = AdditionCases::innerOf (partAt (parts, 4))
-    toggle = partAt (parts, 5)
-    picker = AdditionCases::innerOf (partAt (parts, 6))
-    rows = partAt (parts, 7)
-    expect (AdditionCases::facets (heading, ["kind", "points", "heft", "ink"]), "wording|16.0|600|6728447")
-    expect (AdditionCases::facets (pair, ["kind", "count"]), "across|3")
-    expect (AdditionCases::facets (badge, ["text", "corner"]), "Partial|999.0")
-    expect ((AdditionCases::fitOf (partAt (parts, 3))).traits, Views::centred)
-    expect (AdditionCases::countOf empty, 3)
-    expect (AdditionCases::textOf stop, "Stop")
-    expect ((AdditionCases::fitOf (partAt (parts, 4))).traits, Views::disabled)
-    expect (AdditionCases::kindOf toggle, "switch")
-    expect (AdditionCases::switchWordsOf toggle, "AI")
-    // A switch's state is its own `on`; the walk turns it into the chosen flag.
-    expect (AdditionCases::switchOnOf toggle, true)
-    expect (AdditionCases::facets (picker, ["kind", "count"]), "choosing|1")
-    expect ((AdditionCases::optionKeyOf (AdditionCases::itemOf (picker, 0))), "a")
-    expect (AdditionCases::kindOf rows, "column")
-    expect ((AdditionCases::fitOf (AdditionCases::itemOf (rows, 0))).hint, "k")
-    binds (walked, 4)))
+test ("every constructor tells as the component it names", \() => ui::Runtime::guarded (\() =>
+    builtTree = built ()
+    walked = drawnOf builtTree
+    parts = memberItems (insideTold (childTold (toldOf builtTree, 0)), "children")
+    binds (walked, 4)
+    expect (spelled (toldAt (parts, 0)), "{kind=\"text\",text=\"H\",role=\"heading\",tone=\"accent\"}")
+    expect (spelled (toldAt (parts, 1)), "{kind=\"pair\",label=\"Label\",value=\"Value\"}")
+    expect (spelled (toldAt (parts, 2)), "{kind=\"badge\",label=\"Partial\",symbol=\"info\",tone=\"caution\"}")
+    expect (spelled (toldAt (parts, 3)), "{kind=\"empty\",symbol=\"inbox\",title=\"Nothing\",detail=\"Why\"}")
+    expect (spelled (toldAt (parts, 4)), "{kind=\"button\",label=\"Stop\",symbol=\"stop\",role=\"destructive\",enabled=?false,event=#0}")
+    expect (spelled (toldAt (parts, 5)), "{kind=\"toggle\",label=\"AI\",on=?true,event=#1}")
+    expect (spelled (toldAt (parts, 6)), "{kind=\"picker\",label=\"Model\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}")
+    expect (spelled (toldAt (parts, 7)), "{kind=\"rows\",selected=\"k\",rows=[{key=\"k\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"cell\",role=\"body\",tone=\"primary\"}}],event=#3}")
+    expect (deliversBinding (builtTree, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (builtTree, 1, ui::FlagInput(action = Typed)), true)
+    expect (deliversBinding (builtTree, 2, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (builtTree, 3, ui::ChoiceInput(action = Load)), true)))
 
 // [UI-EFFECTS]: a run and an HTTP request send their bounds, headers and the slices their output lands in.
 runRequest plist = Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run"))
@@ -447,17 +414,12 @@ testCases [
     { name = "process capabilities send their handles bounds arguments and environment", work = protected (\() => expectRequests (processRequestCases ())) },
 ]
 
-// One role's wording over the probe theme, checked against the role's own scale and weight.
-roleDrawn role =
-    wording = Lower::view (AdditionCases::styled false, Ui::styled ("sample", role, ui::Primary))
-    expect ((AdditionCases::lookOf wording).points, LowerLeaves::rolePoints role)
-    expect ((AdditionCases::lookOf wording).heft, LowerLeaves::roleHeft role)
-
-// [UI-COMPONENTS]: every semantic text role keeps its type scale and weight.
-test ("semantic text roles preserve every size and weight", \() => ui::Runtime::guarded (\() =>
+// [UI-COMPONENTS]: the type scale a role drew is the host's own now ([NATIVE-SHM-NODES]); what crosses is the role's own name.
+test ("semantic text roles tell under their own names with their tone", \() => ui::Runtime::guarded (\() =>
     roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
-    expect (join (mapList (roles, \role => "${LowerLeaves::rolePoints role}/${LowerLeaves::roleHeft role}")) ",", "34.0/600,28.0/600,20.0/600,16.0/600,15.0/400,13.0/600,13.0/400,12.0/400,11.0/400,11.0/600,12.0/400")
-    forEachList (roles, \role => roleDrawn (role))))
+    told = join (mapList (roles, \role => spelled (toldOf (Ui::styled ("sample", role, ui::Primary))))) "\n"
+    wanted = join (mapList (["display", "large", "title", "heading", "lead", "headline", "body", "callout", "caption", "eyebrow", "mono"], \name => "{kind=\"text\",text=\"sample\",role=\"${name}\",tone=\"primary\"}")) "\n"
+    expect (told, wanted)))
 // [UI-EFFECTS]: host extensions send the same bounded ask rows.
 test ("host capabilities preserve namespace operation arguments and bounds", \() => ui::Runtime::guarded (\() =>
     request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = [ui::Header(headerName = "workspace", headerValue = "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
@@ -465,10 +427,11 @@ test ("host capabilities preserve namespace operation arguments and bounds", \()
     expect (rowsOf (Requests::ask ("host:1", request)), "0/11/host:1;1/0/vscode;2/0/workspace.snapshot;3/0/workspace;3/0/file:///app;4/1000/;5/4096/;6/0/workspace")))
 // [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued bindings.
 test ("context menus bind actions after their content controls", \() => ui::Runtime::guarded (\() =>
-    built = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
-    walked = drawnOf built
-    binds (walked, 2)
-    pressRows (walked, "Select,Remove", "0,1")))
+    menu = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
+    binds (drawnOf menu, 2)
+    expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"button\",label=\"Select\",symbol=\"package\",role=\"plain\",enabled=?true,event=#0},items=[{kind=\"button\",label=\"Remove\",symbol=\"delete\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (menu, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (menu, 1, ui::Tap(action = Load)), true)))
 
 // Runs a registered case's body with integer faults resolved, so arithmetic in a view or a package helper never escapes it.
 protected work = \() => ui::Runtime::guarded work
@@ -491,12 +454,12 @@ testCases [
     { name = "shape rows read back every field a host import takes", work = protected sceneCaseShapeRowsReadBackEveryFieldA },
     { name = "an open surface keeps its store in its session", work = protected sceneCaseAnOpenSurfaceKeepsItsStoreIn },
     { name = "a refused event leaves the surface whole and still answering", work = protected sceneCaseARefusedEventLeavesTheSurfaceWhole },
-    { name = "scenes draw from every container in lowering's order", work = protected sceneCaseScenesDrawFromEveryContainerInOrder },
+    { name = "scenes draw from every container in the walk's order", work = protected sceneCaseScenesDrawFromEveryContainerInOrder },
     { name = "a strip carries its points as rows after its head", work = protected sceneCaseAStripCarriesItsPointsAsRows },
     { name = "a surface delivers completions, phases and frames and refuses unknown kinds", work = protected sceneCaseASurfaceDeliversCompletionsPhasesAnd },
     { name = "an idle surface holds only its store", work = protected sceneCaseAnIdleSurfaceHoldsOnlyItsStore },
     { name = "toggles and pickers deliver their own value kinds", work = protected sceneCaseTogglesAndPickersDeliverTheirOwnValue },
-    { name = "progress, swatches, alerts, prominent buttons and leading asides lower", work = protected sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading },
+    { name = "progress, swatches, alerts, prominent buttons and leading asides tell", work = protected sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading },
     { name = "a meter clamps its amount into a total of at least one", work = protected sceneCaseAMeterSendsItsAmountClampedInto },
     { name = "an editor binds text then cursor after earlier controls and preserves its marks", work = protected AdditionCases::editorEncoding },
     { name = "a cursor binding delivers placed offsets and clamps negatives", work = protected AdditionCases::cursorValues },
@@ -509,81 +472,64 @@ testCases [
     { name = "board themes name the board and chalk tokens", work = protected AdditionCases::boardTokens },
     { name = "mathematics decodes back to the tree it encodes across every constructor", work = protected AdditionCases::mathRoundTrip },
     { name = "mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", work = protected AdditionCases::mathRefusals },
-    { name = "image and video lower as leaves with their media fields and no ordinal", work = protected AdditionCases::mediaEncoding }
+    { name = "image and video tell as leaves with their media fields and no ordinal", work = protected AdditionCases::mediaEncoding }
 ]
 test ("presentation frames explicitly disable viewport sizing by default", \() => ui::Runtime::guarded (\() =>
     style = Frames::plain
     expect (style.frameViewportHeightInset, 0 - 1)
     expect (style.frameScrollY, false)
     expect (style.frameSelectionGroup, false)
-    walked = drawnOf (Ui::framed (Frames::plain, Ui::button ("Continue", "", Increment)))
-    expect ((fitAt (walked, 0)).share, 0.0)
-    binds (walked, 1)))
+    framed = Ui::framed (Frames::plain, Ui::button ("Continue", "", Increment))
+    binds (drawnOf framed, 1)
+    // A plain frame tells no authored size, and its style record says why: no viewport sizing, scrolling or selection group.
+    styleMembers = insideTold (memberTold (insideTold (toldOf framed), "style"))
+    expect (memberCount (styleMembers, "width", 1), 0)
+    expect (memberCount (styleMembers, "height", 1), 0)
+    expect (memberCount (styleMembers, "viewportHeightInset", 0), 0 - 1)
+    expect (memberFlag (styleMembers, "scrollY", true), false)
+    expect (memberFlag (styleMembers, "selectionGroup", true), false)))
 
 test ("presentation frames preserve exact dimensions and inner control provenance", \() => ui::Runtime::guarded (\() =>
     base = Frames::plain
-    style = base(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
-    walked = drawnOf (Ui::framed (style, Ui::button ("Continue", "", Increment)))
-    fit = fitAt (walked, 0)
-    look = (rowAt (walked, 0)).placedLook
+    style = base(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = 0.0 - 0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
+    framed = Ui::framed (style, Ui::button ("Continue", "", Increment))
+    walked = drawnOf framed
     expect (style.frameWidth, 430)
     expect (style.frameHeight, 440)
     expect (style.frameLeft, 30)
     expect (style.frameTextSize, 27)
     expect (style.frameSymbolSize, 13)
-    expect (fit.wide, 430.0)
-    expect (fit.tall, 440.0)
-    // A hugging frame keeps its natural share; a serif face is not fixed-width.
-    expect (fit.share, 0.0)
-    expect (fit.traits, 0)
-    expect (look.inset, 34.0)
-    expect (look.gap, 24.0)
-    expect (look.points, 27.0)
+    // The frame's whole style record crosses with every member: its box, edges, colours, type and control metrics.
+    expect (spelled (memberTold (insideTold (toldOf framed), "style")), "style={name=\"solution-column\",width=#430,height=#440,viewportHeightInset=#270,scrollY=?true,top=#34,right=#30,bottom=#30,left=#30,radius=#0,gap=#24,fill=\"canvas\",ink=\"\",line=\"\",lineEdge=\"all\",grow=?false,font=\"serif\",textSize=#27,mathScale=~1.08,lineHeight=~34.72,tracking=~-0.6,italic=?true,hug=?true,align=\"center\",cross=\"end\",controlHeight=#40,controlPadding=#12,symbolSize=#13,quietControls=?true,iconOnly=?false,fadeBackdrop=?true,trailingSymbols=?true,flatRows=?false,selectionGroup=?true,shadow=\"floating\"}")
     AdditionCases::frameTypography style
     binds (walked, 1)
-    expect (actionAt (walked, 1), 0)))
+    // The frame's only control keeps its provenance: the button inside binds first.
+    expect (memberCount (insideTold (memberTold (insideTold (toldOf framed), "body")), "event", 0 - 1), 0)
+    expect (deliversBinding (framed, 0, ui::Tap(action = Increment)), true)))
 
 // A theme scoped to the single token `name`, its spacing and timing the probe's.
 scopedTheme name = ui::Theme(tokens = [ui::Token(tokenName = name, tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
 
 test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() => ui::Runtime::guarded (\() =>
     local = scopedTheme "canvas"
-    walked = drawnOf (Ui::themed (local, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load)))
-    binds (walked, 2)
-    expect (kindAt (walked, 0), Views::sheet)
-    expect (wordsAt (walked, 1), "Review transcription")
-    pressRows (walked, "Insert", "1")
+    review = Ui::themed (local, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load))
+    binds (drawnOf review, 2)
+    expect (spelled (toldOf review), "{kind=\"themed\",theme={tokens=[{name=\"canvas\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240},body={kind=\"dialog\",title=\"Review transcription\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}}")
     // The dismissal binds before the body the dialog shows.
-    expect (actionAt (walked, 0), 0)
-    // A scoped theme's own text ink is the ink its subtree is drawn in.
+    expect (deliversBinding (review, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (review, 1, ui::Tap(action = Increment)), true)
+    // A scoped theme's own tokens cross with the subtree it inks.
     inked = scopedTheme "text"
-    scoped = Lower::view (paletteStyling (), Ui::themed (inked, Ui::text "Scoped"))
-    expect ((AdditionCases::lookOf scoped).ink, Views::colour "#202723")))
-
-// A text-only node fixes no action type, so the styling names the probe's.
-paletteStyling : Unit -> ui::Styling<Act>
-paletteStyling () = ui::Styling(styleTheme = Probes::palette (), styleDark = false, styleRegions = [])
+    expect (spelled (memberTold (insideTold (toldOf (Ui::themed (inked, Ui::text "Scoped"))), "theme")), "theme={tokens=[{name=\"text\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240}")))
 
 richDocument : ui::Node<Act>
 richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
 test ("inline text keeps its emphasis and source colours without bindings", \() => ui::Runtime::guarded (\() =>
-    line = Lower::view (paletteStyling (), richDocument)
-    expect (AdditionCases::kindOf line, "across")
-    expect (AdditionCases::countOf line, 2)
-    plain = AdditionCases::itemOf (line, 0)
-    variable = AdditionCases::itemOf (line, 1)
-    // Each run is a fitted wording: its fit carries the run's emphasis.
-    expect (AdditionCases::kindOf plain, "fitted")
-    expect (AdditionCases::textOf (AdditionCases::innerOf plain), "For all ")
-    expect ((AdditionCases::fitOf plain).traits, 0)
-    expect (AdditionCases::textOf (AdditionCases::innerOf variable), "p")
-    expect ((AdditionCases::fitOf variable).traits, Views::slanted)
-    walked = drawnOf richDocument
-    binds (walked, 0)
-    spaced = drawnOf (Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)])
-    expect (kindAt (spaced, 1), Views::gap)
-    expect (length spaced.walkRows, 3)
-    binds (spaced, 1)))
+    binds (drawnOf richDocument, 0)
+    expect (spelled (toldOf richDocument), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
+    spaced = Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)]
+    binds (drawnOf spaced, 1)
+    expect (spelled (toldOf spaced), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"spacer\"},{kind=\"button\",label=\"Continue\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")))
 
 // Machine documents end to end, each driven as one registered case.
 testCases [
@@ -594,24 +540,24 @@ testCases [
     { name = "machine edge cases cover every template variant fault cycle request payload and pointer state", work = protected completeMachineCases },
 ]
 
-// [NATIVE-SHM-LOWER]: the pure lowering of semantic trees into primitive views, styled from the theme.
+// [NATIVE-SHM-NODES]: the told records of the component vocabulary, as a host rebuilds them.
 testCases [
-    { name = "lowering reads text roles and tones from the theme in both appearances", work = protected AdditionCases::lowerTextCase },
-    { name = "lowering builds rich text runs with emphasis, slant and their own inks", work = protected AdditionCases::lowerRichCase },
-    { name = "lowering stacks, splits and layers take the theme's spacing gap", work = protected AdditionCases::lowerStacksCase },
-    { name = "lowering sections card on the background token and screens stack a titled toolbar", work = protected AdditionCases::lowerSurfacesCase },
-    { name = "lowering frames apply their authored size, surface and line, and scoped themes re-ink", work = protected AdditionCases::lowerFramesCase },
-    { name = "lowering dialogs and alerts dismiss with taps and menus show their body first", work = protected AdditionCases::lowerOverlaysCase },
-    { name = "lowering asides order by side and drag through a size input on a rule", work = protected AdditionCases::lowerAsideCase },
-    { name = "lowering tabs deliver choices with the chosen tab filled and its page shown", work = protected AdditionCases::lowerTabsCase },
-    { name = "lowering rows deliver choices with group headings and the selected row washed", work = protected AdditionCases::lowerRowsCase },
-    { name = "lowering slots lower the region they name or draw an empty column", work = protected AdditionCases::lowerSlotCase },
-    { name = "lowering buttons take their role's ink and fill and disable through their fit", work = protected AdditionCases::lowerButtonsCase },
-    { name = "lowering fields prompt, hide and commit through their fit and carry text input", work = protected AdditionCases::lowerFieldsCase },
-    { name = "lowering pickers choose through options and disclosures deliver their flag", work = protected AdditionCases::lowerPickersCase },
-    { name = "lowering pairs, badges, labels, icons, links and dividers draw quiet leaves", work = protected AdditionCases::lowerLeavesCase },
-    { name = "lowering segments, empties, progress, meters and swatches draw their tones", work = protected AdditionCases::lowerStatusCase },
-    { name = "lowering media, editors, boards and scenes bind in the encoder's order", work = protected AdditionCases::lowerMediaCase },
+    { name = "telling reads text roles and tones, and the theme tells both appearances", work = protected AdditionCases::toldTextCase },
+    { name = "telling keeps rich text runs with their emphasis, slant and their own inks", work = protected AdditionCases::toldRichCase },
+    { name = "telling stacks, splits and layers keep their axes, and the theme tells its spacing", work = protected AdditionCases::toldStacksCase },
+    { name = "telling sections and screens keep their titles, toolbar and children", work = protected AdditionCases::toldSurfacesCase },
+    { name = "telling frames carry their authored style and scoped themes tell their tokens", work = protected AdditionCases::toldFramesCase },
+    { name = "telling dialogs and alerts keep their dismissal, and menus show their body first", work = protected AdditionCases::toldOverlaysCase },
+    { name = "telling asides name their side and drag through a size input between the columns", work = protected AdditionCases::toldAsideCase },
+    { name = "telling tabs deliver choices with the chosen key and every page", work = protected AdditionCases::toldTabsCase },
+    { name = "telling rows deliver choices with their symbols and groups", work = protected AdditionCases::toldRowsCase },
+    { name = "telling slots name the region they draw", work = protected AdditionCases::toldSlotCase },
+    { name = "telling buttons keep their role and enabled state", work = protected AdditionCases::toldButtonsCase },
+    { name = "telling fields prompt, hide and commit through their members", work = protected AdditionCases::toldFieldsCase },
+    { name = "telling pickers choose through options and disclosures deliver their flag", work = protected AdditionCases::toldPickersCase },
+    { name = "telling pairs, badges, labels, icons, links and dividers stay whole leaves", work = protected AdditionCases::toldLeavesCase },
+    { name = "telling segments, empties, progress, meters and swatches tell their tones", work = protected AdditionCases::toldStatusCase },
+    { name = "telling media, editors, boards and scenes bind in the walk's order", work = protected AdditionCases::toldMediaCase },
 ]
 
 // [NATIVE-SHM-BOUNDARY]: the probe application crosses as view rows and typed events, with no envelope and no event document.
@@ -638,10 +584,12 @@ problemOf outcome = match outcome
 surfaceCase () =
     opening = probe (0, "")
     first = surfaced (\() => Hosting::opened (Surfaces::idle opening, program (), 1, 0, "linux", "", false))
-    expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:Go|3<0@1:Go|0<0@-1:|0<4@-1:|2<5@-1:Note|4<5@2:linux|3<4@3:Load|3<4@4:Load|")
+    // The open frame's told rows: the theme record, then the root region (count 0, both Go buttons, the note slot) and the note region.
+    expect (surfaceRows, "34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 0|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:button|33<29@-1:Go|33<29@-1:play|33<29@-1:plain|33<29@-1:|33<29@-1:|34<16@-1:|33<36@-1:slot|33<36@-1:note|34<-1@-1:|33<39@-1:note|34<39@-1:|33<41@-1:stack|33<41@-1:vertical|35<41@-1:|34<44@-1:|33<45@-1:field|33<45@-1:Note|33<45@-1:linux|33<45@-1:|33<45@-1:|33<45@-1:|33<45@-1:edit|33<45@-1:|34<44@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|34<44@-1:|33<61@-1:button|33<61@-1:Load|33<61@-1:tray|33<61@-1:plain|33<61@-1:|33<61@-1:|")
     surfaceBinds (first, 5)
     second = surfaceAfter (first, 0, "")
-    expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:Go|3<0@1:Go|0<0@-1:|0<4@-1:|2<5@-1:Note|4<5@2:linux|3<4@3:Load|3<4@4:Load|0<-1@-1:|2<0@-1:Count 1|3<0@0:Go|0<0@-1:|0<3@-1:|2<4@-1:Note|4<4@1:linux|3<3@2:Load|3<3@3:Load|")
+    // The next frame tells the changed count: one Go button, so four bindings.
+    expect (surfaceRows, "34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 0|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:button|33<29@-1:Go|33<29@-1:play|33<29@-1:plain|33<29@-1:|33<29@-1:|34<16@-1:|33<36@-1:slot|33<36@-1:note|34<-1@-1:|33<39@-1:note|34<39@-1:|33<41@-1:stack|33<41@-1:vertical|35<41@-1:|34<44@-1:|33<45@-1:field|33<45@-1:Note|33<45@-1:linux|33<45@-1:|33<45@-1:|33<45@-1:|33<45@-1:edit|33<45@-1:|34<44@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|34<44@-1:|33<61@-1:button|33<61@-1:Load|33<61@-1:tray|33<61@-1:plain|33<61@-1:|33<61@-1:|34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 1|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:slot|33<29@-1:note|34<-1@-1:|33<32@-1:note|34<32@-1:|33<34@-1:stack|33<34@-1:vertical|35<34@-1:|34<37@-1:|33<38@-1:field|33<38@-1:Note|33<38@-1:linux|33<38@-1:|33<38@-1:|33<38@-1:|33<38@-1:edit|33<38@-1:|34<37@-1:|33<47@-1:button|33<47@-1:Load|33<47@-1:tray|33<47@-1:plain|33<47@-1:|33<47@-1:|34<37@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|")
     surfaceTally (second, 1)
     expect (second.surfaceSession.sessionContext.now, 5)
     surfaceBinds (second, 4)
@@ -661,7 +609,6 @@ test ("a surface draws view rows and takes typed events with no envelope", \() =
 // [NATIVE-SHM-EVENT] [NATIVE-SHM-SCENE] [NATIVE-SHM-VIEW]: a board, its lasso, an accessible scene and a button, drawn
 // into the real shared frame and driven through every kind of typed host event a host sends. The store is the list
 // of messages `update` received, so every event's meaning is read back exactly.
-journeyNode : Unit -> ui::Node<Act>
 journeyNode () = Ui::column [
     Boards::board ("strokes", 0, true, Increment, Typed),
     Ui::described (Ui::scene (40.0, 20.0, ["bird"], [Scenes::disc (5.0, 5.0, 2.0, Scenes::rgb (0, 0, 255), 0), Scenes::sprite (0, 9.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 1)], Load), mapList (sceneElements (), accessibleOf)),
@@ -778,9 +725,10 @@ journeyCase () =
     expect (Runtime::guarded (\() => 7 / zero), 7.0)
     expect (Runtime::guarded (\() => 7 % zero), 0)
     expect (Runtime::guarded (\() => biggest + 1), 0 - biggest - 1)
-    // A scene in window pixels draws from the window's top left.
-    pixels = Lower::view (paletteStyling (), Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load))
-    expect (AdditionCases::kindOf pixels, "fitted")
+    // A scene in window pixels has no unit space: it tells a zero size at a zoom of one.
+    pixels = Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load)
+    expect (spelled (toldOf pixels), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
+    expect (deliversBinding (pixels, 0, ui::SceneInput(action = Load)), true)
     // Every symbol has its own name.
     expect (join (mapList ([ui::Clock, ui::Person, ui::Cursor, ui::Chevron, ui::Send, ui::Terminal, ui::Edit, ui::Panel, ui::Sparkle], \symbol => Symbols::name symbol)) ",", "clock,person,cursor,chevron,send,terminal,edit,panel,sparkle")
 

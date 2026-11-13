@@ -15,7 +15,6 @@ import ui::Surfaces
 import ui::Templates
 import ui::Values
 import ui::Ui
-import ui::Views
 
 completeMachine () = realMachine "src/osprey/packages/native/tests/complete.machine.json"
 
@@ -114,8 +113,8 @@ expectAskedNumbers (ask, fields) = forEachList (fields, \field => expect (Machin
 completeTemplateVariants () =
     machine = completeMachine ()
     expect (machine.machineFault, "")
-    // An eyebrow is shouted: it is drawn in capitals.
-    forEachList (["Display", "Large", "Heading", "Lead", "Headline", "EYEBROW", "Mono", "Hello", "Badge", "Prominent", "Destructive", "Filled", "Pick", "Toggle", "Meter", "Progress", "Empty", "Framed child"], \text =>
+    // An eyebrow keeps its own words now: the capitals it is drawn in are the host's styling.
+    forEachList (["Display", "Large", "Heading", "Lead", "Headline", "Eyebrow", "Mono", "Hello", "Badge", "Prominent", "Destructive", "Filled", "Pick", "Toggle", "Meter", "Progress", "Empty", "Framed child"], \text =>
         expect (nativeShows (machine, text), true))
     expect (nativeShows (machine, "Hidden"), false)
     forEachList (["image", "framed", "spacer", "divider", "scene"], \sort => expect (length (completeNodes (machine, sort)), 1))
@@ -219,23 +218,19 @@ deniedOf message = Messages::route (message, \_ => "wrong message", \(_, _) => "
 
 completeEventAndConvenienceCases () =
     expect (deniedOf (Surfaces::completed ("job", false, "denied")), "denied")
-    board = drawnOf (Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso")))
-    binds (board, 2)
-    expect (join (mapList (board.walkRows, \r => "${r.placedKind}")) ",", "7,13,13")
-    expect (join (mapList (board.walkRows, \r => "${r.placedAction}")) ",", "-1,0,1")
-    boardNode = match Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso"))
+    board = Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso"))
+    binds (fireDrawn board, 2)
+    expect (spelled (fireTold board), "{kind=\"board\",slice=\"strokes\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
+    boardNode = match board
         ui::Board slice count lassoing backdrop _ _ _ _ _ => "${slice}|${count}|${lassoing}|${backdrop}"
         _ => "not a board"
     expect (boardNode, "strokes|2|true|")
-    field = drawnOf (Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit")))
-    // The column, its label caption, then the writing entry the prompt hints.
-    expect (wordsAt (field, 1), "Notes")
-    expect (kindAt (field, 2), Views::editor)
-    expect (wordsAt (field, 2), "one\ntwo")
-    expect (hintAt (field, 2), "write")
-    expect (actionAt (field, 2), 0)
-    described = drawnOf (Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), []))
-    expect (pressWords described, "plain")
+    field = Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit"))
+    binds (fireDrawn field, 1)
+    // A multiline field tells its label, value and prompt, commits on edit, and binds the one text input.
+    expect (spelled (fireTold field), "{kind=\"field\",label=\"Notes\",value=\"one\ntwo\",prompt=\"write\",secure=?false,multiline=?true,commit=\"edit\",event=#0}")
+    described = Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), [])
+    expect (spelled (fireTold described), "{kind=\"button\",label=\"plain\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}")
     expect (length (Lists::slice (["a"], 2, 4)), 0)
     expect (Lists::position ([], \(_item : string) => true), 0 - 1)
     expect (join (mapList (Lists::sortBy ([3, 1, 2], \(a, b) => a < b), \n => "${n}")) ",", "1,2,3")

@@ -13,14 +13,15 @@ import ui::Doc
 import ui::Messages
 import ui::Requests
 import ui::Surfaces
+import ui::Splitters
 import ui::Strokes
 import ui::Themes
 import ui::Maths
-import ui::Views
-import ui::Lower
-import ui::LowerLeaves
+import ui::Tell
+import ui::Tellings
 import ui::Keyed
 
+(** Cases for the mathematics, editor, board, recognition, theme and telling additions, each driven as one registered case. *)
 module AdditionCases
     refusal result = match result
         Success _ => "accepted"
@@ -30,17 +31,6 @@ module AdditionCases
     delivered result = match result
         Success message => routed message
         Error problem => problem
-
-    // The kind and action of every row `walked` holds, `kind@action` joined, so one expectation reads a whole surface.
-    rowSpellings walked = join (mapList (walked.walkRows, \row => "${row.placedKind}@${row.placedAction}")) ","
-
-    // `walked` binds `count` controls, its rows spelling `spelled` in drawing order.
-    expectRows (walked, count, spelled) =
-        binds (walked, count)
-        expect (rowSpellings walked, spelled)
-
-    // The binding `read` finds in `view` is `expected`, so a case names one action instead of a comparison.
-    expectDelivers (read, view, expected) = expect (structuralEquals (read view) expected, true)
 
     samplePoints () = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)]
 
@@ -68,21 +58,25 @@ module AdditionCases
     export editorEncoding () =
         focusedEditorEncoding ()
         sample = editorSample ()
-        walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), sample])
+        column = Ui::column [Ui::button ("Before", "", Increment), sample]
         expect (editorSpelled sample, "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
-        expectRows (walked, 3, "0@-1,3@0,7@-1,14@1,13@2")
-        // The label is the writing row's prompt, so hosts announce the text control by it.
-        expect (rowsRead (walked, "hint", [3, 2]), "Proof|")
+        binds (drawnOf column, 3)
+        expect (spelled (toldOf sample), "{kind=\"editor\",label=\"Proof\",value=\"one\ntwo\",inline=?false,cursor=#3,focusEpoch=#0,marks=[{line=#2,underlined=?true,tone=\"danger\",badge=\"E\",note=\"Expected a premise\"}],event=#0,placeEvent=#1}")
+        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (column, 1, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (column, 2, ui::PlaceInput(action = Load)), true)
 
-    // `node` spells `spelled` as an editor, and its drawing binds `count` rows spelling `rows`.
-    editorDrawn (node, spelled, count, rows) =
-        expect (editorSpelled node, spelled)
-        expectRows (drawnOf node, count, rows)
+    // `node` spells `nodeSpelled` as an editor, and its told record spells `toldSpelled` with the text binding before the cursor's.
+    editorDrawn (node, nodeSpelled, toldSpelled) =
+        expect (editorSpelled node, nodeSpelled)
+        expect (spelled (toldOf node), toldSpelled)
+        binds (drawnOf node, 2)
+        expect (deliversBinding (node, 0, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (node, 1, ui::PlaceInput(action = Load)), true)
 
     focusedEditorEncoding () =
         node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
-        editorDrawn (node, "Formula|p\u2192q|true|${length "p\u2192"}|3|0|false|primary||", 2, "7@-1,14@0,13@1")
-        expect (rowsRead (drawnOf node, "hint", [1, 0]), "Formula|")
+        editorDrawn (node, "Formula|p\u2192q|true|${length "p\u2192"}|3|0|false|primary||", "{kind=\"editor\",label=\"Formula\",value=\"p\u2192q\",inline=?true,cursor=#${length "p\u2192"},focusEpoch=#3,marks=[],event=#0,placeEvent=#1}")
 
     placed words = delivered (Surfaces::told (ui::PlaceInput(action = Typed), words))
 
@@ -98,15 +92,20 @@ module AdditionCases
         ui::Board slice count lassoing backdrop panning panBound _ _ _ => "${slice}|${count}|${lassoing}|${backdrop}|${panning}|${panBound}"
         _ => "not a board"
 
-    // `board` spells `spelled`, and `node`'s drawing binds `count` rows spelling `rows`.
-    boardDrawn (board, node, spelled, count, rows) =
-        expect (boardSpelled board, spelled)
-        expectRows (drawnOf node, count, rows)
+    // `board` spells its fields, and its told record spells `toldSpelled` with the stroke, lasso and camera bindings in the walk's order.
+    boardDrawn (board, fieldsSpelled, toldSpelled) =
+        expect (boardSpelled board, fieldsSpelled)
+        expect (spelled (toldOf board), toldSpelled)
 
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
         board = Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)
-        boardDrawn (board, Ui::column [Ui::button ("Before", "", Increment), board], "proof/strokes|2|true|chalk-study.png|false|false", 3, "0@-1,3@0,7@-1,13@1,13@2")
+        column = Ui::column [Ui::button ("Before", "", Increment), board]
+        boardDrawn (board, "proof/strokes|2|true|chalk-study.png|false|false", "{kind=\"board\",slice=\"proof/strokes\",count=#2,lasso=?true,backdrop=\"chalk-study.png\",panning=?false,event=#0,lassoEvent=#1}")
+        binds (drawnOf column, 3)
+        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (column, 1, ui::StrokeInput(action = Typed)), true)
+        expect (deliversBinding (column, 2, ui::LassoInput(action = Load)), true)
         boardCamera ()
 
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
@@ -201,17 +200,17 @@ module AdditionCases
         { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `big` is missing its child `upper`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `big` is missing its child `body`" },
     ]), refusedCase)
 
-    (** [UI-COMPONENTS-MEDIA]: an image and a video lower as leaves with their media fields and take no control ordinal. *)
+    (** [UI-COMPONENTS-MEDIA]: an image and a video tell as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
-        walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
-        binds (walked, 1)
-        expect (rowsRead (walked, "kind", [2, 3]), "${Views::image}|${Views::image}")
-        expect (rowsRead (walked, "words", [2, 3]), "media/a.jpg|media/a.jpg")
-        expect (rowsRead (walked, "hint", [2, 3]), "A chain|A film")
-        expect (rowsRead (walked, "action", [2, 3]), "${Views::none}|${Views::none}")
-        expect ((fitAt (walked, 2)).wide, 1920.0)
-        expect ((fitAt (walked, 2)).tall, 1080.0)
+        media = Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)]
+        binds (drawnOf media, 1)
+        expect (spelled (childTold (toldOf media, 1)), "{kind=\"image\",source=\"media/a.jpg\",alt=\"A chain\",width=#1920,height=#1080}")
+        expect (spelled (childTold (toldOf media, 2)), "{kind=\"video\",source=\"media/a.mp4\",poster=\"media/a.jpg\",captions=\"media/a.vtt\",alt=\"A film\",seconds=#40}")
+        // Neither leaf binds a control, so both spell no event member.
+        expect (memberCount (insideTold (childTold (toldOf media, 1)), "event", 0 - 1), 0 - 1)
+        expect (memberCount (insideTold (childTold (toldOf media, 2)), "event", 0 - 1), 0 - 1)
 
+    (** [UI-COMPONENTS-FRAME] A frame's authored fields, checked as the typed record it is. *)
     export frameTypography style =
         expect (style.frameFont, "serif")
         expect (style.frameAlign, "center")
@@ -248,7 +247,11 @@ module AdditionCases
 
     boardCamera () =
         board = Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load)
-        boardDrawn (board, board, "board|0|true|chalk-study.png|true|true", 3, "7@-1,13@0,13@1,13@2")
+        boardDrawn (board, "board|0|true|chalk-study.png|true|true", "{kind=\"board\",slice=\"board\",count=#0,lasso=?true,backdrop=\"chalk-study.png\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
+        binds (drawnOf board, 3)
+        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
+        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
+        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
         expect (delivered (Surfaces::told (ui::TextInput(action = Load), "{x:12}")), "text load:{x:12}")
         narrowMargin ()
 
@@ -277,10 +280,10 @@ module AdditionCases
         inlineEditor ()
 
     inlineEditor () =
-        editorDrawn (Editors::inline ("Next step", "From h.", 7, Typed, Load), "Next step|From h.|true|7|0|0|false|primary||", 2, "7@-1,14@0,13@1")
+        editorDrawn (Editors::inline ("Next step", "From h.", 7, Typed, Load), "Next step|From h.|true|7|0|0|false|primary||", "{kind=\"editor\",label=\"Next step\",value=\"From h.\",inline=?true,cursor=#7,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
 
 
-    // [NATIVE-SHM-LOWER] The theme the lowering tests draw from: distinct tokens so light and dark resolve differently.
+    // Distinct tokens so light and dark resolve differently.
     lowerTokens () = [
         ui::Token(tokenName = "text", tokenLight = "#1A2B3C", tokenDark = "#C9D8E7"),
         ui::Token(tokenName = "primary", tokenLight = "#123456", tokenDark = "#654321"),
@@ -291,506 +294,211 @@ module AdditionCases
         ui::Token(tokenName = "background", tokenLight = "#F0F0F0", tokenDark = "#101010"),
         ui::Token(tokenName = "chalk", tokenLight = "#223344", tokenDark = "#DDEEFF")]
 
-    // The test theme the lowering cases draw from.
+    (** The test theme the telling cases draw from: distinct tokens so light and dark are told differently. *)
     export lowerTheme () = ui::Theme(tokens = lowerTokens (), spacing = [4, 10, 16], feedback = 140, settle = 240)
 
-    // Styling for `dark` over the test theme, with no regions; its action union is the suite's own `Act`.
-    export styled : bool -> ui::Styling<Act>
-    styled dark = ui::Styling(styleTheme = lowerTheme (), styleDark = dark, styleRegions = [])
+    // The test theme's spacing scale, spelt as the frame tells it: a host reads its layout gap from it.
+    toldSpacing () = spelled (memberTold (insideTold (Tell::themeTold ("theme", lowerTheme ())), "spacing"))
 
-    // A stand-in view for list lookups that miss.
-    export nothingView () = ui::Column(columnLook = Views::plain, columnItems = [])
-
-    // `node` lowered over the light test theme.
-    lightLowering node = Lower::view (styled false, node)
-
-    // `node` lowered over the dark test theme.
-    darkLowering node = Lower::view (styled true, node)
-
-    (** [UI-COMPONENTS] The segments a `Segments` node lowers to over the lowering theme. *)
-    export segmentsDrawn node = lightLowering node
-
-    (** [UI-COMPONENTS-METER] The meter a `Meter` node lowers to over the lowering theme. *)
-    export meterDrawn (amount, total) = lightLowering (Ui::meter ("Used", amount, total, ui::Caution))
-
-    // The kind name of a lowered view.
-    export kindOf view = match view
-        ui::Drawing _ _ _ => "drawing"
-        ui::Column _ _ => "column"
-        ui::Across _ _ => "across"
-        ui::Wording _ _ => "wording"
-        ui::Press _ _ _ => "press"
-        ui::Typing _ _ _ => "typing"
-        ui::Gap => "gap"
-        ui::Fitted _ _ => "fitted"
-        ui::Scrolling _ _ => "scrolling"
-        ui::Layered _ _ => "layered"
-        ui::Switch _ _ _ _ => "switch"
-        ui::Choosing _ _ _ _ => "choosing"
-        ui::Option _ _ _ _ => "option"
-        ui::Rule _ => "rule"
-        ui::Picture _ _ => "picture"
-        ui::Canvas _ _ => "canvas"
-        ui::Writing _ _ _ => "writing"
-        ui::Menu _ _ => "menu"
-        ui::Sheet _ _ _ => "sheet"
-
-    // The text a control carries, or "" when it carries none.
-    export textOf view = match view
-        ui::Drawing _ _ _ => ""
-        ui::Wording _ words => words
-        ui::Press _ words _ => words
-        ui::Typing _ words _ => words
-        ui::Switch _ words _ _ => words
-        ui::Choosing _ words _ _ => words
-        ui::Option _ words _ _ => words
-        ui::Picture _ source => source
-        ui::Writing _ words _ => words
-        _ => ""
-
-    // The look of a control, reaching through wrappers, or the plain look when it has none.
-    export lookOf view = match view
-        ui::Drawing look _ _ => look
-        ui::Column look _ => look
-        ui::Across look _ => look
-        ui::Wording look _ => look
-        ui::Press look _ _ => look
-        ui::Typing look _ _ => look
-        ui::Fitted _ inner => lookOf inner
-        ui::Scrolling look _ => look
-        ui::Layered look _ => look
-        ui::Switch look _ _ _ => look
-        ui::Choosing look _ _ _ => look
-        ui::Option look _ _ _ => look
-        ui::Rule look => look
-        ui::Picture look _ => look
-        ui::Canvas look _ => look
-        ui::Writing look _ _ => look
-        ui::Menu look _ => look
-        ui::Sheet look _ _ => look
-        ui::Gap => Views::plain
-
-    // The fit a wrapper applies; the sentinel fit matches nothing the lowering produces.
-    export fitOf view = match view
-        ui::Fitted fit _ => fit
-        _ => ui::Fit(wide = -1.0, tall = -1.0, share = -1.0, traits = -1, edge = -1, hint = "?")
-
-    // The single child a wrapper carries, or nothing.
-    export innerOf view = match view
-        ui::Fitted _ inner => inner
-        _ => nothingView ()
-
-    // The children of a container or a choice's options, or none.
-    itemsOf view = match view
-        ui::Column _ items => items
-        ui::Across _ items => items
-        ui::Scrolling _ items => items
-        ui::Layered _ items => items
-        ui::Menu _ items => items
-        ui::Sheet _ items _ => items
-        ui::Choosing _ _ options _ => options
-        _ => []
-
-    // The `index`th child of a container or a choice's options, or nothing.
-    export itemOf (view, index) = listGet (itemsOf view) index ?: nothingView ()
-
-    // How many children a container or a choice holds.
-    export countOf view = length (itemsOf view)
-
-    (** The named facets of `view` spelt and `|`-joined: its kind, child count and text, a look field or a fit field, so one expectation reads several. *)
-    export facets (view, names) = join (mapList (names, \name => facet (view, name))) "|"
-
-    facet (view, name) = match name
-        "kind" => kindOf view
-        "count" => "${countOf view}"
-        "text" => textOf view
-        _ => lookFacet (lookOf view, fitOf view, name)
-
-    lookFacet (look, fit, name) = match name
-        "ink" => "${look.ink}"
-        "fill" => "${look.fill}"
-        "points" => "${look.points}"
-        "inset" => "${look.inset}"
-        "gap" => "${look.gap}"
-        "corner" => "${look.corner}"
-        "heft" => "${look.heft}"
-        _ => fitFacet (fit, name)
-
-    fitFacet (fit, name) = match name
-        "wide" => "${fit.wide}"
-        "tall" => "${fit.tall}"
-        "share" => "${fit.share}"
-        "traits" => "${fit.traits}"
-        "edge" => "${fit.edge}"
-        "hint" => fit.hint
-        _ => "no facet ${name}"
-
-    // The `index`th child of `view`, expected to spell `spelled` through its `names` facets; the child returns for further reads.
-    expectChild (view, index, names, spelled) =
-        child = itemOf (view, index)
-        expect (facets (child, names), spelled)
-        child
-
-    // `expectChild` for a child read only through its facets.
-    expectItem (view, index, names, spelled) = expect (facets (itemOf (view, index), names), spelled)
-
-    // The inner view of `view`'s `index`th child, its `names` facets expected to spell `spelled`.
-    expectInner (view, index, names, spelled) = expect (facets (innerOf (itemOf (view, index)), names), spelled)
-
-    // The binding a control delivers; each sentinel differs from every binding its case expects.
-    export pressAction view = match view
-        ui::Press _ _ action => action
-        _ => ui::Tap(action = Load)
-
-    typingAction view = match view
-        ui::Typing _ _ action => action
-        ui::Writing _ _ action => action
-        _ => ui::TextInput(action = Load)
-
-    export switchWordsOf view = match view
-        ui::Switch _ words _ _ => words
-        _ => "?"
-
-    export switchOnOf view = match view
-        ui::Switch _ _ on _ => on
-        _ => false
-
-    export switchFlagOf view = match view
-        ui::Switch _ _ _ action => action
-        _ => ui::FlagInput(action = Increment)
-
-    export choosingAction view = match view
-        ui::Choosing _ _ _ action => action
-        _ => ui::ChoiceInput(action = Increment)
-
-    export canvasAction view = match view
-        ui::Canvas _ action => action
-        ui::Drawing _ _ action => action
-        _ => ui::SceneInput(action = Increment)
-
-    export sheetDismissOf view = match view
-        ui::Sheet _ _ dismiss => dismiss
-        _ => ui::Tap(action = Increment)
-
-    export optionKeyOf view = match view
-        ui::Option _ _ key _ => key
-        _ => "?"
-
-    export optionChosenOf view = match view
-        ui::Option _ _ _ chosen => chosen
-        _ => false
-
-    (** [NATIVE-SHM-LOWER] Text lowers to a wording in its role's size and heft and its tone's resolved ink. *)
-    export lowerTextCase () =
+    (** [NATIVE-SHM-NODES] Text tells as its role's and tone's own names; the theme record tells every token in both appearances at once. *)
+    export toldTextCase () =
         read = Ui::styled ("Read me", ui::Display, ui::Danger)
-        light = lightLowering read
-        expect (facets (light, ["kind", "text", "points", "heft", "ink"]), "wording|Read me|34.0|600|3424789247")
-        dark = darkLowering read
-        expect ((lookOf dark).ink, 4284901119)
-        mono = lightLowering (Ui::styled ("x = 2", ui::Mono, ui::Primary))
-        expect (facets (mono, ["kind", "traits"]), "fitted|${Views::fixedWidth}")
-        expect (facets (innerOf mono, ["kind", "text", "points", "heft", "ink"]), "wording|x = 2|12.0|400|439041279")
-        brow = lightLowering (Ui::styled ("chapter", ui::Eyebrow, ui::Secondary))
-        expect (facets (brow, ["text", "points", "heft", "ink"]), "CHAPTER|11.0|600|1146447615")
-        missing = lightLowering (Ui::styled ("Fine", ui::Body, ui::Good))
-        expect ((lookOf missing).ink, 305420031)
+        expect (spelled (toldOf read), "{kind=\"text\",text=\"Read me\",role=\"display\",tone=\"danger\"}")
+        mono = Ui::styled ("x = 2", ui::Mono, ui::Primary)
+        expect (spelled (toldOf mono), "{kind=\"text\",text=\"x = 2\",role=\"mono\",tone=\"primary\"}")
+        brow = Ui::styled ("chapter", ui::Eyebrow, ui::Secondary)
+        expect (spelled (toldOf brow), "{kind=\"text\",text=\"chapter\",role=\"eyebrow\",tone=\"secondary\"}")
+        missing = Ui::styled ("Fine", ui::Body, ui::Good)
+        expect (spelled (toldOf missing), "{kind=\"text\",text=\"Fine\",role=\"body\",tone=\"good\"}")
+        expect (spelled (Tell::themeTold ("theme", lowerTheme ())), "theme={tokens=[{name=\"text\",light=\"#1A2B3C\",dark=\"#C9D8E7\"},{name=\"primary\",light=\"#123456\",dark=\"#654321\"},{name=\"secondary\",light=\"#445566\",dark=\"#99AABB\"},{name=\"accent\",light=\"#0066AA\",dark=\"#66CCFF\"},{name=\"onAccent\",light=\"#FFFFFF\",dark=\"#002233\"},{name=\"danger\",light=\"#CC2222\",dark=\"#FF6666\"},{name=\"background\",light=\"#F0F0F0\",dark=\"#101010\"},{name=\"chalk\",light=\"#223344\",dark=\"#DDEEFF\"}],spacing=[#4,#10,#16],feedback=#140,settle=#240}")
 
-    (** [NATIVE-SHM-LOWER] Rich text lowers to a line of wordings, each run with its own ink, emphasis, slant and size. *)
     richSample () = Ui::rich ([Ui::run ("For all ", "", false), Ui::emphasised ("p", "accent", "strong"), Ui::run ("q", "text", true)], ui::Lead)
 
-    (** [NATIVE-SHM-LOWER] Rich text lowers to a line of wordings, each run with its own ink, emphasis, slant and size. *)
-    export lowerRichCase () =
-        line = lightLowering (richSample ())
-        expect (facets (line, ["kind", "gap", "count"]), "across|0.0|3")
-        plain = expectChild (line, 0, ["kind"], "fitted")
-        expect (textOf (innerOf plain), "For all ")
-        expect (facets (plain, ["points", "heft", "ink"]), "15.0|400|439041279")
-        strong = expectChild (line, 1, ["traits"], "0")
-        expect (textOf (innerOf strong), "p")
-        expect (facets (strong, ["ink", "heft"]), "6728447|600")
-        slanted = itemOf (line, 2)
-        expect ((fitOf slanted).traits, Views::slanted)
-        expect ((lookOf slanted).ink, 439041279)
-        expectInner (darkLowering (richSample ()), 1, ["ink"], "1724710911")
+    (** [NATIVE-SHM-NODES] Rich text tells one record per run, each with its own ink token, emphasis and slant. *)
+    export toldRichCase () =
+        expect (spelled (toldOf (richSample ())), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"accent\",italic=?false,emphasis=\"strong\"},{text=\"q\",ink=\"text\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
 
-    (** [NATIVE-SHM-LOWER] Stacks, splits and layers lower to their containers with the theme's spacing gap. *)
-    export lowerStacksCase () =
-        column = lightLowering (Ui::column [Ui::text "One", Ui::text "Two"])
-        expect (facets (column, ["kind", "gap", "count"]), "column|10.0|2")
-        expectItem (column, 1, ["text"], "Two")
-        row = lightLowering (Ui::row [Ui::text "A", Ui::text "B"])
-        expect (facets (row, ["kind", "gap", "count"]), "across|10.0|2")
-        split = lightLowering (Ui::split [Ui::text "List", Ui::text "Detail"])
-        expect (facets (split, ["kind", "count"]), "across|2")
-        expectItem (split, 1, ["share"], "1.0")
-        layered = lightLowering (Ui::layer [Ui::text "Back", Ui::text "Front"])
-        expect (facets (layered, ["kind", "count"]), "layered|2")
+    (** [NATIVE-SHM-NODES] Stacks, splits and layers keep their axis and children; the theme's spacing scale tells the gap a host lays them with. *)
+    export toldStacksCase () =
+        column = Ui::column [Ui::text "One", Ui::text "Two"]
+        expect (spelled (toldOf column), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"One\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Two\",role=\"body\",tone=\"primary\"}]}")
+        row = Ui::row [Ui::text "A", Ui::text "B"]
+        expect (spelled (toldOf row), "{kind=\"stack\",axis=\"horizontal\",children=[{kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"B\",role=\"body\",tone=\"primary\"}]}")
+        split = Ui::split [Ui::text "List", Ui::text "Detail"]
+        expect (spelled (toldOf split), "{kind=\"split\",children=[{kind=\"text\",text=\"List\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Detail\",role=\"body\",tone=\"primary\"}]}")
+        layered = Ui::layer [Ui::text "Back", Ui::text "Front"]
+        expect (spelled (toldOf layered), "{kind=\"layer\",children=[{kind=\"text\",text=\"Back\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Front\",role=\"body\",tone=\"primary\"}]}")
+        expect (toldSpacing (), "spacing=[#4,#10,#16]")
 
-    (** [NATIVE-SHM-LOWER] Sections card on the background token; screens stack a titled toolbar over scrolling children. *)
-    export lowerSurfacesCase () =
-        section = lightLowering (Ui::section ("Sides", "Feeds four", [Ui::text "Batter"]))
-        expect (facets (section, ["kind", "fill", "corner", "inset", "gap", "count"]), "column|4042322175|8.0|8.0|8.0|3")
-        expectItem (section, 0, ["text", "points", "heft", "ink"], "Sides|11.0|600|1146447615")
-        expectItem (section, 2, ["text", "ink"], "Feeds four|1146447615")
-        screen = lightLowering (Ui::screen ("Kitchen", "Spring", [Ui::button ("Bake", "", Increment)], [Ui::text "Steps"]))
-        expect (facets (screen, ["gap", "count"]), "12.0|2")
-        bar = expectChild (screen, 0, ["kind", "gap", "count"], "across|6.0|3")
-        heading = expectChild (bar, 0, ["kind", "gap"], "column|2.0")
-        expectItem (heading, 0, ["text", "points", "heft", "ink"], "Kitchen|20.0|600|439041279")
-        expectItem (heading, 1, ["text", "ink"], "Spring|1146447615")
-        expectItem (screen, 1, ["kind", "gap", "count"], "scrolling|10.0|1")
+    (** [NATIVE-SHM-NODES] Sections keep their title and footer; screens keep their toolbar, whose controls bind before the children's. *)
+    export toldSurfacesCase () =
+        section = Ui::section ("Sides", "Feeds four", [Ui::text "Batter"])
+        expect (spelled (toldOf section), "{kind=\"section\",title=\"Sides\",footer=\"Feeds four\",children=[{kind=\"text\",text=\"Batter\",role=\"body\",tone=\"primary\"}]}")
+        screen = Ui::screen ("Kitchen", "Spring", [Ui::button ("Bake", "", Increment)], [Ui::text "Steps"])
+        expect (spelled (toldOf screen), "{kind=\"screen\",title=\"Kitchen\",subtitle=\"Spring\",toolbar=[{kind=\"button\",label=\"Bake\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}],children=[{kind=\"text\",text=\"Steps\",role=\"body\",tone=\"primary\"}]}")
+        expect (deliversBinding (screen, 0, ui::Tap(action = Increment)), true)
 
-    (** [NATIVE-SHM-LOWER] Frames lower with their authored size, surface and line; scoped themes re-ink their subtree. *)
-    export lowerFramesCase () =
+    (** [NATIVE-SHM-NODES] Frames tell their whole style record; a scoped theme tells its own tokens with the subtree it inks. *)
+    export toldFramesCase () =
         base = ui::Frames::plain
         style = base(frameWidth = 430, frameHeight = 240, frameTop = 14, frameRadius = 12, frameGap = 6, frameFill = "background", frameLine = "secondary", frameGrow = true, frameFont = "mono", frameTextSize = 20)
-        framed = darkLowering (Ui::framed (style, Ui::text "Inner"))
-        expect (facets (framed, ["kind", "wide", "tall", "share"]), "fitted|430.0|240.0|1.0")
-        expect ((fitOf framed).traits, Views::fixedWidth)
-        expect ((fitOf framed).edge, 2578103295)
-        card = innerOf framed
-        expect (facets (card, ["kind", "fill", "corner", "gap", "inset", "points", "count"]), "column|269488383|12.0|6.0|14.0|20.0|1")
+        framed = Ui::framed (style, Ui::text "Inner")
+        expect (spelled (toldOf framed), "{kind=\"framed\",style={name=\"\",width=#430,height=#240,viewportHeightInset=#-1,scrollY=?false,top=#14,right=#0,bottom=#0,left=#0,radius=#12,gap=#6,fill=\"background\",ink=\"\",line=\"secondary\",lineEdge=\"all\",grow=?true,font=\"mono\",textSize=#20,mathScale=~0.0,lineHeight=~0.0,tracking=~0.0,italic=?false,hug=?false,align=\"start\",cross=\"stretch\",controlHeight=#0,controlPadding=#-1,symbolSize=#0,quietControls=?false,iconOnly=?false,fadeBackdrop=?false,trailingSymbols=?false,flatRows=?false,selectionGroup=?false,shadow=\"\"},body={kind=\"text\",text=\"Inner\",role=\"body\",tone=\"primary\"}}")
         local = ui::Theme(tokens = [ui::Token(tokenName = "text", tokenLight = "#000000", tokenDark = "#FFFFFF")], spacing = [4, 10, 16], feedback = 140, settle = 240)
-        scoped = darkLowering (Ui::themed (local, Ui::text "Scoped"))
-        expect (facets (scoped, ["kind", "text", "ink"]), "wording|Scoped|4294967295")
+        scoped = Ui::themed (local, Ui::text "Scoped")
+        expect (spelled (memberTold (insideTold (toldOf scoped), "theme")), "theme={tokens=[{name=\"text\",light=\"#000000\",dark=\"#FFFFFF\"}],spacing=[#4,#10,#16],feedback=#140,settle=#240}")
 
-    (** [NATIVE-SHM-LOWER] Dialogs and alerts lower to sheets that dismiss with a tap; menus show their body first. *)
-    export lowerOverlaysCase () =
-        dialog = lightLowering (Ui::dialog ("Review", Ui::button ("Insert", "", Increment), Load))
-        expect (facets (dialog, ["kind", "fill", "corner", "inset", "count"]), "sheet|4042322175|12.0|16.0|2")
-        expectDelivers (sheetDismissOf, dialog, ui::Tap(action = Load))
-        expectItem (dialog, 0, ["text", "points"], "Review|20.0")
-        insert = expectChild (dialog, 1, ["kind"], "fitted")
-        expect (textOf (innerOf insert), "Insert")
-        expectDelivers (pressAction, innerOf insert, ui::Tap(action = Increment))
-        forEachList ([{ on = true, count = 2 }, { on = false, count = 0 }], \alert =>
-            shown = lightLowering (ui::Alert(title = "Empty", message = "Nothing left", visible = alert.on, dismiss = Typed))
-            expect (countOf shown, alert.count)
-            expectDelivers (sheetDismissOf, shown, ui::Tap(action = Typed)))
-        menu = lightLowering (Ui::contextMenu (Ui::text "Body", [Ui::button ("Copy", "", Increment)]))
-        expect (facets (menu, ["kind", "count"]), "menu|2")
-        expectItem (menu, 0, ["text"], "Body")
+    (** [NATIVE-SHM-NODES] Dialogs and alerts keep their dismissal binding; menus tell their body before their actions. *)
+    export toldOverlaysCase () =
+        dialog = Ui::dialog ("Review", Ui::button ("Insert", "", Increment), Load)
+        expect (spelled (toldOf dialog), "{kind=\"dialog\",title=\"Review\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}")
+        expect (deliversBinding (dialog, 0, ui::Tap(action = Load)), true)
+        expect (deliversBinding (dialog, 1, ui::Tap(action = Increment)), true)
+        forEachList ([{ on = true }, { on = false }], \alert =>
+            shown = ui::Alert(title = "Empty", message = "Nothing left", visible = alert.on, dismiss = Typed)
+            expect (spelled (toldOf shown), "{kind=\"alert\",title=\"Empty\",message=\"Nothing left\",visible=?${alert.on},event=#0}")
+            expect (deliversBinding (shown, 0, ui::Tap(action = Typed)), true))
+        menu = Ui::contextMenu (Ui::text "Body", [Ui::button ("Copy", "", Increment)])
+        expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"text\",text=\"Body\",role=\"body\",tone=\"primary\"},items=[{kind=\"button\",label=\"Copy\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")
 
-    (** [NATIVE-SHM-LOWER] Asides order by side, fix their column's width and drag through a size input on a rule. *)
-    export lowerAsideCase () =
-        trailing = lightLowering (Ui::aside (Ui::text "Pane", ui::Trailing, Ui::text "Column", 420, Typed))
-        expect (facets (trailing, ["kind", "count"]), "across|3")
-        expectItem (trailing, 0, ["share"], "1.0")
-        splitter = expectChild (trailing, 1, ["wide"], "6.0")
-        expectItem (innerOf splitter, 0, ["kind", "points"], "rule|1.0")
-        drag = expectChild (innerOf splitter, 1, ["kind"], "canvas")
-        expectDelivers (canvasAction, drag, ui::SizeInput(action = Typed))
-        expectItem (trailing, 2, ["wide"], "420.0")
-        expectInner (trailing, 2, ["text"], "Column")
-        leading = lightLowering (Ui::aside (Ui::text "Pane", ui::Leading, Ui::text "Column", 300, Typed))
-        expectItem (leading, 0, ["wide"], "300.0")
-        expectInner (leading, 0, ["text"], "Column")
+    (** [NATIVE-SHM-NODES] Asides tell their side, both columns and the splitter's width and limits; the host orders the columns by the side. *)
+    export toldAsideCase () =
+        trailing = Ui::aside (Ui::text "Pane", ui::Trailing, Ui::text "Column", 420, Typed)
+        expect (spelled (toldOf trailing), "{kind=\"aside\",side=\"trailing\",pane={kind=\"text\",text=\"Pane\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"Column\",role=\"body\",tone=\"primary\"},width=#420,least=#260,most=#640,keep=#340,event=#0}")
+        expect (deliversBinding (trailing, 0, ui::SizeInput(action = Typed)), true)
+        leading = Ui::aside (Ui::text "Pane", ui::Leading, Ui::text "Column", 300, Typed)
+        members = insideTold (toldOf leading)
+        expect (memberText (members, "side"), "leading")
+        expect (memberCount (members, "width", 0), 300)
+        expect (memberCount (members, "least", 0), Splitters::least)
+        expect (deliversBinding (leading, 0, ui::SizeInput(action = Typed)), true)
 
-    (** [NATIVE-SHM-LOWER] Tabs lower to presses that deliver choices; the chosen tab is filled, heavier and shows its page. *)
+    (** [NATIVE-SHM-NODES] Tabs tell every page with its key; the chosen key names the page the host shows, and the choice binds after every page's controls. *)
     tabsSample () = [Ui::tab ("one", "First", "star", Ui::text "Page one"), Ui::tab ("two", "Second", "", Ui::button ("Go", "", Increment))]
 
-    (** [NATIVE-SHM-LOWER] Tabs lower to presses that deliver choices; the chosen tab is filled, heavier and shows its page. *)
-    export lowerTabsCase () =
-        lowered = lightLowering (ui::Tabs(tabs = tabsSample (), selected = "two", bind = Typed))
-        expect (facets (lowered, ["kind", "count"]), "column|2")
-        bar = expectChild (lowered, 0, ["kind", "count"], "across|2")
-        first = expectChild (bar, 0, ["hint", "traits"], "one|0")
-        expect (facets (innerOf first, ["text", "fill", "heft"]), "First|0|400")
-        expectDelivers (pressAction, innerOf first, ui::ChoiceInput(action = Typed))
-        chosen = expectChild (bar, 1, ["hint"], "two")
-        expect ((fitOf chosen).traits, Views::chosen)
-        expect (facets (innerOf chosen, ["text", "heft", "fill"]), "Second|600|439041050")
-        expectDelivers (pressAction, innerOf chosen, ui::ChoiceInput(action = Typed))
-        page = expectChild (lowered, 1, ["kind"], "fitted")
-        expect (textOf (innerOf page), "Go")
-        unknown = lightLowering (ui::Tabs(tabs = tabsSample (), selected = "nine", bind = Typed))
-        expect (countOf unknown, 1)
+    (** [NATIVE-SHM-NODES] Tabs tell every page with its key, and the choice binds after every page's controls. *)
+    export toldTabsCase () =
+        tabs = ui::Tabs(tabs = tabsSample (), selected = "two", bind = Typed)
+        expect (spelled (toldOf tabs), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"First\",symbol=\"star\",child={kind=\"text\",text=\"Page one\",role=\"body\",tone=\"primary\"}},{key=\"two\",label=\"Second\",symbol=\"\",child={kind=\"button\",label=\"Go\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}}],event=#1}")
+        expect (deliversBinding (tabs, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (tabs, 1, ui::ChoiceInput(action = Typed)), true)
+        unknown = ui::Tabs(tabs = tabsSample (), selected = "nine", bind = Typed)
+        expect (memberText (insideTold (toldOf unknown), "selected"), "nine")
+        // Every page is told with its own controls, so the choice binds after them all.
+        binds (drawnOf unknown, 2)
 
-    (** [NATIVE-SHM-LOWER] Rows lower to presses that deliver choices; groups gain headings and the selected row is washed. *)
+    (** [NATIVE-SHM-NODES] Rows tell every row with its key, symbol and group, and the selected key names the chosen one. *)
     rowsSample () = [Ui::entry ("a", "star", "Recent", Ui::text "Alpha"), Ui::entry ("b", "", "Recent", Ui::text "Beta"), Ui::item ("c", Ui::text "Gamma")]
 
-    (** [NATIVE-SHM-LOWER] Rows lower to presses that deliver choices; groups gain headings and the selected row is washed. *)
-    export lowerRowsCase () =
-        lowered = darkLowering (ui::Rows(rows = rowsSample (), selected = "b", bind = Load))
-        expect (facets (lowered, ["kind", "gap", "count"]), "column|2.0|4")
-        expect (facets (itemOf (lowered, 0), ["text", "heft"]), "Recent|600")
-        first = expectChild (lowered, 1, ["hint", "traits"], "a|0")
-        stack = innerOf first
-        expect (facets (stack, ["kind", "count"]), "layered|2")
-        cell = expectChild (stack, 0, ["kind", "count"], "across|2")
-        icon = expectChild (cell, 0, ["kind", "hint"], "fitted|star")
-        expect (facets (innerOf icon, ["text", "points"]), "|12.0")
-        rest = expectChild (stack, 1, ["kind", "fill"], "press|0")
-        expectDelivers (pressAction, rest, ui::ChoiceInput(action = Load))
-        picked = itemOf (lowered, 2)
-        expect ((fitOf picked).traits, Views::chosen)
-        pickedPress = itemOf (innerOf picked, 1)
-        expect ((lookOf pickedPress).fill, 3386435354)
-        expectDelivers (pressAction, pickedPress, ui::ChoiceInput(action = Load))
-        last = expectChild (lowered, 3, ["hint"], "c")
-        expect (textOf (itemOf (innerOf last, 0)), "Gamma")
+    (** [NATIVE-SHM-NODES] Rows tell every row with its key, symbol and group, and the selected key names the chosen one. *)
+    export toldRowsCase () =
+        listed = ui::Rows(rows = rowsSample (), selected = "b", bind = Load)
+        expect (spelled (toldOf listed), "{kind=\"rows\",selected=\"b\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"Alpha\",role=\"body\",tone=\"primary\"}},{key=\"b\",symbol=\"\",group=\"Recent\",child={kind=\"text\",text=\"Beta\",role=\"body\",tone=\"primary\"}},{key=\"c\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"Gamma\",role=\"body\",tone=\"primary\"}}],event=#0}")
+        expect (deliversBinding (listed, 0, ui::ChoiceInput(action = Load)), true)
 
-    (** [NATIVE-SHM-LOWER] Slots lower the region they name; an unknown key lowers to an empty column. *)
-    export lowerSlotCase () =
-        region = Keyed::region ([], "side", [], \() => Ui::styled ("Region text", ui::Title, ui::Good))
-        light = styled false
-        withRegions = light(styleRegions = [region])
-        filled = Lower::view (withRegions, Ui::slot "side")
-        expect (facets (filled, ["kind", "text", "points", "ink"]), "wording|Region text|20.0|305420031")
-        missing = Lower::view (withRegions, Ui::slot "missing")
-        expect (facets (missing, ["kind", "count"]), "column|0")
+    (** [NATIVE-SHM-NODES] A slot tells the key of the region it names; the regions themselves tell under their keys. *)
+    // The slot region's own view: naming the action union keeps the keyed snapshot's type concrete.
+    regionView : Unit -> ui::Node<Act>
+    regionView () = Ui::styled ("Region text", ui::Title, ui::Good)
 
-    (** [NATIVE-SHM-LOWER] Buttons take their role's ink and fill, keep the host's metrics and disable through their fit. *)
-    export lowerButtonsCase () =
+    (** [NATIVE-SHM-NODES] A slot tells the key of the region it names; the regions themselves tell under their keys. *)
+    export toldSlotCase () =
+        region = Keyed::region ([], "side", [], regionView)
+        told = Tellings::regions [region]
+        expect (length told.nodes, 1)
+        expect (spelled (toldAt (told.nodes, 0)), "region={key=\"side\",node={kind=\"text\",text=\"Region text\",role=\"title\",tone=\"good\"}}")
+        expect (length told.bindings, 0)
+        expect (spelled (toldOf (Ui::slot "side")), "{kind=\"slot\",key=\"side\"}")
+        expect (spelled (toldOf (Ui::slot "missing")), "{kind=\"slot\",key=\"missing\"}")
+
+    (** [NATIVE-SHM-NODES] Buttons tell their role and enabled state; the theme's tokens carry the colours a host draws them with. *)
+    export toldButtonsCase () =
         bake = Ui::action ("Bake", "play", ui::Prominent, true, Increment)
-        prominent = lightLowering bake
-        expect (facets (prominent, ["kind", "tall", "traits"]), "fitted|28.0|0")
-        expect (textOf (innerOf prominent), "Bake")
-        expect ((fitOf prominent).hint, "play")
-        expect (facets (innerOf prominent, ["ink", "fill", "inset", "corner", "points"]), "4294967295|6728447|12.0|8.0|13.0")
-        expectDelivers (pressAction, innerOf prominent, ui::Tap(action = Increment))
-        dark = darkLowering bake
-        expect (facets (innerOf dark, ["ink", "fill"]), "2241535|1724710911")
-        plain = lightLowering (Ui::button ("Keep", "", Increment))
-        expect (facets (innerOf plain, ["ink", "fill"]), "439041279|439041042")
-        destructive = lightLowering (Ui::action ("Remove", "", ui::Destructive, true, Load))
-        expect (facets (innerOf destructive, ["ink", "fill"]), "3424789247|439041042")
-        disabled = lightLowering (Ui::action ("Stop", "", ui::Plain, false, Load))
-        expect ((fitOf disabled).traits, Views::disabled)
-        expect (facets (innerOf disabled, ["text", "heft"]), "Stop|400")
+        expect (spelled (toldOf bake), "{kind=\"button\",label=\"Bake\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#0}")
+        expect (deliversBinding (bake, 0, ui::Tap(action = Increment)), true)
+        plain = Ui::button ("Keep", "", Increment)
+        expect (spelled (toldOf plain), "{kind=\"button\",label=\"Keep\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}")
+        destructive = Ui::action ("Remove", "", ui::Destructive, true, Load)
+        expect (spelled (toldOf destructive), "{kind=\"button\",label=\"Remove\",symbol=\"\",role=\"destructive\",enabled=?true,event=#0}")
+        expect (deliversBinding (destructive, 0, ui::Tap(action = Load)), true)
+        disabled = Ui::action ("Stop", "", ui::Plain, false, Load)
+        expect (spelled (toldOf disabled), "{kind=\"button\",label=\"Stop\",symbol=\"\",role=\"plain\",enabled=?false,event=#0}")
 
-    (** [NATIVE-SHM-LOWER] Fields lower to typing or writing with prompt hints, secret and submit traits and their label above. *)
-    export lowerFieldsCase () =
-        field = lightLowering (ui::Field(label = "Name", value = "Ada", prompt = "Your name", secure = true, multiline = false, commit = ui::OnSubmit, bind = Typed))
-        expect (facets (field, ["kind", "gap", "count"]), "column|4.0|2")
-        expect (facets (itemOf (field, 0), ["text", "points", "ink"]), "Name|11.0|1146447615")
-        entry = expectChild (field, 1, ["hint", "traits"], "Your name|68")
-        expect (facets (innerOf entry, ["kind", "text", "points", "corner"]), "typing|Ada|13.0|6.0")
-        expectDelivers (typingAction, innerOf entry, ui::TextInput(action = Typed))
-        notes = lightLowering (Ui::multiline ("Notes", "Two lines", "Add", Typed))
-        expect (facets (notes, ["kind", "count"]), "column|2")
-        expect (textOf (itemOf (notes, 0)), "Notes")
-        written = expectChild (notes, 1, ["kind", "traits", "hint"], "fitted|0|Add")
-        expect (facets (innerOf written, ["kind", "text"]), "writing|Two lines")
-        expectDelivers (typingAction, innerOf written, ui::TextInput(action = Typed))
-        toggle = lightLowering (Ui::toggle ("Nightly", true, Load))
-        expect (kindOf toggle, "switch")
-        expect (switchWordsOf toggle, "Nightly")
-        expect (switchOnOf toggle, true)
-        expect ((lookOf toggle).points, 13.0)
-        expectDelivers (switchFlagOf, toggle, ui::FlagInput(action = Load))
+    (** [NATIVE-SHM-NODES] Fields tell their prompt, hiding and commit policy, and carry their text binding; toggles tell their state. *)
+    export toldFieldsCase () =
+        field = ui::Field(label = "Name", value = "Ada", prompt = "Your name", secure = true, multiline = false, commit = ui::OnSubmit, bind = Typed)
+        expect (spelled (toldOf field), "{kind=\"field\",label=\"Name\",value=\"Ada\",prompt=\"Your name\",secure=?true,multiline=?false,commit=\"submit\",event=#0}")
+        expect (deliversBinding (field, 0, ui::TextInput(action = Typed)), true)
+        notes = Ui::multiline ("Notes", "Two lines", "Add", Typed)
+        expect (spelled (toldOf notes), "{kind=\"field\",label=\"Notes\",value=\"Two lines\",prompt=\"Add\",secure=?false,multiline=?true,commit=\"edit\",event=#0}")
+        expect (deliversBinding (notes, 0, ui::TextInput(action = Typed)), true)
+        toggle = Ui::toggle ("Nightly", true, Load)
+        expect (spelled (toldOf toggle), "{kind=\"toggle\",label=\"Nightly\",on=?true,event=#0}")
+        expect (deliversBinding (toggle, 0, ui::FlagInput(action = Load)), true)
 
-    (** [NATIVE-SHM-LOWER] Pickers choose through options; disclosures deliver their flag and reveal their children when open. *)
-    export lowerPickersCase () =
+    (** [NATIVE-SHM-NODES] Pickers tell every option with its key and the selected one; disclosures tell their flag and their children whether open or closed. *)
+    export toldPickersCase () =
         choices = [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")]
-        picker = lightLowering (ui::Picker(label = "Sort", choices = choices, selected = "b", bind = Load))
-        expect (facets (picker, ["kind", "hint"]), "fitted|Sort")
-        menu = innerOf picker
-        expect (facets (menu, ["kind", "text", "ink", "count"]), "choosing|Beta|1146447615|2")
-        expectDelivers (choosingAction, menu, ui::ChoiceInput(action = Load))
-        beta = expectChild (menu, 1, ["kind", "text"], "option|Beta")
-        expect (optionKeyOf beta, "b")
-        expect (optionChosenOf beta, true)
-        expect ((lookOf beta).points, 13.0)
-        alpha = itemOf (menu, 0)
-        expect (optionKeyOf alpha, "a")
-        expect (optionChosenOf alpha, false)
-        closed = lightLowering (Ui::disclosure ("Limits", false, Load, [Ui::text "Scope"]))
-        expect (facets (closed, ["kind", "count"]), "column|1")
-        title = innerOf (itemOf (closed, 0))
-        expect (facets (title, ["text", "ink"]), "Limits|1146447615")
-        expectDelivers (pressAction, title, ui::FlagInput(action = Load))
-        open = lightLowering (Ui::disclosure ("Limits", true, Load, [Ui::text "Scope"]))
-        expect (countOf open, 2)
-        expectItem (open, 1, ["text"], "Scope")
+        picker = ui::Picker(label = "Sort", choices = choices, selected = "b", bind = Load)
+        expect (spelled (toldOf picker), "{kind=\"picker\",label=\"Sort\",choices=[{key=\"a\",label=\"Alpha\"},{key=\"b\",label=\"Beta\"}],selected=\"b\",event=#0}")
+        expect (deliversBinding (picker, 0, ui::ChoiceInput(action = Load)), true)
+        closed = Ui::disclosure ("Limits", false, Load, [Ui::text "Scope"])
+        expect (spelled (toldOf closed), "{kind=\"disclosure\",title=\"Limits\",expanded=?false,event=#0,children=[{kind=\"text\",text=\"Scope\",role=\"body\",tone=\"primary\"}]}")
+        expect (deliversBinding (closed, 0, ui::FlagInput(action = Load)), true)
+        open = Ui::disclosure ("Limits", true, Load, [Ui::text "Scope"])
+        expect (memberFlag (insideTold (toldOf open), "expanded", false), true)
+        expect (length (memberItems (insideTold (toldOf open), "children")), 1)
 
-    (** [NATIVE-SHM-LOWER] Pairs, badges, labels, icons, links, spacers and dividers lower as quiet leaves with concrete colour. *)
-    export lowerLeavesCase () =
-        expect (structuralEquals (lightLowering (ui::Spacer)) ui::Gap, true)
-        pair = lightLowering (ui::Pair(label = "Size", value = "3"))
-        expect (facets (pair, ["kind", "gap", "count"]), "across|8.0|3")
-        expectItem (pair, 0, ["text", "ink"], "Size|1146447615")
-        expect (structuralEquals (itemOf (pair, 1)) ui::Gap, true)
-        expectItem (pair, 2, ["text", "ink"], "3|439041279")
-        badge = darkLowering (Ui::badge ("Live", "play", ui::Danger))
-        expect (kindOf badge, "fitted")
-        expect (facets (innerOf badge, ["kind", "text"]), "wording|Live")
-        expect (facets (badge, ["hint", "ink", "fill", "points", "heft", "corner"]), "play|4284901119|4284900900|11.0|500|999.0")
-        labelled = lightLowering (Ui::label ("Scope", "info"))
-        expect (textOf (innerOf labelled), "Scope")
-        expect (facets (labelled, ["hint", "ink", "points"]), "info|439041279|13.0")
-        icon = lightLowering (Ui::icon "star")
-        expect (facets (icon, ["kind", "hint"]), "fitted|star")
-        expect (facets (innerOf icon, ["text", "points"]), "|14.0")
-        link = lightLowering (Ui::link ("Guide", "https://example.test"))
-        expect (facets (link, ["kind", "hint"]), "fitted|https://example.test")
-        expect (facets (innerOf link, ["text", "ink"]), "Guide|6728447")
-        divider = lightLowering (ui::Divider)
-        expect (facets (divider, ["kind", "points", "ink"]), "rule|1.0|1146447615")
+    (** [NATIVE-SHM-NODES] Pairs, badges, labels, icons, links, spacers and dividers tell as whole leaves. *)
+    export toldLeavesCase () =
+        expect (spelled (toldOf (ui::Spacer)), "{kind=\"spacer\"}")
+        pair = ui::Pair(label = "Size", value = "3")
+        expect (spelled (toldOf pair), "{kind=\"pair\",label=\"Size\",value=\"3\"}")
+        badge = Ui::badge ("Live", "play", ui::Danger)
+        expect (spelled (toldOf badge), "{kind=\"badge\",label=\"Live\",symbol=\"play\",tone=\"danger\"}")
+        labelled = Ui::label ("Scope", "info")
+        expect (spelled (toldOf labelled), "{kind=\"label\",label=\"Scope\",symbol=\"info\"}")
+        icon = Ui::icon "star"
+        expect (spelled (toldOf icon), "{kind=\"icon\",symbol=\"star\"}")
+        link = Ui::link ("Guide", "https://example.test")
+        expect (spelled (toldOf link), "{kind=\"link\",label=\"Guide\",url=\"https://example.test\"}")
+        expect (spelled (toldOf (ui::Divider)), "{kind=\"divider\"}")
 
-    (** [NATIVE-SHM-LOWER] Segments, empty states, progress, meters and swatches draw their tones as concrete boxes and words. *)
-    export lowerStatusCase () =
-        segments = lightLowering (ui::Segments(tones = [ui::Good, ui::Danger], label = ""))
-        expect (facets (segments, ["kind", "count"]), "across|2")
-        first = expectChild (segments, 0, ["share", "tall"], "1.0|4.0")
-        expect ((lookOf (innerOf first)).fill, 305420031)
-        expectInner (segments, 1, ["fill"], "3424789247")
-        empty = lightLowering (Ui::empty ("tray", "Nothing here", "Add something first"))
-        expect ((fitOf empty).traits, Views::centred)
-        list = innerOf empty
-        expect (facets (list, ["gap", "count"]), "8.0|3")
-        tray = expectChild (list, 0, ["hint"], "tray")
-        expect (facets (innerOf tray, ["text", "points"]), "|28.0")
-        expectItem (list, 1, ["text", "points", "heft"], "Nothing here|20.0|600")
-        expectItem (list, 2, ["text", "ink"], "Add something first|1146447615")
-        progress = lightLowering (ui::Progress(label = "Loading", detail = "3 of 9"))
-        expect (facets (progress, ["kind", "count"]), "column|2")
-        expectItem (progress, 1, ["text", "points"], "3 of 9|12.0")
-        meter = lightLowering (Ui::meter ("Disk", 3, 4, ui::Accent))
-        expect (countOf meter, 2)
-        expectItem (meter, 0, ["text", "ink"], "Disk|1146447615")
-        bars = itemOf (meter, 1)
-        expect (countOf bars, 2)
-        filled = expectChild (bars, 0, ["share", "tall"], "3.0|4.0")
-        expect (facets (innerOf filled, ["fill", "corner"]), "6728447|999.0")
-        track = expectChild (bars, 1, ["share"], "1.0")
-        expect ((lookOf (innerOf track)).fill, 6728233)
+    (** [NATIVE-SHM-NODES] Segments, empty states, progress, meters and swatches tell their tones; a swatch tells both of its colours. *)
+    export toldStatusCase () =
+        segments = ui::Segments(tones = [ui::Good, ui::Danger], label = "")
+        expect (spelled (toldOf segments), "{kind=\"segments\",tones=[\"good\",\"danger\"],label=\"\"}")
+        empty = Ui::empty ("tray", "Nothing here", "Add something first")
+        expect (spelled (toldOf empty), "{kind=\"empty\",symbol=\"tray\",title=\"Nothing here\",detail=\"Add something first\"}")
+        progress = ui::Progress(label = "Loading", detail = "3 of 9")
+        expect (spelled (toldOf progress), "{kind=\"progress\",label=\"Loading\",detail=\"3 of 9\"}")
+        meter = Ui::meter ("Disk", 3, 4, ui::Accent)
+        expect (spelled (toldOf meter), "{kind=\"meter\",label=\"Disk\",value=#3,total=#4,tone=\"accent\"}")
         ink = ui::Swatch(name = "Ink", light = "#101010", dark = "#EFEFEF")
-        swatch = lightLowering ink
-        expect (facets (swatch, ["kind", "count"]), "across|2")
-        chip = expectChild (swatch, 0, ["wide", "tall"], "16.0|16.0")
-        expect ((lookOf (innerOf chip)).fill, 269488383)
-        expectItem (swatch, 1, ["text"], "Ink")
-        expectInner (darkLowering ink, 0, ["fill"], "4025479167")
+        expect (spelled (toldOf ink), "{kind=\"swatch\",name=\"Ink\",light=\"#101010\",dark=\"#EFEFEF\"}")
 
-    (** [NATIVE-SHM-LOWER] Media, editors, boards and scenes lower fitted and bind in the JSON encoder's order. *)
-    export lowerMediaCase () =
-        image = lightLowering (ui::Image(imageSource = "a.png", imageAlt = "A map", imageWidth = 320, imageHeight = 200))
-        expect (facets (image, ["kind", "wide", "tall", "hint"]), "fitted|320.0|200.0|A map")
-        expect (textOf (innerOf image), "a.png")
-        video = lightLowering (ui::Video(videoSource = "v.mp4", videoPoster = "p.png", videoCaptions = "", videoAlt = "A talk", videoSeconds = 90))
-        expect ((fitOf video).hint, "A talk")
-        expect (textOf (innerOf video), "p.png")
-        spoken = lightLowering (ui::Typeset(math = ui::Sym "x", spoken = "x equals two"))
-        expect (facets (spoken, ["kind", "text", "points"]), "wording|x equals two|13.0")
-        editor = lightLowering (Editors::editor ("Proof", "one", 3, [], Typed, Load))
-        expect (kindOf editor, "layered")
-        expect (countOf editor, 2)
-        prompted = expectChild (editor, 0, ["kind", "hint"], "fitted|Proof")
-        writing = innerOf prompted
-        expect (facets (writing, ["kind", "text"]), "writing|one")
-        expectDelivers (typingAction, writing, ui::TextInput(action = Typed))
-        caret = expectChild (editor, 1, ["kind"], "canvas")
-        expectDelivers (canvasAction, caret, ui::PlaceInput(action = Load))
-        board = lightLowering (Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load))
-        expect (facets (board, ["kind", "count", "fill", "ink"]), "layered|3|4042322175|573785343")
-        expectDelivers (canvasAction, itemOf (board, 0), ui::StrokeInput(action = Increment))
-        expectDelivers (canvasAction, itemOf (board, 1), ui::LassoInput(action = Typed))
-        expectDelivers (canvasAction, itemOf (board, 2), ui::TextInput(action = Load))
-        still = lightLowering (Boards::board ("board", 2, true, Increment, Typed))
-        expect (countOf still, 2)
-        zoomed = lightLowering (Ui::zoomed (2.0, 100.0, 50.0, [], [], Typed))
-        expect (facets (zoomed, ["kind", "wide", "tall"]), "fitted|200.0|100.0")
-        expectDelivers (canvasAction, innerOf zoomed, ui::SceneInput(action = Typed))
-        fitted = lightLowering (Ui::zoomed (0.0, 100.0, 50.0, [], [], Typed))
-        expect (facets (fitted, ["share", "wide"]), "1.0|0.0")
+    (** [NATIVE-SHM-NODES] Media, editors, boards and scenes bind in the walk's order: stroke, lasso, camera; text, cursor. *)
+    export toldMediaCase () =
+        image = ui::Image(imageSource = "a.png", imageAlt = "A map", imageWidth = 320, imageHeight = 200)
+        expect (spelled (toldOf image), "{kind=\"image\",source=\"a.png\",alt=\"A map\",width=#320,height=#200}")
+        video = ui::Video(videoSource = "v.mp4", videoPoster = "p.png", videoCaptions = "", videoAlt = "A talk", videoSeconds = 90)
+        expect (spelled (toldOf video), "{kind=\"video\",source=\"v.mp4\",poster=\"p.png\",captions=\"\",alt=\"A talk\",seconds=#90}")
+        spoken = ui::Typeset(math = ui::Sym "x", spoken = "x equals two")
+        expect (spelled (toldOf spoken), "{kind=\"math\",math={kind=\"sym\",text=\"x\"},spoken=\"x equals two\"}")
+        editor = Editors::editor ("Proof", "one", 3, [], Typed, Load)
+        expect (spelled (toldOf editor), "{kind=\"editor\",label=\"Proof\",value=\"one\",inline=?false,cursor=#3,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
+        expect (deliversBinding (editor, 0, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (editor, 1, ui::PlaceInput(action = Load)), true)
+        board = Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load)
+        expect (spelled (toldOf board), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"background\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
+        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
+        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
+        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
+        still = Boards::board ("board", 2, true, Increment, Typed)
+        expect (spelled (toldOf still), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
+        binds (drawnOf still, 2)
+        zoomed = Ui::zoomed (2.0, 100.0, 50.0, [], [], Typed)
+        expect (spelled (toldOf zoomed), "{scene 100.0x50.0x2.0,kind=\"scene\",width=~100.0,height=~50.0,zoom=~2.0,event=#0}")
+        expect (deliversBinding (zoomed, 0, ui::SceneInput(action = Typed)), true)
+        fitted = Ui::zoomed (0.0, 100.0, 50.0, [], [], Typed)
+        expect (memberReal (insideTold (toldOf fitted), "zoom", 1.0), 0.0)

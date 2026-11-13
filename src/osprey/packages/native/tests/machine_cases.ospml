@@ -6,13 +6,13 @@ namespace uitests
 import ui::Canvases
 import ui::Doc
 import ui::Lists
-import ui::Lower
 import ui::MachineDocs
 import ui::Machines
 import ui::Runtime
+import ui::Tell
+import ui::Tellings
 import ui::Templates
 import ui::Values
-import ui::Views
 
 
 type NativePoint =
@@ -25,8 +25,16 @@ nativeLoaded work = match MachineDocs::load (readFile "src/osprey/packages/nativ
 
 withNativeFixture work = Runtime::guarded (\() => nativeLoaded work)
 
-// The machine's view lowered and drawn over its own skin's theme: the rows, fits and scenes a host reads.
-nativeTree machine = Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine))
+// A Fire-acted node drawn as the rows of one root region. Monomorphic at the machine's action union: the telling walk is instantiated at one action type (Nimblesite/osprey#278).
+fireDrawn : ui::Node<ui::Lever> -> ui::Walk<ui::Binding<ui::Lever>>
+fireDrawn node = Tellings::alone node
+
+// A Fire-acted node's one told record, as Tell walks it.
+fireTold : ui::Node<ui::Lever> -> ui::Told
+fireTold node = Tell::first (Tell::walk ([], node))
+
+// The machine's view told as one root region's rows: the rows, fits, scenes and bindings a host reads ([NATIVE-SHM-NODES]).
+nativeTree machine = fireDrawn (Templates::view machine)
 
 // A machine renders rows in its chosen skin and reports no fault.
 expectRendered machine =
@@ -59,13 +67,22 @@ nativeReleaseAt (machine, label, fraction) =
     expect (nativeValue (released, label), fraction)
     released
 
-// Whether the view shows `text`: as a row's words (a label, title, caption or choice) or as its second text (a picker's name or a field's prompt).
+// Whether the view shows `text`: as any told row's words — a label, text, title, prompt, symbol or key.
 nativeShows (machine, text) =
     walked = nativeTree machine
-    Lists::any (walked.walkRows, \row => row.placedWords == text) || Lists::any (walked.walkFits, \f => f.fittedAs.hint == text)
+    Lists::any (walked.walkRows, \row => row.placedWords == text)
 
-// The words of the view's first picker: the label of its chosen option.
-nativeChosen machine = (Lists::find ((nativeTree machine).walkRows, \row => row.placedKind == Views::picker) ?: Views::blank).placedWords
+// The label of the choice `selected` names among `choices`, or "".
+chosenStep (selected, found, item) = match memberText (insideTold item, "key") == selected
+    true => memberText (insideTold item, "label")
+    false => found
+
+chosenLabel (choices, selected) = foldList (choices, "", \(found, item) => chosenStep (selected, found, item))
+
+// The words of the view's first picker: the label of the option its selected key names.
+nativeChosen machine = match Lists::find (controlsOf (fireTold (Templates::view machine)), \told => memberText (insideTold told, "kind") == "picker")
+    Success picker => chosenLabel (memberItems (insideTold picker, "choices"), memberText (insideTold picker, "selected"))
+    Error _ => ""
 
 // The text of a lettering or glyphs shape.
 shapeText shape = match shape

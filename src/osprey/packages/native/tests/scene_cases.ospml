@@ -18,7 +18,7 @@ import ui::Pick
 import ui::Views
 import ui::Streams
 import ui::Surfaces
-import ui::Lower
+import ui::Tellings
 import uitests::Probes
 
 // One scene row as its numbers and text, so a table can hold exactly what a host reads.
@@ -73,22 +73,30 @@ depthsOf walked = join (mapList (walked.walkSketches, \drawn => "${depthOf (list
 (** a scene's shapes cross as flat typed rows. *)
 sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
-    walked = drawnOf (Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
+    held = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)]
+    walked = drawnOf held
     rows = firstRows walked
     expect (length walked.walkSketches, 1)
-    expect ((firstSketch walked ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 2)
-    expectEtches (rows, [{ index = 0, spelled = "20 2 320.0 200.0 1.0 0.0 0.0 0 0 " }, { index = 1, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird" }, { index = 2, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk" }])
+    // The scene's record is told after the button's rows, and its sketch names that record's row.
+    expect ((firstSketch walked ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 13)
+    expectEtches (rows, [{ index = 0, spelled = "20 13 320.0 200.0 1.0 0.0 0.0 0 0 " }, { index = 1, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird" }, { index = 2, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk" }])
     shapes = shapeRows walked
     expect (codesOf shapes, "0,1,2,7,7,3,4")
     expectEtches (shapes, [{ index = 0, spelled = "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 " }, { index = 1, spelled = "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 " }])
     expect ((etchAt (shapes, 2)).etchIndex, 2)
     expect ((etchAt (shapes, 5)).etchIndex, 1)
     expect ((etchAt (shapes, 6)).etchText, "Score 3")
-    expect (actionAt (walked, 2), 1)
+    // The button binds control 0 and the scene control 1, as their told event members say.
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
     binds (walked, 2)
-    zoomed = drawnOf (Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed))
-    expect (etchedAt (firstRows zoomed, 0), "20 0 1536.0 828.0 0.75 0.0 0.0 0 0 ")
-    expect ((fitAt (zoomed, 0)).wide, 1152.0)
+    zoomed = Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)
+    expect (etchedAt (firstRows (drawnOf zoomed), 0), "20 2 1536.0 828.0 0.75 0.0 0.0 0 0 ")
+    // A host multiplies the told width by the told zoom: 1536 at 0.75 paints 1152 window pixels.
+    zoomedMembers = insideTold (toldOf zoomed)
+    expect (memberReal (zoomedMembers, "width", 0.0), 1536.0)
+    expect (memberReal (zoomedMembers, "height", 0.0), 828.0)
+    expect (memberReal (zoomedMembers, "zoom", 0.0), 0.75)
 
 (** colours pack as RRGGBBAA. *)
 sceneCaseColoursPackAsRrggbbaa () =
@@ -196,22 +204,29 @@ tabSymbol node = match node
 // [UI-COMPONENTS-SYMBOLS]: every node that shows a symbol sends its name, and a row without one sends none.
 (** labels, icons, badges, empty states, buttons, tabs and rows send their symbol names. *)
 sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
-    walked = drawnOf (Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)])
-    expect (rowsRead (walked, "hint", [1, 2, 3, 5, 8]), "folder|globe|shield|search|refresh")
-    expect (rowsRead (walked, "words", [1, 2, 3, 5, 6, 7, 8]), "L||B||E|D|Go")
+    held = Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)]
+    binds (drawnOf held, 3)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"label\",label=\"L\",symbol=\"folder\"}")
+    expect (spelled (childTold (toldOf held, 1)), "{kind=\"icon\",symbol=\"globe\"}")
+    expect (spelled (childTold (toldOf held, 2)), "{kind=\"badge\",label=\"B\",symbol=\"shield\",tone=\"good\"}")
+    expect (spelled (childTold (toldOf held, 3)), "{kind=\"empty\",symbol=\"search\",title=\"E\",detail=\"D\"}")
+    expect (spelled (childTold (toldOf held, 4)), "{kind=\"button\",label=\"Go\",symbol=\"refresh\",role=\"plain\",enabled=?true,event=#0}")
+    expect (spelled (childTold (toldOf held, 5)), "{kind=\"tabs\",selected=\"t\",tabs=[{key=\"t\",label=\"T\",symbol=\"clock\",child={kind=\"text\",text=\"page\",role=\"body\",tone=\"primary\"}}],event=#1}")
+    // The plain row carries no symbol or group; the led row's icon and group lead its cell.
+    expect (spelled (childTold (toldOf held, 6)), "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}")
     expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
-    // The plain row draws no icon; the led row's group heads it and its icon leads its cell.
-    expect (rowsRead (walked, "words", [15, 17, 21]), "p|G|q")
-    expect (rowsRead (walked, "hint", [14, 20]), "plain|person")
+    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (held, 1, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (held, 2, ui::ChoiceInput(action = Load)), true)
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
 (** a pair sends its label and value without a binding. *)
 sceneCaseAPairEncodesItsLabelAndValue () =
-    walked = drawnOf (Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)])
-    expect (rowsRead (walked, "kind", [1, 3]), "${Views::line}|${Views::gap}")
-    expect (rowsRead (walked, "words", [2, 4]), "Digest|sha256:ab")
-    expect (rowsRead (walked, "action", [1, 2, 5]), "${Views::none}|${Views::none}|0")
-    binds (walked, 1)
+    held = Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)]
+    binds (drawnOf held, 1)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
+    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
 
 isLinux platform = match platform
     ui::Linux => true
@@ -256,25 +271,28 @@ streamScene () = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320
 // [NATIVE-SHM-SCENE]: every shape crosses as a row in drawing order, marker and atlas first.
 (** a scene's shapes all cross as rows in drawing order. *)
 sceneCaseASceneRowsCarryEveryShapeInDrawingOrder () =
-    walked = drawnOf (streamScene ())
+    held = streamScene ()
+    walked = drawnOf held
     rows = firstRows walked
     expect (length rows, 9)
     expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "20,21,0,2,7,7,1,4,3")
-    expect (actionAt (walked, 2), 1)
+    // The button binds control 0 and the scene control 1, as their told event members say.
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
     binds (walked, 2)
 
-// [NATIVE-SHM-LOWER]: a slot lowers the region it names; an unnamed one draws nothing, scenes included.
+// [NATIVE-SHM-NODES]: a region's node is told under its key; a slot names that key, and a key no region holds tells no scene.
 (** a scene an unnamed slot holds draws nothing. *)
 sceneCaseAnUnnamedSlotDrawsNoScene () =
     named = Keyed::region ([], "side", [], \() => streamScene ())
-    styling = ui::Styling(styleTheme = Probes::palette (), styleDark = false, styleRegions = [named])
-    filled = Views::drawn (Lower::view (styling, Ui::slot "side"))
+    filled = Tellings::drawn (Probes::palette (), [named])
     expect (length filled.walkSketches, 1)
     binds (filled, 2)
-    missing = Views::drawn (Lower::view (styling, Ui::slot "gone"))
-    // A slot that names no region draws one empty column and no scene.
-    expect (length missing.walkRows, 1)
-    expect (kindAt (missing, 0), Views::column)
+    // A frame whose regions name no key for the slot tells only the theme's rows and draws no scene.
+    noRegions : List<KeyedSnapshot<ui::Node<Act>>>
+    noRegions = []
+    missing = Tellings::drawn (Probes::palette (), noRegions)
+    expect (length missing.walkRows, 11)
     expect (length missing.walkSketches, 0)
     binds (missing, 0)
 
@@ -324,13 +342,14 @@ everyContainer () = Ui::split [
     Ui::disclosure ("D", true, Load, [dot 9]),
 ]
 
-// [NATIVE-SHM-LOWER]: every container is walked in drawing order: a screen's toolbar before its
-// children, a context menu's body before its actions, a leading aside's column before its pane.
-(** scenes draw from every container in lowering's order. *)
+// [NATIVE-SHM-NODES]: every container is told in the walk's order: a screen's toolbar before its
+// children, a context menu's body before its actions, an aside's pane before its column (a host
+// orders the two by the aside's side member).
+(** scenes draw from every container in the walk's order. *)
 sceneCaseScenesDrawFromEveryContainerInOrder () =
     walked = drawnOf (everyContainer ())
     expect (length walked.walkSketches, 9)
-    expect (depthsOf walked, "1,2,3,4,6,5,7,8,9")
+    expect (depthsOf walked, "1,2,3,4,5,6,7,8,9")
 
 // [NATIVE-SHM-SCENE]: a strip's points follow its head as one row a pair.
 (** a strip carries its points as rows after its head. *)
@@ -370,36 +389,31 @@ sceneCaseTogglesAndPickersDeliverTheirOwnValue () =
     expect (said (ui::StrokeInput(action = Load), "0"), "A board control was sent a value of the wrong kind")
     expect (said (ui::SceneInput(action = Load), "0"), "A scene control was sent a value of the wrong kind")
 
-// [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep their lowered shapes.
-(** progress, swatches, alerts, prominent buttons and leading asides lower. *)
+// [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep every told member.
+(** progress, swatches, alerts, prominent buttons and leading asides tell. *)
 sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
-    walked = drawnOf (Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])
-    expect (kindAt (walked, 1), Views::column)
-    expect (rowsRead (walked, "words", [2, 3]), "P|d")
-    // A swatch is its colour's box, 16 points wide, beside its name.
-    expect (kindAt (walked, 4), Views::line)
-    expect ((fitAt (walked, 5)).wide, 16.0)
-    expect (wordsAt (walked, 6), "S")
-    // A visible alert is a sheet whose dismissal binds first.
-    expect (kindAt (walked, 7), Views::sheet)
-    expect (actionAt (walked, 7), 0)
-    expect (rowsRead (walked, "words", [8, 9]), "A|m")
-    expect (pressWords walked, "Go")
-    expect (pressActions walked, "1")
-    // A leading aside draws its column, 300 points wide, then the splitter, then its pane.
-    expect (wordsAt (walked, 12), "c")
-    expect ((fitAt (walked, 12)).wide, 300.0)
-    expect (actionAt (walked, 15), 2)
-    expect (wordsAt (walked, 16), "p")
-    binds (walked, 3)
+    held = Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)]
+    binds (drawnOf held, 3)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"progress\",label=\"P\",detail=\"d\"}")
+    // A swatch tells both of its colours, one for each appearance.
+    expect (spelled (childTold (toldOf held, 1)), "{kind=\"swatch\",name=\"S\",light=\"#fff\",dark=\"#000\"}")
+    // A visible alert keeps its dismissal binding.
+    expect (spelled (childTold (toldOf held, 2)), "{kind=\"alert\",title=\"A\",message=\"m\",visible=?true,event=#0}")
+    expect (spelled (childTold (toldOf held, 3)), "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}")
+    // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
+    expect (spelled (childTold (toldOf held, 4)), "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}")
+    expect (deliversBinding (held, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (held, 1, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (held, 2, ui::SizeInput(action = Typed)), true)
 
-// A drawn meter's two bars' shares, checked against what its amounts clamp to.
-meterShares (meter, probe) =
-    bars = AdditionCases::itemOf (meter, 1)
-    expect (AdditionCases::facets (AdditionCases::itemOf (bars, 0), ["share"]), "${probe.filled}")
-    expect (AdditionCases::facets (AdditionCases::itemOf (bars, 1), ["share"]), "${probe.rest}")
+// A drawn meter's clamped amount and total, checked against what its amount clamps to.
+meterTold probe =
+    members = insideTold (toldOf (Ui::meter ("Used", probe.amount, probe.total, ui::Caution)))
+    expect (memberCount (members, "value", 0 - 1), probe.value)
+    expect (memberCount (members, "total", 0 - 1), probe.whole)
+    expect (memberText (members, "tone"), "caution")
 
 // [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below one.
 (** a meter clamps its amount into a total of at least one. *)
 sceneCaseAMeterSendsItsAmountClampedInto () =
-    forEachList ([{ amount = 30, total = 120, filled = 30.0, rest = 90.0 }, { amount = 500, total = 120, filled = 120.0, rest = 0.0 }, { amount = 0 - 4, total = 120, filled = 0.0, rest = 120.0 }, { amount = 3, total = 0, filled = 1.0, rest = 0.0 }], \probe => meterShares (AdditionCases::meterDrawn (probe.amount, probe.total), probe))
+    forEachList ([{ amount = 30, total = 120, value = 30, whole = 120 }, { amount = 500, total = 120, value = 120, whole = 120 }, { amount = 0 - 4, total = 120, value = 0, whole = 120 }, { amount = 3, total = 0, value = 1, whole = 1 }], meterTold)

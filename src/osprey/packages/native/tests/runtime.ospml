@@ -7,8 +7,9 @@ namespace uitests
 import ui::Ui
 import ui::Doc
 import ui::Views
-import ui::Lower
 import ui::Keyed
+import ui::Tell
+import ui::Tellings
 import ui::Runtime
 import ui::Requests
 import ui::Surfaces
@@ -97,8 +98,7 @@ acted action = match action
     Typed => "typed"
     Load => "load"
 
-// One message spelt as its handler sees it, so a table can hold it. Pinned to the suite's action union until Nimblesite/osprey#278 generalizes the router.
-routed : ui::Message<Act> -> string
+// One message spelt as its handler sees it, so a table can hold it.
 routed message = Messages::route (message, \a => "tap ${acted a}", \(a, text) => "text ${acted a}:${text}", \(a, flag) => "flag ${acted a}:${flag}", \(a, points) => "integer ${acted a}:${points}", \(ticket, _) => "completed ${ticket}", \phase => "phase ${phase}", \(a, stroke) => "stroke ${acted a}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}", \(a, indices) => "lasso ${acted a}:${join (mapList (indices, \index => "${index}")) ","}", \_ => "frame", \(_, _) => "controlled")
 
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
@@ -106,46 +106,119 @@ theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFF
 (** The probe application as its boundary runs it: the store drawn with the probe theme. *)
 program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme)
 
-// A node drawn over the probe theme, as a host reads its rows.
-drawnOf<A> : ui::Node<A> -> ui::Walk<ui::Binding<A>>
-drawnOf node = Views::drawn (Lower::view (ui::Styling(styleTheme = theme, styleDark = false, styleRegions = []), node))
+// A node drawn as the rows of one root region with no theme tokens: the frame a test reads a single component from ([NATIVE-SHM-NODES]). Monomorphic at the suite's action union: the telling walk is instantiated at one action type (Nimblesite/osprey#278).
+drawnOf : ui::Node<Act> -> ui::Walk<ui::Binding<Act>>
+drawnOf node = Tellings::alone node
 
 // The `index`th row of `walked`, or the blank row past the end.
 rowAt (walked, index) = listGet walked.walkRows index ?: Views::blank
 
-// The kind number of the row at `index`, as `Views` spells it.
-kindAt (walked, index) = (rowAt (walked, index)).placedKind
-
 // The words of the row at `index`.
 wordsAt (walked, index) = (rowAt (walked, index)).placedWords
 
-// The control number the row at `index` delivers, or -1 for none.
-actionAt (walked, index) = (rowAt (walked, index)).placedAction
+// [NATIVE-SHM-NODES] Told-tree readers shared by every case file: a component crosses as a record of its kind and every member.
 
-// The `facet` (`words`, `hint`, `action` or `kind`) of each row in `indices`, `|`-joined, so one expectation reads several rows.
-rowsRead (walked, facet, indices) = join (mapList (indices, \index => rowFacet (walked, facet, index))) "|"
+// A record with no members: what a reader finds past the end.
+blankTold () = ui::ToldRecord(recordName = "", members = [])
 
-rowFacet (walked, facet, index) = match facet
-    "words" => wordsAt (walked, index)
-    "hint" => hintAt (walked, index)
-    "action" => "${actionAt (walked, index)}"
-    _ => "${kindAt (walked, index)}"
+// The member name of one told value.
+nameOfTold told = match told
+    ui::ToldText name _ => name
+    ui::ToldCount name _ => name
+    ui::ToldReal name _ => name
+    ui::ToldFlag name _ => name
+    ui::ToldRecord name _ => name
+    ui::ToldList name _ => name
+    ui::ToldScene name _ _ => name
 
-// Every fit of the row at `index`, its flags added up.
-traitsAt (walked, index) = foldList (filterList (walked.walkFits, \f => f.fittedRow == index), 0, \(all, f) => bitOr all f.fittedAs.traits)
+// The members of a told record or scene, or a list's items; none for a plain value.
+insideTold told = match told
+    ui::ToldRecord _ members => members
+    ui::ToldScene _ members _ => members
+    ui::ToldList _ items => items
+    _ => []
 
-// The first nonempty hint of the row at `index`.
-hintAt (walked, index) = match Lists::find (filterList (walked.walkFits, \f => f.fittedRow == index && f.fittedAs.hint != ""), \f => true)
-    Success found => found.fittedAs.hint
-    Error _ => ""
+// `name`'s member of `members`, or the member before it.
+memberStep (name, found, item) = match nameOfTold item == name
+    true => item
+    false => found
 
-// A fit that matches nothing the lowering produces, for lookups that miss.
-noFit = ui::Fit(wide = -1.0, tall = -1.0, share = -1.0, traits = -1, edge = -1, hint = "?")
+// The member called `name`, or the empty record when there is none.
+memberTold (members, name) = foldList (members, blankTold (), \(found, item) => memberStep (name, found, item))
 
-// The first fit of the row at `index`, or the sentinel fit when it has none.
-fitAt (walked, index) = match Lists::find (filterList (walked.walkFits, \f => f.fittedRow == index), \f => true)
-    Success found => found.fittedAs
-    Error _ => noFit
+// The text of the member called `name`, or "".
+memberText (members, name) = match memberTold (members, name)
+    ui::ToldText _ text => text
+    _ => ""
+
+// The whole number of the member called `name`, or `absent`.
+memberCount (members, name, absent) = match memberTold (members, name)
+    ui::ToldCount _ value => value
+    _ => absent
+
+// The flag of the member called `name`, or `absent`.
+memberFlag (members, name, absent) = match memberTold (members, name)
+    ui::ToldFlag _ on => on
+    _ => absent
+
+// The real of the member called `name`, or `absent`.
+memberReal (members, name, absent) = match memberTold (members, name)
+    ui::ToldReal _ value => value
+    _ => absent
+
+// The items of the list member called `name`, or none.
+memberItems (members, name) = match memberTold (members, name)
+    ui::ToldList _ items => items
+    _ => []
+
+// The `index`th told of `items`, or the empty record.
+toldAt (items, index) = listGet items index ?: blankTold ()
+
+// The `index`th child of the record `told`, or the empty record.
+childTold (told, index) = toldAt (memberItems (insideTold told, "children"), index)
+
+// `part` under the member name `name`, or alone when the name is empty.
+spelledName (name, part) = match name
+    "" => part
+    _ => "${name}=${part}"
+
+// One told value spelt as one string — its name, then its value marked by its kind — so a single expectation reads a whole record and every member.
+spelled told = match told
+    ui::ToldText name text => spelledName (name, "\"${text}\"")
+    ui::ToldCount name value => spelledName (name, "#${value}")
+    ui::ToldReal name value => spelledName (name, "~${value}")
+    ui::ToldFlag name on => spelledName (name, "?${on}")
+    ui::ToldRecord name members => spelledName (name, "{${join (mapList (members, spelled)) ","}}")
+    ui::ToldList name items => spelledName (name, "[${join (mapList (items, spelled)) ","}]")
+    ui::ToldScene name members sketch => spelledName (name, "{scene ${sketch.sketchWidth}x${sketch.sketchHeight}x${sketch.sketchZoom},${join (mapList (members, spelled)) ","}}")
+
+// `node`'s one told record, as Tell walks it.
+toldOf : ui::Node<Act> -> ui::Told
+toldOf node = Tell::first (Tell::walk ([], node))
+
+// A component record's own members, or none when they name no kind.
+ownControls members = match memberText (members, "kind") == ""
+    true => []
+    false => [ui::ToldRecord(recordName = "", members = members)]
+
+// Every component record in a told tree, depth first: a record with a `kind` member is one.
+controlsOf told = match told
+    ui::ToldList _ items => Lists::flatten (mapList (items, controlsOf))
+    ui::ToldRecord _ members => listConcat (ownControls members) (Lists::flatten (mapList (members, controlsOf)))
+    ui::ToldScene _ members _ => listConcat (ownControls members) (Lists::flatten (mapList (members, controlsOf)))
+    _ => []
+
+// The words a control carries: the first of its label, title or text members.
+wordsOfControl members = listGet (filterList ([memberText (members, "label"), memberText (members, "title"), memberText (members, "text")], \text => text != "")) 0 ?: ""
+
+// The controls of `kind` in `node`'s tree, depth first, each spelt `words@event` in the walk's order.
+eventsOf (node, kind) = join (mapList (filterList (controlsOf (toldOf node), \told => memberText (insideTold told, "kind") == kind), \told => "${wordsOfControl (insideTold told)}@${memberCount (insideTold told, "event", 0 - 1)}")) ","
+
+// Whether the control numbered `ordinal` of `node`'s walk delivers `binding`.
+deliversBinding : (ui::Node<Act>, int, ui::Binding<Act>) -> bool
+deliversBinding (node, ordinal, binding) = match listGet ((Tell::walk ([], node)).bindings) ordinal
+    Success found => structuralEquals found binding
+    Error _ => false
 
 (** Drives the probe application through the real surface open and event path, and reads its surfaces. *)
 module Probes
