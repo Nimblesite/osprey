@@ -9,15 +9,22 @@
 // value means, so a host can only reach actions the application issued ([UI-EVENTS]).
 namespace ui
 
-(** A session drawn as shared rows: the session itself and the bindings its controls deliver, in control order. *)
+(** A session drawn as shared rows: the session itself, the bindings its controls deliver in control order, whether the dark appearance is showing, the launch arguments gathered before it opened, the points of a stroke and the strokes of a lasso still arriving, and why the last event was refused (empty when it was not). *)
 type Surface S A =
     surfaceSession : Session<S>
     surfaceBound : List<Binding<A>>
+    surfaceDark : bool
+    surfaceArguments : List<string>
+    surfacePoints : List<Point>
+    surfaceEnclosed : List<int>
+    surfaceProblem : string
 
-(** How a surface is drawn: the theme and whether the dark appearance is showing. *)
-type Dress =
-    dressTheme : Theme
-    dressDark : bool
+(** An application as its boundary runs it: its `init`, `update` and `render`, and the theme its store is drawn with. *)
+type Program S A =
+    programInit : (Context) -> Step<S>
+    programUpdate : (Context, S, Message<A>) -> Step<S>
+    programRender : (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>
+    programTheme : (S) -> Theme
 
 (** Opens and advances a `Surface`, and turns typed host events into messages ([NATIVE-SHM-BOUNDARY]). *)
 module Surfaces
@@ -26,32 +33,46 @@ module Surfaces
 
     // Draws the root region and answers the bindings its controls deliver. Every region is rebuilt
     // for each view, so a `Slot` always finds the node it names.
-    draw<A> : (Dress, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream | e]
-    draw (dress, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
+    draw<A> : (Theme, bool, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream | e]
+    draw (theme, dark, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
         Error _ => []
-        Success root => Views::render (Lower::view (Styling(styleTheme = dress.dressTheme, styleDark = dress.dressDark, styleRegions = regions), root.snapshotValue))
+        Success root => Views::render (Lower::view (Styling(styleTheme = theme, styleDark = dark, styleRegions = regions), root.snapshotValue))
 
-    // Draws the step, sends what it asks of the host and answers the surface to keep.
-    shown<S, A> : (Context, Step<S>, List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
-    shown (host, step, regions, dress) =
-        bound = draw (dress, regions)
+    (** A surface holding `store` before the host has opened it. *)
+    export idle<S, A> : S -> Surface<S, A>
+    idle store = Surface(surfaceSession = Session(sessionContext = Runtime::host (0, 0, "", "", []), sessionStore = store), surfaceBound = [], surfaceDark = false, surfaceArguments = [], surfacePoints = [], surfaceEnclosed = [], surfaceProblem = "")
+
+    (** `held` with one more launch argument, in order, for `open` to pass to `init`. *)
+    export argued<S, A> : (Surface<S, A>, string) -> Surface<S, A>
+    argued (held, text) = held(surfaceArguments = listAppend held.surfaceArguments text)
+
+    // Draws `step`'s store with the context `host`, sends what the step asks of the host and keeps the result.
+    shown<S, A> : (Surface<S, A>, Program<S, A>, Context, S, Step<S>) -> Surface<S, A> ![ViewStream | e]
+    shown (held, program, host, before, step) =
+        bound = draw (program.programTheme step.stepStore, held.surfaceDark, program.programRender (before, step.stepStore, [], step.writes))
         Requests::post (step.requests, step.writes)
-        Surface(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound)
+        held(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound, surfaceProblem = "")
 
-    (** The first view for the host facts `host`: runs `init`, draws the root region into the shared frame and answers the surface to keep. *)
-    export open<S, A> : (Context, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
-    open (host, init, render, dress) =
-        first = init host
-        shown (host, first, render (first.stepStore, first.stepStore, [], first.writes), dress)
+    (** The first view for the host facts given here and the gathered launch arguments: runs `init`, draws the root region into the shared frame and answers the surface to keep. *)
+    export open<S, A> : (Surface<S, A>, Program<S, A>, Context, bool) -> Surface<S, A> ![ViewStream | e]
+    open (held, program, host, dark) =
+        given = host(arguments = held.surfaceArguments)
+        first = program.programInit given
+        shown (held(surfaceDark = dark), program, given, first.stepStore, first)
 
     (** The next view after `message` at the clock reading `now`: runs `update`, draws the root region and answers the surface to keep. *)
-    export deliver<S, A> : (Surface<S, A>, int, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
-    deliver (held, now, message, update, render, dress) =
+    export deliver<S, A> : (Surface<S, A>, Program<S, A>, int, Message<A>) -> Surface<S, A> ![ViewStream | e]
+    deliver (held, program, now, message) =
         before = held.surfaceSession
         host = before.sessionContext
         clocked = host(now = now)
-        next = update (clocked, before.sessionStore, message)
-        shown (clocked, next, render (before.sessionStore, next.stepStore, [], next.writes), dress)
+        shown (held, program, clocked, before.sessionStore, program.programUpdate (clocked, before.sessionStore, message))
+
+    (** The same store drawn again, as after a refused event or a change of appearance: nothing is asked of the host. *)
+    export redrawn<S, A> : (Surface<S, A>, Program<S, A>) -> Surface<S, A> ![ViewStream | e]
+    redrawn (held, program) =
+        store = held.surfaceSession.sessionStore
+        shown (held, program, held.surfaceSession.sessionContext, store, Runtime::step store)
 
     whole (words, absent) = parseInt words ?: absent
 
