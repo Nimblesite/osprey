@@ -196,25 +196,12 @@ tabSymbol node = match node
 (** labels, icons, badges, empty states, buttons, tabs and rows send their symbol names. *)
 sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
     walked = drawnOf (Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)])
-    expect (hintAt (walked, 1), "folder")
-    expect (wordsAt (walked, 1), "L")
-    expect (hintAt (walked, 2), "globe")
-    expect (wordsAt (walked, 2), "")
-    expect (hintAt (walked, 3), "shield")
-    expect (wordsAt (walked, 3), "B")
-    expect (hintAt (walked, 5), "search")
-    expect (wordsAt (walked, 5), "")
-    expect (wordsAt (walked, 6), "E")
-    expect (wordsAt (walked, 7), "D")
-    expect (hintAt (walked, 8), "refresh")
-    expect (wordsAt (walked, 8), "Go")
+    expect (rowsRead (walked, "hint", [1, 2, 3, 5, 8]), "folder|globe|shield|search|refresh")
+    expect (rowsRead (walked, "words", [1, 2, 3, 5, 6, 7, 8]), "L||B||E|D|Go")
     expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
     // The plain row draws no icon; the led row's group heads it and its icon leads its cell.
-    expect (wordsAt (walked, 15), "p")
-    expect (hintAt (walked, 14), "plain")
-    expect (wordsAt (walked, 17), "G")
-    expect (hintAt (walked, 20), "person")
-    expect (wordsAt (walked, 21), "q")
+    expect (rowsRead (walked, "words", [15, 17, 21]), "p|G|q")
+    expect (rowsRead (walked, "hint", [14, 20]), "plain|person")
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
 (** a pair sends its label and value without a binding. *)
@@ -397,8 +384,7 @@ sceneCaseTogglesAndPickersDeliverTheirOwnValue () =
 sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
     walked = drawnOf (Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])
     expect (kindAt (walked, 1), Views::column)
-    expect (wordsAt (walked, 2), "P")
-    expect (wordsAt (walked, 3), "d")
+    expect (rowsRead (walked, "words", [2, 3]), "P|d")
     // A swatch is its colour's box, 16 points wide, beside its name.
     expect (kindAt (walked, 4), Views::line)
     expect ((fitAt (walked, 5)).wide, 16.0)
@@ -406,8 +392,7 @@ sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
     // A visible alert is a sheet whose dismissal binds first.
     expect (kindAt (walked, 7), Views::sheet)
     expect (actionAt (walked, 7), 0)
-    expect (wordsAt (walked, 8), "A")
-    expect (wordsAt (walked, 9), "m")
+    expect (rowsRead (walked, "words", [8, 9]), "A|m")
     expect (pressWords walked, "Go")
     expect (pressActions walked, "1")
     // A leading aside draws its column, 300 points wide, then the splitter, then its pane.

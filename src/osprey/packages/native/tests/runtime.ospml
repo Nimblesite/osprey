@@ -131,6 +131,15 @@ wordsAt (walked, index) = (rowAt (walked, index)).placedWords
 // The control number the row at `index` delivers, or -1 for none.
 actionAt (walked, index) = (rowAt (walked, index)).placedAction
 
+// The `facet` (`words`, `hint`, `action` or `kind`) of each row in `indices`, `|`-joined, so one expectation reads several rows.
+rowsRead (walked, facet, indices) = join (mapList (indices, \index => rowFacet (walked, facet, index))) "|"
+
+rowFacet (walked, facet, index) = match facet
+    "words" => wordsAt (walked, index)
+    "hint" => hintAt (walked, index)
+    "action" => "${actionAt (walked, index)}"
+    _ => "${kindAt (walked, index)}"
+
 // Every fit of the row at `index`, its flags added up.
 traitsAt (walked, index) = foldList (filterList (walked.walkFits, \f => f.fittedRow == index), 0, \(all, f) => bitOr all f.fittedAs.traits)
 
