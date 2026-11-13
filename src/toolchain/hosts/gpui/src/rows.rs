@@ -31,8 +31,31 @@ pub enum Kind {
     Editor,
     Menu,
     Sheet,
+    /// [NATIVE-SHM-NODES] One told value, a record of members and a list of items.
+    Field,
+    Record,
+    List,
 }
 
+impl Kind {
+    /// The kind a row's code names, or none for a code this host does not know.
+    fn of(code: i64) -> Option<Kind> {
+        match code {
+            0..=16 => KINDS.get(usize::try_from(code).ok()?).copied(),
+            33 => Some(Kind::Field),
+            34 => Some(Kind::Record),
+            35 => Some(Kind::List),
+            _ => None,
+        }
+    }
+
+    /// Whether this row tells a component rather than draws a control.
+    pub fn told(self) -> bool {
+        matches!(self, Kind::Field | Kind::Record | Kind::List)
+    }
+}
+
+/// The rows that draw, by their code from zero ([NATIVE-SHM-VIEW]).
 const KINDS: [Kind; 17] = [
     Kind::Column,
     Kind::Line,
@@ -94,10 +117,13 @@ pub struct Control {
     /// The control number a host event names, when the control delivers one.
     pub action: Option<i64>,
     pub words: String,
-    /// A field's prompt, an option's or tab's key, or the icon a label or press is led by.
+    /// A field's prompt, an option's or tab's key, or the icon a label or press is led by. A told
+    /// row's name is its hint too.
     pub hint: String,
     pub look: Look,
     pub fit: Fit,
+    /// A told field's whole number or flag; 0 for every row that draws.
+    pub value: i64,
     pub children: Vec<usize>,
 }
 
@@ -260,11 +286,11 @@ fn colour(value: i64) -> Result<u32, String> {
 }
 
 fn control(row: &ViewRow, index: usize, run: &[u8]) -> Result<Control, String> {
-    let kind = usize::try_from(row.kind)
-        .ok()
-        .and_then(|k| KINDS.get(k))
-        .copied()
+    let kind = Kind::of(row.kind)
         .ok_or_else(|| format!("row {index} has an unknown kind {}", row.kind))?;
+    if kind.told() {
+        return told(kind, row, run);
+    }
     let flags = u32::try_from(row.flags)
         .ok()
         .filter(|f| f & !flags::ALL == 0)
@@ -294,6 +320,32 @@ fn control(row: &ViewRow, index: usize, run: &[u8]) -> Result<Control, String> {
             flags,
             border: colour(row.border)?,
         },
+        value: 0,
+        children: Vec::new(),
+    })
+}
+
+/// One told row ([NATIVE-SHM-NODES]): its name is its hint, a field's value is its words, its
+/// whole number in its ink or its real in its points, and its weight says which (0 to 4). The
+/// ordinary look checks do not apply: these colours and weights are values, not paint. Anything
+/// else refuses the frame.
+fn told(kind: Kind, row: &ViewRow, run: &[u8]) -> Result<Control, String> {
+    let weight = match (0..=4).contains(&row.weight) {
+        true => row.weight as f32,
+        false => return Err(format!("a told value of an unknown type {}", row.weight)),
+    };
+    Ok(Control {
+        kind,
+        action: None,
+        words: text(run, row.text_offset, row.text_length)?,
+        hint: text(run, row.hint_offset, row.hint_length)?,
+        look: Look {
+            size: extent(row.size)?,
+            weight,
+            ..Look::default()
+        },
+        fit: Fit::default(),
+        value: row.colour,
         children: Vec::new(),
     })
 }
@@ -644,7 +696,7 @@ pub(crate) fn checked(
 ) -> Result<Shown, String> {
     let (controls, roots) = controls(views, run)?;
     let canvases: Vec<usize> = (0..controls.len())
-        .filter(|i| controls[*i].kind == Kind::Canvas)
+        .filter(|i| matches!(controls[*i].kind, Kind::Canvas | Kind::Record))
         .collect();
     Ok(Shown {
         scenes: scenes(shapes, run, &canvases)?,

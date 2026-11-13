@@ -10,11 +10,15 @@ use gpui_kit::*;
 
 use crate::events::{self, Touch};
 use crate::ffi::{self, Library};
+use crate::regions::Regions;
 use crate::rows::{Ask, Shown};
-use crate::{adapters, clock, scene, store, view};
+use crate::{adapters, clock, render, scene, store, view};
 
-/// The one native view: the last checked frame, input editing state and host diagnostics.
+/// The one native view: the application's regions, the last checked frame, input editing state and
+/// host diagnostics.
 pub struct HostView {
+    /// Every region the last frame told, with its theme and trees.
+    pub regions: Regions,
     /// The frame the application last drew; the session itself stays in the application.
     pub shown: Arc<Shown>,
     /// One editor per control number, while the application keeps drawing it.
@@ -47,6 +51,7 @@ impl HostView {
     /// Creates the view before the application has drawn its first frame.
     pub fn new(bench: Option<clock::Bench>) -> Self {
         Self {
+            regions: Regions::new(),
             shown: Arc::new(Shown::default()),
             inputs: HashMap::new(),
             sprites: Default::default(),
@@ -80,7 +85,7 @@ impl HostView {
                     offset,
                     std::env::consts::OS,
                     &home,
-                    view::is_dark(window),
+                    render::is_dark(window),
                 )
             });
         self.settle(first, window, cx);
@@ -96,17 +101,21 @@ impl HostView {
     fn settle(&mut self, next: Result<Shown, String>, window: &mut Window, cx: &mut Context<Self>) {
         match next {
             Ok(shown) => {
-                for (key, text) in shown.slices() {
-                    if let Err(problem) = ffi::put_slice(key, text) {
-                        self.diagnose(problem);
+                if let Err(problem) = self.regions.adopt(&shown) {
+                    self.diagnose(problem);
+                } else {
+                    for (key, text) in shown.slices() {
+                        if let Err(problem) = ffi::put_slice(key, text) {
+                            self.diagnose(problem);
+                        }
                     }
+                    for reason in shown.diagnostics() {
+                        self.diagnose(reason.to_owned());
+                    }
+                    self.pending.extend(shown.requests().cloned());
+                    self.shown = Arc::new(shown);
+                    self.retain_inputs();
                 }
-                for reason in shown.diagnostics() {
-                    self.diagnose(reason.to_owned());
-                }
-                self.pending.extend(shown.requests().cloned());
-                self.shown = Arc::new(shown);
-                self.retain_inputs();
             }
             Err(problem) => self.diagnose(problem),
         }
@@ -179,10 +188,10 @@ impl HostView {
 
     /// Drops editors whose control the latest frame no longer draws.
     fn retain_inputs(&mut self) {
-        let shown = &self.shown;
-        self.inputs
-            .retain(|ordinal, _| shown.controls.iter().any(|c| c.action == Some(*ordinal)));
-        let canvases: BTreeSet<String> = shown
+        let regions = &self.regions;
+        self.inputs.retain(|ordinal, _| regions.delivers(*ordinal));
+        let canvases: BTreeSet<String> = self
+            .shown
             .scenes
             .keys()
             .map(|row| format!("canvas:{row}"))
@@ -221,22 +230,25 @@ impl Render for HostView {
                     .pb(safe.bottom)
                     .pl(safe.left)
                     .when(framed, |this| this.gap_4())
-                    .child(view::root(self, window, cx))
+                    .child(self.face(window, cx))
                     .child(crate::diagnostics::strip(self, cx)),
             )
     }
 }
 
 impl HostView {
-    /// The window background: the application's outermost fill, else the kit's.
-    fn background(&self, _: &Window, cx: &App) -> Rgba {
-        self.shown
-            .roots
-            .first()
-            .and_then(|row| self.shown.controls.get(*row))
-            .map(|root| root.look.fill)
-            .filter(|fill| *fill != 0)
-            .map_or_else(|| Rgba::from(cx.theme().background), view::colour)
+    /// The application's root region, or the plain view rows of a frame that told no components.
+    fn face(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        match self.regions.told() {
+            true => render::region(self, "root", window, cx),
+            false => view::root(self, window, cx),
+        }
+    }
+
+    /// The window background: the application's background token, else the kit's.
+    fn background(&self, window: &Window, cx: &App) -> Rgba {
+        render::colour(self.regions.theme(), "background", render::is_dark(window))
+            .unwrap_or_else(|| Rgba::from(cx.theme().background))
     }
 }
 
@@ -295,7 +307,7 @@ fn new_view(
 ) -> HostView {
     cx.observe_window_appearance(window, |view, window, cx| {
         Theme::sync_system_appearance(Some(window), cx);
-        view.send(Touch::appearance(view::is_dark(window)), window, cx);
+        view.send(Touch::appearance(render::is_dark(window)), window, cx);
     })
     .detach();
     let mut view = HostView::new(bench);

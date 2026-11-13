@@ -17,11 +17,15 @@ mod ffi;
 mod frame;
 mod host;
 mod launch;
+mod regions;
+mod render;
 mod rows;
 mod scene;
+mod screen;
 mod self_test;
 mod smoke;
 mod store;
+mod tree;
 mod view;
 
 /// The person's home folder: `HOME`, or `USERPROFILE` on Windows.

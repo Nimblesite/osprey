@@ -59,6 +59,7 @@ fn named(
             flags: traits,
             ..Fit::default()
         },
+        value: 0,
         children,
     }
 }
@@ -95,9 +96,99 @@ fn shown() -> Shown {
     }
 }
 
+/// One told row: its kind, the row it names as its parent, its name and the value its weight types.
+fn told_row(
+    kind: Kind,
+    name: &str,
+    (weight, words, value): (f32, &str, i64),
+    children: Vec<usize>,
+) -> Control {
+    Control {
+        kind,
+        action: None,
+        words: words.to_owned(),
+        hint: name.to_owned(),
+        look: Look {
+            weight,
+            ..Look::default()
+        },
+        fit: Fit::default(),
+        value,
+        children,
+    }
+}
+
+/// A frame that told main's JSON fixture as components ([NATIVE-SHM-NODES]): one region holding a
+/// stack of a button, a field, a toggle, a picker, a text and a scene, plus the scene's own rows.
+fn told() -> Shown {
+    let rows = told_row;
+    Shown {
+        controls: vec![
+            rows(Kind::Record, "region", (0., "", 0), vec![1, 2]),
+            rows(Kind::Field, "key", (0., "root", 0), vec![]),
+            rows(Kind::Record, "node", (0., "", 0), vec![3, 4]),
+            rows(Kind::Field, "kind", (0., "stack", 0), vec![]),
+            rows(
+                Kind::List,
+                "children",
+                (0., "", 0),
+                vec![5, 9, 13, 18, 26, 29],
+            ),
+            rows(Kind::Record, "", (0., "", 0), vec![6, 7, 8]),
+            rows(Kind::Field, "kind", (0., "button", 0), vec![]),
+            rows(Kind::Field, "label", (0., "Add", 0), vec![]),
+            rows(Kind::Field, "event", (1., "", 1), vec![]),
+            rows(Kind::Record, "", (0., "", 0), vec![10, 11, 12]),
+            rows(Kind::Field, "kind", (0., "field", 0), vec![]),
+            rows(Kind::Field, "label", (0., "Note", 0), vec![]),
+            rows(Kind::Field, "event", (1., "", 2), vec![]),
+            rows(Kind::Record, "", (0., "", 0), vec![14, 15, 16, 17]),
+            rows(Kind::Field, "kind", (0., "toggle", 0), vec![]),
+            rows(Kind::Field, "label", (0., "Loud", 0), vec![]),
+            rows(Kind::Field, "on", (3., "", 1), vec![]),
+            rows(Kind::Field, "event", (1., "", 3), vec![]),
+            rows(Kind::Record, "", (0., "", 0), vec![19, 20, 21, 22]),
+            rows(Kind::Field, "kind", (0., "picker", 0), vec![]),
+            rows(Kind::Field, "label", (0., "Rate", 0), vec![]),
+            rows(Kind::Field, "event", (1., "", 4), vec![]),
+            rows(Kind::List, "choices", (0., "", 0), vec![23]),
+            rows(Kind::Record, "", (0., "", 0), vec![24, 25]),
+            rows(Kind::Field, "key", (0., "a", 0), vec![]),
+            rows(Kind::Field, "label", (0., "Alpha", 0), vec![]),
+            rows(Kind::Record, "", (0., "", 0), vec![27, 28]),
+            rows(Kind::Field, "kind", (0., "text", 0), vec![]),
+            rows(Kind::Field, "text", (0., "Count 0", 0), vec![]),
+            rows(Kind::Record, "", (0., "", 0), vec![30, 31]),
+            rows(Kind::Field, "kind", (0., "scene", 0), vec![]),
+            rows(Kind::Field, "event", (1., "", 5), vec![]),
+        ],
+        roots: vec![0],
+        scenes: HashMap::from([(
+            29,
+            Scene {
+                width: 400.,
+                height: 300.,
+                zoom: 1.,
+                atlas: vec![],
+                shapes: vec![],
+                access: vec![
+                    button("Play", [10., 20., 100., 40.]),
+                    slider("Volume", [100., 0., 200., 10.], [0.5, 0., 1.]),
+                ],
+            },
+        )]),
+        asks: vec![],
+    }
+}
+
 fn step(verb: &str, words: &[&str]) -> Result<Attempt, String> {
     let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
     attempt(&shown(), verb, &words)
+}
+
+fn told_step(verb: &str, words: &[&str]) -> Result<Attempt, String> {
+    let words: Vec<String> = words.iter().map(|word| (*word).to_owned()).collect();
+    attempt(&told(), verb, &words)
 }
 
 fn values(attempt: Result<Attempt, String>) -> Vec<Touch> {
@@ -227,6 +318,67 @@ fn the_tree_names_every_role_label_value_and_range() {
         "field \"Note\"",
         "toggle \"Loud\"",
         "picker \"Rate\"",
+        "button \"Play\"",
+        "slider \"Volume\" value 0.5 of 0 to 1",
+    ] {
+        assert!(
+            text.lines().any(|seen| seen == line),
+            "{line} not in:\n{text}"
+        );
+    }
+}
+
+/// Every verb reaches a component the frame told, and sends only its ordinal and words.
+#[test]
+fn every_verb_reaches_the_components_a_frame_tells() {
+    assert_eq!(
+        told_step("wait", &["Count 0"]),
+        Ok(Attempt::Sending(vec![]))
+    );
+    assert_eq!(
+        values(told_step("invoke", &["Play"])),
+        vec![
+            Touch::pointer(5, 60., 40., true, false),
+            Touch::pointer(5, 60., 40., false, false)
+        ]
+    );
+    assert_eq!(
+        values(told_step("invoke", &["Add"])),
+        vec![Touch::control(1, "")]
+    );
+    assert_eq!(
+        values(told_step("toggle", &["Loud"])),
+        vec![Touch::control(3, "false")]
+    );
+    assert_eq!(
+        values(told_step("type", &["Note", "hi"])),
+        vec![Touch::control(2, "hi")]
+    );
+    assert_eq!(
+        values(told_step("choose", &["Alpha"])),
+        vec![Touch::control(4, "a")]
+    );
+    assert_eq!(
+        values(told_step("key", &["p"])),
+        vec![Touch::key(5, "p", true), Touch::key(5, "p", false)]
+    );
+    assert!(matches!(
+        told_step("invoke", &["Nope"]),
+        Ok(Attempt::Waiting(_))
+    ));
+}
+
+/// The told tree names every actionable component, its role and name, and a scene's elements.
+#[test]
+fn the_told_tree_names_every_role_label_value_and_range() {
+    let text = tree(&told());
+    for line in [
+        "button \"Add\"",
+        "field \"Note\"",
+        "toggle \"Loud\"",
+        "picker \"Rate\"",
+        "text \"Count 0\"",
+        "scene \"\"",
         "button \"Play\"",
         "slider \"Volume\" value 0.5 of 0 to 1",
     ] {

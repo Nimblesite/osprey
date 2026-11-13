@@ -10,6 +10,9 @@ const DRAWN: &[&str] = &[
     "Choice", "Rule", "Image", "Canvas", "Editor", "Menu", "Sheet",
 ];
 
+/// Row kinds that tell the component tree instead of drawing a control ([NATIVE-SHM-NODES]).
+const TOLD: &[&str] = &["Field", "Record", "List"];
+
 /// Capability kinds `host.rs` answers.
 const ANSWERED: &[&str] = &[
     "animate",
@@ -49,6 +52,7 @@ const NODES: &str = include_str!("../../../../osprey/packages/native/src/node.os
 const CAPABILITIES: &str = include_str!("../../../../osprey/packages/native/src/capability.ospml");
 const LOWER: &str = include_str!("../../../../osprey/packages/native/src/lower.ospml");
 const ROWS: &str = include_str!("rows.rs");
+const TREE: &str = include_str!("tree.rs");
 const VIEW: &str = include_str!("view.rs");
 const HOST: &str = include_str!("host.rs");
 
@@ -159,8 +163,8 @@ fn every_node_kind_is_drawn_or_refused_exactly_once() {
 }
 
 #[test]
-fn every_row_kind_is_drawn_exactly_once() {
-    assert_eq!(row_kinds(ROWS), declared(&[DRAWN]));
+fn every_row_kind_is_drawn_or_told_exactly_once() {
+    assert_eq!(row_kinds(ROWS), declared(&[DRAWN, TOLD]));
 }
 
 #[test]
@@ -188,6 +192,12 @@ fn the_declaration_matches_what_the_host_dispatches() {
         assert!(
             VIEW.contains(&format!("Kind::{kind}")),
             "view.rs draws no {kind}"
+        );
+    }
+    for kind in TOLD {
+        assert!(
+            TREE.contains(&format!("Kind::{kind}")),
+            "tree.rs tells no {kind}"
         );
     }
     for kind in ANSWERED {

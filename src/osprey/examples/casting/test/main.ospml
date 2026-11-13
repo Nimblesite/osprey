@@ -8,7 +8,6 @@ import ui::Canvases
 import ui::Requests
 import ui::Themes
 import ui::Templates
-import ui::LowerLeaves
 import ui::Lists
 import uitest::Drive
 import uitest::Semantics
@@ -411,7 +410,7 @@ test ("no TVs found offers another search, and an unreachable TV shows why", \()
     press "Play"
     shown ["living-room.local:8009: connection refused or timed out"]
     shown ["Play"]
-    expect (length (filterList ((seen ()).renderedControls, \c => c.controlInk == LowerLeaves::inkNamed (Templates::theme (machineNow ()), false, "danger"))), 1)))
+    expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)))
 test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
     sherbetArt ()
     letteredIn ["Looking for TVs…"]

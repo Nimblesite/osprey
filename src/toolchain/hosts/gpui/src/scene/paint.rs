@@ -7,7 +7,7 @@ use gpui_kit::*;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint, Transform};
 use crate::host::HostView;
-use crate::view::Binding;
+use crate::render::Binding;
 
 /// Builds the one-shot prepaint/paint pair with decoded data moved, not reparsed.
 pub(super) fn canvas(

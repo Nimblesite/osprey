@@ -5,7 +5,7 @@
 
 use crate::events::Touch;
 use crate::host::HostView;
-use crate::view::Binding;
+use crate::render::Binding;
 use gpui_kit::accesskit::{Action, ActionData};
 use gpui_kit::*;
 

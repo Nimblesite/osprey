@@ -9,8 +9,8 @@ use serde::Deserialize;
 
 use crate::events::{self, Touch};
 use crate::ffi::Library;
-use crate::rows::{Ask, Control, Kind, Shown};
-use crate::scene::Shape;
+use crate::rows::{Ask, Shown};
+use crate::screen::Screen;
 use crate::store;
 
 #[path = "smoke_checks.rs"]
@@ -266,50 +266,18 @@ fn recorded(shown: &Shown, send: &Send) -> Result<Touch, String> {
     }
 }
 
-/// The bound control a label names: a control's words, a field's or picker's hint, or the field
-/// drawn directly below the heading that carries the label.
-pub(crate) fn control<'a>(shown: &'a Shown, label: &str) -> Option<(i64, &'a Control)> {
-    let direct = shown.controls.iter().find_map(|control| {
-        let named = control.words == label
-            || (matches!(control.kind, Kind::Entry | Kind::Editor | Kind::Picker)
-                && control.hint == label);
-        named
-            .then_some(control)
-            .and_then(|control| control.action.map(|number| (number, control)))
-    });
-    direct.or_else(|| field_below(shown, label))
-}
-
-/// The field whose heading announces `label`: lowering draws the heading directly above it.
-fn field_below<'a>(shown: &'a Shown, label: &str) -> Option<(i64, &'a Control)> {
-    let heading = shown
-        .controls
-        .iter()
-        .position(|control| control.kind == Kind::Label && control.words == label)?;
-    shown
-        .controls
-        .iter()
-        .skip(heading.saturating_add(1))
-        .find_map(|control| {
-            matches!(control.kind, Kind::Entry | Kind::Editor)
-                .then(|| control.action.map(|number| (number, control)))
-                .flatten()
-        })
-}
-
-/// The control number a recorded label names.
-fn named<'a>(shown: &'a Shown, label: &str) -> Result<(i64, &'a Control), String> {
-    control(shown, label).ok_or_else(|| format!("no control offers {label:?}"))
+/// The bound control a recorded label names.
+fn named(shown: &Shown, label: &str) -> Result<(i64, bool), String> {
+    Screen::new(shown)
+        .control(label)
+        .ok_or_else(|| format!("no control offers {label:?}"))
 }
 
 /// The control number of the first scene's canvas.
 fn canvas(shown: &Shown) -> Result<i64, String> {
-    shown
-        .scenes
-        .keys()
-        .min()
-        .and_then(|row| shown.controls.get(*row))
-        .and_then(|control| control.action)
+    Screen::new(shown)
+        .scene()
+        .map(|(number, _)| number)
         .ok_or_else(|| "the frame draws no scene to send to".to_owned())
 }
 
@@ -375,7 +343,7 @@ fn drive() -> Result<(), String> {
         .map_err(|_| "the first frame has no button labelled Add".to_owned())?;
     let tapped = Library::event(now, &Touch::control(number, ""))?;
     settled(&tapped)?;
-    match shows(&tapped, "Count 1") {
+    match Screen::new(&tapped).shows("Count 1") {
         true => Ok(()),
         false => Err("the frame does not read \"Count 1\" after the tap".to_owned()),
     }
@@ -397,35 +365,6 @@ fn settled(shown: &Shown) -> Result<(), String> {
             shown.diagnostics().collect::<Vec<_>>().join("; ")
         )),
     }
-}
-
-/// Whether the frame announces `text` exactly, as a control's words or a scene's lettering.
-fn shows(shown: &Shown, text: &str) -> bool {
-    shown.controls.iter().any(|control| control.words == text)
-        || shown.scenes.values().any(|scene| {
-            scene.shapes.iter().any(|shape| match shape {
-                Shape::Glyphs { text: drawn, .. } | Shape::Lettering { text: drawn, .. } => {
-                    drawn == text
-                }
-                _ => false,
-            })
-        })
-}
-
-/// Whether any announced string contains `text`, for a substring assertion.
-fn contains_text(shown: &Shown, text: &str) -> bool {
-    shown
-        .controls
-        .iter()
-        .any(|control| control.words.contains(text) || control.hint.contains(text))
-        || shown.scenes.values().any(|scene| {
-            scene.shapes.iter().any(|shape| match shape {
-                Shape::Glyphs { text: drawn, .. } | Shape::Lettering { text: drawn, .. } => {
-                    drawn.contains(text)
-                }
-                _ => false,
-            })
-        })
 }
 
 /// Builds every event kind once, so a builder the smoke run never dispatches still cannot drift

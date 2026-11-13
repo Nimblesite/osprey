@@ -8,19 +8,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use gpui_kit::accesskit::Role;
 use gpui_kit::*;
 use serde_json::Value;
 
 use crate::events::Touch;
 use crate::host::HostView;
-use crate::rows::{flags, Control, Kind, Shown};
-use crate::scene::access::Access;
+use crate::rows::Shown;
+use crate::screen::Screen;
 use crate::smoke;
 
 #[path = "self_test_find.rs"]
 mod find;
-use find::{chooser, clicked, control, dragged, element, scene, shows, valued};
+use find::{clicked, dragged, valued};
 
 /// How long a windowed step waits for what it needs before it fails, and how often it looks.
 const PATIENCE: Duration = Duration::from_secs(60);
@@ -130,27 +129,28 @@ pub fn attempt(shown: &Shown, verb: &str, words: &[String]) -> Result<Attempt, S
             .parse::<f64>()
             .map_err(|_| format!("{verb} needs a number, not {}", words[index]))
     };
+    let screen = Screen::new(shown);
     Ok(match verb {
-        "wait" if shows(shown, word(0)?) => Attempt::Sending(Vec::new()),
+        "wait" if screen.shows(word(0)?) => Attempt::Sending(Vec::new()),
         "wait" => Attempt::Waiting(format!("nothing shows \"{}\"", word(0)?)),
-        "gone" if !shows(shown, word(0)?) => Attempt::Sending(Vec::new()),
+        "gone" if !screen.shows(word(0)?) => Attempt::Sending(Vec::new()),
         "gone" => Attempt::Waiting(format!("\"{}\" still shows", word(0)?)),
-        "invoke" => match (element(shown, word(0)?), control(shown, word(0)?)) {
+        "invoke" => match (screen.element(word(0)?), screen.control(word(0)?)) {
             (Some((action, access)), _) => clicked(access, action),
             (None, Some((action, _))) => Attempt::Sending(vec![Touch::control(action, "")]),
             (None, None) => Attempt::Waiting(format!("nothing offers \"{}\"", word(0)?)),
         },
-        "set" => match element(shown, word(0)?) {
+        "set" => match screen.element(word(0)?) {
             Some((action, access)) => valued(access, action, number(1)?)?,
             None => Attempt::Waiting(format!("no slider \"{}\"", word(0)?)),
         },
-        "drag" => match element(shown, word(0)?) {
+        "drag" => match screen.element(word(0)?) {
             Some((action, access)) => dragged(access, action, number(1)?, number(2)?),
             None => Attempt::Waiting(format!("nothing to drag called \"{}\"", word(0)?)),
         },
-        "toggle" => match control(shown, word(0)?) {
-            Some((action, found)) => {
-                let words = match found.fit.flags & flags::CHOSEN != 0 {
+        "toggle" => match screen.control(word(0)?) {
+            Some((action, chosen)) => {
+                let words = match chosen {
                     true => "false",
                     false => "true",
                 };
@@ -158,15 +158,15 @@ pub fn attempt(shown: &Shown, verb: &str, words: &[String]) -> Result<Attempt, S
             }
             None => Attempt::Waiting(format!("no switch \"{}\"", word(0)?)),
         },
-        "type" => match control(shown, word(0)?) {
+        "type" => match screen.control(word(0)?) {
             Some((action, _)) => Attempt::Sending(vec![Touch::control(action, word(1)?)]),
             None => Attempt::Waiting(format!("no field \"{}\"", word(0)?)),
         },
-        "choose" => match chooser(shown, word(0)?) {
+        "choose" => match screen.chooser(word(0)?) {
             Some(found) => Attempt::Sending(vec![found]),
             None => Attempt::Waiting(format!("no row \"{}\"", word(0)?)),
         },
-        "key" => match scene(shown) {
+        "key" => match screen.scene() {
             Some((action, _)) => Attempt::Sending(vec![
                 Touch::key(action, word(0).unwrap_or_default(), true),
                 Touch::key(action, word(0).unwrap_or_default(), false),
@@ -182,78 +182,7 @@ pub fn attempt(shown: &Shown, verb: &str, words: &[String]) -> Result<Attempt, S
 
 /// The accessibility tree as an agent reads it: one line per thing it can act on, in drawing order.
 pub fn tree(shown: &Shown) -> String {
-    let mut lines = Vec::new();
-    for (row, control) in shown.controls.iter().enumerate() {
-        if let Some(scene) = shown.scenes.get(&row) {
-            lines.extend(scene.access.iter().map(announced));
-        }
-        if control.kind == Kind::Canvas || control.action.is_none() {
-            continue;
-        }
-        lines.push(format!(
-            "{} \"{}\"",
-            role(control.kind),
-            name(shown, row, control)
-        ));
-    }
-    lines.join("\n")
-}
-
-/// The name a screen reader announces for a control: a field's heading or prompt, a picker's
-/// name, else its words.
-fn name<'a>(shown: &'a Shown, index: usize, control: &'a Control) -> &'a str {
-    match control.kind {
-        Kind::Entry | Kind::Editor => match heading(shown, index) {
-            Some(words) => words,
-            None if !control.hint.is_empty() => &control.hint,
-            None => &control.words,
-        },
-        Kind::Picker if !control.hint.is_empty() => &control.hint,
-        _ if !control.words.is_empty() => &control.words,
-        _ => &control.hint,
-    }
-}
-
-/// The heading lowering draws directly above a field, when the frame carries one.
-fn heading(shown: &Shown, index: usize) -> Option<&str> {
-    let above = shown.controls.get(index.checked_sub(1)?)?;
-    (above.kind == Kind::Label && !above.words.is_empty()).then_some(above.words.as_str())
-}
-
-/// The role a control announces.
-fn role(kind: Kind) -> &'static str {
-    match kind {
-        Kind::Column => "stack",
-        Kind::Line => "line",
-        Kind::Label => "label",
-        Kind::Press => "button",
-        Kind::Entry => "field",
-        Kind::Gap => "gap",
-        Kind::Scroll => "scroll",
-        Kind::Layer => "layer",
-        Kind::Toggle => "toggle",
-        Kind::Picker => "picker",
-        Kind::Choice => "option",
-        Kind::Rule => "rule",
-        Kind::Image => "image",
-        Kind::Canvas => "scene",
-        Kind::Editor => "editor",
-        Kind::Menu => "menu",
-        Kind::Sheet => "sheet",
-    }
-}
-
-fn announced(item: &Access) -> String {
-    match item.role {
-        Role::Slider => format!(
-            "slider \"{}\" value {} of {} to {}",
-            item.label, item.value, item.min, item.max
-        ),
-        Role::MenuItem => format!("menu item \"{}\"", item.label),
-        Role::Button => format!("button \"{}\"", item.label),
-        Role::Label => format!("label \"{}\"", item.label),
-        _ => format!("element \"{}\"", item.label),
-    }
+    Screen::new(shown).outline()
 }
 
 fn record(shots: &Path, name: &str, shown: &Shown) -> Result<(), String> {

@@ -10,11 +10,10 @@ use gpui_kit::*;
 
 use crate::events::Touch;
 use crate::host::HostView;
+use crate::render::symbol;
 use crate::rows::{flags, Control, Kind, Shown};
 
-mod icons;
 mod inputs;
-pub(crate) use icons::symbol;
 
 /// Mutable drawing context; it carries no application state or behaviour.
 pub(crate) struct Ctx<'a, 'b> {
@@ -22,20 +21,6 @@ pub(crate) struct Ctx<'a, 'b> {
     pub(crate) window: &'a mut Window,
     pub(crate) cx: &'a mut Context<'b, HostView>,
     pub(crate) shown: Arc<Shown>,
-}
-
-/// The control number a callback sends; copied from the row, never application state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Binding {
-    pub(crate) ordinal: i64,
-}
-
-/// Whether the native window currently uses a dark appearance.
-pub(crate) fn is_dark(window: &Window) -> bool {
-    matches!(
-        window.appearance(),
-        WindowAppearance::Dark | WindowAppearance::VibrantDark
-    )
 }
 
 /// A packed `0xRRGGBBAA` colour.
@@ -280,9 +265,22 @@ fn draw(ctx: &mut Ctx, index: usize) -> AnyElement {
         )
         .into_any_element(),
         Kind::Canvas => match ctx.shown.scenes.get(&index).cloned() {
-            Some(scene) => crate::scene::draw(ctx, index, control.action.unwrap_or(-1), scene),
+            Some(scene) => crate::scene::draw(
+                ctx.view,
+                ctx.window,
+                ctx.cx,
+                index,
+                control.action.unwrap_or(-1),
+                scene,
+            ),
             None => fitted(div().flex_grow(1.), &control).into_any_element(),
         },
         Kind::Sheet => sheet(ctx, index, &control),
+        // A told component is drawn by the component renderer, never as a plain row.
+        Kind::Field | Kind::Record | Kind::List => {
+            ctx.view
+                .diagnose_once("a told component is drawn by the component renderer".to_owned());
+            div().into_any_element()
+        }
     }
 }

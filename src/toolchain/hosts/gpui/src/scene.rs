@@ -6,7 +6,7 @@ use gpui_kit::*;
 
 use crate::host::HostView;
 use crate::rows::Scene;
-use crate::view::Ctx;
+use crate::tree::{self, Tree};
 
 pub mod access;
 pub mod atlas;
@@ -212,11 +212,40 @@ impl Transform {
     }
 }
 
+/// Maps a scene component to an interactive, full-area GPUI canvas ([UI-SCENE]): the scene rows the
+/// record's `sceneRow` names, delivering input to the control its `event` member issues.
+pub fn node<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    key: &str,
+    node: &Tree,
+) -> AnyElement {
+    let Some(ordinal) = tree::ordinal(node) else {
+        return crate::render::unbound(view, key);
+    };
+    let Some(row) = node.get("sceneRow").and_then(Tree::as_u64) else {
+        return crate::render::broken(view, "scene node without its scene row".to_owned());
+    };
+    let row = usize::try_from(row).unwrap_or(usize::MAX);
+    match view.shown.scenes.get(&row).cloned() {
+        Some(scene) => draw(view, window, cx, row, ordinal, scene),
+        None => crate::render::broken(view, format!("scene at row {row} streamed no scene")),
+    }
+}
+
 /// Draws the canvas at view row `row` with its scene, delivering input to control `ordinal`.
-pub fn draw(ctx: &mut Ctx, row: usize, ordinal: i64, scene: Scene) -> AnyElement {
+pub fn draw<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    row: usize,
+    ordinal: i64,
+    scene: Scene,
+) -> AnyElement {
     let decoded = decoded(scene);
-    diagnostics(ctx.view, &decoded);
-    input::interactive(ctx, row, ordinal, decoded)
+    diagnostics(view, &decoded);
+    input::interactive(view, window, cx, row, ordinal, decoded)
 }
 
 /// A checked scene stably depth-sorted for the painter.

@@ -24,7 +24,7 @@ src/toolchain/hosts/gpui/run.sh --smoke       # start, tap Add, assert "Count 1"
 
 Run `make -C src/toolchain/targets/macos/tests painting` or `flock` for the corresponding full windowed script. Each `shot` waits for a rendered frame and writes a PNG plus an accessibility text snapshot under `target/gpui-self-test/`. The desktop must be unlocked and rendering: a stale initial picture or text assertions alone do not verify the window. Headless runs retain accessibility snapshots only. PNG capture does not yet compare against committed pixel goldens.
 
-Every application keeps its session in its own memory and draws each frame as view, scene and ask rows the host leases and reads in place ([NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE], [NATIVE-SHM-ASK]); events go back as typed calls ([NATIVE-SHM-EVENT]). Nothing crosses as JSON.
+Every application keeps its session in its own memory and draws each frame as view, scene and ask rows the host leases and reads in place ([NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE], [NATIVE-SHM-ASK]); events go back as typed calls ([NATIVE-SHM-EVENT]). Nothing crosses as JSON. A component application tells its semantic tree as typed rows ([NATIVE-SHM-NODES]), which the host reads back as the same tree main's renderer drew, and a frame of plain view rows draws from those rows.
 
 ## Layout
 
@@ -33,13 +33,17 @@ Every application keeps its session in its own memory and draws each frame as vi
 | `probe/` | The probe application: two slices, two regions, a counter, a note and a store read. Namespace `probe` holds the app; `main.ospml` exports only `argument`, `open` and `event`, so nothing else becomes a C export. |
 | `src/ffi.rs` | The C boundary: `osprey_main`, `osprey_app_argument`, `osprey_app_open`, `osprey_app_event` and the `native_slice` import for host-held slices ([GPUI-HOST-BOUNDARY]). |
 | `src/frame.rs` | Each call's frame, sealed and leased from the bridge: scene, view, text and ask runs read in place. |
-| `src/rows.rs` | Every row checked and read as typed controls, scenes and asks; a malformed frame is refused whole ([NATIVE-SHM-SAFETY]). |
+| `src/rows.rs` | Every row checked and read as typed controls, told components, scenes and asks; a malformed frame is refused whole ([NATIVE-SHM-SAFETY]). |
+| `src/tree.rs` | The component tree told rows carry: a typed value, a record and a list, and the theme ([NATIVE-SHM-NODES]). |
+| `src/regions.rs` | Every region the frame told, its theme and the control numbers it issues ([GPUI-HOST-RENDER]). |
+| `src/render.rs`, `src/render/` | The semantic component mapping to GPUI, restored from main: one mapping per component kind, every colour and space taken from the theme ([GPUI-HOST-RENDER]). |
 | `src/scene.rs`, `src/scene/` | The painter (quads, paths, strips, glyphs; same-depth quads in one GPUI layer) and scene input ([GPUI-HOST-SCENE]). |
 | `src/clock.rs` | The frame clock and the `--bench` measurements ([GPUI-HOST-FRAME]). |
 | `src/store.rs`, `src/adapters/` | Capability adapters: the app store, processes, directories, texts, file panels and reveal ([GPUI-HOST-CAPABILITIES]). |
 | `src/events.rs` | `Touch`: the typed host events `osprey_app_event` takes. |
 | `src/host.rs` | The window, the event loop and the frame clock. |
-| `src/view.rs`, `src/view/` | One mapping per view row kind to GPUI elements, every style taken from the row ([GPUI-HOST-RENDER]). |
+| `src/view.rs`, `src/view/` | One mapping per plain view row kind to GPUI elements, every style taken from the row: the frames that tell no components ([GPUI-HOST-RENDER]). |
+| `src/screen.rs` | What a frame shows by the words a person reads: the control a label names, a list's choices, a scene's elements and the accessibility tree ([UI-MACHINE-SELF-TEST]). |
 | `src/smoke.rs` | The `--smoke` run. |
 | `bench/` | An Osprey-only measurement of the framework's per-frame cost: a flock of `count` sprites moved by `frames` frame events, timed as a native executable (plan 0037). |
 | `build.rs` | Links `libOspreyApp.a` (`OSPREY_GPUI_APP_DIR`), plus `libosprey_runtime_macos_arc.a` (`OSPREY_RUNTIME_DIR`) on macOS or the system libraries the bundled runtime calls on Linux and Windows. |
@@ -55,4 +59,4 @@ cd src/toolchain/hosts/gpui/bench && ../../../../target/release/osprey . --run -
 
 ## Status
 
-The original host phases of plan 0037 provide the window, renderer, scene painter, frame clock, capabilities and the Flock and Painting examples. Section 11's JSON bridge removal is done for this host: the envelope, region store and JSON renderer are deleted. Phase 4 CI runs the native, UI and example suites on Linux, with a separate host job for host tests, clippy and app smoke/self-tests. macOS and Windows also have windowed app scripts; their successful execution requires an interactive desktop. The latest local macOS run was blocked by a locked desktop after the screenshot check was strengthened to require a fresh frame. Measurements are in the plan and in [Flock's README](../../../osprey/examples/gpui/flock/README.md).
+The original host phases of plan 0037 provide the window, renderer, scene painter, frame clock, capabilities and the Flock and Painting examples. Section 11's JSON bridge removal is done for this host: the envelope and the JSON renderer are gone, and the component tree crosses as typed rows that main's renderer draws unchanged. Phase 4 CI runs the native, UI and example suites on Linux, with a separate host job for host tests, clippy and app smoke/self-tests. macOS and Windows also have windowed app scripts; their successful execution requires an interactive desktop. The latest local macOS run was blocked by a locked desktop after the screenshot check was strengthened to require a fresh frame. Measurements are in the plan and in [Flock's README](../../../osprey/examples/gpui/flock/README.md).

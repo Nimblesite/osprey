@@ -5,22 +5,29 @@ use gpui_kit::*;
 use super::{paint, Decoded};
 use crate::events::Touch;
 use crate::host::HostView;
-use crate::view::{self, Binding, Ctx};
+use crate::render::Binding;
+use crate::view;
 
 /// Builds the focusable wrapper and canvas without adding application behaviour.
-pub(super) fn interactive(ctx: &mut Ctx, row: usize, ordinal: i64, decoded: Decoded) -> AnyElement {
-    let handle = ctx.cx.entity();
+pub(super) fn interactive<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    row: usize,
+    ordinal: i64,
+    decoded: Decoded,
+) -> AnyElement {
+    let handle = cx.entity();
     let binding = Binding { ordinal };
     let key = format!("canvas:{row}");
-    let focus = scene_focus(ctx, &key);
+    let focus = scene_focus(view, cx, &key);
     // A fitted scene's scale is the one its last frame was painted at.
-    let scale = ctx
-        .view
+    let scale = view
         .scene_transforms
         .get(&key)
         .map_or(decoded.zoom, |t| t.scale);
     let mut elements = decoded.access.to_vec();
-    elements.extend(super::text::labels(&decoded.shapes, scale, ctx.window));
+    elements.extend(super::text::labels(&decoded.shapes, scale, window));
     let access = super::access::overlay(&handle, &binding, &elements, scale);
     let binding_for_paint = binding;
     let surface = div()
@@ -53,10 +60,8 @@ pub(super) fn interactive(ctx: &mut Ctx, row: usize, ordinal: i64, decoded: Deco
 }
 
 /// Returns the persistent focus handle owned by this scene's canvas.
-fn scene_focus(ctx: &mut Ctx, key: &str) -> FocusHandle {
-    let cx = &mut *ctx.cx;
-    ctx.view
-        .scene_focus
+fn scene_focus(view: &mut HostView, cx: &mut Context<HostView>, key: &str) -> FocusHandle {
+    view.scene_focus
         .entry(key.to_owned())
         .or_insert_with(|| cx.focus_handle())
         .clone()

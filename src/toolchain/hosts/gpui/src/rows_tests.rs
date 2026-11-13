@@ -281,7 +281,23 @@ type Change = Box<dyn Fn(&mut Frame)>;
 fn every_malformed_row_refuses_the_frame() {
     let cases: Vec<(&str, Change)> = vec![
         ("unknown kind", Box::new(|f| f.views[1].kind = 17)),
+        ("unknown kind", Box::new(|f| f.views[1].kind = 36)),
         ("unknown kind", Box::new(|f| f.views[1].kind = -1)),
+        (
+            "a told value of an unknown type",
+            Box::new(|f| {
+                f.views[1].kind = 33;
+                f.views[1].weight = 400;
+            }),
+        ),
+        (
+            "text range outside",
+            Box::new(|f| {
+                f.views[1].kind = 34;
+                f.views[1].weight = 0;
+                f.views[1].text_length = 1 << 40;
+            }),
+        ),
         ("not an earlier row", Box::new(|f| f.views[1].parent = 1)),
         ("not an earlier row", Box::new(|f| f.views[1].parent = 9)),
         ("not an earlier row", Box::new(|f| f.views[1].parent = -2)),
@@ -386,5 +402,54 @@ fn ask_fields_read_lists_pairs_and_flags_by_position() {
     assert_eq!(
         (http.number(5), http.flag(6), http.flag(7), http.texts(4)),
         (4096, true, false, Vec::<String>::new())
+    );
+}
+
+/// A told frame reads back as the typed component tree main's renderer drew: a field's weight says
+/// whether it is text, a whole number, a real or a flag, and a record's members are named by the
+/// hints of the rows under it ([NATIVE-SHM-NODES]).
+#[test]
+fn told_rows_read_as_the_component_tree() {
+    let mut frame = Frame::default();
+    let region = frame.view(34, -1, -1, "", "region");
+    let key = frame.view(33, region as i64, -1, "root", "key");
+    let node = frame.view(34, region as i64, -1, "", "node");
+    let kind = frame.view(33, node as i64, -1, "stack", "kind");
+    let count = frame.view(33, node as i64, -1, "", "count");
+    let real = frame.view(33, node as i64, -1, "", "real");
+    let on = frame.view(33, node as i64, -1, "", "on");
+    let list = frame.view(35, node as i64, -1, "", "children");
+    let item = frame.view(34, list as i64, -1, "", "");
+    for row in [region, key, node, kind, list, item] {
+        frame.views[row].weight = 0;
+    }
+    for (row, weight, size, colour) in [(count, 1, 0., -7), (real, 2, 0.5, 0), (on, 3, 0., 1)] {
+        frame.views[row].weight = weight;
+        frame.views[row].size = size;
+        frame.views[row].colour = colour;
+    }
+    let shown = frame.read().expect("a told frame is well formed");
+    assert_eq!(shown.controls[node].kind, Kind::Record);
+    assert_eq!(shown.controls[list].kind, Kind::List);
+    let told = crate::tree::frame(&shown)
+        .expect("a drawable told frame")
+        .expect("a frame that tells components");
+    let mut members = std::collections::BTreeMap::new();
+    members.insert(
+        "kind".to_owned(),
+        crate::tree::Tree::Text("stack".to_owned()),
+    );
+    members.insert("count".to_owned(), crate::tree::Tree::Whole(-7));
+    members.insert("real".to_owned(), crate::tree::Tree::Real(0.5));
+    members.insert("on".to_owned(), crate::tree::Tree::Bool(true));
+    members.insert(
+        "children".to_owned(),
+        crate::tree::Tree::Items(vec![crate::tree::Tree::Record(
+            std::collections::BTreeMap::new(),
+        )]),
+    );
+    assert_eq!(
+        told.regions,
+        vec![("root".to_owned(), crate::tree::Tree::Record(members))]
     );
 }

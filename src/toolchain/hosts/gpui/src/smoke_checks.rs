@@ -1,8 +1,9 @@
 //! What a smoke step expects of the host after it runs ([GPUI-HOST-VERIFICATION]): the frame's
 //! requests, its root, its scene's primitives, the text it announces and its diagnostics count.
 
-use super::{contains_text, Expect, TextExpect};
+use super::{Expect, TextExpect};
 use crate::rows::Shown;
+use crate::screen::Screen;
 
 /// Checks the ordered capability request list.
 pub(super) fn check_asks(shown: &Shown, expect: &Expect) -> Result<(), String> {
@@ -60,7 +61,7 @@ fn check_text(shown: &Shown, expect: Option<&TextExpect>) -> Result<(), String> 
     let Some(expect) = expect else {
         return Ok(());
     };
-    match contains_text(shown, &expect.contains) {
+    match Screen::new(shown).contains(&expect.contains) {
         true => Ok(()),
         false => Err(format!(
             "the frame has no string containing {:?}",
