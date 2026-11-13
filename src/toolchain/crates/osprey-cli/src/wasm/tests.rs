@@ -235,6 +235,7 @@ fn link_invokes_the_linker_and_maps_its_exit_code() {
         Path::new("/tmp/libdir"),
         Path::new("/tmp/out.wasm"),
         None,
+        &["open".to_owned()],
     );
     // A stand-in that exits non-zero → link reports a CLI failure.
     std::env::set_var("OSPREY_WASM_LD", "false");
@@ -244,9 +245,14 @@ fn link_invokes_the_linker_and_maps_its_exit_code() {
         Path::new("/tmp/libdir"),
         Path::new("/tmp/out.wasm"),
         None,
+        &[],
     );
     assert!(ok.is_ok(), "linker exit 0 => ok");
     assert!(err.is_err(), "linker non-zero => failure");
+    assert!(
+        !Path::new("/tmp/o.imports").exists(),
+        "the host-imports list never outlives the link"
+    );
 }
 
 #[test]
