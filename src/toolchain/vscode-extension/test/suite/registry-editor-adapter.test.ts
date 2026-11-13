@@ -4,6 +4,7 @@ import { CancellationTokenSource, ExtensionContext, TabInputText, Uri, window, w
 import { defaultPackageDeps, makeAddHandler } from "../../client/src/package-commands";
 import { hostBridge } from "../../client/src/package-workspace";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
+import { Ask } from "../../client/src/osprey-ui/asks";
 import { activateWithServer, ACTIVATION_MS } from "./profiler-kit";
 import { extensionRoot } from "./osprey-test-env";
 
@@ -60,7 +61,14 @@ suite("package VSIX contributions", () => {
 
 function executeHost(operation: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const host = hostBridge({ extensionPath: extensionRoot } as ExtensionContext);
-  return createRequestExecutor(host)({ ticket: "adapter:1", kind: "host-call", namespace: "vscode", operation, arguments: args });
+  const pairs = Object.entries(args).flatMap(([name, value]) => [
+    { field: 3, number: 0, text: name }, { field: 3, number: 0, text: String(value) },
+  ]);
+  const request = new Ask(11, "adapter:1", [
+    { field: 1, number: 0, text: "vscode" }, { field: 2, number: 0, text: operation }, ...pairs,
+    { field: 4, number: 10000, text: "" }, { field: 5, number: 1024, text: "" }, { field: 6, number: 0, text: "" },
+  ]);
+  return createRequestExecutor(host)(request).then((completion) => JSON.parse(completion.detail) as unknown);
 }
 
 suite("package real editor host capabilities", () => {

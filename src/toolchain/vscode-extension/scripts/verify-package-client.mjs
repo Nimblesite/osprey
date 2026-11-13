@@ -17,9 +17,13 @@ for (const name of ["package-workspace", "workbench"]) {
   const bytes = fs.readFileSync(artifact);
   if (!WebAssembly.validate(bytes)) throw new Error(`Invalid ${label} WASM: ${artifact}`);
   const exports = WebAssembly.Module.exports(new WebAssembly.Module(bytes));
-  if (!exports.some(item => item.name === "_start" && item.kind === "function")
-    || !exports.some(item => item.name === "memory" && item.kind === "memory")) {
-    throw new Error(`Missing WASI application exports in ${name}: ${artifact}`);
+  const required = ["_start", "memory", "osprey_app_argument", "osprey_app_open", "osprey_app_event",
+    "osp_native_open", "osp_native_frame_commit", "osp_native_frame_discard", "osp_native_acquire",
+    "osp_native_child", "osp_native_length", "osp_native_view", "osp_native_release", "malloc", "free"];
+  for (const entry of required) {
+    if (!exports.some(item => item.name === entry)) {
+      throw new Error(`Missing native boundary export ${entry} in ${name}: ${artifact}`);
+    }
   }
 }
 const assets = path.join(path.dirname(client), "workbench");
@@ -36,16 +40,6 @@ function relativeAsset(source) {
     && source.split("/").every(part => part !== ".." && part !== "." && part !== "");
 }
 for (const source of ["osprey-logo.png", "chalk-study.png", "fonts/Geist-LICENSE.txt", "fonts/STIX-Two-Text-LICENSE.txt", "fonts/STIX-Two-Math-LICENSE.txt"]) bundledFile(source);
-for (const source of ["workbench.css", "workbench-fonts.css"]) {
-  const css = bundledFile(source).toString("utf8");
-  for (const match of css.matchAll(/url\(["']?([^\s)"']+)["']?\)/g)) {
-    const file = match[1];
-    if (!relativeAsset(file)) {
-      throw new Error(`Invalid workbench stylesheet asset: ${file}`);
-    }
-    bundledFile(file);
-  }
-}
 function verifyProofLibraries() {
   const catalogue = JSON.parse(bundledFile("proof-libraries.json").toString("utf8"));
   if (!Array.isArray(catalogue.libraries) || catalogue.libraries.length === 0) throw new Error("Invalid workbench proof library inventory");

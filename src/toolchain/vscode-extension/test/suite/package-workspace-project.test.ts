@@ -6,10 +6,10 @@ import type { Browser, Frame } from "playwright-core";
 import * as http from "http";
 import * as sinon from "sinon";
 import { commands, ConfigurationTarget, ExtensionContext, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
-import { BUILD_MS, EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
-import { compileSdkHost, installRegistry, servedPackage, sdkHostRequests, sdkRequest } from "./package-harness";
+import { EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
+import { installRegistry, servedPackage } from "./package-harness";
+import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
-import { record, type NativeRequest } from "../../client/src/osprey-ui/protocol";
 import { folderFor, hostBridge } from "../../client/src/package-workspace";
 
 const roots = ["one", "two"].map((name, index) => ({ name, index, uri: Uri.file(`/work/${name}`) }));
@@ -397,18 +397,37 @@ interface SdkScenario {
   readonly frame: Frame;
   readonly folder: Uri;
   readonly document: Uri;
-  readonly requests: readonly NativeRequest[];
-  readonly execute: (request: NativeRequest) => Promise<unknown>;
+  readonly execute: (ask: Ask) => Promise<Completion>;
+}
+
+function hostCall(ticket: string, operation: string, pairs: readonly (readonly [string, string])[],
+  options: { readonly namespace?: string; readonly timeout?: number; readonly limit?: number } = {}): Ask {
+  const fields: { field: number; number: number; text: string }[] = [
+    { field: 1, number: 0, text: options.namespace ?? "vscode" },
+    { field: 2, number: 0, text: operation },
+    ...pairs.flatMap(([name, value]) => [{ field: 3, number: 0, text: name }, { field: 3, number: 0, text: value }]),
+    { field: 4, number: options.timeout ?? 10000, text: "" },
+    { field: 5, number: options.limit ?? 1024, text: "" },
+    { field: 6, number: 0, text: "" },
+  ];
+  return new Ask(11, ticket, fields);
+}
+
+function documentAsk(ticket: string, uri: string, line = 1, column = 1): Ask {
+  return hostCall(ticket, "document.open", [["uri", uri], ["line", String(line)], ["column", String(column)]]);
+}
+
+function answer(completion: Completion): Record<string, unknown> {
+  const value: unknown = JSON.parse(completion.detail);
+  assert.ok(typeof value === "object" && value !== null);
+  return value as Record<string, unknown>;
 }
 
 async function sdkScenario(frame: Frame, folder: Uri, document: Uri): Promise<SdkScenario> {
   fs.writeFileSync(document.fsPath, "alpha\nsecond\nomega\n");
   const extension = extensions.getExtension(EXTENSION_ID);
-  const peer = workspace.workspaceFolders?.[1];
-  assert.ok(extension && peer, "real activated extension and second workspace exist");
-  const requests = await sdkHostRequests([document.toString(), folder.toString(), peer.uri.toString(),
-    Uri.joinPath(folder, "missing-sdk-document.txt").toString()]);
-  return { frame, folder, document, requests, execute: createRequestExecutor(hostBridge(extension)) };
+  assert.ok(extension, "real activated extension exists");
+  return { frame, folder, document, execute: createRequestExecutor(hostBridge(extension)) };
 }
 
 async function withSdkScenario(run: (scenario: SdkScenario) => Promise<void>): Promise<void> {
@@ -436,36 +455,37 @@ async function withScopedRegistries(run: () => Promise<void>): Promise<void> {
 }
 
 async function verifySdkDocument(scenario: SdkScenario): Promise<void> {
-  const { document, requests, execute } = scenario;
-  assert.deepStrictEqual(await execute(sdkRequest(requests, "sdk/open")), { opened: true, uri: document.toString() });
+  const { document, execute } = scenario;
+  assert.deepStrictEqual(answer(await execute(documentAsk("sdk/open", document.toString(), 2, 3))), { opened: true, uri: document.toString() });
   assert.strictEqual(window.activeTextEditor?.document.uri.toString(), document.toString());
   assert.strictEqual(window.activeTextEditor?.selection.active.line, 1);
   assert.strictEqual(window.activeTextEditor?.selection.active.character, 2);
-  const snapshot = await execute(sdkRequest(requests, "sdk/snapshot"));
-  assert.ok(record(snapshot));
+  const snapshot = answer(await execute(hostCall("sdk/snapshot", "workspace.snapshot", [])));
   assert.strictEqual(snapshot.activeDocument, document.toString());
   assert.strictEqual(snapshot.trusted, workspace.isTrusted);
 }
 
 async function verifySdkConfiguration(scenario: SdkScenario): Promise<void> {
-  for (const [ticket, expected] of [["sdk/config-one", "https://sdk-0.example"], ["sdk/config-two", "https://sdk-1.example"]]) {
-    const result = await scenario.execute(sdkRequest(scenario.requests, ticket));
-    assert.ok(record(result) && record(result.values));
+  const folders = workspace.workspaceFolders ?? [];
+  for (const [index, expected] of [["sdk/config-one", "https://sdk-0.example"], ["sdk/config-two", "https://sdk-1.example"]].entries()) {
+    assert.ok(folders[index]);
+    const result = answer(await scenario.execute(hostCall(index === 0 ? "sdk/config-one" : "sdk/config-two",
+      "configuration.read", [["section", "osprey.packages"], ["workspace", folders[index]!.uri.toString()]])));
     assert.strictEqual(result.section, "osprey.packages");
-    assert.strictEqual(result.values.registry, expected, "configuration resolves against the request's real resource");
+    assert.strictEqual((result.values as Record<string, unknown>).registry, expected, "configuration resolves against the request's real resource");
   }
 }
 
 async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
   const browser = scenario.frame.page().context().browser();
   assert.ok(browser);
-  const revealing = scenario.execute(sdkRequest(scenario.requests, "sdk/reveal"));
+  const revealing = scenario.execute(hostCall("sdk/reveal", "webview.reveal", [["view", "osprey.packages"]]));
   const page = scenario.frame.page();
   const picker = page.getByPlaceholder("Package changes apply only to this project");
   try {
     await picker.fill("first");
     await page.getByRole("option").filter({ hasText: "first" }).first().click();
-    assert.deepStrictEqual(await revealing, { revealed: true });
+    assert.deepStrictEqual(answer(await revealing), { revealed: true });
     await waitFor(() => scenario.frame.isDetached(), Boolean, 1000, "the editor detaches the discarded application frame");
     assert.ok(scenario.frame.isDetached(), "changed registry must discard the previous application session");
     const current = await editorWebviewFrame(browser, 'button:has-text("Refresh")');
@@ -474,26 +494,33 @@ async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
 }
 
 async function verifySdkRefusals(scenario: SdkScenario): Promise<void> {
-  for (const [ticket, message] of [
-    ["sdk/bad-view", /Unknown Osprey view: osprey.unknown/], ["sdk/missing", /missing-sdk-document.txt/],
-    ["sdk/no-doc-args", /document.open is missing its arguments/], ["sdk/remote-doc", /document.open requires a file resource/],
-    ["sdk/no-config-args", /configuration.read is missing its arguments/], ["sdk/no-reveal-args", /webview.reveal is missing its arguments/],
-    ["sdk/bad-namespace", /Unknown host namespace: other/], ["sdk/unknown-operation", /Unsupported VS Code capability: impossible.operation/],
-  ] as const) await assert.rejects(() => scenario.execute(sdkRequest(scenario.requests, ticket)), message);
+  const peer = workspace.workspaceFolders?.[1];
+  assert.ok(peer, "the fixture workspace has a second folder");
+  const refusals: readonly (readonly [Ask, RegExp])[] = [
+    [hostCall("sdk/bad-view", "webview.reveal", [["view", "osprey.unknown"]]), /Unknown Osprey view: osprey.unknown/],
+    [documentAsk("sdk/missing", Uri.joinPath(scenario.folder, "missing-sdk-document.txt").toString()), /missing-sdk-document.txt/],
+    [hostCall("sdk/no-doc-args", "document.open", []), /document.open is missing its arguments/],
+    [documentAsk("sdk/remote-doc", "vscode-remote://ssh-test/work/file"), /document.open requires a file resource/],
+    [hostCall("sdk/no-config-args", "configuration.read", []), /configuration.read is missing its arguments/],
+    [hostCall("sdk/no-reveal-args", "webview.reveal", []), /webview.reveal is missing its arguments/],
+    [hostCall("sdk/bad-namespace", "workspace.snapshot", [], { namespace: "other" }), /Unknown host namespace: other/],
+    [hostCall("sdk/unknown-operation", "impossible.operation", []), /Unsupported VS Code capability: impossible.operation/],
+    [hostCall("sdk/no-arguments", "process.input", []), /process.input is missing its arguments/],
+  ];
+  for (const [request, message] of refusals) await assert.rejects(() => scenario.execute(request), message);
   assert.strictEqual(fs.existsSync(Uri.joinPath(scenario.folder, "missing-sdk-document.txt").fsPath), false);
 }
 
-suite("package workspace SDK host E2E", () => {
-  suiteSetup(async function () { this.timeout(BUILD_MS); await compileSdkHost(); });
+suite("package workspace row host E2E", () => {
   teardown(() => sinon.restore());
-  test("real compiled SDK requests open documents, scope configuration and reveal the view", async () => {
+  test("typed host asks open documents, scope configuration and reveal the view", async () => {
     await withSdkScenario((scenario) => withScopedRegistries(async () => {
       await verifySdkDocument(scenario);
       await verifySdkConfiguration(scenario);
       await verifySdkReveal(scenario);
     }));
   });
-  test("real compiled SDK requests refuse invalid host operations without side effects", async () => {
+  test("typed host asks refuse invalid operations without side effects", async () => {
     await withSdkScenario(verifySdkRefusals);
   });
 });

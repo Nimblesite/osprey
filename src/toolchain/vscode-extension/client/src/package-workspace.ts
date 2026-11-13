@@ -123,8 +123,10 @@ async function application(context: ExtensionContext, ready: (folder: Uri) => Pr
   const registry = registryOrigin(folder);
   const artifact = applicationPath(context);
   const bridge = hostBridge(context);
+  const assets = path.join(path.dirname(artifact), "assets");
   return { key: JSON.stringify([folder.toString(), registry, artifact, bridge.configuredExecutable]), artifact,
-    context: nativeContext([folder.toString(), registry]), execute: createRequestExecutor(bridge) };
+    context: nativeContext([folder.toString(), registry]), execute: createRequestExecutor(bridge),
+    ...(fs.existsSync(assets) ? { assets } : {}) };
 }
 
 /** Register the package app through the shared native panel host. */

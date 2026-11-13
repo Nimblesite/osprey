@@ -48,6 +48,7 @@ test-runner.js
 
 # Keep only essential files
 !out/client/**
+!out/webview/**
 out/test/**
 out/tsconfig.tsbuildinfo
 # Bundled, version-matched osprey compiler + all native C runtime archives

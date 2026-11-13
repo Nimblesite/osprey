@@ -86,6 +86,7 @@ suite("workbench bundle completeness", () => {
     const { scripts } = JSON.parse(fs.readFileSync(path.join(extension, "package.json"), "utf8"));
     for (const name of ["client", "test", "node_modules"]) fs.symlinkSync(path.join(extension, name), path.join(root, name), "junction");
     fs.copyFileSync(path.join(extension, "tsconfig.json"), path.join(root, "tsconfig.json"));
+    fs.copyFileSync(path.join(extension, "tsconfig.webview.json"), path.join(root, "tsconfig.webview.json"));
     fs.copyFileSync(path.join(extension, "scripts/verify-package-workspace.mjs"), path.join(root, "scripts/verify-package-workspace.mjs"));
     fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ scripts: {
       "vscode:prepublish": scripts["vscode:prepublish"], "sync-icon": "node --eval 0", "compile": scripts.compile,
@@ -95,7 +96,7 @@ suite("workbench bundle completeness", () => {
     const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "vscode:prepublish"],
       { cwd: root, encoding: "utf8", shell: process.platform === "win32", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.ok(result.stdout.includes("Package workspace WASM startup: PASS"), result.stdout);
+    assert.ok(result.stdout.includes("live wasm frame: PASS"), result.stdout);
     for (const name of ["wasi", "wasi-runner", "wasi-worker"]) assert.ok(fs.statSync(path.join(root, "out/client/src/osprey-ui", `${name}.js`)).size > 0);
   });
 
@@ -128,9 +129,9 @@ suite("workbench bundle completeness", () => {
     }
   });
 
-  test("packaging rejects missing workbench styles fonts licences and logo", () => {
+  test("packaging rejects missing workbench fonts licences and logo", () => {
     assert.equal(verify().status, 0, "complete bundle must pass");
-    for (const name of ["symbols.json", "icons/moon.svg", "icons/LICENSE.txt", "workbench.css", "workbench-fonts.css", "fonts/STIXTwoMath-400-normal-0.woff2", "fonts/Geist-LICENSE.txt", "osprey-logo.png", "chalk-study.png", "proof-libraries.json", "proof-libraries/fixture.ndjson", "proof-libraries/LICENSE.lean4", "proof-libraries/LICENSE.openai-math"]) {
+    for (const name of ["fonts/STIXTwoMath-400-normal-0.woff2", "fonts/Geist-LICENSE.txt", "osprey-logo.png", "chalk-study.png", "proof-libraries.json", "proof-libraries/fixture.ndjson", "proof-libraries/LICENSE.lean4", "proof-libraries/LICENSE.openai-math"]) {
       const file = path.join(assets, name), original = fs.readFileSync(file);
       try {
         fs.rmSync(file);
@@ -141,7 +142,7 @@ suite("workbench bundle completeness", () => {
     }
   });
 
-  test("packaging rejects empty or LFS-pointer assets and stylesheet traversal", () => {
+  test("packaging rejects empty or LFS-pointer assets", () => {
     const file = path.join(assets, "fonts/STIXTwoMath-400-normal-0.woff2");
     const original = fs.readFileSync(file);
     for (const content of ["", "version https://git-lfs.github.com/spec/v1\noid sha256:unavailable\n"]) {
@@ -152,17 +153,13 @@ suite("workbench bundle completeness", () => {
         assert.ok(result.stderr.includes("STIXTwoMath-400-normal-0.woff2"), result.stderr);
       } finally { fs.writeFileSync(file, original); }
     }
-    fs.appendFileSync(path.join(assets, "workbench.css"), '\n@import url("../private.css");');
-    const refused = verify();
-    assert.notEqual(refused.status, 0);
-    assert.ok(refused.stderr.includes("Invalid workbench stylesheet asset"), refused.stderr);
   });
 
   test("packaging rejects a valid WASM module without a WASI application entry", () => {
     fs.writeFileSync(path.join(assets, "../workbench.wasm"), Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
     const result = verify();
     assert.notEqual(result.status, 0, "empty WASM module was accepted as an application");
-    assert.ok(result.stderr.includes("WASI application exports"), result.stderr);
+    assert.ok(result.stderr.includes("native boundary export"), result.stderr);
   });
 
   test("packaging refuses empty or escaping proof library inventories", () => {

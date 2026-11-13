@@ -3,8 +3,15 @@
     "module": "node16",
     "target": "es2020",
     "outDir": "out",
-    "lib": ["es2020"],
-    "types": ["node", "mocha", "vscode"],
+    "lib": [
+      "es2020",
+      "dom"
+    ],
+    "types": [
+      "node",
+      "mocha",
+      "vscode"
+    ],
     "sourceMap": true,
     "rootDir": ".",
     "strict": true,
@@ -15,6 +22,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["client/src/**/*", "test/**/*.ts"],
-  "exclude": ["node_modules", ".vscode-test"]
+  "include": [
+    "client/src/**/*",
+    "test/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".vscode-test"
+  ]
 }
