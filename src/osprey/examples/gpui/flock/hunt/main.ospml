@@ -52,16 +52,11 @@ small () = flock::Store(world = flock::World(birds = [flock::Bird(birdX = 40.0, 
 hosted work =
     handle ui::Slices
         fetch _ => "[]"
-    handle ui::ViewStream
-        place _ => 0
-        size _ => 0
-        sketch _ => 0
-        ask _ => 0
-    Runtime::guarded work
+    ui::Views::quiet (\() => Runtime::guarded work)
 
 main () =
     line = input ()
-    opened = hosted (\() => Surfaces::open (Surfaces::idle (Simulation::sizedStore 1), App::program (), Runtime::host (1, 0, "macos", "", []), false))
+    opened = hosted (\() => Hosting::opened (Surfaces::idle (Simulation::sizedStore 1), App::program (), 1, 0, "macos", "", false))
     session = opened.surfaceSession
     placed = opened(surfaceSession = session(sessionStore = small ()))
     ordinal = sceneAt (Surfaces::seen (placed, App::program ()))

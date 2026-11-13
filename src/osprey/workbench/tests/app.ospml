@@ -90,12 +90,7 @@ merged (held, writes) = foldList (writes, held, \(current, write) => JsonObject 
 heldIn (held, work) =
     handle ui::Slices
         fetch key => Doc::text (held, key)
-    handle ui::ViewStream
-        place _ => 0
-        size _ => 0
-        sketch _ => 0
-        ask _ => 0
-    work ()
+    Views::quiet work
 
 seenIn (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::seen (held, d.drivenProgram), held.surfaceAsked), drivenNow = satAdd d.drivenNow 1)
 
@@ -177,7 +172,7 @@ module Drive
     exported (case, message) = step (case, \d => seenIn (d, heldIn (case.caseHeld, \() => Surfaces::deliver (d.drivenSurface, d.drivenProgram, d.drivenNow, message))))
 
     // The launch: the platform, the appearance and the arguments the host was opened with.
-    openedOn (platform, dark) = step (fresh (), \d => seenIn (d, heldIn (held (), \() => Surfaces::open (d.drivenSurface, d.drivenProgram, Runtime::host (d.drivenNow, 0, platform, "/home/tester", []), dark))))
+    openedOn (platform, dark) = step (fresh (), \d => seenIn (d, heldIn (held (), \() => Hosting::opened (d.drivenSurface, d.drivenProgram, d.drivenNow, 0, platform, "/home/tester", dark))))
 
     (** The first frame of a new session on macOS, light. *)
     export started () = openedOn ("macos", false)

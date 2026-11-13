@@ -21,12 +21,7 @@ mut driven = Drive::idle (App::program (), Drawing::initialStore ())
 bench work =
     handle Bench
         drive next => driven := next
-    handle ui::ViewStream
-        place _ => 0
-        size _ => 0
-        sketch _ => 0
-        ask _ => 0
-    Runtime::guarded work
+    ui::Views::quiet (\() => Runtime::guarded work)
 
 step move = bench (\() =>
     next = move driven

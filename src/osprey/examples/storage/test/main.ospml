@@ -66,7 +66,7 @@ stepped (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::s
 launchWith (platform, folder, arguments) =
     start = Drive::idle (App::program (), Browse::launched ("", ""))
     given = foldList (arguments, start.drivenSurface, \(held, text) => Surfaces::argued (held, text))
-    hosted (\() => perform Host.drive (stepped (start, Drive::quiet (\() => Surfaces::open (given, start.drivenProgram, Runtime::host (start.drivenNow, 0, platform, folder, []), false)))))
+    hosted (\() => perform Host.drive (stepped (start, ui::Views::quiet (\() => Hosting::opened (given, start.drivenProgram, start.drivenNow, 0, platform, folder, false)))))
 
 // One typed host event, sent the way a host sends it.
 post event = hosted (\() => perform Host.drive (Drive::sent (driven, event)))

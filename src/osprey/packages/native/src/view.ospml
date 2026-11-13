@@ -233,6 +233,15 @@ module Views
             ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
         work ()
 
+    (** Runs `work` with every frame it draws dropped, as a host that is not watching: what headless drivers and tests run a boundary call under. *)
+    export quiet work =
+        handle ViewStream
+            place _ => 0
+            size _ => 0
+            sketch _ => 0
+            ask _ => 0
+        work ()
+
     // Adds one control and moves the walk to the next row.
     seat<A> : (Walk<A>, int, int, int, string, Look) -> Walk<A>
     seat (walk, kind, parent, action, words, look) = walk(walkNext = satAdd walk.walkNext 1, walkRows = listAppend walk.walkRows (Seated(placedKind = kind, placedParent = parent, placedAction = action, placedWords = words, placedLook = look)))

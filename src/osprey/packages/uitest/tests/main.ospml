@@ -401,14 +401,14 @@ probeHeard (heard, message) = Messages::route (message, \_ => Runtime::asking (l
 probeProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => probeHeard (heard, message), programRender = probeRegions, programTheme = \_ => ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220))
 
 // One typed event, sent as a host that is not watching, and what the surface shows after it.
-probeSent (held, touch) = Drive::quiet (\() => ui::Hosting::event (held, probeProgram (), touch))
+probeSent (held, touch) = ui::Views::quiet (\() => ui::Hosting::event (held, probeProgram (), touch))
 
 probeSeen held = Read::seen (Surfaces::seen (held, probeProgram ()), held.surfaceAsked)
 
 probeTouch (kind, ordinal, words, down) = ui::Touch(touchNow = 2, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = down, touchShift = false)
 
 test ("a scene's glyphs, lettering and paths read back typed, and keys and asks cross through the quiet host", \() => Runtime::guarded (\() =>
-    opened = Drive::quiet (\() => Surfaces::open (Surfaces::idle [], probeProgram (), Runtime::host (1, 0, "macos", "", []), false))
+    opened = ui::Views::quiet (\() => ui::Hosting::opened (Surfaces::idle [], probeProgram (), 1, 0, "macos", "", false))
     seen = probeSeen opened
     expect (Seen::lettered seen, "Glyph text|Letters")
     expect (join (mapList (seen.renderedCurves, \c => join (mapList (c, \v => "${v}")) ",")) "|", "1.0,2.0,9.0,8.0")

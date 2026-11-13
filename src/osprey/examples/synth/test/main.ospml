@@ -27,7 +27,7 @@ kept next = perform Bench.drive next
 hosted work =
     handle ui::Slices
         fetch _ => ""
-    Drive::quiet work
+    ui::Views::quiet work
 
 bench work =
     handle Bench

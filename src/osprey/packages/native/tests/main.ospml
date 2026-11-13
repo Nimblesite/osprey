@@ -588,7 +588,7 @@ problemOf outcome = match outcome
 
 surfaceCase () =
     opening = probe (0, "")
-    first = surfaced (\() => Surfaces::open (Surfaces::idle opening, program (), Runtime::host (1, 0, "linux", "", []), false))
+    first = surfaced (\() => Hosting::opened (Surfaces::idle opening, program (), 1, 0, "linux", "", false))
     expect (surfaceRows, "0<-1@-1:|2<0@-1:Count 0|3<0@0:Go|3<0@1:Go|0<0@-1:|0<4@-1:|2<5@-1:Note|4<5@2:linux|3<4@3:Load|3<4@4:Load|")
     expect (length first.surfaceBound, 5)
     second = surfaceAfter (first, 0, "")
@@ -665,7 +665,7 @@ journeyStep (held, touch) = Views::shared (\() => Hosting::event (held, journeyP
 heardAll held = join held.surfaceSession.sessionStore "|"
 
 journeyCase () =
-    opened = Views::shared (\() => Surfaces::open (Surfaces::idle [], journeyProgram (), Runtime::host (1, 0, "macos", "", []), false))
+    opened = Views::shared (\() => Hosting::opened (Surfaces::idle [], journeyProgram (), 1, 0, "macos", "", false))
     expect (length opened.surfaceBound, 4)
     board = numbered (opened, strokes)
     lasso = numbered (opened, lassos)

@@ -106,15 +106,6 @@ theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFF
 (** The probe application as its boundary runs it: the store drawn with the probe theme. *)
 program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme)
 
-// Runs `work` with every frame it draws taken and dropped, as a host that is not watching.
-drawnQuiet work =
-    handle ui::ViewStream
-        place _ => 0
-        size _ => 0
-        sketch _ => 0
-        ask _ => 0
-    work ()
-
 // A node drawn over the probe theme, as a host reads its rows.
 drawnOf<A> : ui::Node<A> -> ui::Walk<ui::Binding<A>>
 drawnOf node = Views::drawn (Lower::view (ui::Styling(styleTheme = theme, styleDark = false, styleRegions = []), node))
@@ -159,10 +150,10 @@ fitAt (walked, index) = match Lists::find (filterList (walked.walkFits, \f => f.
 (** Drives the probe application through the real surface open and event path, and reads its surfaces. *)
 module Probes
     (** The probe application's first surface, opened on a Linux host at clock 1. *)
-    export started () = drawnQuiet (\() => Surfaces::open (Surfaces::idle (probe (0, "")), program (), Runtime::host (1, 0, "linux", "", []), false))
+    export started () = Views::quiet (\() => Surfaces::open (Surfaces::idle (probe (0, "")), program (), Runtime::host (1, 0, "linux", "", []), false))
 
     (** The surface after the typed host event `touch`. *)
-    export sent (held, touch) = drawnQuiet (\() => Hosting::event (held, program (), touch))
+    export sent (held, touch) = Views::quiet (\() => Hosting::event (held, program (), touch))
 
     (** The surface after the control numbered `ordinal` delivers `words` at clock 5. *)
     export posted (held, ordinal, words) = sent (held, ui::Touch(touchNow = 5, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
