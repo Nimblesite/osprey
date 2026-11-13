@@ -5,7 +5,7 @@ The smallest Osprey Native application with no JSON bridge. Its whole interface 
 | File | What it shows |
 | --- | --- |
 | [`src/app.ospml`](src/app.ospml) | The store, the update function and `Screen::view`, where every colour, size and space is decided. |
-| [`main.ospml`](main.ospml) | The boundary: `osprey_app_start()` and `osprey_app_event(ordinal, text)`. The store never leaves the library. |
+| [`main.ospml`](main.ospml) | The boundary every app has: `osprey_app_argument`, `osprey_app_open` and `osprey_app_event`. The store never leaves the library. |
 | [`host/reference.c`](host/reference.c) | A complete host in plain C: it commits each frame, leases it and reads the controls straight from memory. It is also the end-to-end test. |
 | [`test/main.ospml`](test/main.ospml) | The application's own tests, with no host. |
 
