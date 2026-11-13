@@ -14,6 +14,18 @@ module ManifestTests {
     let canonicalFixture = "src/osprey/packages/manager/tests/fixtures/manifests/ledger/canonical.json"
     let digestFixture = "sha256:d444ec8ab0f46d728369d5487bf5618adafbe7d64beb9778107d69ea1ea0fce2"
 
+    /// Fixture document headers: a `[project]` table alone, the standard
+    /// `[package]` table below it up to its license or summary, the tail those
+    /// tables share, and one `[dependencies]` entry key.
+    let packageTable = "[project]\nname = \"x\"\n[package]\n"
+    let packageBase = "[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\n"
+    let packageSummary = "[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\n"
+    let packageTail = "summary = \"s\"\nkeywords = []\n"
+    let httpDependency = "[dependencies]\n\"@osprey/http\" = "
+
+    /// The digest shape an asset declares: an algorithm and 64 hex digits.
+    fn hexDigest(algorithm) = "\"${algorithm}:${repeat("a", 64) ?: ""}\""
+
     fn verdict(text) = match Manifest::accepted(Manifest::parse(text)) {
         Success => "accepted"
         Error { message } => message
@@ -22,7 +34,6 @@ module ManifestTests {
     fn manifestOf(text) = Manifest::accepted(Manifest::parse(text))
 
     fn project(body) = "[project]\nname = \"app\"\n${body}"
-    fn package(body) = "[project]\nname = \"ledger\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n${body}"
 
     /// The parse verdict of `text` is exactly `code`: every refusal is located.
     fn refused(text, code) = verdict(text) == code
@@ -30,66 +41,103 @@ module ManifestTests {
     /// `refused` over the standard `[project]` header.
     fn rejected(body, code) = refused(project(body), code)
 
+    /// `refused` under the `[package]` fixture headers: `body` supplies the
+    /// fields the header stops short of.
+    fn packageTableRefused(body, code) = refused(packageTable + body, code)
+    fn packageBaseRefused(body, code) = refused(packageBase + body, code)
+    fn packageSummaryRefused(body, code) = refused(packageSummary + body, code)
+
+    /// `refused` for one `[dependencies]` entry on the canonical key.
+    fn httpRefused(value, code) = rejected(httpDependency + value, code)
+
+    /// Project a parse result through `show`, or report the parse message.
+    fn orMessage(parsed, show) = match parsed {
+        Success { value } => show(value)
+        Error { message } => message
+    }
+
+    /// `orMessage` over the parse of `text`.
+    fn projected(text, show) = orMessage(manifestOf(text), show)
+
+    /// Apply `predicate` to a parse result, `false` when parsing failed.
+    fn holds(parsed, predicate) = match parsed {
+        Success { value } => predicate(value)
+        Error => false
+    }
+
+    /// `holds` over the parse of `text`.
+    fn holdsText(text, predicate) = holds(manifestOf(text), predicate)
+
+    /// Whether the canonical JSON projection of `m` contains `needle`.
+    fn canonicalHas(m, needle) = match indexOf(ManifestJson::canonical(m) ?: "", needle) {
+        Success => true
+        Error => false
+    }
+
+    /// Whether the manifest parsed from `text` canonicalises to JSON holding
+    /// `needle`.
+    fn jsonHas(text, needle) = holdsText(text, fn(m) => canonicalHas(m, needle))
+
     fn edgeText(e) = {
         let r = ManifestModel::requirementOf(e)
         "${ManifestModel::edgeRank(e)}:${Names::display(r.package)}@e${r.epoch}.r${r.minimumOrdinal}"
     }
 
-    fn edges(text) = match manifestOf(text) {
-        Success { value } => join(mapList(value.dependencies, edgeText), " ")
-        Error { message } => message
-    }
+    fn edges(text) = projected(text, fn(m) => join(mapList(m.dependencies, edgeText), " "))
 
     fn publicationKey(m: ManifestModel::Manifest) = Maybe::fold(m.publication, "none", fn(p: ManifestModel::Publication) => Names::display(p.package))
+
+    fn grantText(g: ManifestModel::Grant) = "${Names::display(g.package)}:${join(g.capabilities, ",")}"
+
+    fn grants(text) = projected(text, fn(m) => join(mapList(m.grants, grantText), " "))
+
+    /// A `[project]` document declaring exactly one `@a/a` dependency.
+    fn grantDocument(value) = project("[dependencies]\n\"@a/a\" = " + value)
+
+    /// A `[project]` with `src` roots and the ML sources at `model`, plus a package.
+    fn pythonProjectRefused(model, code) = rejected("source_roots = [\"src\"]\npython_sources = [\"${model}\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n", code)
+
+    /// A dependency grant whose `capabilities` value is refused by the grammar.
+    fn badCapability(value) = startsWith(verdict(grantDocument("{ epoch = 1, capabilities = ${value} }\n")), "manifest.dependency.capability at ")
+
+    /// One `[system.<name>]` declaration of `capability`, then `body`.
+    fn systemTable(name, capability, body) = "[system.${name}]\ncapability = \"${capability}\"\n" + body
+
+    /// One `[[assets]]` declaration; `extra` adds a trailing key or nothing.
+    fn asset(path, role, kind, byteLength, digest, extra) = "[[assets]]\npath = \"${path}\"\nrole = \"${role}\"\nkind = \"${kind}\"\nbyte_length = ${byteLength}\ndigest = ${digest}\n${extra}"
+
+    /// A documented, `sha256`-hashed asset of `byteLength` bytes and no extra key.
+    fn assetAt(path, kind, byteLength) = asset(path, "documentation", kind, byteLength, hexDigest("sha256"), "")
+
+    fn identityOf(text) = projected(text, publicationKey)
 
     fn acceptsLedger() = {
         let text = readFile(ledger) ?: ""
         let parsed = manifestOf(text)
-        let canonical = match parsed {
-            Success { value } => ManifestJson::canonical(value) ?: "serialize failed"
-            Error { message } => message
-        }
-        let digest = match parsed {
-            Success { value } => ManifestJson::digest(value) ?: "digest failed"
-            Error { message } => message
-        }
+        let canonical = orMessage(parsed, fn(m) => ManifestJson::canonical(m) ?: "serialize failed")
+        let digest = orMessage(parsed, fn(m) => ManifestJson::digest(m) ?: "digest failed")
         checkAll("the spec 0029 manifest is accepted and hashes like the fixture", [
             refused(text, "accepted"),
             canonical == (readFile(canonicalFixture) ?: ""),
             digest == digestFixture,
             edges(text) == "0:@osprey/http@e2.r17",
-            match parsed {
-                Success { value } => publicationKey(value) == "@finch/ledger" && join(value.sourceRoots, ",") == "src" && value.projectName == "ledger" && length(value.systemRequirements) == 1
-                Error => false
-            }
+            holds(parsed, fn(m) => publicationKey(m) == "@finch/ledger" && join(m.sourceRoots, ",") == "src" && m.projectName == "ledger" && length(m.systemRequirements) == 1)
         ])
     }
 
-    fn acceptsApplications() = checkAll("application roots, defaults and the three dependency tables", [
-        refused("[project]\nname = \"app\"\n", "accepted"),
-        match manifestOf("[project]\nname = \"app\"\n") {
-            Success { value } => join(value.sourceRoots, ",") == "src" && !value.allowWildcardImports && !Maybe::isPresent(value.publication) && length(value.testRoots) == 0
-            Error => false
-        },
-        rejected("source_roots = [\"src\", \"lib\"]\nentry = \"src/main.osp\"\nflavor = \"ml\"\ndefault_namespace = \"app\"\ntest_roots = [\"test\"]\npython_sources = [\"src/model.py\"]\n[modules]\nallow_wildcard_imports = true\npublished_library = true\n", "accepted"),
-        edges(project("[dependencies]\n\"@b/b\" = { epoch = 1 }\n\"@a/a\" = { epoch = 2, min_release = 3 }\n[test-dependencies]\n\"@a/a\" = { epoch = 2, min_release = 9 }\n[build-dependencies]\n\"@c/c\" = { epoch = 1, min_release = 0 }\n")) == "0:@a/a@e2.r3 0:@b/b@e1.r0 1:@c/c@e1.r0 2:@a/a@e2.r9",
-        match manifestOf(project("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 3045000\n[system.zlib]\ncapability = \"zlib\"\nmin_revision = 0\n")) {
-            Success { value } => join(mapList(value.systemRequirements, fn(r) => "${r.capability}:${r.minimumRevision}"), " ") == "sqlite/c-api:3045000 zlib:0"
-            Error => false
-        },
-        match manifestOf(project("[[assets]]\npath = \"docs/intro.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 12\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\n[[assets]]\npath = \"data/seed.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 0\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\nrequired_capability = \"asset.read\"\n")) {
-            Success { value } => join(mapList(value.assets, fn(a: ManifestModel::Asset) => a.path), " ") == "data/seed.json docs/intro.md"
-            Error => false
-        },
-        rejected("source_roots = [\"src\"]\npython_sources = [\"src/model.py\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n", "accepted"),
-        match manifestOf(project("python_sources = [\"src/model.py\"]\n")) {
-            Success { value } => match indexOf(ManifestJson::canonical(value) ?: "", "\"pythonSources\":[\"src/model.py\"]") {
-                Success => true
-                Error => false
-            }
-            Error => false
-        }
-    ])
+    fn acceptsApplications() = {
+        let minimal = project("")
+        checkAll("application roots, defaults and the three dependency tables", [
+            refused(minimal, "accepted"),
+            holdsText(minimal, fn(m) => join(m.sourceRoots, ",") == "src" && !m.allowWildcardImports && !Maybe::isPresent(m.publication) && length(m.testRoots) == 0),
+            rejected("source_roots = [\"src\", \"lib\"]\nentry = \"src/main.osp\"\nflavor = \"ml\"\ndefault_namespace = \"app\"\ntest_roots = [\"test\"]\npython_sources = [\"src/model.py\"]\n[modules]\nallow_wildcard_imports = true\npublished_library = true\n", "accepted"),
+            edges(project("[dependencies]\n\"@b/b\" = { epoch = 1 }\n\"@a/a\" = { epoch = 2, min_release = 3 }\n[test-dependencies]\n\"@a/a\" = { epoch = 2, min_release = 9 }\n[build-dependencies]\n\"@c/c\" = { epoch = 1, min_release = 0 }\n")) == "0:@a/a@e2.r3 0:@b/b@e1.r0 1:@c/c@e1.r0 2:@a/a@e2.r9",
+            holdsText(project("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 3045000\n[system.zlib]\ncapability = \"zlib\"\nmin_revision = 0\n"), fn(m) => join(mapList(m.systemRequirements, fn(r) => "${r.capability}:${r.minimumRevision}"), " ") == "sqlite/c-api:3045000 zlib:0"),
+            holdsText(project("[[assets]]\npath = \"docs/intro.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 12\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\n[[assets]]\npath = \"data/seed.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 0\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\nrequired_capability = \"asset.read\"\n"), fn(m) => join(mapList(m.assets, fn(a: ManifestModel::Asset) => a.path), " ") == "data/seed.json docs/intro.md"),
+            pythonProjectRefused("src/model.py", "accepted"),
+            jsonHas(project("python_sources = [\"src/model.py\"]\n"), "\"pythonSources\":[\"src/model.py\"]")
+        ])
+    }
 
     fn rejectsStructure() = checkAll("structure: tables, keys, project fields", [
         refused("", "manifest.project.missing at 1:1"),
@@ -107,74 +155,67 @@ module ManifestTests {
         rejected("test_roots = [\"test\", \"TEST\"]\n", "manifest.project.test-roots at 3:1"),
         rejected("[modules]\nallow_wildcard_imports = \"yes\"\n", "manifest.modules.allow-wildcard-imports at 4:1"),
         rejected("[modules]\nstrict = true\n", "manifest.modules.unknown-key at 4:1"),
-        rejected("source_roots = [\"src\"]\npython_sources = [\"lib/model.py\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n", "manifest.python-source-unrooted at 1:1"),
+        pythonProjectRefused("lib/model.py", "manifest.python-source-unrooted at 1:1"),
         rejected("python_sources = [\"py\"]\n", "manifest.project.python-sources at 3:1"),
         rejected("python_sources = \"src/model.py\"\n", "manifest.project.python-sources at 3:1")
     ])
 
     fn rejectsPackage() = checkAll("[package]: names, licenses, summaries, keywords", [
-        refused("[project]\nname = \"x\"\n[package]\nname = \"ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = []\n", "name.missing-at at 4:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@Finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = []\n", "name.scope.chars at 4:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nsummary = \"s\"\nkeywords = []\n", "manifest.license at 3:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT AND\"\nsummary = \"s\"\nkeywords = []\n", "manifest.license at 5:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"(MIT OR Apache-2.0\"\nsummary = \"s\"\nkeywords = []\n", "manifest.license at 5:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nkeywords = []\n", "manifest.summary.missing at 3:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"${repeat("s", 513) ?: ""}\"\nkeywords = []\n", "manifest.summary.length at 6:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"tab\\there\"\nkeywords = []\n", "manifest.summary.text at 6:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\n", "manifest.keywords.missing at 3:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"b\", \"a\"]\n", "manifest.keywords.order at 7:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\", \"a\"]\n", "manifest.keywords.order at 7:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"Ledger\"]\n", "manifest.keyword.grammar at 7:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"-a\"]\n", "manifest.keyword.grammar at 7:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\", \"k\", \"l\", \"m\"]\n", "manifest.keywords.count at 7:1"),
-        refused("[project]\nname = \"x\"\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\nhomepage = \"x\"\n", "manifest.package.unknown-key at 8:1")
+        packageTableRefused("name = \"ledger\"\nlicense = \"MIT\"\n" + packageTail, "name.missing-at at 4:1"),
+        packageTableRefused("name = \"@Finch/ledger\"\nlicense = \"MIT\"\n" + packageTail, "name.scope.chars at 4:1"),
+        packageTableRefused("name = \"@finch/ledger\"\n" + packageTail, "manifest.license at 3:1"),
+        packageTableRefused("name = \"@finch/ledger\"\nlicense = \"MIT AND\"\n" + packageTail, "manifest.license at 5:1"),
+        packageTableRefused("name = \"@finch/ledger\"\nlicense = \"(MIT OR Apache-2.0\"\n" + packageTail, "manifest.license at 5:1"),
+        packageBaseRefused("keywords = []\n", "manifest.summary.missing at 3:1"),
+        packageBaseRefused("summary = \"${repeat("s", 513) ?: ""}\"\nkeywords = []\n", "manifest.summary.length at 6:1"),
+        packageBaseRefused("summary = \"tab\\there\"\nkeywords = []\n", "manifest.summary.text at 6:1"),
+        packageSummaryRefused("", "manifest.keywords.missing at 3:1"),
+        packageSummaryRefused("keywords = [\"b\", \"a\"]\n", "manifest.keywords.order at 7:1"),
+        packageSummaryRefused("keywords = [\"a\", \"a\"]\n", "manifest.keywords.order at 7:1"),
+        packageSummaryRefused("keywords = [\"Ledger\"]\n", "manifest.keyword.grammar at 7:1"),
+        packageSummaryRefused("keywords = [\"-a\"]\n", "manifest.keyword.grammar at 7:1"),
+        packageSummaryRefused("keywords = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\", \"k\", \"l\", \"m\"]\n", "manifest.keywords.count at 7:1"),
+        packageSummaryRefused("keywords = [\"a\"]\nhomepage = \"x\"\n", "manifest.package.unknown-key at 8:1")
     ])
 
     fn rejectsDependencies() = checkAll("dependencies: SemVer, paths, forges, peers, options, epochs", [
-        rejected("[dependencies]\n\"@osprey/http\" = \"^2.0\"\n", "manifest.dependency.version at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { version = \"2.0\" }\n", "manifest.dependency.version at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, max_release = 9 }\n", "manifest.dependency.version at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { path = \"../http\" }\n", "manifest.dependency.path at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { git = \"https://x\" }\n", "manifest.dependency.forge at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, tag = \"v2\" }\n", "manifest.dependency.forge at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, peer = true }\n", "manifest.dependency.peer at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, optional = true }\n", "manifest.dependency.optional at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, features = [\"tls\"] }\n", "manifest.dependency.optional at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, color = \"blue\" }\n", "manifest.dependency.unknown-key at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { min_release = 1 }\n", "manifest.dependency.epoch at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 0 }\n", "manifest.dependency.epoch at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2, min_release = -1 }\n", "manifest.dependency.min-release at 4:1"),
-        rejected("[dependencies]\n\"@osprey/http\" = 2\n", "manifest.dependency.shape at 4:1"),
+        httpRefused("\"^2.0\"\n", "manifest.dependency.version at 4:1"),
+        httpRefused("{ version = \"2.0\" }\n", "manifest.dependency.version at 4:1"),
+        httpRefused("{ epoch = 2, max_release = 9 }\n", "manifest.dependency.version at 4:1"),
+        httpRefused("{ path = \"../http\" }\n", "manifest.dependency.path at 4:1"),
+        httpRefused("{ git = \"https://x\" }\n", "manifest.dependency.forge at 4:1"),
+        httpRefused("{ epoch = 2, tag = \"v2\" }\n", "manifest.dependency.forge at 4:1"),
+        httpRefused("{ epoch = 2, peer = true }\n", "manifest.dependency.peer at 4:1"),
+        httpRefused("{ epoch = 2, optional = true }\n", "manifest.dependency.optional at 4:1"),
+        httpRefused("{ epoch = 2, features = [\"tls\"] }\n", "manifest.dependency.optional at 4:1"),
+        httpRefused("{ epoch = 2, color = \"blue\" }\n", "manifest.dependency.unknown-key at 4:1"),
+        httpRefused("{ min_release = 1 }\n", "manifest.dependency.epoch at 4:1"),
+        httpRefused("{ epoch = 0 }\n", "manifest.dependency.epoch at 4:1"),
+        httpRefused("{ epoch = 2, min_release = -1 }\n", "manifest.dependency.min-release at 4:1"),
+        httpRefused("2\n", "manifest.dependency.shape at 4:1"),
         rejected("[dependencies]\nhttp = { epoch = 2 }\n", "name.missing-at at 4:1"),
         rejected("[dependencies]\n\"@osprey/http\" = { epoch = 2 }\n[test-dependencies]\n\"@osprey/http\" = { epoch = 3 }\n", "manifest.dependency.epoch-conflict at 3:1")
     ])
 
     fn rejectsSystemsAndAssets() = checkAll("system capabilities and asset declarations", [
-        rejected("[system.sqlite]\ncapability = \"SQLite/C-API\"\nmin_revision = 1\n", "manifest.system.capability at 3:1"),
-        rejected("[system.sqlite]\ncapability = \"sqlite//c\"\nmin_revision = 1\n", "manifest.system.capability at 3:1"),
-        rejected("[system.sqlite]\ncapability = \"sqlite/c-api\"\n", "manifest.system.min-revision at 3:1"),
-        rejected("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = -1\n", "manifest.system.min-revision at 5:1"),
-        rejected("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 1\nprovider = \"brew\"\n", "manifest.system.unknown-key at 6:1"),
-        rejected("[system.a]\ncapability = \"sqlite/c-api\"\nmin_revision = 1\n[system.b]\ncapability = \"sqlite/c-api\"\nmin_revision = 2\n", "manifest.system.duplicate at 3:1"),
+        rejected(systemTable("sqlite", "SQLite/C-API", "min_revision = 1\n"), "manifest.system.capability at 3:1"),
+        rejected(systemTable("sqlite", "sqlite//c", "min_revision = 1\n"), "manifest.system.capability at 3:1"),
+        rejected(systemTable("sqlite", "sqlite/c-api", ""), "manifest.system.min-revision at 3:1"),
+        rejected(systemTable("sqlite", "sqlite/c-api", "min_revision = -1\n"), "manifest.system.min-revision at 5:1"),
+        rejected(systemTable("sqlite", "sqlite/c-api", "min_revision = 1\nprovider = \"brew\"\n"), "manifest.system.unknown-key at 6:1"),
+        rejected(systemTable("a", "sqlite/c-api", "min_revision = 1\n") + systemTable("b", "sqlite/c-api", "min_revision = 2\n"), "manifest.system.duplicate at 3:1"),
         ManifestDeps::capabilityOk("sqlite/c-api") && ManifestDeps::capabilityOk("zlib") && !ManifestDeps::capabilityOk("") && !ManifestDeps::capabilityOk("/x") && !ManifestDeps::capabilityOk("a/.b") && !ManifestDeps::capabilityOk("${repeat("a", 65) ?: ""}"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\nmime = \"text/markdown\"\n", "manifest.asset.unknown-key at 9:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"html\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.kind at 6:1"),
-        rejected("[[assets]]\npath = \"x.html\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.extension at 4:1"),
-        rejected("[[assets]]\npath = \"../x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.path at 4:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = -1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.byte-length at 7:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"md5:${repeat("a", 64) ?: ""}\"\n", "digest.algorithm at 8:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"attachment\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.role at 5:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\nrequired_capability = \"asset.read\"\n", "manifest.asset.capability at 5:1"),
-        rejected("[[assets]]\npath = \"x.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "manifest.asset.capability at 5:1"),
-        rejected("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n[[assets]]\npath = \"X.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n", "path.case-collision at 3:1")
+        rejected(asset("x.md", "documentation", "text", 1, hexDigest("sha256"), "mime = \"text/markdown\"\n"), "manifest.asset.unknown-key at 9:1"),
+        rejected(assetAt("x.md", "html", 1), "manifest.asset.kind at 6:1"),
+        rejected(assetAt("x.html", "text", 1), "manifest.asset.extension at 4:1"),
+        rejected(assetAt("../x.md", "text", 1), "manifest.asset.path at 4:1"),
+        rejected(assetAt("x.md", "text", -1), "manifest.asset.byte-length at 7:1"),
+        rejected(asset("x.md", "documentation", "text", 1, hexDigest("md5"), ""), "digest.algorithm at 8:1"),
+        rejected(asset("x.md", "attachment", "text", 1, hexDigest("sha256"), ""), "manifest.asset.role at 5:1"),
+        rejected(asset("x.md", "documentation", "text", 1, hexDigest("sha256"), "required_capability = \"asset.read\"\n"), "manifest.asset.capability at 5:1"),
+        rejected(asset("x.json", "runtime-data", "json", 1, hexDigest("sha256"), ""), "manifest.asset.capability at 5:1"),
+        rejected(assetAt("x.md", "text", 1) + assetAt("X.md", "text", 1), "path.case-collision at 3:1")
     ])
-
-    fn grantText(g: ManifestModel::Grant) = "${Names::display(g.package)}:${join(g.capabilities, ",")}"
-
-    fn grants(text) = match manifestOf(text) {
-        Success { value } => join(mapList(value.grants, grantText), " ")
-        Error { message } => message
-    }
 
     /// `capabilities = [...]` on a dependency entry is a per-key grant
     /// ([PACKAGE-CAPABILITY-CONFINEMENT]): merged across the three tables into
@@ -182,33 +223,26 @@ module ManifestTests {
     /// and refused when a name fails the capability grammar.
     fn grantsParse() = checkAll("dependency grants merge per key and project as grants", [
         grants(project("[dependencies]\n\"@b/b\" = { epoch = 1, capabilities = [\"io/process\", \"io/files\", \"io/files\"] }\n\"@a/a\" = { epoch = 1 }\n[build-dependencies]\n\"@b/b\" = { epoch = 1, capabilities = [\"io/network\"] }\n")) == "@b/b:io/files,io/network,io/process",
-        grants(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [] }\n")) == "",
-        startsWith(verdict(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [\"Bad Cap\"] }\n")), "manifest.dependency.capability at "),
-        startsWith(verdict(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = \"io/files\" }\n")), "manifest.dependency.capability at "),
-        match manifestOf(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [\"io/files\"] }\n")) {
-            Success { value } => match indexOf(ManifestJson::canonical(value) ?: "", "\"grants\":[{\"capabilities\":[\"io/files\"],\"package\":{\"name\":\"a\",\"scope\":\"a\"}}]") {
-                Success => true
-                Error => false
-            }
-            Error => false
-        }
+        grants(grantDocument("{ epoch = 1, capabilities = [] }\n")) == "",
+        badCapability("[\"Bad Cap\"]"),
+        badCapability("\"io/files\""),
+        jsonHas(grantDocument("{ epoch = 1, capabilities = [\"io/files\"] }\n"), "\"grants\":[{\"capabilities\":[\"io/files\"],\"package\":{\"name\":\"a\",\"scope\":\"a\"}}]")
     ])
 
     let flashAttn = "src/osprey/packages/flash_attn/osprey.toml"
     let rougeScore = "src/osprey/packages/rouge_score/osprey.toml"
 
-    fn identityOf(text) = match manifestOf(text) {
-        Success { value } => publicationKey(value)
-        Error { message } => message
-    }
-
     /// Real shipped manifests, parsed by the canonical parser: each registry
     /// identity must satisfy [PACKAGE-NAMES], so underscores are refused.
+    fn portChecks(name, path, identity) = {
+        let text = readFile(path) ?: ""
+        check("${name} manifest accepted", "accepted", verdict(text))
+        check("${name} registry identity", identity, identityOf(text))
+    }
+
     fn acceptsPortIdentities() = {
-        check("flash manifest accepted", "accepted", verdict(readFile(flashAttn) ?: ""))
-        check("flash registry identity", "@osprey/flash-attn", identityOf(readFile(flashAttn) ?: ""))
-        check("rouge manifest accepted", "accepted", verdict(readFile(rougeScore) ?: ""))
-        check("rouge registry identity", "@osprey/rouge-score", identityOf(readFile(rougeScore) ?: ""))
+        portChecks("flash", flashAttn, "@osprey/flash-attn")
+        portChecks("rouge", rougeScore, "@osprey/rouge-score")
     }
 
     export fn run() = {

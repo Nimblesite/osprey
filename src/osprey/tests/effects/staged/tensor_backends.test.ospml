@@ -99,17 +99,18 @@ smoothed x = perform Backends::Tensor.build (size x) (\i => gelu (at (x, i)))
 
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (n, step, modulus, shift, scale) = perform Backends::Tensor.build n (\i => toFloat ((i * step) % modulus - shift) / scale)
+(** One parameter's weight spec: `weight` of `n` elements by (step, modulus, shift, scale). *)
+weightSpec (n, step, modulus, shift, scale) = { n = n, step = step, modulus = modulus, shift = shift, scale = scale }
 (** Each block parameter's weight spec, in field order, built in turn and bundled. *)
-paramSpecs = [
-    { n = width, step = 3, modulus = 5, shift = 1, scale = 2.0 }, { n = width, step = 5, modulus = 7, shift = 3, scale = 4.0 }, { n = width * qkvWidth, step = 7, modulus = 11, shift = 5, scale = 8.0 }, { n = qkvWidth, step = 3, modulus = 7, shift = 3, scale = 8.0 },
-    { n = width * width, step = 5, modulus = 13, shift = 6, scale = 8.0 }, { n = width, step = 7, modulus = 5, shift = 2, scale = 4.0 }, { n = width, step = 7, modulus = 9, shift = 4, scale = 4.0 }, { n = width, step = 2, modulus = 5, shift = 2, scale = 8.0 }, { n = width * mlpWidth, step = 11, modulus = 13, shift = 6, scale = 8.0 }, { n = mlpWidth, step = 5, modulus = 11, shift = 5, scale = 8.0 },
-    { n = mlpWidth * width, step = 13, modulus = 17, shift = 8, scale = 16.0 }, { n = width, step = 3, modulus = 7, shift = 3, scale = 4.0 }
+paramSpecs () = [
+    weightSpec (width, 3, 5, 1, 2.0), weightSpec (width, 5, 7, 3, 4.0), weightSpec (width * qkvWidth, 7, 11, 5, 8.0), weightSpec (qkvWidth, 3, 7, 3, 8.0), weightSpec (width * width, 5, 13, 6, 8.0), weightSpec (width, 7, 5, 2, 4.0),
+    weightSpec (width, 7, 9, 4, 4.0), weightSpec (width, 2, 5, 2, 8.0), weightSpec (width * mlpWidth, 11, 13, 6, 8.0), weightSpec (mlpWidth, 5, 11, 5, 8.0), weightSpec (mlpWidth * width, 13, 17, 8, 16.0), weightSpec (width, 3, 7, 3, 4.0)
 ]
 buildParams specs = foldList specs (Success(value = [])) (\(acc, spec) => Backends::andThen(acc, \built => Backends::andThen(weight (spec.n, spec.step, spec.modulus, spec.shift, spec.scale), \value => Success(value = listAppend built value))))
 unpackParams ws = match ws
     [ln1gain, ln1bias, qkvWeight, qkvBias, projWeight, projBias, ln2gain, ln2bias, fcWeight, fcBias, outWeight, outBias] => Success(value = { ln1gain = ln1gain, ln1bias = ln1bias, qkvWeight = qkvWeight, qkvBias = qkvBias, projWeight = projWeight, projBias = projBias, ln2gain = ln2gain, ln2bias = ln2bias, fcWeight = fcWeight, fcBias = fcBias, outWeight = outWeight, outBias = outBias })
     _ => Error(message = "twelve block parameters")
-blockParams () = Backends::andThen(buildParams paramSpecs, unpackParams)
+blockParams () = Backends::andThen(buildParams (paramSpecs ()), unpackParams)
 
 sumRange (x, start, n) = range start (start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range start (start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
@@ -157,8 +158,14 @@ subLayer (x, gain, bias, body, t) =
     Backends::andThen(layerNorm(x, t, gain, bias),
         \normed => Backends::andThen(body (normed, t),
             \out => perform Backends::Tensor.zipWith (x) (out) (addF)))
-attended (x, w, t) = Backends::andThen(linear(x, t, width, qkvWidth, w.qkvWeight, w.qkvBias), \qkv => Backends::andThen(attention(qkv, t), \mixed => linear(mixed, t, width, width, w.projWeight, w.projBias)))
-feedForward (x, w, t) = Backends::andThen(linear(x, t, width, mlpWidth, w.fcWeight, w.fcBias), \grown => Backends::andThen(smoothed grown, \hidden => linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias)))
+(** A linear map into `wide` columns, `mid` answering `midOut` columns, then a
+    linear map back to `width` columns, plus the bias on every row. *)
+mappedLinear (x, t, wide, midOut, inW, inB, mid, outW, outB) =
+    Backends::andThen(linear(x, t, width, wide, inW, inB),
+        \grown => Backends::andThen(mid grown,
+            \hidden => linear(hidden, t, midOut, width, outW, outB)))
+attended (x, w, t) = mappedLinear(x, t, qkvWidth, width, w.qkvWeight, w.qkvBias, \qkv => attention(qkv, t), w.projWeight, w.projBias)
+feedForward (x, w, t) = mappedLinear(x, t, mlpWidth, mlpWidth, w.fcWeight, w.fcBias, smoothed, w.outWeight, w.outBias)
 (** One pre-norm block: attention and MLP, each with a residual. *)
 block (x, t) = Backends::andThen(blockParams(),
     \w => Backends::andThen(subLayer (x, w.ln1gain, w.ln1bias, \(v, n) => attended (v, w, n), t),
@@ -197,8 +204,8 @@ listsText () =
     Backends::andThen(blockOutput(),
         \y => Success(value = rendered(y)))
 agreementCase () =
-    Backends::andThen(Backends::onLists(\() => listsText()),
-        \lists => Backends::andThen(Backends::onGpu(\() => listsText()),
+    Backends::andThen(Backends::onLists(listsText),
+        \lists => Backends::andThen(Backends::onGpu(listsText),
             \gpu =>
                 checkAll("both interpretations compute the same doubles", [ lists == gpu, lists != "", length(lists) > 8 * 4 ])
                 Success(value = 0) ))
