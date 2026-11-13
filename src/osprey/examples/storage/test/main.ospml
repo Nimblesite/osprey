@@ -8,7 +8,7 @@ namespace storagetests
 import ui::Doc
 import ui::Hosting
 import ui::Lists
-import ui::LowerLeaves
+import ui::Pick
 import ui::Requests
 import ui::Runtime
 import ui::Surfaces
@@ -141,14 +141,6 @@ changedNothing () =
 
 // ---- the listing's rows, read and driven as a host reads them ----
 
-isPlace binding = match binding
-    ui::ChoiceInput action => places action
-    _ => false
-
-places action = match action
-    storage::PickPlace => true
-    _ => false
-
 isEntry binding = match binding
     ui::ChoiceInput action => enters action
     _ => false
@@ -157,50 +149,80 @@ enters action = match action
     storage::PickEntry => true
     _ => false
 
-// A drawn row's shell: the layered control carrying the row's key as its hint.
-rowShell control = match control.controlKind == "layer" && control.controlHint != ""
-    true => [control.controlHint]
-    false => []
+// ---- the told trees ([NATIVE-SHM-NODES]): what a host rebuilds from the frame's rows before it draws ----
 
-shellsOf d = Lists::flatten (mapList (d.drivenSeen.renderedControls, rowShell))
+// The frame's told trees, rebuilt the way every host rebuilds them.
+trees () = hosted (\() => Read::trees (Surfaces::seen (driven.drivenSurface, driven.drivenProgram)))
 
-// The keys of the listing's rows in drawing order: every row shell past the sidebar's, which binds one place row each.
-listingKeys d = Lists::slice (shellsOf d, length (filterList (d.drivenSurface.surfaceBound, isPlace)), length (shellsOf d))
+// A told value's member name, or "" when it carries none.
+toldName told = match told
+    ui::ToldText key _ => key
+    ui::ToldCount key _ => key
+    ui::ToldReal key _ => key
+    ui::ToldFlag key _ => key
+    ui::ToldRecord key _ => key
+    ui::ToldList key _ => key
+    ui::ToldScene key _ _ => key
 
-// The control numbers the listing rows deliver through, in drawing order: their entry bindings' positions among the frame's bindings.
-entrySeats (bindings, index) = match bindings
-    [] => []
-    [first, ...rest] => listConcat (seatOf (first, index)) (entrySeats (rest, satAdd index 1))
+// Everything a record, list or scene holds, or none.
+inside told = match told
+    ui::ToldRecord _ held => held
+    ui::ToldList _ held => held
+    ui::ToldScene _ held _ => held
+    _ => []
 
-seatOf (binding, index) = match isEntry binding
-    true => [index]
-    false => []
+// The text member named `name`, first one wins, or "".
+pickedText (name, found, member) = match member
+    ui::ToldText key words => Pick::either (key == name && found == "", words, found)
+    _ => found
 
-// The control number the listing row keyed `key` delivers through, or -1 when it is not drawn.
-rowNumber (d, key) = match listGet (entrySeats (d.drivenSurface.surfaceBound, 0)) (Lists::position (listingKeys d, \at => at == key))
-    Success ordinal => ordinal
-    Error _ => 0 - 1
+memberText (members, name) = foldList (members, "", \(found, member) => pickedText (name, found, member))
 
-// Chooses the listing row keyed `key`, from the frame `d` drew, as a person clicking it.
-chooseIn (d, key) = hosted (\() => perform Host.drive (Drive::sent (d, controlTouch (d, rowNumber (d, key), key))))
+// The told member named `name`, or an empty record when none is told.
+memberNamed (members, name) = match Lists::find (members, \member => toldName member == name)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// `told` and everything under it, depth first.
+under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
+
+// The region told under `key`, or an empty record when the frame holds none.
+regionTold key = match Lists::find (trees (), \told => toldName told == "region" && memberText (inside told, "key") == key)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// The component of kind `name` under `tree`, depth first, or an empty record when none is told.
+kinded (name, tree) = match Lists::find (under tree, \told => memberText (inside told, "kind") == name)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// The component of kind `name` labelled `label` in the open folder's region, or an empty record.
+labelled (name, label) = match Lists::find (filterList (under (regionTold "folder"), \told => memberText (inside told, "kind") == name), \told => memberText (inside told, "label") == label)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
+
+// The entry records of the rows told under `region`, in drawing order.
+rowsIn region = inside (memberNamed (inside (kinded ("rows", regionTold region)), "rows"))
+
+// The keys of the listing's rows in drawing order.
+listingKeys () = mapList (rowsIn "listing", \entry => memberText (inside entry, "key"))
+
+// The keys of the sidebar's place rows, in drawing order.
+placeKeys () = mapList (rowsIn "places", \entry => memberText (inside entry, "key"))
+
+// Chooses the listing row keyed `key`, from the frame `d` drew, as a person clicking it: the rows control holds the frame's one entry-choosing binding, and the row's key rides in the words.
+chooseIn (d, key) = hosted (\() => perform Host.drive (Drive::sent (d, controlTouch (d, Lists::position (d.drivenSurface.surfaceBound, isEntry), key))))
 
 // The last names of the listing rows' keys, in order.
-rowNames () = join (mapList (listingKeys driven, \key => Disk::name ("windows", key)), ",")
+rowNames () = join (mapList (listingKeys (), \key => Disk::name ("windows", key)), ",")
 
-noControl () = uitest::Control(controlKind = "", controlText = "", controlHint = "", controlOrdinal = 0 - 1, controlInk = 0, controlEnabled = false, controlSelected = "", controlChoices = [])
-
-shellAt index = listGet (controls ()) index ?: noControl ()
-
-textOf control = control.controlText
-
-// Where the row keyed `key` drew its shell, or -1 when it is not drawn.
-shellIndex key = Lists::position (controls (), \control => control.controlKind == "layer" && control.controlHint == key)
-
-// The symbol leading the listing row keyed `key`: the icon the wording just inside its shell is led by.
-symbolOf key = (shellAt (satAdd (shellIndex key, 2))).controlHint
+// The symbol leading the listing row keyed `key`, or "" when it is not drawn.
+symbolOf key = match Lists::find (rowsIn "listing", \entry => memberText (inside entry, "key") == key)
+    Success entry => memberText (inside entry, "symbol")
+    Error _ => ""
 
 // The symbol leading the listing row named `name`.
-rowSymbol name = match Lists::find (listingKeys driven, \key => Disk::name ("windows", key) == name)
+rowSymbol name = match Lists::find (listingKeys (), \key => Disk::name ("windows", key) == name)
     Success key => symbolOf key
     Error _ => ""
 
@@ -272,9 +294,9 @@ test ("Up from a folder measures the folder that encloses it", \() => bench (\()
 test ("Up at the top of a drive is disabled and asks for nothing", \() => bench (\() =>
     launchWith ("windows", "C:\\", [])
     up = control "Up"
-    expect (up.controlKind, "press")
+    expect (up.controlKind, "button")
     expect (up.controlHint, "chevron")
-    expect (up.controlInk, LowerLeaves::inkTone (App::theme (), false, ui::Primary))
+    expect (memberText (inside (labelled ("button", "Up")), "role"), "plain")
     expect (up.controlEnabled, false)
     press "Up"
     askedNothing ()))
@@ -284,7 +306,7 @@ test ("a chosen folder joins the places and is measured", \() => bench (\() =>
     expect (askedKinds (), "choose-folder choose")
     chose "D:\\Media"
     expect (measuringNow (), "D:\\Media")
-    shows "D:\\Media"))
+    expect (Lists::any (placeKeys (), \key => key == "D:\\Media"), true)))
 test ("a cancelled choice changes nothing", \() => bench (\() =>
     launch ()
     chose ""
@@ -303,7 +325,7 @@ test ("a folder row opens that folder and a file row does not", \() => bench (\(
 test ("a failed walk says why", \() => bench (\() =>
     launch ()
     complete ("walk:1", false, "Access is denied.")
-    wordsIn "Access is denied."))
+    expect (memberText (inside (kinded ("empty", regionTold "listing")), "detail"), "Access is denied.")))
 test ("a folder that disappeared says it is gone", \() => bench (\() =>
     walkedIn (goneWalk ())
     wordsIn "This folder is gone"))
