@@ -186,7 +186,7 @@ module Lower
     tabView<A> : (Styling<A>, Tab<A>, string, A) -> View<Binding<A>>
     tabView (styling, tab, selected, bind) =
         picked = tab.tabKey == selected
-        Fitted(fit = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = Pick::either (picked, Views::chosen, 0), edge = 0, hint = tab.tabKey), fitted = Press(pressLook = tabPress (styling, picked), pressWords = LowerLeaves::labelled (tab.tabSymbol, tab.tabLabel), pressAction = ChoiceInput(action = bind)))
+        Fitted(fit = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = Pick::either (picked, Views::chosen, 0), edge = 0, hint = tab.tabKey), fitted = Press(pressLook = tabPress (styling, picked), pressWords = tab.tabLabel, pressAction = ChoiceInput(action = bind)))
 
     // A tab's press: the chosen tab is heavier on a ten-percent wash of the theme's ink.
     tabPress (styling, picked) = match picked
@@ -228,7 +228,7 @@ module Lower
         Success region => view (styling, region.snapshotValue)
 
     buttonView<A> : (Styling<A>, string, string, ButtonRole, bool, A) -> View<Binding<A>>
-    buttonView (styling, label, symbol, role, enabled, action) = Fitted(fit = Fit(wide = 0.0, tall = controlTall, share = 0.0, traits = Pick::either (enabled, 0, Views::disabled), edge = 0, hint = ""), fitted = Press(pressLook = buttonLook (styling, role), pressWords = LowerLeaves::labelled (symbol, label), pressAction = Tap(action = action)))
+    buttonView (styling, label, symbol, role, enabled, action) = Fitted(fit = Fit(wide = 0.0, tall = controlTall, share = 0.0, traits = Pick::either (enabled, 0, Views::disabled), edge = 0, hint = symbol), fitted = Press(pressLook = buttonLook (styling, role), pressWords = label, pressAction = Tap(action = action)))
 
     // A prominent or filled button's surface: the accent fill under its own ink.
     pressedLook (styling, inkName, fillName) = Look(ink = LowerLeaves::inkNamed (styling.styleTheme, styling.styleDark, inkName), fill = LowerLeaves::fillNamed (styling.styleTheme, styling.styleDark, fillName), points = LowerLeaves::bodyPoints, inset = pressInset, gap = 0.0, corner = pressCorner, heft = 400)

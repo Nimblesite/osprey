@@ -8,10 +8,11 @@ import ui::Pick
 import ui::Views
 import ui::Requests
 
-(** One drawn control: its kind, its words, the control number its events name (-1 for none), its ink, whether it takes input, the key of its chosen option and its options' keys. *)
+(** One drawn control: its kind, its words, its second text (a prompt, a picker's name or an icon), the control number its events name (-1 for none), its ink, whether it takes input, the key of its chosen option and its options' keys. *)
 type Control =
     controlKind : string
     controlText : string
+    controlHint : string
     controlOrdinal : int
     controlInk : int
     controlEnabled : bool
@@ -52,7 +53,7 @@ module Read
 
     control (walk, index) =
         row = listGet walk.walkRows index ?: Views::blank
-        Control(controlKind = kindName row.placedKind, controlText = row.placedWords, controlOrdinal = row.placedAction, controlInk = row.placedLook.ink, controlEnabled = bitAnd (flags (walk, index)) Views::disabled == 0, controlSelected = chosenKey (walk, index), controlChoices = mapList (options (walk, index), \i => hint (walk, i)))
+        Control(controlKind = kindName row.placedKind, controlText = row.placedWords, controlHint = hint (walk, index), controlOrdinal = row.placedAction, controlInk = row.placedLook.ink, controlEnabled = bitAnd (flags (walk, index)) Views::disabled == 0, controlSelected = chosenKey (walk, index), controlChoices = mapList (options (walk, index), \i => hint (walk, i)))
 
     lettered shape = match shape
         ui::Lettering text _ _ _ _ _ _ _ => [text]

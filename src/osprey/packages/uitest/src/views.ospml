@@ -6,11 +6,11 @@ import ui::Lists
 
 (** Finds rendered controls by their label, text or title, and the canvas's lettering. *)
 module Views
-    (** Every drawn control whose words are `label`. *)
-    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlText == label)
+    (** Every drawn control whose words, or whose prompt or picker's name, are `label`. *)
+    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlText == label || c.controlHint == label)
 
     (** The first drawn control matching `label`, or an empty one with no kind when none does. *)
-    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlText = "", controlOrdinal = 0 - 1, controlInk = 0, controlEnabled = false, controlSelected = "", controlChoices = [])
+    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlText = "", controlHint = "", controlOrdinal = 0 - 1, controlInk = 0, controlEnabled = false, controlSelected = "", controlChoices = [])
 
     (** Whether any drawn control matches `label`. *)
     export shows (seen, label) = length (labelled (seen, label)) > 0

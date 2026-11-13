@@ -25,7 +25,7 @@ type Look =
     corner : float
     heft : int
 
-(** How one control sits and behaves: `wide` and `tall` fix its extent in points (zero keeps its natural one), `share` is its part of the free space beside its siblings, `traits` adds up `Views` flags, `edge` is a `0xRRGGBBAA` border (zero draws none) and `hint` a second text: a field's prompt or an option's key. *)
+(** How one control sits and behaves: `wide` and `tall` fix its extent in points (zero keeps its natural one), `share` is its part of the free space beside its siblings, `traits` adds up `Views` flags, `edge` is a `0xRRGGBBAA` border (zero draws none) and `hint` a second text: a field's prompt, an option's or a tab's key, or the icon a label or a press is led by. *)
 type Fit =
     wide : float
     tall : float

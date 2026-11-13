@@ -101,3 +101,5 @@ module App
             read => store.screen
         changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
+    (** The player as its boundary runs it: the store drawn with its machine's theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \store => Templates::theme store.screen.screenMachine)

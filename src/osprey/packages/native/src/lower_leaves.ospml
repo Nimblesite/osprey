@@ -97,12 +97,11 @@ module LowerLeaves
     (** A wording's look: `points` and `heft` in the ink of `tone`, for the labels a container draws. *)
     export sized (theme, dark, points, heft, tone) = Look(ink = inkTone (theme, dark, tone), fill = 0, points = points, inset = 0.0, gap = 0.0, corner = 0.0, heft = heft)
 
-    (** `symbol` and `text` joined by a space; whichever alone when the other is empty. *)
-    export labelled (symbol, text) = match symbol == ""
-        true => text
-        false => match text == ""
-            true => symbol
-            false => "${symbol} ${text}"
+    (** `view` led by the icon `symbol` names, which a host draws from its own symbol set; an empty name draws none. *)
+    export iconed<A> : (string, View<Binding<A>>) -> View<Binding<A>>
+    iconed (symbol, view) = match symbol == ""
+        true => view
+        false => Fitted(fit = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = symbol), fitted = view)
 
     // A fit that adds only `traits` to what it wraps.
     traitFit traits = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = traits, edge = 0, hint = "")
@@ -155,11 +154,11 @@ module LowerLeaves
     export badge<A> : (Theme, bool, string, string, Tone) -> View<Binding<A>>
     badge (theme, dark, label, symbol, tone) =
         inked = inkTone (theme, dark, tone)
-        Wording(wordsLook = Look(ink = inked, fill = wash (inked, tint), points = captionPoints, inset = 4.0, gap = 0.0, corner = capsule, heft = 500), wordsText = labelled (symbol, label))
+        iconed (symbol, Wording(wordsLook = Look(ink = inked, fill = wash (inked, tint), points = captionPoints, inset = 4.0, gap = 0.0, corner = capsule, heft = 500), wordsText = label))
 
     (** Text led by a symbol, both in the primary ink. *)
     export label<A> : (Theme, bool, string, string) -> View<Binding<A>>
-    label (theme, dark, content, symbol) = Wording(wordsLook = sized (theme, dark, bodyPoints, 400, Primary), wordsText = labelled (symbol, content))
+    label (theme, dark, content, symbol) = iconed (symbol, Wording(wordsLook = sized (theme, dark, bodyPoints, 400, Primary), wordsText = content))
 
     (** A large decorative symbol. *)
     export icon<A> : (Theme, bool, string) -> View<Binding<A>>
