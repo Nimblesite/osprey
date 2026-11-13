@@ -4,7 +4,6 @@ namespace uitests
 
 import ui::Canvases
 import ui::Doc
-import ui::Encode
 import ui::MachineDocs
 import ui::Machines
 import ui::Runtime
@@ -86,7 +85,10 @@ realCanvasEdits () =
     expect (Canvases::sliding pressed, false)
     expect (Doc::write (MachineDocs::snapshot hovered), Doc::write (MachineDocs::snapshot dropped))
 
-sceneSize machine = take (jsonEncode (nativeTree machine) ?: "", 45)
+// The machine's first scene's own size, in scene units, which a host fits into its region.
+sceneSize machine = match listGet (nativeScenes machine) 0
+    Success scene => "${scene.sketchWidth}x${scene.sketchHeight}"
+    Error _ => "none"
 
 realCanvasRoomAndSliders () =
     prism = realSkinned (signalMachine (), "prism")
@@ -95,7 +97,7 @@ realCanvasRoomAndSliders () =
     probesHold (Machines::number, [{ at = grown, key = "viewWidth", value = 1936.0 }, { at = grown, key = "viewHeight", value = 1128.0 }, { at = grown, key = "spareWidth", value = 400.0 }, { at = grown, key = "spareHeight", value = 300.0 }, { at = shrunk, key = "spareWidth", value = 0.0 }, { at = shrunk, key = "spareHeight", value = 0.0 }])
     // A host fits the scene's own size into its region, so room spared must not grow it: a window that
     // later got shorter would fit the grown size and be told the same spare room for ever.
-    expect (sceneSize grown, "{\"kind\":\"scene\",\"width\":1536.0,\"height\":828.0")
+    expect (sceneSize grown, "1536.0x828.0")
     expect (sceneSize (prism), sceneSize grown)
     dragSlider (shrunk, "Master Level", 0.1, 0.9)
 

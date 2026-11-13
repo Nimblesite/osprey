@@ -9,11 +9,10 @@ import ui::Frames
     inset
     bar
     text
-import ui::Encode
 import ui::Doc
-import ui::Events
 import ui::Messages
 import ui::Requests
+import ui::Surfaces
 import ui::Strokes
 import ui::Themes
 import ui::Maths
@@ -23,114 +22,125 @@ import ui::LowerLeaves
 import ui::Keyed
 
 module AdditionCases
-    actionName action = match action
-        Increment => "increment"
-        Typed => "typed"
-        Load => "load"
-
     refusal result = match result
         Success _ => "accepted"
         Error problem => problem
 
-    sampleStroke () = ui::Stroke(strokePoints = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)], strokeWidth = 2, strokeAt = 9)
+    samplePoints () = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)]
 
-    strokeSource = "{\"points\":[[1,2],[3,4]],\"width\":2,\"at\":9}"
+    sampleStroke () = ui::Stroke(strokePoints = samplePoints (), strokeWidth = 2, strokeAt = 9)
 
-    routed message = Messages::route (message,
-        \action => "tap ${actionName action}",
-        \(action, text) => "text ${actionName action}:${text}",
-        \(action, flag) => "flag ${actionName action}:${flag}",
-        \(action, points) => "integer ${actionName action}:${points}",
-        \(ticket, _) => "completed ${ticket}",
-        \phase => "phase ${phase}",
-        \(action, stroke) => "stroke ${actionName action}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}",
-        \(action, indices) => "lasso ${actionName action}:${join (mapList (indices, \index => "${index}")) ","}",
-        \_ => "frame",
-        \(_, _) => "controlled")
+    // The editor node of the sample, read as the typed record it is.
+    editorSample () = Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)
 
-    editorNode () = listGet (Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])), "children"))) 1 ?: JsonNull
+    // `node`'s editor fields, spelt as one string a table can hold.
+    editorSpelled node = match node
+        ui::Editor label value inline cursor epoch marks _ _ => "${label}|${value}|${inline}|${cursor}|${epoch}|${markSpelled (listGet marks 0 ?: Editors::mark (0, false, ui::Primary, "", ""))}"
+        _ => "not an editor"
+
+    markSpelled mark = "${mark.markLine}|${mark.underlined}|${toneSpelled mark.markTone}|${mark.markBadge}|${mark.markNote}"
+
+    toneSpelled tone = match tone
+        ui::Primary => "primary"
+        ui::Secondary => "secondary"
+        ui::Accent => "accent"
+        ui::Good => "good"
+        ui::Caution => "caution"
+        ui::Danger => "danger"
 
     (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
     export editorEncoding () =
         focusedEditorEncoding ()
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
-        doc = editorNode ()
-        mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
-        expectTexts (doc, [{ name = "kind", value = "editor" }, { name = "label", value = "Proof" }, { name = "value", value = "one\ntwo" }])
-        expectNumbers (doc, [{ name = "cursor", value = 3 }, { name = "event", value = 1 }, { name = "placeEvent", value = 2 }])
-        expect (length walked.bindings, 3)
-        expectNumbers (mark, [{ name = "line", value = 2 }])
-        expect (Doc::flag (mark, "underlined"), true)
-        expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
+        walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), editorSample ()])
+        expect (editorSpelled (editorSample ()), "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
+        binds (walked, 3)
+        expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "0@-1,3@0,7@-1,14@1,13@2")
+        expect (hintAt (walked, 2), "Proof")
 
     focusedEditorEncoding () =
-        node = Editors::focused ("Formula", "p→q", length "p→", 3, Typed, Load)
-        doc = firstNode (Encode::walk ([], node))
-        expect (Doc::has (doc, "focusEpoch"), true)
-        expectNumbers (doc, [{ name = "focusEpoch", value = 3 }, { name = "cursor", value = length "p→" }, { name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
-        expect (Doc::flag (doc, "inline"), true)
-        expect (Doc::has (editorNode (), "focusEpoch"), true)
-        expect (Doc::number (editorNode (), "focusEpoch"), 0)
+        node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
+        expect (editorSpelled node, "Formula|p\u2192q|true|${length "p\u2192"}|3|0|false|primary||")
+        walked = drawnOf node
+        binds (walked, 2)
+        expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "7@-1,14@0,13@1")
+        expect (hintAt (walked, 0), "Formula")
 
-    placed value = Events::bind (ui::PlaceInput(action = Typed), value)
+    placed words = match Surfaces::told (ui::PlaceInput(action = Typed), words)
+        Success message => routed message
+        Error problem => problem
 
-    (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and refuse other JSON kinds. *)
+    (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and read non-numbers as zero. *)
     export cursorValues () =
-        expect (routed (placed (JsonInt 7) ?: ui::Act(act = Increment)), "integer typed:7")
-        expect (routed (placed (JsonInt (0 - 3)) ?: ui::Act(act = Increment)), "integer typed:0")
-        expect (refusal (placed (JsonString "7")), "A cursor control sent a value of the wrong kind")
+        expect (placed "7", "integer typed:7")
+        expect (placed "${0 - 3}", "integer typed:0")
+        expect (placed "junk", "integer typed:0")
+        expect (placed "", "integer typed:0")
+
+    // `node`'s board fields, spelt as one string a table can hold.
+    boardSpelled node = match node
+        ui::Board slice count lassoing backdrop panning panBound _ _ _ => "${slice}|${count}|${lassoing}|${backdrop}|${panning}|${panBound}"
+        _ => "not a board"
 
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
-        doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
-        expectTexts (doc, [{ name = "kind", value = "board" }, { name = "slice", value = "proof/strokes" }, { name = "backdrop", value = "chalk-study.png" }])
-        expectNumbers (doc, [{ name = "count", value = 2 }, { name = "event", value = 1 }, { name = "lassoEvent", value = 2 }])
-        expectFlags (doc, [{ name = "lasso", value = true }])
-        expect (length walked.bindings, 3)
+        walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
+        expect (boardSpelled (Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)), "proof/strokes|2|true|chalk-study.png|false|false")
+        binds (walked, 3)
+        expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "0@-1,3@0,7@-1,13@1,13@2")
         boardCamera ()
 
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
     export strokeDecoding () =
-        stroke = Strokes::decode (Doc::parse strokeSource) ?: ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
+        stroke = match Strokes::checked (samplePoints (), 2, 9)
+            Success kept => kept
+            Error _ => ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
         expect (length stroke.strokePoints, 2)
         expect (join (mapList (stroke.strokePoints, \point => "${point.pointX},${point.pointY}")) ";", "1,2;3,4")
         expect (stroke.strokeWidth, 2)
         expect (stroke.strokeAt, 9)
 
-    malformed source = refusal (Strokes::decode (Doc::parse source))
+    malformed (points, width, at) = refusal (Strokes::checked (points, width, at))
 
     malformedStrokes () = [
-        "{\"points\":[],\"width\":2,\"at\":9}", "{\"points\":[[1,-2]],\"width\":2,\"at\":9}",
-        "{\"points\":[3],\"width\":2,\"at\":9}", "{\"points\":[[1,2,3]],\"width\":2,\"at\":9}",
-        "{\"points\":[[1,2]],\"at\":9}", "{\"points\":[[1,2]],\"width\":0,\"at\":9}",
-        "{\"points\":[[1,2]],\"width\":2,\"at\":-1}", "{\"points\":[[1,2]],\"width\":2,\"at\":\"9\"}",
+        { points = [], width = 2, at = 9 },
+        { points = [ui::Point(pointX = 1, pointY = 0 - 2)], width = 2, at = 9 },
+        { points = [ui::Point(pointX = 0 - 1, pointY = 2)], width = 2, at = 9 },
+        { points = samplePoints (), width = 0, at = 9 },
+        { points = samplePoints (), width = 2, at = 0 - 1 },
     ]
 
-    (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates and non-pair points are refused with the exact diagnostic. *)
+    (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates, widthless strokes and negative clocks are refused with the exact diagnostic. *)
     export strokeRefusals () =
-        forEachList (malformedStrokes (), \source => expect (malformed source, "A board control sent a malformed stroke"))
+        forEachList (malformedStrokes (), \probe => expect (malformed (probe.points, probe.width, probe.at), "A board control sent a malformed stroke"))
 
-    (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses strings and negative indices. *)
+    (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses negative indices. *)
     export lassoValues () =
-        expect (routed (Strokes::lasso (Load, JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
-        expect (refusal (Strokes::lasso (Load, JsonArray [JsonString "x"])), "A board control sent a lasso that is not a list of strokes")
-        expect (refusal (Strokes::lasso (Load, JsonArray [JsonInt (0 - 1)])), "A board control sent a lasso that is not a list of strokes")
+        delivered = match Strokes::lasso (Load, [0, 2])
+            Success message => routed message
+            Error problem => problem
+        expect (delivered, "lasso load:0,2")
+        expect (refusal (Strokes::lasso (Load, [])), "accepted")
+        expect (refusal (Strokes::lasso (Load, [0, 0 - 1])), "A board control sent a lasso that is not a list of strokes")
 
     (** [UI-EFFECTS-RECOGNISE]: recognition carries the ticket, the host-held stroke slices it reads and the output limit. *)
     export recognitionEncoding () =
-        request = Requests::encode (Requests::ask ("ink:1", ui::Recognise(strokeSlices = ["board:0", "board:2"], recogniseLimit = 80)))
-        expect (Doc::write request, "{\"ticket\":\"ink:1\",\"kind\":\"recognise\",\"slices\":[\"board:0\",\"board:2\"],\"limit\":80}")
+        expect (rowsOf (Requests::ask ("ink:1", ui::Recognise(strokeSlices = ["board:0", "board:2"], recogniseLimit = 80))), "0/20/ink:1;1/0/board:0;1/0/board:2;2/80/")
 
     (** [UI-EVENTS]: routing delivers placed offsets, strokes and lassos only to their matching handlers. *)
     export messageRouting () =
-        expect (routed (Events::bind (ui::StrokeInput(action = Typed), Doc::parse strokeSource) ?: ui::Act(act = Increment)), "stroke typed:2/2/9")
-        expect (refusal (Events::bind (ui::StrokeInput(action = Typed), JsonNull)), "A board control sent a malformed stroke")
-        expect (routed (Events::bind (ui::LassoInput(action = Load), JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
-        expect (refusal (Events::bind (ui::LassoInput(action = Load), JsonBool false)), "A board control sent a lasso that is not a list of strokes")
+        stroked = match Strokes::bind (Typed, samplePoints (), 2, 9)
+            Success message => routed message
+            Error problem => problem
+        expect (stroked, "stroke typed:2/2/9")
+        expect (refusal (Strokes::bind (Typed, [], 2, 9)), "A board control sent a malformed stroke")
+        lassoed = match Strokes::lasso (Load, [0, 2])
+            Success message => routed message
+            Error problem => problem
+        expect (lassoed, "lasso load:0,2")
         expect (routed (ui::Placed(placer = Typed, placed = 7)), "integer typed:7")
         expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
         expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")
+        expect (routed (ui::Entered(entry = Typed, entered = "Zoë")), "text typed:Zoë")
 
     (** [UI-THEME-BOARD]: the board's surface and stroke token names stay stable. *)
     export boardTokens () = expect (join Themes::boardTokens ",", "board,chalk")
@@ -187,24 +197,37 @@ module AdditionCases
         { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `big` is missing its child `upper`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `big` is missing its child `body`" },
     ], refusedCase)
 
-    (** [UI-COMPONENTS-MEDIA]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
+    (** [UI-COMPONENTS-MEDIA]: an image and a video lower as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
-        children = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
-        image = listGet children 1 ?: JsonNull
-        video = listGet children 2 ?: JsonNull
-        expect (Doc::write image, "{\"kind\":\"image\",\"source\":\"media/a.jpg\",\"alt\":\"A chain\",\"width\":1920,\"height\":1080}")
-        expect (Doc::write video, "{\"kind\":\"video\",\"source\":\"media/a.mp4\",\"poster\":\"media/a.jpg\",\"captions\":\"media/a.vtt\",\"alt\":\"A film\",\"seconds\":40}")
-        expect (Doc::has (image, "event"), false)
-        expect (Doc::has (video, "event"), false)
-        expect (length walked.bindings, 1)
+        walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
+        binds (walked, 1)
+        expect (kindAt (walked, 2), Views::image)
+        expect (wordsAt (walked, 2), "media/a.jpg")
+        expect ((fitAt (walked, 2)).wide, 1920.0)
+        expect ((fitAt (walked, 2)).tall, 1080.0)
+        expect ((fitAt (walked, 2)).hint, "A chain")
+        expect (actionAt (walked, 2), Views::none)
+        expect (kindAt (walked, 3), Views::image)
+        expect (wordsAt (walked, 3), "media/a.jpg")
+        expect ((fitAt (walked, 3)).hint, "A film")
+        expect (actionAt (walked, 3), Views::none)
 
-
-    export frameTypography geometry =
-        expectTexts (geometry, [{ name = "font", value = "serif" }, { name = "align", value = "center" }, { name = "cross", value = "end" }, { name = "shadow", value = "floating" }])
-        expectNumbers (geometry, [{ name = "textSize", value = 27 }, { name = "controlHeight", value = 40 }, { name = "controlPadding", value = 12 }])
-        expectFlags (geometry, [{ name = "italic", value = true }, { name = "hug", value = true }, { name = "quietControls", value = true }, { name = "fadeBackdrop", value = true }, { name = "trailingSymbols", value = true }])
-        expectFloats (geometry, [{ name = "lineHeight", value = 34.72 }, { name = "tracking", value = -0.6 }, { name = "mathScale", value = 1.08 }])
+    export frameTypography style =
+        expect (style.frameFont, "serif")
+        expect (style.frameAlign, "center")
+        expect (style.frameCross, "end")
+        expect (style.frameShadow, "floating")
+        expect (style.frameTextSize, 27)
+        expect (style.frameControlHeight, 40)
+        expect (style.frameControlPadding, 12)
+        expect (style.frameItalic, true)
+        expect (style.frameHug, true)
+        expect (style.frameQuietControls, true)
+        expect (style.frameFadeBackdrop, true)
+        expect (style.frameTrailingSymbols, true)
+        expect (style.frameLineHeight, 34.72)
+        expect (style.frameTracking, 0.0 - 0.6)
+        expect (style.frameMathScale, 1.08)
         filledButton ()
         frameHelpers ()
 
@@ -224,31 +247,46 @@ module AdditionCases
         expect (typography.frameHug, true)
 
     boardCamera () =
-        walked = Encode::walk ([], Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
-        node = listGet walked.nodes 0 ?: JsonNull
-        expect (Doc::flag (node, "panning"), true)
-        expect (Doc::text (node, "backdrop"), "chalk-study.png")
-        expectNumbers (node, [{ name = "event", value = 0 }, { name = "lassoEvent", value = 1 }, { name = "panEvent", value = 2 }])
-        expect (length walked.bindings, 3)
-        expect (routed (Events::bind (listGet walked.bindings 2 ?: ui::Tap(action = Increment), JsonString "{x:12}") ?: ui::Act(act = Increment)), "text load:{x:12}")
+        walked = drawnOf (Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
+        expect (boardSpelled (Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load)), "board|0|true|chalk-study.png|true|true")
+        binds (walked, 3)
+        expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "7@-1,13@0,13@1,13@2")
+        panned = match Surfaces::told (ui::TextInput(action = Load), "{x:12}")
+            Success message => routed message
+            Error problem => problem
+        expect (panned, "text load:{x:12}")
         narrowMargin ()
 
     narrowMargin () =
-        node = firstNode (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load)))
-        expectNumbers (node, [{ name = "width", value = 184 }, { name = "least", value = 160 }, { name = "most", value = 320 }, { name = "keep", value = 360 }])
+        node = Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load)
+        asideSpelled = match node
+            ui::Aside _ _ _ extent least most keep _ => "${extent}|${least}|${most}|${keep}"
+            _ => "not an aside"
+        expect (asideSpelled, "184|160|320|360")
 
+    // The button role a node carries, as the vocabulary names it.
+    buttonRole node = match node
+        ui::Button _ _ role _ _ => role
+        _ => ui::Plain
+
+    // A button role spelt as the vocabulary spells it, so an assertion can hold it.
+    roleSpelled role = match role
+        ui::Prominent => "prominent"
+        ui::Plain => "plain"
+        ui::Destructive => "destructive"
+        ui::Filled => "filled"
 
     filledButton () =
-        node = firstNode (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment)))
-        expect (Doc::text (node, "role"), "filled")
+        node = Ui::action ("Insert", "", ui::Filled, true, Increment)
+        expect (roleSpelled (buttonRole node), "filled")
         inlineEditor ()
 
     inlineEditor () =
-        walked = Encode::walk ([], Editors::inline ("Next step", "From h.", 7, Typed, Load))
-        node = listGet walked.nodes 0 ?: JsonNull
-        expect (Doc::flag (node, "inline"), true)
-        expectNumbers (node, [{ name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
-        expect (length walked.bindings, 2)
+        node = Editors::inline ("Next step", "From h.", 7, Typed, Load)
+        expect (editorSpelled node, "Next step|From h.|true|7|0|0|false|primary||")
+        walked = drawnOf node
+        binds (walked, 2)
+        expect (join (mapList (walked.walkRows, \r => "${r.placedKind}@${r.placedAction}")) ",", "7@-1,14@0,13@1")
 
 
     // [NATIVE-SHM-LOWER] The theme the lowering tests draw from: distinct tokens so light and dark resolve differently.
@@ -263,17 +301,24 @@ module AdditionCases
         ui::Token(tokenName = "chalk", tokenLight = "#223344", tokenDark = "#DDEEFF")]
 
     // The test theme the lowering cases draw from.
-    lowerTheme () = ui::Theme(tokens = lowerTokens (), spacing = [4, 10, 16], feedback = 140, settle = 240)
+    export lowerTheme () = ui::Theme(tokens = lowerTokens (), spacing = [4, 10, 16], feedback = 140, settle = 240)
 
     // Styling for `dark` over the test theme, with no regions; its action union is the suite's own `Act`.
-    styled : bool -> ui::Styling<Act>
+    export styled : bool -> ui::Styling<Act>
     styled dark = ui::Styling(styleTheme = lowerTheme (), styleDark = dark, styleRegions = [])
 
     // A stand-in view for list lookups that miss.
-    nothingView () = ui::Column(columnLook = Views::plain, columnItems = [])
+    export nothingView () = ui::Column(columnLook = Views::plain, columnItems = [])
+
+    (** [UI-COMPONENTS] The segments a `Segments` node lowers to over the lowering theme. *)
+    export segmentsDrawn node = Lower::view (styled false, node)
+
+    (** [UI-COMPONENTS-METER] The meter a `Meter` node lowers to over the lowering theme. *)
+    export meterDrawn (amount, total) = Lower::view (styled false, Ui::meter ("Used", amount, total, ui::Caution))
 
     // The kind name of a lowered view.
-    kindOf view = match view
+    export kindOf view = match view
+        ui::Drawing _ _ _ => "drawing"
         ui::Column _ _ => "column"
         ui::Across _ _ => "across"
         ui::Wording _ _ => "wording"
@@ -294,7 +339,8 @@ module AdditionCases
         ui::Sheet _ _ _ => "sheet"
 
     // The text a control carries, or "" when it carries none.
-    textOf view = match view
+    export textOf view = match view
+        ui::Drawing _ _ _ => ""
         ui::Wording _ words => words
         ui::Press _ words _ => words
         ui::Typing _ words _ => words
@@ -306,7 +352,8 @@ module AdditionCases
         _ => ""
 
     // The look of a control, reaching through wrappers, or the plain look when it has none.
-    lookOf view = match view
+    export lookOf view = match view
+        ui::Drawing look _ _ => look
         ui::Column look _ => look
         ui::Across look _ => look
         ui::Wording look _ => look
@@ -327,17 +374,18 @@ module AdditionCases
         ui::Gap => Views::plain
 
     // The fit a wrapper applies; the sentinel fit matches nothing the lowering produces.
-    fitOf view = match view
+    export fitOf view = match view
         ui::Fitted fit _ => fit
         _ => ui::Fit(wide = -1.0, tall = -1.0, share = -1.0, traits = -1, edge = -1, hint = "?")
 
     // The single child a wrapper carries, or nothing.
-    innerOf view = match view
+    export innerOf view = match view
         ui::Fitted _ inner => inner
         _ => nothingView ()
 
     // The `index`th child of a container or a choice's options, or nothing.
-    itemOf (view, index) = match view
+    export itemOf (view, index) = match view
+        ui::Drawing _ _ _ => nothingView ()
         ui::Column _ items => listGet items index ?: nothingView ()
         ui::Across _ items => listGet items index ?: nothingView ()
         ui::Scrolling _ items => listGet items index ?: nothingView ()
@@ -348,7 +396,8 @@ module AdditionCases
         _ => nothingView ()
 
     // How many children a container or a choice holds.
-    countOf view = match view
+    export countOf view = match view
+        ui::Drawing _ _ _ => 0
         ui::Column _ items => length items
         ui::Across _ items => length items
         ui::Scrolling _ items => length items
@@ -359,7 +408,7 @@ module AdditionCases
         _ => 0
 
     // The binding a control delivers; each sentinel differs from every binding its case expects.
-    pressAction view = match view
+    export pressAction view = match view
         ui::Press _ _ action => action
         _ => ui::Tap(action = Load)
 
@@ -368,35 +417,36 @@ module AdditionCases
         ui::Writing _ _ action => action
         _ => ui::TextInput(action = Load)
 
-    switchWordsOf view = match view
+    export switchWordsOf view = match view
         ui::Switch _ words _ _ => words
         _ => "?"
 
-    switchOnOf view = match view
+    export switchOnOf view = match view
         ui::Switch _ _ on _ => on
         _ => false
 
-    switchFlagOf view = match view
+    export switchFlagOf view = match view
         ui::Switch _ _ _ action => action
         _ => ui::FlagInput(action = Increment)
 
-    choosingAction view = match view
+    export choosingAction view = match view
         ui::Choosing _ _ _ action => action
         _ => ui::ChoiceInput(action = Increment)
 
-    canvasAction view = match view
+    export canvasAction view = match view
         ui::Canvas _ action => action
+        ui::Drawing _ _ action => action
         _ => ui::SceneInput(action = Increment)
 
-    sheetDismissOf view = match view
+    export sheetDismissOf view = match view
         ui::Sheet _ _ dismiss => dismiss
         _ => ui::Tap(action = Increment)
 
-    optionKeyOf view = match view
+    export optionKeyOf view = match view
         ui::Option _ _ key _ => key
         _ => "?"
 
-    optionChosenOf view = match view
+    export optionChosenOf view = match view
         ui::Option _ _ _ chosen => chosen
         _ => false
 
@@ -592,7 +642,7 @@ module AdditionCases
         first = itemOf (bar, 0)
         expect ((fitOf first).hint, "one")
         expect ((fitOf first).traits, 0)
-        expect (textOf (innerOf first), "star First")
+        expect (textOf (innerOf first), "First")
         expect ((lookOf (innerOf first)).fill, 0)
         expect ((lookOf (innerOf first)).heft, 400)
         expect (structuralEquals (pressAction (innerOf first)) (ui::ChoiceInput(action = Typed)), true)
@@ -629,8 +679,10 @@ module AdditionCases
         cell = itemOf (stack, 0)
         expect (kindOf cell, "across")
         expect (countOf cell, 2)
-        expect (textOf (itemOf (cell, 0)), "star")
-        expect ((lookOf (itemOf (cell, 0))).points, 12.0)
+        expect (kindOf (itemOf (cell, 0)), "fitted")
+        expect ((fitOf (itemOf (cell, 0))).hint, "star")
+        expect (textOf (innerOf (itemOf (cell, 0))), "")
+        expect ((lookOf (innerOf (itemOf (cell, 0)))).points, 12.0)
         rest = itemOf (stack, 1)
         expect (kindOf rest, "press")
         expect ((lookOf rest).fill, 0)
@@ -664,7 +716,8 @@ module AdditionCases
         expect (kindOf prominent, "fitted")
         expect ((fitOf prominent).tall, 28.0)
         expect ((fitOf prominent).traits, 0)
-        expect (textOf (innerOf prominent), "play Bake")
+        expect (textOf (innerOf prominent), "Bake")
+        expect ((fitOf prominent).hint, "play")
         expect ((lookOf (innerOf prominent)).ink, 4294967295)
         expect ((lookOf (innerOf prominent)).fill, 6728447)
         expect ((lookOf (innerOf prominent)).inset, 12.0)
@@ -761,20 +814,25 @@ module AdditionCases
         expect (textOf (itemOf (pair, 2)), "3")
         expect ((lookOf (itemOf (pair, 2))).ink, 439041279)
         badge = Lower::view (styled true, Ui::badge ("Live", "play", ui::Danger))
-        expect (kindOf badge, "wording")
-        expect (textOf badge, "play Live")
+        expect (kindOf badge, "fitted")
+        expect (kindOf (innerOf badge), "wording")
+        expect (textOf (innerOf badge), "Live")
+        expect ((fitOf badge).hint, "play")
         expect ((lookOf badge).ink, 4284901119)
         expect ((lookOf badge).fill, 4284900900)
         expect ((lookOf badge).points, 11.0)
         expect ((lookOf badge).heft, 500)
         expect ((lookOf badge).corner, 999.0)
         labelled = Lower::view (styled false, Ui::label ("Scope", "info"))
-        expect (textOf labelled, "info Scope")
+        expect (textOf (innerOf labelled), "Scope")
+        expect ((fitOf labelled).hint, "info")
         expect ((lookOf labelled).ink, 439041279)
         expect ((lookOf labelled).points, 13.0)
         icon = Lower::view (styled false, Ui::icon "star")
-        expect (textOf icon, "star")
-        expect ((lookOf icon).points, 14.0)
+        expect (kindOf icon, "fitted")
+        expect ((fitOf icon).hint, "star")
+        expect (textOf (innerOf icon), "")
+        expect ((lookOf (innerOf icon)).points, 14.0)
         link = Lower::view (styled false, Ui::link ("Guide", "https://example.test"))
         expect (kindOf link, "fitted")
         expect ((fitOf link).hint, "https://example.test")
@@ -800,8 +858,9 @@ module AdditionCases
         list = innerOf empty
         expect ((lookOf list).gap, 8.0)
         expect (countOf list, 3)
-        expect (textOf (itemOf (list, 0)), "tray")
-        expect ((lookOf (itemOf (list, 0))).points, 28.0)
+        expect ((fitOf (itemOf (list, 0))).hint, "tray")
+        expect (textOf (innerOf (itemOf (list, 0))), "")
+        expect ((lookOf (innerOf (itemOf (list, 0)))).points, 28.0)
         expect (textOf (itemOf (list, 1)), "Nothing here")
         expect ((lookOf (itemOf (list, 1))).points, 20.0)
         expect ((lookOf (itemOf (list, 1))).heft, 600)

@@ -196,8 +196,8 @@ textOf control = control.controlText
 // Where the row keyed `key` drew its shell, or -1 when it is not drawn.
 shellIndex key = Lists::position (controls (), \control => control.controlKind == "layer" && control.controlHint == key)
 
-// The symbol leading the listing row keyed `key`: the icon wording drawn just inside its shell.
-symbolOf key = textOf (shellAt (satAdd (shellIndex key, 2)))
+// The symbol leading the listing row keyed `key`: the icon the wording just inside its shell is led by.
+symbolOf key = (shellAt (satAdd (shellIndex key, 2))).controlHint
 
 // The symbol leading the listing row named `name`.
 rowSymbol name = match Lists::find (listingKeys driven, \key => Disk::name ("windows", key) == name)

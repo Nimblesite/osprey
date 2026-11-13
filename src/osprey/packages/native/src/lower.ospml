@@ -215,7 +215,7 @@ module Lower
     rowBody<A> : (Styling<A>, Row<A>) -> View<Binding<A>>
     rowBody (styling, row) = match row.rowSymbol == ""
         true => view (styling, row.cell)
-        false => Across(acrossLook = LowerLeaves::carrier 8.0, acrossItems = [Wording(wordsLook = LowerLeaves::sized (styling.styleTheme, styling.styleDark, symbolPoints, 400, Secondary), wordsText = row.rowSymbol), view (styling, row.cell)])
+        false => Across(acrossLook = LowerLeaves::carrier 8.0, acrossItems = [LowerLeaves::iconed (row.rowSymbol, Wording(wordsLook = LowerLeaves::sized (styling.styleTheme, styling.styleDark, symbolPoints, 400, Secondary), wordsText = "")), view (styling, row.cell)])
 
     // A row's press: the selected row carries a ten-percent wash of the theme's ink; a resting row fills nothing.
     rowPress (styling, picked) = match picked

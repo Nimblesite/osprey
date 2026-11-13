@@ -162,7 +162,7 @@ module LowerLeaves
 
     (** A large decorative symbol. *)
     export icon<A> : (Theme, bool, string) -> View<Binding<A>>
-    icon (theme, dark, symbol) = Wording(wordsLook = sized (theme, dark, 14.0, 400, Primary), wordsText = symbol)
+    icon (theme, dark, symbol) = iconed (symbol, Wording(wordsLook = sized (theme, dark, 14.0, 400, Primary), wordsText = ""))
 
     (** A web link: the accent ink, its address carried as the fit hint. The host opens the address itself, so unlike every other control it binds nothing — the view vocabulary has no action-less press, and inventing one would take an action the node does not carry. *)
     export link<A> : (Theme, bool, string, string) -> View<Binding<A>>
@@ -183,7 +183,7 @@ module LowerLeaves
     (** An empty state, centred: its symbol large, its title titled, its detail explained in the secondary ink. *)
     export empty<A> : (Theme, bool, string, string, string) -> View<Binding<A>>
     empty (theme, dark, symbol, title, detail) = Fitted(fit = traitFit (Views::centred), fitted = Column(columnLook = carrier 8.0, columnItems = [
-        Wording(wordsLook = sized (theme, dark, rolePoints Large, 400, Primary), wordsText = symbol),
+        iconed (symbol, Wording(wordsLook = sized (theme, dark, rolePoints Large, 400, Primary), wordsText = "")),
         Wording(wordsLook = sized (theme, dark, rolePoints Title, 600, Primary), wordsText = title),
         Wording(wordsLook = sized (theme, dark, bodyPoints, 400, Secondary), wordsText = detail)]))
 

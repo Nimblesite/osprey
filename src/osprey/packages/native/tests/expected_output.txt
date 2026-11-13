@@ -3,74 +3,74 @@ ok 2 - mathematics keeps accessibility text and consumes no control ordinal
 ok 3 - a disclosure takes its ordinal before the controls it reveals
 ok 4 - a screen's toolbar controls take ordinals before its children
 ok 5 - an aside's pane takes ordinals before its column and rows keep their symbol and group
-ok 6 - an aside's splitter carries the column width and its limits and binds after both columns
+ok 6 - an aside's splitter carries the column width and its limits and binds between the columns
 ok 7 - a splitter delivers its dragged width clamped to its limits
 ok 8 - a link carries its label and web address and takes no ordinal
 ok 9 - controls take depth-first ordinals in drawing order
-ok 10 - an encoded region decodes with its components and text intact
+ok 10 - a drawn region keeps its components and text intact
 ok 11 - a control carries the ordinal of its binding
-ok 12 - start sends every region once with the theme
-ok 13 - a tap refreshes only the region whose signal changed
-ok 14 - text input reaches update through its binding and patches its own region
-ok 15 - stale, unknown and mismatched events are rejected without change
-ok 16 - an edit from prior state keeps its meaning when ordinals shift
-ok 17 - an edit whose typed action is gone or ambiguous refuses without change
-ok 18 - an edit with an impossible original refuses without change
-ok 19 - a resolved edit updates the current state
+ok 12 - opening draws every region once with the theme
+ok 13 - a tap delivers and the next frame shows the changed count
+ok 14 - text input reaches update through its binding and sends its slice
+ok 15 - unknown and mismatched events are rejected without change
+ok 16 - a control keeps its meaning while ordinals shift across frames
+ok 17 - a control that is gone refuses without change
+ok 18 - every refusal leaves the session whole
+ok 19 - a delivered edit updates the current state
 ok 20 - capability requests carry tickets and completions return to update
 ok 21 - malformed events are diagnosed, never guessed
 ok 22 - contrast follows WCAG relative luminance
 ok 23 - sorting is stable and lists stay total
-ok 24 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
-ok 25 - every constructor encodes as the component it names
-ok 26 - run and http requests encode their bounds, headers and slices
+ok 24 - tabs bind before the page they show, and segments carry their tones
+ok 25 - every constructor lowers as the component it names
+ok 26 - run and http requests send their bounds, headers and slices
 ok 27 - documents, lists, themes and slice writes are read totally
 ok 28 - filesystem and store requests preserve paths bounds and slices
 ok 29 - desktop requests preserve picker export and cancellation payloads
-ok 30 - process capabilities encode their handles bounds arguments and environment
-ok 31 - semantic text roles preserve every protocol spelling
+ok 30 - process capabilities send their handles bounds arguments and environment
+ok 31 - semantic text roles preserve every size and weight
 ok 32 - host capabilities preserve namespace operation arguments and bounds
 ok 33 - context menus bind actions after their content controls
-ok 34 - a scene encodes its primitives as flat typed arrays
+ok 34 - a scene's shapes cross as flat typed rows
 ok 35 - colours pack as RRGGBBAA
-ok 36 - a path encodes its steps, outline, paint and transform
+ok 36 - a path sends its steps, outline, paint and transform
 ok 37 - a scene binding delivers keys and pointer positions in scene units
 ok 38 - a frame event delivers its elapsed seconds and patches nothing when ignored
 ok 39 - an animate request carries its on flag
 ok 40 - every symbol encodes as a distinct host-neutral name
 ok 41 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
-ok 42 - a pair encodes its label and value without a binding
+ok 42 - a pair sends its label and value without a binding
 ok 43 - platforms decode to the union and encode back to their names
-ok 44 - a start context carries a linux or windows platform
+ok 44 - a launch context carries a linux or windows platform
 ok 45 - product-specific work is a host call with its namespace and arguments
-ok 46 - a split scene streams its fixed-size primitives in order and keeps the rest
-ok 47 - an enveloped scene reports nothing streamed
-ok 48 - streamed primitives read back every field a host import takes
-ok 49 - a resident session keeps its store out of the envelope
-ok 50 - a resident session refuses stale taps and recalls earlier edits
-ok 51 - a split streams scenes from every container in the encoder's order
-ok 52 - primitives that do not stream read back zero fields
-ok 53 - a resident session delivers completions, phases and frames and refuses malformed text
-ok 54 - an idle session holds only its store
-ok 55 - toggles and pickers deliver their own value kinds and refuse others
-ok 56 - progress, swatches, alerts, prominent buttons and leading asides encode
-ok 57 - a meter sends its amount clamped into a total of at least one
+ok 46 - a scene's shapes all cross as rows in drawing order
+ok 47 - a scene an unnamed slot holds draws nothing
+ok 48 - shape rows read back every field a host import takes
+ok 49 - an open surface keeps its store in its session
+ok 50 - a refused event leaves the surface whole and still answering
+ok 51 - scenes draw from every container in lowering's order
+ok 52 - a strip carries its points as rows after its head
+ok 53 - a surface delivers completions, phases and frames and refuses unknown kinds
+ok 54 - an idle surface holds only its store
+ok 55 - toggles and pickers deliver their own value kinds
+ok 56 - progress, swatches, alerts, prominent buttons and leading asides lower
+ok 57 - a meter clamps its amount into a total of at least one
 ok 58 - an editor binds text then cursor after earlier controls and preserves its marks
-ok 59 - a cursor binding delivers placed offsets, clamps negatives and refuses text
+ok 59 - a cursor binding delivers placed offsets and clamps negatives
 ok 60 - a board names its host slice and binds strokes before its lasso
-ok 61 - a board stroke decodes two ordered points with their width and time
-ok 62 - empty negative and non-pair stroke points are refused with the exact diagnostic
-ok 63 - a lasso delivers stroke indices and refuses strings and negative indices
+ok 61 - a board stroke keeps two ordered points with their width and time
+ok 62 - empty negative and widthless strokes are refused with the exact diagnostic
+ok 63 - a lasso delivers stroke indices and refuses negative indices
 ok 64 - a recognition request names its stroke slices and output limit
 ok 65 - message routing delivers placed stroked and lassoed values to their handlers
 ok 66 - board themes name the board and chalk tokens
 ok 67 - mathematics decodes back to the tree it encodes across every constructor
 ok 68 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
-ok 69 - image and video encode as leaves with their media fields and no ordinal
+ok 69 - image and video lower as leaves with their media fields and no ordinal
 ok 70 - presentation frames explicitly disable viewport sizing by default
 ok 71 - presentation frames preserve exact dimensions and inner control provenance
 ok 72 - scoped themes and dialogs retain their inner controls and dismissal provenance
-ok 73 - inline text retains mathematical emphasis and semantic source colours without bindings
+ok 73 - inline text keeps its emphasis and source colours without bindings
 ok 74 - machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering
 ok 75 - native machine views render ordinary controls and preserve every host value kind
 ok 76 - broken machine documents name every JSON path and faulty machines remain renderable
@@ -93,5 +93,6 @@ ok 92 - lowering pairs, badges, labels, icons, links and dividers draw quiet lea
 ok 93 - lowering segments, empties, progress, meters and swatches draw their tones
 ok 94 - lowering media, editors, boards and scenes bind in the encoder's order
 ok 95 - a surface draws view rows and takes typed events with no envelope
-1..95
-# tests=95 passed=95 failed=0 skipped=0
+ok 96 - a board, its lasso and an accessible scene take every typed host event through the shared frame
+1..96
+# tests=96 passed=96 failed=0 skipped=0

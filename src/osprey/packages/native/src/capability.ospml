@@ -172,9 +172,7 @@ module Requests
     kinds = ["run", "list-directories", "read-plists", "read-texts", "fingerprint", "store-read", "store-write", "store-list", "store-delete", "http", "host-call", "running-applications", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "open-settings", "cancel", "recognise", "animate", "process-start", "process-write", "process-read", "process-stop"]
 
     (** The name of `capability`'s kind, as logs and tests spell it: `choose-file`, `store-read` and so on. *)
-    export kind capability = match listGet (fields ("", capability)) 0
-        Success head => listGet kinds (head.askedNumber - 1) ?: ""
-        Error _ => ""
+    export kind capability = listGet kinds ((listGet (fields ("", capability)) 0 ?: Asked(askedField = 0, askedNumber = 0, askedText = "")).askedNumber - 1) ?: ""
 
     (** The ask rows of `request`: a first row with its capability code and ticket, then its arguments. *)
     export rows request = fields (request.ticket, request.capability)

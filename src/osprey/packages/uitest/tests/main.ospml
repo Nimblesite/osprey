@@ -19,6 +19,8 @@ import ui::Surfaces
 import ui::Templates
 import ui::Values
 import ui::Views
+import ui::Ui
+import ui::Scenes
 import uitest::Drive
 import uitest::Read
 import uitest::Semantics
@@ -195,7 +197,9 @@ test ("a broken document is refused with every problem named by its path", \() =
     expect (join (MachineDocs::problems (Doc::parse broken)) "\n", join ["schema: expected 1", "inputs.a.type: expected one of bool, number, text, trigger, list", "inputs.b.value: not a number", "layers[0].initial: no state named \"gone\"", "layers[0].transitions[0].from: no state named \"q\"", "view.colour: not a member of button", "view.on: no input named \"nope\"", "view.children[0].kind: no node kind \"widget\""] "\n")
     faulty = MachineDocs::faulty "boom"
     expect (faulty.machineFault, "boom")
-    expect (Seen::texts (seen faulty), "warning|This interface could not load|boom")))
+    // The empty state is led by its warning icon, a hint, then reads its title and the problem.
+    expect (Seen::texts (seen faulty), "This interface could not load|boom")
+    expect (ui::Lists::any ((seen faulty).renderedControls, \c => c.controlHint == "warning"), true)))
 
 // The same fixture as a driven surface: its machine is the store, its
 // ordinary template is the root region and every host event comes from Drive.
@@ -319,6 +323,10 @@ test ("a driven fixture is driven by labels, pointers, completions, lifecycle an
     forEachList ([{ width = 400.0, height = 400.0 }, { width = 800.0, height = 600.0 }], \size => viewed (size.width, size.height))
     choiceShown ()
     post (\d => Drive::frame (d, 0.25))
+    // A key over the canvas reaches the machine, which binds no key: nothing changes and nothing is refused.
+    post (\d => Drive::key (d, "space", true))
+    expect (driven.drivenSurface.surfaceProblem, "")
+    expect (level (), 0.75)
     expect (driven.drivenSurface.surfaceSession.sessionStore.machineFault, "")
     completed "/music/a \"b\".mp3"
     choiceShown ()
@@ -370,3 +378,47 @@ test ("the accessibility tree reads clearly to an agent: roles, values and range
     forEachList ([{ nodes = clear, said = "" }, { nodes = [play, play], said = "twice: \"Play\"|twice: \"Play\"" }, { nodes = [spotted (ui::Pressable, "", 0.0)], said = "unnamed: \"\"" }, { nodes = [spotted (ui::Popup, "Receiver: ", 0.0)], said = "unnamed: \"Receiver: \"" }], \one => expect (Semantics::unclear one.nodes, one.said))
     landed (clear, [{ named = "Volume", lands = 125.0 }, { named = "Play", lands = 50.0 }, { named = "Nope", lands = 0.0 }])
     expect ((Semantics::spot (clear, "Volume", 0.25)).pointY, 20.0))
+
+// [UI-MACHINE-TEST] [NATIVE-SHM-EVENT]: a scene with glyphs and every shape of path, driven by key and by a press
+// that asks the host for work. Only a path that moves then curves reads as a curve; glyphs and lettering both read
+// as lettering; the quiet host takes the ask the press sends and the test reads it from the surface.
+type Probe = Ask | Play
+
+sketched () = [
+    Scenes::glyphs ("Glyph text", 1.0, 1.0, 10.0, 0, 0),
+    Scenes::lettering ("Letters", 1.0, 2.0, 10.0, 0, 0, 400.0, 0),
+    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 2.0), ui::CubicTo(toX = 9.0, toY = 8.0, ctrlAX = 3.0, ctrlAY = 3.0, ctrlBX = 6.0, ctrlBY = 6.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+    Scenes::path ([], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+    Scenes::path ([ui::LineTo(toX = 1.0, toY = 1.0), ui::CubicTo(toX = 2.0, toY = 2.0, ctrlAX = 1.0, ctrlAY = 1.0, ctrlBX = 2.0, ctrlBY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0), ui::LineTo(toX = 2.0, toY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+]
+
+probeRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => Ui::column [Ui::scene (40.0, 20.0, [], sketched (), Play), Ui::button ("Ask", "", Ask)])]
+
+probeHeard (heard, message) = Messages::route (message, \_ => Runtime::asking (listAppend heard "asked", [Requests::ask ("job:1", ui::ChooseFolder)]), \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, _) => Runtime::step heard, \(_, _) => Runtime::step heard, \_ => Runtime::step heard, \(_, input) => Runtime::step (listAppend heard (Inputs::route (input, \(name, down) => "key ${name} ${down}", \(_, _, _, _) => "pointer", \(_, _) => "viewed"))))
+
+probeProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => probeHeard (heard, message), programRender = probeRegions, programTheme = \_ => ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220))
+
+// One typed event, sent as a host that is not watching, and what the surface shows after it.
+probeSent (held, touch) = Drive::quiet (\() => ui::Hosting::event (held, probeProgram (), touch))
+
+probeSeen held = Read::seen (Surfaces::seen (held, probeProgram ()), held.surfaceAsked)
+
+probeTouch (kind, ordinal, words, down) = ui::Touch(touchNow = 2, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = down, touchShift = false)
+
+test ("a scene's glyphs, lettering and paths read back typed, and keys and asks cross through the quiet host", \() => Runtime::guarded (\() =>
+    opened = Drive::quiet (\() => Surfaces::open (Surfaces::idle [], probeProgram (), Runtime::host (1, 0, "macos", "", []), false))
+    seen = probeSeen opened
+    expect (Seen::lettered seen, "Glyph text|Letters")
+    expect (join (mapList (seen.renderedCurves, \c => join (mapList (c, \v => "${v}")) ",")) "|", "1.0,2.0,9.0,8.0")
+    expect (seen.renderedOrdinal, 0)
+    keyed = probeSent (probeSent (opened, probeTouch (ui::Hosting::key, 0, "space", true)), probeTouch (ui::Hosting::key, 0, "space", false))
+    expect (join keyed.surfaceSession.sessionStore "|", "key space true|key space false")
+    ask = (Seen::control (probeSeen keyed, "Ask")).controlOrdinal
+    expect (ask, 1)
+    asked = probeSent (keyed, probeTouch (ui::Hosting::control, ask, "", false))
+    expect (join asked.surfaceSession.sessionStore "|", "key space true|key space false|asked")
+    expect (join (probeSeen asked).renderedRequests ",", "choose-folder")
+    expect (length asked.surfaceAsked, 1)))
+
