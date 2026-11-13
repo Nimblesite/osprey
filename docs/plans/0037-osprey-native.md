@@ -180,5 +180,6 @@ Before this section `src/toolchain/hosts` held `gpui`, `swift` and `winui` and n
 - [ ] `measure-folders` on the SwiftUI and Android hosts (section 8); Storage opens on both phones but cannot walk a folder until it lands.
 - [ ] Commit phone goldens for Tally (one iOS, one Android) and compare screenshots in the two `tally` test targets, as [AGENTS.md § Apps](../../AGENTS.md#apps) requires of every app test; add both to the required `CI` check.
 - [ ] iOS device builds are unsigned and read media from `--resources`; bundle an application's `assets` in the `.app` and sign with a development identity.
-- [ ] Specify both in spec 0047 under [NATIVE-HOSTS-MOBILE] and add their columns to the coverage matrix (section 3).
+- [x] Specify both in spec 0047 under [NATIVE-HOSTS-MOBILE] (2026-11-14).
+- [ ] Add both hosts' columns to the coverage matrix (section 3).
 - [ ] Port Inbox, Talon Bank and the iPhone counter onto the two hosts (sections 9 and 10), then delete their renderers and protocols. Casting stays on GPUI on phones until the mobile hosts draw its player.

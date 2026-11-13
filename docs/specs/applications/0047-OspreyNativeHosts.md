@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** four hosts run in this repository, all over the one shared-frame boundary ([0053](0053-NativeSharedViews.md)): the GPUI desktop host on macOS and Android ([0046](../platforms/0046-GpuiDesktopHost.md)), the SwiftUI host on macOS ([`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md)), the WinUI host on Windows ([0048](../platforms/0048-WinUiHost.md)) and the VS Code webview host ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). There is no other boundary in the code. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
+**Status:** five hosts run in this repository, all over the one shared-frame boundary ([0053](0053-NativeSharedViews.md)): the GPUI desktop host on macOS and Android ([0046](../platforms/0046-GpuiDesktopHost.md)), the SwiftUI host on macOS and iOS ([`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md)), the Android host ([`src/toolchain/hosts/android`](../../../src/toolchain/hosts/android/README.md)), the WinUI host on Windows ([0048](../platforms/0048-WinUiHost.md)) and the VS Code webview host ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). There is no other boundary in the code. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -37,13 +37,21 @@ Every host, native or web, drives the same three exports over the shared frame (
 | Host | Draws with | Build | Platforms | Where | Status |
 | --- | --- | --- | --- | --- | --- |
 | GPUI | GPU primitives via GPUI | C ABI archive | macOS and Android; Linux and Windows have library targets and CI | [`src/toolchain/hosts/gpui`](../../../src/toolchain/hosts/gpui) | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running |
-| SwiftUI | SwiftUI views, SF Symbols | C ABI archive | macOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running |
+| SwiftUI | SwiftUI views, SF Symbols | C ABI archive | macOS and iOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running; one library for both platforms ([NATIVE-HOSTS-MOBILE]) |
 | WinUI | WinUI controls, Segoe Fluent Icons | C ABI DLL | Windows | [`src/toolchain/hosts/winui`](../../../src/toolchain/hosts/winui) | [spec 0048](../platforms/0048-WinUiHost.md), running |
-| Android | — | — | Android | `src/toolchain/hosts/android` | being built |
+| Android | Android views | C ABI archive behind a JNI library | Android | [`src/toolchain/hosts/android`](../../../src/toolchain/hosts/android/README.md) | plain view rows running; component rows not at parity ([NATIVE-HOSTS-MOBILE]) |
 | Webview | HTML, CSS, Codicons | WebAssembly | VS Code on every desktop | [`osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WebAssembly in a worker | any browser | planned, extracted from the webview host | not started |
 
 The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../src/osprey/packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
+
+### Phone hosts [NATIVE-HOSTS-MOBILE]
+
+A phone platform has one host library that every application runs on, and no application carries a renderer of its own. iOS is the SwiftUI host: the same `OspreyShared` library as the Mac, with an iOS entry point and `ios.sh` to package an application folder for the simulator or a device. Android is `src/toolchain/hosts/android`: a JNI library that owns the bridge and hands Kotlin each frame's four runs as direct buffers over the leased bytes, and Kotlin code that checks every row and draws it with Android views. Both read the frame described in [0053](0053-NativeSharedViews.md) and neither names an application; the application folder, bundle identifier and label are arguments of the build.
+
+A phone host opens the application with the platform string `ios` or `android` and the application's own documents folder as home, answers the capabilities the platform allows (no child processes on either) and completes every other ask with the typed refusal for an unknown capability. Each has a view check that opens the application with nobody present, checks the first frame, presses the first control that delivers an event and requires a second frame; it is the `tally-headless` target of the platform's `tests/Makefile`.
+
+[Tally](../../../src/osprey/examples/tally) is the sample application for every platform: macOS and iOS on the SwiftUI host, Android on the Android host and Windows on the WinUI host. Progress is tracked in [plan 0037, section 12](../../plans/0037-osprey-native.md).
 
 ## Coverage [NATIVE-HOSTS-COVERAGE]
 
