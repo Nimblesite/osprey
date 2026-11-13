@@ -1,7 +1,7 @@
 // Implements [NATIVE-SHM-BOUNDARY]: the one way an application built from `Node` regions crosses
 // to its host. There is no envelope and no text format in either direction. `Surfaces::open` and
-// `Surfaces::deliver` run the application's own `init`, `update` and `render`, lower the root
-// region to view rows and scene rows the host reads in place ([NATIVE-SHM-LOWER],
+// `Surfaces::deliver` run the application's own `init`, `update` and `render`, tell every
+// region as component rows and scene rows the host reads in place ([NATIVE-SHM-NODES],
 // [NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE]), send each step's requests and slice writes as ask rows
 // ([NATIVE-SHM-ASK]) and keep the session in the library. A host event is a typed call: a
 // control's number and its words, a stroke's points, a scene's input, a completion's text, a

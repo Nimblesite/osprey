@@ -1,8 +1,8 @@
 //! The GPUI host's column of the coverage matrix ([NATIVE-HOSTS-COVERAGE]): every node kind the
 //! framework defines, every row kind the shared frame carries and every capability kind, as
-//! lowered, drawn or answered here, or refused with a visible diagnostic until it is. The tests
+//! told, drawn or answered here, or refused with a visible diagnostic until it is. The tests
 //! read the framework's own sources, so a kind added to @osprey/native fails them until it is
-//! lowered, drawn or answered by name.
+//! told, drawn or answered by name.
 
 /// Row kinds `view.rs` draws, as `rows::Kind` names them ([NATIVE-SHM-VIEW]).
 const DRAWN: &[&str] = &[
@@ -50,7 +50,7 @@ const MOBILE_ONLY: &[&str] = &["host-call"];
 
 const NODES: &str = include_str!("../../../../osprey/packages/native/src/node.ospml");
 const CAPABILITIES: &str = include_str!("../../../../osprey/packages/native/src/capability.ospml");
-const LOWER: &str = include_str!("../../../../osprey/packages/native/src/lower.ospml");
+const TELLING: &str = include_str!("../../../../osprey/packages/native/src/told.ospml");
 const ROWS: &str = include_str!("rows.rs");
 const TREE: &str = include_str!("tree.rs");
 const VIEW: &str = include_str!("view.rs");
@@ -73,14 +73,14 @@ fn constructors(source: &str, header: &str) -> Vec<String> {
     found
 }
 
-/// The constructors the framework's exhaustive lowering draws, in the order its match names them.
-fn lowered(source: &str) -> Vec<String> {
+/// The constructors the framework's exhaustive telling writes as component rows ([NATIVE-SHM-NODES]).
+fn told(source: &str) -> Vec<String> {
     let mut found: Vec<String> = source
         .lines()
         .skip_while(|line| {
             !line
                 .trim_start()
-                .starts_with("view (styling, node) = match node")
+                .starts_with("walk (bindings, node) = match node")
         })
         .skip(1)
         .take_while(|line| line.is_empty() || line.starts_with("        "))
@@ -159,7 +159,7 @@ fn declared(lists: &[&[&str]]) -> Vec<String> {
 fn every_node_kind_is_drawn_or_refused_exactly_once() {
     let framework = constructors(NODES, "type Node A =");
     assert!(framework.iter().any(|kind| kind == "ContextMenu"));
-    assert_eq!(framework, lowered(LOWER));
+    assert_eq!(framework, told(TELLING));
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn the_constructor_aliases_are_the_names_the_framework_writes() {
     assert!(CAPABILITIES.contains("\"read-plists\""));
     let nodes = constructors(NODES, "type Node A =");
     assert!(nodes.contains(&"Typeset".to_owned()));
-    assert!(lowered(LOWER).contains(&"Typeset".to_owned()));
+    assert!(told(TELLING).contains(&"Typeset".to_owned()));
 }
 
 #[test]

@@ -189,10 +189,6 @@ event (_ : int, kind, ordinal, words, _ : string, _ : float, _ : float, _ : bool
 
 An application with more than controls to catch hands the whole typed event to `Hosting::event`, which turns every kind into its message. The whole of Tally's logic, layout and both colour schemes is in [`src/app.ospml`](../../../src/osprey/examples/tally/src/app.ospml); its boundary is [`main.ospml`](../../../src/osprey/examples/tally/main.ospml).
 
-## Lowering the semantic tree [NATIVE-SHM-LOWER]
-
-Applications written against the older semantic tree (`Section`, `Badge`, `Meter`, `Rows` and the rest) do not have to be rewritten: `Lower::view` turns a `Node` into these primitives using the application's `Theme`, which moves the styling that hosts used to apply into one Osprey module. Every colour, size and space is decided in Osprey before a row is written, and each control delivers the `Binding` its node names, in drawing order, so a host event still names a control by its number.
-
 ## Why it is fast
 
 The boundary does no formatting work at all. An event is numbers and borrowed text; the store never leaves the application; each control is written once as a fixed row instead of a subtree of strings; the host reads rows in place instead of parsing and rebuilding them; and a frame is four growable runs joined by one branch chunk, not per-node allocations on both sides. The application is ahead-of-time compiled native code in the same process, and the frame is ordinary memory. The framework's per-frame cost is measured by `src/toolchain/hosts/gpui/bench` and recorded in [plan 0037](../../plans/0037-osprey-native.md).

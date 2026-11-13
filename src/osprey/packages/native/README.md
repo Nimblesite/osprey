@@ -17,8 +17,8 @@ Anything only one host or product can do travels as a `HostCall` in a namespace 
 flowchart LR
     E["Host event: Hosting::event"] --> U["update: Context, Store, Message -> Step"]
     U --> S[Centralized store and signals]
-    S --> L["Lower::view: Node to View"]
-    L --> V["Views::render: view, scene and ask rows"]
+    S --> L["Tell::walk: Node to told components"]
+    L --> V["Tellings::drawn: component, scene and ask rows"]
     V --> F[Shared frame the host leases]
     F --> H[Host draws rows in place]
     F --> A[Host capability adapters]
@@ -55,7 +55,6 @@ Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE P
 | `src/canvas.ospml` | `Canvases`: canvas artboards drawn as scene primitives, listeners hit-tested and the `Accessible` tree with `act` ([UI-MACHINE-CANVAS], [UI-MACHINE-A11Y]) |
 | `src/stream.ospml` | `Sketch`, `Etch` and `Streams`: a canvas's scene written as scene rows ([NATIVE-SHM-SCENE]) |
 | `src/view.ospml` | `View`, `Look`, `Fit`, the `ViewStream` effect and `Views`: native controls written as view rows ([NATIVE-SHM-VIEW]) |
-| `src/lower.ospml`, `src/lower_leaves.ospml` | `Lower::view`: a `Node` tree lowered to a `View` with every style resolved from the theme ([NATIVE-SHM-LOWER]) |
 | `src/surface.ospml` | `Surface`, `Program` and `Surfaces`: open, deliver and redraw a session drawn as shared rows ([NATIVE-SHM-BOUNDARY]) |
 | `src/hosting.ospml` | `Touch` and `Hosting::event`: one typed call per host event ([NATIVE-SHM-EVENT]) |
 | `tests/` | The package's suite: a two-slice probe application driven through the typed boundary, plus row, ordinal, splitter, request, document, theme and list cases |

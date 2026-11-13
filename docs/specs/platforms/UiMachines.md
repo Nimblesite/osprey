@@ -2,7 +2,7 @@
 
 Spec · 1 November 2026 · [UI-MACHINE]
 
-An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. A designer ships one file and every platform plays it. The document is JSON. In [`@osprey/native`](../../../src/osprey/packages/native/README.md), `ui::MachineDocs::load` checks it and decodes it once into typed records (`Value`, `Condition`, `MachineLayer`, `Template`, `Stamp`, `Area`, `Skin`). `ui::Machines` settles those records and `ui::Templates` and `ui::Canvases` render them, and nothing past the decoder reads JSON. The interpreter turns the document and its current inputs into ordinary `Node` trees, which `Lower::view` lowers to the view rows every host draws ([NATIVE-SHM-LOWER], [NATIVE-SHM-VIEW]), so a machine renders on GPUI, WinUI, the VS Code webview and Apple with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
+An Osprey Native interface can be **data, not code**: one machine document holds the inputs, the state machines, the view and the skins. A designer ships one file and every platform plays it. The document is JSON. In [`@osprey/native`](../../../src/osprey/packages/native/README.md), `ui::MachineDocs::load` checks it and decodes it once into typed records (`Value`, `Condition`, `MachineLayer`, `Template`, `Stamp`, `Area`, `Skin`). `ui::Machines` settles those records and `ui::Templates` and `ui::Canvases` render them, and nothing past the decoder reads JSON. The interpreter turns the document and its current inputs into ordinary `Node` trees, which `Tell::walk` tells as the component rows every host draws ([NATIVE-SHM-NODES], [NATIVE-SHM-VIEW]), so a machine renders on GPUI, WinUI, the VS Code webview and Apple with no change. The application code that remains is a small adapter: it feeds domain facts in as inputs and answers the requests a state makes.
 
 ```mermaid
 flowchart LR
@@ -13,7 +13,7 @@ flowchart LR
     S --> R[Requests from entered states]
     R --> A
     S --> V["Templates::view → Node"]
-    V --> P["Lower::view → shared view rows to any host"]
+    V --> P["Tell::walk → component rows to any host"]
 ```
 
 ## Document [UI-MACHINE-DOC]
