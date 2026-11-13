@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
+**Status:** four hosts run in this repository, all over the one shared-frame boundary: the GPUI desktop host on macOS and Android ([0046](../platforms/0046-GpuiDesktopHost.md)), the SwiftUI host on macOS ([`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md)), the WinUI host on Windows ([0048](../platforms/0048-WinUiHost.md)) and the VS Code webview host ([`src/toolchain/vscode-extension/client/src/osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui)). There is no other boundary: the JSON envelopes, event documents and saved session strings of the bridge this replaced are deleted from the code. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -12,61 +12,59 @@ The name is historical and stays for now. "Native" says the application compiles
 
 A host:
 
-1. runs the application's `Runtime::start` and `Runtime::dispatch` through one of the transports in [NATIVE-HOSTS-TRANSPORT];
-2. keeps the opaque session string and returns it unchanged with the next event;
-3. keeps regions by key, applies `patches`, drops `removed`, and stores host-held `slices` by key;
-4. draws every `Node` kind ([NATIVE-HOSTS-COVERAGE]) and returns events by the binding ids the framework issued, adding nothing of its own;
-5. answers the capabilities it supports with completion events and rejects, with a diagnostic naming it, every capability and node kind it does not;
-6. resolves theme tokens and symbols to its own colours, type scale and icons;
+1. runs the library's entry once, then calls only its `argument`, `open` and `event` exports ([NATIVE-SHM-BOUNDARY]), from one thread;
+2. seals and leases each call's frame, checks every row before drawing it ([NATIVE-SHM-SAFETY]) and keeps showing the last good frame when one is refused;
+3. keeps host-held slices by key and answers the `native_slice` import from them ([NATIVE-SHM-ASK]);
+4. draws every view row kind and scene row code ([NATIVE-HOSTS-COVERAGE]) and sends events back as typed calls that name a control by its number ([NATIVE-SHM-EVENT]);
+5. answers the capability asks it supports, completing each with one `completed` event, and refuses, with a diagnostic naming it, every capability and row kind it does not;
+6. applies every colour, size and space from the rows and maps symbol names to its own icons; it resolves no theme and holds no style of its own;
 7. never interprets an action, a model or a string. The exception is layout and drawing optimisation that leaves the drawn result unchanged.
 
-A host that draws a fallback for an unknown kind, invents an event, or stores application state outside the session is non-conforming.
+A host that draws a fallback for an unknown kind, invents an event, or keeps application state outside the library is non-conforming: the session — the store, its bindings and the strokes still arriving — never leaves the application.
 
-## Current transports [NATIVE-HOSTS-TRANSPORT]
+## One transport [NATIVE-HOSTS-TRANSPORT]
 
-The shared-memory replacement is specified in [NATIVE-SHM] below but is not implemented. The string/envelope contracts in this section and the host-family table describe the current code, not a second supported target design.
+Every host, native or web, drives the same three exports over the shared frame ([NATIVE-SHM]):
 
-| Transport | Build | Entry | Hosts |
-| --- | --- | --- | --- |
-| C ABI | `--target=macos`, `ios`, `ios-sim`, `android-*`, desktop targets as delivered | exported `start`/`dispatch` C functions, borrowed input, copied output | SwiftUI, GPUI |
-| WASI frames | `--target=wasm32` | one JSON frame on stdin, one envelope on stdout, routed by `vscode::Webview::respond` | VS Code webview, browser |
-
-Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. A transport may add nothing to it.
+| Build | Shape | Hosts |
+| --- | --- | --- |
+| C ABI static archive (`--target=macos`, `ios`, `ios-sim`, `android-*`, and the desktop targets) | the application links its runtime and exports `osprey_main`, `osprey_app_argument`, `osprey_app_open`, `osprey_app_event` and the `osprey_native_bridge` table | GPUI, SwiftUI |
+| C ABI DLL (`--target=windows-x64`) | the same, plus one `osprey_import_<name>` binder per import slot ([WINUI-HOST-DLL](../platforms/0048-WinUiHost.md)) | WinUI |
+| WebAssembly (`--target=wasm32`) | a live module exporting the three calls and the bridge entries over its linear memory ([NATIVE-SHM-WASM]) | VS Code webview |
 
 ## Host family [NATIVE-HOSTS-FAMILY]
 
-| Host | Draws with | Transport | Platforms | Where | Status |
+| Host | Draws with | Build | Platforms | Where | Status |
 | --- | --- | --- | --- | --- | --- |
-| SwiftUI | SwiftUI controls | C ABI | macOS, iOS | [Vigil](https://github.com/Nimblesite/vigil) | running |
-| Webview | HTML, CSS, Codicons | WASI frames | VS Code on every desktop | [`osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui) | running |
-| Browser | HTML, CSS | WASI frames in a worker | any browser | planned, extracted from the webview host | not started |
-| GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `src/toolchain/hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
-| WinUI | WinUI controls, Segoe Fluent Icons | C ABI, as a DLL | Windows | `src/toolchain/hosts/winui` | [spec 0048](../platforms/0048-WinUiHost.md), tested without a window |
-| SwiftUI (in-repo) | SwiftUI views, SF Symbols, frames and rich text | C ABI | macOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running; draws [Osprey Agent](../../../src/osprey/examples/agent/README.md) |
+| GPUI | GPU primitives via GPUI | C ABI archive | macOS and Android; Linux and Windows have library targets and CI | [`src/toolchain/hosts/gpui`](../../../src/toolchain/hosts/gpui) | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running |
+| SwiftUI | SwiftUI views, SF Symbols | C ABI archive | macOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running |
+| WinUI | WinUI controls, Segoe Fluent Icons | C ABI DLL | Windows | [`src/toolchain/hosts/winui`](../../../src/toolchain/hosts/winui) | [spec 0048](../platforms/0048-WinUiHost.md), running |
+| Webview | HTML, CSS, Codicons | WebAssembly | VS Code on every desktop | [`osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui) | running |
+| Browser | HTML, CSS | WebAssembly in a worker | any browser | planned, extracted from the webview host | not started |
 
 The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../src/osprey/packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
 
-## Node and capability coverage [NATIVE-HOSTS-COVERAGE]
+## Coverage [NATIVE-HOSTS-COVERAGE]
 
-Every `Node` constructor in [`node.ospml`](../../../src/osprey/packages/native/src/node.ospml) and every `Capability` in [`capability.ospml`](../../../src/osprey/packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The matrix is generated from the sources, not written by hand, and CI fails when a constructor is missing from it. A host's README links its column.
+Every view row kind [`view.ospml`](../../../src/osprey/packages/native/src/view.ospml) numbers, every scene row code [`native.td`](../../../src/toolchain/schemas/native.td) declares and every `Capability` in [`capability.ospml`](../../../src/osprey/packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The tests read the framework's own sources and fail when a kind is missing from a declaration or declared twice. A host's README links its column.
 
-Each host declares its column in code, and its tests read the framework's sources and fail when a kind is missing from the declaration or declared twice:
+Each host declares its column in code:
 
 | Host | Column | Test |
 | --- | --- | --- |
-| GPUI | `DRAWN`, `REFUSED`, `ANSWERED`, `UNANSWERED` and `MOBILE_ONLY` in [`coverage.rs`](../../../src/toolchain/hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms and verifies that mobile-only capabilities are restricted to iOS and Android |
-| Webview | `RENDERED_KINDS` in [`render.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `src/toolchain/vscode-extension/test/suite` |
-| WinUI | [`Coverage.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
+| GPUI | `DRAWN`, `REFUSED`, `ANSWERED`, `UNANSWERED` and `MOBILE_ONLY` in [`coverage.rs`](../../../src/toolchain/hosts/gpui/src/coverage.rs), checked against the host's match arms | `cargo test coverage`, which also verifies that mobile-only capabilities are restricted to iOS and Android |
+| Webview | `RENDERED_KINDS` in [`render.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/webview/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `src/toolchain/vscode-extension/test/suite` |
+| WinUI | [`Coverage.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the tests reading the framework's sources so a kind added to `@osprey/native` fails them until this host declares it |
 
 The typed symbol helpers provide a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../src/osprey/packages/native/src/symbol.ospml), converted by `Symbols::name` to each member's lowercase string. Existing control constructors also accept string names and bundled SVG registrations. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
 
 ## Conformance [NATIVE-HOSTS-CONFORMANCE]
 
-Not implemented yet ([plan 0037](../../plans/0037-osprey-native.md)): one recorded-event fixture set, kept beside the framework in `src/osprey/packages/native/conformance`, will drive every host: the probe application's start context and a sequence of events with the expected envelopes. A host passes when it produces the same envelopes, draws without a rejected kind, and returns the same binding ids for the same user actions scripted through its own input layer. Each host's smoke command runs the set; the plan names them. Once it exists, a host not in the conformance run is not listed as running in [NATIVE-HOSTS-FAMILY]; until then that table rests on each host's own self-tests.
+Not implemented yet ([plan 0037](../../plans/0037-osprey-native.md)): one recorded-event fixture set, kept beside the framework in `src/osprey/packages/native/conformance`, will drive every host through the typed boundary: the launch facts, a sequence of typed events, and the expected checked frames. A host passes when it refuses the same malformed frames, draws the same screens and returns the same control numbers for the same user actions scripted through its own input layer. Each host's smoke command runs the set; the plan names them. Once it exists, a host not in the conformance run is not listed as running in [NATIVE-HOSTS-FAMILY]; until then that table rests on each host's own self-tests.
 
 ## Diagnostics [NATIVE-HOSTS-DIAGNOSTICS]
 
-A host writes what it does to the platform's structured log: every event it sends, every envelope it applies and every capability it runs. When `OSPREY_TRACE` names a file, the host also appends a plain-text trace of each event and envelope there; otherwise it writes no trace file. Diagnostics never change what the host draws or answers.
+A host shows why it refused a frame, event or capability on its own diagnostic surface — a strip on the GPUI and SwiftUI hosts, an info bar on the WinUI host — so a person sees it, and writes what it does to the platform's structured log where it has one: the SwiftUI backend writes every event, frame lease and capability run to the unified log. Diagnostics never change what the host draws or answers.
 
 ## Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
@@ -74,105 +72,97 @@ A host writes what it does to the platform's structured log: every event it send
 
 Storage's Apple-only requests are `HostCall`s only the in-repo SwiftUI host answers: the Photos summary is `HostCall "photos" "summary"`, and the Photos section appears only when the answer arrives; Full Disk Access is `HostCall "macos" "privacy-settings"`. Not implemented yet: no host answers the `photos` or `macos` namespaces.
 
-## Shared-memory replacement [NATIVE-SHM]
+## The shared frame [NATIVE-SHM]
 
-**Decision, 2026-11-12; specified, not implemented.** This section is the normative replacement for the JSON transport, session strings and incremental envelope delivery described above. Plan 0037 tracks migration; the earlier transport table records the current implementation only. Hosts cannot advertise this contract until its conformance gates pass. Scope includes all in-repository hosts; external hosts must negotiate the new ABI or refuse it, never silently use the old bridge.
+This is the boundary the code has. An application keeps its session in the library, and every call writes one whole frame — view rows, scene rows, one UTF-8 text run and ask rows — into bridge storage, which the host seals, leases and reads in place when the call returns. Nothing crosses as text in a format in either direction: no envelope, no event document and no saved session.
 
-### One schema, two representations [NATIVE-SHM-LAYOUT]
+```mermaid
+sequenceDiagram
+    participant H as Host
+    participant A as Application (one library)
+    participant B as Bridge storage
+    H->>A: osprey_app_open(now, offset, platform, home, dark)
+    A->>B: append view rows, scene rows, text, ask rows
+    H->>B: seal and commit the frame, lease it
+    B-->>H: the four runs, read in place
+    H->>A: osprey_app_event(now, kind, ordinal, words, …)
+    A->>B: the next frame
+    A-->>H: 0 delivered, 1 refused
+```
 
-`src/toolchain/schemas/native.td` is the sole logical definition of application handles, snapshots, nodes, events, commands, completions, diagnostics, themes and scene columns. typeDiagram generates all Osprey/Rust/Swift/C#/TypeScript views, builders and boundary conversions. No hand-maintained mirror models.
+### Layout [NATIVE-SHM-LAYOUT]
 
-In-process values are built directly in stable, aligned bridge allocations and read through generated views: no JSON, tdbin encoder/decoder, object reconstruction or whole-tree copy at dispatch. The generated **shared-memory ABI is not a tdbin message**. It permits immutable sharing; canonical tdbin is a bounded, self-contained serialization at persistence and non-shared process boundaries. One schema does not require identical pointer representations. This replaces the earlier proposal to use tdbin relative offsets across generation arenas, which conflicts with its single-segment and alias restrictions.
+[`src/toolchain/schemas/native.td`](../../../src/toolchain/schemas/native.td) is the sole logical definition of the bridge's ownership types, the frame's rows and the logical event and accessibility contracts. typeDiagram generates each pointer width's constants: `native_abi.h` for 64-bit hosts and `native_abi_wasm32.h` for WebAssembly, each with its own fingerprint. Rows are fixed-width, little-endian and 8-aligned: a `ViewRow` is 152 bytes, a `SceneShape` 88 and an `AskRow` 32 on the 64-bit layout. Text is UTF-8 bytes of the frame's one text run, named by offset and length. The bridge opens only for a host built against the exact same fingerprint and pointer width; a mismatch is a typed startup error, and an unsupported discriminant fails explicitly. The rows are process-local and never written to a wire or to disk.
 
-The shared ABI uses fixed-width scalars, explicit discriminants and lengths, and opaque allocation references resolved by the bridge runtime; never Rust/Swift/C# object layouts, GC pointers or C strings. Generated references contain allocation identity, reuse generation and byte offset, scoped to an application instance. Resolution checks instance, generation, type, bounds and alignment before exposing a view. The generated native descriptor resolves to a borrowed pointer; the wasm descriptor resolves to a linear-memory offset. No global contiguous virtual reservation is required. Foreign code cannot manufacture a valid owned reference from a numeric address.
+### The boundary calls [NATIVE-SHM-BOUNDARY]
 
-The initial fixed layout uses little-endian values and 8-byte alignment: Int, Float, Bool and discriminants occupy 8 bytes; UUID occupies 16 canonical bytes. A checked reference is instance UUID plus three 8-byte allocation/generation/offset fields (40 bytes). String/Bytes/List descriptors add an 8-byte length/count. Option has an 8-byte presence word followed by its value representation. Aliases preserve the target representation without another allocation or indirection. Records/unions are inline only when transitively reference-free and at most 64 bytes; other fields hold checked references. Union payloads follow the tag, with declaration-order tags. Initialize all inactive/padding bytes to zero; reject invalid Boolean/presence words and checked-arithmetic overflow in count/stride or offset/length before access. The manifest is a layout description, not an ownership registry or permission to dereference.
+An application exports exactly three calls beside its entry, each drawn up by `Surfaces` and handed its events by `Hosting::event` ([`surface.ospml`](../../../src/osprey/packages/native/src/surface.ospml), [`hosting.ospml`](../../../src/osprey/packages/native/src/hosting.ospml)):
 
-At load, require exact shared-ABI major, generated layout fingerprint, target pointer width/alignment profile and schema identity agreement before any dereference. Generate identities from the schema and layout manifest; ABI mismatch is a typed startup error. The exact shared-ABI identity is separate from tdbin's append-compatible wire-layout hash; do not misuse tdbin's hash as an exact schema hash. Unsupported discriminants fail explicitly.
+```c
+int64 osprey_app_argument(const char *text);
+int64 osprey_app_open(int64 now, int64 offset, const char *platform, const char *home, bool dark);
+int64 osprey_app_event(int64 now, int64 kind, int64 ordinal, const char *words, const char *detail,
+                       double x, double y, bool down, bool shift);
+```
+
+- `argument` gathers one launch argument, in order, before `open`. Strings are borrowed for the call only.
+- `open` runs `init` and draws the first frame from the host facts: the clock, the UTC offset, the platform name, the home folder and whether the dark appearance is showing.
+- `event` delivers one typed host event ([NATIVE-SHM-EVENT]) and draws the next frame.
+- Every call — an argument, a delivered event, a refused one — writes a whole frame, which the host seals and leases when the call returns. `event` answers 0 when the event was delivered and 1 when it was refused; a refused event changes nothing, and its reason arrives as a diagnostic ask ([NATIVE-SHM-ASK]).
+- The store, its bindings and the stroke and lasso still arriving stay in the library between calls. Nothing is saved, sent or restored.
+- An application's entry keeps one `Surface` in a file-scope cell and wraps each export in `Views::shared` and `Runtime::guarded`; no application writes its own decoding.
+
+### Typed events [NATIVE-SHM-EVENT]
+
+One host event is one typed call: a kind, the control it names, two texts, two numbers and two flags, and each kind reads only the fields it documents (`Touch` in [`hosting.ospml`](../../../src/osprey/packages/native/src/hosting.ospml)):
+
+| Kind | Meaning |
+| --- | --- |
+| 0 control | the control numbered `ordinal` delivering `words` |
+| 1 key | a key over the scene `ordinal`: its name in `words`, `down` when pressed |
+| 2 pointer | the pointer over the scene `ordinal`: `x`, `y` in scene units, `down`, `shift` |
+| 3 viewed | the scene `ordinal` measured: `x` wide and `y` tall in scene units |
+| 4 point | one more point of the stroke being drawn: `x`, `y` in whole board points |
+| 5 stroke | the stroke finished: `x` its width and `y` its clock in milliseconds |
+| 6 enclose | one more stroke, numbered `ordinal`, inside the lasso being drawn |
+| 7 lasso | the lasso closed around the strokes enclosed so far |
+| 8 completed | a capability completed under the ticket in `words`: `down` when it succeeded, its result or reason in `detail` |
+| 9 phase | the host reached the lifecycle phase in `words` |
+| 10 frame | a display frame, `x` seconds after the last |
+| 11 appearance | the appearance changed: `down` when dark |
+
+The framework numbers each control that delivers a binding in drawing order and keeps the bindings in the surface. To resolve an event it looks the number up, checks the value kind and produces the typed message; an unknown number or a mismatched value kind is refused, the same store is drawn again and the reason arrives as a diagnostic ask. The host cannot construct an arbitrary action, and a control number is never an authorization token.
+
+### Ask rows [NATIVE-SHM-ASK]
+
+Each step's capability requests and slice writes ride beside the view as ask rows ([`capability.ospml`](../../../src/osprey/packages/native/src/capability.ospml)). A row whose `field` is 0 starts an ask: its `number` is the capability's code — its position in `Capability`, counted from 1 — and its text the ticket. The rows after it are that ask's arguments by position: a list repeats its field once per item, a pair (a header or an environment variable) is two rows in order, whole numbers and flags are in `number` and text is in the frame's text run. Code 100 is a slice write (its text the key, then the text to hold) and 101 a diagnostic. The host completes each request with one `completed` event carrying the ticket and its result text; bulk results land in host-held slices, which the application fetches through the `native_slice` import the host answers. Hosts refuse codes they do not know, fields out of range and text ranges outside the run.
+
+### WebAssembly [NATIVE-SHM-WASM]
+
+A `--target=wasm32` build is one live module. Its `_start` runs the application's top level once; after that the module exports the three boundary calls and the bridge entries — `osp_native_open`, `osp_native_frame_commit`, `osp_native_acquire`, `osp_native_child`, `osp_native_length`, `osp_native_view`, `osp_native_release` — over its own linear memory, laid out as `native_abi_wasm32.h` says. The embedder opens the bridge with a fresh instance identity and the layout's fingerprint, calls the exports, commits and leases each frame, and copies the four runs out of linear memory; JavaScript reads the generated offsets with `bigint`, never `number`. No standard input, output or filesystem is granted. The VS Code extension runs the module in one worker per panel, and the webview receives one copy of the raw rows across the process boundary ([VSCODE-SDK-WASM](../../../src/osprey/packages/vscode/README.md)).
 
 ### Ownership and lifetime [NATIVE-SHM-OWNERSHIP]
 
-One serialized application executor owns the managed application state. A host holds an opaque application handle, never the state bytes. `start` creates it; `dispatch` borrows a typed event and returns a status/revision (queue admission is a separate accepted/rejected result; each admitted event receives a terminal transition result); `acquire_snapshot` returns an owned snapshot lease; explicit release and shutdown operations complete the generated API. Callbacks enqueue events and never re-enter dispatch. Initially the executor is the UI thread; a dedicated worker may later own it without changing this contract.
+Implemented once, in the C runtime's bridge ([`native_bridge.h`](../../../src/toolchain/compiler/runtime/native_bridge.h)), and shared by every host:
 
-Bridge allocations are outside both GC and ARC heaps. A builder exclusively owns mutable storage, initializes every field, then seals it immutable. Published storage cannot reference managed-heap objects, stack borrows or mutable builders. Strings and columns must be constructed directly in bridge storage where possible; importing an existing managed value requires a named, measured construction copy. GC roots and ARC ownership of application state remain on the executor; this design neither requires nor claims completion of plan 0045.
+- A frame is one branch chunk owning four sealed leaf runs — scene rows, view rows, text and ask rows — each immutable once sealed. Bridge storage is outside the GC and ARC heaps.
+- A host reaches memory only through a lease: an owner token unique to one acquire and consumed by one release, naming its application instance, allocation, reuse generation and byte offset. A stale, forged, foreign or double-released lease is refused as a typed `BridgeError`, never followed; reuse-generation exhaustion retires a slot permanently.
+- The application is one serialized executor: a host calls it from one thread, and an import may only run inside a call. Chunk retains are established before sealing and released iteratively; accounting covers whole allocations.
+- Budgets for bytes, chunks and owners are finite and fixed when the bridge opens; exceeding one refuses the frame instead of growing without bound. Allocation is fallible: no allocation failure yields an empty successful frame.
+- The runtime writes rows through its own entries (`osp_native_view_row`, `osp_native_view_extend`, `osp_native_ask`, `osp_native_scene_shape`), each returning nonzero once the frame is refused; the host then refuses the frame whole.
 
-Use reference-counted immutable **chunks**, not whole-generation arenas. A chunk may retain already sealed chunks or blocks; the dependency graph is acyclic. A snapshot owns its root, which transitively owns reachable chunks. Reuse a chunk only when its identity, content and schema remain valid. Chunk dependency retains are established before sealing and released iteratively on reclamation, avoiding destructor-stack overflow. Accounting includes the whole allocation, not just reachable bytes. A chunk contains one immutable schema record or one leaf byte/column block, never a whole generation or multiple unrelated subtrees; variable-size child payloads have their own chunks. Allocate records in power-of-two size classes up to 64 KiB, with larger leaves in dedicated allocations. Retaining a child retains only its own reachable graph, never a parent/back-pointer. Content hashes are not required for reuse: identity refers to the same sealed allocation, and new equal content may occupy a distinct allocation. One live node must not pin every previous frame's arena. No compacting or overwriting leased storage.
+### Publication [NATIVE-SHM-PUBLISH]
 
-Generated host wrappers own leases with deterministic release (`Drop`, explicit Swift owner lifetime, C# `IDisposable`/safe handle, explicit TypeScript release); finalizers are a leak backstop, not the lifetime protocol. Each owned lease has its own non-reusable token, distinct from the shared allocation identity; cloning issues a new token, and release consumes it once. An allocation generation alone cannot detect one owner releasing twice while another owner remains. A pointer/view is valid only inside its owner's lease. A renderer retaining a child beyond a frame must retain the corresponding owner. Async platform work and GPU submissions retain their payload leases until completion/fence, not merely until command encoding or dispatch returns. Platform string/upload copies are allowed only where documented and counted.
+Each call appends to fresh storage; when the export returns, the host commits the frame (`osp_native_frame_commit`, the wrapper over `osp_native_publish`) and acquires its root lease. A committed frame never changes. The host releases the previous frame only after it holds the next, so a frame a painter still holds outlives its replacements, and memory is reclaimed when the last lease goes. A refused or failed call publishes nothing and the host keeps showing the frame it already holds. Revisions increase monotonically with each commit.
 
-All retains/releases and handle lookup are implemented by one bridge allocator, not independent reference counts in each host language. Reject counter overflow, stale handles and double release as typed errors before memory access. Reuse-generation exhaustion retires a slot permanently. Allocate fallibly; no allocation failure yields an empty successful UI.
+### Ordered delivery [NATIVE-SHM-DELIVERY]
 
-### Publication and acquisition [NATIVE-SHM-PUBLISH]
+Events are delivered one typed call at a time, serialized on the host's UI thread; an event that arrives while a call runs waits for it. Capability adapters run off the UI thread, and their completions return as further `completed` calls carrying the ticket; the application ignores a completion whose ticket no longer matches, so stale, cancelled and superseded work never overwrites newer state. A refused event draws the same store and sends its reason as a diagnostic ask, so the host always shows the frame it was handed. The schema's reliable-record types (`RecordIdentity`, `ControlEvent` in `native.td`) describe this contract logically; what crosses is the nine-field typed call.
 
-A snapshot is a **complete immutable render state**: region map, slices, theme, scene and current diagnostic presentation, with application instance and monotonically increasing revision. Unchanged chunks are shared. Patches are optional host-local optimizations computed between the host's retained snapshot and the newly acquired one; a patch cannot be the sole truth sent through a replaceable slot. Omitted regions are removals. A host may skip intermediate snapshots and still reconstruct the whole latest view.
+### Accessibility [NATIVE-SHM-ACCESSIBILITY]
 
-Use a short **publication mutex** guarding the current owning root and revision. The writer builds/seals outside the lock, then replaces the root under the lock; the reader retains/clones the current owner while holding that same lock and unlocks before traversal or rendering. Release the replaced root outside the lock. This closes the load-pointer/retain-after-free race; an atomic release-store of a raw root alone is expressly insufficient. There is no triple buffer or lock-free root reclamation in this design. Mutex release/acquire publishes initialized contents; internal refcounts do not authorize concurrent mutation. Never call application code, platform adapters, destructors or GPU waits while holding the publication lock. Use one metadata mutex for publication, registry lease acquisition and queue admission/ack metadata, with no nested bridge locks; allocator reclamation and payload construction stay outside it. Synchronization failure is an explicit bridge failure, never continued access to suspect state.
+The schema carries a complete semantic tree contract — instance-scoped node ids, roles, names, states, relations, supported actions, bounds and text selections, with secure fields exposing no text — and `native.td` marks it a logical contract whose host adapters are not implemented. What ships today: a canvas's `Accessible` elements cross as scene rows (code 22, with a minimum and maximum point row), the GPUI host lays them onto AccessKit and the WinUI host onto UI Automation, and `@osprey/uitest` reads the same tree without a host. The full contract — coherent semantic and render revisions, retained callbacks, stable focus, virtualized lists and reliable announcements — plus web acceptance against WCAG 2.2 A/AA and per-host assistive-technology journeys remain delivery work in [plan 0037](../../plans/0037-osprey-native.md).
 
-An event transition prepares candidate state, sealed snapshot and command batch privately; it must not mutate the previously committed state or perform unstaged external effects during preparation. Reserve command capacity and memory before committing. With the executor serialized and delivery paused under the publication lock, swap only the already-prepared owning handles and revision, and link the reserved command batch, as one logical commit (no application execution or allocation under the lock); on preparation failure discard the candidate, leave the previous state/root untouched and return an error. This atomicity covers bridge state, not rollback of arbitrary external effects: platform effects must be staged as commands until acceptance. Revision overflow refuses the transition. Diagnostics for a failed transition use a reserved control/error slot and are not hidden by the unchanged snapshot.
+### Verification [NATIVE-SHM-VERIFY]
 
-### Ordered work and backpressure [NATIVE-SHM-DELIVERY]
-
-Events, capability commands, completions, cancellation and audit diagnostics are **reliable FIFO records**, separate from replaceable render snapshots. IDs are `(application instance, direction, monotonic sequence)`; the runtime assigns sequence numbers under the metadata lock at acceptance, one counter per direction, never per producer. Command IDs are the tickets, allocated by the executor at commit; completions reference those tickets and receive an inbound sequence on enqueue. Revision numbers identify snapshots only. Commands also name their source revision. The shared runtime uses bounded mutex-protected queues: multiple platform producers are supported without pretending an SPSC ring is MPSC. The executor consumes events in accepted sequence order; the host starts commands in order and may complete independent commands asynchronously. The executor seals command payloads before commit; host producers seal event/completion payloads before enqueue. Each record owns its payload lease independently of any snapshot; sharing an immutable payload chunk is allowed, but a source revision number pins no snapshot. Acceptance transfers ownership; failed enqueue leaves ownership with the caller. Acknowledgment releases a queued record only after the receiver has retained what it needs. Repeated completions/acks are recognized by ticket and cannot repeat an application transition or external operation within the live session. Bounded ticket tables track outstanding work; contiguous sequence watermarks retire completed IDs, and old IDs at/below the watermark are rejected without retaining an unbounded history. Out-of-order terminal records remain within the outstanding-ticket limit until gaps close.
-
-Before committing a capability command, reserve a real dedicated terminal-completion slot beside the ordinary inbound queue; every accepted ticket gets exactly one terminal success, failure or cancellation. Terminal records never compete for ordinary event slots: consume ready records in inbound acceptance-sequence order across both storage pools. Reserve space for a minimal typed terminal error even when a larger success payload cannot be allocated. Adapter launch failure consumes the same reservation as a failed completion. A queue that is full returns `WouldBlock`, never silently drops accepted work or blocks the UI thread waiting on itself. Producers retry from their existing bounded pending operation; admission stops before another external operation is started. For input sources that cannot pause, exhaustion faults the session visibly and cancels pending work rather than losing key/button/text events or growing an unbounded overflow list. Control/cancel/shutdown use reserved capacity and cannot be starved by ordinary events.
-
-Only consecutive, unconsumed pointer-position events for the same pointer and unchanged button/modifier state may coalesce under the queue lock. Never coalesce across a button, key, text/IME, wheel, command completion or cancellation barrier; never overwrite a record a consumer already owns. Coalescing is disabled for lossless replay tests. Latest-wins applies to render snapshots only, not commands hidden inside them. Command effects apply even if their source snapshot was never displayed. Binding IDs include generation/instance; stale actions are refused with a typed diagnostic, never redirected to a reused control.
-
-These are live-session delivery guarantees, not durable exactly-once external effects. Process failure ends the session; restart does not replay uncertain commands automatically. Non-idempotent external operations require adapter-level idempotency/reconciliation explicitly outside this bridge guarantee.
-
-### Limits, shutdown and payloads [NATIVE-SHM-RESOURCES]
-
-The generated startup configuration requires finite limits for live chunk bytes (including pinned old snapshots), payload bytes, queued records, outstanding tickets, external frame bytes, traversal depth and expanded canonicalization bytes. Defaults: 64 MiB chunks, 64 MiB payloads, 1,024 ordinary records per direction, 256 outstanding tickets, 16 MiB external frames, depth 64, 100,000 traversed nodes and 64 MiB expanded canonicalization; reserve one terminal completion per outstanding ticket plus separate shutdown/error slots. These are safety defaults, not performance claims. A host may declare larger finite resource limits at startup, but never exceed the selected wire format's limits (tdbin v1 depth remains at most 64); no adaptive unbounded growth. Arithmetic used for sizes and counters is checked. Large bodies stream in bounded leased blocks with explicit flow control; they do not require a single unbounded block. A frame whose canonical expansion exceeds its limit fails before allocation/write, even if its shared DAG is small.
-
-Retaining old snapshots may exhaust the budget; refuse the next transition visibly and preserve the last valid view instead of invalidating readers. No correctness dependence on `MADV_FREE`/`MEM_RESET`. Reclamation follows the last owner; debug page protection is supplemental testing only.
-
-Shutdown enters `Closing`: reject new user events and new capability launches, but keep accepting terminal completions into their reserved slots and deliver cancellations/failures to the still-live application executor. Remaining admitted user events get a terminal `Cancelled` transition result. Cleanup handlers cannot start new capabilities; such requests receive `Closing`. Only after all accepted tickets have a terminal result does the executor join; outstanding host/GPU leases must then drain before destroying allocator state or unloading the library. There is no timeout that authorizes forced free or silent ticket loss. Shutdown is asynchronous on UI threads. `close` may return `Busy` with outstanding owner counts; it never forcibly frees pinned memory. If a platform cannot complete cancellation, retain the owner and report the stalled close. Completions after closing release payloads through the still-live runtime and cannot dispatch into destroyed state. Restart gets a fresh instance ID. Thread migration and shutdown are tested under both memory backends.
-
-File mapping is permitted only for immutable/snapshot-stable content whose lifetime is owned; arbitrary externally mutable or truncatable files are copied/read into bounded owned blocks. Merely opening a file does not make a mapping immutable. GPU no-copy buffers require supported alignment/storage/lifetime and completion pins; otherwise use a named measured upload copy. No unconditional zero-copy claim for OS widgets, files or GPU APIs.
-
-### Web and serialization [NATIVE-SHM-WIRE]
-
-Native same-process hosts use the shared ABI. Browser same-thread hosts read wasm memory through generated views. Reacquire JavaScript views after memory growth; no view may outlive its lease or buffer epoch. Cross-thread browser operation requires cross-origin isolation and shared wasm memory with a declared maximum. Use the same ownership/publication protocol through generated atomic accessors using an explicitly declared, 64-byte-aligned 32-bit lock word in the ABI metadata (0 unlocked, 1 locked): compare-exchange 0→1 with acquire semantics, release-store 0 on unlock, and wake waiting workers. JavaScript Atomics supplies stronger sequential consistency; wasm accesses use compatible atomic instructions. Only workers may wait; same-thread wasm uses the same API without atomic synchronization. All lock/refcount words are generated metadata fields and cannot be accessed through ordinary data views; the UI thread uses nonblocking acquire/try-lock and schedules a later frame instead of `Atomics.wait` or spinning. Do not mix ordinary accesses with atomic accesses to synchronization words. Without shared memory, keep the browser executor on the same thread; do not silently insert a serialized worker bridge.
-
-VS Code's isolated extension/webview boundary and saved state use canonical framed **tdbin**. The current VS Code adapter uses a bounded base64 tdbin payload in its JSON-compatible message carrier, as required by the documented webview API; the carrier contains only transport metadata and bytes, never UI node fields. Count base64 and transport copies, and verify carrier size before decoding (at most `4 * ceil(frame_limit / 3)` base64 characters plus 1 KiB fixed envelope allowance, with checked arithmetic). A later binary facility may replace the carrier only with real host transport tests and unchanged logical semantics. Do not assume `postMessage` transfers ownership across every host API. A carrier is transport framing, not an alternate UI schema.
-
-Canonicalization walks the leased logical value, expands sharing deterministically and omits process pointers, allocation IDs and refcounts. No tdbin far-pointer or alias extension is invented. Include application/schema/wire versions and sequence IDs, verify untrusted bytes once with explicit length/depth/node/expansion limits, then expose generated verified views over the retained immutable input frame. A peer cannot mutate the frame after verification; copying to owned storage is required where transport ownership cannot guarantee this. Packed frames require a measured bounded unpack step. Malformed input yields typed errors before a view is exposed. Compatibility is negotiated before delivery; unsupported schema versions refuse explicitly. Saved-state migration is an explicit versioned operation, never reinterpretation of shared heap bytes.
-
-### Accessibility is part of publication [NATIVE-SHM-ACCESSIBILITY]
-
-Accessibility is mandatory bridge state, not an optional host overlay. The generated schema carries a complete semantic tree alongside the render tree: stable instance-scoped node IDs, role, accessible name/description, value, enabled/selected/expanded/checked state, relationships, reading order, supported actions, bounds and text selection/ranges. Password/secure fields expose no secret text. Decorative content is explicitly excluded; interactive canvas/scene content supplies semantic equivalents and operable actions. Virtualized lists expose logical position/count and a bounded action to materialize off-screen items, without allocating every item or silently hiding available content.
-
-Render, hit-test and semantic data share a committed revision and leased ownership. The host mounts them as one coherent presentation before notifying accessibility clients; callbacks retain the presented semantic owner until they return. Platform accessibility objects store validated IDs/owners, never borrowed chunk pointers. A skipped visual revision must not orphan the focused node or dispatch an action to a reused ID. Track keyboard focus, accessibility focus and selection separately; preserve each by identity where applicable. Removing a focused control chooses the next surviving logical control, then its surviving container; closing a modal restores its surviving invoker or that fallback. Background nodes are inaccessible while a modal owns interaction. Focus requests are sequenced typed operations, not side effects of tree traversal; stale requests/actions fail explicitly. No input trap outside intentional modal containment with an available exit.
-
-Announcements and requested focus changes use the reliable bounded delivery path in [NATIVE-SHM-DELIVERY], never the replaceable snapshot slot. Each record carries its own leased content, identity and source revision; missing a visual frame does not erase it. Announcements declare urgency and are submitted to the platform once in accepted order; platform assistive technology controls speech scheduling, interruption and delivery, so the bridge does not promise exactly-once audible speech. Notifications describing tree changes occur only after the corresponding presentation is coherent. Test announcement bursts, exhausted queues, stale focus targets and shutdown without duplicate submission, silent loss or unbounded buffering.
-
-Host adapters expose platform accessibility APIs: Apple accessibility for VoiceOver, Windows UI Automation for Narrator, Android accessibility nodes/actions for TalkBack, and semantic HTML with ARIA only where necessary on the web. Roles alone are insufficient: keyboard and assistive actions must invoke the same validated application bindings as pointer input. Support switch access and voice operation through those platform semantics; controls need meaningful visible labels and matching accessible names. Custom drawing does not excuse absent semantics.
-
-Web acceptance targets all applicable WCAG 2.2 A/AA criteria, with criterion-by-criterion evidence and documented applicability; native hosts additionally honor their platform accessibility conventions and user settings. Preserve functionality under text enlargement/reflow, high contrast/forced colors and reduced motion. Provide visible unobscured focus, non-color status cues, usable target sizes and alternatives to dragging, timed interactions and motion. Applicable audio/video journeys include captions and alternatives; do not mark an absent capability as passing. These are product acceptance decisions, not a claim that a wire protocol alone establishes accessibility compliance.
-
-Acceptance requires real keyboard-only and assistive-technology journeys on each supported host, semantic-tree assertions and screenshots at enlarged text/high contrast/reduced motion. Cover dialog open/close, list virtualization, validation errors, asynchronous status, text editing/selection, rerender during focus and skipped snapshots. Check names, roles, states, relationships, reading order, action results and focus restoration at each interaction. Record OS, assistive technology/version, app/schema revision and results; manual checks supplement automation where platform tooling cannot verify spoken output or navigation. Goldens alone, synthetic semantic trees and a successful accessibility scan cannot satisfy this gate. Missing host evidence remains unchecked in the plan.
-
-Authority: [WCAG 2.2](https://www.w3.org/TR/WCAG22/) defines web conformance criteria; [WAI keyboard interface guidance](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/) explains keyboard behavior, focus persistence and focus versus selection. The lease, revision and reliable-delivery requirements above are Osprey design decisions extending those interaction requirements into [NATIVE-SHM-PUBLISH].
-
-### Acceptance and authority [NATIVE-SHM-VERIFY]
-
-Implementation is accepted only with all-host conformance and existing app journeys/goldens unchanged, plus the following tests under GC and ARC (and wasm where applicable):
-
-| Invariant | Required adversarial evidence |
-| --- | --- |
-| Lifetime and acquisition | Slow reader vs publication/release, stale/double release, reused slot, retained child, GC collection during reads, ARC exit with zero owned objects, GPU completion after snapshot replacement. ASan/TSan plus Miri for Rust views and loom for publication/queue interleavings. |
-| No lost work | Publish A/B/C while reader renders A then C: complete C matches sequential application; all B commands execute once. Full queues, synchronous completions, retries, duplicate acknowledgments, stale bindings and cancellation barriers preserve the contract. |
-| Bounded failure | Inject failure at every preparation allocation/reservation: old state/root remains intact, no command escapes, no empty success. Slow/stuck readers, canonical DAG amplification and counter exhaustion remain within declared limits. |
-| Shutdown/web | Close with pinned buffers and in-flight completions; no unload/UAF. Wasm growth invalidates cached views safely; lack of isolation selects same-thread operation; no main-thread blocking wait. |
-| Accessibility | [NATIVE-SHM-ACCESSIBILITY]: real per-host assistive journeys, coherent semantic/render revisions, retained callbacks, stable focus, secure text, virtualized items and reliable announcement submission under skipped frames/backpressure. |
-| Boundary correctness | Same logical fixtures across all generated views and canonical tdbin encodings; malformed discriminants/offsets/hashes/truncation/depth rejected. Stable filenames/config JSON stay outside the bridge. |
-| Performance | Count zero bridge JSON parsing and zero serialization on shared paths; separately count construction, platform and transport copies. Measure instructions, allocations and p50/p99 on the four plan workloads before/after; no fabricated target numbers. |
-
-Authority informs mechanisms, not evidence that Osprey implements them:
-
-- [React Native render/commit/mount](https://reactnative.dev/architecture/render-pipeline): immutable render-tree publication and mounting are distinct; Osprey's reliable command separation and queue guarantees are decisions here, not borrowed claims.
-- [Rust Arc](https://doc.rust-lang.org/std/sync/struct.Arc.html), [Mutex](https://doc.rust-lang.org/std/sync/struct.Mutex.html) and [atomic ordering](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html): shared ownership does not make mutable contents safe; visibility and lifetime acquisition are separate obligations. This contract selects mutex-protected owner acquisition rather than an unproved raw-pointer protocol.
-- [WebAssembly memory growth](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory/grow) and [SharedArrayBuffer](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/SharedArrayBuffer): buffer-view lifetime and cross-thread synchronization requirements; shared buffers are not transferables.
-- [VS Code webview messages](https://code.visualstudio.com/api/extension-guides/webview#passing-messages-from-an-extension-to-a-webview): the documented carrier accepts JSON-serializable data; tdbin remains the UI payload, with carrier conversion explicitly accounted for.
-- [Metal command completion](https://developer.apple.com/documentation/metal/mtlcommandbuffer/addcompletedhandler(_:)): GPU submission completion supplies a lifetime boundary, not command encoding.
-- [tdbin wire contract](https://typediagram.dev/docs/tdbin-wire-format.html): canonical framing, restricted pointer graphs and wire-layout compatibility. Reviewed the local typeDiagram checkout at `725906d55ca0cb0a6572c53b74a671e32a247980`, `docs/specs/tdbin-wire-format.md` and `tdbin-future-reader.md` on 2026-11-12 because the website fetch was unavailable; generated zero-copy readers remain an implementation dependency, not an assumed capability.
+The C bridge's suite ([`host_import_tests.c`](../../../src/toolchain/compiler/runtime/host_import_tests.c)) runs under both memory backends (`host_import_gc_tests`, `host_import_arc_tests`) and covers leases (stale, double release, retained children), limits and counter exhaustion, allocation failure at each step, publication, synchronization failure, and refused scene and view values. Each host additionally drives a real application through its own boundary: the GPUI smoke run taps the probe and asserts the words it drew, the WinUI tests drive real DLLs, and the Swift self-test reads every fact back out of a checked frame.

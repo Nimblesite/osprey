@@ -29,7 +29,7 @@ The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench
 | `src/lesson.ospml`, `src/judge.ospml`, `src/tutor.ospml`, `lessons/` | `Lessons`, `Judge`, `Tutor` | Learn mode ([spec 0052](0052-WorkbenchLessons.md)) |
 | `src/library.ospml` | `Library` | Search over the checked environment by name and shape ([WORKBENCH-LIBRARY]) |
 | `src/app.ospml` | `App` | The store, `update`, the regions and the theme ([WORKBENCH-STORE], [WORKBENCH-REGIONS]) |
-| `src/main.ospml` | entry | `Runtime::start` and `Runtime::dispatch` for native hosts; `Webview::respond` for VS Code and the browser |
+| `src/main.ospml` | entry | the three boundary exports — `argument`, `open` and `event` over `Surfaces` and `Hosting` — for native hosts; the same application compiled to a live WebAssembly module for VS Code and the browser ([NATIVE-SHM-BOUNDARY], [NATIVE-SHM-WASM]) |
 | `tests/` | | The fixture-driven suite of [WORKBENCH-VERIFICATION] |
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
@@ -113,15 +113,15 @@ The reading view lays the file out as a page: each declaration's statement as di
 
 | Host | How |
 | --- | --- |
-| VS Code | [`@osprey/vscode`](../../../src/osprey/packages/vscode/README.md): the application compiled to WASI, the existing webview renderer; the `Lean` capability runs the pinned toolchain the extension finds or installs |
-| Browser | the same renderer as a standalone page under `hosts/web/`; the `Lean` capability is a local service or Unavailable |
-| macOS and iPadOS | the SwiftUI host under `hosts/apple/`, `--target=macos`, `ios`, `ios-sim`; the toolchain bundled with the macOS app, Unavailable on iPadOS until stage 2 |
+| VS Code | [`@osprey/vscode`](../../../src/osprey/packages/vscode/README.md): the application compiled to a live WebAssembly module whose rows the webview leases and draws; the `Lean` capability runs the pinned toolchain the extension finds or installs |
+| Browser | the same renderer as a standalone page, on the browser host extracted from the webview host (not started yet); the `Lean` capability is a local service or Unavailable |
+| macOS and iPadOS | the SwiftUI host under [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md), `--target=macos`, `ios`, `ios-sim`; the toolchain bundled with the macOS app, Unavailable on iPadOS until stage 2 |
 
 One application, three hosts, proved by the same fixture-driven `update` tests; a host adds adapters and a renderer, never a decision.
 
 ### VSIX adapter [WORKBENCH-VSIX]
 
-`Osprey: Open Workbench` (`osprey.workbench.open`) opens the application without requiring a project folder and reuses its panel. The VSIX bundles `src/osprey/workbench/` compiled as `workbench.wasm` with the lesson catalogue, lesson `.lean` files, media and the bundled exports and licences staged by `scripts/proof/workbench-proof-assets.py`; packaging rejects missing, invalid, stale or extra files. The package manager and workbench share the session, WASI runner, panel lifecycle, renderer and event transport; platform adapters only create the panel, map approved assets, read bounded files, run the `Lean` capability and store progress under the extension's own directory. No second proof or lesson implementation in TypeScript. VS Code's editor appearance selects the starting palette (`Dark`/`HighContrast` → `dark`, `Light`/`HighContrastLight` → `light`).
+`Osprey: Open Workbench` (`osprey.workbench.open`) opens the application without requiring a project folder and reuses its panel. The VSIX bundles `src/osprey/workbench/` compiled as `workbench.wasm` with the lesson catalogue, lesson `.lean` files, media and the bundled exports and licences staged by `scripts/proof/workbench-proof-assets.py`; packaging rejects missing, invalid, stale or extra files. The package manager and workbench share the session, WASI runner, panel lifecycle, renderer and typed events; platform adapters only create the panel, map approved assets, read bounded files, run the `Lean` capability and store progress under the extension's own directory. No second proof or lesson implementation in TypeScript. VS Code's editor appearance selects the starting palette (`Dark`/`HighContrast` → `dark`, `Light`/`HighContrastLight` → `light`).
 
 Acceptance uses the compiled application in the real webview: open and reuse the panel, open a `.lean` file, see Lean's goals and diagnostics, a `Checked` badge from the kernel, the actual rejection of a corrupted proof, lesson navigation, accessible MathML and progress persistence. The bundled-library gate of plan 0041 (the complete `Nat.add_comm` closure and the pinned OpenAI corpus checked in-process, corrupted proofs refused, axioms per root) stands; a CLI recording does not satisfy the host gate. The captures in [`docs/designs/proof-workbench/screens/`](../../designs/proof-workbench/screens/) are the visual oracle for every screen that survives the format change; screens that showed the deleted document or its generated pane are re-captured by plan 0042 before they bind. The production VSIX matches the surviving reference screens pixel for pixel at identical viewport and state.
 
@@ -189,7 +189,7 @@ Every service the workbench uses is a capability of [PROOF-TOOLS](../language/00
 
 ## Verification [WORKBENCH-VERIFICATION]
 
-`osprey src/osprey/workbench/tests --run --quiet` and `python3 scripts/packages/package_coverage.py --collect --project src/osprey/workbench` are the suite, at the 90% floor in `coverage-thresholds.json`. Each case is a fixture through the real `start`/`dispatch`:
+`osprey src/osprey/workbench/tests --run --quiet` and `python3 scripts/packages/package_coverage.py --collect --project src/osprey/workbench` are the suite, at the 90% floor in `coverage-thresholds.json`. Each case is a fixture through the real boundary exports:
 
 - every row of the notation table expands and is idempotent;
 - open then save of every `.lean` fixture (`AndSwap.lean`, `OpenAIStacks.lean` and the rest of `src/toolchain/benchmarks/proof/tools/`) is byte-identical;
