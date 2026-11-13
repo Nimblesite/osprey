@@ -1,11 +1,14 @@
 namespace vscode_tests
+import ui::Runtime
 import vscode::Editor
-import ui::Doc
 import ui::Requests
 
-encoded result = match result
-    Success request => Requests::encode request
-    Error _ => JsonNull
+// Every request the Editor builds, read as the typed `HostCall` it carries:
+// no envelope is written or parsed anywhere.
+
+asked result = match result
+    Success request => Success(value = request.capability)
+    Error problem => Error(message = problem)
 
 refused result = match result
     Error _ => true
@@ -14,54 +17,78 @@ refused result = match result
 // Every request in `requests` must be refused, each with its own assertion.
 allRefused requests = forEachList (requests, \request => expect (refused request, true))
 
-test ("editor workspace requests use the shared framework envelope", \() =>
-    doc = encoded (Editor::workspaces "workspace:1")
-    expect (Doc::text (doc, "kind"), "host-call")
-    expect (Doc::text (doc, "namespace"), "vscode")
-    expect (Doc::text (doc, "operation"), "workspace.snapshot")
-    expect (Doc::text (doc, "ticket"), "workspace:1"))
+kindOf capability = Runtime::guarded (\() => Requests::kind capability)
+
+valueIn (name, header) = match header.headerName == name
+    true => header.headerValue
+    false => ""
+
+argumentsOf (capability, name) = match capability
+    ui::HostCall _ _ arguments _ _ _ => join (filterList (mapList (arguments, \header => valueIn (name, header)), \value => value != "")) ","
+    _ => ""
+
+fieldOf capability = match capability
+    ui::HostCall space operation _ _ _ _ => space + "|" + operation
+    _ => "|"
+
+boundOf (capability, timeout) = match capability
+    ui::HostCall _ _ _ hostTimeout hostLimit _ => match timeout
+        true => hostTimeout
+        false => hostLimit
+    _ => 0
+
+kind result = match asked result
+    Success capability => kindOf capability
+    Error _ => ""
+
+ticketOf result = match result
+    Success request => request.ticket
+    Error _ => ""
+
+field result = match asked result
+    Success capability => fieldOf capability
+    Error _ => "|"
+
+argumentText (result, name) = match asked result
+    Success capability => argumentsOf (capability, name)
+    Error _ => ""
+
+bound (result, timeout) = match asked result
+    Success capability => boundOf (capability, timeout)
+    Error _ => 0
+
+test ("editor workspace requests use the shared typed capability", \() =>
+    result = Editor::workspaces "workspace:1"
+    expect (kind result, "host-call")
+    expect (field result, "vscode|workspace.snapshot")
+    expect (argumentText (result, "uri"), "")
+    expect (ticketOf result, "workspace:1"))
 
 test ("opening a document preserves its URI and source location", \() =>
-    doc = encoded (Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4))
-    args = Doc::field (doc, "arguments")
-    expect (Doc::text (args, "uri"), "file:///work/my%20app/main.osp")
-    expect (Doc::number (args, "line"), 12)
-    expect (Doc::number (args, "column"), 4)
+    result = Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4)
+    expect (field result, "vscode|document.open")
+    expect (argumentText (result, "uri"), "file:///work/my%20app/main.osp")
+    expect (argumentText (result, "line"), "12")
+    expect (argumentText (result, "column"), "4")
     allRefused [Editor::openDocument ("bad", "command:workbench.action.closeWindow", 1, 1), Editor::openDocument ("bad", "file:///work/main.osp", 0, 1)])
 
 test ("process input is data with explicit workspace, timeout and output bounds", \() =>
-    doc = encoded (Editor::processInput ("run:1", "osprey-pkg", [], "--json tree --direct\n", "file:///work/my%20app", 30000, 1048576, "client/report"))
-    args = Doc::field (doc, "arguments")
-    expect (Doc::text (doc, "operation"), "process.input")
-    expect (Doc::text (args, "stdin"), "--json tree --direct\n")
-    expect (Doc::text (args, "workspace"), "file:///work/my%20app")
-    expect (Doc::number (doc, "limit"), 1048576)
-    expect (Doc::number (doc, "timeout"), 30000)
+    result = Editor::processInput ("run:1", "osprey-pkg", ["tree", "--direct"], "--json tree --direct\n", "file:///work/my%20app", 30000, 1048576, "client/report")
+    expect (field result, "vscode|process.input")
+    expect (argumentText (result, "stdin"), "--json tree --direct\n")
+    expect (argumentText (result, "workspace"), "file:///work/my%20app")
+    expect (argumentText (result, "argv"), "tree,--direct")
+    expect (bound (result, false), 1048576)
+    expect (bound (result, true), 30000)
     allRefused [Editor::processInput ("bad", "tool", [], "", "file:///work", 0, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 0, "out")])
 
 test ("configuration and view requests preserve resource scope", \() =>
-    config = encoded (Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app"))
-    args = Doc::field (config, "arguments")
-    expect (Doc::text (config, "operation"), "configuration.read")
-    expect (Doc::text (args, "section"), "osprey.packages")
-    expect (Doc::text (args, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
-    expect (Doc::text (encoded (Editor::revealView ("view:1", "osprey.packages")), "operation"), "webview.reveal")
+    result = Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app")
+    expect (field result, "vscode|configuration.read")
+    expect (argumentText (result, "section"), "osprey.packages")
+    expect (argumentText (result, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
+    expect (field (Editor::revealView ("view:1", "osprey.packages")), "vscode|webview.reveal")
     allRefused [Editor::configuration ("bad", "", "file:///work"), Editor::configuration ("bad", "section", "https://example.test"), Editor::revealView ("bad", "")])
 
 test ("invalid tickets process scope and excessive limits fail explicitly", \() =>
     allRefused [Editor::workspaces "", Editor::processInput ("bad", "", [], "", "file:///work", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 10, ""), Editor::processInput ("bad", "tool", [], "", "file:///work", 120001, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 16777217, "out")])
-
-startProbe source = "start:${source}"
-dispatchProbe (saved, event) = "dispatch:${saved}:${event}"
-answer result = match result
-    Success value => value
-    Error problem => problem
-
-test ("WASM frames route opaque state through real application entry points", \() =>
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\",\"context\":{\"platform\":\"vscode\"}}", startProbe, dispatchProbe)), "start:{\"platform\":\"vscode\"}")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\",\"state\":\"opaque\",\"event\":{\"kind\":\"lifecycle\"}}", startProbe, dispatchProbe)), "dispatch:opaque:{\"kind\":\"lifecycle\"}")
-    expect (answer (vscode::Webview::evaluate ("{}", startProbe, dispatchProbe)), "vscode.frame.unknown-operation")
-    expect (vscode::Webview::respond ("{\"operation\":\"start\",\"context\":{}}", startProbe, dispatchProbe), "start:{}")
-    expect (Doc::text (Doc::parse (vscode::Webview::respond ("{}", startProbe, dispatchProbe)), "error"), "vscode.frame.unknown-operation")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\"}", startProbe, dispatchProbe)), "vscode.frame.missing-context")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\"}", startProbe, dispatchProbe)), "vscode.frame.missing-state-or-event"))

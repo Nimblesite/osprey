@@ -99,25 +99,5 @@ module Store
         Success wanted => Runtime::asking (current, [wanted])
         Error problem => Runtime::step (fault (current, problem))
 
-    encodeWorkspace workspace = JsonObject [Doc::str ("project", workspace.workspaceProject), JsonMember "packages" (Packages::encodePackages workspace.workspacePackages), JsonMember "direct" (Doc::strings workspace.workspaceDirect), JsonMember "findings" (Doc::strings workspace.workspaceFindings), Doc::bit ("missing", workspace.workspaceMissing), Doc::str ("reason", workspace.workspaceReason)]
-
-    decodeWorkspace doc = Workspace(workspaceProject = Doc::text (doc, "project"), workspacePackages = Packages::decodePackages (Doc::field (doc, "packages")), workspaceDirect = Doc::texts (doc, "direct"), workspaceFindings = Doc::texts (doc, "findings"), workspaceMissing = Doc::flag (doc, "missing"), workspaceReason = Doc::text (doc, "reason"))
-
-    export save current = JsonObject [
-        Doc::str ("query", current.packageSearch),
-        Doc::str ("selection", current.packageSelection),
-        Doc::str ("tab", current.packageTab),
-        Doc::str ("registry", current.packageRegistry),
-        Doc::str ("workspace", current.packageWorkspace),
-        JsonMember "catalog" (Packages::encodeCatalog current.packageCatalog),
-        JsonMember "graph" (encodeWorkspace current.packageGraph),
-        Doc::str ("notice", current.packageNotice),
-        Doc::bit ("pending", current.packagePending),
-        Doc::bit ("fault", current.packageFault),
-        Doc::str ("confirming", current.packageConfirming),
-        Doc::str ("confirmKey", current.packageConfirmKey),
-        Doc::num ("generation", current.packageGeneration),
-        Doc::num ("waiting", current.packageWaiting),
-    ]
-
-    export restore doc = PackageState(packageSearch = Doc::text (doc, "query"), packageSelection = Doc::text (doc, "selection"), packageTab = Doc::text (doc, "tab"), packageRegistry = Doc::text (doc, "registry"), packageWorkspace = Doc::text (doc, "workspace"), packageCatalog = Packages::decodeCatalog (Doc::field (doc, "catalog")), packageGraph = decodeWorkspace (Doc::field (doc, "graph")), packageNotice = Doc::text (doc, "notice"), packagePending = Doc::flag (doc, "pending"), packageFault = Doc::flag (doc, "fault"), packageConfirming = Doc::text (doc, "confirming"), packageConfirmKey = Doc::text (doc, "confirmKey"), packageGeneration = Doc::number (doc, "generation"), packageWaiting = Doc::number (doc, "waiting"))
+    // The workspace as the region comparison reads it.
+    export encodeWorkspace workspace = JsonObject [Doc::str ("project", workspace.workspaceProject), JsonMember "packages" (Packages::encodePackages workspace.workspacePackages), JsonMember "direct" (Doc::strings workspace.workspaceDirect), JsonMember "findings" (Doc::strings workspace.workspaceFindings), Doc::bit ("missing", workspace.workspaceMissing), Doc::str ("reason", workspace.workspaceReason)]

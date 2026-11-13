@@ -1,11 +1,19 @@
 namespace registry_editor
 
-// Drives the real App.start/App.dispatch entry points. Control events use the
-// ordinal and revision the runtime issued in the previous envelope, and
-// completions use the tickets it issued, never fabricated identifiers.
+// Drives the package editor through the typed host event boundary every host
+// calls ([NATIVE-SHM-EVENT]): controls are found by their labels, rows by
+// their keys, completions use the tickets the surface issued, and every read
+// is the typed store, the rendered rows, or the typed requests of the last
+// step. The CLI and registry fixtures arrive as completion text, as they do
+// from a real host.
 
 import ui::Doc
+import ui::Hosting
 import ui::Lists
+import ui::LowerLeaves
+import ui::Runtime
+import uitest::Drive
+import uitest::Views
 
 workspace = "file:///work/app"
 loopback = "http://127.0.0.1:8787"
@@ -13,98 +21,7 @@ hosted = "https://registry.example.test"
 unverified = "No findings recorded; audit status unverified"
 cve = "CVE-2026-0002: unsafe native call"
 
-quote value = match jsonQuote value
-    Success text => text
-    Error _ => "null"
-
-launchContext (project, registry) = JsonObject [
-    Doc::num ("now", 1),
-    Doc::num ("offset", 0),
-    Doc::str ("platform", "vscode"),
-    Doc::str ("home", "/work"),
-    JsonMember "arguments" (Doc::strings ([project, registry])),
-]
-
-itemsOf (doc, key) = Doc::items (Doc::field (doc, key))
-
-branchOf (doc, key) = mapList (itemsOf (doc, key), \item => Doc::field (item, "child"))
-
-kids doc = listConcat (itemsOf (doc, "children")) (listConcat (itemsOf (doc, "panes")) (listConcat (itemsOf (doc, "toolbar")) (listConcat (itemsOf (doc, "items")) (listConcat (branchOf (doc, "tabs")) (listConcat (branchOf (doc, "rows")) (mapList (filterList (["body", "pane", "aside", "child"], \key => Doc::has (doc, key)), \key => Doc::field (doc, key))))))))
-
-findNode : (Json, (Json) -> bool) -> Result<Json, Error>
-findNode (doc, matches) = match matches doc
-    true => Success(value = doc)
-    false => findIn (kids doc, matches)
-
-nextFound (found, node, matches) = match found
-    Success _ => found
-    Error _ => findNode (node, matches)
-
-findIn (nodes, matches) = foldList (nodes, Error(message = "not found"), \(found, node) => nextFound (found, node, matches))
-
-patchOf (envelope, region) = Lists::find (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key") == region)
-
-revisionOf (envelope, region) = match patchOf (envelope, region)
-    Success patch => Doc::number (patch, "revision")
-    Error _ => 0
-
-nodeOf (envelope, region) = match patchOf (envelope, region)
-    Success patch => Doc::field (patch, "node")
-    Error _ => JsonNull
-
-controlAt (envelope, region, matches) = match patchOf (envelope, region)
-    Error _ => Error(message = "region ${region} was not patched")
-    Success patch => findNode (Doc::field (patch, "node"), matches)
-
-controlOf (envelope, region, kind, label) = controlAt (envelope, region, \doc => Doc::text (doc, "kind") == kind && Doc::text (doc, "label") == label)
-
-fieldOf (result, key) = match result
-    Success node => Doc::text (node, key)
-    Error _ => ""
-
-ordinalOf result = match result
-    Success node => Doc::number (node, "event")
-    Error _ => 0 - 1
-
-buttonEnabled (envelope, region, label) = match controlOf (envelope, region, "button", label)
-    Success node => Doc::flag (node, "enabled")
-    Error _ => false
-
-badgeTone (envelope, region, label) = fieldOf (controlOf (envelope, region, "badge", label), "tone")
-
-evidenceValue (envelope, region, label) = fieldOf (controlOf (envelope, region, "pair", label), "value")
-
-hasTone (envelope, region, tone) = match controlAt (envelope, region, \doc => Doc::text (doc, "tone") == tone)
-    Success _ => true
-    Error _ => false
-
-rowsNode (envelope, region, key) = controlAt (envelope, region, \doc => Doc::text (doc, "kind") == "rows" && Lists::any (mapList (itemsOf (doc, "rows"), \item => Doc::text (item, "key")), \item => item == key))
-
-eventAt (envelope, region, ordinal, value) = "{\"kind\":\"ui\",\"region\":${quote region},\"revision\":${revisionOf (envelope, region)},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
-
-stateOf envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
-
-requestCount envelope = length (Doc::items (Doc::field (envelope, "requests")))
-
-ticketAt (envelope, index) = Doc::text (listGet (Doc::items (Doc::field (envelope, "requests"))) index ?: JsonNull, "ticket")
-
-requestText (envelope, index) = Doc::write (listGet (Doc::items (Doc::field (envelope, "requests"))) index ?: JsonNull)
-
-problemsOf envelope = join (Doc::texts (envelope, "diagnostics")) ";"
-
-// Runs of reads that only their literals distinguish are tables: each case names
-// the control and the value it must read.
-expectShows (envelope, region, parts) = expect (containsAll (Doc::write (nodeOf (envelope, region))) parts, true)
-
-expectHides (envelope, region, parts) = expect (containsNone (Doc::write (nodeOf (envelope, region))) parts, true)
-
-expectEvidence (envelope, region, cases) = forEachList (cases, \c => expect (evidenceValue (envelope, region, c.label), c.want))
-
-pick (envelope, region, key) = post (envelope, eventAt (envelope, region, ordinalOf (rowsNode (envelope, region, key)), quote key))
-
-tap (envelope, region, label) = post (envelope, eventAt (envelope, region, ordinalOf (controlOf (envelope, region, "button", label)), "null"))
-
-completed (ticket, result) = "{\"kind\":\"completed\",\"ticket\":${quote ticket},\"ok\":true,\"result\":${quote result},\"now\":9}"
+// ---- the host fixtures: the CLI and registry output as completion text ----
 
 catalogItem (key, epoch, ordinal, findings) = JsonObject [
     Doc::str ("key", key),
@@ -145,159 +62,272 @@ graphResult findings = Doc::write (JsonObject [
     Doc::num ("status", 0),
 ])
 
-startEnvelope registry = Doc::parse (App::start (Doc::write (launchContext (workspace, registry))))
+// ---- driving the surface ----
 
-post (envelope, event) = Doc::parse (App::dispatch (Doc::text (envelope, "state"), event))
+fresh () = Drive::idle (App::program (), Store::create ("", ""))
 
-completeBoth (envelope, findings) = graphIn (envelope, graphResult findings)
+// The editor is launched with the workspace URI and registry URL as arguments.
+started registry = Runtime::guarded (\() => Drive::launched (fresh (), "vscode", [workspace, registry]))
 
-completedOn (envelope, result) = post (envelope, completedIn (envelope, 0, result))
+walkOf d = Runtime::guarded (\() => ui::Surfaces::seen (d.drivenSurface, d.drivenProgram))
 
-cataloguedIn envelope = completedOn (envelope, Doc::write (catalogDoc ()))
+// The regions the program draws, as the boundary lowered them, and one region walked alone.
+regionsOf d = Runtime::guarded (\() => (App::program ()).programRender (storeOf d, storeOf d, [], []))
 
-graphIn (envelope, result) = post (cataloguedIn envelope, completedIn (envelope, 1, result))
+regionNode (d, key) = match Lists::find (regionsOf d, \region => region.snapshotKey == key)
+    Error _ => ui::Spacer
+    Success region => region.snapshotValue
 
-completedIn (source, index, result) = completed (ticketAt (source, index), result)
+regionWalk (d, key) = Runtime::guarded (\() => ui::Views::drawn (ui::Lower::view (ui::Styling(styleTheme = (App::program ()).programTheme (storeOf d), styleDark = false, styleRegions = regionsOf d), regionNode (d, key))))
 
-// Control flows: reaching a package panel, asking for a change, confirming it.
-// Each ladder of taps and the request it must issue is one call.
-chosenIn (envelope, key) = pick (post (envelope, eventAt (envelope, "packages", ordinalOf (controlAt (envelope, "packages", \doc => Doc::text (doc, "kind") == "tabs")), quote "browse")), "packages", key)
+styled walk = uitest::Read::seen (walk, [])
 
-catalogDetail (registry, key) = chosenIn (completeBoth (startEnvelope registry, []), key)
+// The control of `kind` labelled `label`, as a host reaches it: a button or tab is a press, a field an entry.
+controlOf (walk, kind, label) = match Lists::find (walk.walkRows, \row => row.placedKind == kind && row.placedWords == label)
+    Error _ => 0 - 1
+    Success row => row.placedAction
 
-expectDetailButton (result, label, want) = expect (buttonEnabled (result, "details", label), want)
+deliver (d, found, words) = match found < 0
+    true =>
+        print "# no control ${words}"
+        d
+    false => Runtime::guarded (\() => Drive::sent (d, ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = found, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)))
 
-expectNoRequest result = expect (requestCount result, 0)
+press (d, label) = deliver (d, controlOf (walkOf d, ui::Views::press, label), "")
 
-expectNotice (result, part) = expect (contains (Doc::text (stateOf result, "notice")) part, true)
+chooseTyped (d, label, words) = deliver (d, controlOf (walkOf d, ui::Views::press, label), words)
 
-askAdd result = tap (result, "details", "Add to project")
+completedWith (d, ticket, ok, text) = Runtime::guarded (\() => Drive::completed (d, ticket, ok, text))
 
-awaitingConfirmation (result, ask, mode) =
-    asked = tap (result, "details", ask)
+// The fit that carries a row's key, and the press layered over that row's cell.
+rowFit (d, key) = Lists::find ((walkOf d).walkFits, \fit => fit.fittedAs.hint == key)
+
+isRowPress (parent, row) = match row.placedParent == parent && row.placedAction >= 0
+    true => Success(value = row)
+    false => Error(message = "no press in the row")
+
+kept (found, next) = match found
+    Error _ => next
+    Success _ => found
+
+rowPress (d, key) = match rowFit (d, key)
+    Error _ => Error(message = "no row ${key}")
+    Success fit => foldList ((walkOf d).walkRows, Error(message = "no row ${key}"), \(found, row) => kept (found, isRowPress (fit.fittedRow, row)))
+
+// Choosing a row delivers its key through the press layered over its cell.
+pick (d, key) = match rowPress (d, key)
+    Error problem =>
+        print "# ${problem}"
+        d
+    Success row => deliver (d, row.placedAction, key)
+
+// ---- reading the last step ----
+
+storeOf d = d.drivenSurface.surfaceSession.sessionStore
+
+ticketsOf d = d.drivenSurface.surfaceAsked
+
+ticketAt (d, index) = match listGet (ticketsOf d) index
+    Success request => request.ticket
+    Error _ => ""
+
+stdinText (header) = match header.headerName == "stdin"
+    true => header.headerValue
+    false => ""
+
+stdinOf request = match request.capability
+    ui::HostCall _ _ arguments _ _ _ => join (filterList (mapList (arguments, \header => stdinText (header)), \value => value != "")) ""
+    _ => ""
+
+requestCount d = length (ticketsOf d)
+
+problemsOf d = d.drivenSurface.surfaceProblem
+
+// What one region shows, as the host that region's tree was sent reads it.
+regionTexts (d, key) = Views::texts (styled (regionWalk (d, key)))
+
+showsIn (d, key, part) = expect (contains (regionTexts (d, key)) part, true)
+
+hidesIn (d, key, part) = expect (contains (regionTexts (d, key)) part, false)
+
+// A pair's value: the wording beside its label inside the pair's line.
+isPairValue (parent, label, row) = match row.placedParent == parent && row.placedKind == ui::Views::label && row.placedWords != "" && row.placedWords != label
+    true => Success(value = row.placedWords)
+    false => Error(message = "not the value")
+
+pairValue (walk, label) = match Lists::find (walk.walkRows, \row => row.placedWords == label)
+    Error _ => ""
+    Success named => match foldList (walk.walkRows, Error(message = "none"), \(found, row) => kept (found, isPairValue (named.placedParent, label, row)))
+        Success value => value
+        Error _ => ""
+
+expectEvidence (d, key, cases) = forEachList (cases, \c => expect (pairValue (regionWalk (d, key), c.label), c.want))
+
+themeOf d = (App::program ()).programTheme (storeOf d)
+
+toneInk (d, name) = LowerLeaves::inkNamed (themeOf d, false, name)
+
+// A control's ink and enabled state, read from the region that drew it.
+regionControl (d, key, label) = uitest::Views::control (styled (regionWalk (d, key)), label)
+
+inkOf (d, key, label) = (regionControl (d, key, label)).controlInk
+
+hasTone (d, key, name) = Lists::any ((regionWalk (d, key)).walkRows, \row => row.placedLook.ink == toneInk (d, name))
+
+// ---- control flows ----
+
+cataloguedIn (d) = completedWith (d, ticketAt (d, 0), true, Doc::write (catalogDoc ()))
+
+graphIn (d, result) = completedWith (cataloguedIn (d), ticketAt (d, 1), true, result)
+
+completeBoth (d, findings) = graphIn (d, graphResult findings)
+
+chosenIn (d, key) = pick (chooseTyped (d, "Browse registry", "browse"), key)
+
+catalogDetail (registry, key) = chosenIn (completeBoth (started registry, []), key)
+
+expectDetailButton (d, label, want) = expect ((regionControl (d, "details", label)).controlEnabled, want)
+
+expectNoRequest d = expect (requestCount d, 0)
+
+expectNotice (d, part) = expect (contains (storeOf d).packageNotice part, true)
+
+askAdd d = press (d, "Add to project")
+
+awaitingConfirmation (d, ask, mode) =
+    asked = press (d, ask)
     expectNoRequest asked
-    expect (Doc::text (stateOf asked, "confirming"), mode)
+    expect ((storeOf asked).packageConfirming, mode)
     asked
 
-oneRequest (result, want) =
-    expect (requestCount result, 1)
-    expect (contains (requestText (result, 0)) want, true)
+oneRequest (d, want) =
+    expect (requestCount d, 1)
+    match listGet (ticketsOf d) 0
+        Success request => expect (contains (stdinOf request) want, true)
+        Error _ => expect (true, false)
 
-confirmRemove (result, key) = oneRequest (tap (result, "details", "Confirm remove ${key}"), "remove ${key}")
+confirmRemove (d, key) = oneRequest (press (d, "Confirm remove ${key}"), "remove ${key}")
 
 missingFooter () =
-    after = completeBoth (startEnvelope loopback, ["tree.no-lock"])
-    expectHides (after, "packages", ["installed ·"])
-    expectShows (after, "packages", ["Installed counts unavailable"])
+    after = completeBoth (started loopback, ["tree.no-lock"])
+    hidesIn (after, "packages", "installed ·")
+    showsIn (after, "packages", "Installed counts unavailable")
 
 installedCounts () =
-    after = completeBoth (startEnvelope loopback, [])
+    after = completeBoth (started loopback, [])
     expectEvidence (after, "root", [
         { label = "Installed", want = "2" },
         { label = "Direct", want = "1" },
         { label = "Missing", want = "1" },
     ])
-    expectHides (after, "packages", ["@demo/ghost"])
-    expectShows (after, "root", ["@demo/ghost · missing from disk", workspace])
-    expect (badgeTone (after, "root", "Audit unverified"), "caution")
+    hidesIn (after, "packages", "@demo/ghost")
+    showsIn (after, "root", "@demo/ghost · missing from disk")
+    showsIn (after, "root", workspace)
+    expect (inkOf (after, "root", "Audit unverified"), toneInk (after, "caution"))
 
 emptyFindings () =
     chosen = catalogDetail (loopback, "@demo/new")
-    expect (badgeTone (chosen, "details", unverified), "caution")
-    expectShows (chosen, "details", [unverified, "requires explicit confirmation"])
-    expectHides (chosen, "details", ["Audited"])
+    expect (inkOf (chosen, "details", unverified), toneInk (chosen, "caution"))
+    showsIn (chosen, "details", unverified)
+    showsIn (chosen, "details", "requires explicit confirmation")
+    hidesIn (chosen, "details", "Audited")
     expect (hasTone (chosen, "details", "good"), false)
     expectDetailButton (chosen, "Add to project", true)
 
 missingDirect () =
-    first = startEnvelope loopback
+    first = started loopback
     graph = JsonObject [Doc::str ("project", workspace), JsonMember "direct" (Doc::strings ["@demo/ghost"]), JsonMember "findings" (Doc::strings []), JsonMember "packages" (JsonArray [packageJson ("@demo/ghost", "e1.r2", true, false, [], [], ["verify.missing"])])]
     report = Doc::write (JsonObject [Doc::num ("status", 0), JsonMember "lines" (Doc::strings [Doc::write graph])])
     ready = graphIn (first, report)
-    chosen = pick (ready, "root", "@demo/ghost")
-    expectShows (chosen, "details", ["verify.missing"])
-    expect (badgeTone (chosen, "details", "Missing from disk"), "caution")
+    chosen = pick (ready, "@demo/ghost")
+    showsIn (chosen, "details", "verify.missing")
+    expect (inkOf (chosen, "details", "Missing from disk"), toneInk (chosen, "caution"))
     expectDetailButton (chosen, "Remove dependency", true)
-    confirmRemove (tap (chosen, "details", "Remove dependency"), "@demo/ghost")
+    confirmRemove (press (chosen, "Remove dependency"), "@demo/ghost")
 
 recordedFindings () =
     chosen = catalogDetail (loopback, "@demo/risky")
-    expectShows (chosen, "details", [cve])
-    expect (badgeTone (chosen, "details", "1 findings"), "danger")
+    showsIn (chosen, "details", cve)
+    expect (inkOf (chosen, "details", "1 findings"), toneInk (chosen, "danger"))
     expectDetailButton (chosen, "Add to project", false)
 
 unverifiedAdd () =
-    first = startEnvelope loopback
-    chosen = chosenIn (cataloguedIn first, "@demo/new")
-    blocked = askAdd (chosen)
-    expect (Doc::flag (stateOf blocked, "pending"), true)
-    expect (Doc::text (stateOf blocked, "confirming"), "")
-    expectNoRequest blocked
-    expect (problemsOf blocked, "")
-    resolved = post (chosen, completedIn (first, 1, graphResult []))
-    asked = awaitingConfirmation (resolved, "Add to project", "add")
-    expectShows (asked, "details", ["Confirm add @demo/new"])
+    first = started loopback
+    catalogued = cataloguedIn (first)
+    // While the graph is still outstanding the frame offers no add control at all, so pending work blocks the add.
+    expect (Views::shows (catalogued.drivenSeen, "Add to project"), false)
+    expect ((storeOf catalogued).packagePending, true)
+    expect ((storeOf catalogued).packageConfirming, "")
+    expectNoRequest catalogued
+    expect (problemsOf catalogued, "")
+    resolved = completedWith (catalogued, ticketAt (first, 1), true, graphResult [])
+    chosen = chosenIn (resolved, "@demo/new")
+    asked = awaitingConfirmation (chosen, "Add to project", "add")
+    showsIn (asked, "details", "Confirm add @demo/new")
     expectDetailButton (asked, "Confirm add @demo/new", true)
 
 confirmedAdd () =
-    first = startEnvelope loopback
+    first = started loopback
     chosen = chosenIn (completeBoth (first, []), "@demo/new")
-    confirmed = tap (askAdd (chosen), "details", "Confirm add @demo/new")
+    confirmed = press (askAdd chosen, "Confirm add @demo/new")
     oneRequest (confirmed, "add @demo/new")
     expect (contains (ticketAt (confirmed, 0)) "package/add:2", true)
-    stale = post (confirmed, completedIn (first, 0, "{\"packages\":[]}"))
-    expect (join (mapList (Doc::items (Doc::field (stale, "patches")), \item => Doc::text (item, "key"))) ",", "")
+    before = storeOf confirmed
+    stale = completedWith (confirmed, ticketAt (first, 0), true, "{\"packages\":[]}")
+    expect (structuralEquals (storeOf stale) before, true)
     expect (problemsOf stale, "")
     expectNotice (stale, "add @demo/new")
 
 hostedAdd () =
     chosen = catalogDetail (hosted, "@demo/new")
     expectDetailButton (chosen, "Add to project", false)
-    refused = askAdd (chosen)
+    refused = askAdd chosen
     expectNoRequest refused
-    expect (Doc::flag (stateOf refused, "fault"), true)
+    expect ((storeOf refused).packageFault, true)
     expectNotice (refused, "installation is disabled")
-    expectShows (refused, "root", ["installation is disabled"])
-    expect (Doc::text (stateOf refused, "confirming"), "")
+    showsIn (refused, "root", "installation is disabled")
+    expect ((storeOf refused).packageConfirming, "")
 
 removeDirect () =
-    chosen = pick (completeBoth (startEnvelope loopback, []), "packages", "@demo/report")
+    chosen = pick (completeBoth (started loopback, []), "@demo/report")
     asked = awaitingConfirmation (chosen, "Remove dependency", "remove")
-    expectShows (asked, "details", ["Removing @demo/report", workspace])
+    showsIn (asked, "details", "Removing @demo/report")
+    showsIn (asked, "details", workspace)
     confirmRemove (asked, "@demo/report")
 
 securityFindings () =
-    after = completeBoth (startEnvelope loopback, [cve])
-    chosen = pick (after, "packages", "@demo/base")
-    expectShows (chosen, "details", [cve])
+    after = completeBoth (started loopback, [cve])
+    chosen = pick (after, "@demo/base")
+    showsIn (chosen, "details", cve)
     expect (hasTone (chosen, "details", "danger"), true)
-    expectShows (after, "root", ["Workspace security findings", cve])
+    showsIn (after, "root", "Workspace security findings")
+    showsIn (after, "root", cve)
 
 unavailableData () =
-    first = startEnvelope loopback
+    first = started loopback
     expectEvidence (first, "root", [{ label = "Installed", want = "" }])
-    expectShows (first, "root", [workspace])
-    failure = "{\"kind\":\"completed\",\"ticket\":${quote (ticketAt (first, 1))},\"ok\":false,\"error\":\"Package executable is missing\",\"now\":9}"
-    failed = post (first, failure)
+    showsIn (first, "root", workspace)
+    failed = completedWith (first, ticketAt (first, 1), false, "Package executable is missing")
     expectEvidence (failed, "root", [{ label = "Installed", want = "" }, { label = "Catalog", want = "" }])
-    expectShows (failed, "root", ["Package data unavailable", workspace])
+    showsIn (failed, "root", "Package data unavailable")
+    showsIn (failed, "root", workspace)
 
 verifiedFetch () =
     selected = catalogDetail (loopback, "@demo/new")
-    asked = askAdd (selected)
-    confirmed = tap (asked, "details", "Confirm add @demo/new")
+    asked = askAdd selected
+    confirmed = press (asked, "Confirm add @demo/new")
     report = "{\"lines\":[],\"status\":0}"
-    added = completedOn (confirmed, report)
+    added = completedWith (confirmed, ticketAt (confirmed, 0), true, report)
     oneRequest (added, "--json fetch --registry")
-    expect (Doc::flag (stateOf added, "pending"), true)
-    fetched = completedOn (added, report)
+    expect ((storeOf added).packagePending, true)
+    fetched = completedWith (added, ticketAt (added, 0), true, report)
     expect (requestCount fetched, 2)
-    failed = post (added, completed (ticketAt (added, 0), "{\"lines\":[\"Digest mismatch\"],\"status\":1}"))
+    failed = completedWith (added, ticketAt (added, 0), true, "{\"lines\":[\"Digest mismatch\"],\"status\":1}")
     expectNoRequest failed
-    expect (Doc::flag (stateOf failed, "pending"), false)
-    expect (Doc::flag (stateOf failed, "fault"), true)
-    expectShows (failed, "root", ["Digest mismatch"])
-    expect (evidenceValue (failed, "root", "Installed"), "")
+    expect ((storeOf failed).packagePending, false)
+    expect ((storeOf failed).packageFault, true)
+    showsIn (failed, "root", "Digest mismatch")
+    expect (pairValue (regionWalk (failed, "root"), "Installed"), "")
 
 exactTests [
     { name = "missing workspace graph never reports zero installed in the package footer", work = missingFooter },
@@ -313,3 +343,5 @@ exactTests [
     { name = "unavailable package data hides counts and keeps the selected project", work = unavailableData },
     { name = "add waits for verified fetch before refreshing installed packages", work = verifiedFetch }
 ]
+
+

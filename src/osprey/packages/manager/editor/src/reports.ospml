@@ -46,30 +46,8 @@ module Reports
             Success doc => report doc
         _ => failure "Package command must return exactly one JSON report"
 
-    processCode result = match jsonText result
-        Success _ => Success(value = 0)
-        Error _ => Fields::intField (result, "code", completionLabel)
-
-    checkedPair (code, parsed) = match parsed
-        Error problem => match code == 0
-            true => Error(message = problem)
-            false => failure "Package command exited with code ${code}"
-        Success report => match code == 0 || report.reportStatus != 0
-            true => Success(value = report)
-            false => failure "Package command exited with code ${code}"
-
-    export process result = match jsonText result
-        Success stdout => parseReport stdout
-        Error _ => Checked::andThen (processCode result, \code =>
-            Checked::andThen (Fields::stringField (result, "stdout", completionLabel), \stdout => checkedPair (code, parseReport stdout)))
-
-    bodyAt (result, status) = match status == 200
-        false => failure "Registry returned HTTP ${status}"
-        true => Fields::stringField (result, "body", completionLabel)
-
-    body result = match jsonText result
-        Success text => Success(value = text)
-        Error _ => Checked::andThen (Fields::intField (result, "status", completionLabel), \status => bodyAt (result, status))
+    (** The CLI's raw output as the completion text carries it: exactly one JSON report, or why not. *)
+    export process stdout = parseReport stdout
 
     detail report = match isEmpty report.reportLines
         true => "Package command failed with semantic status ${report.reportStatus}"
@@ -92,5 +70,3 @@ module Reports
                 Success doc => Checked::andThen (Packages::validGraph doc, \graph => Success(value = ResolvedGraph(graphValue = graph)))
 
     export graph result = Checked::andThen (process result, graphLine)
-
-    export catalogBody result = body result

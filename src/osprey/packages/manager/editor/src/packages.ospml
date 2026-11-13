@@ -177,14 +177,6 @@ module Packages
         JsonMember "findings" (Doc::strings item.entryFindings),
     ]
 
-    decodePackage doc = PackageEntry(
-        entryIdentity = EntryIdentity(entryKey = Doc::text (doc, "key"), entryVersion = Doc::text (doc, "version"), entryDigest = Doc::text (doc, "digest")),
-        entryDirect = Doc::flag (doc, "direct"),
-        entryPresent = Doc::flag (doc, "present"),
-        entryDependencies = Doc::texts (doc, "dependencies"),
-        entryDependents = Doc::texts (doc, "dependents"),
-        entryFindings = Doc::texts (doc, "findings"))
-
     encodeCatalogEntry item = JsonObject [
         Doc::str ("key", item.catalogKey),
         JsonMember "versions" (Doc::strings item.catalogVersions),
@@ -192,15 +184,9 @@ module Packages
         Doc::bit ("evidence", item.catalogEvidence),
     ]
 
-    decodeCatalogEntry doc = CatalogEntry(catalogKey = Doc::text (doc, "key"), catalogVersions = Doc::texts (doc, "versions"), catalogFindings = Doc::texts (doc, "findings"), catalogEvidence = Doc::flag (doc, "evidence"))
-
     export encodePackages items = JsonArray (mapList (items, \item => encodePackage item))
 
-    export decodePackages doc = mapList (Doc::items doc, \item => decodePackage item)
-
     export encodeCatalog items = JsonArray (mapList (items, \item => encodeCatalogEntry item))
-
-    export decodeCatalog doc = mapList (Doc::items doc, \item => decodeCatalogEntry item)
 
     export validGraph doc = graph doc
 

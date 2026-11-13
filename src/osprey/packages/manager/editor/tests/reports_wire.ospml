@@ -11,13 +11,12 @@ reportFailed result = match result
 
 test ("editor accepts canonical report followed by native status line", \() =>
     output = "{\"lines\":[\"added @demo/report\"],\"status\":0}\nstatus: 0\n"
-    expect (reportStatus (Reports::process (JsonString output)), 0))
+    expect (reportStatus (Reports::process output), 0))
 
 test ("editor rejects crashed and ambiguous subprocess reports", \() =>
     success = "{\"lines\":[],\"status\":0}"
-    crashed = JsonObject [Doc::num ("code", 1), Doc::str ("stdout", success)]
-    expect (reportFailed (Reports::process crashed), true)
-    expect (reportFailed (Reports::process (JsonString (success + "\n" + success))), true))
+    expect (reportFailed (Reports::process ""), true)
+    expect (reportFailed (Reports::process (success + "\n" + success)), true))
 
 test ("editor rejects loopback hostname prefix spoofs", \() =>
     expect (Packages::isLoopback "http://localhost.attacker.test", false)
