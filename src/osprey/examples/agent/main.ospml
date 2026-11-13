@@ -36,7 +36,7 @@ kept next =
 argument text = hosted (\() => kept (Surfaces::argued (held, text)))
 
 (** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
-open (now, offset, platform, home, dark) = hosted (\() => kept (Surfaces::open (held, App::program (), Runtime::host (now, offset, platform, home, []), dark)))
+open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, App::program (), now, offset, platform, home, dark)))
 
 (** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
-event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::event (held, App::program (), ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = shift))))
+event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, App::program (), now, kind, ordinal, words, detail, x, y, down, shift)))

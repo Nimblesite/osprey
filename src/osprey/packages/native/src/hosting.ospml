@@ -108,6 +108,14 @@ module Hosting
         11 => Surfaces::redrawn (held(surfaceDark = touch.touchDown), program)
         _ => delivered (held, program, touch)
 
+    (** The first frame a boundary's `open` draws for the host's clock, zone offset, platform, home folder and appearance. *)
+    export opened<S, A> : (Surface<S, A>, Program<S, A>, int, int, string, string, bool) -> Surface<S, A> ![ViewStream | e]
+    opened (held, program, now, offset, platform, home, dark) = Surfaces::open (held, program, Runtime::host (now, offset, platform, home, []), dark)
+
+    (** The surface after the host event a boundary's `event` was called with, field by field. *)
+    export touched<S, A> : (Surface<S, A>, Program<S, A>, int, int, int, string, string, float, float, bool, bool) -> Surface<S, A> ![ViewStream | e]
+    touched (held, program, now, kind, ordinal, words, detail, x, y, down, shift) = event (held, program, Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = shift))
+
     (** What a boundary's `event` returns: 0 when the event was delivered, 1 when it was refused. *)
     export answer<S, A> : Surface<S, A> -> int
     answer held = Pick::either (held.surfaceProblem == "", 0, 1)
