@@ -93,13 +93,11 @@ literalCaseUploaded (ints, floats, flags, signed, wide) =
     checkAll("buffer literals", [
         lengthIs (ints, 5), lengthIs (floats, 4), lengthIs (flags, 3), lengthIs (signed, 4), lengthIs (wide, 2), uploaded ([9], \up => lengthIs (up, 1)), emptyUploads (), widthOf ints == 5, elementsFrom (ints, 0, 0, [3, 1, 4, 1, 5]), lastIs (ints, 0, 5), elementsFrom (floats, 0, 9.5, [0.25, 0.5, 0.75, 1.0]), lastIs (floats, 9.5, 1.0), elementIs (flags, 0, false, true), elementIs (flags, 1, true, false), elementIs (flags, 2, false, true), lastIs (flags, false, true), elementIs (signed, 0, 0, (-3)), elementIs (signed, 1, 9, 0), elementsFrom (signed, 2, 0, [7, (-1)]), elementsFrom (wide, 0, 0, [4611686018427387904, -4611686018427387904]), uploaded ([9], \up => elementIs (up, 0, 0, 9)), sumIs (ints, 14), sumIs (signed, 3), floatSumsTo (floats, 0.0, 2.5), oddCountIs (flags, 2)
     ])
-(** The list values the copy path pins: a four-int source and a lone int. *)
-copySource = [2, 4, 6, 8]
-loneSource = [11]
 (** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists. *)
-listCopyCase () = withIndices (0, \indices0 => withUpload(copySource, \asCopy => withBuffer(fromGpu (asCopy), \read0 => withUpload(read0, \relayed => withBuffer(fromGpu (indices0), \none => checkAll("list copy path", [
-        listLengthIs (copySource, 4), lengthIs (asCopy, 4), elementsFrom (asCopy, 0, 0, [2, 4, 6, 8]), lastIs (asCopy, 0, 8), missesAll (asCopy, [4, (-1)]), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), elementIs (relayed, 2, 0, 6), sumIs (relayed, 20), uploaded (loneSource, \up => lengthIs (up, 1)), uploaded (loneSource, \up => elementIs (up, 0, 0, 11)), uploaded (loneSource, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploaded (none, \up => lengthIs (up, 0)), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (copySource, \up => widthOf up == widthOf asCopy), uploaded (copySource, \up => gpuSatisfies(gpuFold(up, 0, addInts), \one => gpuSatisfies(gpuFold(asCopy, 0, addInts), \other => one == other)))
-]))))))
+listCopyCase () = withIndices (0, \indices0 =>
+    source = [2, 4, 6, 8]
+    lone = [11]
+    withUpload(source, \asCopy => withBuffer(fromGpu (asCopy), \read0 => withUpload(read0, \relayed => withBuffer(fromGpu (indices0), \none => checkAll("list copy path", [listLengthIs (source, 4), lengthIs (asCopy, 4), elementsFrom (asCopy, 0, 0, [2, 4, 6, 8]), lastIs (asCopy, 0, 8), missesAll (asCopy, [4, (-1)]), rendersAs (asCopy, 0, "2"), sumIs (asCopy, 20), lengthIs (relayed, 4), elementIs (relayed, 2, 0, 6), sumIs (relayed, 20), uploaded (lone, \up => lengthIs (up, 1)), uploaded (lone, \up => elementIs (up, 0, 0, 11)), uploaded (lone, \up => lastIs (up, 0, 11)), listLengthIs (none, 0), uploaded (none, \up => lengthIs (up, 0)), uploaded (none, \up => sumsTo (up, 7, 7)), uploaded (source, \up => widthOf up == widthOf asCopy), uploaded (source, \up => gpuSatisfies(gpuFold(up, 0, addInts), \one => gpuSatisfies(gpuFold(asCopy, 0, addInts), \other => one == other)))]))))))
 (** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () = withIndices (0, \indices0 => withIndices (6, \indices6 => withUpload([3, 1, 4, 1, 5], \buf => withBuffer(fromGpu (buf), \back => withUpload(back, \viaList => withBuffer(fromGpu (viaList), \twice => checkAll("round trip", [
     lengthIs (buf, 5), listLengthIs (back, 5), listHolds (back, 0, 0, 3), listHolds (back, 1, 0, 1), listHolds (back, 2, 0, 4), listHolds (back, 3, 0, 1), listHolds (back, 4, 0, 5), listHolds (back, 5, 99, 99), listHolds (back, (-1), 99, 99), lengthIs (viaList, 5), elementsAt (viaList, 0, [0, 2, 4], [3, 4, 5]), misses (viaList, 5), sumIs (viaList, 14), listLengthIs (twice, 5), listHolds (twice, 4, 0, 5), uploaded (twice, \up => sumsTo (up, 0, 14)), readsBack (indices0, 0), survivesRoundTrip (indices6, 6), roundTripSumsTo (indices6, 15), roundTripIs (indices6, \again => elementIs (again, 5, 0, 5))
@@ -182,7 +180,7 @@ denseRead (buffer, values, i) = match gpuGet (buffer, i)
 denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
     Error _ => true
     Success _ => false
-(** [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths and reads each index back through gpuGet. *)
+(** [GPU-BUFFER-ELEM]: every scalar width narrows into dense storage and widens back exactly — gpuGet reads each index at the element's own width, the identity kernel and fromGpu both return the source list, and out-of-bounds reads error. *)
 denseRoundTrip (label, values) = withIndices (length values, \indices => withUpload(values, \buffer => withBuffer(gpuMap (buffer, \value => value), \mapped => withBuffer(gpuZipWith (indices, buffer, \(index, value) => gpuGet (buffer, index) ?: value), \gathered => checkAll label [
     lengthIs (buffer, length values), materializesAs (buffer, values), materializesAs (mapped, values), materializesAs (gathered, values), range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)), denseOutOfBounds (buffer, (-1)), denseOutOfBounds (buffer, length values)
 ]))))
@@ -199,16 +197,16 @@ denseWidthsCase () =
     i32 = [-2147483648, 0, 2147483647]
     u32 : List<uint32>
     u32 = [0, 2147483648, 4294967295]
+    f16 : List<float16>
+    f16 = [-0.5, 0.0, 1.5]
+    f32 : List<float32>
+    f32 = [-0.5, 0.0, 1.5]
     denseRoundTrip ("dense int8", i8)
     denseRoundTrip ("dense uint8", u8)
     denseRoundTrip ("dense int16", i16)
     denseRoundTrip ("dense uint16", u16)
     denseRoundTrip ("dense int32", i32)
     denseRoundTrip ("dense uint32", u32)
-    f16 : List<float16>
-    f16 = [-0.5, 0.0, 1.5]
-    f32 : List<float32>
-    f32 = [-0.5, 0.0, 1.5]
     denseRoundTrip ("dense float16", f16)
     denseRoundTrip ("dense float32", f32)
     denseRoundTrip ("dense bool", [true, false, true])
