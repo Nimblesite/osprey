@@ -1,9 +1,10 @@
 import Foundation
 
-// Implements [UI-EFFECTS]: each request kind maps to one mechanical adapter
-// that runs off the main actor, is bounded by the limits Osprey named and can
-// be cancelled by ticket. Adapters return raw platform facts or a typed error;
-// they decide nothing.
+// Implements [UI-EFFECTS]: each capability code maps to one mechanical adapter that runs off the
+// main actor, is bounded by the limits Osprey named and can be cancelled by ticket. Adapters
+// take the typed `Ask` the frame's ask rows became, return raw platform facts as their result
+// document — the same document the JSON host produced, as text — or a typed error; they decide
+// nothing.
 
 public enum CapabilityError: Error, Equatable, CustomStringConvertible {
     case unknownKind(String)
@@ -27,18 +28,101 @@ public enum CapabilityError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-public typealias Outcome = Result<JSONValue, CapabilityError>
+/// A capability's result as the application reads it: the result document as compact JSON text,
+/// or the bare path a chooser completes with ([NATIVE-SHM-ASK]).
+public indirect enum ResultDocument: Sendable, Equatable {
+    case null
+    case bool(Bool)
+    case number(Double)
+    case string(String)
+    case array([ResultDocument])
+    case object([String: ResultDocument])
+
+    /// Serialized as compact JSON text with sorted keys, so equal values encode equally.
+    public var text: String {
+        switch self {
+        case .null: return "null"
+        case let .bool(value): return value ? "true" : "false"
+        case let .number(value): return value == value.rounded() && abs(value) < 9e15 ? String(Int(value)) : String(value)
+        case let .string(value): return ResultDocument.quote(value)
+        case let .array(items): return "[" + items.map(\.text).joined(separator: ",") + "]"
+        case let .object(members):
+            let entries = members.sorted { $0.key < $1.key }
+            return "{" + entries.map { ResultDocument.quote($0.key) + ":" + $0.value.text }.joined(separator: ",") + "}"
+        }
+    }
+
+    public var string: String? { if case let .string(value) = self { return value } else { return nil } }
+    public var number: Double? { if case let .number(value) = self { return value } else { return nil } }
+    public var object: [String: ResultDocument]? { if case let .object(value) = self { return value } else { return nil } }
+    public var array: [ResultDocument]? { if case let .array(value) = self { return value } else { return nil } }
+
+    /// JSON string quoting through Foundation, so escapes are never hand-written.
+    public static func quote(_ value: String) -> String {
+        let data = try? JSONSerialization.data(withJSONObject: [value], options: [.withoutEscapingSlashes])
+        let wrapped = data.flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        return String(wrapped.dropFirst().dropLast())
+    }
+}
+
+/// Literals spell documents the way adapters build them; duplicate keys keep the later value.
+extension ResultDocument: ExpressibleByDictionaryLiteral, ExpressibleByArrayLiteral, ExpressibleByStringLiteral,
+                            ExpressibleByBooleanLiteral, ExpressibleByIntegerLiteral, ExpressibleByFloatLiteral,
+                            ExpressibleByNilLiteral {
+    public init(dictionaryLiteral elements: (String, ResultDocument)...) {
+        self = .object(Dictionary(elements, uniquingKeysWith: { _, later in later }))
+    }
+
+    public init(arrayLiteral elements: ResultDocument...) { self = .array(elements) }
+    public init(stringLiteral value: String) { self = .string(value) }
+    public init(booleanLiteral value: Bool) { self = .bool(value) }
+    public init(integerLiteral value: Int) { self = .number(Double(value)) }
+    public init(floatLiteral value: Double) { self = .number(value) }
+    public init(nilLiteral: ()) { self = .null }
+}
+
+/// What an adapter hands its runner: a result document, or a chooser's bare path.
+public enum AskResult: Sendable, Equatable {
+    case document(ResultDocument)
+    case bare(String)
+
+    /// The completion's text: the document as JSON text, or the path as it is.
+    public var text: String {
+        switch self {
+        case let .document(document): return document.text
+        case let .bare(path): return path
+        }
+    }
+}
 
 /// An adapter writes staged slices; only its live successful completion publishes them.
 public protocol CapabilityAdapter: Sendable {
     var kinds: [String] { get }
-    func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue
+    func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult
     /// A completed result nobody will receive, because its request was cancelled or replaced first.
-    func discarded(_ request: Request, _ value: JSONValue)
+    func discarded(_ ask: Ask, _ value: AskResult)
 }
 
 public extension CapabilityAdapter {
-    func discarded(_ request: Request, _ value: JSONValue) {}
+    func discarded(_ ask: Ask, _ value: AskResult) {}
+}
+
+/// The argument a required text is missing from, as its error spells it.
+func missing(_ ask: Ask, _ name: String) -> CapabilityError {
+    .invalidArgument("\(ask.kind) has no valid \(name)")
+}
+
+/// A required text at argument `field`, refusing an ask that carries none.
+func required(_ ask: Ask, text field: Int64, _ name: String) throws -> String {
+    guard ask.fields.contains(where: { $0.field == field }) else { throw missing(ask, name) }
+    return ask.text(field)
+}
+
+/// A required whole number at argument `field`, refusing an ask that carries none; the adapter
+/// checks its range.
+func required(_ ask: Ask, whole field: Int64, _ name: String) throws -> Int {
+    guard let held = ask.fields.first(where: { $0.field == field }) else { throw missing(ask, name) }
+    return Int(held.number)
 }
 
 @MainActor
@@ -56,22 +140,25 @@ public final class CapabilityRunner {
 
     public var kinds: [String] { adapters.keys.sorted() }
 
-    public func run(_ request: Request, completion: @escaping @MainActor (Outcome) -> Void) {
-        if request.kind == "cancel" { return cancel(request, completion: completion) }
-        guard let adapter = adapters[request.kind] else { return completion(.failure(.unknownKind(request.kind))) }
+    public func knows(_ kind: String) -> Bool { adapters[kind] != nil }
+
+    public func run(_ ask: Ask, completion: @escaping @MainActor (Result<AskResult, CapabilityError>) -> Void) {
+        if ask.kind == "cancel" { return cancel(ask, completion: completion) }
+        guard let adapter = adapters[ask.kind] else { return completion(.failure(.unknownKind(ask.kind))) }
         // [UI-EFFECTS]: cancelled/late writes never reach the core.
-        inflight.removeValue(forKey: request.ticket)?.task.cancel()
+        inflight.removeValue(forKey: ask.ticket)?.task.cancel()
         let store = slices.staged(), identity = UUID()
         let task = Task { [weak self] in
-            let outcome = await CapabilityRunner.outcome(adapter, request, store)
-            let published = self?.publish(request.ticket, identity, store, outcome, Task.isCancelled) ?? .failure(.cancelled)
-            if case .success(let value) = outcome, case .failure = published { adapter.discarded(request, value) }
+            let outcome = await CapabilityRunner.outcome(adapter, ask, store)
+            let published = self?.publish(ask.ticket, identity, store, outcome, Task.isCancelled) ?? .failure(.cancelled)
+            if case let .success(value) = outcome, case .failure = published { adapter.discarded(ask, value) }
             completion(published)
         }
-        inflight[request.ticket] = (identity, task)
+        inflight[ask.ticket] = (identity, task)
     }
 
-    private func publish(_ ticket: String, _ identity: UUID, _ staged: SliceStore, _ outcome: Outcome, _ cancelled: Bool) -> Outcome {
+    private func publish(_ ticket: String, _ identity: UUID, _ staged: SliceStore,
+                         _ outcome: Result<AskResult, CapabilityError>, _ cancelled: Bool) -> Result<AskResult, CapabilityError> {
         guard inflight[ticket]?.identity == identity else { return .failure(.cancelled) }
         inflight.removeValue(forKey: ticket)
         guard !cancelled else { return .failure(.cancelled) }
@@ -79,17 +166,13 @@ public final class CapabilityRunner {
         return outcome
     }
 
-    private func cancel(_ request: Request, completion: @escaping @MainActor (Outcome) -> Void) {
-        do {
-            inflight.removeValue(forKey: try request.text("target"))?.task.cancel()
-            completion(.success(.object([:])))
-        } catch {
-            completion(.failure(.platform(error.localizedDescription)))
-        }
+    private func cancel(_ ask: Ask, completion: @escaping @MainActor (Result<AskResult, CapabilityError>) -> Void) {
+        inflight.removeValue(forKey: ask.text(1))?.task.cancel()
+        completion(.success(.document(.object([:]))))
     }
 
-    private nonisolated static func outcome(_ adapter: CapabilityAdapter, _ request: Request, _ store: SliceStore) async -> Outcome {
-        do { return .success(try await adapter.perform(request, slices: store)) } catch let problem as CapabilityError { return .failure(problem) } catch is CancellationError { return .failure(.cancelled) } catch { return .failure(.platform(error.localizedDescription)) }
+    private nonisolated static func outcome(_ adapter: CapabilityAdapter, _ ask: Ask, _ store: SliceStore) async -> Result<AskResult, CapabilityError> {
+        do { return .success(try await adapter.perform(ask, slices: store)) } catch let problem as CapabilityError { return .failure(problem) } catch is CancellationError { return .failure(.cancelled) } catch { return .failure(.platform(error.localizedDescription)) }
     }
 }
 

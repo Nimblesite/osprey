@@ -1,8 +1,9 @@
 import Foundation
 
 // Implements [UI-EFFECTS] and [AGENT-PROVIDERS]: HTTPS, or HTTP on this machine, no redirects,
-// cookies or disk cache, a total resource deadline and a streamed response
-// limit [UI-EFFECTS]. Nothing is retried or published partially.
+// cookies or disk cache, a total resource deadline and a streamed response limit [UI-EFFECTS].
+// Nothing is retried or published partially. The request's members arrive as the typed fields
+// of its ask rows: method 1, URL 2, headers 3, body 4, limit 5, deadline 6, slice 7.
 
 public struct HttpAdapter: CapabilityAdapter {
     public let kinds = ["http"]
@@ -10,25 +11,24 @@ public struct HttpAdapter: CapabilityAdapter {
     public init() { transport = Self.session }
     init(session: URLSession) { transport = session }
 
-    public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
-        let timeout = max(try request.number("timeout"), 1)
-        let outgoing = try Self.outgoing(request, timeout: timeout)
-        let limit = try request.number("limit")
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
+        let timeout = max(try required(ask, whole: 6, "deadline"), 1)
+        let outgoing = try Self.outgoing(ask, timeout: timeout)
+        let limit = try required(ask, whole: 5, "limit")
         guard limit >= 0, limit < Int.max else { throw CapabilityError.invalidArgument("Invalid response byte limit") }
         let (data, response) = try await received(outgoing, limit: limit, timeout: timeout)
         let receipt = try Self.receipt(response)
         try Task.checkCancellation()
-        slices.write(try request.text("slice"), try Bounded.text(data))
-        return receipt
+        slices.write(try required(ask, text: 7, "slice"), try Bounded.text(data))
+        return .document(receipt)
     }
 
-
     // [UI-EFFECTS] Raw bounded transport metadata; the core interprets it.
-    private static func receipt(_ response: HTTPURLResponse) throws -> JSONValue {
+    private static func receipt(_ response: HTTPURLResponse) throws -> ResultDocument {
         let fields = response.allHeaderFields
         guard fields.count <= 100 else { throw CapabilityError.tooLarge(fields.count, 100) }
         var bytes = 0
-        var headers: [JSONValue] = []
+        var headers: [ResultDocument] = []
         for (key, raw) in fields {
             guard let name = key as? String, let value = raw as? String else {
                 throw CapabilityError.platform("HTTP response metadata is not textual")
@@ -62,13 +62,13 @@ public struct HttpAdapter: CapabilityAdapter {
         url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(url.host ?? "")
     }
 
-    static func outgoing(_ request: Request, timeout: Int) throws -> URLRequest {
-        guard let url = URL(string: try request.text("url")), url.scheme == "https" && url.host != nil || isLoopback(url) else { throw CapabilityError.notAllowed("Only https URLs, or http on this machine, are allowed") }
+    static func outgoing(_ ask: Ask, timeout: Int) throws -> URLRequest {
+        guard let url = URL(string: try required(ask, text: 2, "url")), url.scheme == "https" && url.host != nil || isLoopback(url) else { throw CapabilityError.notAllowed("Only https URLs, or http on this machine, are allowed") }
         var outgoing = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: Double(timeout) / 1000)
-        outgoing.httpMethod = try request.text("method")
+        outgoing.httpMethod = try required(ask, text: 1, "method")
         outgoing.httpShouldHandleCookies = false
-        request.members["headers"]?.array?.forEach { header in outgoing.setValue(header.object?["value"]?.string, forHTTPHeaderField: header.object?["name"]?.string ?? "") }
-        let body = try request.text("body")
+        ask.pairs(3).forEach { header in outgoing.setValue(header.1, forHTTPHeaderField: header.0) }
+        let body = try required(ask, text: 4, "body")
         if !body.isEmpty { outgoing.httpBody = Data(body.utf8) }
         return outgoing
     }

@@ -2,16 +2,17 @@
 import UIKit
 import UniformTypeIdentifiers
 
-// [CAST-MOBILE-DELIVERY] Security-scoped documents are copied into app storage
-// before Osprey sees their paths; cancelling the picker never changes the file.
+// [CAST-MOBILE-DELIVERY] Security-scoped documents are copied into app storage before Osprey
+// sees their paths; cancelling the picker never changes the file. A chooser completes with the
+// bare path, or nothing at all when it was cancelled ([NATIVE-SHM-ASK]).
 public struct DocumentAdapter: CapabilityAdapter {
     public let kinds = ["choose-file"]
     public init() {}
 
-    public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
-        let types = try request.texts("types").compactMap { UTType(filenameExtension: $0) }
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
+        let types = ask.texts(1).compactMap { UTType(filenameExtension: $0) }
         guard !types.isEmpty else { throw CapabilityError.invalidArgument("No supported file types") }
-        return try await DocumentPicker.choose(types)
+        return .bare(try await DocumentPicker.choose(types))
     }
 }
 
@@ -19,7 +20,7 @@ public struct DocumentAdapter: CapabilityAdapter {
 private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegate {
     private static var active: DocumentPicker?
     private let picker: UIDocumentPickerViewController
-    private var continuation: CheckedContinuation<JSONValue, Error>?
+    private var continuation: CheckedContinuation<String, Error>?
 
     private init(_ types: [UTType]) {
         picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
@@ -28,7 +29,7 @@ private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegat
         picker.allowsMultipleSelection = false
     }
 
-    static func choose(_ types: [UTType]) async throws -> JSONValue {
+    static func choose(_ types: [UTType]) async throws -> String {
         guard active == nil else { throw CapabilityError.notAllowed("A file picker is already open") }
         let coordinator = DocumentPicker(types)
         active = coordinator
@@ -43,7 +44,7 @@ private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegat
         }
     }
 
-    private func present(_ continuation: CheckedContinuation<JSONValue, Error>) {
+    private func present(_ continuation: CheckedContinuation<String, Error>) {
         self.continuation = continuation
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }
@@ -55,7 +56,7 @@ private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegat
         root.present(picker, animated: true)
     }
 
-    private func finish(_ result: Result<JSONValue, Error>) {
+    private func finish(_ result: Result<String, Error>) {
         let waiting = continuation
         continuation = nil
         picker.dismiss(animated: true)
@@ -63,7 +64,7 @@ private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegat
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        finish(.success(.object(["cancelled": .bool(true), "path": .string("")])))
+        finish(.success(""))
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
@@ -81,8 +82,54 @@ private final class DocumentPicker: NSObject, @MainActor UIDocumentPickerDelegat
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
             try FileManager.default.copyItem(at: source, to: target)
-            finish(.success(.object(["cancelled": .bool(false), "path": .string(target.path)])))
+            finish(.success(target.path))
         } catch { finish(.failure(CapabilityError.platform("Cannot import the selected file: \(error.localizedDescription)"))) }
+    }
+}
+#elseif os(macOS)
+import AppKit
+import UniformTypeIdentifiers
+
+// The system's open and save panels: a chooser completes with the bare path the person chose,
+// or "" when they cancelled ([NATIVE-SHM-ASK]). Panels run on the main actor, as AppKit requires.
+public struct DocumentAdapter: CapabilityAdapter {
+    public let kinds = ["choose-file", "choose-folder", "save-file"]
+    public init() {}
+
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
+        .bare(await MainActor.run { (try? Self.choose(ask)) ?? "" })
+    }
+
+    /// The panel this ask opens; `nil` — an empty completion — when it was cancelled.
+    private static func choose(_ ask: Ask) throws -> String {
+        switch ask.kind {
+        case "choose-file": return try openPanel(ask)
+        case "choose-folder": return try folderPanel()
+        default: return try savePanel(ask)
+        }
+    }
+
+    private static func openPanel(_ ask: Ask) throws -> String {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = ask.texts(1).compactMap { UTType(filenameExtension: $0) }
+        return panel.runModal() == .OK ? panel.url?.path ?? "" : ""
+    }
+
+    private static func folderPanel() throws -> String {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        return panel.runModal() == .OK ? panel.url?.path ?? "" : ""
+    }
+
+    private static func savePanel(_ ask: Ask) throws -> String {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = ask.text(1)
+        return panel.runModal() == .OK ? panel.url?.path ?? "" : ""
     }
 }
 #endif

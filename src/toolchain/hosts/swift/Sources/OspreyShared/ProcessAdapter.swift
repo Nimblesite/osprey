@@ -2,10 +2,10 @@
 import AppKit
 import Foundation
 
-// Implements [UI-EFFECTS]: one executable with arguments, no shell, a deadline,
-// separate stdout/stderr and an output limit. The exit status is reported, never
-// interpreted. The person's PATH is extended with the usual tool folders, because
-// an app opened from the Finder inherits almost none of it.
+// Implements [UI-EFFECTS]: one executable with arguments, no shell, a deadline, separate
+// stdout/stderr and an output limit. The exit status is reported, never interpreted. The
+// person's PATH is extended with the usual tool folders, because an app opened from the Finder
+// inherits almost none of it. Requests arrive as the typed fields of their ask rows.
 
 /// Shared launch setup for one-shot and long-lived processes ([UI-EFFECTS-PROCESS]).
 enum ProcessLaunch {
@@ -40,15 +40,16 @@ public struct RunAdapter: CapabilityAdapter {
     public let kinds = ["run"]
     public init() {}
 
-    public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
-        let executable = try request.text("executable")
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
+        let executable = try required(ask, text: 1, "executable")
         guard executable.hasPrefix("/") else { throw CapabilityError.notAllowed("Executable must be an absolute path") }
-        guard try !request.flag("plist") else { throw CapabilityError.notAllowed("This host does not convert property lists") }
-        let slice = try request.text("slice")
-        let launch = Launch(executable: executable, arguments: try request.texts("arguments"), timeout: try request.number("timeout"), limit: try request.number("limit"))
+        guard !ask.flag(5) else { throw CapabilityError.notAllowed("This host does not convert property lists") }
+        let slice = try required(ask, text: 6, "slice")
+        let launch = Launch(executable: executable, arguments: ask.texts(2),
+                            timeout: try required(ask, whole: 3, "timeout"), limit: try required(ask, whole: 4, "limit"))
         let run = try await withTaskCancellationHandler { try await launch.run() } onCancel: { launch.stop() }
         slices.write(slice, String(decoding: run.stdout, as: UTF8.self))
-        return .object(["status": .number(Double(run.status)), "stderr": .string(String(decoding: run.stderr.prefix(65536), as: UTF8.self))])
+        return .document(["status": .number(Double(run.status)), "stderr": .string(String(decoding: run.stderr.prefix(65536), as: UTF8.self))])
     }
 }
 
@@ -405,31 +406,32 @@ public struct ProcessAdapter: CapabilityAdapter {
     public let kinds = ["process-start", "process-write", "process-read", "process-stop"]
     public init() {}
 
-    public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
-        switch request.kind {
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
+        switch ask.kind {
         case "process-start":
-            let name = try request.text("name")
-            let pid = try ProcessPool.shared.start(name: name, command: try request.text("command"), arguments: try request.texts("arguments"), env: try request.env())
-            return .object(["pid": .number(Double(pid))])
+            let name = try required(ask, text: 4, "name")
+            let pid = try ProcessPool.shared.start(name: name, command: try required(ask, text: 1, "command"),
+                                                   arguments: ask.texts(2), env: Dictionary(ask.pairs(3), uniquingKeysWith: { _, later in later }))
+            return .document(["pid": .number(Double(pid))])
         case "process-write":
-            let written = try await ProcessPool.shared.write(name: try request.text("name"), bytes: Data(try request.text("input").utf8))
-            return .object(["written": .number(Double(written))])
+            let written = try await ProcessPool.shared.write(name: try required(ask, text: 1, "name"), bytes: Data(try required(ask, text: 2, "input").utf8))
+            return .document(["written": .number(Double(written))])
         case "process-read":
-            let timeout = max(try request.number("timeout"), 0)
-            let read = try await ProcessPool.shared.read(name: try request.text("name"), limit: try request.number("limit"), timeout: .milliseconds(timeout))
-            return .object(["output": .string(String(decoding: read.output, as: UTF8.self)), "stderr": .string(String(decoding: read.stderr, as: UTF8.self)), "exited": .bool(read.ended), "status": .number(Double(read.status))])
+            let timeout = max(try required(ask, whole: 3, "deadline"), 0)
+            let read = try await ProcessPool.shared.read(name: try required(ask, text: 1, "name"), limit: try required(ask, whole: 2, "limit"), timeout: .milliseconds(timeout))
+            return .document(["output": .string(String(decoding: read.output, as: UTF8.self)), "stderr": .string(String(decoding: read.stderr, as: UTF8.self)), "exited": .bool(read.ended), "status": .number(Double(read.status))])
         default:
-            return .object(["stopped": .bool(ProcessPool.shared.stop(name: try request.text("name")))])
+            return .document(["stopped": .bool(ProcessPool.shared.stop(name: try required(ask, text: 1, "name")))])
         }
     }
 
     /// A read replaced just after it took output: those bytes belong to the read that replaced it.
-    public func discarded(_ request: Request, _ value: JSONValue) {
-        guard request.kind == "process-read", let name = try? request.text("name"), case let .object(read) = value,
-              case let .string(output)? = read["output"], case let .string(stderr)? = read["stderr"] else { return }
+    public func discarded(_ ask: Ask, _ value: AskResult) {
+        guard ask.kind == "process-read", case let .document(document) = value,
+              let name = try? required(ask, text: 1, "name"),
+              case let .string(output)? = document.object?["output"], case let .string(stderr)? = document.object?["stderr"] else { return }
         ProcessPool.shared.unread(name: name, output: Data(output.utf8), stderr: Data(stderr.utf8))
     }
 }
-
 
 #endif

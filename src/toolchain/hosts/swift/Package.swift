@@ -1,35 +1,33 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// The SwiftUI hosts for Osprey Native applications ([NATIVE-HOSTS-FAMILY]).
-// `run.sh` compiles an application to `build/app/libOspreyApp.a` and its
-// generated header, which the `OspreyApp` C target exposes; `view.sh` compiles
-// one to `build/view/libOspreyViewApp.a` for `OspreyViewApp`, whose
-// shared-memory rows `OspreyShared` draws. `swift build` alone cannot build a
-// host, because the application is linked in.
+// The SwiftUI host for Osprey Native applications ([NATIVE-HOSTS-FAMILY]).
+// `view.sh` (and `run.sh`, which opens the same host as a bundled app) compiles
+// an application to `build/app/libOspreyApp.a` and its generated header,
+// which the `OspreyViewApp` C target exposes; `OspreyShared` leases the frame
+// the application writes, checks every row and draws it, and answers the
+// capabilities its asks name. `swift build` alone cannot build the host,
+// because the application is linked in.
 let package = Package(
     name: "OspreyHost",
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
-        .library(name: "OspreyNative", targets: ["OspreyNative"]),
-        .executable(name: "OspreyHost", targets: ["OspreyHost"]),
+        .library(name: "OspreyShared", targets: ["OspreyShared"]),
         .executable(name: "OspreyViewHost", targets: ["OspreyViewHost"]),
     ],
     targets: [
-        .target(name: "OspreyNative"),
-        .target(
-            name: "OspreyApp",
-            path: "Sources/OspreyApp",
-            linkerSettings: [.unsafeFlags(["-L", "build/app"]), .linkedLibrary("OspreyApp")]
-        ),
         .target(
             name: "OspreyViewApp",
             path: "Sources/OspreyViewApp",
-            linkerSettings: [.unsafeFlags(["-L", "build/view"]), .linkedLibrary("OspreyViewApp")]
+            linkerSettings: [.unsafeFlags(["-L", "build/app"]), .linkedLibrary("OspreyApp")]
         ),
-        .executableTarget(name: "OspreyHost", dependencies: ["OspreyNative", "OspreyApp"]),
         .target(name: "OspreyShared", dependencies: ["OspreyViewApp"]),
         .executableTarget(name: "OspreyViewHost", dependencies: ["OspreyShared", "OspreyViewApp"]),
+        .testTarget(
+            name: "OspreySharedTests",
+            dependencies: ["OspreyShared"],
+            path: "Tests/OspreySharedTests"
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

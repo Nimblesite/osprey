@@ -7,7 +7,7 @@ import os
 // values and capability errors can hold evidence, so they are private.
 
 enum Log {
-    static let subsystem = Bundle.main.bundleIdentifier ?? "OspreyNative"
+    static let subsystem = Bundle.main.bundleIdentifier ?? "OspreyViewHost"
     /// Envelopes: patched and removed regions, requests, Osprey's diagnostics and failures.
     static let regions = Logger(subsystem: subsystem, category: "regions")
     /// Control events, lifecycle phases and capability completions on their way to Osprey.

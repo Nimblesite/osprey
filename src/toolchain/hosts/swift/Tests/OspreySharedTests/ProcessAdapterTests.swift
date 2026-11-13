@@ -1,24 +1,67 @@
 import Foundation
 import XCTest
-@testable import OspreyNative
+
+@testable import OspreyShared
+
+// [UI-EFFECTS] Store requests must stay inside the app's private folder, and process requests
+// must stay bounded against real child processes, no doubles. Every ask is the typed field list
+// the frame's ask rows became, numbered as `Requests::fields` numbers them.
+
+/// Reads one member of a result document, as the JSON host's tests did.
+private extension AskResult {
+    func text(_ key: String) -> String {
+        guard case let .document(document) = self, case let .string(value)? = document.object?[key] else { return "" }
+        return value
+    }
+
+    func count(_ key: String) -> Int {
+        guard case let .document(document) = self, case let .number(value)? = document.object?[key] else { return 0 }
+        return Int(value)
+    }
+
+    func flag(_ key: String) -> Bool {
+        guard case let .document(document) = self, case let .bool(value)? = document.object?[key] else { return false }
+        return value
+    }
+}
 
 // [UI-EFFECTS] Store requests must stay inside the app's private folder.
 final class StoreAdapterTests: XCTestCase {
+    private func write(_ name: String, slice: String = "out") -> Ask {
+        Ask(code: 7, ticket: "t", fields: [
+            .init(field: 1, number: 0, text: name),
+            .init(field: 2, number: 0, text: slice),
+        ])
+    }
+
+    private func read(_ name: String, slice: String = "in", limit: Int = 64) -> Ask {
+        Ask(code: 6, ticket: "t", fields: [
+            .init(field: 1, number: 0, text: name),
+            .init(field: 2, number: Int64(limit), text: ""),
+            .init(field: 3, number: 0, text: slice),
+        ])
+    }
+
+    private func list(_ name: String) -> Ask {
+        Ask(code: 8, ticket: "t", fields: [.init(field: 1, number: 0, text: name)])
+    }
+
+    private func delete(_ name: String) -> Ask {
+        Ask(code: 9, ticket: "t", fields: [.init(field: 1, number: 0, text: name)])
+    }
+
     func testWriteCreatesPrivateDirectoriesAndReplacesAnEntry() async throws {
         let files = FileManager.default
         let root = files.temporaryDirectory.appendingPathComponent("osprey-store-\(UUID())")
         defer { try? files.removeItem(at: root) }
         let slices = SliceStore()
         let store = StoreAdapter(root: root)
-        let write = Request(ticket: "t", kind: "store-write", members: [
-            "name": .string("nested/entry"), "slice": .string("out"),
-        ])
         let directory = root.appendingPathComponent("nested")
         let entry = directory.appendingPathComponent("entry")
         for text in ["original", "new"] {
             slices.write("out", text)
-            let result = try await store.perform(write, slices: slices)
-            XCTAssertEqual(result, .object(["path": .string(entry.path)]))
+            let result = try await store.perform(write("nested/entry"), slices: slices)
+            XCTAssertEqual(result, .document(.object(["path": .string(entry.path)])))
             XCTAssertEqual(try String(contentsOf: entry, encoding: .utf8), text)
         }
         XCTAssertEqual(try files.contentsOfDirectory(atPath: directory.path), ["entry"])
@@ -39,11 +82,8 @@ final class StoreAdapterTests: XCTestCase {
         let slices = SliceStore()
         slices.write("out", "private store data")
         let store = StoreAdapter(root: root)
-        let write = Request(ticket: "t", kind: "store-write", members: [
-            "name": .string("link/secret"), "slice": .string("out"),
-        ])
         do {
-            _ = try await store.perform(write, slices: slices)
+            _ = try await store.perform(write("link/secret"), slices: slices)
             XCTFail("store accepted a write through a symlink")
         } catch CapabilityError.notAllowed {}
         XCTAssertEqual(try files.contentsOfDirectory(atPath: outside.path), [])
@@ -57,19 +97,19 @@ final class StoreAdapterTests: XCTestCase {
         let slices = SliceStore()
         slices.write("out", "kept")
         let store = StoreAdapter(root: root)
-        _ = try await store.perform(Request(ticket: "t", kind: "store-write", members: ["name": .string("box/a"), "slice": .string("out")]), slices: slices)
-        _ = try await store.perform(Request(ticket: "t", kind: "store-write", members: ["name": .string("box/b"), "slice": .string("out")]), slices: slices)
-        let read = try await store.perform(Request(ticket: "t", kind: "store-read", members: ["name": .string("box/a"), "slice": .string("in"), "limit": .number(64)]), slices: slices)
-        XCTAssertEqual(read, .object(["found": true]))
+        _ = try await store.perform(write("box/a"), slices: slices)
+        _ = try await store.perform(write("box/b"), slices: slices)
+        let found = try await store.perform(read("box/a"), slices: slices)
+        XCTAssertEqual(found, .document(.object(["found": true])))
         XCTAssertEqual(slices.text("in"), "kept")
-        let listed = try await store.perform(Request(ticket: "t", kind: "store-list", members: ["name": .string("box")]), slices: slices)
-        XCTAssertEqual(listed, .object(["names": .array([.string("a"), .string("b")])]))
-        let missing = try await store.perform(Request(ticket: "t", kind: "store-read", members: ["name": .string("box/none"), "slice": .string("in"), "limit": .number(64)]), slices: slices)
-        XCTAssertEqual(missing, .object(["found": false]))
-        _ = try await store.perform(Request(ticket: "t", kind: "store-delete", members: ["name": .string("box")]), slices: slices)
+        let listed = try await store.perform(list("box"), slices: slices)
+        XCTAssertEqual(listed, .document(.object(["names": .array([.string("a"), .string("b")])])))
+        let missing = try await store.perform(read("box/none"), slices: slices)
+        XCTAssertEqual(missing, .document(.object(["found": false])))
+        _ = try await store.perform(delete("box"), slices: slices)
         XCTAssertFalse(files.fileExists(atPath: root.appendingPathComponent("box").path))
-        let gone = try await store.perform(Request(ticket: "t", kind: "store-list", members: ["name": .string("box")]), slices: slices)
-        XCTAssertEqual(gone, .object(["names": .array([])]))
+        let gone = try await store.perform(list("box"), slices: slices)
+        XCTAssertEqual(gone, .document(.object(["names": .array([])])))
     }
 
     func testReadListAndDeleteRefuseAnIntermediateSymlinkOutsideTheStore() async throws {
@@ -83,28 +123,24 @@ final class StoreAdapterTests: XCTestCase {
         try files.createSymbolicLink(at: root.appendingPathComponent("link"), withDestinationURL: outside)
         let slices = SliceStore()
         let store = StoreAdapter(root: root)
-        let requests = [
-            Request(ticket: "t", kind: "store-read", members: ["name": .string("link/secret"), "slice": .string("in"), "limit": .number(64)]),
-            Request(ticket: "t", kind: "store-list", members: ["name": .string("link")]),
-            Request(ticket: "t", kind: "store-delete", members: ["name": .string("link/secret")]),
-        ]
-        for request in requests {
+        let asks = [read("link/secret"), list("link"), delete("link/secret")]
+        for ask in asks {
             do {
-                _ = try await store.perform(request, slices: slices)
-                XCTFail("\(request.kind) followed a symlink out of the store")
+                _ = try await store.perform(ask, slices: slices)
+                XCTFail("\(ask.kind) followed a symlink out of the store")
             } catch CapabilityError.notAllowed {}
         }
         XCTAssertEqual(try String(contentsOf: outside.appendingPathComponent("secret"), encoding: .utf8), "outside secret")
         XCTAssertEqual(slices.text("in"), "")
-        _ = try await store.perform(Request(ticket: "t", kind: "store-delete", members: ["name": .string("link")]), slices: slices)
+        _ = try await store.perform(delete("link"), slices: slices)
         XCTAssertEqual(try files.contentsOfDirectory(atPath: outside.path), ["secret"])
         XCTAssertFalse(files.fileExists(atPath: root.appendingPathComponent("link").path))
     }
 }
 
 // [UI-EFFECTS-PROCESS]: the four long-lived process capabilities against real
-// child processes, no doubles. Every request stays bounded, stderr is kept apart,
-// the environment merges over the existing one, and quit stops every process.
+// child processes. Every request stays bounded, stderr is kept apart, the
+// environment merges over the existing one, and quit stops every process.
 final class ProcessAdapterTests: XCTestCase {
     override func setUp() {
         super.setUp()
@@ -118,25 +154,32 @@ final class ProcessAdapterTests: XCTestCase {
 
     private func name(_ label: String) -> String { "\(label)-\(UUID().uuidString)" }
 
-    private func start(_ handle: String, _ command: String, arguments: [String] = [], env: [String: String] = [:]) -> Request {
-        Request(ticket: handle, kind: "process-start", members: [
-            "name": .string(handle),
-            "command": .string(command),
-            "arguments": .array(arguments.map(JSONValue.string)),
-            "env": .array(env.map { .object(["name": .string($0.key), "value": .string($0.value)]) }),
-        ])
+    private func field(_ field: Int64, _ text: String) -> AskField {
+        .init(field: field, number: 0, text: text)
     }
 
-    private func write(_ handle: String, _ input: String) -> Request {
-        Request(ticket: handle, kind: "process-write", members: ["name": .string(handle), "input": .string(input)])
+    private func whole(_ field: Int64, _ number: Int64) -> AskField {
+        .init(field: field, number: number, text: "")
     }
 
-    private func read(_ handle: String, limit: Int = 1_000_000, timeout: Int = 2000) -> Request {
-        Request(ticket: handle, kind: "process-read", members: ["name": .string(handle), "limit": .number(Double(limit)), "timeout": .number(Double(timeout))])
+    private func start(_ handle: String, _ command: String, arguments: [String] = [], env: [String: String] = [:]) -> Ask {
+        var fields = [field(1, command)]
+        fields += arguments.map { field(2, $0) }
+        fields += env.flatMap { [field(3, $0.key), field(3, $0.value)] }
+        fields.append(field(4, handle))
+        return Ask(code: 22, ticket: handle, fields: fields)
     }
 
-    private func stop(_ handle: String) -> Request {
-        Request(ticket: handle, kind: "process-stop", members: ["name": .string(handle)])
+    private func write(_ handle: String, _ input: String) -> Ask {
+        Ask(code: 23, ticket: handle, fields: [field(1, handle), field(2, input)])
+    }
+
+    private func read(_ handle: String, limit: Int = 1_000_000, timeout: Int = 2000) -> Ask {
+        Ask(code: 24, ticket: handle, fields: [field(1, handle), whole(2, Int64(limit)), whole(3, Int64(timeout))])
+    }
+
+    private func stop(_ handle: String) -> Ask {
+        Ask(code: 25, ticket: handle, fields: [field(1, handle)])
     }
 
     /// Everything a process wrote, read a small piece at a time until it has exited.
@@ -158,7 +201,7 @@ final class ProcessAdapterTests: XCTestCase {
     func testOutputTakenByAReplacedReadReachesTheReadThatReplacedIt() async throws {
         let adapter = ProcessAdapter(), runner = CapabilityRunner(adapters: [adapter]), handle = name("replaced")
         _ = try await adapter.perform(start(handle, "/bin/cat"), slices: SliceStore())
-        var outcomes: [Outcome] = []
+        var outcomes: [Result<AskResult, CapabilityError>] = []
         runner.run(read(handle, timeout: 5000)) { outcomes.append($0) }
         await Task.yield()
         let request = write(handle, "the reply\n")
@@ -170,7 +213,8 @@ final class ProcessAdapterTests: XCTestCase {
             replacing.fulfill()
         }
         await fulfillment(of: [replacing], timeout: 5)
-        guard case let .success(.object(members)) = outcomes.last, case let .string(output)? = members["output"] else { return XCTFail("\(outcomes)") }
+        guard case let .success(.document(document)) = outcomes.last,
+              let members = document.object, case let .string(output)? = members["output"] else { return XCTFail("\(outcomes)") }
         XCTAssertEqual(output, "the reply\n")
         XCTAssertEqual(outcomes.count, 2)
         guard case .failure(.cancelled) = outcomes[0] else { return XCTFail("\(outcomes)") }
@@ -347,7 +391,7 @@ final class ProcessAdapterTests: XCTestCase {
         for round in 0 ..< 20 {
             let handle = name("all-\(round)")
             _ = try await adapter.perform(start(handle, "/bin/sh", arguments: ["-c", "i=0; while [ $i -lt 2000 ]; do echo line$i; i=$((i+1)); done; exit 7"]), slices: SliceStore())
-            var lines = "", last = JSONValue.null
+            var (lines, last) = ("", AskResult.document(.null))
             repeat {
                 last = try await adapter.perform(read(handle, limit: 512), slices: SliceStore())
                 lines += last.text("output")

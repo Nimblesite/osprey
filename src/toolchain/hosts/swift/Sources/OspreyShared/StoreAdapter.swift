@@ -1,11 +1,10 @@
 import Foundation
 
-// Implements [UI-EFFECTS]: app-private files. The
-// directory is 0700 and files 0600; writes are atomic; names are relative
-// paths inside the store and never escape it. Every request resolves its
-// name one component at a time from an open descriptor with O_NOFOLLOW, so a
-// link planted inside the store never redirects a read, a listing, a write
-// or a deletion outside it.
+// Implements [UI-EFFECTS]: app-private files, asked for by the typed fields of the frame's ask
+// rows. The directory is 0700 and files 0600; writes are atomic; names are relative paths
+// inside the store and never escape it. Every request resolves its name one component at a time
+// from an open descriptor with O_NOFOLLOW, so a link planted inside the store never redirects a
+// read, a listing, a write or a deletion outside it.
 
 public struct StoreAdapter: CapabilityAdapter {
     public let kinds = ["store-read", "store-write", "store-list", "store-delete"]
@@ -21,13 +20,13 @@ public struct StoreAdapter: CapabilityAdapter {
         return StoreAdapter(root: support.appendingPathComponent(bundle, isDirectory: true))
     }
 
-    public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
+    public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
         try prepare()
-        switch request.kind {
-        case "store-read": return try read(request, slices: slices)
-        case "store-write": return try write(request, slices: slices)
-        case "store-list": return try list(request)
-        default: return try delete(request)
+        switch ask.kind {
+        case "store-read": return try read(ask, slices: slices)
+        case "store-write": return try write(ask, slices: slices)
+        case "store-list": return try list(ask)
+        default: return try delete(ask)
         }
     }
 
@@ -50,43 +49,43 @@ public struct StoreAdapter: CapabilityAdapter {
 
     private static let directoryFlags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC
 
-    private func read(_ request: Request, slices: SliceStore) throws -> JSONValue {
-        let parts = try components(try request.text("name"))
+    private func read(_ ask: Ask, slices: SliceStore) throws -> AskResult {
+        let parts = try components(try required(ask, text: 1, "name"))
         guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: false) else {
-            return .object(["found": false])
+            return .document(.object(["found": .bool(false)]))
         }
         defer { close(parent) }
-        guard let data = try Bounded.read(parent: parent, leaf: leaf, limit: try request.number("limit")) else {
-            return .object(["found": false])
+        guard let data = try Bounded.read(parent: parent, leaf: leaf, limit: try required(ask, whole: 2, "limit")) else {
+            return .document(.object(["found": .bool(false)]))
         }
-        slices.write(try request.text("slice"), try Bounded.text(data))
-        return .object(["found": true])
+        slices.write(try required(ask, text: 3, "slice"), try Bounded.text(data))
+        return .document(.object(["found": .bool(true)]))
     }
 
-    private func write(_ request: Request, slices: SliceStore) throws -> JSONValue {
-        let parts = try components(try request.text("name"))
+    private func write(_ ask: Ask, slices: SliceStore) throws -> AskResult {
+        let parts = try components(try required(ask, text: 1, "name"))
         guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: true) else {
             throw CapabilityError.notAllowed("Missing store file name")
         }
         defer { close(parent) }
-        try replace(leaf, in: parent, with: Data(slices.text(try request.text("slice")).utf8))
+        try replace(leaf, in: parent, with: Data(slices.text(try required(ask, text: 2, "slice")).utf8))
         let url = parts.reduce(root) { $0.appendingPathComponent($1) }
-        return .object(["path": .string(url.path)])
+        return .document(.object(["path": .string(url.path)]))
     }
 
-    private func list(_ request: Request) throws -> JSONValue {
-        let parts = try components(try request.text("name"))
-        guard let directory = try pinnedDirectory(parts[...], create: false) else { return .object(["names": .array([])]) }
+    private func list(_ ask: Ask) throws -> AskResult {
+        let parts = try components(try required(ask, text: 1, "folder"))
+        guard let directory = try pinnedDirectory(parts[...], create: false) else { return .document(.object(["names": .array([])])) }
         let names = try entries(of: directory).sorted()
-        return .object(["names": .array(names.map(JSONValue.string))])
+        return .document(.object(["names": .array(names.map(ResultDocument.string))]))
     }
 
-    private func delete(_ request: Request) throws -> JSONValue {
-        let parts = try components(try request.text("name"))
-        guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: false) else { return .object([:]) }
+    private func delete(_ ask: Ask) throws -> AskResult {
+        let parts = try components(try required(ask, text: 1, "name"))
+        guard let leaf = parts.last, let parent = try pinnedDirectory(parts.dropLast(), create: false) else { return .document(.object([:])) }
         defer { close(parent) }
         try remove(leaf, in: parent)
-        return .object([:])
+        return .document(.object([:]))
     }
 
     // [UI-EFFECTS] Resolve each component relative to an open directory.
