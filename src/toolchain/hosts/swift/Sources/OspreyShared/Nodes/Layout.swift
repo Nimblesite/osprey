@@ -36,8 +36,19 @@ struct SplitView: View {
                 VStack(spacing: 0) { Children(nodes: Array(panes.dropFirst()), drawing: drawing) }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .ignoresSafeArea(.container, edges: .top)
+            .underTitleBar()
         }
+    }
+}
+
+private extension View {
+    /// A split runs under the Mac's hidden title bar; on iOS it stays inside the safe area, clear of the status bar.
+    @ViewBuilder func underTitleBar() -> some View {
+        #if os(macOS)
+        ignoresSafeArea(.container, edges: .top)
+        #else
+        self
+        #endif
     }
 }
 

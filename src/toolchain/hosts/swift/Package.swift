@@ -8,6 +8,10 @@ import PackageDescription
 // the application writes, checks every row and draws it, and answers the
 // capabilities its asks name. `swift build` alone cannot build the host,
 // because the application is linked in.
+// The folder holding the application's archive: `build/app` for the Mac, and the folder
+// `ios.sh` names for an iOS slice, so one platform's archive never answers for another's.
+let applicationArchive = Context.environment["OSPREY_APP_ARCHIVE"] ?? "build/app"
+
 let package = Package(
     name: "OspreyHost",
     platforms: [.macOS(.v15), .iOS(.v18)],
@@ -20,7 +24,7 @@ let package = Package(
         .target(
             name: "OspreyViewApp",
             path: "Sources/OspreyViewApp",
-            linkerSettings: [.unsafeFlags(["-L", "build/app"]), .linkedLibrary("OspreyApp")]
+            linkerSettings: [.unsafeFlags(["-L", applicationArchive]), .linkedLibrary("OspreyApp")]
         ),
         .target(name: "OspreyShared", dependencies: ["OspreyViewApp"]),
         .executableTarget(name: "OspreyViewHost", dependencies: ["OspreyShared", "OspreyViewApp"]),

@@ -27,12 +27,13 @@ esac
 # The runtime and the application archive: the same ARC runtime and ABI macOS links.
 cd "$repo"
 nice make -s "$([[ $target == ios-sim ]] && echo _runtime_ios_sim_arc || echo _runtime_ios_arc)"
-mkdir -p "$here/build/app"
+archive="$here/build/$target/app"
+mkdir -p "$archive"
 nice "$compiler" build "$app" --target="$target" --memory=arc --quiet --no-warnings \
-    -o "$here/build/app/libOspreyApp.a"
-cp "$here/build/app/libOspreyApp.h" "$here/Sources/OspreyViewApp/include/libOspreyApp.h"
+    -o "$archive/libOspreyApp.a"
+cp "$archive/libOspreyApp.h" "$here/Sources/OspreyViewApp/include/libOspreyApp.h"
 cp "$runtime/native_bridge.h" "$runtime/native_abi.h" "$here/Sources/OspreyViewApp/include/"
-symbols="$(nm "$here/build/app/libOspreyApp.a" 2>/dev/null)"
+symbols="$(nm "$archive/libOspreyApp.a" 2>/dev/null)"
 for symbol in osprey_main osprey_app_argument osprey_app_open osprey_app_event osprey_host_abi_version; do
     grep -q " T _$symbol\$" <<<"$symbols" || { echo "The application does not export $symbol" >&2; exit 1; }
 done
@@ -42,7 +43,7 @@ cd "$here"
 build="$here/build/$target"
 products=$([[ $target == ios-sim ]] && echo Release-iphonesimulator || echo Release-iphoneos)
 binary="$build/dd/Build/Products/$products/OspreyViewHostIOS"
-nice xcodebuild -scheme OspreyViewHostIOS -configuration Release -destination "$([[ $target == ios-sim ]] \
+OSPREY_APP_ARCHIVE="$archive" nice xcodebuild -scheme OspreyViewHostIOS -configuration Release -destination "$([[ $target == ios-sim ]] \
     && echo 'generic/platform=iOS Simulator' || echo 'generic/platform=iOS')" \
     ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -derivedDataPath "$build/dd" build >/dev/null
 [[ -x "$binary" ]] || { echo "The iOS host did not build" >&2; exit 1; }
