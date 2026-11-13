@@ -37,6 +37,10 @@ import java.net.URL
 enum class Axis { VERTICAL, HORIZONTAL, NONE }
 
 class PlainRenderer(private val context: Context, private val store: Store) {
+    private companion object {
+        val HUGGING = setOf(Kind.LABEL, Kind.PRESS, Kind.TOGGLE, Kind.PICKER, Kind.IMAGE)
+    }
+
     private val density = context.resources.displayMetrics.density
     private val holders = HashMap<String, View>()
 
@@ -66,8 +70,20 @@ class PlainRenderer(private val context: Context, private val store: Store) {
                 parent.removeView(view)
                 parent.addView(view, seat)
             }
+            if (axis == Axis.VERTICAL) view.hug(index)
             if (place > 0 && gap > 0) view.marginGap(axis, dp(gap))
         }
+    }
+
+    /** In a column a label, press, switch, picker or picture keeps its own
+     * width at the leading edge; everything else takes the column's width. */
+    private fun View.hug(index: Int) {
+        val control = store.control(index) ?: return
+        val params = layoutParams as? LinearLayout.LayoutParams ?: return
+        if (control.fit.width > 0) return
+        val hugs = control.kind in HUGGING && !control.has(Flags.CENTRED)
+        params.width = if (hugs) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+        layoutParams = params
     }
 
     private fun View.marginGap(axis: Axis, gap: Int) {
