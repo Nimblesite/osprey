@@ -1,12 +1,13 @@
 // The reference host for [NATIVE-SHM-VIEW]: everything a host does, with no UI
-// toolkit in the way. It calls the application's two exports, seals the frame
-// the call wrote, leases the view and reads every control straight out of the
+// toolkit in the way. It calls the application's exports ([NATIVE-SHM-EVENT]),
+// seals the frame every call writes, leases the view and reads every control straight out of the
 // memory Osprey wrote it into. No text is parsed and nothing is copied; the
 // SwiftUI and WinUI hosts do exactly this and then build native controls.
 // It is also Tally's end-to-end test: `make -C src/toolchain/targets/tests tally`.
 #include "libTally.h"
 #include "native_bridge.h"
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -34,12 +35,12 @@ static const void *leased(int64_t run, td_OwnedLease *lease, int64_t *length) {
   return bytes;
 }
 
-// Seals what the last export wrote and leases it. A failed export's partial
-// frame is dropped and the host keeps showing the view it already holds.
-static View sealed(int64_t status) {
+// Seals the whole frame the last export wrote and leases it: a refused event
+// answers nonzero and still draws, the same view, so the host always shows it.
+static View sealed(int64_t status, int64_t expected) {
   View view = {0};
   int64_t revision, bytes;
-  assert(status == 0);
+  assert(status == expected);
   assert(osp_native_frame_commit(bridge, &revision) == 0);
   view.controls = leased(OSP_NATIVE_VIEWS, &view.rows, &bytes);
   view.count = bytes / (int64_t)sizeof *view.controls;
@@ -58,12 +59,20 @@ static bool reads(const View *view, int64_t row, const char *words) {
          memcmp(view->chars + control->text_offset, words, strlen(words)) == 0;
 }
 
-// A tap or an edit: one integer and borrowed text cross the boundary.
+// One control event of kind 0: numbers and borrowed text cross the boundary.
+static int64_t control(int64_t ordinal, const char *words) {
+  return osprey_app_event(1, 0, ordinal, words, "", 0, 0, false, false);
+}
+
+// A tap or an edit of the control at `row`.
 static View after(View *shown, int64_t row, const char *words) {
   int64_t action = shown->controls[row].action;
   release_view(shown);
-  return sealed(osprey_app_event(action, words));
+  return sealed(control(action, words), 0);
 }
+
+// Every frame of Tally has the same ten controls.
+static void check_first_counts(const View *view) { assert(view->count == 10); }
 
 static void check_first(const View *view) {
   static const int64_t kinds[] = {COLUMN, LABEL, LABEL, LINE,  PRESS,
@@ -104,16 +113,18 @@ static void check_journey(View *view) {
   assert(reads(view, 2, "0"));
 }
 
-// An event that names no drawn control changes nothing; the host drops the
-// call's frame and its held view stays valid and unchanged.
-static void check_refusal(const View *view) {
-  size_t bytes, chunks, owners, later;
-  assert(osp_native_usage(bridge, &bytes, &chunks, &owners) == 0);
-  assert(osprey_app_event(99, "") != 0 && osprey_app_event(-1, "x") != 0);
-  osp_native_frame_discard();
-  assert(osp_native_usage(bridge, &later, &chunks, &owners) == 0 &&
-         later == bytes);
-  assert(reads(view, 2, "0") && reads(view, 9, "Use day colours"));
+// An event that names no drawn control, or a kind Tally does not take, changes
+// nothing: the call answers 1 and draws the same view again.
+static void check_refusal(View *view) {
+  const int64_t refused[][2] = {{0, 99}, {0, -1}, {2, 0}, {10, 0}};
+  for (int i = 0; i < 4; i++) {
+    release_view(view);
+    *view = sealed(osprey_app_event(1, refused[i][0], refused[i][1], "x", "",
+                                    0, 0, false, false),
+                   1);
+    check_first_counts(view);
+    assert(reads(view, 2, "0") && reads(view, 9, "Use day colours"));
+  }
 }
 
 int main(void) {
@@ -121,12 +132,13 @@ int main(void) {
   assert(osp_native_open(&instance, TD_SHARED_FINGERPRINT, 1 << 20, 64, 64,
                          &bridge) == 0);
   assert(osprey_main() == 0);
-  View view = sealed(osprey_app_start());
+  assert(osprey_app_argument("--unused") == 0);
+  View view = sealed(osprey_app_open(1, 0, "macos", "/home/tally", false), 0);
   check_first(&view);
   check_journey(&view);
   check_refusal(&view);
   release_view(&view);
   assert(osp_native_close(bridge) == 0 && osp_native_destroy(bridge) == 0);
-  puts("[ok] tally reference host: 9 views read in place from shared memory");
+  puts("[ok] tally reference host: 13 views read in place from shared memory");
   return 0;
 }
