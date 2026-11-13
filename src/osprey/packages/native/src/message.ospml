@@ -3,13 +3,14 @@
 // action.
 namespace ui
 
-(** Host facts for one event: Unix seconds, the local UTC offset in seconds, the host's platform name (`macos` or `ios`, say), the person's home folder and the launch arguments. `Symbols::platform` reads a name as the typed `Platform` when a host-neutral decision is needed. *)
+(** Host facts for one event: Unix seconds, the local UTC offset in seconds, the host's platform name (`macos` or `ios`, say), the person's home folder, the launch arguments and whether the host shows the dark appearance. `Symbols::platform` reads a name as the typed `Platform` when a host-neutral decision is needed. *)
 type Context =
     now : int
     offset : int
     platform : string
     home : string
     arguments : List<string>
+    hostDark : bool
 
 (** What reaches the application's `update`: a control's action and value, a capability's completion a lifecycle phase or a display frame. *)
 type Message A =

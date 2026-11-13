@@ -64,7 +64,7 @@ module Surfaces
     (** The first view for the host facts given here and the gathered launch arguments: runs `init`, draws the root region into the shared frame and answers the surface to keep. *)
     export open<S, A> : (Surface<S, A>, Program<S, A>, Context, bool) -> Surface<S, A> ![ViewStream | e]
     open (held, program, host, dark) =
-        given = host(arguments = held.surfaceArguments)
+        given = host(arguments = held.surfaceArguments, hostDark = dark)
         first = program.programInit given
         shown (held(surfaceDark = dark), program, given, first.stepStore, first)
 

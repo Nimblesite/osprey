@@ -20,7 +20,7 @@ import pydantic_ai::Mcp
 import agentapptests::Drive
 
 // A host context at `now`, launching with `arguments`.
-contextAt (now, arguments) = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = arguments)
+contextAt (now, arguments) = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = arguments, hostDark = false)
 
 context now = contextAt (now, ["/work/project", "/keys/env"])
 

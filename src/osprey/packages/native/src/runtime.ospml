@@ -25,7 +25,7 @@ module Runtime
     asking (store, requests) = Step(stepStore = store, requests = requests, writes = [])
 
     (** The host facts a boundary passes at launch: the clock in seconds, the zone offset, the platform's name, the home folder and the launch arguments. *)
-    export host (now, offset, platform, home, arguments) = Context(now = now, offset = offset, platform = platform, home = home, arguments = arguments)
+    export host (now, offset, platform, home, arguments) = Context(now = now, offset = offset, platform = platform, home = home, arguments = arguments, hostDark = false)
 
     (** Runs `work` with integer faults resolved for an application's C boundary: an overflow keeps the wrapped result and a division by zero its dividend. Interface arithmetic is counters, clocks and coordinates, none near the limits. *)
     export guarded work =
