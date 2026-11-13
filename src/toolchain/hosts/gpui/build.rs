@@ -61,7 +61,7 @@ fn fingerprint(header: &std::path::Path) {
     let text = std::fs::read_to_string(header).expect("the generated native ABI header");
     let value = text
         .lines()
-        .find_map(|line| line.strip_prefix("#define TD_SHARED_FINGERPRINT "))
+        .find_map(|line| line.strip_prefix("#define TD_SHARED_FINGERPRINT_64 "))
         .expect("the header's shared fingerprint")
         .trim_matches('"');
     println!("cargo:rustc-env=OSPREY_NATIVE_FINGERPRINT={value}");

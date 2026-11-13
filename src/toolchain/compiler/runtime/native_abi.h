@@ -2,8 +2,16 @@
 #ifndef TD_SHARED_H
 #define TD_SHARED_H
 #include <stddef.h>
-#define TD_SHARED_FINGERPRINT "1d5142f8637b5f8cf90e2f3d38dbdd409976404d1d1f285cee30f8f6684138dd"
+#include <stdint.h>
+#define TD_SHARED_FINGERPRINT_64 "1d5142f8637b5f8cf90e2f3d38dbdd409976404d1d1f285cee30f8f6684138dd"
+#define TD_SHARED_FINGERPRINT_32 "9dc8078fb06cdc906d4d13e06f05a915311d6f6d2de33260462faa501987088b"
+#if UINTPTR_MAX == UINT32_MAX
+#define TD_SHARED_FINGERPRINT TD_SHARED_FINGERPRINT_32
+#define TD_SHARED_POINTER_BYTES 4
+#else
+#define TD_SHARED_FINGERPRINT TD_SHARED_FINGERPRINT_64
 #define TD_SHARED_POINTER_BYTES 8
+#endif
 #define TD_SHARED_ABI_MAJOR 1
 #define TD_SHARED_STORAGE(name, byte_count) \
   typedef struct { _Alignas(8) unsigned char bytes[byte_count]; } td_##name; \

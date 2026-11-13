@@ -25,7 +25,7 @@ public sealed class NativeAbiTests
     [Fact]
     public void TheFingerprintTheHostOpensWithIsTheHeaders()
     {
-        var line = Defined("TD_SHARED_FINGERPRINT");
+        var line = Defined("TD_SHARED_FINGERPRINT_64");
         Assert.Equal(Bridge.Fingerprint, line[(line.IndexOf('"') + 1)..line.LastIndexOf('"')]);
     }
 

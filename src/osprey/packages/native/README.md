@@ -266,7 +266,7 @@ A host initializes the library once, calls it only from its UI thread, leases ea
 
 ## Memory boundary
 
-Static libraries for the `macos`, `ios` and `android-*` targets and WebAssembly default to ARC; native executables default to GC and also support ARC. Exported application globals persist across host calls. Hosts must follow the generated target ABI (`native_abi.h`, or `native_abi_wasm32.h` for WebAssembly) and use its matching runtime when handling host-owned slice strings. The GPUI host links the static library form on the desktop, and the WinUI host loads the `windows-x64` DLL form, which also defaults to ARC ([WINUI-HOST-DLL](../../../../docs/specs/platforms/0048-WinUiHost.md)).
+Static libraries for the `macos`, `ios` and `android-*` targets and WebAssembly default to ARC; native executables default to GC and also support ARC. Exported application globals persist across host calls. Hosts must follow the generated target ABI (`native_abi.h`, whose fingerprint follows the pointer width) and use its matching runtime when handling host-owned slice strings. The GPUI host links the static library form on the desktop, and the WinUI host loads the `windows-x64` DLL form, which also defaults to ARC ([WINUI-HOST-DLL](../../../../docs/specs/platforms/0048-WinUiHost.md)).
 
 ## Using the package
 
