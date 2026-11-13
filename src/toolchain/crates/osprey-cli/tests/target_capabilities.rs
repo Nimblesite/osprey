@@ -213,13 +213,20 @@ fn wasm_accepts_the_shared_frame_writers_its_runtime_carries() -> std::io::Resul
                   extern fn osp_native_view_extend(row: int, wide: float, tall: float, share: float, traits: int, edge: int, hint: string) -> int\n\
                   fn main() = print(toString(osp_native_scene_shape(0, 0, 1.0, 2.0, 3.0, 4.0, 0.0, 255, 0)) + toString(osp_native_view_extend(osp_native_view_row(2, -1, -1, \"hi\", 255, 0, 12.0, 0.0, 0.0, 0.0, 400), 10.0, 0.0, 0.0, 0, 0, \"\")))\n";
     let ir = accepts(source, "wasm32")?;
-    for writer in ["osp_native_scene_shape", "osp_native_view_row", "osp_native_view_extend"] {
+    for writer in [
+        "osp_native_scene_shape",
+        "osp_native_view_row",
+        "osp_native_view_extend",
+    ] {
         assert_eq!(
             ir.lines().filter(|line| line.starts_with("declare ") && line.contains(&format!("@{writer}("))).count(),
             1,
             "{writer} must be declared once:\n{ir}"
         );
-        assert!(ir.contains(&format!("@{writer}(")), "{writer} is never called");
+        assert!(
+            ir.contains(&format!("@{writer}(")),
+            "{writer} is never called"
+        );
     }
     Ok(())
 }

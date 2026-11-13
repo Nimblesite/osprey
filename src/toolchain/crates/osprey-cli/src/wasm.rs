@@ -75,7 +75,13 @@ const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 /// Lower `program` to the `.wasm` at `out` with the target's default backend.
 /// [WASM-TARGET]
 pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
-    build_with_memory(path, program, out, DEFAULT_MEMORY, &crate::ios_abi::ExportScope::EntryOnly)
+    build_with_memory(
+        path,
+        program,
+        out,
+        DEFAULT_MEMORY,
+        &crate::ios_abi::ExportScope::EntryOnly,
+    )
 }
 
 /// Lower `program` to the `.wasm` at `out` with an explicit memory backend:
@@ -100,7 +106,10 @@ pub(crate) fn build_with_memory(
     let (ir, exports) = match shared {
         Some(ir) => (ir, boundary_exports()),
         None => match program_ir(program) {
-            Ok(ir) => (with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch), Vec::new()),
+            Ok(ir) => (
+                with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch),
+                Vec::new(),
+            ),
             Err(e) => return Err(fail(&format!("{path}: {e}"))),
         },
     };
@@ -183,7 +192,13 @@ pub(crate) fn program_ir(program: &osprey_ast::Program) -> osprey_codegen::Resul
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
 pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> ExitCode {
     let wasm = std::env::temp_dir().join(format!("{}.wasm", scratch_stem(path)));
-    if let Err(code) = build_with_memory(path, program, &wasm, memory, &crate::ios_abi::ExportScope::EntryOnly) {
+    if let Err(code) = build_with_memory(
+        path,
+        program,
+        &wasm,
+        memory,
+        &crate::ios_abi::ExportScope::EntryOnly,
+    ) {
         return code;
     }
     let code = run_host(&wasm);

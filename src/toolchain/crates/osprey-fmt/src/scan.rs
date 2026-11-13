@@ -50,12 +50,18 @@ pub(crate) struct Comments {
 impl Comments {
     /// A flavor with no block comments (Default).
     pub(crate) const fn none() -> Self {
-        Self { nesting: false, depth: 0 }
+        Self {
+            nesting: false,
+            depth: 0,
+        }
     }
 
     /// The ML flavor's nesting `(* … *)` comments, starting outside any.
     pub(crate) const fn ml() -> Self {
-        Self { nesting: true, depth: 0 }
+        Self {
+            nesting: true,
+            depth: 0,
+        }
     }
 
     // The depth change at `chars[i]`: an opener or closer of a block comment.
@@ -343,7 +349,10 @@ mod tests {
         let lines = scan_source(src, Comments::ml());
         assert_eq!(lines.len(), 4, "{lines:?}");
         assert!(lines.iter().all(|l| !l.open_string), "{lines:?}");
-        assert_eq!(lines.get(1).map(|l| l.content.as_str()), Some("and // more (* nested *) text *)"));
+        assert_eq!(
+            lines.get(1).map(|l| l.content.as_str()),
+            Some("and // more (* nested *) text *)")
+        );
         assert_eq!(lines.get(2).map(|l| l.content.as_str()), Some("x = 1"));
         // Default has no block comments: the same quote opens a literal there.
         assert_eq!(scan_source(src, Comments::none()).len(), 1);

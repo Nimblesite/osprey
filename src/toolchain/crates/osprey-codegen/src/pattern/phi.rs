@@ -22,7 +22,10 @@ pub(super) fn finish_phi(
     let target_result_inner = result_join_inner(phi_in).map_err(|error| match error {
         CodegenError::Invalid(why) => CodegenError::Invalid(format!(
             "{why}{}",
-            cg.source_function.as_deref().map(|name| format!(" in `{name}`")).unwrap_or_default()
+            cg.source_function
+                .as_deref()
+                .map(|name| format!(" in `{name}`"))
+                .unwrap_or_default()
         )),
         other => other,
     })?;
