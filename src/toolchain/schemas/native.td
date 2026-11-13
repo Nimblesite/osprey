@@ -160,14 +160,28 @@ union SceneInput {
 # Signed resize/cursor inputs retain the existing bind-time clamp; time is signed Unix seconds.
 # Shift is explicit (legacy missing shift means false); no inferred/default payload fields.
 
-# [NATIVE-SHM-SCENE] One streamed rect, disc or sprite, shared as fixed 72-byte rows in a single
-# sealed leaf chunk. `code` is the scene encoding's (0 rect, 1 disc, 3 sprite); `index` is a
-# sprite's atlas entry; a disc's `width` is its radius. Hosts refuse non-finite floats and codes
-# they cannot draw. The rows are process-local and never written to a wire or to disk.
+# [NATIVE-SHM-SCENE] One row of a canvas's scene, shared as fixed 88-byte rows in a single sealed
+# leaf chunk. `code` 20 starts a scene: `index` is the canvas's view row, `x`, `y` and `width` its
+# width, height and zoom; the rows after it, until the next 20, belong to that canvas. Codes: 0 rect,
+# 1 disc (`width` is the radius), 2 strip (`index` pairs follow as 7 rows, `width` the stroke),
+# 3 sprite (`index` the atlas entry), 4 glyphs and 6 lettering (text in `textOffset`/`textLength`,
+# `width` the size; lettering's `index` is its anchor and `height` its weight), 5 path (`index` steps
+# of code 8 follow, then one 9 outline and one 10 paint; `x`, `y`, `width` move it and scale it),
+# 7 a point or a continuation's values, 8 a path step (`index` 0 move, 1 line, 2 quadratic,
+# 3 cubic and one 7, 4 arc with `colour` 1 large and 2 sweep, 5 polygon with `depth` 7 rows and
+# `colour` 1 closed, 6 close), 9 outline (`index` 0 fill or 1 line of `x` width, `colour` 1 bevel,
+# `depth` dash 7 rows), 10 paint (`index` 0 solid or 1 linear, then its tints as 11 rows: `index`
+# 0 RGB or 1 HSL in `x`..`height`; linear's `x` angle, `y` and `width` stops, `colour` 1 oklab),
+# 21 an atlas entry's name in its text, 22 an accessible element (`index` role, `x`..`height` its
+# box, `angle` its value, `colour` 1 selected and 2 movable, the label in its text) and one 7 with
+# its minimum and maximum. Hosts refuse non-finite floats, codes they cannot draw, counts that run
+# past the rows and text ranges outside the run. The rows are process-local and never written to a
+# wire or to disk.
 type SceneShape {
   code: Int index: Int
   x: Float y: Float width: Float height: Float angle: Float
   colour: Int depth: Int
+  textOffset: Int textLength: Int
 }
 
 # [NATIVE-SHM-VIEW] One native control of a published view, written by compiled

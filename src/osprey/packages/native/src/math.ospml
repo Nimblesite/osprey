@@ -8,29 +8,32 @@ namespace ui
 (** A mathematics layout tree: glyphs, sequences, scripts, fractions, radicals, binders, spaced operators, fences and big operators. *)
 type Math = Sym string | Num string | Seq (List<Math>) | Sup Math Math | Sub Math Math | Frac Math Math | Root Math | Binder string (List<Math>) Math | Op string Math Math | Paren Math | Big string Math Math Math
 
-(** Typesets a mathematics tree, and encodes and decodes it for the protocol ([UI-COMPONENTS-MATH]). *)
+(** Typesets a mathematics tree, and encodes and decodes it for documents ([UI-COMPONENTS-MATH]). *)
 module Maths
     (** Typeset mathematics: the host lays out `math` with a mathematics face and exposes `spoken` to assistive technology. *)
     export typeset<A> : (Math, string) -> Node<A>
     typeset (tree, text) = Typeset(math = tree, spoken = text)
 
-    pair (name, first, firstKey, second, secondKey) = Encode::kind name [JsonMember firstKey (encode first), JsonMember secondKey (encode second)]
+    // A node of `name`'s kind: its `kind` first, then its members.
+    kind name members = JsonObject (listPrepend members (Doc::str ("kind", name)))
+
+    pair (name, first, firstKey, second, secondKey) = kind name [JsonMember firstKey (encode first), JsonMember secondKey (encode second)]
 
     many items = JsonArray (mapList (items, \item => encode item))
 
-    (** The protocol form of `tree`: one object per node, named by `kind`, children nested in order. *)
+    (** The document form of `tree`, as lessons store it: one object per node, named by `kind`, children nested in order. *)
     export encode tree = match tree
-        Sym text => Encode::kind "sym" [Encode::str "text" text]
-        Num text => Encode::kind "num" [Encode::str "text" text]
-        Seq items => Encode::kind "seq" [JsonMember "items" (many items)]
+        Sym text => kind "sym" [Doc::str ("text", text)]
+        Num text => kind "num" [Doc::str ("text", text)]
+        Seq items => kind "seq" [JsonMember "items" (many items)]
         Sup base script => pair ("sup", base, "base", script, "script")
         Sub base script => pair ("sub", base, "base", script, "script")
         Frac top bottom => pair ("frac", top, "top", bottom, "bottom")
-        Root body => Encode::kind "root" [JsonMember "body" (encode body)]
-        Binder symbol names body => Encode::kind "binder" [Encode::str "symbol" symbol, JsonMember "names" (many names), JsonMember "body" (encode body)]
-        Op symbol left right => Encode::kind "op" [Encode::str "symbol" symbol, JsonMember "left" (encode left), JsonMember "right" (encode right)]
-        Paren body => Encode::kind "paren" [JsonMember "body" (encode body)]
-        Big symbol lower upper body => Encode::kind "big" [Encode::str "symbol" symbol, JsonMember "lower" (encode lower), JsonMember "upper" (encode upper), JsonMember "body" (encode body)]
+        Root body => kind "root" [JsonMember "body" (encode body)]
+        Binder symbol names body => kind "binder" [Doc::str ("symbol", symbol), JsonMember "names" (many names), JsonMember "body" (encode body)]
+        Op symbol left right => kind "op" [Doc::str ("symbol", symbol), JsonMember "left" (encode left), JsonMember "right" (encode right)]
+        Paren body => kind "paren" [JsonMember "body" (encode body)]
+        Big symbol lower upper body => kind "big" [Doc::str ("symbol", symbol), JsonMember "lower" (encode lower), JsonMember "upper" (encode upper), JsonMember "body" (encode body)]
 
     // The named member's text, refusing a missing member or a non-string value.
     stringAt (name, doc, key) = match jsonField doc key
@@ -89,7 +92,7 @@ module Maths
 
     bigNode doc = then (stringAt ("big", doc, "symbol"), \symbol => then (child ("big", doc, "lower"), \lower => then (child ("big", doc, "upper"), \upper => then (child ("big", doc, "body"), \body => Success(value = Big symbol lower upper body)))))
 
-    (** The inverse of `encode`: the mathematics tree its protocol form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH]). *)
+    (** The inverse of `encode`: the mathematics tree its document form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH]). *)
     export decode doc = match doc
         JsonObject _ => match jsonField doc "kind"
             Error _ => Error(message = "a math node is missing its kind")

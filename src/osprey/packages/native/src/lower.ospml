@@ -1,8 +1,8 @@
 // Implements [NATIVE-SHM-LOWER]: the pure lowering of a semantic `Node<A>` tree into the
 // primitive `View<Binding<A>>` the shared frame carries ([NATIVE-SHM-VIEW]). Every colour,
 // size and space is decided here from the application's theme, so a host applies them and
-// holds no style of its own. Each control delivers the same `Binding` the JSON encoder
-// issues for its node ([UI-PROTOCOL]), so an event means the same thing on either bridge.
+// holds no style of its own. Each control delivers the `Binding` its node names, in drawing
+// order, so a host event names a control by its number ([UI-EVENTS]).
 namespace ui
 
 import ui::Views
@@ -82,7 +82,7 @@ module Lower
         Video _ poster _ alt _ => LowerLeaves::video (poster, alt)
         Editor label value _ _ _ _ edit place => editorView (styling, label, value, edit, place)
         Board _ _ _ backdrop _ panBound pan stroke lasso => boardView (styling, backdrop, panBound, pan, stroke, lasso)
-        Scene width height zoom _ _ play _ _ => sceneView (styling, width, height, zoom, play)
+        Scene width height zoom atlas primitives play access => sceneView (Sketch(sketchWidth = width, sketchHeight = height, sketchZoom = zoom, sketchAtlas = atlas, sketchShapes = primitives, sketchAccess = access), play)
 
     lowered<A> : (Styling<A>, List<Node<A>>) -> List<View<Binding<A>>>
     lowered (styling, children) = mapList (children, \child => view (styling, child))
@@ -290,8 +290,9 @@ module Lower
     // A board's surface: its backdrop token under its chalk ink ([UI-THEME-BOARD]).
     boardLook (styling, backdrop) = Look(ink = LowerLeaves::inkNamed (styling.styleTheme, styling.styleDark, "chalk"), fill = LowerLeaves::fillNamed (styling.styleTheme, styling.styleDark, backdrop), points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
 
-    sceneView<A> : (Styling<A>, float, float, float, A) -> View<Binding<A>>
-    sceneView (styling, width, height, zoom, play) = Fitted(fit = sceneFit (width, height, zoom), fitted = Canvas(canvasLook = LowerLeaves::carrier 0.0, canvasAction = SceneInput(action = play)))
+    // A scene is a canvas that streams its sketch beside its row ([NATIVE-SHM-SCENE]).
+    sceneView<A> : (Sketch, A) -> View<Binding<A>>
+    sceneView (content, play) = Fitted(fit = sceneFit (content.sketchWidth, content.sketchHeight, content.sketchZoom), fitted = Drawing(drawingLook = LowerLeaves::carrier 0.0, drawingSketch = content, drawingAction = SceneInput(action = play)))
 
     // A scene's extent: a positive zoom fixes its pixels, one unit to `zoom` of them; a zero zoom fits the region whole.
     sceneFit (width, height, zoom) = match zoom > 0.0

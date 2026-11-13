@@ -1,7 +1,6 @@
 // Implements [UI-SIGNALS] and [UI-REGIONS]: slices are Osprey's built-in
 // `Signal<T>`, and a region is a `signalRefreshKeyed` snapshot whose
-// dependencies the compiler derives (Nimblesite/osprey#285). Between
-// dispatches only each region's `SignalFrame` is kept.
+// dependencies the compiler derives (Nimblesite/osprey#285).
 namespace ui
 
 (** Host-held slices by key; the native build answers with the `*_slice` import. *)

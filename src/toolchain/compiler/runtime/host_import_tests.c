@@ -296,7 +296,7 @@ static void check_native_publication(void) {
 static void push_shapes(int64_t first, int64_t count) {
   for (int64_t i = first; i < first + count; i++)
     assert(osp_native_scene_shape(i % 2, i, (double)i, 0.5, 2, 3, 4, i * 7,
-                                  -i) == 0);
+                                  -i, NULL) == 0);
 }
 
 // A new owner of one run of the published frame, which must be `expected`.
@@ -394,9 +394,9 @@ static void check_native_scene_refusals(void) {
              OSP_NATIVE_ERROR(LimitExceeded) &&
          revision == 1);
   for (int64_t i = 0; i < OSP_NATIVE_SCENE_ROWS; i++)
-    assert(osp_native_scene_shape(0, i, 0, 0, 0, 0, 0, 0, 0) == 0);
-  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
-  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0) != 0);
+    assert(osp_native_scene_shape(0, i, 0, 0, 0, 0, 0, 0, 0, NULL) == 0);
+  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0, NULL) != 0);
+  assert(osp_native_scene_shape(0, 0, 0, 0, 0, 0, 0, 0, 0, NULL) != 0);
   assert(osp_native_frame_commit(b, &revision) ==
              OSP_NATIVE_ERROR(AllocationFailed) &&
          revision == 1);
@@ -590,13 +590,14 @@ static void check_unusable_numbers_are_refused(OspNativeBridge *b) {
     for (int i = 0; i < 3; i++) {
       double v[5] = {1, 1, 1, 1, 1};
       v[field] = bad[i];
-      assert(osp_native_scene_shape(0, 0, v[0], v[1], v[2], v[3], v[4], 0, 0) ==
+      assert(osp_native_scene_shape(0, 0, v[0], v[1], v[2], v[3], v[4], 0, 0,
+                                    "x") ==
              1);
       assert(osp_native_frame_commit(b, &revision) ==
                  OSP_NATIVE_ERROR(AllocationFailed) &&
              revision == 7);
     }
-  assert(osp_native_scene_shape(0, 0, -5, -6, 1, 1, -3, 0, 0) == 0);
+  assert(osp_native_scene_shape(0, 0, -5, -6, 1, 1, -3, 0, 0, NULL) == 0);
   osp_native_frame_discard();
 }
 
@@ -643,6 +644,7 @@ static void check_view_extension(OspNativeBridge *b) {
 static void check_ask_rows(OspNativeBridge *b) {
   int64_t revision = 0, bytes;
   td_OwnedLease asks, text;
+  assert(osp_native_scene_shape(6, 2, 1, 2, 14, 700, 0, 255, 3, "Play") == 0);
   assert(osp_native_ask(0, 9, "store:1") == 0 &&
          osp_native_ask(1, 0, "notes.txt") == 0 &&
          osp_native_ask(2, 4096, NULL) == 0 && osp_native_ask(0, 100, "k") == 0 &&
@@ -650,10 +652,18 @@ static void check_ask_rows(OspNativeBridge *b) {
   assert(osp_native_frame_commit(b, &revision) == 0);
   leased_run(b, OSP_NATIVE_ASKS, revision, &asks);
   leased_run(b, OSP_NATIVE_TEXT, revision, &text);
-  assert(osp_native_length(b, &text, &bytes) == 0 && bytes == 17);
+  assert(osp_native_length(b, &text, &bytes) == 0 && bytes == 21);
+  td_OwnedLease letters;
+  leased_run(b, OSP_NATIVE_SHAPES, revision, &letters);
+  const OspNativeShape *shape =
+      run_bytes(b, &letters, OSP_NATIVE_SHAPES, sizeof(OspNativeShape));
   const OspNativeAsk *held =
       run_bytes(b, &asks, OSP_NATIVE_ASKS, 5 * (int64_t)sizeof(OspNativeAsk));
   const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  assert(shape->code == 6 && shape->index == 2 && shape->values[3] == 700 &&
+         shape->text_offset == 0 && shape->text_length == 4 &&
+         memcmp(chars, "Play", 4) == 0);
+  assert(osp_native_release(b, &letters) == 0);
   assert(held[0].field == 0 && held[0].number == 9 && held[0].text_length == 7 &&
          memcmp(chars + held[0].text_offset, "store:1", 7) == 0);
   assert(held[1].field == 1 && held[1].text_length == 9 &&

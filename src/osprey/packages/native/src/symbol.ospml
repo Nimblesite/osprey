@@ -17,9 +17,9 @@ type Platform =
     OtherPlatform
         platformName : string
 
-(** Wire names for symbols and platforms. *)
+(** Names for symbols and platforms. *)
 module Symbols
-    (** The protocol name of `symbol`: its lowercase variant name, or empty for `NoSymbol`. *)
+    (** The name of `symbol`: its lowercase variant name, or empty for `NoSymbol`. *)
     export name : Symbol -> string
     name symbol = match symbol
         NoSymbol => ""
@@ -68,7 +68,7 @@ module Symbols
         "web" => Web
         _ => OtherPlatform(platformName = text)
 
-    (** The protocol name of `platform`. *)
+    (** The name of `platform`. *)
     export platformText : Platform -> string
     platformText platform = match platform
         Macos => "macos"

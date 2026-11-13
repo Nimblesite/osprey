@@ -2,7 +2,7 @@
 #ifndef TD_SHARED_H
 #define TD_SHARED_H
 #include <stddef.h>
-#define TD_SHARED_FINGERPRINT "b315dff76fbcbfb1fd304c32427bb3d3c5044afaee5cb988be07ba4a809e2d30"
+#define TD_SHARED_FINGERPRINT "1d5142f8637b5f8cf90e2f3d38dbdd409976404d1d1f285cee30f8f6684138dd"
 #define TD_SHARED_POINTER_BYTES 8
 #define TD_SHARED_ABI_MAJOR 1
 #define TD_SHARED_STORAGE(name, byte_count) \
@@ -81,7 +81,7 @@ TD_SHARED_STORAGE(OwnerToken, 24);
 #define TD_OwnerToken_appInstance_BYTES 16
 #define TD_OwnerToken_serial_OFFSET 16
 #define TD_OwnerToken_serial_BYTES 8
-TD_SHARED_STORAGE(SceneShape, 72);
+TD_SHARED_STORAGE(SceneShape, 88);
 #define TD_SceneShape_code_OFFSET 0
 #define TD_SceneShape_code_BYTES 8
 #define TD_SceneShape_index_OFFSET 8
@@ -100,6 +100,10 @@ TD_SHARED_STORAGE(SceneShape, 72);
 #define TD_SceneShape_colour_BYTES 8
 #define TD_SceneShape_depth_OFFSET 64
 #define TD_SceneShape_depth_BYTES 8
+#define TD_SceneShape_textOffset_OFFSET 72
+#define TD_SceneShape_textOffset_BYTES 8
+#define TD_SceneShape_textLength_OFFSET 80
+#define TD_SceneShape_textLength_BYTES 8
 TD_SHARED_STORAGE(ViewRow, 152);
 #define TD_ViewRow_kind_OFFSET 0
 #define TD_ViewRow_kind_BYTES 8

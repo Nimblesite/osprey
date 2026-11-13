@@ -54,13 +54,15 @@ int osp_native_length(OspNativeBridge *bridge, const td_OwnedLease *lease,
 typedef struct {
   int64_t code, index;
   double values[5]; // x, y, width (a disc's radius), height, angle
-  int64_t colour, depth;
+  int64_t colour, depth, text_offset, text_length;
 } OspNativeShape;
 _Static_assert(sizeof(OspNativeShape) == sizeof(td_SceneShape) &&
                    offsetof(OspNativeShape, values) == TD_SceneShape_x_OFFSET &&
                    offsetof(OspNativeShape, colour) ==
                        TD_SceneShape_colour_OFFSET &&
-                   offsetof(OspNativeShape, depth) == TD_SceneShape_depth_OFFSET,
+                   offsetof(OspNativeShape, depth) == TD_SceneShape_depth_OFFSET &&
+                   offsetof(OspNativeShape, text_length) ==
+                       TD_SceneShape_textLength_OFFSET,
                "OspNativeShape matches the generated SceneShape layout");
 // [NATIVE-SHM-VIEW] One native control, laid out as the generated ViewRow.
 typedef struct {
@@ -114,11 +116,12 @@ enum {
 // [NATIVE-SHM-SAFETY] The writers below may be called from any thread: each
 // row lands whole. A number that is not finite, or a negative extent, refuses
 // the frame, so a host never lays out a value it cannot use.
-// Appends one shape to the pending run, in drawing order. Nonzero once the run
+// Appends one scene row to the pending run, in drawing order, and copies its
+// text once into the text run. Nonzero once the run
 // is refused: it is then refused whole.
 int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
                                double width, double height, double angle,
-                               int64_t colour, int64_t depth);
+                               int64_t colour, int64_t depth, const char *text);
 // Appends one control and copies its text once into the text run. Returns the
 // row's index for its children to name as `parent`, or -1 once the view is
 // refused: a parent that is not an earlier row, or a run that cannot grow.

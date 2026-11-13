@@ -1,53 +1,65 @@
-// Implements [NATIVE-SHM-BOUNDARY]: an application built from `Node` regions crosses the bridge
-// with no JSON in either direction. `Surfaces::open` and `Surfaces::event` run the application's
-// own `init`, `update` and `render`, lower the root region to view rows the host reads in place
-// ([NATIVE-SHM-LOWER], [NATIVE-SHM-VIEW]) and keep the session in the library. An event is the
-// number of a control and its words; the binding it names decides what the words mean.
+// Implements [NATIVE-SHM-BOUNDARY]: the one way an application built from `Node` regions crosses
+// to its host. There is no envelope and no text format in either direction. `Surfaces::open` and
+// `Surfaces::deliver` run the application's own `init`, `update` and `render`, lower the root
+// region to view rows and scene rows the host reads in place ([NATIVE-SHM-LOWER],
+// [NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE]), send each step's requests and slice writes as ask rows
+// ([NATIVE-SHM-ASK]) and keep the session in the library. A host event is a typed call: a
+// control's number and its words, a stroke's points, a scene's input, a completion's text, a
+// lifecycle phase or a frame's elapsed time. The binding a control number names decides what its
+// value means, so a host can only reach actions the application issued ([UI-EVENTS]).
 namespace ui
 
-(** A session drawn as shared view rows: the session itself, the bindings its controls deliver in control order, and what the last step asked of the host. *)
+(** A session drawn as shared rows: the session itself and the bindings its controls deliver, in control order. *)
 type Surface S A =
     surfaceSession : Session<S>
     surfaceBound : List<Binding<A>>
-    surfaceAsked : List<Request>
-    surfaceWrites : List<SliceWrite>
 
 (** How a surface is drawn: the theme and whether the dark appearance is showing. *)
 type Dress =
     dressTheme : Theme
     dressDark : bool
 
-(** Opens and advances a `Surface` ([NATIVE-SHM-BOUNDARY]). *)
+(** Opens and advances a `Surface`, and turns typed host events into messages ([NATIVE-SHM-BOUNDARY]). *)
 module Surfaces
     (** The region every surface draws; other regions appear where it names them with a `Slot`. *)
     export rootKey = "root"
 
     // Draws the root region and answers the bindings its controls deliver. Every region is rebuilt
     // for each view, so a `Slot` always finds the node it names.
-    draw<A> : (Dress, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream, SceneStream | e]
+    draw<A> : (Dress, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream | e]
     draw (dress, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
         Error _ => []
-        Success root => Views::render (Lower::view (Styling(styleTheme = dress.dressTheme, styleDark = dress.dressDark, styleRegions = regions), Streams::split root.snapshotValue))
+        Success root => Views::render (Lower::view (Styling(styleTheme = dress.dressTheme, styleDark = dress.dressDark, styleRegions = regions), root.snapshotValue))
 
-    surface<S, A> : (Context, Step<S>, List<Binding<A>>) -> Surface<S, A>
-    surface (host, step, bound) = Surface(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore, sessionFrames = [], sessionPast = []), surfaceBound = bound, surfaceAsked = step.requests, surfaceWrites = step.writes)
+    // Draws the step, sends what it asks of the host and answers the surface to keep.
+    shown<S, A> : (Context, Step<S>, List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
+    shown (host, step, regions, dress) =
+        bound = draw (dress, regions)
+        Requests::post (step.requests, step.writes)
+        Surface(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound)
 
     (** The first view for the host facts `host`: runs `init`, draws the root region into the shared frame and answers the surface to keep. *)
-    export open<S, A> : (Context, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream, SceneStream | e]
+    export open<S, A> : (Context, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
     open (host, init, render, dress) =
         first = init host
-        surface (host, first, draw (dress, render (first.stepStore, first.stepStore, [], first.writes)))
+        shown (host, first, render (first.stepStore, first.stepStore, [], first.writes), dress)
 
     (** The next view after `message` at the clock reading `now`: runs `update`, draws the root region and answers the surface to keep. *)
-    export deliver<S, A> : (Surface<S, A>, int, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream, SceneStream | e]
+    export deliver<S, A> : (Surface<S, A>, int, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Dress) -> Surface<S, A> ![ViewStream | e]
     deliver (held, now, message, update, render, dress) =
         before = held.surfaceSession
         host = before.sessionContext
         clocked = host(now = now)
         next = update (clocked, before.sessionStore, message)
-        surface (clocked, next, draw (dress, render (before.sessionStore, next.stepStore, [], next.writes)))
+        shown (clocked, next, render (before.sessionStore, next.stepStore, [], next.writes), dress)
 
     whole (words, absent) = parseInt words ?: absent
+
+    lifted offset = match offset < 0
+        true => 0
+        false => offset
+
+    mismatch kind = Error(message = "A ${kind} control was sent a value of the wrong kind")
 
     (** The typed message `words` means to `binding`: a tap ignores them, a switch reads `true`, a splitter and a caret read a whole number. Strokes, lassos and scene input are refused here: they arrive through their own typed exports, never as text. *)
     export told<A> : (Binding<A>, string) -> Result<Message<A>, Error>
@@ -58,16 +70,79 @@ module Surfaces
         ChoiceInput action => Success(value = Chose(chooser = action, chosen = words))
         SizeInput action => Success(value = Resized(resizer = action, resized = Splitters::clamp (whole (words, Splitters::least))))
         PlaceInput action => Success(value = Placed(placer = action, placed = lifted (whole (words, 0))))
-        StrokeInput _ => Error(message = "A stroke does not arrive as text")
-        LassoInput _ => Error(message = "A lasso does not arrive as text")
-        SceneInput _ => Error(message = "Scene input does not arrive as text")
+        StrokeInput _ => mismatch "board"
+        LassoInput _ => mismatch "lasso"
+        SceneInput _ => mismatch "scene"
 
-    lifted offset = match offset < 0
-        true => 0
-        false => offset
+    // The binding the control numbered `ordinal` delivers, or an error when the view drew no such control.
+    bound<S, A> : (Surface<S, A>, int) -> Result<Binding<A>, Error>
+    bound (held, ordinal) = match listGet held.surfaceBound ordinal
+        Error _ => Error(message = "Unknown control ${ordinal}")
+        Success binding => Success(value = binding)
 
     (** The message the control numbered `ordinal` delivers with `words`, or an error when the view drew no such control: a host can only name a binding the application issued. *)
     export meant<S, A> : (Surface<S, A>, int, string) -> Result<Message<A>, Error>
-    meant (held, ordinal, words) = match listGet held.surfaceBound ordinal
-        Error _ => Error(message = "Unknown control ${ordinal}")
+    meant (held, ordinal, words) = match bound (held, ordinal)
+        Error problem => Error(message = problem)
         Success binding => told (binding, words)
+
+    // NaN and the infinities are the floats whose difference from themselves is not zero.
+    finite value = value - value == 0.0
+
+    usable values = Lists::any (values, \value => finite value == false) == false
+
+    sceneMessage<A> : (Binding<A>, Input) -> Result<Message<A>, Error>
+    sceneMessage (binding, input) = match binding
+        SceneInput action => Success(value = Controlled(control = action, input = input))
+        _ => mismatch "non-scene"
+
+    (** The message the scene numbered `ordinal` delivers for `input`, its numbers in scene units; refused when that control is not a scene or a number is not finite. *)
+    export scene<S, A> : (Surface<S, A>, int, Input) -> Result<Message<A>, Error>
+    scene (held, ordinal, input) = match usable (inputNumbers input)
+        false => Error(message = "A scene was sent a number that is not finite")
+        true => match bound (held, ordinal)
+            Error problem => Error(message = problem)
+            Success binding => sceneMessage (binding, input)
+
+    inputNumbers input = match input
+        Key _ _ => []
+        Pointer x y _ _ => [x, y]
+        Viewed width height => [width, height]
+
+    strokeMessage<A> : (Binding<A>, List<Point>, int, int) -> Result<Message<A>, Error>
+    strokeMessage (binding, points, width, at) = match binding
+        StrokeInput action => Strokes::bind (action, points, width, at)
+        _ => mismatch "non-board"
+
+    (** The message the board numbered `ordinal` delivers for a finished stroke; refused when that control is not a board or the stroke is malformed. *)
+    export stroke<S, A> : (Surface<S, A>, int, List<Point>, int, int) -> Result<Message<A>, Error>
+    stroke (held, ordinal, points, width, at) = match bound (held, ordinal)
+        Error problem => Error(message = problem)
+        Success binding => strokeMessage (binding, points, width, at)
+
+    lassoMessage<A> : (Binding<A>, List<int>) -> Result<Message<A>, Error>
+    lassoMessage (binding, indices) = match binding
+        LassoInput action => Strokes::lasso (action, indices)
+        _ => mismatch "non-lasso"
+
+    (** The message the lasso numbered `ordinal` delivers for the strokes it enclosed; refused when that control is not a lasso or an index is negative. *)
+    export lasso<S, A> : (Surface<S, A>, int, List<int>) -> Result<Message<A>, Error>
+    lasso (held, ordinal, indices) = match bound (held, ordinal)
+        Error problem => Error(message = problem)
+        Success binding => lassoMessage (binding, indices)
+
+    (** A capability's completion under `ticket`: its result text when `ok`, else the host's reason. *)
+    export completed<A> : (string, bool, string) -> Message<A>
+    completed (ticket, ok, text) = match ok
+        true => Completed(ticket = ticket, outcome = Success(value = text))
+        false => Completed(ticket = ticket, outcome = Error(message = text))
+
+    (** A lifecycle phase the host reached, such as `active` or `background`. *)
+    export phased<A> : string -> Message<A>
+    phased phase = Phase(phase = phase)
+
+    (** A display frame `elapsed` seconds after the last; refused when it is negative or not finite. *)
+    export framed<A> : float -> Result<Message<A>, Error>
+    framed elapsed = match finite elapsed && elapsed >= 0.0
+        true => Success(value = Frame(elapsed = elapsed))
+        false => Error(message = "Invalid frame elapsed time")

@@ -76,16 +76,25 @@ static void *run_reserve(NativeRun *run, size_t bytes) {
 
 int64_t osp_native_scene_shape(int64_t code, int64_t index, double x, double y,
                                double width, double height, double angle,
-                               int64_t colour, int64_t depth) {
+                               int64_t colour, int64_t depth, const char *text) {
   const double values[] = {x, y, width, height, angle};
+  size_t bytes = text ? strlen(text) : 0;
   runs_enter();
-  NativeRun *shapes = &runs[OSP_NATIVE_SHAPES];
-  OspNativeShape *row =
-      finite(values, 5) ? run_reserve(shapes, sizeof *row) : NULL;
+  NativeRun *shapes = &runs[OSP_NATIVE_SHAPES], *chars = &runs[OSP_NATIVE_TEXT];
+  size_t offset = chars->length;
+  char *copy = finite(values, 5) ? run_reserve(chars, bytes) : NULL;
+  OspNativeShape *row = copy ? run_reserve(shapes, sizeof *row) : NULL;
   if (!row)
     return run_refuse(shapes, 1);
-  *row = (OspNativeShape){
-      code, index, {x, y, width, height, angle}, colour, depth};
+  if (bytes)
+    memcpy(copy, text, bytes);
+  *row = (OspNativeShape){.code = code,
+                          .index = index,
+                          .values = {x, y, width, height, angle},
+                          .colour = colour,
+                          .depth = depth,
+                          .text_offset = (int64_t)offset,
+                          .text_length = (int64_t)bytes};
   runs_leave();
   return 0;
 }

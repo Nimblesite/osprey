@@ -9,6 +9,9 @@ namespace ui
 // It answers the control's row, or -1 once the view is refused; the host then refuses the frame.
 extern osp_native_view_row (kind : int) (parent : int) (action : int) (words : string) (ink : int) (fill : int) (points : float) (inset : float) (gap : float) (corner : float) (heft : int) -> int
 
+// Appends one ask field and its text; nonzero once the frame is refused ([NATIVE-SHM-ASK]).
+extern osp_native_ask (field : int) (number : int) (words : string) -> int
+
 // Gives the row it names its extents, flex share, state, border colour and second text; -1 refuses the view.
 extern osp_native_view_extend (row : int) (wide : float) (tall : float) (share : float) (traits : int) (edge : int) (hint : string) -> int
 
@@ -83,6 +86,10 @@ type View A =
     Canvas
         canvasLook : Look
         canvasAction : A
+    Drawing
+        drawingLook : Look
+        drawingSketch : Sketch
+        drawingAction : A
     Writing
         writingLook : Look
         writingText : string
@@ -108,10 +115,17 @@ type Fitting =
     fittedRow : int
     fittedAs : Fit
 
-(** A view's controls, performed in drawing order: a control's row is its position in that order, and a child names its parent's row ([NATIVE-SHM-VIEW]). *)
+(** The scene a canvas at `sketchedRow` draws. *)
+type Sketched =
+    sketchedRow : int
+    sketchedAs : Sketch
+
+(** A view's controls, performed in drawing order: a control's row is its position in that order, and a child names its parent's row; a drawing's scene follows its canvas, and the requests and slice writes of the step drawn ride beside them ([NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE], [NATIVE-SHM-ASK]). *)
 effect ViewStream
     place : Seated => Unit
     size : Fitting => Unit
+    sketch : Sketched => Unit
+    ask : Asked => Unit
 
 (** A walk in progress: the actions bound so far and the row the next control takes. *)
 type Walk A =
@@ -159,7 +173,7 @@ module Views
     (** The row `kind` of a `Picture`: the image its text names. *)
     export image = 12
 
-    (** The row `kind` of a `Canvas`: the frame's shapes, drawn here; a pointer delivers `x,y`. *)
+    (** The row `kind` of a `Canvas` or a `Drawing`: a drawing's scene rows name it, and a pointer over it delivers its input. *)
     export canvas = 13
 
     (** The row `kind` of a `Writing`: a text field of many lines. *)
@@ -209,6 +223,8 @@ module Views
         handle ViewStream
             place drawn => osp_native_view_row (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
             size fitting => osp_native_view_extend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
+            sketch drawn => Streams::write (Streams::rows (drawn.sketchedRow, drawn.sketchedAs))
+            ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
         work ()
 
     // Sends one control and moves the walk to the next row.
@@ -244,6 +260,7 @@ module Views
         Rule look => seat (walk, rule, parent, none, "", look)
         Picture look source => seat (walk, image, parent, none, source, look)
         Canvas look action => acting (walk, canvas, parent, action, "", look)
+        Drawing look content action => sketched (acting (walk, canvas, parent, action, "", look), walk.walkNext, content)
         Writing look words action => acting (walk, editor, parent, action, words, look)
         Menu look items => each (seat (walk, menu, parent, none, "", look), walk.walkNext, items, 0)
         Sheet look items dismiss => each (acting (walk, sheet, parent, dismiss, "", look), walk.walkNext, items, 0)
@@ -257,6 +274,13 @@ module Views
     sized (walk, row, fit) =
         fitting = Fitting(fittedRow = row, fittedAs = fit)
         perform ViewStream.size fitting
+        walk
+
+    // Streams `content` after the canvas at `row`; the walk is unchanged.
+    sketched<A> : (Walk<A>, int, Sketch) -> Walk<A> ![ViewStream | e]
+    sketched (walk, row, content) =
+        drawn = Sketched(sketchedRow = row, sketchedAs = content)
+        perform ViewStream.sketch drawn
         walk
 
     (** Draws `view` and answers the actions its controls deliver, in order: a host event names one by its position. *)
