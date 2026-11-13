@@ -98,6 +98,13 @@ static void death_channel_of_oversized_capacity(void) {
   (void)channel_create_checked(INT64_MAX);
 }
 
+// A capacity the compiler cannot see: codegen passes whatever the program computed.
+static volatile int64_t runtime_capacity;
+
+static void death_channel_of_runtime_capacity(void) {
+  (void)channel_create_checked(runtime_capacity);
+}
+
 static void check_refusal(OspDeathBody body, const char *what) {
   int signalled = osp_death_signal(body);
   if (signalled != SIGABRT) {
@@ -110,6 +117,11 @@ void test_unusable_capacities_are_refused_not_returned(void) {
   check_refusal(death_channel_of_zero_capacity, "a zero capacity");
   check_refusal(death_channel_of_negative_capacity, "a negative capacity");
   check_refusal(death_channel_of_oversized_capacity, "an unallocatable capacity");
+  const int64_t unusable[] = {0, -1, INT64_MIN, (int64_t)INT32_MAX + 1, INT64_MAX};
+  for (size_t i = 0; i < sizeof(unusable) / sizeof(unusable[0]); i++) {
+    runtime_capacity = unusable[i];
+    check_refusal(death_channel_of_runtime_capacity, "an unusable runtime capacity");
+  }
   // And the capacity that IS usable still is: a refusal that refused
   // everything would satisfy every assertion above.
   int64_t ok = channel_create_checked(1);

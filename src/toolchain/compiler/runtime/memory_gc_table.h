@@ -103,13 +103,18 @@ static void gc_ms_push(uintptr_t w) {
   g_ms[g_ms_top++] = w;
 }
 
+// A word that may alias any object, so the scan reads it without aliasing UB.
+typedef uintptr_t __attribute__((may_alias)) OspGcWord;
+
 // Treat every aligned word in [lo,hi) as a candidate pointer; mark & enqueue any
-// that names a managed object. memcpy reads the word without aliasing UB.
+// that names a managed object. A conservative scan reads whole stacks, including
+// the redzones AddressSanitizer plants between locals, so this one function is
+// exempt from it and loads the word directly (a memcpy would be intercepted).
+__attribute__((no_sanitize("address")))
 static void gc_scan_range(uintptr_t lo, uintptr_t hi) {
   uintptr_t p = (lo + (OSP_GC_WORD - 1)) & ~(OSP_GC_WORD - 1);
   for (; p + OSP_GC_WORD <= hi; p += OSP_GC_WORD) {
-    uintptr_t w;
-    memcpy(&w, (const void *)p, sizeof(w));
+    uintptr_t w = *(const OspGcWord *)p;
     OspGcEnt *e = gc_lookup(w);
     if (e && !(e->mark & GC_MARKED)) {
       e->mark |= GC_MARKED;
