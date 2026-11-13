@@ -36,9 +36,10 @@ public final class SharedStore: ObservableObject {
     /// The adapters this host answers ([GPUI-HOST-CAPABILITIES] names the same kinds).
     public static func standardAdapters(store: StoreAdapter) -> [CapabilityAdapter] {
         #if os(macOS)
-        [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, DocumentAdapter()]
+        [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, DocumentAdapter(),
+         ListDirectoriesAdapter(), ReadPropertyListsAdapter(), ReadTextsAdapter(), FingerprintAdapter(), RecogniseAdapter()]
         #else
-        [HttpAdapter(), store, DocumentAdapter()]
+        [HttpAdapter(), store, DocumentAdapter(), ListDirectoriesAdapter(), ReadTextsAdapter()]
         #endif
     }
 

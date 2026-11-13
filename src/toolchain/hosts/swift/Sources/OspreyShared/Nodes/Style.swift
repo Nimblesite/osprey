@@ -42,7 +42,9 @@ public struct Inherited: Equatable {
     var size: CGFloat = 0
     var lineHeight: CGFloat = 0
     var tracking: CGFloat = 0
+    var mathScale: Double = 1
     var italic = false
+    var hug = false
     var controlHeight: CGFloat = 0
     var controlPadding: CGFloat = -1
     var symbolSize: CGFloat = 0
@@ -50,6 +52,7 @@ public struct Inherited: Equatable {
     var iconOnly = false
     var trailingSymbols = false
     var flatRows = false
+    var fadeBackdrop = false
     var rowsFromTop = false
 
     func merging(_ style: [String: Tree]) -> Inherited {
@@ -60,6 +63,8 @@ public struct Inherited: Equatable {
         if let value = style["textSize"]?.int, value > 0 { next.size = CGFloat(value) }
         if let value = style.double("lineHeight"), value > 0 { next.lineHeight = CGFloat(value) }
         if let value = style.double("tracking"), value != 0 { next.tracking = CGFloat(value) }
+        if let value = style.double("mathScale"), value > 0 { next.mathScale = value }
+        if style["hug"]?.bool == true { next.hug = true }
         if style["font"]?.string?.isEmpty == false || (style["textSize"]?.int ?? 0) > 0 { next.italic = style["italic"]?.bool ?? false }
         if let value = style["controlHeight"]?.int, value > 0 { next.controlHeight = CGFloat(value) }
         if let value = style["controlPadding"]?.int, value >= 0 { next.controlPadding = CGFloat(value) }
@@ -68,6 +73,7 @@ public struct Inherited: Equatable {
         if style["iconOnly"]?.bool == true { next.iconOnly = true }
         if style["trailingSymbols"]?.bool == true { next.trailingSymbols = true }
         if style["flatRows"]?.bool == true { next.flatRows = true }
+        if style["fadeBackdrop"]?.bool == true { next.fadeBackdrop = true }
         return next
     }
 }
@@ -119,8 +125,20 @@ enum Type {
         (inherited.size > 0 ? inherited.size : scale(role), bold(role), inherited.family == "serif", inherited.family == "mono" || role == "mono")
     }
 
-    /// A role's face at the size and family a frame chose, else the platform's type scale.
+    /// The face name an authored family registers: the serif and sans faces applications bundle.
+    /// Mono stays the platform's monospaced face, so every host's code looks native.
+    private static func authored(_ inherited: Inherited) -> String? {
+        switch inherited.family {
+        case "serif": return inherited.italic ? FontRegistration.serifItalicName : FontRegistration.serifName
+        case "sans": return "Geist"
+        default: return nil
+        }
+    }
+
+    /// A role's face at the size and family a frame chose, else the platform's type scale. An
+    /// authored size draws the bundled face at exactly that size, regular as authored.
     static func font(_ role: String, _ inherited: Inherited) -> Font {
+        if inherited.size > 0, let name = authored(inherited) { return .custom(name, size: inherited.size) }
         let face = self.face(role, inherited)
         let base = Font.system(size: face.size, weight: face.bold ? .semibold : .regular, design: face.mono ? .monospaced : face.serif ? .serif : .default)
         return inherited.italic ? base.italic() : base
@@ -129,6 +147,7 @@ enum Type {
     #if os(macOS)
     /// The same face as an AppKit font, for a leaf a selection group draws.
     static func nsFont(_ role: String, _ inherited: Inherited) -> NSFont {
+        if inherited.size > 0, let name = authored(inherited), let font = NSFont(name: name, size: inherited.size) { return font }
         let face = self.face(role, inherited)
         let weight: NSFont.Weight = face.bold ? .semibold : .regular
         let base: NSFont

@@ -8,6 +8,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_SWIFT_APP:-"$repo/src/osprey/examples/tally"}
+# Absolute, so `--resources` still names the application after this script changes folder.
+case "$app" in /*) ;; *) app="$repo/$app" ;; esac
 runtime="$repo/src/toolchain/compiler/runtime"
 
 mkdir -p "$here/build/app"
@@ -21,4 +23,4 @@ for symbol in osprey_main osprey_app_argument osprey_app_open osprey_app_event o
 done
 cd "$here"
 swift build -c release --product OspreyViewHost
-exec "$(swift build -c release --show-bin-path)/OspreyViewHost" "$@"
+exec "$(swift build -c release --show-bin-path)/OspreyViewHost" --resources "$app" "$@"

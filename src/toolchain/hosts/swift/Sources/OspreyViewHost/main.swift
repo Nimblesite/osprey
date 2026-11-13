@@ -18,7 +18,7 @@ private func makeStore(arguments: [String], adapters: [CapabilityAdapter]) -> Re
 }
 
 struct HostApp: App {
-    @StateObject private var store = makeStore(arguments: Array(CommandLine.arguments.dropFirst()), adapters: Adapters.standard(store: bundleStore))
+    @StateObject private var store = makeStore(arguments: launchArguments(), adapters: Adapters.standard(store: bundleStore))
 
     var body: some Scene {
         WindowGroup(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Osprey") {
@@ -58,6 +58,27 @@ private func runSelfTest(_ options: SelfTestOptions) {
 
 // Launch arguments belong to the application; AppKit would otherwise read paths among them as documents to open, and open no window. A string, not a Boolean: the open panel service reads this default as text and crashes on any other type.
 UserDefaults.standard.set("NO", forKey: "NSTreatUnknownArgumentsAsOpen")
+
+// [WORKBENCH-DESIGN-TYPE] Faces and media travel with the application: its fonts register
+// process-locally before any text draws, and `--resources` names its folder for media the
+// bundle holds no copy of. Neither flag reaches the application's own arguments.
+FontRegistration.configureTextRendering()
+FontRegistration.registerBundled()
+private func applicationArguments(_ given: [String]) -> [String] {
+    var stripped: [String] = []
+    var skip = false
+    given.forEach { argument in
+        if skip { skip = false; return }
+        if argument == "--resources" { skip = true; return }
+        stripped.append(argument)
+    }
+    return stripped
+}
+private func launchArguments() -> [String] {
+    let given = Array(CommandLine.arguments.dropFirst())
+    if let at = given.firstIndex(of: "--resources"), at + 1 < given.count { Bundled.appFolder = URL(fileURLWithPath: given[at + 1], isDirectory: true) }
+    return applicationArguments(given)
+}
 if CommandLine.arguments.contains("--open-check") {
     exit(MainActor.assumeIsolated { SelfCheck.opened() })
 }
@@ -66,7 +87,7 @@ if CommandLine.arguments.contains("--view-check") {
     exit(MainActor.assumeIsolated { SelfCheck.run() })
 }
 do {
-    if let options = try SelfTestOptions.parse(Array(CommandLine.arguments.dropFirst())) {
+    if let options = try SelfTestOptions.parse(launchArguments()) {
         MainActor.assumeIsolated { runSelfTest(options) }
     } else {
         HostApp.main()

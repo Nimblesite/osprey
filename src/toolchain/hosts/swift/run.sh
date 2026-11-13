@@ -7,6 +7,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_SWIFT_APP:?OSPREY_SWIFT_APP names the application folder}
+# Absolute, so `--resources` still names the application after this script changes folder.
+case "$app" in /*) ;; *) app="$repo/$app" ;; esac
 name=${OSPREY_SWIFT_NAME:-$(basename "$app")}
 identifier=${OSPREY_SWIFT_BUNDLE_ID:-org.ospreylang.$name}
 runtime="$repo/src/toolchain/compiler/runtime"
@@ -32,6 +34,10 @@ cp "$binary" "$bundle/Contents/MacOS/$name.new"
 mv -f "$bundle/Contents/MacOS/$name.new" "$bundle/Contents/MacOS/$name"
 # An application's icon.png, 1024 pixels square, becomes the bundle's icon in every size a Mac asks for.
 mkdir -p "$bundle/Contents/Resources"
+# An application's assets folder travels with it: fonts, symbol artwork and manifests the host reads.
+if [ -d "$app/assets" ]; then
+  cp -R "$app/assets/." "$bundle/Contents/Resources/"
+fi
 if [ -f "$app/icon.png" ]; then
     iconset="$here/build/app/AppIcon.iconset"
     rm -rf "$iconset"
@@ -60,4 +66,4 @@ PLIST
 codesign --force --sign - "$bundle" 2>/dev/null
 if [ "$build_only" = 1 ]; then echo "$bundle"; exit 0; fi
 pkill -f "$bundle/Contents/MacOS/$name" 2>/dev/null || true
-open "$bundle" --args "$@"
+open "$bundle" --args --resources "$app" "$@"

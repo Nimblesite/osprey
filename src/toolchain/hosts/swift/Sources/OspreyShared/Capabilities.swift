@@ -79,6 +79,9 @@ extension ResultDocument: ExpressibleByDictionaryLiteral, ExpressibleByArrayLite
     public init(integerLiteral value: Int) { self = .number(Double(value)) }
     public init(floatLiteral value: Double) { self = .number(value) }
     public init(nilLiteral: ()) { self = .null }
+
+    /// A text value, so adapters build documents from computed strings as plainly as literals.
+    public init(_ value: String) { self = .string(value) }
 }
 
 /// What an adapter hands its runner: a result document, or a chooser's bare path.
@@ -116,6 +119,12 @@ func missing(_ ask: Ask, _ name: String) -> CapabilityError {
 public func required(_ ask: Ask, text field: Int64, _ name: String) throws -> String {
     guard ask.fields.contains(where: { $0.field == field }) else { throw missing(ask, name) }
     return ask.text(field)
+}
+
+/// Required texts at argument `field`, refusing an ask that carries none; empty texts count.
+public func required(_ ask: Ask, texts field: Int64, _ name: String) throws -> [String] {
+    guard ask.fields.contains(where: { $0.field == field }) else { throw missing(ask, name) }
+    return ask.texts(field)
 }
 
 /// A required whole number at argument `field`, refusing an ask that carries none; the adapter

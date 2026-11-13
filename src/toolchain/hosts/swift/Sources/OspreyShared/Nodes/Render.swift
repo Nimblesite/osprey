@@ -29,9 +29,14 @@ public struct NodeView: View {
     public var body: some View {
         switch node.text("kind") {
         case "scene": ToldScene(node: node)
-        case "text", "rich-text", "label", "icon", "badge", "pair", "evidence", "link", "spacer", "divider", "progress", "meter", "empty": LeafView(node: node)
+        case "text", "rich-text", "label", "icon", "badge", "pair", "evidence", "link", "spacer", "divider", "progress", "meter", "empty", "segments", "swatch": LeafView(node: node)
         case "button", "field", "toggle", "picker", "disclosure", "alert": ControlView(node: node, drawing: drawing)
         case "rows": RowsView(node: node, drawing: drawing)
+        case "math": MathLeaf(node: node)
+        case "image": StillLeaf(node: node)
+        case "video": FilmLeaf(node: node)
+        case "editor": EditorLeaf(node: node, drawing: drawing)
+        case "board": BoardLeaf(node: node)
         case "stack", "framed", "themed", "slot", "layer", "section", "screen", "split", "aside", "tabs", "dialog", "context-menu": ContainerView(node: node, drawing: drawing)
         default: Refusal(kind: node.text("kind"))
         }

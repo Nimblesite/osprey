@@ -62,11 +62,12 @@ struct SidebarMaterial: View {
 #endif
 
 /// A pane with a column beside it that a splitter resizes; only a drag in progress lives here.
+/// Osprey owns the width and its limits; while a drag is in progress the host previews the width
+/// it would send, and the drag's end delivers that width to the splitter's binding.
 struct AsideView: View {
     let node: Tree
     let drawing: Drawing
     @State private var dragging: CGFloat?
-    @State private var start: CGFloat = 0
 
     private var width: CGFloat { dragging ?? CGFloat(node.count("width")) }
     private var trailing: Bool { node.text("side") == "trailing" }
@@ -83,22 +84,81 @@ struct AsideView: View {
         NodeView(node: node["aside"] ?? .null, drawing: drawing).frame(width: width).frame(maxHeight: .infinity)
     }
 
+    /// The width once the splitter moves `offset` points from `start`, within the limits Osprey sent.
+    private func preview(from start: CGFloat, dragged offset: CGFloat) -> CGFloat {
+        let wanted = trailing ? start - offset : start + offset
+        return min(max(wanted, CGFloat(node.count("least"))), CGFloat(node.count("most")))
+    }
+
     private var handle: some View {
+        SplitterHandle(width: node.count("width"), trailing: trailing, preview: preview,
+                       dragging: $dragging,
+                       sent: { next in drawing.send(node.count("event"), .number(Double(Int(next.rounded())))) })
+            .zIndex(1)
+    }
+}
+
+/// The draggable splitter: a line on the theme's `divider` colour, the accent while hovered or
+/// dragged, as wide as the gap between the columns for its hit area.
+struct SplitterHandle: View {
+    let width: Int
+    let trailing: Bool
+    let preview: (CGFloat, CGFloat) -> CGFloat
+    @Binding var dragging: CGFloat?
+    let sent: (CGFloat) -> Void
+    @State private var start: CGFloat?
+    @State private var hovering = false
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
+
+    private var active: Bool { hovering || start != nil }
+
+    /// The splitter's line: the accent while hovered or dragged, else the theme's divider. No
+    /// divider token draws no line, so a theme without one keeps the seam invisible.
+    private var ink: Color? {
+        if active { return theme.color("accent", dark: scheme == .dark) ?? .accentColor }
+        return theme.color("divider", dark: scheme == .dark)
+    }
+
+    var body: some View {
+        // The clear strip is net zero wide: the pane and the column keep the widths Osprey sent.
         Rectangle().fill(.clear).frame(width: 6)
             .padding(.horizontal, -3)
-            .contentShape(Rectangle())
+            .overlay { if let ink { Rectangle().fill(ink).frame(width: active ? 2 : 1) } }
+            .contentShape(Rectangle().inset(by: -4))
             #if os(macOS)
-            .onHover { inside in if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() } }
+            .onContinuousHover { phase in
+                hovering = phase != .ended
+                (hovering ? NSCursor.resizeLeftRight : NSCursor.arrow).set()
+            }
             #endif
-            .gesture(DragGesture(coordinateSpace: .global).onChanged { drag in
-                if dragging == nil { start = CGFloat(node.count("width")) }
-                let moved = trailing ? -drag.translation.width : drag.translation.width
-                dragging = min(max(start + moved, CGFloat(node.count("least"))), CGFloat(node.count("most")))
-            }.onEnded { _ in
-                if let dragging { drawing.send(node.count("event"), .number(Double(Int(dragging.rounded())))) }
+            .gesture(drag)
+            .accessibilityElement()
+            .accessibilityLabel("Column splitter")
+            .accessibilityValue("\(dragging.map { Int($0) } ?? width) points")
+            .accessibilityAdjustableAction(adjust)
+    }
+
+    // Translation is global so the splitter's own movement does not feed back into the drag.
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+            .onChanged { change in
+                let base = start ?? CGFloat(width)
+                start = base
+                dragging = preview(base, change.translation.width)
+            }
+            .onEnded { _ in
+                start = nil
+                if let dragging { sent(dragging) }
                 dragging = nil
-            })
-            .zIndex(1)
+            }
+    }
+
+    /// Points a keyboard or assistive adjustment moves the splitter.
+    private func adjust(_ direction: AccessibilityAdjustmentDirection) {
+        let step: CGFloat = 20
+        let offset = direction == .increment ? step : -step
+        sent(preview(CGFloat(width), trailing ? -offset : offset))
     }
 }
 

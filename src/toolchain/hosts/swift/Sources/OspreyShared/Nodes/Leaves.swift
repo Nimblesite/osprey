@@ -20,7 +20,7 @@ struct LeafView: View {
         case "text": plain
         case "rich-text": rich
         case "label": labelled
-        case "icon": Image(systemName: Symbols.name(node.text("symbol"))).font(.system(size: inherited.symbolSize > 0 ? inherited.symbolSize : 14)).accessibilityHidden(true)
+        case "icon": NativeSymbol(name: node.text("symbol"), size: inherited.symbolSize > 0 ? inherited.symbolSize : 14)
         case "badge": badge
         case "pair", "evidence": pair
         case "link": link
@@ -28,6 +28,8 @@ struct LeafView: View {
         case "divider": Divider()
         case "progress": progress
         case "meter": meter
+        case "segments": segments
+        case "swatch": SwatchLeaf(node: node)
         default: ContentUnavailableView(node.text("title"), systemImage: Symbols.name(node.text("symbol")), description: Text(node.text("detail"))).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -59,7 +61,10 @@ struct LeafView: View {
         let role = node.text("role")
         let words = role == "eyebrow" ? node.text("text").uppercased() : node.text("text")
         #if os(macOS)
-        if let group {
+        // Authored serif paragraphs wrap to exact line heights, as AppKit draws them.
+        if group == nil, !words.isEmpty, role == "body", inherited.family == "serif", inherited.size > 0, inherited.lineHeight > 0 {
+            ParagraphText(value: words, inherited: inherited, ink: nsTone(node.text("tone")))
+        } else if let group {
             setting(Text(words), role: role).hidden().overlay(alignment: .topLeading) {
                 SelectableText(attributed: attributed(words, role: role, ink: nsTone(node.text("tone"))), group: group)
             }
@@ -157,7 +162,7 @@ struct LeafView: View {
 
     private var labelled: some View {
         HStack(spacing: 6) {
-            if !node.text("symbol").isEmpty { Image(systemName: Symbols.name(node.text("symbol"))).font(.system(size: inherited.symbolSize > 0 ? inherited.symbolSize : 12)) }
+            if !node.text("symbol").isEmpty { NativeSymbol(name: node.text("symbol"), size: inherited.symbolSize > 0 ? inherited.symbolSize : 12) }
             Text(node.text("label")).font(Type.font("body", inherited)).lineLimit(1)
         }
     }
@@ -165,7 +170,7 @@ struct LeafView: View {
     private var badge: some View {
         let colour = theme.color(node.text("tone"), dark: dark) ?? .secondary
         return HStack(spacing: 4) {
-            if !node.text("symbol").isEmpty { Image(systemName: Symbols.name(node.text("symbol"))).font(.system(size: 9, weight: .bold)) }
+            if !node.text("symbol").isEmpty { NativeSymbol(name: node.text("symbol"), size: 9, weight: .bold) }
             Text(node.text("label")).font(.system(size: 11, weight: .medium))
         }
         .foregroundStyle(colour)
@@ -213,6 +218,33 @@ struct LeafView: View {
         }
         .accessibilityElement(children: .combine)
     }
+
+    /// A row of status segments, one per tone; the label says what they measure.
+    private var segments: some View {
+        HStack(spacing: 5) {
+            ForEach(Array(node.list("tones").enumerated()), id: \.offset) { _, name in
+                RoundedRectangle(cornerRadius: 3).fill(tone(name.string ?? "")).frame(height: 5)
+            }
+        }
+        .accessibilityLabel(node.text("label"))
+    }
+}
+
+/// One theme token's two appearances, side by side, named beneath.
+struct SwatchLeaf: View {
+    let node: Tree
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 0) {
+                Rectangle().fill(ThemeResolver.parse(node.text("light")) ?? .clear)
+                Rectangle().fill(ThemeResolver.parse(node.text("dark")) ?? .clear)
+            }
+            .frame(width: 56, height: 32).clipShape(RoundedRectangle(cornerRadius: 6))
+            Text(node.text("name")).font(.caption2)
+        }
+        .accessibilityLabel("\(node.text("name")) \(node.text("light")) \(node.text("dark"))")
+    }
 }
 
 /// Words a light sweeps across while the agent works; Reduce Motion leaves them still.
@@ -237,3 +269,37 @@ struct Shimmering: View {
             .onAppear { withAnimation(.linear(duration: 1.6).repeatForever(autoreverses: false)) { moving = true } }
     }
 }
+
+#if os(macOS)
+/// An authored serif paragraph: word wrapping to exact line heights, without orphan-word
+/// redistribution, as AppKit draws it.
+struct ParagraphText: NSViewRepresentable {
+    let value: String
+    let inherited: Inherited
+    let ink: NSColor
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: value)
+        field.isSelectable = true
+        return field
+    }
+
+    func updateNSView(_ field: NSTextField, context: Context) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineBreakStrategy = []
+        paragraph.minimumLineHeight = inherited.lineHeight
+        paragraph.maximumLineHeight = inherited.lineHeight
+        let font = Type.nsFont("body", inherited)
+        let baseline = font.leading + (inherited.lineHeight - font.ascender + font.descender - font.leading) / 2
+        let text = NSAttributedString(string: value, attributes: [.font: font, .foregroundColor: ink, .paragraphStyle: paragraph, .kern: inherited.tracking, .baselineOffset: baseline])
+        if !field.attributedStringValue.isEqual(to: text) { field.attributedStringValue = text }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSTextField, context: Context) -> CGSize? {
+        guard let width = proposal.width, width > 0 else { return nil }
+        nsView.preferredMaxLayoutWidth = width
+        return CGSize(width: width, height: nsView.intrinsicContentSize.height)
+    }
+}
+#endif

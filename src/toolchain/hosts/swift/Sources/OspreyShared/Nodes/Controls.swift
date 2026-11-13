@@ -40,7 +40,8 @@ struct ButtonView: View {
     }
 
     @ViewBuilder private var face: some View {
-        let glyph = Image(systemName: Symbols.name(symbol)).font(.system(size: inherited.symbolSize > 0 ? inherited.symbolSize : 12, weight: .medium))
+        let size = inherited.symbolSize > 0 ? inherited.symbolSize : iconOnly ? 18 : 12
+        let glyph = NativeSymbol(name: symbol, size: size, weight: .medium)
         if iconOnly {
             glyph
         } else {
@@ -315,11 +316,13 @@ struct AlertView: View {
     }
 }
 
-/// [UI-COMPONENTS] Selectable rows: the native source list in the sidebar, a flat list elsewhere.
+/// [UI-COMPONENTS] Selectable rows: the native source list in the sidebar, a flat list elsewhere,
+/// or the card list a `flatRows` frame authors.
 struct RowsView: View {
     let node: Tree
     let drawing: Drawing
     @Environment(\.ospreyPlacement) private var placement
+    @Environment(\.ospreyInherited) private var inherited
 
     private var selected: String { node.text("selected") }
     private var rows: [Tree] { node.list("rows") }
@@ -333,7 +336,7 @@ struct RowsView: View {
     private func choose(_ key: String) { if key != selected { DispatchQueue.main.async { drawing.send(node.count("event"), .string(key)) } } }
 
     var body: some View {
-        if placement == .sidebar { source } else { flat }
+        if placement == .sidebar { source } else if inherited.flatRows { authored } else { flat }
     }
 
     private var source: some View {
@@ -355,7 +358,7 @@ struct RowsView: View {
     private func items(_ rows: [Tree]) -> some View {
         ForEach(rows, id: \.keyOfRow) { row in
             HStack(spacing: 8) {
-                if !row.text("symbol").isEmpty { Image(systemName: Symbols.name(row.text("symbol"))).font(.system(size: 12)).foregroundStyle(.secondary) }
+                if !row.text("symbol").isEmpty { NativeSymbol(name: row.text("symbol"), size: 12).foregroundStyle(.secondary) }
                 NodeView(node: row["child"] ?? .null, drawing: drawing)
             }
             .tag(row.text("key"))
@@ -369,6 +372,23 @@ struct RowsView: View {
             }
         }
     }
+
+    /// The list an application authored: consecutive rows that name one group under its heading,
+    /// each row a card whose flat surface shows selection as a tint, never colour alone.
+    private var authored: some View {
+        LazyVStack(alignment: .leading, spacing: inherited.gap ?? theme.spacing(2)) {
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                if !group.title.isEmpty {
+                    Text(group.title).font(Type.font("eyebrow", inherited)).foregroundStyle(.secondary).padding(.top, theme.spacing(1))
+                }
+                ForEach(group.rows, id: \.keyOfRow) { row in
+                    AuthoredRow(row: row, selected: row.text("key") == selected, drawing: drawing) { choose(row.text("key")) }
+                }
+            }
+        }
+    }
+
+    @Environment(\.ospreyTheme) private var theme
 }
 
 extension Tree {
@@ -385,7 +405,7 @@ struct FlatRow: View {
     var body: some View {
         Button(action: tap) {
             HStack(spacing: 8) {
-                if !row.text("symbol").isEmpty { Image(systemName: Symbols.name(row.text("symbol"))).font(.system(size: 12)).foregroundStyle(.secondary) }
+                if !row.text("symbol").isEmpty { NativeSymbol(name: row.text("symbol"), size: 12).foregroundStyle(.secondary) }
                 NodeView(node: row["child"] ?? .null, drawing: drawing)
                 Spacer(minLength: 0)
             }
@@ -395,6 +415,33 @@ struct FlatRow: View {
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// One authored row: symbol, content and a disclosure chevron on the card surface a `flatRows`
+/// frame flattens to a tinted full-row selection.
+struct AuthoredRow: View {
+    let row: Tree
+    let selected: Bool
+    let drawing: Drawing
+    let tap: () -> Void
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Button(action: tap) {
+            HStack(alignment: .top, spacing: 14) {
+                if !row.text("symbol").isEmpty { NativeSymbol(name: row.text("symbol"), size: 22).frame(width: 30).padding(.top, 3) }
+                NodeView(node: row["child"] ?? .null, drawing: drawing)
+                Spacer(minLength: 0)
+            }
+            .padding(0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme.color(selected ? "selection" : "", dark: scheme == .dark) ?? .clear, in: RoundedRectangle(cornerRadius: 3, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        }
+        .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
