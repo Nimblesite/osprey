@@ -6,12 +6,12 @@
 //! that *begins* by closing brackets dedents to match its opener. Comments adopt
 //! the depth of the surrounding block.
 
-use crate::scan::{scan_source, Line};
+use crate::scan::{scan_source, Comments, Line};
 use crate::{finalize, indent_to};
 
 /// Reformat Default-flavor `src`, returning the canonical, reindented text.
 pub(crate) fn format(src: &str) -> String {
-    let lines: Vec<Line> = scan_source(src);
+    let lines: Vec<Line> = scan_source(src, Comments::none());
     let mut depth = 0i32;
     let mut out: Vec<String> = Vec::with_capacity(lines.len());
     for line in &lines {
