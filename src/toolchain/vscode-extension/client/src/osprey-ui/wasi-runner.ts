@@ -20,12 +20,16 @@ export interface FrameResult {
   readonly runs: NativeRuns;
 }
 
+/** Host-held slices written since the last call, which the worker keeps for `native_slice`. */
+export type SliceDelta = readonly (readonly [string, string])[];
+
 export type WorkerRequest =
   | { readonly id: number; readonly call: "open"; readonly now: number; readonly offset: number;
-      readonly platform: string; readonly home: string; readonly dark: boolean; readonly arguments: readonly string[] }
+      readonly platform: string; readonly home: string; readonly dark: boolean; readonly arguments: readonly string[];
+      readonly slices: SliceDelta }
   | { readonly id: number; readonly call: "event"; readonly now: number; readonly kind: number;
       readonly ordinal: number; readonly words: string; readonly detail: string; readonly x: number;
-      readonly y: number; readonly down: boolean; readonly shift: boolean };
+      readonly y: number; readonly down: boolean; readonly shift: boolean; readonly slices: SliceDelta };
 
 export interface WorkerReply {
   readonly id: number;
@@ -58,6 +62,8 @@ export interface NativeTouch {
 export interface NativeRuntime {
   open(options: OpenOptions): Promise<FrameResult>;
   event(touch: NativeTouch): Promise<FrameResult>;
+  /** Holds `text` under the host-held slice `key`; the application reads it from its next call on. */
+  hold(key: string, text: string): void;
   dispose(): void;
 }
 
@@ -139,16 +145,22 @@ export function startNativeRuntime(module: WebAssembly.Module, signal?: AbortSig
     worker.postMessage(request);
   });
 
+  let held: (readonly [string, string])[] = [];
+  const delta = (): SliceDelta => held.splice(0);
+
   return {
     open(options) {
       const id = nextId;
       nextId += 1;
-      return send({ id, call: "open", ...options });
+      return send({ id, call: "open", ...options, slices: delta() });
     },
     event(touch) {
       const id = nextId;
       nextId += 1;
-      return send({ id, call: "event", now: Math.floor(Date.now() / 1000), ...touch });
+      return send({ id, call: "event", now: Math.floor(Date.now() / 1000), ...touch, slices: delta() });
+    },
+    hold(key, text) {
+      held = [...held, [key, text] as const];
     },
     dispose() {
       if (disposed) return;

@@ -70,6 +70,7 @@ suite("native shared panel lifecycle", () => {
         return {
           open: async () => new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })),
           event: async () => ({ status: 0, revision: 2, runs: { shapes: new ArrayBuffer(0), views: new ArrayBuffer(0), text: new ArrayBuffer(0), asks: new ArrayBuffer(0) } }),
+          hold: () => undefined,
           dispose: () => undefined,
         };
       });

@@ -50,10 +50,11 @@ function readTexts(ask: Ask, assets: string): Completion {
   const limit = bounded(ask, 2, "limit", MAX_TEXT);
   const sources = ask.texts(1);
   if (sources.length === 0 || sources.length > 64) throw new Error("read-texts has no valid paths");
+  const key = required(ask, 3, "slice");
   const files = sources.map((source) => fileText(assets, source, limit));
   const contents = JSON.stringify({ files });
-  if (Buffer.byteLength(contents, "utf8") > MAX_TEXT) throw new Error("read-texts result exceeds its byte bound");
-  return document({ files });
+  if (Buffer.byteLength(contents, "utf8") > MAX_TEXT) throw new Error(`Read slice ${key} exceeds its byte bound`);
+  return { ...document({ files: files.map(({ path: source, error }) => ({ path: source, error })) }), slices: [{ key, text: contents }] };
 }
 
 /** A store name stays inside the root: no absolute paths, parent references or empty parts. */
@@ -80,9 +81,10 @@ function existingAncestor(directory: string): string {
 
 function storeRead(ask: Ask, store: string): Completion {
   const limit = bounded(ask, 2, "limit", MAX_TEXT);
+  const key = required(ask, 3, "slice");
   const { target } = rooted(store, required(ask, 1, "name"));
   if (!fs.existsSync(target) || !fs.statSync(target).isFile()) return document({ found: false });
-  return document({ found: true, text: boundedText(target, limit) });
+  return { ...document({ found: true }), slices: [{ key, text: boundedText(target, limit) }] };
 }
 
 function storeWrite(ask: Ask, store: string, held: ReadonlyMap<string, string>): Completion {

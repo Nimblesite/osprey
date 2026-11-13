@@ -362,6 +362,7 @@ impl AstVisitor for Capabilities<'_> {
                 && !WEB_IMPORTS.contains(&name.as_str())
                 && !WASI_LIBC_IMPORTS.contains(&name.as_str())
                 && !WASM_RUNTIME_IMPORTS.contains(&name.as_str())
+                && !crate::wasm::HOST_IMPORTS.contains(&name.as_str())
             {
                 self.reject(&format!("foreign C import `{name}`"));
             }

@@ -38,8 +38,17 @@ function documentOf(completion: Completion): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+/** The one host-held slice a reading adapter delivered: its key and parsed text. */
+function sliceOf(completion: Completion): { key: string; text: string } {
+  assert.strictEqual(completion.slices?.length, 1, completion.detail);
+  const [delivered] = completion.slices ?? [];
+  assert.ok(delivered !== undefined);
+  return delivered;
+}
+
+/** The files a read-texts delivered into its slice, each with its text. */
 function filesOf(completion: Completion): FileEntry[] {
-  const files = documentOf(completion).files;
+  const files: unknown = (JSON.parse(sliceOf(completion).text) as Record<string, unknown>).files;
   assert.ok(Array.isArray(files));
   return files as FileEntry[];
 }
@@ -92,7 +101,9 @@ suite("native local capabilities", () => {
   test("read-texts returns approved bundled files in its result document", async () => {
     const response = await execute(ask(READ_TEXTS, "lessons", [...texts(1, "lessons/catalogue.json"), whole(2, 65536), ...texts(3, "lessons:texts")]), new Map());
     assert.deepStrictEqual(filesOf(response), [{ path: "lessons/catalogue.json", text: catalogue, error: "" }]);
-    assert.deepStrictEqual(documentOf(response), { files: filesOf(response) });
+    // The completion names each file and its fault; the text itself travels only in the slice the app reads.
+    assert.deepStrictEqual(documentOf(response), { files: filesOf(response).map(({ path: source, error }) => ({ path: source, error })) });
+    assert.strictEqual(sliceOf(response).key, "lessons:texts");
   });
 
   test("read-texts reports refused assets per file and keeps the readable ones", async () => {
@@ -128,12 +139,14 @@ suite("native local capabilities", () => {
       assert.strictEqual(fs.statSync(saved).mode & 0o777, 0o600);
     }
     const read = await execute(ask(STORE_READ, "lessons", [...texts(1, "lessons/progress.json"), whole(2, 65536), ...texts(3, "lessons:progress")]), new Map());
-    assert.deepStrictEqual(documentOf(read), { found: true, text: progress });
+    assert.deepStrictEqual(documentOf(read), { found: true });
+    assert.deepStrictEqual(sliceOf(read), { key: "lessons:progress", text: progress });
   });
 
   test("store-read reports a missing file as not found without content", async () => {
     const read = await execute(ask(STORE_READ, "lessons", [...texts(1, "lessons/absent.json"), whole(2, 65536), ...texts(3, "lessons:progress")]), new Map());
     assert.deepStrictEqual(documentOf(read), { found: false });
+    assert.strictEqual(read.slices, undefined);
   });
 
   test("store-read refuses a file beyond its byte bound", async () => {

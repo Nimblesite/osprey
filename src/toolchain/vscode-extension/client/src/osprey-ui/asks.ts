@@ -110,7 +110,13 @@ export function requests(asks: readonly Ask[]): Ask[] {
 }
 
 /** The slice writes, as key and text. */
-export function sliceWrites(asks: readonly Ask[]): { key: string; text: string }[] {
+/** One host-held slice: its key and its text. */
+export interface SliceWrite {
+  readonly key: string;
+  readonly text: string;
+}
+
+export function sliceWrites(asks: readonly Ask[]): SliceWrite[] {
   return asks.filter((ask) => ask.code === SLICE_WRITE).map((ask) => ({ key: ask.ticket, text: ask.text(1) }));
 }
 
@@ -122,6 +128,8 @@ export function diagnostics(asks: readonly Ask[]): string[] {
 /** A capability's answer, as its completion's `detail` text. */
 export interface Completion {
   readonly detail: string;
+  /** Host-held slices the adapter filled, which the application fetches by key ([UI-EFFECTS]). */
+  readonly slices?: readonly SliceWrite[];
 }
 
 /** A result document as compact JSON text. */

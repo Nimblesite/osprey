@@ -65,6 +65,10 @@ const BRIDGE_EXPORTS: [&str; 10] = [
     "malloc",
     "free",
 ];
+/// [NATIVE-SHM-WASM] The one import the shared boundary has: a host-held slice by key, which the
+/// wasm host answers with text the C ABI copies before the call returns. wasm-ld leaves exactly
+/// these undefined, as imports; any other undefined symbol still fails the link.
+pub(crate) const HOST_IMPORTS: &[&str] = &["native_slice"];
 /// What a failed tool spawn suggests installing.
 const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 
@@ -224,7 +228,15 @@ fn link(
 ) -> Result<(), ExitCode> {
     let mut argv = link_argv(obj, archive, libdir, out, web_dispatch);
     argv.extend(exports.iter().map(|name| format!("--export={name}")));
-    run_tool(&tool("OSPREY_WASM_LD", "wasm-ld"), &argv, TOOLCHAIN_HINT)
+    let imports = obj.with_extension("imports");
+    if !exports.is_empty() {
+        std::fs::write(&imports, HOST_IMPORTS.join("\n"))
+            .map_err(|e| fail(&format!("cannot write {}: {e}", imports.display())))?;
+        argv.push(format!("--allow-undefined-file={}", imports.display()));
+    }
+    let linked = run_tool(&tool("OSPREY_WASM_LD", "wasm-ld"), &argv, TOOLCHAIN_HINT);
+    let _ = std::fs::remove_file(&imports);
+    linked
 }
 
 /// clang argv to lower textual IR to a wasm object: target the wasm triple,

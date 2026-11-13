@@ -117,10 +117,15 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
   const publish = (result: FrameResult, expected: number): void => {
     if (!current(expected)) return;
     const asked = readAsks(result.runs.asks, result.runs.text);
-    for (const write of sliceWrites(asked)) slices.set(write.key, write.text);
+    for (const write of sliceWrites(asked)) keep(write.key, write.text);
     deps.send({ type: "frame", shapes: result.runs.shapes, views: result.runs.views, text: result.runs.text,
       assets: assetsOf(result.runs), diagnostics: diagnostics(asked) });
     for (const ask of requests(asked)) void complete(ask, expected);
+  };
+
+  const keep = (key: string, text: string): void => {
+    slices.set(key, text);
+    deps.runtime.hold(key, text);
   };
 
   const complete = async (ask: Ask, expected: number): Promise<void> => {
@@ -133,6 +138,7 @@ export function createWorkspaceSession(deps: SessionDeps): WorkspaceSession {
       return;
     }
     if (!current(expected)) return;
+    for (const write of outcome.slices ?? []) keep(write.key, write.text);
     await enqueue(() => deps.runtime.event(touch(EVENT.completed, 0, ask.ticket, outcome.detail, true)), expected);
   };
 

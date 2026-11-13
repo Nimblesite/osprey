@@ -19,10 +19,12 @@ function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResu
   const sent: (FrameMessage | { type: "busy"; active: boolean } | { type: "fatal"; message: string })[] = [];
   const executed: Ask[] = [];
   const held: ReadonlyMap<string, string>[] = [];
+  const holds: [string, string][] = [];
   let calls = 0;
   const runtime: NativeRuntime = {
     async open(request) { opens.push(request); return { status: 0, revision: 1, runs: options.open ?? runs(options.asks ?? []) }; },
     async event(touch) { events.push(touch); calls += 1; return { status: 0, revision: calls + 1, runs: runs([]) }; },
+    hold(key, text) { holds.push([key, text]); },
     dispose() { events.push({ kind: -1, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false }); },
   };
   const deps: SessionDeps = {
@@ -36,7 +38,7 @@ function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResu
     assets: (shown) => Object.fromEntries(shown.controls.filter((control) => control.kind === "image").map((control) => [control.words, `asset:${control.words}`])),
     report: () => undefined,
   };
-  return { session: createWorkspaceSession(deps), events, opens, sent, executed, held };
+  return { session: createWorkspaceSession(deps), events, opens, sent, executed, held, holds };
 }
 
 const open: OpenOptions = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: true, arguments: ["a", "b"] };
@@ -62,14 +64,16 @@ suite("native session", () => {
   });
 
   test("slice writes are kept for the host and handed to the request that reads them", async () => {
-    const { session, executed, held } = harness({ asks: [
+    const { session, executed, held, holds } = harness({ asks: [
       { code: 100, ticket: "export", fields: [[1, 0, "<math>∧</math>"]] },
       { code: 15, ticket: "save", fields: [[1, 0, "proof.html"], [2, 0, "export"]] },
-    ] });
+    ], answer: async () => ({ detail: "{\"found\":true}", slices: [{ key: "saved", text: "receipt é" }] }) });
     await session.start(open);
     await settle();
     assert.strictEqual(executed.length, 1);
     assert.strictEqual(held[0]?.get("export"), "<math>∧</math>");
+    // The application's own write and the adapter's delivery both reach the live instance for `native_slice`.
+    assert.deepStrictEqual(holds, [["export", "<math>∧</math>"], ["saved", "receipt é"]]);
   });
 
   test("every capability request is answered with a completion event carrying its ticket and detail", async () => {

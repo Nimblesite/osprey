@@ -67,8 +67,27 @@ function checked(status: number): void {
 
 function start(module: WebAssembly.Module): void {
   const wasi = createWasi();
-  const instance = new WebAssembly.Instance(module, wasiImports(wasi));
+  // [NATIVE-SHM-WASM] Host-held slices, answered synchronously during a call; the C ABI copies the
+  // text before `native_slice` returns, so each answer's buffer is freed at the next one.
+  const held = new Map<string, string>();
+  let answered = 0;
+  let live: BoundaryExports | undefined;
+  const nativeSlice = (key: number): number => {
+    if (live === undefined) return 0;
+    if (answered !== 0) live.free(answered);
+    const memoryBytes = new Uint8Array(live.memory.buffer);
+    let end = key;
+    while (end < memoryBytes.length && memoryBytes[end] !== 0) end += 1;
+    const name = new TextDecoder("utf-8", { fatal: true }).decode(memoryBytes.subarray(key, end));
+    const bytes = new TextEncoder().encode(`${held.get(name) ?? ""}\0`);
+    answered = live.malloc(bytes.length);
+    if (answered === 0) throw new Error("The application could not allocate a host slice");
+    new Uint8Array(live.memory.buffer, answered, bytes.length).set(bytes);
+    return answered;
+  };
+  const instance = new WebAssembly.Instance(module, { ...wasiImports(wasi), env: { native_slice: nativeSlice } });
   const api = boundary(instance);
+  live = api;
   const started = wasi.start(instance);
   if (started !== 0) throw new Error(`The application's _start returned ${started}`);
   const port = parentPort;
@@ -186,6 +205,7 @@ function start(module: WebAssembly.Module): void {
     if (!record(raw) || typeof raw.id !== "number" || (raw.call !== "open" && raw.call !== "event")) return;
     const request = raw as unknown as WorkerRequest;
     try {
+      for (const [key, value] of request.slices) held.set(key, value);
       const result = request.call === "open" ? open(request) : event(request);
       port.postMessage({ id: request.id, result }, [result.runs.shapes, result.runs.views, result.runs.text, result.runs.asks]);
     } catch (error) {

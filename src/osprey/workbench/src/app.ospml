@@ -116,4 +116,4 @@ module App
         false => Palettes::initial ()
 
     (** The workbench as every host runs it ([NATIVE-SHM-BOUNDARY]): a new session opens in the host's appearance, Chalk when it is dark and Paper otherwise, and the store's own choice of slate picks the palette after that ([WORKBENCH-STORE]). Proof imports are cached for the run of each step. *)
-    export program () = ui::Program(programInit = \host => CachedImports::run (\() => initial (host.hostDark, host)), programUpdate = \(host, bench, message) => CachedImports::run (\() => Update::apply (host, bench, message)), programRender = regions, programTheme = \bench => initialPalette bench.layout.slate)
+    export program () = ui::Program(programInit = \host => CachedImports::run (\() => initial (host.hostDark, host)), programUpdate = \(host, bench, message) => CachedImports::run (\() => Update::apply (host, bench, message)), programRender = \(before, current, frames, writes) => CachedImports::run (\() => regions (before, current, frames, writes)), programTheme = \bench => initialPalette bench.layout.slate)
