@@ -315,10 +315,15 @@ module Answers
             filled = foldList (seeded, settings, \(acc, key) => Pick::either (Model::keyOf (acc, key.keyProvider) == "" && key.keyValue != "", Model::withKey (acc, key.keyProvider, key.keyValue), acc))
             Runtime::asking (store(settings = filled), Model::newlyKeyed (settings, filled))
 
-    // A saved document that answered: through `of` with its words when the read succeeded, else the store unchanged. A missing file is a refused read.
+    // A saved document that answered: through `of` with its words when the file was found, else the store unchanged.
     readFound (store, outcome, slice, of) = match outcome
         Error _ => Runtime::step store
-        Success _ => of (perform ui::Slices.fetch slice)
+        Success result => match found result
+            false => Runtime::step store
+            true => of (perform ui::Slices.fetch slice)
+
+    // Whether a store read's receipt says the file was there.
+    found result = Doc::flag (Doc::parse result, "found")
 
     // `store` with the providers file's settings, and every chat given the saved defaults.
     withProviders (store, doc) =
@@ -350,11 +355,11 @@ module Answers
     // The three MCP documents answered: merge, stop what left the list, connect what is new.
     mcpGlobalLoaded (store, outcome) = match outcome
         Error _ => afterMcp (McpModel::globalMissing (store.mcp), store, [])
-        Success _ => afterMcp (mcpDocument (store, "mcp-file", true, \text => McpModel::globalLoaded (store.mcp, text), McpModel::globalMissing (store.mcp)), store, [])
+        Success result => afterMcp (mcpDocument (store, "mcp-file", found result, \text => McpModel::globalLoaded (store.mcp, text), McpModel::globalMissing (store.mcp)), store, [])
 
     mcpStateLoaded (store, outcome) = match outcome
         Error _ => afterMcp (McpModel::memoriesOf (store.mcp, JsonObject []), store, [])
-        Success _ => afterMcp (mcpDocument (store, "mcp-state-file", true, \text => McpModel::memoriesOf (store.mcp, Doc::parse text), McpModel::memoriesOf (store.mcp, JsonObject [])), store, [])
+        Success result => afterMcp (mcpDocument (store, "mcp-state-file", found result, \text => McpModel::memoriesOf (store.mcp, Doc::parse text), McpModel::memoriesOf (store.mcp, JsonObject [])), store, [])
 
     mcpProjectLoaded (store, outcome) = match outcome
         Error _ =>

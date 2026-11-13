@@ -12,9 +12,8 @@ import SwiftUI
 struct SharedCanvas: View {
     let store: SharedStore
     let index: Int
-    let control: RowControl
-
-    private var ordinal: Int64 { control.action ?? -1 }
+    /// The control number the scene's input delivers.
+    let ordinal: Int64
 
     var body: some View {
         Group {

@@ -191,7 +191,7 @@ _tally-reference: _runtime _runtime_macos
 	$(CC) -Wall -Wextra -Werror -Isrc/toolchain/compiler/runtime -Itarget/tally src/osprey/examples/tally/host/reference.c target/tally/libTally.a -o target/tally/reference
 	target/tally/reference
 
-## _tally-swift: Build Tally under the SwiftUI view host and run it; VIEW_ARGS=--self-test checks it
+## _tally-swift: Build Tally under the SwiftUI view host and run it; VIEW_ARGS=--view-check checks it
 ##               with no window.
 .PHONY: _tally-swift
 _tally-swift: _runtime _runtime_macos

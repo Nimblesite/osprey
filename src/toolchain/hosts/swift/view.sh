@@ -2,7 +2,7 @@
 # Builds an Osprey Native application into the shared-memory view host and runs
 # it: the host leases the frame the application writes, checks every row and
 # draws it in place, with no wire format between them. [NATIVE-SHM-VIEW]
-#   OSPREY_SWIFT_APP=<folder> view.sh [--self-test]
+#   OSPREY_SWIFT_APP=<folder> view.sh [--view-check]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)

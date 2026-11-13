@@ -140,7 +140,7 @@ public final class CapabilityRunner {
 
     public var kinds: [String] { adapters.keys.sorted() }
 
-    public func knows(_ kind: String) -> Bool { adapters[kind] != nil }
+    public func knows(_ kind: String) -> Bool { kind == "cancel" || adapters[kind] != nil }
 
     public func run(_ ask: Ask, completion: @escaping @MainActor (Result<AskResult, CapabilityError>) -> Void) {
         if ask.kind == "cancel" { return cancel(ask, completion: completion) }

@@ -4,7 +4,7 @@ A macOS host for [Osprey Native](../../../osprey/packages/native/README.md) appl
 
 ```sh
 src/toolchain/hosts/swift/view.sh                                   # Tally, in a window
-src/toolchain/hosts/swift/view.sh --self-test                       # the same journey, headless
+src/toolchain/hosts/swift/view.sh --view-check                       # the same journey, headless
 OSPREY_SWIFT_APP=$PWD/src/osprey/examples/agent OSPREY_SWIFT_NAME="Osprey Agent" \
 OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent src/toolchain/hosts/swift/run.sh -- /path/to/project
 ```
@@ -52,4 +52,4 @@ Every other completion's text is the same result document the adapter produced b
 
 ## Checking it
 
-`view.sh --self-test` drives Tally's journey with no window: three taps, a rename, a restyle and a refused event, with every fact read back out of the checked frame — controls, words, colours, ask rows, scene rows and the refused event's committed frame. It prints `PASSED`, or `FAILED: <why>` and exits 1. `OSPREY_SWIFT_APP` names another application folder. `swift test` runs the adapter suite (`Tests/OspreySharedTests`), which needs the archive `view.sh` builds.
+`view.sh --view-check` drives Tally's journey with no window: three taps, a rename, a restyle and a refused event, with every fact read back out of the checked frame — controls, words, colours, ask rows, scene rows and the refused event's committed frame. It prints `PASSED`, or `FAILED: <why>` and exits 1. `OSPREY_SWIFT_APP` names another application folder. `swift test` runs the adapter suite (`Tests/OspreySharedTests`), which needs the archive `view.sh` builds.

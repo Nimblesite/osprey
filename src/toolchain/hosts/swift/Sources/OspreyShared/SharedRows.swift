@@ -11,6 +11,11 @@ import OspreyViewApp
 public enum SharedKind: Int64, CaseIterable, Sendable {
     case column = 0, line, label, press, entry, gap, scroll, layer, toggle
     case picker, choice, rule, image, canvas, editor, menu, sheet
+    /// [NATIVE-SHM-NODES] One told value, a record of members and a list of items.
+    case field = 33, record, list
+
+    /// Whether the row tells a component rather than draws a control.
+    public var told: Bool { self == .field || self == .record || self == .list }
 }
 
 /// The `flags` bits a row's fit adds up ([NATIVE-SHM-VIEW]).
@@ -58,6 +63,8 @@ public struct RowControl: Equatable, Sendable {
     public let hint: String
     public let look: Look
     public let fit: Fit
+    /// A told field's whole number or flag; 0 for every other row.
+    public let value: Int64
     public var children: [Int]
 }
 
@@ -201,6 +208,7 @@ public enum SharedRows {
         guard let kind = SharedKind(rawValue: row.kind) else {
             throw SharedRefusal("row \(index) has an unknown kind \(row.kind)")
         }
+        if kind.told { return try told(kind, row, run) }
         guard row.flags >= 0, row.flags & ~SharedFlag.all == 0 else {
             throw SharedRefusal("row \(index) has unknown flags \(row.flags)")
         }
@@ -219,6 +227,20 @@ public enum SharedRows {
                           fit: Fit(width: try extent(row.width), height: try extent(row.height),
                                    grow: try extent(row.grow), flags: row.flags,
                                    border: try colour(row.border)),
+                          value: 0,
+                          children: [])
+    }
+
+    /// One told row ([NATIVE-SHM-NODES]): its name is its hint, a field's value is its words, its
+    /// whole number or its real, and its weight says which (0 to 4). Anything else refuses the frame.
+    private static func told(_ kind: SharedKind, _ row: OspNativeView, _ run: UnsafeRawBufferPointer) throws -> RowControl {
+        guard (0...4).contains(row.weight) else { throw SharedRefusal("a told value of an unknown type \(row.weight)") }
+        return RowControl(kind: kind, parent: row.parent, action: nil,
+                          words: try words(run, row.text_offset, row.text_length),
+                          hint: try words(run, row.hint_offset, row.hint_length),
+                          look: Look(ink: 0, fill: 0, size: try extent(row.size), padding: 0, spacing: 0, radius: 0, weight: row.weight),
+                          fit: Fit(width: 0, height: 0, grow: 0, flags: 0, border: 0),
+                          value: row.colour,
                           children: [])
     }
 
@@ -268,7 +290,7 @@ public enum SharedRows {
                             text run: UnsafeRawBufferPointer,
                             asks asked: UnsafeBufferPointer<OspNativeAsk>) throws -> Shown {
         let (controls, roots) = try controls(views, run)
-        let canvases = controls.indices.filter { controls[$0].kind == .canvas }
+        let canvases = controls.indices.filter { controls[$0].kind == .canvas || controls[$0].kind == .record }
         return Shown(controls: controls, roots: roots,
                      scenes: try scenes(shapes, run, canvases),
                      asks: try asks(asked, run))

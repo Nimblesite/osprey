@@ -101,7 +101,7 @@ struct SharedRow: View {
         case .scroll: return scroll(control)
         case .layer: return layer(control)
         case .rule: return SharedLeaf(store: store, index: index, focus: $focus).rule(control)
-        case .canvas: return SharedCanvas(store: store, index: index, control: control).erase()
+        case .canvas: return SharedCanvas(store: store, index: index, ordinal: control.action ?? -1).erase()
         case .menu: return menu(control)
         case .sheet: return sheet(control)
         default: return SharedLeaf(store: store, index: index, focus: $focus).draw(control)

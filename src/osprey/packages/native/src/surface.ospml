@@ -33,18 +33,11 @@ module Surfaces
     (** The region every surface draws; other regions appear where it names them with a `Slot`. *)
     export rootKey = "root"
 
-    // The root region lowered to a view. Every region is rebuilt for each view, so a `Slot` always
-    // finds the node it names; with no root there is nothing to draw.
-    lowered<A> : (Theme, bool, List<KeyedSnapshot<Node<A>>>) -> View<Binding<A>>
-    lowered (theme, dark, regions) = match Lists::find (regions, \region => region.snapshotKey == rootKey)
-        Error _ => Column(columnLook = Views::plain, columnItems = [])
-        Success root => Lower::view (Styling(styleTheme = theme, styleDark = dark, styleRegions = regions), root.snapshotValue)
-
-    (** The view `held` shows, as the rows, fits and scenes its host was sent: what a test reads. *)
+    (** The frame `held` shows, as the rows, fits and scenes its host was sent: what a test reads. *)
     export seen<S, A> : (Surface<S, A>, Program<S, A>) -> Walk<Binding<A>>
     seen (held, program) =
         store = held.surfaceSession.sessionStore
-        Views::drawn (lowered (program.programTheme store, held.surfaceDark, program.programRender (store, store, [], [])))
+        Tellings::drawn (program.programTheme store, program.programRender (store, store, [], []))
 
     (** A surface holding `store` before the host has opened it. *)
     export idle<S, A> : S -> Surface<S, A>
@@ -57,7 +50,7 @@ module Surfaces
     // Draws `step`'s store with the context `host`, sends what the step asks of the host and keeps the result.
     shown<S, A> : (Surface<S, A>, Program<S, A>, Context, S, Step<S>) -> Surface<S, A> ![ViewStream | e]
     shown (held, program, host, before, step) =
-        bound = Views::render (lowered (program.programTheme step.stepStore, held.surfaceDark, program.programRender (before, step.stepStore, [], step.writes)))
+        bound = Tellings::render (program.programTheme step.stepStore, program.programRender (before, step.stepStore, [], step.writes))
         Requests::post (step.requests, step.writes)
         held(surfaceSession = Session(sessionContext = host, sessionStore = step.stepStore), surfaceBound = bound, surfaceProblem = "", surfaceAsked = step.requests, surfaceWritten = step.writes)
 

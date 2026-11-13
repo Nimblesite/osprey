@@ -30,7 +30,7 @@ tally-headless:
 ## tally: Tally on the SwiftUI view host with no window: the host leases each frame, reads the
 ##        controls in place and checks every text, colour and size it would draw. [NATIVE-SHM-VIEW]
 tally:
-	$(MAKE) -C $(ROOT) _tally-swift VIEW_ARGS=--self-test
+	$(MAKE) -C $(ROOT) _tally-swift VIEW_ARGS=--view-check
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.
