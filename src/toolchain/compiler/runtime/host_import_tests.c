@@ -98,6 +98,61 @@ static void retained_seed(void) {
 #endif
 }
 
+// The bridge's usage accounting as the host reads it: managed bytes in use plus
+// the chunk and owner counts a test pins.
+typedef struct {
+  size_t bytes, chunks, owners;
+} NativeUsage;
+
+static NativeUsage native_usage(OspNativeBridge *b) {
+  NativeUsage used = {0, 0, 0};
+  assert(osp_native_usage(b, &used.bytes, &used.chunks, &used.owners) == 0);
+  return used;
+}
+
+// The counts a bridge must report after the work under test: asserted, never
+// assumed.
+static void expect_usage(OspNativeBridge *b, size_t chunks, size_t owners) {
+  NativeUsage used = native_usage(b);
+  assert(used.chunks == chunks && used.owners == owners);
+}
+
+// Refused work changes no accounting: the bytes in use stay where they were.
+static void expect_usage_since(OspNativeBridge *b, NativeUsage previous,
+                               size_t chunks, size_t owners) {
+  NativeUsage used = native_usage(b);
+  assert(used.bytes == previous.bytes && used.chunks == chunks &&
+         used.owners == owners);
+}
+
+// Release clears the owner token, so a second release of the same lease is a
+// wrong-owner refusal, never a double free.
+static void release_twice(OspNativeBridge *b, td_OwnedLease *lease) {
+  assert(osp_native_release(b, lease) == 0);
+  assert(osp_native_release(b, lease) == OSP_NATIVE_ERROR(InvalidOwner));
+}
+
+// A bridge with a lease still held refuses to close, and every call after that
+// refusal reports it closing.
+static void expect_close_blocked(OspNativeBridge *b) {
+  assert(osp_native_close(b) == OSP_NATIVE_ERROR(WouldBlock));
+}
+
+// A lease's bytes read back in place, as the host sees them.
+static void expect_view_text(OspNativeBridge *b, const td_OwnedLease *lease,
+                             int64_t run, int64_t bytes,
+                             const char *expected) {
+  const void *view = NULL;
+  assert(osp_native_view(b, lease, run, 0, bytes, &view) == 0 &&
+         strcmp(view, expected) == 0);
+}
+
+// Releasing the last lease and destroying the bridge leaves nothing behind.
+static void release_and_destroy(OspNativeBridge *b, td_OwnedLease *lease) {
+  assert(osp_native_release(b, lease) == 0);
+  assert(osp_native_destroy(b) == 0);
+}
+
 // [NATIVE-SHM-OWNERSHIP] Real managed allocations and the shared allocator live
 // together: collecting/dropping managed values must not invalidate a host
 // lease.
@@ -124,9 +179,7 @@ static void check_native_leases(void) {
   assert(osp_native_view(bridge, &original, 7, 0, 18, &other) == 0 &&
          view == other);
   assert(strcmp(view, "snapshot survives") == 0);
-  assert(osp_native_release(bridge, &original) == 0);
-  assert(osp_native_release(bridge, &original) ==
-         OSP_NATIVE_ERROR(InvalidOwner));
+  release_twice(bridge, &original);
   assert(osp_native_view(bridge, &retained, 7, -1, 1, &other) ==
          OSP_NATIVE_ERROR(InvalidRange));
   assert(osp_native_view(bridge, &retained, 7, 8, INT64_MAX, &other) ==
@@ -145,15 +198,13 @@ static void check_native_leases(void) {
   assert(osp_native_release(bridge, &parent) == OSP_NATIVE_ERROR(InvalidOwner));
   assert(osp_native_acquire(bridge, &retained, &revision) == 0 &&
          revision == 1);
-  assert(osp_native_close(bridge) == OSP_NATIVE_ERROR(WouldBlock));
+  expect_close_blocked(bridge);
   assert(osp_native_acquire(bridge, &parent, &revision) ==
          OSP_NATIVE_ERROR(BridgeClosing));
   assert(osp_native_view(bridge, &retained, 9, 0, 5, &view) == 0);
   assert(strcmp(view, "root") == 0);
   assert(osp_native_release(bridge, &retained) == 0);
-  size_t bytes, chunks, owners;
-  assert(osp_native_usage(bridge, &bytes, &chunks, &owners) == 0 &&
-         chunks == 0 && owners == 0);
+  expect_usage(bridge, 0, 0);
   assert(osp_native_close(bridge) == 0);
   assert(osp_native_destroy(bridge) == 0);
 }
@@ -177,13 +228,11 @@ static void check_native_limits(void) {
   assert(osp_native_retain(b, &a, &second) == 0);
   assert(osp_native_retain(b, &a, &output) == OSP_NATIVE_ERROR(WouldBlock));
   assert(memcmp(&output, &untouched, sizeof output) == 0);
-  size_t baseline, chunks, owners, used;
-  assert(osp_native_usage(b, &baseline, &chunks, &owners) == 0 && chunks == 1 &&
-         owners == 2);
+  NativeUsage baseline = native_usage(b);
+  assert(baseline.chunks == 1 && baseline.owners == 2);
   assert(osp_native_create(b, 1, false, "", 1, &a, 1, &output) ==
          OSP_NATIVE_ERROR(WouldBlock));
-  assert(osp_native_usage(b, &used, &chunks, &owners) == 0 &&
-         used == baseline && chunks == 1 && owners == 2);
+  expect_usage_since(b, baseline, 1, 2);
   assert(osp_native_create(b, 1, true, "", INT64_MAX, NULL, 0, &output) ==
          OSP_NATIVE_ERROR(LimitExceeded));
   assert(osp_native_create(b, 1, false, "", 65537, NULL, 0, &output) ==
@@ -225,10 +274,8 @@ static void check_native_allocation_failure(void) {
          osp_alloc_live() == before);
   assert(memcmp(&output, &untouched, sizeof output) == 0);
   assert(osp_native_acquire(b, &root, &revision) == 0 && revision == 1);
-  const void *view;
-  assert(osp_native_view(b, &root, 1, 0, 9, &view) == 0 &&
-         strcmp(view, "original") == 0);
-  assert(osp_native_release(b, &root) == 0 && osp_native_destroy(b) == 0);
+  expect_view_text(b, &root, 1, 9, "original");
+  release_and_destroy(b, &root);
 }
 
 static void check_native_dag(void) {
@@ -245,13 +292,9 @@ static void check_native_dag(void) {
     child = next;
   }
   assert(osp_native_release(b, &child) == 0); // Must not recurse 20000 times.
-  size_t bytes, chunks, owners;
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 1 &&
-         owners == 1);
-  const void *view;
-  assert(osp_native_view(b, &pinned, 1, 0, 5, &view) == 0 &&
-         strcmp(view, "leaf") == 0);
-  assert(osp_native_release(b, &pinned) == 0 && osp_native_destroy(b) == 0);
+  expect_usage(b, 1, 1);
+  expect_view_text(b, &pinned, 1, 5, "leaf");
+  release_and_destroy(b, &pinned);
 }
 
 static void *native_reader(void *context) {
@@ -351,14 +394,42 @@ static void check_shape_rows(const OspNativeShape *rows, int64_t first,
   }
 }
 
+// A committed frame's run and the text beside it, read in place.
+typedef struct {
+  const void *rows;
+  const char *text;
+  int64_t revision, text_bytes;
+} PublishedRun;
+
+// Commits the frame under test, leases its `run` and the text beside it at that
+// revision, and reads both in place.
+static PublishedRun commit_and_read(OspNativeBridge *b, int64_t run,
+                                    int64_t rows_bytes, td_OwnedLease *rows,
+                                    td_OwnedLease *text) {
+  PublishedRun read = {NULL, NULL, 0, 0};
+  assert(osp_native_frame_commit(b, &read.revision) == 0);
+  leased_run(b, run, read.revision, rows);
+  leased_run(b, OSP_NATIVE_TEXT, read.revision, text);
+  assert(osp_native_length(b, text, &read.text_bytes) == 0);
+  read.rows = run_bytes(b, rows, run, rows_bytes);
+  read.text = run_bytes(b, text, OSP_NATIVE_TEXT, read.text_bytes);
+  return read;
+}
+
+// The three view rows `push_view` builds, committed and read in place.
+static PublishedRun commit_view_rows(OspNativeBridge *b, td_OwnedLease *rows,
+                                     td_OwnedLease *text) {
+  return commit_and_read(b, OSP_NATIVE_VIEWS,
+                         3 * (int64_t)sizeof(OspNativeView), rows, text);
+}
+
 // [NATIVE-SHM-SCENE] A frame's shapes are sealed where they were built and
 // read in place; a host-held frame survives its replacement.
 static void check_native_scene_frames(void) {
   OspNativeBridge *b = native_fixture(1 << 20, 10, 8);
-  size_t bytes, chunks, owners, idle;
   int64_t revision;
   td_OwnedLease first, second, empty;
-  assert(osp_native_usage(b, &idle, &chunks, &owners) == 0 && chunks == 0);
+  assert(native_usage(b).chunks == 0);
   push_shapes(0, 3);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
   const OspNativeShape *held = leased_shapes(b, &first, 1, 3);
@@ -367,11 +438,9 @@ static void check_native_scene_frames(void) {
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_shape_rows(held, 0, 3);
   check_shape_rows(leased_shapes(b, &second, 2, 5000), 100, 5000);
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 6 &&
-         owners == 2);
-  assert(osp_native_release(b, &first) == 0);
-  assert(osp_native_release(b, &first) == OSP_NATIVE_ERROR(InvalidOwner));
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 5);
+  expect_usage(b, 6, 2);
+  release_twice(b, &first);
+  assert(native_usage(b).chunks == 5);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 3);
   (void)leased_shapes(b, &empty, 3, 0);
   assert(osp_native_release(b, &second) == 0 &&
@@ -383,12 +452,11 @@ static void check_native_scene_frames(void) {
 // frame, the accounting and the next run are untouched.
 static void check_native_scene_refusals(void) {
   OspNativeBridge *b = native_fixture(65536, 10, 8);
-  size_t before, after, chunks, owners;
   int64_t revision = 0;
   td_OwnedLease lease;
   push_shapes(0, 2);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
-  assert(osp_native_usage(b, &before, &chunks, &owners) == 0);
+  NativeUsage before = native_usage(b);
   push_shapes(0, 4096);
   assert(osp_native_frame_commit(b, &revision) ==
              OSP_NATIVE_ERROR(LimitExceeded) &&
@@ -402,15 +470,14 @@ static void check_native_scene_refusals(void) {
          revision == 1);
   assert(osp_native_frame_commit(NULL, &revision) ==
          OSP_NATIVE_ERROR(BridgeClosed));
-  assert(osp_native_usage(b, &after, &chunks, &owners) == 0 &&
-         after == before && chunks == 5 && owners == 0);
+  expect_usage_since(b, before, 5, 0);
   check_shape_rows(leased_shapes(b, &lease, 1, 2), 0, 2);
   assert(osp_native_length(b, &lease, NULL) == OSP_NATIVE_ERROR(InvalidRange));
   assert(osp_native_release(b, &lease) == 0);
   push_shapes(7, 1);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_shape_rows(leased_shapes(b, &lease, 2, 1), 7, 1);
-  assert(osp_native_release(b, &lease) == 0 && osp_native_destroy(b) == 0);
+  release_and_destroy(b, &lease);
 }
 
 // Isolation is necessary for unreachable-in-practice signed-64 exhaustion and
@@ -440,11 +507,11 @@ static void check_native_exhaustion(void) {
   b->revision = INT64_MAX;
   assert(osp_native_publish(b, &a, &revision) ==
          OSP_NATIVE_ERROR(CounterExhausted));
-  assert(osp_native_close(b) == OSP_NATIVE_ERROR(WouldBlock));
+  expect_close_blocked(b);
   assert(osp_native_retain(b, &a, &extra) == OSP_NATIVE_ERROR(BridgeClosing));
   assert(osp_native_publish(b, &a, &revision) ==
          OSP_NATIVE_ERROR(BridgeClosing));
-  assert(osp_native_release(b, &a) == 0 && osp_native_destroy(b) == 0);
+  release_and_destroy(b, &a);
   b = native_fixture(16384, 1, 1);
   b->chunks[0].generation = INT64_MAX;
   assert(osp_native_create(b, 1, true, "", 1, NULL, 0, &a) ==
@@ -477,24 +544,33 @@ static void check_view_rows(const OspNativeView *rows, const char *text) {
   assert(memcmp(text, "Count 3A\xc3\xb1" "adir", 14) == 0);
 }
 
+// A refused frame publishes nothing: the revision stays where it was.
+static void expect_refused_frame(OspNativeBridge *b, int64_t *revision,
+                                 int64_t kept) {
+  assert(osp_native_frame_commit(b, revision) ==
+             OSP_NATIVE_ERROR(AllocationFailed) &&
+         *revision == kept);
+}
+
+// A refused row is dropped whole: it is not published and the frame stays
+// uncommitted.
+static void expect_row_refused(OspNativeBridge *b, int64_t kind, int64_t parent,
+                               const char *text, int64_t *revision) {
+  assert(osp_native_view_row(kind, parent, -1, text, 0, 0, 0, 0, 0, 0, 0) ==
+         -1);
+  expect_refused_frame(b, revision, 1);
+}
+
 // Each refused view publishes nothing and leaves the next one clean.
 static void check_view_refusals(OspNativeBridge *b) {
   int64_t revision = 1;
   assert(osp_native_view_row(0, 0, -1, "x", 0, 0, 0, 0, 0, 0, 0) == -1);
   assert(osp_native_view_row(0, -1, -1, "x", 0, 0, 0, 0, 0, 0, 0) == -1);
-  assert(osp_native_frame_commit(b, &revision) ==
-             OSP_NATIVE_ERROR(AllocationFailed) &&
-         revision == 1);
-  assert(osp_native_view_row(0, -2, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == -1);
-  assert(osp_native_frame_commit(b, &revision) ==
-             OSP_NATIVE_ERROR(AllocationFailed) &&
-         revision == 1);
+  expect_refused_frame(b, &revision, 1);
+  expect_row_refused(b, 0, -2, NULL, &revision);
   for (int64_t i = 0; i < OSP_NATIVE_VIEW_LIMIT; i++)
     assert(osp_native_view_row(5, i - 1, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == i);
-  assert(osp_native_view_row(5, 0, -1, NULL, 0, 0, 0, 0, 0, 0, 0) == -1);
-  assert(osp_native_frame_commit(b, &revision) ==
-             OSP_NATIVE_ERROR(AllocationFailed) &&
-         revision == 1);
+  expect_row_refused(b, 5, 0, NULL, &revision);
 }
 
 // [NATIVE-SHM-VIEW] A view's controls and text are sealed where they were
@@ -502,16 +578,14 @@ static void check_view_refusals(OspNativeBridge *b) {
 static void check_native_view_frames(void) {
   OspNativeBridge *b = native_fixture(1 << 20, 10, 8);
   int64_t revision;
-  size_t bytes, chunks, owners;
   td_OwnedLease rows, text, shapes;
   push_view();
   push_shapes(4, 2);
-  assert(osp_native_frame_commit(b, &revision) == 0 && revision == 1);
-  leased_run(b, OSP_NATIVE_VIEWS, 1, &rows);
-  leased_run(b, OSP_NATIVE_TEXT, 1, &text);
-  const OspNativeView *held = run_bytes(b, &rows, OSP_NATIVE_VIEWS,
-                                        3 * (int64_t)sizeof(OspNativeView));
-  check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));
+  PublishedRun run = commit_view_rows(b, &rows, &text);
+  assert(run.revision == 1);
+  assert(run.text_bytes == 14);
+  const OspNativeView *held = run.rows;
+  check_view_rows(held, run.text);
   check_shape_rows(leased_shapes(b, &shapes, 1, 2), 4, 2);
   check_view_refusals(b);
   push_view();
@@ -520,14 +594,13 @@ static void check_native_view_frames(void) {
   assert(osp_native_view_row(1, -1, 4, NULL, 0, 0, 0, 0, 0, 0, 0) == 0);
   assert(osp_native_frame_commit(b, &revision) == 0 && revision == 2);
   check_view_rows(held, run_bytes(b, &text, OSP_NATIVE_TEXT, 14));
-  assert(osp_native_usage(b, &bytes, &chunks, &owners) == 0 && chunks == 8 &&
-         owners == 3);
+  expect_usage(b, 8, 3);
   assert(osp_native_release(b, &rows) == 0 && osp_native_release(b, &text) == 0 &&
          osp_native_release(b, &shapes) == 0);
   leased_run(b, OSP_NATIVE_VIEWS, 2, &rows);
   held = run_bytes(b, &rows, OSP_NATIVE_VIEWS, sizeof(OspNativeView));
   assert(held[0].kind == 1 && held[0].action == 4 && held[0].text_length == 0);
-  assert(osp_native_release(b, &rows) == 0 && osp_native_destroy(b) == 0);
+  release_and_destroy(b, &rows);
 }
 
 // [NATIVE-SHM-SAFETY] Fibers are OS threads, so safe Osprey code can write
@@ -545,7 +618,7 @@ static void *view_writer(void *context) {
 }
 static void check_view_writers_from_many_threads(OspNativeBridge *b) {
   pthread_t writers[VIEW_WRITERS];
-  int64_t revision, bytes, count = VIEW_WRITERS * VIEW_WRITES;
+  int64_t count = VIEW_WRITERS * VIEW_WRITES;
   td_OwnedLease rows, text;
   char words[24];
   bool seen[VIEW_WRITERS * VIEW_WRITES] = {false};
@@ -553,18 +626,15 @@ static void check_view_writers_from_many_threads(OspNativeBridge *b) {
     assert(pthread_create(&writers[i], NULL, view_writer, (void *)i) == 0);
   for (int i = 0; i < VIEW_WRITERS; i++)
     assert(pthread_join(writers[i], NULL) == 0);
-  assert(osp_native_frame_commit(b, &revision) == 0);
-  leased_run(b, OSP_NATIVE_VIEWS, revision, &rows);
-  leased_run(b, OSP_NATIVE_TEXT, revision, &text);
-  assert(osp_native_length(b, &text, &bytes) == 0);
-  const OspNativeView *held = run_bytes(
-      b, &rows, OSP_NATIVE_VIEWS, count * (int64_t)sizeof(OspNativeView));
-  const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  PublishedRun run = commit_and_read(
+      b, OSP_NATIVE_VIEWS, count * (int64_t)sizeof(OspNativeView), &rows, &text);
+  const OspNativeView *held = run.rows;
+  const char *chars = run.text;
   for (int64_t i = 0; i < count; i++) {
     int length = snprintf(words, sizeof words, "%lld", (long long)held[i].action);
     assert(held[i].action >= 0 && held[i].action < count &&
            !seen[held[i].action] && held[i].text_length == length &&
-           held[i].text_offset + length <= bytes &&
+           held[i].text_offset + length <= run.text_bytes &&
            memcmp(chars + held[i].text_offset, words, (size_t)length) == 0);
     seen[held[i].action] = true;
   }
@@ -604,19 +674,16 @@ static void check_unusable_numbers_are_refused(OspNativeBridge *b) {
 // [NATIVE-SHM-VIEW] A control's extents, flags, border and second text land on
 // its own row; a row that does not exist, or an unusable number, refuses.
 static void check_view_extension(OspNativeBridge *b) {
-  int64_t revision = 0, bytes;
+  int64_t revision = 0;
   td_OwnedLease rows, text;
   push_view();
   assert(osp_native_view_extend(2, 90, 44, 0, 4, 0, "Old") == 0 &&
          osp_native_view_extend(2, 120, 0, 1, 1, 0x112233ff, "Name") == 0 &&
          osp_native_view_extend(0, 0, 0, 2, 0, 0, NULL) == 0);
-  assert(osp_native_frame_commit(b, &revision) == 0);
-  leased_run(b, OSP_NATIVE_VIEWS, revision, &rows);
-  leased_run(b, OSP_NATIVE_TEXT, revision, &text);
-  assert(osp_native_length(b, &text, &bytes) == 0 && bytes == 21);
-  const OspNativeView *held = run_bytes(b, &rows, OSP_NATIVE_VIEWS,
-                                        3 * (int64_t)sizeof(OspNativeView));
-  const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  PublishedRun run = commit_view_rows(b, &rows, &text);
+  assert(run.text_bytes == 21);
+  const OspNativeView *held = run.rows;
+  const char *chars = run.text;
   check_view_rows(held, chars);
   assert(held[2].width == 120 && held[2].height == 44 && held[2].grow == 1 &&
          held[2].flags == 5 && held[2].border == 0x112233ff &&
@@ -642,24 +709,23 @@ static void check_view_extension(OspNativeBridge *b) {
 // [NATIVE-SHM-ASK] An ask's fields land in order beside the view's text, a
 // negative field refuses the whole frame, and the next frame starts clean.
 static void check_ask_rows(OspNativeBridge *b) {
-  int64_t revision = 0, bytes;
+  int64_t revision = 0;
   td_OwnedLease asks, text;
   assert(osp_native_scene_shape(6, 2, 1, 2, 14, 700, 0, 255, 3, "Play") == 0);
   assert(osp_native_ask(0, 9, "store:1") == 0 &&
          osp_native_ask(1, 0, "notes.txt") == 0 &&
          osp_native_ask(2, 4096, NULL) == 0 && osp_native_ask(0, 100, "k") == 0 &&
          osp_native_ask(1, 0, "") == 0);
-  assert(osp_native_frame_commit(b, &revision) == 0);
-  leased_run(b, OSP_NATIVE_ASKS, revision, &asks);
-  leased_run(b, OSP_NATIVE_TEXT, revision, &text);
-  assert(osp_native_length(b, &text, &bytes) == 0 && bytes == 21);
+  PublishedRun run = commit_and_read(b, OSP_NATIVE_ASKS,
+                                     5 * (int64_t)sizeof(OspNativeAsk), &asks,
+                                     &text);
+  assert(run.text_bytes == 21);
   td_OwnedLease letters;
-  leased_run(b, OSP_NATIVE_SHAPES, revision, &letters);
+  leased_run(b, OSP_NATIVE_SHAPES, run.revision, &letters);
   const OspNativeShape *shape =
       run_bytes(b, &letters, OSP_NATIVE_SHAPES, sizeof(OspNativeShape));
-  const OspNativeAsk *held =
-      run_bytes(b, &asks, OSP_NATIVE_ASKS, 5 * (int64_t)sizeof(OspNativeAsk));
-  const char *chars = run_bytes(b, &text, OSP_NATIVE_TEXT, bytes);
+  const OspNativeAsk *held = run.rows;
+  const char *chars = run.text;
   assert(shape->code == 6 && shape->index == 2 && shape->values[3] == 700 &&
          shape->text_offset == 0 && shape->text_length == 4 &&
          memcmp(chars, "Play", 4) == 0);

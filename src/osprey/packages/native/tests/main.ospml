@@ -294,37 +294,34 @@ test ("tabs bind before the page they show, and segments carry their tones", \()
     expect (join (mapList ([AdditionCases::itemOf (segments, 0), AdditionCases::itemOf (segments, 1)], \box => "${(AdditionCases::lookOf (AdditionCases::innerOf box)).fill}")) ",", "305420031,3424789247")))
 // [UI-COMPONENTS]: every constructor lowers as the component it names, with its role, tone, axis and enabled state.
 built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
+
+// The `index`th lowered part of the built row, or nothing.
+partAt (parts, index) = listGet parts index ?: AdditionCases::nothingView ()
 test ("every constructor lowers as the component it names", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (built ())
     styling = ui::Styling(styleTheme = AdditionCases::lowerTheme (), styleDark = false, styleRegions = [])
     row = AdditionCases::innerOf (AdditionCases::itemOf (Lower::view (styling, built ()), 0))
     parts = mapList (toList (range (0, 8)), \i => AdditionCases::itemOf (row, i))
-    heading = listGet parts 0 ?: AdditionCases::nothingView ()
-    pair = listGet parts 1 ?: AdditionCases::nothingView ()
-    badge = AdditionCases::innerOf (listGet parts 2 ?: AdditionCases::nothingView ())
-    empty = AdditionCases::innerOf (listGet parts 3 ?: AdditionCases::nothingView ())
-    stop = AdditionCases::innerOf (listGet parts 4 ?: AdditionCases::nothingView ())
-    toggle = listGet parts 5 ?: AdditionCases::nothingView ()
-    picker = AdditionCases::innerOf (listGet parts 6 ?: AdditionCases::nothingView ())
-    rows = listGet parts 7 ?: AdditionCases::nothingView ()
-    expect (AdditionCases::kindOf heading, "wording")
-    expect ((AdditionCases::lookOf heading).points, 16.0)
-    expect ((AdditionCases::lookOf heading).heft, 600)
-    expect ((AdditionCases::lookOf heading).ink, 6728447)
-    expect (AdditionCases::kindOf pair, "across")
-    expect (AdditionCases::countOf pair, 3)
-    expect (AdditionCases::textOf badge, "Partial")
-    expect ((AdditionCases::lookOf badge).corner, 999.0)
-    expect ((AdditionCases::fitOf (listGet parts 3 ?: AdditionCases::nothingView ())).traits, Views::centred)
+    heading = partAt (parts, 0)
+    pair = partAt (parts, 1)
+    badge = AdditionCases::innerOf (partAt (parts, 2))
+    empty = AdditionCases::innerOf (partAt (parts, 3))
+    stop = AdditionCases::innerOf (partAt (parts, 4))
+    toggle = partAt (parts, 5)
+    picker = AdditionCases::innerOf (partAt (parts, 6))
+    rows = partAt (parts, 7)
+    expect (AdditionCases::facets (heading, ["kind", "points", "heft", "ink"]), "wording|16.0|600|6728447")
+    expect (AdditionCases::facets (pair, ["kind", "count"]), "across|3")
+    expect (AdditionCases::facets (badge, ["text", "corner"]), "Partial|999.0")
+    expect ((AdditionCases::fitOf (partAt (parts, 3))).traits, Views::centred)
     expect (AdditionCases::countOf empty, 3)
     expect (AdditionCases::textOf stop, "Stop")
-    expect ((AdditionCases::fitOf (listGet parts 4 ?: AdditionCases::nothingView ())).traits, Views::disabled)
+    expect ((AdditionCases::fitOf (partAt (parts, 4))).traits, Views::disabled)
     expect (AdditionCases::kindOf toggle, "switch")
     expect (AdditionCases::switchWordsOf toggle, "AI")
     // A switch's state is its own `on`; the walk turns it into the chosen flag.
     expect (AdditionCases::switchOnOf toggle, true)
-    expect (AdditionCases::kindOf picker, "choosing")
-    expect (AdditionCases::countOf picker, 1)
+    expect (AdditionCases::facets (picker, ["kind", "count"]), "choosing|1")
     expect ((AdditionCases::optionKeyOf (AdditionCases::itemOf (picker, 0))), "a")
     expect (AdditionCases::kindOf rows, "column")
     expect ((AdditionCases::fitOf (AdditionCases::itemOf (rows, 0))).hint, "k")
@@ -541,29 +538,34 @@ test ("inline text keeps its emphasis and source colours without bindings", \() 
     expect (length spaced.walkRows, 3)
     binds (spaced, 1)))
 
-test ("machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => ui::Runtime::guarded (\() => machineCaseCanvasUseCase ()))
-test ("native machine views render ordinary controls and preserve every host value kind", \() => ui::Runtime::guarded (\() => machineCaseNativeViews ()))
-test ("broken machine documents name every JSON path and faulty machines remain renderable", \() => ui::Runtime::guarded (\() => machineCaseBrokenDocuments ()))
-test ("real machine documents render every skin and drive pointers sliders drags menus room and native lettering", \() => ui::Runtime::guarded (\() => realDocumentCases ()))
-test ("machine edge cases cover every template variant fault cycle request payload and pointer state", \() => ui::Runtime::guarded (\() => completeMachineCases ()))
+// Machine documents end to end, each driven as one registered case.
+testCases [
+    { name = "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", work = protected machineCaseCanvasUseCase },
+    { name = "native machine views render ordinary controls and preserve every host value kind", work = protected machineCaseNativeViews },
+    { name = "broken machine documents name every JSON path and faulty machines remain renderable", work = protected machineCaseBrokenDocuments },
+    { name = "real machine documents render every skin and drive pointers sliders drags menus room and native lettering", work = protected realDocumentCases },
+    { name = "machine edge cases cover every template variant fault cycle request payload and pointer state", work = protected completeMachineCases },
+]
 
 // [NATIVE-SHM-LOWER]: the pure lowering of semantic trees into primitive views, styled from the theme.
-test ("lowering reads text roles and tones from the theme in both appearances", \() => ui::Runtime::guarded (\() => AdditionCases::lowerTextCase ()))
-test ("lowering builds rich text runs with emphasis, slant and their own inks", \() => ui::Runtime::guarded (\() => AdditionCases::lowerRichCase ()))
-test ("lowering stacks, splits and layers take the theme's spacing gap", \() => ui::Runtime::guarded (\() => AdditionCases::lowerStacksCase ()))
-test ("lowering sections card on the background token and screens stack a titled toolbar", \() => ui::Runtime::guarded (\() => AdditionCases::lowerSurfacesCase ()))
-test ("lowering frames apply their authored size, surface and line, and scoped themes re-ink", \() => ui::Runtime::guarded (\() => AdditionCases::lowerFramesCase ()))
-test ("lowering dialogs and alerts dismiss with taps and menus show their body first", \() => ui::Runtime::guarded (\() => AdditionCases::lowerOverlaysCase ()))
-test ("lowering asides order by side and drag through a size input on a rule", \() => ui::Runtime::guarded (\() => AdditionCases::lowerAsideCase ()))
-test ("lowering tabs deliver choices with the chosen tab filled and its page shown", \() => ui::Runtime::guarded (\() => AdditionCases::lowerTabsCase ()))
-test ("lowering rows deliver choices with group headings and the selected row washed", \() => ui::Runtime::guarded (\() => AdditionCases::lowerRowsCase ()))
-test ("lowering slots lower the region they name or draw an empty column", \() => ui::Runtime::guarded (\() => AdditionCases::lowerSlotCase ()))
-test ("lowering buttons take their role's ink and fill and disable through their fit", \() => ui::Runtime::guarded (\() => AdditionCases::lowerButtonsCase ()))
-test ("lowering fields prompt, hide and commit through their fit and carry text input", \() => ui::Runtime::guarded (\() => AdditionCases::lowerFieldsCase ()))
-test ("lowering pickers choose through options and disclosures deliver their flag", \() => ui::Runtime::guarded (\() => AdditionCases::lowerPickersCase ()))
-test ("lowering pairs, badges, labels, icons, links and dividers draw quiet leaves", \() => ui::Runtime::guarded (\() => AdditionCases::lowerLeavesCase ()))
-test ("lowering segments, empties, progress, meters and swatches draw their tones", \() => ui::Runtime::guarded (\() => AdditionCases::lowerStatusCase ()))
-test ("lowering media, editors, boards and scenes bind in the encoder's order", \() => ui::Runtime::guarded (\() => AdditionCases::lowerMediaCase ()))
+testCases [
+    { name = "lowering reads text roles and tones from the theme in both appearances", work = protected AdditionCases::lowerTextCase },
+    { name = "lowering builds rich text runs with emphasis, slant and their own inks", work = protected AdditionCases::lowerRichCase },
+    { name = "lowering stacks, splits and layers take the theme's spacing gap", work = protected AdditionCases::lowerStacksCase },
+    { name = "lowering sections card on the background token and screens stack a titled toolbar", work = protected AdditionCases::lowerSurfacesCase },
+    { name = "lowering frames apply their authored size, surface and line, and scoped themes re-ink", work = protected AdditionCases::lowerFramesCase },
+    { name = "lowering dialogs and alerts dismiss with taps and menus show their body first", work = protected AdditionCases::lowerOverlaysCase },
+    { name = "lowering asides order by side and drag through a size input on a rule", work = protected AdditionCases::lowerAsideCase },
+    { name = "lowering tabs deliver choices with the chosen tab filled and its page shown", work = protected AdditionCases::lowerTabsCase },
+    { name = "lowering rows deliver choices with group headings and the selected row washed", work = protected AdditionCases::lowerRowsCase },
+    { name = "lowering slots lower the region they name or draw an empty column", work = protected AdditionCases::lowerSlotCase },
+    { name = "lowering buttons take their role's ink and fill and disable through their fit", work = protected AdditionCases::lowerButtonsCase },
+    { name = "lowering fields prompt, hide and commit through their fit and carry text input", work = protected AdditionCases::lowerFieldsCase },
+    { name = "lowering pickers choose through options and disclosures deliver their flag", work = protected AdditionCases::lowerPickersCase },
+    { name = "lowering pairs, badges, labels, icons, links and dividers draw quiet leaves", work = protected AdditionCases::lowerLeavesCase },
+    { name = "lowering segments, empties, progress, meters and swatches draw their tones", work = protected AdditionCases::lowerStatusCase },
+    { name = "lowering media, editors, boards and scenes bind in the encoder's order", work = protected AdditionCases::lowerMediaCase },
+]
 
 // [NATIVE-SHM-BOUNDARY]: the probe application crosses as view rows and typed events, with no envelope and no event document.
 mut surfaceRows = ""
@@ -662,6 +664,9 @@ journeyTouch (kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = 9
 
 journeyStep (held, touch) = Views::shared (\() => Hosting::event (held, journeyProgram (), touch))
 
+// Why the shared frame refuses `touch` on `held`.
+refusedBy (held, touch) = (journeyStep (held, touch)).surfaceProblem
+
 heardAll held = join held.surfaceSession.sessionStore "|"
 
 journeyCase () =
@@ -684,20 +689,16 @@ journeyCase () =
     empty = journeyStep (stroked, journeyTouch (Hosting::stroke, board, "", "", 3.0, 78.0, false))
     expect (empty.surfaceProblem, "A board control sent a malformed stroke")
     expect (Hosting::answer empty, 1)
-    misplaced = journeyStep (pointed, journeyTouch (Hosting::stroke, go, "", "", 3.0, 78.0, false))
-    expect (misplaced.surfaceProblem, "A non-board control was sent a value of the wrong kind")
+    expect (refusedBy (pointed, journeyTouch (Hosting::stroke, go, "", "", 3.0, 78.0, false)), "A non-board control was sent a value of the wrong kind")
     // A lasso arrives as the strokes it encloses, then its close.
     enclosed = journeyStep (journeyStep (stroked, journeyTouch (Hosting::enclose, 0, "", "", 0.0, 0.0, false)), journeyTouch (Hosting::enclose, 2, "", "", 0.0, 0.0, false))
     expect (join (mapList (enclosed.surfaceEnclosed, \i => "${i}")) ",", "0,2")
     lassoed = journeyStep (enclosed, journeyTouch (Hosting::lasso, lasso, "", "", 0.0, 0.0, false))
     expect (heardAll lassoed, "stroke increment:2/3/77|lasso typed:0,2")
     expect (length lassoed.surfaceEnclosed, 0)
-    wrongLasso = journeyStep (enclosed, journeyTouch (Hosting::lasso, board, "", "", 0.0, 0.0, false))
-    expect (wrongLasso.surfaceProblem, "A non-lasso control was sent a value of the wrong kind")
-    missingBoard = journeyStep (enclosed, journeyTouch (Hosting::lasso, 40, "", "", 0.0, 0.0, false))
-    expect (missingBoard.surfaceProblem, "Unknown control 40")
-    lostStroke = journeyStep (pointed, journeyTouch (Hosting::stroke, 40, "", "", 3.0, 1.0, false))
-    expect (lostStroke.surfaceProblem, "Unknown control 40")
+    expect (refusedBy (enclosed, journeyTouch (Hosting::lasso, board, "", "", 0.0, 0.0, false)), "A non-lasso control was sent a value of the wrong kind")
+    expect (refusedBy (enclosed, journeyTouch (Hosting::lasso, 40, "", "", 0.0, 0.0, false)), "Unknown control 40")
+    expect (refusedBy (pointed, journeyTouch (Hosting::stroke, 40, "", "", 3.0, 1.0, false)), "Unknown control 40")
     // The scene takes keys, the pointer and its measured size; a number that is not finite is refused.
     keyed = journeyStep (lassoed, journeyTouch (Hosting::key, scene, "space", "", 0.0, 0.0, true))
     pressedScene = journeyStep (keyed, journeyTouch (Hosting::pointer, scene, "", "", 5.0, 5.0, true))
@@ -710,8 +711,8 @@ journeyCase () =
     phased = journeyStep (done, journeyTouch (Hosting::phase, 0, "active", "", 0.0, 0.0, false))
     framed = journeyStep (phased, journeyTouch (Hosting::frame, 0, "", "", 0.016, 0.0, false))
     expect (heardAll framed, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled|completed job:1|phase active|frame")
-    expect ((journeyStep (framed, journeyTouch (42, 0, "", "", 0.0, 0.0, false))).surfaceProblem, "Unknown event kind 42")
-    expect ((journeyStep (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false))).surfaceProblem, "Invalid frame elapsed time")
+    expect (refusedBy (framed, journeyTouch (42, 0, "", "", 0.0, 0.0, false)), "Unknown event kind 42")
+    expect (refusedBy (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false)), "Invalid frame elapsed time")
     // A change of appearance redraws dark and delivers nothing; the button still taps.
     dark = journeyStep (framed, journeyTouch (Hosting::appearance, 0, "", "", 0.0, 0.0, true))
     expect (dark.surfaceDark, true)

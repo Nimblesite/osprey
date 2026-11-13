@@ -27,19 +27,31 @@ etchAt (rows, index) = listGet rows index ?: ui::Etch(etchCode = 0 - 1, etchInde
 
 etched e = "${e.etchCode} ${e.etchIndex} ${e.etchX} ${e.etchY} ${e.etchW} ${e.etchH} ${e.etchTurn} ${e.etchTint} ${e.etchDepth} ${e.etchText}"
 
+// Row `index` of `rows`, spelt as `etched` spells it.
+etchedAt (rows, index) = etched (etchAt (rows, index))
+
+// Each probe's row at `probe.index`, spelt as `probe.spelled`, so one table names every row a case reads.
+expectEtches (rows, probes) = forEachList (probes, \probe => expect (etchedAt (rows, probe.index), probe.spelled))
+
+// The row a single `shape` draws, spelt as `spelled`.
+expectShape (shape, spelled) = expect (etchedAt (ui::Streams::etches shape, 0), spelled)
+
+// The type code of every row in `rows`, in order.
+codesOf rows = join (mapList (rows, \row => "${row.etchCode}")) ","
+
+// The first scene `walked` drew, or none.
+firstSketch walked = listGet walked.walkSketches 0
+
 // The scene rows of the first scene `walked` drew, in drawing order.
-firstRows walked = match listGet walked.walkSketches 0
+firstRows walked = match firstSketch walked
     Success drawn => ui::Streams::rows (drawn.sketchedRow, drawn.sketchedAs)
     Error _ => []
-
-// Every scene row of every scene `walked` drew, in drawing order.
-allRows walked = Lists::flatten (mapList (walked.walkSketches, \drawn => ui::Streams::rows (drawn.sketchedRow, drawn.sketchedAs)))
 
 // The shape rows of the first scene `walked` drew, past its marker and atlas.
 shapeRows walked = Lists::slice (firstRows walked, satAdd 1 (length (sceneAtlasOf walked)), length (firstRows walked))
 
 // The atlas of the first scene `walked` drew.
-sceneAtlasOf walked = match listGet walked.walkSketches 0
+sceneAtlasOf walked = match firstSketch walked
     Success drawn => drawn.sketchedAs.sketchAtlas
     Error _ => []
 
@@ -59,29 +71,23 @@ depthsOf walked = join (mapList (walked.walkSketches, \drawn => "${depthOf (list
 // [UI-SCENE]: a scene's shapes cross as flat typed rows: one row per shape, a type code first, sprites by
 // atlas index, glyph text inline, and one input binding.
 (** a scene's shapes cross as flat typed rows. *)
-// The integers `0` to `count - 1`, in order.
-indices count = range (0, count) |> fold [] (\(out, index) => listAppend out index)
-
 sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
     walked = drawnOf (Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
     rows = firstRows walked
     expect (length walked.walkSketches, 1)
-    expect ((listGet walked.walkSketches 0 ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 2)
-    expect (etched (etchAt (rows, 0)), "20 2 320.0 200.0 1.0 0.0 0.0 0 0 ")
-    expect (etched (etchAt (rows, 1)), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird")
-    expect (etched (etchAt (rows, 2)), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk")
+    expect ((firstSketch walked ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 2)
+    expectEtches (rows, [{ index = 0, spelled = "20 2 320.0 200.0 1.0 0.0 0.0 0 0 " }, { index = 1, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird" }, { index = 2, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk" }])
     shapes = shapeRows walked
-    expect (join (mapList (shapes, \row => "${row.etchCode}")) ",", "0,1,2,7,7,3,4")
-    expect (etched (etchAt (shapes, 0)), "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 ")
-    expect (etched (etchAt (shapes, 1)), "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 ")
+    expect (codesOf shapes, "0,1,2,7,7,3,4")
+    expectEtches (shapes, [{ index = 0, spelled = "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 " }, { index = 1, spelled = "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 " }])
     expect ((etchAt (shapes, 2)).etchIndex, 2)
     expect ((etchAt (shapes, 5)).etchIndex, 1)
     expect ((etchAt (shapes, 6)).etchText, "Score 3")
     expect (actionAt (walked, 2), 1)
     binds (walked, 2)
     zoomed = drawnOf (Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed))
-    expect (etched (etchAt (firstRows zoomed, 0)), "20 0 1536.0 828.0 0.75 0.0 0.0 0 0 ")
+    expect (etchedAt (firstRows zoomed, 0), "20 0 1536.0 828.0 0.75 0.0 0.0 0 0 ")
     expect ((fitAt (zoomed, 0)).wide, 1152.0)
 
 (** colours pack as RRGGBBAA. *)
@@ -100,6 +106,9 @@ sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, inpu
     Error problem => problem
     Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
 
+// `binding`, which owns no scene, refuses `value` as the wrong kind.
+notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")
+
 // [UI-SCENE]: a path carries its builder commands, outline, paint and transform in the order a
 // host's path builder takes them, with float colours a host can use without rounding.
 (** a path sends its steps, outline, paint and transform. *)
@@ -111,18 +120,10 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
     head = etchAt (rows, 0)
     expect (etched head, "5 7 0.0 0.0 1.0 0.0 0.0 0 0 ")
     // Move, line, curve, cubic and its continuation, arc, polygon and its three corners, close; then outline, paint and two tints.
-    expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "5,8,8,8,8,7,8,8,7,7,7,8,9,10,11,11,5,8,9,7,7,10,11")
-    expect (etched (etchAt (rows, 6)), "8 4 30.0 30.0 0.0 9.0 9.0 2 0 ")
-    expect (etched (etchAt (rows, 7)), "8 5 0.0 0.0 0.0 0.0 0.0 0 3 ")
-    expect (etched (etchAt (rows, 12)), "9 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (etchAt (rows, 13)), "10 1 180.0 0.7 1.0 0.0 0.0 1 0 ")
-    expect (etched (etchAt (rows, 15)), "11 1 0.0 1.0 0.5 1.0 0.0 0 0 ")
+    expect (codesOf rows, "5,8,8,8,8,7,8,8,7,7,7,8,9,10,11,11,5,8,9,7,7,10,11")
+    expectEtches (rows, [{ index = 6, spelled = "8 4 30.0 30.0 0.0 9.0 9.0 2 0 " }, { index = 7, spelled = "8 5 0.0 0.0 0.0 0.0 0.0 0 3 " }, { index = 12, spelled = "9 0 0.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 13, spelled = "10 1 180.0 0.7 1.0 0.0 0.0 1 0 " }, { index = 15, spelled = "11 1 0.0 1.0 0.5 1.0 0.0 0 0 " }])
     stroked = ui::Streams::etches (listGet drawn 1 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))
-    expect (etched (etchAt (stroked, 0)), "5 1 10.0 200.0 0.9 0.0 0.0 0 1 ")
-    expect (etched (etchAt (stroked, 2)), "9 1 1.0 0.0 0.0 0.0 0.0 1 2 ")
-    expect (etched (etchAt (stroked, 3)), "7 0 4.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (etchAt (stroked, 4)), "7 0 2.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (etchAt (stroked, 6)), "11 0 1.0 0.0 0.0 0.5 0.0 0 0 ")
+    expectEtches (stroked, [{ index = 0, spelled = "5 1 10.0 200.0 0.9 0.0 0.0 0 1 " }, { index = 2, spelled = "9 1 1.0 0.0 0.0 0.0 0.0 1 2 " }, { index = 3, spelled = "7 0 4.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 4, spelled = "7 0 2.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 6, spelled = "11 0 1.0 0.0 0.0 0.5 0.0 0 0 " }])
 
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
@@ -132,14 +133,14 @@ sceneCaseASceneBindingDeliversKeysAndPointer () =
     expect (sceneSaid (scene, ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer 1.0 2.0 true true")
     expect (sceneSaid (scene, ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed 1536.0 1008.0")
     expect (sceneSaid (scene, ui::Viewed(viewWidth = 0.5, viewHeight = 2.25)), "viewed 0.5 2.25")
-    expect (sceneSaid (ui::Tap(action = Load), ui::Key(keyName = "ArrowLeft", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::SizeInput(action = Load), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::PlaceInput(action = Load), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::StrokeInput(action = Load), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
-    expect (sceneSaid (ui::LassoInput(action = Load), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
+    notScene (ui::Tap(action = Load), ui::Key(keyName = "ArrowLeft", keyDown = true))
+    notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
+    notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
+    notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
+    notScene (ui::SizeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::PlaceInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::StrokeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::LassoInput(action = Load), ui::Key(keyName = "a", keyDown = true))
     // A surface that drew no scene at that control number refuses too.
     bare = Surfaces::idle 0
     bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
@@ -207,13 +208,9 @@ sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
 (** a pair sends its label and value without a binding. *)
 sceneCaseAPairEncodesItsLabelAndValue () =
     walked = drawnOf (Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)])
-    expect (kindAt (walked, 1), Views::line)
-    expect (wordsAt (walked, 2), "Digest")
-    expect (kindAt (walked, 3), Views::gap)
-    expect (wordsAt (walked, 4), "sha256:ab")
-    expect (actionAt (walked, 1), Views::none)
-    expect (actionAt (walked, 2), Views::none)
-    expect (actionAt (walked, 5), 0)
+    expect (rowsRead (walked, "kind", [1, 3]), "${Views::line}|${Views::gap}")
+    expect (rowsRead (walked, "words", [2, 4]), "Digest|sha256:ab")
+    expect (rowsRead (walked, "action", [1, 2, 5]), "${Views::none}|${Views::none}|0")
     binds (walked, 1)
 
 isLinux platform = match platform
@@ -284,14 +281,10 @@ sceneCaseAnUnnamedSlotDrawsNoScene () =
 // [NATIVE-SHM-SCENE]: the rows a host reads back give each kind's code, atlas index, floats, colour and depth.
 (** shape rows read back every field a host import takes. *)
 sceneCaseShapeRowsReadBackEveryFieldA () =
-    rect = etchAt (ui::Streams::etches (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1)), 0)
-    expect (etched rect, "0 0 1.0 2.0 3.0 4.0 0.5 7 1 ")
-    disc = etchAt (ui::Streams::etches (Scenes::disc (5.0, 6.0, 7.0, 8, 2)), 0)
-    expect (etched disc, "1 0 5.0 6.0 7.0 0.0 0.0 8 2 ")
-    sprite = etchAt (ui::Streams::etches (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)), 0)
-    expect (etched sprite, "3 3 8.0 9.0 2.0 1.0 0.25 9 4 ")
-    glyphs = etchAt (ui::Streams::etches (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0)), 0)
-    expect (etched glyphs, "4 0 0.0 0.0 1.0 0.0 0.0 0 0 x")
+    expectShape (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1), "0 0 1.0 2.0 3.0 4.0 0.5 7 1 ")
+    expectShape (Scenes::disc (5.0, 6.0, 7.0, 8, 2), "1 0 5.0 6.0 7.0 0.0 0.0 8 2 ")
+    expectShape (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4), "3 3 8.0 9.0 2.0 1.0 0.25 9 4 ")
+    expectShape (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0), "4 0 0.0 0.0 1.0 0.0 0.0 0 0 x")
 
 // [NATIVE-SHM-BOUNDARY]: a surface holds its store in its session, and the session moves on with each event.
 (** an open surface keeps its store in its session. *)
@@ -345,9 +338,7 @@ sceneCaseAStripCarriesItsPointsAsRows () =
     strip = Scenes::strip ([0.0, 0.0, 1.0, 1.0], 9, 1.0, 4)
     rows = ui::Streams::etches strip
     expect (length rows, 3)
-    expect (etched (etchAt (rows, 0)), "2 2 0.0 0.0 1.0 0.0 0.0 9 4 ")
-    expect (etched (etchAt (rows, 1)), "7 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (etchAt (rows, 2)), "7 0 1.0 1.0 0.0 0.0 0.0 0 0 ")
+    expectEtches (rows, [{ index = 0, spelled = "2 2 0.0 0.0 1.0 0.0 0.0 9 4 " }, { index = 1, spelled = "7 0 0.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 2, spelled = "7 0 1.0 1.0 0.0 0.0 0.0 0 0 " }])
 
 // [UI-STORE]: completions, lifecycle phases and frames reach `update`, and an event of unknown kind is refused without change.
 (** a surface delivers completions, phases and frames and refuses unknown kinds. *)
@@ -405,10 +396,8 @@ sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
 // A drawn meter's two bars' shares, checked against what its amounts clamp to.
 meterShares (meter, probe) =
     bars = AdditionCases::itemOf (meter, 1)
-    filled = AdditionCases::itemOf (bars, 0)
-    rest = AdditionCases::itemOf (bars, 1)
-    expect ((AdditionCases::fitOf filled).share, probe.filled)
-    expect ((AdditionCases::fitOf rest).share, probe.rest)
+    expect (AdditionCases::facets (AdditionCases::itemOf (bars, 0), ["share"]), "${probe.filled}")
+    expect (AdditionCases::facets (AdditionCases::itemOf (bars, 1), ["share"]), "${probe.rest}")
 
 // [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below one.
 (** a meter clamps its amount into a total of at least one. *)

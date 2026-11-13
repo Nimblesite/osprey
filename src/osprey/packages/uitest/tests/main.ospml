@@ -33,13 +33,17 @@ loaded (work, refused) = match MachineDocs::load (readFile "src/osprey/packages/
 
 withFixture work = Runtime::guarded (\() => loaded (work, \problem => expect ("fixture loads: ${problem}", "fixture loads")))
 
-// The machine's view lowered and drawn: the rows, fits and scenes a host reads ([NATIVE-SHM-VIEW]).
-seen machine = Read::seen (Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine)), [])
+// The machine's view lowered and drawn with the requests its step sent: the rows, fits, scenes and
+// ask rows a host reads ([NATIVE-SHM-VIEW], [NATIVE-SHM-ASK]).
+drawn (machine, requests) = Read::seen (Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine)), requests)
+// The same view when its step asked for nothing.
+seen machine = drawn (machine, [])
 
 // The machine's canvas, and what a test reads off it.
 canvas machine = Canvases::semantics machine
-value machine = Semantics::value (canvas machine, "Level")
 letters (machine, text) = Seen::letters (seen machine, text)
+// The slider's reading off a tree of accessible nodes, on a canvas or a driven view.
+levelOf nodes = Semantics::value (nodes, "Level")
 feed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
 // `act` at the point `fraction` across `node`, where a pointer or a release lands.
 crossed (node, fraction, act) = act (Semantics::point (node, fraction))
@@ -50,15 +54,15 @@ releasedAt (machine, label, fraction) =
 // Acting on the slider at `fraction` of its width leaves it reading `fraction`.
 slidTo (machine, fraction) =
     moved = Canvases::act (machine, "Level", fraction)
-    expect (value moved, fraction)
+    expect (levelOf (canvas moved), fraction)
     moved
 
 // Lettering that has arrived, and lettering that has gone: `read` answers for one name.
 letteredOver (read, shown, gone) =
-    forEachList (shown, \text => expect (read text, true))
-    forEachList (gone, \text => expect (read text, false))
+    reading (shown, read, true)
+    reading (gone, read, false)
 
-lettering (machine, shown, gone) = letteredOver (\text => letters (machine, text), [shown], [gone])
+lettering (machine, shown, gone) = letteredOver (\text => letters (machine, text), shown, gone)
 
 // Where the slider's track sits at `fraction` of its width.
 tracked (slider, spot) =
@@ -69,7 +73,7 @@ tracked (slider, spot) =
 // Feeding a fresh caption shows its lettering and retires the previous one.
 captioned (machine, shown, gone) =
     fed = feed (machine, "caption", shown)
-    lettering (fed, shown, gone)
+    lettering (fed, [shown], [gone])
     fed
 
 // A canvas whose menu is shut: its labels, and no dismissal on offer.
@@ -80,28 +84,16 @@ shut (machine, names) =
 // Runs of readings that only their label distinguishes: `read` answers for one label.
 reading (labels, read, want) = forEachList (labels, \label => expect (read label, want))
 
-// A frame's elapsed seconds as a message, or the refusal it earned.
-framedAs elapsed = match Surfaces::framed elapsed
-    Success message => spelled message
-    Error problem => problem
-
-// A machine's view drawn with the requests its step sent, as a host reads their kinds back.
-asking (machine, requests) = Read::seen (Views::drawn (Lower::view (ui::Styling(styleTheme = Templates::theme machine, styleDark = false, styleRegions = []), Templates::view machine)), requests)
-
-// One message spelt as its kind and value, or the refusal a binding gave.
-meant (binding, words) = match Surfaces::told (binding, words)
+// A typed call's message spelt as its kind and value, or the refusal it gave.
+speltAs outcome = match outcome
     Error problem => problem
     Success message => spelled message
 
-// One scene input spelt as its kind and numbers, or the refusal the scene gave.
-scened (binding, input) = match Surfaces::scene (heldOf (binding), 0, input)
-    Error problem => problem
-    Success message => spelled message
-
-// One lasso's stroke indices spelt as their message, or the refusal it earned.
-lassoedAs (binding, indices) = match Surfaces::lasso (heldOf (binding), 0, indices)
-    Error problem => problem
-    Success message => spelled message
+// A frame's elapsed seconds, one message, one scene input or one lasso's strokes, spelt back.
+framedAs elapsed = speltAs (Surfaces::framed elapsed)
+meant (binding, words) = speltAs (Surfaces::told (binding, words))
+scened (binding, input) = speltAs (Surfaces::scene (heldOf (binding), 0, input))
+lassoedAs (binding, indices) = speltAs (Surfaces::lasso (heldOf (binding), 0, indices))
 
 // A surface whose only bound control is `binding`, as a scene's events need.
 heldOf binding =
@@ -121,19 +113,19 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     expect (Semantics::offered (canvas fresh, "Menu"), true)
     shut (fresh, "Menu|Press|Level")
     forEachList ([{ named = "Menu", played = "popup" }, { named = "Press", played = "button" }, { named = "Level", played = "slider" }, { named = "Missing", played = "none" }], \spot => expect (Semantics::role (canvas fresh, spot.named), spot.played))
-    expect (value fresh, 0.25)
+    expect (levelOf (canvas fresh), 0.25)
     expect (letters (fresh, "Hello"), true)
     slider = Semantics::element (canvas fresh, "Level")
     forEachList ([{ fraction = 0.0, x = 20.0 }, { fraction = 0.5, x = 120.0 }, { fraction = 1.0, x = 220.0 }], \spot => tracked (slider, spot))
     pressed = Canvases::act (fresh, "Press", 0.5)
-    lettering (pressed, "Pressed", "Hello")
+    lettering (pressed, ["Pressed"], ["Hello"])
     full = slidTo (slidTo (slidTo (pressed, 0.0), 0.5), 1.0)
     released = releasedAt (full, "Level", 0.75)
-    expect (value released, 0.75)
+    expect (levelOf (canvas released), 0.75)
     opened = Canvases::act (released, "Menu", 0.5)
     shut (opened, "One|Two|Three|Menu|Press|Level")
     expect (Semantics::role (canvas opened, "One"), "menuitem")
-    letteredOver (\text => letters (opened, text), ["One", "Two", "Three"], [])
+    lettering (opened, ["One", "Two", "Three"], [])
     dismissed = Canvases::released (opened, 5.0, 5.0)
     shut (dismissed, "Menu|Press|Level")
     reopened = Canvases::act (dismissed, "Menu", 0.5)
@@ -142,7 +134,25 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
     expect (letters (chosen, "Choice two"), true)
     updated = captioned (chosen, "Updated", "Pressed")
     again = captioned (updated, "Second input", "Updated")
-    expect (value again, 0.75)))
+    expect (levelOf (canvas again), 0.75)))
+
+// The words each binding reads, and the message kind they mean ([UI-EVENTS]).
+meaningCases () = [
+    { binding = ui::Tap(action = 1), words = "ignored", want = "act" }, { binding = ui::FlagInput(action = 1), words = "true", want = "switched:true" }, { binding = ui::FlagInput(action = 1), words = "yes", want = "switched:false" },
+    { binding = ui::ChoiceInput(action = 1), words = "two \"quoted\"", want = "entered:two \"quoted\"" }, { binding = ui::TextInput(action = 1), words = "Zoë", want = "entered:Zoë" }, { binding = ui::SizeInput(action = 1), words = "junk", want = "sized:260" },
+    { binding = ui::SizeInput(action = 1), words = "99999", want = "sized:640" }, { binding = ui::PlaceInput(action = 1), words = "-4", want = "sized:0" }, { binding = ui::PlaceInput(action = 1), words = "12", want = "sized:12" },
+    { binding = ui::StrokeInput(action = 1), words = "1,2", want = "A board control was sent a value of the wrong kind" }, { binding = ui::LassoInput(action = 1), words = "0,2", want = "A lasso control was sent a value of the wrong kind" }, { binding = ui::SceneInput(action = 1), words = "", want = "A scene control was sent a value of the wrong kind" },
+]
+
+// The scene inputs a control reads, their numbers in scene units, and the message each means.
+sceneCases () = [
+    { binding = ui::SceneInput(action = 1), input = ui::Key(keyName = "ArrowLeft", keyDown = true), want = "key:ArrowLeft:true" }, { binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 12.5, pointerY = 20.0, pointerDown = false, pointerShift = false), want = "pointer:12.5:20.0:false:false" },
+    { binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true), want = "pointer:1.0:2.0:true:true" }, { binding = ui::SceneInput(action = 1), input = ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0), want = "viewed:1536.0:1008.0" },
+    { binding = ui::Tap(action = 1), input = ui::Key(keyName = "a", keyDown = true), want = "A non-scene control was sent a value of the wrong kind" },
+]
+
+// The message a lasso's stroke indices name, and the refusal a malformed list earns.
+lassoCases () = [{ indices = [0, 2], want = "lassoed" }, { indices = [0, -1], want = "A board control sent a lasso that is not a list of strokes" }]
 
 test ("native views are found by what they say, and every host event keeps its typed meaning", \() => withFixture (\fresh =>
     native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
@@ -154,30 +164,14 @@ test ("native views are found by what they say, and every host event keeps its t
     expect (Seen::texts shown, "Native|Native action|two|Two|One|Two|Three")
     expect (Seen::lettered shown, "")
     // The ask rows of a step's requests, as a host reads their kinds back ([NATIVE-SHM-ASK]).
-    asked = asking (native, [Requests::ask ("run:1", ui::Run(executable = "/bin/ps", arguments = [], timeout = 10, outputLimit = 64, plist = false, runSlice = "")), Requests::ask ("clock:1", ui::Animate(animated = true))])
+    asked = drawn (native, [Requests::ask ("run:1", ui::Run(executable = "/bin/ps", arguments = [], timeout = 10, outputLimit = 64, plist = false, runSlice = "")), Requests::ask ("clock:1", ui::Animate(animated = true))])
     forEachList ([{ kinds = ["run", "animate"], want = true }, { kinds = ["choose-file"], want = false }], \row => reading (row.kinds, \kind => Seen::requested (asked, kind), row.want))
     expect ((Read::blank ()).renderedOrdinal, 0 - 1)
     // A control's value crosses as its words through the binding the view issued ([UI-EVENTS]).
-    expect (meant (ui::Tap(action = 1), "ignored"), "act")
-    expect (meant (ui::FlagInput(action = 1), "true"), "switched:true")
-    expect (meant (ui::FlagInput(action = 1), "yes"), "switched:false")
-    expect (meant (ui::ChoiceInput(action = 1), "two \"quoted\""), "entered:two \"quoted\"")
-    expect (meant (ui::TextInput(action = 1), "Zoë"), "entered:Zoë")
-    expect (meant (ui::SizeInput(action = 1), "junk"), "sized:260")
-    expect (meant (ui::SizeInput(action = 1), "99999"), "sized:640")
-    expect (meant (ui::PlaceInput(action = 1), "-4"), "sized:0")
-    expect (meant (ui::PlaceInput(action = 1), "12"), "sized:12")
-    expect (meant (ui::StrokeInput(action = 1), "1,2"), "A board control was sent a value of the wrong kind")
-    expect (meant (ui::LassoInput(action = 1), "0,2"), "A lasso control was sent a value of the wrong kind")
-    expect (meant (ui::SceneInput(action = 1), ""), "A scene control was sent a value of the wrong kind")
+    forEachList (meaningCases (), \row => expect (meant (row.binding, row.words), row.want))
     // A scene's input crosses as typed numbers in scene units, never as text.
-    expect (scened (ui::SceneInput(action = 1), ui::Key(keyName = "ArrowLeft", keyDown = true)), "key:ArrowLeft:true")
-    expect (scened (ui::SceneInput(action = 1), ui::Pointer(pointerX = 12.5, pointerY = 20.0, pointerDown = false, pointerShift = false)), "pointer:12.5:20.0:false:false")
-    expect (scened (ui::SceneInput(action = 1), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer:1.0:2.0:true:true")
-    expect (scened (ui::SceneInput(action = 1), ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed:1536.0:1008.0")
-    expect (scened (ui::Tap(action = 1), ui::Key(keyName = "a", keyDown = true)), "A non-scene control was sent a value of the wrong kind")
-    expect (lassoedAs (ui::LassoInput(action = 1), [0, 2]), "lassoed")
-    expect (lassoedAs (ui::LassoInput(action = 1), [0, -1]), "A board control sent a lasso that is not a list of strokes")
+    forEachList (sceneCases (), \row => expect (scened (row.binding, row.input), row.want))
+    forEachList (lassoCases (), \row => expect (lassoedAs (ui::LassoInput(action = 1), row.indices), row.want))
     // Completions, lifecycle phases and frames cross as typed calls.
     expect (spelled (Surfaces::completed ("choose", true, "/music/a \"b\".mp3")), "completed:choose:/music/a \"b\".mp3")
     expect (spelled (Surfaces::completed ("discover", false, "no route")), "failed:discover:no route")
@@ -259,17 +253,16 @@ clickAt (x, y) =
     pointer (x, y, false)
 
 tap label = tapAt (label, 0.5)
-level () = Semantics::value (elements (), "Level")
 
-lettered (texts, want) = reading (texts, \text => Drive::letters (driven, text), want)
+// One name as the driven view reads it: whether it is lettered, and whether it is shown.
+lettersIn text = Drive::letters (driven, text)
+showsIn label = Drive::shows (driven, label)
 
-// Which of `names` the driver offers, and which it shows.
+// Which of `names` the driver offers, and whether each should be offered.
 offering (names, want) = reading (names, \label => Drive::offers (elements (), label), want)
-showing (names, want) = reading (names, \label => Drive::shows (driven, label), want)
 
-// Lettering that has arrived, and lettering that has gone; and the chosen item's on show.
-inLetters (shown, hidden) = letteredOver (\text => Drive::letters (driven, text), shown, hidden)
-choiceShown () = lettered (["Choice two"], true)
+// The chosen item's lettering is on show.
+choiceShown () = reading (["Choice two"], lettersIn, true)
 
 // A menu item that has been chosen: no longer offered, its lettering on show.
 retiredItem (label) =
@@ -279,7 +272,7 @@ retiredItem (label) =
 // Dragging the slider to `fraction` of its width leaves it reading `want`.
 levelAt (fraction, want) =
     tapAt ("Level", fraction)
-    expect (level (), want)
+    expect (levelOf (elements ()), want)
 
 selected () = (Seen::control (driven.drivenSeen, "Pick")).controlSelected
 
@@ -287,10 +280,7 @@ selected () = (Seen::control (driven.drivenSeen, "Pick")).controlSelected
 pickedKey (key) =
     choose ("Pick", key)
     expect (selected (), key)
-    showing ([key], true)
-
-// A control that is on show and one that has gone.
-shownNow (shown, gone) = letteredOver (\text => Drive::shows (driven, text), [shown], [gone])
+    reading ([key], showsIn, true)
 
 // A freshly begun session reads its first frame on the second tick.
 restarted skin =
@@ -306,17 +296,17 @@ test ("a driven fixture is driven by labels, pointers, completions, lifecycle an
     expect (length driven.drivenSeen.renderedCurves, 1)
     curve = listGet driven.drivenSeen.renderedCurves 0 ?: []
     forEachList ([{ at = 0, want = 10.0 }, { at = 1, want = 20.0 }, { at = 2, want = 110.0 }, { at = 3, want = 80.0 }], \reading => expect (listGet curve reading.at ?: 0.0, reading.want))
-    inLetters (["Hello", "Choice "], ["Missing lettering"])
+    letteredOver (lettersIn, ["Hello", "Choice "], ["Missing lettering"])
     forEachList ([{ names = ["Menu", "Level"], want = true }, { names = ["Dismiss"], want = false }], \row => offering (row.names, row.want))
     tap "Press"
-    inLetters (["Pressed"], ["Hello"])
+    letteredOver (lettersIn, ["Pressed"], ["Hello"])
     forEachList ([{ fraction = 0.0, want = 0.0 }, { fraction = 0.5, want = 0.5 }, { fraction = 1.0, want = 1.0 }, { fraction = 0.75, want = 0.75 }], \row => levelAt (row.fraction, row.want))
     tap "Menu"
     offering (["One", "Two", "Three"], true)
-    lettered (["One", "Two", "Three"], true)
+    reading (["One", "Two", "Three"], lettersIn, true)
     tap "Two"
     retiredItem "One"
-    expect (level (), 0.75)
+    expect (levelOf (elements ()), 0.75)
     tap "Menu"
     clickAt (5.0, 5.0)
     retiredItem "Three"
@@ -326,13 +316,13 @@ test ("a driven fixture is driven by labels, pointers, completions, lifecycle an
     // A key over the canvas reaches the machine, which binds no key: nothing changes and nothing is refused.
     post (\d => Drive::key (d, "space", true))
     expect (driven.drivenSurface.surfaceProblem, "")
-    expect (level (), 0.75)
+    expect (levelOf (elements ()), 0.75)
     expect (driven.drivenSurface.surfaceSession.sessionStore.machineFault, "")
     completed "/music/a \"b\".mp3"
     choiceShown ()
     completed "/music/second.mp3"
     forEachList ([{ status = 0, said = "" }, { status = 2, said = "no route" }], \row => post (\d => Drive::ran (d, "discover", row.status, row.said)))
-    expect (level (), 0.75)
+    expect (levelOf (elements ()), 0.75)
     post (\d => Drive::opened (d, "/music/opened.mp3"))
     choiceShown ()
     expect (driven.drivenNow > 20, true)
@@ -340,24 +330,24 @@ test ("a driven fixture is driven by labels, pointers, completions, lifecycle an
 
 test ("native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups", \() => bench (\() =>
     restarted "plain"
-    forEachList ([{ names = ["Native", "Native action", "Pick"], want = true }, { names = ["Missing control"], want = false }], \row => showing (row.names, row.want))
+    forEachList ([{ names = ["Native", "Native action", "Pick"], want = true }, { names = ["Missing control"], want = false }], \row => reading (row.names, showsIn, row.want))
     expect (selected (), "")
     press "Native action"
-    shownNow ("Pressed", "Native")
+    letteredOver (showsIn, ["Pressed"], ["Native"])
     forEachList (["one", "three"], pickedKey)
     // An option's key stays on show while the options are drawn, so a choice is read off the picker's own words.
     expect ((Seen::control (driven.drivenSeen, "Pick")).controlText, "Three")
     pickedKey "two"
-    showing (["two", "Pressed"], true)
+    reading (["two", "Pressed"], showsIn, true)
     post (\d => Drive::frame (d, 0.5))
     post (\d => Drive::opened (d, "/tmp/native.mp3"))
     completed "/tmp/chosen.mp3"
     post (\d => Drive::ran (d, "run", 1, "failed"))
     expect (selected (), "two")
-    showing (["Pressed"], true)
+    reading (["Pressed"], showsIn, true)
     restarted "plain"
     expect (selected (), "")
-    shownNow ("Native", "Pressed")))
+    letteredOver (showsIn, ["Native"], ["Pressed"])))
 
 spotted (role, label, x) = ui::Accessible(accessRole = role, accessLabel = label, accessLeft = x, accessTop = 10.0, accessWidth = 100.0, accessHeight = 20.0, accessValue = 0.5, accessMin = 0.0, accessMax = 1.0, accessSelected = false, accessMovable = false)
 

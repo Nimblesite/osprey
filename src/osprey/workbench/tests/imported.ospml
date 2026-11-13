@@ -318,11 +318,8 @@ module ImportedFlowCases
         held = JsonObject [Doc::str (ticket, Doc::write (JsonObject [JsonMember "files" (JsonArray [file])]))]
         Drive::completedHeld (before, ticket, "{}", held)
 
-    bundledRefused selected =
-        invalid = bundledAt (selected, "proof:bundled:2", Fixtures::idImpBad ())
-        refusedWith (invalid, "Import refused")
-        missing = bundledAt (selected, "proof:bundled:2", "")
-        refusedWith (missing, "Import refused")
+    bundledRefused selected = forEachList ([Fixtures::idImpBad (), ""], \source =>
+        refusedWith (bundledAt (selected, "proof:bundled:2", source), "Import refused"))
 
     bundledRaces selected =
         reopened = Drive::choose (selected, "library-actions", "Bundled proof libraries", "true")
