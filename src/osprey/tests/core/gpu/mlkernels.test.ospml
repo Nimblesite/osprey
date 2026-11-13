@@ -150,9 +150,8 @@ captureManyCaseUploaded (input0) =
     ]))
 (** captureSharedCase spends one capture across every combinator and then again *)
 (** in a chained pass, so it must survive being staged more than once. *)
-captureSharedCase () = withIndices(4, \indices4 => captureSharedWith(indices4))
-captureSharedWith (indices4) = upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], \input0 => captureSharedWithUploaded(indices4, input0))
-captureSharedWithUploaded (indices4, input0) =
+captureSharedCase () = withIndices(4, \indices4 => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], \input0 => captureSharedCaseUploaded(indices4, input0)))
+captureSharedCaseUploaded (indices4, input0) =
     t = toFloat32(2.0)
     xs = input0
     withBuffer(gpuScan(xs, toFloat32(0.0), \(acc, x) => acc + t * x), \scanned => withBuffer(gpuFilter(xs, \x => x > t), \kept => checkAll("shared capture", [
@@ -170,9 +169,8 @@ captureFoldedCaseUploaded (input0, input1, input2) =
 (** captureShapeCase pushes on the form a capture arrives in: a buffer captured *)
 (** for gather (out-of-range reads padding to zero), a capture read from a nested *)
 (** lambda, one reached only through a match branch, and a shadowing parameter. *)
-captureShapeCase () = withIndices(5, \indices5 => withIndices(3, \indices3 => captureShapeWith(indices5, indices3)))
-captureShapeWith (indices5, indices3) = upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)], \input0 => captureShapeWithUploaded(indices5, indices3, input0))
-captureShapeWithUploaded (indices5, indices3, input0) =
+captureShapeCase () = withIndices(5, \indices5 => withIndices(3, \indices3 => upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)], \input0 => captureShapeCaseUploaded(indices5, indices3, input0))))
+captureShapeCaseUploaded (indices5, indices3, input0) =
     k = toFloat32(3.0)
     w = input0
     branch = \x => match x > toFloat32(15.0)
@@ -184,9 +182,8 @@ captureShapeWithUploaded (indices5, indices3, input0) =
 (** captureDegenerateCase is the boundary sweep: a captured zero divisor whose *)
 (** checked division must surface as its fallback rather than an infinity, the *)
 (** identity captures, an unread capture, and empty/ragged operands under one. *)
-captureDegenerateCase () = withIndices(0, \emptyIndices => captureDegenerateWith(emptyIndices))
-captureDegenerateWith (emptyIndices) = withBuffer(xs3(), \input0 => upload([], \input1 => upload([], \input2 => upload([toFloat32(5.0)], \input3 => upload([], \input4 => upload([toFloat32(7.0)], \input5 => captureDegenerateWithUploaded(emptyIndices, input0, input1, input2, input3, input4, input5)))))))
-captureDegenerateWithUploaded (emptyIndices, input0, input1, input2, input3, input4, input5) =
+captureDegenerateCase () = withIndices(0, \emptyIndices => withBuffer(xs3(), \input0 => upload([], \input1 => upload([], \input2 => upload([toFloat32(5.0)], \input3 => upload([], \input4 => upload([toFloat32(7.0)], \input5 => captureDegenerateCaseUploaded(emptyIndices, input0, input1, input2, input3, input4, input5))))))))
+captureDegenerateCaseUploaded (emptyIndices, input0, input1, input2, input3, input4, input5) =
     zero = toFloat32(0.0)
     one = toFloat32(1.0)
     xs = input0
@@ -204,9 +201,8 @@ weightedSumCaseUploaded (input0, input1, input2, input3, input4, input5) =
     ])))
 (** meanCase centers a feature column: the folded mean is captured by the *)
 (** centering kernel, and the centered column's own mean vanishes. *)
-meanCase () = withIndices(9, \indices9 => meanWith(indices9))
-meanWith (indices9) = upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)], \input0 => upload([], \input1 => upload([toFloat32(5.0)], \input2 => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)], \input3 => meanWithUploaded(indices9, input0, input1, input2, input3)))))
-meanWithUploaded (indices9, input0, input1, input2, input3) =
+meanCase () = withIndices(9, \indices9 => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)], \input0 => upload([], \input1 => upload([toFloat32(5.0)], \input2 => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)], \input3 => meanCaseUploaded(indices9, input0, input1, input2, input3))))))
+meanCaseUploaded (indices9, input0, input1, input2, input3) =
     xs = input0
     withMean(xs, \mean => withBuffer(gpuMap(xs, \v => v - mean), \centered => checkAll("mean centering", [
     mean == toFloat32(3.0), sumIs(centered, toFloat32(0.0)), elementIs(centered, 0, toFloat32(9.9), toFloat32(0.0) - toFloat32(2.0)), elementIs(centered, 3, toFloat32(0.0), toFloat32(3.0)), lengthIs(centered, 4), meanIs(centered, toFloat32(0.0)), meanIs(input1, toFloat32(0.0)), meanIs(input2, toFloat32(5.0)), meanIs(input3, toFloat32(5.0)), gpuSatisfies(gpuMap(xs, \v => mean + v), \shifted => meanIs(shifted, toFloat32(6.0))), gpuSatisfies(gpuMap(indices9, toFloat32), \asFloats => meanIs(asFloats, toFloat32(4.0))), gpuLengthIs(gpuFilter(xs, \v => v > mean), 1)
@@ -251,9 +247,8 @@ softmaxCaseUploaded (input0, input1) =
     ])))))
 (** matVecCase multiplies through iota + gather: identity, zero matrix, 1x1, a *)
 (** zero-column walk, and a row past the end, which pads to zero. *)
-matVecCase () = withIndices(0, \rows0 => withIndices(1, \rows1 => withIndices(2, \rows2 => withIndices(3, \rows3 => matVecWith(rows0, rows1, rows2, rows3)))))
-matVecWith (rows0, rows1, rows2, rows3) = upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)], \input0 => upload([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)], \input1 => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)], \input2 => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], \input3 => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], \input4 => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], \input5 => upload([toFloat32(5.0), toFloat32(5.0)], \input6 => upload([toFloat32(5.0)], \input7 => upload([toFloat32(3.0)], \input8 => withBuffer(xs3(), \input9 => matVecWithUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9)))))))))))
-matVecWithUploaded (rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9) =
+matVecCase () = withIndices(0, \rows0 => withIndices(1, \rows1 => withIndices(2, \rows2 => withIndices(3, \rows3 => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)], \input0 => upload([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)], \input1 => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)], \input2 => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], \input3 => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], \input4 => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], \input5 => upload([toFloat32(5.0), toFloat32(5.0)], \input6 => upload([toFloat32(5.0)], \input7 => upload([toFloat32(3.0)], \input8 => withBuffer(xs3(), \input9 => matVecCaseUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9)))))))))))))))
+matVecCaseUploaded (rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9) =
     m = input0
     v = input1
     eye = input2
@@ -262,9 +257,8 @@ matVecWithUploaded (rows0, rows1, rows2, rows3, input0, input1, input2, input3, 
     ]))
 (** layerCase runs a two-layer forward pass; the first layer's negative unit must *)
 (** be silenced by relu before the second layer sees it. *)
-layerCase () = withIndices(0, \rows0 => withIndices(1, \rows1 => withIndices(2, \rows2 => layerWith(rows0, rows1, rows2))))
-layerWith (rows0, rows1, rows2) = upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)], \input0 => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)], \input1 => upload([toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)], \input2 => upload([toFloat32(2.0), toFloat32(0.25)], \input3 => upload([toFloat32(0.5)], \input4 => upload([toFloat32(0.0), toFloat32(0.0)], \input5 => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], \input6 => upload([toFloat32(1.0), toFloat32(2.0)], \input7 => upload([toFloat32(1.0)], \input8 => layerWithUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8))))))))))
-layerWithUploaded (rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8) =
+layerCase () = withIndices(0, \rows0 => withIndices(1, \rows1 => withIndices(2, \rows2 => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)], \input0 => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)], \input1 => upload([toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)], \input2 => upload([toFloat32(2.0), toFloat32(0.25)], \input3 => upload([toFloat32(0.5)], \input4 => upload([toFloat32(0.0), toFloat32(0.0)], \input5 => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], \input6 => upload([toFloat32(1.0), toFloat32(2.0)], \input7 => upload([toFloat32(1.0)], \input8 => layerCaseUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8)))))))))))))
+layerCaseUploaded (rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8) =
     w1 = input0
     x = input1
     denseEach(w1, x, 3, rows2, input2, \h => denseEach(input3, h, 2, rows1, input4, \out => checkAll("dense layers", [
