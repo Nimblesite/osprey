@@ -121,66 +121,17 @@ completedWith (d, ticket, ok, text) = Runtime::guarded (\() => Drive::completed 
 
 // ---- the told trees ([NATIVE-SHM-NODES]): what a host rebuilds from the frame's rows before it draws ----
 
-// A told value's member name, or "" when it carries none.
-toldName told = match told
-    ui::ToldText key _ => key
-    ui::ToldCount key _ => key
-    ui::ToldReal key _ => key
-    ui::ToldFlag key _ => key
-    ui::ToldRecord key _ => key
-    ui::ToldList key _ => key
-    ui::ToldScene key _ _ => key
-
-// Everything a record, list or scene holds, or none.
-inside told = match told
-    ui::ToldRecord _ held => held
-    ui::ToldList _ held => held
-    ui::ToldScene _ held _ => held
-    _ => []
-
-// The text member named `name`, first one wins, or "".
-textNamed (name, found, member) = match member
-    ui::ToldText key words => ui::Pick::either (key == name && found == "", words, found)
-    _ => found
-
-memberText (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
-
-// The whole-number member named `name`, first one wins, or `absent`.
-countNamed (name, found, member) = match member
-    ui::ToldCount key value => ui::Pick::either (key == name, value, found)
-    _ => found
-
-memberCount (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
-
-// The told member named `name`, or an empty record when none is told.
-memberNamed (members, name) = match Lists::find (members, \member => toldName member == name)
-    Success found => found
-    Error _ => ui::ToldRecord(recordName = "", members = [])
-
-// `told` and everything under it, depth first.
-under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
-
 // The trees of the frame a host was sent, rebuilt the way every host rebuilds them.
 frameTrees walk = uitest::Read::trees walk
 
-// The entries `told` keeps under its `name` member, in drawing order.
-entriesIn (told, name) = inside (memberNamed (inside told, name))
-
 // Whether the entries `told` keeps under `name` carry `wanted` as their `member` text.
-entriesWith (told, name, member, wanted) = Lists::any (entriesIn (told, name), \entry => memberText (inside entry, member) == wanted)
-
-// The component of kind `name` that `sought` accepts, or an empty record when none under `trees` does.
-kindedWhere (trees, name, sought) = matched (Lists::find (Lists::flatten (mapList (trees, under)), \told => memberText (inside told, "kind") == name && sought told))
-
-matched found = match found
-    Success told => told
-    Error _ => ui::ToldRecord(recordName = "", members = [])
+entriesWith (told, name, member, wanted) = Lists::any (uitest::Read::entries (told, name), \entry => uitest::Read::words (uitest::Read::inside entry, member) == wanted)
 
 // The text the component of kind `name` titled `title` tells under member `member`, read from the region `key`'s tree, or "".
-titledText (d, key, name, title, member) = memberText (inside (kindedWhere (uitest::Read::trees (regionWalk (d, key)), name, \told => memberText (inside told, "title") == title)), member)
+titledText (d, key, name, title, member) = uitest::Read::words (uitest::Read::inside (uitest::Read::kinded (uitest::Read::trees (regionWalk (d, key)), name, \told => uitest::Read::words (uitest::Read::inside told, "title") == title)), member)
 
 // The control number of the component of kind `name` whose entries `sought` accepts, or -1: the entry's key rides in the words ([UI-EVENTS]).
-chooserOf (trees, name, sought) = memberCount (inside (kindedWhere (trees, name, sought)), "event", 0 - 1)
+chooserOf (trees, name, sought) = uitest::Read::whole (uitest::Read::inside (uitest::Read::kinded (trees, name, sought)), "event", 0 - 1)
 
 // Choosing a row delivers its key through the rows control that holds it.
 pick (d, key) = deliver (d, chooserOf (frameTrees (walkOf d), "rows", \told => entriesWith (told, "rows", "key", key)), key)
@@ -215,7 +166,7 @@ showsIn (d, key, part) = expect (contains (regionTexts (d, key)) part, true)
 hidesIn (d, key, part) = expect (contains (regionTexts (d, key)) part, false)
 
 // A pair's value: the wording the pair labelled `label` tells, read from the trees a host rebuilds ([NATIVE-SHM-NODES]).
-pairValue (walk, label) = memberText (inside (kindedWhere (uitest::Read::trees walk, "pair", \told => memberText (inside told, "label") == label)), "value")
+pairValue (walk, label) = uitest::Read::words (uitest::Read::inside (uitest::Read::kinded (uitest::Read::trees walk, "pair", \told => uitest::Read::words (uitest::Read::inside told, "label") == label)), "value")
 
 expectEvidence (d, key, cases) = forEachList (cases, \c => expect (pairValue (regionWalk (d, key), c.label), c.want))
 

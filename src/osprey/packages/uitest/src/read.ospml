@@ -94,23 +94,41 @@ module Read
     export trees<A> : ui::Walk<A> -> List<ui::Told>
     trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
-    inside told = match told
+    (** Everything a record, list or scene holds, or none. *)
+    export inside told = match told
         ui::ToldRecord _ members => members
         ui::ToldScene _ members _ => members
         ui::ToldList _ items => items
         _ => []
 
+    (** A told value's member name, or "" when it carries none. *)
+    export name told = match told
+        ui::ToldText key _ => key
+        ui::ToldCount key _ => key
+        ui::ToldReal key _ => key
+        ui::ToldFlag key _ => key
+        ui::ToldRecord key _ => key
+        ui::ToldList key _ => key
+        ui::ToldScene key _ _ => key
+
     textNamed (name, found, member) = match member
         ui::ToldText key text => Pick::either (key == name && found == "", text, found)
         _ => found
 
-    words (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
+    (** The text member named `name`, first one wins, or "". *)
+    export words (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
+
+    (** The member named `key`, or an empty record when none is told. *)
+    export member (members, key) = match Lists::find (members, \one => name one == key)
+        Success found => found
+        Error _ => ui::ToldRecord(recordName = "", members = [])
 
     countNamed (name, found, member) = match member
         ui::ToldCount key value => Pick::either (key == name, value, found)
         _ => found
 
-    whole (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
+    (** The whole-number member named `name`, first one wins, or `absent`. *)
+    export whole (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
 
     flagNamed (name, found, member) = match member
         ui::ToldFlag key value => Pick::either (key == name, value, found)
@@ -130,6 +148,17 @@ module Read
 
     // The members of the record member called `name`, or none.
     recorded (members, name) = Lists::flatten (mapList (members, \member => recordNamed (name, member)))
+
+    (** The entries `told` keeps under its member named `name`, in drawing order. *)
+    export entries (told, name) = inside (member (inside told, name))
+
+    (** A told value and everything under it, depth first. *)
+    export under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
+
+    (** The first component of kind `name` under `trees` that `sought` accepts, or an empty record when none is. *)
+    export kinded (trees, name, sought) = match Lists::find (Lists::flatten (mapList (trees, under)), \told => words (inside told, "kind") == name && sought told)
+        Success found => found
+        Error _ => ui::ToldRecord(recordName = "", members = [])
 
     firstOf texts = listGet (filterList (texts, \text => text != "")) 0 ?: ""
 
