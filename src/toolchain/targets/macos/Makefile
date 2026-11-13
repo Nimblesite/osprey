@@ -9,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe workbench-render-review
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -92,10 +92,4 @@ probe: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
 
-## workbench-render-review: Render a captured region tree natively (full page).
-##   TREE defaults to the browser suite's slate board; expect a 1488x1102 image.
-##   Matching dimensions do not prove pixel fidelity.
-WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
-workbench-render-review:
-	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/osprey/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
 endif

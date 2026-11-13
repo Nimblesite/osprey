@@ -12,6 +12,20 @@ enum SelfCheck {
         let why: String
     }
 
+    /// Any application's launch, with no window: it opens, draws a checked frame with controls and
+    /// says nothing is wrong. Its own asks stay unanswered, as no adapter is installed.
+    static func opened() -> Int32 {
+        let store = SharedStore(adapters: [])
+        store.start(arguments: [], dark: false)
+        let problem = store.failure ?? (store.count == 0 ? "the first frame drew no controls" : nil)
+        if let problem {
+            print("FAILED: \(problem)")
+            return 1
+        }
+        print("PASSED: \(store.count) controls")
+        return 0
+    }
+
     static func run() -> Int32 {
         let store = SharedStore(adapters: [])
         do {

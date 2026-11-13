@@ -4,7 +4,7 @@ import SwiftUI
 
 // Implements [NATIVE-SHM-VIEW] in the host's entry point: a window that draws whatever rows the
 // application writes, with the host's diagnostic strip beneath it. `--self-test` drives Tally's
-// journey with no window at all, so the host can be checked where no display exists.
+// journey with no window at all, and `--open-check` opens any application the same way, so the host can be checked where no display exists.
 
 /// The store this host's window draws from, answering the capabilities it carries.
 @MainActor
@@ -41,6 +41,9 @@ struct OspreyViewHost: App {
 // documents to open, and open no window. A string, not a Boolean: the open panel service reads
 // this default as text and crashes on any other type.
 UserDefaults.standard.set("NO", forKey: "NSTreatUnknownArgumentsAsOpen")
+if CommandLine.arguments.contains("--open-check") {
+    exit(MainActor.assumeIsolated { SelfCheck.opened() })
+}
 if CommandLine.arguments.contains("--self-test") {
     // The main thread is this process's UI thread already; no window is opened.
     exit(MainActor.assumeIsolated { SelfCheck.run() })

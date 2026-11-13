@@ -97,9 +97,9 @@ agent-qwen: _runtime _runtime_macos_arc
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
-## workbench: Build the Mac Workbench host, then `0 failures` from its Swift suite. Fetch the LFS
-##            lesson assets first.
+## workbench: The Workbench on the SwiftUI host with no window: it opens and draws a checked frame
+##            ([NATIVE-SHM-VIEW]); then `0 failures` from the host's Swift suite.
 workbench: build
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/workbench/hosts/apple/run.sh --build
-	swift test --package-path src/osprey/workbench/hosts/apple
+	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_SWIFT_APP=src/osprey/workbench bash src/toolchain/hosts/swift/view.sh --open-check
+	swift test --package-path src/toolchain/hosts/swift
 endif

@@ -1265,8 +1265,7 @@ jobs:
             run: |
               make _runtime _runtime_macos
               cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-              bash src/osprey/workbench/hosts/apple/run.sh --build
-              swift test --package-path src/osprey/workbench/hosts/apple
+              make -C src/toolchain/targets/macos/tests workbench
     steps:
       - uses: actions/checkout@v7
         with:
