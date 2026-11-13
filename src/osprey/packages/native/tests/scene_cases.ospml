@@ -22,6 +22,9 @@ import ui::Lower
 import uitests::Probes
 
 // One scene row as its numbers and text, so a table can hold exactly what a host reads.
+// Row `index` of `rows`, or a row with no code when there is none.
+etchAt (rows, index) = listGet rows index ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")
+
 etched e = "${e.etchCode} ${e.etchIndex} ${e.etchX} ${e.etchY} ${e.etchW} ${e.etchH} ${e.etchTurn} ${e.etchTint} ${e.etchDepth} ${e.etchText}"
 
 // The scene rows of the first scene `walked` drew, in drawing order.
@@ -65,20 +68,20 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     rows = firstRows walked
     expect (length walked.walkSketches, 1)
     expect ((listGet walked.walkSketches 0 ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 2)
-    expect (etched (listGet rows 0 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "20 2 320.0 200.0 1.0 0.0 0.0 0 0 ")
-    expect (etched (listGet rows 1 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird")
-    expect (etched (listGet rows 2 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk")
+    expect (etched (etchAt (rows, 0)), "20 2 320.0 200.0 1.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (rows, 1)), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird")
+    expect (etched (etchAt (rows, 2)), "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk")
     shapes = shapeRows walked
     expect (join (mapList (shapes, \row => "${row.etchCode}")) ",", "0,1,2,7,7,3,4")
-    expect (etched (listGet shapes 0 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 ")
-    expect (etched (listGet shapes 1 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 ")
-    expect ((listGet shapes 2 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")).etchIndex, 2)
-    expect ((listGet shapes 5 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")).etchIndex, 1)
-    expect ((listGet shapes 6 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")).etchText, "Score 3")
+    expect (etched (etchAt (shapes, 0)), "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 ")
+    expect (etched (etchAt (shapes, 1)), "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 ")
+    expect ((etchAt (shapes, 2)).etchIndex, 2)
+    expect ((etchAt (shapes, 5)).etchIndex, 1)
+    expect ((etchAt (shapes, 6)).etchText, "Score 3")
     expect (actionAt (walked, 2), 1)
     binds (walked, 2)
     zoomed = drawnOf (Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed))
-    expect (etched (listGet (firstRows zoomed) 0 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "20 0 1536.0 828.0 0.75 0.0 0.0 0 0 ")
+    expect (etched (etchAt (firstRows zoomed, 0)), "20 0 1536.0 828.0 0.75 0.0 0.0 0 0 ")
     expect ((fitAt (zoomed, 0)).wide, 1152.0)
 
 (** colours pack as RRGGBBAA. *)
@@ -105,21 +108,21 @@ sceneCaseAPathEncodesItsStepsOutlinePaint () =
     gradient = ui::Linear(angle = 180.0, from = ui::Rgb(red = 0.98, green = 0.8, blue = 0.08, alpha = 1.0), fromAt = 0.7, to = ui::Hsl(hue = 0.0, saturation = 1.0, lightness = 0.5, opacity = 1.0), toAt = 1.0, oklab = true)
     drawn = [Scenes::path (steps, ui::Fill, gradient, 0), Scenes::moved ([ui::MoveTo(toX = 0.0, toY = 0.0)], ui::Line(width = 1.0, dashes = [4.0, 2.0], bevel = true), ui::Solid(tint = ui::Rgb(red = 1.0, green = 0.0, blue = 0.0, alpha = 0.5)), 10.0, 200.0, 0.9, 1)]
     rows = Lists::flatten (mapList (drawn, ui::Streams::etches))
-    head = listGet rows 0 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")
+    head = etchAt (rows, 0)
     expect (etched head, "5 7 0.0 0.0 1.0 0.0 0.0 0 0 ")
     // Move, line, curve, cubic and its continuation, arc, polygon and its three corners, close; then outline, paint and two tints.
     expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "5,8,8,8,8,7,8,8,7,7,7,8,9,10,11,11,5,8,9,7,7,10,11")
-    expect (etched (listGet rows 6 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "8 4 30.0 30.0 0.0 9.0 9.0 2 0 ")
-    expect (etched (listGet rows 7 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "8 5 0.0 0.0 0.0 0.0 0.0 0 3 ")
-    expect (etched (listGet rows 12 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "9 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (listGet rows 13 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "10 1 180.0 0.7 1.0 0.0 0.0 1 0 ")
-    expect (etched (listGet rows 15 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "11 1 0.0 1.0 0.5 1.0 0.0 0 0 ")
+    expect (etched (etchAt (rows, 6)), "8 4 30.0 30.0 0.0 9.0 9.0 2 0 ")
+    expect (etched (etchAt (rows, 7)), "8 5 0.0 0.0 0.0 0.0 0.0 0 3 ")
+    expect (etched (etchAt (rows, 12)), "9 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (rows, 13)), "10 1 180.0 0.7 1.0 0.0 0.0 1 0 ")
+    expect (etched (etchAt (rows, 15)), "11 1 0.0 1.0 0.5 1.0 0.0 0 0 ")
     stroked = ui::Streams::etches (listGet drawn 1 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))
-    expect (etched (listGet stroked 0 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "5 1 10.0 200.0 0.9 0.0 0.0 0 1 ")
-    expect (etched (listGet stroked 2 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "9 1 1.0 0.0 0.0 0.0 0.0 1 2 ")
-    expect (etched (listGet stroked 3 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "7 0 4.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (listGet stroked 4 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "7 0 2.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (listGet stroked 6 ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")), "11 0 1.0 0.0 0.0 0.5 0.0 0 0 ")
+    expect (etched (etchAt (stroked, 0)), "5 1 10.0 200.0 0.9 0.0 0.0 0 1 ")
+    expect (etched (etchAt (stroked, 2)), "9 1 1.0 0.0 0.0 0.0 0.0 1 2 ")
+    expect (etched (etchAt (stroked, 3)), "7 0 4.0 0.0 0.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (stroked, 4)), "7 0 2.0 0.0 0.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (stroked, 6)), "11 0 1.0 0.0 0.0 0.5 0.0 0 0 ")
 
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
@@ -294,14 +297,13 @@ sceneCaseAnUnnamedSlotDrawsNoScene () =
 // [NATIVE-SHM-SCENE]: the rows a host reads back give each kind's code, atlas index, floats, colour and depth.
 (** shape rows read back every field a host import takes. *)
 sceneCaseShapeRowsReadBackEveryFieldA () =
-    blank = ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")
-    rect = listGet (ui::Streams::etches (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1))) 0 ?: blank
+    rect = etchAt (ui::Streams::etches (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1)), 0)
     expect (etched rect, "0 0 1.0 2.0 3.0 4.0 0.5 7 1 ")
-    disc = listGet (ui::Streams::etches (Scenes::disc (5.0, 6.0, 7.0, 8, 2))) 0 ?: blank
+    disc = etchAt (ui::Streams::etches (Scenes::disc (5.0, 6.0, 7.0, 8, 2)), 0)
     expect (etched disc, "1 0 5.0 6.0 7.0 0.0 0.0 8 2 ")
-    sprite = listGet (ui::Streams::etches (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4))) 0 ?: blank
+    sprite = etchAt (ui::Streams::etches (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)), 0)
     expect (etched sprite, "3 3 8.0 9.0 2.0 1.0 0.25 9 4 ")
-    glyphs = listGet (ui::Streams::etches (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0))) 0 ?: blank
+    glyphs = etchAt (ui::Streams::etches (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0)), 0)
     expect (etched glyphs, "4 0 0.0 0.0 1.0 0.0 0.0 0 0 x")
 
 // [NATIVE-SHM-BOUNDARY]: a surface holds its store in its session, and the session moves on with each event.
@@ -354,12 +356,11 @@ sceneCaseScenesDrawFromEveryContainerInOrder () =
 (** a strip carries its points as rows after its head. *)
 sceneCaseAStripCarriesItsPointsAsRows () =
     strip = Scenes::strip ([0.0, 0.0, 1.0, 1.0], 9, 1.0, 4)
-    blank = ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")
     rows = ui::Streams::etches strip
     expect (length rows, 3)
-    expect (etched (listGet rows 0 ?: blank), "2 2 0.0 0.0 1.0 0.0 0.0 9 4 ")
-    expect (etched (listGet rows 1 ?: blank), "7 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
-    expect (etched (listGet rows 2 ?: blank), "7 0 1.0 1.0 0.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (rows, 0)), "2 2 0.0 0.0 1.0 0.0 0.0 9 4 ")
+    expect (etched (etchAt (rows, 1)), "7 0 0.0 0.0 0.0 0.0 0.0 0 0 ")
+    expect (etched (etchAt (rows, 2)), "7 0 1.0 1.0 0.0 0.0 0.0 0 0 ")
 
 // [UI-STORE]: completions, lifecycle phases and frames reach `update`, and an event of unknown kind is refused without change.
 (** a surface delivers completions, phases and frames and refuses unknown kinds. *)
