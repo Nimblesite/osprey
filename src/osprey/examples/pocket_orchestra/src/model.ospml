@@ -1,0 +1,54 @@
+namespace orchestra
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Instrument =
+    Percussion
+    Bass
+    Chords
+
+type Phase =
+    Begin
+    Move
+    End
+
+type Touch =
+    finger : int
+    horizontal : float
+    vertical : float
+
+type Player =
+    peer : int
+    sequence : int
+    seen : int
+    instrument : Instrument
+    touches : List<Touch>
+
+type Session =
+    epoch : int
+    clock : int
+    players : List<Player>
+
+type Gesture =
+    epoch : int
+    sequence : int
+    phase : Phase
+    touch : Touch
+
+type Fault =
+    InvalidPeer
+    Full
+    AlreadyJoined
+    MissingPeer
+    WrongEpoch
+    StaleSequence
+    InvalidTouch
+    MissingTouch
+    DuplicateTouch
+    ClockReversed
+
+type Outcome T =
+    Accepted
+        value : T
+    Rejected
+        fault : Fault
+

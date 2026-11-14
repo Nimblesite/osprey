@@ -1,6 +1,6 @@
 # Pocket Orchestra delivery plan [ORCHESTRA-PLAN]
 
-Status — proposed. This change supplies planning documents. Product implementation awaits a subsequent implementation task.
+Status — implementation in progress. The shared session core has passing two-phone ownership and expiry journeys; live transport, audio and platform acceptance remain pending.
 
 The normative requirements are in [Pocket Orchestra](../specs/applications/PocketOrchestra.md). The working name is Pocket Orchestra. The first delivery uses a desktop session host, LAN WebSockets, host-generated audio, three instruments and native/canvas presentations across macOS, Windows, iOS, Android and web. Linux is a follow-on target.
 
@@ -26,7 +26,7 @@ Exit evidence consists of runnable spikes, reviewed model generation, a host cap
 
 ## Shared session core [ORCHESTRA-PLAN-CORE]
 
-- [ ] Add the shared application under `src/osprey/examples/pocket_orchestra/`, with canonical typeDiagram models and generated bindings following the existing repository conventions.
+- [x] Add the shared application under `src/osprey/examples/pocket_orchestra/`, with canonical typeDiagram models and generated bindings following the existing repository conventions.
 - [ ] Implement typed session transitions, admission, roster, player ownership, sequence/epoch validation and state snapshots under [ORCHESTRA-NETWORK-PROTOCOL].
 - [ ] Implement bounded queues, update coalescing, heartbeat expiry, reconnect and explicit voice release under [ORCHESTRA-NETWORK-TIMING].
 - [ ] Implement production and deterministic test handlers for the effects in [ORCHESTRA-EFFECTS]. Reuse the existing native capability boundary and standard diagnostics package.

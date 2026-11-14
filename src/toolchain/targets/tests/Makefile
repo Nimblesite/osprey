@@ -86,6 +86,11 @@ storage:
 tally:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/tally/test
 
+.PHONY: pocket-orchestra
+## pocket-orchestra: Shared ensemble session journeys: admission, touch ownership and expiry.
+pocket-orchestra:
+	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/pocket_orchestra/test
+
 ## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
 synth:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/synth/test

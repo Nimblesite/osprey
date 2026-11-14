@@ -1,0 +1,54 @@
+// [ORCHESTRA-NETWORK-PROTOCOL] One ensemble journey, using the real shared core.
+import orchestra::Sessions
+
+accepted result = match result
+    orchestra::Accepted session => session
+    orchestra::Rejected _problem =>
+        expect ("rejected session", "accepted session")
+        Sessions::empty 7
+
+rejected (result, problem) = match result
+    orchestra::Rejected actual => expect (actual == problem, true)
+    orchestra::Accepted _ => expect ("accepted session", "rejected session")
+
+gesture (sequence, phase, finger) = orchestra::Gesture(epoch = 7, sequence = sequence, phase = phase, touch = orchestra::Touch(finger = finger, horizontal = 0.5, vertical = 0.75))
+
+voices session = foldList (session.players, 0, \(count, player) => satAdd count (length player.touches))
+
+test ("two phones play independently; stale, forged and out-of-order gestures cannot change voices", \() =>
+    initial = Sessions::empty 7
+    rejected (Sessions::join (initial, -1), orchestra::InvalidPeer)
+    one = accepted (Sessions::join (initial, 10))
+    two = accepted (Sessions::join (one, 20))
+    rejected (Sessions::join (two, 10), orchestra::AlreadyJoined)
+    a = accepted (Sessions::play (two, 10, gesture (1, orchestra::Begin, 0)))
+    b = accepted (Sessions::play (a, 20, gesture (1, orchestra::Begin, 0)))
+    expect (voices b, 2)
+    rejected (Sessions::play (b, 30, gesture (2, orchestra::End, 0)), orchestra::MissingPeer)
+    rejected (Sessions::play (b, 10, gesture (1, orchestra::End, 0)), orchestra::StaleSequence)
+    wrong = gesture (2, orchestra::End, 0)
+    rejected (Sessions::play (b, 10, wrong(epoch = 8)), orchestra::WrongEpoch)
+    rejected (Sessions::play (b, 10, gesture (2, orchestra::Begin, 0)), orchestra::DuplicateTouch)
+    rejected (Sessions::play (b, 10, gesture (2, orchestra::Move, 1)), orchestra::MissingTouch)
+    moved = accepted (Sessions::play (b, 10, gesture (2, orchestra::Move, 0)))
+    released = accepted (Sessions::play (moved, 10, gesture (3, orchestra::End, 0)))
+    expect (voices released, 1)
+    expect (voices (Sessions::leave (released, 20)), 0))
+
+// [ORCHESTRA-NETWORK-TIMING] A silent phone cannot leave a sustained note behind.
+test ("heartbeat expiry, instrument switching, Silence, and capacity stay bounded", \() =>
+    full = foldList ([1, 2, 3, 4, 5, 6, 7, 8], Sessions::empty 7, \(s, peer) => accepted (Sessions::join (s, peer)))
+    rejected (Sessions::join (full, 9), orchestra::Full)
+    sounding = accepted (Sessions::play (full, 1, gesture (1, orchestra::Begin, 0)))
+    switched = accepted (Sessions::instrument (sounding, 1, orchestra::Bass))
+    expect (voices switched, 0)
+    expect (voices (Sessions::silence sounding), 0)
+    before = accepted (Sessions::tick (sounding, 1499))
+    expect (voices before, 1)
+    alive = accepted (Sessions::heartbeat (before, 1))
+    expired = accepted (Sessions::tick (alive, 1500))
+    expect (length expired.players, 1)
+    expect (voices expired, 1)
+    rejected (Sessions::tick (expired, 1499), orchestra::ClockReversed)
+    expect (voices (accepted (Sessions::tick (expired, 2999))), 0)
+    rejected (Sessions::play (sounding, 1, gesture (2, orchestra::Begin, 10)), orchestra::InvalidTouch))
