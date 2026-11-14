@@ -17,15 +17,22 @@ const token = 'orchestra-integration-private-token'
 const port = 19140
 const origin = `http://127.0.0.1:${port}`
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
-// The test owns shutdown, so the session lasts through every browser journey.
-const child = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env: { ...process.env,
-  ORCHESTRA_NO_WINDOW: windowed ? '0' : '1', ORCHESTRA_HEADLESS: windowed ? '0' : '1',
-  ORCHESTRA_LOG_DIRECTORY: `${out}/diagnostics`, ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '0',
-  ORCHESTRA_CAPTURE: `${out}/controller-audio.f32` } })
-let output = '', errors = '', browser
-child.stdout.on('data', data => { output += data })
-child.stderr.on('data', data => { errors += data })
-const exited = new Promise(resolve => child.once('exit', (code, signal) => resolve({ code, signal })))
+let output = '', errors = '', browser, child, exited
+// The audio recording has its own short session. Browser journeys can then take
+// as long as their interaction deadlines permit without filling that recording.
+function startSession(capture) {
+  output = ''; errors = ''
+  const env = { ...process.env,
+    ORCHESTRA_NO_WINDOW: windowed ? '0' : '1', ORCHESTRA_HEADLESS: windowed ? '0' : '1',
+    ORCHESTRA_LOG_DIRECTORY: `${out}/diagnostics`, ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '0' }
+  delete env.ORCHESTRA_CAPTURE
+  if (capture) env.ORCHESTRA_CAPTURE = `${out}/controller-audio.f32`
+  child = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env })
+  child.stdout.on('data', data => { output += data })
+  child.stderr.on('data', data => { errors += data })
+  exited = new Promise(resolve => child.once('close', (code, signal) => resolve({ code, signal })))
+}
+startSession(true)
 const clients = []
 const silentIntervals = []
 const toneIntervals = []
@@ -60,11 +67,14 @@ async function observedNotes() {
   try { return (await request(observer, { type: 'heartbeat' })).notes }
   finally { observer.close() }
 }
-try {
+async function waitForSession() {
   for (let attempt = 0; ; attempt++) {
     try { assert.equal((await fetch(origin)).status, 200); break }
     catch (error) { if (attempt === 60) throw error; await delay(50) }
   }
+}
+try {
+  await waitForSession()
   const collision = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env: { ...process.env,
     ORCHESTRA_HEADLESS: '1', ORCHESTRA_NO_WINDOW: '1', ORCHESTRA_PORT: String(port),
     ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '2' } })
@@ -129,6 +139,12 @@ try {
   await delay(150)
   for (const ws of ensemble) ws.close()
   await delay(250)
+  child.kill('SIGTERM')
+  assert.equal((await deadline(exited, 'recording shutdown')).code, 0, errors + output)
+  const recordedOutput = output
+  const recordedDiagnostics = await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8')
+  startSession(false)
+  await waitForSession()
   for (const engine of [chromium, webkit]) {
     browser = await engine.launch({ headless: !windowed })
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
@@ -185,13 +201,18 @@ try {
   child.kill('SIGTERM')
   const result = await deadline(exited, 'native shutdown')
   assert.equal(result.code, 0, errors + output)
-  const records = output.trim().split('\n').map(line => JSON.parse(line))
+  const browserStopped = output.trim().split('\n').map(line => JSON.parse(line)).find(record => record.event === 'session.stopped')
+  assert.equal(browserStopped.error, '')
+  assert.equal(browserStopped.underruns, 0, 'browser gestures keep the audio callback supplied')
+  assert(browserStopped.peak > .05 && browserStopped.peak <= .800001, 'phone gestures produce audible bounded synthesis')
+  const records = recordedOutput.trim().split('\n').map(line => JSON.parse(line))
   const stopped = records.find(record => record.event === 'session.stopped')
   assert.equal(stopped.error, '')
   assert.equal(stopped.underruns, 0, 'audio callback always receives prepared samples')
+  assert(!recordedOutput.includes(token), 'recording session secrets stay out of diagnostics')
   assert(!output.includes(token), 'session secrets stay out of diagnostics')
   const logFiles = await readdir(`${out}/diagnostics`)
-  const persistent = await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8')
+  const persistent = recordedDiagnostics + await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8')
   const events = persistent.trim().split('\n').map(line => JSON.parse(line))
   for (const event of ['session.starting', 'controller.joined', 'controller.disconnected', 'controller.expired', 'controller.rejected', 'controller.ready', 'controller.sound', 'audio.health', 'session.stopped']) {
     assert(events.some(record => record.event === event), `persistent diagnostics include ${event}`)
@@ -225,13 +246,15 @@ try {
 } catch (failure) {
   // What the app itself said is the evidence: a stalled reply leaves nothing else behind.
   const persisted = await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8').catch(() => '')
+  console.error(failure)
   console.error(`app stdout (tail):\n${output.slice(-4000)}\napp stderr (tail):\n${errors.slice(-4000)}\napp diagnostics (tail):\n${persisted.slice(-6000)}`)
   throw failure
 } finally {
   for (const ws of clients) ws.terminate()
   await browser?.close()
   child.kill('SIGTERM')
-  await deadline(exited, 'cleanup')
+  try { await deadline(exited, 'cleanup') }
+  catch { child.kill('SIGKILL'); await exited }
 }
 
 // [ORCHESTRA-AUDIO-RECOVERY] The real device is stopped, then its configuration notification is delivered.
@@ -331,6 +354,22 @@ async function verifySoundPalette() {
     let first = audio.render(4096)
     check(energy(first) > 0, "second controller produces real audio")
     check(audio.failure == nil, "no renderer faults")
+    for count in [128, 512, 1024, 2048, 4096] {
+      audio.fill()
+      var output = [Float](repeating: 0, count: count)
+      output.withUnsafeMutableBufferPointer { orchestra_ring_read($0.baseAddress, $0.count) }
+      check(orchestra_ring_underruns() == 0, "prepared audio covers every supported device quantum")
+      check(output.allSatisfy { $0.isFinite && abs($0) <= 0.8 }, "device quantum stays bounded")
+    }
+    let recording = OrchestraAudio()
+    recording.capturesAudio = true
+    for _ in 0..<12000 { _ = recording.render(128) }
+    check(recording.failure == nil, "a full diagnostic recording never stops synthesis")
+    check(!recording.capturesAudio, "diagnostic recording completes at its fixed bound")
+    try recording.writeCapture(to: "${fixture}/bounded.f32")
+    let captured = try Data(contentsOf: URL(fileURLWithPath: "${fixture}/bounded.f32"))
+    check(captured.count == 48000 * 30 * 4, "diagnostic storage stays bounded to thirty seconds")
+    check(recording.renderedFrames == 12000 * 128, "synthesis continues after recording completes")
     print("PASS: four instruments, four audible expressions, feedback tails, bounded PCM and effect clearing")
   `)
   runNativeFixture(fixture, 'src/toolchain/hosts/swift/orchestra/Audio.swift', 20000)

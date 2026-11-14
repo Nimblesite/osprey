@@ -11,6 +11,7 @@ final class OrchestraAudio {
     private var racks = (0..<8).map { _ in OrchestraEffects(rate: 48000) }
     private var sums = [Double](repeating: 0, count: 8)
     private var buffer = [Float](repeating: 0, count: 128)
+    private let preparedFrames = 4096
     private var capture = Data()
     var capturesAudio = false
     func writeCapture(to path: String) throws { try capture.write(to: URL(fileURLWithPath: path), options: .atomic) }
@@ -176,14 +177,20 @@ final class OrchestraAudio {
         voices.removeAll { $0.target == 0 && $0.gain == 0 }
         renderedFrames += UInt64(output.count)
         if capturesAudio {
-            if capture.count + output.count * 4 <= Int(sampleRate * 30) * 4 {
-                output.withUnsafeBytes { capture.append(contentsOf: $0) }
-            } else { failure = "Diagnostic recording exceeds thirty seconds" }
+            let capacity = Int(sampleRate * 30) * MemoryLayout<Float>.size
+            let remaining = max(0, capacity - capture.count)
+            output.withUnsafeBytes { capture.append(contentsOf: $0.prefix(remaining)) }
+            if capture.count >= capacity {
+                capturesAudio = false
+                log("audio.capture_completed", ["frames": capture.count / MemoryLayout<Float>.size])
+            }
         }
     }
 
     func fill() {
-        while orchestra_ring_queued() < 1024 {
+        // Prepare a full Core Audio render quantum before the device asks for it.
+        // A 1024-frame queue could run dry within one supported 4096-frame callback.
+        while orchestra_ring_queued() < preparedFrames {
             buffer = render(128)
             let written = buffer.withUnsafeBufferPointer { orchestra_ring_write($0.baseAddress, $0.count) }
             if written != buffer.count { failure = "Audio ring rejected a prepared block"; return }
