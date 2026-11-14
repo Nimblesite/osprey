@@ -16,6 +16,12 @@ final class FocusTestWindow: NSWindow {
     override var isKeyWindow: Bool { keyState }
 }
 
+// A test window keeps the size its test asks for: AppKit would otherwise shrink a titled window
+// to the screen, and a hosted runner's small display then cuts every tall layout short.
+final class UnclampedTestWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
 /// The repository's folders, resolved from this file's path (usable from any actor).
 enum Repo {
     /// The repository's `src` folder: walks up from this file until it finds the checkout.
@@ -143,7 +149,7 @@ enum TestResources {
     /// A view in a real window, laid out and settled.
     static func hosted<Content: View>(_ view: Content, width: CGFloat, height: CGFloat, keyboard: Bool = false, suppliedWindow: NSWindow? = nil) -> (NSHostingView<Content>, NSWindow) {
         let host = NSHostingView(rootView: view)
-        let window = suppliedWindow ?? NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
+        let window = suppliedWindow ?? UnclampedTestWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: height),
                                                styleMask: keyboard ? .titled : [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
