@@ -116,8 +116,9 @@ export function installActions(hooks: ActionHooks): void {
     if (state.pressed !== null && !state.pressed.contains(document.elementFromPoint(event.clientX, event.clientY))) {
       state.cancelled = state.pressed;
     }
-    const at = sequence;
+    // The release waits for this gesture's click; a later pointer-up supersedes it.
     sequence += 1;
+    const at = sequence;
     setTimeout(() => {
       if (at === sequence) release(state, hooks);
     }, 0);
