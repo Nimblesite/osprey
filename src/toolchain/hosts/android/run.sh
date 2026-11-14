@@ -2,7 +2,9 @@
 # Install the host's APK on the device named by OSPREY_ANDROID_SERIAL and
 # either open the application or run its headless view check, printing the
 # verdict line. Modelled on src/osprey/examples/mobile/android/run.sh.
-#   run.sh [--view-check]
+#   run.sh [--view-check|--golden]
+# `--golden` opens the application, waits for it to settle and compares the screen, without its
+# system bars, with the application's `goldens/android/<width>-ready.png` (scripts/mobile/goldens.py).
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
@@ -15,6 +17,8 @@ if [[ -z "$serial" ]]; then
     [[ -n "$serial" && "$serial" != *$'\n'* ]] || { echo 'Connect one Android device or set OSPREY_ANDROID_SERIAL (emulator: launch an AVD in Android Studio).' >&2; exit 1; }
 fi
 id=${OSPREY_ANDROID_ID:-org.ospreylang.tally}
+app=${OSPREY_ANDROID_APP:-"$repo/src/osprey/examples/tally"}
+case "$app" in /*) ;; *) app="$repo/$app" ;; esac
 apk="$here/host/build/outputs/apk/debug/host-debug.apk"
 "$adb" -s "$serial" install -r "$apk"
 activity="$id/org.ospreylang.host.HostActivity"
@@ -37,4 +41,9 @@ if [[ ${1:-} == --view-check ]]; then
     exit 1
 fi
 "$adb" -s "$serial" shell am start -W -n "$activity"
+if [[ ${1:-} == --golden ]]; then
+    sleep 3
+    "$adb" -s "$serial" exec-out screencap -p >"$here/build/ready.png"
+    cd "$repo" && exec python3 scripts/mobile/goldens.py "$here/build/ready.png" "$app/goldens/android"
+fi
 printf '\nRunning %s on %s\n' "$id" "$serial"

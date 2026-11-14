@@ -4,7 +4,9 @@
 # OspreyShared library links it as on macOS, and the bundle that results is installed with
 # simctl — only `--launch` opens Simulator.app. [NATIVE-SHM-VIEW]
 #   OSPREY_SWIFT_APP=<folder> [OSPREY_IOS_ID=<bundle id>] [OSPREY_IOS_NAME=<name>] \
-#     [OSPREY_IOS_SIMULATOR=<device>] ios.sh [ios-sim|ios] [--view-check|--launch]
+#     [OSPREY_IOS_SIMULATOR=<device>] ios.sh [ios-sim|ios] [--view-check|--launch|--golden]
+# `--golden` (ios-sim) launches the app, waits for it to settle and compares the screen, without
+# its system bars, with the application's `goldens/ios/<width>-ready.png` (scripts/mobile/goldens.py).
 # `--view-check` (ios-sim) runs the headless journey with no person present and fails unless it
 # reads OSPREY_IOS_VIEW_OK; `--launch` (ios-sim) installs the app and opens it in the Simulator. The default
 # application is Tally.
@@ -20,8 +22,8 @@ identifier=${OSPREY_IOS_ID:-org.ospreylang.$name}
 target=${1:-ios-sim}
 action=${2:-}
 case "$target/$action" in
-    ios-sim/|ios-sim/--view-check|ios-sim/--launch|ios/) ;;
-    *) echo "Usage: ios.sh [ios-sim|ios] [--view-check|--launch]" >&2; exit 2 ;;
+    ios-sim/|ios-sim/--view-check|ios-sim/--launch|ios-sim/--golden|ios/) ;;
+    *) echo "Usage: ios.sh [ios-sim|ios] [--view-check|--launch|--golden]" >&2; exit 2 ;;
 esac
 
 # The runtime and the application archive: the same ARC runtime and ABI macOS links.
@@ -86,6 +88,13 @@ if [[ "$action" == "--launch" ]]; then
     xcrun simctl launch "$device" "$identifier" --resources "$app"
     echo "$bundle"
     exit 0
+fi
+if [[ "$action" == "--golden" ]]; then
+    xcrun simctl terminate "$device" "$identifier" 2>/dev/null || true
+    xcrun simctl launch "$device" "$identifier" --resources "$app" >/dev/null
+    sleep 3
+    xcrun simctl io "$device" screenshot "$build/ready.png" >/dev/null
+    cd "$repo" && exec python3 scripts/mobile/goldens.py "$build/ready.png" "$app/goldens/ios"
 fi
 [[ "$action" == "--view-check" ]] || { echo "$bundle"; exit 0; }
 

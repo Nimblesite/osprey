@@ -34,10 +34,12 @@ inbox: _android-inbox
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-android.sh
 	OSPREY_ANDROID_SKIP_BUILD=1 bash src/osprey/examples/mobile/android/run.sh --smoke
 
-## tally: Tally's headless view check on the selected Android device.
+## tally: Tally on the selected Android device: its view check, then its screen against
+##        goldens/android (OSPREY_UPDATE_GOLDENS=1 rewrites them for review).
 tally:
 	bash src/toolchain/hosts/android/run.sh --view-check
+	OSPREY_ANDROID_SKIP_BUILD=1 bash src/toolchain/hosts/android/run.sh --golden
 
-## tally-headless: Run that view check on a headless emulator selected by OSPREY_ANDROID_SERIAL.
+## tally-headless: The same on a headless emulator selected by OSPREY_ANDROID_SERIAL.
 tally-headless: tally
 endif

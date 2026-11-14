@@ -17,6 +17,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[4]
 APP = ROOT / "src/osprey/examples/casting"
+sys.path.insert(0, str(ROOT / "scripts/mobile"))
+from goldens import png_pixels, png_write, picture_delta
 
 
 def verify_native_inputs(folder, library):
@@ -387,16 +389,6 @@ def verify_log(path, platform):
     print("PASS: native app Cast commands, replay, metadata and real HTTP HEAD/range fetches")
 
 
-def png_pixels(path):
-    probe = command(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                     "-of", "json", str(path)], stdout=subprocess.PIPE)
-    size = json.loads(probe.stdout)["streams"][0]
-    raw = command(["ffmpeg", "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], stdout=subprocess.PIPE).stdout
-    width, height = size["width"], size["height"]
-    assert len(raw) == width * height * 3, (path, width, height, len(raw))
-    return width, height, raw
-
-
 def player_pixels(path):
     width, height, raw = png_pixels(path)
     # The Sherbet artboard is warm cream; the native host and OS bars are neutral.
@@ -412,24 +404,6 @@ def player_pixels(path):
     assert last - first >= height * 0.9, (path, width, first, last)
     first = first + height // 20
     return width, last - first, raw[first * width * 3:last * width * 3]
-
-
-def png_write(path, width, height, pixels):
-    command(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pixel_format", "rgb24", "-video_size", f"{width}x{height}",
-             "-i", "pipe:0", "-frames:v", "1", str(path)], input=pixels)
-
-
-def picture_delta(actual, expected, tile=0):
-    assert actual[:2] == expected[:2], (actual[:2], expected[:2])
-    width, height = actual[:2]
-    one, two = actual[2], expected[2]
-    changed = [any(abs(one[i + channel] - two[i + channel]) > 24 for channel in range(3)) for i in range(0, len(one), 3)]
-    if not tile: return sum(changed) / (width * height)
-    def region(x, y):
-        right, bottom = min(width, x + tile), min(height, y + tile)
-        count = sum(sum(changed[row * width + x:row * width + right]) for row in range(y, bottom))
-        return count / ((right - x) * (bottom - y))
-    return max(region(x, y) for y in range(0, height, tile) for x in range(0, width, tile))
 
 
 def ios_pictures(output):
