@@ -328,3 +328,31 @@ test ("sizes count in the units each platform shows", \() =>
     expect (Disk::formatCount 1234567, "1,234,567")
     expect (Disk::shareText (1, 1000), "< 1%")
     expect (Disk::shareText (0, 1000), "0%"))
+
+// [UI-STORE]: the session is fully held in the library — what the boundary kept is restored exactly by
+// replaying the same launch and the same typed events through the three entry points: no document, no
+// host-held state, and the redrawn frame tells the same regions.
+restoredSession () =
+    launch ()
+    perform Host.holding (homeWalk ())
+    complete ("walk:1", true, "")
+    typed ("Hidden items", "false")
+    storeNow ()
+
+test ("the session document restores the store it saved", \() => bench (\() =>
+    saved = restoredSession ()
+    listing = listingKeys ()
+    restored = restoredSession ()
+    expect (structuralEquals (saved, restored), true)
+    expect (join (listingKeys ()) "|", join listing "|")))
+
+test ("the session document restores the store it saved (extra: the restored session answers a rescan the same way)", \() => bench (\() =>
+    walkedStore = restoredSession ()
+    press "Rescan"
+    rescanned = storeNow ()
+    rescannedAsk = askedKinds ()
+    replayed = restoredSession ()
+    expect (structuralEquals (walkedStore, replayed), true)
+    press "Rescan"
+    expect (structuralEquals (storeNow (), rescanned), true)
+    expect (askedKinds (), rescannedAsk)))

@@ -164,7 +164,7 @@ sceneCases () = [
 // The message a lasso's stroke indices name, and the refusal a malformed list earns.
 lassoCases () = [{ indices = [0, 2], want = "lassoed" }, { indices = [0, -1], want = "A board control sent a lasso that is not a list of strokes" }]
 
-test ("native views are found by what they say, and every host event keeps its typed meaning", \() => withFixture (\fresh =>
+test ("native views are found by what they say, and every host event keeps its wire contract", \() => withFixture (\fresh =>
     native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
     shown = seen native
     expect (length shown.renderedControls > 1, true)
@@ -304,7 +304,7 @@ restarted skin =
 // A completion the host finishes with a chosen path.
 completed path = post (\d => Drive::chosen (d, "choose", path))
 
-test ("a driven fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
+test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read", \() => bench (\() =>
     restarted "tiny"
     expect (length driven.drivenSurface.surfaceBound > 0, true)
     expect (length driven.drivenSeen.renderedCurves, 1)
@@ -425,4 +425,25 @@ test ("a scene's glyphs, lettering and paths read back typed, and keys and asks 
     expect (join asked.surfaceSession.sessionStore "|", "key space true|key space false|asked")
     expect (join (probeSeen asked).renderedRequests ",", "choose-folder")
     expect (length asked.surfaceAsked, 1)))
+
+// [UI-MACHINE-TEST] [NATIVE-SHM-EVENT]: the wire contract's edges — a switch reads its words exactly,
+// a choice may choose the empty key, and a text keeps its line break.
+test ("native views are found by what they say, and every host event keeps its wire contract (extra: flag words read exactly true, empty choices choose, text keeps line breaks)", \() => withFixture (\_ =>
+    expect (meant (ui::FlagInput(action = 1), "TRUE"), "switched:false")
+    expect (meant (ui::FlagInput(action = 1), "true "), "switched:false")
+    expect (meant (ui::ChoiceInput(action = 1), ""), "entered:")
+    expect (meant (ui::TextInput(action = 1), "line\nbreak"), "entered:line\nbreak")))
+
+// [UI-MACHINE-TEST]: a display frame before the last is refused with its reason and the session keeps answering.
+test ("a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read (extra: a negative display frame is refused and the session keeps answering)", \() => bench (\() =>
+    restarted "tiny"
+    tap "Press"
+    reading (["Pressed"], lettersIn, true)
+    post (\d => Drive::frame (d, 0.0 - 0.5))
+    expect (driven.drivenSurface.surfaceProblem, "Invalid frame elapsed time")
+    expect (levelOf (elements ()), 0.25)
+    reading (["Pressed"], lettersIn, true)
+    post (\d => Drive::frame (d, 0.5))
+    expect (driven.drivenSurface.surfaceProblem, "")
+    expect (levelOf (elements ()), 0.25)))
 

@@ -7,28 +7,28 @@ ok 6 - an aside's splitter carries the column width and its limits and binds aft
 ok 7 - a splitter delivers its dragged width clamped to its limits
 ok 8 - a link carries its label and web address and takes no ordinal
 ok 9 - controls take depth-first ordinals in drawing order
-ok 10 - a drawn region keeps its components and text intact
+ok 10 - an encoded region decodes with its components and text intact
 ok 11 - a control carries the ordinal of its binding
-ok 12 - opening draws every region once with the theme
-ok 13 - a tap delivers and the next frame shows the changed count
-ok 14 - text input reaches update through its binding and sends its slice
-ok 15 - unknown and mismatched events are rejected without change
-ok 16 - a control keeps its meaning while ordinals shift across frames
-ok 17 - a control that is gone refuses without change
-ok 18 - every refusal leaves the session whole
-ok 19 - a delivered edit updates the current state
+ok 12 - start sends every region once with the theme
+ok 13 - a tap refreshes only the region whose signal changed
+ok 14 - text input reaches update through its binding and patches its own region
+ok 15 - stale, unknown and mismatched events are rejected without change
+ok 16 - an edit from prior state keeps its meaning when ordinals shift
+ok 17 - an edit whose typed action is gone or ambiguous refuses without change
+ok 18 - an edit with an impossible original refuses without change
+ok 19 - a resolved edit updates the current state
 ok 20 - capability requests carry tickets and completions return to update
 ok 21 - malformed events are diagnosed, never guessed
 ok 22 - contrast follows WCAG relative luminance
 ok 23 - sorting is stable and lists stay total
-ok 24 - tabs bind before the page they show, and segments carry their tones
-ok 25 - every constructor tells as the component it names
-ok 26 - run and http requests send their bounds, headers and slices
+ok 24 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
+ok 25 - every constructor encodes as the component it names
+ok 26 - run and http requests encode their bounds, headers and slices
 ok 27 - documents, lists, themes and slice writes are read totally
 ok 28 - filesystem and store requests preserve paths bounds and slices
 ok 29 - desktop requests preserve picker export and cancellation payloads
-ok 30 - process capabilities send their handles bounds arguments and environment
-ok 31 - semantic text roles tell under their own names with their tone
+ok 30 - process capabilities encode their handles bounds arguments and environment
+ok 31 - semantic text roles preserve every protocol spelling
 ok 32 - host capabilities preserve namespace operation arguments and bounds
 ok 33 - context menus bind actions after their content controls
 ok 34 - a scene's shapes cross as flat typed rows
@@ -70,30 +70,51 @@ ok 69 - image and video tell as leaves with their media fields and no ordinal
 ok 70 - presentation frames explicitly disable viewport sizing by default
 ok 71 - presentation frames preserve exact dimensions and inner control provenance
 ok 72 - scoped themes and dialogs retain their inner controls and dismissal provenance
-ok 73 - inline text keeps its emphasis and source colours without bindings
+ok 73 - inline text retains mathematical emphasis and semantic source colours without bindings
 ok 74 - machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering
 ok 75 - native machine views render ordinary controls and preserve every host value kind
 ok 76 - broken machine documents name every JSON path and faulty machines remain renderable
 ok 77 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering
 ok 78 - machine edge cases cover every template variant fault cycle request payload and pointer state
-ok 79 - telling reads text roles and tones, and the theme tells both appearances
-ok 80 - telling keeps rich text runs with their emphasis, slant and their own inks
-ok 81 - telling stacks, splits and layers keep their axes, and the theme tells its spacing
-ok 82 - telling sections and screens keep their titles, toolbar and children
-ok 83 - telling frames carry their authored style and scoped themes tell their tokens
-ok 84 - telling dialogs and alerts keep their dismissal, and menus show their body first
-ok 85 - telling asides name their side and drag through a size input between the columns
-ok 86 - telling tabs deliver choices with the chosen key and every page
-ok 87 - telling rows deliver choices with their symbols and groups
-ok 88 - telling slots name the region they draw
-ok 89 - telling buttons keep their role and enabled state
-ok 90 - telling fields prompt, hide and commit through their members
-ok 91 - telling pickers choose through options and disclosures deliver their flag
-ok 92 - telling pairs, badges, labels, icons, links and dividers stay whole leaves
-ok 93 - telling segments, empties, progress, meters and swatches tell their tones
-ok 94 - telling media, editors, boards and scenes bind in the walk's order
-ok 95 - a surface draws view rows and takes typed events with no envelope
-ok 96 - a board, its lasso and an accessible scene take every typed host event through the shared frame
-1..96
-# tests=96 passed=96 failed=0 skipped=0
-# suites: 1 passed, 0 failed
+ok 79 - a resolved edit updates the current state (extra: a completion lands on the state the tap changed)
+ok 80 - a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)
+ok 81 - an edit from prior state keeps its meaning when ordinals shift (extra: the note's stale number refuses after the shift)
+ok 82 - an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)
+ok 83 - an edit with an impossible original refuses without change (extra: each impossible ordinal names itself and leaves no ask)
+ok 84 - stale, unknown and mismatched events are rejected without change (extra: the stale numbers refuse while the frame's own still deliver)
+ok 85 - start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)
+ok 86 - an encoded region decodes with its components and text intact (extra: the section keeps its footer and the picker its choices)
+ok 87 - every constructor encodes as the component it names (extra: the leaf constructors tell under their own names with no control)
+ok 88 - semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)
+ok 89 - tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)
+ok 90 - inline text retains mathematical emphasis and semantic source colours without bindings (extra: explicit emphasis tells under its own name)
+ok 91 - text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)
+ok 92 - run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)
+ok 93 - filesystem and store requests preserve paths bounds and slices (extra: empty paths still name their fields and slices)
+ok 94 - desktop requests preserve picker export and cancellation payloads (extra: a typeless picker and empty reveals keep their rows)
+ok 95 - process capabilities encode their handles bounds arguments and environment (extra: arguments without an environment, and a long read deadline)
+ok 96 - broken machine documents name every JSON path and faulty machines remain renderable (extra: a bad transition target names its path)
+ok 97 - machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)
+ok 98 - native machine views render ordinary controls and preserve every host value kind (extra: every value kind crosses the typed machine)
+ok 99 - machine edge cases cover every template variant fault cycle request payload and pointer state (extra: number comparisons hold their bounds)
+ok 100 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering (extra: playback lettering renders on every skin)
+ok 101 - telling reads text roles and tones, and the theme tells both appearances
+ok 102 - telling keeps rich text runs with their emphasis, slant and their own inks
+ok 103 - telling stacks, splits and layers keep their axes, and the theme tells its spacing
+ok 104 - telling sections and screens keep their titles, toolbar and children
+ok 105 - telling frames carry their authored style and scoped themes tell their tokens
+ok 106 - telling dialogs and alerts keep their dismissal, and menus show their body first
+ok 107 - telling asides name their side and drag through a size input between the columns
+ok 108 - telling tabs deliver choices with the chosen key and every page
+ok 109 - telling rows deliver choices with their symbols and groups
+ok 110 - telling slots name the region they draw
+ok 111 - telling buttons keep their role and enabled state
+ok 112 - telling fields prompt, hide and commit through their members
+ok 113 - telling pickers choose through options and disclosures deliver their flag
+ok 114 - telling pairs, badges, labels, icons, links and dividers stay whole leaves
+ok 115 - telling segments, empties, progress, meters and swatches tell their tones
+ok 116 - telling media, editors, boards and scenes bind in the walk's order
+ok 117 - a surface draws view rows and takes typed events with no envelope
+ok 118 - a board, its lasso and an accessible scene take every typed host event through the shared frame
+1..118
+# tests=118 passed=118 failed=0 skipped=0

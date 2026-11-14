@@ -21,6 +21,7 @@ import ui::Scenes
 import ui::Symbols
 import uitests::Probes
 import uitests::AdditionCases
+import uitests::Extras
 
 type Ranked =
     name : string
@@ -171,7 +172,10 @@ test ("a link carries its label and web address and takes no ordinal", \() => ui
     expect (deliversBinding (paged, 0, ui::Tap(action = Increment)), true)))
 test ("controls take depth-first ordinals in drawing order", \() => ui::Runtime::guarded (\() =>
     expect (length (drawnOf (tree ())).walkBound, 3)))
-test ("a drawn region keeps its components and text intact", \() => ui::Runtime::guarded (\() =>
+// How many rows of `held`'s frame carry the words `key`: the frame's own count of a region's records.
+countRows (held, key) = length (filterList ((Probes::seen held).walkRows, \row => row.placedWords == key))
+
+test ("an encoded region decodes with its components and text intact", \() => ui::Runtime::guarded (\() =>
     binds (drawnOf (tree ()), 3)
     expect (spelled (toldOf (tree ())), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"Title \"quoted\"\n\",role=\"body\",tone=\"primary\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0},{kind=\"section\",title=\"S\",footer=\"\",children=[{kind=\"field\",label=\"Q\",value=\"\",prompt=\"\",secure=?false,multiline=?false,commit=\"submit\",event=#1}]},{kind=\"picker\",label=\"P\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}]}")))
 test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
@@ -186,9 +190,12 @@ test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarde
     expect (deliversBinding (walked, 0, ui::Tap(action = Increment)), true)
     expect (deliversBinding (walked, 1, ui::TextInput(action = Typed)), true)
     expect (deliversBinding (walked, 2, ui::ChoiceInput(action = Load)), true)))
-test ("opening draws every region once with the theme", \() => ui::Runtime::guarded (\() =>
+test ("start sends every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     surfaceBinds (first, 5)
+    // Each region crosses once: the root region's record, and the note region's beside the slot that names it.
+    expect (countRows (first, "root"), 1)
+    expect (countRows (first, "note"), 2)
     expect (join (mapList ((Probes::palette ()).spacing, \s => "${s}")) ",", "4,8")
     expect ((Probes::palette ()).feedback, 120)
     expect ((Probes::palette ()).settle, 220)
@@ -197,18 +204,34 @@ test ("opening draws every region once with the theme", \() => ui::Runtime::guar
     expect (first.surfaceSession.sessionContext.platform, "linux")
     // Every row of the open frame: the theme record, then the root and note regions as told trees.
     expect (walkedWords first, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
-test ("a tap delivers and the next frame shows the changed count", \() => ui::Runtime::guarded (\() =>
-    second = Probes::tapped (Probes::started (), 0)
+// The words of the note region's own rows: the suffix of a frame's joined words from the note region's key row —
+// the second row naming `note`, after the root region's slot names the region it holds.
+notePortion words = match indexOf words "note||note|"
+    Error _ => words
+    Success at => substring words (at + 12) (length words) ?: words
+
+// The words before those: the theme and the whole root region, up to the note region's key row.
+rootPortion words = match indexOf words "note||note|"
+    Error _ => words
+    Success at => substring words 0 at ?: words
+
+test ("a tap refreshes only the region whose signal changed", \() => ui::Runtime::guarded (\() =>
+    first = Probes::started ()
+    second = Probes::tapped (first, 0)
     expectClean (second, 1)
+    // The tap changed the tally signal, not the memo: the note region's rows cross again unchanged, word for word.
+    expect (notePortion (walkedWords second), notePortion (walkedWords first))
     // The next frame tells the same theme and note region, and the root with the changed count and one Go button.
     expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 1|body|primary||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
-test ("text input reaches update through its binding and sends its slice", \() => ui::Runtime::guarded (\() =>
-    second = Probes::posted (Probes::started (), 2, "hello")
+test ("text input reaches update through its binding and patches its own region", \() => ui::Runtime::guarded (\() =>
+    first = Probes::started ()
+    second = Probes::posted (first, 2, "hello")
     expectNoProblem second
     expectMemo (second, "hello")
     expect (Probes::written second, "echo=hello")
-    // The note field's value row carries the edited text into the next frame.
+    // The edit patched only the note region: the field's value row carries the new text and every other row is the open frame's again.
     expect (wordsAt (Probes::seen second, 48), "hello")
+    expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|hello||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")
     third = Probes::tapped (second, 0)
     expectNoProblem third))
 // The typed host events a host sends that must all be refused, with the reason each is given.
@@ -216,6 +239,8 @@ refusalHeld () = Probes::tapped (Probes::started (), 0)
 refusalCases () = [
     { touch = touchOf (Hosting::control, 9, "", false), reason = "Unknown control 9" },
     { touch = touchOf (Hosting::control, 0 - 1, "", false), reason = "Unknown control -1" },
+    // Control 4 was drawn by the open frame's five bindings; after the tap the frame draws four, so its number is stale.
+    { touch = touchOf (Hosting::control, 4, "", false), reason = "Unknown control 4" },
     { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
     { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
 ]
@@ -235,12 +260,12 @@ refusedJust (refused, reason) =
 // The event `touch` refused on `held`, with the reason it names.
 refusedClean (held, touch, reason) = refusedJust (Probes::sent (held, touch), reason)
 
-test ("unknown and mismatched events are rejected without change", \() => ui::Runtime::guarded (\() =>
+test ("stale, unknown and mismatched events are rejected without change", \() => ui::Runtime::guarded (\() =>
     held = refusalHeld ()
     forEachList (refusalCases (), \probe => refusedClean (held, probe.touch, probe.reason))
     expectSaid (wrongKindCases "0")))
 // [UI-EVENTS]: a control's number follows the frame that drew it, so a withdrawn control is never delivered by its old number.
-test ("a control keeps its meaning while ordinals shift across frames", \() => ui::Runtime::guarded (\() =>
+test ("an edit from prior state keeps its meaning when ordinals shift", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     // At count 0 the Go buttons are [Increment, Load]; the host taps control 0.
     counted = Probes::tapped (first, 0)
@@ -254,31 +279,43 @@ test ("a control keeps its meaning while ordinals shift across frames", \() => u
     noted = Probes::posted (counted, 1, "hello")
     expectMemo (noted, "hello")))
 // [UI-EVENTS]: a control that no frame drew refuses without change, and the session still answers its own controls.
-test ("a control that is gone refuses without change", \() => ui::Runtime::guarded (\() =>
+test ("an edit whose typed action is gone or ambiguous refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    gone = Probes::tapped (Probes::tapped (first, 0), 0)
+    // The note region draws two identical Load buttons: each is its own control with its own number, so both deliver the same typed action separately and none is ambiguous.
+    expect (Probes::tickets (Probes::tapped (first, 3)), "load:1")
+    expect (Probes::tickets (Probes::tapped (first, 4)), "load:1")
+    // At count 1 only [Load] is drawn: the withdrawn Increment and the note's second Load are gone, and a number no frame drew refuses.
+    gone = Probes::tapped (first, 0)
+    expectClean (gone, 1)
+    refusedJust (Probes::posted (gone, 4, ""), "Unknown control 4")
     refused = Probes::posted (gone, 9, "")
     refusedJust (refused, "Unknown control 9")
+    // The refusal changed nothing: the current session still answers its own controls.
     intact = Probes::tapped (refused, 0)
     expectNoProblem intact
     expect (Probes::asked intact, "store-read")
     expect ((Probes::stored intact).counter.tally, 1)))
 // [UI-EVENTS]: a refused event leaves the store whole and still answering.
-test ("every refusal leaves the session whole", \() => ui::Runtime::guarded (\() =>
+// A refused edit asks nothing and writes nothing, beside the reason it names.
+refusedBare refused = join [Probes::problem refused, Probes::asked refused, Probes::written refused] "|"
+
+test ("an edit with an impossible original refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    forEachList ([9, 0 - 1, 9], \ordinal => expect (Probes::problem (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}"))
+    // A number no frame drew, a negative number and an unknown kind: each names itself, asks nothing and writes no slice.
+    forEachList ([9, 0 - 1, 9], \ordinal => expect (refusedBare (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}||"))
     expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), "Invalid frame elapsed time")
     after = Probes::tapped (first, 0)
     expectClean (after, 1)))
 // [UI-EVENTS]: a delivered edit runs update on the current session, never on an earlier frame's.
-test ("a delivered edit updates the current state", \() => ui::Runtime::guarded (\() =>
+test ("a resolved edit updates the current state", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
     typedIn = Probes::posted (first, 2, "hello")
     counted = Probes::tapped (typedIn, 0)
     edited = Probes::posted (counted, 1, "world")
-    // The carried-over tally proves the earlier frame was not restored.
+    // The carried-over tally proves the earlier frame was not restored, and the prior frame's memo keeps its own value.
     expectClean (edited, 1)
     expectMemo (edited, "world")
+    expectMemo (typedIn, "hello")
     expect (Probes::written edited, "echo=world")))
 test ("capability requests carry tickets and completions return to update", \() => ui::Runtime::guarded (\() =>
     asked = Probes::tapped (Probes::started (), 3)
@@ -311,7 +348,7 @@ tabbed () = Ui::column [
     ui::Tabs(tabs = [Ui::tab ("one", "One", "1.circle", Ui::button ("Go", "play", Increment)), Ui::tab ("two", "Two", "2.circle", Ui::caption "Second")], selected = "two", bind = Load),
     ui::Segments(tones = [ui::Good, ui::Danger], label = "2 states"),
 ]
-test ("tabs bind before the page they show, and segments carry their tones", \() => ui::Runtime::guarded (\() =>
+test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() => ui::Runtime::guarded (\() =>
     walked = drawnOf (tabbed ())
     binds (walked, 2)
     // The chosen tab's page control binds first; the tabs' choice binds after every page's controls.
@@ -322,11 +359,14 @@ test ("tabs bind before the page they show, and segments carry their tones", \()
 // [UI-COMPONENTS]: every constructor tells as the component it names, with its role, tone, axis and enabled state.
 built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 
-test ("every constructor tells as the component it names", \() => ui::Runtime::guarded (\() =>
+test ("every constructor encodes as the component it names", \() => ui::Runtime::guarded (\() =>
     builtTree = built ()
     walked = drawnOf builtTree
     parts = memberItems (insideTold (childTold (toldOf builtTree, 0)), "children")
     binds (walked, 4)
+    // The split tells as the split it is, and the row inside it as a horizontal stack.
+    expect (memberText (insideTold (toldOf builtTree), "kind"), "split")
+    expect (memberText (insideTold (childTold (toldOf builtTree, 0)), "axis"), "horizontal")
     expect (spelled (toldAt (parts, 0)), "{kind=\"text\",text=\"H\",role=\"heading\",tone=\"accent\"}")
     expect (spelled (toldAt (parts, 1)), "{kind=\"pair\",label=\"Label\",value=\"Value\"}")
     expect (spelled (toldAt (parts, 2)), "{kind=\"badge\",label=\"Partial\",symbol=\"info\",tone=\"caution\"}")
@@ -347,7 +387,7 @@ runPlistCases () = [
     { plist = false, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/0/;6/0/work/run" },
     { plist = true, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run" },
 ]
-test ("run and http requests send their bounds, headers and slices", \() => ui::Runtime::guarded (\() =>
+test ("run and http requests encode their bounds, headers and slices", \() => ui::Runtime::guarded (\() =>
     forEachList (runPlistCases (), \probe => expect (rowsOf (runRequest probe.plist), probe.encoded))
     http = Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http"))
     expect (rowsOf http, "0/10/kev;1/0/GET;2/0/https://example.test/feed;3/0/Accept;3/0/application/json;4/0/;5/1000/;6/30000/;7/0/work/http")
@@ -411,11 +451,11 @@ processRequestCases () = [
 testCases [
     { name = "filesystem and store requests preserve paths bounds and slices", work = protected (\() => expectRequests (filesystemRequestCases ())) },
     { name = "desktop requests preserve picker export and cancellation payloads", work = protected (\() => expectRequests (desktopRequestCases ())) },
-    { name = "process capabilities send their handles bounds arguments and environment", work = protected (\() => expectRequests (processRequestCases ())) },
+    { name = "process capabilities encode their handles bounds arguments and environment", work = protected (\() => expectRequests (processRequestCases ())) },
 ]
 
 // [UI-COMPONENTS]: the type scale a role drew is the host's own now ([NATIVE-SHM-NODES]); what crosses is the role's own name.
-test ("semantic text roles tell under their own names with their tone", \() => ui::Runtime::guarded (\() =>
+test ("semantic text roles preserve every protocol spelling", \() => ui::Runtime::guarded (\() =>
     roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
     told = join (mapList (roles, \role => spelled (toldOf (Ui::styled ("sample", role, ui::Primary))))) "\n"
     wanted = join (mapList (["display", "large", "title", "heading", "lead", "headline", "body", "callout", "caption", "eyebrow", "mono"], \name => "{kind=\"text\",text=\"sample\",role=\"${name}\",tone=\"primary\"}")) "\n"
@@ -524,7 +564,7 @@ test ("scoped themes and dialogs retain their inner controls and dismissal prove
 
 richDocument : ui::Node<Act>
 richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
-test ("inline text keeps its emphasis and source colours without bindings", \() => ui::Runtime::guarded (\() =>
+test ("inline text retains mathematical emphasis and semantic source colours without bindings", \() => ui::Runtime::guarded (\() =>
     binds (drawnOf richDocument, 0)
     expect (spelled (toldOf richDocument), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
     spaced = Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)]
@@ -538,6 +578,32 @@ testCases [
     { name = "broken machine documents name every JSON path and faulty machines remain renderable", work = protected machineCaseBrokenDocuments },
     { name = "real machine documents render every skin and drive pointers sliders drags menus room and native lettering", work = protected realDocumentCases },
     { name = "machine edge cases cover every template variant fault cycle request payload and pointer state", work = protected completeMachineCases },
+]
+
+// The extra case beside each restored test: another permutation, edge or component for the same fact.
+testCases [
+    { name = "a resolved edit updates the current state (extra: a completion lands on the state the tap changed)", work = protected Extras::resolvedEdit },
+    { name = "a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)", work = protected Extras::tapRegion },
+    { name = "an edit from prior state keeps its meaning when ordinals shift (extra: the note's stale number refuses after the shift)", work = protected Extras::ordinals },
+    { name = "an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)", work = protected Extras::goneNumbers },
+    { name = "an edit with an impossible original refuses without change (extra: each impossible ordinal names itself and leaves no ask)", work = protected Extras::impossibleOriginals },
+    { name = "stale, unknown and mismatched events are rejected without change (extra: the stale numbers refuse while the frame's own still deliver)", work = protected Extras::staleNumbers },
+    { name = "start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)", work = protected Extras::openFacts },
+    { name = "an encoded region decodes with its components and text intact (extra: the section keeps its footer and the picker its choices)", work = protected Extras::regionParts },
+    { name = "every constructor encodes as the component it names (extra: the leaf constructors tell under their own names with no control)", work = protected Extras::constructorNames },
+    { name = "semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)", work = protected Extras::roleTones },
+    { name = "tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)", work = protected Extras::tabsPages },
+    { name = "inline text retains mathematical emphasis and semantic source colours without bindings (extra: explicit emphasis tells under its own name)", work = protected Extras::inlineEmphasis },
+    { name = "text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)", work = protected Extras::textRegion },
+    { name = "run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)", work = protected Extras::runHttpRows },
+    { name = "filesystem and store requests preserve paths bounds and slices (extra: empty paths still name their fields and slices)", work = protected Extras::filesystemRows },
+    { name = "desktop requests preserve picker export and cancellation payloads (extra: a typeless picker and empty reveals keep their rows)", work = protected Extras::desktopRows },
+    { name = "process capabilities encode their handles bounds arguments and environment (extra: arguments without an environment, and a long read deadline)", work = protected Extras::processRows },
+    { name = "broken machine documents name every JSON path and faulty machines remain renderable (extra: a bad transition target names its path)", work = protected Extras::brokenPaths },
+    { name = "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)", work = protected Extras::machineCanvas },
+    { name = "native machine views render ordinary controls and preserve every host value kind (extra: every value kind crosses the typed machine)", work = protected Extras::nativeValueKinds },
+    { name = "machine edge cases cover every template variant fault cycle request payload and pointer state (extra: number comparisons hold their bounds)", work = protected Extras::machineEdge },
+    { name = "real machine documents render every skin and drive pointers sliders drags menus room and native lettering (extra: playback lettering renders on every skin)", work = protected Extras::realPlayback },
 ]
 
 // [NATIVE-SHM-NODES]: the told records of the component vocabulary, as a host rebuilds them.

@@ -115,18 +115,31 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
   }
 })
 
-test('the required macOS gate runs every Apple part, the Workbench on the SwiftUI host among them', () => {
+test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
   for (const command of ['make -C src/toolchain/targets/ios/tests examples inbox', 'make -C src/toolchain/targets/macos/tests examples', 'make -C src/toolchain/targets/ios/tests bank',
     'make -C src/toolchain/targets/macos/tests workbench']) {
     assert.ok(apple.includes(command), command)
   }
+  // The Workbench part builds the compiler and both runtimes before it opens, exactly as its own host build did.
+  assert.ok(apple.includes('make _runtime _runtime_macos'), 'make _runtime _runtime_macos')
+  assert.ok(apple.includes('cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli'), 'cargo build osprey-cli')
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
   assert.match(apple, /^    runs-on: macos-15$/m)
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
+})
+
+test('the required macOS gate runs every Apple part, the native Workbench host among them (extra: the Workbench check drives the real SwiftUI host with no window)', () => {
+  const recipe = readFileSync('src/toolchain/targets/macos/tests/Makefile', 'utf8')
+  assert.match(recipe, /^workbench: build$/m)
+  assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
+  // The gate's Workbench part is the only place that recipe runs, so a windowed host can never slip into CI.
+  const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
+  assert.match(ci, /make -C src\/toolchain\/targets\/macos\/tests workbench/)
+  assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
 })
 
 // [CAST-MOBILE-GPUI] iOS and Android casting are unfinished: no CI job may build, run or test them.
