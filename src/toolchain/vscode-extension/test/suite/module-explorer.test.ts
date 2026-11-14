@@ -25,6 +25,7 @@ const fileEditors = () => vscode.window.visibleTextEditors
   .filter((editor) => editor.document.uri.scheme === "file")
   .map((editor) => editor.document.uri.fsPath);
 
+const LOCKED = '{"key":"@org/left","version":"1.0.0","present":true,"dependencies":[],"findings":[]}';
 const MANIFEST = '[project]\nname = "demo"\nsource_roots = ["src"]\nentry = "src/main.ospml"\n';
 
 suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
@@ -104,7 +105,11 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.strictEqual(state.description, "The package client is not installed.");
 
     const missing = await compilerSourceGraph(() => path.join(broken, "no-such-compiler"))(broken);
-    assert.ok("error" in missing && missing.error.length > 0);
+    assert.ok("error" in missing && missing.error.includes("ENOENT"), "a missing compiler is named by its spawn error");
+    const silent = path.join(broken, "silent-compiler");
+    fs.writeFileSync(silent, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+    assert.deepStrictEqual(await compilerSourceGraph(() => silent)(broken), { error: "The compiler answered no source graph." },
+      "a compiler that succeeds without a graph is a failure, not an empty project");
     fs.rmSync(broken, { recursive: true, force: true });
 
     // An untrusted workspace runs nothing, says why, and can still navigate its files.
@@ -120,6 +125,11 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(labels(shown), ["Analysis needs a trusted workspace", "Sources"]);
     assert.deepStrictEqual(labels(await untrusted.getChildren(shown[1])), ["a.osp", "b.osp"]);
     assert.strictEqual(ran, false);
+    const bare: ModuleNode = { id: "/project/bare", label: "bare" };
+    const leaf = untrusted.getTreeItem(bare);
+    assert.deepStrictEqual([leaf.collapsibleState, leaf.iconPath, leaf.contextValue, leaf.command],
+      [vscode.TreeItemCollapsibleState.None, undefined, undefined, undefined], "a bare node is an inert leaf");
+    assert.deepStrictEqual(await untrusted.getChildren(bare), [], "and has no children");
 
     // Unsaved edits are stated, not hidden behind a clean answer.
     const stale = project({ "osprey.toml": MANIFEST, "src/main.ospml": 'print "x"\n' });
@@ -241,9 +251,14 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(parseSourceGraph('{"sources":["a"],"declarations":[]}'), { sources: ["a"], declarations: [] });
 
     for (const text of ["", "{}", '{"direct":[],"findings":[]}', '{"direct":[1],"findings":[],"packages":[]}',
-      '{"direct":[],"findings":[],"packages":[{"key":"k"}]}']) {
+      '{"direct":[],"findings":[],"packages":[{"key":"k"}]}', '{"direct":[],"findings":[],"packages":[null]}',
+      `{"direct":[],"findings":[],"packages":[${LOCKED.replace('"present":true', '"present":"yes"')}]}`,
+      `{"direct":[],"findings":[],"packages":[${LOCKED.replace('"findings":[]', '"findings":[7]')}]}`,
+      `{"direct":[],"findings":[],"packages":[${LOCKED.replace("}", ',"override":1}')}]}`]) {
       assert.strictEqual(parsePackageGraph(text), undefined, text);
     }
+    const overridden = JSON.parse(LOCKED.replace("}", ',"override":"../left"}'));
+    assert.deepStrictEqual(parsePackageGraph(`{"direct":["@org/left"],"findings":[],"packages":[${JSON.stringify(overridden)}]}`)?.packages, [overridden]);
     const report = '{"direct":[],"findings":["tree.no-lock"],"packages":[],"project":"p"}';
     const answering = (status: number, lines: string[]) =>
       clientPackageGraph({ run: async () => ({ status, lines }) as never })("/p");
@@ -253,5 +268,7 @@ suite("Module Explorer [EDITOR-MODULE-EXPLORER]", () => {
     assert.deepStrictEqual(await answering(2, []), { error: "The package client answered status 2." });
     const thrown = await clientPackageGraph({ run: async () => { throw new Error("spawn failed"); } })("/p");
     assert.deepStrictEqual(thrown, { error: "spawn failed" });
+    const rejected = await clientPackageGraph({ run: () => Promise.reject("frontend vanished") })("/p");
+    assert.deepStrictEqual(rejected, { error: "frontend vanished" }, "a non-Error rejection is still reported");
   });
 });
