@@ -96,7 +96,7 @@ In [LLM dataset audit](https://github.com/Nimblesite/osprey/blob/main/src/toolch
 
 ## Speed: in Codon's range
 
-Codon also compiles Python-like code natively. On the [benchmarks](/benchmarks/), Osprey with ARC takes 0.96× Codon's time (geometric mean) and is faster on 18 of 24 programs. Of the rest, four are up to 2× slower and two allocation-heavy sorts are 11–20× slower. Codon ran on a busy machine, so this is approximate. Performance improves all the time.
+Codon also compiles Python-like code natively. On the [benchmarks](/benchmarks/), Osprey with ARC takes 0.84× Codon's time (geometric mean) and is faster on 19 of 24 programs. Of the rest, five are up to 3× slower. Codon ran on a busy machine, so this is approximate. Performance improves all the time.
 
 ## Limits
 
