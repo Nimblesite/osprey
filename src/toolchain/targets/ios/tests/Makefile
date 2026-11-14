@@ -42,7 +42,5 @@ tally:
 ##                 (OSPREY_UPDATE_GOLDENS=1 rewrites them for review).
 tally-headless:
 	OSPREY_SWIFT_APP=src/osprey/examples/tally OSPREY_IOS_NAME=Tally OSPREY_IOS_ID=org.ospreylang.tally \
-		bash src/toolchain/hosts/swift/ios.sh ios-sim --view-check
-	OSPREY_SWIFT_APP=src/osprey/examples/tally OSPREY_IOS_NAME=Tally OSPREY_IOS_ID=org.ospreylang.tally \
-		bash src/toolchain/hosts/swift/ios.sh ios-sim --golden
+		bash src/toolchain/hosts/swift/ios.sh ios-sim --view-check --golden
 endif
