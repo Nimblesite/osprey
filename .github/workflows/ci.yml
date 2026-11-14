@@ -1073,6 +1073,9 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
+      # The phone goldens are LFS-stored; a pointer would reach ffmpeg as a picture.
+      - name: Fetch the Android phone goldens
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
