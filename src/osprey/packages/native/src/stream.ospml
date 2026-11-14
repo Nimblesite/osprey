@@ -5,8 +5,7 @@
 // (`native.td` `SceneShape` lists the codes).
 namespace ui
 
-// The Osprey runtime's own entry: appends one scene row and its text to the frame the host seals after this call.
-extern osp_native_scene_shape (code : int) (index : int) (x : float) (y : float) (width : float) (height : float) (angle : float) (tint : int) (layer : int) (words : string) -> int
+// Each row crosses through the runtime's typed `nativeSceneShape` builtin into the frame the host seals.
 
 (** A canvas's content: its size and zoom in scene units, the images its sprites name, its shapes in drawing order and the elements a screen reader announces ([UI-SCENE], [UI-MACHINE-A11Y]). *)
 type Sketch =
@@ -106,7 +105,7 @@ module Streams
     export rows : (int, Sketch) -> List<Etch>
     rows (row, sketch) = Lists::flatten (listConcat (listConcat [[marker (row, sketch)]] (mapList (sketch.sketchAtlas, \name => [named name]))) (listConcat (mapList (sketch.sketchShapes, etches)) (mapList (sketch.sketchAccess, announced))))
 
-    sent e = osp_native_scene_shape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText)
+    sent e = nativeSceneShape (e.etchCode, e.etchIndex, e.etchX, e.etchY, e.etchW, e.etchH, e.etchTurn, e.etchTint, e.etchDepth, e.etchText)
 
     each etched = foldList (etched, 0, \(refused, e) => satAdd refused (sent e))
 

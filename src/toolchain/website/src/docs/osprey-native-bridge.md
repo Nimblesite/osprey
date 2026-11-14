@@ -14,7 +14,7 @@ tags: [native, applications, ui, bridge, shared-memory, video, tutorials]
 
 {% videoPlayer video %}
 
-This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
+New to Osprey Native? Start with [Build a counter](/docs/osprey-native/first-app/), which builds an app step by step without any of the internals below. This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
 
 ## The app is a library and the host calls it
 
@@ -128,16 +128,16 @@ An app describes its screen as a `View`, or as components such as `Button`, `Fie
 ```ospml
 export shared work =
     handle ViewStream
-        place drawn => osp_native_view_row (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
-        size fitting => osp_native_view_extend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
+        place drawn => nativeViewRow (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
+        size fitting => nativeViewExtend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
         sketch drawn => Streams::write (drawn.sketchedRow, drawn.sketchedAs)
-        ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
+        ask row => nativeAsk (row.askedField, row.askedNumber, row.askedText)
     work ()
 ```
 
 Because the bridge is reached through an effect, a test can swap the handler. `Views::quiet` handles the same effect by dropping every row, and `@osprey/uitest` reads the rows a host would get with no host running. The rendering code never changes.
 
-`osp_native_view_row` is one function in the C runtime ([`native_bridge.h`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/compiler/runtime/native_bridge.h)). It appends one 152-byte row to the pending view run and copies the row's text once into the text run. It returns the new row's index so that children can name it as their `parent`. It refuses the frame, and returns -1, when a number is not finite, an extent is negative or a parent is not an earlier row. A `static_assert` checks the C struct against the generated layout:
+`nativeViewRow` is a typed builtin whose C signature the compiler fixes, so the package declares no raw `extern`. It calls `osp_native_view_row`, one function in the C runtime ([`native_bridge.h`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/compiler/runtime/native_bridge.h)). It appends one 152-byte row to the pending view run and copies the row's text once into the text run. It returns the new row's index so that children can name it as their `parent`. It refuses the frame, and returns -1, when a number is not finite, an extent is negative or a parent is not an earlier row. A `static_assert` checks the C struct against the generated layout:
 
 ```c
 _Static_assert(sizeof(OspNativeView) == sizeof(td_ViewRow) &&

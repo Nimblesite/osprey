@@ -5,15 +5,8 @@
 // no style of its own.
 namespace ui
 
-// The Osprey runtime's own entry: appends one control to the frame the host seals after this call.
-// It answers the control's row, or -1 once the view is refused; the host then refuses the frame.
-extern osp_native_view_row (kind : int) (parent : int) (action : int) (words : string) (ink : int) (fill : int) (points : float) (inset : float) (gap : float) (corner : float) (heft : int) -> int
-
-// Appends one ask field and its text; nonzero once the frame is refused ([NATIVE-SHM-ASK]).
-extern osp_native_ask (field : int) (number : int) (words : string) -> int
-
-// Gives the row it names its extents, flex share, state, border colour and second text; -1 refuses the view.
-extern osp_native_view_extend (row : int) (wide : float) (tall : float) (share : float) (traits : int) (edge : int) (hint : string) -> int
+// Each control crosses through the runtime's typed `nativeViewRow`, `nativeViewExtend` and
+// `nativeAsk` builtins: -1 or nonzero refuses the view, and the host then refuses the frame.
 
 (** How one control looks: `ink` and `fill` are `0xRRGGBBAA` text and background colours (a zero fill draws none), `points` the text size, `inset` the padding, `gap` the space between children, `corner` the corner radius and `heft` the font weight from 100 to 900 ([NATIVE-SHM-VIEW]). *)
 type Look =
@@ -227,10 +220,10 @@ module Views
     (** [NATIVE-SHM-VIEW] Runs `work` with every control written straight into the shared frame the host reads in place. An application's boundary wraps its exports in it. *)
     export shared work =
         handle ViewStream
-            place drawn => osp_native_view_row (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
-            size fitting => osp_native_view_extend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
+            place drawn => nativeViewRow (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
+            size fitting => nativeViewExtend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
             sketch drawn => Streams::write (drawn.sketchedRow, drawn.sketchedAs)
-            ask row => osp_native_ask (row.askedField, row.askedNumber, row.askedText)
+            ask row => nativeAsk (row.askedField, row.askedNumber, row.askedText)
         work ()
 
     (** Runs `work` with every frame it draws dropped, as a host that is not watching: what headless drivers and tests run a boundary call under. *)

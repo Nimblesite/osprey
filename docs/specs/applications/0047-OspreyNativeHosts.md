@@ -172,7 +172,7 @@ Implemented once, in the C runtime's bridge ([`native_bridge.h`](../../../src/to
 - A host reaches memory only through a lease: an owner token unique to one acquire and consumed by one release, naming its application instance, allocation, reuse generation and byte offset. A stale, forged, foreign or double-released lease is refused as a typed `BridgeError`, never followed; reuse-generation exhaustion retires a slot permanently.
 - The application is one serialized executor: a host calls it from one thread, and an import may only run inside a call. Chunk retains are established before sealing and released iteratively; accounting covers whole allocations.
 - Budgets for bytes, chunks and owners are finite and fixed when the bridge opens; exceeding one refuses the frame instead of growing without bound. Allocation is fallible: no allocation failure yields an empty successful frame.
-- The runtime writes rows through its own entries (`osp_native_view_row`, `osp_native_view_extend`, `osp_native_ask`, `osp_native_scene_shape`), each returning nonzero once the frame is refused; the host then refuses the frame whole.
+- The runtime writes rows through its own entries (`osp_native_view_row`, `osp_native_view_extend`, `osp_native_ask`, `osp_native_scene_shape`), which Osprey calls as the typed builtins `nativeViewRow`, `nativeViewExtend`, `nativeAsk` and `nativeSceneShape`. The compiler fixes their C signatures, so `@osprey/native` declares no raw `extern` and the registry publishes it ([PACKAGE-CAPABILITY-CONFINEMENT]). Each returns nonzero once the frame is refused; the host then refuses the frame whole.
 
 ### Publication [NATIVE-SHM-PUBLISH]
 

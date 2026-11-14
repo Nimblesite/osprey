@@ -25,6 +25,7 @@ mod builtin_docs;
 mod builtin_docs_core;
 mod builtin_docs_gpu;
 mod builtin_docs_lang;
+mod builtin_docs_native;
 mod builtin_docs_signals;
 mod builtin_docs_sys;
 mod builtins;
