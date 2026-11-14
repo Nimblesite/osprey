@@ -1,15 +1,15 @@
 package org.ospreylang.host
 
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.TextView
 
 // Implements [UI-THEME] and [UI-COMPONENTS-FRAMED] for the told renderer: the
-// theme's tokens against the current appearance, and the typography and
-// control metrics a frame passes down its subtree. Every value comes from the
+// theme's tokens against the current appearance, resolved exactly as the
+// SwiftUI host's Style.swift resolves them, and the typography and control
+// metrics a frame passes down its subtree. Every value comes from the
 // application; an unknown token draws nothing rather than a colour of this
 // host's choosing. The host holds no style of its own.
 
@@ -20,34 +20,50 @@ class ThemeResolver(val theme: Theme?, private val dark: Boolean) {
         val token = theme?.tokens?.firstOrNull { it.name == name } ?: return null
         val hex = (if (dark) token.dark else token.light).removePrefix("#")
         if (hex.length != 6) return null
-        return hex.toLongOrNull(16)?.let { (0xFF000000 or it).toInt() } ?: return null
+        return hex.toLongOrNull(16)?.let { (0xFF000000 or it).toInt() }
+    }
+
+    /** The page's canvas: the `background` token, else the system's own background. */
+    fun canvas(context: Context): Int {
+        val typed = context.obtainStyledAttributes(intArrayOf(android.R.attr.colorBackground))
+        val fallback = typed.getColor(0, if (dark) 0xFF1C1C1E.toInt() else 0xFFFFFFFF.toInt())
+        typed.recycle()
+        return colour("background") ?: fallback
+    }
+
+    /** Text resolves the `text` token; unresolved text is the system ink. */
+    fun text(): Int = colour("text") ?: if (dark) 0xFFEBEBF5.toInt() else 0xFF000000.toInt()
+
+    /** The accent resolves its token; unresolved is the platform's own accent. */
+    fun accent(): Int = colour("accent") ?: if (dark) 0xFF0A84FF.toInt() else 0xFF007AFF.toInt()
+
+    /** The system secondary label colour, as SwiftUI's `.secondary`. */
+    fun secondary(): Int =
+        if (dark) 0x99EBEBF5.toInt() else 0x993C3C43.toInt()
+
+    /** A tone as Style.swift resolves it: primary is the text ink, anything
+     * else its own token, and an unresolved tone the secondary ink. */
+    fun tone(name: String): Int =
+        if (name == "primary") text() else colour(name) ?: secondary()
+
+    /** White or black laid over the canvas at `share`, as Color.primary.opacity does. */
+    fun overlay(share: Double): Int {
+        val alpha = (share * 255).toInt().coerceIn(0, 255)
+        return (alpha shl 24) or (if (dark) 0xFFFFFF else 0x000000)
     }
 
     /** The theme's spacing scale, 8dp at a step it does not name. */
     fun spacing(step: Int): Int = theme?.spacing?.getOrNull(step) ?: 8
-
-    /** Text resolves the `text` token; anything unresolved is plain. */
-    fun text(): Int = colour("text") ?: 0xFF000000.toInt()
-    fun accent(): Int = colour("accent") ?: 0xFF6750A4.toInt()
-
-    fun tone(name: String): Int = when (name) {
-        "primary" -> text()
-        "secondary" -> colour("secondary") ?: Color.DKGRAY
-        "accent" -> accent()
-        "good" -> colour("good") ?: 0xFF2E7D32.toInt()
-        "caution" -> colour("caution") ?: 0xFFB08800.toInt()
-        "danger" -> colour("danger") ?: 0xFFB00020.toInt()
-        else -> colour(name) ?: Color.DKGRAY
-    }
 }
 
 /** What a frame's subtree inherits ([UI-COMPONENTS-FRAMED]). */
 class Inherited(
     val gap: Int? = null, val family: String = "", val size: Int = 0, val lineHeight: Double = 0.0,
-    val italic: Boolean = false, val hug: Boolean = false, val controlHeight: Int = 0,
-    val controlPadding: Int = -1, val symbolSize: Int = 0, val quiet: Boolean = false,
-    val iconOnly: Boolean = false, val trailingSymbols: Boolean = false,
-    val flatRows: Boolean = false, val rowsFromTop: Boolean = false) {
+    val tracking: Double = 0.0, val italic: Boolean = false, val hug: Boolean = false,
+    val inkName: String = "", val controlHeight: Int = 0, val controlPadding: Int = -1,
+    val symbolSize: Int = 0, val quiet: Boolean = false, val iconOnly: Boolean = false,
+    val trailingSymbols: Boolean = false, val flatRows: Boolean = false,
+    val rowsFromTop: Boolean = false) {
 
     fun merging(tree: Tree?): Inherited {
         val style = tree as? Tree.Obj ?: return this
@@ -58,8 +74,10 @@ class Inherited(
             family = style.text("font").ifEmpty { family },
             size = style.count("textSize").takeIf { it > 0 } ?: size,
             lineHeight = style.real("lineHeight").takeIf { it > 0 } ?: lineHeight,
+            tracking = (members["tracking"] as? Tree.Num)?.value ?: tracking,
             italic = if (face) style.flag("italic") else italic,
             hug = hug || style.flag("hug"),
+            inkName = style.text("ink").ifEmpty { inkName },
             controlHeight = style.count("controlHeight").takeIf { it > 0 } ?: controlHeight,
             controlPadding = style.count("controlPadding").takeIf { it >= 0 } ?: controlPadding,
             symbolSize = style.count("symbolSize").takeIf { it > 0 } ?: symbolSize,
@@ -71,7 +89,7 @@ class Inherited(
     }
 }
 
-/** A role's platform type: size in sp, weight and family. */
+/** A role's platform type, as Style.swift's Type table reads it. */
 object Type {
     fun sp(role: String, inherited: Inherited): Float = when {
         inherited.size > 0 -> inherited.size.toFloat()
@@ -82,8 +100,11 @@ object Type {
         }
     }
 
-    fun face(inherited: Inherited, bold: Boolean): Typeface {
-        val weight = if (bold) Typeface.BOLD else Typeface.NORMAL
+    /** The roles the platform draws semibold. */
+    private val bold = setOf("display", "large", "title", "heading", "headline", "eyebrow")
+
+    fun face(inherited: Inherited, role: String): Typeface {
+        val weight = if (role in bold) Typeface.BOLD else Typeface.NORMAL
         val slant = if (inherited.italic) Typeface.ITALIC else Typeface.NORMAL
         return when (inherited.family) {
             "mono" -> Typeface.create(Typeface.MONOSPACE, weight or slant)
@@ -114,7 +135,7 @@ fun surfaceOf(fill: Int?, radius: Float, line: Int?): GradientDrawable =
         if (line != null) setStroke(2, line)
     }
 
-/** One control's shared dress: the platform metrics every control wears. */
+/** One control's shared dress, the metrics every control wears. */
 fun controlPadding(context: Context, inherited: Inherited): Int {
     if (inherited.controlPadding >= 0) return dp(context, inherited.controlPadding.toDouble())
     return dp(context, 12.0)
@@ -122,8 +143,18 @@ fun controlPadding(context: Context, inherited: Inherited): Int {
 
 fun controlHeight(context: Context, inherited: Inherited): Int {
     if (inherited.controlHeight > 0) return dp(context, inherited.controlHeight.toDouble())
-    return dp(context, 44.0)
+    return dp(context, 28.0)
 }
+
+/** The touch target a phone control keeps, as the SwiftUI host's iOS build does. */
+fun touchHeight(context: Context, inherited: Inherited): Int =
+    maxOf(controlHeight(context, inherited), dp(context, 44.0))
 
 fun dp(context: Context, points: Double): Int =
     (points * context.resources.displayMetrics.density).toInt()
+
+/** The same colour at `share` opacity, as SwiftUI's `Color.opacity` composes it. */
+fun Int.softly(share: Double): Int {
+    val alpha = ((this ushr 24) * share).toInt().coerceIn(0, 255)
+    return (this and 0x00FFFFFF) or (alpha shl 24)
+}

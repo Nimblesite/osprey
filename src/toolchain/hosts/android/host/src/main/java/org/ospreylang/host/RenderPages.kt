@@ -1,33 +1,30 @@
 package org.ospreylang.host
 
 import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.Context
-import android.graphics.Color
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.widget.PopupMenu
 import android.widget.TextView
 
 // Implements [UI-COMPONENTS-FRAMED], [UI-COMPONENTS-SPLITTER] and
-// [UI-REGIONS] for the Android host: navigation and page structure. A framed
-// node applies the application's insets, dimensions and surfaces
-// mechanically; a split's first pane stands on a surface of its own; an
-// aside's splitter previews its width while it is dragged and delivers the
-// width it lands on to the binding the frame issued.
+// [UI-REGIONS] for the Android host: navigation and page structure, as the
+// SwiftUI host's Layout.swift and Controls.swift draw them. A split's first
+// pane stands on the theme's sidebar surface; an aside's splitter previews
+// its width while it is dragged and delivers the width it lands on.
 
 object RenderPages {
     /** One new view of a page kind, or null when it is no page. */
     fun make(context: Context, kind: String): View? = when (kind) {
-        "section" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        "screen" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        "section", "screen", "rows" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         "split", "aside" -> LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         "tabs" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        "dialog" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        "rows" -> LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         "context-menu" -> FrameLayout(context)
         else -> null
     }
@@ -40,69 +37,21 @@ object RenderPages {
         "split" -> split(renderer, view as LinearLayout, tree, path, theme, inherited)
         "aside" -> aside(renderer, view as LinearLayout, tree, path, theme, inherited)
         "tabs" -> tabs(renderer, view as LinearLayout, tree, path, theme, inherited)
-        "dialog" -> dialog(renderer, view as LinearLayout, tree, path, theme, inherited)
+        "dialog" -> dialog(renderer, view, tree, path, theme, inherited)
         "context-menu" -> contextMenu(renderer, view as ViewGroup, tree, path, theme, inherited)
         "rows" -> rows(renderer, view as LinearLayout, tree, path, theme, inherited)
         else -> false
     }
 
-    /** Application-authored insets, dimensions and surfaces, drawn
-     * mechanically, with the frame's own metrics inherited by its body. */
-    fun framed(renderer: ToldRenderer, box: FrameLayout, tree: Tree, path: String,
-               theme: ThemeResolver, inherited: Inherited): Boolean {
-        val style = tree["style"]
-        val inner = inherited.merging(style)
-        val body = renderer.node(tree["body"] ?: Tree.Null, "$path/body", theme, inner)
-        held(renderer, box, body, style)
-        return true
-    }
-
-    /** The body inside its frame: scrolling when it asks to, inset by the
-     * frame's edges, on its surface with its line and fixed extents. */
-    private fun held(renderer: ToldRenderer, box: FrameLayout, body: View, style: Tree?) {
-        if (style?.flag("scrollY") == true) {
-            val scroller = box.getChildAt(0) as? ScrollView ?: ScrollView(box.context).also { box.addView(it, 0) }
-            if (scroller.getChildAt(0) !== body) {
-                scroller.removeAllViews()
-                scroller.addView(body)
-            }
-        } else if (box.getChildAt(0) !== body) {
-            box.removeAllViews()
-            box.addView(body)
-        }
-        style ?: return
-        box.setPadding(style.count("left"), style.count("top"), style.count("right"), style.count("bottom"))
-        sized(renderer, box, style)
-    }
-
-    /** A frame's fixed extents, surface and line, and its fill of the page. */
-    private fun sized(renderer: ToldRenderer, box: FrameLayout, style: Tree) {
-        val width = style.count("width")
-        val height = style.count("height")
-        if (width > 0 || height > 0)
-            box.layoutParams = LinearLayout.LayoutParams(
-                if (width > 0) dp(box.context, width.toDouble()) else ViewGroup.LayoutParams.WRAP_CONTENT,
-                if (height > 0) dp(box.context, height.toDouble()) else ViewGroup.LayoutParams.WRAP_CONTENT)
-        val face = renderer.theme()
-        val fill = face.colour(style.text("fill"))
-        val line = face.colour(style.text("line"))
-        if (fill != null || line != null)
-            box.background = surfaceOf(fill, style.count("radius").toFloat(), line)
-        if (style.flag("grow"))
-            box.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
-                                                          LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-    }
-
-    /** A bordered surface headed by its title, with its footer beneath. */
+    /** A group headed by its title, its footer beneath: no surface of its own. */
     private fun section(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                         theme: ThemeResolver, inherited: Inherited): Boolean {
         val heading = tree.text("title").isNotEmpty()
         val footer = tree.text("footer").isNotEmpty()
-        renderer.children(box, tree, path, theme, inherited, first = (if (heading) 1 else 0) + (if (footer) 1 else 0), gap = theme.spacing(1))
-        if (heading) words(box.getChildAt(0) as TextView, tree.text("title"), "headline", theme, bold = true)
+        renderer.children(box, tree, path, theme, inherited,
+                          first = (if (heading) 1 else 0) + (if (footer) 1 else 0), gap = dp(box.context, 8.0))
+        if (heading) words(box.getChildAt(0) as TextView, tree.text("title"), "eyebrow", theme, bold = true)
         if (footer) words(box.getChildAt(box.childCount - 1) as TextView, tree.text("footer"), "caption", theme)
-        box.setPadding(theme.spacing(2), theme.spacing(2), theme.spacing(2), theme.spacing(2))
-        box.background = surfaceOf(theme.colour("surface") ?: 0x11808080, 16f, theme.colour("divider"))
         return true
     }
 
@@ -110,40 +59,57 @@ object RenderPages {
                       theme: ThemeResolver, bold: Boolean = false) {
         view.text = text
         view.textSize = Type.sp(role, Inherited())
-        view.setTypeface(Type.face(Inherited(), bold))
-        view.setTextColor(if (role == "caption") theme.colour("secondary") ?: Color.DKGRAY else theme.text())
+        view.setTypeface(Type.face(Inherited(), if (bold) "headline" else role))
+        view.setTextColor(if (role == "caption" || role == "eyebrow") theme.secondary() else theme.text())
     }
 
-    /** A page: its toolbar row, then its scrolling content. */
+    /** A page: its heading with its toolbar beside it, then its content. */
     private fun screen(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                        theme: ThemeResolver, inherited: Inherited): Boolean {
         if (box.childCount == 0) {
             box.addView(LinearLayout(box.context).apply { orientation = LinearLayout.HORIZONTAL })
-            box.addView(ScrollView(box.context).apply {
-                addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL })
-            })
         }
-        toolbar(renderer, box.getChildAt(0) as LinearLayout, tree, path, theme, inherited)
-        val page = (box.getChildAt(1) as ScrollView).getChildAt(0) as LinearLayout
-        renderer.children(page, tree, path, theme, inherited, gap = theme.spacing(1))
+        headed(renderer, box.getChildAt(0) as LinearLayout, tree, path, theme, inherited)
+        renderer.children(box, tree, path, theme, inherited, first = 1, gap = dp(box.context, 12.0))
         return true
     }
 
-    private fun toolbar(renderer: ToldRenderer, strip: LinearLayout, tree: Tree, path: String,
+    /** The heading row: the title with its subtitle beneath, the toolbar beside them. */
+    private fun headed(renderer: ToldRenderer, strip: LinearLayout, tree: Tree, path: String,
+                       theme: ThemeResolver, inherited: Inherited) {
+        if (strip.childCount == 0) {
+            strip.addView(LinearLayout(strip.context).apply { orientation = LinearLayout.VERTICAL },
+                          LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            strip.addView(LinearLayout(strip.context).apply { orientation = LinearLayout.HORIZONTAL })
+        }
+        val headed = strip.getChildAt(0) as LinearLayout
+        if (headed.childCount == 0) {
+            headed.addView(TextView(headed.context))
+            headed.addView(TextView(headed.context))
+            headed.setPadding(0, 0, 0, dp(headed.context, 2.0))
+        }
+        words(headed.getChildAt(0) as TextView, tree.text("title"), "title", theme, bold = true)
+        words(headed.getChildAt(1) as TextView, tree.text("subtitle"), "caption", theme)
+        headed.getChildAt(1).visibility = if (tree.text("subtitle").isEmpty()) View.GONE else View.VISIBLE
+        toolbar(renderer, strip.getChildAt(1) as LinearLayout, tree, path, theme, inherited)
+    }
+
+    private fun toolbar(renderer: ToldRenderer, tools: LinearLayout, tree: Tree, path: String,
                         theme: ThemeResolver, inherited: Inherited) {
-        val tools = tree.list("toolbar")
-        while (strip.childCount > tools.size) strip.removeViewAt(strip.childCount - 1)
-        tools.forEachIndexed { place, tool ->
+        tools.gravity = Gravity.CENTER_VERTICAL
+        val bar = tree.list("toolbar")
+        while (tools.childCount > bar.size) tools.removeViewAt(tools.childCount - 1)
+        bar.forEachIndexed { place, tool ->
             val view = renderer.node(tool, "$path/tool/$place", theme, inherited)
-            if (strip.getChildAt(place) !== view) {
-                strip.removeView(view)
-                strip.addView(view, place)
+            if (tools.getChildAt(place) !== view) {
+                tools.removeView(view)
+                tools.addView(view, place, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             }
-            if (place > 0) renderer.spaced(view, theme.spacing(1), across = true)
         }
     }
 
-    /** Navigation columns: the first pane on the theme's sidebar surface. */
+    /** Navigation columns: the first pane on the theme's sidebar surface, the rest filling. */
     private fun split(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                       theme: ThemeResolver, inherited: Inherited): Boolean {
         val panes = tree.list("children")
@@ -154,10 +120,11 @@ object RenderPages {
                 box.removeView(view)
                 box.addView(view, place)
             }
-            if (place == 0 && panes.size > 1) {
-                view.layoutParams = LinearLayout.LayoutParams(dp(box.context, 264.0), ViewGroup.LayoutParams.MATCH_PARENT)
-                view.setBackgroundColor(theme.colour("sidebar") ?: 0x14000000)
-            }
+            view.layoutParams = if (place == 0 && panes.size > 1)
+                LinearLayout.LayoutParams(dp(box.context, 264.0), ViewGroup.LayoutParams.MATCH_PARENT)
+            else LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT).apply { weight = 1f }
+            if (place == 0 && panes.size > 1)
+                view.setBackgroundColor(theme.colour("sidebar") ?: theme.overlay(0.05))
         }
         return true
     }
@@ -180,8 +147,9 @@ object RenderPages {
         box.removeAllViews()
         val column = FrameLayout(renderer.context)
         val pane = FrameLayout(renderer.context)
-        val ordered = if (tree.text("side") == "trailing") listOf(pane, splitter(renderer, tree, theme), column)
-        else listOf(column, splitter(renderer, tree, theme), pane)
+        val handle = splitter(renderer, tree, theme)
+        val ordered = if (tree.text("side") == "trailing") listOf(pane, handle, column)
+        else listOf(column, handle, pane)
         box.addView(ordered[0], LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
         box.addView(ordered[1], LinearLayout.LayoutParams(dp(renderer.context, 8.0), ViewGroup.LayoutParams.MATCH_PARENT))
         box.addView(ordered[2], LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT).apply { weight = 1f })
@@ -194,16 +162,16 @@ object RenderPages {
         val view = renderer.node(node, path, theme, inherited)
         if (box.getChildAt(0) !== view) {
             box.removeAllViews()
-            box.addView(view)
+            box.addView(view, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
     }
 
-    /** The splitter: a touch drags the column's preview width inside the
-     * limits the frame sent, and lifting delivers the width it lands on. */
+    /** The splitter: a divider-coloured strip inside its drag area. */
     @SuppressLint("ClickableViewAccessibility")
     private fun splitter(renderer: ToldRenderer, tree: Tree, theme: ThemeResolver): View =
         View(renderer.context).apply {
-            setBackgroundColor(theme.accent())
+            background = surfaceOf(theme.colour("divider") ?: theme.overlay(0.15), 0f, null)
             setOnTouchListener { _, motion -> dragged(renderer, this, tree, motion) }
         }
 
@@ -236,12 +204,13 @@ object RenderPages {
         return (from + moved).coerceIn(tree.count("least"), maxOf(tree.count("most"), tree.count("least")))
     }
 
-    /** One tab of many: a row of tab presses and the chosen page. */
+    /** One tab of many: a row of tab faces and the chosen page beneath. */
     private fun tabs(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                      theme: ThemeResolver, inherited: Inherited): Boolean {
         if (box.childCount == 0) {
             box.addView(LinearLayout(box.context).apply { orientation = LinearLayout.HORIZONTAL })
-            box.addView(FrameLayout(box.context))
+            box.addView(FrameLayout(box.context), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
         faces(renderer, box.getChildAt(0) as LinearLayout, tree, theme)
         val selected = tree.text("selected")
@@ -254,30 +223,44 @@ object RenderPages {
         val tabs = tree.list("tabs")
         while (strip.childCount > tabs.size) strip.removeViewAt(strip.childCount - 1)
         tabs.forEachIndexed { index, tab ->
-            val face = (strip.getChildAt(index) as? TextView) ?: TextView(strip.context).also { strip.addView(it) }
+            val face = (strip.getChildAt(index) as? TextView) ?: TextView(strip.context).also {
+                strip.addView(it, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
             face.text = tab.text("label").ifEmpty { tab.text("key") }
-            face.setTextColor(if (tab.text("key") == tree.text("selected")) theme.accent() else theme.text())
+            face.textSize = Type.sp("body", Inherited())
+            face.setTypeface(Type.face(Inherited(), if (tab.text("key") == tree.text("selected")) "headline" else "body"))
+            face.setTextColor(if (tab.text("key") == tree.text("selected")) theme.accent() else theme.secondary())
             face.setPadding(dp(strip.context, 16.0), dp(strip.context, 12.0), dp(strip.context, 16.0), dp(strip.context, 12.0))
             face.setOnClickListener { renderer.send(tree.count("event"), Tree.Str(tab.text("key"))) }
         }
     }
 
-    /** A modal card: its title, its body and its own dismiss press. */
-    private fun dialog(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
+    /** A modal card the platform presents; its only view takes no room, as the SwiftUI sheet does. */
+    private fun dialog(renderer: ToldRenderer, view: View, tree: Tree, path: String,
                        theme: ThemeResolver, inherited: Inherited): Boolean {
-        if (box.childCount == 0) {
-            box.addView(renderer.words().apply { gravity = Gravity.END })
-            box.addView(renderer.words())
+        val held = view.tag as? Dialog
+        if (held != null && !held.isShowing) view.tag = null
+        if (view.tag == null) {
+            val card = Dialog(view.context)
+            card.setTitle(tree.text("title"))
+            card.setOnCancelListener { renderer.send(tree.count("event"), Tree.Null) }
+            card.setContentView(LinearLayout(view.context).apply { orientation = LinearLayout.VERTICAL })
+            card.show()
+            view.tag = card
         }
-        (box.getChildAt(0) as TextView).apply {
-            text = "✕"
-            setOnClickListener { renderer.send(tree.count("event"), Tree.Null) }
-        }
-        words(box.getChildAt(1) as TextView, tree.text("title"), "title", theme, bold = true)
-        renderer.children(box, tree, path, theme, inherited, first = 2, gap = theme.spacing(1))
-        box.setPadding(theme.spacing(2), theme.spacing(2), theme.spacing(2), theme.spacing(2))
-        box.background = surfaceOf(theme.colour("surface") ?: Color.WHITE, 16f, theme.colour("divider"))
+        body(renderer, view.tag as Dialog, tree, path, theme, inherited)
         return true
+    }
+
+    /** The dialog's body, drawn once into the card the platform presented. */
+    private fun body(renderer: ToldRenderer, card: Dialog, tree: Tree, path: String,
+                     theme: ThemeResolver, inherited: Inherited) {
+        val content = card.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val box = content.getChildAt(0) as? LinearLayout ?: return
+        if (box.childCount == 0)
+            box.addView(renderer.node(tree["body"] ?: Tree.Null, "$path/body", theme, inherited),
+                        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
     /** Secondary actions: the body drawn, the items on its context menu. */
@@ -287,11 +270,16 @@ object RenderPages {
         val body = renderer.node(tree["body"] ?: Tree.Null, "$path/body", theme, inherited)
         if (box.getChildAt(0) !== body) {
             box.removeAllViews()
-            box.addView(body)
+            box.addView(body, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             body.setOnLongClickListener { subject ->
-                val menu = android.widget.PopupMenu(subject.context, subject)
+                val menu = PopupMenu(subject.context, subject)
                 tree.list("items").forEach { item ->
                     menu.menu.add(item.text("label").ifEmpty { item.text("title") })
+                        .setOnMenuItemClickListener {
+                            renderer.send(item.count("event"), Tree.Null)
+                            true
+                        }
                 }
                 menu.show()
                 true
@@ -300,50 +288,97 @@ object RenderPages {
         return true
     }
 
-    /** Selectable rows: a group's heading once, each entry's cell, the chosen
-     * row selected; choosing one delivers its key to the binding. */
+    /** Selectable rows: a flat list, or the card list a `flatRows` frame authors. */
     private fun rows(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                      theme: ThemeResolver, inherited: Inherited): Boolean {
-        val wanted = mutableListOf<View>()
-        var lastGroup = "\uFFFF"
-        tree.list("rows").forEachIndexed { index, entry ->
-            val group = entry.text("group")
-            if (group.isNotEmpty() && group != lastGroup)
-                wanted.add(heading(renderer, group, theme))
-            lastGroup = group
-            wanted.add(row(renderer, entry, tree, "$path/$index/cell", theme, inherited))
-        }
-        seat(box, wanted)
+        if (inherited.flatRows) authored(renderer, box, tree, path, theme, inherited)
+        else flat(renderer, box, tree, path, theme, inherited)
         return true
     }
 
-    private fun heading(renderer: ToldRenderer, group: String, theme: ThemeResolver): TextView =
-        TextView(renderer.context).apply {
-            text = group
-            textSize = Type.sp("caption", Inherited())
-            setTextColor(theme.colour("secondary") ?: Color.DKGRAY)
-            setPadding(0, dp(context, 8.0), 0, dp(context, 4.0))
+    /** A flat list of rows, each choosing its key; the chosen row tinted. */
+    private fun flat(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
+                     theme: ThemeResolver, inherited: Inherited) {
+        val entries = tree.list("rows")
+        while (box.childCount > entries.size) box.removeViewAt(box.childCount - 1)
+        entries.forEachIndexed { index, entry ->
+            val row = cardRow(renderer, box, index, entry, tree, "$path/$index", theme, inherited,
+                              Gravity.CENTER_VERTICAL, 12, dp(box.context, 2.0))
+            row.background = surfaceOf(if (entry.text("key") == tree.text("selected")) theme.overlay(0.10) else null,
+                                       dp(row.context, 7.0).toFloat(), null)
         }
-
-    /** One entry's cell, chosen cells on the accent surface; choosing one
-     * delivers its key to the binding the frame issued. */
-    private fun row(renderer: ToldRenderer, entry: Tree, tree: Tree, path: String,
-                    theme: ThemeResolver, inherited: Inherited): View {
-        val cell = renderer.node(entry["child"] ?: Tree.Null, path, theme, inherited)
-        val chosen = entry.text("key") == tree.text("selected")
-        cell.setBackgroundColor(if (chosen) theme.colour("accentFill") ?: 0x14000000 else Color.TRANSPARENT)
-        cell.setOnClickListener { renderer.send(tree.count("event"), Tree.Str(entry.text("key"))) }
-        return cell
     }
 
-    /** The box shows `wanted` in order. */
-    private fun seat(box: LinearLayout, wanted: List<View>) {
+    /** The list an application authored: consecutive rows that name one group under its heading. */
+    private fun authored(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
+                         theme: ThemeResolver, inherited: Inherited) {
+        val entries = tree.list("rows")
+        val wanted = mutableListOf<Pair<Boolean, Int>>()
+        var lastGroup = "\uFFFF"
+        entries.forEachIndexed { index, entry ->
+            val group = entry.text("group")
+            if (group.isNotEmpty() && group != lastGroup) wanted.add(true to index)
+            lastGroup = group
+            wanted.add(false to index)
+        }
         while (box.childCount > wanted.size) box.removeViewAt(box.childCount - 1)
-        wanted.forEachIndexed { place, view ->
-            if (box.getChildAt(place) !== view) {
-                box.removeView(view)
-                box.addView(view, place)
+        wanted.forEachIndexed { seat, (heading, index) ->
+            if (heading) headingRow(renderer, box, seat, entries[index], theme)
+            else {
+                val row = cardRow(renderer, box, seat, entries[index], tree, "$path/$index", theme, inherited,
+                                  Gravity.TOP, 22, dp(box.context, (inherited.gap ?: theme.spacing(2)).toDouble()))
+                row.setPadding(0, 0, 0, 0)
+                val selection = theme.colour("selection")
+                row.background = if (entries[index].text("key") == tree.text("selected") && selection != null)
+                    surfaceOf(selection, dp(row.context, 3.0).toFloat(), null) else null
             }
         }
+    }
+
+    private fun headingRow(renderer: ToldRenderer, box: LinearLayout, seat: Int, entry: Tree,
+                           theme: ThemeResolver) {
+        val words = (box.getChildAt(seat) as? TextView) ?: TextView(box.context).also {
+            box.addView(it, seat, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        words.text = entry.text("group")
+        words.textSize = Type.sp("eyebrow", Inherited())
+        words.setTypeface(Type.face(Inherited(), "eyebrow"))
+        words.setTextColor(theme.secondary())
+        words.setPadding(0, dp(words.context, 8.0), 0, 0)
+    }
+
+    /** One row of the list: its symbol, its cell, the selection tint the frame spells. */
+    private fun cardRow(renderer: ToldRenderer, box: LinearLayout, seat: Int, entry: Tree,
+                        tree: Tree, path: String, theme: ThemeResolver, inherited: Inherited,
+                        gravity: Int, symbol: Int, gap: Int): LinearLayout {
+        val cell = renderer.node(entry["child"] ?: Tree.Null, "$path/cell", theme, inherited)
+        val row = (box.getChildAt(seat) as? LinearLayout) ?: LinearLayout(box.context).also { fresh ->
+            fresh.orientation = LinearLayout.HORIZONTAL
+            fresh.gravity = gravity
+            fresh.setPadding(dp(fresh.context, 8.0), dp(fresh.context, 6.0), dp(fresh.context, 8.0), dp(fresh.context, 6.0))
+            box.addView(fresh, seat, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        if (row.getChildAt(1) !== cell) {
+            while (row.childCount > 0) row.removeViewAt(0)
+            row.addView(ImageView(row.context), LinearLayout.LayoutParams(
+                if (symbol > 12) dp(row.context, 30.0) else ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT))
+            row.addView(cell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        mark(row, entry, theme, symbol)
+        row.setOnClickListener { renderer.send(tree.count("event"), Tree.Str(entry.text("key"))) }
+        val params = row.layoutParams as? LinearLayout.LayoutParams
+        if (params != null) params.topMargin = if (seat > 0) gap else 0
+        row.layoutParams = params
+        return row
+    }
+
+    /** The row's symbol, tinted with the secondary ink. */
+    private fun mark(row: LinearLayout, entry: Tree, theme: ThemeResolver, size: Int) {
+        val symbol = row.getChildAt(0) as? ImageView ?: return
+        symbol.setImageDrawable(null)
+        if (entry.text("symbol").isNotEmpty())
+            symbol.setImageDrawable(Symbols.drawable(row.context, entry.text("symbol"), theme.secondary(), size))
+        symbol.setPadding(0, 0, dp(row.context, 8.0), 0)
     }
 }

@@ -4,8 +4,10 @@ import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -18,11 +20,13 @@ import java.io.File
 
 class HostActivity : Activity() {
     private lateinit var store: Store
+    private lateinit var root: LinearLayout
     private lateinit var page: LinearLayout
     private lateinit var strip: TextView
     private lateinit var plain: PlainRenderer
     private lateinit var told: ToldRenderer
     private var choosing: Pair<Ask, (Outcome) -> Unit>? = null
+    private var toldPage = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,32 +47,67 @@ class HostActivity : Activity() {
         strip = TextView(this).apply {
             setPadding(24, 12, 24, 12)
             textSize = 12f
-            setTextColor(0xFFB00020.toInt())
         }
-        setContentView(LinearLayout(this).apply {
+        root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(ScrollView(context).apply {
                 isFillViewport = true
                 addView(page)
             }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(strip)
-        })
+        }
+        setContentView(root)
         plain = PlainRenderer(this, store)
         told = ToldRenderer(this, store)
     }
 
-    /** The frame the application last drew, shown again. */
+    /** The frame the application last drew, shown again: a told region keeps
+     * its views so fields hold their caret and focus across redraws. */
     private fun redraw() {
         told.dark = dark()
         if (store.told) {
-            page.removeAllViews()
+            dressToldPage()
             told.render(page)
         } else {
+            dressPlainPage()
             plain.render(page)
         }
-        val messages = store.diagnostics.takeLast(6)
-        strip.text = if (messages.isEmpty()) "" else "Diagnostics (${store.diagnostics.size}) " + messages.joinToString("\n")
-        strip.visibility = if (messages.isEmpty()) TextView.GONE else TextView.VISIBLE
+        strip.text = store.failure ?: store.diagnostics.lastOrNull() ?: ""
+        strip.visibility = if (strip.text.isEmpty()) TextView.GONE else TextView.VISIBLE
+        strip.setTextColor(told.theme().secondary())
+        strip.setBackgroundColor(told.theme().overlay(0.05))
+    }
+
+    /** A told page wears the theme's canvas, centred as SwiftUI places a short
+     * region, with the system bars the same canvas and contrasting icons. */
+    private fun dressToldPage() {
+        if (!toldPage) {
+            page.removeAllViews()
+            toldPage = true
+        }
+        val canvas = told.theme().canvas(this)
+        page.setBackgroundColor(canvas)
+        root.setBackgroundColor(canvas)
+        page.gravity = Gravity.CENTER_VERTICAL
+        window.statusBarColor = canvas
+        window.navigationBarColor = canvas
+        val light = if (dark()) 0 else android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.setSystemBarsAppearance(
+                if (dark()) 0 else android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+        } else window.decorView.systemUiVisibility = light
+    }
+
+    /** A plain page keeps the window the platform gave it, drawn from the top. */
+    private fun dressPlainPage() {
+        if (toldPage) {
+            page.removeAllViews()
+            told.clear()
+            toldPage = false
+        }
+        page.background = null
+        page.gravity = Gravity.NO_GRAVITY
     }
 
     private fun dark(): Boolean =

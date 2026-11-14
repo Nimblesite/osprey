@@ -177,21 +177,28 @@ class PlainRenderer(private val context: Context, private val store: Store) {
     }
 
     /** A label or press led by the glyph its hint names. */
-    private fun led(control: RowControl): String {
-        val glyph = Symbols.glyph(control.hint)
-        if (control.hint.isNotEmpty() && glyph == null) store.diagnoseOnce("no icon for symbol ${control.hint}")
-        return if (glyph != null) "$glyph ${control.words}" else control.words
+    private fun led(view: TextView, control: RowControl) {
+        face(view, control)
+        view.text = control.words
+        view.setCompoundDrawables(null, null, null, null)
+        if (control.hint.isEmpty()) return
+        val tint = colour(control.look.ink) ?: view.currentTextColor
+        val glyph = Symbols.drawable(view.context, control.hint, tint, 14)
+        if (glyph == null) {
+            store.diagnoseOnce("no icon for symbol ${control.hint}")
+            return
+        }
+        view.compoundDrawablePadding = dp(6.0)
+        view.setCompoundDrawables(glyph, null, null, null)
     }
 
     private fun label(view: TextView, control: RowControl) {
-        face(view, control)
-        view.text = led(control)
+        led(view, control)
         view.gravity = if (control.has(Flags.CENTRED)) Gravity.CENTER else Gravity.START
     }
 
     private fun press(view: TextView, control: RowControl) {
-        face(view, control)
-        view.text = led(control)
+        led(view, control)
         view.isEnabled = !control.has(Flags.DISABLED)
         view.alpha = if (control.has(Flags.DISABLED)) 0.5f else 1f
         view.setOnClickListener { deliver(control, "") }
@@ -284,7 +291,7 @@ class PlainRenderer(private val context: Context, private val store: Store) {
     private fun image(view: FrameLayout, control: RowControl) {
         val picture = view.getChildAt(0) as ImageView
         picture.scaleType = ImageView.ScaleType.FIT_START
-        Images.load(control.words, picture)
+        Images.load(picture.context, control.words, picture)
     }
 
     private fun canvas(view: FrameLayout, control: RowControl, index: Int) {
@@ -374,29 +381,23 @@ class PlainRenderer(private val context: Context, private val store: Store) {
     }
 }
 
-/** The icon names the framework spells, mapped to glyphs every Android draws. */
-object Symbols {
-    private val glyphs = mapOf(
-        "add" to "＋", "delete" to "🗑", "dismiss" to "✕", "check" to "✓", "warning" to "⚠", "info" to "ℹ",
-        "question" to "?", "search" to "🔍", "settings" to "⚙", "star" to "★", "play" to "▶", "pause" to "⏸",
-        "stop" to "⏹", "refresh" to "↻", "folder" to "📁", "document" to "📄", "package" to "📦", "inbox" to "📥",
-        "globe" to "🌐", "external" to "↗", "lock" to "🔒", "shield" to "🛡", "branch" to "⑂", "tag" to "🏷",
-        "clock" to "🕐", "person" to "👤", "cursor" to "➤", "chevron" to "›", "send" to "📤", "terminal" to ">_",
-        "edit" to "✎", "panel" to "▭", "sparkle" to "✨")
-
-    fun glyph(name: String): String? = glyphs[name]
-}
-
-/** Pictures by path or URL, decoded off the main thread and held by source. */
+/** Pictures by asset path or URL, decoded off the main thread and held by source. */
 object Images {
     private val cache = HashMap<String, android.graphics.Bitmap?>()
 
-    fun load(source: String, into: ImageView) {
+    fun load(context: android.content.Context, source: String, into: ImageView) {
         if (source.isEmpty()) return
         cache[source]?.let { held -> into.setImageBitmap(held); return }
         Thread {
             val bitmap = try {
-                val stream = if (source.startsWith("https://")) URL(source).openStream() else File(source).inputStream()
+                val stream = when {
+                    source.startsWith("https://") -> URL(source).openStream()
+                    else -> try {
+                        context.assets.open(source)
+                    } catch (missing: Exception) {
+                        File(source).inputStream()
+                    }
+                }
                 stream.use { BitmapFactory.decodeStream(it) }
             } catch (error: Exception) {
                 null

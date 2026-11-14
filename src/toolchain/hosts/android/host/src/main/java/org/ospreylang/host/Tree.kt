@@ -72,7 +72,7 @@ object Told {
         return when (row.kind) {
             Kind.FIELD -> field(row)
             Kind.LIST -> Tree.Arr(row.children.map { tree(shown, it) })
-            else -> record(shown, row)
+            else -> record(shown, row, index)
         }
     }
 
@@ -86,12 +86,14 @@ object Told {
     }
 
     /** A record: the rows that name it as their parent are its members. */
-    private fun record(shown: Shown, row: RowControl): Tree {
+    private fun record(shown: Shown, row: RowControl, index: Int): Tree {
         val members = linkedMapOf<String, Tree>()
         for (child in row.children) {
             val name = shown.controls[child].hint
             if (name.isNotEmpty()) members[name] = tree(shown, child)
         }
+        // A record a scene names carries its row as `sceneRow`, so the canvas finds the scene.
+        if (shown.scenes.containsKey(index)) members["sceneRow"] = Tree.Num(index.toDouble())
         return Tree.Obj(members)
     }
 
