@@ -1263,10 +1263,15 @@ jobs:
             runner: macos-26
             minutes: 22
             run: make -C src/toolchain/targets/ios/tests examples
-          - part: iOS apps
+          # Inbox and Tally each build their own iOS host; on a slow runner the two do not fit one part.
+          - part: iOS Inbox
             runner: macos-26
             minutes: 22
-            run: make -C src/toolchain/targets/ios/tests inbox tally-headless
+            run: make -C src/toolchain/targets/ios/tests inbox
+          - part: iOS Tally
+            runner: macos-26
+            minutes: 22
+            run: make -C src/toolchain/targets/ios/tests tally-headless
           - part: macOS
             minutes: 15
             run: make -C src/toolchain/targets/macos/tests examples tally-headless tally

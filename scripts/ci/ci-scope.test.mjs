@@ -117,7 +117,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox tally-headless', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
+  for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox\n', 'make -C src/toolchain/targets/ios/tests tally-headless\n', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
     'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
   }
@@ -127,11 +127,12 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  // The two iOS parts use macos-26 and its iOS SDK.
+  // The three iOS parts use macos-26 and its iOS SDK; Inbox and Tally each build their own host.
   assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
   assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
-  assert.match(apple, /^ {10}- part: iOS apps\n {12}runner: macos-26$/m)
-  assert.equal(apple.match(/^ {12}runner: /gm).length, 2, 'only the iOS parts leave macos-15')
+  assert.match(apple, /^ {10}- part: iOS Inbox\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests inbox$/m)
+  assert.match(apple, /^ {10}- part: iOS Tally\n {12}runner: macos-26\n {12}minutes: 22\n {12}run: make -C src\/toolchain\/targets\/ios\/tests tally-headless$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 3, 'only the iOS parts leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
