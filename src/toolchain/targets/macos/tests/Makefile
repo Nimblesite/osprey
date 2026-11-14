@@ -117,8 +117,10 @@ agent-qwen: _runtime _runtime_macos_arc
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
 ## workbench: The Workbench on the SwiftUI host with no window: it opens and draws a checked frame
-##            ([NATIVE-SHM-VIEW]); then `0 failures` from the host's Swift suite.
-workbench: build
+##            ([NATIVE-SHM-VIEW]); then `0 failures` from the suites that drive the real Workbench.
+workbench: _runtime _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_SWIFT_APP=src/osprey/workbench bash src/toolchain/hosts/swift/view.sh --open-check
-	swift test --package-path src/toolchain/hosts/swift
+	# The rest of the host's suite runs once, under `agent-headless`.
+	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout
 endif

@@ -137,8 +137,14 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them (extra: the Workbench check drives the real SwiftUI host with no window)', () => {
   const recipe = readFileSync('src/toolchain/targets/macos/tests/Makefile', 'utf8')
-  assert.match(recipe, /^workbench: build$/m)
+  // It builds only the compiler the CI step already built, never the root `build` (the whole
+  // workspace, KLEE, the Zed extension), which recompiled the compiler and cost the part its time.
+  assert.match(recipe, /^workbench: _runtime _runtime_macos$/m)
+  assert.match(recipe, /^\tcargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli$/m)
   assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
+  // Every Swift test runs once: the Workbench suites here, the rest under agent-headless.
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter WorkbenchLayout$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --skip WorkbenchLayout$/m)
   // The gate's Workbench part is the only place that recipe runs, so a windowed host can never slip into CI.
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.match(ci, /make -C src\/toolchain\/targets\/macos\/tests workbench/)
