@@ -39,14 +39,7 @@ if [ -d "$app/assets" ]; then
   cp -R "$app/assets/." "$bundle/Contents/Resources/"
 fi
 if [ -f "$app/icon.png" ]; then
-    iconset="$here/build/app/AppIcon.iconset"
-    rm -rf "$iconset"
-    mkdir -p "$iconset"
-    for size in 16 32 128 256 512; do
-        sips -z "$size" "$size" "$app/icon.png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
-        sips -z "$((size * 2))" "$((size * 2))" "$app/icon.png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-    done
-    iconutil -c icns "$iconset" -o "$bundle/Contents/Resources/AppIcon.icns"
+    bash "$here/app-icon.sh" "$app/icon.png" "$bundle/Contents/Resources/AppIcon.icns"
 fi
 cat > "$bundle/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -75,10 +75,14 @@ final class OrchestraServer {
                 guard let self else { connection.cancel(); return }
                 let request = collected + (data ?? Data())
                 if request.count > 8192 || error != nil { self.closeHTTP(connection); return }
-                if let text = String(data: request, encoding: .utf8), text.contains("\r\n\r\n") {
-                    self.replyHTTP(connection, request: text)
-                } else if done { self.closeHTTP(connection) }
-                else { self.receiveHTTP(connection, collected: request) }
+                do {
+                    if let text = try self.completeHTTP(request) { self.replyHTTP(connection, request: text) }
+                    else if done { self.closeHTTP(connection) }
+                    else { self.receiveHTTP(connection, collected: request) }
+                } catch {
+                    log("transport.http_rejected", ["reason": error.localizedDescription])
+                    self.closeHTTP(connection)
+                }
             }
         }
     }
@@ -88,11 +92,44 @@ final class OrchestraServer {
         httpConnections.removeValue(forKey: ObjectIdentifier(connection))
     }
 
+    private func completeHTTP(_ data: Data) throws -> String? {
+        guard let boundary = data.range(of: Data("\r\n\r\n".utf8)) else { return nil }
+        guard let headers = String(data: data[..<boundary.lowerBound], encoding: .utf8) else { throw problem("Invalid HTTP headers") }
+        let lengths = headers.components(separatedBy: "\r\n").filter { $0.lowercased().hasPrefix("content-length:") }
+        guard lengths.count <= 1 else { throw problem("Duplicate HTTP content length") }
+        let length = lengths.first?.dropFirst(15).trimmingCharacters(in: .whitespaces) ?? "0"
+        guard let count = Int(length) else { throw problem("Invalid HTTP content length") }
+        guard count >= 0, count <= 4096 else { throw problem("HTTP body exceeds diagnostic limit") }
+        guard data.count >= boundary.upperBound + count else { return nil }
+        guard let request = String(data: data.prefix(boundary.upperBound + count), encoding: .utf8) else { throw problem("Invalid HTTP text") }
+        return request
+    }
+
+    private func receiveDiagnostics(_ request: String) -> String {
+        let parts = request.components(separatedBy: "\r\n\r\n")
+        let headers = parts[0].components(separatedBy: "\r\n")
+        let requestOrigin = headers.first { $0.lowercased().hasPrefix("origin:") }?.dropFirst(7).trimmingCharacters(in: .whitespaces) ?? ""
+        guard origin.contains(requestOrigin), let body = parts.dropFirst().joined(separator: "\r\n\r\n").data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any], object["token"] as? String == token else { return "403 Forbidden" }
+        guard let events = object["events"] as? [[String: Any]], events.count <= 16 else { return "400 Bad Request" }
+        for event in events {
+            guard let name = event["event"] as? String, name.hasPrefix("controller."), name.count <= 64 else { return "400 Bad Request" }
+            var fields: [String: Any] = ["source": "browser"]
+            for key in ["at", "sequence", "phase", "code", "buffered", "state", "visibility", "peer"] {
+                if let number = event[key] as? NSNumber, number.doubleValue.isFinite { fields[key] = number }
+            }
+            if let reason = event["reason"] as? String { fields["reason"] = String(reason.prefix(160)) }
+            log(name, fields)
+        }
+        return "204 No Content"
+    }
+
     private func replyHTTP(_ connection: NWConnection, request: String) {
         let valid = request.hasPrefix("GET / HTTP/1.")
-        let body = valid ? page : Data("Not found".utf8)
-        let status = valid ? "200 OK" : "404 Not Found"
-        let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
+        let status = request.hasPrefix("POST /diagnostics HTTP/1.") ? receiveDiagnostics(request) : valid ? "200 OK" : "404 Not Found"
+        let body = valid ? page : Data()
+        let length = status.hasPrefix("204") ? "" : "Content-Length: \(body.count)\r\n"
+        let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\n\(length)Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(headers.utf8) + body, completion: .contentProcessed { [weak self] _ in
             performSession { self?.closeHTTP(connection) }
         })
@@ -103,10 +140,12 @@ final class OrchestraServer {
         nextPeer += 1
         let peer = nextPeer
         peers[peer] = connection
+        log("transport.connected", ["peer": peer])
         connection.stateUpdateHandler = { [weak self] state in
             performSession {
                 switch state {
-                case .failed, .cancelled: self?.disconnect(peer)
+                case .failed(let error): self?.disconnect(peer, reason: error.localizedDescription)
+                case .cancelled: self?.disconnect(peer, reason: "transport_cancelled")
                 default: break
                 }
             }
@@ -124,7 +163,7 @@ final class OrchestraServer {
                 guard let self, self.peers[peer] != nil else { return }
                 let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
                 guard error == nil, metadata?.opcode == .text, let data, data.count <= 4096 else {
-                    self.disconnect(peer); return
+                    self.disconnect(peer, reason: error?.localizedDescription ?? "invalid_websocket_frame"); return
                 }
                 self.message(peer, data)
             }
@@ -140,24 +179,48 @@ final class OrchestraServer {
                       osprey_orchestra_admit(peer) == 0 else { throw problem("Session admission denied") }
                 authenticated.insert(peer)
                 lastSeen[peer] = ProcessInfo.processInfo.systemUptime
+                log("controller.joined", ["peer": peer])
                 send(peer, ["type": "joined", "peer": peer, "epoch": 1])
                 return
             }
             let result = try apply(peer, kind, object)
             if result == 0 { lastSeen[peer] = ProcessInfo.processInfo.systemUptime }
+            if kind != "heartbeat" || result != 0 {
+                log(result == 0 ? "controller.input" : "controller.rejected", ["peer": peer, "sequence": integer(object["sequence"]) ?? 0,
+                     "phase": integer(object["phase"]) ?? -1, "accepted": result == 0])
+            }
             try audio.update()
             send(peer, ["type": "ack", "accepted": result == 0, "sequence": object["sequence"] ?? 0,
                         "notes": audio.activeNotes, "frames": audio.renderedFrames])
-        } catch { send(peer, ["type": "error", "message": error.localizedDescription], close: true) }
+        } catch {
+            log("controller.rejected", ["peer": peer, "reason": error.localizedDescription])
+            send(peer, ["type": "error", "message": error.localizedDescription], close: true)
+        }
     }
 
     private func apply(_ peer: Int64, _ kind: String, _ object: [String: Any]) throws -> Int64 {
         if kind == "heartbeat" { return osprey_orchestra_heartbeat(peer) }
+        if kind == "settings" { return try settings(peer, object) }
         guard kind == "touch", let sequence = integer(object["sequence"]),
               let phase = integer(object["phase"]), let finger = integer(object["finger"]),
               let x = coordinate(object["x"]), let y = coordinate(object["y"]),
               x.isFinite, y.isFinite else { throw problem("Invalid controller event") }
         return osprey_orchestra_touch(peer, sequence, phase, finger, x, y)
+    }
+
+    private func settings(_ peer: Int64, _ object: [String: Any]) throws -> Int64 {
+        guard let sequence = integer(object["sequence"]), let instrument = integer(object["instrument"]),
+              let tone = coordinate(object["tone"]), let echo = coordinate(object["echo"]),
+              let reverb = coordinate(object["reverb"]), let warp = coordinate(object["warp"]) else {
+            throw problem("Invalid sound settings")
+        }
+        let result = osprey_orchestra_settings(peer, sequence, instrument, tone, echo, reverb, warp)
+        if result == 0 {
+            audio.updateEffects(peer: peer, echo: echo, reverb: reverb)
+            log("controller.sound", ["peer": peer, "sequence": sequence, "instrument": instrument,
+                                     "tone": tone, "echo": echo, "reverb": reverb, "warp": warp])
+        }
+        return result
     }
 
     private func coordinate(_ value: Any?) -> Double? {
@@ -181,31 +244,38 @@ final class OrchestraServer {
             let context = NWConnection.ContentContext(identifier: "orchestra", metadata: [metadata])
             connection.send(content: content, contentContext: context, completion: .contentProcessed { [weak self] error in
                 performSession {
-                    if close || error != nil { self?.disconnect(peer) }
+                    if close || error != nil { self?.disconnect(peer, reason: error?.localizedDescription ?? "protocol_rejected") }
                     else if receiveNext && self?.peers[peer] != nil { self?.receive(peer, connection) }
                 }
             })
         } catch { disconnect(peer) }
     }
 
-    private func disconnect(_ peer: Int64) {
+    private func disconnect(_ peer: Int64, reason: String = "transport_closed") {
         guard let connection = peers.removeValue(forKey: peer) else { return }
+        log("controller.disconnected", ["peer": peer, "reason": reason])
         authenticated.remove(peer)
         lastSeen.removeValue(forKey: peer)
         _ = osprey_orchestra_leave(peer)
+        audio.clearEffects(peer: peer)
         do { try audio.update() } catch { failure = error.localizedDescription }
         connection.cancel()
     }
 
     func silence() throws {
+        log("session.silence", ["notes": audio.activeNotes])
         _ = osprey_orchestra_silence()
+        audio.clearEffects()
         try audio.update()
         for peer in authenticated { send(peer, ["type": "silenced"], receiveNext: false) }
     }
 
     func expire() {
         let now = ProcessInfo.processInfo.systemUptime
-        for (peer, seen) in lastSeen where now - seen >= 1.5 { disconnect(peer) }
+        for (peer, seen) in lastSeen where now - seen >= 1.5 {
+            log("controller.expired", ["peer": peer, "heartbeatAgeMs": (now - seen) * 1000])
+            disconnect(peer, reason: "heartbeat_timeout")
+        }
     }
 
     func stop() {

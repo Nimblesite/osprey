@@ -4,8 +4,12 @@ import Foundation
 // [SYNTH-RENDER] Osprey exports run only on the session thread. The device reads a preallocated ring.
 final class OrchestraAudio {
     private let engine = AVAudioEngine()
+    private var configurationObserver: NSObjectProtocol?
+    var isRunning: Bool { engine.isRunning }
     private var source: AVAudioSourceNode?
     private var voices: [VoiceState] = []
+    private var racks = (0..<8).map { _ in OrchestraEffects(rate: 48000) }
+    private var sums = [Double](repeating: 0, count: 8)
     private var buffer = [Float](repeating: 0, count: 128)
     private var capture = Data()
     var capturesAudio = false
@@ -26,12 +30,34 @@ final class OrchestraAudio {
             throw problem("No supported audio output format")
         }
         sampleRate = rate
+        racks = (0..<8).map { _ in OrchestraEffects(rate: rate) }
         let node = makeSource()
         source = node
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
         fill()
         try engine.start()
+        configurationObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
+            performSession {
+                log("audio.configuration_changed", ["running": self.engine.isRunning, "sampleRate": self.engine.outputNode.inputFormat(forBus: 0).sampleRate])
+                self.recoverOutput()
+            }
+        }
+        log("audio.started", ["sampleRate": sampleRate])
+    }
+
+    // Configuration changes stop AVAudioEngine even while the phone session stays connected.
+    func recoverOutput() {
+        guard source != nil, !engine.isRunning else { return }
+        do {
+            let format = engine.outputNode.inputFormat(forBus: 0)
+            guard format.sampleRate >= 8000, format.sampleRate <= 384000, format.channelCount > 0 else {
+                throw problem("Audio output is unavailable")
+            }
+            fill()
+            try engine.start()
+            log("audio.restarted", ["deviceSampleRate": format.sampleRate, "sourceSampleRate": sampleRate])
+        } catch { log("audio.recovery_failed", ["reason": error.localizedDescription]) }
     }
 
     private func makeSource() -> AVAudioSourceNode {
@@ -59,26 +85,53 @@ final class OrchestraAudio {
     }
 
     private func decodeControl(_ row: [String: Any]) throws -> VoiceControl {
-        guard let id = row["id"] as? String, let frequency = row["frequency"] as? Double,
-              let gain = row["gain"] as? Double, frequency.isFinite, gain.isFinite,
-              frequency > 0, frequency < sampleRate / 2, gain >= 0, gain <= 0.1 else {
-            throw problem("Invalid voice values")
+        guard let id = row["id"] as? String, let peer = row["peer"] as? Int64,
+              let instrument = row["instrument"] as? Int64, (0...3).contains(instrument),
+              let frequency = row["frequency"] as? Double, let gain = row["gain"] as? Double,
+              frequency.isFinite, gain.isFinite, frequency > 0, frequency < sampleRate / 2,
+              gain >= 0, gain <= 0.1 else { throw problem("Invalid voice values") }
+        let amounts = try ["tone", "echo", "reverb", "warp"].map { key -> Double in
+            guard let value = row[key] as? Double, value.isFinite, (0...1).contains(value) else {
+                throw problem("Invalid sound parameter")
+            }
+            return value
         }
-        return VoiceControl(id: id, frequency: frequency, gain: gain)
+        return VoiceControl(id: id, peer: peer, instrument: instrument, frequency: frequency, gain: gain,
+                            tone: amounts[0], echo: amounts[1], reverb: amounts[2], warp: amounts[3])
+    }
+
+    private func allocateRacks(_ controls: [VoiceControl]) {
+        let peers = Set(controls.map(\.peer))
+        for peer in peers where !racks.contains(where: { $0.peer == peer }) {
+            guard let bank = racks.firstIndex(where: { $0.peer == nil || !peers.contains($0.peer ?? -1) }) else { continue }
+            voices.removeAll { $0.bank == bank }
+            racks[bank].clear()
+            racks[bank].peer = peer
+        }
     }
 
     private func reconcile(_ controls: [VoiceControl]) {
-        let old = Dictionary(uniqueKeysWithValues: voices.map { ($0.id, $0) })
-        voices = controls.map { control in
-            VoiceState(id: control.id, frequency: control.frequency, target: control.gain,
-                       gain: old[control.id]?.gain ?? 0, phase: old[control.id]?.phase ?? 0)
+        allocateRacks(controls)
+        let old = Dictionary(uniqueKeysWithValues: voices.map { ($0.control.id, $0) })
+        voices = controls.compactMap { control -> VoiceState? in
+            guard let bank = racks.firstIndex(where: { $0.peer == control.peer }) else { return nil }
+            racks[bank].configure(control)
+            return VoiceState(control: control, bank: Int64(bank), target: control.gain,
+                              gain: old[control.id]?.gain ?? 0, phase: old[control.id]?.phase ?? 0,
+                              tone: old[control.id]?.tone ?? control.tone, warp: old[control.id]?.warp ?? control.warp)
         }
         let live = Set(controls.map(\.id))
         // Bound release tails to the unused part of the eighty-voice pool.
-        voices += old.values.filter { !live.contains($0.id) && $0.gain > 0 }
+        voices += old.values.filter { !live.contains($0.control.id) && $0.gain > 0 }
             .sorted { $0.gain > $1.gain }.prefix(80 - voices.count).map {
-            VoiceState(id: $0.id, frequency: $0.frequency, target: 0, gain: $0.gain, phase: $0.phase)
+            VoiceState(control: $0.control, bank: $0.bank, target: 0, gain: $0.gain, phase: $0.phase, tone: $0.tone, warp: $0.warp)
         }
+    }
+
+    func clearEffects() { for rack in racks { rack.clear() } }
+    func clearEffects(peer: Int64) { for rack in racks where rack.peer == peer { rack.clear() } }
+    func updateEffects(peer: Int64, echo: Double, reverb: Double) {
+        for rack in racks where rack.peer == peer { rack.configure(echo: echo, reverb: reverb) }
     }
 
     // Bounded linear smoothing avoids note-on/off discontinuities; voice phases survive snapshots.
@@ -101,19 +154,22 @@ final class OrchestraAudio {
     }
 
     private func nextSample() -> Double {
-        var sample = 0.0
-        var totalGain = 0.0
+        for bank in sums.indices { sums[bank] = 0 }
         for index in voices.indices {
-            let voice = voices[index]
+            let voice = voices[index], control = voice.control
             let gain = voice.gain + min(0.0002, max(-0.0002, voice.target - voice.gain))
-            sample += osprey_orchestra_sine(voice.phase) * gain
-            totalGain += gain
-            let phase = voice.phase + voice.frequency / sampleRate
-            voices[index] = VoiceState(id: voice.id, frequency: voice.frequency, target: voice.target,
-                                       gain: gain, phase: phase - floor(phase))
+            let tone = voice.tone + min(0.0002, max(-0.0002, control.tone - voice.tone))
+            let warp = voice.warp + min(0.0002, max(-0.0002, control.warp - voice.warp))
+            let step = control.frequency / sampleRate
+            sums[Int(voice.bank)] += osprey_orchestra_wave(control.instrument, voice.phase, step, tone, warp) * gain
+            let phase = voice.phase + step
+            voices[index] = VoiceState(control: control, bank: voice.bank, target: voice.target,
+                                       gain: gain, phase: phase - floor(phase), tone: tone, warp: warp)
         }
-        // Normalise by the gain sum, including release tails; the ensemble stays below 0.8.
-        return sample / max(1, totalGain / 0.8)
+        var sample = 0.0
+        for bank in racks.indices { sample += racks[bank].next(sums[bank]) }
+        // A smooth saturator bounds dry voices and overlapping feedback tails together.
+        return sample / (1 + abs(sample) / 0.8)
     }
 
     private func finishBlock(_ output: [Float]) {
@@ -134,7 +190,11 @@ final class OrchestraAudio {
         }
     }
 
-    func stop() { engine.stop() }
+    func stop() {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        engine.stop()
+        log("audio.stopped", ["frames": renderedFrames])
+    }
 }
 
 func problem(_ message: String) -> NSError {

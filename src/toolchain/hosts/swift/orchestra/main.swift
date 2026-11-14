@@ -44,14 +44,9 @@ func stopApplication() {
     }
 }
 
-func log(_ event: String, _ fields: [String: Any] = [:]) {
-    var record = fields
-    record["event"] = event
-    do {
-        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
-        FileHandle.standardOutput.write(data + Data([10]))
-    } catch { FileHandle.standardError.write(Data("Diagnostic encoding failed\n".utf8)) }
-}
+let diagnostics = OrchestraDiagnostics()
+func log(_ event: String, _ fields: [String: Any] = [:]) { diagnostics.record(event, fields) }
+var lastHealth = -1.0
 
 func advance() {
     let elapsed = ProcessInfo.processInfo.systemUptime - began
@@ -64,6 +59,13 @@ func advance() {
         lastSessionTick = elapsed
     }
     if headless { _ = audio.render(128) } else { audio.fill() }
+    if elapsed - lastHealth >= 1 {
+        if !headless { audio.recoverOutput() }
+        log("audio.health", ["frames": audio.renderedFrames, "notes": audio.activeNotes,
+                             "controllers": server?.controllerCount ?? 0, "running": audio.isRunning,
+                             "queued": orchestra_ring_queued(), "underruns": orchestra_ring_underruns(), "level": audio.level])
+        lastHealth = elapsed
+    }
     failure = failure ?? server?.failure ?? audio.failure
     if failure != nil || (duration > 0 && elapsed >= duration) { requestStop() }
 }
@@ -107,8 +109,10 @@ func runSession() {
     }
     log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
                             "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
+    diagnostics.flush()
     DispatchQueue.main.async { stopApplication() }
 }
+do { try diagnostics.start() } catch { log("logging.failed", ["error": error.localizedDescription]) }
 // Build AppKit controls before audio starts; UI work cannot delay the producer thread.
 if showWindow {
     do {

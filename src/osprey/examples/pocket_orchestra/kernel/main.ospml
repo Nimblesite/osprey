@@ -3,6 +3,7 @@ namespace orchestra
 
 import orchestra::Sessions
 import synth::Oscillators
+import synth::Performance
 
 effect Keep
     keep : Session => Unit
@@ -47,6 +48,21 @@ touch (peer, sequence, phase, finger, x, y) = hosted (\() =>
         Rejected _ => 1
         Accepted action => accepted (Sessions::play (live, peer, Gesture(epoch = 1, sequence = sequence, phase = action, touch = Touch(finger = finger, horizontal = x, vertical = y)))))
 
+// [ORCHESTRA-SOUND] The transport sends numeric instrument IDs; typed choices stay in the core.
+instrumentOf code = match code
+    0 => Accepted(value = Glass)
+    1 => Accepted(value = Bass)
+    2 => Accepted(value = Pulse)
+    3 => Accepted(value = Orbit)
+    _ => Rejected(fault = InvalidSound)
+
+settings (peer, sequence, instrument, tone, echo, reverb, warp) = hosted (\() =>
+    match instrumentOf instrument
+        Rejected _ => 1
+        Accepted selected => accepted (Sessions::configure (live, peer, sequence, selected, Sound(tone = tone, echo = echo, reverb = reverb, warp = warp))))
+
+wave (instrument, phase, step, tone : float, warp : float) = Performance::wave (instrument, phase, step, tone, warp)
+
 // The small example uses a pentatonic ribbon. Musical mapping stays in Osprey.
 scaleStep degree = match degree < 1.0
     true => 0.0
@@ -64,6 +80,18 @@ frequency touch =
     semitones = scaleStep (step - octave * 5.0)
     110.0 * pow (2.0, octave + semitones / 12.0)
 
-voice (peer, touch) = "{\"id\":\"${toString peer}:${toString touch.finger}\",\"frequency\":${toString (frequency touch)},\"gain\":${toString (0.1 * (0.2 + 0.8 * touch.vertical))}}"
+instrumentCode selected = match selected
+    Glass => 0
+    Bass => 1
+    Pulse => 2
+    Orbit => 3
 
-voices () = "[${join (foldList (live.players, [], \(all, player) => listConcat all (mapList (player.touches, \touch => voice (player.peer, touch))))) ","}]"
+voice (player, touch) =
+    code = instrumentCode player.instrument
+    hz = frequency touch
+    pitch = match player.instrument
+        Bass => hz * 0.5
+        _ => hz
+    "{\"id\":\"${toString player.peer}:${toString touch.finger}\",\"peer\":${toString player.peer},\"instrument\":${toString code},\"frequency\":${toString pitch},\"gain\":${toString (0.1 * (0.2 + 0.8 * touch.vertical))},\"tone\":${toString player.sound.tone},\"echo\":${toString player.sound.echo},\"reverb\":${toString player.sound.reverb},\"warp\":${toString player.sound.warp}}"
+
+voices () = "[${join (foldList (live.players, [], \(all, player) => listConcat all (mapList (player.touches, \touch => voice (player, touch))))) ","}]"

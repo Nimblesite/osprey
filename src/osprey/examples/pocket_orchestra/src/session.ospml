@@ -24,7 +24,7 @@ module Sessions
             Accepted _ => Rejected(fault = AlreadyJoined)
             Rejected _ => match length session.players >= 8
                 true => Rejected(fault = Full)
-                false => Accepted(value = (session(players = listAppend session.players (Player(peer = peer, sequence = 0, seen = session.clock, instrument = Percussion, touches = [])))))
+                false => Accepted(value = (session(players = listAppend session.players (Player(peer = peer, sequence = 0, seen = session.clock, instrument = Glass, sound = Sound(tone = 0.0, echo = 0.0, reverb = 0.0, warp = 0.0), touches = [])))))
 
     (** Remove a peer and every note it owns. *)
     export leave (session, peer) = session(players = filterList (session.players, \p => p.peer != peer))
@@ -36,6 +36,21 @@ module Sessions
     export instrument (session, peer, selected) = match player (session, peer)
         Rejected fault => Rejected(fault = fault)
         Accepted p => Accepted(value = (replaced (session, p(instrument = selected, touches = []))))
+
+    validAmount value = value >= 0.0 && value <= 1.0
+
+    (** Apply a sequenced sound edit independently for each authenticated player. *)
+    export configure (session, peer, sequence, selected, sound) = match player (session, peer)
+        Rejected fault => Rejected(fault = fault)
+        Accepted p => match sequence <= p.sequence
+            true => Rejected(fault = StaleSequence)
+            false => match validAmount sound.tone && validAmount sound.echo && validAmount sound.reverb && validAmount sound.warp
+                false => Rejected(fault = InvalidSound)
+                true =>
+                    touches = match p.instrument == selected
+                        true => p.touches
+                        false => []
+                    Accepted(value = (replaced (session, p(sequence = sequence, seen = session.clock, instrument = selected, sound = sound, touches = touches))))
 
     (** Renew an admitted peer's lease at the session clock. *)
     export heartbeat (session, peer) = match player (session, peer)

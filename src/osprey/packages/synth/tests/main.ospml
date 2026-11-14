@@ -354,3 +354,14 @@ test ("sample-accurate automation applies before its frame, preserves ordering a
     renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [restore, mute]))
     renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute(samplePosition = 64)]))
     renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore(revision = 0)]))))
+
+import synth::Performance
+
+performanceCase (rate, instrument, amount) = forEachList (toList (range (0, 128)), \frame =>
+    sample = Performance::wave (instrument, toFloat frame * 0.0078125, 740.0 / rate, amount, amount)
+    expect (sample >= -1.000001 && sample <= 1.000001, true))
+
+test ("performance timbres and metallic warp stay bounded across rates and control extremes", \() => arithmetic (\() =>
+    forEachList ([8000.0, 44100.0, 48000.0, 96000.0], \rate => forEachList ([0, 1, 2, 3], \instrument => forEachList ([0.0, 0.5, 1.0], \amount => performanceCase (rate, instrument, amount))))
+    near (Performance::wave (0, 0.25, 0.01, 0.0, 0.0), 1.0, 0.000000001)
+    near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))

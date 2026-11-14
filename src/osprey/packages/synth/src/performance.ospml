@@ -1,0 +1,26 @@
+// [SYNTH-PERFORMANCE] UI-free bounded timbres for a preallocated host voice bank.
+namespace synth
+
+(** Phase-continuous performance kernels with normalized tone and ring-modulation controls. *)
+module Performance
+    harmonic (phase, step, multiple) = match step * multiple < 0.5
+        true => Oscillators::sine (phase * multiple)
+        false => 0.0
+
+    glass (phase, step, tone) = Oscillators::sine phase * (1.0 - tone * 0.3) + harmonic (phase, step, 3.0) * tone * 0.3
+
+    bass (phase, step, tone) = Oscillators::sine phase * 0.65 + harmonic (phase, step, 2.0) * (0.1 + tone * 0.25)
+
+    pulse (phase, step, tone) = Oscillators::sine phase * 0.6 + harmonic (phase, step, 3.0) * (0.1 + tone * 0.15) + harmonic (phase, step, 5.0) * tone * 0.15
+
+    timbre (instrument, phase, step, tone) = match instrument
+        1 => bass (phase, step, tone)
+        2 => pulse (phase, step, tone)
+        3 => Oscillators::sine (phase + (0.05 + tone * 0.3) * Oscillators::sine (phase * 2.0))
+        _ => glass (phase, step, tone)
+
+    (** Ring modulation fades from the dry timbre to inharmonic metallic sidebands.
+        Hosts supply a normalized phase, sub-Nyquist phase step and controls in [0, 1]. *)
+    export wave (instrument, phase, step, tone, warp) =
+        dry = timbre (instrument, phase, step, tone)
+        dry * (1.0 - warp + warp * Oscillators::sine (phase * 7.0))

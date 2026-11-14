@@ -96,3 +96,14 @@ Linux desktop hosting, trusted HTTPS/WSS provisioning, motion instruments, saved
 - [ ] Complete Windows hosting, native phone controllers and the full native/canvas presentation matrix above.
 
 Run commands and honest delivery boundaries are in `src/osprey/examples/pocket_orchestra/README.md`. Browser emulation and generated PCM checks do not establish physical-phone or speaker-to-ear latency. The renderer and Osprey session run on a dedicated OS thread, separate from AppKit; hard-real-time scheduling remains unproven.
+
+## Playable sound and recovery [ORCHESTRA-PLAN-SOUND]
+
+- [x] Expose independent instrument selection, tone, echo, reverb and metallic warp through authenticated sequenced edits.
+- [x] Connect the phone expression selector and range control to real native synthesis and per-controller feedback racks.
+- [x] Add persistent cross-cutting controller/backend diagnostics and the Osprey app icon.
+- [x] Reproduce stopped output with a real engine configuration notification and restart it while retaining the held note.
+- [x] Verify final headless and visible browser/audio journeys for the four-instrument palette, including real output recovery and zero callback underruns.
+- [ ] Extract host echo/reverb storage into reusable synth graph processors and measure alias rejection and physical-device latency.
+
+Validation on 2026-11-14 used the real native kernel and captured PCM. Both app make targets passed with Chromium/WebKit controllers, eight peers/eighty voices, distinct timbres, all four audible expressions, feedback tails, malformed/stale settings and persistent logs. GC and ARC each passed three session journeys and thirteen synth journeys. Generated Osprey/Swift models reproduced byte-for-byte. Deslop reported no visible duplicate groups in the supported Mac test files after sharing the native-fixture compiler. Full-branch CI retains the previously recorded coverage gaps above. Physical-phone and physical output-route switching remain unverified.

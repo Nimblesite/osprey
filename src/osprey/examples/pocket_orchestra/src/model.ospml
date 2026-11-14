@@ -2,9 +2,10 @@ namespace orchestra
 
 // Generated from typeDiagram [CONV-OSPREY].
 type Instrument =
-    Percussion
+    Glass
     Bass
-    Chords
+    Pulse
+    Orbit
 
 type Phase =
     Begin
@@ -16,11 +17,18 @@ type Touch =
     horizontal : float
     vertical : float
 
+type Sound =
+    tone : float
+    echo : float
+    reverb : float
+    warp : float
+
 type Player =
     peer : int
     sequence : int
     seen : int
     instrument : Instrument
+    sound : Sound
     touches : List<Touch>
 
 type Session =
@@ -45,6 +53,7 @@ type Fault =
     MissingTouch
     DuplicateTouch
     ClockReversed
+    InvalidSound
 
 type Outcome T =
     Accepted

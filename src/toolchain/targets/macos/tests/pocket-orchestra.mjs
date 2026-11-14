@@ -1,7 +1,7 @@
 // [ORCHESTRA-PLAN-ENSEMBLE] Real native kernel, HTTP/WebSockets, phone browser and captured PCM.
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
-import { readFile, mkdir } from 'node:fs/promises'
+import { spawn, execFileSync } from 'node:child_process'
+import { readFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
 const require = createRequire(resolve('src/toolchain/website/package.json'))
@@ -10,13 +10,16 @@ const { chromium, webkit } = require('@playwright/test')
 const out = resolve('target/orchestra')
 await mkdir(out, { recursive: true })
 const windowed = process.env.ORCHESTRA_DEVICE_TEST === '1'
+assert.equal((await readFile(`${out}/Light Orchestra.app/Contents/Resources/AppIcon.icns`)).toString('ascii', 0, 4), 'icns')
+await verifySoundPalette()
+if (windowed) await verifyDeviceRecovery()
 const token = 'orchestra-integration-private-token'
 const port = 19140
 const origin = `http://127.0.0.1:${port}`
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const child = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env: { ...process.env,
   ORCHESTRA_NO_WINDOW: windowed ? '0' : '1', ORCHESTRA_HEADLESS: windowed ? '0' : '1',
-  ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '25',
+  ORCHESTRA_LOG_DIRECTORY: `${out}/diagnostics`, ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '25',
   ORCHESTRA_CAPTURE: `${out}/controller-audio.f32` } })
 let output = '', errors = '', browser
 child.stdout.on('data', data => { output += data })
@@ -65,21 +68,33 @@ try {
   assert.equal(collisionCode, 1, 'listener failure must fail the session')
   assert(JSON.parse(collisionOutput.trim().split('\n').at(-1)).error.length > 0)
   assert.equal((await fetch(`${origin}/missing`)).status, 404)
+  const diagnostic = { token, events: [{ event: 'controller.disconnected', at: 1, sequence: 3, code: 1006 }] }
+  assert.equal((await fetch(`${origin}/diagnostics`, { method: 'POST', headers: { origin }, body: JSON.stringify(diagnostic) })).status, 204,
+    'controller diagnostics persist even when its WebSocket has disconnected')
+  assert.equal((await fetch(`${origin}/diagnostics`, { method: 'POST', headers: { origin }, body: JSON.stringify({ ...diagnostic, token: 'wrong' }) })).status, 403)
+  assert.equal((await fetch(`${origin}/diagnostics`, { method: 'POST', headers: { origin: 'https://untrusted.example' }, body: JSON.stringify(diagnostic) })).status, 403)
+
   await assert.rejects(connect('https://untrusted.example'))
   const denied = await connect()
   assert.equal((await request(denied, { type: 'join', token: 'wrong' })).type, 'error')
   const a = await joined(), b = await joined()
-  const toneStart = await request(a, touch(1, 0, 0, 0, 1))
+  const settings = (sequence, instrument, values = {}) => ({ type: 'settings', sequence, instrument,
+    tone: 0, echo: 0, reverb: 0, warp: 0, ...values })
+  assert.equal((await request(a, settings(1, 0))).accepted, true, 'instrument settings reach the synthesis kernel')
+  assert.equal((await request(a, settings(1, 1))).accepted, false, 'stale settings cannot change the instrument')
+  assert.equal((await request(a, settings(2, 8))).accepted, false, 'unknown instruments are rejected')
+  assert.equal((await request(a, settings(2, 0, { echo: 1.1 }))).accepted, false, 'effect amounts are bounded')
+  const toneStart = await request(a, touch(2, 0, 0, 0, 1))
   assert.equal(toneStart.notes, 1)
   await delay(180)
   const toneEnd = await request(a, { type: 'heartbeat' })
   toneIntervals.push([toneStart.frames + 1000, toneEnd.frames, 110])
   assert.equal((await request(b, touch(1, 0, 0, .1, .5))).notes, 2)
   assert.equal((await request(a, touch(1, 1))).accepted, false, 'stale sequence rejected')
-  assert.equal((await request(a, touch(2, 1, 0, 2, .5))).accepted, false, 'range rejected')
-  assert.equal((await request(a, touch(3, 1, 0, .7, 1))).accepted, true)
+  assert.equal((await request(a, touch(3, 1, 0, 2, .5))).accepted, false, 'range rejected')
+  assert.equal((await request(a, touch(4, 1, 0, .7, 1))).accepted, true)
   await delay(180)
-  assert.equal((await request(a, touch(4, 2, 0, .7, 1))).notes, 1, 'one peer cannot release another')
+  assert.equal((await request(a, touch(5, 2, 0, .7, 1))).notes, 1, 'one peer cannot release another')
   b.close()
   await delay(150)
   const silence = await request(a, { type: 'heartbeat' })
@@ -87,7 +102,7 @@ try {
   await delay(180)
   const silenceEnd = await request(a, { type: 'heartbeat' })
   silentIntervals.push([silence.frames, silenceEnd.frames])
-  assert.equal((await request(a, touch(5, 0))).accepted, true)
+  assert.equal((await request(a, touch(6, 0))).accepted, true)
   await delay(1700)
   assert.equal(a.readyState, WebSocket.CLOSED, 'missed heartbeat closes peer')
   const malformed = await joined()
@@ -110,8 +125,17 @@ try {
     const pageErrors = []
     page.on('pageerror', error => pageErrors.push(error.message))
     await page.goto(`${origin}/#${token}`)
-    await page.getByRole('button', { name: 'Join session' }).click()
-    await page.getByRole('status').filter({ hasText: 'Connected' }).waitFor()
+    await joinController(page)
+    await page.getByLabel('Instrument', { exact: true }).selectOption('3')
+    await page.getByLabel('Touch expression', { exact: true }).selectOption('echo')
+    await page.getByRole('slider', { name: 'Echo amount' }).fill('0.7')
+    await page.getByLabel('Touch expression', { exact: true }).selectOption('reverb')
+    await page.getByRole('slider', { name: 'Reverb amount' }).fill('0.6')
+    await page.getByLabel('Touch expression', { exact: true }).selectOption('warp')
+    await page.getByRole('slider', { name: 'Metallic warp amount' }).fill('0.4')
+    await page.getByLabel('Touch expression', { exact: true }).selectOption('echo')
+    assert.equal(await page.getByRole('slider', { name: 'Echo amount' }).inputValue(), '0.7', 'effect values survive switching expression')
+    await page.getByLabel('Touch expression', { exact: true }).selectOption('volume')
     const observer = await joined()
     const pad = page.locator('#pad'), bounds = await pad.boundingBox()
     if (engine === chromium) {
@@ -127,6 +151,11 @@ try {
     await pad.focus()
     await page.keyboard.down('Space')
     await page.keyboard.press('ArrowRight')
+    for (let beat = 0; beat < 4; beat++) {
+      await delay(800)
+      assert.equal((await request(observer, { type: 'heartbeat' })).notes, 1)
+    }
+    assert.match(await page.getByRole('status', { name: 'Connection status' }).innerText(), /Connected/, 'playing survives several heartbeat lease periods')
     await delay(150)
     assert.equal((await request(observer, { type: 'heartbeat' })).notes, 1, `${engine.name()} keyboard note plays`)
     await page.screenshot({ path: `${out}/phone-${engine.name()}-keyboard.png` })
@@ -135,8 +164,7 @@ try {
     await delay(50)
     assert.equal((await request(observer, { type: 'heartbeat' })).notes, 0)
     await page.reload()
-    await page.getByRole('button', { name: 'Join session' }).click()
-    await page.getByRole('status').filter({ hasText: 'Connected' }).waitFor()
+    await joinController(page)
     assert.deepEqual(pageErrors, [])
     observer.close()
     await context.close()
@@ -151,6 +179,16 @@ try {
   assert.equal(stopped.error, '')
   assert.equal(stopped.underruns, 0, 'audio callback always receives prepared samples')
   assert(!output.includes(token), 'session secrets stay out of diagnostics')
+  const logFiles = await readdir(`${out}/diagnostics`)
+  const persistent = await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8')
+  const events = persistent.trim().split('\n').map(line => JSON.parse(line))
+  for (const event of ['session.starting', 'controller.joined', 'controller.disconnected', 'controller.expired', 'controller.rejected', 'controller.ready', 'controller.sound', 'audio.health', 'session.stopped']) {
+    assert(events.some(record => record.event === event), `persistent diagnostics include ${event}`)
+  }
+  assert(events.every(record => record.timestamp && record.session && record.component))
+  assert(!persistent.includes(token), 'persistent logs never contain invitation secrets')
+  assert(logFiles.length > 0)
+
   assert(stopped.peak > .05 && stopped.peak <= .800001, 'audible bounded synthesis')
   const pcm = await readFile(`${out}/controller-audio.f32`)
   assert.equal(pcm.length, stopped.frames * 4)
@@ -178,4 +216,121 @@ try {
   await browser?.close()
   child.kill('SIGTERM')
   await deadline(exited, 'cleanup')
+}
+
+// [ORCHESTRA-AUDIO-RECOVERY] The real device is stopped, then its configuration notification is delivered.
+async function verifyDeviceRecovery() {
+  const fixture = `${out}/device-recovery`
+  await mkdir(fixture, { recursive: true })
+  const audio = await readFile('src/toolchain/hosts/swift/orchestra/Audio.swift', 'utf8')
+  await writeFile(`${fixture}/Audio.swift`, audio + `
+    extension OrchestraAudio {
+      func interruptDeviceForTest() {
+        engine.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: engine)
+      }
+    }
+  `)
+  await writeFile(`${fixture}/main.swift`, `
+    import Foundation
+    import AppKit
+    let audio = OrchestraAudio()
+    func log(_ event: String, _ fields: [String: Any] = [:]) { print(event) }
+    func performSession(_ work: @escaping () -> Void) { DispatchQueue.main.async(execute: work) }
+    guard osprey_main() == 0, osprey_orchestra_admit(1) == 0,
+          osprey_orchestra_touch(1, 1, 0, 0, 0.5, 1) == 0 else { exit(1) }
+    try audio.update()
+    try audio.start()
+    let clock = Timer(timeInterval: 0.002, repeats: true) { _ in audio.fill() }
+    RunLoop.main.add(clock, forMode: .common)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { audio.interruptDeviceForTest() }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+      let recovered = audio.isRunning && audio.activeNotes == 1 && audio.renderedFrames > 20000
+      audio.stop()
+      print(recovered ? "PASS: output configuration change resumes the held note" : "FAIL: audio stayed stopped after configuration change")
+      exit(recovered ? 0 : 1)
+    }
+    NSApplication.shared.run()
+  `)
+  runNativeFixture(fixture, `${fixture}/Audio.swift`, 10000)
+}
+
+// [ORCHESTRA-SOUND] Compare actual native PCM, independent of browser presentation and device routing.
+async function verifySoundPalette() {
+  const fixture = `${out}/sound-palette`
+  await mkdir(fixture, { recursive: true })
+  await writeFile(`${fixture}/main.swift`, `
+    import Foundation
+    let audio = OrchestraAudio()
+    func log(_ event: String, _ fields: [String: Any] = [:]) {}
+    func performSession(_ work: @escaping () -> Void) { work() }
+    func check(_ value: Bool, _ message: String) {
+      if !value { print("FAIL: " + message); exit(1) }
+    }
+    func energy(_ values: [Float]) -> Double {
+      values.reduce(0) { $0 + Double(abs($1)) } / Double(values.count)
+    }
+    func difference(_ a: [Float], _ b: [Float]) -> Double {
+      zip(a, b).reduce(0) { $0 + Double(abs($1.0 - $1.1)) } / Double(a.count)
+    }
+    check(osprey_main() == 0, "kernel initializes")
+    check(osprey_orchestra_admit(1) == 0, "controller joins")
+    var sequence: Int64 = 0
+    func render(_ instrument: Int64, _ tone: Double, _ echo: Double, _ reverb: Double, _ warp: Double) throws -> [Float] {
+      _ = osprey_orchestra_silence()
+      try audio.update()
+      _ = audio.render(1000)
+      audio.clearEffects()
+      sequence += 1
+      check(osprey_orchestra_settings(1, sequence, instrument, tone, echo, reverb, warp) == 0, "settings accepted")
+      sequence += 1
+      check(osprey_orchestra_touch(1, sequence, 0, 0, 0.5, 1) == 0, "note begins")
+      try audio.update()
+      return audio.render(24000)
+    }
+    let dry = try render(0, 0, 0, 0, 0)
+    for instrument: Int64 in [1, 2, 3] {
+      let result = try render(instrument, 0.6, 0, 0, 0)
+      check(difference(dry, result) > 0.015, "each instrument has a distinct waveform")
+      check(energy(result) > 0.015, "every instrument is audible")
+    }
+    for control in 0..<4 {
+      let result = try render(0, control == 0 ? 1 : 0, control == 1 ? 1 : 0,
+                              control == 2 ? 1 : 0, control == 3 ? 1 : 0)
+      check(difference(dry, result) > 0.003, "every expression changes actual PCM")
+      check(result.allSatisfy { $0.isFinite && abs($0) <= 0.8 }, "effect output stays bounded")
+      _ = osprey_orchestra_silence()
+      try audio.update()
+      _ = audio.render(1200)
+      let tail = audio.render(18000)
+      if control == 1 || control == 2 { check(energy(tail) > 0.0001, "echo and reverb have audible release tails") }
+      audio.clearEffects()
+      check(energy(audio.render(1024)) == 0, "conductor silence clears effect memory")
+    }
+    check(osprey_orchestra_admit(2) == 0, "second controller joins")
+    check(osprey_orchestra_settings(2, 1, 2, 0.2, 0.4, 0.6, 0.8) == 0, "independent patch accepted")
+    check(osprey_orchestra_touch(2, 2, 0, 0, 0.3, 1) == 0, "second controller plays")
+    try audio.update()
+    check(audio.activeNotes == 1, "settings preserve controller ownership")
+    let first = audio.render(4096)
+    check(energy(first) > 0, "second controller produces real audio")
+    check(audio.failure == nil, "no renderer faults")
+    print("PASS: four instruments, four audible expressions, feedback tails, bounded PCM and effect clearing")
+  `)
+  runNativeFixture(fixture, 'src/toolchain/hosts/swift/orchestra/Audio.swift', 20000)
+}
+
+function runNativeFixture(fixture, audioSource, timeout) {
+  const host = 'src/toolchain/hosts/swift/orchestra'
+  execFileSync('swiftc', ['-O', '-warnings-as-errors', '-import-objc-header', `${out}/bridge.h`,
+    `${host}/AudioModels.swift`, `${host}/Effects.swift`, audioSource, `${fixture}/main.swift`,
+    `${out}/audio_ring.o`, `${out}/libOrchestraKernel.a`, 'src/toolchain/compiler/bin/libosprey_runtime_macos_arc.a',
+    '-framework', 'AVFoundation', '-framework', 'Metal', '-framework', 'CoreGraphics', '-framework', 'AppKit',
+    '-o', `${fixture}/verify`], { stdio: 'inherit', timeout: 60000 })
+  execFileSync(`${fixture}/verify`, [], { stdio: 'inherit', timeout })
+}
+
+async function joinController(page) {
+  await page.getByRole('button', { name: 'Join session' }).click()
+  await page.getByRole('status').filter({ hasText: 'Connected' }).waitFor()
 }

@@ -52,3 +52,26 @@ test ("heartbeat expiry, instrument switching, Silence, and capacity stay bounde
     rejected (Sessions::tick (expired, 1499), orchestra::ClockReversed)
     expect (voices (accepted (Sessions::tick (expired, 2999))), 0)
     rejected (Sessions::play (sounding, 1, gesture (2, orchestra::Begin, 10)), orchestra::InvalidTouch))
+
+// [ORCHESTRA-SOUND] Sound edits share gesture sequencing and preserve other players' patches.
+test ("two players select independent instruments and reject stale or invalid effect edits", \() =>
+    initial = accepted (Sessions::join (accepted (Sessions::join (Sessions::empty 7, 1)), 2))
+    dry = orchestra::Sound(tone = 0.0, echo = 0.0, reverb = 0.0, warp = 0.0)
+    wet = dry(tone = 0.25, echo = 0.5, reverb = 0.75, warp = 1.0)
+    first = accepted (Sessions::configure (initial, 1, 1, orchestra::Orbit, wet))
+    second = accepted (Sessions::configure (first, 2, 1, orchestra::Bass, dry))
+    p = listGet second.players 0 ?: orchestra::Player(peer = 0, sequence = 0, seen = 0, instrument = orchestra::Glass, sound = dry, touches = [])
+    q = listGet second.players 1 ?: p
+    expect (p.instrument == orchestra::Orbit, true)
+    expect (structuralEquals(p.sound, wet), true)
+    expect (q.instrument == orchestra::Bass, true)
+    expect (structuralEquals(q.sound, dry), true)
+    rejected (Sessions::configure (second, 1, 1, orchestra::Glass, dry), orchestra::StaleSequence)
+    rejected (Sessions::configure (second, 3, 2, orchestra::Glass, dry), orchestra::MissingPeer)
+    forEachList ([wet(tone = -0.1), wet(echo = 1.1), wet(reverb = -0.1), wet(warp = 1.1)], \bad => rejected (Sessions::configure (second, 1, 2, orchestra::Glass, bad), orchestra::InvalidSound))
+    sounding = accepted (Sessions::play (second, 1, gesture (2, orchestra::Begin, 0)))
+    edited = accepted (Sessions::configure (sounding, 1, 3, orchestra::Orbit, dry))
+    expect (voices edited, 1)
+    switched = accepted (Sessions::configure (edited, 1, 4, orchestra::Pulse, dry))
+    expect (voices switched, 0)
+    rejected (Sessions::play (edited, 1, gesture (3, orchestra::Move, 0)), orchestra::StaleSequence))
