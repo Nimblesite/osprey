@@ -1260,7 +1260,7 @@ jobs:
             run: make -C src/toolchain/targets/ios/tests examples inbox tally-headless
           - part: macOS
             minutes: 15
-            run: make -C src/toolchain/targets/macos/tests examples
+            run: make -C src/toolchain/targets/macos/tests examples tally-headless tally
           - part: Light Orchestra
             minutes: 15
             run: |
