@@ -102,23 +102,25 @@ impl Summary {
     // Union monotone requirements, but re-derive the dynamic verdict each pass.
     // Acyclic functions also recompute callback uses: retaining superseded
     // argument shapes makes their shared provenance budget oscillate forever.
-    // Recursive functions retain uses reached on earlier traversals of the cycle.
+    // `merge` keeps a recursive function's uses, and joins a row whose
+    // recomputed part was seen to cycle ([`super::solver::ReturnHistory`]).
     // Converge supplies an equal immutable row; a different caller retains its
     // own snapshot so changed flags never depend on an unrelated row.
     pub(super) fn merge_inferred_row(
         &mut self,
         actual: Self,
         previous: Option<&Self>,
-        recursive: bool,
+        merge: super::solver::Merge,
     ) -> bool {
         let before = match previous.filter(|row| *row == self) {
             Some(row) => std::borrow::Cow::Borrowed(row),
             None => std::borrow::Cow::Owned(self.clone()),
         };
-        if !recursive {
+        let joined = merge == super::solver::Merge::Join;
+        if merge == super::solver::Merge::Recompute {
             self.parameter_uses.clear();
         }
-        let resolved = actual.unresolved_dynamic_call;
+        let resolved = actual.unresolved_dynamic_call || (joined && self.unresolved_dynamic_call);
         self.union(actual);
         self.unresolved_dynamic_call = resolved;
         self.widen();
@@ -385,7 +387,11 @@ fn widening_method() -> Projection {
 fn inferred_row_mismatched_snapshot_keeps_its_own_changed_flag() {
     let mut row = super::model_values::test_summary_metadata();
     let expected = row.clone();
-    assert!(!row.merge_inferred_row(Summary::default(), Some(&Summary::default()), true));
+    assert!(!row.merge_inferred_row(
+        Summary::default(),
+        Some(&Summary::default()),
+        super::solver::Merge::RetainUses,
+    ));
     assert_eq!(row, expected);
 }
 
