@@ -148,17 +148,17 @@ test ("the canvas use case: accessible controls, geometry, sliders, repeated men
 
 // The words each binding reads, and the message kind they mean ([UI-EVENTS]).
 meaningCases () = [
-    { binding = ui::Tap(action = 1), words = "ignored", want = "act" }, { binding = ui::FlagInput(action = 1), words = "true", want = "switched:true" }, { binding = ui::FlagInput(action = 1), words = "yes", want = "switched:false" },
-    { binding = ui::ChoiceInput(action = 1), words = "two \"quoted\"", want = "entered:two \"quoted\"" }, { binding = ui::TextInput(action = 1), words = "Zoë", want = "entered:Zoë" }, { binding = ui::SizeInput(action = 1), words = "junk", want = "sized:260" },
-    { binding = ui::SizeInput(action = 1), words = "99999", want = "sized:640" }, { binding = ui::PlaceInput(action = 1), words = "-4", want = "sized:0" }, { binding = ui::PlaceInput(action = 1), words = "12", want = "sized:12" },
-    { binding = ui::StrokeInput(action = 1), words = "1,2", want = "A board control was sent a value of the wrong kind" }, { binding = ui::LassoInput(action = 1), words = "0,2", want = "A lasso control was sent a value of the wrong kind" }, { binding = ui::SceneInput(action = 1), words = "", want = "A scene control was sent a value of the wrong kind" },
+{ binding = ui::Tap(action = 1), words = "ignored", want = "act" }, { binding = ui::FlagInput(action = 1), words = "true", want = "switched:true" }, { binding = ui::FlagInput(action = 1), words = "yes", want = "switched:false" },
+{ binding = ui::ChoiceInput(action = 1), words = "two \"quoted\"", want = "entered:two \"quoted\"" }, { binding = ui::TextInput(action = 1), words = "Zoë", want = "entered:Zoë" }, { binding = ui::SizeInput(action = 1), words = "junk", want = "sized:260" },
+{ binding = ui::SizeInput(action = 1), words = "99999", want = "sized:640" }, { binding = ui::PlaceInput(action = 1), words = "-4", want = "sized:0" }, { binding = ui::PlaceInput(action = 1), words = "12", want = "sized:12" },
+{ binding = ui::StrokeInput(action = 1), words = "1,2", want = "A board control was sent a value of the wrong kind" }, { binding = ui::LassoInput(action = 1), words = "0,2", want = "A lasso control was sent a value of the wrong kind" }, { binding = ui::SceneInput(action = 1), words = "", want = "A scene control was sent a value of the wrong kind" },
 ]
 
 // The scene inputs a control reads, their numbers in scene units, and the message each means.
 sceneCases () = [
-    { binding = ui::SceneInput(action = 1), input = ui::Key(keyName = "ArrowLeft", keyDown = true), want = "key:ArrowLeft:true" }, { binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 12.5, pointerY = 20.0, pointerDown = false, pointerShift = false), want = "pointer:12.5:20.0:false:false" },
-    { binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true), want = "pointer:1.0:2.0:true:true" }, { binding = ui::SceneInput(action = 1), input = ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0), want = "viewed:1536.0:1008.0" },
-    { binding = ui::Tap(action = 1), input = ui::Key(keyName = "a", keyDown = true), want = "A non-scene control was sent a value of the wrong kind" },
+{ binding = ui::SceneInput(action = 1), input = ui::Key(keyName = "ArrowLeft", keyDown = true), want = "key:ArrowLeft:true" }, { binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 12.5, pointerY = 20.0, pointerDown = false, pointerShift = false), want = "pointer:12.5:20.0:false:false" },
+{ binding = ui::SceneInput(action = 1), input = ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true), want = "pointer:1.0:2.0:true:true" }, { binding = ui::SceneInput(action = 1), input = ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0), want = "viewed:1536.0:1008.0" },
+{ binding = ui::Tap(action = 1), input = ui::Key(keyName = "a", keyDown = true), want = "A non-scene control was sent a value of the wrong kind" },
 ]
 
 // The message a lasso's stroke indices name, and the refusal a malformed list earns.
@@ -208,6 +208,45 @@ test ("a broken document is refused with every problem named by its path", \() =
     expect (Seen::texts (seen faulty), "This interface could not load")
     expect (join (ui::Lists::flatten (mapList (Read::trees (Tellings::alone (Templates::view faulty)), \one => carried "detail" one))) "|", "boom")
     expect (ui::Lists::any ((seen faulty).renderedControls, \c => c.controlHint == "warning"), true)))
+
+// One told value's kind of value and its name, as a host rebuilds it.
+toldAs told =
+    kind = match told
+        ui::ToldText _ _ => "text"
+        ui::ToldCount _ _ => "count"
+        ui::ToldReal _ value => "real${value}"
+        ui::ToldFlag _ _ => "flag"
+        ui::ToldRecord _ _ => "record"
+        ui::ToldList _ _ => "list"
+        ui::ToldScene _ _ _ => "scene"
+    "${kind}:${Read::name told}"
+
+// A framed column of a heading, a word and a scene, tracked tighter than plain: every kind of told value, a negative real included.
+tightColumn () =
+    plain = ui::Frames::plain
+    Ui::framed (plain(frameTracking = 0.0 - 0.5, frameTextSize = 13, frameItalic = true), Ui::column [Ui::text "Hello", Ui::text "World", Ui::scene (12.0, 8.0, [], [], "play")])
+
+test ("told trees read back by name, member, entries, depth and kind, every kind of value and a negative real included", \() =>
+    walk = Tellings::alone (tightColumn ())
+    trees = Read::trees walk
+    // Rows that arrive without their fits read back unnamed.
+    expect (join (mapList (Read::trees (walk(walkFits = [])), \told => Read::name told)) "|", "")
+    expect (length trees, 1)
+    region = listGet trees 0 ?: ui::ToldRecord(recordName = "", members = [])
+    expect (Read::name region, "region")
+    expect (Read::words (Read::inside region, "key"), "root")
+    framed = Read::member (Read::inside region, "node")
+    expect (Read::name framed, "node")
+    expect (Read::name (Read::member (Read::inside region, "absent")), "")
+    expect (length (Read::inside (Read::member (Read::inside region, "absent"))), 0)
+    named = mapList (Read::under region, toldAs)
+    forEachList (["record:region", "text:key", "text:kind", "count:textSize", "real-0.5:tracking", "flag:italic", "list:children", "scene:"], \want => expect (ui::Lists::any (named, \one => one == want), true))
+    column = Read::kinded (trees, "stack", \told => Read::words (Read::inside told, "axis") == "vertical")
+    expect (length (Read::entries (column, "children")), 3)
+    expect (length (Read::entries (column, "missing")), 0)
+    expect (Read::words (Read::inside (Read::kinded (trees, "text", \told => Read::words (Read::inside told, "text") == "World")), "text"), "World")
+    expect (Read::words (Read::inside (Read::kinded (trees, "text", \told => Read::words (Read::inside told, "text") == "Nowhere")), "text"), "")
+    expect (Read::whole (Read::inside (Read::kinded (trees, "scene", \_ => true)), "event", 0 - 1), 0))
 
 // The same fixture as a driven surface: its machine is the store, its
 // ordinary template is the root region and every host event comes from Drive.
@@ -358,6 +397,10 @@ test ("native controls are pressed and repeatedly chosen through Drive, includin
     completed "/tmp/chosen.mp3"
     post (\d => Drive::ran (d, "run", 1, "failed"))
     expect (selected (), "two")
+    // Words chosen on a control that takes no value press it, as a person's tap would.
+    choose ("Native action", "ignored")
+    reading (["Pressed"], showsIn, true)
+    expect (selected (), "two")
     reading (["Pressed"], showsIn, true)
     restarted "plain"
     expect (selected (), "")
@@ -389,13 +432,13 @@ test ("the accessibility tree reads clearly to an agent: roles, values and range
 type Probe = Ask | Play
 
 sketched () = [
-    Scenes::glyphs ("Glyph text", 1.0, 1.0, 10.0, 0, 0),
-    Scenes::lettering ("Letters", 1.0, 2.0, 10.0, 0, 0, 400.0, 0),
-    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 2.0), ui::CubicTo(toX = 9.0, toY = 8.0, ctrlAX = 3.0, ctrlAY = 3.0, ctrlBX = 6.0, ctrlBY = 6.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
-    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
-    Scenes::path ([], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
-    Scenes::path ([ui::LineTo(toX = 1.0, toY = 1.0), ui::CubicTo(toX = 2.0, toY = 2.0, ctrlAX = 1.0, ctrlAY = 1.0, ctrlBX = 2.0, ctrlBY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
-    Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0), ui::LineTo(toX = 2.0, toY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+Scenes::glyphs ("Glyph text", 1.0, 1.0, 10.0, 0, 0),
+Scenes::lettering ("Letters", 1.0, 2.0, 10.0, 0, 0, 400.0, 0),
+Scenes::path ([ui::MoveTo(toX = 1.0, toY = 2.0), ui::CubicTo(toX = 9.0, toY = 8.0, ctrlAX = 3.0, ctrlAY = 3.0, ctrlBX = 6.0, ctrlBY = 6.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+Scenes::path ([], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+Scenes::path ([ui::LineTo(toX = 1.0, toY = 1.0), ui::CubicTo(toX = 2.0, toY = 2.0, ctrlAX = 1.0, ctrlAY = 1.0, ctrlBX = 2.0, ctrlBY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
+Scenes::path ([ui::MoveTo(toX = 1.0, toY = 1.0), ui::LineTo(toX = 2.0, toY = 2.0)], ui::Fill, ui::Solid(tint = ui::Rgb(red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0)), 0),
 ]
 
 probeRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => Ui::column [Ui::scene (40.0, 20.0, [], sketched (), Play), Ui::button ("Ask", "", Ask)])]
@@ -446,4 +489,3 @@ test ("a resident fixture is driven by labels, pointers, completions, lifecycle 
     post (\d => Drive::frame (d, 0.5))
     expect (driven.drivenSurface.surfaceProblem, "")
     expect (levelOf (elements ()), 0.25)))
-
