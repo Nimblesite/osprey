@@ -1161,6 +1161,7 @@ jobs:
           arch: x86_64
           script: |
             make -C src/toolchain/targets/android/tests inbox
+            make -C src/toolchain/targets/android/tests tally-headless
             mkdir -p src/osprey/examples/projects/modules/mobile/android/build
             adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
             make -C src/toolchain/targets/android/tests bank
@@ -1250,7 +1251,7 @@ jobs:
         include:
           - part: iOS
             minutes: 22
-            run: make -C src/toolchain/targets/ios/tests examples inbox
+            run: make -C src/toolchain/targets/ios/tests examples inbox tally-headless
           - part: macOS
             minutes: 15
             run: make -C src/toolchain/targets/macos/tests examples

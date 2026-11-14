@@ -39,7 +39,7 @@ Every host, native or web, drives the same three exports over the shared frame (
 | GPUI | GPU primitives via GPUI | C ABI archive | macOS and Android; Linux and Windows have library targets and CI | [`src/toolchain/hosts/gpui`](../../../src/toolchain/hosts/gpui) | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running |
 | SwiftUI | SwiftUI views, SF Symbols | C ABI archive | macOS and iOS | [`src/toolchain/hosts/swift`](../../../src/toolchain/hosts/swift/README.md) | running; one library for both platforms ([NATIVE-HOSTS-MOBILE]) |
 | WinUI | WinUI controls, Segoe Fluent Icons | C ABI DLL | Windows | [`src/toolchain/hosts/winui`](../../../src/toolchain/hosts/winui) | [spec 0048](../platforms/0048-WinUiHost.md), running |
-| Android | Android views | C ABI archive behind a JNI library | Android | [`src/toolchain/hosts/android`](../../../src/toolchain/hosts/android/README.md) | plain view rows running; component rows not at parity ([NATIVE-HOSTS-MOBILE]) |
+| Android | Android views | C ABI archive behind a JNI library | Android | [`src/toolchain/hosts/android`](../../../src/toolchain/hosts/android/README.md) | running ([NATIVE-HOSTS-MOBILE]) |
 | Webview | HTML, CSS, Codicons | WebAssembly | VS Code on every desktop | [`osprey-ui`](../../../src/toolchain/vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WebAssembly in a worker | any browser | planned, extracted from the webview host | not started |
 
