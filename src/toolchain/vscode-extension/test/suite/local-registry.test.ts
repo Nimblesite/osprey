@@ -237,7 +237,8 @@ suite("local package registry server", () => {
     this.timeout(120_000);
     const port = await freePort();
     const storage = fs.mkdtempSync(path.join(os.tmpdir(), "osprey local registry "));
-    const root = path.join(storage, "registry");
+    // The client reads one whitespace-separated command line, so the tree's path has no spaces.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-local-registry-"));
     const keys = ["@osprey/graphics", "@osprey/json", "@osprey/native", "@osprey/re", "@osprey/torch"];
     for (const key of keys) {
       const project = path.resolve(__dirname, "../../../../../osprey/packages", key.split("/")[1]);
@@ -264,6 +265,7 @@ suite("local package registry server", () => {
     } finally {
       registry.stop();
       fs.rmSync(storage, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
     }
     await assertStopped(`http://127.0.0.1:${port}`);
   });
