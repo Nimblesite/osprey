@@ -19,6 +19,8 @@ sealed partial class Renderer
     readonly Dictionary<string, UIElement> drawn = [];
     readonly Dictionary<string, Action<object>> clicks = [];
     readonly Dictionary<string, SceneView> scenes = [];
+    readonly Dictionary<string, Node> sceneNodes = [];
+    readonly HashSet<string> shownScenes = [];
     readonly Dictionary<string, RowDefinition> rooms = [];
     readonly Action<long, object?> control;
     readonly Action<Touch> send;
@@ -57,14 +59,26 @@ sealed partial class Renderer
         }
     }
 
-    /// <summary>Redraws every region a told frame changed or dropped, in the order it listed them.</summary>
+    /// <summary>
+    /// Redraws every region a told frame changed or dropped, in the order it listed them, then
+    /// repaints every other scene from this frame: a scene's shapes live in the frame's scene rows,
+    /// not in its region's tree, so an event that changes only the picture leaves the tree equal.
+    /// </summary>
     public void Refresh(RegionStore store, IReadOnlyList<string> changed, Shown frame)
     {
         regions = store;
         shown = frame;
+        shownScenes.Clear();
         foreach (var key in changed)
         {
             Redraw(key);
+        }
+        foreach (var (key, view) in scenes)
+        {
+            if (!shownScenes.Contains(key) && sceneNodes.TryGetValue(key, out var node) && SceneOf(node) is { } scene)
+            {
+                view.Show(scene, node.Number("event"), send);
+            }
         }
     }
 
@@ -84,6 +98,8 @@ sealed partial class Renderer
             view = new SceneView(problem => report([problem]));
             scenes[key] = view;
         }
+        sceneNodes[key] = node;
+        shownScenes.Add(key);
         Detach(view.Element);
         view.Show(scene, node.Number("event"), send);
         return view.Element;
