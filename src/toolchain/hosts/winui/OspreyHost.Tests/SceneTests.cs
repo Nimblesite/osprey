@@ -31,14 +31,25 @@ public sealed class SceneTests
     }
 
     [Fact]
-    public void OnlyAZoomedSceneAsksForItsOwnSize()
+    public void OnlyASceneWithAZoomOpensItsWindowAtItsSize()
     {
+        Assert.Equal((217.0, 278.5), Decode([Row(20, x: 434, y: 557, width: 0.5)]).Opening);
         Assert.Null(Decode([Row(20, x: 1728, y: 893)]).Opening);
         Assert.Null(Decode([Row(20)]).Opening);
+        Assert.Null(Decode([Row(20, x: 0, y: 0, width: 5)]).Opening);
+        Assert.Throws<HostException>(() => Decode([Row(20, x: 10, y: 10, width: -1)]));
     }
 
     [Fact]
-    public void EveryPrimitiveDecodesInDrawingOrder()
+    public void OnlyASceneWithAZoomOpensItsWindowAtItsSizeExtraZoomsScaleBothWays()
+    {
+        Assert.Equal((868.0, 1114.0), Decode([Row(20, x: 434, y: 557, width: 2)]).Opening);
+        Assert.Equal((108.5, 139.25), Decode([Row(20, x: 434, y: 557, width: 0.25)]).Opening);
+        Assert.Null(Decode([Row(20, x: 0, y: 0, width: 5)]).Opening);
+    }
+
+    [Fact]
+    public void EveryPrimitiveDecodesAndEqualDepthsKeepTheirOrder()
     {
         var words = Utf8("helloAbird");
         var scene = Decode([
@@ -53,6 +64,7 @@ public sealed class SceneTests
             Row(6, index: 1, x: 4, y: 14, width: 9, height: 700, colour: 0x556677FF, depth: 3, textOffset: 6, textLength: 4),
         ], text: words);
         Assert.Equal(["A"], scene.Atlas);
+        Assert.Equal([8.0, 2.0, 1.0, 4.0, 2.0, 3.0], scene.Shapes.Select(shape => shape.Depth));
         Assert.Equal<Shape>(
         [
             new GlyphsShape("hello", 1, 2, 12, 0x11223344, 8),
@@ -62,6 +74,22 @@ public sealed class SceneTests
             new SpriteShape(1, 8, 9, 10, 11, -0.5, 0xFFFFFFFF, 2),
             new LetteringShape("bird", 4, 14, 9, 0x556677FF, 3, 1, 700),
         ], scene.Shapes, ShapeComparer.Instance);
+    }
+
+    [Fact]
+    public void EveryPrimitiveDecodesAndEqualDepthsKeepTheirOrderExtraTwoScenesKeepTheirOwn()
+    {
+        var scenes = SceneReader.Read(
+        [
+            Row(20, index: 0, x: 10, y: 10, width: 1),
+            Row(1, x: 1, y: 1, width: 1, depth: 2),
+            Row(0, x: 2, y: 2, width: 1, height: 1, depth: 2),
+            Row(20, index: 1, x: 10, y: 10, width: 1),
+            Row(0, x: 3, y: 3, width: 1, height: 1, depth: 2),
+            Row(1, x: 4, y: 4, width: 1, depth: 2),
+        ], [], [0, 1]);
+        Assert.Equal([typeof(DiscShape), typeof(RectShape)], scenes[0].Shapes.Select(shape => shape.GetType()));
+        Assert.Equal([typeof(RectShape), typeof(DiscShape)], scenes[1].Shapes.Select(shape => shape.GetType()));
     }
 
     [Fact]
@@ -104,8 +132,9 @@ public sealed class SceneTests
         Assert.Equal(3, path.Depth);
     }
 
+    /// <summary>[UI-MACHINE-A11Y] What a scene announces reaches the host whole: every named element in order, its value and range, and the current choice; an element with no role or no name is not announced.</summary>
     [Fact]
-    public void AnElementBecomesAnAccessibilityNodeAndNoRoleDrawsNone()
+    public void ASceneCarriesItsAccessibilityTree()
     {
         var words = Utf8("PlayVolumeNothingSkip");
         var scene = Decode([
@@ -114,15 +143,38 @@ public sealed class SceneTests
             Point(0, 0),
             Row(22, index: 1, x: 5, y: 6, width: 7, height: 8, angle: 0.5, textOffset: 4, textLength: 6),
             Point(0, 1),
-            Row(22, index: 3, x: 9, y: 9, width: 9, height: 9, textOffset: 10, textLength: 7),
+            Row(22, index: 2, x: 0, y: 0, width: 1, height: 1, textOffset: 0, textLength: 0),
+            Point(0, 0),
+            Row(22, index: 3, x: 9, y: 9, width: 9, height: 9, colour: 1, textOffset: 10, textLength: 7),
             Point(0, 0),
             Row(22, index: 4, x: 0, y: 0, width: 100, height: 100, textOffset: 17, textLength: 4),
             Point(0, 0),
         ], text: words);
         Assert.Equal(3, scene.Access.Count);
+        Assert.Equal(["Play", "Volume", "Nothing"], scene.Access.Select(item => item.Label));
         Assert.Equal(new Accessible("button", "Play", 1, 2, 3, 4, 0, 0, 0, true), scene.Access[0]);
         Assert.Equal(new Accessible("slider", "Volume", 5, 6, 7, 8, 0.5, 0, 1, false), scene.Access[1]);
-        Assert.Equal(("menu-item", "Nothing", 9.0), (scene.Access[2].Role, scene.Access[2].Label, scene.Access[2].X));
+        Assert.True(scene.Access[2].Selected, "a menu item announces the current choice");
+        Assert.Empty(Decode([Row(20, x: 1, y: 1)]).Access);
+    }
+
+    [Fact]
+    public void ASceneCarriesItsAccessibilityTreeExtraEveryRoleItKnowsAndNoneItDoesNot()
+    {
+        var words = Utf8("OnOffUp");
+        var scene = Decode([
+            Row(20, x: 10, y: 10, width: 1),
+            Row(22, index: 0, x: 1, y: 1, textOffset: 0, textLength: 2),
+            Point(0, 0),
+            Row(22, index: 1, x: 2, y: 2, textOffset: 2, textLength: 3),
+            Point(0, 0),
+            Row(22, index: 2, x: 3, y: 3, textOffset: 5, textLength: 2),
+            Point(0, 0),
+        ], text: words);
+        Assert.Equal(["button", "slider", "button"], scene.Access.Select(item => item.Role));
+        Assert.Equal(["On", "Off", "Up"], scene.Access.Select(item => item.Label));
+        Assert.All(scene.Access, item => Assert.False(item.Selected));
+        Refused([Row(20), Row(22, index: 9), Point(0, 0)]);
     }
 
     [Fact]
@@ -157,7 +209,7 @@ public sealed class SceneTests
     }
 
     [Fact]
-    public void AnUnknownCodeOrValueIsRefused()
+    public void AStreamedCodeOutsideRectDiscAndSpriteIsRefused()
     {
         Refused([Row(20), Row(23)]);
         Refused([Row(20), Row(8, index: 7)]);
@@ -167,6 +219,48 @@ public sealed class SceneTests
         Refused([Row(20), Row(6, index: 3)]);
         Refused([Row(20), Row(3, index: -1)]);
         Refused([Row(20), Row(22, index: 9), Point(0, 0)]);
+    }
+
+    [Fact]
+    public void AStreamedCodeOutsideRectDiscAndSpriteIsRefusedExtraEveryCodePastTheDrawnOnes()
+    {
+        for (var code = 12L; code <= 19L; code++)
+        {
+            Refused([Row(20), Row(code)]);
+        }
+        foreach (var code in new[] { 7L, 24L, 25L, -1L, long.MaxValue })
+        {
+            Refused([Row(20), Row(code)]);
+        }
+    }
+
+    [Fact]
+    public void StreamedShapesFollowTheNodesOwnAtEqualDepth()
+    {
+        var scene = Decode([
+            Row(20, x: 10, y: 10, width: 1),
+            Row(1, x: 9, y: 9, width: 1, colour: 65535, depth: 4),
+            Row(0, x: 4, y: 5, width: 6, height: 7, colour: 511, depth: 0),
+            Row(1, x: 1, y: 2, width: 3, colour: 255, depth: 4),
+        ]);
+        Assert.Equal([4.0, 0.0, 4.0], scene.Shapes.Select(shape => shape.Depth));
+        Assert.Equal(new DiscShape(9, 9, 1, 0x0000FFFF, 4), scene.Shapes[0]);
+        Assert.Equal(new RectShape(4, 5, 6, 7, 0, 511, 0), scene.Shapes[1]);
+        Assert.Equal(new DiscShape(1, 2, 3, 255, 4), scene.Shapes[2]);
+    }
+
+    [Fact]
+    public void StreamedShapesFollowTheNodesOwnAtEqualDepthExtraManyAtOneDepthKeepWrittenOrder()
+    {
+        var scene = Decode([
+            Row(20, x: 10, y: 10, width: 1),
+            Row(0, x: 1, y: 1, width: 1, height: 1, depth: 7),
+            Row(1, x: 2, y: 2, width: 1, depth: 7),
+            Row(0, x: 3, y: 3, width: 1, height: 1, depth: 7),
+            Row(1, x: 4, y: 4, width: 1, depth: 7),
+        ]);
+        Assert.Equal([7.0, 7.0, 7.0, 7.0], scene.Shapes.Select(shape => shape.Depth));
+        Assert.Equal([typeof(RectShape), typeof(DiscShape), typeof(RectShape), typeof(DiscShape)], scene.Shapes.Select(shape => shape.GetType()));
     }
 
     [Fact]

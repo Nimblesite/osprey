@@ -207,7 +207,7 @@ impl Library {
             let _snapshot = ImportSnapshot::begin()?;
             // SAFETY: the argument outlives the call; the export returns a scalar.
             let status = unsafe { osprey_app_argument(text.as_ptr()) };
-            sealed(callback_result(Ok(status)))?;
+            sealed(callback_result(Ok(status)), false)?;
         }
         Ok(())
     }
@@ -225,7 +225,7 @@ impl Library {
         // SAFETY: both strings outlive the call; the export returns a scalar.
         let status =
             unsafe { osprey_app_open(now, offset, platform.as_ptr(), home.as_ptr(), dark) };
-        sealed(callback_result(Ok(status)))
+        sealed(callback_result(Ok(status)), false)
     }
 
     /// The frame after one host event at the clock reading `now`. A refused event still draws the
@@ -247,17 +247,22 @@ impl Library {
                 touch.shift,
             )
         };
-        sealed(callback_result(Ok(status)))
+        sealed(callback_result(Ok(status)), true)
     }
 }
 
 /// Seals the frame an export wrote once it has returned and checks it ([NATIVE-SHM-SAFETY]). The
 /// runs are consumed even when the export failed, and a refused or malformed frame fails the call.
-fn sealed(result: Result<i64, String>) -> Result<Shown, String> {
+/// Only `event` may answer 1 — a refused event, whose frame still draws with its reason among the
+/// diagnostics — and any other answer is a failed export that never becomes a view.
+fn sealed(result: Result<i64, String>, event: bool) -> Result<Shown, String> {
     let frame = crate::frame::seal();
     let taken = crate::frame::take();
-    result?;
+    let answer = result?;
     frame?;
+    if answer != 0 && !(event && answer == 1) {
+        return Err(format!("The application refused its call: error {answer}"));
+    }
     taken
         .ok_or_else(|| "The bridge published no frame".to_owned())
         .and_then(|frame| rows::read(&frame))

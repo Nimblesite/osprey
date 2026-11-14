@@ -1,13 +1,15 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace Osprey.Host.Tests;
 
 /// <summary>
 /// The host's standing rules: code-only WinUI with no XAML [WINUI-HOST-NO-XAML], no UI framework
-/// beyond the Windows App SDK, one typed host path with no JSON envelope [NATIVE-SHM-VIEW], and no
-/// application's name, words or slices in its source [NATIVE-HOSTS-NEUTRAL].
+/// beyond the Windows App SDK, one typed host path with no JSON envelope [NATIVE-SHM-VIEW], a
+/// renderer that reads only members the framework tells, and no application's name, words or
+/// slices in its source [NATIVE-HOSTS-NEUTRAL].
 /// </summary>
-public sealed class GuardTests
+public sealed partial class GuardTests
 {
     static readonly string[] Projects = ["OspreyHost", "OspreyHost.Core"];
 
@@ -60,6 +62,43 @@ public sealed class GuardTests
         Assert.Contains("AsksRun = 3", bridge, StringComparison.Ordinal);
         Assert.Contains("public static Frame Lease", bridge, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TheRendererReadsOnlyFieldsTheFrameworkWrites()
+    {
+        var told = Framework.Source("told.ospml");
+        var reads = HostFiles()
+            .Where(path => path.EndsWith(".cs", StringComparison.Ordinal) && path.Contains($"{Path.DirectorySeparatorChar}OspreyHost{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .SelectMany(path => FieldRead().Matches(File.ReadAllText(path)).Select(match => match.Groups[1].Value))
+            .Distinct()
+            .ToList();
+        Assert.Contains("children", reads);
+        Assert.Contains("kind", reads);
+        // `sceneRow` is the one member this host's own tree reader adds ([NATIVE-SHM-NODES]); every
+        // other member the renderer reads is one the framework's told rows write.
+        Assert.All(reads, field => Assert.True(field == "sceneRow" || told.Contains($"\"{field}\"", StringComparison.Ordinal), $"the renderer reads member {field}, which the framework never tells"));
+    }
+
+    // A node member read by name: `node.Text("label")`, `child.Items("children")` and the like.
+    [GeneratedRegex(@"\b(?:node|child|item|row|tab|choice|page)\.(?:Text|Texts|Items|Member|Flag|Number|Real|Has)\(""(\w+)""")]
+    private static partial Regex FieldRead();
+
+    [Fact]
+    public void TheRendererReadsOnlyFieldsTheFrameworkWritesExtraEveryToneAndRoleIsTold()
+    {
+        var told = Framework.Source("told.ospml");
+        var styled = StyleChoice().Matches(File.ReadAllText(Path.Combine(Framework.Host, "OspreyHost", "Styles.cs")))
+            .Select(match => match.Groups[1].Value)
+            .Distinct()
+            .ToList();
+        Assert.Contains("secondary", styled);
+        Assert.Contains("heading", styled);
+        Assert.All(styled, word => Assert.Contains($"\"{word}\"", told, StringComparison.Ordinal));
+    }
+
+    // A tone or role the renderer styles: `"secondary" =>` and `"heading" or "lead" =>`.
+    [GeneratedRegex(@"""(?<word>[a-z-]+)""(?=\s*(?:=>|or\b))")]
+    private static partial Regex StyleChoice();
 
     [Theory]
     [InlineData("src/osprey/examples/")]

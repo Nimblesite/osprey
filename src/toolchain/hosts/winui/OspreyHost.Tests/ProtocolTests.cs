@@ -18,14 +18,24 @@ public sealed class ProtocolTests
     [InlineData(false, "false")]
     [InlineData(420L, "420")]
     [InlineData(-7L, "-7")]
-    public void AControlSendsItsOrdinalAndOneValueAsWords(object? value, string words)
+    public void AControlSendsItsOrdinalAndOneValue(object? value, string words)
     {
         var touch = Touch.Control(7, Touch.WordsOf(value));
         Assert.Equal((TouchKind.Control, 7L, words, ""), (touch.Kind, touch.Ordinal, touch.Words, touch.Detail));
     }
 
     [Fact]
-    public void ASceneSendsItsKeysAndPointerInItsOwnKind()
+    public void AControlSendsItsOrdinalAndOneValueExtraWholeNumberEdges()
+    {
+        Assert.Equal("420", Touch.WordsOf(420));
+        Assert.Equal(long.MinValue.ToString(System.Globalization.CultureInfo.InvariantCulture), Touch.WordsOf(long.MinValue));
+        Assert.Equal(long.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture), Touch.WordsOf(long.MaxValue));
+        Assert.Throws<HostException>(() => Touch.WordsOf(1.5));
+        Assert.Throws<HostException>(() => Touch.WordsOf(new byte[1]));
+    }
+
+    [Fact]
+    public void ASceneSendsItsKeysAndPointerAsObjects()
     {
         var key = Touch.Key(3, "left", true);
         Assert.Equal((TouchKind.Key, 3L, "left", true), (key.Kind, key.Ordinal, key.Words, key.Down));
@@ -33,6 +43,17 @@ public sealed class ProtocolTests
         Assert.Equal((TouchKind.Pointer, 12.5, 7.25, true, false), (pointer.Kind, pointer.X, pointer.Y, pointer.Down, pointer.Shift));
         var viewed = Touch.Viewed(3, 800, 600);
         Assert.Equal((TouchKind.Viewed, 800.0, 600.0), (viewed.Kind, viewed.X, viewed.Y));
+    }
+
+    [Fact]
+    public void ASceneSendsItsKeysAndPointerAsObjectsExtraReleasedKeysAndFractionalSizes()
+    {
+        var up = Touch.Key(3, "left", false);
+        Assert.Equal((TouchKind.Key, "left", false), (up.Kind, up.Words, up.Down));
+        var viewed = Touch.Viewed(3, 320.5, 240.25);
+        Assert.Equal((TouchKind.Viewed, 320.5, 240.25, 3L), (viewed.Kind, viewed.X, viewed.Y, viewed.Ordinal));
+        var pointer = Touch.Pointer(3, -1, 0, false, true);
+        Assert.Equal((TouchKind.Pointer, -1.0, 0.0, false, true), (pointer.Kind, pointer.X, pointer.Y, pointer.Down, pointer.Shift));
     }
 
     [Fact]
@@ -68,6 +89,124 @@ public sealed class ProtocolTests
         var dark = Touch.Appearance(dark: true);
         Assert.Equal((TouchKind.Appearance, true), (dark.Kind, dark.Down));
         Assert.False(Touch.Appearance(dark: false).Down);
+    }
+
+    /// <summary>The refusal of one frame of rows, or the exception that refused it.</summary>
+    static HostException RefusedBy(NativeView[] views, NativeAsk[]? asks = null, byte[]? text = null) =>
+        Assert.Throws<HostException>(() => RowReaderTests.Read(views, asks: asks, text: text ?? []));
+
+    [Fact]
+    public void AnEnvelopeDecodesEveryMember()
+    {
+        var words = RowReaderTests.Utf8("Listingwalk:1C:\\Mediawalk[1,2]late event");
+        NativeView[] views = [RowReaderTests.View(kind: 13), RowReaderTests.View(kind: 2, parent: 0, textOffset: 0, textLength: 7)];
+        NativeShape[] shapes = [new(20, 0, 434, 557, 0.5, 0, 0, 0, 0, 0, 0)];
+        NativeAsk[] asks =
+        [
+            new NativeAsk(0, 17, 7, 6),
+            new NativeAsk(1, 0, 13, 8),
+            new NativeAsk(0, 100, 21, 4),
+            new NativeAsk(1, 0, 25, 5),
+            new NativeAsk(0, 101, 30, 10),
+        ];
+        var shown = RowReaderTests.Read(views, shapes, asks, words);
+        Assert.Equal(2, shown.Controls.Count);
+        Assert.Equal([0], shown.Roots);
+        Assert.Equal((RowKind.Canvas, "Listing"), (shown.Controls[0].Kind, shown.Controls[1].Words));
+        var scene = shown.Scenes[0];
+        Assert.Equal((434.0, 557.0, 0.5), (scene.Width, scene.Height, scene.Zoom));
+        var request = Assert.Single(shown.Requests);
+        Assert.Equal(("reveal", "walk:1", "C:\\Media"), (request.Kind(), request.Ticket, request.Text(1)));
+        Assert.Equal([("walk", "[1,2]")], shown.Slices);
+        Assert.Equal(["late event"], shown.Diagnostics);
+    }
+
+    [Fact]
+    public void AnEnvelopeDecodesEveryMemberExtraArgumentsByPosition()
+    {
+        var words = RowReaderTests.Utf8("run:1cmd.exe--verbose--fast");
+        NativeAsk[] asks =
+        [
+            new NativeAsk(0, 1, 0, 5),
+            new NativeAsk(1, 0, 5, 7),
+            new NativeAsk(2, 0, 12, 9),
+            new NativeAsk(2, 0, 21, 6),
+            new NativeAsk(3, 5000, 0, 0),
+            new NativeAsk(4, 65536, 0, 0),
+        ];
+        var ask = Assert.Single(RowReaderTests.Read([], [], asks, words).Requests);
+        Assert.Equal("run", ask.Kind());
+        Assert.Equal("cmd.exe", ask.Text(1));
+        Assert.Equal(["--verbose", "--fast"], ask.Texts(2));
+        Assert.Equal((5000L, 65536L), (ask.Number(3), ask.Number(4)));
+        Assert.True(ask.Flag(4));
+    }
+
+    [Fact]
+    public void AnotherProtocolVersionIsRefused()
+    {
+        // The frame's protocol is its codes: an ask code past the twenty-five the framework defines
+        // is from a protocol this host does not speak, so it is refused by name, never guessed. The
+        // bridge's layout fingerprint is the other half: NativeAbiTests refuses a differing one.
+        Assert.Contains("unknown capability code", RefusedBy([], [new NativeAsk(0, 26, 0, 5)], RowReaderTests.Utf8("later")).Message, StringComparison.Ordinal);
+        var words = RowReaderTests.Utf8("walk[1,2]late");
+        var shown = RowReaderTests.Read([], [], [new NativeAsk(0, 100, 0, 4), new NativeAsk(1, 0, 4, 5), new NativeAsk(0, 101, 9, 4)], words);
+        Assert.Equal([("walk", "[1,2]")], shown.Slices);
+        Assert.Equal(["late"], shown.Diagnostics);
+    }
+
+    [Fact]
+    public void AnotherProtocolVersionIsRefusedExtraEveryCodePastTheTwentyFive()
+    {
+        foreach (var code in new[] { 27L, 28L, 32L, 99L, 102L, long.MaxValue })
+        {
+            Assert.Throws<HostException>(() => RowReaderTests.Read([], [], [new NativeAsk(0, code, 0, 0)], []));
+        }
+    }
+
+    [Fact]
+    public void AMemberOfTheWrongKindIsRefusedNotGuessed()
+    {
+        Assert.Contains("unknown kind 17", RefusedBy([RowReaderTests.View(kind: 17)]).Message, StringComparison.Ordinal);
+        Assert.Contains("unknown kind 18", RefusedBy([RowReaderTests.View(kind: 18)]).Message, StringComparison.Ordinal);
+        Assert.Contains("a told value of an unknown type 5", RefusedBy([RowReaderTests.View(kind: 33, weight: 5)]).Message, StringComparison.Ordinal);
+        Assert.Contains("a font weight outside 100 to 900", RefusedBy([RowReaderTests.View(weight: 99)]).Message, StringComparison.Ordinal);
+        Assert.Contains("unknown flags 128", RefusedBy([RowReaderTests.View(flags: 128)]).Message, StringComparison.Ordinal);
+        Assert.Contains("Ask row before any ask", RefusedBy([], [new NativeAsk(1, 0, 0, 0)]).Message, StringComparison.Ordinal);
+        Assert.Contains("Ask row before any ask", RefusedBy([], [new NativeAsk(-1, 0, 0, 0)]).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AMemberOfTheWrongKindIsRefusedNotGuessedExtraViewRowMembers()
+    {
+        Assert.Contains("names a parent that is not an earlier row", RefusedBy([RowReaderTests.View(kind: 2, parent: -2)]).Message, StringComparison.Ordinal);
+        Assert.Contains("a colour outside 0xRRGGBBAA", RefusedBy([RowReaderTests.View(colour: -1)]).Message, StringComparison.Ordinal);
+        Assert.Contains("an extent that is negative or not finite", RefusedBy([RowReaderTests.View(size: -1)]).Message, StringComparison.Ordinal);
+        Assert.Contains("an extent that is negative or not finite", RefusedBy([RowReaderTests.View(width: double.NaN)]).Message, StringComparison.Ordinal);
+        Assert.Contains("names a text range outside the frame", RefusedBy([RowReaderTests.View(textOffset: 1, textLength: 5)], text: RowReaderTests.Utf8("Hi")).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheLaunchContextNamesWindowsAndKeepsTextReadable()
+    {
+        // The launch context is the typed `open` call: the platform's name and the home folder are
+        // borrowed UTF-8 strings, and every argument after the DLL reaches the application in order.
+        var launch = Launch.Parse(["--headless", @"C:\Apps\flock.dll", "--elevated", "Zoë's list"]);
+        Assert.Equal((@"C:\Apps\flock.dll", true), (launch!.Library, launch.Headless));
+        Assert.Equal(["--elevated", "Zoë's list"], launch.Arguments);
+        var session = File.ReadAllText(Path.Combine(Framework.Host, "OspreyHost", "Session.cs"));
+        Assert.Contains("Platform = \"windows\"", session, StringComparison.Ordinal);
+        Assert.Contains("Environment.SpecialFolder.UserProfile", session, StringComparison.Ordinal);
+        Assert.Contains("GetUtcOffset", session, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheLaunchContextNamesWindowsAndKeepsTextReadableExtraSelfTestFlags()
+    {
+        Assert.Null(Launch.Parse([]));
+        var self = Launch.Parse(["--self-test", "script.json", "shots", "flock.dll", "--elevated"]);
+        Assert.Equal(("flock.dll", "script.json", "shots", false), (self!.Library, self.Script, self.Shots, self.Headless));
+        Assert.Equal(["--elevated"], self.Arguments);
     }
 
     [Fact]
@@ -143,7 +282,7 @@ public sealed class ProtocolTests
     }
 
     [Fact]
-    public void AToldTreePastTheDepthBoundIsRefused()
+    public void ATreeDeeperThanTheBoundIsRefused()
     {
         var rows = new ToldRows();
         var region = rows.Record(-1, "region");
@@ -154,6 +293,21 @@ public sealed class ProtocolTests
             nested = rows.Record(nested, "body");
         }
         Assert.Contains("nests deeper", Assert.Throws<HostException>(() => Told.Frame(rows.Read())).Message);
+    }
+
+    [Fact]
+    public void ATreeDeeperThanTheBoundIsRefusedExtraATreeAtTheBoundIsDrawn()
+    {
+        var rows = new ToldRows();
+        var region = rows.Record(-1, "region");
+        rows.Field(region, "key", "root");
+        var nested = rows.Record(region, "node");
+        for (var level = 0; level < Told.Depth - 1; level++)
+        {
+            nested = rows.Record(nested, "body");
+        }
+        var frame = Assert.IsType<ToldFrame>(Told.Frame(rows.Read()));
+        Assert.Equal("root", Assert.Single(frame.Regions).Key);
     }
 
     [Fact]
@@ -199,7 +353,7 @@ public sealed class ProtocolTests
     }
 
     [Fact]
-    public void TheRegionStoreReplacesChangedRegionsAndDropsTheRest()
+    public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRest()
     {
         var store = new RegionStore();
         store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("empty"))]));
@@ -213,74 +367,17 @@ public sealed class ProtocolTests
         Assert.Equal(("root", 0L), (store.Find(RegionStore.Root)!.Key, store.Find(RegionStore.Root)!.Revision));
     }
 
-    /// <summary>A framed component with <paramref name="style"/> as its style record.</summary>
-    static Node Framed(Node style, Node body = default) =>
-        Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("framed"), ["style"] = style, ["body"] = body });
-
-    /// <summary>One member of a record.</summary>
-    static Node Style(string member, Node value) => Node.Of(new Dictionary<string, Node> { [member] = value });
-
-    /// <summary>The refusal of one told node, or a message saying it was wrongly accepted.</summary>
-    static string ViewportRefusal(Node node)
-    {
-        try
-        {
-            Viewports.Refuse("root", node);
-        }
-        catch (HostException problem)
-        {
-            return problem.Message;
-        }
-        return "accepted a frame this host cannot draw";
-    }
-
     [Fact]
-    public void AViewportSizedFrameIsRefused()
+    public void TheRegionStoreReplacesPatchedRegionsAndKeepsTheRestExtraADroppedRegionComesBack()
     {
-        foreach (var inset in new[] { 0L, 400L })
-        {
-            var problem = ViewportRefusal(Framed(Style("viewportHeightInset", Node.Of(inset))));
-            Assert.Contains("viewportHeightInset", problem);
-            Assert.Contains("-1", problem);
-        }
-    }
-
-    [Fact]
-    public void AScrollingFrameIsRefused()
-    {
-        var problem = ViewportRefusal(Framed(Style("scrollY", Node.Of(true))));
-        Assert.Contains("scrollY", problem);
-        Assert.Contains("region root", problem);
-    }
-
-    [Fact]
-    public void ANestedFrameWithAViewportIsRefused()
-    {
-        var stack = Node.Of(new Dictionary<string, Node> { ["kind"] = Node.Of("stack"), ["children"] = Node.Of(new List<Node> { Framed(Style("viewportHeightInset", Node.Of(12L))) }) });
-        Assert.Contains("viewportHeightInset", ViewportRefusal(stack));
-        var body = Framed(Style("scrollY", Node.Of(true)));
-        Assert.Contains("scrollY", ViewportRefusal(Framed(Node.Of(new Dictionary<string, Node>()), body)));
-    }
-
-    [Fact]
-    public void AMalformedViewportFieldIsRefusedNotGuessed()
-    {
-        foreach (var style in new[] { Style("viewportHeightInset", Node.Of("4")), Style("viewportHeightInset", Node.Of(2.5)), Style("scrollY", Node.Of(1L)), Style("scrollY", Node.Of("true")) })
-        {
-            Assert.Contains("where it needs", ViewportRefusal(Framed(style)));
-        }
-        Assert.Contains("an object style", ViewportRefusal(Framed(Node.Of("an object"))));
-    }
-
-    [Fact]
-    public void OnlyAbsentOrTheContentSizedDefaultIsAccepted()
-    {
-        Assert.Equal([], new[] { Framed(default), Framed(Style("viewportHeightInset", Node.Of(-1L))), Framed(Style("scrollY", Node.Of(false))), Framed(Node.Of(new Dictionary<string, Node>())) }
-            .Select(problem => ViewportRefusal(problem)).Where(problem => problem != "accepted a frame this host cannot draw"));
-        foreach (var inset in new[] { -2L, long.MinValue })
-        {
-            Assert.Contains("viewportHeightInset", ViewportRefusal(Framed(Style("viewportHeightInset", Node.Of(inset)))));
-        }
+        var store = new RegionStore();
+        store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing"))])));
+        var back = store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("rows"))]));
+        Assert.Equal(["listing"], back);
+        Assert.Equal(("rows", 0L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
+        Assert.Equal(["listing"], store.Apply(new ToldFrame(null, [("root", Slot("listing")), ("listing", Kind("stack"))])));
+        Assert.Equal(("stack", 1L), (store.Find("listing")!.Node.Text("kind"), store.Find("listing")!.Revision));
     }
 
     /// <summary>A slot component naming another region.</summary>

@@ -38,21 +38,38 @@ public sealed class CapabilitiesTests
     }
 
     [Fact]
-    public async Task AChosenFolderComesBackAsItsBarePath()
+    public async Task AChosenFolderComesBackWithItsPath()
     {
         var done = await Host("D:\\Media").Answer(Asked(14, "choose"));
         Assert.Equal(("choose", true, "D:\\Media"), (done.Ticket, done.Ok, done.Result));
     }
 
     [Fact]
-    public async Task ADismissedPickerCompletesWithNothing()
+    public async Task AChosenFolderComesBackWithItsPathExtraUnreadFieldsChangeNothing()
+    {
+        var done = await Host("E:\\Zoë's Folder").Answer(Asked(14, "choose", Number(2, 5), Text(3, "ignored")));
+        Assert.Equal(("choose", true, "E:\\Zoë's Folder"), (done.Ticket, done.Ok, done.Result));
+        Assert.Empty(done.Writes);
+    }
+
+    [Fact]
+    public async Task ADismissedPickerIsACancelledChoice()
     {
         var done = await Host(null).Answer(Asked(14, "choose"));
         Assert.Equal(("", true), (done.Result, done.Ok));
     }
 
     [Fact]
-    public async Task AChosenFileComesBackAsItsBarePathAndThePickerOffersOnlyTheTypesAsked()
+    public async Task ADismissedPickerIsACancelledChoiceExtraTheFilePickerStillOfferedItsTypes()
+    {
+        var asked = new List<string>();
+        var done = await Host(null, asked).Answer(Asked(13, "choose", Text(1, "mp3"), Text(1, "wav")));
+        Assert.Equal(["mp3", "wav"], asked);
+        Assert.Equal((true, ""), (done.Ok, done.Result));
+    }
+
+    [Fact]
+    public async Task AChosenFileComesBackWithItsPathAndThePickerOffersOnlyTheTypesAsked()
     {
         var asked = new List<string>();
         var done = await Host("D:\\Music\\Sunroom.mp3", asked).Answer(Asked(13, "choose", Text(1, "mp3"), Number(2, 0), Text(3, "")));
@@ -61,6 +78,15 @@ public sealed class CapabilitiesTests
         var dismissed = await Host(null).Answer(Asked(13, "choose"));
         Assert.Equal("", dismissed.Result);
         Assert.True(dismissed.Ok);
+    }
+
+    [Fact]
+    public async Task AChosenFileComesBackWithItsPathAndThePickerOffersOnlyTheTypesAskedExtraSeveralTypesInOrder()
+    {
+        var asked = new List<string>();
+        var done = await Host("D:\\Music\\Both.flac", asked).Answer(Asked(13, "choose", Text(1, "mp3"), Text(1, "wav"), Text(1, "flac"), Number(2, 3)));
+        Assert.Equal((true, "D:\\Music\\Both.flac"), (done.Ok, done.Result));
+        Assert.Equal(["mp3", "wav", "flac"], asked);
     }
 
     [Fact]

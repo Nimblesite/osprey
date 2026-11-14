@@ -223,9 +223,11 @@ public static class SceneReader
             4 => null,
             _ => throw new HostException("An unknown accessible role"),
         };
-        return role is null
+        var label = at.Text(head);
+        // An element with no name cannot be announced, exactly as the reference host's reader skips it.
+        return role is null || label.Length == 0
             ? null
-            : new Accessible(role, at.Text(head), head.X, head.Y, head.Width, head.Height, head.Angle, range.X, range.Y, (head.Colour & 1) != 0);
+            : new Accessible(role, label, head.X, head.Y, head.Width, head.Height, head.Angle, range.X, range.Y, (head.Colour & 1) != 0);
     }
 
     static int Anchor(long index) =>
