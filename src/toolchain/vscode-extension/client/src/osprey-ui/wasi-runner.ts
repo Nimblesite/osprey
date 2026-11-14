@@ -100,6 +100,8 @@ export function startNativeRuntime(module: WebAssembly.Module, signal?: AbortSig
   const pending = new Map<number, { resolve(result: FrameResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   let nextId = 1;
   let disposed = false;
+  /** Why the worker stopped, once it has: every later call is refused with it at once. */
+  let dead: Error | undefined;
 
   const fail = (error: Error): void => {
     for (const entry of pending.values()) {
@@ -124,16 +126,20 @@ export function startNativeRuntime(module: WebAssembly.Module, signal?: AbortSig
       entry.reject(error instanceof Error ? error : new Error(String(error)));
     }
   });
-  worker.on("error", (error: Error) => fail(error));
+  worker.on("error", (error: Error) => {
+    dead ??= error;
+    fail(error);
+  });
   worker.on("exit", (code: number) => {
-    if (!disposed && pending.size > 0) fail(new Error(`The application worker exited with ${code}`));
+    dead ??= new Error(`The application worker exited with ${code}`);
+    if (!disposed) fail(dead);
   });
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
 
   const send = (request: WorkerRequest): Promise<FrameResult> => new Promise((resolve, reject) => {
-    if (disposed) {
-      reject(new Error("The application is disposed"));
+    if (disposed || dead !== undefined) {
+      reject(disposed ? new Error("The application is disposed") : dead);
       return;
     }
     const timer = setTimeout(() => {

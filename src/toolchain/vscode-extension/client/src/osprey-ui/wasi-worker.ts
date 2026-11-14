@@ -4,7 +4,7 @@
 // serialization boundary ([NATIVE-SHM-WASM], [NATIVE-SHM-PUBLISH]).
 
 import { randomFillSync } from "node:crypto";
-import { parentPort, workerData } from "node:worker_threads";
+import { parentPort, workerData, type MessagePort } from "node:worker_threads";
 import { SHARED_FINGERPRINT } from "./generated/native-abi";
 import { createWasi, wasiImports } from "./wasi";
 import type { FrameResult, NativeRuns, WorkerRequest } from "./wasi-runner";
@@ -65,7 +65,7 @@ function checked(status: number): void {
   throw new Error(`The shared bridge refused the frame: ${reason}`);
 }
 
-function start(module: WebAssembly.Module): void {
+function start(module: WebAssembly.Module, port: MessagePort): void {
   const wasi = createWasi();
   // [NATIVE-SHM-WASM] Host-held slices, answered synchronously during a call; the C ABI copies the
   // text before `native_slice` returns, so each answer's buffer is freed at the next one.
@@ -90,8 +90,6 @@ function start(module: WebAssembly.Module): void {
   live = api;
   const started = wasi.start(instance);
   if (started !== 0) throw new Error(`The application's _start returned ${started}`);
-  const port = parentPort;
-  if (!port) throw new Error("The application entry requires a worker port");
 
   const memory = (): DataView => new DataView(api.memory.buffer);
   const allocate = (size: number): number => {
@@ -214,6 +212,8 @@ function start(module: WebAssembly.Module): void {
   });
 }
 
+// Nothing runs without the private port the extension host opened: no module, no `_start`.
+if (!parentPort) throw new Error("The application entry requires a worker port");
 const data: unknown = workerData;
 if (!record(data) || !(data.module instanceof WebAssembly.Module)) throw new Error("The application entry requires a module");
-start(data.module);
+start(data.module, parentPort);
