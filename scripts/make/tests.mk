@@ -510,7 +510,7 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
-	node --test scripts/ci/root-layout.test.mjs
+	node --test scripts/ci/root-layout.test.mjs scripts/ci/preflight.test.mjs
 	node scripts/ci/root-layout.mjs
 	node scripts/ci/verify-node-deps-guard.mjs
 	node scripts/ci/verify-no-dead-code.mjs
