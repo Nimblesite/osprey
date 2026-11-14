@@ -1,6 +1,6 @@
 # Osprey Agent — YouTube upload
 
-Prepared 2026-11-14 for the existing 80.157-second video.
+Prepared 2026-11-14 for the 80.4-second live recording.
 
 ## Files
 
@@ -8,9 +8,9 @@ Prepared 2026-11-14 for the existing 80.157-second video.
 - Thumbnail: `../../src/toolchain/website/src/assets/videos/osprey-agent-native-youtube-thumbnail.png`
 - Captions: `../../src/toolchain/website/src/assets/videos/osprey-agent-native.en.vtt`
 
-The MP4 is materialized locally and tracked in Git LFS: H.264 video, AAC audio, 1920 × 1080, 3,409,802 bytes.
+The MP4 is materialized locally and tracked in Git LFS: H.264 video, AAC audio, 1920 × 1080, 11,646,650 bytes.
 The new thumbnail is 1672 × 941, 1,579,299 bytes, generated with the built-in image tool from the supplied thumbnail style reference and the existing video's app poster.
-The website poster and video are unchanged.
+The video and poster were re-shot live on 2026-11-14: every frame is the real app while DeepSeek fixes the staged calculator.
 
 ## Title
 
@@ -20,7 +20,7 @@ AI Coding Agent Demo: Fixing Code in a Native macOS App | Osprey
 
 Watch Osprey Agent, an AI coding agent in a native macOS app, inspect failing calculator tests, review a code edit and show the passing results.
 
-The app uses native SwiftUI controls and Osprey application logic compiled ahead of time through LLVM; this video walks through a recorded conversation with real tool outputs.
+The app uses native SwiftUI controls and Osprey application logic compiled ahead of time through LLVM; this video records a live run with real tool outputs.
 
 Explore Osprey: https://www.ospreylang.dev/
 Source code: https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/agent
@@ -53,7 +53,7 @@ The voiceover's old launch path has since moved; the current entry point is `mak
 
 The captions and original Videos project narration/README establish the content and recording provenance.
 A bounded, read-only `zai/glm-5.3-flash` review found no factual errors and noted possible ambiguity in “Demo” and “REAL TOOLS.”
-Parent review retained those terms because the tools/results are real and the description explicitly identifies the recorded conversation; neither term claims a live run.
+Parent review retained those terms because the tools/results are real and the run is filmed live.
 The generated thumbnail was visually checked for readable exact headline text, the correct native app subject and the requested white/cyan/yellow style.
 No new footage or YouTube upload was made.
 

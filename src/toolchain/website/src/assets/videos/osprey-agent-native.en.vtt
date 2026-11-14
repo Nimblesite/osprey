@@ -1,22 +1,19 @@
 WEBVTT
 
-00:00.350 --> 00:09.352
-Safe, elegant, fast. This is Osprey Agent on macOS: a real SwiftUI application, with application logic written in Osprey.
+00:00.350 --> 00:10.364
+This is Osprey Agent on macOS: a real SwiftUI app, with its application logic written in Osprey and compiled ahead of time through LLVM.
 
-00:09.752 --> 00:17.901
-This recorded calculator conversation starts with a precise request: run the tests, fix the package, and leave the tests unchanged.
+00:13.917 --> 00:18.895
+Give it a precise task: run the tests, fix the calc package, and leave the tests alone.
 
-00:18.301 --> 00:26.783
-Open the activity group to inspect the commands and file reads. The first test run failed. The tool output is visible in the conversation.
+00:18.995 --> 00:29.262
+Everything here is live. The agent runs the tests, reads the failing code, edits it, and runs the tests again, and each step lands in the conversation as it happens.
 
-00:27.183 --> 00:34.956
-Now inspect the edit and the next command. Both tests pass. Scroll down to review the corrected code, with syntax highlighting.
+00:33.717 --> 00:42.377
+Open the activity to check exactly what it ran. The inspector counts requests, tool calls and tokens, and lists every file it changed.
 
-00:40.183 --> 00:48.680
-Scroll down to review the corrected code with syntax highlighting. The inspector keeps usage and changed files beside the conversation.
+00:52.617 --> 00:59.779
+Ask for the code, and it comes back with syntax highlighting, drawn by native controls with no embedded browser engine.
 
-00:49.080 --> 01:03.182
-These are real SwiftUI controls. Osprey application code compiles ahead of time through LLVM, without an embedded JavaScript engine. Typed effects put model requests and tools behind the host boundary.
-
-01:03.282 --> 01:18.378
-Build from the repository, then run make, dash C, apps slash macOS, agent, with PROJECT pointing to your folder. This agent is not sandboxed: it can run commands and change files your account can. Osprey is actively evolving.
+00:59.879 --> 01:10.571
+Typed effects keep model requests and tools behind the host boundary. The agent is not sandboxed: it can run any command your account can. Osprey is actively evolving.
