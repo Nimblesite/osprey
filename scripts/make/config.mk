@@ -108,6 +108,10 @@ LOG_DIR      = target/logs
 COVERAGE_DIR = target/coverage
 RUST_LCOV    = $(COVERAGE_DIR)/lcov.info
 RUST_LOG     = $(LOG_DIR)/rust-test.log
+# rustc 1.100 drops executed lines from coverage (osprey-types: 873 uncovered
+# lines on 1.99.1, 4682 on 1.100 for the same passing tests), so the measured
+# run stays on the last toolchain that counts them. Lint and builds use stable.
+RUST_COVERAGE_TOOLCHAIN = 1.99.1
 
 %/node_modules/.package-lock.json: %/package-lock.json
 	@echo "==> [$*] installing node dependencies (npm ci)..."
