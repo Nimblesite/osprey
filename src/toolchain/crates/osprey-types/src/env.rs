@@ -27,7 +27,7 @@ struct Frame {
     /// The subset of `vars` whose scheme may name a variable it does not itself
     /// quantify ([`possibly_open`]) — the only bindings [`TypeEnv::free_vars`]
     /// has to walk. Every other binding is closed and can contribute nothing.
-    open: HashMap<String, Arc<Scheme>>,
+    open: HashMap<String, Arc<OpenScheme>>,
     /// The names bound here that hide a same-named, possibly-open binding
     /// further out, so `free_vars` skips the hidden one.
     shadows_open: HashSet<String>,
@@ -37,6 +37,13 @@ struct Frame {
     mutables: HashMap<String, bool>,
     /// Builtin identity and runtime obligations, cleared by shadowing.
     builtins: HashMap<String, Option<builtin_bindings::Builtin>>,
+}
+
+/// Cache only syntactic roots. Their substitutions stay live in `InferCtx`.
+#[derive(Debug)]
+struct OpenScheme {
+    scheme: Arc<Scheme>,
+    roots: BTreeSet<VarId>,
 }
 
 /// Maps names to their type schemes, with value semantics: bindings added to a
@@ -121,7 +128,10 @@ impl TypeEnv {
     /// needs to skip it: whether it is possibly open, and whether it hides a
     /// possibly-open binding further out.
     fn bind(&mut self, name: String, scheme: Scheme) {
-        let open = possibly_open(&scheme);
+        let roots = unquantified_vars(&scheme);
+        let open = !roots.is_empty();
+        #[cfg(test)]
+        let open = open || is_witness(&scheme);
         // Over-approximating is harmless: this entry only suppresses a
         // same-named binding further out, and suppressing a binding that is
         // not possibly open takes nothing away.
@@ -130,7 +140,9 @@ impl TypeEnv {
         let frame = self.frame();
         let _ = frame.vars.insert(name.clone(), Some(Arc::clone(&scheme)));
         if open {
-            let _ = frame.open.insert(name.clone(), scheme);
+            let _ = frame
+                .open
+                .insert(name.clone(), Arc::new(OpenScheme { scheme, roots }));
         } else {
             let _ = frame.open.remove(&name);
         }
@@ -314,11 +326,7 @@ pub(crate) fn possibly_open(scheme: &Scheme) -> bool {
     if is_witness(scheme) {
         return true;
     }
-    names_unquantified(&scheme.ty, &scheme.vars)
-        || scheme
-            .obligations
-            .iter()
-            .any(|(_, obligation)| names_unquantified(obligation, &scheme.vars))
+    !unquantified_vars(scheme).is_empty()
 }
 
 /// Tests observe environment scans through a witness binding whose type is
@@ -330,24 +338,36 @@ fn is_witness(scheme: &Scheme) -> bool {
         if name == tests::ENVIRONMENT_MARKER)
 }
 
-fn names_unquantified(ty: &Type, quantified: &[VarId]) -> bool {
-    match ty {
-        Type::Var(v) => !quantified.contains(v),
-        Type::Fun { params, ret } => {
-            params.iter().any(|p| names_unquantified(p, quantified))
-                || names_unquantified(ret, quantified)
+fn unquantified_vars(scheme: &Scheme) -> BTreeSet<VarId> {
+    fn collect(ty: &Type, out: &mut BTreeSet<VarId>) {
+        match ty {
+            Type::Var(var) => {
+                let _ = out.insert(*var);
+            }
+            Type::Fun { params, ret } => {
+                for param in params {
+                    collect(param, out);
+                }
+                collect(ret, out);
+            }
+            Type::Con { args, .. } => args.iter().for_each(|ty| collect(ty, out)),
+            Type::Record { fields, .. } => fields.values().for_each(|ty| collect(ty, out)),
+            Type::Union { variants, .. } => variants.iter().for_each(|ty| collect(ty, out)),
         }
-        Type::Con { args, .. } => args.iter().any(|a| names_unquantified(a, quantified)),
-        Type::Record { fields, .. } => fields.values().any(|f| names_unquantified(f, quantified)),
-        Type::Union { variants, .. } => variants
-            .iter()
-            .any(|variant| names_unquantified(variant, quantified)),
     }
+    let mut roots = BTreeSet::new();
+    collect(&scheme.ty, &mut roots);
+    for (_, obligation) in &scheme.obligations {
+        collect(obligation, &mut roots);
+    }
+    roots.retain(|var| !scheme.vars.contains(var));
+    roots
 }
 
 /// A scheme's free variables: those of its type and obligations it does not
 /// quantify.
-fn scheme_free_vars(ctx: &InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) {
+fn scheme_free_vars(ctx: &InferCtx, open: &OpenScheme, out: &mut BTreeSet<VarId>) {
+    let scheme = &open.scheme;
     #[cfg(test)]
     tests::record_environment_visit(scheme);
     let mut scratch = BTreeSet::new();
@@ -358,9 +378,8 @@ fn scheme_free_vars(ctx: &InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) 
         tests::SCHEME_SCRATCH.with(|count| count.set(count.get() + 1));
         &mut scratch
     };
-    ctx.free_vars(&scheme.ty, free);
-    for (_, obligation) in &scheme.obligations {
-        ctx.free_vars(obligation, free);
+    for root in &open.roots {
+        ctx.free_vars(&Type::Var(*root), free);
     }
     for q in &scheme.vars {
         let _ = free.remove(q);
