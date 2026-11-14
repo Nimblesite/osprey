@@ -64,12 +64,21 @@ def sh(script, command):
             return -1
 
 
+# The scripted devices listen on the lab's base port plus 0..9. Outgoing connections take
+# ephemeral ports from 32768 on Linux and 49152 on macOS and Windows, so a base inside those
+# ranges can find its port held by another connection on a busy machine and refuse the client.
+LAB_PORTS_FIRST = 20000
+LAB_PORTS_USED = 10
+EPHEMERAL_FIRST = 32768
+
+
 def lab():
     """A fresh lab with a self-signed device certificate."""
     n = random()
     dir = f".osprey/scratch/chromecast-tests-{n}"
     made = sh(f".chromecast-lab-{n}.sh", f"mkdir -p {dir} && openssl req -x509 -newkey rsa:2048 -nodes -keyout {dir}/k.pem -out {dir}/c.pem -days 1 -subj /CN=device >/dev/null 2>&1; made=$?; rm -f \"$0\"; exit $made")
-    return Lab(dir=dir if made == 0 else "", port=30000 + unwrap_or(randomBelow(20000), 0))
+    span = EPHEMERAL_FIRST - LAB_PORTS_USED - LAB_PORTS_FIRST
+    return Lab(dir=dir if made == 0 else "", port=LAB_PORTS_FIRST + unwrap_or(randomBelow(span), 0))
 
 
 def device_frame(i):
@@ -303,6 +312,7 @@ def cases():
     _song = writeFile(f"{l.dir}/song.mp3", "ID3 scripted audio")
     first = [
         Check.truth("device.lab", l.dir != "", "openssl could not make a certificate"),
+        Check.truth("device.ports", LAB_PORTS_FIRST <= l.port and l.port + LAB_PORTS_USED <= EPHEMERAL_FIRST, f"lab ports {l.port}..{l.port + LAB_PORTS_USED} reach the ephemeral range"),
         cast_case(l, 0, [0, 5, 1, 6, 7, 7, 8], "ok DONE FINISHED"),
         cast_case(l, 1, [4], "error ERROR " + unwrap_or(listGet(Expected.RECEIVED_TEXT, 4), "")),
         cast_case(l, 2, [1, 11], "error ERROR the device refused the media"),

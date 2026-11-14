@@ -213,6 +213,7 @@ ok hex.code_points
 ok quote.escapes
 ok quote.app
 ok device.lab
+ok device.ports
 ok device.cast.0
 ok device.cast.1
 ok device.cast.2
@@ -253,4 +254,4 @@ ok fail.stop_all
 ok fail.start
 ok fail.no_route
 ok fail.no_file
-255 passed, 0 failed
+256 passed, 0 failed
