@@ -20,7 +20,7 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench workbench-memory _workbench_linked
 
 .PHONY: pocket-orchestra pocket-orchestra-headless
 ## pocket-orchestra-headless: Real native orchestra server and phone browser journeys, capturing PCM without an audio device.
@@ -116,11 +116,23 @@ agent-qwen: _runtime _runtime_macos_arc
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
-## workbench: The Workbench on the SwiftUI host with no window: it opens and draws a checked frame
-##            ([NATIVE-SHM-VIEW]); then `0 failures` from the suites that drive the real Workbench.
-workbench: _runtime _runtime_macos
+# The Workbench on the SwiftUI host with no window opens and draws a checked frame ([NATIVE-SHM-VIEW]),
+# which also links its archive for the suites that drive the real Workbench.
+_workbench_linked: _runtime _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_SWIFT_APP=src/osprey/workbench bash src/toolchain/hosts/swift/view.sh --open-check
+
+# The 40,000-import memory soak: every import renders the whole app, so it has its own CI part.
+WORKBENCH_SOAK = WorkbenchLayoutTests/testActualApplicationImportDispatchAndCancellationMemoryPlateau$$
+
+## workbench: The Workbench opens and draws a checked frame with no window; then `0 failures` from the
+##            suites that drive the real Workbench, all but the import memory soak (`workbench-memory`).
+workbench: _workbench_linked
 	# The rest of the host's suite runs once, under `agent-headless`.
-	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout
+	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout --skip '$(WORKBENCH_SOAK)'
+
+## workbench-memory: The real Workbench imports lesson progress 20,000 times and cancels 20,000 reads;
+##                   `0 failures` when ARC objects, bytes and borrowed slices stay at their baseline.
+workbench-memory: _workbench_linked
+	swift test --package-path src/toolchain/hosts/swift --filter '$(WORKBENCH_SOAK)'
 endif

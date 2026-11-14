@@ -1289,6 +1289,13 @@ jobs:
             run: |
               make _runtime _runtime_macos
               make -C src/toolchain/targets/macos/tests workbench
+          # The import memory soak renders the whole app 40,000 times, about seven minutes on a
+          # hosted runner, so it runs beside the other Workbench suites rather than after them.
+          - part: Workbench memory
+            minutes: 20
+            run: |
+              make _runtime _runtime_macos
+              make -C src/toolchain/targets/macos/tests workbench-memory
     steps:
       - uses: actions/checkout@v7
         with:

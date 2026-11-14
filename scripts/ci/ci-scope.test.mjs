@@ -140,15 +140,21 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   const recipe = readFileSync('src/toolchain/targets/macos/tests/Makefile', 'utf8')
   // It builds only the compiler the CI step already built, never the root `build` (the whole
   // workspace, KLEE, the Zed extension), which recompiled the compiler and cost the part its time.
-  assert.match(recipe, /^workbench: _runtime _runtime_macos$/m)
+  assert.match(recipe, /^_workbench_linked: _runtime _runtime_macos$/m)
+  assert.match(recipe, /^workbench: _workbench_linked$/m)
+  assert.match(recipe, /^workbench-memory: _workbench_linked$/m)
   assert.match(recipe, /^\tcargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli$/m)
   assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
-  // Every Swift test runs once: the Workbench suites here, the rest under agent-headless.
-  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter WorkbenchLayout$/m)
+  // Every Swift test runs once: the Workbench suites but the memory soak, the soak in its own part,
+  // and the rest under agent-headless.
+  assert.match(recipe, /^WORKBENCH_SOAK = WorkbenchLayoutTests\/testActualApplicationImportDispatchAndCancellationMemoryPlateau\$\$$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter WorkbenchLayout --skip '\$\(WORKBENCH_SOAK\)'$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter '\$\(WORKBENCH_SOAK\)'$/m)
   assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --skip WorkbenchLayout$/m)
-  // The gate's Workbench part is the only place that recipe runs, so a windowed host can never slip into CI.
+  // The gate's Workbench parts are the only places those recipes run, so a windowed host can never slip into CI.
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
-  assert.match(ci, /make -C src\/toolchain\/targets\/macos\/tests workbench/)
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests workbench$/m)
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests workbench-memory$/m)
   assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
 })
 
