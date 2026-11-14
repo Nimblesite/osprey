@@ -2,6 +2,8 @@
 
 Status — implementation in progress. The shared session core has passing two-phone ownership and expiry journeys; live transport, audio and platform acceptance remain pending.
 
+The shared audio foundation is the independent [`@osprey/synth` toolkit](../specs/runtime/Synthesis.md); this application is a consumer and must not own reusable DSP.
+
 The normative requirements are in [Pocket Orchestra](../specs/applications/PocketOrchestra.md). The working name is Pocket Orchestra. The first delivery uses a desktop session host, LAN WebSockets, host-generated audio, three instruments and native/canvas presentations across macOS, Windows, iOS, Android and web. Linux is a follow-on target.
 
 ## Planning checklist [ORCHESTRA-PLAN-DOCUMENTS]

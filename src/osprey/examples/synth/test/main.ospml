@@ -15,6 +15,7 @@ import uitest::Views
 import signalflow::App
 import synth::Studio
 import synth::Synth
+import synth::Voice
 
 (** The bench's only write: the driven surface. *)
 effect Bench
@@ -57,7 +58,7 @@ machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachi
 
 currentPatch () = Synth::patch (machine ())
 
-described () = Synth::describe (currentPatch ())
+described () = Voice::describe (currentPatch ())
 
 // Two values that must not match.
 apart (one, other) = expect (one == other, false)
@@ -120,9 +121,9 @@ apartThen (label, previous) =
     apart (argument 2, previous)
     tap label
 
-currentWav () = Synth::wav (Synth::samples (currentPatch ()))
+currentWav () = Voice::wav (Voice::samples (currentPatch ()))
 
-nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - expected) <= 1, true)
+nearPeak (patch, expected) = expect (abs (Voice::peak (Voice::samples patch) - expected) <= 1, true)
 
 played expectedPeak =
     expect (runCount (), 1)
@@ -206,7 +207,7 @@ struck (name, hertz) =
     expect (argument 2, currentWav ())
 
 sounds (name, expectedPeak) =
-    struck (name, Synth::frequency name)
+    struck (name, Voice::frequency name)
     played expectedPeak
 
 // ---- launch, editing and history through the Prism skin ----

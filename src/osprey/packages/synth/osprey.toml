@@ -1,0 +1,13 @@
+[project]
+name = "synth"
+source_roots = ["src"]
+default_namespace = "synth"
+
+[package]
+name = "@osprey/synth"
+license = "MIT"
+summary = "Pure oscillators, pitch, modulation and PCM rendering shared by musical apps"
+keywords = ["audio", "music", "synthesis", "dsp"]
+
+[modules]
+allow_wildcard_imports = false

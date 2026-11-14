@@ -3,13 +3,14 @@
 
 import ui::Lists
 import synth::Synth
+import synth::Voice
 
 patch (wave, process, depth, lfo, volume) = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 20.0 * pow (1000.0, process), depth = depth, lfo = lfo, audible = true, volume = volume)
 
 defaultPatch () = patch ("Sine", 0.7, 0.7, 2.0, 0.75)
 
 // One second of `p` per case: every voice case renders the whole second.
-sized p = expect (length (Synth::samples p), Synth::rate)
+sized p = expect (length (Voice::samples p), Voice::rate)
 
 voiceCase (p, expectedPeak) =
     sized p
@@ -18,36 +19,36 @@ voiceCase (p, expectedPeak) =
 
 silentCase p =
     sized p
-    samples = Synth::samples p
-    expect (Synth::peak samples, 0)
+    samples = Voice::samples p
+    expect (Voice::peak samples, 0)
     expect (ui::Lists::all (samples, \sample => sample == 128), true)
     expect (length (Synth::played p), 0)
 
 near (actual, expected) = expect (actual - expected < 0.0001 && expected - actual < 0.0001, true)
 
 shapes () =
-    near (Synth::shaped ("Sine", 0.25), 1.0)
-    near (Synth::shaped ("Sine", 0.75), -1.0)
-    near (Synth::shaped ("Triangle", 0.0), -1.0)
-    near (Synth::shaped ("Triangle", 0.5), 1.0)
-    near (Synth::shaped ("Triangle", 0.25), 0.0)
-    near (Synth::shaped ("Saw", 0.0), -1.0)
-    near (Synth::shaped ("Saw", 0.75), 0.5)
-    near (Synth::shaped ("Square", 0.2), 1.0)
-    near (Synth::shaped ("Square", 0.7), -1.0)
-    near (Synth::shaped ("Sine", 1.25), 1.0)
-    near (Synth::hertz "1/1", 0.5)
-    near (Synth::hertz "1/2", 1.0)
-    near (Synth::hertz "1/4", 2.0)
-    near (Synth::hertz "1/8", 4.0)
-    near (Synth::hertz "1/16", 8.0)
-    near (Synth::frequency "A3", 220.0)
-    near (Synth::frequency "A4", 440.0)
-    near (Synth::frequency "C3", 130.8128)
-    near (Synth::frequency "C4", 261.6256)
-    near (Synth::frequency "C#4", 277.1826)
-    near (Synth::frequency "F#3", 184.9972)
-    near (Synth::frequency "B4", 493.8833)
+    near (Voice::shaped ("Sine", 0.25), 1.0)
+    near (Voice::shaped ("Sine", 0.75), -1.0)
+    near (Voice::shaped ("Triangle", 0.0), -1.0)
+    near (Voice::shaped ("Triangle", 0.5), 1.0)
+    near (Voice::shaped ("Triangle", 0.25), 0.0)
+    near (Voice::shaped ("Saw", 0.0), -1.0)
+    near (Voice::shaped ("Saw", 0.75), 0.5)
+    near (Voice::shaped ("Square", 0.2), 1.0)
+    near (Voice::shaped ("Square", 0.7), -1.0)
+    near (Voice::shaped ("Sine", 1.25), 1.0)
+    near (Voice::hertz "1/1", 0.5)
+    near (Voice::hertz "1/2", 1.0)
+    near (Voice::hertz "1/4", 2.0)
+    near (Voice::hertz "1/8", 4.0)
+    near (Voice::hertz "1/16", 8.0)
+    near (Voice::frequency "A3", 220.0)
+    near (Voice::frequency "A4", 440.0)
+    near (Voice::frequency "C3", 130.8128)
+    near (Voice::frequency "C4", 261.6256)
+    near (Voice::frequency "C#4", 277.1826)
+    near (Voice::frequency "F#3", 184.9972)
+    near (Voice::frequency "B4", 493.8833)
 
 voiceCases () =
     voiceCase (defaultPatch (), 75)
@@ -63,23 +64,23 @@ voiceCases () =
     silentCase (patch ("Sine", 0.7, 0.7, 2.0, 0.0))
 
 // Two patches whose clips must not match.
-differ (one, other) = expect (Synth::wav (Synth::samples one) == Synth::wav (Synth::samples other), false)
+differ (one, other) = expect (Voice::wav (Voice::samples one) == Voice::wav (Voice::samples other), false)
 
 // Table rows: each patch must describe itself differently from `base`.
-renamed (base, others) = forEachList (others, \other => expect (Synth::describe other == base, false))
+renamed (base, others) = forEachList (others, \other => expect (Voice::describe other == base, false))
 
 // Every field of a patch changes what it sounds like.
 descriptionsDiffer () =
     d = defaultPatch ()
-    base = Synth::describe d
+    base = Voice::describe d
     renamed (base, [patch ("Saw", 0.7, 0.7, 2.0, 0.75), patch ("Sine", 0.1, 0.7, 2.0, 0.75), patch ("Sine", 0.7, 0.3, 2.0, 0.75), patch ("Sine", 0.7, 0.7, 8.0, 0.75), patch ("Sine", 0.7, 0.7, 2.0, 0.5), d(filtered = false), d(pitch = 440.0)])
     differ (d(pitch = 440.0), d)
     differ (patch ("Square", 0.1, 0.7, 2.0, 0.75), patch ("Saw", 0.1, 0.7, 2.0, 0.75))
     differ (patch ("Sine", 0.1, 0.7, 0.5, 0.75), patch ("Sine", 0.1, 0.7, 8.0, 0.75))
 
 wavCase () =
-    clip = Synth::wav (Synth::samples (defaultPatch ()))
-    expect (length clip, (44 + Synth::rate) * 2)
+    clip = Voice::wav (Voice::samples (defaultPatch ()))
+    expect (length clip, (44 + Voice::rate) * 2)
     expect (startsWith clip "52494646352B000057415645666D7420", true)
     expect (contains clip "112B0000112B0000", true)
     expect (take (drop clip 72) 16, "64617461112B0000")
