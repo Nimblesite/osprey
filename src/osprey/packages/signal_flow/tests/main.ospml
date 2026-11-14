@@ -436,3 +436,24 @@ test ("every skin's accessibility tree reads clearly to an agent, and a Prism no
     expect (startsWith (Semantics::outline (elements ())) "popup \"Skin: Topology\"\n", true)
     begun "prism"
     expect (contains (Semantics::outline (elements ())) "button \"Select Filter\" movable", true)))
+
+// The repository document as a store, not yet settled.
+document () = App::loaded (readFile "src/osprey/packages/signal_flow/signal_flow.machine.json" ?: "")
+
+// The store after one lever, each history's length read back.
+histories (store, lever) =
+    after = (signalflow::Flow::pulled (store, ui::Fire(fireName = lever), ui::Values::none ())).stepStore
+    "${length after.past}/${length after.future}"
+
+test ("undo and redo at the edges of their history, a refused document shown in place, and the repository theme", \() => Runtime::guarded (\() =>
+    fresh = document ()
+    expect ((fresh.screen.screenMachine).machineFault, "")
+    // Nothing recorded yet: undo and redo restore nothing, and the lever's own change is the first snapshot.
+    expect (length fresh.past, 0)
+    forEachList (["undo", "redo"], \lever => expect (histories (fresh, lever), "1/0"))
+    settled = (signalflow::Flow::settled fresh).stepStore
+    forEachList (["undo", "redo"], \lever => expect (histories (settled, lever), "${length settled.past}/0"))
+    refused = App::loaded "not json"
+    expect ((refused.screen.screenMachine).machineFault, "the machine document is not JSON")
+    expect (length refused.past, 0)
+    forEachList (["", "topology", "paper"], \skin => expect (length (App::theme skin).tokens > 0, true))))

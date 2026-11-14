@@ -420,7 +420,7 @@
       },
       "signal_flow": {
         "language": "osprey",
-        "threshold": 91.3
+        "threshold": 97.2
       },
       "uitest": {
         "language": "osprey",
