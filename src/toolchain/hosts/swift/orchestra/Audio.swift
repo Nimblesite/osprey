@@ -175,7 +175,8 @@ final class OrchestraAudio {
                                        gain: gain, phase: phase - floor(phase), tone: tone, warp: warp)
         }
         var sample = 0.0
-        for bank in racks.indices { sample += racks[bank].next(sums[bank]) }
+        // Unassigned delay lines are silent and are cleared before a controller claims them.
+        for bank in racks.indices where racks[bank].peer != nil { sample += racks[bank].next(sums[bank]) }
         // A smooth saturator bounds dry voices and overlapping feedback tails together.
         return sample / (1 + abs(sample) / 0.8)
     }

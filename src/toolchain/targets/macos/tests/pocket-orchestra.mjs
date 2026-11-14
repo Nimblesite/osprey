@@ -347,7 +347,16 @@ async function verifySoundPalette() {
     func difference(_ a: [Float], _ b: [Float]) -> Double {
       zip(a, b).reduce(0) { $0 + Double(abs($1.0 - $1.1)) } / Double(a.count)
     }
+    func unusedEchoCursors() -> [Int] {
+      let racks = Mirror(reflecting: audio).children.first { $0.label == "racks" }?.value as? [OrchestraEffects] ?? []
+      return racks.filter { $0.peer == nil }.map { rack in
+        let echo = Mirror(reflecting: rack).children.first { $0.label == "echo" }!.value
+        return Mirror(reflecting: echo).children.first { $0.label == "cursor" }!.value as! Int
+      }
+    }
     check(osprey_main() == 0, "kernel initializes")
+    check(energy(audio.render(1024)) == 0, "an empty ensemble renders exact silence")
+    check(unusedEchoCursors() == Array(repeating: 0, count: 8), "idle audio leaves all eight unassigned effect racks untouched")
     check(osprey_orchestra_admit(1) == 0, "controller joins")
     var sequence: Int64 = 0
     func render(_ instrument: Int64, _ tone: Double, _ echo: Double, _ reverb: Double, _ warp: Double) throws -> [Float] {
@@ -363,6 +372,7 @@ async function verifySoundPalette() {
       return audio.render(24000)
     }
     let dry = try render(0, 0, 0, 0, 0)
+    check(unusedEchoCursors() == Array(repeating: 0, count: 7), "one sounding controller processes only its own rack")
     for instrument: Int64 in [1, 2, 3] {
       let result = try render(instrument, 0.6, 0, 0, 0)
       check(difference(dry, result) > 0.015, "each instrument has a distinct waveform")
