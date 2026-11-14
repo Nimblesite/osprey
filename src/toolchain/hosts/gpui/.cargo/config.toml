@@ -1,3 +1,8 @@
 # The host is its own workspace with its own artifacts, not the repo root target.
 [build]
 target-dir = "target"
+# The root config denies every warning, but here that reaches the reviewed upstream crates that
+# dependencies.py stages under target/gpui-dependencies: path dependencies count as local, so
+# Cargo never caps their lints, and an upstream crate's dead code (ashpd on Linux) failed the
+# build. The host's own code stays an error through `cargo clippy --release -- -D warnings`.
+warnings = "warn"
