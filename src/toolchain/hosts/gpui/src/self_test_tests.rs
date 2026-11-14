@@ -357,6 +357,16 @@ fn every_verb_reaches_the_components_a_frame_tells() {
         attempt_on(&told, "wait", &["Count 0"]),
         Ok(Attempt::Sending(vec![]))
     );
+    // A told row's words that no component draws, like a region's key or a theme token's
+    // name, are not on screen: signal flow's "Bypassed" token once held `gone` forever.
+    assert_eq!(
+        attempt_on(&told, "gone", &["root"]),
+        Ok(Attempt::Sending(vec![]))
+    );
+    assert!(matches!(
+        attempt_on(&told, "wait", &["root"]),
+        Ok(Attempt::Waiting(_))
+    ));
     pointer_lands_where_a_hand_would(&told);
     verbs_reach_ordinary_controls(&told);
     assert!(matches!(

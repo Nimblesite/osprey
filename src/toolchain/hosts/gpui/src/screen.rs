@@ -50,14 +50,19 @@ impl<'a> Screen<'a> {
             true => text == words,
             false => text.contains(words),
         };
-        self.regions()
-            .into_iter()
-            .any(|node| words_in(node, &matches))
-            || self
-                .shown
+        // A told frame's rows encode its components, its region keys and its theme's token
+        // names: only the drawn trees are on screen, never the raw rows.
+        let rows = || {
+            self.shown
                 .controls
                 .iter()
                 .any(|control| matches(&control.words) || matches(&control.hint))
+        };
+        let shown = match &self.told {
+            Some(_) => self.regions().into_iter().any(|node| words_in(node, &matches)),
+            None => rows(),
+        };
+        shown
             || self
                 .shown
                 .scenes
