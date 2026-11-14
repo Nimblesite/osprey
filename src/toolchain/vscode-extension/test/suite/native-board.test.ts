@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { encloseEvent, lassoEvent, pointEvent, strokeEvent, wordsOf } from "../../client/src/osprey-ui/webview/events";
 import { parseTouch } from "../../client/src/osprey-ui/session";
+import { sourcesOf } from "../../client/src/osprey-ui/nodes";
 
 // Restored from the JSON-protocol host, told rows edition: the board renders from its host-held
 // slices exactly as it did over the envelope; strokes and lassos cross as typed events now.
@@ -24,6 +25,15 @@ suite("native board host", () => {
     assert.throws(() => renderWorkspace({ regions: new Map([["root", { revision: 1, node: {
       kind: "image", source: "chalk-study.png", alt: "", width: 1536, height: 1024,
     } }]]), resolveAsset: source => `https://assets.example.test/${source}` }), /alt/);
+
+    // The session asks the host to approve exactly the backdrops a frame names, once each.
+    const board = (backdrop: unknown) => ({ ...node, backdrop });
+    const named = sourcesOf({ theme: { kind: "board", backdrop: "theme-paper.png" }, regions: [
+      { key: "root", node: { kind: "stack", children: [node, board("chalk-study.png"), board(""), board(7), { ...node, kind: "canvas" }, null, "chalk.png"] } },
+      { key: "aside", node: [board("graph-paper.png"), { kind: "image", source: "chalk-study.png", alt: "Chalk study" }] },
+    ] });
+    assert.deepStrictEqual(named, ["theme-paper.png", "chalk-study.png", "graph-paper.png"],
+      "only non-empty board backdrops are asset sources; empty or non-text ones, and other kinds' backdrop fields, name nothing");
   });
   test("the board draws from a host-held slice with both issued bindings", () => {
     const html = renderWorkspace({ regions, slices: slices() });
