@@ -10,5 +10,6 @@ ok 9 - extracted Prism synthesis has no UI dependency and retains pitch, wave, s
 ok 10 - a routed oscillator and gain render exact continuous PCM across unequal blocks
 ok 11 - mixing, filtering and explicit two-sample feedback execute the compiled graph
 ok 12 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
-1..12
-# tests=12 passed=12 failed=0 skipped=0
+ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
+1..13
+# tests=13 passed=13 failed=0 skipped=0
