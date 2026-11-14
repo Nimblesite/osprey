@@ -58,6 +58,7 @@ Requests go to the capability adapters in `OspreyShared`, which take the typed `
 | `http` | `NetworkAdapter.swift` — HTTPS or loopback HTTP, no redirects, streamed limit |
 | `store-read`, `store-write`, `store-list`, `store-delete` | `StoreAdapter.swift` — the app-private store, pinned descriptor traversal |
 | `choose-file`, `choose-folder`, `save-file` | `DocumentAdapter.swift` — the system panels, completing with the bare path (`""` when cancelled) |
+| `measure-folders` | `MeasureAdapter.swift` — folders walked to the bottom on their own volume: allocated bytes, hidden items, links never followed, volumes [UI-EFFECTS-MEASURE] |
 | `animate` | `SharedStore` itself — the display-link frame clock |
 | `cancel` | `CapabilityRunner` — cancels the ticket's in-flight request |
 

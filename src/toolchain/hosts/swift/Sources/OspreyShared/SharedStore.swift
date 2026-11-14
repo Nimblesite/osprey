@@ -37,9 +37,10 @@ public final class SharedStore: ObservableObject {
     public static func standardAdapters(store: StoreAdapter) -> [CapabilityAdapter] {
         #if os(macOS)
         [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, DocumentAdapter(),
-         ListDirectoriesAdapter(), ReadPropertyListsAdapter(), ReadTextsAdapter(), FingerprintAdapter(), RecogniseAdapter()]
+         ListDirectoriesAdapter(), ReadPropertyListsAdapter(), ReadTextsAdapter(), FingerprintAdapter(), RecogniseAdapter(),
+         MeasureAdapter()]
         #else
-        [HttpAdapter(), store, DocumentAdapter(), ListDirectoriesAdapter(), ReadTextsAdapter()]
+        [HttpAdapter(), store, DocumentAdapter(), ListDirectoriesAdapter(), ReadTextsAdapter(), MeasureAdapter()]
         #endif
     }
 

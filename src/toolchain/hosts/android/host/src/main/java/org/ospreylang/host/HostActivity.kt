@@ -127,6 +127,7 @@ class HostActivity : Activity() {
         HttpAdapter(),
         HostCallAdapter(applicationContext),
         ReadTextsAdapter(File(filesDir, "imports")),
+        MeasureAdapter(),
         ChooseAdapter(this::chooseFile))
 
     /** Opens the Storage Access Framework for one choose-file ask. */
