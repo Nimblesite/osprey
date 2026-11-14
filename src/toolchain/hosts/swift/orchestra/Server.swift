@@ -3,6 +3,7 @@ import Network
 
 // [ORCHESTRA-NETWORK-PROTOCOL] This adapter decodes at the edge; Osprey owns admission and gestures.
 final class OrchestraServer {
+    private let network = DispatchQueue(label: "org.ospreylang.orchestra.network", qos: .userInteractive)
     private let audio: OrchestraAudio
     private let token: String
     private let origin: Set<String>
@@ -27,15 +28,15 @@ final class OrchestraServer {
         guard port > 0, port < UInt16.max, let httpPort = NWEndpoint.Port(rawValue: port),
               let wsPort = NWEndpoint.Port(rawValue: port + 1) else { throw problem("Invalid server port") }
         let http = try NWListener(using: .tcp, on: httpPort)
-        http.newConnectionHandler = { [weak self] in self?.acceptHTTP($0) }
+        http.newConnectionHandler = { [weak self] connection in performSession { self?.acceptHTTP(connection) } }
         let ws = try NWListener(using: websocketParameters(), on: wsPort)
-        ws.newConnectionHandler = { [weak self] in self?.acceptWebSocket($0) }
+        ws.newConnectionHandler = { [weak self] connection in performSession { self?.acceptWebSocket(connection) } }
         listeners = [http, ws]
         for listener in listeners {
             listener.stateUpdateHandler = { [weak self] state in
-                if case .failed(let error) = state { self?.failure = error.localizedDescription }
+                performSession { if case .failed(let error) = state { self?.failure = error.localizedDescription } }
             }
-            listener.start(queue: .main)
+            listener.start(queue: network)
         }
     }
 
@@ -44,9 +45,9 @@ final class OrchestraServer {
         let websocket = NWProtocolWebSocket.Options()
         websocket.autoReplyPing = true
         websocket.maximumMessageSize = 4096
-        websocket.setClientRequestHandler(.main) { [weak self] protocols, headers in
-            let origin = headers.first { $0.name.lowercased() == "origin" }?.value ?? ""
-            let accept = protocols.contains("orchestra.v1") && self?.origin.contains(origin) == true
+        websocket.setClientRequestHandler(network) { [origin] protocols, headers in
+            let requestOrigin = headers.first { $0.name.lowercased() == "origin" }?.value ?? ""
+            let accept = protocols.contains("orchestra.v1") && origin.contains(requestOrigin)
             return NWProtocolWebSocket.Response(status: accept ? .accept : .reject,
                 subprotocol: accept ? "orchestra.v1" : nil, additionalHeaders: nil)
         }
@@ -58,23 +59,27 @@ final class OrchestraServer {
         guard httpConnections.count < 16 else { connection.cancel(); return }
         let key = ObjectIdentifier(connection)
         httpConnections[key] = connection
-        connection.start(queue: .main)
+        connection.start(queue: network)
         receiveHTTP(connection, collected: Data())
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self, weak connection] in
-            connection?.cancel()
-            self?.httpConnections.removeValue(forKey: key)
+        network.asyncAfter(deadline: .now() + 5) { [weak self, weak connection] in
+            performSession {
+                connection?.cancel()
+                self?.httpConnections.removeValue(forKey: key)
+            }
         }
     }
 
     private func receiveHTTP(_ connection: NWConnection, collected: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] data, _, done, error in
-            guard let self else { connection.cancel(); return }
-            let request = collected + (data ?? Data())
-            if request.count > 8192 || error != nil { self.closeHTTP(connection); return }
-            if let text = String(data: request, encoding: .utf8), text.contains("\r\n\r\n") {
-                self.replyHTTP(connection, request: text)
-            } else if done { self.closeHTTP(connection) }
-            else { self.receiveHTTP(connection, collected: request) }
+            performSession {
+                guard let self else { connection.cancel(); return }
+                let request = collected + (data ?? Data())
+                if request.count > 8192 || error != nil { self.closeHTTP(connection); return }
+                if let text = String(data: request, encoding: .utf8), text.contains("\r\n\r\n") {
+                    self.replyHTTP(connection, request: text)
+                } else if done { self.closeHTTP(connection) }
+                else { self.receiveHTTP(connection, collected: request) }
+            }
         }
     }
 
@@ -89,7 +94,7 @@ final class OrchestraServer {
         let status = valid ? "200 OK" : "404 Not Found"
         let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(headers.utf8) + body, completion: .contentProcessed { [weak self] _ in
-            self?.closeHTTP(connection)
+            performSession { self?.closeHTTP(connection) }
         })
     }
 
@@ -99,27 +104,30 @@ final class OrchestraServer {
         let peer = nextPeer
         peers[peer] = connection
         connection.stateUpdateHandler = { [weak self] state in
-            switch state {
-            case .failed, .cancelled: self?.disconnect(peer)
-            default: break
+            performSession {
+                switch state {
+                case .failed, .cancelled: self?.disconnect(peer)
+                default: break
+                }
             }
         }
-        connection.start(queue: .main)
+        connection.start(queue: network)
         receive(peer, connection)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-            if self?.authenticated.contains(peer) == false { self?.disconnect(peer) }
+        network.asyncAfter(deadline: .now() + 5) { [weak self] in
+            performSession { if self?.authenticated.contains(peer) == false { self?.disconnect(peer) } }
         }
     }
 
     private func receive(_ peer: Int64, _ connection: NWConnection) {
         connection.receiveMessage { [weak self] data, context, _, error in
-            guard let self, self.peers[peer] != nil else { return }
-            let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
-            guard error == nil, metadata?.opcode == .text, let data, data.count <= 4096 else {
-                self.disconnect(peer); return
+            performSession {
+                guard let self, self.peers[peer] != nil else { return }
+                let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
+                guard error == nil, metadata?.opcode == .text, let data, data.count <= 4096 else {
+                    self.disconnect(peer); return
+                }
+                self.message(peer, data)
             }
-            self.message(peer, data)
-
         }
     }
 
@@ -172,8 +180,10 @@ final class OrchestraServer {
             let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
             let context = NWConnection.ContentContext(identifier: "orchestra", metadata: [metadata])
             connection.send(content: content, contentContext: context, completion: .contentProcessed { [weak self] error in
-                if close || error != nil { self?.disconnect(peer) }
-                else if receiveNext && self?.peers[peer] != nil { self?.receive(peer, connection) }
+                performSession {
+                    if close || error != nil { self?.disconnect(peer) }
+                    else if receiveNext && self?.peers[peer] != nil { self?.receive(peer, connection) }
+                }
             })
         } catch { disconnect(peer) }
     }

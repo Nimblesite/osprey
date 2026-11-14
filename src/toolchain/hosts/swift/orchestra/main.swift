@@ -2,14 +2,13 @@ import Foundation
 import Darwin
 import AppKit
 
-// [ORCHESTRA-EFFECTS] Network callbacks and the synthesis worker share the main OS thread.
+// [ORCHESTRA-EFFECTS] All Osprey and audio production run on one dedicated OS thread.
 let environment = ProcessInfo.processInfo.environment
 let audio = OrchestraAudio()
 let desktop = OrchestraDesktop()
 var server: OrchestraServer?
 var timer: Timer?
 var failure: String?
-var running = true
 var lastSessionTick = -1.0
 let began = ProcessInfo.processInfo.systemUptime
 let headless = environment["ORCHESTRA_HEADLESS"] == "1"
@@ -20,13 +19,28 @@ var host = environment["ORCHESTRA_HOST"] ?? "127.0.0.1"
 let token = environment["ORCHESTRA_TOKEN"] ?? UUID().uuidString
 let assets = environment["ORCHESTRA_CONTROLLER"] ?? Bundle.main.path(forResource: "controller", ofType: "html") ?? "src/osprey/examples/pocket_orchestra/controller.html"
 
-func requestStop() {
-    running = false
-    if showWindow {
-        NSApplication.shared.stop(nil)
-        if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
-            NSApplication.shared.postEvent(event, atStart: true)
-        }
+// A fixed thread preserves the Osprey runtime's thread-local allocation/collector state.
+final class SessionWork: NSObject {
+    let run: () -> Void
+    init(_ run: @escaping () -> Void) { self.run = run }
+}
+final class SessionThread: NSObject {
+    lazy var thread = Thread(target: self, selector: #selector(startLoop), object: nil)
+    @objc private func startLoop() { runSession() }
+    @objc private func execute(_ work: SessionWork) { work.run() }
+    func submit(_ work: @escaping () -> Void) {
+        perform(#selector(execute(_:)), on: thread, with: SessionWork(work), waitUntilDone: false,
+                modes: [RunLoop.Mode.common.rawValue])
+    }
+}
+let session = SessionThread()
+func performSession(_ work: @escaping () -> Void) { session.submit(work) }
+func requestStop() { performSession { CFRunLoopStop(CFRunLoopGetCurrent()) } }
+func stopApplication() {
+    NSApplication.shared.stop(nil)
+    if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0,
+                                     windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+        NSApplication.shared.postEvent(event, atStart: true)
     }
 }
 
@@ -45,7 +59,8 @@ func advance() {
         if osprey_orchestra_tick(Int64(elapsed * 1000)) != 0 { failure = "Session clock rejected" }
         do { try audio.update() } catch { failure = error.localizedDescription }
         server?.expire()
-        desktop.update(peers: server?.controllerCount ?? 0, notes: audio.activeNotes, level: audio.level)
+        let peers = server?.controllerCount ?? 0, notes = audio.activeNotes, level = audio.level
+        if showWindow { DispatchQueue.main.async { desktop.update(peers: peers, notes: notes, level: level) } }
         lastSessionTick = elapsed
     }
     if headless { _ = audio.render(128) } else { audio.fill() }
@@ -55,7 +70,7 @@ func advance() {
 
 func start() throws {
     try validateConfiguration(environment)
-    if environment["ORCHESTRA_HOST"] == nil { host = try localAddress() }
+    if !showWindow && environment["ORCHESTRA_HOST"] == nil { host = try localAddress() }
     guard osprey_main() == 0 else { throw problem("Osprey kernel initialization failed") }
     guard token.count >= 20 else { throw problem("Session token must contain at least 20 characters") }
     audio.capturesAudio = environment["ORCHESTRA_CAPTURE"] != nil
@@ -63,13 +78,11 @@ func start() throws {
     let hostServer = OrchestraServer(audio: audio, host: host, token: token, page: page, port: port)
     try hostServer.start(port: port)
     server = hostServer
-    if showWindow { desktop.show(invite: "http://\(host):\(port)/#\(token)", audio: audio) }
-    // Prepare the window and QR code before the device begins consuming samples.
-    if !headless { try audio.start() }
+    if !headless { try audio.start(); audio.setVolume(0.65) }
     log("session.starting", ["address": "http://\(host):\(port)/", "headless": headless,
                             "sampleRate": audio.sampleRate, "transport": "trusted-LAN HTTP/WebSocket"])
     let clock = Timer(timeInterval: 0.002, repeats: true) { _ in advance() }
-    RunLoop.main.add(clock, forMode: .common)
+    RunLoop.current.add(clock, forMode: .common)
     timer = clock
 }
 
@@ -81,19 +94,33 @@ interrupt.setEventHandler { requestStop() }
 terminate.setEventHandler { requestStop() }
 interrupt.resume()
 terminate.resume()
-do {
-    try start()
-    if showWindow { NSApplication.shared.run() }
-    else { while running { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) } }
-} catch { failure = error.localizedDescription }
-timer?.invalidate()
-server?.stop()
-audio.stop()
-if let path = environment["ORCHESTRA_CAPTURE"] {
-    do { try audio.writeCapture(to: path) } catch { failure = error.localizedDescription }
+func runSession() {
+    do {
+        try start()
+        CFRunLoopRun()
+    } catch { failure = error.localizedDescription }
+    timer?.invalidate()
+    server?.stop()
+    audio.stop()
+    if let path = environment["ORCHESTRA_CAPTURE"] {
+        do { try audio.writeCapture(to: path) } catch { failure = error.localizedDescription }
+    }
+    log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
+                            "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
+    DispatchQueue.main.async { stopApplication() }
 }
-log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
-                        "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
+// Build AppKit controls before audio starts; UI work cannot delay the producer thread.
+if showWindow {
+    do {
+        if environment["ORCHESTRA_HOST"] == nil { host = try localAddress() }
+        desktop.show(invite: "http://\(host):\(port)/#\(token)")
+    } catch { failure = error.localizedDescription }
+}
+if failure == nil {
+    session.thread.qualityOfService = .userInteractive
+    session.thread.start()
+    NSApplication.shared.run()
+}
 if let failure {
     FileHandle.standardError.write(Data("\(failure)\n".utf8))
     if showWindow {

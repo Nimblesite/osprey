@@ -95,4 +95,4 @@ Linux desktop hosting, trusted HTTPS/WSS provisioning, motion instruments, saved
 - [ ] Measure physical iPhone/Android-to-speaker latency on Wi-Fi and record device/browser versions.
 - [ ] Complete Windows hosting, native phone controllers and the full native/canvas presentation matrix above.
 
-Run commands and honest delivery boundaries are in `src/osprey/examples/pocket_orchestra/README.md`. Browser emulation and generated PCM checks do not establish physical-phone or speaker-to-ear latency. The renderer still shares the main thread with networking; hard-real-time scheduling remains unproven.
+Run commands and honest delivery boundaries are in `src/osprey/examples/pocket_orchestra/README.md`. Browser emulation and generated PCM checks do not establish physical-phone or speaker-to-ear latency. The renderer and Osprey session run on a dedicated OS thread, separate from AppKit; hard-real-time scheduling remains unproven.

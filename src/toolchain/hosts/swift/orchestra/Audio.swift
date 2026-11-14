@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-// [SYNTH-RENDER] Osprey exports run only on the main thread. The device reads a preallocated ring.
+// [SYNTH-RENDER] Osprey exports run only on the session thread. The device reads a preallocated ring.
 final class OrchestraAudio {
     private let engine = AVAudioEngine()
     private var source: AVAudioSourceNode?
@@ -127,8 +127,7 @@ final class OrchestraAudio {
     }
 
     func fill() {
-        // Keep enough prepared audio for window/event scheduling without running Osprey on the device thread.
-        while orchestra_ring_queued() < 2048 {
+        while orchestra_ring_queued() < 1024 {
             buffer = render(128)
             let written = buffer.withUnsafeBufferPointer { orchestra_ring_write($0.baseAddress, $0.count) }
             if written != buffer.count { failure = "Audio ring rejected a prepared block"; return }

@@ -7,11 +7,9 @@ final class OrchestraDesktop: NSObject, NSWindowDelegate {
     private let status = NSTextField(labelWithString: "Starting audio and controller connections…")
     private let meter = NSLevelIndicator()
     private var invite = ""
-    private var audio: OrchestraAudio?
 
-    func show(invite: String, audio: OrchestraAudio) {
+    func show(invite: String) {
         self.invite = invite
-        self.audio = audio
         NSApplication.shared.setActivationPolicy(.regular)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 660, height: 560),
                               styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
@@ -66,7 +64,6 @@ final class OrchestraDesktop: NSObject, NSWindowDelegate {
         let volume = NSSlider(value: 0.65, minValue: 0, maxValue: 1, target: self, action: #selector(volumeChanged(_:)))
         volume.setAccessibilityLabel("Master volume")
         volume.widthAnchor.constraint(equalToConstant: 604).isActive = true
-        audio?.setVolume(0.65)
         meter.minValue = 0
         meter.maxValue = 1
         meter.levelIndicatorStyle = .continuousCapacity
@@ -85,10 +82,15 @@ final class OrchestraDesktop: NSObject, NSWindowDelegate {
     }
 
     @objc private func silenceAll() {
-        do { try server?.silence() } catch { failure = error.localizedDescription; requestStop() }
+        performSession {
+            do { try server?.silence() } catch { failure = error.localizedDescription; requestStop() }
+        }
     }
 
-    @objc private func volumeChanged(_ sender: NSSlider) { audio?.setVolume(Float(sender.doubleValue)) }
+    @objc private func volumeChanged(_ sender: NSSlider) {
+        let volume = Float(sender.doubleValue)
+        performSession { audio.setVolume(volume) }
+    }
     func windowWillClose(_ notification: Notification) { requestStop() }
 
     private func qrImage(_ text: String) -> NSImage? {
