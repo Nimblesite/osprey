@@ -71,4 +71,3 @@ Main text exactly, in three blocks: "AI CODING" (white), "AGENT" (electric cyan,
 Other permitted text: "FAIL", "PASS", "Osprey".
 Constraints: only these exact headline words; no robot, no face, no unrelated logos, no local/offline/free claims, no subscription claims, no YouTube UI or duration badge. Keep the bottom-right corner uncluttered for YouTube's own duration badge. Fill the entire frame with the design, no outer margins or black bars. The result should feel like the same polished thumbnail series as reference1, with the native coding agent as the new subject.
 ```
-
