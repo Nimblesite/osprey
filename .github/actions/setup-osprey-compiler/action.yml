@@ -45,6 +45,12 @@ runs:
         key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-osprey-
 
+    # dependencies.py stages the GPUI dependency sources from pinned archives and refuses a staged
+    # tree that differs from its declared digest, so a cached copy from an older inventory is dropped.
+    - name: Drop cached GPUI dependency sources
+      shell: bash
+      run: rm -rf target/gpui-dependencies
+
     # The hosted runner's Azure mirror serves some main-pocket packages (zsh, libc6-dbg) at about
     # 40 kB/s, which spent five minutes of every Linux setup. The downloaded packages are cached
     # so apt fetches only what changed; the install below still resolves every version itself.

@@ -6,7 +6,7 @@
 // so this file needs no workflow parser of its own.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { readFileSync, readdirSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -47,6 +47,20 @@ test('Only the Linux profiler suite installs glibc debug symbols', () => {
   const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
   assert.doesNotMatch(setup, /(?:apt_install|apt-get install)[^\n]*libc6-dbg/)
   assert.match(workflow, /- name: Profiler suite\n        run: \|\n[\s\S]*?install -y libc6-dbg\n          make _test_profiler/)
+})
+
+// The staged GPUI dependency sources come from pinned archives; a cached copy from an older
+// inventory fails dependencies.py's integrity check, so the cached target never carries them.
+test('the compiler setup restores no staged GPUI dependency sources', () => {
+  const setup = readFileSync('.github/actions/setup-osprey-compiler/action.yml', 'utf8')
+  const cache = setup.indexOf('- name: Cache cargo registry + target')
+  const drop = setup.indexOf('- name: Drop cached GPUI dependency sources')
+  assert.ok(cache >= 0 && drop > cache, 'the drop step follows the cargo cache restore')
+  assert.match(setup.slice(drop), /^ {6}shell: bash\n {6}run: rm -rf target\/gpui-dependencies$/m)
+  for (const name of readdirSync('.github/workflows')) {
+    const workflow = readFileSync(join('.github/workflows', name), 'utf8')
+    if (/_gpui-|gpui\/run\.sh/.test(workflow)) assert.match(workflow, /uses: \.\/\.github\/actions\/setup-osprey-compiler/, name)
+  }
 })
 
 test('analysis checks the workspace without rebuilding the release compiler', () => {
