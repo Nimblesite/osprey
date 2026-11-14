@@ -93,11 +93,12 @@ for (const slug of catalogue.lessons) {
   }
 }
 
-// The local package registry [PACKAGE-LOCAL-REGISTRY]: the server and the staged
-// packages it serves. Not bundled on Windows yet (its tree walk needs POSIX find).
+// The local package registry [PACKAGE-LOCAL-REGISTRY]: the server, never packages; it
+// serves a folder in the extension's storage. Not bundled on Windows yet (its tree
+// walk needs POSIX find).
 if (process.platform !== "win32") {
   const server = path.join(path.dirname(client), "osprey-registry");
   if (!fs.existsSync(server)) throw new Error(`Missing bundled local registry server: ${server}. Run make _vsix_bundle before packaging.`);
-  const packages = path.join(path.dirname(client), "registry", "@osprey");
-  if (!fs.existsSync(packages) || fs.readdirSync(packages).length === 0) throw new Error(`Missing bundled local registry packages: ${packages}. Run make _vsix_bundle before packaging.`);
+  const packages = path.join(path.dirname(client), "registry");
+  if (fs.existsSync(packages)) throw new Error(`The VSIX bundles no packages, but ${packages} exists. Run make _vsix_bundle before packaging.`);
 }

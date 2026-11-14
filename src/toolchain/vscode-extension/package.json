@@ -751,7 +751,7 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to the bundled snapshot of the Osprey repository's packages."
+          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to a folder in the extension's storage; publish into it with `osprey-pkg publish --folder`."
         },
         "osprey.packages.frontendPath": {
           "type": "string",

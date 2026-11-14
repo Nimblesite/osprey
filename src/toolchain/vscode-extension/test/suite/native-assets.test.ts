@@ -55,10 +55,10 @@ suite("workbench bundle completeness", () => {
   const extension = path.resolve(__dirname, "../../..");
   const verify = () => spawnSync(process.execPath, [path.join(root, "scripts/verify-package-client.mjs")],
     { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
-  const registryCheck = (part: string): void => {
+  const registryCheck = (problem: string): void => {
     const result = verify(), required = process.platform !== "win32";
     assert.strictEqual(result.status, required ? 1 : 0, result.stderr);
-    if (required) assert.ok(result.stderr.includes(`Missing bundled local registry ${part}`), result.stderr);
+    if (required) assert.ok(result.stderr.includes(problem), result.stderr);
   };
   setup(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-bundle-"));
@@ -75,8 +75,6 @@ suite("workbench bundle completeness", () => {
     for (const name of ["fixture.ndjson", "LICENSE.lean4", "LICENSE.openai-math"]) fs.writeFileSync(path.join(assets, "proof-libraries", name), "fixture\n");
     fs.writeFileSync(path.join(bundle, process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg"), "fixture");
     fs.writeFileSync(path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry"), "fixture");
-    fs.mkdirSync(path.join(bundle, "registry", "@osprey", "testing"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "registry", "@osprey", "testing", "osprey.toml"), 'name = "@osprey/testing"\n');
     for (const name of ["workbench", "package-workspace"]) fs.copyFileSync(path.join(extension, "bin", `${process.platform}-${process.arch}`, `${name}.wasm`), path.join(bundle, `${name}.wasm`));
   });
   teardown(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -100,16 +98,17 @@ suite("workbench bundle completeness", () => {
     for (const name of ["wasi", "wasi-runner", "wasi-worker"]) assert.ok(fs.statSync(path.join(root, "out/client/src/osprey-ui", `${name}.js`)).size > 0);
   });
 
-  test("packaging enforces the host's local-registry server and package inventory", () => {
+  test("packaging requires the local-registry server and refuses bundled packages", () => {
     const bundle = path.dirname(assets), server = path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry");
+    assert.equal(verify().status, 0, "a server without packages is a complete bundle");
     fs.rmSync(server);
-    registryCheck("server");
+    registryCheck("Missing bundled local registry server");
     fs.writeFileSync(server, "fixture");
     const packages = path.join(bundle, "registry", "@osprey");
-    fs.rmSync(packages, { recursive: true });
-    registryCheck("packages");
-    fs.mkdirSync(packages);
-    registryCheck("packages");
+    fs.mkdirSync(packages, { recursive: true });
+    registryCheck("The VSIX bundles no packages");
+    fs.rmSync(path.join(bundle, "registry"), { recursive: true });
+    assert.equal(verify().status, 0, "removing the packages restores the bundle");
   });
 
   test("packaging rejects a missing WASI worker runtime module", () => {
