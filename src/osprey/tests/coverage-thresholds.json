@@ -425,6 +425,10 @@
       "uitest": {
         "language": "osprey",
         "threshold": 100.0
+      },
+      "synth": {
+        "language": "osprey",
+        "threshold": 90.0
       }
     },
     "apps": {

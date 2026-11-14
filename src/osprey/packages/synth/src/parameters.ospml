@@ -1,0 +1,38 @@
+// [SYNTH-SIGNALS] Commands apply at an explicit sample position; observers see applied state.
+namespace synth
+
+(** Validates component parameter changes before publishing a new immutable snapshot. *)
+module Parameters
+    values n = mapList (n.parameters, \p => ParameterValue(node = n.identity, key = p.key, value = p.initial))
+
+    (** Initial applied values are the graph's declared defaults. *)
+    export initial graph = Observation(revision = 0, samplePosition = 0, parameters = foldList (graph.nodes, [], \(all, n) => listConcat all (values n)), components = [])
+
+    descriptor (graph, edit) = match Graphs::node (graph, edit.node)
+        Invalid fault => Invalid(fault = fault)
+        Valid n => match listGet (filterList (n.parameters, \p => p.key == edit.key)) 0
+            Error _ => Invalid(fault = MissingParameter)
+            Success p => Valid(value = p)
+
+    validValue (p, value) = value >= p.minimum && value <= p.maximum
+
+    replaced (edit, p) = match p.node == edit.node && p.key == edit.key
+        true => p(value = edit.value)
+        false => p
+
+    applied (snapshot, edit) = snapshot(revision = satAdd snapshot.revision 1, parameters = mapList (snapshot.parameters, \p => replaced (edit, p)))
+
+    change (graph, snapshot, edit) = match descriptor (graph, edit)
+        Invalid fault => Invalid(fault = fault)
+        Valid p => match validValue (p, edit.value)
+            false => Invalid(fault = InvalidParameter)
+            true => match length (filterList (snapshot.parameters, \v => v.node == edit.node && v.key == edit.key)) == 1
+                false => Invalid(fault = MissingParameter)
+                true => Valid(value = applied (snapshot, edit))
+
+    (** Called when an event reaches its sample position; stale UI edits cannot overwrite new values. *)
+    export apply (graph, snapshot, edit) = match snapshot.revision != edit.revision || snapshot.revision == 9223372036854775807
+        true => Invalid(fault = StaleRevision)
+        false => match edit.samplePosition != snapshot.samplePosition || edit.samplePosition < 0
+            true => Invalid(fault = InvalidFrame)
+            false => change (graph, snapshot, edit)

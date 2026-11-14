@@ -1,0 +1,115 @@
+// Implements [SYNTH-GRAPH]. Graph edits are pure; a rejected edit preserves the caller's graph.
+namespace synth
+
+(** Immutable graph editing and checked scheduling before rendering begins. *)
+module Graphs
+    (** A graph with no components or routes. *)
+    export empty = Graph(nodes = [], cables = [])
+
+    (** Locate one component by stable identity. *)
+    export node (graph, identity) = match listGet (filterList (graph.nodes, \n => n.identity == identity)) 0
+        Success found => Valid(value = found)
+        Error _ => Invalid(fault = MissingNode)
+
+    // Parameter and ParameterValue both have keys; the closure needs the intended record.
+    uniqueParameters (parameters : List<Parameter>) = all (parameters, \p => length (filterList (parameters, \other => other.key == p.key)) == 1)
+
+    validParameter p = p.key != "" && p.minimum <= p.initial && p.initial <= p.maximum && abs p.minimum <= 1000000000000.0 && abs p.maximum <= 1000000000000.0
+
+    validPort p = p.name != "" && p.channels >= 1 && p.channels <= 64
+
+    all<T> : (List<T>, (T) -> bool) -> bool
+    all (items, predicate) = foldList (items, true, \(ok, item) => ok && predicate item)
+
+    processorValid processor = match processor
+        Delay count => count >= 1 && count <= 1920000
+        External identity => identity != ""
+        _ => true
+
+    validNode n = n.identity >= 0 && processorValid n.processor && all (n.inputs, validPort) && all (n.outputs, validPort)
+
+    checkedNode n = match validNode n
+        false => Invalid(fault = InvalidNode)
+        true => match uniqueParameters n.parameters
+            false => Invalid(fault = DuplicateParameter)
+            true => match all (n.parameters, validParameter)
+                false => Invalid(fault = InvalidParameter)
+                true => Valid(value = n)
+
+    inserted (graph : Graph, n) = match checkedNode n
+        Invalid fault => Invalid(fault = fault)
+        Valid _ => Valid(value = graph(nodes = listAppend graph.nodes n))
+
+    (** Add a validated component, refusing duplicate identities and resource overflow. *)
+    export add (graph, n) = match length graph.nodes >= 256
+        true => Invalid(fault = Capacity)
+        false => match node (graph, n.identity)
+            Valid _ => Invalid(fault = DuplicateNode)
+            Invalid _ => inserted (graph, n)
+
+    port (ports, index) = match listGet ports index
+        Error _ => Invalid(fault = InvalidPort)
+        Success p => Valid(value = p)
+
+    compatible (one, other) = one.rate == other.rate && one.channels == other.channels && one.unit == other.unit
+
+    joinedPorts (source, destination, cable) = match port (source.outputs, cable.outlet)
+        Invalid fault => Invalid(fault = fault)
+        Valid out => match port (destination.inputs, cable.inlet)
+            Invalid fault => Invalid(fault = fault)
+            Valid input => match compatible (out, input)
+                true => Valid(value = cable)
+                false => Invalid(fault = IncompatiblePorts)
+
+    checkedCable (graph, cable) = match node (graph, cable.source)
+        Invalid fault => Invalid(fault = fault)
+        Valid source => match node (graph, cable.destination)
+            Invalid fault => Invalid(fault = fault)
+            Valid destination => joinedPorts (source, destination, cable)
+
+    occupied (graph, cable) = length (filterList (graph.cables, \c => c.destination == cable.destination && c.inlet == cable.inlet)) != 0
+
+    connected (graph : Graph, cable) = match checkedCable (graph, cable)
+        Invalid fault => Invalid(fault = fault)
+        Valid _ => match occupied (graph, cable)
+            true => Invalid(fault = OccupiedInput)
+            false => Valid(value = graph(cables = listAppend graph.cables cable))
+
+    (** Connect compatible typed ports, requiring explicit mixing for multiple sources. *)
+    export connect (graph, cable) = match length graph.cables >= 2048
+        true => Invalid(fault = Capacity)
+        false => connected (graph, cable)
+
+    // Explicit delay nodes publish old state first and consume incoming cables after the schedule.
+    delayed processor = match processor
+        Delay _ => true
+        _ => false
+
+    feedback (graph, cable) = match node (graph, cable.destination)
+        Valid destination => delayed destination.processor
+        Invalid _ => false
+
+    containsId (ids, identity) = length (filterList (ids, \i => i == identity)) != 0
+
+    ready (graph, done, n) = all (filterList (graph.cables, \c => c.destination == n.identity), \c => feedback (graph, c) || containsId (done, c.source))
+
+    schedule (graph, remaining, done) = match length remaining == 0
+        true => Valid(value = Prepared(graph = graph, order = done, feedback = filterList (graph.cables, \c => feedback (graph, c))))
+        false => match listGet (filterList (remaining, \n => ready (graph, done, n))) 0
+            Error _ => Invalid(fault = Cycle)
+            Success next => schedule (graph, filterList (remaining, \n => n.identity != next.identity), listAppend done next.identity)
+
+    addChecked (outcome, n) = match outcome
+        Invalid fault => Invalid(fault = fault)
+        Valid graph => add (graph, n)
+
+    connectChecked (outcome, cable) = match outcome
+        Invalid fault => Invalid(fault = fault)
+        Valid graph => connect (graph, cable)
+
+    (** Revalidate public records, including graphs reconstructed from a stored patch. *)
+    export prepare graph = match foldList (graph.nodes, Valid(value = empty), addChecked)
+        Invalid fault => Invalid(fault = fault)
+        Valid nodes => match foldList (graph.cables, Valid(value = nodes), connectChecked)
+            Invalid fault => Invalid(fault = fault)
+            Valid checked => schedule (checked, checked.nodes, [])

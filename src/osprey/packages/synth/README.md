@@ -12,4 +12,6 @@ Regenerate a model with the upstream typeDiagram emitter:
 node scripts/make/osprey-schema.mjs /path/to/typediagram/dist src/osprey/packages/synth/patch.td src/osprey/packages/synth/src/model.ospml synth
 ```
 
-The current shared renderer is exercised by `make -C src/toolchain/targets/tests synth`, which drives Prism's complete editor and checks the samples and host playback requests.
+`Graphs` validates typed ports and compiles a deterministic schedule, rejecting cycles without explicit delay. `Parameters` checks edits against descriptors and applied revisions; `Observations` reads component values through `Signal<Observation>` without a UI dependency. `Oscillators`, `Envelopes` and `Filters` provide explicit-state scalar reference processing. These record/list-based paths have **not** been verified as allocation-free audio callbacks.
+
+Run `make -C src/osprey/packages synth` for the independent package journeys and the coverage gate. The suite covers routing, delay feedback, corrupt graph records, same-kind component Signals, stale edits, waveform/state continuity, ADSR and filter responses across sample rates. The current shared renderer is exercised by `make -C src/toolchain/targets/tests synth`, which drives Prism's complete editor and checks the samples and host playback requests.

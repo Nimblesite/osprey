@@ -1,6 +1,7 @@
 // [SYNTH-VOICE] Pure synthesis extracted from Prism: no UI or platform dependencies.
 namespace synth
 
+(** Pure reference voice rendering retained from Prism. *)
 module Voice
     (** Samples per second. *)
     export rate = 11025

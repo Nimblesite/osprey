@@ -1,0 +1,8 @@
+[project]
+name = "synth-package-tests"
+source_roots = [".", "../src"]
+default_namespace = "synthtests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

@@ -1,0 +1,52 @@
+// [SYNTH-DSP] Linear ADSR reference: retrigger from the current level, release from the held level.
+namespace synth
+
+(** Explicit envelope state; a note-off never waits for attack or decay to finish. *)
+module Envelopes
+    (** No active note. *)
+    export initial () = EnvelopeState(stage = Idle, level = 0.0, releaseStep = 0.0)
+
+    duration seconds = seconds >= 0.0 && seconds <= 3600.0
+
+    (** Validate seconds, normalised sustain and the rendering rate before activation. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && duration config.attack && duration config.decay && duration config.release && config.sustain >= 0.0 && config.sustain <= 1.0
+        true => Success(value = config)
+        false => Error(message = "Invalid envelope rate, duration or sustain.")
+
+    (** Legato retrigger preserves the current level. *)
+    export noteOn held = held(stage = Attack)
+
+    (** Release slope is captured once, so repeated note-off does not extend the tail. *)
+    export noteOff (config, held) = match (held.stage == Release || held.stage == Idle)
+        true => held
+        false => match config.release == 0.0
+            true => initial ()
+            false => held(stage = Release, releaseStep = held.level / (config.release * config.sampleRate))
+
+    attack (config, held) = match config.attack == 0.0
+        true => held(stage = Decay, level = 1.0)
+        false =>
+            value = held.level + 1.0 / (config.attack * config.sampleRate)
+            match value >= 1.0
+                true => held(stage = Decay, level = 1.0)
+                false => held(level = value)
+
+    decay (config, held) = match config.decay == 0.0
+        true => held(stage = Sustain, level = config.sustain)
+        false =>
+            value = held.level - (1.0 - config.sustain) / (config.decay * config.sampleRate)
+            match value <= config.sustain
+                true => held(stage = Sustain, level = config.sustain)
+                false => held(level = value)
+
+    release held = match held.level <= held.releaseStep
+        true => initial ()
+        false => held(level = held.level - held.releaseStep)
+
+    (** Advance exactly one sample with the same result regardless of the host's block partition. *)
+    export next (config, held) = match held.stage
+        Idle => initial ()
+        Attack => attack (config, held)
+        Decay => decay (config, held)
+        Sustain => held(level = config.sustain)
+        Release => release held

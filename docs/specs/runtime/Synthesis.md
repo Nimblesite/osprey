@@ -1,6 +1,6 @@
 # Osprey synthesis toolkit [SYNTH]
 
-Status — implementation in progress. The initial package extracts Prism's pure pitch, waveform, modulation, sample and WAV functions. The modular graph, real-time renderer and advanced algorithms below are requirements, not completed features. Research sources and candidate experiments are in [the research guide](../../research/synthesis/README.md).
+Status — implementation in progress. The initial package extracts Prism's pure pitch, waveform, modulation, sample and WAV functions. Typed graph validation/scheduling, reactive parameter snapshots and stateful scalar reference oscillators, ADSR and filters now have passing package journeys. The real-time renderer and advanced algorithms remain requirements, not completed features. Research sources and candidate experiments are in [the research guide](../../research/synthesis/README.md).
 
 `@osprey/synth` is an independent synthesis library for instruments, effects, offline rendering and future plug-in hosting. It contains no UI, native widgets, canvas rendering, networking, session management or operating-system audio-device code. Prism and Light Orchestra are examples using the library. The orchestra's number of phones and instruments must not constrain library design.
 
@@ -55,9 +55,9 @@ Scanning, loading, activation and state restoration run outside the callback. Th
 - [x] Extract reusable synthesis from Prism without introducing a UI dependency into the package.
 - [x] Run Prism's existing full interaction/voice suite before and after extraction.
 - [x] Collect foundational and recent primary research with implementation experiments.
-- [ ] Add independent package tests and package governance/coverage integration.
-- [ ] Implement typed graph construction/validation, routing, chaining and explicit feedback.
-- [ ] Expose component parameters/state through typed Signals and verify observer independence.
+- [x] Add independent package tests and package governance/coverage integration (nine journeys; 97.4% own-source line coverage on 2026-11-14).
+- [x] Implement typed graph construction/validation, routing, chaining and explicit feedback scheduling; graph audio execution remains pending.
+- [x] Expose component parameters/state through typed Signals and verify independent component IDs, applied revisions and rejected stale edits; concurrent publication remains pending.
 - [ ] Implement stateful DSP and reproducible sample-accurate block processing.
 - [ ] Verify generated native callback allocation/locking behaviour and target-device deadlines.
 - [ ] Establish spectral, stability, continuity, polyphony and overload evidence.

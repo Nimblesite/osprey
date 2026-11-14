@@ -1,0 +1,27 @@
+// [SYNTH-DSP] Trapezoidal state-variable filter, with explicit integrator memory.
+// Reference: [SYNTH-RESEARCH-ANTIALIASING], Zavalishin's topology-preserving transforms.
+namespace synth
+
+(** Low, band and high outputs from one stateful filter step. *)
+module Filters
+    (** Zero initial energy. *)
+    export initial = FilterState(integratorOne = 0.0, integratorTwo = 0.0)
+
+    coefficients config =
+        angle = 3.141592653589793 * config.cutoff / config.sampleRate
+        g = sin angle / cos angle
+        k = 1.0 / config.resonance
+        a1 = 1.0 / (1.0 + g * (g + k))
+        FilterCoefficients(a1 = a1, a2 = g * a1, a3 = g * g * a1, k = k)
+
+    (** Cutoff is positive and below 0.49 of sample rate; resonance is Q, not a normalised knob. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.cutoff > 0.0 && config.cutoff < config.sampleRate * 0.49 && config.resonance >= 0.1 && config.resonance <= 20.0
+        true => Success(value = coefficients config)
+        false => Error(message = "Invalid filter rate, cutoff or Q.")
+
+    (** One reference sample with previously validated coefficients and finite input. *)
+    export next (c, held, input) =
+        v3 = input - held.integratorTwo
+        band = c.a1 * held.integratorOne + c.a2 * v3
+        low = held.integratorTwo + c.a2 * held.integratorOne + c.a3 * v3
+        FilterSample(low = low, band = band, high = input - c.k * band - low, next = FilterState(integratorOne = 2.0 * band - held.integratorOne, integratorTwo = 2.0 * low - held.integratorTwo))

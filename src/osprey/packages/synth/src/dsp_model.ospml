@@ -1,0 +1,62 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Waveform =
+    Sine
+    Saw
+    Pulse
+    Triangle
+
+type OscillatorConfig =
+    sampleRate : float
+    frequency : float
+    pulseWidth : float
+    waveform : Waveform
+
+type OscillatorState =
+    phase : float
+
+type OscillatorSample =
+    sample : float
+    next : OscillatorState
+
+type EnvelopeConfig =
+    sampleRate : float
+    attack : float
+    decay : float
+    sustain : float
+    release : float
+
+type EnvelopeStage =
+    Idle
+    Attack
+    Decay
+    Sustain
+    Release
+
+type EnvelopeState =
+    stage : EnvelopeStage
+    level : float
+    releaseStep : float
+
+type FilterConfig =
+    sampleRate : float
+    cutoff : float
+    resonance : float
+
+type FilterCoefficients =
+    a1 : float
+    a2 : float
+    a3 : float
+    k : float
+
+type FilterState =
+    integratorOne : float
+    integratorTwo : float
+
+type FilterSample =
+    low : float
+    band : float
+    high : float
+    next : FilterState
+
