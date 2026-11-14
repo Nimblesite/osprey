@@ -108,6 +108,7 @@ golden() {
 # The headless journey: launch with the console attached and read the verdict back.
 view_check() {
     local log="$build/view-check.log" launched seconds=0 written
+    xcrun simctl terminate "$device" "$identifier" 2>/dev/null || true
     xcrun simctl launch --console "$device" "$identifier" --resources "$app" --view-check >"$log" 2>&1 &
     launched=$!
     while kill -0 "$launched" 2>/dev/null && (( seconds < 180 )); do
