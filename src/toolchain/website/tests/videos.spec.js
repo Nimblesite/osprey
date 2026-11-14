@@ -358,8 +358,9 @@ test("the documentation home opens on every platform's path, not a single-platfo
   await page.goto("/docs/");
   const article = page.locator("article");
   await expect(article.locator("h1")).toHaveText("Osprey documentation");
-  await expect(article.locator("video")).toHaveCount(0);
   await expect(article.locator('[data-video="swift-interop"]')).toHaveCount(0);
+  await expect(article.locator("video")).toHaveCount(1);
+  await expect(article.locator('[data-video="profiler"] video')).toBeVisible();
   await expect(article.getByRole("link", { name: "Osprey and Swift interop on the Mac and iPhone" })).toHaveAttribute("href", "/docs/tutorials/swift-interop/");
   await expect(article.getByRole("link", { name: "Install Osprey" })).toBeVisible();
 });
