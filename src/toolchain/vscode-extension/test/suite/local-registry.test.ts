@@ -205,6 +205,23 @@ suite("local package registry", () => {
     const registry = new LocalRegistry(r.deps);
     assert.strictEqual(await registry.refresh(), "external");
     assert.strictEqual(await registry.refresh(), "stopped");
+
+    const remote = recorded({ registry: "https://packages.example", health: [true] });
+    assert.strictEqual(await new LocalRegistry(remote.deps).refresh(), "stopped", "a remote registry has no local state to probe");
+    assert.deepStrictEqual(remote.states, [], "and announces none");
+
+    // health answers: launch probe, two waits, then the refreshes below.
+    const own = recorded({ health: [false, false, true, true, false, true] });
+    const started = new LocalRegistry(own.deps, 10_000, 1);
+    const before = started.current;
+    const starting = started.start();
+    assert.strictEqual(await started.refresh(), before, "a refresh during start reports the current state without probing");
+    assert.strictEqual(await starting, true);
+    assert.strictEqual(await started.refresh(), "running", "the server this window started answers");
+    assert.strictEqual(await started.refresh(), "starting", "this window's silent server is still coming up");
+    assert.strictEqual(await started.start(), true, "a second start finds this window's server answering");
+    assert.strictEqual(started.current, "running");
+    assert.strictEqual(own.starts.length, 1, "and starts nothing more");
   });
 
   test("the health probe accepts only 200 from /v1/health", async () => {

@@ -37,7 +37,7 @@ export async function folderFor(resource?: Uri): Promise<Uri | undefined> {
 }
 
 function applicationCandidates(context: ExtensionContext): string[] {
-  const configured = workspace.getConfiguration("osprey").get<string>("packages.appPath") ?? "";
+  const configured = workspace.getConfiguration("osprey").get<string>("packages.appPath", "");
   const platform = shipwrightPlatform();
   const candidates = [
     configured,
@@ -82,7 +82,7 @@ export function hostBridge(context: Pick<ExtensionContext, "extensionPath">): Ca
   return {
     get trusted() { return workspace.isTrusted; },
     get workspaceFolders() { return (workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath); },
-    configuredExecutable: workspace.getConfiguration("osprey").get<string>("packages.frontendPath") ?? "",
+    configuredExecutable: workspace.getConfiguration("osprey").get<string>("packages.frontendPath", ""),
     bundledExecutable: packageExecutable(context),
     dirtyFiles: () => workspace.textDocuments.filter((document) => document.isDirty).map((document) => document.fileName),
     workspaceSnapshot,

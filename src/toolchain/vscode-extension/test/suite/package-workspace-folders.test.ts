@@ -114,4 +114,15 @@ suite("package registry setting", () => {
     await withHealthyLoopback(async (port) => assertOpened(await openWithRegistry(`http://127.0.0.1:${port}`), "the only project"));
     assert.strictEqual(picker.callCount, 0, "neither the resolver nor the command asks");
   });
+
+  test("a window with no project opens nothing and says why", async () => {
+    sinon.stub(workspace, "workspaceFolders").get(() => undefined);
+    const picker = sinon.stub(window, "showQuickPick");
+    assert.strictEqual(await folderFor(), undefined, "no project resolves");
+    assert.deepStrictEqual(hostBridge({ extensionPath: "/extension" } as ExtensionContext).workspaceFolders, [], "the capability host sees no folders");
+    const opened = await openWithRegistry("https://localhost:1");
+    assert.deepStrictEqual([opened.panel, opened.prompts], [undefined, []], "nothing opens or is offered");
+    assert.deepStrictEqual(opened.errors, ["Open a workspace folder before managing Osprey packages."]);
+    assert.strictEqual(picker.callCount, 0, "there is nothing to choose from");
+  });
 });
