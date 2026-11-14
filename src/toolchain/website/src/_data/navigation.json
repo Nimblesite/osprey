@@ -109,6 +109,10 @@
           "url": "/docs/osprey-native/"
         },
         {
+          "text": "The Osprey Native bridge",
+          "url": "/docs/osprey-native/bridge/"
+        },
+        {
           "text": "Web apps",
           "url": "/docs/web-apps/"
         },

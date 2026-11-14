@@ -91,7 +91,7 @@ Independent Mathlib operation remains delivery work; [inspect the current eviden
 | Test the rules you share | Pure updates describe state changes. Typed effects request files, networking and storage; test handlers supply controlled responses through each application's own boundary. |
 | Less code to maintain | Inferred types, exhaustive matching and shared transitions keep rules in Osprey instead of repeating them per host. |
 
-Host coverage varies: mobile and bank examples use their own bridges; common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
+The framework's hosts all draw the same frame of rows in shared memory; [see how the bridge works →](/docs/osprey-native/bridge/). Host coverage varies: the mobile Issue Inbox and bank examples still use their own boundaries, and common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
 
 ## Build your first app
 
