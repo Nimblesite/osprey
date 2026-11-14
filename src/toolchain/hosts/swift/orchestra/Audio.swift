@@ -1,5 +1,43 @@
 import AVFoundation
 import Foundation
+import Darwin
+
+// [ORCHESTRA-ENGINE] The producer needs an audio deadline while its run loop sleeps.
+// https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/scheduler/scheduler.html
+// User-interactive QoS alone does not express a real-time processing deadline.
+final class OrchestraAudioDeadline {
+    static let interval = 0.002
+    private var active = false
+    func start() throws {
+        guard !active else { return }
+        var clock = mach_timebase_info_data_t()
+        guard mach_timebase_info(&clock) == KERN_SUCCESS, clock.numer > 0 else {
+            throw problem("Cannot read the audio scheduling clock")
+        }
+        let period = Self.interval * 1_000_000_000 * Double(clock.denom) / Double(clock.numer)
+        guard period >= 2, period <= Double(UInt32.max) else { throw problem("Unsupported audio scheduling clock") }
+        var policy = thread_time_constraint_policy_data_t(
+            period: UInt32(period), computation: UInt32(period / 2), constraint: UInt32(period), preemptible: 1)
+        try apply(thread_flavor_t(THREAD_TIME_CONSTRAINT_POLICY), &policy)
+        active = true
+        log("audio.deadline_started", ["periodMs": Self.interval * 1000, "computationMs": Self.interval * 500])
+    }
+    func stop() throws {
+        guard active else { return }
+        var policy = thread_extended_policy_data_t(timeshare: 1)
+        try apply(thread_flavor_t(THREAD_EXTENDED_POLICY), &policy)
+        active = false
+        log("audio.deadline_stopped")
+    }
+    private func apply<Policy>(_ flavor: thread_flavor_t, _ policy: inout Policy) throws {
+        let status = withUnsafeMutableBytes(of: &policy) { bytes -> kern_return_t in
+            guard let pointer = bytes.bindMemory(to: integer_t.self).baseAddress else { return KERN_INVALID_ARGUMENT }
+            return thread_policy_set(pthread_mach_thread_np(pthread_self()), flavor, pointer,
+                                     mach_msg_type_number_t(bytes.count / MemoryLayout<integer_t>.size))
+        }
+        guard status == KERN_SUCCESS else { throw problem("Audio deadline scheduling failed (\(status))") }
+    }
+}
 
 // [SYNTH-RENDER] Osprey exports run only on the session thread. The device reads a preallocated ring.
 final class OrchestraAudio {

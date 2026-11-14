@@ -84,7 +84,7 @@ func start() throws {
     if !headless { try audio.start(); audio.setVolume(0.65) }
     log("session.starting", ["address": "http://\(host):\(port)/", "headless": headless,
                             "sampleRate": audio.sampleRate, "transport": "trusted-LAN HTTP/WebSocket"])
-    let clock = Timer(timeInterval: 0.002, repeats: true) { _ in advance() }
+    let clock = Timer(timeInterval: OrchestraAudioDeadline.interval, repeats: true) { _ in advance() }
     RunLoop.current.add(clock, forMode: .common)
     timer = clock
 }
@@ -98,10 +98,13 @@ terminate.setEventHandler { requestStop() }
 interrupt.resume()
 terminate.resume()
 func runSession() {
+    let deadline = OrchestraAudioDeadline()
     do {
         try start()
+        if !headless { try deadline.start() }
         CFRunLoopRun()
     } catch { failure = error.localizedDescription }
+    do { try deadline.stop() } catch { failure = failure ?? error.localizedDescription }
     timer?.invalidate()
     server?.stop()
     audio.stop()

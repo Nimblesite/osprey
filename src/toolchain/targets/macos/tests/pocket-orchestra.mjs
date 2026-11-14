@@ -246,6 +246,10 @@ try {
   for (const event of ['session.starting', 'controller.joined', 'controller.disconnected', 'controller.expired', 'controller.rejected', 'controller.ready', 'controller.sound', 'audio.health', 'session.stopped']) {
     assert(events.some(record => record.event === event), `persistent diagnostics include ${event}`)
   }
+  for (const event of ['audio.deadline_started', 'audio.deadline_stopped']) {
+    assert.equal(events.filter(record => record.event === event).length, windowed ? 2 : 0,
+      'each device session acquires and releases its producer scheduling policy')
+  }
   assert(events.every(record => record.timestamp && record.session && record.component))
   assert(!persistent.includes(token), 'persistent logs never contain invitation secrets')
   assert(logFiles.length > 0)
@@ -303,9 +307,42 @@ async function verifyDeviceRecovery() {
   await writeFile(`${fixture}/main.swift`, `
     import Foundation
     import AppKit
+    import Darwin
+    func audioPolicy() -> (active: Bool, valid: Bool) {
+      var policy = thread_time_constraint_policy_data_t()
+      var count = mach_msg_type_number_t(MemoryLayout.size(ofValue: policy) / MemoryLayout<integer_t>.size)
+      var defaults: boolean_t = 0
+      let status = withUnsafeMutableBytes(of: &policy) { bytes in
+        thread_policy_get(pthread_mach_thread_np(pthread_self()), thread_flavor_t(THREAD_TIME_CONSTRAINT_POLICY),
+                          bytes.bindMemory(to: integer_t.self).baseAddress!, &count, &defaults)
+      }
+      var clock = mach_timebase_info_data_t()
+      guard status == KERN_SUCCESS, mach_timebase_info(&clock) == KERN_SUCCESS, clock.denom > 0 else { exit(1) }
+      let periodNs = Double(policy.period) * Double(clock.numer) / Double(clock.denom)
+      return (defaults == 0, abs(periodNs - 2_000_000) < 1000 && policy.constraint == policy.period
+              && policy.computation > 0 && policy.computation <= policy.period / 2)
+    }
+    let checkedDeadline = DispatchSemaphore(value: 0)
+    let producer = Thread {
+      do {
+        let deadline = OrchestraAudioDeadline()
+        guard !audioPolicy().active else { exit(1) }
+        try deadline.start()
+        try deadline.start()
+        let scheduled = audioPolicy()
+        guard scheduled.active && scheduled.valid else { exit(1) }
+        try deadline.stop()
+        try deadline.stop()
+        guard !audioPolicy().active else { exit(1) }
+        checkedDeadline.signal()
+      } catch { print("FAIL: audio deadline lifecycle: " + error.localizedDescription); exit(1) }
+    }
+    producer.qualityOfService = .userInteractive
+    producer.start()
+    guard checkedDeadline.wait(timeout: .now() + 5) == .success else { exit(1) }
     let audio = OrchestraAudio()
     func log(_ event: String, _ fields: [String: Any] = [:]) { print(event) }
-    func performSession(_ work: @escaping () -> Void) { DispatchQueue.main.async(execute: work) }
+    func performSession(_ work: @escaping () -> Void) { DispatchQueue.main.async { work() } }
     guard osprey_main() == 0, osprey_orchestra_admit(1) == 0,
           osprey_orchestra_touch(1, 1, 0, 0, 0.5, 1) == 0 else { exit(1) }
     try audio.update()
