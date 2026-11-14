@@ -57,7 +57,22 @@ public enum SelfCheck {
         try asksAndScenes(store)
         try refusal(store)
         if let failure = store.failure { throw Problem(why: failure) }
+        #if os(macOS)
+        try onScreen()
+        #endif
     }
+
+    #if os(macOS)
+    /// What a person sees follows the frames: after three taps of Add one the window looks exactly
+    /// like a window opened at three, and not like the one it was before.
+    private static func onScreen() throws {
+        let shown = try SelfCheckWindow.pictures(press: "Add one", times: 3)
+        let moved = SelfTestPicture.difference(shown.before, shown.fresh) ?? 0
+        try expect(moved > 0, "a window at three looks the same as a window at zero")
+        let stale = SelfTestPicture.difference(shown.after, shown.fresh) ?? 1
+        try expect(stale == 0, "after three taps \(String(format: "%.2f", stale * 100))% of the window still differs from a window opened at three")
+    }
+    #endif
 
     /// Nothing but Tally's own controls: their kinds, the container each one sits in and the
     /// control each one delivers.

@@ -81,7 +81,7 @@ struct SharedDiagnostics: View {
 /// One control and, recursively, the controls that name it as their parent.
 @MainActor
 struct SharedRow: View {
-    let store: SharedStore
+    @ObservedObject var store: SharedStore
     let index: Int
     let axis: SharedAxis
     @FocusState.Binding var focus: Int?
