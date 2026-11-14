@@ -47,7 +47,7 @@ products=$([[ $target == ios-sim ]] && echo Release-iphonesimulator || echo Rele
 binary="$build/dd/Build/Products/$products/OspreyViewHostIOS"
 OSPREY_APP_ARCHIVE="$archive" nice xcodebuild -scheme OspreyViewHostIOS -configuration Release -destination "$([[ $target == ios-sim ]] \
     && echo 'generic/platform=iOS Simulator' || echo 'generic/platform=iOS')" \
-    ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -derivedDataPath "$build/dd" build >/dev/null
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -derivedDataPath "$build/dd" -quiet build
 [[ -x "$binary" ]] || { echo "The iOS host did not build" >&2; exit 1; }
 bundle="$build/$name.app"
 rm -rf "$bundle"

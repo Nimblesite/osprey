@@ -1240,18 +1240,21 @@ jobs:
           docker rm osprey-web-compiler-ci
 
   # iOS/macOS device and simulator builds, simulator tests and the native
-  # Workbench host. macos-15 is ARM64, matching the simulator archive.
+  # Workbench host. Both images are ARM64, matching the simulator archive; the
+  # iOS part needs macos-26, because Xcode 16 on macos-15 generates no scheme
+  # for the shared host's iOS executable that ios.sh builds.
   test-apple:
     name: "Tests: Apple (${{ matrix.part }})"
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner || 'macos-15' }}
     timeout-minutes: ${{ matrix.minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - part: iOS
+            runner: macos-26
             minutes: 22
             run: make -C src/toolchain/targets/ios/tests examples inbox tally-headless
           - part: macOS
