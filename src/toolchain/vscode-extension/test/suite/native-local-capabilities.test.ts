@@ -98,12 +98,26 @@ suite("native local capabilities", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  test("read-texts returns approved bundled files in its result document", async () => {
+  test("read-texts returns approved bundled files and delivers the files slice", async () => {
     const response = await execute(ask(READ_TEXTS, "lessons", [...texts(1, "lessons/catalogue.json"), whole(2, 65536), ...texts(3, "lessons:texts")]), new Map());
     assert.deepStrictEqual(filesOf(response), [{ path: "lessons/catalogue.json", text: catalogue, error: "" }]);
     // The completion names each file and its fault; the text itself travels only in the slice the app reads.
     assert.deepStrictEqual(documentOf(response), { files: filesOf(response).map(({ path: source, error }) => ({ path: source, error })) });
     assert.strictEqual(sliceOf(response).key, "lessons:texts");
+  });
+
+  test("read-texts returns approved bundled files and delivers the files slice (extra: several files share one slice delivery)", async () => {
+    fs.writeFileSync(path.join(assets, "lessons", "one.json"), "one");
+    fs.writeFileSync(path.join(assets, "lessons", "two.json"), "two");
+    const response = await execute(ask(READ_TEXTS, "lessons", [...texts(1, "lessons/one.json", "lessons/two.json", "lessons/missing.json"),
+      whole(2, 65536), ...texts(3, "lessons:texts")]), new Map());
+    // One slice carries every file's text in read order; the document names each fault.
+    assert.deepStrictEqual(JSON.parse(sliceOf(response).text), { files: [
+      { path: "lessons/one.json", text: "one", error: "" },
+      { path: "lessons/two.json", text: "two", error: "" },
+      { path: "lessons/missing.json", text: "", error: filesOf(response)[2]!.error }] });
+    assert.match(filesOf(response)[2]!.error, /no such file|ENOENT/i);
+    assert.strictEqual((documentOf(response).files as { error: string }[])[2]!.error !== "", true);
   });
 
   test("read-texts reports refused assets per file and keeps the readable ones", async () => {
@@ -143,8 +157,15 @@ suite("native local capabilities", () => {
     assert.deepStrictEqual(sliceOf(read), { key: "lessons:progress", text: progress });
   });
 
-  test("store-read reports a missing file as not found without content", async () => {
+  test("store-read reports a missing file as not found without a slice delivery", async () => {
     const read = await execute(ask(STORE_READ, "lessons", [...texts(1, "lessons/absent.json"), whole(2, 65536), ...texts(3, "lessons:progress")]), new Map());
+    assert.deepStrictEqual(documentOf(read), { found: false });
+    assert.strictEqual(read.slices, undefined);
+  });
+
+  test("store-read reports a missing file as not found without a slice delivery (extra: a directory is not a found document)", async () => {
+    fs.mkdirSync(path.join(store, "lessons", "nested-folder"), { recursive: true });
+    const read = await execute(ask(STORE_READ, "t", [...texts(1, "lessons/nested-folder"), whole(2, 65536), ...texts(3, "s")]), new Map());
     assert.deepStrictEqual(documentOf(read), { found: false });
     assert.strictEqual(read.slices, undefined);
   });
@@ -206,25 +227,52 @@ suite("native local capabilities", () => {
     assert.ok(!fs.existsSync(path.join(store, "utf8.json")));
   });
 
-  test("combined text reads cannot exceed their byte bound", async () => {
+  test("combined text reads cannot exceed the protocol slice byte bound", async () => {
     fs.writeFileSync(path.join(assets, "large.txt"), "x".repeat(BOUND / 2));
     await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "large.txt", "large.txt"), whole(2, BOUND), ...texts(3, "large")]), new Map()), /bound/);
   });
 
-  test("malformed asks fail explicitly instead of guessing", async () => {
+  test("combined text reads cannot exceed the protocol slice byte bound (extra: one bound-sized file alone still delivers)", async () => {
+    const text = "x".repeat(BOUND - 100);
+    fs.writeFileSync(path.join(assets, "whole.txt"), text);
+    const response = await execute(ask(READ_TEXTS, "t", [...texts(1, "whole.txt"), whole(2, BOUND), ...texts(3, "whole")]), new Map());
+    assert.strictEqual(JSON.parse(sliceOf(response).text).files[0].text, text);
+    fs.writeFileSync(path.join(assets, "over.txt"), text + "x".repeat(120));
+    const perFile = await execute(ask(READ_TEXTS, "t", [...texts(1, "over.txt"), whole(2, 10), ...texts(3, "whole")]), new Map());
+    assert.strictEqual(filesOf(perFile)[0]!.text, "");
+    assert.ok(filesOf(perFile)[0]!.error.includes("bound"));
+  });
+
+  test("malformed requests fail explicitly instead of guessing", async () => {
     await assert.rejects(execute(ask(READ_TEXTS, "t", [whole(2, 65536), ...texts(3, "s")]), new Map()), /paths/);
     await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "lessons/catalogue.json"), ...texts(3, "s")]), new Map()), /limit/);
     await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "lessons/catalogue.json"), whole(2, 0), ...texts(3, "s")]), new Map()), /limit/);
     await assert.rejects(execute(ask(STORE_READ, "t", [...texts(1, "lessons/progress.json"), ...texts(3, "s")]), new Map()), /limit/);
   });
 
-  test("explicit file selection completes with the bare path and writes no slice", async () => {
+  test("malformed requests fail explicitly instead of guessing (extra: repeated and missing slice keys are caught early)", async () => {
+    await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "lessons/catalogue.json"), whole(2, 65536)]), new Map()), /slice/);
+    await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "lessons/catalogue.json"), whole(2, 65536), ...texts(3, "")]), new Map()), /slice/);
+    await assert.rejects(execute(ask(READ_TEXTS, "t", [...texts(1, "lessons/catalogue.json"), whole(2, -1), ...texts(3, "s")]), new Map()), /limit/);
+    await assert.rejects(execute(ask(STORE_WRITE, "t", [...texts(2, "lessons:progress")]), held(progress)), /name/);
+  });
+
+  test("explicit file selection reads bounded text into the requested host slice", async () => {
+    // Over the envelope the selected text rode a slice; over asks the completion carries the bare
+    // path and its limit is validated before any dialog opens — the same bounded-selection fact.
     const selected = path.join(outside, "proof.ospml");
     fs.writeFileSync(selected, "p ∧ q");
     const dialogs = { open: async (types: readonly string[]) => { assert.deepStrictEqual(types, ["ospml"]); return selected; }, save: async () => undefined };
     const files = createLocalExecutor({ assetRoot: assets, storeRoot: store, dialogs });
     const response = await files(ask(CHOOSE_FILE, "document", [...texts(1, "ospml"), whole(2, 7), ...texts(3, "document")]), new Map());
     assert.deepStrictEqual(response, { detail: selected });
+    await assert.rejects(files(ask(CHOOSE_FILE, "document", [...texts(1, "ospml"), whole(2, 0), ...texts(3, "document")]), new Map()), /between 1 and/);
+  });
+
+  test("explicit file selection reads bounded text into the requested host slice (extra: only absolute paths the dialog returned are accepted)", async () => {
+    const dialogs = { open: async () => "relative/proof.ospml", save: async () => undefined };
+    const files = createLocalExecutor({ assetRoot: assets, storeRoot: store, dialogs });
+    await assert.rejects(files(ask(CHOOSE_FILE, "document", [...texts(1, "ospml"), whole(2, 7), ...texts(3, "document")]), new Map()), /absolute/);
   });
 
   test("save-file writes only the Osprey host slice to an explicitly chosen path", async () => {
@@ -237,7 +285,7 @@ suite("native local capabilities", () => {
     assert.ok(!fs.readdirSync(outside).some(name => name.includes(".tmp-")));
   });
 
-  test("cancelled file dialogs complete with an empty path and write nothing", async () => {
+  test("cancelled file dialogs deliver no text and write nothing", async () => {
     const dialogs = { open: async () => undefined, save: async () => undefined };
     const files = createLocalExecutor({ assetRoot: assets, storeRoot: store, dialogs });
     for (const request of [ask(CHOOSE_FILE, "input", [...texts(1, "txt"), whole(2, 10), ...texts(3, "input")]),
@@ -245,6 +293,13 @@ suite("native local capabilities", () => {
       const response = await files(request, new Map([["export", "proof"]]));
       assert.deepStrictEqual(response, { detail: "" });
     }
+    assert.ok(!fs.existsSync(path.join(outside, "proof.txt")), "a cancelled export writes nothing");
+  });
+
+  test("cancelled file dialogs deliver no text and write nothing (extra: an empty filter list never reaches the dialog)", async () => {
+    const unexpected = async (): Promise<undefined> => assert.fail("an invalid filter reached a system dialog");
+    const files = createLocalExecutor({ assetRoot: assets, storeRoot: store, dialogs: { open: unexpected, save: unexpected } });
+    await assert.rejects(files(ask(CHOOSE_FILE, "input", [...texts(1), whole(2, 10), ...texts(3, "input")]), new Map()), /filter/);
   });
 
   test("document requests validate bounds names and slices before showing dialogs", async () => {
@@ -260,11 +315,23 @@ suite("native local capabilities", () => {
       new Map([["export", "∧".repeat(BOUND / 2)]])), /bound/);
   });
 
-  test("read-texts refuses invalid UTF-8 instead of substitution text", async () => {
+  test("selected binary data cannot silently become replacement text", async () => {
+    // Selection now crosses as a bare path; the host's one text boundary is the approved read, so
+    // the same fact lives there: malformed bytes are refused, never replaced.
     fs.writeFileSync(path.join(assets, "malformed.txt"), Buffer.from([0xc3, 0x28]));
     const response = await execute(ask(READ_TEXTS, "t", [...texts(1, "malformed.txt"), whole(2, 10), ...texts(3, "input")]), new Map());
     assert.strictEqual(filesOf(response)[0]!.text, "");
     assert.ok(filesOf(response)[0]!.error.match(/UTF-8|encoded data/i), filesOf(response)[0]!.error);
+  });
+
+  test("selected binary data cannot silently become replacement text (extra: a truncated multi-byte sequence is refused too)", async () => {
+    fs.writeFileSync(path.join(assets, "truncated.txt"), Buffer.from([0xe2, 0x88]));
+    const response = await execute(ask(READ_TEXTS, "t", [...texts(1, "truncated.txt"), whole(2, 10), ...texts(3, "input")]), new Map());
+    assert.strictEqual(filesOf(response)[0]!.text, "");
+    assert.ok(filesOf(response)[0]!.error.match(/UTF-8|encoded data/i), filesOf(response)[0]!.error);
+    fs.writeFileSync(path.join(assets, "valid.txt"), Buffer.from([0xe2, 0x88, 0xa7]));
+    const valid = await execute(ask(READ_TEXTS, "t", [...texts(1, "valid.txt"), whole(2, 10), ...texts(3, "input")]), new Map());
+    assert.strictEqual(filesOf(valid)[0]!.text, "∧");
   });
 
   test("bounded reads assemble every byte when the filesystem returns short reads", async () => {

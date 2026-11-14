@@ -22,12 +22,15 @@ function ask(code: number, ticket: string, fields: readonly (readonly [number, n
 }
 
 suite("native startup appearance", () => {
-  for (const [kind, dark] of [[ColorThemeKind.Dark, true], [ColorThemeKind.HighContrast, true],
-    [ColorThemeKind.Light, false], [ColorThemeKind.HighContrastLight, false]] as const) {
-    test(`editor theme kind ${kind} supplies ${dark ? "dark" : "light"} application context`, () => {
+  for (const [kind, dark, expected] of [[ColorThemeKind.Dark, true, "dark"], [ColorThemeKind.HighContrast, true, "dark"],
+    [ColorThemeKind.Light, false, "light"], [ColorThemeKind.HighContrastLight, false, "light"]] as const) {
+    test(`editor theme kind ${kind} supplies ${expected} application context`, () => {
       sinon.stub(window, "activeColorTheme").get(() => ({ kind }));
-      try { assert.strictEqual(host.nativeContext([]).dark, dark); }
-      finally { sinon.restore(); }
+      try {
+        const context = host.nativeContext([]);
+        assert.strictEqual(context.dark, dark);
+        assert.strictEqual(typeof context.now, "number");
+      } finally { sinon.restore(); }
     });
   }
 });
@@ -62,7 +65,7 @@ suite("native shared panel lifecycle", () => {
   });
   teardown(() => { sinon.restore(); fs.rmSync(root, { recursive: true, force: true }); });
 
-  test("closing a panel aborts its live instance worker", async () => {
+  test("closing a panel aborts its pending WASI command", async () => {
     const fixture = fixturePanel();
     const started = new Promise<AbortSignal | undefined>(resolve => {
       sinon.stub(Runner, "startNativeRuntime").callsFake((_module, signal) => {
@@ -88,17 +91,55 @@ suite("native shared panel lifecycle", () => {
     } finally { registration.dispose(); fixture.dispose(); }
   });
 
-  test("a failed asset root closes its panel and reports the actual error", async () => {
+  test("closing a panel aborts its pending WASI command (extra: disposing the registration stops its open panel too)", async () => {
+    const fixture = fixturePanel();
+    const started = new Promise<AbortSignal | undefined>(resolve => {
+      sinon.stub(Runner, "startNativeRuntime").callsFake((_module, signal) => {
+        resolve(signal);
+        return {
+          open: async () => new Promise((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })),
+          event: async () => ({ status: 0, revision: 2, runs: { shapes: new ArrayBuffer(0), views: new ArrayBuffer(0), text: new ArrayBuffer(0), asks: new ArrayBuffer(0) } }),
+          hold: () => undefined,
+          dispose: () => undefined,
+        };
+      });
+    });
+    const command = "osprey.test.native.registration";
+    const registration = host.registerNativePanel(context(), options(command, async () => application(artifact)));
+    try {
+      await commands.executeCommand(command);
+      fixture.ready();
+      const signal = await started;
+      assert.ok(signal, "each panel must supply its own cancellation signal");
+      registration.dispose();
+      assert.strictEqual(signal.aborted, true, "disposing the registration must abort the panel it opened");
+    } finally { registration.dispose(); fixture.dispose(); }
+  });
+
+  test("failed stylesheet construction closes its panel and reports the actual error", async () => {
     const panels = observePanels();
     const errors = sinon.stub(window, "showErrorMessage");
-    const missing = path.join(root, "missing-assets");
     const command = "osprey.test.native.failed";
-    const registration = host.registerNativePanel(context(), options(command, async () => ({ ...application(artifact), assets: missing })));
+    const registration = host.registerNativePanel(context(), options(command, async () => ({ ...application(artifact), assets: root, stylesheet: "missing.css" })));
     try {
       await commands.executeCommand(command);
       assert.strictEqual(panels.size, 1);
       for (const disposed of panels.values()) assert.ok(disposed.calledOnce, "failed construction must dispose its orphan panel");
-      assert.ok(String(errors.firstCall.args[0]).includes("missing-assets"));
+      assert.ok(String(errors.firstCall.args[0]).includes("missing.css"), String(errors.firstCall.args[0]));
+    } finally { registration.dispose(); for (const panel of panels.keys()) panel.dispose(); }
+  });
+
+  test("failed stylesheet construction closes its panel and reports the actual error (extra: a stylesheet outside the asset root is refused too)", async () => {
+    const panels = observePanels();
+    const errors = sinon.stub(window, "showErrorMessage");
+    const command = "osprey.test.native.escaped";
+    fs.mkdirSync(path.join(root, "assets"), { recursive: true });
+    const registration = host.registerNativePanel(context(), options(command, async () => ({ ...application(artifact), assets: path.join(root, "assets"), stylesheet: "../outside.css" })));
+    try {
+      await commands.executeCommand(command);
+      assert.strictEqual(panels.size, 1);
+      for (const disposed of panels.values()) assert.ok(disposed.calledOnce, "an escaped stylesheet must not leave an orphan panel");
+      assert.ok(String(errors.firstCall.args[0]).length > 0, "the refusal names the stylesheet");
     } finally { registration.dispose(); for (const panel of panels.keys()) panel.dispose(); }
   });
 
@@ -148,7 +189,9 @@ suite("workbench document host wiring", () => {
   setup(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-document-host-")); });
   teardown(() => { sinon.restore(); fs.rmSync(root, { recursive: true, force: true }); });
 
-  test("Open uses a single-file picker and completes with the bare path or an empty cancellation", async () => {
+  test("Open uses a single-file picker and returns selected text or explicit cancellation", async () => {
+    // Over asks the chosen file crosses as its bare path; the workbench reads its text through its
+    // own store read, and an empty path is the explicit cancellation.
     const file = path.join(root, "proof.ospml");
     fs.writeFileSync(file, "p ∧ q");
     const open = sinon.stub(window, "showOpenDialog").onFirstCall().resolves([Uri.file(file)]).onSecondCall().resolves(undefined);
@@ -157,6 +200,15 @@ suite("workbench document host wiring", () => {
     assert.deepStrictEqual(await app.execute(request, new Map()), { detail: file });
     assert.deepStrictEqual(open.firstCall.args[0], { canSelectFiles: true, canSelectFolders: false, canSelectMany: false, filters: { Documents: ["ospml"] } });
     assert.deepStrictEqual(await app.execute(request, new Map()), { detail: "" });
+  });
+
+  test("Open uses a single-file picker and returns selected text or explicit cancellation (extra: a multi-type filter keeps every extension)", async () => {
+    const file = path.join(root, "notes.ospml");
+    fs.writeFileSync(file, "x");
+    const open = sinon.stub(window, "showOpenDialog").resolves([Uri.file(file)]);
+    const app = await preparedWorkbench(root);
+    await app.execute(ask(13, "open", [[1, 0, "ospml"], [1, 0, "osp"], [2, 7, ""], [3, 0, "document"]]), new Map());
+    assert.deepStrictEqual(open.firstCall.args[0]?.filters, { Documents: ["ospml", "osp"] });
   });
 
   test("Save exports the current Osprey slice through the native save dialog", async () => {
