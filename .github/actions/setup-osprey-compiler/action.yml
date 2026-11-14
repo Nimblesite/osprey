@@ -96,7 +96,7 @@ runs:
         . /etc/os-release
         wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
           | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-        echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VER} main" \
+        echo "deb https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VER} main" \
           | sudo tee /etc/apt/sources.list.d/llvm-${LLVM_VER}.list >/dev/null
         sudo apt-get update
         # No fallback to the distro lldb: 18's DAP server is the known-broken

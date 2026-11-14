@@ -3,13 +3,44 @@
 #define OSPREY_NATIVE_BRIDGE_INTERNAL_H
 #include "native_bridge.h"
 #include <limits.h>
-#include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define NATIVE_NO_SLOT SIZE_MAX
 #define NATIVE_RECORD_MAX 65536u
+// WASI Preview 1 without atomics has one executor and cannot link pthreads.
+// Detect re-entry instead of reporting a successful second acquisition.
+#if defined(__wasi__) && !defined(__wasm_atomics__)
+typedef bool NativeMutex;
+static inline int native_mutex_init(NativeMutex *mutex) {
+  *mutex = false;
+  return 0;
+}
+static inline int native_mutex_lock(NativeMutex *mutex) {
+  if (*mutex)
+    return 1;
+  *mutex = true;
+  return 0;
+}
+static inline int native_mutex_unlock(NativeMutex *mutex) {
+  if (!*mutex)
+    return 1;
+  *mutex = false;
+  return 0;
+}
+static inline int native_mutex_destroy(NativeMutex *mutex) {
+  return *mutex ? 1 : 0;
+}
+#define NATIVE_INIT(mutex) native_mutex_init(mutex)
+#define NATIVE_DESTROY native_mutex_destroy
+#define NATIVE_LOCK native_mutex_lock
+#define NATIVE_UNLOCK native_mutex_unlock
+#else
+#include <pthread.h>
+typedef pthread_mutex_t NativeMutex;
+#define NATIVE_INIT(mutex) pthread_mutex_init(mutex, NULL)
+#define NATIVE_DESTROY pthread_mutex_destroy
 #ifdef OSP_NATIVE_TEST
 // Deterministic OS-error injection in the existing host-import integration
 // suite. Production uses pthreads directly, with no configurable callbacks.
@@ -20,6 +51,7 @@ int osp_native_test_unlock(pthread_mutex_t *mutex);
 #else
 #define NATIVE_LOCK pthread_mutex_lock
 #define NATIVE_UNLOCK pthread_mutex_unlock
+#endif
 #endif
 typedef struct {
   unsigned char *data;
@@ -33,7 +65,7 @@ typedef struct {
   size_t chunk, next;
 } NativeOwner;
 struct OspNativeBridge {
-  pthread_mutex_t mutex;
+  NativeMutex mutex;
   td_ApplicationInstance instance;
   NativeChunk *chunks;
   NativeOwner *owners;

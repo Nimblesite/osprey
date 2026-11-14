@@ -56,7 +56,7 @@ int osp_native_open(const td_ApplicationInstance *instance,
   b->chunks = calloc((size_t)chunks, sizeof *b->chunks);
   b->owners = calloc((size_t)owners, sizeof *b->owners);
   status = (!b->chunks || !b->owners) ? OSP_NATIVE_ERROR(AllocationFailed) : 0;
-  if (!status && pthread_mutex_init(&b->mutex, NULL))
+  if (!status && NATIVE_INIT(&b->mutex))
     status = OSP_NATIVE_ERROR(SynchronizationFailed);
   if (status) {
     free(b->chunks);

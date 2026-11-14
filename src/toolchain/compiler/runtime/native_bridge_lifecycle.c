@@ -219,7 +219,7 @@ int osp_native_destroy(OspNativeBridge *b) {
   if (status)
     return status;
   // Caller has joined every executor/adapter before destroying the mutex.
-  if (pthread_mutex_destroy(&b->mutex))
+  if (NATIVE_DESTROY(&b->mutex))
     return OSP_NATIVE_ERROR(SynchronizationFailed);
   free(b->owners);
   free(b->chunks);
