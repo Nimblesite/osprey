@@ -19,6 +19,12 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def source_directory(destination, packages):
+    """One immutable source identity for a verified set, with sibling crate paths preserved."""
+    pins = sorted((package["name"], package["version"], package["treeSha256"]) for package in packages)
+    return destination / digest(json.dumps(pins, separators=(",", ":")).encode())
+
+
 def tree_digest(root):
     files = tuple(root.rglob("*"))
     if root.is_symlink() or any(p.is_symlink() for p in files):
@@ -82,8 +88,8 @@ def apply_edits(root, edits):
 
 # Cargo rebuilds a path dependency whose sources are newer than its last build, so a source staged
 # afresh on each runner would rebuild GPUI and everything above it although the host's build is
-# cached. The tree is verified by digest first, so one fixed time (2000-01-01 UTC) for every path
-# is honest: equal bytes, equal times.
+# cached. The verified source set has a content-addressed path, so changed bytes change Cargo's
+# source identity. Within that immutable identity, every path uses 2000-01-01 UTC.
 STAGED_MTIME = 946684800
 
 
@@ -146,10 +152,11 @@ def stage(package, destination, patches):
 
 def main():
     packages = json.loads((HERE / "dependencies.json").read_text())["packages"]
+    destination = source_directory(DESTINATION, packages)
     manifests = [HERE / "Cargo.toml", ROOT / "src/osprey/examples/gpui/painting/reference/Cargo.toml"]
-    verify_inventory(packages, DESTINATION, manifests)
+    verify_inventory(packages, destination, manifests)
     for package in packages:
-        stage(package, DESTINATION, HERE)
+        stage(package, destination, HERE)
     print(f"GPUI dependency source integrity: {len(packages)} backports PASS")
 
 
