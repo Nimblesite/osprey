@@ -389,6 +389,45 @@ def goldens_module():
 class PhoneGoldens(unittest.TestCase):
     """[NATIVE-HOSTS-MOBILE] screenshots are compared with nothing but Python, on every runner."""
 
+    def test_malformed_png_cannot_pass_a_golden(self):
+        goldens = goldens_module()
+        def chunk(kind, body):
+            return goldens.struct.pack(">I", len(body)) + kind + body + goldens.struct.pack(">I", goldens.zlib.crc32(kind + body))
+        def picture(raw, width=2, height=2, compression=0, filtering=0):
+            head = goldens.struct.pack(">IIBBBBB", width, height, 8, 2, compression, filtering, 0)
+            return goldens.SIGNATURE + chunk(b"IHDR", head) + chunk(b"IDAT", goldens.zlib.compress(raw)) + chunk(b"IEND", b"")
+        raw = (b"\0" + bytes(6)) * 2
+        valid = picture(raw)
+        cases = {"short row": picture(raw[:-3]), "extra bytes": picture(raw + b"x"),
+                 "unknown filter": picture(b"\x05" + raw[1:]), "empty width": picture(b"\0\0", width=0),
+                 "compression": picture(raw, compression=1), "filter method": picture(raw, filtering=1),
+                 "checksum": valid[:29] + bytes([valid[29] ^ 1]) + valid[30:],
+                 "missing end": valid[:-12], "truncated chunk": valid[:-1], "trailing data": valid + b"x",
+                 "short header": goldens.SIGNATURE, "oversized dimensions": picture(raw, width=1 << 31, height=1 << 31),
+                 "invalid zlib": valid[:33] + chunk(b"IDAT", b"not zlib") + chunk(b"IEND", b"")}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "screen.png"
+            (Path(directory) / "2-ready.png").write_bytes(valid)
+            path.write_bytes(valid)
+            self.assertEqual(self.compare(path, Path(directory)).returncode, 0)
+            for reason, data in cases.items():
+                with self.subTest(reason=reason):
+                    path.write_bytes(data)
+                    with self.assertRaises(AssertionError):
+                        goldens.png_pixels(path)
+                    refused = self.compare(path, Path(directory))
+                    self.assertEqual(refused.returncode, 1, reason)
+                    self.assertIn("FAIL:", refused.stderr)
+            compressed = goldens.zlib.compress(raw)
+            path.write_bytes(valid[:33] + chunk(b"IDAT", compressed[:5]) + chunk(b"IDAT", compressed[5:]) + chunk(b"IEND", b""))
+            self.assertEqual(goldens.png_pixels(path), (2, 2, bytes(12)), "split IDAT is a valid screen")
+        for pixels in (bytes(9), bytes(15)):
+            with self.subTest(length=len(pixels)):
+                with self.assertRaises(AssertionError):
+                    goldens.png_encode(2, 2, pixels)
+                with self.assertRaises(AssertionError):
+                    goldens.picture_delta((2, 2, pixels), (2, 2, bytes(12)))
+
     def compare(self, actual, folder):
         return subprocess.run([sys.executable, str(GOLDENS), str(actual), str(folder), "--top", "0", "--bottom", "0"],
                               env={"PATH": BASE_PATH}, capture_output=True, text=True, check=False)

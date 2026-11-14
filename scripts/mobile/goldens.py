@@ -27,21 +27,34 @@ TILE = 64
 
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
 CHANNELS = {2: 3, 6: 4}  # 8-bit truecolour, without and with alpha: what phones and simulators write
+# An 8K RGBA screen fits, and malformed dimensions cannot allocate arbitrary scanline storage.
+MAX_SCANLINE_BYTES = 128 * 1024 * 1024
 
 
 def chunks(data):
     """Each (type, body) of a PNG's chunks, in order."""
     at = len(SIGNATURE)
-    while at + 8 <= len(data):
+    while at < len(data):
+        assert at + 12 <= len(data), "Truncated PNG chunk"
         length, kind = struct.unpack(">I4s", data[at:at + 8])
-        yield kind, data[at + 8:at + 8 + length]
+        assert length <= len(data) - at - 12, "Truncated PNG chunk body"
+        body = data[at + 8:at + 8 + length]
+        checksum, = struct.unpack(">I", data[at + 8 + length:at + 12 + length])
+        assert checksum == zlib.crc32(kind + body), "PNG chunk checksum mismatch"
+        yield kind, body
         at += 12 + length
+        if kind == b"IEND":
+            assert length == 0 and at == len(data), "Invalid PNG end or trailing data"
+            return
+    raise AssertionError("Missing PNG end chunk")
 
 
 def header(path, data):
     """(width, height, channels) of an 8-bit, non-interlaced truecolour PNG."""
     assert data.startswith(SIGNATURE), f"{path} is not a PNG"
-    width, height, depth, colour, _, _, interlace = struct.unpack(">IIBBBBB", data[16:29])
+    assert len(data) >= 33 and data[8:16] == b"\0\0\0\rIHDR", f"{path}: invalid PNG header"
+    width, height, depth, colour, compression, filtering, interlace = struct.unpack(">IIBBBBB", data[16:29])
+    assert width > 0 and height > 0 and compression == filtering == 0, f"{path}: invalid PNG dimensions or methods"
     assert depth == 8 and colour in CHANNELS and interlace == 0, f"{path}: unsupported PNG (depth {depth}, colour {colour}, interlace {interlace})"
     return width, height, CHANNELS[colour]
 
@@ -54,6 +67,7 @@ def paeth(left, up, corner):
 
 def unfilter(kind, line, previous, step):
     """One scanline with its PNG filter undone in place."""
+    assert 0 <= kind <= 4, f"Unknown PNG scanline filter {kind}"
     if kind == 2:
         line[:] = bytes((value + above) & 255 for value, above in zip(line, previous))
         return line
@@ -68,7 +82,14 @@ def png_pixels(path):
     """The picture at `path` as (width, height, rgb24 bytes)."""
     data = Path(path).read_bytes()
     width, height, channels = header(path, data)
-    raw = zlib.decompress(b"".join(body for kind, body in chunks(data) if kind == b"IDAT"))
+    expected = height * (width * channels + 1)
+    assert expected <= MAX_SCANLINE_BYTES, f"{path}: PNG exceeds screenshot decoding capacity"
+    decoder = zlib.decompressobj()
+    try:
+        raw = decoder.decompress(b"".join(body for kind, body in chunks(data) if kind == b"IDAT"), expected + 1)
+    except zlib.error as failure:
+        raise AssertionError(f"{path}: invalid PNG compressed data") from failure
+    assert decoder.eof and not decoder.unused_data and len(raw) == expected, f"{path}: invalid PNG scanline size"
     stride, previous, rows = width * channels, bytearray(width * channels), []
     for row in range(height):
         start = row * (stride + 1)
@@ -80,6 +101,7 @@ def png_pixels(path):
 def png_encode(width, height, pixels, alpha=False):
     """8-bit truecolour PNG bytes for `pixels` (rgb24, or rgba with `alpha`), unfiltered."""
     stride = width * (4 if alpha else 3)
+    assert width > 0 and height > 0 and len(pixels) == stride * height, "Invalid PNG dimensions or pixel count"
     rows = b"".join(b"\x00" + pixels[row * stride:(row + 1) * stride] for row in range(height))
     chunk = lambda kind, body: struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
     head = struct.pack(">IIBBBBB", width, height, 8, 6 if alpha else 2, 0, 0, 0)
@@ -96,6 +118,7 @@ def picture_delta(actual, expected, tile=0):
     assert actual[:2] == expected[:2], (actual[:2], expected[:2])
     width, height = actual[:2]
     one, two = actual[2], expected[2]
+    assert width > 0 and height > 0 and len(one) == len(two) == width * height * 3, "Invalid screenshot pixel count"
     changed = [any(abs(one[i + channel] - two[i + channel]) > CHANNEL_STEP for channel in range(3))
                for i in range(0, len(one), 3)]
     if not tile: return sum(changed) / (width * height)
