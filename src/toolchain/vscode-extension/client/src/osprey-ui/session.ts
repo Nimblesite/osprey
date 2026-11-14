@@ -60,9 +60,10 @@ function integer(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-/** A webview event as the typed host call; an unknown or malformed event is ignored. */
+/** A webview event as the typed host call; an unknown or malformed event is ignored. Completions,
+ * phases, frame ticks and appearance changes are the host's alone: the webview cannot forge them. */
 export function parseTouch(raw: unknown): NativeTouch | undefined {
-  if (!record(raw) || raw.type !== "event" || !integer(raw.kind) || raw.kind > 11) return undefined;
+  if (!record(raw) || raw.type !== "event" || !integer(raw.kind) || raw.kind > EVENT.lasso) return undefined;
   const ordinal = raw.ordinal === undefined ? 0 : raw.ordinal;
   if (!integer(ordinal)) return undefined;
   const words = raw.words === undefined ? "" : raw.words;

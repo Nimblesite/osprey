@@ -1,48 +1,9 @@
 // [NATIVE-SHM-DELIVERY] [NATIVE-SHM-ASK]: one serialized session owns the live instance, publishes
 // every call's frame before answering its asks, and returns each completion as event kind 8.
 import * as assert from "assert";
-import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
-import { createWorkspaceSession, parseTouch, type FrameMessage, type RenderMessage, type SessionDeps } from "../../client/src/osprey-ui/session";
-import type { FrameResult, NativeRuntime, NativeTouch, OpenOptions } from "../../client/src/osprey-ui/wasi-runner";
-import { frame, type AskSpec, type ControlSpec } from "./native-rows-kit";
-
-const runs = (asks: readonly AskSpec[], words = "Ready"): FrameResult["runs"] => {
-  const built = frame({ views: [{ kind: 2, words }], asks });
-  return { shapes: built.shapes, views: built.views, text: built.text, asks: built.asks };
-};
-
-const settle = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
-
-function harness(options: { readonly asks?: AskSpec[]; readonly open?: FrameResult["runs"]; readonly reply?: FrameResult["runs"]; readonly answer?: (ask: Ask) => Promise<Completion> } = {}) {
-  const events: NativeTouch[] = [];
-  const opens: OpenOptions[] = [];
-  const sent: (FrameMessage | RenderMessage | { type: "busy"; active: boolean } | { type: "fatal"; message: string })[] = [];
-  const executed: Ask[] = [];
-  const held: ReadonlyMap<string, string>[] = [];
-  const holds: [string, string][] = [];
-  let calls = 0;
-  const runtime: NativeRuntime = {
-    async open(request) { opens.push(request); return { status: 0, revision: 1, runs: options.open ?? runs(options.asks ?? []) }; },
-    async event(touch) { events.push(touch); calls += 1; return { status: 0, revision: calls + 1, runs: options.reply ?? runs([]) }; },
-    hold(key, text) { holds.push([key, text]); },
-    dispose() { events.push({ kind: -1, ordinal: 0, words: "", detail: "", x: 0, y: 0, down: false, shift: false }); },
-  };
-  const deps: SessionDeps = {
-    runtime,
-    send: (message) => { sent.push(message as FrameMessage); },
-    execute: async (ask, slices) => {
-      executed.push(ask);
-      held.push(slices);
-      return options.answer === undefined ? { detail: JSON.stringify({ ok: ask.ticket }) } : options.answer(ask);
-    },
-    draw: () => '<div class="osp-root"></div>',
-    assets: (sources) => Object.fromEntries(sources.map((source) => [source, `asset:${source}`])),
-    report: () => undefined,
-  };
-  return { session: createWorkspaceSession(deps), events, opens, sent, executed, held, holds };
-}
-
-const open: OpenOptions = { now: 1, offset: 0, platform: "vscode", home: "/home", dark: true, arguments: ["a", "b"] };
+import { parseTouch, type FrameMessage, type RenderMessage } from "../../client/src/osprey-ui/session";
+import { frame, type ControlSpec } from "./native-rows-kit";
+import { harness, open, settle } from "./native-session-kit";
 
 /** A frame that tells one region: theme record, region record with key and a text node. */
 const toldViews: readonly ControlSpec[] = [
@@ -192,15 +153,15 @@ suite("native session", () => {
   });
 
   test("dispose terminates the instance and drops later calls", async () => {
-    const { session, events, sent } = harness();
+    const { session, events, sent, disposals } = harness();
     await session.start(open);
     const before = sent.length;
     session.dispose();
     session.message({ type: "event", kind: 0, ordinal: 0 });
     session.appearance(true);
     await settle();
-    assert.strictEqual(events[events.length - 1]?.kind, -1, "dispose reached the runtime");
-    assert.strictEqual(events.filter((event) => event.kind >= 0).length, 0);
+    assert.strictEqual(disposals(), 1, "dispose reached the runtime");
+    assert.strictEqual(events.length, 0);
     assert.strictEqual(sent.length, before);
   });
 
