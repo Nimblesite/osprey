@@ -127,7 +127,8 @@ final class OrchestraAudio {
     }
 
     func fill() {
-        while orchestra_ring_queued() < 512 {
+        // Keep enough prepared audio for window/event scheduling without running Osprey on the device thread.
+        while orchestra_ring_queued() < 2048 {
             buffer = render(128)
             let written = buffer.withUnsafeBufferPointer { orchestra_ring_write($0.baseAddress, $0.count) }
             if written != buffer.count { failure = "Audio ring rejected a prepared block"; return }

@@ -1255,6 +1255,15 @@ jobs:
           - part: macOS
             minutes: 15
             run: make -C src/toolchain/targets/macos/tests examples
+          - part: Light Orchestra
+            minutes: 15
+            run: |
+              make _runtime_macos
+              cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+              target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=gc
+              target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=arc
+              make -C src/toolchain/targets/macos/tests pocket-orchestra-headless
+              make -C src/toolchain/targets/macos/tests pocket-orchestra
           - part: Qwen pull
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless
@@ -1289,10 +1298,32 @@ jobs:
           key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
+      - uses: actions/setup-node@v7
+        if: matrix.part == 'Light Orchestra'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install orchestra controller browsers
+        if: matrix.part == 'Light Orchestra'
+        run: |
+          npm ci --prefix src/toolchain/website
+          npx --prefix src/toolchain/website playwright install chromium webkit
+
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
         run: ${{ matrix.run }}
+
+      - name: Orchestra controller screenshots and captured audio
+        if: ${{ always() && matrix.part == 'Light Orchestra' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: orchestra-integration
+          path: |
+            target/orchestra/*.png
+            target/orchestra/controller-audio.f32
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Native bank simulator results
         if: ${{ always() && matrix.part == 'Talon Bank' }}

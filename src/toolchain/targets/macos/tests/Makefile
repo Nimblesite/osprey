@@ -28,7 +28,7 @@ pocket-orchestra-headless: _pocket-orchestra-ring
 	bash src/toolchain/hosts/swift/orchestra/build.sh
 	node src/toolchain/targets/macos/tests/pocket-orchestra.mjs
 
-## pocket-orchestra: The same controller journeys through the Mac's audio device, without opening windows.
+## pocket-orchestra: The same controller journeys with the native window, visible browsers and the Mac's audio device.
 pocket-orchestra: _pocket-orchestra-ring
 	bash src/toolchain/hosts/swift/orchestra/build.sh
 	ORCHESTRA_DEVICE_TEST=1 node src/toolchain/targets/macos/tests/pocket-orchestra.mjs

@@ -9,12 +9,13 @@ const WebSocket = require('ws')
 const { chromium, webkit } = require('@playwright/test')
 const out = resolve('target/orchestra')
 await mkdir(out, { recursive: true })
+const windowed = process.env.ORCHESTRA_DEVICE_TEST === '1'
 const token = 'orchestra-integration-private-token'
 const port = 19140
 const origin = `http://127.0.0.1:${port}`
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 const child = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env: { ...process.env,
-  ORCHESTRA_NO_WINDOW: '1', ORCHESTRA_HEADLESS: process.env.ORCHESTRA_DEVICE_TEST === '1' ? '0' : '1',
+  ORCHESTRA_NO_WINDOW: windowed ? '0' : '1', ORCHESTRA_HEADLESS: windowed ? '0' : '1',
   ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '25',
   ORCHESTRA_CAPTURE: `${out}/controller-audio.f32` } })
 let output = '', errors = '', browser
@@ -103,7 +104,7 @@ try {
   for (const ws of ensemble) ws.close()
   await delay(250)
   for (const engine of [chromium, webkit]) {
-    browser = await engine.launch({ headless: true })
+    browser = await engine.launch({ headless: !windowed })
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
     const page = await context.newPage()
     const pageErrors = []
@@ -148,6 +149,7 @@ try {
   const records = output.trim().split('\n').map(line => JSON.parse(line))
   const stopped = records.find(record => record.event === 'session.stopped')
   assert.equal(stopped.error, '')
+  assert.equal(stopped.underruns, 0, 'audio callback always receives prepared samples')
   assert(!output.includes(token), 'session secrets stay out of diagnostics')
   assert(stopped.peak > .05 && stopped.peak <= .800001, 'audible bounded synthesis')
   const pcm = await readFile(`${out}/controller-audio.f32`)
@@ -170,7 +172,7 @@ try {
     assert.equal(pcm.readFloatLE(frame * 4), 0, 'released voices are silent')
   }
   for (let offset = pcm.length - 1000 * 4; offset < pcm.length; offset += 4) assert.equal(pcm.readFloatLE(offset), 0)
-  console.log(JSON.stringify({ result: 'passed', mode: process.env.ORCHESTRA_DEVICE_TEST === '1' ? 'audio-device' : 'headless', ...stopped }))
+  console.log(JSON.stringify({ result: 'passed', mode: windowed ? 'windowed-audio-device' : 'headless', ...stopped }))
 } finally {
   for (const ws of clients) ws.terminate()
   await browser?.close()

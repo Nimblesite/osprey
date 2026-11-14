@@ -59,14 +59,15 @@ func start() throws {
     guard osprey_main() == 0 else { throw problem("Osprey kernel initialization failed") }
     guard token.count >= 20 else { throw problem("Session token must contain at least 20 characters") }
     audio.capturesAudio = environment["ORCHESTRA_CAPTURE"] != nil
-    if !headless { try audio.start() }
     let page = try Data(contentsOf: URL(fileURLWithPath: assets))
     let hostServer = OrchestraServer(audio: audio, host: host, token: token, page: page, port: port)
     try hostServer.start(port: port)
     server = hostServer
+    if showWindow { desktop.show(invite: "http://\(host):\(port)/#\(token)", audio: audio) }
+    // Prepare the window and QR code before the device begins consuming samples.
+    if !headless { try audio.start() }
     log("session.starting", ["address": "http://\(host):\(port)/", "headless": headless,
                             "sampleRate": audio.sampleRate, "transport": "trusted-LAN HTTP/WebSocket"])
-    if showWindow { desktop.show(invite: "http://\(host):\(port)/#\(token)", audio: audio) }
     let clock = Timer(timeInterval: 0.002, repeats: true) { _ in advance() }
     RunLoop.main.add(clock, forMode: .common)
     timer = clock

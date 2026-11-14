@@ -43,7 +43,7 @@ make -C src/toolchain/targets/tests pocket-orchestra
 # Native server + mobile browser + captured audio, without an audio device or visible windows.
 make -C src/toolchain/targets/macos/tests pocket-orchestra-headless
 
-# The same journey through the Mac's real audio output, without opening windows.
+# The same journey with the native window, visible browsers and the Mac's real audio output.
 make -C src/toolchain/targets/macos/tests pocket-orchestra
 ```
 
@@ -55,4 +55,4 @@ For bounded diagnostics, `ORCHESTRA_DURATION=10` stops after ten seconds, `ORCHE
 
 ### Recorded verification
 
-On 2026-11-14, macOS 26.7.1: the launch target built and opened the signed local app; GC and ARC session journeys passed; headless and real-audio integration journeys passed with Chromium and WebKit; captured PCM verified the 110 Hz root within 1 Hz, finite bounded output and silence after release. The final audio-device run reported zero underruns. Native controls were exercised with a browser-held note, including conductor silence and subsequent playing without reconnect. Occupied-port failure and token-free diagnostics are checked. The C ring passed two million ordered samples under address/undefined-behaviour sanitizers and independently under ThreadSanitizer; Clang static analysis reported no issues. Model regeneration matched the checked-in Swift binding. Deslop found no duplicates in the C adapter files it supports; its scan did not cover Swift. Repository-wide CI and physical-phone testing remain outstanding.
+On 2026-11-14, macOS 26.7.1: the launch target built and opened the signed local app; GC and ARC session journeys passed; headless and real-audio integration journeys passed with Chromium and WebKit; captured PCM verified the 110 Hz root within 1 Hz, finite bounded output and silence after release. The visible Chromium/WebKit journey and the headless journey both enforce zero audio underruns. A startup regression first reproduced thirteen underruns; preparing the window before device startup and keeping 2,048 prepared frames eliminated them in the rerun. This queue adds approximately 46 ms at 44.1 kHz. Native controls were exercised with a browser-held note, including conductor silence and subsequent playing without reconnect. Occupied-port failure and token-free diagnostics are checked. The C ring passed two million ordered samples under address/undefined-behaviour sanitizers and independently under ThreadSanitizer; Clang static analysis reported no issues. Model regeneration matched the checked-in Swift binding. Deslop found no duplicates in the C adapter files it supports; its scan did not cover Swift. Both modes and the GC/ARC session journeys are wired into the required Apple CI matrix. Repository-wide CI and physical-phone testing remain outstanding.
