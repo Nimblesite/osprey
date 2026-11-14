@@ -136,7 +136,9 @@ pub(super) fn file_scope_env(
         file_scope: CallableEnv::default(),
     };
     let mut env = CallableEnv::default();
-    let _ = bootstrap.statements(statements, &[], &mut env);
+    for statement in statements {
+        bootstrap.statement_environment(statement, &[], &mut env);
+    }
     env
 }
 

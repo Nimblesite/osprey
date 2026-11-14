@@ -58,6 +58,22 @@ fn naming_a_function_records_its_read() {
     assert!(read.contains(&leaf), "caller's analysis read {read:?}");
 }
 
+#[test]
+fn file_scope_dependencies_ignore_calls_that_do_not_bind_values() {
+    with_program("fn leaf()=7\nleaf()\n", |index, statements| {
+        let count = index.functions.len();
+        let state = (vec![Summary::default(); count], vec![None; count]);
+        let instances = Instances::default();
+        let (env, reads) =
+            recording(|| file_scope_env(index, &instances, statements, &state.0, &state.1));
+        assert!(env.values.is_empty());
+        assert!(
+            reads.is_empty(),
+            "effect-only calls invalidate every function: {reads:?}"
+        );
+    });
+}
+
 type SolverState = (Vec<Summary>, Vec<Option<Value>>);
 type SolverPass = fn(&Index<'_>, &Instances, &[Stmt], &mut SolverState);
 
