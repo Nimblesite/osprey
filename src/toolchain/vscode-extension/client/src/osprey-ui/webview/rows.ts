@@ -6,37 +6,19 @@
 
 import { SCENE_SHAPE, SCENE_SHAPE_BYTES, VIEW_ROW, VIEW_ROW_BYTES } from "../generated/native-abi.js";
 
-/** One control's `kind`, in the order `native.td` and `view.ospml` number them. */
-export type Kind =
-  | "column"
-  | "line"
-  | "label"
-  | "press"
-  | "entry"
-  | "gap"
-  | "scroll"
-  | "layer"
-  | "toggle"
-  | "picker"
-  | "choice"
-  | "rule"
-  | "image"
-  | "canvas"
-  | "editor"
-  | "menu"
-  | "sheet"
-  /** [NATIVE-SHM-NODES] One told value, a record of members and a list of items. */
-  | "field"
-  | "record"
-  | "list";
-
 /** Each `kind` number the frame may carry, by the number `native.td` and `view.ospml` give it. */
-const KINDS: ReadonlyMap<number, Kind> = new Map([
+const KIND_ROWS = [
   [0, "column"], [1, "line"], [2, "label"], [3, "press"], [4, "entry"], [5, "gap"], [6, "scroll"],
   [7, "layer"], [8, "toggle"], [9, "picker"], [10, "choice"], [11, "rule"], [12, "image"],
   [13, "canvas"], [14, "editor"], [15, "menu"], [16, "sheet"],
+  /** [NATIVE-SHM-NODES] One told value, a record of members and a list of items. */
   [33, "field"], [34, "record"], [35, "list"],
-]);
+] as const;
+
+/** One control's `kind`, in the order `native.td` and `view.ospml` number them. */
+export type Kind = (typeof KIND_ROWS)[number][1];
+
+const KINDS: ReadonlyMap<number, Kind> = new Map(KIND_ROWS);
 
 /** Whether a row tells a component rather than draws a control ([NATIVE-SHM-NODES]). */
 export function told(kind: Kind): boolean {

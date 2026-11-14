@@ -6,7 +6,8 @@ import { readAsks, requests, sliceWrites, diagnostics, Ask } from "../../client/
 import { RegionStore, toldFrame } from "../../client/src/osprey-ui/nodes";
 import { parseTouch } from "../../client/src/osprey-ui/session";
 import { readFrame } from "../../client/src/osprey-ui/webview/rows";
-import { frame, type AskSpec } from "./native-rows-kit";
+import { SCENE_SHAPE, SCENE_SHAPE_BYTES } from "../../client/src/osprey-ui/generated/native-abi";
+import { frame, type AskSpec, type SceneSpec } from "./native-rows-kit";
 import { gate, harness, open, region, runs, settle, settleAll, themed, told } from "./native-session-kit";
 
 const asks: AskSpec[] = [
@@ -41,6 +42,87 @@ suite("package workspace protocol", () => {
         { shape: "strip", points, colour: 0xff00ffff, stroke: 3, depth: 2 },
       ], `strip with ${count} points`);
     }
+  });
+
+  test("scene paths retain cubic controls, gradient spaces, dashes and transforms", () => {
+    const marker = { code: 20, index: 0, x: 100, y: 100, width: 1 };
+    const built = frame({ views: [{ kind: 13 }], scenes: [marker,
+      { code: 5, index: 2, x: 2, width: 1 }, { code: 8, index: 1, x: 2, y: 3 },
+      { code: 8, index: 3, x: 4, y: 5, width: 6, height: 7, angle: 8 }, { code: 7, x: 9 },
+      { code: 9, index: 0 }, { code: 10, index: 1, x: 45, y: 0.2, width: 0.8, colour: 1 },
+      { code: 11, index: 1, x: 0.3, y: 0.4, width: 0.5, height: 0.6 },
+      { code: 11, index: 0, x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+    ] });
+    const path = readFrame(built).scenes.get(0)?.shapes[0];
+    assert.ok(path?.shape === "path");
+    assert.deepStrictEqual(path.steps, [{ step: "line", to: { x: 2, y: 3 } },
+      { step: "cubic", to: { x: 4, y: 5 }, first: { x: 6, y: 7 }, second: { x: 8, y: 9 } }]);
+    assert.deepStrictEqual(path.outline, { outline: "fill" });
+    assert.deepStrictEqual(path.paint, { paint: "linear", angle: 45,
+      from: [{ space: "hsl", channels: [0.3, 0.4, 0.5, 0.6] }, 0.2],
+      to: [{ space: "rgb", channels: [0.1, 0.2, 0.3, 0.4] }, 0.8], oklab: true });
+    assert.deepStrictEqual(path.transform, { x: 2, y: 0, scale: 1 });
+    for (const [x, y, scale] of [[0, 0, 1], [0, 2, 1], [0, 0, 2]]) {
+      const result = readFrame(frame({ views: [{ kind: 13 }], scenes: [marker,
+        { code: 5, index: 0, x, y, width: scale }, { code: 9, index: 1, x: 3, depth: 2, colour: 1 },
+        { code: 7, x: 0.5 }, { code: 7, x: 2 }, { code: 10 }, { code: 11 },
+      ] })).scenes.get(0)?.shapes[0];
+      assert.ok(result?.shape === "path");
+      assert.deepStrictEqual(result.outline, { outline: "stroke", width: 3, bevel: true, dashes: [0.5, 2] });
+      assert.deepStrictEqual(result.transform, x || y || scale !== 1 ? { x, y, scale } : null);
+    }
+  });
+
+  test("scene row counts and discriminants reject truncation before decoding payloads", () => {
+    const marker = { code: 20, index: 0, x: 100, y: 100, width: 1 };
+    const malformed: readonly [readonly SceneSpec[], RegExp][] = [
+      [[{ code: 2, index: -1 }], /count that runs past/],
+      [[{ code: 2, index: 2 }, { code: 7 }], /count that runs past/],
+      [[{ code: 2, index: 1 }, { code: 9 }], /should have code 7/],
+      [[{ code: 5, index: -1 }], /count that runs past/],
+      [[{ code: 5, index: 0x80000000 }], /count that runs past/],
+      [[{ code: 5, index: 1 }, { code: 8, index: 7 }], /unknown path step/],
+      [[{ code: 5, index: 1 }, { code: 8, index: 3 }], /should have code 7/],
+      [[{ code: 5 }, { code: 9, index: 3 }], /unknown outline/],
+      [[{ code: 5 }, { code: 9 }, { code: 10, index: 2 }], /unknown paint/],
+      [[{ code: 5 }, { code: 9 }, { code: 10 }, { code: 11, index: 2 }], /unknown tint/],
+    ];
+    for (const [scenes, error] of malformed) {
+      assert.throws(() => readFrame(frame({ views: [{ kind: 13 }], scenes: [marker, ...scenes] })), error);
+    }
+    const complete = frame({ views: [{ kind: 13 }], scenes: [marker] });
+    assert.throws(() => readFrame({ ...complete, shapes: complete.shapes.slice(0, -1) }), /scene run is not a whole number/);
+    for (const value of [BigInt(Number.MAX_SAFE_INTEGER) + 1n, BigInt(Number.MIN_SAFE_INTEGER) - 1n]) {
+      const changed = { ...complete, shapes: complete.shapes.slice(0) };
+      new DataView(changed.shapes).setBigInt64(SCENE_SHAPE.index, value, true);
+      assert.throws(() => readFrame(changed), /integer outside the range/);
+    }
+    for (const field of [SCENE_SHAPE.textOffset, SCENE_SHAPE.textLength]) {
+      const text = frame({ views: [{ kind: 13 }], scenes: [marker, { code: 4, text: "∧" }] });
+      new DataView(text.shapes).setBigInt64(SCENE_SHAPE_BYTES + field, -1n, true);
+      assert.throws(() => readFrame(text), /text (offset|length) below zero/);
+    }
+  });
+
+  test("scene sprites, glyphs and accessibility rows preserve content and hide decorative entries", () => {
+    const access: SceneSpec[] = [0, 1, 2, 3, 4, 0].flatMap((role, index) => [
+      { code: 22, index: role, x: 10, y: 20, width: 30, height: 40, angle: 0.5,
+        colour: role === 3 ? 1 : 0, text: index === 5 ? "" : `label${role}` },
+      { code: 7, x: 0, y: 1 },
+    ]);
+    const scene = readFrame(frame({ views: [{ kind: 13 }], scenes: [
+      { code: 20, index: 0, x: 100, y: 100, width: 1 }, { code: 21, text: "atlas/sprite.png" },
+      { code: 3, index: 0, x: 1, y: 2, width: 3, height: 4, angle: 5, colour: 0xffffffff, depth: 6 },
+      { code: 4, text: "∧ café", x: 7, y: 8, width: 9, colour: 0xff00ffff, depth: 10 }, ...access,
+    ] })).scenes.get(0);
+    assert.deepStrictEqual(scene?.atlas, ["atlas/sprite.png"]);
+    assert.deepStrictEqual(scene?.shapes, [
+      { shape: "sprite", atlas: 0, x: 1, y: 2, w: 3, h: 4, angle: 5, tint: 0xffffffff, depth: 6 },
+      { shape: "glyphs", text: "∧ café", x: 7, y: 8, size: 9, colour: 0xff00ffff, depth: 10 },
+    ]);
+    assert.deepStrictEqual(scene?.access, ["button", "slider", "button", "menuitem"].map((role, index) => ({
+      role, label: `label${index}`, x: 10, y: 20, w: 30, h: 40, value: 0.5, min: 0, max: 1, selected: index === 3,
+    })));
   });
 
   test("a valid envelope keeps its opaque state, keyed patches and requests", () => {
