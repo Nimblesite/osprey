@@ -18,107 +18,107 @@ The button labelled Play survives a redesign that moves it. A pixel guess doesn'
 00:37.095 --> 00:45.528
 This is the casting player from the Chromecast tutorial. Every control you see is in its accessibility tree, and its tests never look at a pixel.
 
-00:46.278 --> 00:57.295
+01:05.062 --> 01:16.079
 Labels start in the app's machine document, the data file that describes the whole interface. This is one hit area: a rectangle on the canvas, sized for the Open file button.
 
-00:57.495 --> 01:01.216
+01:16.279 --> 01:20.000
 When it's pressed, it fires the open event, which the machine handles.
 
-01:01.416 --> 01:10.240
+01:20.200 --> 01:29.024
 And here are its role and label: a button, labelled Open file. That one line is all a test, a screen reader or an agent needs to find it.
 
-01:10.989 --> 01:26.031
+01:29.773 --> 01:44.815
 The native package turns those hit areas into a typed tree. Semantics walks every live listener, and gives each one its role, its filled-in label, its bounds, and a slider's value and range. A hidden control isn't live, so it isn't in the tree.
 
-01:26.231 --> 01:36.857
+01:45.015 --> 01:55.641
 Act operates a control by label, the way a screen reader would. A slider is set a fraction of the way across, and anything else is pressed. An unknown label changes nothing.
 
-01:37.607 --> 01:49.790
+01:56.391 --> 02:08.574
 The uitest package builds on that tree. It's published as @osprey/uitest, under MIT: label-driven UI testing for Osprey Native apps, with no host and no window.
 
-01:49.990 --> 01:54.287
+02:08.774 --> 02:13.071
 It depends on the native, graphics and json packages, and nothing else.
 
-01:55.037 --> 02:01.779
+02:13.821 --> 02:20.563
 Semantics reads the tree. Labels joins every label in hit order, so one string check covers the whole screen.
 
-02:01.979 --> 02:11.730
+02:20.763 --> 02:30.514
 Element finds a control by its label. If nothing has that label, it returns an element with no bounds, instead of crashing, so the test can report the problem.
 
-02:11.930 --> 02:17.345
+02:30.714 --> 02:36.129
 Role and value read what a host would announce: button, slider, and a slider's current value.
 
-02:17.545 --> 02:23.497
+02:36.329 --> 02:42.281
 And point turns a label into a place to click: a fraction of the way across the control, halfway down.
 
-02:24.247 --> 02:32.219
+02:43.031 --> 02:51.003
 Announced writes one element as an agent reads it: the role, the label in quotes, a slider's value and range, and whether it's selected.
 
-02:32.419 --> 02:41.050
+02:51.203 --> 02:59.834
 Outline writes the whole tree, one line each. That's exactly the text an agent gets, and, as you'll see, exactly what a failing test prints.
 
-02:41.800 --> 02:47.934
-Drive holds a live session. A Driven value is the session, what it last rendered, and the host's clock.
+03:00.584 --> 03:07.728
+Drive holds a live surface. A Driven value is the surface, its program, what it last showed, and the host's clock.
 
-02:48.134 --> 02:55.577
+03:07.928 --> 03:15.372
 Press builds a host event for the control with that label. The test never deals with revision numbers or internal ordinals.
 
-02:55.777 --> 03:02.250
+03:15.572 --> 03:22.045
 Pointer builds a raw pointer event at a point on the canvas, pressed or released. That's what a real click is.
 
-03:03.000 --> 03:08.411
+03:22.795 --> 03:28.206
 Every check explains itself when it fails. Explained prints the reason, then returns false.
 
-03:08.611 --> 03:17.390
+03:28.406 --> 03:37.185
 Offers checks the tree has a label, and if it doesn't, it prints the whole tree as an agent would read it. So a failure tells you what the screen does offer.
 
-03:18.140 --> 03:27.840
+03:37.935 --> 03:47.635
 Now a real test, from the casting player. A few one-line helpers read the tree from what the app last rendered: its elements, their labels, a slider's value.
 
-03:28.040 --> 03:40.447
+03:47.835 --> 04:00.241
 Tap at finds the control by label, takes its point, and sends a real pointer press and release there. If a hit area is misplaced, or covered by something else, the tap misses, just as a user's click would.
 
-03:41.197 --> 03:52.377
+04:00.991 --> 04:12.172
 Read the journey like a user would. Before any TVs are found, the screen offers four controls. Once the fake TV answers, the receiver label changes to Living Room TV.
 
-03:52.577 --> 03:59.757
-Tap Play with no file, and nothing is sent to the TV. Tap Open file, and the app asks the host for a file picker.
+04:12.372 --> 04:21.401
+Tap Play with no file, and nothing is sent to the TV. Even hovering Open file asks for nothing; only a tap opens the host's file picker.
 
-03:59.957 --> 04:06.644
+04:21.601 --> 04:28.288
 Pick a file, tap Play, and the fake TV hears CONNECT and LAUNCH. A few frames later, the canvas says Playing.
 
-04:06.844 --> 04:18.756
+04:28.488 --> 04:40.400
 Now the tree has changed: Play became Pause and Stop, and two sliders appeared, Position and Volume. The test checks each slider's range, and that Position is a slider and Pause is a button.
 
-04:19.506 --> 04:31.038
+04:41.150 --> 04:52.681
 Run the test folder with osprey. There's no window and no TV: the app's real start and dispatch run against handlers, so it takes seconds, and runs anywhere. The canvas journey passes.
 
-04:31.238 --> 04:38.761
+04:52.881 --> 05:00.404
 So does the journey that reads the tree as an agent would: while it searches, when it finds no TVs, and when it finds some.
 
-04:38.961 --> 04:39.958
+05:00.604 --> 05:01.602
 All eight pass.
 
-04:40.708 --> 04:50.459
+05:02.352 --> 05:12.103
 Now change one thing. In the machine document, rename this label from Open file to just Open. The button looks the same. Only its label changes.
 
-04:51.209 --> 05:00.171
+05:12.853 --> 05:21.815
 Run the tests again. Three journeys fail: the skins test, the canvas test, and the agent test. Five still pass, because they never use that button.
 
-05:00.371 --> 05:06.330
+05:22.015 --> 05:27.973
 The first failure shows the labels it expected, and the labels it got. Open file became Open.
 
-05:06.530 --> 05:19.320
+05:28.173 --> 05:40.964
 And offers prints the tree an agent would see: two popups and two buttons, Play and Open. A redesign that keeps the labels passes. A renamed label is caught, because agents and screen readers depend on it.
 
-05:20.070 --> 05:38.489
+05:41.714 --> 06:00.133
 The same tree reaches real assistive technology. The GPUI desktop host maps each element to AccessKit, the cross-platform accessibility layer, and turns a screen reader's click into the same pointer events the tests send. So the app can't tell a screen reader or an agent from a hand.
 
-05:38.689 --> 05:46.229
-The role function maps each role name to its AccessKit role. Anything unknown gets no role, so it's never announced wrongly.
+06:00.333 --> 06:10.831
+An assistive click lands at the element's centre, and a slider's new value at its place along the track. Any other action gets no target, so nothing is ever pressed by mistake.
 
-05:46.979 --> 06:01.810
+06:11.581 --> 06:26.413
 What's done, and what isn't. The labels agents use are tested on every build. There's no ready-made MCP server for agents yet. The tree comes from UI machines, not hand-written views, and only the GPUI host maps it today.
 
-06:02.560 --> 06:14.939
+06:27.163 --> 06:39.542
 To try it, run the casting journeys with osprey, read the uitest package, and open the player to see the same controls. Osprey is actively evolving. Try it on your projects, and tell us what breaks.

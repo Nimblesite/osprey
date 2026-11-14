@@ -9,107 +9,107 @@ This is GPUI's own painting example, ported to Osprey. Black squares, translucen
 00:29.290 --> 00:35.406
 Every shape in this window comes from Osprey code. Rust is only the host that puts it on the GPU.
 
-00:36.156 --> 00:40.870
+00:41.505 --> 00:46.219
 Here's how the work is split. GPUI does the rendering, on the GPU.
 
-00:41.070 --> 00:46.393
+00:46.419 --> 00:51.742
 The Rust host opens the window and forwards events. It holds no application logic.
 
-00:46.593 --> 00:50.888
+00:51.942 --> 00:56.237
 Osprey owns the state, handles every event, and describes every shape.
 
-00:51.088 --> 00:57.722
+00:56.437 --> 01:03.070
 And the port's README reports zero differing pixels against the original Rust example, at the same window size.
 
-00:58.472 --> 01:03.988
-Start at the boundary. The whole app is two functions the host calls through C, and one import.
+01:03.820 --> 01:10.531
+Start at the boundary. One small effect keeps the latest surface, so the whole sketch stays in Osprey between calls.
 
-01:04.188 --> 01:11.586
-Start takes the saved session, and runs the framework's start with the app's initial state, its regions, its saver and its theme.
+01:10.731 --> 01:14.955
+Open draws the first frame, for the host's clock, platform and appearance.
 
-01:11.786 --> 01:19.257
-Dispatch takes the saved state and one event from the host, and returns what changed. That's the entire contract with Rust.
+01:15.155 --> 01:23.553
+Event hands over one typed host event, a press, a drag or a key, and draws the next frame. That's the entire contract with Rust.
 
-01:20.007 --> 01:29.359
+01:24.303 --> 01:33.654
 The store is plain typed data. A Sketch holds the freehand lines, each a flat list of coordinates, plus where the current drag started, and whether you're drawing.
 
-01:29.559 --> 01:33.168
+01:33.854 --> 01:37.463
 Style holds one flag, dashed. The Store is just those two.
 
-01:33.368 --> 01:42.739
+01:37.663 --> 01:47.035
 And Act names everything the interface can send: toggle dash, clear, and draw. It's a closed set, so the compiler checks every match covers all three.
 
-01:43.489 --> 01:46.211
+01:47.785 --> 01:50.506
 Initial is an empty sketch with solid strokes.
 
-01:46.411 --> 01:53.592
+01:50.706 --> 01:57.887
 Tapped handles the two buttons: toggle the dash, or clear. Every branch returns a new store. Nothing is mutated.
 
-01:53.792 --> 02:02.455
+01:58.087 --> 02:06.750
 Controlled handles the canvas. A pointer event goes to the drawing rules, with its position, whether the button is down, and whether Shift is held.
 
-02:03.205 --> 02:08.719
+02:07.500 --> 02:13.014
 Here's a rule straight from the original. Without Shift, the point you dragged to is used as it is.
 
-02:08.919 --> 02:21.570
+02:13.214 --> 02:25.865
 With Shift held, the line stays straight. If you moved more across than down, it keeps the start's y. Otherwise, it keeps the start's x. Same behaviour as the Rust version, in a few lines of pure functions.
 
-02:22.320 --> 02:25.992
+02:26.615 --> 02:30.288
 Pressed handles one pointer event. A release ends the drag.
 
-02:26.193 --> 02:33.711
+02:30.488 --> 02:38.006
 A press starts a new line at the pointer. A drag while drawing extends the last line by one point, straightened if Shift is held.
 
-02:33.911 --> 02:38.142
+02:38.206 --> 02:42.438
 And toggle dash just flips the flag. The view decides what that looks like.
 
-02:38.892 --> 02:46.516
+02:43.188 --> 02:50.811
 The view describes shapes as data. The lightning bolt is a filled polygon with four corners, in the original's exact colour.
 
-02:46.716 --> 02:55.271
+02:51.011 --> 02:59.567
 The star is ten line segments, filled with an Oklab gradient. These values were copied from the Rust example, which is why the pixels match.
 
-02:56.021 --> 03:01.501
+03:00.317 --> 03:05.796
 Dashes is where the style becomes geometry: four units on, two off, or a solid line.
 
-03:01.701 --> 03:08.700
+03:05.996 --> 03:12.996
 Freehand turns each of your lines into a path. A line with fewer than two points draws nothing, just like the original.
 
-03:08.900 --> 03:15.390
+03:13.196 --> 03:19.686
 Canvas puts it together: the fixed drawing, then every freehand line, as one list of shapes the host renders.
 
-03:16.140 --> 03:23.911
+03:20.436 --> 03:28.207
 The header's button reads Dashed when lines are solid, and Solid when they're dashed. It's computed from state, never toggled by hand.
 
-03:24.111 --> 03:36.785
+03:28.407 --> 03:41.080
 Regions tells the framework what to rebuild. When the sketch changes, only the canvas is redrawn. When the style changes, the canvas and the header are. The host gets only the regions that changed.
 
-03:37.535 --> 03:47.130
+03:41.830 --> 03:51.426
 Run the tests. They drive the real start and dispatch boundary, with no window. The first checks that start draws the original's five quads and sixteen paths.
 
-03:47.330 --> 03:51.462
+03:51.626 --> 03:55.757
 Others draw lines, and check that Shift straightens them in both directions.
 
-03:51.662 --> 04:00.504
+03:55.957 --> 04:04.800
 And the headless self-test drives the same app through the GPUI host's own self-test steps, without opening a window. Seven steps pass.
 
-04:01.254 --> 04:05.362
+04:05.550 --> 04:09.657
 Now change it. Make the dash eight on and two off, instead of four and two.
 
-04:06.112 --> 04:11.818
+04:10.407 --> 04:16.113
 The dash test fails, and tells you exactly why: it expected four and two, and got eight and two.
 
-04:12.018 --> 04:19.193
+04:16.313 --> 04:23.489
 Six pass, one fails. The rest of the app is untouched, and the tests prove it. Put it back to four, and all seven pass.
 
-04:19.943 --> 04:31.671
+04:24.239 --> 04:35.966
 There's a second way to write a GPUI app in Osprey: as one machine document. The casting player's interface is data. Each layer of state machines has exactly one current state.
 
-04:31.871 --> 04:44.084
+04:36.166 --> 04:48.380
 Transitions are named, and guarded by inputs, like the TV reporting that it's buffering. The document is checked when it loads, and the only Osprey code is a small adapter that answers its requests.
 
-04:44.834 --> 04:58.397
+04:49.130 --> 05:02.692
 What to know. These runs are the GPUI host on macOS. On Windows, the same apps run on the WinUI host. And pixel parity with the Rust original is checked with the compare script in the reference folder.
 
-04:59.147 --> 05:09.724
+05:03.442 --> 05:14.020
 To try it, run the painting tests, then open the app with one make command, and read the source. Osprey is actively evolving. Try it on your projects, and tell us what breaks.
