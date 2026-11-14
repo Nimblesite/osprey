@@ -28,6 +28,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Rust
+      id: rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ inputs.rust-toolchain }}
@@ -41,7 +42,7 @@ runs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-osprey-
 
     # The hosted runner's Azure mirror serves some main-pocket packages (zsh, libc6-dbg) at about

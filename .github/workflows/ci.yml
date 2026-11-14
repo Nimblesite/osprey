@@ -1001,6 +1001,7 @@ jobs:
           cache-dependency-path: src/toolchain/website/package-lock.json
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and target
@@ -1012,7 +1013,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-website-wasm-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
       # Website tests execute native documentation examples as well as WASM.
@@ -1264,7 +1265,6 @@ jobs:
             minutes: 15
             run: |
               make _runtime _runtime_macos
-              cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
               target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=gc
               target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=arc
               make -C src/toolchain/targets/macos/tests pocket-orchestra-headless
@@ -1279,7 +1279,6 @@ jobs:
             minutes: 15
             run: |
               make _runtime _runtime_macos
-              cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
               make -C src/toolchain/targets/macos/tests workbench
     steps:
       - uses: actions/checkout@v7
@@ -1290,9 +1289,11 @@ jobs:
         run: command -v jq >/dev/null || brew install jq
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore the compiler's cargo cache
+        id: cargo
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -1300,8 +1301,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
+      # that is only restored goes stale for good when the runner's rustc moves.
+      - name: Build the compiler
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save the compiler's cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
 
       - uses: actions/setup-node@v7
         if: matrix.part == 'Light Orchestra'
@@ -1420,9 +1437,11 @@ jobs:
           lfs: true
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore the compiler's cargo cache
+        id: cargo
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -1430,8 +1449,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
+      # that is only restored goes stale for good when the runner's rustc moves.
+      - name: Build the compiler
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save the compiler's cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
 
       - name: Host tests and the self-test against goldens
         id: agent-check

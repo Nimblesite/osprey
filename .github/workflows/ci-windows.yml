@@ -53,6 +53,7 @@ jobs:
       # ci.yml's required `ci` job. The gate lives there.
 
       - name: Install Rust (stable)
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry + target
@@ -63,7 +64,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       # gcc + winpthreads back the fiber/effects C runtime; the `clang` package

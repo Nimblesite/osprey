@@ -60,6 +60,7 @@ jobs:
           node-version: "24"
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and target
@@ -70,7 +71,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-pages-wasm-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-pages-wasm-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-pages-wasm-
 
       - name: Install wasm toolchain
