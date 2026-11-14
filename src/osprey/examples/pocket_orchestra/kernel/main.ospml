@@ -1,0 +1,69 @@
+// [ORCHESTRA-EFFECTS] The desktop worker alone calls this boundary; networking and devices stay in the host.
+namespace orchestra
+
+import orchestra::Sessions
+import synth::Oscillators
+
+effect Keep
+    keep : Session => Unit
+
+mut live = Session(epoch = 1, clock = 0, players = [])
+
+hosted work =
+    handle Keep
+        keep next => live := next
+    work ()
+
+accepted result = match result
+    Accepted next =>
+        perform Keep.keep next
+        0
+    Rejected _ => 1
+
+sine (phase : float) = Oscillators::sine phase
+
+admit peer = hosted (\() => accepted (Sessions::join (live, peer)))
+
+leave peer = hosted (\() =>
+    perform Keep.keep (Sessions::leave (live, peer))
+    0)
+
+tick milliseconds = hosted (\() => accepted (Sessions::tick (live, milliseconds)))
+
+heartbeat peer = hosted (\() => accepted (Sessions::heartbeat (live, peer)))
+
+silence () = hosted (\() =>
+    perform Keep.keep (Sessions::silence live)
+    0)
+
+phaseOf code = match code
+    0 => Accepted(value = Begin)
+    1 => Accepted(value = Move)
+    2 => Accepted(value = End)
+    _ => Rejected(fault = InvalidTouch)
+
+touch (peer, sequence, phase, finger, x, y) = hosted (\() =>
+    match phaseOf phase
+        Rejected _ => 1
+        Accepted action => accepted (Sessions::play (live, peer, Gesture(epoch = 1, sequence = sequence, phase = action, touch = Touch(finger = finger, horizontal = x, vertical = y)))))
+
+// The small example uses a pentatonic ribbon. Musical mapping stays in Osprey.
+scaleStep degree = match degree < 1.0
+    true => 0.0
+    false => match degree < 2.0
+        true => 2.0
+        false => match degree < 3.0
+            true => 4.0
+            false => match degree < 4.0
+                true => 7.0
+                false => 9.0
+
+frequency touch =
+    step = floor (touch.horizontal * 14.0)
+    octave = floor (step / 5.0)
+    semitones = scaleStep (step - octave * 5.0)
+    110.0 * pow (2.0, octave + semitones / 12.0)
+
+voice (peer, touch) = "{\"id\":\"${toString peer}:${toString touch.finger}\",\"frequency\":${toString (frequency touch)},\"gain\":${toString (0.1 * (0.2 + 0.8 * touch.vertical))}}"
+
+voices () = "[${join (foldList (live.players, [], \(all, player) => listConcat all (mapList (player.touches, \touch => voice (player.peer, touch))))) ","}]"

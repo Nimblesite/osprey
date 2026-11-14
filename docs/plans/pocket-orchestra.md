@@ -83,3 +83,16 @@ Completion requires the full platform matrix and both widget presentations. The 
 ## Later extensions [ORCHESTRA-PLAN-LATER]
 
 Linux desktop hosting, trusted HTTPS/WSS provisioning, motion instruments, saved compositions, event recordings and replay, external lighting and Internet relay sessions each require a follow-up scope decision. Keep the initial ensemble focused on reliable local play and verifiable platform parity.
+
+## First playable pair evidence [ORCHESTRA-PLAN-PLAYABLE]
+
+- [x] Build a native macOS session app that serves phone controllers and plays Osprey oscillator output through AVAudioEngine.
+- [x] Deliver the browser pentatonic multitouch ribbon over authenticated WebSocket, with keyboard access and note release on disconnect or suspension.
+- [x] Add native QR/invite, controller/note counts, master volume, output meter and ensemble silence controls.
+- [x] Exercise the native server with eight controllers and eighty notes; verify PCM bounds, ownership, malformed input, expiry and silence after release.
+- [x] Exercise a mobile-sized browser controller and run the same transport/audio journey through the actual Mac output device.
+- [x] Verify the audio ring with two million ordered samples under address/undefined-behaviour sanitizers.
+- [ ] Measure physical iPhone/Android-to-speaker latency on Wi-Fi and record device/browser versions.
+- [ ] Complete Windows hosting, native phone controllers and the full native/canvas presentation matrix above.
+
+Run commands and honest delivery boundaries are in `src/osprey/examples/pocket_orchestra/README.md`. Browser emulation and generated PCM checks do not establish physical-phone or speaker-to-ear latency. The renderer still shares the main thread with networking; hard-real-time scheduling remains unproven.

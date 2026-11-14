@@ -1,0 +1,94 @@
+import Foundation
+import Darwin
+import AppKit
+
+// [ORCHESTRA-EFFECTS] Network callbacks and the synthesis worker share the main OS thread.
+let environment = ProcessInfo.processInfo.environment
+let audio = OrchestraAudio()
+let desktop = OrchestraDesktop()
+var server: OrchestraServer?
+var timer: Timer?
+var failure: String?
+var running = true
+var lastSessionTick = -1.0
+let began = ProcessInfo.processInfo.systemUptime
+let headless = environment["ORCHESTRA_HEADLESS"] == "1"
+let showWindow = !headless && environment["ORCHESTRA_NO_WINDOW"] != "1"
+let duration = Double(environment["ORCHESTRA_DURATION"] ?? "0") ?? 0
+let port = UInt16(environment["ORCHESTRA_PORT"] ?? "9090") ?? 9090
+var host = environment["ORCHESTRA_HOST"] ?? "127.0.0.1"
+let token = environment["ORCHESTRA_TOKEN"] ?? UUID().uuidString
+let assets = environment["ORCHESTRA_CONTROLLER"] ?? Bundle.main.path(forResource: "controller", ofType: "html") ?? "src/osprey/examples/pocket_orchestra/controller.html"
+
+func requestStop() {
+    running = false
+    if showWindow {
+        NSApplication.shared.stop(nil)
+        if let event = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, subtype: 0, data1: 0, data2: 0) {
+            NSApplication.shared.postEvent(event, atStart: true)
+        }
+    }
+}
+
+func log(_ event: String, _ fields: [String: Any] = [:]) {
+    var record = fields
+    record["event"] = event
+    do {
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys])
+        FileHandle.standardOutput.write(data + Data([10]))
+    } catch { FileHandle.standardError.write(Data("Diagnostic encoding failed\n".utf8)) }
+}
+
+func advance() {
+    let elapsed = ProcessInfo.processInfo.systemUptime - began
+    if elapsed - lastSessionTick >= 0.05 {
+        if osprey_orchestra_tick(Int64(elapsed * 1000)) != 0 { failure = "Session clock rejected" }
+        do { try audio.update() } catch { failure = error.localizedDescription }
+        server?.expire()
+        desktop.update(peers: server?.controllerCount ?? 0, notes: audio.activeNotes, level: audio.level)
+        lastSessionTick = elapsed
+    }
+    if headless { _ = audio.render(128) } else { audio.fill() }
+    failure = failure ?? server?.failure ?? audio.failure
+    if failure != nil || (duration > 0 && elapsed >= duration) { requestStop() }
+}
+
+func start() throws {
+    try validateConfiguration(environment)
+    if environment["ORCHESTRA_HOST"] == nil { host = try localAddress() }
+    guard osprey_main() == 0 else { throw problem("Osprey kernel initialization failed") }
+    guard token.count >= 20 else { throw problem("Session token must contain at least 20 characters") }
+    audio.capturesAudio = environment["ORCHESTRA_CAPTURE"] != nil
+    if !headless { try audio.start() }
+    let page = try Data(contentsOf: URL(fileURLWithPath: assets))
+    let hostServer = OrchestraServer(audio: audio, host: host, token: token, page: page, port: port)
+    try hostServer.start(port: port)
+    server = hostServer
+    log("session.starting", ["join": "http://\(host):\(port)/#\(token)", "headless": headless,
+                            "sampleRate": audio.sampleRate, "transport": "trusted-LAN HTTP/WebSocket"])
+    if showWindow { desktop.show(invite: "http://\(host):\(port)/#\(token)", audio: audio) }
+    timer = Timer.scheduledTimer(withTimeInterval: 0.002, repeats: true) { _ in advance() }
+}
+
+signal(SIGINT, SIG_IGN)
+signal(SIGTERM, SIG_IGN)
+let interrupt = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+interrupt.setEventHandler { requestStop() }
+terminate.setEventHandler { requestStop() }
+interrupt.resume()
+terminate.resume()
+do {
+    try start()
+    if showWindow { NSApplication.shared.run() }
+    else { while running { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) } }
+} catch { failure = error.localizedDescription }
+timer?.invalidate()
+server?.stop()
+audio.stop()
+if let path = environment["ORCHESTRA_CAPTURE"] {
+    do { try audio.writeCapture(to: path) } catch { failure = error.localizedDescription }
+}
+log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
+                        "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
+if let failure { FileHandle.standardError.write(Data("\(failure)\n".utf8)); exit(1) }

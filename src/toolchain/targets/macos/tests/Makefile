@@ -22,6 +22,24 @@ script_signal-flow := src/osprey/packages/signal_flow/app
 
 .PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench
 
+.PHONY: pocket-orchestra pocket-orchestra-headless
+## pocket-orchestra-headless: Real native orchestra server and phone browser journeys, capturing PCM without an audio device.
+pocket-orchestra-headless: _pocket-orchestra-ring
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	node src/toolchain/targets/macos/tests/pocket-orchestra.mjs
+
+## pocket-orchestra: The same controller journeys through the Mac's audio device, without opening windows.
+pocket-orchestra: _pocket-orchestra-ring
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	ORCHESTRA_DEVICE_TEST=1 node src/toolchain/targets/macos/tests/pocket-orchestra.mjs
+
+# _pocket-orchestra-ring: Race the audio producer/callback under memory and undefined-behaviour sanitizers.
+.PHONY: _pocket-orchestra-ring
+_pocket-orchestra-ring:
+	@mkdir -p target/orchestra
+	clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g src/toolchain/targets/macos/tests/orchestra-ring.c src/toolchain/hosts/swift/orchestra/audio_ring.c -o target/orchestra/ring-test
+	python3 -c 'import subprocess; subprocess.run(["target/orchestra/ring-test"], check=True, timeout=20)'
+
 ## tally-headless: Tally as a C library under its reference host, which seals each frame and reads
 ##                 every control in place from shared memory. [NATIVE-SHM-VIEW]
 tally-headless:

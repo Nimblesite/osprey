@@ -8,10 +8,12 @@ if (!generator || !schema || !destination || !namespace) throw new Error('usage:
 const upstream = pathToFileURL(resolve(generator) + '/')
 const { parse } = await import(new URL('parser/index.js', upstream))
 const { buildModel } = await import(new URL('model/index.js', upstream))
-const { generateOspreyModule } = await import(new URL('converters/osprey.js', upstream))
+const swift = destination.endsWith('.swift')
+const converter = await import(new URL(`converters/${swift ? 'swift' : 'osprey'}.js`, upstream))
 const unwrap = result => {
   if (!result.ok) throw new Error(JSON.stringify(result.error))
   return result.value
 }
 const model = unwrap(buildModel(unwrap(parse(await readFile(schema, 'utf8')))))
-await writeFile(destination, `namespace ${namespace}\n\n` + unwrap(generateOspreyModule(model)) + '\n')
+const generated = swift ? converter.generateSwiftModule(model) : converter.generateOspreyModule(model)
+await writeFile(destination, (swift ? '' : `namespace ${namespace}\n\n`) + unwrap(generated) + '\n')

@@ -11,6 +11,17 @@ include Makefile
 
 .PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe
 
+.PHONY: pocket-orchestra pocket-orchestra-models
+## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
+pocket-orchestra: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/swift/orchestra/build.sh
+	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
+
+## pocket-orchestra-models: Generate the native audio models from typeDiagram; set TYPEDIAGRAM_DIST.
+pocket-orchestra-models:
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/toolchain/hosts/swift/orchestra/audio.td src/toolchain/hosts/swift/orchestra/AudioModels.swift orchestra
+
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
 PROJECT ?= $(CURDIR)

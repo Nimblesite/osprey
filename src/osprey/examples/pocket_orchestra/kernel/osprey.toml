@@ -1,0 +1,8 @@
+[project]
+name = "orchestra-kernel"
+source_roots = ["main.ospml", "../src", "../../../packages/synth/src"]
+default_namespace = "orchestra"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false
