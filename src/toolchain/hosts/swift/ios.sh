@@ -40,14 +40,20 @@ for symbol in osprey_main osprey_app_argument osprey_app_open osprey_app_event o
     grep -q " T _$symbol\$" <<<"$symbols" || { echo "The application does not export $symbol" >&2; exit 1; }
 done
 
-# The host itself: the one OspreyShared library, compiled for the iOS SDK.
+# Compile the one OspreyShared library directly for the selected iOS SDK.
 cd "$here"
 build="$here/build/$target"
-products=$([[ $target == ios-sim ]] && echo Release-iphonesimulator || echo Release-iphoneos)
-binary="$build/dd/Build/Products/$products/OspreyViewHostIOS"
-OSPREY_APP_ARCHIVE="$archive" nice xcodebuild -scheme OspreyViewHostIOS -configuration Release -destination "$([[ $target == ios-sim ]] \
-    && echo 'generic/platform=iOS Simulator' || echo 'generic/platform=iOS')" \
-    ARCHS=arm64 ONLY_ACTIVE_ARCH=YES -derivedDataPath "$build/dd" -quiet build
+sdk=iphoneos
+triple=arm64-apple-ios18.0
+if [[ $target == ios-sim ]]; then
+    sdk=iphonesimulator
+    triple+=-simulator
+fi
+arguments=(--configuration release --triple "$triple" --sdk "$(xcrun --sdk "$sdk" --show-sdk-path)"
+    --product OspreyViewHostIOS --scratch-path "$build/swift")
+export OSPREY_APP_ARCHIVE="$archive"
+nice xcrun swift build "${arguments[@]}"
+binary="$(xcrun swift build "${arguments[@]}" --show-bin-path)/OspreyViewHostIOS"
 [[ -x "$binary" ]] || { echo "The iOS host did not build" >&2; exit 1; }
 bundle="$build/$name.app"
 rm -rf "$bundle"

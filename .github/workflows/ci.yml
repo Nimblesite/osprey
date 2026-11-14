@@ -1248,9 +1248,8 @@ jobs:
           docker rm osprey-web-compiler-ci
 
   # iOS/macOS device and simulator builds, simulator tests and the native
-  # Workbench host. Both images are ARM64, matching the simulator archive; both
-  # iOS parts run on macos-26, because Xcode 16 on macos-15 generates no scheme
-  # for the shared host's iOS executable that ios.sh builds.
+  # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
+  # matching the simulator archive.
   test-apple:
     name: "Tests: Apple (${{ matrix.part }})"
     needs: [changes, build]

@@ -127,7 +127,7 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  // Every part runs on macos-15 but the two iOS parts, which need Xcode 26 to generate the shared host's iOS scheme.
+  // The two iOS parts use macos-26 and its iOS SDK.
   assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
   assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
   assert.match(apple, /^ {10}- part: iOS apps\n {12}runner: macos-26$/m)
