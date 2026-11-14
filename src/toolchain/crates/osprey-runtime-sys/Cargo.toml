@@ -7,11 +7,9 @@ license.workspace = true
 repository.workspace = true
 links = "osprey_runtime_ffi"
 
-# SEALED UNSAFE BOUNDARY. This crate and `tree-sitter-osprey` are the ONLY places
-# `unsafe` is permitted — all FFI is quarantined here so the rest of the workspace
-# keeps `unsafe_code = "deny"`. It therefore does NOT inherit `[workspace.lints]`
-# (which would forbid the `extern "C"` blocks it exists to declare). Keep this
-# crate a thin, audited shim; put real logic in the safe crates.
 
 [build-dependencies]
 cc = "1"
+
+[lints]
+workspace = true

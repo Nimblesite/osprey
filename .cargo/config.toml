@@ -3,3 +3,6 @@
 # The workspace manifest lives in src/toolchain; artifacts stay at the repo root.
 target-dir = "target"
 jobs = 2
+# Every cargo warning is an error, including manifest lints that rustc's
+# `-D warnings` never sees (a crate that skips `[workspace.lints]`).
+warnings = "deny"

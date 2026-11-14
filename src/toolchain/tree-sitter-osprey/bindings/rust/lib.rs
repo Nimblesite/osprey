@@ -7,6 +7,10 @@ extern "C" {
 }
 
 /// The tree-sitter [`LanguageFn`] for this grammar.
+#[expect(
+    unsafe_code,
+    reason = "sealed FFI boundary: the C parser's language function is the grammar"
+)]
 pub const LANGUAGE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_osprey) };
 
 #[cfg(test)]
@@ -87,8 +91,11 @@ mod tests {
         let tree = parse(source);
         let root = tree.root_node();
         let holes = descendants(root, "interpolation");
-        assert_eq!(holes.len(), 1);
-        assert_eq!(&source[holes[0].byte_range()], "${x + 1}");
+        let hole_texts: Vec<&str> = holes
+            .iter()
+            .map(|node| &source[node.byte_range()])
+            .collect();
+        assert_eq!(hole_texts, ["${x + 1}"]);
         let text: String = descendants(root, "string_content")
             .iter()
             .map(|node| &source[node.byte_range()])
@@ -192,7 +199,10 @@ mod tests {
         source: &str,
     ) -> (String, String) {
         (
-            query.capture_names()[capture.index as usize].to_owned(),
+            usize::try_from(capture.index)
+                .ok()
+                .and_then(|index| query.capture_names().get(index))
+                .map_or_else(String::new, |name| (*name).to_owned()),
             source[capture.node.byte_range()].to_owned(),
         )
     }
@@ -242,7 +252,7 @@ mod tests {
         assert_eq!(found, [("1\n* \"x\"", "*")]);
         let unary = parse("let s = 1\n+ \"x\"\n");
         assert_eq!(descendants(unary.root_node(), "unary_expression").len(), 1);
-        parse(r#"let s = "${{ let x = 1\nx }}""#);
+        let _ = parse(r#"let s = "${{ let x = 1\nx }}""#);
     }
 
     /// Every comment the grammar produces must reach a highlight capture. `//!`
