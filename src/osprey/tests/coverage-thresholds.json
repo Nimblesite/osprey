@@ -428,7 +428,7 @@
       },
       "synth": {
         "language": "osprey",
-        "threshold": 90.0
+        "threshold": 92.2
       }
     },
     "apps": {
