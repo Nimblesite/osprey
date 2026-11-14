@@ -100,13 +100,24 @@ impl CallArguments {
 
 impl Summary {
     // Union monotone requirements, but re-derive the dynamic verdict each pass.
+    // Acyclic functions also recompute callback uses: retaining superseded
+    // argument shapes makes their shared provenance budget oscillate forever.
+    // Recursive functions retain uses reached on earlier traversals of the cycle.
     // Converge supplies an equal immutable row; a different caller retains its
     // own snapshot so changed flags never depend on an unrelated row.
-    pub(super) fn merge_inferred_row(&mut self, actual: Self, previous: Option<&Self>) -> bool {
+    pub(super) fn merge_inferred_row(
+        &mut self,
+        actual: Self,
+        previous: Option<&Self>,
+        recursive: bool,
+    ) -> bool {
         let before = match previous.filter(|row| *row == self) {
             Some(row) => std::borrow::Cow::Borrowed(row),
             None => std::borrow::Cow::Owned(self.clone()),
         };
+        if !recursive {
+            self.parameter_uses.clear();
+        }
         let resolved = actual.unresolved_dynamic_call;
         self.union(actual);
         self.unresolved_dynamic_call = resolved;
@@ -374,7 +385,7 @@ fn widening_method() -> Projection {
 fn inferred_row_mismatched_snapshot_keeps_its_own_changed_flag() {
     let mut row = super::model_values::test_summary_metadata();
     let expected = row.clone();
-    assert!(!row.merge_inferred_row(Summary::default(), Some(&Summary::default())));
+    assert!(!row.merge_inferred_row(Summary::default(), Some(&Summary::default()), true));
     assert_eq!(row, expected);
 }
 

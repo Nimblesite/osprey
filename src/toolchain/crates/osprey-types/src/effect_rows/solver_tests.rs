@@ -200,7 +200,7 @@ fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_befor
             value: None,
             position: None,
         };
-        let mut history = ReturnHistory::default();
+        let mut history = ReturnHistory::new([FUNCTION].into());
         let mut expected = snapshot_row();
         expected.unresolved_dynamic_call = false;
         let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);

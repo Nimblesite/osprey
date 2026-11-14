@@ -74,6 +74,48 @@ fn file_scope_dependencies_ignore_calls_that_do_not_bind_values() {
     });
 }
 
+#[test]
+fn acyclic_rows_replace_superseded_callback_arguments() {
+    with_program("fn apply(callback)=callback(7)\n", |index, _| {
+        let id = function_id(index, "apply");
+        let count = index.functions.len();
+        let mut state = (vec![Summary::default(); count], vec![None; count]);
+        let instances = Instances::default();
+        let analyzer = context(index, &instances, &state, CallableEnv::default());
+        let function = index
+            .functions
+            .get(id)
+            .unwrap_or_else(|| panic!("apply exists"));
+        let (mut actual, _) = analyzer.function_body_model(function);
+        actual.widen();
+        let mut historical = actual.clone();
+        historical.parameter_uses = historical
+            .parameter_uses
+            .into_iter()
+            .map(|mut use_| {
+                use_.arguments.positional = vec![Some(Value::unknown_callable())];
+                use_
+            })
+            .collect();
+        state.0 = vec![historical];
+        let snapshot = state.clone();
+        let analyzer = context(index, &instances, &snapshot, CallableEnv::default());
+        let mut history = ReturnHistory::default();
+        let _ = advance_function(
+            &analyzer,
+            id,
+            function,
+            &mut state.0,
+            &mut state.1,
+            &mut history,
+        );
+        assert_eq!(
+            state.0.get(id).map(|row| &row.parameter_uses),
+            Some(&actual.parameter_uses)
+        );
+    });
+}
+
 type SolverState = (Vec<Summary>, Vec<Option<Value>>);
 type SolverPass = fn(&Index<'_>, &Instances, &[Stmt], &mut SolverState);
 

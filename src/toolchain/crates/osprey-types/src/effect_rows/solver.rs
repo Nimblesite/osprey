@@ -16,9 +16,13 @@ pub(super) fn advance_function(
 ) -> bool {
     let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
-    let mut changed = rows
-        .get_mut(id)
-        .is_some_and(|row| row.merge_inferred_row(actual, analyzer.rows.get(id)));
+    let mut changed = rows.get_mut(id).is_some_and(|row| {
+        row.merge_inferred_row(
+            actual,
+            analyzer.rows.get(id),
+            history.recursive.contains(&id),
+        )
+    });
     if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
         changed |= advance_return(slot, returned, id, history);
     }
