@@ -89,7 +89,7 @@ WebSockets use ordered reliable delivery, so packet loss can delay newer gesture
 
 The host clock is authoritative. Immediate mode schedules a valid event at the next available audio block. Beat mode schedules it to the next grid boundary after the host's current scheduling horizon. The UI displays the selected mode and measured connection health. Accepted events carry their actual execution time so remote stages can align animation to the host clock estimate.
 
-Send heartbeats every 500 ms. After 1.5 seconds without valid traffic, release that connection's voices and mark it disconnected. Socket close, suspension, instrument change and pointer cancellation also release voices. A returning controller reconnects with bounded exponential backoff, receives a snapshot and requires a fresh gesture. It never replays a held note automatically. Host sleep or restart ends the performance session.
+The host sends WebSocket protocol pings every 500 ms. Each authenticated connection has at most one unanswered ping. A matching native pong renews the authenticated connection's lease, so coalesced browser JavaScript timers can leave a live controller connected. Application heartbeat messages also renew the lease. After 1.5 seconds without valid traffic, release that connection's voices and mark it disconnected. Socket close, suspension, instrument change and pointer cancellation also release voices. A returning controller reconnects with bounded exponential backoff, receives a snapshot and requires a fresh gesture. It never replays a held note automatically. Host sleep or restart ends the performance session.
 
 ## Audio and visual execution [ORCHESTRA-ENGINE]
 

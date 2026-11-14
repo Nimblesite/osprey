@@ -40,8 +40,9 @@ function deadline(promise, label) {
   let timer
   return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(Error(`Timeout: ${label}`)), 5000) })]).finally(() => clearTimeout(timer))
 }
-async function connect(allowedOrigin = origin) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port + 1}`, 'orchestra.v1', { origin: allowedOrigin })
+// Raw fixtures disable automatic pongs to exercise explicit heartbeat expiry.
+async function connect(allowedOrigin = origin, autoPong = false) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port + 1}`, 'orchestra.v1', { origin: allowedOrigin, autoPong })
   clients.push(ws)
   await deadline(new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', reject) }), 'WebSocket open')
   return ws
@@ -56,8 +57,8 @@ async function request(ws, message) {
   return reply
 }
 const touch = (sequence, phase, finger = 0, x = .5, y = .8) => ({ type: 'touch', sequence, phase, finger, x, y })
-async function joined() {
-  const ws = await connect()
+async function joined(autoPong = false) {
+  const ws = await connect(origin, autoPong)
   assert.equal((await request(ws, { type: 'join', token })).type, 'joined')
   return ws
 }
@@ -126,6 +127,27 @@ try {
   assert.equal((await request(a, touch(6, 0))).accepted, true)
   await delay(1700)
   assert.equal(a.readyState, WebSocket.CLOSED, 'missed heartbeat closes peer')
+  // [ORCHESTRA-NETWORK-TIMING] Native pongs sustain a live controller across delayed page timers.
+  const transport = await joined(true)
+  assert.equal((await request(transport, touch(1, 0))).notes, 1)
+  await delay(1700)
+  assert.equal(transport.readyState, WebSocket.OPEN, 'native pongs preserve a live controller without JavaScript heartbeats')
+  assert.equal((await request(transport, { type: 'heartbeat' })).notes, 1, 'the held voice survives a delayed page timer')
+  transport.close()
+  await delay(150)
+  const manual = await joined()
+  let pendingPings = 0
+  manual.on('ping', () => { pendingPings++ })
+  for (let beat = 0; beat < 5; beat++) {
+    await delay(400)
+    assert.equal((await request(manual, { type: 'heartbeat' })).accepted, true)
+  }
+  assert.equal(pendingPings, 1, 'an application-heartbeat client cannot accumulate unanswered native pings')
+  manual.pong()
+  await delay(700)
+  assert.equal(pendingPings, 2, 'a matching pong permits the next native probe')
+  manual.close()
+  await delay(150)
   const malformed = await joined()
   assert.equal((await request(malformed, touch(1, 0, 0, true, .5))).type, 'error', 'boolean is not a coordinate')
   const ensemble = []
@@ -148,6 +170,11 @@ try {
   for (const engine of [chromium, webkit]) {
     browser = await engine.launch({ headless: !windowed })
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+    // Hosted browsers coalesce page timers beyond the transport's 1500ms lease.
+    await context.addInitScript(() => {
+      const interval = window.setInterval
+      window.setInterval = (callback, milliseconds, ...args) => interval(callback, Math.max(2000, milliseconds), ...args)
+    })
     const page = await context.newPage()
     const pageErrors = []
     page.on('pageerror', error => pageErrors.push(error.message))

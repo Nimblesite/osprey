@@ -12,6 +12,9 @@ final class OrchestraServer {
     private var peers: [Int64: NWConnection] = [:]
     private var authenticated = Set<Int64>()
     private var lastSeen: [Int64: TimeInterval] = [:]
+    private var pendingPings = Set<Int64>()
+    private let heartbeatInterval = 0.5
+    private var lastPing = 0.0
     private var nextPeer: Int64 = 0
     private var httpConnections: [ObjectIdentifier: NWConnection] = [:]
     private(set) var failure: String?
@@ -162,6 +165,10 @@ final class OrchestraServer {
             performSession {
                 guard let self, self.peers[peer] != nil else { return }
                 let metadata = context?.protocolMetadata(definition: NWProtocolWebSocket.definition) as? NWProtocolWebSocket.Metadata
+                if error == nil, metadata?.opcode == .pong {
+                    self.receive(peer, connection)
+                    return
+                }
                 guard error == nil, metadata?.opcode == .text, let data, data.count <= 4096 else {
                     self.disconnect(peer, reason: error?.localizedDescription ?? "invalid_websocket_frame"); return
                 }
@@ -253,6 +260,7 @@ final class OrchestraServer {
 
     private func disconnect(_ peer: Int64, reason: String = "transport_closed") {
         guard let connection = peers.removeValue(forKey: peer) else { return }
+        pendingPings.remove(peer)
         log("controller.disconnected", ["peer": peer, "reason": reason])
         authenticated.remove(peer)
         lastSeen.removeValue(forKey: peer)
@@ -272,10 +280,37 @@ final class OrchestraServer {
 
     func expire() {
         let now = ProcessInfo.processInfo.systemUptime
+        if now - lastPing >= heartbeatInterval {
+            for peer in authenticated { ping(peer) }
+            lastPing = now
+        }
         for (peer, seen) in lastSeen where now - seen >= 1.5 {
             log("controller.expired", ["peer": peer, "heartbeatAgeMs": (now - seen) * 1000])
             disconnect(peer, reason: "heartbeat_timeout")
         }
+    }
+
+    // Implements [ORCHESTRA-NETWORK-TIMING]. Native pongs survive coalesced page timers.
+    // https://developer.apple.com/documentation/network/nwprotocolwebsocket/metadata/setponghandler(_:handler:)
+    private func ping(_ peer: Int64) {
+        guard let connection = peers[peer], pendingPings.insert(peer).inserted else { return }
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .ping)
+        metadata.setPongHandler(network) { [weak self] error in
+            performSession { self?.pong(peer, error) }
+        }
+        let context = NWConnection.ContentContext(identifier: "orchestra-heartbeat", metadata: [metadata])
+        connection.send(content: Data(), contentContext: context, completion: .contentProcessed { [weak self] error in
+            if let error { performSession { self?.disconnect(peer, reason: error.localizedDescription) } }
+        })
+    }
+
+    private func pong(_ peer: Int64, _ error: NWError?) {
+        pendingPings.remove(peer)
+        guard error == nil, authenticated.contains(peer), osprey_orchestra_heartbeat(peer) == 0 else {
+            disconnect(peer, reason: error?.localizedDescription ?? "heartbeat_rejected")
+            return
+        }
+        lastSeen[peer] = ProcessInfo.processInfo.systemUptime
     }
 
     func stop() {
