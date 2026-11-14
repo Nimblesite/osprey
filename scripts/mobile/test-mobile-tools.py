@@ -373,6 +373,59 @@ class BankAndroidVerdict(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stderr)
                 self.assertIn("screenshot", result.stderr.lower())
 
+GOLDEN = ROOT / "src/osprey/examples/tally/goldens/android/1080-ready.png"
+GOLDENS = ROOT / "scripts/mobile/goldens.py"
+
+
+def goldens_module():
+    """scripts/mobile/goldens.py, imported by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("goldens", GOLDENS)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class PhoneGoldens(unittest.TestCase):
+    """[NATIVE-HOSTS-MOBILE] screenshots are compared with nothing but Python, on every runner."""
+
+    def compare(self, actual, folder):
+        return subprocess.run([sys.executable, str(GOLDENS), str(actual), str(folder), "--top", "0", "--bottom", "0"],
+                              env={"PATH": BASE_PATH}, capture_output=True, text=True, check=False)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg cross-checks the decoder where it is installed")
+    def test_decoder_reads_the_same_pixels_ffmpeg_does(self):
+        width, height, pixels = goldens_module().png_pixels(GOLDEN)
+        decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(GOLDEN), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
+                                 check=True, stdout=subprocess.PIPE).stdout
+        self.assertEqual((width, height), (1080, 2088))
+        self.assertEqual(pixels, decoded)
+
+    def test_screens_compare_without_ffmpeg_and_a_moved_control_fails(self):
+        goldens = goldens_module()
+        width, height, pixels = goldens.png_pixels(GOLDEN)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            shutil.copy(GOLDEN, root / f"{width}-ready.png")
+            rgba = b"".join(pixels[i:i + 3] + b"\xff" for i in range(0, len(pixels), 3))
+            (root / "same.png").write_bytes(goldens.png_encode(width, height, rgba, alpha=True))
+            same = self.compare(root / "same.png", root)
+            self.assertEqual(same.returncode, 0, same.stderr)
+            self.assertIn("(0.000% differing pixels)", same.stdout)
+            self.assertEqual(goldens.png_pixels(root / "same-content.png"), (width, height, pixels), "the review crop is the screen")
+            moved = bytearray(pixels)
+            for row in range(400, 480):
+                start = (row * width + 200) * 3
+                moved[start:start + 80 * 3] = bytes(255 - value for value in moved[start:start + 80 * 3])
+            goldens.png_write(root / "moved.png", width, height, bytes(moved))
+            failed = self.compare(root / "moved.png", root)
+            self.assertEqual(failed.returncode, 1, failed.stdout)
+            self.assertRegex(failed.stderr, r"FAIL: .*of pixels differ, worst tile")
+            (root / "text.png").write_bytes(b"not a PNG")
+            refused = self.compare(root / "text.png", root)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("not a PNG", refused.stderr)
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--storage-host"]:
         storage_host_probe()
