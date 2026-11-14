@@ -54,6 +54,10 @@ The mobile UI runs through real simulator/emulator journeys. Full playback integ
 
 {{ capture("/assets/images/native/macos-synth.png", "Prism Synth native macOS app with a signal flow editor and piano keyboard", "Prism Synth · macOS · connect a patch, change its controls and play the keyboard.", 2304, 1512) }}
 
+Light Orchestra turns any phone on your network into an instrument for your Mac: the synthesiser is Osprey, and you hear exactly what it played.
+
+{% videoPlayer "light-orchestra", true %}
+
 {{ capture("/assets/images/blog/chromecast-from-mac-player.webp", "Casting player on macOS with receiver selection, transport and volume", "Casting · macOS GPUI · choose audio and a receiver, then press Play.", 868, 1114) }}
 
 {% videoPlayer "chromecast-from-mac", true %}

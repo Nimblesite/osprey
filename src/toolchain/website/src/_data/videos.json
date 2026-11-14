@@ -465,5 +465,27 @@
       "typeDiagram"
     ],
     "durationSeconds": 411.451
+  },
+  "light-orchestra": {
+    "name": "Light Orchestra: play your Mac from your phone",
+    "description": "A phone's controller page plays the Light Orchestra app live: slide for notes, add fingers for chords, switch between four instruments and shape echo and reverb. Every sound is what the native app synthesised in Osprey, recorded with it.",
+    "kind": "intro",
+    "content": "/assets/videos/osprey-light-orchestra.mp4",
+    "poster": "/assets/videos/osprey-light-orchestra-poster.jpg",
+    "posterAlt": "The Light Orchestra controller page with a glowing touch on its musical ribbon",
+    "captions": "/assets/videos/osprey-light-orchestra.en.vtt",
+    "chapters": "/assets/videos/osprey-light-orchestra.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-14T18:00:00+11:00",
+    "tags": [
+      "Osprey",
+      "Osprey Native",
+      "synthesis",
+      "audio",
+      "Pocket Orchestra",
+      "WebSocket"
+    ],
+    "durationSeconds": 74.766667
   }
 }
