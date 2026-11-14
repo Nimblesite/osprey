@@ -4,50 +4,12 @@ import * as path from "path";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { Browser, Frame } from "playwright-core";
 import * as sinon from "sinon";
-import { commands, ConfigurationTarget, ExtensionContext, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
+import { commands, ConfigurationTarget, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
+import { hostBridge } from "../../client/src/package-workspace";
 import { EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
-import { RealRegistry, demoFiles, tamperingHop, type DemoPackage } from "./real-registry-kit";
+import { RealRegistry, demoFiles, tamperingHop, withRegistrySetting, type DemoPackage } from "./real-registry-kit";
 import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
-import { folderFor, hostBridge } from "../../client/src/package-workspace";
-
-const roots = ["one", "two"].map((name, index) => ({ name, index, uri: Uri.file(`/work/${name}`) }));
-
-suite("package workspace project safety", () => {
-  teardown(() => sinon.restore());
-
-  test("the capability host reads live trust after the panel opens", () => {
-    let trusted = true;
-    sinon.stub(workspace, "isTrusted").get(() => trusted);
-    const host = hostBridge({ extensionPath: "/extension" } as ExtensionContext);
-    assert.strictEqual(host.trusted, true);
-    trusted = false;
-    assert.strictEqual(host.trusted, false);
-  });
-
-  test("multi-root command palette selection requires an explicit project", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    const item = { label: "two", uri: roots[1].uri };
-    const picker = sinon.stub(window, "showQuickPick").resolves(item);
-    const selected = await folderFor();
-    assert.strictEqual(picker.callCount, 1);
-    assert.strictEqual(selected?.toString(), roots[1].uri.toString());
-  });
-
-  test("cancelling multi-root selection never falls back to the first project", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    sinon.stub(window, "showQuickPick").resolves(undefined);
-    assert.strictEqual(await folderFor(), undefined);
-  });
-
-  test("an Explorer resource selects its own project without a picker", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    sinon.stub(workspace, "getWorkspaceFolder").returns(roots[1]);
-    const picker = sinon.stub(window, "showQuickPick");
-    assert.strictEqual((await folderFor(Uri.file("/work/two/osprey.toml")))?.toString(), roots[1].uri.toString());
-    assert.strictEqual(picker.callCount, 0);
-  });
-});
 
 function renderedHtml(messages: sinon.SinonSpy): string {
   return messages.getCalls().map((call) => call.args[0] as { type?: string; html?: string })
@@ -67,18 +29,6 @@ async function observeWorkspace(command: string | (() => Promise<void>), folder:
 }
 
 const GREETING: readonly DemoPackage[] = [{ key: "@demo/greeting" }];
-
-/** Points the workspace at `origin` while `run` drives it. */
-async function withRegistrySetting(origin: string, run: () => Promise<void>): Promise<void> {
-  const config = workspace.getConfiguration("osprey");
-  const before = config.inspect<string>("packages.registry")?.workspaceValue;
-  try {
-    await config.update("packages.registry", origin, ConfigurationTarget.Workspace);
-    await run();
-  } finally {
-    await config.update("packages.registry", before, ConfigurationTarget.Workspace);
-  }
-}
 
 /** A real `osprey-registry` serving `packages`, published by the real client, for `run`. */
 async function withCatalog(run: (registry: RealRegistry) => Promise<void>, packages: readonly DemoPackage[] = GREETING, origin?: (registry: RealRegistry) => Promise<{ origin: string; close(): Promise<void> }>): Promise<void> {

@@ -8,30 +8,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { commands, ExtensionContext, Range, Uri, ViewColumn, window, workspace } from "vscode";
 import { shipwrightPlatform } from "./client-config";
+import { registryFor } from "./local-registry";
+import { registryUrl } from "./package-api";
 import { createRequestExecutor, type CapabilityHost } from "./osprey-ui/capabilities";
 import { nativeContext, registerNativePanel, type NativeApplication } from "./osprey-ui/panel";
 
 export const PACKAGE_WORKSPACE_COMMAND = "osprey.packages.open";
 const PANEL_TITLE = "Osprey Packages";
 const VIEW_ID = "osprey.packages";
-const DEFAULT_REGISTRY = "http://127.0.0.1:8787";
 const WASM_NAME = "package-workspace.wasm";
 
 function executableName(name: string): string {
   return process.platform === "win32" ? `${name}.exe` : name;
-}
-
-function registryOrigin(resource: Uri): string {
-  const configured = workspace.getConfiguration("osprey", resource).get<string>("packages.registry") ?? DEFAULT_REGISTRY;
-  const url = new URL(configured);
-  const loopback = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(url.hostname);
-  if (url.username || url.password || url.search || url.hash || (url.pathname !== "" && url.pathname !== "/")) {
-    throw new Error("The package registry setting must be a plain origin without credentials, path, query or fragment");
-  }
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
-    throw new Error("The package registry must use HTTPS (HTTP is allowed only on loopback)");
-  }
-  return url.origin;
 }
 
 /** Resolve the invoking project, asking when a command has no root context. */
@@ -120,7 +108,7 @@ async function application(context: ExtensionContext, ready: (folder: Uri) => Pr
     return undefined;
   }
   if (!await ready(folder)) return undefined;
-  const registry = registryOrigin(folder);
+  const registry = registryUrl(registryFor(folder)).origin;
   const artifact = applicationPath(context);
   const bridge = hostBridge(context);
   const assets = path.join(path.dirname(artifact), "assets");

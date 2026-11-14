@@ -244,7 +244,8 @@ export function bundledLayout(extensionPath: string, storage: string, platform =
   };
 }
 
-function registryFor(resource?: Uri): string {
+/** The configured package registry origin; a cleared setting means the local default. */
+export function registryFor(resource?: Uri): string {
   return workspace.getConfiguration("osprey", resource).get<string>("packages.registry") || DEFAULT_REGISTRY;
 }
 

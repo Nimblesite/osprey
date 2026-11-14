@@ -9,6 +9,7 @@ import * as os from "os";
 import * as path from "path";
 import { healthCheck, serverConfig, spawnServer, type ServerProcess } from "../../client/src/local-registry";
 import { shipwrightPlatform } from "../../client/src/client-config";
+import { ConfigurationTarget, workspace } from "vscode";
 
 const bundle = path.resolve(__dirname, "..", "..", "..", "bin", shipwrightPlatform());
 const tool = (name: string): string => path.join(bundle, process.platform === "win32" ? `${name}.exe` : name);
@@ -152,4 +153,16 @@ export async function tamperingHop(registry: RealRegistry, rewrite: () => ((body
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   return { origin: `http://127.0.0.1:${address.port}`, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
+}
+
+/** Points the workspace at `origin` while `run` drives it. */
+export async function withRegistrySetting(origin: string, run: () => Promise<void>): Promise<void> {
+  const config = workspace.getConfiguration("osprey");
+  const before = config.inspect<string>("packages.registry")?.workspaceValue;
+  try {
+    await config.update("packages.registry", origin, ConfigurationTarget.Workspace);
+    await run();
+  } finally {
+    await config.update("packages.registry", before, ConfigurationTarget.Workspace);
+  }
 }
