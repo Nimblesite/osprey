@@ -116,7 +116,7 @@ ci: lint test build
 
 _runtime_wasm _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
-## preflight: Every check the PR workflows run (read from ci.yml), each run even after one fails, coverage gates last; prints a PASS/FAIL/SKIP table (also target/preflight/summary.md) and fails if any check failed. ONLY=<regex> runs a subset.
+## preflight: Every check the PR workflows run (each run: step and the emulator script, read from ci.yml and the workflows it calls), each run even after one fails, coverage gates last; prints a PASS/FAIL/SKIP table (also target/preflight/summary.md) and fails if any check failed. ONLY=<regex> runs a subset.
 .PHONY: preflight
 preflight:
 	node scripts/ci/preflight.mjs $(if $(ONLY),--only='$(ONLY)')
