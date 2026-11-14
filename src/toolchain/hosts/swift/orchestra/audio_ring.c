@@ -6,10 +6,11 @@ static float storage[CAPACITY];
 static _Atomic uint64_t read_position;
 static _Atomic uint64_t write_position;
 static _Atomic uint64_t underruns;
+static _Atomic uint64_t max_read;
 
 int orchestra_ring_lock_free(void) {
     return atomic_is_lock_free(&read_position) && atomic_is_lock_free(&write_position)
-        && atomic_is_lock_free(&underruns);
+        && atomic_is_lock_free(&underruns) && atomic_is_lock_free(&max_read);
 }
 size_t orchestra_ring_queued(void) {
     uint64_t written = atomic_load_explicit(&write_position, memory_order_acquire);
@@ -26,6 +27,9 @@ size_t orchestra_ring_write(const float *samples, size_t count) {
     return count;
 }
 void orchestra_ring_read(float *samples, size_t count) {
+    // The sole consumer owns this maximum. The producer only samples it for diagnostics.
+    if (count > atomic_load_explicit(&max_read, memory_order_relaxed))
+        atomic_store_explicit(&max_read, count, memory_order_relaxed);
     uint64_t read = atomic_load_explicit(&read_position, memory_order_relaxed);
     uint64_t written = atomic_load_explicit(&write_position, memory_order_acquire);
     size_t available = (size_t)(written - read);
@@ -38,3 +42,4 @@ void orchestra_ring_read(float *samples, size_t count) {
     atomic_store_explicit(&read_position, read + taken, memory_order_release);
 }
 uint64_t orchestra_ring_underruns(void) { return atomic_load_explicit(&underruns, memory_order_relaxed); }
+uint64_t orchestra_ring_max_read(void) { return atomic_load_explicit(&max_read, memory_order_relaxed); }

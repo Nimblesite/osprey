@@ -5,6 +5,9 @@ import Foundation
 final class OrchestraAudio {
     private let engine = AVAudioEngine()
     private var configurationObserver: NSObjectProtocol?
+    private var timingActivity: NSObjectProtocol?
+    private var lastFill: TimeInterval?
+    private(set) var maxRefillGap = 0.0
     var isRunning: Bool { engine.isRunning }
     private var source: AVAudioSourceNode?
     private var voices: [VoiceState] = []
@@ -31,6 +34,10 @@ final class OrchestraAudio {
             throw problem("No supported audio output format")
         }
         sampleRate = rate
+        // Keep the producer's clock precise for the lifetime of live device output.
+        // https://developer.apple.com/documentation/foundation/processinfo/activityoptions/latencycritical
+        timingActivity = timingActivity ?? ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .latencyCritical], reason: "Live Orchestra audio")
         racks = (0..<8).map { _ in OrchestraEffects(rate: rate) }
         let node = makeSource()
         source = node
@@ -44,7 +51,7 @@ final class OrchestraAudio {
                 self.recoverOutput()
             }
         }
-        log("audio.started", ["sampleRate": sampleRate])
+        log("audio.started", ["sampleRate": sampleRate, "timingProtected": timingActivity != nil])
     }
 
     // Configuration changes stop AVAudioEngine even while the phone session stays connected.
@@ -188,6 +195,9 @@ final class OrchestraAudio {
     }
 
     func fill() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if let lastFill { maxRefillGap = max(maxRefillGap, now - lastFill) }
+        lastFill = now
         // Prepare a full Core Audio render quantum before the device asks for it.
         // A 1024-frame queue could run dry within one supported 4096-frame callback.
         while orchestra_ring_queued() < preparedFrames {
@@ -200,7 +210,12 @@ final class OrchestraAudio {
     func stop() {
         if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
         engine.stop()
-        log("audio.stopped", ["frames": renderedFrames])
+        lastFill = nil
+        if let timingActivity {
+            ProcessInfo.processInfo.endActivity(timingActivity)
+            self.timingActivity = nil
+        }
+        log("audio.stopped", ["frames": renderedFrames, "timingProtected": timingActivity != nil])
     }
 }
 

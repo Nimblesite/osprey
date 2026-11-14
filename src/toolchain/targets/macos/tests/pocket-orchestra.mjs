@@ -231,6 +231,8 @@ try {
   const browserStopped = output.trim().split('\n').map(line => JSON.parse(line)).find(record => record.event === 'session.stopped')
   assert.equal(browserStopped.error, '')
   assert.equal(browserStopped.underruns, 0, 'browser gestures keep the audio callback supplied')
+  assert(browserStopped.maxCallbackFrames >= 0 && browserStopped.maxRefillGapMs >= 0, 'audio diagnostics report callback demand and producer scheduling')
+  if (windowed) assert(browserStopped.maxCallbackFrames > 0 && browserStopped.maxRefillGapMs > 0)
   assert(browserStopped.peak > .05 && browserStopped.peak <= .800001, 'phone gestures produce audible bounded synthesis')
   const records = recordedOutput.trim().split('\n').map(line => JSON.parse(line))
   const stopped = records.find(record => record.event === 'session.stopped')
@@ -291,6 +293,7 @@ async function verifyDeviceRecovery() {
   const audio = await readFile('src/toolchain/hosts/swift/orchestra/Audio.swift', 'utf8')
   await writeFile(`${fixture}/Audio.swift`, audio + `
     extension OrchestraAudio {
+      var holdsTimingActivityForTest: Bool { timingActivity != nil }
       func interruptDeviceForTest() {
         engine.stop()
         NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: engine)
@@ -306,15 +309,20 @@ async function verifyDeviceRecovery() {
     guard osprey_main() == 0, osprey_orchestra_admit(1) == 0,
           osprey_orchestra_touch(1, 1, 0, 0, 0.5, 1) == 0 else { exit(1) }
     try audio.update()
+    guard !audio.holdsTimingActivityForTest else { exit(1) }
     try audio.start()
+    guard audio.holdsTimingActivityForTest else { exit(1) }
     let clock = Timer(timeInterval: 0.002, repeats: true) { _ in audio.fill() }
     RunLoop.main.add(clock, forMode: .common)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { audio.interruptDeviceForTest() }
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-      let recovered = audio.isRunning && audio.activeNotes == 1 && audio.renderedFrames > 20000
+      let recovered = audio.isRunning && audio.activeNotes == 1 && audio.renderedFrames > 20000 && audio.holdsTimingActivityForTest
       audio.stop()
-      print(recovered ? "PASS: output configuration change resumes the held note" : "FAIL: audio stayed stopped after configuration change")
-      exit(recovered ? 0 : 1)
+      let released = !audio.holdsTimingActivityForTest
+      audio.stop()
+      let complete = recovered && released && !audio.holdsTimingActivityForTest
+      print(complete ? "PASS: output configuration change resumes the held note and releases its timing activity" : "FAIL: audio output or timing activity lifecycle")
+      exit(complete ? 0 : 1)
     }
     NSApplication.shared.run()
   `)

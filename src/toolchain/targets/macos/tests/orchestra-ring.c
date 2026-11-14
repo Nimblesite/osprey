@@ -23,8 +23,10 @@ static void *produce(void *unused) {
 }
 int main(void) {
     assert(orchestra_ring_lock_free());
+    assert(orchestra_ring_max_read() == 0);
     float samples[257];
     orchestra_ring_read(samples, 257);
+    assert(orchestra_ring_max_read() == 257);
     for (size_t i = 0; i < 257; ++i) assert(samples[i] == 0);
     assert(orchestra_ring_underruns() == 1);
     pthread_t producer;
@@ -40,6 +42,8 @@ int main(void) {
     }
     assert(pthread_join(producer, NULL) == 0);
     assert(consumed == SAMPLES && orchestra_ring_queued() == 0);
+    orchestra_ring_read(samples, 17);
+    assert(orchestra_ring_max_read() == 257);
     puts("PASS: two million ordered samples across ring wraparound and underruns");
     return 0;
 }

@@ -63,7 +63,8 @@ func advance() {
         if !headless { audio.recoverOutput() }
         log("audio.health", ["frames": audio.renderedFrames, "notes": audio.activeNotes,
                              "controllers": server?.controllerCount ?? 0, "running": audio.isRunning,
-                             "queued": orchestra_ring_queued(), "underruns": orchestra_ring_underruns(), "level": audio.level])
+                             "queued": orchestra_ring_queued(), "underruns": orchestra_ring_underruns(), "level": audio.level,
+                             "maxCallbackFrames": orchestra_ring_max_read(), "maxRefillGapMs": audio.maxRefillGap * 1000])
         lastHealth = elapsed
     }
     failure = failure ?? server?.failure ?? audio.failure
@@ -108,7 +109,8 @@ func runSession() {
         do { try audio.writeCapture(to: path) } catch { failure = error.localizedDescription }
     }
     log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
-                            "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
+                            "underruns": orchestra_ring_underruns(), "error": failure ?? "",
+                            "maxCallbackFrames": orchestra_ring_max_read(), "maxRefillGapMs": audio.maxRefillGap * 1000])
     diagnostics.flush()
     DispatchQueue.main.async { stopApplication() }
 }
