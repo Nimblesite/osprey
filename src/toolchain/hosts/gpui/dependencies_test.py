@@ -57,6 +57,17 @@ class BackportTests(unittest.TestCase):
         with patch.object(source, "fetch_archive", side_effect=AssertionError("unexpected fetch")):
             self.assertEqual(source.stage(self.package, self.root / "sources", self.root), result)
 
+    def test_a_restaged_source_keeps_one_fixed_time_so_a_cached_host_build_stays_fresh(self):
+        first = self.stage()
+        stamps = sorted((path.relative_to(first).as_posix(), path.stat().st_mtime) for path in [first, *first.rglob("*")])
+        self.assertEqual({stamp for _, stamp in stamps}, {source.STAGED_MTIME}, "every staged path, patched or not")
+        self.assertLess(source.STAGED_MTIME, time.time() - 365 * 24 * 3600, "older than any build output cargo compares")
+        shutil.rmtree(first)
+        time.sleep(1.1)
+        again = self.stage()
+        self.assertEqual(sorted((path.relative_to(again).as_posix(), path.stat().st_mtime) for path in [again, *again.rglob("*")]), stamps,
+                         "a fresh runner stages the same tree at the same times")
+
     def test_rejects_corrupt_archive_and_wrong_patch_preimage_without_partial_source(self):
         self.bytes = b"corrupt"
         with self.assertRaisesRegex(ValueError, "archive checksum mismatch"):

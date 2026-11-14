@@ -80,6 +80,19 @@ def apply_edits(root, edits):
         file.write_bytes(content.replace(before, after, 1))
 
 
+# Cargo rebuilds a path dependency whose sources are newer than its last build, so a source staged
+# afresh on each runner would rebuild GPUI and everything above it although the host's build is
+# cached. The tree is verified by digest first, so one fixed time (2000-01-01 UTC) for every path
+# is honest: equal bytes, equal times.
+STAGED_MTIME = 946684800
+
+
+def settle_times(root):
+    for path in sorted(root.rglob("*"), reverse=True):
+        os.utime(path, (STAGED_MTIME, STAGED_MTIME), follow_symlinks=False)
+    os.utime(root, (STAGED_MTIME, STAGED_MTIME))
+
+
 def verify_tree(root, expected):
     if tree_digest(root) != expected:
         raise ValueError(f"Dependency source integrity mismatch: {root}")
@@ -126,6 +139,7 @@ def stage(package, destination, patches):
         extract(archive, root, target.name)
         apply_edits(root, json.loads(inside(patches, package["edits"]).read_text()))
         verify_tree(root, package["treeSha256"])
+        settle_times(root)
         publish(root, target, package["treeSha256"])
     return target
 
