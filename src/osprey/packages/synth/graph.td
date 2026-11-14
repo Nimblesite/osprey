@@ -1,6 +1,6 @@
 typeDiagram
 union Rate { Audio {} Control {} Events {} }
-union Unit { Amplitude {} Hertz {} Seconds {} Normalised {} Notes {} }
+union Unit { Amplitude {} Hertz {} Seconds {} Normalised {} Ratio {} Notes {} }
 type Port { name: String rate: Rate channels: Int unit: Unit }
 type Parameter { key: String label: String unit: Unit minimum: Float maximum: Float initial: Float automatable: Bool }
 union Processor { Oscillator {} Filter {} Amplifier {} Mixer {} Sink {} Delay { samples: Int } External { identifier: String } }

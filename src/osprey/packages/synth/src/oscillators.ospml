@@ -42,8 +42,11 @@ module Oscillators
                 true => pow (1.0 + (phase - 1.0) / step, 3.0) / 3.0
                 false => 0.0
 
+    (** Scalar sine kernel; useful when a host owns phase in a preallocated voice bank. *)
+    export sine phase = sin (6.283185307179586 * phase)
+
     shaped (config, held, step) = match config.waveform
-        Sine => sin (6.283185307179586 * held.phase)
+        Sine => sine held.phase
         Saw => 2.0 * held.phase - 1.0 - blep (held.phase, step)
         Pulse => pulse (held.phase, step, config.pulseWidth)
         Triangle => 1.0 - 4.0 * abs (held.phase - 0.5) + 4.0 * step * (blamp (held.phase, step) - blamp (wrap (held.phase - 0.5), step))

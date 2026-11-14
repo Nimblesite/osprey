@@ -1,0 +1,42 @@
+// [SYNTH-RENDER] Checked inputs for the offline/reference graph renderer.
+namespace synth
+
+(** Checked lookups and state publication for the reference renderer. *)
+module RenderInputs
+    (** Resolve a scheduled component, refusing unknown identities. *)
+    export component (plan, identity) = match Graphs::node (plan.graph, identity)
+        Valid n => Success(value = n)
+        Invalid _ => Error(message = "Render schedule names an absent component.")
+
+    (** Find persistent kernel state by identity. *)
+    export held (frame, identity) = listGet (filterList (frame.states, \s => s.identity == identity)) 0
+
+    (** Read a required parameter without substituting a fake value. *)
+    export parameter (snapshot, identity, key) = match listGet (filterList (snapshot.parameters, \p => p.node == identity && p.key == key)) 0
+        Success p => Success(value = p.value)
+        Error _ => Error(message = "Required render parameter is missing.")
+
+    (** Resolve a routed mono input from an already rendered source. *)
+    export input (plan, frame, identity, inlet) = match listGet (filterList (plan.graph.cables, \c => c.destination == identity && c.inlet == inlet)) 0
+        Error _ => Error(message = "An audio input is not connected.")
+        Success cable => match listGet (filterList (frame.values, \v => v.identity == cable.source)) 0
+            Error _ => Error(message = "An input was read before its source was rendered.")
+            Success value => Success(value = value.value)
+
+    replaced (next, held) = match held.identity == next.identity
+        true => next
+        false => held
+
+    (** Publish one sample and its updated persistent state. *)
+    export emitted (frame, next, sample) = frame(states = mapList (frame.states, \s => replaced (next, s)), values = listAppend frame.values (NodeSample(identity = next.identity, value = sample)))
+
+    emptyState identity = KernelState(identity = identity, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [])
+
+    initialState n = match n.processor
+        Delay count =>
+            empty = emptyState n.identity
+            empty(delay = mapList (toList (range (0, count)), \_ => 0.0))
+        _ => emptyState n.identity
+
+    (** Allocate initial reference state after graph validation. *)
+    export initial plan = Rendered(states = mapList (plan.graph.nodes, initialState), samples = [], position = 0, meters = [])

@@ -1,0 +1,34 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type KernelState =
+    identity : int
+    phase : float
+    integratorOne : float
+    integratorTwo : float
+    delay : List<float>
+
+type NodeSample =
+    identity : int
+    value : float
+
+type SampleFrame =
+    states : List<KernelState>
+    values : List<NodeSample>
+
+type Meter =
+    identity : int
+    peak : float
+    energy : float
+    count : int
+
+type Rendered =
+    states : List<KernelState>
+    samples : List<float>
+    position : int
+    meters : List<Meter>
+
+type Timeline T =
+    audio : Rendered
+    observation : T
+

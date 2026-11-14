@@ -11,6 +11,7 @@ type Unit =
     Hertz
     Seconds
     Normalised
+    Ratio
     Notes
 
 type Port =

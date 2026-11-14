@@ -18,7 +18,7 @@ All canonical public data models are declared in typeDiagram and generated into 
 
 Every component exposes typed Signals for its parameters and observable state, using Osprey's `Signal<T>` mechanism without depending on `@osprey/native`. A consumer can observe one component, selected parameter fields, voice activity, envelope position, meters, transport and diagnostics. Instance identity distinguishes two components of the same type. Parameter descriptors provide names, units, ranges, default values, scaling and automation eligibility, allowing an application to build controls without the synth library drawing them.
 
-Signal reads observe immutable, revisioned snapshots. A UI, recorder, remote controller or headless test can supply the Signal handler. UI writes become typed commands/automation events, not mutation of memory that the audio callback is reading. Accepted parameter changes carry an applied revision/sample position so the interface can distinguish requested values from audible state.
+Signal reads observe immutable snapshots identified by the applied parameter revision and audio sample position. A UI, recorder, remote controller or headless test can supply the Signal handler. UI writes become typed commands/automation events, not mutation of memory that the audio callback is reading. Accepted parameter changes carry an applied revision/sample position so the interface can distinguish requested values from audible state.
 
 Audio-rate signals are DSP streams; `Signal<T>` observation is the reactive state interface. They are related but not interchangeable. The audio thread publishes through bounded preallocated storage without executing observers. A non-real-time consumer publishes coherent Signal snapshots at a configurable cadence (initial UI target 30–60 Hz); slow subscribers coalesce to the newest snapshot. Meter peaks are accumulated over the interval, so coalescing does not erase overloads. Losing UI frames never loses note-off events or changes DSP timing.
 
@@ -55,10 +55,10 @@ Scanning, loading, activation and state restoration run outside the callback. Th
 - [x] Extract reusable synthesis from Prism without introducing a UI dependency into the package.
 - [x] Run Prism's existing full interaction/voice suite before and after extraction.
 - [x] Collect foundational and recent primary research with implementation experiments.
-- [x] Add independent package tests and package governance/coverage integration (nine journeys; 97.4% own-source line coverage on 2026-11-14).
-- [x] Implement typed graph construction/validation, routing, chaining and explicit feedback scheduling; graph audio execution remains pending.
+- [x] Add independent package tests and package governance/coverage integration (package journeys and a 90% minimum own-source line coverage gate).
+- [x] Implement typed graph construction/validation, routing, chaining and explicit feedback scheduling; the mono reference graph now executes sources, mixing, filters, gain and delay feedback.
 - [x] Expose component parameters/state through typed Signals and verify independent component IDs, applied revisions and rejected stale edits; concurrent publication remains pending.
-- [ ] Implement stateful DSP and reproducible sample-accurate block processing.
+- [x] Implement stateful reference DSP and reproducible sample-accurate block processing, including parameter automation and per-component peak/RMS observations.
 - [ ] Verify generated native callback allocation/locking behaviour and target-device deadlines.
 - [ ] Establish spectral, stability, continuity, polyphony and overload evidence.
 - [ ] Integrate Prism and Light Orchestra through the same reusable engine.

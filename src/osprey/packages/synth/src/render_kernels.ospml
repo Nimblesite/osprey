@@ -1,0 +1,60 @@
+// [SYNTH-RENDER] Reference graph execution shares kernels with standalone components.
+namespace synth
+
+import synth::RenderInputs
+
+(** Component dispatch shared by offline graph execution. *)
+module RenderKernels
+    sine (rate, snapshot, frame, held) = match RenderInputs::parameter (snapshot, held.identity, "frequency")
+        Error why => Error(message = why)
+        Success frequency => match Oscillators::configure (OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = Sine))
+            Error why => Error(message = why)
+            Success config =>
+                sample = Oscillators::next (config, OscillatorState(phase = held.phase))
+                Success(value = RenderInputs::emitted (frame, held(phase = sample.next.phase), sample.sample))
+
+    filtered (frame, held, config, input) = match Filters::configure config
+        Error why => Error(message = why)
+        Success coefficients =>
+            sample = Filters::next (coefficients, FilterState(integratorOne = held.integratorOne, integratorTwo = held.integratorTwo), input)
+            next = held(integratorOne = sample.next.integratorOne, integratorTwo = sample.next.integratorTwo)
+            Success(value = RenderInputs::emitted (frame, next, sample.low))
+
+    lowpass (rate, snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "cutoff")
+        Error why => Error(message = why)
+        Success cutoff => match RenderInputs::parameter (snapshot, held.identity, "resonance")
+            Error why => Error(message = why)
+            Success resonance => filtered (frame, held, FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance), input)
+
+    gain (snapshot, frame, held, input) = match RenderInputs::parameter (snapshot, held.identity, "gain")
+        Error why => Error(message = why)
+        Success level => match level >= 0.0 && level <= 8.0
+            false => Error(message = "Invalid gain.")
+            true => Success(value = RenderInputs::emitted (frame, held, input * level))
+
+    mixer (plan, frame, held, first) = match RenderInputs::input (plan, frame, held.identity, 1)
+        Error why => Error(message = why)
+        Success second => Success(value = RenderInputs::emitted (frame, held, first + second))
+
+    processor (plan, rate, snapshot, frame, held, n, input) = match n.processor
+        Filter => lowpass (rate, snapshot, frame, held, input)
+        Amplifier => gain (snapshot, frame, held, input)
+        Mixer => mixer (plan, frame, held, input)
+        Sink => Success(value = RenderInputs::emitted (frame, held, input))
+        _ => Error(message = "Unsupported processor in the reference audio renderer.")
+
+    selected (plan, rate, snapshot, frame, held, n) = match n.processor
+        Oscillator => sine (rate, snapshot, frame, held)
+        Delay _ => match listGet held.delay 0
+            Error why => Error(message = why)
+            Success previous => Success(value = RenderInputs::emitted (frame, held, previous))
+        _ => match RenderInputs::input (plan, frame, held.identity, 0)
+            Error why => Error(message = why)
+            Success input => processor (plan, rate, snapshot, frame, held, n, input)
+
+    (** Render one scheduled component or return its explicit fault. *)
+    export step (plan, rate, snapshot, frame, identity) = match RenderInputs::component (plan, identity)
+        Error why => Error(message = why)
+        Success n => match RenderInputs::held (frame, identity)
+            Error why => Error(message = why)
+            Success held => selected (plan, rate, snapshot, frame, held, n)

@@ -253,3 +253,104 @@ test ("extracted Prism synthesis has no UI dependency and retains pitch, wave, s
     near (Voice::frequency "A4", 440.0, 0.00000001)
     forEachList (["1/1", "1/2", "1/4", "1/8", "1/16"], \rate => expect (Voice::hertz rate > 0.0, true))
     near ((Envelopes::next (synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.5, release = 0.0), Envelopes::initial ())).level, 0.0, 0.0)))
+
+import synth::Components
+import synth::Renderer
+
+planFor graph = match Graphs::prepare graph
+    synth::Valid plan => plan
+    synth::Invalid _ =>
+        expect (false, true)
+        synth::Prepared(graph = Graphs::empty, order = [], feedback = [])
+
+rendered result = match result
+    Success block => block
+    Error why =>
+        print why
+        expect (false, true)
+        synth::Rendered(states = [], samples = [], position = 0, meters = [])
+
+renderRefused result = match result
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+built (nodes, cables) =
+    graph = foldList (nodes, Graphs::empty, \(g, n) => accepted (Graphs::add (g, n)))
+    foldList (cables, graph, \(g, c) => accepted (Graphs::connect (g, c)))
+
+sameSamples (actual, expected) =
+    expect (length actual, length expected)
+    forEachList (toList (range (0, length expected)), \i => near (listGet actual i ?: -999.0, listGet expected i ?: -888.0, 0.00000000001))
+
+test ("a routed oscillator and gain render exact continuous PCM across unequal blocks", \() => arithmetic (\() =>
+    graph = built ([Components::sine (1, 440.0), Components::gain (2, 0.25), Components::output 3], [cable (1, 2), cable (2, 3)])
+    plan = planFor graph
+    parameters = Parameters::initial graph
+    initial = rendered (Renderer::start graph)
+    whole = rendered (Renderer::block (plan, 48000.0, parameters, initial, 128))
+    first = rendered (Renderer::block (plan, 48000.0, parameters, initial, 31))
+    second = rendered (Renderer::block (plan, 48000.0, parameters, first, 97))
+    sameSamples (whole.samples, listConcat first.samples second.samples)
+    expected = mapList (toList (range (0, 128)), \i => 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0))
+    sameSamples (whole.samples, expected)
+    expect (whole.position, 128)
+    metersObserved (Renderer::observed (parameters, whole))
+    empty = rendered (Renderer::block (plan, 48000.0, parameters, whole, 0))
+    expect (empty.position, 128)
+    expect (length empty.samples, 0)
+    renderRefused (Renderer::block (plan, 0.0, parameters, initial, 128))
+    renderRefused (Renderer::block (plan, 48000.0, parameters, initial, -1))
+    renderRefused (Renderer::block (plan, 48000.0, parameters, initial, 8193))
+    renderRefused (Renderer::block (plan, 48000.0, parameters(parameters = []), initial, 1))))
+
+test ("mixing, filtering and explicit two-sample feedback execute the compiled graph", \() => arithmetic (\() =>
+    nodes = [Components::sine (1, 440.0), Components::mixer 2, Components::gain (3, 0.5), Components::delay (4, 2), Components::output 5]
+    routes = [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3), cable (3, 4), cable (3, 5)]
+    graph = built (nodes, routes)
+    plan = planFor graph
+    output = rendered (Renderer::block (plan, 48000.0, Parameters::initial graph, rendered (Renderer::start graph), 64))
+    forEachList (toList (range (0, 64)), \i => feedbackExpected (output.samples, i))
+    filterGraph = built ([Components::sine (1, 440.0), Components::lowpass (2, 1000.0, 0.707), Components::output 3], [cable (1, 2), cable (2, 3)])
+    filtered = rendered (Renderer::block (planFor filterGraph, 48000.0, Parameters::initial filterGraph, rendered (Renderer::start filterGraph), 64))
+    expect (length filtered.samples, 64)
+    expect (foldList (filtered.samples, 0.0, \(sum, value) => sum + abs value) > 1.0, true)
+    renderRefused (Renderer::start Graphs::empty)
+    renderRefused (Renderer::start (built ([node (1, synth::External(identifier = "future-vst3"), [], [audio]), Components::output 2], [cable (1, 2)])))
+    unconnected = built ([Components::gain (1, 1.0), Components::output 2], [cable (1, 2)])
+    renderRefused (Renderer::start unconnected)))
+
+feedbackExpected (samples, i) =
+    previous = match i >= 2
+        true => listGet samples (satSub i 2) ?: -999.0
+        false => 0.0
+    expected = 0.5 * (sin (6.283185307179586 * 440.0 * toFloat i / 48000.0) + previous)
+    near (listGet samples i ?: -888.0, expected, 0.00000000001)
+
+metersObserved snapshot =
+    handle static Signal<synth::Observation>
+        read => snapshot
+    expect ((Observations::snapshot ()).samplePosition, 128)
+    match Observations::component 3
+        Error _ => expect (false, true)
+        Success meter =>
+            expect (meter.peak <= 0.25 && meter.peak > 0.24, true)
+            expect (meter.rms > 0.1 && meter.rms < 0.25, true)
+
+test ("sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events", \() => arithmetic (\() =>
+    graph = built ([Components::sine (1, 440.0), Components::gain (2, 1.0), Components::output 3], [cable (1, 2), cable (2, 3)])
+    plan = planFor graph
+    snapshot = Parameters::initial graph
+    first = rendered (Renderer::start graph)
+    mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 17)
+    restore = mute(value = 0.5, revision = 1, samplePosition = 31)
+    match Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore])
+        Error why => expect (why, "successful automation")
+        Success timeline =>
+            expect (timeline.observation.revision, 2)
+            expect (timeline.observation.samplePosition, 64)
+            forEachList (toList (range (17, 31)), \i => near (listGet timeline.audio.samples i ?: -1.0, 0.0, 0.0))
+            near (listGet timeline.audio.samples 16 ?: -1.0, sin (6.283185307179586 * 440.0 * 16.0 / 48000.0), 0.00000000001)
+            near (listGet timeline.audio.samples 31 ?: -1.0, 0.5 * sin (6.283185307179586 * 440.0 * 31.0 / 48000.0), 0.00000000001)
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [restore, mute]))
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute(samplePosition = 64)]))
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore(revision = 0)]))))
