@@ -39,11 +39,11 @@ fn recomputed_row_cycles_join_without_losing_rejection_metadata() {
 #[test]
 fn recomputed_row_move_budget_ignores_stable_passes_and_other_functions() {
     let mut history = ReturnHistory::default();
+    for _ in 0..STABLE_SWEEPS {
+        history.record_recomputed(FUNCTION, &(false, 0), (false, 0));
+    }
     for (step, _) in (0_u64..).zip(0..super::RECOMPUTED_MOVES) {
         assert!(history.merge_for(FUNCTION) == super::Merge::Recompute);
-        for _ in 0..STABLE_SWEEPS {
-            history.record_recomputed(FUNCTION, &(false, 0), (false, 0));
-        }
         history.record_recomputed(FUNCTION, &(false, step), (false, step + 1));
         assert!(history.merge_for(FUNCTION + 1) == super::Merge::Recompute);
     }
