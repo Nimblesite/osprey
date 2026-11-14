@@ -95,7 +95,7 @@ ${chapters}
 /** A poster that links to the video's watch page `url`, with its length. */
 export const videoCard = (id, url) => {
   const v = video(id);
-  return `<a class="video-card" href="${url}"><img src="${v.poster}" alt="${escapeHtml(v.posterAlt)}" width="${v.width}" height="${v.height}" loading="lazy"><span class="video-card-length">Watch the video, ${clock(v.duration)}</span></a>`;
+  return `<a class="video-card" href="${url}" data-video="${id}"><img src="${v.poster}" alt="${escapeHtml(v.posterAlt)}" width="${v.width}" height="${v.height}" loading="lazy"><span class="video-card-length">Watch the video, ${clock(v.duration)}</span></a>`;
 };
 
 /** The spoken words, line by line, each linked to its moment. */

@@ -440,5 +440,30 @@
       "native applications"
     ],
     "durationSeconds": 80.439
+  },
+  "native-bridge": {
+    "name": "The Osprey Native bridge: one frame in shared memory",
+    "description": "A seven-minute code tutorial. One typeDiagram model defines fixed rows that an Osprey app writes into shared memory; the SwiftUI, GPUI, WinUI, Android and VS Code hosts lease, check and read them in place, with no serialization. Then Tally's reference host runs, and a one-word change that it catches.",
+    "kind": "tutorial",
+    "content": "/assets/videos/osprey-native-bridge.mp4",
+    "poster": "/assets/videos/osprey-native-bridge-poster.jpg",
+    "posterAlt": "Title card reading One frame, shared memory, with the Osprey bird and the words Osprey Native, the bridge",
+    "captions": "/assets/videos/osprey-native-bridge.en.vtt",
+    "chapters": "/assets/videos/osprey-native-bridge.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-14T15:32:00+11:00",
+    "tags": [
+      "Osprey",
+      "Osprey Native",
+      "shared memory",
+      "SwiftUI",
+      "WinUI",
+      "GPUI",
+      "Android",
+      "WebAssembly",
+      "typeDiagram"
+    ],
+    "durationSeconds": 411.451
   }
 }

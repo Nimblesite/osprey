@@ -1,13 +1,18 @@
 ---
 mlTwins: manual
 layout: page
+video: native-bridge
 title: "The Osprey Native bridge: one frame in shared memory"
 description: How an Osprey Native app reaches SwiftUI, WinUI, GPUI, Android and the VS Code webview. Fixed rows in shared memory, leased and read in place, with no serialization step.
 permalink: /docs/osprey-native/bridge/
-tags: [native, applications, ui, bridge, shared-memory]
+tags: [native, applications, ui, bridge, shared-memory, video, tutorials]
 ---
 
+{% from "native-capture.njk" import capture %}
+
 **Safe, elegant, fast:** every Osprey Native app reaches its host the same way. Each call writes one whole **frame** of fixed-width rows into memory. The host leases that memory, checks every row and draws it where it lies. The app never formats text for the host, and the host never parses any.
+
+{% videoPlayer video %}
 
 This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
 
@@ -181,6 +186,12 @@ flowchart LR
   C --> V[VS Code webview<br/>wasm32 in a worker]
 ```
 
+{{ capture("/assets/images/native/tally-ios.webp", "Tally on iOS: the title Tally, the count 0, Take one, Add one and Clear buttons and a name field", "Tally · iOS · the SwiftUI host draws the frame Tally wrote.", 600, 498) }}
+
+{{ capture("/assets/images/native/tally-android.webp", "Tally on Android: the same title, count, three buttons and name field", "Tally · Android · the Android host draws the same frame from the same rows.", 600, 500) }}
+
+Both captures are Tally's committed view-check goldens. Neither host holds a style of its own: the colours, sizes and spacing are the values in the rows, so the two screens match.
+
 ### macOS and iOS: SwiftUI
 
 The SwiftUI host links the app's static archive. Both the Mac and the iPhone use the same `OspreyShared` library. [`SharedBridge.swift`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/hosts/swift/Sources/OspreyShared/SharedBridge.swift) opens the bridge with a random 16-byte instance identity and `TD_SHARED_FINGERPRINT`, so a pointer from another launch is refused. After each call, it commits the frame and leases the four runs. It hands `SharedRows.read` the rows as `UnsafeBufferPointer<OspNativeView>`, typed views straight over the bridge's bytes. `SharedRows` checks the rows and copies them into Swift values, then the host releases every lease before the call returns. SwiftUI draws from those values: stacks, buttons, text fields and SF Symbols.
@@ -204,6 +215,8 @@ The webview host runs the app's wasm32 build in one worker per panel ([`wasi-wor
 ### The smallest host
 
 [`reference.c`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/tally/host/reference.c) is a complete host with no UI toolkit. It is also Tally's end-to-end test. It opens Tally, presses its buttons by control number, and asserts the kind, parent, action and words of every row it reads in place.
+
+{{ capture("/assets/images/native/bridge-change.jpg", "The tutorial's Change it step: a diff renaming Add one to Add 1, then the reference host's assertion failure on row five", "From the video · change one label and the reference host, reading row five in place, fails its check.", 1280, 720) }}
 
 ## Events come back as typed calls
 
@@ -231,6 +244,8 @@ Imagine the same boundary built the way many UI bridges are built: the app encod
 ```
 
 Every frame would pay for that text twice, once to write it and once to read it. Osprey's bridge writes the same button as one 152-byte row and the host reads it where it lies.
+
+{{ capture("/assets/images/native/bridge-row.jpg", "Tally's Add one button as one ViewRow: nineteen labelled cells from kind to hintLength, and its words in the text run", "From the video · the same button as one 152-byte ViewRow; its words live in the frame's text run.", 1280, 720) }}
 
 | | A hypothetical JSON bridge | The shared-memory bridge |
 | --- | --- | --- |
@@ -276,3 +291,5 @@ Formats owned by the outside world, such as HTTP bodies, stay inside the adapter
 Host coverage varies by app. The host conformance suite, one fixture set that drives every host through this boundary, is still delivery work in plan 0037. Osprey is actively evolving; validate it against your workload.
 
 [Osprey Native →](/docs/osprey-native/) · [Tally, the sample app](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/tally) · [Host contract](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md) · [The schema](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/schemas/native.td)
+
+{% videoTranscript video %}
