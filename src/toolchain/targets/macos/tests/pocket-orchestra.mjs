@@ -215,6 +215,11 @@ try {
   }
   for (let offset = pcm.length - 1000 * 4; offset < pcm.length; offset += 4) assert.equal(pcm.readFloatLE(offset), 0)
   console.log(JSON.stringify({ result: 'passed', mode: windowed ? 'windowed-audio-device' : 'headless', ...stopped }))
+} catch (failure) {
+  // What the app itself said is the evidence: a stalled reply leaves nothing else behind.
+  const persisted = await readFile(`${out}/diagnostics/session-${child.pid}.jsonl`, 'utf8').catch(() => '')
+  console.error(`app stdout (tail):\n${output.slice(-4000)}\napp stderr (tail):\n${errors.slice(-4000)}\napp diagnostics (tail):\n${persisted.slice(-6000)}`)
+  throw failure
 } finally {
   for (const ws of clients) ws.terminate()
   await browser?.close()
