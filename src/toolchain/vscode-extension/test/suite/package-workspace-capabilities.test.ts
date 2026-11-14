@@ -4,7 +4,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { pathToFileURL } from "url";
-import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
+import { Ask } from "../../client/src/osprey-ui/asks";
 import {
   ANSWERED_CAPABILITIES,
   createRequestExecutor,
@@ -40,12 +40,6 @@ function ask(code: number, ticket: string, fields: readonly Field[]): Ask {
 
 function pairs(field: number, values: readonly (readonly [string, string])[]): Field[] {
   return values.flatMap(([name, value]) => [[field, 0, name] as const, [field, 0, value] as const]);
-}
-
-function documentOf(completion: Completion): Record<string, unknown> {
-  const value: unknown = JSON.parse(completion.detail);
-  assert.ok(typeof value === "object" && value !== null && !Array.isArray(value), completion.detail);
-  return value as Record<string, unknown>;
 }
 
 interface ProcessOptions {
@@ -150,7 +144,7 @@ suite("package workspace capabilities", () => {
     });
   });
 
-  test("process bounds reject malformed arguments and limits", async () => {
+  test("process bounds reject malformed arguments, input and limits", async () => {
     await withRoot(async (root) => {
       const execute = createRequestExecutor(hostFor(root));
       const workspace = pathToFileURL(root).toString();
@@ -161,9 +155,11 @@ suite("package workspace capabilities", () => {
         [[1, 0, "vscode"], [2, 0, "process.input"], ...pairs(3, tooMany)],
         [[1, 0, "vscode"], [2, 0, "process.input"], ...pairs(3, [["", "v"]])],
         [[1, 0, "vscode"], [2, 0, "process.input"], ...pairs(3, [["argv".repeat(9000), "x"]])],
+        // Input crosses as one text pair; an over-bound stdin is rejected before launch.
+        [[1, 0, "vscode"], [2, 0, "process.input"], ...pairs(3, [["stdin", "x".repeat(1024 * 1024 + 1)]])],
       ];
       for (const fields of malformed) {
-        await assert.rejects(execute(ask(HOST_CALL, "t", fields)), /malformed arguments|out-of-bounds arguments|Unknown package executable/);
+        await assert.rejects(execute(ask(HOST_CALL, "t", fields)), /malformed arguments|out-of-bounds arguments|Unknown package executable|stdin must be at most/);
       }
       for (const [field, value] of [[4, 0], [4, 120001], [5, 16 * 1024 * 1024 + 1]] as const) {
         const fields: Field[] = [[1, 0, "vscode"], [2, 0, "process.input"],
@@ -176,13 +172,23 @@ suite("package workspace capabilities", () => {
     });
   });
 
+  test("process bounds reject malformed arguments, input and limits (extra: a bound-sized stdin reaches the real executable)", async () => {
+    await withRoot(async (root) => {
+      const execute = createRequestExecutor({ ...hostFor(root), configuredExecutable: "", bundledExecutable: process.execPath });
+      const result = await execute(processAsk(root, "", { argv: ["-e", "let n=0;process.stdin.on(\"data\",c=>n+=c.length);process.stdin.on(\"end\",()=>process.stdout.write(String(n)))"],
+        stdin: "x".repeat(1024 * 1024) }));
+      assert.strictEqual(result.detail, String(1024 * 1024));
+    });
+  });
+
   test("bundled executables and omitted process options preserve real output and numeric exits", async () => {
     await withRoot(async (root) => {
       const execute = createRequestExecutor({ ...hostFor(root), configuredExecutable: "", bundledExecutable: process.execPath });
       const result = await execute(processAsk(root, "", { argv: [], stdin: 'process.stdout.write("default input")' }));
-      assert.deepStrictEqual(documentOf(result), { code: 0, stdout: "default input", stderr: "" });
-      const failed = await execute(processAsk(root, "", { argv: ["-e", 'process.stderr.write("boom");process.exit(3)'] }));
-      assert.deepStrictEqual(documentOf(failed), { code: 3, stdout: "", stderr: "boom" });
+      assert.strictEqual(result.detail, "default input");
+      // A crashed executable's raw output still arrives; the report's semantic status names the failure.
+      const failed = await execute(processAsk(root, "", { argv: ["-e", 'process.stdout.write("partial");process.exit(3)'] }));
+      assert.strictEqual(failed.detail, "partial");
       await assert.rejects(execute(processAsk(root, "", { argv: ["-e", "setTimeout(()=>{},9999)"], timeout: 100 })), /Package command failed/);
     });
   });
@@ -193,7 +199,7 @@ suite("package workspace capabilities", () => {
       fs.mkdirSync(nested);
       const execute = createRequestExecutor(hostFor(root, [path.join(root, "missing", "note.osp")]));
       const result = await execute(processAsk(nested, "", { argv: ["-e", "process.stdout.write(process.cwd())"] }));
-      assert.deepStrictEqual(documentOf(result), { code: 0, stdout: fs.realpathSync(nested), stderr: "" });
+      assert.strictEqual(result.detail, fs.realpathSync(nested));
     });
   });
 
@@ -219,9 +225,8 @@ suite("package workspace capabilities", () => {
     await withRoot(async (root) => {
       const script = path.join(root, "echo.cjs");
       fs.writeFileSync(script, "let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>process.stdout.write(s));");
-      const result = documentOf(await createRequestExecutor(hostFor(root))(processAsk(root, script, { stdin: "hello from stdin\n" })));
-      assert.strictEqual(result.code, 0);
-      assert.strictEqual(result.stdout, "hello from stdin\n");
+      const result = await createRequestExecutor(hostFor(root))(processAsk(root, script, { stdin: "hello from stdin\n" }));
+      assert.strictEqual(result.detail, "hello from stdin\n");
     });
   });
 
@@ -323,15 +328,14 @@ suite("package workspace capabilities", () => {
     });
   });
 
-  test("loopback HTTP is bounded and returns its status and body", async () => {
+  test("loopback HTTP is bounded and returns its raw body", async () => {
     await withRoot(async (root) => withServer(async (url, headers) => {
       const execute = createRequestExecutor(hostFor(root));
       const request = httpAsk(url, { deadline: 5000 });
-      const result = documentOf(await execute(request));
-      assert.strictEqual(result.status, 200);
-      assert.deepStrictEqual(JSON.parse(String(result.body)), { ok: true });
+      const result = await execute(request);
+      assert.deepStrictEqual(JSON.parse(result.detail), { ok: true });
       await assert.rejects(execute(httpAsk(url, { deadline: 5000, limit: 2 })), /exceeded its bound/);
-      assert.deepStrictEqual(documentOf(await execute(httpAsk(url, { method: "HEAD", deadline: 5000 }))), { status: 200, body: "" });
+      assert.strictEqual((await execute(httpAsk(url, { method: "HEAD", deadline: 5000 }))).detail, "");
       assert.strictEqual(headers().accept, "application/json");
       await execute(httpAsk(url, { headers: [["X-Probe", "forwarded"]], deadline: 5000 }));
       assert.strictEqual(headers()["x-probe"], "forwarded");

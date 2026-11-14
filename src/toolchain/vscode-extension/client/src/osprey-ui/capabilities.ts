@@ -171,7 +171,7 @@ function processPlan(ask: Ask, host: CapabilityHost): ProcessPlan {
   };
 }
 
-function runProcess(plan: ProcessPlan): Promise<unknown> {
+function runProcess(plan: ProcessPlan): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = execFile(plan.executable, [...plan.argv], {
       cwd: plan.cwd, timeout: plan.timeout, maxBuffer: plan.limit, windowsHide: true, encoding: "utf8", shell: false,
@@ -251,7 +251,15 @@ function httpRequest(ask: Ask): Promise<Completion> {
   const headers = headersFor(named(ask, 3, "headers", MAX_HEADER_LENGTH));
   return new Promise((resolve, reject) => {
     const requestObject = (url.protocol === "https:" ? https : http).request(url, { method, headers }, (response) => {
-      collect(response, limit, (value) => resolve(document(value)), reject);
+      collect(response, limit, (value) => {
+        const { status, body } = value as { status: number; body: string };
+        if (status < 200 || status >= 300) {
+          reject(new Error(`Registry returned HTTP ${status}`));
+          return;
+        }
+        // The raw body is the completion text; the ask's slice carries the same bytes for bulk reads.
+        resolve({ detail: body, slices: [{ key: ask.text(7), text: body }] });
+      }, reject);
     });
     const timer = setTimeout(() => requestObject.destroy(new Error("Package HTTP request timed out")), timeout);
     requestObject.once("close", () => clearTimeout(timer));
@@ -300,13 +308,21 @@ export function createRequestExecutor(host: CapabilityHost, options: ExecutorOpt
   const serialize = options.serialize ?? serializeProcesses;
   return async (ask) => {
     const kind = ask.kind;
-    if (kind === "http") return httpRequest(ask);
+    if (kind === "http") {
+      // The completion text is the raw response body — "formats owned by the outside world … stay
+      // the business of the adapter that speaks them" ([NATIVE-SHM-WHERE-SERIALIZATION-REMAINS]) —
+      // and the body also lands in the host-held slice the ask names ([NATIVE-SHM-ASK]).
+      return httpRequest(ask);
+    }
     if (kind === "host-call") {
       if (required(ask, 2, "operation") === "process.input") {
         const plan = processPlan(ask, host);
         return serialize(plan.cwd, async () => {
           if (!host.trusted) throw new Error("Trust this workspace before running package commands");
-          return document(await runProcess(plan));
+          const run = await runProcess(plan);
+          const stdout = String(run.stdout ?? "");
+          const slice = ask.text(6);
+          return slice === "" ? { detail: stdout } : { detail: stdout, slices: [{ key: slice, text: stdout }] };
         });
       }
       return hostCall(ask, host);
