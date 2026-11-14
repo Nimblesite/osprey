@@ -113,17 +113,8 @@ function writeSymbolAssets(root, platform) {
   }
 }
 
-// The folder registry the extension serves [PACKAGE-LOCAL-REGISTRY]: a non-empty
-// package tree, which the client verifier refuses to ship empty on a POSIX host.
-function writeRegistryPayloads(root, platform) {
-  const packages = join(root, platform, 'registry/@osprey/testing')
-  mkdirSync(packages, { recursive: true })
-  writeFileSync(join(packages, 'osprey.toml'), 'name = "@osprey/testing"\n')
-}
-
 function writeBundlePayloads(root, platform) {
   writeExecutablePayloads(root, platform)
-  writeRegistryPayloads(root, platform)
   writeWorkbenchAssets(root, platform)
   writePresentationAssets(root, platform)
   writeProofAssets(root, platform)

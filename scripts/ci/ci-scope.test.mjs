@@ -127,7 +127,10 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  assert.match(apple, /^    runs-on: macos-15$/m)
+  // Every part runs on macos-15 but iOS, which needs Xcode 26 to generate the shared host's iOS scheme.
+  assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
+  assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 1, 'only the iOS part leaves macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
@@ -175,8 +178,13 @@ test('staged bundle verification fails closed without recompiling a payload', ()
     assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
   }
   if (process.platform !== 'win32') {
-    const unregistered = stagedBundleFixture((root, platform) => rmSync(join(root, platform, 'registry'), { recursive: true }))
-    assert.notEqual(unregistered.status, 0, 'a bundle without its local registry packages accepted')
+    // [PACKAGE-LOCAL-REGISTRY] The VSIX carries the registry server and never packages.
+    const packaged = stagedBundleFixture((root, platform) => {
+      mkdirSync(join(root, platform, 'registry/@osprey/testing'), { recursive: true })
+      writeFileSync(join(root, platform, 'registry/@osprey/testing/osprey.toml'), 'name = "@osprey/testing"\n')
+    })
+    assert.notEqual(packaged.status, 0, 'a bundle carrying registry packages accepted')
+    assert.match(packaged.stderr, /The VSIX bundles no packages/)
   }
   const invalid = stagedBundleFixture((root, platform) => {
     for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')

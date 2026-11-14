@@ -125,8 +125,8 @@ _vsix_package: $(EXT_NODE_DEPS)
 	  { echo "FAIL: $$VSIX carries no workbench lessons"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-registry" || \
 	  { echo "FAIL: $$VSIX carries no local registry server"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/@osprey/" || \
-	  { echo "FAIL: $$VSIX carries no local registry packages"; exit 1; }; \
+	! unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/" || \
+	  { echo "FAIL: $$VSIX bundles registry packages; the VSIX carries no packages"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 
