@@ -7,7 +7,7 @@ default_namespace = "synth"
 name = "@osprey/synth"
 license = "MIT"
 summary = "Pure oscillators, pitch, modulation and PCM rendering shared by musical apps"
-keywords = ["audio", "music", "synthesis", "dsp"]
+keywords = ["audio", "dsp", "music", "synthesis"]
 
 [modules]
 allow_wildcard_imports = false
