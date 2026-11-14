@@ -145,6 +145,14 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
 })
 
+test('the Android emulator is the Pixel 7 the phone goldens were taken on', () => {
+  const integration = job('test-integration', '.github/workflows/ci.yml')
+  assert.match(integration, /^ {10}profile: pixel_7$/m)
+  assert.ok(integration.includes('make -C src/toolchain/targets/android/tests tally-headless'))
+  // Goldens are named by width: a golden for any other phone width would mean CI runs another device.
+  assert.deepEqual(readdirSync('src/osprey/examples/tally/goldens/android'), ['1080-ready.png'])
+})
+
 // [CAST-MOBILE-GPUI] iOS and Android casting are unfinished: no CI job may build, run or test them.
 // Plan 0053's last step lifts this once their journeys are green.
 test('unfinished mobile casting stays out of every CI path', () => {
