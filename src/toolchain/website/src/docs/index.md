@@ -8,8 +8,6 @@ description: Start with algebraic effects and reusable handlers, then build nati
 
 Osprey is built for **safety, elegance and performance**: typed effects and `Result` for handling failures, inferred types for concise code, and LLVM native compilation. Start with a storage handler, then use the same pattern in web and mobile apps.
 
-{% videoPlayer "swift-interop", true %}
-
 ## Start here
 
 - **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.

@@ -353,3 +353,13 @@ for (const width of [390, 1440]) test(`Osprey Native shows real apps and plays t
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await page.screenshot({ path: `/tmp/osprey-native-${width}-review.png` });
 });
+
+test("the documentation home opens on every platform's path, not a single-platform film", async ({ page }) => {
+  await page.goto("/docs/");
+  const article = page.locator("article");
+  await expect(article.locator("h1")).toHaveText("Osprey documentation");
+  await expect(article.locator("video")).toHaveCount(0);
+  await expect(article.locator('[data-video="swift-interop"]')).toHaveCount(0);
+  await expect(article.getByRole("link", { name: "Osprey and Swift interop on the Mac and iPhone" })).toHaveAttribute("href", "/docs/tutorials/swift-interop/");
+  await expect(article.getByRole("link", { name: "Install Osprey" })).toBeVisible();
+});
