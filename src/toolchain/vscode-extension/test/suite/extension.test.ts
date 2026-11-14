@@ -1236,9 +1236,9 @@ suite("Osprey Language Features Tests", () => {
     index: number,
     text: string,
   ): Promise<void> {
-    const next = [...lines];
-    next[index] = text;
-    await rewrite(doc, next.join("\n") + "\n");
+    // `lines` is the caller's own copy and keeps the edit, so the next step builds on it.
+    lines[index] = text;
+    await rewrite(doc, lines.join("\n") + "\n");
   }
 
   /** `uri` ends up with no diagnostics at all, once the server retracts them. */
