@@ -140,12 +140,60 @@ suite("package workspace component renderer", () => {
     assert.ok(html.includes('data-region-revision="1"'), html);
   });
 
-  test("control provenance names the ordinal the frame issued, unique per region", () => {
+  test("control provenance names the region, revision and ordinal the framework issued", () => {
     const html = renderWorkspace({ regions: regions(screen, rows) });
-    assert.ok(html.includes('data-event-ordinal="0"'), html);
-    assert.ok(html.includes('data-event-ordinal="1"'), html);
+    const packages = html.slice(html.indexOf('data-region-key="packages"'));
+    assert.ok(packages.startsWith('data-region-key="packages" data-region-revision="1"'), html);
+    assert.ok(packages.includes('data-event-ordinal="0"') && packages.includes('data-event-ordinal="1"'), html);
     assert.ok(html.includes('data-focus="packages:0"'), html);
     assert.ok(html.includes('data-focus="packages:1"'), html);
+    assert.ok(html.includes('data-region-key="root" data-region-revision="3"'), html);
+  });
+
+  test("control provenance names the region, revision and ordinal the framework issued (extra: a later revision is named and focus stays per region)", () => {
+    const map = regions(screen, rows) as Map<string, { revision: number; node: unknown }>;
+    map.set("packages", { revision: 9, node: rows });
+    const html = renderWorkspace({ regions: map });
+    assert.ok(html.includes('data-region-key="packages" data-region-revision="9"'), html);
+    assert.ok(!html.includes('data-region-revision="1"'), html);
+    assert.strictEqual(html.match(/data-focus="packages:\d+"/g)?.length, 2, html);
+    assert.ok(!html.includes('data-focus="root:'), "the slot's controls belong to the region that told them");
+  });
+
+  test("the framework brand renders the approved local logo", () => {
+    // The brand is the screen header's lockup now that it is no longer a node of its own.
+    const html = renderWorkspace({ regions: regions(screen, rows), assetUri: "vscode-resource://approved-logo.png" });
+    assert.ok(html.includes('<div class="osp-brand-lockup"><img class="osp-brand" src="vscode-resource://approved-logo.png" alt="Osprey" />'), html);
+    assert.ok(renderWorkspace({ regions: regions(screen, rows) }).includes('<span class="osp-brand osp-brand-word">Osprey</span>'));
+    assert.throws(() => renderWorkspace({ regions: regions({ kind: "brand" }) }), /Unknown native component: brand/);
+  });
+
+  test("the framework brand renders the approved local logo (extra: a hostile logo URI is escaped)", () => {
+    const html = renderWorkspace({ regions: regions(screen, rows), assetUri: 'x" onerror="alert(1)' });
+    assert.ok(html.includes('src="x&quot; onerror=&quot;alert(1)"'), html);
+    assert.ok(!html.includes('onerror="alert(1)"'), html);
+    assert.strictEqual(html.match(/class="osp-brand"/g)?.length, 1, "one lockup per screen");
+  });
+
+  test("the document keeps a nonce CSP with no remote connection and a local Codicon font", () => {
+    const html = workspaceHtml({ nonce: "abc123", assetUri: "", scriptUri: "vscode-resource://main.js", cspSource: "vscode-resource:" });
+    assert.ok(html.includes("script-src vscode-resource: 'nonce-abc123'"), html);
+    assert.ok(html.includes("connect-src 'none'"), html);
+    assert.ok(html.includes("font-src vscode-resource: data:"), "only approved local resources and embedded fonts are allowed");
+    assert.ok(!html.includes("font-src *") && !html.includes("font-src https:"));
+    assert.ok(html.includes('nonce="abc123"'), html);
+    assert.ok(!html.includes("default-src *") && html.includes("default-src 'none'"), html);
+    assert.ok(html.includes(".codicon-add:before"), "the Codicon font is embedded, never fetched");
+  });
+
+  test("the document keeps a nonce CSP with no remote connection and a local Codicon font (extra: every source list names only local resources)", () => {
+    const html = workspaceHtml({ nonce: "n", assetUri: "", scriptUri: "vscode-resource://main.js", cspSource: "vscode-resource:" });
+    const policy = html.match(/Content-Security-Policy" content="([^"]*)"/)?.[1] ?? "";
+    for (const directive of policy.split(";").map((item) => item.trim()).filter(Boolean)) {
+      const sources = directive.split(/\s+/).slice(1);
+      for (const source of sources) assert.ok(["'none'", "vscode-resource:", "data:", "blob:", "'unsafe-inline'", "'nonce-n'"].includes(source), `${directive}: ${source}`);
+    }
+    assert.ok(!/https?:/.test(policy), policy);
   });
 
   test("the application palette becomes sanitized light-dark custom properties", () => {
@@ -269,11 +317,17 @@ suite("package workspace component renderer", () => {
     }
   });
 
-  test("the webview client delegates real controls, flushes pending edits and restores scroll", () => {
+  test("the webview delegates real controls, flushes pending edits and restores scroll", () => {
     const source = fs.readFileSync(path.join(extensionRoot, "out", "webview", "webview", "client.js"), "utf8");
     assert.ok(source.includes('closest(event.target, "[data-event-ordinal], [data-ordinal]")'), source.slice(0, 400));
     assert.ok(source.includes("flushFields"), source);
     assert.ok(source.includes("captureScroll") && source.includes("restoreScroll"), source);
     assert.ok(source.includes("restoreScroll(scroll)"), source);
+  });
+
+  test("the webview delegates real controls, flushes pending edits and restores scroll (extra: the bundled client parses and names no remote origin)", () => {
+    const source = fs.readFileSync(path.join(extensionRoot, "out", "webview", "webview", "client.js"), "utf8");
+    assert.ok(!/fetch\(|XMLHttpRequest|WebSocket|https?:\/\//.test(source), "the webview client never reaches the network");
+    assert.ok(source.includes("export"), "the client is a module the document's nonce script imports");
   });
 });
