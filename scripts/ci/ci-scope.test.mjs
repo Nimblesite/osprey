@@ -118,7 +118,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
   for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox tally-headless', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
-    'make -C src/toolchain/targets/macos/tests workbench']) {
+    'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
   }
   // The Workbench part builds the compiler and both runtimes before it opens, exactly as its own host build did.
@@ -142,7 +142,11 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   // workspace, KLEE, the Zed extension), which recompiled the compiler and cost the part its time.
   assert.match(recipe, /^_workbench_linked: _runtime _runtime_macos$/m)
   assert.match(recipe, /^workbench: _workbench_linked$/m)
-  assert.match(recipe, /^workbench-memory: _workbench_linked$/m)
+  assert.match(recipe, /^_workbench_interactions: _workbench_linked$/m)
+  assert.match(recipe, /^_workbench_memory: _workbench_linked$/m)
+  const full = recipe.match(/^workbench:.*(?:\n\t.*)*/m)?.[0]
+  assert.match(full, /--filter WorkbenchLayout$/m)
+  assert.doesNotMatch(full, /--skip/)
   assert.match(recipe, /^\tcargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli$/m)
   assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
   // Every Swift test runs once: the Workbench suites but the memory soak, the soak in its own part,
@@ -153,8 +157,10 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --skip WorkbenchLayout$/m)
   // The gate's Workbench parts are the only places those recipes run, so a windowed host can never slip into CI.
   const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
-  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests workbench$/m)
-  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests workbench-memory$/m)
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_interactions$/m)
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_memory$/m)
+  assert.match(ci, /- part: Workbench memory\n {12}minutes: 15\n/)
+  assert.match(ci, /^ {12}target\/orchestra\/diagnostics\/\*\.jsonl$/m)
   assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
 })
 

@@ -1288,14 +1288,14 @@ jobs:
             minutes: 15
             run: |
               make _runtime _runtime_macos
-              make -C src/toolchain/targets/macos/tests workbench
+              make -C src/toolchain/targets/macos/tests _workbench_interactions
           # The import memory soak renders the whole app 40,000 times, about seven minutes on a
           # hosted runner, so it runs beside the other Workbench suites rather than after them.
           - part: Workbench memory
-            minutes: 20
+            minutes: 15
             run: |
               make _runtime _runtime_macos
-              make -C src/toolchain/targets/macos/tests workbench-memory
+              make -C src/toolchain/targets/macos/tests _workbench_memory
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1360,6 +1360,7 @@ jobs:
           path: |
             target/orchestra/*.png
             target/orchestra/controller-audio.f32
+            target/orchestra/diagnostics/*.jsonl
           if-no-files-found: error
           retention-days: 7
 

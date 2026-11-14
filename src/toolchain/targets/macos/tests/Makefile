@@ -20,7 +20,7 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench workbench-memory _workbench_linked
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench _workbench_interactions _workbench_memory _workbench_linked
 
 .PHONY: pocket-orchestra pocket-orchestra-headless
 ## pocket-orchestra-headless: Real native orchestra server and phone browser journeys, capturing PCM without an audio device.
@@ -125,14 +125,18 @@ _workbench_linked: _runtime _runtime_macos
 # The 40,000-import memory soak: every import renders the whole app, so it has its own CI part.
 WORKBENCH_SOAK = WorkbenchLayoutTests/testActualApplicationImportDispatchAndCancellationMemoryPlateau$$
 
-## workbench: The Workbench opens and draws a checked frame with no window; then `0 failures` from the
-##            suites that drive the real Workbench, all but the import memory soak (`workbench-memory`).
+## workbench: The Workbench opens and draws a checked frame with no window; then `0 failures` from all
+##            suites that drive the real Workbench, including the import memory soak.
 workbench: _workbench_linked
 	# The rest of the host's suite runs once, under `agent-headless`.
+	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout
+
+# CI runs these two partitions in parallel, with every Workbench test in exactly one.
+_workbench_interactions: _workbench_linked
 	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout --skip '$(WORKBENCH_SOAK)'
 
-## workbench-memory: The real Workbench imports lesson progress 20,000 times and cancels 20,000 reads;
-##                   `0 failures` when ARC objects, bytes and borrowed slices stay at their baseline.
-workbench-memory: _workbench_linked
+# The real app imports lesson progress 20,000 times and cancels 20,000 reads;
+# ARC objects, bytes and borrowed slices must stay at their baseline.
+_workbench_memory: _workbench_linked
 	swift test --package-path src/toolchain/hosts/swift --filter '$(WORKBENCH_SOAK)'
 endif
