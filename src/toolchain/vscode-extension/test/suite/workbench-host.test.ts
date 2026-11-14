@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as sinon from "sinon";
-import { ColorThemeKind, commands, EventEmitter, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
+import { ColorThemeKind, commands, env, EventEmitter, Uri, window, workspace, type ExtensionContext, type WebviewPanel, type WorkspaceConfiguration } from "vscode";
 import { Ask } from "../../client/src/osprey-ui/asks";
 import * as host from "../../client/src/osprey-ui/panel";
 import * as Runner from "../../client/src/osprey-ui/wasi-runner";
@@ -52,7 +52,8 @@ function fixturePanel() {
     webview: { asWebviewUri: (uri: Uri) => uri, cspSource: "https://fixture.example", html: "",
       postMessage: async () => true, onDidReceiveMessage: messages.event } } as unknown as WebviewPanel;
   sinon.stub(window, "createWebviewPanel").returns(panel);
-  return { panel, ready: () => messages.fire({ type: "ready" }), dispose: () => { closed.dispose(); messages.dispose(); } };
+  return { panel, ready: () => messages.fire({ type: "ready" }), post: (message: unknown) => messages.fire(message),
+    dispose: () => { closed.dispose(); messages.dispose(); } };
 }
 
 suite("native shared panel lifecycle", () => {
@@ -113,6 +114,31 @@ suite("native shared panel lifecycle", () => {
       assert.ok(signal, "each panel must supply its own cancellation signal");
       registration.dispose();
       assert.strictEqual(signal.aborted, true, "disposing the registration must abort the panel it opened");
+    } finally { registration.dispose(); fixture.dispose(); }
+  });
+
+  test("a webview link opens only as plain HTTPS, and malformed messages are ignored", async () => {
+    const fixture = fixturePanel();
+    const forwarded: unknown[] = [];
+    sinon.stub(Runner, "startNativeRuntime").returns({ open: async () => new Promise(() => undefined), event: async () => { forwarded.push("event"); return new Promise(() => undefined); },
+      hold: () => undefined, dispose: () => undefined } as never);
+    const opened = sinon.stub(env, "openExternal").resolves(true);
+    const errors = sinon.stub(window, "showErrorMessage").resolves(undefined);
+    const command = "osprey.test.native.external";
+    const registration = host.registerNativePanel(context(), options(command, async () => application(artifact)));
+    try {
+      await commands.executeCommand(command);
+      for (const ignored of [null, "external", ["external"], { type: "external" }, { type: "external", url: 7 }]) fixture.post(ignored);
+      fixture.post({ type: "external", url: "https://osprey.example/docs/flavors" });
+      for (const url of ["http://osprey.example", "https://user:secret@osprey.example", "https://:secret@osprey.example", "javascript:alert(1)", "not a url"]) {
+        fixture.post({ type: "external", url });
+      }
+      assert.deepStrictEqual(opened.getCalls().map((call) => call.args[0].toString()), ["https://osprey.example/docs/flavors"], "only the HTTPS link opens");
+      const refusals = errors.getCalls().map((call) => String(call.args[0]));
+      assert.deepStrictEqual(refusals.slice(0, 4), Array(4).fill("Native host regression: Refused a non-HTTPS external link"));
+      assert.match(refusals[4] ?? "", /^Native host regression: .*Invalid URL/, "an unparsable link names the parse failure");
+      assert.strictEqual(refusals.length, 5);
+      assert.deepStrictEqual(forwarded, [], "no link or malformed message reaches the application");
     } finally { registration.dispose(); fixture.dispose(); }
   });
 
