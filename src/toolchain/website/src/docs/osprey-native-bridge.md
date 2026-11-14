@@ -14,7 +14,7 @@ tags: [native, applications, ui, bridge, shared-memory, video, tutorials]
 
 {% videoPlayer video %}
 
-New to Osprey Native? Start with [Build a counter](/docs/osprey-native/first-app/), which builds an app step by step without any of the internals below. This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
+New here? Start with [Build a counter](/docs/osprey-native/first-app/). This page explains how the bridge works, from the Osprey code that writes a control to the Swift, Rust, C#, Kotlin and TypeScript code that draws it. It also explains why shared rows beat a serialized format such as JSON. The normative contract is [spec 0047](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0047-OspreyNativeHosts.md). The end-to-end explanation is [spec 0053](https://github.com/Nimblesite/osprey/blob/main/docs/specs/applications/0053-NativeSharedViews.md).
 
 ## The app is a library and the host calls it
 

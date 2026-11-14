@@ -109,6 +109,10 @@
           "url": "/docs/osprey-native/"
         },
         {
+          "text": "Build a counter with Osprey Native",
+          "url": "/docs/osprey-native/first-app/"
+        },
+        {
           "text": "The Osprey Native bridge",
           "url": "/docs/osprey-native/bridge/"
         },

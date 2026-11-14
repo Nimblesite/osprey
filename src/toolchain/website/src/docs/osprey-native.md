@@ -95,6 +95,6 @@ The framework's hosts all draw the same frame of rows in shared memory; [see how
 
 ## Build your first app
 
-[Install →](/docs/installation/) · [First app →](/docs/my-first-app/) · [Watch Mac and iPhone interop →](/docs/tutorials/swift-interop/)
+[Install →](/docs/installation/) · [Build a counter →](/docs/osprey-native/first-app/) · [First CLI app →](/docs/my-first-app/) · [Watch Mac and iPhone interop →](/docs/tutorials/swift-interop/)
 
 [Framework source](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/native) · [Host contract](/spec/0047-ospreynativehosts/) · [Capture sources](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/website/src/assets/images/native/README.md)
