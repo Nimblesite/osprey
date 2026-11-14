@@ -246,3 +246,42 @@ module Extras
         expect (nativeShows (fed, "01:40"), true)
         expect (nativeLetters (realSkinned (fed, "sherbet"), "00:25"), true)
         forEachList (["sherbet", "midnight", "poolside"], \skin => skinCarries (fed, skin)))
+
+    // ---- plain view rows ----
+
+    // One plain option.
+    optionOf (words, key, picked) = ui::Option(optionLook = Views::plain, optionWords = words, optionKey = key, optionChosen = picked)
+
+    // A plain view holding every control a plain view draws, each action a word.
+    everyView () =
+        p = Views::plain
+        natural = Views::natural
+        sketch = ui::Sketch(sketchWidth = 4.0, sketchHeight = 3.0, sketchZoom = 1.0, sketchAtlas = [], sketchShapes = [], sketchAccess = [])
+        ui::Column(columnLook = p, columnItems = [ui::Across(acrossLook = p, acrossItems = [ui::Wording(wordsLook = p, wordsText = "Hi"), ui::Press(pressLook = p, pressWords = "Go", pressAction = "go")]), ui::Typing(typingLook = p, typingText = "t", typingAction = "type"), ui::Gap, ui::Fitted(fit = natural(wide = 10.0), fitted = ui::Rule(ruleLook = p)), ui::Scrolling(scrollLook = p, scrollItems = [ui::Picture(pictureLook = p, pictureSource = "a.png")]), ui::Layered(layeredLook = p, layeredItems = [ui::Canvas(canvasLook = p, canvasAction = "paint")]), ui::Switch(switchLook = p, switchWords = "On", switchOn = true, switchAction = "flip"), ui::Switch(switchLook = p, switchWords = "Off", switchOn = false, switchAction = "flop"), ui::Choosing(choosingLook = p, choosingWords = "Pick", choosingOptions = [optionOf ("A", "a", true), optionOf ("B", "b", false)], choosingAction = "pick"), ui::Drawing(drawingLook = p, drawingSketch = sketch, drawingAction = "draw"), ui::Writing(writingLook = p, writingText = "w", writingAction = "write"), ui::Menu(menuLook = p, menuItems = [ui::Wording(wordsLook = p, wordsText = "Item")]), ui::Sheet(sheetLook = p, sheetItems = [ui::Wording(wordsLook = p, wordsText = "Sure?")], sheetDismiss = "close")])
+
+    // Runs `work` with every row it streams dropped.
+    streamedQuietly work =
+        handle ui::ViewStream
+            place _ => 0
+            size _ => 0
+            sketch _ => 0
+            ask _ => 0
+        work ()
+
+    seatsOf<A> : ui::Walk<A> -> string
+    seatsOf walk = join (mapList (walk.walkRows, \r => "${r.placedKind}<${r.placedParent}@${r.placedAction}:${r.placedWords}")) "|"
+
+    fitsOf<A> : ui::Walk<A> -> string
+    fitsOf walk = join (mapList (walk.walkFits, \f => "${f.fittedRow}:${f.fittedAs.wide}/${f.fittedAs.traits}/${f.fittedAs.hint}")) "|"
+
+    (** "native controls are drawn as plain view rows (extra: every plain control, its fit, its sketch and its stream)". *)
+    export plainViews () =
+        walk = Views::drawn (everyView ())
+        expect (seatsOf walk, "0<-1@-1:|1<0@-1:|2<1@-1:Hi|3<1@0:Go|4<0@1:t|5<0@-1:|11<0@-1:|6<0@-1:|12<7@-1:a.png|7<0@-1:|13<9@2:|8<0@3:On|8<0@4:Off|9<0@5:Pick|10<13@-1:A|10<13@-1:B|13<0@6:|14<0@7:w|15<0@-1:|2<18@-1:Item|16<0@8:|2<20@-1:Sure?")
+        // The fitted rule keeps its width, a switch on and the chosen option carry the chosen flag, and options carry their keys.
+        expect (fitsOf walk, "6:10.0/0/|11:0.0/2/|12:0.0/0/|14:0.0/2/a|15:0.0/0/b")
+        expect (join (walk.walkBound) ",", "go,type,paint,flip,flop,pick,draw,write,close")
+        expect (join (mapList (walk.walkSketches, \s => "${s.sketchedRow}:${s.sketchedAs.sketchWidth}")) "|", "16:4.0")
+        expect (Views::colour "#0B6E8A", 191793919)
+        streamed = streamedQuietly (\() => Views::render (everyView ()))
+        expect (join streamed ",", join (walk.walkBound) ",")

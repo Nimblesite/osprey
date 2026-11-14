@@ -42,6 +42,9 @@ test ("mathematics keeps accessibility text and consumes no control ordinal", \(
     binds (walked, 2)
     // The typeset node is told as one leaf carrying the whole tree and its spoken text, and takes no ordinal.
     expect (spelled (toldOf (Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
+    // Every layout variant is told as its own record, its children named and nested in order.
+    everyLayout = ui::Seq [ui::Sup (ui::Sym "x") (ui::Num "2"), ui::Sub (ui::Sym "a") (ui::Num "1"), ui::Frac (ui::Num "1") (ui::Sym "n"), ui::Root (ui::Sym "y"), ui::Binder "λ" [ui::Sym "x"] (ui::Sym "x"), ui::Op "+" (ui::Num "1") (ui::Num "2"), ui::Paren (ui::Sym "z"), ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "k")]
+    expect (spelled (toldOf (Maths::typeset (everyLayout, "every layout"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sup\",base={kind=\"sym\",text=\"x\"},script={kind=\"num\",text=\"2\"}},{kind=\"sub\",base={kind=\"sym\",text=\"a\"},script={kind=\"num\",text=\"1\"}},{kind=\"frac\",top={kind=\"num\",text=\"1\"},bottom={kind=\"sym\",text=\"n\"}},{kind=\"root\",body={kind=\"sym\",text=\"y\"}},{kind=\"binder\",symbol=\"λ\",names=[{kind=\"sym\",text=\"x\"}],body={kind=\"sym\",text=\"x\"}},{kind=\"op\",symbol=\"+\",left={kind=\"num\",text=\"1\"},right={kind=\"num\",text=\"2\"}},{kind=\"paren\",body={kind=\"sym\",text=\"z\"}},{kind=\"big\",symbol=\"∑\",lower={kind=\"num\",text=\"0\"},upper={kind=\"sym\",text=\"n\"},body={kind=\"sym\",text=\"k\"}}]},spoken=\"every layout\"}")
     expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
 
 tree () = Ui::column [
@@ -583,6 +586,7 @@ testCases [
 // The extra case beside each restored test: another permutation, edge or component for the same fact.
 testCases [
     { name = "a resolved edit updates the current state (extra: a completion lands on the state the tap changed)", work = protected Extras::resolvedEdit },
+    { name = "native controls are drawn as plain view rows (extra: every plain control, its fit, its sketch and its stream)", work = protected Extras::plainViews },
     { name = "a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)", work = protected Extras::tapRegion },
     { name = "an edit from prior state keeps its meaning when ordinals shift (extra: the note's stale number refuses after the shift)", work = protected Extras::ordinals },
     { name = "an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)", work = protected Extras::goneNumbers },
