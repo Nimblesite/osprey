@@ -29,6 +29,20 @@ const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 const truncated = (spec: AskSpec[], cut: number): ArrayBuffer => frame({ asks: spec }).asks.slice(0, cut);
 
 suite("package workspace protocol", () => {
+  test("a final scene strip retains every point within its declared count", () => {
+    for (const count of [0, 1, 2, 3, 8]) {
+      const points = Array.from({ length: count }, (_, index) => ({ x: index + 0.5, y: -index }));
+      const built = frame({ views: [{ kind: 13 }], scenes: [
+        { code: 20, index: 0, x: 100, y: 100, width: 1 },
+        { code: 2, index: count, width: 3, colour: 0xff00ffff, depth: 2 },
+        ...points.map((point) => ({ code: 7, ...point })),
+      ] });
+      assert.deepStrictEqual(readFrame(built).scenes.get(0)?.shapes, [
+        { shape: "strip", points, colour: 0xff00ffff, stroke: 3, depth: 2 },
+      ], `strip with ${count} points`);
+    }
+  });
+
   test("a valid envelope keeps its opaque state, keyed patches and requests", () => {
     const { shown, asked } = read();
     const told = toldFrame(shown);

@@ -320,8 +320,9 @@ class Cursor {
   }
 
   points(count: number): Point[] {
+    const length = this.count(count);
     const points: Point[] = [];
-    for (let at = 0; at < this.count(count); at += 1) {
+    for (let at = 0; at < length; at += 1) {
       const row = this.take(POINT);
       points.push({ x: f(row, 0), y: f(row, 1) });
     }
