@@ -24,8 +24,7 @@ pub(super) fn finish_phi(
             "{why}{}",
             cg.source_function
                 .as_deref()
-                .map(|name| format!(" in `{name}`"))
-                .unwrap_or_default()
+                .map_or_default(|name| format!(" in `{name}`"))
         )),
         other => other,
     })?;
