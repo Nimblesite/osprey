@@ -91,7 +91,7 @@ Linux desktop hosting, trusted HTTPS/WSS provisioning, motion instruments, saved
 - [x] Add native QR/invite, controller/note counts, master volume, output meter and ensemble silence controls.
 - [x] Exercise the native server with eight controllers and eighty notes; verify PCM bounds, ownership, malformed input, expiry and silence after release.
 - [x] Exercise a mobile-sized browser controller and run the same transport/audio journey through the actual Mac output device.
-- [x] Verify the audio ring with two million ordered samples under address/undefined-behaviour sanitizers.
+- [x] Verify the audio ring with two million ordered samples under address/undefined-behaviour sanitizers and ThreadSanitizer.
 - [ ] Measure physical iPhone/Android-to-speaker latency on Wi-Fi and record device/browser versions.
 - [ ] Complete Windows hosting, native phone controllers and the full native/canvas presentation matrix above.
 

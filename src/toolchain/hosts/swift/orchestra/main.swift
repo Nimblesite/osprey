@@ -64,10 +64,12 @@ func start() throws {
     let hostServer = OrchestraServer(audio: audio, host: host, token: token, page: page, port: port)
     try hostServer.start(port: port)
     server = hostServer
-    log("session.starting", ["join": "http://\(host):\(port)/#\(token)", "headless": headless,
+    log("session.starting", ["address": "http://\(host):\(port)/", "headless": headless,
                             "sampleRate": audio.sampleRate, "transport": "trusted-LAN HTTP/WebSocket"])
     if showWindow { desktop.show(invite: "http://\(host):\(port)/#\(token)", audio: audio) }
-    timer = Timer.scheduledTimer(withTimeInterval: 0.002, repeats: true) { _ in advance() }
+    let clock = Timer(timeInterval: 0.002, repeats: true) { _ in advance() }
+    RunLoop.main.add(clock, forMode: .common)
+    timer = clock
 }
 
 signal(SIGINT, SIG_IGN)
@@ -91,4 +93,13 @@ if let path = environment["ORCHESTRA_CAPTURE"] {
 }
 log("session.stopped", ["frames": audio.renderedFrames, "peak": audio.peak,
                         "underruns": orchestra_ring_underruns(), "error": failure ?? ""])
-if let failure { FileHandle.standardError.write(Data("\(failure)\n".utf8)); exit(1) }
+if let failure {
+    FileHandle.standardError.write(Data("\(failure)\n".utf8))
+    if showWindow {
+        let alert = NSAlert()
+        alert.messageText = "Orchestra session stopped"
+        alert.informativeText = failure
+        alert.runModal()
+    }
+    exit(1)
+}

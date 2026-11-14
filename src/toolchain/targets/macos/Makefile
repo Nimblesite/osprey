@@ -18,6 +18,12 @@ pocket-orchestra: _runtime_macos
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/swift/orchestra/build.sh
 	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
 
+.PHONY: pocket-orchestra-quick
+## pocket-orchestra-quick: Build and open Light Orchestra with an existing compiler (OSPREY_BIN, default target/debug/osprey).
+pocket-orchestra-quick:
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
+
 ## pocket-orchestra-models: Generate the native audio models from typeDiagram; set TYPEDIAGRAM_DIST.
 pocket-orchestra-models:
 	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/toolchain/hosts/swift/orchestra/audio.td src/toolchain/hosts/swift/orchestra/AudioModels.swift orchestra

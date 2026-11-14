@@ -26,20 +26,24 @@ final class OrchestraAudio {
             throw problem("No supported audio output format")
         }
         sampleRate = rate
-        let node = AVAudioSourceNode { _, _, count, list in
-            let buffers = UnsafeMutableAudioBufferListPointer(list)
-            guard buffers.count == 1 else { return kAudio_ParamError }
-            for output in buffers {
-                guard let raw = output.mData else { return kAudio_ParamError }
-                orchestra_ring_read(raw.assumingMemoryBound(to: Float.self), Int(count))
-            }
-            return noErr
-        }
+        let node = makeSource()
         source = node
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
         fill()
         try engine.start()
+    }
+
+    private func makeSource() -> AVAudioSourceNode {
+        AVAudioSourceNode { _, _, count, list in
+            let buffers = UnsafeMutableAudioBufferListPointer(list)
+            guard buffers.count == 1 else { return kAudio_ParamError }
+            for output in buffers {
+                guard output.mDataByteSize >= count * 4, let raw = output.mData else { return kAudio_ParamError }
+                orchestra_ring_read(raw.assumingMemoryBound(to: Float.self), Int(count))
+            }
+            return noErr
+        }
     }
 
     func update() throws {
@@ -49,16 +53,18 @@ final class OrchestraAudio {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]], rows.count <= 80 else {
             throw problem("Invalid voice snapshot")
         }
-        let controls = try rows.map { row -> VoiceControl in
-            guard let id = row["id"] as? String, let frequency = row["frequency"] as? Double,
-                  let gain = row["gain"] as? Double, frequency.isFinite, gain.isFinite,
-                  frequency > 0, frequency < sampleRate / 2, gain >= 0, gain <= 0.1 else {
-                throw problem("Invalid voice values")
-            }
-            return VoiceControl(id: id, frequency: frequency, gain: gain)
-        }
+        let controls = try rows.map(decodeControl)
         guard Set(controls.map(\.id)).count == controls.count else { throw problem("Duplicate voice identity") }
         reconcile(controls)
+    }
+
+    private func decodeControl(_ row: [String: Any]) throws -> VoiceControl {
+        guard let id = row["id"] as? String, let frequency = row["frequency"] as? Double,
+              let gain = row["gain"] as? Double, frequency.isFinite, gain.isFinite,
+              frequency > 0, frequency < sampleRate / 2, gain >= 0, gain <= 0.1 else {
+            throw problem("Invalid voice values")
+        }
+        return VoiceControl(id: id, frequency: frequency, gain: gain)
     }
 
     private func reconcile(_ controls: [VoiceControl]) {
@@ -80,19 +86,7 @@ final class OrchestraAudio {
         var output = [Float](repeating: 0, count: count)
         level = 0
         for frame in 0..<count {
-            var sample = 0.0
-            var totalGain = 0.0
-            for index in voices.indices {
-                let voice = voices[index]
-                let gain = voice.gain + min(0.0002, max(-0.0002, voice.target - voice.gain))
-                sample += osprey_orchestra_sine(voice.phase) * gain
-                totalGain += gain
-                let phase = voice.phase + voice.frequency / sampleRate
-                voices[index] = VoiceState(id: voice.id, frequency: voice.frequency, target: voice.target,
-                                           gain: gain, phase: phase - floor(phase))
-            }
-            // Normalise by the gain sum, including release tails; the ensemble stays below 0.8.
-            sample /= max(1, totalGain / 0.8)
+            let sample = nextSample()
             if !sample.isFinite || abs(sample) > 0.800001 {
                 failure = "Audio sample exceeded the bounded ensemble range"
                 voices.removeAll()
@@ -102,20 +96,41 @@ final class OrchestraAudio {
             peak = max(peak, abs(sample))
             output[frame] = Float(sample)
         }
+        finishBlock(output)
+        return output
+    }
+
+    private func nextSample() -> Double {
+        var sample = 0.0
+        var totalGain = 0.0
+        for index in voices.indices {
+            let voice = voices[index]
+            let gain = voice.gain + min(0.0002, max(-0.0002, voice.target - voice.gain))
+            sample += osprey_orchestra_sine(voice.phase) * gain
+            totalGain += gain
+            let phase = voice.phase + voice.frequency / sampleRate
+            voices[index] = VoiceState(id: voice.id, frequency: voice.frequency, target: voice.target,
+                                       gain: gain, phase: phase - floor(phase))
+        }
+        // Normalise by the gain sum, including release tails; the ensemble stays below 0.8.
+        return sample / max(1, totalGain / 0.8)
+    }
+
+    private func finishBlock(_ output: [Float]) {
         voices.removeAll { $0.target == 0 && $0.gain == 0 }
-        renderedFrames += UInt64(count)
+        renderedFrames += UInt64(output.count)
         if capturesAudio {
             if capture.count + output.count * 4 <= Int(sampleRate * 30) * 4 {
                 output.withUnsafeBytes { capture.append(contentsOf: $0) }
             } else { failure = "Diagnostic recording exceeds thirty seconds" }
         }
-        return output
     }
 
     func fill() {
         while orchestra_ring_queued() < 512 {
             buffer = render(128)
-            _ = buffer.withUnsafeBufferPointer { orchestra_ring_write($0.baseAddress, $0.count) }
+            let written = buffer.withUnsafeBufferPointer { orchestra_ring_write($0.baseAddress, $0.count) }
+            if written != buffer.count { failure = "Audio ring rejected a prepared block"; return }
         }
     }
 

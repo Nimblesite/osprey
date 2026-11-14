@@ -28,6 +28,18 @@ final class OrchestraServer {
               let wsPort = NWEndpoint.Port(rawValue: port + 1) else { throw problem("Invalid server port") }
         let http = try NWListener(using: .tcp, on: httpPort)
         http.newConnectionHandler = { [weak self] in self?.acceptHTTP($0) }
+        let ws = try NWListener(using: websocketParameters(), on: wsPort)
+        ws.newConnectionHandler = { [weak self] in self?.acceptWebSocket($0) }
+        listeners = [http, ws]
+        for listener in listeners {
+            listener.stateUpdateHandler = { [weak self] state in
+                if case .failed(let error) = state { self?.failure = error.localizedDescription }
+            }
+            listener.start(queue: .main)
+        }
+    }
+
+    private func websocketParameters() -> NWParameters {
         let parameters = NWParameters.tcp
         let websocket = NWProtocolWebSocket.Options()
         websocket.autoReplyPing = true
@@ -39,15 +51,7 @@ final class OrchestraServer {
                 subprotocol: accept ? "orchestra.v1" : nil, additionalHeaders: nil)
         }
         parameters.defaultProtocolStack.applicationProtocols.insert(websocket, at: 0)
-        let ws = try NWListener(using: parameters, on: wsPort)
-        ws.newConnectionHandler = { [weak self] in self?.acceptWebSocket($0) }
-        listeners = [http, ws]
-        for listener in listeners {
-            listener.stateUpdateHandler = { [weak self] state in
-                if case .failed(let error) = state { self?.failure = error.localizedDescription }
-            }
-            listener.start(queue: .main)
-        }
+        return parameters
     }
 
     private func acceptHTTP(_ connection: NWConnection) {
