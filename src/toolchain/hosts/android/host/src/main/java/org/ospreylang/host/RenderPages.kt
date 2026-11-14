@@ -43,17 +43,31 @@ object RenderPages {
         else -> false
     }
 
-    /** A group headed by its title, its footer beneath: no surface of its own. */
+    /** A group headed by its title, its footer beneath: no surface of its own. The title
+     * keeps the first seat and the footer the last, each one view reused across frames. */
     private fun section(renderer: ToldRenderer, box: LinearLayout, tree: Tree, path: String,
                         theme: ThemeResolver, inherited: Inherited): Boolean {
         val heading = tree.text("title").isNotEmpty()
         val footer = tree.text("footer").isNotEmpty()
-        renderer.children(box, tree, path, theme, inherited,
-                          first = (if (heading) 1 else 0) + (if (footer) 1 else 0), gap = dp(box.context, 8.0))
+        val head = own(box, "section-title")
+        val foot = own(box, "section-footer")
+        listOfNotNull(head, foot).forEach { box.removeView(it) }
+        if (heading) box.addView(head ?: tagged(box, "section-title"), 0)
+        renderer.children(box, tree, path, theme, inherited, first = if (heading) 1 else 0, gap = dp(box.context, 8.0))
         if (heading) words(box.getChildAt(0) as TextView, tree.text("title"), "eyebrow", theme, bold = true)
-        if (footer) words(box.getChildAt(box.childCount - 1) as TextView, tree.text("footer"), "caption", theme)
+        if (footer) {
+            val tail = foot ?: tagged(box, "section-footer")
+            box.addView(tail)
+            words(tail, tree.text("footer"), "caption", theme)
+        }
         return true
     }
+
+    /** The section's own text view tagged `tag` among its direct children, never a nested section's. */
+    private fun own(box: LinearLayout, tag: String): TextView? =
+        (0 until box.childCount).map(box::getChildAt).firstOrNull { it.tag == tag } as? TextView
+
+    private fun tagged(box: LinearLayout, tag: String) = TextView(box.context).apply { this.tag = tag }
 
     private fun words(view: TextView, text: String, role: String,
                       theme: ThemeResolver, bold: Boolean = false) {
