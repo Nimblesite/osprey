@@ -52,3 +52,6 @@ module App
     export theme skin =
         store = Flow::launched (loaded (readFile (documentPath []) ?: ""), "", skin)
         Templates::theme store.screen.screenMachine
+
+    (** The editor as its boundary runs it: the store drawn with its machine's live skin's theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \store => Templates::theme store.screen.screenMachine)

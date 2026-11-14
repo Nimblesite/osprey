@@ -7,16 +7,15 @@ use gpui_kit::*;
 
 use super::{Decoded, Outline, Paint, Shape, Step, Tint, Transform};
 use crate::host::HostView;
-use crate::render::{Binding, Ctx};
+use crate::render::Binding;
 
 /// Builds the one-shot prepaint/paint pair with decoded data moved, not reparsed.
 pub(super) fn canvas(
-    ctx: &mut Ctx,
+    key: String,
     handle: Entity<HostView>,
     binding: Binding,
     decoded: Decoded,
 ) -> impl IntoElement {
-    let key = ctx.key.clone();
     let prepaint_handle = handle.clone();
     gpui_kit::canvas(
         move |bounds, window, cx| {

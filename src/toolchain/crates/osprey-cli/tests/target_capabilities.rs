@@ -202,6 +202,35 @@ fn wasm_accepts_wasi_libc_perror_and_abort() -> std::io::Result<()> {
     Ok(())
 }
 
+/// The wasm runtime carries the shared frame writers (`native_scene.c`), so a
+/// wasm32 build of any `@osprey/native` application calls them: the VS Code
+/// host compiles the package editor and the Workbench this way. They are typed
+/// builtins with the C signatures fixed by the compiler, never raw externs, so
+/// the registry publishes `@osprey/native` [PACKAGE-CAPABILITY-CONFINEMENT].
+/// Each writer is declared once and called. [NATIVE-SHM-VIEW] [NATIVE-SHM-SCENE] [NATIVE-SHM-ASK]
+#[test]
+fn wasm_accepts_the_shared_frame_writers_its_runtime_carries() -> std::io::Result<()> {
+    let source = "fn main() = print(toString(nativeSceneShape(0, 0, 1.0, 2.0, 3.0, 4.0, 0.0, 255, 0, \"t\")) + toString(nativeViewExtend(nativeViewRow(2, -1, -1, \"hi\", 255, 0, 12.0, 0.0, 0.0, 0.0, 400), 10.0, 0.0, 0.0, 0, 0, \"\")) + toString(nativeAsk(1, 2, \"ask\")))\n";
+    let ir = accepts(source, "wasm32")?;
+    for writer in [
+        "osp_native_scene_shape",
+        "osp_native_view_row",
+        "osp_native_view_extend",
+        "osp_native_ask",
+    ] {
+        assert_eq!(
+            ir.lines().filter(|line| line.starts_with("declare ") && line.contains(&format!("@{writer}("))).count(),
+            1,
+            "{writer} must be declared once:\n{ir}"
+        );
+        assert!(
+            ir.contains(&format!("@{writer}(")),
+            "{writer} is never called"
+        );
+    }
+    Ok(())
+}
+
 /// A first-class import goes through the named function's environment-dropping
 /// forwarder: the wrapper returns the `i64` Unit zero, only the wrapped C callee
 /// is `void`, and the forwarder body makes the single call. [WASI-LIBC-ABI]

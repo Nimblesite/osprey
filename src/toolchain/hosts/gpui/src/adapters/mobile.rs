@@ -1,15 +1,15 @@
 //! The iOS OS-capability boundary ([CAST-MOBILE-DELIVERY], [GPUI-HOST-CAPABILITIES]):
 //! one serialized capability request crosses a C ABI to the Swift OS services on
 //! the background executor, and one owned JSON answer crosses back and is decoded
-//! whole — the existing `Value` and `envelope::Slice` — before any slice is
-//! published, so a malformed answer leaves the host untouched. The protocol layer
-//! is compiled for boundary tests as well; only the C calls themselves are
-//! iOS-only, keeping desktop tests free of native OS symbols.
+//! whole into the existing `Value` before any slice is published, so a malformed
+//! answer leaves the host untouched. The protocol layer is compiled for boundary
+//! tests as well; only the C calls themselves are iOS-only, keeping desktop tests
+//! free of native OS symbols.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
-use crate::envelope::{self, Request};
 use crate::ffi;
+use crate::rows::Ask;
 
 /// The Swift OS-service boundary: one JSON request in, one owned answer out that
 /// is copied and freed exactly once before decoding continues.
@@ -88,17 +88,72 @@ mod bridge {
 /// Answers one capability through the OS bridge ([CAST-MOBILE-DELIVERY]); the
 /// caller has already moved this call onto the background executor.
 #[cfg(any(target_os = "ios", target_os = "android"))]
-pub(super) fn answer(request: &Request) -> Result<Value, String> {
-    bridge::call(&encoded(request)).and_then(|raw| applied(&raw))
+pub(super) fn answer(ask: &Ask) -> Result<String, String> {
+    bridge::call(&encoded(ask))
+        .and_then(|raw| applied(&raw))
+        .map(result_text)
 }
 
-/// Serializes one request — its verbatim fields plus the kind and ticket — so the
-/// OS services see exactly what the application asked for.
-fn encoded(request: &Request) -> String {
-    let mut members = request.fields.clone();
-    members.insert("kind".to_owned(), Value::String(request.kind.clone()));
-    members.insert("ticket".to_owned(), Value::String(request.ticket.clone()));
+/// The completion's result text: an empty string for a null result, the document otherwise.
+fn result_text(result: Value) -> String {
+    match result {
+        Value::Null => String::new(),
+        result => result.to_string(),
+    }
+}
+
+/// Serializes one ask — its arguments by position under the bridge's own names, plus
+/// the kind and ticket — so the OS services see exactly what the application asked for.
+fn encoded(ask: &Ask) -> String {
+    let mut members = fields(ask);
+    members.insert("kind".to_owned(), Value::String(ask.kind().to_owned()));
+    members.insert("ticket".to_owned(), Value::String(ask.ticket.clone()));
     Value::Object(members).to_string()
+}
+
+/// The bridge's named request fields, read from the ask's argument positions.
+fn fields(ask: &Ask) -> Map<String, Value> {
+    let mut members = Map::new();
+    match ask.kind() {
+        "run" => {
+            members.insert("executable".to_owned(), Value::String(ask.text(1)));
+            members.insert("arguments".to_owned(), texts(ask, 2));
+            members.insert("timeout".to_owned(), Value::from(ask.number(3)));
+            members.insert("limit".to_owned(), Value::from(ask.number(4)));
+            members.insert("plist".to_owned(), Value::Bool(ask.flag(5)));
+            members.insert("slice".to_owned(), Value::String(ask.text(6)));
+        }
+        "choose-file" => {
+            members.insert("types".to_owned(), texts(ask, 1));
+            members.insert("limit".to_owned(), Value::from(ask.number(2)));
+            members.insert("slice".to_owned(), Value::String(ask.text(3)));
+        }
+        "host-call" => {
+            members.insert("namespace".to_owned(), Value::String(ask.text(1)));
+            members.insert("operation".to_owned(), Value::String(ask.text(2)));
+            members.insert("arguments".to_owned(), pairs(ask, 3));
+            members.insert("timeout".to_owned(), Value::from(ask.number(4)));
+            members.insert("limit".to_owned(), Value::from(ask.number(5)));
+            members.insert("slice".to_owned(), Value::String(ask.text(6)));
+        }
+        _ => {}
+    }
+    members
+}
+
+/// A list argument as the bridge's JSON array.
+fn texts(ask: &Ask, field: i64) -> Value {
+    Value::Array(ask.texts(field).into_iter().map(Value::String).collect())
+}
+
+/// A pair argument as the bridge's JSON object.
+fn pairs(ask: &Ask, field: i64) -> Value {
+    Value::Object(
+        ask.pairs(field)
+            .into_iter()
+            .map(|(name, value)| (name, Value::String(value)))
+            .collect(),
+    )
 }
 
 /// Applies one whole bridge answer: a validated success publishes its slices and
@@ -137,7 +192,7 @@ fn failed(reply: &Value) -> Result<Value, String> {
 }
 
 /// Decodes the required slice array whole; one malformed entry refuses the answer.
-fn slices(reply: &Value) -> Result<Vec<envelope::Slice>, String> {
+fn slices(reply: &Value) -> Result<Vec<Slice>, String> {
     reply
         .get("slices")
         .and_then(Value::as_array)
@@ -147,8 +202,14 @@ fn slices(reply: &Value) -> Result<Vec<envelope::Slice>, String> {
         .collect()
 }
 
+/// One host-held slice the bridge sends back.
+struct Slice {
+    key: String,
+    text: String,
+}
+
 /// Decodes one slice entry: a nonempty string key and a string text.
-fn entry(item: &Value) -> Result<envelope::Slice, String> {
+fn entry(item: &Value) -> Result<Slice, String> {
     let key = item
         .get("key")
         .and_then(Value::as_str)
@@ -158,7 +219,7 @@ fn entry(item: &Value) -> Result<envelope::Slice, String> {
         .get("text")
         .and_then(Value::as_str)
         .ok_or_else(|| "The OS capability answer has a slice with no valid text".to_owned())?;
-    Ok(envelope::Slice {
+    Ok(Slice {
         key: key.to_owned(),
         text: text.to_owned(),
     })
@@ -166,7 +227,7 @@ fn entry(item: &Value) -> Result<envelope::Slice, String> {
 
 /// A slice whose text cannot cross the C boundary refuses the whole answer first,
 /// so no partially publishable reply ever reaches `put_slice`.
-fn carried(slice: &envelope::Slice) -> Result<(), String> {
+fn carried(slice: &Slice) -> Result<(), String> {
     match slice.text.contains('\0') {
         true => Err("The OS capability answer has slice text a C string cannot carry".to_owned()),
         false => Ok(()),
@@ -180,21 +241,23 @@ fn carried(slice: &envelope::Slice) -> Result<(), String> {
 mod tests {
     use serde_json::{json, Value};
 
-    use super::{applied, encoded};
-    use crate::envelope::Request;
+    use super::{applied, encoded, result_text};
     use crate::ffi;
+    use crate::rows::{Ask, Field};
 
-    /// One request with an explicit ticket, whose fields may shadow kind and
-    /// ticket to prove the serialization keeps its own pair.
-    fn request(kind: &str, ticket: &str, fields: &[(&str, Value)]) -> Request {
-        Request {
+    /// One ask with an explicit ticket and argument rows.
+    fn request(code: i64, ticket: &str, fields: &[(i64, i64, &str)]) -> Ask {
+        Ask {
+            code,
             ticket: ticket.to_owned(),
-            kind: kind.to_owned(),
-            fields: serde_json::Map::from_iter(
-                fields
-                    .iter()
-                    .map(|(name, value)| ((*name).to_owned(), value.clone())),
-            ),
+            fields: fields
+                .iter()
+                .map(|(field, number, text)| Field {
+                    field: *field,
+                    number: *number,
+                    text: (*text).to_owned(),
+                })
+                .collect(),
         }
     }
 
@@ -211,19 +274,20 @@ mod tests {
         }
     }
 
-    /// Both bridged capabilities serialize their kind, ticket and every field,
-    /// and a field named like a protocol member cannot shadow either.
+    /// Both bridged capabilities serialize their kind, ticket and every argument,
+    /// and an argument cannot shadow either protocol member.
     #[test]
     fn bridged_requests_carry_kind_ticket_and_every_field() {
         let discover = request(
-            "run",
+            1,
             "discover",
             &[
-                ("slice", json!("cast-browse")),
-                ("timeout", json!(5000)),
-                ("limit", json!(65536)),
-                ("executable", json!("/usr/bin/dns-sd")),
-                ("arguments", json!(["-B", "_googlecast._tcp"])),
+                (6, 0, "cast-browse"),
+                (3, 5000, ""),
+                (4, 65536, ""),
+                (1, 0, "/usr/bin/dns-sd"),
+                (2, 0, "-B"),
+                (2, 0, "_googlecast._tcp"),
             ],
         );
         let sent = applied(&encoded(&discover))
@@ -240,12 +304,13 @@ mod tests {
         assert_eq!(sent["arguments"][1], "_googlecast._tcp");
 
         let pick = request(
-            "choose-file",
+            13,
             "pick-media",
             &[
-                ("types", json!(["txt", "md"])),
-                ("limit", json!(4096)),
-                ("slice", json!("chosen-media")),
+                (1, 0, "txt"),
+                (1, 0, "md"),
+                (2, 4096, ""),
+                (3, 0, "chosen-media"),
             ],
         );
         let sent: Value = serde_json::from_str(&encoded(&pick)).expect("JSON serialization");
@@ -256,11 +321,7 @@ mod tests {
         assert_eq!(sent["limit"], 4096);
         assert_eq!(sent["slice"], "chosen-media");
 
-        let shadowed = request(
-            "run",
-            "discover",
-            &[("kind", json!("reveal")), ("ticket", json!("x"))],
-        );
+        let shadowed = request(1, "discover", &[(1, 0, "reveal"), (2, 0, "x")]);
         let sent: Value = serde_json::from_str(&encoded(&shadowed)).expect("JSON serialization");
         assert_eq!(sent["kind"], "run");
         assert_eq!(sent["ticket"], "discover");
@@ -279,6 +340,11 @@ mod tests {
         }));
         let result = applied(&discovery).expect("a valid answer is accepted");
         assert_eq!(result, json!({"status": 0, "stderr": ""}));
+        assert_eq!(
+            result_text(result.clone()),
+            json!({"status": 0, "stderr": ""}).to_string()
+        );
+        assert_eq!(result_text(Value::Null), String::new());
         assert_eq!(
             ffi::get_slice("mobile-success-browse").as_deref(),
             Some("_googlecast._tcp")

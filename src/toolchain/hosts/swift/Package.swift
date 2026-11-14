@@ -2,24 +2,39 @@
 import PackageDescription
 
 // The SwiftUI host for Osprey Native applications ([NATIVE-HOSTS-FAMILY]).
-// `run.sh` compiles the application to `build/libOspreyApp.a` and its generated
-// header, which the `OspreyApp` C target exposes; `swift build` alone cannot
-// build a host, because the application is linked in.
+// `view.sh` (and `run.sh`, which opens the same host as a bundled app) compiles
+// an application to `build/app/libOspreyApp.a` and its generated header,
+// which the `OspreyViewApp` C target exposes; `OspreyShared` leases the frame
+// the application writes, checks every row and draws it, and answers the
+// capabilities its asks name. `swift build` alone cannot build the host,
+// because the application is linked in.
+// The folder holding the application's archive: `build/app` for the Mac, and the folder
+// `ios.sh` names for an iOS slice, so one platform's archive never answers for another's.
+let applicationArchive = Context.environment["OSPREY_APP_ARCHIVE"] ?? "build/app"
+
 let package = Package(
     name: "OspreyHost",
     platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
-        .library(name: "OspreyNative", targets: ["OspreyNative"]),
-        .executable(name: "OspreyHost", targets: ["OspreyHost"]),
+        .library(name: "OspreyShared", targets: ["OspreyShared"]),
+        .executable(name: "OspreyViewHost", targets: ["OspreyViewHost"]),
+        .executable(name: "OspreyViewHostIOS", targets: ["OspreyViewHostIOS"]),
     ],
     targets: [
-        .target(name: "OspreyNative"),
         .target(
-            name: "OspreyApp",
-            path: "Sources/OspreyApp",
-            linkerSettings: [.unsafeFlags(["-L", "build/app"]), .linkedLibrary("OspreyApp")]
+            name: "OspreyViewApp",
+            path: "Sources/OspreyViewApp",
+            linkerSettings: [.unsafeFlags(["-L", applicationArchive]), .linkedLibrary("OspreyApp")]
         ),
-        .executableTarget(name: "OspreyHost", dependencies: ["OspreyNative", "OspreyApp"]),
+        // Films play through AVKit's player view, which nothing loads unless it is linked ([UI-COMPONENTS-MEDIA]).
+        .target(name: "OspreyShared", dependencies: ["OspreyViewApp"], linkerSettings: [.linkedFramework("AVKit")]),
+        .executableTarget(name: "OspreyViewHost", dependencies: ["OspreyShared", "OspreyViewApp"]),
+        .executableTarget(name: "OspreyViewHostIOS", dependencies: ["OspreyShared", "OspreyViewApp"]),
+        .testTarget(
+            name: "OspreySharedTests",
+            dependencies: ["OspreyShared"],
+            path: "Tests/OspreySharedTests"
+        ),
     ],
     swiftLanguageModes: [.v5]
 )

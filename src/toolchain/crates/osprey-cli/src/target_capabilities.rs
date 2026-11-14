@@ -352,6 +352,7 @@ impl AstVisitor for Capabilities<'_> {
             if self.target == "wasm32"
                 && !WEB_IMPORTS.contains(&name.as_str())
                 && !WASI_LIBC_IMPORTS.contains(&name.as_str())
+                && !crate::wasm::HOST_IMPORTS.contains(&name.as_str())
             {
                 self.reject(&format!("foreign C import `{name}`"));
             }

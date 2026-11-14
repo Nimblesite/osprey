@@ -9,15 +9,14 @@ use gpui_kit::component::{
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use serde_json::Value;
 
-use crate::envelope::Theme;
 use crate::host::HostView;
+use crate::tree::{flag, list, ordinal, string, whole, Theme, Tree};
 
 mod controls;
 mod icons;
 mod screens;
-pub(super) use icons::{icon_name, missing_symbol, symbol};
+pub(crate) use icons::{icon_name, missing_symbol, symbol};
 
 /// Mutable rendering context; it carries no application state or behaviour.
 pub(super) struct Ctx<'a, 'b> {
@@ -25,7 +24,6 @@ pub(super) struct Ctx<'a, 'b> {
     pub(super) window: &'a mut Window,
     pub(super) cx: &'a mut Context<'b, HostView>,
     pub(super) key: String,
-    pub(super) revision: u64,
     dark: bool,
     stack: Vec<String>,
     /// The theme a `themed` ancestor scopes to this subtree, else the application's.
@@ -52,7 +50,6 @@ pub fn region<'a, 'b>(
         window,
         cx,
         key: key.to_owned(),
-        revision: 0,
         stack: Vec::new(),
         scoped: None,
     };
@@ -78,23 +75,21 @@ pub(crate) fn colour(theme: Option<&Theme>, name: &str, dark: bool) -> Option<Rg
 /// Embeds a region and rejects recursive slot cycles instead of overflowing.
 fn embed(ctx: &mut Ctx, key: &str) -> AnyElement {
     if ctx.stack.iter().any(|item| item == key) {
-        return broken(ctx, format!("slot cycle at {key}"));
+        return broken(ctx.view, format!("slot cycle at {key}"));
     }
     let Some(region) = ctx.view.regions.get(key).cloned() else {
-        return broken(ctx, format!("missing region {key}"));
+        return broken(ctx.view, format!("missing region {key}"));
     };
     let previous = std::mem::replace(&mut ctx.key, key.to_owned());
-    let revision = std::mem::replace(&mut ctx.revision, region.revision);
     ctx.stack.push(key.to_owned());
     let element = node(ctx, &region.node);
     ctx.stack.pop();
     ctx.key = previous;
-    ctx.revision = revision;
     element
 }
 
 /// Maps exactly one node kind; unknown kinds become visible diagnostics.
-fn node(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn node(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     match string(node, "kind") {
         "stack" => stack(ctx, node),
         "text" => text(ctx, node),
@@ -106,13 +101,13 @@ fn node(ctx: &mut Ctx, node: &Value) -> AnyElement {
         "field" => controls::field(ctx, node),
         "toggle" => controls::toggle(ctx, node),
         "slot" => embed(ctx, string(node, "key")),
-        "scene" => crate::scene::node(ctx, node),
+        "scene" => crate::scene::node(ctx.view, ctx.window, ctx.cx, &ctx.key, node),
         kind => container(ctx, kind, node),
     }
 }
 
 /// Maps the remaining container and collection kinds.
-fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
+fn container(ctx: &mut Ctx, kind: &str, node: &Tree) -> AnyElement {
     match kind {
         "section" => screens::section(ctx, node),
         "screen" => screens::screen(ctx, node),
@@ -124,25 +119,20 @@ fn container(ctx: &mut Ctx, kind: &str, node: &Value) -> AnyElement {
         "picker" => controls::picker(ctx, node),
         "themed" => themed(ctx, node),
         "meter" => meter(ctx, node),
-        kind => broken(ctx, format!("unknown node kind {kind}")),
+        kind => broken(ctx.view, format!("unknown node kind {kind}")),
     }
 }
 
 /// Draws `body` with `theme` scoped to it, on its `background` token in its `text` ink
 /// ([UI-COMPONENTS], [UI-MACHINE-SKINS]); a malformed theme is refused visibly.
-fn themed(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let theme = match node
-        .get("theme")
-        .cloned()
-        .map(serde_json::from_value::<Theme>)
-    {
-        Some(Ok(theme)) => theme,
-        _ => return broken(ctx, "themed node without a valid theme".to_owned()),
+fn themed(ctx: &mut Ctx, node: &Tree) -> AnyElement {
+    let Some(theme) = Theme::told(node.get("theme")) else {
+        return broken(ctx.view, "themed node without a valid theme".to_owned());
     };
     let outer = ctx.scoped.replace(theme);
     let fill = tint(ctx, "background", ctx.cx.theme().background);
     let ink = tint(ctx, "text", ctx.cx.theme().foreground);
-    let body = node.get("body").cloned().unwrap_or(Value::Null);
+    let body = node.get("body").cloned().unwrap_or(Tree::Null);
     let element = self::node(ctx, &body);
     ctx.scoped = outer;
     div()
@@ -158,17 +148,9 @@ fn themed(ctx: &mut Ctx, node: &Value) -> AnyElement {
 
 /// Draws a labelled bar filled to `value` of `total` in the node's tone
 /// ([UI-COMPONENTS-METER]); the framework already clamped both.
-fn meter(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let total = node
-        .get("total")
-        .and_then(Value::as_i64)
-        .unwrap_or(1)
-        .max(1) as f32;
-    let value = node
-        .get("value")
-        .and_then(Value::as_i64)
-        .unwrap_or(0)
-        .max(0) as f32;
+fn meter(ctx: &mut Ctx, node: &Tree) -> AnyElement {
+    let total = whole(node, "total").max(1) as f32;
+    let value = whole(node, "value").max(0) as f32;
     let fill = tint(ctx, string(node, "tone"), ctx.cx.theme().accent);
     let track = tint(ctx, "secondary", ctx.cx.theme().muted).opacity(0.25);
     div()
@@ -191,7 +173,7 @@ fn meter(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Lays out a vertical or horizontal child stack with framework spacing.
-fn stack(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn stack(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     let vertical = string(node, "axis") != "horizontal";
     let grows = holds_scene(ctx, node, 0);
     div()
@@ -205,7 +187,7 @@ fn stack(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Whether a scene sits under this node, so its stacks pass free space down to it.
-fn holds_scene(ctx: &Ctx, node: &Value, depth: usize) -> bool {
+fn holds_scene(ctx: &Ctx, node: &Tree, depth: usize) -> bool {
     if depth > 32 {
         return false;
     }
@@ -223,7 +205,7 @@ fn holds_scene(ctx: &Ctx, node: &Value, depth: usize) -> bool {
 }
 
 /// Draws text using its role and semantic theme tone.
-fn text(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn text(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     let role = string(node, "role");
     // Body text takes the application's `text` token when its theme defines one.
     let fallback = if role == "caption" {
@@ -240,12 +222,12 @@ fn text(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Draws an icon and label without interpreting the label.
-fn labelled(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn labelled(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     icon_label(ctx, node, gap(ctx)).into_any_element()
 }
 
 /// Draws a label and its value on one line, the label muted.
-fn pair(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn pair(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     div()
         .flex()
         .gap(gap(ctx))
@@ -255,7 +237,7 @@ fn pair(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Draws the shared icon-and-label content used by labels and badges.
-fn icon_label(ctx: &mut Ctx, node: &Value, spacing: Pixels) -> Div {
+fn icon_label(ctx: &mut Ctx, node: &Tree, spacing: Pixels) -> Div {
     div()
         .flex()
         .items_center()
@@ -265,7 +247,7 @@ fn icon_label(ctx: &mut Ctx, node: &Value, spacing: Pixels) -> Div {
 }
 
 /// Draws a badge with its optional symbol and semantic tone.
-fn badge(ctx: &mut Ctx, node: &Value) -> AnyElement {
+fn badge(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     let colour = tint(ctx, string(node, "tone"), ctx.cx.theme().accent);
     Badge::new()
         .color(colour)
@@ -274,7 +256,7 @@ fn badge(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Starts the shared labelled vertical layout used by fields and progress.
-pub(super) fn labelled_column(node: &Value) -> Div {
+pub(super) fn labelled_column(node: &Tree) -> Div {
     div()
         .flex()
         .flex_col()
@@ -283,32 +265,26 @@ pub(super) fn labelled_column(node: &Value) -> Div {
 }
 
 /// Renders every child in a named JSON array.
-fn many(ctx: &mut Ctx, node: &Value, name: &str) -> Vec<AnyElement> {
+fn many(ctx: &mut Ctx, node: &Tree, name: &str) -> Vec<AnyElement> {
     list(node, name)
         .iter()
         .map(|child| self::node(ctx, child))
         .collect()
 }
 
-/// A control binding copied from the current region, never application state.
-#[derive(Clone)]
+/// A control binding copied from the frame, never application state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Binding {
-    pub(super) region: String,
-    pub(super) revision: u64,
-    pub(super) ordinal: u64,
+    pub(super) ordinal: i64,
 }
 
 /// Captures the binding identity for a control callback.
-pub(super) fn binding(ctx: &Ctx, ordinal: u64) -> Binding {
-    Binding {
-        region: ctx.key.clone(),
-        revision: ctx.revision,
-        ordinal,
-    }
+pub(super) fn binding(ordinal: i64) -> Binding {
+    Binding { ordinal }
 }
 
 /// Every control ID is anchored to its region key and framework ordinal.
-pub(super) fn control_id(ctx: &Ctx, ordinal: u64) -> String {
+pub(super) fn control_id(ctx: &Ctx, ordinal: i64) -> String {
     format!("{}:{ordinal}", ctx.key)
 }
 
@@ -332,8 +308,8 @@ fn caption(ctx: &Ctx, text: &str) -> Div {
 }
 
 /// Records a rejected mapping once (render runs every frame) and draws a red box naming it.
-pub(crate) fn broken(ctx: &mut Ctx, message: String) -> AnyElement {
-    ctx.view.diagnose_once(message.clone());
+pub(crate) fn broken(view: &mut HostView, message: String) -> AnyElement {
+    view.diagnose_once(message.clone());
     div()
         .border_1()
         .border_color(red())
@@ -344,99 +320,8 @@ pub(crate) fn broken(ctx: &mut Ctx, message: String) -> AnyElement {
 }
 
 /// Rejects a control that lacks the framework binding it must return.
-pub(super) fn unbound(ctx: &mut Ctx) -> AnyElement {
-    broken(ctx, format!("control in {} has no event ordinal", ctx.key))
-}
-
-/// Renders the collapsible host diagnostic strip, newest messages last.
-pub fn diagnostics(view: &mut HostView, cx: &mut Context<HostView>) -> AnyElement {
-    let messages = diagnostic_messages(view);
-    let metrics = view.animating && !crate::host::bare();
-    if messages.is_empty() && !metrics {
-        return div().into_any_element();
-    }
-    let expanded = !view.collapsed;
-    let mut strip = div()
-        .flex()
-        .flex_col()
-        .border_t_1()
-        .border_color(cx.theme().border)
-        .child(diagnostic_header(cx, messages.len(), expanded));
-    if expanded {
-        // Only the latest few lines show, so a burst of diagnostics cannot push the application off screen.
-        let recent = messages[messages.len().saturating_sub(6)..].to_vec();
-        strip = strip.children(diagnostic_lines(recent, cx));
-    }
-    if metrics {
-        strip = strip.child(div().text_sm().child(format!(
-            "fps {} dispatch {:.3} paint {:.3} frame {:.3} envelope {}",
-            view.fps, view.dispatch_ms, view.paint_ms, view.frame_ms, view.envelope_bytes
-        )));
-    }
-    strip.into_any_element()
-}
-
-/// Combines framework and renderer diagnostics without reordering either source.
-fn diagnostic_messages(view: &HostView) -> Vec<String> {
-    view.regions
-        .diagnostics()
-        .iter()
-        .chain(view.messages.iter())
-        .cloned()
-        .collect()
-}
-
-/// Draws the host-only disclosure control.
-fn diagnostic_header(cx: &mut Context<HostView>, count: usize, expanded: bool) -> Button {
-    let handle = cx.entity();
-    Button::new("host:diagnostics")
-        .ghost()
-        .label(format!(
-            "Diagnostics ({count}) {}",
-            if expanded { "▾" } else { "▸" }
-        ))
-        .on_click(move |_, _, cx| {
-            handle.update(cx, |view, cx| {
-                view.collapsed = !view.collapsed;
-                cx.notify();
-            })
-        })
-}
-
-/// Draws diagnostic messages in encounter order.
-fn diagnostic_lines(messages: Vec<String>, cx: &App) -> Vec<AnyElement> {
-    messages
-        .into_iter()
-        .map(|message| {
-            div()
-                .text_sm()
-                .text_color(cx.theme().danger)
-                .child(message)
-                .into_any_element()
-        })
-        .collect()
-}
-
-/// Reads a string field from a well-formed framework node.
-pub(super) fn string<'a>(node: &'a Value, name: &str) -> &'a str {
-    node.get(name).and_then(Value::as_str).unwrap_or("")
-}
-
-/// Reads a boolean field from a well-formed framework node.
-pub(super) fn flag(node: &Value, name: &str) -> bool {
-    node.get(name).and_then(Value::as_bool).unwrap_or(false)
-}
-
-/// Reads a control's issued event ordinal.
-pub(super) fn ordinal(node: &Value) -> Option<u64> {
-    node.get("event").and_then(Value::as_u64)
-}
-
-/// Reads an array field without allocating a default array.
-pub(super) fn list<'a>(node: &'a Value, name: &str) -> &'a [Value] {
-    node.get(name)
-        .and_then(Value::as_array)
-        .map_or(&[], Vec::as_slice)
+pub(super) fn unbound(view: &mut HostView, key: &str) -> AnyElement {
+    broken(view, format!("control in {key} has no event ordinal"))
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //! Implements [LSP-DEFINITION-LOCAL] and [LSP-REFERENCES-LOCAL].
 
 use lspkit::vfs::PositionEncoding;
-use osprey_ast::Program;
+use osprey_ast::{Position, Program};
 use osprey_syntax::{binding_ranges, binding_scope, BindingKind, BindingRange, Flavor};
 use std::ops::Range;
 
@@ -10,8 +10,12 @@ use super::{declaration_occurrence, symbol_matches};
 use crate::analysis::{collect_all_symbols, collect_symbols, SymbolInfo, SymbolKind};
 use crate::text::{occurrences, prefix_to, Occurrence};
 
-pub(super) struct Binding {
+pub(crate) struct Binding {
     pub(super) at: Occurrence,
+    /// A pattern binder's or lambda parameter's lexical region start and its
+    /// own position: the span holding the match arm or lambda its type is
+    /// published under ([LSP-HOVER-BINDERS]). `None` for every other binder.
+    pub(crate) introduced: Option<(Position, Position)>,
     candidates: Vec<Scoped>,
 }
 
@@ -19,9 +23,11 @@ struct Scoped {
     at: Occurrence,
     bytes: Range<usize>,
     scope: Range<usize>,
+    /// Whether a match arm or lambda introduces it, rather than a `let`.
+    introduces: bool,
 }
 
-pub(super) fn binding(
+pub(crate) fn binding(
     text: &str,
     program: &Program,
     flavor: Flavor,
@@ -34,8 +40,16 @@ pub(super) fn binding(
         .into_iter()
         .find(|found| found.line == cursor.0 && (found.start..=found.end).contains(&cursor.1))?;
     let offset = byte_offset(text, (word.line, word.start), enc)?;
-    let at = resolve(&candidates, offset)?.at.clone();
-    Some(Binding { at, candidates })
+    let resolved = resolve(&candidates, offset)?;
+    let introduced = resolved
+        .introduces
+        .then(|| position(text, resolved.scope.start).zip(position(text, resolved.bytes.start)))
+        .flatten();
+    Some(Binding {
+        at: resolved.at.clone(),
+        introduced,
+        candidates,
+    })
 }
 
 fn candidates(
@@ -59,6 +73,7 @@ fn candidates(
                 at,
                 bytes: b.range,
                 scope,
+                introduces: matches!(b.kind, BindingKind::PatternBinding | BindingKind::Parameter),
             })
         })
         .collect()
@@ -122,6 +137,18 @@ fn byte_offset(text: &str, cursor: (u32, u32), enc: PositionEncoding) -> Option<
     let line = text.split_inclusive('\n').nth(row)?;
     let start: usize = text.split_inclusive('\n').take(row).map(str::len).sum();
     Some(start + prefix_to(line, cursor.1, enc).len())
+}
+
+/// The compiler's position (1-based line, 0-based byte column) of byte `offset`.
+fn position(text: &str, offset: usize) -> Option<Position> {
+    let before = text.get(..offset)?;
+    let column = before
+        .rfind('\n')
+        .map_or(offset, |newline| offset - newline - 1);
+    Some(Position {
+        line: u32::try_from(before.matches('\n').count() + 1).ok()?,
+        column: u32::try_from(column).ok()?,
+    })
 }
 
 fn occurrence(text: &str, bytes: Range<usize>, enc: PositionEncoding) -> Option<Occurrence> {

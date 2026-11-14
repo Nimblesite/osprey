@@ -17,6 +17,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 | [jinja2](jinja2/NOTICE.md) | Pallets Jinja 3.1.6 | None identified; MIT Osprey implementation |
 | [micrograd](micrograd/NOTICE.md) | Andrej Karpathy, micrograd 0.1.0 and nn-zero-to-hero | None identified; MIT Osprey implementation |
 | [native](native/NOTICE.md) | Original Osprey framework | MIT |
+| [synth](synth/NOTICE.md) | Original Osprey synthesis library extracted from Prism | MIT |
 | [signal_flow](signal_flow/NOTICE.md) | Original Osprey signal-flow editor and designs | MIT |
 | [numpy](numpy/NOTICE.md) | NumPy 2.5.4 | None identified; MIT Osprey implementation |
 | [pydantic_ai](pydantic_ai/NOTICE.md) | Pydantic Services Inc., pydantic-ai 2.46.0 | None identified; MIT Osprey implementation |

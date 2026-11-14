@@ -401,6 +401,8 @@ export default function (eleventyConfig) {
   eleventyConfig.addPassthroughCopy("src/assets");
   eleventyConfig.addPassthroughCopy("src/css");
   eleventyConfig.addPassthroughCopy("src/js");
+  // Browsers ask for /favicon.ico whatever the page links.
+  eleventyConfig.addPassthroughCopy("src/favicon.ico");
   eleventyConfig.addPassthroughCopy("src/playground");
   copyBrowserLibraries(eleventyConfig);
   // Publish WebAssembly demo assets for the native /wasm/ page. The deploy

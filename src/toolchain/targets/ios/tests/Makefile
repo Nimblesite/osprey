@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank casting casting-headless casting-update examples inbox
+.PHONY: bank casting casting-headless casting-update examples inbox tally tally-headless
 
 ## bank: Talon Bank against its live API on iOS.
 bank: _ios-bank _runtime
@@ -32,4 +32,16 @@ examples: _ios-examples
 ## inbox: Smoke-test the built inbox app on iOS.
 inbox: _ios-inbox
 	OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/mobile/ios/run.sh --smoke
+
+## tally: Tally's view check on the SwiftUI host in an iPhone simulator, with its window open.
+tally:
+	open -a Simulator
+	$(MAKE) -f src/toolchain/targets/ios/tests/Makefile tally-headless
+
+## tally-headless: Tally's screen against goldens/ios, then its view check with no Simulator window
+##                 (OSPREY_UPDATE_GOLDENS=1 rewrites them for review).
+# The picture leaves the app running, so the view check also exercises its restart.
+tally-headless:
+	OSPREY_SWIFT_APP=src/osprey/examples/tally OSPREY_IOS_NAME=Tally OSPREY_IOS_ID=org.ospreylang.tally \
+		bash src/toolchain/hosts/swift/ios.sh ios-sim --golden --view-check
 endif

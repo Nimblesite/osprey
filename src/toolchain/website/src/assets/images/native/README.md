@@ -9,6 +9,12 @@
 | macos-painting.png | src/osprey/examples/gpui/painting/Screenshot.png |
 | macos-agent.png | src/osprey/examples/agent/goldens/macos-26/01-ready.png |
 | macos-synth.png | Fresh window-only capture of Prism Synth.app, 3 November 2026 |
+| tally-ios.webp | src/osprey/examples/tally/goldens/ios/1206-ready.png, top 1000 pixels, 600 wide |
+| tally-android.webp | src/osprey/examples/tally/goldens/android/1080-ready.png, top 900 pixels, 600 wide |
+| tally-macos-counted.webp | Fresh window-only capture of Tally.app (SwiftUI host) after three clicks of Add one, 14 November 2026; top 700 pixels, 900 wide |
+| tally-macos-night.webp | The same window after Use night colours |
+| bridge-row.jpg | Frame at 48 s of osprey-native-bridge.mp4 (the bridge tutorial) |
+| bridge-change.jpg | Frame at 395 s of osprey-native-bridge.mp4 |
 | web-bank.png | Fresh Chromium capture, 1440 × 960, local Talon Bank, 3 November 2026; waits for data-osprey-ready=true |
 
 PNGs preserve their source captures. Windows images come from WinUI self-tests with fixture data. The page reuses mobile simulator/emulator captures documented in ../mobile/README.md, the macOS Casting tutorial capture and the VS Code package guide capture. Captions identify the actual platform; these images do not establish support for other applications or hosts.

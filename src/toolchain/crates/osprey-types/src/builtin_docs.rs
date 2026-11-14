@@ -37,6 +37,7 @@ fn builtin_docs() -> impl Iterator<Item = &'static BuiltinDoc> {
     [
         crate::builtin_docs_core::CORE,
         crate::builtin_docs_signals::SIGNALS,
+        crate::builtin_docs_native::NATIVE,
         lang::TESTING,
         lang::STRINGS,
         lang::FUNCTIONAL,

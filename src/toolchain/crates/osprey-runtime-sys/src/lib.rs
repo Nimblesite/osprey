@@ -25,6 +25,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        unsafe_code,
+        reason = "drives the sealed FFI boundary this crate declares"
+    )]
     fn cell_roundtrip_and_free() {
         unsafe {
             let cell = osprey_ffi_cell();

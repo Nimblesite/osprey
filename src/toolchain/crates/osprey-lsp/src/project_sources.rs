@@ -80,6 +80,7 @@ impl Sources {
             siblings,
             current,
             configured: self.config.flavor,
+            checked: None,
         }
     }
 }

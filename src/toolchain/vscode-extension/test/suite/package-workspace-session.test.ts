@@ -1,328 +1,174 @@
+// [NATIVE-SHM-DELIVERY] [NATIVE-SHM-ASK]: one serialized session owns the live instance, publishes
+// every call's frame before answering its asks, and returns each completion as event kind 8.
 import * as assert from "assert";
-import { createWorkspaceSession, type SessionDeps, type WorkspaceSession } from "../../client/src/osprey-ui/session";
-import type { NativeRequest } from "../../client/src/osprey-ui/protocol";
+import { parseTouch, type FrameMessage, type RenderMessage } from "../../client/src/osprey-ui/session";
+import { frame, type ControlSpec } from "./native-rows-kit";
+import { harness, open, settle } from "./native-session-kit";
 
-/** Let the session's queued promise callbacks run before asserting on them. */
-const settle = (): Promise<void> =>
-  new Promise((resolve) => setImmediate(resolve));
+/** A frame that tells one region: theme record, region record with key and a text node. */
+const toldViews: readonly ControlSpec[] = [
+  { kind: 34, hint: "theme" },
+  { kind: 35, parent: 0, hint: "tokens" },
+  { kind: 33, parent: 0, hint: "feedback", weight: 1, ink: 160 },
+  { kind: 33, parent: 0, hint: "settle", weight: 1, ink: 240 },
+  { kind: 34, hint: "region" },
+  { kind: 33, parent: 4, hint: "key", words: "root" },
+  { kind: 34, parent: 4, hint: "node" },
+  { kind: 33, parent: 6, hint: "kind", words: "text" },
+];
 
-function envelope(state: string, revision: number, requests: NativeRequest[] = []): string {
-  return JSON.stringify({
-    version: 1, state, slices: [], diagnostics: [], theme: null, removed: [], requests,
-    patches: [{ key: "root", revision, node: { kind: "text", text: "Ready", role: "body", tone: "primary" } }],
+suite("native session", () => {
+  test("start runs the live instance once with its typed context and publishes the frame", async () => {
+    const { session, opens, sent } = harness();
+    await session.start(open);
+    assert.deepStrictEqual(opens, [open]);
+    assert.deepStrictEqual(sent[0], { type: "busy", active: true });
+    const published = sent.find((message): message is FrameMessage => message.type === "frame");
+    assert.ok(published);
+    assert.deepStrictEqual(published.diagnostics, []);
+    assert.ok(published.views.byteLength > 0 && published.text.byteLength > 0);
+    assert.strictEqual(sent[sent.length - 1]?.type, "busy");
   });
-}
 
-function recordedSession(initialRevision = 0, overrides: Partial<SessionDeps> = {}) {
-  const frames: Record<string, unknown>[] = [];
-  const sent: Record<string, unknown>[] = [];
-  const session = createWorkspaceSession({
-    run: async (frame) => {
-      frames.push(JSON.parse(frame));
-      const revision = initialRevision + frames.length;
-      return { stdout: envelope(`s${revision}`, revision), exitCode: 0 };
-    },
-    render: () => "HTML", send: (message) => { sent.push(message as Record<string, unknown>); },
-    execute: async () => undefined, now: () => 1, report: () => undefined, ...overrides,
+  test("a second start is ignored rather than opening another instance", async () => {
+    const { session, opens } = harness();
+    await session.start(open);
+    await session.start(open);
+    assert.strictEqual(opens.length, 1);
   });
-  return { session, frames, sent };
-}
 
-function refuseStaleAction(session: WorkspaceSession, sent: Record<string, unknown>[], active: boolean): void {
-  const before = sent.length;
-  session.message({ type: "event", region: "root", revision: 2, ordinal: 0, value: null });
-  assert.deepStrictEqual(sent.slice(before), [{ type: "busy", active }]);
-}
-
-function pendingSliceSession() {
-  const frames: Record<string, unknown>[] = [], held: ReadonlyMap<string, string>[] = [];
-  const replies: ((value: unknown) => void)[] = [];
-  const { session } = recordedSession(0, {
-    run: async (raw) => {
-      frames.push(JSON.parse(raw));
-      const revision = frames.length;
-      const requests = revision <= 2 ? [{ ticket: `pick-${revision}`, kind: "choose-file", slice: "document", limit: 1024, types: ["ospml"] }] : [];
-      return { stdout: envelope(`s${revision}`, revision, requests), exitCode: 0 };
-    },
-    execute: (_request, slices) => { held.push(slices); return new Promise(resolve => replies.push(resolve)); },
-  });
-  const deliver = (text: string): void => {
-    const reply = replies.shift();
-    assert.ok(reply, "a file request must be pending");
-    reply({ result: { path: "/picked/proof.ospml" }, slices: [{ key: "document", text }] });
-  };
-  return { session, frames, held, deliver };
-}
-
-suite("package workspace session", () => {
-  test("a refused action preserves the actual queued busy state without executing", async () => {
-    let hold = false, release = (): void => undefined, calls = 0;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    const { session, sent } = recordedSession(0, { run: async () => {
-      calls += 1;
-      if (hold) await gate;
-      return { stdout: envelope("s", 1), exitCode: 0 };
-    } });
-    await session.start({});
-    for (const active of [false, true]) {
-      hold = active;
-      if (active) session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
-      refuseStaleAction(session, sent, active);
-    }
-    release(); await settle();
-    assert.strictEqual(calls, 2, "only start and the valid action may execute");
-    session.dispose();
-  });
-  test("busy remains set until every queued runtime frame has finished", async () => {
-    let hold = false, release = (): void => undefined;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    const { session, sent } = recordedSession(0, { run: async () => {
-      if (hold) await gate;
-      return { stdout: envelope("s", 1), exitCode: 0 };
-    } });
-    await session.start({});
-    sent.length = 0;
-    hold = true;
-    for (let ordinal = 0; ordinal < 2; ordinal++) session.message({ type: "event", region: "root", revision: 1, ordinal, value: null });
+  test("slice writes are kept for the host and handed to the request that reads them", async () => {
+    const { session, executed, held, holds } = harness({ asks: [
+      { code: 100, ticket: "export", fields: [[1, 0, "<math>∧</math>"]] },
+      { code: 15, ticket: "save", fields: [[1, 0, "proof.html"], [2, 0, "export"]] },
+    ], answer: async () => ({ detail: "{\"found\":true}", slices: [{ key: "saved", text: "receipt é" }] }) });
+    await session.start(open);
     await settle();
-    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }]);
-    release();
-    await settle();
-    assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }, { type: "busy", active: false }]);
-    session.dispose();
-  });
-  test("retired file deliveries cannot enter a restarted session", async () => {
-    const { session, frames, held, deliver } = pendingSliceSession();
-    await session.start({ project: "old" });
-    await session.start({ project: "current" });
-    deliver("private retired proof");
-    await settle();
-    assert.strictEqual(frames.length, 2, "a retired completion cannot dispatch");
-    assert.strictEqual(held[1].get("document"), undefined, "retired text leaked into the current session");
-    deliver("current proof");
-    await settle();
-    assert.strictEqual(frames.length, 3);
-    assert.deepStrictEqual(frames[2].slices, { document: "current proof" });
-    session.dispose();
+    assert.strictEqual(executed.length, 1);
+    assert.strictEqual(held[0]?.get("export"), "<math>∧</math>");
+    // The application's own write and the adapter's delivery both reach the live instance for `native_slice`.
+    assert.deepStrictEqual(holds, [["export", "<math>∧</math>"], ["saved", "receipt é"]]);
   });
 
-  test("failed runtime commands report their exit code and available diagnostic output", async () => {
-    for (const stdout of ["", " runtime diagnostic "]) {
-      const reported: string[] = [];
-      const { session, sent } = recordedSession(0, {
-        run: async () => ({ stdout, exitCode: 7 }), report: (error) => { reported.push(error.message); },
-      });
-      await session.start({});
-      const message = `The Osprey workspace exited with code 7${stdout ? ": runtime diagnostic" : ""}`;
-      assert.deepStrictEqual(reported, [message]);
-      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message }, { type: "busy", active: false }]);
-      session.dispose();
-    }
-  });
-
-  test("runtime and rendering rejections remain visible even when they are not Error objects", async () => {
-    for (const failure of ["wire refused", new Error("wire refused")]) {
-      const { session, sent } = recordedSession(0, { run: async () => { throw failure; } });
-      await session.start({});
-      assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "wire refused" }, { type: "busy", active: false }]);
-      session.dispose();
-    }
-    const { session, sent } = recordedSession(0, { render: () => { throw new Error("render refused"); } });
-    await session.start({});
-    assert.deepStrictEqual(sent.slice(-2), [{ type: "fatal", message: "render refused" }, { type: "busy", active: false }]);
-    session.dispose();
-    await assert.rejects(session.start({}), /session is disposed/);
-  });
-
-  test("invalid edit sequences cannot execute or acknowledge a forged edit", async () => {
-    const { session, sent, frames } = recordedSession();
-    await session.start({});
-    const before = sent.length;
-    for (const edit of ["1", null, 0, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
-      session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit });
-    }
+  test("every capability request is answered with a completion event carrying its ticket and detail", async () => {
+    const { session, executed, events } = harness({ asks: [
+      { code: 11, ticket: "sdk/open", fields: [[1, 0, "vscode"], [2, 0, "document.open"]] },
+      { code: 13, ticket: "pick", fields: [[1, 0, "ospml"], [2, 10, ""], [3, 0, "document"]] },
+    ], answer: async (ask) => ({ detail: ask.kind === "choose-file" ? "/tmp/chosen.ospml" : "{\"opened\":true}" }) });
+    await session.start(open);
     await settle();
-    assert.strictEqual(frames.length, 1);
-    assert.strictEqual(sent.length, before);
-    session.dispose();
+    await settle();
+    assert.deepStrictEqual(executed.map((ask) => ask.kind), ["host-call", "choose-file"]);
+    const completions = events.filter((event) => event.kind === 8);
+    assert.deepStrictEqual(completions.map((event) => [event.words, event.detail, event.down]), [
+      ["sdk/open", "{\"opened\":true}", true],
+      ["pick", "/tmp/chosen.ospml", true],
+    ]);
   });
 
-  test("a rejected host capability is returned to Osprey as an explicit failed completion", async () => {
-    const frames: Record<string, unknown>[] = [];
-    const request: NativeRequest = { ticket: "refused", kind: "host-call" };
-    const { session } = recordedSession(0, {
-      run: async (frame) => {
-        frames.push(JSON.parse(frame));
-        return { stdout: envelope("s", 1, frames.length === 1 ? [request] : []), exitCode: 0 };
-      }, execute: async () => { throw "capability refused"; },
-    });
-    await session.start({});
+  test("a failed capability completes as a refusal with the reason and still draws a frame", async () => {
+    const { session, events, sent } = harness({ asks: [{ code: 10, ticket: "fetch", fields: [] }],
+      answer: async () => { throw new Error("Unsupported native capability: http"); } });
+    await session.start(open);
     await settle();
-    assert.deepStrictEqual(frames.at(-1)?.event,
-      { kind: "completed", now: 1, ticket: "refused", ok: false, error: "capability refused" });
-    session.dispose();
+    await settle();
+    const refused = events.find((event) => event.kind === 8);
+    assert.deepStrictEqual([refused?.words, refused?.detail, refused?.down], ["fetch", "Unsupported native capability: http", false]);
+    assert.ok(sent.filter((message) => message.type === "frame").length >= 2, "the refusal's frame is published");
   });
 
-  test("disposal quarantines a pending runtime response before it can render or execute capabilities", async () => {
-    let release: (result: { stdout: string; exitCode: number }) => void = () => undefined;
-    const pending = new Promise<{ stdout: string; exitCode: number }>((resolve) => { release = resolve; });
-    let executed = 0;
-    const { session, sent } = recordedSession(0, { run: () => pending, execute: async () => { executed++; } });
-    const started = session.start({});
+  test("a diagnostic ask shows the application's refusal reason", async () => {
+    const { session, sent } = harness({ asks: [{ code: 101, ticket: "That control is not available" }] });
+    await session.start(open);
+    const published = sent.find((message): message is FrameMessage => message.type === "frame");
+    assert.deepStrictEqual(published?.diagnostics, ["That control is not available"]);
+  });
+
+  test("image rows are resolved through the host's approved assets only", async () => {
+    const built = frame({ views: [{ kind: 12, words: "media/logo.png" }, { kind: 2, words: "Text" }] });
+    const { session, sent } = harness({ open: { shapes: built.shapes, views: built.views, text: built.text, asks: built.asks } });
+    await session.start(open);
+    const published = sent.find((message): message is FrameMessage => message.type === "frame");
+    assert.deepStrictEqual(published?.assets, { "media/logo.png": "asset:media/logo.png" });
+  });
+
+  test("a told frame is drawn by the renderer and published with its runs for scenes", async () => {
+    const built = frame({ views: toldViews });
+    const reply = { shapes: built.shapes, views: built.views, text: built.text, asks: built.asks };
+    const { session, sent } = harness({ open: reply, reply });
+    await session.start(open);
+    const published = sent.find((message): message is RenderMessage => message.type === "render");
+    assert.ok(published, JSON.stringify(sent.map((message) => message.type)));
+    assert.strictEqual(published.html, '<div class="osp-root"></div>');
+    assert.ok(published.views.byteLength > 0 && published.text.byteLength > 0);
+    // An unchanged region keeps its revision across redraws.
+    session.message({ type: "event", kind: 0, ordinal: 0, words: "" });
     await settle();
+    await settle();
+    const redrawn = sent.filter((message): message is RenderMessage => message.type === "render");
+    assert.strictEqual(redrawn.length, 2);
+  });
+
+  test("typed events are delivered in order and malformed events never reach the instance", async () => {
+    const { session, events } = harness();
+    await session.start(open);
+    for (const malformed of [null, "event", { type: "event" }, { type: "event", kind: 99 },
+      { type: "event", kind: 0, ordinal: -1 }, { type: "event", kind: 0, x: Number.NaN },
+      { type: "event", kind: 0, words: 7 }, { type: "nope" }]) session.message(malformed);
+    await settle();
+    assert.strictEqual(events.length, 0);
+    session.message({ type: "event", kind: 0, ordinal: 4, words: "text" });
+    session.message({ type: "event", kind: 2, ordinal: 1, x: 0.5, y: 1.5, down: true, shift: true });
+    await settle();
+    await settle();
+    assert.deepStrictEqual(events.map((event) => [event.kind, event.ordinal]), [[0, 4], [2, 1]]);
+    assert.deepStrictEqual([events[1]?.x, events[1]?.y, events[1]?.down, events[1]?.shift], [0.5, 1.5, true, true]);
+  });
+
+  test("an appearance change reaches the instance after it opened, never before", async () => {
+    const { session, events } = harness();
+    session.appearance(true);
+    await settle();
+    assert.strictEqual(events.length, 0);
+    await session.start(open);
+    session.appearance(false);
+    await settle();
+    await settle();
+    assert.deepStrictEqual(events.filter((event) => event.kind === 11).map((event) => event.down), [false]);
+  });
+
+  test("a frame whose asks are malformed is refused whole and reports a fatal reason", async () => {
+    const built = frame({ views: [{ kind: 0 }] });
+    const asks = new ArrayBuffer(32);
+    const view = new DataView(asks);
+    view.setBigInt64(0, 0n, true);
+    view.setBigInt64(8, 999n, true);
+    const { session, sent, events } = harness({ open: { shapes: built.shapes, views: built.views, text: built.text, asks } });
+    await session.start(open);
+    await settle();
+    const fatal = sent.find((message) => message.type === "fatal");
+    assert.ok(fatal && fatal.type === "fatal" && fatal.message.includes("unknown capability code"), JSON.stringify(sent));
+    assert.ok(!sent.some((message) => message.type === "frame"), "no bad frame reaches the webview");
+    assert.deepStrictEqual(events, []);
+  });
+
+  test("dispose terminates the instance and drops later calls", async () => {
+    const { session, events, sent, disposals } = harness();
+    await session.start(open);
     const before = sent.length;
     session.dispose();
-    release({ stdout: envelope("late", 1, [{ ticket: "late", kind: "host-call" }]), exitCode: 0 });
-    await started;
+    session.message({ type: "event", kind: 0, ordinal: 0 });
+    session.appearance(true);
+    await settle();
+    assert.strictEqual(disposals(), 1, "dispose reached the runtime");
+    assert.strictEqual(events.length, 0);
     assert.strictEqual(sent.length, before);
-    assert.strictEqual(executed, 0);
   });
 
-  test("runtime diagnostics explicitly refuse an edit before publishing the next screen", async () => {
-    let runs = 0;
-    const { session, sent } = recordedSession(0, { run: async () => {
-      const parsed = JSON.parse(envelope("s", ++runs));
-      return { stdout: JSON.stringify({ ...parsed, diagnostics: runs > 1 ? ["binding refused"] : [] }), exitCode: 0 };
-    } });
-    await session.start({});
-    session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit: 1 });
-    await settle();
-    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
-      { type: "render", html: "HTML", diagnostics: ["binding refused"] }, { type: "busy", active: false }]);
-    session.dispose();
-  });
-
-  test("expired edits are refused and a live edit cannot substitute its prior state", async () => {
-    const { session, frames, sent } = recordedSession();
-    await session.start({});
-    for (let revision = 1; revision <= 35; revision++) {
-      session.message({ type: "event", region: "root", revision, ordinal: 0, value: null });
-      await settle();
-    }
-    session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "expired", edit: 8 });
-    assert.deepStrictEqual(sent.at(-1), { type: "edit-result", edit: 8, accepted: false,
-      error: "The original text control is no longer available; the edit was not applied." });
-    session.message({ type: "event", region: "root", revision: 36, ordinal: 0, value: "live", edit: 9, prior: "forged" });
-    await settle();
-    assert.deepStrictEqual(frames.at(-1)?.event, { kind: "ui-edit", prior: "s36", region: "root", revision: 36, ordinal: 0, value: "live", now: 1 });
-    session.dispose();
-  });
-
-  test("an edit uses its issued snapshot and receives acknowledgment before the render", async () => {
-    const { session, frames, sent } = recordedSession();
-    await session.start({});
-    session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
-    await settle();
-    session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: " draft ", edit: 7 });
-    await settle();
-    assert.strictEqual(frames.length, 3);
-    assert.deepStrictEqual(frames[2], { operation: "dispatch", state: "s2", event: {
-      kind: "ui-edit", prior: "s1", region: "root", revision: 1, ordinal: 0, value: " draft ", now: 1,
-    } });
-    assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 7, accepted: true },
-      { type: "render", html: "HTML", diagnostics: [] }, { type: "busy", active: false }]);
-    session.dispose();
-  });
-
-  test("an edit from an unknown revision is explicitly refused without dispatch", async () => {
-    const { session, frames, sent } = recordedSession(3);
-    await session.start({});
-    session.message({ type: "event", region: "root", revision: 3, ordinal: 0, value: "draft", edit: 8 });
-    await settle();
-    assert.strictEqual(frames.length, 1);
-    assert.deepStrictEqual(sent.at(-1), { type: "edit-result", edit: 8, accepted: false,
-      error: "The original text control is no longer available; the edit was not applied." });
-    session.dispose();
-  });
-
-  test("start applies keyed regions and executes only requests from the envelope", async () => {
-    const frames: string[] = [];
-    const sent: unknown[] = [];
-    const executed: NativeRequest[] = [];
-    const request: NativeRequest = { ticket: "snapshot", kind: "host-call", namespace: "vscode", operation: "workspace.snapshot", arguments: {} };
-    const session = createWorkspaceSession({
-      run: async (frame) => {
-        frames.push(frame);
-        return { stdout: frame.includes('"operation":"start"') ? envelope("s1", 1, [request]) : envelope("s2", 2), exitCode: 0 };
-      },
-      render: (_regions, _diagnostics, _theme) => "HTML",
-      send: (message) => { sent.push(message); },
-      execute: async (item) => { executed.push(item); return { trusted: true }; },
-      now: () => 7,
-      report: () => undefined,
-    });
-    await session.start({ platform: "vscode" });
-    await settle();
-    assert.ok(sent.some((message) => (message as { html?: string }).html === "HTML"));
-    assert.deepStrictEqual(executed.map((item) => item.ticket), ["snapshot"]);
-    assert.ok(frames.some((frame) => frame.includes('"kind":"completed"') && frame.includes('"state":"s1"')));
-    assert.ok(!frames.some((frame) => frame.includes('"operation":"dispatch"') && !frame.includes('"completed"')));
-  });
-
-  test("a forged or stale control event never reaches the runtime", async () => {
-    const frames: string[] = [];
-    const session = createWorkspaceSession({
-      run: async (frame) => { frames.push(frame); return { stdout: envelope("s1", 4), exitCode: 0 }; },
-      render: () => "HTML", send: () => undefined, execute: async () => undefined, now: () => 1, report: () => undefined,
-    });
-    await session.start({});
-    const before = frames.length;
-    session.message({ type: "event", region: "root", revision: 3, ordinal: 0, value: "forged" });
-    session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: { forged: true } });
-    await settle();
-    assert.strictEqual(frames.length, before);
-    session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: "real" });
-    await settle();
-    assert.ok(frames.some((frame) => frame.includes('"state":"s1"') && frame.includes('"value":"real"')));
-  });
-
-  test("capability executions receive host-held slices and their deliveries ride the next frame", async () => {
-    const frames: Record<string, unknown>[] = [];
-    const received: { request: NativeRequest; slices: ReadonlyMap<string, string> }[] = [];
-    const request: NativeRequest = { ticket: "save", kind: "store-write", name: "lessons/progress.json", slice: "lessons:progress" };
-    const envelopeWithSlice = (state: string, revision: number, withRequest: boolean): string => JSON.stringify({
-      version: 1, state, diagnostics: [], theme: null, removed: [], patches: [{ key: "root", revision, node: { kind: "text", text: "Ready" } }],
-      requests: withRequest ? [request] : [],
-      slices: withRequest ? [{ key: "lessons:progress", text: "{\"completed\":[]}" }] : [],
-    });
-    const session = createWorkspaceSession({
-      run: async (frame) => {
-        frames.push(JSON.parse(frame));
-        const started = frames.length === 1;
-        return { stdout: envelopeWithSlice(started ? "s1" : "s2", frames.length, started), exitCode: 0 };
-      },
-      render: () => "HTML", send: () => undefined,
-      execute: async (executed, held) => {
-        received.push({ request: executed, slices: held });
-        return { result: { path: "lessons/progress.json" }, slices: [{ key: "host:facts", text: "written" }] };
-      },
-      now: () => 1, report: () => undefined,
-    });
-    await session.start({});
-    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await settle();
-    assert.strictEqual(received.length, 1);
-    assert.strictEqual(received[0].slices.get("lessons:progress"), "{\"completed\":[]}");
-    assert.strictEqual(frames[0].slices, undefined);
-    const completion = frames.at(-1);
-    assert.deepStrictEqual((completion?.event as Record<string, unknown>)?.result, { path: "lessons/progress.json" });
-    assert.deepStrictEqual(completion?.slices, { "lessons:progress": "{\"completed\":[]}", "host:facts": "written" });
-    session.dispose();
-  });
-
-  test("a foreign executor result is delivered untouched even when it names a result member", async () => {
-    const frames: Record<string, unknown>[] = [];
-    const session = createWorkspaceSession({
-      run: async (frame) => {
-        frames.push(JSON.parse(frame));
-        return { stdout: envelope("s1", 1, frames.length === 1 ? [{ ticket: "facts", kind: "host-call" }] : []), exitCode: 0 };
-      },
-      render: () => "HTML", send: () => undefined,
-      execute: async () => ({ result: "inner", authority: "vscode" }),
-      now: () => 1, report: () => undefined,
-    });
-    await session.start({});
-    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await settle();
-    assert.deepStrictEqual((frames.at(-1)?.event as Record<string, unknown>)?.result, { result: "inner", authority: "vscode" });
-    session.dispose();
+  test("parseTouch defaults only fields the shared event leaves out", () => {
+    assert.deepStrictEqual(parseTouch({ type: "event", kind: 1, ordinal: 2 }), {
+      kind: 1, ordinal: 2, words: "", detail: "", x: 0, y: 0, down: false, shift: false });
+    assert.strictEqual(parseTouch({ type: "event", kind: 12 }), undefined);
+    assert.strictEqual(parseTouch({ type: "event", kind: 0, ordinal: 1.5 }), undefined);
   });
 });

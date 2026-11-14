@@ -111,8 +111,9 @@ sealed partial class HostWindow : Window
     {
         try
         {
-            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile)) { Steady = steady };
-            opened.Begin(arguments);
+            var opened = new Session(Library.Open(library), Store.RootFor(library), root, DispatcherQueue, Report, new Pickers(Pick, PickFile, Save)) { Steady = steady };
+            root.ActualThemeChanged += (_, _) => opened.Appear(Dark(root));
+            opened.Begin(arguments, Dark(root));
             return opened;
         }
         catch (Exception problem) when (problem is HostException or DllNotFoundException or BadImageFormatException)
@@ -122,7 +123,11 @@ sealed partial class HostWindow : Window
         }
     }
 
-    /// <summary>Shows diagnostics in the info bar; an envelope without any leaves the last ones showing.</summary>
+    static bool Dark(FrameworkElement element) =>
+        element.ActualTheme == ElementTheme.Dark
+        || (element.ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
+
+    /// <summary>Shows diagnostics in the info bar; a frame without any leaves the last ones showing.</summary>
     void Report(IReadOnlyList<string> diagnostics)
     {
         if (diagnostics.Count == 0)
@@ -162,6 +167,18 @@ sealed partial class HostWindow : Window
     {
         var picker = new Microsoft.Windows.Storage.Pickers.FolderPicker(AppWindow.Id);
         var picked = await picker.PickSingleFolderAsync();
+        return picked?.Path;
+    }
+
+    async Task<string?> Save(string suggested)
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, Handle);
+        var name = Path.GetFileName(suggested);
+        picker.SuggestedFileName = name.Length == 0 ? "export" : name;
+        var extension = Path.GetExtension(suggested);
+        picker.FileTypeChoices.Add("File", [string.IsNullOrEmpty(extension) ? ".txt" : extension]);
+        var picked = await picker.PickSaveFileAsync();
         return picked?.Path;
     }
 }

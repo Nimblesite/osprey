@@ -19,5 +19,6 @@ ok 4 - retry channels carry text boolean float checked and Unit payloads
 ok 5 - scripted list and map candidates drive one retry cursor
 ok 6 - nested retry regions override and restore around a shared budget
 ok 7 - every perform site reaches the same retry handler
-1..7
-# tests=7 passed=7 failed=0 skipped=0
+ok 8 - a file-scope list replaced by a literal inside a handler stays a real list
+1..8
+# tests=8 passed=8 failed=0 skipped=0

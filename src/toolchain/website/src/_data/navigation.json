@@ -19,7 +19,7 @@
     },
     {
       "text": "Discord",
-      "url": "https://discord.gg/YFDb9BnbUh",
+      "url": "https://discord.gg/EGk3XhcGyy",
       "external": true,
       "cta": true
     }
@@ -107,6 +107,14 @@
         {
           "text": "Osprey Native",
           "url": "/docs/osprey-native/"
+        },
+        {
+          "text": "Build a counter with Osprey Native",
+          "url": "/docs/osprey-native/first-app/"
+        },
+        {
+          "text": "The Osprey Native bridge",
+          "url": "/docs/osprey-native/bridge/"
         },
         {
           "text": "Web apps",
@@ -290,7 +298,7 @@
         },
         {
           "text": "Discord",
-          "url": "https://discord.gg/YFDb9BnbUh"
+          "url": "https://discord.gg/EGk3XhcGyy"
         },
         {
           "text": "GitHub",

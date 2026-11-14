@@ -1001,6 +1001,7 @@ jobs:
           cache-dependency-path: src/toolchain/website/package-lock.json
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo registry and target
@@ -1012,7 +1013,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-website-wasm-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
       # Website tests execute native documentation examples as well as WASM.
@@ -1072,6 +1073,9 @@ jobs:
     timeout-minutes: 18
     steps:
       - uses: actions/checkout@v7
+      # The phone goldens are LFS-stored; a pointer would reach scripts/mobile/goldens.py as a picture.
+      - name: Fetch the Android phone goldens
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/tally/goldens/android/**"
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -1159,13 +1163,17 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
+          # The phone goldens are named by width (tally's is 1080-ready.png), so CI runs the Pixel 7
+          # they were taken on; the runner's default device is 320 pixels wide and has no golden.
+          profile: pixel_7
           script: |
             make -C src/toolchain/targets/android/tests inbox
+            make -C src/toolchain/targets/android/tests tally-headless
             mkdir -p src/osprey/examples/projects/modules/mobile/android/build
             adb logcat -v threadtime > src/osprey/examples/projects/modules/mobile/android/build/logcat.txt &
             make -C src/toolchain/targets/android/tests bank
-            src/osprey/examples/projects/modules/mobile/android/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
-            cd src/osprey/examples/mobile/android && ./gradlew --console=plain :app:lintDebug
+            scripts/mobile/gradlew -p src/osprey/examples/projects/modules/mobile/android --console=plain :app:lintDebug
+            scripts/mobile/gradlew -p src/osprey/examples/mobile/android --console=plain :app:lintDebug
 
       - name: Native bank Android results
         if: always()
@@ -1176,6 +1184,7 @@ jobs:
             src/osprey/examples/projects/modules/mobile/android/build/instrumentation.txt
             src/osprey/examples/projects/modules/mobile/android/build/logcat.txt
             src/osprey/examples/projects/modules/mobile/android/build/screenshots/
+            src/toolchain/hosts/android/build/*.png
             src/osprey/examples/projects/modules/mobile/android/app/build/reports/
           if-no-files-found: ignore
           retention-days: 7
@@ -1237,23 +1246,38 @@ jobs:
           docker rm osprey-web-compiler-ci
 
   # iOS/macOS device and simulator builds, simulator tests and the native
-  # Workbench host. macos-15 is ARM64, matching the simulator archive.
+  # Workbench host. The iOS parts run on macos-26. Both images are ARM64,
+  # matching the simulator archive.
   test-apple:
     name: "Tests: Apple (${{ matrix.part }})"
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner || 'macos-15' }}
     timeout-minutes: ${{ matrix.minutes }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # The simulator corpus alone takes most of a part, so the apps run beside it, not after it.
           - part: iOS
+            runner: macos-26
             minutes: 22
-            run: make -C src/toolchain/targets/ios/tests examples inbox
+            run: make -C src/toolchain/targets/ios/tests examples
+          - part: iOS apps
+            runner: macos-26
+            minutes: 22
+            run: make -C src/toolchain/targets/ios/tests inbox tally-headless
           - part: macOS
             minutes: 15
-            run: make -C src/toolchain/targets/macos/tests examples
+            run: make -C src/toolchain/targets/macos/tests examples tally-headless tally
+          - part: Light Orchestra
+            minutes: 15
+            run: |
+              make _runtime _runtime_macos
+              target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=gc
+              target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=arc
+              make -C src/toolchain/targets/macos/tests pocket-orchestra-headless
+              make -C src/toolchain/targets/macos/tests pocket-orchestra
           - part: Qwen pull
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless
@@ -1264,9 +1288,14 @@ jobs:
             minutes: 15
             run: |
               make _runtime _runtime_macos
-              cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-              bash src/osprey/workbench/hosts/apple/run.sh --build
-              swift test --package-path src/osprey/workbench/hosts/apple
+              make -C src/toolchain/targets/macos/tests _workbench_interactions
+          # The import memory soak renders the whole app 40,000 times, about seven minutes on a
+          # hosted runner, so it runs beside the other Workbench suites rather than after them.
+          - part: Workbench memory
+            minutes: 15
+            run: |
+              make _runtime _runtime_macos
+              make -C src/toolchain/targets/macos/tests _workbench_memory
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1276,9 +1305,11 @@ jobs:
         run: command -v jq >/dev/null || brew install jq
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore the compiler's cargo cache
+        id: cargo
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -1286,13 +1317,52 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
+      # that is only restored goes stale for good when the runner's rustc moves.
+      - name: Build the compiler
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save the compiler's cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
+
+      - uses: actions/setup-node@v7
+        if: matrix.part == 'Light Orchestra'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install orchestra controller browsers
+        if: matrix.part == 'Light Orchestra'
+        run: |
+          npm ci --prefix src/toolchain/website
+          npx --prefix src/toolchain/website playwright install chromium webkit
 
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
         run: ${{ matrix.run }}
+
+      - name: Orchestra controller screenshots and captured audio
+        if: ${{ always() && matrix.part == 'Light Orchestra' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: orchestra-integration
+          path: |
+            target/orchestra/*.png
+            target/orchestra/controller-audio.f32
+            target/orchestra/diagnostics/*.jsonl
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Native bank simulator results
         if: ${{ always() && matrix.part == 'Talon Bank' }}
@@ -1384,9 +1454,11 @@ jobs:
           lfs: true
 
       - name: Install Rust
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore the compiler's cargo cache
+        id: cargo
         uses: actions/cache/restore@v6
         with:
           path: |
@@ -1394,8 +1466,24 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      # Only these macOS jobs build the compiler on macOS, so they save what they build: a cache
+      # that is only restored goes stale for good when the runner's rustc moves.
+      - name: Build the compiler
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+
+      - name: Save the compiler's cargo cache
+        if: steps.cargo.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ steps.cargo.outputs.cache-primary-key }}
 
       - name: Host tests and the self-test against goldens
         id: agent-check

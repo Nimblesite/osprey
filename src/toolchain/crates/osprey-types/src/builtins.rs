@@ -108,6 +108,7 @@ fn build_base_env() -> TypeEnv {
     runtime_group(&mut e, concurrency::declare);
     runtime_group(&mut e, host::websocket);
     runtime_group(&mut e, host::terminal);
+    runtime_group(&mut e, host::native_frame);
     gpu::declare(&mut e);
     for name in e.bound_names() {
         e.mark_builtin(&name);

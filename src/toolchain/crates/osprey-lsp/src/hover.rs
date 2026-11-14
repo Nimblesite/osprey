@@ -18,6 +18,7 @@ use osprey_syntax::Flavor;
 use crate::analysis::{builtin_hover, collect_all_symbols, SymbolInfo, SymbolKind};
 use crate::features::scope::enclosing_function;
 use crate::features::{best_match, nth_line, symbol_matches, word_under};
+use crate::inferred::{Inferred, Typed};
 use crate::mlrender;
 use crate::reference_docs::{keyword_hover, type_hover};
 use crate::workspace;
@@ -55,11 +56,12 @@ pub(crate) fn hover(
         }
     }
     let symbols = collect_all_symbols(&program);
+    let doc = project.typed(text, &program);
     // A `[Symbol]` intra-doc link under the cursor resolves to the referenced
     // element's own hover — the whole dotted target (`Effect.op`), not just the
     // sub-word the cursor happens to sit on ([DOC-LINK]).
     if let Some(target) = doc_link_target(text, line, character) {
-        if let Some(hov) = resolve_link(&symbols, &target, &program, flavor) {
+        if let Some(hov) = resolve_link(&symbols, &target, &doc, flavor) {
             return Some(hov);
         }
     }
@@ -68,25 +70,48 @@ pub(crate) fn hover(
     {
         return Some(hov);
     }
+    if let Some(hov) = binder_hover(text, &doc, flavor, &word, (line, character), enc) {
+        return Some(hov);
+    }
     match best_match(&symbols, &word, line) {
-        Some(sym) => Some(symbol_hover(sym, &program, flavor)),
+        Some(sym) => Some(symbol_hover(sym, &doc, flavor)),
         None => crate::features::variants::hover(&program.statements, &word, flavor)
             .or_else(|| builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor))
-            .or_else(|| written_hover(&symbols, &word, line, &program, flavor))
-            .or_else(|| project_hover(siblings, &word, flavor))
+            .or_else(|| written_hover(&symbols, &word, line, &doc, flavor))
+            .or_else(|| project_hover(project, &word, flavor))
             .or_else(|| project_variant_hover(siblings, &word, flavor))
             .or_else(|| keyword_hover(&word, flavor)),
     }
 }
 
+/// A match-arm pattern binder or lambda parameter, where it is bound and where
+/// it is read. Neither is a `let` nor a declaration's parameter, so the checker
+/// publishes its type under the arm or lambda that introduces it, which opens
+/// the binder's lexical region. Resolved before any declaration:
+/// the binder shadows a same-named one. Implements [LSP-HOVER-BINDERS].
+fn binder_hover(
+    text: &str,
+    doc: &Typed<'_>,
+    flavor: Flavor,
+    word: &str,
+    cursor: (u32, u32),
+    enc: PositionEncoding,
+) -> Option<String> {
+    let binding = crate::features::scope::binding(text, doc.program, flavor, word, cursor, enc)?;
+    let (region, declared) = binding.introduced?;
+    let types = doc.inferred();
+    let ty = Inferred::rendered(types.binder_type(word, region, declared)?);
+    Some(mlrender::fenced(flavor, &format!("{word}: {ty}")))
+}
+
 /// A symbol declared in a sibling file of the same project. The open buffer is
 /// searched first — a local declaration shadows an imported one — and a
 /// standalone script never reaches here at all. Implements [LSP-WORKSPACE].
-fn project_hover(siblings: &[workspace::Sibling], word: &str, flavor: Flavor) -> Option<String> {
-    siblings.iter().find_map(|sibling| {
+fn project_hover(project: &workspace::View, word: &str, flavor: Flavor) -> Option<String> {
+    project.siblings.iter().find_map(|sibling| {
         let symbols = collect_all_symbols(&sibling.program);
         let found = symbols.iter().find(|s| symbol_matches(s, word))?;
-        Some(symbol_hover(found, &sibling.program, flavor))
+        Some(symbol_hover(found, &project.typed_sibling(sibling), flavor))
     })
 }
 
@@ -138,7 +163,7 @@ fn doc_link_target(text: &str, line: u32, character: u32) -> Option<String> {
 fn resolve_link(
     symbols: &[SymbolInfo],
     target: &str,
-    program: &Program,
+    doc: &Typed<'_>,
     flavor: Flavor,
 ) -> Option<String> {
     let head = target
@@ -148,7 +173,7 @@ fn resolve_link(
     symbols
         .iter()
         .find(|symbol| symbol_matches(symbol, head))
-        .map(|s| symbol_hover(s, program, flavor))
+        .map(|s| symbol_hover(s, doc, flavor))
         .or_else(|| builtin_doc(head, flavor))
 }
 
@@ -156,14 +181,14 @@ fn resolve_link(
 /// Both the fence language and the signature are re-spelled in the document's
 /// **authoring** flavor ([`mlrender`]) — an ML author never wrote `fn f(x: int)`
 /// and should not be shown it. Implements [LSP-FLAVOR-RENDER], [FLAVOR-ML-FN].
-fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
-    let filled = inferred_symbol(s, program);
+fn symbol_hover(s: &SymbolInfo, doc: &Typed<'_>, flavor: Flavor) -> String {
+    let filled = inferred_symbol(s, doc);
     let code = match (filled.kind, &filled.signature) {
         (_, Some(sig)) => sig.clone(),
         (SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature, None) => {
             format!("{} {}", filled.kind.as_str(), filled.name)
         }
-        (_, None) => format!("{}: {}", filled.name, displayed_type(&filled, program)),
+        (_, None) => format!("{}: {}", filled.name, displayed_type(&filled, doc)),
     };
     let code = mlrender::signature(flavor, &code);
     let mut parts = vec![format!("```{}\n{code}\n```", mlrender::fence(flavor))];
@@ -185,10 +210,10 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 /// about the function). Hover is the main way a reader recovers the types the
 /// source deliberately omits, so it must answer from inference.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-fn inferred_symbol(s: &SymbolInfo, program: &Program) -> SymbolInfo {
+fn inferred_symbol(s: &SymbolInfo, doc: &Typed<'_>) -> SymbolInfo {
     let mut filled = s.clone();
     if s.kind == SymbolKind::Function {
-        crate::analysis::fill_inferred(&mut filled, &osprey_types::infer_program(program));
+        crate::analysis::fill_inferred(&mut filled, &doc.inferred());
     }
     filled
 }
@@ -196,14 +221,14 @@ fn inferred_symbol(s: &SymbolInfo, program: &Program) -> SymbolInfo {
 /// The type shown for a non-function symbol: its declared/category type, or —
 /// for an unannotated `let` — the type the checker inferred for that binding.
 /// Implements [LSP-HOVER-VARIABLES]
-fn displayed_type(s: &SymbolInfo, program: &Program) -> String {
+fn displayed_type(s: &SymbolInfo, doc: &Typed<'_>) -> String {
     if !s.ty.is_empty() {
         return s.ty.clone();
     }
-    let types = osprey_types::infer_program(program);
+    let types = doc.inferred();
     types
-        .source_let_type(None, s.position)
-        .and_then(|ty| crate::analysis::shown(ty, &types))
+        .let_type(s.position)
+        .and_then(|ty| types.shown(ty))
         .unwrap_or_default()
 }
 
@@ -219,10 +244,10 @@ fn written_hover(
     symbols: &[SymbolInfo],
     word: &str,
     line: u32,
-    program: &Program,
+    doc: &Typed<'_>,
     flavor: Flavor,
 ) -> Option<String> {
-    parameter_hover(symbols, word, line, program, flavor).or_else(|| type_hover(word, flavor))
+    parameter_hover(symbols, word, line, doc, flavor).or_else(|| type_hover(word, flavor))
 }
 
 /// A parameter of the function whose declaration encloses `line`.
@@ -235,19 +260,19 @@ fn parameter_hover(
     symbols: &[SymbolInfo],
     word: &str,
     line: u32,
-    program: &Program,
+    doc: &Typed<'_>,
     flavor: Flavor,
 ) -> Option<String> {
     let owner = enclosing_function(symbols, line)?;
     let index = owner.parameters.iter().position(|(name, _)| name == word)?;
     let (name, written) = owner.parameters.get(index)?;
     let ty = if written.is_empty() {
-        inferred_parameter(program, &owner.name, index)?
+        inferred_parameter(doc, owner, index)?
     } else {
         written.clone()
     };
     let code = mlrender::fenced(flavor, &format!("{name}: {ty}"));
-    Some(match parameter_doc(program, owner.position, name) {
+    Some(match parameter_doc(doc.program, owner.position, name) {
         Some(text) => format!("{code}\n\n{text}"),
         None => code,
     })
@@ -292,11 +317,10 @@ impl AstVisitor for FunctionDoc {
 /// The checker's type for one parameter, rendered the way a declaration hover
 /// renders it — holes and all, so the two views cannot disagree
 /// ([TYPE-RENDER-HOLES]).
-fn inferred_parameter(program: &Program, function: &str, index: usize) -> Option<String> {
-    osprey_types::infer_program(program)
-        .param_types(function)?
-        .get(index)
-        .map(osprey_types::render_with_holes)
+fn inferred_parameter(doc: &Typed<'_>, function: &SymbolInfo, index: usize) -> Option<String> {
+    let types = doc.inferred();
+    let ty = types.param_types(function)?.get(index)?;
+    Some(Inferred::rendered(ty))
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 // Implements [WORKBENCH-VSIX]: the shared Osprey app hosted without a project.
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { Uri, window, type ExtensionContext } from "vscode";
@@ -27,7 +28,8 @@ function application(context: ExtensionContext): NativeApplication {
   const assets = path.join(platform, "workbench");
   return { key: "workbench", artifact: path.join(platform, "workbench.wasm"), assets, stylesheet: "workbench.css", symbols: "symbols.json",
     context: nativeContext([]), execute: createLocalExecutor({ assetRoot: assets, dialogs: documentDialogs(),
-      storeRoot: path.join(context.globalStorageUri.fsPath, "workbench") }) };
+      storeRoot: path.join(context.globalStorageUri.fsPath, "workbench") }),
+    ...(fs.existsSync(assets) ? { assets } : {}) };
 }
 
 /** Open the same Osprey workbench used by browser and native hosts. */

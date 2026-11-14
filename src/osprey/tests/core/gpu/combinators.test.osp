@@ -1,22 +1,16 @@
-// withBuffer, gpuSatisfies, withIndices, iotaError and exactArithmetic are the
-// testing prelude's [TESTING-ARITH-POLICY] GPU helpers: naming one attaches the
-// one shared copy, so this file declares none of its own.
-// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and
-// one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to
-// reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-
-// FUSE], [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md).
+// withBuffer, gpuSatisfies, withIndices, iotaError and exactArithmetic are the testing prelude's [TESTING-ARITH-POLICY] GPU helpers: naming one attaches the one shared copy, so this file declares none of its own.
+// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-FUSE], [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md).
 /// The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot.
 fn emptyInts() -> Result<GpuBuffer<int>, Error> = toGpu([])
 fn emptyFloats() -> Result<GpuBuffer<float>, Error> = toGpu([])
 /// sumI and mulI are the associative int combines fold and scan share.
 fn sumI(a, b) = (a + b)
 fn mulI(a, b) = (a * b)
-/// subI and horner are deliberately non-commutative. Left-to-right is the only traversal that reproduces their results, so every assertion on them pins the order [GPU-
-/// BACKEND-HOST] rather than merely the element set.
+/// subI and horner are deliberately non-commutative: left-to-right is the only traversal that reproduces their results, so every assertion on them pins the order [GPU-BACKEND-HOST] rather than merely the element set.
 fn subI(a, b) = (a - b)
 fn horner(a, d) = (((a * 10) ) + d)
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
-fn maxI(a, b: int) = match a > b { true => a false => b }
+fn maxI(a, b) = match a > b { true => a false => b }
 fn orB(a, b) = a || b
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
@@ -26,7 +20,7 @@ fn countTrue(a, flag) = match flag {
 /// dbl, inc and half are the one-line stages the deep chains are built from.
 fn dbl(x) = (x * 2)
 fn inc(x) = (x + 1)
-fn half(x: float) = x * 0.5
+fn half(x) = x * 0.5
 /// toBit widens a bool element back to an int one, closing the type cycle int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow.
 fn toBit(b) = match b { true => 1 false => 0 }
 /// isEven and isOddP are each other's negation; isOddP is spelled with `!` so the predicate slot is fed by a boolean operator, not just a comparison.
@@ -45,172 +39,177 @@ fn isPositive(x) = x > 0.0
 fn truthy(b) = b
 /// The zip kernels below all return an element type neither operand has, so gpuZipWith is exercised as a type-changing combinator too.
 fn sameParity(a, b) = isEven(a) == isEven(b)
-fn lessF(a, b: float) = a < b
+fn lessF(a, b) = a < b
 fn meanF(a, b) = (toFloat(a) + toFloat(b)) * 0.5
-fn mixAdd(i, x: float) = toFloat(i) + x
+fn mixAdd(i, x) = toFloat(i) + x
 /// oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns is visible in an assertion instead of being swallowed by a `?:` default.
-fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
+fn oobMessage(buf, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }
 /// rendersAs is one gpuGet outcome as text, so an element's own type stays visible.
 fn rendersAs(b, index, text) = oobMessage(b, index) == text
+/// holdsAt reads one element of an output at `index`, 0 standing in for an out-of-bounds read; sizedAt reads a buffer's size and one element together, sizedSumsTo its
+/// size and its own sum, startsAs its size and leading run, spansTo its endpoints and total, and shapedAs all of them at once.
+fn holdsAt(result, index, expected) = gpuSatisfies(result, fn(buffer) => elementIs(buffer, index, 0, expected))
+fn sizedAt(buf, size, index, fallback, expected) = lengthIs(buf, size) && elementIs(buf, index, fallback, expected)
+fn sizedSumsTo(buf, size, seed, expected) = lengthIs(buf, size) && sumsTo(buf, seed, expected)
+fn startsAs(buf, size, fallback, values) = lengthIs(buf, size) && elementsFrom(buf, 0, fallback, values)
+fn spansTo(buf, ends, values, total) = elementsAt(buf, 0, ends, values) && sumsTo(buf, 0, total)
+fn shapedAs(buf, size, ends, values, total) = lengthIs(buf, size) && spansTo(buf, ends, values, total)
 /// sumsTo, productsTo, differencesTo and hornerTo are [GPU-FOLD] with this file's int combines; subI and horner are non-commutative, so their `expected` also pins the traversal order.
 fn sumsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, sumI), expected)
 fn productsTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, mulI), expected)
 fn differencesTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, subI), expected)
 fn hornerTo(b, seed, expected) = gpuEquals(gpuFold(b, seed, horner), expected)
-/// trueCountIs is [GPU-FOLD] with countTrue: `b` holds `expected` true elements.
+/// trueCountIs is [GPU-FOLD] with countTrue; trueRunIs adds a bool buffer's size, its leading pair — each read with the opposite fallback, so a miss fails — and its count.
 fn trueCountIs(b, expected) = gpuEquals(gpuFold(b, 0, countTrue), expected)
-/// foldedFrom reads a buffer already in hand through sumI from `foldSeed`: every filtered, scanned and zipped buffer below reads back through it, so bufferSumsTo and scanSumsTo are the same read at seed 0 and at a scan's own seed.
+fn trueRunIs(buf, size, first, second, trues) = sizedAt(buf, size, 0, !first, first) && elementIs(buf, 1, !second, second) && trueCountIs(buf, trues)
+/// foldedFrom reads a buffer in hand through sumI from `foldSeed`; scannedTotalIs is the same read of a sum scan from its own seed; bufferHornerTo the horner fold from 0.
 fn foldedFrom(buf, foldSeed, expected) = gpuSatisfies(buf, fn(s) => sumsTo(s, foldSeed, expected))
-/// bufferHornerTo reads a buffer through the non-commutative horner fold, from seed 0.
+fn scannedTotalIs(buf, expected) = foldedFrom(gpuScan(buf, 0, sumI), 0, expected)
 fn bufferHornerTo(buf, expected) = gpuSatisfies(buf, fn(b) => hornerTo(b, 0, expected))
-/// zipLeftIs zips `b` with the upload of `values` and keeps `expected` elements — the shorter operand wins.
-fn zipLeftIs(b, values, expected) = gpuSatisfies(toGpu(values), fn(other) => gpuLengthIs(gpuZipWith(b, other, sumI), expected))
-/// zippedProductLengthIs and mixedZipLengthIs zip two uploads and keep `expected` elements; their kernels differ in type, and gpuZipWith only accepts a named function, so each names its own.
-fn zippedProductLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mulI), expected)))
-/// mixedZipLengthIs zips an int upload with a float one through mixAdd, the type-changing slot.
-fn mixedZipLengthIs(values, others, expected) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => gpuLengthIs(gpuZipWith(first, second, mixAdd), expected)))
-/// floatBufferSumsTo reads any float buffer already in hand — widened by [GPU-CONVERT], halved or scanned — through the float fold at seed 0.0, and evenFlagRuns counts the isEven flags a compaction keeps; the widened-type and bool-buffer cases all read through them.
+/// keptTotalIs and keptHornerIs read a compaction for its size and its own sum or horner total; keepsNoEven counts one that dropped every even element.
+fn keptTotalIs(result, size, total) = gpuSatisfies(result, fn(kept) => lengthIs(kept, size) && sumsTo(kept, 0, total))
+fn keptHornerIs(result, size, total) = gpuSatisfies(result, fn(kept) => lengthIs(kept, size) && hornerTo(kept, 0, total))
+fn keepsNoEven(buf) = gpuLengthIs(gpuFilter(buf, isEven), 0)
+/// uploadedHolds uploads a host list and checks the buffer through `predicate`; zipLengthIs counts the elements a zip keeps — the shorter operand's — and zipLeftIs and
+/// zipRightIs hold a buffer against an upload in both operand orders, sumI being the stand-in kernel wherever only the count matters.
+fn uploadedHolds(values, predicate) = gpuSatisfies(toGpu(values), predicate)
+fn zipLengthIs(left, right, expected) = gpuLengthIs(gpuZipWith(left, right, sumI), expected)
+fn zipLeftIs(b, values, expected) = uploadedHolds(values, fn(other) => zipLengthIs(b, other, expected))
+fn zipRightIs(b, values, expected) = uploadedHolds(values, fn(other) => zipLengthIs(other, b, expected))
+/// withUploads runs `work` on two uploaded buffers; zippedProductLengthIs and mixedZipLengthIs are that same element count, and gpuZipWith only accepts a named function,
+/// so each names its own kernel.
+fn withUploads(values, others, work) = gpuSatisfies(toGpu(values), fn(first) => gpuSatisfies(toGpu(others), fn(second) => work(first, second)))
+fn zippedProductLengthIs(values, others, expected) = withUploads(values, others, fn(first, second) => gpuLengthIs(gpuZipWith(first, second, mulI), expected))
+fn mixedZipLengthIs(values, others, expected) = withUploads(values, others, fn(first, second) => gpuLengthIs(gpuZipWith(first, second, mixAdd), expected))
+/// floatBufferSumsTo reads any float buffer already in hand — widened by [GPU-CONVERT], halved or scanned — through the float fold at seed 0.0, and evenFlagRuns counts the isEven flags a compaction keeps.
 fn floatBufferSumsTo(buf, expected) = gpuSatisfies(buf, fn(widened) => floatSumsTo(widened, 0.0, expected))
 fn evenFlagRuns(buf, expected) = gpuSatisfies(gpuMap(buf, isEven), fn(flags) => gpuLengthIs(gpuFilter(flags, truthy), expected))
-/// emptyShapeCase pins that no combinator invents an element from nothing: map, filter and scan over zero elements are all zero elements, whatever the kernel does to the
-/// element type.
+/// scanDiffFrom scans `values` with subI from `scanSeed` and folds that scan with subI from `foldSeed`, so a swapped stage order cannot give the same total.
+fn scanDiffFrom(values, scanSeed, foldSeed, expected) = uploadedHolds(values, fn(source) => foldedFrom(gpuScan(source, scanSeed, subI), foldSeed, expected))
+/// The fused pipelines the source and stage cases share: rangeDoubles doubles range(0, 10), rangeOf keeps the elements its predicate accepts out of it, and rangeStaged
+/// filters the evens before doubling them.
+fn rangeDoubles() = toGpu(range(0, 10) |> map(fn(x) => (x * 2) ))
+fn rangeOf(predicate) = toGpu(range(0, 10) |> filter(predicate))
+fn rangeStaged() = toGpu(range(0, 10) |> filter(isEven) |> map(fn(x) => (x * 2) ))
+/// emptyShapeCase pins that no combinator invents an element from nothing: map, filter and scan over zero elements are all zero elements, whatever the kernel does to the element type.
 fn emptyShapeCase() = withBuffer(emptyInts(), fn(intEmpty) => withBuffer(emptyFloats(), fn(floatEmpty) => emptyShapeWith(intEmpty, floatEmpty)))
 fn emptyShapeWith(intEmpty, floatEmpty) = withBuffer(gpuMap(intEmpty, dbl), fn(mapped) => withBuffer(gpuFilter(mapped, isEven), fn(filtered) => withBuffer(gpuScan(filtered, 0, sumI), fn(scanned) => withBuffer(gpuMap(scanned, inc), fn(chained) => checkAll("empty shapes", [
     lengthIs(intEmpty, 0), gpuLengthIs(gpuMap(intEmpty, dbl), 0), gpuLengthIs(gpuMap(intEmpty, toFloat), 0), gpuLengthIs(gpuMap(intEmpty, isEven), 0),
     gpuLengthIs(gpuMap(floatEmpty, half), 0), gpuLengthIs(gpuFilter(intEmpty, keepEvery), 0), gpuLengthIs(gpuFilter(intEmpty, keepNone), 0),
-    gpuLengthIs(gpuScan(intEmpty, 0, sumI), 0), gpuLengthIs(gpuScan(intEmpty, 99, maxI), 0), zipLeftIs(intEmpty, [1, 2, 3], 0), gpuSatisfies(toGpu([1, 2, 3]), fn(other) => gpuLengthIs(gpuZipWith(other, intEmpty, sumI), 0)),
+    gpuLengthIs(gpuScan(intEmpty, 0, sumI), 0), gpuLengthIs(gpuScan(intEmpty, 99, maxI), 0), zipLeftIs(intEmpty, [1, 2, 3], 0), zipRightIs(intEmpty, [1, 2, 3], 0),
     gpuSatisfies(fromGpu(intEmpty), fn(values) => listLength(values) == 0), elementIs(intEmpty, 0, 42, 42), lengthIs(chained, 0)
 ])))))
-/// emptyFoldCase pins [GPU-FOLD]'s base case: with no element to combine, the result is exactly the initial value — for every combine, and for a buffer emptied by
-/// compaction rather than born empty.
+/// emptyFoldCase pins [GPU-FOLD]'s base case: with no element to combine, the result is exactly the initial value — for every combine, and for a buffer emptied by compaction rather than born empty.
 fn emptyFoldCase() = withIndices(0, fn(indices0) => emptyFoldWith(indices0))
 fn emptyFoldWith(indices0) = withBuffer(emptyInts(), fn(intEmpty) => withBuffer(emptyFloats(), fn(floatEmpty) => emptyFoldOn(indices0, intEmpty, floatEmpty)))
 fn emptyFoldOn(indices0, intEmpty, floatEmpty) = withBuffer(toGpu([1, 3, 5]), fn(value) => withBuffer(gpuFilter(value, keepNone), fn(drained) => checkAll("empty folds", [
     sumsTo(intEmpty, 0, 0), sumsTo(intEmpty, 7, 7), productsTo(intEmpty, 1, 1), differencesTo(intEmpty, 100, 100), hornerTo(intEmpty, 9, 9), gpuEquals(gpuFold(intEmpty, 3, maxI), 3),
     floatSumsTo(floatEmpty, 0.0, 0.0), floatSumsTo(floatEmpty, 2.5, 2.5), gpuSatisfies(gpuMap(intEmpty, isEven), fn(flags) => gpuEquals(gpuFold(flags, 4, countTrue), 4)),
-    lengthIs(drained, 0), sumsTo(drained, 11, 11), foldedFrom(gpuScan(drained, 0, sumI), 13, 13),
+    lengthIs(drained, 0), sizedSumsTo(drained, 0, 11, 11), foldedFrom(gpuScan(drained, 0, sumI), 13, 13),
     productsTo(indices0, 5, 5), gpuSatisfies(gpuZipWith(intEmpty, intEmpty, sumI), fn(zipped) => sumsTo(zipped, 6, 6))
 ])))
-/// singletonCase walks the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or
-/// a prefix seed shows up immediately.
+/// singletonCase walks the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or a prefix seed shows up immediately.
 fn singletonCase() = withBuffer(toGpu([5]), fn(one) => withBuffer(gpuScan(one, 3, sumI), fn(scanned) => withBuffer(toGpu([4]), fn(four) => withBuffer(toGpu([7]), fn(seven) => withBuffer(toGpu([1, 2, 3]), fn(longer) => checkAll("singleton", [
-    lengthIs(one, 1), gpuSatisfies(gpuMap(one, dbl), fn(doubled) => elementIs(doubled, 0, 0, 10)), gpuLengthIs(gpuFilter(one, isEven), 0),
-    gpuLengthIs(gpuFilter(four, isEven), 1), gpuSatisfies(gpuFilter(four, isEven), fn(kept) => elementIs(kept, 0, 0, 4)),
-    lengthIs(scanned, 1), elementIs(scanned, 0, 0, 8), gpuSatisfies(gpuScan(one, 0, maxI), fn(running) => elementIs(running, 0, 0, 5)),
-    sumsTo(one, 3, 8), differencesTo(one, 10, 5), gpuSatisfies(gpuZipWith(one, seven, sumI), fn(zipped) => elementIs(zipped, 0, 0, 12)),
-    gpuSatisfies(gpuZipWith(longer, one, sumI), fn(zipped) => elementIs(zipped, 0, 0, 6)), elementIs(one, 1, 42, 42)
+    lengthIs(one, 1), holdsAt(gpuMap(one, dbl), 0, 10), keepsNoEven(one),
+    gpuLengthIs(gpuFilter(four, isEven), 1), holdsAt(gpuFilter(four, isEven), 0, 4),
+    sizedAt(scanned, 1, 0, 0, 8), holdsAt(gpuScan(one, 0, maxI), 0, 5),
+    sumsTo(one, 3, 8), differencesTo(one, 10, 5), holdsAt(gpuZipWith(one, seven, sumI), 0, 12),
+    holdsAt(gpuZipWith(longer, one, sumI), 0, 6), elementIs(one, 1, 42, 42)
 ]))))))
-/// raggedCase pins [GPU-ZIPWITH]'s truncation to the shorter operand in both argument orders, and uses a non-commutative kernel so a swapped operand pair could not pass by
-/// accident.
+/// raggedCase pins [GPU-ZIPWITH]'s truncation to the shorter operand in both argument orders, and uses a non-commutative kernel so a swapped operand pair could not pass by accident.
 fn raggedCase() = withIndices(3, fn(indices3) => withIndices(7, fn(indices7) => withIndices(4, fn(indices4) => raggedWith(indices3, indices7, indices4))))
 fn raggedWith(indices3, indices7, indices4) = withBuffer(toGpu([1, 2, 3, 4, 5]), fn(left) => withBuffer(toGpu([10, 20]), fn(right) => withBuffer(gpuZipWith(left, right, subI), fn(leftFirst) => withBuffer(gpuZipWith(right, left, subI), fn(rightFirst) => checkAll("ragged zip", [
-    lengthIs(leftFirst, 2), lengthIs(rightFirst, 2), elementsFrom(rightFirst, 0, 0, [9, 18]), sumsTo(leftFirst, 27, 0), sumsTo(rightFirst, 0, 27), elementIs(leftFirst, 2, 77, 77),
-    zippedProductLengthIs([1, 2, 3], [9], 1), zippedProductLengthIs([9], [1, 2, 3], 1), gpuLengthIs(gpuZipWith(indices3, indices7, sumI), 3), gpuLengthIs(gpuZipWith(indices7, indices3, sumI), 3),
-    foldedFrom(gpuZipWith(indices7, indices3, mulI), 0, 5), gpuLengthIs(gpuZipWith(indices4, indices4, sumI), 4)
+    lengthIs(leftFirst, 2), startsAs(rightFirst, 2, 0, [9, 18]), sumsTo(leftFirst, 27, 0), sumsTo(rightFirst, 0, 27), elementIs(leftFirst, 2, 77, 77),
+    zippedProductLengthIs([1, 2, 3], [9], 1), zippedProductLengthIs([9], [1, 2, 3], 1), zipLengthIs(indices3, indices7, 3), zipLengthIs(indices7, indices3, 3),
+    foldedFrom(gpuZipWith(indices7, indices3, mulI), 0, 5), zipLengthIs(indices4, indices4, 4)
 ])))))
 /// zipTypeCase pins that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type.
 fn zipTypeCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(first) => withBuffer(toGpu([3, 5, 7, 9]), fn(second) => withBuffer(gpuZipWith(first, second, sameParity), fn(parity) => withBuffer(toGpu([1, 3]), fn(meanLeft) => withBuffer(toGpu([3, 5]), fn(meanRight) => withBuffer(gpuZipWith(meanLeft, meanRight, meanF), fn(means) => withBuffer(toGpu([1, 2]), fn(mixLeft) => withBuffer(toGpu([0.5, 0.25]), fn(mixRight) => withBuffer(gpuZipWith(mixLeft, mixRight, mixAdd), fn(mixed) => withBuffer(toGpu([1.0, 2.0, 3.0]), fn(lessLeft) => withBuffer(toGpu([3.0, 2.0, 1.0]), fn(lessRight) => withBuffer(gpuZipWith(lessLeft, lessRight, lessF), fn(flags) => checkAll("zip element types", [
-    lengthIs(parity, 4), elementIs(parity, 0, false, true), elementIs(parity, 1, true, false), trueCountIs(parity, 2),
-    lengthIs(means, 2), elementsFrom(means, 0, 0.0, [2.0, 4.0]), floatSumsTo(means, 0.0, 6.0), elementIs(mixed, 0, 0.0, 1.5), floatSumsTo(mixed, 0.0, 3.75), mixedZipLengthIs([1, 2, 3], [0.5], 1),
+    trueRunIs(parity, 4, true, false, 2),
+    startsAs(means, 2, 0.0, [2.0, 4.0]), floatSumsTo(means, 0.0, 6.0), elementIs(mixed, 0, 0.0, 1.5), floatSumsTo(mixed, 0.0, 3.75), mixedZipLengthIs([1, 2, 3], [0.5], 1),
     trueCountIs(flags, 1)
 ])))))))))))))
-/// filterKeepCase pins the three shapes of a compaction — every element kept, none kept, alternating — and reads the kept run back element by element so [GPU-FILTER]'s
-/// source-order guarantee is checked, not just its count.
+/// filterKeepCase pins the three shapes of a compaction — every element kept, none kept, alternating — and reads the kept run back element by element so [GPU-FILTER]'s source-order guarantee is checked, not just its count.
 fn filterKeepCase() = withBuffer(toGpu([9, 4, 7, 2, 5, 8]), fn(src) => withBuffer(gpuFilter(src, keepEvery), fn(kept) => withBuffer(gpuFilter(src, isEven), fn(alternates) => checkAll("filter keep sets", [
-    lengthIs(kept, 6), elementsAt(kept, 0, [0, 5], [9, 8]), sumsTo(kept, 0, 35), gpuLengthIs(gpuFilter(src, keepNone), 0), lengthIs(alternates, 3), elementsFrom(alternates, 0, 0, [4, 2, 8]),
-    elementIs(alternates, 3, 55, 55), gpuLengthIs(gpuFilter(src, isOddP), 3), bufferHornerTo(gpuFilter(src, isOddP), 975)
+    shapedAs(kept, 6, [0, 5], [9, 8], 35), gpuLengthIs(gpuFilter(src, keepNone), 0), startsAs(alternates, 3, 0, [4, 2, 8]),
+    elementIs(alternates, 3, 55, 55), keptHornerIs(gpuFilter(src, isOddP), 3, 975)
 ]))))
-/// filterPredicateCase feeds the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the
-/// predicate.
+/// filterPredicateCase feeds the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the predicate.
 fn filterPredicateCase() = withIndices(10, fn(indices10) => withIndices(6, fn(indices6) => filterPredicateWith(indices10, indices6)))
 fn filterPredicateWith(indices10, indices6) = withBuffer(toGpu([0.0 - 1.5, 0.0, 2.5, 4.0]), fn(signed) => checkAll("filter predicates", [
-    gpuLengthIs(gpuFilter(indices10, isBig), 5), foldedFrom(gpuFilter(indices10, isBig), 0, 35), gpuLengthIs(gpuFilter(indices10, bigEven), 2), foldedFrom(gpuFilter(indices10, bigEven), 0, 14),
-    gpuLengthIs(gpuFilter(indices10, atEdge), 4), bufferHornerTo(gpuFilter(indices10, atEdge), 189), foldedFrom(gpuFilter(indices10, isOddP), 0, 25), gpuLengthIs(gpuFilter(indices10, inBand), 4),
-    gpuLengthIs(gpuFilter(indices10, notBand), 6), foldedFrom(gpuFilter(indices10, notBand), 0, 27),
+    keptTotalIs(gpuFilter(indices10, isBig), 5, 35), keptTotalIs(gpuFilter(indices10, bigEven), 2, 14),
+    keptHornerIs(gpuFilter(indices10, atEdge), 4, 189), foldedFrom(gpuFilter(indices10, isOddP), 0, 25), gpuLengthIs(gpuFilter(indices10, inBand), 4),
+    keptTotalIs(gpuFilter(indices10, notBand), 6, 27),
     gpuLengthIs(gpuFilter(signed, isPositive), 2), floatBufferSumsTo(gpuFilter(signed, isPositive), 6.5), evenFlagRuns(indices6, 3), gpuSatisfies(gpuMap(indices6, isOddP), fn(flags) => gpuLengthIs(gpuFilter(flags, truthy), 3))
 ]))
-/// scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the
-/// whole-buffer fold and index n is out of bounds.
+/// scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the whole-buffer fold and index n is out of bounds.
 fn scanPrefixCase() = withIndices(5, fn(indices5) => scanPrefixWith(indices5))
 fn scanPrefixWith(indices5) = withBuffer(toGpu([1, 2, 3, 4, 5]), fn(value) => withBuffer(gpuScan(value, 0, sumI), fn(sums) => withBuffer(gpuScan(sums, 0, sumI), fn(twice) => withBuffer(toGpu([1, 2, 3, 4]), fn(four) => withBuffer(gpuScan(four, 1, mulI), fn(products) => checkAll("inclusive prefix", [
-    lengthIs(sums, 5), elementsFrom(sums, 0, 0, [1, 3, 6, 10]), elementIs(sums, 4, 0, 15), elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
-    elementIs(twice, 4, 0, 35), lengthIs(products, 4), elementIs(products, 3, 0, 24), gpuSatisfies(gpuScan(indices5, 0, sumI), fn(scanned) => elementIs(scanned, 4, 0, 10))
+    startsAs(sums, 5, 0, [1, 3, 6, 10]), elementIs(sums, 4, 0, 15), elementIs(sums, 5, 77, 77), gpuSatisfies(gpuFold(value, 0, sumI), fn(total) => elementIs(sums, 4, 0, total)),
+    elementIs(twice, 4, 0, 35), sizedAt(products, 4, 3, 0, 24), holdsAt(gpuScan(indices5, 0, sumI), 4, 10)
 ]))))))
 /// scanSeedCase pins the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch.
 fn scanSeedCase() = withBuffer(toGpu([1, 2, 3]), fn(three) => withBuffer(gpuScan(three, 10, sumI), fn(seeded) => withBuffer(toGpu([3, 1, 4, 1, 5, 9, 2, 6]), fn(source) => withBuffer(gpuScan(source, 0, maxI), fn(running) => withBuffer(toGpu([1, 3, 4, 7]), fn(flagsSource) => withBuffer(gpuMap(flagsSource, isEven), fn(flags) => withBuffer(gpuScan(flags, false, orB), fn(latched) => checkAll("scan seeds", [
-    elementsFrom(seeded, 0, 0, [11, 13, 16]), elementsAt(running, 0, [0, 1, 3, 7], [3, 3, 4, 9]), sumsTo(running, 0, 46),
-    gpuSatisfies(toGpu([3, 1, 4]), fn(source) => foldedFrom(gpuScan(source, 100, maxI), 0, 300)), lengthIs(latched, 4), elementIs(latched, 1, true, false), trueCountIs(latched, 2)
+    elementsFrom(seeded, 0, 0, [11, 13, 16]), spansTo(running, [0, 1, 3, 7], [3, 3, 4, 9], 46),
+    uploadedHolds([3, 1, 4], fn(source) => foldedFrom(gpuScan(source, 100, maxI), 0, 300)), sizedAt(latched, 4, 1, true, false), trueCountIs(latched, 2)
 ]))))))))
-/// orderCase pins the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree
-/// with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers.
+/// orderCase pins the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers.
 fn orderCase() = withBuffer(toGpu([1, 2, 3, 4]), fn(digitsUp) => withBuffer(gpuScan(digitsUp, 0, horner), fn(running) => checkAll("traversal order", [
-    hornerTo(digitsUp, 0, 1234), gpuSatisfies(toGpu([4, 3, 2, 1]), fn(digitsDown) => hornerTo(digitsDown, 0, 4321)), hornerTo(digitsUp, 9, 91234),
-    gpuSatisfies(toGpu([1, 2, 3]), fn(up) => differencesTo(up, 100, 94)), gpuSatisfies(toGpu([3, 2, 1]), fn(down) => differencesTo(down, 100, 94)), elementIs(running, 0, 0, 1),
+    hornerTo(digitsUp, 0, 1234), uploadedHolds([4, 3, 2, 1], fn(digitsDown) => hornerTo(digitsDown, 0, 4321)), hornerTo(digitsUp, 9, 91234),
+    uploadedHolds([1, 2, 3], fn(up) => differencesTo(up, 100, 94)), uploadedHolds([3, 2, 1], fn(down) => differencesTo(down, 100, 94)), elementIs(running, 0, 0, 1),
     elementsFrom(running, 1, 0, [12, 123, 1234]), gpuSatisfies(gpuFold(digitsUp, 0, horner), fn(total) => elementIs(running, 3, 0, total)),
-    gpuSatisfies(toGpu([1, 2, 3]), fn(source) => foldedFrom(gpuScan(source, 10, subI), 0, 20)), gpuSatisfies(toGpu([1, 2, 3]), fn(source) => foldedFrom(gpuScan(source, 0, subI), 10, 0)), sumsTo(running, 0, 1370)
+    scanDiffFrom([1, 2, 3], 10, 0, 20), scanDiffFrom([1, 2, 3], 0, 10, 0), sumsTo(running, 0, 1370)
 ])))
-/// deepChainCase runs pipelines of five and more dependent stages: each one allocates a fresh buffer the next stage consumes, so a stage that read a stale length or a
-/// stale pointer would corrupt every number below.
+/// deepChainCase runs pipelines of five and more dependent stages: each one allocates a fresh buffer the next stage consumes, so a stage that read a stale length or a stale pointer would corrupt every number below.
 fn deepChainCase() = withIndices(12, fn(indices12) => withIndices(8, fn(indices8) => withIndices(20, fn(indices20) => deepChainWith(indices12, indices8, indices20))))
 /// The widened chain folds a float buffer back through a bool one, closing the scalar-type cycle [GPU-BUFFER-ELEM] allows.
 fn deepChainWith(indices12, indices8, indices20) = withBuffer(gpuMap(indices12, dbl), fn(doubled) => withBuffer(gpuMap(doubled, toFloat), fn(asFloats) => withBuffer(gpuMap(asFloats, half), fn(widened) => withBuffer(gpuMap(indices8, inc), fn(steppedOnce) => withBuffer(gpuMap(steppedOnce, dbl), fn(steppedTwice) => withBuffer(gpuMap(steppedTwice, inc), fn(steppedThrice) => withBuffer(gpuMap(steppedThrice, dbl), fn(steppedFourth) => withBuffer(gpuMap(steppedFourth, inc), fn(stepped) => withBuffer(gpuMap(indices20, dbl), fn(longDoubled) => withBuffer(gpuFilter(longDoubled, isBig), fn(big) => withBuffer(gpuScan(big, 0, sumI), fn(compacted) => checkAll("deep chains", [
-    lengthIs(compacted, 17), elementsAt(compacted, 0, [0, 16], [6, 374]), sumsTo(compacted, 0, 2550), floatSumsTo(widened, 0.0, 66.0),
-    gpuSatisfies(gpuMap(widened, isPositive), fn(flags) => gpuSatisfies(gpuMap(flags, toBit), fn(bits) => sumsTo(bits, 0, 11))), lengthIs(stepped, 8),
-    elementsAt(stepped, 0, [0, 7], [7, 35]), sumsTo(stepped, 0, 168), foldedFrom(gpuFilter(stepped, isOddP), 0, 168), gpuLengthIs(gpuFilter(stepped, isEven), 0)
+    shapedAs(compacted, 17, [0, 16], [6, 374], 2550), floatSumsTo(widened, 0.0, 66.0),
+    gpuSatisfies(gpuMap(widened, isPositive), fn(flags) => gpuSatisfies(gpuMap(flags, toBit), fn(bits) => sumsTo(bits, 0, 11))), shapedAs(stepped, 8, [0, 7], [7, 35], 168),
+    foldedFrom(gpuFilter(stepped, isOddP), 0, 168), keepsNoEven(stepped)
 ]))))))))))))
-/// mixedChainCase interleaves the shape-changing combinators — a compaction feeding a scan feeding another compaction, a zip feeding a map feeding a filter — where a wrong
-/// published length silently shortens everything after.
+/// mixedChainCase interleaves the shape-changing combinators — a compaction feeding a scan feeding another compaction, a zip feeding a map feeding a filter — where a wrong published length silently shortens everything after.
 fn mixedChainCase() = withIndices(30, fn(indices30) => withIndices(6, fn(indices6) => mixedChainWith(indices30, indices6)))
 fn mixedChainWith(indices30, indices6) = withBuffer(gpuFilter(indices30, isEven), fn(evens) => withBuffer(gpuScan(evens, 0, sumI), fn(scanned) => withBuffer(gpuFilter(scanned, bigEven), fn(prefixes) => withBuffer(gpuMap(indices6, fn(x) => (x * 3) ), fn(tripled) => withBuffer(gpuZipWith(indices6, tripled, mulI), fn(products) => withBuffer(gpuMap(products, inc), fn(stepped) => withBuffer(gpuFilter(stepped, isOddP), fn(woven) => checkAll("mixed chains", [
-    lengthIs(prefixes, 13), elementsAt(prefixes, 0, [0, 12], [6, 210]), sumsTo(prefixes, 0, 1118), sumsTo(tripled, 0, 45),
-    foldedFrom(gpuZipWith(tripled, indices6, subI), 0, 30), lengthIs(woven, 3), elementsAt(woven, 0, [0, 2], [1, 49]), sumsTo(woven, 0, 63), gpuLengthIs(gpuFilter(woven, isEven), 0),
-    foldedFrom(gpuScan(woven, 0, sumI), 0, 78)
+    shapedAs(prefixes, 13, [0, 12], [6, 210], 1118), sumsTo(tripled, 0, 45),
+    foldedFrom(gpuZipWith(tripled, indices6, subI), 0, 30), shapedAs(woven, 3, [0, 2], [1, 49], 63), keepsNoEven(woven),
+    scannedTotalIs(woven, 78)
 ]))))))))
-/// typeChangeCase walks the whole element lattice [GPU-BUFFER-ELEM] allows — int to float through [GPU-CONVERT]'s toFloat, int and float to bool through predicates, bool
-/// back to int — folding each buffer at its own element type.
+/// typeChangeCase walks the whole element lattice [GPU-BUFFER-ELEM] allows — int to float through [GPU-CONVERT]'s toFloat, int and float to bool through predicates, bool back to int — folding each buffer at its own element type.
 fn typeChangeCase() = withBuffer(toGpu([1, 2, 3]), fn(counting) => withBuffer(gpuMap(counting, toFloat), fn(widened) => withBuffer(toGpu([1, 2, 3, 4]), fn(four) => withBuffer(gpuMap(four, isEven), fn(flags) => withBuffer(gpuMap(flags, toBit), fn(bits) => withBuffer(toGpu([0.0 - 1.5, 0.0, 2.5]), fn(signed) => withBuffer(toGpu([0, 1, 2]), fn(upToTwo) => checkAll("type-changing maps", [
     floatSumsTo(widened, 0.0, 6.0), elementIs(widened, 1, 0.0, 2.0), floatBufferSumsTo(gpuMap(widened, half), 3.0),
-    floatBufferSumsTo(gpuScan(widened, 0.0, addF), 10.0), lengthIs(flags, 4), elementIs(flags, 0, true, false),
-    elementIs(flags, 1, false, true), trueCountIs(flags, 2), sumsTo(bits, 0, 2), floatBufferSumsTo(gpuMap(bits, toFloat), 2.0),
+    floatBufferSumsTo(gpuScan(widened, 0.0, addF), 10.0), trueRunIs(flags, 4, false, true, 2),
+    sumsTo(bits, 0, 2), floatBufferSumsTo(gpuMap(bits, toFloat), 2.0),
     gpuSatisfies(gpuMap(signed, isPositive), fn(positive) => trueCountIs(positive, 1)),
     gpuSatisfies(gpuMap(upToTwo, toFloat), fn(widenedUpToTwo) => gpuSatisfies(gpuMap(widenedUpToTwo, isPositive), fn(positive) => trueCountIs(positive, 2)))
 ]))))))))
-/// fusionSourceCase pins `toGpu` as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop that fills the
-/// buffer, so no `List` is built on the way. A filtered chain publishes the kept prefix exactly as gpuFilter does, an inverted or empty range yields an empty buffer, and a
-/// fused map may change the element type.
-fn fusionSourceCase() = withBuffer(toGpu(range(0, 10) |> filter(isEven) |> map(fn(x) => (x * 2) )), fn(staged) => checkAll("fused sources", [
+/// fusionSourceCase pins `toGpu` as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop that fills the buffer, so no `List` is built on the way. A filtered chain publishes the kept prefix exactly as gpuFilter does, an inverted or empty range yields an empty buffer, and a fused map may change the element type.
+fn fusionSourceCase() = withBuffer(rangeStaged(), fn(staged) => checkAll("fused sources", [
     floatBufferSumsTo(toGpu(range(0, 4) |> map(toFloat) |> map(half)), 3.0),
-    gpuSatisfies(toGpu(range(0, 4) |> map(dbl) |> map(inc)), fn(chained) => sumsTo(chained, 0, 16)), lengthIs(staged, 5), elementIs(staged, 4, 0, 16),
-    sumsTo(staged, 0, 40), gpuSatisfies(toGpu(range(0, 10) |> filter(isEven)), fn(evens) => hornerTo(evens, 0, 2468)),
+    gpuSatisfies(toGpu(range(0, 4) |> map(dbl) |> map(inc)), fn(chained) => sumsTo(chained, 0, 16)), sizedAt(staged, 5, 4, 0, 16),
+    sumsTo(staged, 0, 40), bufferHornerTo(rangeOf(isEven), 2468),
     gpuSatisfies(toGpu(range(3, 7)), fn(four) => sumsTo(four, 0, 18)), gpuLengthIs(toGpu(range(0, 1)), 1), gpuLengthIs(toGpu(range(5, 5)), 0),
-    gpuLengthIs(toGpu(range(9, 2)), 0), gpuLengthIs(toGpu(range(0, 10) |> filter(keepNone)), 0), gpuLengthIs(toGpu(range(0, 10) |> filter(keepEvery)), 10),
+    gpuLengthIs(toGpu(range(9, 2)), 0), gpuLengthIs(rangeOf(keepNone), 0), gpuLengthIs(rangeOf(keepEvery), 10),
     floatBufferSumsTo(toGpu(range(0, 6) |> map(toFloat)), 15.0), gpuSatisfies(toGpu(range(0, 6) |> map(isEven)), fn(flags) => trueCountIs(flags, 3))
 ]))
-/// fusionStageCase feeds a fused buffer into every combinator in turn, including both operand slots of a ragged zip, so a buffer built by the fusion path is
-/// indistinguishable from one copied out of a list.
-fn fusionStageCase() = withBuffer(toGpu(range(0, 10) |> map(fn(x) => (x * 2) )), fn(fused) => withBuffer(toGpu(range(0, 10) |> filter(isEven)), fn(kept) => checkAll("fused into combinators", [
-    gpuSatisfies(gpuMap(fused, inc), fn(stepped) => sumsTo(stepped, 0, 100)), gpuLengthIs(gpuFilter(fused, isBig), 7),
-    foldedFrom(gpuFilter(fused, isBig), 0, 84), foldedFrom(gpuFilter(fused, isEven), 0, 90),
-    gpuSatisfies(gpuScan(fused, 0, sumI), fn(scanned) => elementIs(scanned, 9, 0, 90)), gpuLengthIs(gpuZipWith(fused, kept, sumI), 5),
-    gpuLengthIs(gpuZipWith(kept, fused, sumI), 5), foldedFrom(gpuZipWith(fused, kept, sumI), 0, 40), foldedFrom(gpuZipWith(kept, kept, mulI), 0, 120), floatBufferSumsTo(gpuMap(fused, toFloat), 90.0),
-    foldedFrom(gpuScan(kept, 0, sumI), 0, 40), evenFlagRuns(fused, 10), gpuSatisfies(gpuMap(fused, dbl), fn(doubled) => foldedFrom(gpuScan(doubled, 0, sumI), 0, 660))
+/// fusionStageCase feeds a fused buffer into every combinator in turn, including both operand slots of a ragged zip, so a buffer built by the fusion path is indistinguishable from one copied out of a list.
+fn fusionStageCase() = withBuffer(rangeDoubles(), fn(fused) => withBuffer(rangeOf(isEven), fn(kept) => checkAll("fused into combinators", [
+    gpuSatisfies(gpuMap(fused, inc), fn(stepped) => sumsTo(stepped, 0, 100)), keptTotalIs(gpuFilter(fused, isBig), 7, 84),
+    foldedFrom(gpuFilter(fused, isEven), 0, 90), holdsAt(gpuScan(fused, 0, sumI), 9, 90), zipLengthIs(fused, kept, 5),
+    zipLengthIs(kept, fused, 5), foldedFrom(gpuZipWith(fused, kept, sumI), 0, 40), foldedFrom(gpuZipWith(kept, kept, mulI), 0, 120), floatBufferSumsTo(gpuMap(fused, toFloat), 90.0),
+    scannedTotalIs(kept, 40), evenFlagRuns(fused, 10), gpuSatisfies(gpuMap(fused, dbl), fn(doubled) => scannedTotalIs(doubled, 660))
 ])))
-/// iotaCase pins the index buffer [0, n) that gather and stencil start from, down to n = 1, n = 0, and a negative n — which yields an empty buffer for the same reason an
-/// inverted range does, never a negative allocation.
+/// iotaCase pins the index buffer [0, n) that gather and stencil start from, down to n = 1, n = 0, and a negative n — which yields an empty buffer for the same reason an inverted range does, never a negative allocation.
 fn iotaCase() = withIndices(5, fn(indices5) => withIndices(1, fn(indices1) => withIndices(0, fn(indices0) => withIndices(3, fn(indices3) => iotaWith(indices5, indices1, indices0, indices3)))))
-fn iotaWith(indices5, indices1, indices0, indices3) = {
-    let idx = indices5
-    checkAll("iota", [
-            lengthIs(idx, 5), sumsTo(idx, 0, 10), elementIs(idx, 0, 9, 0), elementIs(idx, 4, 0, 4), elementIs(idx, 5, 77, 77), hornerTo(idx, 0, 1234),
-            lengthIs(indices1, 1), elementIs(indices1, 0, 9, 0), lengthIs(indices0, 0), sumsTo(indices0, 3, 3), iotaError(0 - 4) == "gpu: buffer allocation: a negative element count",
-            foldedFrom(gpuZipWith(idx, idx, mulI), 0, 30), floatBufferSumsTo(gpuMap(idx, toFloat), 10.0), foldedFrom(gpuScan(indices3, 0, horner), 0, 13)
-    ])
-}
-/// getCase pins typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a
-/// buffer is pure and therefore legal inside one.
+fn iotaWith(indices5, indices1, indices0, indices3) = checkAll("iota", [
+        sizedSumsTo(indices5, 5, 0, 10), elementIs(indices5, 0, 9, 0), elementIs(indices5, 4, 0, 4), elementIs(indices5, 5, 77, 77), hornerTo(indices5, 0, 1234),
+        sizedAt(indices1, 1, 0, 9, 0), sizedSumsTo(indices0, 0, 3, 3), iotaError(0 - 4) == "gpu: buffer allocation: a negative element count",
+        foldedFrom(gpuZipWith(indices5, indices5, mulI), 0, 30), floatBufferSumsTo(gpuMap(indices5, toFloat), 10.0), foldedFrom(gpuScan(indices3, 0, horner), 0, 13)
+])
+/// getCase pins typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a buffer is pure and therefore legal inside one.
 fn getCase() = withIndices(3, fn(indices3) => getWith(indices3))
 fn getWith(indices3) = withBuffer(toGpu([7, 8, 9]), fn(ints) => withBuffer(toGpu([1.5, 2.5]), fn(floats) => withBuffer(gpuMap(indices3, fn(i) => gpuGet(ints, (2 - i) ) ?: 0), fn(reversed) => checkAll("get", [
     elementsFrom(ints, 0, 0, [7, 8, 9]), elementsFrom(floats, 0, 0.0, [1.5, 2.5]), elementsAt(ints, 999, [3, (0 - 1)], [999, 999]), elementIs(floats, 2, 9.5, 9.5), rendersAs(ints, 0, "value 7"),

@@ -13,7 +13,6 @@ import ui::Templates
 import ui::Values
 import ui::Ui
 import ui::Inputs
-import ui::Doc
 import chromecast::Discovery
 import chromecast::Media
 import chromecast::Player
@@ -212,18 +211,19 @@ module Link
         keep = ui::Lists::any (devices, \d => endpoint d == chosen)
         settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, \d => receiver (devices, d)))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first)))]))
 
-    picked (store, doc) = match Doc::flag (doc, "cancelled")
+    // A chooser completes with the chosen path, or with nothing when it was cancelled.
+    picked (store, path) = match path == ""
         true => Runtime::step store
-        false => settled (fed (store, fileFacts (Doc::text (doc, "path"))))
+        false => settled (fed (store, fileFacts path))
 
     (** A capability's completion: the device browse or the file picker. *)
     export completed (store, ticket, outcome) = match outcome
         Error problem => match ticket
             "discover" => settled (failed (fed (store, [fact ("searched", Values::flag true)]), problem))
             _ => settled (failed (store, problem))
-        Success doc => match ticket
+        Success text => match ticket
             "discover" => discovered (store, perform ui::Slices.fetch "cast-browse")
-            "choose" => picked (store, doc)
+            "choose" => picked (store, text)
             _ => Runtime::step store
 
     // ---- the frame clock ----

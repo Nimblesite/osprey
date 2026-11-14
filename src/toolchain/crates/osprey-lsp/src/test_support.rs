@@ -92,7 +92,7 @@ impl Drop for ProjectFixture {
 
 pub(crate) fn view(uri: &str) -> crate::workspace::View {
     let vfs = lspkit::vfs::Vfs::new(lspkit::vfs::PositionEncoding::Utf16);
-    crate::project_cache::ProjectCache::default().view(uri, &vfs)
+    crate::project_cache::ProjectCache::default().typed_view(uri, &vfs)
 }
 
 macro_rules! disk_feature {

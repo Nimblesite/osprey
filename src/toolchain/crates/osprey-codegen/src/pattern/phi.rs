@@ -19,7 +19,15 @@ pub(super) fn finish_phi(
     end: &str,
     mark: usize,
 ) -> Result<Value> {
-    let target_result_inner = result_join_inner(phi_in)?;
+    let target_result_inner = result_join_inner(phi_in).map_err(|error| match error {
+        CodegenError::Invalid(why) => CodegenError::Invalid(format!(
+            "{why}{}",
+            cg.source_function
+                .as_deref()
+                .map_or_default(|name| format!(" in `{name}`"))
+        )),
+        other => other,
+    })?;
     // When any arm yields an erased box, every arm must: a concrete value
     // travelling under `LType::Any` would have its bytes read as a shape
     // descriptor by rendering and narrowing — a crash, found the moment a

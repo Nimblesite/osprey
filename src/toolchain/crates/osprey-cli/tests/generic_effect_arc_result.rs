@@ -43,7 +43,12 @@ fn workbench_retains_record_identity_through_shared_proof_helpers() -> io::Resul
 
 #[test]
 fn workbench_apple_host_includes_shared_proof_dependencies() -> io::Result<()> {
-    compile_workbench("src/osprey/workbench/hosts/apple/app", "macos")
+    compile_workbench("src/osprey/workbench", "macos")
+}
+
+#[test]
+fn workbench_apple_host_includes_shared_proof_dependencies_extra_ios_sim() -> io::Result<()> {
+    compile_workbench("src/osprey/workbench", "ios-sim")
 }
 
 fn compile_workbench(project: &str, target: &str) -> io::Result<()> {

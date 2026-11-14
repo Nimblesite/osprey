@@ -1,13 +1,19 @@
-// A minimal consumer of the framework: two slices, two regions. Verifies
-// [UI-SIGNALS], [UI-REGIONS], [UI-EVENTS] and [UI-PROTOCOL] through the real
-// start/dispatch path.
+// A minimal consumer of the framework: two slices, one root region naming a
+// second through a `Slot`. Verifies [UI-SIGNALS], [UI-REGIONS], [UI-EVENTS]
+// and [UI-STORE] through the real surface open/deliver path ([NATIVE-SHM-BOUNDARY]):
+// view rows and typed host events, never an envelope.
 namespace uitests
 
 import ui::Ui
 import ui::Doc
+import ui::Views
 import ui::Keyed
+import ui::Tell
+import ui::Tellings
 import ui::Runtime
 import ui::Requests
+import ui::Surfaces
+import ui::Hosting
 import ui::Lists
 import ui::Messages
 
@@ -22,7 +28,7 @@ type Probe =
     note : Memo
 
 // One action union per program until Nimblesite/osprey#278 generalizes the
-// mutually recursive encoder.
+// mutually recursive lowering.
 type Act = Increment | Typed | Load
 
 // Field checks shared by every case file: one assertion per `{ name = …, value = … }`, in order.
@@ -48,7 +54,7 @@ goButtons () = match tallied ()
     1 => [Ui::button ("Go", "play", Load)]
     _ => [Ui::button ("Go", "play", Increment), Ui::button ("Go", "play", Load)]
 
-rootView () = Ui::column (listConcat [Ui::text "Count ${tallied ()}"] (goButtons ()))
+rootView () = Ui::column (listConcat (listConcat [Ui::text "Count ${tallied ()}"] (goButtons ())) [Ui::slot "note"])
 
 noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load), Ui::button ("Load", "tray", Load)]
 
@@ -64,62 +70,196 @@ regions (before, store, frames, _) =
     changed = listConcat (signalChanges before.counter store.counter countJson (signalDependencies tallySlice)) (signalChanges before.note store.note memoJson (signalDependencies memoSlice))
     [Keyed::region (frames, "root", changed, rootView), Keyed::region (frames, "note", changed, noteView)]
 
-probe count text = Probe(counter = Tally(tally = count), note = Memo(memo = text))
+probe (count, text) = Probe(counter = Tally(tally = count), note = Memo(memo = text))
 
-initial context = Runtime::step (probe 0 context.platform)
+initial context = Runtime::step (probe (0, context.platform))
 
 loaded outcome = match outcome
-    Success result => jsonText result ?: "?"
+    Success result => result
     Error problem => problem
 
-// Typed text is kept in the store and echoed to a host-held slice, so the envelope carries a slice write.
-typed (store, text) = ui::Step(stepStore = probe store.counter.tally text, requests = [], writes = [Requests::write ("echo", text)])
+// Typed text is kept in the store and echoed to a host-held slice, so the step sends a slice write.
+typed (store, text) = ui::Step(stepStore = probe (store.counter.tally, text), requests = [], writes = [Requests::write ("echo", text)])
 
 tapped (store, action) = match action
-    Increment => Runtime::step (probe (satAdd store.counter.tally 1) store.note.memo)
+    Increment => Runtime::step (probe (satAdd store.counter.tally 1, store.note.memo))
     Load => Runtime::asking (store, [Requests::ask ("load:1", ui::StoreRead(readName = "memo.txt", readLimit = 100, readSlice = "memo"))])
     Typed => Runtime::step store
 
-update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe store.counter.tally (loaded outcome)), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
-
-save store = JsonObject [Doc::num ("tally", store.counter.tally), Doc::str ("memo", store.note.memo)]
-
-restore doc = probe (Doc::number (doc, "tally")) (Doc::text (doc, "memo"))
+update (_, store, message) = Messages::route (message, \action => tapped (store, action), \(_, text) => typed (store, text), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, outcome) => Runtime::step (probe (store.counter.tally, loaded outcome)), \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
 
 countJson value = JsonInt value.tally
 
 memoJson value = JsonString value.memo
 
+// One action spelt as its name, so a message table can hold it.
+acted action = match action
+    Increment => "increment"
+    Typed => "typed"
+    Load => "load"
+
+// One message spelt as its handler sees it, so a table can hold it.
+routed message = Messages::route (message, \a => "tap ${acted a}", \(a, text) => "text ${acted a}:${text}", \(a, flag) => "flag ${acted a}:${flag}", \(a, points) => "integer ${acted a}:${points}", \(ticket, _) => "completed ${ticket}", \phase => "phase ${phase}", \(a, stroke) => "stroke ${acted a}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}", \(a, indices) => "lasso ${acted a}:${join (mapList (indices, \index => "${index}")) ","}", \_ => "frame", \(_, _) => "controlled")
+
 theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220)
 
-(** Drives the probe application through the real start and dispatch path, and reads its envelopes. *)
+(** The probe application as its boundary runs it: the store drawn with the probe theme. *)
+program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme)
+
+// A node drawn as the rows of one root region with no theme tokens: the frame a test reads a single component from ([NATIVE-SHM-NODES]). Monomorphic at the suite's action union: the telling walk is instantiated at one action type (Nimblesite/osprey#278).
+drawnOf : ui::Node<Act> -> ui::Walk<ui::Binding<Act>>
+drawnOf node = Tellings::alone node
+
+// The `index`th row of `walked`, or the blank row past the end.
+rowAt (walked, index) = listGet walked.walkRows index ?: Views::blank
+
+// The words of the row at `index`.
+wordsAt (walked, index) = (rowAt (walked, index)).placedWords
+
+// [NATIVE-SHM-NODES] Told-tree readers shared by every case file: a component crosses as a record of its kind and every member.
+
+// A record with no members: what a reader finds past the end.
+blankTold () = ui::ToldRecord(recordName = "", members = [])
+
+// The member name of one told value.
+nameOfTold told = match told
+    ui::ToldText name _ => name
+    ui::ToldCount name _ => name
+    ui::ToldReal name _ => name
+    ui::ToldFlag name _ => name
+    ui::ToldRecord name _ => name
+    ui::ToldList name _ => name
+    ui::ToldScene name _ _ => name
+
+// The members of a told record or scene, or a list's items; none for a plain value.
+insideTold told = match told
+    ui::ToldRecord _ members => members
+    ui::ToldScene _ members _ => members
+    ui::ToldList _ items => items
+    _ => []
+
+// `name`'s member of `members`, or the member before it.
+memberStep (name, found, item) = match nameOfTold item == name
+    true => item
+    false => found
+
+// The member called `name`, or the empty record when there is none.
+memberTold (members, name) = foldList (members, blankTold (), \(found, item) => memberStep (name, found, item))
+
+// The text of the member called `name`, or "".
+memberText (members, name) = match memberTold (members, name)
+    ui::ToldText _ text => text
+    _ => ""
+
+// The whole number of the member called `name`, or `absent`.
+memberCount (members, name, absent) = match memberTold (members, name)
+    ui::ToldCount _ value => value
+    _ => absent
+
+// The flag of the member called `name`, or `absent`.
+memberFlag (members, name, absent) = match memberTold (members, name)
+    ui::ToldFlag _ on => on
+    _ => absent
+
+// The real of the member called `name`, or `absent`.
+memberReal (members, name, absent) = match memberTold (members, name)
+    ui::ToldReal _ value => value
+    _ => absent
+
+// The items of the list member called `name`, or none.
+memberItems (members, name) = match memberTold (members, name)
+    ui::ToldList _ items => items
+    _ => []
+
+// The `index`th told of `items`, or the empty record.
+toldAt (items, index) = listGet items index ?: blankTold ()
+
+// The `index`th child of the record `told`, or the empty record.
+childTold (told, index) = toldAt (memberItems (insideTold told, "children"), index)
+
+// `part` under the member name `name`, or alone when the name is empty.
+spelledName (name, part) = match name
+    "" => part
+    _ => "${name}=${part}"
+
+// One told value spelt as one string — its name, then its value marked by its kind — so a single expectation reads a whole record and every member.
+spelled told = match told
+    ui::ToldText name text => spelledName (name, "\"${text}\"")
+    ui::ToldCount name value => spelledName (name, "#${value}")
+    ui::ToldReal name value => spelledName (name, "~${value}")
+    ui::ToldFlag name on => spelledName (name, "?${on}")
+    ui::ToldRecord name members => spelledName (name, "{${join (mapList (members, spelled)) ","}}")
+    ui::ToldList name items => spelledName (name, "[${join (mapList (items, spelled)) ","}]")
+    ui::ToldScene name members sketch => spelledName (name, "{scene ${sketch.sketchWidth}x${sketch.sketchHeight}x${sketch.sketchZoom},${join (mapList (members, spelled)) ","}}")
+
+// `node`'s one told record, as Tell walks it.
+toldOf : ui::Node<Act> -> ui::Told
+toldOf node = Tell::first (Tell::walk ([], node))
+
+// A component record's own members, or none when they name no kind.
+ownControls members = match memberText (members, "kind") == ""
+    true => []
+    false => [ui::ToldRecord(recordName = "", members = members)]
+
+// Every component record in a told tree, depth first: a record with a `kind` member is one.
+controlsOf told = match told
+    ui::ToldList _ items => Lists::flatten (mapList (items, controlsOf))
+    ui::ToldRecord _ members => listConcat (ownControls members) (Lists::flatten (mapList (members, controlsOf)))
+    ui::ToldScene _ members _ => listConcat (ownControls members) (Lists::flatten (mapList (members, controlsOf)))
+    _ => []
+
+// The words a control carries: the first of its label, title or text members.
+wordsOfControl members = listGet (filterList ([memberText (members, "label"), memberText (members, "title"), memberText (members, "text")], \text => text != "")) 0 ?: ""
+
+// The controls of `kind` in `node`'s tree, depth first, each spelt `words@event` in the walk's order.
+eventsOf (node, kind) = join (mapList (filterList (controlsOf (toldOf node), \told => memberText (insideTold told, "kind") == kind), \told => "${wordsOfControl (insideTold told)}@${memberCount (insideTold told, "event", 0 - 1)}")) ","
+
+// Whether the control numbered `ordinal` of `node`'s walk delivers `binding`.
+deliversBinding : (ui::Node<Act>, int, ui::Binding<Act>) -> bool
+deliversBinding (node, ordinal, binding) = match listGet ((Tell::walk ([], node)).bindings) ordinal
+    Success found => structuralEquals found binding
+    Error _ => false
+
+(** Drives the probe application through the real surface open and event path, and reads its surfaces. *)
 module Probes
-    (** The probe application's first envelope. *)
-    export started () = Doc::parse (Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", initial, regions, save, theme))
+    (** The probe application's first surface, opened on a Linux host at clock 1. *)
+    export started () = Views::quiet (\() => Surfaces::open (Surfaces::idle (probe (0, "")), program (), Runtime::host (1, 0, "linux", "", []), false))
 
-    (** The envelope after delivering `event` to the session `envelope` left. *)
-    export post (envelope, event) = Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, update, regions, save, restore))
+    (** The surface after the typed host event `touch`. *)
+    export sent (held, touch) = Views::quiet (\() => Hosting::event (held, program (), touch))
 
-    (** The keys of the regions an envelope patched, in order. *)
-    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key"))) ","
+    (** The surface after the control numbered `ordinal` delivers `words` at clock 5. *)
+    export posted (held, ordinal, words) = sent (held, ui::Touch(touchNow = 5, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
 
-    (** A tap on control `ordinal` of `region` as drawn at `revision`. *)
-    export tap (region, revision, ordinal) = "{\"kind\":\"ui\",\"region\":\"${region}\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":null,\"now\":5}"
+    (** The surface after a tap of the control numbered `ordinal`. *)
+    export tapped (held, ordinal) = posted (held, ordinal, "")
 
-    (** Text typed into the note field as drawn at `revision`. *)
-    export typed (revision, text) = "{\"kind\":\"ui\",\"region\":\"note\",\"revision\":${revision},\"ordinal\":0,\"value\":${jsonQuote text ?: "null"},\"now\":6}"
+    (** The surface after the capability of `ticket` completes: `ok` with `text`, or `text` as its reason. *)
+    export finished (held, ticket, ok, text) = sent (held, ui::Touch(touchNow = 9, touchKind = Hosting::completed, touchOrdinal = 0, touchWords = ticket, touchDetail = text, touchX = 0.0, touchY = 0.0, touchDown = ok, touchShift = false))
 
-    (** The opaque state of `envelope`, quoted for embedding in an event document. *)
-    export saved envelope = jsonQuote (Doc::text (envelope, "state")) ?: "\"\""
+    (** The surface after the host reaches the lifecycle `phase`. *)
+    export phased (held, phase) = sent (held, ui::Touch(touchNow = 8, touchKind = Hosting::phase, touchOrdinal = 0, touchWords = phase, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
 
-    (** A trusted-host edit of the control `ordinal` as it was drawn in `prior` at `revision`, with `value` as JSON text. *)
-    export edit (prior, region, revision, ordinal, value) = "{\"kind\":\"ui-edit\",\"prior\":${prior},\"region\":\"${region}\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
+    (** The surface after a display frame `elapsed` seconds after the last. *)
+    export framed (held, elapsed) = sent (held, ui::Touch(touchNow = 9, touchKind = Hosting::frame, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = elapsed, touchY = 0.0, touchDown = false, touchShift = false))
 
-    (** The restored store of `envelope`'s session. *)
-    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+    (** The kinds of the requests the last step sent, in order, `;`-separated. *)
+    export asked held = join (mapList (held.surfaceAsked, \r => Requests::kind r.capability)) ";"
 
-    (** An envelope's diagnostics, joined by `;`. *)
-    export problems envelope = join (Doc::texts (envelope, "diagnostics")) ";"
+    (** The tickets of the requests the last step sent, in order, `;`-separated. *)
+    export tickets held = join (mapList (held.surfaceAsked, \r => r.ticket)) ";"
+
+    (** The host-held slice writes the last step sent, as `key=text`, `;`-separated. *)
+    export written held = join (mapList (held.surfaceWritten, \w => "${w.sliceKey}=${w.sliceText}")) ";"
+
+    (** Why the last event was refused: empty when it was delivered. *)
+    export problem held = held.surfaceProblem
+
+    (** The store of `held`'s session. *)
+    export stored held = held.surfaceSession.sessionStore
 
     (** The probe application's theme. *)
     export palette () = theme
+
+    (** The probe application's root, walked as a host reads it. *)
+    export seen held = Surfaces::seen (held, program ())

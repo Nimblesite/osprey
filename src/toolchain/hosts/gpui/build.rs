@@ -17,6 +17,7 @@ fn main() {
     let runtime = env::var("OSPREY_RUNTIME_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| manifest.join("../../compiler/bin"));
+    fingerprint(&manifest.join("../../compiler/runtime/native_abi.h"));
     println!("cargo:rerun-if-env-changed=OSPREY_GPUI_APP_DIR");
     println!("cargo:rerun-if-env-changed=OSPREY_RUNTIME_DIR");
     println!("cargo:rerun-if-env-changed=OSPREY_GPUI_LINK_SEARCH");
@@ -51,4 +52,17 @@ fn main() {
             }
         }
     }
+}
+
+/// Passes the shared layout this host is compiled against to `frame.rs`; the linked runtime
+/// refuses to open a bridge for any other ([NATIVE-SHM-LAYOUT]).
+fn fingerprint(header: &std::path::Path) {
+    println!("cargo:rerun-if-changed={}", header.display());
+    let text = std::fs::read_to_string(header).expect("the generated native ABI header");
+    let value = text
+        .lines()
+        .find_map(|line| line.strip_prefix("#define TD_SHARED_FINGERPRINT_64 "))
+        .expect("the header's shared fingerprint")
+        .trim_matches('"');
+    println!("cargo:rustc-env=OSPREY_NATIVE_FINGERPRINT={value}");
 }

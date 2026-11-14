@@ -4,10 +4,7 @@ effect Audit
     control step : string => int
 
 (** This helper performs two ordered steps and combines their supplied values. *)
-pipeline () =
-    a = perform Audit.step "load"
-    b = perform Audit.step "parse"
-    a + b 
+pipeline () = perform Audit.step "load" + perform Audit.step "parse"
 
 (** Append `${key}:${label}|` to a transcript; entry and settle share this shape. *)
 tag (cell, key, label) = "${cell}${key}:${label}|"
@@ -36,16 +33,12 @@ leave log key label answer = noteExit log key label label answer
 
 (** Record one operation's entry and the value its region supplied. *)
 noteEnter (log, key, supplyLabel, label, supplied) =
-    Ledger(entered = tag (log.entered, key, label),
-      supplies = supply (log.supplies, supplyLabel, supplied),
-      settled = log.settled,
-      answers = log.answers)
+    log(entered = tag (log.entered, key, label),
+      supplies = supply (log.supplies, supplyLabel, supplied))
 
 (** Record one operation's settle and the answer its arm saw. *)
 noteExit log key label sawLabel answer =
-    Ledger(entered = log.entered,
-      supplies = log.supplies,
-      settled = tag (log.settled, key, label),
+    log(settled = tag (log.settled, key, label),
       answers = saw log.answers sawLabel answer)
 
 (** This case proves operations enter FIFO and post-resume code exits LIFO. *)
@@ -121,11 +114,7 @@ nestedInterleavedDepthTwoCase () =
                 answer = resume (betaCalls * 100)
                 log := leave log "b" label answer
                 answer * 2 
-        p = perform Alpha.alpha "a1"
-        q = perform Beta.beta "b1"
-        r = perform Alpha.alpha "a2"
-        s = perform Beta.beta "b2"
-        (p + q ) + (r + s ) 
+        (perform Alpha.alpha "a1" + perform Beta.beta "b1") + (perform Alpha.alpha "a2" + perform Beta.beta "b2")
 
     (* Operations enter in the order the body performs them, whichever depth
        answers them: the outer region answers first and third. *)
@@ -180,13 +169,7 @@ nestedDepthThreeRotationCase () =
                 answer = resume (betaCalls * 100)
                 log := leave log "d3" label answer
                 answer * 3 
-        g0 = perform Gamma.gamma "g0"
-        a1 = perform Alpha.alpha "a1"
-        b1 = perform Beta.beta "b1"
-        g1 = perform Gamma.gamma "g1"
-        b2 = perform Beta.beta "b2"
-        a2 = perform Alpha.alpha "a2"
-        (g0 + a1 ) + (b1 + g1 ) + (b2 + a2 ) 
+        ((perform Gamma.gamma "g0" + perform Alpha.alpha "a1") + (perform Beta.beta "b1" + perform Gamma.gamma "g1")) + (perform Beta.beta "b2" + perform Alpha.alpha "a2")
 
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
     checkAll "three rotated depths enter in perform order" [log.entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|", structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]]
@@ -248,17 +231,9 @@ nestedDepthFourStaircaseCase () =
                 answer = resume (deltaCalls * 1000)
                 log := leave log "4" label answer
                 answer + 1000 
-        a1 = perform Alpha.alpha "a1"
-        b1 = perform Beta.beta "b1"
-        g1 = perform Gamma.gamma "g1"
-        x1 = perform Delta.delta "x1"
-        x2 = perform Delta.delta "x2"
-        g2 = perform Gamma.gamma "g2"
-        b2 = perform Beta.beta "b2"
-        a2 = perform Alpha.alpha "a2"
-        firstHalf = (a1 + b1 ) + (g1 + x1 ) 
-        secondHalf = (x2 + g2 ) + (b2 + a2 ) 
-        firstHalf + secondHalf 
+        firstHalf = (perform Alpha.alpha "a1" + perform Beta.beta "b1") + (perform Gamma.gamma "g1" + perform Delta.delta "x1")
+        secondHalf = (perform Delta.delta "x2" + perform Gamma.gamma "g2") + (perform Beta.beta "b2" + perform Alpha.alpha "a2")
+        firstHalf + secondHalf
 
     (* Eight operations descend the four depths and climb back out. *)
     checkAll "four nested depths enter in perform order" [log.entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|", structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]]
@@ -293,15 +268,7 @@ effect Twin
     control far : int => int
 
 (** One effect, two depths, one partial inner region. Spec 0017's Handlers
-    section says "the innermost matching arm wins and an outer arm remains
-    available for operations not handled by the inner region", and
     [EFFECTS-STATIC-DISCHARGE] adds that "complementary nested partial handlers
-    may each discharge the operation they cover". So `near` is answered by the
-    inner region and `far` reaches the outer one while inner suspensions are
-    still live — and by [EFFECTS-RESUME-NESTING] each crossing `far` installs
-    its arm OUTSIDE the live `near` arms it crossed, so both `near` arms settle
-    before either `far` arm does. Settlement is therefore not the reverse of the
-    entry order. The unused outer `near` arm supplies a millionfold value, so
     any leak past the inner region is visible. *)
 nestedPartialInnerResumeCase () =
     mut outerNear = 0
@@ -330,11 +297,7 @@ nestedPartialInnerResumeCase () =
                 answer = resume (amount * 10)
                 log := noteExit log "near" (toString amount) "near" answer
                 answer + 5 
-        p = perform Twin.near 1
-        q = perform Twin.far 2
-        r = perform Twin.near 3
-        s = perform Twin.far 4
-        (p + q ) + (r + s ) 
+        (perform Twin.near 1 + perform Twin.far 2) + (perform Twin.near 3 + perform Twin.far 4)
 
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)

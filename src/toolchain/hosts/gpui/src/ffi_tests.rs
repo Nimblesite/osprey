@@ -1,55 +1,258 @@
-use super::test_support::{isolated_test, poison, serial, LIVE_BUFFERS, TEXT_BYTES};
+//! The fixture every FFI test drives [GPUI-HOST-BOUNDARY], [NATIVE-SHM-EVENT]: one linked
+//! application whose exports stream rows through the real bridge, answer the statuses a host must
+//! refuse, and read host-held slices through `native_slice`. The pinning tests of the slice store
+//! live in `ffi_import_tests.rs` and the frame's own tests in `ffi_frame_tests.rs`.
+
+use super::test_support::{poison, serial, LIVE_BUFFERS, TEXT_BYTES};
 use super::*;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::AtomicIsize;
-use std::sync::atomic::AtomicUsize;
+use crate::frame;
+use std::sync::atomic::{AtomicI32, AtomicIsize, AtomicUsize};
 
 static MODE: AtomicUsize = AtomicUsize::new(0);
-static RELEASES: AtomicUsize = AtomicUsize::new(0);
+static EXPORTS: AtomicUsize = AtomicUsize::new(0);
 static ABI: AtomicI32 = AtomicI32::new(1);
 static MAIN_STATUS: AtomicI32 = AtomicI32::new(0);
 static MAIN_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
+static SNAPSHOT: Mutex<Option<String>> = Mutex::new(None);
 static PINNED_BUFFERS: AtomicIsize = AtomicIsize::new(0);
+
+/// The row kind of a canvas, whose scene rows name its row ([NATIVE-SHM-VIEW]).
+const CANVAS: i64 = 13;
+/// The row kind of a text label.
+const LABEL: i64 = 2;
+/// The font weight every test control carries.
+const WEIGHT: i64 = 400;
+/// The ask code of a refused event's diagnostic ([NATIVE-SHM-ASK]).
+const DIAGNOSTIC: i64 = 101;
+/// The answer of an export that failed: no view may be read from it.
+const EXPORT_FAILED: i64 = 7;
+/// The most scene rows and view rows one frame may hold ([NATIVE-SHM]).
+const SHAPE_ROWS: i64 = 1 << 20;
+const VIEW_ROWS: i64 = 1 << 16;
+
+extern "C" {
+    /// The runtime's control writer, which copies its text before returning.
+    fn osp_native_view_row(
+        kind: i64,
+        parent: i64,
+        action: i64,
+        text: *const c_char,
+        colour: i64,
+        background: i64,
+        size: f64,
+        padding: f64,
+        spacing: f64,
+        radius: f64,
+        weight: i64,
+    ) -> i64;
+    /// The runtime's control fitting writer.
+    fn osp_native_view_extend(
+        row: i64,
+        width: f64,
+        height: f64,
+        grow: f64,
+        flags: i64,
+        border: i64,
+        hint: *const c_char,
+    ) -> i64;
+    /// The runtime's scene row writer, which copies its text before returning.
+    fn osp_native_scene_shape(
+        code: i64,
+        index: i64,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        angle: f64,
+        colour: i64,
+        depth: i64,
+        text: *const c_char,
+    ) -> i64;
+    /// The runtime's ask writer, which copies its text before returning.
+    fn osp_native_ask(field: i64, number: i64, text: *const c_char) -> i64;
+}
 
 fn reset(mode: usize) {
     MODE.store(mode, Ordering::SeqCst);
-    RELEASES.store(0, Ordering::SeqCst);
+    EXPORTS.store(0, Ordering::SeqCst);
     ABI.store(1, Ordering::SeqCst);
     MAIN_STATUS.store(0, Ordering::SeqCst);
     INITIALIZED.store(false, Ordering::SeqCst);
     CALLBACK_FAULT.store(NO_CALLBACK_FAULT, Ordering::SeqCst);
+    *main_slot() = None;
+    *snapshot_slot() = None;
 }
 
-fn owned(bytes: &[u8]) -> *const c_char {
-    CString::new(bytes)
-        .expect("test output must not contain an interior NUL")
-        .into_raw()
+/// One C string a writer copies before returning.
+fn text(value: &str) -> CString {
+    CString::new(value).expect("test text must not contain an interior NUL")
 }
 
-fn output() -> *const c_char {
+/// Streams one control and its fit, returning the row its children name.
+fn view(kind: i64, parent: i64, action: i64, words: &str, traits: i64, hint: &str) -> i64 {
+    let words = text(words);
+    // SAFETY: both writers copy their text before returning, and the pointers outlive the calls.
+    let row = unsafe {
+        osp_native_view_row(
+            kind,
+            parent,
+            action,
+            words.as_ptr(),
+            0,
+            0,
+            0.,
+            0.,
+            0.,
+            0.,
+            WEIGHT,
+        )
+    };
+    let hint = text(hint);
+    // SAFETY: `row` is the control just written; the writer copies its text before returning.
+    let fitted = unsafe { osp_native_view_extend(row, 0., 0., 0., traits, 0, hint.as_ptr()) };
+    assert_eq!(fitted, 0, "a test control must accept its fit");
+    row
+}
+
+/// Streams the scene head naming the canvas at `canvas`: its first three values are the scene's
+/// width, height and zoom.
+fn scene_head(canvas: i64) {
+    // SAFETY: the writer copies its text before returning.
+    let row = unsafe {
+        osp_native_scene_shape(20, canvas, 100., 100., 1., 0., 0., 0, 0, text("").as_ptr())
+    };
+    assert_eq!(row, 0, "a test scene head must be written");
+}
+
+/// Streams one lettering shape into the current scene.
+fn lettering(drawn: &str) -> i64 {
+    // SAFETY: the writer copies its text before returning.
+    unsafe { osp_native_scene_shape(6, 0, 0., 0., 12., 400., 0., 0, 0, text(drawn).as_ptr()) }
+}
+
+/// Streams one lettering shape carrying raw bytes, so a frame can carry text that is not UTF-8.
+fn raw_lettering(bytes: &[u8]) -> i64 {
+    // SAFETY: no byte is a NUL, so the C string is well formed for the boundary.
+    let words = unsafe { CString::from_vec_unchecked(bytes.to_vec()) };
+    // SAFETY: the writer copies its text before returning.
+    unsafe { osp_native_scene_shape(6, 0, 0., 0., 12., 400., 0., 0, 0, words.as_ptr()) }
+}
+
+/// A frame every check accepts: one canvas and one lettered scene counting `count`.
+fn counted_frame(count: &str) -> i64 {
+    let canvas = view(CANVAS, -1, 0, "", 0, "");
+    assert_eq!(canvas, 0, "the first control row");
+    scene_head(canvas);
+    assert_eq!(lettering(count), 0);
+    0
+}
+
+/// A frame every check accepts: one canvas and one lettered scene.
+fn healthy_frame() -> i64 {
+    counted_frame("Count 0")
+}
+
+/// A frame a scene row writes no canvas can name.
+fn malformed_frame() -> i64 {
+    let _ = view(LABEL, -1, -1, "stray", 0, "");
+    let _ = lettering("before any scene");
+    0
+}
+
+/// A label whose text is not UTF-8: the bridge stores the bytes, and the check refuses them.
+fn malformed_label_frame() -> i64 {
+    // SAFETY: no byte is a NUL, so the C string is well formed for the boundary.
+    let words = unsafe { CString::from_vec_unchecked(vec![0xff, b'x']) };
+    // SAFETY: the writer copies its text before returning.
+    let row =
+        unsafe { osp_native_view_row(LABEL, -1, -1, words.as_ptr(), 0, 0, 0., 0., 0., 0., WEIGHT) };
+    assert_eq!(row, 0, "the malformed label must still be written");
+    0
+}
+
+/// A lettering whose text is not UTF-8, drawn into an otherwise healthy scene.
+fn malformed_scene_frame() -> i64 {
+    let canvas = view(CANVAS, -1, 0, "", 0, "");
+    scene_head(canvas);
+    assert_eq!(
+        raw_lettering(&[0xff, b'x']),
+        0,
+        "the malformed row must be written"
+    );
+    0
+}
+
+/// A healthy frame answered with a failure: the answer alone must refuse the call.
+fn failed_answer_frame() -> i64 {
+    assert_eq!(healthy_frame(), 0, "the failed export still drew a frame");
+    EXPORT_FAILED
+}
+
+/// The frame a refused event draws: the same view again, its reason among the asks.
+fn refused_event_frame() -> i64 {
+    assert_eq!(healthy_frame(), 0, "the refused event still drew its frame");
+    // SAFETY: the writer copies its text before returning.
+    let asked = unsafe { osp_native_ask(0, DIAGNOSTIC, text("the picker was closed").as_ptr()) };
+    assert_eq!(asked, 0, "the diagnostic ask must be written");
+    1
+}
+
+/// A strip that claims two point rows which never follow: written and sealed, refused at the read.
+fn unreadable_scene_frame() -> i64 {
+    let canvas = view(CANVAS, -1, 0, "", 0, "");
+    scene_head(canvas);
+    // SAFETY: the writer takes no text and returns whether the row was accepted.
+    let strip = unsafe { osp_native_scene_shape(2, 2, 0., 0., 0., 0., 0., 0, 0, std::ptr::null()) };
+    assert_eq!(strip, 0, "the unreadable strip must still be written");
+    0
+}
+
+/// An ask for a capability no host answers: written and sealed, refused at the read.
+fn unreadable_ask_frame() -> i64 {
+    // SAFETY: the writer copies its text before returning.
+    let asked = unsafe { osp_native_ask(0, 26, text("no such capability").as_ptr()) };
+    assert_eq!(asked, 0, "the unknown ask must still be written");
+    0
+}
+
+/// Writes the frame this test mode asks for and returns the export's answer.
+fn output() -> i64 {
+    EXPORTS.fetch_add(1, Ordering::SeqCst);
     match MODE.load(Ordering::SeqCst) {
-        0 => std::ptr::null(),
-        1 => owned(b"copied envelope"),
-        2 => owned(&[0xff, b'x']),
-        3 => observation_output(),
+        0 => 0,
+        1 => counted_frame("Count 0"),
+        2 => malformed_frame(),
+        3 => observe(snapshot_observation),
         4 => nested_output(),
-        5 => allocation_output(),
-        6 => empty_key_output(),
+        5 => observe(bounded_observation),
+        6 => observe(empty_key_observation),
         7 => nested_dispatch_output(),
-        8 => poisoned_callback_output(),
-        9 => poisoned_callback_output(),
-        10..=12 => poisoned_stream_output(),
+        8 | 9 => poisoned_callback_output(),
+        10 | 12 | 18 => refused_frame_output(),
+        mode => framed_output(mode),
+    }
+}
+
+/// The modes that draw one whole frame and answer it: a second healthy count, text no check
+/// accepts, an answer a host must refuse, and rows the write accepts but the read does not.
+fn framed_output(mode: usize) -> i64 {
+    match mode {
+        13 => counted_frame("Count 1"),
+        14 => malformed_label_frame(),
+        15 => malformed_scene_frame(),
+        16 => failed_answer_frame(),
+        17 => refused_event_frame(),
+        19 => unreadable_scene_frame(),
+        20 => unreadable_ask_frame(),
         mode => unreachable!("unknown test output mode {mode}"),
     }
 }
 
 #[no_mangle]
 extern "C" fn osprey_main() -> i32 {
+    EXPORTS.fetch_add(1, Ordering::SeqCst);
     if MODE.load(Ordering::SeqCst) == 3 {
-        *MAIN_OUTPUT
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            Some(snapshot_observation().unwrap_or_else(|error| error));
+        *main_slot() = Some(snapshot_observation().unwrap_or_else(|error| error));
     }
     MAIN_STATUS.load(Ordering::SeqCst)
 }
@@ -60,60 +263,62 @@ extern "C" fn osprey_host_abi_version() -> i32 {
 }
 
 #[no_mangle]
-extern "C" fn osprey_app_start(_source: *const c_char) -> *const c_char {
+extern "C" fn osprey_app_argument(_text: *const c_char) -> i64 {
     output()
 }
 
 #[no_mangle]
-extern "C" fn osprey_app_dispatch(_saved: *const c_char, _event: *const c_char) -> *const c_char {
+#[allow(clippy::too_many_arguments)]
+extern "C" fn osprey_app_open(
+    _now: i64,
+    _offset: i64,
+    _platform: *const c_char,
+    _home: *const c_char,
+    _dark: bool,
+) -> i64 {
     output()
 }
 
 #[no_mangle]
-extern "C" fn osprey_release_string(value: *const c_char) {
-    assert!(!value.is_null(), "the host released a null output");
-    RELEASES.fetch_add(1, Ordering::SeqCst);
-    // SAFETY: each test output is a live CString allocation released at most once.
-    unsafe { drop(CString::from_raw(value as *mut c_char)) };
+#[allow(clippy::too_many_arguments)]
+extern "C" fn osprey_app_event(
+    _now: i64,
+    _kind: i64,
+    _ordinal: i64,
+    _words: *const c_char,
+    _detail: *const c_char,
+    _x: f64,
+    _y: f64,
+    _down: bool,
+    _shift: bool,
+) -> i64 {
+    output()
 }
 
-#[test]
-fn valid_owned_output_is_released_after_copying() {
-    let _serial = serial();
-    reset(1);
-    let result = Library::start("context");
-    assert_eq!(RELEASES.load(Ordering::SeqCst), 1, "owned output leaked");
-    assert_eq!(
-        result.as_deref(),
-        Ok("copied envelope"),
-        "copied output did not survive its release"
-    );
+fn main_slot() -> std::sync::MutexGuard<'static, Option<String>> {
+    MAIN_OUTPUT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-#[test]
-fn malformed_owned_output_is_released() {
-    let _serial = serial();
-    reset(2);
-    let result = Library::dispatch("state", "event");
-    assert_eq!(
-        RELEASES.load(Ordering::SeqCst),
-        1,
-        "malformed owned output leaked"
-    );
-    assert!(result.is_err(), "malformed UTF-8 was accepted: {result:?}");
+fn snapshot_slot() -> std::sync::MutexGuard<'static, Option<String>> {
+    SNAPSHOT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-#[test]
-fn null_output_is_not_released() {
-    let _serial = serial();
-    reset(0);
-    let result = Library::start("context");
-    assert!(result.is_err(), "null output was accepted: {result:?}");
-    assert_eq!(
-        RELEASES.load(Ordering::SeqCst),
-        0,
-        "null output was released"
-    );
+fn snapshot() -> Option<String> {
+    snapshot_slot().clone()
+}
+
+fn main_observation() -> Option<String> {
+    main_slot().clone()
+}
+
+/// Records what an export observed, since an export now returns a status rather than text.
+fn observe(observation: fn() -> Result<String, String>) -> i64 {
+    *snapshot_slot() = Some(observation().unwrap_or_else(|error| error));
+    0
 }
 
 fn import_text(pointer: *const c_char) -> Result<String, String> {
@@ -136,121 +341,14 @@ fn snapshot_observation() -> Result<String, String> {
     Ok(format!("{first}|{again}|{latest}"))
 }
 
-fn observation_output() -> *const c_char {
-    let observed = snapshot_observation().unwrap_or_else(|error| error);
-    owned(observed.as_bytes())
-}
-
-fn nested_output() -> *const c_char {
+fn nested_output() -> i64 {
     MODE.store(0, Ordering::SeqCst);
-    let problem = Library::start("nested")
+    let problem = Library::open(0, 0, "nested", "/home", false)
         .err()
         .unwrap_or_else(|| "accepted nested call".to_owned());
     MODE.store(4, Ordering::SeqCst);
-    owned(problem.as_bytes())
-}
-
-fn prepare_snapshot() -> std::sync::MutexGuard<'static, ()> {
-    let guard = serial();
-    reset(3);
-    assert_eq!(put_slice("snapshot-test", "before"), Ok(()));
-    guard
-}
-
-#[test]
-fn start_pins_imports_across_a_concurrent_slice_replacement() {
-    let _serial = prepare_snapshot();
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("before|before|after")
-    );
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("after|after|after")
-    );
-}
-
-#[test]
-fn dispatch_pins_imports_across_a_concurrent_slice_replacement() {
-    let _serial = prepare_snapshot();
-    assert_eq!(
-        Library::dispatch("state", "event").as_deref(),
-        Ok("before|before|after")
-    );
-}
-
-#[test]
-fn initialization_pins_imports_and_releases_a_failed_call_scope() {
-    let _serial = prepare_snapshot();
-    MAIN_STATUS.store(7, Ordering::SeqCst);
-    assert!(Library::init().is_err());
-    assert_eq!(main_observation().as_deref(), Some("before|before|after"));
-    MAIN_STATUS.store(0, Ordering::SeqCst);
-    assert_eq!(Library::init(), Ok(()));
-    assert_eq!(main_observation().as_deref(), Some("after|after|after"));
-}
-
-fn main_observation() -> Option<String> {
-    MAIN_OUTPUT
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
-}
-
-#[test]
-fn incompatible_import_ownership_versions_are_refused_before_exports() {
-    let _serial = serial();
-    for version in [0, 2] {
-        reset(1);
-        ABI.store(version, Ordering::SeqCst);
-        assert!(Library::init().is_err(), "unsupported ABI initialized");
-        assert!(
-            Library::start("context").is_err(),
-            "unsupported ABI started"
-        );
-        assert!(
-            Library::dispatch("state", "event").is_err(),
-            "unsupported ABI dispatched"
-        );
-        assert_eq!(RELEASES.load(Ordering::SeqCst), 0);
-    }
-}
-
-#[test]
-fn malformed_output_does_not_leave_an_import_snapshot_active() {
-    let _serial = prepare_snapshot();
-    MODE.store(2, Ordering::SeqCst);
-    assert!(Library::dispatch("state", "event").is_err());
-    MODE.store(3, Ordering::SeqCst);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("before|before|after")
-    );
-}
-
-#[test]
-fn a_nested_export_is_refused_without_disturbing_the_outer_scope() {
-    let _serial = prepare_snapshot();
-    MODE.store(4, Ordering::SeqCst);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("A native call is already active")
-    );
-    MODE.store(3, Ordering::SeqCst);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("before|before|after")
-    );
-}
-
-#[test]
-fn nul_input_does_not_leave_an_import_snapshot_active() {
-    let _serial = prepare_snapshot();
-    assert!(Library::start("bad\0context").is_err());
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("before|before|after")
-    );
+    *snapshot_slot() = Some(problem);
+    0
 }
 
 fn bounded_observation() -> Result<String, String> {
@@ -267,52 +365,7 @@ fn bounded_observation() -> Result<String, String> {
     Ok(copied)
 }
 
-fn allocation_output() -> *const c_char {
-    let observed = bounded_observation().unwrap_or_else(|error| error);
-    owned(observed.as_bytes())
-}
-
-#[test]
-fn allocator_control_observes_live_slice_buffers_and_their_release() {
-    let _serial = serial();
-    let before = LIVE_BUFFERS.load(Ordering::SeqCst);
-    let value = CString::new("p".repeat(TEXT_BYTES)).expect("valid probe");
-    assert_eq!(
-        LIVE_BUFFERS.load(Ordering::SeqCst),
-        before + 1,
-        "allocator control inactive"
-    );
-    drop(value);
-    assert_eq!(
-        LIVE_BUFFERS.load(Ordering::SeqCst),
-        before,
-        "deallocation control inactive"
-    );
-}
-
-#[test]
-fn concurrent_replacements_retain_only_the_current_buffer_and_active_reader() {
-    let _serial = serial();
-    reset(5);
-    assert_eq!(Library::init(), Ok(()));
-    let before = LIVE_BUFFERS.load(Ordering::SeqCst);
-    let original = "s".repeat(TEXT_BYTES);
-    assert_eq!(put_slice("allocation-test", &original), Ok(()));
-    assert_eq!(Library::start("context"), Ok(original));
-    assert_eq!(
-        PINNED_BUFFERS.load(Ordering::SeqCst) - before,
-        2,
-        "only current value and active reader may remain"
-    );
-    assert_eq!(
-        LIVE_BUFFERS.load(Ordering::SeqCst) - before,
-        1,
-        "reader pin must drop after export"
-    );
-    assert_eq!(get_slice("allocation-test"), Some("w".repeat(TEXT_BYTES)));
-}
-
-fn empty_key_output() -> *const c_char {
+fn empty_key_observation() -> Result<String, String> {
     let invalid = [0xff_u8, 0];
     let missing = held("missing-import-key").expect("valid key");
     let pointers = [
@@ -321,152 +374,108 @@ fn empty_key_output() -> *const c_char {
         native_slice(missing.as_ptr()),
     ];
     let texts: Result<Vec<_>, _> = pointers.into_iter().map(import_text).collect();
-    owned(format!("{texts:?}").as_bytes())
+    Ok(format!("{texts:?}"))
 }
 
-#[test]
-fn missing_null_and_invalid_keys_remain_empty_inside_a_call() {
-    let _serial = serial();
-    reset(6);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("Ok([\"\", \"\", \"\"])")
-    );
-}
-
-#[test]
-fn a_rust_unwind_releases_the_import_scope() {
-    let _serial = prepare_snapshot();
-    let result = std::panic::catch_unwind(|| {
-        let _snapshot = ImportSnapshot::begin().expect("supported ABI and idle scope");
-        panic!("unwind cleanup control");
-    });
-    assert!(result.is_err());
-    MODE.store(1, Ordering::SeqCst);
-    assert_eq!(Library::start("context").as_deref(), Ok("copied envelope"));
-}
-
-fn nested_dispatch_output() -> *const c_char {
+fn nested_dispatch_output() -> i64 {
+    let canvas = view(CANVAS, -1, 0, "", 0, "");
+    scene_head(canvas);
     let observations = [("event", 1), ("bad\0event", 1), ("event", 2)].map(|(event, abi)| {
-        native_shape(934, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0);
+        assert_eq!(lettering("shape"), 0);
         ABI.store(abi, Ordering::SeqCst);
         MODE.store(0, Ordering::SeqCst);
-        let refused = Library::dispatch("nested", event).is_err();
+        let refused = Library::event(0, &Touch::control(0, event)).is_err();
         MODE.store(7, Ordering::SeqCst);
         ABI.store(1, Ordering::SeqCst);
-        let shapes = take_stream()
-            .expect("healthy outer scene stream")
-            .into_iter()
-            .filter(|shape| shape.code == 934)
-            .count();
-        format!("{refused}|{shapes}")
+        refused.to_string()
     });
-    owned(observations.join(",").as_bytes())
+    *snapshot_slot() = Some(observations.join(","));
+    0
 }
 
-#[test]
-fn refused_nested_dispatch_preserves_the_outer_calls_streamed_shapes() {
-    let _serial = serial();
-    reset(7);
-    assert_eq!(
-        Library::start("context").as_deref(),
-        Ok("true|1,true|1,true|1")
-    );
-}
-
-#[test]
-fn an_import_outside_a_call_is_reported_before_any_export_runs() {
-    let _serial = serial();
-    reset(1);
-    let key = held("outside-call").expect("valid key");
-    assert_eq!(import_text(native_slice(key.as_ptr())), Ok(String::new()));
-    assert!(
-        Library::start("context").is_err(),
-        "callback fault became a successful envelope"
-    );
-    assert_eq!(
-        RELEASES.load(Ordering::SeqCst),
-        0,
-        "export ran after callback fault"
-    );
-}
-
-fn poisoned_callback_output() -> *const c_char {
+fn poisoned_callback_output() -> i64 {
     poison(slices());
     let key = held("snapshot-test").expect("valid key");
     let _ = native_slice(key.as_ptr());
     if MODE.load(Ordering::SeqCst) == 9 {
-        let _ = Library::start("nested");
+        let _ = Library::open(0, 0, "nested", "/home", false);
     }
-    owned(b"fake successful envelope")
+    0
 }
 
-#[test]
-fn a_poisoned_import_reports_failure_and_releases_the_export_result() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(8);
-    MODE.store(1, Ordering::SeqCst);
-    assert_eq!(Library::start("context").as_deref(), Ok("copied envelope"));
+/// One scene row that no scene head names.
+fn marker() -> i64 {
+    // SAFETY: the writer takes no text and returns whether the row was accepted.
+    unsafe { osp_native_scene_shape(934, 0, 0., 0., 0., 0., 0., 0, 0, std::ptr::null()) }
 }
 
-#[test]
-fn a_refused_nested_call_cannot_consume_the_outer_import_fault() {
-    if isolated_test() {
-        return;
+/// Mode 10 streams one shape row more than a frame may hold and mode 18 one view row more, so a
+/// run refuses and the frame cannot publish; mode 12 streams rows no check accepts.
+fn refused_frame_output() -> i64 {
+    match MODE.load(Ordering::SeqCst) {
+        12 => {
+            let _ = view(99, -1, -1, "unknown kind", 0, "");
+            assert_eq!(lettering("one"), 0);
+            assert_eq!(lettering("two"), 0);
+            0
+        }
+        18 => {
+            let accepted = refused_view_writes();
+            assert_eq!(accepted, VIEW_ROWS, "the frame's view limit moved");
+            0
+        }
+        _ => {
+            let accepted = (0..=SHAPE_ROWS).filter(|_| marker() == 0).count();
+            assert_eq!(accepted as i64, SHAPE_ROWS, "the frame's shape limit moved");
+            0
+        }
     }
-    let _serial = assert_import_failure(9);
 }
 
+/// Streams label rows until the view run refuses, returning how many it accepted.
+fn refused_view_writes() -> i64 {
+    (0..=VIEW_ROWS)
+        .filter(|at| {
+            // SAFETY: the writer takes no text and returns the row it accepted, or -1.
+            let written = unsafe {
+                osp_native_view_row(
+                    LABEL,
+                    -1,
+                    -1,
+                    std::ptr::null(),
+                    0,
+                    0,
+                    0.,
+                    0.,
+                    0.,
+                    0.,
+                    WEIGHT,
+                )
+            };
+            written == *at
+        })
+        .count() as i64
+}
+
+/// A failed export leaves no frame, so it cannot become a successful view; the runs are consumed.
 fn assert_import_failure(mode: usize) -> std::sync::MutexGuard<'static, ()> {
     let guard = serial();
     reset(mode);
-    let result = Library::start("context");
+    let result = Library::open(0, 0, "test", "/home", false);
     slices().clear_poison();
-    STREAM.clear_poison();
     assert!(
         result.is_err(),
-        "import failure {mode} became a successful envelope"
+        "import failure {mode} became a successful view"
     );
-    assert_eq!(
-        RELEASES.load(Ordering::SeqCst),
-        1,
-        "failed export output leaked"
+    assert!(
+        frame::take().is_none(),
+        "import failure {mode} left a frame"
     );
     guard
 }
 
-fn poisoned_stream_output() -> *const c_char {
-    poison(&STREAM);
-    if MODE.load(Ordering::SeqCst) == 10 {
-        native_shape(934, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, 0);
-    } else if MODE.load(Ordering::SeqCst) == 11 {
-        drop(take_stream());
-    }
-    owned(b"fake successful envelope")
-}
+#[path = "ffi_import_tests.rs"]
+mod import_tests;
 
-#[test]
-fn a_failed_shape_write_cannot_become_a_successful_envelope() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(10);
-}
-
-#[test]
-fn a_failed_stream_read_cannot_become_a_successful_envelope() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(11);
-}
-
-#[test]
-fn stream_poison_without_a_later_callback_still_rejects_the_export() {
-    if isolated_test() {
-        return;
-    }
-    let _serial = assert_import_failure(12);
-}
+#[path = "ffi_frame_tests.rs"]
+mod frame_tests;

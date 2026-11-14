@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -14,7 +13,7 @@ namespace Osprey.Host.WinUI;
 sealed partial class Renderer
 {
     /// <summary>The kind-to-control table; its keys must equal <see cref="Coverage.Drawn"/>.</summary>
-    Dictionary<string, Func<Scope, JsonElement, UIElement>> Kinds() => new()
+    Dictionary<string, Func<Scope, Node, UIElement>> Kinds() => new()
     {
         ["text"] = (_, node) => Written(node), ["label"] = (_, node) => Labelled(node), ["pair"] = (_, node) => Pair(node),
         ["badge"] = (_, node) => Badge(node), ["icon"] = (_, node) => Icon(node), ["link"] = (_, node) => Link(node),

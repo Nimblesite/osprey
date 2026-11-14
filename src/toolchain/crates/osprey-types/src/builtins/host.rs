@@ -55,6 +55,21 @@ pub(super) fn websocket(e: &mut TypeEnv) {
     mono(e, "websocketClose", vec![i()], i());
 }
 
+/// The shared-frame writers of `native_scene.c` ([NATIVE-SHM-VIEW],
+/// [NATIVE-SHM-SCENE], [NATIVE-SHM-ASK]). Typed builtins whose C signatures the
+/// compiler fixes, so `@osprey/native` declares no raw extern and the registry
+/// publishes it [PACKAGE-CAPABILITY-CONFINEMENT]. Each returns the C status.
+pub(super) fn native_frame(e: &mut TypeEnv) {
+    let f = Type::float;
+    let shape = vec![i(), i(), f(), f(), f(), f(), f(), i(), i(), s()];
+    mono(e, "nativeSceneShape", shape, i());
+    let row = vec![i(), i(), i(), s(), i(), i(), f(), f(), f(), f(), i()];
+    mono(e, "nativeViewRow", row, i());
+    let extend = vec![i(), f(), f(), f(), i(), i(), s()];
+    mono(e, "nativeViewExtend", extend, i());
+    mono(e, "nativeAsk", vec![i(), i(), s()], i());
+}
+
 pub(super) fn terminal(e: &mut TypeEnv) {
     mono(e, "termReadKey", vec![], res(s()));
     mono(e, "termRawMode", vec![i()], u());

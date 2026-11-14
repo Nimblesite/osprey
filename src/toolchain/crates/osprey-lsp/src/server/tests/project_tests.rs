@@ -19,7 +19,9 @@ async fn state_advice_tracks_unsaved_edits_and_never_survives_errors(
             "(** Counts. *)\nstate Store\n    (** Zero. *)\n    export zero () = missing\n",
         ),
     ] {
-        state_advice_changes(extension, [state, plain, invalid]).await?;
+        for removed_from_disk in [false, true] {
+            state_advice_changes(extension, [state, plain, invalid], removed_from_disk).await?;
+        }
     }
     Ok(())
 }
@@ -27,11 +29,16 @@ async fn state_advice_tracks_unsaved_edits_and_never_survives_errors(
 async fn state_advice_changes(
     extension: &str,
     sources: [&str; 3],
+    removed_from_disk: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = crate::test_support::ProjectFixture::new(extension)?;
     let uri = fixture.write("main", sources[0])?;
     let (mut h, report) = started_open(&uri, sources[0], "diagnostics").await?;
     assert_at(&report, "/diagnostics/0/code", "state-boundary");
+    if removed_from_disk {
+        // The live buffer keeps working after its on-disk entry disappears.
+        std::fs::remove_file(fixture.root.join(format!("src/main.{extension}")))?;
+    }
     for (version, text, code) in [
         (2, sources[1], None),
         (3, sources[2], Some("type-error")),

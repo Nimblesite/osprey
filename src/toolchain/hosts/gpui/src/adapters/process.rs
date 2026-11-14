@@ -6,11 +6,11 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
-use serde_json::{json, Value};
+use serde_json::json;
 
-use super::{field, number, strings};
-use crate::envelope::Request;
+use super::{number, text};
 use crate::ffi;
+use crate::rows::Ask;
 
 const STDERR_LIMIT: usize = 65_536;
 const READ_BLOCK: usize = 65_536;
@@ -38,26 +38,26 @@ struct Collected {
 }
 
 /// Runs one executable without a shell and writes its UTF-8 stdout to a slice.
-pub fn run(request: &Request) -> Result<Value, String> {
-    let executable = field(request, "executable")?;
-    if !Path::new(executable).is_absolute() {
+pub fn run(ask: &Ask) -> Result<String, String> {
+    let executable = text(ask, 1, "executable")?;
+    if !Path::new(&executable).is_absolute() {
         return Err("Executable must be an absolute path".to_owned());
     }
     let launched = launch(
-        executable,
-        &strings(request, "arguments")?,
-        number(request, "timeout")?,
-        number(request, "limit")?,
+        &executable,
+        &ask.texts(2),
+        number(ask, 3, "timeout")?,
+        number(ask, 4, "limit")?,
     )?;
     let stdout = String::from_utf8(launched.stdout).map_err(|_| "Not UTF-8 text".to_owned())?;
-    ffi::put_slice(field(request, "slice")?, &stdout)?;
-    Ok(json!({"status": launched.status, "stderr": stderr_text(&launched.stderr)}))
+    ffi::put_slice(&text(ask, 6, "slice")?, &stdout)?;
+    Ok(json!({"status": launched.status, "stderr": stderr_text(&launched.stderr)}).to_string())
 }
 
 /// Launches a child and enforces its wall-clock deadline and per-stream byte limit.
 fn launch(
     executable: &str,
-    arguments: &[&str],
+    arguments: &[String],
     timeout: u64,
     limit: u64,
 ) -> Result<Launched, String> {
@@ -215,25 +215,41 @@ mod tests {
 
     use super::stderr_text;
     use crate::ffi;
+    use crate::rows::{Ask, Field};
 
     #[cfg(unix)]
-    /// Returns a run request for a Unix executable.
-    fn run_request(
-        executable: &str,
-        arguments: &[&str],
-        timeout: u64,
-        limit: u64,
-    ) -> crate::envelope::Request {
-        super::super::request(
-            "run",
-            &[
-                ("executable", json!(executable)),
-                ("arguments", json!(arguments)),
-                ("timeout", json!(timeout)),
-                ("limit", json!(limit)),
-                ("slice", json!(format!("run-test-{}-{}", executable, limit))),
-            ],
-        )
+    /// Returns a run ask for a Unix executable.
+    fn run_request(executable: &str, arguments: &[&str], timeout: u64, limit: u64) -> Ask {
+        let mut fields = vec![Field {
+            field: 1,
+            number: 0,
+            text: executable.to_owned(),
+        }];
+        fields.extend(arguments.iter().map(|argument| Field {
+            field: 2,
+            number: 0,
+            text: (*argument).to_owned(),
+        }));
+        fields.push(Field {
+            field: 3,
+            number: timeout as i64,
+            text: String::new(),
+        });
+        fields.push(Field {
+            field: 4,
+            number: limit as i64,
+            text: String::new(),
+        });
+        fields.push(Field {
+            field: 6,
+            number: 0,
+            text: format!("run-test-{executable}-{limit}"),
+        });
+        Ask {
+            code: 1,
+            ticket: "run-test".to_owned(),
+            fields,
+        }
     }
 
     #[cfg(unix)]
@@ -242,7 +258,7 @@ mod tests {
     fn run_captures_stdout_status_and_stderr() {
         let request = run_request("/bin/echo", &["hello"], 1_000, 100);
         let result = answer(&request).and_then(|value| {
-            assert_eq!(value, json!({"status": 0, "stderr": ""}));
+            assert_eq!(value, json!({"status": 0, "stderr": ""}).to_string());
             ffi::get_slice("run-test-/bin/echo-100").ok_or_else(|| "missing slice".to_owned())
         });
         assert_eq!(result.as_deref(), Ok("hello\n"));

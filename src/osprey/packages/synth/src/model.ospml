@@ -1,0 +1,14 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Patch =
+    pitch : float
+    sounding : bool
+    filtered : bool
+    wave : string
+    cutoff : float
+    depth : float
+    lfo : float
+    audible : bool
+    volume : float
+

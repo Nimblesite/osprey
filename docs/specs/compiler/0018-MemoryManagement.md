@@ -102,6 +102,24 @@ The C runtime memory tests exercise each backend directly. The differential
 conformance targets exercise compiled Osprey programs and compare their output;
 the ARC target additionally checks its live-allocation counter at process exit.
 
+### Tracing Heap Layout [MEM-BACKENDS-GC-HEAP]
+
+Today the tracing backend takes every block from the system allocator and records it in one open-addressing table keyed by the block's address. A collection marks through that table, frees the unmarked blocks one by one, and reseats the survivors in place. The table keeps its capacity between collections and shrinks only after a collection that peaked below it.
+
+That layout is correct but slow for programs that allocate many short-lived small blocks. In the `binarytrees` benchmark the program's own code is about 5% of the run: the system allocator's `malloc` and `free` take about 38%, the table insert on each allocation about 28%, and collection about 25%. The run collects 133 times while about 640 KiB stays live. Resolving scanned words through the table is a small part of that (about 6%).
+
+Planned, not built ([plan 0033](../../plans/0033-generated-code-performance.md), phase 2): small blocks come from size-class pages that the collector owns.
+
+- **Allocation** takes the next free cell of a page of the block's size class. It makes no system allocator call and no table insert.
+- **Lookup** of a scanned word finds its page from the address, then its cell from the offset in the page. A word keeps a block alive under exactly the rule the table applies today, so no program retains more or less than it does now.
+- **Per-block state** (marked, finalizer, string, pinned) is held in the page, beside the cells and outside them.
+- **Sweep** clears a page's unmarked cells for reuse and returns a page with no live cell to the operating system. Finalizers still run before any block of that collection is reused.
+- **Large blocks**, above the largest size class, keep the system allocator and the table.
+
+A cell freed by a collection is reused only by later allocations of the same size class. This replaces the allocator. It is not the recycling pool that was measured to make `binarytrees` about 12 times slower, which sat on top of the system allocator and cycled a cold working set.
+
+The collection rules do not change: [MEM-OPAQUE], [MEM-GC-SAFEPOINT] and [MEM-EFFECT-BATON] hold as written, and the supported platforms stay the same.
+
 ### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
 
 Persistent container slots use an erased `int64` ABI, so the runtime cannot

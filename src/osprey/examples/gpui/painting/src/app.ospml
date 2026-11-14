@@ -27,11 +27,8 @@ module App
     (** Refreshes the canvas, header and root regions. *)
     export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)
 
-    (** Serializes the store. *)
-    export save store = Drawing::save store
-
-    (** Restores the store. *)
-    export restore doc = Drawing::restore doc
-
     (** The white theme. *)
     export theme () = View::theme ()
+
+    (** The port as its boundary runs it: an empty sketch drawn with the white theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())

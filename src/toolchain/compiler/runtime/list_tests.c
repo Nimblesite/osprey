@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /*
  * Vanilla-C suite for list_runtime.c — the immutable bitmapped vector trie
@@ -219,7 +220,69 @@ static void test_prepend(void) {
   OspreyList *p = osprey_list_prepend(l, SET_SENTINEL);
   CHECK(osprey_list_get(p, 0) == SET_SENTINEL);
   check_elems(l, m, PREPEND_N);
+  /* A prepend-built list keeps its newest block in the front chunk: every set
+     and every view of it (with that view's own appends and sets) still holds. */
+  check_sets(l, m, PREPEND_N);
+  for (int64_t k = 1; k < PREPEND_N; k++) check_view_at(l, m, PREPEND_N, k, 1);
+  for (int64_t k = 1; k < PREPEND_N; k++) {
+    OspreyList *v = osprey_list_prepend(osprey_list_drop(l, k), SET_SENTINEL);
+    CHECK(osprey_list_get(v, 0) == SET_SENTINEL);
+    check_elems(osprey_list_drop(v, 1), m + k, PREPEND_N - k);
+  }
+  check_elems(l, m, PREPEND_N);
   free(m);
+}
+
+/* Prepends interleaved with appends across every front-growth boundary, kept
+   as a deque model: `front` grows downward from `mid`, `back` upward. */
+static void test_prepend_deep(void) {
+  int64_t cap = DEEP_PREPEND_N + MODEL_SLACK;
+  int64_t *m = new_model(2 * cap);
+  int64_t lo = cap, hi = cap;
+  OspreyList *l = osprey_list_empty();
+  for (int64_t i = 0; i < DEEP_PREPEND_N; i++) {
+    if (i % PREPEND_APPEND_EVERY == 0) {
+      l = osprey_list_append(l, APPEND_SENTINEL - i);
+      m[hi++] = APPEND_SENTINEL - i;
+    } else {
+      l = osprey_list_prepend(l, i);
+      m[--lo] = i;
+    }
+    for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
+      if (hi - lo == GROWTH_SIZES[k]) check_elems(l, m + lo, hi - lo);
+    }
+  }
+  int64_t n = hi - lo;
+  check_elems(l, m + lo, n);
+  /* Views of the prepended list take sets, appends and prepends of their own;
+     the source survives each one. */
+  for (int64_t k = 1; k < n; k += PREPEND_VIEW_STEP) {
+    OspreyList *v = osprey_list_drop(l, k);
+    check_elems(v, m + lo + k, n - k);
+    OspreyList *s = osprey_list_set(v, 0, SET_SENTINEL);
+    CHECK(osprey_list_get(s, 0) == SET_SENTINEL);
+    CHECK(osprey_list_get(s, n - k - 1) == m[hi - 1]);
+    OspreyList *p = osprey_list_prepend(v, SET_SENTINEL - k);
+    CHECK(osprey_list_length(p) == n - k + 1);
+    CHECK(osprey_list_get(p, 0) == SET_SENTINEL - k);
+    CHECK(osprey_list_get(p, 1) == m[lo + k]);
+    check_appends(v, m + lo + k, n - k);
+    check_elems(v, m + lo + k, n - k);
+  }
+  check_elems(l, m + lo, n);
+  free(m);
+}
+
+/* [BUILTIN-LIST-PREPEND] is O(log32 n): cons-building a long list is linear. */
+static void test_prepend_scales(void) {
+  clock_t start = clock();
+  OspreyList *l = osprey_list_empty();
+  for (int64_t i = 0; i < PREPEND_SCALE_N; i++) l = osprey_list_prepend(l, i);
+  CHECK(osprey_list_length(l) == PREPEND_SCALE_N);
+  for (int64_t i = 0; i < PREPEND_SCALE_N; i++) {
+    CHECK(osprey_list_get(l, i) == PREPEND_SCALE_N - 1 - i);
+  }
+  CHECK((clock() - start) / CLOCKS_PER_SEC < PREPEND_SCALE_CPU_SECONDS);
 }
 
 void run_list_tests(void) {
@@ -233,6 +296,8 @@ void run_list_tests(void) {
   test_concat_matrix();
   test_reverse();
   test_prepend();
+  test_prepend_deep();
+  test_prepend_scales();
   test_branching_persistence();
   test_random_ops();
   test_builder_paths();

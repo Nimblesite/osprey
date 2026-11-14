@@ -33,13 +33,60 @@ impl Line {
 }
 
 /// Scan one raw line (a trailing `\r` is treated as part of the line ending).
+#[cfg(test)]
 pub(crate) fn scan_line(raw: &str) -> Line {
+    scan_in(raw, &mut Comments::none())
+}
+
+/// Whether the flavor has nesting `(* … *)` block comments, and how deeply the
+/// scan currently sits inside them. Their text is not code: a `"` or `//` in
+/// one opens no string and no line comment.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Comments {
+    nesting: bool,
+    depth: u32,
+}
+
+impl Comments {
+    /// A flavor with no block comments (Default).
+    pub(crate) const fn none() -> Self {
+        Self {
+            nesting: false,
+            depth: 0,
+        }
+    }
+
+    /// The ML flavor's nesting `(* … *)` comments, starting outside any.
+    pub(crate) const fn ml() -> Self {
+        Self {
+            nesting: true,
+            depth: 0,
+        }
+    }
+
+    // The depth change at `chars[i]`: an opener or closer of a block comment.
+    fn step(&mut self, chars: &[char], i: usize) {
+        let pair = (chars.get(i).copied(), chars.get(i + 1).copied());
+        if !self.nesting {
+            return;
+        }
+        match pair {
+            (Some('('), Some('*')) => self.depth = self.depth.saturating_add(1),
+            (Some('*'), Some(')')) if self.depth > 0 => self.depth -= 1,
+            _ => {}
+        }
+    }
+}
+
+// One raw line scanned with `comments` carried in from the lines before it.
+fn scan_in(raw: &str, comments: &mut Comments) -> Line {
     let chars: Vec<char> = raw.trim_end_matches('\r').chars().collect();
     let leading_ws = chars
         .iter()
         .take_while(|c| **c == ' ' || **c == '\t')
         .count();
-    let (content, open_delta, open_string) = normalize(chars.get(leading_ws..).unwrap_or_default());
+    let (content, open_delta, open_string) =
+        normalize(chars.get(leading_ws..).unwrap_or_default(), comments);
     let leading_closers = content
         .chars()
         .take_while(|c| matches!(c, '}' | ')' | ']'))
@@ -61,40 +108,46 @@ pub(crate) fn scan_line(raw: &str) -> Line {
 /// whitespace-collapsed, silently rewriting what the program prints. Merging
 /// makes the reindenter blind to the literal — the whole thing moves as one
 /// unit and only the line that opens it is indented.
-pub(crate) fn scan_source(src: &str) -> Vec<Line> {
+pub(crate) fn scan_source(src: &str, comments: Comments) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut open: Option<String> = None;
+    let mut before = comments;
     for raw in src.split('\n') {
         let merged = match open.take() {
             Some(previous) => previous + "\n" + raw,
             None => raw.to_owned(),
         };
-        let line = scan_line(&merged);
+        // A merged literal is rescanned whole, from the comment depth it began at.
+        let mut after = before;
+        let line = scan_in(&merged, &mut after);
         if line.open_string {
             open = Some(merged);
         } else {
             lines.push(line);
+            before = after;
         }
     }
     // Unterminated at end of input: the source does not parse, so the guard in
     // `format_source` has already rejected it. Emit it rather than drop it.
-    lines.extend(open.as_deref().map(scan_line));
+    lines.extend(open.as_deref().map(|text| scan_in(text, &mut before)));
     lines
 }
 
 /// Normalise the post-indent part of a line: collapse interior whitespace,
 /// trim the end, copy strings/comments verbatim, and tally bracket nesting.
-fn normalize(chars: &[char]) -> (String, i32, bool) {
+fn normalize(chars: &[char], comments: &mut Comments) -> (String, i32, bool) {
     let mut out = String::with_capacity(chars.len());
     let mut delta = 0i32;
     let mut i = 0;
     let mut open_string = false;
     while let Some(&c) = chars.get(i) {
-        if c == '/' && chars.get(i + 1) == Some(&'/') {
+        let commented = comments.depth > 0;
+        comments.step(chars, i);
+        if !commented && c == '/' && chars.get(i + 1) == Some(&'/') {
             out.extend(chars.get(i..).unwrap_or_default());
             break;
         }
-        if c == '"' {
+        if c == '"' && !commented {
             let (next, terminated) = copy_string(chars, i, &mut out);
             i = next;
             open_string = !terminated;
@@ -260,7 +313,7 @@ mod tests {
         // Two physical lines, one literal: the newline and the interior double
         // spaces belong to the value, so they survive scanning untouched, and
         // the code after the closing quote is normalised as usual.
-        let lines = scan_source("print(\"a  b\nc  d\")   \nx = 1\n");
+        let lines = scan_source("print(\"a  b\nc  d\")   \nx = 1\n", Comments::none());
         assert_eq!(lines.len(), 3, "{lines:?}");
         assert_eq!(
             lines.first().map(|l| l.content.as_str()),
@@ -274,7 +327,7 @@ mod tests {
     fn an_interpolation_left_open_at_the_line_end_keeps_the_literal_open() {
         // `"${` with no closing brace means the literal continues: the next
         // physical line is still inside it.
-        let lines = scan_source("print(\"v=${ f(\nx) } end\")\n");
+        let lines = scan_source("print(\"v=${ f(\nx) } end\")\n", Comments::none());
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(
             lines.first().map(|l| l.content.as_str()),
@@ -286,6 +339,23 @@ mod tests {
     fn a_single_line_string_does_not_open_one() {
         assert!(!scan_line(r#"print("a")"#).open_string);
         assert!(scan_line(r#"print("a"#).open_string);
+    }
+
+    #[test]
+    fn a_quote_inside_an_ml_block_comment_opens_no_string() {
+        // The unmatched `"` and the `//` are comment text, so
+        // every physical line stays its own logical line, and nesting is honoured.
+        let src = "(** adds that \"open\n    and // more (* nested *) text *)\nx = 1\n";
+        let lines = scan_source(src, Comments::ml());
+        assert_eq!(lines.len(), 4, "{lines:?}");
+        assert!(lines.iter().all(|l| !l.open_string), "{lines:?}");
+        assert_eq!(
+            lines.get(1).map(|l| l.content.as_str()),
+            Some("and // more (* nested *) text *)")
+        );
+        assert_eq!(lines.get(2).map(|l| l.content.as_str()), Some("x = 1"));
+        // Default has no block comments: the same quote opens a literal there.
+        assert_eq!(scan_source(src, Comments::none()).len(), 1);
     }
 
     #[test]

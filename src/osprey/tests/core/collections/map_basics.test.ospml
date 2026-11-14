@@ -55,6 +55,9 @@ nonePresent (m, keys) = foldList keys true (\(clear, key) => clear && !(mapConta
 (** `m` holds `present`, lacks every `absent` key, and has exactly `n` bindings. *)
 mapProfile (m, present, absent, n) = mapContains m present && nonePresent (m, absent) && mapLength m == n
 
+(** True when `first` and `second` bind every listed key to the same value. *)
+keysAgree (first, second, keys) = foldList keys true (\(agree, k) => agree && intAtKey (first, k) == intAtKey (second, k))
+
 (** The list holds `want` and lacks `absent`, so a view shows exactly that item. *)
 showsOnly (xs, want, absent) = allListed (xs, [want]) && noneListed (xs, [absent])
 
@@ -71,15 +74,11 @@ viewsList (m, keysAbsent, keysPresent, valuesAbsent, valuesPresent) =
 valueViewTotal values =
     (listGet values 0 ?: 0) + (listGet values 1 ?: 0) + (listGet values 2 ?: 0) + (listGet values 3 ?: 0) + (listGet values 4 ?: 0) + (listGet values 5 ?: 0)
 
-(** `m` holds `n` bindings, both of its views are that long, and its value view totals `sum`. *)
-viewsAgree (m, keys, values, n, sum) =
-    structuralEquals [listLength keys, listLength values] [n, n] && mapLength m == n && sum == valueViewTotal values
-
 (** Both views of `m` report exactly `n` entries ([BUILTIN-COLLECTION-LENGTH]). *)
 viewsLengthIs (m, n) = structuralEquals [listLength (mapKeys m), listLength (mapValues m)] [n, n]
 
-(** Both views of `m` carry `n` entries totalling `sum`. *)
-viewsCheck (m, n, sum) = viewsAgree (m, mapKeys m, mapValues m, n, sum)
+(** Both views of `m` are `n` long and its value view totals `sum`. *)
+viewsCheck (m, n, sum) = viewsLengthIs (m, n) && mapLength m == n && sum == valueViewTotal (mapValues m)
 
 (** Every key of `m` addresses the value at the same index of its value view ([BUILTIN-MAP-KEYS]). *)
 pairsCheck m = pairsPair (m, mapKeys m, mapValues m)
@@ -87,6 +86,10 @@ pairsCheck m = pairsPair (m, mapKeys m, mapValues m)
 (** The k1..kn generation chain the generation, removal, and view cases share:
     `gen n` holds k1..kn and `gen 0` is the empty base. *)
 gen n = range (1, n + 1) |> fold (Map ()) (\(m, i) => mapSet m "k${i}" i)
+
+(** Generations `from` up to `to` of `chain`, so the rows name a range instead of
+    one call per generation. *)
+chainRange (chain, from, to) = range (from, to) |> map (\i => chain i) |> toList
 
 (** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
@@ -116,13 +119,13 @@ generationsAndBranchesCase () =
 
     // Check generation lengths and branch membership.
     checkAll "persistent map generation and branch observations" [
-        answersHold (lengthOf, [(gen 0), (gen 1), (gen 2), g3, (gen 4), (gen 5), g3], [0, 1, 2, 3, 4, 5, 3]) && mapContains (gen 2) "k1",
+        answersHold (lengthOf, listAppend (chainRange (gen, 0, 6), g3), [0, 1, 2, 3, 4, 5, 3]) && mapContains (gen 2) "k1",
         nonePresent ((gen 2), ["k4"]) && mapProfile (xa, "X", ["Y"], 4) && mapProfile (xb, "Y", ["X"], 4)
     ]
 
     // Check that earlier generations retain their values.
     checkAll "persistent map generation values" [
-        allValuesHold ([(gen 1), (gen 2), g3, (gen 4), (gen 5)], [["k1"], ["k1", "k2"], ["k3"], ["k4"], ["k1", "k5"]], [[1], [1, 2], [3], [4], [1, 5]], (0 - 999)) && allAbsent ([(gen 0), (gen 1), (gen 2), g3, (gen 4)], [["k1"], ["k2"], ["k3"], ["k4"], ["k5"]]) && answersHold (lengthOf, [(gen 2), g3], [2, 3])
+        allValuesHold (chainRange (gen, 1, 6), [["k1"], ["k1", "k2"], ["k3"], ["k4"], ["k1", "k5"]], [[1], [1, 2], [3], [4], [1, 5]], (0 - 999)) && allAbsent (chainRange (gen, 0, 5), [["k1"], ["k2"], ["k3"], ["k4"], ["k5"]]) && answersHold (lengthOf, [(gen 2), g3], [2, 3])
     ]
 
     // Check sibling values, absences, and parent isolation.
@@ -238,6 +241,10 @@ typedValueRetrievalCase () =
     leftEntry = valueOr (entries, "left", blank)
     rightEntry = valueOr (entries, "right", blank)
     absentEntry = valueOr (entries, "middle", blank)
+    withoutB = mapRemove titles "b"
+    withDelta = mapMerge titles (mapSet (Map ()) "d" "delta")
+    leftReplaced = mapSet entries "left" blank
+    withoutLeft = mapRemove entries "left"
     absentTitle = match mapGet titles "zzz"
         Success value => value
         Error message => message
@@ -257,10 +264,10 @@ typedValueRetrievalCase () =
     // merged map still yields strings ([BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
     // [BUILTIN-MAP-MERGE]).
     checkAll "string values survive every map producer" [
-        allValuesHold ([mapSet titles "a" "replaced", mapRemove titles "b"], [["a", "b"], ["a", "c"]], [["replaced", "beta"], ["alpha", "gamma"]], "none") && valueOr (titles, "a", "none") == "alpha",
-        valueOr ((mapRemove titles "b"), "b", "gone") == "gone" && nonePresent ((mapRemove titles "b"), ["b"]),
-        answersHold (lengthOf, [mapRemove titles "b", titles], [2, 3]) && valuesHold ((mapMerge titles (mapSet (Map ()) "d" "delta")), ["d", "a"], ["delta", "alpha"], "none"),
-        valueOr ((mapMerge titles (mapSet (Map ()) "a" "right wins")), "a", "none") == "right wins" && mapLength (mapMerge titles (mapSet (Map ()) "d" "delta")) == 4,
+        allValuesHold ([mapSet titles "a" "replaced", withoutB], [["a", "b"], ["a", "c"]], [["replaced", "beta"], ["alpha", "gamma"]], "none") && valueOr (titles, "a", "none") == "alpha",
+        valueOr (withoutB, "b", "gone") == "gone" && nonePresent (withoutB, ["b"]),
+        answersHold (lengthOf, [withoutB, titles], [2, 3]) && valuesHold (withDelta, ["d", "a"], ["delta", "alpha"], "none"),
+        valueOr ((mapMerge titles (mapSet (Map ()) "a" "right wins")), "a", "none") == "right wins" && mapLength withDelta == 4,
         listContains (mapKeys titles) "a" && listContains (mapKeys titles) "c" && listLength (mapKeys titles) == 3
     ]
 
@@ -283,11 +290,15 @@ typedValueRetrievalCase () =
         leftEntry.title != rightEntry.title && leftEntry.score != rightEntry.score,
         leftEntry.active != rightEntry.active && leftEntry.score + rightEntry.score == 4.0,
         structuralEquals [length leftEntry.title, length rightEntry.title] [4, 5] && "${leftEntry.title}/${rightEntry.title}" == "Left/Right",
-        entryReads (absentEntry, "none", 0.0, false) && structuralEquals [(valueOr ((mapSet entries "left" blank), "left", rightEntry)).title, (valueOr ((mapSet entries "left" blank), "right", blank)).title] ["none", "Right"],
-        (valueOr ((mapRemove entries "left"), "right", blank)).score == 2.5 && (valueOr ((mapRemove entries "left"), "left", blank)).title == "none" && mapLength entries == 2
+        entryReads (absentEntry, "none", 0.0, false) && structuralEquals [(valueOr (leftReplaced, "left", rightEntry)).title, (valueOr (leftReplaced, "right", blank)).title] ["none", "Right"],
+        (valueOr (withoutLeft, "right", blank)).score == 2.5 && (valueOr (withoutLeft, "left", blank)).title == "none" && mapLength entries == 2
     ]
 
 test "mapGet returns the value type for every value type" (exactly typedValueRetrievalCase)
+
+(** True when the two keys of `pair` hold different values in `m`, each looked up
+    with its own sentinel so a failed lookup cannot pair up with a real value. *)
+pairDiffers (m, pair) = valueOr (m, (listGet pair 0 ?: ""), (0 - 999)) != valueOr (m, (listGet pair 1 ?: ""), (0 - 998))
 
 (** [BUILTIN-MAP] states that `Map()` and map literals create *string*-keyed maps,
     and [BUILTIN-MAP-GET]/[BUILTIN-MAP-CONTAINS] key them by that string alone. A
@@ -297,6 +308,7 @@ test "mapGet returns the value type for every value type" (exactly typedValueRet
     binding under [BUILTIN-MAP-SET], and [BUILTIN-MAP-KEYS] must report each once. *)
 keyShapeCase () =
     shaped = ["" => 0, "a" => 1, "A" => 2, " " => 3, " a" => 4, "a " => 5, "a b" => 6, "a.b" => 7, "a-b" => 8, "a_b" => 9, "007" => 10, "7" => 11]
+    shapes = ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"]
     longKey = "abcdefghijklmnopqrstuvwxyz0123456789abcd"
     longKeyPrefix = "abcdefghijklmnopqrstuvwxyz0123456789abc"
     shapedLong = mapSet shaped longKey 12
@@ -305,7 +317,7 @@ keyShapeCase () =
     // Twelve literal keys carry values 0..11 in declaration order and the long
     // key carries 12; the long key spells 26 letters + 10 digits + "abcd" = 40.
     checkAll "every key shape binds its own value" [
-        valuesHold (shaped, ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], (0 - 999)) && intAtKey (shapedLong, longKey) == 12,
+        valuesHold (shaped, shapes, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], (0 - 999)) && intAtKey (shapedLong, longKey) == 12,
         answersHold (lengthOf, [shaped, shapedLong], [12, 13]) && length shapedLong == 13 && !(isEmpty shaped),
         structuralEquals [length longKey, length longKeyPrefix] [40, 39] && missingKey ((mapRemove shaped ""), "")
     ]
@@ -313,7 +325,7 @@ keyShapeCase () =
     // Membership follows exact content, so every near miss — a differing case, an
     // extra space, a longer or shorter spelling, a leading zero — must be absent.
     checkAll "map membership follows exact key content" [
-        allPresent (shaped, ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"]) && mapContains shapedLong longKey,
+        allPresent (shaped, shapes) && mapContains shapedLong longKey,
         nonePresent (shaped, [longKey, "b", "B", "  ", " a ", "ab", "a.b.c", "0007", "07", "a-B"]) && nonePresent (shapedLong, [longKeyPrefix, toUpperCase longKey])
     ]
 
@@ -321,7 +333,7 @@ keyShapeCase () =
     // computed keys reach the same bindings as literal ones, and overwriting the
     // empty-string key leaves the source generation at its original value.
     checkAll "case, spacing and punctuation keys stay distinct" [
-        answersHold ((\pair => valueOr (shaped, (listGet pair 0 ?: ""), (0 - 999)) != valueOr (shaped, (listGet pair 1 ?: ""), (0 - 998))), [["a", "A"], [" a", "a "], ["a b", "a.b"], ["a.b", "a-b"], ["a-b", "a_b"], ["007", "7"], ["", " "]], [true, true, true, true, true, true, true]) && valuesHold (shaped, [toUpperCase "a", toLowerCase "A", "a${gap}b", "${gap}a", "a${gap}"], [2, 1, 6, 4, 5], (0 - 999)),
+        answersHold ((\pair => pairDiffers (shaped, pair)), [["a", "A"], [" a", "a "], ["a b", "a.b"], ["a.b", "a-b"], ["a-b", "a_b"], ["007", "7"], ["", " "]], [true, true, true, true, true, true, true]) && valuesHold (shaped, [toUpperCase "a", toLowerCase "A", "a${gap}b", "${gap}a", "a${gap}"], [2, 1, 6, 4, 5], (0 - 999)),
         structuralEquals [shaped[""] ?: (0 - 999), shaped["a b"] ?: (0 - 999), shaped["007"] ?: (0 - 999)] [0, 6, 10] && structuralEquals [intAtKey ((mapSet shaped "" 99), ""), mapLength (mapSet shaped "" 99)] [99, 12],
         intAtKey (shaped, "") == 0 && intAtKey ((mapSet shaped "A" 99), "a") == 1 && mapLength (mapSet shaped "b" 99) == 13
     ]
@@ -330,7 +342,7 @@ keyShapeCase () =
     // the same length and the twelve-key parent must not have gained the long key.
     checkAll "map key and value views report each shape once" [
         viewsLengthIs (shapedLong, 13) && listLength (mapKeys shapedLong) == mapLength shapedLong,
-        allListed ((mapKeys shapedLong), ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7", longKey]) && noneListed ((mapKeys shapedLong), [longKeyPrefix, "b", "  "]),
+        allListed ((mapKeys shapedLong), listAppend (shapes, longKey)) && noneListed ((mapKeys shapedLong), [longKeyPrefix, "b", "  "]),
         noneListed ((mapKeys shaped), [longKey]) && allListed ((mapValues shapedLong), [0, 6, 12]),
         noneListed ((mapValues shapedLong), [13]) && noneListed ((mapValues shaped), [12])
     ]
@@ -342,6 +354,9 @@ test "map keys are distinguished by exact string content" (exactly keyShapeCase)
 slotChain i =
     range (0, i) |> fold (Map ()) (\(m, n) => mapSet m (listGet ["slot", "slot", "slot", "other", "slot", "other", "slot"] n ?: "") (listGet [1, 2, 3, 40, 5, 60, 5] n ?: 0))
 
+(** The generations `from` up to `to` of the chain all bind `key` to their `wants`. *)
+slotHolds (key, from, to, wants) = answersHold (\m => intAtKey (m, key), chainRange (slotChain, from, to), wants)
+
 (** [BUILTIN-MAP-SET] returns a map with `key` bound to `value`, "replacing any
     prior binding", while the Collection Functions preamble states operations
     "return new values without changing their inputs". A chain of overwrites on
@@ -352,31 +367,45 @@ slotChain i =
 overwriteChainCase () =
     prefixes = ["p" => 1, "pa" => 2, "pat" => 3, "path" => 4]
     prefixOverwritten = mapSet prefixes "pa" 20
+    empty = slotChain 0
+    grown = slotChain 6
+    slotKeys = ["slot", "other"]
+    withFresh = mapSet grown "fresh" 7
+    slotAtSeven = mapSet grown "slot" 7
+    otherAtSeven = mapSet grown "other" 7
+    freshRemoved = mapRemove withFresh "fresh"
+    keyOnce = mapSet empty "k" 1
+    keyTwice = mapSet keyOnce "k" 2
+    keyUpper = mapSet keyOnce "K" 2
+    slotGone = mapRemove grown "slot"
+    slotGoneTwice = mapRemove slotGone "slot"
+    drained = mapRemove slotGone "other"
+    slotRestored = mapSet slotGone "slot" 5
 
     // Three overwrites of "slot" never grow the map; adding "other" grows it once
     // and re-setting "slot" to the value it already holds changes nothing.
     checkAll "overwrite chain lengths and per-generation values" [
-        answersHold (lengthOf, [(slotChain 0), (slotChain 1), (slotChain 2), (slotChain 3), (slotChain 4), (slotChain 5), (slotChain 6), (slotChain 7)], [0, 1, 1, 1, 2, 2, 2, 2]) && answersHold ((\m => intAtKey (m, "slot")), [(slotChain 1), (slotChain 2), (slotChain 3), (slotChain 4), (slotChain 5), (slotChain 6), (slotChain 7)], [1, 2, 3, 3, 5, 5, 5]),
-        answersHold ((\m => intAtKey (m, "other")), [(slotChain 4), (slotChain 5), (slotChain 6), (slotChain 7)], [40, 40, 60, 60]) && allAbsent ([(slotChain 0), (slotChain 3)], [["slot"], ["other"]]) && isEmpty (slotChain 0) && !(isEmpty (slotChain 1))
+        answersHold (lengthOf, chainRange (slotChain, 0, 8), [0, 1, 1, 1, 2, 2, 2, 2]) && slotHolds ("slot", 1, 8, [1, 2, 3, 3, 5, 5, 5]),
+        slotHolds ("other", 4, 8, [40, 40, 60, 60]) && allAbsent ([empty, slotChain 3], [["slot"], ["other"]]) && isEmpty empty && !(isEmpty (slotChain 1))
     ]
 
     // Length arithmetic separates a fresh key (+1) from an overwrite (+0), and a
     // key differing only in case counts as fresh.
     checkAll "set length arithmetic separates fresh keys from overwrites" [
-        mapLength (mapSet (slotChain 6) "fresh" 7) == (mapLength (slotChain 6) + 1 ) && mapLength (mapSet (slotChain 6) "slot" 7) == mapLength (slotChain 6),
-        mapLength (mapSet (slotChain 6) "other" 7) == mapLength (slotChain 6) && mapLength (mapSet (slotChain 0) "first" 1) == 1,
-        answersHold (lengthOf, [mapSet (mapSet (slotChain 0) "k" 1) "k" 2, mapSet (mapSet (slotChain 0) "k" 1) "K" 2], [1, 2]) && allValuesHold ([mapSet (mapSet (slotChain 0) "k" 1) "k" 2, mapSet (mapSet (slotChain 0) "k" 1) "K" 2], [["k"], ["k", "K"]], [[2], [1, 2]], (0 - 999)),
-        mapLength (slotChain 6) == 2 && mapContains (mapSet (slotChain 6) "fresh" 7) "fresh",
-        nonePresent ((slotChain 6), ["fresh"]) && valuesHold ((mapSet (slotChain 6) "slot" 7), ["slot", "other"], [7, 60], (0 - 999)) && intAtKey ((slotChain 6), "slot") == 5
+        mapLength withFresh == (mapLength grown + 1 ) && mapLength slotAtSeven == mapLength grown,
+        mapLength otherAtSeven == mapLength grown && mapLength (mapSet empty "first" 1) == 1,
+        answersHold (lengthOf, [keyTwice, keyUpper], [1, 2]) && allValuesHold ([keyTwice, keyUpper], [["k"], ["k", "K"]], [[2], [1, 2]], (0 - 999)),
+        mapLength grown == 2 && mapContains withFresh "fresh",
+        nonePresent (grown, ["fresh"]) && valuesHold (slotAtSeven, slotKeys, [7, 60], (0 - 999)) && intAtKey (grown, "slot") == 5
     ]
 
     // set-then-remove is the identity on the key it touched, remove is idempotent
     // because "a missing key leaves the map unchanged", and draining both keys
     // must land on an empty map rather than a stale one.
     checkAll "set and remove round-trip without disturbing neighbours" [
-        answersHold (lengthOf, [mapRemove (mapSet (slotChain 6) "fresh" 7) "fresh", mapRemove (slotChain 6) "slot", mapRemove (mapRemove (slotChain 6) "slot") "slot", mapRemove (mapRemove (slotChain 6) "slot") "other", mapRemove (slotChain 6) "absent", mapRemove (slotChain 0) "absent", mapSet (mapRemove (slotChain 6) "slot") "slot" 5], [2, 1, 1, 0, 2, 0, 2]) && nonePresent ((mapRemove (mapSet (slotChain 6) "fresh" 7) "fresh"), ["fresh"]),
-        isEmpty (mapRemove (mapRemove (slotChain 6) "slot") "other") && allValuesHold ([mapRemove (mapSet (slotChain 6) "fresh" 7) "fresh", mapSet (mapRemove (slotChain 6) "slot") "slot" 5], [["slot", "other"], ["slot", "other"]], [[5, 60], [5, 60]], (0 - 999)),
-        intAtKey ((mapRemove (slotChain 6) "slot"), "other") == 60 && mapLength (slotChain 6) == 2 && mapContains (slotChain 6) "slot"
+        answersHold (lengthOf, [freshRemoved, slotGone, slotGoneTwice, drained, mapRemove grown "absent", mapRemove empty "absent", slotRestored], [2, 1, 1, 0, 2, 0, 2]) && nonePresent (freshRemoved, ["fresh"]),
+        isEmpty drained && allValuesHold ([freshRemoved, slotRestored], [slotKeys, slotKeys], [[5, 60], [5, 60]], (0 - 999)),
+        intAtKey (slotGone, "other") == 60 && mapLength grown == 2 && mapContains grown "slot"
     ]
 
     // "p", "pa", "pat" and "path" are nested prefixes; overwriting "pa" alone must
@@ -404,20 +433,29 @@ mergeAlgebraCase () =
     leftThenRt = mapMerge left (mapMerge right third)
     plusChain = left + right + third
     overrideK = mapSet empty "k" 999
+    leftKeys = ["k", "K", "k.k", "", "k-k", " "]
+    leftIdentity = mapMerge empty left
+    rightIdentity = mapMerge left empty
+    emptyMerge = mapMerge empty empty
+    leftIdempotent = mapMerge left left
+    rightIdempotent = mapMerge right right
+    lrWithoutK = mapRemove lr "k"
+    lrRestored = mapMerge lrWithoutK lr
+    sevenWants = [10, 200, 3, 40, 300, 50, 700]
 
     // left ∪ right keeps six distinct keys: "k" and "" come from the right (10, 40),
     // "K" and "k.k" only exist on the left (2, 3), "k-k" and " " only on the right.
     checkAll "right-biased union values and lengths" [
-        answersHold (lengthOf, [left, right, third, lr, rl], [4, 4, 3, 6, 6]) && valuesHold (lr, ["k", "K", "k.k", "", "k-k", " "], [10, 2, 3, 40, 30, 50], (0 - 999)),
-        valuesHold (rl, ["k", "K", "k.k", "", "k-k", " "], [1, 2, 3, 4, 30, 50], (0 - 999)) && intAtKey (lr, "k") != intAtKey (rl, "k"),
+        answersHold (lengthOf, [left, right, third, lr, rl], [4, 4, 3, 6, 6]) && allValuesHold ([lr, rl], [leftKeys, leftKeys], [[10, 2, 3, 40, 30, 50], [1, 2, 3, 4, 30, 50]], (0 - 999)),
+        intAtKey (lr, "k") != intAtKey (rl, "k"),
         intAtKey (lr, "") != intAtKey (rl, "") && allAbsent ([lr, rl], [["q"], ["q"]])
     ]
 
     // The empty map is a two-sided identity, merging a map with itself is the
     // identity too, and neither operand is disturbed by any of it.
     checkAll "merge identity, idempotence and operand preservation" [
-        answersHold (lengthOf, [mapMerge empty left, mapMerge left empty, mapMerge empty empty, mapMerge left left, mapMerge right right], [4, 4, 0, 4, 4]) && isEmpty (mapMerge empty empty),
-        allValuesHold ([mapMerge empty left, mapMerge left empty, mapMerge left left, left, right], [["k", ""], ["K", "k.k"], ["k", ""], ["k", ""], ["k", ""]], [[1, 4], [2, 3], [1, 4], [1, 4], [10, 40]], (0 - 999)) && intAtKey ((mapMerge right right), " ") == 50,
+        answersHold (lengthOf, [leftIdentity, rightIdentity, emptyMerge, leftIdempotent, rightIdempotent], [4, 4, 0, 4, 4]) && isEmpty emptyMerge,
+        allValuesHold ([leftIdentity, rightIdentity, leftIdempotent, left, right], [["k", ""], ["K", "k.k"], ["k", ""], ["k", ""], ["k", ""]], [[1, 4], [2, 3], [1, 4], [1, 4], [10, 40]], (0 - 999)) && intAtKey (rightIdempotent, " ") == 50,
         mapLength left == 4 && mapLength right == 4 && allAbsent ([left, right], [["k-k"], ["K"]])
     ]
 
@@ -425,7 +463,7 @@ mergeAlgebraCase () =
     // k=10, K=200, k.k=3, ""=40, k-k=300, " "=50, q=700 — seven keys either way —
     // and `left + right + third` associates to the left, so it agrees as well.
     checkAll "merge is associative and the + alias agrees" [
-        answersHold (lengthOf, [lrThenThird, leftThenRt, plusChain], [7, 7, 7]) && allValuesHold ([lrThenThird, leftThenRt, plusChain], [["k", "K", "k.k", "", "k-k", " ", "q"], ["k", "K", "k.k", "", "k-k", " ", "q"], ["K", "k-k", "q"]], [[10, 200, 3, 40, 300, 50, 700], [10, 200, 3, 40, 300, 50, 700], [200, 300, 700]], (0 - 999)) && answersHold ((\k => intAtKey (lrThenThird, k) == intAtKey (leftThenRt, k)), ["K", "k-k"], [true, true])
+        answersHold (lengthOf, [lrThenThird, leftThenRt, plusChain], [7, 7, 7]) && allValuesHold ([lrThenThird, leftThenRt, plusChain], [listAppend (leftKeys, "q"), listAppend (leftKeys, "q"), ["K", "k-k", "q"]], [sevenWants, sevenWants, [200, 300, 700]], (0 - 999)) && keysAgree (lrThenThird, leftThenRt, ["K", "k-k"])
     ]
 
     // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
@@ -436,7 +474,7 @@ mergeAlgebraCase () =
         noneListed ((mapKeys lr), ["q"]) && allListed ((mapValues lr), [10, 50]),
         noneListed ((mapValues lr), [1]) && viewHolds (lrThenThird, 7, "q", 700, 30),
         mapLength (mapMerge lr overrideK) == 6 && intAtKey ((mapMerge lr overrideK), "k") == 999,
-        intAtKey ((mapMerge overrideK lr), "k") == 10 && answersHold (lengthOf, [mapMerge lr (mapRemove lr "k"), mapMerge (mapRemove lr "k") lr], [6, 6]) && intAtKey ((mapMerge (mapRemove lr "k") lr), "k") == 10
+        intAtKey ((mapMerge overrideK lr), "k") == 10 && answersHold (lengthOf, [mapMerge lr lrWithoutK, lrRestored], [6, 6]) && intAtKey (lrRestored, "k") == 10
     ]
 
 test "map merge is right-biased, associative, and identity-preserving" (exactly mergeAlgebraCase)
@@ -452,23 +490,35 @@ removedAt (m, i) = mapRemove m (listGet ["a", "b", "c", "d", "e"] i ?: "")
 removalSweepCase () =
     base = ["a" => 1, "b" => 2, "c" => 3, "d" => 4, "e" => 5]
     extra = ["f" => 6]
-    abFirst = mapRemove (mapRemove base "a") "b"
+    withoutA = mapRemove base "a"
+    withoutAOnce = removedAt (base, 0)
+    withoutC = removedAt (base, 2)
+    removedTwice = mapRemove withoutA "a"
+    withoutZ = mapRemove base "z"
+    sweeps = [withoutAOnce, (removedAt (base, 1)), withoutC, (removedAt (base, 3)), (removedAt (base, 4))]
+    abFirst = mapRemove withoutA "b"
     baFirst = mapRemove (mapRemove base "b") "a"
     drained = mapRemove (mapRemove (mapRemove (mapRemove (mapRemove base "a") "b") "c") "d") "e"
     widened = mapMerge base extra
+    widenedWithoutF = mapRemove widened "f"
+    quietRemovals = [mapRemove base "A", mapRemove base "", mapRemove base "ab", mapRemove base "a "]
+    drainedRebound = mapSet drained "a" 1
+    withoutCRebound = mapSet withoutC "c" 33
+    removedThenBase = mapMerge (removedAt (base, 1)) base
+    baseThenRemoved = mapMerge base (removedAt (base, 1))
 
     // Each of the five single removals leaves four bindings, and the four that
     // survive keep their original values.
     checkAll "each single removal drops exactly one binding" [
-        answersHold (lengthOf, [base, (removedAt (base, 0)), (removedAt (base, 1)), (removedAt (base, 2)), (removedAt (base, 3)), (removedAt (base, 4))], [5, 4, 4, 4, 4, 4]) && allAbsent ([(removedAt (base, 0)), (removedAt (base, 1)), (removedAt (base, 2)), (removedAt (base, 3)), (removedAt (base, 4))], [["a"], ["b"], ["c"], ["d"], ["e"]]),
-        allValuesHold ([(removedAt (base, 0)), (removedAt (base, 1)), (removedAt (base, 2)), (removedAt (base, 3)), (removedAt (base, 4))], [["b", "e"], ["a", "c"], ["b", "d"], ["c", "e"], ["a", "d"]], [[2, 5], [1, 3], [2, 4], [3, 5], [1, 4]], (0 - 999)) && allPresent (base, ["a", "e"]) && intAtKey (base, "c") == 3
+        mapLength base == 5 && answersHold (lengthOf, sweeps, [4, 4, 4, 4, 4]) && allAbsent (sweeps, [["a"], ["b"], ["c"], ["d"], ["e"]]),
+        allValuesHold (sweeps, [["b", "e"], ["a", "c"], ["b", "d"], ["c", "e"], ["a", "d"]], [[2, 5], [1, 3], [2, 4], [3, 5], [1, 4]], (0 - 999)) && allPresent (base, ["a", "e"]) && intAtKey (base, "c") == 3
     ]
 
     // Removing "a" then "b" and "b" then "a" must agree on every surviving key,
     // and removing all five must land on a genuinely empty map with empty views.
     checkAll "removal is order-insensitive and drains to empty" [
         answersHold (lengthOf, [abFirst, baFirst], [3, 3]) && allAbsent ([abFirst, baFirst], [["a", "b"], ["a", "b"]]),
-        answersHold ((\k => intAtKey (abFirst, k) == intAtKey (baFirst, k)), ["c", "d", "e"], [true, true, true]) && allValuesHold ([abFirst, baFirst], [["c"], ["e"]], [[3], [5]], (0 - 999)),
+        keysAgree (abFirst, baFirst, ["c", "d", "e"]) && allValuesHold ([abFirst, baFirst], [["c"], ["e"]], [[3], [5]], (0 - 999)),
         mapLength drained == 0 && isEmpty drained && length drained == 0 && viewsLengthIs (drained, 0),
         missingKey (drained, "a") && nonePresent (drained, ["c"]) && mapLength base == 5 && !(isEmpty base)
     ]
@@ -477,18 +527,18 @@ removalSweepCase () =
     // so each of these removals must leave all five bindings in place, and a
     // second removal of an already-removed key must be a no-op as well.
     checkAll "removing an absent key leaves the map unchanged" [
-        answersHold (lengthOf, [mapRemove base "z", mapRemove base "", mapRemove base " ", mapRemove base "A", mapRemove base "ab", mapRemove base "a ", mapRemove drained "a", mapRemove (mapRemove base "a") "a"], [5, 5, 5, 5, 5, 5, 0, 4]) && allValuesHold ([mapRemove base "A", mapRemove base "", mapRemove base "ab", mapRemove base "a "], [["a"], ["a"], ["b"], ["a"]], [[1], [1], [2], [1]], (0 - 999)),
-        allPresent ((mapRemove base "z"), ["a", "e"]) && isEmpty (mapRemove drained "a"),
-        nonePresent ((mapRemove (mapRemove base "a") "a"), ["a"]) && intAtKey ((mapRemove (mapRemove base "a") "a"), "b") == 2 && listLength (mapKeys (mapRemove base "z")) == 5
+        answersHold (lengthOf, [withoutZ, mapRemove base " ", mapRemove drained "a", removedTwice], [5, 5, 0, 4]) && answersHold (lengthOf, quietRemovals, [5, 5, 5, 5]) && allValuesHold (quietRemovals, [["a"], ["a"], ["b"], ["a"]], [[1], [1], [2], [1]], (0 - 999)),
+        allPresent (withoutZ, ["a", "e"]) && isEmpty (mapRemove drained "a"),
+        nonePresent (removedTwice, ["a"]) && intAtKey (removedTwice, "b") == 2 && listLength (mapKeys withoutZ) == 5
     ]
 
     // Merging a removed generation back against the full map restores the missing
     // binding from whichever side holds it, and set-after-remove rebinds the key
     // without disturbing the source generation.
     checkAll "removal composes with set and merge" [
-        answersHold (lengthOf, [mapMerge (removedAt (base, 1)) base, mapMerge base (removedAt (base, 1)), widened, mapRemove widened "f", mapSet (removedAt (base, 2)) "c" 33, mapSet drained "a" 1], [5, 5, 6, 5, 5, 1]) && allValuesHold ([mapMerge (removedAt (base, 1)) base, mapMerge base (removedAt (base, 1))], [["b"], ["b"]], [[2], [2]], (0 - 999)),
-        intAtKey (widened, "f") == 6 && nonePresent ((mapRemove widened "f"), ["f"]),
-        allValuesHold ([mapSet (removedAt (base, 2)) "c" 33, base, mapSet drained "a" 1], [["c"], ["c"], ["a"]], [[33], [3], [1]], (0 - 999)) && viewsLengthIs (removedAt (base, 0), 4) && viewsList (removedAt (base, 0), ["a"], ["b"], [1], [5])
+        answersHold (lengthOf, [removedThenBase, baseThenRemoved, widened, widenedWithoutF, withoutCRebound, drainedRebound], [5, 5, 6, 5, 5, 1]) && allValuesHold ([removedThenBase, baseThenRemoved], [["b"], ["b"]], [[2], [2]], (0 - 999)),
+        intAtKey (widened, "f") == 6 && nonePresent (widenedWithoutF, ["f"]),
+        allValuesHold ([withoutCRebound, base, drainedRebound], [["c"], ["c"], ["a"]], [[33], [3], [1]], (0 - 999)) && viewsLengthIs (withoutAOnce, 4) && viewsList (withoutAOnce, ["a"], ["b"], [1], [5])
     ]
 
 test "map removal drops exactly one binding and leaves absent keys alone" (exactly removalSweepCase)
@@ -543,24 +593,32 @@ nestedCollectionCase () =
     betaItems = betaBack.items
     betaTags = betaBack.tags
     missingItems = bucketMissing.items
+    innerFirst = nestedAt (maps, 0, fallbackMap)
+    innerSecond = nestedAt (maps, 1, fallbackMap)
+    innerEmptied = nestedAt (maps, 2, fallbackMap)
+    firstTwo = [innerFirst, innerSecond]
+    pastEnd = nestedAt (maps, 9, fallbackMap)
+    innerRows = [["x", "y"], ["x", "z"]]
+    innerWants = [[1, 2], [10, 30]]
+    outerWithoutTwo = mapRemove outer "two"
 
     // Three maps stored as list elements keep their own two, two and zero
     // bindings; an out-of-range index still takes the Error branch.
     checkAll "maps stored in a list keep their own contents" [
-        listLength maps == 3 && answersHold (lengthOf, [(nestedAt (maps, 0, fallbackMap)), (nestedAt (maps, 1, fallbackMap))], [2, 2]),
-        isEmpty (nestedAt (maps, 2, fallbackMap)) && mapLength (nestedAt (maps, 2, fallbackMap)) == 0 && allValuesHold ([(nestedAt (maps, 0, fallbackMap)), (nestedAt (maps, 1, fallbackMap))], [["x", "y"], ["x", "z"]], [[1, 2], [10, 30]], (0 - 999)),
-        allAbsent ([(nestedAt (maps, 0, fallbackMap)), (nestedAt (maps, 1, fallbackMap)), (nestedAt (maps, 2, fallbackMap))], [["z"], ["y"], ["x"]]) && intAtKey (nestedAt (maps, 0, fallbackMap), "x") != intAtKey (nestedAt (maps, 1, fallbackMap), "x"),
-        mapLength (nestedAt (maps, 9, fallbackMap)) == 1 && intAtKey (nestedAt (maps, 9, fallbackMap), "fallback") == 0,
+        listLength maps == 3 && answersHold (lengthOf, firstTwo, [2, 2]),
+        isEmpty innerEmptied && mapLength innerEmptied == 0 && allValuesHold (firstTwo, innerRows, innerWants, (0 - 999)),
+        allAbsent ([innerFirst, innerSecond, innerEmptied], [["z"], ["y"], ["x"]]) && intAtKey (innerFirst, "x") != intAtKey (innerSecond, "x"),
+        mapLength pastEnd == 1 && intAtKey (pastEnd, "fallback") == 0,
         listLength (listAppend maps inner1) == 4 && listLength maps == 3 && answersHold (lengthOf, [inner1, inner2], [2, 2])
     ]
 
     // A map of maps answers three outer keys while each inner map keeps its own
     // bindings, and replacing one inner map must not disturb the original nest.
     checkAll "maps stored as map values keep their own contents" [
-        structuralEquals [mapLength outer, listLength (mapKeys outer), mapLength outer, mapLength (mapRemove outer "two")] [3, 3, 3, 2] && allListed ((mapKeys outer), ["one", "three"]),
+        structuralEquals [mapLength outer, listLength (mapKeys outer), mapLength outer, mapLength outerWithoutTwo] [3, 3, 3, 2] && allListed ((mapKeys outer), ["one", "three"]),
         noneListed ((mapKeys outer), ["four"]) && answersHold (lengthOf, [innerOne, innerTwo, innerMissing, innerReplaced], [2, 2, 1, 2]),
-        allValuesHold ([innerOne, innerTwo], [["x", "y"], ["x", "z"]], [[1, 2], [10, 30]], (0 - 999)) && nonePresent (innerOne, ["z"]),
-        allValuesHold ([innerMissing, innerReplaced, innerOne], [["fallback"], ["z"], ["x"]], [[0], [30], [1]], (0 - 999)) && nonePresent ((mapRemove outer "two"), ["two"])
+        allValuesHold ([innerOne, innerTwo], innerRows, innerWants, (0 - 999)) && nonePresent (innerOne, ["z"]),
+        allValuesHold ([innerMissing, innerReplaced, innerOne], [["fallback"], ["z"], ["x"]], [[0], [30], [1]], (0 - 999)) && nonePresent (outerWithoutTwo, ["two"])
     ]
 
     // Lists stored as map values keep index order and length; growing one value

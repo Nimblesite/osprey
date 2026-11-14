@@ -1,5 +1,5 @@
 // Implements [UI-COMPONENTS]: approved assets supply semantic symbols on every host.
-import { record } from "./protocol";
+import { record } from "./nodes";
 
 const MAX_BYTES = 65536;
 const MAX_SYMBOLS = 128;

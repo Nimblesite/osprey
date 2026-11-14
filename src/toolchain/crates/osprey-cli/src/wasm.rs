@@ -48,13 +48,40 @@ const WEB_DISPATCH: &str = "osprey_web_dispatch";
 /// A flattened project symbol ends in a length-prefixed, hex-encoded source
 /// segment. This is the mangled terminal segment for [`WEB_DISPATCH`].
 const WEB_DISPATCH_MANGLED_SUFFIX: &str = "_19x6f73707265795f7765625f6469737061746368";
+/// [NATIVE-SHM-WASM] The C names of the shared native boundary every Osprey Native application
+/// exports; a program that defines all three is built as a long-lived module that exports them.
+const BOUNDARY: [&str; 3] = ["osprey_app_argument", "osprey_app_open", "osprey_app_event"];
+/// The bridge entries a wasm host calls to open the bridge and lease each frame's rows straight
+/// from linear memory, and the allocator it lends strings through.
+const BRIDGE_EXPORTS: [&str; 10] = [
+    "osp_native_open",
+    "osp_native_frame_commit",
+    "osp_native_frame_discard",
+    "osp_native_acquire",
+    "osp_native_child",
+    "osp_native_length",
+    "osp_native_view",
+    "osp_native_release",
+    "malloc",
+    "free",
+];
+/// [NATIVE-SHM-WASM] The one import the shared boundary has: a host-held slice by key, which the
+/// wasm host answers with text the C ABI copies before the call returns. wasm-ld leaves exactly
+/// these undefined, as imports; any other undefined symbol still fails the link.
+pub(crate) const HOST_IMPORTS: &[&str] = &["native_slice"];
 /// What a failed tool spawn suggests installing.
 const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 
 /// Lower `program` to the `.wasm` at `out` with the target's default backend.
 /// [WASM-TARGET]
 pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
-    build_with_memory(path, program, out, DEFAULT_MEMORY)
+    build_with_memory(
+        path,
+        program,
+        out,
+        DEFAULT_MEMORY,
+        &crate::ios_abi::ExportScope::EntryOnly,
+    )
 }
 
 /// Lower `program` to the `.wasm` at `out` with an explicit memory backend:
@@ -70,13 +97,21 @@ pub(crate) fn build_with_memory(
     program: &osprey_ast::Program,
     out: &Path,
     memory: &str,
+    scope: &crate::ios_abi::ExportScope,
 ) -> Result<(), ExitCode> {
     crate::target_capabilities::validate(program, "wasm32")
         .map_err(|error| fail(&format!("{path}: {error}")))?;
     let web_dispatch = web_dispatch_export(program);
-    let ir = match program_ir(program) {
-        Ok(ir) => with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch),
-        Err(e) => return Err(fail(&format!("{path}: {e}"))),
+    let shared = shared_boundary(path, program, scope).map_err(|e| fail(&e))?;
+    let (ir, exports) = match shared {
+        Some(ir) => (ir, boundary_exports()),
+        None => match program_ir(program) {
+            Ok(ir) => (
+                with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch),
+                Vec::new(),
+            ),
+            Err(e) => return Err(fail(&format!("{path}: {e}"))),
+        },
     };
     let sysroot = wasi_sysroot().map_err(|e| fail(&e))?;
     let libdir = lib_dir(&sysroot).map_err(|e| fail(&e))?;
@@ -87,7 +122,7 @@ pub(crate) fn build_with_memory(
         ))
     })?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
-    let linked = link(&obj, &archive, &libdir, out, web_dispatch);
+    let linked = link(&obj, &archive, &libdir, out, web_dispatch, &exports);
     let _ = std::fs::remove_file(&obj);
     linked
 }
@@ -99,6 +134,55 @@ fn runtime_lib(memory: &str) -> &'static str {
     } else {
         RUNTIME_LIB_NONE
     }
+}
+
+/// The shared boundary's IR, when the entry file defines `argument`, `open` and `event`
+/// ([NATIVE-SHM-WASM]): their C wrappers, and a WASI entry that runs the top level once.
+fn shared_boundary(
+    path: &str,
+    program: &osprey_ast::Program,
+    scope: &crate::ios_abi::ExportScope,
+) -> Result<Option<String>, String> {
+    if matches!(scope, crate::ios_abi::ExportScope::EntryOnly) || !names_boundary(program) {
+        return Ok(None);
+    }
+    let (ir, abi) = crate::ios_abi::wasm_source(program, path, scope)?;
+    let published = |name: &str| abi.exports.iter().any(|export| export.c_name == name);
+    Ok(BOUNDARY.iter().all(|name| published(name)).then(|| {
+        format!(
+            "{ir}\ndefine i32 @__main_void() {{\n  %r = call i32 @{}()\n  ret i32 %r\n}}\n",
+            crate::ios_abi::ENTRY
+        )
+    }))
+}
+
+/// Whether the program defines functions named as the boundary's three exports.
+fn names_boundary(program: &osprey_ast::Program) -> bool {
+    let defined = |source: &str| {
+        let mangled = format!("_{}x{}", source.len(), hex(source));
+        program.statements.iter().any(|statement| {
+            matches!(statement, osprey_ast::Stmt::Function { name, .. } if name == source || name.ends_with(&mangled))
+        })
+    };
+    ["argument", "open", "event"].into_iter().all(defined)
+}
+
+fn hex(text: &str) -> String {
+    use std::fmt::Write as _;
+    text.bytes().fold(String::new(), |mut out, byte| {
+        // Writing to a String cannot fail.
+        let _ = write!(out, "{byte:02x}");
+        out
+    })
+}
+
+/// The boundary and bridge symbols a shared-boundary module exports.
+fn boundary_exports() -> Vec<String> {
+    BOUNDARY
+        .iter()
+        .chain(BRIDGE_EXPORTS.iter())
+        .map(|name| (*name).to_owned())
+        .collect()
 }
 
 /// Browser exports continue using module globals after the WASI entry returns.
@@ -113,7 +197,13 @@ pub(crate) fn program_ir(program: &osprey_ast::Program) -> osprey_codegen::Resul
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
 pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> ExitCode {
     let wasm = std::env::temp_dir().join(format!("{}.wasm", scratch_stem(path)));
-    if let Err(code) = build_with_memory(path, program, &wasm, memory) {
+    if let Err(code) = build_with_memory(
+        path,
+        program,
+        &wasm,
+        memory,
+        &crate::ios_abi::ExportScope::EntryOnly,
+    ) {
         return code;
     }
     let code = run_host(&wasm);
@@ -154,12 +244,19 @@ fn link(
     libdir: &Path,
     out: &Path,
     web_dispatch: Option<&str>,
+    exports: &[String],
 ) -> Result<(), ExitCode> {
-    run_tool(
-        &tool("OSPREY_WASM_LD", "wasm-ld"),
-        &link_argv(obj, archive, libdir, out, web_dispatch),
-        TOOLCHAIN_HINT,
-    )
+    let mut argv = link_argv(obj, archive, libdir, out, web_dispatch);
+    argv.extend(exports.iter().map(|name| format!("--export={name}")));
+    let imports = obj.with_extension("imports");
+    if !exports.is_empty() {
+        std::fs::write(&imports, HOST_IMPORTS.join("\n"))
+            .map_err(|e| fail(&format!("cannot write {}: {e}", imports.display())))?;
+        argv.push(format!("--allow-undefined-file={}", imports.display()));
+    }
+    let linked = run_tool(&tool("OSPREY_WASM_LD", "wasm-ld"), &argv, TOOLCHAIN_HINT);
+    let _ = std::fs::remove_file(&imports);
+    linked
 }
 
 /// clang argv to lower textual IR to a wasm object: target the wasm triple,

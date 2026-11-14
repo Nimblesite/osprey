@@ -1,0 +1,367 @@
+arithmetic work =
+    handle Arith
+        overflow _ _ _ wrapped =>
+            expect ("overflow", "valid arithmetic")
+            wrapped
+        divideByZero _ _ =>
+            expect ("division by zero", "valid arithmetic")
+            0.0
+    work ()
+
+import synth::Graphs
+import synth::Observations
+import synth::Voice
+
+accepted outcome = match outcome
+    synth::Valid graph => graph
+    synth::Invalid _ =>
+        expect (false, true)
+        Graphs::empty
+
+refused (outcome, expected) = match outcome
+    synth::Invalid actual => expect (actual == expected, true)
+    synth::Valid _ => expect (false, true)
+
+audio = synth::Port(name = "audio", rate = synth::Audio, channels = 1, unit = synth::Amplitude)
+control = synth::Port(name = "pitch", rate = synth::Control, channels = 1, unit = synth::Hertz)
+
+node (identity, processor, inputs, outputs) = synth::Node(identity = identity, processor = processor, inputs = inputs, outputs = outputs, parameters = [])
+
+cable (source, destination) = synth::Cable(source = source, outlet = 0, destination = destination, inlet = 0)
+
+prepared (graph, count) = match Graphs::prepare graph
+    synth::Invalid _ => expect (false, true)
+    synth::Valid plan => expect (length plan.order, count)
+
+test ("route oscillator through gain to output, reject bad wiring and preserve the original patch", \() => arithmetic (\() =>
+    source = node (1, synth::Oscillator, [control], [audio])
+    gain = node (2, synth::Amplifier, [audio], [audio])
+    output = node (3, synth::Sink, [audio], [])
+    first = accepted (Graphs::add (Graphs::empty, source))
+    nodes = accepted (Graphs::add (accepted (Graphs::add (first, gain)), output))
+    chain = accepted (Graphs::connect (accepted (Graphs::connect (nodes, cable (1, 2))), cable (2, 3)))
+    prepared (chain, 3)
+    expect (length nodes.cables, 0)
+    refused (Graphs::add (chain, source), synth::DuplicateNode)
+    refused (Graphs::connect (chain, cable (1, 3)), synth::OccupiedInput)
+    refused (Graphs::connect (chain, cable (99, 2)), synth::MissingNode)
+    refused (Graphs::connect (chain, cable (2, 1)), synth::IncompatiblePorts)
+    bad = cable (1, 2)
+    refused (Graphs::connect (chain, bad(outlet = 7)), synth::InvalidPort)
+    refused (Graphs::add (chain, node (4, synth::Delay(samples = 0), [audio], [audio])), synth::InvalidNode)
+    corrupted = chain(nodes = listAppend chain.nodes source)
+    refused (Graphs::prepare corrupted, synth::DuplicateNode)))
+
+test ("feedback needs a delay; disconnected components and fan-out have deterministic scheduling", \() => arithmetic (\() =>
+    a = node (1, synth::Amplifier, [audio], [audio])
+    b = node (2, synth::Filter, [audio], [audio])
+    graph = accepted (Graphs::add (accepted (Graphs::add (Graphs::empty, a)), b))
+    looped = accepted (Graphs::connect (accepted (Graphs::connect (graph, cable (1, 2))), cable (2, 1)))
+    refused (Graphs::prepare looped, synth::Cycle)
+    delayed = looped(nodes = [a, b(processor = synth::Delay(samples = 1))])
+    match Graphs::prepare delayed
+        synth::Invalid _ => expect (false, true)
+        synth::Valid plan =>
+            expect (listGet plan.order 0 ?: -1, 2)
+            expect (listGet plan.order 1 ?: -1, 1)
+            expect (length plan.feedback, 1)
+    prepared (graph, 2)))
+
+observed snapshot =
+    handle static Signal<synth::Observation>
+        read => snapshot
+    expect (Observations::parameter (10, "cutoff") ?: -1.0, 440.0)
+    expect (Observations::parameter (20, "cutoff") ?: -1.0, 880.0)
+    match Observations::component 10
+        Success component => expect (component.activeVoices, 3)
+        Error _ => expect (false, true)
+    match Observations::parameter (30, "cutoff")
+        Success _ => expect (false, true)
+        Error _ => expect (true, true)
+
+test ("Signals expose separate same-kind component instances without a UI framework", \() => arithmetic (\() =>
+    snapshot = synth::Observation(revision = 4, samplePosition = 1024, parameters = [synth::ParameterValue(node = 10, key = "cutoff", value = 440.0), synth::ParameterValue(node = 20, key = "cutoff", value = 880.0)], components = [synth::ComponentState(node = 10, activeVoices = 3, peak = 0.8, rms = 0.2)])
+    observed snapshot))
+
+// [SYNTH-DSP] Numerical isolation is required: these paths must not need a host, UI or device.
+import synth::Oscillators
+import synth::Envelopes
+import synth::Filters
+
+near (actual, expected, tolerance) = expect (abs (actual - expected) <= tolerance, true)
+
+oscillator (rate, frequency, waveform) = synth::OscillatorConfig(sampleRate = rate, frequency = frequency, pulseWidth = 0.5, waveform = waveform)
+
+oscRun (config, initialState, count) = foldList (toList (range (0, count)), initialState, \(held, _) => (Oscillators::next (config, held)).next)
+
+oscCase (rate, frequency, waveform) =
+    config = oscillator (rate, frequency, waveform)
+    match Oscillators::configure config
+        Error _ => expect (false, true)
+        Success accepted =>
+            whole = oscRun (accepted, Oscillators::initial, 512)
+            split = oscRun (accepted, oscRun (accepted, Oscillators::initial, 31), 481)
+            near (whole.phase, split.phase, 0.000000000001)
+            forEachList (toList (range (0, 128)), \i =>
+                value = (Oscillators::next (accepted, synth::OscillatorState(phase = toFloat i / 128.0))).sample
+                expect (value >= -1.01 && value <= 1.01, true))
+
+invalidOscillator config = match Oscillators::configure config
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+validEnvelope config = match Envelopes::configure config
+    Success _ => expect (true, true)
+    Error _ => expect (false, true)
+
+invalidEnvelope config = match Envelopes::configure config
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+invalidFilter config = match Filters::configure config
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+oscFrequencies rate = forEachList ([0.0, 55.0, 440.0, 7000.0], \frequency => forEachList ([synth::Sine, synth::Saw, synth::Pulse, synth::Triangle], \wave => oscCase (rate, frequency, wave)))
+
+test ("oscillator state survives arbitrary block partitions at three rates and four waveforms", \() => arithmetic (\() =>
+    forEachList ([44100.0, 48000.0, 96000.0], oscFrequencies)
+    triangle = oscillator (48000.0, 440.0, synth::Triangle)
+    near ((Oscillators::next (triangle, synth::OscillatorState(phase = 0.25))).sample, 0.0, 0.000000001)
+    expect ((Oscillators::next (triangle, synth::OscillatorState(phase = 0.5))).sample > 0.98, true)
+    sine = oscillator (48000.0, 440.0, synth::Sine)
+    near ((Oscillators::next (sine, synth::OscillatorState(phase = 0.25))).sample, 1.0, 0.000000000001)
+    forEachList ([sine(sampleRate = 0.0), sine(frequency = -1.0), sine(frequency = 24000.0), sine(pulseWidth = 0.0), sine(pulseWidth = 1.0)], invalidOscillator)))
+
+envRun (config, initialState, count) = foldList (toList (range (0, count)), initialState, \(held, _) => Envelopes::next (config, held))
+
+envelopeCase rate =
+    config = synth::EnvelopeConfig(sampleRate = rate, attack = 4.0 / rate, decay = 4.0 / rate, sustain = 0.5, release = 4.0 / rate)
+    started = Envelopes::noteOn (Envelopes::initial ())
+    attack = envRun (config, started, 4)
+    near (attack.level, 1.0, 0.000000001)
+    sustain = envRun (config, attack, 4)
+    near (sustain.level, 0.5, 0.000000001)
+    releasing = Envelopes::noteOff (config, sustain)
+    near ((envRun (config, releasing, 4)).level, 0.0, 0.000000001)
+    near ((Envelopes::noteOff (config, releasing)).releaseStep, releasing.releaseStep, 0.0)
+    early = envRun (config, started, 2)
+    near ((Envelopes::noteOn early).level, early.level, 0.0)
+    near ((envRun (config, Envelopes::noteOff (config, early), 4)).level, 0.0, 0.000000001)
+
+test ("ADSR reaches its stages, releases during attack, retriggers continuously and handles zero times", \() => arithmetic (\() =>
+    forEachList ([44100.0, 48000.0, 96000.0], envelopeCase)
+    instant = synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.7, release = 0.0)
+    attack = Envelopes::next (instant, Envelopes::noteOn (Envelopes::initial ()))
+    near (attack.level, 1.0, 0.0)
+    near ((Envelopes::next (instant, attack)).level, 0.7, 0.0)
+    near ((Envelopes::noteOff (instant, attack)).level, 0.0, 0.0)
+    forEachList ([instant, instant(attack = 0.2)], validEnvelope)
+    forEachList ([instant(sustain = -0.1), instant(sustain = 1.1), instant(attack = -1.0), instant(release = 4000.0), instant(sampleRate = 0.0)], invalidEnvelope)))
+
+filterRun (coefficients, initialState, count, input) = foldList (toList (range (0, count)), initialState, \(held, _) => (Filters::next (coefficients, held, input)).next)
+
+filterCase (rate, cutoff, resonance) =
+    config = synth::FilterConfig(sampleRate = rate, cutoff = cutoff, resonance = resonance)
+    match Filters::configure config
+        Error _ => expect (false, true)
+        Success c =>
+            settled = filterRun (c, Filters::initial, 4096, 1.0)
+            output = Filters::next (c, settled, 1.0)
+            near (output.low, 1.0, 0.0001)
+            near (output.high, 0.0, 0.0001)
+            split = filterRun (c, filterRun (c, Filters::initial, 127, 1.0), 3969, 1.0)
+            near (settled.integratorOne, split.integratorOne, 0.0)
+            near (settled.integratorTwo, split.integratorTwo, 0.0)
+            faded = filterRun (c, settled, 4096, 0.0)
+            near (faded.integratorTwo, 0.0, 0.0001)
+
+test ("state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation", \() => arithmetic (\() =>
+    forEachList ([44100.0, 48000.0, 96000.0], \rate => forEachList ([1000.0, 5000.0, 18000.0], \cutoff => filterCase (rate, cutoff, 0.7071067811865476)))
+    base = synth::FilterConfig(sampleRate = 48000.0, cutoff = 1000.0, resonance = 0.7)
+    forEachList ([base(cutoff = 0.0), base(cutoff = 24000.0), base(resonance = 0.0), base(resonance = 21.0), base(sampleRate = 0.0)], invalidFilter)))
+
+import synth::Parameters
+
+parameter key = synth::Parameter(key = key, label = "Cutoff", unit = synth::Hertz, minimum = 20.0, maximum = 20000.0, initial = 440.0, automatable = true)
+
+readValue snapshot =
+    handle static Signal<synth::Observation>
+        read => snapshot
+    Observations::parameter (1, "cutoff") ?: -1.0
+
+test ("parameter edits publish applied Signals, reject stale revisions, and preserve independent values", \() => arithmetic (\() =>
+    blank = node (1, synth::Filter, [audio], [audio])
+    component = blank(parameters = [parameter "cutoff"])
+    graph = accepted (Graphs::add (Graphs::empty, component))
+    initial = Parameters::initial graph
+    expect (readValue initial, 440.0)
+    edit = synth::ParameterChange(node = 1, key = "cutoff", value = 880.0, revision = 0, samplePosition = 0)
+    match Parameters::apply (graph, initial, edit)
+        synth::Invalid _ => expect (false, true)
+        synth::Valid next =>
+            expect (readValue next, 880.0)
+            expect (readValue initial, 440.0)
+            expect (next.revision, 1)
+            refused (Parameters::apply (graph, next, edit), synth::StaleRevision)
+    refused (Parameters::apply (graph, initial, edit(value = 0.0)), synth::InvalidParameter)
+    refused (Parameters::apply (graph, initial, edit(samplePosition = 1)), synth::InvalidFrame)
+    refused (Parameters::apply (graph, initial, edit(key = "missing")), synth::MissingParameter)
+    refused (Parameters::apply (graph, initial, edit(node = 9)), synth::MissingNode)
+    refused (Parameters::apply (graph, initial(parameters = []), edit), synth::MissingParameter)))
+
+test ("graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters", \() => arithmetic (\() =>
+    source = node (1, synth::Oscillator, [], [audio])
+    output = node (2, synth::Sink, [audio], [])
+    graph = accepted (Graphs::add (accepted (Graphs::add (Graphs::empty, source)), output))
+    third = accepted (Graphs::add (graph, output(identity = 3)))
+    fan = accepted (Graphs::connect (accepted (Graphs::connect (third, cable (1, 2))), cable (1, 3)))
+    prepared (fan, 3)
+    refused (Graphs::connect (graph, cable (1, 99)), synth::MissingNode)
+    invalidInlet = cable (1, 2)
+    refused (Graphs::connect (graph, invalidInlet(inlet = 9)), synth::InvalidPort)
+    refused (Graphs::prepare (graph(cables = [cable (1, 99)])), synth::MissingNode)
+    forEachList ([source(identity = -1), source(outputs = [audio(channels = 0)]), source(processor = synth::External(identifier = ""))], \invalid => refused (Graphs::add (Graphs::empty, invalid), synth::InvalidNode))
+    refused (Graphs::add (Graphs::empty, source(parameters = [parameter "cutoff", parameter "cutoff"])), synth::DuplicateParameter)
+    invalidParameter = parameter "cutoff"
+    refused (Graphs::add (Graphs::empty, source(parameters = [invalidParameter(initial = -1.0)])), synth::InvalidParameter)
+    stereo = graph(nodes = [source, output(inputs = [audio(channels = 2)])])
+    refused (Graphs::connect (stereo, cable (1, 2)), synth::IncompatiblePorts)
+    tooMany = graph(nodes = mapList (toList (range (0, 256)), \identity => source(identity = identity)))
+    refused (Graphs::add (tooMany, source(identity = 300)), synth::Capacity)
+    crowded = graph(cables = mapList (toList (range (0, 2048)), \_ => cable (1, 2)))
+    refused (Graphs::connect (crowded, cable (1, 2)), synth::Capacity)))
+
+// The extracted reference voice is also exercised independently of Prism's UI dependencies.
+referencePatch wave = synth::Patch(pitch = 220.0, sounding = true, filtered = true, wave = wave, cutoff = 1000.0, depth = 0.5, lfo = 2.0, audible = true, volume = 0.75)
+
+referenceCase wave =
+    p = referencePatch wave
+    samples = Voice::samples p
+    expect (length samples, Voice::rate)
+    expect (Voice::peak samples > 0, true)
+    expect (startsWith (Voice::wav samples) "52494646", true)
+    near (Voice::sample (p(sounding = false), 5), 0.0, 0.0)
+    near (Voice::sample (p(audible = false), 5), 0.0, 0.0)
+    near (Voice::sample (p(volume = 0.0), 5), 0.0, 0.0)
+    expect (Voice::describe p != Voice::describe (p(filtered = false)), true)
+    expect (Voice::sample (p(filtered = false), 5) != Voice::sample (p, 5), true)
+
+test ("extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour", \() => arithmetic (\() =>
+    forEachList (["Sine", "Saw", "Square", "Triangle"], referenceCase)
+    forEachList (["C3", "D3", "E3", "F3", "G3", "A3", "B3", "C#4"], \note => expect (Voice::frequency note > 100.0, true))
+    near (Voice::frequency "A4", 440.0, 0.00000001)
+    forEachList (["1/1", "1/2", "1/4", "1/8", "1/16"], \rate => expect (Voice::hertz rate > 0.0, true))
+    near ((Envelopes::next (synth::EnvelopeConfig(sampleRate = 48000.0, attack = 0.0, decay = 0.0, sustain = 0.5, release = 0.0), Envelopes::initial ())).level, 0.0, 0.0)))
+
+import synth::Components
+import synth::Renderer
+
+planFor graph = match Graphs::prepare graph
+    synth::Valid plan => plan
+    synth::Invalid _ =>
+        expect (false, true)
+        synth::Prepared(graph = Graphs::empty, order = [], feedback = [])
+
+rendered result = match result
+    Success block => block
+    Error why =>
+        print why
+        expect (false, true)
+        synth::Rendered(states = [], samples = [], position = 0, meters = [])
+
+renderRefused result = match result
+    Error _ => expect (true, true)
+    Success _ => expect (false, true)
+
+built (nodes, cables) =
+    graph = foldList (nodes, Graphs::empty, \(g, n) => accepted (Graphs::add (g, n)))
+    foldList (cables, graph, \(g, c) => accepted (Graphs::connect (g, c)))
+
+sameSamples (actual, expected) =
+    expect (length actual, length expected)
+    forEachList (toList (range (0, length expected)), \i => near (listGet actual i ?: -999.0, listGet expected i ?: -888.0, 0.00000000001))
+
+test ("a routed oscillator and gain render exact continuous PCM across unequal blocks", \() => arithmetic (\() =>
+    graph = built ([Components::sine (1, 440.0), Components::gain (2, 0.25), Components::output 3], [cable (1, 2), cable (2, 3)])
+    plan = planFor graph
+    parameters = Parameters::initial graph
+    initial = rendered (Renderer::start graph)
+    whole = rendered (Renderer::block (plan, 48000.0, parameters, initial, 128))
+    first = rendered (Renderer::block (plan, 48000.0, parameters, initial, 31))
+    second = rendered (Renderer::block (plan, 48000.0, parameters, first, 97))
+    sameSamples (whole.samples, listConcat first.samples second.samples)
+    expected = mapList (toList (range (0, 128)), \i => 0.25 * sin (6.283185307179586 * 440.0 * toFloat i / 48000.0))
+    sameSamples (whole.samples, expected)
+    expect (whole.position, 128)
+    metersObserved (Renderer::observed (parameters, whole))
+    empty = rendered (Renderer::block (plan, 48000.0, parameters, whole, 0))
+    expect (empty.position, 128)
+    expect (length empty.samples, 0)
+    renderRefused (Renderer::block (plan, 0.0, parameters, initial, 128))
+    renderRefused (Renderer::block (plan, 48000.0, parameters, initial, -1))
+    renderRefused (Renderer::block (plan, 48000.0, parameters, initial, 8193))
+    renderRefused (Renderer::block (plan, 48000.0, parameters(parameters = []), initial, 1))))
+
+test ("mixing, filtering and explicit two-sample feedback execute the compiled graph", \() => arithmetic (\() =>
+    nodes = [Components::sine (1, 440.0), Components::mixer 2, Components::gain (3, 0.5), Components::delay (4, 2), Components::output 5]
+    routes = [cable (1, 2), Components::route (4, 0, 2, 1), cable (2, 3), cable (3, 4), cable (3, 5)]
+    graph = built (nodes, routes)
+    plan = planFor graph
+    output = rendered (Renderer::block (plan, 48000.0, Parameters::initial graph, rendered (Renderer::start graph), 64))
+    forEachList (toList (range (0, 64)), \i => feedbackExpected (output.samples, i))
+    filterGraph = built ([Components::sine (1, 440.0), Components::lowpass (2, 1000.0, 0.707), Components::output 3], [cable (1, 2), cable (2, 3)])
+    filtered = rendered (Renderer::block (planFor filterGraph, 48000.0, Parameters::initial filterGraph, rendered (Renderer::start filterGraph), 64))
+    expect (length filtered.samples, 64)
+    expect (foldList (filtered.samples, 0.0, \(sum, value) => sum + abs value) > 1.0, true)
+    renderRefused (Renderer::start Graphs::empty)
+    renderRefused (Renderer::start (built ([node (1, synth::External(identifier = "future-vst3"), [], [audio]), Components::output 2], [cable (1, 2)])))
+    unconnected = built ([Components::gain (1, 1.0), Components::output 2], [cable (1, 2)])
+    renderRefused (Renderer::start unconnected)))
+
+feedbackExpected (samples, i) =
+    previous = match i >= 2
+        true => listGet samples (satSub i 2) ?: -999.0
+        false => 0.0
+    expected = 0.5 * (sin (6.283185307179586 * 440.0 * toFloat i / 48000.0) + previous)
+    near (listGet samples i ?: -888.0, expected, 0.00000000001)
+
+metersObserved snapshot =
+    handle static Signal<synth::Observation>
+        read => snapshot
+    expect ((Observations::snapshot ()).samplePosition, 128)
+    match Observations::component 3
+        Error _ => expect (false, true)
+        Success meter =>
+            expect (meter.peak <= 0.25 && meter.peak > 0.24, true)
+            expect (meter.rms > 0.1 && meter.rms < 0.25, true)
+
+test ("sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events", \() => arithmetic (\() =>
+    graph = built ([Components::sine (1, 440.0), Components::gain (2, 1.0), Components::output 3], [cable (1, 2), cable (2, 3)])
+    plan = planFor graph
+    snapshot = Parameters::initial graph
+    first = rendered (Renderer::start graph)
+    mute = synth::ParameterChange(node = 2, key = "gain", value = 0.0, revision = 0, samplePosition = 17)
+    restore = mute(value = 0.5, revision = 1, samplePosition = 31)
+    match Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore])
+        Error why => expect (why, "successful automation")
+        Success timeline =>
+            expect (timeline.observation.revision, 2)
+            expect (timeline.observation.samplePosition, 64)
+            forEachList (toList (range (17, 31)), \i => near (listGet timeline.audio.samples i ?: -1.0, 0.0, 0.0))
+            near (listGet timeline.audio.samples 16 ?: -1.0, sin (6.283185307179586 * 440.0 * 16.0 / 48000.0), 0.00000000001)
+            near (listGet timeline.audio.samples 31 ?: -1.0, 0.5 * sin (6.283185307179586 * 440.0 * 31.0 / 48000.0), 0.00000000001)
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [restore, mute]))
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute(samplePosition = 64)]))
+    renderRefused (Renderer::automated (plan, 48000.0, snapshot, first, 64, [mute, restore(revision = 0)]))))
+
+import synth::Performance
+
+performanceCase (rate, instrument, amount) = forEachList (toList (range (0, 128)), \frame =>
+    sample = Performance::wave (instrument, toFloat frame * 0.0078125, 740.0 / rate, amount, amount)
+    expect (sample >= -1.000001 && sample <= 1.000001, true))
+
+test ("performance timbres and metallic warp stay bounded across rates and control extremes", \() => arithmetic (\() =>
+    forEachList ([8000.0, 44100.0, 48000.0, 96000.0], \rate => forEachList ([0, 1, 2, 3], \instrument => forEachList ([0.0, 0.5, 1.0], \amount => performanceCase (rate, instrument, amount))))
+    near (Performance::wave (0, 0.25, 0.01, 0.0, 0.0), 1.0, 0.000000001)
+    near (Performance::wave (0, 0.25, 0.01, 0.0, 1.0), -1.0, 0.000000001)))

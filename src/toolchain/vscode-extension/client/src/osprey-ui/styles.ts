@@ -274,3 +274,25 @@ button:disabled { cursor: default; opacity: .48; }
 body.vscode-high-contrast .osp-section, body.vscode-high-contrast .osp-button { border-width: 2px; }
 body.vscode-high-contrast .osp-row.osp-selected { outline: 1px solid var(--osp-accent); }
 `;
+
+// [NATIVE-SHM-VIEW] Plain view rows: the structural styles of a frame with no told components
+// (the Tally example). Their classes are prefixed osp-view- so the component vocabulary's
+// stylesheet above never reaches them, and every colour, size and space of a control still
+// arrives as an inline declaration its row carries. The scene canvas rules serve both paths.
+
+export const VIEW_STYLES = `
+.osp-view { display: flex; flex-direction: column; flex-grow: 1; min-height: 0; overflow: auto; }
+.osp-view-control { min-width: 0; }
+.osp-view-control.osp-view-press, .osp-view-control.osp-view-toggle, .osp-view-control.osp-view-option { font: inherit; color: inherit; border: 0; }
+.osp-view-control.osp-view-entry, .osp-view-control.osp-view-editor { outline: none; }
+.osp-view-control.osp-view-entry:focus, .osp-view-control.osp-view-editor:focus { outline: 1px solid var(--vscode-focusBorder); }
+.osp-view-led { display: inline-flex; align-items: center; gap: 6px; }
+.osp-view-symbol { display: inline-flex; width: 1em; justify-content: center; }
+.osp-view-switch { display: inline-flex; width: 1.4em; height: 1.4em; align-items: center; justify-content: center;
+  border: 1px solid currentColor; border-radius: 3px; }
+.osp-view-switch[data-chosen="true"] { background: currentColor; color: var(--vscode-editor-background); }
+.osp-canvas-frame { position: relative; display: flex; min-height: 0; }
+.osp-canvas { outline: none; }
+.osp-canvas:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+.osp-access { border: 0; background: transparent; }
+`;

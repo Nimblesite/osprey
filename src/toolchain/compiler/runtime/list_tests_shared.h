@@ -49,6 +49,15 @@ static const int64_t CAT_SIZES[] = {0, 1, 31, 32, 33, 64, 65, 100};
 #define APPEND_SENTINEL (-2000000)
 #define EXHAUSTIVE_N 100
 #define PREPEND_N 100
+/* Front growth: three levels of room opened before physical index 0 (32, 1024,
+   32768), with an append every PREPEND_APPEND_EVERY prepends. */
+#define DEEP_PREPEND_N 33900
+#define PREPEND_APPEND_EVERY 7
+#define PREPEND_VIEW_STEP 4099
+/* A prepend path-copies O(log32 n) nodes; rebuilding the list per prepend made
+   this many take minutes of CPU, so the bound has two orders of slack. */
+#define PREPEND_SCALE_N 300000
+#define PREPEND_SCALE_CPU_SECONDS 10
 
 /* Test helpers ----------------------------------------------------- */
 static inline OspreyList *make_range_list(int64_t start, int64_t end) {

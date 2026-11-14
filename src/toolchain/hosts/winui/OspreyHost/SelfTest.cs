@@ -171,6 +171,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
             Slider slider => $"slider \"{name}\" value {slider.Value} of {slider.Minimum} to {slider.Maximum}",
             ToggleSwitch toggle => $"toggle \"{toggle.Header ?? name}\"",
             TextBox box => $"field \"{(name == "" ? box.Header : name)}\"",
+            PasswordBox secure => $"field \"{name}\"",
+            ComboBox menu when name != "" => $"picker \"{name}\"",
             AppBarButton bar => $"button \"{bar.Label}\"",
             AppBarToggleButton bar => $"toggle \"{bar.Label}\"",
             ButtonBase button when name != "" => $"button \"{name}\"",
@@ -198,12 +200,20 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     }
 
     // A row a person would scroll to: when nothing on screen shows `words`, the list holding such a
-    // row scrolls it into view, since a list makes rows only as they come into view.
+    // row scrolls it into view, since a list makes rows only as they come into view. A picker's item
+    // is chosen through its picker, as a person's click on it would.
     async Task<string?> Chosen(string words)
     {
-        if (await Until(() => Find(words) is not null || Listed(words) is not null, $"no row shows \"{words}\"") is { } missing)
+        if (await Until(() => Find(words) is not null || Listed(words) is not null || Picked(words) is not null, $"no row or picker shows \"{words}\"") is { } missing)
         {
             return missing;
+        }
+        if (Picked(words) is { } picker)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            picker.Menu.SelectedIndex = picker.Index;
+            return null;
         }
         if (Find(words) is null && Listed(words) is { } listed)
         {
@@ -211,6 +221,24 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
             await Task.Delay(Settle);
         }
         return await Act(words, Choose);
+    }
+
+    // A picker whose item shows `words`, whether or not its flyout has made the item yet.
+    (ComboBox Menu, int Index)? Picked(string words)
+    {
+        var menus = window.Content is { } root ? Tree(root).OfType<ComboBox>() : Enumerable.Empty<ComboBox>();
+        foreach (var menu in menus)
+        {
+            var items = menu.Items.OfType<ComboBoxItem>().ToList();
+            for (var index = 0; index < items.Count; index++)
+            {
+                if (Holds(items[index].Content, words))
+                {
+                    return (menu, index);
+                }
+            }
+        }
+        return null;
     }
 
     // The list and row whose content shows `words`, whether or not the list has made the row yet.
@@ -231,7 +259,8 @@ sealed class SelfTest(HostWindow window, string script, string shots, bool onScr
     // exist as soon as the row is built, before the list makes a visual tree for it.
     static bool Holds(object? content, string words) => content switch
     {
-        TextBlock text => text.Text == words,
+        string text => text == words,
+        TextBlock block => block.Text == words,
         Panel panel => panel.Children.Any(child => Holds(child, words)),
         Border border => Holds(border.Child, words),
         ContentControl control => Holds(control.Content, words),

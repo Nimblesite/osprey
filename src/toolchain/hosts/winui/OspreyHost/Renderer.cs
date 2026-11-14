@@ -1,17 +1,17 @@
-using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Osprey.Host.Scenes;
 
 namespace Osprey.Host.WinUI;
 
-/// <summary>The region and revision a node was drawn in, which every control event names.</summary>
-readonly record struct Scope(string Region, long Revision);
+/// <summary>The region a node was drawn in, which a slot and a scene are named by.</summary>
+readonly record struct Scope(string Region);
 
 /// <summary>
-/// Draws regions with WinUI controls [WINUI-HOST-RENDER]. Each region is drawn into the holder its
-/// <c>slot</c> placed, so a region Osprey did not resend keeps its controls. A kind or symbol this
-/// host does not know is drawn as a visible diagnostic and reported, never as a guess.
+/// Draws regions with WinUI controls [WINUI-HOST-RENDER], from the component trees the application
+/// told [NATIVE-SHM-NODES]. Each region is drawn into the holder its <c>slot</c> placed, so a region
+/// Osprey did not resend keeps its controls. A kind or symbol this host does not know is drawn as a
+/// visible diagnostic and reported, never as a guess.
 /// </summary>
 sealed partial class Renderer
 {
@@ -19,19 +19,22 @@ sealed partial class Renderer
     readonly Dictionary<string, UIElement> drawn = [];
     readonly Dictionary<string, Action<object>> clicks = [];
     readonly Dictionary<string, SceneView> scenes = [];
+    readonly Dictionary<string, Node> sceneNodes = [];
+    readonly HashSet<string> shownScenes = [];
     readonly Dictionary<string, RowDefinition> rooms = [];
-    IReadOnlyList<Streamed> stream = [];
-    int streamTaken;
-    readonly Action<string, long, long, object?> control;
+    readonly Action<long, object?> control;
+    readonly Action<Touch> send;
     readonly Action<IReadOnlyList<string>> report;
-    readonly IReadOnlyDictionary<string, Func<Scope, JsonElement, UIElement>> kinds;
+    readonly IReadOnlyDictionary<string, Func<Scope, Node, UIElement>> kinds;
     IReadOnlyList<double> spacing = [4, 8, 12, 20, 28, 36];
     RegionStore regions = new();
+    Shown? shown;
 
-    public Renderer(Border root, Action<string, long, long, object?> control, Action<IReadOnlyList<string>> report)
+    public Renderer(Border root, Action<long, object?> control, Action<Touch> send, Action<IReadOnlyList<string>> report)
     {
         holders[RegionStore.Root] = root;
         this.control = control;
+        this.send = send;
         this.report = report;
         kinds = Kinds();
         Declared();
@@ -47,62 +50,64 @@ sealed partial class Renderer
         }
     }
 
-    /// <summary>Takes the spacing scale from the first envelope's theme.</summary>
-    public void Themed(JsonElement theme)
+    /// <summary>Takes the spacing scale from the told theme.</summary>
+    public void Themed(Theme? theme)
     {
-        if (theme.ValueKind == JsonValueKind.Object)
+        if (theme is not null)
         {
-            spacing = Envelopes.Items(theme, "spacing", step => step.GetDouble());
-        }
-    }
-
-    /// <summary>Redraws every region an envelope patched or removed, in the order it listed them.</summary>
-    public void Refresh(RegionStore store, IReadOnlyList<string> changed, IReadOnlyList<Streamed> streamed)
-    {
-        regions = store;
-        (stream, streamTaken) = (streamed, 0);
-        foreach (var key in changed)
-        {
-            Redraw(key);
-        }
-        if (streamTaken != stream.Count)
-        {
-            report([$"The application streamed {stream.Count} shapes and its scenes took {streamTaken}"]);
+            spacing = theme.Spacing;
         }
     }
 
     /// <summary>
-    /// A scene [WINUI-HOST-SCENE]: its own shapes and the next shapes streamed for it, in the order the
-    /// framework wrote them, drawn into the view this scene keeps between frames.
+    /// Redraws every region a told frame changed or dropped, in the order it listed them, then
+    /// repaints every other scene from this frame: a scene's shapes live in the frame's scene rows,
+    /// not in its region's tree, so an event that changes only the picture leaves the tree equal.
     /// </summary>
-    UIElement Scene(Scope scope, JsonElement node)
+    public void Refresh(RegionStore store, IReadOnlyList<string> changed, Shown frame)
     {
-        var count = (int)Math.Clamp(Envelopes.Number(node, "streamed"), 0, int.MaxValue);
-        if (count > stream.Count - streamTaken)
+        regions = store;
+        shown = frame;
+        shownScenes.Clear();
+        foreach (var key in changed)
         {
-            return Refused($"A scene expected {count} streamed shapes and {stream.Count - streamTaken} arrived");
+            Redraw(key);
         }
-        var mine = stream.Skip(streamTaken).Take(count).ToList();
-        streamTaken += count;
-        Scenes.Scene scene;
-        try
+        foreach (var (key, view) in scenes)
         {
-            scene = SceneDecoder.Decode(node, mine);
+            if (!shownScenes.Contains(key) && sceneNodes.TryGetValue(key, out var node) && SceneOf(node) is { } scene)
+            {
+                view.Show(scene, node.Number("event"), send);
+            }
         }
-        catch (HostException problem)
+    }
+
+    /// <summary>
+    /// A scene [WINUI-HOST-SCENE]: the scene rows the frame gave the record at this node's
+    /// <c>sceneRow</c>, drawn into the view this scene keeps between frames.
+    /// </summary>
+    UIElement Scene(Scope scope, Node node)
+    {
+        if (SceneOf(node) is not { } scene)
         {
-            return Refused($"Invalid scene: {problem.Message}");
+            return Refused("A scene the frame gave no scene rows");
         }
-        var key = $"{scope.Region}#{Envelopes.Number(node, "event")}";
+        var key = $"{scope.Region}#{node.Number("event")}";
         if (!scenes.TryGetValue(key, out var view))
         {
             view = new SceneView(problem => report([problem]));
             scenes[key] = view;
         }
+        sceneNodes[key] = node;
+        shownScenes.Add(key);
         Detach(view.Element);
-        view.Show(scene, Emit(scope, node));
+        view.Show(scene, node.Number("event"), send);
         return view.Element;
     }
+
+    // The checked scene the frame gave the told record at `node`, by the row its sceneRow names.
+    Scene? SceneOf(Node node) =>
+        shown is { } frame && frame.Scenes.TryGetValue((int)Math.Clamp(node.Number("sceneRow"), 0, int.MaxValue), out var scene) ? scene : null;
 
     void Redraw(string key)
     {
@@ -113,7 +118,7 @@ sealed partial class Renderer
             Hold(key, null);
             return;
         }
-        drawn[key] = Draw(new Scope(key, region.Revision), region.Node);
+        drawn[key] = Draw(new Scope(key), region.Node);
         Hold(key, drawn[key]);
     }
 
@@ -143,20 +148,12 @@ sealed partial class Renderer
     /// such as a skinned player is; null when the root region is anything else.
     /// </summary>
     public (double Width, double Height)? CanvasSize() =>
-        regions.Find(RegionStore.Root) is { } root && Envelopes.Text(root.Node, "kind") == "scene"
-            ? SceneDecoder.Opening(root.Node)
+        regions.Find(RegionStore.Root) is { } root && root.Node.Text("kind") == "scene"
+            ? SceneOf(root.Node)?.Opening
             : null;
 
-    /// <summary>Acts on the first scene drawn, as its keyboard or pointer would; false when none is.</summary>
-    public bool InScene(Action<SceneView> act)
-    {
-        if (scenes.Values.FirstOrDefault() is not { } scene)
-        {
-            return false;
-        }
-        act(scene);
-        return true;
-    }
+    /// <summary>The first scene drawn, or null when none is.</summary>
+    public SceneView? FirstScene() => scenes.Values.FirstOrDefault();
 
     // Takes an element kept between draws out of the tree it was last drawn into.
     static void Detach(UIElement? element)
@@ -179,9 +176,9 @@ sealed partial class Renderer
     }
 
     /// <summary>A holder for the region named by a <c>slot</c>, filled with what that region last drew.</summary>
-    UIElement Slot(Scope _, JsonElement node)
+    UIElement Slot(Scope _, Node node)
     {
-        var key = Envelopes.Text(node, "key");
+        var key = node.Text("key");
         var holder = new Border();
         if (holders.TryGetValue(key, out var previous))
         {
@@ -193,19 +190,19 @@ sealed partial class Renderer
     }
 
     /// <summary>One node, drawn by its kind.</summary>
-    UIElement Draw(Scope scope, JsonElement node) =>
-        kinds.TryGetValue(Envelopes.Text(node, "kind"), out var draw)
+    UIElement Draw(Scope scope, Node node) =>
+        kinds.TryGetValue(node.Text("kind"), out var draw)
             ? draw(scope, node)
-            : Refused(Coverage.Refusal(Envelopes.Text(node, "kind")));
+            : Refused(Coverage.Refusal(node.Text("kind")));
 
-    IEnumerable<UIElement> Children(Scope scope, JsonElement node, string member = "children") =>
-        Envelopes.Items(node, member, child => Draw(scope, child));
+    IEnumerable<UIElement> Children(Scope scope, Node node, string member = "children") =>
+        node.Items(member, child => Draw(scope, child));
 
-    /// <summary>The value a control delivers, sent under its issued binding.</summary>
-    Action<object?> Emit(Scope scope, JsonElement node)
+    /// <summary>The value a control delivers, sent under its issued ordinal.</summary>
+    Action<object?> Emit(Node node)
     {
-        var ordinal = Envelopes.Number(node, "event");
-        return value => control(scope.Region, scope.Revision, ordinal, value);
+        var ordinal = node.Number("event");
+        return value => control(ordinal, value);
     }
 
     /// <summary>A visible diagnostic in place of what could not be drawn, also reported to the info bar.</summary>

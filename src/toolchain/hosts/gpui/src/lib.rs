@@ -1,6 +1,7 @@
-//! The GPUI host of Osprey Native ([GPUI-HOST-SEAM]). Rust is only the seam:
-//! it loads the Osprey library, keeps regions by key, draws them and sends
-//! events back by the ids the framework issued. No application rule lives here.
+//! The GPUI host of Osprey Native ([GPUI-HOST-SEAM]). Rust is only the seam: it
+//! loads the Osprey library, reads each frame's shared rows in place, draws them
+//! and sends typed events back by the control numbers the framework issued. No
+//! application rule and no style lives here.
 //!
 //! The crate is a library plus the `osprey-gpui` binary on desktop; on Android
 //! the same library is linked into the host's shared library, whose
@@ -10,17 +11,22 @@ mod adapters;
 mod clock;
 #[cfg(test)]
 mod coverage;
-mod envelope;
+mod diagnostics;
 mod events;
 mod ffi;
+mod frame;
 mod host;
 mod launch;
 mod regions;
 mod render;
+mod rows;
 mod scene;
+mod screen;
 mod self_test;
 mod smoke;
 mod store;
+mod tree;
+mod view;
 
 /// The person's home folder: `HOME`, or `USERPROFILE` on Windows.
 pub(crate) fn home() -> Result<String, String> {

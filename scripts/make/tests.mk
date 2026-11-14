@@ -106,9 +106,10 @@ C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc_layout_te
 C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc_thread_tests.c runtime/memory_gc.c
-C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
+C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/native_bridge.c runtime/native_bridge_lifecycle.c runtime/native_scene.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
 C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_import_gc_tests)) runtime/memory_arc.c
-C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC
+C_FLAGS_host_import_gc_tests = -DOSP_NATIVE_TEST
+C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC -DOSP_NATIVE_TEST
 C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
 # Every tensor-reader suite shares the numeric binary16 conversion.
@@ -213,14 +214,34 @@ _test_gc_stack_root:
 C_COV_DIR ?= src/toolchain/compiler/bin/cov
 C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
 C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
-.PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS)
-_build_c_runtime_tests: $(C_BUILD_TARGETS)
+C_ASAN_SUITES ?= fiber_runtime_tests http_runtime_tests net_runtime_tests websocket_runtime_tests
+C_ASAN_BUILD_TARGETS = $(addprefix _build_c_asan_,$(C_ASAN_SUITES))
+C_ASAN_TEST_TARGETS = $(addprefix _test_c_asan_,$(C_ASAN_SUITES))
+.PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS) $(C_ASAN_BUILD_TARGETS) $(C_ASAN_TEST_TARGETS)
+_build_c_runtime_tests: $(C_BUILD_TARGETS) $(C_ASAN_BUILD_TARGETS)
 
 $(C_BUILD_TARGETS): _build_c_suite_%: $(GPU_DEVICE_NATIVE)
 	@mkdir -p "$(C_COV_DIR)/$*"
 	@cd "$(C_COV_DIR)/$*" && $(call C_SUITE_BUILD,$*,../../../,$*,--coverage -DOSP_COVERAGE_DUMP) && rm -f -- *.o
 
-_test_c_runtime: $(C_TEST_TARGETS)
+_test_c_runtime: $(C_TEST_TARGETS) $(C_ASAN_TEST_TARGETS)
+
+# The suites that drive sockets, threads and fibers also run under
+# AddressSanitizer, beside their coverage build (plan 0048). Linux reports leaks
+# too; macOS has no leak detector. _FORTIFY_SOURCE is dropped because ASan
+# defines it. Its strstr interceptor is off because it rescans the whole
+# haystack per call, which makes the linear-scan tests quadratic. Its fake stack
+# is off because it moves locals to the heap, where the conservative collector
+# these suites link cannot find them as roots.
+C_ASAN_OPTIONS = intercept_strstr=0:detect_stack_use_after_return=0
+$(C_ASAN_BUILD_TARGETS): T := $(filter-out -D_FORTIFY_SOURCE=2,$(T))
+$(C_ASAN_BUILD_TARGETS): _build_c_asan_%: $(GPU_DEVICE_NATIVE)
+	@mkdir -p "$(C_COV_DIR)/$*/asan"
+	@cd "$(C_COV_DIR)/$*/asan" && $(call C_SUITE_BUILD,$*,../../../../,$*,-fsanitize=address -fno-omit-frame-pointer -g) && rm -f -- *.o
+
+$(C_ASAN_TEST_TARGETS): _test_c_asan_%:
+	@echo "--- $* (AddressSanitizer)"
+	@cd "$(C_COV_DIR)/$*/asan" && ASAN_OPTIONS=$(C_ASAN_OPTIONS) ./$*
 
 $(C_TEST_TARGETS): _test_c_suite_%:
 	@echo "--- $*"
@@ -489,7 +510,7 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
-	node --test scripts/ci/root-layout.test.mjs
+	node --test scripts/ci/root-layout.test.mjs scripts/ci/preflight.test.mjs
 	node scripts/ci/root-layout.mjs
 	node scripts/ci/verify-node-deps-guard.mjs
 	node scripts/ci/verify-no-dead-code.mjs

@@ -1,0 +1,400 @@
+// Implements [NATIVE-SHM-NODES] and [UI-EVENTS]: a region's component tree crosses to the host
+// as typed rows in the shared frame, so each host draws it with its own native components and
+// the application decides no host pixels. One depth-first walk tells the tree and collects its
+// bindings, so an event ordinal always names the control that was drawn with it. The walk is
+// mutually recursive, so a program instantiates it at one action type (Nimblesite/osprey#278).
+namespace ui
+
+(** One told value of a component: named text, a whole number, a real, a flag, a record of members, a list of items, or a record whose canvas draws `sketch`. A list's items carry no name. *)
+type Told =
+    ToldText
+        wordsName : string
+        wordsText : string
+    ToldCount
+        countName : string
+        count : int
+    ToldReal
+        realName : string
+        real : float
+    ToldFlag
+        flagName : string
+        on : bool
+    ToldRecord
+        recordName : string
+        members : List<Told>
+    ToldList
+        listName : string
+        items : List<Told>
+    ToldScene
+        sketchName : string
+        sketchMembers : List<Told>
+        sketching : Sketch
+
+(** Told components and the bindings collected while telling them, in ordinal order. *)
+type Walked A =
+    bindings : List<Binding<A>>
+    nodes : List<Told>
+
+(** Tells a region's node tree and collects its bindings in one depth-first walk, so an event ordinal always names the control drawn with it ([NATIVE-SHM-NODES], [UI-EVENTS]). *)
+module Tell
+    (** The name of a tone, as hosts read it. *)
+    export tone value = match value
+        Primary => "primary"
+        Secondary => "secondary"
+        Accent => "accent"
+        Good => "good"
+        Caution => "caution"
+        Danger => "danger"
+
+    role value = match value
+        Display => "display"
+        Large => "large"
+        Title => "title"
+        Heading => "heading"
+        Lead => "lead"
+        Headline => "headline"
+        Body => "body"
+        Callout => "callout"
+        Caption => "caption"
+        Eyebrow => "eyebrow"
+        Mono => "mono"
+
+    buttonRole value = match value
+        Filled => "filled"
+        Prominent => "prominent"
+        Plain => "plain"
+        Destructive => "destructive"
+
+    axis value = match value
+        Vertical => "vertical"
+        Horizontal => "horizontal"
+
+    side value = match value
+        Leading => "leading"
+        Trailing => "trailing"
+
+    commit value = match value
+        OnEdit => "edit"
+        OnSubmit => "submit"
+
+    str key value = ToldText(wordsName = key, wordsText = value)
+
+    num key value = ToldCount(countName = key, count = value)
+
+    bit key value = ToldFlag(flagName = key, on = value)
+
+    real key value = ToldReal(realName = key, real = value)
+
+    // A component of `name`'s kind, whose other members are `members`.
+    kind name members = ToldRecord(recordName = "", members = listPrepend members (str "kind" name))
+
+    (** `told` under the member name `key`. *)
+    export named (key, told) = match told
+        ToldRecord _ members => ToldRecord(recordName = key, members = members)
+        ToldScene _ members sketch => ToldScene(sketchName = key, sketchMembers = members, sketching = sketch)
+        ToldList _ items => ToldList(listName = key, items = items)
+        ToldText _ text => ToldText(wordsName = key, wordsText = text)
+        ToldCount _ value => ToldCount(countName = key, count = value)
+        ToldReal _ value => ToldReal(realName = key, real = value)
+        ToldFlag _ value => ToldFlag(flagName = key, on = value)
+
+    many key items = ToldList(listName = key, items = items)
+
+    one<A> : (List<Binding<A>>, Told) -> Walked<A>
+    one (bindings, told) = Walked(bindings = bindings, nodes = [told])
+
+    // A control: its binding takes the next ordinal.
+    bound<A> : (List<Binding<A>>, Binding<A>, string, List<Told>) -> Walked<A>
+    bound (bindings, binding, name, members) = one (listAppend bindings binding, kind name (listAppend members (num "event" (length bindings))))
+
+    childAt<A> : (Walked<A>, List<Node<A>>, int) -> Walked<A>
+    childAt (walked, children, index) = match listGet children index
+        Success child =>
+            next = walk (walked.bindings, child)
+            Walked(bindings = next.bindings, nodes = listConcat walked.nodes next.nodes)
+        Error _ => walked
+
+    (** Tells `children` in order; their bindings continue after `bindings`, so ordinals follow drawing order. *)
+    export all<A> : (List<Binding<A>>, List<Node<A>>) -> Walked<A>
+    all (bindings, children) = entryWalked (bindings, children, \(walked, index) => childAt (walked, children, index))
+
+    // A container: its children continue the parent's ordinals.
+    nested<A> : (List<Binding<A>>, string, List<Told>, List<Node<A>>) -> Walked<A>
+    nested (bindings, name, members, children) =
+        inner = all (bindings, children)
+        one (inner.bindings, kind name (listAppend members (many "children" inner.nodes)))
+
+    (** The one component a walk told, or an empty record when it told none. *)
+    export first<A> : Walked<A> -> Told
+    first walked = listGet walked.nodes 0 ?: ToldRecord(recordName = "", members = [])
+
+    entryAt<A> : (Walked<A>, List<Tab<A>>, int) -> Walked<A>
+    entryAt (walked, tabs, index) = at (walked, tabs, index, \tab => tab.page, \tab => [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol])
+
+    rowAt<A> : (Walked<A>, List<Row<A>>, int) -> Walked<A>
+    rowAt (walked, rows, index) = at (walked, rows, index, \row => row.cell, \row => [str "key" row.rowKey, str "symbol" row.rowSymbol, str "group" row.rowGroup])
+
+    // The `index`th entry as one more child of `walked`: its own content is walked first, so its controls take ordinals before the entries after it.
+    at<A, B> : (Walked<A>, List<B>, int, (B) -> Node<A>, (B) -> List<Told>) -> Walked<A>
+    at (walked, entries, index, content, members) = match listGet entries index
+        Success entry =>
+            inner = walk (walked.bindings, content entry)
+            told = ToldRecord(recordName = "", members = listAppend (members entry) (named ("child", first inner)))
+            Walked(bindings = inner.bindings, nodes = listAppend walked.nodes told)
+        Error _ => walked
+
+    tabs<A> : (List<Binding<A>>, List<Tab<A>>, string, A) -> Walked<A>
+    tabs (bindings, entries, selected, action) = chosen (entryWalked (bindings, entries, \(walked, index) => entryAt (walked, entries, index)), "tabs", selected, action)
+
+    rows<A> : (List<Binding<A>>, List<Row<A>>, string, A) -> Walked<A>
+    rows (bindings, entries, selected, action) = chosen (entryWalked (bindings, entries, \(walked, index) => rowAt (walked, entries, index)), "rows", selected, action)
+
+    // `bindings` and every entry's own controls, walked in order.
+    entryWalked<A, B> : (List<Binding<A>>, List<B>, (Walked<A>, int) -> Walked<A>) -> Walked<A>
+    entryWalked (bindings, entries, one) = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => one (walked, index))
+
+    // A choice control named `name`, whose entries are its children and whose binding takes the next ordinal.
+    chosen<A> : (Walked<A>, string, string, A) -> Walked<A>
+    chosen (inner, name, selected, action) = bound (inner.bindings, ChoiceInput(action = action), name, [str "selected" selected, many name inner.nodes])
+
+    choiceTold item = ToldRecord(recordName = "", members = [str "key" item.choiceKey, str "label" item.choiceLabel])
+
+    choices items = many "choices" (mapList (items, \item => choiceTold item))
+
+    toneList values = many "tones" (mapList (values, \value => str "" (tone value)))
+
+    screen<A> : (List<Binding<A>>, string, string, List<Node<A>>, List<Node<A>>) -> Walked<A>
+    screen (bindings, title, subtitle, toolbar, children) =
+        tools = all (bindings, toolbar)
+        body = all (tools.bindings, children)
+        one (body.bindings, kind "screen" [str "title" title, str "subtitle" subtitle, many "toolbar" tools.nodes, many "children" body.nodes])
+
+    // A control with content: its binding takes the next ordinal, then its children continue.
+    disclosure<A> : (List<Binding<A>>, string, bool, A, List<Node<A>>) -> Walked<A>
+    disclosure (bindings, title, expanded, action, children) = nested (listAppend bindings (FlagInput(action = action)), "disclosure", [str "title" title, bit "expanded" expanded, num "event" (length bindings)], children)
+
+    // Two columns: the pane's controls take ordinals before the aside's, and the splitter between them takes the next.
+    aside<A> : (List<Binding<A>>, Side, Node<A>, Node<A>, int, int, int, int, A) -> Walked<A>
+    aside (bindings, place, column, pane, width, least, most, keep, action) =
+        content = walk (bindings, pane)
+        beside = walk (content.bindings, column)
+        limits = [num "width" width, num "least" least, num "most" most, num "keep" keep]
+        bound (beside.bindings, SizeInput(action = action), "aside", listConcat [str "side" (side place), named ("pane", first content), named ("aside", first beside)] limits)
+
+    contextMenu<A> : (List<Binding<A>>, Node<A>, List<Node<A>>) -> Walked<A>
+    contextMenu (bindings, content, actions) =
+        body = walk (bindings, content)
+        menu = all (body.bindings, actions)
+        one (menu.bindings, kind "context-menu" [named ("body", first body), many "items" menu.nodes])
+
+    markTold item = ToldRecord(recordName = "", members = [num "line" item.markLine, bit "underlined" item.underlined, str "tone" (tone item.markTone), str "badge" item.markBadge, str "note" item.markNote])
+
+    // [UI-COMPONENTS-EDITOR] Two controls in one: the text binding takes the next ordinal, the cursor binding the one after.
+    editor<A> : (List<Binding<A>>, string, string, bool, int, int, List<Mark>, A, A) -> Walked<A>
+    editor (bindings, label, value, inline, cursor, epoch, marks, edit, place) =
+        texted = listAppend bindings (TextInput(action = edit))
+        members = [str "label" label, str "value" value, bit "inline" inline, num "cursor" cursor, num "focusEpoch" epoch, many "marks" (mapList (marks, \item => markTold item)), num "event" (length bindings), num "placeEvent" (length texted)]
+        one (listAppend texted (PlaceInput(action = place)), kind "editor" members)
+
+    // [UI-COMPONENTS-BOARD] Camera binding follows the existing stroke and lasso ordinals.
+    board<A> : (List<Binding<A>>, string, int, bool, string, bool, bool, A, A, A) -> Walked<A>
+    board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso) =
+        stroked = listAppend bindings (StrokeInput(action = stroke))
+        lassoed = listAppend stroked (LassoInput(action = lasso))
+        members = [str "slice" slice, num "count" count, bit "lasso" lassoing, str "backdrop" backdrop, bit "panning" panning, num "event" (length bindings), num "lassoEvent" (length stroked)]
+        match camera
+            false => one (lassoed, kind "board" members)
+            true => one (listAppend lassoed (TextInput(action = pan)), kind "board" (listAppend members (num "panEvent" (length lassoed))))
+
+    leaf<A> : (List<Binding<A>>, string, List<Told>) -> Walked<A>
+    leaf (bindings, name, members) = one (bindings, kind name members)
+
+    // A leaf named `name` whose two members are the texts `first` and `second`.
+    pairLeaf<A> : (List<Binding<A>>, string, string, string, string, string) -> Walked<A>
+    pairLeaf (bindings, name, firstKey, first, secondKey, second) = leaf (bindings, name, [str firstKey first, str secondKey second])
+
+    // [UI-COMPONENTS-METER] The amount is clamped into 0..total and the total is at least 1, so a host divides safely.
+    meter (label, amount, total, meterTone) =
+        whole = Pick::either (total < 1, 1, total)
+        [str "label" label, num "value" (Pick::either (amount < 0, 0, Pick::either (amount > whole, whole, amount))), num "total" whole, str "tone" (tone meterTone)]
+
+    runTold run = ToldRecord(recordName = "", members = [str "text" run.runText, str "ink" run.runInk, bit "italic" run.runItalic, str "emphasis" run.runEmphasis])
+
+    frameTold style = ToldRecord(recordName = "style", members = listConcat (frameBox style) (listConcat (frameInset style) (listConcat (frameInk style) (listConcat (frameType style) (listConcat (frameControls style) [str "shadow" style.frameShadow])))))
+
+    // A frame's name and size.
+    frameBox style = [str "name" style.frameName, num "width" style.frameWidth, num "height" style.frameHeight, num "viewportHeightInset" style.frameViewportHeightInset, bit "scrollY" style.frameScrollY]
+
+    // A frame's edges and corners.
+    frameInset style = [num "top" style.frameTop, num "right" style.frameRight, num "bottom" style.frameBottom, num "left" style.frameLeft, num "radius" style.frameRadius, num "gap" style.frameGap]
+
+    // A frame's colours.
+    frameInk style = [str "fill" style.frameFill, str "ink" style.frameInk, str "line" style.frameLine, str "lineEdge" style.frameLineEdge, bit "grow" style.frameGrow]
+
+    // A frame's type.
+    frameType style = [str "font" style.frameFont, num "textSize" style.frameTextSize, real "mathScale" style.frameMathScale, real "lineHeight" style.frameLineHeight, real "tracking" style.frameTracking, bit "italic" style.frameItalic, bit "hug" style.frameHug, str "align" style.frameAlign, str "cross" style.frameCross]
+
+    // A frame's control metrics.
+    frameControls style = [num "controlHeight" style.frameControlHeight, num "controlPadding" style.frameControlPadding, num "symbolSize" style.frameSymbolSize, bit "quietControls" style.frameQuietControls, bit "iconOnly" style.frameIconOnly, bit "fadeBackdrop" style.frameFadeBackdrop, bit "trailingSymbols" style.frameTrailingSymbols, bit "flatRows" style.frameFlatRows, bit "selectionGroup" style.frameSelectionGroup]
+
+    // A component of `name`'s kind whose `members` are followed by its content as `body`.
+    wrapped<A> : (List<Binding<A>>, string, List<Told>, Node<A>) -> Walked<A>
+    wrapped (bindings, name, members, content) =
+        inner = walk (bindings, content)
+        one (inner.bindings, kind name (listAppend members (named ("body", first inner))))
+
+    framed<A> : (List<Binding<A>>, FrameStyle, Node<A>) -> Walked<A>
+    framed (bindings, style, content) = wrapped (bindings, "framed", [frameTold style], content)
+
+    dialog<A> : (List<Binding<A>>, string, Node<A>, A) -> Walked<A>
+    dialog (bindings, title, content, action) = wrapped (listAppend bindings (Tap(action = action)), "dialog", [str "title" title, num "event" (length bindings)], content)
+
+    tokenTold item = ToldRecord(recordName = "", members = [str "name" item.tokenName, str "light" item.tokenLight, str "dark" item.tokenDark])
+
+    (** `theme` told under the member name `key`: every token's light and dark colours, the spacing scale and the motion durations ([UI-THEME]). *)
+    export themeTold (key, theme) = ToldRecord(recordName = key, members = [many "tokens" (mapList (theme.tokens, \item => tokenTold item)), many "spacing" (mapList (theme.spacing, \value => num "" value)), num "feedback" theme.feedback, num "settle" theme.settle])
+
+    themed<A> : (List<Binding<A>>, Theme, Node<A>) -> Walked<A>
+    themed (bindings, theme, content) = wrapped (bindings, "themed", [themeTold ("theme", theme)], content)
+
+    mathPair (name, first, firstKey, second, secondKey) = kind name [named (firstKey, math first), named (secondKey, math second)]
+
+    // [UI-COMPONENTS-MATH] One record per mathematics node, named by `kind`, children nested in order.
+    math tree = match tree
+        Sym text => kind "sym" [str "text" text]
+        Num text => kind "num" [str "text" text]
+        Seq items => kind "seq" [many "items" (mapList (items, \item => math item))]
+        Sup base script => mathPair ("sup", base, "base", script, "script")
+        Sub base script => mathPair ("sub", base, "base", script, "script")
+        Frac top bottom => mathPair ("frac", top, "top", bottom, "bottom")
+        Root body => kind "root" [named ("body", math body)]
+        Binder symbol names body => kind "binder" [str "symbol" symbol, many "names" (mapList (names, \item => math item)), named ("body", math body)]
+        Op symbol left right => kind "op" [str "symbol" symbol, named ("left", math left), named ("right", math right)]
+        Paren body => kind "paren" [named ("body", math body)]
+        Big symbol lower upper body => kind "big" [str "symbol" symbol, named ("lower", math lower), named ("upper", math upper), named ("body", math body)]
+
+    // [UI-SCENE] A scene's shapes, atlas and accessibility tree ride beside its record as scene rows; the record carries its size and its input binding.
+    scene<A> : (List<Binding<A>>, float, float, float, List<string>, List<Primitive>, A, List<Accessible>) -> Walked<A>
+    scene (bindings, width, height, zoom, atlas, primitives, action, access) =
+        members = [str "kind" "scene", real "width" width, real "height" height, real "zoom" zoom, num "event" (length bindings)]
+        one (listAppend bindings (SceneInput(action = action)), ToldScene(sketchName = "", sketchMembers = members, sketching = Sketch(sketchWidth = width, sketchHeight = height, sketchZoom = zoom, sketchAtlas = atlas, sketchShapes = primitives, sketchAccess = access)))
+
+    // Exhaustive: a new component cannot be told by accident as something else.
+    (** Tells `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)
+    export walk<A> : (List<Binding<A>>, Node<A>) -> Walked<A>
+    walk (bindings, node) = match node
+        RichText runs textRole => leaf (bindings, "rich-text", [many "runs" (mapList (runs, runTold)), str "role" (role textRole)])
+        Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
+        Pair label value => pairLeaf (bindings, "pair", "label", label, "value", value)
+        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
+        Label label symbol => pairLeaf (bindings, "label", "label", label, "symbol", symbol)
+        Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
+        Link label address => pairLeaf (bindings, "link", "label", label, "url", address)
+        Spacer => leaf (bindings, "spacer", [])
+        Divider => leaf (bindings, "divider", [])
+        Segments values label => leaf (bindings, "segments", [toneList values, str "label" label])
+        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
+        Progress label detail => pairLeaf (bindings, "progress", "label", label, "detail", detail)
+        Meter label amount total meterTone => leaf (bindings, "meter", meter (label, amount, total, meterTone))
+        Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
+        Slot key => leaf (bindings, "slot", [str "key" key])
+        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
+        Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
+        Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
+        Picker label items selected action => bound (bindings, ChoiceInput(action = action), "picker", [str "label" label, choices items, str "selected" selected])
+        Disclosure title expanded action children => disclosure (bindings, title, expanded, action, children)
+        Alert title message visible action => bound (bindings, Tap(action = action), "alert", [str "title" title, str "message" message, bit "visible" visible])
+        Stack direction children => nested (bindings, "stack", [str "axis" (axis direction)], children)
+        Section title footer children => nested (bindings, "section", [str "title" title, str "footer" footer], children)
+        Screen title subtitle toolbar children => screen (bindings, title, subtitle, toolbar, children)
+        Split panes => nested (bindings, "split", [], panes)
+        Layer children => nested (bindings, "layer", [], children)
+        Framed style content => framed (bindings, style, content)
+        Themed theme content => themed (bindings, theme, content)
+        Dialog title content dismiss => dialog (bindings, title, content, dismiss)
+        ContextMenu content actions => contextMenu (bindings, content, actions)
+        Aside place column pane width least most keep action => aside (bindings, place, column, pane, width, least, most, keep, action)
+        Tabs entries selected action => tabs (bindings, entries, selected, action)
+        Rows entries selected action => rows (bindings, entries, selected, action)
+        Typeset tree text => leaf (bindings, "math", [named ("math", math tree), str "spoken" text])
+        Image source alt width height => leaf (bindings, "image", [str "source" source, str "alt" alt, num "width" width, num "height" height])
+        Video source poster captions alt seconds => leaf (bindings, "video", [str "source" source, str "poster" poster, str "captions" captions, str "alt" alt, num "seconds" seconds])
+        Editor label value inline cursor epoch marks edit place => editor (bindings, label, value, inline, cursor, epoch, marks, edit, place)
+        Board slice count lassoing backdrop panning camera pan stroke lasso => board (bindings, slice, count, lassoing, backdrop, panning, camera, pan, stroke, lasso)
+        Scene width height zoom atlas primitives action access => scene (bindings, width, height, zoom, atlas, primitives, action, access)
+
+(** Writes told components as rows of the shared frame ([NATIVE-SHM-NODES]): a `field` row is one named value, a `record` row one component or one of its members, and a `list` row the items under one name. A row's name is its fit's hint; its parent is the record or list it belongs to. *)
+module Tellings
+    (** The row `kind` of one named value: text in its words, a whole number or a flag in its ink, a real in its points. Its heft says which: 0 text, 1 whole number, 2 real, 3 flag, 4 a negative real. *)
+    export field = 33
+
+    (** The row `kind` of a record: the rows naming it as their parent are its members. *)
+    export record = 34
+
+    (** The row `kind` of a list: the rows naming it as their parent are its items, in order. *)
+    export list = 35
+
+    valued (ink, points, heft) = Look(ink = ink, fill = 0, points = points, inset = 0.0, gap = 0.0, corner = 0.0, heft = heft)
+
+    // One row named `name`: an unnamed row, as a list's item is, takes no fit.
+    row<A> : (Walk<A>, int, int, string, string, Look) -> Walk<A>
+    row (walk, kind, parent, name, words, look) =
+        at = walk.walkNext
+        seated = walk(walkNext = satAdd at 1, walkRows = listAppend walk.walkRows (Seated(placedKind = kind, placedParent = parent, placedAction = Views::none, placedWords = words, placedLook = look)))
+        match name == ""
+            true => seated
+            false => seated(walkFits = listAppend seated.walkFits (Fitting(fittedRow = at, fittedAs = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = name))))
+
+    each<A> : (Walk<A>, int, List<Told>, int) -> Walk<A>
+    each (walk, parent, items, index) = match listGet items index
+        Error _ => walk
+        Success item => each (told (walk, parent, item), parent, items, satAdd index 1)
+
+    realLook value = match value < 0.0
+        true => valued (0, 0.0 - value, 4)
+        false => valued (0, value, 2)
+
+    told<A> : (Walk<A>, int, Told) -> Walk<A>
+    told (walk, parent, item) = match item
+        ToldText name text => row (walk, field, parent, name, text, valued (0, 0.0, 0))
+        ToldCount name value => row (walk, field, parent, name, "", valued (value, 0.0, 1))
+        ToldReal name value => row (walk, field, parent, name, "", realLook value)
+        ToldFlag name value => row (walk, field, parent, name, "", valued (Pick::either (value, 1, 0), 0.0, 3))
+        ToldRecord name members => each (row (walk, record, parent, name, "", valued (0, 0.0, 0)), walk.walkNext, members, 0)
+        ToldList name items => each (row (walk, list, parent, name, "", valued (0, 0.0, 0)), walk.walkNext, items, 0)
+        ToldScene name members sketch =>
+            seated = row (walk, record, parent, name, "", valued (0, 0.0, 0))
+            each (seated(walkSketches = listAppend seated.walkSketches (Sketched(sketchedRow = walk.walkNext, sketchedAs = sketch))), walk.walkNext, members, 0)
+
+    // Every region told under its key, so a `slot` finds the region it names.
+    regionTold<A> : (Walked<A>, KeyedSnapshot<Node<A>>) -> Walked<A>
+    regionTold (walked, region) =
+        inner = Tell::walk (walked.bindings, region.snapshotValue)
+        Walked(bindings = inner.bindings, nodes = listAppend walked.nodes (ToldRecord(recordName = "region", members = [ToldText(wordsName = "key", wordsText = region.snapshotKey), Tell::named ("node", Tell::first inner)])))
+
+    (** Every region told under its key, with the bindings their controls deliver in ordinal order: the trees a host rebuilds from the frame's rows. *)
+    export regions<A> : List<KeyedSnapshot<Node<A>>> -> Walked<A>
+    regions snapshots = foldList (snapshots, Walked(bindings = [], nodes = []), regionTold)
+
+    (** One node told as the root region with no theme tokens: the frame a test reads a single component from. *)
+    export alone<A> : Node<A> -> Walk<Binding<A>>
+    alone node =
+        inner = Tell::walk ([], node)
+        told = ToldRecord(recordName = "region", members = [ToldText(wordsName = "key", wordsText = "root"), Tell::named ("node", Tell::first inner)])
+        each (Walk(walkBound = inner.bindings, walkNext = 0, walkRows = [], walkFits = [], walkSketches = []), Views::none, [told], 0)
+
+    (** The frame of `regions` under `theme`: the theme first, then every region with the key a `slot` names it by, and the bindings their controls deliver in ordinal order. Pure: a test reads exactly what a host is sent. *)
+    export drawn<A> : (Theme, List<KeyedSnapshot<Node<A>>>) -> Walk<Binding<A>>
+    drawn (theme, regions) =
+        walked = Tellings::regions regions
+        start = Walk(walkBound = walked.bindings, walkNext = 0, walkRows = [], walkFits = [], walkSketches = [])
+        each (told (start, Views::none, Tell::themeTold ("theme", theme)), Views::none, walked.nodes, 0)
+
+    (** Draws `regions` under `theme` into the shared frame and answers the bindings their controls deliver, in order: a host event names one by its position. *)
+    export render<A> : (Theme, List<KeyedSnapshot<Node<A>>>) -> List<Binding<A>> ![ViewStream | e]
+    render (theme, regions) =
+        walked = drawn (theme, regions)
+        forEachList (walked.walkRows, \placed => perform ViewStream.place placed)
+        forEachList (walked.walkFits, \fit => perform ViewStream.size fit)
+        forEachList (walked.walkSketches, \content => perform ViewStream.sketch content)
+        walked.walkBound

@@ -1,0 +1,296 @@
+// Implements [NATIVE-SHM-VIEW]: native controls drawn without a wire format. `Views::render` walks
+// a `View` tree and writes each control once, as twelve machine words plus its text, into bridge
+// storage the host leases and reads in place: no JSON, no parse, no copy and no host call per
+// control. Every colour, size and space is decided here in Osprey; a host applies them and holds
+// no style of its own.
+namespace ui
+
+// Each control crosses through the runtime's typed `nativeViewRow`, `nativeViewExtend` and
+// `nativeAsk` builtins: -1 or nonzero refuses the view, and the host then refuses the frame.
+
+(** How one control looks: `ink` and `fill` are `0xRRGGBBAA` text and background colours (a zero fill draws none), `points` the text size, `inset` the padding, `gap` the space between children, `corner` the corner radius and `heft` the font weight from 100 to 900 ([NATIVE-SHM-VIEW]). *)
+type Look =
+    ink : int
+    fill : int
+    points : float
+    inset : float
+    gap : float
+    corner : float
+    heft : int
+
+(** How one control sits and behaves: `wide` and `tall` fix its extent in points (zero keeps its natural one), `share` is its part of the free space beside its siblings, `traits` adds up `Views` flags, `edge` is a `0xRRGGBBAA` border (zero draws none) and `hint` a second text: a field's prompt, an option's or a tab's key, or the icon a label or a press is led by. *)
+type Fit =
+    wide : float
+    tall : float
+    share : float
+    traits : int
+    edge : int
+    hint : string
+
+(** A native control tree; `A` is the application's action union. A `Press` delivers its action when tapped and an `Typing` delivers it with the edited text ([NATIVE-SHM-VIEW]). *)
+type View A =
+    Column
+        columnLook : Look
+        columnItems : List<View<A>>
+    Across
+        acrossLook : Look
+        acrossItems : List<View<A>>
+    Wording
+        wordsLook : Look
+        wordsText : string
+    Press
+        pressLook : Look
+        pressWords : string
+        pressAction : A
+    Typing
+        typingLook : Look
+        typingText : string
+        typingAction : A
+    Gap
+    Fitted
+        fit : Fit
+        fitted : View<A>
+    Scrolling
+        scrollLook : Look
+        scrollItems : List<View<A>>
+    Layered
+        layeredLook : Look
+        layeredItems : List<View<A>>
+    Switch
+        switchLook : Look
+        switchWords : string
+        switchOn : bool
+        switchAction : A
+    Choosing
+        choosingLook : Look
+        choosingWords : string
+        choosingOptions : List<View<A>>
+        choosingAction : A
+    Option
+        optionLook : Look
+        optionWords : string
+        optionKey : string
+        optionChosen : bool
+    Rule
+        ruleLook : Look
+    Picture
+        pictureLook : Look
+        pictureSource : string
+    Canvas
+        canvasLook : Look
+        canvasAction : A
+    Drawing
+        drawingLook : Look
+        drawingSketch : Sketch
+        drawingAction : A
+    Writing
+        writingLook : Look
+        writingText : string
+        writingAction : A
+    Menu
+        menuLook : Look
+        menuItems : List<View<A>>
+    Sheet
+        sheetLook : Look
+        sheetItems : List<View<A>>
+        sheetDismiss : A
+
+(** One control on its way to the shared frame: its kind, the row it sits in, the binding it delivers and how it looks. *)
+type Seated =
+    placedKind : int
+    placedParent : int
+    placedAction : int
+    placedWords : string
+    placedLook : Look
+
+(** The fit a control already placed at `fittedRow` takes. *)
+type Fitting =
+    fittedRow : int
+    fittedAs : Fit
+
+(** The scene a canvas at `sketchedRow` draws. *)
+type Sketched =
+    sketchedRow : int
+    sketchedAs : Sketch
+
+(** A view's controls, performed in drawing order: a control's row is its position in that order, and a child names its parent's row; a drawing's scene follows its canvas, and the requests and slice writes of the step drawn ride beside them ([NATIVE-SHM-VIEW], [NATIVE-SHM-SCENE], [NATIVE-SHM-ASK]). *)
+effect ViewStream
+    place : Seated => Unit
+    size : Fitting => Unit
+    sketch : Sketched => Unit
+    ask : Asked => Unit
+
+(** A view walked into rows, as the host will read them: the actions bound so far, the row the next control takes, and the controls, fits and scenes in drawing order. *)
+type Walk A =
+    walkBound : List<A>
+    walkNext : int
+    walkRows : List<Seated>
+    walkFits : List<Fitting>
+    walkSketches : List<Sketched>
+
+(** Draws a `View` into the shared frame and collects the actions its controls deliver ([NATIVE-SHM-VIEW]). *)
+module Views
+    (** The row `kind` of a `Column`: its children run down the page. *)
+    export column = 0
+
+    (** The row `kind` of an `Across`: its children run side by side. *)
+    export line = 1
+
+    (** The row `kind` of a `Wording`: text to read. *)
+    export label = 2
+
+    (** The row `kind` of a `Press`: a button. *)
+    export press = 3
+
+    (** The row `kind` of a `Typing`: a text field. *)
+    export entry = 4
+
+    (** The row `kind` of a `Gap`: flexible empty space. *)
+    export gap = 5
+
+    (** The row `kind` of a `Scrolling`: a column that scrolls when its children outgrow it. *)
+    export scroll = 6
+
+    (** The row `kind` of a `Layered`: its children lie on top of each other, the last in front. *)
+    export layer = 7
+
+    (** The row `kind` of a `Switch`: an on/off control that delivers `true` or `false`. *)
+    export toggle = 8
+
+    (** The row `kind` of a `Choosing`: a menu of its `option` children that delivers the chosen key. *)
+    export picker = 9
+
+    (** The row `kind` of an `Option`: its text is the label and its hint the key. *)
+    export option = 10
+
+    (** The row `kind` of a `Rule`: a hairline in its ink, `points` thick. *)
+    export rule = 11
+
+    (** The row `kind` of a `Picture`: the image its text names. *)
+    export image = 12
+
+    (** The row `kind` of a `Canvas` or a `Drawing`: a drawing's scene rows name it, and a pointer over it delivers its input. *)
+    export canvas = 13
+
+    (** The row `kind` of a `Writing`: a text field of many lines. *)
+    export editor = 14
+
+    (** The row `kind` of a `Menu`: its first child is shown and the rest open as a context menu. *)
+    export menu = 15
+
+    (** The row `kind` of a `Sheet`: its children float over the view; dismissing it delivers its action. *)
+    export sheet = 16
+
+    (** The `traits` flag of a control that takes no input. *)
+    export disabled = 1
+
+    (** The `traits` flag of a chosen option, an on switch or a selected row. *)
+    export chosen = 2
+
+    (** The `traits` flag of a field whose text is hidden. *)
+    export secret = 4
+
+    (** The `traits` flag of text set in a fixed-width face. *)
+    export fixedWidth = 8
+
+    (** The `traits` flag of text set in italics. *)
+    export slanted = 16
+
+    (** The `traits` flag of a control centred in its row. *)
+    export centred = 32
+
+    (** The `traits` flag of a field that delivers its text when committed, not on every edit. *)
+    export onCommit = 64
+
+    (** A fit that changes nothing. *)
+    export natural = Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = "")
+
+    (** The row of a control with no parent, and the action of a control that delivers none. *)
+    export none = 0 - 1
+
+    (** A row that draws nothing and delivers nothing: what a reader finds past the last row. *)
+    export blank = Seated(placedKind = 5, placedParent = 0 - 1, placedAction = 0 - 1, placedWords = "", placedLook = Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400))
+
+    (** A look that draws nothing of its own: a container's or a gap's. *)
+    export plain = Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400)
+
+    (** The opaque `0xRRGGBBAA` colour of `#RRGGBB`, as a `Look` carries it. *)
+    export colour hex = satAdd (satMul (satAdd (satMul (satAdd (satMul (Contrast::hexByte (hex, 1)) 256) (Contrast::hexByte (hex, 3))) 256) (Contrast::hexByte (hex, 5))) 256) 255
+
+    (** [NATIVE-SHM-VIEW] Runs `work` with every control written straight into the shared frame the host reads in place. An application's boundary wraps its exports in it. *)
+    export shared work =
+        handle ViewStream
+            place drawn => nativeViewRow (drawn.placedKind, drawn.placedParent, drawn.placedAction, drawn.placedWords, drawn.placedLook.ink, drawn.placedLook.fill, drawn.placedLook.points, drawn.placedLook.inset, drawn.placedLook.gap, drawn.placedLook.corner, drawn.placedLook.heft)
+            size fitting => nativeViewExtend (fitting.fittedRow, fitting.fittedAs.wide, fitting.fittedAs.tall, fitting.fittedAs.share, fitting.fittedAs.traits, fitting.fittedAs.edge, fitting.fittedAs.hint)
+            sketch drawn => Streams::write (drawn.sketchedRow, drawn.sketchedAs)
+            ask row => nativeAsk (row.askedField, row.askedNumber, row.askedText)
+        work ()
+
+    (** Runs `work` with every frame it draws dropped, as a host that is not watching: what headless drivers and tests run a boundary call under. *)
+    export quiet work =
+        handle ViewStream
+            place _ => 0
+            size _ => 0
+            sketch _ => 0
+            ask _ => 0
+        work ()
+
+    // Adds one control and moves the walk to the next row.
+    seat<A> : (Walk<A>, int, int, int, string, Look) -> Walk<A>
+    seat (walk, kind, parent, action, words, look) = walk(walkNext = satAdd walk.walkNext 1, walkRows = listAppend walk.walkRows (Seated(placedKind = kind, placedParent = parent, placedAction = action, placedWords = words, placedLook = look)))
+
+    // A control that delivers `action` is numbered by how many were bound before it.
+    acting<A> : (Walk<A>, int, int, A, string, Look) -> Walk<A>
+    acting (walk, kind, parent, action, words, look) = seat (walk(walkBound = listAppend walk.walkBound action), kind, parent, length walk.walkBound, words, look)
+
+    each<A> : (Walk<A>, int, List<View<A>>, int) -> Walk<A>
+    each (walk, parent, items, index) = match listGet items index
+        Error _ => walk
+        Success item => each (draw (walk, parent, item), parent, items, satAdd index 1)
+
+    draw<A> : (Walk<A>, int, View<A>) -> Walk<A>
+    draw (walk, parent, view) = match view
+        Column look items => each (seat (walk, column, parent, none, "", look), walk.walkNext, items, 0)
+        Across look items => each (seat (walk, line, parent, none, "", look), walk.walkNext, items, 0)
+        Wording look words => seat (walk, label, parent, none, words, look)
+        Press look words action => acting (walk, press, parent, action, words, look)
+        Typing look words action => acting (walk, entry, parent, action, words, look)
+        Gap => seat (walk, gap, parent, none, "", plain)
+        Fitted fit inner => sized (draw (walk, parent, inner), walk.walkNext, fit)
+        Scrolling look items => each (seat (walk, scroll, parent, none, "", look), walk.walkNext, items, 0)
+        Layered look items => each (seat (walk, layer, parent, none, "", look), walk.walkNext, items, 0)
+        Switch look words on action => sized (acting (walk, toggle, parent, action, words, look), walk.walkNext, flagged (on, chosen, ""))
+        Choosing look words options action => each (acting (walk, picker, parent, action, words, look), walk.walkNext, options, 0)
+        Option look words key picked => sized (seat (walk, option, parent, none, words, look), walk.walkNext, flagged (picked, chosen, key))
+        Rule look => seat (walk, rule, parent, none, "", look)
+        Picture look source => seat (walk, image, parent, none, source, look)
+        Canvas look action => acting (walk, canvas, parent, action, "", look)
+        Drawing look content action => sketched (acting (walk, canvas, parent, action, "", look), walk.walkNext, content)
+        Writing look words action => acting (walk, editor, parent, action, words, look)
+        Menu look items => each (seat (walk, menu, parent, none, "", look), walk.walkNext, items, 0)
+        Sheet look items dismiss => each (acting (walk, sheet, parent, dismiss, "", look), walk.walkNext, items, 0)
+
+    flagged (on, flag, hint) = match on
+        true => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = flag, edge = 0, hint = hint)
+        false => Fit(wide = 0.0, tall = 0.0, share = 0.0, traits = 0, edge = 0, hint = hint)
+
+    // Gives the control at `row` its fit.
+    sized<A> : (Walk<A>, int, Fit) -> Walk<A>
+    sized (walk, row, fit) = walk(walkFits = listAppend walk.walkFits (Fitting(fittedRow = row, fittedAs = fit)))
+
+    // Gives the canvas at `row` its scene.
+    sketched<A> : (Walk<A>, int, Sketch) -> Walk<A>
+    sketched (walk, row, content) = walk(walkSketches = listAppend walk.walkSketches (Sketched(sketchedRow = row, sketchedAs = content)))
+
+    (** `view` walked into the rows, fits and scenes a host reads, with the actions its controls deliver in control order. Pure: a test reads exactly what a host is sent. *)
+    export drawn<A> : View<A> -> Walk<A>
+    drawn view = draw (Walk(walkBound = [], walkNext = 0, walkRows = [], walkFits = [], walkSketches = []), none, view)
+
+    (** Draws `view` into the shared frame and answers the actions its controls deliver, in order: a host event names one by its position. *)
+    export render<A> : View<A> -> List<A> ![ViewStream | e]
+    render view =
+        walked = drawn view
+        forEachList (walked.walkRows, \row => perform ViewStream.place row)
+        forEachList (walked.walkFits, \fit => perform ViewStream.size fit)
+        forEachList (walked.walkSketches, \content => perform ViewStream.sketch content)
+        walked.walkBound

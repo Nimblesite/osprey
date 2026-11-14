@@ -1,0 +1,8 @@
+[project]
+name = "pocket-orchestra-tests"
+source_roots = [".", "../src"]
+default_namespace = "orchestratests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

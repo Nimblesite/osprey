@@ -58,6 +58,41 @@ fn printRejected(label, outcome) = match outcome {
     Error => print("${label} rejected\n")
 }
 
+/// Prints one labelled clamping cut of "hi": `take` keeps the front bytes,
+/// `drop` skips them.
+fn printClamp(c) = match c.front {
+    true => printQuoted(c.label, take("hi", c.at))
+    false => printQuoted(c.label, drop("hi", c.at))
+}
+
+/// Prints one labelled `substring("hi", c.from, c.to)` boundary: the quoted
+/// success when `c.ok` holds, its rejection otherwise.
+fn printBoundary(c) = {
+    let edge = substring("hi", c.from, c.to)
+    match c.ok {
+        true => printOutcomeQuoted(c.label, edge)
+        false => printRejected(c.label, edge)
+    }
+}
+
+/// The cursor reading `row` names: its probe builtin applied to "héllo" at
+/// `i` (the width probes take the code point alone).
+fn cursorReading(row) = match row.probe {
+    "byteAt" => byteAt("héllo", row.i)
+    "codePointAt" => codePointAt("héllo", row.i)
+    _ => codePointWidth(row.i)
+}
+
+/// Prints one labelled cursor reading: the value when `ok` holds, the
+/// rejection message otherwise.
+fn printCursorReading(row) = {
+    let reading = cursorReading(row)
+    match row.ok {
+        true => printOutcome(row.label, reading)
+        false => printRejection(row.label, reading)
+    }
+}
+
 /// True when every condition listed in `wanted` holds.
 fn allHold(wanted) = match wanted {
     [] => true
@@ -95,14 +130,27 @@ fn holeRenders(v, text) =
 /// `toString(v)` and the interpolation hole for `v` render identically.
 fn holeIsToString(v) = toString(v) == "${v}"
 
-/// Number of parts `split` produced, or -1 when it was rejected ([](BUILTIN-STRING-SPLIT)).
-fn splitPartCount(outcome) = match outcome {
-    Success { value } => listLength(value)
-    Error => (0 - 1)
+/// True when `split(text, sep)` produced exactly `wanted` parts
+/// ([BUILTIN-STRING-SPLIT]); a rejected split matches no count.
+fn splitPartsAre(text, sep, wanted) = match split(text, sep) {
+    Success { value } => listLength(value) == wanted
+    Error => false
 }
 
 /// `toUpperCase(s)` folds to `upper` and `toLowerCase(s)` folds to `lower`.
 fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) == lower])
+
+/// The bytes of `s` from `first` onwards are exactly `wanted` ([BUILTIN-STRING-BYTEAT]).
+fn bytesAreFrom(s, first, wanted) = match wanted {
+    [] => true
+    [head, ...tail] => (byteAt(s, first) ?: (0 - 1)) == head && bytesAreFrom(s, (first + 1), tail)
+}
+
+/// The bytes of `s` from byte 0 onwards are exactly `wanted`.
+fn bytesAre(s, wanted) = bytesAreFrom(s, 0, wanted)
+
+/// Every needle of `held` satisfies `found`, and no needle of `absent` does.
+fn needlesHold(found, held, absent) = allHold(mapList(held, found)) && allHold(mapList(absent, fn(needle) => !found(needle)))
 
   // ---- isEmpty edges ----
   printValue("empty-emp", "" |> isEmpty)
@@ -116,21 +164,25 @@ fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) =
   printValue("ends-long", "hi" |> endsWith("hello"))
 
   // ---- take / drop clamping ----
-  printQuoted("take-neg", "hi" |> take((0 - 5) ))
-  printQuoted("take-big", "hi" |> take(99))
-  printQuoted("drop-neg", "hi" |> drop((0 - 5) ))
-  printQuoted("drop-big", "hi" |> drop(99))
+
+  let negFive = (0 - 5)
+  forEachList(
+      [{ label: "take-neg", at: negFive, front: true }, { label: "take-big", at: 99, front: true },
+       { label: "drop-neg", at: negFive, front: false }, { label: "drop-big", at: 99, front: false }],
+      printClamp)
 
   // ---- trim on all-whitespace ----
   printQuoted("trim-allws", "   " |> trim)
   printQuoted("trim-empty", "" |> trim)
 
   // ---- substring boundaries ----
-  printOutcomeQuoted("sub-empty", substring("hi", 0, 0))
-  printOutcomeQuoted("sub-full", substring("hi", 0, 2))
-  printRejected("sub-neg", substring("hi", (0 - 1) , 2))
-  printRejected("sub-over", substring("hi", 0, 99))
-  printRejected("sub-inverted", substring("hi", 2, 0))
+  forEachList(
+      [{ label: "sub-empty", from: 0, to: 0, ok: true },
+       { label: "sub-full", from: 0, to: 2, ok: true },
+       { label: "sub-neg", from: (0 - 1), to: 2, ok: false },
+       { label: "sub-over", from: 0, to: 99, ok: false },
+       { label: "sub-inverted", from: 2, to: 0, ok: false }],
+      printBoundary)
 
   // ---- indexOf empty needle and not-found ----
   printOutcome("idx-empty", indexOf("hello", ""))
@@ -154,12 +206,10 @@ fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) =
   printOutcomeQuoted("padS-multi", padStart("42", 5, "ab"))
 
   // ---- parseFloat rejects junk ----
-  printRejected("pf-empty", parseFloat(""))
-  printRejected("pf-trailing", parseFloat("3.14x"))
-  printRejected("pf-space", parseFloat(" 3.14"))
-  printRejected("pf-nan", parseFloat("nan"))
-  printRejected("pf-hex", parseFloat("0x1p2"))
-  printRejected("pf-infinite", parseFloat("1e9999"))
+  forEachList(
+      [{ label: "pf-empty", junk: "" }, { label: "pf-trailing", junk: "3.14x" }, { label: "pf-space", junk: " 3.14" },
+       { label: "pf-nan", junk: "nan" }, { label: "pf-hex", junk: "0x1p2" }, { label: "pf-infinite", junk: "1e9999" }],
+      fn(j) => printRejected(j.label, parseFloat(j.junk)))
 
   // ---- parseInt overflow ----
   printRejected("pi-overflow", parseInt("99999999999999999999"))
@@ -169,12 +219,14 @@ fn foldsTo(s, upper, lower) = allHold([toUpperCase(s) == upper, toLowerCase(s) =
   // ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
   // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
   printValue("byteLen", byteLength("héllo"))
-  printOutcome("byteAt1", byteAt("héllo", 1))
-  printRejection("byteAt-oob", byteAt("héllo", 99))
-  printOutcome("cpAt1", codePointAt("héllo", 1))
-  printRejection("cpAt-mid", codePointAt("héllo", 2))
-  printOutcome("cpWidth", codePointWidth(128512))
-  printRejection("cpWidth-surrogate", codePointWidth(55296))
+  forEachList(
+      [{ label: "byteAt1", probe: "byteAt", i: 1, ok: true },
+       { label: "byteAt-oob", probe: "byteAt", i: 99, ok: false },
+       { label: "cpAt1", probe: "codePointAt", i: 1, ok: true },
+       { label: "cpAt-mid", probe: "codePointAt", i: 2, ok: false },
+       { label: "cpWidth", probe: "codePointWidth", i: 128512, ok: true },
+       { label: "cpWidth-surrogate", probe: "codePointWidth", i: 55296, ok: false }],
+      printCursorReading)
   printOutcome("fromCp", fromCodePoint(128512))
   printRejection("fromCp-bad", fromCodePoint(2000000))
   // U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
@@ -228,18 +280,13 @@ fn stringEdgeCase() = {
         rejectedNonEmpty(substring("hi", 0, 99)),
         rejectedNonEmpty(substring("hi", 2, 0)),
         rejectedNonEmpty(indexOf("hello", "xyz")),
+        rejectedNonEmpty(parseInt(" 42")),
         rejectedNonEmpty(replace("hello", "", "x")),
         rejectedNonEmpty(repeat("ab", negativeOne)),
         rejectedNonEmpty(padStart("hi", 5, "")),
         rejectedNonEmpty(padEnd("hi", 5, "")),
-        rejectedNonEmpty(parseFloat("")),
-        rejectedNonEmpty(parseFloat("3.14x")),
-        rejectedNonEmpty(parseFloat(" 3.14")),
-        rejectedNonEmpty(parseFloat("nan")),
-        rejectedNonEmpty(parseFloat("0x1p2")),
-        rejectedNonEmpty(parseFloat("1e9999")),
-        rejectedNonEmpty(parseInt("99999999999999999999")),
-        rejectedNonEmpty(parseInt(" 42"))
+        allHold(mapList(["", "3.14x", " 3.14", "nan", "0x1p2", "1e9999"], fn(junk) => rejectedNonEmpty(parseFloat(junk)))),
+        rejectedNonEmpty(parseInt("99999999999999999999"))
     ])
     checkAll("cursor values and error payloads", [
         byteLength("héllo") == 6,
@@ -364,12 +411,7 @@ fn interpolationResultCase() = {
 
     // Plain "2" is one byte; "Error(division by zero)" is 6 + 16 + 1 = 23.
     checkAll("toString and a hole agree on every Result", [
-        holeIsToString(parseInt("42")),
-        holeIsToString(parseInt("oops")),
-        holeIsToString(divideResult(10, 0)),
-        holeIsToString(intDiv(7, 2)),
-        holeIsToString(fromCodePoint(65)),
-        holeIsToString(failWith("custom boom")),
+        allHold([holeIsToString(parseInt("42")), holeIsToString(parseInt("oops")), holeIsToString(divideResult(10, 0)), holeIsToString(intDiv(7, 2)), holeIsToString(fromCodePoint(65)), holeIsToString(failWith("custom boom"))]),
         "value=${intDiv(10, 5)}" == "value=2",
         "a${divideResult(5, 0)}b" == "aError(division by zero)b",
         "${intDiv(7, 2)}${intDiv(7, 2)}" == "33",
@@ -392,7 +434,6 @@ fn interpolationResultCase() = {
 /// the runtime string is a NUL-terminated `char*` ([BUILTIN-STRING-CURSOR]), so
 /// an embedded NUL has no observable length and the spec does not define one.
 fn escapeSequenceCase() = {
-    let tabSplitCount = splitPartCount(split("a\tb", "\t"))
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
     checkAll("each recognised escape collapses to exactly one byte", [
@@ -403,27 +444,23 @@ fn escapeSequenceCase() = {
         singleByte("\"", 34),
         singleByte("\\", 92),
         byteLength("\n\r\t\e") == 4,
-        (byteAt("\n\r\t\e", 0) ?: 0) == 10,
-        (byteAt("\n\r\t\e", 3) ?: 0) == 27,
+        bytesAre("\n\r\t\e", [10, 13, 9, 27]),
         length("a\nb") == 3,
-        (byteAt("a\nb", 0) ?: 0) == 97,
-        (byteAt("a\nb", 1) ?: 0) == 10,
-        (byteAt("a\nb", 2) ?: 0) == 98,
+        bytesAre("a\nb", [97, 10, 98]),
         "\n" != "n",
         "\\n" != "\n",
         length("\\n") == 2,
         length("a\"b") == 3,
-        (byteAt("a\"b", 1) ?: 0) == 34
+        bytesAreFrom("a\"b", 1, [34])
     ])
 
     // An unrecognised escape keeps BOTH bytes: 'q' is 113, 'd' is 100, 'x' 120.
     checkAll("an unknown escape keeps its backslash verbatim", [
         length("\q") == 2,
-        (byteAt("\q", 0) ?: 0) == 92,
-        (byteAt("\q", 1) ?: 0) == 113,
+        bytesAre("\q", [92, 113]),
         "\q" == "\\q",
         length("\d") == 2,
-        (byteAt("\d", 1) ?: 0) == 100,
+        bytesAreFrom("\d", 1, [100]),
         length("\s\q") == 4,
         contains("\q", "\\"),
         startsWith("\q", "\\"),
@@ -434,10 +471,9 @@ fn escapeSequenceCase() = {
         toLowerCase("\Q") == "\q",
         reverse("\q") == "q\\",
         length("path\to") == 6,
-        (byteAt("path\to", 4) ?: 0) == 9,
+        bytesAreFrom("path\to", 4, [9]),
         length("path\xo") == 7,
-        (byteAt("path\xo", 4) ?: 0) == 92,
-        (byteAt("path\xo", 5) ?: 0) == 120
+        bytesAreFrom("path\xo", 4, [92, 120])
     ])
 
     // ASCII whitespace for trim/words is space, TAB, LF, CR, VT and FF; ESC is
@@ -452,12 +488,10 @@ fn escapeSequenceCase() = {
         length(trim("\e hi ")) == 4,
         answersHold(fn(x) => listLength(lines(x)), ["a\nb\nc", "a\n", "a\n\nb", "solo"], [3, 1, 3, 1]),
         answersHold(fn(x) => listLength(words(x)), ["a\tb\nc", "   ", "", " a ", "a\r\nb"], [3, 0, 0, 1, 2]),
-        (listGet(lines("a\nb"), 1) ?: "missing") == "b",
-        (listGet(lines("a\nb"), 0) ?: "missing") == "a",
-        (listGet(words("a\tb"), 1) ?: "missing") == "b",
+        structuralEquals([lines("a\nb"), words("a\tb")], [["a", "b"], ["a", "b"]]),
         join(lines("a\nb\nc"), "-") == "a-b-c",
         join(words("  x  y  "), "+") == "x+y",
-        tabSplitCount == 2,
+        splitPartsAre("a\tb", "\t", 2),
         contains("a\nb", "\n"),
         !contains("ab", "\n"),
         startsWith("\tx", "\t"),
@@ -478,8 +512,7 @@ fn substringPositionCase() = {
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
-        allHold([contains(subject, "ban"), contains(subject, "nan"), contains(subject, "ana"), contains(subject, "banana"), contains(subject, "b"), contains(subject, "a"), contains(subject, "n"), contains(subject, "")]),
-        allHold([!contains(subject, "bananas"), !contains(subject, "xyz"), !contains(subject, "BAN"), !contains(subject, "bn"), !contains(subject, " ")]),
+        needlesHold(fn(needle) => contains(subject, needle), ["ban", "nan", "ana", "banana", "b", "a", "n", ""], ["bananas", "xyz", "BAN", "bn", " "]),
         contains("", ""),
         !contains("", "a"),
         contains("a", "a"),
@@ -490,17 +523,15 @@ fn substringPositionCase() = {
     ])
 
     checkAll("startsWith and endsWith agree with contains at both ends", [
-        allHold([startsWith(subject, ""), startsWith(subject, "b"), startsWith(subject, "ba"), startsWith(subject, "banana")]),
-        allHold([!startsWith(subject, "banana!"), !startsWith(subject, "anana"), !startsWith(subject, "B")]),
-        allHold([endsWith(subject, ""), endsWith(subject, "a"), endsWith(subject, "na"), endsWith(subject, "ana"), endsWith(subject, "banana")]),
-        allHold([!endsWith(subject, "!banana"), !endsWith(subject, "banan"), !endsWith(subject, "A")]),
+        needlesHold(fn(prefix) => startsWith(subject, prefix), ["", "b", "ba", "banana"], ["banana!", "anana", "B"]),
+        needlesHold(fn(suffix) => endsWith(subject, suffix), ["", "a", "na", "ana", "banana"], ["!banana", "banan", "A"]),
         startsWith("", ""),
         !startsWith("", "a"),
         endsWith("", ""),
         !endsWith("", "a"),
         startsWith("a", "a"),
         endsWith("a", "a"),
-        allHold([contains(subject, "ba"), contains(subject, "na")])
+        needlesHold(fn(needle) => contains(subject, needle), ["ba", "na"], [])
     ])
 
     // The reported index must reconstruct the needle through substring/take/drop.
@@ -511,13 +542,8 @@ fn substringPositionCase() = {
         indexOfIs("a", "a", 0),
         indexAbsent,
         indexEmptySubject,
-        succeedsWith(substring(subject, 1, 4), "ana"),
-        succeedsWith(substring(subject, 2, 4), "na"),
-        succeedsWith(substring(subject, 0, 6), subject),
-        succeedsWith(substring(subject, 6, 6), ""),
-        succeedsWith(substring(subject, 3, 3), ""),
-        take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
-        drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
+        structuralEquals([substring(subject, 1, 4) ?: "missing", substring(subject, 2, 4) ?: "missing", substring(subject, 0, 6) ?: "missing", substring(subject, 6, 6) ?: "missing", substring(subject, 3, 3) ?: "missing"], ["ana", "na", subject, "", ""]),
+        answersHold(fn(cut) => cut(subject, indexOf(subject, "na") ?: missing), [fn(s, n) => take(s, n), fn(s, n) => drop(s, n)], ["ba", "nana"]),
         startsWith(drop(subject, (indexOf(subject, "ana") ?: missing)), "ana"),
         indexOfIs(toUpperCase(subject), "NA", 2)
     ])
@@ -544,7 +570,7 @@ fn caseFoldingCase() = {
         toLowerCase("HÉLLO") == "hÉllo",
         length(toUpperCase(accented)) == 6,
         byteLength(toLowerCase(accented)) == 6,
-        allHold([(byteAt(toUpperCase(accented), 0) ?: 0) == 72, (byteAt(toUpperCase(accented), 1) ?: 0) == 195, (byteAt(toUpperCase(accented), 2) ?: 0) == 169, (byteAt(toUpperCase(accented), 3) ?: 0) == 76])
+        bytesAre(toUpperCase(accented), [72, 195, 169, 76])
     ])
 
     // Idempotent, length preserving, and a lower/upper round trip that survives
@@ -552,8 +578,7 @@ fn caseFoldingCase() = {
     checkAll("case conversion is idempotent, length preserving and round trips", [
         toUpperCase(toUpperCase(mixed)) == toUpperCase(mixed),
         toLowerCase(toLowerCase(mixed)) == toLowerCase(mixed),
-        toLowerCase(toUpperCase("Hello")) == "hello",
-        toUpperCase(toLowerCase("Hello")) == "HELLO",
+        structuralEquals([toLowerCase(toUpperCase("Hello")), toUpperCase(toLowerCase("Hello"))], ["hello", "HELLO"]),
         toLowerCase(toUpperCase(accented)) == accented,
         toUpperCase(toLowerCase(accented)) == "HéLLO",
         toUpperCase(toLowerCase(mixed)) == toUpperCase(mixed),
@@ -590,8 +615,7 @@ fn caseFoldingCase() = {
         succeedsWith(padStart(toUpperCase("z"), 3, "y"), "yyZ"),
         succeedsWith(padEnd(toLowerCase("Z"), 3, "y"), "zyy"),
         succeedsWith(substring(toUpperCase("banana"), 0, 3), "BAN"),
-        trim(toUpperCase("  a  ")) == "A",
-        toUpperCase(trim("  a  ")) == "A",
+        allHold([trim(toUpperCase("  a  ")) == "A", toUpperCase(trim("  a  ")) == "A"]),
         join([toUpperCase("a"), toLowerCase("B")], "-") == "A-b",
         "${toUpperCase("ab")}" == "AB",
         "${toLowerCase("AB")}" == "ab"
@@ -639,16 +663,13 @@ fn concatLengthCase() = {
     // take(s, n) + drop(s, n) == s must hold at, inside and outside both ends.
     checkAll("take and drop partition a string at every boundary", [
         answersHold(fn(n) => partitionsAt(joined, n), [0, 1, 3, 6, 7, negativeFive], [true, true, true, true, true, true]),
-        answersHold(fn(n) => take(joined, n), [0, 6, 99, negativeFive], ["", joined, joined, ""]),
-        answersHold(fn(n) => drop(joined, n), [0, 6, 99, negativeFive], [joined, "", "", joined]),
+        structuralEquals(mapList([0, 6, 99, negativeFive], fn(n) => [take(joined, n), drop(joined, n)]), [["", joined], [joined, ""], [joined, ""], ["", joined]]),
         length(take(joined, 3)) == 3,
         length(drop(joined, 3)) == 3,
         ((length(take(joined, 2)) + length(drop(joined, 2))) ) == length(joined),
         take(joined, 3) == (substring(joined, 0, 3) ?: "missing"),
         drop(joined, 3) == (substring(joined, 3, 6) ?: "missing"),
-        succeedsWith(substring(joined, 0, 0), ""),
-        succeedsWith(substring(joined, 6, 6), ""),
-        succeedsWith(substring(joined, 0, 6), joined)
+        structuralEquals([substring(joined, 0, 0) ?: "missing", substring(joined, 6, 6) ?: "missing", substring(joined, 0, 6) ?: "missing"], ["", "", joined])
     ])
 
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
@@ -667,14 +688,13 @@ fn concatLengthCase() = {
         length(reverse("héllo")) == 6,
         length(reverse(joined)) == length(joined),
         reverse(left + middle) == reverse(middle) + reverse(left),
-        length(padStart("7", 5, "0") ?: "") == 5,
-        length(padEnd("7", 5, "0") ?: "") == 5,
+        structuralEquals([padStart("7", 5, "0") ?: "", padEnd("7", 5, "0") ?: ""], ["00007", "70000"]),
         succeedsWith(padStart("7", 5, "0"), "00007"),
         succeedsWith(padEnd("7", 5, "0"), "70000"),
         succeedsWith(padStart("x", 6, "ab"), "ababax"),
         succeedsWith(padEnd("x", 6, "ab"), "xababa"),
         succeedsWith(padStart("hello", 3, "0"), "hello"),
-        succeedsWith(padEnd("hello", 3, "0"), "hello"),
+        (padEnd("hello", 3, "0") ?: "missing") == "hello",
         join(["a", "b", "c"], "") == "abc",
         join(["a"], "-") == "a",
         join(["", ""], "-") == "-",
@@ -697,7 +717,6 @@ fn interpolationCompositionCase() = {
     let step2 = "${step1}${listGet(xs, 1) ?: "?"}|"
     let step3 = "${step2}${listGet(xs, 2) ?: "?"}|"
     let step4 = "${step3}${listGet(xs, 9) ?: "?"}|"
-    let segmentCount = splitPartCount(split(step3, "|"))
 
     checkAll("a hole may hold a call, a pipe, an operator or an index", [
         "${length("abc")}" == "3",
@@ -716,8 +735,7 @@ fn interpolationCompositionCase() = {
         "${contains(name, "lic")}" == "true",
         "${(count + 4) }" == "7",
         "${(count * 4) }" == "12",
-        "${listGet(xs, 0) ?: "none"}" == "red",
-        "${listGet(xs, 9) ?: "none"}" == "none",
+        answersHold(fn(i) => "${listGet(xs, i) ?: "none"}", [0, 9], ["red", "none"]),
         "${xs[2] ?: "none"}" == "blue",
         "${prices["apple"] ?: 0}" == "2",
         "${prices["mango"] ?: 0}" == "0",
@@ -770,7 +788,7 @@ fn interpolationCompositionCase() = {
         step2 + "blue|" == step3,
         (indexOf(step3, "green") ?: 0) == 4,
         (indexOf(step3, "blue") ?: 0) == 10,
-        segmentCount == 4,
+        splitPartsAre(step3, "|", 4),
         toUpperCase(step2) == "RED|GREEN|",
         reverse(step1) == "|der"
     ])
@@ -790,8 +808,7 @@ fn utf8CutCase() = {
         partitionsAt(eagle, 3)
     ])
     checkAll("utf-8 substring bounds", [
-        succeedsWith(substring(quote, 0, 3), "“"),
-        succeedsWith(substring(quote, 3, 5), "ok"),
+        structuralEquals([substring(quote, 0, 3) ?: "missing", substring(quote, 3, 5) ?: "missing"], ["“", "ok"]),
         byteLength(substring(quote, 1, 3) ?: "") == 2,
         byteLength(substring(quote, 0, 1) ?: "") == 1
     ])

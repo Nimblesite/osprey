@@ -1,59 +1,68 @@
 //! Focus, filtered keys and pointer events in scene units ([GPUI-HOST-SCENE]).
 
 use gpui_kit::*;
-use serde_json::{json, Value};
 
 use super::{paint, Decoded};
-use crate::events;
-use crate::host::{now, HostView};
-use crate::render::{self, Binding, Ctx};
+use crate::events::Touch;
+use crate::host::HostView;
+use crate::render::Binding;
+use crate::view;
 
 /// Builds the focusable wrapper and canvas without adding application behaviour.
-pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyElement {
-    let handle = ctx.cx.entity();
-    let binding = render::binding(ctx, ordinal);
-    let focus = scene_focus(ctx);
-    let key = ctx.key.clone();
+pub(super) fn interactive<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    row: usize,
+    ordinal: i64,
+    decoded: Decoded,
+) -> AnyElement {
+    let handle = cx.entity();
+    let binding = Binding { ordinal };
+    let key = format!("canvas:{row}");
+    let focus = scene_focus(view, cx, &key);
     // A fitted scene's scale is the one its last frame was painted at.
-    let scale = ctx
-        .view
+    let scale = view
         .scene_transforms
         .get(&key)
         .map_or(decoded.zoom, |t| t.scale);
     let mut elements = decoded.access.to_vec();
-    elements.extend(super::text::labels(&decoded.shapes, scale, ctx.window));
+    elements.extend(super::text::labels(&decoded.shapes, scale, window));
     let access = super::access::overlay(&handle, &binding, &elements, scale);
-    let binding_for_paint = binding.clone();
+    let binding_for_paint = binding;
     let surface = div()
-        .id(render::control_id(ctx, ordinal))
+        .id(view::id(row))
         .relative()
         .w_full()
         .flex_grow(1.)
         .min_h(px(320.))
         .track_focus(&focus)
-        .on_key_down(key_down(handle.clone(), binding.clone()))
-        .on_key_up(key_up(handle.clone(), binding.clone()))
+        .on_key_down(key_down(handle.clone(), binding))
+        .on_key_up(key_up(handle.clone(), binding))
         .on_mouse_down(
             MouseButton::Left,
-            mouse_down(handle.clone(), focus, binding.clone(), key.clone()),
+            mouse_down(handle.clone(), focus, binding, key.clone()),
         )
         .on_mouse_up(
             MouseButton::Left,
-            mouse_up(handle.clone(), binding.clone(), key.clone()),
+            mouse_up(handle.clone(), binding, key.clone()),
         )
-        .on_mouse_move(mouse_move(handle.clone(), binding, key));
+        .on_mouse_move(mouse_move(handle.clone(), binding, key.clone()));
     surface
-        .child(paint::canvas(ctx, handle, binding_for_paint, decoded))
+        .child(paint::canvas(
+            key.clone(),
+            handle,
+            binding_for_paint,
+            decoded,
+        ))
         .children(access)
         .into_any_element()
 }
 
-/// Returns the persistent focus handle owned by this scene's region key.
-fn scene_focus(ctx: &mut Ctx) -> FocusHandle {
-    let cx = &mut *ctx.cx;
-    ctx.view
-        .scene_focus
-        .entry(ctx.key.clone())
+/// Returns the persistent focus handle owned by this scene's canvas.
+fn scene_focus(view: &mut HostView, cx: &mut Context<HostView>, key: &str) -> FocusHandle {
+    view.scene_focus
+        .entry(key.to_owned())
         .or_insert_with(|| cx.focus_handle())
         .clone()
 }
@@ -84,13 +93,7 @@ fn send_key(
     cx: &mut App,
 ) {
     if let Some(key) = key_name(key) {
-        send(
-            handle,
-            binding,
-            json!({"key": key, "down": down}),
-            window,
-            cx,
-        );
+        view::send(handle, Touch::key(binding.ordinal, key, down), window, cx);
     }
 }
 
@@ -193,14 +196,11 @@ fn pointer(
         if hover {
             reset_hover(key, window, cx);
         }
-        let event = events::control(
-            now(),
-            &binding.region,
-            current(view, binding),
-            binding.ordinal,
-            json!({"x": x, "y": y, "down": down, "shift": shift}),
+        view.send(
+            Touch::pointer(binding.ordinal, x, y, down, shift),
+            window,
+            cx,
         );
-        view.dispatch(event, window, cx);
     });
 }
 
@@ -220,43 +220,9 @@ pub(super) fn viewed(
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) {
-    let binding = binding.clone();
+    let binding = *binding;
     cx.on_next_frame(window, move |view, window, cx| {
-        let value = json!({"width": width, "height": height});
-        let event = events::control(
-            now(),
-            &binding.region,
-            current(view, &binding),
-            binding.ordinal,
-            value,
-        );
-        view.dispatch(event, window, cx);
-    });
-}
-
-/// A scene re-renders every frame, so input targets the region's live revision; its binding ordinal is stable.
-pub(super) fn current(view: &HostView, binding: &Binding) -> u64 {
-    view.regions
-        .get(&binding.region)
-        .map_or(binding.revision, |region| region.revision)
-}
-
-/// Dispatches one already encoded scene value.
-fn send(
-    handle: &Entity<HostView>,
-    binding: &Binding,
-    value: Value,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    handle.update(cx, |view, cx| {
-        let event = events::control(
-            now(),
-            &binding.region,
-            current(view, binding),
-            binding.ordinal,
-            value,
-        );
-        view.dispatch(event, window, cx);
+        let touch = Touch::viewed(binding.ordinal, f64::from(width), f64::from(height));
+        view.send(touch, window, cx);
     });
 }

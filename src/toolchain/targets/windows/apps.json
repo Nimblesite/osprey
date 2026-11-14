@@ -51,6 +51,14 @@
       "arguments": [],
       "fixture": "fixture.ps1"
     },
+    "tally": {
+      "source": "src/osprey/examples/tally",
+      "name": "Tally",
+      "description": "Count things, name your tally and switch its colours.",
+      "capabilities": [],
+      "files": [],
+      "arguments": []
+    },
     "probe": {
       "source": "src/toolchain/hosts/gpui/probe",
       "name": "Probe",

@@ -51,7 +51,7 @@ result while another fiber can still await it.
 
 ## How many fibers and channels [CONCURRENCY-HANDLES]
 
-A program can create any number of fibers and channels over its life. Each handle stays valid for the rest of the process and is never reused, because a `Fiber<T>` can be awaited again for as long as the program holds it. So every fiber's record and result, and every channel, stay in memory until the process ends: a program that spawns without end grows without end, by a few hundred bytes per fiber plus what it returned.
+A program can create any number of fibers and channels over its life. Each handle stays valid for the rest of the process and is never reused, because a `Fiber<T>` can be awaited again for as long as the program holds it. So every fiber's record and result, and every channel, stay in memory until the process ends: a program that spawns without end grows without end, by a few hundred bytes per fiber plus what it returned (230 to 250 measured; the runtime tests fail above 512).
 
 A fiber's thread ends when the fiber does, whether or not it is awaited. When the system has no thread left to give, `spawn` runs the body on the spawning thread instead, and the fiber has finished when `spawn` returns. A body that then waits for its spawner blocks for ever.
 

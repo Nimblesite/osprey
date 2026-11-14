@@ -220,7 +220,7 @@ module Model
     (** Applies a provider's answer naming its models. A refusal or no answer leaves the catalogue on offer; a send reports why. *)
     export modelsAnswered (store, ticket, outcome) = match outcome
         Error _ => store
-        Success result => match Doc::number (result, "status") == 200
+        Success result => match Doc::number (Doc::parse result, "status") == 200
             false => store
             true => listing (store, drop ticket 7, filterList (mapList (Doc::items (Doc::field (Doc::parse (perform ui::Slices.fetch ticket), "data")), \item => Doc::text (item, "id")), \id => id != ""))
 

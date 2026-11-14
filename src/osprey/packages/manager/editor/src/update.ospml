@@ -23,7 +23,7 @@ module Update
 
     catalogEntries (current, body, waiting) = stepOrFault (current, Packages::validCatalog (Doc::parse body), \entries => withEntries (current, entries, waiting))
 
-    completeCatalog (current, result, waiting) = stepOrFault (current, Reports::catalogBody result, \body => catalogEntries (current, body, waiting))
+    completeCatalog (current, body, waiting) = catalogEntries (current, body, waiting)
 
     graphOutcome (current, completion, waiting) = match completion
         MissingLock reason => Runtime::step (Store::withGraph (current, Store::absent reason, waiting))

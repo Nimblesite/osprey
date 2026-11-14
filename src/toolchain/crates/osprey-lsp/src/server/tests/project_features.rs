@@ -388,3 +388,51 @@ async fn nested_project_edits_refresh_every_project_that_includes_the_source() -
     h.shutdown_and_exit().await;
     Ok(())
 }
+
+// [LSP-ANALYSIS-SCOPE] Displayed types come from the whole project and its
+// packages by default; `osprey.analysis.scope = "file"` checks each file alone,
+// live, and `"project"` restores the default.
+#[tokio::test]
+async fn analysis_scope_setting_turns_project_inference_off_and_on() -> Fallible {
+    let main = "main () = print \"${listLength (painting::Logo::steps ())}\"\n";
+    let (fixture, _main) = fixture_with_main("ospml", main)?;
+    let _ui = fixture.write("ui", "namespace ui\n\ntype PathStep =\n    LineTo\n        toX : float\n        toY : float\n    Close\n")?;
+    let logo = "namespace painting\n\nmodule Logo\n    segment row = match row\n        [x, y, ..._rest] => ui::LineTo(toX = x, toY = y)\n        _ => ui::Close\n\n    export steps () = mapList [[1.0, 2.0]] segment\n";
+    let uri = fixture.write("logo", logo)?;
+    let mut h = Harness::start_with_progress().await;
+    let _ = h.open_at(&uri, logo).await;
+    let binder = crate::test_support::col_of(logo, 4, "x, y");
+    let function = crate::test_support::col_of(logo, 3, "segment");
+    for (id, scope, binder_type, signature) in [
+        (910, None, "x : float", "List<float> -> ui::PathStep"),
+        (920, Some("file"), "x : _", "_ -> _"),
+        (
+            930,
+            Some("project"),
+            "x : float",
+            "List<float> -> ui::PathStep",
+        ),
+    ] {
+        if let Some(scope) = scope {
+            let settings = json!({"settings":{"osprey":{"analysis":{"scope":scope}}}});
+            h.notify("workspace/didChangeConfiguration", settings).await;
+        }
+        for (offset, method, line, column, shown) in [
+            (0, "hover", 4, binder, binder_type),
+            (1, "hover", 3, function, signature),
+            (2, "signatureHelp", 3, function, signature),
+        ] {
+            let params = position_params(&uri, line, column);
+            let reply = h
+                .request(id + offset, &format!("textDocument/{method}"), params)
+                .await;
+            let text = format!("{:?}", reply.result);
+            assert!(
+                text.contains(shown),
+                "{scope:?} {method}: want {shown} in {text}"
+            );
+        }
+    }
+    h.shutdown_and_exit().await;
+    Ok(())
+}

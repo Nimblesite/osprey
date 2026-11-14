@@ -3,6 +3,8 @@ ok 2 - opening a document preserves its URI and source location
 ok 3 - process input is data with explicit workspace, timeout and output bounds
 ok 4 - configuration and view requests preserve resource scope
 ok 5 - invalid tickets process scope and excessive limits fail explicitly
-ok 6 - WASM frames route opaque state through real application entry points
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 6 - editor workspace requests use the shared framework envelope (extra: a second workspace reads its own ticket and field)
+ok 7 - WASM frames route opaque state through real application entry points
+ok 8 - WASM frames route opaque state through real application entry points (extra: arguments arrive in order and a dark open flips the frame)
+1..8
+# tests=8 passed=8 failed=0 skipped=0

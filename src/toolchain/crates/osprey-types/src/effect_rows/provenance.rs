@@ -166,9 +166,14 @@ pub(super) fn widen_callable(
             index,
             mut projection,
         } if level < MAX_PROVENANCE_DEPTH && projection.len() < MAX_PROVENANCE_DEPTH => {
+            // Sibling call arguments share the budget, as fields and alternatives do: each
+            // taking all of it let a chain of calls on one parameter grow without bound.
+            let mut values = 0_usize;
+            map_projection_values(&mut projection, |_| values += 1);
+            let share = budget / values.max(1);
             map_projection_values(&mut projection, |value| {
                 *value =
-                    widen_value_budget(std::mem::take(value), depth + CALL_NESTING_STEP, budget);
+                    widen_value_budget(std::mem::take(value), depth + CALL_NESTING_STEP, share);
             });
             Callable::Parameter {
                 level,

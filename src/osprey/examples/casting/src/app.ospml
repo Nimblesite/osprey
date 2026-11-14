@@ -7,7 +7,6 @@ import ui::MachineDocs
 import ui::Machines
 import ui::Canvases
 import ui::Inputs
-import ui::Doc
 import ui::Values
 import ui::Templates
 import ui::Keyed
@@ -28,7 +27,7 @@ module App
     selected store = (Templates::skin store.screen.screenMachine).skinName
     returned store = Link::fed (store, [ui::Fact(factName = "skinReturned", factValue = Values::flag true)])
     pending store = Machines::flag (store.screen.screenMachine, "skinReturned") == false
-    notice text = ui::HostCall(hostNamespace = "ui", hostOperation = "notice", hostArguments = JsonObject [Doc::str ("title", ui::Pick::either (startsWith text "The selected appearance", "Appearance restored", "Appearance unavailable")), Doc::str ("message", text)], hostTimeout = 600000, hostLimit = 64, hostSlice = "")
+    notice text = ui::HostCall(hostNamespace = "ui", hostOperation = "notice", hostArguments = [ui::Header(headerName = "title", headerValue = ui::Pick::either (startsWith text "The selected appearance", "Appearance restored", "Appearance unavailable")), ui::Header(headerName = "message", headerValue = text)], hostTimeout = 600000, hostLimit = 64, hostSlice = "")
     warn (next, text) = next(writes = listAppend next.writes (Requests::write ("casting.appearance-warning", text)), requests = listAppend next.requests (Requests::ask ("appearance:notice", notice text)))
     failed (store, operation, problem) =
         next = Runtime::step store
@@ -52,9 +51,6 @@ module App
         match specified context.arguments
             true => restored (context.arguments, remember (clocked(stepStore = returned clocked.stepStore)))
             false => clocked(requests = listAppend clocked.requests (Requests::ask ("appearance:read", ui::StoreRead(readName = "casting-appearance.txt", readLimit = 128, readSlice = "casting.saved-skin"))))
-    export begun source =
-        first = initial (Runtime::context (Doc::parse source))
-        Runtime::begin (source, \_ => first, regions, Templates::theme first.stepStore.screen.screenMachine)
     // [CAST-MOBILE-APPEARANCE-RECOVERY] Validation shares the ordinary skin-selection path.
     saved (store, key) =
         next = Link::skinned (returned store, key)
@@ -105,3 +101,5 @@ module App
             read => store.screen
         changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
         [Keyed::region (frames, "root", changed, root)]
+    (** The player as its boundary runs it: the store drawn with its machine's theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \store => Templates::theme store.screen.screenMachine)

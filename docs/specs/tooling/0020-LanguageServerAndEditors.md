@@ -213,14 +213,17 @@ Resolution order for the symbol under the cursor:
 
 1. An effect-operation declaration, qualified `perform`, or handler arm →
    `[LSP-HOVER-EFFECT-OPERATIONS]`.
-2. A declaration in the open document — including user functions and
+2. A **match-arm pattern binder or lambda parameter**, by lexical scope →
+   `[LSP-HOVER-BINDERS]`. It precedes declarations because it shadows a
+   same-named one.
+3. A declaration in the open document — including user functions and
    **`let`/`mut` bindings** — with nearest-binding shadowing
    (`[LSP-HOVER-VARIABLES]`).
-3. A built-in (`print`, `map`, …) → its reference signature.
-4. A **written name that declares nothing** — a parameter or built-in type
+4. A built-in (`print`, `map`, …) → its reference signature.
+5. A **written name that declares nothing** — a parameter or built-in type
    name → `[LSP-HOVER-WRITTEN]`.
-5. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
-6. A **reserved keyword** (`match`, `handle`, `in`, …) → `[LSP-HOVER-KEYWORD]`.
+6. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
+7. A **reserved keyword** (`match`, `handle`, `in`, …) → `[LSP-HOVER-KEYWORD]`.
    Checked last, since a keyword can never be any of the above.
 
 ### Variable hover `[LSP-HOVER-VARIABLES]`
@@ -242,6 +245,60 @@ Every binding is hoverable:
   it. Implemented across
   [`osprey-types`](../../../src/toolchain/crates/osprey-types/src/check.rs) (`let_tys`) and
   [`osprey-types/src/info.rs`](../../../src/toolchain/crates/osprey-types/src/info.rs).
+
+### Pattern binders and lambda parameters `[LSP-HOVER-BINDERS]`
+
+A name bound by a `match` arm's pattern (a list element or `...rest` tail, a
+constructor field, a structural or tuple slot, a bare capture) and a lambda's
+parameter hover as `name: type`, both where the name is bound and wherever its
+arm or lambda body reads it. The type is the one the checker inferred, with
+unsolved parts shown as holes (`[TYPE-RENDER-HOLES]`).
+
+Patterns carry no source position, so the checker publishes each binder under
+the position of the arm or lambda that introduces it
+(`ProgramTypes::binder_type`,
+[`osprey-types/src/binders.rs`](../../../src/toolchain/crates/osprey-types/src/binders.rs)).
+Hover resolves the word to its binder through the same lexical regions that
+go-to-definition uses (`[LSP-DEFINITION-LOCAL]`), then asks for the binder
+recorded between the start of that region and the binder itself. A name bound
+in two arms therefore answers with the arm under the cursor, and the same word
+written outside the arm answers nothing.
+
+### Project inference `[LSP-HOVER-PROJECT]`
+
+Every view that displays a checked type — hover, signature help, completion
+details and the document outline — answers from the **assembled project**, as
+the compiler does, when the document belongs to one. A file checked alone
+cannot see another package, so a type that only another file fixes
+(`ui::LineTo(toX = x)` makes `x` a `float`) would be shown as a hole.
+
+The project's types are inferred once per analysis and shared with
+diagnostics through `[LSP-PROJECT-BATCH]`, so an unsaved edit to any buffer is
+reflected and repeated requests cost a lookup. The assembled program names
+declarations by linkage name and numbers lines across all files, so
+[`inferred.rs`](../../../src/toolchain/crates/osprey-lsp/src/inferred.rs)
+finds a function by where it is declared, shifts positions into the project's
+line space, and respells every linkage name in a rendered type as its source
+name (`ui::PathStep`). A document outside any project, or in a project that
+does not assemble, is checked on its own.
+
+### Inference scope `[LSP-ANALYSIS-SCOPE]`
+
+By default the editor analyses everything it can see: diagnostics cover every
+Osprey source in the folder's repository (`[LSP-DIAGNOSTICS-SCOPE]`), and
+displayed types are inferred from the whole project and the packages it uses
+(`[LSP-HOVER-PROJECT]`). Each half has its own switch:
+
+| Setting | Values | Effect |
+|---------|--------|--------|
+| `osprey.analysis.scope` | `project` (default), `file` | `file` infers the types shown by hover, signature help, completion details and the outline from each file alone. A type that only another file or package fixes is then shown as `_`. |
+| `osprey.diagnostics.scope` | `repository` (default), `roots`, `openFiles` | `openFiles` performs no background scan of the folder. |
+
+Both are read from `initializationOptions` at startup and from
+`workspace/didChangeConfiguration` afterwards, so a change takes effect on the
+next request without a restart. `file` exists for a project so large that
+inferring it after each edit is too slow; it never changes what the compiler
+accepts.
 
 ### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
 

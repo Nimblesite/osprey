@@ -1,15 +1,15 @@
 # WinUI Host [WINUI-HOST]
 
-**Status:** `src/toolchain/hosts/winui` draws the node kinds its renderer has WinUI controls for, scenes included, shows a visible diagnostic for the rest, answers the folder walk, the pickers, the store and the frame clock, and publishes with Native AOT. Its tests run with no window and drive [Osprey Storage](../../../src/osprey/examples/storage/README.md), [Flock](../../../src/osprey/examples/gpui/flock/README.md) and [Painting](../../../src/osprey/examples/gpui/painting/README.md) through their real DLLs; `--self-test` then drives each in a real window on the CI runner's desktop ([WINUI-HOST-SELF-TEST]), where all three passed on 2026-10-28. That historical checkpoint does not establish acceptance of the newly combined framework; fresh Windows execution is required. Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
+**Status:** `src/toolchain/hosts/winui` draws the view row kinds its renderer has WinUI controls for, the scene rows its painter draws, shows a visible diagnostic for anything refused, answers the folder walk, the pickers, `run`, the store and the frame clock, and publishes with Native AOT. Its tests run with no window and cover the row readers, scenes, asks, events, capabilities, the walk, the store, the guards and the boundary; `--self-test` then drives each app in a real window on a desktop session. The Core and test projects also build and run on macOS; only the WinUI app project needs Windows. Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
 
 The WinUI host renders an [Osprey Native](../../../src/osprey/packages/native/README.md) application with WinUI, the UI framework of the Windows App SDK. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md) and the native Windows one: the controls are the ones Windows draws its own apps with, on Mica, with Segoe Fluent Icons.
 
 ## One thin host [WINUI-HOST-THIN]
 
-The host is one generic executable, `OspreyHost.exe <app.dll> [arguments]`. It loads an Osprey application compiled to a DLL, draws its regions and answers its capabilities. Everything an application decides is Osprey: its store, its signals, its rules, its words and its screens. The host contains:
+The host is one generic executable, `OspreyHost.exe <app.dll> [arguments]`. It loads an Osprey application compiled to a DLL, leases each call's frame, checks its rows and draws them, and answers its capabilities. Everything an application decides is Osprey: its store, its signals, its rules, its words and its screens. The host contains:
 
-- `OspreyHost.Core`: the DLL boundary, envelope decoding, the region store, events, the capability adapters and the folder walk. None of it needs a window, so its tests run anywhere.
-- `OspreyHost`: the window, the renderer and the pickers, built on WinUI.
+- `OspreyHost.Core`: the DLL boundary and import slots, the shared-memory bridge and whole-frame leases, the one checked row reader, the scene row reader, the typed host events, the capability adapters, the Windows folder walk and the store. None of it needs a window, so its tests run anywhere.
+- `OspreyHost`: the window, the shared view page, the scene painter, the frame clock, the pickers and `--self-test`, built on WinUI.
 
 The host names no application, holds no application's words or slices, and contains no C# UI framework. A test fails when a host source names an example or one of an example's slices ([NATIVE-HOSTS-NEUTRAL](../applications/0047-OspreyNativeHosts.md)).
 
@@ -28,56 +28,64 @@ The host references `Microsoft.WindowsAppSDK.WinUI`, which brings the Foundation
 | Export | Meaning |
 | --- | --- |
 | `osprey_main` | Checks every import slot, then runs the program's entry once. It returns -2 while any slot is empty. |
-| `osprey_app_start` | `const char *(const char *context)`: the first envelope. |
-| `osprey_app_dispatch` | `const char *(const char *saved, const char *event)`: the next envelope. |
+| `osprey_native_bridge` | The shared-memory bridge table, which the host opens before the entry runs ([NATIVE-SHM-OWNERSHIP](../applications/0047-OspreyNativeHosts.md)). |
+| `osprey_app_argument` | `int64 (const char *text)`: one launch argument, in order, before `open`. |
+| `osprey_app_open` | `int64 (int64 now, int64 offset, const char *platform, const char *home, bool dark)`: draws the first frame. |
+| `osprey_app_event` | `int64 (int64 now, int64 kind, int64 ordinal, const char *words, const char *detail, double x, double y, bool down, bool shift)`: delivers one typed host event and draws the next frame ([NATIVE-SHM-EVENT](../applications/0047-OspreyNativeHosts.md)). |
 | `osprey_import_<name>` | `void (fn)`: binds one import slot ([WINUI-HOST-IMPORTS]). |
 
 The header written beside the DLL declares each binder with the import's C signature. The CLI's tests check the slots, the C `bool` convention, the entry's check of every slot, that only the boundary is exported, and that a binder name the program already defines is refused.
 
 ## Imports [WINUI-HOST-IMPORTS]
 
-An extern the application declares, such as `native_slice`, becomes an internal slot and a function that calls through it, because a DLL cannot leave a symbol for its loader to supply. The host loads the DLL with `NativeLibrary` and binds each import it answers through its `osprey_import_<name>` export before calling `osprey_main`. It answers `native_slice`, for host-held slices, and `native_shape`, for streamed scene primitives ([UI-SCENE-STREAM](../../../src/osprey/packages/native/README.md)). An application that imports anything else fails to start with a diagnostic naming what this host answers.
+An extern the application declares, such as `native_slice`, becomes an internal slot and a function that calls through it, because a DLL cannot leave a symbol for its loader to supply. The host loads the DLL with `NativeLibrary`, opens its bridge, binds each import it answers through its `osprey_import_<name>` export, and only then runs `osprey_main`. It answers `native_slice`, for host-held slices. An application that imports anything else fails to start with a diagnostic naming what this host answers.
 
 ## Calls and memory [WINUI-HOST-THREAD]
 
-Every call into the application is made on the UI thread, one at a time. An event that arrives while a call runs waits for it. Strings the host passes are NUL-terminated UTF-8 copies, freed when the call returns, and the returned envelope is copied before the next call. Host-held slices are copied once into unmanaged memory and never freed, because the runtime may keep the pointer it was given; a replaced slice's buffer is retired, not released. Text holding a NUL character is refused, because no C string can carry it.
+Every call into the application is made on the UI thread, one at a time. An event that arrives while a call runs waits for it. Strings the host passes are NUL-terminated UTF-8 copies, freed when the call returns, and text holding a NUL character is refused, because no C string can carry it. Every call writes one whole frame, which the host commits (`osp_native_frame_commit`) whether the call answered or refused, then leases whole and checks: nothing is copied per row and nothing is encoded. Host-held slices are copied once into unmanaged memory and never freed, because the runtime may keep the pointer it was given; a replaced slice's buffer is retired, not released.
 
 ## Rendering [WINUI-HOST-RENDER]
 
-Each region is drawn into a holder that its `slot` placed, so a region Osprey did not resend keeps its controls, and the opaque state's revisions name which controls an event came from. Each node kind maps to WinUI's own control:
+`FrameReader` ([`Rows.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Rows.cs)) is the one reader of view and ask rows, and `SceneReader` ([`SceneRows.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/SceneRows.cs)) reads the scene rows, with the same checks as the reference host's `rows.rs`: every kind, flag, code and role must be known; every parent must be an earlier row; every text range must lie inside the text run on UTF-8 boundaries; every float must be finite; every count must stay inside the rows that follow it. A frame that fails any check is refused whole and the last good view stays.
 
-| Kind | WinUI | Kind | WinUI |
-| --- | --- | --- | --- |
-| `screen` | title, subtitle and a `CommandBar` of the toolbar | `rows` | `ListView` with group headers |
-| `split` | a 280-pixel sidebar beside layered panes | `tabs` | `SelectorBar` |
-| `section` | a card | `aside` | two panes and a draggable splitter |
-| `stack`, `layer` | `Grid` | `context-menu` | `MenuFlyout` |
-| `text`, `label`, `pair`, `badge` | `TextBlock` on the type ramp | `button` | `Button` or `AppBarButton` |
-| `icon` | `FontIcon` | `field` | `TextBox` or `PasswordBox` |
-| `meter`, `progress` | `ProgressBar` | `toggle` | `ToggleSwitch` or `AppBarToggleButton` |
-| `empty` | an icon, a title and a line | `picker` | `ComboBox` |
-| `link` | `HyperlinkButton` for `https` addresses only | `disclosure` | `Expander` |
-| `segments`, `swatch`, `divider`, `spacer`, `slot` | shapes and grids | `alert` | `ContentDialog` |
-| `scene` | a canvas of WinUI shapes ([WINUI-HOST-SCENE]) | | |
+[`SharedViewPage`](../../../src/toolchain/hosts/winui/OspreyHost/SharedViewPage.cs) draws every row kind with a real WinUI control and restyles it in place on later frames, so an entry keeps its focus and caret:
 
-`rich-text`, `framed`, `themed`, `dialog`, `evidence`, `brand`, `math`, `image`, `video`, `editor` and `board` have no WinUI control in this host yet. Each is replaced by a visible diagnostic naming the kind and reported to the info bar, so an application loses no content silently, and `Coverage.cs` declares it refused. The renderer refuses to start unless it draws exactly the kinds declared drawn.
+| Kind | WinUI |
+| --- | --- |
+| `column`, `line` | a `Grid` stacking its children vertically or side by side, sharing free space by their `grow` |
+| `scroll` | `ScrollViewer` |
+| `layer` | a `Grid` with its children on top of one another, the last in front |
+| `label`, `option` | a `TextBlock` in a card; a label is led by the icon its hint names, an option's hint is its key |
+| `press` | `Button` |
+| `entry` | `TextBox`, or `PasswordBox` when its secret flag is set |
+| `editor` | a multiline `TextBox` |
+| `gap` | a `Border` that takes the leftover space |
+| `toggle` | `ToggleSwitch` |
+| `picker` | `ComboBox`; its `option` children become its items |
+| `rule` | a `Border` hairline in the row's ink |
+| `image` | `Image` in a card |
+| `canvas` | a scene view ([WINUI-HOST-SCENE]) |
+| `menu` | its first child in a card, the rest its `MenuFlyout` |
+| `sheet` | its children floating in the page's overlay; dismissing it delivers its action |
 
-A child fills when it is rows, an empty state, an aside, a scene, a page or a split, a column holding one of those, or a slot whose region fills. In a column, a child that fills takes the room left over and scrolls or scales on its own, and a page fits the window when a child fills or is a slot; otherwise the page scrolls. A region can change what it shows without its column being redrawn, so a slot's row is settled again each time its region is drawn. A split's panes take the window's full height. Text roles map to the WinUI type ramp, tones to the theme's brushes and symbols to Segoe Fluent Icons. A kind the renderer does not draw is shown as a visible diagnostic. Tests fail when a framework symbol has no glyph, or when the renderer reads a node field the framework's encoder never writes.
+Every colour, size, weight and space comes from the rows; the host holds no style of its own. `Coverage.cs` declares every row kind drawn or refused and every capability answered or refused, and the tests read the framework's sources, so a kind added to `@osprey/native` fails them until this host declares it ([NATIVE-HOSTS-COVERAGE](../applications/0047-OspreyNativeHosts.md)). Tests also fail when a framework symbol has no glyph, or when the renderer reads a field the framework's rows never carry.
 
 ## Capabilities [WINUI-HOST-CAPABILITIES]
 
-Adapters run off the UI thread and complete on it. They do what Osprey asked within the bounds Osprey chose, and sort, hide, format and decide nothing.
+Adapters run off the UI thread and complete on it. They do what Osprey asked within the bounds Osprey chose, and sort, hide, format and decide nothing. Each request arrives as an ask row and each completion is one `completed` event carrying the ticket and its result text; a chooser completes with the bare path, empty when cancelled.
 
 | Kind | Adapter |
 | --- | --- |
 | `measure-folders` | The Windows folder walk below; at most 100,000 entries per folder and ten minutes per walk |
 | `reveal` | `SHOpenFolderAndSelectItems`; the result is `{}` |
-| `choose-folder` | `Microsoft.Windows.Storage.Pickers.FolderPicker`; the result is `{"path","cancelled"}` |
+| `choose-file`, `choose-folder` | The Windows App SDK pickers |
+| `save-file` | The save picker with the suggested name |
+| `run` | One bounded, cancellable executable run ([`Processes.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Processes.cs)) |
 | `cancel` | Cancels the walk running under the target ticket; that walk completes with the error `cancelled` |
 | `store-read`, `store-write`, `store-list`, `store-delete` | Files under `%APPDATA%\Osprey\<app>`, as the GPUI host keeps them: names relative to that folder, reads bounded and UTF-8, writes atomic |
 | `animate` | The frame clock ([WINUI-HOST-FRAME]); completes at once |
 
-Every other kind completes with the error "The Windows host does not answer *kind* requests". `Coverage.cs` declares every node kind as drawn or refused and every capability as answered or refused, and tests derive the framework's kinds from its sources, so a kind added to `@osprey/native` fails them until this host declares it ([NATIVE-HOSTS-COVERAGE](../applications/0047-OspreyNativeHosts.md)).
+Every other kind completes with the error "The Windows host does not answer *kind* requests".
 
 **The Windows folder walk** ([UI-EFFECTS-MEASURE](../../../src/osprey/packages/native/README.md)) opens each folder once with `FILE_FLAG_BACKUP_SEMANTICS` and reads its children in 64 KiB batches of `FileIdExtdDirectoryInfo`, or `FileIdBothDirectoryInfo` on file systems without 128-bit ids, such as FAT. No child is opened to learn its size, attributes, reparse tag or id. It keeps an explicit stack, so no tree is deep enough to exhaust the thread's stack, and opens paths in their `\\?\` form, so a path past 260 characters is still read. The rules:
 
@@ -93,7 +101,7 @@ A `HostCall` in the `windows` namespace, "restart as administrator", is answered
 
 ## Deployment [WINUI-HOST-DEPLOY]
 
-The host is unpackaged and self-contained: the Windows App SDK runtime ships beside the executable, so nothing is installed first. `EnableMsixTooling` publishes the resource index, `OspreyHost.pri`, that holds WinUI's theme dictionaries; without it the published host cannot load its controls' styles. Before WinUI starts, the host checks that its window station is visible and, in a Windows service's session, says it needs a desktop instead of ending with WinUI's `E_ACCESSDENIED`. `dotnet publish OspreyHost -c Release` compiles it with Native AOT, with trim and AOT warnings as errors. On 2026-10-28 the published folder held a 6.1 MB `OspreyHost.exe` and 237 files totalling 90 MB, most of them the WinUI runtime. MSIX packaging and its AppContainer sandbox follow below ([WINUI-HOST-SANDBOX]); ARM64 is plan 0037.
+The host is unpackaged and self-contained: the Windows App SDK runtime ships beside the executable, so nothing is installed first. `EnableMsixTooling` publishes the resource index, `OspreyHost.pri`, that holds WinUI's theme dictionaries; without it the published host cannot load its controls' styles. Before WinUI starts, the host checks that its window station is visible and, in a Windows service's session, says it needs a desktop instead of ending with WinUI's `E_ACCESSDENIED`. `dotnet publish OspreyHost -c Release` compiles it with Native AOT, with trim and AOT warnings as errors. MSIX packaging and its AppContainer sandbox follow below ([WINUI-HOST-SANDBOX]); ARM64 is plan 0037.
 
 ## The AppContainer sandbox [WINUI-HOST-SANDBOX]
 
@@ -109,15 +117,15 @@ Elevation is refused in the sandbox. Storage's "restart as administrator" `HostC
 
 ## Scenes [WINUI-HOST-SCENE]
 
-`OspreyHost.Core` decodes a scene exactly as the encoder wrote it, an array per primitive with its type code first, and refuses anything malformed. The scene's own shapes come first, then the shapes the application streamed for it through `native_shape` ([UI-SCENE-STREAM]), and the whole list is ordered back to front, stably by depth. Each scene in an envelope takes the next shapes of the stream in the order the framework wrote the scenes, and a count that does not match is reported.
+`SceneReader` decodes the scene rows exactly as the application wrote them and refuses anything malformed: a marker (code 20) names the canvas's view row, and the rows after it — atlas entries, shapes, accessible elements — belong to that canvas; a count that runs past the rows is reported. The whole list is ordered back to front, stably by depth.
 
 The window draws a scene with WinUI's own shapes on a canvas: rects and sprites centred on their point and turned by their angle, discs, strips, glyph runs from their top-left corner, and paths. A path's steps become a `PathGeometry` (lines, quadratic and cubic curves, SVG arcs whose rotation is in degrees, polygons); its own move and scale apply to the geometry and not the stroke; and it is filled even-odd or stroked with its width, bevel or miter joins and dashes. Paints are sRGB or HSL tints, the hue in turns, or a two-stop linear gradient whose angle follows CSS, blended in Oklab when asked. Sprites draw as tinted quads, as the GPUI host draws them, until atlases load. A scene with a size is drawn at its fixed `zoom` from its region's top left and clipped to itself, so resizing the window shows more or less canvas and never resizes what is on it, or with a `zoom` of 0 as large as fits the region whole; one without is in window pixels.
 
-Each scene keeps its elements between frames and reuses them, so a frame that moves a thousand discs only moves them. Pressing a scene focuses it; its keys (the arrows, space, enter, escape, tab, backspace, single letters and digits) the pointer, and the region's size when a sized scene first shows and whenever it changes, all in scene units, reach its binding. Every drag movement is sent, and a hover movement at most once a frame.
+Each scene keeps its elements between frames and reuses them, so a frame that moves a thousand discs only moves them. Pressing a scene focuses it; its keys (the arrows, space, enter, escape, tab, backspace, single letters and digits) the pointer, and the region's size when a sized scene first shows and whenever it changes, all in scene units, reach its binding as typed events. Every drag movement is sent, and a hover movement at most once a frame.
 
 ## Frames [WINUI-HOST-FRAME]
 
-`animate` with `on` starts the frame clock and `off` stops it; the request completes at once. While it runs, every `CompositionTarget.Rendering` sends a `frame` event whose `elapsed` is 1/60 s for the first frame and the seconds since the previous one after that, at most 0.1 s. A refresh that arrives while an envelope is still being applied is skipped, so frames never queue behind a slow update.
+`animate` with `on` starts the frame clock and `off` stops it; the ask completes at once. While it runs, every `CompositionTarget.Rendering` sends a `frame` event whose elapsed time is 1/60 s for the first frame and the seconds since the previous one after that, at most 0.1 s. A refresh that arrives while a frame is still being applied is skipped, so frames never queue behind a slow update. Under `--self-test` the clock is steady, so a script's `frames` step sends exactly that many 1/60 s frames and the window stands still between steps.
 
 ## Self-test [WINUI-HOST-SELF-TEST]
 
@@ -136,12 +144,6 @@ osprey build src/osprey/examples/storage --target=windows-x64 -o src/osprey/exam
 cd src/toolchain/hosts/winui && dotnet test --project OspreyHost.Tests     # from PowerShell
 ```
 
-The tests cover:
-
-- the envelope's members, bounds and versions, the events and the region store;
-- the capability adapters and the folder walk on temporary trees: allocated bytes, hidden items, a junction, a hard link, a folder its ACL denies, a missing folder, the entry limit, the deadline, cancellation, a tree past 260 characters, non-ASCII names and the slice's key order;
-- coverage, glyphs, field names, no XAML, the package list and neutrality;
-- Osprey Storage started, walked and dispatched through its real DLL with no window, drawing only kinds this host draws and returning no diagnostic; Flock's 1,000 birds streamed into its scene frame after frame; and a pointer stroke on Painting's canvas coming back as a path;
-- the scene decoder, the store, and the protocol's scene input and frame events.
+The tests cover the row readers' checks, the scene decoder, the ask fields and typed events, the capability adapters and the folder walk on temporary trees (allocated bytes, hidden items, a junction, a hard link, a folder its ACL denies, a missing folder, the entry limit, the deadline, cancellation, a tree past 260 characters, non-ASCII names and the slice's key order), coverage, glyphs, field names, no XAML, the package list, neutrality, and the DLL boundary's exports, slots and bridge.
 
 Run them from PowerShell. Git Bash's runtime enables the backup privilege, which reads folders their ACLs deny, so under Git Bash the denied-folder case is skipped and says why. [`winui.yml`](../../../.github/workflows/winui.yml) runs the suite, builds the examples' DLLs, publishes the host and runs each example's self-test on the runner's desktop, keeping the pictures as an artifact. Storage runs twice: on a fixture tree, and on the whole C drive, opening Users from its row. A window cannot open in session 0, where Windows services run, so a shell that is a service, such as an SSH session, can run every test but not the window: run `OspreyHost.exe` from the desktop session.

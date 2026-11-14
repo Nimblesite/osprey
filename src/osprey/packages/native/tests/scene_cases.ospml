@@ -1,139 +1,189 @@
 namespace uitests
 
 import ui::Ui
-import ui::Encode
 import ui::Doc
 import ui::Lists
-import ui::Events
 import ui::Messages
+import ui::Inputs
 import ui::Requests
+import ui::Runtime
+import ui::Keyed
 import ui::Signals
 import ui::Splitters
-import ui::Frames
 import ui::Themes
 import ui::Maths
 import ui::Scenes
-import ui::Inputs
 import ui::Symbols
 import ui::Pick
+import ui::Views
 import ui::Streams
-import ui::Runtime
+import ui::Surfaces
+import ui::Tellings
 import uitests::Probes
 
-// The `at`th value of `entry`, or null when it is missing.
-cell (entry, at) = jsonIndex entry at ?: JsonNull
+// One scene row as its numbers and text, so a table can hold exactly what a host reads.
+// Row `index` of `rows`, or a row with no code when there is none.
+etchAt (rows, index) = listGet rows index ?: ui::Etch(etchCode = 0 - 1, etchIndex = 0, etchX = 0.0, etchY = 0.0, etchW = 0.0, etchH = 0.0, etchTurn = 0.0, etchTint = 0, etchDepth = 0, etchText = "")
 
-// The `at`th value of the `index`th entry of `entries` as a number, or -1 when either is missing.
-numberAt (entries, index, at) = jsonInt (cell (listGet entries index ?: JsonNull, at)) ?: 0 - 1
+etched e = "${e.etchCode} ${e.etchIndex} ${e.etchX} ${e.etchY} ${e.etchW} ${e.etchH} ${e.etchTurn} ${e.etchTint} ${e.etchDepth} ${e.etchText}"
 
-// An entry's type code.
-codeAt (shapes, index) = numberAt (shapes, index, 0)
+// Row `index` of `rows`, spelt as `etched` spells it.
+etchedAt (rows, index) = etched (etchAt (rows, index))
 
-arityAt (shapes, index) = length (Doc::items (listGet shapes index ?: JsonNull))
+// Each probe's row at `probe.index`, spelt as `probe.spelled`, so one table names every row a case reads.
+expectEtches (rows, probes) = forEachList (probes, \probe => expect (etchedAt (rows, probe.index), probe.spelled))
 
-// [UI-SCENE]: a scene encodes flat: one small array per primitive, a type code first, sprites by
+// The row a single `shape` draws, spelt as `spelled`.
+expectShape (shape, spelled) = expect (etchedAt (ui::Streams::etches shape, 0), spelled)
+
+// The type code of every row in `rows`, in order.
+codesOf rows = join (mapList (rows, \row => "${row.etchCode}")) ","
+
+// The first scene `walked` drew, or none.
+firstSketch walked = listGet walked.walkSketches 0
+
+// The scene rows of the first scene `walked` drew, in drawing order.
+firstRows walked = match firstSketch walked
+    Success drawn => ui::Streams::rows (drawn.sketchedRow, drawn.sketchedAs)
+    Error _ => []
+
+// The shape rows of the first scene `walked` drew, past its marker and atlas.
+shapeRows walked = Lists::slice (firstRows walked, satAdd 1 (length (sceneAtlasOf walked)), length (firstRows walked))
+
+// The atlas of the first scene `walked` drew.
+sceneAtlasOf walked = match firstSketch walked
+    Success drawn => drawn.sketchedAs.sketchAtlas
+    Error _ => []
+
+// The depth of a primitive, as its row carries it.
+depthOf shape = match shape
+    ui::Rect _ _ _ _ _ _ depth => depth
+    ui::Disc _ _ _ _ depth => depth
+    ui::Strip _ _ _ depth => depth
+    ui::Sprite _ _ _ _ _ _ _ depth => depth
+    ui::Glyphs _ _ _ _ _ depth => depth
+    ui::Lettering _ _ _ _ _ depth _ _ => depth
+    ui::Path _ _ _ _ _ _ depth => depth
+
+// The depths of the first shape of every scene `walked` drew, in drawing order.
+depthsOf walked = join (mapList (walked.walkSketches, \drawn => "${depthOf (listGet drawn.sketchedAs.sketchShapes 0 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))}")) ","
+
+// [UI-SCENE]: a scene's shapes cross as flat typed rows: one row per shape, a type code first, sprites by
 // atlas index, glyph text inline, and one input binding.
-(** a scene encodes its primitives as flat typed arrays. *)
-// The integers `0` to `count - 1`, in order.
-indices count = range (0, count) |> fold [] (\(out, index) => listAppend out index)
-
+(** a scene's shapes cross as flat typed rows. *)
 sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
-    walked = Encode::walk ([], Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
-    doc = listGet walked.nodes 0 ?: JsonNull
-    scene = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::text (scene, "kind"), "scene")
-    expectDecimals (scene, [{ name = "width", value = 320.0 }, { name = "height", value = 200.0 }, { name = "zoom", value = 1.0 }])
-    expect (join (Doc::texts (scene, "atlas")) ",", "bird,hawk")
-    zoomed = firstNode (Encode::walk ([], Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)))
-    expectDecimals (zoomed, [{ name = "zoom", value = 0.75 }, { name = "width", value = 1536.0 }])
-    expect (length shapes, 5)
-    forEachList (indices (length shapes), \index => expect (codeAt (shapes, index), index))
-    arities = [8, 6, 9, 9, 7]
-    forEachList (indices (length arities), \index => expect (arityAt (shapes, index), listGet arities index ?: 0 - 1))
-    expect (numberAt (shapes, 0, 6), Scenes::rgb (255, 0, 0))
-    expect (numberAt (shapes, 2, 1), 2)
-    expect (numberAt (shapes, 3, 1), 1)
-    expect (jsonText (jsonIndex (listGet shapes 4 ?: JsonNull) 1 ?: JsonNull) ?: "", "Score 3")
-    expect (Doc::number (scene, "event"), 1)
-    expect (length walked.bindings, 2)
+    held = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)]
+    walked = drawnOf held
+    rows = firstRows walked
+    expect (length walked.walkSketches, 1)
+    // The scene's record is told after the button's rows, and its sketch names that record's row.
+    expect ((firstSketch walked ?: ui::Sketched(sketchedRow = 0, sketchedAs = ui::Sketch(sketchWidth = 0.0, sketchHeight = 0.0, sketchZoom = 0.0, sketchAtlas = [], sketchShapes = [], sketchAccess = []))).sketchedRow, 13)
+    expectEtches (rows, [{ index = 0, spelled = "20 13 320.0 200.0 1.0 0.0 0.0 0 0 " }, { index = 1, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 bird" }, { index = 2, spelled = "21 0 0.0 0.0 0.0 0.0 0.0 0 0 hawk" }])
+    shapes = shapeRows walked
+    expect (codesOf shapes, "0,1,2,7,7,3,4")
+    expectEtches (shapes, [{ index = 0, spelled = "0 0 1.0 2.0 3.0 4.0 0.5 4278190335 0 " }, { index = 1, spelled = "1 0 5.0 6.0 7.0 0.0 0.0 65408 1 " }])
+    expect ((etchAt (shapes, 2)).etchIndex, 2)
+    expect ((etchAt (shapes, 5)).etchIndex, 1)
+    expect ((etchAt (shapes, 6)).etchText, "Score 3")
+    // The button binds control 0 and the scene control 1, as their told event members say.
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    binds (walked, 2)
+    zoomed = Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed)
+    expect (etchedAt (firstRows (drawnOf zoomed), 0), "20 2 1536.0 828.0 0.75 0.0 0.0 0 0 ")
+    // A host multiplies the told width by the told zoom: 1536 at 0.75 paints 1152 window pixels.
+    zoomedMembers = insideTold (toldOf zoomed)
+    expect (memberReal (zoomedMembers, "width", 0.0), 1536.0)
+    expect (memberReal (zoomedMembers, "height", 0.0), 828.0)
+    expect (memberReal (zoomedMembers, "zoom", 0.0), 0.75)
 
 (** colours pack as RRGGBBAA. *)
 sceneCaseColoursPackAsRrggbbaa () =
     expect (Scenes::rgba (1, 2, 3, 4), 16909060)
     expect (Scenes::rgb (255, 255, 255), 4294967295)
 
-controlled value = Messages::route (Events::bind (ui::SceneInput(action = Typed), value) ?: ui::Act(act = Load), \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, input) => Inputs::route (input, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
+// A surface whose only bound control is `binding`, as a scene's events need.
+sceneHeld binding =
+    blank = Surfaces::idle 0
+    blank(surfaceBound = [binding])
 
-// [UI-SCENE]: a scene's binding delivers keys and pointer positions and refuses anything else.
+// What `input` means to the scene bound at control 0, spelt as its kind and numbers, or the refusal.
+sceneSaid : (ui::Binding<Act>, ui::Input) -> string
+sceneSaid (binding, input) = match Surfaces::scene (sceneHeld (binding), 0, input)
+    Error problem => problem
+    Success message => Messages::route (message, \_ => "tap", \(_, _) => "text", \(_, _) => "flag", \(_, _) => "size", \(_, _) => "done", \_ => "phase", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, theInput) => Inputs::route (theInput, \(name, down) => "key ${name} ${down}", \(x, y, down, shift) => "pointer ${x} ${y} ${down} ${shift}", \(w, h) => "viewed ${w} ${h}"))
+
+// `binding`, which owns no scene, refuses `value` as the wrong kind.
+notScene (binding, value) = expect (sceneSaid (binding, value), "A non-scene control was sent a value of the wrong kind")
 
 // [UI-SCENE]: a path carries its builder commands, outline, paint and transform in the order a
 // host's path builder takes them, with float colours a host can use without rounding.
-(** a path encodes its steps, outline, paint and transform. *)
+(** a path sends its steps, outline, paint and transform. *)
 sceneCaseAPathEncodesItsStepsOutlinePaint () =
     steps = [ui::MoveTo(toX = 1.0, toY = 2.0), ui::LineTo(toX = 3.0, toY = 4.0), ui::CurveTo(toX = 5.0, toY = 6.0, ctrlX = 7.0, ctrlY = 8.0), ui::CubicTo(toX = 1.0, toY = 1.0, ctrlAX = 2.0, ctrlAY = 2.0, ctrlBX = 3.0, ctrlBY = 3.0), ui::ArcTo(radiusX = 30.0, radiusY = 30.0, rotation = 0.0, large = false, sweep = true, toX = 9.0, toY = 9.0), ui::Polygon(corners = [0.0, 0.0, 4.0, 0.0, 4.0, 4.0], closed = false), ui::Close]
-    gradient = ui::Linear(angle = 180.0, from = Scenes::hex (16436245, 1.0), fromAt = 0.7, to = ui::Hsl(hue = 0.0, saturation = 1.0, lightness = 0.5, opacity = 1.0), toAt = 1.0, oklab = true)
-    drawn = [Scenes::path (steps, ui::Fill, gradient, 0), Scenes::moved ([ui::MoveTo(toX = 0.0, toY = 0.0)], ui::Line(width = 1.0, dashes = [4.0, 2.0], bevel = true), ui::Solid(tint = Scenes::hex (16711680, 0.5)), 10.0, 200.0, 0.9, 1)]
-    walked = Encode::walk ([], Ui::canvas (drawn, Typed))
-    scene = listGet walked.nodes 0 ?: JsonNull
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::decimal (scene, "width"), 0.0)
-    filled = listGet shapes 0 ?: JsonNull
-    expect (codeAt (shapes, 0), 5)
-    encodedSteps = Doc::items (jsonIndex filled 1 ?: JsonNull)
-    expect (join (mapList (indices 7, \i => "${codeAt (encodedSteps, i)}")) ",", "0,1,2,3,4,5,6")
-    expect (Doc::write (listGet encodedSteps 4 ?: JsonNull), "[4,30.0,30.0,0.0,0,1,9.0,9.0]")
-    expect (Doc::write (cell (filled, 2)), "[0]")
-    expect (Doc::write (cell (filled, 4)), "[]")
-    paint = cell (filled, 3)
-    expect (jsonInt (jsonIndex paint 0 ?: JsonNull) ?: 0, 1)
-    expect (Doc::write (cell (paint, 4)), "[1,0.0,1.0,0.5,1.0]")
-    stroked = listGet shapes 1 ?: JsonNull
-    expect (Doc::write (cell (stroked, 2)), "[1,1.0,1,4.0,2.0]")
-    expect (Doc::write (cell (stroked, 3)), "[0,[0,1.0,0.0,0.0,0.5]]")
-    expect (Doc::write (cell (stroked, 4)), "[10.0,200.0,0.9]")
+    gradient = ui::Linear(angle = 180.0, from = ui::Rgb(red = 0.98, green = 0.8, blue = 0.08, alpha = 1.0), fromAt = 0.7, to = ui::Hsl(hue = 0.0, saturation = 1.0, lightness = 0.5, opacity = 1.0), toAt = 1.0, oklab = true)
+    drawn = [Scenes::path (steps, ui::Fill, gradient, 0), Scenes::moved ([ui::MoveTo(toX = 0.0, toY = 0.0)], ui::Line(width = 1.0, dashes = [4.0, 2.0], bevel = true), ui::Solid(tint = ui::Rgb(red = 1.0, green = 0.0, blue = 0.0, alpha = 0.5)), 10.0, 200.0, 0.9, 1)]
+    rows = Lists::flatten (mapList (drawn, ui::Streams::etches))
+    head = etchAt (rows, 0)
+    expect (etched head, "5 7 0.0 0.0 1.0 0.0 0.0 0 0 ")
+    // Move, line, curve, cubic and its continuation, arc, polygon and its three corners, close; then outline, paint and two tints.
+    expect (codesOf rows, "5,8,8,8,8,7,8,8,7,7,7,8,9,10,11,11,5,8,9,7,7,10,11")
+    expectEtches (rows, [{ index = 6, spelled = "8 4 30.0 30.0 0.0 9.0 9.0 2 0 " }, { index = 7, spelled = "8 5 0.0 0.0 0.0 0.0 0.0 0 3 " }, { index = 12, spelled = "9 0 0.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 13, spelled = "10 1 180.0 0.7 1.0 0.0 0.0 1 0 " }, { index = 15, spelled = "11 1 0.0 1.0 0.5 1.0 0.0 0 0 " }])
+    stroked = ui::Streams::etches (listGet drawn 1 ?: Scenes::disc (1.0, 1.0, 1.0, 0, 0))
+    expectEtches (stroked, [{ index = 0, spelled = "5 1 10.0 200.0 0.9 0.0 0.0 0 1 " }, { index = 2, spelled = "9 1 1.0 0.0 0.0 0.0 0.0 1 2 " }, { index = 3, spelled = "7 0 4.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 4, spelled = "7 0 2.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 6, spelled = "11 0 1.0 0.0 0.0 0.5 0.0 0 0 " }])
 
 (** a scene binding delivers keys, pointer positions and its region's size in scene units. *)
 sceneCaseASceneBindingDeliversKeysAndPointer () =
-    expect (controlled (JsonObject [Doc::str ("key", "ArrowLeft"), Doc::bit ("down", true)]), "key ArrowLeft true")
-    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 12.5), JsonMember "y" (JsonInt 3), Doc::bit ("down", false)]), "pointer 12.5 3.0 false false")
-    expect (controlled (JsonObject [JsonMember "x" (JsonFloat 1.0), JsonMember "y" (JsonFloat 2.0), Doc::bit ("down", true), Doc::bit ("shift", true)]), "pointer 1.0 2.0 true true")
-    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 1536.0), JsonMember "height" (JsonInt 1008)]), "viewed 1536.0 1008.0")
-    expect (controlled (JsonObject [JsonMember "width" (JsonFloat 0.5), JsonMember "height" (JsonFloat 2.25), Doc::bit ("down", true)]), "viewed 0.5 2.25")
-    expect (controlled (JsonString "left"), "tap")
-    forEachList ([JsonObject [], JsonObject [Doc::str ("key", "ArrowLeft")], JsonObject [Doc::num ("key", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::bit ("down", true)], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::str ("down", "false")], JsonObject [Doc::num ("x", 1), Doc::num ("y", 2), Doc::bit ("down", true), Doc::str ("shift", "false")], JsonObject [Doc::num ("width", 4)], JsonObject [Doc::str ("width", "wide"), Doc::num ("height", 2)]], \value =>
-        expect (boundAs (ui::SceneInput(action = Typed), value), "A scene control sent a value of the wrong kind"))
+    scene = ui::SceneInput(action = Typed)
+    expect (sceneSaid (scene, ui::Key(keyName = "ArrowLeft", keyDown = true)), "key ArrowLeft true")
+    expect (sceneSaid (scene, ui::Pointer(pointerX = 12.5, pointerY = 3.0, pointerDown = false, pointerShift = false)), "pointer 12.5 3.0 false false")
+    expect (sceneSaid (scene, ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = true, pointerShift = true)), "pointer 1.0 2.0 true true")
+    expect (sceneSaid (scene, ui::Viewed(viewWidth = 1536.0, viewHeight = 1008.0)), "viewed 1536.0 1008.0")
+    expect (sceneSaid (scene, ui::Viewed(viewWidth = 0.5, viewHeight = 2.25)), "viewed 0.5 2.25")
+    notScene (ui::Tap(action = Load), ui::Key(keyName = "ArrowLeft", keyDown = true))
+    notScene (ui::TextInput(action = Load), ui::Pointer(pointerX = 1.0, pointerY = 2.0, pointerDown = false, pointerShift = false))
+    notScene (ui::FlagInput(action = Load), ui::Viewed(viewWidth = 4.0, viewHeight = 2.0))
+    notScene (ui::ChoiceInput(action = Load), ui::Key(keyName = "a", keyDown = false))
+    notScene (ui::SizeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::PlaceInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::StrokeInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    notScene (ui::LassoInput(action = Load), ui::Key(keyName = "a", keyDown = true))
+    // A surface that drew no scene at that control number refuses too.
+    bare = Surfaces::idle 0
+    bareScene = match Surfaces::scene (bare, 0, ui::Key(keyName = "a", keyDown = true))
+        Error problem => problem
+        Success _ => "delivered"
+    expect (bareScene, "Unknown control 0")
 
-framed : ui::Message<Act> -> float
-framed message = Messages::route (message, \_ => 0.0 - 1.0, \(_, _) => 0.0 - 2.0, \(_, _) => 0.0 - 3.0, \(_, _) => 0.0 - 4.0, \(_, _) => 0.0 - 5.0, \_ => 0.0 - 6.0, \(_, _) => 0.0 - 7.0, \(_, _) => 0.0 - 8.0, \elapsed => elapsed, \(_, _) => 0.0 - 9.0)
+// The elapsed seconds a delivered `Frame` message carried, with sentinels for other messages.
+elapsedOf : ui::Message<Act> -> float
+elapsedOf message = Messages::route (message, \_ => 0.0 - 1.0, \(_, _) => 0.0 - 2.0, \(_, _) => 0.0 - 3.0, \(_, _) => 0.0 - 4.0, \(_, _) => 0.0 - 5.0, \_ => 0.0 - 6.0, \(_, _) => 0.0 - 7.0, \(_, _) => 0.0 - 8.0, \elapsed => elapsed, \(_, _) => 0.0 - 9.0)
 
-// [UI-SCENE]: a frame event reaches `update` as the seconds since the previous frame, and
-// an application that ignores it changes no region.
-eventRefusal source = match Events::decode source
+// A frame's refusal, or `accepted` when it was not refused.
+frameRefusal elapsed = match Surfaces::framed elapsed
     Error problem => problem
     Success _ => "accepted"
 
-(** a frame event delivers its elapsed seconds and patches nothing when ignored. *)
+// [UI-SCENE]: a frame event reaches `update` as the seconds since the previous frame, and
+// an application that ignores it changes no store.
+(** a frame event delivers its elapsed seconds and changes nothing when ignored. *)
 sceneCaseAFrameEventDeliversItsElapsedSeconds () =
-    expect (framed (ui::Frame(elapsed = 0.016)), 0.016)
-    forEachList (["{\"kind\":\"frame\"}", "{\"kind\":\"frame\",\"elapsed\":\"slow\"}", "{\"kind\":\"frame\",\"elapsed\":-1}"], \source =>
-        expect (eventRefusal source, "Invalid frame elapsed time"))
+    expect (elapsedOf (ui::Frame(elapsed = 0.016)), 0.016)
+    expect (frameRefusal (0.0 - 1.0), "Invalid frame elapsed time")
     started = Probes::started ()
-    after = Probes::post (started, "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.016}")
-    expect (Probes::problems after, "")
-    expect (Probes::keys after, "")
+    after = Probes::framed (started, 0.016)
+    expect (Probes::problem after, "")
+    expect ((Probes::stored after).counter.tally, 0)
+    expect (after.surfaceSession.sessionContext.now, 9)
 
 // [UI-SCENE]: the animate request turns the host's frame clock on or off.
 (** an animate request carries its on flag. *)
 sceneCaseAnAnimateRequestCarriesItsOnFlag () =
-    doc = Requests::encode (Requests::ask ("clock:1", ui::Animate(animated = true)))
-    expectTexts (doc, [{ name = "kind", value = "animate" }, { name = "ticket", value = "clock:1" }])
-    expect (Doc::flag (doc, "on"), true)
+    expect (rowsOf (Requests::ask ("clock:1", ui::Animate(animated = true))), "0/21/clock:1;1/1/")
+    expect (rowsOf (Requests::ask ("clock:2", ui::Animate(animated = false))), "0/21/clock:2;1/0/")
 
 occurrences (names, name) = length (range (0, length names) |> fold [] (\(found, index) => Pick::either ((listGet names index ?: "") == name, listAppend found index, found)))
-
-symbolAt (parts, index) = Doc::text (listGet parts index ?: JsonNull, "symbol")
 
 symbols () = [ui::NoSymbol, ui::Add, ui::Delete, ui::Dismiss, ui::Check, ui::Warning, ui::Info, ui::Question, ui::Search, ui::Settings, ui::Star, ui::Play, ui::Pause, ui::Stop, ui::Refresh, ui::Folder, ui::Document, ui::Package, ui::Inbox, ui::Globe, ui::External, ui::Lock, ui::Shield, ui::Branch, ui::Tag, ui::Clock, ui::Person, ui::Cursor, ui::Chevron]
 
@@ -144,25 +194,39 @@ sceneCaseEverySymbolEncodesAsADistinctHost () =
     expect (join names ",", ",add,delete,dismiss,check,warning,info,question,search,settings,star,play,pause,stop,refresh,folder,document,package,inbox,globe,external,lock,shield,branch,tag,clock,person,cursor,chevron")
     expect (Lists::any (names, \name => occurrences (names, name) != 1), false)
 
+// The symbol a tab carries, read from the node itself; the view draws it as the host's own icon.
+tabSymbol node = match node
+    ui::Tabs entries _ _ => match listGet entries 0
+        Success tab => tab.tabSymbol
+        Error _ => ""
+    _ => ""
+
 // [UI-COMPONENTS-SYMBOLS]: every node that shows a symbol sends its name, and a row without one sends none.
 (** labels, icons, badges, empty states, buttons, tabs and rows send their symbol names. *)
 sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs () =
-    parts = Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)])), "children"))
-    expect (join (mapList ([0, 1, 2, 3, 4], \index => symbolAt (parts, index))) ",", "folder,globe,shield,search,refresh")
-    expect (Doc::text (listGet (Doc::items (Doc::field (listGet parts 5 ?: JsonNull, "tabs"))) 0 ?: JsonNull, "symbol"), "clock")
-    rows = Doc::items (Doc::field (listGet parts 6 ?: JsonNull, "rows"))
-    expect (join (mapList (rows, \row => Doc::text (row, "symbol"))) ",", ",person")
+    held = Ui::column [Ui::label ("L", "folder"), Ui::icon "globe", Ui::badge ("B", "shield", ui::Good), Ui::empty ("search", "E", "D"), Ui::button ("Go", "refresh", Increment), ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load), Ui::rows ([Ui::item ("plain", Ui::text "p"), Ui::entry ("led", "person", "G", Ui::text "q")], "plain", Load)]
+    binds (drawnOf held, 3)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"label\",label=\"L\",symbol=\"folder\"}")
+    expect (spelled (childTold (toldOf held, 1)), "{kind=\"icon\",symbol=\"globe\"}")
+    expect (spelled (childTold (toldOf held, 2)), "{kind=\"badge\",label=\"B\",symbol=\"shield\",tone=\"good\"}")
+    expect (spelled (childTold (toldOf held, 3)), "{kind=\"empty\",symbol=\"search\",title=\"E\",detail=\"D\"}")
+    expect (spelled (childTold (toldOf held, 4)), "{kind=\"button\",label=\"Go\",symbol=\"refresh\",role=\"plain\",enabled=?true,event=#0}")
+    expect (spelled (childTold (toldOf held, 5)), "{kind=\"tabs\",selected=\"t\",tabs=[{key=\"t\",label=\"T\",symbol=\"clock\",child={kind=\"text\",text=\"page\",role=\"body\",tone=\"primary\"}}],event=#1}")
+    // The plain row carries no symbol or group; the led row's icon and group lead its cell.
+    expect (spelled (childTold (toldOf held, 6)), "{kind=\"rows\",selected=\"plain\",rows=[{key=\"plain\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"}},{key=\"led\",symbol=\"person\",group=\"G\",child={kind=\"text\",text=\"q\",role=\"body\",tone=\"primary\"}}],event=#2}")
+    expect (tabSymbol (ui::Tabs(tabs = [Ui::tab ("t", "T", "clock", Ui::text "page")], selected = "t", bind = Load)), "clock")
+    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (held, 1, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (held, 2, ui::ChoiceInput(action = Load)), true)
 
 // [UI-COMPONENTS]: a pair sends its label and value and takes no ordinal.
-(** a pair encodes its label and value without a binding. *)
+(** a pair sends its label and value without a binding. *)
 sceneCaseAPairEncodesItsLabelAndValue () =
-    walked = Encode::walk ([], Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)])
-    parts = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
-    doc = listGet parts 0 ?: JsonNull
-    expect ("${Doc::text (doc, "kind")} ${Doc::text (doc, "label")}=${Doc::text (doc, "value")}", "pair Digest=sha256:ab")
-    expect (Doc::has (doc, "event"), false)
-    expect (Doc::number (listGet parts 1 ?: JsonNull, "event"), 0)
-    expect (length walked.bindings, 1)
+    held = Ui::column [Ui::pair ("Digest", "sha256:ab"), Ui::button ("Go", "play", Increment)]
+    binds (drawnOf held, 1)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"pair\",label=\"Digest\",value=\"sha256:ab\"}")
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0 - 1)
+    expect (deliversBinding (held, 0, ui::Tap(action = Increment)), true)
 
 isLinux platform = match platform
     ui::Linux => true
@@ -182,81 +246,92 @@ sceneCasePlatformsDecodeToTheUnionAndEncode () =
     expect (otherName (Symbols::platform "haiku"), "haiku")
     expect (otherName (Symbols::platform "windows"), "")
 
-// [UI-CONTEXT-PLATFORM]: the start context decodes its platform into the union and echoes it unchanged.
-(** a start context carries a linux or windows platform. *)
+// The launch context's own facts, checked against where it says it launched.
+contextCarries (context, probe) =
+    expect (context.platform, probe.platform)
+    expect (context.home, probe.home)
+    expect (context.now, 5)
+    expect (context.offset, 3600)
+    expect (join (context.arguments, ","), "--skin,plain")
+
+// [UI-CONTEXT-PLATFORM]: the launch context carries its platform, echoed back unchanged.
+(** a launch context carries a linux or windows platform. *)
 sceneCaseAStartContextCarriesALinuxOr () =
-    forEachList ([{ start = "{\"now\":5,\"offset\":0,\"platform\":\"linux\",\"home\":\"/home/me\",\"arguments\":[]}", platform = "linux" }, { start = "{\"now\":5,\"offset\":0,\"platform\":\"windows\",\"home\":\"C:/Users/me\",\"arguments\":[]}", platform = "windows" }], \probe => expect ((Runtime::context (Doc::parse probe.start)).platform, probe.platform))
+    forEachList ([{ home = "/home/me", platform = "linux" }, { home = "C:/Users/me", platform = "windows" }], \probe => contextCarries (Runtime::host (5, 3600, probe.platform, probe.home, ["--skin", "plain"]), probe))
 
 // [UI-EFFECTS]: work only one product or operating system can do travels as a host call, never as a framework capability.
 (** product-specific work is a host call with its namespace and arguments. *)
 sceneCaseProductSpecificWorkIsAHostCall () =
-    expect (requestText (ui::HostCall(hostNamespace = "probe", hostOperation = "read-config", hostArguments = JsonObject [JsonMember "paths" (Doc::strings ["app.toml"])], hostTimeout = 500, hostLimit = 128, hostSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"host-call\",\"namespace\":\"probe\",\"operation\":\"read-config\",\"arguments\":{\"paths\":[\"app.toml\"]},\"timeout\":500,\"limit\":128,\"slice\":\"prefs\"}")
-
-// [UI-SCENE-STREAM] A file-scope cell of the suite's entry, written only by the stream handler's arm.
-
-
-// [UI-RESIDENT] The probe application's first resident envelope and the session it leaves, and the
-// step after `event`; the probe draws no scene, so its stream stays empty.
-
+    request = ui::HostCall(hostNamespace = "probe", hostOperation = "read-config", hostArguments = [ui::Header(headerName = "paths", headerValue = "app.toml")], hostTimeout = 500, hostLimit = 128, hostSlice = "prefs")
+    expect (Requests::kind request, "host-call")
+    expect (rowsOf (Requests::ask ("job:7", request)), "0/11/job:7;1/0/probe;2/0/read-config;3/0/paths;3/0/app.toml;4/500/;5/128/;6/0/prefs")
 
 streamScene () = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird"], [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgb (0, 0, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.25, Scenes::rgb (255, 255, 255), 4)], Typed)]
 
-// [UI-SCENE-STREAM]: rects, discs and sprites leave the envelope in drawing order; strips and glyphs stay, and the scene counts what it streamed.
-(** a split scene streams its fixed-size primitives in order and keeps the rest. *)
-sceneCaseASplitSceneStreamsItsFixedSize () =
-    walked = Encode::walk ([], streamedFrom (streamScene ()))
-    expect (streamedTrace, "0@1;1@2;3@4;")
-    scene = itemAt (listGet walked.nodes 0 ?: JsonNull, "children", 1)
-    shapes = Doc::items (Doc::field (scene, "shapes"))
-    expect (Doc::number (scene, "streamed"), 3)
-    expect (join (mapList (shapes, \shape => "${jsonInt (jsonIndex shape 0 ?: JsonNull) ?: 0 - 1}")) ",", "2,4")
-    expect (Doc::number (scene, "event"), 1)
-    expect (length walked.bindings, 2)
+// [NATIVE-SHM-SCENE]: every shape crosses as a row in drawing order, marker and atlas first.
+(** a scene's shapes all cross as rows in drawing order. *)
+sceneCaseASceneRowsCarryEveryShapeInDrawingOrder () =
+    held = streamScene ()
+    walked = drawnOf held
+    rows = firstRows walked
+    expect (length rows, 9)
+    expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "20,21,0,2,7,7,1,4,3")
+    // The button binds control 0 and the scene control 1, as their told event members say.
+    expect (memberCount (insideTold (childTold (toldOf held, 0)), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (toldOf held, 1)), "event", 0 - 1), 1)
+    binds (walked, 2)
 
-// [UI-SCENE-STREAM]: an unsplit scene streams nothing and says so.
-(** an enveloped scene reports nothing streamed. *)
-sceneCaseAnEnvelopedSceneReportsNothingStreamed () =
-    scene = itemAt (firstNode (Encode::walk ([], streamScene ())), "children", 1)
-    expect (Doc::number (scene, "streamed"), 0)
-    expect (length (Doc::items (Doc::field (scene, "shapes"))), 5)
+// [NATIVE-SHM-NODES]: a region's node is told under its key; a slot names that key, and a key no region holds tells no scene.
+(** a scene an unnamed slot holds draws nothing. *)
+sceneCaseAnUnnamedSlotDrawsNoScene () =
+    named = Keyed::region ([], "side", [], \() => streamScene ())
+    filled = Tellings::drawn (Probes::palette (), [named])
+    expect (length filled.walkSketches, 1)
+    binds (filled, 2)
+    // A frame whose regions name no key for the slot tells only the theme's rows and draws no scene.
+    noRegions : List<KeyedSnapshot<ui::Node<Act>>>
+    noRegions = []
+    missing = Tellings::drawn (Probes::palette (), noRegions)
+    expect (length missing.walkRows, 11)
+    expect (length missing.walkSketches, 0)
+    binds (missing, 0)
 
-streamedFields primitive = "${Streams::code primitive} ${Streams::index primitive} ${Streams::value (primitive, 0)} ${Streams::value (primitive, 1)} ${Streams::value (primitive, 2)} ${Streams::value (primitive, 3)} ${Streams::value (primitive, 4)} ${Streams::colour primitive} ${Streams::depth primitive}"
+// [NATIVE-SHM-SCENE]: the rows a host reads back give each kind's code, atlas index, floats, colour and depth.
+(** shape rows read back every field a host import takes. *)
+sceneCaseShapeRowsReadBackEveryFieldA () =
+    expectShape (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1), "0 0 1.0 2.0 3.0 4.0 0.5 7 1 ")
+    expectShape (Scenes::disc (5.0, 6.0, 7.0, 8, 2), "1 0 5.0 6.0 7.0 0.0 0.0 8 2 ")
+    expectShape (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4), "3 3 8.0 9.0 2.0 1.0 0.25 9 4 ")
+    expectShape (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0), "4 0 0.0 0.0 1.0 0.0 0.0 0 0 x")
 
-// [UI-SCENE-STREAM]: the accessors a host import reads give each kind's code, atlas index, floats, colour and depth.
-(** streamed primitives read back every field a host import takes. *)
-sceneCaseStreamedPrimitivesReadBackEveryFieldA () =
-    expect (streamedFields (Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, 7, 1)), "0 0 1.0 2.0 3.0 4.0 0.5 7 1")
-    expect (streamedFields (Scenes::disc (5.0, 6.0, 7.0, 8, 2)), "1 0 5.0 6.0 7.0 0.0 0.0 8 2")
-    expect (streamedFields (Scenes::sprite (3, 8.0, 9.0, 2.0, 1.0, 0.25, 9, 4)), "3 3 8.0 9.0 2.0 1.0 0.25 9 4")
-    expect (Streams::streamed (Scenes::glyphs ("x", 0.0, 0.0, 1.0, 0, 0)), false)
+// [NATIVE-SHM-BOUNDARY]: a surface holds its store in its session, and the session moves on with each event.
+(** an open surface keeps its store in its session. *)
+sceneCaseAnOpenSurfaceKeepsItsStoreIn () =
+    first = Probes::started ()
+    expect (first.surfaceSession.sessionContext.platform, "linux")
+    expect ((Probes::stored first).counter.tally, 0)
+    tapped = Probes::tapped (first, 0)
+    expect ((Probes::stored tapped).counter.tally, 1)
+    expect ((Probes::stored first).counter.tally, 0)
+    expect (Probes::asked first, "")
 
-// [UI-RESIDENT]: a resident session's envelope carries a marker, never the store, and the session itself moves on.
-(** a resident session keeps its store out of the envelope. *)
-sceneCaseAResidentSessionKeepsItsStoreOut () =
-    first = begun ()
-    doc = Doc::parse first.residentEnvelope
-    expect (Doc::text (doc, "state"), "resident")
-    expect (Probes::keys doc, "root,note")
-    expect (first.residentSession.sessionContext.platform, "linux")
-    tapped = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
-    expect (Probes::keys (Doc::parse tapped.residentEnvelope), "root")
-    expect (tapped.residentSession.sessionStore.counter.tally, 1)
-    expect (Doc::text (Doc::parse tapped.residentEnvelope, "state"), "resident")
+// [UI-EVENTS]: a refused event leaves the store whole and still answering its own controls.
+(** a refused event leaves the surface whole and still answering. *)
+sceneCaseARefusedEventLeavesTheSurfaceWhole () =
+    first = Probes::started ()
+    moved = Probes::tapped (first, 0)
+    refused = Probes::posted (moved, 9, "")
+    expect (Probes::problem refused, "Unknown control 9")
+    expect (Probes::asked refused, "")
+    expect ((Probes::stored refused).counter.tally, 1)
+    unknown = Probes::sent (moved, ui::Touch(touchNow = 7, touchKind = 42, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    expect (Probes::problem unknown, "Unknown event kind 42")
+    expect ((Probes::stored unknown).counter.tally, 1)
+    delivered = Probes::tapped (moved, 0)
+    expect (Probes::problem delivered, "")
+    expect (Probes::tickets delivered, "load:1")
 
-// [UI-RESIDENT]: stale controls are refused as in a saved session, and an edit against a prior state cannot be recovered.
-(** a resident session refuses stale controls and prior-state edits without change. *)
-sceneCaseAResidentSessionRefusesStaleControlsAnd () =
-    first = begun ()
-    moved = proceeded (first.residentSession, Probes::tap ("root", 1, 0))
-    stale = proceeded (moved.residentSession, Probes::tap ("root", 1, 0))
-    expect (Probes::keys (Doc::parse stale.residentEnvelope), "")
-    expect (contains (Probes::problems (Doc::parse stale.residentEnvelope)) "Stale control", true)
-    expect (stale.residentSession.sessionStore.counter.tally, 1)
-    edited = proceeded (moved.residentSession, Probes::edit ("\"resident\"", "root", 1, 0, "null"))
-    expect (contains (Probes::problems (Doc::parse edited.residentEnvelope)) "keeps no prior state", true)
-    expect (edited.residentSession.sessionStore.counter.tally, 1)
-
-// One scene holding a single disc at `layer`, so the stream's order names the container it was found in.
+// One scene holding a single disc at `layer`, so the drawing order names the container it was found in.
 dot layer = Ui::scene (10.0, 10.0, [], [Scenes::disc (1.0, 1.0, 1.0, 0, layer)], Typed)
 
 everyContainer () = Ui::split [
@@ -267,77 +342,78 @@ everyContainer () = Ui::split [
     Ui::disclosure ("D", true, Load, [dot 9]),
 ]
 
-// [UI-SCENE-STREAM]: every container is walked in the encoder's order: a screen's toolbar before its
-// children, a context menu's body before its actions, an aside's pane before its column.
-(** a split streams scenes from every container in the encoder's order. *)
-sceneCaseASplitStreamsScenesFromEveryContainer () =
-    walked = Encode::walk ([], streamedFrom (everyContainer ()))
-    expect (length walked.nodes, 1)
-    expect (contains streamedTrace "1@1;1@2;1@3;1@4;1@5;1@6;1@7;1@8;1@9;", true)
+// [NATIVE-SHM-NODES]: every container is told in the walk's order: a screen's toolbar before its
+// children, a context menu's body before its actions, an aside's pane before its column (a host
+// orders the two by the aside's side member).
+(** scenes draw from every container in the walk's order. *)
+sceneCaseScenesDrawFromEveryContainerInOrder () =
+    walked = drawnOf (everyContainer ())
+    expect (length walked.walkSketches, 9)
+    expect (depthsOf walked, "1,2,3,4,5,6,7,8,9")
 
-// [UI-SCENE-STREAM]: primitives that never stream read back neutral fields.
-(** primitives that do not stream read back zero fields. *)
-sceneCasePrimitivesThatDoNotStreamReadBack () =
+// [NATIVE-SHM-SCENE]: a strip's points follow its head as one row a pair.
+(** a strip carries its points as rows after its head. *)
+sceneCaseAStripCarriesItsPointsAsRows () =
     strip = Scenes::strip ([0.0, 0.0, 1.0, 1.0], 9, 1.0, 4)
-    expect ("${Streams::value (strip, 0)} ${Streams::colour strip} ${Streams::depth strip} ${Streams::index strip}", "0.0 0 0 0")
-    expect (Streams::streamed strip, false)
+    rows = ui::Streams::etches strip
+    expect (length rows, 3)
+    expectEtches (rows, [{ index = 0, spelled = "2 2 0.0 0.0 1.0 0.0 0.0 9 4 " }, { index = 1, spelled = "7 0 0.0 0.0 0.0 0.0 0.0 0 0 " }, { index = 2, spelled = "7 0 1.0 1.0 0.0 0.0 0.0 0 0 " }])
 
-frameEvent = "{\"kind\":\"frame\",\"now\":9,\"elapsed\":0.5}"
+// [UI-STORE]: completions, lifecycle phases and frames reach `update`, and an event of unknown kind is refused without change.
+(** a surface delivers completions, phases and frames and refuses unknown kinds. *)
+sceneCaseASurfaceDeliversCompletionsPhasesAnd () =
+    first = Probes::started ()
+    done = Probes::finished (first, "load:1", true, "saved")
+    expect ((Probes::stored done).note.memo, "saved")
+    phased = Probes::phased (done, "active")
+    expect (Probes::problem phased, "")
+    framed = Probes::framed (phased, 0.5)
+    expect (framed.surfaceSession.sessionContext.now, 9)
+    broken = Probes::sent (framed, ui::Touch(touchNow = 10, touchKind = 99, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false))
+    expect (Probes::problem broken, "Unknown event kind 99")
+    expect ((Probes::stored broken).note.memo, "saved")
 
-// [UI-RESIDENT]: completions, lifecycle phases and frames reach `update` in a resident session, and text
-// that is not an event is refused without change.
-(** a resident session delivers completions, phases and frames and refuses malformed text. *)
-sceneCaseAResidentSessionDeliversCompletionsPhasesAnd () =
-    first = begun ()
-    done = proceeded (first.residentSession, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"saved\",\"now\":7}")
-    expect (done.residentSession.sessionStore.note.memo, "saved")
-    phased = proceeded (done.residentSession, "{\"kind\":\"lifecycle\",\"phase\":\"active\",\"now\":8}")
-    expect (Probes::problems (Doc::parse phased.residentEnvelope), "")
-    framed = proceeded (phased.residentSession, frameEvent)
-    expect (framed.residentSession.sessionContext.now, 9)
-    broken = proceeded (framed.residentSession, "not json")
-    expect (contains (Probes::problems (Doc::parse broken.residentEnvelope)) "not JSON", true)
-    expect (broken.residentSession.sessionStore.note.memo, "saved")
+// [UI-STORE]: an idle surface holds the store with no host facts and no controls yet.
+(** an idle surface holds only its store. *)
+sceneCaseAnIdleSurfaceHoldsOnlyItsStore () =
+    held = Surfaces::idle 3
+    expect ("${held.surfaceSession.sessionStore} ${length held.surfaceBound} ${held.surfaceSession.sessionContext.now}", "3 0 0")
 
-// [UI-RESIDENT]: an idle session holds the store with no host facts and no regions yet.
-(** an idle session holds only its store. *)
-sceneCaseAnIdleSessionHoldsOnlyItsStore () =
-    held = Runtime::idle 3
-    expect ("${held.sessionStore} ${length held.sessionFrames} ${held.sessionContext.now}", "3 0 0")
-
-routed : ui::Message<Act> -> string
-routed message = Messages::route (message, \_ => "tap", \(_, text) => "text ${text}", \(_, on) => "flag ${on}", \(_, width) => "size ${width}", \(ticket, _) => "done ${ticket}", \phase => "phase ${phase}", \(_, _) => "stroke", \(_, _) => "lasso", \_ => "frame", \(_, _) => "input")
-
-boundAs (binding, value) = match Events::bind (binding, value)
-    Success delivered => routed delivered
-    Error problem => problem
-
-// [UI-EVENTS]: toggles deliver flags, pickers deliver keys, and a value of the wrong kind is refused.
-(** toggles and pickers deliver their own value kinds and refuse others. *)
+// [UI-EVENTS]: toggles deliver flags and pickers deliver keys, and controls that take other kinds refuse text.
+(** toggles and pickers deliver their own value kinds. *)
 sceneCaseTogglesAndPickersDeliverTheirOwnValue () =
-    expect (boundAs (ui::FlagInput(action = Typed), JsonBool true), "flag true")
-    expect (boundAs (ui::FlagInput(action = Typed), JsonString "on"), "A toggle control sent a value of the wrong kind")
-    expect (boundAs (ui::ChoiceInput(action = Load), JsonString "b"), "text b")
-    expect (boundAs (ui::ChoiceInput(action = Load), JsonInt 1), "A choice control sent a value of the wrong kind")
+    expect (said (ui::FlagInput(action = Typed), "true"), "flag typed:true")
+    expect (said (ui::FlagInput(action = Typed), "on"), "flag typed:false")
+    expect (said (ui::ChoiceInput(action = Load), "b"), "text load:b")
     expect (routed (ui::Phase(phase = "active")), "phase active")
+    expect (said (ui::StrokeInput(action = Load), "0"), "A board control was sent a value of the wrong kind")
+    expect (said (ui::SceneInput(action = Load), "0"), "A scene control was sent a value of the wrong kind")
 
-// [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep their protocol spellings.
-(** progress, swatches, alerts, prominent buttons and leading asides encode. *)
+// [UI-COMPONENTS]: progress, swatches, alerts, prominent buttons and leading asides keep every told member.
+(** progress, swatches, alerts, prominent buttons and leading asides tell. *)
 sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading () =
-    parts = Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)])), "children"))
-    expect (join (mapList (parts, \part => Doc::text (part, "kind"))) ",", "progress,swatch,alert,button,aside")
-    expect (Doc::text (listGet parts 3 ?: JsonNull, "role"), "prominent")
-    expect (Doc::text (listGet parts 4 ?: JsonNull, "side"), "leading")
+    held = Ui::column [ui::Progress(label = "P", detail = "d"), ui::Swatch(name = "S", light = "#fff", dark = "#000"), ui::Alert(title = "A", message = "m", visible = true, dismiss = Load), Ui::action ("Go", "play", ui::Prominent, true, Increment), Ui::aside (Ui::text "p", ui::Leading, Ui::text "c", 300, Typed)]
+    binds (drawnOf held, 3)
+    expect (spelled (childTold (toldOf held, 0)), "{kind=\"progress\",label=\"P\",detail=\"d\"}")
+    // A swatch tells both of its colours, one for each appearance.
+    expect (spelled (childTold (toldOf held, 1)), "{kind=\"swatch\",name=\"S\",light=\"#fff\",dark=\"#000\"}")
+    // A visible alert keeps its dismissal binding.
+    expect (spelled (childTold (toldOf held, 2)), "{kind=\"alert\",title=\"A\",message=\"m\",visible=?true,event=#0}")
+    expect (spelled (childTold (toldOf held, 3)), "{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#1}")
+    // A leading aside tells its side, its pane and its column, 300 points wide, with the splitter's binding after them.
+    expect (spelled (childTold (toldOf held, 4)), "{kind=\"aside\",side=\"leading\",pane={kind=\"text\",text=\"p\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"c\",role=\"body\",tone=\"primary\"},width=#300,least=#260,most=#640,keep=#340,event=#2}")
+    expect (deliversBinding (held, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (held, 1, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (held, 2, ui::SizeInput(action = Typed)), true)
 
-// Pinned to the suite's action union: the encoder is instantiated at one action type (#278).
-meterAt (amount, total) =
-    walked = Encode::walk ([], Ui::column [Ui::meter ("Used", amount, total, ui::Caution), Ui::button ("Go", "play", Increment)])
-    jsonEncode (listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 0 ?: JsonNull) ?: "encode failed"
+// A drawn meter's clamped amount and total, checked against what its amount clamps to.
+meterTold probe =
+    members = insideTold (toldOf (Ui::meter ("Used", probe.amount, probe.total, ui::Caution)))
+    expect (memberCount (members, "value", 0 - 1), probe.value)
+    expect (memberCount (members, "total", 0 - 1), probe.whole)
+    expect (memberText (members, "tone"), "caution")
 
-// [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below 1.
-(** a meter sends its amount clamped into a total of at least one. *)
+// [UI-COMPONENTS-METER]: a meter's amount is clamped into its total, and its total is never below one.
+(** a meter clamps its amount into a total of at least one. *)
 sceneCaseAMeterSendsItsAmountClampedInto () =
-    expect (meterAt (30, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":30,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (500, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":120,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (0 - 4, 120), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":0,\"total\":120,\"tone\":\"caution\"}")
-    expect (meterAt (3, 0), "{\"kind\":\"meter\",\"label\":\"Used\",\"value\":1,\"total\":1,\"tone\":\"caution\"}")
+    forEachList ([{ amount = 30, total = 120, value = 30, whole = 120 }, { amount = 500, total = 120, value = 120, whole = 120 }, { amount = 0 - 4, total = 120, value = 0, whole = 120 }, { amount = 3, total = 0, value = 1, whole = 1 }], meterTold)

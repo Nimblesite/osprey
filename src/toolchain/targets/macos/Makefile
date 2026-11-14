@@ -9,7 +9,24 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage probe workbench-render-review
+.PHONY: agent casting examples flock graphics painting qwen-server qwen-server-quick qwen-client signal-flow synth storage tally probe
+
+.PHONY: pocket-orchestra _pocket-orchestra-models
+## pocket-orchestra: Open Light Orchestra: this Mac plays audio, phones join by QR and WebSocket.
+pocket-orchestra: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/swift/orchestra/build.sh
+	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
+
+.PHONY: _pocket-orchestra-quick
+# _pocket-orchestra-quick: Build and open Light Orchestra with an existing compiler (OSPREY_BIN, default target/debug/osprey).
+_pocket-orchestra-quick:
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	open "$(CURDIR)/target/orchestra/Light Orchestra.app"
+
+# _pocket-orchestra-models: Generate the native audio models from typeDiagram; set TYPEDIAGRAM_DIST.
+_pocket-orchestra-models:
+	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/toolchain/hosts/swift/orchestra/audio.td src/toolchain/hosts/swift/orchestra/AudioModels.swift orchestra
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -17,6 +34,11 @@ PROJECT ?= $(CURDIR)
 agent:
 	$(MAKE) -C $(ROOT) build _runtime_macos
 	bash $(ROOT)/src/osprey/examples/agent/run.sh "$(PROJECT)"
+
+## tally: Open Tally, the counter whose whole interface crosses the bridge as shared memory, in a
+##        SwiftUI window. Its look is decided in Osprey; the host holds no style. [NATIVE-SHM-VIEW]
+tally:
+	$(MAKE) -C $(ROOT) _tally-swift
 
 ## casting: Open the casting player: pick a file or stream and cast it to a TV
 ##          found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
@@ -87,10 +109,4 @@ probe: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
 
-## workbench-render-review: Render a captured region tree natively (full page).
-##   TREE defaults to the browser suite's slate board; expect a 1488x1102 image.
-##   Matching dimensions do not prove pixel fidelity.
-WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
-workbench-render-review:
-	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/osprey/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
 endif

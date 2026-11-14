@@ -58,7 +58,9 @@ Zed's `file_types` setting rather than assigning every `.py` file to Osprey:
 ```
 
 Diagnostic scope belongs in `lsp.osprey.settings`, for example
-`{ "osprey": { "diagnostics": { "scope": "openFiles" } } }`.
+`{ "osprey": { "diagnostics": { "scope": "openFiles" } } }`. Hover infers types
+from the whole project and its packages; `{ "osprey": { "analysis": { "scope":
+"file" } } }` in the same place infers them from each file alone.
 Zed sends workspace settings after initialization; setting only
 `initialization_options` does not preserve that scope through later settings updates.
 

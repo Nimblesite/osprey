@@ -1,75 +1,217 @@
-// The JSON edge of @osprey/uitest ([UI-MACHINE-TEST]): a host envelope or a
-// rendered node tree decoded once into typed records. Nothing past this
-// module reads JSON.
+// What a host is sent, read back as typed records ([UI-MACHINE-TEST], [NATIVE-SHM-NODES]): the
+// told rows and scenes `ui::Surfaces::seen` walks, rebuilt into the component trees a host draws,
+// and the requests the last step sent. A test reads the very rows a host reads.
 namespace uitest
 
-import ui::Doc
-import ui::MachineDocs
+import ui::Lists
 import ui::Pick
+import ui::Views
+import ui::Requests
 
-(** One rendered node: its kind, accessible label, text, title, tone, selected key, event ordinal, whether it is enabled and its choices' keys. *)
+(** One told component: its kind, its words (a label, text or title), its second text (a prompt or a symbol), its value, its tone or its frame's ink token, the control number its events name (-1 for none), whether it takes input, the key it has selected and the keys it offers. *)
 type Control =
     controlKind : string
-    controlLabel : string
     controlText : string
-    controlTitle : string
+    controlHint : string
+    controlValue : string
     controlTone : string
-    controlSelected : string
     controlOrdinal : int
     controlEnabled : bool
+    controlSelected : string
     controlChoices : List<string>
 
-(** What a host last saw: the root region's nodes, canvas lettering, curves and accessibility tree, the requests made, the root's revision and its own event ordinal. *)
+(** Told trees rebuilt from rows so far, and the next row to read. *)
+type Rebuilt =
+    rebuilt : List<ui::Told>
+    rebuiltNext : int
+
+(** The names of the rows read so far, and the next fit to read. *)
+type Named =
+    namedRows : List<string>
+    namedFit : int
+
+(** What a host last saw: the controls, the canvas's lettering, curves and accessibility tree, the kinds of the requests the last step made and the control number of the first scene. *)
 type Rendered =
     renderedControls : List<Control>
     renderedLetters : List<string>
     renderedCurves : List<List<float>>
     renderedAccess : List<ui::Accessible>
     renderedRequests : List<string>
-    renderedRevision : int
     renderedOrdinal : int
 
-(** Decodes what a native session sends its host ([UI-PROTOCOL]). *)
+(** Reads a walked view as a host would ([NATIVE-SHM-VIEW]). *)
 module Read
     (** Nothing seen yet. *)
-    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedRevision = 0, renderedOrdinal = 0)
+    export blank () = Rendered(renderedControls = [], renderedLetters = [], renderedCurves = [], renderedAccess = [], renderedRequests = [], renderedOrdinal = 0 - 1)
 
-    // Every object in `doc`, itself first, in document order.
-    walked (out, doc) = match Doc::kind doc
-        "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => walked (acc, Doc::field (doc, key)))
-        "list" => foldList (Doc::items doc, out, walked)
-        _ => out
+    rowAt<A> : (ui::Walk<A>, int) -> ui::Seated
+    rowAt (walk, index) = listGet walk.walkRows index ?: Views::blank
 
-    control n = Control(controlKind = Doc::text (n, "kind"), controlLabel = Doc::text (n, "label"), controlText = Doc::text (n, "text"), controlTitle = Doc::text (n, "title"), controlTone = Doc::text (n, "tone"), controlSelected = Doc::text (n, "selected"), controlOrdinal = Doc::number (n, "event"), controlEnabled = Doc::flag (n, "enabled"), controlChoices = mapList (Doc::items (Doc::field (n, "choices")), \c => Doc::text (c, "key")))
+    // The name of every row, in row order: a row's name is its fit's hint, and fits arrive in row order.
+    named<A> : (ui::Walk<A>, Named, int) -> Named
+    named (walk, so, index) = match listGet walk.walkFits so.namedFit
+        Success fit => match fit.fittedRow == index
+            true => Named(namedRows = listAppend so.namedRows fit.fittedAs.hint, namedFit = satAdd so.namedFit 1)
+            false => so(namedRows = listAppend so.namedRows "")
+        Error _ => so(namedRows = listAppend so.namedRows "")
 
-    // Shape code 6 is lettering; its text is the shape's second element ([UI-SCENE]).
-    lettering = 6
+    names<A> : ui::Walk<A> -> List<string>
+    names walk = (foldList (toList (range (0, length walk.walkRows)), Named(namedRows = [], namedFit = 0), \(so, index) => named (walk, so, index))).namedRows
 
-    letters node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), \s => Doc::real (Doc::at (s, 0)) == toFloat lettering), \s => Doc::string (Doc::at (s, 1)))
+    // A field row's typed value ([NATIVE-SHM-NODES]): its heft says which of its columns holds it.
+    valued (row, name) = match row.placedLook.heft
+        1 => ui::ToldCount(countName = name, count = row.placedLook.ink)
+        2 => ui::ToldReal(realName = name, real = row.placedLook.points)
+        3 => ui::ToldFlag(flagName = name, on = row.placedLook.ink != 0)
+        4 => ui::ToldReal(realName = name, real = 0.0 - row.placedLook.points)
+        _ => ui::ToldText(wordsName = name, wordsText = row.placedWords)
 
-    // Shape code 5 is a path; one that moves to a point and runs a cubic curve (step code 3) to another is a curve between them, read as x1, y1, x2, y2.
-    path = 5
+    // A record's row with the members gathered under it; a scene's record carries its sketch.
+    grouped<A> : (ui::Walk<A>, int, string, List<ui::Told>) -> ui::Told
+    grouped (walk, index, name, members) = match (rowAt (walk, index)).placedKind == ui::Tellings::list
+        true => ui::ToldList(listName = name, items = members)
+        false => match Lists::find (walk.walkSketches, \s => s.sketchedRow == index)
+            Success drawn => ui::ToldScene(sketchName = name, sketchMembers = members, sketching = drawn.sketchedAs)
+            Error _ => ui::ToldRecord(recordName = name, members = members)
 
-    // One curve coordinate: the `axis`th number of the `step`th step of the path.
-    curveCoord (steps, step, axis) = Doc::real (Doc::at (Doc::at (steps, step), axis))
+    // The told value the row at `index` starts, and the row after it.
+    parsed<A> : (ui::Walk<A>, List<string>, int) -> Rebuilt
+    parsed (walk, all, index) = match (rowAt (walk, index)).placedKind == ui::Tellings::field
+        true => Rebuilt(rebuilt = [valued (rowAt (walk, index), listGet all index ?: "")], rebuiltNext = satAdd index 1)
+        false =>
+            inner = gathered (walk, all, index, satAdd index 1, [])
+            Rebuilt(rebuilt = [grouped (walk, index, listGet all index ?: "", inner.rebuilt)], rebuiltNext = inner.rebuiltNext)
 
-    curve steps = [curveCoord (steps, 0, 1), curveCoord (steps, 0, 2), curveCoord (steps, 1, 1), curveCoord (steps, 1, 2)]
+    // The rows from `index` that name `parent`, each with everything under it: rows are depth first, so they are consecutive.
+    gathered<A> : (ui::Walk<A>, List<string>, int, int, List<ui::Told>) -> Rebuilt
+    gathered (walk, all, parent, index, so) = match index < length walk.walkRows && (rowAt (walk, index)).placedParent == parent
+        false => Rebuilt(rebuilt = so, rebuiltNext = index)
+        true =>
+            one = parsed (walk, all, index)
+            gathered (walk, all, parent, one.rebuiltNext, listConcat so one.rebuilt)
 
-    curved s = Doc::real (Doc::at (s, 0)) == toFloat path && Doc::real (Doc::at (Doc::at (Doc::at (s, 1), 1), 0)) == 3.0
+    (** The told trees of a frame's rows: what a host rebuilds before it draws ([NATIVE-SHM-NODES]). *)
+    export trees<A> : ui::Walk<A> -> List<ui::Told>
+    trees walk = (gathered (walk, names walk, Views::none, 0, [])).rebuilt
 
-    curves node = mapList (filterList (Doc::items (Doc::field (node, "shapes")), curved), \s => curve (Doc::at (s, 1)))
+    (** Everything a record, list or scene holds, or none. *)
+    export inside told = match told
+        ui::ToldRecord _ members => members
+        ui::ToldScene _ members _ => members
+        ui::ToldList _ items => items
+        _ => []
 
-    accessible e = ui::Accessible(accessRole = MachineDocs::roleOf (Doc::text (e, "role")), accessLabel = Doc::text (e, "label"), accessLeft = Doc::decimal (e, "x"), accessTop = Doc::decimal (e, "y"), accessWidth = Doc::decimal (e, "w"), accessHeight = Doc::decimal (e, "h"), accessValue = Doc::decimal (e, "value"), accessMin = Doc::decimal (e, "min"), accessMax = Doc::decimal (e, "max"), accessSelected = Doc::flag (e, "selected"), accessMovable = Doc::flag (e, "movable"))
+    (** A told value's member name, or "" when it carries none. *)
+    export name told = match told
+        ui::ToldText key _ => key
+        ui::ToldCount key _ => key
+        ui::ToldReal key _ => key
+        ui::ToldFlag key _ => key
+        ui::ToldRecord key _ => key
+        ui::ToldList key _ => key
+        ui::ToldScene key _ _ => key
 
-    seen (before, node, revision) = before(renderedControls = mapList (walked ([], node), control), renderedLetters = letters node, renderedCurves = curves node, renderedAccess = mapList (Doc::items (Doc::field (node, "access")), accessible), renderedRevision = revision, renderedOrdinal = Doc::number (node, "event"))
+    textNamed (name, found, member) = match member
+        ui::ToldText key text => Pick::either (key == name && found == "", text, found)
+        _ => found
 
-    (** A rendered root node as JSON (`ui::Runtime::tree`), read as a host would. *)
-    export tree node = seen (blank (), node, 0)
+    (** The text member named `name`, first one wins, or "". *)
+    export words (members, name) = foldList (members, "", \(found, member) => textNamed (name, found, member))
 
-    patched (before, patch) = Pick::either (Doc::text (patch, "key") == "root", seen (before, Doc::field (patch, "node"), Doc::number (patch, "revision")), before)
+    (** The member named `key`, or an empty record when none is told. *)
+    export member (members, key) = match Lists::find (members, \one => name one == key)
+        Success found => found
+        Error _ => ui::ToldRecord(recordName = "", members = [])
 
-    (** A session's envelope text after `before`: a root patch replaces the view, and the requests are the envelope's own. *)
-    export envelope (before, text) =
-        doc = Doc::parse text
-        asked = before(renderedRequests = mapList (walked ([], Doc::field (doc, "requests")), \r => Doc::text (r, "kind")))
-        foldList (Doc::items (Doc::field (doc, "patches")), asked, patched)
+    countNamed (name, found, member) = match member
+        ui::ToldCount key value => Pick::either (key == name, value, found)
+        _ => found
+
+    (** The whole-number member named `name`, first one wins, or `absent`. *)
+    export whole (members, name, absent) = foldList (members, absent, \(found, member) => countNamed (name, found, member))
+
+    flagNamed (name, found, member) = match member
+        ui::ToldFlag key value => Pick::either (key == name, value, found)
+        _ => found
+
+    flagged (members, name, absent) = foldList (members, absent, \(found, member) => flagNamed (name, found, member))
+
+    listNamed (name, member) = match member
+        ui::ToldList key items => Pick::either (key == name, items, [])
+        _ => []
+
+    listed (members, name) = Lists::flatten (mapList (members, \member => listNamed (name, member)))
+
+    recordNamed (name, member) = match member
+        ui::ToldRecord key members => Pick::either (key == name, members, [])
+        _ => []
+
+    // The members of the record member called `name`, or none.
+    recorded (members, name) = Lists::flatten (mapList (members, \member => recordNamed (name, member)))
+
+    (** The entries `told` keeps under its member named `name`, in drawing order. *)
+    export entries (told, name) = inside (member (inside told, name))
+
+    (** A told value and everything under it, depth first. *)
+    export under told = listConcat [told] (Lists::flatten (mapList (inside told, under)))
+
+    (** The first component of kind `name` under `trees` that `sought` accepts, or an empty record when none is. *)
+    export kinded (trees, name, sought) = match Lists::find (Lists::flatten (mapList (trees, under)), \told => words (inside told, "kind") == name && sought told)
+        Success found => found
+        Error _ => ui::ToldRecord(recordName = "", members = [])
+
+    firstOf texts = listGet (filterList (texts, \text => text != "")) 0 ?: ""
+
+    keys (members, name) = mapList (listed (members, name), \entry => words (inside entry, "key"))
+
+    runs members = join (mapList (listed (members, "runs"), \run => words (inside run, "text"))) ""
+
+    control members = Control(controlKind = words (members, "kind"), controlText = firstOf [words (members, "label"), words (members, "text"), words (members, "title"), runs members], controlHint = firstOf [words (members, "prompt"), words (members, "symbol")], controlValue = words (members, "value"), controlTone = firstOf [words (members, "tone"), words (recorded (members, "style"), "ink")], controlOrdinal = whole (members, "event", 0 - 1), controlEnabled = flagged (members, "enabled", true), controlSelected = words (members, "selected"), controlChoices = listConcat (keys (members, "choices")) (listConcat (keys (members, "rows")) (keys (members, "tabs"))))
+
+    own members = match words (members, "kind") == ""
+        true => []
+        false => [control members]
+
+    // Every component in a told tree, depth first: a record with a kind is one, and so is each inside it.
+    controls told = match told
+        ui::ToldText _ _ => []
+        ui::ToldCount _ _ => []
+        ui::ToldReal _ _ => []
+        ui::ToldFlag _ _ => []
+        ui::ToldList _ items => Lists::flatten (mapList (items, controls))
+        _ => listConcat (own (inside told)) (Lists::flatten (mapList (inside told, controls)))
+
+    lettered shape = match shape
+        ui::Lettering text _ _ _ _ _ _ _ => [text]
+        ui::Glyphs text _ _ _ _ _ => [text]
+        _ => []
+
+    // A path that moves to a point and runs a cubic curve to another is a curve between them, read as x1, y1, x2, y2.
+    curve steps = match listGet steps 0
+        Success first => match listGet steps 1
+            Success second => joined (first, second)
+            Error _ => []
+        Error _ => []
+
+    joined (first, second) = match first
+        ui::MoveTo x1 y1 => match second
+            ui::CubicTo x2 y2 _ _ _ _ => [[x1, y1, x2, y2]]
+            _ => []
+        _ => []
+
+    curved shape = match shape
+        ui::Path steps _ _ _ _ _ _ => curve steps
+        _ => []
+
+    shapes<A> : ui::Walk<A> -> List<ui::Primitive>
+    shapes walk = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchShapes))
+
+    // The control number of the first scene: the `event` of the record its sketch names.
+    sceneOrdinal<A> : (ui::Walk<A>, List<string>) -> int
+    sceneOrdinal (walk, all) = match listGet walk.walkSketches 0
+        Success first => whole ((gathered (walk, all, first.sketchedRow, satAdd first.sketchedRow 1, [])).rebuilt, "event", 0 - 1)
+        Error _ => 0 - 1
+
+    (** A walked view and the requests its step sent, as a host reads them. *)
+    export seen<A> : (ui::Walk<A>, List<ui::Request>) -> Rendered
+    seen (walk, asked) = Rendered(renderedControls = Lists::flatten (mapList (trees walk, controls)), renderedLetters = Lists::flatten (mapList (shapes walk, lettered)), renderedCurves = Lists::flatten (mapList (shapes walk, curved)), renderedAccess = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchAccess)), renderedRequests = mapList (asked, \r => Requests::kind r.capability), renderedOrdinal = sceneOrdinal (walk, names walk))

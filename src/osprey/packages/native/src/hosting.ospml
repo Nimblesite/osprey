@@ -1,0 +1,121 @@
+// Implements [NATIVE-SHM-EVENT]: every host event is one typed call. An application's boundary
+// exports `argument`, `open` and `event` and hands each `event` to `Hosting::event`, so no
+// application writes its own decoding. Every call draws a whole frame: a delivered event draws
+// the next store, a refused one draws the same store again and sends its reason as a diagnostic
+// ask, so the host always shows the frame it was handed.
+namespace ui
+
+(** One host event as it crosses the C boundary: its kind (a `Hosting` constant), the control it names, two texts, two numbers and two flags. Each kind reads only the fields it documents. *)
+type Touch =
+    touchNow : int
+    touchKind : int
+    touchOrdinal : int
+    touchWords : string
+    touchDetail : string
+    touchX : float
+    touchY : float
+    touchDown : bool
+    touchShift : bool
+
+(** Turns typed host events into messages and the next frame ([NATIVE-SHM-EVENT]). *)
+module Hosting
+    (** A control's value: `ordinal` and its `words`. *)
+    export control = 0
+
+    (** A key over the scene `ordinal`: its name in `words`, `down` when pressed. *)
+    export key = 1
+
+    (** The pointer over the scene `ordinal`: `x`, `y` in scene units, `down` when pressed, `shift` when Shift is held. *)
+    export pointer = 2
+
+    (** The scene `ordinal` measured: `x` wide and `y` tall in scene units. *)
+    export viewed = 3
+
+    (** One more point of the stroke being drawn: `x`, `y` in whole board points. *)
+    export point = 4
+
+    (** The stroke on the board `ordinal` finished: `x` is its width and `y` its clock in milliseconds. *)
+    export stroke = 5
+
+    (** One more stroke, numbered `ordinal`, inside the lasso being drawn. *)
+    export enclose = 6
+
+    (** The lasso on the board `ordinal` closed around the strokes enclosed so far. *)
+    export lasso = 7
+
+    (** A capability completed under the ticket in `words`: `down` when it succeeded, its result or reason in `detail`. *)
+    export completed = 8
+
+    (** The host reached the lifecycle phase in `words`. *)
+    export phase = 9
+
+    (** A display frame, `x` seconds after the last. *)
+    export frame = 10
+
+    (** The appearance changed: `down` when dark. *)
+    export appearance = 11
+
+    (** The capability code of a diagnostic ask: its text says why an event was refused. *)
+    export diagnostic = 101
+
+    whole value = floatToInt value ?: (0 - 1)
+
+    scene<S, A> : (Surface<S, A>, Touch, Input) -> Result<Message<A>, Error>
+    scene (held, touch, input) = Surfaces::scene (held, touch.touchOrdinal, input)
+
+    // The message a delivering kind means; an accumulating or unknown kind is refused here.
+    message<S, A> : (Surface<S, A>, Touch) -> Result<Message<A>, Error>
+    message (held, touch) = match touch.touchKind
+        0 => Surfaces::meant (held, touch.touchOrdinal, touch.touchWords)
+        1 => scene (held, touch, Key(keyName = touch.touchWords, keyDown = touch.touchDown))
+        2 => scene (held, touch, Pointer(pointerX = touch.touchX, pointerY = touch.touchY, pointerDown = touch.touchDown, pointerShift = touch.touchShift))
+        3 => scene (held, touch, Viewed(viewWidth = touch.touchX, viewHeight = touch.touchY))
+        5 => Surfaces::stroke (held, touch.touchOrdinal, held.surfacePoints, whole touch.touchX, whole touch.touchY)
+        7 => Surfaces::lasso (held, touch.touchOrdinal, held.surfaceEnclosed)
+        8 => Success(value = Surfaces::completed (touch.touchWords, touch.touchDown, touch.touchDetail))
+        9 => Success(value = Surfaces::phased touch.touchWords)
+        10 => Surfaces::framed touch.touchX
+        other => Error(message = "Unknown event kind ${other}")
+
+    // A refused event changes nothing, draws the same store and tells the host why.
+    refused<S, A> : (Surface<S, A>, Program<S, A>, string) -> Surface<S, A> ![ViewStream | e]
+    refused (held, program, problem) =
+        again = Surfaces::redrawn (held, program)
+        why = Asked(askedField = 0, askedNumber = diagnostic, askedText = problem)
+        perform ViewStream.ask why
+        again(surfaceProblem = problem)
+
+    delivered<S, A> : (Surface<S, A>, Program<S, A>, Touch) -> Surface<S, A> ![ViewStream | e]
+    delivered (held, program, touch) = match message (held, touch)
+        Error problem => refused (held, program, problem)
+        Success meaning => Surfaces::deliver (finished (held, touch.touchKind), program, touch.touchNow, meaning)
+
+    // A finished stroke or lasso starts the next one empty.
+    finished (held, kind) = match kind
+        5 => held(surfacePoints = [])
+        7 => held(surfaceEnclosed = [])
+        _ => held
+
+    gathered (held, touch) = match touch.touchKind
+        4 => held(surfacePoints = listAppend held.surfacePoints (Point(pointX = whole touch.touchX, pointY = whole touch.touchY)))
+        _ => held(surfaceEnclosed = listAppend held.surfaceEnclosed touch.touchOrdinal)
+
+    (** The surface after `touch`: the next store drawn, the same store drawn with a diagnostic when it was refused, or the same store drawn while a stroke or lasso is still arriving or the appearance changed. *)
+    export event<S, A> : (Surface<S, A>, Program<S, A>, Touch) -> Surface<S, A> ![ViewStream | e]
+    event (held, program, touch) = match touch.touchKind
+        4 => Surfaces::redrawn (gathered (held, touch), program)
+        6 => Surfaces::redrawn (gathered (held, touch), program)
+        11 => Surfaces::redrawn (held(surfaceDark = touch.touchDown), program)
+        _ => delivered (held, program, touch)
+
+    (** The first frame a boundary's `open` draws for the host's clock, zone offset, platform, home folder and appearance. *)
+    export opened<S, A> : (Surface<S, A>, Program<S, A>, int, int, string, string, bool) -> Surface<S, A> ![ViewStream | e]
+    opened (held, program, now, offset, platform, home, dark) = Surfaces::open (held, program, Runtime::host (now, offset, platform, home, []), dark)
+
+    (** The surface after the host event a boundary's `event` was called with, field by field. *)
+    export touched<S, A> : (Surface<S, A>, Program<S, A>, int, int, int, string, string, float, float, bool, bool) -> Surface<S, A> ![ViewStream | e]
+    touched (held, program, now, kind, ordinal, words, detail, x, y, down, shift) = event (held, program, Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = shift))
+
+    (** What a boundary's `event` returns: 0 when the event was delivered, 1 when it was refused. *)
+    export answer<S, A> : Surface<S, A> -> int
+    answer held = Pick::either (held.surfaceProblem == "", 0, 1)

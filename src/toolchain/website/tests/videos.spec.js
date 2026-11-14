@@ -13,7 +13,7 @@ const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
 const proofVideos = require("../src/_data/proofVideos.js");
 const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
-const WATCH_PAGES = [WATCH, "/docs/osprey-native/agent/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
+const WATCH_PAGES = [WATCH, "/docs/osprey-native/agent/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", "/docs/osprey-native/bridge/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -352,4 +352,15 @@ for (const width of [390, 1440]) test(`Osprey Native shows real apps and plays t
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
   await page.screenshot({ path: `/tmp/osprey-native-${width}-review.png` });
+});
+
+test("the documentation home opens on every platform's path, not a single-platform film", async ({ page }) => {
+  await page.goto("/docs/");
+  const article = page.locator("article");
+  await expect(article.locator("h1")).toHaveText("Osprey documentation");
+  await expect(article.locator('[data-video="swift-interop"]')).toHaveCount(0);
+  await expect(article.locator("video")).toHaveCount(1);
+  await expect(article.locator('[data-video="profiler"] video')).toBeVisible();
+  await expect(article.getByRole("link", { name: "Osprey and Swift interop on the Mac and iPhone" })).toHaveAttribute("href", "/docs/tutorials/swift-interop/");
+  await expect(article.getByRole("link", { name: "Install Osprey" })).toBeVisible();
 });

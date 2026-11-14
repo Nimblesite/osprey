@@ -24,13 +24,16 @@ fn minF(a, x: float32) = match x < a { true => x false => a }
 /// through.
 fn relu(x) = match x > toFloat32(0.0) { true => x false => toFloat32(0.0) }
 fn isActive(x) = x > toFloat32(0.0)
-/// at reads a matrix element, treating out of bounds as zero padding; sumOf and
-/// meanOf are the folded statistics the kernels capture, and meanOf's checked
+/// at reads a buffer element, treating out of bounds as zero padding; sumOf and
+/// meanOf are the folded statistics the kernels capture, and meanFrom's checked
 /// division is what keeps an empty buffer total instead of partial.
 fn at(m, i) = gpuGet(m, i) ?: toFloat32(0.0)
 fn sumOf(xs, predicate) = gpuSatisfies(gpuFold(xs, toFloat32(0.0), addF), predicate)
 /// sumIs is the float reduction of `b`, which must total `expected`.
 fn sumIs(b, expected) = sumOf(b, fn(total) => total == expected)
+/// sumsTo is sumIs over a kernel stage's Result — the stage's own kernel stays
+/// inline at its combinator call, the prelude's gpuLengthIs judging a length.
+fn sumsTo(result, expected) = gpuSatisfies(result, fn(out) => sumIs(out, expected))
 /// dotIs is the fused product-and-reduce of `a` and `b`, which must total `expected`.
 fn dotIs(a, b, expected) = dotOf(a, b, fn(total) => total == expected)
 /// meanIs is the folded mean of `b`, which must be `expected`.
@@ -42,7 +45,8 @@ fn degenerate(value, work) = {
     handle Arith { divideByZero _ _ => value }
     work()
 }
-fn meanOf(xs, predicate) = sumOf(xs, fn(total) => predicate(degenerate(0.0, fn() => total / toFloat32(gpuLength(xs)))))
+fn meanFrom(xs, total) = degenerate(0.0, fn() => total / toFloat32(gpuLength(xs)))
+fn meanOf(xs, predicate) = sumOf(xs, fn(total) => predicate(meanFrom(xs, total)))
 /// dotOf is BLAS level 1: fuse an elementwise product into a reduction, which is
 /// the shape varianceOf reuses twice — fold a mean, then capture it inside the
 /// kernel measuring squared deviation from it.
@@ -54,10 +58,10 @@ fn saxpy(x, y) = toFloat32(2.0) * x + y
 fn softWeight(d) = (toFloat32(1.0) / (toFloat32(1.0) + d + d * d))
 /// softmaxEach is four stages, two of them captures: fold the maximum, spend it in
 /// the shift, fold the partition function, spend that in the divide.
-fn softmaxEach(scores, work) = match gpuFold(scores, gpuGet(scores, 0) ?: toFloat32(0.0), maxF) {
+fn softmaxEach(scores, work) = match gpuFold(scores, at(scores, 0), maxF) {
     Success { peak } => match gpuMap(scores, fn(s) => softWeight(peak - s)) {
         Success { weights } => match gpuFold(weights, toFloat32(0.0), addF) {
-            Success { partition } => withBuffer(gpuMap(weights, fn(w) => (w / partition) ), work)
+            Success { partition } => withBuffer(gpuMap(weights, fn(w) => w / partition), work)
             Error { message } => gpuFailed(message)
         }
         Error { message } => gpuFailed(message)
@@ -68,8 +72,7 @@ fn softmaxEach(scores, work) = match gpuFold(scores, gpuGet(scores, 0) ?: toFloa
 /// recursion carries the same captured buffers through every column.
 fn rowDot(m, v, cols, r, c) = match c == cols {
     true => toFloat32(0.0)
-    false => at(m, (((r * cols) ) + c) ) * at(v, c)
-    + rowDot(m, v, cols, r, (c + 1) )
+    false => at(m, r * cols + c) * at(v, c) + rowDot(m, v, cols, r, c + 1)
 }
 /// matVecEach gathers every row's dot product: one kernel invocation per row.
 fn matVecEach(m, v, cols, indices, work) = withBuffer(gpuMap(indices, fn(r) => rowDot(m, v, cols, r, 0)), work)
@@ -79,63 +82,65 @@ fn denseEach(m, v, cols, indices, bias, work) = matVecEach(m, v, cols, indices, 
 fn denseOf(m, v, cols, indices, bias, predicate) = matVecOf(m, v, cols, indices, fn(rows) => gpuSatisfies(gpuZipWith(rows, bias, addF), fn(biased) => gpuSatisfies(gpuMap(biased, relu), predicate)))
 /// mseOf is the loss the training loop descends; w is captured by the residual.
 fn mseOf(w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith(xs, ys, fn(x, y) => (w * x - y) * (w * x - y)), fn(residuals) => meanOf(residuals, predicate))
+/// gradResidual is the per-example gradient of y = w * x, and descended turns
+/// its folded total into the next weight: the pieces both descent forms share.
+fn gradResidual(w: float32, xs, ys) = gpuZipWith(xs, ys, fn(x, y) => toFloat32(2.0) * (w * x - y) * x)
+fn descended(w, total) = w - toFloat32(0.05) * (total / toFloat32(3.0))
 /// gradStepEach is one epoch of least-squares descent on y = w * x; its
 /// kernel captures the current weight.
-fn gradStepEach(w, xs: GpuBuffer<float32>, ys, work) = match gpuZipWith(xs, ys,
-    fn(x, y) => toFloat32(2.0) * (w * x - y) * x) {
-    Success { residuals } => match gpuFold(residuals, toFloat32(0.0), addF) {
-        Success { total } => work(w - toFloat32(0.05) * (total / toFloat32(3.0)))
-        Error { message } => gpuFailed(message)
-    }
-    Error { message } => gpuFailed(message)
-}
-fn gradStepOf(w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith(xs, ys,
-    fn(x, y) => toFloat32(2.0) * (w * x - y) * x), fn(residuals) => sumOf(residuals, fn(total) => predicate(w - toFloat32(0.05) * (total / toFloat32(3.0)))))
+fn gradStepEach(w, xs, ys, work) = withBuffer(gradResidual(w, xs, ys), fn(residuals) => withBuffer(gpuFold(residuals, toFloat32(0.0), addF), fn(total) => work(descended(w, total))))
+fn gradStepOf(w, xs, ys, predicate) = gpuSatisfies(gradResidual(w, xs, ys), fn(residuals) => sumOf(residuals, fn(total) => predicate(descended(w, total))))
 /// trainEach iterates gradStepEach n times, keeping the loop on buffers.
 fn trainEach(w, xs, ys, n, work) = match n {
     0 => work(w)
-    _ => gradStepEach(w, xs, ys, fn(stepped) => trainEach(stepped, xs, ys, (n - 1) , work))
+    _ => gradStepEach(w, xs, ys, fn(stepped) => trainEach(stepped, xs, ys, n - 1, work))
 }
 fn trainOf(w, xs, ys, n, predicate) = match n {
     0 => predicate(w)
-    _ => gradStepOf(w, xs, ys, fn(stepped) => trainOf(stepped, xs, ys, (n - 1) , predicate))
+    _ => gradStepOf(w, xs, ys, fn(stepped) => trainOf(stepped, xs, ys, n - 1, predicate))
 }
+/// upload stages a host list on the GPU and hands the buffer to work: the
+/// shape every case below uploads its inputs with.
+fn upload(values, work) = withBuffer(toGpu(values), work)
+/// withMean stages xs's folded mean — zero on an empty buffer, like meanOf —
+/// for the kernels that capture it.
+fn withMean(xs, work) = withBuffer(gpuFold(xs, toFloat32(0.0), addF), fn(total) => work(meanFrom(xs, total)))
 /// xs3 uploads the three-element [1, 2, 3] column that most kernels below run
 /// over; each call allocates its own buffer.
 fn xs3() = toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0)])
 /// dotCase pins the fused product-and-reduce over orthogonal, negated, zeroed,
 /// singleton, empty and ragged operands.
-fn dotCase() = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)]), fn(input1) => withBuffer(toGpu([]), fn(input2) => withBuffer(toGpu([]), fn(input3) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)]), fn(input4) => withBuffer(toGpu([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0)]), fn(input5) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(1.0)]), fn(input6) => withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.0), toFloat32(2.0)]), fn(input7) => withBuffer(toGpu([toFloat32(3.0), toFloat32(0.0) - toFloat32(4.0)]), fn(input8) => withBuffer(toGpu([toFloat32(2.0), toFloat32(2.0)]), fn(input9) => withBuffer(toGpu([toFloat32(0.5)]), fn(input10) => withBuffer(toGpu([toFloat32(0.5)]), fn(input11) => withBuffer(toGpu([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0)]), fn(input12) => withBuffer(toGpu([toFloat32(1.0)]), fn(input13) => dotCaseUploaded(input0, input1, input2, input3, input4, input5, input6, input7, input8, input9, input10, input11, input12, input13)))))))))))))))
+fn dotCase() = withBuffer(xs3(), fn(input0) => upload([toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)], fn(input1) => upload([], fn(input2) => upload([], fn(input3) => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], fn(input4) => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0)], fn(input5) => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(1.0)], fn(input6) => upload([toFloat32(0.0) - toFloat32(1.0), toFloat32(2.0)], fn(input7) => upload([toFloat32(3.0), toFloat32(0.0) - toFloat32(4.0)], fn(input8) => upload([toFloat32(2.0), toFloat32(2.0)], fn(input9) => upload([toFloat32(0.5)], fn(input10) => upload([toFloat32(0.5)], fn(input11) => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0)], fn(input12) => upload([toFloat32(1.0)], fn(input13) => dotCaseUploaded(input0, input1, input2, input3, input4, input5, input6, input7, input8, input9, input10, input11, input12, input13)))))))))))))))
 fn dotCaseUploaded(input0, input1, input2, input3, input4, input5, input6, input7, input8, input9, input10, input11, input12, input13) = {
     let xs = input0
     let ys = input1
     checkAll("dot product", [
-    dotIs(xs, ys, toFloat32(32.0)), dotIs(ys, xs, toFloat32(32.0)), dotIs(xs, xs, toFloat32(14.0)), dotIs(input2, input3, toFloat32(0.0)), dotIs(xs, input4, toFloat32(0.0)), dotIs(input5, input6, toFloat32(0.0)), dotIs(input7, input8, toFloat32(0.0) - toFloat32(11.0)), dotIs(xs, input9, toFloat32(6.0)), dotIs(input10, input11, toFloat32(0.25)), dotIs(input12, ys, toFloat32(4.0)), gpuSatisfies(gpuZipWith(xs, ys, mulF), fn(products) => lengthIs(products, 3)), gpuSatisfies(gpuZipWith(xs, input13, mulF), fn(products) => lengthIs(products, 1))
-])
+            dotIs(xs, ys, toFloat32(32.0)), dotIs(ys, xs, toFloat32(32.0)), dotIs(xs, xs, toFloat32(14.0)), dotIs(input2, input3, toFloat32(0.0)), dotIs(xs, input4, toFloat32(0.0)), dotIs(input5, input6, toFloat32(0.0)), dotIs(input7, input8, toFloat32(0.0) - toFloat32(11.0)), dotIs(xs, input9, toFloat32(6.0)), dotIs(input10, input11, toFloat32(0.25)), dotIs(input12, ys, toFloat32(4.0)), gpuLengthIs(gpuZipWith(xs, ys, mulF), 3), gpuLengthIs(gpuZipWith(xs, input13, mulF), 1)
+    ])
 }
 /// saxpyCase pins BLAS saxpy, then the same shape with the scale factor
 /// captured — including alphas zero and one, which reduce to projections.
-fn saxpyCase() = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]), fn(input2) => withBuffer(toGpu([toFloat32(10.0), toFloat32(20.0)]), fn(input3) => withBuffer(toGpu([]), fn(input4) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)]), fn(input5) => saxpyCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+fn saxpyCase() = withBuffer(xs3(), fn(input0) => upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)], fn(input1) => upload([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)], fn(input2) => upload([toFloat32(10.0), toFloat32(20.0)], fn(input3) => upload([], fn(input4) => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], fn(input5) => saxpyCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
 fn saxpyCaseUploaded(input0, input1, input2, input3, input4, input5) = {
     let alpha = toFloat32(0.5)
     let xs = input0
     withBuffer(gpuZipWith(xs, input1, saxpy), fn(out) =>
         withBuffer(gpuZipWith(xs, input2, fn(x, y) => alpha * x + y), fn(axpy) =>
             checkAll("saxpy", [
-    sumIs(out, toFloat32(72.0)), elementsAt(out, toFloat32(0.0), [0, 2], [toFloat32(12.0), toFloat32(36.0)]), lengthIs(out, 3), sumIs(axpy, toFloat32(6.0)), elementsAt(axpy, toFloat32(0.0), [0, 2], [toFloat32(1.5), toFloat32(2.5)]), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => toFloat32(0.0) * x + y), fn(zeros) => sumIs(zeros, toFloat32(6.0))), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => toFloat32(1.0) * x + y), fn(twice) => sumIs(twice, toFloat32(12.0))), gpuSatisfies(gpuZipWith(xs, input3, saxpy), fn(ragged) => sumIs(ragged, toFloat32(36.0))), gpuSatisfies(gpuZipWith(input4, xs, saxpy), fn(empty) => lengthIs(empty, 0)), gpuSatisfies(gpuZipWith(xs, input5, fn(x, y) => alpha * x + y), fn(projected) => sumIs(projected, toFloat32(3.0)))
-])))
+                    sumIs(out, toFloat32(72.0)), elementsAt(out, toFloat32(0.0), [0, 2], [toFloat32(12.0), toFloat32(36.0)]), lengthIs(out, 3), sumIs(axpy, toFloat32(6.0)), elementsAt(axpy, toFloat32(0.0), [0, 2], [toFloat32(1.5), toFloat32(2.5)]), sumsTo(gpuZipWith(xs, xs, fn(x, y) => toFloat32(0.0) * x + y), toFloat32(6.0)), sumsTo(gpuZipWith(xs, xs, fn(x, y) => toFloat32(1.0) * x + y), toFloat32(12.0)), sumsTo(gpuZipWith(xs, input3, saxpy), toFloat32(36.0)), gpuLengthIs(gpuZipWith(input4, xs, saxpy), 0), sumsTo(gpuZipWith(xs, input5, fn(x, y) => alpha * x + y), toFloat32(3.0))
+    ])))
 }
 /// captureScalarCase is the first acceptance shape: one host scalar closed over
 /// by a kernel, spent by map, filter, fold and scan, empty buffer included.
-fn captureScalarCase() = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([]), fn(input1) => captureScalarCaseUploaded(input0, input1)))
+fn captureScalarCase() = withBuffer(xs3(), fn(input0) => upload([], fn(input1) => captureScalarCaseUploaded(input0, input1)))
 fn captureScalarCaseUploaded(input0, input1) = {
     let k = toFloat32(3.0)
     let xs = input0
     withBuffer(gpuMap(xs, fn(x) => k * x), fn(scaled) =>
         withBuffer(gpuMap(xs, fn(x) => k * x + k), fn(twice) =>
             checkAll("captured scalar", [
-    sumIs(scaled, toFloat32(18.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(6.0)), lengthIs(scaled, 3), sumIs(twice, toFloat32(27.0)), elementIs(twice, 2, toFloat32(0.0), toFloat32(12.0)), gpuSatisfies(gpuMap(scaled, fn(y) => k * y), fn(rescaled) => sumIs(rescaled, toFloat32(54.0))), gpuSatisfies(gpuMap(xs, fn(x) => k + x), fn(bumped) => sumIs(bumped, toFloat32(15.0))), gpuSatisfies(gpuFilter(xs, fn(x) => x > k), fn(above) => lengthIs(above, 0)), gpuSatisfies(gpuFilter(xs, fn(x) => k > x), fn(below) => lengthIs(below, 2)), gpuSatisfies(gpuMap(input1, fn(x) => k * x), fn(empty) => lengthIs(empty, 0)), gpuEquals(gpuFold(xs, toFloat32(0.0), fn(a, x) => a + k * x), toFloat32(18.0)), gpuSatisfies(gpuScan(xs, toFloat32(0.0), fn(a, x) => a + k * x), fn(prefix) => elementIs(prefix, 2, toFloat32(0.0), toFloat32(18.0)))
-])))
+                    sumIs(scaled, toFloat32(18.0)), elementIs(scaled, 1, toFloat32(0.0), toFloat32(6.0)), lengthIs(scaled, 3), sumIs(twice, toFloat32(27.0)), elementIs(twice, 2, toFloat32(0.0), toFloat32(12.0)), sumsTo(gpuMap(scaled, fn(y) => k * y), toFloat32(54.0)), sumsTo(gpuMap(xs, fn(x) => k * x - k), toFloat32(9.0)), sumsTo(gpuMap(xs, fn(x) => k + x), toFloat32(15.0)), gpuLengthIs(gpuFilter(xs, fn(x) => x > k), 0), gpuLengthIs(gpuFilter(xs, fn(x) => k > x), 2), gpuLengthIs(gpuMap(input1, fn(x) => k * x), 0), gpuEquals(gpuFold(xs, toFloat32(0.0), fn(a, x) => a + k * x), toFloat32(18.0)), gpuSatisfies(gpuScan(xs, toFloat32(0.0), fn(a, x) => a + k * x), fn(prefix) => elementIs(prefix, 2, toFloat32(0.0), toFloat32(18.0)))
+    ])))
 }
 /// captureManyCase puts several distinct captures inside one kernel, in
 /// different orders and arities, so no single-capture shortcut can pass it.
@@ -147,141 +152,109 @@ fn captureManyCaseUploaded(input0) = {
     let xs = input0
     withBuffer(gpuMap(xs, fn(x) => (a * x + b) * c), fn(affine) =>
         checkAll("several captures", [
-    elementsFrom(affine, 0, toFloat32(0.0), [toFloat32(3.5), toFloat32(4.5), toFloat32(5.5)]), sumIs(affine, toFloat32(13.5)), lengthIs(affine, 3), gpuSatisfies(gpuMap(xs, fn(x) => c * x + b - a), fn(shifted) => sumIs(shifted, toFloat32(12.0))), gpuSatisfies(gpuMap(xs, fn(x) => a * x + b * c), fn(mixed) => sumIs(mixed, toFloat32(19.5))), gpuSatisfies(gpuMap(xs, fn(x) => a * c * x), fn(oneScale) => sumIs(oneScale, toFloat32(6.0))), gpuSatisfies(gpuMap(xs, fn(x) => b - a * x - c), fn(inverted) => sumIs(inverted, toFloat32(1.5))), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => a * x + c * y), fn(zipped) => sumIs(zipped, toFloat32(15.0))), gpuEquals(gpuFold(xs, b, fn(acc, x) => acc + c * x), toFloat32(8.0))
-]))
+                elementsFrom(affine, 0, toFloat32(0.0), [toFloat32(3.5), toFloat32(4.5), toFloat32(5.5)]), sumIs(affine, toFloat32(13.5)), lengthIs(affine, 3), sumsTo(gpuMap(xs, fn(x) => c * x + b - a), toFloat32(12.0)), sumsTo(gpuMap(xs, fn(x) => a * x + b * c), toFloat32(19.5)), sumsTo(gpuMap(xs, fn(x) => a * c * x), toFloat32(6.0)), sumsTo(gpuMap(xs, fn(x) => b - a * x - c), toFloat32(1.5)), sumsTo(gpuZipWith(xs, xs, fn(x, y) => a * x + c * y), toFloat32(15.0)), gpuEquals(gpuFold(xs, b, fn(acc, x) => acc + c * x), toFloat32(8.0))
+    ]))
 }
 /// captureSharedCase spends one capture across every combinator and then again
 /// in a chained pass, so it must survive being staged more than once.
-fn captureSharedCase() = withIndices(4, fn(indices4) => captureSharedWith(indices4))
-fn captureSharedWith(indices4) = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]), fn(input0) => captureSharedWithUploaded(indices4, input0))
-fn captureSharedWithUploaded(indices4, input0) = {
+fn captureSharedCase() = withIndices(4, fn(indices4) => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], fn(input0) => captureSharedCaseUploaded(indices4, input0)))
+fn captureSharedCaseUploaded(indices4, input0) = {
     let t = toFloat32(2.0)
     let xs = input0
     withBuffer(gpuScan(xs, toFloat32(0.0), fn(acc, x) => acc + t * x), fn(scanned) =>
         withBuffer(gpuFilter(xs, fn(x) => x > t), fn(kept) =>
             checkAll("shared capture", [
-    gpuSatisfies(gpuMap(xs, fn(x) => t * x), fn(scaled) => sumIs(scaled, toFloat32(20.0))), lengthIs(kept, 2), sumIs(kept, toFloat32(7.0)), elementIs(kept, 0, toFloat32(0.0), toFloat32(3.0)), gpuEquals(gpuFold(xs, toFloat32(0.0), fn(acc, x) => acc + t * x), toFloat32(20.0)), elementsAt(scanned, toFloat32(0.0), [0, 3], [toFloat32(2.0), toFloat32(20.0)]), lengthIs(scanned, 4), gpuSatisfies(gpuZipWith(xs, xs, fn(x, y) => t * x * y), fn(products) => sumIs(products, toFloat32(60.0))), gpuSatisfies(gpuMap(indices4, fn(i) => t * toFloat32(i)), fn(scaledIndices) => sumIs(scaledIndices, toFloat32(12.0))), gpuSatisfies(gpuFilter(xs, fn(x) => t > x), fn(small) => lengthIs(small, 1)), gpuSatisfies(gpuMap(xs, fn(x) => t * x), fn(scaled) => gpuSatisfies(gpuFilter(scaled, fn(y) => y > t), fn(keptScaled) => sumIs(keptScaled, toFloat32(18.0))))
-])))
+                    sumsTo(gpuMap(xs, fn(x) => t * x), toFloat32(20.0)), lengthIs(kept, 2), sumIs(kept, toFloat32(7.0)), elementIs(kept, 0, toFloat32(0.0), toFloat32(3.0)), gpuEquals(gpuFold(xs, toFloat32(0.0), fn(acc, x) => acc + t * x), toFloat32(20.0)), elementsAt(scanned, toFloat32(0.0), [0, 3], [toFloat32(2.0), toFloat32(20.0)]), lengthIs(scanned, 4), sumsTo(gpuZipWith(xs, xs, fn(x, y) => t * x * y), toFloat32(60.0)), sumsTo(gpuMap(indices4, fn(i) => t * toFloat32(i)), toFloat32(12.0)), gpuLengthIs(gpuFilter(xs, fn(x) => t > x), 1), gpuSatisfies(gpuMap(xs, fn(x) => t * x), fn(scaled) => sumsTo(gpuFilter(scaled, fn(y) => y > t), toFloat32(18.0)))
+    ])))
 }
 /// captureFoldedCase is the shape [GPU-KERNEL-FORM] spells out: the capture is
 /// itself a fold over another buffer — a sum, a maximum and a minimum off `ws`.
-fn captureFoldedCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(3.0), toFloat32(4.0), toFloat32(8.0)]), fn(input0) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0)]), fn(input1) => withBuffer(toGpu([]), fn(input2) => captureFoldedCaseUploaded(input0, input1, input2))))
+fn captureFoldedCase() = upload([toFloat32(1.0), toFloat32(3.0), toFloat32(4.0), toFloat32(8.0)], fn(input0) => upload([toFloat32(2.0), toFloat32(4.0)], fn(input1) => upload([], fn(input2) => captureFoldedCaseUploaded(input0, input1, input2))))
 fn captureFoldedCaseUploaded(input0, input1, input2) = {
     let ws = input0
     let xs = input1
-    match gpuFold(ws, toFloat32(0.0), addF) {
-        Success { total } => match gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), maxF) {
-            Success { peak } => checkAll("capture folded from another buffer", [
-    total == toFloat32(16.0), peak == toFloat32(8.0), gpuSatisfies(gpuMap(xs, fn(x) => (x / total) ), fn(share) => sumOf(share, fn(normalised) => normalised == toFloat32(0.375))), gpuSatisfies(gpuMap(xs, fn(x) => (x / total) ), fn(share) => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), gpuSatisfies(gpuMap(xs, fn(x) => x - peak), fn(centred) => sumIs(centred, toFloat32(0.0) - toFloat32(10.0))), gpuSatisfies(gpuMap(xs, fn(x) => peak * x), fn(amplified) => sumIs(amplified, toFloat32(48.0))), gpuEquals(gpuFold(ws, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(ws, gpuGet(ws, 0) ?: toFloat32(0.0), minF), toFloat32(1.0)), gpuSatisfies(gpuMap(ws, fn(w) => (w / total) ), fn(share) => sumOf(share, fn(unity) => unity == toFloat32(1.0))), gpuSatisfies(gpuFilter(ws, fn(w) => w * toFloat32(4.0) >= total), fn(heavy) => lengthIs(heavy, 2)), gpuSatisfies(gpuZipWith(xs, xs, mulF), fn(products) => gpuSatisfies(gpuMap(products, fn(p) => (p / total) ), fn(share) => sumOf(share, fn(part) => part == toFloat32(1.25)))), gpuEquals(gpuFold(input2, total, addF), toFloat32(16.0))
-])
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(gpuFold(ws, toFloat32(0.0), addF), fn(total) =>
+        withBuffer(gpuFold(ws, at(ws, 0), maxF), fn(peak) =>
+            checkAll("capture folded from another buffer", [
+                    total == toFloat32(16.0), peak == toFloat32(8.0), sumsTo(gpuMap(xs, fn(x) => x / total), toFloat32(0.375)), gpuSatisfies(gpuMap(xs, fn(x) => x / total), fn(share) => elementIs(share, 0, toFloat32(0.0), toFloat32(0.125))), sumsTo(gpuMap(xs, fn(x) => x - peak), toFloat32(0.0) - toFloat32(10.0)), sumsTo(gpuMap(xs, fn(x) => peak * x), toFloat32(48.0)), gpuEquals(gpuFold(ws, toFloat32(0.0), minF), toFloat32(0.0)), gpuEquals(gpuFold(ws, at(ws, 0), minF), toFloat32(1.0)), sumsTo(gpuMap(ws, fn(w) => w / total), toFloat32(1.0)), gpuLengthIs(gpuFilter(ws, fn(w) => w * toFloat32(4.0) >= total), 2), gpuSatisfies(gpuZipWith(xs, xs, mulF), fn(products) => sumsTo(gpuMap(products, fn(p) => p / total), toFloat32(1.25))), gpuEquals(gpuFold(input2, total, addF), toFloat32(16.0))
+    ])))
 }
 /// captureShapeCase pushes on the form a capture arrives in: a buffer captured
 /// for gather (out-of-range reads padding to zero), a capture read from a nested
 /// lambda, one reached only through a match branch, and a shadowing parameter.
-fn captureShapeCase() = withIndices(5, fn(indices5) => withIndices(3, fn(indices3) => captureShapeWith(indices5, indices3)))
-fn captureShapeWith(indices5, indices3) = withBuffer(toGpu([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)]), fn(input0) => captureShapeWithUploaded(indices5, indices3, input0))
-fn captureShapeWithUploaded(indices5, indices3, input0) = {
+fn captureShapeCase() = withIndices(5, fn(indices5) => withIndices(3, fn(indices3) => upload([toFloat32(10.0), toFloat32(20.0), toFloat32(30.0)], fn(input0) => captureShapeCaseUploaded(indices5, indices3, input0))))
+fn captureShapeCaseUploaded(indices5, indices3, input0) = {
     let k = toFloat32(3.0)
     let w = input0
     let branch = fn(x) => match x > toFloat32(15.0) { true => k false => x }
-    withBuffer(gpuMap(indices5, fn(i) => gpuGet(w, i) ?: toFloat32(0.0)), fn(gathered) =>
+    withBuffer(gpuMap(indices5, fn(i) => at(w, i)), fn(gathered) =>
         checkAll("capture forms", [
-    sumIs(gathered, toFloat32(60.0)), elementsFrom(gathered, 3, toFloat32(9.9), [toFloat32(0.0), toFloat32(0.0)]), lengthIs(gathered, 5), gpuSatisfies(gpuMap(w, branch), fn(branched) => sumIs(branched, toFloat32(16.0))), gpuSatisfies(gpuMap(indices3, fn(i) => k * (gpuGet(w, i) ?: toFloat32(0.0))), fn(nested) => sumIs(nested, toFloat32(180.0))), gpuSatisfies(gpuMap(indices3, fn(i) => k * (gpuGet(w, i) ?: toFloat32(0.0))), fn(nested) => elementIs(nested, 2, toFloat32(0.0), toFloat32(90.0))), gpuSatisfies(gpuMap(w, fn(x) => (fn(z) => k * z)(x)), fn(inner) => sumIs(inner, toFloat32(180.0))), gpuSatisfies(gpuMap(w, fn(k) => toFloat32(2.0) * k), fn(shadowed) => sumIs(shadowed, toFloat32(120.0))), gpuSatisfies(gpuMap(indices3, toFloat32), fn(asFloats) => gpuSatisfies(gpuZipWith(w, asFloats, fn(x, i) => x - k * i), fn(differenced) => sumIs(differenced, toFloat32(51.0)))), gpuEquals(gpuFold(w, toFloat32(0.0), fn(a, x) => a + (fn(z) => toFloat32(0.5) * z)(x)), toFloat32(30.0)), gpuSatisfies(gpuFilter(w, fn(x) => (fn(z) => z > k)(x)), fn(large) => lengthIs(large, 3))
-]))
+                sumIs(gathered, toFloat32(60.0)), elementsFrom(gathered, 3, toFloat32(9.9), [toFloat32(0.0), toFloat32(0.0)]), lengthIs(gathered, 5), sumsTo(gpuMap(w, branch), toFloat32(16.0)), sumsTo(gpuMap(indices3, fn(i) => k * at(w, i)), toFloat32(180.0)), gpuSatisfies(gpuMap(indices3, fn(i) => k * at(w, i)), fn(nested) => elementIs(nested, 2, toFloat32(0.0), toFloat32(90.0))), sumsTo(gpuMap(w, fn(x) => (fn(z) => k * z)(x)), toFloat32(180.0)), sumsTo(gpuMap(w, fn(k) => toFloat32(2.0) * k), toFloat32(120.0)), gpuSatisfies(gpuMap(indices3, toFloat32), fn(asFloats) => sumsTo(gpuZipWith(w, asFloats, fn(x, i) => x - k * i), toFloat32(51.0))), gpuEquals(gpuFold(w, toFloat32(0.0), fn(a, x) => a + (fn(z) => toFloat32(0.5) * z)(x)), toFloat32(30.0)), gpuLengthIs(gpuFilter(w, fn(x) => (fn(z) => z > k)(x)), 3)
+    ]))
 }
 /// captureDegenerateCase is the boundary sweep: a captured zero divisor whose
 /// checked division must surface as its fallback rather than an infinity, the
 /// identity captures, an unread capture, and empty/ragged operands under one.
-fn captureDegenerateCase() = withIndices(0, fn(emptyIndices) => captureDegenerateWith(emptyIndices))
-fn captureDegenerateWith(emptyIndices) = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([]), fn(input1) => withBuffer(toGpu([]), fn(input2) => withBuffer(toGpu([toFloat32(5.0)]), fn(input3) => withBuffer(toGpu([]), fn(input4) => withBuffer(toGpu([toFloat32(7.0)]), fn(input5) => captureDegenerateWithUploaded(emptyIndices, input0, input1, input2, input3, input4, input5)))))))
-fn captureDegenerateWithUploaded(emptyIndices, input0, input1, input2, input3, input4, input5) = {
+fn captureDegenerateCase() = withIndices(0, fn(emptyIndices) => withBuffer(xs3(), fn(input0) => upload([], fn(input1) => upload([], fn(input2) => upload([toFloat32(5.0)], fn(input3) => upload([], fn(input4) => upload([toFloat32(7.0)], fn(input5) => captureDegenerateCaseUploaded(emptyIndices, input0, input1, input2, input3, input4, input5))))))))
+fn captureDegenerateCaseUploaded(emptyIndices, input0, input1, input2, input3, input4, input5) = {
     let zero = toFloat32(0.0)
     let one = toFloat32(1.0)
     let xs = input0
     withBuffer(degenerate(0.0 - 1.0, fn() => gpuMap(xs, fn(x) => x / zero)), fn(divided) =>
         checkAll("degenerate captures", [
-    sumIs(divided, toFloat32(0.0) - toFloat32(3.0)), elementIs(divided, 0, toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0)), gpuSatisfies(gpuMap(xs, fn(x) => zero * x), fn(zeroed) => sumIs(zeroed, toFloat32(0.0))), gpuSatisfies(gpuMap(xs, fn(x) => one * x), fn(identity) => sumIs(identity, toFloat32(6.0))), gpuSatisfies(gpuMap(xs, fn(x) => zero + x), fn(summed) => sumIs(summed, toFloat32(6.0))), gpuSatisfies(gpuMap(xs, fn(_x) => one), fn(ones) => sumIs(ones, toFloat32(3.0))), gpuSatisfies(gpuFilter(input1, fn(x) => x > zero), fn(kept) => lengthIs(kept, 0)), gpuEquals(gpuFold(input2, one, fn(a, x) => a + zero * x), toFloat32(1.0)), gpuSatisfies(gpuMap(input3, fn(x) => one * x), fn(scaled) => sumIs(scaled, toFloat32(5.0))), gpuSatisfies(gpuZipWith(xs, input4, fn(x, y) => zero * x + y), fn(empty) => lengthIs(empty, 0)), gpuSatisfies(gpuZipWith(input5, xs, fn(x, y) => one * x + y), fn(shortest) => lengthIs(shortest, 1)), gpuSatisfies(gpuMap(emptyIndices, fn(i) => one * toFloat32(i)), fn(empty) => sumIs(empty, toFloat32(0.0)))
-]))
+                sumIs(divided, toFloat32(0.0) - toFloat32(3.0)), elementIs(divided, 0, toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0)), sumsTo(gpuMap(xs, fn(x) => zero * x), toFloat32(0.0)), sumsTo(gpuMap(xs, fn(x) => one * x), toFloat32(6.0)), sumsTo(gpuMap(xs, fn(x) => zero + x), toFloat32(6.0)), sumsTo(gpuMap(xs, fn(_x) => one), toFloat32(3.0)), gpuLengthIs(gpuFilter(input1, fn(x) => x > zero), 0), gpuEquals(gpuFold(input2, one, fn(a, x) => a + zero * x), toFloat32(1.0)), sumsTo(gpuMap(input3, fn(x) => one * x), toFloat32(5.0)), gpuLengthIs(gpuZipWith(xs, input4, fn(x, y) => zero * x + y), 0), gpuLengthIs(gpuZipWith(input5, xs, fn(x, y) => one * x + y), 1), sumsTo(gpuMap(emptyIndices, fn(i) => one * toFloat32(i)), toFloat32(0.0))
+    ]))
 }
 /// weightedSumCase pins weighted sum and weighted mean: the weight total is
 /// folded once, captured by the normalising kernel, and both routes must agree.
-fn weightedSumCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)]), fn(input0) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(4.0), toFloat32(1.0)]), fn(input1) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(8.0), toFloat32(16.0)]), fn(input2) => withBuffer(toGpu([toFloat32(0.5), toFloat32(0.25), toFloat32(0.125), toFloat32(0.125)]), fn(input3) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)]), fn(input4) => withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)]), fn(input5) => weightedSumCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+fn weightedSumCase() = upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0)], fn(input0) => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(4.0), toFloat32(1.0)], fn(input1) => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(8.0), toFloat32(16.0)], fn(input2) => upload([toFloat32(0.5), toFloat32(0.25), toFloat32(0.125), toFloat32(0.125)], fn(input3) => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], fn(input4) => upload([toFloat32(1.0), toFloat32(1.0), toFloat32(1.0), toFloat32(1.0)], fn(input5) => weightedSumCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
 fn weightedSumCaseUploaded(input0, input1, input2, input3, input4, input5) = {
     let vals = input0
     let ws = input1
-    match gpuFold(ws, toFloat32(0.0), addF) {
-        Success { wtot } => match gpuMap(ws, fn(w) => (w / wtot) ) {
-            Success { normw } => checkAll("weighted sums", [
-    wtot == toFloat32(8.0), dotIs(vals, ws, toFloat32(21.0)), dotOf(vals, ws, fn(total) => ((total / wtot) ) == toFloat32(2.625)), sumIs(normw, toFloat32(1.0)), elementsAt(normw, toFloat32(0.0), [2, 0], [toFloat32(0.5), toFloat32(0.125)]), dotIs(vals, normw, toFloat32(2.625)), dotIs(input2, input3, toFloat32(5.0)), dotIs(vals, input4, toFloat32(0.0)), dotOf(vals, input5, fn(total) => sumOf(vals, fn(plain) => total == plain)), gpuSatisfies(gpuZipWith(vals, ws, fn(v, w) => wtot * v * w), fn(weighted) => sumIs(weighted, toFloat32(168.0))), gpuSatisfies(gpuMap(vals, fn(v) => (v / wtot) ), fn(share) => sumIs(share, toFloat32(1.25)))
-])
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(gpuFold(ws, toFloat32(0.0), addF), fn(wtot) =>
+        withBuffer(gpuMap(ws, fn(w) => w / wtot), fn(normw) =>
+            checkAll("weighted sums", [
+                    wtot == toFloat32(8.0), dotIs(vals, ws, toFloat32(21.0)), dotOf(vals, ws, fn(total) => total / wtot == toFloat32(2.625)), sumIs(normw, toFloat32(1.0)), elementsAt(normw, toFloat32(0.0), [2, 0], [toFloat32(0.5), toFloat32(0.125)]), dotIs(vals, normw, toFloat32(2.625)), dotIs(input2, input3, toFloat32(5.0)), dotIs(vals, input4, toFloat32(0.0)), dotOf(vals, input5, fn(total) => sumOf(vals, fn(plain) => total == plain)), sumsTo(gpuZipWith(vals, ws, fn(v, w) => wtot * v * w), toFloat32(168.0)), sumsTo(gpuMap(vals, fn(v) => v / wtot), toFloat32(1.25))
+    ])))
 }
 /// meanCase centers a feature column: the folded mean is captured by the
 /// centering kernel, and the centered column's own mean vanishes.
-fn meanCase() = withIndices(9, fn(indices9) => meanWith(indices9))
-fn meanWith(indices9) = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)]), fn(input0) => withBuffer(toGpu([]), fn(input1) => withBuffer(toGpu([toFloat32(5.0)]), fn(input2) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)]), fn(input3) => meanWithUploaded(indices9, input0, input1, input2, input3)))))
-fn meanWithUploaded(indices9, input0, input1, input2, input3) = {
+fn meanCase() = withIndices(9, fn(indices9) => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(6.0)], fn(input0) => upload([], fn(input1) => upload([toFloat32(5.0)], fn(input2) => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)], fn(input3) => meanCaseUploaded(indices9, input0, input1, input2, input3))))))
+fn meanCaseUploaded(indices9, input0, input1, input2, input3) = {
     let xs = input0
-    match gpuFold(xs, toFloat32(0.0), addF) {
-        Success { folded } => {
-            let mean = degenerate(0.0, fn() => folded / toFloat32(gpuLength(xs)))
-            match gpuMap(xs, fn(v) => v - mean) {
-                Success { centered } => checkAll("mean centering", [
-    mean == toFloat32(3.0), sumIs(centered, toFloat32(0.0)), elementIs(centered, 0, toFloat32(9.9), toFloat32(0.0) - toFloat32(2.0)), elementIs(centered, 3, toFloat32(0.0), toFloat32(3.0)), lengthIs(centered, 4), meanIs(centered, toFloat32(0.0)), meanIs(input1, toFloat32(0.0)), meanIs(input2, toFloat32(5.0)), meanIs(input3, toFloat32(5.0)), gpuSatisfies(gpuMap(xs, fn(v) => mean + v), fn(shifted) => meanIs(shifted, toFloat32(6.0))), gpuSatisfies(gpuMap(indices9, toFloat32), fn(asFloats) => meanIs(asFloats, toFloat32(4.0))), gpuSatisfies(gpuFilter(xs, fn(v) => v > mean), fn(above) => lengthIs(above, 1))
-])
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withMean(xs, fn(mean) =>
+        withBuffer(gpuMap(xs, fn(v) => v - mean), fn(centered) =>
+            checkAll("mean centering", [
+                    mean == toFloat32(3.0), sumIs(centered, toFloat32(0.0)), elementIs(centered, 0, toFloat32(9.9), toFloat32(0.0) - toFloat32(2.0)), elementIs(centered, 3, toFloat32(0.0), toFloat32(3.0)), lengthIs(centered, 4), meanIs(centered, toFloat32(0.0)), meanIs(input1, toFloat32(0.0)), meanIs(input2, toFloat32(5.0)), meanIs(input3, toFloat32(5.0)), gpuSatisfies(gpuMap(xs, fn(v) => mean + v), fn(shifted) => meanIs(shifted, toFloat32(6.0))), gpuSatisfies(gpuMap(indices9, toFloat32), fn(asFloats) => meanIs(asFloats, toFloat32(4.0))), gpuLengthIs(gpuFilter(xs, fn(v) => v > mean), 1)
+    ])))
 }
 /// varianceCase pins two-pass variance and the z-scores built on it: a
 /// normalised column has mean zero and variance one, and a constant column's
 /// zero deviation must fall back rather than divide.
-fn varianceCase() = withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)]), fn(input0) => withBuffer(toGpu([toFloat32(3.0), toFloat32(3.0), toFloat32(3.0)]), fn(input1) => withBuffer(toGpu([]), fn(input2) => withBuffer(toGpu([toFloat32(3.0), toFloat32(3.0)]), fn(input3) => varianceCaseUploaded(input0, input1, input2, input3)))))
+fn varianceCase() = upload([toFloat32(2.0), toFloat32(4.0), toFloat32(4.0), toFloat32(4.0), toFloat32(5.0), toFloat32(5.0), toFloat32(7.0), toFloat32(9.0)], fn(input0) => upload([toFloat32(3.0), toFloat32(3.0), toFloat32(3.0)], fn(input1) => upload([], fn(input2) => upload([toFloat32(3.0), toFloat32(3.0)], fn(input3) => varianceCaseUploaded(input0, input1, input2, input3)))))
 fn varianceCaseUploaded(input0, input1, input2, input3) = {
     let xs = input0
     let sd = toFloat32(2.0)
-    match gpuFold(xs, toFloat32(0.0), addF) {
-        Success { folded } => {
-            let mean = degenerate(0.0, fn() => folded / toFloat32(gpuLength(xs)))
-            match gpuMap(xs, fn(v) => ((v - mean) / sd) ) {
-                Success { z } => checkAll("variance and z-scores", [
-    mean == toFloat32(5.0), varianceIs(xs, toFloat32(4.0)), sd * sd == toFloat32(4.0), sumIs(z, toFloat32(0.0)), elementsAt(z, toFloat32(9.9), [0, 4], [toFloat32(0.0) - toFloat32(1.5), toFloat32(0.0)]), elementIs(z, 7, toFloat32(0.0), toFloat32(2.0)), meanIs(z, toFloat32(0.0)), varianceIs(z, toFloat32(1.0)), varianceIs(input1, toFloat32(0.0)), varianceIs(input2, toFloat32(0.0)), degenerate(0.0, fn() => gpuSatisfies(gpuMap(input3, fn(v) => (v - toFloat32(3.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(0.0))))
-])
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withMean(xs, fn(mean) =>
+        withBuffer(gpuMap(xs, fn(v) => (v - mean) / sd), fn(z) =>
+            checkAll("variance and z-scores", [
+                    mean == toFloat32(5.0), varianceIs(xs, toFloat32(4.0)), sd * sd == toFloat32(4.0), sumIs(z, toFloat32(0.0)), elementsAt(z, toFloat32(9.9), [0, 4], [toFloat32(0.0) - toFloat32(1.5), toFloat32(0.0)]), elementIs(z, 7, toFloat32(0.0), toFloat32(2.0)), meanIs(z, toFloat32(0.0)), varianceIs(z, toFloat32(1.0)), varianceIs(input1, toFloat32(0.0)), varianceIs(input2, toFloat32(0.0)), degenerate(0.0, fn() => gpuSatisfies(gpuMap(input3, fn(v) => (v - toFloat32(3.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(0.0))))
+    ])))
 }
 /// normalizeCase pins the min-max rescale: both extremes are folded out and
 /// captured, and a constant column's zero range falls back instead of dividing.
-fn normalizeCase() = withBuffer(toGpu([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)]), fn(input0) => withBuffer(toGpu([toFloat32(4.0), toFloat32(4.0)]), fn(input1) => normalizeCaseUploaded(input0, input1)))
+fn normalizeCase() = upload([toFloat32(1.0), toFloat32(3.0), toFloat32(5.0), toFloat32(9.0)], fn(input0) => upload([toFloat32(4.0), toFloat32(4.0)], fn(input1) => normalizeCaseUploaded(input0, input1)))
 fn normalizeCaseUploaded(input0, input1) = {
     let xs = input0
-    match gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), minF) {
-        Success { lo } => match gpuFold(xs, gpuGet(xs, 0) ?: toFloat32(0.0), maxF) {
-            Success { hi } => match gpuMap(xs, fn(v) => ((v - lo) / (hi - lo)) ) {
-                Success { scaled } => checkAll("normalisation", [
-    lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementsFrom(scaled, 1, toFloat32(0.0), [toFloat32(0.25), toFloat32(0.5), toFloat32(1.0)]), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), gpuSatisfies(gpuMap(xs, fn(v) => ((hi - v) / (hi - lo)) ), fn(inverted) => sumIs(inverted, toFloat32(2.25))), gpuEquals(gpuFold(xs, hi, minF), toFloat32(1.0)), gpuSatisfies(gpuFilter(xs, fn(v) => v > lo), fn(above) => lengthIs(above, 3)), degenerate(0.5, fn() => gpuSatisfies(gpuMap(input1, fn(v) => (v - toFloat32(4.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(1.0))))
-])
-                Error { message } => gpuFailed(message)
-            }
-            Error { message } => gpuFailed(message)
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(gpuFold(xs, at(xs, 0), minF), fn(lo) =>
+        withBuffer(gpuFold(xs, at(xs, 0), maxF), fn(hi) =>
+            withBuffer(gpuMap(xs, fn(v) => (v - lo) / (hi - lo)), fn(scaled) =>
+                checkAll("normalisation", [
+                        lo == toFloat32(1.0), hi == toFloat32(9.0), elementIs(scaled, 0, toFloat32(9.9), toFloat32(0.0)), elementsFrom(scaled, 1, toFloat32(0.0), [toFloat32(0.25), toFloat32(0.5), toFloat32(1.0)]), sumIs(scaled, toFloat32(1.75)), meanIs(scaled, toFloat32(0.4375)), sumsTo(gpuMap(xs, fn(v) => (hi - v) / (hi - lo)), toFloat32(2.25)), gpuEquals(gpuFold(xs, hi, minF), toFloat32(1.0)), gpuLengthIs(gpuFilter(xs, fn(v) => v > lo), 3), degenerate(0.5, fn() => gpuSatisfies(gpuMap(input1, fn(v) => (v - toFloat32(4.0)) / toFloat32(0.0)), fn(flat) => sumIs(flat, toFloat32(1.0))))
+    ]))))
 }
 /// Compare clamping and active-unit counts with captured slopes and reflected inputs.
-fn reluCase() = withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.5), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.5), toFloat32(1.0)]), fn(input0) => withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0)]), fn(input2) => reluCaseUploaded(input0, input1, input2))))
+fn reluCase() = upload([toFloat32(0.0) - toFloat32(1.5), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.5), toFloat32(1.0)], fn(input0) => upload([toFloat32(0.0) - toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)], fn(input1) => upload([toFloat32(1.0), toFloat32(2.0)], fn(input2) => reluCaseUploaded(input0, input1, input2))))
 fn reluCaseUploaded(input0, input1, input2) = {
     let slope = toFloat32(0.5)
     let cap = toFloat32(2.0)
@@ -290,12 +263,12 @@ fn reluCaseUploaded(input0, input1, input2) = {
     withBuffer(gpuMap(acts, relu), fn(clamped) =>
         withBuffer(gpuMap(acts, leaky), fn(leaked) =>
             checkAll("activations", [
-    sumIs(clamped, toFloat32(3.5)), elementIs(clamped, 0, toFloat32(9.9), toFloat32(0.0)), gpuSatisfies(gpuFilter(acts, isActive), fn(active) => lengthIs(active, 2)), sumIs(leaked, toFloat32(2.5)), elementsFrom(leaked, 0, toFloat32(0.0), [toFloat32(0.0) - toFloat32(0.75), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.25)]), gpuSatisfies(gpuMap(acts, fn(x) => relu(x) - slope * relu(toFloat32(0.0) - x)), fn(blended) => sumIs(blended, toFloat32(2.5))), gpuSatisfies(gpuMap(acts, fn(x) => cap - relu(cap - relu(x))), fn(ceiling) => sumIs(ceiling, toFloat32(3.0))), gpuSatisfies(gpuMap(input1, relu), fn(negative) => sumIs(negative, toFloat32(0.0))), gpuSatisfies(gpuMap(input2, relu), fn(positive) => sumIs(positive, toFloat32(3.0))), gpuSatisfies(gpuMap(acts, fn(x) => slope * relu(x)), fn(damped) => sumIs(damped, toFloat32(1.75))), gpuSatisfies(gpuMap(acts, fn(x) => relu(toFloat32(0.0) - x)), fn(reflected) => gpuSatisfies(fromGpu(reflected), fn(values) => structuralEquals(values, [toFloat32(1.5), toFloat32(0.0), toFloat32(0.5), toFloat32(0.0)])))
-])))
+                    sumIs(clamped, toFloat32(3.5)), elementIs(clamped, 0, toFloat32(9.9), toFloat32(0.0)), gpuLengthIs(gpuFilter(acts, isActive), 2), sumIs(leaked, toFloat32(2.5)), elementsFrom(leaked, 0, toFloat32(0.0), [toFloat32(0.0) - toFloat32(0.75), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.25)]), sumsTo(gpuMap(acts, fn(x) => relu(x) - slope * relu(toFloat32(0.0) - x)), toFloat32(2.5)), sumsTo(gpuMap(acts, fn(x) => cap - relu(cap - relu(x))), toFloat32(3.0)), sumsTo(gpuMap(input1, relu), toFloat32(0.0)), sumsTo(gpuMap(input2, relu), toFloat32(3.0)), sumsTo(gpuMap(acts, fn(x) => slope * relu(x)), toFloat32(1.75)), gpuSatisfies(gpuMap(acts, fn(x) => relu(toFloat32(0.0) - x)), fn(reflected) => gpuSatisfies(fromGpu(reflected), fn(values) => structuralEquals(values, [toFloat32(1.5), toFloat32(0.0), toFloat32(0.5), toFloat32(0.0)])))
+    ])))
 }
 /// softmaxCase pins the pipeline by its properties, not its digits: a
 /// distribution, order-preserving, shift-invariant, uniform on a flat vector.
-fn softmaxCase() = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([toFloat32(5.0), toFloat32(5.0), toFloat32(5.0)]), fn(input1) => softmaxCaseUploaded(input0, input1)))
+fn softmaxCase() = withBuffer(xs3(), fn(input0) => upload([toFloat32(5.0), toFloat32(5.0), toFloat32(5.0)], fn(input1) => softmaxCaseUploaded(input0, input1)))
 fn softmaxCaseUploaded(input0, input1) = {
     let scores = input0
     softmaxEach(scores, fn(probs) =>
@@ -303,63 +276,61 @@ fn softmaxCaseUploaded(input0, input1) = {
             softmaxEach(raised, fn(shifted) =>
                 softmaxEach(input1, fn(flat) =>
                     checkAll("softmax pipeline", [
-    lengthIs(probs, 3), gpuSatisfies(gpuFold(probs, toFloat32(0.0), addF), fn(total) => total > toFloat32(0.9999999)), gpuSatisfies(gpuFold(probs, toFloat32(0.0), addF), fn(total) => total < toFloat32(1.0000001)), (gpuGet(probs, 0) ?: toFloat32(0.0)) > toFloat32(0.0), (gpuGet(probs, 2) ?: toFloat32(0.0)) < toFloat32(1.0), (gpuGet(probs, 1) ?: toFloat32(0.0)) > (gpuGet(probs, 0) ?: toFloat32(0.0)), (gpuGet(probs, 2) ?: toFloat32(0.0)) > (gpuGet(probs, 1) ?: toFloat32(0.0)), elementIs(probs, 0, toFloat32(0.0), (gpuGet(shifted, 0) ?: toFloat32(9.9))), elementIs(probs, 2, toFloat32(0.0), (gpuGet(shifted, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFilter(probs, fn(p) => p > toFloat32(0.5)), fn(peaked) => lengthIs(peaked, 1)), elementIs(flat, 0, toFloat32(0.0), (gpuGet(flat, 2) ?: toFloat32(9.9))), gpuSatisfies(gpuFold(flat, toFloat32(0.0), addF), fn(total) => total > toFloat32(0.9999999))
-])))))
+                            lengthIs(probs, 3), sumOf(probs, fn(total) => total > toFloat32(0.9999999)), sumOf(probs, fn(total) => total < toFloat32(1.0000001)), at(probs, 0) > toFloat32(0.0), at(probs, 2) < toFloat32(1.0), at(probs, 1) > at(probs, 0), at(probs, 2) > at(probs, 1), elementIs(probs, 0, toFloat32(0.0), (gpuGet(shifted, 0) ?: toFloat32(9.9))), elementIs(probs, 2, toFloat32(0.0), (gpuGet(shifted, 2) ?: toFloat32(9.9))), gpuLengthIs(gpuFilter(probs, fn(p) => p > toFloat32(0.5)), 1), elementIs(flat, 0, toFloat32(0.0), (gpuGet(flat, 2) ?: toFloat32(9.9))), sumOf(flat, fn(total) => total > toFloat32(0.9999999))
+    ])))))
 }
 /// matVecCase multiplies through iota + gather: identity, zero matrix, 1x1, a
 /// zero-column walk, and a row past the end, which pads to zero.
-fn matVecCase() = withIndices(0, fn(rows0) => withIndices(1, fn(rows1) => withIndices(2, fn(rows2) => withIndices(3, fn(rows3) => matVecWith(rows0, rows1, rows2, rows3)))))
-fn matVecWith(rows0, rows1, rows2, rows3) = withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)]), fn(input0) => withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)]), fn(input2) => withBuffer(toGpu([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)]), fn(input3) => withBuffer(toGpu([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)]), fn(input4) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)]), fn(input5) => withBuffer(toGpu([toFloat32(5.0), toFloat32(5.0)]), fn(input6) => withBuffer(toGpu([toFloat32(5.0)]), fn(input7) => withBuffer(toGpu([toFloat32(3.0)]), fn(input8) => withBuffer(xs3(), fn(input9) => matVecWithUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9)))))))))))
-fn matVecWithUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9) = {
+fn matVecCase() = withIndices(0, fn(rows0) => withIndices(1, fn(rows1) => withIndices(2, fn(rows2) => withIndices(3, fn(rows3) => upload([toFloat32(1.0), toFloat32(2.0), toFloat32(3.0), toFloat32(4.0), toFloat32(5.0), toFloat32(6.0)], fn(input0) => upload([toFloat32(1.0), toFloat32(1.0), toFloat32(2.0)], fn(input1) => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(1.0)], fn(input2) => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], fn(input3) => upload([toFloat32(7.0), toFloat32(8.0), toFloat32(9.0)], fn(input4) => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], fn(input5) => upload([toFloat32(5.0), toFloat32(5.0)], fn(input6) => upload([toFloat32(5.0)], fn(input7) => upload([toFloat32(3.0)], fn(input8) => withBuffer(xs3(), fn(input9) => matVecCaseUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9)))))))))))))))
+fn matVecCaseUploaded(rows0, rows1, rows2, rows3, input0, input1, input2, input3, input4, input5, input6, input7, input8, input9) = {
     let m = input0
     let v = input1
     let eye = input2
     matVecEach(m, v, 3, rows2, fn(out) =>
         checkAll("matrix-vector", [
-    lengthIs(out, 2), elementsFrom(out, 0, toFloat32(0.0), [toFloat32(9.0), toFloat32(21.0)]), sumIs(out, toFloat32(30.0)), matVecOf(eye, input3, 3, rows3, fn(identity) => sumIs(identity, toFloat32(24.0))), matVecOf(eye, input4, 3, rows3, fn(identity) => elementIs(identity, 1, toFloat32(0.0), toFloat32(8.0))), matVecOf(input5, input6, 2, rows2, fn(zeros) => sumIs(zeros, toFloat32(0.0))), matVecOf(input7, input8, 1, rows1, fn(single) => elementIs(single, 0, toFloat32(0.0), toFloat32(15.0))), matVecOf(m, v, 3, rows3, fn(padded) => elementIs(padded, 2, toFloat32(9.9), toFloat32(0.0))), matVecOf(m, v, 3, rows0, fn(noRows) => lengthIs(noRows, 0)), matVecOf(m, v, 0, rows2, fn(noColumns) => sumIs(noColumns, toFloat32(0.0))), gpuSatisfies(gpuZipWith(input9, v, mulF), fn(products) => sumOf(products, fn(hand) => matVecOf(m, v, 3, rows2, fn(first) => elementIs(first, 0, toFloat32(0.0), hand))))
-]))
+                lengthIs(out, 2), elementsFrom(out, 0, toFloat32(0.0), [toFloat32(9.0), toFloat32(21.0)]), sumIs(out, toFloat32(30.0)), matVecOf(eye, input3, 3, rows3, fn(identity) => sumIs(identity, toFloat32(24.0))), matVecOf(eye, input4, 3, rows3, fn(identity) => elementIs(identity, 1, toFloat32(0.0), toFloat32(8.0))), matVecOf(input5, input6, 2, rows2, fn(zeros) => sumIs(zeros, toFloat32(0.0))), matVecOf(input7, input8, 1, rows1, fn(single) => elementIs(single, 0, toFloat32(0.0), toFloat32(15.0))), matVecOf(m, v, 3, rows3, fn(padded) => elementIs(padded, 2, toFloat32(9.9), toFloat32(0.0))), matVecOf(m, v, 3, rows0, fn(noRows) => lengthIs(noRows, 0)), matVecOf(m, v, 0, rows2, fn(noColumns) => sumIs(noColumns, toFloat32(0.0))), gpuSatisfies(gpuZipWith(input9, v, mulF), fn(products) => sumOf(products, fn(hand) => matVecOf(m, v, 3, rows2, fn(first) => elementIs(first, 0, toFloat32(0.0), hand))))
+    ]))
 }
 /// layerCase runs a two-layer forward pass; the first layer's negative unit must
 /// be silenced by relu before the second layer sees it.
-fn layerCase() = withIndices(0, fn(rows0) => withIndices(1, fn(rows1) => withIndices(2, fn(rows2) => layerWith(rows0, rows1, rows2))))
-fn layerWith(rows0, rows1, rows2) = withBuffer(toGpu([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)]), fn(input0) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)]), fn(input2) => withBuffer(toGpu([toFloat32(2.0), toFloat32(0.25)]), fn(input3) => withBuffer(toGpu([toFloat32(0.5)]), fn(input4) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0)]), fn(input5) => withBuffer(toGpu([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)]), fn(input6) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0)]), fn(input7) => withBuffer(toGpu([toFloat32(1.0)]), fn(input8) => layerWithUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8))))))))))
-fn layerWithUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8) = {
+fn layerCase() = withIndices(0, fn(rows0) => withIndices(1, fn(rows1) => withIndices(2, fn(rows2) => upload([toFloat32(1.0), toFloat32(0.0), toFloat32(0.0) - toFloat32(1.0), toFloat32(0.5), toFloat32(0.5), toFloat32(0.5)], fn(input0) => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)], fn(input1) => upload([toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)], fn(input2) => upload([toFloat32(2.0), toFloat32(0.25)], fn(input3) => upload([toFloat32(0.5)], fn(input4) => upload([toFloat32(0.0), toFloat32(0.0)], fn(input5) => upload([toFloat32(0.0), toFloat32(0.0), toFloat32(0.0)], fn(input6) => upload([toFloat32(1.0), toFloat32(2.0)], fn(input7) => upload([toFloat32(1.0)], fn(input8) => layerCaseUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8)))))))))))))
+fn layerCaseUploaded(rows0, rows1, rows2, input0, input1, input2, input3, input4, input5, input6, input7, input8) = {
     let w1 = input0
     let x = input1
     denseEach(w1, x, 3, rows2, input2, fn(h) =>
         denseEach(input3, h, 2, rows1, input4, fn(out) =>
             checkAll("dense layers", [
-    lengthIs(h, 2), elementIs(h, 0, toFloat32(9.9), toFloat32(0.0)), elementIs(h, 1, toFloat32(0.0), toFloat32(4.0)), sumIs(h, toFloat32(4.0)), gpuSatisfies(gpuFilter(h, isActive), fn(active) => lengthIs(active, 1)), lengthIs(out, 1), elementIs(out, 0, toFloat32(0.0), toFloat32(1.5)), matVecOf(w1, x, 3, rows2, fn(rows) => elementIs(rows, 0, toFloat32(0.0), toFloat32(0.0) - toFloat32(4.0))), matVecOf(w1, x, 3, rows2, fn(rows) => elementIs(rows, 1, toFloat32(0.0), toFloat32(6.0))), denseOf(w1, x, 3, rows2, input5, fn(zeros) => sumIs(zeros, toFloat32(6.0))), denseOf(w1, input6, 3, rows2, input7, fn(shifted) => sumIs(shifted, toFloat32(3.0))), denseOf(w1, x, 3, rows0, input8, fn(noRows) => lengthIs(noRows, 0))
-])))
+                    lengthIs(h, 2), elementIs(h, 0, toFloat32(9.9), toFloat32(0.0)), elementIs(h, 1, toFloat32(0.0), toFloat32(4.0)), sumIs(h, toFloat32(4.0)), gpuLengthIs(gpuFilter(h, isActive), 1), lengthIs(out, 1), elementIs(out, 0, toFloat32(0.0), toFloat32(1.5)), matVecOf(w1, x, 3, rows2, fn(rows) => elementIs(rows, 0, toFloat32(0.0), toFloat32(0.0) - toFloat32(4.0))), matVecOf(w1, x, 3, rows2, fn(rows) => elementIs(rows, 1, toFloat32(0.0), toFloat32(6.0))), denseOf(w1, x, 3, rows2, input5, fn(zeros) => sumIs(zeros, toFloat32(6.0))), denseOf(w1, input6, 3, rows2, input7, fn(shifted) => sumIs(shifted, toFloat32(3.0))), denseOf(w1, x, 3, rows0, input8, fn(noRows) => lengthIs(noRows, 0))
+    ])))
 }
 /// trainCase descends from both sides of the true weight and pins the loss
 /// surface: the optimum is a fixed point, the loss is symmetric about it.
-fn trainCase() = withBuffer(xs3(), fn(input0) => withBuffer(toGpu([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)]), fn(input1) => trainCaseUploaded(input0, input1)))
+fn trainCase() = withBuffer(xs3(), fn(input0) => upload([toFloat32(2.0), toFloat32(4.0), toFloat32(6.0)], fn(input1) => trainCaseUploaded(input0, input1)))
 fn trainCaseUploaded(input0, input1) = {
     let xs = input0
     let ys = input1
     trainEach(toFloat32(0.0), xs, ys, 40, fn(w) =>
         trainEach(toFloat32(5.0), xs, ys, 40, fn(hi) =>
             checkAll("gradient descent", [
-    w - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - w < toFloat32(0.01), w > toFloat32(1.0), hi - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - hi < toFloat32(0.01), hi < toFloat32(3.0), trainOf(toFloat32(2.0), xs, ys, 0, fn(start) => start == toFloat32(2.0)), trainOf(toFloat32(2.0), xs, ys, 10, fn(settled) => settled == toFloat32(2.0)), gradStepOf(toFloat32(2.0), xs, ys, fn(stepped) => stepped == toFloat32(2.0)), mseOf(toFloat32(2.0), xs, ys, fn(loss) => loss == toFloat32(0.0)), mseOf(toFloat32(3.0), xs, ys, fn(above) => mseOf(toFloat32(1.0), xs, ys, fn(below) => above == below)), mseOf(toFloat32(0.0), xs, ys, fn(unfit) => mseOf(w, xs, ys, fn(fitted) => unfit > fitted))
-])))
+                    w - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - w < toFloat32(0.01), w > toFloat32(1.0), hi - toFloat32(2.0) < toFloat32(0.01), toFloat32(2.0) - hi < toFloat32(0.01), hi < toFloat32(3.0), trainOf(toFloat32(2.0), xs, ys, 0, fn(start) => start == toFloat32(2.0)), trainOf(toFloat32(2.0), xs, ys, 10, fn(settled) => settled == toFloat32(2.0)), gradStepOf(toFloat32(2.0), xs, ys, fn(stepped) => stepped == toFloat32(2.0)), mseOf(toFloat32(2.0), xs, ys, fn(loss) => loss == toFloat32(0.0)), mseOf(toFloat32(3.0), xs, ys, fn(above) => mseOf(toFloat32(1.0), xs, ys, fn(below) => above == below)), mseOf(toFloat32(0.0), xs, ys, fn(unfit) => mseOf(w, xs, ys, fn(fitted) => unfit > fitted))
+    ])))
 }
 exactTests([
-    { name: "dot product fuses zip and fold", work: dotCase },
-    { name: "saxpy runs elementwise over buffer pairs", work: saxpyCase },
-    { name: "a kernel closes over one host scalar", work: captureScalarCase },
-    { name: "one kernel closes over several distinct scalars", work: captureManyCase },
-    { name: "one capture is spent by every combinator", work: captureSharedCase },
-    { name: "a capture folded from one buffer drives a kernel over another", work: captureFoldedCase },
-    { name: "captures survive gather, nesting, branching and shadowing", work: captureShapeCase },
-    { name: "degenerate captures stay total on empty and ragged buffers", work: captureDegenerateCase },
-    { name: "weighted sums normalise through a captured weight total", work: weightedSumCase },
-    { name: "mean centering pipes a scalar back into a kernel", work: meanCase },
-    { name: "variance and z-scores normalise a feature column", work: varianceCase },
-    { name: "min-max rescaling captures both folded extremes", work: normalizeCase },
-    { name: "relu clamps, leaks and counts active units", work: reluCase },
-    { name: "a softmax-shaped pipeline is a shift-invariant distribution", work: softmaxCase },
-    { name: "matrix-vector product gathers rows via iota", work: matVecCase },
-    { name: "dense layers stack bias and activation over gathered rows", work: layerCase },
-    { name: "gradient descent converges on the true weight", work: trainCase }
+        { name: "dot product fuses zip and fold", work: dotCase },
+        { name: "saxpy runs elementwise over buffer pairs", work: saxpyCase },
+        { name: "a kernel closes over one host scalar", work: captureScalarCase },
+        { name: "one kernel closes over several distinct scalars", work: captureManyCase },
+        { name: "one capture is spent by every combinator", work: captureSharedCase },
+        { name: "a capture folded from one buffer drives a kernel over another", work: captureFoldedCase },
+        { name: "captures survive gather, nesting, branching and shadowing", work: captureShapeCase },
+        { name: "degenerate captures stay total on empty and ragged buffers", work: captureDegenerateCase },
+        { name: "weighted sums normalise through a captured weight total", work: weightedSumCase },
+        { name: "mean centering pipes a scalar back into a kernel", work: meanCase },
+        { name: "variance and z-scores normalise a feature column", work: varianceCase },
+        { name: "min-max rescaling captures both folded extremes", work: normalizeCase },
+        { name: "relu clamps, leaks and counts active units", work: reluCase },
+        { name: "a softmax-shaped pipeline is a shift-invariant distribution", work: softmaxCase },
+        { name: "matrix-vector product gathers rows via iota", work: matVecCase },
+        { name: "dense layers stack bias and activation over gathered rows", work: layerCase },
+        { name: "gradient descent converges on the true weight", work: trainCase }
 ])

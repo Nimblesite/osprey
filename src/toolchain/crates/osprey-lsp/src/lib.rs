@@ -16,6 +16,7 @@ pub(crate) mod effects;
 pub mod engine;
 pub(crate) mod features;
 pub(crate) mod hover;
+mod inferred;
 #[cfg(test)]
 mod inferred_views;
 pub(crate) mod keywords;

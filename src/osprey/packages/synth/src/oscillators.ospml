@@ -1,0 +1,58 @@
+// [SYNTH-DSP] Stateful reference oscillators with polynomial discontinuity corrections.
+// See [SYNTH-RESEARCH-ANTIALIASING]. Corrections reduce aliasing; they do not eliminate it.
+namespace synth
+
+(** Checked configuration and explicit phase continuity, independent of any audio device. *)
+module Oscillators
+    (** An oscillator starts at zero phase . *)
+    export initial = OscillatorState(phase = 0.0)
+
+    (** Preparation validates finite controls and a strictly sub-Nyquist frequency. *)
+    export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && config.frequency >= 0.0 && config.frequency < config.sampleRate * 0.5 && config.pulseWidth >= 0.01 && config.pulseWidth <= 0.99
+        true => Success(value = config)
+        false => Error(message = "Invalid oscillator sample rate, frequency or pulse width.")
+
+    wrap phase = phase - floor phase
+
+    // Integral of a local linear discontinuity correction, over one sample either side.
+    blep (phase, step) = match step <= 0.0
+        true => 0.0
+        false => match phase < step
+            true =>
+                x = phase / step
+                x + x - x * x - 1.0
+            false => match phase > 1.0 - step
+                true =>
+                    x = (phase - 1.0) / step
+                    x * x + x + x + 1.0
+                false => 0.0
+
+    pulse (phase, step, width) =
+        plain = match phase < width
+            true => 1.0
+            false => -1.0
+        plain + blep (phase, step) - blep (wrap (phase - width), step)
+
+    // Integral of the BLEP residual. The triangle has derivative jumps of +8 and -8.
+    blamp (phase, step) = match step <= 0.0
+        true => 0.0
+        false => match phase < step
+            true => pow (1.0 - phase / step, 3.0) / 3.0
+            false => match phase > 1.0 - step
+                true => pow (1.0 + (phase - 1.0) / step, 3.0) / 3.0
+                false => 0.0
+
+    (** Scalar sine kernel; useful when a host owns phase in a preallocated voice bank. *)
+    export sine phase = sin (6.283185307179586 * phase)
+
+    shaped (config, held, step) = match config.waveform
+        Sine => sine held.phase
+        Saw => 2.0 * held.phase - 1.0 - blep (held.phase, step)
+        Pulse => pulse (held.phase, step, config.pulseWidth)
+        Triangle => 1.0 - 4.0 * abs (held.phase - 0.5) + 4.0 * step * (blamp (held.phase, step) - blamp (wrap (held.phase - 0.5), step))
+
+    (** One reference sample; call only with accepted configuration and a state from this module. *)
+    export next (config, held) =
+        step = config.frequency / config.sampleRate
+        value = shaped (config, held, step)
+        OscillatorSample(sample = value, next = OscillatorState(phase = wrap (held.phase + step)))

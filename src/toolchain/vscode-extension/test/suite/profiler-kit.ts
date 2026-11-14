@@ -76,7 +76,9 @@ async function frameMatches(frame: Frame, selector: string): Promise<boolean> {
     await frame.locator(selector).waitFor({ state: "visible", timeout: FRAME_PROBE_MS });
     return true;
   } catch (error) {
-    if (error instanceof errors.TimeoutError || frame.isDetached()) return false;
+    // An ancestor can detach before Playwright marks this child detached.
+    const detachedOwner = error instanceof Error && error.message === "frame.frameElement: Frame has been detached.";
+    if (error instanceof errors.TimeoutError || frame.isDetached() || detachedOwner) return false;
     throw error;
   }
 }

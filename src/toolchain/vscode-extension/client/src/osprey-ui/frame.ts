@@ -1,6 +1,6 @@
 // Implements [UI-COMPONENTS-FRAMED]: application-owned layout metrics are
 // drawn mechanically by every host; this module makes no layout decisions.
-import { record } from "./wire";
+import { record } from "./nodes";
 
 function metric(style: Record<string, unknown>, key: string): number {
   const value = key === "gap" && style[key] === undefined ? 0 : style[key];

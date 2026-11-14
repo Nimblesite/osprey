@@ -3,36 +3,44 @@ using System.Runtime.InteropServices;
 namespace Osprey.Host;
 
 /// <summary>
-/// The Osprey application DLL [WINUI-HOST-DLL]: its entry, its <c>start</c> and <c>dispatch</c>
-/// exports, and the import slots it calls back through [WINUI-HOST-IMPORTS]. Every call is made
-/// on the UI thread [WINUI-HOST-THREAD], and a returned string is copied before the next call,
-/// because it belongs to Osprey.
+/// The Osprey application DLL [WINUI-HOST-DLL]: its entry, its three exports, the import slots it
+/// calls back through [WINUI-HOST-IMPORTS] and the shared-memory bridge it carries
+/// [NATIVE-SHM-OWNERSHIP]. Every call is made on the UI thread [WINUI-HOST-THREAD]. Every call
+/// writes one whole frame, and the host commits it whether the call answered or refused; the frame
+/// is then leased whole and checked [NATIVE-SHM-VIEW], so a refused event still shows the view it
+/// drew, with the application's reason in a diagnostic ask.
 /// </summary>
 public sealed unsafe class Library
 {
     const string Entry = "osprey_main";
-    const string StartExport = "osprey_app_start";
-    const string DispatchExport = "osprey_app_dispatch";
+    const string ArgumentExport = "osprey_app_argument";
+    const string OpenExport = "osprey_app_open";
+    const string EventExport = "osprey_app_event";
     const string BinderPrefix = "osprey_import_";
     const int Unbound = -2;
 
-    readonly delegate* unmanaged<byte*, byte*> start;
-    readonly delegate* unmanaged<byte*, byte*, byte*> dispatch;
+    readonly delegate* unmanaged<byte*, long> argued;
+    readonly delegate* unmanaged<long, long, byte*, byte*, byte, long> opened;
+    readonly delegate* unmanaged<long, long, long, byte*, byte*, double, double, byte, byte, long> sent;
 
-    Library(nint start, nint dispatch)
+    Library(Bridge bridge, nint argument, nint open, nint sent)
     {
-        this.start = (delegate* unmanaged<byte*, byte*>)start;
-        this.dispatch = (delegate* unmanaged<byte*, byte*, byte*>)dispatch;
+        Bridge = bridge;
+        argued = (delegate* unmanaged<byte*, long>)(void*)argument;
+        opened = (delegate* unmanaged<long, long, byte*, byte*, byte, long>)(void*)open;
+        this.sent = (delegate* unmanaged<long, long, long, byte*, byte*, double, double, byte, byte, long>)(void*)sent;
     }
+
+    /// <summary>The shared-memory bridge this DLL carries, opened once before its entry ran.</summary>
+    public Bridge Bridge { get; }
 
     /// <summary>The imports this host answers, by the name an application declares them with.</summary>
     public static IReadOnlyDictionary<string, nint> Imports { get; } = new Dictionary<string, nint>
     {
         ["native_slice"] = (nint)(delegate* unmanaged<byte*, byte*>)&Slices.Answer,
-        ["native_shape"] = (nint)(delegate* unmanaged<long, long, double, double, double, double, double, long, long, long>)&Shapes.Answer,
     };
 
-    /// <summary>Loads the application, fills every slot it declares and runs its entry once.</summary>
+    /// <summary>Loads the application, opens its bridge, fills every slot it declares and runs its entry once.</summary>
     public static Library Open(string path)
     {
         var handle = NativeLibrary.Load(Path.GetFullPath(path));
@@ -40,8 +48,9 @@ public sealed unsafe class Library
         {
             Bind(handle, name, function);
         }
-        Enter(Export(handle, Entry), path);
-        return new Library(Export(handle, StartExport), Export(handle, DispatchExport));
+        var bridge = Bridge.Open(handle);
+        Enter(bridge, Export(handle, Entry), path);
+        return new Library(bridge, Export(handle, ArgumentExport), Export(handle, OpenExport), Export(handle, EventExport));
     }
 
     static void Bind(nint handle, string name, nint function)
@@ -52,9 +61,11 @@ public sealed unsafe class Library
         }
     }
 
-    static void Enter(nint entry, string path)
+    static void Enter(Bridge bridge, nint entry, string path)
     {
         var status = ((delegate* unmanaged<int>)entry)();
+        // The entry's rows belong to no frame: drop them before the first call publishes one.
+        bridge.Discard();
         if (status == Unbound)
         {
             throw new HostException($"{path} imports a function this host does not answer; it answers {string.Join(", ", Imports.Keys)}");
@@ -70,27 +81,56 @@ public sealed unsafe class Library
             ? address
             : throw new HostException($"The application exports no {name}; build it with `osprey <project> --compile --target=windows-x64 -o app.dll`");
 
-    /// <summary>The start envelope for the launch <paramref name="context"/>.</summary>
-    public string Start(string context)
+    /// <summary>One launch argument, in order, before the first view [NATIVE-SHM-EVENT].</summary>
+    public Sealed Argument(string text)
     {
-        Shapes.Clear();
-        using var source = new Utf8Text(context);
-        return Copied(start(source.Pointer));
+        using var copy = new Utf8Text(text);
+        return Sealed.At(Bridge, argued(copy.Pointer));
     }
 
-    /// <summary>The next envelope for the opaque <paramref name="state"/> and one <paramref name="eventText"/>.</summary>
-    public string Dispatch(string state, string eventText)
+    /// <summary>Draws the first frame for the host's clock, zone offset, platform, home folder and appearance.</summary>
+    public Sealed Open(long now, long offset, string platform, string home, bool dark)
     {
-        Shapes.Clear();
-        using var saved = new Utf8Text(state);
-        using var message = new Utf8Text(eventText);
-        return Copied(dispatch(saved.Pointer, message.Pointer));
+        using var system = new Utf8Text(platform);
+        using var folder = new Utf8Text(home);
+        return Sealed.At(Bridge, opened(now, offset, system.Pointer, folder.Pointer, dark ? (byte)1 : (byte)0));
     }
 
-    static string Copied(byte* value) =>
-        value is null
-            ? throw new HostException("The Osprey application returned no envelope")
-            : Marshal.PtrToStringUTF8((nint)value) ?? "";
+    /// <summary>Delivers one event and draws the next frame; a refused event still answers with a whole frame.</summary>
+    public Sealed Event(long now, Touch touch)
+    {
+        using var words = new Utf8Text(touch.Words);
+        using var detail = new Utf8Text(touch.Detail);
+        return Sealed.At(Bridge, sent(now, touch.Kind, touch.Ordinal, words.Pointer, detail.Pointer, touch.X, touch.Y, touch.Down ? (byte)1 : (byte)0, touch.Shift ? (byte)1 : (byte)0));
+    }
+}
+
+/// <summary>
+/// One call's answer and the frame it wrote, committed and leased whole. It is disposed once the
+/// frame has been checked and drawn, releasing all four runs.
+/// </summary>
+public sealed class Sealed : IDisposable
+{
+    Sealed(long status, Frame frame)
+    {
+        Status = status;
+        Frame = frame;
+    }
+
+    /// <summary>The export's answer: 0 when it accepted the call, 1 or another error when it refused.</summary>
+    public long Status { get; }
+
+    /// <summary>The frame every call writes, committed and leased whole.</summary>
+    public Frame Frame { get; }
+
+    internal static Sealed At(Bridge bridge, long status)
+    {
+        bridge.Commit();
+        return new Sealed(status, Frame.Lease(bridge));
+    }
+
+    /// <summary>Releases the frame's four runs.</summary>
+    public void Dispose() => Frame.Dispose();
 }
 
 /// <summary>A protocol or boundary failure, shown to the person rather than hidden.</summary>

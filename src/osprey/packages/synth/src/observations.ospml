@@ -1,0 +1,18 @@
+// Implements [SYNTH-SIGNALS]. Consumers supply the Signal handler; this module has no UI imports.
+// These functions run on the control/observer side, never inside the audio callback.
+namespace synth
+
+(** Reactive reads of applied component state, answered by the consumer's Signal handler. *)
+module Observations
+    (** One coherent revision of the engine's observable state. *)
+    export snapshot () = perform Signal<Observation>.read ()
+
+    (** Read one component parameter; absence is an explicit error. *)
+    export parameter (identity, key) = match listGet (filterList ((snapshot ()).parameters, \p => p.node == identity && p.key == key)) 0
+        Success p => Success(value = p.value)
+        Error _ => Error(message = "The component parameter is absent from this snapshot.")
+
+    (** Read one component's latest activity and meters. *)
+    export component identity = match listGet (filterList ((snapshot ()).components, \c => c.node == identity)) 0
+        Success c => Success(value = c)
+        Error _ => Error(message = "The component is absent from this snapshot.")

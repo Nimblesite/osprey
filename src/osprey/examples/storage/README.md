@@ -16,6 +16,7 @@ src/osprey/examples/storage/run.sh --test         # the suite: no disk, no windo
 | Host | State |
 | --- | --- |
 | WinUI ([src/toolchain/hosts/winui](../../../toolchain/hosts/winui)) | Draws every node Storage uses and answers `measure-folders`, `choose-folder`, `reveal` and `cancel`. On CI's Windows runner it passes `self-test.json` on a fixture tree, and `self-test-drive.json` on the whole C drive, in a real window |
+| SwiftUI and Android ([swift](../../../toolchain/hosts/swift), [android](../../../toolchain/hosts/android)) | Answer `measure-folders` on macOS, iOS and Android; on a phone the three panes are still wider than the screen ([plan 0037](../../../../docs/plans/0037-osprey-native.md) section 12) |
 | GPUI ([src/toolchain/hosts/gpui](../../../toolchain/hosts/gpui)) | Lacks `split`, `meter`, `context-menu` and `measure-folders` until [plan 0037](../../../../docs/plans/0037-osprey-native.md) phase 1 lands, and reports each as a diagnostic |
 
 ## How it works

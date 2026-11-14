@@ -1,3 +1,8 @@
-// A null send observes the start envelope; then the header's Dashed button switches the stroke.
-{"send":null,"expect":{"regions":["root","header","canvas"],"text":{"region":"header","contains":"Dashed"},"diagnostics":0}}
-{"send":{"control":{"region":"header","label":"Dashed"},"value":null},"expect":{"text":{"region":"header","contains":"Solid"},"diagnostics":0}}
+// Drive the linked application: direct primitives, a stroke, restyling and clearing.
+{"send":null,"expect":{"root":true,"text":{"contains":"Dashed"},"primitives":21,"diagnostics":0}}
+{"send":{"control":{"label":"Dashed"}},"expect":{"text":{"contains":"Solid"},"primitives":21,"diagnostics":0}}
+{"send":{"pointer":{"x":100.0,"y":500.0,"down":true}},"expect":{"primitives":21,"diagnostics":0}}
+{"send":{"pointer":{"x":150.0,"y":550.0,"down":true}},"expect":{"primitives":22,"diagnostics":0}}
+{"send":{"pointer":{"x":150.0,"y":550.0,"down":false}},"expect":{"primitives":22,"diagnostics":0}}
+{"send":{"control":{"label":"Solid"}},"expect":{"text":{"contains":"Dashed"},"primitives":22,"diagnostics":0}}
+{"send":{"control":{"label":"Clear"}},"expect":{"primitives":21,"diagnostics":0}}

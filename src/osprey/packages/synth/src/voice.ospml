@@ -1,0 +1,85 @@
+// [SYNTH-VOICE] Pure synthesis extracted from Prism: no UI or platform dependencies.
+namespace synth
+
+(** Pure reference voice rendering retained from Prism. *)
+module Voice
+    (** Samples per second. *)
+    export rate = 11025
+
+    choose (condition, yes, no) = match condition
+        true => yes
+        false => no
+
+    semitone note = match take note 1
+        "C" => 0
+        "D" => 2
+        "E" => 4
+        "F" => 5
+        "G" => 7
+        "B" => 11
+        _ => 9
+
+    (** A key's pitch in equal temperament from its name, as the keyboard sets `note`: "A3" is 220 Hz, "C#4" is 277.18 Hz. *)
+    export frequency note =
+        sharp = contains note "#"
+        octave = parseFloat (drop note (choose (sharp, 2, 1))) ?: 3.0
+        midi = 12.0 * (octave + 1.0) + toFloat (semitone note) + choose (sharp, 1.0, 0.0)
+        440.0 * pow (2.0, (midi - 69.0) / 12.0)
+
+    (** How many octaves the LFO sweeps the cutoff each way at full depth. *)
+    export octaves = 2.0
+
+    tau = 6.283185307179586
+
+    (** An LFO rate as a note length at 120 bpm, in hertz: a quarter note is 2 Hz. *)
+    export hertz rate = match rate
+        "1/1" => 0.5
+        "1/2" => 1.0
+        "1/8" => 4.0
+        "1/16" => 8.0
+        _ => 2.0
+
+    (** A patch written out, so two patches compare by what they sound like. *)
+    export describe p = "${toString p.pitch} ${toString p.sounding} ${toString p.filtered} ${p.wave} ${toString p.cutoff} ${toString p.depth} ${toString p.lfo} ${toString p.audible} ${toString p.volume}"
+
+    (** Whether a patch makes no sound at all. *)
+    export silent p = p.sounding == false || p.audible == false || p.volume <= 0.0
+
+    // The cutoff at sample `n`, swept by the LFO.
+    swept (p, n) = p.cutoff * pow (2.0, p.depth * octaves * sin (tau * p.lfo * toFloat n / toFloat rate))
+
+    // A two-pole Butterworth low-pass's gain at the key's pitch.
+    passed (p, n) = choose (p.filtered, 1.0 / sqrt (1.0 + pow (p.pitch / swept (p, n), 4.0)), 1.0)
+
+    (** The wave from -1 to 1 at `turns` cycles, as the Oscillator draws it. *)
+    export shaped (wave, turns) =
+        t = turns - floor turns
+        match wave
+            "Triangle" => 1.0 - 4.0 * abs (t - 0.5)
+            "Saw" => 2.0 * t - 1.0
+            "Square" => choose (t < 0.5, 1.0, -1.0)
+            _ => sin (tau * t)
+
+    (** Sample `n` from -1 to 1. *)
+    export sample (p, n) = choose (silent p, 0.0, p.volume * passed (p, n) * shaped (p.wave, p.pitch * toFloat n / toFloat rate))
+
+    (** One second of the patch as unsigned 8-bit samples centred on 128. *)
+    export samples p = mapList (toList (range (0, rate)), \n => satAdd 128 (floatToInt (round (sample (p, n) * 100.0)) ?: 0))
+
+    (** The largest distance of any sample from silence. *)
+    export peak values = foldList (values, 0, \(most, v) => choose (abs (v - 128) > most, abs (v - 128), most))
+
+    digit d = substring "0123456789ABCDEF" d (satAdd d 1) ?: "0"
+
+    byte b = "${digit (bitAnd (shiftRight b 4) 15)}${digit (bitAnd b 15)}"
+
+    le16 n = "${byte (bitAnd n 255)}${byte (bitAnd (shiftRight n 8) 255)}"
+
+    le32 n = "${le16 (bitAnd n 65535)}${le16 (bitAnd (shiftRight n 16) 65535)}"
+
+    // "RIFF", "WAVE", "fmt ", "data" in ASCII hex.
+    header count = "52494646${le32 (satAdd count 36)}57415645666D7420${le32 16}${le16 1}${le16 1}${le32 rate}${le32 rate}${le16 1}${le16 8}64617461${le32 count}"
+
+    (** The samples as a mono 8-bit PCM WAV file, in hex. *)
+    export wav values = "${header (length values)}${join (mapList (values, byte)) ""}"
+

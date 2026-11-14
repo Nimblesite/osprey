@@ -8,10 +8,23 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
+#if defined(__SANITIZE_ADDRESS__)
+#define OSP_TEST_ASAN
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define OSP_TEST_ASAN
+#endif
+#endif
 
 #include "fiber_tests_shared.h"
 
-enum { MANY = 5000, THREADS = 8, PER_THREAD = 600, THREAD_CAP_PROBE = 12000 };
+enum { MANY = 5000, THREADS = 8, PER_THREAD = 600, THREAD_CAP_PROBE = 12000, HANDLE_BYTES_MAX = 512 };
 
 static int64_t doubled(void *word) { return (intptr_t)word * 2; }
 
@@ -40,6 +53,42 @@ static void check_thousands_of_channels(void) {
   for (int64_t i = MANY - 1; i >= 0; i--) { // every one still its own, however old
     assert(channel_recv(channels[i]) == i);
   }
+}
+
+// Bytes the C allocator has handed out and not got back. 0 where there is no exact
+// counter: another libc, or AddressSanitizer, which replaces the allocator.
+static size_t heap_in_use(void) {
+#if defined(OSP_TEST_ASAN)
+  return 0;
+#elif defined(__APPLE__)
+  malloc_statistics_t stats;
+  malloc_zone_statistics(NULL, &stats);
+  return stats.size_in_use;
+#elif defined(__GLIBC__)
+  return mallinfo2().uordblks;
+#else
+  return 0;
+#endif
+}
+
+static size_t bytes_per_handle(void (*make_many)(void)) {
+  size_t before = heap_in_use();
+  make_many();
+  size_t after = heap_in_use();
+  return after > before ? (after - before) / MANY : 0;
+}
+
+// What a handle costs for the rest of the process, measured: the spec's "a few
+// hundred bytes" is this ceiling. Both tables' slots are part of the figure.
+static void check_what_a_handle_costs(void) {
+  size_t fiber = bytes_per_handle(check_thousands_of_fibers);
+  size_t channel = bytes_per_handle(check_thousands_of_channels);
+  printf("  %zu bytes per fiber, %zu per channel of one word\n", fiber, channel);
+  if (heap_in_use() == 0) {
+    return;
+  }
+  assert(fiber > 0 && fiber <= HANDLE_BYTES_MAX);
+  assert(channel > 0 && channel <= HANDLE_BYTES_MAX);
 }
 
 // One id space: alternating, neither table mistakes the other's handle for its own.
@@ -193,8 +242,7 @@ static void check_thousands_queued(void) {
 }
 
 void run_fiber_handle_tests(void) {
-  check_thousands_of_fibers();
-  check_thousands_of_channels();
+  check_what_a_handle_costs();
   check_handles_are_one_space();
   check_growth_under_contention();
   check_spawn_past_the_thread_limit();

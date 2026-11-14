@@ -44,7 +44,7 @@ unsafe impl GlobalAlloc for Counted {
 #[global_allocator]
 static ALLOCATOR: Counted = Counted;
 
-pub(super) fn serial() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn serial() -> std::sync::MutexGuard<'static, ()> {
     SERIAL
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -86,14 +86,4 @@ fn test_child(name: &str) -> std::process::Output {
         .env(CHILD_TEST, name)
         .output()
         .expect("launch isolated storage regression")
-}
-
-pub(crate) fn with_poisoned_stream<T>(body: impl FnOnce() -> T) -> T {
-    poison(&super::STREAM);
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
-    super::STREAM.clear_poison();
-    match result {
-        Ok(value) => value,
-        Err(problem) => std::panic::resume_unwind(problem),
-    }
 }

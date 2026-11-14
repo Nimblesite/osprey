@@ -1,41 +1,40 @@
-// The casting player's C boundary for the GPUI host ([GPUI-HOST-BOUNDARY], [UI-RESIDENT]). The
-// session stays in this library between calls, the canvas's rects, discs and sprites go to the host
-// one call at a time ([UI-SCENE-STREAM]), and every device byte goes through the
-// @osprey/chromecast port's real `Wire.Native` handler.
+// The casting player's C boundary for any Osprey Native host ([NATIVE-SHM-BOUNDARY],
+// [NATIVE-SHM-EVENT]): `argument` gathers the launch arguments, `open` draws the first frame and
+// `event` delivers one typed host event and draws the next. Nothing is encoded in either
+// direction: the frame is view, scene and ask rows the host seals when each call returns, and the
+// session stays in this library. Every device byte goes through the @osprey/chromecast port's real
+// `Wire.Native` handler.
 
 import ui::Runtime
+import ui::Views
+import ui::Surfaces
+import ui::Hosting
 import casting::App
-import ui::Streams
 
 extern native_slice (key : string) -> string
 
-extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
-
-(** Hands the session the framework returned to the cell below. *)
+(** Hands the next surface to the cell below. *)
 effect Keep
-    keep : ui::Session<casting::Store> => Unit
+    keep : ui::Surface<casting::Store, ui::Lever> => Unit
 
-mut live = Runtime::idle (casting::Link::store (ui::MachineDocs::faulty ""))
-
-mut streamed = 0
-
-// [UI-SCENE-STREAM] Each streamed rect, disc or sprite goes straight to the host.
-shipped primitive = Streams::transmit (primitive, native_shape)
-
-keeping (done : ui::Resident<casting::Store>) =
-    perform Keep.keep done.residentSession
-    done.residentEnvelope
+mut held = Surfaces::idle (casting::Link::store (ui::MachineDocs::faulty ""))
 
 hosted work =
     handle Keep
-        keep session => live := session
+        keep next => held := next
     handle ui::Slices
         fetch key => native_slice key
-    handle ui::SceneStream
-        shape primitive => streamed := shipped primitive
-    Runtime::guarded (\() => chromecast::Wire::Native (\() => keeping (work ())))
+    Runtime::guarded (\() => chromecast::Wire::Native (\() => Views::shared work))
 
-// [UI-THEME] The launch is prepared once, so the host's first envelope carries the theme of the store it started: the chosen machine's skin, not an empty one.
-start source = hosted (\() => App::begun source)
+kept next =
+    perform Keep.keep next
+    Hosting::answer next
 
-dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, App::update, App::regions))
+(** Gathers one launch argument, in order, before `open`. *)
+argument text = hosted (\() => kept (Surfaces::argued (held, text)))
+
+(** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
+open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, App::program (), now, offset, platform, home, dark)))
+
+(** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
+event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, App::program (), now, kind, ordinal, words, detail, x, y, down, shift)))

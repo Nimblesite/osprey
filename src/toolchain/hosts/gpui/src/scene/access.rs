@@ -3,14 +3,11 @@
 //! An assistive action becomes the pointer press and release a mouse would send, in scene units, so
 //! the application cannot tell a screen reader or an agent from a hand.
 
+use crate::events::Touch;
+use crate::host::HostView;
+use crate::render::Binding;
 use gpui_kit::accesskit::{Action, ActionData};
 use gpui_kit::*;
-use serde_json::{json, Value};
-
-use super::input;
-use crate::events;
-use crate::host::{now, HostView};
-use crate::render::{self, Binding};
 
 /// One element of the session's accessibility tree, bounds in scene units.
 // BEGIN GENERATED [UI-MACHINE-A11Y]
@@ -31,45 +28,6 @@ pub struct Access {
 
 /// A slider steps a twentieth of its range per increment, as a scroll wheel notch would.
 const STEPS: f64 = 20.;
-
-/// The AccessKit role for a framework role name; `none` and unknown names are not announced.
-fn role(name: &str) -> Option<Role> {
-    match name {
-        "button" | "popup" => Some(Role::Button),
-        "slider" => Some(Role::Slider),
-        "menuitem" => Some(Role::MenuItem),
-        _ => None,
-    }
-}
-
-/// Decodes the node's `access` list, keeping the elements a platform can announce.
-pub(super) fn decode(node: &Value) -> Vec<Access> {
-    render::list(node, "access")
-        .iter()
-        .filter_map(element)
-        .collect()
-}
-
-fn element(item: &Value) -> Option<Access> {
-    let number = |key: &str| item.get(key).and_then(Value::as_f64).unwrap_or(0.);
-    let role = role(item.get("role")?.as_str()?)?;
-    Some(Access {
-        role,
-        label: item.get("label")?.as_str()?.to_owned(),
-        x: number("x"),
-        y: number("y"),
-        w: number("w"),
-        h: number("h"),
-        value: number("value"),
-        min: number("min"),
-        max: number("max"),
-        selected: role == Role::MenuItem
-            && item
-                .get("selected")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-    })
-}
 
 /// Where an assistive action lands, in scene units: a click at the element's centre, a set or
 /// stepped value at its place along a slider; `None` for an action the element does not take.
@@ -134,7 +92,7 @@ fn node(
     let base = div()
         .id(SharedString::from(format!(
             "{}:a11y:{index}",
-            binding.region
+            binding.ordinal
         )))
         .absolute()
         .left(at(item.x))
@@ -156,7 +114,7 @@ fn node(
         .fold(ranged, |element, action| {
             element.on_a11y_action(
                 *action,
-                acted(handle.clone(), binding.clone(), item.clone(), *action),
+                acted(handle.clone(), *binding, item.clone(), *action),
             )
         })
         .into_any_element()
@@ -175,36 +133,74 @@ fn acted(
         };
         handle.update(cx, |view, cx| {
             for down in [true, false] {
-                let value = json!({"x": x, "y": y, "down": down, "shift": false});
-                let event = events::control(
-                    now(),
-                    &binding.region,
-                    input::current(view, &binding),
-                    binding.ordinal,
-                    value,
+                view.send(
+                    Touch::pointer(binding.ordinal, x, y, down, false),
+                    window,
+                    cx,
                 );
-                view.dispatch(event, window, cx);
             }
         });
     }
 }
 
+/// Announced scene elements as the tests build them.
+#[cfg(test)]
+pub(crate) mod fixtures {
+    use super::{Access, Role};
+
+    /// One element at `bounds` (`x, y, w, h`) with its `range` (`value, min, max`).
+    pub(crate) fn element(
+        role: Role,
+        label: &str,
+        bounds: [f64; 4],
+        range: [f64; 3],
+        selected: bool,
+    ) -> Access {
+        let [x, y, w, h] = bounds;
+        let [value, min, max] = range;
+        Access {
+            role,
+            label: label.to_owned(),
+            x,
+            y,
+            w,
+            h,
+            value,
+            min,
+            max,
+            selected,
+        }
+    }
+
+    /// A button at `bounds`.
+    pub(crate) fn button(label: &str, bounds: [f64; 4]) -> Access {
+        element(Role::Button, label, bounds, [0.; 3], false)
+    }
+
+    /// A slider at `bounds` holding `range`.
+    pub(crate) fn slider(label: &str, bounds: [f64; 4], range: [f64; 3]) -> Access {
+        element(Role::Slider, label, bounds, range, false)
+    }
+
+    /// A menu item at `bounds`, the current choice when `selected`.
+    pub(crate) fn menu_item(label: &str, bounds: [f64; 4], selected: bool) -> Access {
+        element(Role::MenuItem, label, bounds, [0.; 3], selected)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{actions, decode, target, Access, Action, ActionData, Role};
-    use serde_json::Value;
+    use super::fixtures::{button, menu_item, slider};
+    use super::{actions, target, Access, Action, ActionData, Role};
 
     fn tree() -> Vec<Access> {
-        let node: Value = serde_json::from_str(r#"{"access":[
-            {"role":"button","label":"Play","x":10,"y":20,"w":100,"h":40,"value":0,"min":0,"max":0},
-            {"role":"slider","label":"Volume","x":99,"y":1025,"w":302,"h":40,"value":0.5,"min":0,"max":1},
-            {"role":"popup","label":"Speed: 1×","x":0,"y":0,"w":10,"h":10},
-            {"role":"menuitem","label":"Kitchen","x":0,"y":50,"w":10,"h":10,"selected":true},
-            {"role":"menuitem","label":"Hallway","x":0,"y":60,"w":10,"h":10,"selected":false},
-            {"role":"none","label":"Dismiss","x":0,"y":0,"w":400,"h":400},
-            {"role":"button"}
-        ]}"#).unwrap();
-        decode(&node)
+        vec![
+            button("Play", [10., 20., 100., 40.]),
+            slider("Volume", [99., 1025., 302., 40.], [0.5, 0., 1.]),
+            button("Speed: 1×", [0., 0., 10., 10.]),
+            menu_item("Kitchen", [0., 50., 10., 10.], true),
+            menu_item("Hallway", [0., 60., 10., 10.], false),
+        ]
     }
 
     /// Every announced role maps to AccessKit; `none` and an element without a label are dropped.

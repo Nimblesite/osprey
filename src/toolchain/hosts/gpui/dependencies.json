@@ -102,7 +102,7 @@
       "name": "ashpd",
       "version": "0.13.13",
       "archiveSha256": "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111",
-      "treeSha256": "38a7f905cca653d87f96d7c69d4e5361d49c4197bbcfe04dcffdf61451716ca7",
+      "treeSha256": "ae15f146c7c7c1ba1b90aa1cdcd0eb1c6c248eebe42e1be36e5040a44b644d5e",
       "edits": "patches/ashpd.json"
     },
     {

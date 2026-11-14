@@ -1,7 +1,8 @@
 ok 1 - thousands of int fibers
 ok 2 - thousands of string fibers
-ok 3 - thousands of channels
-ok 4 - strings through fibers and channels
-ok 5 - an old handle survives thousands more
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 3 - thousands of record fibers
+ok 4 - thousands of channels
+ok 5 - strings through fibers and channels
+ok 6 - an old handle survives thousands more
+1..6
+# tests=6 passed=6 failed=0 skipped=0

@@ -3,6 +3,7 @@
 // the health probe runs against a real loopback HTTP server.
 
 import * as assert from "assert";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
@@ -204,6 +205,23 @@ suite("local package registry", () => {
     const registry = new LocalRegistry(r.deps);
     assert.strictEqual(await registry.refresh(), "external");
     assert.strictEqual(await registry.refresh(), "stopped");
+
+    const remote = recorded({ registry: "https://packages.example", health: [true] });
+    assert.strictEqual(await new LocalRegistry(remote.deps).refresh(), "stopped", "a remote registry has no local state to probe");
+    assert.deepStrictEqual(remote.states, [], "and announces none");
+
+    // health answers: launch probe, two waits, then the refreshes below.
+    const own = recorded({ health: [false, false, true, true, false, true] });
+    const started = new LocalRegistry(own.deps, 10_000, 1);
+    const before = started.current;
+    const starting = started.start();
+    assert.strictEqual(await started.refresh(), before, "a refresh during start reports the current state without probing");
+    assert.strictEqual(await starting, true);
+    assert.strictEqual(await started.refresh(), "running", "the server this window started answers");
+    assert.strictEqual(await started.refresh(), "starting", "this window's silent server is still coming up");
+    assert.strictEqual(await started.start(), true, "a second start finds this window's server answering");
+    assert.strictEqual(started.current, "running");
+    assert.strictEqual(own.starts.length, 1, "and starts nothing more");
   });
 
   test("the health probe accepts only 200 from /v1/health", async () => {
@@ -226,21 +244,30 @@ suite("local package registry", () => {
   });
 });
 
-// The bundled server over the bundled snapshot of src/osprey/packages/, on a free port:
-// `make _vsix_bundle` places both, and `_vsix_verify` refuses a run without them.
+// The bundled server over the repository's own packages, published into a fresh folder
+// registry by the bundled `osprey-pkg` on a free port. The VSIX bundles no packages.
 suite("local package registry server", () => {
   const bundle = path.resolve(__dirname, "..", "..", "..", "bin", shipwrightPlatform());
   const executable = path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry");
 
-  test("the bundled server serves the repository's packages and stops", async function () {
+  test("the bundled server serves the repository's published packages, @osprey/native included, and stops", async function () {
     this.timeout(120_000);
     const port = await freePort();
     const storage = fs.mkdtempSync(path.join(os.tmpdir(), "osprey local registry "));
+    // The client reads one whitespace-separated command line, so the tree's path has no spaces.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-local-registry-"));
+    const keys = ["@osprey/graphics", "@osprey/json", "@osprey/native", "@osprey/re", "@osprey/torch"];
+    for (const key of keys) {
+      const project = path.resolve(__dirname, "../../../../../osprey/packages", key.split("/")[1]);
+      const report = execFileSync(path.join(bundle, process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg"), [],
+        { input: `publish --folder ${root} --project ${project}\n`, encoding: "utf8", timeout: 60_000 });
+      assert.ok(report.split(/\r?\n/).includes("status: 0"), `osprey-pkg publishes ${key}: ${report}`);
+    }
     const r = recorded();
     const deps: LocalRegistryDeps = {
       ...r.deps,
       registry: () => `http://127.0.0.1:${port}`,
-      layout: () => ({ executable, root: path.join(bundle, "registry") }),
+      layout: () => ({ executable, root }),
       exists: (file) => fs.existsSync(file),
       writeConfig: (text) => { fs.writeFileSync(path.join(storage, "registry-server.json"), text); return storage; },
       start: spawnServer,
@@ -251,11 +278,11 @@ suite("local package registry server", () => {
     try {
       assert.strictEqual(await registry.start(), true, r.errors.join("|"));
       const listing = JSON.parse(await fetchListingText(`http://127.0.0.1:${port}`)) as { packages: { key: string }[] };
-      const keys = listing.packages.map((entry) => entry.key);
-      for (const key of ["@osprey/native", "@osprey/re", "@osprey/torch"]) assert.ok(keys.includes(key), keys.join(","));
+      assert.deepStrictEqual(listing.packages.map((entry) => entry.key).sort(), keys);
     } finally {
       registry.stop();
       fs.rmSync(storage, { recursive: true, force: true });
+      fs.rmSync(root, { recursive: true, force: true });
     }
     await assertStopped(`http://127.0.0.1:${port}`);
   });

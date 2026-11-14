@@ -167,6 +167,6 @@ suite () = [
     unitCase "fixture failures are typed and never fabricate text or formulae" FixtureFiles::failures,
 ]
 
-declare () = forEachList (suite (), \entry => test (entry.name, entry.run))
+declare () = forEachList (suite (), \entry => test (entry.name, \() => ui::Runtime::guarded entry.run))
 
 declare ()

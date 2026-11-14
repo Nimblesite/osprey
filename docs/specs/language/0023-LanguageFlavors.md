@@ -5,7 +5,8 @@ flavor owns parsing and lowering; type checking, effect checking, project
 assembly, and code generation are shared, so the set of flavors is open.
 
 The ML surface is specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md) and the
-Python surface in [Python Flavor Syntax](0041-PythonFlavorSyntax.md).
+Python surface in [Python Flavor Syntax](0041-PythonFlavorSyntax.md). A TypeScript flavor is planned in
+[TypeScript Flavor Syntax](0054-TypeScriptFlavorSyntax.md); it is not implemented.
 
 <a id="the-one-law"></a>
 

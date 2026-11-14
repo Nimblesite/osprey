@@ -68,7 +68,6 @@ type Grid =
     starts : List<int>
     cellIds : List<int>
 
-
 type Nearest =
     nearestBird : Bird
     nearestDistance : float
@@ -77,7 +76,7 @@ type Ranked =
     rankedBest : List<int>
     rankedIndex : int
 
-(** The module that owns Flock's simulation and serialized store. *)
+(** The module that owns Flock's simulation and store. *)
 module Simulation
     // A deterministic hash in [0, 1): birds spread over the meadow with independent headings and no lattice.
     noise (i, salt) =
@@ -338,17 +337,9 @@ module Simulation
         // A round the hawks emptied scores nothing; files written before that rule may still hold zeros.
         Runtime::step (store(scores = Scores(best = filterList (mapList (Doc::items (Doc::parse text), \item => jsonInt item ?: 0), \score => score > 0), loaded = true)))
 
-    // Positions in hundredths and velocities in thousandths of a unit, as integers: the session is written
-    // and read every frame, and integers spell and parse several times faster than shortest-round-trip floats.
-    scaled (value, by) = floatToInt (round (value * by)) ?: 0
-
-    birdJson b = JsonArray [JsonInt (scaled (b.birdX, 100.0)), JsonInt (scaled (b.birdY, 100.0)), JsonInt (scaled (b.birdVx, 1000.0)), JsonInt (scaled (b.birdVy, 1000.0))]
-
-    hawkJson hawk = JsonArray [JsonFloat hawk.hawkX, JsonFloat hawk.hawkY]
-
     heldJson held = JsonObject [Doc::bit ("left", held.heldLeft), Doc::bit ("right", held.heldRight), Doc::bit ("up", held.heldUp), Doc::bit ("down", held.heldDown)]
 
-    // The player's input and target as JSON members; both encoders carry them so a restored frame resumes exactly.
+    // The player's input and target as JSON members; the world's change stamp carries them so an input or target change re-renders the field.
     intentJson world = [JsonMember "held" (heldJson world.held), JsonMember "targetX" (JsonFloat world.targetX), JsonMember "targetY" (JsonFloat world.targetY), Doc::bit ("targetActive", world.targetActive)]
 
     // Change detection must not encode five thousand birds twice per frame: every frame moves the
@@ -356,35 +347,8 @@ module Simulation
     (** The world's scalar fields and counts, cheap to encode, differing whenever the world differs. *)
     export worldStamp world = JsonObject (listConcat [Doc::num ("frames", world.frameCount), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), Doc::num ("birds", length world.birds), Doc::num ("hawks", length world.hawks), Doc::num ("fps", world.fps), JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)] (intentJson world))
 
-    (** The world slice as compact, completely restorable JSON. *)
-    export worldJson world = JsonObject (listConcat (listConcat [JsonMember "birds" (JsonArray (mapList (world.birds, birdJson))), JsonMember "hawks" (JsonArray (mapList (world.hawks, hawkJson))), JsonMember "player" (JsonObject [JsonMember "x" (JsonFloat world.player.playerX), JsonMember "y" (JsonFloat world.player.playerY)])] (intentJson world)) [Doc::num ("round", world.roundNumber), Doc::num ("score", world.scoreValue), JsonMember "elapsed" (JsonFloat world.elapsedTotal), Doc::num ("frames", world.frameCount), Doc::num ("fps", world.fps)])
-
     (** The settings slice as JSON for change detection and persistence. *)
     export settingsJson settings = JsonObject [Doc::num ("flockSize", settings.flockSize), Doc::bit ("sound", settings.soundOn), Doc::bit ("paused", settings.paused)]
 
     (** The scores slice as JSON for change detection and persistence. *)
     export scoresDocument scores = JsonObject [JsonMember "best" (JsonArray (mapList (scores.best, \value => JsonInt value))), Doc::bit ("loaded", scores.loaded)]
-
-    (** The whole application store as the opaque session's JSON. *)
-    export save store = JsonObject [JsonMember "world" (worldJson store.world), JsonMember "settings" (settingsJson store.settings), JsonMember "scores" (scoresDocument store.scores)]
-
-    at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
-
-    unscaled (item, index, by) =
-        handle Arith
-            divideByZero _ dividend => dividend
-        toFloat (jsonInt (jsonIndex item index ?: JsonNull) ?: 0) / by
-
-    restoreBird item = Bird(birdX = unscaled (item, 0, 100.0), birdY = unscaled (item, 1, 100.0), birdVx = unscaled (item, 2, 1000.0), birdVy = unscaled (item, 3, 1000.0))
-
-    restoreHawk item = Hawk(hawkX = at (item, 0), hawkY = at (item, 1))
-
-    restoreHeld doc = Held(heldLeft = Doc::flag (doc, "left"), heldRight = Doc::flag (doc, "right"), heldUp = Doc::flag (doc, "up"), heldDown = Doc::flag (doc, "down"))
-
-    restoreWorld doc = World(birds = mapList (Doc::items (Doc::field (doc, "birds")), restoreBird), hawks = mapList (Doc::items (Doc::field (doc, "hawks")), restoreHawk), player = Player(playerX = Doc::decimal (Doc::field (doc, "player"), "x"), playerY = Doc::decimal (Doc::field (doc, "player"), "y")), held = restoreHeld (Doc::field (doc, "held")), targetX = Doc::decimal (doc, "targetX"), targetY = Doc::decimal (doc, "targetY"), targetActive = Doc::flag (doc, "targetActive"), roundNumber = Doc::number (doc, "round"), scoreValue = Doc::number (doc, "score"), elapsedTotal = Doc::decimal (doc, "elapsed"), frameCount = Doc::number (doc, "frames"), fps = Doc::number (doc, "fps"))
-
-    (** Restores every world, setting and score field from a saved session. *)
-    export restore doc =
-        settings = Doc::field (doc, "settings")
-        scores = Doc::field (doc, "scores")
-        Store(world = restoreWorld (Doc::field (doc, "world")), settings = Settings(flockSize = Doc::number (settings, "flockSize"), soundOn = Doc::flag (settings, "sound"), paused = Doc::flag (settings, "paused")), scores = Scores(best = mapList (Doc::items (Doc::field (scores, "best")), \item => jsonInt item ?: 0), loaded = Doc::flag (scores, "loaded")))

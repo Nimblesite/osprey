@@ -181,51 +181,79 @@ static void gc_finalize(const OspGcEnt *e) {
   }
 }
 
-// Rebuild the table keeping only marked objects; free the rest; re-arm the
-// adaptive budget at max(min-heap, 2× live).
-static void gc_sweep(void) {
-  size_t live = 0;
-  size_t live_bytes = 0;
-  for (size_t i = 0; i < g_cap; i++) {
-    if (g_tab[i].base != 0 && (g_tab[i].mark & GC_MARKED)) {
-      live++;
-      live_bytes += g_tab[i].size;
+// Finalizers see the whole table: one may ask the collector about a block that
+// outlives this collection, so they all run before any slot is emptied.
+static void gc_finalize_dead(void) {
+  for (size_t i = 0; g_finalizer && i < g_cap; i++) {
+    if (g_tab[i].base != 0 && !(g_tab[i].mark & GC_MARKED)) {
+      gc_finalize(&g_tab[i]);
     }
   }
-  size_t cap = OSP_GC_INIT_TABLE_CAP;
-  while (cap * 3 <= (live + 1) * 4) {
-    cap *= 2;
-  }
-  OspGcEnt *tab = (OspGcEnt *)calloc(cap, sizeof(OspGcEnt));
-  if (!tab) {
-    // Can't rebuild: keep everything (just clear marks). Sound, no reclamation.
-    for (size_t i = 0; i < g_cap; i++) {
-      g_tab[i].mark &= GC_PERSISTENT;
-    }
-    return;
-  }
+}
+
+// Free every unmarked block and empty its slot. Survivors keep GC_MARKED, which
+// from here on reads "not yet reseated". Sets g_count and g_bytes to the live set.
+static void gc_free_dead(void) {
+  g_count = 0;
+  g_bytes = 0;
   for (size_t i = 0; i < g_cap; i++) {
     if (g_tab[i].base == 0) {
       continue;
     }
     if (g_tab[i].mark & GC_MARKED) {
-      gc_place(tab, cap, g_tab[i].base, g_tab[i].size, g_tab[i].mark & GC_PERSISTENT);
+      g_count++;
+      g_bytes += g_tab[i].size;
     } else {
-      gc_finalize(&g_tab[i]);
       free((void *)g_tab[i].base);
+      g_tab[i].base = 0;
     }
   }
-  free(g_tab);
-  g_tab = tab;
-  g_cap = cap;
-  g_count = live;
-  g_bytes = live_bytes;
-  g_thresh = live_bytes * 2 > g_min_heap ? live_bytes * 2 : g_min_heap;
+}
+
+// Lift the survivor out of slot `i` and seat it in the first slot of its probe
+// run that holds no seated block. A survivor still waiting there is displaced
+// and seated in turn, so the chain ends at an empty slot. A seated block never
+// moves again and no probe run crosses a waiting one, so every run a lookup
+// walks stays unbroken.
+static void gc_reseat(size_t i) {
+  OspGcEnt e = g_tab[i];
+  g_tab[i].base = 0;
+  while (e.base != 0) {
+    e.mark &= GC_PERSISTENT;
+    size_t j = gc_hash(e.base, g_cap);
+    while (g_tab[j].base != 0 && !(g_tab[j].mark & GC_MARKED)) {
+      j = (j + 1) & (g_cap - 1);
+    }
+    OspGcEnt waiting = g_tab[j];
+    g_tab[j] = e;
+    e = waiting;
+  }
+}
+
+// Sweep the table where it stands: free the unmarked, reseat the survivors, and
+// re-arm the adaptive budget at max(min-heap, 2× live). The table keeps the
+// capacity this cycle's allocations needed, because a steady workload fills it
+// again before the next collection; a fresh table per collection cost a
+// page-faulted allocation and a rehash at every doubling on the way back up. It
+// is cut back only once a whole cycle has peaked below it [GC-TRACE-CONSERVATIVE].
+static void gc_sweep(void) {
+  size_t fit = gc_fit(g_count);
+  gc_finalize_dead();
+  gc_free_dead();
+  for (size_t i = 0; i < g_cap; i++) {
+    if (g_tab[i].base != 0 && (g_tab[i].mark & GC_MARKED)) {
+      gc_reseat(i);
+    }
+  }
+  if (fit < g_cap) {
+    (void)gc_resize(fit); // out of memory: the oversized table still serves
+  }
+  g_thresh = g_bytes * 2 > g_min_heap ? g_bytes * 2 : g_min_heap;
   g_ncollect++; // always: read by osp_gc_collections() diagnostics, not just debug
   if (g_debug) {
     // env-gated diagnostic only — not on any hot path.
     fprintf(stderr, "[osp-gc] collect #%zu: %zu live objs, %zu live KiB\n",
-            g_ncollect, live, live_bytes / 1024);
+            g_ncollect, g_count, g_bytes / 1024);
   }
 }
 
@@ -293,7 +321,8 @@ static void gc_init_main(void) {
   g_init = 1;
 }
 
-// Maybe collect, then hand back `size` bytes of managed, tracked storage. Once an
+// Maybe collect, then hand back `size` bytes of managed storage tracked under
+// `flags`, stamped as the block enters the table rather than looked up again. Once an
 // unregistered thread has allocated, g_off is latched on and collection stays
 // disabled for everyone.
 //
@@ -303,7 +332,7 @@ static void gc_init_main(void) {
 // a cold multi-MiB working set, while libc's per-size free-lists hand back the
 // just-freed, cache-hot block the next tree reuses. Measured: a pool here made
 // binarytrees ~12x SLOWER for zero reclaim benefit. [MEM-BACKENDS]
-static void *gc_managed_alloc(size_t size) {
+static void *gc_managed_alloc(size_t size, uint32_t flags) {
   if (!g_init) {
     gc_init_main();
   } else if (gc_my_baton() == NULL && !g_off) {
@@ -327,7 +356,10 @@ static void *gc_managed_alloc(size_t size) {
   if (!p) {
     return NULL;
   }
-  gc_insert((uintptr_t)p, size);
+  if (!gc_insert((uintptr_t)p, size, flags) && (flags & GC_STRING)) {
+    free(p); // a string's length lives in its entry: untracked, it is unusable
+    return NULL;
+  }
   g_bytes += size;
   return p;
 }
@@ -346,12 +378,9 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   bool text = (meta & 0xFF) == OSP_MEM_STRING;
   if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
       (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
+  uint32_t flags = text ? GC_STRING : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
   heap_lock();
-  size_t bytes = size > 0 ? (size_t)size : 0;
-  void *p = gc_managed_alloc(bytes);
-  OspGcEnt *e = p ? gc_lookup((uintptr_t)p) : NULL;
-  if (text && p && !e) { free(p); g_bytes -= bytes; p = NULL; }
-  if (e) e->mark |= text ? GC_STRING : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0, flags);
   heap_unlock();
   return p;
 }
@@ -419,24 +448,25 @@ void osp_collect(void) {
 }
 
 // --- diagnostics (read-only snapshots; not on any hot path) ------------------
-// Objects currently tracked by the collector. Immediately after osp_collect()
-// returns on the main thread this equals the reachable (live) set, so tooling
-// and the conformance tests can assert that unreachable churn was reclaimed.
-size_t osp_gc_live_objects(void) {
+static size_t gc_snapshot(const size_t *counter) {
   heap_lock();
-  size_t n = g_count;
+  size_t n = *counter;
   heap_unlock();
   return n;
 }
 
+// Objects currently tracked by the collector. Immediately after osp_collect()
+// returns on the main thread this equals the reachable (live) set, so tooling
+// and the conformance tests can assert that unreachable churn was reclaimed.
+size_t osp_gc_live_objects(void) { return gc_snapshot(&g_count); }
+
+// Slots in the heap table. Lets a test confirm the table keeps the capacity a
+// steady workload needs across collections, and gives it back once unused.
+size_t osp_gc_table_capacity(void) { return gc_snapshot(&g_cap); }
+
 // Collections run since start. Lets a test confirm a collection actually fired
 // (or, after the multithread latch, that collection stopped firing).
-size_t osp_gc_collections(void) {
-  heap_lock();
-  size_t n = g_ncollect;
-  heap_unlock();
-  return n;
-}
+size_t osp_gc_collections(void) { return gc_snapshot(&g_ncollect); }
 
 #include "memory_gc_libc.h"
 

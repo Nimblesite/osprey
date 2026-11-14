@@ -19,6 +19,7 @@
 typedef struct HandlerSnapshot HandlerSnapshot;
 HandlerSnapshot *__osprey_handler_snapshot(void);
 void __osprey_handler_restore(HandlerSnapshot *snap);
+void __osprey_handler_stack_cleanup(void);
 
 // Fiber runtime implementation in C for linking with LLVM-generated code
 
@@ -188,6 +189,9 @@ static void *fiber_thread_func(void *arg) {
   osp_prof_thread_register(fiber->id, "fiber");
 
   run_with_parent_handlers(fiber);
+  // The handler stack is this thread's own; left behind, every fiber kept about
+  // 64 KiB for the life of the process. [CONCURRENCY-HANDLES]
+  __osprey_handler_stack_cleanup();
   osp_prof_thread_unregister();
   osp_mem_baton_thread_exit();
 

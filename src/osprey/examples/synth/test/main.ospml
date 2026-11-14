@@ -1,59 +1,51 @@
 // The Prism synth end to end ([UI-MACHINE-FLOW-SYNTH]): its voice is checked
-// directly, then the real editor is driven by pointer events aimed through each
+// directly, then the real editor is driven through the typed host event boundary
+// every host calls ([NATIVE-SHM-EVENT]), by pointer events aimed through each
 // control's accessible label. Every control is silent; every struck key's host
 // playback request is compared with the patch, at the key's pitch, that made it.
 
-import ui::Doc
 import ui::Runtime
 import ui::Canvases
 import ui::MachineDocs
 import ui::Machines
-import uitest::Events
-import uitest::Read
+import ui::Requests
+import uitest::Drive
 import uitest::Semantics
 import uitest::Views
 import signalflow::App
 import synth::Studio
 import synth::Synth
+import synth::Voice
 
-(** The decoded view, the latest envelope's text and the clock used for host events. *)
-type Sight =
-    sightSeen : uitest::Rendered
-    sightEnvelope : string
-    sightNow : int
-
-(** The bench's only writes: retain the live session and the latest rendered sight. *)
+(** The bench's only write: the driven surface. *)
 effect Bench
-    keep : ui::Session<signalflow::Store> => Unit
-    see : Sight => Unit
+    drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
 
-mut sight = Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1)
-mut live = Runtime::idle (signalflow::Flow::store (MachineDocs::faulty ""))
+// The bench starts from one freshly documented studio, neither launched nor driven.
+blank () = Drive::idle (Studio::program (), signalflow::Flow::store (MachineDocs::faulty ""))
 
-kept (resident : ui::Resident<signalflow::Store>) =
-    perform Bench.keep resident.residentSession
-    perform Bench.see (sight(sightSeen = Read::envelope (sight.sightSeen, resident.residentEnvelope), sightEnvelope = resident.residentEnvelope, sightNow = sight.sightNow + 1))
+mut driven = blank ()
+
+kept next = perform Bench.drive next
 
 hosted work =
     handle ui::Slices
         fetch _ => ""
-    handle ui::SceneStream
-        shape _ => 0
-    work ()
+    ui::Views::quiet work
 
 bench work =
     handle Bench
-        keep session => live := session
-        see s => sight := s
+        drive d => driven := d
     Runtime::guarded work
 
 begun () =
-    perform Bench.see (Sight(sightSeen = Read::blank (), sightEnvelope = "", sightNow = 1))
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}", Studio::initial, App::regions, App::theme "prism")))
+    perform Bench.drive (blank ())
+    hosted (\() => kept (Drive::launched (driven, "macos", [])))
 
-post event = hosted (\() => kept (Runtime::proceed (live, event, Studio::update, App::regions)))
+// One typed host event, sent the way a host sends it.
+post step = hosted (\() => kept (step driven))
 
-pointer (x, y, down) = post (Events::pointer (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, x, y, down, sight.sightNow))
+pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
 tapAt (label, fraction) =
     at = Semantics::point (element label, fraction)
@@ -62,11 +54,17 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = live.sessionStore.screen.screenMachine
+machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
 
 currentPatch () = Synth::patch (machine ())
 
-described () = Synth::describe (currentPatch ())
+described () = Voice::describe (currentPatch ())
+
+// Two values that must not match.
+apart (one, other) = expect (one == other, false)
+
+// A patch that must differ from `before`.
+changed before = apart (described (), before)
 
 elements () = Canvases::semantics (machine ())
 
@@ -74,55 +72,73 @@ labels () = Semantics::labels (elements ())
 
 element label = Semantics::element (elements (), label)
 
-offers label = match Semantics::offered (elements (), label)
+// A check that names what was missing, so a silent false still says why it failed.
+reports (ok, missing) = match ok
     true => true
     false =>
-        print "# not offered: ${label}; the tree offers ${labels ()}"
+        print "# ${missing}"
         false
+
+offers label = reports (Semantics::offered (elements (), label), "not offered: ${label}; the tree offers ${labels ()}")
 
 offered label = expect (offers label, true)
 
-letters text = match Views::letters (sight.sightSeen, text)
-    true => true
-    false =>
-        print "# not lettered: ${text}; the artboard letters ${Views::lettered sight.sightSeen}"
-        false
+letters text = reports (Views::letters (driven.drivenSeen, text), "not lettered: ${text}; the artboard letters ${Views::lettered driven.drivenSeen}")
 
-flag (name, expected) = expect (Machines::flag (machine (), name), expected)
+// The console's readout `name`, read by `read`, against what it must show.
+shows (read, name, expected) = expect (read (machine (), name), expected)
 
-knobText (name, expected) = expect (Machines::text (machine (), name), expected)
+flag (name, expected) = shows (Machines::flag, name, expected)
+
+knobText (name, expected) = shows (Machines::text, name, expected)
 
 knobNumber (name, expected) =
     actual = Machines::number (machine (), name)
     expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
 
-layer (name, expected) = expect (Machines::current (machine (), name), expected)
+layer (name, expected) = shows (Machines::current, name, expected)
 
-// ---- the host requests in the latest envelope, read at the boundary ----
+// ---- the host requests of the last step, read as the typed asks they are ----
 
-runRequests () = filterList (Doc::items (Doc::field (Doc::parse sight.sightEnvelope, "requests")), \request => Doc::text (request, "kind") == "run")
+runRequests () = filterList (driven.drivenSurface.surfaceAsked, \r => Requests::kind r.capability == "run")
 
 runCount () = length (runRequests ())
 
-request () = listGet (runRequests ()) 0 ?: JsonNull
+request () = listGet (runRequests ()) 0 ?: Requests::ask ("", ui::Run(executable = "", arguments = [], timeout = 0, outputLimit = 0, plist = false, runSlice = ""))
 
-arguments () = Doc::texts (request (), "arguments")
+runArguments () = match (request ()).capability
+    ui::Run _ arguments _ _ _ _ => arguments
+    _ => []
 
-argument index = listGet (arguments ()) index ?: ""
+runExecutable () = match (request ()).capability
+    ui::Run executable _ _ _ _ _ => executable
+    _ => ""
 
-currentWav () = Synth::wav (Synth::samples (currentPatch ()))
+argument index = listGet (runArguments ()) index ?: ""
 
-nearPeak (patch, expected) = expect (abs (Synth::peak (Synth::samples patch) - expected) <= 1, true)
+// The clip the last key played, which must differ from `previous`; `label` is picked next.
+apartThen (label, previous) =
+    apart (argument 2, previous)
+    tap label
+
+currentWav () = Voice::wav (Voice::samples (currentPatch ()))
+
+nearPeak (patch, expected) = expect (abs (Voice::peak (Voice::samples patch) - expected) <= 1, true)
 
 played expectedPeak =
     expect (runCount (), 1)
-    expect (Doc::text (request (), "ticket"), "play")
-    expect (Doc::text (request (), "executable"), "/usr/bin/perl")
-    expect (length (arguments ()), 4)
+    expect ((request ()).ticket, "play")
+    expect (runExecutable (), "/usr/bin/perl")
+    expect (length (runArguments ()), 4)
     expect (argument 0, "-e")
     expect (argument 2, currentWav ())
     expect (argument 3, Synth::clipPath)
     nearPeak (currentPatch (), expectedPeak)
+
+// The readout shows `readout`: the `name` key then plays at `peak`.
+readThenPlay (readout, name, peak) =
+    expect (letters readout, true)
+    sounds (name, peak)
 
 // Nothing reached the host, so the patch it would have played is untouched.
 silent () = expect (runCount (), 0)
@@ -136,10 +152,15 @@ quietPatch before =
     silent ()
     expect (described (), before)
 
+// A pointer event at `x`, `y` that moves nothing.
+quietAt (before, x, y, down) =
+    pointer (x, y, down)
+    quietPatch before
+
 // An edit that changes the patch and plays nothing.
 quietEdit before =
     silent ()
-    expect (described () == before, false)
+    changed before
 
 // A press or release on a control: it moves nothing and it plays nothing.
 quietPointer (point, down) =
@@ -186,10 +207,36 @@ struck (name, hertz) =
     expect (argument 2, currentWav ())
 
 sounds (name, expectedPeak) =
-    struck (name, Synth::frequency name)
+    struck (name, Voice::frequency name)
     played expectedPeak
 
 // ---- launch, editing and history through the Prism skin ----
+
+// The readout shows `readout`: the patch it shows is the one `described ()` gives.
+startingAt readout =
+    expect (letters readout, true)
+    described ()
+
+// A slider dragged to `fraction` moves input `name` to `value`.
+slid (label, fraction, name, value) =
+    tapAt (label, fraction)
+    knobNumber (name, value)
+
+// A bypass pressed: it clears `name`, and the next key plays at `peak`.
+bypassed (label, name, peak) =
+    tap label
+    flag (name, false)
+    quietKey peak
+
+// The rate `label` picked and the readout it shows.
+ratePicked (label, shown) =
+    tap label
+    knobText ("rate", shown)
+
+// The LFO sweeps at `hertz`: the next key plays at `peak`.
+swept (hertz, peak) =
+    near ((currentPatch ()).lfo, hertz)
+    quietKey peak
 
 launchAndCutoff () =
     begun ()
@@ -207,21 +254,14 @@ launchAndCutoff () =
     offered "Play C#3"
     offered "Play B4"
     sounds ("A3", 75)
-    expect (letters "220.0 Hz", true)
-    before = described ()
-    tapAt ("Filter Cutoff", 0.1)
-    knobNumber ("process", 0.1)
+    before = startingAt "220.0 Hz"
+    slid ("Filter Cutoff", 0.1, "process", 0.1)
     quietEdit before
-    expect (letters "0.0 kHz", true)
-    sounds ("A3", 17)
+    readThenPlay ("0.0 kHz", "A3", 17)
 
 filterHistory () =
-    tap "Bypass LFO"
-    flag ("controlOn", false)
-    quietKey 2
-    tap "Bypass Filter"
-    flag ("processOn", false)
-    quietKey 75
+    bypassed ("Bypass LFO", "controlOn", 2)
+    bypassed ("Bypass Filter", "processOn", 75)
     undone "processOn"
     quietKey 2
     undone "controlOn"
@@ -236,7 +276,7 @@ keyboard () =
     sounds ("A3", 75)
     a3 = argument 2
     sounds ("A4", 75)
-    expect (argument 2 == a3, false)
+    apart (argument 2, a3)
     expect (letters "440.0 Hz", true)
     struck ("C3", 130.8128)
     struck ("C#3", 138.5913)
@@ -245,8 +285,7 @@ keyboard () =
     expect (letters "261.6 Hz", true)
     struck ("D#4", 311.127)
     struck ("B4", 493.8833)
-    expect (letters "493.9 Hz", true)
-    sounds ("A3", 75)
+    readThenPlay ("493.9 Hz", "A3", 75)
     expect (argument 2, a3)
     tap "Undo"
     knobText ("note", "A3")
@@ -259,11 +298,9 @@ waves () =
     silent ()
     picked ("Square", "Square")
     square = argument 2
-    expect (square == sine, false)
-    tap "Oscillator Wave: Square"
+    apartThen ("Oscillator Wave: Square", sine)
     picked ("Saw", "Saw")
-    expect (argument 2 == square, false)
-    tap "Oscillator Wave: Saw"
+    apartThen ("Oscillator Wave: Saw", square)
     tap "Triangle"
     knobText ("wave", "Triangle")
     silent ()
@@ -273,19 +310,14 @@ waves () =
 // Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
 rates () =
     clip = firstClip ("LFO Rate: 1/4", "rates")
-    tap "1/16"
-    knobText ("rate", "1/16")
-    near ((currentPatch ()).lfo, 8.0)
-    quietKey 17
+    ratePicked ("1/16", "1/16")
+    swept (8.0, 17)
     fast = argument 2
-    expect (fast == clip, false)
-    tap "LFO Rate: 1/16"
-    tap "1/1"
-    near ((currentPatch ()).lfo, 0.5)
-    quietKey 17
-    expect (argument 2 == fast, false)
-    tap "Undo"
-    knobText ("rate", "1/16")
+    apartThen ("LFO Rate: 1/16", clip)
+    ratePicked ("1/1", "1/1")
+    swept (0.5, 17)
+    apart (argument 2, fast)
+    ratePicked ("Undo", "1/16")
     quietKey 17
     expect (argument 2, fast)
 
@@ -293,19 +325,15 @@ rates () =
 levels () =
     tapAt ("Filter Cutoff", 0.7)
     quietKey 75
-    tapAt ("Master Level", 1.0)
-    knobNumber ("volume", 1.0)
+    slid ("Master Level", 1.0, "volume", 1.0)
     quietKey 100
     expect (letters "0.0 dB", true)
     tap "Select Master"
     silent ()
-    tapAt ("Inspector: Level", 0.5)
-    knobNumber ("volume", 0.5)
+    slid ("Inspector: Level", 0.5, "volume", 0.5)
     quietKey 50
-    expect (letters "-12.0 dB", true)
-    before = described ()
-    tapAt ("Master Level", 0.0)
-    knobNumber ("volume", 0.0)
+    before = startingAt "-12.0 dB"
+    slid ("Master Level", 0.0, "volume", 0.0)
     quietEdit before
     tap "Play A3"
     silent ()
@@ -334,7 +362,7 @@ muteHistory () =
 muted (before, name) =
     silent ()
     flag (name, false)
-    expect (described () == before, false)
+    changed before
 
 // ---- menus, skins and selection never ask the voice to play ----
 
@@ -367,15 +395,13 @@ quietSelections before =
 // Pressing, dragging, dropping and hovering over a node move it and stay silent.
 quietDrag before =
     body = Semantics::point (element "Select Oscillator", 0.5)
-    pointer (body.pointX, body.pointY, true)
-    quietPatch before
-    pointer (body.pointX + 80.0, body.pointY + 30.0, true)
-    quietPatch before
+    x = body.pointX + 80.0
+    y = body.pointY + 30.0
+    quietAt (before, body.pointX, body.pointY, true)
+    quietAt (before, x, y, true)
     knobNumber ("sourceX", 80.0)
-    pointer (body.pointX + 80.0, body.pointY + 30.0, false)
-    quietPatch before
-    pointer (body.pointX, body.pointY, false)
-    quietPatch before
+    quietAt (before, x, y, false)
+    quietAt (before, body.pointX, body.pointY, false)
     knobNumber ("sourceY", 30.0)
 
 // A slider dragged across and let go is silent throughout; the next key plays its final level.
@@ -383,10 +409,9 @@ slidQuietly () =
     low = Semantics::point (element "Master Level", 0.2)
     high = Semantics::point (element "Master Level", 0.6)
     quietPointer (low, true)
-    quietPointer (high, true)
-    knobNumber ("volume", 0.6)
-    quietPointer (high, false)
-    knobNumber ("volume", 0.6)
+    forEachList ([true, false], \down =>
+        quietPointer (high, down)
+        knobNumber ("volume", 0.6))
     sounds ("A3", 60)
 
 // A key is struck on release: pressing it, or hovering over it, plays nothing.

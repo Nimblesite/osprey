@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo="$(cd "$(dirname "$0")/../../../../.." && pwd)"
+cd "$repo"
+out="$repo/target/orchestra"
+host="$repo/src/toolchain/hosts/swift/orchestra"
+mkdir -p "$out"
+compiler="${OSPREY_BIN:-$repo/target/debug/osprey}"
+"$compiler" src/osprey/examples/pocket_orchestra/kernel --compile --target=macos --memory=arc --quiet --warnings-as-errors -o "$out/libOrchestraKernel.a"
+printf '#include "%s/libOrchestraKernel.h"\n#include "%s/audio_ring.h"\n' "$out" "$host" > "$out/bridge.h"
+clang -std=c11 -Wall -Wextra -Werror -O2 -c "$host/audio_ring.c" -o "$out/audio_ring.o"
+swiftc -O -warnings-as-errors -import-objc-header "$out/bridge.h" "$host/Diagnostics.swift" "$host/AudioModels.swift" "$host/Effects.swift" "$host/Audio.swift" "$host/Server.swift" "$host/Configuration.swift" "$host/Desktop.swift" "$host/main.swift" "$out/audio_ring.o" "$out/libOrchestraKernel.a" src/toolchain/compiler/bin/libosprey_runtime_macos_arc.a -framework AVFoundation -framework Network -framework Metal -framework CoreGraphics -framework AppKit -o "$out/pocket-orchestra"
+
+app="$out/Light Orchestra.app/Contents"
+mkdir -p "$app/MacOS" "$app/Resources"
+cp "$out/pocket-orchestra" "$app/MacOS/pocket-orchestra"
+cp "$host/Info.plist" "$app/Info.plist"
+cp src/osprey/examples/pocket_orchestra/controller.html "$app/Resources/controller.html"
+bash "$host/../app-icon.sh" src/toolchain/website/src/assets/images/logo.png "$app/Resources/AppIcon.icns"
+codesign --force --sign - "$out/Light Orchestra.app"

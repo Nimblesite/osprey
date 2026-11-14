@@ -54,6 +54,10 @@ The mobile UI runs through real simulator/emulator journeys. Full playback integ
 
 {{ capture("/assets/images/native/macos-synth.png", "Prism Synth native macOS app with a signal flow editor and piano keyboard", "Prism Synth · macOS · connect a patch, change its controls and play the keyboard.", 2304, 1512) }}
 
+Light Orchestra turns any phone on your network into an instrument for your Mac: the synthesiser is Osprey, and you hear exactly what it played.
+
+{% videoPlayer "light-orchestra", true %}
+
 {{ capture("/assets/images/blog/chromecast-from-mac-player.webp", "Casting player on macOS with receiver selection, transport and volume", "Casting · macOS GPUI · choose audio and a receiver, then press Play.", 868, 1114) }}
 
 {% videoPlayer "chromecast-from-mac", true %}
@@ -91,10 +95,10 @@ Independent Mathlib operation remains delivery work; [inspect the current eviden
 | Test the rules you share | Pure updates describe state changes. Typed effects request files, networking and storage; test handlers supply controlled responses through each application's own boundary. |
 | Less code to maintain | Inferred types, exhaustive matching and shared transitions keep rules in Osprey instead of repeating them per host. |
 
-Host coverage varies: mobile and bank examples use their own bridges; common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
+The framework's hosts all draw the same frame of rows in shared memory; [see how the bridge works →](/docs/osprey-native/bridge/). Host coverage varies: the mobile Issue Inbox and bank examples still use their own boundaries, and common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
 
 ## Build your first app
 
-[Install →](/docs/installation/) · [First app →](/docs/my-first-app/) · [Watch Mac and iPhone interop →](/docs/tutorials/swift-interop/)
+[Install →](/docs/installation/) · [Build a counter →](/docs/osprey-native/first-app/) · [First CLI app →](/docs/my-first-app/) · [Watch Mac and iPhone interop →](/docs/tutorials/swift-interop/)
 
 [Framework source](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/native) · [Host contract](/spec/0047-ospreynativehosts/) · [Capture sources](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/website/src/assets/images/native/README.md)

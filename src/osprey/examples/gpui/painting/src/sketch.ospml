@@ -24,7 +24,7 @@ type Store =
 (** What the header buttons and the canvas send. *)
 type Act = ToggleDash | Clear | Draw
 
-(** Pointer handling, the dash toggle and the store's JSON. *)
+(** Pointer handling and the dash toggle. *)
 module Drawing
     (** No lines, solid strokes. *)
     export initialStore () = Store(sketch = Sketch(lines = [], startX = 0.0, startY = 0.0, painting = false), style = Style(dashed = false))
@@ -70,18 +70,8 @@ module Drawing
 
     floats values = JsonArray (mapList (values, \value => JsonFloat value))
 
-    (** The sketch slice as JSON for change detection and the session. *)
+    (** The sketch slice as JSON for change detection. *)
     export sketchJson sketch = JsonObject [JsonMember "lines" (JsonArray (mapList (sketch.lines, floats))), JsonMember "startX" (JsonFloat sketch.startX), JsonMember "startY" (JsonFloat sketch.startY), Doc::bit ("painting", sketch.painting)]
 
     (** The style slice as JSON. *)
     export styleJson style = JsonObject [Doc::bit ("dashed", style.dashed)]
-
-    (** The whole store as the opaque session's JSON. *)
-    export save store = JsonObject [JsonMember "sketch" (sketchJson store.sketch), JsonMember "style" (styleJson store.style)]
-
-    numbers item = mapList (Doc::items item, \value => jsonFloat value ?: 0.0)
-
-    (** Restores the store from a saved session. *)
-    export restore doc =
-        sketch = Doc::field (doc, "sketch")
-        Store(sketch = Sketch(lines = mapList (Doc::items (Doc::field (sketch, "lines")), numbers), startX = Doc::decimal (sketch, "startX"), startY = Doc::decimal (sketch, "startY"), painting = Doc::flag (sketch, "painting")), style = Style(dashed = Doc::flag (Doc::field (doc, "style"), "dashed")))

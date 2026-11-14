@@ -20,7 +20,35 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless workbench
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless tally tally-headless workbench _workbench_interactions _workbench_memory _workbench_linked
+
+.PHONY: pocket-orchestra pocket-orchestra-headless
+## pocket-orchestra-headless: Real native orchestra server and phone browser journeys, capturing PCM without an audio device.
+pocket-orchestra-headless: _pocket-orchestra-ring
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	node src/toolchain/targets/macos/tests/pocket-orchestra.mjs
+
+## pocket-orchestra: The same controller journeys with the native window, visible browsers and the Mac's audio device.
+pocket-orchestra: _pocket-orchestra-ring
+	bash src/toolchain/hosts/swift/orchestra/build.sh
+	ORCHESTRA_DEVICE_TEST=1 node src/toolchain/targets/macos/tests/pocket-orchestra.mjs
+
+# _pocket-orchestra-ring: Race the audio producer/callback under memory and undefined-behaviour sanitizers.
+.PHONY: _pocket-orchestra-ring
+_pocket-orchestra-ring:
+	@mkdir -p target/orchestra
+	clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined -g src/toolchain/targets/macos/tests/orchestra-ring.c src/toolchain/hosts/swift/orchestra/audio_ring.c -o target/orchestra/ring-test
+	python3 -c 'import subprocess; subprocess.run(["target/orchestra/ring-test"], check=True, timeout=20)'
+
+## tally-headless: Tally as a C library under its reference host, which seals each frame and reads
+##                 every control in place from shared memory. [NATIVE-SHM-VIEW]
+tally-headless:
+	$(MAKE) -C $(ROOT) _tally-reference
+
+## tally: Tally on the SwiftUI view host with no window: the host leases each frame, reads the
+##        controls in place and checks every text, colour and size it would draw. [NATIVE-SHM-VIEW]
+tally:
+	$(MAKE) -C $(ROOT) _tally-swift VIEW_ARGS=--view-check
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.
@@ -71,8 +99,9 @@ storage-headless: _runtime_macos
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 agent-headless: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	swift test --package-path src/toolchain/hosts/swift/Tests
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
+	# The Agent's archive is linked, so the suites that drive the real Workbench run under `workbench`.
+	swift test --package-path src/toolchain/hosts/swift --skip WorkbenchLayout
 
 ## agent-live: Osprey Agent in a real window with real DeepSeek calls, checked by acceptance tests the
 ##             agent never sees and an LLM judge. Spends tokens; the key is DEEPSEEKKEY in .env.
@@ -87,9 +116,27 @@ agent-qwen: _runtime _runtime_macos_arc
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
-## workbench: Build the Mac Workbench host, then `0 failures` from its Swift suite. Fetch the LFS
-##            lesson assets first.
-workbench: build
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/workbench/hosts/apple/run.sh --build
-	swift test --package-path src/osprey/workbench/hosts/apple
+# The Workbench on the SwiftUI host with no window opens and draws a checked frame ([NATIVE-SHM-VIEW]),
+# which also links its archive for the suites that drive the real Workbench.
+_workbench_linked: _runtime _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_SWIFT_APP=src/osprey/workbench bash src/toolchain/hosts/swift/view.sh --open-check
+
+# The 40,000-import memory soak: every import renders the whole app, so it has its own CI part.
+WORKBENCH_SOAK = WorkbenchLayoutTests/testActualApplicationImportDispatchAndCancellationMemoryPlateau$$
+
+## workbench: The Workbench opens and draws a checked frame with no window; then `0 failures` from all
+##            suites that drive the real Workbench, including the import memory soak.
+workbench: _workbench_linked
+	# The rest of the host's suite runs once, under `agent-headless`.
+	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout
+
+# CI runs these two partitions in parallel, with every Workbench test in exactly one.
+_workbench_interactions: _workbench_linked
+	swift test --package-path src/toolchain/hosts/swift --filter WorkbenchLayout --skip '$(WORKBENCH_SOAK)'
+
+# The real app imports lesson progress 20,000 times and cancels 20,000 reads;
+# ARC objects, bytes and borrowed slices must stay at their baseline.
+_workbench_memory: _workbench_linked
+	swift test --package-path src/toolchain/hosts/swift --filter '$(WORKBENCH_SOAK)'
 endif

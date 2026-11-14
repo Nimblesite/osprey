@@ -251,8 +251,81 @@ static void t_interior_pointer(void) {
   }
 }
 
+// The sweep frees dead blocks and reseats survivors in the table where it
+// stands [GC-TRACE-CONSERVATIVE]. A string's length lives in its table entry,
+// so a survivor the reseat lost would read -1. Each round keeps a different
+// stride of the blocks, leaving survivors between garbage of this round and
+// the last, and the budget fires collections of its own mid-round.
+#define SWEEP_BLOCKS 60000
+#define SWEEP_ROUNDS 6
+static char *g_swept[SWEEP_BLOCKS];
+static size_t sweep_size(int i) { return 9 + (size_t)(i % 7) * 8; }
+static char sweep_byte(int i, int round) { return (char)(1 + (i + round) % 120); }
+
+static void sweep_fill(int round) {
+  for (int i = 0; i < SWEEP_BLOCKS; i++) {
+    size_t size = sweep_size(i);
+    char *text = osp_alloc_tagged_noinit((int64_t)size, OSP_MEM_STRING);
+    CHECK(text != NULL);
+    memset(text, sweep_byte(i, round), size - 1);
+    text[size - 1] = '\0';
+    g_swept[i] = i % (round + 2) == 0 ? text : NULL;
+  }
+}
+
+static size_t sweep_verify(int round) {
+  size_t kept = 0;
+  for (int i = 0; i < SWEEP_BLOCKS; i += round + 2) {
+    const char *text = g_swept[i];
+    size_t size = sweep_size(i);
+    CHECK(osp_mem_string_length(text) == (int64_t)size - 1);
+    CHECK(text[0] == sweep_byte(i, round) && text[size - 2] == sweep_byte(i, round));
+    CHECK(text[size - 1] == '\0');
+    kept++;
+  }
+  return kept;
+}
+
+static void t_sweep_reseats_survivors(void) {
+  for (int round = 0; round < SWEEP_ROUNDS; round++) {
+    sweep_fill(round);
+    CHECK(sweep_verify(round) > 0); // through the budget's own collections
+    osp_collect();
+    size_t kept = sweep_verify(round);
+    CHECK(osp_gc_live_objects() >= kept && osp_gc_live_objects() < SWEEP_BLOCKS);
+    osp_collect(); // a second sweep over an already-swept table moves nothing wrongly
+    CHECK(sweep_verify(round) == kept);
+  }
+  memset(g_swept, 0, sizeof g_swept);
+  osp_collect();
+  CHECK(osp_gc_live_objects() < 1000 && osp_mem_string_length("borrowed") == -1);
+}
+
+// The table keeps the capacity a steady cycle needs: cutting it back to the
+// live set at each collection made the next cycle regrow it, rehashing every
+// block at each doubling. It is given back once a cycle peaks below it. Each
+// cycle allocates under the 1 MiB budget, so only osp_collect collects here.
+#define STEADY_BLOCKS 30000
+#define STEADY_CYCLES 5
+static void t_table_keeps_capacity(void) {
+  osp_collect();
+  (void)alloc_churn(STEADY_BLOCKS, 16);
+  osp_collect(); // warm-up cycle: the table now fits one cycle's blocks
+  size_t steady = osp_gc_table_capacity();
+  CHECK(steady * 3 > (size_t)STEADY_BLOCKS * 4);
+  for (int cycle = 0; cycle < STEADY_CYCLES; cycle++) {
+    size_t collections = osp_gc_collections();
+    (void)alloc_churn(STEADY_BLOCKS, 16);
+    CHECK(osp_gc_collections() == collections && osp_gc_table_capacity() == steady);
+    osp_collect();
+    CHECK(osp_gc_table_capacity() == steady && osp_gc_live_objects() < 1000);
+  }
+  osp_collect(); // an idle cycle: nothing was allocated since the last sweep
+  CHECK(osp_gc_table_capacity() < steady && osp_gc_live_objects() < 1000);
+}
+
 // Volume: many rooted blocks all survive one collection intact — exercises the
-// mark/sweep table rebuild at scale and contributes the bulk of the assertions.
+// mark and the in-place sweep at scale.
 static void t_many_rooted_survive(void) {
   enum { N = 20000 };
   static void *ptrs[N];
@@ -295,6 +368,8 @@ int main(int argc, char **argv) {
   t_immortal_pins_without_roots();
   t_root_keeps_alive();
   t_interior_pointer();
+  t_sweep_reseats_survivors();
+  t_table_keeps_capacity();
   t_many_rooted_survive();
   t_finalizer_at_sweep();
   t_debug_reports(argv[0]);

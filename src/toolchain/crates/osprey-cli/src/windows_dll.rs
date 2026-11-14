@@ -6,7 +6,7 @@
 //! `osprey_import_<name>` before it calls `osprey_main`, which returns [`UNBOUND`] while any slot
 //! is still empty. An `extern fn` the linked runtime archive defines, such as the TLS session, is
 //! no slot: the archive answers it inside the DLL. Only the boundary is exported: the entry, the
-//! C exports and the binders.
+//! C exports, the binders and the shared-memory bridge table.
 
 use super::{c_header, defines, llvm_params, rename_symbol, CType, Export, HostAbi, Import, ENTRY};
 use std::fmt::Write as _;
@@ -17,6 +17,24 @@ pub(crate) const UNBOUND: i32 = -2;
 pub(crate) const BINDER_PREFIX: &str = "osprey_import_";
 /// Codegen's entry, renamed so the slot check runs before it.
 const SLOTTED_ENTRY: &str = "__osprey_dll_entry";
+/// The one exported table through which a host reaches the shared-memory bridge the DLL carries.
+/// [NATIVE-SHM-OWNERSHIP]
+pub(crate) const BRIDGE_TABLE: &str = "osprey_native_bridge";
+/// The bridge entries a host calls, in table order; `native_bridge.h` declares each.
+pub(crate) const BRIDGE_ENTRIES: [&str; 12] = [
+    "osp_native_open",
+    "osp_native_frame_commit",
+    "osp_native_frame_discard",
+    "osp_native_acquire",
+    "osp_native_child",
+    "osp_native_length",
+    "osp_native_view",
+    "osp_native_retain",
+    "osp_native_release",
+    "osp_native_close",
+    "osp_native_destroy",
+    "osp_native_usage",
+];
 /// The closing guard every generated header ends with.
 const HEADER_CLOSE: &str = "\n#ifdef __cplusplus\n}\n#endif\n";
 
@@ -38,13 +56,14 @@ pub(crate) fn adapt(
     let forwarded = slotted
         .iter()
         .fold(exported, |out, import| slot(&out, import, extend_bool));
-    Ok((forwarded + &boundary(&slotted), slotted))
+    Ok((forwarded + &boundary(&slotted) + &bridge_table(), slotted))
 }
 
 /// Whether the runtime archive linked into the DLL defines `import` itself.
 fn in_runtime(import: &Import) -> bool {
     crate::linking::HTTP_RUNTIME_EXTERNS
         .iter()
+        .chain(&[crate::linking::BRIDGE_RUNTIME_EXTERN])
         .any(|prefix| import.symbol.starts_with(prefix))
 }
 
@@ -135,6 +154,24 @@ fn boundary(slotted: &[Import]) -> String {
     )
 }
 
+/// The exported table of bridge entries. Naming them here also links them into the DLL: nothing
+/// the program itself calls reaches the host-side half of the bridge.
+fn bridge_table() -> String {
+    let declared = BRIDGE_ENTRIES.iter().fold(String::new(), |mut out, entry| {
+        let _ = writeln!(out, "declare void @{entry}()");
+        out
+    });
+    let entries: Vec<String> = BRIDGE_ENTRIES
+        .iter()
+        .map(|entry| format!("ptr @{entry}"))
+        .collect();
+    format!(
+        "\n{declared}@{BRIDGE_TABLE} = dllexport constant [{} x ptr] [{}]\n",
+        entries.len(),
+        entries.join(", ")
+    )
+}
+
 fn binder(import: &Import) -> String {
     format!(
         "\ndefine dllexport void @{}(ptr %fn) {{\nentry:\n  store ptr %fn, ptr @{}\n  ret void\n}}\n",
@@ -164,7 +201,13 @@ pub(crate) fn header(exports: &[Export], slotted: &[Import], source: &str, targe
         "\n// Import slots [WINUI-HOST-IMPORTS]: the host passes each function to its binder\n\
          // before {ENTRY}, which returns {UNBOUND} while any slot is still empty.\n{binders}"
     );
-    base.replacen(HEADER_CLOSE, &format!("{section}{HEADER_CLOSE}"), 1)
+    let bridge = format!(
+        "\n// The shared-memory bridge [NATIVE-SHM-OWNERSHIP]: the entries of native_bridge.h, in this order:\n\
+         // {}.\nextern const void *const {BRIDGE_TABLE}[{}];\n",
+        BRIDGE_ENTRIES.join(", "),
+        BRIDGE_ENTRIES.len()
+    );
+    base.replacen(HEADER_CLOSE, &format!("{section}{bridge}{HEADER_CLOSE}"), 1)
 }
 
 fn binder_prototype(import: &Import) -> String {

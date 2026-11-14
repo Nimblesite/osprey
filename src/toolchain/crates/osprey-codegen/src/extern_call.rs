@@ -166,6 +166,38 @@ fn lookup(name: &str) -> Option<Sig> {
         "termMoveCursor" => sig("term_move_cursor", &[I64, I64], Ret::Int),
         "termHideCursor" => sig("term_hide_cursor", &[], Ret::Int),
         "termShowCursor" => sig("term_show_cursor", &[], Ret::Int),
+        _ => return native_lookup(name),
+    })
+}
+
+/// The shared frame writers (`native_scene.c`) [NATIVE-SHM-VIEW]: typed builtins whose C
+/// signatures the compiler fixes, so no package declares a raw `extern` for them.
+fn native_lookup(name: &str) -> Option<Sig> {
+    use LType::Str;
+    const I64: LType = LType::I64;
+    const DOUBLE: LType = LType::F64;
+    let sig = |cname, params, ret| Sig { cname, params, ret };
+    Some(match name {
+        "nativeSceneShape" => sig(
+            "osp_native_scene_shape",
+            &[
+                I64, I64, DOUBLE, DOUBLE, DOUBLE, DOUBLE, DOUBLE, I64, I64, Str,
+            ],
+            Ret::Int,
+        ),
+        "nativeViewRow" => sig(
+            "osp_native_view_row",
+            &[
+                I64, I64, I64, Str, I64, I64, DOUBLE, DOUBLE, DOUBLE, DOUBLE, I64,
+            ],
+            Ret::Int,
+        ),
+        "nativeViewExtend" => sig(
+            "osp_native_view_extend",
+            &[I64, DOUBLE, DOUBLE, DOUBLE, I64, I64, Str],
+            Ret::Int,
+        ),
+        "nativeAsk" => sig("osp_native_ask", &[I64, I64, Str], Ret::Int),
         _ => return None,
     })
 }

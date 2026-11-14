@@ -1,6 +1,6 @@
 [project]
 name = "synth-tests"
-source_roots = [".", "../src", "../../../packages/signal_flow/src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src", "../../../packages/uitest/src"]
+source_roots = ["../../../packages/synth/src", ".", "../src", "../../../packages/signal_flow/src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src", "../../../packages/uitest/src"]
 default_namespace = "synthtests"
 entry = "main.ospml"
 

@@ -38,6 +38,11 @@
 static _Atomic long osp_alloc_successes_left = -1;
 static _Atomic size_t osp_alloc_failure_size;
 
+// The dynamic loader calls these while AddressSanitizer is still starting, when
+// an instrumented frame cannot run yet. They only forward to the allocator the
+// sanitizer supplies, so its heap checks still see every block.
+#define OSP_ALLOC_ENTRY __attribute__((no_sanitize("address")))
+
 #define OSP_BOOTSTRAP_BYTES 4096
 static char osp_bootstrap_arena[OSP_BOOTSTRAP_BYTES];
 static _Atomic size_t osp_bootstrap_used;
@@ -58,7 +63,7 @@ static int osp_alloc_resolving;
 // and every pointer this is asked about is either the arena's or the real
 // allocator's. Converting both sides to uintptr_t asks the same question about
 // integers, which is defined.
-static inline int osp_from_bootstrap(const void *p) {
+OSP_ALLOC_ENTRY static inline int osp_from_bootstrap(const void *p) {
   uintptr_t at = (uintptr_t)p;
   uintptr_t base = (uintptr_t)(const void *)osp_bootstrap_arena;
   return at >= base && at < base + OSP_BOOTSTRAP_BYTES;
@@ -66,7 +71,7 @@ static inline int osp_from_bootstrap(const void *p) {
 
 // Eight-byte aligned bump allocation. Returns NULL once the arena is spent,
 // which is itself the honest answer: nothing here may grow without bound.
-static inline void *osp_bootstrap_alloc(size_t bytes) {
+OSP_ALLOC_ENTRY static inline void *osp_bootstrap_alloc(size_t bytes) {
   // Reject before rounding: `bytes + 7` wraps to a SMALL number for a request
   // near SIZE_MAX, and the rounded size would then pass the bounds check.
   if (bytes > OSP_BOOTSTRAP_BYTES) {
@@ -93,7 +98,7 @@ static inline void *osp_bootstrap_alloc(size_t bytes) {
   return NULL; // spent, and it never grows
 }
 
-static inline void osp_resolve_real_allocators(void) {
+OSP_ALLOC_ENTRY static inline void osp_resolve_real_allocators(void) {
   if (osp_real_malloc != NULL || osp_alloc_resolving) {
     return;
   }
@@ -106,7 +111,7 @@ static inline void osp_resolve_real_allocators(void) {
 }
 
 // True exactly once per armed allocation, counting down the successes first.
-static inline int osp_alloc_should_fail(size_t bytes) {
+OSP_ALLOC_ENTRY static inline int osp_alloc_should_fail(size_t bytes) {
   size_t selected = atomic_load(&osp_alloc_failure_size);
   if (selected != 0 && selected != bytes) return 0;
   long left = atomic_load(&osp_alloc_successes_left);
@@ -142,7 +147,7 @@ static inline void osp_alloc_fail_off(void) {
   atomic_store(&osp_alloc_failure_size, 0);
 }
 
-void *malloc(size_t bytes) {
+OSP_ALLOC_ENTRY void *malloc(size_t bytes) {
   osp_resolve_real_allocators();
   if (osp_real_malloc == NULL) {
     return osp_bootstrap_alloc(bytes);
@@ -161,7 +166,7 @@ void *malloc(size_t bytes) {
 // node with calloc (json_runtime.c does) would otherwise have EVERY
 // allocation-failure arm unreachable, and every node it frees would count as a
 // block nobody allocated — a phantom leak in any test that counts them.
-void *calloc(size_t count, size_t size) {
+OSP_ALLOC_ENTRY void *calloc(size_t count, size_t size) {
   osp_resolve_real_allocators();
   size_t bytes = count * size;
   if (size != 0 && count > (size_t)-1 / size) {
@@ -181,7 +186,7 @@ void *calloc(size_t count, size_t size) {
   return at;
 }
 
-void *realloc(void *at, size_t bytes) {
+OSP_ALLOC_ENTRY void *realloc(void *at, size_t bytes) {
   osp_resolve_real_allocators();
   if (osp_alloc_should_fail(bytes)) {
     return NULL; // the caller still owns `at`, exactly as C requires
@@ -214,7 +219,7 @@ char *strdup(const char *text) {
   return copy == NULL ? NULL : (char *)memcpy(copy, text, bytes);
 }
 
-void free(void *at) {
+OSP_ALLOC_ENTRY void free(void *at) {
   if (at == NULL || osp_from_bootstrap(at)) {
     return; // arena bytes outlive the process; freeing them would be a wild free
   }

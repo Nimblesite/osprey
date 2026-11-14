@@ -19,6 +19,12 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def source_directory(destination, packages):
+    """One immutable source identity for a verified set, with sibling crate paths preserved."""
+    pins = sorted((package["name"], package["version"], package["treeSha256"]) for package in packages)
+    return destination / digest(json.dumps(pins, separators=(",", ":")).encode())
+
+
 def tree_digest(root):
     files = tuple(root.rglob("*"))
     if root.is_symlink() or any(p.is_symlink() for p in files):
@@ -80,6 +86,21 @@ def apply_edits(root, edits):
         file.write_bytes(content.replace(before, after, 1))
 
 
+# Cargo rebuilds a path dependency whose sources are newer than its last build, so a source staged
+# afresh on each runner would rebuild GPUI and everything above it although the host's build is
+# cached. The verified source set has a content-addressed path, so changed bytes change Cargo's
+# source identity. Within that immutable identity, every path uses 2000-01-01 UTC.
+STAGED_MTIME = 946684800
+
+
+# `extract` writes only directories and regular files, so no path here is a link; Windows cannot
+# set a time without following one anyway.
+def settle_times(root):
+    for path in sorted(root.rglob("*"), reverse=True):
+        os.utime(path, (STAGED_MTIME, STAGED_MTIME))
+    os.utime(root, (STAGED_MTIME, STAGED_MTIME))
+
+
 def verify_tree(root, expected):
     if tree_digest(root) != expected:
         raise ValueError(f"Dependency source integrity mismatch: {root}")
@@ -126,16 +147,18 @@ def stage(package, destination, patches):
         extract(archive, root, target.name)
         apply_edits(root, json.loads(inside(patches, package["edits"]).read_text()))
         verify_tree(root, package["treeSha256"])
+        settle_times(root)
         publish(root, target, package["treeSha256"])
     return target
 
 
 def main():
     packages = json.loads((HERE / "dependencies.json").read_text())["packages"]
+    destination = source_directory(DESTINATION, packages)
     manifests = [HERE / "Cargo.toml", ROOT / "src/osprey/examples/gpui/painting/reference/Cargo.toml"]
-    verify_inventory(packages, DESTINATION, manifests)
+    verify_inventory(packages, destination, manifests)
     for package in packages:
-        stage(package, DESTINATION, HERE)
+        stage(package, destination, HERE)
     print(f"GPUI dependency source integrity: {len(packages)} backports PASS")
 
 

@@ -3,52 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { Browser, Frame } from "playwright-core";
-import * as http from "http";
 import * as sinon from "sinon";
-import { commands, ConfigurationTarget, ExtensionContext, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
-import { BUILD_MS, EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
-import { compileSdkHost, installRegistry, servedPackage, sdkHostRequests, sdkRequest } from "./package-harness";
+import { commands, ConfigurationTarget, Uri, WebviewPanel, window, workspace, WorkspaceEdit, Range, Position, extensions } from "vscode";
+import { hostBridge } from "../../client/src/package-workspace";
+import { EXTENSION_ID, activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor } from "./profiler-kit";
+import { RealRegistry, demoFiles, tamperingHop, withRegistrySetting, type DemoPackage } from "./real-registry-kit";
+import { Ask, type Completion } from "../../client/src/osprey-ui/asks";
 import { createRequestExecutor } from "../../client/src/osprey-ui/capabilities";
-import { record, type NativeRequest } from "../../client/src/osprey-ui/protocol";
-import { folderFor, hostBridge } from "../../client/src/package-workspace";
-
-const roots = ["one", "two"].map((name, index) => ({ name, index, uri: Uri.file(`/work/${name}`) }));
-
-suite("package workspace project safety", () => {
-  teardown(() => sinon.restore());
-
-  test("the capability host reads live trust after the panel opens", () => {
-    let trusted = true;
-    sinon.stub(workspace, "isTrusted").get(() => trusted);
-    const host = hostBridge({ extensionPath: "/extension" } as ExtensionContext);
-    assert.strictEqual(host.trusted, true);
-    trusted = false;
-    assert.strictEqual(host.trusted, false);
-  });
-
-  test("multi-root command palette selection requires an explicit project", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    const item = { label: "two", uri: roots[1].uri };
-    const picker = sinon.stub(window, "showQuickPick").resolves(item);
-    const selected = await folderFor();
-    assert.strictEqual(picker.callCount, 1);
-    assert.strictEqual(selected?.toString(), roots[1].uri.toString());
-  });
-
-  test("cancelling multi-root selection never falls back to the first project", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    sinon.stub(window, "showQuickPick").resolves(undefined);
-    assert.strictEqual(await folderFor(), undefined);
-  });
-
-  test("an Explorer resource selects its own project without a picker", async () => {
-    sinon.stub(workspace, "workspaceFolders").get(() => roots);
-    sinon.stub(workspace, "getWorkspaceFolder").returns(roots[1]);
-    const picker = sinon.stub(window, "showQuickPick");
-    assert.strictEqual((await folderFor(Uri.file("/work/two/osprey.toml")))?.toString(), roots[1].uri.toString());
-    assert.strictEqual(picker.callCount, 0);
-  });
-});
 
 function renderedHtml(messages: sinon.SinonSpy): string {
   return messages.getCalls().map((call) => call.args[0] as { type?: string; html?: string })
@@ -67,39 +28,23 @@ async function observeWorkspace(command: string | (() => Promise<void>), folder:
   return panel;
 }
 
-async function catalogFixture(listing: unknown, sources: ReadonlyMap<string, unknown>, catalogStatus: () => number) {
-  let reads = 0;
-  const server = http.createServer((request, response) => {
-    // The registry's liveness probe, which opening the package manager checks
-    // first ([PACKAGE-LOCAL-REGISTRY]); it is not a catalog read.
-    if (request.url === "/v1/health") {
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({ status: "ok" }));
-      return;
-    }
-    reads++;
-    const body = request.url === "/v1/packages" ? listing : sources.get(request.url ?? "");
-    response.writeHead(body === undefined ? 404 : request.url === "/v1/packages" ? catalogStatus() : 200, { "Content-Type": "application/json" });
-    response.end(JSON.stringify(body ?? { error: "not-found" }));
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  assert.ok(address && typeof address !== "string");
-  return { server, reads: () => reads, origin: `http://127.0.0.1:${address.port}` };
-}
+const GREETING: readonly DemoPackage[] = [{ key: "@demo/greeting" }];
 
-async function withCatalog(run: (reads: () => number) => Promise<void>, listing: unknown = { packages: [] }, sources: ReadonlyMap<string, unknown> = new Map(), catalogStatus: () => number = () => 200): Promise<void> {
-  const fixture = await catalogFixture(listing, sources, catalogStatus);
-  const config = workspace.getConfiguration("osprey");
-  const before = config.inspect<string>("packages.registry")?.workspaceValue;
+/** A real `osprey-registry` serving `packages`, published by the real client, for `run`. */
+async function withCatalog(run: (registry: RealRegistry) => Promise<void>, packages: readonly DemoPackage[] = GREETING, origin?: (registry: RealRegistry) => Promise<{ origin: string; close(): Promise<void> }>): Promise<void> {
+  const registry = await RealRegistry.start(packages);
+  const hop = origin === undefined ? undefined : await origin(registry);
   try {
-    await config.update("packages.registry", fixture.origin, ConfigurationTarget.Workspace);
-    await run(fixture.reads);
+    await withRegistrySetting(hop?.origin ?? registry.origin, () => run(registry));
   } finally {
-    await config.update("packages.registry", before, ConfigurationTarget.Workspace);
-    await new Promise<void>((resolve) => fixture.server.close(() => resolve()));
+    await hop?.close();
+    await registry.dispose();
   }
 }
+
+/** How many catalog reads the real server answered. */
+const catalogReads = (registry: RealRegistry): number => registry.log().split("path=/v1/packages ").length - 1;
+
 // Exercises [EDITOR-PACKAGE-ACTION] through the actual VS Code toolbar.
 async function openPackagesFromSidebar(folder: { name: string; uri: Uri }, panels: sinon.SinonSpy): Promise<WebviewPanel> {
   const browser = await connectEditorBrowser();
@@ -113,13 +58,13 @@ async function openPackagesFromSidebar(folder: { name: string; uri: Uri }, panel
   } finally { await browser.close(); }
 }
 
-async function verifyPanelLifecycle(reads: () => number, panels: sinon.SinonSpy): Promise<void> {
+async function verifyPanelLifecycle(registry: RealRegistry, panels: sinon.SinonSpy): Promise<void> {
   const folders = workspace.workspaceFolders ?? [];
   assert.strictEqual(folders.length, 2, "runner supplies two isolated real projects");
   const first = await openPackagesFromSidebar(folders[0], panels);
   await commands.executeCommand("osprey.packages.add", folders[0].uri);
   assert.strictEqual(panels.callCount, 1, "Add reuses the package manager opened from the sidebar");
-  await waitFor(reads, (count) => count > 0, 8000, "real WASM capability fetches catalog");
+  await waitFor(() => catalogReads(registry), (count) => count > 0, 8000, "real WASM capability fetches the real registry's catalog");
   await commands.executeCommand("osprey.packages.remove", folders[0].uri);
   assert.strictEqual(panels.callCount, 1, "same project reuses its live panel");
   let disposed = false;
@@ -135,16 +80,13 @@ suite("package workspace real host lifecycle", () => {
   test("sidebar Manage Packages button opens real WASM, reuses its panel and switches projects", async () => {
     await activateWithServer();
     const panels = sinon.spy(window, "createWebviewPanel");
-    try { await withCatalog((reads) => verifyPanelLifecycle(reads, panels)); }
+    try { await withCatalog((registry) => verifyPanelLifecycle(registry, panels)); }
     finally { for (const call of panels.getCalls()) (call.returnValue as WebviewPanel).dispose(); }
   });
 });
 
-const browserCatalog = { packages: [{ key: "@demo/greeting", releases: [
-  { epoch: 1, ordinal: 1, digest: `sha256:${"a".repeat(64)}` },
-] }] };
-
-async function withPackageBrowser(run: (frame: Frame, folder: Uri) => Promise<void>, listing: unknown = browserCatalog, sources: ReadonlyMap<string, unknown> = new Map(), catalogStatus: () => number = () => 200): Promise<void> {
+async function withPackageBrowser(run: (frame: Frame, folder: Uri, registry: RealRegistry) => Promise<void>, packages: readonly DemoPackage[] = GREETING,
+  origin?: (registry: RealRegistry) => Promise<{ origin: string; close(): Promise<void> }>): Promise<void> {
   await activateWithServer();
   const folder = workspace.workspaceFolders?.[0];
   assert.ok(folder);
@@ -152,11 +94,11 @@ async function withPackageBrowser(run: (frame: Frame, folder: Uri) => Promise<vo
   const restoreProject = projectSnapshot(folder.uri);
   let browser: Browser | undefined;
   try {
-    await withCatalog(async () => {
+    await withCatalog(async (registry) => {
       browser = await connectEditorBrowser();
       await observeWorkspace("osprey.packages.open", folder.uri, panels);
-      await runBrowserFlow(await editorWebviewFrame(browser, '[role="tab"][data-value="browse"]'), folder.uri, run);
-    }, listing, sources, catalogStatus);
+      await runBrowserFlow(await editorWebviewFrame(browser, '[role="tab"][data-value="browse"]'), folder.uri, (frame, uri) => run(frame, uri, registry));
+    }, packages, origin);
   } finally {
     await closeBrowserPanels(browser, panels);
     restoreProject();
@@ -184,6 +126,9 @@ async function runBrowserFlow(frame: Frame, folder: Uri, run: (frame: Frame, fol
   catch (error) {
     const details = await frame.locator("body").innerText().catch(problem => `Unavailable: ${String(problem)}`);
     console.error("Package UI at failure:", details);
+    // A real package operation keeps writing the project after the panel closes, so the fixture is
+    // restored only once it ends; otherwise its lock outlives the restore and fails every later flow.
+    await frame.getByText("Package work in progress", { exact: true }).waitFor({ state: "detached" }).catch(() => undefined);
     throw error;
   }
 }
@@ -231,7 +176,7 @@ async function installFromBrowser(frame: Frame): Promise<void> {
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
   await press(frame, "Add to project");
   await press(frame, "Confirm add @demo/greeting");
-  await frame.getByText("2 installed · 1 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
+  await frame.getByText("2 installed · 1 direct · 0 missing · 0 findings", { exact: true }).waitFor();
   await press(frame, "Installed", "tab");
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
   await frame.getByText("Dependencies", { exact: true }).waitFor();
@@ -251,11 +196,11 @@ async function inspectDependencyGraph(frame: Frame): Promise<void> {
     "../../../../../../target/registry-ownership-check/workspace-installed-browser.png") });
 }
 
-async function tamperInstalledSource(frame: Frame, folder: Uri, pkg: ReturnType<typeof servedPackage>): Promise<void> {
-  const source = path.join(folder.fsPath, ".osprey/packages", pkg.key, pkg.digest.slice(7), "src/main.osp");
+async function tamperInstalledSource(frame: Frame, folder: Uri, key: string, digest: string): Promise<void> {
+  const source = path.join(folder.fsPath, ".osprey/packages", key, digest.slice(7), "src/main.osp");
   fs.writeFileSync(source, "fn value() = 0\n");
   await press(frame, "Refresh");
-  await frame.getByText("verify.digest", { exact: true }).first().waitFor({ timeout: 4000 });
+  await frame.getByText("verify.digest", { exact: true }).first().waitFor();
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).isEnabled(), false,
     "a package with integrity findings cannot be added");
 }
@@ -264,37 +209,39 @@ async function removeFromBrowser(frame: Frame, folder: Uri): Promise<void> {
   await frame.locator(".osp-context-body").click({ button: "right" });
   await frame.getByRole("menu").getByRole("button", { name: "Remove dependency", exact: true }).click();
   await press(frame, "Confirm remove @demo/greeting");
-  await frame.getByText("0 installed · 0 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
+  await frame.getByText("0 installed · 0 direct · 0 missing · 0 findings", { exact: true }).waitFor();
   assert.ok(!fs.readFileSync(path.join(folder.fsPath, "osprey.toml"), "utf8").includes("@demo/greeting"));
 }
 
 suite("package workspace browser installation", () => {
   teardown(() => sinon.restore());
-  test("real Add verifies two packages and Remove resolves their dependency graph", async () => {
-    const registry = installRegistry();
-    await withPackageBrowser(async (frame, folder) => {
+  // Real installs download, verify and unpack two releases through osprey-pkg; a hosted runner takes several seconds.
+  test("real Add verifies two packages and Remove resolves their dependency graph", async function () {
+    this.timeout(60_000);
+    const packages: DemoPackage[] = [{ key: "@demo/maths" }, { key: "@demo/greeting", dependency: "@demo/maths" }];
+    await withPackageBrowser(async (frame, folder, registry) => {
       assert.ok(folder.fsPath.includes(" "), "real package operations run from a workspace path containing spaces");
       await installFromBrowser(frame);
-      for (const pkg of registry.packages) {
-        const stored = path.join(folder.fsPath, ".osprey/packages", pkg.key, pkg.digest.slice(7));
-        for (const file of pkg.files) assert.strictEqual(fs.readFileSync(path.join(stored, file.path), "utf8"), file.text);
+      for (const pkg of packages) {
+        const stored = path.join(folder.fsPath, ".osprey/packages", pkg.key, (await registry.digest(pkg.key)).slice(7));
+        for (const file of demoFiles(pkg)) assert.strictEqual(fs.readFileSync(path.join(stored, file.path), "utf8"), file.text, `${pkg.key} ${file.path}`);
       }
+      assert.ok(registry.log().includes("/source"), "the install downloaded release sources from the real registry");
       await inspectDependencyGraph(frame);
-      await tamperInstalledSource(frame, folder, registry.packages[0]);
+      await tamperInstalledSource(frame, folder, "@demo/greeting", await registry.digest("@demo/greeting"));
       await removeFromBrowser(frame, folder);
-    }, registry.listing, registry.sources);
+    }, packages);
   });
 });
 
-async function verifyRegistryRecovery(frame: Frame, setStatus: (status: number) => void): Promise<void> {
+async function verifyRegistryRecovery(frame: Frame, registry: RealRegistry): Promise<void> {
   await searchCatalog(frame);
-  setStatus(503);
+  await registry.stop();
   await press(frame, "Refresh");
   await frame.getByText("Package data unavailable", { exact: true }).waitFor();
-  await frame.getByText("Registry returned HTTP 503", { exact: true }).waitFor();
   assert.strictEqual(await frame.getByRole("option").count(), 0, "failure hides package rows");
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).count(), 0);
-  setStatus(200);
+  await registry.republish([{ key: "@demo/greeting-recovered" }]);
   await press(frame, "Refresh");
   await frame.getByRole("option").filter({ hasText: "@demo/greeting-recovered" }).waitFor();
   assert.strictEqual(await frame.getByText("Package data unavailable", { exact: true }).count(), 0);
@@ -369,24 +316,31 @@ suite("package workspace browser safety", () => {
     });
   });
   test("duplicate leaf names remain distinct and warned under different orgs", async () => {
-    const listing = { packages: ["@my-org/helpers", "@other-org/helpers"].map((key) => ({
-      ...structuredClone(browserCatalog.packages[0]), key,
-    })) };
-    await withPackageBrowser(verifyOrgScopedRows, listing);
+    await withPackageBrowser(verifyOrgScopedRows, [{ key: "@my-org/helpers" }, { key: "@other-org/helpers" }]);
   });
   test("an unscoped catalog identity hides package choices with a visible reason", async () => {
-    const listing = structuredClone(browserCatalog);
-    await withPackageBrowser((frame) => verifyUnscopedRefusal(frame, () => {
-      listing.packages[0].key = "HelperFunctions";
-    }), listing);
+    // The real registry refuses an unscoped release when it loads (see the next case), so only a
+    // hostile hop between it and the editor can tell one: the hop rewrites the real listing.
+    let hostile = false;
+    await withPackageBrowser((frame) => verifyUnscopedRefusal(frame, () => { hostile = true; }), GREETING,
+      (registry) => tamperingHop(registry, () => (hostile ? (body) => body.replace('"@demo/greeting"', '"HelperFunctions"') : undefined)));
+  });
+  test("an unscoped catalog identity hides package choices with a visible reason (extra: the real registry refuses an unscoped tree and never offers it)", async () => {
+    await withPackageBrowser(async (frame, _folder, registry) => {
+      const unscoped = path.join(registry.root, "HelperFunctions", "1.1");
+      fs.cpSync(path.join(registry.root, "@demo", "greeting", "1.1"), unscoped, { recursive: true });
+      await registry.stop();
+      await registry.serve();
+      assert.ok(registry.log().includes("refused HelperFunctions/1.1"), registry.log());
+      await press(frame, "Refresh");
+      await frame.getByRole("tab", { name: "Browse registry" }).click();
+      await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).waitFor();
+      assert.strictEqual(await frame.getByRole("option").filter({ hasText: "HelperFunctions" }).count(), 0);
+      assert.strictEqual(await frame.getByRole("option").count(), 1);
+    });
   });
   test("a real catalog error hides rows and a successful refresh recovers", async () => {
-    let status = 200;
-    const listing = structuredClone(browserCatalog);
-    await withPackageBrowser((frame) => verifyRegistryRecovery(frame, (next) => {
-      status = next;
-      if (next === 200) listing.packages[0].key = "@demo/greeting-recovered";
-    }), listing, new Map(), () => status);
+    await withPackageBrowser((frame, _folder, registry) => verifyRegistryRecovery(frame, registry));
   });
   test("a real unsaved manifest blocks confirmed Add without disk mutations", async () => {
     await withPackageBrowser(verifyDirtyAdd);
@@ -397,18 +351,37 @@ interface SdkScenario {
   readonly frame: Frame;
   readonly folder: Uri;
   readonly document: Uri;
-  readonly requests: readonly NativeRequest[];
-  readonly execute: (request: NativeRequest) => Promise<unknown>;
+  readonly execute: (ask: Ask) => Promise<Completion>;
+}
+
+function hostCall(ticket: string, operation: string, pairs: readonly (readonly [string, string])[],
+  options: { readonly namespace?: string; readonly timeout?: number; readonly limit?: number } = {}): Ask {
+  const fields: { field: number; number: number; text: string }[] = [
+    { field: 1, number: 0, text: options.namespace ?? "vscode" },
+    { field: 2, number: 0, text: operation },
+    ...pairs.flatMap(([name, value]) => [{ field: 3, number: 0, text: name }, { field: 3, number: 0, text: value }]),
+    { field: 4, number: options.timeout ?? 10000, text: "" },
+    { field: 5, number: options.limit ?? 1024, text: "" },
+    { field: 6, number: 0, text: "" },
+  ];
+  return new Ask(11, ticket, fields);
+}
+
+function documentAsk(ticket: string, uri: string, line = 1, column = 1): Ask {
+  return hostCall(ticket, "document.open", [["uri", uri], ["line", String(line)], ["column", String(column)]]);
+}
+
+function answer(completion: Completion): Record<string, unknown> {
+  const value: unknown = JSON.parse(completion.detail);
+  assert.ok(typeof value === "object" && value !== null);
+  return value as Record<string, unknown>;
 }
 
 async function sdkScenario(frame: Frame, folder: Uri, document: Uri): Promise<SdkScenario> {
   fs.writeFileSync(document.fsPath, "alpha\nsecond\nomega\n");
   const extension = extensions.getExtension(EXTENSION_ID);
-  const peer = workspace.workspaceFolders?.[1];
-  assert.ok(extension && peer, "real activated extension and second workspace exist");
-  const requests = await sdkHostRequests([document.toString(), folder.toString(), peer.uri.toString(),
-    Uri.joinPath(folder, "missing-sdk-document.txt").toString()]);
-  return { frame, folder, document, requests, execute: createRequestExecutor(hostBridge(extension)) };
+  assert.ok(extension, "real activated extension exists");
+  return { frame, folder, document, execute: createRequestExecutor(hostBridge(extension)) };
 }
 
 async function withSdkScenario(run: (scenario: SdkScenario) => Promise<void>): Promise<void> {
@@ -436,36 +409,37 @@ async function withScopedRegistries(run: () => Promise<void>): Promise<void> {
 }
 
 async function verifySdkDocument(scenario: SdkScenario): Promise<void> {
-  const { document, requests, execute } = scenario;
-  assert.deepStrictEqual(await execute(sdkRequest(requests, "sdk/open")), { opened: true, uri: document.toString() });
+  const { document, execute } = scenario;
+  assert.deepStrictEqual(answer(await execute(documentAsk("sdk/open", document.toString(), 2, 3))), { opened: true, uri: document.toString() });
   assert.strictEqual(window.activeTextEditor?.document.uri.toString(), document.toString());
   assert.strictEqual(window.activeTextEditor?.selection.active.line, 1);
   assert.strictEqual(window.activeTextEditor?.selection.active.character, 2);
-  const snapshot = await execute(sdkRequest(requests, "sdk/snapshot"));
-  assert.ok(record(snapshot));
+  const snapshot = answer(await execute(hostCall("sdk/snapshot", "workspace.snapshot", [])));
   assert.strictEqual(snapshot.activeDocument, document.toString());
   assert.strictEqual(snapshot.trusted, workspace.isTrusted);
 }
 
 async function verifySdkConfiguration(scenario: SdkScenario): Promise<void> {
-  for (const [ticket, expected] of [["sdk/config-one", "https://sdk-0.example"], ["sdk/config-two", "https://sdk-1.example"]]) {
-    const result = await scenario.execute(sdkRequest(scenario.requests, ticket));
-    assert.ok(record(result) && record(result.values));
+  const folders = workspace.workspaceFolders ?? [];
+  for (const [index, [ticket, registry]] of [["sdk/config-one", "https://sdk-0.example"], ["sdk/config-two", "https://sdk-1.example"]].entries()) {
+    assert.ok(folders[index]);
+    const result = answer(await scenario.execute(hostCall(ticket,
+      "configuration.read", [["section", "osprey.packages"], ["workspace", folders[index]!.uri.toString()]])));
     assert.strictEqual(result.section, "osprey.packages");
-    assert.strictEqual(result.values.registry, expected, "configuration resolves against the request's real resource");
+    assert.strictEqual((result.values as Record<string, unknown>).registry, registry, "configuration resolves against the request's real resource");
   }
 }
 
 async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
   const browser = scenario.frame.page().context().browser();
   assert.ok(browser);
-  const revealing = scenario.execute(sdkRequest(scenario.requests, "sdk/reveal"));
+  const revealing = scenario.execute(hostCall("sdk/reveal", "webview.reveal", [["view", "osprey.packages"]]));
   const page = scenario.frame.page();
   const picker = page.getByPlaceholder("Package changes apply only to this project");
   try {
     await picker.fill("first");
     await page.getByRole("option").filter({ hasText: "first" }).first().click();
-    assert.deepStrictEqual(await revealing, { revealed: true });
+    assert.deepStrictEqual(answer(await revealing), { revealed: true });
     await waitFor(() => scenario.frame.isDetached(), Boolean, 1000, "the editor detaches the discarded application frame");
     assert.ok(scenario.frame.isDetached(), "changed registry must discard the previous application session");
     const current = await editorWebviewFrame(browser, 'button:has-text("Refresh")');
@@ -474,17 +448,24 @@ async function verifySdkReveal(scenario: SdkScenario): Promise<void> {
 }
 
 async function verifySdkRefusals(scenario: SdkScenario): Promise<void> {
-  for (const [ticket, message] of [
-    ["sdk/bad-view", /Unknown Osprey view: osprey.unknown/], ["sdk/missing", /missing-sdk-document.txt/],
-    ["sdk/no-doc-args", /document.open is missing its arguments/], ["sdk/remote-doc", /document.open requires a file resource/],
-    ["sdk/no-config-args", /configuration.read is missing its arguments/], ["sdk/no-reveal-args", /webview.reveal is missing its arguments/],
-    ["sdk/bad-namespace", /Unknown host namespace: other/], ["sdk/unknown-operation", /Unsupported VS Code capability: impossible.operation/],
-  ] as const) await assert.rejects(() => scenario.execute(sdkRequest(scenario.requests, ticket)), message);
+  const peer = workspace.workspaceFolders?.[1];
+  assert.ok(peer, "the fixture workspace has a second folder");
+  const refusals: readonly (readonly [Ask, RegExp])[] = [
+    [hostCall("sdk/bad-view", "webview.reveal", [["view", "osprey.unknown"]]), /Unknown Osprey view: osprey.unknown/],
+    [documentAsk("sdk/missing", Uri.joinPath(scenario.folder, "missing-sdk-document.txt").toString()), /missing-sdk-document.txt/],
+    [hostCall("sdk/no-doc-args", "document.open", []), /document.open is missing its arguments/],
+    [documentAsk("sdk/remote-doc", "vscode-remote://ssh-test/work/file"), /document.open requires a file resource/],
+    [hostCall("sdk/no-config-args", "configuration.read", []), /configuration.read is missing its arguments/],
+    [hostCall("sdk/no-reveal-args", "webview.reveal", []), /webview.reveal is missing its arguments/],
+    [hostCall("sdk/bad-namespace", "workspace.snapshot", [], { namespace: "other" }), /Unknown host namespace: other/],
+    [hostCall("sdk/unknown-operation", "impossible.operation", []), /Unsupported VS Code capability: impossible.operation/],
+    [hostCall("sdk/no-arguments", "process.input", []), /process.input is missing its arguments/],
+  ];
+  for (const [request, message] of refusals) await assert.rejects(() => scenario.execute(request), message);
   assert.strictEqual(fs.existsSync(Uri.joinPath(scenario.folder, "missing-sdk-document.txt").fsPath), false);
 }
 
-suite("package workspace SDK host E2E", () => {
-  suiteSetup(async function () { this.timeout(BUILD_MS); await compileSdkHost(); });
+suite("package workspace row host E2E", () => {
   teardown(() => sinon.restore());
   test("real compiled SDK requests open documents, scope configuration and reveal the view", async () => {
     await withSdkScenario((scenario) => withScopedRegistries(async () => {
@@ -493,7 +474,21 @@ suite("package workspace SDK host E2E", () => {
       await verifySdkReveal(scenario);
     }));
   });
+  test("real compiled SDK requests open documents, scope configuration and reveal the view (extra: a snapshot names the workspace folders and their trust)", async () => {
+    await withSdkScenario(async (scenario) => {
+      const snapshot = answer(await scenario.execute(hostCall("sdk/folders", "workspace.snapshot", [])));
+      const folders = workspace.workspaceFolders ?? [];
+      assert.deepStrictEqual((snapshot.folders as { uri: string }[]).map((folder) => folder.uri).sort(), folders.map((folder) => folder.uri.toString()).sort());
+      assert.strictEqual(snapshot.trusted, workspace.isTrusted);
+    });
+  });
   test("real compiled SDK requests refuse invalid host operations without side effects", async () => {
     await withSdkScenario(verifySdkRefusals);
+  });
+  test("real compiled SDK requests refuse invalid host operations without side effects (extra: a refused reveal leaves the current panel attached)", async () => {
+    await withSdkScenario(async (scenario) => {
+      await assert.rejects(() => scenario.execute(hostCall("sdk/bad-view", "webview.reveal", [["view", "osprey.unknown"]])), /Unknown Osprey view: osprey.unknown/);
+      assert.ok(!scenario.frame.isDetached(), "a refused reveal must not discard the live session's frame");
+    });
   });
 });

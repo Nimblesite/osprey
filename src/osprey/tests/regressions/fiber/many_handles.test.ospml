@@ -13,6 +13,19 @@ lastWord (i, last) = match i
     3000 => last
     _ => lastWord (wrapAdd (i, 1), await (spawn (word i)))
 
+type Pair =
+    index : int
+    label : string
+
+pairOf i = Pair(index = i, label = word i)
+
+(** A record a fiber returned is a managed value the runtime holds for every handle. *)
+sumOfRecords (i, total, last) = match i
+    3000 => "${total} ${last}"
+    _ =>
+        pair = await (spawn (pairOf i))
+        sumOfRecords (wrapAdd (i, 1), wrapAdd (total, pair.index), pair.label)
+
 sumOfChannels (i, total) = match i
     3000 => total
     _ =>
@@ -35,6 +48,7 @@ reusableHandles () =
 
 test "thousands of int fibers" (\() => check "sum" "8997000" "${sumOfFibers (0, 0)}")
 test "thousands of string fibers" (\() => check "last" "w2999" (lastWord (0, "")))
+test "thousands of record fibers" (\() => check "sum and last" "4498500 w2999" (sumOfRecords (0, 0, "")))
 test "thousands of channels" (\() => check "sum" "4498500" "${sumOfChannels (0, 0)}")
 test "strings through fibers and channels" (\() => check "last" "w2999" (wordsThroughChannels (0, "")))
 test "an old handle survives thousands more" reusableHandles

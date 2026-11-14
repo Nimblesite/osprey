@@ -1,4 +1,5 @@
 #include "collection_runtime.h"
+#include "list_trie.h"
 #include "memory_hooks.h"
 
 #include <stdint.h>
@@ -6,16 +7,103 @@
 #include <string.h>
 
 /*
- * List operations that rebuild or walk a whole list through the trie's public
- * API (collection_runtime.h), never its nodes: prepend, concat, reverse, the
- * stable sort and the iterator. The trie itself, its builder and its O(1)
- * views live in list_runtime.c. Compiled with the same memory shim as
- * list_runtime.c in every backend [GC-ARC-PERCEUS].
+ * The transient list builder, and the list operations that rebuild or walk a
+ * whole list through the trie's public API (collection_runtime.h): concat,
+ * reverse, the stable sort and the iterator. The persistent trie and its O(1)
+ * views live in list_runtime.c; the node layout both share is list_trie.h.
+ * Compiled with the same memory shim as list_runtime.c in every backend
+ * [GC-ARC-PERCEUS].
  *
- * Backs [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE]
- * and [BUILTIN-LIST-SORT]; the iterator carries the linear scan emitted for
- * [BUILTIN-LIST-CONTAINS] and [BUILTIN-LIST-FOREACH].
+ * Backs [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE] and [BUILTIN-LIST-SORT];
+ * the iterator carries the linear scan emitted for [BUILTIN-LIST-CONTAINS] and
+ * [BUILTIN-LIST-FOREACH].
  */
+
+/* ===== Builder (transient-style, no sharing during construction) ===== */
+
+OspreyListBuilder *osprey_list_builder_new_of(int em) {
+  OspreyListBuilder *b =
+      (OspreyListBuilder *)calloc(1, sizeof(OspreyListBuilder));
+  b->elem_managed = em;
+  return b;
+}
+
+OspreyListBuilder *osprey_list_builder_new(void) {
+  return osprey_list_builder_new_of(0);
+}
+
+/* Stack a fresh root over the builder's root and its full tail chunk. Unlike
+   grow_root this MOVES both builder references into the new node. */
+static void builder_grow_root(OspreyListBuilder *b) {
+  OspreyListNode *new_path = wrap_path(b->tail, b->shift);
+  OspreyListNode *new_root = alloc_node(NODE_PTRS_LAYOUT);
+  new_root->slots[0] = (int64_t)(uintptr_t)b->root;
+  new_root->slots[1] = (int64_t)(uintptr_t)new_path;
+  b->root = new_root;
+  b->shift += OSPREY_LIST_BITS;
+}
+
+/* The builder is a transient it alone owns, so each branch MOVES its root and
+   tail references — except the path-copying one, which leaves the old root
+   unreachable and takes its own tail reference. */
+static void builder_push_tail_to_tree(OspreyListBuilder *b) {
+  int64_t in_tree = b->length - (int64_t)b->tail_count;
+  int64_t capacity_at_shift = (int64_t)1 << (b->shift + OSPREY_LIST_BITS);
+  if (b->root == NULL) {
+    b->root = b->tail;
+    b->shift = 0;
+  } else if (in_tree + OSPREY_LIST_BRANCH > capacity_at_shift) {
+    builder_grow_root(b);
+  } else {
+    OspreyListNode *old_root = b->root;
+    b->root =
+        push_tail(b->shift, old_root, b->tail, in_tree + OSPREY_LIST_BRANCH);
+    osp_release(old_root);
+    osp_release(b->tail);
+  }
+  b->tail = NULL;
+  b->tail_count = 0;
+}
+
+/* TRANSFERS `v`. Every leaf the builder allocates is minted here, so latching
+ * the element kind on each push keeps them all stamped alike — which lets a
+ * caller that only learns the element type inside its loop (mapList) still
+ * build a correctly walked list. */
+void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v, int em) {
+  b->elem_managed = em;
+  if (b->tail == NULL || b->tail_count == OSPREY_LIST_BRANCH) {
+    if (b->tail != NULL) {
+      builder_push_tail_to_tree(b);
+    }
+    b->tail = alloc_node(node_layout(0, em));
+    b->tail_count = 0;
+  }
+  b->tail->slots[b->tail_count] = v;
+  b->tail_count++;
+  b->length++;
+}
+
+void osprey_list_builder_push(OspreyListBuilder *b, int64_t v) {
+  osprey_list_builder_push_of(b, v, b->elem_managed);
+}
+
+/* Push an element BORROWED from another container: the source keeps its
+ * reference, so the builder takes its own. */
+void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v) {
+  retain_elem(v, b->elem_managed);
+  osprey_list_builder_push_of(b, v, b->elem_managed);
+}
+
+OspreyList *osprey_list_builder_seal(OspreyListBuilder *b) {
+  if (b->length == 0) {
+    free(b);
+    return osprey_list_empty();
+  }
+  OspreyList *l = alloc_list(b->length, b->shift, b->tail_count, b->root,
+                             b->tail, 0, b->elem_managed, NULL);
+  free(b);
+  return l;
+}
 
 /* Copy `src`'s elements into `b`; a C-internal rebuild BORROWS what it reads. */
 static void builder_push_all(OspreyListBuilder *b, OspreyList *src) {
@@ -23,18 +111,6 @@ static void builder_push_all(OspreyListBuilder *b, OspreyList *src) {
   for (int64_t i = 0; i < n; i++) {
     osprey_list_builder_push_borrowed(b, osprey_list_get(src, i));
   }
-}
-
-/* O(n): rebuild via builder. Spec documents the trie-concat upgrade path. */
-OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int em) {
-  OspreyListBuilder *b = osprey_list_builder_new_of(em);
-  osprey_list_builder_push_of(b, v, em);
-  builder_push_all(b, l);
-  return osprey_list_builder_seal(b);
-}
-
-OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
-  return osprey_list_prepend_of(l, v, osprey_list_elem_managed(l));
 }
 
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {

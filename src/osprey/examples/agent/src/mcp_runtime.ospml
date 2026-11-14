@@ -136,9 +136,10 @@ module McpRun
                 true => callFailed (store, server, "could not be reached: ${problem}", false)
                 false => Runtime::step store
             Success result =>
-                stepped = McpClient::read_step (server.serverBuffer, Doc::text (result, "output"))
+                receipt = Doc::parse result
+                stepped = McpClient::read_step (server.serverBuffer, Doc::text (receipt, "output"))
                 messages = mapList (stepped.lines, \line => McpClient::message_json (line))
-                advance (store, server(serverBuffer = stepped.buffer), messages, Doc::flag (result, "exited"))
+                advance (store, server(serverBuffer = stepped.buffer), messages, Doc::flag (receipt, "exited"))
 
     (** One HTTP POST answered: its messages take the same next step. A finished call is marked for the update to hand to its conversation. *)
     export postDone (store, name, outcome) = withServer (store, name, \server => postDoneFrom (store, name, server, outcome))
@@ -150,14 +151,15 @@ module McpRun
                 "call" => callFailed (store, server, "could not be reached: ${problem}", false)
                 _ => Runtime::step (put (store, failedServer (server, "could not be reached: ${problem}")))
             Success result =>
-                status = Doc::number (result, "status")
-                session = Pick::either (server.serverSession == "" && status < 400, McpClient::header_value (result, "mcp-session-id"), server.serverSession)
+                receipt = Doc::parse result
+                status = Doc::number (receipt, "status")
+                session = Pick::either (server.serverSession == "" && status < 400, McpClient::header_value (receipt, "mcp-session-id"), server.serverSession)
                 moved = server(serverSession = Pick::either (session == "", server.serverSession, session))
                 match status >= 400
                     true => match server.serverAwait
                         "call" => callFailed (store, moved, "answered HTTP ${toString status}.", false)
                         _ => Runtime::step (put (store, failedServer (moved, "answered HTTP ${toString status}.")))
-                    false => advance (store, moved, McpClient::http_messages (result, perform ui::Slices.fetch (ticket "http" name)), false)
+                    false => advance (store, moved, McpClient::http_messages (receipt, perform ui::Slices.fetch (ticket "http" name)), false)
 
     failedServer (server, problem) = server(serverPhase = "failed", serverProblem = "${server.serverName} ${problem}", serverRpc = "", serverAwait = "", serverReadTicket = "")
 

@@ -1,7 +1,8 @@
 // The local package registry ([PACKAGE-LOCAL-REGISTRY]): the extension starts
-// the bundled Osprey folder-registry server (`osprey-registry`) over the
-// bundled snapshot of the repository's packages, so packages can be added
-// before the hosted registry exists. The server is the same Osprey program
+// the bundled Osprey folder-registry server (`osprey-registry`) over a folder
+// registry in the extension's storage, which `osprey-pkg publish --folder`
+// fills, so packages can be added before the hosted registry exists. The VSIX
+// bundles no packages. The server is the same Osprey program
 // `make -C src/osprey/packages registry-serve` runs; this module only writes its one-file
 // configuration, owns the child process and answers "is it up?" through
 // `GET /v1/health`. When the package manager is opened against a loopback
@@ -127,10 +128,10 @@ export class LocalRegistry {
       return true;
     }
     const layout = this.deps.layout();
-    for (const [what, file] of [["server", layout.executable], ["package snapshot", layout.root]] as const) {
+    for (const [what, file] of [["server", layout.executable], ["package folder", layout.root]] as const) {
       if (!this.deps.exists(file)) {
         // Windows builds do not bundle the server yet: its tree walk shells out to POSIX `find`.
-        const remedy = process.platform === "win32" ? "This build does not bundle the local registry on Windows yet; run make -C src/osprey/packages registry-serve under WSL" : "Run make _vsix_bundle";
+        const remedy = process.platform === "win32" ? "This build does not bundle the local registry on Windows yet; run make -C src/osprey/packages registry-serve under WSL" : what === "server" ? "Run make _vsix_bundle" : "Create the folder";
         this.deps.error(`The local registry ${what} is missing: ${file}. ${remedy}, or set osprey.packages.localRegistry.${what === "server" ? "serverPath" : "root"}.`);
         return false;
       }
@@ -227,18 +228,24 @@ export function spawnServer(executable: string, cwd: string): ServerProcess {
   };
 }
 
-/** The bundled server and snapshot, unless settings name others. */
-export function bundledLayout(extensionPath: string, platform = shipwrightPlatform()): ServerLayout {
+/** The folder registry the server serves unless a setting names another. */
+export function storedRoot(storage: string): string {
+  return path.join(storage, "local-registry", "registry");
+}
+
+/** The bundled server and the stored folder registry, unless settings name others. */
+export function bundledLayout(extensionPath: string, storage: string, platform = shipwrightPlatform()): ServerLayout {
   const config = workspace.getConfiguration("osprey");
   const dir = path.join(extensionPath, "bin", platform);
   const executable = process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry";
   return {
     executable: config.get<string>("packages.localRegistry.serverPath") || path.join(dir, executable),
-    root: config.get<string>("packages.localRegistry.root") || path.join(dir, "registry"),
+    root: config.get<string>("packages.localRegistry.root") || storedRoot(storage),
   };
 }
 
-function registryFor(resource?: Uri): string {
+/** The configured package registry origin; a cleared setting means the local default. */
+export function registryFor(resource?: Uri): string {
   return workspace.getConfiguration("osprey", resource).get<string>("packages.registry") || DEFAULT_REGISTRY;
 }
 
@@ -261,7 +268,10 @@ export function registerLocalRegistry(context: ExtensionContext): LocalRegistry 
   const storage = context.globalStorageUri.fsPath;
   const registry = new LocalRegistry({
     registry: registryFor,
-    layout: () => bundledLayout(context.extensionPath),
+    layout: () => {
+      fs.mkdirSync(storedRoot(storage), { recursive: true });
+      return bundledLayout(context.extensionPath, storage);
+    },
     exists: (file) => fs.existsSync(file),
     writeConfig: (text) => {
       const dir = path.join(storage, "local-registry");

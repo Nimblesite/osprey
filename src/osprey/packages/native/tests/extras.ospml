@@ -1,0 +1,287 @@
+// The extra case beside each restored test: another input permutation, edge case or component for
+// the same fact, kept beside the suites it extends ([UI-EVENTS], [UI-COMPONENTS], [UI-EFFECTS],
+// [NATIVE-SHM-NODES]). Registered from main.ospml beside the test it extends.
+namespace uitests
+
+import ui::Canvases
+import ui::Doc
+import ui::Hosting
+import ui::MachineDocs
+import ui::Machines
+import ui::Requests
+import ui::Runtime
+import ui::Surfaces
+import ui::Values
+import ui::Views
+import ui::Ui
+
+(** The extra case beside each restored test: another permutation, edge or component of the same fact. *)
+module Extras
+    // ---- the surface's events ----
+
+    (** "a resolved edit updates the current state (extra: a completion lands on the state the tap changed)". *)
+    export resolvedEdit () =
+        counted = Probes::tapped (Probes::posted (Probes::started (), 2, "hello"), 0)
+        asked = Probes::tapped (counted, 0)
+        expect (Probes::asked asked, "store-read")
+        done = Probes::finished (asked, "load:1", true, "from disk")
+        expectClean (done, 1)
+        expectMemo (done, "from disk")
+
+    (** "a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)". *)
+    export tapRegion () =
+        first = Probes::started ()
+        edited = Probes::posted (first, 2, "hello")
+        expect (rootPortion (walkedWords first), rootPortion (walkedWords edited))
+        expect (contains (notePortion (walkedWords edited), "hello"), true)
+        tapped = Probes::tapped (edited, 0)
+        expect (rootPortion (walkedWords tapped) != rootPortion (walkedWords edited), true)
+        expect (notePortion (walkedWords tapped), notePortion (walkedWords edited))
+        expect (contains (walkedWords tapped, "Count 1"), true)
+
+    (** "an edit from prior state keeps its meaning when ordinals shift (extra: the note's old number now names the button the frame drew there)". *)
+    export ordinals () =
+        counted = Probes::tapped (Probes::started (), 0)
+        expectClean (counted, 1)
+        surfaceBinds (counted, 4)
+        // The note field moved from ordinal 2 to 1: its edit still arrives, and its old number now delivers a Load ask.
+        noted = Probes::posted (counted, 1, "world")
+        expectMemo (noted, "world")
+        moved = Probes::tapped (counted, 2)
+        expectNoProblem moved
+        expect (Probes::asked moved, "store-read")
+        expectClean (moved, 1)
+
+    (** "an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)". *)
+    export goneNumbers () =
+        counted = Probes::tapped (Probes::started (), 0)
+        expectClean (counted, 1)
+        forEachList ([4, 5, 40], \ordinal => refusedJust (Probes::posted (counted, ordinal, ""), "Unknown control ${ordinal}"))
+        still = Probes::posted (counted, 1, "kept")
+        expectMemo (still, "kept")
+        expectClean (still, 1)
+
+    (** "an edit with an impossible original refuses without change (extra: each impossible ordinal names itself and leaves no ask)". *)
+    export impossibleOriginals () =
+        first = Probes::started ()
+        forEachList ([0 - 2, 6, 99], \ordinal => expect (refusedBare (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}||"))
+        expectClean (Probes::tapped (first, 0), 1)
+
+    (** "stale, unknown and mismatched events are rejected without change (extra: the stale numbers refuse while the frame's own still deliver)". *)
+    export staleNumbers () =
+        counted = Probes::tapped (Probes::started (), 0)
+        forEachList ([4, 5], \ordinal => expect (Probes::problem (Probes::posted (counted, ordinal, "")), "Unknown control ${ordinal}"))
+        noted = Probes::posted (counted, 1, "kept")
+        expectNoProblem noted
+        expectMemo (noted, "kept")
+        expectClean (noted, 1)
+
+    (** "start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)". *)
+    export openFacts () =
+        held = Views::quiet (\() => Hosting::opened (Surfaces::idle (probe (0, "")), program (), 7, 0, "macos", "/Users/ada", true))
+        expect ((Probes::stored held).note.memo, "macos")
+        expect (held.surfaceSession.sessionContext.now, 7)
+        expect (held.surfaceDark, true)
+        surfaceBinds (held, 5)
+        // Both appearances' colours ride the one theme record the frame carries.
+        expect (named "canvas", "#FFFFFF")
+        expect (nightNamed "canvas", "#000000")
+
+    // ---- the told trees ----
+
+    (** "an encoded region decodes with its components and text intact (extra: the section keeps its footer and the picker its choices)". *)
+    export regionParts () =
+        children = memberItems (insideTold (toldOf (tree ()))) "children"
+        section = toldAt (children, 2)
+        expect (memberText (insideTold section, "footer"), "")
+        expect (memberText (insideTold (childTold (section, 0)), "commit"), "submit")
+        picker = insideTold (toldAt (children, 3))
+        expect (memberText (picker, "selected"), "a")
+        expect (join (mapList (memberItems (picker, "choices"), \choice => "${memberText (insideTold choice, "key")}=${memberText (insideTold choice, "label")}")) ",", "a=A")
+        expect (memberText (insideTold (toldAt (children, 0)), "role"), "body")
+
+    (** "every constructor encodes as the component it names (extra: the leaf constructors tell under their own names with no control)". *)
+    export constructorNames () =
+        plain = Ui::column [Ui::pair ("L", "V"), Ui::label ("N", "star"), Ui::icon "info", ui::Divider, Ui::empty ("inbox", "T", "D")]
+        binds (drawnOf plain, 0)
+        expect (spelled (toldOf plain), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"pair\",label=\"L\",value=\"V\"},{kind=\"label\",label=\"N\",symbol=\"star\"},{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"empty\",symbol=\"inbox\",title=\"T\",detail=\"D\"}]}")
+
+    (** "semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)". *)
+    export roleTones () =
+        forEachList ([{ tone = ui::Primary, said = "primary" }, { tone = ui::Secondary, said = "secondary" }, { tone = ui::Accent, said = "accent" }, { tone = ui::Good, said = "good" }, { tone = ui::Caution, said = "caution" }, { tone = ui::Danger, said = "danger" }], \probe =>
+            expect (spelled (toldOf (Ui::styled ("sample", ui::Body, probe.tone))), "{kind=\"text\",text=\"sample\",role=\"body\",tone=\"${probe.said}\"}"))
+
+    (** "tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)". *)
+    export tabsPages () =
+        paged = Ui::column [
+            ui::Tabs(tabs = [
+                Ui::tab ("one", "One", "1.circle", Ui::button ("First", "", Increment)),
+                Ui::tab ("two", "Two", "2.circle", ui::Picker(label = "Pick", choices = [Ui::choice ("a", "A")], selected = "a", bind = Load)),
+                Ui::tab ("three", "Three", "3.circle", Ui::toggle ("On", false, Typed)),
+            ], selected = "three", bind = Load),
+            ui::Segments(tones = [ui::Good, ui::Caution, ui::Danger], label = "3 states"),
+        ]
+        binds (drawnOf paged, 4)
+        expect (spelled (childTold (toldOf paged, 0)), "{kind=\"tabs\",selected=\"three\",tabs=[{key=\"one\",label=\"One\",symbol=\"1.circle\",child={kind=\"button\",label=\"First\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}},{key=\"two\",label=\"Two\",symbol=\"2.circle\",child={kind=\"picker\",label=\"Pick\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#1}},{key=\"three\",label=\"Three\",symbol=\"3.circle\",child={kind=\"toggle\",label=\"On\",on=?false,event=#2}}],event=#3}")
+        expect (deliversBinding (paged, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (paged, 1, ui::ChoiceInput(action = Load)), true)
+        expect (deliversBinding (paged, 2, ui::FlagInput(action = Typed)), true)
+        expect (deliversBinding (paged, 3, ui::ChoiceInput(action = Load)), true)
+
+    (** "inline text retains mathematical emphasis and semantic source colours without bindings (extra: explicit emphasis tells under its own name)". *)
+    export inlineEmphasis () =
+        emphasised = Ui::rich ([Ui::emphasised ("for all ", "", "strong"), Ui::emphasised ("p", "sourceType", "code"), Ui::run ("i", "sourceType", true)], ui::Mono)
+        binds (drawnOf emphasised, 0)
+        expect (spelled (toldOf emphasised), "{kind=\"rich-text\",runs=[{text=\"for all \",ink=\"\",italic=?false,emphasis=\"strong\"},{text=\"p\",ink=\"sourceType\",italic=?false,emphasis=\"code\"},{text=\"i\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"mono\"}")
+
+    (** "text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)". *)
+    export textRegion () =
+        first = Probes::started ()
+        hello = Probes::posted (first, 2, "hello")
+        world = Probes::posted (hello, 2, "world")
+        expectMemo (world, "world")
+        expect (Probes::written world, "echo=world")
+        expect (rootPortion (walkedWords world), rootPortion (walkedWords hello))
+        expect (contains (notePortion (walkedWords world), "world"), true)
+        tapped = Probes::tapped (world, 0)
+        expectClean (tapped, 1)
+        expect (contains (notePortion (walkedWords tapped), "world"), true)
+        expect (contains (walkedWords tapped, "Count 1"), true)
+
+    // ---- the ask rows ----
+
+    (** "run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)". *)
+    export runHttpRows () =
+        http = Requests::ask ("post:1", ui::Http(method = "POST", url = "https://example.test/submit", headers = [ui::Header(headerName = "Content-Type", headerValue = "application/json"), ui::Header(headerName = "Accept", headerValue = "text/plain")], body = "{\"a\":1}", responseLimit = 512, deadline = 45000, httpSlice = "work/post"))
+        expect (rowsOf http, "0/10/post:1;1/0/POST;2/0/https://example.test/submit;3/0/Content-Type;3/0/application/json;3/0/Accept;3/0/text/plain;4/0/{\"a\":1};5/512/;6/45000/;7/0/work/post")
+        expect (rowsOf (runRequest true), "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run")
+
+    (** "filesystem and store requests preserve paths bounds and slices (extra: empty paths still name their fields and slices)". *)
+    export filesystemRows () =
+        expectRequests [
+            { capability = ui::ListDirectories(directories = [], entryLimit = 0, listSlice = "none"), encoded = "0/2/job:7;2/0/;3/0/none" },
+            { capability = ui::ReadTexts(texts = [], textLimit = 1, textSlice = ""), encoded = "0/4/job:7;2/1/;3/0/" },
+            { capability = ui::StoreList(folder = ""), encoded = "0/8/job:7;1/0/" },
+        ]
+
+    (** "desktop requests preserve picker export and cancellation payloads (extra: a typeless picker and empty reveals keep their rows)". *)
+    export desktopRows () =
+        expectRequests [
+            { capability = ui::ChooseFile(types = [], chosenLimit = 1, chosenSlice = "none"), encoded = "0/13/job:7;2/1/;3/0/none" },
+            { capability = ui::Reveal(revealPath = ""), encoded = "0/17/job:7;1/0/" },
+            { capability = ui::OpenSettings(pane = ""), encoded = "0/18/job:7;1/0/" },
+        ]
+
+    (** "process capabilities encode their handles bounds arguments and environment (extra: arguments without an environment, and a long read deadline)". *)
+    export processRows () =
+        expectRequests [
+            { capability = ui::ProcessStart(processCommand = "tool", processArguments = ["--flag", "x"], processEnv = [], processHandle = "h"), encoded = "0/22/job:7;1/0/tool;2/0/--flag;2/0/x;4/0/h" },
+            { capability = ui::ProcessRead(readHandle = "h", readBytesLimit = 16777216, readDeadline = 60000), encoded = "0/24/job:7;1/0/h;2/16777216/;3/60000/" },
+            { capability = ui::ProcessWrite(writeHandle = "", writeBytes = ""), encoded = "0/23/job:7;1/0/;2/0/" },
+        ]
+
+    // ---- the machine documents ----
+
+    (** "broken machine documents name every JSON path and faulty machines remain renderable (extra: a bad transition target names its path)". *)
+    export brokenPaths () =
+        broken = "{\"schema\":1,\"inputs\":{\"n\":{\"type\":\"number\",\"value\":\"x\"},\"z\":{\"type\":\"telepathy\"}},\"layers\":[{\"name\":\"l\",\"initial\":\"s\",\"states\":{\"s\":{}},\"transitions\":[{\"from\":\"s\",\"to\":\"nowhere\"}]}],\"view\":{\"kind\":\"button\",\"on\":{\"fire\":\"n\"}}}"
+        expect (join (MachineDocs::problems (Doc::parse broken)) "\n", join ["inputs.n.value: not a number", "inputs.z.type: expected one of bool, number, text, trigger, list", "layers[0].transitions[0].to: no state named \"nowhere\""] "\n")
+        expect (nativeShows (MachineDocs::faulty "no disk", "This interface could not load"), true)
+
+    // One item chosen from `full`: its lettering, the closed menu and its reopened selection.
+    itemChosen (full, pick) =
+        chosen = Canvases::act (Canvases::act (full, "Menu", 0.5), pick.item, 0.5)
+        expect (nativeLetters (chosen, "Choice ${pick.key}"), true)
+        expect (nativeLabels (chosen), "Menu|Press|Level")
+        reopened = Canvases::act (chosen, "Menu", 0.5)
+        expect (nativeSelected (reopened, pick.item), true)
+
+    (** "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)". *)
+    export machineCanvas () = withNativeFixture (\fresh =>
+        pressed = Canvases::act (fresh, "Press", 0.5)
+        full = foldList ([0.0, 1.0], pressed, \(before, fraction) => slidTo (before, "Level", fraction))
+        expect (nativeValue (full, "Level"), 1.0)
+        forEachList ([{ item = "One", key = "one" }, { item = "Two", key = "two" }, { item = "Three", key = "three" }], \pick => itemChosen (full, pick)))
+
+    (** "native machine views render ordinary controls and preserve every host value kind (extra: every value kind crosses the typed machine)". *)
+    export nativeValueKinds () = withNativeFixture (\fresh =>
+        noted = Machines::put (fresh, "caption", Values::text "Typed")
+        expect (Machines::text (noted, "caption"), "Typed")
+        levelled = Machines::put (noted, "level", Values::number 0.75)
+        expect (Machines::number (levelled, "level"), 0.75)
+        expect (Machines::number (levelled, "caption"), 0.0)
+        chosen = Machines::put (levelled, "selected", Values::text "three")
+        expect (Machines::text (chosen, "selected"), "three")
+        expect (Machines::textual (chosen, "level"), false)
+        opened = Machines::pull (chosen, ui::Fire(fireName = "toggleMenu"), Values::none ())
+        expect (Machines::current (opened, "menu"), "open")
+        closed = Machines::pull (opened, ui::Fire(fireName = "toggleMenu"), Values::none ())
+        expect (Machines::current (closed, "menu"), "closed"))
+
+    boundHolds (machine, probe) = expect (Machines::holds (machine, ui::Compared(comparedInput = "level", comparedBy = probe.by, comparedWith = Values::number probe.with)), probe.want)
+
+    (** "machine edge cases cover every template variant fault cycle request payload and pointer state (extra: number comparisons hold their bounds)". *)
+    export machineEdge () = Runtime::guarded (\() =>
+        machine = completeMachine ()
+        rejected = match MachineDocs::load "{\"schema\":1,\"inputs\":{},\"layers\":[],\"view\":{}}"
+            Success _ => "loaded"
+            Error problem => problem
+        expect (rejected, "view.kind: no node kind \"\"")
+        forEachList ([{ by = ui::Below, with = 0.26, want = true }, { by = ui::Below, with = 0.24, want = false }, { by = ui::Above, with = 0.2, want = true }, { by = ui::Above, with = 1.0, want = false }], \probe => boundHolds (machine, probe)))
+
+    // The position each skin carries: the board skin letters it, the control skins show it as words.
+    skinCarries (fed, skin) =
+        canvas = realSkinned (fed, skin)
+        expect (nativeShows (canvas, "00:25") || nativeLetters (canvas, "00:25"), true)
+        expect (nativeShows (canvas, "01:40") || nativeLetters (canvas, "01:40"), true)
+
+    (** "real machine documents render every skin and drive pointers sliders drags menus room and native lettering (extra: playback lettering renders on every skin)". *)
+    export realPlayback () = Runtime::guarded (\() =>
+        native = realSkinned (playerMachine (), "midnight")
+        ready = Machines::feed (native, [Machines::fact ("receiver", Values::text "192.168.1.20:8009"), Machines::fact ("receiverName", Values::text "Living Room TV"), Machines::fact ("file", Values::text "/music/demo.mp3"), Machines::fact ("title", Values::text "Demo track")])
+        connecting = Machines::pull (ready, ui::Fire(fireName = "play"), Values::none ())
+        expect (length (Machines::requests connecting) > 0, true)
+        fed = Machines::feed (Machines::taken connecting, [Machines::fact ("player", Values::text "PLAYING"), Machines::fact ("position", Values::number 25.0), Machines::fact ("duration", Values::number 100.0), Machines::fact ("volume", Values::number 0.5), Machines::fact ("rate", Values::number 1.5)])
+        expect (nativeShows (fed, "00:25"), true)
+        expect (nativeShows (fed, "01:40"), true)
+        expect (nativeLetters (realSkinned (fed, "sherbet"), "00:25"), true)
+        forEachList (["sherbet", "midnight", "poolside"], \skin => skinCarries (fed, skin)))
+
+    // ---- plain view rows ----
+
+    // One plain option.
+    optionOf (words, key, picked) = ui::Option(optionLook = Views::plain, optionWords = words, optionKey = key, optionChosen = picked)
+
+    // A plain view holding every control a plain view draws, each action a word.
+    everyView () =
+        p = Views::plain
+        natural = Views::natural
+        sketch = ui::Sketch(sketchWidth = 4.0, sketchHeight = 3.0, sketchZoom = 1.0, sketchAtlas = [], sketchShapes = [], sketchAccess = [])
+        ui::Column(columnLook = p, columnItems = [ui::Across(acrossLook = p, acrossItems = [ui::Wording(wordsLook = p, wordsText = "Hi"), ui::Press(pressLook = p, pressWords = "Go", pressAction = "go")]), ui::Typing(typingLook = p, typingText = "t", typingAction = "type"), ui::Gap, ui::Fitted(fit = natural(wide = 10.0), fitted = ui::Rule(ruleLook = p)), ui::Scrolling(scrollLook = p, scrollItems = [ui::Picture(pictureLook = p, pictureSource = "a.png")]), ui::Layered(layeredLook = p, layeredItems = [ui::Canvas(canvasLook = p, canvasAction = "paint")]), ui::Switch(switchLook = p, switchWords = "On", switchOn = true, switchAction = "flip"), ui::Switch(switchLook = p, switchWords = "Off", switchOn = false, switchAction = "flop"), ui::Choosing(choosingLook = p, choosingWords = "Pick", choosingOptions = [optionOf ("A", "a", true), optionOf ("B", "b", false)], choosingAction = "pick"), ui::Drawing(drawingLook = p, drawingSketch = sketch, drawingAction = "draw"), ui::Writing(writingLook = p, writingText = "w", writingAction = "write"), ui::Menu(menuLook = p, menuItems = [ui::Wording(wordsLook = p, wordsText = "Item")]), ui::Sheet(sheetLook = p, sheetItems = [ui::Wording(wordsLook = p, wordsText = "Sure?")], sheetDismiss = "close")])
+
+    // Runs `work` with every row it streams dropped.
+    streamedQuietly work =
+        handle ui::ViewStream
+            place _ => 0
+            size _ => 0
+            sketch _ => 0
+            ask _ => 0
+        work ()
+
+    seatsOf<A> : ui::Walk<A> -> string
+    seatsOf walk = join (mapList (walk.walkRows, \r => "${r.placedKind}<${r.placedParent}@${r.placedAction}:${r.placedWords}")) "|"
+
+    fitsOf<A> : ui::Walk<A> -> string
+    fitsOf walk = join (mapList (walk.walkFits, \f => "${f.fittedRow}:${f.fittedAs.wide}/${f.fittedAs.traits}/${f.fittedAs.hint}")) "|"
+
+    (** "native controls are drawn as plain view rows (extra: every plain control, its fit, its sketch and its stream)". *)
+    export plainViews () =
+        walk = Views::drawn (everyView ())
+        expect (seatsOf walk, "0<-1@-1:|1<0@-1:|2<1@-1:Hi|3<1@0:Go|4<0@1:t|5<0@-1:|11<0@-1:|6<0@-1:|12<7@-1:a.png|7<0@-1:|13<9@2:|8<0@3:On|8<0@4:Off|9<0@5:Pick|10<13@-1:A|10<13@-1:B|13<0@6:|14<0@7:w|15<0@-1:|2<18@-1:Item|16<0@8:|2<20@-1:Sure?")
+        // The fitted rule keeps its width, a switch on and the chosen option carry the chosen flag, and options carry their keys.
+        expect (fitsOf walk, "6:10.0/0/|11:0.0/2/|12:0.0/0/|14:0.0/2/a|15:0.0/0/b")
+        expect (join (walk.walkBound) ",", "go,type,paint,flip,flop,pick,draw,write,close")
+        expect (join (mapList (walk.walkSketches, \s => "${s.sketchedRow}:${s.sketchedAs.sketchWidth}")) "|", "16:4.0")
+        expect (Views::colour "#0B6E8A", 191793919)
+        streamed = streamedQuietly (\() => Views::render (everyView ()))
+        expect (join streamed ",", join (walk.walkBound) ",")

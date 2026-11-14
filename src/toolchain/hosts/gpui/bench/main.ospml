@@ -1,19 +1,17 @@
-// Plan 0037: the per-frame cost of the framework on its own,
-// without a host. A flock of `count` birds moves once per frame event; every
-// dispatch parses the session, runs `update`, re-encodes the store and emits
-// a scene of `count` sprites. `mode` selects what the run times: 0 starts
-// only, 1 dispatches `frames` frames, 2 parses the start envelope `frames`
-// times (the share the host's decoder would pay, not Osprey), 3 runs `frames`
-// frames of a resident session whose sprites stream ([UI-RESIDENT],
-// [UI-SCENE-STREAM]): no store round trip and no scene JSON.
+// Plan 0037: the per-frame cost of the framework on its own, without a host. A flock of `count`
+// birds moves once per frame event delivered through the typed boundary every host calls
+// ([NATIVE-SHM-EVENT]); each frame runs `update`, lowers the region and writes a scene of `count`
+// sprites as rows ([NATIVE-SHM-SCENE]). The rows are counted here instead of being sealed for a host.
 namespace bench
 
 import ui::Ui
-import ui::Doc
 import ui::Keyed
 import ui::Runtime
 import ui::Messages
 import ui::Scenes
+import ui::Surfaces
+import ui::Hosting
+import ui::Streams
 
 type Bird =
     bx : float
@@ -33,8 +31,6 @@ type Act = Play
 count = 5000
 
 frames = 120
-
-mode = 3
 
 white () = Scenes::rgb (255, 255, 255)
 
@@ -57,7 +53,7 @@ regions (before, store, frames, _) =
     handle static Signal<Flock>
         read => store.flock
     changed = signalChanges before.flock store.flock frameJson (signalDependencies flockSlice)
-    [Keyed::region (frames, "field", changed, fieldView)]
+    [Keyed::region (frames, Surfaces::rootKey, changed, fieldView)]
 
 init _ = Runtime::step (Store(flock = Flock(birds = range (0, count) |> fold [] (\(out, i) => listAppend out (bird i)), frame = 0)))
 
@@ -65,41 +61,29 @@ advanced (store, elapsed) = Runtime::step (Store(flock = Flock(birds = mapList (
 
 update (_, store, message) = Messages::route (message, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \elapsed => advanced (store, elapsed), \(_, _) => Runtime::step store)
 
-birdJson b = JsonArray [JsonFloat b.bx, JsonFloat b.by, JsonFloat b.vx, JsonFloat b.vy]
-
-save store = JsonObject [JsonMember "birds" (JsonArray (mapList (store.flock.birds, \b => birdJson b))), Doc::num ("frame", store.flock.frame)]
-
-at (item, index) = jsonFloat (jsonIndex item index ?: JsonNull) ?: 0.0
-
-restore doc = Store(flock = Flock(birds = mapList (Doc::items (Doc::field (doc, "birds")), \item => Bird(bx = at (item, 0), by = at (item, 1), vx = at (item, 2), vy = at (item, 3))), frame = Doc::number (doc, "frame")))
-
 theme = ui::Theme(tokens = [], spacing = [4, 8], feedback = 120, settle = 220)
 
-frameEvent = "{\"kind\":\"frame\",\"now\":2,\"elapsed\":0.0083}"
+program () = ui::Program(programInit = init, programUpdate = update, programRender = regions, programTheme = \_ => theme)
 
-stateOf text = Doc::text (Doc::parse text, "state")
+tick () = ui::Touch(touchNow = 2, touchKind = Hosting::frame, touchOrdinal = 0, touchWords = "", touchDetail = "", touchX = 0.0083, touchY = 0.0, touchDown = false, touchShift = false)
 
-tick saved = stateOf (Runtime::dispatch (saved, frameEvent, update, regions, save, restore))
+// The rows each frame writes, counted instead of sealed for a host.
+mut rows = 0
 
-// The stream's answer in this bench: a count of the sprites the host would have received.
-mut streamed = 0
+counted work =
+    handle ui::ViewStream
+        place _ => rows := satAdd rows 1
+        size _ => 0
+        sketch drawn => rows := satAdd rows (satAdd (length drawn.sketchedAs.sketchShapes) (Streams::write (drawn.sketchedRow, drawn.sketchedAs)))
+        ask _ => 0
+    work ()
 
-proceeded (session, _) = (Runtime::proceed (session, frameEvent, update, regions)).residentSession
-
-resident () =
-    handle ui::SceneStream
-        shape _ => streamed := satAdd streamed 1
-    first = Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", init, regions, theme)
-    last = range (0, frames) |> fold first.residentSession proceeded
-    satAdd (length last.sessionStore.flock.birds) streamed
-
-run (started, which) = match which
-    3 => resident ()
-    1 => length (range (0, frames) |> fold (stateOf started) (\(saved, _) => tick saved))
-    2 => range (0, frames) |> fold 0 (\(total, _) => satAdd total (length (Doc::text (Doc::parse started, "state"))))
-    _ => length (stateOf started)
+run () =
+    first = Surfaces::open (Surfaces::idle (Store(flock = Flock(birds = [], frame = 0))), program (), Runtime::host (1, 0, "macos", "", []), false)
+    last = range (0, frames) |> fold first (\(held, _) => Hosting::event (held, program (), tick ()))
+    length last.surfaceSession.sessionStore.flock.birds
 
 main () =
-    started = Runtime::start ("{\"now\":1,\"offset\":0,\"platform\":\"macos\"}", init, regions, save, theme)
-    print "mode ${mode} frames ${frames} birds ${count} envelope ${length started} bytes result ${run (started, mode)}"
+    birds = Runtime::guarded (\() => counted run)
+    print "frames ${frames} birds ${birds} rows ${rows}"
     0

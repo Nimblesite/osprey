@@ -5,7 +5,7 @@
 ROOT ?= ../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
 
-.PHONY: storage flock graphics painting signal-flow probe casting
+.PHONY: storage flock graphics painting signal-flow probe casting tally
 
 ## graphics: Build the Direct3D 12 graphics host and run the animated GPU demo from the MSYS2 UCRT64
 ##           shell. The Osprey sources are the same files macOS draws through Metal; SCENE=kali|opal|character
@@ -38,3 +38,7 @@ probe:
 ##          with its DnsServiceBrowse helper and plays an MP3 on one. Needs MSYS2's OpenSSL.
 casting:
 	$(APP_PS1) -App casting
+
+## tally: Open Tally, the shared-memory view example ([NATIVE-SHM-VIEW]), in its sandbox.
+tally:
+	$(APP_PS1) -App tally

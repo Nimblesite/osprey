@@ -13,14 +13,11 @@ import workbenchtests::Drive
 import workbenchtests::FixtureFiles
 import workbench::FormulaKeys
 import ui::Doc
-import ui::Encode
 import ui::Ui
 
 (** The lesson reader, judge and tutor cases of [LESSONS-VERIFICATION]. *)
 module LessonCases
-    swapHeading () = "Theorem and_swap. For all p q, p ∧ q → q ∧ p."
-
-    swapTask () = workbench::Proving(provedHeading = swapHeading (), provedGiven = ["Assume h : p ∧ q."], provedSolution = ["By cases on h, as hp and hq.", "It suffices to show q and p.", "From hq.", "From hp."])
+    swapTask () = workbench::Proving(provedHeading = AppCases::swapHeading (), provedGiven = ["Assume h : p ∧ q."], provedSolution = ["By cases on h, as hp and hq.", "It suffices to show q and p.", "From hq.", "From hp."])
 
     marked mark = match mark
         workbench::Correct said => "right: " + said
@@ -121,18 +118,20 @@ module LessonCases
 
     keypadEncoding () =
         task = workbench::StateTask (stateTask "p → q")
-        walked = Encode::walk ([], Ui::row (FormulaKeys::buttons (task, "two")))
-        items = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
-        expect (join (mapList (items, \button => Doc::text (button, "label")), "|"), "p|q|→ implies|¬ not|∧ and|∨ or|↔ both ways|(|)")
+        keys = FormulaKeys::buttons (task, "two")
+        expect (join (mapList (keys, buttonLabel), "|"), "p|q|→ implies|¬ not|∧ and|∨ or|↔ both ways|(|)")
         expect (length (FormulaKeys::buttons (workbench::ProveTask (swapTask ()), "one")), 0)
+
+    buttonLabel node = match node
+        ui::Button label _ _ _ _ => label
+        _ => ""
 
     keypadInsert () =
         lesson = AppCases::opened ()
         region = "challenge:and-swap/state-swapped-goal"
         editor = Drive::findNode ("editor", Drive::node (lesson, region))
-        typed = Drive::controlOf (lesson, region, Doc::number (editor, "event"), Drive::quoted "pq")
-        current = editorOf (typed, region)
-        moved = Drive::controlOf (typed, region, Doc::number (current, "placeEvent"), "1")
+        typed = Drive::choose (lesson, region, "Your formula", Drive::quoted "pq")
+        moved = Drive::placed (typed, region, 1)
         Drive::press (moved, region, "→ implies")
 
     (** [LESSONS-STATE]: a real issued key through App::respond inserts at the actual editor caret without submitting. *)
@@ -163,21 +162,22 @@ module LessonCases
         lesson = AppCases::opened ()
         first = foldList (toList (range (0, 8)), lesson, \(current, _) => Drive::press (current, region, "p"))
         epochIs (first, region, 8)
-        FixtureFiles::bind (Drive::postSharedChallenge (first, Drive::labelled (first, first, "lesson", "All lessons", "null")), \closed =>
-            expect (listContains (Doc::texts (closed, "removed"), region), true)
+        Drive::after (Drive::sharedPress (first, "All lessons"), \closed =>
+            expect (listContains (Drive::redrawn first, region), true)
             expect (AppCases::regionKind (closed, region), "")
-            FixtureFiles::bind (Drive::postSharedChallenge (closed, Drive::tap (closed, "catalogue", 0)), \opened => secondLessonFocus (first, opened, region)))
+            Drive::after (Drive::sharedPress (closed, "Open"), \opened => secondLessonFocus (first, opened, region)))
 
     secondLessonFocus (first, opened, previousRegion) =
         region = "challenge:what-is-a-proof/state-swapped-goal"
         epochIs (opened, region, 0)
         expect (Doc::text (editorOf (opened, region), "kind"), "editor")
-        FixtureFiles::bind (Drive::postSharedChallenge (opened, Drive::labelled (opened, opened, region, "p", "null")), \next =>
+        Drive::after (Drive::press (Drive::shared opened, region, "p"), \next =>
             epochIs (next, region, 1)
             expect (Doc::text (editorOf (next, region), "value"), "p")
-            FixtureFiles::bind (Drive::postSharedChallenge (next, Drive::labelled (first, first, previousRegion, "p", "null")), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
+            expect (Drive::draws (first, previousRegion, "p"), true)
+            Drive::after (Drive::stale (Drive::shared next, first, previousRegion, "p"), \stale => FixtureFiles::ok (expect (Doc::write (Drive::stored stale), Doc::write (Drive::stored next)))))
 
-    judgeTask steps = workbench::Judging(judgedHeading = swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
+    judgeTask steps = workbench::Judging(judgedHeading = AppCases::swapHeading (), judgedSteps = listConcat (["Assume h : p ∧ q.", "By cases on h, as hp and hq.", "It suffices to show q and p."], steps))
 
     (** The mark the judge gives `steps` when the learner says it checks or does not. *)
     ruleOf (steps, agrees) = head (Judge::rule (judgeTask steps, agrees))
@@ -228,9 +228,7 @@ module LessonCases
         expect (isEmpty shown.tutorCompleted, true)
         expect (join ((Tutors::submit (shown, "l/swap", challenge ())).tutorCompleted, ","), "l/swap")
 
-    markOf tutor = match (tried (tutor, "l/swap")).attemptMarking
-        workbench::Unmarked => "none"
-        workbench::Marked mark => head mark
+    markOf tutor = markKey (tutor, "l/swap")
 
     (** [LESSONS-FEEDBACK]: editing the answer after a right submission clears the mark, so the badge describes the text on screen. *)
     export clearing () =

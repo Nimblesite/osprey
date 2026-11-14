@@ -35,8 +35,17 @@ static OspGcEnt *gc_lookup(uintptr_t w) {
   return NULL;
 }
 
+// The smallest table that holds `count` objects under the 3/4 load ceiling.
+static size_t gc_fit(size_t count) {
+  size_t cap = OSP_GC_INIT_TABLE_CAP;
+  while (cap * 3 <= (count + 1) * 4) {
+    cap *= 2;
+  }
+  return cap;
+}
+
 // Place (base,size) into `tab` (no growth, no duplicates) — used by both the
-// live insert path and the post-sweep rebuild.
+// live insert path and a resize.
 static void gc_place(OspGcEnt *tab, size_t cap, uintptr_t base, size_t size, uint32_t flags) {
   size_t i = gc_hash(base, cap);
   while (tab[i].base != 0) {
@@ -47,8 +56,9 @@ static void gc_place(OspGcEnt *tab, size_t cap, uintptr_t base, size_t size, uin
   tab[i].mark = flags;
 }
 
-static int gc_grow(void) {
-  size_t cap = g_cap ? g_cap * 2 : OSP_GC_INIT_TABLE_CAP;
+// Move every tracked block into a fresh table of `cap` slots, dropping the
+// collection marks. Returns 0, leaving the table as it was, when out of memory.
+static int gc_resize(size_t cap) {
   OspGcEnt *tab = (OspGcEnt *)calloc(cap, sizeof(OspGcEnt));
   if (!tab) {
     return 0;
@@ -64,16 +74,18 @@ static int gc_grow(void) {
   return 1;
 }
 
-static void gc_insert(uintptr_t base, size_t size) {
-  if (g_cap == 0 || (g_count + 1) * 4 >= g_cap * 3) {
-    if (!gc_grow()) {
-      return; // out of table memory: object is simply untracked (never freed)
-    }
+// Track a fresh block under its lifetime `flags`. Returns 0 when the table
+// cannot grow: the block is then untracked, and never freed.
+static int gc_insert(uintptr_t base, size_t size, uint32_t flags) {
+  if ((g_cap == 0 || (g_count + 1) * 4 >= g_cap * 3) &&
+      !gc_resize(g_cap ? g_cap * 2 : OSP_GC_INIT_TABLE_CAP)) {
+    return 0;
   }
-  gc_place(g_tab, g_cap, base, size, 0);
+  gc_place(g_tab, g_cap, base, size, flags);
   g_count++;
   g_lowest = base < g_lowest ? base : g_lowest;
   g_highest = base > g_highest ? base : g_highest;
+  return 1;
 }
 
 // --- mark --------------------------------------------------------------------
@@ -91,13 +103,18 @@ static void gc_ms_push(uintptr_t w) {
   g_ms[g_ms_top++] = w;
 }
 
+// A word that may alias any object, so the scan reads it without aliasing UB.
+typedef uintptr_t __attribute__((may_alias)) OspGcWord;
+
 // Treat every aligned word in [lo,hi) as a candidate pointer; mark & enqueue any
-// that names a managed object. memcpy reads the word without aliasing UB.
+// that names a managed object. A conservative scan reads whole stacks, including
+// the redzones AddressSanitizer plants between locals, so this one function is
+// exempt from it and loads the word directly (a memcpy would be intercepted).
+__attribute__((no_sanitize("address")))
 static void gc_scan_range(uintptr_t lo, uintptr_t hi) {
   uintptr_t p = (lo + (OSP_GC_WORD - 1)) & ~(OSP_GC_WORD - 1);
   for (; p + OSP_GC_WORD <= hi; p += OSP_GC_WORD) {
-    uintptr_t w;
-    memcpy(&w, (const void *)p, sizeof(w));
+    uintptr_t w = *(const OspGcWord *)p;
     OspGcEnt *e = gc_lookup(w);
     if (e && !(e->mark & GC_MARKED)) {
       e->mark |= GC_MARKED;

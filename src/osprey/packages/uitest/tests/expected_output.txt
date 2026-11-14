@@ -1,6 +1,7 @@
 ok 1 - the canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering
 ok 2 - native views are found by what they say, and every host event keeps its wire contract
 ok 3 - a broken document is refused with every problem named by its path
+ok 4 - told trees read back by name, member, entries, depth and kind, every kind of value and a negative real included
 # not lettered: Missing lettering; the artboard letters Hello|Choice 
 # not offered: Dismiss; the tree offers:
 popup "Menu"
@@ -15,12 +16,14 @@ slider "Level" value 0.75 of 0.0 to 1.0
 popup "Menu"
 button "Press"
 slider "Level" value 0.75 of 0.0 to 1.0
-ok 4 - a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read
-# not shown: Missing control; the view shows Native|Native action|Pick|One|Two|Three
-# not shown: Native; the view shows Pressed|Native action|Pick|One|Two|Three
-# not shown: one; the view shows Pressed|Native action|three|Pick|One|Two|Three
-# not shown: Pressed; the view shows Native|Native action|Pick|One|Two|Three
-ok 5 - native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups
-ok 6 - the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 5 - a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read
+# not shown: Missing control; the view shows Native|Native action|Pick
+# not shown: Native; the view shows Pressed|Native action|Pick
+# not shown: Pressed; the view shows Native|Native action|Pick
+ok 6 - native controls are pressed and repeatedly chosen through Drive, including successful and explained failed lookups
+ok 7 - the accessibility tree reads clearly to an agent: roles, values and ranges, where an activation lands, and what makes it unclear
+ok 8 - a scene's glyphs, lettering and paths read back typed, and keys and asks cross through the quiet host
+ok 9 - native views are found by what they say, and every host event keeps its wire contract (extra: flag words read exactly true, empty choices choose, text keeps line breaks)
+ok 10 - a resident fixture is driven by labels, pointers, completions, lifecycle and frames while its curves and diagnostics are read (extra: a negative display frame is refused and the session keeps answering)
+1..10
+# tests=10 passed=10 failed=0 skipped=0

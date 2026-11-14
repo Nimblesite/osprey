@@ -1,0 +1,52 @@
+WEBVTT
+
+00:00.000 --> 00:16.751
+The Osprey Native bridge
+
+00:16.751 --> 00:58.562
+Goal: no serialization
+
+00:58.562 --> 01:32.936
+One model
+
+01:32.936 --> 02:00.248
+The generated header
+
+02:00.248 --> 02:29.167
+Three calls
+
+02:29.167 --> 02:51.273
+Osprey writes rows
+
+02:51.273 --> 03:16.464
+The C runtime
+
+03:16.464 --> 04:04.615
+Seal, lease, read
+
+04:04.615 --> 04:27.902
+macOS and iOS: SwiftUI
+
+04:27.902 --> 04:49.832
+GPU canvas: GPUI in Rust
+
+04:49.832 --> 05:05.978
+Windows: WinUI in C#
+
+05:05.978 --> 05:20.530
+Android: JNI and Kotlin
+
+05:20.530 --> 05:46.516
+VS Code: WebAssembly
+
+05:46.516 --> 06:07.959
+Events come back typed
+
+06:07.959 --> 06:22.644
+Run: the reference host
+
+06:22.644 --> 06:38.746
+Change it: one label
+
+06:38.746 --> 06:51.476
+Try it

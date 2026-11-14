@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080f18">
+<title>Light Orchestra</title>
+<style>
+:root{color-scheme:dark;font:16px "Avenir Next",system-ui;background:#080f18;color:#edf8ff}
+*{box-sizing:border-box}body{margin:0;padding:max(18px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));min-height:100dvh;display:flex;flex-direction:column;gap:14px;background:radial-gradient(ellipse at 90% 0,#163c4155,transparent 50%)}
+header,footer,.control-row,.control-value{display:flex;justify-content:space-between;align-items:center;gap:12px}h1{font-size:clamp(23px,5vw,34px);font-weight:650;letter-spacing:-1px;margin:0}p{margin:0;color:#98adc0;line-height:1.4}button,select,input{font:inherit;color:inherit}button,select{padding:11px 14px;border:1px solid #354959;border-radius:12px;background:#152431}button{cursor:pointer}#join{background:#96f1d8;color:#092b27;border:0;font-weight:650;white-space:nowrap}button:focus-visible,select:focus-visible,input:focus-visible,canvas:focus-visible{outline:3px solid #96f1d8;outline-offset:3px}button:disabled,select:disabled,input:disabled{opacity:.45}
+#status{font-size:13px;min-height:20px}label{display:flex;flex-direction:column;gap:7px;color:#a9bfce;font-size:12px;letter-spacing:.5px}.control-row>label{flex:1;min-width:0}select{width:100%;font-size:15px;letter-spacing:0}.controls{border:1px solid #284050;background:#10202b99;border-radius:18px;padding:14px;display:grid;gap:14px}.control-value label{font-size:13px}output{font-variant-numeric:tabular-nums;color:#96f1d8}input[type=range]{width:100%;accent-color:#96f1d8;min-height:28px;margin:0}#pad{width:100%;flex:1;min-height:240px;border:1px solid #304d5a;border-radius:22px;touch-action:none;background:linear-gradient(160deg,#132837,#08111e);box-shadow:inset 0 0 60px #0004}.pad-hints{display:flex;justify-content:space-between;font-size:12px;color:#98adc0}footer{flex-wrap:wrap}footer label{flex:1;min-width:140px}.hint{font-size:12px}#release{font-size:13px} @media(min-height:750px){#pad{min-height:310px}} @media(min-width:700px){body{max-width:1100px;margin:auto;height:100dvh}#pad{min-height:180px}}
+</style>
+<header><h1>Light Orchestra</h1><button id="join">Join session</button></header>
+<p id="status" role="status" aria-label="Connection status" aria-live="polite">Connect to the desktop to start playing.</p>
+<section class="controls" aria-label="Sound controls">
+<div class="control-row">
+<label>Instrument<select id="instrument" aria-label="Instrument" disabled><option value="0">Glass · luminous harmonics</option><option value="1">Sub · warm bass</option><option value="2">Pulse · electric lead</option><option value="3">Orbit · FM texture</option></select></label>
+<label>Touch expression<select id="axis" aria-label="Touch expression" disabled><option value="volume">Loudness</option><option value="tone">Tone</option><option value="echo">Echo</option><option value="reverb">Reverb</option><option value="warp">Metallic warp</option></select></label>
+</div>
+<div><div class="control-value"><label for="amount">Expression amount</label><output id="amount-value" for="amount">65%</output></div><input id="amount" aria-label="Loudness amount" type="range" min="0" max="1" step="0.01" value="0.65" disabled></div>
+</section>
+<div class="pad-hints"><span>Slide right for higher notes</span><span id="axis-hint">Up = more loudness</span></div>
+<canvas id="pad" tabindex="0" role="application" aria-label="Musical ribbon. Touch to play. Move right for higher notes. Up increases the selected expression. Keyboard: hold space to play, arrows change pitch and expression."></canvas>
+<footer><button id="release" disabled>Release my notes</button><label>Keyboard pitch<input id="pitch" type="range" min="0" max="1" step="0.01" value="0.5"></label></footer>
+<p class="hint">Choose a sound, then shape it with several fingers. Effects stay set as you switch expression. Audio plays on your Mac. Trusted local network only.</p>
+<script>
+'use strict';
+const pad=document.querySelector('#pad'),ctx=pad.getContext('2d'),status=document.querySelector('#status'),join=document.querySelector('#join'),release=document.querySelector('#release'),pitch=document.querySelector('#pitch');
+const instrument=document.querySelector('#instrument'),axis=document.querySelector('#axis'),amount=document.querySelector('#amount'),readout=document.querySelector('#amount-value');
+const sound={tone:0,echo:0,reverb:0,warp:0};
+const colors=['#79f6dd','#ffb774','#b8a1ff','#ff91c8'];
+const token=location.hash.slice(1)||sessionStorage.getItem('orchestraToken')||'';if(token)sessionStorage.setItem('orchestraToken',token);history.replaceState(null,'',location.pathname);
+let socket=null,ready=false,sequence=0,keys=false,level=.65;
+const fingers=new Map(),points=new Map();
+const diagnostics=[];let flushing=false,peer=0;
+function trace(event,fields={}) {
+  const row={event,at:Date.now(),peer,sequence,...fields};
+  if(row.reason) {
+    const reason=String(row.reason);
+    row.reason=(token?reason.split(token).join('[redacted]'):reason).slice(0,160);
+  }
+  diagnostics.push(row);
+  if(diagnostics.length>64)diagnostics.shift();
+  console.info('[orchestra]',JSON.stringify(row));
+}
+async function flushDiagnostics(beacon=false) {
+  if(!token||!diagnostics.length||(flushing&&!beacon))return;
+  const events=diagnostics.splice(0,12),body=JSON.stringify({token,events});
+  if(beacon) {
+    if(!navigator.sendBeacon('/diagnostics',new Blob([body],{type:'text/plain'})))diagnostics.unshift(...events);
+    return;
+  }
+  flushing=true;
+  try {
+    const response=await fetch('/diagnostics',{method:'POST',body,signal:AbortSignal.timeout(3000)});
+    if(!response.ok)throw Error('Diagnostic delivery rejected');
+  } catch {
+    diagnostics.unshift(...events);diagnostics.splice(64);
+    console.warn('[orchestra] Diagnostic delivery unavailable');
+  } finally { flushing=false }
+}
+setInterval(()=>flushDiagnostics(),1000);
+window.addEventListener('error',e=>trace('controller.script_error',{reason:e.message,code:e.lineno}));
+window.addEventListener('unhandledrejection',()=>trace('controller.promise_error'));
+trace('controller.loaded');
+
+function report(message){status.textContent=message;trace('controller.status',{reason:message,state:ready?1:0})}
+function send(message){if(socket?.readyState===WebSocket.OPEN&&socket.bufferedAmount<16384){socket.send(JSON.stringify(message));trace('controller.sent',{phase:message.phase??-1,buffered:socket.bufferedAmount});return true}disconnect('Connection congested. Rejoin to continue.');return false}
+function settings() {
+  if(ready)send({type:'settings',sequence:++sequence,instrument:Number(instrument.value),...sound});
+}
+function updateAmount(value) {
+  if(axis.value==='volume')level=value;
+  else { sound[axis.value]=value;settings() }
+  amount.value=value;readout.value=`${Math.round(value*100)}%`;
+}
+function event(phase,finger,x,y) {
+  if(!ready)return;
+  if(phase!==2&&axis.value!=='volume')updateAmount(y);
+  send({type:'touch',sequence:++sequence,phase,finger,x,y:axis.value==='volume'?y:level});
+}
+function disconnect(message,code=0){trace('controller.disconnected',{reason:message,code,buffered:socket?.bufferedAmount??0});ready=false;fingers.clear();points.clear();keys=false;release.disabled=true;instrument.disabled=true;axis.disabled=true;amount.disabled=true;join.disabled=false;socket?.close();socket=null;report(message);draw()}
+function connect(){trace('controller.connecting');if(!token){report('Open the complete invite link from the desktop app.');return}join.disabled=true;report('Connecting…');sequence=0;const ws=new WebSocket(`ws://${location.hostname}:${Number(location.port||80)+1}`,'orchestra.v1');socket=ws;
+ws.onopen=()=>{if(socket===ws)send({type:'join',token})};
+ws.onmessage=e=>{if(socket!==ws)return;try{const m=JSON.parse(e.data);if(m.type==='joined'){peer=m.peer;trace('controller.ready');ready=true;release.disabled=false;instrument.disabled=false;axis.disabled=false;amount.disabled=false;settings();report('Connected · touch the ribbon to play')}else if(m.type==='silenced'){points.clear();fingers.clear();keys=false;draw();report('Conductor released all notes · touch again to play')}else if(m.type==='error'){disconnect(m.message)}else if(m.type==='ack'&&!m.accepted){trace('controller.rejected');disconnect('Session expired or event rejected. Rejoin to continue.')}}catch{disconnect('Invalid server response')}};
+ws.onerror=()=>{if(socket===ws)disconnect('Cannot reach the desktop. Check the invite and Wi-Fi.')};ws.onclose=e=>{if(socket===ws)disconnect('Disconnected · all your notes have been released.',e.code)};}
+function position(e){const r=pad.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:1-Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}}
+function draw() {
+  const ratio=devicePixelRatio||1,r=pad.getBoundingClientRect();
+  pad.width=Math.round(r.width*ratio);pad.height=Math.round(r.height*ratio);ctx.scale(ratio,ratio);
+  ctx.clearRect(0,0,r.width,r.height);
+  const color=colors[Number(instrument.value)];
+  for(let i=0;i<15;i++) {
+    ctx.strokeStyle=i%5===0?'#395369':'#1c3044';ctx.beginPath();
+    ctx.moveTo(i*r.width/14,0);ctx.lineTo(i*r.width/14,r.height);ctx.stroke();
+  }
+  ctx.fillStyle='#839db4';ctx.font='12px system-ui';
+  ctx.fillText('LOW',16,r.height-18);ctx.fillText('HIGH',r.width-48,r.height-18);
+  for(const p of points.values()) {
+    const x=p.x*r.width,y=(1-p.y)*r.height,g=ctx.createRadialGradient(x,y,2,x,y,120);
+    g.addColorStop(0,color);g.addColorStop(.2,color+'88');g.addColorStop(1,color+'00');
+    ctx.fillStyle=g;ctx.fillRect(x-120,y-120,240,240);
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    for(let ring=0;ring<3;ring++) {
+      ctx.globalAlpha=.65-ring*.18;ctx.beginPath();
+      ctx.arc(x,y,12+ring*22+sound.reverb*18,0,Math.PI*2);ctx.stroke();
+    }
+    ctx.globalAlpha=1;ctx.fillStyle='#efffff';ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fill();
+  }
+}
+pad.onpointerdown=e=>{if(!ready||fingers.size>=9)return;e.preventDefault();let id=0;while([...fingers.values()].includes(id))id++;fingers.set(e.pointerId,id);pad.setPointerCapture(e.pointerId);const p=position(e);points.set(id,p);event(0,id,p.x,p.y);draw()};
+pad.onpointermove=e=>{const id=fingers.get(e.pointerId);if(id===undefined)return;const p=position(e);points.set(id,p);event(1,id,p.x,p.y);draw()};
+function end(e){const id=fingers.get(e.pointerId);if(id===undefined)return;const p=points.get(id);event(2,id,p.x,p.y);fingers.delete(e.pointerId);points.delete(id);draw()}
+pad.onpointerup=end;pad.onpointercancel=end;pad.onlostpointercapture=end;
+function releaseAll(){for(const [id,p]of points)event(2,id,p.x,p.y);points.clear();fingers.clear();keys=false;draw()}
+pad.onkeydown=e=>{if(!ready)return;if(e.code==='Space'){e.preventDefault();if(!keys){keys=true;const p={x:Number(pitch.value),y:Number(amount.value)};points.set(9,p);event(0,9,p.x,p.y);draw()}}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.code)){e.preventDefault();if(e.code==='ArrowLeft')pitch.value=Number(pitch.value)-.07;if(e.code==='ArrowRight')pitch.value=Number(pitch.value)+.07;const value=Number(amount.value)+(e.code==='ArrowUp'?.05:e.code==='ArrowDown'?-.05:0);updateAmount(Math.max(0,Math.min(1,value)));moveKey()}};
+function moveKey(){if(keys){const p={x:Number(pitch.value),y:Number(amount.value)};points.set(9,p);event(1,9,p.x,p.y);draw()}}
+pad.onkeyup=e=>{if(e.code==='Space'&&keys){const p=points.get(9);event(2,9,p.x,p.y);points.delete(9);keys=false;draw()}};
+instrument.onchange=()=>{releaseAll();settings();draw()};
+axis.onchange=()=>{
+  amount.value=axis.value==='volume'?level:sound[axis.value];
+  readout.value=`${Math.round(Number(amount.value)*100)}%`;
+  amount.setAttribute('aria-label',`${axis.options[axis.selectedIndex].text} amount`);
+  document.querySelector('#axis-hint').textContent=`Up = more ${axis.options[axis.selectedIndex].text.toLowerCase()}`;
+};
+amount.oninput=()=>{updateAmount(Number(amount.value));moveKey();draw()};
+pitch.oninput=moveKey;pad.onblur=releaseAll;release.onclick=releaseAll;join.onclick=connect;
+document.addEventListener('visibilitychange',()=>{trace('controller.visibility',{visibility:document.hidden?0:1});if(document.hidden){releaseAll();disconnect('Paused · rejoin when you return.');flushDiagnostics(true)}});window.addEventListener('resize',draw);window.addEventListener('pagehide',()=>{disconnect('Left session');flushDiagnostics(true)});draw();
+</script>
+</html>

@@ -61,7 +61,7 @@ type Capability =
     HostCall
         hostNamespace : string
         hostOperation : string
-        hostArguments : Json
+        hostArguments : List<Header>
         hostTimeout : int
         hostLimit : int
         hostSlice : string
@@ -115,53 +115,74 @@ type SliceWrite =
     sliceKey : string
     sliceText : string
 
-(** Builds capability requests and host slice writes, and encodes requests for the protocol ([UI-EFFECTS]). *)
+(** One field of an ask on its way to the shared frame, as `native.td`'s `AskRow` lays it out ([NATIVE-SHM-ASK]). *)
+type Asked =
+    askedField : int
+    askedNumber : int
+    askedText : string
+
+(** Builds capability requests and host slice writes, and writes them into the shared frame as ask rows ([UI-EFFECTS], [NATIVE-SHM-ASK]). *)
 module Requests
-    strings key values = JsonMember key (Doc::strings values)
+    (** The capability code of a slice write's first row; every capability's code is its position in `Capability`, counted from 1. *)
+    export sliceCode = 100
 
-    header item = JsonObject [Encode::str "name" item.headerName, Encode::str "value" item.headerValue]
+    text (field, words) = Asked(askedField = field, askedNumber = 0, askedText = words)
 
-    envVar item = JsonObject [Encode::str "name" item.envName, Encode::str "value" item.envValue]
+    whole (field, number) = Asked(askedField = field, askedNumber = number, askedText = "")
 
-    run executable arguments timeout limit plist slice = [Encode::str "kind" "run", Encode::str "executable" executable, strings "arguments" arguments, Encode::num "timeout" timeout, Encode::num "limit" limit, Doc::bit ("plist", plist), Encode::str "slice" slice]
+    flag (field, on) = whole (field, Pick::either (on, 1, 0))
 
-    http method url headers body limit deadline slice = [Encode::str "kind" "http", Encode::str "method" method, Encode::str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), Encode::str "body" body, Encode::num "limit" limit, Encode::num "timeout" deadline, Encode::str "slice" slice]
+    texts (field, items) = mapList (items, \item => text (field, item))
 
-    // A capability's members: its `kind` first, then its arguments.
-    kind name members = listPrepend members (Encode::str "kind" name)
+    pairs (field, items) = Lists::flatten (mapList (items, \item => [text (field, item.headerName), text (field, item.headerValue)]))
 
-    // Arguments followed by the output bound and the slice the output lands in.
-    capped (members, limit, slice) = listConcat members [Encode::num "limit" limit, Encode::str "slice" slice]
+    envs (field, items) = Lists::flatten (mapList (items, \item => [text (field, item.envName), text (field, item.envValue)]))
 
-    members capability = match capability
-        Run executable arguments timeout limit plist slice => run executable arguments timeout limit plist slice
-        ListDirectories paths limit slice => capped (kind "list-directories" [strings "paths" paths], limit, slice)
-        ReadPropertyLists paths keys suffixes limit slice => capped (kind "read-plists" [strings "paths" paths, strings "keys" keys, strings "suffixes" suffixes], limit, slice)
-        ReadTexts paths limit slice => capped (kind "read-texts" [strings "paths" paths], limit, slice)
-        Fingerprint path limit => kind "fingerprint" [Encode::str "path" path, Encode::num "limit" limit]
-        StoreRead name limit slice => capped (kind "store-read" [Encode::str "name" name], limit, slice)
-        StoreWrite name slice => kind "store-write" [Encode::str "name" name, Encode::str "slice" slice]
-        StoreList name => kind "store-list" [Encode::str "name" name]
-        StoreDelete name => kind "store-delete" [Encode::str "name" name]
-        Http method url headers body limit deadline slice => http method url headers body limit deadline slice
-        HostCall space operation arguments timeout limit slice => kind "host-call" [Encode::str "namespace" space, Encode::str "operation" operation, JsonMember "arguments" arguments, Encode::num "timeout" timeout, Encode::num "limit" limit, Encode::str "slice" slice]
-        RunningApplications => kind "running-applications" []
-        ChooseFile types limit slice => capped (kind "choose-file" [strings "types" types], limit, slice)
-        ChooseFolder => kind "choose-folder" []
-        SaveFile name slice => kind "save-file" [Encode::str "name" name, Encode::str "slice" slice]
-        MeasureFolders folders limit deadline slice => kind "measure-folders" [strings "folders" folders, Encode::num "limit" limit, Encode::num "timeout" deadline, Encode::str "slice" slice]
-        Reveal path => kind "reveal" [Encode::str "path" path]
-        OpenSettings pane => kind "open-settings" [Encode::str "pane" pane]
-        Cancel target => kind "cancel" [Encode::str "target" target]
-        Recognise slices limit => kind "recognise" [strings "slices" slices, Encode::num "limit" limit]
-        Animate on => kind "animate" [Doc::bit ("on", on)]
-        ProcessStart command arguments env name => kind "process-start" [Encode::str "command" command, strings "arguments" arguments, JsonMember "env" (JsonArray (mapList (env, \item => envVar item))), Encode::str "name" name]
-        ProcessWrite name input => kind "process-write" [Encode::str "name" name, Encode::str "input" input]
-        ProcessRead name limit deadline => kind "process-read" [Encode::str "name" name, Encode::num "limit" limit, Encode::num "timeout" deadline]
-        ProcessStop name => kind "process-stop" [Encode::str "name" name]
+    // The first row names the capability by its code and carries the ticket; the arguments follow.
+    asks (code, ticket, arguments) = listConcat [Asked(askedField = 0, askedNumber = code, askedText = ticket)] arguments
 
-    (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
-    export encode request = JsonObject (listPrepend (members request.capability) (Encode::str "ticket" request.ticket))
+    // A capability's rows, each argument numbered by its position in the constructor.
+    fields (ticket, capability) = match capability
+        Run executable arguments timeout limit plist slice => asks (1, ticket, listConcat [text (1, executable)] (listConcat (texts (2, arguments)) [whole (3, timeout), whole (4, limit), flag (5, plist), text (6, slice)]))
+        ListDirectories paths limit slice => asks (2, ticket, listConcat (texts (1, paths)) [whole (2, limit), text (3, slice)])
+        ReadPropertyLists paths keys suffixes limit slice => asks (3, ticket, listConcat (texts (1, paths)) (listConcat (texts (2, keys)) (listConcat (texts (3, suffixes)) [whole (4, limit), text (5, slice)])))
+        ReadTexts paths limit slice => asks (4, ticket, listConcat (texts (1, paths)) [whole (2, limit), text (3, slice)])
+        Fingerprint path limit => asks (5, ticket, [text (1, path), whole (2, limit)])
+        StoreRead name limit slice => asks (6, ticket, [text (1, name), whole (2, limit), text (3, slice)])
+        StoreWrite name slice => asks (7, ticket, [text (1, name), text (2, slice)])
+        StoreList name => asks (8, ticket, [text (1, name)])
+        StoreDelete name => asks (9, ticket, [text (1, name)])
+        Http method url headers body limit deadline slice => asks (10, ticket, listConcat [text (1, method), text (2, url)] (listConcat (pairs (3, headers)) [text (4, body), whole (5, limit), whole (6, deadline), text (7, slice)]))
+        HostCall space operation arguments timeout limit slice => asks (11, ticket, listConcat [text (1, space), text (2, operation)] (listConcat (pairs (3, arguments)) [whole (4, timeout), whole (5, limit), text (6, slice)]))
+        RunningApplications => asks (12, ticket, [])
+        ChooseFile types limit slice => asks (13, ticket, listConcat (texts (1, types)) [whole (2, limit), text (3, slice)])
+        ChooseFolder => asks (14, ticket, [])
+        SaveFile name slice => asks (15, ticket, [text (1, name), text (2, slice)])
+        MeasureFolders folders limit deadline slice => asks (16, ticket, listConcat (texts (1, folders)) [whole (2, limit), whole (3, deadline), text (4, slice)])
+        Reveal path => asks (17, ticket, [text (1, path)])
+        OpenSettings pane => asks (18, ticket, [text (1, pane)])
+        Cancel target => asks (19, ticket, [text (1, target)])
+        Recognise slices limit => asks (20, ticket, listConcat (texts (1, slices)) [whole (2, limit)])
+        Animate on => asks (21, ticket, [flag (1, on)])
+        ProcessStart command arguments env name => asks (22, ticket, listConcat [text (1, command)] (listConcat (texts (2, arguments)) (listConcat (envs (3, env)) [text (4, name)])))
+        ProcessWrite name input => asks (23, ticket, [text (1, name), text (2, input)])
+        ProcessRead name limit deadline => asks (24, ticket, [text (1, name), whole (2, limit), whole (3, deadline)])
+        ProcessStop name => asks (25, ticket, [text (1, name)])
+
+    kinds = ["run", "list-directories", "read-plists", "read-texts", "fingerprint", "store-read", "store-write", "store-list", "store-delete", "http", "host-call", "running-applications", "choose-file", "choose-folder", "save-file", "measure-folders", "reveal", "open-settings", "cancel", "recognise", "animate", "process-start", "process-write", "process-read", "process-stop"]
+
+    (** The name of `capability`'s kind, as logs and tests spell it: `choose-file`, `store-read` and so on. *)
+    export kind capability = listGet kinds ((listGet (fields ("", capability)) 0 ?: Asked(askedField = 0, askedNumber = 0, askedText = "")).askedNumber - 1) ?: ""
+
+    (** The ask rows of `request`: a first row with its capability code and ticket, then its arguments. *)
+    export rows request = fields (request.ticket, request.capability)
+
+    (** The ask rows of a slice write: its key, then its text. *)
+    export slice write = [Asked(askedField = 0, askedNumber = sliceCode, askedText = write.sliceKey), text (1, write.sliceText)]
+
+    (** Sends `requests` and `writes` to the host beside the view, slice writes first so a request finds the text it names. *)
+    export post : (List<Request>, List<SliceWrite>) -> Unit ![ViewStream | e]
+    post (requests, writes) = forEachList (listConcat (Lists::flatten (mapList (writes, slice))) (Lists::flatten (mapList (requests, rows))), \row => perform ViewStream.ask row)
 
     (** A request for `capability` whose completion returns to `update` under `ticket`. *)
     export ask (ticket, capability) = Request(ticket = ticket, capability = capability)

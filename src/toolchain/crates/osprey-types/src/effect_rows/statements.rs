@@ -14,23 +14,42 @@ impl Analyzer<'_> {
             // and flow its callable assignments; only the two binding forms go
             // on to re-point the name. The shadow mark lands AFTER the value is
             // analysed, so `let x = f(x)` still sees the outer `x`.
-            let (name, value) = match statement {
-                Stmt::Let { name, value, .. } | Stmt::Assignment { name, value, .. } => {
-                    (Some(name), value)
-                }
-                Stmt::Expr { value, .. } => (None, value),
-                _ => continue,
+            let (Stmt::Let { value, .. }
+            | Stmt::Assignment { value, .. }
+            | Stmt::Expr { value, .. }) = statement
+            else {
+                continue;
             };
             out.union(self.expression(value, scope, env));
-            let _ = self.flow_callable_assignments(value, scope, env);
-            if let Stmt::Let { name, .. } = statement {
-                let _ = env.shadowed.insert(name.clone());
-            }
-            if let Some(name) = name {
-                self.rebind_value(name, value, scope, env);
-            }
+            self.statement_environment(statement, scope, env);
         }
         out
+    }
+
+    /// Flow the bindings and assignments a statement executes. Constructing the
+    /// file environment needs these values, while its discarded effect row is
+    /// checked separately after convergence. A standalone call therefore need
+    /// not analyse its callbacks or invalidate every function on each sweep.
+    pub(super) fn statement_environment(
+        &self,
+        statement: &Stmt,
+        scope: &[String],
+        env: &mut CallableEnv,
+    ) {
+        let (name, value) = match statement {
+            Stmt::Let { name, value, .. } | Stmt::Assignment { name, value, .. } => {
+                (Some(name), value)
+            }
+            Stmt::Expr { value, .. } => (None, value),
+            _ => return,
+        };
+        let _ = self.flow_callable_assignments(value, scope, env);
+        if let Stmt::Let { name, .. } = statement {
+            let _ = env.shadowed.insert(name.clone());
+        }
+        if let Some(name) = name {
+            self.rebind_value(name, value, scope, env);
+        }
     }
 
     /// Re-point `name` at the provenance of its new `value`, forgetting the old

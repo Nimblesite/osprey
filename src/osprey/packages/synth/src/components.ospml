@@ -1,0 +1,31 @@
+// [SYNTH-GRAPH] UI-free factories: their descriptors can drive a UI but contain no widgets.
+namespace synth
+
+(** Composable mono reference components with named parameters and typed ports. *)
+module Components
+    port name = Port(name = name, rate = Audio, channels = 1, unit = Amplitude)
+
+    parameter (key, label, unit, low, high, value) = Parameter(key = key, label = label, unit = unit, minimum = low, maximum = high, initial = value, automatable = true)
+
+    node (identity, processor, inputs, outputs, parameters) = Node(identity = identity, processor = processor, inputs = inputs, outputs = outputs, parameters = parameters)
+
+    (** Sine oscillator. Its frequency is a parameter, separate from its phase state. *)
+    export sine (identity, frequency) = node (identity, Oscillator, [], [port "audio"], [parameter ("frequency", "Frequency", Hertz, 0.0, 19000.0, frequency)])
+
+    (** Stateful low-pass with cutoff in Hz and resonance expressed as Q. *)
+    export lowpass (identity, cutoff, resonance) = node (identity, Filter, [port "audio"], [port "audio"], [parameter ("cutoff", "Cutoff", Hertz, 1.0, 19000.0, cutoff), parameter ("resonance", "Resonance (Q)", Ratio, 0.1, 20.0, resonance)])
+
+    (** Linear gain; values above unity are explicit and may exceed output headroom. *)
+    export gain (identity, level) = node (identity, Amplifier, [port "audio"], [port "audio"], [parameter ("gain", "Gain", Amplitude, 0.0, 8.0, level)])
+
+    (** Two audio inputs are summed without implicit attenuation or clipping. *)
+    export mixer identity = node (identity, Mixer, [port "first", port "second"], [port "audio"], [])
+
+    (** A mono graph output. *)
+    export output identity = node (identity, Sink, [port "audio"], [], [])
+
+    (** Explicit sample delay; feedback scheduling reads it before writing the next sample. *)
+    export delay (identity, count) = node (identity, Delay(samples = count), [port "audio"], [port "audio"], [])
+
+    (** One typed connection; graph validation checks both endpoints. *)
+    export route (source, outlet, destination, inlet) = Cable(source = source, outlet = outlet, destination = destination, inlet = inlet)

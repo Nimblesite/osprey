@@ -38,6 +38,51 @@ pub(crate) struct Checked {
     pub(crate) assembled: Result<AssembledProject, Vec<ProjectError>>,
     pub(crate) errors: Vec<osprey_types::TypeError>,
     pub(crate) warnings: crate::warning_actions::Warnings,
+    /// The assembled program's types and where it declares each function,
+    /// inferred when an editor view first asks ([LSP-HOVER-PROJECT]).
+    typed: std::sync::OnceLock<(Arc<osprey_types::ProgramTypes>, crate::inferred::Functions)>,
+}
+
+/// Collects where an assembled program declares each function.
+#[derive(Default)]
+struct Declared(std::collections::BTreeMap<(u32, u32), String>);
+
+impl osprey_ast::AstVisitor for Declared {
+    fn statement(&mut self, statement: &osprey_ast::Stmt) {
+        if let osprey_ast::Stmt::Function {
+            name,
+            position: Some(at),
+            ..
+        } = statement
+        {
+            let _ = self.0.insert((at.line, at.column), name.clone());
+        }
+    }
+}
+
+impl Checked {
+    /// The project's answers for the source file at `path`; `None` when the
+    /// project does not assemble or does not contain it.
+    pub(crate) fn inferred(&self, path: &std::path::Path) -> Option<crate::inferred::Inferred> {
+        let project = self.assembled.as_ref().ok()?;
+        let source = project
+            .sources
+            .iter()
+            .find(|source| crate::workspace::same_path(&source.path, path))?;
+        let (types, functions) = self.typed.get_or_init(|| {
+            let mut declared = Declared::default();
+            osprey_ast::walk_program(&project.program, &mut declared);
+            (
+                Arc::new(osprey_types::infer_program(&project.program)),
+                Arc::new(declared.0),
+            )
+        });
+        Some(crate::inferred::Inferred::placed(
+            Arc::clone(types),
+            Arc::clone(functions),
+            source.global_line(1).saturating_sub(1),
+        ))
+    }
 }
 
 /// The latest analysis of one project root, locked on its own.
@@ -94,6 +139,19 @@ impl ProjectCache {
             .map_or_else(crate::workspace::View::default, |sources| sources.view(uri))
     }
 
+    /// [`Self::view`] with the project's checked types, for the features that
+    /// display one ([LSP-HOVER-PROJECT]).
+    pub(crate) fn typed_view(&self, uri: &str, vfs: &lspkit::vfs::Vfs) -> crate::workspace::View {
+        let Some(Ok(sources)) = self.sources(uri, Some(vfs), None) else {
+            return crate::workspace::View::default();
+        };
+        let mut view = sources.view(uri);
+        if view.current.is_some() {
+            view.checked = Some(self.checked(&sources.root, &sources.config, &sources.files));
+        }
+        view
+    }
+
     pub(crate) fn opened(&self, uri: &str, open: bool) {
         lock(&self.sources).opened(uri, open);
     }
@@ -140,6 +198,7 @@ fn analyse(config: &ProjectConfig, sources: &[SourceFile]) -> Checked {
         assembled,
         errors,
         warnings,
+        typed: std::sync::OnceLock::new(),
     }
 }
 
@@ -277,6 +336,64 @@ mod tests {
         checked_in_turn(&cache, &[&entry, &uri, &entry, &uri])?;
         assert_eq!(cache.analyses(), 2);
         assert_eq!(cache.parses(), 2);
+        Ok(())
+    }
+
+    /// A type fixed only by ANOTHER file of the project reaches hover: the
+    /// editor answers from the assembled project, as the compiler does, and
+    /// not from the open file alone, which cannot see `ui::LineTo` and so
+    /// showed every type it constrains as a hole (#391).
+    /// Implements [LSP-HOVER-PROJECT].
+    #[test]
+    fn hover_infers_from_the_whole_project() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = crate::test_support::ProjectFixture::new("ospml")?;
+        let _ui = fixture.write("ui", "namespace ui\n\ntype PathStep =\n    LineTo\n        toX : float\n        toY : float\n    Close\n")?;
+        let _main = fixture.write(
+            "main",
+            "main () = print \"${listLength (painting::Logo::steps ())}\"\n",
+        )?;
+        let logo = "namespace painting\n\nmodule Logo\n    segment row = match row\n        [x, y, ..._rest] => ui::LineTo(toX = x, toY = y)\n        _ => ui::Close\n\n    export steps () =\n        first = [1.0, 2.0]\n        mapList [first] segment\n";
+        let uri = fixture.write("logo", logo)?;
+        for (line, needle, present) in [
+            (4, "x, y", "x : float"),
+            (4, "y, ...", "y : float"),
+            (4, "_rest", "_rest : List<float>"),
+            (4, "x, toY", "x : float"),
+            (4, "y)", "y : float"),
+            (3, "row =", "row : List<float>"),
+            (3, "segment", "List<float> -> ui::PathStep"),
+            (8, "first", "first : List<float>"),
+        ] {
+            let col = crate::test_support::col_of(logo, line, needle);
+            let row = u32::try_from(line)?;
+            let md = crate::test_support::hover(
+                logo,
+                &uri,
+                row,
+                col,
+                lspkit::vfs::PositionEncoding::Utf16,
+            )
+            .ok_or_else(|| format!("no hover for `{needle}` on line {line}"))?;
+            crate::testkit::contents(&md, &[present, "```osprey-ml"], &["_ ->", ": _", "__osp"]);
+        }
+        // Signature help and completion display the same types, so they
+        // answer from the same project.
+        let enc = lspkit::vfs::PositionEncoding::Utf16;
+        let at = crate::test_support::col_of(logo, 9, "segment");
+        let help = crate::test_support::signature_help(logo, &uri, 9, at, enc)
+            .ok_or("no signature help for `segment`")?;
+        crate::testkit::contents(
+            &help.label,
+            &["List<float> -> ui::PathStep"],
+            &["_", "__osp"],
+        );
+        let items = crate::test_support::completion(logo, &uri, 9, at, enc);
+        let segment = items
+            .iter()
+            .find(|item| item.label.ends_with("segment"))
+            .ok_or("no completion for `segment`")?;
+        let detail = format!("{:?}", segment.detail);
+        crate::testkit::contents(&detail, &["List<float>", "PathStep"], &["__osp"]);
         Ok(())
     }
 }

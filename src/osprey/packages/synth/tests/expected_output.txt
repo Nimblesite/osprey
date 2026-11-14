@@ -1,0 +1,15 @@
+ok 1 - route oscillator through gain to output, reject bad wiring and preserve the original patch
+ok 2 - feedback needs a delay; disconnected components and fan-out have deterministic scheduling
+ok 3 - Signals expose separate same-kind component instances without a UI framework
+ok 4 - oscillator state survives arbitrary block partitions at three rates and four waveforms
+ok 5 - ADSR reaches its stages, releases during attack, retriggers continuously and handles zero times
+ok 6 - state-variable filter preserves blocks, passes DC, rejects DC high-pass and decays after excitation
+ok 7 - parameter edits publish applied Signals, reject stale revisions, and preserve independent values
+ok 8 - graph validation covers corrupt persisted metadata, missing endpoints, fan-out and explicit channel adapters
+ok 9 - extracted Prism synthesis has no UI dependency and retains pitch, wave, silence and WAV behaviour
+ok 10 - a routed oscillator and gain render exact continuous PCM across unequal blocks
+ok 11 - mixing, filtering and explicit two-sample feedback execute the compiled graph
+ok 12 - sample-accurate automation applies before its frame, preserves ordering and rejects stale or out-of-block events
+ok 13 - performance timbres and metallic warp stay bounded across rates and control extremes
+1..13
+# tests=13 passed=13 failed=0 skipped=0

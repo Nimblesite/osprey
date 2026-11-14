@@ -1,24 +1,27 @@
 namespace uitests
 
 import ui::Ui
-import ui::Encode
 import ui::Doc
 import ui::Lists
 import ui::Contrast
-import ui::Events
 import ui::Messages
 import ui::Requests
-import ui::Streams
 import ui::Runtime
 import ui::Signals
 import ui::Splitters
 import ui::Frames
-    plain
-
 import ui::Themes
 import ui::Maths
+import ui::Views
+import ui::Surfaces
+import ui::Hosting
+import ui::Keyed
+import ui::Boards
+import ui::Scenes
+import ui::Symbols
 import uitests::Probes
 import uitests::AdditionCases
+import uitests::Extras
 
 type Ranked =
     name : string
@@ -32,18 +35,17 @@ mathSamples () = [
     { layout = ui::Op "=" (ui::Sym "x") (ui::Num "2"), encoded = "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}" }, { layout = ui::Paren (ui::Sym "x"), encoded = "{\"kind\":\"paren\",\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
     { layout = ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "x"), encoded = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"0\"},\"upper\":{\"kind\":\"sym\",\"text\":\"n\"},\"body\":{\"kind\":\"sym\",\"text\":\"x\"}}" },
 ]
-test ("mathematics encodes every layout variant without flattening", \() =>
-    forEachList (mathSamples (), \sample => expect (Doc::write (Maths::encode sample.layout), sample.encoded)))
-test ("mathematics keeps accessibility text and consumes no control ordinal", \() =>
-    walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)])
-    children = Doc::items (Doc::field ((firstNode walked), "children"))
-    maths = listGet children 1 ?: JsonNull
-    expectTexts (maths, [{ name = "kind", value = "math" }, { name = "spoken", value = "α < 2 \"quoted\"\n" }])
-    expect (Doc::text (Doc::field (maths, "math"), "kind"), "seq")
-    expect (length (Doc::items (Doc::field (Doc::field (maths, "math"), "items"))), 3)
-    expect (Doc::has (maths, "event"), false)
-    expect (Doc::number (listGet children 2 ?: JsonNull, "event"), 1)
-    binds (walked, 2))
+test ("mathematics encodes every layout variant without flattening", \() => ui::Runtime::guarded (\() =>
+    forEachList (mathSamples (), \sample => expect (Doc::write (Maths::encode sample.layout), sample.encoded))))
+test ("mathematics keeps accessibility text and consumes no control ordinal", \() => ui::Runtime::guarded (\() =>
+    walked = drawnOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)])
+    binds (walked, 2)
+    // The typeset node is told as one leaf carrying the whole tree and its spoken text, and takes no ordinal.
+    expect (spelled (toldOf (Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sym\",text=\"α\"},{kind=\"sym\",text=\"<\"},{kind=\"num\",text=\"2\"}]},spoken=\"α < 2 \"quoted\"\n\"}")
+    // Every layout variant is told as its own record, its children named and nested in order.
+    everyLayout = ui::Seq [ui::Sup (ui::Sym "x") (ui::Num "2"), ui::Sub (ui::Sym "a") (ui::Num "1"), ui::Frac (ui::Num "1") (ui::Sym "n"), ui::Root (ui::Sym "y"), ui::Binder "λ" [ui::Sym "x"] (ui::Sym "x"), ui::Op "+" (ui::Num "1") (ui::Num "2"), ui::Paren (ui::Sym "z"), ui::Big "∑" (ui::Num "0") (ui::Sym "n") (ui::Sym "k")]
+    expect (spelled (toldOf (Maths::typeset (everyLayout, "every layout"))), "{kind=\"math\",math={kind=\"seq\",items=[{kind=\"sup\",base={kind=\"sym\",text=\"x\"},script={kind=\"num\",text=\"2\"}},{kind=\"sub\",base={kind=\"sym\",text=\"a\"},script={kind=\"num\",text=\"1\"}},{kind=\"frac\",top={kind=\"num\",text=\"1\"},bottom={kind=\"sym\",text=\"n\"}},{kind=\"root\",body={kind=\"sym\",text=\"y\"}},{kind=\"binder\",symbol=\"λ\",names=[{kind=\"sym\",text=\"x\"}],body={kind=\"sym\",text=\"x\"}},{kind=\"op\",symbol=\"+\",left={kind=\"num\",text=\"1\"},right={kind=\"num\",text=\"2\"}},{kind=\"paren\",body={kind=\"sym\",text=\"z\"}},{kind=\"big\",symbol=\"∑\",lower={kind=\"num\",text=\"0\"},upper={kind=\"sym\",text=\"n\"},body={kind=\"sym\",text=\"k\"}}]},spoken=\"every layout\"}")
+    expect (eventsOf (Ui::column [Ui::button ("Before", "", Increment), Maths::typeset (ui::Seq [ui::Sym "α", ui::Sym "<", ui::Num "2"], "α < 2 \"quoted\"\n"), Ui::button ("After", "", Load)], "button"), "Before@0,After@1")))
 
 tree () = Ui::column [
     Ui::text "Title \"quoted\"\n",
@@ -52,294 +54,361 @@ tree () = Ui::column [
     ui::Picker(label = "P", choices = [Ui::choice ("a", "A")], selected = "a", bind = Load),
 ]
 
-encoded () = jsonEncode (firstNode (Encode::walk ([], tree ()))) ?: ""
-
-kindAt doc path = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) path ?: JsonNull) "kind" ?: JsonNull) ?: "missing"
-
-// The single node `walked` encodes.
-firstNode walked = listGet walked.nodes 0 ?: JsonNull
-
-// The `index`th item of `doc`'s `key` list, or null when the list is shorter.
-itemAt (doc, key, index) = jsonIndex (jsonField doc key ?: JsonNull) index ?: JsonNull
-
-// The first item of `doc`'s `key` list, or null when the list is empty or absent.
-firstOf (doc, key) = listGet (Doc::items (Doc::field (doc, key))) 0 ?: JsonNull
-
-// How many items `doc`'s `key` list holds; zero when it is absent.
-countOf (doc, key) = length (Doc::items (Doc::field (doc, key)))
-
-// A control's ordinal, or -1 when it declares none.
-eventOf doc = jsonInt (jsonField doc "event" ?: JsonNull) ?: 0 - 1
-
-// The `index`th of `parts`, or null when the list is shorter.
-partOf (parts, index) = listGet parts index ?: JsonNull
-
-// The `index`th item of the `key` list of the node `walked` encodes.
-nodeChild (walked, key, index) = itemAt ((firstNode walked), key, index)
-
 // `walked` binds exactly `count` controls.
-binds (walked, count) = expect (length walked.bindings, count)
+binds (walked, count) = expect (length walked.walkBound, count)
 
-// A refused envelope: it names `reason`, patches no region and leaves no requests behind.
-refusedClean (envelope, reason) =
-    expect (contains (Probes::problems envelope) reason, true)
-    expect (Probes::keys envelope, "")
-    expect (countOf (envelope, "patches"), 0)
+// What `words` mean to `binding`, spelt as the message kind and its value, or the refusal.
+said (binding, words) = match Surfaces::told (binding, words)
+    Error problem => problem
+    Success message => routed message
 
-// Posting `event` to `session` is refused for `reason` and changes nothing.
-refusedEvent (session, event, reason) = refusedClean (Probes::post (session, event), reason)
+// Every binding in `cases`, each beside the words it is sent and the message that routes or the refusal it names.
+expectSaid cases = forEachList (cases, \probe => expect (said (probe.binding, probe.words), probe.expected))
 
-// The `key` text of the first child of the node of `session`'s first patch.
-patchedText (session, key) = Doc::text (firstOf (Doc::field (firstOf (session, "patches"), "node"), "children"), key)
+// The value kinds that accept no words, each beside the refusal it names; a lasso is sent `lassoWords`.
+wrongKindCases lassoWords = [
+    { binding = ui::StrokeInput(action = Load), words = "1,2", expected = "A board control was sent a value of the wrong kind" },
+    { binding = ui::LassoInput(action = Load), words = lassoWords, expected = "A lasso control was sent a value of the wrong kind" },
+    { binding = ui::SceneInput(action = Load), words = "", expected = "A scene control was sent a value of the wrong kind" },
+]
 
-// Posting to `session` an edit of `value` whose original control is recovered from `prior`'s saved state.
-editFrom (session, prior, region, revision, ordinal, value) = Probes::post (session, Probes::edit (Probes::saved (prior), region, revision, ordinal, value))
+// The value kinds that carry words, each beside the message those words route.
+saidValueCases () = [
+    { binding = ui::Tap(action = Load), words = "ignored", expected = "tap load" },
+    { binding = ui::FlagInput(action = Load), words = "true", expected = "flag load:true" },
+    { binding = ui::FlagInput(action = Load), words = "yes", expected = "flag load:false" },
+    { binding = ui::ChoiceInput(action = Load), words = "b", expected = "text load:b" },
+    { binding = ui::TextInput(action = Typed), words = "Zoë", expected = "text typed:Zoë" },
+    { binding = ui::SizeInput(action = Load), words = "junk", expected = "integer load:${Splitters::least}" },
+    { binding = ui::SizeInput(action = Load), words = "99999", expected = "integer load:${Splitters::most}" },
+    { binding = ui::PlaceInput(action = Load), words = "-4", expected = "integer load:0" },
+    { binding = ui::PlaceInput(action = Load), words = "12", expected = "integer load:12" },
+]
 
-// An edit posted to `session` against `prior`'s saved state is refused for `reason` and changes nothing.
-refusedEdit (session, prior, region, revision, ordinal, value, reason) = refusedClean (editFrom (session, prior, region, revision, ordinal, value), reason)
+// `held` reports no problem.
+expectNoProblem held = expect (Probes::problem held, "")
 
-// A host tap of `region`'s `ordinal` control at `revision`, posted to `session`.
-postedTap (session, region, revision, ordinal) = Probes::post (session, Probes::tap (region, revision, ordinal))
+// `held` reports no problem, and its store's counter holds `tally`.
+expectClean (held, tally) =
+    expectNoProblem held
+    expect ((Probes::stored held).counter.tally, tally)
 
-// A settled root edit posted to `session` against `prior`'s saved state.
-rootEdit (session, prior, ordinal) = editFrom (session, prior, "root", 1, ordinal, "null")
+// The memo `held`'s note store carries after an edit arrives.
+expectMemo (held, memo) = expect ((Probes::stored held).note.memo, memo)
 
-// `envelope` reports no problem.
-problemFree envelope = expect (Probes::problems envelope, "")
+// `held` binds exactly `count` controls in its surface.
+surfaceBinds (held, count) = expect (length held.surfaceBound, count)
 
-// `session`'s store tallies one.
-tallyOne session = expect (Doc::number (Probes::stored session, "tally"), 1)
+// The counter `held`'s surface store carries.
+surfaceTally (held, tally) = expect (held.surfaceSession.sessionStore.counter.tally, tally)
 
-// The session after the host taps the root's first control on a fresh start.
-tappedStart () = postedTap (Probes::started (), "root", 1, 0)
+// The words of every row `held` draws, `|`-separated.
+walkedWords held = join (mapList ((Probes::seen held).walkRows, \r => r.placedWords)) "|"
 
-// `doc` marks its scroll position and selection group as `flag`.
-scrollAndSelection (doc, flag) =
-    expectFlags (doc, [{ name = "scrollY", value = flag }, { name = "selectionGroup", value = flag }])
-
-// `session` reports no problem and leaves one load ticket.
-servedLoad session =
-    problemFree session
-    expect (Doc::text (firstOf (session, "requests"), "ticket"), "load:1")
-
-// `session` refreshes only `region` and patches its `key` text to `text`.
-refreshedTo (session, region, key, text) =
-    expect (Probes::keys session, region)
-    expect (patchedText (session, key), text)
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
-revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
-test ("a disclosure takes its ordinal before the controls it reveals", \() =>
-    walked = Encode::walk ([], revealed ())
-    disclosure = nodeChild (walked, "children", 0)
+revealed () = Ui::layer [Ui::disclosure ("Limits", true, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
+test ("a disclosure takes its ordinal before the controls it reveals", \() => ui::Runtime::guarded (\() =>
+    walked = drawnOf (revealed ())
     binds (walked, 2)
-    expect (kindAt (firstNode walked) 0, "disclosure")
-    expect (join (mapList ([disclosure, itemAt (disclosure, "children", 2)], \child => "${eventOf child}")) ",", "0,1"))
-// [UI-EVENTS]: a screen's toolbar controls are bound before its children.
-test ("a screen's toolbar controls take ordinals before its children", \() =>
-    walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
-    expect (join (mapList ([nodeChild (walked, "toolbar", 0), nodeChild (walked, "children", 0)], \child => "${eventOf child}")) ",", "0,1"))
-// [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
+    expect (spelled (childTold (toldOf (revealed ()), 0)), "{kind=\"disclosure\",title=\"Limits\",expanded=?true,event=#0,children=[{kind=\"label\",label=\"Scope\",symbol=\"info\"},{kind=\"spacer\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (revealed (), 0, ui::FlagInput(action = Load)), true)
+    expect (deliversBinding (revealed (), 1, ui::Tap(action = Increment)), true)))
+test ("a screen's toolbar controls take ordinals before its children", \() => ui::Runtime::guarded (\() =>
+    page = Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)])
+    walked = drawnOf page
+    binds (walked, 2)
+    // The toolbar's field binds first; the child's button second.
+    expect (spelled (toldOf page), "{kind=\"screen\",title=\"T\",subtitle=\"\",toolbar=[{kind=\"field\",label=\"F\",value=\"\",prompt=\"p\",secure=?false,multiline=?false,commit=\"edit\",event=#0}],children=[{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (page, 0, ui::TextInput(action = Typed)), true)
+    expect (deliversBinding (page, 1, ui::Tap(action = Increment)), true)))
+// [UI-COMPONENTS]: an aside's pane takes ordinals before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
-test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() =>
-    walked = Encode::walk ([], inspected ())
-    pane = jsonField (firstNode walked) "pane" ?: JsonNull
-    row = itemAt (pane, "rows", 0)
-    expect (jsonText (jsonField (firstNode walked) "side" ?: JsonNull) ?: "", "trailing")
-    expect (join (mapList ([pane, itemAt (Doc::field ((firstNode walked), "aside"), "children", 2)], \child => "${eventOf child}")) ",", "0,1")
-    expectTexts (row, [{ name = "symbol", value = "star" }, { name = "group", value = "Recent" }]))
-// [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the column's width and
-// limits, and binds after both columns so their controls keep their ordinals.
-test ("an aside's splitter carries the column width and its limits and binds after both columns", \() =>
-    walked = Encode::walk ([], inspected ())
-    binds (walked, 3)
-    expectNumbers ((firstNode walked), [{ name = "width", value = 420 }, { name = "least", value = Splitters::least }, { name = "most", value = Splitters::most }, { name = "keep", value = Splitters::keep }, { name = "event", value = 2 }]))
 
-resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5, \(_, _) => 0 - 6, \(_, _) => 0 - 7, \_ => 0 - 8, \(_, _) => 0 - 9)
+// The members of the inspected aside's told record.
+inspectedMembers () = insideTold (toldOf (inspected ()))
+
+test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() => ui::Runtime::guarded (\() =>
+    walked = drawnOf (inspected ())
+    binds (walked, 3)
+    expect (spelled (toldOf (inspected ())), "{kind=\"aside\",side=\"trailing\",pane={kind=\"rows\",selected=\"a\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"}}],event=#0},aside={kind=\"stack\",axis=\"vertical\",children=[{kind=\"icon\",symbol=\"info\"},{kind=\"divider\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#1}]},width=#420,least=#260,most=#640,keep=#340,event=#2}")
+    // The row's selection binds first and the column's button second; the splitter binds after both columns.
+    expect (deliversBinding (inspected (), 0, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (inspected (), 1, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (inspected (), 2, ui::SizeInput(action = Typed)), true)))
+// [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the
+// column's width and limits, and binds in walking order: after the pane's controls, before the column's.
+test ("an aside's splitter carries the column width and its limits and binds after both columns", \() => ui::Runtime::guarded (\() =>
+    binds (drawnOf (inspected ()), 3)
+    members = inspectedMembers ()
+    expect (memberCount (members, "width", 0), 420)
+    expect (memberCount (members, "least", 0), Splitters::least)
+    expect (memberCount (members, "most", 0), Splitters::most)
+    expect (memberCount (members, "keep", 0), Splitters::keep)
+    expect (Splitters::least, 260)
+    expect (Splitters::most, 640)
+    expect (Splitters::keep, 340)
+    // The pane's rows bind 0, the column's button 1, and the splitter 2 after both columns' controls.
+    expect (memberCount (members, "event", 0 - 1), 2)
+    expect (memberCount (insideTold (memberTold (members, "pane")), "event", 0 - 1), 0)
+    expect (memberCount (insideTold (childTold (memberTold (members, "aside"), 2)), "event", 0 - 1), 1)))
+
+resized value =
+    delivered = match Surfaces::told (ui::SizeInput(action = Typed), value)
+        Success message => message
+        Error _ => ui::Act(act = Load)
+    routed delivered
+// A dragged width, beside the clamped width the splitter delivers for it.
+resizeCases () = [
+    { dragged = "420", delivered = "integer typed:420" }, { dragged = "9000", delivered = "integer typed:640" },
+    { dragged = "10", delivered = "integer typed:260" }, { dragged = "-50", delivered = "integer typed:260" },
+    { dragged = "wide", delivered = "integer typed:260" }, { dragged = "", delivered = "integer typed:260" },
+]
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
-test ("a splitter delivers its dragged width clamped to its limits", \() =>
-    expect (resized (JsonInt 420), 420)
-    expect (resized (JsonInt 9000), Splitters::most)
-    expect (resized (JsonInt 10), Splitters::least)
-    expect (resized (JsonInt (0 - 50)), Splitters::least)
-    expect (resized (JsonString "wide"), 0 - 1)
-    expect (resized JsonNull, 0 - 1))
+test ("a splitter delivers its dragged width clamped to its limits", \() => ui::Runtime::guarded (\() =>
+    forEachList (resizeCases (), \probe => expect (resized probe.dragged, probe.delivered))))
 // [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
-test ("a link carries its label and web address and takes no ordinal", \() =>
-    walked = Encode::walk ([], Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)])
-    link = nodeChild (walked, "children", 0)
-    expect (kindAt (firstNode walked) 0, "link")
-    expectTexts (link, [{ name = "label", value = "Osprey guide" }, { name = "url", value = "https://example.test/guide" }])
-    expect (eventOf link, 0 - 1)
+test ("a link carries its label and web address and takes no ordinal", \() => ui::Runtime::guarded (\() =>
+    paged = Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)]
+    walked = drawnOf paged
+    expect (spelled (childTold (toldOf paged, 0)), "{kind=\"link\",label=\"Osprey guide\",url=\"https://example.test/guide\"}")
     binds (walked, 1)
-    expect (eventOf (nodeChild (walked, "children", 1)), 0))
-test ("controls take depth-first ordinals in drawing order", \() =>
-    expect (length (Encode::walk ([], tree ())).bindings, 3))
-test ("an encoded region decodes with its components and text intact", \() =>
-    doc = jsonDecode (encoded ()) ?: JsonNull
-    expect (kindAt doc 2, "section")
-    expect (jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull) "text" ?: JsonNull) ?: "missing", "Title \"quoted\"\n"))
-test ("a control carries the ordinal of its binding", \() =>
-    doc = jsonDecode (encoded ()) ?: JsonNull
-    expect (eventOf (itemAt (doc, "children", 3)), 2))
-test ("start sends every region once with the theme", \() =>
+    expect (deliversBinding (paged, 0, ui::Tap(action = Increment)), true)))
+test ("controls take depth-first ordinals in drawing order", \() => ui::Runtime::guarded (\() =>
+    expect (length (drawnOf (tree ())).walkBound, 3)))
+// How many rows of `held`'s frame carry the words `key`: the frame's own count of a region's records.
+countRows (held, key) = length (filterList ((Probes::seen held).walkRows, \row => row.placedWords == key))
+
+test ("an encoded region decodes with its components and text intact", \() => ui::Runtime::guarded (\() =>
+    binds (drawnOf (tree ()), 3)
+    expect (spelled (toldOf (tree ())), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"Title \"quoted\"\n\",role=\"body\",tone=\"primary\"},{kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0},{kind=\"section\",title=\"S\",footer=\"\",children=[{kind=\"field\",label=\"Q\",value=\"\",prompt=\"\",secure=?false,multiline=?false,commit=\"submit\",event=#1}]},{kind=\"picker\",label=\"P\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}]}")))
+test ("a control carries the ordinal of its binding", \() => ui::Runtime::guarded (\() =>
+    walked = tree ()
+    children = memberItems (insideTold (toldOf walked), "children")
+    // The text and its section take no ordinal; the button, the section's field and the picker take 0, 1 and 2.
+    expect (memberCount (insideTold (toldAt (children, 0)), "event", 0 - 1), 0 - 1)
+    expect (memberCount (insideTold (toldAt (children, 1)), "event", 0 - 1), 0)
+    sectionField = childTold (toldAt (children, 2), 0)
+    expect (memberCount (insideTold sectionField, "event", 0 - 1), 1)
+    expect (memberCount (insideTold (toldAt (children, 3)), "event", 0 - 1), 2)
+    expect (deliversBinding (walked, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (walked, 1, ui::TextInput(action = Typed)), true)
+    expect (deliversBinding (walked, 2, ui::ChoiceInput(action = Load)), true)))
+test ("start sends every region once with the theme", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    expect (Probes::keys first, "root,note")
-    expect (Doc::number (first, "version"), 1)
-    expect (Doc::text (Doc::field (first, "theme"), "feedback") == "", true)
-    expect (Doc::number (Doc::field (first, "theme"), "settle"), 220))
-test ("a tap refreshes only the region whose signal changed", \() =>
-    second = tappedStart ()
-    problemFree second
-    refreshedTo (second, "root", "text", "Count 1"))
-test ("text input reaches update through its binding and patches its own region", \() =>
-    second = Probes::post (Probes::started (), Probes::typed (1, "hello"))
-    expect (Probes::keys second, "note")
-    expect ("${Doc::text (firstOf (second, "slices"), "key")}=${Doc::text (firstOf (second, "slices"), "text")}", "echo=hello")
-    third = postedTap (second, "root", 1, 0)
-    expect (Probes::keys third, "root"))
-// The events a host sends a settled session that must all be refused, with the reason each is given.
-refusalCases session = [
-    { sent = Probes::tap ("root", 1, 0), reason = "Stale control" },
-    { sent = Probes::tap ("root", 2, 9), reason = "Unknown control" },
-    { sent = "{\"kind\":\"ui\",\"region\":\"note\",\"revision\":1,\"ordinal\":1,\"value\":\"x\",\"now\":6}", reason = "wrong kind" },
-    { sent = Probes::tap ("missing", 1, 0), reason = "Stale control" },
+    surfaceBinds (first, 5)
+    // Each region crosses once: the root region's record, and the note region's beside the slot that names it.
+    expect (countRows (first, "root"), 1)
+    expect (countRows (first, "note"), 2)
+    expect (join (mapList ((Probes::palette ()).spacing, \s => "${s}")) ",", "4,8")
+    expect ((Probes::palette ()).feedback, 120)
+    expect ((Probes::palette ()).settle, 220)
+    expect (named "canvas", "#FFFFFF")
+    expect (nightNamed "canvas", "#000000")
+    expect (first.surfaceSession.sessionContext.platform, "linux")
+    // Every row of the open frame: the theme record, then the root and note regions as told trees.
+    expect (walkedWords first, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
+// The words of the note region's own rows: the suffix of a frame's joined words from the note region's key row —
+// the second row naming `note`, after the root region's slot names the region it holds.
+notePortion words = match indexOf words "note||note|"
+    Error _ => words
+    Success at => substring words (at + 12) (length words) ?: words
+
+// The words before those: the theme and the whole root region, up to the note region's key row.
+rootPortion words = match indexOf words "note||note|"
+    Error _ => words
+    Success at => substring words 0 at ?: words
+
+test ("a tap refreshes only the region whose signal changed", \() => ui::Runtime::guarded (\() =>
+    first = Probes::started ()
+    second = Probes::tapped (first, 0)
+    expectClean (second, 1)
+    // The tap changed the tally signal, not the memo: the note region's rows cross again unchanged, word for word.
+    expect (notePortion (walkedWords second), notePortion (walkedWords first))
+    // The next frame tells the same theme and note region, and the root with the changed count and one Go button.
+    expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 1|body|primary||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|linux||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")))
+test ("text input reaches update through its binding and patches its own region", \() => ui::Runtime::guarded (\() =>
+    first = Probes::started ()
+    second = Probes::posted (first, 2, "hello")
+    expectNoProblem second
+    expectMemo (second, "hello")
+    expect (Probes::written second, "echo=hello")
+    // The edit patched only the note region: the field's value row carries the new text and every other row is the open frame's again.
+    expect (wordsAt (Probes::seen second, 48), "hello")
+    expect (walkedWords second, "|||canvas|#FFFFFF|#000000|||||||root||stack|vertical|||text|Count 0|body|primary||button|Go|play|plain||||button|Go|play|plain||||slot|note||note||stack|vertical|||field|Note|hello||||edit|||button|Load|tray|plain||||button|Load|tray|plain||")
+    third = Probes::tapped (second, 0)
+    expectNoProblem third))
+// The typed host events a host sends that must all be refused, with the reason each is given.
+refusalHeld () = Probes::tapped (Probes::started (), 0)
+refusalCases () = [
+    { touch = touchOf (Hosting::control, 9, "", false), reason = "Unknown control 9" },
+    { touch = touchOf (Hosting::control, 0 - 1, "", false), reason = "Unknown control -1" },
+    // Control 4 was drawn by the open frame's five bindings; after the tap the frame draws four, so its number is stale.
+    { touch = touchOf (Hosting::control, 4, "", false), reason = "Unknown control 4" },
+    { touch = touchOf (99, 0, "", false), reason = "Unknown event kind 99" },
+    { touch = framedAfter (0.0 - 0.5), reason = "Invalid frame elapsed time" },
 ]
-// [UI-EVENTS]: stale, unknown and mismatched events change no region and leave no request behind.
-test ("stale, unknown and mismatched events are rejected without change", \() =>
-    second = tappedStart ()
-    forEachList (refusalCases second, \probe => refusedEvent (second, probe.sent, probe.reason)))
-// [UI-EVENTS]: a trusted-host edit resolves the control the prior state meant through its typed binding, not its stale ordinal.
-test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
+// The `kind` event for control `ordinal` carrying `words`, at clock `now`, `detail` and the pointer at (`x`, `y`).
+touchAt (now, kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = now, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
+// A display frame `elapsed` seconds after the last, at clock 5.
+framedAfter elapsed = touchAt (5, Hosting::frame, 0, "", "", elapsed, 0.0, false)
+// A host event of `kind` for control `ordinal` carrying `words`, at clock 5.
+touchOf (kind, ordinal, words, down) = touchAt (5, kind, ordinal, words, "", 0.0, 0.0, down)
+// [UI-EVENTS]: unknown and mismatched events change no store and leave no request behind.
+// A refused event: it names its reason, asks nothing and changes no store.
+refusedJust (refused, reason) =
+    expect (Probes::problem refused, reason)
+    expect (Probes::asked refused, "")
+    expect ((Probes::stored refused).counter.tally, 1)
+
+// The event `touch` refused on `held`, with the reason it names.
+refusedClean (held, touch, reason) = refusedJust (Probes::sent (held, touch), reason)
+
+test ("stale, unknown and mismatched events are rejected without change", \() => ui::Runtime::guarded (\() =>
+    held = refusalHeld ()
+    forEachList (refusalCases (), \probe => refusedClean (held, probe.touch, probe.reason))
+    expectSaid (wrongKindCases "0")))
+// [UI-EVENTS]: a control's number follows the frame that drew it, so a withdrawn control is never delivered by its old number.
+test ("an edit from prior state keeps its meaning when ordinals shift", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
-    counted = rootEdit (first, first, 0)
-    problemFree counted
-    refreshedTo (counted, "root", "text", "Count 1")
-    // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
-    shifted = rootEdit (counted, first, 0)
-    expect (Probes::keys shifted, "")
-    tallyOne counted
-    // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
-    servedLoad (rootEdit (counted, first, 1)))
-// [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
-test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
+    // At count 0 the Go buttons are [Increment, Load]; the host taps control 0.
+    counted = Probes::tapped (first, 0)
+    expectClean (counted, 1)
+    surfaceBinds (counted, 4)
+    // At count 1 only [Load] is drawn, so control 0 now means Load and asks the host.
+    loaded = Probes::tapped (counted, 0)
+    expect (Probes::tickets loaded, "load:1")
+    expectClean (loaded, 1)
+    // The note field shifted from control 2 to control 1, and its edits still arrive.
+    noted = Probes::posted (counted, 1, "hello")
+    expectMemo (noted, "hello")))
+// [UI-EVENTS]: a control that no frame drew refuses without change, and the session still answers its own controls.
+test ("an edit whose typed action is gone or ambiguous refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
-    refusedEdit (first, first, "note", 1, 1, "null", "More than one")
-    // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
-    gone = rootEdit (rootEdit (first, first, 0), first, 0)
-    refusedClean (gone, "no longer exists")
+    // The note region draws two identical Load buttons: each is its own control with its own number, so both deliver the same typed action separately and none is ambiguous.
+    expect (Probes::tickets (Probes::tapped (first, 3)), "load:1")
+    expect (Probes::tickets (Probes::tapped (first, 4)), "load:1")
+    // At count 1 only [Load] is drawn: the withdrawn Increment and the note's second Load are gone, and a number no frame drew refuses.
+    gone = Probes::tapped (first, 0)
+    expectClean (gone, 1)
+    refusedJust (Probes::posted (gone, 4, ""), "Unknown control 4")
+    refused = Probes::posted (gone, 9, "")
+    refusedJust (refused, "Unknown control 9")
     // The refusal changed nothing: the current session still answers its own controls.
-    intact = postedTap (gone, "root", 2, 0)
-    servedLoad intact
-    tallyOne intact)
-// [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
-// The host edits whose original control the prior state cannot name, with the reason each is given.
-editedAt () = [
-    { region = "root", revision = 9, ordinal = 0, value = "null", reason = "Stale control" },
-    { region = "gone", revision = 1, ordinal = 0, value = "null", reason = "Stale control" },
-    { region = "root", revision = 1, ordinal = 9, value = "null", reason = "Unknown control" },
-]
-test ("an edit with an impossible original refuses without change", \() =>
+    intact = Probes::tapped (refused, 0)
+    expectNoProblem intact
+    expect (Probes::asked intact, "store-read")
+    expect ((Probes::stored intact).counter.tally, 1)))
+// [UI-EVENTS]: a refused event leaves the store whole and still answering.
+// A refused edit asks nothing and writes nothing, beside the reason it names.
+refusedBare refused = join [Probes::problem refused, Probes::asked refused, Probes::written refused] "|"
+
+test ("an edit with an impossible original refuses without change", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    forEachList (editedAt (), \probe => refusedEdit (first, first, probe.region, probe.revision, probe.ordinal, probe.value, probe.reason))
-    refusedEvent (first, Probes::edit ("\"not a session\"", "root", 1, 0, "null"), "Stale control")
-    wrongKind = editFrom (first, first, "note", 1, 0, "7")
-    refusedClean (wrongKind, "wrong kind")
-    expect (countOf (wrongKind, "requests"), 0)
-    // Every refusal left the session whole.
-    after = postedTap (first, "root", 1, 0)
-    problemFree after
-    tallyOne after)
-// [UI-EVENTS]: a resolved edit runs update on the current session, never on the prior state.
-test ("a resolved edit updates the current state", \() =>
+    // A number no frame drew, a negative number and an unknown kind: each names itself, asks nothing and writes no slice.
+    forEachList ([9, 0 - 1, 9], \ordinal => expect (refusedBare (Probes::posted (first, ordinal, "")), "Unknown control ${ordinal}||"))
+    expect (Probes::problem (Probes::framed (first, 0.0 - 1.0)), "Invalid frame elapsed time")
+    after = Probes::tapped (first, 0)
+    expectClean (after, 1)))
+// [UI-EVENTS]: a delivered edit runs update on the current session, never on an earlier frame's.
+test ("a resolved edit updates the current state", \() => ui::Runtime::guarded (\() =>
     first = Probes::started ()
-    typed = Probes::post (first, Probes::typed (1, "hello"))
-    counted = postedTap (typed, "root", 1, 0)
-    edited = editFrom (counted, first, "note", 1, 0, "\"world\"")
-    problemFree edited
-    expect (Doc::text (Probes::stored edited, "memo"), "world")
-    expect (Doc::text (Probes::stored typed, "memo"), "hello")
-    // The carried-over tally proves the prior state was not restored.
-    expect (Doc::number (Probes::stored edited, "tally"), 1))
-test ("capability requests carry tickets and completions return to update", \() =>
-    asked = postedTap (Probes::started (), "note", 1, 1)
-    expectTexts (firstOf (asked, "requests"), [{ name = "ticket", value = "load:1" }, { name = "kind", value = "store-read" }])
-    done = Probes::post (asked, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"from disk\",\"now\":9}")
-    expect (Probes::keys done, "note")
-    expect (patchedText (done, "value"), "from disk"))
-test ("malformed events are diagnosed, never guessed", \() =>
-    bad = Probes::post (Probes::started (), "{not json")
-    expect (Probes::problems bad, "The host sent an event that is not JSON")
-    odd = Probes::post (Probes::started (), "{\"kind\":\"telepathy\",\"now\":1}")
-    expect (Probes::problems odd, "Unknown event kind: telepathy"))
-test ("contrast follows WCAG relative luminance", \() =>
+    typedIn = Probes::posted (first, 2, "hello")
+    counted = Probes::tapped (typedIn, 0)
+    edited = Probes::posted (counted, 1, "world")
+    // The carried-over tally proves the earlier frame was not restored, and the prior frame's memo keeps its own value.
+    expectClean (edited, 1)
+    expectMemo (edited, "world")
+    expectMemo (typedIn, "hello")
+    expect (Probes::written edited, "echo=world")))
+test ("capability requests carry tickets and completions return to update", \() => ui::Runtime::guarded (\() =>
+    asked = Probes::tapped (Probes::started (), 3)
+    expect (Probes::asked asked, "store-read")
+    expect (Probes::tickets asked, "load:1")
+    done = Probes::finished (asked, "load:1", true, "from disk")
+    expectNoProblem done
+    expectMemo (done, "from disk")))
+test ("malformed events are diagnosed, never guessed", \() => ui::Runtime::guarded (\() =>
+    odd = Probes::sent (Probes::started (), touchOf (99, 0, "", false))
+    expect (Probes::problem odd, "Unknown event kind 99")
+    bad = Probes::framed (Probes::started (), 0.0 - 1.0)
+    expect (Probes::problem bad, "Invalid frame elapsed time")
+    // An appearance change redraws the same store in the other appearance.
+    night = Probes::sent (Probes::started (), touchOf (Hosting::appearance, 0, "", true))
+    expect (Probes::problem night, "")
+    expect (night.surfaceDark, true)))
+test ("contrast follows WCAG relative luminance", \() => ui::Runtime::guarded (\() =>
     expect (Contrast::ratio ("#000000", "#FFFFFF") > 20.99, true)
-    expect (Contrast::ratio ("#777777", "#777777") < 1.0001, true))
-test ("sorting is stable and lists stay total", \() =>
+    expect (Contrast::ratio ("#777777", "#777777") < 1.0001, true)))
+test ("sorting is stable and lists stay total", \() => ui::Runtime::guarded (\() =>
     pairs = [Ranked(name = "b", rank = 1), Ranked(name = "a", rank = 2), Ranked(name = "b", rank = 3)]
     sorted = Lists::sortBy (pairs, \(x, y) => x.name < y.name)
     expect (join (mapList (sorted, \pair => "${pair.name}${pair.rank}")) ",", "a2,b1,b3")
     expect (Lists::distinct ["a", "b", "a"], false)
     expect (Lists::position (["a", "b", "b"], \item => item == "b"), 1)
-    expect (Lists::position (["a"], \item => item == "z"), 0 - 1))
-// [UI-COMPONENTS] [UI-EVENTS]: tabs encode their pages and bind as one choice after the pages' controls; segments carry their tones.
+    expect (Lists::position (["a"], \item => item == "z"), 0 - 1)))
+// [UI-COMPONENTS] [UI-EVENTS]: tabs bind as choices before the page they show; segments carry their tones.
 tabbed () = Ui::column [
     ui::Tabs(tabs = [Ui::tab ("one", "One", "1.circle", Ui::button ("Go", "play", Increment)), Ui::tab ("two", "Two", "2.circle", Ui::caption "Second")], selected = "two", bind = Load),
     ui::Segments(tones = [ui::Good, ui::Danger], label = "2 states"),
 ]
-test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() =>
-    walked = Encode::walk ([], tabbed ())
-    tabs = nodeChild (walked, "children", 0)
-    second = itemAt (tabs, "tabs", 1)
-    segments = nodeChild (walked, "children", 1)
+test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() => ui::Runtime::guarded (\() =>
+    walked = drawnOf (tabbed ())
     binds (walked, 2)
-    expectTexts (tabs, [{ name = "kind", value = "tabs" }, { name = "selected", value = "two" }])
-    expect (Doc::number (tabs, "event"), 1)
-    expectTexts (second, [{ name = "label", value = "Two" }, { name = "symbol", value = "2.circle" }])
-    expectTexts (Doc::field (second, "child"), [{ name = "text", value = "Second" }, { name = "role", value = "caption" }])
-    expect (join (Doc::texts (segments, "tones")) ",", "good,danger")
-    expect (Doc::text (segments, "label"), "2 states"))
-// [UI-COMPONENTS]: every constructor encodes as the component it names, with its role, tone, axis and enabled state.
-built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::evidence ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
-test ("every constructor encodes as the component it names", \() =>
-    doc = firstNode (Encode::walk ([], built ()))
-    row = itemAt (doc, "children", 0)
-    parts = Doc::items (Doc::field (row, "children"))
-    expect (Doc::text (doc, "kind"), "split")
-    expect (Doc::text (row, "axis"), "horizontal")
-    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,evidence,badge,empty,button,toggle,picker,rows")
-    expectTexts (partOf (parts, 0), [{ name = "role", value = "heading" }, { name = "tone", value = "accent" }])
-    expect (Doc::text (partOf (parts, 2), "tone"), "caution")
-    expect (Doc::text (partOf (parts, 3), "detail"), "Why")
-    expect (Doc::text (partOf (parts, 4), "role"), "destructive")
-    expect (Doc::flag (partOf (parts, 4), "enabled"), false)
-    expect (Doc::flag (partOf (parts, 5), "on"), true)
-    expect (Doc::text (firstOf (partOf (parts, 7), "rows"), "key"), "k"))
-// [UI-EFFECTS]: a run and an HTTP request encode their bounds, headers and the slices their output lands in.
-runRequest plist = Requests::encode (Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run")))
-test ("run and http requests encode their bounds, headers and slices", \() =>
-    run = runRequest false
-    expectTexts (run, [{ name = "ticket", value = "ps" }, { name = "kind", value = "run" }, { name = "slice", value = "work/run" }])
-    expect (join (Doc::texts (run, "arguments")) " ", "-axo pid=")
-    expectNumbers (run, [{ name = "timeout", value = 10000 }, { name = "limit", value = 8000000 }])
-    expect (Doc::flag (run, "plist"), false)
-    expect (Doc::has (run, "plist"), true)
-    expect (Doc::flag (runRequest true, "plist"), true)
-    expect (Doc::has (runRequest true, "plist"), true)
-    http = Requests::encode (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http")))
-    header = firstOf (http, "headers")
-    expectTexts (http, [{ name = "method", value = "GET" }, { name = "slice", value = "work/http" }])
-    expect ("${Doc::text (header, "name")}: ${Doc::text (header, "value")}", "Accept: application/json")
-    expectNumbers (http, [{ name = "limit", value = 1000 }, { name = "timeout", value = 30000 }])
-    write = Requests::write ("echo", "text")
-    expect ("${write.sliceKey}=${write.sliceText}", "echo=text"))
+    // The chosen tab's page control binds first; the tabs' choice binds after every page's controls.
+    expect (spelled (childTold (toldOf (tabbed ()), 0)), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"One\",symbol=\"1.circle\",child={kind=\"button\",label=\"Go\",symbol=\"play\",role=\"plain\",enabled=?true,event=#0}},{key=\"two\",label=\"Two\",symbol=\"2.circle\",child={kind=\"text\",text=\"Second\",role=\"caption\",tone=\"secondary\"}}],event=#1}")
+    expect (deliversBinding (tabbed (), 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (tabbed (), 1, ui::ChoiceInput(action = Load)), true)
+    expect (spelled (childTold (toldOf (tabbed ()), 1)), "{kind=\"segments\",tones=[\"good\",\"danger\"],label=\"2 states\"}")))
+// [UI-COMPONENTS]: every constructor tells as the component it names, with its role, tone, axis and enabled state.
+built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::pair ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 
-named key = match Themes::named (Probes::palette (), key)
-    Success token => token.tokenLight
+test ("every constructor encodes as the component it names", \() => ui::Runtime::guarded (\() =>
+    builtTree = built ()
+    walked = drawnOf builtTree
+    parts = memberItems (insideTold (childTold (toldOf builtTree, 0)), "children")
+    binds (walked, 4)
+    // The split tells as the split it is, and the row inside it as a horizontal stack.
+    expect (memberText (insideTold (toldOf builtTree), "kind"), "split")
+    expect (memberText (insideTold (childTold (toldOf builtTree, 0)), "axis"), "horizontal")
+    expect (spelled (toldAt (parts, 0)), "{kind=\"text\",text=\"H\",role=\"heading\",tone=\"accent\"}")
+    expect (spelled (toldAt (parts, 1)), "{kind=\"pair\",label=\"Label\",value=\"Value\"}")
+    expect (spelled (toldAt (parts, 2)), "{kind=\"badge\",label=\"Partial\",symbol=\"info\",tone=\"caution\"}")
+    expect (spelled (toldAt (parts, 3)), "{kind=\"empty\",symbol=\"inbox\",title=\"Nothing\",detail=\"Why\"}")
+    expect (spelled (toldAt (parts, 4)), "{kind=\"button\",label=\"Stop\",symbol=\"stop\",role=\"destructive\",enabled=?false,event=#0}")
+    expect (spelled (toldAt (parts, 5)), "{kind=\"toggle\",label=\"AI\",on=?true,event=#1}")
+    expect (spelled (toldAt (parts, 6)), "{kind=\"picker\",label=\"Model\",choices=[{key=\"a\",label=\"A\"}],selected=\"a\",event=#2}")
+    expect (spelled (toldAt (parts, 7)), "{kind=\"rows\",selected=\"k\",rows=[{key=\"k\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"cell\",role=\"body\",tone=\"primary\"}}],event=#3}")
+    expect (deliversBinding (builtTree, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (builtTree, 1, ui::FlagInput(action = Typed)), true)
+    expect (deliversBinding (builtTree, 2, ui::ChoiceInput(action = Load)), true)
+    expect (deliversBinding (builtTree, 3, ui::ChoiceInput(action = Load)), true)))
+
+// [UI-EFFECTS]: a run and an HTTP request send their bounds, headers and the slices their output lands in.
+runRequest plist = Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run"))
+// The `plist` flag beside the ask rows a run request sends for it.
+runPlistCases () = [
+    { plist = false, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/0/;6/0/work/run" },
+    { plist = true, encoded = "0/1/ps;1/0//bin/ps;2/0/-axo;2/0/pid=;3/10000/;4/8000000/;5/1/;6/0/work/run" },
+]
+test ("run and http requests encode their bounds, headers and slices", \() => ui::Runtime::guarded (\() =>
+    forEachList (runPlistCases (), \probe => expect (rowsOf (runRequest probe.plist), probe.encoded))
+    http = Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http"))
+    expect (rowsOf http, "0/10/kev;1/0/GET;2/0/https://example.test/feed;3/0/Accept;3/0/application/json;4/0/;5/1000/;6/30000/;7/0/work/http")
+    write = Requests::write ("echo", "text")
+    expect ("${write.sliceKey}=${write.sliceText}", "echo=text")))
+
+// The palette token `key` names, read off it by `value`, or `none` when the theme names none.
+tokenNamed (key, value) = match Themes::named (Probes::palette (), key)
+    Success token => value token
     Error _ => "none"
+
+// The light value the palette's `key` token carries.
+named key = tokenNamed (key, \token => token.tokenLight)
+
+// The dark value the palette's `key` token carries.
+nightNamed key = tokenNamed (key, \token => token.tokenDark)
 // [UI-SIGNALS] [UI-THEME]: documents, lists and themes read totally, and a host-held slice counts as changed only when written.
-test ("documents, lists, themes and slice writes are read totally", \() =>
+test ("documents, lists, themes and slice writes are read totally", \() => ui::Runtime::guarded (\() =>
     doc = Doc::parse "{\"a\":1,\"b\":null}"
     expectPresence (doc, [{ name = "b", value = true }, { name = "c", value = false }])
     expect (length (Doc::members doc), 2)
@@ -350,167 +419,388 @@ test ("documents, lists, themes and slice writes are read totally", \() =>
     expect (named "canvas", "#FFFFFF")
     expect (named "ink", "none")
     expect (join (Signals::written ([Requests::write ("echo", "x")], "echo", ["Memo"])) ",", "Memo")
-    expect (length (Signals::written ([], "echo", ["Memo"])), 0))
+    expect (length (Signals::written ([], "echo", ["Memo"])), 0)))
 
-requestText capability = jsonEncode (Requests::encode (Requests::ask ("job:7", capability))) ?: "encode failed"
+// One ask row as `field/number/text`, so a table can hold the exact rows a request sends.
+rowOf row = "${row.askedField}/${row.askedNumber}/${row.askedText}"
 
-// A capability beside the complete host payload its request encodes to: the ticket and every requested argument.
-expectRequests (cases) = forEachList (cases, \probe => expect (requestText probe.capability, probe.encoded))
+// The ask rows of `request`, `;`-separated, exactly as the shared frame carries them.
+rowsOf request = join (mapList (Requests::rows request, \row => rowOf row)) ";"
+
+// A capability beside the exact ask rows its request sends.
+expectRequests (cases) = forEachList (cases, \probe => expect (rowsOf (Requests::ask ("job:7", probe.capability)), probe.encoded))
 
 filesystemRequestCases () = [
-    { capability = ui::Fingerprint(file = "a.txt", fileLimit = 64), encoded = "{\"ticket\":\"job:7\",\"kind\":\"fingerprint\",\"path\":\"a.txt\",\"limit\":64}" }, { capability = ui::ReadPropertyLists(plists = ["app.plist"], plistKeys = ["CFBundleName"], plistSuffixes = [".plist"], plistLimit = 128, plistSlice = "prefs"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"read-plists\",\"paths\":[\"app.plist\"],\"keys\":[\"CFBundleName\"],\"suffixes\":[\".plist\"],\"limit\":128,\"slice\":\"prefs\"}" },
-    { capability = ui::ListDirectories(directories = ["/tmp", "/Users/me"], entryLimit = 12, listSlice = "listing"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"list-directories\",\"paths\":[\"/tmp\",\"/Users/me\"],\"limit\":12,\"slice\":\"listing\"}" }, { capability = ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"read-texts\",\"paths\":[\"a.txt\",\"b.txt\"],\"limit\":256,\"slice\":\"text\"}" },
-    { capability = ui::StoreWrite(writeName = "note.txt", writeSlice = "draft"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"store-write\",\"name\":\"note.txt\",\"slice\":\"draft\"}" }, { capability = ui::StoreList(folder = "notes"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"store-list\",\"name\":\"notes\"}" },
-    { capability = ui::StoreDelete(deleteName = "old.txt"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}" }, { capability = ui::MeasureFolders(measureFolders = ["C:\\Users", "/home/me"], measureLimit = 5000, measureDeadline = 60000, measureSlice = "measured"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"measure-folders\",\"folders\":[\"C:\\\\Users\",\"/home/me\"],\"limit\":5000,\"timeout\":60000,\"slice\":\"measured\"}" },
+    { capability = ui::Fingerprint(file = "a.txt", fileLimit = 64), encoded = "0/5/job:7;1/0/a.txt;2/64/" }, { capability = ui::ReadPropertyLists(plists = ["app.plist"], plistKeys = ["CFBundleName"], plistSuffixes = [".plist"], plistLimit = 128, plistSlice = "prefs"), encoded = "0/3/job:7;1/0/app.plist;2/0/CFBundleName;3/0/.plist;4/128/;5/0/prefs" },
+    { capability = ui::ListDirectories(directories = ["/tmp", "/Users/me"], entryLimit = 12, listSlice = "listing"), encoded = "0/2/job:7;1/0//tmp;1/0//Users/me;2/12/;3/0/listing" }, { capability = ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text"), encoded = "0/4/job:7;1/0/a.txt;1/0/b.txt;2/256/;3/0/text" },
+    { capability = ui::StoreWrite(writeName = "note.txt", writeSlice = "draft"), encoded = "0/7/job:7;1/0/note.txt;2/0/draft" }, { capability = ui::StoreList(folder = "notes"), encoded = "0/8/job:7;1/0/notes" },
+    { capability = ui::StoreDelete(deleteName = "old.txt"), encoded = "0/9/job:7;1/0/old.txt" }, { capability = ui::MeasureFolders(measureFolders = ["C:\\Users", "/home/me"], measureLimit = 5000, measureDeadline = 60000, measureSlice = "measured"), encoded = "0/16/job:7;1/0/C:\\Users;1/0//home/me;2/5000/;3/60000/;4/0/measured" },
 ]
 
 desktopRequestCases () = [
-    { capability = ui::OpenSettings(pane = "privacy"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"open-settings\",\"pane\":\"privacy\"}" }, { capability = ui::RunningApplications, encoded = "{\"ticket\":\"job:7\",\"kind\":\"running-applications\"}" },
-    { capability = ui::ChooseFile(types = ["txt", "md"], chosenLimit = 2, chosenSlice = "picked"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"choose-file\",\"types\":[\"txt\",\"md\"],\"limit\":2,\"slice\":\"picked\"}" }, { capability = ui::ChooseFolder, encoded = "{\"ticket\":\"job:7\",\"kind\":\"choose-folder\"}" },
-    { capability = ui::SaveFile(suggested = "report.txt", exportSlice = "export"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}" }, { capability = ui::Reveal(revealPath = "/tmp/report.txt"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}" },
-    { capability = ui::Cancel(cancelled = "old:7"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}" },
+    { capability = ui::OpenSettings(pane = "privacy"), encoded = "0/18/job:7;1/0/privacy" }, { capability = ui::RunningApplications, encoded = "0/12/job:7" },
+    { capability = ui::ChooseFile(types = ["txt", "md"], chosenLimit = 2, chosenSlice = "picked"), encoded = "0/13/job:7;1/0/txt;1/0/md;2/2/;3/0/picked" }, { capability = ui::ChooseFolder, encoded = "0/14/job:7" },
+    { capability = ui::SaveFile(suggested = "report.txt", exportSlice = "export"), encoded = "0/15/job:7;1/0/report.txt;2/0/export" }, { capability = ui::Reveal(revealPath = "/tmp/report.txt"), encoded = "0/17/job:7;1/0//tmp/report.txt" },
+    { capability = ui::Cancel(cancelled = "old:7"), encoded = "0/19/job:7;1/0/old:7" },
 ]
 
 processRequestCases () = [
-    { capability = ui::ProcessStart(processCommand = "npx", processArguments = ["-y", "filesystem"], processEnv = [ui::EnvVar(envName = "TOKEN", envValue = "s"), ui::EnvVar(envName = "DEBUG", envValue = "1")], processHandle = "fs"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"npx\",\"arguments\":[\"-y\",\"filesystem\"],\"env\":[{\"name\":\"TOKEN\",\"value\":\"s\"},{\"name\":\"DEBUG\",\"value\":\"1\"}],\"name\":\"fs\"}" }, { capability = ui::ProcessStart(processCommand = "/usr/bin/env", processArguments = [], processEnv = [], processHandle = "plain"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"/usr/bin/env\",\"arguments\":[],\"env\":[],\"name\":\"plain\"}" },
-    { capability = ui::ProcessWrite(writeHandle = "fs", writeBytes = "ping"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"process-write\",\"name\":\"fs\",\"input\":\"ping\"}" }, { capability = ui::ProcessRead(readHandle = "fs", readBytesLimit = 1, readDeadline = 0), encoded = "{\"ticket\":\"job:7\",\"kind\":\"process-read\",\"name\":\"fs\",\"limit\":1,\"timeout\":0}" },
-    { capability = ui::ProcessStop(stopHandle = "fs"), encoded = "{\"ticket\":\"job:7\",\"kind\":\"process-stop\",\"name\":\"fs\"}" },
+    { capability = ui::ProcessStart(processCommand = "npx", processArguments = ["-y", "filesystem"], processEnv = [ui::EnvVar(envName = "TOKEN", envValue = "s"), ui::EnvVar(envName = "DEBUG", envValue = "1")], processHandle = "fs"), encoded = "0/22/job:7;1/0/npx;2/0/-y;2/0/filesystem;3/0/TOKEN;3/0/s;3/0/DEBUG;3/0/1;4/0/fs" }, { capability = ui::ProcessStart(processCommand = "/usr/bin/env", processArguments = [], processEnv = [], processHandle = "plain"), encoded = "0/22/job:7;1/0//usr/bin/env;4/0/plain" },
+    { capability = ui::ProcessWrite(writeHandle = "fs", writeBytes = "ping"), encoded = "0/23/job:7;1/0/fs;2/0/ping" }, { capability = ui::ProcessRead(readHandle = "fs", readBytesLimit = 1, readDeadline = 0), encoded = "0/24/job:7;1/0/fs;2/1/;3/0/" },
+    { capability = ui::ProcessStop(stopHandle = "fs"), encoded = "0/25/job:7;1/0/fs" },
 ]
-// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
-test ("filesystem and store requests preserve paths bounds and slices", \() =>
-    expectRequests (filesystemRequestCases ()))
-// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
-test ("desktop requests preserve picker export and cancellation payloads", \() =>
-    expectRequests (desktopRequestCases ()))
-// [UI-EFFECTS-PROCESS]: the four long-lived process capabilities encode their handles, bounds, arguments and merged environment.
-test ("process capabilities encode their handles bounds arguments and environment", \() =>
-    expectRequests (processRequestCases ()))
 
-roleText role =
-    doc = firstNode (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)]))
-    Doc::text (listGet (Doc::items (Doc::field (doc, "children"))) 0 ?: JsonNull, "role")
-// [UI-COMPONENTS]: every semantic text role keeps its protocol spelling.
-test ("semantic text roles preserve every protocol spelling", \() =>
+// [UI-EFFECTS]: the complete ask rows retain the ticket and every requested argument.
+testCases [
+    { name = "filesystem and store requests preserve paths bounds and slices", work = protected (\() => expectRequests (filesystemRequestCases ())) },
+    { name = "desktop requests preserve picker export and cancellation payloads", work = protected (\() => expectRequests (desktopRequestCases ())) },
+    { name = "process capabilities encode their handles bounds arguments and environment", work = protected (\() => expectRequests (processRequestCases ())) },
+]
+
+// [UI-COMPONENTS]: the type scale a role drew is the host's own now ([NATIVE-SHM-NODES]); what crosses is the role's own name.
+test ("semantic text roles preserve every protocol spelling", \() => ui::Runtime::guarded (\() =>
     roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
-    expect (join (mapList (roles, roleText)) ",", "display,large,title,heading,lead,headline,body,callout,caption,eyebrow,mono"))
-// [UI-EFFECTS]: host extensions retain the same bounded request envelope.
-test ("host capabilities preserve namespace operation arguments and bounds", \() =>
-    request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = JsonObject [Doc::str ("workspace", "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
-    doc = Requests::encode (Requests::ask ("host:1", request))
-    expectTexts (doc, [{ name = "kind", value = "host-call" }, { name = "namespace", value = "vscode" }, { name = "operation", value = "workspace.snapshot" }, { name = "slice", value = "workspace" }])
-    expectNumbers (doc, [{ name = "timeout", value = 1000 }, { name = "limit", value = 4096 }])
-    expect (Doc::text (Doc::field (doc, "arguments"), "workspace"), "file:///app"))
-// [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued binding IDs.
-test ("context menus bind actions after their content controls", \() =>
-    built = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
-    walked = Encode::walk ([], built)
-    item = firstOf ((firstNode walked), "items")
-    expect (Doc::text ((firstNode walked), "kind"), "context-menu")
-    expect (Doc::number (Doc::field ((firstNode walked), "body"), "event"), 0)
-    expect (Doc::number (item, "event"), 1)
-    binds (walked, 2))
+    told = join (mapList (roles, \role => spelled (toldOf (Ui::styled ("sample", role, ui::Primary))))) "\n"
+    wanted = join (mapList (["display", "large", "title", "heading", "lead", "headline", "body", "callout", "caption", "eyebrow", "mono"], \name => "{kind=\"text\",text=\"sample\",role=\"${name}\",tone=\"primary\"}")) "\n"
+    expect (told, wanted)))
+// [UI-EFFECTS]: host extensions send the same bounded ask rows.
+test ("host capabilities preserve namespace operation arguments and bounds", \() => ui::Runtime::guarded (\() =>
+    request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = [ui::Header(headerName = "workspace", headerValue = "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
+    expect (Requests::kind request, "host-call")
+    expect (rowsOf (Requests::ask ("host:1", request)), "0/11/host:1;1/0/vscode;2/0/workspace.snapshot;3/0/workspace;3/0/file:///app;4/1000/;5/4096/;6/0/workspace")))
+// [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued bindings.
+test ("context menus bind actions after their content controls", \() => ui::Runtime::guarded (\() =>
+    menu = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
+    binds (drawnOf menu, 2)
+    expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"button\",label=\"Select\",symbol=\"package\",role=\"plain\",enabled=?true,event=#0},items=[{kind=\"button\",label=\"Remove\",symbol=\"delete\",role=\"plain\",enabled=?true,event=#1}]}")
+    expect (deliversBinding (menu, 0, ui::Tap(action = Increment)), true)
+    expect (deliversBinding (menu, 1, ui::Tap(action = Load)), true)))
 
-mut streamedTrace = ""
-
-streamedFrom node =
-    handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive}@${Streams::depth primitive};"
-    Streams::split node
-
-begun () =
-    handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
-    Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"linux\"}", initial, regions, theme)
-
-proceeded (session, event) =
-    handle ui::SceneStream
-        shape primitive => streamedTrace := "${streamedTrace}${Streams::code primitive};"
-    Runtime::proceed (session, event, update, regions)
+// Runs a registered case's body with integer faults resolved, so arithmetic in a view or a package helper never escapes it.
+protected work = \() => ui::Runtime::guarded work
 
 testCases [
-    { name = "a scene encodes its primitives as flat typed arrays", work = sceneCaseASceneEncodesItsPrimitivesAsFlat },
-    { name = "colours pack as RRGGBBAA", work = sceneCaseColoursPackAsRrggbbaa },
-    { name = "a path encodes its steps, outline, paint and transform", work = sceneCaseAPathEncodesItsStepsOutlinePaint },
-    { name = "a scene binding delivers keys and pointer positions in scene units", work = sceneCaseASceneBindingDeliversKeysAndPointer },
-    { name = "a frame event delivers its elapsed seconds and patches nothing when ignored", work = sceneCaseAFrameEventDeliversItsElapsedSeconds },
-    { name = "an animate request carries its on flag", work = sceneCaseAnAnimateRequestCarriesItsOnFlag },
-    { name = "every symbol encodes as a distinct host-neutral name", work = sceneCaseEverySymbolEncodesAsADistinctHost },
-    { name = "labels, icons, badges, empty states, buttons, tabs and rows send their symbol names", work = sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs },
-    { name = "a pair encodes its label and value without a binding", work = sceneCaseAPairEncodesItsLabelAndValue },
-    { name = "platforms decode to the union and encode back to their names", work = sceneCasePlatformsDecodeToTheUnionAndEncode },
-    { name = "a start context carries a linux or windows platform", work = sceneCaseAStartContextCarriesALinuxOr },
-    { name = "product-specific work is a host call with its namespace and arguments", work = sceneCaseProductSpecificWorkIsAHostCall },
-    { name = "a split scene streams its fixed-size primitives in order and keeps the rest", work = sceneCaseASplitSceneStreamsItsFixedSize },
-    { name = "an enveloped scene reports nothing streamed", work = sceneCaseAnEnvelopedSceneReportsNothingStreamed },
-    { name = "streamed primitives read back every field a host import takes", work = sceneCaseStreamedPrimitivesReadBackEveryFieldA },
-    { name = "a resident session keeps its store out of the envelope", work = sceneCaseAResidentSessionKeepsItsStoreOut },
-    { name = "a resident session refuses stale controls and prior-state edits without change", work = sceneCaseAResidentSessionRefusesStaleControlsAnd },
-    { name = "a split streams scenes from every container in the encoder's order", work = sceneCaseASplitStreamsScenesFromEveryContainer },
-    { name = "primitives that do not stream read back zero fields", work = sceneCasePrimitivesThatDoNotStreamReadBack },
-    { name = "a resident session delivers completions, phases and frames and refuses malformed text", work = sceneCaseAResidentSessionDeliversCompletionsPhasesAnd },
-    { name = "an idle session holds only its store", work = sceneCaseAnIdleSessionHoldsOnlyItsStore },
-    { name = "toggles and pickers deliver their own value kinds and refuse others", work = sceneCaseTogglesAndPickersDeliverTheirOwnValue },
-    { name = "progress, swatches, alerts, prominent buttons and leading asides encode", work = sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading },
-    { name = "a meter sends its amount clamped into a total of at least one", work = sceneCaseAMeterSendsItsAmountClampedInto },
-    { name = "an editor binds text then cursor after earlier controls and preserves its marks", work = AdditionCases::editorEncoding },
-    { name = "a cursor binding delivers placed offsets, clamps negatives and refuses text", work = AdditionCases::cursorValues },
-    { name = "a board names its host slice and binds strokes before its lasso", work = AdditionCases::boardEncoding },
-    { name = "a board stroke decodes two ordered points with their width and time", work = AdditionCases::strokeDecoding },
-    { name = "empty negative and non-pair stroke points are refused with the exact diagnostic", work = AdditionCases::strokeRefusals },
-    { name = "a lasso delivers stroke indices and refuses strings and negative indices", work = AdditionCases::lassoValues },
-    { name = "a recognition request names its stroke slices and output limit", work = AdditionCases::recognitionEncoding },
-    { name = "message routing delivers placed stroked and lassoed values to their handlers", work = AdditionCases::messageRouting },
-    { name = "board themes name the board and chalk tokens", work = AdditionCases::boardTokens },
-    { name = "mathematics decodes back to the tree it encodes across every constructor", work = AdditionCases::mathRoundTrip },
-    { name = "mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", work = AdditionCases::mathRefusals },
-    { name = "image and video encode as leaves with their media fields and no ordinal", work = AdditionCases::mediaEncoding }
+    { name = "a scene's shapes cross as flat typed rows", work = protected sceneCaseASceneEncodesItsPrimitivesAsFlat },
+    { name = "colours pack as RRGGBBAA", work = protected sceneCaseColoursPackAsRrggbbaa },
+    { name = "a path sends its steps, outline, paint and transform", work = protected sceneCaseAPathEncodesItsStepsOutlinePaint },
+    { name = "a scene binding delivers keys and pointer positions in scene units", work = protected sceneCaseASceneBindingDeliversKeysAndPointer },
+    { name = "a frame event delivers its elapsed seconds and patches nothing when ignored", work = protected sceneCaseAFrameEventDeliversItsElapsedSeconds },
+    { name = "an animate request carries its on flag", work = protected sceneCaseAnAnimateRequestCarriesItsOnFlag },
+    { name = "every symbol encodes as a distinct host-neutral name", work = protected sceneCaseEverySymbolEncodesAsADistinctHost },
+    { name = "labels, icons, badges, empty states, buttons, tabs and rows send their symbol names", work = protected sceneCaseLabelsIconsBadgesEmptyStatesButtonsTabs },
+    { name = "a pair sends its label and value without a binding", work = protected sceneCaseAPairEncodesItsLabelAndValue },
+    { name = "platforms decode to the union and encode back to their names", work = protected sceneCasePlatformsDecodeToTheUnionAndEncode },
+    { name = "a launch context carries a linux or windows platform", work = protected sceneCaseAStartContextCarriesALinuxOr },
+    { name = "product-specific work is a host call with its namespace and arguments", work = protected sceneCaseProductSpecificWorkIsAHostCall },
+    { name = "a scene's shapes all cross as rows in drawing order", work = protected sceneCaseASceneRowsCarryEveryShapeInDrawingOrder },
+    { name = "a scene an unnamed slot holds draws nothing", work = protected sceneCaseAnUnnamedSlotDrawsNoScene },
+    { name = "shape rows read back every field a host import takes", work = protected sceneCaseShapeRowsReadBackEveryFieldA },
+    { name = "an open surface keeps its store in its session", work = protected sceneCaseAnOpenSurfaceKeepsItsStoreIn },
+    { name = "a refused event leaves the surface whole and still answering", work = protected sceneCaseARefusedEventLeavesTheSurfaceWhole },
+    { name = "scenes draw from every container in the walk's order", work = protected sceneCaseScenesDrawFromEveryContainerInOrder },
+    { name = "a strip carries its points as rows after its head", work = protected sceneCaseAStripCarriesItsPointsAsRows },
+    { name = "a surface delivers completions, phases and frames and refuses unknown kinds", work = protected sceneCaseASurfaceDeliversCompletionsPhasesAnd },
+    { name = "an idle surface holds only its store", work = protected sceneCaseAnIdleSurfaceHoldsOnlyItsStore },
+    { name = "toggles and pickers deliver their own value kinds", work = protected sceneCaseTogglesAndPickersDeliverTheirOwnValue },
+    { name = "progress, swatches, alerts, prominent buttons and leading asides tell", work = protected sceneCaseProgressSwatchesAlertsProminentButtonsAndLeading },
+    { name = "a meter clamps its amount into a total of at least one", work = protected sceneCaseAMeterSendsItsAmountClampedInto },
+    { name = "an editor binds text then cursor after earlier controls and preserves its marks", work = protected AdditionCases::editorEncoding },
+    { name = "a cursor binding delivers placed offsets and clamps negatives", work = protected AdditionCases::cursorValues },
+    { name = "a board names its host slice and binds strokes before its lasso", work = protected AdditionCases::boardEncoding },
+    { name = "a board stroke keeps two ordered points with their width and time", work = protected AdditionCases::strokeDecoding },
+    { name = "empty negative and widthless strokes are refused with the exact diagnostic", work = protected AdditionCases::strokeRefusals },
+    { name = "a lasso delivers stroke indices and refuses negative indices", work = protected AdditionCases::lassoValues },
+    { name = "a recognition request names its stroke slices and output limit", work = protected AdditionCases::recognitionEncoding },
+    { name = "message routing delivers placed stroked and lassoed values to their handlers", work = protected AdditionCases::messageRouting },
+    { name = "board themes name the board and chalk tokens", work = protected AdditionCases::boardTokens },
+    { name = "mathematics decodes back to the tree it encodes across every constructor", work = protected AdditionCases::mathRoundTrip },
+    { name = "mathematics decoding refuses unknown kinds missing children non-arrays and non-objects", work = protected AdditionCases::mathRefusals },
+    { name = "image and video tell as leaves with their media fields and no ordinal", work = protected AdditionCases::mediaEncoding }
 ]
-test ("presentation frames explicitly disable viewport sizing by default", \() =>
-    style = Doc::field (firstNode (Encode::walk ([], Ui::framed (plain, Ui::button ("Continue", "", Increment)))), "style")
-    expect (Doc::has (style, "viewportHeightInset"), true)
-    expect (Doc::number (style, "viewportHeightInset"), -1)
-    expectPresence (style, [{ name = "scrollY", value = true }, { name = "selectionGroup", value = true }])
-    scrollAndSelection (style, false))
+test ("presentation frames explicitly disable viewport sizing by default", \() => ui::Runtime::guarded (\() =>
+    style = Frames::plain
+    expect (style.frameViewportHeightInset, 0 - 1)
+    expect (style.frameScrollY, false)
+    expect (style.frameSelectionGroup, false)
+    framed = Ui::framed (Frames::plain, Ui::button ("Continue", "", Increment))
+    binds (drawnOf framed, 1)
+    // A plain frame tells no authored size, and its style record says why: no viewport sizing, scrolling or selection group.
+    styleMembers = insideTold (memberTold (insideTold (toldOf framed), "style"))
+    expect (memberCount (styleMembers, "width", 1), 0)
+    expect (memberCount (styleMembers, "height", 1), 0)
+    expect (memberCount (styleMembers, "viewportHeightInset", 0), 0 - 1)
+    expect (memberFlag (styleMembers, "scrollY", true), false)
+    expect (memberFlag (styleMembers, "selectionGroup", true), false)))
 
-test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
-    style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
-    walked = Encode::walk ([], Ui::framed (style, Ui::button ("Continue", "", Increment)))
-    encoded = firstNode walked
-    geometry = Doc::field (encoded, "style")
-    expect (Doc::text (encoded, "kind"), "framed")
-    expectNumbers (geometry, [{ name = "width", value = 430 }, { name = "height", value = 440 }, { name = "viewportHeightInset", value = 270 }, { name = "left", value = 30 }, { name = "gap", value = 24 }, { name = "symbolSize", value = 13 }])
-    scrollAndSelection (geometry, true)
-    expect (Doc::text (geometry, "fill"), "canvas")
-    expect (Doc::has (geometry, "symbolSize"), true)
-    AdditionCases::frameTypography geometry
+test ("presentation frames preserve exact dimensions and inner control provenance", \() => ui::Runtime::guarded (\() =>
+    base = Frames::plain
+    style = base(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = 0.0 - 0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
+    framed = Ui::framed (style, Ui::button ("Continue", "", Increment))
+    walked = drawnOf framed
+    expect (style.frameWidth, 430)
+    expect (style.frameHeight, 440)
+    expect (style.frameLeft, 30)
+    expect (style.frameTextSize, 27)
+    expect (style.frameSymbolSize, 13)
+    // The frame's whole style record crosses with every member: its box, edges, colours, type and control metrics.
+    expect (spelled (memberTold (insideTold (toldOf framed), "style")), "style={name=\"solution-column\",width=#430,height=#440,viewportHeightInset=#270,scrollY=?true,top=#34,right=#30,bottom=#30,left=#30,radius=#0,gap=#24,fill=\"canvas\",ink=\"\",line=\"\",lineEdge=\"all\",grow=?false,font=\"serif\",textSize=#27,mathScale=~1.08,lineHeight=~34.72,tracking=~-0.6,italic=?true,hug=?true,align=\"center\",cross=\"end\",controlHeight=#40,controlPadding=#12,symbolSize=#13,quietControls=?true,iconOnly=?false,fadeBackdrop=?true,trailingSymbols=?true,flatRows=?false,selectionGroup=?true,shadow=\"floating\"}")
+    AdditionCases::frameTypography style
     binds (walked, 1)
-    expect (Doc::number (Doc::field (encoded, "body"), "event"), 0))
+    // The frame's only control keeps its provenance: the button inside binds first.
+    expect (memberCount (insideTold (memberTold (insideTold (toldOf framed), "body")), "event", 0 - 1), 0)
+    expect (deliversBinding (framed, 0, ui::Tap(action = Increment)), true)))
 
-test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() =>
-    theme = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
-    walked = Encode::walk ([], Ui::themed (theme, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load)))
-    scoped = firstNode walked
-    dialog = Doc::field (scoped, "body")
-    expect (Doc::text (scoped, "kind"), "themed")
-    expectTexts (dialog, [{ name = "kind", value = "dialog" }, { name = "title", value = "Review transcription" }])
-    expect (Doc::number (dialog, "event"), 0)
-    expect (Doc::number (Doc::field (dialog, "body"), "event"), 1)
-    expect (length walked.bindings, 2))
+// A theme scoped to the single token `name`, its spacing and timing the probe's.
+scopedTheme name = ui::Theme(tokens = [ui::Token(tokenName = name, tokenLight = "#202723", tokenDark = "#202723")], spacing = [8], feedback = 140, settle = 240)
+
+test ("scoped themes and dialogs retain their inner controls and dismissal provenance", \() => ui::Runtime::guarded (\() =>
+    local = scopedTheme "canvas"
+    review = Ui::themed (local, Ui::dialog ("Review transcription", Ui::button ("Insert", "", Increment), Load))
+    binds (drawnOf review, 2)
+    expect (spelled (toldOf review), "{kind=\"themed\",theme={tokens=[{name=\"canvas\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240},body={kind=\"dialog\",title=\"Review transcription\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}}")
+    // The dismissal binds before the body the dialog shows.
+    expect (deliversBinding (review, 0, ui::Tap(action = Load)), true)
+    expect (deliversBinding (review, 1, ui::Tap(action = Increment)), true)
+    // A scoped theme's own tokens cross with the subtree it inks.
+    inked = scopedTheme "text"
+    expect (spelled (memberTold (insideTold (toldOf (Ui::themed (inked, Ui::text "Scoped"))), "theme")), "theme={tokens=[{name=\"text\",light=\"#202723\",dark=\"#202723\"}],spacing=[#8],feedback=#140,settle=#240}")))
 
 richDocument : ui::Node<Act>
 richDocument = Ui::rich ([Ui::run ("For all ", "", false), Ui::run ("p", "sourceType", true)], ui::Lead)
-test ("inline text retains mathematical emphasis and semantic source colours without bindings", \() =>
-    walked = Encode::walk ([], richDocument)
-    variable = listGet (Doc::items (Doc::field ((firstNode walked), "runs"))) 1 ?: JsonNull
-    expect (Doc::text ((firstNode walked), "kind"), "rich-text")
-    expectTexts (variable, [{ name = "text", value = "p" }, { name = "ink", value = "sourceType" }])
-    expect (Doc::flag (variable, "italic"), true)
-    binds (walked, 0)
-    branded = firstNode (Encode::walk ([], Ui::column [ui::Brand, Ui::button ("Continue", "", Increment)]))
-    expect (Doc::text (firstOf (branded, "children"), "kind"), "brand"))
+test ("inline text retains mathematical emphasis and semantic source colours without bindings", \() => ui::Runtime::guarded (\() =>
+    binds (drawnOf richDocument, 0)
+    expect (spelled (toldOf richDocument), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"sourceType\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
+    spaced = Ui::column [ui::Spacer, Ui::button ("Continue", "", Increment)]
+    binds (drawnOf spaced, 1)
+    expect (spelled (toldOf spaced), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"spacer\"},{kind=\"button\",label=\"Continue\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")))
 
-test ("machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => machineCaseCanvasUseCase ())
-test ("native machine views render ordinary controls and preserve every host value kind", \() => machineCaseNativeViews ())
-test ("broken machine documents name every JSON path and faulty machines remain renderable", \() => machineCaseBrokenDocuments ())
-test ("real machine documents render every skin and drive pointers sliders drags menus room and native lettering", \() => realDocumentCases ())
-test ("machine edge cases cover every template variant fault cycle request payload and pointer state", \() => completeMachineCases ())
+// Machine documents end to end, each driven as one registered case.
+testCases [
+    { name = "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", work = protected machineCaseCanvasUseCase },
+    { name = "native machine views render ordinary controls and preserve every host value kind", work = protected machineCaseNativeViews },
+    { name = "broken machine documents name every JSON path and faulty machines remain renderable", work = protected machineCaseBrokenDocuments },
+    { name = "real machine documents render every skin and drive pointers sliders drags menus room and native lettering", work = protected realDocumentCases },
+    { name = "machine edge cases cover every template variant fault cycle request payload and pointer state", work = protected completeMachineCases },
+]
+
+// The extra case beside each restored test: another permutation, edge or component for the same fact.
+testCases [
+    { name = "a resolved edit updates the current state (extra: a completion lands on the state the tap changed)", work = protected Extras::resolvedEdit },
+    { name = "native controls are drawn as plain view rows (extra: every plain control, its fit, its sketch and its stream)", work = protected Extras::plainViews },
+    { name = "a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)", work = protected Extras::tapRegion },
+    { name = "an edit from prior state keeps its meaning when ordinals shift (extra: the note's stale number refuses after the shift)", work = protected Extras::ordinals },
+    { name = "an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)", work = protected Extras::goneNumbers },
+    { name = "an edit with an impossible original refuses without change (extra: each impossible ordinal names itself and leaves no ask)", work = protected Extras::impossibleOriginals },
+    { name = "stale, unknown and mismatched events are rejected without change (extra: the stale numbers refuse while the frame's own still deliver)", work = protected Extras::staleNumbers },
+    { name = "start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)", work = protected Extras::openFacts },
+    { name = "an encoded region decodes with its components and text intact (extra: the section keeps its footer and the picker its choices)", work = protected Extras::regionParts },
+    { name = "every constructor encodes as the component it names (extra: the leaf constructors tell under their own names with no control)", work = protected Extras::constructorNames },
+    { name = "semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)", work = protected Extras::roleTones },
+    { name = "tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)", work = protected Extras::tabsPages },
+    { name = "inline text retains mathematical emphasis and semantic source colours without bindings (extra: explicit emphasis tells under its own name)", work = protected Extras::inlineEmphasis },
+    { name = "text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)", work = protected Extras::textRegion },
+    { name = "run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)", work = protected Extras::runHttpRows },
+    { name = "filesystem and store requests preserve paths bounds and slices (extra: empty paths still name their fields and slices)", work = protected Extras::filesystemRows },
+    { name = "desktop requests preserve picker export and cancellation payloads (extra: a typeless picker and empty reveals keep their rows)", work = protected Extras::desktopRows },
+    { name = "process capabilities encode their handles bounds arguments and environment (extra: arguments without an environment, and a long read deadline)", work = protected Extras::processRows },
+    { name = "broken machine documents name every JSON path and faulty machines remain renderable (extra: a bad transition target names its path)", work = protected Extras::brokenPaths },
+    { name = "machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)", work = protected Extras::machineCanvas },
+    { name = "native machine views render ordinary controls and preserve every host value kind (extra: every value kind crosses the typed machine)", work = protected Extras::nativeValueKinds },
+    { name = "machine edge cases cover every template variant fault cycle request payload and pointer state (extra: number comparisons hold their bounds)", work = protected Extras::machineEdge },
+    { name = "real machine documents render every skin and drive pointers sliders drags menus room and native lettering (extra: playback lettering renders on every skin)", work = protected Extras::realPlayback },
+]
+
+// [NATIVE-SHM-NODES]: the told records of the component vocabulary, as a host rebuilds them.
+testCases [
+    { name = "telling reads text roles and tones, and the theme tells both appearances", work = protected AdditionCases::toldTextCase },
+    { name = "telling keeps rich text runs with their emphasis, slant and their own inks", work = protected AdditionCases::toldRichCase },
+    { name = "telling stacks, splits and layers keep their axes, and the theme tells its spacing", work = protected AdditionCases::toldStacksCase },
+    { name = "telling sections and screens keep their titles, toolbar and children", work = protected AdditionCases::toldSurfacesCase },
+    { name = "telling frames carry their authored style and scoped themes tell their tokens", work = protected AdditionCases::toldFramesCase },
+    { name = "telling dialogs and alerts keep their dismissal, and menus show their body first", work = protected AdditionCases::toldOverlaysCase },
+    { name = "telling asides name their side and drag through a size input between the columns", work = protected AdditionCases::toldAsideCase },
+    { name = "telling tabs deliver choices with the chosen key and every page", work = protected AdditionCases::toldTabsCase },
+    { name = "telling rows deliver choices with their symbols and groups", work = protected AdditionCases::toldRowsCase },
+    { name = "telling slots name the region they draw", work = protected AdditionCases::toldSlotCase },
+    { name = "telling buttons keep their role and enabled state", work = protected AdditionCases::toldButtonsCase },
+    { name = "telling fields prompt, hide and commit through their members", work = protected AdditionCases::toldFieldsCase },
+    { name = "telling pickers choose through options and disclosures deliver their flag", work = protected AdditionCases::toldPickersCase },
+    { name = "telling pairs, badges, labels, icons, links and dividers stay whole leaves", work = protected AdditionCases::toldLeavesCase },
+    { name = "telling segments, empties, progress, meters and swatches tell their tones", work = protected AdditionCases::toldStatusCase },
+    { name = "telling media, editors, boards and scenes bind in the walk's order", work = protected AdditionCases::toldMediaCase },
+]
+
+// [NATIVE-SHM-BOUNDARY]: the probe application crosses as view rows and typed events, with no envelope and no event document.
+mut surfaceRows = ""
+
+// Runs `work` and records every control it writes as `kind<parent@action:words|`, in drawing order.
+surfaced work =
+    handle ui::ViewStream
+        place seat => surfaceRows := "${surfaceRows}${seat.placedKind}<${seat.placedParent}@${seat.placedAction}:${seat.placedWords}|"
+        size _ => 0
+        sketch _ => 0
+        ask _ => 0
+    work ()
+
+// `held` after the control numbered `ordinal` delivers `words`; an unknown control leaves it as it was.
+surfaceAfter (held, ordinal, words) = match Surfaces::meant (held, ordinal, words)
+    Error _ => held
+    Success message => surfaced (\() => Surfaces::deliver (held, program (), 5, message))
+
+problemOf outcome = match outcome
+    Error problem => problem
+    Success _ => ""
+
+surfaceCase () =
+    opening = probe (0, "")
+    first = surfaced (\() => Hosting::opened (Surfaces::idle opening, program (), 1, 0, "linux", "", false))
+    // The open frame's told rows: the theme record, then the root region (count 0, both Go buttons, the note slot) and the note region.
+    expect (surfaceRows, "34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 0|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:button|33<29@-1:Go|33<29@-1:play|33<29@-1:plain|33<29@-1:|33<29@-1:|34<16@-1:|33<36@-1:slot|33<36@-1:note|34<-1@-1:|33<39@-1:note|34<39@-1:|33<41@-1:stack|33<41@-1:vertical|35<41@-1:|34<44@-1:|33<45@-1:field|33<45@-1:Note|33<45@-1:linux|33<45@-1:|33<45@-1:|33<45@-1:|33<45@-1:edit|33<45@-1:|34<44@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|34<44@-1:|33<61@-1:button|33<61@-1:Load|33<61@-1:tray|33<61@-1:plain|33<61@-1:|33<61@-1:|")
+    surfaceBinds (first, 5)
+    second = surfaceAfter (first, 0, "")
+    // The next frame tells the changed count: one Go button, so four bindings.
+    expect (surfaceRows, "34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 0|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:button|33<29@-1:Go|33<29@-1:play|33<29@-1:plain|33<29@-1:|33<29@-1:|34<16@-1:|33<36@-1:slot|33<36@-1:note|34<-1@-1:|33<39@-1:note|34<39@-1:|33<41@-1:stack|33<41@-1:vertical|35<41@-1:|34<44@-1:|33<45@-1:field|33<45@-1:Note|33<45@-1:linux|33<45@-1:|33<45@-1:|33<45@-1:|33<45@-1:edit|33<45@-1:|34<44@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|34<44@-1:|33<61@-1:button|33<61@-1:Load|33<61@-1:tray|33<61@-1:plain|33<61@-1:|33<61@-1:|34<-1@-1:|35<0@-1:|34<1@-1:|33<2@-1:canvas|33<2@-1:#FFFFFF|33<2@-1:#000000|35<0@-1:|33<6@-1:|33<6@-1:|33<0@-1:|33<0@-1:|34<-1@-1:|33<11@-1:root|34<11@-1:|33<13@-1:stack|33<13@-1:vertical|35<13@-1:|34<16@-1:|33<17@-1:text|33<17@-1:Count 1|33<17@-1:body|33<17@-1:primary|34<16@-1:|33<22@-1:button|33<22@-1:Go|33<22@-1:play|33<22@-1:plain|33<22@-1:|33<22@-1:|34<16@-1:|33<29@-1:slot|33<29@-1:note|34<-1@-1:|33<32@-1:note|34<32@-1:|33<34@-1:stack|33<34@-1:vertical|35<34@-1:|34<37@-1:|33<38@-1:field|33<38@-1:Note|33<38@-1:linux|33<38@-1:|33<38@-1:|33<38@-1:|33<38@-1:edit|33<38@-1:|34<37@-1:|33<47@-1:button|33<47@-1:Load|33<47@-1:tray|33<47@-1:plain|33<47@-1:|33<47@-1:|34<37@-1:|33<54@-1:button|33<54@-1:Load|33<54@-1:tray|33<54@-1:plain|33<54@-1:|33<54@-1:|")
+    surfaceTally (second, 1)
+    expect (second.surfaceSession.sessionContext.now, 5)
+    surfaceBinds (second, 4)
+    expect (length second.surfaceAsked, 0)
+    third = surfaceAfter (second, 0, "")
+    expect (length third.surfaceAsked, 1)
+    surfaceTally (third, 1)
+    refused = surfaceAfter (third, 9, "")
+    surfaceTally (refused, 1)
+    expect (problemOf (Surfaces::meant (third, 9, "")), "Unknown control 9")
+    expect (problemOf (Surfaces::meant (third, 0 - 1, "")), "Unknown control -1")
+    expectSaid (wrongKindCases "")
+    expectSaid (saidValueCases ())
+
+test ("a surface draws view rows and takes typed events with no envelope", \() => ui::Runtime::guarded (\() => surfaceCase ()))
+
+// [NATIVE-SHM-EVENT] [NATIVE-SHM-SCENE] [NATIVE-SHM-VIEW]: a board, its lasso, an accessible scene and a button, drawn
+// into the real shared frame and driven through every kind of typed host event a host sends. The store is the list
+// of messages `update` received, so every event's meaning is read back exactly.
+journeyNode () = Ui::column [
+    Boards::board ("strokes", 0, true, Increment, Typed),
+    Ui::described (Ui::scene (40.0, 20.0, ["bird"], [Scenes::disc (5.0, 5.0, 2.0, Scenes::rgb (0, 0, 255), 0), Scenes::sprite (0, 9.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 1)], Load), mapList (sceneElements (), accessibleOf)),
+    Ui::button ("Go", "play", Increment),
+]
+
+// The scene's accessible elements: role, spoken label, box, value, bounds and whether each is movable or chosen.
+sceneElements () = [
+    { role = ui::Pressable, label = "Play", left = 0.0, top = 0.0, wide = 4.0, tall = 4.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+    { role = ui::Slidable, label = "Volume", left = 0.0, top = 5.0, wide = 10.0, tall = 2.0, value = 0.5, least = 0.0, most = 1.0, movable = true, chosen = false },
+    { role = ui::Popup, label = "Speed", left = 0.0, top = 8.0, wide = 4.0, tall = 2.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+    { role = ui::MenuItem, label = "Kitchen", left = 0.0, top = 11.0, wide = 4.0, tall = 2.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = true },
+    { role = ui::Unannounced, label = "Backdrop", left = 0.0, top = 0.0, wide = 40.0, tall = 20.0, value = 0.0, least = 0.0, most = 0.0, movable = false, chosen = false },
+]
+
+// The host element `item` describes.
+accessibleOf item = ui::Accessible(accessRole = item.role, accessLabel = item.label, accessLeft = item.left, accessTop = item.top, accessWidth = item.wide, accessHeight = item.tall, accessValue = item.value, accessMin = item.least, accessMax = item.most, accessMovable = item.movable, accessSelected = item.chosen)
+
+journeyRegions (_, _, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => journeyNode ())]
+
+journeyProgram () = ui::Program(programInit = \_ => Runtime::step [], programUpdate = \(_, heard, message) => Runtime::step (listAppend heard (routed message)), programRender = journeyRegions, programTheme = \_ => Probes::palette ())
+
+// The control numbers of the board's stroke, its lasso and the scene, found by what each delivers.
+strokes binding = match binding
+    ui::StrokeInput _ => true
+    _ => false
+
+lassos binding = match binding
+    ui::LassoInput _ => true
+    _ => false
+
+scenes binding = match binding
+    ui::SceneInput _ => true
+    _ => false
+
+taps binding = match binding
+    ui::Tap _ => true
+    _ => false
+
+numbered (held, pick) = Lists::position (held.surfaceBound, pick)
+
+// One host event of `kind`, sent through the real shared-frame writer.
+journeyTouch (kind, ordinal, words, detail, x, y, down) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = false)
+
+// One host event of `kind` for control `ordinal` carrying `words` at the origin, with the pointer `down`.
+journeyAt (kind, ordinal, words, down) = journeyTouch (kind, ordinal, words, "", 0.0, 0.0, down)
+
+journeyStep (held, touch) = Views::shared (\() => Hosting::event (held, journeyProgram (), touch))
+
+// Why the shared frame refuses `touch` on `held`.
+refusedBy (held, touch) = (journeyStep (held, touch)).surfaceProblem
+
+heardAll held = join held.surfaceSession.sessionStore "|"
+
+journeyCase () =
+    opened = Views::shared (\() => Hosting::opened (Surfaces::idle [], journeyProgram (), 1, 0, "macos", "", false))
+    surfaceBinds (opened, 4)
+    board = numbered (opened, strokes)
+    lasso = numbered (opened, lassos)
+    scene = numbered (opened, scenes)
+    go = numbered (opened, taps)
+    expect ("${board},${lasso},${scene},${go}", "0,1,2,3")
+    // A stroke arrives as its points, then its end: width 3 at clock 77.
+    pointed = journeyStep (journeyStep (opened, journeyTouch (Hosting::point, 0, "", "", 2.0, 3.0, false)), journeyTouch (Hosting::point, 0, "", "", 4.0, 6.0, false))
+    expect (length pointed.surfacePoints, 2)
+    expect (heardAll pointed, "")
+    stroked = journeyStep (pointed, journeyTouch (Hosting::stroke, board, "", "", 3.0, 77.0, false))
+    expect (heardAll stroked, "stroke increment:2/3/77")
+    expect (length stroked.surfacePoints, 0)
+    expect (Hosting::answer stroked, 0)
+    // A stroke with no points is malformed and refused, and a stroke sent to the button is a mismatch.
+    empty = journeyStep (stroked, journeyTouch (Hosting::stroke, board, "", "", 3.0, 78.0, false))
+    expect (empty.surfaceProblem, "A board control sent a malformed stroke")
+    expect (Hosting::answer empty, 1)
+    expect (refusedBy (pointed, journeyTouch (Hosting::stroke, go, "", "", 3.0, 78.0, false)), "A non-board control was sent a value of the wrong kind")
+    // A lasso arrives as the strokes it encloses, then its close.
+    enclosed = journeyStep (journeyStep (stroked, journeyAt (Hosting::enclose, 0, "", false)), journeyAt (Hosting::enclose, 2, "", false))
+    expect (join (mapList (enclosed.surfaceEnclosed, \i => "${i}")) ",", "0,2")
+    lassoed = journeyStep (enclosed, journeyAt (Hosting::lasso, lasso, "", false))
+    expect (heardAll lassoed, "stroke increment:2/3/77|lasso typed:0,2")
+    expect (length lassoed.surfaceEnclosed, 0)
+    expect (refusedBy (enclosed, journeyAt (Hosting::lasso, board, "", false)), "A non-lasso control was sent a value of the wrong kind")
+    expect (refusedBy (enclosed, journeyAt (Hosting::lasso, 40, "", false)), "Unknown control 40")
+    expect (refusedBy (pointed, journeyTouch (Hosting::stroke, 40, "", "", 3.0, 1.0, false)), "Unknown control 40")
+    // The scene takes keys, the pointer and its measured size; a number that is not finite is refused.
+    keyed = journeyStep (lassoed, journeyAt (Hosting::key, scene, "space", true))
+    pressedScene = journeyStep (keyed, journeyTouch (Hosting::pointer, scene, "", "", 5.0, 5.0, true))
+    measured = journeyStep (pressedScene, journeyTouch (Hosting::viewed, scene, "", "", 40.0, 20.0, false))
+    expect (heardAll measured, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled")
+    blown = journeyStep (measured, journeyTouch (Hosting::pointer, scene, "", "", exp 1000.0, 0.0, false))
+    expect (blown.surfaceProblem, "A scene was sent a number that is not finite")
+    // Completions, phases and frames reach `update`; an unknown kind and a negative frame are refused.
+    done = journeyStep (measured, journeyTouch (Hosting::completed, 0, "job:1", "result", 0.0, 0.0, true))
+    phased = journeyStep (done, journeyAt (Hosting::phase, 0, "active", false))
+    framed = journeyStep (phased, journeyTouch (Hosting::frame, 0, "", "", 0.016, 0.0, false))
+    expect (heardAll framed, "stroke increment:2/3/77|lasso typed:0,2|controlled|controlled|controlled|completed job:1|phase active|frame")
+    expect (refusedBy (framed, journeyAt (42, 0, "", false)), "Unknown event kind 42")
+    expect (refusedBy (framed, journeyTouch (Hosting::frame, 0, "", "", 0.0 - 1.0, 0.0, false)), "Invalid frame elapsed time")
+    // A change of appearance redraws dark and delivers nothing; the button still taps.
+    dark = journeyStep (framed, journeyAt (Hosting::appearance, 0, "", true))
+    expect (dark.surfaceDark, true)
+    expect (heardAll dark, heardAll framed)
+    tapped = journeyStep (dark, journeyAt (Hosting::control, go, "", false))
+    expect (length tapped.surfaceSession.sessionStore, 9)
+    // Every scene row the frame was sent, as a reader reads them: marker, atlas, two shapes and the five elements' roles.
+    drawn = Surfaces::seen (tapped, journeyProgram ())
+    rows = Lists::flatten (mapList (drawn.walkSketches, \s => ui::Streams::rows (s.sketchedRow, s.sketchedAs)))
+    expect (join (mapList (rows, \row => "${row.etchCode}")) ",", "20,21,1,3,22,7,22,7,22,7,22,7,22,7")
+    expect (join (mapList (filterList (rows, \row => row.etchCode == 22), \row => "${row.etchIndex}:${row.etchTint}:${row.etchText}")) ",", "0:0:Play,1:2:Volume,2:0:Speed,3:1:Kitchen,4:0:Backdrop")
+    // The guard every boundary runs in resolves each integer fault.
+    // Values read from a list, so no fault is folded away while compiling.
+    zero = listGet [0] 0 ?: 1
+    biggest = listGet [9223372036854775807] 0 ?: 0
+    expect (Runtime::guarded (\() => 7 / zero), 7.0)
+    expect (Runtime::guarded (\() => 7 % zero), 0)
+    expect (Runtime::guarded (\() => biggest + 1), 0 - biggest - 1)
+    // A scene in window pixels has no unit space: it tells a zero size at a zoom of one.
+    pixels = Ui::canvas ([Scenes::disc (1.0, 1.0, 1.0, 0, 0)], Load)
+    expect (spelled (toldOf pixels), "{scene 0.0x0.0x1.0,kind=\"scene\",width=~0.0,height=~0.0,zoom=~1.0,event=#0}")
+    expect (deliversBinding (pixels, 0, ui::SceneInput(action = Load)), true)
+    // Every symbol has its own name.
+    expect (join (mapList ([ui::Clock, ui::Person, ui::Cursor, ui::Chevron, ui::Send, ui::Terminal, ui::Edit, ui::Panel, ui::Sparkle], \symbol => Symbols::name symbol)) ",", "clock,person,cursor,chevron,send,terminal,edit,panel,sparkle")
+
+test ("a board, its lasso and an accessible scene take every typed host event through the shared frame", \() => ui::Runtime::guarded (\() => journeyCase ()))
+

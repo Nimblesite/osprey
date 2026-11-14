@@ -2,9 +2,9 @@
 // keyboard deck to its bottom and moves the inspector to its right, each key and switch its own
 // size, and a struck key still plays the patch at its pitch from where it now is.
 
-import uitest::Events
+import uitest::Drive
 
-viewed (width, height) = post (Events::viewed (sight.sightSeen.renderedRevision, sight.sightSeen.renderedOrdinal, width, height, sight.sightNow))
+viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 
 topOf label = (element label).accessTop
 

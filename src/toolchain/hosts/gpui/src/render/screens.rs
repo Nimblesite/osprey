@@ -1,14 +1,13 @@
 //! Screens and sections ([GPUI-HOST-RENDER]): titled sections, a screen with its heading,
 //! the empty state and progress.
 
+use super::{caption, control_id, gap, labelled_column, many, string, symbol, Ctx};
+use crate::tree::Tree;
 use gpui_kit::component::{progress::Progress, ActiveTheme as _, StyledExt as _};
 use gpui_kit::*;
-use serde_json::Value;
-
-use super::{caption, control_id, gap, labelled_column, many, string, symbol, Ctx};
 
 /// Draws a titled group box and optional footer caption.
-pub(super) fn section(ctx: &mut Ctx, node: &Value) -> AnyElement {
+pub(super) fn section(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -28,7 +27,7 @@ pub(super) fn section(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Draws a screen heading, trailing toolbar and body.
-pub(super) fn screen(ctx: &mut Ctx, node: &Value) -> AnyElement {
+pub(super) fn screen(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     let heading = screen_heading(ctx, node);
     let toolbar = div()
         .flex()
@@ -44,7 +43,7 @@ pub(super) fn screen(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Draws the title and subtitle half of a screen heading.
-fn screen_heading(ctx: &mut Ctx, node: &Value) -> Div {
+fn screen_heading(ctx: &mut Ctx, node: &Tree) -> Div {
     div()
         .flex()
         .flex_col()
@@ -58,7 +57,7 @@ fn screen_heading(ctx: &mut Ctx, node: &Value) -> Div {
 }
 
 /// Draws a centred empty state.
-pub(super) fn empty(ctx: &mut Ctx, node: &Value) -> AnyElement {
+pub(super) fn empty(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -76,7 +75,7 @@ pub(super) fn empty(ctx: &mut Ctx, node: &Value) -> AnyElement {
 }
 
 /// Draws an indeterminate progress indicator with its supplied text.
-pub(super) fn progress(ctx: &mut Ctx, node: &Value) -> AnyElement {
+pub(super) fn progress(ctx: &mut Ctx, node: &Tree) -> AnyElement {
     labelled_column(node)
         .child(caption(ctx, string(node, "detail")))
         .child(Progress::new(control_id(ctx, 0)).loading(true))

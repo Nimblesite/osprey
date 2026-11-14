@@ -1,27 +1,45 @@
+// Implements [PACKAGE-EDITOR-APP]: the application's regions and the program
+// its boundary runs. Each region refreshes only when the store it reads
+// changed, and the palette is the theme every region is drawn with.
 namespace registry_editor
+import ui::Doc
 import ui::Runtime
 import ui::Keyed
-import ui::Doc
-import vscode::Webview
+import vscode::Editor
 
 module App
     slice () = perform Signal<PackageState>.read ()
 
     initial context = Store::refresh (Store::create (listGet context.arguments 0 ?: "", listGet context.arguments 1 ?: "http://127.0.0.1:8787"))
 
+    // The store as the region comparison reads it: every slice, so any change refreshes the regions that read the store.
+    stateJson current = JsonObject [
+        Doc::str ("query", current.packageSearch),
+        Doc::str ("selection", current.packageSelection),
+        Doc::str ("tab", current.packageTab),
+        Doc::str ("registry", current.packageRegistry),
+        Doc::str ("workspace", current.packageWorkspace),
+        JsonMember "catalog" (Packages::encodeCatalog current.packageCatalog),
+        JsonMember "graph" (Store::encodeWorkspace current.packageGraph),
+        Doc::str ("notice", current.packageNotice),
+        Doc::bit ("pending", current.packagePending),
+        Doc::bit ("fault", current.packageFault),
+        Doc::str ("confirming", current.packageConfirming),
+        Doc::str ("confirmKey", current.packageConfirmKey),
+        Doc::num ("generation", current.packageGeneration),
+        Doc::num ("waiting", current.packageWaiting),
+    ]
+
     regions (before, current, frames, _) =
         handle static Signal<PackageState>
             read => current
-        changed = signalChanges before current Store::save (signalDependencies slice)
+        changed = signalChanges before current stateJson (signalDependencies slice)
         root = Keyed::region (frames, "root", changed, View::rootView)
         packages = Keyed::region (frames, "packages", changed, View::listView)
         details = Keyed::region (frames, "details", changed, View::detailView)
         [root, packages, details]
 
-    palette = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#F7F9FC", tokenDark = "#0C1325"), ui::Token(tokenName = "surface", tokenLight = "#FFFFFF", tokenDark = "#191F32"), ui::Token(tokenName = "accent", tokenLight = "#006B86", tokenDark = "#77D7F4"), ui::Token(tokenName = "text", tokenLight = "#17223A", tokenDark = "#DCE1FB")], spacing = [4, 8, 16, 24, 32], feedback = 160, settle = 220)
+    palette = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#F7F9FC", tokenDark = "#0C1325"), ui::Token(tokenName = "surface", tokenLight = "#FFFFFF", tokenDark = "#191F32"), ui::Token(tokenName = "accent", tokenLight = "#006B86", tokenDark = "#77D7F4"), ui::Token(tokenName = "text", tokenLight = "#17223A", tokenDark = "#DCE1FB"), ui::Token(tokenName = "secondary", tokenLight = "#5B6577", tokenDark = "#9AA7C4"), ui::Token(tokenName = "good", tokenLight = "#0E7A0D", tokenDark = "#6CCB5F"), ui::Token(tokenName = "caution", tokenLight = "#9D5D00", tokenDark = "#FCE100"), ui::Token(tokenName = "danger", tokenLight = "#C42B1C", tokenDark = "#FF99A4")], spacing = [4, 8, 16, 24, 32], feedback = 160, settle = 220)
 
-    export start context = Runtime::start (context, initial, regions, Store::save, palette)
-
-    export dispatch (saved, event) = Runtime::dispatch (saved, event, Update::apply, regions, Store::save, Store::restore)
-
-    export respond frame = Webview::respond (frame, start, dispatch)
+    (** The package editor as its boundary runs it: the store drawn with its palette. *)
+    export program () = ui::Program(programInit = initial, programUpdate = Update::apply, programRender = regions, programTheme = \_ => palette)

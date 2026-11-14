@@ -39,11 +39,8 @@ module App
     (** Refreshes Flock's field, HUD, panel and stable root regions. *)
     export regions (before, after, frames, writes) = View::regions (before, after, frames, writes)
 
-    (** Serializes the complete application store. *)
-    export save store = Simulation::save store
-
-    (** Restores the complete application store. *)
-    export restore doc = Simulation::restore doc
-
     (** Supplies Flock's semantic theme to the host. *)
     export theme () = View::theme ()
+
+    (** Flock as its boundary runs it: the store drawn with its semantic theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())

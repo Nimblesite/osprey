@@ -1,7 +1,7 @@
 // Implements [UI-COMPONENTS-EDITOR]: draw application-issued line marks and
 // preserve two distinct bindings for text and cursor movement.
 import { escapeHtml } from "./html";
-import { record } from "./protocol";
+import { record } from "./nodes";
 
 interface Mark {
   readonly line: number;

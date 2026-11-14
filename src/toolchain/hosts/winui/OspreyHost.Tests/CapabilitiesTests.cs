@@ -1,24 +1,37 @@
-using System.Text.Json;
-
+using System.Runtime.Versioning;
 namespace Osprey.Host.Tests;
 
-/// <summary>[WINUI-HOST-CAPABILITIES]: each adapter does what Osprey asked and reports it; a kind this host does not answer fails by name.</summary>
+/// <summary>[WINUI-HOST-CAPABILITIES]: each adapter does what Osprey asked and reports it; a kind this host does not answer fails by name, and a chooser answers with the bare path.</summary>
+[SupportedOSPlatform("windows")]
 public sealed class CapabilitiesTests
 {
-    static JsonElement Request(Action<Utf8JsonWriter> members) => JsonDocument.Parse(Json.Object(members)).RootElement.Clone();
+    static Ask Asked(long code, string ticket, params AskField[] fields) => new(code, ticket, fields);
 
-    static Capabilities Host(string? chosen = null, List<string>? asked = null) => new(new Pickers(() => Task.FromResult(chosen), types =>
-    {
-        asked?.AddRange(types);
-        return Task.FromResult(chosen);
-    }), new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
+    static AskField Text(long field, string text) => new(field, 0, text);
+
+    static AskField Number(long field, long number) => new(field, number, "");
+
+    static Capabilities Host(string? chosen = null, List<string>? asked = null, string? saved = null) => new(
+        new Pickers(
+            () => Task.FromResult(chosen),
+            types =>
+            {
+                asked?.AddRange(types);
+                return Task.FromResult(chosen);
+            },
+            _ => Task.FromResult(saved)),
+        new Store(Path.Combine(Path.GetTempPath(), "osprey-store-unused")));
 
     [Fact]
     public async Task AKindThisHostDoesNotAnswerFailsByName()
     {
-        foreach (var kind in Coverage.Unanswered)
+        foreach (var (kind, at) in Framework.CapabilityKinds.Select((kind, at) => (kind, at)))
         {
-            var done = await Host().Answer(Request(writer => { writer.WriteString("ticket", "t"); writer.WriteString("kind", kind); }));
+            if (Coverage.Answered.Contains(kind))
+            {
+                continue;
+            }
+            var done = await Host().Answer(Asked(at + 1, "t"));
             Assert.False(done.Ok);
             Assert.Contains(kind, done.Error, StringComparison.Ordinal);
         }
@@ -27,64 +40,100 @@ public sealed class CapabilitiesTests
     [Fact]
     public async Task AChosenFolderComesBackWithItsPath()
     {
-        var done = await Host("D:\\Media").Answer(Request(writer => { writer.WriteString("ticket", "choose"); writer.WriteString("kind", "choose-folder"); }));
-        using var result = JsonDocument.Parse(done.Result);
-        Assert.Equal(("choose", "D:\\Media", false), (done.Ticket, Envelopes.Text(result.RootElement, "path"), Envelopes.Flag(result.RootElement, "cancelled")));
+        var done = await Host("D:\\Media").Answer(Asked(14, "choose"));
+        Assert.Equal(("choose", true, "D:\\Media"), (done.Ticket, done.Ok, done.Result));
+    }
+
+    [Fact]
+    public async Task AChosenFolderComesBackWithItsPathExtraUnreadFieldsChangeNothing()
+    {
+        var done = await Host("E:\\Zoë's Folder").Answer(Asked(14, "choose", Number(2, 5), Text(3, "ignored")));
+        Assert.Equal(("choose", true, "E:\\Zoë's Folder"), (done.Ticket, done.Ok, done.Result));
+        Assert.Empty(done.Writes);
     }
 
     [Fact]
     public async Task ADismissedPickerIsACancelledChoice()
     {
-        var done = await Host(null).Answer(Request(writer => { writer.WriteString("ticket", "choose"); writer.WriteString("kind", "choose-folder"); }));
-        using var result = JsonDocument.Parse(done.Result);
-        Assert.Equal(("", true), (Envelopes.Text(result.RootElement, "path"), Envelopes.Flag(result.RootElement, "cancelled")));
+        var done = await Host(null).Answer(Asked(14, "choose"));
+        Assert.Equal(("", true), (done.Result, done.Ok));
+    }
+
+    [Fact]
+    public async Task ADismissedPickerIsACancelledChoiceExtraTheFilePickerStillOfferedItsTypes()
+    {
+        var asked = new List<string>();
+        var done = await Host(null, asked).Answer(Asked(13, "choose", Text(1, "mp3"), Text(1, "wav")));
+        Assert.Equal(["mp3", "wav"], asked);
+        Assert.Equal((true, ""), (done.Ok, done.Result));
     }
 
     [Fact]
     public async Task AChosenFileComesBackWithItsPathAndThePickerOffersOnlyTheTypesAsked()
     {
         var asked = new List<string>();
-        var done = await Host("D:\\Music\\Sunroom.mp3", asked).Answer(Request(writer =>
-        {
-            writer.WriteString("ticket", "choose");
-            writer.WriteString("kind", "choose-file");
-            writer.WriteStartArray("types");
-            writer.WriteStringValue("mp3");
-            writer.WriteEndArray();
-            writer.WriteNumber("limit", 0);
-            writer.WriteString("slice", "");
-        }));
-        using var result = JsonDocument.Parse(done.Result);
-        Assert.Equal(("choose", "D:\\Music\\Sunroom.mp3", false), (done.Ticket, Envelopes.Text(result.RootElement, "path"), Envelopes.Flag(result.RootElement, "cancelled")));
+        var done = await Host("D:\\Music\\Sunroom.mp3", asked).Answer(Asked(13, "choose", Text(1, "mp3"), Number(2, 0), Text(3, "")));
+        Assert.Equal(("choose", "D:\\Music\\Sunroom.mp3"), (done.Ticket, done.Result));
         Assert.Equal(["mp3"], asked);
-        var dismissed = await Host(null).Answer(Request(writer => { writer.WriteString("ticket", "choose"); writer.WriteString("kind", "choose-file"); }));
-        using var nothing = JsonDocument.Parse(dismissed.Result);
-        Assert.True(Envelopes.Flag(nothing.RootElement, "cancelled"));
+        var dismissed = await Host(null).Answer(Asked(13, "choose"));
+        Assert.Equal("", dismissed.Result);
+        Assert.True(dismissed.Ok);
     }
 
-    static JsonElement Run(string executable, long timeout, long limit, params string[] arguments) => Request(writer =>
+    [Fact]
+    public async Task AChosenFileComesBackWithItsPathAndThePickerOffersOnlyTheTypesAskedExtraSeveralTypesInOrder()
     {
-        writer.WriteString("ticket", "run");
-        writer.WriteString("kind", "run");
-        writer.WriteString("executable", executable);
-        writer.WriteStartArray("arguments");
-        foreach (var argument in arguments)
+        var asked = new List<string>();
+        var done = await Host("D:\\Music\\Both.flac", asked).Answer(Asked(13, "choose", Text(1, "mp3"), Text(1, "wav"), Text(1, "flac"), Number(2, 3)));
+        Assert.Equal((true, "D:\\Music\\Both.flac"), (done.Ok, done.Result));
+        Assert.Equal(["mp3", "wav", "flac"], asked);
+    }
+
+    [Fact]
+    public async Task ASaveWritesTheStagedTextAndCompletesWithTheChosenPath()
+    {
+        var target = Path.Combine(Path.GetTempPath(), $"osprey-save-{Guid.NewGuid():N}.txt");
+        try
         {
-            writer.WriteStringValue(argument);
+            Slices.Put("staged", "the saved text");
+            var done = await Host(saved: target).Answer(Asked(15, "save", Text(1, "note.txt"), Text(2, "staged")));
+            Assert.Equal((true, target), (done.Ok, done.Result));
+            Assert.Equal("the saved text", File.ReadAllText(target));
+            var dismissed = await Host(null).Answer(Asked(15, "save", Text(1, "note.txt"), Text(2, "staged")));
+            Assert.Equal((true, ""), (dismissed.Ok, dismissed.Result));
         }
-        writer.WriteEndArray();
-        writer.WriteNumber("timeout", timeout);
-        writer.WriteNumber("limit", limit);
-        writer.WriteString("slice", "out");
-    });
+        finally
+        {
+            File.Delete(target);
+        }
+    }
+
+    [Fact]
+    public async Task ASaveWhoseSliceWasNeverHeldFails()
+    {
+        var done = await Host(saved: Path.GetTempPath()).Answer(Asked(15, "save", Text(1, "x.txt"), Text(2, "never-written")));
+        Assert.Equal((false, "save-file slice is missing"), (done.Ok, done.Error));
+    }
+
+    static Ask Run(string executable, long timeout, long limit, params string[] arguments)
+    {
+        var fields = new List<AskField> { Text(1, executable) };
+        fields.AddRange(arguments.Select(argument => Text(2, argument)));
+        fields.Add(Number(3, timeout));
+        fields.Add(Number(4, limit));
+        fields.Add(Number(5, 0));
+        fields.Add(Text(6, "out"));
+        return Asked(1, "run", [.. fields]);
+    }
 
     [Fact]
     public async Task ARunWritesItsStdoutToTheSliceAndReportsItsStatus()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "run starts a Windows executable");
         var shell = Path.Combine(Environment.SystemDirectory, "cmd.exe");
         var done = await Host().Answer(Run(shell, 10_000, 65_536, "/c", "echo _googlecast._tcp SRV& exit 3"));
-        using var result = JsonDocument.Parse(done.Result);
-        Assert.Equal((true, 3L), (done.Ok, Envelopes.Number(result.RootElement, "status")));
+        var result = System.Text.Json.JsonDocument.Parse(done.Result);
+        Assert.Equal((true, 3L), (done.Ok, Docs.Number(result.RootElement, "status")));
         Assert.Equal("out", done.Writes[0].Key);
         Assert.StartsWith("_googlecast._tcp SRV", done.Writes[0].Text, StringComparison.Ordinal);
         var relative = await Host().Answer(Run("cmd.exe", 10_000, 65_536));
@@ -98,14 +147,15 @@ public sealed class CapabilitiesTests
     [Fact]
     public async Task CancellingAWalkThatIsNotRunningChangesNothing()
     {
-        var done = await Host().Answer(Request(writer => { writer.WriteString("ticket", "cancel:1"); writer.WriteString("kind", "cancel"); writer.WriteString("target", "walk:9"); }));
+        var done = await Host().Answer(Asked(19, "cancel:1", Text(1, "walk:9")));
         Assert.Equal((true, "null"), (done.Ok, done.Result));
     }
 
     [Fact]
     public async Task RevealingAPathThatDoesNotExistFails()
     {
-        var done = await Host().Answer(Request(writer => { writer.WriteString("ticket", "reveal"); writer.WriteString("kind", "reveal"); writer.WriteString("path", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))); }));
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "reveal opens Windows File Explorer");
+        var done = await Host().Answer(Asked(17, "reveal", Text(1, Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")))));
         Assert.False(done.Ok);
         Assert.NotEmpty(done.Error);
     }
@@ -113,31 +163,22 @@ public sealed class CapabilitiesTests
     [Fact]
     public async Task AWalkWritesTheSliceOspreyNamedAndCompletesWithNull()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "the folder walk reads Windows file ids and volumes");
         var folder = Directory.CreateTempSubdirectory("osprey-walk-");
         try
         {
             File.WriteAllBytes(Path.Combine(folder.FullName, "a.bin"), new byte[4096]);
-            var done = await Host().Answer(Request(writer =>
-            {
-                writer.WriteString("ticket", "walk:1");
-                writer.WriteString("kind", "measure-folders");
-                writer.WriteStartArray("folders");
-                writer.WriteStringValue(folder.FullName);
-                writer.WriteEndArray();
-                writer.WriteNumber("limit", 100);
-                writer.WriteNumber("timeout", 60_000);
-                writer.WriteString("slice", "walked");
-            }));
+            var done = await Host().Answer(Asked(16, "walk:1", Text(1, folder.FullName), Number(2, 100), Number(3, 60_000), Text(4, "walked")));
             Assert.True(done.Ok, done.Error);
             Assert.Equal("null", done.Result);
             var write = Assert.Single(done.Writes);
             Assert.Equal("walked", write.Key);
-            using var slice = JsonDocument.Parse(write.Text);
-            var walked = Assert.Single(Envelopes.Items(slice.RootElement, "folders", item => item));
-            Assert.Equal(folder.FullName, Envelopes.Text(walked, "path"));
-            var entry = Assert.Single(Envelopes.Items(walked, "entries", item => item));
-            Assert.Equal("a.bin", Envelopes.Text(entry, "name"));
-            Assert.True(Envelopes.Number(entry, "bytes") >= 4096);
+            using var slice = System.Text.Json.JsonDocument.Parse(write.Text);
+            var walked = Assert.Single(Docs.Items(slice.RootElement, "folders", item => item));
+            Assert.Equal(folder.FullName, Docs.Text(walked, "path"));
+            var entry = Assert.Single(Docs.Items(walked, "entries", item => item));
+            Assert.Equal("a.bin", Docs.Text(entry, "name"));
+            Assert.True(Docs.Number(entry, "bytes") >= 4096);
         }
         finally
         {

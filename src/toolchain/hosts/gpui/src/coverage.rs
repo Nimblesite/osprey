@@ -1,39 +1,17 @@
-//! The GPUI host's column of the coverage matrix ([NATIVE-HOSTS-COVERAGE]): every node and
-//! capability kind the framework defines, as drawn or answered here, or refused with a visible
-//! diagnostic until it is. The tests read the framework's own sources, so a kind added to
-//! @osprey/native fails them until this host draws, answers or refuses it by name.
+//! The GPUI host's column of the coverage matrix ([NATIVE-HOSTS-COVERAGE]): every node kind the
+//! framework defines, every row kind the shared frame carries and every capability kind, as
+//! told, drawn or answered here, or refused with a visible diagnostic until it is. The tests
+//! read the framework's own sources, so a kind added to @osprey/native fails them until it is
+//! told, drawn or answered by name.
 
-/// Node kinds `render.rs` draws.
+/// Row kinds `view.rs` draws, as `rows::Kind` names them ([NATIVE-SHM-VIEW]).
 const DRAWN: &[&str] = &[
-    "stack", "text", "label", "pair", "icon", "badge", "button", "field", "toggle", "slot",
-    "scene", "section", "screen", "divider", "spacer", "empty", "progress", "rows", "picker",
-    "themed", "meter",
+    "Column", "Line", "Label", "Press", "Entry", "Gap", "Scroll", "Layer", "Toggle", "Picker",
+    "Choice", "Rule", "Image", "Canvas", "Editor", "Menu", "Sheet",
 ];
 
-/// Node kinds drawn as an "unknown node kind" diagnostic until this host draws them
-/// ([plan 0037](../../../../../docs/plans/0037-osprey-native.md)).
-const REFUSED: &[&str] = &[
-    "split",
-    "layer",
-    "context-menu",
-    "aside",
-    "tabs",
-    "link",
-    "segments",
-    "swatch",
-    "disclosure",
-    "alert",
-    "rich-text",
-    "framed",
-    "dialog",
-    "evidence",
-    "brand",
-    "math",
-    "image",
-    "video",
-    "editor",
-    "board",
-];
+/// Row kinds that tell the component tree instead of drawing a control ([NATIVE-SHM-NODES]).
+const TOLD: &[&str] = &["Field", "Record", "List"];
 
 /// Capability kinds `host.rs` answers.
 const ANSWERED: &[&str] = &[
@@ -72,12 +50,14 @@ const MOBILE_ONLY: &[&str] = &["host-call"];
 
 const NODES: &str = include_str!("../../../../osprey/packages/native/src/node.ospml");
 const CAPABILITIES: &str = include_str!("../../../../osprey/packages/native/src/capability.ospml");
-const ENCODER: &str = include_str!("../../../../osprey/packages/native/src/encode.ospml");
-const RENDER: &str = include_str!("render.rs");
+const TELLING: &str = include_str!("../../../../osprey/packages/native/src/told.ospml");
+const ROWS: &str = include_str!("rows.rs");
+const TREE: &str = include_str!("tree.rs");
+const VIEW: &str = include_str!("view.rs");
 const HOST: &str = include_str!("host.rs");
 
-/// The variants of a union declared in block form, as the encoder names them on the wire.
-fn kinds(source: &str, header: &str) -> Vec<String> {
+/// The variants of a union declared in block form, as the framework names their constructors.
+fn constructors(source: &str, header: &str) -> Vec<String> {
     let mut found: Vec<String> = source
         .lines()
         .skip_while(|line| !line.starts_with(header))
@@ -87,31 +67,82 @@ fn kinds(source: &str, header: &str) -> Vec<String> {
         .filter(|name| {
             name.starts_with(char::is_uppercase) && name.chars().all(char::is_alphanumeric)
         })
-        .map(wire)
+        .map(str::to_owned)
         .collect();
     found.sort();
     found
 }
 
-/// The encoder's wire name for a constructor, including the names that differ from the kebab spelling.
-fn wire(name: &str) -> String {
-    match name {
-        "Typeset" => "math".to_owned(),
-        "ReadPropertyLists" => "read-plists".to_owned(),
-        _ => kebab(name),
-    }
+/// The constructors the framework's exhaustive telling writes as component rows ([NATIVE-SHM-NODES]).
+fn told(source: &str) -> Vec<String> {
+    let mut found: Vec<String> = source
+        .lines()
+        .skip_while(|line| {
+            !line
+                .trim_start()
+                .starts_with("walk (bindings, node) = match node")
+        })
+        .skip(1)
+        .take_while(|line| line.is_empty() || line.starts_with("        "))
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|name| name.starts_with(char::is_uppercase))
+        .map(str::to_owned)
+        .collect();
+    found.sort();
+    found
 }
 
-/// A constructor's wire name: `ContextMenu` travels as `context-menu`.
-fn kebab(name: &str) -> String {
-    let mut wire = String::new();
-    for (index, letter) in name.chars().enumerate() {
-        if letter.is_uppercase() && index > 0 {
-            wire.push('-');
-        }
-        wire.push(letter.to_ascii_lowercase());
-    }
-    wire
+/// The capability names the framework's encoder writes, in protocol order.
+fn capabilities(source: &str) -> Vec<String> {
+    let mut found: Vec<String> = source
+        .lines()
+        .find(|line| line.trim_start().starts_with("kinds = ["))
+        .map(|line| {
+            line.trim()
+                .trim_start_matches("kinds = [")
+                .trim_end_matches(']')
+                .split(',')
+                .filter_map(|name| name.trim().strip_prefix('"')?.strip_suffix('"'))
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    found
+}
+
+/// The variants of the host's row-kind check, which every row the frame carries must name.
+fn row_kinds(source: &str) -> Vec<String> {
+    let mut found: Vec<String> = source
+        .lines()
+        .skip_while(|line| !line.starts_with("pub enum Kind {"))
+        .skip(1)
+        .take_while(|line| !line.starts_with('}'))
+        .map(|line| line.trim().trim_end_matches(','))
+        .filter(|name| !name.is_empty() && name.chars().all(char::is_alphanumeric))
+        .map(str::to_owned)
+        .collect();
+    found.sort();
+    found
+}
+
+/// The capability names `rows.rs` maps codes to, as the framework's `kind` spells them.
+fn row_capabilities(source: &str) -> Vec<String> {
+    let block: String = source
+        .lines()
+        .skip_while(|line| !line.starts_with("const CAPABILITIES:"))
+        .skip(1)
+        .take_while(|line| !line.starts_with("];"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut found: Vec<String> = block
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect();
+    found.sort();
+    found
 }
 
 /// Every kind in the declared lists, sorted; a kind declared twice appears twice.
@@ -126,42 +157,47 @@ fn declared(lists: &[&[&str]]) -> Vec<String> {
 
 #[test]
 fn every_node_kind_is_drawn_or_refused_exactly_once() {
-    let framework = kinds(NODES, "type Node A =");
-    assert!(framework.iter().any(|kind| kind == "context-menu"));
-    assert_eq!(framework, declared(&[DRAWN, REFUSED]));
+    let framework = constructors(NODES, "type Node A =");
+    assert!(framework.iter().any(|kind| kind == "ContextMenu"));
+    assert_eq!(framework, told(TELLING));
+}
+
+#[test]
+fn every_row_kind_is_drawn_or_told_exactly_once() {
+    assert_eq!(row_kinds(ROWS), declared(&[DRAWN, TOLD]));
 }
 
 #[test]
 fn every_capability_kind_is_answered_or_refused_exactly_once() {
-    let framework = kinds(CAPABILITIES, "type Capability =");
+    let framework = capabilities(CAPABILITIES);
     assert!(framework.iter().any(|kind| kind == "measure-folders"));
     assert_eq!(framework, declared(&[ANSWERED, UNANSWERED, MOBILE_ONLY]));
+    assert_eq!(row_capabilities(ROWS), framework);
 }
 
 #[test]
-fn the_constructor_aliases_are_the_wire_names_the_encoder_writes() {
-    let nodes = kinds(NODES, "type Node A =");
-    let capabilities = kinds(CAPABILITIES, "type Capability =");
-    assert!(nodes.contains(&"math".to_owned()));
-    assert!(!nodes.contains(&"typeset".to_owned()));
+fn the_constructor_aliases_are_the_names_the_framework_writes() {
+    let capabilities = capabilities(CAPABILITIES);
     assert!(capabilities.contains(&"read-plists".to_owned()));
     assert!(!capabilities.contains(&"read-property-lists".to_owned()));
-    assert!(ENCODER.contains("\"math\""));
     assert!(CAPABILITIES.contains("\"read-plists\""));
+    let nodes = constructors(NODES, "type Node A =");
+    assert!(nodes.contains(&"Typeset".to_owned()));
+    assert!(told(TELLING).contains(&"Typeset".to_owned()));
 }
 
 #[test]
 fn the_declaration_matches_what_the_host_dispatches() {
     for kind in DRAWN {
         assert!(
-            RENDER.contains(&format!("\"{kind}\" =>")),
-            "render.rs draws no {kind}"
+            VIEW.contains(&format!("Kind::{kind}")),
+            "view.rs draws no {kind}"
         );
     }
-    for kind in REFUSED {
+    for kind in TOLD {
         assert!(
-            !RENDER.contains(&format!("\"{kind}\" =>")),
-            "render.rs draws {kind}: move it to DRAWN"
+            TREE.contains(&format!("Kind::{kind}")),
+            "tree.rs tells no {kind}"
         );
     }
     for kind in ANSWERED {

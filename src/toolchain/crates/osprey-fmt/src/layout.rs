@@ -6,12 +6,12 @@
 //! with four spaces per level. A standalone comment takes the depth of the
 //! code it precedes.
 
-use crate::scan::{scan_source, Line};
+use crate::scan::{scan_source, Comments, Line};
 use crate::{finalize, indent_to};
 
 /// Reformat ML-flavor `src`, re-gridding its layout to a four-space step.
 pub(crate) fn format(src: &str) -> String {
-    let lines: Vec<Line> = scan_source(src);
+    let lines: Vec<Line> = scan_source(src, Comments::ml());
     let layout = code_layout(src, &lines);
     let out = render(&lines, &layout);
     finalize(&out)

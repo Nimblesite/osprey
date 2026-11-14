@@ -28,6 +28,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Rust
+      id: rust
       uses: dtolnay/rust-toolchain@stable
       with:
         toolchain: ${{ inputs.rust-toolchain }}
@@ -41,8 +42,14 @@ runs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-osprey-
+
+    # dependencies.py stages the GPUI dependency sources from pinned archives and refuses a staged
+    # tree that differs from its declared digest, so a cached copy from an older inventory is dropped.
+    - name: Drop cached GPUI dependency sources
+      shell: bash
+      run: rm -rf target/gpui-dependencies
 
     # The hosted runner's Azure mirror serves some main-pocket packages (zsh, libc6-dbg) at about
     # 40 kB/s, which spent five minutes of every Linux setup. The downloaded packages are cached
@@ -96,7 +103,7 @@ runs:
         . /etc/os-release
         wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
           | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-        echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VER} main" \
+        echo "deb https://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VER} main" \
           | sudo tee /etc/apt/sources.list.d/llvm-${LLVM_VER}.list >/dev/null
         sudo apt-get update
         # No fallback to the distro lldb: 18's DAP server is the known-broken

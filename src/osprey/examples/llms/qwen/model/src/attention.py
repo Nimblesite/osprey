@@ -109,19 +109,30 @@ def score(q, keys, t, j, h, kvh, width, q_width, kv_width, scale):
     return fold(range(0, width), toFloat32(0.0), lambda a, d: a + at(q, wrapAdd(wrapMul(t, q_width), wrapAdd(wrapMul(h, width), d))) * at(keys, wrapAdd(wrapMul(j, kv_width), wrapAdd(wrapMul(kvh, width), d)))) * scale
 
 
-def score_at(q, keys, seg, g, i, q_width, scale):
+def score_at(q, keys, span_mul, span_shift, seg_rows, hm, hs, gm, gs, heads, width, kv_width, i, q_width, scale):
     """Score cell `i` of a `[count, rows, heads]` grid: its query row, position and head."""
-    t = quot(i, seg.span.mul, seg.span.shift)
-    r = rem(i, seg.span.mul, seg.span.shift, seg.rows * g.heads)
-    h = rem(r, g.hm, g.hs, g.heads)
-    return score(q, keys, t, quot(r, g.hm, g.hs), h, quot(h, g.gm, g.gs), g.width, q_width, g.kv_width, scale)
+    t = quot(i, span_mul, span_shift)
+    r = rem(i, span_mul, span_shift, seg_rows * heads)
+    h = rem(r, hm, hs, heads)
+    return score(q, keys, t, quot(r, hm, hs), h, quot(h, gm, gs), width, q_width, kv_width, scale)
 
 
 def scores(q, seg, config, shapes):
     """Every query row's score against every position of the segment for every head."""
     g = geometry(config, shapes)
-    scale = toFloat32(1.0 / sqrt(toFloat(g.width)))
-    return must(gpuMap(seg.scores, lambda i: score_at(q, seg.keys, seg, g, i, g.heads * g.width, scale)))
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    hm = g.hm
+    hs = g.hs
+    gm = g.gm
+    gs = g.gs
+    keys = seg.keys
+    seg_rows = seg.rows
+    span_mul = seg.span.mul
+    span_shift = seg.span.shift
+    scale = toFloat32(1.0 / sqrt(toFloat(width)))
+    return must(gpuMap(seg.scores, lambda i: score_at(q, keys, span_mul, span_shift, seg_rows, hm, hs, gm, gs, heads, width, kv_width, i, heads * width, scale)))
 
 
 def cell_of(t, j, h, rows, heads):
@@ -136,14 +147,24 @@ def peak(s, t, h, rows, heads, limit):
 
 def peaks_of(s, seg, rows, config, shapes):
     g = geometry(config, shapes)
-    return must(gpuMap(rows.q_heads, lambda i: peak(s, quot(i, g.hm, g.hs), rem(i, g.hm, g.hs, g.heads), seg.rows, g.heads, seg.limit)))
+    heads = g.heads
+    hm = g.hm
+    hs = g.hs
+    seg_rows = seg.rows
+    limit = seg.limit
+    return must(gpuMap(rows.q_heads, lambda i: peak(s, quot(i, hm, hs), rem(i, hm, hs, heads), seg_rows, heads, limit)))
 
 
 def exps_of(s, top, seg, config, shapes):
     """`exp(s - top)` of every score cell, once: the totals and the weighted sums
     both read it, so no output cell recomputes it per head offset."""
     g = geometry(config, shapes)
-    return must(gpuMap(seg.scores, lambda i: exp(at(s, i) - at(top, wrapAdd(wrapMul(quot(i, seg.span.mul, seg.span.shift), g.heads), rem(i, g.hm, g.hs, g.heads))))))
+    heads = g.heads
+    hm = g.hm
+    hs = g.hs
+    span_mul = seg.span.mul
+    span_shift = seg.span.shift
+    return must(gpuMap(seg.scores, lambda i: exp(at(s, i) - at(top, wrapAdd(wrapMul(quot(i, span_mul, span_shift), heads), rem(i, hm, hs, heads))))))
 
 
 def total(e, t, h, rows, heads, limit):
@@ -153,7 +174,12 @@ def total(e, t, h, rows, heads, limit):
 
 def totals_of(e, seg, rows, config, shapes):
     g = geometry(config, shapes)
-    return must(gpuMap(rows.q_heads, lambda i: total(e, quot(i, g.hm, g.hs), rem(i, g.hm, g.hs, g.heads), seg.rows, g.heads, seg.limit)))
+    heads = g.heads
+    hm = g.hm
+    hs = g.hs
+    seg_rows = seg.rows
+    limit = seg.limit
+    return must(gpuMap(rows.q_heads, lambda i: total(e, quot(i, hm, hs), rem(i, hm, hs, heads), seg_rows, heads, limit)))
 
 
 def attended(e, inv, values, t, h, d, rows, heads, limit, width, kv_width, kvh):
@@ -161,19 +187,29 @@ def attended(e, inv, values, t, h, d, rows, heads, limit, width, kv_width, kvh):
     return fold(range(0, rows), toFloat32(0.0), lambda a, j: a if j > wrapAdd(limit, t) else a + at(e, cell_of(t, j, h, rows, heads)) * at(inv, wrapAdd(wrapMul(t, heads), h)) * at(values, wrapAdd(wrapMul(j, kv_width), wrapAdd(wrapMul(kvh, width), d))))
 
 
-def attended_at(e, inv, seg, g, mul, shift, i):
+def attended_at(e, inv, values, seg_rows, seg_limit, hm, hs, gm, gs, heads, width, kv_width, mul, shift, i):
     """Output cell `i` of the stacked `[count, heads * width]` rows: its query row, head and offset."""
     hg = quot(i, mul, shift)
-    h = rem(hg, g.hm, g.hs, g.heads)
-    return attended(e, inv, seg.values, quot(hg, g.hm, g.hs), h, rem(i, mul, shift, g.width), seg.rows, g.heads, seg.limit, g.width, g.kv_width, quot(h, g.gm, g.gs))
+    h = rem(hg, hm, hs, heads)
+    return attended(e, inv, values, quot(hg, hm, hs), h, rem(i, mul, shift, width), seg_rows, heads, seg_limit, width, kv_width, quot(h, gm, gs))
 
 
 def output(e, inv, seg, rows, config, shapes):
     """`softmax(scores) @ values` of the segment for every query row, heads side by side."""
     g = geometry(config, shapes)
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    hm = g.hm
+    hs = g.hs
+    gm = g.gm
+    gs = g.gs
+    values = seg.values
+    seg_rows = seg.rows
+    seg_limit = seg.limit
     mul = shapes.head_dim.mul
     shift = shapes.head_dim.shift
-    return must(gpuMap(rows.q_cells, lambda i: attended_at(e, inv, seg, g, mul, shift, i)))
+    return must(gpuMap(rows.q_cells, lambda i: attended_at(e, inv, values, seg_rows, seg_limit, hm, hs, gm, gs, heads, width, kv_width, mul, shift, i)))
 
 
 def reciprocal(total_a, total_b, rows):

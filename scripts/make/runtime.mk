@@ -95,6 +95,9 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/tensor_file.c          -o bin/tensor_file.o && \
 	  $(CC) $(B) runtime/tensor_list.c          -o bin/tensor_list.o && \
 	  $(CC) $(B) runtime/test_runtime.c         -o bin/test_runtime.o && \
+	  $(CC) $(B) runtime/native_bridge.c        -o bin/native_bridge.o && \
+	  $(CC) $(B) runtime/native_bridge_lifecycle.c -o bin/native_bridge_lifecycle.o && \
+	  $(CC) $(B) runtime/native_scene.c         -o bin/native_scene.o && \
 	  $(CC) $(B) runtime/coverage_runtime.c     -o bin/coverage_runtime.o && \
 	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \
 	  $(CC) $(B) runtime/profiler_sampler.c     -o bin/profiler_sampler.o && \

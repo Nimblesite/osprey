@@ -91,9 +91,9 @@ type Attempt =
     settled : string
 
 (** Runs `acceptPositive 1` under a Retry handler feeding `candidate n` per
-    attempt, recording every issued candidate and every settled answer
-    ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]). *)
-retryRun candidate =
+    attempt, recording every issued candidate through `format (n, value)` and
+    every settled answer ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE]). *)
+tracedRun (candidate, format) =
     mut calls = 0
     mut issued = ""
     mut settled = ""
@@ -102,31 +102,35 @@ retryRun candidate =
             supply n =>
                 calls := calls + 1 
                 value = candidate n
-                issued := "${issued}${toString n}:${toString value}|"
+                issued := "${issued}${format (n, value)}"
                 answer = resume value
-                settled := "${settled}${toString n}:${toString answer}|"
+                settled := valueTag (settled, "", n, answer)
                 answer
         acceptPositive 1
     Attempt (accepted = accepted, calls = calls, issued = issued, settled = settled)
 
+(** The same run whose trail names the attempt and the candidate it drew. *)
+retryRun candidate = tracedRun (candidate, \(n, value) => "${toString n}:${toString value}|")
+
 (** True when `haystack` contains every fragment in `wanted`. *)
-carriesAll (haystack, wanted) = match wanted
-    [] => true
-    [head, ...tail] => contains haystack head && carriesAll (haystack, tail)
+carriesAll (haystack, wanted) =
+    foldList (wanted, true, \(acc, head) => acc && contains haystack head)
 
 (** True when `haystack` contains none of the fragments in `banned`. *)
-carriesNone (haystack, banned) = match banned
-    [] => true
-    [head, ...tail] => !(contains haystack head) && carriesNone (haystack, tail)
+carriesNone (haystack, banned) =
+    foldList (banned, true, \(acc, head) => acc && !(contains haystack head))
+
+(** True when every flag in `flags` holds, so a row of checks needs no expected list. *)
+allTrue flags = foldList (flags, true, \(acc, head) => acc && head)
 
 (** The transcript that appends one channel entry: `letter` then the attempt `n`. *)
 channelTag (trail, letter, n) = "${trail}${letter}${toString n}|"
 
+(** The transcript that appends one tagged entry: `letter`, the attempt `n`, then `value`. *)
+valueTag (trail, letter, n, value) = "${trail}${letter}${toString n}:${toString value}|"
+
 (** The two flags a bounded transcript must satisfy: `head` opens it, `tail` closes it. *)
 edges (text, head, tail) = [startsWith text head, endsWith text tail]
-
-(** True when a row of three bounded transcripts all open and close as expected. *)
-edgesHold flags = structuralEquals flags [true, true, true, true, true, true]
 
 (** [EFFECTS-RESUME] The handler alone decides how many rejections precede
     success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each run
@@ -154,10 +158,10 @@ retryAttemptMatrixCase () =
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll "each rejection count accepts its own magnitude" [
         structuralEquals [r0.accepted, r1.accepted, r2.accepted, r8.accepted] [100, 200, 300, 900],
-        structuralEquals [
+        allTrue [
             r0.accepted != r1.accepted, r1.accepted != r2.accepted, r2.accepted != r8.accepted,
             r0.accepted < r1.accepted, r1.accepted < r2.accepted, r2.accepted < r8.accepted
-        ] [true, true, true, true, true, true],
+        ],
         (r0.accepted + r1.accepted ) == 300,
         (r0.accepted + r1.accepted + r2.accepted + r8.accepted ) == 1500,
         r8.accepted == (r0.accepted * 9 ),
@@ -169,9 +173,8 @@ retryAttemptMatrixCase () =
         structuralEquals [r0.calls, r1.calls, r2.calls, r8.calls] [1, 2, 3, 9],
         (r0.calls + r1.calls + r2.calls + r8.calls ) == 15,
         structuralEquals [(r1.calls - r0.calls ), (r2.calls - r1.calls ), (r8.calls - r2.calls )] [1, 1, 6],
-        structuralEquals [r0.calls != r1.calls, r1.calls != r8.calls, r0.calls > 0,
-            r8.calls > r2.calls, r2.calls > r1.calls, r1.calls > r0.calls]
-            [true, true, true, true, true, true],
+        allTrue [r0.calls != r1.calls, r1.calls != r8.calls, r0.calls > 0,
+            r8.calls > r2.calls, r2.calls > r1.calls, r1.calls > r0.calls],
         (r8.calls - 1 ) == 8,
         (r2.calls - 1 ) == 2
     ]
@@ -181,7 +184,7 @@ retryAttemptMatrixCase () =
         structuralEquals [r0.issued, r1.issued, r2.issued, r8.issued] [
             "1:100|", "1:0|2:200|", "1:0|2:-5|3:300|",
             "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|"],
-        edgesHold (listConcat (listConcat
+        allTrue (listConcat (listConcat
             (edges (r1.issued, "1:0|", "2:200|")) (edges (r2.issued, "1:0|2:-5|", "3:300|")))
             (edges (r8.issued, "1:-1|", "9:900|"))),
         contains r8.issued "5:-5|",
@@ -197,9 +200,8 @@ retryAttemptMatrixCase () =
             "1:100|", "2:200|1:200|", "3:300|2:300|1:300|",
             "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|"],
         r0.settled == r0.issued,
-        structuralEquals [r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued]
-            [true, true, true],
-        edgesHold (listConcat (listConcat
+        allTrue [r1.settled != r1.issued, r2.settled != r2.issued, r8.settled != r8.issued],
+        allTrue (listConcat (listConcat
             (edges (r1.settled, "2:200|", "1:200|")) (edges (r2.settled, "3:300|", "1:300|")))
             (edges (r8.settled, "9:900|", "1:900|"))),
         structuralEquals [contains r1.settled "1:0|", contains r2.settled "2:-5|"] [false, false]
@@ -207,8 +209,7 @@ retryAttemptMatrixCase () =
 
     // Four runs, four separate cells: nothing crosses between them.
     checkAll "no retry region leaks into another" [
-        structuralEquals [r0.issued != r1.issued, r1.issued != r2.issued, r2.issued != r8.issued]
-            [true, true, true],
+        allTrue [r0.issued != r1.issued, r1.issued != r2.issued, r2.issued != r8.issued],
         carriesNone (r0.issued, ["200"]),
         carriesNone (r1.issued, ["300"]),
         carriesNone (r2.issued, ["900"]),
@@ -222,45 +223,19 @@ retryAttemptMatrixCase () =
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
 test "retry loops accept after zero one two and eight rejections" (exactly retryAttemptMatrixCase)
 
-type Exhaustion =
+(** One observed retry region: its answer, attempt count, the trail of issued
+    operations, and the settlement every resumed frame saw. *)
+type Region =
     out : int
     calls : int
     trail : string
     settled : string
 
-(** One retry loop whose handler refuses every attempt past `limit` by
-    answering `sentinel` without resuming; it records the attempts, the trail
-    of tries and refusals, and the frames the abandoned continuation settles. *)
-exhausted (limit, sentinel) =
-    mut calls = 0
-    mut trail = ""
-    mut settled = ""
-    out =
-        handle Retry
-            supply n =>
-                calls := calls + 1 
-                match n > limit
-                    true =>
-                        trail := "${trail}giveup:${toString n}|"
-                        sentinel
-                    false =>
-                        trail := "${trail}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled := "${settled}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
-    Exhaustion(out = out, calls = calls, trail = trail, settled = settled)
-
-(** One observed budget run: the region's answer, its refusal count, the trail
-    of tries and giveups, and the settlement every resumed frame saw. *)
-type BudgetRun =
-    out : int
-    calls : int
-    trail : string
-    settled : string
+(** The number of `tag` occurrences `trail` carries: one entry per operation. *)
+countTag (trail, tag) = length trail - length ((replace trail tag "") ?: trail)
 
 (** The number of `|`-terminated entries `trail` carries: one per operation. *)
-barCount trail = length trail - length ((replace trail "|" "") ?: trail)
+barCount trail = countTag (trail, "|")
 
 (** The sentinel a `budget` refusal answers once `n` has passed it. *)
 owed budget = (0 - (budget * 1000) )
@@ -288,10 +263,10 @@ budgetRun (budget, jackpot, prize) =
                             true => prize
                             false => (0 - n)
                         answer = resume candidate
-                        settled := "${settled}${toString n}:${toString answer}|"
+                        settled := valueTag (settled, "", n, answer)
                         answer
         acceptPositive 1
-    BudgetRun (out = out, calls = barCount trail, trail = trail, settled = settled)
+    Region (out = out, calls = barCount trail, trail = trail, settled = settled)
 
 (** [EFFECTS-RESUME] "returning from the selected branch without resuming stops
     the suspended computation and its value becomes the result of the whole
@@ -307,8 +282,8 @@ retryBudgetExhaustionCase () =
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll "an exhausted budget answers with its own sentinel" [
         structuralEquals [b1.out, b2.out, b3.out, b5.out] [(0 - 1000) , (0 - 2000) , (0 - 3000) , 777],
-        structuralEquals [b1.out < 0, b2.out < 0, b3.out < 0, b5.out > 0] [true, true, true, true],
-        structuralEquals [b1.out != b2.out, b2.out != b3.out, b1.out != b5.out] [true, true, true],
+        allTrue [b1.out < 0, b2.out < 0, b3.out < 0, b5.out > 0],
+        allTrue [b1.out != b2.out, b2.out != b3.out, b1.out != b5.out],
         (b1.out + b2.out + b3.out ) == ((0 - 6000) ),
         (b2.out - b1.out ) == ((0 - 1000) ),
         b3.out == (b1.out * 3 )
@@ -318,9 +293,8 @@ retryBudgetExhaustionCase () =
     checkAll "attempt count is the budget plus one refusal" [
         structuralEquals [b1.calls, b2.calls, b3.calls, b5.calls] [2, 3, 4, 3],
         structuralEquals [(b1.calls - 1 ), (b2.calls - 1 ), (b3.calls - 1 )] [1, 2, 3],
-        structuralEquals [b1.calls < b2.calls, b2.calls < b3.calls, b2.calls == b5.calls,
-            b1.calls != b3.calls, b3.calls > b5.calls, b1.calls > 0]
-            [true, true, true, true, true, true],
+        allTrue [b1.calls < b2.calls, b2.calls < b3.calls, b2.calls == b5.calls,
+            b1.calls != b3.calls, b3.calls > b5.calls, b1.calls > 0],
         (b1.calls + b2.calls + b3.calls ) == 9
     ]
 
@@ -329,10 +303,9 @@ retryBudgetExhaustionCase () =
         structuralEquals [b1.trail, b2.trail, b3.trail, b5.trail] [
             "try:1|giveup:2|", "try:1|try:2|giveup:3|",
             "try:1|try:2|try:3|giveup:4|", "try:1|try:2|try:3|"],
-        structuralEquals [startsWith b1.trail "try:1|", endsWith b1.trail "giveup:2|",
+        allTrue [startsWith b1.trail "try:1|", endsWith b1.trail "giveup:2|",
             endsWith b2.trail "giveup:3|", endsWith b3.trail "giveup:4|",
-            endsWith b5.trail "try:3|", contains b3.trail "try:2|"]
-            [true, true, true, true, true, true],
+            endsWith b5.trail "try:3|", contains b3.trail "try:2|"],
         carriesNone (b5.trail, ["giveup"]),
         carriesNone (b1.trail, ["try:2|"]),
         carriesNone (b2.trail, ["try:3|"]),
@@ -346,9 +319,9 @@ retryBudgetExhaustionCase () =
         structuralEquals [b1.settled, b2.settled, b3.settled, b5.settled] [
             "1:-1000|", "2:-2000|1:-2000|",
             "3:-3000|2:-3000|1:-3000|", "3:777|2:777|1:777|"],
-        structuralEquals [startsWith b2.settled "2:-2000|", endsWith b2.settled "1:-2000|",
+        allTrue [startsWith b2.settled "2:-2000|", endsWith b2.settled "1:-2000|",
             startsWith b3.settled "3:-3000|", endsWith b3.settled "1:-3000|",
-            contains b3.settled "2:-3000|"] [true, true, true, true, true],
+            contains b3.settled "2:-3000|"],
         carriesNone (b1.settled, ["2:"]),
         carriesNone (b2.settled, ["3:"]),
         carriesNone (b3.settled, ["4:"]),
@@ -365,8 +338,8 @@ retryBudgetExhaustionCase () =
             contains b5.trail "giveup:", contains b5.settled "3:777|"
         ] [true, false, true, false, true, false, false, true],
         b1.out == ((0 - 1000) ),
-        structuralEquals [b2.out != b5.out, b5.out != b3.out, b1.trail != b2.trail,
-            b5.settled != b3.settled] [true, true, true, true]
+        allTrue [b2.out != b5.out, b5.out != b3.out, b1.trail != b2.trail,
+            b5.settled != b3.settled]
     ]
 
 // Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
@@ -446,65 +419,55 @@ comboBody () =
     its type is the operation's, not the region's. Five partial one-arm regions
     cross the payload-type axis; a sixth region supplies all six arms at once. *)
 retryPayloadChannelMatrixCase () =
-    mut textCalls = 0
     mut textTrail = ""
     word =
         handle Payload
             text n =>
-                textCalls := textCalls + 1 
                 candidate = match n
                     1 => "no"
                     2 => "abc"
                     _ => "ready"
-                textTrail := "${textTrail}${toString n}:${candidate}|"
+                textTrail := valueTag (textTrail, "", n, candidate)
                 resume candidate
         takeText 1
 
-    mut flagCalls = 0
     mut flagTrail = ""
     firstTrue =
         handle Payload
             flag n =>
-                flagCalls := flagCalls + 1 
                 ok = n > 3
-                flagTrail := "${flagTrail}${toString n}:${toString ok}|"
+                flagTrail := valueTag (flagTrail, "", n, ok)
                 resume ok
         takeFlag 1
 
-    mut ratioCalls = 0
     mut ratioTrail = ""
     acceptedRatio =
         handle Payload
             ratio n =>
-                ratioCalls := ratioCalls + 1 
                 candidate = match n
                     1 => 0.25
                     2 => 1.0
                     _ => 2.5
-                ratioTrail := "${ratioTrail}${toString n}|"
+                ratioTrail := channelTag (ratioTrail, "", n)
                 resume candidate
         takeRatio 1
 
-    mut checkedCalls = 0
     mut checkedTrail = ""
     checkedValue =
         handle Payload
             checked n =>
-                checkedCalls := checkedCalls + 1 
-                checkedTrail := "${checkedTrail}${toString n}|"
+                checkedTrail := channelTag (checkedTrail, "", n)
                 match n
                     1 => resume (Error(message = "cold"))
                     2 => resume (Error(message = "warm"))
                     _ => resume (Success(value = 4200))
         takeChecked 1
 
-    mut markCalls = 0
     mut markTrail = ""
     markTotal =
         handle Payload
             mark n =>
-                markCalls := markCalls + 1 
-                markTrail := "${markTrail}${toString n}|"
+                markTrail := channelTag (markTrail, "", n)
                 resume ()
         markDown 4
 
@@ -532,16 +495,20 @@ retryPayloadChannelMatrixCase () =
                 resume candidate
         comboBody ()
 
-    (** One transcript entry per handler operation, so the count is the trail's. *)
+    (** One transcript entry per handler operation, so every count is its trail's. *)
+    textCalls = barCount textTrail
+    flagCalls = barCount flagTrail
+    ratioCalls = barCount ratioTrail
+    checkedCalls = barCount checkedTrail
+    markCalls = barCount markTrail
     comboCalls = barCount comboTrail
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
     checkAll "each payload type completes its own retry loop" [
         word == "ready",
         structuralEquals [length word, firstTrue, checkedValue, markTotal, combo] [5, 4, 4200, 4, 73],
-        structuralEquals [acceptedRatio == 2.5, acceptedRatio > 1.0, word != "abc", firstTrue != 3,
-            acceptedRatio != 1.0, checkedValue != 0, markTotal != 0, combo < checkedValue]
-            [true, true, true, true, true, true, true, true],
+        allTrue [acceptedRatio == 2.5, acceptedRatio > 1.0, word != "abc", firstTrue != 3,
+            acceptedRatio != 1.0, checkedValue != 0, markTotal != 0, combo < checkedValue],
         (markTotal + firstTrue ) == 8
     ]
 
@@ -549,8 +516,8 @@ retryPayloadChannelMatrixCase () =
     checkAll "operation counts per payload channel" [
         structuralEquals [textCalls, flagCalls, ratioCalls, checkedCalls, markCalls, comboCalls]
             [3, 4, 3, 3, 4, 8],
-        structuralEquals [textCalls == ratioCalls, ratioCalls == checkedCalls, flagCalls == markCalls,
-            textCalls != flagCalls, comboCalls > textCalls] [true, true, true, true, true],
+        allTrue [textCalls == ratioCalls, ratioCalls == checkedCalls, flagCalls == markCalls,
+            textCalls != flagCalls, comboCalls > textCalls],
         (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ) == 17,
         (comboCalls - markCalls ) == 4,
         markCalls == markTotal
@@ -561,24 +528,23 @@ retryPayloadChannelMatrixCase () =
         structuralEquals [textTrail, flagTrail, ratioTrail, checkedTrail, markTrail] [
             "1:no|2:abc|3:ready|", "1:false|2:false|3:false|4:true|",
             "1|2|3|", "1|2|3|", "4|3|2|1|"],
-        structuralEquals [ratioTrail == checkedTrail, markTrail != ratioTrail,
+        allTrue [ratioTrail == checkedTrail, markTrail != ratioTrail,
             startsWith textTrail "1:no|", endsWith textTrail "3:ready|", contains textTrail "2:abc|",
             startsWith flagTrail "1:false|", endsWith flagTrail "4:true|",
-            startsWith markTrail "4|", endsWith markTrail "1|"]
-            [true, true, true, true, true, true, true, true, true],
+            startsWith markTrail "4|", endsWith markTrail "1|"],
         structuralEquals [contains flagTrail "5:", contains textTrail "4:"] [false, false]
     ]
 
     // The six-arm region interleaves all six channels in body order.
     checkAll "a six-arm region serves every channel in body order" [
         comboTrail == "t1|f1|f2|r1|c1|m0|s1|s2|",
-        structuralEquals [startsWith comboTrail "t1|", endsWith comboTrail "s2|"] [true, true],
+        allTrue [startsWith comboTrail "t1|", endsWith comboTrail "s2|"],
         carriesAll (comboTrail, ["f1|f2|", "m0|", "c1|"]),
         carriesNone (comboTrail, ["t2|", "s3|", "f3|"]),
         length comboTrail == 24,
         combo == (6 + 2 + 1 + 60 + 4 ),
         comboCalls == 8,
-        structuralEquals [comboTrail != textTrail, combo != checkedValue] [true, true]
+        allTrue [comboTrail != textTrail, combo != checkedValue]
     ]
 
     // One channel's retries never disturb another's cell.
@@ -588,36 +554,13 @@ retryPayloadChannelMatrixCase () =
         carriesNone (ratioTrail, [":"]),
         carriesNone (checkedTrail, [":"]),
         carriesNone (markTrail, [":"]),
-        structuralEquals [textTrail != flagTrail, textCalls != markCalls, word != "steady",
-            checkedValue != combo, acceptedRatio != 3.5, firstTrue == markTotal]
-            [true, true, true, true, true, true],
+        allTrue [textTrail != flagTrail, textCalls != markCalls, word != "steady",
+            checkedValue != combo, acceptedRatio != 3.5, firstTrue == markTotal],
         structuralEquals [length ratioTrail, length markTrail, length flagTrail] [6, 8, 31]
     ]
 
 // Crosses the payload-type axis against partial one-arm and six-arm regions.
 test "retry channels carry text boolean float checked and Unit payloads" (exactly retryPayloadChannelMatrixCase)
-
-(** One scripted source run: the accepted candidate, how many attempts it cost,
-    and the trail its candidates left behind. *)
-type Sourced =
-    accepted : int
-    calls : int
-    trail : string
-
-(** Runs `acceptPositive 1` under a Retry handler drawing `candidate n` and
-    appending `render (n, candidate)` to the trail per attempt. *)
-scriptedRun (candidate, render) =
-    mut calls = 0
-    mut trail = ""
-    accepted =
-        handle Retry
-            supply n =>
-                calls := calls + 1 
-                value = candidate n
-                trail := "${trail}${render (n, value)}|"
-                resume value
-        acceptPositive 1
-    Sourced (accepted = accepted, calls = calls, trail = trail)
 
 (** [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
     only the handler's own cursor cell advances, so a lost, repeated or
@@ -638,38 +581,36 @@ retryScriptedCandidateMatrixCase () =
         acceptPositive 1
 
     table = mapSet (mapSet (mapSet (Map (), "1", 0), "2", 0), "3", 8888)
-    fromMap = scriptedRun (
+    fromMap = tracedRun (
         (\n => (mapGet (table, toString n) ?: (0 - 7) )),
-        (\(n, v) => "${toString n}=>${toString v}"))
+        (\(n, v) => "${toString n}=>${toString v}|"))
 
     (** A sparse table: the three missing keys take the declared `Error` branch,
         whose message length is the negative candidate that asks again. *)
     sparse = mapSet (Map (), "4", 5555)
-    fromSparse = scriptedRun (
-        (\n =>
-            match mapGet (sparse, toString n)
-                Success value => value
-                Error message => (0 - length message) ),
-        (\(n, v) => "${toString n}:${toString v}"))
+    fromSparse = retryRun (\n =>
+        match mapGet (sparse, toString n)
+            Success value => value
+            Error message => (0 - length message) )
 
     (** Boundary candidates: zero, minus one, then the smallest accepted value. *)
-    fromBoundary = scriptedRun (
+    fromBoundary = tracedRun (
         (\n =>
             match n
                 1 => 0
                 2 => (0 - 1)
                 3 => 1
                 _ => 0),
-        (\(_n, v) => toString v))
+        (\(_n, v) => "${toString v}|"))
 
     // Each loop stops on the first valid candidate its source offers.
     checkAll "scripted loops accept the first valid candidate" [
         structuralEquals [fromList, fromMap.accepted, fromSparse.accepted, fromBoundary.accepted]
             [4321, 8888, 5555, 1],
-        structuralEquals [fromList != fromMap.accepted, fromMap.accepted != fromSparse.accepted,
+        allTrue [fromList != fromMap.accepted, fromMap.accepted != fromSparse.accepted,
             fromBoundary.accepted < fromList, fromList > 0, fromMap.accepted > 0,
             fromSparse.accepted > 0, fromBoundary.accepted > 0, fromMap.accepted > fromSparse.accepted,
-            fromSparse.accepted > fromList] [true, true, true, true, true, true, true, true, true],
+            fromSparse.accepted > fromList],
         (fromList + fromMap.accepted + fromSparse.accepted + fromBoundary.accepted ) == 18765
     ]
 
@@ -677,9 +618,8 @@ retryScriptedCandidateMatrixCase () =
     checkAll "the cursor advances once per operation" [
         structuralEquals [scriptCalls, cursor, fromMap.calls, fromSparse.calls, fromBoundary.calls]
             [6, 6, 3, 4, 3],
-        structuralEquals [cursor == scriptCalls, cursor == listLength script,
-            fromMap.calls == fromBoundary.calls, scriptCalls > fromSparse.calls, cursor != 0]
-            [true, true, true, true, true],
+        allTrue [cursor == scriptCalls, cursor == listLength script,
+            fromMap.calls == fromBoundary.calls, scriptCalls > fromSparse.calls, cursor != 0],
         listLength script == 6,
         (scriptCalls - fromMap.calls ) == 3,
         (fromSparse.calls - fromBoundary.calls ) == 1,
@@ -689,8 +629,8 @@ retryScriptedCandidateMatrixCase () =
     // The drawn transcript follows list order exactly, boundaries included.
     checkAll "the drawn transcript follows list order" [
         drawn == "0|-1|0|-100000|0|4321|",
-        structuralEquals [startsWith drawn "0|-1|", endsWith drawn "4321|",
-            contains drawn "-100000|"] [true, true, true],
+        allTrue [startsWith drawn "0|-1|", endsWith drawn "4321|",
+            contains drawn "-100000|"],
         carriesNone (drawn, ["|4321|4321"]),
         structuralEquals [(listGet (script, 0) ?: 1), (listGet (script, 1) ?: 0),
             (listGet (script, 3) ?: 0), (listGet (script, 5) ?: 0)]
@@ -704,29 +644,28 @@ retryScriptedCandidateMatrixCase () =
 
     // A map-driven loop reads exactly one key per attempt.
     checkAll "map-driven retries read one key per attempt" [
-        structuralEquals [fromMap.trail, fromSparse.trail] [
+        structuralEquals [fromMap.issued, fromSparse.issued] [
             "1=>0|2=>0|3=>8888|", "1:-21|2:-21|3:-21|4:5555|"],
         structuralEquals [mapLength table, mapLength sparse] [3, 1],
         structuralEquals [mapContains (table, "3"), mapContains (table, "4"), mapContains (sparse, "4"),
             mapContains (sparse, "1")] [true, false, true, false],
         structuralEquals [(mapGet (table, "3") ?: 0), (mapGet (sparse, "4") ?: 0)] [8888, 5555],
         length "mapGet: key not found" == 21,
-        structuralEquals [startsWith fromMap.trail "1=>0|", endsWith fromMap.trail "3=>8888|",
-            endsWith fromSparse.trail "4:5555|", contains fromSparse.trail "3:-21|"]
-            [true, true, true, true]
+        allTrue [startsWith fromMap.issued "1=>0|", endsWith fromMap.issued "3=>8888|",
+            endsWith fromSparse.issued "4:5555|", contains fromSparse.issued "3:-21|"]
     ]
 
     // Zero and minus one are rejected; one is the smallest accepted candidate.
     checkAll "zero and minus one are rejected and one is accepted" [
-        fromBoundary.trail == "0|-1|1|",
+        fromBoundary.issued == "0|-1|1|",
         fromBoundary.accepted == 1,
-        structuralEquals [startsWith fromBoundary.trail "0|", contains fromBoundary.trail "-1|",
-            endsWith fromBoundary.trail "1|"] [true, true, true],
-        carriesNone (fromBoundary.trail, ["2|"]),
-        structuralEquals [length fromBoundary.trail, fromBoundary.calls] [7, 3],
-        fromBoundary.trail != drawn,
-        structuralEquals [contains drawn "8888", contains fromMap.trail "4321",
-            contains fromSparse.trail "8888"] [false, false, false],
+        allTrue [startsWith fromBoundary.issued "0|", contains fromBoundary.issued "-1|",
+            endsWith fromBoundary.issued "1|"],
+        carriesNone (fromBoundary.issued, ["2|"]),
+        structuralEquals [length fromBoundary.issued, fromBoundary.calls] [7, 3],
+        fromBoundary.issued != drawn,
+        structuralEquals [contains drawn "8888", contains fromMap.issued "4321",
+            contains fromSparse.issued "8888"] [false, false, false],
         fromBoundary.accepted != fromSparse.accepted
     ]
 
@@ -740,13 +679,9 @@ effect Budget
     (** Charge `weight` against the shared budget and answer the running charge. *)
     charge : int => int
 
-(** One Budget-charging retry region: its answer, attempt count, tagged trail
-    and tagged settlement. *)
-type Region =
-    out : int
-    calls : int
-    trail : string
-    settled : string
+(** The transcript that appends one counted entry: `letter`, the attempt `tag`,
+    the supplied argument `n` and the `candidate` that answered it. *)
+trailTag (trail, letter, tag, n, candidate) = "${trail}${letter}${toString tag}=${toString n}:${toString candidate}|"
 
 (** Runs `body ()` under a Retry region that charges `weight` per attempt,
     accepts `accept` only once `n` passes `limit`, and tags both transcripts
@@ -759,13 +694,14 @@ chargeRetry (prefix, limit, accept, weight, body) =
         handle Retry
             supply n =>
                 calls := calls + 1 
+                tag = calls
                 candidate = match n > limit
                     true => accept
                     false => 0
-                trail := "${trail}${prefix}${toString calls}=${toString n}:${toString candidate}|"
+                trail := trailTag (trail, prefix, tag, n, candidate)
                 _ = perform Budget.charge weight
                 answer = resume candidate
-                settled := "${settled}${prefix}${toString calls}:${toString answer}|"
+                settled := valueTag (settled, prefix, tag, answer)
                 answer
         body ()
     Region (out = out, calls = calls, trail = trail, settled = settled)
@@ -776,57 +712,48 @@ nestedRetryRegionsCase () =
     mut charged = 0
     mut chargeCalls = 0
     mut chargeTrail = ""
-    mut outerCalls = 0
-    mut outerTrail = ""
-    mut outerSettled = ""
     mut innerCalls = 0
     mut innerTrail = ""
     mut innerSettled = ""
 
-    total =
+    outer =
         handle Budget
             charge weight =>
                 chargeCalls := chargeCalls + 1 
                 charged := charged + weight 
                 chargeTrail := "${chargeTrail}${toString weight}@${toString charged}|"
                 charged
-        handle Retry
-            supply n =>
-                outerCalls := outerCalls + 1 
-                tag = outerCalls
-                candidate = match n > 2
-                    true => 50
-                    false => 0
-                outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
-                _ = perform Budget.charge 10
-                answer = resume candidate
-                outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
-                answer
-        before = acceptPositive 1
-        inside =
-            handle Retry
-                supply n =>
-                    innerCalls := innerCalls + 1 
-                    tag = innerCalls
-                    candidate = match n > 1
-                        true => 700
-                        false => 0
-                    innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
-                    _ = perform Budget.charge 1
-                    answer = resume candidate
-                    innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
-                    answer
-            acceptPositive 1
-        after = acceptPositive 1
-        before + inside + after 
+        // The inner region runs while the outer one is still suspended.
+        chargeRetry ("o", 2, 50, 10, \() =>
+            before = acceptPositive 1
+            inside =
+                handle Retry
+                    supply n =>
+                        innerCalls := innerCalls + 1 
+                        tag = innerCalls
+                        candidate = match n > 1
+                            true => 700
+                            false => 0
+                        innerTrail := trailTag (innerTrail, "i", tag, n, candidate)
+                        _ = perform Budget.charge 1
+                        answer = resume candidate
+                        innerSettled := valueTag (innerSettled, "i", tag, answer)
+                        answer
+                acceptPositive 1
+            after = acceptPositive 1
+            before + inside + after )
+    total = outer.out
+    outerCalls = outer.calls
+    outerTrail = outer.trail
+    outerSettled = outer.settled
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll "nested retry regions each accept their own value" [
         structuralEquals [total, charged, outerCalls, innerCalls, chargeCalls] [800, 62, 6, 2, 8],
         chargeCalls == (outerCalls + innerCalls ),
         total == (50 + 700 + 50 ),
-        structuralEquals [outerCalls > innerCalls, charged > outerCalls, charged != total,
-            total > charged, innerCalls != outerCalls] [true, true, true, true, true],
+        allTrue [outerCalls > innerCalls, charged > outerCalls, charged != total,
+            total > charged, innerCalls != outerCalls],
         (outerCalls - innerCalls ) == 4,
         charged == (30 + 2 + 30 )
     ]
@@ -835,8 +762,8 @@ nestedRetryRegionsCase () =
     checkAll "the inner region overrides then restores the outer" [
         outerTrail == "o1=1:0|o2=2:0|o3=3:50|o4=1:0|o5=2:0|o6=3:50|",
         innerTrail == "i1=1:0|i2=2:700|",
-        structuralEquals [startsWith outerTrail "o1=1:0|", endsWith outerTrail "o6=3:50|",
-            startsWith innerTrail "i1=1:0|", endsWith innerTrail "i2=2:700|"] [true, true, true, true],
+        allTrue [startsWith outerTrail "o1=1:0|", endsWith outerTrail "o6=3:50|",
+            startsWith innerTrail "i1=1:0|", endsWith innerTrail "i2=2:700|"],
         carriesAll (outerTrail, ["o4=1:0|", "o3=3:50|"]),
         carriesNone (outerTrail, ["700", "o7"]),
         carriesNone (innerTrail, ["50|", "i3"]),
@@ -848,21 +775,21 @@ nestedRetryRegionsCase () =
     checkAll "settlement unwinds LIFO across the whole nest" [
         outerSettled == "o6:800|o5:800|o4:800|o3:800|o2:800|o1:800|",
         innerSettled == "i2:700|i1:700|",
-        structuralEquals [startsWith outerSettled "o6:800|", endsWith outerSettled "o1:800|",
+        allTrue [startsWith outerSettled "o6:800|", endsWith outerSettled "o1:800|",
             startsWith innerSettled "i2:700|", endsWith innerSettled "i1:700|",
-            contains outerSettled "o4:800|"] [true, true, true, true, true],
+            contains outerSettled "o4:800|"],
         carriesNone (outerSettled, ["700", "o7"]),
         carriesNone (innerSettled, ["800"]),
         structuralEquals [length outerSettled, length innerSettled] [42, 14],
-        structuralEquals [outerSettled != outerTrail, innerSettled != innerTrail] [true, true]
+        allTrue [outerSettled != outerTrail, innerSettled != innerTrail]
     ]
 
     // One outer Budget cell serves both regions; its running total is ordered.
     checkAll "the outer Budget handler serves both retry regions" [
         chargeTrail == "10@10|10@20|10@30|1@31|1@32|10@42|10@52|10@62|",
         structuralEquals [chargeCalls, charged] [8, 62],
-        structuralEquals [startsWith chargeTrail "10@10|", endsWith chargeTrail "10@62|",
-            charged > 0, chargeCalls != charged] [true, true, true, true],
+        allTrue [startsWith chargeTrail "10@10|", endsWith chargeTrail "10@62|",
+            charged > 0, chargeCalls != charged],
         carriesAll (chargeTrail, ["1@31|1@32|", "10@42|"]),
         carriesNone (chargeTrail, ["1@33", "10@70", "@63"]),
         length chargeTrail == 46,
@@ -875,9 +802,8 @@ nestedRetryRegionsCase () =
         carriesAll (chargeTrail, ["1@31|", "1@32|"]),
         carriesNone (innerTrail, ["o"]),
         carriesNone (outerTrail, ["i"]),
-        structuralEquals [charged == 62, total == 800, innerCalls < outerCalls,
-            chargeCalls == (outerCalls + innerCalls ), innerSettled != outerSettled]
-            [true, true, true, true, true],
+        allTrue [charged == 62, total == 800, innerCalls < outerCalls,
+            chargeCalls == (outerCalls + innerCalls ), innerSettled != outerSettled],
         (innerCalls * 4 ) == 8
     ]
 
@@ -940,11 +866,6 @@ performSiteBody xs =
 retryPerformSiteMatrixCase () =
     probe = [7, 8]
     mut zeroCalls = 0
-    mut oneCalls = 0
-    mut twoCalls = 0
-    mut threeCalls = 0
-    mut fourCalls = 0
-    mut noteCalls = 0
     mut noteTotal = 0
     mut suppliedZero = 0
     mut suppliedOne = 0
@@ -963,31 +884,32 @@ retryPerformSiteMatrixCase () =
                     false => 0
                 resume suppliedZero
             one a =>
-                oneCalls := oneCalls + 1 
                 trail := "${trail}o${toString a}|"
                 suppliedOne := (a * 100) 
                 resume suppliedOne
             two a b =>
-                twoCalls := twoCalls + 1 
                 trail := "${trail}t${toString a}+${toString b}|"
                 suppliedTwo := (a + b) 
                 resume suppliedTwo
             three a b c =>
-                threeCalls := threeCalls + 1 
                 trail := "${trail}h${toString a}+${toString b}+${toString c}|"
                 suppliedThree := (a + b + c) 
                 resume suppliedThree
             four a b c d =>
-                fourCalls := fourCalls + 1 
                 trail := "${trail}f${toString a}${toString b}${toString c}${toString d}|"
                 suppliedFour := (a * 1000 + b * 100 + c * 10 + d) 
                 resume suppliedFour
             note v =>
-                noteCalls := noteCalls + 1 
                 noteTotal := noteTotal + v 
                 trail := "${trail}n${toString v}|"
                 resume ()
         performSiteBody probe
+    (** One trail entry per operation, so each arm's count is its letter's. *)
+    oneCalls = countTag (trail, "o")
+    twoCalls = countTag (trail, "t")
+    threeCalls = countTag (trail, "h")
+    fourCalls = countTag (trail, "f")
+    noteCalls = countTag (trail, "n")
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll "every perform site reaches the same region" [
@@ -995,8 +917,8 @@ retryPerformSiteMatrixCase () =
             [2024, 3, 1, 1, 1, 1, 2],
         (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ) == 9,
         sited == (9 + 400 + 55 + 326 + 1234 ),
-        structuralEquals [zeroCalls > noteCalls, noteCalls > oneCalls, oneCalls == fourCalls,
-            twoCalls == threeCalls, sited > 2000, sited != 800] [true, true, true, true, true, true]
+        allTrue [zeroCalls > noteCalls, noteCalls > oneCalls, oneCalls == fourCalls,
+            twoCalls == threeCalls, sited > 2000, sited != 800]
     ]
 
     // Argument order is load-bearing: a swap would change these strings.
@@ -1004,7 +926,7 @@ retryPerformSiteMatrixCase () =
         trail == "z1|z2|z3|o4|t5+50|h6+20+300|n7|n8|f1234|",
         carriesAll (trail, ["o4|", "t5+50|", "h6+20+300|", "f1234|", "n7|n8|"]),
         carriesNone (trail, ["t50+5|", "h300+20+6|", "f4321|", "n8|n7|", "z4|"]),
-        structuralEquals [startsWith trail "z1|z2|z3|", endsWith trail "f1234|"] [true, true],
+        allTrue [startsWith trail "z1|z2|z3|", endsWith trail "f1234|"],
         length trail == 40
     ]
 
@@ -1013,10 +935,9 @@ retryPerformSiteMatrixCase () =
         structuralEquals [suppliedZero, suppliedOne, suppliedTwo, suppliedThree, suppliedFour]
             [9, 400, 55, 326, 1234],
         sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ),
-        structuralEquals [suppliedOne != suppliedTwo, suppliedTwo != suppliedThree,
+        allTrue [suppliedOne != suppliedTwo, suppliedTwo != suppliedThree,
             suppliedThree != suppliedFour, suppliedFour > suppliedOne, suppliedOne > suppliedThree,
             suppliedThree > suppliedTwo, suppliedTwo > suppliedZero, suppliedZero > 0]
-            [true, true, true, true, true, true, true, true]
     ]
 
     // A lambda handed to forEachList performs under the very same handler.
@@ -1033,12 +954,43 @@ retryPerformSiteMatrixCase () =
     // The recursion and the match arm are ordinary perform sites.
     checkAll "recursion and a match arm are ordinary perform sites" [
         structuralEquals [zeroCalls, suppliedZero, fourCalls, suppliedFour, sited] [3, 9, 1, 1234, 2024],
-        structuralEquals [startsWith trail "z1|", contains trail "z3|o4|",
-            endsWith trail "f1234|", suppliedFour != suppliedOne, trail != ""]
-            [true, true, true, true, true],
+        allTrue [startsWith trail "z1|", contains trail "z3|o4|",
+            endsWith trail "f1234|", suppliedFour != suppliedOne, trail != ""],
         carriesNone (trail, ["z3|z4|", "|f1234|f"]),
         (zeroCalls - 1 ) == 2
     ]
 
 // Crosses the perform-site axis against operation arities zero through four.
 test "every perform site reaches the same retry handler" (exactly retryPerformSiteMatrixCase)
+
+// [MODULES-FILE-SCOPE-BINDING] A handler inside a function replaces a file-scope list with a
+// fresh literal; the next arm, and every later reader, must find a real list there.
+
+(** Clears or extends the taped list, which a handler owns. *)
+effect Tape
+    wipe : int => Unit
+    push : int => Unit
+
+mut taped = [0]
+
+taping work =
+    handle Tape
+        wipe _ => taped := [0]
+        push value => taped := listConcat taped [value]
+    work ()
+
+tapedSum () =
+    perform Tape.wipe 0
+    range (1, 40) |> fold 0 (\(total, value) =>
+        perform Tape.push value
+        total + value)
+
+test "a file-scope list replaced by a literal inside a handler stays a real list" (\() => exactArithmetic (\() => checkAll "taped list" [
+    taping tapedSum == 780,
+    length taped == 40,
+    taping (\() => tapedSum () + tapedSum ()) == 1560,
+    length taped == 40,
+    (listGet taped 0 ?: 9) == 0,
+    (listGet taped 39 ?: 0) == 39,
+    (listGet taped 40 ?: 0 - 1) == 0 - 1
+]))

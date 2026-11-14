@@ -442,7 +442,8 @@ test("Python interop guide's Codon comparison matches the recorded benchmark res
   await expect(section).toContainText(`${ratios.filter((r) => r < 1).length} of ${ratios.length}`);
   const word = (n) => ["zero", "one", "two", "three", "four", "five", "six"][n] ?? `${n}`;
   await expect(section).toContainText(`${word(slower.length)} are up to ${Math.round(Math.max(...slower))}× slower`);
-  await expect(section).toContainText(`${word(slowest.length)} allocation-heavy sorts are ${slowest[0]}–${slowest.at(-1)}× slower`);
+  if (slowest.length) await expect(section).toContainText(`${word(slowest.length)} allocation-heavy sorts are ${slowest[0]}–${slowest.at(-1)}× slower`);
+  else await expect(section).not.toContainText("allocation-heavy");
   await expect(section.locator('a[href="/benchmarks/"]')).toHaveCount(1);
   await page.locator('.prose a[href="/benchmarks/"]').first().click();
   await expect(page.locator("main")).toContainText("Codon");

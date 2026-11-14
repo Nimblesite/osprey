@@ -55,7 +55,7 @@ All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack bud
 > with `--memory=arc` / `--memory=gc`, and both reclaim unused values. `BENCH_FILTER` selects cases, not backends.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: `--memory=arc` **3.08 MB** and `--memory=gc` **18.7 MB**.
+> Current measured peaks: `--memory=arc` **3.08 MB** and `--memory=gc` **15.5 MB**.
 > <!-- binarytrees-results:end -->
 
 Results are written to `src/toolchain/benchmarks/results/`. The measured outputs below are

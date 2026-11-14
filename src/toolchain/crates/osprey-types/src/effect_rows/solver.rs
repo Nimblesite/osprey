@@ -16,9 +16,15 @@ pub(super) fn advance_function(
 ) -> bool {
     let (mut actual, returned) = analyzer.function_body_model(function);
     actual.widen();
-    let mut changed = rows
-        .get_mut(id)
-        .is_some_and(|row| row.merge_inferred_row(actual, analyzer.rows.get(id)));
+    let merge = history.merge_for(id);
+    let mut changed = rows.get_mut(id).is_some_and(|row| {
+        let before = (merge != Merge::Join).then(|| recomputed_part(row));
+        let moved = row.merge_inferred_row(actual, analyzer.rows.get(id), merge);
+        if let Some(before) = before {
+            history.record_recomputed(id, &before, recomputed_part(row));
+        }
+        moved
+    });
     if let (Some(returned), Some(slot)) = (returned, returns.get_mut(id)) {
         changed |= advance_return(slot, returned, id, history);
     }
@@ -57,10 +63,54 @@ fn advance_return(
 /// counted: counts cannot tell recursion from finite dependency propagation
 /// and cutting on one rejects valid acyclic callback chains.
 /// Implements [EFFECTS-PROVENANCE].
+///
+/// A row's recomputed part (its callback uses and dynamic-call verdict)
+/// follows the same rule: an acyclic function recomputes both each pass, a
+/// recursive one re-derives the verdict over the uses it keeps, and either
+/// whose recomputed part revisits an earlier state, or keeps moving for
+/// [`RECOMPUTED_MOVES`] passes (functions that read each other's rows through
+/// callbacks rather than calls, which recursion analysis cannot see), joins it
+/// from then on. Joining only adds requirements and keeps a dynamic call
+/// unresolved, so it never accepts what recomputing would reject.
 #[derive(Default)]
 pub(super) struct ReturnHistory {
     returns: HashMap<usize, Returns>,
     recursive: BTreeSet<usize>,
+    recomputed: HashMap<usize, Recomputed>,
+}
+
+/// How [`Summary::merge_inferred_row`] treats a row's recomputed part.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Merge {
+    /// Acyclic: callback uses and the dynamic verdict are derived afresh.
+    Recompute,
+    /// Recursive: uses from earlier traversals of the cycle are kept.
+    RetainUses,
+    /// Seen to cycle: uses are kept and an unresolved dynamic call stays so.
+    Join,
+}
+
+/// A recomputed row part that moves this many passes has stopped converging.
+const RECOMPUTED_MOVES: usize = 16;
+
+/// The part of a row derived afresh each pass: the dynamic verdict, and an acyclic function's uses.
+/// Held as a fingerprint, so tracking it never copies the row's values.
+type RecomputedPart = (bool, u64);
+
+fn recomputed_part(row: &Summary) -> RecomputedPart {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    format!("{:?}", row.parameter_uses).hash(&mut hasher);
+    (row.unresolved_dynamic_call, hasher.finish())
+}
+
+/// One function's recomputed row parts so far, how often they moved, and
+/// whether they cycled.
+#[derive(Default)]
+struct Recomputed {
+    seen: BTreeSet<RecomputedPart>,
+    moves: usize,
+    joined: bool,
 }
 
 /// One function's returns so far, whether they have cycled, the joined
@@ -80,7 +130,29 @@ impl ReturnHistory {
         Self {
             returns: HashMap::new(),
             recursive,
+            recomputed: HashMap::new(),
         }
+    }
+
+    /// How `id`'s row merges its recomputed part this pass.
+    fn merge_for(&self, id: usize) -> Merge {
+        if self.recomputed.get(&id).is_some_and(|part| part.joined) {
+            Merge::Join
+        } else if self.recursive.contains(&id) {
+            Merge::RetainUses
+        } else {
+            Merge::Recompute
+        }
+    }
+
+    /// Note `id`'s recomputed row part; returning to an earlier state has cycled.
+    fn record_recomputed(&mut self, id: usize, before: &RecomputedPart, after: RecomputedPart) {
+        if *before == after {
+            return;
+        }
+        let part = self.recomputed.entry(id).or_default();
+        part.moves += 1;
+        part.joined |= !part.seen.insert(after) || part.moves >= RECOMPUTED_MOVES;
     }
 
     fn settle(&mut self, id: usize, before: Option<&Value>, computed: Value) -> Value {
@@ -136,7 +208,9 @@ pub(super) fn file_scope_env(
         file_scope: CallableEnv::default(),
     };
     let mut env = CallableEnv::default();
-    let _ = bootstrap.statements(statements, &[], &mut env);
+    for statement in statements {
+        bootstrap.statement_environment(statement, &[], &mut env);
+    }
     env
 }
 

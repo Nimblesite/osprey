@@ -10,6 +10,14 @@ include Makefile
 
 .PHONY: bench bench-osprey instruction-gate flock-bench painting-compare fastapi-benchmark fastapi-benchreport
 
+## native-bridge: Byte-exact JSON C API versus leased-storage component round trips.
+##        CSV samples and p50/p99 nanoseconds; informational, not an app/framework benchmark or CI gate.
+.PHONY: native-bridge
+native-bridge: _runtime
+	@mkdir -p target/benchmarks/native-bridge
+	$(CC) $(T) -Isrc/toolchain/compiler/runtime src/toolchain/benchmarks/native_bridge.c $(RTB)/libfiber_runtime_gc.a -pthread -lm -o target/benchmarks/native-bridge/bench
+	@target/benchmarks/native-bridge/bench
+
 ## fastapi-benchmark: Compare routing and IDP body binding against pinned CPython
 ##        FastAPI (src/osprey/packages/fastapi/tests/benchmark.cpython; GC/ARC,
 ##        fresh connections, five trials), then render the report with the Osprey

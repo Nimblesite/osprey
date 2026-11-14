@@ -18,7 +18,6 @@ use lspkit_server::live::Session;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 
-use crate::analysis::collect_inferred_symbols;
 use crate::diagnostics;
 use crate::features;
 use crate::model::{At, EngineError, Query, Report};
@@ -102,9 +101,10 @@ impl OspreyEngine {
                 crate::code_actions::actions(&self.vfs, &uri, range, &only, &self.project_cache),
             ),
             Query::Symbols(uri) => {
-                let view = self.project_cache.view(uri.as_str(), &self.vfs);
-                Report::Symbols(collect_inferred_symbols(
-                    &view.program(uri.as_str(), &self.text(&uri)),
+                let (view, text) = (self.typed_view(uri.as_str()), self.text(&uri));
+                let program = view.program(uri.as_str(), &text);
+                Report::Symbols(crate::analysis::inferred_symbols(
+                    &view.typed(&text, &program),
                 ))
             }
             Query::Hover(at) => Report::Hover(self.hover(&at)),
@@ -128,13 +128,23 @@ impl OspreyEngine {
                 at.line,
                 at.character,
                 enc,
-                &self.project_cache.view(at.uri.as_str(), &self.vfs),
+                &self.typed_view(at.uri.as_str()),
             )),
         }
     }
 
     /// Ask `feature` about the position `at` names, with the document text,
     /// URI, cursor, encoding and project view every position query shares.
+    /// The view for a feature that displays checked types: the whole project's
+    /// unless `osprey.analysis.scope` is `file` ([LSP-ANALYSIS-SCOPE]).
+    fn typed_view(&self, uri: &str) -> View {
+        if crate::server::scope::lock(self).whole_project() {
+            self.project_cache.typed_view(uri, &self.vfs)
+        } else {
+            self.project_cache.view(uri, &self.vfs)
+        }
+    }
+
     fn at_feature<T>(
         &self,
         at: &At,
@@ -146,7 +156,7 @@ impl OspreyEngine {
             at.line,
             at.character,
             self.encoding(),
-            &self.project_cache.view(at.uri.as_str(), &self.vfs),
+            &self.typed_view(at.uri.as_str()),
         )
     }
 

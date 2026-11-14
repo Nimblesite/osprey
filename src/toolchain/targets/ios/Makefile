@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank casting casting-build examples inbox
+.PHONY: bank casting casting-build examples inbox tally
 
 ## bank: Build Talon Bank for iOS devices and the simulator.
 bank: _ios-bank
@@ -26,4 +26,9 @@ examples: _ios-examples
 
 ## inbox: Build the inbox app for iOS devices and the simulator.
 inbox: _ios-inbox
+
+## tally: Build Tally on the SwiftUI host and open it in an iPhone simulator.
+tally:
+	OSPREY_SWIFT_APP=src/osprey/examples/tally OSPREY_IOS_NAME=Tally OSPREY_IOS_ID=org.ospreylang.tally \
+		bash src/toolchain/hosts/swift/ios.sh ios-sim --launch
 endif

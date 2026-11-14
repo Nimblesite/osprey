@@ -1,3 +1,5 @@
 build/
 .build/
-Sources/OspreyApp/include/libOspreyApp.h
+Sources/OspreyViewApp/include/libOspreyApp.h
+Sources/OspreyViewApp/include/native_bridge.h
+Sources/OspreyViewApp/include/native_abi.h

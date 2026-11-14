@@ -664,6 +664,20 @@
           "default": true,
           "description": "Enable/disable diagnostic messages"
         },
+        "osprey.analysis.scope": {
+          "type": "string",
+          "enum": [
+            "project",
+            "file"
+          ],
+          "enumDescriptions": [
+            "Infer the types shown by hover, signature help, completion and the outline from the whole project, including the packages it uses.",
+            "Infer them from each file alone. Faster on a very large project, but a type that only another file or package fixes is shown as `_`."
+          ],
+          "default": "project",
+          "scope": "window",
+          "description": "Choose how much code the editor checks to work out the types it shows."
+        },
         "osprey.diagnostics.scope": {
           "type": "string",
           "enum": [
@@ -737,7 +751,7 @@
           "type": "string",
           "default": "",
           "scope": "machine",
-          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to the bundled snapshot of the Osprey repository's packages."
+          "description": "Folder registry the local server serves (@scope/name/<epoch>.<ordinal>/ releases). Defaults to a folder in the extension's storage; publish into it with `osprey-pkg publish --folder`."
         },
         "osprey.packages.frontendPath": {
           "type": "string",
@@ -878,21 +892,23 @@
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
     "vscode:prepublish": "npm run sync-icon && npm run compile && node scripts/verify-package-client.mjs && node scripts/verify-package-workspace.mjs",
-    "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
+    "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check && npm run generate-abi",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
-    "compile": "tsc -b",
-    "lint": "tsc -p ./ --noEmit",
+    "compile": "tsc -b && tsc -p tsconfig.webview.json",
+    "lint": "tsc -p ./ --noEmit && tsc -p tsconfig.webview.json --noEmit",
+    "prelint": "npm run generate-abi",
     "watch": "tsc -b -w",
     "package": "vsce package && node scripts/verify-readme.mjs",
     "install-extension": "code --install-extension osprey-0.0.0-dev.vsix",
     "test": "vscode-test",
-    "test-compile": "tsc -p ./",
+    "test-compile": "npm run generate-abi && tsc -p ./",
     "test:shipwright": "node scripts/verify-shipwright.mjs manifest",
     "test:vsix": "node scripts/test-installed-vsix.mjs",
     "pretest": "npm run test-compile && npm run compile",
     "test:watch": "npm run watch",
     "test:debug": "node scripts/test-launcher.js test:debug",
-    "test:launcher": "node scripts/test-launcher.js"
+    "test:launcher": "node scripts/test-launcher.js",
+    "generate-abi": "node scripts/generate-native-abi.mjs"
   },
   "overrides": {
     "serialize-javascript": "^7.1.4",

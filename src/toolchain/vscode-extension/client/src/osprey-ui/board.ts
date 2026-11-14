@@ -2,7 +2,7 @@
 import { renderImage } from "./media";
 import { boardStroke } from "./board-value";
 import { escapeHtml } from "./html";
-import { naturalInteger, record } from "./wire";
+import { naturalInteger, record } from "./nodes";
 
 function integer(value: unknown, least: number, most: number): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= least && value <= most;

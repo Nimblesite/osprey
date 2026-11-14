@@ -4,12 +4,9 @@
 
 import * as assert from "assert";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { execFileSync } from "child_process";
 import { resolveLldbDapExecutable } from "../../client/src/extension";
-import { compileWasi, runWasi } from "../../client/src/osprey-ui/wasi";
 
 // The compiled test lives at <ext>/out/test/suite, so the extension root is
 // three levels up.
@@ -111,53 +108,4 @@ export function oneSkipWarning(uri: vscode.Uri): vscode.Diagnostic {
   const warnings = skipWarningsOf(uri);
   assert.strictEqual(warnings.length, 1, JSON.stringify(warnings));
   return warnings[0];
-}
-
-export async function compileSdkWasm(
-  source: string,
-  timeout: number,
-): Promise<WebAssembly.Module> {
-  const compiler = resolveBuiltOsprey();
-  assert.ok(compiler, "the SDK E2E requires the built compiler");
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osp-sdk-probe-"));
-  try {
-    const roots = JSON.stringify([
-      ".",
-      ...["native", "graphics", "json", "vscode"].map((name) =>
-        path.resolve(extensionRoot, `../../osprey/packages/${name}/src`),
-      ),
-    ]);
-    fs.writeFileSync(
-      path.join(dir, "osprey.toml"),
-      `[project]\nname = "sdk-probe"\nsource_roots = ${roots}\nentry = "main.ospml"\n`,
-    );
-    fs.writeFileSync(path.join(dir, "main.ospml"), source);
-    const wasm = path.join(dir, "probe.wasm");
-    execFileSync(
-      compiler,
-      [dir, "--target=wasm32", "--memory=arc", "--compile", "-o", wasm],
-      { timeout },
-    );
-    return await compileWasi(fs.readFileSync(wasm));
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-export async function runSdkWasmJson(
-  module: WebAssembly.Module,
-  input: string,
-): Promise<unknown> {
-  const result = await runWasi(module, input);
-  assert.strictEqual(result.exitCode, 0, result.stderr);
-  assert.strictEqual(result.stderr, "");
-  return JSON.parse(result.stdout);
-}
-
-export async function compileSdkWasmJson(
-  source: string,
-  input: string,
-  timeout: number,
-): Promise<unknown> {
-  return runSdkWasmJson(await compileSdkWasm(source, timeout), input);
 }

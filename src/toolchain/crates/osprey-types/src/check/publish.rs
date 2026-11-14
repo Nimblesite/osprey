@@ -143,6 +143,7 @@ pub(super) fn publish_program(
         lambdas,
         lets,
         source_lets,
+        binders: Arc::new(checker.binder_tys.resolved(|ty| checker.ctx.apply(ty))),
         lists,
         performs,
         handler_ops,

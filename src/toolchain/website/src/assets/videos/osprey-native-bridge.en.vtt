@@ -1,0 +1,130 @@
+WEBVTT
+
+00:00.500 --> 00:16.351
+Every Osprey Native app reaches its screen through one bridge. SwiftUI on the Mac and iPhone, WinUI on Windows, GPUI on the GPU, Android, and the VS Code webview all read the same frame. Here's how it works, in the code.
+
+00:17.101 --> 00:27.527
+First, imagine the usual way to build a bridge. The app turns its whole screen into JSON text: every button becomes an object, every colour and size a decimal string.
+
+00:27.727 --> 00:39.933
+The host then parses that text, allocates a dictionary per node, converts the numbers back, and hopes every key still means what it did. Every frame pays twice: once to write the text, once to read it.
+
+00:40.683 --> 00:52.539
+Osprey does neither. Each call writes one frame of fixed-width rows into memory the host can lease. A button is one row of nineteen machine words, and its words sit in one shared text run.
+
+00:52.739 --> 00:58.162
+The host checks each row and reads it where it lies. Nothing is formatted, and nothing is parsed.
+
+00:58.912 --> 01:10.209
+It starts with one model, written in typeDiagram, in native.td. A ViewRow is one control: its kind, the earlier row that is its parent, and the action a tap delivers.
+
+01:10.409 --> 01:17.216
+Text is never a pointer. A row names an offset and a length into the frame's one UTF-8 text run.
+
+01:17.416 --> 01:25.325
+Every colour, size, space and flag is already decided in Osprey. The host applies them, and holds no style of its own.
+
+01:25.525 --> 01:32.536
+Capability requests ride in the same frame as ask rows: four fields each, with arguments in the rows that follow.
+
+01:33.286 --> 01:48.995
+typeDiagram generates native_abi.h, the header every host builds against. It carries a fingerprint of the whole layout, one for sixty-four-bit hosts and one for wasm32. A host built for a different layout cannot even open the bridge.
+
+01:49.195 --> 01:59.848
+It also names the offset of every field. Each row is little-endian, eight-byte aligned, and the same width on every host: a ViewRow is a hundred and fifty-two bytes.
+
+02:00.598 --> 02:09.971
+Here is Tally, the sample app. Every app exports the same three calls: argument, open and event. Each one writes a whole frame and returns a status.
+
+02:10.171 --> 02:19.599
+Shown renders the screen into the frame, and keeps the store, with the actions its controls deliver, inside the library. The state never crosses the bridge.
+
+02:19.799 --> 02:28.767
+When an event names a control, Tally looks its number up in the list it wrote itself. An unknown number is refused, and the same screen is drawn again.
+
+02:29.517 --> 02:38.691
+Rendering performs an effect for each control. Views::shared handles it by calling osp_native_view_row, which appends one row straight into the frame.
+
+02:38.891 --> 02:42.305
+Capability asks go the same way, through osp_native_ask.
+
+02:42.505 --> 02:50.873
+And because it's an effect, a test can swap the handler. Views::quiet drops every row, so the same rendering code runs with no host at all.
+
+02:51.623 --> 03:07.797
+On the other side of that call is the C runtime that every app library links. osp_native_view_row copies the text once, and returns the row's index for its children. A number that is not finite, or a parent that is not an earlier row, refuses the frame.
+
+03:07.997 --> 03:16.064
+A static assert ties the C struct to the generated layout, so the runtime cannot drift from the model without failing to compile.
+
+03:16.814 --> 03:27.484
+When an export returns, the host calls osp_native_frame_commit. It takes all four pending runs in one step, so no row can land half in one frame and half in the next.
+
+03:27.684 --> 03:34.629
+It seals the runs in place, and joins them under one branch chunk: scene rows, view rows, text, and ask rows.
+
+03:34.829 --> 03:40.022
+Then it publishes the frame with a new revision. A committed frame never changes again.
+
+03:40.772 --> 03:53.951
+The host reaches that memory only through a lease: an owner token naming the app instance, the allocation and its reuse generation. A stale, forged or double-released lease is refused as a typed error.
+
+03:54.151 --> 03:59.400
+osp_native_view checks the chunk's type, and that the requested range lies inside it.
+
+03:59.600 --> 04:04.215
+Only then does it hand back a pointer to the bytes, in place. No copy is made.
+
+04:04.965 --> 04:12.089
+Now the hosts. The SwiftUI host, on macOS and iOS, runs the export, then commits the frame it wrote.
+
+04:12.289 --> 04:19.365
+It leases the four runs, and the defer releases every lease before the call returns, so no pointer outlives its lease.
+
+04:19.565 --> 04:27.502
+SharedRows reads the rows as typed buffers over the bridge's own bytes, checks every one, and builds the values SwiftUI draws.
+
+04:28.252 --> 04:38.533
+The GPUI host is Rust. Its rows are repr(C) structs, and the compiler asserts their sizes: eighty-eight, a hundred and fifty-two, and thirty-two bytes.
+
+04:38.733 --> 04:49.432
+A run becomes a slice with from_raw_parts, straight over the leased memory. The painter can hold one frame in an Arc while the next is written, and the lease goes when the last holder drops it.
+
+04:50.182 --> 04:57.394
+On Windows, the app is a DLL, and WinUI reads the same rows as sequential C# structs, field for field.
+
+04:57.594 --> 05:05.578
+The fingerprint is a literal here, and a test reads native_abi.h from the repository and fails the moment the two differ.
+
+05:06.328 --> 05:12.204
+On Android, a small JNI library owns the bridge and calls the exports on the host thread.
+
+05:12.404 --> 05:20.130
+It hands Kotlin each run as a NewDirectByteBuffer over the leased bytes, so Kotlin reads the app's memory without copying it.
+
+05:20.880 --> 05:36.382
+In VS Code, the same app is a wasm32 module in a worker. The worker calls the same bridge entries over the module's linear memory, and reads sixty-four-bit fields with getBigInt64, so no value silently loses precision.
+
+05:36.582 --> 05:46.116
+It checks that each run lies inside linear memory, then copies the raw rows once, across to the webview. Even there, what crosses is rows, not text.
+
+05:46.866 --> 05:56.448
+Input comes back the other way as one typed call. A control event is kind zero, the control's number and its words: just numbers and borrowed text.
+
+05:56.648 --> 06:07.559
+The reference host proves the refusals: a control that was never drawn, a negative number, or a kind Tally does not take. Each returns one, and the same screen comes back.
+
+06:08.309 --> 06:16.642
+Let's run it. The tally-headless target compiles Tally to a C library and links it under this reference host, with no UI toolkit at all.
+
+06:16.842 --> 06:22.244
+It drives every control and reads thirteen views in place from shared memory. It passes.
+
+06:22.994 --> 06:28.563
+Now one change. In Tally's view, the Add one button becomes Add one, written as a digit.
+
+06:28.763 --> 06:38.346
+Run it again, and the host reads row five straight out of the frame, sees the new words, and its check fails. The rows are the screen, exactly as the app wrote them.
+
+06:39.096 --> 06:49.276
+One model, one frame of rows, and five hosts reading it in place. Read the full guide at ospreylang.dev, under Osprey Native, and try Tally on your machine.

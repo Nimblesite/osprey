@@ -23,118 +23,11 @@
  *
  * Backs the list builtins of docs/specs/runtime/0012-Built-InFunctions.md — [BUILTIN-LIST],
  * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND] and [BUILTIN-COLLECTION-LENGTH].
- * Whole-list rebuilds (prepend, concat, reverse, sort) and the iterator are in
- * list_rebuild.c, over this file's public API.
+ * The builder, whole-list rebuilds (concat, reverse, sort) and the iterator are in
+ * list_rebuild.c; the node layout both files share is list_trie.h.
  */
 
-typedef struct OspreyListNode {
-  int64_t slots[OSPREY_LIST_BRANCH];
-} OspreyListNode;
-
-/* ARC layout words: which 8-byte words hold managed pointers (via offsetof). */
-#define LIST_HDR_LAYOUT                                                        \
-  OSP_MEM_LAYOUT(OSP_MEM_WORD(offsetof(OspreyList, root)) |                    \
-                 OSP_MEM_WORD(offsetof(OspreyList, tail)))
-/* All 32 slots are managed pointers: true of every internal node (children)
- * AND of a leaf whose ELEMENTS are managed — one layout word, so clone_node's
- * dup loop and the drop walk serve both. Internal-vs-leaf is intrinsic: growth
- * stacks internals above a subtree, push_tail installs the tail chunk (a leaf)
- * at OSPREY_LIST_BITS — kinds never change. */
-#define NODE_PTRS_LAYOUT ((int64_t)OSP_MEM_PTR_ARRAY)
-/* A scalar-element leaf: type-blind int64s whose bits may collide with a live
- * heap address, so the drop walk must never touch them. */
-#define NODE_SCALAR_LAYOUT ((int64_t)OSP_MEM_RAW)
-
-/* A node at `shift` holds children while shift > 0, elements at 0 — and
- * elements are walked only when the list's element type is managed. */
-static int64_t node_layout(int32_t shift, int em) {
-  return (shift > 0 || em) ? NODE_PTRS_LAYOUT : NODE_SCALAR_LAYOUT;
-}
-
-static void *as_node_ptr(int64_t slot) { return (void *)(uintptr_t)slot; }
-
-/* Element dup / drop, gated on the element kind. */
-static void retain_elem(int64_t v, int em) {
-  if (em) osp_retain(as_node_ptr(v));
-}
-static void release_elem(int64_t v, int em) {
-  if (em) osp_release(as_node_ptr(v));
-}
-
-struct OspreyList {
-  int64_t length;    /* LOGICAL length (elements visible through this header) */
-  int32_t shift;     /* 0 == root is a leaf; 5, 10, … one level deeper each */
-  int32_t tail_count;
-  OspreyListNode *root; /* NULL iff in-tree count == 0 */
-  OspreyListNode *tail; /* NULL iff physical count == 0 */
-  /* Physical index of logical element 0. osprey_list_drop returns an O(1)
-   * VIEW — a fresh header sharing root/tail with offset bumped — so
-   * `[head, ...tail]` recursion allocates n headers, not n²/2 nodes. Invariant:
-   * offset + length == the physical count (views only trim the FRONT), so the
-   * tail always ends at the logical end and append stays valid on a view. */
-  int64_t offset;
-  /* 1 when the element slots hold managed pointers, 0 for scalars. */
-  int32_t elem_managed;
-};
-
-struct OspreyListBuilder {
-  int64_t length;
-  int32_t shift;
-  int32_t tail_count;
-  OspreyListNode *root;
-  OspreyListNode *tail;
-  int32_t elem_managed;
-};
-
-static OspreyListNode *alloc_node(int64_t layout) {
-  OspreyListNode *n = (OspreyListNode *)calloc(1, sizeof(OspreyListNode));
-  osp_mem_set_layout(n, layout);
-  return n;
-}
-
-/* Copy a node. The copy shares every slot `src` pointed at, so each managed
- * slot gains a reference — children for an internal node, elements for a
- * managed leaf; a scalar leaf none. NULL slots probe-miss. */
-static OspreyListNode *clone_node(OspreyListNode *src, int64_t layout) {
-  OspreyListNode *n = alloc_node(layout);
-  if (src == NULL) {
-    return n;
-  }
-  memcpy(n->slots, src->slots, sizeof(src->slots));
-  if (layout == NODE_PTRS_LAYOUT) {
-    for (int32_t i = 0; i < OSPREY_LIST_BRANCH; i++) {
-      osp_retain(as_node_ptr(n->slots[i]));
-    }
-  }
-  return n;
-}
-
-/* Wrap `node` in fresh internal nodes down to the leaf level, moving the
- * caller's reference into the innermost wrapper. */
-static OspreyListNode *wrap_path(OspreyListNode *node, int32_t level) {
-  for (int32_t lvl = level; lvl > 0; lvl -= OSPREY_LIST_BITS) {
-    OspreyListNode *wrap = alloc_node(NODE_PTRS_LAYOUT);
-    wrap->slots[0] = (int64_t)(uintptr_t)node;
-    node = wrap;
-  }
-  return node;
-}
-
-/* Build a header owning `root` and `tail` — both references are MOVED in. */
-static OspreyList *alloc_list(int64_t length, int32_t shift, int32_t tail_count,
-                              OspreyListNode *root, OspreyListNode *tail,
-                              int64_t offset, int elem_managed) {
-  OspreyList *l = (OspreyList *)calloc(1, sizeof(OspreyList));
-  osp_mem_set_layout(l, LIST_HDR_LAYOUT);
-  l->length = length;
-  l->shift = shift;
-  l->tail_count = tail_count;
-  l->root = root;
-  l->tail = tail;
-  l->offset = offset;
-  l->elem_managed = elem_managed;
-  return l;
-}
+#include "list_trie.h"
 
 static OspreyList *singleton_empty = NULL;
 
@@ -142,7 +35,7 @@ OspreyList *osprey_list_empty(void) {
   if (singleton_empty == NULL) {
     /* Returned from many sites and owned by many callers at once: under ARC
      * it must never be freed by any of them [GC-ARC-PERCEUS]. */
-    singleton_empty = alloc_list(0, 0, 0, NULL, NULL, 0, 0);
+    singleton_empty = alloc_list(0, 0, 0, NULL, NULL, 0, 0, NULL);
     osp_mem_immortal(singleton_empty);
   }
   return singleton_empty;
@@ -172,6 +65,13 @@ static int64_t tail_offset(OspreyList *l) {
   return l->offset + l->length - (int64_t)l->tail_count;
 }
 
+/* Whether PHYSICAL index `j`, already known to lie before the tail chunk, is
+   in the block `front` stands in for. */
+static int in_front(OspreyList *l, int64_t j) {
+  return l->front != NULL &&
+         (j >> OSPREY_LIST_BITS) == (l->offset >> OSPREY_LIST_BITS);
+}
+
 /* Extraction hands back a BORROWED element: the list keeps its reference, so
  * every reader must keep the source alive and dup before storing it elsewhere.
  * Out-of-range indices return 0 rather than walking the trie with garbage
@@ -185,6 +85,9 @@ int64_t osprey_list_get(OspreyList *l, int64_t i) {
   if (j >= off) {
     return l->tail->slots[j - off];
   }
+  if (in_front(l, j)) {
+    return l->front->slots[j & OSPREY_LIST_MASK];
+  }
   OspreyListNode *node = l->root;
   int32_t s = l->shift;
   while (s > 0) {
@@ -195,15 +98,16 @@ int64_t osprey_list_get(OspreyList *l, int64_t i) {
   return node->slots[j & OSPREY_LIST_MASK];
 }
 
-/* Path-copy down to the leaf holding PHYSICAL index `i` and write a
-   TRANSFERRED `v`. Every clone dups what it shares, so each overwritten slot
-   — child or element — drops one. */
-static OspreyListNode *set_in_tree(OspreyList *l, int64_t i, int64_t v) {
+/* Path-copy from the root down to the node at `level` on PHYSICAL index `i`'s
+   path; returns that node and stores the new root (+1) in *root. Every clone
+   dups what it shares, so each slot overwritten in one — child or element —
+   drops a reference. NULL nodes on the path are created. */
+static OspreyListNode *copy_path(OspreyList *l, int64_t i, int32_t level,
+                                 OspreyListNode **root) {
   int em = l->elem_managed;
-  OspreyListNode *new_root = clone_node(l->root, node_layout(l->shift, em));
-  OspreyListNode *cur = new_root;
-  int32_t s = l->shift;
-  while (s > 0) {
+  OspreyListNode *cur = clone_node(l->root, node_layout(l->shift, em));
+  *root = cur;
+  for (int32_t s = l->shift; s > level;) {
     int32_t slot = (int32_t)((i >> s) & OSPREY_LIST_MASK);
     OspreyListNode *child = (OspreyListNode *)(uintptr_t)cur->slots[slot];
     s -= OSPREY_LIST_BITS;
@@ -212,9 +116,46 @@ static OspreyListNode *set_in_tree(OspreyList *l, int64_t i, int64_t v) {
     cur->slots[slot] = (int64_t)(uintptr_t)new_child;
     cur = new_child;
   }
-  release_elem(cur->slots[i & OSPREY_LIST_MASK], em); /* the clone's dup */
-  cur->slots[i & OSPREY_LIST_MASK] = v;
-  return new_root;
+  return cur;
+}
+
+/* Overwrite `leaf`'s slot for PHYSICAL index `j` with a TRANSFERRED `v`; the
+   leaf is a clone, so the element it dup'd there is dropped. */
+static void write_slot(OspreyListNode *leaf, int64_t j, int64_t v, int em) {
+  release_elem(leaf->slots[j & OSPREY_LIST_MASK], em);
+  leaf->slots[j & OSPREY_LIST_MASK] = v;
+}
+
+/* A fresh single-element leaf chunk holding a TRANSFERRED `v`. */
+static OspreyListNode *leaf_of(int64_t v, int em) {
+  OspreyListNode *n = alloc_node(node_layout(0, em));
+  n->slots[0] = v;
+  return n;
+}
+
+/* `h` with a TRANSFERRED `v` written at PHYSICAL index `j`, as a fresh header
+   of `length` elements starting at `offset`: the tail chunk, the front chunk
+   or the tree path holding `j` is copied and the rest shared. `h` is BORROWED. */
+static OspreyList *write_at(OspreyList *h, int64_t j, int64_t v, int64_t length,
+                            int64_t offset) {
+  int em = h->elem_managed;
+  int64_t off = tail_offset(h);
+  OspreyListNode *root = h->root, *tail = h->tail, *front = h->front;
+  if (j >= off) {
+    tail = clone_node(h->tail, node_layout(0, em));
+    write_slot(tail, j - off, v, em);
+  } else if (in_front(h, j)) {
+    front = clone_node(h->front, node_layout(0, em));
+    write_slot(front, j, v, em);
+  } else {
+    write_slot(copy_path(h, j, 0, &root), j, v, em);
+  }
+  /* Whatever was not copied is aliased into a second header. */
+  if (root == h->root) osp_retain(root);
+  if (tail == h->tail) osp_retain(tail);
+  if (front == h->front) osp_retain(front);
+  return alloc_list(length, h->shift, h->tail_count, root, tail, offset, em,
+                    front);
 }
 
 /* Set element at an in-bounds index, path-copied; `v` is TRANSFERRED. An
@@ -227,47 +168,93 @@ OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v) {
     osp_retain(l);
     return l;
   }
-  int em = l->elem_managed;
-  int64_t j = l->offset + i;
-  int64_t off = tail_offset(l);
-  if (j >= off) {
-    OspreyListNode *new_tail = clone_node(l->tail, node_layout(0, em));
-    release_elem(new_tail->slots[j - off], em);
-    new_tail->slots[j - off] = v;
-    osp_retain(l->root); /* aliased into a second header */
-    return alloc_list(l->length, l->shift, l->tail_count, l->root, new_tail,
-                      l->offset, em);
-  }
-  OspreyListNode *new_root = set_in_tree(l, j, v);
-  osp_retain(l->tail);
-  return alloc_list(l->length, l->shift, l->tail_count, new_root, l->tail,
-                    l->offset, em);
+  return write_at(l, l->offset + i, v, l->length, l->offset);
 }
 
-/* Insert the tail chunk at `level`, path-copying as it descends; returns the
-   new node (+1). `tail_node` is BORROWED and gains a reference where it lands.
-   `level` is never 0: appending to a shift-0 list grows the tree first. */
-static OspreyListNode *push_tail(int32_t level, OspreyListNode *parent,
-                                 OspreyListNode *tail_node,
-                                 int64_t in_tree_count) {
-  int32_t sub_index =
-      (int32_t)(((in_tree_count - 1) >> level) & OSPREY_LIST_MASK);
-  OspreyListNode *ret = clone_node(parent, NODE_PTRS_LAYOUT);
-  OspreyListNode *child = (OspreyListNode *)(uintptr_t)ret->slots[sub_index];
-  OspreyListNode *node_to_insert;
-  if (level == OSPREY_LIST_BITS) {
-    osp_retain(tail_node);
-    node_to_insert = tail_node;
-  } else if (child != NULL) {
-    node_to_insert =
-        push_tail(level - OSPREY_LIST_BITS, child, tail_node, in_tree_count);
-  } else {
-    osp_retain(tail_node);
-    node_to_insert = wrap_path(tail_node, level - OSPREY_LIST_BITS);
+/* Open room before physical index 0 of `h`, a by-value header copy: a tree one
+   level taller holds the old root in slot 1, so every element moves up by the
+   old capacity and slot 0 is free; a tail-only list gains an empty leaf root.
+   Returns the fresh root (+1), which `h` now borrows. */
+static OspreyListNode *open_front(OspreyList *h) {
+  int32_t shift = (h->root == NULL) ? 0 : h->shift + OSPREY_LIST_BITS;
+  OspreyListNode *fresh = alloc_node(node_layout(shift, h->elem_managed));
+  if (h->root != NULL) {
+    osp_retain(h->root);
+    fresh->slots[1] = (int64_t)(uintptr_t)h->root;
   }
-  osp_release(child); /* clone_node dup'd it; this slot now holds the copy */
-  ret->slots[sub_index] = (int64_t)(uintptr_t)node_to_insert;
-  return ret;
+  h->offset = (int64_t)1 << (h->shift + OSPREY_LIST_BITS);
+  h->shift = shift;
+  h->root = fresh;
+  return fresh;
+}
+
+/* `h`'s root with its front chunk installed as the tree leaf of its block, as
+   a fresh +1. */
+static OspreyListNode *settle_front(OspreyList *h) {
+  osp_retain(h->front);
+  if (h->shift == 0) {
+    return h->front;
+  }
+  OspreyListNode *root;
+  OspreyListNode *parent = copy_path(h, h->offset, OSPREY_LIST_BITS, &root);
+  int32_t slot = (int32_t)((h->offset >> OSPREY_LIST_BITS) & OSPREY_LIST_MASK);
+  osp_release(as_node_ptr(parent->slots[slot])); /* the clone's dup */
+  parent->slots[slot] = (int64_t)(uintptr_t)h->front;
+  return root;
+}
+
+/* The tree leaf holding PHYSICAL index `j`, BORROWED; NULL where front room
+   has not been filled yet. */
+static OspreyListNode *tree_leaf(OspreyList *h, int64_t j) {
+  OspreyListNode *node = h->root;
+  for (int32_t s = h->shift; s > 0 && node != NULL; s -= OSPREY_LIST_BITS) {
+    node = (OspreyListNode *)(uintptr_t)node->slots[(j >> s) & OSPREY_LIST_MASK];
+  }
+  return node;
+}
+
+/* Prepend into a block no chunk covers yet: the current front chunk settles
+   into the tree, room opens when the list starts at physical 0, and a fresh
+   front chunk over the block before the first element takes `v`. */
+static OspreyList *prepend_new_front(OspreyList h, int64_t v) {
+  int em = h.elem_managed;
+  OspreyListNode *root = h.root; /* held at +1 from here on */
+  if (h.front != NULL) root = settle_front(&h);
+  else osp_retain(root);
+  h.root = root;
+  if (h.offset == 0) {
+    OspreyListNode *fresh = open_front(&h);
+    osp_release(root); /* the fresh root holds it now */
+    root = fresh;
+  }
+  int64_t j = h.offset - 1;
+  OspreyListNode *front = clone_node(tree_leaf(&h, j), node_layout(0, em));
+  write_slot(front, j, v, em);
+  osp_retain(h.tail);
+  return alloc_list(h.length + 1, h.shift, h.tail_count, root, h.tail, j, em,
+                    front);
+}
+
+/* Amortised O(1): `v` goes into the slot before the first element, in the tail
+   chunk or the front chunk when one covers it, so most prepends copy a single
+   leaf; one in 32 path-copies the full front chunk into the tree. A view's
+   trimmed front is reused. `v` is TRANSFERRED. Because drop is an O(1) view
+   too, cons-style `[head, ...tail]` rebuilding is linear. */
+OspreyList *osprey_list_prepend_of(OspreyList *l, int64_t v, int em) {
+  if (l == NULL || l->length == 0) {
+    return alloc_list(1, 0, 1, NULL, leaf_of(v, em), 0, em, NULL);
+  }
+  OspreyList h = *l; /* a borrowed copy stamped with the caller's element kind */
+  h.elem_managed = em;
+  int64_t j = h.offset - 1;
+  if (j >= 0 && (j >= tail_offset(&h) || in_front(&h, j))) {
+    return write_at(&h, j, v, h.length + 1, j);
+  }
+  return prepend_new_front(h, v);
+}
+
+OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
+  return osprey_list_prepend_of(l, v, osprey_list_elem_managed(l));
 }
 
 /* `l`'s root with its full tail chunk folded in, as a fresh +1; *shift grows
@@ -293,19 +280,12 @@ static OspreyListNode *grow_root(OspreyList *l, int32_t *shift) {
   return new_root;
 }
 
-/* A fresh single-element leaf chunk holding a TRANSFERRED `v`. */
-static OspreyListNode *leaf_of(int64_t v, int em) {
-  OspreyListNode *n = alloc_node(node_layout(0, em));
-  n->slots[0] = v;
-  return n;
-}
-
 /* Insertion TRANSFERS the caller's reference on `v` (codegen dups before
  * erasing it into the i64 element ABI), so nothing here retains it again.
  * [GC-ARC-PERCEUS] */
 OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int em) {
   if (l == NULL || l->length == 0) {
-    return alloc_list(1, 0, 1, NULL, leaf_of(v, em), 0, em);
+    return alloc_list(1, 0, 1, NULL, leaf_of(v, em), 0, em, NULL);
   }
   /* Room in the tail? Slots from tail_count on are always zero (a chunk fills
      left to right), so no element is overwritten here. */
@@ -313,14 +293,16 @@ OspreyList *osprey_list_append_of(OspreyList *l, int64_t v, int em) {
     OspreyListNode *new_tail = clone_node(l->tail, node_layout(0, em));
     new_tail->slots[l->tail_count] = v;
     osp_retain(l->root);
+    osp_retain(l->front);
     return alloc_list(l->length + 1, l->shift, l->tail_count + 1, l->root,
-                      new_tail, l->offset, em);
+                      new_tail, l->offset, em, l->front);
   }
   /* Tail is full. Push it into the tree; new tail = [v]. */
   int32_t new_shift = l->shift;
   OspreyListNode *new_root = grow_root(l, &new_shift);
+  osp_retain(l->front);
   return alloc_list(l->length + 1, new_shift, 1, new_root, leaf_of(v, em),
-                    l->offset, em);
+                    l->offset, em, l->front);
 }
 
 OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
@@ -338,94 +320,11 @@ OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   if (n >= l->length) {
     return osprey_list_empty();
   }
+  /* The front chunk follows the view while its block still holds element 0. */
+  OspreyListNode *front = in_front(l, l->offset + n) ? l->front : NULL;
   osp_retain(l->root);
   osp_retain(l->tail);
+  osp_retain(front);
   return alloc_list(l->length - n, l->shift, l->tail_count, l->root, l->tail,
-                    l->offset + n, l->elem_managed);
-}
-
-/* ===== Builder (transient-style, no sharing during construction) ===== */
-
-OspreyListBuilder *osprey_list_builder_new_of(int em) {
-  OspreyListBuilder *b =
-      (OspreyListBuilder *)calloc(1, sizeof(OspreyListBuilder));
-  b->elem_managed = em;
-  return b;
-}
-
-OspreyListBuilder *osprey_list_builder_new(void) {
-  return osprey_list_builder_new_of(0);
-}
-
-/* Stack a fresh root over the builder's root and its full tail chunk. Unlike
-   grow_root this MOVES both builder references into the new node. */
-static void builder_grow_root(OspreyListBuilder *b) {
-  OspreyListNode *new_path = wrap_path(b->tail, b->shift);
-  OspreyListNode *new_root = alloc_node(NODE_PTRS_LAYOUT);
-  new_root->slots[0] = (int64_t)(uintptr_t)b->root;
-  new_root->slots[1] = (int64_t)(uintptr_t)new_path;
-  b->root = new_root;
-  b->shift += OSPREY_LIST_BITS;
-}
-
-/* The builder is a transient it alone owns, so each branch MOVES its root and
-   tail references — except the path-copying one, which leaves the old root
-   unreachable and takes its own tail reference. */
-static void builder_push_tail_to_tree(OspreyListBuilder *b) {
-  int64_t in_tree = b->length - (int64_t)b->tail_count;
-  int64_t capacity_at_shift = (int64_t)1 << (b->shift + OSPREY_LIST_BITS);
-  if (b->root == NULL) {
-    b->root = b->tail;
-    b->shift = 0;
-  } else if (in_tree + OSPREY_LIST_BRANCH > capacity_at_shift) {
-    builder_grow_root(b);
-  } else {
-    OspreyListNode *old_root = b->root;
-    b->root =
-        push_tail(b->shift, old_root, b->tail, in_tree + OSPREY_LIST_BRANCH);
-    osp_release(old_root);
-    osp_release(b->tail);
-  }
-  b->tail = NULL;
-  b->tail_count = 0;
-}
-
-/* TRANSFERS `v`. Every leaf the builder allocates is minted here, so latching
- * the element kind on each push keeps them all stamped alike — which lets a
- * caller that only learns the element type inside its loop (mapList) still
- * build a correctly walked list. */
-void osprey_list_builder_push_of(OspreyListBuilder *b, int64_t v, int em) {
-  b->elem_managed = em;
-  if (b->tail == NULL || b->tail_count == OSPREY_LIST_BRANCH) {
-    if (b->tail != NULL) {
-      builder_push_tail_to_tree(b);
-    }
-    b->tail = alloc_node(node_layout(0, em));
-    b->tail_count = 0;
-  }
-  b->tail->slots[b->tail_count] = v;
-  b->tail_count++;
-  b->length++;
-}
-
-void osprey_list_builder_push(OspreyListBuilder *b, int64_t v) {
-  osprey_list_builder_push_of(b, v, b->elem_managed);
-}
-
-/* Push an element BORROWED from another container: the source keeps its
- * reference, so the builder takes its own. */
-void osprey_list_builder_push_borrowed(OspreyListBuilder *b, int64_t v) {
-  retain_elem(v, b->elem_managed);
-  osprey_list_builder_push_of(b, v, b->elem_managed);
-}
-
-OspreyList *osprey_list_builder_seal(OspreyListBuilder *b) {
-  if (b->length == 0) {
-    free(b);
-    return osprey_list_empty();
-  }
-  OspreyList *l = alloc_list(b->length, b->shift, b->tail_count, b->root,
-                             b->tail, 0, b->elem_managed);
-  free(b);
-  return l;
+                    l->offset + n, l->elem_managed, front);
 }

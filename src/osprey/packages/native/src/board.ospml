@@ -15,7 +15,7 @@ type Stroke =
 
 (** Typed constructors for writable boards ([UI-COMPONENTS-BOARD]). *)
 module Boards
-    (** A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke's JSON; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
+    (** A writable board drawing the `count` strokes the host holds in the slices `slice:0` to `slice:<count - 1>`, each a stroke the host keeps; each finished stroke is delivered once to `stroke`, and a lasso, offered only when `lassoing`, delivers the indices of the strokes it encloses to `lasso`. *)
     export board<A> : (string, int, bool, A, A) -> Node<A>
     board (slice, count, lassoing, stroke, lasso) = illustrated (slice, count, lassoing, "", stroke, lasso)
 
@@ -23,43 +23,25 @@ module Boards
     export illustrated<A> : (string, int, bool, string, A, A) -> Node<A>
     illustrated (slice, count, lassoing, backdrop, stroke, lasso) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = false, boardPanBinding = false, boardPan = stroke, stroke = stroke, lasso = lasso)
 
-    (** A board camera drag reports its final absolute x/y offsets as bounded JSON text to `pan`. *)
+    (** A board camera drag reports its final absolute offsets to `pan` as `x,y`. *)
     export interactive<A> : (string, int, bool, string, bool, A, A, A) -> Node<A>
     interactive (slice, count, lassoing, backdrop, panning, stroke, lasso, pan) = Board(boardSlice = slice, strokeCount = count, lassoEnabled = lassoing, boardBackdrop = backdrop, boardPanning = panning, boardPanBinding = true, boardPan = pan, stroke = stroke, lasso = lasso)
 
-(** Decodes the board's stroke and lasso values ([UI-COMPONENTS-BOARD]); a malformed stroke is refused, never guessed. *)
+(** Checks the board's strokes and lassos as a host delivers them ([UI-COMPONENTS-BOARD]); a malformed one is refused, never guessed. *)
 module Strokes
-    coordinate (pair, at) = jsonInt (jsonIndex pair at ?: JsonNull) ?: (0 - 1)
+    malformed = "A board control sent a malformed stroke"
 
-    point pair = Point(pointX = coordinate (pair, 0), pointY = coordinate (pair, 1))
+    (** The stroke a host finished: its points, width and clock; an error when it has no points, a negative point, a width below one or a negative clock. *)
+    export checked (points, width, at) = match Lists::any (points, \p => p.pointX < 0 || p.pointY < 0) || isEmpty points || width < 1 || at < 0
+        true => Error(message = malformed)
+        false => Success(value = Stroke(strokePoints = points, strokeWidth = width, strokeAt = at))
 
-    validPoint pair = match pair
-        JsonArray values => length values == 2 && (point pair).pointX >= 0 && (point pair).pointY >= 0
-        _ => false
-
-    validNumber (value, key, least) = match jsonInt (Doc::field (value, key))
-        Success number => number >= least
-        Error _ => false
-
-    (** The stroke a host sent: `points` as `[x, y]` pairs, `width` and `at`; an error when a point is not a pair of non-negative integers. *)
-    export decode value =
-        points = Doc::items (Doc::field (value, "points"))
-        match Lists::any (points, \pair => validPoint pair == false) || isEmpty points || validNumber (value, "width", 1) == false || validNumber (value, "at", 0) == false
-            true => Error(message = "A board control sent a malformed stroke")
-            false => Success(value = Stroke(strokePoints = mapList (points, \pair => point pair), strokeWidth = Doc::number (value, "width"), strokeAt = Doc::number (value, "at")))
-
-    (** The `Stroked` message for a stroke value delivered to `action`. *)
-    export bind (action, value) = match decode value
+    (** The `Stroked` message for a stroke delivered to `action`. *)
+    export bind (action, points, width, at) = match checked (points, width, at)
         Success stroke => Success(value = Stroked(stroker = action, stroked = stroke))
         Error problem => Error(message = problem)
 
-    index item = jsonInt item ?: (0 - 1)
-
-    (** The `Lassoed` message for an array of stroke indices delivered to `action`; any other value is refused. *)
-    export lasso (action, value) = match value
-        JsonArray items => enclosed (action, mapList (items, \item => index item))
-        _ => Error(message = "A board control sent a lasso that is not a list of strokes")
-
-    enclosed (action, indices) = match Lists::any (indices, \at => at < 0)
+    (** The `Lassoed` message for the stroke indices delivered to `action`; a negative index is refused. *)
+    export lasso (action, indices) = match Lists::any (indices, \at => at < 0)
         true => Error(message = "A board control sent a lasso that is not a list of strokes")
         false => Success(value = Lassoed(lassoer = action, lassoed = indices))

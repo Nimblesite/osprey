@@ -1,39 +1,41 @@
-// Flock's C boundary for the GPUI host ([GPUI-HOST-BOUNDARY], [UI-SCENE], [UI-RESIDENT]). The
-// session lives in this library between calls, so a frame never serializes the flock.
+// Flock's C boundary for any Osprey Native host ([NATIVE-SHM-BOUNDARY], [NATIVE-SHM-EVENT]):
+// `argument` gathers the launch arguments, `open` draws the first frame and `event` delivers one
+// typed host event and draws the next. Nothing is encoded in either direction: the frame is view,
+// scene and ask rows the host seals when each call returns, a Scene node's primitives ride beside
+// its canvas ([NATIVE-SHM-SCENE]), and the session stays in this library between calls, so a frame
+// never serializes the flock.
 
 import ui::Runtime
+import ui::Views
+import ui::Surfaces
+import ui::Hosting
 import flock::App
 import flock::Simulation
-import ui::Streams
 
 extern native_slice (key : string) -> string
 
-extern native_shape (code : int) (index : int) (a : float) (b : float) (c : float) (d : float) (e : float) (tint : int) (layer : int) -> int
-
-(** Hands the session the framework returned to the cell below. *)
+(** Hands the next surface to the cell below. *)
 effect Keep
-    keep : ui::Session<flock::Store> => Unit
+    keep : ui::Surface<flock::Store, flock::Act> => Unit
 
-mut live = Runtime::idle (Simulation::sizedStore 1)
-
-mut streamed = 0
-
-// [UI-SCENE-STREAM] Each streamed rect, disc or sprite goes straight to the host.
-shipped primitive = Streams::transmit (primitive, native_shape)
-
-keeping (done : ui::Resident<flock::Store>) =
-    perform Keep.keep done.residentSession
-    done.residentEnvelope
+mut held = Surfaces::idle (Simulation::sizedStore 1)
 
 hosted work =
     handle Keep
-        keep session => live := session
-    handle ui::SceneStream
-        shape primitive => streamed := shipped primitive
+        keep next => held := next
     handle ui::Slices
         fetch key => native_slice key
-    keeping (work ())
+    Runtime::guarded (\() => Views::shared work)
 
-start source = hosted (\() => Runtime::begin (source, App::initial, App::regions, App::theme ()))
+kept next =
+    perform Keep.keep next
+    Hosting::answer next
 
-dispatch (_saved : string, event) = hosted (\() => Runtime::proceed (live, event, App::update, App::regions))
+(** Gathers one launch argument, in order, before `open`. *)
+argument text = hosted (\() => kept (Surfaces::argued (held, text)))
+
+(** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
+open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, App::program (), now, offset, platform, home, dark)))
+
+(** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
+event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, App::program (), now, kind, ordinal, words, detail, x, y, down, shift)))

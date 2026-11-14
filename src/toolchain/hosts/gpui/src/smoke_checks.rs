@@ -1,39 +1,16 @@
-//! What a smoke step expects of the host after it runs ([GPUI-HOST-VERIFICATION]): the envelope's
-//! regions and requests, the rendered text and the diagnostics count.
+//! What a smoke step expects of the host after it runs ([GPUI-HOST-VERIFICATION]): the frame's
+//! requests, its root, its scene's primitives, the text it announces and its diagnostics count.
 
-use super::{has_text, Expect, TextExpect};
-use crate::envelope::Envelope;
-use crate::regions::Regions;
+use super::{Expect, TextExpect};
+use crate::rows::Shown;
+use crate::screen::Screen;
 
-/// Checks patch membership and the ordered capability request list.
-pub(super) fn check_envelope(envelope: &Envelope, expect: &Expect) -> Result<(), String> {
-    let patches: Vec<&str> = envelope
-        .patches
-        .iter()
-        .map(|patch| patch.key.as_str())
-        .collect();
-    if let Some(expected) = &expect.patched {
-        for key in expected {
-            if !patches.contains(&key.as_str()) {
-                return Err(format!(
-                    "region {key} was not patched; patches were {patches:?}"
-                ));
-            }
-        }
-    }
-    check_requests(envelope, expect.requests.as_deref())
-}
-
-/// Checks the exact ordered request list when a step supplies one.
-fn check_requests(envelope: &Envelope, expected: Option<&[String]>) -> Result<(), String> {
-    let Some(expected) = expected else {
+/// Checks the ordered capability request list.
+pub(super) fn check_asks(shown: &Shown, expect: &Expect) -> Result<(), String> {
+    let Some(expected) = &expect.requests else {
         return Ok(());
     };
-    let actual: Vec<&str> = envelope
-        .requests
-        .iter()
-        .map(|request| request.kind.as_str())
-        .collect();
+    let actual: Vec<&str> = shown.requests().map(|ask| ask.kind()).collect();
     let wanted: Vec<&str> = expected.iter().map(String::as_str).collect();
     match actual == wanted {
         true => Ok(()),
@@ -41,43 +18,64 @@ fn check_requests(envelope: &Envelope, expected: Option<&[String]>) -> Result<()
     }
 }
 
-/// Checks current region existence, text and accumulated diagnostics.
-pub(super) fn check_regions(regions: &Regions, expect: &Expect) -> Result<(), String> {
-    if let Some(expected) = &expect.regions {
-        for key in expected {
-            if regions.get(key).is_none() {
-                let keys: Vec<&str> = regions.keys().collect();
-                return Err(format!("region {key} is absent; regions were {keys:?}"));
+/// Checks the frame's root, its first scene's primitives, its text and its diagnostics.
+pub(super) fn check_frame(shown: &Shown, expect: &Expect) -> Result<(), String> {
+    if let Some(expected) = expect.root {
+        match (expected, shown.roots.is_empty()) {
+            (true, true) => return Err("the frame draws no root".to_owned()),
+            (false, false) => {
+                return Err(format!(
+                    "the frame draws {} roots, expected none",
+                    shown.roots.len()
+                ))
             }
+            _ => {}
         }
     }
-    check_text(regions, expect.text.as_ref())?;
-    check_diagnostics(regions, expect.diagnostics)
+    if let Some(expected) = expect.primitives {
+        check_primitives(shown, expected)?;
+    }
+    check_text(shown, expect.text.as_ref())?;
+    check_diagnostics(shown, expect.diagnostics)
 }
 
-/// Checks one substring against all strings in the selected current region.
-fn check_text(regions: &Regions, expect: Option<&TextExpect>) -> Result<(), String> {
+/// Count what the frame's first scene draws, so a lost primitive cannot hide.
+fn check_primitives(shown: &Shown, expected: usize) -> Result<(), String> {
+    let scene = shown
+        .scenes
+        .keys()
+        .min()
+        .and_then(|row| shown.scenes.get(row))
+        .ok_or("the frame draws no scene to count")?;
+    if scene.shapes.len() != expected {
+        return Err(format!(
+            "the first scene has {} primitives, expected {expected}",
+            scene.shapes.len()
+        ));
+    }
+    Ok(())
+}
+
+/// Checks one substring against every string the frame announces.
+fn check_text(shown: &Shown, expect: Option<&TextExpect>) -> Result<(), String> {
     let Some(expect) = expect else {
         return Ok(());
     };
-    let region = regions
-        .get(&expect.region)
-        .ok_or_else(|| format!("region {} is absent for a text assertion", expect.region))?;
-    match has_text(&region.node, &expect.contains, true) {
+    match Screen::new(shown).contains(&expect.contains) {
         true => Ok(()),
         false => Err(format!(
-            "region {} has no string containing {:?}: {}",
-            expect.region, expect.contains, region.node
+            "the frame has no string containing {:?}",
+            expect.contains
         )),
     }
 }
 
-/// Checks the exact accumulated diagnostic count when a step supplies one.
-fn check_diagnostics(regions: &Regions, expected: Option<usize>) -> Result<(), String> {
+/// Checks the exact diagnostic count when a step supplies one.
+fn check_diagnostics(shown: &Shown, expected: Option<usize>) -> Result<(), String> {
     let Some(expected) = expected else {
         return Ok(());
     };
-    let actual = regions.diagnostics();
+    let actual: Vec<&str> = shown.diagnostics().collect();
     match actual.len() == expected {
         true => Ok(()),
         false => Err(format!(

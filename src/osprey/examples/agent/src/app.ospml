@@ -93,7 +93,7 @@ module Turn
         Error problem => failed (store, chat, problem, 0)
         Success result =>
             body = perform ui::Slices.fetch ticket
-            status = Doc::number (result, "status")
+            status = Doc::number (Doc::parse result, "status")
             reply = Engine::accept (chat.chatHistory, chat.chatModel, status, body)
             match reply.replyOk
                 false => failed (store, chat, reply.replyProblem, status)
@@ -103,7 +103,7 @@ module Turn
     export toolAnswered (store, chat, ticket, outcome) =
         call = Model::callNamed (chat, chat.chatCall)
         output = match outcome
-            Success result => Engine::tool_result_text (call.callName, Doc::number (result, "status"), perform ui::Slices.fetch ticket, "")
+            Success result => Engine::tool_result_text (call.callName, Doc::number (Doc::parse result, "status"), perform ui::Slices.fetch ticket, "")
             Error problem => Engine::tool_result_text (call.callName, 1, "", problem)
         advance (store, gathered (chat, call, output))
 
@@ -318,9 +318,12 @@ module Answers
     // A saved document that answered: through `of` with its words when the file was found, else the store unchanged.
     readFound (store, outcome, slice, of) = match outcome
         Error _ => Runtime::step store
-        Success result => match Doc::flag (result, "found")
+        Success result => match found result
             false => Runtime::step store
             true => of (perform ui::Slices.fetch slice)
+
+    // Whether a store read's receipt says the file was there.
+    found result = Doc::flag (Doc::parse result, "found")
 
     // `store` with the providers file's settings, and every chat given the saved defaults.
     withProviders (store, doc) =
@@ -334,11 +337,11 @@ module Answers
 
     folderChosen (store, outcome) = match outcome
         Error _ => Runtime::step store
-        Success result => match Doc::text (result, "path") == ""
+        Success path => match path == ""
             true => Runtime::step store
             false =>
                 chat = Model::active store
-                folder = Doc::text (result, "path")
+                folder = path
                 mcp = store.mcp
                 moved = Model::putChat (store(mcp = mcp(stateFolder = folder, stateProjectLoaded = false)), chat(chatFolder = folder))
                 saving = Model::persisting (moved, "chats.json")
@@ -352,18 +355,18 @@ module Answers
     // The three MCP documents answered: merge, stop what left the list, connect what is new.
     mcpGlobalLoaded (store, outcome) = match outcome
         Error _ => afterMcp (McpModel::globalMissing (store.mcp), store, [])
-        Success result => afterMcp (mcpDocument (store, "mcp-file", Doc::flag (result, "found"), \text => McpModel::globalLoaded (store.mcp, text), McpModel::globalMissing (store.mcp)), store, [])
+        Success result => afterMcp (mcpDocument (store, "mcp-file", found result, \text => McpModel::globalLoaded (store.mcp, text), McpModel::globalMissing (store.mcp)), store, [])
 
     mcpStateLoaded (store, outcome) = match outcome
         Error _ => afterMcp (McpModel::memoriesOf (store.mcp, JsonObject []), store, [])
-        Success result => afterMcp (mcpDocument (store, "mcp-state-file", Doc::flag (result, "found"), \text => McpModel::memoriesOf (store.mcp, Doc::parse text), McpModel::memoriesOf (store.mcp, JsonObject [])), store, [])
+        Success result => afterMcp (mcpDocument (store, "mcp-state-file", found result, \text => McpModel::memoriesOf (store.mcp, Doc::parse text), McpModel::memoriesOf (store.mcp, JsonObject [])), store, [])
 
     mcpProjectLoaded (store, outcome) = match outcome
         Error _ =>
             loaded = McpModel::projectMissing (store.mcp)
             afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
         Success result =>
-            loaded = mcpDocument (store, "mcp-project-file", Doc::number (result, "status") == 0, \text => McpModel::projectLoaded (store.mcp, text), McpModel::projectMissing (store.mcp))
+            loaded = mcpDocument (store, "mcp-project-file", Doc::number (Doc::parse result, "status") == 0, \text => McpModel::projectLoaded (store.mcp, text), McpModel::projectMissing (store.mcp))
             afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
 
     // Once every document has answered, connect what is enabled and off.
@@ -482,6 +485,9 @@ module App
 
     (** The store from a saved session document. *)
     export restore doc = Model::storeOf doc
+
+    (** Osprey Agent as its boundary runs it: its launch, update and regions, drawn with the agent's own colours. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())
 
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 

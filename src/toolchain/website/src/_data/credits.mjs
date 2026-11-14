@@ -106,6 +106,11 @@ const PACKAGES = {
     authors: "NIMBLESITE PTY LTD, Australia",
     relationship: "original",
   },
+  synth: {
+    project: "Osprey (synthesis)",
+    authors: "NIMBLESITE PTY LTD, Australia",
+    relationship: "original",
+  },
   sklearn: {
     project: "scikit-learn",
     authors: "contributors of scikit-learn",

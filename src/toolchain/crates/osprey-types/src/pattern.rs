@@ -61,7 +61,26 @@ impl Checker {
     pub(crate) fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, env: &TypeEnv) -> Type {
         let mut local = env.child();
         self.bind_pattern(&arm.pattern, disc, &mut local);
+        self.record_arm_binders(arm, &local);
         self.infer_expr(&arm.body, &local)
+    }
+
+    /// Publish each binder of a source arm under the arm's position, which its
+    /// body block carries; a desugared arm has none and binds nothing a reader
+    /// wrote. Implements [LSP-HOVER-BINDERS].
+    fn record_arm_binders(&mut self, arm: &MatchArm, local: &TypeEnv) {
+        let Expr::Block {
+            position: Some(at), ..
+        } = &arm.body
+        else {
+            return;
+        };
+        let names = pattern_binders_where(&arm.pattern, &|name| !self.names_variant(name));
+        for name in names {
+            if let Some(scheme) = local.get(&name) {
+                self.binder_tys.record(*at, &name, &scheme.ty);
+            }
+        }
     }
 
     fn bind_pattern(&mut self, pattern: &Pattern, disc: &Type, local: &mut TypeEnv) {

@@ -1,12 +1,22 @@
 // [WORKBENCH-VERIFICATION] and [LESSONS-VERIFICATION] fixtures: the whole
-// application through `App::respond`, the VS Code boundary, with the shipped
-// lessons as the host's slices. Every event is a real host event document.
+// application driven through the typed host boundary ([NATIVE-SHM-EVENT]), with
+// the shipped lessons as the host's slices. Every step is a real host event, and
+// every read is the app's own store and the tree it drew.
 namespace workbenchtests
 
 import workbench::App
+import workbench::Benches
 import workbench::Formulas
-import ui::Lists
 import ui::Doc
+import ui::Lists
+import ui::Hosting
+import ui::Maths
+import ui::Surfaces
+import ui::Runtime
+import ui::Views
+import ui::Ui
+import uitest::Drive
+import uitest::Read
 
 effect FixtureReport
     record : string => Unit
@@ -53,14 +63,42 @@ module FixtureFiles
         workbench::Faulted fault => Error(message = "${context} formula ${text}: fault ${toString fault.column}: ${fault.expected}")
 
     export failures () =
-        match read "missing-fixture-regression.json"
-            Error problem => expect ((indexOf (problem, "missing-fixture-regression.json") ?: -1) >= 0, true)
-            Success _ => expect (true, false)
-        match formula ("regression", ")")
-            Error problem => expect ((indexOf (problem, "regression formula ): fault") ?: -1) >= 0, true)
-            Success _ => expect (true, false)
+        mentions (read "missing-fixture-regression.json", "missing-fixture-regression.json")
+        mentions (formula ("regression", ")"), "regression formula ): fault")
 
-(** Drives the workbench through start and dispatch, as a host does. *)
+    (** The failure must carry `sought` in its message; a Success is itself the defect. *)
+    mentions (result, sought) = match result
+        Error problem => expect ((indexOf (problem, sought) ?: -1) >= 0, true)
+        Success _ => expect (true, false)
+
+(** One live session: the driven surface, the host-held slices, the frames kept between steps and the regions the last step redrew. *)
+type Case =
+    caseDriven : uitest::Driven<workbench::Bench, workbench::Act>
+    caseHeld : Json
+    caseFrames : List<SignalFrame>
+    caseDrawn : List<string>
+
+// A region that kept its snapshot stands in as a `Spacer`; only a rebuilt region is drawn.
+redrew value = match value
+    ui::Spacer => false
+    _ => true
+
+memberKey member = match member
+    JsonMember key _ => key
+
+// The members other than `key`'s: a host drops a slice by writing over it.
+withoutKey (members, key) = filterList (members, \member => memberKey member != key)
+
+merged (held, writes) = foldList (writes, held, \(current, write) => JsonObject (listAppend (withoutKey (Doc::members current, write.sliceKey)) (JsonMember write.sliceKey (JsonString write.sliceText))))
+
+heldIn (held, work) =
+    handle ui::Slices
+        fetch key => Doc::text (held, key)
+    Views::quiet work
+
+seenIn (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::seen (held, d.drivenProgram), held.surfaceAsked), drivenNow = satAdd d.drivenNow 1)
+
+(** Drives the workbench through the typed host boundary, as a host does. *)
 module Drive
     read path = FixtureFiles::read path
 
@@ -74,162 +112,287 @@ module Drive
 
     slugs () = ["what-is-a-proof", "what-is-a-solution", "what-is-a-solver", "and-swap", "either-way", "not-and-contradiction", "navier-stokes"]
 
-    // The host's slices: the catalogue and lesson reads, saved progress, and one stroke.
-    held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
+    // The host's slices: the catalogue and lesson reads, saved progress and workspace imports.
+    export held () = JsonObject [JsonMember "lessons:catalogue" (files [file ("lessons/catalogue.json", read "catalogue.json")]), JsonMember "lessons:texts" (files (mapList (slugs (), \slug => file ("lessons/" + slug + ".json", read (slug + ".json"))))), JsonMember "lessons:progress" (JsonString "{\"completed\":[\"and-swap/judge-wrong-order\"]}")]
 
-    (** The first envelope of a new session. *)
-    export started () = remember (Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "start"), JsonMember "context" (Doc::parse "{\"now\":1,\"offset\":0,\"platform\":\"macos\"}"), JsonMember "slices" (held ())]))), JsonNull)
+    program () = App::program ()
 
-    (** The envelope after `event` reaches the session `envelope` left. *)
-    export post (envelope, event) = dispatchHeld (envelope, event, held ())
+    fresh () = Case(caseDriven = uitest::Drive::idle (program (), Benches::fresh ()), caseHeld = held (), caseFrames = [], caseDrawn = [])
 
-    export postHeld (envelope, event, extras) = dispatchHeld (envelope, event, JsonObject (listConcat (Doc::members (held ()), Doc::members extras)))
+    // Runs `gesture`, then records the regions the app redrew between the store before and after it.
+    step : (Case, (uitest::Driven<workbench::Bench, workbench::Act>) -> uitest::Driven<workbench::Bench, workbench::Act>) -> Case
+    step (before, gesture) =
+        prior = bench before
+        next = heldIn (before.caseHeld, \() => gesture before.caseDriven)
+        store = next.drivenSurface.surfaceSession.sessionStore
+        after = merged (before.caseHeld, next.drivenSurface.surfaceWritten)
+        regions = heldIn (after, \() => next.drivenProgram.programRender (prior, store, before.caseFrames, next.drivenSurface.surfaceWritten))
+        before(caseDriven = next, caseHeld = after, caseFrames = mapList (regions, signalFrame), caseDrawn = mapList (filterList (regions, \region => redrew region.snapshotValue), \region => region.snapshotKey))
 
-    (** Two real lesson files deliberately share a challenge id; the host supplies this slice on every event. *)
-    export postSharedChallenge (envelope, event) =
-        current = held ()
-        FixtureFiles::bind (sharedChallenge (Doc::text (current, "lessons:texts")), \changed => FixtureFiles::ok (dispatchHeld (envelope, event, JsonObject (listAppend (filterList (Doc::members current, \member => memberKey member != "lessons:texts"), Doc::str ("lessons:texts", changed))))))
+    // The store the session carries ([WORKBENCH-STORE]), typed.
+    export bench case = case.caseDriven.drivenSurface.surfaceSession.sessionStore
 
-    sharedChallenge source = match replace source "write-identity" "state-swapped-goal"
-        Success changed => Success(value = changed)
-        Error problem => Error(message = "Shared challenge fixture: " + problem)
+    // Every region the app draws for the current store, lowered nowhere: the semantic tree a host lays out.
+    regions case = heldIn (case.caseHeld, \() => case.caseDriven.drivenProgram.programRender (bench case, bench case, [], []))
 
-    dispatchHeld (envelope, event, slices) = remember (Doc::parse (App::respond (Doc::write (JsonObject [Doc::str ("operation", "dispatch"), Doc::str ("state", Doc::text (envelope, "state")), JsonMember "event" (Doc::parse event), JsonMember "slices" slices]))), envelope)
+    region (case, key) = Lists::find (regions case, \item => item.snapshotKey == key)
 
-    (** Preserve both the ordinal and revision of the tree that actually issued the control. *)
-    export labelled (_envelope, issued, region, label, value) =
-        found = findLabel (label, node (issued, region))
-        expect (Doc::has (found, "event"), true)
-        control (region, revision (issued, region), Doc::number (found, "event"), value)
+    // The value `pick` reads in the region `key`, or `fallback` when no such region was drawn.
+    at (case, key, pick, fallback) = match region (case, key)
+        Success found => pick found
+        Error _ => fallback
 
-    export activate (envelope, issued, region, label) = post (envelope, labelled (envelope, issued, region, label, "null"))
+    export node (case, key) = at (case, key, \found => tree found.snapshotValue, JsonObject [])
 
-    (** An activation whose control was drawn by the envelope itself, which is every host event. *)
-    export press (envelope, region, label) = activate (envelope, envelope, region, label)
+    export dependencies (case, key) = at (case, key, \found => found.snapshotDependencies, [])
 
-    memberKey member = match member
-        JsonMember key _ => key
+    (** The regions the last step redrew, in order. *)
+    export keys case = join case.caseDrawn ","
 
-    writtenInto (held, item) =
-        key = Doc::text (item, "key")
-        JsonObject (listAppend (filterList (Doc::members held, \member => memberKey member != key)) (Doc::str (key, Doc::text (item, "text"))))
+    (** The regions the last step redrew, as a list. *)
+    export redrawn case = case.caseDrawn
 
-    (** Retain real slice writes exactly as a host does, without reconstructing board data. *)
-    export hostSlices envelopes = foldList (envelopes, JsonObject [], \(held, envelope) => foldList (Doc::items (Doc::field (envelope, "slices")), held, writtenInto))
+    (** The tickets of the requests the last step made. *)
+    export tickets case = join (mapList (case.caseDriven.drivenSurface.surfaceAsked, \request => request.ticket)) ","
 
-    (** The named field of every item of the `collection` field, in order. *)
-    collected (envelope, collection, field) = join (mapList (Doc::items (Doc::field (envelope, collection)), \item => Doc::text (item, field)), ",")
+    (** The keys of the slices the last step wrote. *)
+    export written case = join (mapList (case.caseDriven.drivenSurface.surfaceWritten, \write => write.sliceKey)) ","
 
-    (** The keys of the regions an envelope re-sent, in order. *)
-    export keys envelope = collected (envelope, "patches", "key")
+    (** Why the last step was refused, empty when it was not. *)
+    export problem case = case.caseDriven.drivenSurface.surfaceProblem
 
-    (** The host retains every region's revision even when the latest envelope has no patch for it. *)
-    export revision (envelope, key) = signalRevisionOf (signalFramesFromJson (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))) key
+    (** The store as its own saved document, which is what every host carries ([UI-STORE]). *)
+    export stored case = Benches::save (bench case)
 
-    (** The tickets of the requests in `envelope`. *)
-    export tickets envelope = collected (envelope, "requests", "ticket")
+    (** The host-held slices the listed sessions left, as a host reads them back. *)
+    export hostSlices cases = match listGet cases (satSub (length cases) 1)
+        Success last => last.caseHeld
+        Error _ => held ()
 
-    (** The keys of the slices `envelope` wrote. *)
-    export written envelope = collected (envelope, "slices", "key")
+    // The step `next` already took from this session.
+    export post (_case, next) = next
 
-    (** The store the session of `envelope` carries. *)
-    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+    exported (case, message) = step (case, \d => seenIn (d, heldIn (case.caseHeld, \() => Surfaces::deliver (d.drivenSurface, d.drivenProgram, d.drivenNow, message))))
 
-    (** A control event: `value` as JSON text, on control `ordinal` of `region` as drawn at `revision`. *)
-    export control (region, revision, ordinal, value) = "{\"kind\":\"ui\",\"region\":\"" + region + "\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":" + value + ",\"now\":5}"
+    // The launch: the platform, the appearance and the arguments the host was opened with.
+    openedOn (platform, dark) = step (fresh (), \d => seenIn (d, heldIn (held (), \() => Hosting::opened (d.drivenSurface, d.drivenProgram, d.drivenNow, 0, platform, "/home/tester", dark))))
 
-    (** A control event on `region` as `envelope` drew it, without restating its revision. *)
-    export controlOf (envelope, region, ordinal, value) = post (envelope, control (region, revision (envelope, region), ordinal, value))
+    (** The first frame of a new session on macOS, light. *)
+    export started () = openedOn ("macos", false)
 
-    (** A tap on control `ordinal` of region `region` as `envelope` drew it. *)
-    export tap (envelope, region, ordinal) = control (region, revision (envelope, region), ordinal, "null")
+    (** The first frame of a session started in `theme`, as the host's appearance. *)
+    export began (theme) = openedOn ("vscode", theme == "dark")
 
-    (** A completion of `ticket` with `result` as JSON text. *)
-    export done (ticket, result) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":true,\"result\":" + result + ",\"now\":6}"
+    (** A press of the control labelled `label`; `region` is named by call sites that keep it. *)
+    export press (case, key, label) = match region (case, key)
+        Success found => pressedIn (case, buttonIn (label, found.snapshotValue), label)
+        Error _ => step (case, \d => uitest::Drive::press (d, label))
+
+    (** A press of `label` in `key` that must have requested `ticket`. *)
+    export requested (case, key, label, ticket) =
+        pressed = press (case, key, label)
+        expect (tickets pressed, ticket)
+        pressed
+
+    // A host control event at `ordinal` carrying `words`: every other dimension rests.
+    controlTouch (d, ordinal, words) = ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
+
+    // A host press on the binding of the button the region drew, or the first control `label` names when it drew none.
+    pressedIn (case, found, label) = match found
+        Success act => step (case, \d => uitest::Drive::sent (d, controlTouch (d, Lists::position (d.drivenSurface.surfaceBound, \bound => structuralEquals bound (ui::Tap(action = act))), "")))
+        Error _ => step (case, \d => uitest::Drive::press (d, label))
+
+    labelledAct (named, act) = match named
+        true => Success(value = act)
+        false => Error(message = "another button")
+
+    buttonIn : (string, ui::Node<workbench::Act>) -> Result<workbench::Act, Error>
+    buttonIn (label, node) = match node
+        ui::Button text _ _ _ act => labelledAct (text == label, act)
+        _ => searchChildren (node, \child => buttonIn (label, child))
+
+    (** `words` typed into, or a key chosen on, the control labelled `label`. *)
+    export choose (case, _region, label, words) = step (case, \d => uitest::Drive::choose (d, label, words))
+
+    (** A press of the `index`th control labelled `label`, numbered from zero. *)
+    export pressNth (case, label, index) = step (case, \d => uitest::Drive::sent (d, controlTouch (d, nth (d, label, index), "")))
+
+    nth (d, label, index) = match listGet (uitest::Views::labelled (d.drivenSeen, label)) index
+        Success found => found.controlOrdinal
+        Error _ => 0 - 1
+
+    (** A control event at `ordinal`, which no current control need carry: the host can name only the bindings the app issued. *)
+    export stray (case, ordinal, words) = step (case, \d => uitest::Drive::sent (d, controlTouch (d, ordinal, words)))
+
+    (** The step that sends `words` to the control labelled `label`, as a host that drew it earlier would. *)
+    export labelled (case, _issued, _region, label, words) = choose (case, "", label, words)
+
+    (** The step `gesture` takes from this session. *)
+    export posted (case, gesture) = step (case, gesture)
+
+    (** `next` applied to the session it was computed from, for the case readers. *)
+    export after (case, next) = next case
+
+    (** A press of `label` while `held` is the host's slices. *)
+    export pressIn (case, held, label) = step (case(caseHeld = held), \d => uitest::Drive::press (d, label))
+
+    (** `words` to the control labelled `label` while `held` is the host's slices. *)
+    export chooseIn (case, held, label, words) = step (case(caseHeld = held), \d => uitest::Drive::choose (d, label, words))
+
+    // The first component of a shape in one region's tree, as the typed action it delivers; a missing region or tree rests on the same default.
+    rowsBind (case, key) = at (case, key, \found => rowsIn found.snapshotValue ?: workbench::SelectStep, workbench::SelectStep)
+
+    editorPlace (case, key) = at (case, key, \found => editorIn found.snapshotValue ?: workbench::Place, workbench::Place)
+
+    rowsIn : ui::Node<workbench::Act> -> Result<workbench::Act, Error>
+    rowsIn node = match node
+        ui::Rows _ _ bind => Success(value = bind)
+        _ => searchChildren (node, rowsIn)
+
+    editorIn : ui::Node<workbench::Act> -> Result<workbench::Act, Error>
+    editorIn node = match node
+        ui::Editor _ _ _ _ _ _ _ place => Success(value = place)
+        _ => searchChildren (node, editorIn)
+
+    searchChildren : (ui::Node<workbench::Act>, (ui::Node<workbench::Act>) -> Result<workbench::Act, Error>) -> Result<workbench::Act, Error>
+    searchChildren (node, look) = foldList (childrenOf node, Error(message = "no such component"), \(found, child) => eitherFound (found, look child))
+
+    eitherFound (found, next) = match found
+        Success _ => found
+        Error _ => next
+
+    childrenOf node = match node
+        ui::Stack _ items => items
+        ui::Section _ _ items => items
+        ui::Screen _ _ toolbar items => listConcat (toolbar, items)
+        ui::Split panes => panes
+        ui::Layer items => items
+        ui::Framed _ content => [content]
+        ui::Themed _ content => [content]
+        ui::Dialog _ body _ => [body]
+        ui::ContextMenu body actions => listConcat [body] actions
+        ui::Aside _ asideChild paneChild _ _ _ _ _ => [asideChild, paneChild]
+        ui::Tabs entries _ _ => mapList (entries, \entry => entry.page)
+        ui::Rows entries _ _ => mapList (entries, \entry => entry.cell)
+        ui::Disclosure _ _ _ items => items
+        _ => []
+
+    (** Row `key` chosen on the first rows control in `region`'s tree. *)
+    export chosen (case, region, key) = exported (case, ui::Chose(chooser = rowsBind (case, region), chosen = key))
+
+    (** The caret of the first editor in `region`'s tree placed at `offset`. *)
+    export placed (case, region, offset) = exported (case, ui::Placed(placer = editorPlace (case, region), placed = offset))
+
+    (** A completion of `ticket`: `ok` with its result `text`, or its reason. *)
+    export completed (case, ticket, text) = step (case, \d => uitest::Drive::completed (d, ticket, true, text))
 
     (** A failed completion of `ticket` with `error`. *)
-    export failed (ticket, error) = "{\"kind\":\"completed\",\"ticket\":\"" + ticket + "\",\"ok\":false,\"error\":\"" + error + "\",\"now\":6}"
+    export failed (case, ticket, error) = step (case, \d => uitest::Drive::completed (d, ticket, false, error))
 
-    (** `text` as a JSON string. *)
-    export quoted text = jsonQuote text ?: "\"\""
+    (** A completion of `ticket` with no path: the chooser was cancelled. *)
+    export cancelled (case, ticket) = completed (case, ticket, "")
 
-    (** A completion of `ticket` with `result` as JSON text, delivered to `envelope`. *)
-    export completed (envelope, ticket, result) = post (envelope, done (ticket, result))
+    (** A completion whose step also leaves `extras` as host-held slices. *)
+    export postHeld (case, gesture, extras) = step (case(caseHeld = JsonObject (listConcat (Doc::members case.caseHeld) (Doc::members extras))), gesture)
+
+    (** This session after the host lets go of the slice `key`. *)
+    export forgetting (case, key) = case(caseHeld = JsonObject (withoutKey (Doc::members case.caseHeld, key)))
+
+    (** A completion of `ticket` with `result` that also delivers the host slices it read. *)
+    export completedHeld (case, ticket, result, extras) = postHeld (case, \d => uitest::Drive::completed (d, ticket, true, result), extras)
+
+    (** `text` as host words: nothing is quoted, because nothing is encoded. *)
+    export quoted text = text
+
+    (** Two real lesson files deliberately share a challenge id; the host supplies this slice on every event. *)
+    export shared case =
+        current = Doc::text (case.caseHeld, "lessons:texts")
+        changed = replace current "write-identity" "state-swapped-goal" ?: current
+        case(caseHeld = JsonObject [JsonMember "lessons:texts" (JsonString changed)])
+
+    (** A press of `label` while the shared challenge slice is held. *)
+    export sharedPress (case, label) = press (shared case, "", label)
+
+    (** Whether `region` of this session drew a button labelled `label`. *)
+    export draws (case, key, label) = at (case, key, \found => isSuccess (buttonIn (label, found.snapshotValue)), false)
+
+    isSuccess found = match found
+        Success _ => true
+        Error _ => false
+
+    (** The action of the `label` button `issued` drew in `region`, delivered to this session as a host still holding that old frame would. *)
+    export stale (case, issued, key, label) = at (issued, key, \found => staleAct (case, buttonIn (label, found.snapshotValue)), case)
+
+    staleAct (case, found) = match found
+        Success act => exported (case, ui::Act(act = act))
+        Error _ => case
 
     (** A session with the catalogue and every lesson loaded. *)
     export loaded () = completed (completed (started (), "lessons:catalogue", "{}"), "lessons:texts", "{}")
 
+    // ---- reading the tree the app drew ----
+    (** The component kind of `node`, as the shared vocabulary names it ([UI-COMPONENTS]). *)
+    export kind node = match node
+        JsonObject _ => Doc::text (node, "kind")
+        _ => ""
 
-    (** The actual rendered region tree and its issued control ordinals. *)
-    export node (envelope, key) = foldList (retainedRegions envelope, JsonNull, \(found, item) => pickNode (found, item, key))
+    (** The node whose component is named `name`, when one frames it. *)
+    export findNamed (name, node) = matching (frameName, name, node)
 
-    (** The test host retains emitted trees; patches and removed keys stay unmodified for isolation assertions. *)
-    remember (current, previous) =
-        patches = Doc::items (Doc::field (current, "patches"))
-        replaced = listConcat (Doc::texts (current, "removed"), mapList (patches, \patch => Doc::text (patch, "key")))
-        kept = filterList (retainedRegions previous, \patch => !listContains (replaced, Doc::text (patch, "key")))
-        JsonObject (listAppend (Doc::members current, JsonMember "_hostRegions" (JsonArray (listConcat (kept, patches)))))
+    (** A component of `kind`. *)
+    export findNode (kindName, node) = matching (kindOf, kindName, node)
 
-    retainedRegions envelope = match Doc::has (envelope, "_hostRegions")
-        true => Doc::items (Doc::field (envelope, "_hostRegions"))
-        false => Doc::items (Doc::field (envelope, "patches"))
+    (** A component titled `title`. *)
+    export findTitle (title, node) = matching (titleOf, title, node)
 
-    pickNode (found, item, key) = match Doc::text (item, "key") == key
-        true => Doc::field (item, "node")
-        false => found
+    (** A control printed `label`. *)
+    roleName role = match role
+        ui::Prominent => "prominent"
+        ui::Plain => "plain"
+        ui::Destructive => "destructive"
+        ui::Filled => "filled"
 
-    export findNode (kind, node) = matchingNode ("kind", kind, node)
+    export findLabel (label, node) = matching (labelOf, label, node)
 
-    export findTitle (title, node) = matchingNode ("title", title, node)
+    export namedIn (name, case, key) = findNamed (name, node (case, key))
 
-    (** A rendered control found by its actual label, not a guessed ordinal. *)
-    export findLabel (label, node) = matchingNode ("label", label, node)
+    export labelledIn (label, case, key) = findLabel (label, node (case, key))
 
-    (** A frame found by its authored name, not by its position. *)
-    export findNamed (name, node) = matchingNode ("frameName", name, node)
+    export kindedIn (kindName, case, key) = findNode (kindName, node (case, key))
 
-    (** A node the envelope drew inside one region, found by name, label or kind. *)
-    export namedIn (name, envelope, key) = findNamed (name, node (envelope, key))
-
-    export labelledIn (label, envelope, key) = findLabel (label, node (envelope, key))
-
-    export kindedIn (kind, envelope, key) = findNode (kind, node (envelope, key))
-
-    (** A completion of `ticket` with `result` that also delivers the host slices it read. *)
-    export completedHeld (envelope, ticket, result, slices) = postHeld (envelope, done (ticket, result), slices)
-
+    (** The control metrics a host reads on `label`'s own frame. *)
     export expectControlFrame (node, label, size, radius) =
-        style = Doc::field (matchingNode ("controlLabel", label, node), "style")
+        style = Doc::field (matching (controlLabel, label, node), "style")
         expect (Doc::number (style, "width"), size)
         expect (Doc::number (style, "height"), size)
         expect (Doc::number (style, "radius"), radius)
         expect (Doc::text (style, "align"), "center")
 
-    matchingNode (field, value, node) = match Doc::text (node, "kind")
+    kindOf node = Doc::text (node, "kind")
+
+    frameName node = Doc::text (Doc::field (node, "style"), "name")
+
+    titleOf node = Doc::text (node, "title")
+
+    labelOf node = Doc::text (node, "label")
+
+    // A framed surface's own child is what it shows.
+    controlLabel node = Doc::text (Doc::field (node, "body"), "label")
+
+    matching (field, value, node) = match kindOf node
         "" => JsonNull
-        _ => match nodeField (field, node) == value
+        _ => match field node == value
             true => node
-            false => foldList (childNodes node, JsonNull, \(found, child) => firstNode (found, field, value, child))
+            false => foldList (children node, JsonNull, \(found, child) => first (found, field, value, child))
 
-    (** A node field by name; a frame's authored name lives in its `style` object ([UI-COMPONENTS]). *)
-    nodeField (field, node) = match field
-        "frameName" => Doc::text (Doc::field (node, "style"), "name")
-        "controlLabel" => Doc::text (Doc::field (node, "body"), "label")
-        _ => Doc::text (node, field)
+    first (found, field, value, child) = match field found
+        _ => match found
+            JsonNull => matching (field, value, child)
+            _ => found
 
-    firstNode (found, field, value, child) = match found
-        JsonNull => matchingNode (field, value, child)
-        _ => found
+    children node = listConcat ([Doc::field (node, "body"), Doc::field (node, "pane"), Doc::field (node, "aside")], Doc::items (Doc::field (node, "children")))
 
-    (** The persisted dependency set of the actual keyed host region. *)
-    export dependencies (envelope, key) =
-        frames = Doc::items (Doc::field (Doc::parse (Doc::text (envelope, "state")), "frames"))
-        frame = Lists::find (frames, \item => Doc::text (item, "key") == key) ?: JsonNull
-        Doc::texts (frame, "dependencies")
-
-    childNodes node = listConcat ([Doc::field (node, "body"), Doc::field (node, "pane"), Doc::field (node, "aside")], Doc::items (Doc::field (node, "children")))
-
-    (** Read actual displayed prose independently of its token/run serialization. *)
+    (** Read actual displayed prose independently of its runs. *)
     export visibleText node = match Doc::text (node, "kind")
         "" => ""
         "text" => Doc::text (node, "text")
@@ -237,4 +400,87 @@ module Drive
         "math" => Doc::text (node, "spoken")
         "badge" => Doc::text (node, "label")
         "editor" => Doc::text (node, "value")
-        _ => join (mapList (childNodes node, visibleText), " ")
+        _ => join (mapList (children node, visibleText), " ")
+
+    // ---- one region's tree as the document a host lays out ----
+    member (name, value) = JsonMember name value
+
+    text (name, value) = member (name, JsonString value)
+
+    decimal (name, value) = Doc::dec (name, value)
+
+    whole (name, value) = Doc::num (name, value)
+
+    flag (name, value) = member (name, JsonBool value)
+
+    styleOf style = JsonObject [Doc::str ("name", style.frameName), whole ("width", style.frameWidth), whole ("height", style.frameHeight), whole ("viewportHeightInset", style.frameViewportHeightInset), flag ("scrollY", style.frameScrollY), whole ("top", style.frameTop), whole ("right", style.frameRight), whole ("bottom", style.frameBottom), whole ("left", style.frameLeft), whole ("radius", style.frameRadius), whole ("gap", style.frameGap), Doc::str ("fill", style.frameFill), Doc::str ("ink", style.frameInk), Doc::str ("line", style.frameLine), Doc::str ("lineEdge", style.frameLineEdge), flag ("grow", style.frameGrow), Doc::str ("font", style.frameFont), whole ("textSize", style.frameTextSize), decimal ("mathScale", style.frameMathScale), decimal ("lineHeight", style.frameLineHeight), decimal ("tracking", style.frameTracking), flag ("italic", style.frameItalic), flag ("hug", style.frameHug), Doc::str ("align", style.frameAlign), Doc::str ("cross", style.frameCross), whole ("controlHeight", style.frameControlHeight), flag ("iconOnly", style.frameIconOnly)]
+
+    runJson run = JsonObject [Doc::str ("text", run.runText), Doc::str ("ink", run.runInk), flag ("italic", run.runItalic), Doc::str ("emphasis", run.runEmphasis)]
+
+    // Every component the vocabulary names, so a lookup reads the tree the app drew.
+    // Each projection answers JsonNull for a node it does not cover, so the first that answers wins.
+    tree node = orElse (containerTree node, \() => orElse (controlTree node, \() => leafTree node))
+
+    orElse (found, next) = match found
+        JsonNull => next ()
+        _ => found
+
+    // The components `items` lowered, as the children a host lays out.
+    childrenJson items = member ("children", JsonArray (mapList (items, tree)))
+
+    // Every component's JSON: its `kind` first, then its own fields.
+    tagged (kind, fields) = JsonObject (listConcat [text ("kind", kind)] fields)
+
+    // The components that carry only a label and a symbol.
+    emblem (kind, label, symbol) = tagged (kind, [text ("label", label), text ("symbol", symbol)])
+
+    // A component with no bound event of its own: every control reports zero.
+    eventField () = whole ("event", 0)
+
+    containerTree node = match node
+        ui::Stack _ items => tagged ("stack", [childrenJson items])
+        ui::Section title footer items => tagged ("section", [text ("title", title), text ("footer", footer), childrenJson items])
+        ui::Screen title subtitle toolbar items => tagged ("screen", [text ("title", title), text ("subtitle", subtitle), childrenJson (listConcat (toolbar, items))])
+        ui::Split panes => tagged ("split", [childrenJson panes])
+        ui::Layer items => tagged ("layers", [childrenJson items])
+        ui::Framed style content => tagged ("framed", [member ("style", styleOf style), member ("body", tree content)])
+        ui::Themed _ content => tagged ("themed", [member ("body", tree content)])
+        ui::Dialog title body _ => tagged ("dialog", [text ("title", title), member ("body", tree body)])
+        ui::ContextMenu body actions => tagged ("context-menu", [childrenJson (listPrepend (actions) body)])
+        ui::Aside _ column pane _ _ _ _ _ => tagged ("aside", [member ("aside", tree column), member ("pane", tree pane)])
+        ui::Tabs entries _ _ => tagged ("tabs", [childrenJson (mapList (entries, \entry => entry.page))])
+        ui::Rows entries selected _ => tagged ("rows", [text ("selected", selected), eventField (), childrenJson (mapList (entries, \entry => entry.cell))])
+        ui::Disclosure title expanded _ items => tagged ("disclosure", [text ("title", title), flag ("expanded", expanded), eventField (), childrenJson items])
+        _ => JsonNull
+
+    controlTree node = match node
+        ui::Button label symbol role enabled _ => tagged ("button", [text ("label", label), text ("symbol", symbol), text ("role", roleName role), flag ("enabled", enabled), eventField ()])
+        ui::Field label value prompt _ _ _ _ => tagged ("field", [text ("label", label), text ("value", value), text ("prompt", prompt), eventField ()])
+        ui::Toggle label on _ => tagged ("toggle", [text ("label", label), flag ("on", on), eventField ()])
+        ui::Picker label choices selected _ => tagged ("picker", [text ("label", label), text ("selected", selected), eventField (), member ("children", JsonArray (mapList (choices, \choice => tagged ("option", [text ("label", choice.choiceLabel), text ("key", choice.choiceKey)]))))])
+        ui::Alert title message _ _ => tagged ("alert", [text ("title", title), text ("text", message), eventField ()])
+        ui::Editor label value _ cursor epoch _ _ _ => tagged ("editor", [text ("label", label), text ("value", value), whole ("caret", cursor), whole ("focusEpoch", epoch), eventField (), whole ("placeEvent", 0)])
+        ui::Board _ _ _ backdrop _ _ _ _ _ => tagged ("board", [text ("backdrop", backdrop), eventField ()])
+        ui::Scene width height _ _ _ _ _ => tagged ("scene", [decimal ("width", width), decimal ("height", height), eventField ()])
+        _ => JsonNull
+
+    leafTree node = match node
+        ui::Text content _ _ => tagged ("text", [text ("text", content)])
+        ui::RichText runs _ => tagged ("rich-text", [member ("runs", JsonArray (mapList (runs, runJson)))])
+        ui::Slot key => tagged ("slot", [text ("key", key)])
+        ui::Pair label value => tagged ("pair", [text ("label", label), text ("value", value)])
+        ui::Badge label symbol _ => emblem ("badge", label, symbol)
+        ui::Label label symbol => emblem ("label", label, symbol)
+        ui::Icon symbol => tagged ("icon", [text ("symbol", symbol)])
+        ui::Link label address => tagged ("link", [text ("label", label), text ("address", address)])
+        ui::Spacer => tagged ("spacer", [])
+        ui::Divider => tagged ("divider", [])
+        ui::Segments _ label => tagged ("segments", [text ("label", label)])
+        ui::Empty symbol title detail => tagged ("empty", [text ("symbol", symbol), text ("title", title), text ("detail", detail)])
+        ui::Progress label detail => tagged ("progress", [text ("label", label), text ("detail", detail)])
+        ui::Meter label amount total _ => tagged ("meter", [text ("label", label), whole ("amount", amount), whole ("total", total)])
+        ui::Swatch name light dark => tagged ("swatch", [text ("label", name), text ("light", light), text ("dark", dark)])
+        ui::Typeset math spoken => tagged ("math", [text ("spoken", spoken), member ("math", Maths::encode math)])
+        ui::Image source alt width height => tagged ("image", [text ("source", source), text ("alt", alt), whole ("width", width), whole ("height", height)])
+        ui::Video source poster _ alt _ => tagged ("video", [text ("source", source), text ("poster", poster), text ("alt", alt)])
+        _ => JsonNull

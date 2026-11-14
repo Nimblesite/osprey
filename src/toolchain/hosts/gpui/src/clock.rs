@@ -4,9 +4,9 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::{Context, Window};
 
-use crate::envelope::Request;
-use crate::events;
-use crate::host::{now, HostView};
+use crate::events::Touch;
+use crate::host::HostView;
+use crate::rows::Ask;
 
 /// Measurements accumulated by one `--bench` run.
 pub struct Bench {
@@ -36,12 +36,8 @@ impl Bench {
 }
 
 /// Completes an animate request immediately and arms or disarms the clock.
-pub fn answer(view: &mut HostView, request: &Request) -> String {
-    let on = request
-        .fields
-        .get("on")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
+pub fn answer(view: &mut HostView, ask: &Ask) -> Touch {
+    let on = ask.flag(1);
     if on && !view.animating {
         view.last_frame = None;
         view.frame_times.clear();
@@ -52,7 +48,7 @@ pub fn answer(view: &mut HostView, request: &Request) -> String {
         view.frame_times.clear();
         view.fps = 0;
     }
-    events::completed_ok(now(), &request.ticket, serde_json::Value::Null)
+    Touch::completed(&ask.ticket, Ok(String::new()))
 }
 
 /// Schedules frame delivery outside render, where application dispatch is forbidden.
@@ -90,7 +86,7 @@ fn tick(view: &mut HostView, window: &mut Window, cx: &mut Context<HostView>) {
     view.frame_started = Some(arrived);
     let started = Instant::now();
     crate::host::deliver_opened(view, window, cx);
-    view.dispatch(events::frame(now(), elapsed), window, cx);
+    view.send(Touch::frame(elapsed), window, cx);
     view.dispatch_ms = started.elapsed().as_secs_f64() * 1000.;
     record_bench(view, arrived);
     cx.notify();
@@ -108,21 +104,30 @@ fn record_bench(view: &mut HostView, arrived: Instant) {
     if arrived.duration_since(bench.started) < bench.duration {
         return;
     }
-    report(bench, view.envelope_bytes);
+    report(
+        bench,
+        view.shown.controls.len()
+            + view
+                .shown
+                .scenes
+                .values()
+                .map(|s| s.shapes.len())
+                .sum::<usize>(),
+    );
     std::process::exit(0);
 }
 
 /// Prints the single machine-readable bench result.
-fn report(bench: &Bench, envelope: usize) {
+fn report(bench: &Bench, rows: usize) {
     let frames = bench.frames.max(1) as f64;
     let seconds = bench.started.elapsed().as_secs_f64().max(f64::EPSILON);
     println!(
-        "bench fps={} dispatch_ms={} paint_ms={} frame_ms={} envelope_bytes={} frames={}",
+        "bench fps={} dispatch_ms={} paint_ms={} frame_ms={} rows={} frames={}",
         bench.frames as f64 / seconds,
         bench.dispatch_total / frames,
         bench.paint_total / frames,
         bench.frame_total / frames,
-        envelope,
+        rows,
         bench.frames
     );
 }

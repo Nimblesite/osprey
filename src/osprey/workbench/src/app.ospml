@@ -1,14 +1,12 @@
 // Implements [WORKBENCH-STORE], [WORKBENCH-REGIONS] and [LESSONS-MODE]: the
-// application's start and dispatch. Each slice is its own signal, and each
+// application's program, which every host runs through the shared boundary. Each slice is its own signal, and each
 // challenge region refreshes only when its own attempt changed.
 namespace workbench
 
 import ui::Runtime
 import ui::Keyed
-import ui::Doc
 import ui::Lists
 import proof::CachedImports
-import vscode::Webview
 import workbench::Benches
 import workbench::Update
 import workbench::Shelves
@@ -70,7 +68,7 @@ module Changes
         Error _ => []
         Success found => mapList (Blocks::challenges found.lessonBlocks, \item => item.challengeId)
 
-(** The workbench application: start, dispatch and the host boundary ([WORKBENCH-STORE]). *)
+(** The workbench application: its program for the shared boundary ([WORKBENCH-STORE]). *)
 module App
     // Start requests the catalogue and learner progress; lessons follow the catalogue.
     initial (slate, _) =
@@ -117,18 +115,5 @@ module App
         true => Palettes::chalk ()
         false => Palettes::initial ()
 
-    (** A new session uses the host's requested appearance, with Paper when none is supplied ([WORKBENCH-STORE]). *)
-    export start context =
-        slate = Doc::text (Doc::parse context, "theme") == "dark"
-        CachedImports::run (\() => Runtime::start (context, \host => initial (slate, host), regions, Benches::save, initialPalette slate))
-
-    (** One host event through `update`, re-sending only the regions whose signals changed. *)
-    export dispatch (saved, event) = CachedImports::run (\() => Runtime::dispatch (saved, event, Update::apply, regions, Benches::save, Benches::restore))
-
-    // The VS Code host keeps host-held slices and sends them in the frame's `slices` object; an unknown key reads as empty.
-    (** The VS Code command boundary: one frame in, one envelope out, host-held slices read from the frame ([VSCODE-SDK-WASM]). *)
-    export respond frame =
-        held = Doc::field (Doc::parse frame, "slices")
-        handle ui::Slices
-            fetch key => Doc::text (held, key)
-        Webview::respond (frame, start, dispatch)
+    (** The workbench as every host runs it ([NATIVE-SHM-BOUNDARY]): a new session opens in the host's appearance, Chalk when it is dark and Paper otherwise, and the store's own choice of slate picks the palette after that ([WORKBENCH-STORE]). Proof imports are cached for the run of each step. *)
+    export program () = ui::Program(programInit = \host => CachedImports::run (\() => initial (host.hostDark, host)), programUpdate = \(host, bench, message) => CachedImports::run (\() => Update::apply (host, bench, message)), programRender = \(before, current, frames, writes) => CachedImports::run (\() => regions (before, current, frames, writes)), programTheme = \bench => initialPalette bench.layout.slate)

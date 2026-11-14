@@ -1,4 +1,4 @@
-import { naturalInteger, record } from "./wire";
+import { naturalInteger, record } from "./nodes";
 
 export interface BoardStroke {
   readonly points: readonly (readonly [number, number])[];

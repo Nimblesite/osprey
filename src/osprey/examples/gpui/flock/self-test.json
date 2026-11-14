@@ -6,9 +6,13 @@
     { "shot": "1-flying" },
     { "invoke": "Pause" },
     { "wait": "Paused" },
+    { "wait": "Resume" },
+    { "gone": "Pause" },
     { "shot": "2-paused" },
     { "key": "p" },
     { "gone": "Paused" },
+    { "wait": "Pause" },
+    { "gone": "Resume" },
     { "frames": "120" },
     { "shot": "3-resumed" }
   ]

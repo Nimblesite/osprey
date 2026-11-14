@@ -9,124 +9,148 @@ import ui::Frames
     inset
     bar
     text
-import ui::Encode
 import ui::Doc
-import ui::Events
 import ui::Messages
 import ui::Requests
+import ui::Surfaces
+import ui::Splitters
 import ui::Strokes
 import ui::Themes
 import ui::Maths
+import ui::Tell
+import ui::Tellings
+import ui::Keyed
 
+(** Cases for the mathematics, editor, board, recognition, theme and telling additions, each driven as one registered case. *)
 module AdditionCases
-    actionName action = match action
-        Increment => "increment"
-        Typed => "typed"
-        Load => "load"
-
     refusal result = match result
         Success _ => "accepted"
         Error problem => problem
 
-    sampleStroke () = ui::Stroke(strokePoints = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)], strokeWidth = 2, strokeAt = 9)
+    // The message `result` delivers spelt as its handler sees it, or its refusal.
+    delivered result = match result
+        Success message => routed message
+        Error problem => problem
 
-    strokeSource = "{\"points\":[[1,2],[3,4]],\"width\":2,\"at\":9}"
+    samplePoints () = [ui::Point(pointX = 1, pointY = 2), ui::Point(pointX = 3, pointY = 4)]
 
-    routed message = Messages::route (message,
-        \action => "tap ${actionName action}",
-        \(action, text) => "text ${actionName action}:${text}",
-        \(action, flag) => "flag ${actionName action}:${flag}",
-        \(action, points) => "integer ${actionName action}:${points}",
-        \(ticket, _) => "completed ${ticket}",
-        \phase => "phase ${phase}",
-        \(action, stroke) => "stroke ${actionName action}:${length stroke.strokePoints}/${stroke.strokeWidth}/${stroke.strokeAt}",
-        \(action, indices) => "lasso ${actionName action}:${join (mapList (indices, \index => "${index}")) ","}",
-        \_ => "frame",
-        \(_, _) => "controlled")
+    sampleStroke () = ui::Stroke(strokePoints = samplePoints (), strokeWidth = 2, strokeAt = 9)
 
-    editorNode () = listGet (Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])), "children"))) 1 ?: JsonNull
+    // The editor node of the sample, read as the typed record it is.
+    editorSample () = Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)
+
+    // `node`'s editor fields, spelt as one string a table can hold.
+    editorSpelled node = match node
+        ui::Editor label value inline cursor epoch marks _ _ => "${label}|${value}|${inline}|${cursor}|${epoch}|${markSpelled (listGet marks 0 ?: Editors::mark (0, false, ui::Primary, "", ""))}"
+        _ => "not an editor"
+
+    markSpelled mark = "${mark.markLine}|${mark.underlined}|${toneSpelled mark.markTone}|${mark.markBadge}|${mark.markNote}"
+
+    toneSpelled tone = match tone
+        ui::Primary => "primary"
+        ui::Secondary => "secondary"
+        ui::Accent => "accent"
+        ui::Good => "good"
+        ui::Caution => "caution"
+        ui::Danger => "danger"
 
     (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
     export editorEncoding () =
         focusedEditorEncoding ()
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
-        doc = editorNode ()
-        mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
-        expectTexts (doc, [{ name = "kind", value = "editor" }, { name = "label", value = "Proof" }, { name = "value", value = "one\ntwo" }])
-        expectNumbers (doc, [{ name = "cursor", value = 3 }, { name = "event", value = 1 }, { name = "placeEvent", value = 2 }])
-        expect (length walked.bindings, 3)
-        expectNumbers (mark, [{ name = "line", value = 2 }])
-        expect (Doc::flag (mark, "underlined"), true)
-        expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
+        sample = editorSample ()
+        column = Ui::column [Ui::button ("Before", "", Increment), sample]
+        expect (editorSpelled sample, "Proof|one\ntwo|false|3|0|2|true|danger|E|Expected a premise")
+        binds (drawnOf column, 3)
+        expect (spelled (toldOf sample), "{kind=\"editor\",label=\"Proof\",value=\"one\ntwo\",inline=?false,cursor=#3,focusEpoch=#0,marks=[{line=#2,underlined=?true,tone=\"danger\",badge=\"E\",note=\"Expected a premise\"}],event=#0,placeEvent=#1}")
+        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (column, 1, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (column, 2, ui::PlaceInput(action = Load)), true)
+
+    // `node` spells `nodeSpelled` as an editor, and its told record spells `toldSpelled` with the text binding before the cursor's.
+    editorDrawn (node, nodeSpelled, toldSpelled) =
+        expect (editorSpelled node, nodeSpelled)
+        expect (spelled (toldOf node), toldSpelled)
+        binds (drawnOf node, 2)
+        expect (deliversBinding (node, 0, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (node, 1, ui::PlaceInput(action = Load)), true)
 
     focusedEditorEncoding () =
-        node = Editors::focused ("Formula", "p→q", length "p→", 3, Typed, Load)
-        doc = firstNode (Encode::walk ([], node))
-        expect (Doc::has (doc, "focusEpoch"), true)
-        expectNumbers (doc, [{ name = "focusEpoch", value = 3 }, { name = "cursor", value = length "p→" }, { name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
-        expect (Doc::flag (doc, "inline"), true)
-        expect (Doc::has (editorNode (), "focusEpoch"), true)
-        expect (Doc::number (editorNode (), "focusEpoch"), 0)
+        node = Editors::focused ("Formula", "p\u2192q", length "p\u2192", 3, Typed, Load)
+        editorDrawn (node, "Formula|p\u2192q|true|${length "p\u2192"}|3|0|false|primary||", "{kind=\"editor\",label=\"Formula\",value=\"p\u2192q\",inline=?true,cursor=#${length "p\u2192"},focusEpoch=#3,marks=[],event=#0,placeEvent=#1}")
 
-    placed value = Events::bind (ui::PlaceInput(action = Typed), value)
+    placed words = delivered (Surfaces::told (ui::PlaceInput(action = Typed), words))
 
-    (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and refuse other JSON kinds. *)
+    (** [UI-COMPONENTS-EDITOR]: cursor offsets arrive as placed integers, clamp at zero and read non-numbers as zero. *)
     export cursorValues () =
-        expect (routed (placed (JsonInt 7) ?: ui::Act(act = Increment)), "integer typed:7")
-        expect (routed (placed (JsonInt (0 - 3)) ?: ui::Act(act = Increment)), "integer typed:0")
-        expect (refusal (placed (JsonString "7")), "A cursor control sent a value of the wrong kind")
+        expect (placed "7", "integer typed:7")
+        expect (placed "${0 - 3}", "integer typed:0")
+        expect (placed "junk", "integer typed:0")
+        expect (placed "", "integer typed:0")
+
+    // `node`'s board fields, spelt as one string a table can hold.
+    boardSpelled node = match node
+        ui::Board slice count lassoing backdrop panning panBound _ _ _ => "${slice}|${count}|${lassoing}|${backdrop}|${panning}|${panBound}"
+        _ => "not a board"
+
+    // `board` spells its fields, and its told record spells `toldSpelled` with the stroke, lasso and camera bindings in the walk's order.
+    boardDrawn (board, fieldsSpelled, toldSpelled) =
+        expect (boardSpelled board, fieldsSpelled)
+        expect (spelled (toldOf board), toldSpelled)
 
     (** [UI-COMPONENTS-BOARD]: the board names its host slice and binds strokes before the lasso. *)
     export boardEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
-        doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
-        expectTexts (doc, [{ name = "kind", value = "board" }, { name = "slice", value = "proof/strokes" }, { name = "backdrop", value = "chalk-study.png" }])
-        expectNumbers (doc, [{ name = "count", value = 2 }, { name = "event", value = 1 }, { name = "lassoEvent", value = 2 }])
-        expectFlags (doc, [{ name = "lasso", value = true }])
-        expect (length walked.bindings, 3)
+        board = Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)
+        column = Ui::column [Ui::button ("Before", "", Increment), board]
+        boardDrawn (board, "proof/strokes|2|true|chalk-study.png|false|false", "{kind=\"board\",slice=\"proof/strokes\",count=#2,lasso=?true,backdrop=\"chalk-study.png\",panning=?false,event=#0,lassoEvent=#1}")
+        binds (drawnOf column, 3)
+        expect (deliversBinding (column, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (column, 1, ui::StrokeInput(action = Typed)), true)
+        expect (deliversBinding (column, 2, ui::LassoInput(action = Load)), true)
         boardCamera ()
 
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
     export strokeDecoding () =
-        stroke = Strokes::decode (Doc::parse strokeSource) ?: ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
+        stroke = match Strokes::checked (samplePoints (), 2, 9)
+            Success kept => kept
+            Error _ => ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
         expect (length stroke.strokePoints, 2)
         expect (join (mapList (stroke.strokePoints, \point => "${point.pointX},${point.pointY}")) ";", "1,2;3,4")
         expect (stroke.strokeWidth, 2)
         expect (stroke.strokeAt, 9)
 
-    malformed source = refusal (Strokes::decode (Doc::parse source))
+    malformed (points, width, at) = refusal (Strokes::checked (points, width, at))
 
     malformedStrokes () = [
-        "{\"points\":[],\"width\":2,\"at\":9}", "{\"points\":[[1,-2]],\"width\":2,\"at\":9}",
-        "{\"points\":[3],\"width\":2,\"at\":9}", "{\"points\":[[1,2,3]],\"width\":2,\"at\":9}",
-        "{\"points\":[[1,2]],\"at\":9}", "{\"points\":[[1,2]],\"width\":0,\"at\":9}",
-        "{\"points\":[[1,2]],\"width\":2,\"at\":-1}", "{\"points\":[[1,2]],\"width\":2,\"at\":\"9\"}",
+        { points = [], width = 2, at = 9 },
+        { points = [ui::Point(pointX = 1, pointY = 0 - 2)], width = 2, at = 9 },
+        { points = [ui::Point(pointX = 0 - 1, pointY = 2)], width = 2, at = 9 },
+        { points = samplePoints (), width = 0, at = 9 },
+        { points = samplePoints (), width = 2, at = 0 - 1 },
     ]
 
-    (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates and non-pair points are refused with the exact diagnostic. *)
+    (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates, widthless strokes and negative clocks are refused with the exact diagnostic. *)
     export strokeRefusals () =
-        forEachList (malformedStrokes (), \source => expect (malformed source, "A board control sent a malformed stroke"))
+        forEachList (malformedStrokes (), \probe => expect (malformed (probe.points, probe.width, probe.at), "A board control sent a malformed stroke"))
 
-    (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses strings and negative indices. *)
+    (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses negative indices. *)
     export lassoValues () =
-        expect (routed (Strokes::lasso (Load, JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
-        expect (refusal (Strokes::lasso (Load, JsonArray [JsonString "x"])), "A board control sent a lasso that is not a list of strokes")
-        expect (refusal (Strokes::lasso (Load, JsonArray [JsonInt (0 - 1)])), "A board control sent a lasso that is not a list of strokes")
+        expect (delivered (Strokes::lasso (Load, [0, 2])), "lasso load:0,2")
+        expect (refusal (Strokes::lasso (Load, [])), "accepted")
+        expect (refusal (Strokes::lasso (Load, [0, 0 - 1])), "A board control sent a lasso that is not a list of strokes")
 
     (** [UI-EFFECTS-RECOGNISE]: recognition carries the ticket, the host-held stroke slices it reads and the output limit. *)
     export recognitionEncoding () =
-        request = Requests::encode (Requests::ask ("ink:1", ui::Recognise(strokeSlices = ["board:0", "board:2"], recogniseLimit = 80)))
-        expect (Doc::write request, "{\"ticket\":\"ink:1\",\"kind\":\"recognise\",\"slices\":[\"board:0\",\"board:2\"],\"limit\":80}")
+        expect (rowsOf (Requests::ask ("ink:1", ui::Recognise(strokeSlices = ["board:0", "board:2"], recogniseLimit = 80))), "0/20/ink:1;1/0/board:0;1/0/board:2;2/80/")
 
     (** [UI-EVENTS]: routing delivers placed offsets, strokes and lassos only to their matching handlers. *)
     export messageRouting () =
-        expect (routed (Events::bind (ui::StrokeInput(action = Typed), Doc::parse strokeSource) ?: ui::Act(act = Increment)), "stroke typed:2/2/9")
-        expect (refusal (Events::bind (ui::StrokeInput(action = Typed), JsonNull)), "A board control sent a malformed stroke")
-        expect (routed (Events::bind (ui::LassoInput(action = Load), JsonArray [JsonInt 0, JsonInt 2]) ?: ui::Act(act = Increment)), "lasso load:0,2")
-        expect (refusal (Events::bind (ui::LassoInput(action = Load), JsonBool false)), "A board control sent a lasso that is not a list of strokes")
+        expect (delivered (Strokes::bind (Typed, samplePoints (), 2, 9)), "stroke typed:2/2/9")
+        expect (refusal (Strokes::bind (Typed, [], 2, 9)), "A board control sent a malformed stroke")
+        expect (delivered (Strokes::lasso (Load, [0, 2])), "lasso load:0,2")
         expect (routed (ui::Placed(placer = Typed, placed = 7)), "integer typed:7")
         expect (routed (ui::Stroked(stroker = Typed, stroked = sampleStroke ())), "stroke typed:2/2/9")
         expect (routed (ui::Lassoed(lassoer = Load, lassoed = [0, 2])), "lasso load:0,2")
+        expect (routed (ui::Entered(entry = Typed, entered = "Zoë")), "text typed:Zoë")
 
     (** [UI-THEME-BOARD]: the board's surface and stroke token names stay stable. *)
     export boardTokens () = expect (join Themes::boardTokens ",", "board,chalk")
@@ -159,48 +183,50 @@ module AdditionCases
 
     refusedCase tested = expect (decodeError tested.source, tested.expected)
 
-    (** [UI-COMPONENTS-MATH]: decoding refuses an unknown kind, a missing child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
-    export mathRefusals () =
-        forEachList ([
-            { source = "{\"kind\":\"foo\"}", expected = "a math node has the unknown kind `foo`" }, { source = "{\"kind\":\"root\"}", expected = "a math node of kind `root` is missing its child `body`" },
-            { source = "{\"kind\":\"seq\",\"items\":7}", expected = "a math node of kind `seq` has a non-array `items`" }, { source = "7", expected = "a math node must be an object" },
-            { source = "{\"kind\":\"sym\",\"text\":7}", expected = "a math node of kind `sym` has a non-string `text`" }, { source = "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `op` has a non-string `symbol`" },
-        ], refusedCase)
-        mathShapeRefusals ()
-        mathChildRefusals ()
-
-    mathShapeRefusals () = forEachList ([
+    (** [UI-COMPONENTS-MATH]: decoding refuses an unknown kind, a missing kind, field or child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
+    export mathRefusals () = forEachList (listConcat [
+        { source = "{\"kind\":\"foo\"}", expected = "a math node has the unknown kind `foo`" }, { source = "{\"kind\":\"root\"}", expected = "a math node of kind `root` is missing its child `body`" },
+        { source = "{\"kind\":\"seq\",\"items\":7}", expected = "a math node of kind `seq` has a non-array `items`" }, { source = "7", expected = "a math node must be an object" },
+        { source = "{\"kind\":\"sym\",\"text\":7}", expected = "a math node of kind `sym` has a non-string `text`" }, { source = "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `op` has a non-string `symbol`" },
+    ] (listConcat [
         { source = "{}", expected = "a math node is missing its kind" }, { source = "{\"kind\":7}", expected = "a math node is missing its kind" },
         { source = "{\"kind\":\"sym\"}", expected = "a math node of kind `sym` is missing its `text`" }, { source = "{\"kind\":\"seq\"}", expected = "a math node of kind `seq` is missing its `items`" },
         { source = "{\"kind\":\"seq\",\"items\":[{},{}]}", expected = "a math node is missing its kind" }, { source = "{\"kind\":\"binder\"}", expected = "a math node of kind `binder` is missing its `symbol`" },
         { source = "{\"kind\":\"binder\",\"symbol\":\"∀\"}", expected = "a math node of kind `binder` is missing its `names`" }, { source = "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", expected = "a math node of kind `binder` is missing its child `body`" },
-    ], refusedCase)
-
-    mathChildRefusals () = forEachList ([
+    ] [
         { source = "{\"kind\":\"sup\"}", expected = "a math node of kind `sup` is missing its child `base`" }, { source = "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `sup` is missing its child `script`" },
         { source = "{\"kind\":\"op\",\"symbol\":\"=\"}", expected = "a math node of kind `op` is missing its child `left`" }, { source = "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `op` is missing its child `right`" },
         { source = "{\"kind\":\"big\"}", expected = "a math node of kind `big` is missing its `symbol`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\"}", expected = "a math node of kind `big` is missing its child `lower`" },
         { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `big` is missing its child `upper`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `big` is missing its child `body`" },
-    ], refusedCase)
+    ]), refusedCase)
 
-    (** [UI-COMPONENTS-MEDIA]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
+    (** [UI-COMPONENTS-MEDIA]: an image and a video tell as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
-        walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
-        children = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
-        image = listGet children 1 ?: JsonNull
-        video = listGet children 2 ?: JsonNull
-        expect (Doc::write image, "{\"kind\":\"image\",\"source\":\"media/a.jpg\",\"alt\":\"A chain\",\"width\":1920,\"height\":1080}")
-        expect (Doc::write video, "{\"kind\":\"video\",\"source\":\"media/a.mp4\",\"poster\":\"media/a.jpg\",\"captions\":\"media/a.vtt\",\"alt\":\"A film\",\"seconds\":40}")
-        expect (Doc::has (image, "event"), false)
-        expect (Doc::has (video, "event"), false)
-        expect (length walked.bindings, 1)
+        media = Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)]
+        binds (drawnOf media, 1)
+        expect (spelled (childTold (toldOf media, 1)), "{kind=\"image\",source=\"media/a.jpg\",alt=\"A chain\",width=#1920,height=#1080}")
+        expect (spelled (childTold (toldOf media, 2)), "{kind=\"video\",source=\"media/a.mp4\",poster=\"media/a.jpg\",captions=\"media/a.vtt\",alt=\"A film\",seconds=#40}")
+        // Neither leaf binds a control, so both spell no event member.
+        expect (memberCount (insideTold (childTold (toldOf media, 1)), "event", 0 - 1), 0 - 1)
+        expect (memberCount (insideTold (childTold (toldOf media, 2)), "event", 0 - 1), 0 - 1)
 
-
-    export frameTypography geometry =
-        expectTexts (geometry, [{ name = "font", value = "serif" }, { name = "align", value = "center" }, { name = "cross", value = "end" }, { name = "shadow", value = "floating" }])
-        expectNumbers (geometry, [{ name = "textSize", value = 27 }, { name = "controlHeight", value = 40 }, { name = "controlPadding", value = 12 }])
-        expectFlags (geometry, [{ name = "italic", value = true }, { name = "hug", value = true }, { name = "quietControls", value = true }, { name = "fadeBackdrop", value = true }, { name = "trailingSymbols", value = true }])
-        expectFloats (geometry, [{ name = "lineHeight", value = 34.72 }, { name = "tracking", value = -0.6 }, { name = "mathScale", value = 1.08 }])
+    (** [UI-COMPONENTS-FRAME] A frame's authored fields, checked as the typed record it is. *)
+    export frameTypography style =
+        expect (style.frameFont, "serif")
+        expect (style.frameAlign, "center")
+        expect (style.frameCross, "end")
+        expect (style.frameShadow, "floating")
+        expect (style.frameTextSize, 27)
+        expect (style.frameControlHeight, 40)
+        expect (style.frameControlPadding, 12)
+        expect (style.frameItalic, true)
+        expect (style.frameHug, true)
+        expect (style.frameQuietControls, true)
+        expect (style.frameFadeBackdrop, true)
+        expect (style.frameTrailingSymbols, true)
+        expect (style.frameLineHeight, 34.72)
+        expect (style.frameTracking, 0.0 - 0.6)
+        expect (style.frameMathScale, 1.08)
         filledButton ()
         frameHelpers ()
 
@@ -220,28 +246,259 @@ module AdditionCases
         expect (typography.frameHug, true)
 
     boardCamera () =
-        walked = Encode::walk ([], Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load))
-        node = listGet walked.nodes 0 ?: JsonNull
-        expect (Doc::flag (node, "panning"), true)
-        expect (Doc::text (node, "backdrop"), "chalk-study.png")
-        expectNumbers (node, [{ name = "event", value = 0 }, { name = "lassoEvent", value = 1 }, { name = "panEvent", value = 2 }])
-        expect (length walked.bindings, 3)
-        expect (routed (Events::bind (listGet walked.bindings 2 ?: ui::Tap(action = Increment), JsonString "{x:12}") ?: ui::Act(act = Increment)), "text load:{x:12}")
+        board = Boards::interactive ("board", 0, true, "chalk-study.png", true, Increment, Typed, Load)
+        boardDrawn (board, "board|0|true|chalk-study.png|true|true", "{kind=\"board\",slice=\"board\",count=#0,lasso=?true,backdrop=\"chalk-study.png\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
+        binds (drawnOf board, 3)
+        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
+        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
+        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
+        expect (delivered (Surfaces::told (ui::TextInput(action = Load), "{x:12}")), "text load:{x:12}")
         narrowMargin ()
 
     narrowMargin () =
-        node = firstNode (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load)))
-        expectNumbers (node, [{ name = "width", value = 184 }, { name = "least", value = 160 }, { name = "most", value = 320 }, { name = "keep", value = 360 }])
+        node = Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load)
+        asideSpelled = match node
+            ui::Aside _ _ _ extent least most keep _ => "${extent}|${least}|${most}|${keep}"
+            _ => "not an aside"
+        expect (asideSpelled, "184|160|320|360")
 
+    // The button role a node carries, as the vocabulary names it.
+    buttonRole node = match node
+        ui::Button _ _ role _ _ => role
+        _ => ui::Plain
+
+    // A button role spelt as the vocabulary spells it, so an assertion can hold it.
+    roleSpelled role = match role
+        ui::Prominent => "prominent"
+        ui::Plain => "plain"
+        ui::Destructive => "destructive"
+        ui::Filled => "filled"
 
     filledButton () =
-        node = firstNode (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment)))
-        expect (Doc::text (node, "role"), "filled")
+        node = Ui::action ("Insert", "", ui::Filled, true, Increment)
+        expect (roleSpelled (buttonRole node), "filled")
         inlineEditor ()
 
     inlineEditor () =
-        walked = Encode::walk ([], Editors::inline ("Next step", "From h.", 7, Typed, Load))
-        node = listGet walked.nodes 0 ?: JsonNull
-        expect (Doc::flag (node, "inline"), true)
-        expectNumbers (node, [{ name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
-        expect (length walked.bindings, 2)
+        editorDrawn (Editors::inline ("Next step", "From h.", 7, Typed, Load), "Next step|From h.|true|7|0|0|false|primary||", "{kind=\"editor\",label=\"Next step\",value=\"From h.\",inline=?true,cursor=#7,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
+
+
+    // Distinct tokens so light and dark resolve differently.
+    lowerTokens () = [
+        ui::Token(tokenName = "text", tokenLight = "#1A2B3C", tokenDark = "#C9D8E7"),
+        ui::Token(tokenName = "primary", tokenLight = "#123456", tokenDark = "#654321"),
+        ui::Token(tokenName = "secondary", tokenLight = "#445566", tokenDark = "#99AABB"),
+        ui::Token(tokenName = "accent", tokenLight = "#0066AA", tokenDark = "#66CCFF"),
+        ui::Token(tokenName = "onAccent", tokenLight = "#FFFFFF", tokenDark = "#002233"),
+        ui::Token(tokenName = "danger", tokenLight = "#CC2222", tokenDark = "#FF6666"),
+        ui::Token(tokenName = "background", tokenLight = "#F0F0F0", tokenDark = "#101010"),
+        ui::Token(tokenName = "chalk", tokenLight = "#223344", tokenDark = "#DDEEFF")]
+
+    (** The test theme the telling cases draw from: distinct tokens so light and dark are told differently. *)
+    export lowerTheme () = ui::Theme(tokens = lowerTokens (), spacing = [4, 10, 16], feedback = 140, settle = 240)
+
+    // The test theme's spacing scale, spelt as the frame tells it: a host reads its layout gap from it.
+    toldSpacing () = spelled (memberTold (insideTold (Tell::themeTold ("theme", lowerTheme ())), "spacing"))
+
+    (** [NATIVE-SHM-NODES] Text tells as its role's and tone's own names; the theme record tells every token in both appearances at once. *)
+    export toldTextCase () =
+        read = Ui::styled ("Read me", ui::Display, ui::Danger)
+        expect (spelled (toldOf read), "{kind=\"text\",text=\"Read me\",role=\"display\",tone=\"danger\"}")
+        mono = Ui::styled ("x = 2", ui::Mono, ui::Primary)
+        expect (spelled (toldOf mono), "{kind=\"text\",text=\"x = 2\",role=\"mono\",tone=\"primary\"}")
+        brow = Ui::styled ("chapter", ui::Eyebrow, ui::Secondary)
+        expect (spelled (toldOf brow), "{kind=\"text\",text=\"chapter\",role=\"eyebrow\",tone=\"secondary\"}")
+        missing = Ui::styled ("Fine", ui::Body, ui::Good)
+        expect (spelled (toldOf missing), "{kind=\"text\",text=\"Fine\",role=\"body\",tone=\"good\"}")
+        expect (spelled (Tell::themeTold ("theme", lowerTheme ())), "theme={tokens=[{name=\"text\",light=\"#1A2B3C\",dark=\"#C9D8E7\"},{name=\"primary\",light=\"#123456\",dark=\"#654321\"},{name=\"secondary\",light=\"#445566\",dark=\"#99AABB\"},{name=\"accent\",light=\"#0066AA\",dark=\"#66CCFF\"},{name=\"onAccent\",light=\"#FFFFFF\",dark=\"#002233\"},{name=\"danger\",light=\"#CC2222\",dark=\"#FF6666\"},{name=\"background\",light=\"#F0F0F0\",dark=\"#101010\"},{name=\"chalk\",light=\"#223344\",dark=\"#DDEEFF\"}],spacing=[#4,#10,#16],feedback=#140,settle=#240}")
+
+    richSample () = Ui::rich ([Ui::run ("For all ", "", false), Ui::emphasised ("p", "accent", "strong"), Ui::run ("q", "text", true)], ui::Lead)
+
+    (** [NATIVE-SHM-NODES] Rich text tells one record per run, each with its own ink token, emphasis and slant. *)
+    export toldRichCase () =
+        expect (spelled (toldOf (richSample ())), "{kind=\"rich-text\",runs=[{text=\"For all \",ink=\"\",italic=?false,emphasis=\"\"},{text=\"p\",ink=\"accent\",italic=?false,emphasis=\"strong\"},{text=\"q\",ink=\"text\",italic=?true,emphasis=\"\"}],role=\"lead\"}")
+
+    (** [NATIVE-SHM-NODES] Stacks, splits and layers keep their axis and children; the theme's spacing scale tells the gap a host lays them with. *)
+    export toldStacksCase () =
+        column = Ui::column [Ui::text "One", Ui::text "Two"]
+        expect (spelled (toldOf column), "{kind=\"stack\",axis=\"vertical\",children=[{kind=\"text\",text=\"One\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Two\",role=\"body\",tone=\"primary\"}]}")
+        row = Ui::row [Ui::text "A", Ui::text "B"]
+        expect (spelled (toldOf row), "{kind=\"stack\",axis=\"horizontal\",children=[{kind=\"text\",text=\"A\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"B\",role=\"body\",tone=\"primary\"}]}")
+        split = Ui::split [Ui::text "List", Ui::text "Detail"]
+        expect (spelled (toldOf split), "{kind=\"split\",children=[{kind=\"text\",text=\"List\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Detail\",role=\"body\",tone=\"primary\"}]}")
+        layered = Ui::layer [Ui::text "Back", Ui::text "Front"]
+        expect (spelled (toldOf layered), "{kind=\"layer\",children=[{kind=\"text\",text=\"Back\",role=\"body\",tone=\"primary\"},{kind=\"text\",text=\"Front\",role=\"body\",tone=\"primary\"}]}")
+        expect (toldSpacing (), "spacing=[#4,#10,#16]")
+
+    (** [NATIVE-SHM-NODES] Sections keep their title and footer; screens keep their toolbar, whose controls bind before the children's. *)
+    export toldSurfacesCase () =
+        section = Ui::section ("Sides", "Feeds four", [Ui::text "Batter"])
+        expect (spelled (toldOf section), "{kind=\"section\",title=\"Sides\",footer=\"Feeds four\",children=[{kind=\"text\",text=\"Batter\",role=\"body\",tone=\"primary\"}]}")
+        screen = Ui::screen ("Kitchen", "Spring", [Ui::button ("Bake", "", Increment)], [Ui::text "Steps"])
+        expect (spelled (toldOf screen), "{kind=\"screen\",title=\"Kitchen\",subtitle=\"Spring\",toolbar=[{kind=\"button\",label=\"Bake\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}],children=[{kind=\"text\",text=\"Steps\",role=\"body\",tone=\"primary\"}]}")
+        expect (deliversBinding (screen, 0, ui::Tap(action = Increment)), true)
+
+    (** [NATIVE-SHM-NODES] Frames tell their whole style record; a scoped theme tells its own tokens with the subtree it inks. *)
+    export toldFramesCase () =
+        base = ui::Frames::plain
+        style = base(frameWidth = 430, frameHeight = 240, frameTop = 14, frameRadius = 12, frameGap = 6, frameFill = "background", frameLine = "secondary", frameGrow = true, frameFont = "mono", frameTextSize = 20)
+        framed = Ui::framed (style, Ui::text "Inner")
+        expect (spelled (toldOf framed), "{kind=\"framed\",style={name=\"\",width=#430,height=#240,viewportHeightInset=#-1,scrollY=?false,top=#14,right=#0,bottom=#0,left=#0,radius=#12,gap=#6,fill=\"background\",ink=\"\",line=\"secondary\",lineEdge=\"all\",grow=?true,font=\"mono\",textSize=#20,mathScale=~0.0,lineHeight=~0.0,tracking=~0.0,italic=?false,hug=?false,align=\"start\",cross=\"stretch\",controlHeight=#0,controlPadding=#-1,symbolSize=#0,quietControls=?false,iconOnly=?false,fadeBackdrop=?false,trailingSymbols=?false,flatRows=?false,selectionGroup=?false,shadow=\"\"},body={kind=\"text\",text=\"Inner\",role=\"body\",tone=\"primary\"}}")
+        local = ui::Theme(tokens = [ui::Token(tokenName = "text", tokenLight = "#000000", tokenDark = "#FFFFFF")], spacing = [4, 10, 16], feedback = 140, settle = 240)
+        scoped = Ui::themed (local, Ui::text "Scoped")
+        expect (spelled (memberTold (insideTold (toldOf scoped), "theme")), "theme={tokens=[{name=\"text\",light=\"#000000\",dark=\"#FFFFFF\"}],spacing=[#4,#10,#16],feedback=#140,settle=#240}")
+
+    (** [NATIVE-SHM-NODES] Dialogs and alerts keep their dismissal binding; menus tell their body before their actions. *)
+    export toldOverlaysCase () =
+        dialog = Ui::dialog ("Review", Ui::button ("Insert", "", Increment), Load)
+        expect (spelled (toldOf dialog), "{kind=\"dialog\",title=\"Review\",event=#0,body={kind=\"button\",label=\"Insert\",symbol=\"\",role=\"plain\",enabled=?true,event=#1}}")
+        expect (deliversBinding (dialog, 0, ui::Tap(action = Load)), true)
+        expect (deliversBinding (dialog, 1, ui::Tap(action = Increment)), true)
+        forEachList ([{ on = true }, { on = false }], \alert =>
+            shown = ui::Alert(title = "Empty", message = "Nothing left", visible = alert.on, dismiss = Typed)
+            expect (spelled (toldOf shown), "{kind=\"alert\",title=\"Empty\",message=\"Nothing left\",visible=?${alert.on},event=#0}")
+            expect (deliversBinding (shown, 0, ui::Tap(action = Typed)), true))
+        menu = Ui::contextMenu (Ui::text "Body", [Ui::button ("Copy", "", Increment)])
+        expect (spelled (toldOf menu), "{kind=\"context-menu\",body={kind=\"text\",text=\"Body\",role=\"body\",tone=\"primary\"},items=[{kind=\"button\",label=\"Copy\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}]}")
+
+    (** [NATIVE-SHM-NODES] Asides tell their side, both columns and the splitter's width and limits; the host orders the columns by the side. *)
+    export toldAsideCase () =
+        trailing = Ui::aside (Ui::text "Pane", ui::Trailing, Ui::text "Column", 420, Typed)
+        expect (spelled (toldOf trailing), "{kind=\"aside\",side=\"trailing\",pane={kind=\"text\",text=\"Pane\",role=\"body\",tone=\"primary\"},aside={kind=\"text\",text=\"Column\",role=\"body\",tone=\"primary\"},width=#420,least=#260,most=#640,keep=#340,event=#0}")
+        expect (deliversBinding (trailing, 0, ui::SizeInput(action = Typed)), true)
+        leading = Ui::aside (Ui::text "Pane", ui::Leading, Ui::text "Column", 300, Typed)
+        members = insideTold (toldOf leading)
+        expect (memberText (members, "side"), "leading")
+        expect (memberCount (members, "width", 0), 300)
+        expect (memberCount (members, "least", 0), Splitters::least)
+        expect (deliversBinding (leading, 0, ui::SizeInput(action = Typed)), true)
+
+    (** [NATIVE-SHM-NODES] Tabs tell every page with its key; the chosen key names the page the host shows, and the choice binds after every page's controls. *)
+    tabsSample () = [Ui::tab ("one", "First", "star", Ui::text "Page one"), Ui::tab ("two", "Second", "", Ui::button ("Go", "", Increment))]
+
+    (** [NATIVE-SHM-NODES] Tabs tell every page with its key, and the choice binds after every page's controls. *)
+    export toldTabsCase () =
+        tabs = ui::Tabs(tabs = tabsSample (), selected = "two", bind = Typed)
+        expect (spelled (toldOf tabs), "{kind=\"tabs\",selected=\"two\",tabs=[{key=\"one\",label=\"First\",symbol=\"star\",child={kind=\"text\",text=\"Page one\",role=\"body\",tone=\"primary\"}},{key=\"two\",label=\"Second\",symbol=\"\",child={kind=\"button\",label=\"Go\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}}],event=#1}")
+        expect (deliversBinding (tabs, 0, ui::Tap(action = Increment)), true)
+        expect (deliversBinding (tabs, 1, ui::ChoiceInput(action = Typed)), true)
+        unknown = ui::Tabs(tabs = tabsSample (), selected = "nine", bind = Typed)
+        expect (memberText (insideTold (toldOf unknown), "selected"), "nine")
+        // Every page is told with its own controls, so the choice binds after them all.
+        binds (drawnOf unknown, 2)
+
+    (** [NATIVE-SHM-NODES] Rows tell every row with its key, symbol and group, and the selected key names the chosen one. *)
+    rowsSample () = [Ui::entry ("a", "star", "Recent", Ui::text "Alpha"), Ui::entry ("b", "", "Recent", Ui::text "Beta"), Ui::item ("c", Ui::text "Gamma")]
+
+    (** [NATIVE-SHM-NODES] Rows tell every row with its key, symbol and group, and the selected key names the chosen one. *)
+    export toldRowsCase () =
+        listed = ui::Rows(rows = rowsSample (), selected = "b", bind = Load)
+        expect (spelled (toldOf listed), "{kind=\"rows\",selected=\"b\",rows=[{key=\"a\",symbol=\"star\",group=\"Recent\",child={kind=\"text\",text=\"Alpha\",role=\"body\",tone=\"primary\"}},{key=\"b\",symbol=\"\",group=\"Recent\",child={kind=\"text\",text=\"Beta\",role=\"body\",tone=\"primary\"}},{key=\"c\",symbol=\"\",group=\"\",child={kind=\"text\",text=\"Gamma\",role=\"body\",tone=\"primary\"}}],event=#0}")
+        expect (deliversBinding (listed, 0, ui::ChoiceInput(action = Load)), true)
+
+    (** [NATIVE-SHM-NODES] A slot tells the key of the region it names; the regions themselves tell under their keys. *)
+    // The slot region's own view: naming the action union keeps the keyed snapshot's type concrete.
+    regionView : Unit -> ui::Node<Act>
+    regionView () = Ui::styled ("Region text", ui::Title, ui::Good)
+
+    (** [NATIVE-SHM-NODES] A slot tells the key of the region it names; the regions themselves tell under their keys. *)
+    export toldSlotCase () =
+        region = Keyed::region ([], "side", [], regionView)
+        told = Tellings::regions [region]
+        expect (length told.nodes, 1)
+        expect (spelled (toldAt (told.nodes, 0)), "region={key=\"side\",node={kind=\"text\",text=\"Region text\",role=\"title\",tone=\"good\"}}")
+        expect (length told.bindings, 0)
+        expect (spelled (toldOf (Ui::slot "side")), "{kind=\"slot\",key=\"side\"}")
+        expect (spelled (toldOf (Ui::slot "missing")), "{kind=\"slot\",key=\"missing\"}")
+
+    (** [NATIVE-SHM-NODES] Buttons tell their role and enabled state; the theme's tokens carry the colours a host draws them with. *)
+    export toldButtonsCase () =
+        bake = Ui::action ("Bake", "play", ui::Prominent, true, Increment)
+        expect (spelled (toldOf bake), "{kind=\"button\",label=\"Bake\",symbol=\"play\",role=\"prominent\",enabled=?true,event=#0}")
+        expect (deliversBinding (bake, 0, ui::Tap(action = Increment)), true)
+        plain = Ui::button ("Keep", "", Increment)
+        expect (spelled (toldOf plain), "{kind=\"button\",label=\"Keep\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}")
+        destructive = Ui::action ("Remove", "", ui::Destructive, true, Load)
+        expect (spelled (toldOf destructive), "{kind=\"button\",label=\"Remove\",symbol=\"\",role=\"destructive\",enabled=?true,event=#0}")
+        expect (deliversBinding (destructive, 0, ui::Tap(action = Load)), true)
+        disabled = Ui::action ("Stop", "", ui::Plain, false, Load)
+        expect (spelled (toldOf disabled), "{kind=\"button\",label=\"Stop\",symbol=\"\",role=\"plain\",enabled=?false,event=#0}")
+
+    (** [NATIVE-SHM-NODES] Fields tell their prompt, hiding and commit policy, and carry their text binding; toggles tell their state. *)
+    export toldFieldsCase () =
+        field = ui::Field(label = "Name", value = "Ada", prompt = "Your name", secure = true, multiline = false, commit = ui::OnSubmit, bind = Typed)
+        expect (spelled (toldOf field), "{kind=\"field\",label=\"Name\",value=\"Ada\",prompt=\"Your name\",secure=?true,multiline=?false,commit=\"submit\",event=#0}")
+        expect (deliversBinding (field, 0, ui::TextInput(action = Typed)), true)
+        notes = Ui::multiline ("Notes", "Two lines", "Add", Typed)
+        expect (spelled (toldOf notes), "{kind=\"field\",label=\"Notes\",value=\"Two lines\",prompt=\"Add\",secure=?false,multiline=?true,commit=\"edit\",event=#0}")
+        expect (deliversBinding (notes, 0, ui::TextInput(action = Typed)), true)
+        toggle = Ui::toggle ("Nightly", true, Load)
+        expect (spelled (toldOf toggle), "{kind=\"toggle\",label=\"Nightly\",on=?true,event=#0}")
+        expect (deliversBinding (toggle, 0, ui::FlagInput(action = Load)), true)
+
+    (** [NATIVE-SHM-NODES] Pickers tell every option with its key and the selected one; disclosures tell their flag and their children whether open or closed. *)
+    export toldPickersCase () =
+        choices = [Ui::choice ("a", "Alpha"), Ui::choice ("b", "Beta")]
+        picker = ui::Picker(label = "Sort", choices = choices, selected = "b", bind = Load)
+        expect (spelled (toldOf picker), "{kind=\"picker\",label=\"Sort\",choices=[{key=\"a\",label=\"Alpha\"},{key=\"b\",label=\"Beta\"}],selected=\"b\",event=#0}")
+        expect (deliversBinding (picker, 0, ui::ChoiceInput(action = Load)), true)
+        closed = Ui::disclosure ("Limits", false, Load, [Ui::text "Scope"])
+        expect (spelled (toldOf closed), "{kind=\"disclosure\",title=\"Limits\",expanded=?false,event=#0,children=[{kind=\"text\",text=\"Scope\",role=\"body\",tone=\"primary\"}]}")
+        expect (deliversBinding (closed, 0, ui::FlagInput(action = Load)), true)
+        open = Ui::disclosure ("Limits", true, Load, [Ui::text "Scope"])
+        expect (memberFlag (insideTold (toldOf open), "expanded", false), true)
+        expect (length (memberItems (insideTold (toldOf open), "children")), 1)
+
+    (** [NATIVE-SHM-NODES] Pairs, badges, labels, icons, links, spacers and dividers tell as whole leaves. *)
+    export toldLeavesCase () =
+        expect (spelled (toldOf (ui::Spacer)), "{kind=\"spacer\"}")
+        pair = ui::Pair(label = "Size", value = "3")
+        expect (spelled (toldOf pair), "{kind=\"pair\",label=\"Size\",value=\"3\"}")
+        badge = Ui::badge ("Live", "play", ui::Danger)
+        expect (spelled (toldOf badge), "{kind=\"badge\",label=\"Live\",symbol=\"play\",tone=\"danger\"}")
+        labelled = Ui::label ("Scope", "info")
+        expect (spelled (toldOf labelled), "{kind=\"label\",label=\"Scope\",symbol=\"info\"}")
+        icon = Ui::icon "star"
+        expect (spelled (toldOf icon), "{kind=\"icon\",symbol=\"star\"}")
+        link = Ui::link ("Guide", "https://example.test")
+        expect (spelled (toldOf link), "{kind=\"link\",label=\"Guide\",url=\"https://example.test\"}")
+        expect (spelled (toldOf (ui::Divider)), "{kind=\"divider\"}")
+
+    (** [NATIVE-SHM-NODES] Segments, empty states, progress, meters and swatches tell their tones; a swatch tells both of its colours. *)
+    export toldStatusCase () =
+        segments = ui::Segments(tones = [ui::Good, ui::Danger], label = "")
+        expect (spelled (toldOf segments), "{kind=\"segments\",tones=[\"good\",\"danger\"],label=\"\"}")
+        empty = Ui::empty ("tray", "Nothing here", "Add something first")
+        expect (spelled (toldOf empty), "{kind=\"empty\",symbol=\"tray\",title=\"Nothing here\",detail=\"Add something first\"}")
+        progress = ui::Progress(label = "Loading", detail = "3 of 9")
+        expect (spelled (toldOf progress), "{kind=\"progress\",label=\"Loading\",detail=\"3 of 9\"}")
+        meter = Ui::meter ("Disk", 3, 4, ui::Accent)
+        expect (spelled (toldOf meter), "{kind=\"meter\",label=\"Disk\",value=#3,total=#4,tone=\"accent\"}")
+        ink = ui::Swatch(name = "Ink", light = "#101010", dark = "#EFEFEF")
+        expect (spelled (toldOf ink), "{kind=\"swatch\",name=\"Ink\",light=\"#101010\",dark=\"#EFEFEF\"}")
+
+    (** [NATIVE-SHM-NODES] Media, editors, boards and scenes bind in the walk's order: stroke, lasso, camera; text, cursor. *)
+    export toldMediaCase () =
+        image = ui::Image(imageSource = "a.png", imageAlt = "A map", imageWidth = 320, imageHeight = 200)
+        expect (spelled (toldOf image), "{kind=\"image\",source=\"a.png\",alt=\"A map\",width=#320,height=#200}")
+        video = ui::Video(videoSource = "v.mp4", videoPoster = "p.png", videoCaptions = "", videoAlt = "A talk", videoSeconds = 90)
+        expect (spelled (toldOf video), "{kind=\"video\",source=\"v.mp4\",poster=\"p.png\",captions=\"\",alt=\"A talk\",seconds=#90}")
+        spoken = ui::Typeset(math = ui::Sym "x", spoken = "x equals two")
+        expect (spelled (toldOf spoken), "{kind=\"math\",math={kind=\"sym\",text=\"x\"},spoken=\"x equals two\"}")
+        editor = Editors::editor ("Proof", "one", 3, [], Typed, Load)
+        expect (spelled (toldOf editor), "{kind=\"editor\",label=\"Proof\",value=\"one\",inline=?false,cursor=#3,focusEpoch=#0,marks=[],event=#0,placeEvent=#1}")
+        expect (deliversBinding (editor, 0, ui::TextInput(action = Typed)), true)
+        expect (deliversBinding (editor, 1, ui::PlaceInput(action = Load)), true)
+        board = Boards::interactive ("board", 2, true, "background", true, Increment, Typed, Load)
+        expect (spelled (toldOf board), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"background\",panning=?true,event=#0,lassoEvent=#1,panEvent=#2}")
+        expect (deliversBinding (board, 0, ui::StrokeInput(action = Increment)), true)
+        expect (deliversBinding (board, 1, ui::LassoInput(action = Typed)), true)
+        expect (deliversBinding (board, 2, ui::TextInput(action = Load)), true)
+        still = Boards::board ("board", 2, true, Increment, Typed)
+        expect (spelled (toldOf still), "{kind=\"board\",slice=\"board\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
+        binds (drawnOf still, 2)
+        zoomed = Ui::zoomed (2.0, 100.0, 50.0, [], [], Typed)
+        expect (spelled (toldOf zoomed), "{scene 100.0x50.0x2.0,kind=\"scene\",width=~100.0,height=~50.0,zoom=~2.0,event=#0}")
+        expect (deliversBinding (zoomed, 0, ui::SceneInput(action = Typed)), true)
+        fitted = Ui::zoomed (0.0, 100.0, 50.0, [], [], Typed)
+        expect (memberReal (insideTold (toldOf fitted), "zoom", 1.0), 0.0)

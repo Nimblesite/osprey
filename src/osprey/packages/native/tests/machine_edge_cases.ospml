@@ -2,23 +2,94 @@
 // inputs, cycle limits, request snapshots and pointer-state transitions.
 namespace uitests
 
+import ui::Boards
 import ui::Canvases
 import ui::Doc
-import ui::Encode
-import ui::Events
+import ui::Frames
 import ui::Lists
 import ui::MachineDocs
 import ui::Machines
 import ui::Messages
 import ui::Runtime
+import ui::Surfaces
 import ui::Templates
-import ui::Ui
-import ui::Boards
 import ui::Values
+import ui::Ui
 
 completeMachine () = realMachine "src/osprey/packages/native/tests/complete.machine.json"
 
-completeNodes (machine, kind) = filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "kind") == kind)
+// The sort of a node, as the machine document names it.
+nodeSort node = match node
+    ui::Text _ _ _ => "text"
+    ui::RichText _ _ => "rich-text"
+    ui::Stack _ _ => "stack"
+    ui::Section _ _ _ => "section"
+    ui::Screen _ _ _ _ => "screen"
+    ui::Split _ => "split"
+    ui::Layer _ => "layer"
+    ui::Framed _ _ => "framed"
+    ui::Themed _ _ => "themed"
+    ui::Dialog _ _ _ => "dialog"
+    ui::ContextMenu _ _ => "context-menu"
+    ui::Aside _ _ _ _ _ _ _ _ => "aside"
+    ui::Tabs _ _ _ => "tabs"
+    ui::Slot _ => "slot"
+    ui::Pair _ _ => "pair"
+    ui::Badge _ _ _ => "badge"
+    ui::Label _ _ => "label"
+    ui::Icon _ => "icon"
+    ui::Link _ _ => "link"
+    ui::Spacer => "spacer"
+    ui::Divider => "divider"
+    ui::Segments _ _ => "segments"
+    ui::Empty _ _ _ => "empty"
+    ui::Progress _ _ => "progress"
+    ui::Meter _ _ _ _ => "meter"
+    ui::Swatch _ _ _ => "swatch"
+    ui::Rows _ _ _ => "rows"
+    ui::Button _ _ _ _ _ => "button"
+    ui::Field _ _ _ _ _ _ _ => "field"
+    ui::Toggle _ _ _ => "toggle"
+    ui::Picker _ _ _ _ => "picker"
+    ui::Disclosure _ _ _ _ => "disclosure"
+    ui::Alert _ _ _ _ => "alert"
+    ui::Typeset _ _ => "typeset"
+    ui::Image _ _ _ _ => "image"
+    ui::Video _ _ _ _ _ => "video"
+    ui::Editor _ _ _ _ _ _ _ _ => "editor"
+    ui::Board _ _ _ _ _ _ _ _ _ => "board"
+    ui::Scene _ _ _ _ _ _ _ => "scene"
+
+// Every node in `node`'s tree, itself first, in document order.
+nodeWalked node = match node
+    ui::Stack _ children => nodeFollowed (node, children)
+    ui::Section _ _ children => nodeFollowed (node, children)
+    ui::Screen _ _ toolbar children => nodeFollowed (node, listConcat toolbar children)
+    ui::Split panes => nodeFollowed (node, panes)
+    ui::Layer children => nodeFollowed (node, children)
+    ui::Framed _ content => nodeFollowed (node, [content])
+    ui::Themed _ content => nodeFollowed (node, [content])
+    ui::Dialog _ body _ => nodeFollowed (node, [body])
+    ui::ContextMenu body actions => nodeFollowed (node, listPrepend actions body)
+    ui::Aside _ aside pane _ _ _ _ _ => nodeFollowed (node, [pane, aside])
+    ui::Tabs tabs _ _ => nodeFollowed (node, mapList (tabs, \tab => tab.page))
+    ui::Disclosure _ _ _ children => nodeFollowed (node, children)
+    ui::Rows rows _ _ => nodeFollowed (node, mapList (rows, \row => row.cell))
+    _ => [node]
+
+// `node` followed by its descendants' trees.
+nodeFollowed (node, children) = listPrepend (Lists::flatten (mapList (children, nodeWalked))) node
+
+// The style of a framed node.
+framedStyle node = match node
+    ui::Framed style _ => style
+    _ => Frames::plain
+
+// The styles of every framed node in `node`'s tree, in document order.
+framedStyles node = mapList (filterList (nodeWalked node, \scanned => nodeSort scanned == "framed"), framedStyle)
+
+// How many nodes of `sort` a machine's view holds.
+completeNodes (machine, sort) = filterList (mapList (nodeWalked (Templates::view machine), nodeSort), \found => found == sort)
 
 // A machine whose only layer is `layer`, starting in `loop`'s first phase.
 looped (base, layer) = base(machineLayers = [layer], currents = [ui::Current(currentLayer = "loop", currentState = "a")])
@@ -42,16 +113,24 @@ expectAskedNumbers (ask, fields) = forEachList (fields, \field => expect (Machin
 completeTemplateVariants () =
     machine = completeMachine ()
     expect (machine.machineFault, "")
+    // An eyebrow keeps its own words now: the capitals it is drawn in are the host's styling.
     forEachList (["Display", "Large", "Heading", "Lead", "Headline", "Eyebrow", "Mono", "Hello", "Badge", "Prominent", "Destructive", "Filled", "Pick", "Toggle", "Meter", "Progress", "Empty", "Framed child"], \text =>
         expect (nativeShows (machine, text), true))
     expect (nativeShows (machine, "Hidden"), false)
-    forEachList (["image", "framed", "spacer", "divider", "scene"], \kind => expect (length (completeNodes (machine, kind)), 1))
-    framed = listGet (completeNodes (machine, "framed")) 0 ?: JsonNull
-    style = Doc::field (framed, "style")
-    expectNumbers (style, [{ name = "width", value = 300 }, { name = "height", value = 200 }, { name = "padding", value = 0 }, { name = "left", value = 12 }])
-    expectTexts (style, [{ name = "shadow", value = "floating" }])
-    expectFlags (style, [{ name = "grow", value = true }])
-    expect (length (Encode::walk ([], Templates::view machine)).bindings > 5, true)
+    forEachList (["image", "framed", "spacer", "divider", "scene"], \sort => expect (length (completeNodes (machine, sort)), 1))
+    framed = listGet (framedStyles (Templates::view machine)) 0 ?: Frames::plain
+    expect (framed.frameWidth, 300)
+    expect (framed.frameHeight, 200)
+    expect (framed.frameTop, 12)
+    expect (framed.frameLeft, 12)
+    expect (framed.frameRadius, 8)
+    expect (framed.frameGap, 4)
+    expect (framed.frameFill, "canvas")
+    expect (framed.frameInk, "ink")
+    expect (framed.frameLine, "line")
+    expect (framed.frameShadow, "floating")
+    expect (framed.frameGrow, true)
+    expect (length (nativeTree machine).walkBound > 5, true)
     expect (length (Canvases::semantics machine), 0)
     viewed = Canvases::viewed (machine, 800.0, 600.0)
     forEachList ([{ name = "viewWidth", value = 800.0 }, { name = "spareWidth", value = 0.0 }], \field => expect (Machines::number (viewed, field.name), field.value))
@@ -71,7 +150,7 @@ completeCanvasVariants () =
     outsideReleased = realPointer (outsideHeld, outside, false)
     expect (Machines::text (outsideReleased, "caption"), "Held")
     missed = Canvases::released (outsideReleased, 399.0, 399.0)
-    expect (Doc::write (MachineDocs::snapshot missed), Doc::write (MachineDocs::snapshot outsideReleased))
+    expect (structuralEquals (MachineDocs::snapshot missed, MachineDocs::snapshot outsideReleased), true)
 
 completeDefensivePointerBranch () =
     machine = nativeFeed (completeMachine (), "skin", "canvas")
@@ -80,7 +159,7 @@ completeDefensivePointerBranch () =
             hold = listGet areas 8 ?: listGet areas 0 ?: ui::Area(areaX = ui::Fixed(fixedAt = 0.0), areaY = ui::Fixed(fixedAt = 0.0), areaW = ui::Fixed(fixedAt = 0.0), areaH = ui::Fixed(fixedAt = 0.0), areaRole = ui::Unannounced, areaLabel = "", areaLever = ui::Fire(fireName = ""), areaSlide = ui::Unslid, areaDrag = ui::Undragged, areaWhen = ui::Always, areaEach = ui::Once)
             sliding = machine(machineGrip = ui::Sliding(slidArea = hold))
             moved = Canvases::pointer (sliding, 1.0, 1.0, true)
-            expect (Doc::write (MachineDocs::snapshot moved), Doc::write (MachineDocs::snapshot sliding))
+            expect (structuralEquals (MachineDocs::snapshot moved, MachineDocs::snapshot sliding), true)
         ui::Unboarded => expect ("canvas skin", "missing")
 
 completeInputFaults () =
@@ -129,27 +208,34 @@ completeRequestPayloads () =
     seeking = Machines::pull (playing, ui::Fire(fireName = "seek"), Values::none ())
     expectAskedNumbers (asked (seeking, "cast.seek"), [{ name = "position", value = 50.0 }, { name = "skip", value = 0.0 }])
 
+// A completion's outcome as its result text or its reason.
+outcomeText outcome = match outcome
+    Success text => text
+    Error problem => problem
+
+deniedOf : ui::Message<Act> -> string
+deniedOf message = Messages::route (message, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \(_, outcome) => outcomeText outcome, \_ => "wrong message", \(_, _) => "wrong message", \(_, _) => "wrong message", \_ => "wrong message", \(_, _) => "wrong message")
+
 completeEventAndConvenienceCases () =
-    completed = match Events::decode "{\"kind\":\"completed\",\"ticket\":\"job\",\"ok\":false,\"error\":\"denied\",\"now\":1}"
-        Success event => match event.eventBody
-            ui::Finished _ outcome => match outcome
-                Success _ => "accepted"
-                Error problem => problem
-            _ => "wrong event"
-        Error problem => problem
-    expect (completed, "denied")
-    board = firstNode (Encode::walk ([], Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso"))))
-    expectTexts (board, [{ name = "kind", value = "board" }, { name = "backdrop", value = "" }])
-    field = firstNode (Encode::walk ([], Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit"))))
-    expect (Doc::flag (field, "multiline"), true)
-    expect (Doc::text (field, "commit"), "edit")
-    described = firstNode (Encode::walk ([], Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), [])))
-    expect (Doc::text (described, "kind"), "button")
+    expect (deniedOf (Surfaces::completed ("job", false, "denied")), "denied")
+    board = Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso"))
+    binds (fireDrawn board, 2)
+    expect (spelled (fireTold board), "{kind=\"board\",slice=\"strokes\",count=#2,lasso=?true,backdrop=\"\",panning=?false,event=#0,lassoEvent=#1}")
+    boardNode = match board
+        ui::Board slice count lassoing backdrop _ _ _ _ _ => "${slice}|${count}|${lassoing}|${backdrop}"
+        _ => "not a board"
+    expect (boardNode, "strokes|2|true|")
+    field = Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit"))
+    binds (fireDrawn field, 1)
+    // A multiline field tells its label, value and prompt, commits on edit, and binds the one text input.
+    expect (spelled (fireTold field), "{kind=\"field\",label=\"Notes\",value=\"one\ntwo\",prompt=\"write\",secure=?false,multiline=?true,commit=\"edit\",event=#0}")
+    described = Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), [])
+    expect (spelled (fireTold described), "{kind=\"button\",label=\"plain\",symbol=\"\",role=\"plain\",enabled=?true,event=#0}")
     expect (length (Lists::slice (["a"], 2, 4)), 0)
     expect (Lists::position ([], \(_item : string) => true), 0 - 1)
     expect (join (mapList (Lists::sortBy ([3, 1, 2], \(a, b) => a < b), \n => "${n}")) ",", "1,2,3")
-    phased = Probes::post (Probes::started (), "{\"kind\":\"lifecycle\",\"phase\":\"resume\",\"now\":8}")
-    expect (Probes::problems phased, "")
+    phased = Probes::phased (Probes::started (), "resume")
+    expect (Probes::problem phased, "")
 
 completeMachineCases () = Runtime::guarded (\() =>
     completeTemplateVariants ()

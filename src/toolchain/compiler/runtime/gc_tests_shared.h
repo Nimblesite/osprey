@@ -23,6 +23,7 @@ void *osp_gc_realloc(void *old, size_t size);
 void osp_gc_free(void *p);
 size_t osp_gc_live_objects(void);
 size_t osp_gc_collections(void);
+size_t osp_gc_table_capacity(void);
 
 extern long g_checks;
 #define CHECK(c)                                                               \

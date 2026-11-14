@@ -45,18 +45,8 @@ module Contrast
             true => (a + 0.05) / (b + 0.05)
             false => (b + 0.05) / (a + 0.05)
 
-(** Encodes a theme and looks up its tokens ([UI-THEME]). *)
+(** Looks up a theme's tokens ([UI-THEME]). *)
 module Themes
-    token item = JsonObject [Doc::str ("name", item.tokenName), Doc::str ("light", item.tokenLight), Doc::str ("dark", item.tokenDark)]
-
-    (** The theme in protocol form: every token's light and dark colours, the spacing scale and motion durations. *)
-    export encode theme = JsonObject [
-        JsonMember "tokens" (JsonArray (mapList (theme.tokens, \item => token item))),
-        JsonMember "spacing" (JsonArray (mapList (theme.spacing, \value => JsonInt value))),
-        Doc::num ("feedback", theme.feedback),
-        Doc::num ("settle", theme.settle),
-    ]
-
     (** [UI-THEME-BOARD] The tokens a `Board` is drawn with: `board`, its slate, and `chalk`, its strokes. A theme without them draws a board on `canvas` in `primary`. *)
     export boardTokens = ["board", "chalk"]
 

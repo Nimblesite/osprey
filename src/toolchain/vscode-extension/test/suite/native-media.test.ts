@@ -70,7 +70,7 @@ suite("native lesson media", () => {
   });
 
   test("the document permits approved local media without enabling remote connections", () => {
-    const html = workspaceHtml({ nonce: "test", assetUri: "", cspSource: "vscode-resource:" });
+    const html = workspaceHtml({ nonce: "test", assetUri: "", scriptUri: "vscode-resource://out/webview/webview/main.js", cspSource: "vscode-resource:" });
     assert.ok(html.includes("media-src vscode-resource: data: blob:"));
     assert.ok(html.includes("connect-src 'none'"));
   });

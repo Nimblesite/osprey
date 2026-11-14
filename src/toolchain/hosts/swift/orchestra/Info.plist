@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>pocket-orchestra</string>
+<key>CFBundleIdentifier</key><string>org.ospreylang.light-orchestra</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleName</key><string>Light Orchestra</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSLocalNetworkUsageDescription</key><string>Phones on your Wi-Fi connect to this Mac to play the orchestra.</string>
+</dict></plist>

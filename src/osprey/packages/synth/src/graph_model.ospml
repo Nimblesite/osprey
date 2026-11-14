@@ -1,0 +1,109 @@
+namespace synth
+
+// Generated from typeDiagram [CONV-OSPREY].
+type Rate =
+    Audio
+    Control
+    Events
+
+type Unit =
+    Amplitude
+    Hertz
+    Seconds
+    Normalised
+    Ratio
+    Notes
+
+type Port =
+    name : string
+    rate : Rate
+    channels : int
+    unit : Unit
+
+type Parameter =
+    key : string
+    label : string
+    unit : Unit
+    minimum : float
+    maximum : float
+    initial : float
+    automatable : bool
+
+type Processor =
+    Oscillator
+    Filter
+    Amplifier
+    Mixer
+    Sink
+    Delay
+        samples : int
+    External
+        identifier : string
+
+type Node =
+    identity : int
+    processor : Processor
+    inputs : List<Port>
+    outputs : List<Port>
+    parameters : List<Parameter>
+
+type Cable =
+    source : int
+    outlet : int
+    destination : int
+    inlet : int
+
+type Graph =
+    nodes : List<Node>
+    cables : List<Cable>
+
+type Prepared =
+    graph : Graph
+    order : List<int>
+    feedback : List<Cable>
+
+type GraphFault =
+    DuplicateNode
+    MissingNode
+    InvalidNode
+    InvalidPort
+    IncompatiblePorts
+    OccupiedInput
+    DuplicateParameter
+    InvalidParameter
+    Cycle
+    Capacity
+    MissingParameter
+    StaleRevision
+    InvalidFrame
+
+type Checked T =
+    Valid
+        value : T
+    Invalid
+        fault : GraphFault
+
+type ParameterValue =
+    node : int
+    key : string
+    value : float
+
+type ComponentState =
+    node : int
+    activeVoices : int
+    peak : float
+    rms : float
+
+type Observation =
+    revision : int
+    samplePosition : int
+    parameters : List<ParameterValue>
+    components : List<ComponentState>
+
+type ParameterChange =
+    node : int
+    key : string
+    value : float
+    revision : int
+    samplePosition : int
+

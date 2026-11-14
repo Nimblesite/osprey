@@ -8,7 +8,7 @@ import ui::Canvases
 import uitest::Drive
 import uitest::Semantics
 
-viewed (width, height) = post (Drive::viewed (driven, width, height))
+viewed (width, height) = post (\d => Drive::viewed (d, width, height))
 
 widthOf label = (element label).accessWidth
 

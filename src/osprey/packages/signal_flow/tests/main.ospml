@@ -3,7 +3,8 @@
 // each canvas control's accessible label, with its inputs, states and lettering read back.
 
 import ui::Runtime
-import ui::Streams
+import ui::Surfaces
+import ui::Lists
 import ui::Canvases
 import ui::MachineDocs
 import ui::Machines
@@ -11,26 +12,28 @@ import uitest::Drive
 import uitest::Semantics
 import signalflow::App
 
-(** The bench's only write: the driven session. *)
+(** The bench's only write: the driven surface. *)
 effect Bench
-    drive : uitest::Driven<signalflow::Store> => Unit
+    drive : uitest::Driven<signalflow::Store, ui::Lever> => Unit
 
-mut driven = Drive::idle (Runtime::idle (signalflow::Flow::store (MachineDocs::faulty "")))
+mut driven = Drive::idle (App::program (), signalflow::Flow::store (MachineDocs::faulty ""))
 
-kept (resident : ui::Resident<signalflow::Store>) = perform Bench.drive (Drive::moved (driven, resident))
+kept next = perform Bench.drive next
 
-// Every sprite the renders streamed, as atlas index, x and y, latest last: the host's view of where each node is.
-mut sprites = [[0.0]]
+// One sprite the last frame drew, as atlas index, x and y; any other shape draws none.
+placed primitive = match primitive
+    ui::Sprite index x y _ _ _ _ _ => [[toFloat index, x, y]]
+    _ => []
 
-streamedSprite primitive = match Streams::code primitive == 3
-    true => [[toFloat (Streams::index primitive), Streams::value (primitive, 0), Streams::value (primitive, 1)]]
-    false => []
+// Every sprite the last frame drew: the host's view of where each node is.
+sprites () =
+    walk = Surfaces::seen (driven.drivenSurface, driven.drivenProgram)
+    shapes = Lists::flatten (mapList (walk.walkSketches, \s => s.sketchedAs.sketchShapes))
+    Lists::flatten (mapList (shapes, placed))
 
 hosted work =
     handle ui::Slices
         fetch _ => ""
-    handle ui::SceneStream
-        shape primitive => sprites := listConcat sprites (streamedSprite primitive)
     work ()
 
 bench work =
@@ -39,12 +42,13 @@ bench work =
     Runtime::guarded work
 
 begun skin =
-    perform Bench.drive (Drive::idle driven.drivenSession)
-    hosted (\() => kept (Runtime::begin ("{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"${skin}\"]}", App::initial, App::regions, App::theme skin)))
+    perform Bench.drive (Drive::idle (App::program (), signalflow::Flow::store (MachineDocs::faulty "")))
+    hosted (\() => kept (Drive::launched (driven, "macos", ["--skin", skin])))
 
-post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
+// One typed host event, sent the way a host sends it.
+post step = hosted (\() => kept (step driven))
 
-pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
+pointer (x, y, down) = post (\d => Drive::pointer (d, x, y, down))
 
 // A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
@@ -54,7 +58,7 @@ tapAt (label, fraction) =
 
 tap label = tapAt (label, 0.5)
 
-machine () = driven.drivenSession.sessionStore.screen.screenMachine
+machine () = driven.drivenSurface.surfaceSession.sessionStore.screen.screenMachine
 
 elements () = Canvases::semantics (machine ())
 
@@ -70,15 +74,18 @@ offered label = expect (offers label, true)
 
 missing label = expect (Semantics::offered (elements (), label), false)
 
-flag (name, expected) = expect (Machines::flag (machine (), name), expected)
+// Input `name` must read `expected`, read by `reader` from the machine.
+knob (reader, name, expected) = expect (reader (machine (), name), expected)
 
-knobText (name, expected) = expect (Machines::text (machine (), name), expected)
+flag (name, expected) = knob (Machines::flag, name, expected)
+
+knobText (name, expected) = knob (Machines::text, name, expected)
 
 knobNumber (name, expected) =
     actual = Machines::number (machine (), name)
     expect (actual - expected < 0.000001 && expected - actual < 0.000001, true)
 
-layer (name, expected) = expect (Machines::current (machine (), name), expected)
+layer (name, expected) = knob (Machines::current, name, expected)
 
 // A pointer press and release at (x, y), which closes the menu.
 pressed (x, y) =
@@ -86,10 +93,13 @@ pressed (x, y) =
     pointer (x, y, false)
     layer ("menu", "closed")
 
-// A press opening a chooser, without choosing.
-opened (label, menu) =
+// A press on `label`, then the read it must leave behind, read by `check`.
+tapped (check, label, name, expected) =
     tap label
-    layer ("menu", menu)
+    check (name, expected)
+
+// A press opening a chooser, without choosing.
+opened (label, menu) = tapped (layer, label, "menu", menu)
 
 // The skins menu opened from `from`, choosing `choice`, which the `skin` knob must record.
 skinChosen (from, choice, skin) =
@@ -123,21 +133,21 @@ enabled (label, onRole, healthRole) =
     flag ("${onRole}On", true)
     knobText ("${healthRole}Health", "Healthy")
 
-// The knobs a move leaves behind, with the lettering it must show.
-knobsShow (cases, text) =
+// The knobs a move must leave, then the lettering it must show.
+numbersAndLetters (cases, texts) =
     reads (knobNumber, cases)
-    expect (letters text, true)
+    lettered texts
+
+// The knobs a move leaves behind, with the lettering it must show.
+knobsShow (cases, text) = numbersAndLetters (cases, [text])
 
 // A slider pressed at `fraction` across `label`, the knobs it must move and the lettering it must show.
 slid (label, fraction, cases, texts) =
     tapAt (label, fraction)
-    reads (knobNumber, cases)
-    lettered texts
+    numbersAndLetters (cases, texts)
 
 // A press on a control that selects, and the selection it must leave behind.
-selected (label, role) =
-    tap label
-    knobText ("selected", role)
+selected (label, role) = tapped (knobText, label, "selected", role)
 
 // A selection across the tree, the lettering its inspector shows and the controls it offers.
 inspected (label, role, texts, offers) =
@@ -149,9 +159,9 @@ inspected (label, role, texts, offers) =
 selects (cases) = forEachList (cases, \c => selected (c.label, c.role))
 
 // A history button pressed, then the reads its press must leave behind.
-historyPress (button, check) =
+reverted (button, reader, cases) =
     tap button
-    check ()
+    reads (reader, cases)
 
 // A node selected by label, whose inspector shows no parameters.
 bare name =
@@ -202,14 +212,15 @@ topologyBypass () =
     expect (Semantics::value (elements (), "Gateway Rate limit"), 0.25)
 
 topologyHistory () =
-    historyPress ("Undo", \() => knobNumber ("process", 0.7))
+    undone = \() => reverted ("Undo", knobNumber, [{ at = "process", want = 0.7 }])
+    undone ()
     flag ("processOn", false)
     expect (letters "70%", true)
-    historyPress ("Undo", \() => knobNumber ("process", 0.7))
+    undone ()
     healthy "process"
     knobNumber ("level", 0.49)
     history (false, true)
-    historyPress ("Redo", \() => flag ("processOn", false))
+    reverted ("Redo", flag, [{ at = "processOn", want = false }])
     reads (knobNumber, [{ at = "process", want = 0.7 }, { at = "level", want = 1.0 }])
     offered "Enable Gateway"
     tap "Enable Gateway"
@@ -283,13 +294,13 @@ exercise (name, role) =
     enabled ("Enable ${name}", role, role)
     offered "Inspector: Bypass ${name}"
 
-skinJourney (skin, control, source, process, output, monitor) =
+// The roles a skin's nodes take, in the order its tree lists them.
+nodeRoles = ["control", "source", "process", "output", "monitor"]
+
+// Every node of a skin, named in tree order, exercised as the role at its place.
+skinJourney (skin, names) =
     freshSkin skin
-    exercise (control, "control")
-    exercise (source, "source")
-    exercise (process, "process")
-    exercise (output, "output")
-    exercise (monitor, "monitor")
+    forEachList (toList (range (0, length names)), \i => exercise (listGet names i ?: "", listGet nodeRoles i ?: ""))
 
 // A skin opened on `process`, whose inspector offers its bypass switch.
 inspectorSkin (skin, bypassOffer) =
@@ -323,10 +334,10 @@ prismInspector () =
     tap "Bypass Master"
     knobText ("outputHealth", "Bypassed")
     knobsShow ([{ at = "delivered", want = 0.0 }], "-24.0")
-    historyPress ("Undo", \() => flag ("outputOn", true))
+    reverted ("Undo", flag, [{ at = "outputOn", want = true }])
     expect (letters "-17.7", true)
     offered "Redo"
-    historyPress ("Redo", \() => flag ("outputOn", false))
+    reverted ("Redo", flag, [{ at = "outputOn", want = false }])
     missing "Redo"
 
 prismInitial () =
@@ -337,41 +348,42 @@ prismInitial () =
     lettered (["1/4", "Sine", "-6.0 dB", "2.5 kHz", "-15.2"])
     layer ("menu", "closed")
 
-// Opens a chooser, checks its choices lead the tree, picks `choice` and checks it took and was recorded.
-chosen (popup, menu, knob, choices, choice, after) =
-    tap popup
+// Opens the chooser `prefix` labels with the value `from`, checks its choices lead the tree, picks
+// `to` and checks it took and was recorded.
+chosen (prefix, menu, name, choices, from, to) =
+    tap "${prefix}${from}"
     layer ("menu", menu)
     expect (take (labels ()) (length choices), choices)
-    tap choice
+    tap to
     layer ("menu", "closed")
-    knobText (knob, choice)
-    offered after
-    expect (letters choice, true)
+    knobText (name, to)
+    offered "${prefix}${to}"
+    expect (letters to, true)
     flag ("canUndo", true)
 
+// Each pick a chooser must take: the value it shows and the one it holds after.
+picks (prefix, menu, name, choices, moves) =
+    forEachList (moves, \m => chosen (prefix, menu, name, choices, m.from, m.to))
+
 prismRates () =
-    chosen ("LFO Rate: 1/4", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/16", "LFO Rate: 1/16")
-    chosen ("LFO Rate: 1/16", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/1", "LFO Rate: 1/1")
-    chosen ("LFO Rate: 1/1", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", "1/8", "LFO Rate: 1/8")
-    historyPress ("Undo", \() => knobText ("rate", "1/1"))
+    picks ("LFO Rate: ", "rates", "rate", "1/1|1/2|1/4|1/8|1/16", [{ from = "1/4", to = "1/16" }, { from = "1/16", to = "1/1" }, { from = "1/1", to = "1/8" }])
+    reverted ("Undo", knobText, [{ at = "rate", want = "1/1" }])
     offered "LFO Rate: 1/1"
-    historyPress ("Redo", \() => knobText ("rate", "1/8"))
+    reverted ("Redo", knobText, [{ at = "rate", want = "1/8" }])
     opened ("LFO Rate: 1/8", "rates")
     pressed (900.0, 700.0)
     knobText ("rate", "1/8")
     missing "1/16"
 
 prismWaves () =
-    chosen ("Oscillator Wave: Sine", "waves", "wave", "Sine|Triangle|Saw|Square", "Triangle", "Oscillator Wave: Triangle")
-    chosen ("Oscillator Wave: Triangle", "waves", "wave", "Sine|Triangle|Saw|Square", "Saw", "Oscillator Wave: Saw")
-    chosen ("Oscillator Wave: Saw", "waves", "wave", "Sine|Triangle|Saw|Square", "Square", "Oscillator Wave: Square")
+    picks ("Oscillator Wave: ", "waves", "wave", "Sine|Triangle|Saw|Square", [{ from = "Sine", to = "Triangle" }, { from = "Triangle", to = "Saw" }, { from = "Saw", to = "Square" }])
     opened ("Oscillator Wave: Square", "waves")
     opened ("LFO Rate: 1/8", "rates")
     offered "1/2"
     missing "Triangle"
     opened ("LFO Rate: 1/8", "closed")
     knobText ("wave", "Square")
-    historyPress ("Undo", \() => knobText ("wave", "Saw"))
+    reverted ("Undo", knobText, [{ at = "wave", want = "Saw" }])
     expect (letters "Saw", true)
 
 prismLevels () =
@@ -382,8 +394,8 @@ prismLevels () =
     missing "Inspector: Cutoff"
     expect (letters "Level", true)
     slid ("Inspector: Level", 0.5, [{ at = "volume", want = 0.5 }, { at = "delivered", want = 0.245 }], ["-12.0 dB"])
-    historyPress ("Undo", \() => knobNumber ("volume", 0.0))
-    historyPress ("Redo", \() => knobNumber ("volume", 0.5))
+    reverted ("Undo", knobNumber, [{ at = "volume", want = 0.0 }])
+    reverted ("Redo", knobNumber, [{ at = "volume", want = 0.5 }])
 
 prismParameters () =
     selected ("Select LFO", "control")
@@ -402,7 +414,7 @@ prismParameters () =
 suites () = [
     { name = "topology: pointer editing, history, inspectors and signal health", steps = [\() => begun "topology", topologyInitial, topologyBypass, topologyHistory, topologySelection, topologySignal] },
     { name = "the skin menu dismisses, switches skins and preserves the session", steps = [menuOpened, menuChoice, menuCycle] },
-    { name = "every skin: every node selects, bypasses, enables and tracks its inspector", steps = [\() => skinJourney ("topology", "Policy", "Client", "Gateway", "Service", "Telemetry"), \() => skinJourney ("notation", "k", "x(t)", "H(s)", "y(t)", "Scope"), \() => skinJourney ("paper", "Parameter", "Source", "Transform", "Output", "Monitor"), \() => skinJourney ("prism", "LFO", "Oscillator", "Filter", "Master", "Scope")] },
+    { name = "every skin: every node selects, bypasses, enables and tracks its inspector", steps = [\() => skinJourney ("topology", ["Policy", "Client", "Gateway", "Service", "Telemetry"]), \() => skinJourney ("notation", ["k", "x(t)", "H(s)", "y(t)", "Scope"]), \() => skinJourney ("paper", ["Parameter", "Source", "Transform", "Output", "Monitor"]), \() => skinJourney ("prism", ["LFO", "Oscillator", "Filter", "Master", "Scope"])] },
     { name = "notation and prism inspector switches and parameter lettering", steps = [notationInspector, prismInspector] },
     { name = "prism: every chooser, slider, switch and the history drive the patch", steps = [prismInitial, prismRates, prismWaves, prismLevels, prismParameters] },
     { name = "prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once", steps = [\() => begun "prism", hovering, filterDrag, movedControls, scopeDrag, sliderDrag] },
@@ -424,3 +436,24 @@ test ("every skin's accessibility tree reads clearly to an agent, and a Prism no
     expect (startsWith (Semantics::outline (elements ())) "popup \"Skin: Topology\"\n", true)
     begun "prism"
     expect (contains (Semantics::outline (elements ())) "button \"Select Filter\" movable", true)))
+
+// The repository document as a store, not yet settled.
+document () = App::loaded (readFile "src/osprey/packages/signal_flow/signal_flow.machine.json" ?: "")
+
+// The store after one lever, each history's length read back.
+histories (store, lever) =
+    after = (signalflow::Flow::pulled (store, ui::Fire(fireName = lever), ui::Values::none ())).stepStore
+    "${length after.past}/${length after.future}"
+
+test ("undo and redo at the edges of their history, a refused document shown in place, and the repository theme", \() => Runtime::guarded (\() =>
+    fresh = document ()
+    expect ((fresh.screen.screenMachine).machineFault, "")
+    // Nothing recorded yet: undo and redo restore nothing, and the lever's own change is the first snapshot.
+    expect (length fresh.past, 0)
+    forEachList (["undo", "redo"], \lever => expect (histories (fresh, lever), "1/0"))
+    settled = (signalflow::Flow::settled fresh).stepStore
+    forEachList (["undo", "redo"], \lever => expect (histories (settled, lever), "${length settled.past}/0"))
+    refused = App::loaded "not json"
+    expect ((refused.screen.screenMachine).machineFault, "the machine document is not JSON")
+    expect (length refused.past, 0)
+    forEachList (["", "topology", "paper"], \skin => expect (length (App::theme skin).tokens > 0, true))))

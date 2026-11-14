@@ -52,9 +52,18 @@ function restoreStagedBundle(root, restoreJob) {
 }
 
 export const nativeArchives = ['fiber_runtime', 'http_runtime'].flatMap(name => ['', '_gc', '_arc'].map(mode => `lib${name}${mode}.a`))
-// A valid command with exported memory and an empty _start; packaging never executes it.
-const wasiCommand = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0,
-  5, 3, 1, 0, 1, 7, 19, 2, 6, 95, 115, 116, 97, 114, 116, 0, 0, 6, 109, 101, 109, 111, 114, 121, 2, 0, 10, 4, 1, 2, 0, 11])
+// [NATIVE-SHM-WASM] A valid module with exported memory and one empty function exported under every
+// name a live shared-boundary module exports; packaging checks the names and never executes it.
+const boundaryExports = ['_start', 'osprey_app_argument', 'osprey_app_open', 'osprey_app_event', 'osp_native_open',
+  'osp_native_frame_commit', 'osp_native_frame_discard', 'osp_native_acquire', 'osp_native_child', 'osp_native_length',
+  'osp_native_view', 'osp_native_release', 'malloc', 'free']
+const leb = (n) => n < 128 ? [n] : [(n & 127) | 128, ...leb(n >> 7)]
+const section = (id, body) => [id, ...leb(body.length), ...body]
+const named = (text) => [text.length, ...Buffer.from(text)]
+const exportEntries = [...boundaryExports.flatMap(name => [...named(name), 0, 0]), ...named('memory'), 2, 0]
+const wasiCommand = Buffer.from([0, 97, 115, 109, 1, 0, 0, 0,
+  ...section(1, [1, 96, 0, 0]), ...section(3, [1, 0]), ...section(5, [1, 0, 1]),
+  ...section(7, [boundaryExports.length + 1, ...exportEntries]), ...section(10, [1, 2, 0, 11])])
 
 function writeExecutablePayloads(root, platform) {
   const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'],
@@ -104,17 +113,8 @@ function writeSymbolAssets(root, platform) {
   }
 }
 
-// The folder registry the extension serves [PACKAGE-LOCAL-REGISTRY]: a non-empty
-// package tree, which the client verifier refuses to ship empty on a POSIX host.
-function writeRegistryPayloads(root, platform) {
-  const packages = join(root, platform, 'registry/@osprey/testing')
-  mkdirSync(packages, { recursive: true })
-  writeFileSync(join(packages, 'osprey.toml'), 'name = "@osprey/testing"\n')
-}
-
 function writeBundlePayloads(root, platform) {
   writeExecutablePayloads(root, platform)
-  writeRegistryPayloads(root, platform)
   writeWorkbenchAssets(root, platform)
   writePresentationAssets(root, platform)
   writeProofAssets(root, platform)

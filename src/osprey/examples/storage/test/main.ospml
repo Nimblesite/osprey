@@ -1,18 +1,26 @@
-// Osprey Storage driven through the real start and dispatch path with fixture
-// walks, so its rules and screens are checked on every operating system with
-// no disk and no window ([NATIVE-APPS-ALL], [UI-EFFECTS-MEASURE]).
+// Osprey Storage driven through the typed host event boundary every host calls
+// ([NATIVE-SHM-EVENT], [NATIVE-SHM-BOUNDARY]) with fixture walks, so its rules and screens are
+// checked on every operating system with no disk and no window ([NATIVE-APPS-ALL],
+// [UI-EFFECTS-MEASURE]). The host the tests stand in for answers the `measured` slice from a
+// fixture and reads each step's frame back through the rows the surface drew.
 namespace storagetests
 
 import ui::Doc
+import ui::Hosting
 import ui::Lists
+import ui::Requests
 import ui::Runtime
+import ui::Surfaces
 import storage::App
+import storage::Browse
 import storage::Disk
-import storagetests::Probes
+import uitest::Drive
+import uitest::Read
+import uitest::Views
 
 home = "C:\\Users\\ada"
 
-// One child as the host writes it; `kind` is `folder`, `hidden`, `file`, `link` or `sealed`.
+// One child as the host writes it into the measured slice; `kind` is `folder`, `hidden`, `file`, `link` or `sealed`.
 entry (parent, separator, name, bytes, shown, kind) = JsonObject [Doc::str ("name", name), Doc::str ("path", parent + separator + name), Doc::num ("bytes", bytes), Doc::num ("visible", shown), Doc::num ("items", 3), Doc::bit ("hidden", kind == "hidden"), Doc::bit ("folder", kind == "folder" || kind == "hidden" || kind == "sealed"), Doc::bit ("link", kind == "link"), Doc::bit ("guarded", kind == "sealed")]
 
 child (name, bytes, shown, kind) = entry (home, "\\", name, bytes, shown, kind)
@@ -23,228 +31,278 @@ slice folders = Doc::write (JsonObject [JsonMember "folders" (JsonArray folders)
 
 homeWalk () = slice [folderDoc (home, false, "", 2, [child ("AppData", 45000000000, 0, "hidden"), child ("Videos", 30000000000, 30000000000, "folder"), child ("notes.txt", 4096, 4096, "file"), child ("OneDrive", 0, 0, "link"), child ("Private", 0, 0, "sealed"), child ("Code", 12000000000, 2000000000, "folder")])]
 
-launch () = Probes::started ("windows", home)
+macWalk () = slice [folderDoc ("/Users/ada", false, "", 0, [entry ("/Users/ada", "/", "Movies", 1500000, 1500000, "folder")])]
 
-walked () = Probes::post (launch (), Probes::done ("walk:1", JsonNull), homeWalk ())
+goneWalk () = slice [folderDoc (home, true, "", 0, [])]
 
-chosenFolder (path, cancelled) = JsonObject [Doc::str ("path", path), Doc::bit ("cancelled", cancelled)]
+// The surface the tests drive, and the host-held walk the next step reads.
+mut driven = Drive::idle (App::program (), Browse::launched ("", ""))
+mut measured = ""
 
-// The walk's completion, and what an envelope's words, requests, keys and diagnostics say.
-walkDone = Probes::done ("walk:1", JsonNull)
-wordsIn (envelope, key, words) = expect (contains (Probes::text (envelope, key)) words, true)
-askedNothing envelope = expect (Probes::asked envelope, "")
-keyless envelope = expect (Probes::keys envelope, "")
-noProblems envelope = expect (Probes::problems envelope, "")
-pressIn (envelope, label) = Probes::post (envelope, Probes::tap ("folder", 1, Probes::labelled (envelope, "folder", label)), "")
+// Keeps the driven surface the last step drew, and the walk the host holds.
+effect Host
+    drive : uitest::Driven<storage::Store, storage::StorageAction> => Unit
+    holding : string => Unit
 
-(** Starts and drives Osprey Storage through the framework's serialized runtime, with the host's measured slice as a fixture. *)
-module Probes
-    context (platform, folder, arguments) = Doc::write (JsonObject [Doc::num ("now", 1), Doc::num ("offset", 0), Doc::str ("platform", platform), Doc::str ("home", folder), JsonMember "arguments" (Doc::strings arguments)])
+bench work =
+    handle Host
+        drive next => driven := next
+        holding text => measured := text
+    Runtime::guarded work
 
-    (** Storage's first envelope on `platform` for a person whose home is `folder`, launched with `arguments`. *)
-    export launchedWith (platform, folder, arguments) =
-        handle ui::Slices
-            fetch _ => ""
-        Doc::parse (Runtime::start (context (platform, folder, arguments), App::initial, App::regions, App::save, App::theme ()))
+// The host a driven test stands in for: the measured slice answered as the fixture holds it.
+hosted work =
+    handle ui::Slices
+        fetch _ => measured
+    bench work
 
-    (** Storage's first envelope on `platform` for a person whose home is `folder`. *)
-    export started (platform, folder) = launchedWith (platform, folder, [])
+// The step a host call leaves: the surface kept, its frame read back and the clock moved on. This
+// restates uitest's own bookkeeping because Storage's tests launch with each person's real home
+// folder, while `Drive::launched` fixes its home at `/home/tester`.
+stepped (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::seen (held, d.drivenProgram), held.surfaceAsked), drivenNow = satAdd d.drivenNow 1)
 
-    (** The envelope after `event`, with the host holding `measured` as the walk's slice. *)
-    export post (envelope, event, measured) =
-        handle ui::Slices
-            fetch _ => measured
-        Doc::parse (Runtime::dispatch (Doc::text (envelope, "state"), event, App::update, App::regions, App::save, App::restore))
+// Storage launched on `platform` for a person whose home is `folder`, opened with `arguments`.
+launchWith (platform, folder, arguments) =
+    start = Drive::idle (App::program (), Browse::launched ("", ""))
+    given = foldList (arguments, start.drivenSurface, \(held, text) => Surfaces::argued (held, text))
+    hosted (\() => perform Host.drive (stepped (start, ui::Views::quiet (\() => Hosting::opened (given, start.drivenProgram, start.drivenNow, 0, platform, folder, false)))))
 
-    written members = Doc::write (JsonObject members)
+// One typed host event, sent the way a host sends it.
+post event = hosted (\() => perform Host.drive (Drive::sent (driven, event)))
 
-    control (region, revision, ordinal, value) = written [Doc::str ("kind", "ui"), Doc::str ("region", region), Doc::num ("revision", revision), Doc::num ("ordinal", ordinal), JsonMember "value" value, Doc::num ("now", 5)]
+// One host event for the control numbered `ordinal`, delivering `words`.
+controlTouch (d, ordinal, words) = ui::Touch(touchNow = d.drivenNow, touchKind = Hosting::control, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
 
-    (** A tap on control `ordinal` of `region` as drawn at `revision`. *)
-    export tap (region, revision, ordinal) = control (region, revision, ordinal, JsonNull)
+press label = hosted (\() => perform Host.drive (Drive::press (driven, label)))
 
-    (** A row `key` chosen in control `ordinal` of `region` as drawn at `revision`. *)
-    export choose (region, revision, ordinal, key) = control (region, revision, ordinal, JsonString key)
+// Words sent to the control labelled `label`, as a typed value, a key or a switch's new state.
+typed (label, words) = hosted (\() => perform Host.drive (Drive::choose (driven, label, words)))
 
-    (** A switch, control `ordinal` of `region` as drawn at `revision`, turned to `on`. *)
-    export flip (region, revision, ordinal, on) = control (region, revision, ordinal, JsonBool on)
+// The capability of `ticket` completed: `ok` with its result `text`, or its reason.
+complete (ticket, ok, text) = hosted (\() => perform Host.drive (Drive::completed (driven, ticket, ok, text)))
 
-    (** A successful completion of `ticket` with `result`. *)
-    export done (ticket, result) = written [Doc::str ("kind", "completed"), Doc::str ("ticket", ticket), Doc::bit ("ok", true), JsonMember "result" result, Doc::num ("now", 6)]
+// The chooser of `ticket` answered with `path`; an empty path cancels it.
+chose path = hosted (\() => perform Host.drive (Drive::chosen (driven, "choose", path)))
 
-    (** A failed completion of `ticket`. *)
-    export failed (ticket, problem) = written [Doc::str ("kind", "completed"), Doc::str ("ticket", ticket), Doc::bit ("ok", false), Doc::str ("error", problem), Doc::num ("now", 6)]
+// ---- reading the last step's frame ----
 
-    (** The keys of the regions an envelope patched, in order. *)
-    export keys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key"))) ","
+seen () = driven.drivenSeen
 
-    patch (envelope, key) = Lists::find (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key") == key)
+controls () = driven.drivenSeen.renderedControls
 
-    (** The node of region `key` in `envelope`'s patches, or null when it was not patched. *)
-    export region (envelope, key) = match patch (envelope, key)
-        Success item => Doc::field (item, "node")
-        Error _ => JsonNull
+control label = Views::control (seen (), label)
 
-    (** The revision region `key` was drawn at in `envelope`, or 0 when it was not patched. *)
-    export revision (envelope, key) = match patch (envelope, key)
-        Success item => Doc::number (item, "revision")
-        Error _ => 0
+storeNow () = driven.drivenSurface.surfaceSession.sessionStore
 
-    (** Region `key`'s node as JSON text, for finding its words. *)
-    export text (envelope, key) = Doc::write (region (envelope, key))
+stageOf store = store.walk.walkStage
 
-    (** The requests of an envelope as `kind ticket`, in order. *)
-    export asked envelope = join (mapList (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "kind") + " " + Doc::text (item, "ticket"))) ";"
+stageNow () = stageOf (storeNow ())
 
-    (** The folders the envelope's measure request names. *)
-    export measuring envelope = match Lists::find (Doc::items (Doc::field (envelope, "requests")), \item => Doc::text (item, "kind") == "measure-folders")
-        Success item => join (Doc::texts (item, "folders")) ","
-        Error _ => ""
+openOf store = store.place.openFolder
 
-    (** An envelope's diagnostics, joined by `;`. *)
-    export problems envelope = join (Doc::texts (envelope, "diagnostics")) ";"
+openNow () = openOf (storeNow ())
 
-    (** The saved store of `envelope`'s session. *)
-    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+// The regions the program draws, in order, as the boundary lowered them.
+regionKeys () = hosted (\() => join (mapList ((App::program ()).programRender (storeNow (), storeNow (), [], []), \region => region.snapshotKey)) ",")
 
-    bodyOf node = match Doc::has (node, "body")
-        true => [Doc::field (node, "body")]
-        false => []
+// The requests the last step sent, as `kind ticket`, in order.
+askedKinds () = join (mapList (driven.drivenSurface.surfaceAsked, \request => "${Requests::kind (request.capability)} ${request.ticket}")) ";"
 
-    // A node's children in drawing order: a page's toolbar, its children, rows' cells, then a menu's body and items.
-    inside node = listConcat (listConcat (Doc::items (Doc::field (node, "toolbar"))) (Doc::items (Doc::field (node, "children")))) (listConcat (mapList (Doc::items (Doc::field (node, "rows")), \row => Doc::field (row, "child"))) (listConcat (bodyOf node) (Doc::items (Doc::field (node, "items")))))
+measureOf () = Lists::find (driven.drivenSurface.surfaceAsked, \request => Requests::kind (request.capability) == "measure-folders")
 
-    deeper (found, next, label) = match found >= 0
-        true => found
-        false => seek (next, label)
+// One field of a measure request, or "" when the last step asked none.
+measureField (found, field) = match found
+    Error _ => ""
+    Success request => match request.capability
+        ui::MeasureFolders folders limit deadline sliceName => match field
+            "folders" => join folders ","
+            "slice" => sliceName
+            "limit" => toString limit
+            "deadline" => toString deadline
+            _ => ""
+        _ => ""
 
-    seek (node, label) = match Doc::text (node, "label") == label && Doc::has (node, "event")
-        true => Doc::number (node, "event")
-        false => foldList (inside node, 0 - 1, \(found, next) => deeper (found, next, label))
+// The folders of the last step's measure request, comma-joined.
+measuringNow () = measureField (measureOf (), "folders")
 
-    (** The ordinal of the control labelled `label` in region `key` of `envelope`, or -1. *)
-    export labelled (envelope, key, label) = seek (region (envelope, key), label)
+wordsIn words = expect (contains (Views::texts (seen ())) words, true)
 
-    further (found, next) = match length found > 0
-        true => found
-        false => rowsIn next
+shows label = expect (Drive::shows (driven, label), true)
 
-    rowsIn node = match Doc::text (node, "kind") == "rows"
-        true => [node]
-        false => foldList (inside node, [], \(found, next) => further (found, next))
+noProblems () = expect (driven.drivenSurface.surfaceProblem, "")
 
-    firstRows (envelope, key) = listGet (rowsIn (region (envelope, key))) 0 ?: JsonNull
+askedNothing () = expect (length driven.drivenSurface.surfaceAsked, 0)
 
-    (** The ordinal of the first rows in region `key` of `envelope`. *)
-    export listed (envelope, key) = Doc::number (firstRows (envelope, key), "event")
+// A step that changed nothing redraws the same store and writes no slice.
+changedNothing () =
+    askedNothing ()
+    expect (length driven.drivenSurface.surfaceWritten, 0)
 
-    (** The last names of the first rows' keys in region `key` of `envelope`, in order. *)
-    export rowNames (envelope, key) = join (mapList (Doc::items (Doc::field (firstRows (envelope, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")))) ","
+// ---- the listing's rows, read and driven as a host reads them ----
 
-    (** The symbol leading the row named `name` in region `key` of `envelope`. *)
-    export rowSymbol (envelope, key, name) = match Lists::find (Doc::items (Doc::field (firstRows (envelope, key), "rows")), \row => Disk::name ("windows", Doc::text (row, "key")) == name)
-        Success row => Doc::text (row, "symbol")
-        Error _ => ""
+isEntry binding = match binding
+    ui::ChoiceInput action => enters action
+    _ => false
 
-test ("launch opens home and asks the host to measure it", \() =>
-    first = launch ()
-    request = listGet (Doc::items (Doc::field (first, "requests"))) 0 ?: JsonNull
-    expect (Probes::keys first, "root,places,folder,listing")
-    expect (Probes::asked first, "measure-folders walk:1")
-    expect (Probes::measuring first, home)
-    expect (Doc::text (request, "slice"), "measured")
-    expect (Doc::number (request, "limit"), 20000)
-    expect (Doc::number (request, "timeout"), 120000)
-    noProblems first)
+enters action = match action
+    storage::PickEntry => true
+    _ => false
 
-test ("a folder named at launch opens first, and home stays in the sidebar", \() =>
-    first = Probes::launchedWith ("windows", home, ["D:\\Media"])
-    expect (Probes::measuring first, "D:\\Media")
-    wordsIn (first, "places", "\"text\":\"Home\"")
-    wordsIn (first, "folder", "\"title\":\"Media\""))
+// ---- the told trees ([NATIVE-SHM-NODES]): what a host rebuilds from the frame's rows before it draws ----
 
-test ("the listing shows progress until the walk completes", \() =>
-    wordsIn (launch (), "listing", "\"kind\":\"progress\""))
+// The frame's told trees, rebuilt the way every host rebuilds them.
+trees () = hosted (\() => Read::trees (Surfaces::seen (driven.drivenSurface, driven.drivenProgram)))
 
-test ("a finished walk redraws only the listing, largest first, with unreadable folders last", \() =>
-    after = walked ()
-    expect (Probes::keys after, "listing")
-    expect (Probes::rowNames (after, "listing"), "AppData,Videos,Code,notes.txt,OneDrive,Private")
-    expect (Probes::rowSymbol (after, "listing", "Private"), "lock")
-    expect (Probes::rowSymbol (after, "listing", "Videos"), "folder")
-    expect (Probes::rowSymbol (after, "listing", "notes.txt"), "document")
-    noProblems after)
+// The region told under `key`, or an empty record when the frame holds none.
+regionTold key = match Lists::find (trees (), \told => Read::name told == "region" && Read::words (Read::inside told, "key") == key)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
 
-test ("switching hidden items off leaves them out of the ranking", \() =>
-    first = launch ()
-    after = Probes::post (first, walkDone, homeWalk ())
-    hidden = Probes::post (after, Probes::flip ("folder", Probes::revision (first, "folder"), Probes::labelled (first, "folder", "Hidden items"), false), homeWalk ())
-    expect (Probes::keys hidden, "folder,listing")
-    expect (Probes::rowNames (hidden, "listing"), "Videos,Code,notes.txt,OneDrive,Private")
-    wordsIn (hidden, "listing", "Hidden items are left out."))
+// The component of kind `name` under `tree`, depth first, or an empty record when none is told.
+kinded (name, tree) = Read::kinded ([tree], name, \_ => true)
 
-test ("a link is marked as a link and its target is not counted", \() =>
-    after = walked ()
-    expect (Probes::rowSymbol (after, "listing", "OneDrive"), "external")
-    wordsIn (after, "listing", "its target is not counted"))
+// The component of kind `name` labelled `label` in the open folder's region, or an empty record.
+labelled (name, label) = match Lists::find (filterList (Read::under (regionTold "folder"), \told => Read::words (Read::inside told, "kind") == name), \told => Read::words (Read::inside told, "label") == label)
+    Success found => found
+    Error _ => ui::ToldRecord(recordName = "", members = [])
 
-test ("folders the walk could not read are counted in a note", \() =>
-    wordsIn (walked (), "listing", "2 folders here could not be read and are not counted. They belong to Windows or to another user."))
+// The entry records of the rows told under `region`, in drawing order.
+rowsIn region = Read::inside (Read::member (Read::inside (kinded ("rows", regionTold region)), "rows"))
 
-test ("a rescan cancels the running walk, and the old walk's completion changes nothing", \() =>
-    first = launch ()
-    rescanned = Probes::post (first, Probes::tap ("folder", Probes::revision (first, "folder"), Probes::labelled (first, "folder", "Rescan")), "")
-    stale = Probes::post (rescanned, walkDone, homeWalk ())
-    expect (Probes::asked rescanned, "cancel cancel:1;measure-folders walk:2")
-    keyless stale
-    expect (Doc::text (Doc::field (Probes::stored stale, "walk"), "stage"), "measuring"))
+// The keys of the listing's rows in drawing order.
+listingKeys () = mapList (rowsIn "listing", \entry => Read::words (Read::inside entry, "key"))
 
-test ("Up from a folder measures the folder that encloses it", \() =>
-    first = launch ()
-    expect (Probes::measuring (pressIn (first, "Up")), "C:\\Users"))
+// The keys of the sidebar's place rows, in drawing order.
+placeKeys () = mapList (rowsIn "places", \entry => Read::words (Read::inside entry, "key"))
 
-test ("Up at the top of a drive is disabled and asks for nothing", \() =>
-    first = Probes::started ("windows", "C:\\")
-    up = pressIn (first, "Up")
-    wordsIn (first, "folder", "\"label\":\"Up\",\"symbol\":\"chevron\",\"role\":\"plain\",\"enabled\":false")
-    askedNothing up)
+// Chooses the listing row keyed `key`, from the frame `d` drew, as a person clicking it: the rows control holds the frame's one entry-choosing binding, and the row's key rides in the words.
+chooseIn (d, key) = hosted (\() => perform Host.drive (Drive::sent (d, controlTouch (d, Lists::position (d.drivenSurface.surfaceBound, isEntry), key))))
 
-test ("a chosen folder joins the places and is measured", \() =>
-    first = launch ()
-    asked = pressIn (first, "Choose Folder…")
-    chosen = Probes::post (asked, Probes::done ("choose", chosenFolder ("D:\\Media", false)), "")
-    expect (Probes::asked asked, "choose-folder choose")
-    expect (Probes::measuring chosen, "D:\\Media")
-    wordsIn (chosen, "places", "\"key\":\"D:\\\\Media\""))
+// The last names of the listing rows' keys, in order.
+rowNames () = join (mapList (listingKeys (), \key => Disk::name ("windows", key)), ",")
 
-test ("a cancelled choice changes nothing", \() =>
-    cancelled = Probes::post (launch (), Probes::done ("choose", chosenFolder ("", true)), "")
-    askedNothing cancelled
-    keyless cancelled)
+// The symbol leading the listing row keyed `key`, or "" when it is not drawn.
+symbolOf key = match Lists::find (rowsIn "listing", \entry => Read::words (Read::inside entry, "key") == key)
+    Success entry => Read::words (Read::inside entry, "symbol")
+    Error _ => ""
 
-test ("a folder row opens that folder and a file row does not", \() =>
-    after = walked ()
-    rows = Probes::listed (after, "listing")
-    opened = Probes::post (after, Probes::choose ("listing", Probes::revision (after, "listing"), rows, home + "\\Videos"), homeWalk ())
-    filed = Probes::post (after, Probes::choose ("listing", Probes::revision (after, "listing"), rows, home + "\\notes.txt"), homeWalk ())
-    expect (Probes::measuring opened, home + "\\Videos")
-    askedNothing filed
-    noProblems filed)
+// The symbol leading the listing row named `name`.
+rowSymbol name = match Lists::find (listingKeys (), \key => Disk::name ("windows", key) == name)
+    Success key => symbolOf key
+    Error _ => ""
 
-test ("a failed walk says why", \() =>
-    wordsIn (Probes::post (launch (), Probes::failed ("walk:1", "Access is denied."), ""), "listing", "Access is denied."))
+// ---- the tests' scenarios ----
 
-test ("a folder that disappeared says it is gone", \() =>
-    gone = Probes::post (launch (), walkDone, slice [folderDoc (home, true, "", 0, [])])
-    wordsIn (gone, "listing", "This folder is gone"))
+// Storage launched on Windows for a person whose home is `home`.
+launch () = launchWith ("windows", home, [])
 
-test ("words and units follow the platform", \() =>
-    mac = Probes::post (Probes::started ("macos", "/Users/ada"), walkDone, slice [folderDoc ("/Users/ada", false, "", 0, [entry ("/Users/ada", "/", "Movies", 1500000, 1500000, "folder")])])
-    wordsIn (walked (), "listing", "Show in File Explorer")
-    wordsIn (walked (), "listing", "27.9 GB")
-    wordsIn (mac, "listing", "Show in Finder")
-    wordsIn (mac, "listing", "1.5 MB"))
+// A launch whose first walk completed with the host holding `text` as the measured slice.
+walkedIn text =
+    launch ()
+    perform Host.holding text
+    complete ("walk:1", true, "")
 
+walked () = walkedIn (homeWalk ())
+
+test ("launch opens home and asks the host to measure it", \() => bench (\() =>
+    launch ()
+    expect (regionKeys (), "root,places,folder,listing")
+    expect (askedKinds (), "measure-folders walk:1")
+    expect (measuringNow (), home)
+    expect (measureField (measureOf (), "slice"), "measured")
+    expect (parseInt (measureField (measureOf (), "limit")) ?: 0, 20000)
+    expect (parseInt (measureField (measureOf (), "deadline")) ?: 0, 120000)
+    noProblems ()))
+test ("a folder named at launch opens first, and home stays in the sidebar", \() => bench (\() =>
+    launchWith ("windows", home, ["D:\\Media"])
+    expect (measuringNow (), "D:\\Media")
+    shows "Home"
+    shows "Media"))
+test ("the listing shows progress until the walk completes", \() => bench (\() =>
+    launch ()
+    shows "Measuring ada…"))
+test ("a finished walk redraws only the listing, largest first, with unreadable folders last", \() => bench (\() =>
+    walked ()
+    changedNothing ()
+    expect (rowNames (), "AppData,Videos,Code,notes.txt,OneDrive,Private")
+    expect (rowSymbol ("Private"), "lock")
+    expect (rowSymbol ("Videos"), "folder")
+    expect (rowSymbol ("notes.txt"), "document")
+    noProblems ()))
+test ("switching hidden items off leaves them out of the ranking", \() => bench (\() =>
+    launch ()
+    perform Host.holding (homeWalk ())
+    complete ("walk:1", true, "")
+    typed ("Hidden items", "false")
+    changedNothing ()
+    expect (rowNames (), "Videos,Code,notes.txt,OneDrive,Private")
+    wordsIn "Hidden items are left out."))
+test ("a link is marked as a link and its target is not counted", \() => bench (\() =>
+    walked ()
+    expect (rowSymbol ("OneDrive"), "external")
+    wordsIn "its target is not counted"))
+test ("folders the walk could not read are counted in a note", \() => bench (\() =>
+    walked ()
+    wordsIn "2 folders here could not be read and are not counted. They belong to Windows or to another user."))
+test ("a rescan cancels the running walk, and the old walk's completion changes nothing", \() => bench (\() =>
+    launch ()
+    press "Rescan"
+    expect (askedKinds (), "cancel cancel:1;measure-folders walk:2")
+    perform Host.holding (homeWalk ())
+    complete ("walk:1", true, "")
+    changedNothing ()
+    expect (stageNow (), "measuring")))
+test ("Up from a folder measures the folder that encloses it", \() => bench (\() =>
+    launch ()
+    press "Up"
+    expect (measuringNow (), "C:\\Users")))
+test ("Up at the top of a drive is disabled and asks for nothing", \() => bench (\() =>
+    launchWith ("windows", "C:\\", [])
+    up = control "Up"
+    expect (up.controlKind, "button")
+    expect (up.controlHint, "chevron")
+    expect (Read::words (Read::inside (labelled ("button", "Up")), "role"), "plain")
+    expect (up.controlEnabled, false)
+    press "Up"
+    askedNothing ()))
+test ("a chosen folder joins the places and is measured", \() => bench (\() =>
+    launch ()
+    press "Choose Folder…"
+    expect (askedKinds (), "choose-folder choose")
+    chose "D:\\Media"
+    expect (measuringNow (), "D:\\Media")
+    expect (Lists::any (placeKeys (), \key => key == "D:\\Media"), true)))
+test ("a cancelled choice changes nothing", \() => bench (\() =>
+    launch ()
+    chose ""
+    changedNothing ()
+    expect (openNow (), home)))
+test ("a folder row opens that folder and a file row does not", \() => bench (\() =>
+    launch ()
+    perform Host.holding (homeWalk ())
+    complete ("walk:1", true, "")
+    after = driven
+    chooseIn (after, home + "\\Videos")
+    expect (measuringNow (), home + "\\Videos")
+    chooseIn (after, home + "\\notes.txt")
+    askedNothing ()
+    noProblems ()))
+test ("a failed walk says why", \() => bench (\() =>
+    launch ()
+    complete ("walk:1", false, "Access is denied.")
+    expect (Read::words (Read::inside (kinded ("empty", regionTold "listing")), "detail"), "Access is denied.")))
+test ("a folder that disappeared says it is gone", \() => bench (\() =>
+    walkedIn (goneWalk ())
+    wordsIn "This folder is gone"))
+test ("words and units follow the platform", \() => bench (\() =>
+    launchWith ("macos", "/Users/ada", [])
+    perform Host.holding (macWalk ())
+    complete ("walk:1", true, "")
+    wordsIn "Show in Finder"
+    wordsIn "1.5 MB"
+    walked ()
+    wordsIn "Show in File Explorer"
+    wordsIn "27.9 GB"))
 test ("Windows paths climb to the top of their drive or share", \() =>
     expect (Disk::parent ("windows", "C:\\Users\\ada"), "C:\\Users")
     expect (Disk::parent ("windows", "C:\\Users"), "C:\\")
@@ -256,13 +314,11 @@ test ("Windows paths climb to the top of their drive or share", \() =>
     expect (join (Disk::trail ("windows", "C:\\Users\\ada")) "|", "C:\\|C:\\Users|C:\\Users\\ada")
     expect (Disk::name ("windows", "C:\\Users\\ada"), "ada")
     expect (Disk::name ("windows", "C:\\"), "C:\\"))
-
 test ("other systems' paths climb to /", \() =>
     expect (Disk::parent ("linux", "/home/ada"), "/home")
     expect (Disk::parent ("linux", "/home"), "/")
     expect (Disk::isRoot ("macos", "/"), true)
     expect (join (Disk::trail ("macos", "/Users/ada")) "|", "/|/Users|/Users/ada"))
-
 test ("sizes count in the units each platform shows", \() =>
     expect (Disk::formatBytes ("windows", 1536), "1.5 KB")
     expect (Disk::formatBytes ("macos", 1500), "1.5 KB")
@@ -273,6 +329,30 @@ test ("sizes count in the units each platform shows", \() =>
     expect (Disk::shareText (1, 1000), "< 1%")
     expect (Disk::shareText (0, 1000), "0%"))
 
-test ("the session document restores the store it saved", \() =>
-    saved = Probes::stored (launch ())
-    expect (Doc::write (App::save (App::restore saved)), Doc::write saved))
+// [UI-STORE]: the session is fully held in the library — what the boundary kept is restored exactly by
+// replaying the same launch and the same typed events through the three entry points: no document, no
+// host-held state, and the redrawn frame tells the same regions.
+restoredSession () =
+    launch ()
+    perform Host.holding (homeWalk ())
+    complete ("walk:1", true, "")
+    typed ("Hidden items", "false")
+    storeNow ()
+
+test ("the session document restores the store it saved", \() => bench (\() =>
+    saved = restoredSession ()
+    listing = listingKeys ()
+    restored = restoredSession ()
+    expect (structuralEquals (saved, restored), true)
+    expect (join (listingKeys ()) "|", join listing "|")))
+
+test ("the session document restores the store it saved (extra: the restored session answers a rescan the same way)", \() => bench (\() =>
+    walkedStore = restoredSession ()
+    press "Rescan"
+    rescanned = storeNow ()
+    rescannedAsk = askedKinds ()
+    replayed = restoredSession ()
+    expect (structuralEquals (walkedStore, replayed), true)
+    press "Rescan"
+    expect (structuralEquals (storeNow (), rescanned), true)
+    expect (askedKinds (), rescannedAsk)))

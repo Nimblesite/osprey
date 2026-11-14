@@ -79,11 +79,11 @@ module Browse
             Success _ => Runtime::step (store(walk = walk(walkStage = "ready")))
             Error problem => Runtime::step (store(walk = walk(walkStage = "failed", walkProblem = problem)))
 
-    // A chosen folder joins the places once, and is measured.
-    chosen (store, result) =
-        path = Doc::text (result, "path")
+    // A chosen folder joins the places once, and is measured; the chooser's result text is the
+    // chosen path, empty when it was cancelled.
+    chosen (store, path) =
         place = store.place
-        match path == "" || Doc::flag (result, "cancelled")
+        match path == ""
             true => Runtime::step store
             false => measure (store(place = place(chosenFolders = Pick::either (listContains place.chosenFolders path, place.chosenFolders, listAppend place.chosenFolders path))), path)
 
@@ -93,7 +93,7 @@ module Browse
         false => match ticket == "choose"
             false => Runtime::step store
             true => match outcome
-                Success result => chosen (store, result)
+                Success path => chosen (store, path)
                 Error _ => Runtime::step store
 
     up store = match Disk::isRoot (store.place.osName, store.place.openFolder)
@@ -127,7 +127,7 @@ module Browse
         ShowHidden => Runtime::step (store(options = Options(showHidden = on)))
         _ => Runtime::step store
 
-(** Osprey Storage as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
+(** Osprey Storage as the framework runs it: launch, update, regions and the theme ([UI-STORE], [UI-REGIONS]). *)
 module App
     (** The store at launch, with a walk of the person's home folder asked for. *)
     export initial context =
@@ -174,16 +174,10 @@ module App
         changed = listConcat (signalChanges before.place store.place placeJson (signalDependencies placeSlice)) (listConcat (signalChanges before.options store.options optionsJson (signalDependencies optionsSlice)) (signalChanges before.walk store.walk walkJson (signalDependencies walkSlice)))
         [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "places", changed, View::places), Keyed::region (frames, "folder", changed, View::folder), Keyed::region (frames, "listing", changed, View::listing)]
 
-    (** The store as the opaque session document. *)
-    export save store = JsonObject [JsonMember "place" (placeJson store.place), JsonMember "options" (optionsJson store.options), JsonMember "walk" (walkJson store.walk)]
-
-    (** The store from a saved session document. *)
-    export restore doc =
-        saved = Doc::field (doc, "place")
-        walked = Doc::field (doc, "walk")
-        Store(place = Place(osName = Doc::text (saved, "os"), homeFolder = Doc::text (saved, "home"), openFolder = Doc::text (saved, "open"), chosenFolders = Doc::texts (saved, "chosen")), options = Options(showHidden = Doc::flag (Doc::field (doc, "options"), "hidden")), walk = Walk(walkTicket = Doc::text (walked, "ticket"), walkNumber = Doc::number (walked, "number"), walkStage = Doc::text (walked, "stage"), walkProblem = Doc::text (walked, "problem")))
-
     token (name, light, dark) = ui::Token(tokenName = name, tokenLight = light, tokenDark = dark)
 
     (** Osprey Storage's colours in light and dark appearance, its spacing scale and its motion durations ([UI-THEME]). *)
     export theme () = ui::Theme(tokens = [token ("accent", "#0F6CBD", "#62ABF5"), token ("good", "#0E7A0D", "#6CCB5F"), token ("caution", "#9D5D00", "#FCE100"), token ("danger", "#C42B1C", "#FF99A4"), token ("canvas", "#FAFAFA", "#202020"), token ("inset", "#F3F3F3", "#272727"), token ("text", "#1A1A1A", "#FFFFFF")], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)
+
+    (** Osprey Storage as its boundary runs it: the store drawn with its theme. *)
+    export program () = ui::Program(programInit = initial, programUpdate = update, programRender = regions, programTheme = \_ => theme ())

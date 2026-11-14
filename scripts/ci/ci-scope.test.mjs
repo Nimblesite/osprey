@@ -117,16 +117,59 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C src/toolchain/targets/ios/tests examples inbox', 'make -C src/toolchain/targets/macos/tests examples', 'make -C src/toolchain/targets/ios/tests bank',
-    'bash src/osprey/workbench/hosts/apple/run.sh --build', 'swift test --package-path src/osprey/workbench/hosts/apple']) {
+  for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox tally-headless', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
+    'make -C src/toolchain/targets/macos/tests _workbench_interactions', 'make -C src/toolchain/targets/macos/tests _workbench_memory']) {
     assert.ok(apple.includes(command), command)
   }
+  // The Workbench part builds the compiler and both runtimes before it opens, exactly as its own host build did.
+  assert.ok(apple.includes('make _runtime _runtime_macos'), 'make _runtime _runtime_macos')
+  assert.ok(apple.includes('cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli'), 'cargo build osprey-cli')
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  assert.match(apple, /^    runs-on: macos-15$/m)
+  // The two iOS parts use macos-26 and its iOS SDK.
+  assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
+  assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
+  assert.match(apple, /^ {10}- part: iOS apps\n {12}runner: macos-26$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 2, 'only the iOS parts leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
+})
+
+test('the required macOS gate runs every Apple part, the native Workbench host among them (extra: the Workbench check drives the real SwiftUI host with no window)', () => {
+  const recipe = readFileSync('src/toolchain/targets/macos/tests/Makefile', 'utf8')
+  // It builds only the compiler the CI step already built, never the root `build` (the whole
+  // workspace, KLEE, the Zed extension), which recompiled the compiler and cost the part its time.
+  assert.match(recipe, /^_workbench_linked: _runtime _runtime_macos$/m)
+  assert.match(recipe, /^workbench: _workbench_linked$/m)
+  assert.match(recipe, /^_workbench_interactions: _workbench_linked$/m)
+  assert.match(recipe, /^_workbench_memory: _workbench_linked$/m)
+  const full = recipe.match(/^workbench:.*(?:\n\t.*)*/m)?.[0]
+  assert.match(full, /--filter WorkbenchLayout$/m)
+  assert.doesNotMatch(full, /--skip/)
+  assert.match(recipe, /^\tcargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli$/m)
+  assert.match(recipe, /^\tOSPREY_BIN="\$\(CURDIR\)\/\$\(BIN\)" OSPREY_SWIFT_APP=src\/osprey\/workbench bash src\/toolchain\/hosts\/swift\/view\.sh --open-check$/m)
+  // Every Swift test runs once: the Workbench suites but the memory soak, the soak in its own part,
+  // and the rest under agent-headless.
+  assert.match(recipe, /^WORKBENCH_SOAK = WorkbenchLayoutTests\/testActualApplicationImportDispatchAndCancellationMemoryPlateau\$\$$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter WorkbenchLayout --skip '\$\(WORKBENCH_SOAK\)'$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --filter '\$\(WORKBENCH_SOAK\)'$/m)
+  assert.match(recipe, /^\tswift test --package-path src\/toolchain\/hosts\/swift --skip WorkbenchLayout$/m)
+  // The gate's Workbench parts are the only places those recipes run, so a windowed host can never slip into CI.
+  const ci = readFileSync('.github/workflows/ci.yml', 'utf8')
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_interactions$/m)
+  assert.match(ci, /^ {14}make -C src\/toolchain\/targets\/macos\/tests _workbench_memory$/m)
+  assert.match(ci, /- part: Workbench memory\n {12}minutes: 15\n/)
+  assert.match(ci, /^ {12}target\/orchestra\/diagnostics\/\*\.jsonl$/m)
+  assert.doesNotMatch(ci, /view\.sh(?!.*--open-check)/)
+})
+
+test('the Android emulator is the Pixel 7 the phone goldens were taken on', () => {
+  const integration = job('test-integration', '.github/workflows/ci.yml')
+  assert.match(integration, /^ {10}profile: pixel_7$/m)
+  assert.ok(integration.includes('make -C src/toolchain/targets/android/tests tally-headless'))
+  // Goldens are named by width: a golden for any other phone width would mean CI runs another device.
+  assert.deepEqual(readdirSync('src/osprey/examples/tally/goldens/android'), ['1080-ready.png'])
 })
 
 // [CAST-MOBILE-GPUI] iOS and Android casting are unfinished: no CI job may build, run or test them.
@@ -162,8 +205,13 @@ test('staged bundle verification fails closed without recompiling a payload', ()
     assert.notEqual(stale.status, 0, `${name}: stale payload accepted`)
   }
   if (process.platform !== 'win32') {
-    const unregistered = stagedBundleFixture((root, platform) => rmSync(join(root, platform, 'registry'), { recursive: true }))
-    assert.notEqual(unregistered.status, 0, 'a bundle without its local registry packages accepted')
+    // [PACKAGE-LOCAL-REGISTRY] The VSIX carries the registry server and never packages.
+    const packaged = stagedBundleFixture((root, platform) => {
+      mkdirSync(join(root, platform, 'registry/@osprey/testing'), { recursive: true })
+      writeFileSync(join(root, platform, 'registry/@osprey/testing/osprey.toml'), 'name = "@osprey/testing"\n')
+    })
+    assert.notEqual(packaged.status, 0, 'a bundle carrying registry packages accepted')
+    assert.match(packaged.stderr, /The VSIX bundles no packages/)
   }
   const invalid = stagedBundleFixture((root, platform) => {
     for (const file of ['target/package-workspace.wasm', `${platform}/package-workspace.wasm`]) writeFileSync(join(root, file), 'invalid WASM')

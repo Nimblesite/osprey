@@ -32,7 +32,7 @@ test.describe("desktop interactions", () => {
     }
     const discord = page.locator(".nav-actions .nav-cta");
     await expect(discord).toHaveText("Discord");
-    await expect(discord).toHaveAttribute("href", "https://discord.gg/YFDb9BnbUh");
+    await expect(discord).toHaveAttribute("href", "https://discord.gg/EGk3XhcGyy");
     const [cta, links] = await Promise.all([discord.boundingBox(), page.locator("#site-navigation").boundingBox()]);
     expect(cta.x, "Discord sits right of the menu").toBeGreaterThan(links.x + links.width);
   });

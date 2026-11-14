@@ -6,47 +6,39 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::envelope::Request;
-use crate::events;
+use crate::events::Touch;
 use crate::ffi;
-use crate::host::now;
+use crate::rows::Ask;
 
 /// Answers one store request or returns the protocol's unsupported-capability error.
-pub fn answer(request: &Request) -> Result<Value, String> {
-    match request.kind.as_str() {
-        "store-read" => read(request),
-        "store-write" => write(request),
-        "store-list" => list(request),
-        "store-delete" => delete(request),
+pub fn answer(ask: &Ask) -> Result<String, String> {
+    match ask.kind() {
+        "store-read" => read(ask),
+        "store-write" => write(ask),
+        "store-list" => list(ask),
+        "store-delete" => delete(ask),
         kind => Err(format!("unsupported capability {kind}")),
     }
 }
 
 /// Wraps a store result in the completion event carrying the original ticket.
-pub fn completion(request: &Request) -> String {
-    answer(request).map_or_else(
-        |problem| events::completed_err(now(), &request.ticket, &problem),
-        |result| events::completed_ok(now(), &request.ticket, result),
-    )
+pub fn completion(ask: &Ask) -> Touch {
+    Touch::completed(&ask.ticket, answer(ask))
 }
 
 /// Reads a bounded UTF-8 entry into the requested host-held slice.
-fn read(request: &Request) -> Result<Value, String> {
-    let name = field(request, "name")?;
-    let limit = request
-        .fields
-        .get("limit")
-        .and_then(Value::as_u64)
-        .ok_or("store-read has no valid limit")?;
-    let path = entry(name)?;
-    let metadata = fs::metadata(&path).map_err(|error| read_error(name, error))?;
+fn read(ask: &Ask) -> Result<String, String> {
+    let name = field(ask, 1, "name")?;
+    let limit = number(ask, 2, "limit")?;
+    let path = entry(&name)?;
+    let metadata = fs::metadata(&path).map_err(|error| read_error(&name, error))?;
     if metadata.len() > limit {
         return Err(format!("store entry {name} exceeds limit {limit}"));
     }
-    let bytes = fs::read(&path).map_err(|error| read_error(name, error))?;
+    let bytes = fs::read(&path).map_err(|error| read_error(&name, error))?;
     let text = String::from_utf8(bytes).map_err(|_| format!("store entry {name} is not UTF-8"))?;
-    ffi::put_slice(field(request, "slice")?, &text)?;
-    Ok(Value::Null)
+    ffi::put_slice(&field(ask, 3, "slice")?, &text)?;
+    Ok(String::new())
 }
 
 /// Maps a missing read to its stable protocol message.
@@ -59,29 +51,29 @@ fn read_error(name: &str, error: std::io::Error) -> String {
 }
 
 /// Gives the smoke runner the same missing-entry response as an empty store.
-pub(crate) fn missing_read(request: &Request) -> Result<String, String> {
+pub(crate) fn missing_read(ask: &Ask) -> Result<String, String> {
     Ok(read_error(
-        field(request, "name")?,
+        &field(ask, 1, "name")?,
         std::io::ErrorKind::NotFound.into(),
     ))
 }
 
 /// Atomically replaces an entry with text already held under a slice key.
-fn write(request: &Request) -> Result<Value, String> {
-    let path = entry(field(request, "name")?)?;
-    let text = ffi::get_slice(field(request, "slice")?).ok_or("store-write slice is missing")?;
+fn write(ask: &Ask) -> Result<String, String> {
+    let path = entry(&field(ask, 1, "name")?)?;
+    let text = ffi::get_slice(&field(ask, 2, "slice")?).ok_or("store-write slice is missing")?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(io_error)?;
     }
     let temporary = temporary(&path);
     fs::write(&temporary, text).map_err(io_error)?;
     fs::rename(&temporary, &path).map_err(io_error)?;
-    Ok(Value::Null)
+    Ok(String::new())
 }
 
 /// Lists entry names in a folder in deterministic order.
-fn list(request: &Request) -> Result<Value, String> {
-    let folder = entry(field(request, "name")?)?;
+fn list(ask: &Ask) -> Result<String, String> {
+    let folder = entry(&field(ask, 1, "folder")?)?;
     let entries = fs::read_dir(folder).map_err(io_error)?;
     let mut names = entries
         .map(|entry| {
@@ -93,22 +85,33 @@ fn list(request: &Request) -> Result<Value, String> {
         })
         .collect::<Result<Vec<_>, String>>()?;
     names.sort();
-    Ok(Value::Array(names.into_iter().map(Value::String).collect()))
+    Ok(Value::Array(names.into_iter().map(Value::String).collect()).to_string())
 }
 
 /// Deletes one store entry.
-fn delete(request: &Request) -> Result<Value, String> {
-    fs::remove_file(entry(field(request, "name")?)?).map_err(io_error)?;
-    Ok(Value::Null)
+fn delete(ask: &Ask) -> Result<String, String> {
+    fs::remove_file(entry(&field(ask, 1, "name")?)?).map_err(io_error)?;
+    Ok(String::new())
 }
 
-/// Reads a required string argument from the verbatim request fields.
-fn field<'a>(request: &'a Request, name: &str) -> Result<&'a str, String> {
-    request
+/// Reads a required text argument at argument position `field`.
+fn field(ask: &Ask, field: i64, name: &str) -> Result<String, String> {
+    ask.fields
+        .iter()
+        .find(|argument| argument.field == field)
+        .map(|argument| argument.text.clone())
+        .ok_or_else(|| format!("{} has no valid {name}", ask.kind()))
+}
+
+/// Reads a required nonnegative whole-number argument at position `field`.
+fn number(ask: &Ask, field: i64, name: &str) -> Result<u64, String> {
+    let whole = ask
         .fields
-        .get(name)
-        .and_then(Value::as_str)
-        .ok_or_else(|| format!("{} has no valid {name}", request.kind))
+        .iter()
+        .find(|argument| argument.field == field)
+        .map(|argument| argument.number)
+        .ok_or_else(|| format!("{} has no valid {name}", ask.kind()))?;
+    u64::try_from(whole).map_err(|_| format!("{} has no valid {name}", ask.kind()))
 }
 
 /// Resolves a traversal-free relative name beneath the application store root.

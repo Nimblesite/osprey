@@ -5,7 +5,7 @@
 # platform: tests.
 ROOT ?= ../../../../..
 APP_PS1 ?= pwsh -NoProfile -File $(ROOT)/src/toolchain/hosts/winui/app.ps1
-APPS := casting flock painting probe signal-flow storage
+APPS := casting flock painting probe signal-flow storage tally
 
 .PHONY: $(APPS) $(APPS:%=%-headless) $(APPS:%=%-update) graphics
 
@@ -15,7 +15,7 @@ graphics:
 	$(MAKE) -C $(ROOT) _graphics-smoke
 
 ## storage: Storage's self-test in a real window on screen, each picture compared with its goldens and
-##          with what the screen shows. The same goes for casting, flock, painting, probe and signal-flow.
+##          with what the screen shows. The same goes for casting, flock, painting, probe, signal-flow and tally.
 $(APPS):
 	$(APP_PS1) -App $@ -Test
 

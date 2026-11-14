@@ -1,11 +1,20 @@
 namespace vscode_tests
+import ui::Runtime
+import ui::Hosting
+import ui::Keyed
+import ui::Messages
+import ui::Surfaces
+import ui::Ui
+import ui::Views
 import vscode::Editor
-import ui::Doc
 import ui::Requests
 
-encoded result = match result
-    Success request => Requests::encode request
-    Error _ => JsonNull
+// Every request the Editor builds, read as the typed `HostCall` it carries:
+// no envelope is written or parsed anywhere.
+
+asked result = match result
+    Success request => Success(value = request.capability)
+    Error problem => Error(message = problem)
 
 refused result = match result
     Error _ => true
@@ -14,54 +23,170 @@ refused result = match result
 // Every request in `requests` must be refused, each with its own assertion.
 allRefused requests = forEachList (requests, \request => expect (refused request, true))
 
+kindOf capability = Runtime::guarded (\() => Requests::kind capability)
+
+valueIn (name, header) = match header.headerName == name
+    true => header.headerValue
+    false => ""
+
+argumentsOf (capability, name) = match capability
+    ui::HostCall _ _ arguments _ _ _ => join (filterList (mapList (arguments, \header => valueIn (name, header)), \value => value != "")) ","
+    _ => ""
+
+fieldOf capability = match capability
+    ui::HostCall space operation _ _ _ _ => space + "|" + operation
+    _ => "|"
+
+boundOf (capability, timeout) = match capability
+    ui::HostCall _ _ _ hostTimeout hostLimit _ => match timeout
+        true => hostTimeout
+        false => hostLimit
+    _ => 0
+
+kind result = match asked result
+    Success capability => kindOf capability
+    Error _ => ""
+
+ticketOf result = match result
+    Success request => request.ticket
+    Error _ => ""
+
+field result = match asked result
+    Success capability => fieldOf capability
+    Error _ => "|"
+
+argumentText (result, name) = match asked result
+    Success capability => argumentsOf (capability, name)
+    Error _ => ""
+
+bound (result, timeout) = match asked result
+    Success capability => boundOf (capability, timeout)
+    Error _ => 0
+
 test ("editor workspace requests use the shared framework envelope", \() =>
-    doc = encoded (Editor::workspaces "workspace:1")
-    expect (Doc::text (doc, "kind"), "host-call")
-    expect (Doc::text (doc, "namespace"), "vscode")
-    expect (Doc::text (doc, "operation"), "workspace.snapshot")
-    expect (Doc::text (doc, "ticket"), "workspace:1"))
+    result = Editor::workspaces "workspace:1"
+    expect (kind result, "host-call")
+    expect (field result, "vscode|workspace.snapshot")
+    expect (argumentText (result, "uri"), "")
+    expect (ticketOf result, "workspace:1"))
 
 test ("opening a document preserves its URI and source location", \() =>
-    doc = encoded (Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4))
-    args = Doc::field (doc, "arguments")
-    expect (Doc::text (args, "uri"), "file:///work/my%20app/main.osp")
-    expect (Doc::number (args, "line"), 12)
-    expect (Doc::number (args, "column"), 4)
+    result = Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4)
+    expect (field result, "vscode|document.open")
+    expect (argumentText (result, "uri"), "file:///work/my%20app/main.osp")
+    expect (argumentText (result, "line"), "12")
+    expect (argumentText (result, "column"), "4")
     allRefused [Editor::openDocument ("bad", "command:workbench.action.closeWindow", 1, 1), Editor::openDocument ("bad", "file:///work/main.osp", 0, 1)])
 
 test ("process input is data with explicit workspace, timeout and output bounds", \() =>
-    doc = encoded (Editor::processInput ("run:1", "osprey-pkg", [], "--json tree --direct\n", "file:///work/my%20app", 30000, 1048576, "client/report"))
-    args = Doc::field (doc, "arguments")
-    expect (Doc::text (doc, "operation"), "process.input")
-    expect (Doc::text (args, "stdin"), "--json tree --direct\n")
-    expect (Doc::text (args, "workspace"), "file:///work/my%20app")
-    expect (Doc::number (doc, "limit"), 1048576)
-    expect (Doc::number (doc, "timeout"), 30000)
+    result = Editor::processInput ("run:1", "osprey-pkg", ["tree", "--direct"], "--json tree --direct\n", "file:///work/my%20app", 30000, 1048576, "client/report")
+    expect (field result, "vscode|process.input")
+    expect (argumentText (result, "stdin"), "--json tree --direct\n")
+    expect (argumentText (result, "workspace"), "file:///work/my%20app")
+    expect (argumentText (result, "argv"), "tree,--direct")
+    expect (bound (result, false), 1048576)
+    expect (bound (result, true), 30000)
     allRefused [Editor::processInput ("bad", "tool", [], "", "file:///work", 0, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 0, "out")])
 
 test ("configuration and view requests preserve resource scope", \() =>
-    config = encoded (Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app"))
-    args = Doc::field (config, "arguments")
-    expect (Doc::text (config, "operation"), "configuration.read")
-    expect (Doc::text (args, "section"), "osprey.packages")
-    expect (Doc::text (args, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
-    expect (Doc::text (encoded (Editor::revealView ("view:1", "osprey.packages")), "operation"), "webview.reveal")
+    result = Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app")
+    expect (field result, "vscode|configuration.read")
+    expect (argumentText (result, "section"), "osprey.packages")
+    expect (argumentText (result, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
+    expect (field (Editor::revealView ("view:1", "osprey.packages")), "vscode|webview.reveal")
     allRefused [Editor::configuration ("bad", "", "file:///work"), Editor::configuration ("bad", "section", "https://example.test"), Editor::revealView ("bad", "")])
 
 test ("invalid tickets process scope and excessive limits fail explicitly", \() =>
     allRefused [Editor::workspaces "", Editor::processInput ("bad", "", [], "", "file:///work", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 10, ""), Editor::processInput ("bad", "tool", [], "", "file:///work", 120001, 10, "out"), Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 16777217, "out")])
 
-startProbe source = "start:${source}"
-dispatchProbe (saved, event) = "dispatch:${saved}:${event}"
-answer result = match result
-    Success value => value
-    Error problem => problem
+test ("editor workspace requests use the shared framework envelope (extra: a second workspace reads its own ticket and field)", \() =>
+    second = Editor::workspaces "workspace:2"
+    expect (kind second, "host-call")
+    expect (field second, "vscode|workspace.snapshot")
+    expect (ticketOf second, "workspace:2")
+    expect (argumentText (second, "uri"), "")
+    expect (bound (second, true), 10000)
+    expect (bound (second, false), 1048576)
+    expect (kind (Editor::workspaces ""), ""))
 
-test ("WASM frames route opaque state through real application entry points", \() =>
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\",\"context\":{\"platform\":\"vscode\"}}", startProbe, dispatchProbe)), "start:{\"platform\":\"vscode\"}")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\",\"state\":\"opaque\",\"event\":{\"kind\":\"lifecycle\"}}", startProbe, dispatchProbe)), "dispatch:opaque:{\"kind\":\"lifecycle\"}")
-    expect (answer (vscode::Webview::evaluate ("{}", startProbe, dispatchProbe)), "vscode.frame.unknown-operation")
-    expect (vscode::Webview::respond ("{\"operation\":\"start\",\"context\":{}}", startProbe, dispatchProbe), "start:{}")
-    expect (Doc::text (Doc::parse (vscode::Webview::respond ("{}", startProbe, dispatchProbe)), "error"), "vscode.frame.unknown-operation")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\"}", startProbe, dispatchProbe)), "vscode.frame.missing-context")
-    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\"}", startProbe, dispatchProbe)), "vscode.frame.missing-state-or-event"))
+// [NATIVE-SHM-WASM] [NATIVE-SHM-BOUNDARY]: the three exports a wasm module ships — argument, open
+// and event — driven as the webview host drives them: launch arguments before open, every host
+// event after, and one whole frame per call. The session is the opaque state: it never leaves the
+// application, each event resolves through the ordinals the current frame drew, and a refusal
+// crosses as a diagnostic ask row naming why.
+type Web =
+    count : int
+    note : string
+
+type WebAct = Add | Noted
+
+webNode store = Ui::column [Ui::text "Count ${store.count}", Ui::button ("Add", "", Add), ui::Field(label = "Note", value = store.note, prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Noted)]
+
+webRegions (_, store, frames, _) = [Keyed::region (frames, Surfaces::rootKey, [], \() => webNode store)]
+
+webUpdate (_, store, message) = Messages::route (message, \_ => Runtime::step (store(count = satAdd store.count 1)), \(_, text) => Runtime::step (store(note = text)), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \_ => Runtime::step store, \(_, _) => Runtime::step store)
+
+webProgram () = ui::Program(programInit = \context => Runtime::step (Web(count = 0, note = join context.arguments ",")), programUpdate = webUpdate, programRender = webRegions, programTheme = \_ => ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#FFFFFF", tokenDark = "#000000")], spacing = [4, 8], feedback = 120, settle = 220))
+
+mut webRows = ""
+mut webAsks = ""
+
+// Runs one boundary call and records the frame it wrote: every row's words in drawing order, and every ask row as `field/number/text`. The rows accumulate across calls; only a refused event adds an ask row.
+framed work =
+    handle ui::ViewStream
+        place seat => webRows := "${webRows}${seat.placedWords}|"
+        size _ => 0
+        sketch _ => 0
+        ask row => webAsks := "${webAsks}${row.askedField}/${row.askedNumber}/${row.askedText};"
+    work ()
+
+// One host event of `kind` for control `ordinal` carrying `words`, at clock 9.
+webTouch (kind, ordinal, words) = ui::Touch(touchNow = 9, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = "", touchX = 0.0, touchY = 0.0, touchDown = false, touchShift = false)
+
+// The session a webview opens: the store before init, one launch argument, the vscode platform. The
+// boundary call writes through `ViewStream`, so `framed` reads the rows where the wasm bridge would.
+webOpened argument = Hosting::opened (Surfaces::argued (Surfaces::idle (Web(count = 0, note = "")), argument), webProgram (), 1, 0, "vscode", "", false)
+
+test ("WASM frames route opaque state through real application entry points", \() => Runtime::guarded (\() =>
+    // argument, then open: the launch context reaches init, and the first frame carries it into the field's value.
+    opened = framed (\() => webOpened "vscode")
+    expect (opened.surfaceSession.sessionContext.platform, "vscode")
+    expect (contains webRows "Count 0", true)
+    expect (contains webRows "Note", true)
+    expect (contains webRows "vscode", true)
+    expect (webAsks, "")
+    // event: the control the frame numbered 0 delivers, and the opaque session answers from its own store.
+    counted = framed (\() => Hosting::event (opened, webProgram (), webTouch (Hosting::control, 0, "")))
+    expect (Hosting::answer counted, 0)
+    expect (counted.surfaceSession.sessionStore.count, 1)
+    expect (contains webRows "Count 1", true)
+    // The field's edit resolves through the ordinal the current frame drew, never through host-held state.
+    edited = framed (\() => Hosting::event (counted, webProgram (), webTouch (Hosting::control, 1, "opaque")))
+    expect (Hosting::answer edited, 0)
+    expect (edited.surfaceSession.sessionStore.note, "opaque")
+    expect (contains webRows "opaque", true)
+    // A control no frame drew refuses, changes nothing and names itself as a diagnostic ask row.
+    refused = framed (\() => Hosting::event (edited, webProgram (), webTouch (Hosting::control, 9, "")))
+    expect (Hosting::answer refused, 1)
+    expect (webAsks, "0/101/Unknown control 9;")
+    expect (refused.surfaceSession.sessionStore.count, 1)
+    expect (contains webRows "Count 1", true)
+    // An event kind the boundary does not know refuses the same way, and a lifecycle phase delivers.
+    odd = framed (\() => Hosting::event (edited, webProgram (), webTouch (42, 0, "")))
+    expect (Hosting::answer odd, 1)
+    expect (webAsks, "0/101/Unknown control 9;0/101/Unknown event kind 42;")
+    phased = framed (\() => Hosting::event (edited, webProgram (), webTouch (Hosting::phase, 0, "active")))
+    expect (Hosting::answer phased, 0)
+    expect (phased.surfaceSession.sessionStore.count, 1)))
+
+test ("WASM frames route opaque state through real application entry points (extra: arguments arrive in order and a dark open flips the frame)", \() => Runtime::guarded (\() =>
+    opened = framed (\() => Hosting::opened (Surfaces::argued (Surfaces::argued (Surfaces::idle (Web(count = 0, note = "")), "--skin=dark"), "vscode"), webProgram (), 3, 0, "vscode", "", true))
+    expect (opened.surfaceSession.sessionStore.note, "--skin=dark,vscode")
+    expect (contains webRows "--skin=dark,vscode", true)
+    expect (opened.surfaceDark, true)
+    expect (opened.surfaceSession.sessionContext.hostDark, true)
+    expect (opened.surfaceSession.sessionContext.now, 3)
+    // The dark open still answers events: the first control delivers and the count crosses.
+    counted = framed (\() => Hosting::event (opened, webProgram (), webTouch (Hosting::control, 0, "")))
+    expect (Hosting::answer counted, 0)
+    expect (counted.surfaceSession.sessionStore.count, 1)))

@@ -31,7 +31,7 @@ process.once("exit", () => fs.rmSync(fixtureDir, { recursive: true, force: true 
 const config = defineConfig({
   tests: [
     {
-      files: "out/test/suite/**/!(package-workspace-project).test.js",
+      files: "out/test/suite/**/!(package-workspace-project|package-workspace-folders).test.js",
       srcDir: "client/src",
       env: { OSPREY_TEST_USER_DATA: userDataDir },
       version: "stable",
@@ -62,7 +62,7 @@ const config = defineConfig({
 
 config.tests.push({
   ...config.tests[0],
-  files: "out/test/suite/package-workspace-project.test.js",
+  files: "out/test/suite/package-workspace-{project,folders}.test.js",
   launchArgs: [...config.tests[0].launchArgs, fixtureWorkspace],
 });
 module.exports = config;

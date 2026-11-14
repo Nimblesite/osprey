@@ -1,9 +1,11 @@
 import gzip
 import io
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import shutil
+import subprocess
 import tarfile
 import tempfile
 import time
@@ -17,12 +19,13 @@ from compare_script_test import CompareScriptTests  # the compare.sh suite runs 
 
 # gzip stamps the current time into its header, so two archives of the same entry built a second
 # apart differ, and a test that rebuilds one would trip the checksum it took of the first.
-def archive(name="fixture-1.0/Cargo.toml", content=b'license = "MIT"\nold\n'):
+def archive(name="fixture-1.0/Cargo.toml", content=b'license = "MIT"\nold\n', files=None):
     output = io.BytesIO()
     with gzip.GzipFile(fileobj=output, mode="wb", mtime=0) as packed, tarfile.open(fileobj=packed, mode="w") as tar:
-        entry = tarfile.TarInfo(name)
-        entry.size = len(content)
-        tar.addfile(entry, io.BytesIO(content))
+        for path, body in (files or {name: content}).items():
+            entry = tarfile.TarInfo(path)
+            entry.size = len(body)
+            tar.addfile(entry, io.BytesIO(body))
     return output.getvalue()
 
 
@@ -56,6 +59,70 @@ class BackportTests(unittest.TestCase):
         self.assertEqual((result / "Cargo.toml").read_bytes(), b'license = "MIT"\nnew\n')
         with patch.object(source, "fetch_archive", side_effect=AssertionError("unexpected fetch")):
             self.assertEqual(source.stage(self.package, self.root / "sources", self.root), result)
+
+    def test_a_restaged_source_keeps_one_fixed_time_so_a_cached_host_build_stays_fresh(self):
+        first = self.stage()
+        stamps = sorted((path.relative_to(first).as_posix(), path.stat().st_mtime) for path in [first, *first.rglob("*")])
+        self.assertEqual({stamp for _, stamp in stamps}, {source.STAGED_MTIME}, "every staged path, patched or not")
+        self.assertLess(source.STAGED_MTIME, time.time() - 365 * 24 * 3600, "older than any build output cargo compares")
+        shutil.rmtree(first)
+        time.sleep(1.1)
+        again = self.stage()
+        self.assertEqual(sorted((path.relative_to(again).as_posix(), path.stat().st_mtime) for path in [again, *again.rglob("*")]), stamps,
+                         "a fresh runner stages the same tree at the same times")
+
+    def test_staging_settles_times_where_utime_cannot_skip_symlinks(self):
+        real = source.os.utime
+
+        # Windows' os.utime raises NotImplementedError for follow_symlinks=False.
+        def windows_utime(path, times, **options):
+            if "follow_symlinks" in options:
+                raise NotImplementedError("utime: follow_symlinks unavailable on this platform")
+            real(path, times)
+
+        with patch.object(source.os, "utime", windows_utime):
+            staged = self.stage()
+        self.assertEqual({path.stat().st_mtime for path in [staged, *staged.rglob("*")]}, {source.STAGED_MTIME})
+
+    def test_real_cargo_reuses_restaged_bytes_and_rebuilds_changed_backport_bytes(self):
+        (self.root / "fix.json").write_text("[]")
+        app = self.root / "app"
+        (app / "src").mkdir(parents=True)
+        (app / "src/main.rs").write_text('fn main() { println!("{}", fixture::value()); }\n')
+        manifest = app / "Cargo.toml"
+        env = {**os.environ, "CARGO_TARGET_DIR": str(app / "build")}
+        expected = self.root / "rust-expected"
+        def stage(value):
+            files = {"Cargo.toml": b'[package]\nname="fixture"\nversion="1.0.0"\nedition="2021"\n',
+                     "src/lib.rs": f"pub fn value() -> u32 {{ {value} }}\n".encode()}
+            for name, body in files.items():
+                target = expected / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(body)
+            packed = archive(files={f"fixture-1.0.0/{name}": body for name, body in files.items()})
+            package = {**self.package, "version": "1.0.0", "treeSha256": source.tree_digest(expected), "archiveSha256": source.digest(packed)}
+            destination = source.source_directory(self.root / "sources", [package])
+            with patch.object(source, "fetch_archive", return_value=packed):
+                return source.stage(package, destination, self.root)
+        def run(dependency):
+            text = '[workspace]\n[package]\nname="backport-consumer"\nversion="0.1.0"\nedition="2021"\n[dependencies]\nfixture={path=' + json.dumps(str(dependency)) + '}\n'
+            if not manifest.exists() or manifest.read_text() != text:
+                manifest.write_text(text)
+            result = subprocess.run(["cargo", "run", "--offline", "--quiet", "--manifest-path", str(manifest)],
+                                    env=env, capture_output=True, text=True, timeout=30, check=True)
+            return result.stdout.strip()
+        first = stage(1)
+        self.assertEqual(run(first), "1")
+        binary = app / "build/debug" / ("backport-consumer.exe" if os.name == "nt" else "backport-consumer")
+        built = binary.stat().st_mtime_ns
+        shutil.rmtree(first)
+        self.assertEqual(stage(1), first)
+        self.assertEqual(run(first), "1")
+        self.assertEqual(binary.stat().st_mtime_ns, built, "identical restaging reuses the compiled host")
+        second = stage(2)
+        self.assertNotEqual(second, first, "changed verified bytes get a different Cargo source identity")
+        self.assertEqual((second / "src/lib.rs").stat().st_mtime, source.STAGED_MTIME)
+        self.assertEqual(run(second), "2", "the cached binary must execute the changed dependency")
 
     def test_rejects_corrupt_archive_and_wrong_patch_preimage_without_partial_source(self):
         self.bytes = b"corrupt"

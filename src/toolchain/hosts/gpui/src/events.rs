@@ -1,43 +1,120 @@
-//! The host's JSON half of the protocol ([NATIVE-HOSTS-TRANSPORT]): the events
-//! `ui::Events` decodes and the launch context `ui::Runtime` reads. Building
-//! them is all this seam does; what a control means is the application's.
+//! Host events as the typed call the application exports ([NATIVE-SHM-EVENT]): a kind, the control
+//! it names, two texts, two numbers and two flags. Nothing is encoded; what a control means is the
+//! application's, through the binding its number names.
 
-use serde_json::Value;
-
-/// A JSON string literal, escaped by the same writer that escapes values.
-fn quoted(text: &str) -> String {
-    Value::String(text.to_owned()).to_string()
+/// One host event, as `osprey_app_event` takes it after the host clock.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Touch {
+    pub kind: i64,
+    pub ordinal: i64,
+    pub words: String,
+    pub detail: String,
+    pub x: f64,
+    pub y: f64,
+    pub down: bool,
+    pub shift: bool,
 }
 
-/// A control event: the binding ordinal the framework issued, in its region
-/// revision, with the value the control delivered.
-pub fn control(now: i64, region: &str, revision: u64, ordinal: u64, value: Value) -> String {
-    format!(
-        "{{\"kind\":\"ui\",\"now\":{now},\"region\":{},\"revision\":{revision},\"ordinal\":{ordinal},\"value\":{value}}}",
-        quoted(region)
-    )
+/// The event kinds `ui::Hosting` declares.
+pub mod kind {
+    pub const CONTROL: i64 = 0;
+    pub const KEY: i64 = 1;
+    pub const POINTER: i64 = 2;
+    pub const VIEWED: i64 = 3;
+    // 4 to 7 are a board's stroke and lasso, which this host does not draw.
+    pub const COMPLETED: i64 = 8;
+    pub const PHASE: i64 = 9;
+    pub const FRAME: i64 = 10;
+    pub const APPEARANCE: i64 = 11;
 }
 
-/// A capability completion that succeeded, delivered under its ticket.
-pub fn completed_ok(now: i64, ticket: &str, result: Value) -> String {
-    format!(
-        "{{\"kind\":\"completed\",\"now\":{now},\"ticket\":{},\"ok\":true,\"result\":{result}}}",
-        quoted(ticket)
-    )
-}
+impl Touch {
+    fn of(kind: i64) -> Self {
+        Self {
+            kind,
+            ..Self::default()
+        }
+    }
 
-/// A capability completion that failed, delivered under its ticket.
-pub fn completed_err(now: i64, ticket: &str, error: &str) -> String {
-    format!(
-        "{{\"kind\":\"completed\",\"now\":{now},\"ticket\":{},\"ok\":false,\"error\":{}}}",
-        quoted(ticket),
-        quoted(error)
-    )
-}
+    /// The control numbered `ordinal` delivering `words`: empty for a tap, `true`/`false` for a
+    /// switch, a key for a picker, text for a field, a whole number for a splitter or caret.
+    pub fn control(ordinal: i64, words: &str) -> Self {
+        Self {
+            ordinal,
+            words: words.to_owned(),
+            ..Self::of(kind::CONTROL)
+        }
+    }
 
-/// One display frame with its clamped elapsed seconds, always rendered as a float.
-pub fn frame(now: i64, elapsed: f64) -> String {
-    format!("{{\"kind\":\"frame\",\"now\":{now},\"elapsed\":{elapsed:?}}}")
+    /// A key going down or up over the scene numbered `ordinal`.
+    pub fn key(ordinal: i64, name: &str, down: bool) -> Self {
+        Self {
+            ordinal,
+            words: name.to_owned(),
+            down,
+            ..Self::of(kind::KEY)
+        }
+    }
+
+    /// The pointer over the scene numbered `ordinal`, in scene units.
+    pub fn pointer(ordinal: i64, x: f64, y: f64, down: bool, shift: bool) -> Self {
+        Self {
+            ordinal,
+            x,
+            y,
+            down,
+            shift,
+            ..Self::of(kind::POINTER)
+        }
+    }
+
+    /// The scene numbered `ordinal` measured in scene units.
+    pub fn viewed(ordinal: i64, width: f64, height: f64) -> Self {
+        Self {
+            ordinal,
+            x: width,
+            y: height,
+            ..Self::of(kind::VIEWED)
+        }
+    }
+
+    /// The capability under `ticket` finished: its result text, or the reason it failed.
+    pub fn completed(ticket: &str, outcome: Result<String, String>) -> Self {
+        let (down, detail) = match outcome {
+            Ok(text) => (true, text),
+            Err(reason) => (false, reason),
+        };
+        Self {
+            words: ticket.to_owned(),
+            detail,
+            down,
+            ..Self::of(kind::COMPLETED)
+        }
+    }
+
+    /// A lifecycle phase, such as `active`, `closed` or `open:<path>`.
+    pub fn phase(name: &str) -> Self {
+        Self {
+            words: name.to_owned(),
+            ..Self::of(kind::PHASE)
+        }
+    }
+
+    /// One display frame, `elapsed` seconds after the last.
+    pub fn frame(elapsed: f64) -> Self {
+        Self {
+            x: elapsed,
+            ..Self::of(kind::FRAME)
+        }
+    }
+
+    /// The system appearance changed.
+    pub fn appearance(dark: bool) -> Self {
+        Self {
+            down: dark,
+            ..Self::of(kind::APPEARANCE)
+        }
+    }
 }
 
 /// A URL's path with its percent escapes decoded, so `My%20Song.mp3` is the file's name.
@@ -64,34 +141,4 @@ pub fn unescaped(path: &str) -> String {
         }
     }
     String::from_utf8_lossy(&out).into_owned()
-}
-
-/// A lifecycle phase, such as the window becoming visible.
-pub fn lifecycle(now: i64, phase: &str) -> String {
-    format!(
-        "{{\"kind\":\"lifecycle\",\"now\":{now},\"phase\":{}}}",
-        quoted(phase)
-    )
-}
-
-/// The launch context: Unix seconds, the local UTC offset, the platform name,
-/// the home folder and the arguments the application was opened with.
-pub fn start_context(
-    now: i64,
-    offset: i64,
-    platform: &str,
-    home: &str,
-    arguments: &[String],
-) -> String {
-    let listed = Value::Array(
-        arguments
-            .iter()
-            .map(|argument| Value::String(argument.clone()))
-            .collect(),
-    );
-    format!(
-        "{{\"now\":{now},\"offset\":{offset},\"platform\":{},\"home\":{},\"arguments\":{listed}}}",
-        quoted(platform),
-        quoted(home)
-    )
 }

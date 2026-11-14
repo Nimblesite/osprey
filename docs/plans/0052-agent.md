@@ -43,7 +43,7 @@ Out of scope: OAuth logins, fetching model lists, streaming replies, tool approv
 - [x] Strict HTTP double (`requireBearer`, `requireUrl`) with Swift tests, and `self-test/verify_providers.py`, `self-test/verify_mcp.py`.
 - [x] Read every golden and judge the look. Remove any control that does nothing.
 
-- [ ] `src/osprey/examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; assert the `Ui::rich` runs and that every code token pair meets 4.5:1 via `src/osprey/packages/native` `Contrast::ratio` (`src/osprey/packages/native/src/theme.ospml`). Open: the doubled run and its goldens exist, but nothing under `src/osprey/examples/agent` calls `Contrast::ratio`, so the 4.5:1 assertion is still missing.
+- [x] `src/osprey/examples/agent/self-test/code-blocks.json` + goldens: a doubled run draws fenced code and tool output through `Highlight.tokens_of`; the `Ui::rich` runs are asserted, and every ink code is drawn with (the two frame inks and the ten highlight kinds) meets 4.5:1 on `codeFill` in light and dark via `Contrast::ratio`, in the fenced-block test of `src/osprey/examples/agent/test-app/main.ospml` (`readsOnCode`).
 - [x] `src/osprey/examples/agent/self-test/settings.json` + goldens: configure each provider, pick a model and effort, and check the per-provider request shape against a strict double.
 - [x] `src/osprey/examples/agent/self-test/mcp.json` + goldens per OS: run the doubled model through config, connect, a tool call, a tool error, a dead server, a project server off then on, and a secret kept out of the records, using `self-test/mcp_server.py` on stdio and streamable HTTP.
 

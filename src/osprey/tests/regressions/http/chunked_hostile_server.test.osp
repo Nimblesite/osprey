@@ -53,8 +53,13 @@ fn doubled(text, times) = match times {
 
 fn sixteenKib() = doubled("x", 14)
 
+/// Framing payloads shared by several scenarios.
+fn framedHi() = "2\r\nhi\r\n0\r\n\r\n"
+fn oversizeLie() = "7FFFFFFF\r\nhi\r\n"
+fn oversizeChunk() = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
+
 fn framingFor(path, requested) = match path {
-    "/get-oversized" => "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
+    "/get-oversized" => oversizeChunk()
     "/get-valid" => "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"
     "/big" => "4000\r\n${sixteenKib()}\r\n0\r\n\r\n"
     "/big-then-lie" => "4000\r\n${sixteenKib()}\r\n7FFFFFFF\r\nhi\r\n"
@@ -109,12 +114,16 @@ fn refuses(client, framing, reason) = probes(client, "refuses", "error=http resp
 
 fn refused(client, reason, framings) = forEachList(framings, fn(framing) => refuses(client, framing, reason))
 
+fn postsEach(client, framing, expected, cases) = forEachList(cases, fn(c) => check(c.name, expected, posted(client, c.path, framing)))
+
+fn stillServing(client) = check("still serving", "status=200 body=alive", posted(client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
+
 fn chunkTooBig() = "error=http response: chunked body: chunk size exceeds the remaining body"
 
 fn sizesBeyondTheBody(client) = refused(client, "chunk size exceeds the remaining body", [
     "10\r\nhi\r\n0\r\n\r\n", "3\r\nhi", "6\r\nhello",
     "5\r\nhel", "1\r\n", "400\r\nhi\r\n0\r\n\r\n",
-    "10000\r\nhi\r\n0\r\n\r\n", "7FFFFFFF\r\nhi\r\n0\r\n\r\n", "7fffffff\r\nhi\r\n0\r\n\r\n",
+    "10000\r\nhi\r\n0\r\n\r\n", oversizeChunk(), "7fffffff\r\nhi\r\n0\r\n\r\n",
     "80000000\r\nhi\r\n0\r\n\r\n", "FFFFFFFF\r\nhi\r\n0\r\n\r\n", "100000000\r\nhi\r\n0\r\n\r\n",
     "7FFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", "8000000000000000\r\nhi\r\n0\r\n\r\n", "FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n",
     "3\r\nabc\r\n100\r\nhi\r\n0\r\n\r\n", "3\r\nabc\r\n7FFFFFFF\r\nhi\r\n0\r\n\r\n", "1;ext=1\r\n",
@@ -163,15 +172,13 @@ fn wellFormedBodies(client) = forEachList([
 ], fn(c) => accepts(client, c.framing, c.body))
 
 fn whichResponsesAreChunked(client) = {
-    let framing = "2\r\nhi\r\n0\r\n\r\n"
-    let hostile = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"
-    checkEach([
-        { name: "lower-case header", expected: "status=200 body=hi", actual: posted(client, "/lower", framing) }, { name: "upper-case header", expected: "status=200 body=hi", actual: posted(client, "/upper", framing) },
-        { name: "padded value", expected: "status=200 body=hi", actual: posted(client, "/padded", framing) }, { name: "chunked last", expected: "status=200 body=hi", actual: posted(client, "/gzip-chunked", framing) },
-        { name: "trailing comma", expected: "status=200 body=hi", actual: posted(client, "/trailing-comma", framing) }, { name: "empty line after", expected: "status=200 body=hi", actual: posted(client, "/empty-line-after", framing) },
-        { name: "coding beats length", expected: "status=200 body=${hostile}", actual: posted(client, "/gzip-length", hostile) }, { name: "named header only", expected: "status=200 body=${hostile}", actual: posted(client, "/x-te", hostile) },
-        { name: "another header's value", expected: "status=200 body=${hostile}", actual: posted(client, "/note", hostile) }, { name: "chunked not last", expected: "status=200 body=${hostile}", actual: posted(client, "/chunked-gzip", hostile) },
-        { name: "a longer word", expected: "status=200 body=${hostile}", actual: posted(client, "/notchunked", hostile) }, { name: "no header", expected: "status=200 body=${hostile}", actual: posted(client, "/plain", hostile) }
+    let _hi = postsEach(client, framedHi(), "status=200 body=hi", [
+        { name: "lower-case header", path: "/lower" }, { name: "upper-case header", path: "/upper" }, { name: "padded value", path: "/padded" },
+        { name: "chunked last", path: "/gzip-chunked" }, { name: "trailing comma", path: "/trailing-comma" }, { name: "empty line after", path: "/empty-line-after" }
+    ])
+    postsEach(client, oversizeChunk(), "status=200 body=${oversizeChunk()}", [
+        { name: "coding beats length", path: "/gzip-length" }, { name: "named header only", path: "/x-te" }, { name: "another header's value", path: "/note" },
+        { name: "chunked not last", path: "/chunked-gzip" }, { name: "a longer word", path: "/notchunked" }, { name: "no header", path: "/plain" }
     ])
 }
 
@@ -187,7 +194,7 @@ fn getAndPostAgree(client) = checkEach([
 
 fn hammer(client, remaining) = match remaining {
     0 => "status=200 body=survived"
-    _ => match posted(client, "/chunked", "7FFFFFFF\r\nhi\r\n0\r\n\r\n") {
+    _ => match posted(client, "/chunked", oversizeChunk()) {
         "error=http response: chunked body: chunk size exceeds the remaining body" => hammer(client, wrapSub(remaining, 1))
         other => other
     }
@@ -195,24 +202,22 @@ fn hammer(client, remaining) = match remaining {
 
 fn survivesRepeatedAttacks(client) = {
     check("200 attacks in a row", "status=200 body=survived", hammer(client, 200))
-    check("still serving", "status=200 body=alive", posted(client, "/chunked", "5\r\nalive\r\n0\r\n\r\n"))
+    stillServing(client)
 }
 
 fn statusesWithoutABody(client) = {
-    let lie = "7FFFFFFF\r\nhi\r\n"
+    let _nothing = forEachList([304, 204], fn(code) => check("${code}, nothing sent", "status=${code} body=", fetched(client, "/${code}")))
+    let _lieSent = forEachList([304, 204], fn(code) => check("${code}, a lie sent", "status=${code} body=", posted(client, "/${code}", oversizeLie())))
     checkEach([
-        { name: "304, nothing sent", expected: "status=304 body=", actual: fetched(client, "/304") }, { name: "204, nothing sent", expected: "status=204 body=", actual: fetched(client, "/204") },
-        { name: "304, a lie sent", expected: "status=304 body=", actual: posted(client, "/304", lie) }, { name: "204, a lie sent", expected: "status=204 body=", actual: posted(client, "/204", lie) },
-        { name: "204, a body sent", expected: "status=204 body=", actual: posted(client, "/204", "2\r\nhi\r\n0\r\n\r\n") }, { name: "500 keeps its body", expected: "status=500 body=no", actual: posted(client, "/500", "2\r\nno\r\n0\r\n\r\n") },
-        { name: "500 with a lie", expected: chunkTooBig(), actual: posted(client, "/500", lie) }, { name: "200 needs its framing", expected: "error=http response: chunked body: truncated", actual: fetched(client, "/empty") }
+        { name: "204, a body sent", expected: "status=204 body=", actual: posted(client, "/204", framedHi()) }, { name: "500 keeps its body", expected: "status=500 body=no", actual: posted(client, "/500", "2\r\nno\r\n0\r\n\r\n") },
+        { name: "500 with a lie", expected: chunkTooBig(), actual: posted(client, "/500", oversizeLie()) }, { name: "200 needs its framing", expected: "error=http response: chunked body: truncated", actual: fetched(client, "/empty") }
     ])
 }
 
 fn repeatedHeaderLines(client) = {
-    let framing = "2\r\nhi\r\n0\r\n\r\n"
-    let hostile = "7FFFFFFF\r\nhi\r\n"
+    let hostile = oversizeLie()
+    let _decoded = postsEach(client, framedHi(), "status=200 body=hi", [{ name: "two lines decode", path: "/two-lines" }, { name: "two lines apart decode", path: "/two-apart" }])
     checkEach([
-        { name: "two lines decode", expected: "status=200 body=hi", actual: posted(client, "/two-lines", framing) }, { name: "two lines apart decode", expected: "status=200 body=hi", actual: posted(client, "/two-apart", framing) },
         { name: "two lines still refuse", expected: chunkTooBig(), actual: posted(client, "/two-lines", hostile) }, { name: "gzip last means raw", expected: "status=200 body=${hostile}", actual: posted(client, "/chunked-then-gzip", hostile) }
     ])
 }
@@ -224,29 +229,27 @@ fn bodiesPastTheBuffer(client) = {
 
 fn headsThatHideFraming(client) = {
     let malformed = "error=http response: head: malformed"
-    let hostile = "7FFFFFFF\r\nhi\r\n"
-    checkEach([
-        { name: "bare LF in a value", expected: malformed, actual: posted(client, "/bare-lf", hostile) }, { name: "bare CR in a value", expected: malformed, actual: posted(client, "/bare-cr", "hello") },
-        { name: "space before the colon", expected: malformed, actual: posted(client, "/spaced-name", hostile) }, { name: "a folded line", expected: malformed, actual: posted(client, "/folded", "2\r\nhi\r\n0\r\n\r\n") },
-        { name: "a line with no colon", expected: malformed, actual: posted(client, "/no-colon", "hello") }, { name: "a line with no name", expected: malformed, actual: posted(client, "/no-name", "hello") },
-        { name: "still serving", expected: "status=200 body=alive", actual: posted(client, "/chunked", "5\r\nalive\r\n0\r\n\r\n") }
-    ])
+    let _hidden = forEachList([
+        { name: "bare LF in a value", path: "/bare-lf", framing: oversizeLie() }, { name: "bare CR in a value", path: "/bare-cr", framing: "hello" },
+        { name: "space before the colon", path: "/spaced-name", framing: oversizeLie() }, { name: "a folded line", path: "/folded", framing: framedHi() },
+        { name: "a line with no colon", path: "/no-colon", framing: "hello" }, { name: "a line with no name", path: "/no-name", framing: "hello" }
+    ], fn(c) => check(c.name, malformed, posted(client, c.path, c.framing)))
+    stillServing(client)
 }
 
 fn statusesThatAreNotStatuses(client) = {
     let notHttp = "error=http response: status line: not HTTP/1.x"
-    checkEach([
-        { name: "four digits", expected: notHttp, actual: fetched(client, "/four-digits") }, { name: "two digits", expected: notHttp, actual: fetched(client, "/two-digits") },
-        { name: "our own negative code", expected: notHttp, actual: fetched(client, "/negative") }, { name: "a real 404", expected: "status=404 body=gone", actual: posted(client, "/404-plain", "gone") }
-    ])
+    let _notStatuses = forEachList([
+        { name: "four digits", path: "/four-digits" }, { name: "two digits", path: "/two-digits" }, { name: "our own negative code", path: "/negative" }
+    ], fn(c) => check(c.name, notHttp, fetched(client, c.path)))
+    check("a real 404", "status=404 body=gone", posted(client, "/404-plain", "gone"))
 }
 
 fn lengthsThatLie(client) = {
-    let invalid = "error=http response: body: invalid Content-Length"
-    checkEach([
-        { name: "a second, different length", expected: invalid, actual: posted(client, "/length-lie", "hello") }, { name: "a length that isn't one", expected: invalid, actual: posted(client, "/length-junk", "hello") },
-        { name: "a negative length", expected: invalid, actual: posted(client, "/length-negative", "hello") }, { name: "chunked ignores a lie", expected: "status=200 body=hi", actual: posted(client, "/two-lines", "2\r\nhi\r\n0\r\n\r\n") }
+    let _invalid = postsEach(client, "hello", "error=http response: body: invalid Content-Length", [
+        { name: "a second, different length", path: "/length-lie" }, { name: "a length that isn't one", path: "/length-junk" }, { name: "a negative length", path: "/length-negative" }
     ])
+    check("chunked ignores a lie", "status=200 body=hi", posted(client, "/two-lines", framedHi()))
 }
 
 fn originCase(port, work) = fn() => withHostileOrigin(port, work)

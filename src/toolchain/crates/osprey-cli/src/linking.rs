@@ -46,6 +46,10 @@ pub(crate) const HTTP_RUNTIME_EXTERNS: [&str; 4] = [
     "osprey_media_",
 ];
 
+/// The prefix of the `extern fn`s every runtime archive defines itself ([NATIVE-SHM-SCENE]), so a
+/// library that writes into the shared bridge never asks its host for them.
+pub(crate) const BRIDGE_RUNTIME_EXTERN: &str = "osp_native_";
+
 fn runtime_archive(http: bool, memory: &str) -> Option<String> {
     let name = if http { "http" } else { "fiber" };
     find_runtime_lib(&runtime_name(&format!("lib{name}_runtime"), memory))

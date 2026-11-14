@@ -357,3 +357,58 @@ fn flattening_keeps_a_shadowed_or_removed_outer_binding_hidden() {
     assert!(env.get("gone").is_none());
     assert!(matches!(env.get("closed_over"), Some(scheme) if scheme.ty == Type::int()));
 }
+
+#[test]
+fn open_scheme_scans_resolve_unique_roots_and_follow_later_constraints() {
+    let mut ctx = InferCtx::new();
+    let mut env = TypeEnv::new();
+    let root = ctx.fresh();
+    let later = ctx.fresh();
+    let quantified = ctx.fresh();
+    let Type::Var(quantified_id) = quantified else {
+        panic!("fresh variable")
+    };
+    env.insert(
+        "wide",
+        Scheme {
+            vars: vec![quantified_id],
+            ty: Type::fun(
+                vec![Type::fun(vec![Type::int(), root.clone()], quantified.clone()); 512],
+                root.clone(),
+            ),
+            obligations: vec![(
+                "constraint".into(),
+                Type::Record {
+                    name: "Pending".into(),
+                    fields: [(
+                        "choice".into(),
+                        Type::Union {
+                            name: "Choice".into(),
+                            variants: vec![
+                                Type::con("Pending", vec![later.clone(), root.clone()]),
+                                quantified.clone(),
+                            ],
+                        },
+                    )]
+                    .into_iter()
+                    .collect(),
+                },
+            )],
+        },
+    );
+    let mut child = env.child();
+    crate::ctx::FREE_VAR_VISITS.with(|count| count.set(0));
+    assert_eq!(child.free_vars(&mut ctx), [0, 1].into_iter().collect());
+    assert!(
+        crate::ctx::FREE_VAR_VISITS.with(std::cell::Cell::get) <= 2,
+        "an immutable wide scheme must resolve each distinct unquantified root once"
+    );
+    unify(&mut ctx, &root, &Type::con("Expanded", vec![later.clone()])).unwrap();
+    assert_eq!(child.free_vars(&mut ctx), [1].into_iter().collect());
+    unify(&mut ctx, &later, &Type::int()).unwrap();
+    assert!(child.free_vars(&mut ctx).is_empty());
+    assert!(!child.shares_open_vars(&ctx, &[0, 1, quantified_id].into_iter().collect()));
+    child.remove("wide");
+    assert!(child.free_vars(&mut ctx).is_empty());
+    assert!(env.get("wide").is_some());
+}

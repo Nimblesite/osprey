@@ -14,7 +14,7 @@ use osprey_syntax::Flavor;
 use osprey_types::numeric::Numeric;
 use osprey_types::{names, ProgramTypes, Type};
 
-use crate::analysis::{collect_all_symbols, collect_inferred_symbols, SymbolInfo, SymbolKind};
+use crate::analysis::{collect_all_symbols, inferred_symbols, SymbolInfo, SymbolKind};
 use crate::context::{self, Cursor};
 use crate::features::best_match;
 use crate::keywords::keyword_items;
@@ -56,7 +56,6 @@ pub(crate) fn completion(
     encoding: PositionEncoding,
     project: &workspace::View,
 ) -> Vec<CompletionItem> {
-    let siblings = &project.siblings;
     let flavor = project.flavor(path, text);
     let program = project.program(path, text);
     let cursor = context::at(text, line, character, encoding);
@@ -67,7 +66,7 @@ pub(crate) fn completion(
     if let Cursor::Member(receiver) = &cursor {
         return member_items(receiver, &program, line);
     }
-    let symbols = visible_symbols(&program, siblings);
+    let symbols = visible_symbols(&project.typed(text, &program), project);
     keyword_items(flavor, &cursor)
         .into_iter()
         .chain(symbol_items(&cursor, &symbols, &program, flavor))
@@ -76,12 +75,12 @@ pub(crate) fn completion(
 
 /// Every symbol the open document can name: its own declarations plus those of
 /// every sibling file the project links with it. Implements [LSP-WORKSPACE].
-fn visible_symbols(program: &Program, siblings: &[workspace::Sibling]) -> Vec<SymbolInfo> {
+fn visible_symbols(doc: &crate::inferred::Typed<'_>, project: &workspace::View) -> Vec<SymbolInfo> {
     // Inferred, because a completion item SHOWS the symbol's type
-    // ([`collect_inferred_symbols`]) — a deleted annotation must not empty it.
-    let mut symbols = collect_inferred_symbols(program);
-    for sibling in siblings {
-        symbols.extend(collect_inferred_symbols(&sibling.program));
+    // ([`inferred_symbols`]) — a deleted annotation must not empty it.
+    let mut symbols = inferred_symbols(doc);
+    for sibling in &project.siblings {
+        symbols.extend(inferred_symbols(&project.typed_sibling(sibling)));
     }
     // First wins, so the open buffer's own declaration shadows an imported one
     // of the same qualified name. `dedup_by` would not do: duplicates land in

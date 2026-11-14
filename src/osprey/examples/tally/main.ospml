@@ -1,0 +1,54 @@
+// Tally's C boundary for any Osprey Native host ([NATIVE-SHM-VIEW], [NATIVE-SHM-EVENT]): the same
+// three exports every application has. `open` draws the first view and `event` delivers one tap
+// or edit and draws the next. Nothing is encoded in either direction: an event is numbers and
+// borrowed text, and the view is rows in the shared frame the host seals when the call returns.
+// The store never leaves this library.
+namespace app
+
+import ui::Views
+import ui::Runtime
+import ui::Hosting
+import tally::Screen
+
+(** The store and the actions its drawn controls deliver, in control order. *)
+type Live =
+    store : tally::Counted
+    bound : List<tally::Act>
+
+(** Hands the next store and bindings to the cell below. *)
+effect Keep
+    keep : Live => Unit
+
+mut live = Live(store = Screen::first, bound = [])
+
+// Draws `store` into the shared frame and keeps it with the actions its controls deliver.
+shown store =
+    next = Live(store = store, bound = Views::render (Screen::view store))
+    perform Keep.keep next
+    0
+
+// `held`'s control numbered `ordinal`, delivered with its edited `words`; anything else is drawn again and refused.
+delivered (held, ordinal, words) = match listGet held.bound ordinal
+    Error _ => refused held
+    Success action => shown (Screen::update (held.store, action, words))
+
+refused held = satAdd (shown held.store) 1
+
+// Tally draws only controls, so only a control's value reaches it.
+touched (held, kind, ordinal, words) = match kind == Hosting::control
+    true => delivered (held, ordinal, words)
+    false => refused held
+
+hosted work =
+    handle Keep
+        keep next => live := next
+    Runtime::guarded (\() => Views::shared work)
+
+(** Tally takes no launch arguments. *)
+argument (_ : string) = 0
+
+(** Draws the first view; zero when it was written. *)
+open (_ : int, _ : int, _ : string, _ : string, _ : bool) = hosted (\() => shown Screen::first)
+
+(** Delivers the control numbered `ordinal` with its edited `words` and draws the next view; nonzero for an event Tally does not take or a control it did not draw, which changes nothing. *)
+event (_ : int, kind, ordinal, words, _ : string, _ : float, _ : float, _ : bool, _ : bool) = hosted (\() => touched (live, kind, ordinal, words))

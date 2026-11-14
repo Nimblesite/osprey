@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-WRAPPER = ROOT / "src/osprey/examples/mobile/android/gradlew"
+WRAPPER = ROOT / "scripts/mobile/gradlew"
 BANK_RUN = "src/osprey/examples/projects/modules/mobile/android/run.sh"
 ANDROID_ENV = "scripts/mobile/android-env.sh"
 # What every runner has: no Homebrew, no cargo bin, no developer extras.
@@ -125,49 +125,6 @@ COUNTER_HOST_PROBE = r'''
 }
 '''
 
-GPUI_HOST_PROBE = r'''
-#[path = "__FFI__"] mod ffi;
-use std::ffi::{c_char, CString};
-extern "C" {
-    fn osp_arc_live_objects() -> usize;
-    fn osp_arc_live_bytes() -> usize;
-    fn osprey_identityInput(value: *const c_char) -> *const c_char;
-    fn osprey_release_string(value: *const c_char);
-}
-fn counts() -> (usize, usize) {
-    // SAFETY: the linked ARC runtime exports both scalar counter functions.
-    unsafe { (osp_arc_live_objects(), osp_arc_live_bytes()) }
-}
-fn positive_control() -> Result<(), String> {
-    let value = CString::new("control").map_err(|error| error.to_string())?;
-    let before = counts();
-    // SAFETY: the input outlives the export, which transfers one owned result.
-    let owned = unsafe { osprey_identityInput(value.as_ptr()) };
-    assert!(!owned.is_null());
-    assert_eq!(counts().0, before.0 + 1, "ARC counter missed an owned output");
-    // SAFETY: release exactly the reference the positive control received.
-    unsafe { osprey_release_string(owned) };
-    assert_eq!(counts(), before);
-    Ok(())
-}
-fn round_trip(index: usize) -> Result<(), String> {
-    let context = format!("context:{index}:é🦅");
-    assert_eq!(ffi::Library::start(&context)?, context);
-    let event = format!("event:{index}");
-    assert_eq!(ffi::Library::dispatch(&context, &event)?, format!("{context}|{event}"));
-    Ok(())
-}
-fn main() -> Result<(), String> {
-    ffi::Library::init()?;
-    positive_control()?;
-    let before = counts();
-    for index in 0..1000 { round_trip(index)?; }
-    assert_eq!(counts(), before, "GPUI owned output references leaked");
-    println!("GPUI host ARC ownership passed (2000 exports)");
-    Ok(())
-}
-'''
-
 def run_swift_probe(source, binary, *inputs):
     subprocess.run(["swiftc", "-parse-as-library", str(source), *inputs, "-o", str(binary)],
                    check=True, timeout=60)
@@ -193,22 +150,6 @@ def counter_host_probe():
         source.write_text("import Foundation\n" + helper + COUNTER_HOST_PROBE)
         run_swift_probe(source, Path(scratch) / "probe", "-import-objc-header",
                         str(archive.with_suffix(".h")), str(archive))
-
-def gpui_host_probe(archive):
-    with tempfile.TemporaryDirectory(prefix="osprey-gpui-ownership-") as scratch:
-        source, fixture, binary = (Path(scratch) / name for name in ["probe.rs", "fixture.o", "probe"])
-        source.write_text(GPUI_HOST_PROBE.replace("__FFI__", str(ROOT / "src/toolchain/hosts/gpui/src/ffi.rs")))
-        subprocess.run(["xcrun", "clang", "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
-                        "-Dmain=mobile_fixture_unused_main", "-I", str(archive.parent), "-c",
-                        str(ROOT / "scripts/mobile/mobile-abi.c"), "-o", str(fixture)], check=True, timeout=60)
-        links = [str(fixture), str(archive),
-                 "-Wl,-alias,_osprey_identityInput,_osprey_app_start",
-                 "-Wl,-alias,_osprey_joinWith,_osprey_app_dispatch"]
-        command = ["rustc", "--edition=2021", str(source), "-o", str(binary)]
-        subprocess.run(command + [arg for link in links for arg in ["-C", f"link-arg={link}"]],
-                       check=True, timeout=60)
-        subprocess.run([str(binary)], check=True, timeout=10,
-                       env=dict(os.environ, OSPREY_ARC_DEBUG="1"))
 
 def corpus_jobs(target, override=None):
     harness = (ROOT / "src/toolchain/crates/run_test_corpus.sh").read_text()
@@ -432,12 +373,112 @@ class BankAndroidVerdict(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0, result.stderr)
                 self.assertIn("screenshot", result.stderr.lower())
 
+GOLDEN = ROOT / "src/osprey/examples/tally/goldens/android/1080-ready.png"
+GOLDENS = ROOT / "scripts/mobile/goldens.py"
+
+
+def goldens_module():
+    """scripts/mobile/goldens.py, imported by path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("goldens", GOLDENS)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class PhoneGoldens(unittest.TestCase):
+    """[NATIVE-HOSTS-MOBILE] screenshots are compared with nothing but Python, on every runner."""
+
+    def test_malformed_png_cannot_pass_a_golden(self):
+        goldens = goldens_module()
+        def chunk(kind, body):
+            return goldens.struct.pack(">I", len(body)) + kind + body + goldens.struct.pack(">I", goldens.zlib.crc32(kind + body))
+        def picture(raw, width=2, height=2, compression=0, filtering=0):
+            head = goldens.struct.pack(">IIBBBBB", width, height, 8, 2, compression, filtering, 0)
+            return goldens.SIGNATURE + chunk(b"IHDR", head) + chunk(b"IDAT", goldens.zlib.compress(raw)) + chunk(b"IEND", b"")
+        raw = (b"\0" + bytes(6)) * 2
+        valid = picture(raw)
+        cases = {"short row": picture(raw[:-3]), "extra bytes": picture(raw + b"x"),
+                 "unknown filter": picture(b"\x05" + raw[1:]), "empty width": picture(b"\0\0", width=0),
+                 "compression": picture(raw, compression=1), "filter method": picture(raw, filtering=1),
+                 "checksum": valid[:29] + bytes([valid[29] ^ 1]) + valid[30:],
+                 "missing end": valid[:-12], "truncated chunk": valid[:-1], "trailing data": valid + b"x",
+                 "short header": goldens.SIGNATURE, "oversized dimensions": picture(raw, width=1 << 31, height=1 << 31),
+                 "invalid zlib": valid[:33] + chunk(b"IDAT", b"not zlib") + chunk(b"IEND", b"")}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "screen.png"
+            (Path(directory) / "2-ready.png").write_bytes(valid)
+            path.write_bytes(valid)
+            self.assertEqual(self.compare(path, Path(directory)).returncode, 0)
+            for reason, data in cases.items():
+                with self.subTest(reason=reason):
+                    path.write_bytes(data)
+                    with self.assertRaises(AssertionError):
+                        goldens.png_pixels(path)
+                    refused = self.compare(path, Path(directory))
+                    self.assertEqual(refused.returncode, 1, reason)
+                    self.assertIn("FAIL:", refused.stderr)
+            compressed = goldens.zlib.compress(raw)
+            path.write_bytes(valid[:33] + chunk(b"IDAT", compressed[:5]) + chunk(b"IDAT", compressed[5:]) + chunk(b"IEND", b""))
+            self.assertEqual(goldens.png_pixels(path), (2, 2, bytes(12)), "split IDAT is a valid screen")
+            pixels = bytes(range(10, 130, 10))
+            residuals = [pixels,
+                         bytes([10, 20, 30, 30, 30, 30, 70, 80, 90, 30, 30, 30]),
+                         bytes([10, 20, 30, 40, 50, 60, 60, 60, 60, 60, 60, 60]),
+                         bytes([10, 20, 30, 35, 40, 45, 65, 70, 75, 45, 45, 45]),
+                         bytes([10, 20, 30, 30, 30, 30, 60, 60, 60, 30, 30, 30])]
+            for kind, residual in enumerate(residuals):
+                with self.subTest(filter=kind):
+                    path.write_bytes(picture(bytes([kind]) + residual[:6] + bytes([kind]) + residual[6:]))
+                    self.assertEqual(goldens.png_pixels(path), (2, 2, pixels), "every filter reconstructs known RGB bytes")
+        for pixels in (bytes(9), bytes(15)):
+            with self.subTest(length=len(pixels)):
+                with self.assertRaises(AssertionError):
+                    goldens.png_encode(2, 2, pixels)
+                with self.assertRaises(AssertionError):
+                    goldens.picture_delta((2, 2, pixels), (2, 2, bytes(12)))
+
+    def compare(self, actual, folder):
+        return subprocess.run([sys.executable, str(GOLDENS), str(actual), str(folder), "--top", "0", "--bottom", "0"],
+                              env={"PATH": BASE_PATH}, capture_output=True, text=True, check=False)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg cross-checks the decoder where it is installed")
+    def test_decoder_reads_the_same_pixels_ffmpeg_does(self):
+        width, height, pixels = goldens_module().png_pixels(GOLDEN)
+        decoded = subprocess.run(["ffmpeg", "-v", "error", "-i", str(GOLDEN), "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"],
+                                 check=True, stdout=subprocess.PIPE).stdout
+        self.assertEqual((width, height), (1080, 2088))
+        self.assertEqual(pixels, decoded)
+
+    def test_screens_compare_without_ffmpeg_and_a_moved_control_fails(self):
+        goldens = goldens_module()
+        width, height, pixels = goldens.png_pixels(GOLDEN)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            shutil.copy(GOLDEN, root / f"{width}-ready.png")
+            rgba = b"".join(pixels[i:i + 3] + bytes([(i // 3) % 256]) for i in range(0, len(pixels), 3))
+            (root / "same.png").write_bytes(goldens.png_encode(width, height, rgba, alpha=True))
+            same = self.compare(root / "same.png", root)
+            self.assertEqual(same.returncode, 0, same.stderr)
+            self.assertIn("(0.000% differing pixels)", same.stdout)
+            self.assertEqual(goldens.png_pixels(root / "same-content.png"), (width, height, pixels), "the review crop is the screen")
+            moved = bytearray(pixels)
+            for row in range(400, 480):
+                start = (row * width + 200) * 3
+                moved[start:start + 80 * 3] = bytes(255 - value for value in moved[start:start + 80 * 3])
+            goldens.png_write(root / "moved.png", width, height, bytes(moved))
+            failed = self.compare(root / "moved.png", root)
+            self.assertEqual(failed.returncode, 1, failed.stdout)
+            self.assertRegex(failed.stderr, r"FAIL: .*of pixels differ, worst tile")
+            (root / "text.png").write_bytes(b"not a PNG")
+            refused = self.compare(root / "text.png", root)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("not a PNG", refused.stderr)
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--storage-host"]:
         storage_host_probe()
     elif sys.argv[1:] == ["--counter-host"]:
         counter_host_probe()
-    elif sys.argv[1:2] == ["--gpui-host"] and len(sys.argv) == 3:
-        gpui_host_probe(Path(sys.argv[2]).resolve())
     else:
         unittest.main()

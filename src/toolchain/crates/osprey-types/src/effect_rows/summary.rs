@@ -3,7 +3,7 @@ use super::{
     map_parameter_use_values, widen_value_budget, CallArguments, HashSet, ParameterUse, Projection,
     Requirement, Scope, Summary, MASK_LIMIT, MAX_PROVENANCE_DEPTH, MAX_PROVENANCE_NODES,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl Requirement {
     /// A requirement keyed by effect identity: the base name plus the
@@ -100,14 +100,27 @@ impl CallArguments {
 
 impl Summary {
     // Union monotone requirements, but re-derive the dynamic verdict each pass.
+    // Acyclic functions also recompute callback uses: retaining superseded
+    // argument shapes makes their shared provenance budget oscillate forever.
+    // `merge` keeps a recursive function's uses, and joins a row whose
+    // recomputed part was seen to cycle ([`super::solver::ReturnHistory`]).
     // Converge supplies an equal immutable row; a different caller retains its
     // own snapshot so changed flags never depend on an unrelated row.
-    pub(super) fn merge_inferred_row(&mut self, actual: Self, previous: Option<&Self>) -> bool {
+    pub(super) fn merge_inferred_row(
+        &mut self,
+        actual: Self,
+        previous: Option<&Self>,
+        merge: super::solver::Merge,
+    ) -> bool {
         let before = match previous.filter(|row| *row == self) {
             Some(row) => std::borrow::Cow::Borrowed(row),
             None => std::borrow::Cow::Owned(self.clone()),
         };
-        let resolved = actual.unresolved_dynamic_call;
+        let joined = merge == super::solver::Merge::Join;
+        if merge == super::solver::Merge::Recompute {
+            self.parameter_uses.clear();
+        }
+        let resolved = actual.unresolved_dynamic_call || (joined && self.unresolved_dynamic_call);
         self.union(actual);
         self.unresolved_dynamic_call = resolved;
         self.widen();
@@ -238,16 +251,33 @@ impl Summary {
         if self.parameter_uses.len() != before {
             self.unresolved_dynamic_call = true;
         }
-        self.parameter_uses = std::mem::take(&mut self.parameter_uses)
-            .into_iter()
-            .map(|mut use_| {
-                map_parameter_use_values(&mut use_, |value| {
-                    *value = widen_value_budget(std::mem::take(value), depth + 1, budget);
-                });
-                use_
-            })
-            .collect();
+        self.parameter_uses =
+            shared_widening(std::mem::take(&mut self.parameter_uses), depth, budget);
     }
+}
+
+/// Widens every value `uses` carry from one shared `budget`, as a value's own children share
+/// theirs: each use taking all of it let a summary of many calls hold thousands of nested
+/// values, gigabytes across a program of long driven tests ([EFFECTS-PROVENANCE]).
+fn shared_widening(
+    uses: BTreeSet<ParameterUse>,
+    depth: usize,
+    budget: usize,
+) -> BTreeSet<ParameterUse> {
+    let mut uses: Vec<ParameterUse> = uses.into_iter().collect();
+    let mut values = 0_usize;
+    for use_ in &mut uses {
+        map_parameter_use_values(use_, |_| values += 1);
+    }
+    let share = budget / values.max(1);
+    uses.into_iter()
+        .map(|mut use_| {
+            map_parameter_use_values(&mut use_, |value| {
+                *value = widen_value_budget(std::mem::take(value), depth + 1, share);
+            });
+            use_
+        })
+        .collect()
 }
 
 pub(super) fn bounded_parameter_use(use_: &ParameterUse, depth: usize) -> bool {
@@ -357,6 +387,63 @@ fn widening_method() -> Projection {
 fn inferred_row_mismatched_snapshot_keeps_its_own_changed_flag() {
     let mut row = super::model_values::test_summary_metadata();
     let expected = row.clone();
-    assert!(!row.merge_inferred_row(Summary::default(), Some(&Summary::default())));
+    assert!(!row.merge_inferred_row(
+        Summary::default(),
+        Some(&Summary::default()),
+        super::solver::Merge::RetainUses,
+    ));
     assert_eq!(row, expected);
+}
+
+/// A record of `width` fields, each a record of `width` unknown fields.
+#[cfg(test)]
+fn wide_record(width: usize, depth: usize) -> super::Value {
+    let child = |_| match depth {
+        0 => super::Value::unknown_value(),
+        _ => wide_record(width, depth - 1),
+    };
+    super::Value {
+        fields: (0..width).map(|at| (format!("f{at}"), child(at))).collect(),
+        ..super::Value::default()
+    }
+}
+
+/// Every value node under `value`'s fields, `value` included.
+#[cfg(test)]
+fn field_nodes(value: &super::Value) -> usize {
+    1 + value.fields.values().map(field_nodes).sum::<usize>()
+}
+
+/// [EFFECTS-PROVENANCE] Many calls of one parameter, each passed a wide record, share one
+/// budget: the workbench's driven tests once held 30,000 values in one summary and 5 GB in all.
+#[cfg(test)]
+#[test]
+fn summary_widen_shares_one_budget_across_every_use() {
+    let (uses, width) = (64, 32);
+    let mut actual = Summary {
+        parameter_uses: (0..uses)
+            .map(|index| ParameterUse {
+                level: 0,
+                index,
+                projection: Vec::new(),
+                arguments: CallArguments {
+                    positional: vec![Some(wide_record(width, 1))],
+                    named: Vec::new(),
+                },
+                scopes: Vec::new(),
+            })
+            .collect(),
+        ..Summary::default()
+    };
+    actual.widen();
+    let kept: Vec<usize> = actual
+        .parameter_uses
+        .iter()
+        .flat_map(|use_| use_.arguments.positional.iter().flatten().map(field_nodes))
+        .collect();
+    // Every use survives with its record's shape; only its nested children widen to unknown.
+    assert_eq!(kept.len(), uses);
+    assert!(kept.iter().all(|nodes| *nodes == width + 1), "{kept:?}");
+    assert!(kept.iter().sum::<usize>() <= MAX_PROVENANCE_NODES + uses * (width + 1));
+    assert!(!actual.unresolved_dynamic_call);
 }

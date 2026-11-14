@@ -1,0 +1,96 @@
+namespace orchestra
+
+// [ORCHESTRA-NETWORK-PROTOCOL] Transport authenticates a peer before calling join.
+// Identities come from that transport, never from a controller's JSON payload.
+(** Pure session transitions with bounded admission, touch ownership and heartbeat expiry. *)
+module Sessions
+    (** Create an empty session with a fresh epoch. *)
+    export empty epoch = Session(epoch = epoch, clock = 0, players = [])
+
+    player (session, peer) = match listGet (filterList (session.players, \p => p.peer == peer)) 0
+        Success p => Accepted(value = p)
+        Error _ => Rejected(fault = MissingPeer)
+
+    replacement (next, p) = match p.peer == next.peer
+        true => next
+        false => p
+
+    replaced (session, next) = session(players = mapList (session.players, \p => replacement (next, p)))
+
+    (** Admit one unique peer, up to eight simultaneous controllers. *)
+    export join (session, peer) = match peer < 0
+        true => Rejected(fault = InvalidPeer)
+        false => match player (session, peer)
+            Accepted _ => Rejected(fault = AlreadyJoined)
+            Rejected _ => match length session.players >= 8
+                true => Rejected(fault = Full)
+                false => Accepted(value = (session(players = listAppend session.players (Player(peer = peer, sequence = 0, seen = session.clock, instrument = Glass, sound = Sound(tone = 0.0, echo = 0.0, reverb = 0.0, warp = 0.0), touches = [])))))
+
+    (** Remove a peer and every note it owns. *)
+    export leave (session, peer) = session(players = filterList (session.players, \p => p.peer != peer))
+
+    (** Release all touches while retaining admitted controllers. *)
+    export silence session = session(players = mapList (session.players, \p => p(touches = [])))
+
+    (** Select an instrument and release the peer's previous touches. *)
+    export instrument (session, peer, selected) = match player (session, peer)
+        Rejected fault => Rejected(fault = fault)
+        Accepted p => Accepted(value = (replaced (session, p(instrument = selected, touches = []))))
+
+    validAmount value = value >= 0.0 && value <= 1.0
+
+    (** Apply a sequenced sound edit independently for each authenticated player. *)
+    export configure (session, peer, sequence, selected, sound) = match player (session, peer)
+        Rejected fault => Rejected(fault = fault)
+        Accepted p => match sequence <= p.sequence
+            true => Rejected(fault = StaleSequence)
+            false => match validAmount sound.tone && validAmount sound.echo && validAmount sound.reverb && validAmount sound.warp
+                false => Rejected(fault = InvalidSound)
+                true =>
+                    touches = match p.instrument == selected
+                        true => p.touches
+                        false => []
+                    Accepted(value = (replaced (session, p(sequence = sequence, seen = session.clock, instrument = selected, sound = sound, touches = touches))))
+
+    (** Renew an admitted peer's lease at the session clock. *)
+    export heartbeat (session, peer) = match player (session, peer)
+        Rejected fault => Rejected(fault = fault)
+        Accepted p => Accepted(value = (replaced (session, p(seen = session.clock))))
+
+    // Monotonic milliseconds are supplied by the host clock effect. Expiring a
+    // player removes every owned voice; reconnect requires fresh admission.
+    (** Advance a monotonic clock and release peers absent for 1500 milliseconds. *)
+    export tick (session, now) = match now < session.clock
+        true => Rejected(fault = ClockReversed)
+        false => Accepted(value = (session(clock = now, players = filterList (session.players, \p => satSub now p.seen < 1500))))
+
+    valid touch = touch.finger >= 0 && touch.finger < 10 && touch.horizontal >= 0.0 && touch.horizontal <= 1.0 && touch.vertical >= 0.0 && touch.vertical <= 1.0
+
+    touched (p, event) =
+        remaining = filterList (p.touches, \t => t.finger != event.touch.finger)
+        exists = length remaining != length p.touches
+        match event.phase
+            Begin => match exists
+                true => Rejected(fault = DuplicateTouch)
+                false => Accepted(value = (listAppend remaining event.touch))
+            Move => match exists
+                true => Accepted(value = (listAppend remaining event.touch))
+                false => Rejected(fault = MissingTouch)
+            End => match exists
+                true => Accepted(value = remaining)
+                false => Rejected(fault = MissingTouch)
+
+    played (session, p, event) = match event.sequence <= p.sequence
+        true => Rejected(fault = StaleSequence)
+        false => match valid event.touch
+            false => Rejected(fault = InvalidTouch)
+            true => match touched (p, event)
+                Rejected fault => Rejected(fault = fault)
+                Accepted touches => Accepted(value = (replaced (session, p(sequence = event.sequence, seen = session.clock, touches = touches))))
+
+    (** Validate epoch, sequence and touch ownership before applying a gesture. *)
+    export play (session, peer, event) = match event.epoch != session.epoch
+        true => Rejected(fault = WrongEpoch)
+        false => match player (session, peer)
+            Rejected fault => Rejected(fault = fault)
+            Accepted p => played (session, p, event)

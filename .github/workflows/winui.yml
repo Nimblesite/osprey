@@ -65,6 +65,7 @@ jobs:
             mingw-w64-ucrt-x86_64-sqlite3
 
       - name: Install Rust (stable)
+        id: rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build C runtime archives (MinGW)
@@ -81,7 +82,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: winui-cargo-${{ hashFiles('src/toolchain/Cargo.lock') }}
+          key: winui-cargo-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: winui-cargo-
 
       - name: Build osprey (release)

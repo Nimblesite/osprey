@@ -4,19 +4,22 @@
 //! tree, and every `shot` keeps it beside the run, so an agent reads what it may act on.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::events;
-use crate::host::{now, HostView};
-use crate::regions::Regions;
+use crate::events::Touch;
+use crate::host::HostView;
+use crate::rows::Shown;
+use crate::screen::Screen;
 use crate::smoke;
 
 #[path = "self_test_find.rs"]
 mod find;
-use find::{chooser, control, element, scene, shows};
+use find::{clicked, dragged, valued};
 
 /// How long a windowed step waits for what it needs before it fails, and how often it looks.
 const PATIENCE: Duration = Duration::from_secs(60);
@@ -25,21 +28,13 @@ const POLL: Duration = Duration::from_millis(50);
 const FRAMES: usize = 600;
 const FRAME_SECONDS: f64 = 1. / 60.;
 
-/// One event to send, bound to a region's current revision when it is sent.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Send {
-    region: String,
-    ordinal: u64,
-    value: Value,
-}
-
 /// What a step needs next.
 #[derive(Debug, PartialEq)]
 pub enum Attempt {
     /// Not yet true; the words say what is missing.
     Waiting(String),
     /// These events in order, then the step is done.
-    Sending(Vec<Send>),
+    Sending(Vec<Touch>),
     /// These many display frames, then the step is done.
     Framing(usize),
     /// A record of the accessibility tree, then the step is done.
@@ -121,8 +116,8 @@ pub fn parse(text: &str) -> Result<Vec<(String, Vec<String>)>, String> {
         .collect()
 }
 
-/// What one step needs of the regions as they stand.
-pub fn attempt(regions: &Regions, verb: &str, words: &[String]) -> Result<Attempt, String> {
+/// What one step needs of the frame as it stands.
+pub fn attempt(shown: &Shown, verb: &str, words: &[String]) -> Result<Attempt, String> {
     let word = |index: usize| {
         words
             .get(index)
@@ -134,53 +129,48 @@ pub fn attempt(regions: &Regions, verb: &str, words: &[String]) -> Result<Attemp
             .parse::<f64>()
             .map_err(|_| format!("{verb} needs a number, not {}", words[index]))
     };
+    let screen = Screen::new(shown);
     Ok(match verb {
-        "wait" if shows(regions, word(0)?) => Attempt::Sending(Vec::new()),
+        "wait" if screen.shows(word(0)?) => Attempt::Sending(Vec::new()),
         "wait" => Attempt::Waiting(format!("nothing shows \"{}\"", word(0)?)),
-        "gone" if !shows(regions, word(0)?) => Attempt::Sending(Vec::new()),
+        "gone" if !screen.shows(word(0)?) => Attempt::Sending(Vec::new()),
         "gone" => Attempt::Waiting(format!("\"{}\" still shows", word(0)?)),
-        "invoke" => match (element(regions, word(0)?), control(regions, word(0)?)) {
-            (Some(found), _) => found.clicked(),
-            (None, Some(found)) => found.sent(Value::Null),
+        "invoke" => match (screen.element(word(0)?), screen.control(word(0)?)) {
+            (Some((action, access)), _) => clicked(access, action),
+            (None, Some((action, _))) => Attempt::Sending(vec![Touch::control(action, "")]),
             (None, None) => Attempt::Waiting(format!("nothing offers \"{}\"", word(0)?)),
         },
-        "set" => match element(regions, word(0)?) {
-            Some(found) => found.valued(number(1)?)?,
+        "set" => match screen.element(word(0)?) {
+            Some((action, access)) => valued(access, action, number(1)?)?,
             None => Attempt::Waiting(format!("no slider \"{}\"", word(0)?)),
         },
-        "drag" => match element(regions, word(0)?) {
-            Some(found) => found.dragged(number(1)?, number(2)?),
+        "drag" => match screen.element(word(0)?) {
+            Some((action, access)) => dragged(access, action, number(1)?, number(2)?),
             None => Attempt::Waiting(format!("nothing to drag called \"{}\"", word(0)?)),
         },
-        "toggle" => match control(regions, word(0)?) {
-            Some(found) => {
-                let on = found
-                    .node
-                    .get("on")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false);
-                found.sent(Value::Bool(!on))
+        "toggle" => match screen.control(word(0)?) {
+            Some((action, chosen)) => {
+                let words = match chosen {
+                    true => "false",
+                    false => "true",
+                };
+                Attempt::Sending(vec![Touch::control(action, words)])
             }
             None => Attempt::Waiting(format!("no switch \"{}\"", word(0)?)),
         },
-        "type" => match control(regions, word(0)?) {
-            Some(found) => found.sent(Value::String(word(1)?.to_owned())),
+        "type" => match screen.control(word(0)?) {
+            Some((action, _)) => Attempt::Sending(vec![Touch::control(action, word(1)?)]),
             None => Attempt::Waiting(format!("no field \"{}\"", word(0)?)),
         },
-        "choose" => match chooser(regions, word(0)?) {
+        "choose" => match screen.chooser(word(0)?) {
             Some(found) => Attempt::Sending(vec![found]),
             None => Attempt::Waiting(format!("no row \"{}\"", word(0)?)),
         },
-        "key" => match scene(regions) {
-            Some((region, ordinal, _)) => Attempt::Sending(
-                [true, false]
-                    .map(|down| Send {
-                        region: region.clone(),
-                        ordinal,
-                        value: json!({"key": word(0).unwrap_or_default(), "down": down}),
-                    })
-                    .to_vec(),
-            ),
+        "key" => match screen.scene() {
+            Some((action, _)) => Attempt::Sending(vec![
+                Touch::key(action, word(0).unwrap_or_default(), true),
+                Touch::key(action, word(0).unwrap_or_default(), false),
+            ]),
             None => Attempt::Waiting("no scene is drawn to take a key".to_owned()),
         },
         "frames" => Attempt::Framing(number(0)? as usize),
@@ -190,83 +180,55 @@ pub fn attempt(regions: &Regions, verb: &str, words: &[String]) -> Result<Attemp
     })
 }
 
-/// The accessibility tree as an agent reads it: one line per thing it can act on, in hit order.
-pub fn tree(regions: &Regions) -> String {
-    let mut lines = Vec::new();
-    for key in regions.keys() {
-        if let Some(region) = regions.get(key) {
-            described(&region.node, &mut lines);
-        }
-    }
-    lines.join("\n")
+/// The accessibility tree as an agent reads it: one line per thing it can act on, in drawing order.
+pub fn tree(shown: &Shown) -> String {
+    Screen::new(shown).outline()
 }
 
-fn described(node: &Value, lines: &mut Vec<String>) {
-    if let Some(access) = node.get("access").and_then(Value::as_array) {
-        lines.extend(access.iter().map(announced));
-    }
-    if node.get("event").is_some_and(Value::is_u64) {
-        let kind = node
-            .get("kind")
-            .and_then(Value::as_str)
-            .unwrap_or("control");
-        let name = ["label", "title", "text"]
-            .iter()
-            .find_map(|key| node.get(*key).and_then(Value::as_str))
-            .unwrap_or("");
-        if kind != "scene" {
-            lines.push(format!("{kind} \"{name}\""));
-        }
-    }
-    smoke::children(node).for_each(|inside| described(inside, lines));
-}
-
-fn announced(item: &Value) -> String {
-    let word = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
-    let number = |key: &str| item.get(key).and_then(Value::as_f64).unwrap_or(0.);
-    match word("role") {
-        "slider" => format!(
-            "slider \"{}\" value {} of {} to {}",
-            word("label"),
-            number("value"),
-            number("min"),
-            number("max")
-        ),
-        role if item.get("movable").and_then(Value::as_bool) == Some(true) => {
-            format!("{role} \"{}\" movable", word("label"))
-        }
-        role => format!("{role} \"{}\"", word("label")),
-    }
-}
-
-/// The event a `Send` is, at its region's current revision.
-fn event(regions: &Regions, send: &Send) -> Result<String, String> {
-    let region = regions
-        .get(&send.region)
-        .ok_or_else(|| format!("region {} is gone", send.region))?;
-    Ok(events::control(
-        now(),
-        &send.region,
-        region.revision,
-        send.ordinal,
-        send.value.clone(),
-    ))
-}
-
-fn record(shots: &Path, name: &str, regions: &Regions) -> Result<(), String> {
+fn record(shots: &Path, name: &str, shown: &Shown) -> Result<(), String> {
     let path = shots.join(format!("{name}.access.txt"));
-    std::fs::write(&path, tree(regions) + "\n")
+    std::fs::write(&path, tree(shown) + "\n")
         .map_err(|problem| format!("could not write {}: {problem}", path.display()))
 }
 
+/// Saves what the window shows beside the run, and refuses a blank picture: the shot must
+/// have size and at least two different pixels, or the step fails saying why.
+fn capture(shots: &Path, name: &str, window: &mut Window) -> Result<(), String> {
+    let path = shots.join(format!("{name}.png"));
+    window
+        .render_to_image()
+        .map_err(|problem| format!("could not render {}: {problem:?}", path.display()))?
+        .save(&path)
+        .map_err(|problem| format!("could not save {}: {problem}", path.display()))?;
+    let shot = image::open(&path)
+        .map_err(|problem| format!("could not read back {}: {problem}", path.display()))?
+        .to_rgba8();
+    let (width, height) = shot.dimensions();
+    if width == 0 || height == 0 {
+        return Err(format!(
+            "the shot {} is empty: {width} by {height}",
+            path.display()
+        ));
+    }
+    let first = shot.get_pixel(0, 0);
+    if shot.pixels().all(|pixel| pixel == first) {
+        return Err(format!(
+            "the shot {} is blank: every one of its {} pixels is the same",
+            path.display(),
+            width * height
+        ));
+    }
+    Ok(())
+}
+
 /// A failure, with what the app offers, so an agent can see what it may act on instead.
-fn failed(index: usize, verb: &str, words: &[String], why: &str, regions: &Regions) -> String {
+fn failed(index: usize, verb: &str, words: &[String], why: &str, shown: &Shown) -> String {
+    let reported: Vec<&str> = shown.diagnostics().collect();
     format!(
-        "step {} {verb} {}: {why}\nthe accessibility tree offers:\n{}\ndiagnostics: {:?}",
+        "step {} {verb} {}: {why}\nthe accessibility tree offers:\n{}\ndiagnostics: {reported:?}",
         index + 1,
         words.join(" = "),
-        tree(regions),
-        regions.diagnostics()
+        tree(shown)
     )
 }
 
@@ -285,51 +247,53 @@ pub fn windowless() -> i32 {
 }
 
 fn perform_windowless(run: &Run) -> Result<usize, String> {
-    let mut regions = smoke::started()?;
+    let mut shown = smoke::started()?;
+    let mut reported: Vec<String> = shown.diagnostics().map(str::to_owned).collect();
     for (index, (verb, words)) in run.steps.iter().enumerate() {
         let mut frames = 0;
         loop {
-            let fail = |why: &str, regions: &Regions| failed(index, verb, words, why, regions);
-            match attempt(&regions, verb, words).map_err(|why| fail(&why, &regions))? {
-                Attempt::Waiting(why) if frames >= FRAMES => return Err(fail(&why, &regions)),
+            let fail = |why: &str, shown: &Shown| failed(index, verb, words, why, shown);
+            match attempt(&shown, verb, words).map_err(|why| fail(&why, &shown))? {
+                Attempt::Waiting(why) if frames >= FRAMES => return Err(fail(&why, &shown)),
                 Attempt::Waiting(_) => {
-                    frame(&mut regions)?;
+                    frame(&mut shown)?;
+                    reported.extend(shown.diagnostics().map(str::to_owned));
                     frames += 1;
                 }
                 Attempt::Sending(sends) => {
                     for send in &sends {
-                        let text = event(&regions, send)?;
-                        smoke::dispatched(&mut regions, &text)?;
+                        smoke::dispatched(&mut shown, send)?;
+                        reported.extend(shown.diagnostics().map(str::to_owned));
                     }
                     break;
                 }
                 Attempt::Framing(count) => {
                     for _ in 0..count {
-                        frame(&mut regions)?;
+                        frame(&mut shown)?;
+                        reported.extend(shown.diagnostics().map(str::to_owned));
                     }
                     break;
                 }
                 Attempt::Recording(name) => {
-                    record(&run.shots, &name, &regions)?;
+                    record(&run.shots, &name, &shown)?;
                     break;
                 }
             }
         }
     }
-    clean(&regions, Vec::new())?;
+    clean(reported)?;
     Ok(run.steps.len())
 }
 
-fn frame(regions: &mut Regions) -> Result<(), String> {
-    smoke::dispatched(regions, &events::frame(now(), FRAME_SECONDS))
+fn frame(shown: &mut Shown) -> Result<(), String> {
+    smoke::dispatched(shown, &Touch::frame(FRAME_SECONDS))
 }
 
-fn clean(regions: &Regions, messages: Vec<String>) -> Result<(), String> {
-    let mut problems = regions.diagnostics().to_vec();
-    problems.extend(messages);
-    match problems.is_empty() {
+fn clean(mut reported: Vec<String>) -> Result<(), String> {
+    reported.dedup();
+    match reported.is_empty() {
         true => Ok(()),
-        false => Err(format!("the app reported: {}", problems.join(" | "))),
+        false => Err(format!("the app reported: {}", reported.join(" | "))),
     }
 }
 
@@ -358,6 +322,9 @@ async fn drive(
     cx: &mut AsyncWindowContext,
 ) -> Result<(), String> {
     for (index, (verb, words)) in run.steps.iter().enumerate() {
+        if verb == "shot" {
+            rendered(cx).await?;
+        }
         let began = Instant::now();
         loop {
             let done = view
@@ -375,8 +342,28 @@ async fn drive(
             }
         }
     }
-    view.update_in(cx, |view, _, _| clean(&view.regions, view.messages.clone()))
+    view.update_in(cx, |view, _, _| clean(view.messages.clone()))
         .map_err(gone)?
+}
+
+/// A state assertion may pass before its redraw. Capture only after a real frame,
+/// bounded by the same deadline as every other windowed observation.
+async fn rendered(cx: &mut AsyncWindowContext) -> Result<(), String> {
+    let ready = Arc::new(AtomicBool::new(false));
+    let completed = Arc::clone(&ready);
+    cx.update(move |window, _| {
+        window.refresh();
+        window.on_next_frame(move |_, _| completed.store(true, Ordering::Release));
+    })
+    .map_err(gone)?;
+    let began = Instant::now();
+    while !ready.load(Ordering::Acquire) {
+        if began.elapsed() > PATIENCE {
+            return Err("the window did not render the requested screenshot frame".to_owned());
+        }
+        cx.background_executor().timer(POLL).await;
+    }
+    Ok(())
 }
 
 /// One look at a step: `None` to look again, or how long to let the display run once it is done.
@@ -388,20 +375,20 @@ fn step(
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) -> Result<Option<Duration>, String> {
-    let fail = |why: &str, view: &HostView| failed(index, verb, words, why, &view.regions);
-    match attempt(&view.regions, verb, words).map_err(|why| fail(&why, view))? {
+    let fail = |why: &str, view: &HostView| failed(index, verb, words, why, view.shown.as_ref());
+    match attempt(view.shown.as_ref(), verb, words).map_err(|why| fail(&why, view))? {
         Attempt::Waiting(why) if began.elapsed() > PATIENCE => Err(fail(&why, view)),
         Attempt::Waiting(_) => Ok(None),
         Attempt::Sending(sends) => {
             for send in &sends {
-                let text = event(&view.regions, send)?;
-                view.dispatch(text, window, cx);
+                view.send(send.clone(), window, cx);
             }
             Ok(Some(Duration::ZERO))
         }
         Attempt::Framing(count) => Ok(Some(Duration::from_secs_f64(count as f64 * FRAME_SECONDS))),
         Attempt::Recording(name) => {
-            record(&run.shots, &name, &view.regions)?;
+            record(&run.shots, &name, view.shown.as_ref())?;
+            capture(&run.shots, &name, window)?;
             Ok(Some(Duration::ZERO))
         }
     }

@@ -6,19 +6,19 @@ import ui::Lists
 
 (** Finds rendered controls by their label, text or title, and the canvas's lettering. *)
 module Views
-    (** Every rendered node whose accessible label, visible text or title is `label`. *)
-    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlLabel == label || c.controlText == label || c.controlTitle == label)
+    (** Every drawn control whose words, or whose prompt or picker's name, are `label`. *)
+    export labelled (seen, label) = filterList (seen.renderedControls, \c => c.controlText == label || c.controlHint == label || (c.controlValue == label && label != ""))
 
-    (** The first rendered node matching `label`, or an empty one with no kind when none does. *)
-    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlLabel = "", controlText = "", controlTitle = "", controlTone = "", controlSelected = "", controlOrdinal = -1, controlEnabled = false, controlChoices = [])
+    (** The first drawn control matching `label`, or an empty one with no kind when none does. *)
+    export control (seen, label) = listGet (labelled (seen, label)) 0 ?: Control(controlKind = "", controlText = "", controlHint = "", controlValue = "", controlTone = "", controlOrdinal = 0 - 1, controlEnabled = false, controlSelected = "", controlChoices = [])
 
-    (** Whether any rendered node matches `label`. *)
+    (** Whether any drawn control matches `label`. *)
     export shows (seen, label) = length (labelled (seen, label)) > 0
 
-    (** Every nonempty label, text and title in the view, `|`-separated, for a failure message. *)
-    export texts seen = join (filterList (mapList (seen.renderedControls, \c => "${c.controlLabel}${c.controlText}${c.controlTitle}"), \t => t != "")) "|"
+    (** Every control's nonempty words in the view, `|`-separated, for a failure message. *)
+    export texts seen = join (filterList (mapList (seen.renderedControls, \c => c.controlText), \t => t != "")) "|"
 
-    (** Whether the last envelope made a request of `kind`. *)
+    (** Whether the last step made a request of `kind`. *)
     export requested (seen, kind) = Lists::any (seen.renderedRequests, \k => k == kind)
 
     (** The strings the canvas letters, `|`-separated. *)

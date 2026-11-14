@@ -7,6 +7,9 @@ date: 2026-11-03
 tags: ["blog", "python-flavor", "pydantic-ai", "agents", "osprey-native"]
 author: "Christian Findlay"
 readingTime: 3
+image: /assets/images/blog/osprey-agent-tools.png
+imageWebp: /assets/images/blog/osprey-agent-tools.webp
+imageAlt: "A glass osprey connects glowing file, code and terminal panels above a desktop."
 ---
 
 Osprey now runs a tool-calling coding agent, and the engine behind it is a

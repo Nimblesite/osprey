@@ -21,5 +21,5 @@ for slice in ${OSPREY_ANDROID_SLICES:-arm64 x64}; do
     "$android_tools/llvm-strip" --strip-unneeded "$native/libosprey_talon.so"
 done
 cd "$app"
-./gradlew --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
+"$root/scripts/mobile/gradlew" --console=plain :app:assembleDebug :app:assembleDebugAndroidTest
 printf '\nTalon Android APK: %s\n' "$app/app/build/outputs/apk/debug/app-debug.apk"

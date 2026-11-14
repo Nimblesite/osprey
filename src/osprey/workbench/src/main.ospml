@@ -1,6 +1,41 @@
-// The workbench's entry: one host frame on standard input, one envelope out ([VSCODE-SDK-WASM]).
-namespace workbench
+// The workbench's C boundary for any Osprey Native host ([NATIVE-SHM-BOUNDARY], [NATIVE-SHM-EVENT]):
+// `argument` gathers the launch arguments, `open` draws the first frame and `event` delivers one
+// typed host event and draws the next. Its WebAssembly build is a live module that exports these
+// three for the VS Code host ([NATIVE-SHM-WASM], [VSCODE-SDK-WASM]). Nothing is encoded in either
+// direction, and the session stays in this library.
+namespace app
 
+import ui::Runtime
+import ui::Views
+import ui::Surfaces
+import ui::Hosting
 import workbench::App
+import workbench::Benches
 
-main () = print (App::respond (input ()))
+extern native_slice (key : string) -> string
+
+(** Hands the next surface to the cell below. *)
+effect Keep
+    keep : ui::Surface<workbench::Bench, workbench::Act> => Unit
+
+mut held = Surfaces::idle (Benches::fresh ())
+
+hosted work =
+    handle Keep
+        keep next => held := next
+    handle ui::Slices
+        fetch key => native_slice key
+    Runtime::guarded (\() => Views::shared work)
+
+kept next =
+    perform Keep.keep next
+    Hosting::answer next
+
+(** Gathers one launch argument, in order, before `open`. *)
+argument text = hosted (\() => kept (Surfaces::argued (held, text)))
+
+(** Draws the first frame for the host's clock, zone offset, platform, home folder and appearance. *)
+open (now, offset, platform, home, dark) = hosted (\() => kept (Hosting::opened (held, App::program (), now, offset, platform, home, dark)))
+
+(** Delivers one host event and draws the next frame; nonzero when it was refused, which changes nothing. *)
+event (now, kind, ordinal, words, detail, x, y, down, shift) = hosted (\() => kept (Hosting::touched (held, App::program (), now, kind, ordinal, words, detail, x, y, down, shift)))

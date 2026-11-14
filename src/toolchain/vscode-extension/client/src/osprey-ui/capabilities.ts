@@ -1,7 +1,7 @@
-// Implements [VSCODE-SDK-CAPABILITIES] and [UI-EFFECTS]: the host executes
-// only bounded requests that arrived in a trusted native envelope. It maps a
-// logical package executable to a configured or bundled binary, never a path
-// supplied by the application, and never uses a shell.
+// Implements [VSCODE-SDK-CAPABILITIES] and [UI-EFFECTS]: the host executes only bounded
+// capability requests read from a trusted frame's ask rows. It maps a logical package executable
+// to a configured or bundled binary, never a path supplied by the application, and never uses a
+// shell.
 
 import { execFile } from "child_process";
 import { createProjectSerializer } from "../keyed-serializer";
@@ -10,9 +10,8 @@ import * as http from "http";
 import * as https from "https";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { record, type NativeRequest } from "./protocol";
+import { document, type Ask, type Completion } from "./asks";
 import { inside } from "./local-files";
-import { requiredString, boundedInteger, stringList } from "./wire";
 
 const DEFAULT_TIMEOUT = 120000;
 const DEFAULT_LIMIT = 16 * 1024 * 1024;
@@ -38,6 +37,60 @@ export interface CapabilityHost {
 
 export interface ExecutorOptions {
   readonly serialize?: <T>(key: string, task: () => Promise<T>) => Promise<T>;
+}
+
+/** A required text at argument `field`; an ask that carries none is refused. */
+function required(ask: Ask, field: number, name: string): string {
+  const values = ask.texts(field);
+  if (values.length === 0 || values[0] === "") throw new Error(`${ask.kind} has no valid ${name}`);
+  return values[0]!;
+}
+
+/** The named arguments every host-call operation carries; an ask without them is refused. */
+function argumentsOf(ask: Ask): readonly { name: string; value: string }[] {
+  if (!ask.fields.some((item) => item.field === 3)) throw new Error(`${required(ask, 2, "operation")} is missing its arguments`);
+  return named(ask, 3, "arguments");
+}
+
+/** A required whole number at argument `field`, bounded by `most`; omission may have a fallback. */
+function bounded(ask: Ask, field: number, name: string, most: number, fallback?: number): number {
+  const present = ask.fields.some((item) => item.field === field);
+  if (!present && fallback !== undefined) return fallback;
+  const value = ask.number(field);
+  if (!present || !Number.isSafeInteger(value) || value <= 0 || value > most) {
+    throw new Error(`${ask.kind} has no valid ${name} between 1 and ${most}`);
+  }
+  return value;
+}
+
+/** The texts at `field` taken two at a time: a header, an environment variable or an argument. */
+function named(ask: Ask, field: number, name: string, bound = MAX_STDIN): readonly { name: string; value: string }[] {
+  const values = ask.texts(field);
+  if (values.length > MAX_HEADERS * 2 || values.length % 2 !== 0) throw new Error(`${ask.kind} has malformed ${name}`);
+  const pairs = ask.pairs(field);
+  for (const pair of pairs) {
+    if (pair.name === "" || pair.name.length > MAX_HEADER_LENGTH || pair.value.length > bound) {
+      throw new Error(`${ask.kind} has an out-of-bounds ${name} name or value`);
+    }
+  }
+  return pairs;
+}
+
+function first(pairs: readonly { name: string; value: string }[], name: string): string | undefined {
+  return pairs.find((pair) => pair.name === name)?.value;
+}
+
+function every(pairs: readonly { name: string; value: string }[], name: string): string[] {
+  return pairs.filter((pair) => pair.name === name).map((pair) => pair.value);
+}
+
+function positive(value: string | undefined, name: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) {
+    throw new Error(`Request field ${name} must be a positive whole number`);
+  }
+  return number;
 }
 
 function directoryFor(workspaceUri: string, host: CapabilityHost): string {
@@ -93,36 +146,33 @@ function dirtyIn(cwd: string, host: CapabilityHost): boolean {
 
 interface ProcessPlan {
   readonly executable: string;
-  readonly argv: string[];
+  readonly argv: readonly string[];
   readonly stdin: string;
   readonly cwd: string;
   readonly timeout: number;
   readonly limit: number;
 }
 
-function processPlan(request: NativeRequest, host: CapabilityHost): ProcessPlan {
-  const args = request.arguments;
-  if (!record(args)) throw new Error("process.input is missing its arguments");
-  const logical = requiredString(args.executable, "executable");
+function processPlan(ask: Ask, host: CapabilityHost): ProcessPlan {
+  const arguments_ = argumentsOf(ask);
+  const logical = first(arguments_, "executable") ?? "";
   if (logical !== LOGICAL_EXECUTABLE) throw new Error(`Unknown package executable: ${logical}`);
-  const cwd = directoryFor(requiredString(args.workspace, "workspace"), host);
+  const cwd = directoryFor(first(arguments_, "workspace") ?? "", host);
   if (dirtyIn(cwd, host)) throw new Error(`Save or revert unsaved ${MANIFEST} and ${LOCK} changes before running package commands`);
-  if (args.stdin !== undefined && typeof args.stdin !== "string") throw new Error("Request field stdin must be a string");
-  const stdin = args.stdin ?? "";
-  if (stdin.length > MAX_STDIN) throw new Error(`Request field stdin must be at most ${MAX_STDIN} characters`);
+  const stdin = first(arguments_, "stdin") ?? "";
   return {
     executable: executableFor(host),
-    argv: stringList(args.argv, "argv"),
+    argv: every(arguments_, "argv"),
     stdin,
     cwd,
-    timeout: boundedInteger(request.timeout, "timeout", DEFAULT_TIMEOUT, DEFAULT_TIMEOUT),
-    limit: boundedInteger(request.limit, "limit", DEFAULT_LIMIT, 4 * 1024 * 1024),
+    timeout: bounded(ask, 4, "timeout", DEFAULT_TIMEOUT, DEFAULT_TIMEOUT),
+    limit: bounded(ask, 5, "limit", DEFAULT_LIMIT, 4 * 1024 * 1024),
   };
 }
 
-function runProcess(plan: ProcessPlan): Promise<unknown> {
+function runProcess(plan: ProcessPlan): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = execFile(plan.executable, plan.argv, {
+    const child = execFile(plan.executable, [...plan.argv], {
       cwd: plan.cwd, timeout: plan.timeout, maxBuffer: plan.limit, windowsHide: true, encoding: "utf8", shell: false,
     }, (error, stdout, stderr) => {
       if (error && (error.killed || error.signal || typeof (error as NodeJS.ErrnoException).code === "string")) {
@@ -141,23 +191,19 @@ function forbiddenHeader(name: string): boolean {
   return /authorization|cookie|token|secret|api[-_]?key|proxy-authorization/i.test(name);
 }
 
-function headersFor(value: unknown): http.OutgoingHttpHeaders {
-  if (value === undefined) return { Accept: "application/json" };
-  if (!Array.isArray(value) || value.length > MAX_HEADERS) throw new Error("HTTP headers must be a bounded array");
+function headersFor(pairs: readonly { name: string; value: string }[]): http.OutgoingHttpHeaders {
+  if (pairs.length === 0) return { Accept: "application/json" };
   const headers: http.OutgoingHttpHeaders = {};
-  for (const item of value) {
-    if (!record(item) || typeof item.name !== "string" || typeof item.value !== "string") throw new Error("HTTP header is malformed");
-    if (item.name === "" || item.value.length > MAX_HEADER_LENGTH) throw new Error("HTTP header name or value is out of bounds");
-    if (forbiddenHeader(item.name)) throw new Error(`HTTP header ${item.name} would send credentials and is refused`);
-    headers[item.name] = item.value;
+  for (const pair of pairs) {
+    if (forbiddenHeader(pair.name)) throw new Error(`HTTP header ${pair.name} would send credentials and is refused`);
+    headers[pair.name] = pair.value;
   }
   return headers;
 }
 
-function httpUrl(value: unknown): URL {
-  const source = requiredString(value, "url");
-  if (source.length > MAX_HEADER_LENGTH) throw new Error("Package HTTP URL is too long");
-  const url = new URL(source);
+function httpUrl(value: string): URL {
+  if (value.length > MAX_HEADER_LENGTH) throw new Error("Package HTTP URL is too long");
+  const url = new URL(value);
   const loopback = ["127.0.0.1", "localhost", "[::1]", "::1"].includes(url.hostname);
   if (url.username || url.password || url.hash || (url.protocol !== "https:" && !(url.protocol === "http:" && loopback))) {
     throw new Error("Package HTTP requests require an HTTPS URL without credentials (HTTP only on loopback)");
@@ -193,15 +239,27 @@ function collect(response: http.IncomingMessage, limit: number, resolve: (value:
   response.once("aborted", () => fail(new Error("Package HTTP response was interrupted")));
 }
 
-function httpRequest(request: NativeRequest): Promise<unknown> {
-  const method = requiredString(request.method, "method").toUpperCase();
+function httpRequest(ask: Ask): Promise<Completion> {
+  const method = required(ask, 1, "method").toUpperCase();
   if (method !== "GET" && method !== "HEAD") throw new Error(`Unsupported package HTTP method: ${method}`);
-  if (request.body !== undefined && request.body !== "") throw new Error(`Package HTTP ${method} requests cannot carry a body`);
-  const url = httpUrl(request.url);
-  const limit = boundedInteger(request.limit, "limit", DEFAULT_LIMIT, 1024 * 1024);
-  const timeout = boundedInteger(request.timeout, "timeout", DEFAULT_TIMEOUT, 15000);
+  const body = ask.text(4);
+  if (body !== "") throw new Error(`Package HTTP ${method} requests cannot carry a body`);
+  const url = httpUrl(required(ask, 2, "url"));
+  const limit = bounded(ask, 5, "limit", DEFAULT_LIMIT, 1024 * 1024);
+  const timeout = bounded(ask, 6, "deadline", DEFAULT_TIMEOUT, 15000);
+  const headers = headersFor(named(ask, 3, "headers", MAX_HEADER_LENGTH));
   return new Promise((resolve, reject) => {
-    const requestObject = (url.protocol === "https:" ? https : http).request(url, { method, headers: headersFor(request.headers) }, (response) => collect(response, limit, resolve, reject));
+    const requestObject = (url.protocol === "https:" ? https : http).request(url, { method, headers }, (response) => {
+      collect(response, limit, (value) => {
+        const { status, body } = value as { status: number; body: string };
+        if (status < 200 || status >= 300) {
+          reject(new Error(`Registry returned HTTP ${status}`));
+          return;
+        }
+        // The raw body is the completion text; the ask's slice carries the same bytes for bulk reads.
+        resolve({ detail: body, slices: [{ key: ask.text(7), text: body }] });
+      }, reject);
+    });
     const timer = setTimeout(() => requestObject.destroy(new Error("Package HTTP request timed out")), timeout);
     requestObject.once("close", () => clearTimeout(timer));
     requestObject.once("error", reject);
@@ -209,57 +267,65 @@ function httpRequest(request: NativeRequest): Promise<unknown> {
   });
 }
 
-function openDocument(request: NativeRequest, host: CapabilityHost): Promise<unknown> {
-  const args = request.arguments;
-  if (!record(args)) throw new Error("document.open is missing its arguments");
-  const uri = requiredString(args.uri, "uri");
+function openDocument(ask: Ask, host: CapabilityHost): Promise<unknown> {
+  const arguments_ = argumentsOf(ask);
+  const uri = first(arguments_, "uri") ?? "";
   if (!uri.startsWith("file:///")) throw new Error("document.open requires a file resource");
-  const line = boundedInteger(args.line, "line", Number.MAX_SAFE_INTEGER, 1);
-  const column = boundedInteger(args.column, "column", Number.MAX_SAFE_INTEGER, 1);
-  return host.openDocument(uri, line, column);
+  return host.openDocument(uri, positive(first(arguments_, "line"), "line", 1), positive(first(arguments_, "column"), "column", 1));
 }
 
-function configuration(request: NativeRequest, host: CapabilityHost): unknown {
-  const args = request.arguments;
-  if (!record(args)) throw new Error("configuration.read is missing its arguments");
-  return host.readConfiguration(requiredString(args.section, "section"), requiredString(args.workspace, "workspace"));
+function configuration(ask: Ask, host: CapabilityHost): unknown {
+  const arguments_ = argumentsOf(ask);
+  const section = first(arguments_, "section") ?? "";
+  const workspace = first(arguments_, "workspace") ?? "";
+  if (section === "" || workspace === "") throw new Error("configuration.read is missing its arguments");
+  return host.readConfiguration(section, workspace);
 }
 
-function hostCall(request: NativeRequest, host: CapabilityHost): Promise<unknown> | unknown {
-  const space = requiredString(request.namespace, "namespace");
+function hostCall(ask: Ask, host: CapabilityHost): Promise<Completion> | Completion {
+  const space = required(ask, 1, "namespace");
   if (space !== "vscode") throw new Error(`Unknown host namespace: ${space}`);
-  const operation = requiredString(request.operation, "operation");
-  if (operation === "workspace.snapshot") return host.workspaceSnapshot();
-  if (operation === "document.open") return openDocument(request, host);
-  if (operation === "configuration.read") return configuration(request, host);
-  if (operation === "webview.reveal") return revealView(request, host);
-  if (operation === "process.input") return runProcess(processPlan(request, host));
+  const operation = required(ask, 2, "operation");
+  if (operation === "workspace.snapshot") return document(host.workspaceSnapshot());
+  if (operation === "document.open") return openDocument(ask, host).then(document);
+  if (operation === "configuration.read") return document(configuration(ask, host));
+  if (operation === "webview.reveal") return revealView(ask, host).then(document);
   throw new Error(`Unsupported VS Code capability: ${operation}`);
 }
 
-function revealView(request: NativeRequest, host: CapabilityHost): Promise<unknown> {
-  const args = request.arguments;
-  if (!record(args)) throw new Error("webview.reveal is missing its arguments");
-  return host.revealView(requiredString(args.view, "view"));
+function revealView(ask: Ask, host: CapabilityHost): Promise<unknown> {
+  const view = first(argumentsOf(ask), "view") ?? "";
+  if (view === "") throw new Error("webview.reveal is missing its arguments");
+  return host.revealView(view);
 }
 
-/** Capability kinds this webview answers ([NATIVE-HOSTS-COVERAGE]); any other kind fails as an unsupported native capability. */
+/** Capability kinds this webview answers ([NATIVE-HOSTS-COVERAGE]); any other kind fails explicitly. */
 export const ANSWERED_CAPABILITIES: readonly string[] = ["http", "host-call"];
 
-/** Execute one bounded capability from a validated native envelope. */
-export function createRequestExecutor(host: CapabilityHost, options: ExecutorOptions = {}): (request: NativeRequest) => Promise<unknown> {
+/** Execute one bounded capability from a checked ask. */
+export function createRequestExecutor(host: CapabilityHost, options: ExecutorOptions = {}): (ask: Ask) => Promise<Completion> {
   const serialize = options.serialize ?? serializeProcesses;
-  return async (request) => {
-    if (request.kind === "http") return httpRequest(request);
-    if (request.kind === "host-call") {
-      if (request.operation === "process.input") {
-        const args = request.arguments;
-        if (!record(args)) throw new Error("process.input is missing its arguments");
-        const cwd = directoryFor(requiredString(args.workspace, "workspace"), host);
-        return serialize(cwd, async () => hostCall(request, host));
-      }
-      return hostCall(request, host);
+  return async (ask) => {
+    const kind = ask.kind;
+    if (kind === "http") {
+      // The completion text is the raw response body — "formats owned by the outside world … stay
+      // the business of the adapter that speaks them" ([NATIVE-SHM-WHERE-SERIALIZATION-REMAINS]) —
+      // and the body also lands in the host-held slice the ask names ([NATIVE-SHM-ASK]).
+      return httpRequest(ask);
     }
-    throw new Error(`Unsupported native capability: ${request.kind}`);
+    if (kind === "host-call") {
+      if (required(ask, 2, "operation") === "process.input") {
+        const plan = processPlan(ask, host);
+        return serialize(plan.cwd, async () => {
+          if (!host.trusted) throw new Error("Trust this workspace before running package commands");
+          const run = await runProcess(plan);
+          const stdout = run.stdout;
+          const slice = ask.text(6);
+          return slice === "" ? { detail: stdout } : { detail: stdout, slices: [{ key: slice, text: stdout }] };
+        });
+      }
+      return hostCall(ask, host);
+    }
+    throw new Error(`Unsupported native capability: ${kind}`);
   };
 }

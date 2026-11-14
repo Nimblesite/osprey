@@ -9,7 +9,7 @@
 
 void *osp_gc_malloc(size_t size) {
   heap_lock();
-  void *p = gc_managed_alloc(size);
+  void *p = gc_managed_alloc(size, 0);
   heap_unlock();
   return p;
 }
@@ -20,7 +20,7 @@ void *osp_gc_calloc(size_t n, size_t size) {
     return NULL; // overflow
   }
   heap_lock();
-  void *p = gc_managed_alloc(total);
+  void *p = gc_managed_alloc(total, 0);
   heap_unlock();
   if (p) {
     memset(p, 0, total);
@@ -35,7 +35,7 @@ void *osp_gc_realloc(void *old, size_t size) {
   heap_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)old);
   size_t oldsize = e ? e->size : 0;
-  void *p = gc_managed_alloc(size); // `old` stays reachable on the caller frame
+  void *p = gc_managed_alloc(size, 0); // `old` stays reachable on the caller frame
   heap_unlock();
   if (p && oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);

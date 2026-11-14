@@ -1,45 +1,79 @@
-// A test's hold on one live session ([UI-MACHINE-TEST]): the session, what it
-// last rendered and the host clock, with every host event built from them, so
-// a test names controls by label and never tracks revisions or ordinals.
+// A test's hold on one live surface ([UI-MACHINE-TEST], [NATIVE-SHM-EVENT]): the surface, the
+// program it runs and the host clock. Every step is the typed host event a real host sends,
+// delivered through `ui::Hosting::event`, so a test names controls by label and drives the very
+// boundary a host calls. The frame each step draws is written nowhere: `quiet` takes its rows,
+// and the test reads the same rows back through `ui::Surfaces::seen`.
 namespace uitest
 
-(** One live session as a test drives it: the session, its decoded view and the host clock. *)
-type Driven S =
-    drivenSession : ui::Session<S>
+import ui::Hosting
+import ui::Surfaces
+import ui::Runtime
+import ui::Lists
+
+(** One live surface as a test drives it: the surface, its program, what it last showed and the host clock. *)
+type Driven S A =
+    drivenSurface : ui::Surface<S, A>
+    drivenProgram : ui::Program<S, A>
     drivenSeen : Rendered
     drivenNow : int
 
-(** Builds host events for a driven session and explains failed lookups. *)
+(** Sends typed host events to a driven surface and explains failed lookups. *)
 module Drive
-    (** A session not yet started, or restarted: nothing seen, the clock at 1. *)
-    export idle session = Driven(drivenSession = session, drivenSeen = Read::blank (), drivenNow = 1)
+    looked (d, held) = d(drivenSurface = held, drivenSeen = Read::seen (Surfaces::seen (held, d.drivenProgram), held.surfaceAsked), drivenNow = satAdd d.drivenNow 1)
 
-    (** After an envelope: its session kept, its view read and the clock advanced. *)
-    export moved (d, resident) = Driven(drivenSession = resident.residentSession, drivenSeen = Read::envelope (d.drivenSeen, resident.residentEnvelope), drivenNow = d.drivenNow + 1)
+    (** A surface holding `store` before its host opens it, the clock at 1. *)
+    export idle (program, store) = Driven(drivenSurface = Surfaces::idle store, drivenProgram = program, drivenSeen = Read::blank (), drivenNow = 1)
+
+    (** `d` opened on `platform` with the launch `arguments`, its home `/home/tester` and its appearance light. *)
+    export launched (d, platform, arguments) =
+        given = foldList (arguments, d.drivenSurface, \(held, text) => Surfaces::argued (held, text))
+        looked (d, ui::Views::quiet (\() => Hosting::opened (given, d.drivenProgram, d.drivenNow, 0, platform, "/home/tester", false)))
+
+    touch (d, kind, ordinal, words, detail, x, y, down, shift) = ui::Touch(touchNow = d.drivenNow, touchKind = kind, touchOrdinal = ordinal, touchWords = words, touchDetail = detail, touchX = x, touchY = y, touchDown = down, touchShift = shift)
+
+    (** `d` after the host event `event`. *)
+    export sent (d, event) = looked (d, ui::Views::quiet (\() => Hosting::event (d.drivenSurface, d.drivenProgram, event)))
+
+    // The control a person or an agent finds by `label`.
+    numbered (d, label) = (Views::control (d.drivenSeen, label)).controlOrdinal
 
     (** A press of the control labelled `label`. *)
-    export press (d, label) = Events::press (d.drivenSeen.renderedRevision, (Views::control (d.drivenSeen, label)).controlOrdinal, d.drivenNow)
+    export press (d, label) = sent (d, touch (d, Hosting::control, numbered (d, label), "", "", 0.0, 0.0, false, false))
 
-    (** A choice of `key` on the picker labelled `label`. *)
-    export choose (d, label, key) = Events::choose (d.drivenSeen.renderedRevision, (Views::control (d.drivenSeen, label)).controlOrdinal, key, d.drivenNow)
+    (** `words` typed into, or a key chosen on, the control labelled `label`. *)
+    export choose (d, label, words) = sent (d, touch (d, Hosting::control, valued (d, label), words, "", 0.0, 0.0, false, false))
 
-    (** A pointer at `x`, `y` on the root canvas, pressed or released. *)
-    export pointer (d, x, y, down) = Events::pointer (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, x, y, down, d.drivenNow)
+    // The control `label` names that takes a value, ahead of a heading or press with the same words.
+    valued (d, label) = match Lists::find (Views::labelled (d.drivenSeen, label), \c => Lists::any (["field", "editor", "picker", "toggle", "rows", "tabs", "disclosure", "aside"], \kind => kind == c.controlKind))
+        Success found => found.controlOrdinal
+        Error _ => numbered (d, label)
+
+    (** A pointer at `x`, `y` on the scene, pressed or released. *)
+    export pointer (d, x, y, down) = sent (d, touch (d, Hosting::pointer, d.drivenSeen.renderedOrdinal, "", "", x, y, down, false))
+
+    (** A key going down or up over the scene. *)
+    export key (d, name, down) = sent (d, touch (d, Hosting::key, d.drivenSeen.renderedOrdinal, name, "", 0.0, 0.0, down, false))
 
     (** The scene's region measured at `width` by `height` scene units, as the host reports it on showing or resizing. *)
-    export viewed (d, width, height) = Events::viewed (d.drivenSeen.renderedRevision, d.drivenSeen.renderedOrdinal, width, height, d.drivenNow)
+    export viewed (d, width, height) = sent (d, touch (d, Hosting::viewed, d.drivenSeen.renderedOrdinal, "", "", width, height, false, false))
 
     (** A display frame `seconds` after the last. *)
-    export frame (d, seconds) = Events::frame (seconds, d.drivenNow)
+    export frame (d, seconds) = sent (d, touch (d, Hosting::frame, 0, "", "", seconds, 0.0, false, false))
 
-    (** The file picker of request `ticket` answered with `path`. *)
-    export chosen (d, ticket, path) = Events::chosen (ticket, path, d.drivenNow)
+    (** The capability of request `ticket` completed: `ok` with its result `text`, or its reason. *)
+    export completed (d, ticket, ok, text) = sent (d, touch (d, Hosting::completed, 0, ticket, text, 0.0, 0.0, ok, false))
 
-    (** The process of request `ticket` finished with `status` and `stderr`. *)
-    export ran (d, ticket, status, stderr) = Events::ran (ticket, status, stderr, d.drivenNow)
+    (** The file picker of request `ticket` answered with `path`; an empty path is a cancel. *)
+    export chosen (d, ticket, path) = completed (d, ticket, true, path)
+
+    (** The process of request `ticket` finished: a zero `status` succeeds, any other fails with `stderr`. *)
+    export ran (d, ticket, status, stderr) = completed (d, ticket, status == 0, stderr)
+
+    (** The host reaching the lifecycle `phase`, such as `resume` or `open:<path>`. *)
+    export phase (d, name) = sent (d, touch (d, Hosting::phase, 0, name, "", 0.0, 0.0, false, false))
 
     (** The platform opening `path` with the app. *)
-    export opened (d, path) = Events::open (path, d.drivenNow)
+    export opened (d, path) = phase (d, "open:${path}")
 
     explained (ok, why) = match ok
         true => true

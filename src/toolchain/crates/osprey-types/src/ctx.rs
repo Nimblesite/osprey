@@ -13,6 +13,11 @@ use std::collections::{BTreeSet, HashMap};
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+std::thread_local! {
+    pub(crate) static FREE_VAR_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 type RecordTemplate = (Vec<String>, Vec<(String, String)>);
 
 /// Holds every type variable's binding. Variable ids are indices into `subst`.
@@ -450,6 +455,8 @@ impl InferCtx {
 
     /// Collect the free (unbound) variables of `t` into `out`.
     pub(crate) fn free_vars(&self, t: &Type, out: &mut BTreeSet<VarId>) {
+        #[cfg(test)]
+        FREE_VAR_VISITS.with(|count| count.set(count.get() + 1));
         match t {
             Type::Var(v) => match self.binding(*v) {
                 Some(bound) => self.free_vars(bound, out),

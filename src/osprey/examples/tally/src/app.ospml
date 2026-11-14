@@ -1,0 +1,80 @@
+// Tally: the smallest Osprey Native application on the shared-memory bridge ([NATIVE-SHM-VIEW]).
+// Its whole interface is the pure `Screen::view` below, colours, sizes and spacing included. The
+// SwiftUI and WinUI hosts draw whatever rows it writes and hold no Tally code and no style.
+namespace tally
+
+import ui::Views
+
+(** What a person can do: count up or down, clear, rename the tally or switch its colours. *)
+type Act = Add | Take | Clear | Named | Restyled
+
+(** Everything Tally knows. *)
+type Counted =
+    count : int
+    owner : string
+    night : bool
+
+(** The colours one appearance uses, as `#RRGGBB`. *)
+type Palette =
+    paper : string
+    words : string
+    accent : string
+    onAccent : string
+    quiet : string
+
+(** Tally's store, its one screen and its one update. *)
+module Screen
+    (** The store a launch starts from. *)
+    export first = Counted(count = 0, owner = "", night = false)
+
+    palette night = match night
+        true => Palette(paper = "#10141F", words = "#F2F4FA", accent = "#7AD7F0", onAccent = "#06222B", quiet = "#232A3B")
+        false => Palette(paper = "#FBFAF7", words = "#1B2230", accent = "#0B6E8A", onAccent = "#FFFFFF", quiet = "#E8E6E0")
+
+    page colours = ui::Look(ink = Views::colour colours.words, fill = Views::colour colours.paper, points = 0.0, inset = 32.0, gap = 18.0, corner = 0.0, heft = 400)
+
+    title colours = ui::Look(ink = Views::colour colours.words, fill = 0, points = 30.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 700)
+
+    figure colours = ui::Look(ink = Views::colour colours.accent, fill = 0, points = 72.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 800)
+
+    strong colours = ui::Look(ink = Views::colour colours.onAccent, fill = Views::colour colours.accent, points = 17.0, inset = 12.0, gap = 0.0, corner = 10.0, heft = 600)
+
+    soft colours = ui::Look(ink = Views::colour colours.words, fill = Views::colour colours.quiet, points = 17.0, inset = 12.0, gap = 0.0, corner = 10.0, heft = 500)
+
+    spaced = ui::Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 12.0, corner = 0.0, heft = 400)
+
+    heading store = match store.owner
+        "" => "Tally"
+        owner => "${owner}'s tally"
+
+    restyle store = match store.night
+        true => "Use day colours"
+        false => "Use night colours"
+
+    (** The whole interface for `store`. *)
+    export view store =
+        colours = palette store.night
+        ui::Column(columnLook = page colours, columnItems = [
+            ui::Wording(wordsLook = title colours, wordsText = heading store),
+            ui::Wording(wordsLook = figure colours, wordsText = toString store.count),
+            ui::Across(acrossLook = spaced, acrossItems = [
+                ui::Press(pressLook = soft colours, pressWords = "Take one", pressAction = Take),
+                ui::Press(pressLook = strong colours, pressWords = "Add one", pressAction = Add),
+                ui::Press(pressLook = soft colours, pressWords = "Clear", pressAction = Clear),
+            ]),
+            ui::Typing(typingLook = soft colours, typingText = store.owner, typingAction = Named),
+            ui::Gap,
+            ui::Press(pressLook = soft colours, pressWords = restyle store, pressAction = Restyled),
+        ])
+
+    lowered count = match count > 0
+        true => satSub count 1
+        false => 0
+
+    (** `store` after `action`; `words` is the text an `Typing` was edited to. A tally never goes below zero. *)
+    export update (store, action, words) = match action
+        Add => store(count = satAdd store.count 1)
+        Take => store(count = lowered store.count)
+        Clear => store(count = 0)
+        Named => store(owner = words)
+        Restyled => store(night = store.night == false)

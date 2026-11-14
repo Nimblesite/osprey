@@ -1,0 +1,94 @@
+// Tally through the same calls a host makes ([NATIVE-SHM-VIEW]): every view is drawn through
+// `Views::render` and read back row by row, and every event names a control by its position.
+namespace tallytests
+
+import ui::Views
+import tally::Screen
+
+// A row that is never drawn: it seeds the list so its type is known.
+blank () = ui::Seated(placedKind = 0, placedParent = 0, placedAction = 0, placedWords = "", placedLook = Views::plain)
+
+mut seats = [ui::Seated(placedKind = 0, placedParent = 0, placedAction = 0, placedWords = "", placedLook = ui::Look(ink = 0, fill = 0, points = 0.0, inset = 0.0, gap = 0.0, corner = 0.0, heft = 400))]
+
+// The kind no control has: it starts an empty frame.
+fresh = 99
+
+// The frame after `seat`: emptied by `fresh`, otherwise one control longer.
+framed (frame, seat) = match seat.placedKind == fresh
+    true => [blank ()]
+    false => listConcat frame [seat]
+
+rendered store =
+    empty = blank ()
+    start = empty(placedKind = fresh)
+    perform ui::ViewStream.place start
+    Views::render (Screen::view store)
+
+// Draws `store` into an empty frame and answers the actions its controls deliver.
+drawn store =
+    handle ui::ViewStream
+        place seat => seats := framed (seats, seat)
+        size _ => 0
+        sketch _ => 0
+        ask _ => 0
+    rendered store
+
+// The drawn control at `row`.
+at row = listGet seats (satAdd row 1) ?: blank ()
+
+// One drawn control: kind, parent, action and words.
+sketch row = "${(at row).placedKind}<${(at row).placedParent}@${(at row).placedAction}:${(at row).placedWords}"
+
+// Every drawn control in order, joined by `|`.
+outline () = range (1, satSub (length seats) 1) |> fold (sketch 0) (\(lines, row) => "${lines}|${sketch row}")
+
+// `store` after the control numbered `ordinal` of its own view is delivered with `words`.
+after (store, ordinal, words) = match listGet (drawn store) ordinal
+    Error _ => store
+    Success action => Screen::update (store, action, words)
+
+test ("the first view is one column of six controls with five bindings in drawing order", \() =>
+    bound = drawn Screen::first
+    expect (length bound, 5)
+    expect (outline (), "0<-1@-1:|2<0@-1:Tally|2<0@-1:0|1<0@-1:|3<3@0:Take one|3<3@1:Add one|3<3@2:Clear|4<0@3:|5<0@-1:|3<0@4:Use night colours")
+    expect ((at 0).placedLook.inset, 32.0)
+    expect ((at 0).placedLook.gap, 18.0)
+    expect ((at 2).placedLook.points, 72.0)
+    expect ((at 2).placedLook.heft, 800)
+    expect ((at 5).placedLook.corner, 10.0))
+test ("taps count up and down, never below zero, and clear", \() =>
+    one = after (Screen::first, 1, "")
+    three = after (after (one, 1, ""), 1, "")
+    expect (three.count, 3)
+    expect (length (drawn three), 5)
+    expect ((at 2).placedWords, "3")
+    two = after (three, 0, "")
+    expect (two.count, 2)
+    floor = after (after (after (two, 0, ""), 0, ""), 0, "")
+    expect (floor.count, 0)
+    expect ((after (three, 2, "")).count, 0)
+    expect ((after (three, 9, "")).count, 3))
+test ("an edit renames the tally and keeps the count", \() =>
+    named = after (after (Screen::first, 1, ""), 3, "Zoë")
+    expect (named.owner, "Zoë")
+    expect (named.count, 1)
+    expect (length (drawn named), 5)
+    expect ((at 1).placedWords, "Zoë's tally")
+    expect ((at 7).placedWords, "Zoë")
+    cleared = after (named, 3, "")
+    expect (length (drawn cleared), 5)
+    expect ((at 1).placedWords, "Tally"))
+test ("every colour is decided in Osprey and changes with the appearance", \() =>
+    day = drawn Screen::first
+    expect (length day, 5)
+    expect ((at 0).placedLook.fill, Views::colour "#FBFAF7")
+    expect ((at 2).placedLook.ink, Views::colour "#0B6E8A")
+    expect ((at 5).placedLook.fill, Views::colour "#0B6E8A")
+    expect (Views::colour "#0B6E8A", 191793919)
+    night = after (Screen::first, 4, "")
+    expect (night.night, true)
+    expect (length (drawn night), 5)
+    expect ((at 0).placedLook.fill, Views::colour "#10141F")
+    expect ((at 2).placedLook.ink, Views::colour "#7AD7F0")
+    expect ((at 9).placedWords, "Use day colours")
+    expect ((after (night, 4, "")).night, false))

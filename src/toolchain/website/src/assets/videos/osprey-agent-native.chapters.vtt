@@ -1,19 +1,13 @@
 WEBVTT
 
-00:00.000 --> 00:09.502
-Osprey Agent: native power
+00:00.000 --> 00:13.667
+Osprey Agent, a native Mac app
 
-00:09.502 --> 00:18.051
-Start with a precise request
+00:13.667 --> 00:33.467
+A real task, run live
 
-00:18.051 --> 00:26.933
-Inspect commands and file reads
+00:33.467 --> 00:52.367
+Check what it did
 
-00:26.933 --> 00:39.933
-Review the edit and verification
-
-00:39.933 --> 00:48.830
-Read the corrected code
-
-00:48.830 --> 01:20.178
-Native controls. AOT application code.
+00:52.367 --> 01:20.467
+Read the fixed code

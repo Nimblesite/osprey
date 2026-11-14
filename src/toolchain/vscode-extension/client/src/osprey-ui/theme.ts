@@ -2,7 +2,7 @@
 // emits sanitized semantic CSS custom properties. The editor supplies fallback
 // colours only when the application does not supply a token.
 
-import { record } from "./protocol";
+import { record } from "./nodes";
 
 interface ThemeToken {
   readonly name: string;

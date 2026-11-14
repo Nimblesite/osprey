@@ -12,6 +12,7 @@ import { createProjectSerializer } from "./keyed-serializer";
 export { createProjectSerializer };
 import * as path from "path";
 import { fetchListingText, registryUrl, isDevelopmentRegistry } from "./package-api";
+import { registryFor } from "./local-registry";
 import { shipwrightPlatform } from "./client-config";
 import { commands, ProgressLocation, Uri, window, workspace } from "vscode";
 import {
@@ -60,8 +61,6 @@ export interface PackageCommandDeps {
 
 export const MANIFEST_FILE = "osprey.toml";
 export const LOCK_FILE = "osprey.lock";
-const DEFAULT_REGISTRY = "http://127.0.0.1:8787"; // Fetch::defaultRegistry
-const REGISTRY_CONFIG = "packages.registry";
 const FRONTEND_CONFIG = "packages.frontendPath";
 const FRONTEND_DEFAULT = "osprey-pkg";
 
@@ -87,16 +86,15 @@ const vscodeUi: Ui = {
     window.withProgress({ location: ProgressLocation.Notification, title: options.title }, () => task()),
 };
 
-function registryFor(root?: string): string {
-  return workspace.getConfiguration("osprey", root ? Uri.file(root) : undefined).get<string>(REGISTRY_CONFIG) || DEFAULT_REGISTRY;
-}
 
 /** The production deps: real editor state, real frontend, configured registry. */
+const registryAt = (root?: string): string => registryFor(root ? Uri.file(root) : undefined);
+
 export function defaultPackageDeps(extensionPath?: string): PackageCommandDeps {
   return {
     ui: vscodeUi,
     frontend: defaultFrontend(extensionPath),
-    registry: registryFor,
+    registry: registryAt,
     projectRoots: () => (workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
     manifestText: (root) => {
       try {
@@ -107,7 +105,7 @@ export function defaultPackageDeps(extensionPath?: string): PackageCommandDeps {
     },
     dirtyFiles: () =>
       workspace.textDocuments.filter((doc) => doc.isDirty).map((doc) => doc.fileName),
-    fetchListing: (root) => fetchListingText(registryFor(root)),
+    fetchListing: (root) => fetchListingText(registryAt(root)),
     cancelled: () => false,
   };
 }

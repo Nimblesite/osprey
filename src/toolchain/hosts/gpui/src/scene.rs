@@ -3,22 +3,20 @@
 use std::sync::Arc;
 
 use gpui_kit::*;
-use serde_json::Value;
 
 use crate::host::HostView;
-use crate::render::{self, Ctx};
+use crate::rows::Scene;
+use crate::tree::{self, Tree};
 
 pub mod access;
 pub mod atlas;
-mod decode;
 mod input;
 mod paint;
 mod text;
 
-/// One decoded scene, replaced only when its region revision changes.
+/// One checked scene, ready to paint.
 #[derive(Clone)]
 pub struct Decoded {
-    pub revision: u64,
     width: f32,
     height: f32,
     /// Window pixels per scene unit, whatever the window's size; 0 fits the scene to its region.
@@ -145,7 +143,7 @@ pub enum Paint {
 
 impl Shape {
     /// The back-to-front ordering key carried by every primitive.
-    fn depth(&self) -> f32 {
+    pub(crate) fn depth(&self) -> f32 {
         match *self {
             Self::Rect { depth, .. }
             | Self::Disc { depth, .. }
@@ -214,41 +212,60 @@ impl Transform {
     }
 }
 
-/// Maps a scene node to an interactive, full-area GPUI canvas.
-pub fn node(ctx: &mut Ctx, node: &Value) -> AnyElement {
-    let Some(ordinal) = render::ordinal(node) else {
-        return render::unbound(ctx);
+/// Maps a scene component to an interactive, full-area GPUI canvas ([UI-SCENE]): the scene rows the
+/// record's `sceneRow` names, delivering input to the control its `event` member issues.
+pub fn node<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    key: &str,
+    node: &Tree,
+) -> AnyElement {
+    let Some(ordinal) = tree::ordinal(node) else {
+        return crate::render::unbound(view, key);
     };
-    let decoded = match cached(ctx, node) {
-        Ok(decoded) => decoded,
-        Err(problem) => return render::broken(ctx, format!("invalid scene: {problem}")),
+    let Some(row) = node.get("sceneRow").and_then(Tree::as_u64) else {
+        return crate::render::broken(view, "scene node without its scene row".to_owned());
     };
-    diagnostics(ctx.view, &decoded);
-    input::interactive(ctx, ordinal, decoded)
+    let row = usize::try_from(row).unwrap_or(usize::MAX);
+    match view.shown.scenes.get(&row).cloned() {
+        Some(scene) => draw(view, window, cx, row, ordinal, scene),
+        None => crate::render::broken(view, format!("scene at row {row} streamed no scene")),
+    }
 }
 
-/// Returns the revision's decoded shapes, decoding a new patch exactly once.
-fn cached(ctx: &mut Ctx, node: &Value) -> Result<Decoded, String> {
-    if let Some(found) = ctx
-        .view
-        .scenes
-        .get(&ctx.key)
-        .filter(|item| item.revision == ctx.revision)
-    {
-        return Ok(found.clone());
+/// Draws the canvas at view row `row` with its scene, delivering input to control `ordinal`.
+pub fn draw<'b>(
+    view: &mut HostView,
+    window: &mut Window,
+    cx: &mut Context<'b, HostView>,
+    row: usize,
+    ordinal: i64,
+    scene: Scene,
+) -> AnyElement {
+    let decoded = decoded(scene);
+    diagnostics(view, &decoded);
+    input::interactive(view, window, cx, row, ordinal, decoded)
+}
+
+/// A checked scene stably depth-sorted for the painter.
+fn decoded(scene: Scene) -> Decoded {
+    let mut shapes = scene.shapes;
+    shapes.sort_by(|left, right| left.depth().total_cmp(&right.depth()));
+    Decoded {
+        width: scene.width,
+        height: scene.height,
+        zoom: scene.zoom,
+        has_rotation: shapes
+            .iter()
+            .any(|item| matches!(item, Shape::Rect { angle, .. } if *angle != 0.)),
+        has_sprites: shapes
+            .iter()
+            .any(|item| matches!(item, Shape::Sprite { .. })),
+        shapes: Arc::new(shapes),
+        atlas: Arc::new(scene.atlas),
+        access: Arc::new(scene.access),
     }
-    // [UI-SCENE-STREAM] A streamed scene's rects, discs and sprites come from the region, not the node.
-    let streamed = node
-        .get("streamSlot")
-        .and_then(Value::as_u64)
-        .and_then(|slot| {
-            let region = ctx.view.regions.get(&ctx.key)?;
-            region.streams.get(usize::try_from(slot).ok()?).cloned()
-        })
-        .unwrap_or_default();
-    let decoded = decode::decode(node, ctx.revision, &streamed)?;
-    ctx.view.scenes.insert(ctx.key.clone(), decoded.clone());
-    Ok(decoded)
 }
 
 /// Records each painter limitation once rather than on every display refresh.
@@ -263,10 +280,18 @@ fn diagnostics(view: &mut HostView, decoded: &Decoded) {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode, Shape, Transform};
-    use crate::ffi::Streamed;
+    use super::{decoded, Shape, Transform};
+    use crate::rows::Scene;
     use gpui_kit::{bounds, point, px, size};
-    use serde_json::Value;
+
+    fn scene(width: f32, height: f32, zoom: f32) -> super::Decoded {
+        decoded(Scene {
+            width,
+            height,
+            zoom,
+            ..Scene::default()
+        })
+    }
 
     /// Zoom 0 grows and shrinks the scene to fit its region whole; a fixed zoom keeps its size
     /// while the scene fits and never magnifies it past what the region fits whole, so a narrow
@@ -275,11 +300,11 @@ mod tests {
     #[test]
     fn the_scene_fits_its_region_whole_whatever_the_zoom() {
         let region = |w: f32, h: f32| bounds(point(px(10.), px(20.)), size(px(w), px(h)));
-        let scene =
-            |json: &str| decode::decode(&serde_json::from_str(json).unwrap(), 1, &[]).unwrap();
-        let fit = scene(r#"{"width":200,"height":100,"zoom":0,"shapes":[]}"#);
-        let fixed = scene(r#"{"width":200,"height":100,"zoom":0.75,"shapes":[]}"#);
-        let pixels = scene(r#"{"width":0,"height":0,"shapes":[]}"#);
+        let (fit, fixed, pixels) = (
+            scene(200., 100., 0.),
+            scene(200., 100., 0.75),
+            scene(0., 0., 1.),
+        );
         let cases = [
             (&fit, 400., 400., 2.),
             (&fit, 400., 100., 1.),
@@ -312,111 +337,33 @@ mod tests {
             );
             assert!(right <= 10. + w + 1e-4 && bottom <= 20. + h + 1e-4);
         }
-        assert!(decode::decode(
-            &serde_json::from_str(r#"{"width":2,"height":2,"zoom":-1,"shapes":[]}"#).unwrap(),
-            1,
-            &[]
-        )
-        .is_err());
     }
 
-    /// Streamed shapes follow the node's own at equal depth and sort by depth with them ([UI-SCENE-STREAM]).
+    /// Shapes sort back to front by depth and equal depths keep their drawing order.
     #[test]
-    fn streamed_shapes_join_the_depth_order_after_the_node_shapes() {
-        let streamed = [
-            Streamed {
-                code: 1,
-                index: 0,
-                values: [1., 2., 3., 0., 0.],
-                colour: 255,
-                depth: 4,
-            },
-            Streamed {
-                code: 0,
-                index: 0,
-                values: [4., 5., 6., 7., 0.],
-                colour: 511,
-                depth: 0,
-            },
-        ];
-        let node: Value = serde_json::from_str(
-            r#"{"width":10,"height":10,"shapes":[[1,9,9,1,65535,4]],"streamed":2}"#,
-        )
-        .unwrap();
-        let decoded = decode::decode(&node, 1, &streamed).unwrap();
-        let depths: Vec<_> = decoded.shapes.iter().map(Shape::depth).collect();
-        assert_eq!(depths, vec![0., 4., 4.]);
-        assert!(matches!(decoded.shapes[1], Shape::Disc { x, colour: 65535, .. } if x == 9.));
-        assert!(matches!(decoded.shapes[2], Shape::Disc { x, colour: 255, .. } if x == 1.));
-        assert!(matches!(decoded.shapes[0], Shape::Rect { w, .. } if w == 6.));
-    }
-
-    /// A streamed code outside rect, disc and sprite is refused, not drawn as a guess.
-    #[test]
-    fn unknown_streamed_codes_are_refused() {
-        let streamed = [Streamed {
-            code: 2,
-            index: 0,
-            values: [0.; 5],
-            colour: 0,
-            depth: 0,
-        }];
-        let node: Value =
-            serde_json::from_str(r#"{"width":10,"height":10,"shapes":[],"streamed":1}"#).unwrap();
-        assert!(decode::decode(&node, 1, &streamed).is_err());
-    }
-
-    /// Every primitive decodes and equal depths retain their input order.
-    #[test]
-    fn decodes_every_shape_and_depth_order() {
-        let decoded = decode::decode(&fixture(), 9, &[]).unwrap();
-        let expected = vec![
-            Shape::Disc {
-                x: 5.,
-                y: 6.,
-                radius: 7.,
-                colour: 0x00ff00ff,
-                depth: 1.,
-            },
-            Shape::Rect {
-                x: 10.,
-                y: 20.,
-                w: 30.,
-                h: 40.,
-                angle: 0.5,
-                colour: 0xff0000ff,
-                depth: 2.,
-            },
-            Shape::Sprite {
-                atlas: 1,
-                x: 8.,
-                y: 9.,
-                w: 10.,
-                h: 11.,
-                angle: -0.5,
-                tint: 0xffffffff,
-                depth: 2.,
-            },
-            Shape::Strip {
-                points: vec![(0., 1.), (2., 3.)],
-                colour: 0x000000ff,
-                stroke: 2.5,
-                depth: 4.,
-            },
-            Shape::Glyphs {
-                text: "hello".to_owned(),
-                x: 1.,
-                y: 2.,
-                size: 12.,
-                colour: 0x11223344,
-                depth: 8.,
-            },
-        ];
-        assert_eq!(decoded.shapes.as_slice(), expected.as_slice());
-    }
-
-    /// Uses parsed JSON to stay below the test macro's recursion limit.
-    fn fixture() -> Value {
-        serde_json::from_str(r#"{"width":100,"height":50,"shapes":[[4,"hello",1,2,12,287454020,8],[0,10,20,30,40,0.5,4278190335,2],[1,5,6,7,16711935,1],[2,2,0,1,2,3,255,2.5,4],[3,1,8,9,10,11,-0.5,4294967295,2]]}"#).unwrap()
+    fn shapes_sort_by_depth_and_keep_their_order_within_one() {
+        let disc = |x: f32, depth: f32| Shape::Disc {
+            x,
+            y: 0.,
+            radius: 1.,
+            colour: 255,
+            depth,
+        };
+        let ordered = decoded(Scene {
+            width: 10.,
+            height: 10.,
+            zoom: 1.,
+            shapes: vec![disc(1., 4.), disc(2., 0.), disc(3., 4.)],
+            ..Scene::default()
+        });
+        let xs: Vec<f32> = ordered
+            .shapes
+            .iter()
+            .map(|s| match s {
+                Shape::Disc { x, .. } => *x,
+                _ => -1.,
+            })
+            .collect();
+        assert_eq!(xs, vec![2., 1., 3.]);
     }
 }

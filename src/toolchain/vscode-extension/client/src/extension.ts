@@ -189,9 +189,12 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   };
 
   // Closed workspace files are checked from disk; unsaved buffers take precedence.
-  // Implements [LSP-DIAGNOSTICS-SCOPE].
+  // Implements [LSP-DIAGNOSTICS-SCOPE], [LSP-ANALYSIS-SCOPE].
   const clientOptions: LanguageClientOptions = {
-    initializationOptions: { diagnostics: config.get("diagnostics") },
+    initializationOptions: {
+      diagnostics: config.get("diagnostics"),
+      analysis: config.get("analysis"),
+    },
     middleware: warningFixMiddleware,
     documentSelector: [
       { scheme: "file", language: "osprey" },

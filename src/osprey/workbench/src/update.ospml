@@ -137,6 +137,11 @@ module Layouts
 
 (** The application's `update` ([WORKBENCH-STORE]). *)
 module Update
+    // A challenge action names its lesson; one a frame of another lesson issued changes nothing.
+    challenged (bench, ref, act) = match Coach::local (bench, ref)
+        Success id => act id
+        Error _ => Runtime::step bench
+
     tapped (bench, action) = match action
         SaveWorkspace => Workspaces::save bench
         OpenWorkspace => Workspaces::open bench
@@ -151,11 +156,11 @@ module Update
         LeaveExample => Runtime::step (exampleLeft bench)
         Open slug => Runtime::step (Coach::open (bench, slug))
         Close => Runtime::step (Coach::close bench)
-        Submit id => Coach::submit (bench, id)
-        Hint id => Runtime::step (Coach::hint (bench, id))
-        Reveal id => Runtime::step (Coach::reveal (bench, id))
-        Carry id => Runtime::step (Coach::carry (bench, id))
-        Key id text => Runtime::step (Coach::insert (bench, id, text))
+        Submit ref => challenged (bench, ref, \id => Coach::submit (bench, id))
+        Hint ref => challenged (bench, ref, \id => Runtime::step (Coach::hint (bench, id)))
+        Reveal ref => challenged (bench, ref, \id => Runtime::step (Coach::reveal (bench, id)))
+        Carry ref => challenged (bench, ref, \id => Runtime::step (Coach::carry (bench, id)))
+        Key ref text => challenged (bench, ref, \id => Runtime::step (Coach::insert (bench, id, text)))
         _ => Runtime::step (bench(layout = Layouts::tapped (bench.layout, action)))
 
     exampleLayout layout = layout(mode = Working, guided = true, paperFirst = false, libraryOpen = false)
@@ -193,14 +198,14 @@ module Update
         Rename => Runtime::step (bench(draft = Drafts::renamed (bench.draft, text)))
         Edit => Runtime::step (Drafts::edited (bench(draft = Drafts::unselected bench.draft), text))
         StepEdit => Runtime::step (Drafts::stepEdited (bench, text))
-        Answer id => Runtime::step (Coach::answer (bench, id, text))
-        Pick id => Runtime::step (Coach::pick (bench, id, text))
+        Answer ref => challenged (bench, ref, \id => Runtime::step (Coach::answer (bench, id, text)))
+        Pick ref => challenged (bench, ref, \id => Runtime::step (Coach::pick (bench, id, text)))
         _ => Runtime::step bench
 
     sized (bench, action, number) = match action
         Place => Runtime::step (bench(draft = Drafts::positioned (bench.draft, number)))
         StepPlace => Runtime::step (bench(draft = Drafts::positioned (bench.draft, satAdd (length (Drafts::editablePrefix bench.draft)) number)))
-        FormulaPlace id => Runtime::step (Coach::moved (bench, id, number))
+        FormulaPlace ref => challenged (bench, ref, \id => Runtime::step (Coach::moved (bench, id, number)))
         Widen => Runtime::step (bench(layout = Layouts::widened (bench.layout, number)))
         _ => Runtime::step bench
 

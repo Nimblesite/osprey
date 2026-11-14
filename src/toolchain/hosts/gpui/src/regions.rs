@@ -1,238 +1,176 @@
-//! Regions by key, patched from each envelope ([GPUI-HOST-RENDER]): a host
-//! keeps the opaque session, replaces a patched region's tree, drops a removed
-//! one and holds the theme and the slices the framework wrote.
+//! Regions by key, told by each frame ([GPUI-HOST-RENDER], [NATIVE-SHM-NODES]): a region keeps the
+//! component tree the frame told it, a region whose tree did not change keeps the same tree rather
+//! than being built again, and the theme a frame tells is held for the renderer. Nothing here is
+//! application state: the session lives in the application's library.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use serde_json::Value;
+use crate::rows::Shown;
+use crate::tree::{self, Frame, Theme, Tree};
 
-use crate::envelope::{Envelope, Patch, Request, Slice, Theme};
-use crate::ffi::{self, Streamed};
-
-/// One region's current tree and the revision it was drawn at.
+/// One region's current tree.
 #[derive(Debug, Clone)]
 pub struct Region {
-    pub revision: u64,
-    pub node: Value,
-    /// The shapes each streamed scene of this revision received, by the `streamSlot` the host gave
-    /// the scene node ([UI-SCENE-STREAM]).
-    pub streams: Vec<Arc<Vec<Streamed>>>,
+    pub node: Arc<Tree>,
 }
 
-/// Every region the framework has patched, in key order, plus the session,
-/// theme and diagnostics the last envelopes reported.
+/// Every region the last frame told, in key order, with its theme and the controls that deliver
+/// events.
 #[derive(Debug, Clone, Default)]
 pub struct Regions {
     regions: BTreeMap<String, Region>,
-    state: String,
     theme: Option<Theme>,
-    diagnostics: Vec<String>,
+    /// Whether the last frame told components; a frame of plain view rows is drawn by the row view.
+    told: bool,
+    /// Every control number the told components issued, so an editor is kept while it is drawn.
+    controls: BTreeSet<i64>,
 }
 
 impl Regions {
-    /// An empty host: no region, no session and no theme, as before `start`.
+    /// An empty host: no region and no theme, as before the application's first frame.
     pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Applies one envelope and returns the capabilities it asks the host to answer.
-    pub fn apply(&mut self, envelope: Envelope) -> Result<Vec<Request>, String> {
-        let stream = ffi::take_stream()?.into_iter();
-        self.state = envelope.state;
-        for key in envelope.removed {
-            self.regions.remove(&key);
-        }
-        self.patch_regions(envelope.patches, stream);
-        self.publish_slices(envelope.slices);
-        if envelope.theme.is_some() {
-            self.theme = envelope.theme;
-        }
-        self.diagnostics.extend(envelope.diagnostics);
-        Ok(envelope.requests)
-    }
-
-    fn patch_regions(&mut self, patches: Vec<Patch>, mut stream: impl Iterator<Item = Streamed>) {
-        for patch in patches {
-            self.patch_region(patch, &mut stream);
-        }
-        if stream.next().is_some() {
-            self.diagnostics
-                .push("the application streamed more shapes than its scenes counted".to_owned());
+        Self {
+            told: true,
+            ..Self::default()
         }
     }
 
-    fn patch_region(&mut self, patch: Patch, stream: &mut impl Iterator<Item = Streamed>) {
-        let mut node = patch.node;
-        let mut streams = Vec::new();
-        if let Err(problem) = attach(&mut node, stream, &mut streams) {
-            self.diagnostics.push(problem);
+    /// Keeps the regions of one checked frame, refusing the frame whole when it draws something
+    /// this host cannot ([UI-PROTOCOL]); the last good regions stay.
+    pub fn adopt(&mut self, shown: &Shown) -> Result<(), String> {
+        let Some(frame) = tree::frame(shown)? else {
+            self.told = shown.controls.is_empty();
+            self.controls = shown.controls.iter().filter_map(|row| row.action).collect();
+            return Ok(());
+        };
+        self.told = true;
+        let Frame {
+            theme,
+            regions: told,
+        } = frame;
+        if theme != self.theme {
+            self.theme = theme;
         }
-        let _ = self.regions.insert(
-            patch.key,
-            Region {
-                revision: patch.revision,
-                node,
-                streams,
-            },
-        );
+        let (regions, controls) = self.kept(told);
+        self.regions = regions;
+        self.controls = controls;
+        Ok(())
     }
 
-    fn publish_slices(&mut self, slices: Vec<Slice>) {
-        for slice in slices {
-            if let Err(problem) = ffi::put_slice(&slice.key, &slice.text) {
-                self.diagnostics.push(problem);
-            }
-        }
+    /// The frame's regions, each reusing the tree it already held when it did not change, and every
+    /// control number they issue.
+    fn kept(&self, told: Vec<(String, Tree)>) -> (BTreeMap<String, Region>, BTreeSet<i64>) {
+        let mut controls = BTreeSet::new();
+        let regions = told
+            .into_iter()
+            .map(|(key, node)| {
+                ordinals(&node, &mut controls);
+                let node = match self.regions.get(&key) {
+                    Some(unchanged) if *unchanged.node == node => unchanged.node.clone(),
+                    _ => Arc::new(node),
+                };
+                (key, Region { node })
+            })
+            .collect();
+        (regions, controls)
     }
 
-    /// The region drawn under `key`, if the framework has patched it.
+    /// The region drawn under `key`, if the frame told it.
     pub fn get(&self, key: &str) -> Option<&Region> {
         self.regions.get(key)
     }
 
-    /// Every held region key, in order.
-    pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.regions.keys().map(String::as_str)
-    }
-
-    /// The opaque session string, returned unchanged with the next event.
-    pub fn state(&self) -> &str {
-        &self.state
-    }
-
-    /// The theme the start envelope carried; later envelopes leave it alone.
+    /// The theme the frames told; later frames leave an unchanged one alone.
     pub fn theme(&self) -> Option<&Theme> {
         self.theme.as_ref()
     }
 
-    /// Every diagnostic reported since the session started.
-    pub fn diagnostics(&self) -> &[String] {
-        &self.diagnostics
+    /// Whether the last frame told components, rather than only plain view rows.
+    pub fn told(&self) -> bool {
+        self.told
+    }
+
+    /// Whether the frame issues a control event numbered `ordinal`.
+    pub fn delivers(&self, ordinal: i64) -> bool {
+        self.controls.contains(&ordinal)
     }
 }
 
-/// Gives each streamed scene in `node` its run of the call's stream, walking children in the order
-/// the framework's encoder walks them, which is the order it streamed them in ([UI-SCENE-STREAM]).
-fn attach(
-    node: &mut Value,
-    stream: &mut impl Iterator<Item = Streamed>,
-    streams: &mut Vec<Arc<Vec<Streamed>>>,
-) -> Result<(), String> {
-    let kind = node.get("kind").and_then(Value::as_str).unwrap_or_default();
-    if kind == "scene" {
-        let count = node.get("streamed").and_then(Value::as_u64).unwrap_or(0);
-        if count == 0 {
-            return Ok(());
-        }
-        let run: Vec<Streamed> = stream.take(count as usize).collect();
-        if run.len() as u64 != count {
-            return Err(format!(
-                "a scene counted {count} streamed shapes but the application sent {}",
-                run.len()
-            ));
-        }
-        if let Some(fields) = node.as_object_mut() {
-            fields.insert("streamSlot".to_owned(), Value::from(streams.len()));
-        }
-        streams.push(Arc::new(run));
-        return Ok(());
-    }
-    let order: &[&str] = match kind {
-        "screen" => &["toolbar", "children"],
-        "aside" => &["pane", "aside"],
-        "context-menu" => &["body", "items"],
-        "tabs" => &["tabs"],
-        "rows" => &["rows"],
-        _ => &["children"],
-    };
-    for member in order {
-        match node.get_mut(*member) {
-            Some(Value::Array(items)) => {
-                for item in items {
-                    // Tabs and rows hold their content under `child`.
-                    let inner = if item.get("kind").is_some() {
-                        item
-                    } else if let Some(child) = item.get_mut("child") {
-                        child
-                    } else {
-                        continue;
-                    };
-                    attach(inner, stream, streams)?;
-                }
-            }
-            Some(single @ Value::Object(_)) => attach(single, stream, streams)?,
-            _ => {}
+/// Collects every control number the told components issued: a control's event, an editor's place,
+/// a board's lasso and pan.
+fn ordinals(node: &Tree, into: &mut BTreeSet<i64>) {
+    for name in ["event", "placeEvent", "lassoEvent", "panEvent"] {
+        if let Some(number) = node.get(name).and_then(Tree::as_i64) {
+            into.insert(number);
         }
     }
-    Ok(())
+    for child in tree::inside(node) {
+        ordinals(child, into);
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{attach, Streamed};
-    use serde_json::Value;
+    use super::{ordinals, Frame, Regions, Tree};
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::sync::Arc;
 
-    fn shape(depth: i64) -> Streamed {
-        Streamed {
-            code: 1,
-            index: 0,
-            values: [0.; 5],
-            colour: 0,
-            depth,
+    /// A component with the members given.
+    fn record(members: [(&str, Tree); 2]) -> Tree {
+        Tree::Record(
+            members
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), value.clone()))
+                .collect(),
+        )
+    }
+
+    fn frame(node: Tree) -> Frame {
+        Frame {
+            theme: None,
+            regions: vec![("root".to_owned(), node)],
         }
     }
 
-    /// Scenes take their runs in the encoder's order: a screen's toolbar before its children and an
-    /// aside's pane before its column, whatever order the JSON members sort in ([UI-SCENE-STREAM]).
+    /// A region whose tree did not change is left untouched; a changed one is replaced.
     #[test]
-    fn streamed_runs_follow_the_encoder_walk() {
-        let mut node: Value = serde_json::from_str(r#"{"kind":"screen","children":[{"kind":"aside","aside":{"kind":"scene","streamed":1},"pane":{"kind":"scene","streamed":2}}],"toolbar":[{"kind":"scene","streamed":1}]}"#).unwrap();
-        let mut stream = (1..=4).map(shape);
-        let mut streams = Vec::new();
-        attach(&mut node, &mut stream, &mut streams).unwrap();
-        let depths: Vec<Vec<i64>> = streams
-            .iter()
-            .map(|run| run.iter().map(|item| item.depth).collect())
-            .collect();
-        assert_eq!(depths, vec![vec![1], vec![2, 3], vec![4]]);
-        assert_eq!(node["children"][0]["pane"]["streamSlot"], 1);
-        assert_eq!(node["children"][0]["aside"]["streamSlot"], 2);
+    fn a_region_whose_tree_did_not_change_keeps_its_tree() {
+        let mut regions = Regions::new();
+        let one = frame(record([
+            ("kind", Tree::Text("stack".to_owned())),
+            ("other", Tree::Whole(1)),
+        ]));
+        regions.regions = regions.kept(one.regions.clone()).0;
+        let first = regions.get("root").expect("the root").node.clone();
+        regions.regions = regions.kept(one.regions).0;
+        assert!(Arc::ptr_eq(
+            &first,
+            &regions.get("root").expect("the root").node
+        ));
+        let two = frame(record([
+            ("kind", Tree::Text("screen".to_owned())),
+            ("other", Tree::Whole(1)),
+        ]));
+        regions.regions = regions.kept(two.regions).0;
+        assert!(!Arc::ptr_eq(
+            &first,
+            &regions.get("root").expect("the root").node
+        ));
     }
 
-    /// A scene that counts more shapes than arrived is a diagnostic, never a partial draw.
+    /// Every control number the frame's components issue is kept, so an editor stays while drawn.
     #[test]
-    fn a_short_stream_is_reported() {
-        let mut node: Value =
-            serde_json::from_str(r#"{"kind":"stack","children":[{"kind":"scene","streamed":3}]}"#)
-                .unwrap();
-        let mut stream = (1..=2).map(shape);
-        assert!(attach(&mut node, &mut stream, &mut Vec::new()).is_err());
-    }
-
-    #[test]
-    fn a_failed_stream_read_does_not_commit_the_next_envelope() {
-        use crate::ffi::test_support::{isolated_test, with_poisoned_stream};
-        if isolated_test() {
-            return;
-        }
-        let mut regions = super::Regions::new();
-        assert!(regions.apply(session("before")).is_ok());
-        assert_eq!(regions.state(), "before");
-        with_poisoned_stream(|| {
-            assert!(regions.apply(session("after")).is_err());
-            assert_eq!(
-                regions.state(),
-                "before",
-                "failed stream committed the new session"
-            );
-        });
-    }
-
-    fn session(state: &str) -> crate::envelope::Envelope {
-        crate::envelope::parse(&format!(
-            r#"{{"version":1,"state":"{state}","patches":[],"requests":[]}}"#
-        ))
-        .expect("valid envelope")
+    fn every_control_number_the_tree_issues_is_kept() {
+        let mut members = BTreeMap::new();
+        members.insert("event".to_owned(), Tree::Whole(3));
+        members.insert("placeEvent".to_owned(), Tree::Whole(4));
+        members.insert("text".to_owned(), Tree::Text("not a control".to_owned()));
+        let mut child = BTreeMap::new();
+        child.insert("event".to_owned(), Tree::Whole(5));
+        members.insert("body".to_owned(), Tree::Record(child));
+        let mut kept = BTreeSet::new();
+        ordinals(&Tree::Record(members), &mut kept);
+        assert_eq!(kept, BTreeSet::from([3, 4, 5]));
     }
 }

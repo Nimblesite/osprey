@@ -1,7 +1,5 @@
-using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using static Osprey.Host.Envelopes;
 
 namespace Osprey.Host.WinUI;
 
@@ -11,16 +9,16 @@ sealed partial class Renderer
     const double SplitterWidth = 6;
 
     /// <summary>A pane with a column beside it; dragging the splitter previews the width and sends it once released.</summary>
-    UIElement Aside(Scope scope, JsonElement node)
+    UIElement Aside(Scope scope, Node node)
     {
-        var leading = Text(node, "side") == "leading";
+        var leading = node.Text("side") == "leading";
         var grid = new Grid();
-        var column = new ColumnDefinition { Width = new GridLength(Number(node, "width")), MinWidth = Number(node, "least"), MaxWidth = Number(node, "most") };
-        var pane = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = Number(node, "keep") };
-        var splitter = Splitter(column, leading, Emit(scope, node));
+        var column = new ColumnDefinition { Width = new GridLength(node.Number("width")), MinWidth = node.Number("least"), MaxWidth = node.Number("most") };
+        var pane = new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = node.Number("keep") };
+        var splitter = Splitter(column, leading, Emit(node));
         var parts = leading
-            ? new[] { (column, Draw(scope, Member(node, "aside"))), (new ColumnDefinition { Width = GridLength.Auto }, splitter), (pane, Draw(scope, Member(node, "pane"))) }
-            : new[] { (pane, Draw(scope, Member(node, "pane"))), (new ColumnDefinition { Width = GridLength.Auto }, splitter), (column, Draw(scope, Member(node, "aside"))) };
+            ? new[] { (column, Draw(scope, node.Member("aside"))), (new ColumnDefinition { Width = GridLength.Auto }, splitter), (pane, Draw(scope, node.Member("pane"))) }
+            : new[] { (pane, Draw(scope, node.Member("pane"))), (new ColumnDefinition { Width = GridLength.Auto }, splitter), (column, Draw(scope, node.Member("aside"))) };
         foreach (var (definition, element) in parts)
         {
             Grid.SetColumn((FrameworkElement)element, grid.ColumnDefinitions.Count);
@@ -49,19 +47,19 @@ sealed partial class Renderer
     }
 
     /// <summary>Tabs as a selector bar over the page of the selected tab; choosing one sends its key.</summary>
-    UIElement Tabs(Scope scope, JsonElement node)
+    UIElement Tabs(Scope scope, Node node)
     {
         var bar = new SelectorBar();
-        var tabs = Items(node, "tabs", tab => tab);
-        var selected = Text(node, "selected");
+        var tabs = node.Items("tabs");
+        var selected = node.Text("selected");
         foreach (var tab in tabs)
         {
-            bar.Items.Add(new SelectorBarItem { Text = Text(tab, "label"), Icon = IconOf(Text(tab, "symbol")), Tag = Text(tab, "key"), IsSelected = Text(tab, "key") == selected });
+            bar.Items.Add(new SelectorBarItem { Text = tab.Text("label"), Icon = IconOf(tab.Text("symbol")), Tag = tab.Text("key"), IsSelected = tab.Text("key") == selected });
         }
-        var emit = Emit(scope, node);
+        var emit = Emit(node);
         bar.SelectionChanged += (_, _) => emit(bar.SelectedItem?.Tag as string ?? "");
-        var page = tabs.FirstOrDefault(tab => Text(tab, "key") == selected);
-        var content = page.ValueKind == JsonValueKind.Object ? Draw(scope, Member(page, "child")) : new Border();
+        var page = tabs.FirstOrDefault(tab => tab.Text("key") == selected);
+        var content = page.IsRecord ? Draw(scope, page.Member("child")) : new Border();
         return Column([bar, content]);
     }
 }

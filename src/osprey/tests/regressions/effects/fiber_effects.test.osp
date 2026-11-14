@@ -62,8 +62,9 @@ fn show(x) = print("  " + toString(x))
 /// `place` 1 is the last two digits, 100 the next pair, and so on.
 fn block(value, place) = intDiv(value, place) % 100
 
-/// The decimal digit of `value` `place` places from the right.
-fn digitAt(value, place) = intDiv(value, place) % 10
+/// The decimal digit of `value` `place` places from the right: the last digit
+/// of the block that starts there.
+fn digitAt(value, place) = block(value, place) % 10
 
 /// Whether every two-digit block of `value`, from the last pair outwards,
 /// matches the corresponding field of `wants`.
@@ -78,15 +79,37 @@ fn spells(value, wants) = spellsAt(value, wants, 1)
 /// Whether `value` spells `blocks` two digits at a time and its top block is `top`.
 fn readsAs(value, blocks, top) = spells(value, blocks) && intDiv(value, 1000000) == top
 
+/// Assert one handler transcript's full contract — exact bytes, length, both
+/// ends, required and forbidden fragments — in one data-driven block.
+fn checkTranscript(label, text, exact, size, opening, closing, required, forbidden, notOpening, notClosing) = checkAll(label, [
+    text == exact,
+    length(text) == size,
+    startsWith(text, opening),
+    endsWith(text, closing),
+    containsAll(text, required),
+    containsNone(text, forbidden),
+    !startsWith(text, notOpening),
+    !endsWith(text, notClosing),
+    text != ""
+])
+
+/// Spawn `job` on `arg` and await it, so one run reads as one step.
+fn runFiber(job, arg) = await(spawn job(arg))
+
 /// Spawn `weight`'s job and await it, so the pair reads as one step.
-fn spawnedScore(weight) = await(spawn runJob(priWeight(weight)))
+fn spawnedScore(weight) = runFiber(runJob, priWeight(weight))
 
 print("=== mixup: fibers + effects + records ===")
 
-fn mixupDemo() = {
+/// A Logger region that prints every message under `label`, then runs `work`.
+fn loudRegion(label, work) = {
     handle Logger {
-        log msg => print("[LOG] " + msg)
+        log msg => print("[" + label + "] " + msg)
     }
+    work()
+}
+
+fn mixupDemo() = loudRegion("LOG", fn() => {
     /// priorities -> effectful fibers
     let sHigh = spawnedScore(High)
 
@@ -114,17 +137,14 @@ fn mixupDemo() = {
     print("map len " + toString(mapLength(m)))
     print("has high " + toString(mapContains(m, "high")))
     forEachList(mapValues(m), show)
-}
+})
 exactArithmetic(fn() => mixupDemo())
 
 /// region-level isolation: same effect, different impl per region.
-let prodR = {
-    handle Logger {
-        log msg => print("[PROD] " + msg)
-    }
+let prodR = loudRegion("PROD", fn() => {
     perform Logger.log("prod path")
     10
-}
+})
 let silentR = {
     handle Logger {
         log _msg => 0
@@ -167,7 +187,7 @@ fn highScoreForTest() = {
     handle Logger {
         log _msg => 0
     }
-    await(spawn runJob(priWeight(High)))
+    spawnedScore(High)
 }
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
@@ -193,7 +213,7 @@ effect Tally {
 fn tallyJob(amount) !Tally = perform Tally.add(amount)
 
 /// Spawn one tally job and await it, so one run reads as one step.
-fn runOnce(amount) = await(spawn tallyJob(amount))
+fn runOnce(amount) = runFiber(tallyJob, amount)
 
 /// Two performs in ONE fiber body: the second suspension installs its own
 /// mailbox instead of overwriting one still in use ([EFFECTS-OPERATION-MAILBOX]).
@@ -224,11 +244,14 @@ fn quadWeighted(a, b, c, d) ![Gift, Arith] = {
     await(f1) + await(f2) * 100 + await(f3) * 10000 + await(f4) * 1000000 
 }
 
-/// Sum one spawned `tallyJob` per amount, awaiting each in list order.
-fn sumFibers(amounts) ![Tally, Arith] = match amounts {
+/// Sum `step(x)` over `xs` in list order.
+fn sumBy(xs, step) = match xs {
     [] => 0
-    [head, ...tail] => runOnce(head) + sumFibers(tail)
+    [head, ...tail] => step(head) + sumBy(tail, step)
 }
+
+/// Sum one spawned `tallyJob` per amount, awaiting each in list order.
+fn sumFibers(amounts) ![Tally, Arith] = sumBy(amounts, runOnce)
 
 /// Sum `amounts`' spawned jobs under a Tally region, answering the summed holds
 /// and the handler's final running total.
@@ -269,6 +292,9 @@ fn relayBoth(tag) !Relay = {
     let value = perform Relay.fetch(tag)
     "${label}=${value}"
 }
+
+/// Spawn `relayBoth` on `tag` and await it, so one round trip reads as one step.
+fn relayFiber(tag) = runFiber(relayBoth, tag)
 
 /// [CONCURRENCY-SPAWN-AWAIT]: "A `Fiber<T>` handle is reusable: awaiting the same
 /// completed fiber more than once MUST return the same `T` value on every call",
@@ -604,17 +630,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 
     // "4:11|" is the hop a main-fiber perform reading a stale cell would write,
     // "6:14|" the one a fiber perform reading a stale cell would write.
-    checkAll("the transcript records every hop in body order", [
-        trail == "3:3|4:7|5:12|6:18|4:22|",
-        length(trail) == 23,
-        startsWith(trail, "3:3|"),
-        endsWith(trail, "4:22|"),
-        containsAll(trail, ["4:7|", "5:12|", "6:18|", "|4:22|"]),
-        containsNone(trail, ["3:4|", "4:11|", "6:14|"]),
-        !startsWith(trail, "4:7|"),
-        !endsWith(trail, "6:18|"),
-        trail != ""
-    ])
+    checkTranscript("the transcript records every hop in body order", trail, "3:3|4:7|5:12|6:18|4:22|", 23, "3:3|", "4:22|", ["4:7|", "5:12|", "6:18|", "|4:22|"], ["3:4|", "4:11|", "6:14|"], "4:7|", "6:18|")
 
     // 305020 is what crossing the second and third performers' answers prints.
     checkAll("a resuming region totals across four concurrent fibers", [
@@ -660,10 +676,7 @@ fn pingRound(ch, value) = {
 }
 
 /// Drain one value per weight in `weights` from `ch`, oldest first.
-fn drainWeights(ch, weights) = match weights {
-    [] => 0
-    [head, ...tail] => recv(ch) * head + drainWeights(ch, tail)
-}
+fn drainWeights(ch, weights) = sumBy(weights, fn(w) => recv(ch) * w)
 
 /// [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
 /// "appends `value`" and whose `recv` "removes its oldest value". Fibers are
@@ -810,24 +823,24 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
 
     /// Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
     /// enclosing one. tag 3 => "outer3" and 300.
-    let inner = outerRegion(fn() => innerFetch(fn() => await(spawn relayBoth(3))))
+    let inner = outerRegion(fn() => innerFetch(fn() => relayFiber(3)))
 
     /// The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
-    let outerOnly = outerRegion(fn() => await(spawn relayBoth(3)))
+    let outerOnly = outerRegion(fn() => relayFiber(3))
 
     /// The inner region covers only the fiber spawned INSIDE it; the fiber
     /// spawned after it is back on the enclosing arm. 400 then 8.
     let restored = outerRegion(fn() => {
-        let shadowed = innerFetch(fn() => await(spawn relayBoth(4)))
-        let plain = await(spawn relayBoth(4))
+        let shadowed = innerFetch(fn() => relayFiber(4))
+        let plain = relayFiber(4)
         "${shadowed}/${plain}"
     })
 
     /// Two fibers under one inner region, one carrying the identity tag and one a
     /// negative tag: 0 => 0 and -2 => -200.
     let paired = outerRegion(fn() => innerFetch(fn() => {
-        let a = await(spawn relayBoth(0))
-        let b = await(spawn relayBoth(0 - 2 ))
+        let a = relayFiber(0)
+        let b = relayFiber(0 - 2 )
         "${a}+${b}"
     }))
 
@@ -939,7 +952,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         let b = runOnce(a + 1 )
         let c = runOnce(b + 1 )
         let d = runOnce(c + 1 )
-        let y = await(spawn yieldedJob(5))
+        let y = runFiber(yieldedJob, 5)
         let f = spawn tallyJob(0 - 35 )
         let v = await(f)
         TripleAnswers {
@@ -977,17 +990,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 
     // "s4=14;" is the stage a single lost increment would write, "s8=" a stage
     // that ran once too often.
-    checkAll("the handler transcript records every stage exactly once", [
-        script == "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;",
-        length(script) == 38,
-        startsWith(script, "s1=1;"),
-        endsWith(script, "s7=5;"),
-        containsAll(script, ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"]),
-        containsNone(script, ["s8=", "s1=2;", "s4=14;"]),
-        !endsWith(script, "s6=40;"),
-        !startsWith(script, "s2="),
-        script != ""
-    ])
+    checkTranscript("the handler transcript records every stage exactly once", script, "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;", 38, "s1=1;", "s7=5;", ["s4=15;", "s5=20;", "s6=40;", ";s2=3;"], ["s8=", "s1=2;", "s4=14;"], "s2=", "s6=40;")
 
     checkAll("yield hands its own value back and the fiber still completes", [
         yielded == 40,

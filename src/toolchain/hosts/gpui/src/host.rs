@@ -1,26 +1,28 @@
 //! The GPUI window and synchronous Osprey dispatch seam ([GPUI-HOST-SEAM]).
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::component::{input::InputState, ActiveTheme as _, Theme};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::envelope::{self, Request};
-use crate::events;
-use crate::ffi::Library;
+use crate::events::{self, Touch};
+use crate::ffi::{self, Library};
 use crate::regions::Regions;
-use crate::{adapters, clock, render, scene, store};
+use crate::rows::{Ask, Shown};
+use crate::{adapters, clock, render, scene, store, view};
 
-/// The one native view: framework regions, input editing state and host diagnostics.
+/// The one native view: the application's regions, the last checked frame, input editing state and
+/// host diagnostics.
 pub struct HostView {
-    /// The opaque Osprey session and its current region trees.
+    /// Every region the last frame told, with its theme and trees.
     pub regions: Regions,
-    /// One editor per framework region key, revision and binding ordinal.
-    pub inputs: HashMap<(String, u64, u64), Entity<InputState>>,
-    /// Decoded scenes and their persistent region-keyed input adapters.
-    pub scenes: HashMap<String, scene::Decoded>,
+    /// The frame the application last drew; the session itself stays in the application.
+    pub shown: Arc<Shown>,
+    /// One editor per control number, while the application keeps drawing it.
+    pub inputs: HashMap<i64, Entity<InputState>>,
     /// Scene sprite images, decoded once and turned as drawn.
     pub sprites: scene::atlas::Sprites,
     pub scene_focus: HashMap<String, FocusHandle>,
@@ -38,21 +40,20 @@ pub struct HostView {
     pub frame_started: Option<std::time::Instant>,
     /// Main-thread time from the last frame event to the end of its paint.
     pub frame_ms: f64,
-    pub envelope_bytes: usize,
     pub bench: Option<clock::Bench>,
     pub(crate) messages: Vec<String>,
     pub(crate) collapsed: bool,
     seen: BTreeSet<String>,
-    pending: Vec<Request>,
+    pending: Vec<Ask>,
 }
 
 impl HostView {
-    /// Creates the view with any capability requests from the start envelope pending.
-    pub fn new(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) -> Self {
+    /// Creates the view before the application has drawn its first frame.
+    pub fn new(bench: Option<clock::Bench>) -> Self {
         Self {
-            regions,
+            regions: Regions::new(),
+            shown: Arc::new(Shown::default()),
             inputs: HashMap::new(),
-            scenes: HashMap::new(),
             sprites: Default::default(),
             scene_focus: HashMap::new(),
             scene_transforms: HashMap::new(),
@@ -66,65 +67,95 @@ impl HostView {
             paint_ms: 0.,
             frame_started: None,
             frame_ms: 0.,
-            envelope_bytes: 0,
             bench,
             messages: Vec::new(),
             collapsed: false,
             seen: BTreeSet::new(),
-            pending,
+            pending: Vec::new(),
         }
     }
-    /// Sends one event, applies its envelope and answers each requested capability.
-    pub fn dispatch(&mut self, event: String, window: &mut Window, cx: &mut Context<Self>) {
-        let next = Library::dispatch(self.regions.state(), &event);
-        self.envelope_bytes = next.as_ref().map_or(0, String::len);
-        self.settle(next.and_then(|text| envelope::parse(&text)));
+
+    /// Draws the first frame for this window's appearance.
+    pub fn open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let first = local_offset()
+            .and_then(|offset| crate::home().map(|home| (offset, home)))
+            .and_then(|(offset, home)| {
+                Library::open(
+                    now(),
+                    offset,
+                    std::env::consts::OS,
+                    &home,
+                    render::is_dark(window),
+                )
+            });
+        self.settle(first, window, cx);
+    }
+
+    /// Sends one host event, applies the frame it draws and answers what that frame asks.
+    pub fn send(&mut self, touch: Touch, window: &mut Window, cx: &mut Context<Self>) {
+        let next = Library::event(now(), &touch);
+        self.settle(next, window, cx);
+    }
+
+    /// Applies a checked frame: its slice writes, diagnostics, view and requests.
+    fn settle(&mut self, next: Result<Shown, String>, window: &mut Window, cx: &mut Context<Self>) {
+        match next {
+            Ok(shown) => {
+                if let Err(problem) = self.regions.adopt(&shown) {
+                    self.diagnose(problem);
+                } else {
+                    for (key, text) in shown.slices() {
+                        if let Err(problem) = ffi::put_slice(key, text) {
+                            self.diagnose(problem);
+                        }
+                    }
+                    for reason in shown.diagnostics() {
+                        self.diagnose(reason.to_owned());
+                    }
+                    self.pending.extend(shown.requests().cloned());
+                    self.shown = Arc::new(shown);
+                    self.retain_inputs();
+                }
+            }
+            Err(problem) => self.diagnose(problem),
+        }
         self.answer_pending(window, cx);
         clock::redraw(self, window, cx);
         cx.notify();
     }
 
-    /// Answers every capability the latest envelopes requested ([GPUI-HOST-CAPABILITIES]);
-    /// an unknown kind is diagnosed and still completes with a protocol error.
+    /// Answers every capability the latest frames requested ([GPUI-HOST-CAPABILITIES]); an
+    /// unknown kind is diagnosed and still completes, with an error.
     fn answer_pending(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        for request in std::mem::take(&mut self.pending) {
-            match request.kind.as_str() {
+        for ask in std::mem::take(&mut self.pending) {
+            match ask.kind() {
                 "animate" => {
-                    let completion = clock::answer(self, &request);
-                    self.dispatch(completion, window, cx);
+                    let completion = clock::answer(self, &ask);
+                    self.send(completion, window, cx);
                 }
                 "run" | "list-directories" | "read-texts" => {
-                    self.answer_in_background(request, window, cx);
+                    self.answer_in_background(ask, window, cx);
                 }
-                "cancel" => {
-                    self.dispatch(adapters::completion(&request), window, cx);
-                }
+                "cancel" => self.send(adapters::completion(&ask), window, cx),
                 "store-read" | "store-write" | "store-list" | "store-delete" => {
-                    self.dispatch(store::completion(&request), window, cx);
+                    self.send(store::completion(&ask), window, cx);
                 }
                 // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
                 // picker is answered across the OS bridge like any blocking adapter.
                 "choose-file" | "host-call"
                     if cfg!(any(target_os = "ios", target_os = "android")) =>
                 {
-                    self.answer_in_background(request, window, cx);
+                    self.answer_in_background(ask, window, cx);
                 }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {
-                    if let Some(completion) = adapters::dispatch_platform(&request, window, cx) {
-                        self.dispatch(completion, window, cx);
+                    if let Some(completion) = adapters::dispatch_platform(&ask, window, cx) {
+                        self.send(completion, window, cx);
                     }
                 }
                 kind => {
-                    self.diagnose(format!(
-                        "unsupported capability {kind} ({})",
-                        request.ticket
-                    ));
-                    let error = events::completed_err(
-                        now(),
-                        &request.ticket,
-                        &format!("unsupported capability {kind}"),
-                    );
-                    self.dispatch(error, window, cx);
+                    let problem = format!("unsupported capability {kind} ({})", ask.ticket);
+                    self.diagnose(problem.clone());
+                    self.send(Touch::completed(&ask.ticket, Err(problem)), window, cx);
                 }
             }
         }
@@ -132,30 +163,15 @@ impl HostView {
 
     /// Runs a blocking adapter (a process, a directory walk, file reads) on the background executor,
     /// so a slow capability never stalls the window, and delivers its completion on the main thread.
-    fn answer_in_background(
-        &mut self,
-        request: Request,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn answer_in_background(&mut self, ask: Ask, window: &mut Window, cx: &mut Context<Self>) {
         let task = cx
             .background_executor()
-            .spawn(async move { adapters::completion(&request) });
+            .spawn(async move { adapters::completion(&ask) });
         cx.spawn_in(window, async move |view, cx| {
             let completion = task.await;
-            let _ = view.update_in(cx, |view, window, cx| view.dispatch(completion, window, cx));
+            let _ = view.update_in(cx, |view, window, cx| view.send(completion, window, cx));
         })
         .detach();
-    }
-
-    /// Applies a decoded result and discards stale editor bindings.
-    fn settle(&mut self, next: Result<envelope::Envelope, String>) {
-        match next.and_then(|envelope| self.regions.apply(envelope)) {
-            Ok(requests) => self.pending.extend(requests),
-            Err(problem) => self.diagnose(problem),
-        }
-        self.retain_inputs();
-        self.retain_scenes();
     }
 
     /// Adds a renderer diagnostic in encounter order.
@@ -170,24 +186,20 @@ impl HostView {
         }
     }
 
-    /// Drops scene adapters whose region disappeared in the latest envelope.
-    fn retain_scenes(&mut self) {
-        let regions = &self.regions;
-        self.scenes.retain(|key, _| regions.get(key).is_some());
-        self.scene_focus.retain(|key, _| regions.get(key).is_some());
-        self.scene_transforms
-            .retain(|key, _| regions.get(key).is_some());
-        self.scene_hover.retain(|key| regions.get(key).is_some());
-    }
-
-    /// Drops editors whose region or revision disappeared in the latest envelope.
+    /// Drops editors whose control the latest frame no longer draws.
     fn retain_inputs(&mut self) {
         let regions = &self.regions;
-        self.inputs.retain(|(key, revision, _), _| {
-            regions
-                .get(key)
-                .is_some_and(|region| region.revision == *revision)
-        });
+        self.inputs.retain(|ordinal, _| regions.delivers(*ordinal));
+        let canvases: BTreeSet<String> = self
+            .shown
+            .scenes
+            .keys()
+            .map(|row| format!("canvas:{row}"))
+            .collect();
+        self.scene_focus.retain(|key, _| canvases.contains(key));
+        self.scene_transforms
+            .retain(|key, _| canvases.contains(key));
+        self.scene_hover.retain(|key| canvases.contains(key));
     }
 }
 
@@ -218,14 +230,22 @@ impl Render for HostView {
                     .pb(safe.bottom)
                     .pl(safe.left)
                     .when(framed, |this| this.gap_4())
-                    .child(render::region(self, "root", window, cx))
-                    .child(render::diagnostics(self, cx)),
+                    .child(self.face(window, cx))
+                    .child(crate::diagnostics::strip(self, cx)),
             )
     }
 }
 
 impl HostView {
-    /// Resolves the window background in the current system appearance.
+    /// The application's root region, or the plain view rows of a frame that told no components.
+    fn face(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        match self.regions.told() {
+            true => render::region(self, "root", window, cx),
+            false => view::root(self, window, cx),
+        }
+    }
+
+    /// The window background: the application's background token, else the kit's.
     fn background(&self, window: &Window, cx: &App) -> Rgba {
         render::colour(self.regions.theme(), "background", render::is_dark(window))
             .unwrap_or_else(|| Rgba::from(cx.theme().background))
@@ -234,9 +254,9 @@ impl HostView {
 
 /// Starts Osprey, opens the single window and returns the process status.
 pub fn run() -> i32 {
-    match bench().and_then(|bench| start().map(|(regions, pending)| (regions, pending, bench))) {
-        Ok((regions, pending, bench)) => {
-            open(regions, pending, bench);
+    match bench().and_then(|bench| start().map(|()| bench)) {
+        Ok(bench) => {
+            open(bench);
             0
         }
         Err(problem) => {
@@ -246,26 +266,15 @@ pub fn run() -> i32 {
     }
 }
 
-/// Performs all pre-window C calls on the main thread.
-fn start() -> Result<(Regions, Vec<Request>), String> {
+/// Performs all pre-window C calls on the main thread: the application's top level, then its
+/// launch arguments in order.
+fn start() -> Result<(), String> {
     Library::init()?;
-    let home = crate::home()?;
-    let arguments = crate::launch::arguments()?;
-    let context = events::start_context(
-        now(),
-        local_offset()?,
-        std::env::consts::OS,
-        &home,
-        &arguments,
-    );
-    let started = envelope::parse(&Library::start(&context)?)?;
-    let mut regions = Regions::new();
-    let pending = regions.apply(started)?;
-    Ok((regions, pending))
+    Library::arguments(&crate::launch::arguments()?)
 }
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
-fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
+fn open(bench: Option<clock::Bench>) {
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let application = gpui_kit::application();
     // [CAST-MOBILE-GPUI] gpui-kit leaves the mobile backend to the application.
@@ -282,7 +291,7 @@ fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
         gpui_kit::init(cx);
         gpui_kit::open_window(options(), cx, move |window, cx| {
             Theme::sync_system_appearance(Some(window), cx);
-            cx.new(|cx| new_view(regions, pending, bench, window, cx))
+            cx.new(|cx| new_view(bench, window, cx))
         })
         .expect("failed to open the Osprey window");
         // A window launched from a terminal opens behind it, where macOS throttles its display clock.
@@ -290,20 +299,20 @@ fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
     });
 }
 
-/// Creates the root view and keeps kit colours synchronized with the window.
+/// Creates the root view, draws the first frame and tells the application when the appearance changes.
 fn new_view(
-    regions: Regions,
-    pending: Vec<Request>,
     bench: Option<clock::Bench>,
     window: &mut Window,
     cx: &mut Context<HostView>,
 ) -> HostView {
-    cx.observe_window_appearance(window, |_, window, cx| {
+    cx.observe_window_appearance(window, |view, window, cx| {
         Theme::sync_system_appearance(Some(window), cx);
+        view.send(Touch::appearance(render::is_dark(window)), window, cx);
     })
     .detach();
-    let mut view = HostView::new(regions, pending, bench);
-    view.dispatch(events::lifecycle(now(), "active"), window, cx);
+    let mut view = HostView::new(bench);
+    view.open(window, cx);
+    view.send(Touch::phase("active"), window, cx);
     if crate::self_test::requested().is_some() {
         match crate::self_test::load() {
             Ok(run) => crate::self_test::in_window(run, window, cx),
@@ -354,11 +363,7 @@ pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context
         let path = url
             .strip_prefix("file://")
             .map_or(url.clone(), events::unescaped);
-        view.dispatch(
-            events::lifecycle(now(), &format!("open:{path}")),
-            window,
-            cx,
-        );
+        view.send(Touch::phase(&format!("open:{path}")), window, cx);
     }
 }
 

@@ -1,9 +1,6 @@
 [package]
 name = "tree-sitter-osprey"
 description = "Osprey grammar for tree-sitter"
-# SEALED UNSAFE BOUNDARY (see osprey-runtime-sys). Vendored tree-sitter grammar
-# bindings need `unsafe` for `LanguageFn::from_raw`, so this crate does NOT
-# inherit the workspace's `unsafe_code = "deny"` lints.
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,3 +20,6 @@ streaming-iterator = { workspace = true }
 
 [build-dependencies]
 cc = "1"
+
+[lints]
+workspace = true

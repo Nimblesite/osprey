@@ -1,6 +1,36 @@
-use super::Ctx;
 use gpui_kit::component::{ActiveTheme as _, Icon, IconName};
 use gpui_kit::*;
+
+/// What an icon needs from whichever renderer draws it: somewhere to record an unknown symbol
+/// once, and the ink to draw its placeholder in.
+pub(crate) trait Inked {
+    fn ink(&mut self) -> Hsla;
+    fn missing(&mut self, name: &str);
+}
+
+/// The component renderer's context.
+impl Inked for crate::render::Ctx<'_, '_> {
+    fn ink(&mut self) -> Hsla {
+        self.cx.theme().foreground
+    }
+
+    fn missing(&mut self, name: &str) {
+        self.view
+            .diagnose_once(format!("no icon for symbol {name}"));
+    }
+}
+
+/// The plain view-row renderer's context.
+impl Inked for crate::view::Ctx<'_, '_> {
+    fn ink(&mut self) -> Hsla {
+        self.cx.theme().foreground
+    }
+
+    fn missing(&mut self, name: &str) {
+        self.view
+            .diagnose_once(format!("no icon for symbol {name}"));
+    }
+}
 
 /// Maps a framework symbol name ([UI-COMPONENTS-SYMBOLS]) to its kit icon.
 pub(crate) fn icon_name(name: &str) -> Option<IconName> {
@@ -43,7 +73,7 @@ pub(crate) fn icon_name(name: &str) -> Option<IconName> {
 }
 
 /// Draws an icon or a visible empty square for an unknown symbol.
-pub(crate) fn symbol(ctx: &mut Ctx, name: &str) -> AnyElement {
+pub(crate) fn symbol(ctx: &mut impl Inked, name: &str) -> AnyElement {
     match icon_name(name) {
         Some(icon) => Icon::new(icon).into_any_element(),
         None if name.is_empty() => div().into_any_element(),
@@ -52,11 +82,11 @@ pub(crate) fn symbol(ctx: &mut Ctx, name: &str) -> AnyElement {
 }
 
 /// Records an unknown symbol once and never silently omits its placeholder.
-pub(crate) fn missing_symbol(ctx: &mut Ctx, name: &str) -> AnyElement {
-    ctx.view.diagnose_once(format!("no icon for symbol {name}"));
+pub(crate) fn missing_symbol(ctx: &mut impl Inked, name: &str) -> AnyElement {
+    ctx.missing(name);
     div()
         .size_4()
         .border_1()
-        .border_color(ctx.cx.theme().foreground)
+        .border_color(ctx.ink())
         .into_any_element()
 }

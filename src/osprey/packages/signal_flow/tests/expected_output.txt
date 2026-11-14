@@ -6,5 +6,6 @@ ok 5 - prism: every chooser, slider, switch and the history drive the patch
 ok 6 - prism: nodes drag with their cables, controls and sprites; clicks, hovers and slider drags act once
 ok 7 - prism: a larger window moves the inspector, undo and legend to its edges at their size and leaves more grid; a smaller one spares none
 ok 8 - every skin's accessibility tree reads clearly to an agent, and a Prism node says a drag moves it
-1..8
-# tests=8 passed=8 failed=0 skipped=0
+ok 9 - undo and redo at the edges of their history, a refused document shown in place, and the repository theme
+1..9
+# tests=9 passed=9 failed=0 skipped=0

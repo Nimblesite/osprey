@@ -1,14 +1,16 @@
 // Machine documents end to end: load the typed document once, then drive its
-// canvas through accessibility, pointer and native-control use cases.
+// canvas through accessibility, pointer and native-control use cases, reading
+// the view rows and scene rows a host is sent.
 namespace uitests
 
 import ui::Canvases
 import ui::Doc
-import ui::Encode
 import ui::Lists
 import ui::MachineDocs
 import ui::Machines
 import ui::Runtime
+import ui::Tell
+import ui::Tellings
 import ui::Templates
 import ui::Values
 
@@ -23,11 +25,20 @@ nativeLoaded work = match MachineDocs::load (readFile "src/osprey/packages/nativ
 
 withNativeFixture work = Runtime::guarded (\() => nativeLoaded work)
 
-nativeTree machine = firstNode (Encode::walk ([], Templates::view machine))
+// A Fire-acted node drawn as the rows of one root region. Monomorphic at the machine's action union: the telling walk is instantiated at one action type (Nimblesite/osprey#278).
+fireDrawn : ui::Node<ui::Lever> -> ui::Walk<ui::Binding<ui::Lever>>
+fireDrawn node = Tellings::alone node
 
-// A machine renders as one root node and reports no fault.
+// A Fire-acted node's one told record, as Tell walks it.
+fireTold : ui::Node<ui::Lever> -> ui::Told
+fireTold node = Tell::first (Tell::walk ([], node))
+
+// The machine's view told as one root region's rows: the rows, fits, scenes and bindings a host reads ([NATIVE-SHM-NODES]).
+nativeTree machine = fireDrawn (Templates::view machine)
+
+// A machine renders rows in its chosen skin and reports no fault.
 expectRendered machine =
-    expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
+    expect (length (nativeTree machine).walkRows > 0, true)
     expect (machine.machineFault, "")
 
 nativeLabels machine = join (mapList (Canvases::semantics machine, \e => e.accessLabel)) "|"
@@ -56,16 +67,43 @@ nativeReleaseAt (machine, label, fraction) =
     expect (nativeValue (released, label), fraction)
     released
 
-nativeWalk (out, doc) = match Doc::kind doc
-    "object" => foldList (Doc::keys doc, listAppend out doc, \(acc, key) => nativeWalk (acc, Doc::field (doc, key)))
-    "list" => foldList (Doc::items doc, listAppend out doc, nativeWalk)
-    _ => out
+// Whether the view shows `text`: as any told row's words — a label, text, title, prompt, symbol or key.
+nativeShows (machine, text) =
+    walked = nativeTree machine
+    Lists::any (walked.walkRows, \row => row.placedWords == text)
 
-nativeShows (machine, text) = Lists::any (filterList (nativeWalk ([], nativeTree machine), \node => Doc::text (node, "text") != "" || Doc::text (node, "label") != "" || Doc::text (node, "title") != ""), \node => Doc::text (node, "text") == text || Doc::text (node, "label") == text || Doc::text (node, "title") == text)
+// The label of the choice `selected` names among `choices`, or "".
+chosenStep (selected, found, item) = match memberText (insideTold item, "key") == selected
+    true => memberText (insideTold item, "label")
+    false => found
 
-nativeLetterNodes machine = filterList (nativeWalk ([], nativeTree machine), \node => Doc::kind node == "list" && Doc::real (Doc::at (node, 0)) == 6.0)
+chosenLabel (choices, selected) = foldList (choices, "", \(found, item) => chosenStep (selected, found, item))
 
-nativeLetters (machine, text) = Lists::any (nativeLetterNodes machine, \node => Doc::string (Doc::at (node, 1)) == text)
+// The words of the view's first picker: the label of the option its selected key names.
+nativeChosen machine = match Lists::find (controlsOf (fireTold (Templates::view machine)), \told => memberText (insideTold told, "kind") == "picker")
+    Success picker => chosenLabel (memberItems (insideTold picker, "choices"), memberText (insideTold picker, "selected"))
+    Error _ => ""
+
+// The text of a lettering or glyphs shape.
+shapeText shape = match shape
+    ui::Lettering text _ _ _ _ _ _ _ => text
+    ui::Glyphs text _ _ _ _ _ => text
+    _ => ""
+
+// Whether a shape letters or glyphs text.
+shapeLetters shape = match shape
+    ui::Lettering _ _ _ _ _ _ _ _ => true
+    ui::Glyphs _ _ _ _ _ => true
+    _ => false
+
+// The texts the machine's scenes letter, in drawing order.
+nativeLettered machine = Lists::flatten (mapList ((nativeTree machine).walkSketches, \drawn => mapList (filterList (drawn.sketchedAs.sketchShapes, shapeLetters), shapeText)))
+
+// Whether the machine's scenes letter `text`.
+nativeLetters (machine, text) = Lists::any (nativeLettered machine, \lettered => lettered == text)
+
+// The machine's scenes: their sizes, shapes and accessibility trees, in drawing order.
+nativeScenes machine = mapList ((nativeTree machine).walkSketches, \drawn => drawn.sketchedAs)
 
 nativeFeed (machine, name, text) = Machines::feed (machine, [Machines::fact (name, Values::text text)])
 
@@ -77,7 +115,7 @@ nativeLever binding = match binding
     _ => ui::Fire(fireName = "")
 
 // The lever bound to `walked`'s `index`th control.
-nativeBound (walked, index) = nativeLever (listGet walked.bindings index ?: ui::Tap(action = ui::Fire(fireName = "")))
+nativeBound (walked, index) = nativeLever (listGet walked.walkBound index ?: ui::Tap(action = ui::Fire(fireName = "")))
 
 // The state after `act` sets `label`'s slider to `fraction`, checked to read back as that fraction.
 slidTo (machine, label, fraction) =
@@ -119,9 +157,9 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     againOpened = Canvases::act (chosen, "Menu", 0.5)
     expectVia (nativeSelected, againOpened, [{ name = "Two", value = true }, { name = "One", value = false }, { name = "Three", value = false }, { name = "Menu", value = false }])
     expect (nativeSelected (chosen, "Menu"), false)
-    scene = Lists::find (nativeWalk ([], nativeTree againOpened), \node => Doc::text (node, "kind") == "scene") ?: JsonNull
-    access = Lists::find (Doc::items (Doc::field (scene, "access")), \node => Doc::text (node, "label") == "Two") ?: JsonNull
-    expect (Doc::write access, "{\"role\":\"menuitem\",\"label\":\"Two\",\"x\":20.0,\"y\":190.0,\"w\":200.0,\"h\":40.0,\"value\":0.0,\"min\":0.0,\"max\":0.0,\"selected\":true,\"movable\":false}")
+    // The scene's accessibility tree carries the chosen item with its bounds, read as typed records.
+    access = Lists::find (Lists::flatten (mapList (nativeScenes againOpened, \scene => scene.sketchAccess)), \e => e.accessLabel == "Two") ?: ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
+    expect ("${Canvases::roleName access.accessRole}/${access.accessLeft},${access.accessTop},${access.accessWidth},${access.accessHeight}/${access.accessValue}/${access.accessMin},${access.accessMax}/${access.accessSelected}/${access.accessMovable}", "menuitem/20.0,190.0,200.0,40.0/0.0/0.0,0.0/true/false")
     again = foldList (["Updated", "Second input"], chosen, \(before, text) => nativeFeed (before, "caption", text))
     expectVia (nativeLetters, again, [{ name = "Second input", value = true }, { name = "Updated", value = false }, { name = "Pressed", value = false }])
     expect (nativeValue (again, "Level"), 0.75)
@@ -130,14 +168,16 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
 
 machineCaseNativeViews () = withNativeFixture (\fresh =>
     native = Machines::feed (fresh, [Machines::fact ("skin", Values::text "plain"), Machines::fact ("caption", Values::text "Native"), Machines::fact ("selected", Values::text "two")])
-    walked = Encode::walk ([], Templates::view native)
-    expect (length walked.bindings, 2)
+    walked = nativeTree native
+    expect (length walked.walkBound, 2)
     expectVia (nativeShows, native, [{ name = "Native", value = true }, { name = "Native action", value = true }, { name = "Pick", value = true }, { name = "Missing", value = false }])
     pressed = Machines::pull (native, nativeBound (walked, 0), Values::none ())
     expect (Machines::text (pressed, "caption"), "Pressed")
     chosen = Machines::pull (pressed, nativeBound (walked, 1), Values::text "three")
     expect (Machines::text (chosen, "selected"), "three")
-    expectVia (nativeShows, chosen, [{ name = "three", value = true }, { name = "two", value = false }])
+    // A picker draws every option; the one it shows as chosen is its own words.
+    expect (nativeChosen native, "Two")
+    expect (nativeChosen chosen, "Three")
     expect (length (Machines::choicesOf (chosen, "choices")), 3)
     expectRead (\name => Machines::textual (chosen, name), [{ name = "caption", value = true }, { name = "level", value = false }])
     expectRead (\name => Machines::number (chosen, name), [{ name = "level", value = 0.25 }, { name = "caption", value = 0.0 }])

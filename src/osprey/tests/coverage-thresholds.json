@@ -196,6 +196,18 @@
       "map_runtime_hamt": {
         "language": "c"
       },
+      "native_bridge": {
+        "language": "c"
+      },
+      "native_bridge_lifecycle": {
+        "language": "c"
+      },
+      "native_bridge_internal": {
+        "language": "c"
+      },
+      "native_scene": {
+        "language": "c"
+      },
       "fiber_runtime": {
         "language": "c"
       },
@@ -408,11 +420,15 @@
       },
       "signal_flow": {
         "language": "osprey",
-        "threshold": 91.3
+        "threshold": 97.2
       },
       "uitest": {
         "language": "osprey",
         "threshold": 100.0
+      },
+      "synth": {
+        "language": "osprey",
+        "threshold": 92.2
       }
     },
     "apps": {

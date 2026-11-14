@@ -14,3 +14,6 @@ shipwright.json
 # Generated at build time from the ONE canonical logo
 # (src/toolchain/website/src/assets/images/logo.png) by scripts/sync-icon.mjs. Never committed.
 icon.png
+
+# Generated at build time from compiler/runtime/native_abi.h by scripts/generate-native-abi.mjs.
+client/src/osprey-ui/generated/

@@ -31,42 +31,42 @@ ok 30 - process capabilities encode their handles bounds arguments and environme
 ok 31 - semantic text roles preserve every protocol spelling
 ok 32 - host capabilities preserve namespace operation arguments and bounds
 ok 33 - context menus bind actions after their content controls
-ok 34 - a scene encodes its primitives as flat typed arrays
+ok 34 - a scene's shapes cross as flat typed rows
 ok 35 - colours pack as RRGGBBAA
-ok 36 - a path encodes its steps, outline, paint and transform
+ok 36 - a path sends its steps, outline, paint and transform
 ok 37 - a scene binding delivers keys and pointer positions in scene units
 ok 38 - a frame event delivers its elapsed seconds and patches nothing when ignored
 ok 39 - an animate request carries its on flag
 ok 40 - every symbol encodes as a distinct host-neutral name
 ok 41 - labels, icons, badges, empty states, buttons, tabs and rows send their symbol names
-ok 42 - a pair encodes its label and value without a binding
+ok 42 - a pair sends its label and value without a binding
 ok 43 - platforms decode to the union and encode back to their names
-ok 44 - a start context carries a linux or windows platform
+ok 44 - a launch context carries a linux or windows platform
 ok 45 - product-specific work is a host call with its namespace and arguments
-ok 46 - a split scene streams its fixed-size primitives in order and keeps the rest
-ok 47 - an enveloped scene reports nothing streamed
-ok 48 - streamed primitives read back every field a host import takes
-ok 49 - a resident session keeps its store out of the envelope
-ok 50 - a resident session refuses stale controls and prior-state edits without change
-ok 51 - a split streams scenes from every container in the encoder's order
-ok 52 - primitives that do not stream read back zero fields
-ok 53 - a resident session delivers completions, phases and frames and refuses malformed text
-ok 54 - an idle session holds only its store
-ok 55 - toggles and pickers deliver their own value kinds and refuse others
-ok 56 - progress, swatches, alerts, prominent buttons and leading asides encode
-ok 57 - a meter sends its amount clamped into a total of at least one
+ok 46 - a scene's shapes all cross as rows in drawing order
+ok 47 - a scene an unnamed slot holds draws nothing
+ok 48 - shape rows read back every field a host import takes
+ok 49 - an open surface keeps its store in its session
+ok 50 - a refused event leaves the surface whole and still answering
+ok 51 - scenes draw from every container in the walk's order
+ok 52 - a strip carries its points as rows after its head
+ok 53 - a surface delivers completions, phases and frames and refuses unknown kinds
+ok 54 - an idle surface holds only its store
+ok 55 - toggles and pickers deliver their own value kinds
+ok 56 - progress, swatches, alerts, prominent buttons and leading asides tell
+ok 57 - a meter clamps its amount into a total of at least one
 ok 58 - an editor binds text then cursor after earlier controls and preserves its marks
-ok 59 - a cursor binding delivers placed offsets, clamps negatives and refuses text
+ok 59 - a cursor binding delivers placed offsets and clamps negatives
 ok 60 - a board names its host slice and binds strokes before its lasso
-ok 61 - a board stroke decodes two ordered points with their width and time
-ok 62 - empty negative and non-pair stroke points are refused with the exact diagnostic
-ok 63 - a lasso delivers stroke indices and refuses strings and negative indices
+ok 61 - a board stroke keeps two ordered points with their width and time
+ok 62 - empty negative and widthless strokes are refused with the exact diagnostic
+ok 63 - a lasso delivers stroke indices and refuses negative indices
 ok 64 - a recognition request names its stroke slices and output limit
 ok 65 - message routing delivers placed stroked and lassoed values to their handlers
 ok 66 - board themes name the board and chalk tokens
 ok 67 - mathematics decodes back to the tree it encodes across every constructor
 ok 68 - mathematics decoding refuses unknown kinds missing children non-arrays and non-objects
-ok 69 - image and video encode as leaves with their media fields and no ordinal
+ok 69 - image and video tell as leaves with their media fields and no ordinal
 ok 70 - presentation frames explicitly disable viewport sizing by default
 ok 71 - presentation frames preserve exact dimensions and inner control provenance
 ok 72 - scoped themes and dialogs retain their inner controls and dismissal provenance
@@ -76,5 +76,46 @@ ok 75 - native machine views render ordinary controls and preserve every host va
 ok 76 - broken machine documents name every JSON path and faulty machines remain renderable
 ok 77 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering
 ok 78 - machine edge cases cover every template variant fault cycle request payload and pointer state
-1..78
-# tests=78 passed=78 failed=0 skipped=0
+ok 79 - a resolved edit updates the current state (extra: a completion lands on the state the tap changed)
+ok 80 - native controls are drawn as plain view rows (extra: every plain control, its fit, its sketch and its stream)
+ok 81 - a tap refreshes only the region whose signal changed (extra: a note edit leaves the root region's rows untouched)
+ok 82 - an edit from prior state keeps its meaning when ordinals shift (extra: the note's stale number refuses after the shift)
+ok 83 - an edit whose typed action is gone or ambiguous refuses without change (extra: every number the shifted frame did not draw refuses)
+ok 84 - an edit with an impossible original refuses without change (extra: each impossible ordinal names itself and leaves no ask)
+ok 85 - stale, unknown and mismatched events are rejected without change (extra: the stale numbers refuse while the frame's own still deliver)
+ok 86 - start sends every region once with the theme (extra: the open export hands init the platform, clock and appearance)
+ok 87 - an encoded region decodes with its components and text intact (extra: the section keeps its footer and the picker its choices)
+ok 88 - every constructor encodes as the component it names (extra: the leaf constructors tell under their own names with no control)
+ok 89 - semantic text roles preserve every protocol spelling (extra: every tone keeps its own spelling beside the role)
+ok 90 - tabs carry their pages and bind after the pages' controls, and segments carry their tones (extra: three pages bind in order before the choice)
+ok 91 - inline text retains mathematical emphasis and semantic source colours without bindings (extra: explicit emphasis tells under its own name)
+ok 92 - text input reaches update through its binding and patches its own region (extra: a second edit replaces the slice and the frame keeps the latest text)
+ok 93 - run and http requests encode their bounds, headers and slices (extra: a POST carries two headers and a body)
+ok 94 - filesystem and store requests preserve paths bounds and slices (extra: empty paths still name their fields and slices)
+ok 95 - desktop requests preserve picker export and cancellation payloads (extra: a typeless picker and empty reveals keep their rows)
+ok 96 - process capabilities encode their handles bounds arguments and environment (extra: arguments without an environment, and a long read deadline)
+ok 97 - broken machine documents name every JSON path and faulty machines remain renderable (extra: a bad transition target names its path)
+ok 98 - machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering (extra: every menu item lettering its own choice)
+ok 99 - native machine views render ordinary controls and preserve every host value kind (extra: every value kind crosses the typed machine)
+ok 100 - machine edge cases cover every template variant fault cycle request payload and pointer state (extra: number comparisons hold their bounds)
+ok 101 - real machine documents render every skin and drive pointers sliders drags menus room and native lettering (extra: playback lettering renders on every skin)
+ok 102 - telling reads text roles and tones, and the theme tells both appearances
+ok 103 - telling keeps rich text runs with their emphasis, slant and their own inks
+ok 104 - telling stacks, splits and layers keep their axes, and the theme tells its spacing
+ok 105 - telling sections and screens keep their titles, toolbar and children
+ok 106 - telling frames carry their authored style and scoped themes tell their tokens
+ok 107 - telling dialogs and alerts keep their dismissal, and menus show their body first
+ok 108 - telling asides name their side and drag through a size input between the columns
+ok 109 - telling tabs deliver choices with the chosen key and every page
+ok 110 - telling rows deliver choices with their symbols and groups
+ok 111 - telling slots name the region they draw
+ok 112 - telling buttons keep their role and enabled state
+ok 113 - telling fields prompt, hide and commit through their members
+ok 114 - telling pickers choose through options and disclosures deliver their flag
+ok 115 - telling pairs, badges, labels, icons, links and dividers stay whole leaves
+ok 116 - telling segments, empties, progress, meters and swatches tell their tones
+ok 117 - telling media, editors, boards and scenes bind in the walk's order
+ok 118 - a surface draws view rows and takes typed events with no envelope
+ok 119 - a board, its lasso and an accessible scene take every typed host event through the shared frame
+1..119
+# tests=119 passed=119 failed=0 skipped=0

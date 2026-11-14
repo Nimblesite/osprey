@@ -74,7 +74,7 @@
           ],
           "basis": "The whole package is a port of FastAPI, so its notice is retained even though the aim is not to copy Python code verbatim",
           "notice_attribution": [
-            "Sebastián Ramírez"
+            "Sebasti\u00e1n Ram\u00edrez"
           ]
         },
         {
@@ -719,6 +719,14 @@
       "upstreams": [],
       "references": [],
       "review": "Original Osprey typed editor SDK; no copied third-party implementation or data.",
+      "source_notices": {}
+    },
+    "synth": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey synthesis implementation extracted from the project-owned Prism demo; no third-party source or data.",
       "source_notices": {}
     }
   }

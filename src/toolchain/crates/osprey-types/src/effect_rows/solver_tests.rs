@@ -18,6 +18,43 @@ const HISTORY_WIDTH: usize = 512;
 const HISTORY_COMPARISONS_PER_LEVEL: u32 = 16;
 
 #[test]
+fn recomputed_row_cycles_join_without_losing_rejection_metadata() {
+    for recursive in [super::BTreeSet::new(), [FUNCTION].into()] {
+        let mut history = ReturnHistory::new(recursive);
+        for (before, after) in [(0, 1), (1, 0), (0, 1)] {
+            history.record_recomputed(FUNCTION, &(false, before), (false, after));
+        }
+        assert!(history.merge_for(FUNCTION) == super::Merge::Join);
+        assert!(history.merge_for(FUNCTION + 1) == super::Merge::Recompute);
+        let mut row = snapshot_row();
+        let expected = row.clone();
+        assert!(!row.merge_inferred_row(Summary::default(), None, super::Merge::Join));
+        assert_eq!(
+            row, expected,
+            "joining retains callback uses and unresolved calls"
+        );
+    }
+}
+
+#[test]
+fn recomputed_row_move_budget_ignores_stable_passes_and_other_functions() {
+    let mut history = ReturnHistory::default();
+    for _ in 0..STABLE_SWEEPS {
+        history.record_recomputed(FUNCTION, &(false, 0), (false, 0));
+    }
+    for (step, _) in (0_u64..).zip(0..super::RECOMPUTED_MOVES) {
+        assert!(history.merge_for(FUNCTION) == super::Merge::Recompute);
+        history.record_recomputed(FUNCTION, &(false, step), (false, step + 1));
+        assert!(history.merge_for(FUNCTION + 1) == super::Merge::Recompute);
+    }
+    assert!(history.merge_for(FUNCTION) == super::Merge::Join);
+    assert_eq!(
+        history.recomputed.get(&FUNCTION).map(|part| part.moves),
+        Some(super::RECOMPUTED_MOVES)
+    );
+}
+
+#[test]
 fn stable_return_sweeps_do_not_retain_duplicate_provenance() {
     let value = Value::channel(7);
     let mut history = ReturnHistory::default();
@@ -200,7 +237,7 @@ fn snapshot_row_preserves_fresh_verdict_and_other_metadata_without_copying_befor
             value: None,
             position: None,
         };
-        let mut history = ReturnHistory::default();
+        let mut history = ReturnHistory::new([FUNCTION].into());
         let mut expected = snapshot_row();
         expected.unresolved_dynamic_call = false;
         let step = measure_snapshot_step(&analyzer, &body, &mut state, &mut history);

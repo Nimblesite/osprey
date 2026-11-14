@@ -51,11 +51,11 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
-# registry server, and the repository's own packages published into a folder
-# registry with `publish --folder`. `make -C src/osprey/packages registry-serve` serves that tree and
-# the extension bundles both, so anyone can grab packages before the hosted
-# registry exists. The stamp sits outside the tree, where a stray file would be
-# refused by the catalog walk.
+# registry server, which the extension bundles, and the repository's own
+# packages published into a folder registry with `publish --folder`, which
+# `make -C src/osprey/packages registry-serve` serves. The VSIX carries no
+# packages: building it never publishes them. The stamp sits outside the tree,
+# where a stray file would be refused by the catalog walk.
 target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build src/osprey/packages/manager/api --quiet --no-warnings -o $@
 
@@ -69,12 +69,12 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
-_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/local-registry.stamp target/workbench.wasm
+_vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
 	cp target/osprey-registry "$$DEST/osprey-registry"; \
-	rm -rf "$$DEST/registry"; cp -R target/local-registry "$$DEST/registry"; \
+	rm -rf "$$DEST/registry"; \
 	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
 	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
@@ -125,8 +125,8 @@ _vsix_package: $(EXT_NODE_DEPS)
 	  { echo "FAIL: $$VSIX carries no workbench lessons"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-registry" || \
 	  { echo "FAIL: $$VSIX carries no local registry server"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/@osprey/" || \
-	  { echo "FAIL: $$VSIX carries no local registry packages"; exit 1; }; \
+	! unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/" || \
+	  { echo "FAIL: $$VSIX bundles registry packages; the VSIX carries no packages"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

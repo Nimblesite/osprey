@@ -1086,7 +1086,7 @@ collects an iterator pipeline into one ([BUILTIN-ITER-TOLIST]).
 Equivalent to `list[index]`. An out-of-range index returns `Error`. A string list bound to a name — the result of `lines`, `words` or `split` — is settled into the runtime representation once, at the binding, so every `listGet` on the bound name is a constant-time read and never a copy of the list.
 
 #### `listPrepend(list: List<T>, value: T) -> List<T>` — [BUILTIN-LIST-PREPEND]
-Returns a list with `value` at the front.
+Returns a list with `value` at the front. The result shares the original list's storage and the cost is amortised constant, so building a list by repeated prepends, or rebuilding one element by element through `[head, ...tail]`, takes time linear in its length.
 
 #### `listAppend(list: List<T>, value: T) -> List<T>` — [BUILTIN-LIST-APPEND]
 Returns a list with `value` at the end.
