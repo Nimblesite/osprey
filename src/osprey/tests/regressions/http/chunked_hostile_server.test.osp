@@ -53,7 +53,7 @@ fn doubled(text, times) = match times {
 
 fn sixteenKib() = doubled("x", 14)
 
-// Framing payloads shared by several scenarios.
+/// Framing payloads shared by several scenarios.
 fn framedHi() = "2\r\nhi\r\n0\r\n\r\n"
 fn oversizeLie() = "7FFFFFFF\r\nhi\r\n"
 fn oversizeChunk() = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"

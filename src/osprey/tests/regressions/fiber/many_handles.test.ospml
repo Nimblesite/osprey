@@ -19,7 +19,7 @@ type Pair =
 
 pairOf i = Pair(index = i, label = word i)
 
-// A record a fiber returned is a managed value the runtime holds for every handle.
+(** A record a fiber returned is a managed value the runtime holds for every handle. *)
 sumOfRecords (i, total, last) = match i
     3000 => "${total} ${last}"
     _ =>

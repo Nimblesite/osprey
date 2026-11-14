@@ -958,7 +958,7 @@ fn retryPerformSiteMatrixCase() = {
         }
         performSiteBody(probe)
     }
-    // One trail entry per operation, so each arm's count is its letter's.
+    /// One trail entry per operation, so each arm's count is its letter's.
     let oneCalls = countTag(trail, "o")
     let twoCalls = countTag(trail, "t")
     let threeCalls = countTag(trail, "h")

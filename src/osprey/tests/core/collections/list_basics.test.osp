@@ -856,8 +856,8 @@ fn typedIterationOrderCase() = {
         note text => { log = "${log}${text}|" }
     }
 
-    // visitsAndSeals traverses `xs` through `spell`, then checks the row the
-    // traversal appended to the one handler-owned transcript.
+    /// visitsAndSeals traverses `xs` through `spell`, then checks the row the
+    /// traversal appended to the one handler-owned transcript.
     let visitsAndSeals = fn(xs, spell, title, expected, size, tail, reversed, seam) => {
         noteEach(xs, spell)
         sealedRow(log, title, expected, size, tail, reversed, seam)

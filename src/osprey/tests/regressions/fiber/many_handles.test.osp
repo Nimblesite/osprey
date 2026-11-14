@@ -18,7 +18,7 @@ fn lastWord(i, last) = match i {
 type Pair = { index: int, label: string }
 fn pairOf(i) = Pair { index: i, label: word(i) }
 
-// A record a fiber returned is a managed value the runtime holds for every handle.
+/// A record a fiber returned is a managed value the runtime holds for every handle.
 fn sumOfRecords(i, total, last) = match i {
     3000 => "${total} ${last}"
     _ => {

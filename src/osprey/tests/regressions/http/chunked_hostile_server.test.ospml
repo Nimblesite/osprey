@@ -50,7 +50,7 @@ doubled (text, times) = match times
 
 sixteenKib () = doubled ("x", 14)
 
-// Framing payloads shared by several scenarios.
+(** Framing payloads shared by several scenarios. *)
 framedHi () = "2\r\nhi\r\n0\r\n\r\n"
 oversizeLie () = "7FFFFFFF\r\nhi\r\n"
 oversizeChunk () = "7FFFFFFF\r\nhi\r\n0\r\n\r\n"

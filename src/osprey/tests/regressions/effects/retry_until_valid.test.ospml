@@ -904,7 +904,7 @@ retryPerformSiteMatrixCase () =
                 trail := "${trail}n${toString v}|"
                 resume ()
         performSiteBody probe
-    // One trail entry per operation, so each arm's count is its letter's.
+    (** One trail entry per operation, so each arm's count is its letter's. *)
     oneCalls = countTag (trail, "o")
     twoCalls = countTag (trail, "t")
     threeCalls = countTag (trail, "h")
