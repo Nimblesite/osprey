@@ -273,3 +273,24 @@ test("the homepage's effects panel is short and the build panel covers LLMs, mat
   }
   expect(await words(build.locator(".build-items")), "build panel words").toBeLessThan(130);
 });
+
+// Safari draws no tab icon from a 1024-pixel PNG, and every browser asks for
+// /favicon.ico whatever the page links: the site serves small square icons.
+test("the tab and home-screen icons are small, square and served", async ({ page, request }) => {
+  await page.goto("/");
+  const sizes = { "/favicon.ico": [16, 32, 48] };
+  const icon = await page.locator('link[rel="icon"]').getAttribute("href");
+  const touch = await page.locator('link[rel="apple-touch-icon"]').getAttribute("href");
+  expect(icon).toMatch(/^\/assets\/images\/favicon-32\.png\?v=[0-9a-f]{12}$/);
+  expect(touch).toMatch(/^\/assets\/images\/apple-touch-icon\.png\?v=[0-9a-f]{12}$/);
+  for (const [url, width] of [[icon, 32], [touch, 180]]) {
+    const png = await (await request.get(url)).body();
+    expect(png.readUInt32BE(16), url).toBe(width);
+    expect(png.readUInt32BE(20), url).toBe(width);
+  }
+  const ico = await request.get("/favicon.ico");
+  expect(ico.status()).toBe(200);
+  const body = await ico.body();
+  expect(body.readUInt16LE(2)).toBe(1);
+  expect([...Array(body.readUInt16LE(4)).keys()].map((i) => body.readUInt8(6 + 16 * i))).toEqual(sizes["/favicon.ico"]);
+});
