@@ -1,8 +1,6 @@
 // Shared package fixtures for command contracts and real browser flows.
 
 import * as path from "path";
-import * as fs from "fs";
-import { createHash } from "crypto";
 import { PackageCommandDeps, PkgReport, Ui } from "../../client/src/package-commands";
 
 export const okAdd = (key: string): PkgReport => ({ status: 0, lines: [`added ${key} e1.r2`] });
@@ -131,39 +129,3 @@ export function fakeDeps(script: DepsScript = {}): PackageCommandDeps & { fronte
     cancelled: () => script.cancelled ?? false,
   };
 }
-
-function integerBytes(value: number, width: number): Buffer {
-  const encoded = Buffer.alloc(width);
-  if (width === 8) encoded.writeBigUInt64BE(BigInt(value));
-  else encoded.writeUInt32BE(value);
-  return encoded;
-}
-
-function sourceDigest(files: readonly { path: string; text: string }[]): string {
-  const entries = files.map((file) => Buffer.concat([
-    integerBytes(Buffer.byteLength(file.path), 4), Buffer.from(file.path), Buffer.from([0]),
-    integerBytes(Buffer.byteLength(file.text), 8), createHash("sha256").update(file.text).digest(),
-  ]));
-  const envelope = Buffer.concat([Buffer.from("osprey.source.v1\0"), integerBytes(files.length, 4), ...entries]);
-  return `sha256:${createHash("sha256").update(envelope).digest("hex")}`;
-}
-
-export function servedPackage(name: string, dependency = "") {
-  const manifest = `[project]\nname = "${name}"\nsource_roots = ["src"]\n[package]\nname = "@demo/${name}"\nlicense = "MIT"\nsummary = "Browser fixture ${name}"\nkeywords = ["browser-e2e"]\n` +
-    (dependency ? `[dependencies]\n"@demo/${dependency}" = { epoch = 1, min_release = 1 }\n` : "");
-  const files = [
-    { path: "LICENSE", text: fs.readFileSync(path.resolve(__dirname, "../../../../../../LICENSE"), "utf8") },
-    { path: "osprey.toml", text: manifest },
-    { path: "src/main.osp", text: `namespace demo_${name};\nmodule Api { export fn value() = 42 }\n` },
-  ];
-  return { key: `@demo/${name}`, epoch: 1, ordinal: 1, digest: sourceDigest(files), files };
-}
-
-export function installRegistry() {
-  const packages = [servedPackage("greeting", "maths"), servedPackage("maths")];
-  const listing = { packages: packages.map(({ key, epoch, ordinal, digest }) => ({ key, releases: [{ epoch, ordinal, digest }] })) };
-  const sources = new Map(packages.map((pkg) => [`/v1/releases/${pkg.digest}/source`, pkg]));
-  return { listing, sources, packages };
-}
-
-
