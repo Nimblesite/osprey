@@ -86,8 +86,12 @@ try {
   assert.equal((await request(a, settings(2, 0, { echo: 1.1 }))).accepted, false, 'effect amounts are bounded')
   const toneStart = await request(a, touch(2, 0, 0, 0, 1))
   assert.equal(toneStart.notes, 1)
-  await delay(180)
-  const toneEnd = await request(a, { type: 'heartbeat' })
+  // The tone is judged on rendered frames, not wall time: a loaded runner renders slower than real time.
+  let toneEnd = await request(a, { type: 'heartbeat' })
+  for (let attempt = 0; toneEnd.frames < toneStart.frames + 1000 + 9600 && attempt < 200; attempt++) {
+    await delay(20)
+    toneEnd = await request(a, { type: 'heartbeat' })
+  }
   toneIntervals.push([toneStart.frames + 1000, toneEnd.frames, 110])
   assert.equal((await request(b, touch(1, 0, 0, .1, .5))).notes, 2)
   assert.equal((await request(a, touch(1, 1))).accepted, false, 'stale sequence rejected')
