@@ -1186,6 +1186,7 @@ jobs:
             src/osprey/examples/projects/modules/mobile/android/build/instrumentation.txt
             src/osprey/examples/projects/modules/mobile/android/build/logcat.txt
             src/osprey/examples/projects/modules/mobile/android/build/screenshots/
+            src/toolchain/hosts/android/build/*.png
             src/osprey/examples/projects/modules/mobile/android/app/build/reports/
           if-no-files-found: ignore
           retention-days: 7

@@ -40,10 +40,27 @@ if [[ ${1:-} == --view-check ]]; then
     echo 'Android view check timed out' >&2
     exit 1
 fi
+if [[ ${1:-} == --golden ]]; then
+    # The golden is the day theme with nothing over it: a cold emulator may still show a system
+    # dialog, so it is closed and the screen is taken once Tally has focus and has stopped changing.
+    "$adb" -s "$serial" shell cmd uimode night no >/dev/null
+    "$adb" -s "$serial" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null
+fi
 "$adb" -s "$serial" shell am start -W -n "$activity"
 if [[ ${1:-} == --golden ]]; then
-    sleep 3
-    "$adb" -s "$serial" exec-out screencap -p >"$here/build/ready.png"
-    cd "$repo" && exec python3 scripts/mobile/goldens.py "$here/build/ready.png" "$app/goldens/android"
+    for attempt in $(seq 1 30); do
+        "$adb" -s "$serial" shell dumpsys window | grep -q "mCurrentFocus=.*$id" && break
+        sleep 1
+    done
+    shot="$here/build/ready.png"
+    "$adb" -s "$serial" exec-out screencap -p >"$shot"
+    for attempt in $(seq 1 20); do
+        sleep 1
+        "$adb" -s "$serial" exec-out screencap -p >"$shot.next"
+        cmp -s "$shot" "$shot.next" && break
+        mv "$shot.next" "$shot"
+    done
+    rm -f "$shot.next"
+    cd "$repo" && exec python3 scripts/mobile/goldens.py "$shot" "$app/goldens/android"
 fi
 printf '\nRunning %s on %s\n' "$id" "$serial"
