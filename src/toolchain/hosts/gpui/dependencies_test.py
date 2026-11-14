@@ -71,6 +71,19 @@ class BackportTests(unittest.TestCase):
         self.assertEqual(sorted((path.relative_to(again).as_posix(), path.stat().st_mtime) for path in [again, *again.rglob("*")]), stamps,
                          "a fresh runner stages the same tree at the same times")
 
+    def test_staging_settles_times_where_utime_cannot_skip_symlinks(self):
+        real = source.os.utime
+
+        # Windows' os.utime raises NotImplementedError for follow_symlinks=False.
+        def windows_utime(path, times, **options):
+            if "follow_symlinks" in options:
+                raise NotImplementedError("utime: follow_symlinks unavailable on this platform")
+            real(path, times)
+
+        with patch.object(source.os, "utime", windows_utime):
+            staged = self.stage()
+        self.assertEqual({path.stat().st_mtime for path in [staged, *staged.rglob("*")]}, {source.STAGED_MTIME})
+
     def test_real_cargo_reuses_restaged_bytes_and_rebuilds_changed_backport_bytes(self):
         (self.root / "fix.json").write_text("[]")
         app = self.root / "app"

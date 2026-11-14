@@ -93,9 +93,11 @@ def apply_edits(root, edits):
 STAGED_MTIME = 946684800
 
 
+# `extract` writes only directories and regular files, so no path here is a link; Windows cannot
+# set a time without following one anyway.
 def settle_times(root):
     for path in sorted(root.rglob("*"), reverse=True):
-        os.utime(path, (STAGED_MTIME, STAGED_MTIME), follow_symlinks=False)
+        os.utime(path, (STAGED_MTIME, STAGED_MTIME))
     os.utime(root, (STAGED_MTIME, STAGED_MTIME))
 
 
