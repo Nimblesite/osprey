@@ -224,12 +224,71 @@ struct TabsView: View {
 struct DialogView: View {
     let node: Tree
     let drawing: Drawing
+    #if os(macOS)
+    @State private var boundary = ModalFocusBoundary()
+    @State private var escapeMonitor: Any?
+    #endif
 
     var body: some View {
-        Color.clear.frame(width: 0, height: 0)
-            .sheet(isPresented: Binding(get: { true }, set: { if !$0 { drawing.send(node.count("event"), .null) } })) {
-                NodeView(node: node["body"] ?? .null, drawing: drawing)
-                    .accessibilityLabel(node.text("title"))
-            }
+        ZStack(alignment: .topTrailing) {
+            Color.clear.contentShape(Rectangle()).onTapGesture(perform: dismiss)
+            content
+        }
+        .accessibilityLabel(node.text("title"))
+        #if os(macOS)
+        .onAppear(perform: appear)
+        .onDisappear(perform: leave)
+        .onExitCommand(perform: dismiss)
+        #endif
+    }
+
+    /// A dialog shows over its region, as every host draws it ([NATIVE-HOSTS-CONTRACT]): Escape
+    /// delivers its dismissal exactly once, and while it shows only its own controls take the
+    /// keyboard ([UI-COMPONENTS-EDITOR]) — the boundary restores the responder it replaced.
+    #if os(macOS)
+    private var content: some View {
+        NodeView(node: node["body"] ?? .null, drawing: drawing)
+            .environment(\.ospreyModalFocusBoundary, boundary)
+            .background(DialogWindow { window in if let window { boundary.attach(to: window) } })
+    }
+
+    private func appear() {
+        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 53 else { return event }
+            dismiss()
+            return nil
+        }
+    }
+
+    private func leave() {
+        boundary.detach()
+        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
+        escapeMonitor = nil
+    }
+    #else
+    private var content: some View {
+        NodeView(node: node["body"] ?? .null, drawing: drawing)
+    }
+    #endif
+
+    private func dismiss() {
+        drawing.send(node.count("event"), .null)
     }
 }
+
+#if os(macOS)
+/// The window a dialog is drawn in, so its focus boundary guards exactly that window.
+private struct DialogWindow: NSViewRepresentable {
+    let found: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { self.found(view.window) }
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        DispatchQueue.main.async { self.found(view.window) }
+    }
+}
+#endif

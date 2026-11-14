@@ -45,6 +45,7 @@ public struct RunAdapter: CapabilityAdapter {
         guard executable.hasPrefix("/") else { throw CapabilityError.notAllowed("Executable must be an absolute path") }
         guard !ask.flag(5) else { throw CapabilityError.notAllowed("This host does not convert property lists") }
         let slice = try required(ask, text: 6, "slice")
+        guard !slice.isEmpty else { throw CapabilityError.invalidArgument("run has no valid slice") }
         let launch = Launch(executable: executable, arguments: ask.texts(2),
                             timeout: try required(ask, whole: 3, "timeout"), limit: try required(ask, whole: 4, "limit"))
         let run = try await withTaskCancellationHandler { try await launch.run() } onCancel: { launch.stop() }

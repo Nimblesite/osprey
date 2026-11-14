@@ -26,13 +26,15 @@ struct ButtonView: View {
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
+    @FocusState private var focused: Bool
 
     private var symbol: String { node.text("symbol") }
     private var iconOnly: Bool { inherited.iconOnly && !symbol.isEmpty }
 
     var body: some View {
         Button(action: tap) { face }
-            .buttonStyle(Surface(role: node.text("role"), quiet: inherited.quiet, round: iconOnly, height: inherited.controlHeight, padding: iconOnly ? 0 : inherited.controlPadding, theme: theme, dark: scheme == .dark))
+            .buttonStyle(Surface(role: node.text("role"), quiet: inherited.quiet, round: iconOnly, height: inherited.controlHeight, padding: iconOnly ? 0 : inherited.controlPadding, theme: theme, dark: scheme == .dark, focused: focused))
+            .focused($focused)
             .disabled(!node.flag("enabled"))
             .help(node.text("label"))
             .accessibilityLabel(node.text("label"))
@@ -89,6 +91,7 @@ struct Surface: ButtonStyle {
     let padding: CGFloat
     let theme: ThemeResolver
     let dark: Bool
+    var focused = false
 
     func makeBody(configuration: Configuration) -> some View {
         SurfaceFace(configuration: configuration, style: self)
@@ -106,12 +109,22 @@ struct Surface: ButtonStyle {
                 .padding(.horizontal, style.padding >= 0 ? style.padding : 12)
                 .frame(minWidth: minimumWidth, minHeight: max(minimumTouch, style.height > 0 ? style.height : 28))
                 .background(fill, in: RoundedRectangle(cornerRadius: style.round ? max(style.height, 28) / 2 : 8, style: .continuous))
+                .overlay { focusRing }
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .opacity(enabled ? 1 : 0.45)
                 .scaleEffect(configuration.isPressed ? 0.97 : 1)
                 .animation(.easeOut(duration: 0.12), value: hovering)
                 .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
                 .onHover { hovering = $0 }
+        }
+
+        /// Keyboard focus paints a two-point accent outline three points outside the button,
+        /// on the theme's accent, as the application authored it.
+        @ViewBuilder private var focusRing: some View {
+            if style.focused {
+                RoundedRectangle(cornerRadius: style.round ? max(style.height, 28) / 2 : 8, style: .continuous)
+                    .strokeBorder(accent, lineWidth: 2).padding(-3)
+            }
         }
 
         private var accent: Color { style.theme.color("accent", dark: style.dark) ?? .accentColor }
@@ -262,7 +275,8 @@ struct PickerView: View, Equatable {
         .menuStyle(.button)
         .buttonStyle(Surface(role: "plain", quiet: true, round: false, height: inherited.controlHeight, padding: 8, theme: theme, dark: scheme == .dark))
         .menuIndicator(.hidden)
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
+        .lineLimit(1)
         .accessibilityLabel(node.text("label"))
         .accessibilityValue(selected)
     }

@@ -46,7 +46,7 @@ struct EditorLeaf: View {
 
     @ViewBuilder private var text: some View {
         #if os(macOS)
-        CodeText(value: node.text("value"), cursor: node.count("cursor"), focusEpoch: node.count("focusEpoch"),
+        CodeText(value: node.text("value"), cursor: node.count("cursor"), focusEpoch: node["focusEpoch"]?.whole ?? 0,
                  underlines: underlines, textSize: size, inline: step,
                  edit: { drawing.send(node.count("event"), .string($0)) },
                  place: { drawing.send(node.count("placeEvent"), .number(Double($0))) })

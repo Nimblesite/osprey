@@ -89,7 +89,10 @@ struct ContainerView: View {
         if node.text("axis") == "horizontal" {
             HStack(alignment: inherited.rowsFromTop ? .top : .center, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, true) }
         } else {
-            VStack(alignment: .leading, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, false) }
+            // The frame's authored cross alignment places the children, as the browser does
+            // (`align-items`): start, center or end.
+            let cross: HorizontalAlignment = inherited.cross == "center" ? .center : inherited.cross == "end" ? .trailing : .leading
+            VStack(alignment: cross, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, false) }
         }
     }
 

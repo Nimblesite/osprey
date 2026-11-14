@@ -8,7 +8,7 @@ import XCTest
 // joined words carry one newline within a line and a blank line between blocks further
 // apart ([UI-COMPONENTS-FRAMED]).
 @MainActor
-final class SelectionGroupTests: XCTestCase {
+final class SelectionGroupTests: RenderingTestCase {
     private var window: NSWindow?
 
     override func setUp() {

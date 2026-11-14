@@ -8,7 +8,7 @@ import XCTest
 // folders nobody may read, more children than the limit and a deadline already past. Each
 // test builds its tree in a temporary folder, asks with the fields `Requests::fields` numbers,
 // and asserts every field of the slice the host writes.
-final class MeasureAdapterTests: XCTestCase {
+final class MeasureAdapterTests: RenderingTestCase {
     private var root: URL!
 
     override func setUpWithError() throws {

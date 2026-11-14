@@ -7,7 +7,7 @@ import XCTest
 // behind: none of them may hang the window's request or grow without bound.
 // Every ask is the typed field list the frame's ask rows became, numbered as
 // `Requests::fields` numbers them.
-final class RunAdapterTests: XCTestCase {
+final class RunAdapterTests: RenderingTestCase {
     private func ask(_ script: String, timeout: Int = 5000, limit: Int = 1_000_000, plist: Bool = false) -> Ask {
         Ask(code: 1, ticket: "t", fields: [
             .init(field: 1, number: 0, text: "/bin/sh"),

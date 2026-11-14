@@ -6,7 +6,7 @@ import XCTest
 
 // Scripts, region trees, picture comparisons and scripted HTTP stay local.
 // Button geometry also exercises a real AppKit window's layout.
-final class SelfTestTests: XCTestCase {
+final class SelfTestTests: RenderingTestCase {
     @MainActor
     func testButtonFrameIsRecordedWhenRecordingStartsAfterWindowLayout() async throws {
         _ = NSApplication.shared

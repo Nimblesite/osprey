@@ -54,10 +54,14 @@ public struct Inherited: Equatable {
     var flatRows = false
     var fadeBackdrop = false
     var rowsFromTop = false
+    /// How a stack places its children on the cross axis, as the frame authored it
+    /// ([UI-COMPONENTS-FRAMED]): start, center or end.
+    var cross = "start"
 
     func merging(_ style: [String: Tree]) -> Inherited {
         var next = self
         next.rowsFromTop = style["cross"]?.string == "start"
+        if let value = style["cross"]?.string, !value.isEmpty { next.cross = value }
         if let value = style["gap"]?.int, value > 0 { next.gap = CGFloat(value) }
         if let value = style["font"]?.string, !value.isEmpty { next.family = value }
         if let value = style["textSize"]?.int, value > 0 { next.size = CGFloat(value) }

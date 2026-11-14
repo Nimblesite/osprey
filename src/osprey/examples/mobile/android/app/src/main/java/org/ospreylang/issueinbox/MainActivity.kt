@@ -27,8 +27,10 @@ class MainActivity : Activity() {
         val phase = intent.getStringExtra("smoke_phase")
         if (phase != null) verifyRenderer(this)
         val live = intent.getBooleanExtra("live", false)
-        val fixture = if (phase != null && !live) SmokeCheck.fixture(phase) else null
-        services = HostServices(this, if (phase == null) "inbox.sqlite" else "inbox-smoke.sqlite", fixture, ::dispatch)
+        // Capture only: the fixture with no scripted journey.
+        val still = intent.getBooleanExtra("fixture", false)
+        val fixture = if (still) SmokeCheck.fixture("fresh") else if (phase != null && !live) SmokeCheck.fixture(phase) else null
+        services = HostServices(this, if (phase == null && !still) "inbox.sqlite" else "inbox-smoke.sqlite", fixture, ::dispatch)
         if (phase != null) smoke = SmokeCheck(this, phase, live) { event -> queue.post { dispatch(event) } }
         accept(Native.start())
     }

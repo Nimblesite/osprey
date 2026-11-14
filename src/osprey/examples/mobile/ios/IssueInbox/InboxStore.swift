@@ -56,8 +56,19 @@ final class InboxStore: ObservableObject {
     var status: String { snapshot.status }
 
     init(services: HostServices? = nil) {
-        do { self.services = try services ?? HostServices() }
+        do { self.services = try services ?? (ProcessInfo.processInfo.arguments.contains("--inbox-fixture") ? Self.fixture() : HostServices()) }
         catch { hostError = error.localizedDescription }
+    }
+
+    // Capture only: the same three issues the Android fixture serves, on a fresh database.
+    private static func fixture() throws -> HostServices {
+        let body = """
+        [{"id":101,"number":42,"title":"First issue 🦅","body":"Steps to **reproduce** 🦉","labels":[{"name":"bug"}],"user":{"login":"alice"},"comments":3},
+         {"id":102,"number":43,"title":"Second issue","user":{"login":"bob"},"comments":0},
+         {"id":103,"number":44,"title":"A pull request","user":{"login":"carol"},"comments":0,"pull_request":{}}]
+        """
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("inbox-fixture-\(UUID().uuidString).sqlite")
+        return try HostServices(databaseURL: url) { id, _ in ["type": "http", "id": id, "status": 200, "body": body, "error": ""] }
     }
 
     func start() {

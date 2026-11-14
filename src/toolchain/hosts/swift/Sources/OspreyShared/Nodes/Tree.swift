@@ -17,6 +17,8 @@ public indirect enum Tree: Sendable, Equatable {
     public var string: String? { if case let .string(value) = self { return value } else { return nil } }
     public var bool: Bool? { if case let .bool(value) = self { return value } else { return nil } }
     public var int: Int? { if case let .number(value) = self, value.isFinite, abs(value) < 9e15 { return Int(value) } else { return nil } }
+    /// A whole number a JavaScript-safe count can hold, from 0 to 2^53 - 1; anything else is none.
+    public var whole: Int? { if case let .number(value) = self, value == value.rounded(), (0...9_007_199_254_740_991).contains(value) { return Int(value) } else { return nil } }
     public var array: [Tree]? { if case let .array(value) = self { return value } else { return nil } }
     public var object: [String: Tree]? { if case let .object(value) = self { return value } else { return nil } }
 
