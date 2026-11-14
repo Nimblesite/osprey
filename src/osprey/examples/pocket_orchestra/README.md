@@ -10,7 +10,7 @@ On an Apple silicon Mac with the repository's compiler dependencies and Xcode co
 make -C src/toolchain/targets/macos pocket-orchestra
 ```
 
-This builds and opens `target/orchestra/Light Orchestra.app`. Put the phones and Mac on the same Wi-Fi, scan the QR code, tap **Join session**, then touch the ribbon. The app plays through the Mac's current system audio output. Start with a comfortable speaker volume. The compiled app bundles its controller page and can subsequently be opened directly. With an already-built compiler, use `make -C src/toolchain/targets/macos pocket-orchestra-quick` (`OSPREY_BIN` defaults to `target/debug/osprey`).
+This builds and opens `target/orchestra/Light Orchestra.app`. Put the phones and Mac on the same Wi-Fi, scan the QR code, tap **Join session**, then touch the ribbon. The app plays through the Mac's current system audio output. Start with a comfortable speaker volume. The compiled app bundles its controller page and can subsequently be opened directly.
 
 The invite uses the first available `en` network interface. If several adapters are active, choose the reachable address when running the binary:
 
@@ -51,7 +51,7 @@ The native integration tests require the website's installed Playwright/`ws` dep
 
 For bounded diagnostics, `ORCHESTRA_DURATION=10` stops after ten seconds, `ORCHESTRA_NO_WINDOW=1` uses the audio device without showing a window, and `ORCHESTRA_HEADLESS=1` renders without a device. `ORCHESTRA_CAPTURE=<path>` saves at most thirty seconds of generated PCM before master volume; exceeding that diagnostic limit reports an error. Startup/shutdown diagnostics are JSON lines on stdout and omit invitation tokens. For a session without a window, supply `ORCHESTRA_TOKEN` (at least twenty characters) and open `http://<host>:<port>/#<token>` on controllers.
 
-`audio.td` under the Swift host is the source of its audio models. Regenerate with `make -C src/toolchain/targets/macos pocket-orchestra-models TYPEDIAGRAM_DIST=/path/to/typeDiagram/packages/typediagram/dist`; generated output is checked against that source during validation.
+`audio.td` under the Swift host is the source of its audio models. Regenerate with `make -C src/toolchain/targets/macos _pocket-orchestra-models TYPEDIAGRAM_DIST=/path/to/typeDiagram/packages/typediagram/dist`; generated output is checked against that source during validation.
 
 ### Recorded verification
 
