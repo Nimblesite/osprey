@@ -1257,10 +1257,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The simulator corpus alone takes most of a part, so the apps run beside it, not after it.
           - part: iOS
             runner: macos-26
             minutes: 22
-            run: make -C src/toolchain/targets/ios/tests examples inbox tally-headless
+            run: make -C src/toolchain/targets/ios/tests examples
+          - part: iOS apps
+            runner: macos-26
+            minutes: 22
+            run: make -C src/toolchain/targets/ios/tests inbox tally-headless
           - part: macOS
             minutes: 15
             run: make -C src/toolchain/targets/macos/tests examples tally-headless tally

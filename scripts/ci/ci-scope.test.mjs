@@ -117,7 +117,7 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C src/toolchain/targets/ios/tests examples inbox', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
+  for (const command of ['make -C src/toolchain/targets/ios/tests examples\n', 'make -C src/toolchain/targets/ios/tests inbox tally-headless', 'make -C src/toolchain/targets/macos/tests examples tally-headless tally', 'make -C src/toolchain/targets/ios/tests bank',
     'make -C src/toolchain/targets/macos/tests workbench']) {
     assert.ok(apple.includes(command), command)
   }
@@ -127,10 +127,11 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
   assert.match(apple, /^ {10}OSPREY_BIN: \$\{\{ github\.workspace \}\}\/target\/release\/osprey$/m)
   assert.doesNotMatch(apple, /continue-on-error/)
-  // Every part runs on macos-15 but iOS, which needs Xcode 26 to generate the shared host's iOS scheme.
+  // Every part runs on macos-15 but the two iOS parts, which need Xcode 26 to generate the shared host's iOS scheme.
   assert.match(apple, /^    runs-on: \$\{\{ matrix\.runner \|\| 'macos-15' \}\}$/m)
   assert.match(apple, /^ {10}- part: iOS\n {12}runner: macos-26$/m)
-  assert.equal(apple.match(/^ {12}runner: /gm).length, 1, 'only the iOS part leaves macos-15')
+  assert.match(apple, /^ {10}- part: iOS apps\n {12}runner: macos-26$/m)
+  assert.equal(apple.match(/^ {12}runner: /gm).length, 2, 'only the iOS parts leave macos-15')
   assert.match(apple, /^ {10}lfs: true$/m)
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
