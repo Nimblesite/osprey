@@ -126,6 +126,9 @@ async function runBrowserFlow(frame: Frame, folder: Uri, run: (frame: Frame, fol
   catch (error) {
     const details = await frame.locator("body").innerText().catch(problem => `Unavailable: ${String(problem)}`);
     console.error("Package UI at failure:", details);
+    // A real package operation keeps writing the project after the panel closes, so the fixture is
+    // restored only once it ends; otherwise its lock outlives the restore and fails every later flow.
+    await frame.getByText("Package work in progress", { exact: true }).waitFor({ state: "detached" }).catch(() => undefined);
     throw error;
   }
 }
@@ -173,7 +176,7 @@ async function installFromBrowser(frame: Frame): Promise<void> {
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
   await press(frame, "Add to project");
   await press(frame, "Confirm add @demo/greeting");
-  await frame.getByText("2 installed · 1 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
+  await frame.getByText("2 installed · 1 direct · 0 missing · 0 findings", { exact: true }).waitFor();
   await press(frame, "Installed", "tab");
   await frame.getByRole("option").filter({ hasText: "@demo/greeting" }).click();
   await frame.getByText("Dependencies", { exact: true }).waitFor();
@@ -197,7 +200,7 @@ async function tamperInstalledSource(frame: Frame, folder: Uri, key: string, dig
   const source = path.join(folder.fsPath, ".osprey/packages", key, digest.slice(7), "src/main.osp");
   fs.writeFileSync(source, "fn value() = 0\n");
   await press(frame, "Refresh");
-  await frame.getByText("verify.digest", { exact: true }).first().waitFor({ timeout: 4000 });
+  await frame.getByText("verify.digest", { exact: true }).first().waitFor();
   assert.strictEqual(await frame.getByRole("button", { name: "Add to project", exact: true }).isEnabled(), false,
     "a package with integrity findings cannot be added");
 }
@@ -206,13 +209,15 @@ async function removeFromBrowser(frame: Frame, folder: Uri): Promise<void> {
   await frame.locator(".osp-context-body").click({ button: "right" });
   await frame.getByRole("menu").getByRole("button", { name: "Remove dependency", exact: true }).click();
   await press(frame, "Confirm remove @demo/greeting");
-  await frame.getByText("0 installed · 0 direct · 0 missing · 0 findings", { exact: true }).waitFor({ timeout: 4000 });
+  await frame.getByText("0 installed · 0 direct · 0 missing · 0 findings", { exact: true }).waitFor();
   assert.ok(!fs.readFileSync(path.join(folder.fsPath, "osprey.toml"), "utf8").includes("@demo/greeting"));
 }
 
 suite("package workspace browser installation", () => {
   teardown(() => sinon.restore());
-  test("real Add verifies two packages and Remove resolves their dependency graph", async () => {
+  // Real installs download, verify and unpack two releases through osprey-pkg; a hosted runner takes several seconds.
+  test("real Add verifies two packages and Remove resolves their dependency graph", async function () {
+    this.timeout(60_000);
     const packages: DemoPackage[] = [{ key: "@demo/maths" }, { key: "@demo/greeting", dependency: "@demo/maths" }];
     await withPackageBrowser(async (frame, folder, registry) => {
       assert.ok(folder.fsPath.includes(" "), "real package operations run from a workspace path containing spaces");
