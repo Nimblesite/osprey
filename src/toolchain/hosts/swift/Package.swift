@@ -26,7 +26,8 @@ let package = Package(
             path: "Sources/OspreyViewApp",
             linkerSettings: [.unsafeFlags(["-L", applicationArchive]), .linkedLibrary("OspreyApp")]
         ),
-        .target(name: "OspreyShared", dependencies: ["OspreyViewApp"]),
+        // Films play through AVKit's player view, which nothing loads unless it is linked ([UI-COMPONENTS-MEDIA]).
+        .target(name: "OspreyShared", dependencies: ["OspreyViewApp"], linkerSettings: [.linkedFramework("AVKit")]),
         .executableTarget(name: "OspreyViewHost", dependencies: ["OspreyShared", "OspreyViewApp"]),
         .executableTarget(name: "OspreyViewHostIOS", dependencies: ["OspreyShared", "OspreyViewApp"]),
         .testTarget(

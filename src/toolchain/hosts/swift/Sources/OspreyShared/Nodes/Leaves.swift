@@ -20,7 +20,7 @@ struct LeafView: View {
         case "text": plain
         case "rich-text": rich
         case "label": labelled
-        case "icon": NativeSymbol(name: node.text("symbol"), size: inherited.symbolSize > 0 ? inherited.symbolSize : 14)
+        case "icon": NativeSymbol(name: node.text("symbol"), size: inherited.symbolSize > 0 ? inherited.symbolSize : FontRegistration.exactLines && inherited.size > 0 ? inherited.size : 14)
         case "badge": badge
         case "pair", "evidence": pair
         case "link": link
@@ -45,7 +45,17 @@ struct LeafView: View {
             .font(Type.font(role, inherited))
             .tracking(tracking(role))
             .lineSpacing(leading(role))
+            .padding(.vertical, exactGap(role) / 2)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The half-gap above and below each paragraph when an authored line height is exact.
+    private func exactGap(_ role: String) -> CGFloat {
+        #if os(macOS)
+        return Type.leadingGap(role, inherited)
+        #else
+        return 0
+        #endif
     }
 
     private func tracking(_ role: String) -> CGFloat {
@@ -53,6 +63,9 @@ struct LeafView: View {
     }
 
     private func leading(_ role: String) -> CGFloat {
+        #if os(macOS)
+        if FontRegistration.exactLines, inherited.lineHeight > 0 { return Type.lineGap(role, inherited) }
+        #endif
         let size = inherited.size > 0 ? inherited.size : 13
         return inherited.lineHeight > size ? inherited.lineHeight - size * 1.2 : 0
     }
@@ -61,6 +74,10 @@ struct LeafView: View {
         let role = node.text("role")
         let words = role == "eyebrow" ? node.text("text").uppercased() : node.text("text")
         #if os(macOS)
+        // An exact line box draws no line for no words, as the browser's empty paragraph.
+        if FontRegistration.exactLines, words.isEmpty {
+            Color.clear.frame(width: 0, height: 0)
+        } else
         // Authored serif paragraphs wrap to exact line heights, as AppKit draws them.
         if group == nil, !words.isEmpty, role == "body", inherited.family == "serif", inherited.size > 0, inherited.lineHeight > 0 {
             ParagraphText(value: words, inherited: inherited, ink: nsTone(node.text("tone")))
@@ -167,7 +184,26 @@ struct LeafView: View {
         }
     }
 
-    private var badge: some View {
+    @ViewBuilder private var badge: some View {
+        if FontRegistration.exactLines { outlinedBadge } else { filledBadge }
+    }
+
+    /// The bundled-face badge: words in the sans face on an outlined capsule the reference's
+    /// 27 points tall, so a changing verdict keeps the document's rhythm ([WORKBENCH-DESIGN-TYPE]).
+    private var outlinedBadge: some View {
+        HStack(spacing: 6) {
+            if !node.text("symbol").isEmpty { NativeSymbol(name: node.text("symbol"), size: 13) }
+            Text(node.text("label"))
+        }
+        .font(.custom("Geist", size: 13))
+        .foregroundStyle(theme.color(node.text("tone"), dark: dark) ?? .secondary)
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .frame(minHeight: 27)
+        .overlay(Capsule().stroke(theme.color("outline", dark: dark) ?? .secondary, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var filledBadge: some View {
         let colour = theme.color(node.text("tone"), dark: dark) ?? .secondary
         return HStack(spacing: 4) {
             if !node.text("symbol").isEmpty { NativeSymbol(name: node.text("symbol"), size: 9, weight: .bold) }

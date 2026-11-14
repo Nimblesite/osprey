@@ -132,7 +132,16 @@ struct FramedView: View {
     private var style: Tree { node["style"] ?? .null }
     private var dark: Bool { scheme == .dark }
     private var radius: CGFloat { CGFloat(style.count("radius")) }
-    private var insets: EdgeInsets { EdgeInsets(top: CGFloat(style.count("top")), leading: CGFloat(style.count("left")), bottom: CGFloat(style.count("bottom")), trailing: CGFloat(style.count("right"))) }
+    private var insets: EdgeInsets {
+        EdgeInsets(top: CGFloat(style.count("top")) + lined("top"), leading: CGFloat(style.count("left")) + lined("left"),
+                   bottom: CGFloat(style.count("bottom")) + lined("bottom"), trailing: CGFloat(style.count("right")) + lined("right"))
+    }
+
+    /// With exact metrics a border occupies its point of layout on each edge it draws, as the browser's does.
+    private func lined(_ edge: String) -> CGFloat {
+        let drawn = style.text("lineEdge")
+        return FontRegistration.exactLines && !style.text("line").isEmpty && (drawn.isEmpty || drawn == "all" || drawn == edge) ? 1 : 0
+    }
     private var width: CGFloat? { style.count("width") > 0 ? CGFloat(style.count("width")) : nil }
     private var height: CGFloat? { style.count("height") > 0 ? CGFloat(style.count("height")) : nil }
     private var grows: Bool { style.flag("grow") }
@@ -193,6 +202,13 @@ struct FramedView: View {
                 .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .sizeChanges)
                 .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .initialOffset)
                 .scrollIndicators(.automatic)
+            }
+        } else if FontRegistration.exactLines, grows, !(node["body"] ?? .null).fillsPane {
+            // A growing frame keeps natural content at its size and scrolls content taller than its pane.
+            ViewThatFits(in: .vertical) {
+                content.padding(insets).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+                ScrollView(.vertical) { content.padding(insets).frame(maxWidth: .infinity, alignment: alignment) }
             }
         } else {
             content.padding(insets)
@@ -312,5 +328,20 @@ struct ToldScene: View {
 
     var body: some View {
         SharedCanvas(store: store.shared, index: node.count("sceneRow"), ordinal: Int64(node.count("event")))
+    }
+}
+
+extension Tree {
+    /// Whether this content fills the pane it is given rather than keeping a natural height: an
+    /// editor, board or other pane-sized component, or a column holding one.
+    var fillsPane: Bool {
+        switch text("kind") {
+        case "editor", "board", "dialog", "split", "aside", "tabs", "screen", "scene": return true
+        case "stack": return list("children").contains { $0.fillsPane }
+        case "layer": return list("children").contains { $0.fillsPane }
+        case "themed": return (self["body"] ?? .null).fillsPane
+        case "framed": return (self["style"] ?? .null).flag("grow") && (self["style"] ?? .null).count("height") == 0
+        default: return false
+        }
     }
 }

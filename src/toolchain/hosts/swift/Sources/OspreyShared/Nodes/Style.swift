@@ -62,7 +62,7 @@ public struct Inherited: Equatable {
         var next = self
         next.rowsFromTop = style["cross"]?.string == "start"
         if let value = style["cross"]?.string, !value.isEmpty { next.cross = value }
-        if let value = style["gap"]?.int, value > 0 { next.gap = CGFloat(value) }
+        if let value = style["gap"]?.int, value > 0 || (FontRegistration.exactLines && value == 0) { next.gap = CGFloat(value) }
         if let value = style["font"]?.string, !value.isEmpty { next.family = value }
         if let value = style["textSize"]?.int, value > 0 { next.size = CGFloat(value) }
         if let value = style.double("lineHeight"), value > 0 { next.lineHeight = CGFloat(value) }
@@ -163,6 +163,23 @@ enum Type {
             base = NSFont.systemFont(ofSize: face.size, weight: weight)
         }
         return inherited.italic ? NSFontManager.shared.convert(base, toHaveTrait: .italicFontMask) : base
+    }
+    #endif
+
+    #if os(macOS)
+    /// What an authored line height adds to one line of `role`'s face: the browser's line box
+    /// less the face's own, so every line takes exactly the authored height.
+    static func leadingGap(_ role: String, _ inherited: Inherited) -> CGFloat {
+        guard FontRegistration.exactLines, inherited.lineHeight > 0 else { return 0 }
+        let face = nsFont(role, inherited)
+        return inherited.lineHeight - (NSLayoutManager().defaultLineHeight(for: face) - face.leading.rounded())
+    }
+
+    /// The same gap between lines, never rounded upward, so long documents gain no pixel.
+    static func lineGap(_ role: String, _ inherited: Inherited) -> CGFloat {
+        let gap = leadingGap(role, inherited)
+        let encoded = Float(gap)
+        return CGFloat(encoded) > gap ? CGFloat(encoded.nextDown) : CGFloat(encoded)
     }
     #endif
 

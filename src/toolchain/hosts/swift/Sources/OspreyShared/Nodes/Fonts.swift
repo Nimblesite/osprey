@@ -17,12 +17,18 @@ public enum FontRegistration {
     /// The faces an application may bundle, in its resources' `fonts` folder.
     private static let faces = ["STIXTwoText.ttf", "STIXTwoText-Italic.ttf", "STIXTwoMath-Regular.ttf", "Geist.ttf"]
 
+    /// Whether an authored line height sets every line's box exactly, as the browser's does
+    /// ([WORKBENCH-DESIGN-TYPE]): only an application that bundles its faces asks for it, so every
+    /// other application keeps the platform's own line boxes.
+    public internal(set) static var exactLines = false
+
     /// Registered before AppKit initializes text rendering; retains explicit user preferences.
     /// macOS 26 rasterizes text heavier than earlier releases: only there does turning smoothing
     /// off match the browser's regular stroke. Only an application that bundles these faces may
     /// set it, so every other application's text renders exactly as before.
     public static func configureTextRendering() {
         guard bundled() else { return }
+        exactLines = true
         if #available(macOS 26, *) {
             UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0])
         }

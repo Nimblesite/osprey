@@ -71,6 +71,7 @@ class RenderingTestCase: XCTestCase {
     override class func setUp() {
         super.setUp()
         if #available(macOS 26, *) { UserDefaults.standard.register(defaults: ["AppleFontSmoothing": 0]) }
+        FontRegistration.exactLines = true
     }
 }
 
