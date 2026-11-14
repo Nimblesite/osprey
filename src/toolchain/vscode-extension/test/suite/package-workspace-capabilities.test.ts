@@ -90,6 +90,11 @@ async function withRoot(action: (root: string) => Promise<void>): Promise<void> 
 
 function httpFixture(request: http.IncomingMessage, response: http.ServerResponse): void {
   if (request.url === "/stall") return;
+  if (request.url === "/unavailable") {
+    response.writeHead(503);
+    response.end("retry later");
+    return;
+  }
   response.writeHead(200, { "content-type": "application/json" });
   if (request.url === "/interrupt") {
     response.write("partial");
@@ -169,6 +174,8 @@ suite("package workspace capabilities", () => {
       }
       await assert.rejects(execute(ask(HOST_CALL, "t", [[1, 0, "vscode"], [2, 0, "process.input"]])), /missing its arguments/);
       await assert.rejects(execute(ask(HOST_CALL, "t", [[1, 0, "vscode"], [2, 0, "process.input"], ...pairs(3, [["executable", "osprey-pkg"]])])), /workspace/);
+      await assert.rejects(execute(processAsk(root, "unused", { stdin: "x".repeat(1024 * 1024 + 1) })), /out-of-bounds arguments name or value/);
+      await assert.rejects(execute(hostCall("vscode", "process.input", [["workspace", workspace]])), /Unknown package executable/);
     });
   });
 
@@ -306,6 +313,46 @@ suite("package workspace capabilities", () => {
     });
   });
 
+  test("host requests validate document positions, configuration and view names before dispatch", async () => {
+    await withRoot(async (root) => {
+      let opened = 0;
+      const execute = createRequestExecutor({
+        ...hostFor(root),
+        openDocument: async (uri, line, column) => { opened++; return { uri, line, column }; },
+        readConfiguration: (section, workspace) => ({ section, workspace }),
+        revealView: async (view) => ({ view }),
+      });
+      const uri = pathToFileURL(path.join(root, "proof ∧.osp")).toString();
+      await assert.rejects(execute(hostCall("vscode", "document.open")), /missing its arguments/);
+      for (const arguments_ of [[["ignored", "value"]], [["uri", ""]], [["uri", "relative.osp"]], [["uri", "https://example.test/"]]] as const) {
+        await assert.rejects(execute(hostCall("vscode", "document.open", arguments_)), /requires a file resource/);
+      }
+      for (const [line, column] of [[undefined, undefined], ["7", undefined], [undefined, "3"], [String(Number.MAX_SAFE_INTEGER), "1"]] as const) {
+        const arguments_: [string, string][] = [["uri", uri]];
+        if (line !== undefined) arguments_.push(["line", line]);
+        if (column !== undefined) arguments_.push(["column", column]);
+        const result = await execute(hostCall("vscode", "document.open", arguments_));
+        assert.deepStrictEqual(JSON.parse(result.detail), { uri, line: Number(line ?? 1), column: Number(column ?? 1) });
+      }
+      for (const field of ["line", "column"]) {
+        for (const value of ["0", "-1", "1.5", "NaN", "Infinity", "", String(Number.MAX_SAFE_INTEGER + 1)]) {
+          await assert.rejects(execute(hostCall("vscode", "document.open", [["uri", uri], [field, value]])), /positive whole number/);
+        }
+      }
+      assert.strictEqual(opened, 4, "invalid positions never reach the document host");
+      for (const arguments_ of [[], [["section", "editor"]], [["workspace", uri]], [["section", ""], ["workspace", uri]], [["section", "editor"], ["workspace", ""]]] as const) {
+        await assert.rejects(execute(hostCall("vscode", "configuration.read", arguments_)), /missing its arguments/);
+      }
+      const configuration = await execute(hostCall("vscode", "configuration.read", [["section", "editor"], ["workspace", uri]]));
+      assert.deepStrictEqual(JSON.parse(configuration.detail), { section: "editor", workspace: uri });
+      for (const arguments_ of [[], [["view", ""]]] as const) {
+        await assert.rejects(execute(hostCall("vscode", "webview.reveal", arguments_)), /missing its arguments/);
+      }
+      assert.deepStrictEqual(JSON.parse((await execute(hostCall("vscode", "webview.reveal", [["view", "osprey.proof"]]))).detail), { view: "osprey.proof" });
+      assert.deepStrictEqual(JSON.parse((await execute(hostCall("vscode", "workspace.snapshot"))).detail), { trusted: true });
+    });
+  });
+
   test("every framework capability is answered here or refused by name", async () => {
     // Every `Capability` constructor in src/osprey/packages/native/src/capability.ospml, as the encoder names it
     // ([NATIVE-HOSTS-COVERAGE]): a capability added to the framework fails here until this host answers or refuses it.
@@ -339,6 +386,7 @@ suite("package workspace capabilities", () => {
       assert.strictEqual(headers().accept, "application/json");
       await execute(httpAsk(url, { headers: [["X-Probe", "forwarded"]], deadline: 5000 }));
       assert.strictEqual(headers()["x-probe"], "forwarded");
+      await assert.rejects(execute(httpAsk(url + "unavailable", { deadline: 5000 })), /Registry returned HTTP 503/);
       await assert.rejects(execute(httpAsk(url + "interrupt", { deadline: 5000 })), /interrupted|aborted/);
       await assert.rejects(execute(httpAsk(url + "stall", { deadline: 100 })), /timed out/);
     }));

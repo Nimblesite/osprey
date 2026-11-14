@@ -87,7 +87,7 @@ function every(pairs: readonly { name: string; value: string }[], name: string):
 function positive(value: string | undefined, name: string, fallback: number): number {
   if (value === undefined) return fallback;
   const number = Number(value);
-  if (!Number.isSafeInteger(number) || number < 1 || number > Number.MAX_SAFE_INTEGER) {
+  if (!Number.isSafeInteger(number) || number < 1) {
     throw new Error(`Request field ${name} must be a positive whole number`);
   }
   return number;
@@ -160,7 +160,6 @@ function processPlan(ask: Ask, host: CapabilityHost): ProcessPlan {
   const cwd = directoryFor(first(arguments_, "workspace") ?? "", host);
   if (dirtyIn(cwd, host)) throw new Error(`Save or revert unsaved ${MANIFEST} and ${LOCK} changes before running package commands`);
   const stdin = first(arguments_, "stdin") ?? "";
-  if (stdin.length > MAX_STDIN) throw new Error(`Request field stdin must be at most ${MAX_STDIN} characters`);
   return {
     executable: executableFor(host),
     argv: every(arguments_, "argv"),
@@ -320,7 +319,7 @@ export function createRequestExecutor(host: CapabilityHost, options: ExecutorOpt
         return serialize(plan.cwd, async () => {
           if (!host.trusted) throw new Error("Trust this workspace before running package commands");
           const run = await runProcess(plan);
-          const stdout = String(run.stdout ?? "");
+          const stdout = run.stdout;
           const slice = ask.text(6);
           return slice === "" ? { detail: stdout } : { detail: stdout, slices: [{ key: slice, text: stdout }] };
         });
