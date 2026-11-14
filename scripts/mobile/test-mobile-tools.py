@@ -421,6 +421,16 @@ class PhoneGoldens(unittest.TestCase):
             compressed = goldens.zlib.compress(raw)
             path.write_bytes(valid[:33] + chunk(b"IDAT", compressed[:5]) + chunk(b"IDAT", compressed[5:]) + chunk(b"IEND", b""))
             self.assertEqual(goldens.png_pixels(path), (2, 2, bytes(12)), "split IDAT is a valid screen")
+            pixels = bytes(range(10, 130, 10))
+            residuals = [pixels,
+                         bytes([10, 20, 30, 30, 30, 30, 70, 80, 90, 30, 30, 30]),
+                         bytes([10, 20, 30, 40, 50, 60, 60, 60, 60, 60, 60, 60]),
+                         bytes([10, 20, 30, 35, 40, 45, 65, 70, 75, 45, 45, 45]),
+                         bytes([10, 20, 30, 30, 30, 30, 60, 60, 60, 30, 30, 30])]
+            for kind, residual in enumerate(residuals):
+                with self.subTest(filter=kind):
+                    path.write_bytes(picture(bytes([kind]) + residual[:6] + bytes([kind]) + residual[6:]))
+                    self.assertEqual(goldens.png_pixels(path), (2, 2, pixels), "every filter reconstructs known RGB bytes")
         for pixels in (bytes(9), bytes(15)):
             with self.subTest(length=len(pixels)):
                 with self.assertRaises(AssertionError):
@@ -446,7 +456,7 @@ class PhoneGoldens(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             shutil.copy(GOLDEN, root / f"{width}-ready.png")
-            rgba = b"".join(pixels[i:i + 3] + b"\xff" for i in range(0, len(pixels), 3))
+            rgba = b"".join(pixels[i:i + 3] + bytes([(i // 3) % 256]) for i in range(0, len(pixels), 3))
             (root / "same.png").write_bytes(goldens.png_encode(width, height, rgba, alpha=True))
             same = self.compare(root / "same.png", root)
             self.assertEqual(same.returncode, 0, same.stderr)
