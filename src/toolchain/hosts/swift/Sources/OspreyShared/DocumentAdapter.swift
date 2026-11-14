@@ -91,17 +91,46 @@ import AppKit
 import UniformTypeIdentifiers
 
 // The system's open and save panels: a chooser completes with the bare path the person chose,
-// or "" when they cancelled ([NATIVE-SHM-ASK]). Panels run on the main actor, as AppKit requires.
+// or "" when they cancelled ([NATIVE-SHM-ASK]). A chosen file's bytes, within the ask's limit, are
+// kept in the slice it names, and a saved file is written from its slice, so the application
+// reads and exports content without touching the file system. Panels run on the main actor.
 public struct DocumentAdapter: CapabilityAdapter {
     public let kinds = ["choose-file", "choose-folder", "save-file"]
-    public init() {}
+    private let panel: @MainActor @Sendable (Ask) -> String
+
+    /// The system's panels, or `panel` standing in for the person who answers them.
+    public init(panel: @escaping @MainActor @Sendable (Ask) -> String = { (try? DocumentAdapter.choose($0)) ?? "" }) {
+        self.panel = panel
+    }
 
     public func perform(_ ask: Ask, slices: SliceStore) async throws -> AskResult {
-        .bare(await MainActor.run { (try? Self.choose(ask)) ?? "" })
+        let path = await MainActor.run { panel(ask) }
+        guard !path.isEmpty else { return .bare("") }
+        switch ask.kind {
+        case "choose-file": try keep(ask, path, slices)
+        case "save-file": try persist(ask, path, slices)
+        default: break
+        }
+        return .bare(path)
+    }
+
+    /// The chosen file's text in the slice the ask names, refused past its byte limit.
+    private func keep(_ ask: Ask, _ path: String, _ slices: SliceStore) throws {
+        let limit = try required(ask, whole: 2, "limit")
+        guard limit > 0 else { throw CapabilityError.invalidArgument("Invalid file byte limit") }
+        slices.write(try required(ask, text: 3, "slice"), try Bounded.text(try Bounded.read(path, limit: limit)))
+    }
+
+    /// The named slice's text, written to the file the person chose.
+    private func persist(_ ask: Ask, _ path: String, _ slices: SliceStore) throws {
+        let key = try required(ask, text: 2, "slice")
+        guard slices.keys().contains(key) else { throw CapabilityError.invalidArgument("Save requested the absent host slice \(key)") }
+        try Data(slices.text(key).utf8).write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
     /// The panel this ask opens; `nil` — an empty completion — when it was cancelled.
-    private static func choose(_ ask: Ask) throws -> String {
+    @MainActor
+    public static func choose(_ ask: Ask) throws -> String {
         switch ask.kind {
         case "choose-file": return try openPanel(ask)
         case "choose-folder": return try folderPanel()

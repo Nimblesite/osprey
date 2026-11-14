@@ -100,7 +100,8 @@ storage-headless: _runtime_macos
 agent-headless: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
-	swift test --package-path src/toolchain/hosts/swift
+	# The Agent's archive is linked, so the suites that drive the real Workbench run under `workbench`.
+	swift test --package-path src/toolchain/hosts/swift --skip WorkbenchLayout
 
 ## agent-live: Osprey Agent in a real window with real DeepSeek calls, checked by acceptance tests the
 ##             agent never sees and an LLM judge. Spends tokens; the key is DEEPSEEKKEY in .env.

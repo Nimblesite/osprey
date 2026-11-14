@@ -187,25 +187,25 @@ final class ParagraphLayoutTests: RenderingTestCase {
     // MARK: helpers
 
     /// One editor, at `cursor` UTF-8 bytes, reporting caret moves to `place`.
-    private func editor(_ value: String, cursor: Int? = nil, focusEpoch: Int = 0, place: @escaping (Int) -> Void = { _ in }) -> CodeText {
+    func editor(_ value: String, cursor: Int? = nil, focusEpoch: Int = 0, place: @escaping (Int) -> Void = { _ in }) -> CodeText {
         CodeText(value: value, cursor: cursor ?? value.utf8.count, focusEpoch: focusEpoch, underlines: [], textSize: 20, inline: false,
                  edit: { _ in }, place: place)
     }
 
-    private func descendant<T: NSView>(_ view: NSView, _ type: T.Type) -> T? {
+    func descendant<T: NSView>(_ view: NSView, _ type: T.Type) -> T? {
         (view as? T) ?? view.subviews.lazy.compactMap { self.descendant($0, type) }.first
     }
 
     /// An active window holding a plain field and the editor fixture at `epoch`.
     @MainActor
-    private func activeFocusHost(_ epoch: Int) throws -> (NSHostingView<EditorFocusFixture>, NSWindow) {
+    func activeFocusHost(_ epoch: Int) throws -> (NSHostingView<EditorFocusFixture>, NSWindow) {
         let window = FocusTestWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 200), styleMask: .titled, backing: .buffered, defer: false)
         return TestResources.hosted(EditorFocusFixture(node: Fixtures.editor("p→q", focusEpoch: epoch)), width: 400, height: 200, keyboard: true, suppliedWindow: window)
     }
 
     /// Shows a fixture at `epoch`, waiting until the native editor applied it.
     @MainActor
-    private func showEpoch(_ host: NSHostingView<EditorFocusFixture>, _ epoch: Int, value: String = "p→q") throws {
+    func showEpoch(_ host: NSHostingView<EditorFocusFixture>, _ epoch: Int, value: String = "p→q") throws {
         host.rootView = EditorFocusFixture(node: Fixtures.editor(value, focusEpoch: epoch))
         let deadline = Date(timeIntervalSinceNow: 2)
         repeat {
@@ -228,7 +228,7 @@ final class ParagraphLayoutTests: RenderingTestCase {
     }
 
     @MainActor
-    private func rendered<V: View>(_ view: V) throws -> NSBitmapImageRep {
+    func rendered<V: View>(_ view: V) throws -> NSBitmapImageRep {
         let host = NSHostingView(rootView: view.frame(width: 464, height: 80, alignment: .topLeading))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 464, height: 80), styleMask: .borderless, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -241,13 +241,13 @@ final class ParagraphLayoutTests: RenderingTestCase {
         return try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(bitmap.representation(using: .png, properties: [:]))))
     }
 
-    private func referenceRightEdge() -> CGFloat {
+    func referenceRightEdge() -> CGFloat {
         let font = CTFontCreateWithName(FontRegistration.serifName as CFString, 19, nil)
         let text = NSAttributedString(string: "Review the mathematics before adding it to your", attributes: [NSAttributedString.Key(kCTFontAttributeName as String): font])
         return CTLineGetBoundsWithOptions(CTLineCreateWithAttributedString(text), .useGlyphPathBounds).maxX
     }
 
-    private func rightmostInk(_ bitmap: NSBitmapImageRep) -> Int {
+    func rightmostInk(_ bitmap: NSBitmapImageRep) -> Int {
         (0..<bitmap.pixelsWide).filter { x in
             (0..<min(28, bitmap.pixelsHigh)).contains { y in
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return false }
@@ -256,14 +256,14 @@ final class ParagraphLayoutTests: RenderingTestCase {
         }.max() ?? 0
     }
 
-    private func referenceCoverage() throws -> Double {
+    func referenceCoverage() throws -> Double {
         let path = Repo.src.appendingPathComponent("../docs/designs/proof-workbench/screens/transcription.png").standardizedFileURL
         let decoded = try XCTUnwrap(NSBitmapImageRep(data: Data(contentsOf: path)))
         let bitmap = try XCTUnwrap(decoded.retagging(with: .sRGB))
         return inkCoverage(bitmap, bounds: NSRect(x: 967, y: 437, width: 464, height: 64))
     }
 
-    private func firstInkRow(_ bitmap: NSBitmapImageRep) -> Int {
+    func firstInkRow(_ bitmap: NSBitmapImageRep) -> Int {
         (0..<bitmap.pixelsHigh).first { y in
             (0..<bitmap.pixelsWide).contains { x in
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return false }
@@ -272,7 +272,7 @@ final class ParagraphLayoutTests: RenderingTestCase {
         } ?? bitmap.pixelsHigh
     }
 
-    private func inkCoverage(_ bitmap: NSBitmapImageRep, bounds: NSRect) -> Double {
+    func inkCoverage(_ bitmap: NSBitmapImageRep, bounds: NSRect) -> Double {
         (Int(bounds.minX)..<Int(bounds.maxX)).reduce(0.0) { total, x in
             total + (Int(bounds.minY)..<Int(bounds.maxY)).reduce(0.0) { column, y in
                 guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return column }
@@ -283,7 +283,7 @@ final class ParagraphLayoutTests: RenderingTestCase {
 }
 
 /// A plain field above one editor node.
-private struct EditorFocusFixture: View {
+struct EditorFocusFixture: View {
     let node: Tree
 
     var body: some View {
@@ -295,7 +295,7 @@ private struct EditorFocusFixture: View {
 }
 
 /// The editor of one lesson's region; a different region is a different editor identity.
-private struct FocusRegionFixture: View {
+struct FocusRegionFixture: View {
     let region: String
 
     var body: some View {

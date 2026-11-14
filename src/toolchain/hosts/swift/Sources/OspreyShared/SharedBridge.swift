@@ -48,6 +48,7 @@ public final class SharedBridge {
     public func main() throws {
         try abi()
         let status = osprey_main()
+        SliceStore.shared.releaseBorrowed()
         osp_native_frame_discard()
         guard status == 0 else { throw SharedFailure(call: "osprey_main", status: status) }
     }
@@ -97,6 +98,7 @@ public final class SharedBridge {
     /// answer is not an error: a refused event drew the same view again, and its frame shows.
     private func call(_ name: String, _ export: () throws -> Int64) throws -> Shown {
         try abi()
+        defer { SliceStore.shared.releaseBorrowed() }
         _ = try export()
         var revision: Int64 = 0
         try checked(osp_native_frame_commit(bridge, &revision), "\(name): frame commit")

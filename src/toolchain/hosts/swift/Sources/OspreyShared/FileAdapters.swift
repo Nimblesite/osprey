@@ -98,12 +98,20 @@ public struct ReadTextsAdapter: CapabilityAdapter {
         let limit = try required(ask, whole: 2, "byte limit")
         let paths = try required(ask, texts: 1, "paths")
         let files = paths.map { path -> ResultDocument in
-            do { return ["path": .init(path), "error": "", "text": .string(try Bounded.text(try Bounded.read(path, limit: limit)))] }
+            do { return ["path": .init(path), "error": "", "text": .string(try Bounded.text(try Bounded.read(Self.located(path), limit: limit)))] }
             catch { return ["path": .init(path), "error": .init(describe(error)), "text": ""] }
         }
         let document: ResultDocument = ["files": .array(files)]
         slices.write(try required(ask, text: 3, "slice"), document.text)
         return .document([:])
+    }
+
+    /// An absolute path as given; a relative one inside the application's own resources, as its
+    /// lessons and catalogues travel with it, and never outside them ([UI-COMPONENTS-MEDIA]).
+    static func located(_ path: String) throws -> String {
+        if path.hasPrefix("/") { return path }
+        guard let found = Bundled.url(path) else { throw CapabilityError.notAllowed("\(path) is not inside the application's resources") }
+        return found.path
     }
 }
 

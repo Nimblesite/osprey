@@ -60,8 +60,25 @@ public final class SliceStore: @unchecked Sendable {
         if let old = buffers.removeValue(forKey: key) { retained.append(old) }
     }
 
-    /// A pinned C string the runtime can borrow; superseded buffers stay valid for any call
-    /// still reading them, and are never returned to the allocator.
+    /// Frees every C copy once the synchronous call that borrowed them has returned: the runtime
+    /// copies each import it reads ([NATIVE-SHM-ASK]), so no buffer outlives its call.
+    public func releaseBorrowed() {
+        lock.lock()
+        defer { lock.unlock() }
+        for buffer in Array(buffers.values) + retained { free(buffer) }
+        buffers.removeAll()
+        retained.removeAll()
+    }
+
+    /// All host-owned C slice bytes, current and superseded, so growth is measurable.
+    public var borrowedBytes: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return (Array(buffers.values) + retained).reduce(0) { $0 + strlen($1) + 1 }
+    }
+
+    /// A pinned C string the runtime can borrow; a buffer superseded during a call stays valid
+    /// until that call returns.
     public func pointer(_ key: String) -> UnsafePointer<CChar> {
         lock.lock()
         defer { lock.unlock() }
