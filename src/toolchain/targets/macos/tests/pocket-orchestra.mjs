@@ -17,9 +17,10 @@ const token = 'orchestra-integration-private-token'
 const port = 19140
 const origin = `http://127.0.0.1:${port}`
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
+// The test owns shutdown, so the session lasts through every browser journey.
 const child = spawn(resolve('target/orchestra/pocket-orchestra'), [], { env: { ...process.env,
   ORCHESTRA_NO_WINDOW: windowed ? '0' : '1', ORCHESTRA_HEADLESS: windowed ? '0' : '1',
-  ORCHESTRA_LOG_DIRECTORY: `${out}/diagnostics`, ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '25',
+  ORCHESTRA_LOG_DIRECTORY: `${out}/diagnostics`, ORCHESTRA_PORT: String(port), ORCHESTRA_TOKEN: token, ORCHESTRA_DURATION: '0',
   ORCHESTRA_CAPTURE: `${out}/controller-audio.f32` } })
 let output = '', errors = '', browser
 child.stdout.on('data', data => { output += data })
@@ -52,6 +53,12 @@ async function joined() {
   const ws = await connect()
   assert.equal((await request(ws, { type: 'join', token })).type, 'joined')
   return ws
+}
+async function observedNotes() {
+  // Each probe lives for one request, so browser work cannot expire its lease.
+  const observer = await joined()
+  try { return (await request(observer, { type: 'heartbeat' })).notes }
+  finally { observer.close() }
 }
 try {
   for (let attempt = 0; ; attempt++) {
@@ -140,15 +147,16 @@ try {
     await page.getByLabel('Touch expression', { exact: true }).selectOption('echo')
     assert.equal(await page.getByRole('slider', { name: 'Echo amount' }).inputValue(), '0.7', 'effect values survive switching expression')
     await page.getByLabel('Touch expression', { exact: true }).selectOption('volume')
-    const observer = await joined()
     const pad = page.locator('#pad'), bounds = await pad.boundingBox()
     if (engine === chromium) {
       const cdp = await context.newCDPSession(page)
       const contacts = [0, 1].map(id => ({ id, x: bounds.x + 80 + id * 100, y: bounds.y + 120, radiusX: 4, radiusY: 4 }))
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: contacts })
       await delay(150)
-      assert.equal((await request(observer, { type: 'heartbeat' })).notes, 2, 'phone touches reach native synthesis')
+      assert.equal(await observedNotes(), 2, 'phone touches reach native synthesis')
       await page.screenshot({ path: `${out}/phone-playing.png` })
+      await delay(1700)
+      assert.equal(await observedNotes(), 2, 'held phone touches survive idle observer lease expiry')
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: contacts.map(p => ({ ...p, y: p.y + 80 })) })
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
     } else { await page.touchscreen.tap(bounds.x + 100, bounds.y + 100) }
@@ -157,20 +165,19 @@ try {
     await page.keyboard.press('ArrowRight')
     for (let beat = 0; beat < 4; beat++) {
       await delay(800)
-      assert.equal((await request(observer, { type: 'heartbeat' })).notes, 1)
+      assert.equal(await observedNotes(), 1)
     }
     assert.match(await page.getByRole('status', { name: 'Connection status' }).innerText(), /Connected/, 'playing survives several heartbeat lease periods')
     await delay(150)
-    assert.equal((await request(observer, { type: 'heartbeat' })).notes, 1, `${engine.name()} keyboard note plays`)
+    assert.equal(await observedNotes(), 1, `${engine.name()} keyboard note plays`)
     await page.screenshot({ path: `${out}/phone-${engine.name()}-keyboard.png` })
     await page.keyboard.up('Space')
     await page.getByRole('button', { name: 'Release my notes' }).click()
     await delay(50)
-    assert.equal((await request(observer, { type: 'heartbeat' })).notes, 0)
+    assert.equal(await observedNotes(), 0)
     await page.reload()
     await joinController(page)
     assert.deepEqual(pageErrors, [])
-    observer.close()
     await context.close()
     await browser.close(); browser = undefined
   }
