@@ -787,6 +787,29 @@ static void check_native_sync_failure(void) {
     assert(osp_native_destroy(b) == 0);
   }
 }
+
+// Construction takes the same mutex: a closed, failing or faulted bridge
+// refuses it. The over-limit length keeps the reservation refused, so a
+// failed unlock leaves nothing held that the untrusted mutex cannot undo.
+static int oversized_create(OspNativeBridge *b) {
+  td_OwnedLease lease = {{0}};
+  return osp_native_create(b, 1, true, "", INT64_MAX, NULL, 0, &lease);
+}
+static void check_native_create_sync_failure(void) {
+  assert(oversized_create(NULL) == OSP_NATIVE_ERROR(BridgeClosed));
+  for (int failed_unlock = 0; failed_unlock < 2; failed_unlock++) {
+    OspNativeBridge *b = native_fixture(16384, 8, 8);
+    fail_native_lock = !failed_unlock;
+    fail_native_unlock = failed_unlock != 0;
+    assert(oversized_create(b) == OSP_NATIVE_ERROR(SynchronizationFailed));
+    fail_native_lock = false;
+    fail_native_unlock = false;
+    assert(oversized_create(b) == OSP_NATIVE_ERROR(SynchronizationFailed));
+    atomic_store(&b->faulted, false);
+    assert(oversized_create(b) == OSP_NATIVE_ERROR(LimitExceeded));
+    assert(osp_native_destroy(b) == 0);
+  }
+}
 #endif
 
 int main(void) {
@@ -807,6 +830,7 @@ int main(void) {
   check_native_view_safety();
 #ifdef OSP_NATIVE_TEST
   check_native_sync_failure();
+  check_native_create_sync_failure();
 #endif
   osp_release(saved);
   saved = NULL;
