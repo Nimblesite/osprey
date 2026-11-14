@@ -1263,7 +1263,7 @@ jobs:
           - part: Light Orchestra
             minutes: 15
             run: |
-              make _runtime_macos
+              make _runtime _runtime_macos
               cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
               target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=gc
               target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=arc
